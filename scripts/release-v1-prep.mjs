@@ -10,15 +10,15 @@
  * shows up here as a "remaining (needs <host>)" entry.
  *
  * What it runs (each must exit 0):
- *   1. build-llama-cpp-dflash.mjs --target linux-x64-cpu --dry-run  (build plumbing sane)
+ *   1. build-llama-cpp-dflash.mjs --target <host-cpu/metal> --dry-run  (build plumbing sane)
  *   2. python -m pytest packages/training/scripts/manifest/          (bundle/manifest/platform-plan/source-staging/evidence)
  *   3. packages/training/scripts/quantization/test_recipes_smoke.py  (TBQ/QJL/Polar recipe parity + codebook-hash pins)
  *   4. python -m py_compile on the release-pipeline scripts           (no syntax rot)
  *   5. each quant recipe --dry-run (turboquant/fused_turboquant/qjl/polarquant) (CLI + recipe params)
- *   6. distill_dflash_drafter.py --tier 1_7b --synthetic-smoke        (DFlash distill pipeline + GGUF metadata write, no torch)
+ *   6. distill_dflash_drafter.py --tier 2b --synthetic-smoke          (DFlash distill pipeline + GGUF metadata write, no torch)
  *   7. eliza1_platform_plan.py regenerates ELIZA_1_GGUF_{PLATFORM_PLAN.json,READINESS.md} idempotently
  *   8. eliza1_gates_collect.mjs --tier <each> --json                  (gate-collect with needs-data placeholders, no eval bytes)
- *   9. make -C packages/inference/verify reference-test kernel-contract  (CPU C reference + kernel-contract sync) — only if `make`/`cc` present
+ *   9. make -C plugins/plugin-local-inference/native/verify reference-test kernel-contract  (CPU C reference + kernel-contract sync) — only if `make`/`cc` present
  *
  * What it does NOT run (prints them as the remaining checklist):
  *   - Fork build with kernel patches per backend; metal/vulkan/cuda/rocm verify; platform-dispatch smokes (target HW)
@@ -26,7 +26,7 @@
  *   - The DFlash real distillation run (GPU)
  *   - The base-v1 evals: text perplexity vs upstream GGUF, voice RTF, ASR WER, VAD latency, dflash acceptance, e2e loop, 30-turn, mobile RSS/thermal (GPU + reference devices)
  *   - Acquiring the base weights + staging a full bundle (network host; stage_eliza1_bundle_assets.py / stage_eliza1_source_weights.py)
- *   - publish_all_eliza1.sh real upload (HF_TOKEN with write to elizaos/*)
+ *   - publish_all_eliza1.sh real upload (HF_TOKEN with write to elizalabs/*)
  *   - scripts/hf-transfer-eliza1.sh --execute (HF_TOKEN with write to milady-ai + elizaos)
  *
  * Usage:
@@ -113,21 +113,55 @@ function step(
     );
 }
 
+function skippedStep(name, detail) {
+  results.push({ name, status: "skipped", detail });
+  if (!JSON_OUT) console.log(`  SKIP  ${name}  (${detail})`);
+}
+
+function hostBuildTarget() {
+  const forced = process.env.ELIZA_RELEASE_PREP_BUILD_TARGET?.trim();
+  if (forced) return forced;
+  if (process.platform === "darwin" && process.arch === "arm64") {
+    return "darwin-arm64-metal";
+  }
+  if (process.platform === "linux" && process.arch === "x64") {
+    return "linux-x64-cpu";
+  }
+  if (process.platform === "linux" && process.arch === "arm64") {
+    return "linux-aarch64-cpu";
+  }
+  if (process.platform === "win32" && process.arch === "x64") {
+    return "windows-x64-cpu";
+  }
+  if (process.platform === "win32" && process.arch === "arm64") {
+    return "windows-arm64-cpu";
+  }
+  return null;
+}
+
 if (!JSON_OUT) {
   console.log("=== Eliza-1 v1 release prep — no-hardware steps ===\n");
   console.log("Runbook: RELEASE_V1.md   QA checklist: ELIZA_1_TESTING_TODO.md");
   console.log(
-    "HW catalog: packages/inference/reports/porting/2026-05-11/needs-hardware-ledger.md\n",
+    "HW catalog: plugins/plugin-local-inference/native/reports/porting/2026-05-11/needs-hardware-ledger.md\n",
   );
 }
 
 // --- 1. Build plumbing ---------------------------------------------------------
-step("build-llama-cpp-dflash.mjs --target linux-x64-cpu --dry-run", "node", [
-  "packages/app-core/scripts/build-llama-cpp-dflash.mjs",
-  "--target",
-  "linux-x64-cpu",
-  "--dry-run",
-]);
+const buildTarget = hostBuildTarget();
+if (buildTarget) {
+  step(`build-llama-cpp-dflash.mjs --target ${buildTarget} --dry-run`, "node", [
+    "packages/app-core/scripts/build-llama-cpp-dflash.mjs",
+    "--target",
+    buildTarget,
+    "--dry-run",
+  ]);
+} else {
+  skippedStep(
+    "build-llama-cpp-dflash.mjs --target <host> --dry-run",
+    `no supported host dry-run target for ${process.platform}/${process.arch}`,
+  );
+}
 
 // --- 2. Manifest / bundle / platform-plan / source-staging / evidence tests ----
 step("pytest packages/training/scripts/manifest/", "python3", [
@@ -151,6 +185,9 @@ const PY_SCRIPTS = [
   "packages/training/scripts/publish_eliza1_model.py",
   "packages/training/scripts/push_model_to_hf.py",
   "packages/training/scripts/publish/orchestrator.py",
+  "packages/training/scripts/publish/publish_model.py",
+  "packages/training/scripts/publish/publish_dataset.py",
+  "packages/training/scripts/publish/publish_pipeline.py",
   "packages/training/scripts/quantization/turboquant_apply.py",
   "packages/training/scripts/quantization/fused_turboquant_apply.py",
   "packages/training/scripts/quantization/qjl_apply.py",
@@ -178,9 +215,11 @@ for (const [label, script, extra] of [
   step(label, "python3", [
     `packages/training/scripts/quantization/${script}`,
     "--model",
-    "Qwen/Qwen3-0.6B",
+    "Qwen/Qwen3.5-0.8B",
     "--output",
     `${process.env.TMPDIR || "/tmp"}/eliza1-prep-${script}`,
+    "--device",
+    "cpu",
     "--dry-run",
     ...extra,
   ]);
@@ -188,17 +227,19 @@ for (const [label, script, extra] of [
 step("polarquant_apply --dry-run", "python3", [
   "packages/training/scripts/quantization/polarquant_apply.py",
   "--model",
-  "Qwen/Qwen3-0.6B",
+  "Qwen/Qwen3.5-0.8B",
   "--output",
   `${process.env.TMPDIR || "/tmp"}/eliza1-prep-polarquant`,
+  "--device",
+  "cpu",
   "--dry-run",
 ]);
 
 // --- 6. DFlash distill synthetic smoke (no torch / GPU) ------------------------
-step("distill_dflash_drafter.py --tier 1_7b --synthetic-smoke", "python3", [
+step("distill_dflash_drafter.py --tier 2b --synthetic-smoke", "python3", [
   "packages/training/scripts/distill_dflash_drafter.py",
   "--tier",
-  "1_7b",
+  "2b",
   "--synthetic-smoke",
   "--out-dir",
   `${process.env.TMPDIR || "/tmp"}/eliza1-prep-dflash-smoke`,
@@ -244,14 +285,15 @@ step("distill_dflash_drafter.py --tier 1_7b --synthetic-smoke", "python3", [
 
 // --- 8. Gate-collect per tier (needs-data placeholders, no eval bytes) --------
 // Write the per-tier aggregate report to a tmp path so a prep run doesn't drop a
-// timestamped file into packages/inference/reports/gates/ every time.
+// timestamped file into plugins/plugin-local-inference/native/reports/gates/
+// every time.
 {
   const tmpReportDir = fs.mkdtempSync(
     path.join(process.env.TMPDIR || "/tmp", "eliza1-prep-gates-"),
   );
-  for (const tier of ["0_6b", "1_7b", "9b", "27b", "27b-256k", "27b-1m"]) {
+  for (const tier of ["0_8b", "2b", "4b", "9b", "27b", "27b-256k", "27b-1m"]) {
     step(`eliza1_gates_collect.mjs --tier ${tier}`, "node", [
-      "packages/inference/verify/eliza1_gates_collect.mjs",
+      "plugins/plugin-local-inference/native/verify/eliza1_gates_collect.mjs",
       "--tier",
       tier,
       "--json",
@@ -264,15 +306,15 @@ step("distill_dflash_drafter.py --tier 1_7b --synthetic-smoke", "python3", [
 // --- 9. CPU C reference + kernel-contract (only with make/cc) ------------------
 if (!QUICK) {
   step(
-    "make -C packages/inference/verify reference-test",
+    "make -C plugins/plugin-local-inference/native/verify reference-test",
     "make",
-    ["-C", "packages/inference/verify", "reference-test"],
+    ["-C", "plugins/plugin-local-inference/native/verify", "reference-test"],
     { allowMissing: "make" },
   );
   step(
-    "make -C packages/inference/verify kernel-contract",
+    "make -C plugins/plugin-local-inference/native/verify kernel-contract",
     "make",
-    ["-C", "packages/inference/verify", "kernel-contract"],
+    ["-C", "plugins/plugin-local-inference/native/verify", "kernel-contract"],
     { allowMissing: "make" },
   );
 }
@@ -286,11 +328,11 @@ const REMAINING_HW = [
   [
     "Fork build per backend + metal/vulkan/cuda/rocm verify + platform-dispatch smokes",
     "the target backend's hardware (Metal Mac, CUDA NVIDIA, Vulkan Linux/Android, ROCm AMD; GH200-class aarch64+CUDA for 27b-1m)",
-    "node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target <triple>; make -C packages/inference/verify {metal,vulkan,cuda,rocm}_verify; verify/{cuda,rocm,gh200}_runner.sh / windows_runner.ps1",
+    "node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target <triple>; make -C plugins/plugin-local-inference/native/verify {metal,vulkan,cuda,rocm}_verify; verify/{cuda,rocm,gh200}_runner.sh / windows_runner.ps1",
   ],
   [
     "PolarQuant code generation + TurboQuant skip-layer calibration",
-    "a GPU big enough for the tier (consumer for 0.6B/1.7B; ≥24 GB for 9B; ≥48 GB / multi-GPU for 27B)",
+    "a GPU big enough for the tier (consumer for 0.8B/2B/4B; >=24 GB for 9B; >=48 GB / multi-GPU for 27B)",
     "uv run --extra train python packages/training/scripts/quantization/{polarquant,turboquant}_apply.py --model <hf-ckpt> --output ... --device cuda",
   ],
   [
@@ -306,16 +348,16 @@ const REMAINING_HW = [
   [
     "base-v1 evals: text perplexity vs upstream GGUF, voice RTF, ASR WER, VAD latency, dflash acceptance, e2e loop, 30-turn, mobile RSS/thermal",
     "a GPU big enough for the tier + reference devices for mobile/voice",
-    "node packages/inference/verify/dflash_drafter_runtime_smoke.mjs --bench; bun run voice:interactive; node packages/inference/verify/{thirty_turn_endurance,mobile_peak_rss,bargein_latency}_harness.mjs; uv run python -m packages.training.benchmarks.eliza1_gates <aggregate.json>",
+    "node plugins/plugin-local-inference/native/verify/dflash_drafter_runtime_smoke.mjs --bench; bun run voice:interactive; node plugins/plugin-local-inference/native/verify/{thirty_turn_endurance,mobile_peak_rss,bargein_latency}_harness.mjs; uv run python -m packages.training.benchmarks.eliza1_gates <aggregate.json>",
   ],
   [
-    "Publish to HuggingFace under elizaos/eliza-1-<tier>",
-    "HF_TOKEN with write access to elizaos/*",
+    "Publish to HuggingFace under elizalabs/eliza-1 bundles/<tier>/",
+    "HF_TOKEN with write access to elizalabs/*",
     "bash packages/training/scripts/publish_all_eliza1.sh --bundles-root <dir> --dry-run  (then drop --dry-run)",
   ],
   [
-    "Move legacy HF repos out of milady-ai into elizaos + create the per-tier bundle repos",
-    "HF_TOKEN with write access to BOTH milady-ai and elizaos",
+    "Move legacy HF repos out of milady-ai into elizalabs + create the per-tier bundle repos",
+    "HF_TOKEN with write access to BOTH milady-ai and elizalabs",
     "bash scripts/hf-transfer-eliza1.sh           (dry-run; then --execute)",
   ],
 ];

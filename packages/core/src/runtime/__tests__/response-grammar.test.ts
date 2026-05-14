@@ -1,9 +1,13 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { normalizeActionJsonSchema } from "../../actions/action-schema";
 import type { Action } from "../../types";
+import type { ResponseSkeleton } from "../../types/model";
 import {
 	buildPlannerActionGrammar,
+	buildPlannerActionGrammarStrict,
+	buildPlannerParamsSkeleton,
 	buildResponseGrammar,
+	buildSpanSamplerPlan,
 	clearResponseGrammarCache,
 	withGuidedDecodeProviderOptions,
 } from "../response-grammar";
@@ -335,6 +339,678 @@ describe("buildPlannerActionGrammar — Stage-2 per-action grammar", () => {
 	});
 });
 
+describe("buildPlannerParamsSkeleton — second-pass per-action parameters", () => {
+	it("returns a `{}` literal span when the action has no parameters", () => {
+		const sk = buildPlannerParamsSkeleton(makeAction("NO_PARAMS"));
+		expect(sk.spans).toEqual([{ kind: "literal", value: "{}" }]);
+	});
+
+	it("emits a free-string span for a string param with no enum", () => {
+		const sk = buildPlannerParamsSkeleton(
+			makeAction("FREE", {
+				parameters: [
+					{
+						name: "text",
+						description: "free text",
+						required: true,
+						schema: { type: "string" },
+					},
+				],
+			}),
+		);
+		const valueSpans = sk.spans.filter((s) => s.kind !== "literal");
+		expect(valueSpans).toEqual([{ kind: "free-string", key: "text" }]);
+	});
+
+	it("collapses a single-value string enum to a literal", () => {
+		const sk = buildPlannerParamsSkeleton(
+			makeAction("ONE", {
+				parameters: [
+					{
+						name: "op",
+						description: "only one op",
+						required: true,
+						schema: { type: "string", enum: ["send"] },
+					},
+				],
+			}),
+		);
+		const opSpan = sk.spans.find((s) => s.key === "op");
+		expect(opSpan).toEqual({ kind: "literal", key: "op", value: '"send"' });
+	});
+
+	it("pins a multi-value string enum as an enum span (the gap this closes)", () => {
+		const sk = buildPlannerParamsSkeleton(
+			makeAction("MULTI", {
+				parameters: [
+					{
+						name: "kind",
+						description: "one of several kinds",
+						required: true,
+						schema: {
+							type: "string",
+							enum: ["user", "channel", "thread"],
+						},
+					},
+				],
+			}),
+		);
+		const kindSpan = sk.spans.find((s) => s.key === "kind");
+		expect(kindSpan?.kind).toBe("enum");
+		expect(kindSpan?.enumValues).toEqual(["user", "channel", "thread"]);
+	});
+
+	it("falls back to free-json for non-string parameter types", () => {
+		const sk = buildPlannerParamsSkeleton(
+			makeAction("NESTED", {
+				parameters: [
+					{
+						name: "context",
+						description: "an object",
+						required: true,
+						schema: {
+							type: "object",
+							properties: { kind: { type: "string", enum: ["a", "b"] } },
+						},
+					},
+				],
+			}),
+		);
+		const ctxSpan = sk.spans.find((s) => s.key === "context");
+		expect(ctxSpan).toEqual({ kind: "free-json", key: "context" });
+	});
+
+	it("differentiates the skeleton id when enum constraints differ", () => {
+		// Same param names, different enum sets — id must differ so a downstream
+		// grammar cache doesn't return a stale compilation.
+		const noEnum = buildPlannerParamsSkeleton(
+			makeAction("X", {
+				parameters: [
+					{
+						name: "k",
+						description: "",
+						required: true,
+						schema: { type: "string" },
+					},
+				],
+			}),
+		);
+		const withEnum = buildPlannerParamsSkeleton(
+			makeAction("X", {
+				parameters: [
+					{
+						name: "k",
+						description: "",
+						required: true,
+						schema: { type: "string", enum: ["a", "b"] },
+					},
+				],
+			}),
+		);
+		expect(noEnum.id).not.toBe(withEnum.id);
+	});
+
+	it("rejects non-string enum members (mixed-type enums fall through to free-string)", () => {
+		const sk = buildPlannerParamsSkeleton(
+			makeAction("MIXED", {
+				parameters: [
+					{
+						name: "n",
+						description: "mixed",
+						required: true,
+						schema: { type: "string", enum: ["a", 1] as unknown as string[] },
+					},
+				],
+			}),
+		);
+		const nSpan = sk.spans.find((s) => s.key === "n");
+		expect(nSpan).toEqual({ kind: "free-string", key: "n" });
+	});
+});
+
+describe("buildPlannerActionGrammarStrict — single-call per-action union grammar", () => {
+	it("returns null when no actions are exposed", () => {
+		expect(buildPlannerActionGrammarStrict([])).toBeNull();
+	});
+
+	it("emits one call branch per action at the grammar root", () => {
+		const r = buildPlannerActionGrammarStrict([
+			makeAction("ALPHA"),
+			makeAction("BRAVO"),
+		]);
+		if (r === null) throw new Error("expected grammar");
+		// Branches are root-level alternatives — both call rules referenced
+		// from the root.
+		expect(r.grammar).toMatch(
+			/^root ::= callofaction_ALPHA \| callofaction_BRAVO/m,
+		);
+		expect(r.grammar).toMatch(/^callofaction_ALPHA ::= /m);
+		expect(r.grammar).toMatch(/^callofaction_BRAVO ::= /m);
+		// Action name is pinned as a literal inside each call rule, NOT free.
+		expect(r.grammar).toContain('"{\\"action\\":\\"ALPHA\\""');
+		expect(r.grammar).toContain('"{\\"action\\":\\"BRAVO\\""');
+	});
+
+	it("emits an empty `{}` params rule for actions with no parameters", () => {
+		const r = buildPlannerActionGrammarStrict([makeAction("EMPTY")]);
+		if (r === null) throw new Error("expected grammar");
+		expect(r.grammar).toMatch(/^paramsofaction_EMPTY ::= "\{\}"$/m);
+	});
+
+	it("does NOT factor SNAKE_CASE prefixes — each branch must pin the full action name", () => {
+		// Regression: a prior version of this function grouped actions by common
+		// prefix (e.g. emit "MESSAGE_" once with a shared suffix rule). That was
+		// broken on two fronts: (1) the suffix alternation produced malformed
+		// JSON like `{"action":"MESSAGE_"READ""…` because each suffix was
+		// JSON-quoted on top of the already-opened action-value quote; (2) the
+		// shared suffix rule decoupled the action name from its params rule, so
+		// the model could legally pair `MESSAGE_READ` with
+		// `paramsofaction_MESSAGE_SEND`. Each call branch must encode the full
+		// action name as a single quoted literal.
+		const r = buildPlannerActionGrammarStrict([
+			makeAction("MESSAGE_SEND"),
+			makeAction("MESSAGE_READ"),
+			makeAction("MESSAGE_SEARCH"),
+			makeAction("REPLY"),
+		]);
+		if (r === null) throw new Error("expected grammar");
+		// Each branch contains the full action name as a single literal.
+		expect(r.grammar).toContain('"{\\"action\\":\\"MESSAGE_SEND\\""');
+		expect(r.grammar).toContain('"{\\"action\\":\\"MESSAGE_READ\\""');
+		expect(r.grammar).toContain('"{\\"action\\":\\"MESSAGE_SEARCH\\""');
+		expect(r.grammar).toContain('"{\\"action\\":\\"REPLY\\""');
+		// The grammar must NOT contain a `suffix_MESSAGE_` shared rule.
+		expect(r.grammar).not.toMatch(/^suffix_MESSAGE_ ::= /m);
+	});
+
+	it("pins a multi-value string enum as a GBNF alternation in the params rule", () => {
+		const r = buildPlannerActionGrammarStrict([
+			makeAction("MSG", {
+				parameters: [
+					{
+						name: "kind",
+						description: "the kind",
+						required: true,
+						schema: {
+							type: "string",
+							enum: ["user", "channel", "thread"],
+						},
+					},
+				],
+			}),
+		]);
+		if (r === null) throw new Error("expected grammar");
+		// The property rule for `kind` should reference the three quoted enum values.
+		expect(r.grammar).toContain('"\\"user\\""');
+		expect(r.grammar).toContain('"\\"channel\\""');
+		expect(r.grammar).toContain('"\\"thread\\""');
+		// And NOT fall back to free jsonstring for this property's value.
+		expect(r.grammar).toMatch(
+			/paramsofaction_MSG_p_kind ::= "\\"kind\\":" \( "\\"user\\"" \| "\\"channel\\"" \| "\\"thread\\"" \)/,
+		);
+	});
+
+	it("pins an array-of-string-enum element by element", () => {
+		const r = buildPlannerActionGrammarStrict([
+			makeAction("CHAR", {
+				parameters: [
+					{
+						name: "fields",
+						description: "saveable fields",
+						required: true,
+						schema: {
+							type: "array",
+							items: {
+								type: "string",
+								enum: ["name", "system", "bio"],
+							},
+						},
+					},
+				],
+			}),
+		]);
+		if (r === null) throw new Error("expected grammar");
+		expect(r.grammar).toContain('"\\"name\\""');
+		expect(r.grammar).toContain('"\\"system\\""');
+		expect(r.grammar).toContain('"\\"bio\\""');
+		// Array structure: opening bracket, optional elements, closing bracket.
+		expect(r.grammar).toMatch(
+			/paramsofaction_CHAR_p_fields ::= "\\"fields\\":" "\[" ws/,
+		);
+	});
+
+	it("falls back to shared jsonstring for free-text string params", () => {
+		const r = buildPlannerActionGrammarStrict([
+			makeAction("REPLY", {
+				parameters: [
+					{
+						name: "text",
+						description: "the text",
+						required: true,
+						schema: { type: "string" },
+					},
+				],
+			}),
+		]);
+		if (r === null) throw new Error("expected grammar");
+		expect(r.grammar).toMatch(
+			/paramsofaction_REPLY_p_text ::= "\\"text\\":" jsonstring/,
+		);
+		expect(r.grammar).toMatch(/^jsonstring ::= /m);
+	});
+
+	it("recurses into object-typed properties with declared sub-properties", () => {
+		// Mirrors paymentContext in real actions: object with enum-typed
+		// sub-properties. The strict grammar should pin the sub-property
+		// enums, not fall back to a loose jsonvalue.
+		const r = buildPlannerActionGrammarStrict([
+			makeAction("PAYMENT", {
+				parameters: [
+					{
+						name: "paymentContext",
+						description: "context",
+						required: true,
+						schema: {
+							type: "object",
+							properties: {
+								kind: {
+									type: "string",
+									enum: ["any_payer", "verified_payer", "specific_payer"],
+								},
+								scope: {
+									type: "string",
+									enum: ["owner", "owner_or_linked_identity"],
+								},
+								payerIdentityId: { type: "string" },
+							},
+							required: ["kind"],
+						},
+					},
+				],
+			}),
+		]);
+		if (r === null) throw new Error("expected grammar");
+		// Property rule references the nested object rule, not jsonvalue.
+		expect(r.grammar).toMatch(
+			/paramsofaction_PAYMENT_p_paymentContext ::= "\\"paymentContext\\":" paramsofaction_PAYMENT_paymentContext_obj/,
+		);
+		// Nested object rule exists and pins kind's enum members.
+		expect(r.grammar).toMatch(/paramsofaction_PAYMENT_paymentContext_obj ::= /);
+		expect(r.grammar).toContain('"\\"any_payer\\""');
+		expect(r.grammar).toContain('"\\"verified_payer\\""');
+		expect(r.grammar).toContain('"\\"specific_payer\\""');
+		expect(r.grammar).toContain('"\\"owner\\""');
+	});
+
+	it("falls back to jsonvalue for objects without declared sub-properties", () => {
+		const r = buildPlannerActionGrammarStrict([
+			makeAction("BAG", {
+				parameters: [
+					{
+						name: "extras",
+						description: "freeform bag",
+						required: false,
+						schema: { type: "object" },
+					},
+				],
+			}),
+		]);
+		if (r === null) throw new Error("expected grammar");
+		expect(r.grammar).toMatch(
+			/paramsofaction_BAG_p_extras ::= "\\"extras\\":" jsonvalue/,
+		);
+	});
+
+	it("recurses into array-of-object items with declared sub-properties", () => {
+		const r = buildPlannerActionGrammarStrict([
+			makeAction("PAGES", {
+				parameters: [
+					{
+						name: "entries",
+						description: "list of typed records",
+						required: true,
+						schema: {
+							type: "array",
+							items: {
+								type: "object",
+								properties: {
+									kind: { type: "string", enum: ["page", "comment"] },
+									id: { type: "string" },
+								},
+								required: ["kind", "id"],
+							},
+						},
+					},
+				],
+			}),
+		]);
+		if (r === null) throw new Error("expected grammar");
+		// Property rule wraps the item rule in array brackets.
+		expect(r.grammar).toMatch(
+			/paramsofaction_PAGES_p_entries ::= "\\"entries\\":" "\[" ws \( paramsofaction_PAGES_entries_item /,
+		);
+		// Item rule exists and references the kind enum.
+		expect(r.grammar).toMatch(/paramsofaction_PAGES_entries_item ::= /);
+		expect(r.grammar).toContain('"\\"page\\""');
+		expect(r.grammar).toContain('"\\"comment\\""');
+	});
+
+	it("caps object recursion at MAX_NESTED_OBJECT_DEPTH so cyclic schemas don't explode", () => {
+		// Build a 6-deep nested schema. The strict grammar caps recursion at
+		// depth 4; depth-5 and below should collapse to jsonvalue.
+		const deep = (level: number): JSONSchema => {
+			if (level === 0) return { type: "string" };
+			return { type: "object", properties: { next: deep(level - 1) } };
+		};
+		const r = buildPlannerActionGrammarStrict([
+			makeAction("DEEP", {
+				parameters: [
+					{
+						name: "root",
+						description: "",
+						required: true,
+						schema: deep(6) as {
+							type: "object";
+							properties: Record<string, unknown>;
+						},
+					},
+				],
+			}),
+		]);
+		if (r === null) throw new Error("expected grammar");
+		// Depths 0..3 each emit their own nested _obj rule; depth 4 stops the
+		// recursion and the deepest object falls back to jsonvalue.
+		const objRules = (
+			r.grammar.match(/paramsofaction_DEEP_(?:[A-Za-z0-9_]+_)*next_obj ::=/g) ??
+			[]
+		).length;
+		expect(objRules).toBeLessThanOrEqual(4);
+		expect(r.grammar).toContain("jsonvalue");
+	});
+
+	it("emits required-then-optional structure in the params rule", () => {
+		const r = buildPlannerActionGrammarStrict([
+			makeAction("MIXED", {
+				parameters: [
+					{
+						name: "a",
+						description: "required",
+						required: true,
+						schema: { type: "string" },
+					},
+					{
+						name: "b",
+						description: "optional",
+						required: false,
+						schema: { type: "string" },
+					},
+				],
+			}),
+		]);
+		if (r === null) throw new Error("expected grammar");
+		// Required `a` precedes the optional-group; optional `b` is wrapped in
+		// `( "," ( ... ) )*` (zero-or-more, leading comma).
+		expect(r.grammar).toMatch(
+			/paramsofaction_MIXED ::= "\{" paramsofaction_MIXED_p_a \( "," \( paramsofaction_MIXED_p_b \) \)\* "\}"/,
+		);
+	});
+
+	it("returns a minimal skeleton (the grammar carries the structure)", () => {
+		const r = buildPlannerActionGrammarStrict([makeAction("ONE")]);
+		if (r === null) throw new Error("expected grammar");
+		expect(r.responseSkeleton.spans).toEqual([
+			{ kind: "free-json", key: "envelope" },
+		]);
+		expect(typeof r.responseSkeleton.id).toBe("string");
+	});
+
+	it("exposes the same normalized parameter schemas as the loose grammar", () => {
+		const r = buildPlannerActionGrammarStrict([
+			makeAction("WITH_PARAMS", {
+				parameters: [
+					{
+						name: "url",
+						description: "",
+						required: true,
+						schema: { type: "string" },
+					},
+				],
+			}),
+		]);
+		if (r === null) throw new Error("expected grammar");
+		expect(r.actionSchemas.WITH_PARAMS).toMatchObject({
+			type: "object",
+			required: ["url"],
+			properties: { url: { type: "string" } },
+		});
+	});
+
+	it("is cached across calls for the same action set", () => {
+		const a = buildPlannerActionGrammarStrict([
+			makeAction("A"),
+			makeAction("B"),
+		]);
+		const b = buildPlannerActionGrammarStrict([
+			makeAction("B"),
+			makeAction("A"),
+		]);
+		expect(b).toBe(a);
+	});
+
+	it("does not collide with the loose grammar cache", () => {
+		const loose = buildPlannerActionGrammar([makeAction("SAME")]);
+		const strict = buildPlannerActionGrammarStrict([makeAction("SAME")]);
+		expect(loose).not.toBe(strict);
+		if (loose && strict) {
+			expect(loose.grammar).not.toBe(strict.grammar);
+		}
+	});
+
+	it("sanitizes action names that contain GBNF-unsafe characters", () => {
+		// Plugin-supplied action names occasionally carry `:` or `.`.
+		const r = buildPlannerActionGrammarStrict([makeAction("plugin:foo.bar")]);
+		if (r === null) throw new Error("expected grammar");
+		expect(r.grammar).toContain("callofaction_plugin_foo_bar");
+		expect(r.grammar).not.toContain("callofaction_plugin:foo.bar");
+	});
+});
+
+describe("buildPlannerActionGrammarStrict — realistic action set (P2-4 production shape)", () => {
+	// Mirror the kind of schemas Phase A declared on real actions. The test
+	// catches regressions where the grammar generator silently drops a
+	// constraint someone added downstream.
+	const messageAction = makeAction("MESSAGE", {
+		parameters: [
+			{
+				name: "op",
+				description: "messaging operation",
+				required: true,
+				schema: {
+					type: "string",
+					enum: ["send", "read_channel", "search", "manage"],
+				},
+			},
+			{
+				name: "targetKind",
+				description: "kind of target",
+				required: false,
+				schema: {
+					type: "string",
+					enum: ["user", "channel", "thread", "group"],
+				},
+			},
+			{
+				name: "manageOperation",
+				description: "manage op",
+				required: false,
+				schema: {
+					type: "string",
+					enum: ["archive", "trash", "spam", "mark_read"],
+				},
+			},
+			{
+				name: "text",
+				description: "body",
+				required: false,
+				schema: { type: "string" },
+			},
+		],
+	});
+	const paymentAction = makeAction("PAYMENT", {
+		parameters: [
+			{
+				name: "action",
+				description: "payment op",
+				required: true,
+				schema: {
+					type: "string",
+					enum: ["create_request", "cancel_request"],
+				},
+			},
+			{
+				name: "amountCents",
+				description: "amount in cents",
+				required: false,
+				schema: { type: "integer", minimum: 1 },
+			},
+			{
+				name: "paymentContext",
+				description: "payer constraint",
+				required: false,
+				schema: {
+					type: "object",
+					properties: {
+						kind: {
+							type: "string",
+							enum: ["any_payer", "verified_payer", "specific_payer"],
+						},
+						scope: {
+							type: "string",
+							enum: ["owner", "owner_or_linked_identity"],
+						},
+						payerIdentityId: { type: "string" },
+					},
+					required: ["kind"],
+				},
+			},
+		],
+	});
+	const characterAction = makeAction("CHARACTER", {
+		parameters: [
+			{
+				name: "op",
+				description: "character op",
+				required: true,
+				schema: {
+					type: "string",
+					enum: ["save", "update_identity", "reset"],
+				},
+			},
+			{
+				name: "fieldsToSave",
+				description: "fields to persist",
+				required: false,
+				schema: {
+					type: "array",
+					items: {
+						type: "string",
+						enum: ["name", "system", "bio", "topics"],
+					},
+				},
+			},
+		],
+	});
+	const ignoreAction = makeAction("IGNORE");
+
+	it("emits one branch per action with action name pinned as a literal", () => {
+		const r = buildPlannerActionGrammarStrict([
+			messageAction,
+			paymentAction,
+			characterAction,
+			ignoreAction,
+		]);
+		if (r === null) throw new Error("expected grammar");
+		// Root union has one branch per action (alphabetical inside the grammar
+		// since the strict builder sorts by name for cache stability).
+		expect(r.grammar).toMatch(
+			/^root ::= callofaction_CHARACTER \| callofaction_IGNORE \| callofaction_MESSAGE \| callofaction_PAYMENT/m,
+		);
+		// Each call rule pins the action name as a literal.
+		expect(r.grammar).toContain('"{\\"action\\":\\"MESSAGE\\""');
+		expect(r.grammar).toContain('"{\\"action\\":\\"PAYMENT\\""');
+		expect(r.grammar).toContain('"{\\"action\\":\\"CHARACTER\\""');
+		expect(r.grammar).toContain('"{\\"action\\":\\"IGNORE\\""');
+	});
+
+	it("pins every declared enum in the realistic action set", () => {
+		const r = buildPlannerActionGrammarStrict([
+			messageAction,
+			paymentAction,
+			characterAction,
+		]);
+		if (r === null) throw new Error("expected grammar");
+		// MESSAGE enums
+		expect(r.grammar).toContain('"\\"send\\""');
+		expect(r.grammar).toContain('"\\"read_channel\\""');
+		expect(r.grammar).toContain('"\\"search\\""');
+		expect(r.grammar).toContain('"\\"manage\\""');
+		expect(r.grammar).toContain('"\\"user\\""');
+		expect(r.grammar).toContain('"\\"thread\\""');
+		expect(r.grammar).toContain('"\\"archive\\""');
+		expect(r.grammar).toContain('"\\"trash\\""');
+		// PAYMENT enums (including nested object enums)
+		expect(r.grammar).toContain('"\\"create_request\\""');
+		expect(r.grammar).toContain('"\\"cancel_request\\""');
+		expect(r.grammar).toContain('"\\"any_payer\\""');
+		expect(r.grammar).toContain('"\\"verified_payer\\""');
+		expect(r.grammar).toContain('"\\"owner_or_linked_identity\\""');
+		// CHARACTER enums (including array items)
+		expect(r.grammar).toContain('"\\"save\\""');
+		expect(r.grammar).toContain('"\\"name\\""');
+		expect(r.grammar).toContain('"\\"system\\""');
+	});
+
+	it("co-determines action name and parameter shape (no cross-branch leak)", () => {
+		// Verify that PAYMENT's params rule references PAYMENT-specific
+		// sub-rules, not MESSAGE's or CHARACTER's. This is the property that
+		// makes the strict grammar fundamentally different from the loose
+		// (independent action/params) variant.
+		const r = buildPlannerActionGrammarStrict([
+			messageAction,
+			paymentAction,
+			characterAction,
+		]);
+		if (r === null) throw new Error("expected grammar");
+		// callofaction_PAYMENT references paramsofaction_PAYMENT (not _MESSAGE
+		// / _CHARACTER) before the thought field.
+		const paymentCallLine = r.grammar
+			.split("\n")
+			.find((l) => l.startsWith("callofaction_PAYMENT ::="));
+		expect(paymentCallLine).toBeDefined();
+		expect(paymentCallLine).toContain("paramsofaction_PAYMENT");
+		expect(paymentCallLine).not.toContain("paramsofaction_MESSAGE");
+		expect(paymentCallLine).not.toContain("paramsofaction_CHARACTER");
+
+		const messageCallLine = r.grammar
+			.split("\n")
+			.find((l) => l.startsWith("callofaction_MESSAGE ::="));
+		expect(messageCallLine).toBeDefined();
+		expect(messageCallLine).toContain("paramsofaction_MESSAGE");
+		expect(messageCallLine).not.toContain("paramsofaction_PAYMENT");
+	});
+
+	it("returns the same actionSchemas map as the loose grammar would", () => {
+		const r = buildPlannerActionGrammarStrict([messageAction, paymentAction]);
+		const loose = buildPlannerActionGrammar([messageAction, paymentAction]);
+		if (r === null || loose === null) throw new Error("expected grammars");
+		expect(Object.keys(r.actionSchemas).sort()).toEqual(
+			Object.keys(loose.actionSchemas).sort(),
+		);
+		expect(r.actionSchemas.PAYMENT).toEqual(loose.actionSchemas.PAYMENT);
+		expect(r.actionSchemas.MESSAGE).toEqual(loose.actionSchemas.MESSAGE);
+	});
+});
+
 describe("withGuidedDecodeProviderOptions", () => {
 	const ENV_KEYS = [
 		"MILADY_LOCAL_GUIDED_DECODE",
@@ -398,5 +1074,335 @@ describe("withGuidedDecodeProviderOptions", () => {
 			foo: 1,
 			guidedDecode: true,
 		});
+	});
+});
+
+describe("buildSpanSamplerPlan — per-span argmax policy", () => {
+	it("emits T=0 / topK=1 for every multi-value enum span", () => {
+		const skeleton: ResponseSkeleton = {
+			id: "test#multi-enum",
+			spans: [
+				{ kind: "literal", value: '{"shouldRespond":' },
+				{
+					kind: "enum",
+					key: "shouldRespond",
+					enumValues: ["RESPOND", "IGNORE", "STOP"],
+				},
+				{ kind: "literal", value: ',"thought":' },
+				{ kind: "free-string", key: "thought" },
+				{ kind: "literal", value: "}" },
+			],
+		};
+		const plan = buildSpanSamplerPlan(skeleton);
+		expect(plan.overrides).toEqual([{ spanIndex: 1, temperature: 0, topK: 1 }]);
+		// The override addresses skeleton.spans[1] — the enum span.
+		expect(skeleton.spans[plan.overrides[0].spanIndex].kind).toBe("enum");
+	});
+
+	it("emits T=0 / topK=1 for number and boolean spans", () => {
+		const skeleton: ResponseSkeleton = {
+			id: "test#numeric",
+			spans: [
+				{ kind: "literal", value: '{"count":' },
+				{ kind: "number", key: "count" },
+				{ kind: "literal", value: ',"requiresTool":' },
+				{ kind: "boolean", key: "requiresTool" },
+				{ kind: "literal", value: ',"replyText":' },
+				{ kind: "free-string", key: "replyText" },
+				{ kind: "literal", value: "}" },
+			],
+		};
+		const plan = buildSpanSamplerPlan(skeleton);
+		expect(plan.overrides).toEqual([
+			{ spanIndex: 1, temperature: 0, topK: 1 },
+			{ spanIndex: 3, temperature: 0, topK: 1 },
+		]);
+	});
+
+	it("skips literal, free-string, and free-json spans", () => {
+		const skeleton: ResponseSkeleton = {
+			id: "test#all-free",
+			spans: [
+				{ kind: "literal", value: '{"thought":' },
+				{ kind: "free-string", key: "thought" },
+				{ kind: "literal", value: ',"extract":' },
+				{ kind: "free-json", key: "extract" },
+				{ kind: "literal", value: "}" },
+			],
+		};
+		const plan = buildSpanSamplerPlan(skeleton);
+		expect(plan.overrides).toEqual([]);
+	});
+
+	it("skips single-value enums (defensive — they collapse to literals upstream)", () => {
+		const skeleton: ResponseSkeleton = {
+			id: "test#single-enum",
+			spans: [
+				{ kind: "literal", value: '{"mode":' },
+				// A defensive single-value enum that didn't get collapsed.
+				{ kind: "enum", key: "mode", enumValues: ["ONLY"] },
+				{ kind: "literal", value: "}" },
+			],
+		};
+		const plan = buildSpanSamplerPlan(skeleton);
+		expect(plan.overrides).toEqual([]);
+	});
+
+	it("covers the canonical Stage-1 envelope (shouldRespond enum + requiresTool boolean)", () => {
+		clearResponseGrammarCache();
+		const { responseSkeleton } = buildResponseGrammar(
+			{ actions: [] },
+			{ contexts: ["general"] },
+		);
+		const plan = buildSpanSamplerPlan(responseSkeleton);
+		// shouldRespond gets an override; replyText / thought / contexts do not.
+		const overriddenKinds = plan.overrides.map(
+			(o) => responseSkeleton.spans[o.spanIndex].kind,
+		);
+		const overriddenKeys = plan.overrides.map(
+			(o) => responseSkeleton.spans[o.spanIndex].key,
+		);
+		expect(overriddenKinds).toContain("enum");
+		expect(overriddenKeys).toContain("shouldRespond");
+		// Every override carries T=0 and topK=1 — the user's explicit rule.
+		for (const o of plan.overrides) {
+			expect(o.temperature).toBe(0);
+			expect(o.topK).toBe(1);
+		}
+		// Free-string / free-json spans are not overridden.
+		expect(overriddenKeys).not.toContain("replyText");
+		expect(overriddenKeys).not.toContain("thought");
+		expect(overriddenKeys).not.toContain("extract");
+	});
+
+	it("returns an empty plan (no overrides) for a skeleton with only free spans", () => {
+		const skeleton: ResponseSkeleton = {
+			id: "test#empty",
+			spans: [
+				{ kind: "literal", value: "{" },
+				{ kind: "free-string", key: "any" },
+				{ kind: "literal", value: "}" },
+			],
+		};
+		const plan = buildSpanSamplerPlan(skeleton);
+		expect(plan.overrides).toEqual([]);
+		expect(plan.strict).toBeUndefined();
+	});
+});
+
+describe("buildPlannerParamsSkeleton — typed number/boolean span kinds", () => {
+	it("emits a number span for an integer action parameter", () => {
+		const sk = buildPlannerParamsSkeleton(
+			makeAction("SET_COUNT", {
+				parameters: [
+					{
+						name: "count",
+						description: "how many",
+						required: true,
+						schema: { type: "integer" },
+					},
+				],
+			}),
+		);
+		const countSpan = sk.spans.find((s) => s.key === "count");
+		expect(countSpan?.kind).toBe("number");
+	});
+
+	it("emits a number span for a `number`-typed action parameter", () => {
+		const sk = buildPlannerParamsSkeleton(
+			makeAction("FRAC", {
+				parameters: [
+					{
+						name: "ratio",
+						description: "decimal ratio",
+						required: true,
+						schema: { type: "number" },
+					},
+				],
+			}),
+		);
+		const ratioSpan = sk.spans.find((s) => s.key === "ratio");
+		expect(ratioSpan?.kind).toBe("number");
+	});
+
+	it("emits a boolean span for a boolean action parameter", () => {
+		const sk = buildPlannerParamsSkeleton(
+			makeAction("TOGGLE", {
+				parameters: [
+					{
+						name: "enabled",
+						description: "on/off",
+						required: true,
+						schema: { type: "boolean" },
+					},
+				],
+			}),
+		);
+		const enabledSpan = sk.spans.find((s) => s.key === "enabled");
+		expect(enabledSpan?.kind).toBe("boolean");
+	});
+
+	it("derives T=0 overrides via buildSpanSamplerPlan for a mixed-shape params skeleton", () => {
+		const sk = buildPlannerParamsSkeleton(
+			makeAction("MIXED", {
+				parameters: [
+					{
+						name: "count",
+						description: "how many",
+						required: true,
+						schema: { type: "number" },
+					},
+					{
+						name: "enabled",
+						description: "on/off",
+						required: true,
+						schema: { type: "boolean" },
+					},
+					{
+						name: "label",
+						description: "free text",
+						required: true,
+						schema: { type: "string" },
+					},
+				],
+			}),
+		);
+		const plan = buildSpanSamplerPlan(sk);
+		const overriddenKeys = plan.overrides.map((o) => sk.spans[o.spanIndex].key);
+		// Order matches property emission order in the skeleton.
+		expect(overriddenKeys.sort()).toEqual(["count", "enabled"].sort());
+		// `label` (free-string) gets no override.
+		expect(overriddenKeys).not.toContain("label");
+	});
+});
+
+describe("buildBoundedNumberRule — integer and float range constraints", () => {
+	it("emits a rule with alternation for closed integer range [0, 5]", () => {
+		clearResponseGrammarCache();
+		const action = makeAction("BOUNDED", {
+			parameters: [
+				{
+					name: "count",
+					description: "small count",
+					required: true,
+					schema: { type: "integer", minimum: 0, maximum: 5 },
+				},
+			],
+		});
+		const result = buildPlannerActionGrammarStrict([action]);
+		expect(result).not.toBeNull();
+		if (!result) return;
+		// The grammar should contain alternation with the bounded values.
+		// Check that the bounded rule is present and references both 0 and 5.
+		expect(result.grammar).toContain("_count_bounded");
+		expect(result.grammar).toContain('"\\"0\\""');
+		expect(result.grammar).toContain('"\\"5\\""');
+	});
+
+	it("emits a rule with alternation for closed integer range [0, 100]", () => {
+		clearResponseGrammarCache();
+		const action = makeAction("BOUNDED100", {
+			parameters: [
+				{
+					name: "count",
+					description: "count up to 100",
+					required: true,
+					schema: { type: "integer", minimum: 0, maximum: 100 },
+				},
+			],
+		});
+		const result = buildPlannerActionGrammarStrict([action]);
+		expect(result).not.toBeNull();
+		if (!result) return;
+		// For 0-100 (101 values), still under the 200 threshold, so expect direct alternation.
+		expect(result.grammar).toContain("_count_bounded");
+		// Should have the edge values in JSON-encoded GBNF format.
+		expect(result.grammar).toContain('"\\"0\\""');
+		expect(result.grammar).toContain('"\\"100\\""');
+		// Spot-check a middle value exists.
+		expect(result.grammar).toContain('"\\"50\\""');
+	});
+
+	it("handles negative and positive integers in [−10, 10]", () => {
+		clearResponseGrammarCache();
+		const action = makeAction("SIGNEDCOUNT", {
+			parameters: [
+				{
+					name: "delta",
+					description: "signed change",
+					required: true,
+					schema: { type: "integer", minimum: -10, maximum: 10 },
+				},
+			],
+		});
+		const result = buildPlannerActionGrammarStrict([action]);
+		expect(result).not.toBeNull();
+		if (!result) return;
+		// Should contain negative and positive edge values.
+		expect(result.grammar).toContain('"\\"-10\\""');
+		expect(result.grammar).toContain('"\\"10\\""');
+		expect(result.grammar).toContain('"\\"0\\""');
+		expect(result.grammar).toContain('"\\"-1\\""');
+	});
+
+	it("falls back to jsonnumber for unbounded number (no min/max)", () => {
+		clearResponseGrammarCache();
+		const action = makeAction("UNBOUNDED", {
+			parameters: [
+				{
+					name: "value",
+					description: "any number",
+					required: true,
+					schema: { type: "number" },
+				},
+			],
+		});
+		const result = buildPlannerActionGrammarStrict([action]);
+		expect(result).not.toBeNull();
+		if (!result) return;
+		// Should reference the shared jsonnumber rule, not emit a bounded rule.
+		expect(result.grammar).toContain("jsonnumber");
+		// Should not emit a _bounded rule for this parameter.
+		const lines = result.grammar.split("\n");
+		const boundedLines = lines.filter((l) => l.includes("_value_bounded"));
+		expect(boundedLines.length).toBe(0);
+	});
+
+	it("falls back to jsonnumber for float type with bounds", () => {
+		clearResponseGrammarCache();
+		const action = makeAction("FLOATRANGE", {
+			parameters: [
+				{
+					name: "ratio",
+					description: "decimal ratio",
+					required: true,
+					schema: { type: "number", minimum: 0, maximum: 1 },
+				},
+			],
+		});
+		const result = buildPlannerActionGrammarStrict([action]);
+		expect(result).not.toBeNull();
+		if (!result) return;
+		// Current implementation falls back to jsonnumber for floats.
+		expect(result.grammar).toContain("jsonnumber");
+	});
+
+	it("falls back to jsonnumber for ranges > ~200 values", () => {
+		clearResponseGrammarCache();
+		const action = makeAction("LARGERANGE", {
+			parameters: [
+				{
+					name: "bigcount",
+					description: "large count",
+					required: true,
+					schema: { type: "integer", minimum: 0, maximum: 300 },
+				},
+			],
+		});
+		const result = buildPlannerActionGrammarStrict([action]);
+		expect(result).not.toBeNull();
+		if (!result) return;
+		// For 301 values (> 200), should fall back to jsonnumber.
+		expect(result.grammar).toContain("jsonnumber");
 	});
 });

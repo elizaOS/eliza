@@ -21,6 +21,9 @@ const DEFAULT_EVIDENCE_DIR = path.join(
   "eliza1-release-gates",
 );
 const DEFAULT_TIERS = ["2b", "9b", "27b"];
+const COLLECTOR_CANDIDATES = [
+  "plugins/plugin-local-inference/native/verify/eliza1_gates_collect.mjs",
+];
 
 function parseArgs(argv) {
   const args = {
@@ -63,12 +66,22 @@ function timestampForFile() {
 }
 
 function runCollector(tier) {
+  const collector = COLLECTOR_CANDIDATES.find((candidate) =>
+    fs.existsSync(path.join(REPO_ROOT, candidate)),
+  );
+  if (!collector) {
+    throw new Error(
+      `missing Eliza-1 gate collector; tried ${COLLECTOR_CANDIDATES.join(", ")}`,
+    );
+  }
   const output = execFileSync(
     "node",
     [
-      "packages/inference/verify/eliza1_gates_collect.mjs",
+      collector,
       "--tier",
       tier,
+      "--gates",
+      "packages/training/benchmarks/eliza1_gates.yaml",
       "--json",
     ],
     {
@@ -94,7 +107,27 @@ function writeEvidence(args, evidence) {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
-  const reports = args.tiers.map((tier) => runCollector(tier));
+  const reports = args.tiers.map((tier) => {
+    try {
+      return runCollector(tier);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return {
+        tier,
+        reportPath: null,
+        summary: {
+          total: 0,
+          pass: 0,
+          fail: 1,
+          needsData: 0,
+        },
+        releaseMatrixSummary: {
+          blocking: true,
+          blockerReasons: [`collector unavailable: ${message}`],
+        },
+      };
+    }
+  });
   const blockers = reports.flatMap((report) =>
     (report.releaseMatrixSummary?.blockerReasons ?? []).map((reason) => ({
       tier: report.tier,

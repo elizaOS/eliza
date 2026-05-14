@@ -630,7 +630,7 @@ export const elizaHandler: Handler = {
     const isCerebrasBase = /(^|\.)cerebras\.ai(\/|$)/i.test(baseUrl);
     if (isCerebrasBase) {
       try {
-        const mod = (await import("@elizaos/plugin-local-embedding")) as Record<
+        const mod = (await import("@elizaos/plugin-local-inference")) as Record<
           string,
           unknown
         >;
@@ -638,12 +638,12 @@ export const elizaHandler: Handler = {
         if (localEmbeddingPlugin) {
           plugins.push(localEmbeddingPlugin);
           console.log(
-            "[ElizaHandler] Loaded @elizaos/plugin-local-embedding for TEXT_EMBEDDING (cerebras has no /v1/embeddings)",
+            "[ElizaHandler] Loaded @elizaos/plugin-local-inference for TEXT_EMBEDDING (cerebras has no /v1/embeddings)",
           );
         }
       } catch (err) {
         console.warn(
-          `[ElizaHandler] @elizaos/plugin-local-embedding not available: ${
+          `[ElizaHandler] @elizaos/plugin-local-inference not available: ${
             err instanceof Error ? err.message : String(err)
           }`,
         );

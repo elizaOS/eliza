@@ -31,6 +31,7 @@ const BROWSER_WORKSPACE_KEY = `${STORAGE_PREFIX}:browser-workspace:v1`;
 const WALLET_MARKET_OVERVIEW_KEY = `${STORAGE_PREFIX}:wallet-market-overview:v1`;
 const BUNDLE_INDEX_KEY = `${STORAGE_PREFIX}:eliza-1-bundles:v1`;
 const AGENT_NAME = "Eliza";
+const IOS_LOCAL_AGENT_IPC_BASE = "eliza-local-agent://ipc";
 const DEFAULT_SYSTEM_PROMPT =
   "You are Eliza, a private on-device assistant. Answer directly and concisely.";
 const DEFAULT_CLOUD_MARKET_PREVIEW_BASE_URL = "https://www.elizacloud.ai";
@@ -581,7 +582,7 @@ function localConfig(): Record<string, unknown> {
 function localAgentCapabilities(): Record<string, unknown> {
   return {
     mode: "ios-local",
-    apiBase: "http://127.0.0.1:31337",
+    apiBase: IOS_LOCAL_AGENT_IPC_BASE,
     transport: {
       foreground: "ittp",
       background: "unavailable",
@@ -1882,10 +1883,29 @@ type CloudPairedProbe =
 
 const CLOUD_PAIRED_PROBE_TIMEOUT_MS = 2_000;
 
+type FetchWithOptionalPreconnect = typeof fetch & {
+  preconnect?: (...args: unknown[]) => unknown;
+};
+
+const fetchWithOptionalPreconnect = fetch as FetchWithOptionalPreconnect;
+
+const fetchIosKernelRoute = Object.assign(
+  async function fetchIosKernelRoute(
+    input: RequestInfo | URL,
+    init?: RequestInit,
+  ): Promise<Response> {
+    const request = input instanceof Request ? input : new Request(input, init);
+    return handleIosLocalAgentRequest(request);
+  },
+  {
+    preconnect: (...args: unknown[]) =>
+      fetchWithOptionalPreconnect.preconnect?.(...args),
+  },
+) as typeof fetch;
+
 async function probeAgentCloudPaired(
-  fetchImpl: typeof fetch = fetch,
+  fetchImpl: typeof fetch = fetchIosKernelRoute,
 ): Promise<CloudPairedProbe> {
-  const apiBase = "http://127.0.0.1:31337";
   const controller = new AbortController();
   const timer = globalThis.setTimeout(
     () => controller.abort(),
@@ -1893,7 +1913,7 @@ async function probeAgentCloudPaired(
   );
   let response: Response;
   try {
-    response = await fetchImpl(`${apiBase}/api/auth/status`, {
+    response = await fetchImpl(`${IOS_LOCAL_AGENT_IPC_BASE}/api/auth/status`, {
       method: "GET",
       headers: { accept: "application/json" },
       signal: controller.signal,
@@ -1937,17 +1957,19 @@ interface CloudForwardResult {
  */
 async function forwardToAgentCloudChat(
   prompt: string,
-  fetchImpl: typeof fetch = fetch,
+  fetchImpl: typeof fetch = fetchIosKernelRoute,
 ): Promise<CloudForwardResult> {
-  const apiBase = "http://127.0.0.1:31337";
-  const response = await fetchImpl(`${apiBase}/api/cloud/chat`, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      accept: "application/json",
+  const response = await fetchImpl(
+    `${IOS_LOCAL_AGENT_IPC_BASE}/api/cloud/chat`,
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        accept: "application/json",
+      },
+      body: JSON.stringify({ prompt, maxTokens: 256, temperature: 0.7 }),
     },
-    body: JSON.stringify({ prompt, maxTokens: 256, temperature: 0.7 }),
-  });
+  );
   if (!response.ok) {
     throw new Error(
       `[ios-local-agent] Cloud fallback failed: HTTP ${response.status} ${response.statusText}`,

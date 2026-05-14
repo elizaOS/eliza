@@ -1,0 +1,13 @@
+[Unit]
+Description=Proxy the IBus
+StopWhenUnneeded=true
+ConditionUser=1000
+After=org.freedesktop.IBus.session.GNOME.service
+
+[Service]
+Type=forking
+ExecStart=/usr/local/lib/tails-ibus-proxy
+PIDFile=/run/user/1000/.dbus-proxy/ibus-proxy.pid
+
+[Install]
+WantedBy=desktop.target

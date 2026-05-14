@@ -82,6 +82,27 @@ _OPS: dict[str, Any] = {
 
 _FORMAT_FLOOR = 0.5
 
+# Default tolerance for the regression-vs-prior-bundle check, expressed as a
+# fraction of the prior measurement. A new bundle's text-quality / voice-RTF
+# score may slip by up to this fraction below the previously-published bundle
+# before the gate trips. The orchestrator can override this via CLI; the
+# default mirrors the audit recommendation (5%).
+_DEFAULT_REGRESSION_TOLERANCE = 0.05
+
+# Metrics where "higher is better" — a regression is observed-below-baseline.
+# Anything else (latency, error rate) is "lower is better" — a regression is
+# observed-above-baseline.
+_HIGHER_IS_BETTER = frozenset(
+    {
+        "text_eval",
+        "dflash_acceptance",
+        "dflash_speedup",
+        "expressive_tag_faithfulness",
+        "expressive_mos",
+        "format_ok",
+    }
+)
+
 
 # ---------------------------------------------------------------------------
 # Report types
@@ -408,6 +429,120 @@ def _full_report(tier: str, results: Mapping[str, Any], doc: GatesDoc) -> GateRe
     specs = _gate_specs_for_tier(doc, tier)
     gates = [_eval_one(name, spec, results, tier) for name, spec in specs.items()]
     return GateReport(tier=tier, mode="full", gates=gates)
+
+
+def _coerce_float(value: Any) -> float | None:
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def regression_gates(
+    results: Mapping[str, Any],
+    baseline_results: Mapping[str, Any] | None,
+    *,
+    metrics: Iterable[str] = ("text_eval", "voice_rtf", "asr_wer"),
+    tolerance: float = _DEFAULT_REGRESSION_TOLERANCE,
+) -> list[GateRow]:
+    """Build one ``GateRow`` per metric comparing measured vs baseline.
+
+    ``baseline_results`` is the ``results`` dict from a previously-published
+    bundle's ``aggregate.json``. The check is publish-blocking (``required``):
+    a new bundle must not regress against the prior shipped one by more than
+    ``tolerance`` (a fractional drop for higher-is-better metrics, a
+    fractional increase for lower-is-better metrics).
+
+    Behavior:
+
+    * No baseline / baseline missing the metric → ``skipped`` (pass, with a
+      reason that the comparison was not made). This is the "first publish"
+      case where no prior bundle exists to compare against.
+    * Current measurement missing → ``skipped`` (the per-tier required gate
+      already flags it; we don't double-fail).
+    * Regression beyond tolerance → ``passed=False``.
+    """
+    rows: list[GateRow] = []
+    for metric in metrics:
+        observed = _coerce_float(results.get(metric))
+        if observed is None:
+            rows.append(
+                GateRow(
+                    name=f"{metric}_no_regression",
+                    passed=True,
+                    skipped=True,
+                    reason=(
+                        f"current bundle has no {metric!r} measurement; "
+                        f"per-tier required-metric gate handles missing values"
+                    ),
+                    metric=metric,
+                    observed=None,
+                    threshold=None,
+                    op=None,
+                    provisional=False,
+                    required=True,
+                )
+            )
+            continue
+        baseline_value = (
+            _coerce_float(baseline_results.get(metric))
+            if baseline_results is not None
+            else None
+        )
+        if baseline_value is None:
+            rows.append(
+                GateRow(
+                    name=f"{metric}_no_regression",
+                    passed=True,
+                    skipped=True,
+                    reason=(
+                        "no prior-bundle baseline available for "
+                        f"{metric!r}; first-publish path"
+                    ),
+                    metric=metric,
+                    observed=observed,
+                    threshold=None,
+                    op=None,
+                    provisional=False,
+                    required=True,
+                )
+            )
+            continue
+        if metric in _HIGHER_IS_BETTER:
+            min_acceptable = baseline_value * (1.0 - tolerance)
+            ok = observed >= min_acceptable
+            reason = (
+                f"{metric}={observed} >= baseline({baseline_value}) * "
+                f"(1 - {tolerance}) = {min_acceptable:.6f}"
+            )
+            threshold = min_acceptable
+            op = ">="
+        else:
+            max_acceptable = baseline_value * (1.0 + tolerance)
+            ok = observed <= max_acceptable
+            reason = (
+                f"{metric}={observed} <= baseline({baseline_value}) * "
+                f"(1 + {tolerance}) = {max_acceptable:.6f}"
+            )
+            threshold = max_acceptable
+            op = "<="
+        rows.append(
+            GateRow(
+                name=f"{metric}_no_regression",
+                passed=ok,
+                reason=reason,
+                metric=metric,
+                observed=observed,
+                threshold=threshold,
+                op=op,
+                provisional=False,
+                skipped=False,
+                required=True,
+            )
+        )
+    return rows
 
 
 def _unwrap(

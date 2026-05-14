@@ -28,10 +28,11 @@ export const DESKTOP_ONLY_PLUGINS: readonly string[] = [
  * adds based on the user's API keys. They are statically imported in the agent
  * runtime so they bundle cleanly without filesystem-based plugin resolution.
  *
- * `@elizaos/plugin-local-embedding` is intentionally excluded: it pulls in
- * `node-llama-cpp`, which has no Android build. On mobile, embeddings come
- * either from a cloud provider or from the upcoming `llama-cpp-capacitor`
- * JNI binding (separate task).
+ * `@elizaos/plugin-local-inference` is intentionally excluded from the mobile
+ * boot list: it pulls in `node-llama-cpp`, which has no Android build. On
+ * mobile, embeddings come either from a cloud provider or from the
+ * AOSP-only FFI bridge (`@elizaos/plugin-aosp-local-inference`) when
+ * `ELIZA_LOCAL_LLAMA=1`.
  */
 export const MOBILE_CORE_PLUGINS: readonly string[] = [
   "@elizaos/plugin-sql",
@@ -78,7 +79,7 @@ export const ELIZAOS_ANDROID_TERMINAL_PLUGINS: readonly string[] = [
 /** Core plugins that should always be loaded. collectPluginNames() seeds from this list only. */
 export const CORE_PLUGINS: readonly string[] = [
   "@elizaos/plugin-sql", // database adapter — required
-  "@elizaos/plugin-local-embedding", // local embeddings — required for memory
+  "@elizaos/plugin-local-inference", // local Eliza-1 inference (text + embeddings + voice) — required for memory + on-device generation
   // @elizaos/plugin-form — standalone form plugin; load via plugin registry/config
   "@elizaos/app-companion", // VRM companion emotes; actions gated until app session is active
   // @elizaos/plugin-agent-orchestrator — opt-in via ELIZA_AGENT_ORCHESTRATOR (Eliza app enables by default)

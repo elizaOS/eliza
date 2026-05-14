@@ -5,9 +5,9 @@ It is a release checklist, not hardware evidence.
 
 Important caveats:
 
-- Text, ASR, DFlash, and OmniVoice TTS payloads are GGUF artifacts. Kokoro TTS for 0.8B/2B/4B is ONNX by design; 9B carries both Kokoro and OmniVoice; 27B-class tiers ship OmniVoice GGUF only.
+- Text, ASR, DFlash, and OmniVoice TTS payloads are GGUF artifacts. Kokoro TTS is the default and only required TTS backend for 0.8B/2B/4B, and is ONNX by design. 9B carries both Kokoro and OmniVoice; 27B-class tiers ship OmniVoice GGUF only.
 - VAD is a native GGML artifact at `vad/silero-vad-v5.1.2.ggml.bin`. It is not GGUF. Legacy bundles may additionally carry the ONNX fallback `vad/silero-vad-int8.onnx`, but the fallback is not the release readiness path.
-- Canonical active text tiers are Qwen3.5 0.8B (`0_8b`), Qwen3.5 2B (`2b`), and Qwen3.5 4B (`4b`). ASR and embedding are real Qwen3 upstream exceptions: use the published Qwen3-ASR 0.6B / 1.7B GGUF repos and Qwen3-Embedding 0.6B / 4B / 8B GGUF repos; do not invent Qwen3.5-ASR, Qwen3.5-Embedding, Qwen3-ASR-0.8B/2B, or Qwen3-Embedding-0.8B/2B repo IDs.
+- Canonical active text tiers are Qwen3.5 0.8B (`0_8b`), Qwen3.5 2B (`2b`), Qwen3.5 4B (`4b`), Qwen3.5 9B (`9b`) until an official Qwen3.6 9B exists, and Qwen3.6 27B (`27b`, `27b-256k`, `27b-1m`). ASR and embedding are real Qwen3 upstream exceptions: use the published Qwen3-ASR 0.6B / 1.7B GGUF repos and Qwen3-Embedding 0.6B / 4B / 8B GGUF repos; do not invent Qwen3.5-ASR, Qwen3.5-Embedding, Qwen3-ASR-0.8B/2B, or Qwen3-Embedding-0.8B/2B repo IDs.
 - v1 release shape (`releaseState=base-v1`): the upstream BASE models — GGUF-converted via the elizaOS/llama.cpp fork and fully Eliza-optimized (every quant/kernel trick in `packages/inference/AGENTS.md` §3) — but NOT fine-tuned. `evidence/release.json` records `finetuned=false` and a `sourceModels` map (which upstream HF repo each component comes from). For `base-v1`, `final.weights` need not be `true` (the bytes are the upstream base GGUFs by design) — but `final.{hashes,evals,licenses,kernelDispatchReports,platformEvidence,sizeFirstRepoIds}` must all be `true`, and the runnable-on-base evals (text perplexity vs the upstream GGUF, voice RTF, ASR WER, VAD latency/boundary/endpoint/false-barge-in, dflash acceptance, e2e loop, 30-turn) must pass — but NOT a fine-tuned-text-quality eval. Fine-tuning ships in v2 (`releaseState=finetuned-v2`).
 - Release evidence must use real final hashes, evals, licenses, platform reports, and Hugging Face upload records — and real GGUF/quant-sidecar bytes from a real fork build. Fabricated hashes / not-yet-built tiers are blockers.
 - No-larp release readiness requires canonical local bundle names, real `checksums/SHA256SUMS`, real license evidence, and `hf.status=uploaded` with `hf.uploadEvidence` commit/url/uploaded paths. `pending-upload` or blocked local evidence is not release-ready.
@@ -55,18 +55,7 @@ Required files:
 Optional fallback files:
 - `vad/silero-vad-int8.onnx`
 
-Missing files/evidence: none recorded by this check.
-
-Publish-blocking status:
-- `evidence/release.json`: final.evals is not true
-- `evidence/release.json`: final.kernelDispatchReports is not true
-- `evidence/release.json`: final.platformEvidence is not true
-- `evidence/release.json`: final.sizeFirstRepoIds is not true
-- `evidence/release.json`: hf.status is not `uploaded`; final Hugging Face payload upload is not proven
-- `evidence/release.json`: hf.uploadEvidence missing; final Hugging Face commit/url/uploaded paths are not proven
-- `evidence/release.json`: publishEligible is not true
-- `evidence/release.json`: releaseState is `weights-staged`, not one of ['base-v1', 'upload-candidate', 'final']
-- `evidence/release.json`: weights missing final payload path(s): ['tts/kokoro/model_q4.onnx', 'tts/kokoro/tokenizer.json', 'tts/kokoro/voices/af_bella.bin']
+Missing files/evidence: not evaluated in plan-only mode. Re-run with `--bundle-root <path>` to check local payloads.
 
 ## 2b
 
@@ -111,18 +100,7 @@ Required files:
 Optional fallback files:
 - `vad/silero-vad-int8.onnx`
 
-Missing files/evidence: none recorded by this check.
-
-Publish-blocking status:
-- `evidence/release.json`: final.evals is not true
-- `evidence/release.json`: final.kernelDispatchReports is not true
-- `evidence/release.json`: final.platformEvidence is not true
-- `evidence/release.json`: final.sizeFirstRepoIds is not true
-- `evidence/release.json`: hf.status is not `uploaded`; final Hugging Face payload upload is not proven
-- `evidence/release.json`: hf.uploadEvidence missing; final Hugging Face commit/url/uploaded paths are not proven
-- `evidence/release.json`: publishEligible is not true
-- `evidence/release.json`: releaseState is `weights-staged`, not one of ['base-v1', 'upload-candidate', 'final']
-- `evidence/release.json`: weights missing final payload path(s): ['tts/kokoro/model_q4.onnx', 'tts/kokoro/tokenizer.json', 'tts/kokoro/voices/af_bella.bin']
+Missing files/evidence: not evaluated in plan-only mode. Re-run with `--bundle-root <path>` to check local payloads.
 
 ## 4b
 
@@ -174,20 +152,7 @@ Required files:
 Optional fallback files:
 - `vad/silero-vad-int8.onnx`
 
-Missing files/evidence:
-- `evals/cuda_verify.json`
-- `evals/rocm_verify.json`
-
-Publish-blocking status:
-- `evidence/release.json`: final.evals is not true
-- `evidence/release.json`: final.kernelDispatchReports is not true
-- `evidence/release.json`: final.platformEvidence is not true
-- `evidence/release.json`: final.sizeFirstRepoIds is not true
-- `evidence/release.json`: hf.status is not `uploaded`; final Hugging Face payload upload is not proven
-- `evidence/release.json`: hf.uploadEvidence missing; final Hugging Face commit/url/uploaded paths are not proven
-- `evidence/release.json`: publishEligible is not true
-- `evidence/release.json`: releaseState is `weights-staged`, not one of ['base-v1', 'upload-candidate', 'final']
-- `evidence/release.json`: weights missing final payload path(s): ['tts/kokoro/model_q4.onnx', 'tts/kokoro/tokenizer.json', 'tts/kokoro/voices/af_bella.bin']
+Missing files/evidence: not evaluated in plan-only mode. Re-run with `--bundle-root <path>` to check local payloads.
 
 ## 9b
 
@@ -241,20 +206,7 @@ Required files:
 Optional fallback files:
 - `vad/silero-vad-int8.onnx`
 
-Missing files/evidence:
-- `vad/silero-vad-v5.1.2.ggml.bin`
-
-Publish-blocking status:
-- `evidence/release.json`: final.evals is not true
-- `evidence/release.json`: final.kernelDispatchReports is not true
-- `evidence/release.json`: final.platformEvidence is not true
-- `evidence/release.json`: final.sizeFirstRepoIds is not true
-- `evidence/release.json`: hf.repoId is not `elizaos/eliza-1`
-- `evidence/release.json`: hf.status is not `uploaded`; final Hugging Face payload upload is not proven
-- `evidence/release.json`: hf.uploadEvidence missing; final Hugging Face commit/url/uploaded paths are not proven
-- `evidence/release.json`: publishEligible is not true
-- `evidence/release.json`: releaseState is `local-standin`, not one of ['base-v1', 'upload-candidate', 'final']
-- `evidence/release.json`: weights missing final payload path(s): ['tts/kokoro/model_q4.onnx', 'tts/kokoro/tokenizer.json', 'tts/kokoro/voices/af_bella.bin', 'vad/silero-vad-v5.1.2.ggml.bin']
+Missing files/evidence: not evaluated in plan-only mode. Re-run with `--bundle-root <path>` to check local payloads.
 
 ## 27b
 
@@ -304,21 +256,7 @@ Required files:
 Optional fallback files:
 - `vad/silero-vad-int8.onnx`
 
-Missing files/evidence:
-- `evidence/platform/windows-x64-cpu.json`
-- `vad/silero-vad-v5.1.2.ggml.bin`
-
-Publish-blocking status:
-- `evidence/release.json`: final.evals is not true
-- `evidence/release.json`: final.kernelDispatchReports is not true
-- `evidence/release.json`: final.platformEvidence is not true
-- `evidence/release.json`: final.sizeFirstRepoIds is not true
-- `evidence/release.json`: hf.repoId is not `elizaos/eliza-1`
-- `evidence/release.json`: hf.status is not `uploaded`; final Hugging Face payload upload is not proven
-- `evidence/release.json`: hf.uploadEvidence missing; final Hugging Face commit/url/uploaded paths are not proven
-- `evidence/release.json`: publishEligible is not true
-- `evidence/release.json`: releaseState is `local-standin`, not one of ['base-v1', 'upload-candidate', 'final']
-- `evidence/release.json`: weights missing final payload path(s): ['vad/silero-vad-v5.1.2.ggml.bin']
+Missing files/evidence: not evaluated in plan-only mode. Re-run with `--bundle-root <path>` to check local payloads.
 
 ## 27b-256k
 
@@ -368,21 +306,7 @@ Required files:
 Optional fallback files:
 - `vad/silero-vad-int8.onnx`
 
-Missing files/evidence:
-- `evidence/platform/windows-x64-cuda.json`
-- `vad/silero-vad-v5.1.2.ggml.bin`
-
-Publish-blocking status:
-- `evidence/release.json`: final.evals is not true
-- `evidence/release.json`: final.kernelDispatchReports is not true
-- `evidence/release.json`: final.platformEvidence is not true
-- `evidence/release.json`: final.sizeFirstRepoIds is not true
-- `evidence/release.json`: hf.repoId is not `elizaos/eliza-1`
-- `evidence/release.json`: hf.status is not `uploaded`; final Hugging Face payload upload is not proven
-- `evidence/release.json`: hf.uploadEvidence missing; final Hugging Face commit/url/uploaded paths are not proven
-- `evidence/release.json`: publishEligible is not true
-- `evidence/release.json`: releaseState is `local-standin`, not one of ['base-v1', 'upload-candidate', 'final']
-- `evidence/release.json`: weights missing final payload path(s): ['vad/silero-vad-v5.1.2.ggml.bin']
+Missing files/evidence: not evaluated in plan-only mode. Re-run with `--bundle-root <path>` to check local payloads.
 
 ## 27b-1m
 
@@ -422,34 +346,4 @@ Required files:
 Optional fallback files:
 - `vad/silero-vad-int8.onnx`
 
-Missing files/evidence:
-- `asr/eliza-1-asr-mmproj.gguf`
-- `asr/eliza-1-asr.gguf`
-- `cache/voice-preset-default.bin`
-- `checksums/SHA256SUMS`
-- `dflash/drafter-27b-1m.gguf`
-- `dflash/target-meta.json`
-- `evals/aggregate.json`
-- `evals/cuda_dispatch.json`
-- `evals/cuda_verify.json`
-- `evidence/platform/linux-aarch64-cuda.json`
-- `evidence/platform/linux-x64-cuda.json`
-- `evidence/release.json`
-- `licenses/LICENSE.asr`
-- `licenses/LICENSE.dflash`
-- `licenses/LICENSE.eliza-1`
-- `licenses/LICENSE.text`
-- `licenses/LICENSE.vad`
-- `licenses/LICENSE.voice`
-- `quantization/fused_turboquant.json`
-- `quantization/polarquant_config.json`
-- `quantization/qjl_config.json`
-- `quantization/turboquant.json`
-- `text/eliza-1-27b-1m.gguf`
-- `tts/omnivoice-base-Q8_0.gguf`
-- `tts/omnivoice-tokenizer-Q8_0.gguf`
-- `vad/silero-vad-v5.1.2.ggml.bin`
-
-Publish-blocking status:
-- `bundle`: missing canonical local bundle `eliza-1-27b-1m.bundle` or `eliza-1-27b-1m`; final payloads, checksums, license evidence, and HF upload evidence cannot be verified
-- `evidence/release.json`: missing; release state, final flags, source models, and HF upload evidence are not proven
+Missing files/evidence: not evaluated in plan-only mode. Re-run with `--bundle-root <path>` to check local payloads.

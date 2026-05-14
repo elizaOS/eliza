@@ -326,9 +326,8 @@ export function createElectrobunConfig(): ElectrobunConfig {
 					"@elizaos/app-core",
 					// Plugins — initialized by the API subprocess, never the bun shell.
 					"@elizaos/plugin-sql",
-					"@elizaos/plugin-bootstrap",
-					"@elizaos/plugin-local-ai",
-					"@elizaos/plugin-local-embedding",
+					"@elizaos/plugin-local-inference",
+					"@elizaos/plugin-local-inference",
 					// Database stack pulled in by plugin-sql.
 					"@electric-sql/pglite",
 					"drizzle-orm",
@@ -369,8 +368,7 @@ export function createElectrobunConfig(): ElectrobunConfig {
 				[runtimeBundleDistDir]: runtimeDistDir,
 				...(fs.existsSync(runtimeBundleNodeModulesPath)
 					? {
-							[runtimeBundleNodeModulesDir]:
-								`${runtimeDistDir}/node_modules`,
+							[runtimeBundleNodeModulesDir]: `${runtimeDistDir}/node_modules`,
 						}
 					: {}),
 				...(fs.existsSync(path.join(repoRoot, "plugins.json"))

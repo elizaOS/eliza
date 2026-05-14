@@ -231,7 +231,11 @@ describe("CarrotManager", () => {
 			manager.installFromDirectory({ sourceDir: writePayload(dir) });
 			manager.startWorker("bunny.search");
 
-			worker.emit({ type: "host-request", requestId: 1, method: "list-carrots" });
+			worker.emit({
+				type: "host-request",
+				requestId: 1,
+				method: "list-carrots",
+			});
 
 			return new Promise<void>((resolve, reject) => {
 				setTimeout(() => {
@@ -357,9 +361,9 @@ describe("CarrotManager", () => {
 							requestId: 42,
 							success: false,
 						});
-						expect(
-							(response as { error?: string }).error,
-						).toContain("totally-made-up");
+						expect((response as { error?: string }).error).toContain(
+							"totally-made-up",
+						);
 						resolve();
 					} catch (error) {
 						reject(error);
@@ -451,7 +455,6 @@ describe("CarrotManager", () => {
 			manager.installFromDirectory({ sourceDir: secondDir });
 			manager.startWorker("bunny.calc");
 
-			// A invokes B
 			workerA.emit({
 				type: "host-request",
 				requestId: 99,
@@ -459,7 +462,6 @@ describe("CarrotManager", () => {
 				params: { carrotId: "bunny.calc", method: "add", params: { a: 2, b: 3 } },
 			});
 
-			// Host should have forwarded a request to B
 			const forwarded = workerB.messages.find((m) => m.type === "request");
 			expect(forwarded).toMatchObject({
 				type: "request",
@@ -468,7 +470,6 @@ describe("CarrotManager", () => {
 			});
 			const forwardedId = (forwarded as { requestId: number }).requestId;
 
-			// B replies with a response
 			workerB.emit({
 				type: "response",
 				requestId: forwardedId,
@@ -476,7 +477,6 @@ describe("CarrotManager", () => {
 				payload: { sum: 5 },
 			});
 
-			// A should receive the host-response with B's payload
 			const aResponse = workerA.messages.find(
 				(m) => m.type === "host-response" && m.requestId === 99,
 			);
@@ -564,7 +564,6 @@ describe("CarrotManager", () => {
 				params: { carrotId: "bunny.calc", method: "slow" },
 			});
 
-			// Stop B before it can reply
 			manager.stopWorker("bunny.calc");
 
 			const aResponse = workerA.messages.find(
@@ -615,7 +614,10 @@ describe("CarrotManager", () => {
 				}),
 				"utf8",
 			);
-			writeFileSync(join(secondDir, "worker.ts"), "postMessage({type:'ready'});");
+			writeFileSync(
+				join(secondDir, "worker.ts"),
+				"postMessage({type:'ready'});",
+			);
 			writeFileSync(join(secondDir, "views", "index.html"), "<div>Timer</div>");
 			nextWorker = workerB;
 			manager.installFromDirectory({ sourceDir: secondDir });

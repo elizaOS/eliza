@@ -1,0 +1,24 @@
+[[!meta title="Install Tails from Windows"]]
+
+[[!meta stylesheet="inc/stylesheets/overview" rel="stylesheet" title=""]]
+[[!meta stylesheet="inc/stylesheets/download" rel="stylesheet" title=""]]
+[[!meta stylesheet="doc/about/warnings" rel="stylesheet" title=""]]
+[[!meta stylesheet="inc/stylesheets/steps" rel="stylesheet" title=""]]
+[[!meta stylesheet="inc/stylesheets/windows" rel="stylesheet" title=""]]
+
+[[!meta script="install/inc/js/download"]]
+[[!meta script="install/inc/js/forge.min"]]
+
+[[!inline pages="install/inc/overview" raw="yes" sort="age"]]
+
+[[!inline pages="install/inc/steps/warnings.inline" raw="yes" sort="age"]]
+
+[[!inline pages="install/inc/steps/download.inline" raw="yes" sort="age"]]
+
+[[!inline pages="install/inc/steps/verify.inline" raw="yes" sort="age"]]
+
+[[!inline pages="install/inc/steps/install_with_rufus.inline" raw="yes" sort="age"]]
+
+[[!inline pages="install/inc/steps/restart_first_time.inline" raw="yes" sort="age"]]
+
+[[!inline pages="install/inc/steps/welcome.inline" raw="yes" sort="age"]]

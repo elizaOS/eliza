@@ -1,0 +1,414 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-12-08 13:08+0100\n"
+"PO-Revision-Date: 2020-09-05 06:33+0000\n"
+"Last-Translator: emmapeel <emma.peel@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: tr\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n > 1;\n"
+"X-Generator: Weblate 3.8\n"
+
+#. type: Content of: outside any tag (error?)
+msgid "[[!meta robots=\"noindex\"]]"
+msgstr ""
+
+#. type: Content of: <div>
+msgid "[[!inline pages=\"inc/stable_amd64_version\" raw=\"yes\" sort=\"age\"]]"
+msgstr ""
+"[[!inline pages=\"inc/stable_amd64_version\" raw=\"yes\" sort=\"age\"]]"
+
+#. type: Content of: <h1>
+msgid "Verify your download"
+msgstr ""
+
+#. type: Content of: <div>
+#, fuzzy
+msgid "[[!img inc/infography/verify.png link=\"no\" alt=\"\"]]"
+msgstr "[[!img screenshots/allow_js.png link=\"no\"]]"
+
+#. type: Content of: <div>
+#, fuzzy
+msgid ""
+"[[!img inc/infography/verify-with-intermediary.png link=\"no\" alt=\"\"]]"
+msgstr "[[!img screenshots/allow_js.png link=\"no\"]]"
+
+#. type: Content of: <div>
+#, fuzzy
+msgid "[[!img inc/infography/verify-from-tails.png link=\"no\" alt=\"\"]]"
+msgstr "[[!img screenshots/allow_js.png link=\"no\"]]"
+
+#. type: Content of: <div><p>
+msgid ""
+"Verify your download to make sure that it is safe and was not corrupted "
+"during download."
+msgstr ""
+
+#. type: Content of: <div><div><p>
+msgid ""
+"You seem to have JavaScript disabled. To verify your download, you can "
+"either:"
+msgstr ""
+
+#. type: Content of: <div><div><ul><li><p>
+msgid "Enable JavaScript and reload this page."
+msgstr ""
+
+#. type: Content of: <div><div><ul><li><p>
+msgid ""
+"Compare manually the checksum of your download with [[the checksum of our "
+"images|install/v2/Tails/amd64/stable/latest.json]].  In Tails, you can "
+"install <a href=\"https://gtkhash.org/\"><i>GtkHash</i></a> as [[Additional "
+"Software|doc/persistent_storage/additional_software]]"
+msgstr ""
+
+#. type: Content of: <div><div><ul><li><p>
+#, fuzzy
+msgid ""
+"Verify your download using our [[OpenPGP signing key|tails-signing.key]] and "
+"<span class=\"usb upgrade download-only-img\"><a href=\"[[!inline "
+"pages=\"inc/stable_amd64_img_sig_url\" raw=\"yes\" sort=\"age\"]]\">OpenPGP "
+"signature</a>.</span> <span class=\"dvd download-only-iso\"><a href=\"[[!"
+"inline pages=\"inc/stable_amd64_iso_sig_url\" raw=\"yes\" sort=\"age\"]]"
+"\">OpenPGP signature</a>.</span>"
+msgstr ""
+"Laden Sie die <a href='[[!inline pages=\"inc/stable_amd64_iso_sig_url\" "
+"raw=\"yes\"]]'> Tails [[!inline pages=\"inc/stable_amd64_version\" "
+"raw=\"yes\" sort=\"age\"]] OpenPGP-Signatur</a> des aktuellsten ISO-Images "
+"von Tails herunter und speichern Sie sie in dem gleichen Ordner, in dem Sie "
+"das ISO-Image gespeichert haben."
+
+#. type: Content of: <div><div><ul><li><p>
+msgid "We don't provide instructions to verify downloads with OpenPGP anymore."
+msgstr ""
+
+#. type: Content of: <div><div><ul><p>
+msgid ""
+"[[See our security analysis of the different verification techniques.|"
+"contribute/design/download_verification]]"
+msgstr ""
+
+#. type: Content of: <div><div><p>
+msgid ""
+"You seem to be using <em>Internet Explorer</em>. To verify your download, "
+"please use a different browser."
+msgstr ""
+
+#. type: Content of: <div><div>
+msgid ""
+"<label class=\"button\"> Select your download to verify&hellip; <input "
+"id=\"verify-file\" type=\"file\"/> </label>"
+msgstr ""
+
+#. type: Content of: <div><div><p>
+#, fuzzy
+msgid ""
+"or verify using the [[!toggle id=\"openpgp-verification\" text=\"OpenPGP "
+"signature\"]]"
+msgstr ""
+"[[!toggleable id=\"why-failed\" text=\"\"\" [[!toggle id=\"why-failed\" "
+"text=\"X\"]]"
+
+#. type: Content of: <div><div><div>
+#, fuzzy
+msgid ""
+"[[!toggleable id=\"openpgp-verification\" text=\"\"\" [[!toggle id=\"openpgp-"
+"verification\" text=\"\"]]"
+msgstr ""
+"[[!toggleable id=\"why-failed\" text=\"\"\" [[!toggle id=\"why-failed\" "
+"text=\"X\"]]"
+
+#. type: Content of: <div><div><div><p>
+#, fuzzy
+msgid ""
+"<a class=\"usb upgrade download-only-img\" href=\"[[!inline pages=\"inc/"
+"stable_amd64_img_sig_url\" raw=\"yes\" sort=\"age\"]]\">OpenPGP signature </"
+"a> <a class=\"dvd download-only-iso\" href=\"[[!inline pages=\"inc/"
+"stable_amd64_iso_sig_url\" raw=\"yes\" sort=\"age\"]]\">OpenPGP signature</a>"
+msgstr ""
+"Laden Sie die <a href='[[!inline pages=\"inc/stable_amd64_iso_sig_url\" "
+"raw=\"yes\"]]'> Tails [[!inline pages=\"inc/stable_amd64_version\" "
+"raw=\"yes\" sort=\"age\"]] OpenPGP-Signatur</a> des aktuellsten ISO-Images "
+"von Tails herunter und speichern Sie sie in dem gleichen Ordner, in dem Sie "
+"das ISO-Image gespeichert haben."
+
+#. type: Content of: <div><div><div><p>
+msgid ""
+"If you don't know how to use the OpenPGP signature, select instead the "
+"button <b>Select your download</b> to verify your download with JavaScript."
+msgstr ""
+
+#. type: Content of: <div><div><div><p>
+msgid "[[OpenPGP signing key|tails-signing.key]]"
+msgstr ""
+
+#. type: Content of: <div><div><div><p>
+msgid ""
+"[[Security analysis of the different verification techniques|contribute/"
+"design/download_verification]]"
+msgstr ""
+
+#. type: Content of: <div><div><div>
+msgid "\"\"\"]]"
+msgstr "\"\"\"]]"
+
+#. type: Content of: <div><div><p>
+msgid ""
+"Verifying <em><span class=\"verify-filename\">$FILENAME</span></em>&hellip;"
+msgstr ""
+
+#. type: Content of: <div><div><p>
+msgid ""
+"[[!img lib/check.png class=\"icon\" link=\"no\" alt=\"\"]]<b>Verification "
+"successful!</b> (<em><span class=\"verify-filename\">$FILENAME</span></em>)"
+msgstr ""
+
+#. type: Content of: <div><div><p>
+msgid ""
+"[[!img lib/cross.png class=\"icon\" link=\"no\" alt=\"\"]]<b>Verification "
+"failed!</b> (<em><span class=\"verify-filename\">$FILENAME</span></em>)"
+msgstr ""
+
+#. type: Content of: <div><div><p>
+msgid "[[!toggle id=\"why-failed\" text=\"Why?\"]]"
+msgstr ""
+
+#. type: Content of: <div><div><div>
+#, fuzzy
+msgid ""
+"[[!toggleable id=\"why-failed\" text=\"\"\" [[!toggle id=\"why-failed\" "
+"text=\"\"]]"
+msgstr ""
+"[[!toggleable id=\"why-failed\" text=\"\"\" [[!toggle id=\"why-failed\" "
+"text=\"X\"]]"
+
+#. type: Content of: <div><div><div><p>
+msgid ""
+"Most likely, the verification failed because of an error or interruption "
+"during the download."
+msgstr ""
+
+#. type: Content of: <div><div><div><p>
+#, fuzzy
+msgid ""
+"The verification also fails if you try to verify a different download than "
+"the latest version, Tails [[!inline pages=\"inc/stable_amd64_version\" "
+"raw=\"yes\" sort=\"age\"]]."
+msgstr ""
+"[[!inline pages=\"inc/stable_amd64_version\" raw=\"yes\" sort=\"age\"]]"
+
+#. type: Content of: <div><div><div><p>
+msgid ""
+"Less likely, the verification might have failed because of a malicious "
+"download from our download mirrors or due to a network attack in your "
+"country or local network."
+msgstr ""
+
+#. type: Content of: <div><div><div><p>
+msgid ""
+"Downloading again is usually enough to fix this problem. Otherwise, please "
+"try downloading from a different place or a different computer."
+msgstr ""
+
+#. type: Content of: <div><div><div><p>
+msgid ""
+"[[How does the verification work?|contribute/design/download_verification]]"
+msgstr ""
+
+#. type: Content of: <div><div><p>
+#, fuzzy
+msgid ""
+"<a href=\"[[!inline pages=\"inc/stable_amd64_img_url\" raw=\"yes\" "
+"sort=\"age\"]]\" id=\"download-img-again\">Please try to download "
+"again&hellip;</a>"
+msgstr ""
+"Laden Sie die <a href='[[!inline pages=\"inc/stable_amd64_iso_sig_url\" "
+"raw=\"yes\"]]'> Tails [[!inline pages=\"inc/stable_amd64_version\" "
+"raw=\"yes\" sort=\"age\"]] OpenPGP-Signatur</a> des aktuellsten ISO-Images "
+"von Tails herunter und speichern Sie sie in dem gleichen Ordner, in dem Sie "
+"das ISO-Image gespeichert haben."
+
+#. type: Content of: <div><div><p>
+#, fuzzy
+msgid ""
+"<a href=\"[[!inline pages=\"inc/stable_amd64_iso_url\" raw=\"yes\" "
+"sort=\"age\"]]\" id=\"download-iso-again\">Please try to download "
+"again&hellip;</a>"
+msgstr ""
+"Laden Sie die <a href='[[!inline pages=\"inc/stable_amd64_iso_sig_url\" "
+"raw=\"yes\"]]'> Tails [[!inline pages=\"inc/stable_amd64_version\" "
+"raw=\"yes\" sort=\"age\"]] OpenPGP-Signatur</a> des aktuellsten ISO-Images "
+"von Tails herunter und speichern Sie sie in dem gleichen Ordner, in dem Sie "
+"das ISO-Image gespeichert haben."
+
+#. type: Content of: <div><div><p>
+msgid ""
+"[[!img lib/cross.png class=\"icon\" link=\"no\" alt=\"\"]]<b>Error selecting "
+"image.</b>"
+msgstr ""
+
+#. type: Content of: <div><div><p>
+msgid "Make sure that you select a USB image that is readable by your browser."
+msgstr ""
+
+#. type: Content of: <div><div><p>
+msgid ""
+"Make sure that you select an ISO image that is readable by your browser."
+msgstr ""
+
+#. type: Content of: <div><div><p>
+msgid "<a id=\"retry-json\">Retry&hellip;</a>"
+msgstr ""
+
+#. type: Content of: <div><div><p>
+msgid ""
+"[[!img lib/cross.png class=\"icon\" link=\"no\" alt=\"\"]]<b>Error "
+"downloading <a id=\"checksum-file\" href=\"\">checksum file</a> from our "
+"website.</b>"
+msgstr ""
+
+#. type: Content of: <div><div><p>
+msgid "Make sure that your browser is connected to the Internet."
+msgstr ""
+
+#. type: Content of: <div><div><p>
+msgid ""
+"[[!img lib/cross.png class=\"icon\" link=\"no\" alt=\"\"]]<b>Error reading "
+"image <em><span class=\"verify-filename\">$FILENAME</span></em>.</b>"
+msgstr ""
+
+#. type: Content of: <div><div><p>
+msgid ""
+"Make sure that <em><span class=\"verify-filename\">$FILENAME</span></em> is "
+"readable by your browser."
+msgstr ""
+
+#. type: Content of: <div><div><p>
+msgid "<a id=\"retry-image\">Retry&hellip;</a>"
+msgstr ""
+
+#~ msgid "[["
+#~ msgstr "[["
+
+#~ msgid "|win/usb]]"
+#~ msgstr "|win/usb]]"
+
+#~ msgid "|linux/usb]]"
+#~ msgstr "|linux/usb]]"
+
+#~ msgid "|mac/usb]]"
+#~ msgstr "|mac/usb]]"
+
+#, fuzzy
+#~ msgid "[[!inline pages=\"doc/about/warnings\" raw=\"yes\" sort=\"age\"]]"
+#~ msgstr ""
+#~ "[[!inline pages=\"inc/stable_amd64_version\" raw=\"yes\" sort=\"age\"]]"
+
+#, fuzzy
+#~ msgid ""
+#~ "[[!toggleable id=\"why-verify\" text=\"\"\" [[!toggle id=\"why-verify\" "
+#~ "text=\"X\"]]"
+#~ msgstr ""
+#~ "[[!toggleable id=\"why-failed\" text=\"\"\" [[!toggle id=\"why-failed\" "
+#~ "text=\"X\"]]"
+
+#, fuzzy
+#~ msgid ""
+#~ "<label class=\"button\"> Verify Tails <span class=\"remove-extra-"
+#~ "space\">&#8288;[[!inline pages=\"inc/stable_amd64_version\" raw=\"yes\" "
+#~ "sort=\"age\"]]</span>&hellip; <input id=\"verify-file\" type=\"file\"/> </"
+#~ "label>"
+#~ msgstr ""
+#~ "[[!inline pages=\"inc/stable_amd64_version\" raw=\"yes\" sort=\"age\"]]"
+
+#, fuzzy
+#~ msgid ""
+#~ "[[!img install/inc/screenshots/verifying_in_tails_img_good.png "
+#~ "link=\"no\"]]"
+#~ msgstr "[[!img screenshots/allow_js.png link=\"no\"]]"
+
+#, fuzzy
+#~ msgid ""
+#~ "[[!img install/inc/screenshots/verifying_in_tails_iso_good.png "
+#~ "link=\"no\"]]"
+#~ msgstr "[[!img screenshots/allow_js.png link=\"no\"]]"
+
+#, fuzzy
+#~ msgid ""
+#~ "[[!img install/inc/screenshots/verifying_in_tails_img_untrusted.png "
+#~ "link=\"no\"]]"
+#~ msgstr "[[!img screenshots/allow_js.png link=\"no\"]]"
+
+#, fuzzy
+#~ msgid ""
+#~ "[[!img install/inc/screenshots/verifying_in_tails_iso_untrusted.png "
+#~ "link=\"no\"]]"
+#~ msgstr "[[!img screenshots/allow_js.png link=\"no\"]]"
+
+#, fuzzy
+#~ msgid ""
+#~ "[[!inline pages=\"inc/stable_amd64_img_gpg_verify\" raw=\"yes\" "
+#~ "sort=\"age\"]]"
+#~ msgstr ""
+#~ "[[!inline pages=\"inc/stable_amd64_gpg_verify\" raw=\"yes\" sort=\"age\"]]"
+
+#, fuzzy
+#~ msgid ""
+#~ "[[!inline pages=\"inc/stable_amd64_iso_gpg_verify\" raw=\"yes\" "
+#~ "sort=\"age\"]]"
+#~ msgstr ""
+#~ "[[!inline pages=\"inc/stable_amd64_gpg_verify\" raw=\"yes\" sort=\"age\"]]"
+
+#, fuzzy
+#~ msgid ""
+#~ "[[!inline pages=\"inc/stable_amd64_img_gpg_signature_output\" raw=\"yes\" "
+#~ "sort=\"age\"]]"
+#~ msgstr ""
+#~ "[[!inline pages=\"inc/stable_amd64_gpg_signature_output\" raw=\"yes\" "
+#~ "sort=\"age\"]]"
+
+#, fuzzy
+#~ msgid ""
+#~ "[[!inline pages=\"inc/stable_amd64_iso_gpg_signature_output\" raw=\"yes\" "
+#~ "sort=\"age\"]]"
+#~ msgstr ""
+#~ "[[!inline pages=\"inc/stable_amd64_gpg_signature_output\" raw=\"yes\" "
+#~ "sort=\"age\"]]"
+
+#, fuzzy
+#~ msgid ""
+#~ "<a>I already downloaded Tails&nbsp;<span class=\"remove-extra-space\">[[!"
+#~ "inline pages=\"inc/stable_amd64_version\" raw=\"yes\" sort=\"age\"]]</"
+#~ "span>.</a>"
+#~ msgstr ""
+#~ "[[!inline pages=\"inc/stable_amd64_version\" raw=\"yes\" sort=\"age\"]]"
+
+#~ msgid "[[!img screenshots/allow_js.png link=\"no\"]]"
+#~ msgstr "[[!img screenshots/allow_js.png link=\"no\"]]"
+
+#~ msgid ""
+#~ "For example, you can start by contacting a local [[!wikipedia "
+#~ "Linux_User_Group]], [[an organization offering Tails training|support/"
+#~ "learn]], or other Tails enthusiasts near you and exchange about their "
+#~ "OpenPGP practices."
+#~ msgstr ""
+#~ "Sie könnten damit beginnen, indem Sie mit einer lokalen [[!wikipedia_de "
+#~ "Linux_User_Group desc=\"%s\"]] oder anderen Enthusiasten von Tails in "
+#~ "Ihrer Umgebung in Kontakt treten und sich über deren Methoden bezüglich "
+#~ "OpenPGP austauschen."
+
+#~ msgid ""
+#~ "[[!toggleable id=\"why-failed-again\" text=\"\"\" [[!toggle id=\"why-"
+#~ "failed-again\" text=\"X\"]]"
+#~ msgstr ""
+#~ "[[!toggleable id=\"why-failed-again\" text=\"\"\" [[!toggle id=\"why-"
+#~ "failed-again\" text=\"X\"]]"

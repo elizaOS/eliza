@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/app-device-settings",
-  "version": "2.0.0-beta.1",
+  "version": "2.0.0-beta.2",
   "type": "module",
   "description": "Android Device Settings overlay app for ElizaOS — brightness, volume, Android roles, and system settings shortcuts.",
   "main": "./dist/index.js",
@@ -33,11 +33,11 @@
     "build:types": "tsc --noCheck -p tsconfig.build.json"
   },
   "dependencies": {
-    "@elizaos/app-core": "2.0.0-beta.3",
-    "@elizaos/capacitor-system": "2.0.0-beta.1",
-    "@elizaos/core": "2.0.0-beta.1",
-    "@elizaos/shared": "2.0.0-beta.1",
-    "@elizaos/ui": "2.0.0-beta.2",
+    "@elizaos/app-core": "workspace:*",
+    "@elizaos/capacitor-system": "workspace:*",
+    "@elizaos/core": "workspace:*",
+    "@elizaos/shared": "workspace:*",
+    "@elizaos/ui": "workspace:*",
     "lucide-react": "^1.0.0"
   },
   "peerDependencies": {

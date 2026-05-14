@@ -1,0 +1,6 @@
+{
+    "shell-version": ["48.1"],
+    "uuid": "date@tails.boum.org",
+    "name": "Date and Time",
+    "description": "Show the time and date in user timezone"
+}

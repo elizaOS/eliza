@@ -1,0 +1,175 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-09-17 11:40+0200\n"
+"PO-Revision-Date: 2022-12-21 11:06+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: Persian <http://weblate.451f.org:8889/projects/tails/shutdown/"
+"fa/>\n"
+"Language: fa\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"X-Generator: Weblate 4.9.1\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Shutting down Tails\"]]\n"
+msgstr "[[!meta title=\"خاموش کردن تیلز\"]]\n"
+
+#. type: Plain text
+#, fuzzy
+msgid "There are 2 ways of shutting down Tails."
+msgstr "برای خاموش کردن تیلز راه‌های مختلفی وجود دارد:"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!toc levels=1]]\n"
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid ""
+"With both techniques, all the data stored in [[!wikipedia Random-access_memory\n"
+"desc=\"RAM\"]] is securely erased to protect you from [[cold boot\n"
+"attacks|doc/advanced_topics/cold_boot_attacks]].\n"
+msgstr ""
+"موقع خاموش کردن، داده‌های ذخیره شده در <span class=\"definition\">[[!wikipedia\n"
+"Random-access_memory desc=\"حافظهٔ تصادفی\"]]</span> پاک می‌شوند\n"
+"تا شما از [[حملهٔ راه‌اندازی سرد|doc/advanced_topics/cold_boot_attacks]] در امان بمانید.\n"
+
+#. type: Title =
+#, no-wrap
+msgid "Shutdown from the system menu"
+msgstr ""
+
+#. type: Plain text
+msgid "Click on the system menu in the upper right corner of the screen."
+msgstr ""
+
+#. type: Bullet: '* '
+msgid ""
+"Choose [[!img lib/system-shutdown.png link=\"no\" class=\"symbolic\" "
+"alt=\"Power Off\"]] to shutdown the computer."
+msgstr ""
+
+#. type: Bullet: '* '
+msgid ""
+"Choose [[!img lib/view-refresh.png link=\"no\" class=\"symbolic\" "
+"alt=\"Restart\"]] to restart the computer on Tails or on your regular "
+"operating system."
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "[[!img desktop/system-with-wifi-only.png class=\"screenshot\" alt=\"\"]]\n"
+msgstr "  [[!img desktop/system.png link=\"no\"]]\n"
+
+#. type: Title =
+#, no-wrap
+msgid "Emergency shutdown"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"To trigger an emergency shutdown, unplug the USB stick or eject the DVD from "
+"which Tails is running. Doing so might be faster than shutting down from the "
+"system menu."
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "<div class=\"caution\">\n"
+msgstr "  <div class=\"caution\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>You risk breaking your Persistent Storage and losing data when you unplug\n"
+"your USB stick while Tails is running.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>If you use a Persistent Storage, only unplug your Tails USB stick in an\n"
+"emergency.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "</div>\n"
+msgstr "  </div>\n"
+
+#, fuzzy
+#~ msgid ""
+#~ "- By physically removing the USB stick or DVD that Tails is running from."
+#~ msgstr ""
+#~ "- جدا کردن دستگاهی که تیلز روی آن اجرا می‌شود (درایو یواس‌بی یا کارت حافظه "
+#~ "یا دی‌وی‌دی یا ...)."
+
+#, fuzzy, no-wrap
+#~ msgid ""
+#~ "  <p>If you cannot unlock the Persistent Storage anymore after\n"
+#~ "  physically removing the USB stick, try to do a [[file system check on\n"
+#~ "  the Persistent Storage|persistent_storage/check]]\n"
+#~ "  to fix it.</p>\n"
+#~ msgstr "<p>اگر پس از استفاده کردن از این شیوه نتوانستید مانا را فعال کنید، باید قادر به بازیابی بیشتر داده‌های خود با استفاده از [[بررسی فایل سیستمی روی درایو مانا|persistence/check_file_system]] باشید.</p>\n"
+
+#~ msgid ""
+#~ "<p>This method might in rare occasions break the file system of your "
+#~ "persistent\n"
+#~ "volume. <strong>Use this method only in case of emergency.</strong></p>\n"
+#~ msgstr ""
+#~ "<p>به ندرت ممکن است این شیوه باعث نفوذ به فایل سیستمی درایو مانای شما "
+#~ "شود. \n"
+#~ "<strong>از این شیوه تنها در مواقع اضطراری استفاده کنید.</strong></p>\n"
+
+#~ msgid "<div class=\"bug\">\n"
+#~ msgstr "<div class=\"bug\">\n"
+
+#~ msgid ""
+#~ "This method does not work [[with DVD|support/known_issues#index11h2]], "
+#~ "see [[!tails_ticket 5447]]."
+#~ msgstr ""
+#~ "این شیوه با [[دی‌وی‌دی|support/known_issues#index11h2]] کار نمی‌کند؛ [[!"
+#~ "tails_ticket 5447]] ببینید."
+
+#~ msgid "- By pressing the power button of the computer."
+#~ msgstr "- فشردن دکمهٔ خاموش روی رایانهٔ خود."
+
+#~ msgid ""
+#~ "This method does not work [[after using the <span "
+#~ "class=\"application\">Tails\n"
+#~ "Installer</span>|support/known_issues#index10h2]], see\n"
+#~ "[[!tails_ticket 5677]].\n"
+#~ msgstr ""
+#~ "[[پس از استفاده از <span class=\"application\">نصب‌کنندهٔ تیلز\n"
+#~ "</span>|support/known_issues#index10h2]]، این شیوه کار نمی‌کند. برای "
+#~ "اطلاعات بیشتر\n"
+#~ "[[!tails_ticket 5677]] ببینید.\n"
+
+#~ msgid ""
+#~ "<p>Using the [[**read-only** option|persistence/use]]\n"
+#~ "of the persistent volume prevents this problem.</p>\n"
+#~ msgstr ""
+#~ "<p>استفاده از [[گزینهٔ **تنها خواندن** |persistence/use]]\n"
+#~ "درایو مانا، از وقوع این مشکل جلوگیری می‌کند.</p>\n"
+
+#~ msgid ""
+#~ "By clicking on the [[system shutdown icon|desktop#shutdown]] located in "
+#~ "the upper right corner of the notification area and choosing <span "
+#~ "class=\"guimenuitem\">Shutdown Immediately</span> or <span "
+#~ "class=\"guimenuitem\">Reboot Immediately</span>."
+#~ msgstr ""
+#~ "کلیک کردن روی [[نمایهٔ خاموش کردن دستگاه|desktop#shutdown]] که در گوشهٔ "
+#~ "بالا سمت چپ قرار دارد (قسمت مربوط به هشدارها) و انتخاب <span "
+#~ "class=\"guimenuitem\">خاموش کردن فوری</span> یا <span "
+#~ "class=\"guimenuitem\">راه‌اندازی دوبارهٔ فوری</span>."

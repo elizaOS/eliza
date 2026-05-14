@@ -1,0 +1,70 @@
+[[!meta title="Tails 4.16 is out"]]
+[[!meta date="Mon, 22 Feb 2021 12:34:56 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+
+[[!toc levels=1]]
+
+<h1 id="changes">Changes and updates</h1>
+
+- Update *Tor Browser* to [10.0.12](https://blog.torproject.org/new-release-tor-browser-10012).
+
+- Update *Thunderbird* to [78.7.0](https://www.thunderbird.net/en-US/thunderbird/78.7.0/releasenotes/).
+
+- Update *Linux* to 5.10.13. This should improve the support for newer
+  hardware (graphics, Wi-Fi, and so on).
+
+- Update *Tor* to 0.4.5.5.
+
+<h1 id="fixes">Fixed problems</h1>
+
+- Stop focusing on the **Cancel** button by default when downloading an upgrade
+  to prevent canceling the download by mistake. ([[!tails_ticket 18072]])
+
+For more details, read our [[!tails_gitweb debian/changelog desc="changelog"]].
+
+<h1 id="issues">Known issues</h1>
+
+[[!inline pages="news/version_4.14/broken_upgrades" raw="yes" sort="age"]]
+
+See the list of [[long-standing issues|support/known_issues]].
+
+<h1 id="get">Get Tails 4.16</h1>
+
+## To upgrade your Tails USB stick and keep your Persistent Storage
+
+- Automatic upgrades are broken from Tails 4.14 and earlier. See the
+  <a href="#broken-upgrades">known issue above</a>.
+
+- Automatic upgrades are available from Tails 4.15 or later to 4.16.
+
+- If you cannot do an automatic upgrade or if Tails fails to start after an
+  automatic upgrade, please try to do a [[manual upgrade|doc/upgrade/#manual]].
+
+## To install Tails on a new USB stick
+
+Follow our installation instructions:
+
+  - [[Install from Windows|install/windows]]
+  - [[Install from macOS|install/mac]]
+  - [[Install from Linux|install/linux]]
+
+<div class="caution"><p>The Persistent Storage on the USB stick will be lost if
+you install instead of upgrading.</p></div>
+
+## To download only
+
+If you don't need installation or upgrade instructions, you can download
+Tails 4.16 directly:
+
+  - [[For USB sticks (USB image)|install/download]]
+  - [[For DVDs and virtual machines (ISO image)|install/download-iso]]
+
+<h1 id="next">What's coming up?</h1>
+
+Tails 4.17 is [[scheduled|contribute/calendar]] for March 23.
+
+
+We need your help and there are many ways to [[contribute to
+Tails|contribute]] (<a href="https://tails.net/donate/?r=4.16">donating</a> is only one of
+them). Come [[talk to us|doc/about/contact#tails-dev]]!

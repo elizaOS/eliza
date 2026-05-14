@@ -1,0 +1,1543 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-09-17 11:40+0200\n"
+"PO-Revision-Date: 2025-09-18 15:39+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: pt\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n > 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Creating the Persistent Storage\"]]\n"
+msgstr "[[!meta title=\"Criando o Armazenamento Persistente\"]]\n"
+
+#. type: Plain text
+#, fuzzy
+#| msgid ""
+#| "To create the Persistent Storage, choose **Applications**&nbsp;▸ "
+#| "**Tails**&nbsp;▸ **Persistent Storage**."
+msgid ""
+"To create the Persistent Storage, choose **Apps&nbsp;▸ Tails&nbsp;▸ "
+"Persistent Storage**."
+msgstr ""
+"Para criar o Armazenamento Persistente, escolha **Aplicativos**&nbsp;▸ "
+"**Tails**&nbsp;▸ **Armazenamento Persistente**."
+
+#. type: Plain text
+msgid ""
+"When run for the first time, or after [[deleting a previous Persistent "
+"Storage|delete]], an assistant allows you to create a Persistent Storage in "
+"the free space left on the USB stick."
+msgstr ""
+"Ao ser iniciado pela primeira vez, ou após [[um Armazenamento Persistente "
+"anterior ser apagado|delete]], o assistente permite a criação de um novo "
+"Armazenamento Persistente no espaço livre no pendrive USB."
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"note\">\n"
+msgstr "<div class=\"note\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>If you get the error message <i>Sorry, impossible to create a Persistent\n"
+"Storage on this device</i>, you need to follow our instructions on [[installing\n"
+"Tails on a USB stick|install]].</p>\n"
+msgstr ""
+"<p>Caso você receba a mensagem de erro <i>Desculpe, não foi possível criar um Armazenamento\n"
+"Persistente neste dispositivo</i>, será necessário seguir as instruções em [[instalando\n"
+"Tails em um pendrive USB|install]].</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>If you receive the error message while running Tails using\n"
+"<i>virt-manager</i>, then you need to\n"
+"[[run Tails from our USB image|doc/advanced_topics/virtualization/virt-manager#usb_image]]\n"
+"instead of our ISO image.</p>\n"
+msgstr ""
+"<p>Se você receber uma mensagem de erro enquanto estiver usando o Tails no\n"
+"<i>virt-manager</i>, você deve\n"
+"[[executar o Tails a partir da nossa imagem USB|doc/advanced_topics/virtualization/virt-manager#usb_image]]\n"
+"ao invés da nossa imagem ISO.</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!img creation.png class=\"screenshot\" alt=\"\"]]\n"
+msgstr "[[!img creation.png class=\"screenshot\" alt=\"\"]]\n"
+
+#. type: Bullet: '1. '
+msgid "Click **Continue** to start the creation assistant."
+msgstr "Clique **Continue** para iniciar o assistente de criação."
+
+#. type: Bullet: '1. '
+msgid "Type a passphrase of your choice in the **Passphrase** text box."
+msgstr "Digite uma senha de sua escolha na caixa de texto **Senha**."
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   <p>We recommend choosing a long passphrase made of 5 to 7 random words.\n"
+"   <a href=\"https://theintercept.com/2015/03/26/passphrases-can-memorize-attackers-cant-guess/\">Learn\n"
+"   about the maths behind memorizable and secure passphrases.</a></p>\n"
+msgstr ""
+"   <p>Recomendamos que você escolha uma senha longa composta de 5 a 7 palavras aleatórias.\n"
+"   <a href=\"https://theintercept.com/2015/03/26/passphrases-can-memorize-attackers-cant-guess/\">Saiba mais\n"
+"   sobre a matemática por trás de senhas seguras e memorizáveis.</a></p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "   <!-- Consider removing after #18736. -->\n"
+msgstr "   <!-- Consider removing after #18736. -->\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   <div class=\"caution\">\n"
+"   <p>It is impossible to recover your passphrase if you forget it!</p>\n"
+msgstr ""
+"   <div class=\"caution\">\n"
+"   <p>Não será possível recuperar sua senha caso você a esqueça!</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   <p>To help you remember your passphrase, you can write it on a piece of\n"
+"   paper, store it in your wallet for a few days, and destroy it once\n"
+"   you know it well.</p>\n"
+"   </div>\n"
+msgstr ""
+"   <p>Para te ajudar a lembrar sua senha, você pode escrevê-la em um pedaço de\n"
+"   papel, armazená-la em sua carteira por alguns dias, e destruí-la uma vez que\n"
+"   você a tenha memorizado.</p>\n"
+"   </div>\n"
+
+#. type: Bullet: '1. '
+msgid "Type again the same passphrase in the **Confirm** text box."
+msgstr "Digite novamente a mesma senha na caixa de texto **Confirme**."
+
+#. type: Bullet: '1. '
+msgid "Click **Create Persistent Storage**."
+msgstr "Clique em **Criar Armazenamento Persistente**."
+
+#. type: Plain text
+#, no-wrap
+msgid "   The creation process takes a few seconds.\n"
+msgstr "   O processo de criação demora alguns segundos.\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"next\">\n"
+msgstr "<div class=\"next\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>After the creation is finished, you can start [[configuring your Persistent\n"
+"Storage|configure]].</p>\n"
+msgstr ""
+"<p>Uma vez que a criação tenha finalizado, você pode começar a [[configurar seu\n"
+"Armazenamento Persistente|configure]].</p>\n"
+
+#, no-wrap
+#~ msgid "   <div class=\"tip\">\n"
+#~ msgstr "   <div class=\"tip\">\n"
+
+#, no-wrap
+#~ msgid "   </div>\n"
+#~ msgstr "   </div>\n"
+
+#~ msgid ""
+#~ "If you start Tails from a USB stick, you can create an encrypted "
+#~ "Persistent Storage in the free space left on the USB stick.  The files "
+#~ "and settings stored in the Persistent Storage are saved encrypted and "
+#~ "remain available across different working sessions."
+#~ msgstr ""
+#~ "Se você iniciar o Tails a partir de um pendrive USB, será possível criar "
+#~ "um Armazenamento Persistente criptografado no espaço livre restante no "
+#~ "pendrive USB. Os arquivos e configurações armazenados no Armazenamento "
+#~ "Persistente são criptografados e podem ser acessados em diferentes "
+#~ "sessões de trabalho."
+
+#~ msgid "You can use this Persistent Storage to store, for example:"
+#~ msgstr ""
+#~ "Você pode usar esse armazenamento persistente para armazenar, por exemplo:"
+
+#~ msgid "Personal files"
+#~ msgstr "Arquivos pessoais"
+
+#~ msgid "Some settings"
+#~ msgstr "Algumas configurações"
+
+#~ msgid "Additional software"
+#~ msgstr "Programas adicionais"
+
+#~ msgid "Encryption keys"
+#~ msgstr "Chaves de criptografia"
+
+#~ msgid ""
+#~ "The Persistent Storage is an encrypted partition protected by a "
+#~ "passphrase on the USB stick."
+#~ msgstr ""
+#~ "O armazenamento persistente é uma partição criptografada no seu pendrive "
+#~ "USB protegida por uma senha."
+
+#~ msgid ""
+#~ "After you create a Persistent Storage, you can choose to unlock it or not "
+#~ "each time you start Tails."
+#~ msgstr ""
+#~ "Após criar o Armazenamento Persistente, você pode escolher habilitá-lo ou "
+#~ "não cada vez que iniciar o Tails."
+
+#, no-wrap
+#~ msgid "[[!inline pages=\"doc/first_steps/persistence.caution\" raw=\"yes\" sort=\"age\"]]\n"
+#~ msgstr "[[!inline pages=\"doc/first_steps/persistence.caution.pt\" raw=\"yes\" sort=\"age\"]]\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<p>To learn how Tails implements Persistent Storage, see our\n"
+#~ "[[design documentation about persistence|contribute/design/persistence]].</p>\n"
+#~ msgstr ""
+#~ "<p>Para saber como Tails implementa o Armazenamento Persistente, veja nossa\n"
+#~ "[[documentação de design sobre persistência|contribute/design/persistence]]</p>\n"
+
+#, no-wrap
+#~ msgid "[[!toc levels=3]]\n"
+#~ msgstr "[[!toc levels=3]]\n"
+
+#, no-wrap
+#~ msgid "<h1 id=\"create\">Creating the Persistent Storage</h1>\n"
+#~ msgstr "<h1 id=\"create\">Criando o Armazenamento Persistente</h1>\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<p>If you receive the error message <em>Device was not created using a USB\n"
+#~ "image or Tails installer</em>, then you need to reinstall Tails either by:</p>\n"
+#~ msgstr ""
+#~ "<p>Se voce receber a mensagem de erro <em>Dispositivo não foi criado usando uma\n"
+#~ "imagem USB ou o instalador do Tails</em>, então você precisa reinstalar o Tails de uma das seguintes formas: </p>\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<ul>\n"
+#~ "  <li>Installing using our [[USB image|install/download]] instead of our ISO image</li>\n"
+#~ "  <li>[[Installing from another Tails|install/clone]]</li>\n"
+#~ "</ul>\n"
+#~ msgstr ""
+#~ "<ul>\n"
+#~ "  <li>Instalando por meio da nossa [[imagem USB|install/download]] ao invés da nossa imagem ISO </li>\n"
+#~ "  <li>[[Instalando a partir de outro Tails|install/clone]]</li>\n"
+#~ "</ul>\n"
+
+#, no-wrap
+#~ msgid "<!-- We should improve this error message in #10048 and get rid of this note. -->\n"
+#~ msgstr "<!-- We should improve this error message in #10048 and get rid of this note. -->\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<p>The error message <em>Error, Persistence volume is not\n"
+#~ "unlocked.</em> means that the Persistent Storage was not unlocked in\n"
+#~ "the Welcome Screen. You cannot use or configure your Persistent Storage\n"
+#~ "but you can delete it and create a new one.</p>\n"
+#~ msgstr ""
+#~ "<p>A mensagem de erro <em>Erro, o volume persistente não\n"
+#~ "está destrancado.</em> significa que o Armazenamento Persistente não foi desbloqueado na\n"
+#~ "Tela Inicial. Você não pode configurar o seu Armazenamento Persistente,\n"
+#~ "mas pode apagá-lo e criar um novo.</p>\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<p>To change the configuration of your Persistent Storage, restart Tails,\n"
+#~ "unlock the Persistent Storage, and choose <strong>Applications</strong>&nbsp;▸\n"
+#~ "<strong>Tails</strong>&nbsp;▸ <strong>Configure persistent volume</strong>\n"
+#~ "again.</p>\n"
+#~ msgstr ""
+#~ "<p>Para mudar a configuração do seu Armazenamento Persistente, reinicie o Tails,\n"
+#~ "desbloqueie o Armazenamento Persistente, e novamente escolha <strong>Aplicativos</strong>&nbsp;▸\n"
+#~ "<strong>Tails</strong>&nbsp;▸ <strong>Configure persistent volume</strong>.</p>\n"
+
+#, no-wrap
+#~ msgid "<div class=\"bug\">\n"
+#~ msgstr "<div class=\"bug\">\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<p>There is currently no visible way to close the\n"
+#~ "<b>Configure persistent volume</b> application when no changes have been made.</p>\n"
+#~ msgstr ""
+#~ "<p>Não há, no momento, uma maneira visível de fechar o\n"
+#~ "aplicativo de <b>Configuração do volume persistente</b> caso nenhuma mudança tenha sido feita.</p>\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<p>To close the <b>Configure persistent volume</b> application,\n"
+#~ "press **Esc**.</p>\n"
+#~ msgstr ""
+#~ "<p>Para fechar o aplicativo de <b>Configuração do armazenamento persistente</b>,\n"
+#~ "pressione **Esc**.</p>\n"
+
+#, no-wrap
+#~ msgid "<h1 id=\"configure\">Configuring the Persistent Storage</h1>\n"
+#~ msgstr "<h1 id=\"configure\">Configurar o armazenamento persistente</h1>\n"
+
+#~ msgid ""
+#~ "To configure the Persistent Storage, choose **Applications**&nbsp;▸ "
+#~ "**Tails**&nbsp;▸ **Configure persistent volume**."
+#~ msgstr ""
+#~ "Para configurar o Armazenamento Persistente, escolha "
+#~ "**Aplicativos**&nbsp;▸ **Tails**&nbsp;▸ **Configuração do volume "
+#~ "persistente**."
+
+#, no-wrap
+#~ msgid ""
+#~ "<p><strong>Restart Tails to apply the changes</strong> after selecting or\n"
+#~ "deselecting one or several features.</p>\n"
+#~ msgstr ""
+#~ "<p><strong>Reinicie o Tails para aplicar estas mudanças</strong> após selecionar ou\n"
+#~ " remover uma ou mais funcionalidades.</p>\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<p>Only the features that are listed below can currently be made\n"
+#~ "persistent.</p>\n"
+#~ msgstr ""
+#~ "<p>Apenas as funcionalidades listadas abaixo podem ser configuradas\n"
+#~ "como persistentes.</p>\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<p>We are often asked to implement new features of the\n"
+#~ "Persistent Storage:\n"
+#~ "Tor Browser preferences,\n"
+#~ "Tor configuration,\n"
+#~ "desktop background,\n"
+#~ "mouse and touchpad settings,\n"
+#~ "etc.\n"
+#~ "See the\n"
+#~ msgstr ""
+#~ "<p>Recebemos pedidos frequentes para implementação de novos recursos do\n"
+#~ "Armazenamento Persistente:\n"
+#~ "configurações do Navegador Tor,\n"
+#~ "configurações do Tor,\n"
+#~ "papel de parede,\n"
+#~ "configurações de mouse e touchpad,\n"
+#~ "etc.\n"
+#~ "Veja a\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "groups/tails/-/issues?scope=all&utf8=✓&state=opened&label_name%5B%5D=C%3APersistence\n"
+#~ "desc=\"list of issues about the Persistent Storage\"]].<p>\n"
+#~ msgstr ""
+#~ "groups/tails/-/issues?scope=all&utf8=✓&state=opened&label_name%5B%5D=C%3APersistence\n"
+#~ "desc=\"lista de tíquetes sobre o Armazenamento Persistente\"]].<p>\n"
+
+#, no-wrap
+#~ msgid "<div class=\"bug\" id=\"deselect\">\n"
+#~ msgstr "<div class=\"bug\" id=\"deselect\">\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<p>If you turn off a feature, it will be\n"
+#~ "unavailable after restarting Tails but the\n"
+#~ "corresponding files\n"
+#~ "are still saved in the Persistent Storage.</p>\n"
+#~ msgstr ""
+#~ "<p>Se você desabilitar uma funcionalidade, ela estará\n"
+#~ "indisponível após reiniciar o Tails, mas os\n"
+#~ "arquivos correspondentes\n"
+#~ "ainda estarão salvos no armazenamento persistente</p>\n"
+
+#, no-wrap
+#~ msgid "<p>To delete the files corresponding to a feature:</p>\n"
+#~ msgstr "<p>Para apagar os arquivos correspondentes a uma funcionalidade:</p>\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<ol>\n"
+#~ "  <li>\n"
+#~ "    Start Tails and set an\n"
+#~ "    [[administration password|doc/first_steps/welcome_screen/administration_password]].\n"
+#~ "  </li>\n"
+#~ "  <li>\n"
+#~ "    Choose\n"
+#~ "    <span class=\"menuchoice\">\n"
+#~ "      **Applications**&nbsp;▸\n"
+#~ "      **System Tools**&nbsp;▸\n"
+#~ "      **Root Terminal**\n"
+#~ "    </span>\n"
+#~ "    to open a terminal with administration rights.\n"
+#~ "  </li>\n"
+#~ "  <li>\n"
+#~ "    Execute the <span class=\"code\">nautilus</span> command to open the file\n"
+#~ "    browser with administration rights.\n"
+#~ "  </li>\n"
+#~ "  <li>\n"
+#~ "    In the file browser, navigate to <span class=\"filename\">\n"
+#~ "    /live/persistence/TailsData_unlocked</span>.\n"
+#~ "  </li>\n"
+#~ "  <li>\n"
+#~ "    Delete the folder corresponding to the feature:\n"
+#~ "    <ul>\n"
+#~ "      <li><strong>Personal Data</strong>: <code>Persistent</code> folder</li>\n"
+#~ "      <li><strong>Welcome Screen</strong>: <code>greeter-settings</code> folder</li>\n"
+#~ "      <li><strong>Browser Bookmarks</strong>: <code>bookmarks</code> folder</li>\n"
+#~ "      <li><strong>Network Connections</strong>: <code>nm-system-connections</code></li>\n"
+#~ "      <li><strong>Additional Software</strong>: <code>apt</code> and <code>apt-sources.list.d</code> folders and <code>live-additional-software.conf</code> file</li>\n"
+#~ "      <li><strong>Printers</strong>: <code>cups-configuration</code> folder</li>\n"
+#~ "      <li><strong>Thunderbird</strong>: <code>thunderbird</code> folder</li>\n"
+#~ "      <li><strong>GnuPG</strong>: <code>gnupg</code> folder</li>\n"
+#~ "      <li><strong>Bitcoin Client</strong>: <code>electrum</code> folder</li>\n"
+#~ "      <li><strong>Pidgin</strong>: <code>pidgin</code> folder</li>\n"
+#~ "      <li><strong>SSH Client</strong>: <code>openssh-client</code> folder</li>\n"
+#~ "      <li><strong>Dotfiles</strong>: <code>dotfiles</code> folder</li>\n"
+#~ "    </ul>\n"
+#~ "  </li>\n"
+#~ "</ol>\n"
+#~ msgstr ""
+#~ "<ol>\n"
+#~ "  <li>\n"
+#~ "    Inicie o Tails e configure uma\n"
+#~ "    [[senha de administração|doc/first_steps/welcome_screen/administration_password]].\n"
+#~ "  </li>\n"
+#~ "  <li>\n"
+#~ "    Escolha \n"
+#~ "    <span class=\"menuchoice\">\n"
+#~ "      **Aplicativos**&nbsp;▸\n"
+#~ "      **Ferramentas de sitema**&nbsp;▸\n"
+#~ "      **Terminal de Root**\n"
+#~ "    </span>\n"
+#~ "    para abrir um terminal como permissões administrativas.\n"
+#~ "  </li>\n"
+#~ "  <li>\n"
+#~ "    Execute o comando <span class=\"code\">nautilus</span> para abrir o gerenciador de\n"
+#~ "    arquivos com permissões de administração.\n"
+#~ "  </li>\n"
+#~ "  <li>\n"
+#~ "    No gerenciador de arquivos, vá ate <span class=\"filename\">\n"
+#~ "    /live/persistence/TailsData_unlocked</span>.\n"
+#~ "  </li>\n"
+#~ "  <li>\n"
+#~ "    Apague a pasta correspondente ao recurso:\n"
+#~ "    <ul>\n"
+#~ "      <li><strong>Dados Pessoais</strong>: pasta <code>Persistent</code> </li>\n"
+#~ "      <li><strong>Tela de Boas-vindas</strong>: pasta <code>greeter-settings</code> </li>\n"
+#~ "      <li><strong>Favoritos do Navegador</strong>: pasta <code>bookmarks</code> </li>\n"
+#~ "      <li><strong>Conexões de Rede</strong>: <code>nm-system-connections</code></li>\n"
+#~ "      <li><strong>Programas adicionais</strong>: pastas <code>apt</code> e <code>apt-sources.list.d</code>, e o arquivo <code>live-additional-software.conf</code> </li>\n"
+#~ "      <li><strong>Impressoras</strong>: pasta <code>cups-configuration</code> </li>\n"
+#~ "      <li><strong>Thunderbird</strong>: pasta <code>thunderbird</code> </li>\n"
+#~ "      <li><strong>GnuPG</strong>: pasta <code>gnupg</code> </li>\n"
+#~ "      <li><strong>Cliente Bitcoin</strong>: pasta <code>electrum</code> </li>\n"
+#~ "      <li><strong>Pidgin</strong>: pasta <code>pidgin</code> </li>\n"
+#~ "      <li><strong>Cliente SSH</strong>: pasta <code>openssh-client</code> </li>\n"
+#~ "      <li><strong>Arquivos de configuração (Dotfiles)</strong>: pasta <code>dotfiles</code> </li>\n"
+#~ "    </ul>\n"
+#~ "  </li>\n"
+#~ "</ol>\n"
+
+#, no-wrap
+#~ msgid "<a id=\"personal_data\"></a>\n"
+#~ msgstr "<a id=\"personal_data\"></a>\n"
+
+#, no-wrap
+#~ msgid "<div class=\"icon\">\n"
+#~ msgstr "<div class=\"icon\">\n"
+
+#, no-wrap
+#~ msgid "[[!img stock_folder.png link=no]]\n"
+#~ msgstr "[[!img stock_folder.png link=no]]\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<div class=\"text\"><h2>Personal Data</h2></div>\n"
+#~ "</div>\n"
+#~ msgstr ""
+#~ "<div class=\"text\"><h2>Dados Pessoais</h2></div>\n"
+#~ "</div>\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "When the Personal Data feature is turned on, you can save your personal files and working\n"
+#~ "documents in the *Persistent* folder.\n"
+#~ msgstr ""
+#~ "Quando a funcionalidade de Dados Pessoais está ativada, você pode salvar seus arquivos pessoais e documentos\n"
+#~ "de trabalho na pasta *Persistent*.\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "To open the *Persistent* folder, choose\n"
+#~ "<span class=\"menuchoice\">\n"
+#~ "  **Places**&nbsp;▸\n"
+#~ "  **Persistent**</span>.\n"
+#~ msgstr ""
+#~ "Para abrir a pasta *Persistent*, escolha\n"
+#~ "<span class=\"menuchoice\">\n"
+#~ "  **Locais**&nbsp;▸\n"
+#~ "  **Persistent**</span>\n"
+
+#, no-wrap
+#~ msgid "<a id=\"welcome_screen\"></a>\n"
+#~ msgstr "<a id=\"welcome_screen\"></a>\n"
+
+#, no-wrap
+#~ msgid "[[!img lib/apps/preferences-system.png link=\"no\"]]\n"
+#~ msgstr "[[!img lib/apps/preferences-system.png link=\"no\"]]\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<div class=\"text\"><h2>Welcome Screen</h2></div>\n"
+#~ "</div>\n"
+#~ msgstr ""
+#~ "<div class=\"text\"><h2>Tela de boas-vindas</h2></div>\n"
+#~ "</div>\n"
+
+#~ msgid ""
+#~ "When the Welcome Screen feature is turned on, the settings from the "
+#~ "Welcome Screen are saved in the Persistent Storage: language, keyboard, "
+#~ "and additional settings."
+#~ msgstr ""
+#~ "Quando a funcionalidade da tela de boas-vindas é ativada, as "
+#~ "configurações da tela de boas-vindas serão salvas no armazenamento "
+#~ "persistente: língua, teclado e configurações adicionais."
+
+#~ msgid ""
+#~ "To restore your settings when starting Tails, unlock your Persistent "
+#~ "Storage in the Welcome Screen."
+#~ msgstr ""
+#~ "Para restaurar suas configurações ao iniciar o Tails, desbloqueie seu "
+#~ "armazenamento persistente na tela de boas-vindas."
+
+#, no-wrap
+#~ msgid "<a id=\"tor-bridge\">\n"
+#~ msgstr "<a id=\"tor-bridge\">\n"
+
+#, no-wrap
+#~ msgid "[[!img onioncircuits.png link=no]]\n"
+#~ msgstr "[[!img onioncircuits.png link=no]]\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<div class=\"text\"><h2>Tor Bridge</h2></div>\n"
+#~ "</div>\n"
+#~ msgstr ""
+#~ "<div class=\"text\"><h2>Pontes Tor</h2></div>\n"
+#~ "</div>\n"
+
+#~ msgid ""
+#~ "When the Tor Bridge feature is turned on, the last [[Tor bridge|doc/"
+#~ "anonymous_internet/tor]] that you used to connect to Tor successfully is "
+#~ "saved in the Persistent Storage."
+#~ msgstr ""
+#~ "Quando o recurso de pontes Tor estiver ativo, a ultima [[ponte Tor|doc/"
+#~ "anonymous_internet/tor]] que você usou para se conectar ao Tor com "
+#~ "sucesso é salva no armazenamento Persistente."
+
+#, no-wrap
+#~ msgid "<a id=\"browser_bookmarks\"></a>\n"
+#~ msgstr "<a id=\"browser_bookmarks\"></a>\n"
+
+#, no-wrap
+#~ msgid "[[!img user-bookmarks.png link=no]]\n"
+#~ msgstr "[[!img user-bookmarks.png link=no]]\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<div class=\"text\"><h2>Browser Bookmarks</h2></div>\n"
+#~ "</div>\n"
+#~ msgstr ""
+#~ "<div class=\"text\"><h2>Favoritos do navegador</h2></div>\n"
+#~ "</div>\n"
+
+#~ msgid ""
+#~ "When the Browser Bookmarks feature is turned on, changes to the bookmarks "
+#~ "in [[*Tor Browser*|doc/anonymous_internet/Tor_Browser]] are saved in the "
+#~ "Persistent Storage. This does not apply to the [[*Unsafe Browser*|doc/"
+#~ "anonymous_internet/unsafe_browser]]."
+#~ msgstr ""
+#~ "Quando a funcionalidade de Favoritos do navegador estiver ativada, "
+#~ "alterações nos favoritos do [[*Navegador Tor*|doc/anonymous_internet/"
+#~ "Tor_Browser]] serão salvas no Armazenamento Persistente. Isso não se "
+#~ "aplica ao [[*Navegador não-confiável*|doc/anonymous_internet/"
+#~ "unsafe_browser]]."
+
+#, no-wrap
+#~ msgid "<a id=\"network_connections\"></a>\n"
+#~ msgstr "<a id=\"network_connections\"></a>\n"
+
+#, no-wrap
+#~ msgid "[[!img network-manager.png link=no]]\n"
+#~ msgstr "[[!img network-manager.png link=no]]\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<div class=\"text\"><h2>Network Connections</h2></div>\n"
+#~ "</div>\n"
+#~ msgstr ""
+#~ "<div class=\"text\"><h2>Conexões de Rede</h2></div>\n"
+#~ "</div>\n"
+
+#~ msgid ""
+#~ "When the Network Connections feature is turned on, the [[configuration of "
+#~ "the network devices and connections|doc/anonymous_internet/"
+#~ "networkmanager]] is saved in the Persistent Storage, for example the "
+#~ "passwords of Wi-Fi networks."
+#~ msgstr ""
+#~ "Quando a funcionalidade de Conexões de rede for ativada, as "
+#~ "[[configurações de dispositivos de rede e conexões|doc/anonymous_internet/"
+#~ "networkmanager]] serão salvas no armazenamento persistente, por exemplo "
+#~ "as senhas de redes Wi-Fi."
+
+#, no-wrap
+#~ msgid "<a id=\"additional_software\"></a>\n"
+#~ msgstr "<a id=\"additional_software\"></a>\n"
+
+#, no-wrap
+#~ msgid "[[!img additional-software.png link=no]]\n"
+#~ msgstr "[[!img additional-software.png link=no]]\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<div class=\"text\"><h2>Additional Software</h2></div>\n"
+#~ "</div>\n"
+#~ msgstr ""
+#~ "<div class=\"text\"><h2>Aplicativos adicionais</h2></div>\n"
+#~ "</div>\n"
+
+#~ msgid ""
+#~ "When the Additional Software feature is turned on, a list of [[additional "
+#~ "software|doc/first_steps/additional_software]] of your choice is "
+#~ "automatically installed every time you start Tails."
+#~ msgstr ""
+#~ "Quando a funcionalidade de Aplicativos Adicionais estiver ativada, uma "
+#~ "lista de [[Aplicativos adicionais|doc/first_steps/additional_software]] "
+#~ "de sua escolha é instalada automaticamente toda vez que você iniciar o "
+#~ "Tails."
+
+#~ msgid ""
+#~ "The corresponding software packages are stored in the Persistent Storage. "
+#~ "They are automatically upgraded for security after a network connection "
+#~ "is established."
+#~ msgstr ""
+#~ "Os pacotes de aplicativos correspondentes estão armazenados no "
+#~ "Armazenamento Persistente. Eles são automaticamente atualizados por "
+#~ "segurança após uma conexão de rede ser estabelecida."
+
+#, no-wrap
+#~ msgid "<div class=\"caution\">\n"
+#~ msgstr "<div class=\"caution\">\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<p>The packages included in Tails are carefully tested for security.\n"
+#~ "Installing additional packages might break the security built in Tails,\n"
+#~ "so [[be careful with what you install|additional_software#warning]].</p>\n"
+#~ msgstr ""
+#~ "<p>Os pacotes inclusos no Tails são cuidadosamente testados para segurança.\n"
+#~ "Instalar um pacote adicional pode quebrar a segurança embutida no Tails,\n"
+#~ "então [[tenha cuidado com o que você instala|additional_software#warning]].</p>\n"
+
+#, no-wrap
+#~ msgid "<a id=\"printers\"></a>\n"
+#~ msgstr "<a id=\"printers\"></a>\n"
+
+#, no-wrap
+#~ msgid "[[!img printer.png link=no]]\n"
+#~ msgstr "[[!img printer.png link=no]]\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<div class=\"text\"><h2>Printers</h2></div>\n"
+#~ "</div>\n"
+#~ msgstr ""
+#~ "<div class=\"text\"><h2>Impressoras</h2></div>\n"
+#~ "</div>\n"
+
+#~ msgid ""
+#~ "When the Printers feature is turned on, the [[configuration of the "
+#~ "printers|doc/sensitive_documents/printing_and_scanning]] is saved in the "
+#~ "Persistent Storage."
+#~ msgstr ""
+#~ "Quando a funcionalidade de Impressoras estiver ativa, as [[configurações "
+#~ "de impressoras|doc/sensitive_documents/printing_and_scanning]] serão "
+#~ "salvas no armazenamento persistente."
+
+#, no-wrap
+#~ msgid "<a id=\"thunderbird\"></a>\n"
+#~ msgstr "<a id=\"thunderbird\"></a>\n"
+
+#, no-wrap
+#~ msgid "[[!img lib/apps/thunderbird.png link=no]]\n"
+#~ msgstr "[[!img lib/apps/thunderbird.png link=no]]\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<div class=\"text\"><h2>Thunderbird</h2></div>\n"
+#~ "</div>\n"
+#~ msgstr ""
+#~ "<div class=\"text\"><h2>Thunderbird</h2></div>\n"
+#~ "</div>\n"
+
+#~ msgid ""
+#~ "When the Thunderbird feature is turned on, the email, feeds, and OpenPGP "
+#~ "keys in the [[*Thunderbird* email client|doc/anonymous_internet/"
+#~ "thunderbird]] are saved in the Persistent Storage."
+#~ msgstr ""
+#~ "Quando a funcionalidade do Thunderbird for ativada, emails, feeds e "
+#~ "chaves OpenPGP no  [[cliente de email *Thunderbird*|doc/"
+#~ "anonymous_internet/thunderbird]] serão salvos no armazenamento "
+#~ "persistente."
+
+#, no-wrap
+#~ msgid "<a id=\"gnupg\"></a>\n"
+#~ msgstr "<a id=\"gnupg\"></a>\n"
+
+#, no-wrap
+#~ msgid "[[!img seahorse-key.png link=no]]\n"
+#~ msgstr "[[!img seahorse-key.png link=no]]\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<div class=\"text\"><h2>GnuPG</h2></div>\n"
+#~ "</div>\n"
+#~ msgstr ""
+#~ "<div class=\"text\"><h2>GnuPG</h2></div>\n"
+#~ "</div>\n"
+
+#~ msgid ""
+#~ "When the GnuPG feature is turned on, the OpenPGP keys that you create or "
+#~ "import in *GnuPG* and *Kleopatra* are saved in the Persistent Storage."
+#~ msgstr ""
+#~ "Quando a funcionalidade GnuPG está ativa, as chaves OpenPGP que você cria "
+#~ "ou importa no *GnuPG* e *Kleopatra* são salvas no Armazenamento "
+#~ "Persistente."
+
+#, no-wrap
+#~ msgid ""
+#~ "<p>Since Tails 4.13 (November 2020), <em>Thunderbird</em> uses its own OpenPGP keyring,\n"
+#~ "different from the keyring used by <em>GnuPG</em> and <em>Kleopatra</em>. You don't need to enable the GnuPG\n"
+#~ "feature anymore if you only use OpenPGP encryption in\n"
+#~ "<em>Thunderbird</em>.</p>\n"
+#~ msgstr ""
+#~ "<p>Desde o Tails 4.13 (novembro de 2020), o <em>Thunderbird</em> usa um chaveiro OpenPGP próprio,\n"
+#~ "que é diferente do chaveiro usado pelo <em>GnuPG</em> e pelo <em>Kleopatra</em>. Você não precisa mais habilitar a funcionalidade\n"
+#~ "GnuPG caso você use criptografia OpenPGP apenas no\n"
+#~ "<em>Thunderbird</em>.</p>\n"
+
+#, no-wrap
+#~ msgid "<a id=\"bitcoin\"></a>\n"
+#~ msgstr "<a id=\"bitcoin\"></a>\n"
+
+#, no-wrap
+#~ msgid "[[!img lib/apps/electrum.png link=no]]\n"
+#~ msgstr "[[!img lib/apps/electrum.png link=no]]\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<div class=\"text\"><h2>Bitcoin Client</h2></div>\n"
+#~ "</div>\n"
+#~ msgstr ""
+#~ "<div class=\"text\"><h2>Cliente Bitcoin</h2></div>\n"
+#~ "</div>\n"
+
+#~ msgid ""
+#~ "When the Bitcoin Client feature is turned on, the bitcoin wallet and "
+#~ "preferences of the [[*Electrum* bitcoin client|anonymous_internet/"
+#~ "electrum]] are saved in the Persistent Storage."
+#~ msgstr ""
+#~ "Quando a funcionalidade de cliente de Bitcoin for ativada, a carteira "
+#~ "bitcoin e configurações do [[cliente bitcoin *Electrum*|"
+#~ "anonymous_internet/electrum]] serão salvas no armazenamento persistente."
+
+#, no-wrap
+#~ msgid "<a id=\"pidgin\"></a>\n"
+#~ msgstr "<a id=\"pidgin\"></a>\n"
+
+#, no-wrap
+#~ msgid "[[!img lib/apps/pidgin.png link=no]]\n"
+#~ msgstr "[[!img lib/apps/pidgin.png link=no]]\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<div class=\"text\"><h2>Pidgin</h2></div>\n"
+#~ "</div>\n"
+#~ msgstr ""
+#~ "<div class=\"text\"><h2>Pidgin</h2></div>\n"
+#~ "</div>\n"
+
+#~ msgid ""
+#~ "When the Pidgin feature is turned on, all the configuration files of the "
+#~ "[[*Pidgin* internet messenger|doc/anonymous_internet/pidgin]] are saved "
+#~ "in the Persistent Storage:"
+#~ msgstr ""
+#~ "Quando a funcionalidade do Pidgin for ativada, todos os arquivos de "
+#~ "configurações do [[mensageiro de internet *Pidgin*|doc/anonymous_internet/"
+#~ "pidgin]] serão salvas no armazenamento persistente:"
+
+#~ msgid "The configuration of your accounts, buddies and chats."
+#~ msgstr "A configuração das suas contas, contatos e conversas."
+
+#~ msgid "Your OTR encryption keys and keyring."
+#~ msgstr "Suas chaves e chaveiro de criptografia OTR."
+
+#~ msgid ""
+#~ "The content of the discussions is not saved unless you configure <span "
+#~ "class=\"application\">Pidgin</span> to do so."
+#~ msgstr ""
+#~ "O conteúdo das conversas não é salvo a menos que você configure o <span "
+#~ "class=\"application\">Pidgin</span> para fazê-lo."
+
+#~ msgid ""
+#~ "All the configuration options are available from the graphical interface "
+#~ "of *Pidgin*. There is no need to manually edit or overwrite the "
+#~ "configuration files."
+#~ msgstr ""
+#~ "Todas as opções de configuração estão disponíveis na interface gráfica do "
+#~ "*Pidgin*. Não há necessidade de editar manualmente ou sobrescrever os "
+#~ "arquivos de configuração."
+
+#, no-wrap
+#~ msgid "<a id=\"ssh_client\"></a>\n"
+#~ msgstr "<a id=\"ssh_client\"></a>\n"
+
+#, no-wrap
+#~ msgid "[[!img seahorse-key-ssh.png link=no]]\n"
+#~ msgstr "[[!img seahorse-key-ssh.png link=no]]\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<div class=\"text\"><h2>SSH Client</h2></div>\n"
+#~ "</div>\n"
+#~ msgstr ""
+#~ "<div class=\"text\"><h2>Cliente SSH</h2></div>\n"
+#~ "</div>\n"
+
+#~ msgid ""
+#~ "When the SSH Client feature is turned on, all the files related to the "
+#~ "secure-shell (SSH) client are saved in the Persistent Storage:"
+#~ msgstr ""
+#~ "Quando a funcionalidade do cliente SSH for ativada, todos os arquivos "
+#~ "relacionados ao cliente secure-shell (SSH) serão salvas no armazenamento "
+#~ "persistente:"
+
+#~ msgid "The SSH keys that you create or import"
+#~ msgstr "As chaves SSH que você cria ou importa"
+
+#~ msgid "The public keys of the hosts you connect to"
+#~ msgstr "As chaves públicas dos servidores aos quais você se conecta"
+
+#~ msgid ""
+#~ "The SSH configuration file in <span class=\"filename\">~/.ssh/config</"
+#~ "span>"
+#~ msgstr ""
+#~ "O arquivo de configuração SSH em <span class=\"filename\">~/.ssh/config</"
+#~ "span>"
+
+#, no-wrap
+#~ msgid ""
+#~ "<p>If you manually edit the <i>~/.ssh/config</i>\n"
+#~ "configuration file, make sure not to overwrite the\n"
+#~ "default configuration from the\n"
+#~ "<i>/etc/ssh/ssh_config</i> file. Otherwise, you might weaken the\n"
+#~ "encryption defaults or render SSH unusable.</p>\n"
+#~ msgstr ""
+#~ "<p>Caso você altere manualmente o arquivo de configuração <i>~/.ssh/config</i>,\n"
+#~ "tenha certeza de não sobrescrever as configurações padrão do arquivo\n"
+#~ "<i>/etc/ssh/ssh_config</i>. Caso contrário, você pode enfraquecer os padrões\n"
+#~ "de criptografia, ou tornar o SSH inutilizável.</p>\n"
+
+#, no-wrap
+#~ msgid "<a id=\"dotfiles\"></a>\n"
+#~ msgstr "<a id=\"dotfiles\"></a>\n"
+
+#, no-wrap
+#~ msgid "[[!img preferences-desktop.png link=no]]\n"
+#~ msgstr "[[!img preferences-desktop.png link=no]]\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<div class=\"text\"><h2>Dotfiles</h2></div>\n"
+#~ "</div>\n"
+#~ msgstr ""
+#~ "<div class=\"text\"><h2>Dotfiles</h2></div>\n"
+#~ "</div>\n"
+
+#~ msgid "When the Dotfiles feature is turned on:"
+#~ msgstr "Quando a funcionalidade de Dotfiles for ativada:"
+
+#~ msgid ""
+#~ "All the files in the */live/persistence/TailsData_unlocked/dotfiles* "
+#~ "folder are linked in the *Home* folder using Linux symbolic links."
+#~ msgstr ""
+#~ "Todos os arquivos na pasta */live/persistence/TailsData_unlocked/"
+#~ "dotfiles* serão ligadas à *pasta pessoal* usando links simbólicos Linux."
+
+#~ msgid ""
+#~ "All the files in subfolders of */live/persistence/TailsData_unlocked/"
+#~ "dotfiles* are also linked in the corresponding subfolder of the *Home* "
+#~ "folder using Linux symbolic links."
+#~ msgstr ""
+#~ "Todos os arquivos nas sub pastas de */live/persistence/TailsData_unlocked/"
+#~ "dotfiles* também serão ligadas às correspondentes subpastas da *pasta "
+#~ "pessoal* usando links simbólicos Linux."
+
+#~ msgid ""
+#~ "A shortcut is provided in the left pane of the *Files* browser and in the "
+#~ "**Places** menu in the top navigation bar to access the */live/"
+#~ "persistence/TailsData_unlocked/dotfiles* folder."
+#~ msgstr ""
+#~ "Um atalho é fornecido no painel esquerdo do gerenciador de *Arquivos* e "
+#~ "no menu **Locais** na barra de navegação superior na pasta */live/"
+#~ "persistence/TailsData_unlocked/dotfiles*."
+
+#~ msgid ""
+#~ "For example, having the following files in */live/persistence/"
+#~ "TailsData_unlocked/dotfiles*:"
+#~ msgstr ""
+#~ "Por exemplo, ter os seguintes arquivos em */live/persistence/"
+#~ "TailsData_unlocked/dotfiles*:"
+
+#, no-wrap
+#~ msgid ""
+#~ "    /live/persistence/TailsData_unlocked/dotfiles\n"
+#~ "    ├── file_a\n"
+#~ "    ├── folder\n"
+#~ "    │   ├── file_b\n"
+#~ "    │   └── subfolder\n"
+#~ "    │       └── file_c\n"
+#~ "    └── emptyfolder\n"
+#~ msgstr ""
+#~ "    /live/persistence/TailsData_unlocked/dotfiles\n"
+#~ "    ├── arquivo_a\n"
+#~ "    ├── pasta\n"
+#~ "    │   ├── arquivo_b\n"
+#~ "    │   └── subpasta\n"
+#~ "    │       └── arquivo_c\n"
+#~ "    └── pasta_vazia\n"
+
+#~ msgid "Produces the following result in */home/amnesia*:"
+#~ msgstr "Produz o seguinte resultado em */home/amnesia*:"
+
+#, no-wrap
+#~ msgid ""
+#~ "    /home/amnesia\n"
+#~ "    ├── file_a → /live/persistence/TailsData_unlocked/dotfiles/file_a\n"
+#~ "    └── folder\n"
+#~ "        ├── file_b → /live/persistence/TailsData_unlocked/dotfiles/folder/file_b\n"
+#~ "        └── subfolder\n"
+#~ "            └── file_c → /live/persistence/TailsData_unlocked/dotfiles/folder/subfolder/file_c\n"
+#~ msgstr ""
+#~ "    /home/amnesia\n"
+#~ "    ├── arquivo_a → /live/persistence/TailsData_unlocked/dotfiles/arquivo_a\n"
+#~ "    └── pasta\n"
+#~ "        ├── arquivo_b → /live/persistence/TailsData_unlocked/dotfiles/pasta/arquivo_b\n"
+#~ "        └── subpasta\n"
+#~ "            └── arquivo_c → /live/persistence/TailsData_unlocked/dotfiles/pasta/subpasta/arquivo_c\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<p>The Dotfiles feature only links specific files, and not entire folders, from\n"
+#~ "the Persistent Storage. Accordingly, empty folders are ignored, as shown in\n"
+#~ "the above example.</p>\n"
+#~ msgstr ""
+#~ "<p>A funcionalidade de Dotfiles apenas linka arquivos específicos e não pastas inteiras do\n"
+#~ "armazenamento persistente. Desse modo, pastas vazias são ignoradas, como mostrado no\n"
+#~ "exemplo acima.</p>\n"
+
+#~ msgid ""
+#~ "On Tails and Linux in general, the name of configuration files often "
+#~ "starts with a dot and are sometimes called [[!wikipedia dotfiles]] for "
+#~ "this reason.  The Dotfiles feature of the Persistent Storage makes it "
+#~ "easy to persist such \"*dotfiles*\", for example *~/.gitconfig* or "
+#~ "*~/.bashrc*."
+#~ msgstr ""
+#~ "No Tails e Linux no geral, o nome dos arquivos de configuração geralmente "
+#~ "inicial com um ponto e são chamados as vezes de [[!wikipedia dotfiles]] "
+#~ "por esse motivo.  A funcionalidade dos Dotfiles do armazenamento "
+#~ "persistente torna fácil de conservar esses \"*dotfiles*\", como, por "
+#~ "exemplo, *~/.gitconfig* ou *~/.bashrc*."
+
+#, no-wrap
+#~ msgid "<a id=\"displays\"></a>\n"
+#~ msgstr "<a id=\"displays\"></a>\n"
+
+#, no-wrap
+#~ msgid "Save the configuration of your displays"
+#~ msgstr "Salve as configurações dos seus monitores"
+
+#, no-wrap
+#~ msgid ""
+#~ "If you have more than one display (for example, two monitors or a\n"
+#~ "projector), you can save the configuration of your displays using the\n"
+#~ "**Dotfiles** feature.\n"
+#~ msgstr ""
+#~ "Se você tiver mais de um monitor (por exemplo, dois monitores ou um\n"
+#~ "projetor), você pode salvar a configuração dos seus monitores usando a\n"
+#~ "funcionalidade **Dotfiles**.\n"
+
+#~ msgid "Turn on the *Dotfiles* feature and restart Tails."
+#~ msgstr "Ative as funcionalidades *Dotfiles* e reinicie o Tails."
+
+#~ msgid "Open the *Settings* utility."
+#~ msgstr "Abra as *Configurações*."
+
+#~ msgid ""
+#~ "Choose <span class=\"menuchoice\"> <span class=\"guimenu\">Devices</"
+#~ "span>&nbsp;▸ **Displays**</span>."
+#~ msgstr ""
+#~ "Escolha <span class=\"menuchoice\"> <span class=\"guimenu\">Dispositivos</"
+#~ "span>&nbsp;▸ **Telas**</span>."
+
+#~ msgid "Configure your displays."
+#~ msgstr "Configure seus monitores."
+
+#~ msgid ""
+#~ "Choose **Places**&nbsp;▸ **Dotfiles** to open the <span "
+#~ "class=\"filename\">/live/persistence/TailsData_unlocked/dotfiles</span> "
+#~ "folder in the *Files* browser."
+#~ msgstr ""
+#~ "Escolha **Locais**&nbsp;▸ **Dotfiles** para abrir a pasta <span "
+#~ "class=\"filename\">/live/persistence/TailsData_unlocked/dotfiles</span> "
+#~ "no gerenciador de *Arquivos*."
+
+#~ msgid ""
+#~ "Click on the <span class=\"guimenu\">[[!img lib/pan-down.png alt=\"menu "
+#~ "toggle\" class=\"symbolic\" link=\"no\"]]</span> button in the title bar "
+#~ "and choose **Show Hidden Files**."
+#~ msgstr ""
+#~ "Clique no botão <span class=\"guimenu\">[[!img lib/pan-down.png "
+#~ "alt=\"menu toggle\" class=\"symbolic\" link=\"no\"]]</span> na barra de "
+#~ "título e selecione <span class=\"guilabel\">Mostrar arquivos ocultos</"
+#~ "span>."
+
+#~ msgid ""
+#~ "Create a folder called *.config* (<span class=\"filename\">config</span> "
+#~ "preceded by a dot)."
+#~ msgstr ""
+#~ "Crie uma pasta chamada *.config* (<span class=\"filename\">config</span> "
+#~ "com um ponto no inicio)."
+
+#~ msgid ""
+#~ "Copy the *.config/monitors.xml* file from your *Home* folder to <span "
+#~ "class=\"filename\">/live/persistence/TailsData_unlocked/dotfiles/.config</"
+#~ "span>."
+#~ msgstr ""
+#~ "Copie o arquivo *.config/monitors.xml* da sua *Pasta pessoal* para o "
+#~ "<span class=\"filename\">/live/persistence/TailsData_unlocked/"
+#~ "dotfiles/.config</span>."
+
+#, no-wrap
+#~ msgid "<h1 id=\"use\">Using the Persistent Storage</h1>\n"
+#~ msgstr "<h1 id=\"use\">Usando o armazenamento persistente</h1>\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "When starting Tails, in the\n"
+#~ "**Encrypted Persistent Storage** section of\n"
+#~ "the [[Welcome Screen|welcome_screen]], enter your passphrase and click\n"
+#~ "**Unlock**.\n"
+#~ msgstr ""
+#~ "Ao iniciar o Tails, na\n"
+#~ "seção de **Armazenamento Persistente Criptografado**\n"
+#~ "da  [[tela de boas-vindas|welcome_screen]], insira a sua senha e clique em\n"
+#~ "**Desbloquear**.\n"
+
+#, no-wrap
+#~ msgid "[[!img welcome_screen/persistence.png link=\"no\" alt=\"\"]]\n"
+#~ msgstr "[[!img welcome_screen/persistence.png link=\"no\" alt=\"\"]]\n"
+
+#~ msgid ""
+#~ "After you unlock the Persistent Storage, the data corresponding to each "
+#~ "feature of the Persistent Storage is automatically available. For example:"
+#~ msgstr ""
+#~ "Depois de desbloquear o armazenamento persistente, os dados "
+#~ "correspondentes a cada recurso do armazenamento persistente ficará "
+#~ "automaticamente ativo. Por exemplo:"
+
+#~ msgid ""
+#~ "Your personal files in the *Persistent* folder are accessible from "
+#~ "**Places**&nbsp;▸ **Persistent**."
+#~ msgstr ""
+#~ "Seus arquivos pessoais na pasta *Persistente* são acessíveis à partir de "
+#~ "**Locais**&nbsp;▸ **Persistente**."
+
+#~ msgid ""
+#~ "- Emails are available in *Thunderbird* and bookmarks are available in "
+#~ "*Tor Browser*."
+#~ msgstr ""
+#~ "- Emails estão disponíveis no *Thunderbird* e páginas favoritas no "
+#~ "*Navegador Tor*."
+
+#~ msgid ""
+#~ "- Additional software is automatically installed when starting Tails."
+#~ msgstr ""
+#~ "- Aplicativos adicionais são instalados automaticamente ao iniciar o "
+#~ "Tails."
+
+#, no-wrap
+#~ msgid ""
+#~ "<p>You might lessen your anonymity, weaken encryption, or break features of\n"
+#~ "GnuPG if you manually edit or overwrite the <em>~/.gnupg/gpg.conf</em>\n"
+#~ "configuration file.</p>\n"
+#~ msgstr ""
+#~ "<p>Você pode diminuir sua anonimidade, enfraquecer a criptografia ou quebrar recursos do\n"
+#~ "GnuPG caso você edite ou sobrescreva manualmente o arquivo de configuração\n"
+#~ "<em>~/.gnupg/gpg.conf</em>.</p>\n"
+
+#~ msgid "How to use the Persistent Storage"
+#~ msgstr "Como usar o Armazenamento Persistente"
+
+#~ msgid ""
+#~ "[[Warnings about the Persistent Storage|first_steps/persistence/warnings]]"
+#~ msgstr ""
+#~ "[[Advertências sobre o Armazenamento Persistente|first_steps/persistence/"
+#~ "warnings]]"
+
+#~ msgid ""
+#~ "[[Creating and configuring the Persistent Storage|first_steps/persistence/"
+#~ "configure]]"
+#~ msgstr ""
+#~ "[[Crie e configure o Armazenamento Persistente|first_steps/persistence/"
+#~ "configure]]"
+
+#~ msgid ""
+#~ "[[Unlocking and using the Persistent Storage|first_steps/persistence/use]]"
+#~ msgstr ""
+#~ "[[Habilite e use o Armazenamento Persistente|first_steps/persistence/use]]"
+
+#~ msgid ""
+#~ "[[Making a backup of your Persistent Storage|first_steps/persistence/"
+#~ "backup]]"
+#~ msgstr ""
+#~ "[[Fazendo uma cópia de segurança (backup) do armazenamento persistente|"
+#~ "first_steps/persistence/backup]]"
+
+#, fuzzy
+#~ msgid ""
+#~ "[[Rescuing your Persistent Storage from a broken Tails|first_steps/"
+#~ "persistence/rescue]]"
+#~ msgstr "[[Apague o volume persistente|first_steps/persistence/delete]]"
+
+#, fuzzy
+#~ msgid "[[Deleting the Persistent Storage|first_steps/persistence/delete]]"
+#~ msgstr "[[Apague o volume persistente|first_steps/persistence/delete]]"
+
+#, fuzzy
+#~ msgid "[[!meta title=\"Unlocking and using the Persistent Storage\"]]\n"
+#~ msgstr "[[!meta title=\"Habilite e use o volume persistente\"]]\n"
+
+#~ msgid "[[!toc levels=1]]\n"
+#~ msgstr "[[!toc levels=1]]\n"
+
+#~ msgid ""
+#~ "How to use the persistent volume\n"
+#~ "=================================\n"
+#~ msgstr ""
+#~ "Como usar o volume persistente\n"
+#~ "=================================\n"
+
+#~ msgid ""
+#~ "[[Change the passphrase of the persistent volume|first_steps/persistence/"
+#~ "change_passphrase]]"
+#~ msgstr ""
+#~ "[[Altere a senha do volume persistente|first_steps/persistence/"
+#~ "change_passphrase]]"
+
+#, fuzzy
+#~ msgid ""
+#~ "[[Check the file system of the persistent volume|first_steps/persistence/"
+#~ "check_file_system]]"
+#~ msgstr "[[Apague o volume persistente|first_steps/persistence/delete]]"
+
+#, fuzzy
+#~ msgid ""
+#~ "<p>It is only possible to create a persistent volume if the USB stick\n"
+#~ "was installed using *Tails Installer*.</p>\n"
+#~ msgstr ""
+#~ "<p>Somente é possível criar um volume persistente se o dispositivo,\n"
+#~ "memória USB ou cartão SD, tiver sido instalado usando o\n"
+#~ "<span class=\"application\">Tails\n"
+#~ "Installer</span>.</p>\n"
+
+#, fuzzy
+#~ msgid ""
+#~ "<p>This requires a USB stick of <strong>at least 8 GB</strong>.</p>\n"
+#~ msgstr ""
+#~ "<p>Isto requer uma memória USB ou cartão SD de <strong>ao menos 8 GB</"
+#~ "strong>.</p>\n"
+
+#~ msgid "your personal files and working documents"
+#~ msgstr "seus arquivos pessoais e documentos de trabalho"
+
+#~ msgid "the software packages that you download and install in Tails"
+#~ msgstr "pacotes de programas que você baixou e instalou no Tails"
+
+#~ msgid "the configuration of the programs you use"
+#~ msgstr "as confgurações dos programas usados"
+
+#~ msgid ""
+#~ "To start the persistent volume assistant, choose\n"
+#~ "<span class=\"menuchoice\">\n"
+#~ "  **Applications**&nbsp;▸\n"
+#~ "  **Tails**&nbsp;▸\n"
+#~ "  **Configure persistent volume**</span>.\n"
+#~ msgstr ""
+#~ "Para iniciar o assistente de volume persistente, escolha\n"
+#~ "<span class=\"menuchoice\">\n"
+#~ "  **Aplicativos**&nbsp;▸\n"
+#~ "  **Tails**&nbsp;▸\n"
+#~ "  <span class=\"guimenuitem\">Configurar armazenamento persistente</"
+#~ "span></span>.\n"
+
+#~ msgid "Persistence features\n"
+#~ msgstr "Funcionalidades da persistência\n"
+
+#~ msgid ""
+#~ "If you manually edit or overwrite the\n"
+#~ "*~/.gnupg/gpg.conf* configuration file\n"
+#~ "you may lessen your anonymity,\n"
+#~ "weaken the encryption defaults or render GnuPG unusable.\n"
+#~ msgstr ""
+#~ "Se você editar manualmente ou substituir o arquivo de configuração\n"
+#~ "*~/.gnupg/gpg.conf*, você pode diminuir sua\n"
+#~ "anonimidade, enfraquecer seus padrões de criptografia ou tornar o GnuPG "
+#~ "inutilizável.\n"
+
+#, fuzzy
+#~ msgid ""
+#~ "When this feature is activated, all the files in the <span\n"
+#~ "class=\"filename\">/live/persistence/TailsData_unlocked/dotfiles</span> "
+#~ "folder\n"
+#~ "are linked in the *Home* folder. Files in\n"
+#~ "subfolders of *dotfiles* are also linked\n"
+#~ "in the corresponding subfolder of your <span class=\"filename\">Home\n"
+#~ "</span> folder.\n"
+#~ msgstr ""
+#~ "Quando esta funcionalidade é ativada, todos os arquivos na pasta\n"
+#~ "<span class=\"filename\">/live/persistence/TailsData_unlocked/dotfiles</"
+#~ "span>\n"
+#~ "são linkadas na *Pasta Home* (arquivos nas\n"
+#~ "subpastas da pasta *dotfiles* também são\n"
+#~ "linkadas na subpasta correspondente da sua <span "
+#~ "class=\"filename\">Pasta\n"
+#~ "Home</span>).\n"
+
+#~ msgid ""
+#~ "This option is useful if you want to make some specific files\n"
+#~ "persistent, but not the folders they are stored in. A fine example are\n"
+#~ "the so called \"dotfiles\" (and hence the name of this feature), the\n"
+#~ "hidden configuration files in the root of your home directory, like\n"
+#~ "*~/.gitconfig* and <span\n"
+#~ "class=\"filename\">~/.bashrc</span>.\n"
+#~ msgstr ""
+#~ "Esta opção é útil se você quiser tornar persistentes alguns arquivos\n"
+#~ "específicos, mas não as pastas nos quais eles estão armazenados. Um "
+#~ "exemplo\n"
+#~ "são os chamados \"dotfiles\" (e por isso o nome desta funcionalidade), "
+#~ "os\n"
+#~ "arquivos de configuração ocultos na raíz do seu diretório home, como\n"
+#~ "o *~/.gitconfig* e o\n"
+#~ "*~/.bashrc*.\n"
+
+#~ msgid "[[!img seahorse-key-personal.png link=no]]\n"
+#~ msgstr "[[!img seahorse-key-personal.png link=no]]\n"
+
+#~ msgid ""
+#~ "<div class=\"text\"><h2>GNOME Keyring</h2></div>\n"
+#~ "</div>\n"
+#~ msgstr ""
+#~ "<div class=\"text\"><h2>Chaveiro do GNOME</h2></div>\n"
+#~ "</div>\n"
+
+#~ msgid ""
+#~ "When this feature is activated, the secrets of\n"
+#~ "*GNOME Keyring* are saved in the persistent\n"
+#~ "volume.\n"
+#~ msgstr ""
+#~ "Quando esta funcionalidade é ativada, os segredos do\n"
+#~ "*Chaveiro do GNOME* são salvos no volume\n"
+#~ "persistente.\n"
+
+#~ msgid ""
+#~ "GNOME Keyring is a collection of components in GNOME that store secrets,\n"
+#~ "passwords, keys, certificates and make them available to applications.\n"
+#~ "For more information about <span class=\"application\">GNOME Keyring</"
+#~ "span> see\n"
+#~ "the [official documentation](http://live.gnome.org/GnomeKeyring).\n"
+#~ msgstr ""
+#~ "O Chaveiro do GNOME é uma coleção de componentes do GNOME que armazena\n"
+#~ "segredos, senhas, chaves, certificados, e torna-os disponíveis para "
+#~ "aplicações.\n"
+#~ "Para mais informações sobre o <span class=\"application\">Chaveiro do "
+#~ "GNOME</span>,\n"
+#~ "veja a [documentação oficial](http://live.gnome.org/GnomeKeyring).\n"
+
+#~ msgid ""
+#~ "To save passwords, for example the passwords of encrypted wireless "
+#~ "connections,\n"
+#~ "the [[*GNOME Keyring* persistence\n"
+#~ "feature|configure#gnome_keyring]] must also be activated.\n"
+#~ msgstr ""
+#~ "Para salvar senhas de, por exemplo, conexões sem fio criptografadas, a\n"
+#~ "[[funcionalidade de persistência do <span class=\"application\">Chaveiro "
+#~ "do\n"
+#~ "GNOME</span>|configure#gnome_keyring]] também deve ser ativada.\n"
+
+#~ msgid "<a id=\"apt_packages\"></a>\n"
+#~ msgstr "<a id=\"apt_packages\"></a>\n"
+
+#~ msgid "[[!img synaptic.png link=no]]\n"
+#~ msgstr "[[!img synaptic.png link=no]]\n"
+
+#~ msgid ""
+#~ "<div class=\"text\"><h2>APT Packages</h2></div>\n"
+#~ "</div>\n"
+#~ msgstr ""
+#~ "<div class=\"text\"><h2>Pacotes do APT</h2></div>\n"
+#~ "</div>\n"
+
+#~ msgid ""
+#~ "When this feature is activated, the packages that you install using the\n"
+#~ "*Synaptic* package manager or the\n"
+#~ "<span class=\"command\">apt</span> command are saved in the persistent "
+#~ "volume.\n"
+#~ msgstr ""
+#~ "Quando esta funcionalidade é ativada, os pacotes que você instala usando "
+#~ "o\n"
+#~ "gerenciador de pacotes *Synaptic* ou o\n"
+#~ "comando <span class=\"command\">apt</span> são salvos no volume "
+#~ "persistente.\n"
+
+#~ msgid ""
+#~ "If you [[install additional programs|doc/advanced_topics/"
+#~ "additional_software]], this feature allows you to download them once and "
+#~ "reinstall them during future working sessions, even offline."
+#~ msgstr ""
+#~ "Se você [[instalar programas adicionais|doc/advanced_topics/"
+#~ "additional_software]], esta funcionalidade permite que você baixe-os "
+#~ "somente uma vez e reinstale em sessões de trabalho futuras, mesmo que "
+#~ "esteja desconectado/a."
+
+#, fuzzy
+#~ msgid ""
+#~ "If you activate the **APT Packages** persistence feature,\n"
+#~ "it is recommended to activate the <span class=\"guilabel\">APT Lists</"
+#~ "span> feature as well.\n"
+#~ msgstr ""
+#~ "Se você ativar esta funcionalidade, é recomendável que ative também a "
+#~ "funcionalidade de **Listas APT**.\n"
+
+#~ msgid "<a id=\"apt_lists\"></a>\n"
+#~ msgstr "<a id=\"apt_lists\"></a>\n"
+
+#~ msgid ""
+#~ "<div class=\"text\"><h2>APT Lists</h2></div>\n"
+#~ "</div>\n"
+#~ msgstr ""
+#~ "<div class=\"text\"><h2>Listas APT</h2></div>\n"
+#~ "</div>\n"
+
+#~ msgid ""
+#~ "When this feature is activated, the lists of all the software packages "
+#~ "available for installation are saved in the persistent volume."
+#~ msgstr ""
+#~ "Quando esta funcionalidade é ativada, as listas de todos os pacotes de "
+#~ "programas disponíveis para instalação são salvas no volume persistente."
+
+#~ msgid ""
+#~ "Those so called *APT lists* correspond to the files\n"
+#~ "downloaded while doing\n"
+#~ "**Reload** from the\n"
+#~ "*Synaptic* package manager or issuing the\n"
+#~ "<span class=\"command\">apt update</span> command.\n"
+#~ msgstr ""
+#~ "Estas chamadas *listas APT* correspondem a arquivos\n"
+#~ "baixados ao clicar em **Atualizar** no gerenciador de pacotes\n"
+#~ "*Synaptic* ou ao lançar o comando\n"
+#~ "<span class=\"command\">apt update</span>.\n"
+
+#~ msgid ""
+#~ "The *APT lists* are needed to\n"
+#~ "[[install additional programs|doc/advanced_topics/additional_software]]\n"
+#~ "or explore the list of available software packages. This feature\n"
+#~ "allows you to reuse them during future working sessions, even offline.\n"
+#~ msgstr ""
+#~ "As *listas APT* são necessárias para [[instalar\n"
+#~ "programas adicionais|doc/advanced_topics/additional_software]] ou "
+#~ "explorar a lista de pacotes de programas disponíveis. Esta\n"
+#~ "funcionalidade permite que você as reutilize durante sessões de trabalho "
+#~ "futuras,\n"
+#~ "mesmo que esteja desconectado/a.\n"
+
+#~ msgid "Additional software packages\n"
+#~ msgstr "Pacotes de programas adicionais\n"
+
+#~ msgid "Start the persistent volume assistant\n"
+#~ msgstr "Inicie o Assistente de Volume Persistente\n"
+
+#~ msgid ""
+#~ "1. The persistent volume is an encrypted partition protected by a "
+#~ "passphrase.\n"
+#~ "Specify a passphrase of your choice in both the\n"
+#~ "**Passphrase** and <span class=\"guilabel\">Verify\n"
+#~ "Passphrase</span> text boxes.\n"
+#~ msgstr ""
+#~ "1. O volume persistente é uma partição criptografada protegida por uma "
+#~ "senha.\n"
+#~ "Especifique uma senha de sua escolha nas caixas de texto\n"
+#~ "**Senha** e <span class=\"guilabel\">Verifique a senha</span>.\n"
+
+#~ msgid "Wait for the creation to finish."
+#~ msgstr "Espera que a criação termine."
+
+#~ msgid ""
+#~ "<strong>If the creation is interrupted before it finishes</strong>, you "
+#~ "may not\n"
+#~ "be able to start Tails from this device any more. This can happen if you\n"
+#~ "close the window of the wizard or unplug the USB stick or SD card during "
+#~ "the creation of\n"
+#~ "the persistent volume. [[Delete|first_steps/reset]] and\n"
+#~ "[[reinstall|first_steps/installation]] Tails to fix this issue.\n"
+#~ msgstr ""
+#~ "<strong>Se a criação for interrompida antes de terminar</strong>, pode "
+#~ "ser que vocẽ não\n"
+#~ "consega mais iniciar o Tails a partir deste dispositivo. Isto pode "
+#~ "ocorrer se você fechar a janela\n"
+#~ "do assistente ou desplugar a memória USB ou o cartão SD ao durante a "
+#~ "criação do volume\n"
+#~ "persistente. [[Apague|first_steps/reset]] e [[reinstale|first_steps/"
+#~ "installation]] o Tails para consertar\n"
+#~ "este problema.\n"
+
+#~ msgid "<a id=\"features\"></a>\n"
+#~ msgstr "<a id=\"features\"></a>\n"
+
+#~ msgid ""
+#~ "When run from a Tails device that already has a persistent volume, the "
+#~ "assistant shows a list of the possible persistence features. Each feature "
+#~ "corresponds to a set a files to be saved in the persistent volume."
+#~ msgstr ""
+#~ "Ao ser iniciado em um dispositivo com Tails que já possui um volume "
+#~ "persistente, o assistente mostra uma lista das funcionalidades de "
+#~ "persistência possíveis. Cada funcionalidade corresponde a um conjunto de "
+#~ "arquivos que pode ser salvo no volume persistente."
+
+#~ msgid "<a id=\"claws_mail\"></a>\n"
+#~ msgstr "<a id=\"claws_mail\"></a>\n"
+
+#~ msgid "[[!img claws-mail.png link=no]]\n"
+#~ msgstr "[[!img claws-mail.png link=no]]\n"
+
+#~ msgid ""
+#~ "<div class=\"text\"><h2>Claws Mail</h2></div>\n"
+#~ "</div>\n"
+#~ msgstr ""
+#~ "<div class=\"text\"><h2>Claws Mail</h2></div>\n"
+#~ "</div>\n"
+
+#, fuzzy
+#~ msgid ""
+#~ "When this feature is activated, the configuration and emails stored\n"
+#~ "locally by the\n"
+#~ "[[*Claws Mail* email client|doc/anonymous_internet/claws_mail]]\n"
+#~ "are saved in the persistent volume.\n"
+#~ msgstr ""
+#~ "Quando esta funcionalidade é ativada, a configuração e as mensagens "
+#~ "armazenadas\n"
+#~ "localmente pelo cliente de email  <span class=\"application\">Claws Mail</"
+#~ "span>\n"
+#~ "são salvas no volume persistente.\n"
+
+#~ msgid ""
+#~ "<p>The emails of a POP3 account created without using the configuration\n"
+#~ "assistant are not stored in the persistent volume by default.  For "
+#~ "example,\n"
+#~ "when configuring a second email account.</p>\n"
+#~ msgstr ""
+#~ "<p>As mensagens de uma conta POP3 criada sem usar o assistente de\n"
+#~ "configuração não são armazenadas no volume persistente por padrão. Isto "
+#~ "ocorre, por\n"
+#~ "exemplo, ao configurar uma segunda conta de email.</p>\n"
+
+#~ msgid ""
+#~ "<p>To make it persistent choose\n"
+#~ "<span class=\"menuchoice\">\n"
+#~ "  **File**&nbsp;▸\n"
+#~ "  **Add Mailbox**&nbsp;▸\n"
+#~ "  **MH...**</span> and change the location of the mailbox\n"
+#~ "from *Mail* to <span class=\"filename\">.claws-mail/Mail</span>.</p>\n"
+#~ msgstr ""
+#~ "<p>Para torná-la persistente, escolha\n"
+#~ "<span class=\"menuchoice\">\n"
+#~ "  **Arquivo**&nbsp;▸\n"
+#~ "  **Adicionar caixa de email**&nbsp;▸\n"
+#~ "  **MH...**</span> e altere o local da caixa de email de *Mail* para "
+#~ "<span class=\"filename\">.claws-mail/Mail</span>.</p>\n"
+
+#, fuzzy
+#~ msgid ""
+#~ "For advanced users to access the internal content of the Persistent "
+#~ "Storage, choose **Places**&nbsp;▸ **Computer** and open the folders "
+#~ "*live*&nbsp;▸ *persistence*&nbsp;▸ *TailsData_unlocked*."
+#~ msgstr ""
+#~ "Para usuários avançados, para acessar o conteúdo interno do volume "
+#~ "persistente\n"
+#~ "escolha\n"
+#~ "<span class=\"menuchoice\">\n"
+#~ "  **Locais**&nbsp;▸\n"
+#~ "  **Sistema de Arquivos**</span>, e abra as pastas\n"
+#~ "  *live*&nbsp;▸\n"
+#~ "  *persistent*&nbsp;▸\n"
+#~ "  *TailsData_unlocked*.\n"
+
+#, fuzzy
+#~ msgid ""
+#~ "To open the *Persistent* folder and access your\n"
+#~ "personal files and working documents, choose \n"
+#~ "<span class=\"menuchoice\">\n"
+#~ "  **Places**&nbsp;▸\n"
+#~ "  **Persistent**</span>.\n"
+#~ msgstr ""
+#~ "Para abrir a pasta *Persistent* e acessar seus\n"
+#~ "arquivos pessoais e documentos de trabalho, escolha\n"
+#~ "<span class=\"menuchoice\">\n"
+#~ "  **Locais**&nbsp;▸\n"
+#~ "  **Pasta Home**</span>, e escolha a pasta\n"
+#~ "  **Persistent**.\n"
+
+#~ msgid ""
+#~ "2. Enter the passphrase of the persistent volume in the\n"
+#~ "**Passphrase** text box.\n"
+#~ msgstr ""
+#~ "2. Insira a senha do volume persistente na caixa de texto\n"
+#~ "**Senha**.\n"
+
+#~ msgid ""
+#~ "3. If you select the **Read-Only** check box, the\n"
+#~ "content of persistent volume will be available and you will be able to "
+#~ "modify\n"
+#~ "it but the changes will not be saved.\n"
+#~ msgstr ""
+#~ "3. Se você escolher a opção <span class=\"guilabel\">Somente leitura</"
+#~ "span>,\n"
+#~ "o conteúdo do volume persistente estará disponível e você poderá modificá-"
+#~ "lo mas\n"
+#~ "as modificações não serão salvas.\n"

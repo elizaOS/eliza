@@ -1,0 +1,82 @@
+[[!meta date="Tue, 08 Mar 2016 12:34:56 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!meta title="Tails 2.2 is out"]]
+[[!tag announce]]
+
+This release fixes [[many security
+issues|security/Numerous_security_holes_in_2.0.1]] and users should
+upgrade as soon as possible.
+
+[[!toc levels=1]]
+
+# Changes
+
+## New features
+
+- Add support for viewing DVDs with DRM protection. ([[!tails_ticket 7674]])
+
+## Upgrades and changes
+
+- Replace *Vidalia*, which has been unmaintained for years, with:
+  - a system status icon indicating whether Tails is connected to Tor or not,
+  - *Onion Circuits* to display a list of the current Tor circuits and connections.
+
+[[!img version_2.2/onion_circuits.png alt="Tor Status extension clicked in the top bar and Onion Circuits window open" link="no"]]
+
+- Automatically save the database of *KeePassX* after every change to prevent
+  data loss when shutting down. ([[!tails_ticket 11147]])
+
+- Update *Tor Browser* to 5.5.3.
+  - Improve Japanese-style glyph display.
+
+- Upgrade *I2P* to [0.9.24](https://geti2p.net/en/blog/post/2016/01/27/0.9.24-Release).
+
+- Disable the **Alt + Shift** and
+  **Left Shift + Right Shift** keyboard
+  shortcuts that used to switch to the next keyboard layout.
+  You can still use **Meta + Space** to change
+  keyboard layout. ([[!tails_ticket 11042]])
+
+## Fixed problems
+
+- Fix **optional PGP key** feature of *WhisperBack*. ([[!tails_ticket 11033]])
+
+- Fix saving of *WhisperBack* report to a file when offline. ([[!tails_ticket 11133]])
+
+- Make Git verify the integrity of transferred objects. ([[!tails_ticket 11107]])
+
+For more details, see also our Changelog.
+
+# Known issues
+
+* While there is an automatic upgrade from Tails 2.2~rc1 to 2.2, it
+  will not be detected by default since Tails 2.2~rc1 think it already
+  is 2.2 (see [[the 2.2~rc1 announcement|test_2.2-rc1]]). To fix this,
+  run the following command:
+
+      sudo sed -i 's/^TAILS_VERSION_ID="2.2"$/TAILS_VERSION_ID="2.2~rc1"/' \
+          /etc/os-release && \
+      tails-upgrade-frontend-wrapper
+
+* See the current list of [[known issues|support/known_issues]].
+
+# Install or upgrade
+
+To install, follow our [[installation instructions|install]].
+
+An automatic upgrade is available from 2.0.1 to 2.2.
+
+If it is impossible to automatically upgrade your Tails, read our
+[[upgrade instructions|doc/upgrade#manual]].
+
+If your Tails fails to start after an automatic upgrade, please [[try to
+do a manual upgrade|doc/upgrade#manual]].
+
+# What's coming up?
+
+The next Tails release is [[scheduled|contribute/calendar]] for April 19.
+
+
+We need your help and there are many ways to [[contribute to
+Tails|contribute]] (donating is only one of
+them). Come [[talk to us|doc/about/contact#tails-dev]]!

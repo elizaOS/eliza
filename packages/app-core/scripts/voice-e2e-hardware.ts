@@ -27,12 +27,12 @@ import {
   summarizeVoiceE2e,
   type VoiceE2eCaseResult,
   VoiceE2eHarnessError,
-} from "../src/services/local-inference/voice/e2e-harness";
+} from "../../../plugins/plugin-local-inference/src/services/voice/e2e-harness";
 import {
   type ElizaInferenceContextHandle,
   type ElizaInferenceFfi,
   loadElizaInferenceFfi,
-} from "../src/services/local-inference/voice/ffi-bindings";
+} from "../../../plugins/plugin-local-inference/src/services/voice/ffi-bindings";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

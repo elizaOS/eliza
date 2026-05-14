@@ -1,0 +1,59 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: \n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2026-01-22 08:55+0000\n"
+"PO-Revision-Date: 2024-10-17 13:09+0000\n"
+"Last-Translator: Benjamin Held <Benjamin.Held@protonmail.com>\n"
+"Language-Team: \n"
+"Language: bg\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.3\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Donate\"]]\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<style>\n"
+"#donate span {\n"
+"  opacity: 0;\n"
+"}\n"
+"</style>\n"
+msgstr ""
+
+#. type: Plain text
+msgid "[[Tails has merged with the Tor Project|news/tails_tor/]]"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"From now on, all new donations to the Tor Project will support the whole "
+"suite of tools developed by the Tor Project, including Tails, the Tor "
+"network, and Tor Browser."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"cta\">\n"
+msgstr ""
+
+#. type: Plain text
+msgid "[[Donate to the Tor Project|https://donate.torproject.org/]]"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr ""

@@ -135,7 +135,7 @@ parts:
           "plugin-browser",
           "plugin-elizacloud",
           "plugin-imessage",
-          "plugin-local-embedding",
+          "plugin-local-inference",
           "plugin-ollama",
           "plugin-pdf",
           "plugin-signal",
@@ -487,7 +487,7 @@ parts:
         --filter=@elizaos/plugin-agent-skills \
         --filter=@elizaos/plugin-browser \
         --filter=@elizaos/plugin-imessage \
-        --filter=@elizaos/plugin-local-embedding \
+        --filter=@elizaos/plugin-local-inference \
         --filter=@elizaos/plugin-ollama \
         --filter=@elizaos/plugin-pdf \
         --filter=@elizaos/plugin-signal \

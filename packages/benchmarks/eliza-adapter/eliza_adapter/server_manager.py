@@ -69,10 +69,21 @@ class ElizaServerManager:
 
     def __init__(
         self,
-        port: int = 3939,
-        timeout: float = 120.0,
+        port: int | None = None,
+        timeout: float = 240.0,
         repo_root: Path | None = None,
     ) -> None:
+        env_timeout = os.environ.get("ELIZA_BENCH_START_TIMEOUT", "").strip()
+        if env_timeout:
+            try:
+                parsed_timeout = float(env_timeout)
+                if parsed_timeout > 0:
+                    timeout = parsed_timeout
+            except ValueError:
+                logger.warning(
+                    "Ignoring invalid ELIZA_BENCH_START_TIMEOUT=%r",
+                    env_timeout,
+                )
         env_port = os.environ.get("ELIZA_BENCH_PORT", "").strip()
         if env_port:
             try:
@@ -81,6 +92,8 @@ class ElizaServerManager:
                     port = parsed_port
             except ValueError:
                 logger.warning("Ignoring invalid ELIZA_BENCH_PORT=%r", env_port)
+        if port is None or port <= 0:
+            port = _find_free_port()
         if not _is_port_available(port):
             replacement = _find_free_port()
             logger.warning(
@@ -153,6 +166,9 @@ class ElizaServerManager:
             "ELIZA_BENCH_PORT": str(self.port),
             "ELIZA_BENCH_TOKEN": self._token,
         }
+        # Stub embeddings are diagnostic-only. The server manager preserves an
+        # explicit caller-provided ELIZA_BENCH_ALLOW_STUB_EMBEDDING value but
+        # never enables it by default.
         if env.get("ELIZA_BENCH_MOCK") == "true":
             for key in (
                 "GROQ_API_KEY",

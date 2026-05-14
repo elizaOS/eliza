@@ -1,0 +1,17 @@
+{
+    "hasNotifications": true,
+    "isGreeter": false,
+    "isPrimary": true,
+    "unlockDialog": null,
+    "isLocked": true,
+    "hasOverview": false,
+    "hasWindows": true,
+    "colorScheme": "force-light",
+    "showWelcomeDialog": false,
+    "components": ["polkitAgent"],
+    "panel": {
+        "left": [],
+        "center": ["dateMenu"],
+        "right": ["dwellClick", "a11y", "keyboard", "quickSettings"]
+    }
+}

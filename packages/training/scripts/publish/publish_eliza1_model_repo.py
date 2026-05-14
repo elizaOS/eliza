@@ -1,6 +1,6 @@
 """Publish staged Eliza-1 runtime bundles into one Hugging Face model repo.
 
-The app catalog points every Eliza-1 tier at ``elizaos/eliza-1`` and resolves
+The app catalog points every Eliza-1 tier at ``elizalabs/eliza-1`` and resolves
 files under ``bundles/<tier>/``. This publisher is the operator-side mirror of
 that contract: it validates local ``eliza-1-<tier>.bundle`` directories, writes
 the repo README, and uploads each bundle into the single model repo.
@@ -30,7 +30,7 @@ if str(_TRAINING_ROOT) not in sys.path:
 
 from scripts.manifest import eliza1_manifest as M  # noqa: E402
 
-DEFAULT_REPO_ID = "elizaos/eliza-1"
+DEFAULT_REPO_ID = M.ELIZA_1_HF_REPO
 DEFAULT_BUNDLES_ROOT = Path.home() / ".eliza" / "local-inference" / "models"
 TIERS: tuple[str, ...] = M.ELIZA_1_TIERS
 PUBLISH_METADATA_DIRS = frozenset(
@@ -190,7 +190,7 @@ def _release_evidence_errors(bundle_dir: Path, tier: str) -> list[str]:
     if not isinstance(hf, dict):
         errors.append("evidence/release.json hf block is missing or not an object")
     else:
-        if hf.get("repoId") not in {DEFAULT_REPO_ID, "elizaos/eliza-1"}:
+        if hf.get("repoId") != DEFAULT_REPO_ID:
             errors.append(f"evidence/release.json hf.repoId is unexpected: {hf.get('repoId')!r}")
         if hf.get("pathPrefix") != f"bundles/{tier}":
             errors.append(

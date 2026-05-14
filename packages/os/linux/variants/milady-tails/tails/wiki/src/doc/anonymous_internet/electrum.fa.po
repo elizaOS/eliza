@@ -1,0 +1,295 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-10-02 09:34+0000\n"
+"PO-Revision-Date: 2023-03-13 17:29+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: Persian <http://weblate.451f.org:8889/projects/tails/electrum/"
+"fa/>\n"
+"Language: fa\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"X-Generator: Weblate 4.9.1\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "[[!meta title=\"Exchanging bitcoins using Electrum\"]]\n"
+msgstr "[[!meta title=\"مبادلهٔ بیت‌کوین با استفاده از الکترام\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!toc levels=2]]\n"
+msgstr "[[!toc levels=2]]\n"
+
+#. type: Plain text
+#, fuzzy
+msgid ""
+"[*Electrum*](https://electrum.org/) is a [[!wikipedia Bitcoin]] client that "
+"is particularly suited to the context of Tails because:"
+msgstr ""
+"[*الکترام*](https://electrum.org/) یک کارخواه [[!wikipedia Bitcoin]]\n"
+"است که بسیار برای تیلز مناسب است، چون:\n"
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid ""
+"You can use your wallet from different devices and avoid losing bitcoins in "
+"a backup mistake or computer failure."
+msgstr ""
+"کیف‌پول بیت‌کوین ممکن است به طور کامل با یک گذرواژه بازیابی شود که به آن *سید* "
+"می‌گوییم. بنابراین می‌توانید کیف‌پول خود را روی دستگاه‌های مختلف استفاده کنید و "
+"بیت‌کوین‌های خود را به خاطر اشتباه در گرفتن نسخهٔ پشتیبان یا اشتباه رایانه‌ای از "
+"دست ندهید."
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid ""
+"*Electrum* does not download the blockchain, so there is no waiting time "
+"when opening."
+msgstr ""
+"الکترام بلاک‌چِین را دانلود نمی‌کند. بنابراین هنگام راه‌اندازی نیازی به انتظار "
+"نیست."
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid ""
+"You can sign transactions from an offline working session for additional "
+"security."
+msgstr "می‌توانید تراکنش‌های خود را از یک نشست کاری آفلاین امضا کنید."
+
+#. type: Plain text
+#, fuzzy
+msgid ""
+"To open *Electrum*, choose **Apps&nbsp;▸ Internet&nbsp;▸ Electrum Bitcoin "
+"Wallet**."
+msgstr ""
+"برای راه‌اندازی *الکترام* از این مسیر بروید:\n"
+"<span class=\"menuchoice\">\n"
+"  **ابزارها**&nbsp;◀\n"
+"  **اینترنت**&nbsp;◀\n"
+"  **کیف‌پول بیت‌کوین الکترام**\n"
+"</span>.\n"
+
+#. type: Plain text
+#, fuzzy
+msgid ""
+"To learn how to use *Electrum*, read the [*Electrum* documentation](https://"
+"electrum.readthedocs.io/)."
+msgstr ""
+"برای یادگیری نحوهٔ استفاده از *الکترام*،  [سند ویکی *الکترام*](http://"
+"docs.electrum.org) را بخوانید."
+
+#. type: Plain text
+msgid ""
+"For an explanation of how Bitcoin works in simple terms, read [The In-Depth "
+"Guide to Bitcoin That Won’t Leave You Frustrated](https://www.vpnmentor.com/"
+"blog/ultimate-guide-bitcoin/)."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"caution\">\n"
+msgstr "<div class=\"caution\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>Bitcoin is <a href=\"https://bitcoin.org/en/faq#is-bitcoin-anonymous\">not\n"
+"anonymous</a>.</p>\n"
+msgstr ""
+"<p>بیت‌کوین <a href=\"https://bitcoin.org/fa/faq#is-bitcoin-anonymous\">\n"
+"ناشناس نیست</a>.</p>\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid ""
+"<p>To make it harder to relate your different transactions, you should use\n"
+"a different receiving address for each transaction.\n"
+"<i>Electrum</i> automatically generates new\n"
+"addresses for you to use.</p>\n"
+msgstr ""
+"<p>برای دشوارتر کردن مرتبط دانستن تراکنش‌های مختلف خود می‌توانید\n"
+"از آدرس‌های دریافتی مختلف برای هر تراکنش استفاده کنید.</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"tip\">\n"
+msgstr "<div class=\"tip\">\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid ""
+"<p><i>Electrum</i> uses <i>mBTC</i> as the\n"
+"default base unit. 1 mBTC = 0.001 BTC. To change the base unit, choose\n"
+"<b>Tools&nbsp;▸ Preferences</b>.</p>\n"
+msgstr ""
+"برای راه‌اندازی *الکترام* از این مسیر بروید:\n"
+"<span class=\"menuchoice\">\n"
+"  **ابزارها**&nbsp;◀\n"
+"  **اینترنت**&nbsp;◀\n"
+"  **کیف‌پول بیت‌کوین الکترام**\n"
+"</span>.\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid ""
+"<p>Do not blindly trust the bitcoin balance that <i>Electrum</i>\n"
+"displays as <em>unconfirmed</em>. Wait for transactions to be confirmed.</p>\n"
+msgstr "<p>به میزان بیت‌کوین خود که *الکترام*  نمایش می‌دهد اعتماد کورکورانه نداشته باشید.</p>\n"
+
+#. type: Title =
+#, no-wrap
+msgid "Recovering your wallet from its seed"
+msgstr ""
+
+#. type: Title -
+#, no-wrap
+msgid "Backing up your seed"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"Your wallet can be recovered entirely from its <em>seed</em>: the\n"
+"chain of words generated by *Electrum*\n"
+"when creating the wallet. But if you lose your seed, you\n"
+"lose your entire wallet.\n"
+msgstr ""
+
+#. type: Plain text
+msgid "That's why we recommend you both:"
+msgstr ""
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid ""
+"Turn on the [[Electrum Bitcoin Wallet|persistent_storage/"
+"configure#electrum]] feature of the Persistent Storage to store your bitcoin "
+"wallet and preferences across separate working sessions."
+msgstr ""
+"<p>به همین خاطر است که توصیه می‌شود [[ویژگی <span class=\"guilabel\">کارخواه "
+"بیت‌کوین</span>\n"
+"مانا|doc/first_steps/persistence/configure/#bitcoin]] را فعال کنید\n"
+"تا کیف‌پول بیت‌کوین خود و ترجیحات آن در طول نشست‌های کاری مختلف \n"
+"ذخیره شوند.</p>\n"
+
+#. type: Bullet: '- '
+msgid ""
+"Backup your seed outside of Tails. For example, you can write it down on a "
+"piece of paper and keep it with you."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<a name=\"corrupted\"></a>\n"
+msgstr ""
+
+#. type: Title -
+#, no-wrap
+msgid "Fixing a corrupted wallet"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"If *Electrum* fails to open or stays minimized, maybe your *Electrum* folder "
+"is corrupted."
+msgstr ""
+
+#. type: Plain text
+msgid "To recover your wallet from its seed:"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Make sure that *Electrum* is closed."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Open your *Home* folder in the *Files* browser."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"Select the [[!img lib/go-down.png alt=\"View Options\" class=\"symbolic\" "
+"link=\"no\"]] button in the title bar and select the option **Show Hidden "
+"Files**."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Open the *.electrum* folder."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Delete the *wallets* folder."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Open *Electrum*."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"When creating a new wallet choose **I already have a seed** and specify the "
+"seed of your wallet."
+msgstr ""
+
+#. type: Title =
+#, no-wrap
+msgid "Hardware wallets"
+msgstr ""
+
+#. type: Plain text
+msgid "You can use hardware wallets that work with Debian 13 (Trixie)."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"In the past, different wallets have worked with different versions of "
+"Debian.  For example, Trezor hardware wallets stopped working in Debian 12 "
+"(Bookworm), so they don't work in Tails 6.0 or later."
+msgstr ""
+
+#~ msgid "<div class=\"bug\">\n"
+#~ msgstr "<div class=\"bug\">\n"
+
+#~ msgid ""
+#~ "<p>If you loose your <em>seed</em>, then you loose your entire wallet.</"
+#~ "p>\n"
+#~ msgstr ""
+#~ "<p>اگر <em>سید</em> خود را از دست بدهید، تمام کیف‌پول خود را از دست "
+#~ "داده‌اید.</p>\n"
+
+#~ msgid ""
+#~ "<p>*Electrum* relies on\n"
+#~ "<a href=\"https://bitcoin.org/en/developer-guide#simplified-payment-"
+#~ "verification-spv\">Simplified\n"
+#~ "Payment Verification</a> (SPV) to avoid downloading the full block\n"
+#~ "chain. But with this technique, the servers to which <span\n"
+#~ "class=\"application\">Electrum</span> connects can withhold information\n"
+#~ "from their clients. Read more about the\n"
+#~ "<a href=\"https://bitcoin.org/en/developer-guide#potential-spv-"
+#~ "weaknesses\">weaknesses\n"
+#~ "of SPV</a> in the Bitcoin Developer Guide.</p>\n"
+#~ msgstr ""
+#~ "<p>*الکترام* متکی بر\n"
+#~ "<a href=\"https://bitcoin.org/en/developer-guide#simplified-payment-"
+#~ "verification-spv\">تأیید ساده‌شدهٔ پرداخت</a> (SPV) \n"
+#~ "جهت اجتناب از دانلود کردن بلاک‌چین کامل است.\n"
+#~ "اما با این روش سروری که <span\n"
+#~ "class=\"application\">الکترام</span> به آن متصل می‌شود می‌تواند اطلاعات را "
+#~ "از کارخواهان خود مخفی نگه دارد. \n"
+#~ "در راهنمای توسعهٔ بیت‌کوین بیشتر در مورد\n"
+#~ "<a href=\"https://bitcoin.org/en/developer-guide#potential-spv-"
+#~ "weaknesses\">ضعف‌های تأیید ساده‌شدهٔ پرداخت</a> بخوانید.</p>\n"

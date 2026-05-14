@@ -1,0 +1,252 @@
+[[!meta title="Tails report for June, 2017"]]
+[[!meta date="Fri, 07 Jul 2017 06:30:01 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!toc levels=2]]
+
+Releases
+========
+
+* [[Tails 3.0 was released on June 13|news/version_3.0]] (major release).
+
+* Tails 3.1 is [[scheduled for August 8|contribute/calendar]].
+
+Tails 3.0 is the first version of Tails based on Debian 9 (Stretch).
+It brings a completely new startup and shutdown experience, a lot of
+polishing to the desktop, security improvements in depth, and major
+upgrades to a lot of the included software. We cannot list all the
+improvements it brings here (see the
+[[announcement|news/version_3.0]]), but let's still highlight a few
+major changes:
+
+- *Tails Greeter*, the application to configure Tails at startup, has
+  been completely redesigned for ease of use.
+- The shutdown experience has also been redesigned in order to be
+  more reliable and more discrete.
+- Tails 3.0 works on <span
+  class="definition">[[!wikipedia x86-64 desc="64-bit computers"]]</span>
+  only and not on 32-bit computers anymore.
+
+Code
+====
+
+Thanks to
+multiprocess
+Firefox, we started working on
+[[!tails_ticket 12679 desc="sandboxing Tor Browser's content renderer processes more strictly with AppArmor"]].
+We now have a working draft and are waiting for our
+[pull request](https://github.com/micahflee/torbrowser-launcher/pull/280)
+to be merged upstream.
+
+We started fixing regressions introduced in Tails 3.0, such as
+[[!tails_ticket 12481 desc="SSH_AUTH_SOCK occasionally not being set in GNOME Terminal"]]
+and
+[[!tails_ticket 12696 desc="Tails Installer rejects working USB drives, pretending they're not removable"]].
+Our Help Desk and Foundation Team met and prioritized the remaining ones
+from a user-centric point of view.
+
+## Reproducible Builds
+
+We are still working on making Tails ISO images build reproducibly.
+We've seen some images build in such a deterministic manner in March and 
+even during a testing session. However, in some build environments it
+does not work reliably yet and some new issues have manifested
+themselves which need to be fixed until we can claim that our ISO 
+images are really reproducible, such as
+[[!tails_ticket 12641 desc="Comment changes in POT files make ISO non reproducible"]].
+Besides, we need to draw a line wrt. what kind of build environment
+variations we want to support.
+
+Furthermore, we are still working on documenting the new release process and 
+verification options for our users
+([[!tails_ticket 12616]], [[!tails_ticket 12629]], [[!tails_ticket 12630]]).
+
+User experience
+===============
+
+- We discussed strategies to porting our Download and Verify extension
+  for Firefox to *Web
+  Extensions*,
+  a requirement for the upcoming Firefox 57 (November 14), as this will
+  affect the design of our download instructions.
+
+- We finished the redesign of *Tails Installer* to get rid of the
+  initial splash screen. ([[!tails_ticket 8859]])
+
+- We installed a prototype of
+  *Piwik*,
+  a free web analytics platform, to evaluate how well it would work
+  against our privacy constraints and metrics needs.
+
+- We agreed on increasing the size of the system partition from 2.5 to 4
+  GiB minimum starting from Tails 3.2 (October 3) to allow for more
+  automatic upgrades before a manual upgrade is needed. ([[!tails_ticket
+  12705]])
+
+Infrastructure
+==============
+
+## Improving communication & transparency wrt. our core teams' priorities
+
+We have
+set up
+some infrastructure bits so that all contributors have more visibility
+and power over our core teams's priorities.
+
+## HTTPS mirror pool
+
+We've switched our mirror pool to mirrors serving files over HTTPS
+only ([[!tails_ticket 12837]]). Our round-robin fallback DNS
+pool is still serving files over HTTP, and we are currently thinking
+about how to switch those to HTTPS too ([[!tails_ticket 12833]]).
+
+## Reproducible builds
+
+Remaining issues on our CI infrastructure include:
+
+* [[!tails_ticket 12618 desc="Retrieving ISO build artifacts sometimes fails on Jenkins"]]
+* [[!tails_ticket 13302 desc="/var/lib/libvirt/images sometimes gets filled on isobuilders, take 2"]]
+* [[!tails_ticket 12595 desc="Not enough space in /var/lib/jenkins on isobuilders"]]
+* [[!tails_ticket 12681 desc="reproducibly_build_Tails_ISO_* Jenkins jobs are buggy when building from a tag"]]
+
+## Sysadmin
+
+We [[!tails_ticket 13232 desc="kept our systems up and running"]],
+which was not always easy since we've deployed our updated
+infrastructure for reproducible builds before upgrading our capacity
+accordingly, not mentioning a kernel regression caused by the initial
+*Stack Clash* fix that broke our CI.
+
+We deployed [[!tails_ticket 11523 desc="some"]]
+[[!tails_ticket 5894 desc="work"]] done by groente, who is in the
+process of joining our sysadmin team.
+
+## tails-support mailing list
+
+We closed the [[`tails-support@boum.org` mailing
+list|news/closing_tails-support]].
+
+Funding
+=======
+
+- We've created a page listing our sponsors, previous and current grants, private companies and individuals who help keep Tails alive by supporting us financially. Do you want to sponsor Tails as well?
+
+- We are making good progress on our proposal with OTF, and we hope
+  we'll be able to share great news soon :)
+
+- We kept working on migrating our European fiscal sponsor from Zwiebelfreunde
+  to [CCT, the Center for the Cultivation of Technology](https://techcultivation.org/).
+
+- We have bootstrapped a process to do our budget forecasting for next year.
+
+Outreach
+========
+
+Past events
+-----------
+
+* Tails was presented at
+  [Pas Sage en Seine Festival](https://passageenseine.fr/), in
+  Choisy-Le-Roi, France.
+* Tails was presented (among other tools) in an
+  independent journalists event in
+  Rennes, France.
+* Tails 3.0 was presented at the annual festivities of the
+  [EKH](http://med-user.net/~ekh/) in Vienna, Austria.
+
+Upcoming events
+---------------
+
+* Tails contributors will attend
+  [DebConf17](https://debconf17.debconf.org/), the annual conference
+  for Debian contributors and users interested in improving Debian.
+
+* A Tails contributor proposed a talk about Tails for the
+  BalCCon2k17
+  (Balkan Computer Congress).
+
+Press and testimonials
+======================
+
+The Tails 3.0 release was abundantly covered on the web.
+
+Translation
+===========
+
+## All programs
+
+ - ar: 47 translated messages, 9 fuzzy translations, 6 untranslated messages.
+ - az: 47 translated messages, 9 fuzzy translations, 6 untranslated messages.
+ - bg: 62 translated messages.
+ - ca: 62 translated messages.
+ - cs: 54 translated messages, 6 fuzzy translations, 2 untranslated messages.
+ - cy: 44 translated messages, 11 fuzzy translations, 7 untranslated messages.
+ - da: 62 translated messages.
+ - de: 62 translated messages.
+ - el: 62 translated messages.
+ - en_GB: 62 translated messages.
+ - es: 62 translated messages.
+ - es_AR: 62 translated messages.
+ - fa: 62 translated messages.
+ - fi: 62 translated messages.
+ - fr: 62 translated messages.
+ - fr_CA: 62 translated messages.
+ - he: 54 translated messages, 6 fuzzy translations, 2 untranslated messages.
+ - hr_HR: 62 translated messages.
+ - hu: 62 translated messages.
+ - id: 62 translated messages.
+ - is: 62 translated messages.
+ - it: 62 translated messages.
+ - ja: 62 translated messages.
+ - km: 45 translated messages, 11 fuzzy translations, 6 untranslated messages.
+ - ko: 62 translated messages.
+ - lv: 62 translated messages.
+ - nb: 62 translated messages.
+ - nl: 62 translated messages.
+ - nn: 62 translated messages.
+ - pl: 62 translated messages.
+ - pt: 62 translated messages.
+ - pt_BR: 62 translated messages.
+ - ro: 62 translated messages.
+ - ru: 62 translated messages.
+ - sk: 54 translated messages, 6 fuzzy translations, 2 untranslated messages.
+ - sk_SK: 62 translated messages.
+ - sl_SI: 47 translated messages, 9 fuzzy translations, 6 untranslated messages.
+ - sq: 62 translated messages.
+ - sr: 54 translated messages, 6 fuzzy translations, 2 untranslated messages.
+ - sv: 62 translated messages.
+ - tr: 62 translated messages.
+ - uk: 62 translated messages.
+ - vi: 62 translated messages.
+ - zh: 0 translated messages, 62 untranslated messages.
+ - zh_CN: 62 translated messages.
+ - zh_HK: 62 translated messages.
+ - zh_TW: 62 translated messages.
+
+## All the website
+
+  - de: 57% (2863) strings translated, 6% strings fuzzy, 51% words translated
+  - fa: 43% (2162) strings translated, 9% strings fuzzy, 46% words translated
+  - fr: 89% (4428) strings translated, 1% strings fuzzy, 87% words translated
+  - it: 31% (1547) strings translated, 4% strings fuzzy, 27% words translated
+  - pt: 26% (1335) strings translated, 8% strings fuzzy, 23% words translated
+
+Total original words: 52933
+
+## [[Core pages of the website|contribute/l10n_tricks/core_po_files.txt]]
+
+  - de: 78% (1492) strings translated, 10% strings fuzzy, 79% words translated
+  - fa: 36% (690) strings translated, 9% strings fuzzy, 38% words translated
+  - fr: 98% (1869) strings translated, 1% strings fuzzy, 98% words translated
+  - it: 75% (1434) strings translated, 11% strings fuzzy, 76% words translated
+  - pt: 46% (886) strings translated, 14% strings fuzzy, 48% words translated
+
+Total original words: 17298
+
+Metrics
+=======
+
+* Tails has been started more than 695 672 times this month.
+  This makes 23 189 boots a day on average.
+* 15 508 downloads of the OpenPGP signature of the Tails ISO from our website.
+* 215 bug reports were received through WhisperBack.

@@ -1,0 +1,11 @@
+[[!meta date="Thu, 25 Nov 2009 23:57:24 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+
+Amnesia 0.3 released
+
+See the online
+Changelog
+for details.
+
+[[Download it, seed it!|install]]

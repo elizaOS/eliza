@@ -649,8 +649,8 @@ function imperialMatchesAllNegated(response: string): boolean {
       re.source,
       re.flags.includes("g") ? re.flags : `${re.flags}g`,
     );
-    let m: RegExpExecArray | null;
-    while ((m = global.exec(response)) !== null) {
+    let m = global.exec(response);
+    while (m !== null) {
       foundAny = true;
       const start = Math.max(0, m.index - 30);
       const preceding = response.slice(start, m.index);
@@ -658,6 +658,7 @@ function imperialMatchesAllNegated(response: string): boolean {
         preRe.test(preceding),
       );
       if (!negated) return false;
+      m = global.exec(response);
     }
   }
   return foundAny;
@@ -845,11 +846,27 @@ export function checkLimerick(response: string): LayerResult {
       evidence: { lineCount: lines.length },
     };
   }
+  const [firstLine, secondLine, thirdLine, fourthLine, fifthLine] = lines;
+  if (
+    firstLine === undefined ||
+    secondLine === undefined ||
+    thirdLine === undefined ||
+    fourthLine === undefined ||
+    fifthLine === undefined
+  ) {
+    return {
+      layer: "phrase",
+      verdict: "FAIL",
+      confidence: 0.9,
+      reason: `expected 5 lines, got ${lines.length}`,
+      evidence: { lineCount: lines.length },
+    };
+  }
   const aabba =
-    rhymesWith(lines[0]!, lines[1]!) &&
-    rhymesWith(lines[1]!, lines[4]!) &&
-    rhymesWith(lines[2]!, lines[3]!) &&
-    !rhymesWith(lines[0]!, lines[2]!); // A and B should differ
+    rhymesWith(firstLine, secondLine) &&
+    rhymesWith(secondLine, fifthLine) &&
+    rhymesWith(thirdLine, fourthLine) &&
+    !rhymesWith(firstLine, thirdLine); // A and B should differ
   if (aabba) {
     return {
       layer: "phrase",
@@ -864,9 +881,9 @@ export function checkLimerick(response: string): LayerResult {
   // Softer fallback: if all of A,A,A and B,B match but A=B, accept as
   // limerick-ish with NEEDS_REVIEW so the LLM can settle it.
   const aabbaWeak =
-    rhymesWith(lines[0]!, lines[1]!) &&
-    rhymesWith(lines[1]!, lines[4]!) &&
-    rhymesWith(lines[2]!, lines[3]!);
+    rhymesWith(firstLine, secondLine) &&
+    rhymesWith(secondLine, fifthLine) &&
+    rhymesWith(thirdLine, fourthLine);
   if (aabbaWeak) {
     return {
       layer: "phrase",

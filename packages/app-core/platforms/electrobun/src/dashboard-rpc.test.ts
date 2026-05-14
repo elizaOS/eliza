@@ -89,9 +89,9 @@ const triggerHealth = {
 const corePlugins = {
 	core: [
 		{
-			npmName: "@elizaos/plugin-bootstrap",
-			id: "bootstrap",
-			name: "Bootstrap",
+			npmName: "@elizaos/plugin-sql",
+			id: "sql",
+			name: "SQL",
 			isCore: true,
 			loaded: true,
 			enabled: true,

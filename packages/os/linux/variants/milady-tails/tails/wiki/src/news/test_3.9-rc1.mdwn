@@ -1,0 +1,113 @@
+[[!meta title="Call for testing: 3.9~rc1"]]
+
+[[!meta date="Fri, 17 Aug 2018 16:44:06 +0000"]]
+
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag announce]]
+
+You can help Tails! The first release candidate for the upcoming
+version 3.9 is out. We are very excited and cannot wait to hear what
+you think about it :)
+
+[[!toc levels=1]]
+
+# Changes
+
+## Upgrades and changes
+
+- Integrate the _Additional Software Packages_ feature into the desktop
+  and revamp the interface of "Configure Persistent Volume".
+
+- Support unlocking _TrueCrypt_ and _VeraCrypt_ encrypted volumes
+  on the desktop.
+
+- Upgrade _Tor Browser_ to 8.0a9, based on Firefox 60 ESR.
+
+- Upgrade _Thunderbird_ to 60.0b10.
+
+- Improve hardware support: upgrade some graphics drivers, firmware,
+  and upgrade _Linux_ to 4.17.
+
+- Upgrade _tor_ to 0.3.4.6-rc.
+
+- Due to security concerns the _Liferea_ feed reader will be removed
+  from Tails by the end of 2018. Please migrate your feeds
+  to Thunderbird.
+
+## Fixed problems
+
+- Don't display the Enigmail configuration wizard in every Tails session.
+
+- Many problems fixed in _Tails Installer_ and elsewhere.
+  For more details, read our [[!tails_gitweb debian/changelog desc="changelog"]].
+
+Known issues
+==============
+
+_Tor Browser_ always prompts whether it should ask webpages in English
+This will be fixed in Tails 3.9 ([[!tails_ticket 15706]]).
+
+The first time _Tor Browser_ is started in a given Tails session,
+the _NoScript_ icon is not displayed ([[!tor_bug 23359]]). If you
+need this icon, restart _Tor Browser_.
+
+This version may be slower than usual to start from DVD.
+
+See the list of [[long-standing issues|support/known_issues]].
+
+# How to test Tails 3.9~rc1?
+
+**Keep in mind that this is a test image**. We tested that it is not
+broken in obvious ways, but it might still contain undiscovered
+issues.
+
+But test wildly!
+
+If you find anything that is not working as it should, please report to
+us on <tails-testers@boum.org>.
+
+Bonus points if you first check if it is a
+<a href="#known_issues">known issue of this release</a> or a
+[[longstanding known issue|support/known_issues]].
+
+Upgrade from 3.8
+----------------
+
+1. Start Tails 3.8 on a USB stick installed using *Tails Installer* and
+   [[set an administration password|doc/first_steps/welcome_screen/administration_password]].
+
+1. Run this command in a *Terminal*
+   to select the "alpha" upgrade channel and start the upgrade:
+
+       echo TAILS_CHANNEL=\"alpha\" | sudo tee -a /etc/os-release && \
+            tails-upgrade-frontend-wrapper
+
+   and enter the administration password when asked for the "password
+   for amnesia".
+
+1. After the upgrade is installed, restart Tails and choose
+   **Applications&nbsp;▸ Tails&nbsp;▸ About Tails**
+   to verify that you are running Tails 3.9~rc1.
+
+Download and install
+--------------------
+
+You can install 3.9~rc1 by following our usual
+[[installation instructions|install]], skipping the **Download and
+verify** step.
+
+- Tails 3.9~rc1 ISO image
+  (OpenPGP signature)
+
+- Tails 3.9~rc1 torrent
+
+<a id="known_issues"></a>
+
+# What's coming up?
+
+Tails 3.9 is [[scheduled|contribute/calendar]] for September 5.
+
+We need your help and there are many ways to [[contribute to
+Tails|contribute]] (<a href="https://tails.net/donate/?r=3.9-rc1">donating</a> is only one of
+them). Come [[talk to us|doc/about/contact#tails-dev]]!

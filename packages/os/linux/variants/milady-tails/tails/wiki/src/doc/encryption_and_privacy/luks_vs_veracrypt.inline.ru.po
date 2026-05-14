@@ -1,0 +1,145 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-09-17 11:40+0200\n"
+"PO-Revision-Date: 2021-12-17 05:59+0000\n"
+"Last-Translator: dedmoroz <cj75300@gmail.com>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: ru\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=3; plural=n%10==1 && n%100!=11 ? 0 : n%10>=2 && "
+"n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2;\n"
+"X-Generator: Weblate 3.11.3\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta robots=\"noindex\"]]\n"
+msgstr "[[!meta robots=\"noindex\"]]\n"
+
+#. type: Plain text
+#, fuzzy
+#| msgid "We recommend you use:"
+msgid "We recommend that you use:"
+msgstr "Мы рекомендуем использовать:"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid ""
+#| "*VeraCrypt* to share encrypted files across different operating systems."
+msgid ""
+"*VeraCrypt* to share encrypted files across different operating systems."
+msgstr ""
+"*VeraCrypt* — чтобы шифровать файлы для использования в разных операционных "
+"системах."
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid "*LUKS* to encrypt files for Tails and Linux."
+msgid "*LUKS* to encrypt files for Tails and Linux."
+msgstr "*LUKS* — для шифрования файлов в Tails и Linux."
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid ""
+#| "<table>\n"
+#| "<tr><th></th><th class=\"w30\"><i>LUKS</i></th><th class=\"w30\"><i>VeraCrypt</i></th></tr>\n"
+#| "<tr><td>Compatibility</td><td>Linux</td><td>Windows + macOS + Linux</td></tr>\n"
+#| "<tr><td>Create new volumes</td><td class=\"check\"><span class=\"check\">Yes</span></td><td class=\"cross\">Outside of Tails</td></tr>\n"
+#| "<tr><td>Open and modify existing volumes</td><td class=\"check\">Yes</td><td class=\"check\">Yes</td></tr>\n"
+#| "<tr><td>Encrypted partitions (or entire disks) ¹</td><td class=\"check\">Yes</td><td class=\"check\">Yes</td></tr>\n"
+#| "<tr><td>Encrypted file containers ¹</td><td class=\"cross\">Complicated ²</td><td class=\"check\">Easy</td></tr>\n"
+#| "<tr><td>Plausible deniability ³</td><td class=\"cross\">No</td><td class=\"check\">Yes</td></tr>\n"
+#| "<tr><td>Ease of use</td><td class=\"check\">Easier</td><td class=\"cross\">More complicated</td></tr>\n"
+#| "<tr><td>Speed</td><td class=\"check\">Faster</td><td class=\"cross\">Slower</td></tr>\n"
+#| "</table>\n"
+msgid ""
+"<table>\n"
+"<tr><th></th><th class=\"w30\"><i>LUKS</i></th><th class=\"w30\"><i>VeraCrypt</i></th></tr>\n"
+"<tr><td>Compatibility</td><td>Linux</td><td>Windows + macOS + Linux</td></tr>\n"
+"<tr><td>Create new volumes</td><td class=\"check\"><span class=\"check\">Yes</span></td><td class=\"cross\">Outside of Tails</td></tr>\n"
+"<tr><td>Open and modify existing volumes</td><td class=\"check\">Yes</td><td class=\"check\">Yes</td></tr>\n"
+"<tr><td>Encrypted partitions (or entire disks)¹</td><td class=\"check\">Yes</td><td class=\"check\">Yes</td></tr>\n"
+"<tr><td>Encrypted file containers¹</td><td class=\"cross\">Complicated </td><td class=\"check\">Easy</td></tr>\n"
+"<tr><td>Plausible deniability²</td><td class=\"cross\">No</td><td class=\"check\">Yes</td></tr>\n"
+"<tr><td>Ease of use</td><td class=\"check\">Easier</td><td class=\"cross\">More complicated</td></tr>\n"
+"<tr><td>Speed</td><td class=\"check\">Faster</td><td class=\"cross\">Slower</td></tr>\n"
+"</table>\n"
+msgstr ""
+"<table>\n"
+"<tr><th></th><th class=\"w30\"><i>LUKS</i></th><th class=\"w30\"><i>VeraCrypt</i></th></tr>\n"
+"<tr><td>Совместимость</td><td>Linux</td><td>Windows + macOS + Linux</td></tr>\n"
+"<tr><td>Создание новые томов</td><td class=\"check\"><span class=\"check\">Да</span></td><td class=\"cross\">За пределами Tails</td></tr>\n"
+"<tr><td>Открывать и менять существующие тома</td><td class=\"check\">Да</td><td class=\"check\">Да</td></tr>\n"
+"<tr><td>Шифрование разделов (или дисков полностью)¹</td><td class=\"check\">Да</td><td class=\"check\">Да</td></tr>\n"
+"<tr><td>Зашифрованные файловые контейнеры ¹</td><td class=\"cross\">Сложно²</td><td class=\"check\">Просто</td></tr>\n"
+"<tr><td>Правдоподобное отрицание ³</td><td class=\"cross\">Нет</td><td class=\"check\">Да</td></tr>\n"
+"<tr><td>Простота использования в целом</td><td class=\"check\">Проще</td><td class=\"cross\">Сложнее</td></tr>\n"
+"<tr><td>Скорость</td><td class=\"check\">Быстрее</td><td class=\"cross\">Медленнее</td></tr>\n"
+"</table>\n"
+
+#. type: Bullet: '1. '
+msgid ""
+"See the [[difference between *file containers* and *partitions*|"
+"veracrypt#container-vs-partition]]."
+msgstr ""
+"См. [[разницу между *файловыми контейнерами* и *разделами*|"
+"veracrypt#container-vs-partition]]."
+
+#. type: Bullet: '2. '
+msgid ""
+"*Plausible deniability*: in some cases (for example, with *VeraCrypt* hidden "
+"volumes), it is impossible for an adversary to technically prove the "
+"existence of an encrypted volume."
+msgstr ""
+"*Правдоподобное отрицание* (иногда также *легальный отказ*): в некоторых "
+"случаях (например, при использовании скрытых томов <span "
+"class=\"application\"> VeraCrypt</span>) злоумышленник не может технически "
+"доказать существование зашифрованного тома."
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid ""
+#| "   Still, [[!wikipedia deniable_encryption]] might not protect you if\n"
+#| "   you are forced to reveal the existence of the encrypted volume. See:\n"
+msgid ""
+"   Still, [[!wikipedia Deniable_encryption desc=\"deniable encryption\"]] might not protect you if\n"
+"   you are forced to reveal the existence of the encrypted volume. See\n"
+"   [VeraCrypt: Plausible Deniability](https://www.veracrypt.fr/en/Plausible%20Deniability.html).\n"
+msgstr ""
+"   [Правдоподобное отрицание](https://ru.wikipedia.org/wiki/%D0%9F%D1%80%D0%B0%D0%B2%D0%B4%D0%BE%D0%BF%D0%BE%D0%B4%D0%BE%D0%B1%D0%BD%D0%BE%D0%B5_%D0%BE%D1%82%D1%80%D0%B8%D1%86%D0%B0%D0%BD%D0%B8%D0%B5) может и не защитить, если\n"
+"злоумышленник применит силу, и вы будете вынуждены раскрыть существование зашифрованного тома.\n"
+
+#~ msgid ""
+#~ "[VeraCrypt: Plausible Deniability](https://www.veracrypt.fr/en/"
+#~ "Plausible%20Deniability.html)"
+#~ msgstr ""
+#~ "[VeraCrypt: Plausible Deniability](https://www.veracrypt.fr/en/"
+#~ "Plausible%20Deniability.html) (англ.)"
+
+#, fuzzy
+#~| msgid ""
+#~| "[Security-in-a-Box: Creating a hidden volume](https://securityinabox.org/"
+#~| "en/guide/veracrypt/windows#creating-a-hidden-volume)"
+#~ msgid ""
+#~ "[Security-in-a-Box: Creating a hidden volume](https://securityinabox.org/"
+#~ "en/tools/veracrypt/#4-creating-a-hidden-volume)"
+#~ msgstr ""
+#~ "[VeraCrypt — шифрование файлов, папок и дисков](https://"
+#~ "safe.roskomsvoboda.org/veracrypt/), раздел «Создание скрытого тома» (рус.)"
+
+#~ msgid ""
+#~ "See [Tyler Burton: How to migrate from TrueCrypt to LUKS file containers]"
+#~ "(http://www.tylerburton.ca/2014/06/how-to-migrate-from-truecrypt-to-luks-"
+#~ "file-containers/)."
+#~ msgstr ""
+#~ "См. [Tyler Burton: How to migrate from TrueCrypt to LUKS file containers]"
+#~ "(http://www.tylerburton.ca/2014/06/how-to-migrate-from-truecrypt-to-luks-"
+#~ "file-containers/) (англ.)."

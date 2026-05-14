@@ -9,9 +9,9 @@ do publish (the privacy-filtered SFT datasets, the eval/bench results, the
 honest pending-status cards on the bundle repos) and prints a single summary.
 
 Publishable today (no fork build / no held-out-quality gate needed):
-  - dataset ``elizaos/eliza-1-training``    (the broader SFT corpus — refreshed
+  - dataset ``elizaos/eliza-1-training``  (the broader SFT corpus — refreshed
     only if ``data/final/{train,val,test}.jsonl`` exists locally)
-  - dataset ``elizaos/eliza-1-evals``       (the eval/bench results, kernel-verify
+  - dataset ``elizaos/eliza-1-evals``     (the eval/bench results, kernel-verify
     evidence, the ``eliza1_gates.yaml`` thresholds, throughput snapshots)
 
 Gated (this script reports the blocker, never bypasses it):
@@ -51,8 +51,8 @@ from scripts.manifest import eliza1_manifest as M  # noqa: E402
 
 ORG = "elizaos"
 
-# Active Qwen3.5 device bundles. Retired Qwen3 `0_6b` / `1_7b` repos are
-# handled by deprecation tooling, not by the current release publisher.
+# Active Eliza-1 device bundles. Retired Qwen3 size-specific repos are handled
+# by deprecation tooling, not by the current release publisher.
 BUNDLE_TIERS = M.ELIZA_1_TIERS
 
 # Where the staged bundles live on a dev box (see RELEASE_V1.md). The path can
@@ -157,7 +157,7 @@ def _bundle_dry_run(tier: str, bundle_dir: Path) -> Outcome:
                        f"{remote}: no staged bundle at {bundle_dir} — assemble it "
                        "(RELEASE_V1.md), then the orchestrator dry-run reports the gate")
     cmd = [sys.executable, "-m", "scripts.publish.orchestrator",
-           "--tier", tier, "--bundle-dir", str(bundle_dir), "--base-v1", "--dry-run"]
+           "--tier", tier, "--bundle-dir", str(bundle_dir), "--dry-run"]
     proc = subprocess.run(cmd, cwd=str(TRAINING_ROOT), capture_output=True, text=True)
     if proc.returncode == 0:
         return Outcome(repo, "model-bundle", "pending",

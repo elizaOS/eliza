@@ -8378,6 +8378,245 @@ export class LifeOpsRepository {
     );
   }
 
+  /**
+   * Transactional analogue of `appendWorkThreadEvent`. Pass the `tx` handle
+   * from `withTransaction`'s callback so the INSERT participates in the same
+   * transaction as the surrounding UPDATEs.
+   */
+  async appendWorkThreadEventTx(
+    tx: TransactionalDb,
+    event: import("./work-threads/types.js").WorkThreadEvent,
+  ): Promise<void> {
+    await executeRawSqlTx(
+      tx,
+      `INSERT INTO app_lifeops.life_work_thread_events (
+        id, agent_id, work_thread_id, occurred_at, type, reason, detail_json
+      ) VALUES (
+        ${sqlQuote(event.id)},
+        ${sqlQuote(event.agentId)},
+        ${sqlQuote(event.workThreadId)},
+        ${sqlQuote(event.occurredAt)},
+        ${sqlQuote(event.type)},
+        ${sqlText(event.reason ?? null)},
+        ${sqlText(event.detail ? JSON.stringify(event.detail) : null)}
+      )`,
+    );
+  }
+
+  /**
+   * Find an existing merge event by mergeRequestId on a target thread. Used
+   * for idempotency: if a merge with the same request id already happened,
+   * `mergeWorkThreadsAtomic` returns the recorded result without re-running.
+   */
+  async findWorkThreadMergeEvent(args: {
+    agentId: string;
+    targetWorkThreadId: string;
+    mergeRequestId: string;
+  }): Promise<{
+    sourceWorkThreadIds: string[];
+    occurredAt: string;
+  } | null> {
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT detail_json, occurred_at
+         FROM app_lifeops.life_work_thread_events
+        WHERE agent_id = ${sqlQuote(args.agentId)}
+          AND work_thread_id = ${sqlQuote(args.targetWorkThreadId)}
+          AND type = ${sqlQuote("merged")}
+          AND detail_json::jsonb @> ${sqlJson({
+            mergeRequestId: args.mergeRequestId,
+          })}::jsonb
+        LIMIT 1`,
+    );
+    const row = rows[0];
+    if (!row) return null;
+    const detail = parseJsonRecord(row.detail_json) ?? {};
+    const rawSourceIds = (detail as { sourceWorkThreadIds?: unknown })
+      .sourceWorkThreadIds;
+    const sourceWorkThreadIds = Array.isArray(rawSourceIds)
+      ? rawSourceIds.filter((s): s is string => typeof s === "string")
+      : [];
+    return {
+      sourceWorkThreadIds,
+      occurredAt: toText(row.occurred_at) ?? "",
+    };
+  }
+
+  /**
+   * Atomic thread merge. All four steps below commit together or none:
+   *   1. UPDATE target thread (sourceRefs, participants, summary, plan, metadata, version+1)
+   *   2. UPDATE each source thread (status=stopped, metadata.mergedIntoWorkThreadId, version+1)
+   *   3. INSERT 'merged' event on target (with mergeRequestId in detail_json)
+   *   4. INSERT 'merged_into' event on each source (with mergeRequestId in detail_json)
+   *
+   * Throws {@link OptimisticLockError} if any UPDATE affects 0 rows (someone
+   * else bumped a version first). Caller catches and retries via
+   * {@link withOptimisticRetry}.
+   *
+   * Idempotency: if a 'merged' event on the target already exists with the
+   * given `mergeRequestId`, this is a no-op and returns null without writing.
+   */
+  async mergeWorkThreadsAtomic(args: {
+    agentId: string;
+    target: import("./work-threads/types.js").WorkThread;
+    sources: import("./work-threads/types.js").WorkThread[];
+    nextTarget: import("./work-threads/types.js").WorkThread;
+    mergeRequestId: string;
+    reason?: string | null;
+    instruction?: string | null;
+  }): Promise<{ targetWorkThreadId: string; sourceWorkThreadIds: string[] }> {
+    return await import("./sql.js").then(async ({ withTransaction }) =>
+      withTransaction(this.runtime, async (tx) => {
+        // Idempotency check: do not re-merge if we already did this request.
+        const existing = await this.findWorkThreadMergeEventTx(tx, {
+          agentId: args.agentId,
+          targetWorkThreadId: args.target.id,
+          mergeRequestId: args.mergeRequestId,
+        });
+        if (existing) {
+          return {
+            targetWorkThreadId: args.target.id,
+            sourceWorkThreadIds: existing.sourceWorkThreadIds,
+          };
+        }
+
+        const updatedAt = args.nextTarget.updatedAt ?? isoNow();
+        const lastActivityAt = args.nextTarget.lastActivityAt ?? updatedAt;
+
+        // 1. UPDATE target with version check.
+        const targetRows = await executeRawSqlTx(
+          tx,
+          `UPDATE app_lifeops.life_work_threads
+              SET summary = ${sqlQuote(args.nextTarget.summary)},
+                  current_plan_summary = ${sqlText(args.nextTarget.currentPlanSummary ?? null)},
+                  source_refs_json = ${sqlJson(args.nextTarget.sourceRefs ?? [])},
+                  participant_entity_ids_json = ${sqlJson(args.nextTarget.participantEntityIds ?? [])},
+                  last_message_memory_id = ${sqlText(args.nextTarget.lastMessageMemoryId ?? null)},
+                  metadata_json = ${sqlJson(args.nextTarget.metadata ?? {})},
+                  updated_at = ${sqlQuote(updatedAt)},
+                  last_activity_at = ${sqlQuote(lastActivityAt)},
+                  version = version + 1
+            WHERE id = ${sqlQuote(args.target.id)}
+              AND agent_id = ${sqlQuote(args.agentId)}
+              AND version = ${sqlInteger(args.target.version)}
+          RETURNING id`,
+        );
+        if (targetRows.length === 0) {
+          throw new OptimisticLockError({
+            table: "life_work_threads",
+            id: args.target.id,
+            expectedVersion: args.target.version,
+          });
+        }
+
+        // 2. UPDATE each source with version check (status=stopped + metadata).
+        const sourceMetadataPatch = (existingMetadata: Record<string, unknown>) => ({
+          ...existingMetadata,
+          mergedIntoWorkThreadId: args.target.id,
+          mergeRequestId: args.mergeRequestId,
+        });
+        for (const source of args.sources) {
+          const nextMetadata = sourceMetadataPatch(source.metadata ?? {});
+          const sourceRows = await executeRawSqlTx(
+            tx,
+            `UPDATE app_lifeops.life_work_threads
+                SET status = ${sqlQuote("stopped")},
+                    metadata_json = ${sqlJson(nextMetadata)},
+                    updated_at = ${sqlQuote(updatedAt)},
+                    last_activity_at = ${sqlQuote(lastActivityAt)},
+                    version = version + 1
+              WHERE id = ${sqlQuote(source.id)}
+                AND agent_id = ${sqlQuote(args.agentId)}
+                AND version = ${sqlInteger(source.version)}
+            RETURNING id`,
+          );
+          if (sourceRows.length === 0) {
+            throw new OptimisticLockError({
+              table: "life_work_threads",
+              id: source.id,
+              expectedVersion: source.version,
+            });
+          }
+        }
+
+        // 3. INSERT 'merged' event on target.
+        const sourceIds = args.sources.map((s) => s.id);
+        await this.appendWorkThreadEventTx(tx, {
+          id: crypto.randomUUID(),
+          agentId: args.agentId,
+          workThreadId: args.target.id,
+          occurredAt: updatedAt,
+          type: "merged",
+          reason: args.reason ?? null,
+          detail: {
+            mergeRequestId: args.mergeRequestId,
+            sourceWorkThreadIds: sourceIds,
+            instruction: args.instruction ?? null,
+          },
+        });
+
+        // 4. INSERT 'merged_into' event on each source.
+        for (const source of args.sources) {
+          await this.appendWorkThreadEventTx(tx, {
+            id: crypto.randomUUID(),
+            agentId: args.agentId,
+            workThreadId: source.id,
+            occurredAt: updatedAt,
+            type: "merged_into",
+            reason: args.reason ?? null,
+            detail: {
+              mergeRequestId: args.mergeRequestId,
+              targetWorkThreadId: args.target.id,
+            },
+          });
+        }
+
+        return {
+          targetWorkThreadId: args.target.id,
+          sourceWorkThreadIds: sourceIds,
+        };
+      }),
+    );
+  }
+
+  /**
+   * Transactional version of {@link findWorkThreadMergeEvent}, scoped to the
+   * `tx` so the lookup sees uncommitted changes within the same transaction.
+   */
+  private async findWorkThreadMergeEventTx(
+    tx: TransactionalDb,
+    args: {
+      agentId: string;
+      targetWorkThreadId: string;
+      mergeRequestId: string;
+    },
+  ): Promise<{ sourceWorkThreadIds: string[]; occurredAt: string } | null> {
+    const rows = await executeRawSqlTx(
+      tx,
+      `SELECT detail_json, occurred_at
+         FROM app_lifeops.life_work_thread_events
+        WHERE agent_id = ${sqlQuote(args.agentId)}
+          AND work_thread_id = ${sqlQuote(args.targetWorkThreadId)}
+          AND type = ${sqlQuote("merged")}
+          AND detail_json::jsonb @> ${sqlJson({
+            mergeRequestId: args.mergeRequestId,
+          })}::jsonb
+        LIMIT 1`,
+    );
+    const row = rows[0];
+    if (!row) return null;
+    const detail = parseJsonRecord(row.detail_json) ?? {};
+    const rawSourceIds = (detail as { sourceWorkThreadIds?: unknown })
+      .sourceWorkThreadIds;
+    const sourceWorkThreadIds = Array.isArray(rawSourceIds)
+      ? rawSourceIds.filter((s): s is string => typeof s === "string")
+      : [];
+    return {
+      sourceWorkThreadIds,
+      occurredAt: toText(row.occurred_at) ?? "",
+    };
+  }
+
   async listWorkThreadEvents(args: {
     agentId: string;
     workThreadId: string;

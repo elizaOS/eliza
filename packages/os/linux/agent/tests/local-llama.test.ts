@@ -45,7 +45,7 @@ function stageModel(modelsDir: string, ggufFilename: string, size = 8192) {
 describe("probeLocalLlama", () => {
     test("returns ready=false when libllama.so is missing", () => {
         const { modelsDir } = workspace();
-        const probe = probeLocalLlama("tiny-1b", modelsDir);
+        const probe = probeLocalLlama("eliza-1-0_8b", modelsDir);
         expect(probe.ready).toBe(false);
         expect(probe.reason).toContain("libllama.so not found");
     });
@@ -53,7 +53,7 @@ describe("probeLocalLlama", () => {
     test("returns ready=false when shim is missing", () => {
         const { libDir, modelsDir } = workspace();
         writeFileSync(join(libDir, "libllama.so"), Buffer.alloc(16));
-        const probe = probeLocalLlama("tiny-1b", modelsDir);
+        const probe = probeLocalLlama("eliza-1-0_8b", modelsDir);
         expect(probe.ready).toBe(false);
         expect(probe.reason).toContain("libeliza-llama-shim.so not found");
     });
@@ -61,7 +61,7 @@ describe("probeLocalLlama", () => {
     test("returns ready=false when model GGUF is missing", () => {
         const { libDir, modelsDir } = workspace();
         stageLibs(libDir);
-        const probe = probeLocalLlama("tiny-1b", modelsDir);
+        const probe = probeLocalLlama("eliza-1-0_8b", modelsDir);
         expect(probe.ready).toBe(false);
         expect(probe.reason).toContain("model GGUF missing");
     });
@@ -69,16 +69,16 @@ describe("probeLocalLlama", () => {
     test("returns ready=true when all artifacts present", () => {
         const { libDir, modelsDir } = workspace();
         stageLibs(libDir);
-        stageModel(modelsDir, "Llama-3.2-1B-Instruct-Q4_K_M.gguf");
-        const probe = probeLocalLlama("tiny-1b", modelsDir);
+        stageModel(modelsDir, "eliza-1-0_8b-32k.gguf");
+        const probe = probeLocalLlama("eliza-1-0_8b", modelsDir);
         expect(probe.ready).toBe(true);
-        expect(probe.reason).toContain("Llama-3.2");
+        expect(probe.reason).toContain("eliza-1-0_8b");
     });
 
     test("forced=true when USBELIZA_LOCAL_BACKEND=llama", () => {
         const { modelsDir } = workspace();
         process.env.USBELIZA_LOCAL_BACKEND = "llama";
-        const probe = probeLocalLlama("tiny-1b", modelsDir);
+        const probe = probeLocalLlama("eliza-1-0_8b", modelsDir);
         expect(probe.forced).toBe(true);
     });
 
@@ -96,7 +96,7 @@ describe("loadLocalLlama (FFI stub)", () => {
         const { modelsDir } = workspace();
         let caught: unknown;
         try {
-            loadLocalLlama("tiny-1b", modelsDir);
+            loadLocalLlama("eliza-1-0_8b", modelsDir);
         } catch (e) {
             caught = e;
         }
@@ -107,11 +107,11 @@ describe("loadLocalLlama (FFI stub)", () => {
     test("throws missing-model for DFlash target without drafter on disk", () => {
         const { libDir, modelsDir } = workspace();
         stageLibs(libDir);
-        stageModel(modelsDir, "Qwen3.5-9B-DFlash-Q4_K_M.gguf");
+        stageModel(modelsDir, "eliza-1-9b-64k.gguf");
         // Did NOT stage the drafter — should fail.
         let caught: unknown;
         try {
-            loadLocalLlama("dflash-9b", modelsDir);
+            loadLocalLlama("eliza-1-9b", modelsDir);
         } catch (e) {
             caught = e;
         }
@@ -123,10 +123,10 @@ describe("loadLocalLlama (FFI stub)", () => {
     test("throws not-implemented when all artifacts present (stub status)", () => {
         const { libDir, modelsDir } = workspace();
         stageLibs(libDir);
-        stageModel(modelsDir, "Llama-3.2-1B-Instruct-Q4_K_M.gguf");
+        stageModel(modelsDir, "eliza-1-0_8b-32k.gguf");
         let caught: unknown;
         try {
-            loadLocalLlama("tiny-1b", modelsDir);
+            loadLocalLlama("eliza-1-0_8b", modelsDir);
         } catch (e) {
             caught = e;
         }
@@ -140,12 +140,12 @@ describe("loadLocalLlama (FFI stub)", () => {
         stageLibs(libDir);
         // 4 bytes — smaller than the GGUF header minimum.
         writeFileSync(
-            join(modelsDir, "Llama-3.2-1B-Instruct-Q4_K_M.gguf"),
+            join(modelsDir, "eliza-1-0_8b-32k.gguf"),
             Buffer.alloc(4),
         );
         let caught: unknown;
         try {
-            loadLocalLlama("tiny-1b", modelsDir);
+            loadLocalLlama("eliza-1-0_8b", modelsDir);
         } catch (e) {
             caught = e;
         }

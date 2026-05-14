@@ -9,55 +9,54 @@ describe("message handler retrieval hint output", () => {
 	it("parses, trims, dedupes, and caps retrieval hint arrays", () => {
 		const parsed = parseMessageHandlerOutput(
 			JSON.stringify({
-				processMessage: "RESPOND",
+				shouldRespond: "RESPOND",
 				thought: "Needs planner.",
-				plan: {
-					contexts: ["tasks"],
-					contextSlices: [
-						" slice:a ",
-						"slice:b",
-						"SLICE:A",
-						"",
-						7,
-						"slice:c",
-						"slice:d",
-						"slice:e",
-						"slice:f",
-						"slice:g",
-						"slice:h",
-						"slice:i",
-						"slice:j",
-						"slice:k",
-						"slice:l",
-						"slice:m",
-					],
-					candidateActions: [
-						" send_email ",
-						"SEND_EMAIL",
-						"calendar_create_event",
-						"search_documents",
-						"play_music",
-						"create_task",
-						"update_task",
-						"phone_call",
-						"browser_search",
-						"book_travel",
-						"health_steps",
-						"message_contact",
-						"settings_update",
-						"extra_after_cap",
-					],
-					parentActionHints: [
-						" EMAIL ",
-						"email",
-						"CALENDAR",
-						"TASKS",
-						"CONTACTS",
-						"BROWSER",
-						"PHONE",
-						"EXTRA_AFTER_CAP",
-					],
-				},
+				replyText: "",
+				contexts: ["tasks"],
+				contextSlices: [
+					" slice:a ",
+					"slice:b",
+					"SLICE:A",
+					"",
+					7,
+					"slice:c",
+					"slice:d",
+					"slice:e",
+					"slice:f",
+					"slice:g",
+					"slice:h",
+					"slice:i",
+					"slice:j",
+					"slice:k",
+					"slice:l",
+					"slice:m",
+				],
+				candidateActions: [
+					" send_email ",
+					"SEND_EMAIL",
+					"calendar_create_event",
+					"search_documents",
+					"play_music",
+					"create_task",
+					"update_task",
+					"phone_call",
+					"browser_search",
+					"book_travel",
+					"health_steps",
+					"message_contact",
+					"settings_update",
+					"extra_after_cap",
+				],
+				parentActionHints: [
+					" EMAIL ",
+					"email",
+					"CALENDAR",
+					"TASKS",
+					"CONTACTS",
+					"BROWSER",
+					"PHONE",
+					"EXTRA_AFTER_CAP",
+				],
 			}),
 		);
 
@@ -100,26 +99,28 @@ describe("message handler retrieval hint output", () => {
 	});
 
 	it("keeps missing hint arrays backward-compatible", () => {
-		const parsed = parseMessageHandlerOutput(`{
-  "processMessage": "RESPOND",
-  "thought": "Calendar context is needed.",
-  "plan": { "contexts": ["calendar"] }
-}`);
+		const parsed = parseMessageHandlerOutput(
+			JSON.stringify({
+				shouldRespond: "RESPOND",
+				thought: "Calendar context is needed.",
+				replyText: "",
+				contexts: ["calendar"],
+			}),
+		);
 
-		expect(parsed?.plan).toEqual({ contexts: ["calendar"], reply: undefined });
+		expect(parsed?.plan).toEqual({ contexts: ["calendar"], reply: "" });
 	});
 
 	it("ignores non-array retrieval hint garbage", () => {
 		const parsed = parseMessageHandlerOutput(
 			JSON.stringify({
-				processMessage: "RESPOND",
+				shouldRespond: "RESPOND",
 				thought: "Needs planner.",
-				plan: {
-					contexts: ["email"],
-					contextSlices: "slice:a",
-					candidateActions: { action: "send_email" },
-					parentActionHints: null,
-				},
+				replyText: "",
+				contexts: ["email"],
+				contextSlices: "slice:a",
+				candidateActions: { action: "send_email" },
+				parentActionHints: null,
 			}),
 		);
 

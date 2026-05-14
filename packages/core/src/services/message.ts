@@ -3,11 +3,10 @@ import z from "zod";
 import { formatActionNames, formatActions } from "../actions";
 import {
 	actionToTool,
+	buildPlannerToolsFromTieredActions,
+	CORE_PLANNER_TERMINALS,
 	createHandleResponseTool,
 	HANDLE_RESPONSE_TOOL_NAME,
-	PLAN_ACTIONS_TOOL,
-	PLAN_ACTIONS_TOOL_NAME,
-	STABLE_PLANNER_TOOLS,
 } from "../actions/to-tool";
 import { evaluateConnectorAccountPolicies } from "../connectors/account-manager";
 import { createUniqueUuid } from "../entities";
@@ -61,7 +60,6 @@ import {
 	type FactsAndRelationshipsRunResult,
 	runFactsAndRelationshipsStage,
 } from "../runtime/facts-and-relationships";
-import { parseJsonObject } from "../runtime/json-output";
 import { getLocalizedExamplesProvider } from "../runtime/localized-examples-provider";
 import {
 	getMessageHandlerReply,
@@ -73,7 +71,6 @@ import {
 	buildModelInputBudget,
 	withModelInputBudgetProviderOptions,
 } from "../runtime/model-input-budget";
-import { extractPlanActionsFromContent } from "../runtime/plan-actions-extractor";
 import {
 	actionResultToPlannerToolResult,
 	cacheProviderOptions,
@@ -87,11 +84,11 @@ import {
 } from "../runtime/planner-loop";
 import {
 	buildResponseGrammar,
+	buildSpanSamplerPlan,
 	withGuidedDecodeProviderOptions,
 } from "../runtime/response-grammar";
 import {
 	type ResponseHandlerEvaluator,
-	type ResponseHandlerPatch,
 	runResponseHandlerEvaluators,
 } from "../runtime/response-handler-evaluators";
 import type {
@@ -413,25 +410,6 @@ function extractInlinePlannerActionParams(value: string): {
 	return { name: unwrapPlannerIdentifier(value) };
 }
 
-function splitPlannerCompoundActionName(
-	actionName: string,
-): { actionName: string; subaction: string } | null {
-	const parts = unwrapPlannerIdentifier(actionName)
-		.split(".")
-		.map((part) => part.trim())
-		.filter(Boolean);
-	if (parts[0]?.toLowerCase() === "functions") {
-		parts.shift();
-	}
-	if (parts.length !== 2) {
-		return null;
-	}
-	return {
-		actionName: parts[0],
-		subaction: parts[1],
-	};
-}
-
 export function extractPlannerActionNames(
 	parsedPlanner: Record<string, unknown>,
 ): string[] {
@@ -499,36 +477,6 @@ function _normalizePlannerActions(
 			return [resolvedAction.name];
 		}
 
-		const compoundAction = splitPlannerCompoundActionName(actionName);
-		if (compoundAction) {
-			const resolvedCompoundAction = resolveRuntimeAction(
-				actionLookup,
-				compoundAction.actionName,
-			);
-			if (resolvedCompoundAction) {
-				return [resolvedCompoundAction.name];
-			}
-		}
-
-		const aliasedActionName = PLANNER_ACTION_ALIASES.get(normalized);
-		if (aliasedActionName) {
-			const resolvedAlias = resolveRuntimeAction(
-				actionLookup,
-				aliasedActionName,
-			);
-			if (resolvedAlias) {
-				runtime.logger.info(
-					{
-						src: "service:message",
-						actionName,
-						aliasedActionName: resolvedAlias.name,
-					},
-					"Repaired planner action alias",
-				);
-				return [resolvedAlias.name];
-			}
-		}
-
 		runtime.logger.warn(
 			{
 				src: "service:message",
@@ -567,11 +515,7 @@ export function resolvePlannerActionName(
 ): string[] {
 	const lookup =
 		actionLookup ?? buildRuntimeActionLookup(runtime as IAgentRuntime);
-	const resolved = resolvePlannerActionNameFromLookup(
-		runtime,
-		lookup,
-		actionName,
-	);
+	const resolved = resolvePlannerActionNameFromLookup(lookup, actionName);
 	if (resolved.length > 0) {
 		return resolved;
 	}
@@ -580,7 +524,6 @@ export function resolvePlannerActionName(
 	// like WRITE -> FILE would defeat a candidateActions narrow.
 	if (actionLookup && !options?.strict) {
 		const runtimeResolved = resolvePlannerActionNameFromLookup(
-			runtime,
 			buildRuntimeActionLookup(runtime as IAgentRuntime),
 			actionName,
 		);
@@ -600,7 +543,6 @@ export function resolvePlannerActionName(
 }
 
 function resolvePlannerActionNameFromLookup(
-	runtime: Pick<IAgentRuntime, "actions" | "logger">,
 	lookup: Map<string, Action>,
 	actionName: string,
 ): string[] {
@@ -617,33 +559,6 @@ function resolvePlannerActionNameFromLookup(
 	const resolvedAction = resolveRuntimeAction(lookup, actionName);
 	if (resolvedAction) {
 		return [resolvedAction.name];
-	}
-
-	const compoundAction = splitPlannerCompoundActionName(actionName);
-	if (compoundAction) {
-		const resolvedCompoundAction = resolveRuntimeAction(
-			lookup,
-			compoundAction.actionName,
-		);
-		if (resolvedCompoundAction) {
-			return [resolvedCompoundAction.name];
-		}
-	}
-
-	const aliasedActionName = PLANNER_ACTION_ALIASES.get(normalized);
-	if (aliasedActionName) {
-		const resolvedAlias = resolveRuntimeAction(lookup, aliasedActionName);
-		if (resolvedAlias) {
-			runtime.logger.info(
-				{
-					src: "service:message",
-					actionName,
-					aliasedActionName: resolvedAlias.name,
-				},
-				"Repaired planner action alias",
-			);
-			return [resolvedAlias.name];
-		}
 	}
 
 	return [];
@@ -2209,10 +2124,10 @@ async function createV5MessageContextObject(args: {
 		character: args.runtime.character,
 		userRole: args.userRoles?.[0],
 	});
-	// Stage 2 sees one stable wrapper tool: PLAN_ACTIONS. Per-action specs live in
-	// `events[type=tool]` and are rendered into the conversation's
-	// available-actions block by the available_actions provider; the LLM picks
-	// one by name and passes it back via `PLAN_ACTIONS({ action, ... })`.
+	// Stage 2 exposes each Action as its own native tool. Per-action specs live
+	// in `events[type=tool]`; the LLM calls each action directly by name. We
+	// also expose the universal terminal-sentinel tools (REPLY / IGNORE / STOP)
+	// so the planner has a stable way to end the turn regardless of narrowing.
 	// Empty when no actions are gated so the planner can short-circuit.
 	const hasAnyAction = events.some(
 		(event) =>
@@ -2223,7 +2138,7 @@ async function createV5MessageContextObject(args: {
 			),
 	);
 	const expandedTools: ToolDefinition[] = hasAnyAction
-		? [PLAN_ACTIONS_TOOL]
+		? [...CORE_PLANNER_TERMINALS]
 		: [];
 	return createContextObject({
 		id: String(args.message.id ?? v4()),
@@ -2290,548 +2205,6 @@ function filterSelectedContextsForRole(
 	return selected;
 }
 
-function contextAvailableForRepair(
-	context: AgentContext,
-	availableContexts: readonly ContextDefinition[] | undefined,
-): boolean {
-	return (
-		!availableContexts ||
-		availableContexts.length === 0 ||
-		availableContexts.some((definition) => definition.id === context)
-	);
-}
-
-/**
- * Resolve a Stage 1 repair's `parentActionHints` to the first umbrella from
- * `preferred` that is present in `availableActionNames`. When none of the
- * preferred umbrellas are present, fall back to `fallback` so legacy callers
- * (and runtimes that don't expose the umbrella action) still receive a usable
- * hint.
- *
- * Names are compared case-insensitively after the same identifier normalization
- * the planner alias map uses (`A_B` and `AB` both match the `AB` umbrella).
- */
-function resolveActionAwareParentHint(
-	preferred: readonly string[],
-	fallback: string,
-	availableActionNames: readonly string[] | undefined,
-): string {
-	const available = new Set(
-		(availableActionNames ?? []).map((name) => normalizeActionIdentifier(name)),
-	);
-	for (const candidate of preferred) {
-		if (available.has(normalizeActionIdentifier(candidate))) {
-			return candidate;
-		}
-	}
-	return fallback;
-}
-
-function addRepairPlanToPatch(
-	patch: {
-		setContexts?: AgentContext[];
-		addContexts: AgentContext[];
-		addCandidateActions: string[];
-		addParentActionHints: string[];
-	},
-	repair: {
-		contexts: AgentContext[];
-		candidateActions: string[];
-		parentActionHints: string[];
-	},
-	mode: "replace-contexts" | "add-contexts",
-): void {
-	if (mode === "replace-contexts") {
-		patch.setContexts = mergeAgentContexts([], repair.contexts);
-	} else {
-		patch.addContexts = mergeAgentContexts(patch.addContexts, repair.contexts);
-	}
-	patch.addCandidateActions = [
-		...new Set([...patch.addCandidateActions, ...repair.candidateActions]),
-	];
-	patch.addParentActionHints = [
-		...new Set([...patch.addParentActionHints, ...repair.parentActionHints]),
-	];
-}
-
-function getStage1OwnerPreferenceRepairPlan(args: {
-	message: Memory;
-	availableContexts: readonly ContextDefinition[];
-}): {
-	contexts: AgentContext[];
-	candidateActions: string[];
-	parentActionHints: string[];
-} | null {
-	const text = (getUserMessageText(args.message) ?? "").trim();
-	if (!text) {
-		return null;
-	}
-	const lower = text.toLowerCase();
-	const explicitDocumentArtifactIntent =
-		/\b(?:document|doc|file|markdown|pdf|spreadsheet|sheet|notes?\s+(?:file|document|page)|save\s+(?:this|that|it)\s+as)\b/.test(
-			lower,
-		);
-	const stablePreferenceIntent =
-		/\b(?:remember|save|store|record|keep|note)\b[\s\S]{0,120}\b(?:i|me|my)\b[\s\S]{0,80}\b(?:prefer|preference|preferences|prefs?|like|usually|always)\b/.test(
-			lower,
-		) ||
-		/\b(?:travel|booking|flight|hotel)\s+(?:preference|preferences|prefs?)\b/.test(
-			lower,
-		);
-	if (!stablePreferenceIntent || explicitDocumentArtifactIntent) {
-		return null;
-	}
-	const travelPreferenceIntent =
-		/\b(?:travel|booking|flight|flights?|seat|seats?|aisle|window|carry-?on|checked bags?|luggage|hotel|hotels?|venue|venues?)\b/.test(
-			lower,
-		);
-	const contexts = (
-		["memory", "settings", "calendar"] as AgentContext[]
-	).filter((context) =>
-		contextAvailableForRepair(context, args.availableContexts),
-	);
-	return {
-		contexts: contexts.length > 0 ? contexts : ["general"],
-		candidateActions: travelPreferenceIntent
-			? [
-					"save_travel_preferences",
-					"store_travel_preferences",
-					"store_preference",
-				]
-			: ["store_preference", "save_owner_profile"],
-		parentActionHints: ["REPLY", "DOCUMENT"],
-	};
-}
-
-function getStage1ApprovalResolutionRepairPlan(args: {
-	message: Memory;
-	availableContexts: readonly ContextDefinition[];
-}): {
-	contexts: AgentContext[];
-	candidateActions: string[];
-	parentActionHints: string[];
-} | null {
-	const text = (getUserMessageText(args.message) ?? "").trim();
-	if (!text) {
-		return null;
-	}
-	const lower = text.toLowerCase();
-	const resolutionIntent =
-		/\b(?:approve|accept|confirm|reject|deny|decline)\b[\s\S]{0,120}\b(?:pending\s+)?(?:approval|request)\b/.test(
-			lower,
-		) ||
-		/\b(?:pending\s+)?(?:approval|request)\b[\s\S]{0,120}\b(?:approve|accept|confirm|reject|deny|decline)\b/.test(
-			lower,
-		);
-	if (!resolutionIntent) {
-		return null;
-	}
-	const rejectIntent = /\b(?:reject|deny|decline)\b/.test(lower);
-	const contexts = (
-		["tasks", "automation", "admin", "general"] as AgentContext[]
-	).filter((context) =>
-		contextAvailableForRepair(context, args.availableContexts),
-	);
-	return {
-		contexts: contexts.length > 0 ? contexts : ["general"],
-		candidateActions: rejectIntent
-			? ["resolve_pending_approval", "reject_approval", "deny_approval"]
-			: ["resolve_pending_approval", "approve_approval", "approve_request"],
-		parentActionHints: ["RESOLVE_REQUEST"],
-	};
-}
-
-function getStage1PasswordManagerRepairPlan(args: {
-	message: Memory;
-	availableContexts: readonly ContextDefinition[];
-}): {
-	contexts: AgentContext[];
-	candidateActions: string[];
-	parentActionHints: string[];
-} | null {
-	const text = (getUserMessageText(args.message) ?? "").trim();
-	if (!text) {
-		return null;
-	}
-	const lower = text.toLowerCase();
-	const lookupVerb =
-		/\b(?:look\s*up|find|search|show|list|copy|retrieve|get)\b/.test(lower);
-	const credentialNoun =
-		/\b(?:passwords?|saved\s+logins?|logins?|credentials?|1password|onepassword|protonpass|passkey|passkeys)\b/.test(
-			lower,
-		);
-	const explicitFillIntent =
-		/\b(?:fill|autofill|type|enter)\b[\s\S]{0,80}\b(?:password|login|field|form)\b/.test(
-			lower,
-		);
-	if (!lookupVerb || !credentialNoun || explicitFillIntent) {
-		return null;
-	}
-	const contexts = (
-		["secrets", "settings", "browser", "automation"] as AgentContext[]
-	).filter((context) =>
-		contextAvailableForRepair(context, args.availableContexts),
-	);
-	return {
-		contexts: contexts.length > 0 ? contexts : ["secrets"],
-		candidateActions: [
-			"password_manager_search",
-			"saved_login_lookup",
-			"credential_lookup",
-			"search_password_manager",
-		],
-		parentActionHints: ["CREDENTIALS"],
-	};
-}
-
-function getStage1CheckinRepairPlan(args: {
-	message: Memory;
-	availableContexts: readonly ContextDefinition[];
-	availableActionNames?: readonly string[];
-}): {
-	contexts: AgentContext[];
-	candidateActions: string[];
-	parentActionHints: string[];
-} | null {
-	const text = (getUserMessageText(args.message) ?? "").trim();
-	if (!text) {
-		return null;
-	}
-	const lower = text.toLowerCase();
-	const checkinIntent =
-		/\b(?:run|give|start|do|show|open)\b[\s\S]{0,80}\b(?:morning|night|daily|evening|bedtime)\s+check-?in\b/.test(
-			lower,
-		) ||
-		/\b(?:morning|night|daily|evening|bedtime)\s+check-?in\b[\s\S]{0,80}\b(?:now|today|tonight|please|for me)?\b/.test(
-			lower,
-		);
-	if (!checkinIntent) {
-		return null;
-	}
-	const nightIntent = /\b(?:night|evening|bedtime|tonight)\b/.test(lower);
-	const morningIntent = /\bmorning\b/.test(lower);
-	const contexts = (
-		["tasks", "health", "automation", "calendar", "email"] as AgentContext[]
-	).filter((context) =>
-		contextAvailableForRepair(context, args.availableContexts),
-	);
-	// Action-aware umbrella: prefer the dedicated `CHECKIN` action when the
-	// runtime exposes it (LifeOps deployments), otherwise fall back to the
-	// generic `SCHEDULED_TASKS` umbrella that hosts check-in subactions in
-	// vanilla runtimes.
-	const parentActionHint = resolveActionAwareParentHint(
-		["CHECKIN"],
-		"SCHEDULED_TASKS",
-		args.availableActionNames,
-	);
-	return {
-		contexts: contexts.length > 0 ? contexts : ["tasks"],
-		candidateActions: nightIntent
-			? ["night_checkin", "run_night_checkin", "lifeops_night_checkin"]
-			: morningIntent
-				? ["morning_checkin", "run_morning_checkin", "lifeops_morning_checkin"]
-				: ["run_checkin", "daily_checkin", "lifeops_checkin"],
-		parentActionHints: [parentActionHint],
-	};
-}
-
-function getStage1CalendlyRepairPlan(args: {
-	message: Memory;
-	availableContexts: readonly ContextDefinition[];
-}): {
-	contexts: AgentContext[];
-	candidateActions: string[];
-	parentActionHints: string[];
-} | null {
-	const text = (getUserMessageText(args.message) ?? "").trim();
-	if (!text) {
-		return null;
-	}
-	const lower = text.toLowerCase();
-	const calendlyIntent = /\bcalendly\b|api\.calendly\.com/u.test(lower);
-	if (!calendlyIntent) {
-		return null;
-	}
-	const availabilityIntent =
-		/\b(?:availability|available|open|slots?|times?)\b/u.test(lower);
-	const singleUseLinkIntent =
-		/\b(?:single[\s-]?use|one[\s-]?time|booking\s+link|book(?:ing)?\s+link|link)\b/u.test(
-			lower,
-		) && /\b(?:create|make|generate|get|give|send)\b/u.test(lower);
-	if (!availabilityIntent && !singleUseLinkIntent) {
-		return null;
-	}
-	const contexts = (
-		["calendar", "connectors", "tasks"] as AgentContext[]
-	).filter((context) =>
-		contextAvailableForRepair(context, args.availableContexts),
-	);
-	return {
-		contexts: contexts.length > 0 ? contexts : ["calendar"],
-		candidateActions: singleUseLinkIntent
-			? [
-					"calendly_single_use_link",
-					"calendly_create_single_use_link",
-					"calendar_calendly_single_use_link",
-				]
-			: [
-					"calendly_availability",
-					"calendar_check_calendly_availability",
-					"check_calendly_availability",
-				],
-		parentActionHints: ["CALENDAR"],
-	};
-}
-
-function looksLikeCalendarTravelFeasibilityRequest(text: string): boolean {
-	const lower = text.toLowerCase();
-	const hasTravelSignal =
-		/\b(?:flight|flights?|airport|arriv(?:e|es|al|ing)|land(?:s|ed|ing)?|depart(?:s|ed|ure)?|itinerary|travel|jfk|sfo|lax|ord|ewr|lga)\b/u.test(
-			lower,
-		);
-	const hasCalendarSignal =
-		/\b(?:meeting|board|calendar|schedule|appointment|event|conflict|make\s+(?:my|the|it))\b/u.test(
-			lower,
-		);
-	const hasFeasibilitySignal =
-		/\b(?:can|could|will|would|make|given|tight|conflict|overlap|rebook|move|reschedule|enough time)\b/u.test(
-			lower,
-		);
-	return hasTravelSignal && hasCalendarSignal && hasFeasibilitySignal;
-}
-
-function getStage1CalendarTravelRepairPlan(args: {
-	message: Memory;
-	availableContexts: readonly ContextDefinition[];
-}): {
-	contexts: AgentContext[];
-	candidateActions: string[];
-	parentActionHints: string[];
-} | null {
-	const text = (getUserMessageText(args.message) ?? "").trim();
-	if (!text || !looksLikeCalendarTravelFeasibilityRequest(text)) {
-		return null;
-	}
-	const contexts = (["calendar", "tasks"] as AgentContext[]).filter((context) =>
-		contextAvailableForRepair(context, args.availableContexts),
-	);
-	return {
-		contexts: contexts.length > 0 ? contexts : ["calendar"],
-		candidateActions: [
-			"check_flight_conflict",
-			"flight_conflict_rebooking",
-			"calendar_search_events",
-			"calendar_read",
-		],
-		parentActionHints: ["CALENDAR"],
-	};
-}
-
-function looksLikeCalendarSignatureDeadlineRequest(text: string): boolean {
-	const lower = text.toLowerCase();
-	const hasSignatureSignal =
-		/\b(?:nda|docusign|signature|signed|signing|sign\s+(?:the|a)?\s*(?:document|doc|nda)|document\s+sign(?:ing|ature)?)\b/u.test(
-			lower,
-		);
-	const hasCalendarDeadlineSignal =
-		/\b(?:meeting|appointment|kick-?off|deadline|before|due|in\s+\d+\s+days?|partnership)\b/u.test(
-			lower,
-		);
-	const hasInitiationSignal =
-		/\b(?:initiate|start|begin|draft|queue|prepare|send|get\s+(?:it|the\s+nda)\s+signed|signing\s+flow)\b/u.test(
-			lower,
-		);
-	return hasSignatureSignal && hasCalendarDeadlineSignal && hasInitiationSignal;
-}
-
-function getStage1CalendarSignatureDeadlineRepairPlan(args: {
-	message: Memory;
-	availableContexts: readonly ContextDefinition[];
-}): {
-	contexts: AgentContext[];
-	candidateActions: string[];
-	parentActionHints: string[];
-} | null {
-	const text = (getUserMessageText(args.message) ?? "").trim();
-	if (!text || !looksLikeCalendarSignatureDeadlineRequest(text)) {
-		return null;
-	}
-	const contexts = (["calendar"] as AgentContext[]).filter((context) =>
-		contextAvailableForRepair(context, args.availableContexts),
-	);
-	return {
-		contexts: contexts.length > 0 ? contexts : ["calendar"],
-		candidateActions: [
-			"personal_assistant_sign_document",
-			"sign_document",
-			"calendar_search_events",
-			"calendar_read",
-		],
-		parentActionHints: ["PERSONAL_ASSISTANT", "CALENDAR"],
-	};
-}
-
-function getStage1KnownToolRepairPlan(args: {
-	message: Memory;
-	availableContexts: readonly ContextDefinition[];
-	availableActionNames?: readonly string[];
-}): {
-	contexts: AgentContext[];
-	candidateActions: string[];
-	parentActionHints: string[];
-} | null {
-	return (
-		getStage1ApprovalResolutionRepairPlan(args) ??
-		getStage1PasswordManagerRepairPlan(args) ??
-		getStage1CheckinRepairPlan(args) ??
-		getStage1CalendarSignatureDeadlineRepairPlan(args) ??
-		getStage1CalendarTravelRepairPlan(args) ??
-		getStage1CalendlyRepairPlan(args) ??
-		getStage1OwnerPreferenceRepairPlan(args)
-	);
-}
-
-function buildFallbackStage1PlanForKnownToolRequest(args: {
-	message: Memory;
-	availableContexts: readonly ContextDefinition[];
-	availableActionNames?: readonly string[];
-}): MessageHandlerResult | null {
-	const repair = getStage1KnownToolRepairPlan(args);
-	if (!repair) {
-		return null;
-	}
-	return {
-		processMessage: "RESPOND",
-		thought:
-			"Deterministic fallback: explicit owner tool request requires a known owning action.",
-		plan: {
-			contexts: repair.contexts,
-			requiresTool: true,
-			simple: false,
-			candidateActions: repair.candidateActions,
-			parentActionHints: repair.parentActionHints,
-		},
-	};
-}
-
-function buildKnownToolRequestResponseHandlerPatch(args: {
-	message: Memory;
-	availableContexts: readonly ContextDefinition[];
-	availableActionNames?: readonly string[];
-}): ResponseHandlerPatch | null {
-	const text = (getUserMessageText(args.message) ?? "").trim();
-	if (!text) {
-		return null;
-	}
-
-	const lower = text.toLowerCase();
-	const patch = {
-		setContexts: undefined as AgentContext[] | undefined,
-		addContexts: [] as AgentContext[],
-		addCandidateActions: [] as string[],
-		addParentActionHints: [] as string[],
-	};
-
-	const replaceRepairs = [
-		getStage1ApprovalResolutionRepairPlan(args),
-		getStage1PasswordManagerRepairPlan(args),
-		getStage1CheckinRepairPlan(args),
-		getStage1CalendarSignatureDeadlineRepairPlan(args),
-		getStage1CalendarTravelRepairPlan(args),
-		getStage1CalendlyRepairPlan(args),
-	].filter(
-		(
-			repair,
-		): repair is {
-			contexts: AgentContext[];
-			candidateActions: string[];
-			parentActionHints: string[];
-		} => repair !== null,
-	);
-	for (const repair of replaceRepairs) {
-		addRepairPlanToPatch(patch, repair, "replace-contexts");
-	}
-
-	const targetLookupReplyIntent =
-		/\b(draft|prepare|write|compose)\b[\s\S]{0,80}\brepl(?:y|ies|ied|ying)\b/.test(
-			lower,
-		) ||
-		/\brepl(?:y|ies|ied|ying|respond)\b[\s\S]{0,80}\b(to|from|latest|last|recent|email|message|dm|text)\b/.test(
-			lower,
-		);
-	const mentionsMailOrMessageTarget =
-		/\b(e-?mail|inbox|message|dm|direct message|text|sms|slack|discord|telegram|signal|whatsapp|imessage|from\s+[a-z][\w'-]*)\b/.test(
-			lower,
-		);
-	if (targetLookupReplyIntent && mentionsMailOrMessageTarget) {
-		const contexts = (
-			["email", "messaging", "connectors"] as AgentContext[]
-		).filter((context) =>
-			contextAvailableForRepair(context, args.availableContexts),
-		);
-		addRepairPlanToPatch(
-			patch,
-			{
-				contexts,
-				candidateActions: ["draft_reply", "message_draft_reply", "send_email"],
-				parentActionHints: ["MESSAGE"],
-			},
-			"add-contexts",
-		);
-	}
-
-	const ownerPreferenceRepair = getStage1OwnerPreferenceRepairPlan(args);
-	if (ownerPreferenceRepair) {
-		addRepairPlanToPatch(patch, ownerPreferenceRepair, "replace-contexts");
-	}
-
-	const desktopScreenshotIntent =
-		/\b(screen\s*shot|screenshot|capture\s+(?:my\s+|the\s+|current\s+)?screen|see\s+(?:my\s+|the\s+)?screen)\b/.test(
-			lower,
-		) &&
-		!/\b(generate|create|draw|make)\b[\s\S]{0,40}\b(image|picture|art|graphic)\b/.test(
-			lower,
-		);
-	if (desktopScreenshotIntent) {
-		const contexts = (["browser", "automation"] as AgentContext[]).filter(
-			(context) => contextAvailableForRepair(context, args.availableContexts),
-		);
-		addRepairPlanToPatch(
-			patch,
-			{
-				contexts,
-				candidateActions: ["take_screenshot", "capture_screen"],
-				parentActionHints: ["COMPUTER_USE"],
-			},
-			"add-contexts",
-		);
-	}
-
-	if (
-		!patch.setContexts &&
-		patch.addContexts.length === 0 &&
-		patch.addCandidateActions.length === 0 &&
-		patch.addParentActionHints.length === 0
-	) {
-		return null;
-	}
-
-	return {
-		requiresTool: true,
-		simple: false,
-		clearReply: true,
-		...(patch.setContexts ? { setContexts: patch.setContexts } : {}),
-		...(patch.addContexts.length > 0 ? { addContexts: patch.addContexts } : {}),
-		...(patch.addCandidateActions.length > 0
-			? { addCandidateActions: patch.addCandidateActions }
-			: {}),
-		...(patch.addParentActionHints.length > 0
-			? { addParentActionHints: patch.addParentActionHints }
-			: {}),
-		debug: ["known tool request repair"],
-	};
-}
-
 const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvaluator[] =
 	[
 		{
@@ -2847,29 +2220,12 @@ const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvaluator[] =
 				return {
 					processMessage: "IGNORE",
 					requiresTool: false,
-					simple: true,
 					clearReply: true,
 					debug: [
 						`voice turn signal suppressed reply (${signal?.source ?? "unknown"}; p=${typeof signal?.endOfTurnProbability === "number" ? signal.endOfTurnProbability.toFixed(3) : "n/a"}; next=${signal?.nextSpeaker ?? "unknown"})`,
 					],
 				};
 			},
-		},
-		{
-			name: "core.known_tool_request_repair",
-			description:
-				"Deterministically repairs Stage 1 routing for explicit known tool requests.",
-			priority: 20,
-			shouldRun: ({ message }) =>
-				Boolean((getUserMessageText(message) ?? "").trim()),
-			evaluate: ({ runtime, message, availableContexts }) =>
-				buildKnownToolRequestResponseHandlerPatch({
-					message,
-					availableContexts,
-					availableActionNames: (runtime.actions ?? []).map(
-						(action) => action.name,
-					),
-				}) ?? undefined,
 		},
 	];
 
@@ -3214,37 +2570,25 @@ function looksLikeMessageHandlerToolArguments(
 function extractMessageHandlerRawParsed(
 	raw: string | GenerateTextResult,
 ): Record<string, unknown> | null {
-	if (typeof raw !== "string") {
-		return (
-			extractHandleResponseToolArguments(raw) ??
-			parseJsonObject<Record<string, unknown>>(getV5ModelText(raw))
-		);
-	}
-	return parseJsonObject<Record<string, unknown>>(raw);
+	if (typeof raw === "string") return null;
+	return extractHandleResponseToolArguments(raw);
 }
 
 function normalizeRawParsedForFieldRegistry(
 	raw: Record<string, unknown>,
 ): Record<string, unknown> {
 	const normalized = { ...raw };
-	const plan =
-		raw.plan && typeof raw.plan === "object" && !Array.isArray(raw.plan)
-			? (raw.plan as Record<string, unknown>)
-			: undefined;
-	const fields = plan ?? raw;
 	if (normalized.shouldRespond === undefined) {
-		normalized.shouldRespond = raw.processMessage ?? raw.action ?? "RESPOND";
+		normalized.shouldRespond = "RESPOND";
 	}
 	if (normalized.replyText === undefined) {
-		normalized.replyText =
-			raw.replyText ?? raw.reply ?? fields.replyText ?? fields.reply ?? "";
+		normalized.replyText = "";
 	}
 	if (normalized.contexts === undefined) {
-		normalized.contexts = fields.contexts ?? [];
+		normalized.contexts = [];
 	}
 	if (normalized.candidateActionNames === undefined) {
-		normalized.candidateActionNames =
-			raw.candidateActionNames ?? fields.candidateActions ?? [];
+		normalized.candidateActionNames = [];
 	}
 	const extract =
 		raw.extract &&
@@ -3253,14 +2597,13 @@ function normalizeRawParsedForFieldRegistry(
 			? (raw.extract as Record<string, unknown>)
 			: undefined;
 	if (normalized.facts === undefined) {
-		normalized.facts = extract?.facts ?? raw.facts ?? [];
+		normalized.facts = extract?.facts ?? [];
 	}
 	if (normalized.relationships === undefined) {
-		normalized.relationships =
-			extract?.relationships ?? raw.relationships ?? [];
+		normalized.relationships = extract?.relationships ?? [];
 	}
 	if (normalized.addressedTo === undefined) {
-		normalized.addressedTo = extract?.addressedTo ?? raw.addressedTo ?? [];
+		normalized.addressedTo = extract?.addressedTo ?? [];
 	}
 	return normalized;
 }
@@ -3366,106 +2709,8 @@ function messageHandlerFromFieldResult(
 function parseMessageHandlerModelOutput(
 	raw: string | GenerateTextResult,
 ): MessageHandlerResult | null {
-	if (typeof raw !== "string") {
-		const text = getV5ModelText(raw);
-		return (
-			parseMessageHandlerNativeToolCall(raw) ??
-			parseMessageHandlerOutput(text) ??
-			recoverPlanActionsFromContentText(text) ??
-			synthesizeSimpleReplyFromPlainText(text)
-		);
-	}
-	return (
-		parseMessageHandlerOutput(raw) ??
-		recoverPlanActionsFromContentText(raw) ??
-		synthesizeSimpleReplyFromPlainText(raw)
-	);
-}
-
-/**
- * Tolerant fallback: when the model returns plain text instead of the
- * expected JSON / native tool-call format, wrap the text as a simple
- * reply. This keeps the conversation alive on cold-start turns where
- * weaker / smaller models occasionally skip the structured-output
- * scaffold. Without this, the runtime threw `v5 messageHandler returned
- * invalid MessageHandlerResult` and the user saw the failure-template.
- *
- * Returns null only when the text is genuinely empty — that's a real
- * failure that should still propagate.
- */
-function synthesizeSimpleReplyFromPlainText(
-	raw: string | undefined | null,
-): MessageHandlerResult | null {
-	if (typeof raw !== "string") return null;
-	const trimmed = raw.trim();
-	if (!trimmed) return null;
-	const replyText = stripReasoningBlocks(trimmed);
-	if (!replyText) return null;
-	return {
-		processMessage: "RESPOND",
-		thought:
-			"Tolerant fallback: model returned plain text instead of the structured plan; treating as simple reply.",
-		plan: {
-			contexts: [SIMPLE_CONTEXT_ID],
-			reply: replyText,
-			simple: true,
-		},
-	};
-}
-
-/**
- * Stage 1 tolerant recovery: when the model emitted a single well-formed
- * PLAN_ACTIONS({...}) block as message-content text instead of invoking the
- * HANDLE_RESPONSE tool (symptom: Cerebras / weak-planner LLMs), synthesize a
- * planning envelope that will let Stage 2 dispatch the intended action.
- *
- * Only fires when the raw text is exclusively the PLAN_ACTIONS call (strict
- * mode) so explanatory text like "here's how you'd call it: PLAN_ACTIONS({...})"
- * falls through to the existing simple-reply path.
- *
- * The envelope sets requiresTool=true and candidateActions=[extracted.action]
- * so the Stage 2 planner narrows to the right action. Role-gate checks and
- * action resolution still run normally in Stage 2 — this is a parse-layer
- * recovery only.
- */
-function recoverPlanActionsFromContentText(
-	text: string,
-): MessageHandlerResult | null {
-	const extracted = extractPlanActionsFromContent(text);
-	if (!extracted) return null;
-
-	logger.info(
-		{
-			src: "service:message",
-			action: extracted.action,
-			recoverySource: extracted.recoverySource,
-		},
-		"Recovered planner action from content (Stage 1 RESPONSE_HANDLER)",
-	);
-
-	return {
-		processMessage: "RESPOND",
-		thought: `Tolerant recovery: model emitted PLAN_ACTIONS as content text rather than tool call; routing to Stage 2 with candidateActions=[${extracted.action}].`,
-		plan: {
-			contexts: ["general"],
-			reply: "",
-			simple: false,
-			requiresTool: true,
-			candidateActions: [extracted.action],
-		},
-	};
-}
-
-function buildFallbackStage1DirectReplyPlan(): MessageHandlerResult {
-	return {
-		processMessage: "RESPOND",
-		thought:
-			"Tolerant fallback: response handler returned no parseable plan; routing as a simple direct reply.",
-		plan: {
-			contexts: [SIMPLE_CONTEXT_ID],
-			simple: true,
-		},
-	};
+	if (typeof raw === "string") return null;
+	return parseMessageHandlerNativeToolCall(raw);
 }
 
 /**
@@ -3530,283 +2775,6 @@ interface ExecuteV5PlannedToolCallParams {
 	recorder?: TrajectoryRecorder;
 	trajectoryId?: string;
 	plannerLoopConfig?: PlannerLoopParams["config"];
-}
-
-/**
- * Unwrap a `PLAN_ACTIONS` tool call into its target action.
- *
- * The LLM sees the stable Stage 2 wrapper surface, so every invocation
- * arrives wrapped: `{ name: "PLAN_ACTIONS",
- * params: { action, parameters, thought } }`. Returns a
- * normalized tool call where `name` is the actual action name and `params`
- * are the action-shaped parameters, ready for the rest of the dispatch
- * pipeline.
- *
- * Legacy planner payloads may still include `subaction`; when present, it is
- * mirrored into canonical `params.action` for parent-action dispatch.
- *
- * Pass-through for other tool calls (REPLY/IGNORE/STOP terminal sentinels,
- * already-unwrapped action calls) so they keep their existing semantics.
- */
-function unwrapPlanActionsToolCall(toolCall: PlannerToolCall): PlannerToolCall {
-	if (toolCall.name !== PLAN_ACTIONS_TOOL_NAME) {
-		return toolCall;
-	}
-	const params = toolCall.params ?? {};
-	const rawAction = params.action;
-	const rawActionName = typeof rawAction === "string" ? rawAction.trim() : "";
-	const compoundAction = splitPlannerCompoundActionName(rawActionName);
-	const actionName = compoundAction?.actionName ?? rawActionName;
-	const rawSubaction = params.subaction ?? compoundAction?.subaction;
-	const subaction =
-		typeof rawSubaction === "string" && rawSubaction.trim().length > 0
-			? rawSubaction.trim()
-			: undefined;
-	const rawActionParameters = params.parameters;
-	const baseParameters =
-		rawActionParameters &&
-		typeof rawActionParameters === "object" &&
-		!Array.isArray(rawActionParameters)
-			? (rawActionParameters as Record<string, unknown>)
-			: {};
-	const mergedParameters: Record<string, unknown> = subaction
-		? {
-				...baseParameters,
-				action: baseParameters.action ?? subaction,
-				subaction,
-			}
-		: baseParameters;
-	return {
-		id: toolCall.id,
-		name: actionName,
-		params: mergedParameters,
-	};
-}
-
-function normalizeCompoundPlannerToolCall(
-	toolCall: PlannerToolCall,
-): PlannerToolCall {
-	const compoundAction = splitPlannerCompoundActionName(toolCall.name);
-	if (!compoundAction) {
-		return toolCall;
-	}
-	const params =
-		toolCall.params && typeof toolCall.params === "object"
-			? { ...toolCall.params }
-			: {};
-	if (params.subaction === undefined) {
-		params.subaction = compoundAction.subaction;
-	}
-	if (params.action === undefined) {
-		params.action = compoundAction.subaction;
-	}
-	return {
-		...toolCall,
-		name: compoundAction.actionName,
-		params,
-	};
-}
-
-function stringParam(value: unknown): string | undefined {
-	return typeof value === "string" && value.trim().length > 0
-		? value.trim()
-		: undefined;
-}
-
-type PlannerLifeAliasDefaults = {
-	action?: string;
-	subaction?: string;
-	kind?: "definition" | "goal";
-	definitionKind?: "task" | "habit" | "routine";
-};
-
-function normalizedPlannerAliasDefaults(
-	actionName: string,
-): PlannerLifeAliasDefaults | undefined {
-	return PLANNER_ACTION_ALIAS_DEFAULTS.get(
-		normalizeActionIdentifier(actionName),
-	);
-}
-
-function normalizedLifeSubactionDefaults(
-	subaction: unknown,
-): PlannerLifeAliasDefaults | undefined {
-	if (typeof subaction !== "string") {
-		return undefined;
-	}
-	return PLANNER_LIFE_SUBACTION_DEFAULTS.get(
-		normalizeActionIdentifier(subaction),
-	);
-}
-
-const LIFE_SUBACTIONS = new Set([
-	"create",
-	"update",
-	"delete",
-	"complete",
-	"skip",
-	"snooze",
-	"review",
-]);
-
-const LIFE_DEFINITION_KINDS = new Set(["task", "habit", "routine"]);
-
-function normalizedLifeSubaction(value: unknown): string | undefined {
-	if (typeof value !== "string") {
-		return undefined;
-	}
-	const normalized = value.trim().toLowerCase();
-	return LIFE_SUBACTIONS.has(normalized) ? normalized : undefined;
-}
-
-function normalizedLifeDefinitionKind(
-	value: unknown,
-): "task" | "habit" | "routine" | undefined {
-	if (typeof value !== "string") {
-		return undefined;
-	}
-	const normalized = value.trim().toLowerCase();
-	return LIFE_DEFINITION_KINDS.has(normalized)
-		? (normalized as "task" | "habit" | "routine")
-		: undefined;
-}
-
-function normalizedLifeTopLevelKind(
-	value: unknown,
-): "definition" | "goal" | undefined {
-	if (typeof value !== "string") {
-		return undefined;
-	}
-	const normalized = value.trim().toLowerCase();
-	return normalized === "definition" || normalized === "goal"
-		? normalized
-		: undefined;
-}
-
-function firstStringParam(
-	params: Record<string, unknown>,
-	keys: readonly string[],
-): string | undefined {
-	for (const key of keys) {
-		const value = stringParam(params[key]);
-		if (value) {
-			return value;
-		}
-	}
-	return undefined;
-}
-
-function buildNormalizedLifePlannerParams(args: {
-	toolCall: PlannerToolCall;
-	defaults?: PlannerLifeAliasDefaults;
-	message: Memory;
-}): Record<string, unknown> {
-	const params =
-		args.toolCall.params && typeof args.toolCall.params === "object"
-			? { ...args.toolCall.params }
-			: {};
-	const existingDetails =
-		params.details &&
-		typeof params.details === "object" &&
-		!Array.isArray(params.details)
-			? (params.details as Record<string, unknown>)
-			: {};
-	const rawSubaction = params.action ?? params.subaction;
-	const rawKind = params.kind;
-	const definitionKind =
-		normalizedLifeDefinitionKind(rawKind) ??
-		normalizedLifeDefinitionKind(params.entity) ??
-		normalizedLifeDefinitionKind(params.type) ??
-		args.defaults?.definitionKind;
-	const topLevelKind =
-		normalizedLifeTopLevelKind(rawKind) ??
-		args.defaults?.kind ??
-		(definitionKind ? "definition" : undefined);
-	const subaction =
-		args.defaults?.action ??
-		args.defaults?.subaction ??
-		normalizedLifeSubaction(rawSubaction);
-	const title = firstStringParam(params, [
-		"title",
-		"name",
-		"task",
-		"todo",
-		"todo_title",
-		"task_name",
-		"habit",
-		"habit_name",
-		"habit_title",
-		"goal",
-		"goal_name",
-		"goal_title",
-	]);
-	const intent =
-		stringParam(params.intent) ?? getUserMessageText(args.message) ?? title;
-
-	const details: Record<string, unknown> = {
-		...existingDetails,
-		originalPlannerAction: args.toolCall.name,
-	};
-	if (
-		typeof rawSubaction === "string" &&
-		rawSubaction.trim().length > 0 &&
-		rawSubaction.trim().toLowerCase() !== subaction
-	) {
-		details.originalPlannerSubaction = rawSubaction.trim();
-	}
-	if (definitionKind && typeof existingDetails.kind !== "string") {
-		details.kind = definitionKind;
-	}
-
-	for (const [key, value] of Object.entries(params)) {
-		if (
-			key !== "action" &&
-			key !== "subaction" &&
-			key !== "kind" &&
-			key !== "intent" &&
-			key !== "title" &&
-			key !== "target" &&
-			key !== "minutes" &&
-			key !== "details" &&
-			value !== undefined
-		) {
-			details[key] = value;
-		}
-	}
-
-	return {
-		...(subaction ? { action: subaction, subaction } : {}),
-		...(topLevelKind ? { kind: topLevelKind } : {}),
-		...(intent ? { intent } : {}),
-		...(title ? { title } : {}),
-		...(stringParam(params.target)
-			? { target: stringParam(params.target) }
-			: {}),
-		...(typeof params.minutes === "number" ? { minutes: params.minutes } : {}),
-		...(Object.keys(details).length > 0 ? { details } : {}),
-	};
-}
-
-function shouldTreatPlannerContactAliasAsLifeReminder(
-	toolCall: PlannerToolCall,
-	message: Memory,
-): boolean {
-	const normalizedName = normalizeActionIdentifier(toolCall.name);
-	if (normalizedName !== normalizeActionIdentifier("ADD_CONTACT")) {
-		return false;
-	}
-	const text = (getUserMessageText(message) ?? "").toLowerCase();
-	if (!text || /\bfollow\s+up\b/.test(text)) {
-		return false;
-	}
-	return (
-		/\b(?:remember|remind|reminder)\b/.test(text) &&
-		/\b(?:call|phone|text|message|email)\b/.test(text)
-	);
-}
-
-function messageTextMatches(message: Memory, pattern: RegExp): boolean {
-	return pattern.test((getUserMessageText(message) ?? "").toLowerCase());
 }
 
 function plannerErrorLooksTransient(error: unknown): boolean {
@@ -4027,508 +2995,13 @@ async function runDeterministicPlannerFallback(args: {
 	};
 }
 
-function shouldTreatPlannerWebAsCalendlyCalendar(
-	resolvedName: string,
-	message: Memory,
-): boolean {
-	const normalized = normalizeActionIdentifier(resolvedName);
-	if (
-		normalized !== normalizeActionIdentifier("BROWSER") &&
-		normalized !== normalizeActionIdentifier("WEB_GET") &&
-		normalized !== normalizeActionIdentifier("WEB_SEARCH")
-	) {
-		return false;
-	}
-	return messageTextMatches(message, /\bcalendly\b|api\.calendly\.com/);
-}
-
-function shouldTreatPlannerWebAsBookTravel(
-	resolvedName: string,
-	message: Memory,
-): boolean {
-	const normalized = normalizeActionIdentifier(resolvedName);
-	if (
-		normalized !== normalizeActionIdentifier("BROWSER") &&
-		normalized !== normalizeActionIdentifier("WEB_GET") &&
-		normalized !== normalizeActionIdentifier("WEB_SEARCH")
-	) {
-		return false;
-	}
-	return messageTextMatches(
-		message,
-		/\b(?:book|reserve)\s+(?:travel|flight|hotel|trip)\b|\bbook\s+travel\b/,
-	);
-}
-
-function shouldTreatPlannerBrowserAsAutofill(
-	resolvedName: string,
-	message: Memory,
-): boolean {
-	const normalized = normalizeActionIdentifier(resolvedName);
-	if (
-		normalized !== normalizeActionIdentifier("BROWSER") &&
-		normalized !== normalizeActionIdentifier("WEB_GET") &&
-		normalized !== normalizeActionIdentifier("WEB_SEARCH")
-	) {
-		return false;
-	}
-	return (
-		messageTextMatches(message, /\bfill\b/) &&
-		messageTextMatches(message, /\b(?:password|login|form|field)\b/)
-	);
-}
-
-function shouldTreatPlannerConnectorAsPost(
-	resolvedName: string,
-	message: Memory,
-): boolean {
-	if (
-		normalizeActionIdentifier(resolvedName) !==
-		normalizeActionIdentifier("CONNECTOR")
-	) {
-		return false;
-	}
-	return (
-		messageTextMatches(message, /\b(?:x|twitter)\b/) &&
-		messageTextMatches(message, /\b(?:search|posts?|timeline|feed|mentions?)\b/)
-	);
-}
-
-function shouldTreatPlannerConnectorAsMessage(
-	resolvedName: string,
-	message: Memory,
-): boolean {
-	if (
-		normalizeActionIdentifier(resolvedName) !==
-		normalizeActionIdentifier("CONNECTOR")
-	) {
-		return false;
-	}
-	const text = getUserMessageText(message) ?? "";
-	return (
-		/\b(?:email|gmail|mail|inbox|unread|draft reply|reply to|unsubscribe)\b/i.test(
-			text,
-		) ||
-		(/\b(?:x|twitter)\b/i.test(text) &&
-			/\b(?:dm|dms|direct messages?|messages?)\b/i.test(text)) ||
-		(/\b(?:discord|slack|telegram|signal|whatsapp)\b/i.test(text) &&
-			/\b(?:post|send|message|dm|channel)\b/i.test(text))
-	);
-}
-
-function inferPostSearchQuery(message: Memory): string | undefined {
-	const text = getUserMessageText(message) ?? "";
-	return (
-		/\bposts?\s+about\s+(.+)$/i.exec(text)?.[1]?.trim() ??
-		/\bsearch\s+(?:x|twitter)\s+for\s+(.+)$/i.exec(text)?.[1]?.trim() ??
-		/\babout\s+(.+)$/i.exec(text)?.[1]?.trim()
-	);
-}
-
-function normalizeBlockPlannerParams(
-	toolCall: PlannerToolCall,
-	message: Memory,
-	target: "website" | "app",
-): Record<string, unknown> {
-	const params =
-		toolCall.params && typeof toolCall.params === "object"
-			? (toolCall.params as Record<string, unknown>)
-			: {};
-	return {
-		action:
-			stringParam(params.action) ?? stringParam(params.subaction) ?? "block",
-		subaction:
-			stringParam(params.action) ?? stringParam(params.subaction) ?? "block",
-		target,
-		intent: stringParam(params.intent) ?? getUserMessageText(message),
-		...(Array.isArray(params.hostnames) || typeof params.hostnames === "string"
-			? { hostnames: params.hostnames }
-			: {}),
-		...(Array.isArray(params.sites) || typeof params.sites === "string"
-			? { hostnames: params.sites }
-			: {}),
-		...(typeof params.durationMinutes === "number" ||
-		typeof params.durationMinutes === "string"
-			? { durationMinutes: params.durationMinutes }
-			: {}),
-		...(typeof params.confirmed === "boolean" ||
-		typeof params.confirmed === "string"
-			? { confirmed: params.confirmed }
-			: {}),
-	};
-}
-
-function normalizePostPlannerParams(
-	toolCall: PlannerToolCall,
-	message: Memory,
-): Record<string, unknown> {
-	const params =
-		toolCall.params && typeof toolCall.params === "object"
-			? (toolCall.params as Record<string, unknown>)
-			: {};
-	const rawAction = stringParam(params.action);
-	const source = stringParam(params.source);
-	const op = /^(?:timeline|feed|read|read_feed|get_timeline|get_feed)$/i.test(
-		rawAction ?? "",
-	)
-		? "read"
-		: /^(?:search|search_twitter|x_search)$/i.test(rawAction ?? "")
-			? "search"
-			: rawAction;
-	return {
-		...(op ? { action: op } : {}),
-		...(source
-			? { source: source === "twitter" ? "x" : source }
-			: messageTextMatches(message, /\b(?:x|twitter)\b/)
-				? { source: "x" }
-				: {}),
-		...(stringParam(params.query)
-			? { query: params.query }
-			: stringParam(params.searchTerm)
-				? { query: params.searchTerm }
-				: op === "search" || messageTextMatches(message, /\bsearch\b/)
-					? {
-							query:
-								inferPostSearchQuery(message) ?? getUserMessageText(message),
-						}
-					: {}),
-		...(stringParam(params.feed) ? { feed: params.feed } : {}),
-		...(stringParam(params.target) ? { target: params.target } : {}),
-	};
-}
-
-function normalizeMessagePlannerParams(
-	toolCall: PlannerToolCall,
-	message: Memory,
-): Record<string, unknown> {
-	const params =
-		toolCall.params && typeof toolCall.params === "object"
-			? (toolCall.params as Record<string, unknown>)
-			: {};
-	const rawOperation = stringParam(params.action);
-	const manageIntent =
-		stringParam(params.manageOperation) ?? stringParam(params.command);
-	const rawSource =
-		stringParam(params.source) ??
-		stringParam(params.platform) ??
-		stringParam(params.connector);
-	const source =
-		rawSource === "twitter"
-			? "x"
-			: /^(?:google|email|mail)$/i.test(rawSource ?? "")
-				? "gmail"
-				: rawSource;
-	const sender = stringParam(params.sender) ?? stringParam(params.from);
-	const target =
-		stringParam(params.target) ??
-		stringParam(params.recipient) ??
-		stringParam(params.channel) ??
-		stringParam(params.channelName) ??
-		stringParam(params.room) ??
-		stringParam(params.email) ??
-		stringParam(params.emailAddress) ??
-		stringParam(params.address);
-	const id = stringParam(params.id);
-	const messageId =
-		stringParam(params.messageId) ??
-		stringParam(params.inReplyToId) ??
-		(rawOperation !== "send_draft" ? id : undefined);
-	const inReplyToId = stringParam(params.inReplyToId);
-	const draftId =
-		stringParam(params.draftId) ??
-		(rawOperation === "send_draft" ? id : undefined);
-	const messageBody =
-		stringParam(params.message) ??
-		stringParam(params.text) ??
-		stringParam(params.content) ??
-		stringParam(params.body);
-	const text = getUserMessageText(message) ?? "";
-	const directChatSend =
-		/\b(?:post|send|message|dm)\b/i.test(text) &&
-		/\b(?:discord|slack|telegram|signal|whatsapp)\b/i.test(text);
-	const operation =
-		rawOperation === "send_draft" &&
-		!stringParam(params.draftId) &&
-		(directChatSend || source || target || messageBody)
-			? "send"
-			: rawOperation;
-	const inferredOperation = operation
-		? undefined
-		: directChatSend
-			? "send"
-			: /\bdraft\b.*\breply\b/i.test(text)
-				? "draft_reply"
-				: /\b(?:unread|inbox|digest|summarize).*?\b(?:email|gmail|mail|inbox)\b/i.test(
-							text,
-						) ||
-						/\b(?:email|gmail|mail|inbox)\b.*?\b(?:unread|digest|summarize)\b/i.test(
-							text,
-						)
-					? "list_inbox"
-					: /\b(?:x|twitter)\b/i.test(text) &&
-							/\b(?:dm|dms|direct messages?|messages?)\b/i.test(text)
-						? "read_channel"
-						: undefined;
-	return {
-		...((inferredOperation ?? operation)
-			? {
-					action: inferredOperation ?? operation,
-				}
-			: {}),
-		...(source
-			? { source: source === "twitter" ? "x" : source }
-			: /\b(?:x|twitter)\b/i.test(text)
-				? { source: "x" }
-				: {}),
-		...(target ? { target } : {}),
-		...(sender || target ? { sender: sender ?? target } : {}),
-		...(messageId ? { messageId } : {}),
-		...(inReplyToId ? { inReplyToId } : {}),
-		...(draftId ? { draftId } : {}),
-		...(messageBody ? { message: messageBody, body: messageBody } : {}),
-		...(target && stringParam(params.channel) ? { targetKind: "channel" } : {}),
-		...(manageIntent
-			? {
-					manageOperation: /\bunsubscribe\b/i.test(manageIntent)
-						? "unsubscribe"
-						: manageIntent,
-				}
-			: {}),
-		...(stringParam(params.query) ? { query: params.query } : {}),
-		...(stringParam(params.channel) ? { channel: params.channel } : {}),
-		...(params.sources !== undefined ? { sources: params.sources } : {}),
-		...(params.worldIds !== undefined ? { worldIds: params.worldIds } : {}),
-		...(params.channelIds !== undefined
-			? { channelIds: params.channelIds }
-			: {}),
-		...(params.limit !== undefined ? { limit: params.limit } : {}),
-		...(params.since !== undefined ? { since: params.since } : {}),
-		...(params.until !== undefined ? { until: params.until } : {}),
-	};
-}
-
-function normalizeResolveRequestPlannerParams(
-	toolCall: PlannerToolCall,
-	message: Memory,
-): Record<string, unknown> {
-	const params =
-		toolCall.params && typeof toolCall.params === "object"
-			? (toolCall.params as Record<string, unknown>)
-			: {};
-	const text = `${toolCall.name} ${getUserMessageText(message) ?? ""}`;
-	const subaction = /\b(?:reject|deny|decline|no)\b/i.test(text)
-		? "reject"
-		: "approve";
-	return {
-		action: subaction,
-		subaction,
-		...(stringParam(params.requestId) ? { requestId: params.requestId } : {}),
-		...(stringParam(params.reason) ? { reason: params.reason } : {}),
-	};
-}
-
-function normalizePasswordManagerPlannerParams(
-	toolCall: PlannerToolCall,
-	message: Memory,
-): Record<string, unknown> {
-	const params =
-		toolCall.params && typeof toolCall.params === "object"
-			? (toolCall.params as Record<string, unknown>)
-			: {};
-	const rawSubaction = stringParam(params.subaction);
-	const wantsCopy = messageTextMatches(
-		message,
-		/\b(?:copy|clipboard|inject|fill)\b/,
-	);
-	const subaction =
-		rawSubaction &&
-		/^(?:list|search|inject_username|inject_password)$/i.test(rawSubaction)
-			? rawSubaction
-			: wantsCopy
-				? "inject_password"
-				: "search";
-	const query =
-		stringParam(params.query) ??
-		stringParam(params.service) ??
-		stringParam(params.target) ??
-		stringParam(params.domain) ??
-		getUserMessageText(message);
-	return {
-		action: subaction,
-		subaction,
-		...(query ? { query, intent: query } : {}),
-		...(stringParam(params.itemId) ? { itemId: params.itemId } : {}),
-		...(typeof params.confirmed === "boolean"
-			? { confirmed: params.confirmed }
-			: {}),
-	};
-}
-
-function normalizeAutofillPlannerParams(
-	toolCall: PlannerToolCall,
-	message: Memory,
-): Record<string, unknown> {
-	const params =
-		toolCall.params && typeof toolCall.params === "object"
-			? (toolCall.params as Record<string, unknown>)
-			: {};
-	const text = getUserMessageText(message) ?? "";
-	const domain =
-		stringParam(params.domain) ??
-		stringParam(params.site) ??
-		stringParam(params.website) ??
-		/\b([a-z0-9-]+(?:\.[a-z0-9-]+)+)\b/i.exec(text)?.[1];
-	return {
-		action:
-			stringParam(params.action) ?? stringParam(params.subaction) ?? "fill",
-		subaction:
-			stringParam(params.action) ?? stringParam(params.subaction) ?? "fill",
-		field: stringParam(params.field) ?? "password",
-		...(domain
-			? {
-					domain,
-					url: /^https?:\/\//i.test(domain) ? domain : `https://${domain}`,
-				}
-			: {}),
-	};
-}
-
-const OWNER_SURFACE_ACTIONS = new Set(
-	[
-		"OWNER_TODOS",
-		"OWNER_REMINDERS",
-		"OWNER_ALARMS",
-		"OWNER_ROUTINES",
-		"OWNER_GOALS",
-	].map(normalizeActionIdentifier),
-);
-
-function normalizePersonalAssistantPlannerParams(
-	toolCall: PlannerToolCall,
-): Record<string, unknown> {
-	const params =
-		toolCall.params && typeof toolCall.params === "object"
-			? (toolCall.params as Record<string, unknown>)
-			: {};
-	const raw =
-		`${toolCall.name} ${stringParam(params.action) ?? ""}`.toLowerCase();
-	const action = /\bschedul/.test(raw) ? "scheduling" : "book_travel";
-	return { ...params, action };
-}
-
-function normalizeAliasedPlannerToolCall(
-	toolCall: PlannerToolCall,
-	resolvedName: string,
-	message: Memory,
-): PlannerToolCall {
-	const normalizedResolvedName = normalizeActionIdentifier(resolvedName);
-	const isOwnerSurface = OWNER_SURFACE_ACTIONS.has(normalizedResolvedName);
-	if (!isOwnerSurface) {
-		if (normalizedResolvedName === normalizeActionIdentifier("BLOCK")) {
-			const originalName = normalizeActionIdentifier(toolCall.name);
-			const target =
-				originalName.includes("APP") || originalName.includes("PHONE")
-					? "app"
-					: "website";
-			return {
-				...toolCall,
-				name: resolvedName,
-				params: normalizeBlockPlannerParams(toolCall, message, target),
-			};
-		}
-		if (normalizedResolvedName === normalizeActionIdentifier("POST")) {
-			return {
-				...toolCall,
-				name: resolvedName,
-				params: normalizePostPlannerParams(toolCall, message),
-			};
-		}
-		if (normalizedResolvedName === normalizeActionIdentifier("MESSAGE")) {
-			return {
-				...toolCall,
-				name: resolvedName,
-				params: normalizeMessagePlannerParams(toolCall, message),
-			};
-		}
-		if (
-			normalizedResolvedName === normalizeActionIdentifier("RESOLVE_REQUEST")
-		) {
-			return {
-				...toolCall,
-				name: resolvedName,
-				params: normalizeResolveRequestPlannerParams(toolCall, message),
-			};
-		}
-		if (normalizedResolvedName === normalizeActionIdentifier("CREDENTIALS")) {
-			const originalName = normalizeActionIdentifier(toolCall.name);
-			const rawAction =
-				toolCall.params && typeof toolCall.params === "object"
-					? (stringParam((toolCall.params as Record<string, unknown>).action) ??
-						stringParam((toolCall.params as Record<string, unknown>).subaction))
-					: undefined;
-			const params =
-				originalName.includes("AUTOFILL") ||
-				originalName.includes("LOGIN") ||
-				originalName.includes("FILL") ||
-				rawAction === "fill"
-					? normalizeAutofillPlannerParams(toolCall, message)
-					: normalizePasswordManagerPlannerParams(toolCall, message);
-			return {
-				...toolCall,
-				name: resolvedName,
-				params,
-			};
-		}
-		if (
-			normalizedResolvedName === normalizeActionIdentifier("PERSONAL_ASSISTANT")
-		) {
-			return {
-				...toolCall,
-				name: resolvedName,
-				params: normalizePersonalAssistantPlannerParams(toolCall),
-			};
-		}
-		if (
-			normalizeActionIdentifier(toolCall.name) ===
-				normalizeActionIdentifier("BROWSER_AUTOFILL_LOGIN") &&
-			normalizedResolvedName === normalizeActionIdentifier("BROWSER")
-		) {
-			const base =
-				toolCall.params && typeof toolCall.params === "object"
-					? { ...(toolCall.params as Record<string, unknown>) }
-					: ({} as Record<string, unknown>);
-			return {
-				...toolCall,
-				name: resolvedName,
-				params: { ...base, subaction: "autofill-login" },
-			};
-		}
-		return { ...toolCall, name: resolvedName };
-	}
-
-	const defaults =
-		normalizedPlannerAliasDefaults(toolCall.name) ??
-		normalizedLifeSubactionDefaults(
-			toolCall.params?.action ?? toolCall.params?.subaction,
-		);
-
-	return {
-		...toolCall,
-		name: resolvedName,
-		params: buildNormalizedLifePlannerParams({ toolCall, defaults, message }),
-	};
-}
-
 async function executeV5PlannedToolCall(
 	args: ExecuteV5PlannedToolCallParams,
 ): Promise<PlannerToolResult> {
-	const unwrappedToolCall = normalizeCompoundPlannerToolCall(
-		unwrapPlanActionsToolCall(args.toolCall),
-	);
-	if (!unwrappedToolCall.name) {
+	if (!args.toolCall.name) {
 		return {
 			success: false,
-			error: `${PLAN_ACTIONS_TOOL_NAME} requires a non-empty action`,
+			error: "Planner tool call requires a non-empty action name",
 		};
 	}
 
@@ -4540,109 +3013,20 @@ async function executeV5PlannedToolCall(
 	const resolvedNames = resolvePlannerActionName(
 		args.runtime,
 		actionLookup,
-		unwrappedToolCall.name,
+		args.toolCall.name,
 		{ strict: strictResolve },
 	);
-	const resolvedName = resolvedNames[0] ?? unwrappedToolCall.name;
-	const forceContactReminderToLife =
-		shouldTreatPlannerContactAliasAsLifeReminder(
-			unwrappedToolCall,
-			args.executorCtx.message,
-		);
-	const forceWebToCalendlyCalendar =
-		!forceContactReminderToLife &&
-		shouldTreatPlannerWebAsCalendlyCalendar(
-			resolvedName,
-			args.executorCtx.message,
-		);
-	const forceWebToBookTravel =
-		!forceContactReminderToLife &&
-		!forceWebToCalendlyCalendar &&
-		shouldTreatPlannerWebAsBookTravel(resolvedName, args.executorCtx.message);
-	const forceBrowserToAutofill =
-		!forceContactReminderToLife &&
-		!forceWebToCalendlyCalendar &&
-		!forceWebToBookTravel &&
-		shouldTreatPlannerBrowserAsAutofill(resolvedName, args.executorCtx.message);
-	const forceConnectorToPost =
-		!forceContactReminderToLife &&
-		!forceWebToCalendlyCalendar &&
-		!forceWebToBookTravel &&
-		!forceBrowserToAutofill &&
-		!shouldTreatPlannerConnectorAsMessage(
-			resolvedName,
-			args.executorCtx.message,
-		) &&
-		shouldTreatPlannerConnectorAsPost(resolvedName, args.executorCtx.message);
-	const forceConnectorToMessage =
-		!forceContactReminderToLife &&
-		!forceWebToCalendlyCalendar &&
-		!forceWebToBookTravel &&
-		!forceBrowserToAutofill &&
-		shouldTreatPlannerConnectorAsMessage(
-			resolvedName,
-			args.executorCtx.message,
-		);
-	const effectiveResolvedName = forceContactReminderToLife
-		? "OWNER_REMINDERS"
-		: forceWebToCalendlyCalendar
-			? "CALENDAR"
-			: forceWebToBookTravel
-				? "PERSONAL_ASSISTANT"
-				: forceBrowserToAutofill
-					? "CREDENTIALS"
-					: forceConnectorToPost
-						? "POST"
-						: forceConnectorToMessage
-							? "MESSAGE"
-							: resolvedName;
-	const toolCallForNormalization = forceContactReminderToLife
-		? {
-				...unwrappedToolCall,
-				params: {
-					action: "create",
-					subaction: "create",
-					intent: getUserMessageText(args.executorCtx.message),
-					details: {
-						contactName: stringParam(unwrappedToolCall.params?.name),
-						relationship: stringParam(unwrappedToolCall.params?.relationship),
-						originalPlannerAction: unwrappedToolCall.name,
-					},
-				},
-			}
-		: forceWebToBookTravel
-			? {
-					...unwrappedToolCall,
-					name: "PERSONAL_ASSISTANT",
-					params: {
-						...(unwrappedToolCall.params &&
-						typeof unwrappedToolCall.params === "object"
-							? unwrappedToolCall.params
-							: {}),
-						action: "book_travel",
-						intent: getUserMessageText(args.executorCtx.message),
-					},
-				}
-			: forceBrowserToAutofill
-				? {
-						...unwrappedToolCall,
-						name: "CREDENTIALS",
-						params: {
-							...(unwrappedToolCall.params &&
-							typeof unwrappedToolCall.params === "object"
-								? unwrappedToolCall.params
-								: {}),
-							action: "fill",
-							subaction: "fill",
-						},
-					}
-				: unwrappedToolCall;
-	const toolCall = normalizeAliasedPlannerToolCall(
-		toolCallForNormalization,
-		effectiveResolvedName,
-		args.executorCtx.message,
-	);
+	const resolvedName = resolvedNames[0] ?? args.toolCall.name;
+	const toolCall: PlannerToolCall = { ...args.toolCall, name: resolvedName };
 
+	// Per-turn `actions` is the narrowed action surface — the executable subset
+	// the model was given as tools. It does NOT include the CORE_PLANNER_TERMINALS
+	// (REPLY / IGNORE / STOP) which are surfaced as tools but live in the global
+	// runtime registry. When the model calls a terminal (or, under
+	// strictResolve, an action not in the narrow), pull it from the global
+	// registry by exact name. With `toolChoice: "required"` + tools-array
+	// enforcement the model can only call names that are in our exposed set, so
+	// this can't be an off-surface escape — it's the terminal/registry bridge.
 	const executionActions = actions.some(
 		(candidate) => candidate.name === toolCall.name,
 	)
@@ -4701,17 +3085,19 @@ function subPlannerResultToPlannerToolResult(
 }
 
 /**
- * Planner-loop tool surface. We always expose the same fixed Stage 2 wrapper
- * list so the prompt-cache key stays stable across requests no matter which
- * actions are gated this turn. Action names + parameter schemas live in the
- * conversation's available-actions block; the LLM picks one and passes it
- * through PLAN_ACTIONS({ action, ... }).
+ * Planner-loop tool surface. Each narrowed Action is exposed as its own native
+ * tool whose name is the action name and whose `parameters` is the action's
+ * JSONSchema. We also always include the universal terminal-sentinel tools
+ * (REPLY / IGNORE / STOP) so the planner has a stable way to end the turn.
  *
  * When no actions are gated for the current turn we fall back to an empty
  * tool array so the planner can short-circuit (the pipeline's stage-1
  * shortcut still emits HANDLE_RESPONSE through its own dedicated call).
  */
-function collectPlannerTools(context: ContextObject): ToolDefinition[] {
+function collectPlannerTools(
+	context: ContextObject,
+	narrowedActions?: ReadonlyArray<Action>,
+): ToolDefinition[] {
 	const hasAnyAction = context.events.some(
 		(event) =>
 			event.type === "tool" &&
@@ -4720,7 +3106,67 @@ function collectPlannerTools(context: ContextObject): ToolDefinition[] {
 				(event as { tool?: { name?: string } }).tool?.name?.trim().length,
 			),
 	);
-	return hasAnyAction ? [...STABLE_PLANNER_TOOLS] : [];
+	if (!hasAnyAction) return [];
+	const actions = narrowedActions ?? collectActionsFromContext(context);
+	const tierAParents = readTierAParentsFromContext(context);
+	return [
+		...buildPlannerToolsFromTieredActions(actions, {
+			tierAParents,
+			actionLookup: new Map(
+				actions.map((action) => [action.name, action] as const),
+			),
+		}),
+		...CORE_PLANNER_TERMINALS,
+	];
+}
+
+/**
+ * Read the tier-A parent names from the action surface metadata attached to the
+ * context object by `buildV5PlannerActionSurface`. Returns an empty set when no
+ * surface metadata is present (full-surface mode, or contexts built outside the
+ * tiered pipeline), in which case the tiered builder degrades to plain
+ * one-tool-per-action behavior.
+ */
+function readTierAParentsFromContext(context: ContextObject): Set<string> {
+	const surface = (context.metadata as { actionSurface?: unknown } | undefined)
+		?.actionSurface;
+	if (!surface || typeof surface !== "object") {
+		return new Set<string>();
+	}
+	const tierAParents = (surface as { tierAParents?: unknown }).tierAParents;
+	if (!Array.isArray(tierAParents)) {
+		return new Set<string>();
+	}
+	const set = new Set<string>();
+	for (const value of tierAParents) {
+		if (typeof value === "string" && value.trim().length > 0) {
+			set.add(value);
+		}
+	}
+	return set;
+}
+
+/**
+ * Pull each action surfaced as a `tool` event in the context. Mirrors the
+ * filtering used by the planner-loop's tools rendering — sub-planner scoping
+ * and dedup by normalised name happen there, while here we just keep the
+ * action references in the order they appear so per-turn tool ordering is
+ * deterministic.
+ */
+function collectActionsFromContext(context: ContextObject): Action[] {
+	const seen = new Set<string>();
+	const actions: Action[] = [];
+	for (const event of context.events ?? []) {
+		if (event.type !== "tool" || !("tool" in event)) continue;
+		const tool = event.tool as { action?: Action; name?: string } | undefined;
+		const action = tool?.action;
+		if (!action || typeof action.name !== "string") continue;
+		const normalized = action.name.trim();
+		if (!normalized || seen.has(normalized)) continue;
+		seen.add(normalized);
+		actions.push(action);
+	}
+	return actions;
 }
 
 function collectPreviousActionResults(
@@ -4855,7 +3301,7 @@ export async function runV5MessageRuntimeStage1(args: {
 				directMessage: directMessageChannel,
 				parameters: responseHandlerSchema,
 				description:
-					"Stage 1 — populate the registered response-handler fields exactly once before any PLAN_ACTIONS calls. Use empty values for non-applicable fields.",
+					"Stage 1 — populate the registered response-handler fields exactly once before any action tool calls. Use empty values for non-applicable fields.",
 			}),
 		];
 		const messageHandlerProviderOptions =
@@ -4924,6 +3370,15 @@ export async function runV5MessageRuntimeStage1(args: {
 			},
 		);
 
+		// Per-span argmax sampling for the structured envelope: every enum,
+		// number, and boolean span gets temperature=0 / topK=1 so the model
+		// never randomly tips a decision (shouldRespond, requiresTool, …) that
+		// has a clear argmax winner. Free-string spans (replyText, thought)
+		// keep the call-level temperature. Engines that don't honor per-span
+		// sampling ignore the field (grammar still constrains the tokens).
+		const stage1SpanSamplerPlan = buildSpanSamplerPlan(
+			responseGrammar.responseSkeleton,
+		);
 		const rawMessageHandler = (await args.runtime.useModel(
 			ModelType.RESPONSE_HANDLER,
 			{
@@ -4940,6 +3395,8 @@ export async function runV5MessageRuntimeStage1(args: {
 				streamStructured: true,
 				responseSkeleton: responseGrammar.responseSkeleton,
 				grammar: responseGrammar.grammar,
+				spanSamplerPlan: stage1SpanSamplerPlan,
+				signal: stage1TurnSignal,
 				// Guided structured decode on by default for Stage 1 (the call always
 				// carries a forced skeleton): the local engine derives the
 				// deterministic-token prefill plan and the fork fast-forwards the
@@ -4972,27 +3429,6 @@ export async function runV5MessageRuntimeStage1(args: {
 		}
 		if (!messageHandler) {
 			messageHandler = parseMessageHandlerModelOutput(rawMessageHandler);
-		}
-		if (!messageHandler) {
-			messageHandler =
-				buildFallbackStage1PlanForKnownToolRequest({
-					message: args.message,
-					availableContexts,
-					availableActionNames: (args.runtime.actions ?? []).map(
-						(action) => action.name,
-					),
-				}) ?? buildFallbackStage1DirectReplyPlan();
-		}
-		if (!messageHandler && process.env.ELIZA_DEBUG_STAGE1 === "1") {
-			args.runtime.logger?.warn?.(
-				{
-					raw:
-						typeof rawMessageHandler === "string"
-							? rawMessageHandler
-							: JSON.stringify(rawMessageHandler),
-				},
-				"[message] parseMessageHandlerModelOutput returned null",
-			);
 		}
 
 		// RESPONSE_HANDLER_AFTER (blocking): hooks fire after Stage 1 returns and the
@@ -5761,29 +4197,6 @@ export function isSimpleReplyResponse(
 	);
 }
 
-export function resolveStrategyMode(
-	responseContent:
-		| Pick<Content, "actions" | "text" | "simple">
-		| null
-		| undefined,
-): StrategyMode {
-	if (isStopResponse(responseContent)) {
-		return "none";
-	}
-
-	if (!isSimpleReplyResponse(responseContent)) {
-		return "actions";
-	}
-
-	const hasPlannerText =
-		typeof responseContent?.text === "string" &&
-		responseContent.text.trim().length > 0;
-
-	return responseContent?.simple === true && hasPlannerText
-		? "simple"
-		: "actions";
-}
-
 function isStopResponse(
 	responseContent: Pick<Content, "actions"> | null | undefined,
 ): boolean {
@@ -5810,351 +4223,6 @@ function unwrapPlannerIdentifier(value: string): string {
 	}
 	return trimmed;
 }
-
-const PLANNER_ACTION_ALIASES = new Map(
-	[
-		["BULK_RESCHEDULE", "CALENDAR"],
-		["BULK_RESCHEDULE_MEETINGS", "CALENDAR"],
-		["SCHEDULE_MEETING", "CALENDAR"],
-		["RESCHEDULE_MEETINGS", "CALENDAR"],
-		["GET_AVAILABILITY", "CALENDAR"],
-		["CREATE_EVENT", "CALENDAR"],
-		["CREATE_RECURRING_EVENT", "CALENDAR"],
-		["CALENDAR_CREATE_RECURRING_EVENT", "CALENDAR"],
-		["SCHEDULE_RECURRING_EVENT", "CALENDAR"],
-		["SCHEDULE_RECURRING_MEETING", "CALENDAR"],
-		["SCHEDULE_RECURRING", "CALENDAR"],
-		["CAPTURE_TRAVEL_PREFERENCES", "REPLY"],
-		["CAPTURE_BOOKING_PREFERENCES", "REPLY"],
-		["CREATE_TRAVEL_PREFERENCES", "REPLY"],
-		["SET_PREFERENCES", "REPLY"],
-		["SET_TRAVEL_PREFERENCES", "REPLY"],
-		["CREATE_FOLLOWUP", "SCHEDULED_TASKS"],
-		["GET_PENDING_ASSETS", "MESSAGE"],
-		["GET_PENDING_ITEMS", "MESSAGE"],
-		["EVENT_ASSET_CHECKLIST", "MESSAGE"],
-		["OUTSTANDING_EVENT_ASSETS", "MESSAGE"],
-		["PORTAL_ASSET_CHECKLIST", "MESSAGE"],
-		["PROPOSE_GROUP_CHAT_HANDOFF", "MESSAGE"],
-		["GROUP_CHAT_HANDOFF_POLICY", "MESSAGE"],
-		["SET_GROUP_CHAT_HANDOFF_POLICY", "MESSAGE"],
-		["CREATE_GROUP_CHAT", "MESSAGE"],
-		["BUMP_WITH_CONTEXT", "MESSAGE"],
-		["CONTEXTUAL_BUMP", "MESSAGE"],
-		["BUMP_UNANSWERED_DECISION", "MESSAGE"],
-		["GET_PENDING_DRAFTS", "MESSAGE"],
-		["SOCIAL_POSTING", "POST"],
-		["GET_TIMELINE", "POST"],
-		["READ_TIMELINE", "POST"],
-		["SEARCH_TWITTER", "POST"],
-		["TWITTER_SEARCH", "POST"],
-		["X_SEARCH", "POST"],
-		["SEARCH_TWITTER_POSTS", "POST"],
-		["TWITTER_POST_SEARCH", "POST"],
-		["FETCH_X_TIMELINE", "POST"],
-		["VIEW_X_FEED", "POST"],
-		["FETCH_TWITTER_FEED", "POST"],
-		["FETCH_TWITTER_TIMELINE", "POST"],
-		["FETCH_TWITTER_DMS", "MESSAGE"],
-		["READ_TWITTER_DMS", "MESSAGE"],
-		["READ_TWITTER_DM", "MESSAGE"],
-		["FETCH_X_DMS", "MESSAGE"],
-		["READ_X_DMS", "MESSAGE"],
-		["READ_X_DM", "MESSAGE"],
-		["DISCORD_POST_MESSAGE", "MESSAGE"],
-		["DISCORD_SEND_MESSAGE", "MESSAGE"],
-		["SEND_DISCORD_MESSAGE", "MESSAGE"],
-		["SLACK_POST_MESSAGE", "MESSAGE"],
-		["TELEGRAM_SEND_MESSAGE", "MESSAGE"],
-		["EMAIL_FETCH_LATEST", "MESSAGE"],
-		["EMAIL_DRAFT_REPLY", "MESSAGE"],
-		["EMAIL_FETCH_UNREAD", "MESSAGE"],
-		["FETCH_UNREAD_EMAIL", "MESSAGE"],
-		["FETCH_UNREAD_EMAILS", "MESSAGE"],
-		["LIST_UNREAD_EMAILS", "MESSAGE"],
-		["SUMMARIZE_UNREAD_EMAILS", "MESSAGE"],
-		["SUMMARISE_UNREAD_EMAILS", "MESSAGE"],
-		["UNREAD_EMAIL_SUMMARY", "MESSAGE"],
-		["READ_UNREAD_EMAILS", "MESSAGE"],
-		["ADD_TODO", "OWNER_TODOS"],
-		["CREATE_TODO", "OWNER_TODOS"],
-		["TODO_ADD", "OWNER_TODOS"],
-		["TODO_CREATE", "OWNER_TODOS"],
-		["TODOS_ADD", "OWNER_TODOS"],
-		["TODOS_CREATE", "OWNER_TODOS"],
-		["TASK_ADD", "OWNER_TODOS"],
-		["TASK_CREATE", "OWNER_TODOS"],
-		["ADD_TASK", "OWNER_TODOS"],
-		["CREATE_TASK", "OWNER_TODOS"],
-		["TASKS_ADD_TODO", "OWNER_TODOS"],
-		["TASKS_CREATE_TODO", "OWNER_TODOS"],
-		["TASKS_CREATE_REMINDER", "OWNER_REMINDERS"],
-		["LIST_TODOS", "OWNER_TODOS"],
-		["GET_TODOS", "OWNER_TODOS"],
-		["TODO_LIST", "OWNER_TODOS"],
-		["TODO_LIST_TODAY", "OWNER_TODOS"],
-		["TODOS_LIST", "OWNER_TODOS"],
-		["TODO_GET", "OWNER_TODOS"],
-		["TODOS_GET", "OWNER_TODOS"],
-		["TODOS_REVIEW", "OWNER_TODOS"],
-		["TASK_LIST", "OWNER_TODOS"],
-		["TASK_LIST_TODAY", "OWNER_TODOS"],
-		["TASKS_REVIEW", "OWNER_TODOS"],
-		["TASKS_LIST_TODAY", "OWNER_TODOS"],
-		["TASKS_LIST_TODOS", "OWNER_TODOS"],
-		["LIST_TASKS", "OWNER_TODOS"],
-		["LIFE_GET_TODOS", "OWNER_TODOS"],
-		["LIFE_TODO", "OWNER_TODOS"],
-		["ADD_HABIT", "OWNER_ROUTINES"],
-		["CREATE_HABIT", "OWNER_ROUTINES"],
-		["LIST_HABITS", "OWNER_ROUTINES"],
-		["ADD_GOAL", "OWNER_GOALS"],
-		["CREATE_GOAL", "OWNER_GOALS"],
-		["TASKS_SET_GOAL", "OWNER_GOALS"],
-		["SET_GOAL", "OWNER_GOALS"],
-		["CREATE_REMINDER", "OWNER_REMINDERS"],
-		["SET_REMINDER_RULE", "OWNER_REMINDERS"],
-		["CHECK_IN", "SCHEDULED_TASKS"],
-		["LIFE_CHECK_IN", "SCHEDULED_TASKS"],
-		["MORNING_CHECKIN", "SCHEDULED_TASKS"],
-		["MORNING_CHECK_IN", "SCHEDULED_TASKS"],
-		["NIGHT_CHECKIN", "SCHEDULED_TASKS"],
-		["NIGHT_CHECK_IN", "SCHEDULED_TASKS"],
-		["RUN_CHECKIN", "SCHEDULED_TASKS"],
-		["RUN_MORNING_CHECKIN", "SCHEDULED_TASKS"],
-		["RUN_NIGHT_CHECKIN", "SCHEDULED_TASKS"],
-		["AUTOMATION_RUN", "REPLY"],
-		["DAILY_BRIEF", "REPLY"],
-		["MEMORY_SET", "REPLY"],
-		["MEMORY_WRITE", "REPLY"],
-		["REMEMBER_PREFERENCES", "REPLY"],
-		["CREATE_PREFERENCE_PROFILE", "REPLY"],
-		["FLAG_CONFLICT", "CALENDAR"],
-		["CHECK_FLIGHT_CONFLICT", "CALENDAR"],
-		["FLIGHT_CONFLICT_REBOOKING", "CALENDAR"],
-		["REBOOK_CONFLICTING_EVENT", "CALENDAR"],
-		["CALENDAR_READ", "CALENDAR"],
-		["CALENDAR_CREATE_EVENT", "CALENDAR"],
-		["CALENDAR_FEED", "CALENDAR"],
-		["CALENDLY_CHECK_AVAILABILITY", "CALENDAR"],
-		["CALENDLY_AVAILABILITY", "CALENDAR"],
-		["CALENDLY_SINGLE_USE_LINK", "CALENDAR"],
-		["CALENDAR_CHECK_AVAILABILITY", "CALENDAR"],
-		["BLOCK_WEBSITE", "BLOCK"],
-		["WEBSITE_BLOCKER", "BLOCK"],
-		["AUTOMATION_FOCUS_BLOCK", "BLOCK"],
-		["FOCUS_BLOCK", "BLOCK"],
-		["SET_APP_BLOCK", "BLOCK"],
-		["PHONE_SET_APP_BLOCK", "BLOCK"],
-		["PHONE_BLOCK_APPS", "BLOCK"],
-		["BLOCK_APPS", "BLOCK"],
-		["ADMIN_REJECT_APPROVAL", "RESOLVE_REQUEST"],
-		["REJECT_APPROVAL", "RESOLVE_REQUEST"],
-		["DENY_APPROVAL", "RESOLVE_REQUEST"],
-		["DECLINE_APPROVAL", "RESOLVE_REQUEST"],
-		["REQUEST_UPLOAD", "COMPUTER_USE"],
-		["UPLOAD_PORTAL", "COMPUTER_USE"],
-		["DESKTOP", "COMPUTER_USE"],
-	].map(([from, to]) => [
-		normalizeActionIdentifier(from),
-		normalizeActionIdentifier(to),
-	]),
-);
-
-const PLANNER_ACTION_ALIAS_DEFAULTS = new Map(
-	[
-		[
-			"ADD_TODO",
-			{ action: "create", kind: "definition", definitionKind: "task" },
-		],
-		[
-			"CREATE_TODO",
-			{ action: "create", kind: "definition", definitionKind: "task" },
-		],
-		[
-			"TODO_ADD",
-			{ action: "create", kind: "definition", definitionKind: "task" },
-		],
-		[
-			"TODO_CREATE",
-			{ action: "create", kind: "definition", definitionKind: "task" },
-		],
-		[
-			"TODOS_ADD",
-			{ action: "create", kind: "definition", definitionKind: "task" },
-		],
-		[
-			"TODOS_CREATE",
-			{ action: "create", kind: "definition", definitionKind: "task" },
-		],
-		[
-			"TASK_ADD",
-			{ action: "create", kind: "definition", definitionKind: "task" },
-		],
-		[
-			"TASK_CREATE",
-			{ action: "create", kind: "definition", definitionKind: "task" },
-		],
-		[
-			"ADD_TASK",
-			{ action: "create", kind: "definition", definitionKind: "task" },
-		],
-		[
-			"CREATE_TASK",
-			{ action: "create", kind: "definition", definitionKind: "task" },
-		],
-		[
-			"TASKS_ADD_TODO",
-			{ action: "create", kind: "definition", definitionKind: "task" },
-		],
-		[
-			"TASKS_CREATE_TODO",
-			{ action: "create", kind: "definition", definitionKind: "task" },
-		],
-		[
-			"ADD_HABIT",
-			{ action: "create", kind: "definition", definitionKind: "habit" },
-		],
-		[
-			"CREATE_HABIT",
-			{ action: "create", kind: "definition", definitionKind: "habit" },
-		],
-		["ADD_GOAL", { action: "create", kind: "goal" }],
-		["CREATE_GOAL", { action: "create", kind: "goal" }],
-		["TASKS_SET_GOAL", { action: "create", kind: "goal" }],
-		["SET_GOAL", { action: "create", kind: "goal" }],
-		[
-			"CREATE_REMINDER",
-			{ action: "create", kind: "definition", definitionKind: "task" },
-		],
-		[
-			"TASKS_CREATE_REMINDER",
-			{ action: "create", kind: "definition", definitionKind: "task" },
-		],
-		[
-			"SET_REMINDER_RULE",
-			{ action: "create", kind: "definition", definitionKind: "task" },
-		],
-		["LIST_TODOS", { action: "review" }],
-		["GET_TODOS", { action: "review" }],
-		["TODO_LIST", { action: "review" }],
-		["TODO_LIST_TODAY", { action: "review" }],
-		["TODOS_LIST", { action: "review" }],
-		["TODO_GET", { action: "review" }],
-		["TODOS_GET", { action: "review" }],
-		["TODOS_REVIEW", { action: "review" }],
-		["TASK_LIST", { action: "review" }],
-		["TASK_LIST_TODAY", { action: "review" }],
-		["TASKS_REVIEW", { action: "review" }],
-		["TASKS_LIST_TODAY", { action: "review" }],
-		["TASKS_LIST_TODOS", { action: "review" }],
-		["LIST_TASKS", { action: "review" }],
-		["LIFE_GET_TODOS", { action: "review" }],
-		["LIFE_TODO", {}],
-		["LIST_HABITS", { action: "review" }],
-	].map(([from, defaults]) => [
-		normalizeActionIdentifier(from as string),
-		defaults as PlannerLifeAliasDefaults,
-	]),
-);
-
-const PLANNER_LIFE_SUBACTION_DEFAULTS = new Map(
-	[
-		[
-			"ADD_TODO",
-			{ action: "create", kind: "definition", definitionKind: "task" },
-		],
-		[
-			"CREATE_TODO",
-			{ action: "create", kind: "definition", definitionKind: "task" },
-		],
-		[
-			"TODO_ADD",
-			{ action: "create", kind: "definition", definitionKind: "task" },
-		],
-		[
-			"TODO_CREATE",
-			{ action: "create", kind: "definition", definitionKind: "task" },
-		],
-		[
-			"TODOS_ADD",
-			{ action: "create", kind: "definition", definitionKind: "task" },
-		],
-		[
-			"TODOS_CREATE",
-			{ action: "create", kind: "definition", definitionKind: "task" },
-		],
-		[
-			"TASK_ADD",
-			{ action: "create", kind: "definition", definitionKind: "task" },
-		],
-		[
-			"TASK_CREATE",
-			{ action: "create", kind: "definition", definitionKind: "task" },
-		],
-		[
-			"TASKS_ADD_TODO",
-			{ action: "create", kind: "definition", definitionKind: "task" },
-		],
-		[
-			"TASKS_CREATE_TODO",
-			{ action: "create", kind: "definition", definitionKind: "task" },
-		],
-		[
-			"ADD_TASK",
-			{ action: "create", kind: "definition", definitionKind: "task" },
-		],
-		[
-			"CREATE_TASK",
-			{ action: "create", kind: "definition", definitionKind: "task" },
-		],
-		[
-			"ADD_REMINDER",
-			{ action: "create", kind: "definition", definitionKind: "task" },
-		],
-		[
-			"CREATE_REMINDER",
-			{ action: "create", kind: "definition", definitionKind: "task" },
-		],
-		[
-			"TASKS_CREATE_REMINDER",
-			{ action: "create", kind: "definition", definitionKind: "task" },
-		],
-		[
-			"ADD_HABIT",
-			{ action: "create", kind: "definition", definitionKind: "habit" },
-		],
-		[
-			"CREATE_HABIT",
-			{ action: "create", kind: "definition", definitionKind: "habit" },
-		],
-		["ADD_GOAL", { action: "create", kind: "goal" }],
-		["CREATE_GOAL", { action: "create", kind: "goal" }],
-		["TASKS_SET_GOAL", { action: "create", kind: "goal" }],
-		["SET_GOAL", { action: "create", kind: "goal" }],
-		["LIST_TODOS", { action: "review" }],
-		["GET_TODOS", { action: "review" }],
-		["TODO_LIST", { action: "review" }],
-		["TODO_LIST_TODAY", { action: "review" }],
-		["TODOS_LIST", { action: "review" }],
-		["TODO_GET", { action: "review" }],
-		["TODOS_GET", { action: "review" }],
-		["TODOS_REVIEW", { action: "review" }],
-		["TASK_LIST", { action: "review" }],
-		["TASK_LIST_TODAY", { action: "review" }],
-		["TASKS_REVIEW", { action: "review" }],
-		["TASKS_LIST_TODAY", { action: "review" }],
-		["TASKS_LIST_TODOS", { action: "review" }],
-		["LIST_TASKS", { action: "review" }],
-		["LIFE_GET_TODOS", { action: "review" }],
-		["LIFE_TODO", {}],
-		["LIST_TASKS", { action: "review" }],
-		["LIST_HABITS", { action: "review" }],
-	].map(([from, defaults]) => [
-		normalizeActionIdentifier(from as string),
-		defaults as PlannerLifeAliasDefaults,
-	]),
-);
 
 const PLANNER_PROVIDER_ALIASES = new Map(
 	[
@@ -8380,6 +6448,7 @@ export class DefaultMessageService implements IMessageService {
 				// The `streamTextFallback` path exists for action handlers or other
 				// call sites that don't provide `accumulated` (raw token streams).
 				let firstSentenceSent = false;
+				let firstSentenceText = "";
 				let streamTextFallback = "";
 				const userOnStreamChunk = options?.onStreamChunk;
 				const wrappedOnStreamChunk: StreamChunkCallback | undefined =
@@ -8431,6 +6500,7 @@ export class DefaultMessageService implements IMessageService {
 									const { first } = extractFirstSentence(streamText);
 									if (first.length > 5) {
 										firstSentenceSent = true;
+										firstSentenceText = first;
 
 										(async () => {
 											try {
@@ -8457,6 +6527,9 @@ export class DefaultMessageService implements IMessageService {
 													text: first,
 													voice: voiceId,
 													model: model,
+													...(opts.abortSignal
+														? { signal: opts.abortSignal }
+														: {}),
 												};
 												const result = runtime.getModel(
 													ModelType.TEXT_TO_SPEECH,
@@ -8670,10 +6743,6 @@ export class DefaultMessageService implements IMessageService {
 										abortSignal: opts.abortSignal,
 									}
 								: undefined;
-					// Voice handling state
-					const firstSentenceSent = false;
-					const firstSentenceText = "";
-
 					const processingPromise = runtime.turnControllers.runWith(
 						message.roomId,
 						(turnSignal) => {
@@ -8743,6 +6812,7 @@ export class DefaultMessageService implements IMessageService {
 										text: rest,
 										voice: voiceId,
 										model: model,
+										...(opts.abortSignal ? { signal: opts.abortSignal } : {}),
 									};
 									const result = runtime.getModel(ModelType.TEXT_TO_SPEECH)
 										? await runtime.useModel(ModelType.TEXT_TO_SPEECH, params)
@@ -9055,13 +7125,31 @@ export class DefaultMessageService implements IMessageService {
 			? async (event: ResponseHandlerEarlyReplyEvent): Promise<void> => {
 					const text = event.text.trim();
 					if (!text || !message.id) return;
+					const currentResponseId = latestResponseIds
+						.get(runtime.agentId)
+						?.get(message.roomId);
+					if (currentResponseId !== responseId && !opts.keepExistingResponses) {
+						runtime.logger.info(
+							{
+								src: "service:message",
+								agentId: runtime.agentId,
+								roomId: message.roomId,
+								responseId,
+								currentResponseId,
+							},
+							"Response-handler early voice reply discarded - newer message being processed",
+						);
+						return;
+					}
+					if (getStreamingContext()?.abortSignal?.aborted) {
+						return;
+					}
 					const earlyResponseId = asUUID(v4());
 					const earlyContent: Content = {
 						thought: event.messageHandler.thought,
 						actions: ["REPLY"],
 						providers: [],
 						text,
-						simple: true,
 						responseId: earlyResponseId,
 						inReplyTo: createUniqueUuid(runtime, message.id),
 					};
@@ -9554,7 +7642,6 @@ export class DefaultMessageService implements IMessageService {
 						? "Agent decided to stop and end the run."
 						: "Agent decided not to respond to this message.",
 				actions: [terminalAction],
-				simple: true,
 				inReplyTo: createUniqueUuid(runtime, message.id),
 			};
 
@@ -9669,7 +7756,6 @@ export class DefaultMessageService implements IMessageService {
 			userEntityId: message.entityId,
 			input: message.content.text,
 			thought: responseContent?.thought,
-			simple: responseContent?.simple,
 			availableActions,
 			actions: responseContent?.actions,
 			providers: responseContent?.providers,
@@ -10254,7 +8340,6 @@ export class DefaultMessageService implements IMessageService {
 			actions: ["REPLY"],
 			providers: [],
 			text: replyText,
-			simple: true,
 			responseId,
 		};
 
@@ -10305,7 +8390,6 @@ export class DefaultMessageService implements IMessageService {
 			actions: ["REPLY"],
 			providers: [],
 			text: replyText,
-			simple: true,
 			responseId,
 		};
 

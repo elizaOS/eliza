@@ -1,0 +1,24 @@
+[[!meta date="Sun, 31 Aug 2014 00:00:00 +0000"]]
+[[!meta title="Numerous security holes in Tails 1.1"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+Several security holes affect Tails 1.1.
+
+We **strongly** encourage you to [[upgrade to Tails
+1.1.1|news/version_1.1.1]] as soon as possible.
+
+Details
+=======
+
+ - Iceweasel and its bundled NSS: MFSA:s to be announced.
+ - cups: [[!debsa2014 2990]]
+ - linux: [[!debsa2014 2992]]
+ - tor: [[!debsa2014 2993]]
+ - nss: [[!debsa2014 2994]]
+ - openssl: [[!debsa2014 2998]]
+ - krb5: [[!debsa2014 3000]]
+ - libav: [[!debsa2014 3003]]
+ - gpgme1.0: [[!debsa2014 3005]]
+ - python-imaging: [[!debsa2014 3009]]

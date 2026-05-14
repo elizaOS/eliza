@@ -1,0 +1,76 @@
+[[!meta date="Tue, 23 Oct 2018 12:34:56 +0000"]]
+[[!meta title="Tails 3.10.1 is out"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+
+This release fixes [[many security
+vulnerabilities|security/Numerous_security_holes_in_3.9.1]].
+
+You should upgrade as soon as possible.
+
+[[!toc levels=1]]
+
+# Changes
+
+## Upgrades and changes
+
+- Hide the [[**PIM** option|doc/encryption_and_privacy/veracrypt#parameters]]
+  when unlocking *VeraCrypt* volumes because *PIM* won't be supported until
+  Tails 4.0. ([[!tails_ticket 16031]])
+
+- Rename the buttons in the confirmation dialog of *Tails Installer* to
+  **Install** (or **Upgrade**) and **Cancel** to be less confusing.
+  ([[!tails_ticket 11501]])
+
+- Update *Linux* to 4.18.
+
+- Update *Tor Browser* to 8.0.3.
+
+- Update *Thunderbird* to 60.2.1.
+
+## Fixed problems
+
+- Prevent *Tor Browser* from leaking the language of the session.
+  ([[!tails_ticket 16029]])
+
+- Prevent *Additional Software* from asking to persist packages which are
+  already configured as additional software. ([[!tails_ticket 15983]])
+
+- Prevent *Tails Installer* from crashing when issuing an error message with
+  international characters (non-ASCII).  ([[!tails_ticket 15166]])
+
+- Fix the *VeraCrypt* support for multiple encryption ([cascades of
+  ciphers](https://www.veracrypt.fr/en/Cascades.html)). ([[!tails_ticket 15967]])
+
+- Harden the configuration of `sudo` to prevent privilege escalation.
+  ([[!tails_ticket 15829]])
+
+For more details, read our [[!tails_gitweb debian/changelog desc="changelog"]].
+
+<a id="known-issues"></a>
+
+# Known issues
+
+None specific to this release.
+
+See the list of [[long-standing issues|support/known_issues]].
+
+# Get Tails 3.10.1
+
+- To install, follow our [[installation instructions|install]].
+
+- To upgrade, automatic upgrades are available from 3.9 and 3.9.1 to 3.10.1.
+
+  If you cannot do an automatic upgrade or if Tails fails to start after an
+  automatic upgrade, please try to do a [[manual upgrade|doc/upgrade#manual]].
+
+- [[Download Tails 3.10.1.|install/download]]
+
+# What's coming up?
+
+Tails 3.11 is [[scheduled|contribute/calendar]] for December 11.
+
+
+We need your help and there are many ways to [[contribute to
+Tails|contribute]] (<a href="https://tails.net/donate/?r=3.10.1">donating</a> is only one of
+them). Come [[talk to us|doc/about/contact#tails-dev]]!

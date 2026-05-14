@@ -1,0 +1,29 @@
+#!/bin/bash
+
+set -eu
+set -x
+
+error () {
+    echo "error: ${*}" >&2
+    exit 1
+}
+
+USAGE="Usage: $(basename "$0") MESSAGE"
+
+[ $# -eq 1 ] || error "$USAGE"
+
+MESSAGE="$1"
+
+TRACE_TIME=$(date +%s)
+
+echo "${TRACE_TIME:?}" \
+    | ssh rsync.lizard sudo tee /srv/rsync/tails/tails/project/trace
+
+echo "${TRACE_TIME:?}" > "${MASTER_CHECKOUT:?}/wiki/src/inc/trace"
+(
+    set -eux
+    cd "${MASTER_CHECKOUT:?}"
+    git pull
+    git commit wiki/src/inc/trace -m "$MESSAGE"
+    git push origin master
+)

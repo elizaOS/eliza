@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib
+import importlib.util
 import json
 from pathlib import Path
 
@@ -15,9 +16,14 @@ from benchmarks.orchestrator.adapters import (
     discover_adapters,
 )
 from benchmarks.orchestrator.runner import (
+    _default_env,
     _effective_request,
     _is_harness_compatible,
     _required_env_for_request,
+)
+from benchmarks.orchestrator.random_baseline_runner import (
+    CALIBRATION_HARNESSES,
+    run_synthetic_baseline,
 )
 from benchmarks.orchestrator.types import ExecutionContext, RunRequest
 from benchmarks.registry import (
@@ -56,6 +62,62 @@ def test_discovery_includes_directory_name_mismatches_and_special_tracks() -> No
     assert adapters["voicebench_quality"].directory == "voicebench-quality"
     assert adapters["voiceagentbench"].directory == "voiceagentbench"
     assert "elizaos_mmau" not in discover_adapters(_workspace_root()).all_directories
+
+
+def test_synthetic_calibration_payloads_exercise_all_score_extractors(tmp_path: Path) -> None:
+    adapters = discover_adapters(_workspace_root()).adapters
+    expected = {"perfect_v1": 1.0, "wrong_v1": 0.0, "half_v1": 0.5}
+
+    for benchmark_id, adapter in sorted(adapters.items()):
+        for harness in CALIBRATION_HARNESSES:
+            output_dir = tmp_path / benchmark_id / harness
+            baseline = run_synthetic_baseline(
+                benchmark_id=benchmark_id,
+                output_dir=output_dir,
+                harness=harness,
+            )
+            assert baseline.status == "succeeded"
+            assert baseline.result_path is not None
+            summary = adapter.score_extractor(baseline.result_path)
+            assert summary.score == pytest.approx(expected[harness])
+
+
+def test_default_env_does_not_enable_benchmark_stub_embedding(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("ELIZA_BENCH_ALLOW_STUB_EMBEDDING", raising=False)
+
+    env = _default_env(
+        _workspace_root(),
+        RunRequest(
+            benchmarks=("action-calling",),
+            agent="eliza",
+            provider="cerebras",
+            model="gpt-oss-120b",
+            extra_config={},
+        ),
+    )
+
+    assert "ELIZA_BENCH_ALLOW_STUB_EMBEDDING" not in env
+
+
+def test_default_env_respects_disabled_benchmark_stub_embedding(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ELIZA_BENCH_ALLOW_STUB_EMBEDDING", "0")
+
+    env = _default_env(
+        _workspace_root(),
+        RunRequest(
+            benchmarks=("action-calling",),
+            agent="eliza",
+            provider="cerebras",
+            model="gpt-oss-120b",
+            extra_config={},
+        ),
+    )
+
+    assert env["ELIZA_BENCH_ALLOW_STUB_EMBEDDING"] == "0"
 
 
 def test_audio_benchmark_registry_commands_and_scores(tmp_path: Path) -> None:
@@ -369,10 +431,11 @@ def test_remaining_smoke_defaults_bound_expensive_adapters(tmp_path: Path) -> No
         "lifeops_bench": ("--limit", "2"),
         "mint": ("--max-tasks", "1"),
         "realm": ("--max-tasks", "1"),
+        "bfcl": ("--sample", "2"),
         "hyperliquid_bench": ("--max-steps", "1"),
         "hyperliquidbench": ("--max-steps", "1"),
         "experience": ("--queries", "2"),
-        "loca_bench": ("--max-tool-uses", "25"),
+        "loca_bench": ("--max-tool-uses", "40"),
     }
     for benchmark_id, (flag, value) in expected_flags.items():
         adapter = adapters[benchmark_id]
@@ -1093,6 +1156,73 @@ def test_action_calling_registry_command_forwards_tool_choice(tmp_path: Path) ->
     assert command[command.index("--tool-choice") + 1] == "required"
 
 
+def test_action_calling_cli_accepts_tool_choice_none() -> None:
+    module = importlib.import_module("benchmarks.action-calling.cli")
+    parser = module._build_argparser()
+
+    args = parser.parse_args(
+        [
+            "--model",
+            "gpt-oss-120b",
+            "--out",
+            "/tmp/action-calling",
+            "--tool-choice",
+            "none",
+        ]
+    )
+
+    assert args.tool_choice == "none"
+
+
+def test_clawbench_runner_extracts_native_tool_call_args() -> None:
+    module_path = _workspace_root() / "benchmarks" / "clawbench" / "eliza_adapter.py"
+    spec = importlib.util.spec_from_file_location("clawbench_eliza_adapter_test", module_path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    response = type(
+        "Response",
+        (),
+        {
+            "actions": ["MAIL.send"],
+            "params": {
+                "MAIL.send": {},
+                "tool_calls": [
+                    {
+                        "name": "MAIL.send",
+                        "arguments": {"to_emails": ["x@example.com"]},
+                    }
+                ],
+            },
+        },
+    )()
+
+    assert module._extract_response_tool_calls(response) == [
+        {"tool": "MAIL.send", "args": {"to_emails": ["x@example.com"]}}
+    ]
+
+
+def test_action_calling_registry_command_uses_requested_harness_provider(tmp_path: Path) -> None:
+    entry = {item.id: item for item in get_benchmark_registry(_workspace_root())}[
+        "action-calling"
+    ]
+
+    hermes_command = entry.build_command(
+        tmp_path,
+        ModelSpec(provider="cerebras", model="gpt-oss-120b"),
+        {"agent": "hermes", "max_examples": 1},
+    )
+    openclaw_command = entry.build_command(
+        tmp_path,
+        ModelSpec(provider="cerebras", model="gpt-oss-120b"),
+        {"agent": "openclaw", "max_examples": 1},
+    )
+
+    assert hermes_command[hermes_command.index("--provider") + 1] == "hermes"
+    assert openclaw_command[openclaw_command.index("--provider") + 1] == "openclaw"
+
+
 def test_vending_registry_clamps_smoke_to_revenue_observable_days(tmp_path: Path) -> None:
     entry = {item.id: item for item in get_benchmark_registry(_workspace_root())}[
         "vending_bench"
@@ -1229,6 +1359,35 @@ def test_abliteration_orchestrator_default_is_bounded_smoke(tmp_path: Path) -> N
     assert command[command.index("--tool-choice") + 1] == "none"
 
 
+def test_action_calling_orchestrator_default_is_bounded_smoke(tmp_path: Path) -> None:
+    adapter = discover_adapters(_workspace_root()).adapters["action-calling"]
+    effective = _effective_request(
+        adapter,
+        RunRequest(
+            benchmarks=("action-calling",),
+            agent="eliza",
+            provider="cerebras",
+            model="gpt-oss-120b",
+            extra_config={},
+        ),
+    )
+    ctx = ExecutionContext(
+        workspace_root=_workspace_root(),
+        benchmarks_root=_workspace_root() / "packages" / "benchmarks",
+        output_root=tmp_path / "out",
+        run_root=tmp_path,
+        request=effective,
+        run_group_id="test",
+        env={},
+        repo_meta={},
+    )
+
+    command = adapter.command_builder(ctx, adapter)
+
+    assert command[command.index("--max-examples") + 1] == "2"
+    assert command[command.index("--max-new-tokens") + 1] == "512"
+
+
 def test_loca_score_rejects_task_runs_without_token_usage(tmp_path: Path) -> None:
     audit = tmp_path / "eliza_loca_audit.json"
     audit.write_text(
@@ -1248,6 +1407,64 @@ def test_loca_score_rejects_task_runs_without_token_usage(tmp_path: Path) -> Non
 
     with pytest.raises(ValueError, match="no API token usage"):
         _score_from_loca_bench(audit)
+
+
+def test_loca_score_treats_all_error_tasks_as_zero(tmp_path: Path) -> None:
+    audit = tmp_path / "eliza_loca_audit.json"
+    audit.write_text(
+        json.dumps(
+            {
+                "summary": {
+                    "avg_accuracy": None,
+                    "issue_count": 0,
+                    "trajectory_count": 1,
+                    "aggregate_trajectory_count": 1,
+                    "metadata_total_tasks": 1,
+                    "failed_trajectory_count": 1,
+                    "total_api_tokens": 120,
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    summary = _score_from_loca_bench(audit)
+
+    assert summary.score == 0.0
+    assert summary.metrics["failed_trajectory_count"] == 1
+
+
+def test_loca_score_accepts_external_telemetry_for_error_tasks(tmp_path: Path) -> None:
+    output_root = tmp_path / "output"
+    loca_output = output_root / "loca-output"
+    loca_output.mkdir(parents=True)
+    (output_root / "telemetry.jsonl").write_text(
+        json.dumps({"total_tokens": 42}) + "\n",
+        encoding="utf-8",
+    )
+    audit = loca_output / "eliza_loca_audit.json"
+    audit.write_text(
+        json.dumps(
+            {
+                "summary": {
+                    "avg_accuracy": None,
+                    "issue_count": 0,
+                    "trajectory_count": 1,
+                    "aggregate_trajectory_count": 1,
+                    "metadata_total_tasks": 1,
+                    "failed_trajectory_count": 1,
+                    "total_api_tokens": 0,
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    summary = _score_from_loca_bench(audit)
+
+    assert summary.score == 0.0
+    assert summary.metrics["total_api_tokens"] == 42
+    assert summary.metrics["external_telemetry_tokens"] == 42
 
 
 def test_loca_score_rejects_empty_runs(tmp_path: Path) -> None:

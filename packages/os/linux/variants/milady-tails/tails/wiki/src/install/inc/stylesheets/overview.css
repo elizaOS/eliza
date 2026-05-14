@@ -1,0 +1,52 @@
+#needs, #steps {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: left;
+  margin-bottom: 2em;
+  gap: 5px;
+}
+
+#needs div, #steps a {
+  width: 150px;
+  margin-right: 0px;
+}
+
+#needs > div > p, #steps a p {
+  text-align: center;
+  margin: 0;
+}
+
+/* Needs */
+
+#needs div img {
+  height: auto;
+  width: 100px;
+  margin: 0 25px;
+}
+
+#needs div p.small {
+  font-size: var(--font-size-smaller);
+  color: var(--medium-dark-gray);
+  line-height: 16px;
+}
+
+#needs .floating-toggleable div.toggleable {
+  margin: 1em -5em;
+}
+
+/* Steps */
+
+#steps a {
+  text-decoration: none;
+  color: black;
+}
+
+#steps a img {
+  height: auto;
+  width: 150px;
+  margin: 0 0 -25px 0;
+}
+
+#steps a p {
+  margin: 0 10px 0 10px;
+}

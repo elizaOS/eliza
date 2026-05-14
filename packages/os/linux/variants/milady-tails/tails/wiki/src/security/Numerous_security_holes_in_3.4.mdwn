@@ -1,0 +1,18 @@
+[[!meta date="Sat, 21 Jan 2018 12:34:56 +0000"]]
+[[!meta title="Numerous security holes in Tails 3.4"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+Several security holes that affect Tails 3.4 are now fixed in Tails 3.5.
+
+We **strongly** encourage you to
+[[upgrade to Tails 3.5|news/version_3.5]] as soon as possible.
+
+- Tor Browser:
+  [MSFA 2018-03](https://www.mozilla.org/en-US/security/advisories/mfsa2018-03/)
+- amd64-microcode: [[!cve CVE-2017-5715]]
+- thunderbird: [[!debsa2017 4075]], [[!debsa2017 4061]]
+- libxml2: [[!debsa2018 4086]]
+- gdk-pixbuf: [[!debsa2018 4088]]
+- bind9: [[!debsa2018 4089]]

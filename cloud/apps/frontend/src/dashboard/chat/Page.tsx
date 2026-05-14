@@ -1,7 +1,10 @@
 import { Helmet } from "react-helmet-async";
 import { useSearchParams } from "react-router-dom";
 import { useSessionAuth } from "@/lib/hooks/use-session-auth";
+import type { ElizaCharacter } from "@/lib/types";
 import { ElizaPageClient } from "../../components/chat/eliza-page-client";
+
+const EMPTY_CHARACTERS: ElizaCharacter[] = [];
 
 /**
  * /dashboard/chat — free-mode chat page. Auth is optional; the underlying
@@ -25,7 +28,7 @@ export default function ChatPage() {
         />
       </Helmet>
       <ElizaPageClient
-        initialCharacters={[]}
+        initialCharacters={EMPTY_CHARACTERS}
         isAuthenticated={authenticated}
         userId={user?.id ?? null}
         initialRoomId={initialRoomId}

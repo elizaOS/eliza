@@ -41,29 +41,29 @@ describe("catalog invariants", () => {
         expect(ids.size).toBe(MODEL_CATALOG.length);
     });
 
-    test("no entry uses the gated elizaos/eliza-1-* repos", () => {
+    test("default local entries resolve from the elizaOS repo", () => {
         for (const model of MODEL_CATALOG) {
-            expect(model.hfRepo).not.toMatch(/^elizaos\/eliza-1-/);
+            expect(model.hfRepo).toBe("elizaos/eliza-1");
         }
     });
 });
 
 describe("buildHuggingFaceResolveUrl", () => {
     test("returns a public huggingface.co resolve URL by default", () => {
-        const llama = findCatalogModel("tiny-1b");
-        if (llama === undefined) throw new Error("tiny-1b missing");
-        const url = buildHuggingFaceResolveUrl(llama);
+        const model = findCatalogModel("eliza-1-0_8b");
+        if (model === undefined) throw new Error("eliza-1-0_8b missing");
+        const url = buildHuggingFaceResolveUrl(model);
         expect(url).toContain("https://huggingface.co/");
-        expect(url).toContain("/bartowski/Llama-3.2-1B-Instruct-GGUF/resolve/main/");
-        expect(url).toContain("Llama-3.2-1B-Instruct-Q4_K_M.gguf");
+        expect(url).toContain("/elizaos/eliza-1/resolve/main/");
+        expect(url).toContain("bundles/0_8b/text/eliza-1-0_8b-32k.gguf");
         expect(url).toContain("?download=true");
     });
 
     test("USBELIZA_HF_BASE_URL overrides the host", () => {
         const original = process.env.USBELIZA_HF_BASE_URL;
         process.env.USBELIZA_HF_BASE_URL = "http://localhost:8080/hf";
-        const m = findCatalogModel("drafter-0_6b");
-        if (m === undefined) throw new Error("drafter-0_6b missing");
+        const m = findCatalogModel("eliza-1-2b");
+        if (m === undefined) throw new Error("eliza-1-2b missing");
         const url = buildHuggingFaceResolveUrl(m);
         expect(url.startsWith("http://localhost:8080/hf/")).toBe(true);
         if (original !== undefined) {
@@ -75,40 +75,41 @@ describe("buildHuggingFaceResolveUrl", () => {
 });
 
 describe("pickEligibleTiers", () => {
-    test("8 GB host gets baseline + drafter + mid-7b (mid-7b minRam=8, +4 headroom > 8 → hidden)", () => {
-        // Actually 8 GB host: 8 < (8+4) so mid-7b filtered out. Only tiny-1b survives.
+    test("8 GB host gets eliza-1-2b plus the baseline", () => {
         const tiers = pickEligibleTiers(8);
         const ids = tiers.map((t) => t.id);
-        expect(ids).toContain("tiny-1b");
-        expect(ids).not.toContain("mid-7b"); // needs 12 GB total
-        expect(ids).not.toContain("dflash-9b");
+        expect(ids).toContain("eliza-1-0_8b");
+        expect(ids).toContain("eliza-1-2b");
+        expect(ids).not.toContain("eliza-1-4b");
+        expect(ids).not.toContain("eliza-1-9b");
     });
 
-    test("16 GB host gets mid-7b + dflash-9b + tiny-1b", () => {
+    test("16 GB host gets eliza-1-9b and smaller tiers", () => {
         const tiers = pickEligibleTiers(16);
         const ids = tiers.map((t) => t.id);
-        expect(ids).toContain("dflash-9b"); // needs 12+4=16 — exactly fits
-        expect(ids).toContain("mid-7b");
-        expect(ids).toContain("tiny-1b");
-        expect(ids).not.toContain("heavy-32b"); // needs 32+4=36
+        expect(ids).toContain("eliza-1-9b");
+        expect(ids).toContain("eliza-1-4b");
+        expect(ids).toContain("eliza-1-2b");
+        expect(ids).toContain("eliza-1-0_8b");
+        expect(ids).not.toContain("eliza-1-27b");
     });
 
-    test("32 GB Lunar Lake host gets everything but heavy-32b filtered", () => {
-        // heavy-32b minRam=32, +4 = 36 → host needs ≥36 to surface it.
+    test("32 GB host gets everything but eliza-1-27b filtered", () => {
         const tiers = pickEligibleTiers(32);
         const ids = tiers.map((t) => t.id);
-        expect(ids).toContain("dflash-9b");
-        expect(ids).toContain("mid-7b");
-        expect(ids).not.toContain("heavy-32b");
+        expect(ids).toContain("eliza-1-9b");
+        expect(ids).toContain("eliza-1-4b");
+        expect(ids).not.toContain("eliza-1-27b");
     });
 
-    test("64 GB workstation gets every chat tier including heavy", () => {
+    test("64 GB workstation gets every chat tier including 27b", () => {
         const tiers = pickEligibleTiers(64);
         const ids = tiers.map((t) => t.id);
-        expect(ids).toContain("heavy-32b");
-        expect(ids).toContain("dflash-9b");
-        expect(ids).toContain("mid-7b");
-        expect(ids).toContain("tiny-1b");
+        expect(ids).toContain("eliza-1-27b");
+        expect(ids).toContain("eliza-1-9b");
+        expect(ids).toContain("eliza-1-4b");
+        expect(ids).toContain("eliza-1-2b");
+        expect(ids).toContain("eliza-1-0_8b");
     });
 
     test("filters out embedding tier (not a chat model)", () => {
@@ -118,12 +119,12 @@ describe("pickEligibleTiers", () => {
         }
     });
 
-    test("always includes baseline tiny-1b even on very-low-RAM hosts (2 GB)", () => {
-        // tiny-1b minRam=2; 2+4=6 > 2 so strict filter would drop it.
+    test("always includes the baseline even on very-low-RAM hosts (2 GB)", () => {
+        // eliza-1-0_8b minRam=2; 2+4=6 > 2 so strict filter would drop it.
         // The catalog injects baseline as a fallback.
         const tiers = pickEligibleTiers(2);
         const ids = tiers.map((t) => t.id);
-        expect(ids).toContain("tiny-1b");
+        expect(ids).toContain("eliza-1-0_8b");
     });
 
     test("returns tiers sorted largest-first", () => {
@@ -138,23 +139,23 @@ describe("pickEligibleTiers", () => {
 });
 
 describe("findDflashDrafter", () => {
-    test("dflash-9b returns drafter-0_6b", () => {
-        const target = findCatalogModel("dflash-9b");
-        if (target === undefined) throw new Error("dflash-9b missing");
+    test("eliza-1-9b returns its drafter sidecar", () => {
+        const target = findCatalogModel("eliza-1-9b");
+        if (target === undefined) throw new Error("eliza-1-9b missing");
         const drafter = findDflashDrafter(target);
-        expect(drafter?.id).toBe("drafter-0_6b");
+        expect(drafter?.id).toBe("eliza-1-9b-drafter");
     });
 
     test("non-DFlash tier returns undefined", () => {
-        const target = findCatalogModel("mid-7b");
-        if (target === undefined) throw new Error("mid-7b missing");
+        const target = findCatalogModel("eliza-1-0_8b");
+        if (target === undefined) throw new Error("eliza-1-0_8b missing");
         expect(findDflashDrafter(target)).toBeUndefined();
     });
 
     test("dflash drafter+target share the same tokenizer family", () => {
-        const target = findCatalogModel("dflash-9b");
-        const drafter = findCatalogModel("drafter-0_6b");
-        expect(target?.tokenizerFamily).toBe("qwen3");
-        expect(drafter?.tokenizerFamily).toBe("qwen3");
+        const target = findCatalogModel("eliza-1-9b");
+        const drafter = findCatalogModel("eliza-1-9b-drafter");
+        expect(target?.tokenizerFamily).toBe("qwen35");
+        expect(drafter?.tokenizerFamily).toBe("qwen35");
     });
 });

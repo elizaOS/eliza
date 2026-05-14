@@ -5,7 +5,7 @@
     "": {
       "name": "@elizaos/plugin-line",
       "dependencies": {
-        "@elizaos/core": "2.0.0-alpha.3",
+        "@elizaos/core": "workspace:*",
         "@line/bot-sdk": "^10.5.0",
         "zod": "^4.3.6",
       },

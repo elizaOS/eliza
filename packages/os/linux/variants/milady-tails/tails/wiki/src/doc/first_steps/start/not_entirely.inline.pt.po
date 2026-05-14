@@ -1,0 +1,145 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"POT-Creation-Date: 2022-02-25 15:41-0600\n"
+"PO-Revision-Date: 2022-06-07 02:39+0000\n"
+"Last-Translator: drebs <drebs@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: pt\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 4.9.1\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta robots=\"noindex\"]]\n"
+msgstr "[[!meta robots=\"noindex\"]]\n"
+
+#. type: Plain text
+msgid ""
+"Use this section if the Boot Loader appears but not the Welcome Screen when "
+"you start Tails."
+msgstr ""
+"Utilize esta seção caso o Carregador de Inicialização apareça quando você "
+"inicia o Tails mas a Tela de Boas-vindas não."
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2>Verify your Tails USB stick</h2>\n"
+msgstr "<h2>Verifique o seu pendrive USB com Tails</h2>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"install/inc/steps/basic_troubleshooting.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr ""
+"[[!inline pages=\"install/inc/steps/basic_troubleshooting.inline.pt\" raw="
+"\"yes\" sort=\"age\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"troubleshooting-mode\">Try the Troubleshooting Mode entry</h2>\n"
+msgstr ""
+"<h2 id=\"troubleshooting-mode\">Tente a opção Troubleshooting Mode</h2>\n"
+
+#. type: Plain text
+msgid ""
+"In the Boot Loader, choose the **Troubleshooting Mode** entry, which works "
+"better on some computers."
+msgstr ""
+"No Carregador de Inicialização escolha a opção **Troubleshooting Mode**, que "
+"funciona melhor em alguns computadores."
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"external-hard-disk\">Try the External Hard Disk entry</h2>\n"
+msgstr "<h2 id=\"external-hard-disk\">Tente a opção External Hard Disk</h2>\n"
+
+#. type: Plain text
+msgid ""
+"In the Boot Loader, choose the **External Hard Disk** entry, if it is "
+"available. Some USB sticks need this entry in order to start Tails."
+msgstr ""
+"No Carregador de Inicialização, escolha a opção **External Hard Disk**, caso "
+"esteja disponível. Alguns pendrives USB precisam desta opção para conseguir "
+"iniciar o Tails."
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"known-issues-not-entirely\">Check our list of known issues</h2>\n"
+msgstr ""
+"<h2 id=\"known-issues-not-entirely\">Veja nossa lista de problemas "
+"conhecidos com placas de video</h2>\n"
+
+#. type: Bullet: '- '
+msgid ""
+"If the computer displays the error message **Error starting GDM with your "
+"graphics card**, refer to our [[list of known issues with graphics cards|"
+"support/known_issues/graphics]]."
+msgstr ""
+"Se o computador mostrar a mensagem de erro **Error starting GDM with your "
+"graphics card**, dê uma olhada na nossa [[lista de problemas conhecidos com "
+"placas gráficas|support/known_issues/graphics]]."
+
+#. type: Bullet: '- '
+msgid ""
+"Otherwise, refer to our [[list of known issues about Tails not starting "
+"entirely|support/known_issues#not-entirely]]. It might contain workarounds "
+"for your computer model."
+msgstr ""
+"Caso contrário, dê uma olhada na nossa [[lista de problemas conhecidos "
+"quando o Tails não inicia completamente|support/known_issues#not-entirely]]. "
+"Ela pode conter opções para seu modelo de computador."
+
+#, fuzzy
+#~| msgid "<div class=\"step-image\">\n"
+#~ msgid "        <div class=\"note\">\n"
+#~ msgstr "<div class=\"step-image\">\n"
+
+#, fuzzy
+#~| msgid "   </div>\n"
+#~ msgid "        </div>\n"
+#~ msgstr "   </div>\n"
+
+#, fuzzy
+#~| msgid "<div class=\"trophy windows linux mac\">\n"
+#~ msgid "<div class=\"trophy windows linux mac expert\">\n"
+#~ msgstr "<div class=\"trophy windows linux mac\">\n"
+
+#, fuzzy
+#~| msgid ""
+#~| "<div class=\"step-image\">[[!img install/inc/infography/switch-context."
+#~| "png link=\"no\" alt=\"\"]]</div>\n"
+#~ msgid ""
+#~ "<div class=\"state-image\">[[!img install/inc/infography/tails-usb.png "
+#~ "link=\"no\" alt=\"Tails USB stick\"]]</div>\n"
+#~ msgstr ""
+#~ "<div class=\"step-image\">[[!img install/inc/infography/switch-context."
+#~ "png link=\"no\" alt=\"\"]]</div>\n"
+
+#~ msgid "</div>\n"
+#~ msgstr "</div>\n"
+
+#~ msgid ""
+#~ "<div class=\"step-image\">[[!img install/inc/infography/switch-context."
+#~ "png link=\"no\" alt=\"\"]]</div>\n"
+#~ msgstr ""
+#~ "<div class=\"step-image\">[[!img install/inc/infography/switch-context."
+#~ "png link=\"no\" alt=\"\"]]</div>\n"
+
+#~ msgid "<div class=\"step-image\">\n"
+#~ msgstr "<div class=\"step-image\">\n"
+
+#, fuzzy
+#~| msgid "<div class=\"note clone\">\n"
+#~ msgid "<div class=\"mac mac-clone upgrade-mac\">\n"
+#~ msgstr "<div class=\"note clone\">\n"
+
+#~ msgid "After 15&ndash;30 seconds, the Tails desktop appears."
+#~ msgstr "Após 15&ndash;30 segundos, a área de trabalho do Tails aparece."

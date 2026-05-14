@@ -11,7 +11,7 @@
         "vitest": "^4.0.18",
       },
       "peerDependencies": {
-        "@elizaos/core": "2.0.0-alpha.3",
+        "@elizaos/core": "workspace:*",
         "@elizaos/plugin-form": "2.0.0-alpha.5",
       },
     },
@@ -43,7 +43,7 @@
 
     "@elizaos/core": ["@elizaos/core@2.0.0-alpha.3", "", { "dependencies": { "@bufbuild/protobuf": "^2.10.2", "@elizaos/prompts": "2.0.0-alpha.3", "@langchain/core": "^1.1.12", "@langchain/textsplitters": "^1.0.1", "adze": "^2.2.5", "crypto-browserify": "^3.12.0", "dedent": "^1.7.1", "dotenv": "^17.2.3", "fast-redact": "^3.5.0", "file-type": "^21.3.0", "glob": "^13.0.0", "handlebars": "^4.7.8", "markdown-it": "^14.1.0", "pdfjs-dist": "^5.4.530", "unique-names-generator": "^4.7.1", "uuid": "^13.0.0", "zod": "^4.3.6" } }, "sha512-UiKiS+qi1+FPDn16nA799M92KaW/gTqKrMDBEzNLhVr2YCZc1KgruB2BTZi3ONIWA6/wheisTglWi0IrLTCN/w=="],
 
-    "@elizaos/plugin-form": ["@elizaos/plugin-form@2.0.0-alpha.5", "", { "peerDependencies": { "@elizaos/core": "2.0.0-alpha.3" } }, "sha512-c5nUv2rSJvFw1Ej4/t+P7ooeJOHIqex4V6ajYV6JkaTfPx47HgHtp4QwlFP8oM7E7HqPEZtGVCmsFY6jbbSgPw=="],
+    "@elizaos/plugin-form": ["@elizaos/plugin-form@2.0.0-alpha.5", "", { "peerDependencies": { "@elizaos/core": "workspace:*" } }, "sha512-c5nUv2rSJvFw1Ej4/t+P7ooeJOHIqex4V6ajYV6JkaTfPx47HgHtp4QwlFP8oM7E7HqPEZtGVCmsFY6jbbSgPw=="],
 
     "@elizaos/prompts": ["@elizaos/prompts@2.0.0-alpha.3", "", {}, "sha512-9va2gKsJYQuXiMtdh6J2PbLIJCBKo1NLw40/Zn7dq5nvPOV5ImpTFYLhOZRCwoVIKdDfiq9Y/mGNjTuKrR+PaA=="],
 

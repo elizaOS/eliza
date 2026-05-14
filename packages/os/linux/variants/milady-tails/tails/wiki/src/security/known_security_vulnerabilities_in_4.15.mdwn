@@ -1,0 +1,9 @@
+[[!meta date="Mon, 25 Jan 2021 19:33:08 -0000"]]
+[[!meta title="Known security vulnerability in Tails 4.15"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+[[Tails 4.15.1|news/version_4.15.1]] fixes a serious security vulnerability that affects
+Tails 4.15. You should [[upgrade to Tails 4.15.1|news/version_4.15.1]] as
+soon as possible.

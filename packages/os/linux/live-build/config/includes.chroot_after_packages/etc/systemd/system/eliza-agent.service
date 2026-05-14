@@ -39,7 +39,7 @@ Environment=HOME=/home/eliza
 Environment=ELIZA_DISABLE_TRAJECTORY_LOGGING=1
 # Local GGUF path resolved by runtime/local-llama-plugin.ts. The chroot
 # hook bakes one into /usr/share/usbeliza/models/.
-Environment=LOCAL_LARGE_MODEL=/usr/share/usbeliza/models/llama-3.2-1b-instruct-q4_k_m.gguf
+Environment=LOCAL_LARGE_MODEL=/usr/share/usbeliza/models/eliza-1-0_8b-32k.gguf
 # Silence AT-SPI bus warning emitted by Tauri webkit when no a11y daemon
 # is running. The orange chat surface doesn't need an accessibility bus.
 Environment=NO_AT_BRIDGE=1

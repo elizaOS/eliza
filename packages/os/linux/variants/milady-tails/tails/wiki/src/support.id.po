@@ -1,0 +1,152 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: Tails\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2026-03-12 10:28+0000\n"
+"PO-Revision-Date: 2020-08-14 21:30+0000\n"
+"Last-Translator: Caesar <pinkpidgeon@protonmail.com>\n"
+"Language-Team: Tails translators <tails@boum.org>\n"
+"Language: id\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 3.5.1\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Support\"]]\n"
+msgstr ""
+
+#. type: Title =
+#, no-wrap
+msgid "Search the documentation"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Our comprehensive [[documentation|doc]] might already answer your question."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<form method=\"get\" action=\"https://duckduckgo.com/\" target=\"_blank\">\n"
+"  <input aria-label=\"Search\" type=\"search\" name=\"q\" value=\"\" size=\"32\" placeholder=\"Using DuckDuckGo&hellip;\" />\n"
+"  <input type=\"hidden\" name=\"sites\" value=\"tails.net\"/>\n"
+"  <button aria-label=\"Search\" class=\"button\" type=\"submit\">Search</button>\n"
+"</form>\n"
+msgstr ""
+
+#. type: Title =
+#, no-wrap
+msgid "Frequently asked questions"
+msgstr ""
+
+#. type: Plain text
+msgid "Search our list of [[frequently asked questions|faq]]."
+msgstr ""
+
+#. type: Title =
+#, no-wrap
+msgid "Upgrade"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Make sure you are using the latest version, as [[upgrading|doc/upgrade]] "
+"might solve your problem."
+msgstr ""
+
+#. type: Title =
+#, no-wrap
+msgid "Check if the problem is already known"
+msgstr ""
+
+#. type: Plain text
+msgid "You can have a look at:"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "The [[list of known issues|support/known_issues]]"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"The [[list of known issues with graphics cards|support/known_issues/"
+"graphics]]"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"The [[!tails_gitlab groups/tails/-/milestones desc=\"list of things that "
+"will be fixed or improved in the next release\"]]"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "The [[!tails_ticket \"\" desc=\"rest of our open issues on GitLab\"]]"
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "[[!inline pages=\"support/talk\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "  [[!inline pages=\"support/talk.id\" raw=\"yes\" sort=\"age\"]]\n"
+
+#, no-wrap
+#~ msgid "<!--\n"
+#~ msgstr "<!--\n"
+
+#, fuzzy, no-wrap
+#~ msgid "<div class=\"blocks\">\n"
+#~ msgstr "<div id=\"bugs\" class=\"blocks two-blocks\">\n"
+
+#, fuzzy, no-wrap
+#~ msgid "<div class=\"block block-half\">\n"
+#~ msgstr "<div id=\"bugs\" class=\"blocks two-blocks\">\n"
+
+#, no-wrap
+#~ msgid "-->\n"
+#~ msgstr "-->\n"
+
+#, no-wrap
+#~ msgid "</div>\n"
+#~ msgstr "</div>\n"
+
+#, fuzzy, no-wrap
+#~ msgid "<div id=\"talk\" class=\"block block-full\">\n"
+#~ msgstr "<div id=\"bugs\" class=\"blocks two-blocks\">\n"
+
+#, no-wrap
+#~ msgid "<div id=\"wishlist\" class=\"blocks two-blocks\">\n"
+#~ msgstr "<div id=\"wishlist\" class=\"blocks two-blocks\">\n"
+
+#, no-wrap
+#~ msgid "</div> <!-- #wishlist -->\n"
+#~ msgstr "</div> <!-- #wishlist -->\n"
+
+#, no-wrap
+#~ msgid "<div id=\"talk\">\n"
+#~ msgstr "<div id=\"talk\">\n"
+
+#~ msgid "Learn how to use Tails"
+#~ msgstr "Lernen Sie, Tails zu benutzen"
+
+#~ msgid ""
+#~ "[[!inline pages=\"support/learn/intro.inline\" raw=\"yes\" "
+#~ "sort=\"age\"]]\n"
+#~ msgstr ""
+#~ "[[!inline pages=\"support/learn/intro.inline.id\" raw=\"yes\" "
+#~ "sort=\"age\"]]\n"
+
+#, fuzzy
+#~ msgid ""
+#~ "The [list of things that will be in the next release](https://"
+#~ "redmine.tails.boum.org/code/projects/tails/issues?query_id=327)"
+#~ msgstr ""
+#~ "Die [Liste der Dinge, die im nächsten Release enthalten sein werden]"
+#~ "(https://redmine.tails.boum.org/code/projects/tails/issues?query_id=111)"

@@ -40,7 +40,7 @@ vi.mock("./auth.ts", async (importOriginal) => {
   };
 });
 
-import { voiceLatencyTracer } from "../services/local-inference/latency-trace";
+import { voiceLatencyTracer } from "@elizaos/plugin-local-inference/services";
 import { handleDevCompatRoutes } from "./dev-compat-routes";
 
 /** Minimal fake req/res that captures the JSON body and status. */

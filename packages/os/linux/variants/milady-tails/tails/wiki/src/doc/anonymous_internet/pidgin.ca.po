@@ -1,0 +1,362 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-09-17 11:40+0200\n"
+"PO-Revision-Date: 2026-01-23 15:29+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: ca\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Chatting with Pidgin and OTR\"]]\n"
+msgstr "[[!meta title=\"Xat amb Pidgin i OTR\"]]\n"
+
+#. type: Plain text
+msgid ""
+"For chatting and instant messaging, Tails includes the *[Pidgin Instant "
+"Messenger](https://pidgin.im/)*."
+msgstr ""
+"Per al xat i la missatgeria instantània, Tails inclou *"
+"[Pidgin Instant Messenger](https://pidgin.im/)*."
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"note\">\n"
+msgstr "<div class=\"note\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p><a href=\"https://dino.im/\"><i>Dino</i></a> is\n"
+"being considered as an option to replace <i>Pidgin</i>\n"
+"in Tails.</p>\n"
+msgstr ""
+"<p><a href=\"https://dino.im/\"><i>Dino</i></a> està\n"
+"sent considerat com una opció per substituir el <i>Pidgin</i>\n"
+"a Tails.</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>You can already try using <i>Dino</i> in Tails. See our\n"
+"documentation on [[chatting with <i>Dino</i> and OMEMO|doc/advanced_topics/dino]].</p>\n"
+msgstr ""
+"<p>Ja podeu provar d'utilitzar <i>Dino</i> a Tails. Consulteu la nostra\n"
+"documentació sobre [[xatejar amb <i>Dino</i> i OMEMO|doc/advanced_topics/dino]].</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+#. type: Plain text
+msgid ""
+"You can use *Pidgin* to connect to [[!wikipedia Internet_Relay_Chat "
+"desc=\"IRC\"]] or [[!wikipedia XMPP]] (also known as Jabber) servers. You "
+"can have several accounts connected at the same time."
+msgstr ""
+"Podeu utilitzar el *Pidgin* per connectar-vos als servidors d'[[!"
+"wikipedia_ca IRC]] o [[!wikipedia_ca "
+"Extensible_Messaging_and_Presence_Protocol desc=\"XMPP\"]] (també conegut "
+"com a Jabber). Podeu tenir diversos comptes connectats alhora."
+
+#. type: Plain text
+msgid ""
+"Even though *Pidgin* supports other protocols, it is only possible to use "
+"IRC and XMPP with *Pidgin* in Tails for security reasons."
+msgstr ""
+"Tot i que *Pidgin* admet altres protocols, només és possible utilitzar IRC i "
+"XMPP amb *Pidgin* a Tails per motius de seguretat."
+
+#. type: Plain text
+#, fuzzy
+#| msgid ""
+#| "To start *Pidgin* choose **Applications**&nbsp;▸ **Internet**&nbsp;▸ "
+#| "**Pidgin**."
+msgid "To open *Pidgin*, choose **Apps&nbsp;▸ Internet&nbsp;▸ Pidgin**."
+msgstr ""
+"Per iniciar *Pidgin*, trieu **Aplicacions**&nbsp;▸ **Internet**&nbsp;▸ "
+"**Pidgin**."
+
+#. type: Plain text
+msgid ""
+"For more documentation, visit the official [*Pidgin* FAQ](https://"
+"developer.pidgin.im/wiki/Using%20Pidgin)."
+msgstr ""
+"Per obtenir més documentació, visiteu les [preguntes més freqüents de "
+"*Pidgin*](https://developer.pidgin.im/wiki/Using%20Pidgin)."
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"otr\">OTR encryption</h1>\n"
+msgstr "<h1 id=\"otr\">Encriptatge OTR</h1>\n"
+
+#. type: Plain text
+msgid ""
+"[OTR (Off-the-Record)](https://otr.cypherpunks.ca/) encryption allows you to "
+"have private conversations over instant messaging by providing:"
+msgstr ""
+"L'encriptatge [OTR (Off-the-Record)](https://otr.cypherpunks.ca/) us permet "
+"mantenir converses privades mitjançant missatgeria instantània proporcionant:"
+
+#. type: Bullet: '- '
+msgid "**Encryption**"
+msgstr "**Encriptatge**"
+
+#. type: Plain text
+#, no-wrap
+msgid "  No one else can read your instant messages.\n"
+msgstr "  Ningú més pot llegir els vostres missatges instantanis.\n"
+
+#. type: Bullet: '- '
+msgid "**Authentication**"
+msgstr "**Autenticació**"
+
+#. type: Plain text
+#, no-wrap
+msgid "  You are assured the correspondent is who you think it is.\n"
+msgstr "  Esteu segur que el corresponsal és qui creieu que és.\n"
+
+#. type: Bullet: '- '
+msgid "**Deniability**"
+msgstr "**Negabilitat**"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"  The messages you send do not have digital signatures\n"
+"  that are checkable by a third party. Anyone can forge messages after\n"
+"  a conversation to make them look like they came from you.\n"
+"  However, during a conversation, your correspondent is assured\n"
+"  the messages are authentic and unmodified.\n"
+msgstr ""
+"  Els missatges que envieu no tenen signatura digital\n"
+"  que sigui verificable per un tercer. Tothom pot falsificar missatges després\n"
+"  d'una conversa per fer-los semblar vostres.\n"
+"  Tanmateix, durant una conversa, el vostre corresponsal està segur\n"
+"  que els missatges són autèntics i sense modificar.\n"
+
+#. type: Bullet: '- '
+msgid "**Perfect forward secrecy**"
+msgstr "**Secret directe perfecte**"
+
+#. type: Plain text
+#, no-wrap
+msgid "  If you lose control of your private keys, no previous conversation is compromised.\n"
+msgstr "  Si perdeu el control de les vostres claus privades, cap conversa anterior es veurà compromesa.\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"caution\">\n"
+msgstr "<div class=\"caution\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>OTR is deactivated by default, and your conversations are\n"
+"not private.</p>\n"
+msgstr ""
+"<p>OTR està desactivat per defecte i les vostres converses no\n"
+"son privades.</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<p>File transfers are not encrypted by OTR. OTR only encrypts conversations.</p>\n"
+msgstr "<p>OTR no encripta les transferències de fitxers. OTR només encripta les converses.</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"tip\">\n"
+msgstr "<div class=\"tip\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>To store your OTR keys and <i>Pidgin</i> settings across different Tails sessions,\n"
+"you can turn on the [[Pidgin Internet Messenger|persistent_storage/configure#pidgin]]\n"
+"feature of the Persistent Storage.</p>\n"
+msgstr ""
+"<p>Per emmagatzemar les vostres claus OTR i les preferències de <i>Pidgin</i> en sessions de Tails separades,\n"
+"podeu activar la funció [[Pidgin Internet Messenger|persistent_storage/configure#pidgin]]\n"
+"de l'Emmagatzematge Persistent.</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>In a private OTR conversation over IRC, a message sent using the\n"
+"<code>/me</code> command is not encrypted. The person receiving\n"
+"the message is notified by a warning.</p>\n"
+msgstr ""
+"<p>En una conversa privada OTR a través d'IRC, un missatge enviat mitjançant\n"
+"l'ordre <code>/me</code> no està encriptat. La persona que rep\n"
+"el missatge és notificada mitjançant un avís.</p>\n"
+
+#. type: Title =
+#, no-wrap
+msgid "IRC servers blocking Tor"
+msgstr "Servidors IRC que bloquegen Tor"
+
+#. type: Plain text
+msgid ""
+"Some IRC servers block connections from Tor because Tor is sometimes used to "
+"send spam."
+msgstr ""
+"Alguns servidors IRC bloquegen les connexions de Tor perquè Tor de vegades "
+"s'utilitza per enviar correu brossa."
+
+#. type: Bullet: '- '
+msgid "[OFTC and Tor](https://www.oftc.net/Tor/)"
+msgstr "[OFTC i Tor](https://www.oftc.net/Tor/)"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid ""
+#| "- [List of IRC/chat networks that block or support Tor](https://"
+#| "gitlab.torproject.org/legacy/trac/-/wikis/doc/BlockingIrc)"
+msgid ""
+"[List of IRC/chat networks that block or support Tor](https://"
+"gitlab.torproject.org/legacy/trac/-/wikis/doc/BlockingIrc)"
+msgstr ""
+"- [Llistat de xarxes IRC/xat que bloquegen o admeten Tor](https://"
+"gitlab.torproject.org/legacy/trac/-/wikis/doc/BlockingIrc)"
+
+#, no-wrap
+#~ msgid ""
+#~ "To start *Pidgin* choose\n"
+#~ "<span class=\"menuchoice\">\n"
+#~ "  **Applications**&nbsp;▸\n"
+#~ "  **Internet**&nbsp;▸\n"
+#~ "  **Pidgin Instant Messenger**\n"
+#~ "</span> or click on the *Pidgin* icon in\n"
+#~ "the [[**Favorites** submenu|doc/first_steps/desktop#favorites]].\n"
+#~ msgstr ""
+#~ "Per iniciar *Pidgin* trieu\n"
+#~ "<span class=\"menuchoice\">\n"
+#~ "   **Aplicacions**&nbsp;▸\n"
+#~ "   **Internet**&nbsp;▸\n"
+#~ "   **Pidgin Instant Messenger**\n"
+#~ "</span> o feu clic a la icona *Pidgin* al\n"
+#~ "submenú de [[**Preferits**|doc/first_steps/desktop#favorites]].\n"
+
+#, no-wrap
+#~ msgid "*Off-the-record* (*OTR*) encryption"
+#~ msgstr "Encriptatge *Off-the-record* (*OTR*)"
+
+#, no-wrap
+#~ msgid "Adding support for another protocol"
+#~ msgstr "Afegir suport per a un altre protocol"
+
+#, no-wrap
+#~ msgid ""
+#~ "For security reasons, it is only possible to use IRC and XMPP with\n"
+#~ "*Pidgin* in Tails. Here are the\n"
+#~ "prerequisites to enable another protocol that is supported by <span\n"
+#~ "class=\"application\">Pidgin</span> otherwise:\n"
+#~ msgstr ""
+#~ "Per motius de seguretat, només és possible utilitzar IRC i XMPP amb\n"
+#~ "*Pidgin* a Tails. Aquí estan els\n"
+#~ "requisits previs per habilitar un altre protocol compatible amb *Pidgin* en cas contrari:\n"
+
+#~ msgid ""
+#~ "The support in *Pidgin* for this protocol has been successfully tested in "
+#~ "Tails."
+#~ msgstr ""
+#~ "El suport a *Pidgin* per a aquest protocol s'ha provat amb èxit a Tails."
+
+#~ msgid ""
+#~ "Someone volunteers to maintain the corresponding support in Tails on the "
+#~ "long term."
+#~ msgstr ""
+#~ "Algú s'ofereix per mantenir el suport corresponent a Tails a llarg "
+#~ "termini."
+
+#~ msgid ""
+#~ "Someone has verified that the security record of the desired plugin "
+#~ "(including open bugs) is good enough."
+#~ msgstr ""
+#~ "Algú ha verificat que el registre de seguretat del connector desitjat "
+#~ "(inclosos els errors oberts) és prou bo."
+
+#~ msgid ""
+#~ "If you want to work on this issue, see [[our contribute page|contribute/"
+#~ "how/code]]."
+#~ msgstr ""
+#~ "Si voleu treballar en aquest tema, consulteu [[la nostra pàgina de "
+#~ "contribucions|contribute/how/code]]."
+
+#, no-wrap
+#~ msgid "<div class=\"bug\">\n"
+#~ msgstr "<div class=\"bug\">\n"
+
+#~ msgid "Predefined accounts\n"
+#~ msgstr "Voreingestelle Konten\n"
+
+#~ msgid ""
+#~ "One account is configured in *Pidgin*\n"
+#~ "by default:\n"
+#~ msgstr ""
+#~ "Ein Konto ist standardmäßig in *Pidgin*\n"
+#~ "konfiguriert:\n"
+
+#~ msgid "- `irc.oftc.net` to connect to the OFTC IRC server."
+#~ msgstr ""
+#~ "- `irc.oftc.net` um eine Verbindung mit dem OFTC IRC-Server herzustellen."
+
+#~ msgid ""
+#~ "That account is deactivated when Tails is started. To activate it,\n"
+#~ "choose\n"
+#~ "<span class=\"menuchoice\">\n"
+#~ "  **Accounts**&nbsp;▸\n"
+#~ "  **Enable Account**\n"
+#~ "</span>, and select the account that you want to enable in the submenu.\n"
+#~ msgstr ""
+#~ "Dieses Konto ist beim Start von Tails deaktiviert. Um es zu aktivieren,\n"
+#~ "wählen Sie\n"
+#~ "<span class=\"menuchoice\">\n"
+#~ "  **Konten**&nbsp;▸\n"
+#~ "  **Konten aktivieren**\n"
+#~ "</span> und wählen Sie in dem Untermenü das Konto aus, welches Sie "
+#~ "aktivieren möchten.\n"
+
+#~ msgid ""
+#~ "a. The support in *Pidgin* for this protocol has been successfully "
+#~ "tested\n"
+#~ "   in Tails.\n"
+#~ "a. Someone volunteers to maintain the corresponding support in Tails\n"
+#~ "   on the long term.\n"
+#~ "a. Someone has verified that the security record of the desired plugin\n"
+#~ "   (including open bugs) is good enough.\n"
+#~ msgstr ""
+#~ "a. Die Unterstützung des Protokolls in <span "
+#~ "class=\"application\">Pidgin</span> wurde erfolgreich in Tails\n"
+#~ "   getestet.\n"
+#~ "a. Jemand erklärt sich bereit, die entsprechende Betreuung auf lange "
+#~ "Sicht\n"
+#~ "   in Tails zu bieten.\n"
+#~ "a. Jemand hat sichergestellt, dass der Sicherheitsstatus des gewünschten "
+#~ "Plugins\n"
+#~ "   (inklusive unbehobener Fehler) ausreichend gut ist.\n"
+
+#~ msgid ""
+#~ "To learn how to use OTR with *Pidgin*,\n"
+#~ "refer to the documentation from [Security in-a-box: How to Use OTR to\n"
+#~ "Initiate a Secure Messaging Session in\n"
+#~ "Pidgin](https://securityinabox.org/en/pidgin_securechat).\n"
+#~ msgstr ""
+#~ "Um zu lernen, wie OTR mit *Pidgin* benutzt wird,\n"
+#~ "verweisen wir auf die Dokumentation von [Security in-a-box: How to Use "
+#~ "OTR to\n"
+#~ "Initiate a Secure Messaging Session in\n"
+#~ "Pidgin (englisch)](https://securityinabox.org/en/pidgin_securechat).\n"

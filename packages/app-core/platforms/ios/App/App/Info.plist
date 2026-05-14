@@ -131,5 +131,9 @@
 	<string>This app does not write to HealthKit, but iOS requires this key when HealthKit capability is enabled.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>This app uses on-device speech recognition to listen for voice commands and wake words.</string>
+	<key>NSScreenCaptureDescription</key>
+	<string>Captures the Milady app window when you ask it to see what's on the screen.</string>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>Sends Shortcuts to other apps when you authorize an action through the agent.</string>
 </dict>
 </plist>

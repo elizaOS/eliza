@@ -49,7 +49,7 @@ export function recommendModelTierFor(memTotalGb: number): PickResult {
     if (eligible.length === 0) {
         // pickEligibleTiers guarantees at least the baseline tier, but
         // be defensive — a host so RAM-starved it can't even fit
-        // tiny-1b's 6 GB minimum (2 GB model + 4 GB headroom) is a real
+        // eliza-1-0_8b's 6 GB minimum (2 GB model + 4 GB headroom) is a real
         // possibility on 4 GB low-end laptops. Surface baseline anyway;
         // the agent will hard-fail at load time with a clear message
         // rather than booting into a model picker with no options.

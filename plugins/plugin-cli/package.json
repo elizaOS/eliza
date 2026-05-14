@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-cli",
-  "version": "2.0.0-beta.1",
+  "version": "2.0.0-beta.2",
   "description": "CLI framework plugin for ElizaOS agents - provides command registration, execution, and utilities",
   "type": "module",
   "main": "dist/index.js",
@@ -33,7 +33,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@elizaos/core": "2.0.0-beta.1",
+    "@elizaos/core": "workspace:*",
     "commander": "^14.0.0"
   },
   "devDependencies": {

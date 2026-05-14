@@ -1,0 +1,217 @@
+[[!meta title="Release Manager"]]
+[[!meta robots="noindex"]]
+
+[[!toc levels=1]]
+
+<a id="duties"></a>
+
+# Duties
+
+See <https://gitlab.tails.boum.org/tails/team/-/wikis/responsibilities>.
+
+<a id="shift"></a>
+
+# Shift
+
+## In the beginning of your shift
+
+- Check the [Tor Browser release
+  schedule](https://gitlab.torproject.org/tpo/applications/tor-browser/-/wikis/Release-Schedule). `[skip-if-emergency-release]`. When in doubt, ask them.
+
+- Check the [Firefox Release Calendar](https://whattrainisitnow.com/calendar/) `[skip-if-emergency-release]`
+
+- Reply to the email sent to <tails-dev@boum.org> and
+  <tails-l10n@boum.org> by the RM for the previous release,
+  to provide information they could not, if any, such as: `[skip-if-emergency-release]`
+
+  - Code freeze date, if it's different from what's in the email sent by the previous RM.
+
+  - If this will be a major release: the release schedule for its RC.
+
+- Update [[contribute/calendar]] accordingly.
+
+- [[!tails_gitlab groups/tails/-/milestones desc="Check"]] if there's a GitLab
+  milestone with the correct due date. If needed, create a merge request against
+  [[!tails_gitlab tails/gitlab-config]] to create or fix it.
+
+- [Create an issue](https://gitlab.tails.boum.org/tails/tails/-/work_items/new?description_template=Upgrade%20Tor%20Browser)
+  for upgrading Tor Browser in the release your shift is about
+
+- [Create an issue](https://gitlab.tails.boum.org/tails/tails/-/work_items/new?description_template=Refresh%20About%20Tor%20Patches)
+  for refreshing the about:tor patches for that new Tor Browser
+
+- [Check](https://gitlab.tails.boum.org/tails/tails/-/work_items?scope=all&state=opened&label_name[]=Core%20Work%3ATechnical%20writing&search=release+notes)
+  if there are issues about writing the release notes, for:
+    - the final release
+    - any prior beta and release candidate.
+
+  On every such existing issue, make the exact deadline explicit (usually it's
+  the same as for manual QA, i.e. 10:00 UTC).
+
+  [Create any missing issues](https://gitlab.tails.boum.org/tails/tails/-/work_items/new?description_template=Write%20Release%20Notes).
+
+- Verify there's a `missed:$VERSION` label
+  on [[!tails_gitlab groups/tails/-/labels]]; if there's none,
+  submit a MR against [[!tails_gitlab tails/gitlab-config]]
+  to create one.
+
+- The ISO images for *every* previous beta, RC, and final release
+  based on the version of Debian that will be used for the release
+  you'll be preparing.
+
+  To get the list of images you'll need, run:
+
+        ./bin/iuk-source-versions VERSION_YOU_WILL_RELEASE
+
+  For example, if you're preparing 4.4, you need the ISO images
+  for 4.0~beta1, 4.0~beta2, 4.0~rc1, 4.0, 4.1, 4.1.1, 4.2, 4.2.2, and 4.3.
+
+  I.e. you can run this inside `isos.git`:
+
+        git annex pull --no-content
+        (cd ${TAILS_GIT_REPO:?}; ./bin/iuk-source-versions "${VERSION:?}" | tr ' ' '\n' | sed -e 's/^/tails-amd64-/') | xargs -r git annex get
+
+- Ensure someone will be able to do the bare metal part of the manual QA
+
+  This requires spare hardware with UEFI and legacy BIOS support.
+
+  1. Either commit to do the release in a location where you can easily
+     do these tests yourself. Else:
+  2. Ensure someone else is able to commit to do these tests. If that fails:
+  3. Worst case, ensure you will bring the needed hardware with you,
+     wherever you'll prepare the release.
+
+- Ensure the next steps are tracked in your preferred personal
+  organization tool.
+
+## Two weeks after the beginning of your shift
+
+- Check that enough developers have booked time for manual tests.
+
+## The Tuesday before the release date
+
+### Make sure your build setup works
+
+This is not a mandatory step. However, it's suggested that you do this, especially if more than a week passed
+since you've built a Tails image.
+
+You just need to make sure that `rake build` works, so there's one less possible
+glitch that can happen during the release process.
+
+## Make the release happen
+
+No kidding. See [[contribute/release_process]].
+
+<a id="emergency-release"></a>
+
+# Emergency release
+
+This section documents what differs, when preparing an emergency release,
+from publishing a scheduled release.
+
+### Making decisions
+
+When an event prompts us to wonder whether we shall prepare an emergency
+release, we have to make 2 decisions:
+
+#### Will we publish an emergency release?
+
+First, create an issue about this question. **Do not** leak
+any information that was shared with us privately.
+
+These stakeholders must be part of the decision-making process:
+
+ - release managers: determine whether we have the capacity to prepare an
+   emergency release, and when; privately share confidential information that
+   other stakeholders need to do their job
+
+ - developers i.e. Tails Team: assess the risk that the emergency release would
+   cancel or mitigate, using our [[security issue response
+   policy|contribute/security_policy]]; propose mitigation measures that we
+   could recommend to users.
+
+   Sometimes (for example when a DSA for the Linux kernel is out) assessing the
+   severity is quite of a long process, because the DSA page could reference
+   dozens of CVEs. To simplify this, you can use `nvd-info.py`.
+   Here is some good queries to get you started:
+
+     - `./bin/nvd-info.py search --vector 'AV:[^P]' --vector '[CI]:[MH]' "${listOfCVEs[@]}"`
+
+       - `AV:[^P]` means: attack does not require physical access
+       - `[CI]:[MH]` means: at least 1 among "confidentiality impact" and "integrity impact" must be medium or high
+
+     - `./bin/nvd-info.py search --description 'privileg|escalat' "${listOfCVEs[@]}"`
+
+   To build your own queries, see the
+   [available metrics](https://nvd.nist.gov/vuln-metrics/cvss/v3-calculator).
+
+ - UX: evaluate the acceptability of mitigation measures proposed by
+   developers; remind everyone else that any extra upgrade has a UX cost
+
+ - technical writers: determine whether we have the capacity
+   to document mitigation measures, and when
+
+If we decide to publish an emergency release, say so on the aforementioned
+issue, then read on. Else, explain why on the aforementioned issue,
+and close it with the _Rejected_ label.
+
+#### When will we prepare and publish it? (if we decided to go ahead)
+
+This mostly depends on the availability of release managers and manual
+testers. Privately reach out to them, asking when they could do their part of
+the work. Then, release managers make this decision.
+
+### Additional steps
+
+After going through the steps listed in the "In the beginning of your shift" section:
+
+1. Move to the milestone that was just created for the emergency release
+   every:
+
+    - issue that was resolved
+    - merge request that was merged
+
+   … and that currently have the milestone of the next planned non-emergency
+   bugfix release. In other words, since every change that is on the `stable`
+   branch, but not released yet, will be released for the first time in this
+   upcoming emergency release, it must have the milestone of that
+   emergency release.
+
+   This ensures the generated changelog will include these changes, and ensures
+   we have a correct record of which release presumably fixed which bug (that's
+   useful for example when triaging bug reports).
+
+   To do so, on each of these 2 pages:
+
+    - [[!tails_gitlab tails/tails/-/issues?state=closed desc="issues"]]
+    - [[!tails_gitlab tails/tails/-/merge_requests?state=merged desc="merge requests"]]
+
+   Do this:
+
+   1. Filter by milestone = the next planned non-emergency bugfix release
+
+   2. Click *Bulk edit*
+
+   3. Select all items
+
+   4. Set the milestone of the emergency release
+
+2. Announce to <tails-dev@boum.org>:
+
+    - There's an upcoming emergency release. Don't say why if it's a secret.
+
+    - Announce the code freeze.
+
+3. Announce to manual testers: when you expect the tests to happen
+
+### Irrelevant steps
+
+Steps that are not relevant for emergency releases are tagged
+`[skip-if-emergency-release]`.
+
+### Timing
+
+By definition, an emergency release happens under timing constraints that are
+different from a scheduled release. To account for this, ignore timing
+indications below such as "Two weeks after" or "The Friday": assume everything
+that is relevant shall happen as soon as reasonably possible.

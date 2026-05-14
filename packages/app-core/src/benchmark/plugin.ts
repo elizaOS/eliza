@@ -571,6 +571,7 @@ action-based benchmarks: call BENCHMARK_ACTION with one of:
 - AgentBench: { "command": "search[laptop] | click[42] | ls | SELECT ..." }
 - Tau-bench: { "tool_name": "...", "arguments": { ... } }
 - LifeOpsBench: { "tool_name": "CALENDAR", "arguments": { "subaction": "update_event", ... } }
+- LOCA-bench: { "tool_name": "filesystem_list_directory | filesystem_read_file | filesystem_write_file | ...", "arguments": { ... } }
 - Mind2Web: { "operation": "CLICK|TYPE|SELECT", "element_id": "...", "value": "..." }
 
 reply-based benchmarks: use REPLY with text payload:
@@ -871,17 +872,26 @@ function formatContextAsText(ctx: BenchmarkContext): string {
   const knownKeys = new Set([
     "benchmark",
     "taskId",
+    "task_id",
     "goal",
     "observation",
     "actionSpace",
     "tools",
+    "messages",
+    "system_prompt",
+    "session_id",
+    "temperature",
+    "top_p",
+    "max_tokens",
+    "max_completion_tokens",
+    "reasoning_effort",
+    "tool_choice",
     "html",
     "elements",
     "passages",
     "question",
     "payment_actions",
     "lifeops",
-    "task_id",
   ]);
   const extras = Object.entries(ctx).filter(([k]) => !knownKeys.has(k));
   if (extras.length > 0) {
@@ -914,16 +924,19 @@ function formatContextAsText(ctx: BenchmarkContext): string {
     );
   } else if (isLocaBenchmark && ctx.tools && ctx.tools.length > 0) {
     sections.push(
-      `This is LOCA-bench. The Python LOCA runner executes tool calls outside Eliza. Use the available tool names directly, or call BENCHMARK_ACTION with params.BENCHMARK_ACTION.tool_name and params.BENCHMARK_ACTION.arguments. Do not claim the files are complete until the required CSV writes have been emitted as tool calls.`,
+      `This is LOCA-bench. The Python LOCA runner executes tool calls outside Eliza. Call exactly one tool through BENCHMARK_ACTION with params.BENCHMARK_ACTION.tool_name and params.BENCHMARK_ACTION.arguments. Do not claim the files are complete until the required CSV writes have been emitted as tool calls.`,
     );
     sections.push(
       `Progress replies are invalid in LOCA-bench. If the task is not complete, call exactly one tool. Only use REPLY after the requested files have been written or claim_done has been called.`,
     );
     sections.push(
-      `Existing workspace files may contain examples or placeholders. Use current CSV rows for schema and formatting only; derive final answers from the available tools, local_db files, workspace files, and memory records, then overwrite or edit every requested CSV before replying.`,
+      `Existing workspace files may contain examples or placeholders. Use current CSV rows for schema and formatting only; derive final answers from the available tools, local_db files, workspace files, and memory records. If Canvas-specific tools are unavailable, inspect source_data/local_db and source_data/files with filesystem tools. source_data is read-only input data; write/edit the requested output CSV files at the workspace root, for example assignment_info.csv and quiz_info.csv. Overwrite or edit every requested CSV before replying.`,
     );
     sections.push(
       `Never invent aggregate helper tools. In particular, do not call process_assignments_and_quizzes or any tool name not listed under Available Tools.`,
+    );
+    sections.push(
+      `Example tool-call JSON: {"actions":["BENCHMARK_ACTION"],"text":"","params":{"BENCHMARK_ACTION":{"tool_name":"filesystem_list_directory","arguments":{"path":"source_data"}}}}`,
     );
   } else if (ctx.tools && ctx.tools.length > 0) {
     // Tau-bench-style harnesses: emphasise tool calling

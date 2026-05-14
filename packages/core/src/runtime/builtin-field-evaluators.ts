@@ -173,12 +173,12 @@ export const candidateActionNamesFieldEvaluator: ResponseHandlerFieldEvaluator<
 export const replyTextFieldEvaluator: ResponseHandlerFieldEvaluator<string> = {
 	name: "replyText",
 	description:
-		'The user-facing reply text. Always populate it when shouldRespond=RESPOND. When contexts contains "simple", this is the whole answer. When planning/tool work is needed, make this a brief acknowledgement that can be sent immediately; the planner will send any grounded follow-up later. Leave empty for IGNORE. Do NOT put thinking or reasoning here; keep it user-facing.',
+		'The user-facing reply text. Always populate it when shouldRespond=RESPOND. When contexts contains "simple", this is the whole answer. When planning/tool work is needed, make this a brief acknowledgement ("On it.", "Spawning the sub-agent now.", "Looking into it.") that can be sent immediately; the planner will send any grounded follow-up later. Leave empty for IGNORE. Do NOT put thinking or reasoning here; keep it user-facing.\n\nNEVER refuse the request in replyText. If you populated `contexts` or `candidateActionNames` with anything other than "simple", the planner stage will handle the actual work — your job here is acknowledgement only, not capability gatekeeping. Refusal openings ("I cannot...", "I am unable to...", "I don\'t have the ability to...", "Sorry, I can\'t...") are explicitly disallowed when planning is happening: the agent has the tools (FILE, BASH, TASKS_SPAWN_AGENT, etc.) and the planner will invoke them. If you genuinely think no tool can attempt the request, return shouldRespond=RESPOND with `contexts: ["simple"]` and explain in replyText — not a refusal as a planning-path ack.',
 	priority: 20,
 	schema: {
 		type: "string",
 		description:
-			"User-facing reply text. Whole answer for simple turns; brief immediate acknowledgement for planning turns. Plain text, not markdown unless the channel supports it.",
+			'User-facing reply text. Whole answer for simple turns; brief immediate acknowledgement for planning turns (e.g. "On it.", "Working on it.", "Spawning a sub-agent now."). Never refuse on the planning path — the planner will run the action. Plain text, not markdown unless the channel supports it.',
 	},
 	parse(value) {
 		if (typeof value !== "string") return "";

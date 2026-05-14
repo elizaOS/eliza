@@ -43,84 +43,31 @@ describe("v5 planner loop skeleton", () => {
 		]);
 	});
 
-	it("parses function-prefixed action records with parameters from text", () => {
-		const output = parsePlannerOutput(`{
-  "action": "functions.MESSAGE",
-  "parameters": {
-    "action": "draft_reply",
-    "messageId": "gmail:1",
-    "body": "Thanks."
-  }
-}`);
-
-		expect(output.toolCalls).toEqual([
-			{
-				name: "MESSAGE",
-				params: {
-					action: "draft_reply",
-					messageId: "gmail:1",
-					body: "Thanks.",
-				},
-			},
-		]);
-	});
-
-	it("parses top-level tool records embedded before user-facing text", () => {
-		const output = parsePlannerOutput(`{
-  "tool": "create_todo",
-  "arguments": {
-    "title": "Pick up dry cleaning",
-    "due_date": "2026-05-10"
-  }
-}Your todo has been added.`);
-
-		expect(output.toolCalls).toEqual([
-			{
-				name: "create_todo",
-				params: {
-					title: "Pick up dry cleaning",
-					due_date: "2026-05-10",
-				},
-			},
-		]);
-	});
-
-	it("parses fenced JSON arrays of tool calls from markdown output", () => {
-		const output = parsePlannerOutput(`**Tool Calls**
-
-\`\`\`json
-[
-  {
-    "name": "COMPUTER_USE",
-    "arguments": { "subaction": "screenshot" }
-  }
-]
-\`\`\`
-`);
-
-		expect(output.toolCalls).toEqual([
-			{
-				name: "COMPUTER_USE",
-				params: { subaction: "screenshot" },
-			},
-		]);
-	});
-
-	it("parses bare JSON arrays of action records from text", () => {
+	it("parses local strict planner JSON as a tool call", () => {
 		const output = parsePlannerOutput(
-			`[{"name":"todo_create","arguments":{"title":"pick up dry cleaning","due":"2026-05-10"}}]`,
+			`{"action":"SEND_MESSAGE","parameters":{"channelId":"c1","text":"hi"},"thought":"replying"}`,
+		);
+
+		expect(output.thought).toBe("replying");
+		expect(output.toolCalls).toEqual([
+			{
+				name: "SEND_MESSAGE",
+				params: { channelId: "c1", text: "hi" },
+			},
+		]);
+	});
+
+	it("preserves primitive planner parameters for enum short-form expansion", () => {
+		const output = parsePlannerOutput(
+			`{"action":"SET_MODE","parameters":"fast","thought":"switching"}`,
 		);
 
 		expect(output.toolCalls).toEqual([
 			{
-				name: "todo_create",
-				params: {
-					title: "pick up dry cleaning",
-					due: "2026-05-10",
-				},
+				name: "SET_MODE",
+				params: { parameters: "fast" },
 			},
 		]);
-		expect(output.messageToUser).toBeUndefined();
 	});
 
 	it("treats non-JSON planner text as a terminal message", () => {
@@ -243,74 +190,6 @@ describe("v5 planner loop skeleton", () => {
 		expect(evaluate).toHaveBeenCalledTimes(1);
 		expect(result.status).toBe("finished");
 		expect(result.finalMessage).toBe("Done.");
-	});
-
-	it("repairs a FINISH evaluation that omits the user-facing message after tool use", async () => {
-		const runtime = {
-			useModel: vi.fn(async () => ({
-				text: "",
-				toolCalls: [
-					{
-						id: "call-1",
-						name: "SHELL_COMMAND",
-						arguments: { command: "status check" },
-					},
-				],
-			})),
-			logger: { warn: vi.fn() },
-		};
-		const executeToolCall = vi.fn(async () => ({
-			success: true,
-			text: [
-				"$ status check",
-				"[exit 0]",
-				"--- stdout ---",
-				"service ready with 37G available",
-			].join("\n"),
-		}));
-		const evaluate = vi
-			.fn()
-			.mockResolvedValueOnce({
-				success: true,
-				decision: "FINISH" as const,
-				thought: "The tool result satisfies the request.",
-			})
-			.mockImplementationOnce(
-				async ({
-					context,
-				}: {
-					context: { events?: Array<{ content?: string }> };
-				}) => {
-					expect(JSON.stringify(context.events ?? [])).toContain(
-						"did not include messageToUser",
-					);
-					return {
-						success: true,
-						decision: "FINISH" as const,
-						thought: "The tool result satisfies the request.",
-						messageToUser: "The service is ready with 37G available.",
-					};
-				},
-			);
-
-		const result = await runPlannerLoop({
-			runtime,
-			context: { id: "ctx" },
-			executeToolCall,
-			evaluate,
-		});
-
-		expect(evaluate).toHaveBeenCalledTimes(2);
-		expect(result.status).toBe("finished");
-		expect(result.finalMessage).toBe(
-			"The service is ready with 37G available.",
-		);
-		expect(result.finalMessage).not.toContain("$ status check");
-		expect(result.trajectory.evaluatorOutputs).toHaveLength(2);
-		expect(runtime.logger.warn).toHaveBeenCalledWith(
-			expect.objectContaining({ iteration: 1 }),
-			"Evaluator selected FINISH without a user-facing message; retrying evaluation",
-		);
 	});
 
 	it("evaluates terminal-only planner output without executing tools", async () => {

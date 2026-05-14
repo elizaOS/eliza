@@ -28,7 +28,7 @@ function handler(): MessageHandlerResult {
 	return {
 		processMessage: "RESPOND",
 		thought: "route",
-		plan: { contexts: ["simple"], reply: "ok", simple: true },
+		plan: { contexts: ["simple"], reply: "ok" },
 	};
 }
 
@@ -43,7 +43,6 @@ describe("response-handler evaluators", () => {
 					shouldRun: () => true,
 					evaluate: () => ({
 						requiresTool: true,
-						simple: false,
 						clearReply: true,
 						setContexts: ["tasks", "missing-context"],
 						addContexts: ["messaging"],
@@ -67,7 +66,6 @@ describe("response-handler evaluators", () => {
 		expect(messageHandler.plan.contexts).toEqual(["tasks", "messaging"]);
 		expect(messageHandler.plan.reply).toBeUndefined();
 		expect(messageHandler.plan.requiresTool).toBe(true);
-		expect(messageHandler.plan.simple).toBe(false);
 		expect(messageHandler.plan.candidateActions).toEqual([
 			"lifeops_thread_control",
 		]);

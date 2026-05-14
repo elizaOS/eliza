@@ -7,6 +7,7 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
+from .adapters import discover_adapters
 from .db import connect_database, initialize_database, list_runs
 from .random_baseline_runner import (
     CALIBRATION_HARNESSES,
@@ -27,7 +28,7 @@ NON_LEADERBOARD_AGENTS: set[str] = {
 
 def _latest_by_benchmark_agent(conn) -> dict[tuple[str, str], dict[str, Any]]:
     latest: dict[tuple[str, str], dict[str, Any]] = {}
-    for row in list_runs(conn, limit=100000):
+    for row in list_runs(conn, limit=None):
         benchmark_id = str(row.get("benchmark_id") or "")
         agent = str(row.get("agent") or "")
         if row.get("status") == "skipped":
@@ -82,11 +83,47 @@ def _comparison_signature_for_run(run: dict[str, Any]) -> str:
     ).hexdigest()
 
 
+def _discover_agent_compatibility(workspace_root: Path) -> dict[str, tuple[str, ...]]:
+    if not (workspace_root / "benchmarks").exists():
+        return {}
+    try:
+        discovery = discover_adapters(workspace_root)
+    except Exception:
+        return {}
+    return {
+        benchmark_id: tuple(adapter.agent_compatibility)
+        for benchmark_id, adapter in discovery.adapters.items()
+    }
+
+
+def _real_pattern_for_scores(
+    *,
+    scores: list[float],
+    tolerance: float,
+) -> str:
+    if not scores:
+        return "no_required_real_harnesses"
+    if len(scores) == 1:
+        if _is_close(scores[0], 1.0, tolerance):
+            return "single_real_one"
+        if _is_close(scores[0], 0.0, tolerance):
+            return "single_real_zero"
+        return "single_real_score"
+    if all(_is_close(score, scores[0], tolerance) for score in scores):
+        if _is_close(scores[0], 1.0, tolerance):
+            return "all_real_one"
+        if _is_close(scores[0], 0.0, tolerance):
+            return "all_real_zero"
+        return "all_real_equal"
+    return "real_differ"
+
+
 def build_calibration_report(
     *,
     workspace_root: Path,
     tolerance: float = 1e-6,
     benchmark_ids: set[str] | None = None,
+    agent_compatibility: dict[str, tuple[str, ...]] | None = None,
 ) -> dict[str, Any]:
     db_path = workspace_root / "benchmarks" / "benchmark_results" / "orchestrator.sqlite"
     conn = connect_database(db_path)
@@ -94,15 +131,32 @@ def build_calibration_report(
     latest = _latest_by_benchmark_agent(conn)
     conn.close()
 
-    benchmarks = sorted(benchmark_ids or {benchmark_id for benchmark_id, _agent in latest})
+    compatibility = (
+        dict(agent_compatibility)
+        if agent_compatibility is not None
+        else _discover_agent_compatibility(workspace_root)
+    )
+    benchmarks = sorted(
+        benchmark_ids
+        or set(compatibility)
+        or {benchmark_id for benchmark_id, _agent in latest}
+    )
     rows: list[dict[str, Any]] = []
     counts: dict[str, int] = defaultdict(int)
+    matrix_summary: dict[str, int] = defaultdict(int)
+    matrix_summary["benchmarks"] = len(benchmarks)
 
     for benchmark_id in benchmarks:
+        supported_harnesses = tuple(compatibility.get(benchmark_id, REAL_HARNESSES))
+        supported_real_harnesses = [
+            agent for agent in REAL_HARNESSES if agent in supported_harnesses
+        ]
+        unsupported_real_harnesses = [
+            agent for agent in REAL_HARNESSES if agent not in supported_harnesses
+        ]
         calibration: dict[str, dict[str, Any]] = {}
         calibration_status = "valid"
         missing_calibration: list[str] = []
-        scorer_payload = False
         direct_score = False
         flat_scores: list[float] = []
         for agent in CALIBRATION_HARNESSES:
@@ -122,9 +176,7 @@ def build_calibration_report(
             score_f = float(score) if isinstance(score, (int, float)) else None
             metrics = dict(run.get("metrics") or {})
             calibration_depth = str(metrics.get("calibration_depth") or "")
-            if calibration_depth.startswith("scorer_payload"):
-                scorer_payload = True
-            elif calibration_depth == "direct_score":
+            if calibration_depth == "direct_score":
                 direct_score = True
             flat_scores.append(score_f if score_f is not None else float("nan"))
             ok = _is_close(score_f, expected, tolerance)
@@ -144,8 +196,6 @@ def build_calibration_report(
         ):
             if direct_score:
                 calibration_status = "valid_direct_score"
-            elif scorer_payload:
-                calibration_status = "valid_scorer_payload"
             else:
                 calibration_status = "valid"
         else:
@@ -170,42 +220,76 @@ def build_calibration_report(
         }
         real_scores = [
             float(run["score"])
-            for run in real_runs.values()
-            if run
+            for agent, run in real_runs.items()
+            if agent in supported_real_harnesses
+            and run
             and run.get("status") == "succeeded"
             and isinstance(run.get("score"), (int, float))
         ]
         real_statuses = {
-            agent: (run.get("status") if run else "missing")
+            agent: (
+                "unsupported"
+                if agent in unsupported_real_harnesses
+                else run.get("status")
+                if run
+                else "missing"
+            )
             for agent, run in real_runs.items()
         }
         real_score_map = {
             agent: (float(run["score"]) if run and isinstance(run.get("score"), (int, float)) else None)
             for agent, run in real_runs.items()
         }
+        real_cells: dict[str, dict[str, Any]] = {}
+        missing_required_real: list[str] = []
+        failed_required_real: list[str] = []
+        succeeded_required_real: list[str] = []
+        for agent in REAL_HARNESSES:
+            run = real_runs.get(agent)
+            required = agent in supported_real_harnesses
+            if not required:
+                state = "unsupported"
+            elif run is None:
+                state = "missing"
+                missing_required_real.append(agent)
+            elif run.get("status") == "succeeded" and isinstance(run.get("score"), (int, float)):
+                state = "succeeded"
+                succeeded_required_real.append(agent)
+            else:
+                state = str(run.get("status") or "missing")
+                failed_required_real.append(agent)
+            real_cells[agent] = {
+                "required": required,
+                "state": state,
+                "status": real_statuses[agent],
+                "score": real_score_map[agent],
+                "run_id": run.get("run_id") if run else None,
+            }
         real_comparison_signatures = {
             agent: _comparison_signature_for_run(run)
             for agent, run in real_runs.items()
-            if run and run.get("status") == "succeeded"
+            if run and agent in supported_real_harnesses and run.get("status") == "succeeded"
         }
         mixed_real_config = (
-            len(real_comparison_signatures) == len(REAL_HARNESSES)
+            len(real_comparison_signatures) == len(supported_real_harnesses)
+            and len(supported_real_harnesses) > 1
             and len(set(real_comparison_signatures.values())) > 1
         )
         real_pattern = "incomplete"
-        if len(real_scores) == len(REAL_HARNESSES):
-            if all(_is_close(score, real_scores[0], tolerance) for score in real_scores):
-                if _is_close(real_scores[0], 1.0, tolerance):
-                    real_pattern = "all_real_one"
-                elif _is_close(real_scores[0], 0.0, tolerance):
-                    real_pattern = "all_real_zero"
-                else:
-                    real_pattern = "all_real_equal"
-            else:
-                real_pattern = "real_differ"
+        if len(real_scores) == len(supported_real_harnesses):
+            real_pattern = _real_pattern_for_scores(scores=real_scores, tolerance=tolerance)
             if mixed_real_config:
                 real_pattern = f"{real_pattern}_mixed_config"
         counts[real_pattern] += 1
+        matrix_summary["required_real_cells"] += len(supported_real_harnesses)
+        matrix_summary["unsupported_real_cells"] += len(unsupported_real_harnesses)
+        matrix_summary["succeeded_required_real_cells"] += len(succeeded_required_real)
+        matrix_summary["missing_required_real_cells"] += len(missing_required_real)
+        matrix_summary["failed_required_real_cells"] += len(failed_required_real)
+        if missing_required_real or failed_required_real:
+            matrix_summary["incomplete_benchmarks"] += 1
+        else:
+            matrix_summary["complete_benchmarks"] += 1
 
         extra_db_agents = sorted(
             agent
@@ -222,6 +306,11 @@ def build_calibration_report(
                 "real_pattern": real_pattern,
                 "real_scores": real_score_map,
                 "real_statuses": real_statuses,
+                "real_cells": real_cells,
+                "real_required_harnesses": supported_real_harnesses,
+                "real_unsupported_harnesses": unsupported_real_harnesses,
+                "missing_required_real_harnesses": missing_required_real,
+                "failed_required_real_harnesses": failed_required_real,
                 "real_comparison_signatures": real_comparison_signatures,
                 "calibration": calibration,
                 "non_leaderboard_db_labels": extra_db_agents,
@@ -232,6 +321,7 @@ def build_calibration_report(
         "calibration_spec_version": CALIBRATION_SPEC_VERSION,
         "tolerance": tolerance,
         "summary": dict(sorted(counts.items())),
+        "matrix_summary": dict(sorted(matrix_summary.items())),
         "rows": rows,
     }
 
@@ -240,6 +330,12 @@ def print_calibration_report(report: dict[str, Any]) -> None:
     print(f"Calibration spec: {report.get('calibration_spec_version')}")
     print(f"Tolerance: {report.get('tolerance')}")
     print("")
+    matrix = dict(report.get("matrix_summary") or {})
+    if matrix:
+        print("Real Matrix:")
+        for key, value in sorted(matrix.items()):
+            print(f"- {key}: {value}")
+        print("")
     print("Summary:")
     for key, value in sorted(dict(report.get("summary") or {}).items()):
         print(f"- {key}: {value}")
@@ -250,7 +346,10 @@ def print_calibration_report(report: dict[str, Any]) -> None:
         row
         for row in rows
         if row.get("calibration_status") not in {"valid"}
-        or row.get("real_pattern") in {"all_real_zero", "all_real_one", "all_real_equal"}
+        or row.get("missing_required_real_harnesses")
+        or row.get("failed_required_real_harnesses")
+        or row.get("real_pattern")
+        in {"all_real_zero", "all_real_one", "all_real_equal", "single_real_zero", "single_real_one"}
         or str(row.get("real_pattern") or "").endswith("_mixed_config")
         or row.get("non_leaderboard_db_labels")
     ]
@@ -264,6 +363,15 @@ def print_calibration_report(report: dict[str, Any]) -> None:
             f"real={row.get('real_pattern')} "
             f"scores={json.dumps(row.get('real_scores'), sort_keys=True)}"
         )
+        missing = row.get("missing_required_real_harnesses") or []
+        failed = row.get("failed_required_real_harnesses") or []
+        unsupported = row.get("real_unsupported_harnesses") or []
+        if missing:
+            print(f"  missing required real harnesses: {', '.join(missing)}")
+        if failed:
+            print(f"  failed required real harnesses: {', '.join(failed)}")
+        if unsupported:
+            print(f"  unsupported real harnesses: {', '.join(unsupported)}")
         extras = row.get("non_leaderboard_db_labels") or []
         if extras:
             print(f"  non-leaderboard DB labels: {', '.join(extras)}")

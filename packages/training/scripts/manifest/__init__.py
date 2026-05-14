@@ -10,6 +10,7 @@ the same contract. The schema lives in
 
 from .eliza1_manifest import (
     ELIZA_1_BACKENDS,
+    ELIZA_1_HF_REPO,
     ELIZA_1_KERNELS,
     ELIZA_1_MANIFEST_SCHEMA_URL,
     ELIZA_1_MANIFEST_SCHEMA_VERSION,
@@ -27,6 +28,7 @@ from .eliza1_manifest import (
 
 __all__ = [
     "ELIZA_1_BACKENDS",
+    "ELIZA_1_HF_REPO",
     "ELIZA_1_KERNELS",
     "ELIZA_1_MANIFEST_SCHEMA_URL",
     "ELIZA_1_MANIFEST_SCHEMA_VERSION",

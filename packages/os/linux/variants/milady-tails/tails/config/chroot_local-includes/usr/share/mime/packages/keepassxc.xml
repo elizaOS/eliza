@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- # XXX: Forky: this file should not be needed anymore, please remove it -->
+<mime-info xmlns='http://www.freedesktop.org/standards/shared-mime-info'>
+  <mime-type type="application/x-keepass2">
+    <comment>KeePass 2 Database</comment>
+    <glob pattern="*.kdbx"/>
+    <icon name="org.gnome.World.Secrets"/>
+  </mime-type>
+</mime-info>

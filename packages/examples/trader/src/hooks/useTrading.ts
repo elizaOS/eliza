@@ -1,6 +1,37 @@
 import type { AgentRuntime, Service } from "@elizaos/core";
-import type { AutoTradingManager } from "@elizaos/plugin-auto-trader";
 import { useCallback, useEffect, useState } from "react";
+
+interface AutoTradingManager extends Service {
+  getStatus(): {
+    isTrading: boolean;
+    strategy?: string;
+    positions: StatusPosition[];
+    performance: {
+      totalPnL: number;
+      dailyPnL: number;
+      winRate: number;
+      totalTrades: number;
+    };
+  };
+  getLatestTransactions(count: number): Array<{
+    id: string;
+    timestamp: number;
+    action: string;
+    token: string;
+    quantity: number;
+    price: number;
+    reason?: string;
+  }>;
+  startTrading(config: {
+    strategy: string;
+    tokens: string[];
+    maxPositionSize: number;
+    intervalMs: number;
+    stopLossPercent: number;
+    takeProfitPercent: number;
+  }): Promise<void>;
+  stopTrading(): Promise<void>;
+}
 
 interface StatusPosition {
   id: string;

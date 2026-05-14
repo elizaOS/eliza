@@ -1,0 +1,10 @@
+/* Hide all scenario-dependent bits by default. */
+
+.standalone,
+.clone, .usb, .dvd, .vm, .download-only-img, .download-only-iso,
+.pc-clone, .mac-clone,
+.windows, .linux, .mac, .expert,
+.upgrade, .upgrade-clone, .upgrade-tails,
+.upgrade-os, .upgrade-windows, .upgrade-mac, .upgrade-linux {
+  display: none;
+}

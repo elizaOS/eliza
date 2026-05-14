@@ -1,0 +1,57 @@
+/*Whole window organization {{{ */
+#box_main_container_stack {
+    margin: 18px;
+}
+
+#main_img_side {
+    margin: 18px;
+}
+/*Whole window organization }}} */
+
+/* Generic {{{ */
+
+/* "Next" button. Space it a bit from step content */
+.suggested-action-box { margin-top: 18px; }
+
+/* Sometimes the step has a title. Let's put some space between this and the rest */
+.step-title {
+    margin-bottom: 18px;
+    font-size: 150%;
+    font-weight: bold;
+}
+
+/* Generic }}} */
+
+/* Progress step {{{ */
+#step_progress_btn_tbb { margin-bottom: 12px; }
+#step_progress_btn_tbb label {
+    margin: 1em;
+}
+.step-box {
+    margin: 0;
+}
+#step_progress_box_torconnect { padding-top: 2em; }
+.progress-box { font-size: 90%; }
+
+.progress-box-text {
+    margin-left: 12px;
+}
+
+.progress-box-heading {
+    font-weight: bold;
+}
+
+/* Progress step }}} */
+
+/* Error step {{{ */
+.step-error-section-title { margin-left: 0.8em; }
+.step-error-header-text {
+    margin-bottom: 5px;
+    margin-top: 5px;
+}
+.step-error-section-description { margin-left: 1.5em; }
+#step_error_box_bridges {
+    margin-top: 5px;
+    margin-left: 40px;
+}
+/* Error step }}} */

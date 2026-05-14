@@ -32,6 +32,7 @@ ELIZA_1_MANIFEST_SCHEMA_VERSION: Final[str] = "1"
 ELIZA_1_MANIFEST_SCHEMA_URL: Final[str] = (
     "https://elizaos.ai/schemas/eliza-1.manifest.v1.json"
 )
+ELIZA_1_HF_REPO: Final[str] = "elizalabs/eliza-1"
 
 # The canonical current Eliza-1 release tiers.
 ELIZA_1_TIERS: Final[tuple[str, ...]] = (
@@ -196,9 +197,9 @@ def required_voice_artifacts_for_tier(tier: str) -> tuple[str, ...]:
     """Return the frozen TTS artifacts required for ``tier``.
 
     Paths are relative to the bundle's ``tts/`` directory. The active Eliza-1
-    release line keeps small/mobile tiers on Kokoro, overlaps 9B with both
-    Kokoro and OmniVoice, and uses OmniVoice only for the 27B long-context
-    tiers.
+    release line uses Kokoro as the required/default backend for 0.8B, 2B,
+    and 4B. The 9B tier ships Kokoro first plus OmniVoice. The 27B
+    long-context tiers ship OmniVoice only.
     """
 
     out: list[str] = []

@@ -1,0 +1,194 @@
+[[!meta robots="noindex"]]
+
+<div class="windows linux mac expert">
+
+<div class="success">
+
+<video autoplay loop muted width="200" height="200" poster="https://tails.net/install/inc/success/install.png">
+  <source src="https://tails.net/install/inc/success/install.mp4" type="video/mp4" />
+</video>
+
+<div>
+  <p class="big">Well done!</p>
+
+  <p>You have installed Tails on your USB stick.</p>
+
+  <p>In the next step, you will make your computer start on this USB stick.</p>
+
+  <p>Tails might not work on your computer, so good luck!</p>
+</div>
+
+</div>
+
+</div>
+
+<div class="note clone">
+
+<p>If you already started on the other Tails, go directly to step 3:
+<a href="#verify-other">Verify that the other Tails is up-to-date</a>.</p>
+
+</div>
+
+<h1 id="back" class="step">Open these instructions on another device</h1>
+
+<div class="step-image">[[!img install/inc/infography/switch-context.png link="no" alt=""]]</div>
+
+In the next step, you will shut down the computer. To be able to follow
+the rest of the instructions afterwards, you can either:
+
+   - Scan this QR code on your smartphone or tablet:
+
+     [[!img install/inc/qrcodes/tails_net_install_windows_back_1.png class="windows" link="no" alt=""]]
+     [[!img install/inc/qrcodes/tails_net_install_mac_back_1.png class="mac" link="no" alt=""]]
+     [[!img install/inc/qrcodes/tails_net_install_linux_back_1.png class="linux" link="no" alt=""]]
+     [[!img install/inc/qrcodes/tails_net_install_expert_back_1.png class="expert" link="no" alt=""]]
+     [[!img install/inc/qrcodes/tails_net_install_clone_pc_back_1.png class="pc-clone" link="no" alt=""]]
+     [[!img install/inc/qrcodes/tails_net_install_clone_mac_back_1.png class="mac-clone" link="no" alt=""]]
+     [[!img install/inc/qrcodes/tails_net_doc_upgrade_tails_back_1.png class="upgrade-tails" link="no" alt=""]]
+     [[!img install/inc/qrcodes/tails_net_doc_upgrade_windows_back_1.png class="upgrade-windows" link="no" alt=""]]
+     [[!img install/inc/qrcodes/tails_net_doc_upgrade_mac_back_1.png class="upgrade-mac" link="no" alt=""]]
+     [[!img install/inc/qrcodes/tails_net_doc_upgrade_linux_back_1.png class="upgrade-linux" link="no" alt=""]]
+     [[!img install/inc/qrcodes/tails_net_doc_upgrade_clone_back_1.png class="upgrade-clone" link="no" alt=""]]
+
+   - Print these instructions on paper.
+
+   - Take note of the URL of this page:
+
+     <p class="code windows">https://tails.net/install/windows?back=1</p>
+     <p class="code mac">https://tails.net/install/mac?back=1</p>
+     <p class="code linux">https://tails.net/install/linux?back=1</p>
+     <p class="code expert">https://tails.net/install/expert?back=1</p>
+     <p class="code pc-clone">https://tails.net/install/clone/pc?back=1</p>
+     <p class="code mac-clone">https://tails.net/install/clone/mac?back=1</p>
+     <p class="code upgrade-tails">https://tails.net/doc/upgrade/tails?back=1</p>
+     <p class="code upgrade-windows">https://tails.net/doc/upgrade/windows?back=1</p>
+     <p class="code upgrade-mac">https://tails.net/doc/upgrade/mac?back=1</p>
+     <p class="code upgrade-linux">https://tails.net/doc/upgrade/linux?back=1</p>
+     <p class="code upgrade-clone">https://tails.net/doc/upgrade/clone?back=1</p>
+
+<h1 id="intermediary" class="step upgrade-tails upgrade-os">Restart on the intermediary Tails</h1>
+<h1 id="other" class="step clone">Restart on the other Tails</h1>
+<h1 id="restart" class="step windows linux mac expert">Restart on your Tails USB stick</h1>
+
+<div class="step-image">
+[[!img install/inc/infography/restart-on-tails.png link="no" class="windows linux mac expert" alt=""]]
+[[!img install/inc/infography/restart-on-other-tails.png link="no" class="clone upgrade-os" alt=""]]
+[[!img install/inc/infography/restart-on-upgrade-usb.png link="no" class="upgrade-tails" alt=""]]
+</div>
+
+<h2>Make the computer start on the USB stick</h2>
+
+<div class="windows upgrade-windows">
+[[!inline pages="install/inc/steps/windows_boot_menu.inline" raw="yes" sort="age"]]
+</div>
+
+<div class="linux expert pc-clone upgrade-clone upgrade-tails upgrade-linux">
+[[!inline pages="install/inc/steps/pc_boot_menu.inline" raw="yes" sort="age"]]
+</div>
+
+<div class="mac mac-clone upgrade-mac">
+[[!inline pages="install/inc/steps/mac_startup_disks.inline" raw="yes" sort="age"]]
+</div>
+
+<h2 id="troubleshoot-start">Troubleshoot Tails not starting</h2>
+
+<ul>
+
+<li class="windows upgrade-windows">
+<p>If the computer doesn't restart on your Tails USB stick:</p>
+  <ol>
+    <li><p>Wait 2&ndash;3 minutes and try again. Some USB sticks need some rest after installing.</p></li>
+    <li><p>Try other options in the <b>Use a device</b> screen, for example <b>USB FDD</b> if available.</p></li>
+    <li><p>Try all other USB ports on the computer. Some USB ports cannot be used to start from.</p></li>
+    <li><p>Refer to the [[instructions on starting Tails using the Boot Menu key|doc/first_steps/start/pc#boot-menu-key]].</p></li>
+  </ol>
+</li>
+
+<li class="linux expert pc-clone upgrade-clone upgrade-tails upgrade-linux">
+<p>If none of the possible Boot Menu keys from the previous technique work,
+refer to the [[troubleshooting instructions about Tails not starting at
+all|doc/first_steps/start/pc#not-at-all]].</p>
+</li>
+
+<li class="linux expert pc-clone upgrade-clone upgrade-tails upgrade-linux">
+<p>If the Boot Menu appears, but your USB stick is not listed in the Boot Menu:</p>
+  <ol>
+  <li><p>Wait 2&ndash;3 minutes and try again. Some USB sticks need some rest after installing.</p></li>
+  <li><p>Try all other USB ports on the computer. Some USB ports cannot be used to start from.</p></li>
+  </ol>
+</li>
+
+<li>
+<p class="windows upgrade-windows">If the computer restarts on your Tails USB stick, but the Boot Loader doesn't appear:</p>
+<p class="linux expert pc-clone upgrade-clone upgrade-tails upgrade-linux">If your USB stick is listed in the Boot Menu, but the Boot Loader doesn't appear:</p>
+<p class="mac mac-clone upgrade-mac">If your USB stick appears in the list of startup disks, but the Boot Loader doesn't appear:</p>
+[[!inline pages="install/inc/steps/basic_troubleshooting.inline" raw="yes" sort="age"]]
+<p>If your computer still does not display the Boot Loader, it might currently be impossible to start Tails on your computer.</p>
+</li>
+
+<li>
+<p>If the Boot Loader appears, but Tails fails to start after the Boot Loader,
+refer to
+<span class="windows upgrade-windows linux expert pc-clone upgrade-clone upgrade-tails upgrade-linux">[[the troubleshooting section about Tails not starting after the Boot Loader|doc/first_steps/start/pc#not-entirely]].</span>
+<span class="mac mac-clone upgrade-mac">[[the troubleshooting section about Tails not starting after the Boot Loader|doc/first_steps/start/mac#not-entirely]].</span></p>
+</li>
+
+</ul>
+
+<div class="tip windows upgrade-windows">
+<p>Starting the computer using a Boot Menu key can be faster than
+starting the computer on Windows first and then on Tails. We
+recommend you learn how to [[start Tails using the Boot Menu
+key|doc/first_steps/start/pc#boot-menu-key]] if you use Tails
+regularly.</p>
+</div>
+
+<div class="tip mac upgrade-mac">
+
+<p>Apple does not prioritize collaborating with Free Software projects. Their
+newest hardware is usually very hard for Free Software developers to get
+working with Linux, and thus Tails. PC hardware tends to be more open and work
+better with Linux.</p>
+
+</div>
+
+<h1 id="tails" class="step windows linux mac">Welcome to Tails!</h1>
+
+<div class="step-image windows linux mac">[[!img install/inc/infography/tails.png link="no" alt=""]]</div>
+
+<h2 class="upgrade-os upgrade-tails">Starting the intermediary Tails</h2>
+
+<h2 class="clone upgrade-clone">Starting the other Tails</h2>
+
+1. After the Boot Menu, a loading screen appears.
+
+   [[!img inc/screenshots/plymouth.png class="screenshot" alt=""]]
+
+1. One to two minutes after the Boot Loader and the loading screen, the Welcome Screen appears.
+
+   <div class="bug windows linux mac upgrade-tails">
+
+   <p>If the following message about partitioning errors appears in the Welcome
+   Screen, please start again from step 2: <a href="#verify">Verify your
+   download</a>.</p>
+
+   <p class="code">Errors were detected in the partitioning of your Tails USB stick.</p>
+
+   <p>If the error persists, reinstall Tails on one of our [[recommended USB
+   sticks|doc/about/requirements]].</p>
+
+   </div>
+
+   [[!img doc/first_steps/welcome_screen/welcome_screen.png class="screenshot" alt="Welcome to Tails!"]]
+
+1. In the Welcome Screen, select your language and
+   keyboard layout in the <b>Language and Formats</b> section.
+   Click <b>Start Tails</b>.
+
+   <div class="bug mac upgrade-mac">
+   <p>If your keyboard or touchpad doesn't work, try using a USB keyboard or mouse.</p>
+   </div>
+
+1. After 15&ndash;30 seconds, the Tails desktop appears.
+
+   [[!img install/inc/screenshots/desktop.png class="screenshot" alt=""]]

@@ -546,10 +546,9 @@ def list_runs_for_comparison(
 def list_runs(
     conn: sqlite3.Connection,
     *,
-    limit: int = 5000,
+    limit: int | None = 5000,
 ) -> list[dict[str, Any]]:
-    rows = conn.execute(
-        """
+    query = """
         SELECT
             run_id,
             run_group_id,
@@ -598,10 +597,12 @@ def list_runs(
             eliza_version
         FROM benchmark_runs
         ORDER BY started_at DESC, run_id DESC
-        LIMIT ?
-        """,
-        (limit,),
-    ).fetchall()
+        """
+    params: tuple[Any, ...] = ()
+    if limit is not None:
+        query += " LIMIT ?"
+        params = (limit,)
+    rows = conn.execute(query, params).fetchall()
 
     out: list[dict[str, Any]] = []
     for row in rows:

@@ -37,7 +37,7 @@ Some intro.
 - @elizaos/plugin-baz
 
 **System Plugins:**
-- @elizaos/plugin-bootstrap
+- @elizaos/plugin-sql
 
 # Conversation Messages
 user: hi

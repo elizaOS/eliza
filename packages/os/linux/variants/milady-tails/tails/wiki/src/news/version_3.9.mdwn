@@ -1,0 +1,143 @@
+[[!meta date="Tue, 5 Sep 2018 12:34:56 +0000"]]
+[[!meta title="Tails 3.9 is out"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+
+Tails 3.9 is the biggest update of Tails this year!
+
+It includes two new features on which we have been working for more than a year:
+
+* *Additional Software*
+* *VeraCrypt* integration
+
+This release also fixes [[many security
+issues|security/Numerous_security_holes_in_3.8]] and users should
+upgrade as soon as possible.
+
+[[!toc levels=1]]
+
+# Changes
+
+## New features
+
+### Additional Software
+
+You can now install additional software automatically when starting Tails.
+
+When installing an additional Debian package from Tails, you can decide to
+install it automatically every time.
+
+To check your list of additional software packages, choose
+**Applications**&nbsp;▸ **System Tool**&nbsp;▸ **Additional Software**.
+
+<div class="caution">
+
+<p>The packages included in Tails are carefully tested for security.
+Installing additional packages might break the security built in Tails, so be
+careful with what you install.</p>
+
+</div>
+
+### VeraCrypt integration
+
+To unlock *VeraCrypt* volume in Tails, choose **Applications**&nbsp;▸ **System
+Tool**&nbsp;▸ **Unlock VeraCrypt Volumes**.
+
+The integration of *VeraCrypt* in the *Files* and *Disks* utilities was done
+upstream in GNOME and will be available outside of Tails in Debian 10 (Buster)
+and Ubuntu 18.10 (Cosmic Cuttlefish).
+
+[[Read our documentation on using *VeraCrypt* volumes.|doc/encryption_and_privacy/veracrypt]]
+
+### News reading in *Thunderbird*
+
+*Thunderbird* is now the official RSS and Atom news feed reader in Tails.
+
+*Liferea* will be removed from Tails in version 3.12, early 2019.
+
+## Upgrades and changes
+
+- Improve the configuration of the persistent storage to make it easier
+  to scroll and consistent with the GNOME guidelines.
+
+  [[!img version_3.9/persistence.png link="no" alt=""]]
+
+### Included software
+
+- Update *Tor Browser* to 8.0, based on *Firefox* 60 ESR.
+
+  - Based on [*Firefox Quantum*](https://blog.mozilla.org/blog/2017/11/14/introducing-firefox-quantum/).
+
+  - New Tor circuit view
+
+    [[!img doc/anonymous_internet/Tor_Browser/circuit-view.png link="no" alt=""]]
+
+- Update *Thunderbird* from 52 to [60](https://www.thunderbird.net/en-US/thunderbird/60.0/releasenotes/).
+
+- Update *Tor* to 0.3.4.7-rc.
+
+- Update *Electrum* to from 3.0.6 to [3.1.3](https://github.com/spesmilo/electrum/blob/master/RELEASE-NOTES).
+
+### Hardware support
+
+The following updates make Tails work better on recent hardware (graphics,
+Wi-Fi, etc.):
+
+- Update *Linux* to 4.17 which also fixes the
+  [Foreshadow](https://foreshadowattack.eu/) attack.
+
+- Update the *DRM* and *Mesa* libraries to improve support for some graphics
+  cards.
+
+- Update the Intel and AMD microcodes and most firmware packages.
+
+## Fixed problems
+
+- Stop displaying the *Enigmail* setup wizard every time Tails is restarted.
+  ([[!tails_ticket 15693]] and [[!tails_ticket 15746]])
+
+- Show a spinner while starting *Tor Browser*, *Tails documentation*, and
+  *WhisperBack*. ([[!tails_ticket 15101]])
+
+- Use *Tor Browser* again for browsing the documentation offline.
+  ([[!tails_ticket 15720]])
+
+- Show *Synaptic* and *Root Terminal* even when no administration
+  password is set. ([[!tails_ticket 11013]])
+
+- *Tails Installer*
+
+  - Link to upgrade documentation when upgrading. ([[!tails_ticket 7904]])
+  - Hide the **Reinstall** option when the USB stick is too small. ([[!tails_ticket 14810]])
+  - Correct the size of the USB stick in the confirmation dialog when reinstalling. ([[!tails_ticket 15590]])
+
+For more details, read our [[!tails_gitweb debian/changelog desc="changelog"]].
+
+<a id="known-issues"></a>
+
+# Known issues
+
+- Starting Tails 3.9 from DVD is twice slower than earlier releases.
+  ([[!tails_ticket 15915]])
+
+See the list of [[long-standing issues|support/known_issues]].
+
+# Get Tails 3.9
+
+- To install, follow our [[installation instructions|install]].
+
+- To upgrade, automatic upgrades are available from 3.7.1, 3.8, and 3.9~rc1 to 3.9.
+
+  If you cannot do an automatic upgrade or if Tails fails to start after an
+  automatic upgrade, please try to do a [[manual upgrade|doc/upgrade#manual]].
+
+- [[Download Tails 3.9.|install/download]]
+
+# What's coming up?
+
+Tails 3.10 is [[scheduled|contribute/calendar]] for October 23.
+
+
+We need your help and there are many ways to [[contribute to
+Tails|contribute]] (<a href="https://tails.net/donate/?r=3.9">donating</a> is only one of
+them). Come [[talk to us|doc/about/contact#tails-dev]]!

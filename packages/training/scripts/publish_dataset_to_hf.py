@@ -866,7 +866,7 @@ def main() -> int:
     )
     if args.dry_run:
         return _print_dry_run(spec, args.repo_id, validate_hf_load=args.validate_hf_load)
-    # Mirror push_to_hf.py default: public unless --private flips it.
+    # Default: public unless --private flips it.
     return publish(spec, args.repo_id, public=not args.private)
 
 

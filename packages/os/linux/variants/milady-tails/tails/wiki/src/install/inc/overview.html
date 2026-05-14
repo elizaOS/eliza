@@ -1,0 +1,259 @@
+[[!meta robots="noindex"]]
+
+<h2>You need</h2>
+
+<!-- RAM also for cloning -->
+
+<div id="needs">
+
+  <div class="windows linux mac expert pc-clone mac-clone">
+    [[!img install/inc/icons/usb.png link="no" alt=""]]
+    <p>1 USB stick</p>
+    <p class="small">Only for Tails!</p>
+    <p class="small">8 GB minimum</p>
+  </div>
+
+  <div class="upgrade-clone upgrade-tails upgrade-os">
+    [[!img install/inc/icons/usb.png link="no" alt=""]]
+    <p>Your primary Tails</p>
+  </div>
+
+  <div class="upgrade-tails upgrade-os">
+    [[!img install/inc/icons/intermediary.png link="no" alt=""]]
+    <p>1 USB stick</p>
+    <p class="small">All data will be lost!</p>
+    <p class="small">8 GB minimum</p>
+    <p class="small">[[!toggle id="why_extra" text="Why?"]]</p>
+    <div class="floating-toggleable">
+    [[!toggleable id="why_extra" text="""
+    [[!toggle id="why_extra" text=""]]
+    <p>It is currently impossible to manually upgrade a Tails USB stick
+    while running from itself. This scenario requires creating an
+    intermediary Tails on another USB stick, from which to upgrade your
+    Tails.</p>
+    """]]
+    </div>
+  </div>
+
+  <div class="windows upgrade-windows">
+    [[!img install/inc/icons/windows.png link="no" alt=""]]
+    <p>Windows 8</p>
+    <p class="small">or later</p>
+  </div>
+
+  <div class="mac upgrade-mac">
+    [[!img install/inc/icons/apple.png link="no" alt=""]]
+    <p>macOS 10.10</p>
+    <p class="small">Yosemite<br />
+    or later</p>
+    <!-- Yosemite requires 2 GB of RAM, so no need to mention RAM. -->
+  </div>
+
+  <div class="linux upgrade-linux">
+    [[!img install/inc/icons/linux.png link="no" alt=""]]
+    <p>Linux</p>
+    <p class="small">any distribution</p>
+  </div>
+
+  <div class="expert">
+    [[!img install/inc/icons/debian.png link="no" alt=""]]
+    <p>Debian</p>
+    <p>Ubuntu</p>
+    <p class="small">or another derivative</p>
+  </div>
+
+  <div class="pc-clone mac-clone upgrade-clone">
+    [[!img install/inc/icons/intermediary.png link="no" alt=""]]
+    <p>Another Tails</p>
+    <p class="small">USB stick or DVD</p>
+  </div>
+
+  <div class="windows upgrade-windows">
+    [[!img install/inc/icons/laptop.png link="no" alt=""]]
+    <p>2 GB of RAM</p>
+    <p class="small"><a href="https://support.microsoft.com/en-us/windows/32-bit-and-64-bit-windows-frequently-asked-questions-c6ca9541-8dce-4d48-0415-94a3faa2e13d">64-bit</a></p>
+  </div>
+
+  <div class="mac upgrade-mac">
+    [[!img install/inc/icons/laptop.png link="no" alt=""]]
+    <p>Intel processor</p>
+    <p class="small">not Apple processor</p>
+  </div>
+
+  <div class="linux upgrade-linux expert">
+    [[!img install/inc/icons/laptop.png link="no" alt=""]]
+    <p>2 GB of RAM</p>
+    <p class="small"><a href="https://www.howtogeek.com/198615/how-to-check-if-your-linux-system-is-32-bit-or-64-bit/">64-bit</a></p>
+  </div>
+
+  <div>
+    [[!img install/inc/icons/phone.png link="no" alt=""]]
+    <p>Smartphone</p>
+    <p class="small">or printer<br />
+    to follow the instructions</p>
+  </div>
+
+  <div>
+    [[!img install/inc/icons/clock.png link="no" alt=""]]
+    <p class="windows linux mac expert upgrade-tails upgrade-os">1 hour in total</p>
+    <p class="pc-clone mac-clone">½ hour</p>
+    <p class="upgrade-clone">¼ hour</p>
+    <p class="windows linux mac expert upgrade-tails upgrade-os small">[[!inline pages="inc/stable_amd64_iso_size" raw="yes" sort="age"]] to download</p>
+    <p class="windows linux mac expert small">½ hour to install</p>
+    <p class="upgrade-tails upgrade-os small">½ hour to upgrade</p>
+  </div>
+
+</div>
+
+<div class="bug mac">
+
+<p>To learn about the processor in your Mac, choose <b>Apple menu &nbsp;▸ About
+This Mac</b> and check the <b>Processor</b> or <b>Chip</b> information.</p>
+
+<p>If your Mac has an Apple chip, Tails won't work.</p>
+
+<p>Making Tails work on Apple chips represents a massive engineering
+challenge.</p>
+
+<p>The <a href="https://asahilinux.org/">Asahi Linux</a> project is working on
+support for Apple chips in Linux. Support for <a
+href="https://wiki.debian.org/InstallingDebianOn/Apple/M1">Apple chips in
+Debian</a> is following along, but it is not complete yet.</p>
+
+<p>You can track our own experiments on [[!tails_ticket 10972]].</p>
+
+</div>
+
+<p class="windows linux mac expert">[[!toggle id="requirements" text="System requirements and recommended USB sticks"]]</p>
+
+[[!toggleable id="requirements" text="""
+
+<span class="hide">[[!toggle id="requirements" text=""]]</span>
+
+[[!inline pages="doc/about/requirements" raw="yes" sort="age"]]
+
+"""]]
+
+<h2>Your steps</h2>
+
+<div id="steps">
+
+  <a href="#download" class="windows linux mac expert">
+    [[!img install/inc/infography/download.png link="no" alt=""]]
+    <p>Download Tails</p>
+  </a>
+
+  <a href="#download" class="upgrade-os">
+    [[!img install/inc/infography/download-with-intermediary.png link="no" alt=""]]
+    <p>Download Tails</p>
+  </a>
+
+  <a href="#download" class="upgrade-tails">
+    [[!img install/inc/infography/download-from-tails.png link="no" alt=""]]
+    <p>Download the upgrade</p>
+  </a>
+
+  <a href="#verify" class="windows linux mac expert">
+    [[!img install/inc/infography/verify.png link="no" alt=""]]
+    <p>Verify your download</p>
+  </a>
+
+  <a href="#verify" class="upgrade-os">
+    [[!img install/inc/infography/verify-with-intermediary.png link="no" alt=""]]
+    <p>Verify your download</p>
+  </a>
+
+  <a href="#verify" class="upgrade-tails">
+    [[!img install/inc/infography/verify-from-tails.png link="no" alt=""]]
+    <p>Verify your download</p>
+  </a>
+
+  <a href="#other" class="pc-clone mac-clone upgrade-clone">
+    [[!img install/inc/infography/restart-on-other-tails.png link="no" alt=""]]
+    <p>Restart on the other Tails</p>
+  </a>
+
+  <a href="#rufus" class="windows">
+    [[!img install/inc/infography/install-rufus.png link="no" alt=""]]
+    <p class="windows upgrade-windows">Download <i>Rufus</i></p>
+  </a>
+
+  <a href="#etcher" class="mac">
+    [[!img install/inc/infography/install-etcher.png link="no" alt=""]]
+    <p class="mac upgrade-mac">Install <i>balenaEtcher</i></p>
+  </a>
+
+  <a href="#rufus" class="upgrade-windows">
+    [[!img install/inc/infography/install-rufus-with-intermediary.png link="no" alt=""]]
+    <p class="windows upgrade-windows">Download <i>Rufus</i></p>
+  </a>
+
+  <a href="#etcher" class="upgrade-mac">
+    [[!img install/inc/infography/install-etcher-with-intermediary.png link="no" alt=""]]
+    <p class="mac upgrade-mac">Install <i>balenaEtcher</i></p>
+  </a>
+
+  <a href="#install" class="windows linux mac expert">
+    [[!img install/inc/infography/install-tails.png link="no" alt=""]]
+    <p class="windows">Install Tails using <i>Rufus</i></p>
+    <p class="mac">Install Tails using <i>balenaEtcher</i></p>
+    <p class="linux">Install Tails using <i>GNOME Disks</i></p>
+    <p class="expert">Install Tails using <code>dd</code></p>
+  </a>
+
+  <a href="#install" class="upgrade-windows">
+    [[!img install/inc/infography/install-upgrade-usb-only.png link="no" alt=""]]
+    <p>Install intermediary using <i>Rufus</i></p>
+  </a>
+
+  <a href="#install" class="upgrade-mac">
+    [[!img install/inc/infography/install-upgrade-usb-only.png link="no" alt=""]]
+    <p>Install intermediary using <i>balenaEtcher</i></p>
+  </a>
+
+  <a href="#install" class="upgrade-linux">
+    [[!img install/inc/infography/install-upgrade-usb-only.png link="no" alt=""]]
+    <p>Install intermediary using <i>GNOME Disks</i></p>
+  </a>
+
+  <a href="#install" class="upgrade-tails">
+    [[!img install/inc/infography/install-upgrade-usb.png link="no" alt=""]]
+    <p>Install intermediary using <i>GNOME Disks</i></p>
+  </a>
+
+  <a href="#restart" class="windows linux mac expert">
+    [[!img install/inc/infography/restart.png link="no" alt=""]]
+    <p>Restart on your Tails USB stick</p>
+  </a>
+
+  <a href="#intermediary" class="upgrade-os">
+    [[!img install/inc/infography/restart-on-other-tails.png link="no" alt=""]]
+    <p>Restart on intermediary</p>
+  </a>
+
+  <a href="#intermediary" class="upgrade-tails">
+    [[!img install/inc/infography/restart-on-upgrade-usb.png link="no" alt=""]]
+    <p>Restart on intermediary</p>
+  </a>
+
+  <a href="#install" class="pc-clone mac-clone">
+    [[!img install/inc/infography/clone-tails.png link="no" alt=""]]
+    <p>Install Tails by cloning</p>
+  </a>
+
+  <a href="#upgrade" class="upgrade-tails upgrade-os upgrade-clone">
+    [[!img install/inc/infography/clone-tails.png link="no" alt=""]]
+    <p>Upgrade your primary Tails by cloning</p>
+  </a>
+
+  <a href="#restart-new" class="pc-clone mac-clone">
+    [[!img install/inc/infography/restart-on-new-tails.png link="no" alt=""]]
+    <p>Restart on your new Tails</p>
+  </a>
+
+  <a href="#tails" class="windows linux mac expert">
+    [[!img install/inc/infography/tails.png link="no" alt=""]]
+    <p>Welcome to Tails!</p>
+  </a>
+
+</div>

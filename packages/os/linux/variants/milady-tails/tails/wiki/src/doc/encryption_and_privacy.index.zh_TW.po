@@ -1,0 +1,75 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2026-03-27 10:22+0000\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: zh_TW\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid ""
+"[[Managing passwords using the *Secrets* password manager|"
+"encryption_and_privacy/manage_passwords]]"
+msgstr ""
+"[[!traillink Erstellen_und_Benutzen_verschlüsselter_Laufwerke|"
+"encryption_and_privacy/encrypted_volumes]]"
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid ""
+"[[Creating and using *LUKS* encrypted volumes|encryption_and_privacy/"
+"encrypted_volumes]]"
+msgstr ""
+"[[!traillink Erstellen_und_Benutzen_verschlüsselter_Laufwerke|"
+"encryption_and_privacy/encrypted_volumes]]"
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid ""
+"[[Using *VeraCrypt* encrypted volumes|encryption_and_privacy/veracrypt]]"
+msgstr ""
+"[[!traillink Erstellen_und_Benutzen_verschlüsselter_Laufwerke|"
+"encryption_and_privacy/encrypted_volumes]]"
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid ""
+"[[Encrypting text and files using *GnuPG* and *Kleopatra*|"
+"encryption_and_privacy/kleopatra]]"
+msgstr ""
+"[[!traillink Erstellen_und_Benutzen_verschlüsselter_Laufwerke|"
+"encryption_and_privacy/encrypted_volumes]]"
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid "[[Securely deleting files|encryption_and_privacy/secure_deletion]]"
+msgstr ""
+"[[!traillink Erstellen_und_Benutzen_verschlüsselter_Laufwerke|"
+"encryption_and_privacy/encrypted_volumes]]"
+
+#, fuzzy
+#~ msgid ""
+#~ "- [[Calculating checksums using *GtkHash*|encryption_and_privacy/"
+#~ "checksums]]"
+#~ msgstr ""
+#~ "[[!traillink Erstellen_und_Benutzen_verschlüsselter_Laufwerke|"
+#~ "encryption_and_privacy/encrypted_volumes]]"
+
+#, fuzzy
+#~ msgid ""
+#~ "- [[Using the screen keyboard|encryption_and_privacy/virtual_keyboard]]"
+#~ msgstr ""
+#~ "[[!traillink Erstellen_und_Benutzen_verschlüsselter_Laufwerke|"
+#~ "encryption_and_privacy/encrypted_volumes]]"

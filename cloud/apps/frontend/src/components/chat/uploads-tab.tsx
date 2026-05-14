@@ -23,7 +23,6 @@ export function UploadsTab({
   const [documents, setDocuments] = useState<CloudDocument[]>([]);
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [_selectedFiles, setSelectedFiles] = useState<File[]>([]);
 
   // Track concurrent uploads to prevent premature "uploading = false" state
   const activeUploadsRef = useRef(0);
@@ -91,7 +90,6 @@ export function UploadsTab({
 
     activeUploadsRef.current++;
     setUploading(true);
-    setSelectedFiles(files);
 
     try {
       const formData = new FormData();
@@ -119,7 +117,6 @@ export function UploadsTab({
           toast.success("Files uploaded successfully", {
             description: `${data.successCount} file(s) uploaded. They will be processed when you save the character.`,
           });
-          setSelectedFiles([]);
           const fileInput = document.getElementById("uploads-tab-file-input") as HTMLInputElement;
           if (fileInput) fileInput.value = "";
         } else {
@@ -127,7 +124,6 @@ export function UploadsTab({
           toast.error("Upload failed", {
             description: data.error || "Failed to upload files",
           });
-          setSelectedFiles([]);
         }
         return;
       }
@@ -151,7 +147,6 @@ export function UploadsTab({
         });
         fetchDocuments();
 
-        setSelectedFiles([]);
         const fileInput = document.getElementById("uploads-tab-file-input") as HTMLInputElement;
         if (fileInput) fileInput.value = "";
       } else {
@@ -159,7 +154,6 @@ export function UploadsTab({
         toast.error("Upload failed", {
           description: data.error || "Failed to upload files",
         });
-        setSelectedFiles([]);
       }
     } finally {
       activeUploadsRef.current--;

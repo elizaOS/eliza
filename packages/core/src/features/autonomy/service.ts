@@ -881,7 +881,6 @@ export class AutonomyService extends Service {
 				thought: "Autonomy fallback: no response.",
 				actions: ["IGNORE"],
 				text: "",
-				simple: true,
 				providers: [],
 			},
 		});

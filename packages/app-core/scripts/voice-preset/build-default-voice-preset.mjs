@@ -40,8 +40,8 @@
 
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { DEFAULT_PHRASE_CACHE_SEED } from "../../src/services/local-inference/voice/phrase-cache.ts";
-import { writeVoicePresetFile } from "../../src/services/local-inference/voice/voice-preset-format.ts";
+import { DEFAULT_PHRASE_CACHE_SEED } from "../../../../plugins/plugin-local-inference/src/services/voice/phrase-cache.ts";
+import { writeVoicePresetFile } from "../../../../plugins/plugin-local-inference/src/services/voice/voice-preset-format.ts";
 
 const PLACEHOLDER_DEFAULT_DIM = 256;
 
@@ -125,10 +125,10 @@ function readFloat32Vector(file) {
  */
 async function synthesizeSeedPhrases({ bundleRoot, concurrency }) {
   const { LocalInferenceEngine } = await import(
-    "../../src/services/local-inference/engine.ts"
+    "../../../../plugins/plugin-local-inference/src/services/engine.ts"
   );
   const { decodeMonoPcm16Wav } = await import(
-    "../../src/services/local-inference/voice/engine-bridge.ts"
+    "../../../../plugins/plugin-local-inference/src/services/voice/engine-bridge.ts"
   );
   const engine = new LocalInferenceEngine();
   engine.startVoice({ bundleRoot, useFfiBackend: true });

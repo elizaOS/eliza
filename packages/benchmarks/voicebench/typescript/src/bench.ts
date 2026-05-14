@@ -522,7 +522,7 @@ async function resolvePlugins(profile: string): Promise<Plugin[]> {
   let embeddingModule: LocalEmbeddingPluginModule;
   try {
     embeddingModule = (await import(
-      "@elizaos/plugin-local-embedding"
+      "@elizaos/plugin-local-inference"
     )) as LocalEmbeddingPluginModule;
   } catch {
     embeddingModule = (await import(

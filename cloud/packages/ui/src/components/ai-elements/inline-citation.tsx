@@ -136,15 +136,18 @@ export const InlineCitationCarouselIndex = ({
       return;
     }
 
-    // Initialize state asynchronously to avoid cascading renders
-    Promise.resolve().then(() => {
+    const updateIndex = () => {
       setCount(api.scrollSnapList().length);
       setCurrent(api.selectedScrollSnap() + 1);
-    });
+    };
 
-    api.on("select", () => {
-      setCurrent(api.selectedScrollSnap() + 1);
-    });
+    updateIndex();
+    api.on("select", updateIndex);
+    api.on("reInit", updateIndex);
+    return () => {
+      api.off("select", updateIndex);
+      api.off("reInit", updateIndex);
+    };
   }, [api]);
 
   return (

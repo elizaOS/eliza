@@ -1,0 +1,43 @@
+[[!meta title="Protection against cold boot attacks"]]
+
+While using a computer, all the data manipulated is written temporarily
+in [[!wikipedia Random-access_memory desc="RAM"]]: texts, saved files,
+but also passwords and encryption keys. The more recent the activity,
+the more likely it is for the data to still be in RAM.
+
+After a computer is powered off, the data in RAM disappears rapidly, but
+it can remain in RAM up to several minutes after shutdown. An attacker
+having access to a computer before the data in RAM disappears completely could
+recover important data from your session.
+
+This can be achieved using a technique called
+[[!wikipedia cold boot attack]]. To prevent such attacks, the data in RAM is
+overwritten by random data when you shut down Tails.
+
+Moreover, an attacker having physical access to the computer *while
+Tails is running* can recover data from RAM as well. To avoid that,
+learn the different methods to [[shutdown
+Tails|doc/first_steps/shutdown]] rapidly.
+
+<div class="attack">
+
+<p>As far as we know, cold boot attacks are not a common procedure for
+data recovery.</p>
+
+<p>In a <a
+href="https://www.forensicfocus.com/stable/wp-content/uploads/2011/08/cold_boot_attack_for_forensiscs1.pdf">research
+report from 2011</a>, Defense Research and Development Canada concluded that
+cold boot attacks can be useful in some cases to acquire data in memory but are
+not a panacea and have many drawbacks dictated by the laws of physics, which
+cannot be overcome by the technique. The authors recommend to only use cold
+boot attacks as a last resort when all other avenues have been exhausted.</p>
+
+</div>
+
+<div class="next">
+
+<p>See how we implement this [[memory
+erasure|contribute/design/memory_erasure]], for example, if you want to
+implement this feature outside of Tails.</p>
+
+</div>

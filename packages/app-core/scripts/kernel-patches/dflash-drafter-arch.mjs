@@ -12,9 +12,12 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_PACKAGES_DIR = path.resolve(__dirname, "..", "..", "..");
+const REPO_ROOT = path.resolve(REPO_PACKAGES_DIR, "..");
 const DFLASH_DRAFT_SOURCE = path.join(
-  REPO_PACKAGES_DIR,
-  "inference",
+  REPO_ROOT,
+  "plugins",
+  "plugin-local-inference",
+  "native",
   "dflash",
   "dflash_draft.cpp",
 );

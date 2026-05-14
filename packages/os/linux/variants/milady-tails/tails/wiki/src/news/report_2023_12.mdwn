@@ -1,0 +1,35 @@
+[[!meta title="Tails report for December 2023"]]
+[[!meta date="Tue, 16 Jan 2024 12:10:05 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!toc]]
+
+Happy 2024, Tails-y folks! We wish you a year full of nourishing energies,
+forceful resistance, and great health ✊🏽
+
+Highlights
+==========
+
+- 2023 was an eventful year at Tails. We kicked off the 1st year of our 3-year strategic plan with 16 releases of Tails, significant improvements to core Tails features like the new Persistent Storage, and researched cool, new features we want to bring to you. In parallel, we started moving into a [new home](https://tails.net/) and made investments to become a more sustainable project and a healthier workplace. Read more about 2023 at Tails [[here|/news/achievements_in_2023/]]. If you'd rather listen, check out [our presentation](https://www.youtube.com/watch?v=TtgTwho1wfQ&t=784s) at State of the Onion 2023!
+
+- We are raising funds for our work in 2024 but our annual fundraising campaign has fallen short of our goal. So, we've extended our fundraiser till January 20, 2024. If you find our work useful and can contribute, we'd appreciate your help. Every contribution, no matter the size, makes a big difference. [Donate now!](https://tails.net/donate/)
+
+- Talking about contributions that make a difference, we remain ever so grateful to our sponsors! Last month, [wordsolver.co](https://wordsolver.co/) renewed their sponsorship of Tails. This is the 3rd year of their support for Tails' mission! Thank you 💜
+
+Releases
+========
+
+We released [[Tails 5.21|/news/version_5.21/]]. In 5.21:
+
+- *Tor client* and *Tor Browser* are up-to-date
+
+- we improved Tails's handling of date and time: you'll find localised dates in the top navigation, and separately, we replaced the unpunctual web servers in our htpdate pool
+
+- the backup feature of *Tails Cloner* is friendlier to use. Thanks [@BenWestgate](https://gitlab.tails.boum.org/BenWestgate)!
+
+And [lots more](https://gitlab.tails.boum.org/tails/tails/-/blob/master/debian/changelog).
+
+Metrics
+=======
+
+Tails was started more than 815,559 times this month. That's a daily average of over 26,300 boots.

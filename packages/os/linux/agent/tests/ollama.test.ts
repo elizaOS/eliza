@@ -59,10 +59,10 @@ describe("ollamaChat", () => {
             expect(url).toContain("/api/chat");
             const body = JSON.parse(String(init?.body ?? "{}"));
             expect(body.stream).toBe(false);
-            expect(body.model).toBe("llama3.2:1b");
+            expect(body.model).toBe("eliza-1-0_8b");
             return new Response(
                 JSON.stringify({
-                    model: "llama3.2:1b",
+                    model: "eliza-1-0_8b",
                     message: { role: "assistant", content: "hi there" },
                     done: true,
                 }),
@@ -72,7 +72,7 @@ describe("ollamaChat", () => {
 
         const response = await ollamaChat(
             {
-                model: "llama3.2:1b",
+                model: "eliza-1-0_8b",
                 messages: [
                     { role: "system", content: "you are eliza" },
                     { role: "user", content: "hi" },
@@ -91,7 +91,7 @@ describe("ollamaChat", () => {
         try {
             await ollamaChat(
                 {
-                    model: "llama3.2:1b",
+                    model: "eliza-1-0_8b",
                     messages: [{ role: "user", content: "hi" }],
                 },
                 { baseUrl: "http://test", fetchImpl },
@@ -123,14 +123,14 @@ describe("ollamaChat", () => {
     test("throws OllamaError(schema) on missing message.content", async () => {
         const fetchImpl = fakeFetch(
             () =>
-                new Response(JSON.stringify({ model: "llama3.2:1b", done: true }), {
+                new Response(JSON.stringify({ model: "eliza-1-0_8b", done: true }), {
                     status: 200,
                 }),
         );
         try {
             await ollamaChat(
                 {
-                    model: "llama3.2:1b",
+                    model: "eliza-1-0_8b",
                     messages: [{ role: "user", content: "hi" }],
                 },
                 { baseUrl: "http://test", fetchImpl },
@@ -152,7 +152,7 @@ describe("ollamaCompleteOneShot", () => {
             expect(body.messages[1].role).toBe("user");
             return new Response(
                 JSON.stringify({
-                    model: "llama3.2:1b",
+                    model: "eliza-1-0_8b",
                     message: { role: "assistant", content: "  okay  " },
                     done: true,
                 }),

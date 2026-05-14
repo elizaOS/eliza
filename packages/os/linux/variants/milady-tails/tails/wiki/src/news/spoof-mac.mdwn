@@ -1,0 +1,122 @@
+[[!meta title="Call for testing: MAC address spoofing"]]
+
+[[!meta date="Sun, 29 Dec 2013 12:00:00 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+You can help Tails! The
+[[MAC address spoofing|contribute/design/MAC_address]] feature is
+ready for testing. This feature prevents geographical tracking of your
+network devices (and by extension, you) by randomising their
+[[!wikipedia MAC addresses]].
+
+If you have security auditing skills you are more than welcome to
+review our [[design|contribute/design/MAC_address]] and
+[[implementation|contribute/design/MAC_address#implementation]].
+
+[[!toc levels=2]]
+
+# Background
+
+Every network device (wired, Wi-Fi/wireless, 3G/mobile) has a
+[[!wikipedia MAC address]], which is a unique identifier used to
+address them on the local network. Broadcasting a unique identifier in
+this manner introduce a couple of potential privacy issues for Tails
+users. Geographical location tracking is the main one: observing a MAC
+address at a particular location and time ties the corresponding
+device to the same location and time. If the real identity of the
+device's owner is known, their movements can be determined. To prevent
+this one can temporarily change the MAC address to something random at
+each boot, which is referred to as "MAC address spoofing".
+
+# How to download the test image
+
+Download the latest test ISO from
+[build_Tails_ISO_devel](http://nightly.tails.boum.org/build_Tails_ISO_devel/). **Keep
+in mind that this is a test image.** Do not use it for anything else
+than testing this feature.
+
+# How to use MAC spoofing in Tails
+
+MAC spoofing is enabled by default in this test ISO. You can change
+this with a
+[[startup option|doc/first_steps/welcome_screen]]. The
+(preliminary) MAC spoofing documentation tries to explain situations
+where it actually may be a bad idea to keep this option
+enabled. However, as this is just a test version we of course urge you
+to not use it for anything serious, and if possible, to test both to
+enable and disable the option.
+
+# What to test
+
+For any MAC spoofing-related issues you experience using this test
+ISO, please include the output from the following commands when
+reporting it to us (note: it requires setting an
+[[doc/first_steps/welcome_screen/administration_password]]):
+
+    sudo grep spoof-mac /var/log/syslog
+    sudo grep unblock-network /var/log/syslog
+
+In particular, we would like you to pay extra attention to the
+following things:
+
+## Verify that the MAC spoofing setting is enforced
+
+Please verify that the MAC spoofing setting you select actually is
+enforced by issuing the following commands:
+
+    . /usr/local/lib/tails-shell-library/hardware.sh
+    for i in $(get_all_ethernet_nics); do
+      echo "Interface $i"
+      macchanger $i
+    done
+
+For each network device you'll get an entry looking something like
+this:
+
+    Interface eth0
+    Permanent MAC: 12:34:56:78:90:ab (unknown)
+    Current   MAC: 12:34:56:f4:fb:22 (unknown)
+
+The "Permanent MAC" is the network device's "real", unique MAC
+address; the "Current MAC" is whatever it is set to at the moment,
+spoofed or not. In other words:
+
+* if they are *different*, then MAC spoofing is *enabled*;
+
+* if they are *the* *same*, then MAC spoofing is *disabled*.
+
+Please report if you ever get unexpected results.
+
+## MAC address allowlisting problems
+
+Some wireless networks are configured to only allow connections for
+devices with certain MAC addresses, called MAC address
+allowlisting. MAC address spoofing will cause issues on networks like
+these. Therefore Tails has a crude mechanism for detecting this, and
+will show an informative notification about what to do about it.
+
+If you have access to a wireless network that employs MAC address
+allowlisting, then connect to it with MAC spoofing enabled and verify
+that Tails shows a notification with the headline: "Network connection
+blocked?".
+
+Note: Tails detection mechanism for MAC address allowlisting only
+works for wireless (Wi-Fi) networks.
+
+## Network problems
+
+Please report all network device and connection issues, e.g. if any of
+your network devices do not get detected by Tails at all, if the
+network connection fails, or if the network connection succeeds but
+actually does not work. Also check whether you experience the same
+issues using Tails 0.22.
+
+# Known issues
+
+## No fail-safe for hotplugged devices after logging in
+
+In order to prevent the real MAC address from leaking when MAC
+spoofing fails for some network device, Tails has a fail-safe that
+simply disables the device. At the moment this only works for network
+devices present before logging in with Tails Greeter; the fail-safe
+does *not* work for e.g. Wi-Fi USB dongles hotplugged *after* that.

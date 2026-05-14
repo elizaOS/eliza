@@ -1,0 +1,17 @@
+@import url("upgrade-os.css");
+
+span.upgrade-windows, a.upgrade-windows {
+  display: inline;
+}
+
+div.upgrade-windows, img.upgrade-windows, p.upgrade-windows, h1.upgrade-windows, h2.upgrade-windows {
+  display: block;
+}
+
+li.upgrade-windows {
+  display: list-item;
+}
+
+h1.step:before, span.next-counter:before {
+  content: counter(step)'/7';
+}

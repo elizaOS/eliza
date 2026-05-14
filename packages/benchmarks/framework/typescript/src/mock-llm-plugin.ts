@@ -31,7 +31,6 @@ const MESSAGE_HANDLER_JSON = JSON.stringify({
   actions: ["REPLY"],
   providers: [],
   text: "This is a fixed benchmark response from the mock LLM plugin.",
-  simple: true,
 });
 
 /** Response for reply action (TEXT_LARGE direct calls) */

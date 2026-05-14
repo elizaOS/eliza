@@ -1,0 +1,113 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-09-17 11:40+0200\n"
+"PO-Revision-Date: 2025-10-15 15:19+0000\n"
+"Last-Translator: Chre <tor@renaudineau.org>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: fr\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n > 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Unlocking and using the Persistent Storage\"]]\n"
+msgstr "[[!meta title=\"Déverrouiller et utiliser le stockage persistant\"]]\n"
+
+#. type: Plain text
+msgid ""
+"To unlock your Persistent Storage and use the data that is stored in it:"
+msgstr ""
+"Pour déverrouiller votre stockage persistant et utiliser les données qui "
+"sont stockées dessus :"
+
+#. type: Bullet: '1. '
+msgid ""
+"When starting Tails, in the **Persistent Storage** section of the [[Welcome "
+"Screen|first_steps/welcome_screen]], enter your passphrase and click "
+"**Unlock Encryption**."
+msgstr ""
+"Au démarrage de Tails, dans la section **Stockage persistant** de l'[[écran "
+"de bienvenue|first_steps/welcome_screen]], entrez votre phrase de passe et "
+"cliquez sur **Déverrouiller le chiffrement**."
+
+#. type: Plain text
+#, no-wrap
+msgid "   [[!img first_steps/welcome_screen/unlock_persistent_storage.png class=\"screenshot\" alt=\"\"]]\n"
+msgstr ""
+"   [[!img first_steps/welcome_screen/unlock_persistent_storage.png class="
+"\"screenshot\" alt=\"\"]]\n"
+
+#. type: Bullet: '1. '
+msgid "Start Tails."
+msgstr "Démarrez Tails."
+
+#. type: Bullet: '1. '
+msgid ""
+"The data corresponding to each feature of the Persistent Storage that is "
+"turned on is automatically available. For example:"
+msgstr ""
+"Les données correspondantes de chaque fonctionnalité du stockage persistant "
+"qui sont activées sont automatiquement disponibles. Par exemple :"
+
+#. type: Bullet: '   - '
+msgid ""
+"Your personal files in the *Persistent* folder are accessible from the "
+"*Files* browser, if the [[Persistent Folder|configure#persistent_folder]] "
+"feature is turned on."
+msgstr ""
+"Vos fichiers personnels dans le dossier *Persistent* sont accessibles depuis "
+"le navigateur de *Fichiers*, si la fonctionnalité "
+"[[Dossier persistant|configure#persistent_folder]] est activée."
+
+#. type: Bullet: '   - '
+msgid ""
+"Your persistent bookmarks are available in *Tor Browser*, if the [[Tor "
+"Browser Bookmarks|configure#bookmarks]] feature is turned on."
+msgstr ""
+"Vos marque-pages persistants sont disponibles dans le *Navigateur Tor* si la "
+"fonctionnalité [[Marque-pages du Navigateur Tor|configure#bookmarks]] est "
+"activée."
+
+#. type: Bullet: '   - '
+msgid ""
+"Your [[Additional Software|additional_software]] packages are automatically "
+"installed when starting Tails, if the [[Additional Software|"
+"configure#additional_software]] feature is turned on."
+msgstr ""
+"Vos paquets [[logiciels supplémentaires|additional_software]] sont "
+"automatiquement installés lors du démarrage de Tails, si la fonctionnalité "
+"[[logiciels supplémentaires|configure#additional_software]] est activée."
+
+#. type: Plain text
+#, no-wrap
+msgid "<a id=\"read-only\"></a>\n"
+msgstr "<a id=\"read-only\"></a>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"caution\">\n"
+msgstr "<div class=\"caution\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>Tails cannot use a read-only Persistent Storage. If your Tails USB stick has\n"
+"a read-only switch, ensure it is in the read-write position.</p>\n"
+msgstr ""
+"<p>Tails ne peut pas utiliser un stockage persistant en lecture seule. Si votre clé USB Tails a\n"
+"un interrupteur lecture seule, assurez-vous qu'il soit en position lecture et écriture.</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"

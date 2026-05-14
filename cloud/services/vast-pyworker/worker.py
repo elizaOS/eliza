@@ -12,8 +12,8 @@ load balancer) lives on Vast's side; eliza/cloud routes requests by hitting
 the endpoint URL via `VastProvider`.
 
 Why llama.cpp instead of vLLM:
-- The default served model is a Q6_K GGUF from
-  `elizaos/eliza-1-27b-fp8`.
+- The default served model is a Q4_K_M GGUF from
+  `elizaos/eliza-1` (subpath `bundles/27b/text/`).
 - vLLM's GGUF support is experimental and slow; llama.cpp's server is the
   native, well-tuned path for k-quants on consumer Blackwell.
 - `llama-server` exposes OpenAI-compatible `/v1/chat/completions`,

@@ -1,0 +1,117 @@
+[[!meta title="Tails report for December, 2016"]]
+
+[[!meta date="Tue, 07 Feb 2017 11:35:00 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!toc ]]
+
+Releases
+========
+
+* Tails 2.9 was cancelled due to
+  [CVE-2016-1252](https://security-tracker.debian.org/tracker/CVE-2016-1252).
+* [[Tails 2.9.1 was released on December 14|news/version_2.9.1]] (minor release).
+* Tails 2.10 is [[scheduled for January 24|contribute/calendar]].
+
+The following changes were introduced in Tails 2.9.1:
+
+* Switch to *DuckDuckGo* as the default search engine in *Tor Browser*.
+  The previous default search engine, *Disconnect.me*, has already been
+  redirecting to *Duck Duck Go* for some time.
+
+Code
+====
+
+* We've had a great sprint about porting Tails to Debian Stretch.
+  Most of our time was spent integrating the new Greeter as well as bug fixing,
+  polishing, and updating the test suite:
+  report from the sprint.
+  Our goal is to publish a first beta version based on Debian Stretch at
+  the end of January.
+
+* intrigeri made sure that a number of packages we care about are in
+  good shape for Debian Stretch, that will be frozen very soon.
+
+* We [[!tails_ticket 11799 desc="wrote manual tests for the Installation
+  Assistant"]], so we can spot any problems with it before we release new
+  Tails versions.
+
+Infrastructure
+==============
+
+* 387 ISO images were automatically built and tested by our continuous
+  integration infrastructure.
+
+* We deployed a clone of our Jenkins setup for building and testing
+  ISO images automatically, and improved the corresponding Puppet code
+  to make it possible. This should make it easier for new
+  system administrators to join us.
+
+Funding
+=======
+
+- We continued our donation campaign which brought us about
+  $100 000 in donations. Thanks for your support!
+
+- The [[independent French investigative journal Mediapart has decided
+  to support|news/mediapart]] Tails financially every year. Thank you
+  very much!
+
+- We submitted a concept note to OTF for 2017-2018.
+
+- We were contacted by private sponsors interested in donating and being
+  recognized as Tails patrons.
+
+Outreach
+========
+
+Past events
+-----------
+
+* From December 27th to December 30th, we were at 33C3 in
+  Hamburg/Germany.
+* We attended the
+  [Reproducible Builds Meeting](https://reproducible-builds.org/news/2016/12/13/reproducible-builds-berlin-meeting/)
+  in Berlin.
+
+Upcoming events
+---------------
+
+* We will have a booth at [FOSDEM](https://fosdem.org/2017/) in Brussels.
+
+On-going discussions
+====================
+
+- We talked about maybe implementing a new Tails version scheme.
+
+- Also about Faking htpdate user agent.
+
+Translation
+===========
+
+## All the website
+
+  - de: 56% (3083) strings translated, 5% strings fuzzy, 50% words translated
+  - fa: 41% (2286) strings translated, 7% strings fuzzy, 46% words translated
+  - fr: 81% (4464) strings translated, 2% strings fuzzy, 80% words translated
+  - it: 29% (1620) strings translated, 3% strings fuzzy, 26% words translated
+  - pt: 28% (1560) strings translated, 7% strings fuzzy, 26% words translated
+
+Total original words: 56525
+
+## [[Core pages of the website|contribute/l10n_tricks/core_po_files.txt]]
+
+  - de: 83% (1563) strings translated, 9% strings fuzzy, 84% words translated
+  - fa: 38% (720) strings translated, 9% strings fuzzy, 40% words translated
+  - fr: 96% (1799) strings translated, 3% strings fuzzy, 96% words translated
+  - it: 80% (1508) strings translated, 9% strings fuzzy, 79% words translated
+  - pt: 50% (933) strings translated, 12% strings fuzzy, 50% words translated
+
+Total original words: 17087
+
+Metrics
+=======
+
+* Tails has been started more than 633 242 times this month. This makes 20 427 boots a day on average.
+* 15 012 downloads of the OpenPGP signature of Tails ISO from our website.
+* 72 bug reports were received through WhisperBack.

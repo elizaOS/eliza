@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+_Name=Persistent Storage
+_Comment=Configure which files and application configuration are saved between working sessions
+_Keywords=configuration;saved
+Icon=tails-persistent-storage.svg
+Exec=/usr/local/bin/tails-persistent-storage
+Terminal=false
+Categories=System;Tails;
+StartupNotify=true

@@ -50,11 +50,12 @@ diffs once the corresponding `drafter-<tier>.gguf` is built and validated.
 
 ```ts
 // 0_8b — replaces the current eliza-1-0_6b chat+drafter pair
+// hfRepo is the consolidated bundle repo; ggufFile is the bundle subpath.
 {
   id: "eliza-1-0_8b",
   displayName: "eliza-1-0_8b",
-  hfRepo: "elizaos/eliza-1-0_8b",
-  ggufFile: "text/eliza-1-0_8b-32k.gguf",
+  hfRepo: "elizaos/eliza-1",
+  ggufFile: "bundles/0_8b/text/eliza-1-0_8b-32k.gguf",
   bundleManifestFile: "eliza-1.manifest.json",
   params: "0.8B",
   quant: "Eliza-1 optimized local runtime",
@@ -69,7 +70,7 @@ diffs once the corresponding `drafter-<tier>.gguf` is built and validated.
 },
 drafterCompanion({
   id: "eliza-1-0_8b",
-  ggufFile: "dflash/drafter-0_8b.gguf",
+  ggufFile: "bundles/0_8b/dflash/drafter-0_8b.gguf",
   params: "0.8B",  // self-size drafter for the smallest tier
   sizeGb: 0.4,
   minRamGb: 2,
@@ -80,24 +81,24 @@ drafterCompanion({
 {
   id: "eliza-1-2b",
   displayName: "eliza-1-2b",
-  hfRepo: "elizaos/eliza-1-2b",
-  ggufFile: "text/eliza-1-2b-32k.gguf",
+  hfRepo: "elizaos/eliza-1",
+  ggufFile: "bundles/2b/text/eliza-1-2b-32k.gguf",
   // ...
   companionModelIds: ["eliza-1-2b-drafter"],
 },
 drafterCompanion({
   id: "eliza-1-2b",
-  ggufFile: "dflash/drafter-2b.gguf",
+  ggufFile: "bundles/2b/dflash/drafter-2b.gguf",
   params: "0.8B",  // student is Qwen3.5-0.8B
   sizeGb: 0.4,
   minRamGb: 4,
   bucket: "small",
 }),
 
-// 4b — drafter path is `dflash/drafter-4b.gguf`, student is Qwen3.5-0.8B
+// 4b — drafter lives in the same consolidated bundle repo as the chat model.
 drafterCompanion({
   id: "eliza-1-4b",
-  ggufFile: "dflash/drafter-4b.gguf",
+  ggufFile: "bundles/4b/dflash/drafter-4b.gguf",
   params: "0.8B",
   sizeGb: 0.4,
   minRamGb: 8,
@@ -107,7 +108,7 @@ drafterCompanion({
 // 9b — student is Qwen3.5-2B
 drafterCompanion({
   id: "eliza-1-9b",
-  ggufFile: "dflash/drafter-9b.gguf",
+  ggufFile: "bundles/9b/dflash/drafter-9b.gguf",
   params: "2B",
   sizeGb: 1.0,
   minRamGb: 12,
@@ -120,7 +121,7 @@ drafterCompanion({
 // `dflash-draft.target_checkpoint_sha256` matches the right text GGUF.
 drafterCompanion({
   id: "eliza-1-27b",
-  ggufFile: "dflash/drafter-27b.gguf",
+  ggufFile: "bundles/27b/dflash/drafter-27b.gguf",
   params: "4B",
   sizeGb: 2.0,
   minRamGb: 24,
@@ -128,7 +129,7 @@ drafterCompanion({
 }),
 drafterCompanion({
   id: "eliza-1-27b-256k",
-  ggufFile: "dflash/drafter-27b-256k.gguf",
+  ggufFile: "bundles/27b-256k/dflash/drafter-27b-256k.gguf",
   params: "4B",
   sizeGb: 2.0,
   minRamGb: 24,
@@ -136,7 +137,7 @@ drafterCompanion({
 }),
 drafterCompanion({
   id: "eliza-1-27b-1m",
-  ggufFile: "dflash/drafter-27b-1m.gguf",
+  ggufFile: "bundles/27b-1m/dflash/drafter-27b-1m.gguf",
   params: "4B",
   sizeGb: 2.0,
   minRamGb: 24,

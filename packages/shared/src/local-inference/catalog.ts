@@ -1,8 +1,9 @@
 /**
  * Eliza-curated local model catalog.
  *
- * Default local inference is restricted to the active Qwen3.5-backed Eliza-1
- * release line: 0_8b, 2b, 4b, and the modeled future 9b/27b tiers.
+ * Default local inference is restricted to the active Eliza-1 line:
+ * Qwen3.5 0.8B/2B/4B, Qwen3.5 9B until an official Qwen3.6 9B
+ * exists, and Qwen3.6 27B including long-context 27B variants.
  * External Hub search remains custom/opt-in and never enters first-run or
  * default eligibility.
  */
@@ -14,7 +15,7 @@ import type {
   LocalRuntimeKernel,
 } from "./types.js";
 
-export const ELIZA_1_HF_REPO = "elizaos/eliza-1" as const;
+export const ELIZA_1_HF_REPO = "elizalabs/eliza-1" as const;
 
 export const ELIZA_1_TIER_IDS = [
   "eliza-1-0_8b",
@@ -41,12 +42,88 @@ export function isDefaultEligibleId(id: string): boolean {
   return DEFAULT_ELIGIBLE_MODEL_IDS.has(id);
 }
 
+/**
+ * Per-tier publish-state hint. Keys are tier ids that are known to have
+ * an incomplete Hugging Face bundle at the time the catalog snapshot was
+ * cut. Tiers not listed here default to `"published"`. The recommender
+ * consults this map (or a `publishStatus` field on a synthetic
+ * `CatalogModel`) before recommending a first-run default — see
+ * `recommendForFirstRun` and elizaOS/eliza#7629.
+ *
+ * Set the override env var `ELIZA_PUBLISH_STATUS_OVERRIDES` to a JSON
+ * object like `{"eliza-1-2b":"published","eliza-1-9b":"pending"}` to
+ * override at runtime without changing the static map (useful for QA
+ * and for installs that depend on a private HF mirror).
+ *
+ * Today's snapshot (2026-05-13) is empty: every published tier id in the
+ * catalog is assumed to point at a real HF bundle. The maintainer should
+ * flip a tier to `"pending"` here when they know the HF publish hasn't
+ * landed yet (e.g. a tier whose `eliza-1.manifest.json` is missing or
+ * whose `releaseState` is `"local-standin"` / `"skeleton"`).
+ */
+export const ELIZA_1_TIER_PUBLISH_STATUS: Readonly<
+  Partial<Record<Eliza1TierId, "published" | "pending">>
+> = {};
+
+export function eliza1TierPublishStatus(
+  id: Eliza1TierId | string,
+): "published" | "pending" {
+  const override = readPublishStatusOverride(id);
+  if (override) return override;
+  const hint = (
+    ELIZA_1_TIER_PUBLISH_STATUS as Record<
+      string,
+      "published" | "pending" | undefined
+    >
+  )[id];
+  return hint ?? "published";
+}
+
+function readPublishStatusOverride(
+  id: string,
+): "published" | "pending" | undefined {
+  const raw =
+    typeof process !== "undefined"
+      ? process.env?.ELIZA_PUBLISH_STATUS_OVERRIDES
+      : undefined;
+  if (!raw) return undefined;
+  try {
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    const value = parsed?.[id];
+    if (value === "published" || value === "pending") return value;
+  } catch {
+    // Malformed override JSON is non-fatal — fall back to the static
+    // publish-status hint and the catalog's own `publishStatus` field.
+  }
+  return undefined;
+}
+
 export const ELIZA_1_PLACEHOLDER_IDS: ReadonlySet<string> = new Set(
   ELIZA_1_TIER_IDS,
 );
 
 export type VoiceBackendId = "kokoro" | "omnivoice";
 
+/**
+ * Per-tier voice backend policy. The FIRST entry is the default backend
+ * for that tier — `runtime-selection.ts` picks it when both backends are
+ * available and no override applies (voice cloning, TTFA target, RTF).
+ * Entries beyond the first are also bundled; tiers that ship only one
+ * backend have a single-element array.
+ *
+ * Policy (Wave-2):
+ *   - Small tiers (0_8b / 2b / 4b) → Kokoro only. Kokoro is ~310 MB
+ *     fp32 / ~80 MB int8 and hits ~97ms CPU TTFB, which dominates the
+ *     time budget on small/mobile devices. OmniVoice is not shipped in
+ *     these bundles — callers that need voice cloning must use a larger
+ *     tier or the standalone (legacy) plugin-omnivoice.
+ *   - 9b → both supported, Kokoro first. 9b is the boundary tier where
+ *     either makes sense depending on the workload (Kokoro for low TTFB,
+ *     OmniVoice for higher quality / cloning).
+ *   - Large tiers (27b / 27b-256k / 27b-1m) → OmniVoice only. The RAM
+ *     and compute budget is large enough that the OmniVoice quality win
+ *     dominates; Kokoro is not shipped in these bundles.
+ */
 export const ELIZA_1_VOICE_BACKENDS: Record<
   Eliza1TierId,
   ReadonlyArray<VoiceBackendId>
@@ -99,6 +176,12 @@ const TIER_SPECS: Readonly<Record<Eliza1TierId, TierSpec>> = {
     drafterParams: "0.5B",
     drafterSizeGb: 0.4,
     drafterMinRamGb: 2,
+    // WS2: vision is enabled on the smallest viable tier. The Q4_K_M
+    // mmproj for 0.8B is ~220 MB (see ELIZA_1_BUNDLE_EXTRAS.json), which
+    // fits even on 2 GB-floor devices when the text model is resident.
+    // Camera + screen analysis remain practical on low-tier phones at this
+    // size — the projector cache short-circuits the per-frame cost.
+    hasVision: true,
   },
   "eliza-1-2b": {
     id: "eliza-1-2b",
@@ -113,6 +196,11 @@ const TIER_SPECS: Readonly<Record<Eliza1TierId, TierSpec>> = {
     drafterSizeGb: 0.5,
     drafterMinRamGb: 4,
     hasEmbedding: true,
+    // WS2: vision enabled — the 2B tier is the standard "small-phone"
+    // default for first-run users, so camera-to-reaction and screen
+    // analysis must work here. The mmproj is ~320 MB Q8_0; the arbiter
+    // owns the swap with the text weights under pressure.
+    hasVision: true,
   },
   "eliza-1-4b": {
     id: "eliza-1-4b",
@@ -193,6 +281,11 @@ const TIER_SPECS: Readonly<Record<Eliza1TierId, TierSpec>> = {
     drafterMinRamGb: 160,
     gpuProfile: "h200",
     hasEmbedding: true,
+    // WS2: vision on the 1M-context tier is for server / workstation use
+    // (multi-GPU, document-pipeline scenarios where a screenshot of a
+    // 100-page PDF page is sandwiched into a million-token context). The
+    // mmproj is the same ~720 MB Q8_0 used by the 27b and 27b-256k tiers.
+    hasVision: true,
   },
 };
 
@@ -227,12 +320,18 @@ function bundleComponent(
   return { repo: ELIZA_1_HF_REPO, file: bundleRemotePath(id, file) };
 }
 
+function voiceQuantForTier(id: Eliza1TierId): "Q4_K_M" | "Q8_0" {
+  return id === "eliza-1-0_8b" || id === "eliza-1-2b" || id === "eliza-1-4b"
+    ? "Q4_K_M"
+    : "Q8_0";
+}
+
 function primaryVoiceFileForTier(id: Eliza1TierId): string {
-  const backends = ELIZA_1_VOICE_BACKENDS[id];
-  if (backends.includes("kokoro")) {
-    return "tts/kokoro/model_q4.onnx";
+  const defaultBackend = ELIZA_1_VOICE_BACKENDS[id][0];
+  if (defaultBackend === "omnivoice") {
+    return `tts/omnivoice-base-${voiceQuantForTier(id)}.gguf`;
   }
-  return "tts/omnivoice-base-Q8_0.gguf";
+  return "tts/kokoro/model_q4.onnx";
 }
 
 function sourceModelForTier(id: Eliza1TierId): CatalogModel["sourceModel"] {
@@ -386,6 +485,7 @@ function chatTier(id: Eliza1TierId): CatalogModel {
       q4MinRamGb: spec.q4MinRamGb,
     }),
     blurb: blurbForTier(id),
+    publishStatus: eliza1TierPublishStatus(id),
   };
 }
 

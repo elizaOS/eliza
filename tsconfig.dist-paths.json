@@ -302,7 +302,18 @@
       "@elizaos/plugin-tee": ["./plugins/plugin-tee/dist/index.d.ts"],
       "@elizaos/plugin-github": ["./plugins/plugin-github/dist/index.d.ts"],
       "@elizaos/plugin-wechat": ["./plugins/plugin-wechat/dist/index.d.ts"],
-      "@elizaos/plugin-local-ai": ["./plugins/plugin-local-ai/dist/index.d.ts"],
+      "@elizaos/plugin-local-inference": [
+        "./plugins/plugin-local-inference/src/index.ts"
+      ],
+      "@elizaos/plugin-local-inference/runtime": [
+        "./plugins/plugin-local-inference/src/runtime/index.ts"
+      ],
+      "@elizaos/plugin-local-inference/routes": [
+        "./plugins/plugin-local-inference/src/routes/index.ts"
+      ],
+      "@elizaos/plugin-local-inference/services": [
+        "./plugins/plugin-local-inference/src/services/index.ts"
+      ],
       "@elizaos/app-task-coordinator": [
         "./plugins/app-task-coordinator/dist/index.d.ts"
       ],
@@ -325,9 +336,6 @@
         "./plugins/plugin-bluebubbles/dist/index.d.ts"
       ],
       "@elizaos/app-training": ["./plugins/app-training/dist/index.d.ts"],
-      "@elizaos/plugin-local-embedding": [
-        "./plugins/plugin-local-embedding/dist/index.d.ts"
-      ],
       "@elizaos/cloud-sdk": ["./cloud/packages/sdk/dist/index.d.ts"]
     }
   },

@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/app-task-coordinator",
-  "version": "2.0.0-beta.1",
+  "version": "2.0.0-beta.2",
   "type": "module",
   "main": "./dist/index.js",
   "exports": {
@@ -18,8 +18,8 @@
     }
   },
   "dependencies": {
-    "@elizaos/core": "2.0.0-beta.1",
-    "@elizaos/ui": "2.0.0-beta.2",
+    "@elizaos/core": "workspace:*",
+    "@elizaos/ui": "workspace:*",
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/xterm": "^6.0.0",
     "lucide-react": "^1.0.0"

@@ -1,0 +1,82 @@
+[[!meta robots="noindex"]]
+
+<ol>
+
+<li class="standalone">
+  <p>Make sure that you have installed Tails using either:</p>
+  <ul>
+    <li>[[<i>Rufus</i> from Windows|install/windows#rufus]]</li>
+    <li>[[<i>balenaEtcher</i> from macOS|install/mac#etcher]]</li>
+    <li>[[<i>GNOME Disks</i> from Linux|install/linux#install]]</li>
+    <li>[[the Linux command line|install/expert#install]]</li>
+  </ul>
+</li>
+
+<li><p>Select the <b>Start [[!img lib/start.png alt="" class="symbolic" link="no"]]</b>
+    button.</p></li>
+
+<li><p>Press and hold the <b>Shift</b> key while you select the <b>Power</b>
+    [[!img lib/system-shutdown.png alt="" class="symbolic" link="no"]] button
+    and then <b>Restart</b>.</p>
+
+    <p>Windows shuts down and restarts on the <b>Choose an option</b> screen.</p>
+
+</li>
+
+<li><p>In the <strong>Choose an option</strong> screen, choose <strong>Use
+    a device</strong>.</p>
+
+    [[!img install/inc/screenshots/choose_an_option.png class="screenshot" alt=""]]
+
+    <div class="bug">
+    <p>If the <strong>Choose an
+    option</strong> screen or the <strong>Use a device</strong> option don't appear, refer to the [[instructions on
+    starting Tails using the Boot Menu key|doc/first_steps/start/pc#boot-menu-key]].</p>
+    </div>
+</li>
+
+<li><p>In the <b>Use a device</b> screen, select <b>USB HDD</b>.</p>
+
+    <div class="windows upgrade-windows standalone">
+
+    <p>Windows shuts down and the computer restarts on your Tails USB stick.</p>
+
+    </div>
+
+    <div class="attack upgrade">
+
+    <p>
+      <span class="windows upgrade-windows">In the future, we</span>
+      <span class="standalone">We</span>
+    recommend that you only plug in your Tails USB stick while Windows is shutting
+    down. Otherwise, a virus in Windows could infect your Tails USB stick and
+    break its security.</p>
+
+    <p>Such an attack is possible in theory but very unlikely in
+    practice. We don't know of any virus capable of infecting Tails.
+    <span class="standalone">See our [[warning on plugging Tails in
+    untrusted systems|doc/about/warnings/computer#software]].</span></p>
+
+    </div>
+</li>
+
+<li><p>If the computer starts on Tails, the Boot Loader appears and Tails
+    starts automatically after 4 seconds.</p>
+
+    <p>[[!img install/inc/screenshots/grub.png class="screenshot" alt="Black screen ('GNU GRUB') with Tails
+       logo and 3 options: 'Tails' and 'Tails (Troubleshooting Mode)' and 'Tails (External Hard Disk)'."]]</p>
+
+    <ul>
+
+    <li><p>The <b>Troubleshooting Mode</b> entry disables some features of the
+        Linux kernel and might work better on some computers. You can try this option
+        if you think you are experiencing hardware compatibility errors while
+        starting Tails.</p></li>
+
+    <li><p>The <b>External Hard Disk</b> entry makes it possible to [[start from an
+        external hard disk|doc/advanced_topics/external_hard_disk]] and some
+        [[problematic USB sticks|support/known_issues#problematic-usb-stick]].</p></li>
+
+    </ul>
+
+</ol>

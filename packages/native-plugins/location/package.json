@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/capacitor-location",
-  "version": "2.0.0-beta.1",
+  "version": "2.0.0-beta.2",
   "description": "Reads current location, watches movement, and manages geolocation permissions.",
   "keywords": [
     "location",
@@ -39,9 +39,7 @@
   },
   "author": "elizaOS",
   "license": "MIT",
-  "dependencies": {
-    "@elizaos/app-core": "2.0.0-beta.3"
-  },
+  "dependencies": {},
   "repository": {
     "type": "git",
     "url": "https://github.com/elizaOS/eliza.git",

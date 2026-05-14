@@ -5,7 +5,7 @@
     "": {
       "name": "@elizaos/plugin-nostr",
       "dependencies": {
-        "@elizaos/core": "2.0.0-alpha.3",
+        "@elizaos/core": "workspace:*",
         "nostr-tools": "^2.0.0",
         "zod": "^4.3.6",
       },

@@ -1,0 +1,31 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"POT-Creation-Date: 2019-09-29 19:58+0000\n"
+"PO-Revision-Date: 2019-10-24 10:16+0000\n"
+"Last-Translator: emmapeel <emma.peel@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: pt\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n > 1;\n"
+"X-Generator: Weblate 2.20\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"[[!meta title=\"Repairing a Tails USB stick that fails to start after an "
+"upgrade\"]]\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"doc/upgrade/repair.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr ""
+"[[!inline pages=\"doc/upgrade/repair.inline.pt\" raw=\"yes\" sort=\"age\"]]\n"
