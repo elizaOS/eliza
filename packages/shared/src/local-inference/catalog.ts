@@ -104,14 +104,34 @@ export const ELIZA_1_PLACEHOLDER_IDS: ReadonlySet<string> = new Set(
 
 export type VoiceBackendId = "kokoro" | "omnivoice";
 
+/**
+ * Per-tier voice backend policy. The FIRST entry is the default backend
+ * for that tier — `runtime-selection.ts` picks it when both backends are
+ * available and no override applies (voice cloning, TTFA target, RTF).
+ * Entries beyond the first are also bundled; tiers that ship only one
+ * backend have a single-element array.
+ *
+ * Policy (Wave-2):
+ *   - Small tiers (0_8b / 2b / 4b) → Kokoro only. Kokoro is ~310 MB
+ *     fp32 / ~80 MB int8 and hits ~97ms CPU TTFB, which dominates the
+ *     time budget on small/mobile devices. OmniVoice is not shipped in
+ *     these bundles — callers that need voice cloning must use a larger
+ *     tier or the standalone (legacy) plugin-omnivoice.
+ *   - 9b → both supported, Kokoro first. 9b is the boundary tier where
+ *     either makes sense depending on the workload (Kokoro for low TTFB,
+ *     OmniVoice for higher quality / cloning).
+ *   - Large tiers (27b / 27b-256k / 27b-1m) → OmniVoice only. The RAM
+ *     and compute budget is large enough that the OmniVoice quality win
+ *     dominates; Kokoro is not shipped in these bundles.
+ */
 export const ELIZA_1_VOICE_BACKENDS: Record<
   Eliza1TierId,
   ReadonlyArray<VoiceBackendId>
 > = {
-  "eliza-1-0_8b": ["omnivoice", "kokoro"],
-  "eliza-1-2b": ["omnivoice", "kokoro"],
-  "eliza-1-4b": ["omnivoice", "kokoro"],
-  "eliza-1-9b": ["omnivoice", "kokoro"],
+  "eliza-1-0_8b": ["kokoro"],
+  "eliza-1-2b": ["kokoro"],
+  "eliza-1-4b": ["kokoro"],
+  "eliza-1-9b": ["kokoro", "omnivoice"],
   "eliza-1-27b": ["omnivoice"],
   "eliza-1-27b-256k": ["omnivoice"],
   "eliza-1-27b-1m": ["omnivoice"],
