@@ -68,9 +68,9 @@ export const normalizeAgentType = (input: string): CodingAgentType => {
     return "shell";
   }
   if (isOpencodeAgentType(normalized)) {
-    // OpenCode is a first-class adapter in `coding-agent-adapters`
-    // (since 0.17). The orchestrator routes through `getAdapter("opencode")`
-    // for native brief delivery, env injection, and ready-state detection.
+    // Keep the user's logical choice as opencode. PTYService currently
+    // executes it through the shell bridge because the locked
+    // coding-agent-adapters release has no OpenCode adapter.
     return "opencode";
   }
   const mapping: Record<string, CodingAgentType> = {

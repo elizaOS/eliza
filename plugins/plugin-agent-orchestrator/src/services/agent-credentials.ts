@@ -72,6 +72,38 @@ const OPENCODE_PROVIDER_ENV_MAPPINGS: readonly OpencodeProviderEnvMapping[] = [
   },
 ] as const;
 
+function usableSecretValue(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.toLowerCase().startsWith("vault://")) {
+    return undefined;
+  }
+  return trimmed;
+}
+
+function settingOrConfigEnv(
+  runtime: IAgentRuntime,
+  key: string,
+): string | undefined {
+  return (
+    usableSecretValue(runtime.getSetting(key)) ??
+    usableSecretValue(readConfigEnvKey(key))
+  );
+}
+
+function findProviderMappingForBaseUrl(
+  baseURL: string,
+): OpencodeProviderEnvMapping | undefined {
+  try {
+    const hostname = new URL(baseURL).hostname.toLowerCase();
+    return OPENCODE_PROVIDER_ENV_MAPPINGS.find(
+      (mapping) => new URL(mapping.baseURL).hostname.toLowerCase() === hostname,
+    );
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * Inspect the runtime for a recognized provider env var and synthesize
  * an OpenCode config for it. Returns null when no provider is detected.
@@ -88,24 +120,14 @@ const OPENCODE_PROVIDER_ENV_MAPPINGS: readonly OpencodeProviderEnvMapping[] = [
 function detectOpencodeProviderFromEnv(
   runtime: IAgentRuntime,
 ): (OpencodeProviderEnvMapping & { apiKey: string }) | null {
-  const settingOrEnv = (key: string): string | undefined => {
-    const fromSetting = runtime.getSetting(key);
-    if (typeof fromSetting === "string" && fromSetting.trim()) {
-      return fromSetting.trim();
-    }
-    const fromEnv = readConfigEnvKey(key);
-    if (fromEnv?.trim()) return fromEnv.trim();
-    return undefined;
-  };
-
   for (const mapping of OPENCODE_PROVIDER_ENV_MAPPINGS) {
-    const apiKey = settingOrEnv(mapping.envKey);
+    const apiKey = settingOrConfigEnv(runtime, mapping.envKey);
     if (apiKey) return { ...mapping, apiKey };
   }
 
-  const openaiKey = settingOrEnv("OPENAI_API_KEY");
+  const openaiKey = settingOrConfigEnv(runtime, "OPENAI_API_KEY");
   if (openaiKey) {
-    const customBase = settingOrEnv("OPENAI_BASE_URL");
+    const customBase = settingOrConfigEnv(runtime, "OPENAI_BASE_URL");
     if (customBase) {
       try {
         const hostname = new URL(customBase).hostname.toLowerCase();
@@ -116,7 +138,9 @@ function detectOpencodeProviderFromEnv(
             providerId: "openai-compatible",
             providerLabel: `OpenAI-compatible (${hostname})`,
             baseURL: customBase,
-            defaultModel: settingOrEnv("OPENAI_LARGE_MODEL") ?? "gpt-4o-mini",
+            defaultModel:
+              settingOrConfigEnv(runtime, "OPENAI_LARGE_MODEL") ??
+              "gpt-4o-mini",
             apiKey: openaiKey,
           };
         }
@@ -129,7 +153,8 @@ function detectOpencodeProviderFromEnv(
       providerId: "openai",
       providerLabel: "OpenAI",
       baseURL: "https://api.openai.com/v1",
-      defaultModel: settingOrEnv("OPENAI_LARGE_MODEL") ?? "gpt-4o-mini",
+      defaultModel:
+        settingOrConfigEnv(runtime, "OPENAI_LARGE_MODEL") ?? "gpt-4o-mini",
       apiKey: openaiKey,
     };
   }
@@ -335,7 +360,12 @@ export function buildOpencodeSpawnConfig(
 
   if (localOptIn || customBaseUrl?.trim()) {
     const baseURL = customBaseUrl?.trim() || OPENCODE_LOCAL_DEFAULT_BASE_URL;
-    const apiKey = readConfigEnvKey("ELIZA_OPENCODE_API_KEY");
+    const baseUrlProvider = findProviderMappingForBaseUrl(baseURL);
+    const apiKey =
+      settingOrConfigEnv(runtime, "ELIZA_OPENCODE_API_KEY") ??
+      (baseUrlProvider
+        ? settingOrConfigEnv(runtime, baseUrlProvider.envKey)
+        : undefined);
     const providerId = "eliza-local";
     const powerful = userPowerful?.trim() || "eliza-1-4b";
     const fast = userFast?.trim();

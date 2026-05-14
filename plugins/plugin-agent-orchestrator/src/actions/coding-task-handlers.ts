@@ -1073,12 +1073,10 @@ export async function handleMultiAgent(
         skillAwareness,
         skillAwareness?.manifestPath ?? null,
       );
-      // OpenCode is now a canonical adapter (eliza#7609, parallax 0.17+) —
-      // `OpencodeAdapter.getArgs` owns the `opencode run --dangerously-skip-permissions`
-      // wrapping and reads the raw task off `adapterConfig.initialPrompt`.
-      // Applying `toOpencodeCommand` here would double-wrap. Pass opencode
-      // the RAW task; the adapter handles the rest. Pi still routes through
-      // the shell bridge so it needs `toPiCommand`.
+      // PTYService owns the final delivery shape. Pi still needs a bare
+      // shell command here; OpenCode is kept as a logical agent type and
+      // wrapped by PTYService so both TASKS and START_CODING_TASK share
+      // one opencode command path.
       const initialTask = specPiRequested
         ? toPiCommand(taskWithSkills)
         : taskWithSkills;
