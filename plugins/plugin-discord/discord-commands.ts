@@ -45,11 +45,11 @@ export function transformCommandToDiscordApi(
 		discordCmd.contexts = [0]; // 0 = Guild only (no DMs)
 	}
 
-		if (cmd.requiredPermissions != null) {
-			discordCmd.default_member_permissions =
-				typeof cmd.requiredPermissions === "bigint"
-					? cmd.requiredPermissions.toString()
-					: cmd.requiredPermissions;
+	if (cmd.requiredPermissions != null) {
+		discordCmd.default_member_permissions =
+			typeof cmd.requiredPermissions === "bigint"
+				? cmd.requiredPermissions.toString()
+				: cmd.requiredPermissions;
 	}
 
 	return discordCmd;
@@ -78,10 +78,10 @@ export async function handleGuildCreate(
 	// Register commands to the newly joined guild
 	const clientApplication = service.client?.application;
 	if (service.slashCommands.length > 0 && clientApplication) {
-			try {
-				const generalCommands = service.slashCommands.filter(
-					(cmd) => (cmd.guildIds?.length ?? 0) === 0,
-				);
+		try {
+			const generalCommands = service.slashCommands.filter(
+				(cmd) => (cmd.guildIds?.length ?? 0) === 0,
+			);
 
 			const targetedCommandsForThisGuild = service.slashCommands.filter((cmd) =>
 				cmd.guildIds?.includes(fullGuild.id),
@@ -100,10 +100,7 @@ export async function handleGuildCreate(
 					transformCommandToDiscordApi(cmd),
 				);
 
-					await clientApplication.commands.set(
-						discordCommands,
-						fullGuild.id,
-					);
+				await clientApplication.commands.set(discordCommands, fullGuild.id);
 				service.runtime.logger.info(
 					{
 						src: "plugin:discord",
