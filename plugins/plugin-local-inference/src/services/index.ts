@@ -64,33 +64,6 @@ export {
 	planKvSpill,
 } from "./kv-spill";
 export {
-	type ArbiterCapability,
-	type ArbiterEvent,
-	type ArbiterEventListener,
-	type ArbiterHandle,
-	type CapabilityRegistration,
-	getMemoryArbiter,
-	MemoryArbiter,
-	type MemoryArbiterOptions,
-	setMemoryArbiter,
-	tryGetMemoryArbiter,
-} from "./memory-arbiter";
-export {
-	type CapacitorPressureSource,
-	capacitorPressureSource,
-	compositePressureSource,
-	type MemoryPressureEvent,
-	type MemoryPressureLevel,
-	type MemoryPressureListener,
-	type MemoryPressureSource,
-	nodeOsPressureSource,
-} from "./memory-pressure";
-export {
-	type VisionEmbeddingCacheConfig,
-	VisionEmbeddingCache,
-	type VisionEmbeddingEntry,
-} from "./vision-embedding-cache";
-export {
 	buildVoiceLatencyDevPayload,
 	EndToEndLatencyTracer,
 	endVoiceLatencyTurn,
@@ -115,6 +88,28 @@ export {
 	parsePrometheusMetrics,
 } from "./llama-server-metrics";
 export * from "./manifest/index";
+export {
+	type ArbiterCapability,
+	type ArbiterEvent,
+	type ArbiterEventListener,
+	type ArbiterHandle,
+	type CapabilityRegistration,
+	getMemoryArbiter,
+	MemoryArbiter,
+	type MemoryArbiterOptions,
+	setMemoryArbiter,
+	tryGetMemoryArbiter,
+} from "./memory-arbiter";
+export {
+	type CapacitorPressureSource,
+	capacitorPressureSource,
+	compositePressureSource,
+	type MemoryPressureEvent,
+	type MemoryPressureLevel,
+	type MemoryPressureListener,
+	type MemoryPressureSource,
+	nodeOsPressureSource,
+} from "./memory-pressure";
 export {
 	MLX_BACKEND_ID,
 	MlxLocalServer,
@@ -182,4 +177,9 @@ export type {
 	ModelHubSnapshot,
 	TextGenerationSlot,
 } from "./types";
+export {
+	VisionEmbeddingCache,
+	type VisionEmbeddingCacheConfig,
+	type VisionEmbeddingEntry,
+} from "./vision-embedding-cache";
 export * from "./voice/index";

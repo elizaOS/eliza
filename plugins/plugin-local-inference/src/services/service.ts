@@ -19,19 +19,19 @@ import { MODEL_CATALOG } from "./catalog";
 import { dflashLlamaServer, getDflashRuntimeStatus } from "./dflash-server";
 import { Downloader } from "./downloader";
 import { localInferenceEngine } from "./engine";
+import { probeHardware } from "./hardware";
+import { searchHuggingFaceGguf, searchModelHubGguf } from "./hf-search";
 import {
 	MemoryArbiter,
 	setMemoryArbiter,
 	tryGetMemoryArbiter,
 } from "./memory-arbiter";
 import {
-	type MemoryPressureSource,
 	capacitorPressureSource,
 	compositePressureSource,
+	type MemoryPressureSource,
 	nodeOsPressureSource,
 } from "./memory-pressure";
-import { probeHardware } from "./hardware";
-import { searchHuggingFaceGguf, searchModelHubGguf } from "./hf-search";
 import { buildTextGenerationReadiness } from "./readiness";
 import {
 	chooseSmallerFallbackModel,
@@ -82,7 +82,9 @@ export class LocalInferenceService {
 	 * onTrimMemory) so a native pressure callback can reach the arbiter.
 	 * Stays null on desktop until WS2/WS8 wire the native side.
 	 */
-	private mobilePressureBridge: ReturnType<typeof capacitorPressureSource> | null = null;
+	private mobilePressureBridge: ReturnType<
+		typeof capacitorPressureSource
+	> | null = null;
 
 	getCatalog() {
 		return MODEL_CATALOG.filter((model) => !model.hiddenFromCatalog);
@@ -375,7 +377,10 @@ export class LocalInferenceService {
 	 * this from the native pressure callback. Safe to call before the
 	 * arbiter has been created — we create it on demand.
 	 */
-	dispatchMobilePressure(level: "nominal" | "low" | "critical", freeMb?: number): void {
+	dispatchMobilePressure(
+		level: "nominal" | "low" | "critical",
+		freeMb?: number,
+	): void {
 		this.getMemoryArbiter();
 		this.mobilePressureBridge?.dispatch(level, freeMb);
 	}
