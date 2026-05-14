@@ -74,7 +74,12 @@ export async function resolveIdentity(
       | {
           success?: boolean;
         };
-    const userId = "userId" in data ? data.userId : undefined;
+    const userId =
+      "userId" in data
+        ? data.userId
+        : "data" in data
+          ? data.data?.user?.id
+          : undefined;
     const organizationId =
       "organizationId" in data
         ? data.organizationId
