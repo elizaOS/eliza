@@ -1,11 +1,17 @@
 import { evaluatorSchema, evaluatorTemplate } from "../prompts/evaluator";
+import {
+	type JsonSchema,
+	validateSchema,
+} from "../actions/validate-tool-args";
 import { emitStreamingHook, getStreamingContext } from "../streaming-context";
 import type { EvaluationResult } from "../types/components";
 import {
 	type ChatMessage,
+	type GenerateTextParams,
 	ModelType,
 	type PromptSegment,
 } from "../types/model";
+import { isLocalProvider } from "./action-model-routing";
 import { computePrefixHashes } from "./context-hash";
 import {
 	buildStageChatMessages,
@@ -14,6 +20,10 @@ import {
 	renderContextObject,
 } from "./context-renderer";
 import { computeCallCostUsd } from "./cost-table";
+import {
+	buildEvaluatorGuidance,
+	withEvaluatorGuidedDecodeProviderOptions,
+} from "./evaluator-guidance";
 import { parseJsonObject } from "./json-output";
 import {
 	buildModelInputBudget,
@@ -38,6 +48,11 @@ import type {
 	RecordedUsage,
 	TrajectoryRecorder,
 } from "./trajectory-recorder";
+import {
+	DEFAULT_REMOTE_REROLL_BUDGET,
+	getProviderForModelType,
+	rerollBudgetCeilingFromSetting,
+} from "./validated-model-call";
 
 export type {
 	EvaluatorEffects,
@@ -64,6 +79,72 @@ interface ParsedEvaluatorObject {
 	parseError?: string;
 }
 
+type RawEvaluatorModelResult =
+	| string
+	| { text?: string; object?: unknown; providerMetadata?: unknown; usage?: unknown };
+
+const EVALUATOR_STRICT_REROLL_SCHEMA: JsonSchema = {
+	type: "object",
+	additionalProperties: false,
+	properties: {
+		success: { type: "boolean" },
+		decision: {
+			type: "string",
+			enum: ["FINISH", "NEXT_RECOMMENDED", "CONTINUE"],
+		},
+		thought: { type: "string" },
+		messageToUser: { type: "string" },
+		copyToClipboard: {
+			type: "object",
+			additionalProperties: false,
+			properties: {
+				title: { type: "string" },
+				content: { type: "string" },
+				tags: { type: "array", items: { type: "string" } },
+			},
+			required: ["title", "content"],
+		},
+		recommendedToolCallId: { type: "string" },
+	},
+	required: ["success", "decision", "thought"],
+};
+
+const EVALUATOR_LEGACY_REROLL_SCHEMA: JsonSchema = {
+	type: "object",
+	additionalProperties: false,
+	properties: {
+		success: { type: "boolean" },
+		route: {
+			type: "string",
+			enum: ["FINISH", "NEXT_RECOMMENDED", "CONTINUE"],
+		},
+		thought: { type: "string" },
+		nextTool: { type: "object", additionalProperties: true, properties: {} },
+		nextRecommendedTool: {
+			type: "object",
+			additionalProperties: true,
+			properties: {},
+		},
+		messageToUser: { type: "string" },
+		copyToClipboard: {
+			type: "object",
+			additionalProperties: false,
+			properties: {
+				title: { type: "string" },
+				content: { type: "string" },
+				tags: { type: "array", items: { type: "string" } },
+			},
+			required: ["title", "content"],
+		},
+		recommendedToolCallId: { type: "string" },
+	},
+	required: ["route", "thought"],
+};
+
+const EVALUATOR_REROLL_SCHEMA: JsonSchema = {
+	anyOf: [EVALUATOR_STRICT_REROLL_SCHEMA, EVALUATOR_LEGACY_REROLL_SCHEMA],
+};
+
 export async function runEvaluator(
 	params: RunEvaluatorParams,
 ): Promise<EvaluatorOutput> {
@@ -82,28 +163,36 @@ export async function runEvaluator(
 		messages: renderedInput.messages,
 		promptSegments: renderedInput.promptSegments,
 	});
-	const providerOptions = withModelInputBudgetProviderOptions(
-		cacheProviderOptions({
-			prefixHash,
-			segmentHashes: prefixHashes.map((entry) => entry.segmentHash),
-			promptSegments: renderedInput.promptSegments,
+		const providerOptions = withEvaluatorGuidedDecodeProviderOptions(
+			withModelInputBudgetProviderOptions(
+			cacheProviderOptions({
+				prefixHash,
+				segmentHashes: prefixHashes.map((entry) => entry.segmentHash),
+				promptSegments: renderedInput.promptSegments,
+				provider: params.provider,
+				conversationId: params.trajectoryId,
+			}),
+			modelInputBudget,
+			),
+		);
+		const evaluatorGuidance = buildEvaluatorGuidance();
+		const startedAt = Date.now();
+		const modelType = params.modelType ?? ModelType.RESPONSE_HANDLER;
+		const modelParams: GenerateTextParams = {
+				messages: renderedInput.messages,
+				responseSchema: evaluatorSchema,
+				promptSegments: renderedInput.promptSegments,
+				providerOptions,
+			responseSkeleton: evaluatorGuidance.responseSkeleton,
+			grammar: evaluatorGuidance.grammar,
+			spanSamplerPlan: evaluatorGuidance.spanSamplerPlan,
+		};
+		const raw = await callEvaluatorModel({
+			runtime: params.runtime,
+			modelType: String(modelType),
+			modelParams,
 			provider: params.provider,
-			conversationId: params.trajectoryId,
-		}),
-		modelInputBudget,
-	);
-	const startedAt = Date.now();
-	const modelType = params.modelType ?? ModelType.RESPONSE_HANDLER;
-	const raw = await params.runtime.useModel(
-		modelType,
-		{
-			messages: renderedInput.messages,
-			responseSchema: evaluatorSchema,
-			promptSegments: renderedInput.promptSegments,
-			providerOptions,
-		},
-		params.provider,
-	);
+		});
 	const endedAt = Date.now();
 	const output = sanitizeOutputMessage(
 		repairMissingEvaluatorSuccess(parseEvaluatorOutput(raw), params.trajectory),

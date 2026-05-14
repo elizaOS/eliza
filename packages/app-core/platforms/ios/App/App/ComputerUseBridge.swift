@@ -351,11 +351,9 @@ public class ComputerUseBridge: CAPPlugin, CAPBridgedPlugin {
         }
         let parameters = call.getObject("parameters") ?? [:]
         let start = Date()
-        // System-intent invocation maps onto the documented x-callback URL
-        // schemes for first-party apps, plus AppIntent perform() for any
-        // intents this app registers itself. Anything else is user-driven via
-        // Shortcuts; we cannot programmatically perform a third-party intent
-        // unless it is donated and the OS allows it.
+        // Native invocation is limited to the x-callback URL schemes mapped
+        // in makeXCallbackUrl. Other catalog entries are Shortcuts-only or
+        // informational and must fail honestly instead of looking native.
         if let url = makeXCallbackUrl(intentId: intentId, parameters: parameters) {
             DispatchQueue.main.async {
                 UIApplication.shared.open(url, options: [:]) { success in
@@ -373,13 +371,13 @@ public class ComputerUseBridge: CAPPlugin, CAPBridgedPlugin {
             return
         }
         resolveError(call, code: "intent_not_found",
-                     message: "No invocation path for intent \(intentId).")
+                     message: "No native x-callback invocation path for intent \(intentId).")
     }
 
     private func makeXCallbackUrl(intentId: String, parameters: [String: Any]) -> URL? {
-        // Minimal scheme map for the registry's documented intents. Add to
-        // this map when adding new entries on the TS side. Anything not
-        // mapped resolves to nil so the JS surface returns `intent_not_found`.
+        // Keep this native map in sync with
+        // IOS_NATIVE_X_CALLBACK_INTENT_IDS. Anything not mapped resolves to
+        // nil so the JS surface returns `intent_not_found`.
         switch intentId {
         case "com.apple.mobilemail.send-email":
             var components = URLComponents(string: "mailto:")
