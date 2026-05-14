@@ -134,8 +134,15 @@ function getMessageText(message: Memory): string {
 }
 
 function isImageGenerationRequest(message: Memory): boolean {
-  return /\b(generate|create|make|draw|render)\b[\s\S]{0,80}\b(image|picture|poster|meme|png|photo|illustration|ad creative)\b/i.test(
-    getMessageText(message),
+  const text = getMessageText(message);
+  return (
+    /\b(generate|create|make|draw|render|produce|publish)\b[\s\S]{0,100}\b(image|picture|poster|meme|png|photo|illustration|ad creative|creative pack|ad pack|advertisement|campaign creative)\b/i.test(
+      text,
+    ) ||
+    /\b(image|picture|poster|meme|png|photo|illustration|ad creative|creative pack|ad pack|advertisement|campaign creative)\b[\s\S]{0,100}\b(generate|create|make|draw|render|produce|publish)\b/i.test(
+      text,
+    ) ||
+    /\bfal\b/i.test(text)
   );
 }
 
@@ -150,7 +157,18 @@ function narrowActionsForIntent(actions: Action[], message: Memory): Action[] {
     return actions;
   }
 
-  const wanted = new Set(["GENERATE_MEDIA", "GENERATE_IMAGE", "CREATE_IMAGE", "REPLY", "NONE", "FINISH"]);
+  const wanted = new Set([
+    "GENERATE_MEDIA",
+    "GENERATE_IMAGE",
+    "CREATE_IMAGE",
+    "CAPTURE_IMAGE",
+    "PRODUCE_AGENT_AD_CREATIVE",
+    "PUBLISH_AGENT_AD_PACK",
+    "MANAGE_AGENT_ADS",
+    "REPLY",
+    "NONE",
+    "FINISH",
+  ]);
   const narrowed = actions.filter((action) => keepAction(action, wanted));
   return narrowed.length > 0 ? narrowed : actions;
 }
@@ -214,10 +232,14 @@ export const actionsProvider: Provider = {
             : null;
 
         let actionsData: Action[];
-        if (freshLastGood) {
-          actionsData = freshLastGood.actions;
-        } else if (isImageGenerationRequest(message)) {
+        if (isImageGenerationRequest(message)) {
+          // Media/ad turns need a deterministic tiny catalog. Do this before
+          // consulting the last-good full cache so we do not spend the Discord
+          // reply window filtering/formatting hundreds of unrelated actions
+          // and then hide the image/ad action behind a provider timeout.
           actionsData = narrowActionsForIntent(runtime.actions, message);
+        } else if (freshLastGood) {
+          actionsData = freshLastGood.actions;
         } else {
           const validation = Promise.all(
             runtime.actions.map((action: Action) =>

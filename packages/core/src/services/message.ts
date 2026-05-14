@@ -4269,11 +4269,25 @@ const ACTION_REPAIR_PASSIVE_ACTIONS = new Set(
 // "Google Calendar is not connected" in response to a code request. Same
 // precedent as SPAWN_AGENT, the sibling delegation action that's already
 // protected here.
+//
+// Media and advertising actions are also explicit artifact-producing intent.
+// Requests like "generate an image", "make an ad creative", or "publish the
+// ad pack" can contain generic workflow/productivity words that fuzzy metadata
+// scoring over-values for owner/life actions. If the planner already selected
+// a concrete media/ad action, do not rewrite it to LIFE/CALENDAR/etc. based on
+// incidental overlap.
 const EXPLICIT_INTENT_ACTIONS = new Set(
 	[
 		"SPAWN_AGENT",
 		"START_CODING_TASK",
 		"CREATE_TASK",
+		"GENERATE_IMAGE",
+		"GENERATE_MEDIA",
+		"CREATE_IMAGE",
+		"CAPTURE_IMAGE",
+		"PRODUCE_AGENT_AD_CREATIVE",
+		"PUBLISH_AGENT_AD_PACK",
+		"MANAGE_AGENT_ADS",
 		"ATTACHMENT",
 		"TRANSCRIBE_MEDIA",
 		"DOWNLOAD_MEDIA",
