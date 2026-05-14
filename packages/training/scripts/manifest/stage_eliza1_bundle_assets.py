@@ -41,9 +41,19 @@ except ModuleNotFoundError:  # pragma: no cover - env-only path
     hf_hub_download = None  # type: ignore[assignment]
 
 try:
-    from .eliza1_manifest import ELIZA_1_HF_REPO, VOICE_QUANT_BY_TIER, validate_manifest
+    from .eliza1_manifest import (
+        ELIZA_1_HF_REPO,
+        VOICE_QUANT_BY_TIER,
+        VOICE_QUANT_LADDER_BY_TIER,
+        validate_manifest,
+    )
 except ImportError:  # pragma: no cover - script execution path
-    from eliza1_manifest import ELIZA_1_HF_REPO, VOICE_QUANT_BY_TIER, validate_manifest
+    from eliza1_manifest import (
+        ELIZA_1_HF_REPO,
+        VOICE_QUANT_BY_TIER,
+        VOICE_QUANT_LADDER_BY_TIER,
+        validate_manifest,
+    )
 
 VOICE_REPO: Final[str] = "Serveurperso/OmniVoice-GGUF"
 VAD_NATIVE_REPO: Final[str] = "ggml-org/whisper-vad"
@@ -766,12 +776,26 @@ def stage_assets(args: argparse.Namespace) -> dict[str, Any]:
     )
 
     staged: list[dict[str, Any]] = []
-    voice_pairs = (
-        (f"omnivoice-base-{quant}.gguf", f"tts/omnivoice-base-{quant}.gguf"),
-        (
-            f"omnivoice-tokenizer-{quant}.gguf",
-            f"tts/omnivoice-tokenizer-{quant}.gguf",
-        ),
+    # Default: stage the runtime's preferred quant (VOICE_QUANT_BY_TIER).
+    # Opt-in: --include-voice-ladder stages the full K-quant ladder
+    # (VOICE_QUANT_LADDER_BY_TIER) so a downloader can pick a smaller level
+    # at install time based on the host's RAM/SoC class. The ladder is the
+    # publishable subset of omnivoice.cpp's full Q2_K..Q8_0 support; see
+    # packages/shared/src/local-inference/catalog.ts:voiceQuantLadderForTier
+    # and docs/inference/voice-quant-matrix.md.
+    voice_quants: tuple[str, ...]
+    if getattr(args, "include_voice_ladder", False):
+        ladder = VOICE_QUANT_LADDER_BY_TIER.get(tier, ())
+        voice_quants = tuple(ladder) if ladder else ()
+    else:
+        voice_quants = (quant,)
+    voice_pairs: tuple[tuple[str, str], ...] = tuple(
+        pair
+        for q in voice_quants
+        for pair in (
+            (f"omnivoice-base-{q}.gguf", f"tts/omnivoice-base-{q}.gguf"),
+            (f"omnivoice-tokenizer-{q}.gguf", f"tts/omnivoice-tokenizer-{q}.gguf"),
+        )
     )
     for remote, rel in voice_pairs:
         staged.append(
@@ -1043,6 +1067,21 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         help=(
             "Also stage the legacy Silero ONNX fallback at "
             "vad/silero-vad-int8.onnx. Native GGML VAD is always staged."
+        ),
+    )
+    ap.add_argument(
+        "--include-voice-ladder",
+        action="store_true",
+        help=(
+            "Stage every OmniVoice K-quant level declared in "
+            "VOICE_QUANT_LADDER_BY_TIER (Q3_K_M, Q4_K_M, Q5_K_M, Q6_K, Q8_0 "
+            "for 9b+ tiers; nothing for Kokoro-only tiers) under "
+            "tts/omnivoice-base-<level>.gguf and tts/omnivoice-tokenizer-"
+            "<level>.gguf. Without this flag only the runtime's preferred "
+            "quant (VOICE_QUANT_BY_TIER) is staged. The downloader picks "
+            "the appropriate level at install time based on host RAM/SoC "
+            "class; AGENTS.md §3 forbids silent fallback so the ladder must "
+            "be a published-as-shipped subset, not a runtime guess."
         ),
     )
     ap.add_argument(
