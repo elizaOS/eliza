@@ -1108,12 +1108,10 @@ export class ComputerUseService extends Service {
           });
         }
         case "set": {
-          const text =
-            params.text ??
-            params.content ??
-            params.value ??
-            params.clipboard ??
-            this.requireIdentifier(undefined, "text is required for clipboard set");
+          const text = this.requireIdentifier(
+            params.text,
+            "text is required for clipboard set",
+          );
           await setClipboardText(text);
           return this.succeedEntry(entry, {
             success: true,

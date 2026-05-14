@@ -8,6 +8,7 @@ import {
   findLocalPackHotspots,
   shouldSkipExactPackDryRun,
 } from "./lib/release-check-pack-dry-run";
+import { assertReviewedAppleStoreEntitlements } from "./lib/apple-entitlement-audit.mjs";
 import { validateStaticAssetManifest } from "./lib/static-asset-manifest.mjs";
 
 type PackFile = { path: string };
@@ -1343,7 +1344,21 @@ function assertHomepageReleaseDataUsesCurrentAssetRoot() {
   }
 }
 
+function assertAppleStoreEntitlementsReviewed() {
+  try {
+    assertReviewedAppleStoreEntitlements();
+  } catch (error) {
+    console.error(
+      `release-check: Apple store entitlement audit failed:\n${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+    process.exit(1);
+  }
+}
+
 function main() {
+  assertAppleStoreEntitlementsReviewed();
   assertReleaseWorkflowHasNotaryWrapper();
   assertElectrobunPrWorkflowExists();
   assertElectrobunConfigHasPostWrapSigner();

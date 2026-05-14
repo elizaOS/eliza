@@ -15,4 +15,22 @@ describe("parseJsonObject", () => {
 	it("does not treat partial JSON as valid", () => {
 		expect(parseJsonObject('{"plan":{"contexts":["tasks"]}')).toBeNull();
 	});
+
+	it("repairs raw newlines, CRLF, CR, tabs, and invalid backslashes inside JSON strings", () => {
+		expect(
+			parseJsonObject(
+				'{"text":"line one\n\nline two\r\nline three\rcell\tvalue","path":"C:\\tmp\\bad\\q"}',
+			),
+		).toEqual({
+			text: "line one\n\nline two\r\nline three\rcell\tvalue",
+			path: "C:\\tmp\\bad\\q",
+		});
+	});
+
+	it("repairs control characters inside an extracted JSON object", () => {
+		expect(parseJsonObject('prefix {"text":"a\nb","ok":true} suffix')).toEqual({
+			text: "a\nb",
+			ok: true,
+		});
+	});
 });

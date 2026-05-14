@@ -224,6 +224,7 @@ export interface ClipboardActionParams {
   text?: string;
   content?: string;
   value?: string;
+  clipboard?: string;
 }
 
 export interface ClipboardActionResult extends ComputerUseResult {
