@@ -14,3 +14,13 @@
 	path = plugins/plugin-local-inference/native/llama.cpp
 	url = https://github.com/elizaOS/llama.cpp.git
 	branch = main
+
+[submodule "plugins/plugin-local-inference/native/omnivoice.cpp"]
+	# omnivoice.cpp — the voice inference engine (TTS + streaming audio).
+	# Forked from ServeurpersoCom/omnivoice.cpp; elizaOS fork lives at
+	# elizaOS/omnivoice.cpp. Initialized by postinstall via
+	# scripts/ensure-omnivoice-submodule.mjs. CMakeLists.txt probed by
+	# build-omnivoice.mjs. build/ is gitignored so only the gitlink is tracked.
+	path = plugins/plugin-local-inference/native/omnivoice.cpp
+	url = https://github.com/elizaOS/omnivoice.cpp.git
+	branch = develop
