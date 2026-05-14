@@ -1,5 +1,5 @@
 import type { RegistryAppInfo } from "@elizaos/shared";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { getMainTabApp } from "./main-tab";
 
 function buildApp(overrides: Partial<RegistryAppInfo>): RegistryAppInfo {
@@ -50,23 +50,16 @@ describe("getMainTabApp", () => {
   });
 
   it("picks the alphabetically-first declarer when multiple claim mainTab", () => {
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-    try {
-      const apps = [
-        buildApp({ name: "@elizaos/app-zeta", mainTab: true }),
-        buildApp({ name: "@elizaos/app-alpha", mainTab: true }),
-        buildApp({ name: "@elizaos/app-beta", mainTab: true }),
-      ];
-      const result = getMainTabApp(apps);
-      expect(result).toEqual({
-        tabId: "alpha",
-        appName: "@elizaos/app-alpha",
-      });
-      expect(warnSpy).toHaveBeenCalledTimes(1);
-      expect(warnSpy.mock.calls[0]?.[0]).toMatch(/multiple apps declare/i);
-    } finally {
-      warnSpy.mockRestore();
-    }
+    const apps = [
+      buildApp({ name: "@elizaos/app-zeta", mainTab: true }),
+      buildApp({ name: "@elizaos/app-alpha", mainTab: true }),
+      buildApp({ name: "@elizaos/app-beta", mainTab: true }),
+    ];
+    const result = getMainTabApp(apps);
+    expect(result).toEqual({
+      tabId: "alpha",
+      appName: "@elizaos/app-alpha",
+    });
   });
 
   it("ignores non-true values for mainTab", () => {

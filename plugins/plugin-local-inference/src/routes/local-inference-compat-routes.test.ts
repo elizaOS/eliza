@@ -351,4 +351,68 @@ describe("POST /api/local-inference/active", () => {
 			/overrides must be an object/,
 		);
 	});
+
+	// #7679: refuse to activate a candidate-only / weights-staged bundle
+	// whose own manifest reports `evals.textEval.passed=false`.
+	it("returns 422 with manifestVersion + failedEvals when the bundle is candidate-only", async () => {
+		const { CandidateModelActivationError } = await import(
+			"../services/active-model"
+		);
+		setActiveMock.mockRejectedValue(
+			new CandidateModelActivationError({
+				modelId: "eliza-1-0_6b",
+				manifestVersion: "1.0.0-candidate.1",
+				failedEvals: ["textEval", "voiceRtf", "asrWer", "expressive", "dflash"],
+			}),
+		);
+
+		const res = fakeRes();
+		await handleLocalInferenceCompatRoutes(
+			fakeReq({
+				method: "POST",
+				pathname: "/api/local-inference/active",
+				body: { modelId: "eliza-1-0_6b" },
+			}),
+			res.res,
+			STATE,
+		);
+
+		expect(res.status()).toBe(422);
+		const body = res.body() as {
+			error: string;
+			modelId: string;
+			manifestVersion: string;
+			failedEvals: string[];
+		};
+		expect(body.modelId).toBe("eliza-1-0_6b");
+		expect(body.manifestVersion).toBe("1.0.0-candidate.1");
+		expect(body.failedEvals).toContain("textEval");
+		expect(body.failedEvals).toContain("voiceRtf");
+		expect(body.error).toMatch(/candidate-only/);
+		expect(body.error).toMatch(/textEval/);
+	});
+
+	it("returns 200 (delegated to setActive) when the bundle is a strict release", async () => {
+		setActiveMock.mockResolvedValue({
+			modelId: "eliza-1-2b",
+			loadedAt: "2026-05-14T00:00:00.000Z",
+			status: "ready",
+		});
+
+		const res = fakeRes();
+		await handleLocalInferenceCompatRoutes(
+			fakeReq({
+				method: "POST",
+				pathname: "/api/local-inference/active",
+				body: { modelId: "eliza-1-2b" },
+			}),
+			res.res,
+			STATE,
+		);
+
+		expect(res.status()).toBe(200);
+		const body = res.body() as { modelId: string; status: string };
+		expect(body.modelId).toBe("eliza-1-2b");
+		expect(body.status).toBe("ready");
+	});
 });
