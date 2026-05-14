@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { VoiceProfilesClient } from "../../api/client-voice-profiles";
@@ -35,9 +41,7 @@ describe("VoicePrefixSteps", () => {
       />,
     );
     expect(screen.getByTestId("voice-prefix-welcome")).toBeTruthy();
-    expect(
-      screen.getByTestId("voice-prefix-welcome-request-mic"),
-    ).toBeTruthy();
+    expect(screen.getByTestId("voice-prefix-welcome-request-mic")).toBeTruthy();
   });
 
   it("renders the tier banner for the chosen tier", () => {
@@ -49,9 +53,9 @@ describe("VoicePrefixSteps", () => {
         profilesClient={makeClient()}
       />,
     );
-    expect(screen.getByTestId("voice-tier-banner").getAttribute("data-tier")).toBe(
-      "MAX",
-    );
+    expect(
+      screen.getByTestId("voice-tier-banner").getAttribute("data-tier"),
+    ).toBe("MAX");
   });
 
   it("step 4 plays the scripted greeting", () => {
@@ -88,26 +92,28 @@ describe("VoicePrefixSteps", () => {
       />,
     );
     await waitFor(() => {
-      expect(screen.getByTestId("voice-prefix-user-speaks-prompt").textContent).toContain(
-        "Say hi",
-      );
+      expect(
+        screen.getByTestId("voice-prefix-user-speaks-prompt").textContent,
+      ).toContain("Say hi");
     });
     // Skip the first prompt → advances to the second.
     fireEvent.click(screen.getByTestId("voice-prefix-user-speaks-skip-prompt"));
     await waitFor(() => {
-      expect(screen.getByTestId("voice-prefix-user-speaks-prompt").textContent).toContain(
-        "Tell me a sentence",
-      );
+      expect(
+        screen.getByTestId("voice-prefix-user-speaks-prompt").textContent,
+      ).toContain("Tell me a sentence");
     });
   });
 
   it("step 6 confirms OWNER and emits onOwnerSaved", async () => {
-    const finalizeOwnerCapture = vi.fn(async (_id: string, payload: { displayName: string }) => ({
-      profileId: "p-owner",
-      entityId: "e-owner",
-      isOwner: true,
-      displayName: payload.displayName,
-    }));
+    const finalizeOwnerCapture = vi.fn(
+      async (_id: string, payload: { displayName: string }) => ({
+        profileId: "p-owner",
+        entityId: "e-owner",
+        isOwner: true,
+        displayName: payload.displayName,
+      }),
+    );
     const client = makeClient({
       finalizeOwnerCapture,
     });
@@ -144,9 +150,9 @@ describe("VoicePrefixSteps", () => {
         profilesClient={makeClient()}
       />,
     );
-    expect(screen.getByTestId("voice-prefix-family-list").textContent).toContain(
-      "No additional people",
-    );
+    expect(
+      screen.getByTestId("voice-prefix-family-list").textContent,
+    ).toContain("No additional people");
     // Skip is rendered for optional steps.
     expect(screen.getByTestId("voice-prefix-skip")).toBeTruthy();
   });
