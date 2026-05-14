@@ -107,7 +107,33 @@ export async function probeHardware(): Promise<HardwareProbe> {
 		};
 	}
 
-	const llama = await binding.getLlama({ gpu: "auto" });
+	// `loadLlamaBinding()` catches *import* failures, but the binding's
+	// `getLlama()` can still throw during native init — observed on the
+	// electrobun launcher as the cryptic TDZ-style error
+	// `Cannot access '' before initialization.` coming from inside
+	// `node-llama-cpp`'s prebuilt native binding. The launcher then
+	// bubbles that string up through `/api/local-inference/hardware`
+	// (returns 500), `/api/local-inference/active` (status: "error"),
+	// and any other call site that depends on the probe. Wrap the init
+	// call in a try/catch so we fall back to the same OS-only probe
+	// we use when the import itself was unavailable.
+	let llama: Awaited<ReturnType<LlamaBindingModule["getLlama"]>>;
+	try {
+		llama = await binding.getLlama({ gpu: "auto" });
+	} catch {
+		const totalRamGb = bytesToGb(totalRamBytes);
+		return {
+			totalRamGb,
+			freeRamGb: bytesToGb(freeRamBytes),
+			gpu: null,
+			cpuCores,
+			platform,
+			arch,
+			appleSilicon,
+			recommendedBucket: recommendBucket(totalRamGb, 0, appleSilicon),
+			source: "os-fallback",
+		};
+	}
 	const totalRamGb = bytesToGb(totalRamBytes);
 	const freeRamGb = bytesToGb(freeRamBytes);
 
