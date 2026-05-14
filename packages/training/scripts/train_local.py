@@ -364,6 +364,26 @@ def main() -> int:
     from transformers import AutoModelForCausalLM, AutoTokenizer
     from trl import SFTConfig, SFTTrainer
 
+    # PyTorch 2.6+ defaults `torch.load(weights_only=True)`, which the Trainer
+    # uses on the optimizer state pickle when resuming. APOLLO's optimizer
+    # state holds an `apollo_torch.random_projector.GradientProjector` instance
+    # per parameter group; with weights_only=True those globals are rejected
+    # and resume crashes with:
+    #   _pickle.UnpicklingError: Weights only load failed. ...
+    #     GLOBAL apollo_torch.random_projector.GradientProjector was not an
+    #     allowed global by default.
+    # Pre-register the class so Trainer.train(resume_from_checkpoint=...) can
+    # deserialize the optimizer state. Safe globals are idempotent — no harm
+    # registering on fresh runs. The import is best-effort: APOLLO is only
+    # actually used downstream when args.optimizer in (apollo, apollo_mini).
+    if args.resume_from_checkpoint:
+        try:
+            from apollo_torch.random_projector import GradientProjector
+            torch.serialization.add_safe_globals([GradientProjector])
+            log.info("registered apollo_torch.random_projector.GradientProjector as a torch safe global for weights_only resume")
+        except ImportError:
+            log.warning("apollo_torch not importable — skipping safe-globals registration; resume may fail with PyTorch 2.6+ weights_only")
+
     device = "cuda" if torch.cuda.is_available() else "cpu"
     log.info("device=%s torch=%s model=%s", device, torch.__version__, args.model)
     if device == "cpu":

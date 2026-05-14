@@ -178,7 +178,11 @@ export class SceneBuilder extends EventEmitter {
       if (changed) {
         state.lastChangeAt = t0;
       }
+      // Agent turns ALWAYS re-OCR — the planner has to see fresh text even
+      // if the screen looks pixel-identical (e.g. blinking cursor in a
+      // text box that just received an enter key).
       const wholeFrameCacheHit =
+        mode !== "agent-turn" &&
         !changed &&
         state.lastScene.dhash !== null &&
         dHash !== null &&
