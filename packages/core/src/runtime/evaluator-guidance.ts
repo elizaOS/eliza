@@ -1,5 +1,8 @@
 import type { ResponseSkeleton, SpanSamplerPlan } from "../types/model";
-import { buildSpanSamplerPlan } from "./response-grammar";
+import {
+  buildSpanSamplerPlan,
+  withGuidedDecodeProviderOptions,
+} from "./response-grammar";
 
 export interface EvaluatorGuidance {
 	responseSkeleton: ResponseSkeleton;
@@ -47,4 +50,10 @@ export function buildEvaluatorGuidance(): EvaluatorGuidance {
 		spanSamplerPlan: buildSpanSamplerPlan(EVALUATOR_RESPONSE_SKELETON),
 	};
 	return cachedGuidance;
+}
+
+export function withEvaluatorGuidedDecodeProviderOptions<
+	T extends Record<string, unknown>,
+>(providerOptions: T): T {
+	return withGuidedDecodeProviderOptions(providerOptions);
 }

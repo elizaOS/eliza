@@ -8,8 +8,13 @@ import JavaScriptCore
 public final class FSBridge {
     private weak var context: JSContext?
     private var lastError: String?
+    private let paths: SandboxPaths
+    private let policy: RuntimePolicy
 
-    public init() {}
+    public init(paths: SandboxPaths, policy: RuntimePolicy) {
+        self.paths = paths
+        self.policy = policy
+    }
 
     public func install(into ctx: JSContext) {
         self.context = ctx
@@ -21,6 +26,7 @@ public final class FSBridge {
                 self.setError("fs_read_text: missing path")
                 return NSNull()
             }
+            guard self.allow(path, .read, "fs_read_text") else { return NSNull() }
             do {
                 let s = try String(contentsOfFile: path, encoding: .utf8)
                 return s
@@ -36,6 +42,7 @@ public final class FSBridge {
                 self.setError("fs_read_bytes: missing path")
                 return NSNull()
             }
+            guard self.allow(path, .read, "fs_read_bytes") else { return NSNull() }
             do {
                 let data = try Data(contentsOf: URL(fileURLWithPath: path))
                 return ctx.newUint8Array(data)
@@ -53,6 +60,7 @@ public final class FSBridge {
                 self.setError("fs_write_text: missing args")
                 return false
             }
+            guard self.allow(path, .write, "fs_write_text") else { return false }
             do {
                 try data.write(toFile: path, atomically: true, encoding: .utf8)
                 return true
@@ -70,6 +78,7 @@ public final class FSBridge {
                 self.setError("fs_write_bytes: missing args")
                 return false
             }
+            guard self.allow(path, .write, "fs_write_bytes") else { return false }
             do {
                 try bytes.write(to: URL(fileURLWithPath: path), options: .atomic)
                 return true
@@ -87,12 +96,14 @@ public final class FSBridge {
                 self.setError("fs_append_text: missing args")
                 return false
             }
+            guard self.allow(path, .write, "fs_append_text") else { return false }
             return self.appendText(path: path, text: data)
         }
 
         ctx.installBridgeFunction(name: "fs_exists") { args in
             self.clearError()
             guard let path = args.first?.toString() else { return false }
+            guard self.allow(path, .read, "fs_exists") else { return false }
             return fm.fileExists(atPath: path)
         }
 
@@ -103,6 +114,7 @@ public final class FSBridge {
                 self.setError("fs_mkdir: missing args")
                 return false
             }
+            guard self.allow(path, .write, "fs_mkdir") else { return false }
             let recursive = args[1].toBool()
             do {
                 try fm.createDirectory(
@@ -123,6 +135,7 @@ public final class FSBridge {
                 self.setError("fs_readdir: missing path")
                 return NSNull()
             }
+            guard self.allow(path, .read, "fs_readdir") else { return NSNull() }
             do {
                 let entries = try fm.contentsOfDirectory(atPath: path)
                 return entries
@@ -138,6 +151,7 @@ public final class FSBridge {
                 self.setError("fs_stat: missing path")
                 return NSNull()
             }
+            guard self.allow(path, .read, "fs_stat") else { return NSNull() }
             do {
                 let attrs = try fm.attributesOfItem(atPath: path)
                 let size = (attrs[.size] as? NSNumber)?.intValue ?? 0
@@ -164,6 +178,7 @@ public final class FSBridge {
                 self.setError("fs_remove: missing path")
                 return false
             }
+            guard self.allow(path, .write, "fs_remove") else { return false }
             // `recursive` is an opt-in flag in the contract. FileManager
             // removeItem already recurses for directories, but if the caller
             // explicitly passes `false` for a directory we refuse so the
@@ -195,6 +210,10 @@ public final class FSBridge {
                 self.setError("fs_rename: missing args")
                 return false
             }
+            guard self.allow(from, .write, "fs_rename") &&
+                  self.allow(to, .write, "fs_rename") else {
+                return false
+            }
             do {
                 try fm.moveItem(atPath: from, toPath: to)
                 return true
@@ -210,6 +229,10 @@ public final class FSBridge {
                   let from = args[0].toString(),
                   let to = args[1].toString() else {
                 self.setError("fs_copy: missing args")
+                return false
+            }
+            guard self.allow(from, .read, "fs_copy") &&
+                  self.allow(to, .write, "fs_copy") else {
                 return false
             }
             do {
@@ -237,6 +260,14 @@ public final class FSBridge {
 
     private func clearError() {
         self.lastError = nil
+    }
+
+    private func allow(_ path: String, _ operation: FilesystemOperation, _ function: String) -> Bool {
+        if policy.allowsFilesystemPath(path, operation: operation) {
+            return true
+        }
+        setError("\(function): path is outside the iOS app container policy")
+        return false
     }
 
     /// Appends UTF-8 text to a file, creating it if missing. Returns false

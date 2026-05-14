@@ -2826,7 +2826,7 @@ function canonicalizeFieldCandidateActionNames(
 		| {
 				actions: ReadonlyArray<Pick<Action, "name" | "similes">>;
 		  }
-	| undefined,
+		| undefined,
 ): string[] {
 	if (!runtimeContext) {
 		return [...candidateActions];

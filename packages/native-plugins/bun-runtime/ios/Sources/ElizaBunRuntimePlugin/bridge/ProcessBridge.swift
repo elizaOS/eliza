@@ -8,13 +8,19 @@ public final class ProcessBridge {
     /// Snapshot of the monotonic clock origin for `now_ns`.
     private let monotonicEpoch: UInt64
     private weak var owner: ElizaBunRuntime?
+    private let policy: RuntimePolicy
 
-    public init(initialArgv: [String], initialEnv: [String: String], owner: ElizaBunRuntime) {
-        var merged = ProcessInfo.processInfo.environment
-        for (k, v) in initialEnv {
-            merged[k] = v
-        }
-        self.env = merged
+    public init(
+        initialArgv: [String],
+        initialEnv: [String: String],
+        owner: ElizaBunRuntime,
+        policy: RuntimePolicy
+    ) {
+        self.policy = policy
+        self.env = policy.filteredEnvironment(
+            processEnvironment: ProcessInfo.processInfo.environment,
+            overrides: initialEnv
+        )
         if !initialArgv.isEmpty {
             self.argv = initialArgv
         }
@@ -40,6 +46,9 @@ public final class ProcessBridge {
             guard args.count >= 2,
                   let key = args[0].toString(),
                   let value = args[1].toString() else {
+                return NSNull()
+            }
+            guard self.policy.allowsEnvironmentMutation(key: key) else {
                 return NSNull()
             }
             self.env[key] = value

@@ -41,8 +41,12 @@ public enum BridgeInstaller {
         if let bridge = ctx.objectForKeyedSubscript("__ELIZA_BRIDGE__") {
             bridge.setObject(version, forKeyedSubscript: "version" as NSString)
         }
+        let policy = RuntimePolicy(paths: paths)
+        if policy.appStoreCompliantLocalRuntime {
+            ctx.evaluateScript("globalThis.__ELIZA_IOS_APP_STORE_LOCAL_RUNTIME__ = true;")
+        }
 
-        let fs = FSBridge()
+        let fs = FSBridge(paths: paths, policy: policy)
         fs.install(into: ctx)
 
         let pathsBridge = PathsBridge(paths: paths)
@@ -63,7 +67,12 @@ public enum BridgeInstaller {
         let log = LogBridge()
         log.install(into: ctx)
 
-        let process = ProcessBridge(initialArgv: argv, initialEnv: env, owner: runtime)
+        let process = ProcessBridge(
+            initialArgv: argv,
+            initialEnv: env,
+            owner: runtime,
+            policy: policy
+        )
         process.install(into: ctx)
 
         let ui = UIBridge(plugin: plugin.value)

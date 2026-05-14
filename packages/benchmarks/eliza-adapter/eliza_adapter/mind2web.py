@@ -172,6 +172,27 @@ class ElizaMind2WebAgent:
             bench_params = params.get("BENCHMARK_ACTION")
             if isinstance(bench_params, dict):
                 params = {**params, **bench_params}
+            native_tool_calls = params.get("tool_calls")
+            if isinstance(native_tool_calls, list):
+                for call in native_tool_calls:
+                    if not isinstance(call, dict):
+                        continue
+                    function = call.get("function")
+                    if not isinstance(function, dict):
+                        continue
+                    arguments = function.get("arguments")
+                    if isinstance(arguments, str):
+                        try:
+                            decoded = json.loads(arguments)
+                        except json.JSONDecodeError:
+                            decoded = None
+                    else:
+                        decoded = arguments
+                    if isinstance(decoded, dict) and (
+                        decoded.get("operation") or decoded.get("element_id")
+                    ):
+                        params = {**params, **decoded}
+                        break
 
             operation_str = str(params.get("operation", "")).upper()
             element_id = str(params.get("element_id", ""))

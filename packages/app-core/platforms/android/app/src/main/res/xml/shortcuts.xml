@@ -1,26 +1,109 @@
 <?xml version="1.0" encoding="utf-8"?>
 <shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
-    <shortcut
-        android:shortcutId="ask_eliza"
-        android:enabled="true"
-        android:shortcutShortLabel="@string/shortcut_ask_eliza_short_label"
-        android:shortcutLongLabel="@string/shortcut_ask_eliza_long_label"
-        android:shortcutDisabledMessage="@string/shortcut_ask_eliza_disabled">
+    <capability android:name="actions.intent.OPEN_APP_FEATURE">
         <intent
             android:action="android.intent.action.VIEW"
-            android:data="eliza://chat?source=android-shortcut" />
-        <categories android:name="android.shortcut.conversation" />
-    </shortcut>
+            android:data="ai.elizaos.app://chat?source=android-app-actions"
+            android:targetClass="ai.elizaos.app.MainActivity"
+            android:targetPackage="ai.elizaos.app">
+            <parameter
+                android:key="feature"
+                android:name="feature" />
+        </intent>
+        <shortcut-fulfillment>
+            <parameter android:name="feature" />
+        </shortcut-fulfillment>
+    </capability>
 
     <capability android:name="actions.intent.CREATE_THING">
         <intent
             android:action="android.intent.action.VIEW"
-            android:data="eliza://chat?source=android-app-action&amp;intent=create-thing" />
+            android:data="ai.elizaos.app://lifeops/reminder?source=android-app-actions"
+            android:targetClass="ai.elizaos.app.MainActivity"
+            android:targetPackage="ai.elizaos.app">
+            <parameter
+                android:key="name"
+                android:name="thing.name" />
+            <parameter
+                android:key="description"
+                android:name="thing.description" />
+        </intent>
     </capability>
 
-    <capability android:name="actions.intent.GET_THING">
+    <shortcut
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutDisabledMessage="@string/android_app_action_chat_disabled"
+        android:shortcutId="eliza_app_action_chat"
+        android:shortcutLongLabel="@string/android_app_action_chat_long_label"
+        android:shortcutShortLabel="@string/android_app_action_chat_short_label">
         <intent
             android:action="android.intent.action.VIEW"
-            android:data="eliza://chat?source=android-app-action&amp;intent=get-thing" />
-    </capability>
+            android:data="ai.elizaos.app://chat?source=android-app-actions&amp;feature=chat"
+            android:targetClass="ai.elizaos.app.MainActivity"
+            android:targetPackage="ai.elizaos.app" />
+        <capability-binding android:key="actions.intent.OPEN_APP_FEATURE">
+            <parameter-binding
+                android:key="feature"
+                android:value="@array/android_app_action_chat_synonyms" />
+        </capability-binding>
+        <categories android:name="android.shortcut.conversation" />
+    </shortcut>
+
+    <shortcut
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutDisabledMessage="@string/android_app_action_voice_disabled"
+        android:shortcutId="eliza_app_action_voice"
+        android:shortcutLongLabel="@string/android_app_action_voice_long_label"
+        android:shortcutShortLabel="@string/android_app_action_voice_short_label">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:data="ai.elizaos.app://voice?source=android-app-actions&amp;feature=voice"
+            android:targetClass="ai.elizaos.app.MainActivity"
+            android:targetPackage="ai.elizaos.app" />
+        <capability-binding android:key="actions.intent.OPEN_APP_FEATURE">
+            <parameter-binding
+                android:key="feature"
+                android:value="@array/android_app_action_voice_synonyms" />
+        </capability-binding>
+    </shortcut>
+
+    <shortcut
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutDisabledMessage="@string/android_app_action_lifeops_task_disabled"
+        android:shortcutId="eliza_app_action_lifeops_task"
+        android:shortcutLongLabel="@string/android_app_action_lifeops_task_long_label"
+        android:shortcutShortLabel="@string/android_app_action_lifeops_task_short_label">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:data="ai.elizaos.app://lifeops/reminder?source=android-app-actions&amp;feature=lifeops-task"
+            android:targetClass="ai.elizaos.app.MainActivity"
+            android:targetPackage="ai.elizaos.app" />
+        <capability-binding android:key="actions.intent.OPEN_APP_FEATURE">
+            <parameter-binding
+                android:key="feature"
+                android:value="@array/android_app_action_lifeops_task_synonyms" />
+        </capability-binding>
+    </shortcut>
+
+    <shortcut
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutDisabledMessage="@string/android_app_action_daily_brief_disabled"
+        android:shortcutId="eliza_app_action_daily_brief"
+        android:shortcutLongLabel="@string/android_app_action_daily_brief_long_label"
+        android:shortcutShortLabel="@string/android_app_action_daily_brief_short_label">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:data="ai.elizaos.app://lifeops/daily-brief?source=android-app-actions&amp;feature=daily-brief"
+            android:targetClass="ai.elizaos.app.MainActivity"
+            android:targetPackage="ai.elizaos.app" />
+        <capability-binding android:key="actions.intent.OPEN_APP_FEATURE">
+            <parameter-binding
+                android:key="feature"
+                android:value="@array/android_app_action_daily_brief_synonyms" />
+        </capability-binding>
+    </shortcut>
 </shortcuts>

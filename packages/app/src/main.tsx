@@ -1358,7 +1358,7 @@ function handleDeepLink(url: string): void {
 function getDeepLinkPath(parsed: URL): string {
   const host = parsed.host.replace(/^\/+|\/+$/g, "");
   const pathname = parsed.pathname.replace(/^\/+|\/+$/g, "");
-  if (host === APP_CONFIG.appId || host === APP_BRANDING_BASE.appId) {
+  if (host === APP_CONFIG.appId || host === APP_CONFIG.desktop?.bundleId) {
     return pathname;
   }
   return [host, pathname].filter(Boolean).join("/");
