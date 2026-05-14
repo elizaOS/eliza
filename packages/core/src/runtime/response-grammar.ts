@@ -219,6 +219,477 @@ const GBNF_RULE_BODIES: Record<string, string> = {
 	ws: "[ \\t\\n\\r]*",
 };
 
+type SimpleRegexQuantifier =
+	| { kind: "zeroOrOne" }
+	| { kind: "zeroOrMore" }
+	| { kind: "oneOrMore" }
+	| { kind: "repeat"; min: number; max: number | null };
+
+type SimpleRegexAtom =
+	| { kind: "literal"; value: string }
+	| { kind: "class"; value: string }
+	| { kind: "group"; value: SimpleRegexNode };
+
+interface SimpleRegexTerm {
+	atom: SimpleRegexAtom;
+	quantifier?: SimpleRegexQuantifier;
+}
+
+type SimpleRegexNode =
+	| { kind: "sequence"; terms: SimpleRegexTerm[] }
+	| { kind: "alternation"; branches: SimpleRegexNode[] };
+
+interface SimpleRegexParserState {
+	source: string;
+	index: number;
+	end: number;
+}
+
+function compileSimplePatternToGbnf(pattern: string): string | null {
+	if (pattern.length < 2 || pattern[0] !== "^" || pattern.at(-1) !== "$") {
+		return null;
+	}
+
+	const state: SimpleRegexParserState = {
+		source: pattern,
+		index: 1,
+		end: pattern.length - 1,
+	};
+	const parsed = parseSimpleRegexAlternation(state, false);
+	if (parsed === null || state.index !== state.end) return null;
+	return compileSimpleRegexNode(parsed);
+}
+
+function parseSimpleRegexAlternation(
+	state: SimpleRegexParserState,
+	stopAtParen: boolean,
+): SimpleRegexNode | null {
+	const branches: SimpleRegexNode[] = [];
+
+	while (true) {
+		const sequence = parseSimpleRegexSequence(state, stopAtParen);
+		if (sequence === null) return null;
+		branches.push(sequence);
+
+		if (state.index >= state.end) break;
+		const ch = state.source[state.index];
+		if (ch === "|") {
+			state.index += 1;
+			continue;
+		}
+		if (stopAtParen && ch === ")") break;
+		return null;
+	}
+
+	return branches.length === 1
+		? branches[0]
+		: { kind: "alternation", branches };
+}
+
+function parseSimpleRegexSequence(
+	state: SimpleRegexParserState,
+	stopAtParen: boolean,
+): SimpleRegexNode | null {
+	const terms: SimpleRegexTerm[] = [];
+
+	while (state.index < state.end) {
+		const ch = state.source[state.index];
+		if (ch === "|" || (stopAtParen && ch === ")")) break;
+		const term = parseSimpleRegexTerm(state, stopAtParen);
+		if (term === null) return null;
+		terms.push(term);
+	}
+
+	return { kind: "sequence", terms };
+}
+
+function parseSimpleRegexTerm(
+	state: SimpleRegexParserState,
+	stopAtParen: boolean,
+): SimpleRegexTerm | null {
+	const atom = parseSimpleRegexAtom(state, stopAtParen);
+	if (atom === null) return null;
+
+	const quantifier = parseSimpleRegexQuantifier(state);
+	if (quantifier === null) return null;
+	return quantifier === undefined ? { atom } : { atom, quantifier };
+}
+
+function parseSimpleRegexAtom(
+	state: SimpleRegexParserState,
+	stopAtParen: boolean,
+): SimpleRegexAtom | null {
+	const ch = state.source[state.index];
+	if (ch === undefined) return null;
+
+	if (ch === "(") {
+		state.index += 1;
+		if (state.source[state.index] === "?" && state.source[state.index + 1] === ":") {
+			state.index += 2;
+		} else if (state.source[state.index] === "?") {
+			return null;
+		}
+		const inner = parseSimpleRegexAlternation(state, true);
+		if (inner === null || state.source[state.index] !== ")") return null;
+		state.index += 1;
+		return { kind: "group", value: inner };
+	}
+
+	if (ch === "[") {
+		return parseSimpleRegexClass(state);
+	}
+
+	if (ch === "\\") {
+		return parseSimpleRegexEscape(state);
+	}
+
+	if (ch === "." || ch === "^" || ch === "$" || ch === "|" || ch === ")" || ch === "{" || ch === "}" || ch === "?"
+		|| ch === "*" || ch === "+" || ch === "]") {
+		return null;
+	}
+
+	const start = state.index;
+	while (state.index < state.end) {
+		const current = state.source[state.index];
+		if (
+			current === "(" ||
+			current === ")" ||
+			current === "[" ||
+			current === "]" ||
+			current === "{" ||
+			current === "}" ||
+			current === "|" ||
+			current === "\\" ||
+			current === "." ||
+			current === "^" ||
+			current === "$" ||
+			current === "?" ||
+			current === "*" ||
+			current === "+"
+		) {
+			break;
+		}
+		if (stopAtParen && current === ")") break;
+		if (current === "|") break;
+		state.index += 1;
+	}
+
+	if (state.index === start) return null;
+	return { kind: "literal", value: state.source.slice(start, state.index) };
+}
+
+function parseSimpleRegexEscape(state: SimpleRegexParserState): SimpleRegexAtom | null {
+	state.index += 1;
+	const escaped = state.source[state.index];
+	if (escaped === undefined || state.index >= state.end) return null;
+	state.index += 1;
+
+	switch (escaped) {
+		case "d":
+			return { kind: "class", value: "0-9" };
+		case "w":
+			return { kind: "class", value: "A-Za-z0-9_" };
+		case "s":
+			return { kind: "class", value: " \\t\\n\\r" };
+		case "t":
+			return { kind: "literal", value: "\t" };
+		case "n":
+			return { kind: "literal", value: "\n" };
+		case "r":
+			return { kind: "literal", value: "\r" };
+		case "f":
+			return { kind: "literal", value: "\f" };
+		case "v":
+			return { kind: "literal", value: "\v" };
+		case "x":
+			return parseSimpleRegexHexEscape(state, 2);
+		case "u":
+			return parseSimpleRegexHexEscape(state, 4);
+		default:
+			if (!/[A-Za-z0-9]/.test(escaped)) {
+				return { kind: "literal", value: escaped };
+			}
+			return null;
+	}
+}
+
+function parseSimpleRegexHexEscape(
+	state: SimpleRegexParserState,
+	digits: number,
+): SimpleRegexAtom | null {
+	if (state.index + digits > state.end) return null;
+	const raw = state.source.slice(state.index, state.index + digits);
+	if (!/^[0-9A-Fa-f]+$/.test(raw)) return null;
+	const code = Number.parseInt(raw, 16);
+	if (!Number.isFinite(code)) return null;
+	state.index += digits;
+	return { kind: "literal", value: String.fromCodePoint(code) };
+}
+
+function parseSimpleRegexClass(
+	state: SimpleRegexParserState,
+): SimpleRegexAtom | null {
+	state.index += 1;
+	if (state.source[state.index] === "^") return null;
+
+	let content = "";
+	let first = true;
+	while (state.index < state.end) {
+		const ch = state.source[state.index];
+		if (ch === "]" && !first) {
+			state.index += 1;
+			if (content.length === 0) return null;
+			return { kind: "class", value: content };
+		}
+
+		const literal = parseSimpleRegexClassUnit(state);
+		if (literal === null) return null;
+
+		if (
+			literal.single &&
+			state.source[state.index] === "-" &&
+			state.source[state.index + 1] !== "]"
+		) {
+			const savedIndex = state.index;
+			state.index += 1;
+			const rangeEnd = parseSimpleRegexClassUnit(state);
+			if (rangeEnd !== null && rangeEnd.single) {
+				content += `${escapeGbnfClassChar(literal.value)}-${escapeGbnfClassChar(
+					rangeEnd.value,
+				)}`;
+				first = false;
+				continue;
+			}
+			state.index = savedIndex;
+		}
+
+		content += escapeGbnfClassChar(literal.value);
+		first = false;
+	}
+
+	return null;
+}
+
+function parseSimpleRegexClassUnit(
+	state: SimpleRegexParserState,
+): { value: string; single: boolean } | null {
+	const ch = state.source[state.index];
+	if (ch === undefined || ch === "]") return null;
+
+	if (ch === "\\") {
+		state.index += 1;
+		const escaped = state.source[state.index];
+		if (escaped === undefined || state.index >= state.end) return null;
+		state.index += 1;
+		switch (escaped) {
+			case "d":
+				return { value: "0-9", single: false };
+			case "w":
+				return { value: "A-Za-z0-9_", single: false };
+			case "s":
+				return { value: " \\t\\n\\r", single: false };
+			case "t":
+				return { value: "\t", single: true };
+			case "n":
+				return { value: "\n", single: true };
+			case "r":
+				return { value: "\r", single: true };
+			case "f":
+				return { value: "\f", single: true };
+			case "v":
+				return { value: "\v", single: true };
+			case "x":
+				return parseSimpleRegexHexUnit(state, 2);
+			case "u":
+				return parseSimpleRegexHexUnit(state, 4);
+			default:
+				if (!/[A-Za-z0-9]/.test(escaped)) {
+					return { value: escaped, single: true };
+				}
+				return null;
+		}
+	}
+
+	state.index += 1;
+	return { value: ch, single: true };
+}
+
+function parseSimpleRegexHexUnit(
+	state: SimpleRegexParserState,
+	digits: number,
+): { value: string; single: boolean } | null {
+	if (state.index + digits > state.end) return null;
+	const raw = state.source.slice(state.index, state.index + digits);
+	if (!/^[0-9A-Fa-f]+$/.test(raw)) return null;
+	const code = Number.parseInt(raw, 16);
+	if (!Number.isFinite(code)) return null;
+	state.index += digits;
+	return { value: String.fromCodePoint(code), single: true };
+}
+
+function parseSimpleRegexQuantifier(
+	state: SimpleRegexParserState,
+): SimpleRegexQuantifier | undefined | null {
+	const ch = state.source[state.index];
+	if (ch === undefined) return undefined;
+
+	switch (ch) {
+		case "?":
+			state.index += 1;
+			return { kind: "zeroOrOne" };
+		case "*":
+			state.index += 1;
+			return { kind: "zeroOrMore" };
+		case "+":
+			state.index += 1;
+			return { kind: "oneOrMore" };
+		case "{":
+			return parseSimpleRegexBracedQuantifier(state);
+		default:
+			return undefined;
+	}
+}
+
+function parseSimpleRegexBracedQuantifier(
+	state: SimpleRegexParserState,
+): SimpleRegexQuantifier | null {
+	const start = state.index;
+	state.index += 1;
+	const min = parseSimpleRegexDecimal(state);
+	if (min === null) {
+		state.index = start;
+		return null;
+	}
+
+	let max: number | null = min;
+	if (state.source[state.index] === ",") {
+		state.index += 1;
+		if (state.source[state.index] === "}") {
+			max = null;
+		} else {
+			max = parseSimpleRegexDecimal(state);
+			if (max === null) {
+				state.index = start;
+				return null;
+			}
+		}
+	}
+
+	if (state.source[state.index] !== "}") {
+		state.index = start;
+		return null;
+	}
+
+	state.index += 1;
+	if (max !== null && max < min) {
+		state.index = start;
+		return null;
+	}
+	if (max !== null && max - min > 32) {
+		state.index = start;
+		return null;
+	}
+	return { kind: "repeat", min, max };
+}
+
+function parseSimpleRegexDecimal(state: SimpleRegexParserState): number | null {
+	const start = state.index;
+	while (state.index < state.end && /[0-9]/.test(state.source[state.index])) {
+		state.index += 1;
+	}
+	if (state.index === start) return null;
+	return Number.parseInt(state.source.slice(start, state.index), 10);
+}
+
+function compileSimpleRegexNode(node: SimpleRegexNode): string {
+	if (node.kind === "alternation") {
+		const branches = node.branches.map((branch) => compileSimpleRegexNode(branch));
+		return branches.length === 1 ? branches[0] : `( ${branches.join(" | ")} )`;
+	}
+
+	if (node.terms.length === 0) return gbnfLiteral("");
+	return node.terms.map((term) => compileSimpleRegexTerm(term)).join(" ");
+}
+
+function compileSimpleRegexTerm(term: SimpleRegexTerm): string {
+	const atom = compileSimpleRegexAtom(term.atom);
+	if (term.quantifier === undefined) return atom;
+
+	switch (term.quantifier.kind) {
+		case "zeroOrOne":
+			return `${atom}?`;
+		case "zeroOrMore":
+			return `${atom}*`;
+		case "oneOrMore":
+			return `${atom}+`;
+		case "repeat":
+			return compileSimpleRegexRepeat(atom, term.quantifier.min, term.quantifier.max);
+	}
+}
+
+function compileSimpleRegexRepeat(
+	atom: string,
+	min: number,
+	max: number | null,
+): string {
+	if (min === 0 && max === 0) return gbnfLiteral("");
+	const parts: string[] = [];
+	for (let i = 0; i < min; i++) parts.push(atom);
+	if (max === null) {
+		if (min === 0) return `${atom}*`;
+		parts.push(`${atom}*`);
+		return parts.join(" ");
+	}
+	for (let i = min; i < max; i++) parts.push(`${atom}?`);
+	return parts.join(" ");
+}
+
+function compileSimpleRegexAtom(atom: SimpleRegexAtom): string {
+	switch (atom.kind) {
+		case "literal":
+			return gbnfLiteral(atom.value);
+		case "class":
+			return `[${atom.value}]`;
+		case "group":
+			return `( ${compileSimpleRegexNode(atom.value)} )`;
+	}
+}
+
+function escapeGbnfClassChar(value: string): string {
+	let out = "";
+	for (const ch of value) {
+		switch (ch) {
+			case "\\":
+				out += "\\\\";
+				break;
+			case "]":
+				out += "\\]";
+				break;
+			case "-":
+				out += "\\-";
+				break;
+			case "^":
+				out += "\\^";
+				break;
+			case "\n":
+				out += "\\n";
+				break;
+			case "\r":
+				out += "\\r";
+				break;
+			case "\t":
+				out += "\\t";
+				break;
+			default: {
+				const code = ch.codePointAt(0) ?? 0;
+				if (code < 0x20) out += `\\x${code.toString(16).padStart(2, "0")}`;
+				else out += ch;
+			}
+		}
+	}
+	return out;
+}
+
 /**
  * Tiny GBNF builder: collects named rules + a root, dedupes, and pulls in the
  * transitive closure of referenced shared rules.
@@ -1185,6 +1656,13 @@ function propertyValueGbnf(
 			return `( ${enumValues
 				.map((v) => gbnfJsonStringLiteral(v))
 				.join(" | ")} )`;
+		}
+		const pattern = (propSchema as { pattern?: unknown }).pattern;
+		if (typeof pattern === "string") {
+			const compiledPattern = compileSimplePatternToGbnf(pattern);
+			if (compiledPattern !== null) {
+				return compiledPattern;
+			}
 		}
 		builder.useShared("jsonstring");
 		return "jsonstring";
