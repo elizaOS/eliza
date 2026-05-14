@@ -632,6 +632,48 @@ describe("SubAgentRouter", () => {
       expect(handleMessage).not.toHaveBeenCalled();
     });
 
+    it("cache-bust probes 404s even when the edge omits cache headers", async () => {
+      const assetUrl = "https://example.test/apps/counter/app.js";
+      const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.startsWith(`${assetUrl}?__eliza_verify=`)) {
+          return new Response("console.log('fresh');", {
+            status: 200,
+            headers: { "content-type": "application/javascript" },
+          });
+        }
+        if (url === assetUrl) {
+          return new Response("not found", { status: 404 });
+        }
+        return new Response("not found", { status: 404 });
+      });
+      vi.stubGlobal("fetch", fetchMock);
+      session = sessionWithTask(`build a counter at ${assetUrl}`);
+      acp = makeAcpService(session);
+      const { runtime, handleMessage, spawnSession } = makeRuntime({
+        acp: acp.service,
+      });
+      await SubAgentRouter.start(runtime);
+
+      acp.emit(SESSION_ID, "task_complete", {
+        response: `Done — live at ${assetUrl}`,
+      });
+      await new Promise((r) => setTimeout(r, 200));
+
+      expect(spawnSession).toHaveBeenCalledTimes(1);
+      const fetched = fetchMock.mock.calls.map(([url]) => String(url));
+      expect(fetched).toContain(assetUrl);
+      expect(fetched.some((url) => url.startsWith(`${assetUrl}?`))).toBe(true);
+      const retryTask = String(spawnSession.mock.calls[0]?.[0]?.initialTask);
+      expect(retryTask).toContain("cached stale miss");
+      expect(retryTask).toContain("rename that asset to a fresh filename");
+      const retryMetadata = spawnSession.mock.calls[0]?.[0]?.metadata as
+        | Record<string, unknown>
+        | undefined;
+      expect(retryMetadata?.cachedStaleMissUrls).toEqual([assetUrl]);
+      expect(handleMessage).not.toHaveBeenCalled();
+    });
+
     it("does not re-check stale cached URLs after a retry switches to fresh filenames", async () => {
       const staleUrl = "https://example.test/apps/counter/style.css";
       const freshUrl = "https://example.test/apps/counter/style-v2.css";
