@@ -17,7 +17,7 @@ project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(_
 sys.path.insert(0, project_root)
 
 from common.mcp.server_base import BaseMCPServer
-from common.mcp.tools import ToolRegistry, create_simple_tool_schema
+from common.mcp.tools import ToolRegistry
 from mcps.calendar.database_utils import CalendarDatabase
 
 

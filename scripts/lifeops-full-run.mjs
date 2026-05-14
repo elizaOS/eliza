@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Unified multi-agent lifeops benchmark runner.
+ * Multi-agent lifeops benchmark runner.
  *
  * One command, no flags: `bun run lifeops:full`.
  *

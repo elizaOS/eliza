@@ -5,7 +5,7 @@ import type {
   CreateBrowserBridgeCompanionAutoPairRequest,
   SyncBrowserBridgeStateRequest,
   UpdateBrowserBridgeSessionProgressRequest,
-} from "@elizaos/plugin-browser";
+} from "./browser-bridge-contracts";
 import type {
   CompleteLifeOpsBrowserSessionRequest,
   LifeOpsBrowserSession,
@@ -52,13 +52,26 @@ export type CapturePageMessage = {
   type: "browser-bridge:capture-page";
 };
 
+export type PageContextSnapshot = {
+  url: string;
+  title: string;
+  selectionText: string | null;
+  mainText: string | null;
+  headings: string[];
+  links: Array<{ text: string; href: string }>;
+  forms: Array<{ action: string | null; fields: string[] }>;
+  capturedAt: string;
+};
+
+export type DomActionRequest = {
+  kind: "click" | "type" | "submit" | "history_back" | "history_forward";
+  selector?: string | null;
+  text?: string | null;
+};
+
 export type ExecuteDomActionMessage = {
   type: "browser-bridge:execute-dom-action";
-  action: {
-    kind: "click" | "type" | "submit" | "history_back" | "history_forward";
-    selector?: string | null;
-    text?: string | null;
-  };
+  action: DomActionRequest;
 };
 
 export type ContentScriptMessage = CapturePageMessage | ExecuteDomActionMessage;
@@ -66,16 +79,7 @@ export type ContentScriptMessage = CapturePageMessage | ExecuteDomActionMessage;
 export type ContentScriptResponse =
   | {
       ok: true;
-      page?: {
-        url: string;
-        title: string;
-        selectionText: string | null;
-        mainText: string | null;
-        headings: string[];
-        links: Array<{ text: string; href: string }>;
-        forms: Array<{ action: string | null; fields: string[] }>;
-        capturedAt: string;
-      };
+      page?: PageContextSnapshot;
       actionResult?: Record<string, unknown>;
     }
   | { ok: false; error: string };

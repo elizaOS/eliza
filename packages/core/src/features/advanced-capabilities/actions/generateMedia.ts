@@ -23,7 +23,7 @@ import { hasActionContext } from "../../../utils/action-validation.ts";
 const spec: ActionDoc = getActionSpec("GENERATE_MEDIA") ?? {
 	name: "GENERATE_MEDIA",
 	description:
-		"Generate or process images, audio, or video from a user prompt.",
+		"Generate/process image, audio, or video from prompt.",
 	descriptionCompressed: "generate media image audio video prompt",
 	similes: [
 		"GENERATE_IMAGE",
@@ -484,7 +484,7 @@ export const generateMediaAction = {
 	parameters: [
 		{
 			name: "mediaType",
-			description: "The kind of media to generate.",
+			description: "Media kind to generate.",
 			required: true,
 			schema: {
 				type: "string" as const,
@@ -493,13 +493,13 @@ export const generateMediaAction = {
 		},
 		{
 			name: "prompt",
-			description: "Detailed generation prompt describing the desired media.",
+			description: "Generation prompt.",
 			required: true,
 			schema: { type: "string" as const, minLength: 1 },
 		},
 		{
 			name: "audioKind",
-			description: "For audio generation, choose music, sfx, or tts.",
+			description: "For audio: music, sfx, or tts.",
 			required: false,
 			schema: {
 				type: "string" as const,
@@ -508,19 +508,19 @@ export const generateMediaAction = {
 		},
 		{
 			name: "duration",
-			description: "Optional target duration in seconds for video or audio.",
+			description: "Target duration seconds for video/audio.",
 			required: false,
 			schema: { type: "number" as const },
 		},
 		{
 			name: "aspectRatio",
-			description: "Optional video aspect ratio such as 16:9, 9:16, or 1:1.",
+			description: "Video aspect ratio, e.g. 16:9, 9:16, 1:1.",
 			required: false,
 			schema: { type: "string" as const },
 		},
 		{
 			name: "size",
-			description: "Optional image size or image provider size preset.",
+			description: "Image size/provider preset.",
 			required: false,
 			schema: { type: "string" as const },
 		},

@@ -158,6 +158,16 @@ export class VisionService extends Service {
             ? String(value)
             : undefined;
     };
+    const getBooleanSetting = (
+      primaryKey: string,
+      secondaryKey: string,
+      defaultValue: boolean,
+    ): boolean => {
+      const raw =
+        getSettingString(primaryKey) ?? getSettingString(secondaryKey);
+      if (raw === undefined) return defaultValue;
+      return raw.trim().toLowerCase() === "true";
+    };
 
     return {
       ...this.DEFAULT_CONFIG,
@@ -203,12 +213,16 @@ export class VisionService extends Service {
           runtime.getSetting("SCREEN_CAPTURE_INTERVAL") ||
             runtime.getSetting("VISION_SCREEN_CAPTURE_INTERVAL"),
         ) || this.DEFAULT_CONFIG.screenCaptureInterval,
-      ocrEnabled:
-        getSettingString("OCR_ENABLED") === "true" ||
-        getSettingString("VISION_OCR_ENABLED") === "true",
-      florence2Enabled:
-        getSettingString("FLORENCE2_ENABLED") === "true" ||
-        getSettingString("VISION_FLORENCE2_ENABLED") === "true",
+      ocrEnabled: getBooleanSetting(
+        "OCR_ENABLED",
+        "VISION_OCR_ENABLED",
+        this.DEFAULT_CONFIG.ocrEnabled,
+      ),
+      florence2Enabled: getBooleanSetting(
+        "FLORENCE2_ENABLED",
+        "VISION_FLORENCE2_ENABLED",
+        this.DEFAULT_CONFIG.florence2Enabled,
+      ),
     };
   }
 

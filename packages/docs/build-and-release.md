@@ -139,4 +139,4 @@ Why: the previous smoke test could pass while the launcher stayed open but the e
 
 - [Electrobun startup and exception handling](/electrobun-startup) — why the agent keeps the API server up on load failure.
 - [Plugin resolution and NODE_PATH](/plugin-resolution-and-node-path) — why dynamic plugin imports need `NODE_PATH` in dev/CLI/Electrobun.
-- [CHANGELOG](../CHANGELOG.md) — concrete changes and WHYs per release.
+- [CHANGELOG](./changelog) — concrete changes and WHYs per release.

@@ -52,6 +52,19 @@ interface RuntimeAdapter {
   close?: () => Promise<void>;
 }
 
+interface SqlPluginModule {
+  createDatabaseAdapter: (
+    cfg: { dataDir: string },
+    id: `${string}-${string}-${string}-${string}-${string}`,
+  ) => unknown;
+  DatabaseMigrationService: new () => {
+    initializeWithDatabase: (db: unknown) => Promise<void>;
+    discoverAndRegisterPluginSchemas: (plugins: unknown[]) => void;
+    runAllPluginMigrations: () => Promise<void>;
+  };
+  plugin: unknown;
+}
+
 /**
  * Open a pglite-backed AuthStore against the configured state dir. Falls
  * back to throwing if the runtime adapter or schema isn't available — we
@@ -61,20 +74,7 @@ async function openAuthStoreFromCli(): Promise<{
   store: import("../../services/auth-store").AuthStore;
   close: () => Promise<void>;
 }> {
-  const sql = (await import(
-    "@elizaos/plugin-sql"
-  )) as typeof import("@elizaos/plugin-sql") & {
-    createDatabaseAdapter: (
-      cfg: { dataDir: string },
-      id: `${string}-${string}-${string}-${string}-${string}`,
-    ) => unknown;
-    DatabaseMigrationService: new () => {
-      initializeWithDatabase: (db: unknown) => Promise<void>;
-      discoverAndRegisterPluginSchemas: (plugins: unknown[]) => void;
-      runAllPluginMigrations: () => Promise<void>;
-    };
-    plugin: unknown;
-  };
+  const sql = (await import("@elizaos/plugin-sql")) as SqlPluginModule;
   const { createDatabaseAdapter, DatabaseMigrationService, plugin } = sql;
   const { AuthStore } = await import("../../services/auth-store");
 
@@ -90,7 +90,7 @@ async function openAuthStoreFromCli(): Promise<{
   if (!adapter.db) {
     throw new Error("CLI auth: adapter has no .db handle");
   }
-  const db = adapter.db as import("@elizaos/plugin-sql").DrizzleDatabase;
+  const db = adapter.db as import("../../services/auth-store").DrizzleDatabase;
   const migrations = new DatabaseMigrationService();
   await migrations.initializeWithDatabase(db);
   migrations.discoverAndRegisterPluginSchemas([plugin]);

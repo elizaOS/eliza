@@ -18,15 +18,15 @@ import { DexScreenerService } from "./analytics/dexscreener/service.js";
 import { TokenInfoService } from "./analytics/token-info/service.js";
 import evmPlugin from "./chains/evm/index.js";
 import solanaPlugin from "./chains/solana/index.js";
-import { unifiedWalletProvider } from "./providers/unified-wallet-provider.js";
+import { walletProvider } from "./providers/wallet-provider.js";
 import { WalletBackendService } from "./services/wallet-backend-service.js";
 
 const coreWalletPlugin: Plugin = {
   name: "wallet-backend",
   description:
-    "Wallet backend service + unified wallet provider (Steward / local).",
+    "Wallet backend service + wallet provider (Steward / local).",
   services: [WalletBackendService],
-  providers: [unifiedWalletProvider],
+  providers: [walletProvider],
   actions: [],
 };
 
@@ -98,7 +98,7 @@ const analyticsServices: ServiceClass[] = [
 export const walletPlugin: Plugin = {
   name: "wallet",
   description:
-    "Unified non-custodial wallet for elizaOS — EVM + Solana, Steward/local backends, x402, CCTP, and venue routing.",
+    "Non-custodial wallet for elizaOS — EVM + Solana, Steward/local backends, x402, CCTP, and venue routing.",
   services: concatServices(
     coreWalletPlugin.services,
     evmPlugin.services as ServiceClass[] | undefined,

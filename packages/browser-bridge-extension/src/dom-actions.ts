@@ -1,4 +1,4 @@
-import type { ExecuteDomActionMessage } from "./protocol";
+import type { DomActionRequest } from "./protocol";
 
 function requireElement(selector?: string | null): HTMLElement {
   if (!selector) {
@@ -65,7 +65,7 @@ function submitElement(selector?: string | null): Record<string, unknown> {
 }
 
 export function runDomAction(
-  action: ExecuteDomActionMessage["action"],
+  action: DomActionRequest,
 ): Record<string, unknown> {
   switch (action.kind) {
     case "click": {

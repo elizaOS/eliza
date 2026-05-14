@@ -242,22 +242,14 @@ function availableActionsSection(runtime: IAgentRuntime): string {
 }
 
 describe("v5 tiered action surface", () => {
-	let originalTieredEnv: string | undefined;
 	let originalTrajectoryEnv: string | undefined;
 
 	beforeEach(() => {
-		originalTieredEnv = process.env.ELIZA_TIERED_ACTION_SURFACE;
 		originalTrajectoryEnv = process.env.ELIZA_TRAJECTORY_RECORDING;
 		process.env.ELIZA_TRAJECTORY_RECORDING = "0";
-		delete process.env.ELIZA_TIERED_ACTION_SURFACE;
 	});
 
 	afterEach(() => {
-		if (originalTieredEnv === undefined) {
-			delete process.env.ELIZA_TIERED_ACTION_SURFACE;
-		} else {
-			process.env.ELIZA_TIERED_ACTION_SURFACE = originalTieredEnv;
-		}
 		if (originalTrajectoryEnv === undefined) {
 			delete process.env.ELIZA_TRAJECTORY_RECORDING;
 		} else {
@@ -349,39 +341,6 @@ describe("v5 tiered action surface", () => {
 		const prompt = availableActionsSection(runtime);
 		expect(prompt).toContain("CALENDAR");
 		expect(prompt).toContain("CREATE_EVENT");
-		expect(prompt).toContain("CHAT_MESSAGE");
-	});
-
-	it("falls back to the full gated action surface when disabled", async () => {
-		process.env.ELIZA_TIERED_ACTION_SURFACE = "0";
-		const calendar = makeAction({
-			name: "CALENDAR",
-			description: "Calendar scheduling.",
-			contexts: ["calendar" as AgentContext],
-		});
-		const chat = makeAction({
-			name: "CHAT_MESSAGE",
-			description: "Send a chat message.",
-			contexts: ["calendar" as AgentContext],
-		});
-		const runtime = makeRuntime({
-			actions: [calendar, chat],
-			responses: [
-				stage1Response({ contexts: ["calendar"] }),
-				plannerToolResponse("CALENDAR"),
-				finishEvaluatorResponse("Calendar checked."),
-			],
-		});
-
-		await runV5MessageRuntimeStage1({
-			runtime,
-			message: makeMessage("calendar"),
-			state: makeState(),
-			responseId: RESPONSE_ID,
-		});
-
-		const prompt = plannerUserContent(runtime);
-		expect(prompt).toContain("CALENDAR");
 		expect(prompt).toContain("CHAT_MESSAGE");
 	});
 

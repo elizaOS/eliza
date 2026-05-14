@@ -255,7 +255,7 @@ const TIER_SPECS: Readonly<Record<Eliza1TierId, TierSpec>> = {
     hasVision: true,
     // WS3: 9B is the boundary tier where Z-Image-Turbo Q4_K_M (~3.4 GB)
     // becomes the default. FLUX.1 schnell remains opt-in for >=24 GB
-    // unified RAM / >=12 GB VRAM.
+    // shared RAM / >=12 GB VRAM.
     hasImageGen: true,
   },
   "eliza-1-27b": {
@@ -376,7 +376,7 @@ export type OmniVoiceQuantLevel =
 /**
  * Default OmniVoice K-quant the runtime picks per tier when no
  * device-class override applies. Mobile-class tiers (0_8b/2b/4b) default
- * to Q4_K_M (~4.5 bits/weight, the canonical sweet spot for llama.cpp /
+ * to Q4_K_M (~4.5 bits/weight, the common sweet spot for llama.cpp /
  * Ollama / LM Studio). Desktop / workstation tiers default to Q8_0 (≈8
  * bits/weight, near-bf16 quality) because RAM headroom permits it.
  */

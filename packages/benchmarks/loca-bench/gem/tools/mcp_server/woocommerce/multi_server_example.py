@@ -172,7 +172,7 @@ async def example_business_workflow():
     print("  - Checking inventory (WooCommerce)")
     print("  - Analytics queries (Google Cloud BigQuery)")
     print("  - Email notifications (Email server)")
-    print("  - All in one unified tool interface!")
+    print("  - All in one tool interface!")
     print("=" * 70)
 
 

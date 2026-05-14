@@ -10,7 +10,6 @@ from __future__ import annotations
 import io
 import json
 from typing import Any
-from unittest.mock import patch
 from urllib.error import HTTPError
 
 import pytest
@@ -110,14 +109,13 @@ def _make_http_error(status: int, *, retry_after: str | None = None) -> HTTPErro
     headers: dict[str, str] = {}
     if retry_after is not None:
         headers["Retry-After"] = retry_after
-    err = HTTPError(
+    return HTTPError(
         url="https://api.cerebras.ai/v1/chat/completions",
         code=status,
         msg=f"HTTP {status}",
         hdrs=headers,  # type: ignore[arg-type] - hdrs accepts dict-like
         fp=io.BytesIO(body),
     )
-    return err
 
 
 @pytest.fixture

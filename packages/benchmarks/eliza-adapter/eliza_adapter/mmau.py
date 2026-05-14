@@ -7,9 +7,9 @@ import os
 import time
 from typing import Any
 
-from benchmarks.mmau.agent import format_mcq_prompt
-from benchmarks.mmau.evaluator import choice_letters, extract_answer_letter
-from benchmarks.mmau.types import MMAUConfig, MMAUPrediction, MMAUSample
+from elizaos_mmau_audio.agent import format_mcq_prompt
+from elizaos_mmau_audio.evaluator import choice_letters, extract_answer_letter
+from elizaos_mmau_audio.types import MMAUConfig, MMAUPrediction, MMAUSample
 
 
 _GROQ_BASE_URL = "https://api.groq.com/openai/v1"

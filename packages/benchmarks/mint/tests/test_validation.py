@@ -1,6 +1,5 @@
 """Tests for input validation across MINT benchmark components."""
 
-import pytest
 
 from benchmarks.mint.types import MINTConfig, MINTSubtask, MINTTask
 from benchmarks.mint.agent import MINTAgent

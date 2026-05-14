@@ -1,18 +1,16 @@
-import type { Route } from "@elizaos/core";
+import type { LegacyRouteHandler, Route } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { SOLANA_WALLET_DATA_CACHE_KEY } from "../constants";
 import type { SolanaService } from "../service";
 import type { ApiError, ApiResponse, WalletPortfolio } from "../types";
 
-type RouteHandler = NonNullable<Route["handler"]>;
-
-function sendSuccess<T>(res: Parameters<RouteHandler>[1], data: T, status = 200): void {
+function sendSuccess<T>(res: Parameters<LegacyRouteHandler>[1], data: T, status = 200): void {
   const response: ApiResponse<T> = { success: true, data };
   res.status(status).json(response);
 }
 
 function sendError(
-  res: Parameters<RouteHandler>[1],
+  res: Parameters<LegacyRouteHandler>[1],
   status: number,
   code: string,
   message: string,
@@ -23,7 +21,7 @@ function sendError(
   res.status(status).json(response);
 }
 
-const getWalletAddressHandler: RouteHandler = async (_req, res, runtime) => {
+const getWalletAddressHandler: LegacyRouteHandler = async (_req, res, runtime) => {
   const solanaService = runtime.getService<SolanaService>("chain_solana");
 
   if (!solanaService) {
@@ -49,7 +47,7 @@ const getWalletAddressHandler: RouteHandler = async (_req, res, runtime) => {
   }
 };
 
-const getWalletBalanceHandler: RouteHandler = async (_req, res, runtime) => {
+const getWalletBalanceHandler: LegacyRouteHandler = async (_req, res, runtime) => {
   const solanaService = runtime.getService<SolanaService>("chain_solana");
 
   if (!solanaService) {
@@ -81,7 +79,7 @@ const getWalletBalanceHandler: RouteHandler = async (_req, res, runtime) => {
   }
 };
 
-const getTokenBalanceHandler: RouteHandler = async (req, res, runtime) => {
+const getTokenBalanceHandler: LegacyRouteHandler = async (req, res, runtime) => {
   const token = req.params?.token;
   const solanaService = runtime.getService<SolanaService>("chain_solana");
 
@@ -132,7 +130,7 @@ const getTokenBalanceHandler: RouteHandler = async (req, res, runtime) => {
   }
 };
 
-const getWalletPortfolioHandler: RouteHandler = async (_req, res, runtime) => {
+const getWalletPortfolioHandler: LegacyRouteHandler = async (_req, res, runtime) => {
   const solanaService = runtime.getService<SolanaService>("chain_solana");
 
   if (!solanaService) {
@@ -202,7 +200,7 @@ const getWalletPortfolioHandler: RouteHandler = async (_req, res, runtime) => {
   }
 };
 
-const getWalletTokensHandler: RouteHandler = async (_req, res, runtime) => {
+const getWalletTokensHandler: LegacyRouteHandler = async (_req, res, runtime) => {
   const solanaService = runtime.getService<SolanaService>("chain_solana");
 
   if (!solanaService) {

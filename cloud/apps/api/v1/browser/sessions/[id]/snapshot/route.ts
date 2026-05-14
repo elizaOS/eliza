@@ -1,17 +1,13 @@
 import { Hono } from "hono";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { getErrorStatusCode, getSafeErrorMessage } from "@/lib/api/errors";
-import { nextStyleParams } from "@/lib/api/hono-next-style-params";
+import { nextStyleParams, type RouteContext } from "@/lib/api/hono-next-style-params";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { getHostedBrowserSnapshot, logHostedBrowserFailure } from "@/lib/services/browser-tools";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
-type RouteContext = {
-  params: Promise<{ id: string }>;
-};
-
-async function handleGET(request: Request, context: RouteContext) {
+async function handleGET(request: Request, context: RouteContext<{ id: string }>) {
   try {
     const authResult = await requireAuthOrApiKeyWithOrg(request);
     const { id } = await context.params;

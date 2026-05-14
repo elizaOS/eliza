@@ -31,7 +31,7 @@ export const toggleSkillAction = {
 		"DEACTIVATE_SKILL",
 	],
 	description:
-		"Enable or disable an installed skill. Say 'enable <skill>' or 'disable <skill>'.",
+		"Enable/disable installed skill.",
 	descriptionCompressed: "Enable/disable installed skill.",
 	parameters: [
 		{
@@ -42,7 +42,7 @@ export const toggleSkillAction = {
 		},
 		{
 			name: "enabled",
-			description: "Whether to enable true or disable false the skill.",
+			description: "true enables; false disables.",
 			required: false,
 			schema: { type: "boolean" },
 		},

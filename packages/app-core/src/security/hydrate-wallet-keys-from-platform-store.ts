@@ -15,7 +15,7 @@ const WALLET_VAULT_KEYS: ReadonlyArray<string> = [
 
 /**
  * Steward-only env vars (non-wallet) that still ride the OS keystore. They
- * never moved into the unified vault because the steward backend has its
+ * never moved into the wallet vault because the steward backend has its
  * own auth model — leave them on the keystore-only path.
  */
 const STEWARD_OS_PAIRS: ReadonlyArray<
@@ -73,7 +73,7 @@ async function migrateOsStoreWalletKeysIntoVault(
  * legacy OS-keystore values into the vault and then proceeds normally.
  *
  * Steward env vars stay on the OS-keystore path — the steward backend's
- * lifecycle is independent of the unified wallet vault.
+ * lifecycle is independent of the wallet vault.
  *
  * Runs before upstream `startApiServer` merges `config.env`, so persisted
  * config only fills gaps that neither vault nor OS keystore supplies.

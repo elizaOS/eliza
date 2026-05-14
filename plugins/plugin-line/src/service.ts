@@ -440,6 +440,11 @@ export class LineService extends Service implements ILineService {
     if (!this.settings) {
       this.settings = this.loadSettings();
     }
+    if (!this.settings.enabled) {
+      this.connected = false;
+      logger.info("LINE service disabled by LINE_ENABLED=false");
+      return;
+    }
     this.validateSettings();
 
     // Initialize LINE client

@@ -126,8 +126,8 @@ export const shellAction: Action = {
   contextGate: { anyOf: ["code", "terminal", "automation"] },
   similes: ["EXEC", "RUN_COMMAND"],
   description:
-    "Canonical shell action. action=run executes a shell command via the configured local shell. action=clear_history clears recorded shell command history for this conversation. action=view_history returns recent recorded shell commands. command is required only for action=run. Paths under the configured blocklist are off-limits as cwd.",
-  descriptionCompressed: "Run shell commands or manage shell command history.",
+    "Shell action. action=run executes command via local shell. action=clear_history clears conversation command history. action=view_history returns recent commands. command required only for run. Blocklisted paths off-limits as cwd.",
+  descriptionCompressed: "Run shell commands; clear/view shell history.",
   parameters: [
     {
       name: "action",
@@ -141,13 +141,13 @@ export const shellAction: Action = {
     {
       name: "command",
       description:
-        "Shell command to run for action=run; executed via /bin/bash -c <command>.",
+        "For action=run: shell command, executed via /bin/bash -c.",
       required: false,
       schema: { type: "string" },
     },
     {
       name: "description",
-      description: "Five to ten word humanly-readable summary of the command.",
+      description: "5-10 word human-readable command summary.",
       required: false,
       schema: { type: "string" },
     },
@@ -161,14 +161,14 @@ export const shellAction: Action = {
     {
       name: "cwd",
       description:
-        "Absolute working directory; must not resolve under a blocked path. Defaults to the session cwd.",
+        "Absolute cwd; must not resolve under blocked path. Default session cwd.",
       required: false,
       schema: { type: "string" },
     },
     {
       name: "limit",
       description:
-        "For action=view_history: maximum number of recorded commands to return.",
+        "For action=view_history: max recorded commands.",
       required: false,
       schema: { type: "number" },
     },

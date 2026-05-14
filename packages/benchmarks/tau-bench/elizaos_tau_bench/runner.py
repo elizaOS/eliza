@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import time
 from pathlib import Path
 from typing import Optional
@@ -29,7 +28,6 @@ from elizaos_tau_bench.types import (
     BenchmarkReport,
     DomainName,
     PassKResult,
-    RESPOND_ACTION_NAME,
     Task,
     TaskRunResult,
     TauBenchConfig,

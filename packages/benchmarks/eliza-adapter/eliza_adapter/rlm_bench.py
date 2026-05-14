@@ -20,9 +20,7 @@ from eliza_adapter.client import ElizaClient
 if TYPE_CHECKING:
     from elizaos_rlm_bench.types import (
         RLMBenchConfig,
-        RLMBenchResult,
         RLMBenchResults,
-        RLMBenchTask,
     )
 
 

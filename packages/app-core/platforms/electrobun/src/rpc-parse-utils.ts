@@ -11,6 +11,16 @@ export function nullableString(value: unknown): string | null | undefined {
 	return typeof value === "string" ? value : undefined;
 }
 
+export function parseStringArray(value: unknown): string[] | null {
+	if (!Array.isArray(value)) return null;
+	const output: string[] = [];
+	for (const entry of value) {
+		if (typeof entry !== "string") return null;
+		output.push(entry);
+	}
+	return output;
+}
+
 export function optionalString(value: unknown): string | undefined | false {
 	if (value === undefined) return undefined;
 	return typeof value === "string" ? value : false;

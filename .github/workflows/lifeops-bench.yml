@@ -1,6 +1,6 @@
 # LifeOps Multi-Agent Benchmark Gate
 #
-# Runs the unified `bun run lifeops:full` runner per agent (eliza, hermes,
+# Runs the `bun run lifeops:full` runner per agent (eliza, hermes,
 # openclaw) on every PR that touches the lifeops surface area. Mockoon is
 # spun up by the runner itself; Cerebras gpt-oss-120b is the eval/judge.
 #

@@ -22,14 +22,12 @@ from eliza_lifeops_bench.scorer import (
     _is_read_with_side_effects_action,
     _kwargs_match,
     compare_actions,
-    compile_benchmark_result,
     output_substring_match,
     score_scenario,
 )
 from eliza_lifeops_bench.types import (
     Action,
     Domain,
-    FirstQuestionFallback,
     MessageTurn,
     Persona,
     Scenario,

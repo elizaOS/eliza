@@ -6,7 +6,6 @@ Initializes the Calendar database with an empty events file or sample events.
 
 import json
 import os
-from datetime import datetime, timezone
 from typing import Dict, Any, List
 
 

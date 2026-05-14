@@ -50,18 +50,11 @@ export function createVault(opts: CreateVaultOptions = {}): Vault {
   const auditPath = join(root, "audit", "vault.jsonl");
   const masterKey = opts.masterKey ?? defaultMasterKey();
 
-  // Backend selection. Default: PGlite (consolidates state into the same
-  // database surface used by conversations/plugins). Set
-  // `ELIZA_VAULT_BACKEND=file` (or legacy `ELIZA_VAULT_BACKEND=file`) to
-  // keep the legacy file-backed VaultImpl. The PGlite backend
-  // automatically migrates from `vault.json` on first construction if the
-  // table is empty and the file exists; legacy file is retained one
-  // release as a safety net.
-  const backend = (
-    process.env.ELIZA_VAULT_BACKEND ??
-    process.env.ELIZA_VAULT_BACKEND ??
-    "pglite"
-  ).toLowerCase();
+  // Backend selection. Default: PGlite. Set `ELIZA_VAULT_BACKEND=file`
+  // or `json` to keep the legacy file-backed VaultImpl. The PGlite
+  // backend migrates from `vault.json` on first construction when the
+  // table is empty.
+  const backend = (process.env.ELIZA_VAULT_BACKEND ?? "pglite").toLowerCase();
   if (backend === "file" || backend === "json") {
     return new VaultImpl(storePath, auditPath, masterKey, opts.logger);
   }

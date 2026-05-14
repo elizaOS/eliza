@@ -127,10 +127,11 @@ function renderState(
   refs.syncButton.disabled = state.syncing;
 }
 
-async function applyDiscoveredApiBaseUrl(
+function applyDiscoveredApiBaseUrl(
   refs: FormRefs,
   state: BackgroundState,
-): Promise<void> {
+  discovered: string | null,
+): void {
   const configured = state.config?.apiBaseUrl?.trim() ?? "";
   if (
     configured.length > 0 &&
@@ -138,7 +139,6 @@ async function applyDiscoveredApiBaseUrl(
   ) {
     return;
   }
-  const discovered = await discoverAgentApiBaseUrl();
   if (!discovered) {
     return;
   }
@@ -151,11 +151,7 @@ async function renderResolvedState(
 ): Promise<void> {
   const discoveredApiBaseUrl = await discoverAgentApiBaseUrl();
   renderState(refs, state, discoveredApiBaseUrl);
-  if (discoveredApiBaseUrl) {
-    refs.apiBaseUrl.value = discoveredApiBaseUrl;
-  } else {
-    await applyDiscoveredApiBaseUrl(refs, state);
-  }
+  applyDiscoveredApiBaseUrl(refs, state, discoveredApiBaseUrl);
 }
 
 async function sendMessage<T extends PopupRequest>(

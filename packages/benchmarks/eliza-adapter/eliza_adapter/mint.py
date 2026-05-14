@@ -17,7 +17,7 @@ from __future__ import annotations
 import logging
 import os
 import time
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 from eliza_adapter.client import ElizaClient
 

@@ -67,6 +67,12 @@ interface LocalPackageJson {
   elizaos?: LocalPackageElizaConfig;
 }
 
+type LocalPluginPackageJson = LocalPackageJson & {
+  packageType?: string;
+  keywords?: string[];
+  agentConfig?: Record<string, unknown>;
+};
+
 interface LocalPluginManifest {
   id?: string;
   name?: string;
@@ -204,6 +210,24 @@ function normalizeLocalTags(values: unknown): string[] {
     tags.push(normalized);
   }
   return tags;
+}
+
+function isLocalPluginPackage(packageJson: LocalPluginPackageJson): boolean {
+  return (
+    packageJson.packageType === "plugin" ||
+    packageJson.keywords?.includes("elizaos") ||
+    packageJson.elizaos !== undefined ||
+    packageJson.agentConfig !== undefined
+  );
+}
+
+async function resolveLocalPackagePath(packageDir: string): Promise<string> {
+  try {
+    const realPath = await fs.realpath(packageDir);
+    return realPath !== packageDir ? realPath : packageDir;
+  } catch {
+    return packageDir;
+  }
 }
 
 function toLocalAppMeta(
@@ -547,34 +571,18 @@ async function discoverNodeModulePlugins(): Promise<
       if (!entry.isDirectory() && !entry.isSymbolicLink()) continue;
 
       const packageDir = path.join(elizaosDir, entry.name);
-      const packageJson = await readJsonFile<
-        LocalPackageJson & {
-          packageType?: string;
-          keywords?: string[];
-          agentConfig?: Record<string, unknown>;
-        }
-      >(path.join(packageDir, "package.json"));
+      const packageJson = await readJsonFile<LocalPluginPackageJson>(
+        path.join(packageDir, "package.json"),
+      );
       if (!packageJson?.name) continue;
 
-      const isPlugin =
-        packageJson.packageType === "plugin" ||
-        packageJson.keywords?.includes("elizaos") ||
-        packageJson.elizaos !== undefined ||
-        packageJson.agentConfig !== undefined;
-      if (!isPlugin) continue;
+      if (!isLocalPluginPackage(packageJson)) continue;
 
       if (packageJson.elizaos?.kind === "app") continue;
 
       const repo = parseRepositoryMetadata(packageJson.repository);
       const version = packageJson.version ?? null;
-
-      let localPath = packageDir;
-      try {
-        const realPath = await fs.realpath(packageDir);
-        if (realPath !== packageDir) localPath = realPath;
-      } catch {
-        // fallback
-      }
+      const localPath = await resolveLocalPackagePath(packageDir);
 
       discovered.set(packageJson.name, {
         name: packageJson.name,
@@ -622,34 +630,18 @@ async function discoverPackagesFolderPlugins(): Promise<
       if (!entry.isDirectory() && !entry.isSymbolicLink()) continue;
 
       const packageDir = path.join(packagesDir, entry.name);
-      const packageJson = await readJsonFile<
-        LocalPackageJson & {
-          packageType?: string;
-          keywords?: string[];
-          agentConfig?: Record<string, unknown>;
-        }
-      >(path.join(packageDir, "package.json"));
+      const packageJson = await readJsonFile<LocalPluginPackageJson>(
+        path.join(packageDir, "package.json"),
+      );
       if (!packageJson?.name) continue;
 
-      const isPlugin =
-        packageJson.packageType === "plugin" ||
-        packageJson.keywords?.includes("elizaos") ||
-        packageJson.elizaos !== undefined ||
-        packageJson.agentConfig !== undefined;
-      if (!isPlugin) continue;
+      if (!isLocalPluginPackage(packageJson)) continue;
       if (packageJson.elizaos?.kind === "app") continue;
       if (!packageJson.name.startsWith("@elizaos/plugin-")) continue;
 
       const repo = parseRepositoryMetadata(packageJson.repository);
       const version = packageJson.version ?? null;
-
-      let localPath = packageDir;
-      try {
-        const realPath = await fs.realpath(packageDir);
-        if (realPath !== packageDir) localPath = realPath;
-      } catch {
-        // fallback
-      }
+      const localPath = await resolveLocalPackagePath(packageDir);
 
       discovered.set(packageJson.name, {
         name: packageJson.name,

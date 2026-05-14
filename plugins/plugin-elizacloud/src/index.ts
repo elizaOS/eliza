@@ -1,4 +1,4 @@
-import type { IAgentRuntime, Plugin } from "@elizaos/core";
+import type { IAgentRuntime, Plugin, ProcessEnvLike } from "@elizaos/core";
 import { logger, ModelType } from "@elizaos/core";
 // Cloud providers
 import { cloudStatusProvider } from "./cloud-providers/cloud-status";
@@ -37,8 +37,6 @@ const TEXT_MEDIUM_MODEL_TYPE = (ModelType.TEXT_MEDIUM ?? "TEXT_MEDIUM") as strin
 const TEXT_MEGA_MODEL_TYPE = (ModelType.TEXT_MEGA ?? "TEXT_MEGA") as string;
 const RESPONSE_HANDLER_MODEL_TYPE = (ModelType.RESPONSE_HANDLER ?? "RESPONSE_HANDLER") as string;
 const ACTION_PLANNER_MODEL_TYPE = (ModelType.ACTION_PLANNER ?? "ACTION_PLANNER") as string;
-
-type ProcessEnvLike = Record<string, string | undefined>;
 
 function getProcessEnv(): ProcessEnvLike {
   if (typeof process === "undefined") {
@@ -389,6 +387,11 @@ export {
   normalizeCloudSiteUrl,
   resolveCloudApiBaseUrl,
 } from "./cloud/base-url";
+export {
+  isCloudAuthApiKeyService,
+  normalizeCloudApiKey,
+  type CloudAuthApiKeyService,
+} from "./cloud/auth-service-types";
 export { validateCloudBaseUrl } from "./cloud/validate-url";
 export * from "./plugin";
 export * from "./register-routes";

@@ -1,7 +1,7 @@
 /**
  * @module features/plugin-manager/actions/plugin-handlers/list
  *
- * `list` sub-mode of the unified PLUGIN action. Reports the loaded
+ * `list` sub-mode of the PLUGIN action. Reports the loaded
  * plugins in the runtime as tracked by PluginManagerService.
  */
 

@@ -7,6 +7,7 @@ import {
 	Service,
 	type UUID,
 } from "../../../types/index.ts";
+import { isObjectRecord as isRecord } from "../../../utils/type-guards.ts";
 import { stringToUuid } from "../../../utils.ts";
 
 import {
@@ -44,10 +45,6 @@ const DEFAULT_CONFIG: TrustCalculationConfig = {
 const TRUST_EVIDENCE_TYPE_VALUES = new Set<string>(
 	Object.values(TrustEvidenceType),
 );
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return value !== null && typeof value === "object" && !Array.isArray(value);
-}
 
 function isTrustEvidenceType(value: unknown): value is TrustEvidenceType {
 	return typeof value === "string" && TRUST_EVIDENCE_TYPE_VALUES.has(value);

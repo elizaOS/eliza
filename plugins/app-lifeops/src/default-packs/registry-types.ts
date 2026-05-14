@@ -34,8 +34,8 @@ export interface DefaultPack {
    * If `false`, the pack is offered at customize time only.
    */
   defaultEnabled: boolean;
-  /** Optional capability gate; pack is offered only if registry has all of these. */
-  requiredCapabilities?: string[];
+  /** Capability gate; pack is offered only if registry has all of these. */
+  requiredCapabilities: string[];
   /** ScheduledTask seeds (no `taskId`, no `state`). */
   records: ScheduledTaskSeed[];
   /** Anchor consolidation policies the pack contributes. */

@@ -17,7 +17,6 @@ from benchmarks.bfcl.types import (
     BaselineScore,
     CategoryMetrics,
     LEADERBOARD_SCORES,
-    TestStatus,
 )
 
 logger = logging.getLogger(__name__)

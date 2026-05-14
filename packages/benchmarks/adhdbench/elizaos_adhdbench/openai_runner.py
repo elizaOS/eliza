@@ -40,7 +40,6 @@ from elizaos_adhdbench.types import (
     ScalingCurvePoint,
     Scenario,
     ScenarioResult,
-    Turn,
     TurnResult,
 )
 
@@ -301,7 +300,7 @@ class OpenAICompatibleADHDBenchRunner:
         config_name: str,
         action_names: list[str],
     ) -> ScenarioResult:
-        valid_actions = {n.upper() for n in action_names}
+        {n.upper() for n in action_names}
         turn_results: list[TurnResult] = []
         prefill = list(itertools.islice(itertools.cycle(self.config.prefill_topic_pool), scale.conversation_prefill))
         history: list[dict[str, str]] = [{"role": "user", "content": p} for p in prefill]

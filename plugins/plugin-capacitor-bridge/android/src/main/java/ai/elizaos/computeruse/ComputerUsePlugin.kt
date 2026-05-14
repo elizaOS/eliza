@@ -194,6 +194,25 @@ class ComputerUsePlugin : Plugin() {
         call.resolve(JSObject().apply { put("ok", ok) })
     }
 
+    @PluginMethod
+    fun setText(call: PluginCall) {
+        val svc = MiladyAccessibilityService.instance
+        if (svc == null) {
+            call.resolve(err("accessibility_unavailable", "MiladyAccessibilityService not running"))
+            return
+        }
+        val text = call.getString("text")
+        if (text == null) {
+            call.resolve(err("invalid_argument", "setText requires a text string"))
+            return
+        }
+        val ok = svc.setFocusedEditableText(text)
+        call.resolve(JSObject().apply {
+            put("ok", true)
+            put("data", JSObject().apply { put("ok", ok) })
+        })
+    }
+
     // ── UsageStats / app enumeration ──────────────────────────────────────────
 
     @PluginMethod

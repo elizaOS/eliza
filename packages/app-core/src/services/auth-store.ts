@@ -9,16 +9,73 @@
  * path must NEVER swallow a DB error and pretend a request was authenticated.
  */
 
-import type { DrizzleDatabase } from "@elizaos/plugin-sql";
-import {
-  authAuditEventTable,
-  authBootstrapJtiSeenTable,
-  authIdentityTable,
-  authOwnerBindingTable,
-  authOwnerLoginTokenTable,
-  authSessionTable,
-} from "@elizaos/plugin-sql";
 import { and, desc, eq, isNull, lte, ne } from "drizzle-orm";
+
+type AuthSqlColumn = Parameters<typeof eq>[0];
+type AuthSqlTable = Record<string, AuthSqlColumn>;
+type AuthSqlRow = Record<string, unknown>;
+
+interface AuthSqlReturningBuilder {
+  returning(): Promise<AuthSqlRow[]>;
+}
+
+interface AuthSqlInsertBuilder extends AuthSqlReturningBuilder {
+  values(value: unknown): AuthSqlInsertBuilder;
+  onConflictDoNothing(config: unknown): AuthSqlReturningBuilder;
+}
+
+interface AuthSqlLimitedSelectBuilder {
+  limit(limit: number): Promise<AuthSqlRow[]>;
+}
+
+interface AuthSqlOrderedSelectBuilder {
+  orderBy(order: unknown): Promise<AuthSqlRow[]>;
+}
+
+interface AuthSqlWhereSelectBuilder
+  extends AuthSqlLimitedSelectBuilder,
+    AuthSqlOrderedSelectBuilder {}
+
+interface AuthSqlFromSelectBuilder {
+  where(condition: unknown): AuthSqlWhereSelectBuilder;
+}
+
+interface AuthSqlSelectBuilder {
+  from(table: unknown): AuthSqlFromSelectBuilder;
+}
+
+interface AuthSqlUpdateBuilder {
+  set(value: unknown): { where(condition: unknown): Promise<unknown> };
+}
+
+interface AuthSqlDeleteBuilder {
+  where(condition: unknown): Promise<unknown>;
+}
+
+export interface DrizzleDatabase {
+  insert(table: unknown): AuthSqlInsertBuilder;
+  select(selection?: unknown): AuthSqlSelectBuilder;
+  update(table: unknown): AuthSqlUpdateBuilder;
+  delete(table: unknown): AuthSqlDeleteBuilder;
+}
+
+interface AuthSqlTables {
+  authAuditEventTable: AuthSqlTable;
+  authBootstrapJtiSeenTable: AuthSqlTable;
+  authIdentityTable: AuthSqlTable;
+  authOwnerBindingTable: AuthSqlTable;
+  authOwnerLoginTokenTable: AuthSqlTable;
+  authSessionTable: AuthSqlTable;
+}
+
+let authSqlTablesPromise: Promise<AuthSqlTables> | undefined;
+
+async function getAuthSqlTables(): Promise<AuthSqlTables> {
+  authSqlTablesPromise ??= import(
+    "@elizaos/plugin-sql"
+  ) as unknown as Promise<AuthSqlTables>;
+  return authSqlTablesPromise;
+}
 
 export interface AuthIdentityRow {
   id: string;
@@ -124,33 +181,29 @@ function nullableString(value: string | null | undefined): string | null {
   return value === undefined ? null : value;
 }
 
-function rowToIdentity(
-  row: typeof authIdentityTable.$inferSelect,
-): AuthIdentityRow {
+function rowToIdentity(row: AuthSqlRow): AuthIdentityRow {
   return {
-    id: row.id,
+    id: String(row.id),
     kind: row.kind === "machine" ? "machine" : "owner",
-    displayName: row.displayName,
+    displayName: String(row.displayName),
     createdAt: Number(row.createdAt),
-    passwordHash: row.passwordHash ?? null,
-    cloudUserId: row.cloudUserId ?? null,
+    passwordHash: nullableString(row.passwordHash as string | null | undefined),
+    cloudUserId: nullableString(row.cloudUserId as string | null | undefined),
   };
 }
 
-function rowToSession(
-  row: typeof authSessionTable.$inferSelect,
-): AuthSessionRow {
+function rowToSession(row: AuthSqlRow): AuthSessionRow {
   return {
-    id: row.id,
-    identityId: row.identityId,
+    id: String(row.id),
+    identityId: String(row.identityId),
     kind: row.kind === "machine" ? "machine" : "browser",
     createdAt: Number(row.createdAt),
     lastSeenAt: Number(row.lastSeenAt),
     expiresAt: Number(row.expiresAt),
-    rememberDevice: row.rememberDevice,
-    csrfSecret: row.csrfSecret,
-    ip: row.ip ?? null,
-    userAgent: row.userAgent ?? null,
+    rememberDevice: Boolean(row.rememberDevice),
+    csrfSecret: String(row.csrfSecret),
+    ip: nullableString(row.ip as string | null | undefined),
+    userAgent: nullableString(row.userAgent as string | null | undefined),
     scopes: Array.isArray(row.scopes) ? row.scopes : [],
     revokedAt:
       row.revokedAt === null || row.revokedAt === undefined
@@ -163,6 +216,7 @@ export class AuthStore {
   constructor(private readonly db: DrizzleDatabase) {}
 
   async createIdentity(input: CreateIdentityInput): Promise<AuthIdentityRow> {
+    const { authIdentityTable } = await getAuthSqlTables();
     const inserted = await this.db
       .insert(authIdentityTable)
       .values({
@@ -182,6 +236,7 @@ export class AuthStore {
   }
 
   async findIdentity(id: string): Promise<AuthIdentityRow | null> {
+    const { authIdentityTable } = await getAuthSqlTables();
     const rows = await this.db
       .select()
       .from(authIdentityTable)
@@ -194,6 +249,7 @@ export class AuthStore {
   async findIdentityByCloudUserId(
     cloudUserId: string,
   ): Promise<AuthIdentityRow | null> {
+    const { authIdentityTable } = await getAuthSqlTables();
     const rows = await this.db
       .select()
       .from(authIdentityTable)
@@ -206,6 +262,7 @@ export class AuthStore {
   async findIdentityByDisplayName(
     displayName: string,
   ): Promise<AuthIdentityRow | null> {
+    const { authIdentityTable } = await getAuthSqlTables();
     const rows = await this.db
       .select()
       .from(authIdentityTable)
@@ -219,6 +276,7 @@ export class AuthStore {
     id: string,
     passwordHash: string,
   ): Promise<void> {
+    const { authIdentityTable } = await getAuthSqlTables();
     await this.db
       .update(authIdentityTable)
       .set({ passwordHash })
@@ -228,6 +286,7 @@ export class AuthStore {
   async listIdentitiesByKind(
     kind: "owner" | "machine",
   ): Promise<AuthIdentityRow[]> {
+    const { authIdentityTable } = await getAuthSqlTables();
     const rows = await this.db
       .select()
       .from(authIdentityTable)
@@ -236,6 +295,7 @@ export class AuthStore {
   }
 
   async hasOwnerIdentity(): Promise<boolean> {
+    const { authIdentityTable } = await getAuthSqlTables();
     const rows = await this.db
       .select({ id: authIdentityTable.id })
       .from(authIdentityTable)
@@ -245,6 +305,7 @@ export class AuthStore {
   }
 
   async createSession(input: CreateSessionInput): Promise<AuthSessionRow> {
+    const { authSessionTable } = await getAuthSqlTables();
     const inserted = await this.db
       .insert(authSessionTable)
       .values({
@@ -277,6 +338,7 @@ export class AuthStore {
     id: string,
     now: number = Date.now(),
   ): Promise<AuthSessionRow | null> {
+    const { authSessionTable } = await getAuthSqlTables();
     const rows = await this.db
       .select()
       .from(authSessionTable)
@@ -291,6 +353,7 @@ export class AuthStore {
   }
 
   async revokeSession(id: string, now: number = Date.now()): Promise<boolean> {
+    const { authSessionTable } = await getAuthSqlTables();
     const result = await this.db
       .update(authSessionTable)
       .set({ revokedAt: now })
@@ -311,6 +374,7 @@ export class AuthStore {
     lastSeenAt: number,
     expiresAt: number,
   ): Promise<void> {
+    const { authSessionTable } = await getAuthSqlTables();
     await this.db
       .update(authSessionTable)
       .set({ lastSeenAt, expiresAt })
@@ -329,6 +393,7 @@ export class AuthStore {
     now: number = Date.now(),
     exceptSessionId?: string,
   ): Promise<number> {
+    const { authSessionTable } = await getAuthSqlTables();
     const condition = exceptSessionId
       ? and(
           eq(authSessionTable.identityId, identityId),
@@ -354,6 +419,7 @@ export class AuthStore {
     identityId: string,
     now: number = Date.now(),
   ): Promise<AuthSessionRow[]> {
+    const { authSessionTable } = await getAuthSqlTables();
     const rows = await this.db
       .select()
       .from(authSessionTable)
@@ -379,6 +445,7 @@ export class AuthStore {
    * round trip and there is no TOCTOU window.
    */
   async recordJtiSeen(jti: string, now: number = Date.now()): Promise<boolean> {
+    const { authBootstrapJtiSeenTable } = await getAuthSqlTables();
     const inserted = await this.db
       .insert(authBootstrapJtiSeenTable)
       .values({ jti, seenAt: now })
@@ -388,6 +455,7 @@ export class AuthStore {
   }
 
   async pruneJtiSeenBefore(thresholdTs: number): Promise<void> {
+    const { authBootstrapJtiSeenTable } = await getAuthSqlTables();
     await this.db
       .delete(authBootstrapJtiSeenTable)
       .where(lte(authBootstrapJtiSeenTable.seenAt, thresholdTs));
@@ -396,6 +464,7 @@ export class AuthStore {
   async appendAuditEvent(
     input: AppendAuditEventInput,
   ): Promise<AuthAuditEventRow> {
+    const { authAuditEventTable } = await getAuthSqlTables();
     const inserted = await this.db
       .insert(authAuditEventTable)
       .values({
@@ -414,12 +483,14 @@ export class AuthStore {
       throw new Error("auth-store: appendAuditEvent returned no row");
     }
     return {
-      id: row.id,
+      id: String(row.id),
       ts: Number(row.ts),
-      actorIdentityId: row.actorIdentityId ?? null,
-      ip: row.ip ?? null,
-      userAgent: row.userAgent ?? null,
-      action: row.action,
+      actorIdentityId: nullableString(
+        row.actorIdentityId as string | null | undefined,
+      ),
+      ip: nullableString(row.ip as string | null | undefined),
+      userAgent: nullableString(row.userAgent as string | null | undefined),
+      action: String(row.action),
       outcome: row.outcome === "failure" ? "failure" : "success",
       metadata: (row.metadata ?? {}) as Record<
         string,
@@ -439,6 +510,7 @@ export class AuthStore {
     pendingCodeHash?: string | null;
     pendingExpiresAt?: number | null;
   }): Promise<void> {
+    const { authOwnerBindingTable } = await getAuthSqlTables();
     await this.db.insert(authOwnerBindingTable).values({
       id: input.id,
       identityId: input.identityId,
@@ -456,6 +528,7 @@ export class AuthStore {
   }
 
   async findOwnerBinding(id: string): Promise<AuthOwnerBindingRow | null> {
+    const { authOwnerBindingTable } = await getAuthSqlTables();
     const rows = await this.db
       .select()
       .from(authOwnerBindingTable)
@@ -469,6 +542,7 @@ export class AuthStore {
     pendingCodeHash: string,
     instanceId: string,
   ): Promise<AuthOwnerBindingRow | null> {
+    const { authOwnerBindingTable } = await getAuthSqlTables();
     const rows = await this.db
       .select()
       .from(authOwnerBindingTable)
@@ -488,6 +562,7 @@ export class AuthStore {
     externalId: string;
     instanceId: string;
   }): Promise<AuthOwnerBindingRow | null> {
+    const { authOwnerBindingTable } = await getAuthSqlTables();
     const rows = await this.db
       .select()
       .from(authOwnerBindingTable)
@@ -506,6 +581,7 @@ export class AuthStore {
   async listOwnerBindingsForIdentity(
     identityId: string,
   ): Promise<AuthOwnerBindingRow[]> {
+    const { authOwnerBindingTable } = await getAuthSqlTables();
     const rows = await this.db
       .select()
       .from(authOwnerBindingTable)
@@ -519,6 +595,7 @@ export class AuthStore {
     pendingCodeHash: string | null,
     pendingExpiresAt: number | null,
   ): Promise<void> {
+    const { authOwnerBindingTable } = await getAuthSqlTables();
     await this.db
       .update(authOwnerBindingTable)
       .set({ pendingCodeHash, pendingExpiresAt })
@@ -530,6 +607,7 @@ export class AuthStore {
     verifiedAt: number,
     displayHandle: string,
   ): Promise<void> {
+    const { authOwnerBindingTable } = await getAuthSqlTables();
     await this.db
       .update(authOwnerBindingTable)
       .set({
@@ -542,6 +620,7 @@ export class AuthStore {
   }
 
   async deleteOwnerBinding(id: string): Promise<boolean> {
+    const { authOwnerBindingTable } = await getAuthSqlTables();
     const result = await this.db
       .delete(authOwnerBindingTable)
       .where(eq(authOwnerBindingTable.id, id));
@@ -556,6 +635,7 @@ export class AuthStore {
     issuedAt: number;
     expiresAt: number;
   }): Promise<void> {
+    const { authOwnerLoginTokenTable } = await getAuthSqlTables();
     await this.db.insert(authOwnerLoginTokenTable).values({
       tokenHash: input.tokenHash,
       identityId: input.identityId,
@@ -568,6 +648,7 @@ export class AuthStore {
   async findOwnerLoginToken(
     tokenHash: string,
   ): Promise<AuthOwnerLoginTokenRow | null> {
+    const { authOwnerLoginTokenTable } = await getAuthSqlTables();
     const rows = await this.db
       .select()
       .from(authOwnerLoginTokenTable)
@@ -587,6 +668,7 @@ export class AuthStore {
     tokenHash: string,
     now: number,
   ): Promise<boolean> {
+    const { authOwnerLoginTokenTable } = await getAuthSqlTables();
     const result = await this.db
       .update(authOwnerLoginTokenTable)
       .set({ consumedAt: now })
@@ -601,18 +683,18 @@ export class AuthStore {
   }
 }
 
-function rowToOwnerBinding(
-  row: typeof authOwnerBindingTable.$inferSelect,
-): AuthOwnerBindingRow {
+function rowToOwnerBinding(row: AuthSqlRow): AuthOwnerBindingRow {
   return {
-    id: row.id,
-    identityId: row.identityId,
-    connector: row.connector,
-    externalId: row.externalId,
-    displayHandle: row.displayHandle,
-    instanceId: row.instanceId,
+    id: String(row.id),
+    identityId: String(row.identityId),
+    connector: String(row.connector),
+    externalId: String(row.externalId),
+    displayHandle: String(row.displayHandle),
+    instanceId: String(row.instanceId),
     verifiedAt: Number(row.verifiedAt),
-    pendingCodeHash: row.pendingCodeHash ?? null,
+    pendingCodeHash: nullableString(
+      row.pendingCodeHash as string | null | undefined,
+    ),
     pendingExpiresAt:
       row.pendingExpiresAt === null || row.pendingExpiresAt === undefined
         ? null
@@ -620,13 +702,11 @@ function rowToOwnerBinding(
   };
 }
 
-function rowToOwnerLoginToken(
-  row: typeof authOwnerLoginTokenTable.$inferSelect,
-): AuthOwnerLoginTokenRow {
+function rowToOwnerLoginToken(row: AuthSqlRow): AuthOwnerLoginTokenRow {
   return {
-    tokenHash: row.tokenHash,
-    identityId: row.identityId,
-    bindingId: row.bindingId,
+    tokenHash: String(row.tokenHash),
+    identityId: String(row.identityId),
+    bindingId: String(row.bindingId),
     issuedAt: Number(row.issuedAt),
     expiresAt: Number(row.expiresAt),
     consumedAt:

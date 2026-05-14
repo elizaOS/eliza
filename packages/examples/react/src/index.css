@@ -22,7 +22,7 @@ body,
 }
 
 body {
-  font-family: "VT323", "Fira Code", monospace;
+  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
   background: radial-gradient(
     ellipse at center,
     #0d0d0d 0%,

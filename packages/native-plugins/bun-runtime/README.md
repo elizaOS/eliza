@@ -1,7 +1,7 @@
 # @elizaos/capacitor-bun-runtime
 
-Native host package for the iOS local agent runtime work. The current Swift
-implementation can run in two modes:
+Native host package for the local agent runtime. The iOS Swift implementation
+can run in two modes:
 
 - `engine: "auto"` / `engine: "bun"`: dynamically loads the full
   `ElizaBunEngine.framework` from `@elizaos/bun-ios-runtime` when the app was
@@ -13,8 +13,8 @@ implementation can run in two modes:
 The full Bun engine artifact is produced outside this package by the
 `packages/bun-ios-runtime` build harness and an `elizaos/bun` fork.
 
-The Android side is parked for now — the iOS path lands first; a JNI-backed
-implementation will follow under the same JS surface.
+The Android implementation delegates lifecycle and RPC calls to the host app's
+`ElizaAgentService` over its loopback API.
 
 ## Install
 
@@ -22,11 +22,11 @@ implementation will follow under the same JS surface.
 bun add @elizaos/capacitor-bun-runtime
 ```
 
-Capacitor 8 auto-discovers the plugin via the `capacitor.ios` block in
-`package.json`. Re-run `pod install` after adding it so the
-`ElizaosCapacitorBunRuntime` pod links into your iOS workspace. The pod links
-`JavaScriptCore.framework` and `Network.framework`, depends on `Capacitor`, and
-uses `LlamaCppCapacitor` for the native llama.cpp symbols in local builds.
+Capacitor 8 auto-discovers the plugin via the package metadata. Re-run
+`pod install` after adding it so the `ElizaosCapacitorBunRuntime` pod links
+into your iOS workspace. The pod links `JavaScriptCore.framework` and
+`Network.framework`, depends on `Capacitor`, and uses `LlamaCppCapacitor` for
+the native llama.cpp symbols in local builds.
 
 ## Bundle layout
 
@@ -107,7 +107,7 @@ The plugin emits two Capacitor events:
 
 ## Limitations (v1)
 
-- iOS-only. Android falls back to the `WebPlugin` stub.
+- Android requires the host app's `ElizaAgentService` loopback API.
 - Full Bun is only used when `ElizaBunEngine.framework` is embedded. Otherwise
   `engine: "auto"` falls back to the compatibility JSContext host.
 - The full Bun bridge currently buffers HTTP response bodies over stdio. It is

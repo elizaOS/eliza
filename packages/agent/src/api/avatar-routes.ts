@@ -2,11 +2,14 @@ import fs from "node:fs";
 import type http from "node:http";
 import path from "node:path";
 import { readRequestBodyBuffer } from "@elizaos/core";
-import {
-  getDiscordAvatarCacheDir,
-  getDiscordAvatarCachePath,
-} from "@elizaos/plugin-discord";
 import { resolveStateDir } from "../config/paths.ts";
+
+const { getDiscordAvatarCacheDir, getDiscordAvatarCachePath } = (await import(
+  "@elizaos/plugin-discord"
+)) as {
+  getDiscordAvatarCacheDir: () => string;
+  getDiscordAvatarCachePath: (fileName: string) => string;
+};
 
 // ---------------------------------------------------------------------------
 // Types

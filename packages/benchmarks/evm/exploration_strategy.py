@@ -11,7 +11,6 @@ from dataclasses import dataclass, field
 from benchmarks.evm.contract_catalog import (
     get_contracts_for_chain,
     get_total_unique_pairs,
-    ContractInfo,
 )
 from benchmarks.evm.skill_templates import DETERMINISTIC_TEMPLATES, get_template_for_step
 

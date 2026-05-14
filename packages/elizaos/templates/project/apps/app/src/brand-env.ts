@@ -65,10 +65,3 @@ export const APP_ENV_PREFIX = normalizeEnvPrefix(
 
 /** Convenience export consumed by main.tsx boot config. */
 export const APP_ENV_ALIASES = buildBrandEnvAliases(APP_ENV_PREFIX);
-
-/**
- * Backwards-compatible alias for the previous flat constant name. Older
- * imports referenced `ELIZA_ENV_ALIASES`; new code should use
- * `APP_ENV_ALIASES` (prefix-aware).
- */
-export const ELIZA_ENV_ALIASES = APP_ENV_ALIASES;

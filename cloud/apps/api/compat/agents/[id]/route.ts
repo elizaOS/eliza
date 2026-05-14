@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import type { RouteContext } from "@/lib/api/hono-next-style-params";
 
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -24,9 +25,7 @@ import { handleCompatError } from "../../_lib/error-handler";
 
 const CORS_METHODS = "GET, DELETE, OPTIONS";
 
-type RouteParams = { params: Promise<{ id: string }> };
-
-async function __hono_GET(request: Request, { params }: RouteParams) {
+async function __hono_GET(request: Request, { params }: RouteContext<{ id: string }>) {
   try {
     const { user } = await requireCompatAuth(request);
     const { id: agentId } = await params;
@@ -114,7 +113,7 @@ async function deleteDockerBackedAgentViaControlPlane(
   );
 }
 
-async function __hono_DELETE(c: AppContext, { params }: RouteParams) {
+async function __hono_DELETE(c: AppContext, { params }: RouteContext<{ id: string }>) {
   try {
     const { user } = await requireCompatAuth(c.req.raw);
     const { id: agentId } = await params;

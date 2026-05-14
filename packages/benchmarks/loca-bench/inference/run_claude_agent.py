@@ -16,7 +16,6 @@
 
 import json
 import os
-import sys
 import time
 import importlib
 import asyncio
@@ -40,13 +39,12 @@ except ModuleNotFoundError:  # pragma: no cover - only needed for programmatic r
 from dotenv import load_dotenv
 
 # Import Claude Agent SDK
-from claude_agent_sdk import query, ClaudeAgentOptions, ClaudeSDKClient
+from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
 from claude_agent_sdk.types import HookMatcher, SyncHookJSONOutput, HookContext
 
 # Import all potential tools and wrappers
 from gem.tools.mcp_tool import MCPTool
-from gem.tools.mcp_server.programmatic_tool_calling.helper import ProgrammaticToolCallingTool
-from gem.tools.tool_env_wrapper import ToolEnvWrapperClaimDone, ToolEnvWrapperOpenAI
+from gem.tools.tool_env_wrapper import ToolEnvWrapperOpenAI
 from gem.tools.mcp_server.config_loader import build_server_config
 from gem.tools.mcp_server.canvas.helper import get_canvas_stdio_config
 from gem.tools.mcp_server.claim_done.helper import get_claim_done_stdio_config
@@ -1097,7 +1095,7 @@ def normalize_config_for_grouping(config: Dict[str, Any]) -> tuple:
     Configs are considered the same if they differ only in the 'seed' parameter.
     """
     env_params = config.get("env_params", {}).copy()
-    seed = env_params.pop("seed", None)
+    env_params.pop("seed", None)
 
     normalized = {
         "env_class": config.get("env_class"),

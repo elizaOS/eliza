@@ -24,7 +24,6 @@ from elizaos_agentbench import (
     AgentBenchEnvironment,
     BenchmarkSplit,
 )
-from elizaos_agentbench.types import EnvironmentConfig
 from elizaos_agentbench.mock_runtime import SmartMockRuntime
 
 

@@ -69,6 +69,7 @@ export const quietUserWatcherPack: DefaultPack = {
   description:
     "Daily watcher that flags long silences and missed check-ins. Default threshold is 3 days quiet, configurable per-task via metadata.quietThresholdDays. Surfaces observations into the morning brief instead of sending its own notification.",
   defaultEnabled: true,
+  requiredCapabilities: [],
   records: [watcherRecord],
   uiHints: {
     summaryOnDayOne:

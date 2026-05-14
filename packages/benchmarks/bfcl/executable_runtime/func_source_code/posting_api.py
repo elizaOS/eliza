@@ -1,5 +1,5 @@
 from copy import deepcopy
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Union
 
 DEFAULT_STATE = {
     "username": "john",

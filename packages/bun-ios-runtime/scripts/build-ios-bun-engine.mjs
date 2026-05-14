@@ -5,10 +5,10 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+import { argValue, fail, run, runCapture } from "./script-utils.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const packageRoot = path.resolve(__dirname, "..");
-const repoRoot = path.resolve(packageRoot, "..", "..");
 const defaultSourceDir = path.join(packageRoot, "vendor", "bun");
 const defaultArtifact = path.join(
   packageRoot,
@@ -41,40 +41,6 @@ const requiredSymbols = [
 ];
 const allowedExportedSymbols = new Set(requiredSymbols);
 
-function argValue(name, fallback = null) {
-  const prefix = `${name}=`;
-  for (const arg of process.argv.slice(2)) {
-    if (arg === name) return "1";
-    if (arg.startsWith(prefix)) return arg.slice(prefix.length);
-  }
-  return fallback;
-}
-
-function run(command, args, options = {}) {
-  const result = spawnSync(command, args, {
-    cwd: options.cwd ?? repoRoot,
-    env: options.env ?? process.env,
-    stdio: options.stdio ?? "inherit",
-    encoding: options.encoding,
-    maxBuffer: options.maxBuffer,
-  });
-  if (result.status !== 0) {
-    throw new Error(
-      `${command} ${args.join(" ")} failed with ${result.status}`,
-    );
-  }
-  return result;
-}
-
-function runCapture(command, args, options = {}) {
-  return run(command, args, {
-    ...options,
-    stdio: ["ignore", "pipe", "pipe"],
-    encoding: "utf8",
-    maxBuffer: options.maxBuffer ?? 256 * 1024 * 1024,
-  });
-}
-
 function targetInfo(raw) {
   const target = raw === "device" ? "device" : "simulator";
   return target === "device"
@@ -104,11 +70,6 @@ function targetInfo(raw) {
         xcframeworkLibraryIdentifier: "ios-arm64-simulator",
         sourceToolchainName: "ios-simulator.cmake",
       };
-}
-
-function fail(message) {
-  console.error(`[bun-ios-runtime] ${message}`);
-  process.exit(1);
 }
 
 const info = targetInfo(argValue("--target", "simulator"));

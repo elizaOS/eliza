@@ -1,8 +1,8 @@
+import { isJsonObject } from "./json.js";
+import { isCarrotIsolation } from "./permissions.js";
 import {
   BUN_PERMISSIONS,
   type BunPermission,
-  CARROT_ISOLATIONS,
-  type CarrotIsolation,
   type CarrotManifest,
   type CarrotMode,
   type CarrotPermissionGrant,
@@ -25,24 +25,6 @@ const CARROT_ID_PATTERN = /^[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*$/;
 
 export function isValidCarrotId(value: string): boolean {
   return CARROT_ID_PATTERN.test(value);
-}
-
-function isJsonObject(value: JsonValue | undefined): value is JsonObject {
-  return (
-    value !== undefined &&
-    value !== null &&
-    typeof value === "object" &&
-    !Array.isArray(value)
-  );
-}
-
-function isCarrotIsolation(
-  value: JsonValue | undefined,
-): value is CarrotIsolation {
-  return (
-    typeof value === "string" &&
-    CARROT_ISOLATIONS.some((entry) => entry === value)
-  );
 }
 
 function objectAt(
@@ -170,7 +152,7 @@ function validatePermissions(
   const isolation = object.isolation;
   if (isolation === undefined) {
     grant.isolation = "shared-worker";
-  } else if (isCarrotIsolation(isolation)) {
+  } else if (typeof isolation === "string" && isCarrotIsolation(isolation)) {
     grant.isolation = isolation;
   } else {
     issues.push({

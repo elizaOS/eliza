@@ -213,7 +213,7 @@ async function loadEvmDexes(
 const lpManagerPlugin: Plugin = {
   name: LP_MANAGER_PLUGIN_NAME,
   description:
-    "Unified Liquidity Pool manager for Solana DEXs (Raydium, Orca, Meteora) and EVM DEXs (Uniswap, PancakeSwap, Aerodrome).",
+    "Liquidity Pool manager for Solana DEXs (Raydium, Orca, Meteora) and EVM DEXs (Uniswap, PancakeSwap, Aerodrome).",
   actions: [...promoteSubactionsToActions(liquidityAction)],
   services: [
     LpManagementService,

@@ -87,7 +87,7 @@ export interface NightlyExportReport {
   anonymizationCount: number;
   exportSummary: TrajectoryTaskDatasetExport["summary"];
   exportPaths: TrajectoryTaskDatasetExport["paths"];
-  /** Path to the single consolidated sanitized JSONL written alongside the per-task files. */
+  /** Path to the single sanitized sanitized JSONL written alongside the per-task files. */
   sanitizedJsonlPath: string;
   /** Outcome of the HuggingFace upload, when configured. `null` when HF is not configured. */
   huggingFaceUpload: HfUploadResult | null;
@@ -141,7 +141,7 @@ export async function runNightlyTrajectoryExport(
     outputDir,
   );
 
-  // Single consolidated sanitized JSONL — the artifact uploaded to HuggingFace.
+  // Single sanitized JSONL — the artifact uploaded to HuggingFace.
   const sanitizedJsonlPath = join(outputDir, "trajectories.sanitized.jsonl");
   const sanitizedJsonl =
     filtered.trajectories.length === 0

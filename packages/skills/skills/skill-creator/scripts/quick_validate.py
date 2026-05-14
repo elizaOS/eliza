@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
-"""
-Quick validation script for skills - minimal version
-"""
+"""Validate the basic shape of a skill directory."""
 
 import re
 import sys

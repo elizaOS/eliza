@@ -25,7 +25,6 @@ from benchmarks.mint.types import (
     MINTTask,
     MINTTrajectory,
     MINTResult,
-    MINTSubtask,
 )
 
 logger = logging.getLogger(__name__)

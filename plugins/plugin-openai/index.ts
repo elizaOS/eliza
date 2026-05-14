@@ -7,6 +7,7 @@ import type {
   ImageDescriptionParams,
   ImageGenerationParams,
   Plugin,
+  ProcessEnvLike,
   ResearchParams,
   ResearchResult,
   TextEmbeddingParams,
@@ -33,8 +34,6 @@ import {
 } from "./models";
 import type { ImageGenerationResult, OpenAIPluginConfig, TextStreamResult } from "./types";
 import { getAuthHeader, getBaseURL } from "./utils/config";
-
-type ProcessEnvLike = Record<string, string | undefined>;
 
 function getProcessEnv(): ProcessEnvLike {
   if (typeof process === "undefined") {

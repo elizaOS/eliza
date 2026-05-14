@@ -95,6 +95,7 @@ function makeFakeBridge(opts: FakeAndroidBridgeOpts = {}): {
       return { ok: true as const, data: { ok: true } };
     },
     performGlobalAction: async () => ({ ok: true as const, data: { ok: true } }),
+    setText: async () => ({ ok: true as const, data: { ok: true } }),
     enumerateApps: () => stub(),
     getMemoryPressureSnapshot: () => stub(),
     dispatchMemoryPressure: async ({

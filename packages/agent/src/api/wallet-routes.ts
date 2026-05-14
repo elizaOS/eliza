@@ -2,16 +2,6 @@ import crypto from "node:crypto";
 import type http from "node:http";
 import type { AgentRuntime, RouteRequestMeta } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import {
-  type CloudWalletDescriptor,
-  type CloudWalletProvider,
-  ElizaCloudClient,
-  getOrCreateClientAddressKey,
-  normalizeCloudSiteUrl,
-  persistCloudWalletCache,
-  provisionCloudWalletsBestEffort,
-  resolveCloudApiKey,
-} from "@elizaos/plugin-elizacloud";
 import type {
   RouteHelpers,
   WalletChainKind,
@@ -31,6 +21,25 @@ import {
 } from "@elizaos/shared";
 import * as ethers from "ethers";
 import type { ElizaConfig } from "../config/config.ts";
+
+const {
+  ElizaCloudClient,
+  getOrCreateClientAddressKey,
+  normalizeCloudSiteUrl,
+  persistCloudWalletCache,
+  provisionCloudWalletsBestEffort,
+  resolveCloudApiKey,
+} = await import("@elizaos/plugin-elizacloud");
+
+type CloudWalletProvider = "privy" | "steward";
+interface CloudWalletDescriptor {
+  agentWalletId: string;
+  walletAddress: string;
+  walletProvider: CloudWalletProvider;
+  chainType: WalletChainKind;
+  balance?: string | number;
+}
+
 import { isCloudWalletEnabled } from "../config/feature-flags.ts";
 import { createIntegrationTelemetrySpan } from "../diagnostics/integration-observability.ts";
 import { persistConfigEnv } from "./config-env.ts";
@@ -1397,8 +1406,6 @@ export async function handleWalletRoutes(
           "ELIZA_CLOUD_EVM_ADDRESS",
           descriptors.evm.walletAddress,
         );
-        process.env.ENABLE_EVM_PLUGIN = "1";
-        await persistConfigEnv("ENABLE_EVM_PLUGIN", "1");
         process.env.WALLET_SOURCE_EVM = "cloud";
         await persistConfigEnv("WALLET_SOURCE_EVM", "cloud");
         persistPrimarySelection(config, "evm", "cloud");

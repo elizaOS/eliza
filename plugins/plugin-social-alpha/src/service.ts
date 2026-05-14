@@ -134,7 +134,7 @@ export type TradingEvent =
 	| { type: "token_performance_updated"; performance: TokenPerformance };
 
 /**
- * Unified Trading Service that centralizes all trading operations
+ * Trading Service that centralizes all trading operations
  */
 /**
  * CommunityInvestorService class representing a service for trading on the Solana blockchain.

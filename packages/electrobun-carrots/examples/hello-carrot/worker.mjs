@@ -34,9 +34,6 @@ self.postMessage({
   },
 });
 
-// Demonstrate the host-request round-trip end-to-end. Equivalent to upstream's
-// `Carrots.list()` which resolves to `bridge.requestHost("list-carrots")`.
-// Done by raw postMessage to keep the example free of the electrobun import.
 const LIST_REQUEST_ID = 1;
 self.addEventListener("message", (event) => {
   const data = event.data;

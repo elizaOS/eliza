@@ -7,7 +7,6 @@ Manages Anvil lifecycle, transaction execution, and reward calculation.
 Reward key: unique (contract_address, function_selector) pairs.
 """
 
-import asyncio
 import json
 import logging
 import os
@@ -15,7 +14,7 @@ import shutil
 import subprocess
 import time
 from contextlib import asynccontextmanager
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import AsyncGenerator
 
 logger = logging.getLogger(__name__)

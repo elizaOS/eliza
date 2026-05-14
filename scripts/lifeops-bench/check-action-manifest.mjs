@@ -59,7 +59,7 @@ function run(cmd, args, opts = {}) {
   return res.status ?? 1;
 }
 
-function unifiedDiff(originalText, regeneratedText, originalLabel, regeneratedLabel) {
+function lineDiff(originalText, regeneratedText, originalLabel, regeneratedLabel) {
   // Lightweight line-by-line diff. Avoids a `diff` binary dependency since
   // GitHub Windows runners may not have it. The output is sufficient to
   // identify drift in CI logs.
@@ -127,7 +127,7 @@ async function main() {
       return;
     }
 
-    const { text, drift } = unifiedDiff(
+    const { text, drift } = lineDiff(
       original,
       regenerated,
       "actions.manifest.json",

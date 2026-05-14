@@ -27,15 +27,9 @@ scoping columns (`domain`, `subjectType`, `subjectId`, `visibilityScope`,
 This plugin renames the four previously `life_browser_*` tables to
 `browser_bridge_*`. Because the generated Drizzle migrations will issue a
 plain `CREATE TABLE` for the new names (with no `RENAME` bridge), the first
-boot after this package lands must run with:
-
-```
-ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS=true
-```
-
-set in the environment. That flag is the existing escape valve wired into
-`@elizaos/plugin-sql`'s migrator (see `repository.ts:1389` in plugin-sql).
-Use that flag only for throwaway or explicitly approved migration runs.
+boot after this package lands must be run through plugin-sql's explicitly
+approved destructive-migration path. Use that path only for throwaway or
+approved migration runs.
 
 ## Integration
 

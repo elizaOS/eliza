@@ -102,9 +102,6 @@ export interface Bindings {
   CONTAINERS_BOOTSTRAP_CALLBACK_URL?: string;
   CONTAINERS_BOOTSTRAP_SECRET?: string;
   CONTAINERS_HCLOUD_LOCATION?: string;
-  VERTEX_TUNING_CONTROL_PLANE_URL?: string;
-  VERTEX_TUNING_HANDLER_URL?: string;
-  VERTEX_TUNING_CONTROL_PLANE_TOKEN?: string;
   NODE_ENV?: string;
 
   // ---- Feature flags ----

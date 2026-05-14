@@ -138,18 +138,11 @@ function normalizeToolCalls(
 function buildRequest(model: RecordedModelCall): NativeBoundaryRow["request"] {
   const request: NativeBoundaryRow["request"] = {};
   const messages = Array.isArray(model.messages) ? model.messages : undefined;
-  const firstIsSystem =
-    !!messages?.[0] &&
-    isRecord(messages[0]) &&
-    (messages[0] as { role?: unknown }).role === "system";
   if (messages && messages.length > 0) {
     request.messages = messages;
   } else if (typeof model.prompt === "string" && model.prompt.length > 0) {
     request.prompt = model.prompt;
   }
-  // The recorder folds the system prompt into `messages[0]` when present; only
-  // surface a separate `system` field if there isn't a leading system message.
-  void firstIsSystem;
   if (model.tools !== undefined) request.tools = model.tools;
   if (model.toolChoice !== undefined) request.toolChoice = model.toolChoice;
   if (model.providerOptions !== undefined)

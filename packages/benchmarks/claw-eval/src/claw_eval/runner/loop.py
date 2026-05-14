@@ -18,7 +18,6 @@ from ..models.task import TaskDefinition
 from ..models.trace import (
     AuditSnapshot,
     CompactEvent,
-    DimensionScores,
     MediaLoad,
     TokenUsage,
     TraceEnd,
@@ -445,7 +444,6 @@ def run_task(
                 # Dispatch each tool call
                 result_blocks = []
                 media_blocks: list[ContentBlock] = []
-                has_non_agent_tool = False
                 for tu in tool_uses:
                     _log(f"  -> tool: {tu.name}({_brief(tu.input)})")
 
@@ -486,7 +484,6 @@ def run_task(
                         continue
 
                     # --- Standard dispatcher (sandbox / HTTP) ---
-                    has_non_agent_tool = True
                     dispatch_result = dispatcher.dispatch(tu, trace_id)
                     # Support both 2-tuple (legacy) and 3-tuple (media-aware) dispatch
                     if len(dispatch_result) == 3:
@@ -513,7 +510,6 @@ def run_task(
 
                 # Message 2: visual content (role:user with images, only if there are images)
                 if media_blocks:
-                    from ..models.content import ImageBlock as _IB
                     caption = TextBlock(text=f"[Visual content from tool results: {len(media_blocks)} image(s)]")
                     media_msg = Message(role="user", content=[caption] + media_blocks)
                     messages.append(media_msg)

@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import logging
 import re
-import time
 from datetime import datetime
 from typing import TYPE_CHECKING, Optional
 
@@ -22,7 +21,6 @@ if TYPE_CHECKING:
     from elizaos_terminal_bench.environment import TerminalEnvironment
     from elizaos_terminal_bench.types import (
         TerminalBenchResult,
-        TerminalSession,
         TerminalTask,
     )
 

@@ -42,7 +42,6 @@ from orchestrator.db import (  # noqa: E402
     update_run_result,
 )
 from orchestrator.random_baseline_runner import (  # noqa: E402
-    RandomBaselineOutcome,
     run_random_baseline,
 )
 

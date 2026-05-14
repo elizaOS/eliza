@@ -1,7 +1,7 @@
 import type {
   BrowserBridgeAction,
   BrowserBridgeSettings,
-} from "@elizaos/plugin-browser";
+} from "../src/browser-bridge-contracts";
 import type { LifeOpsBrowserSession } from "@elizaos/shared";
 import { BrowserBridgeRelayClient, RelayApiError } from "../src/api-client";
 import type {
@@ -12,6 +12,7 @@ import type {
   CompanionSession,
   CompanionSyncRequest,
   ContentScriptResponse,
+  DomActionRequest,
   PopupRequest,
   PopupResponse,
 } from "../src/protocol";
@@ -582,11 +583,7 @@ async function resolveTargetTab(
 
 async function runContentAction(
   tabId: number,
-  action: {
-    kind: "click" | "type" | "submit" | "history_back" | "history_forward";
-    selector?: string | null;
-    text?: string | null;
-  },
+  action: DomActionRequest,
 ): Promise<Record<string, unknown>> {
   const response = await sendTabMessage<ContentScriptResponse>(tabId, {
     type: "browser-bridge:execute-dom-action",
@@ -810,11 +807,6 @@ async function executeSession(
   }
 }
 
-/**
- * Max number of declarativeNetRequest dynamic rules to use for blocking.
- * Chrome allows up to 5000 dynamic rules; we use a safe subset starting
- * at ID offset 10001 to avoid collisions with other rule uses.
- */
 const BLOCKING_RULE_ID_OFFSET = 10_001;
 const ALLOWLIST_RULE_ID_OFFSET = 20_001;
 

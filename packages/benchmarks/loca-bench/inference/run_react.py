@@ -43,7 +43,6 @@ except ModuleNotFoundError:  # pragma: no cover - only needed for programmatic r
 import requests
 from dotenv import load_dotenv
 import random
-from requests.exceptions import RequestException, HTTPError
 
 # Suppress npm update notices
 os.environ["npm_config_update_notifier"] = "false"
@@ -71,7 +70,7 @@ for logger_name in ["mcp", "fastmcp", "mcp.server", "mcp.client", "httpx", "http
 from gem.tools.base_tool import BaseTool
 from gem.tools.mcp_tool import MCPTool
 from gem.tools.mcp_server.programmatic_tool_calling.helper import ProgrammaticToolCallingTool
-from gem.tools.tool_env_wrapper import ToolEnvWrapperClaimDone, ToolEnvWrapperOpenAI
+from gem.tools.tool_env_wrapper import ToolEnvWrapperOpenAI
 from gem.tools.mcp_server.config_loader import build_server_config
 from gem.tools.mcp_server.canvas.helper import get_canvas_stdio_config
 from gem.tools.mcp_server.claim_done.helper import get_claim_done_stdio_config
@@ -1937,7 +1936,7 @@ def run_single_task(
         exposed_source_paths = _expose_loca_source_data(task_workspace, agent_workspace)
 
         # Save tools information for later storage
-        tools_info = tools[0] if tools else None
+        tools[0] if tools else None
 
         if verbose:
             print(f"[Task {task_id} | {task_label}] Environment initialized")
@@ -3255,7 +3254,7 @@ def normalize_config_for_grouping(config: Dict[str, Any]) -> tuple:
     """
     # Create a copy of env_params without seed
     env_params = config.get("env_params", {}).copy()
-    seed = env_params.pop("seed", None)
+    env_params.pop("seed", None)
     
     # Create a normalized representation
     normalized = {
@@ -4194,7 +4193,7 @@ def run_config_combinations(
     )
 
     # Build and save aggregated all_trajectories.json
-    all_traj_file = write_all_trajectories_file(
+    write_all_trajectories_file(
         base_task_dir=base_task_dir,
         output_dir=output_dir,
         results=results,

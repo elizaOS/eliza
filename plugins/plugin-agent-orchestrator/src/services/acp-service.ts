@@ -74,7 +74,7 @@ type RunResult = {
 const STDERR_CAP_BYTES = 64 * 1024;
 const KILL_GRACE_MS = 5_000;
 const DEFAULT_WORKDIR_ROOT = join(tmpdir(), "eliza-acp");
-const DEFAULT_AGENTS = ["codex", "claude", "gemini", "aider", "pi"];
+const DEFAULT_AGENTS: AgentType[] = ["codex", "claude", "opencode"];
 const DENY_ENV_PATTERNS = [
   /DISCORD.*TOKEN/i,
   /TELEGRAM.*TOKEN/i,
@@ -110,14 +110,20 @@ export class AcpService {
     this.logger = (this.runtime.logger ?? {}) as RuntimeLogger;
     this.store = opts.store ?? new InMemorySessionStore();
     this.cliPath = this.setting("ELIZA_ACP_CLI") ?? "acpx";
-    this.defaultAgent = this.setting("ELIZA_ACP_DEFAULT_AGENT") ?? "codex";
+    this.defaultAgent =
+      this.setting("ELIZA_ACP_DEFAULT_AGENT") ??
+      this.setting("ELIZA_DEFAULT_AGENT_TYPE") ??
+      "codex";
     this.defaultApprovalPreset = normalizeApprovalPreset(
       boolSetting(this.setting("ACPX_APPROVE_ALL")) === true
         ? "approve-all"
-        : this.setting("ELIZA_ACP_DEFAULT_APPROVAL"),
+        : (this.setting("ELIZA_ACP_DEFAULT_APPROVAL") ??
+          this.setting("ELIZA_DEFAULT_APPROVAL_PRESET")),
     );
     this.agentSelectionStrategy =
-      this.setting("ELIZA_ACP_AGENT_SELECTION_STRATEGY") ?? "fixed";
+      this.setting("ELIZA_ACP_AGENT_SELECTION_STRATEGY") ??
+      this.setting("ELIZA_AGENT_SELECTION_STRATEGY") ??
+      "fixed";
     this.maxSessions =
       parsePositiveInt(this.setting("ELIZA_ACP_MAX_SESSIONS")) ?? 8;
     this.sessionTimeoutMs = parsePositiveInt(
@@ -836,7 +842,7 @@ export class AcpService {
     if (model) {
       env.OPENAI_MODEL = model;
       if (agentType === "claude") env.ANTHROPIC_MODEL = model;
-      if (agentType === "gemini") env.GEMINI_MODEL = model;
+      if (agentType === "opencode") env.OPENCODE_MODEL = model;
     }
     return env;
   }
@@ -935,15 +941,12 @@ function shouldForwardEnv(key: string): boolean {
     key === "TERM" ||
     key.startsWith("ACPX_AUTH_") ||
     key.startsWith("ELIZA_") ||
-    key.startsWith("ELIZA_") ||
     [
       "OPENAI_API_KEY",
       "ANTHROPIC_API_KEY",
-      "GOOGLE_API_KEY",
-      "GOOGLE_GENERATIVE_AI_API_KEY",
       "OPENAI_MODEL",
       "ANTHROPIC_MODEL",
-      "GEMINI_MODEL",
+      "OPENCODE_MODEL",
       "CODEX_HOME",
     ].includes(key)
   );

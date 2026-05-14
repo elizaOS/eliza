@@ -1349,7 +1349,7 @@ export async function resolveKvSpillPlan(args: {
 	);
 	const hasDiscreteGpu = hardware.gpu !== null && !hardware.appleSilicon;
 	// CPU spill is available when the host has appreciable RAM headroom over
-	// the resident budget. Apple Silicon always has unified RAM; x86 needs the
+	// the resident budget. Apple Silicon always has shared RAM; x86 needs the
 	// total to comfortably exceed the resident slice.
 	const cpuSpillAvailable =
 		hardware.appleSilicon ||
@@ -2480,7 +2480,7 @@ export function appendOptimizationFlags(
 		args,
 		"--kv-unified",
 		"--no-kv-unified",
-		readBoolFlag("ELIZA_LOCAL_KV_UNIFIED") ?? optimizations?.kvUnified,
+		readBoolFlag("ELIZA_LOCAL_KV_UNIFIED") ?? optimizations?.kvShared,
 	);
 	appendBooleanFlag(
 		args,
@@ -2962,7 +2962,7 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 	}
 
 	/**
-	 * Unified backend contract entry point. Resolves the catalog entry from
+	 * Backend contract entry point. Resolves the catalog entry from
 	 * the plan and delegates to `start()` if a DFlash plan is configured.
 	 * For non-DFlash llama-server use (e.g. `requiresKernel` for turbo3
 	 * without spec decoding), the catalog can declare an `optimizations`

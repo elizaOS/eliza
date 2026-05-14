@@ -12,9 +12,9 @@
  * a `DuetAudioBridge { aToB, bToA }` wired in memory.
  *
  * All tricks on: DFlash speculative decoding, KV-prefix prewarm, guided
- * structured decode (`MILADY_LOCAL_GUIDED_DECODE` default on) + the fused
+ * structured decode (`ELIZA_LOCAL_GUIDED_DECODE` default on) + the fused
  * streaming decoders when the fused build advertises them, and the documented
- * reduced-optimization fallback (`MILADY_LOCAL_ALLOW_STOCK_KV=1`) only where a
+ * reduced-optimization fallback (`ELIZA_LOCAL_ALLOW_STOCK_KV=1`) only where a
  * backend genuinely can't dispatch a §3 kernel.
  *
  * `--two-process` (recommended for `eliza-1-2b`, RSS): runs agent B in a
@@ -252,7 +252,7 @@ function applySweepKnobs(args) {
   set("ELIZA_KV_CACHE_TYPE", args.kvCacheType);
   set("ELIZA_INFERENCE_FUSED_BACKEND", args.backend);
   // Guided structured decode is on by default; the harness never turns it off.
-  // The reduced-optimization fallback stays opt-in (MILADY_LOCAL_ALLOW_STOCK_KV).
+  // The reduced-optimization fallback stays opt-in (ELIZA_LOCAL_ALLOW_STOCK_KV).
   return prior;
 }
 
@@ -583,7 +583,7 @@ async function main() {
     log(
       c(
         "dim",
-        "Set ELIZA_AUTO_DOWNLOAD_BUNDLE=1 to auto-download the tier bundle, or follow RELEASE_V1.md.",
+        "Set ELIZA_AUTO_DOWNLOAD_BUNDLE=1 to auto-download the tier bundle, or follow docs/eliza-1-pipeline/06-test-matrix.md.",
       ),
     );
     process.exit(1);
@@ -646,7 +646,9 @@ async function main() {
   const bundlePath = target.path;
 
   const [{ PushMicSource }, vadMod] = await Promise.all([
-    import("../../../plugins/plugin-local-inference/src/services/voice/mic-source.ts"),
+    import(
+      "../../../plugins/plugin-local-inference/src/services/voice/mic-source.ts"
+    ),
     import("../../../plugins/plugin-local-inference/src/services/voice/vad.ts"),
   ]);
   const {
@@ -654,7 +656,9 @@ async function main() {
     endVoiceLatencyTurn,
     voiceLatencyTracer,
     VoiceRunMetrics,
-  } = await import("../../../plugins/plugin-local-inference/src/services/latency-trace.ts");
+  } = await import(
+    "../../../plugins/plugin-local-inference/src/services/latency-trace.ts"
+  );
   const { parseExpressiveTags, asrEmotionToTag } = await import(
     "../../../plugins/plugin-local-inference/src/services/voice/expressive-tags.ts"
   );
@@ -1252,7 +1256,9 @@ async function runAsPeerB(args) {
     const { PushMicSource } = await import(
       "../../../plugins/plugin-local-inference/src/services/voice/mic-source.ts"
     );
-    const vadMod = await import("../../../plugins/plugin-local-inference/src/services/voice/vad.ts");
+    const vadMod = await import(
+      "../../../plugins/plugin-local-inference/src/services/voice/vad.ts"
+    );
     const { DuetSink } = await import("./lib/duet-bridge.mjs");
     const charB = await loadCharacter(args.characterB, DEFAULT_CHARACTER_B);
     const roomB = "voice-duet-B";

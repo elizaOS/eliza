@@ -5,7 +5,7 @@ Provides abstract base class for all database implementations.
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional
+from typing import Any, List
 import os
 
 

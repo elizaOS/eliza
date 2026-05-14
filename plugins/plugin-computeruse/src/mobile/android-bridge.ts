@@ -129,6 +129,14 @@ export interface GlobalActionResult {
   readonly ok: boolean;
 }
 
+export interface SetTextArgs {
+  readonly text: string;
+}
+
+export interface SetTextResult {
+  readonly ok: boolean;
+}
+
 // ── 5. UsageStats / app enumeration ──────────────────────────────────────────
 
 /**
@@ -233,6 +241,7 @@ export interface AndroidComputerUseBridge {
   readonly performGlobalAction: (
     args: { readonly action: GlobalAction },
   ) => Promise<AndroidBridgeResult<GlobalActionResult>>;
+  readonly setText: (args: SetTextArgs) => Promise<AndroidBridgeResult<SetTextResult>>;
 
   // --- UsageStats ---
   readonly enumerateApps: () => Promise<AndroidBridgeResult<EnumerateAppsResult>>;

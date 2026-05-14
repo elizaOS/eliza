@@ -4,9 +4,7 @@ CLI for ClawBench.
 Thin wrapper around the YAML-based scenario runner.
 """
 
-import json
 import os
-import sys
 from pathlib import Path
 
 import httpx

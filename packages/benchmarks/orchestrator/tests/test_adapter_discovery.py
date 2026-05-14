@@ -3,6 +3,9 @@ from __future__ import annotations
 import importlib
 import importlib.util
 import json
+import os
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -58,7 +61,7 @@ def test_discovery_includes_directory_name_mismatches_and_special_tracks() -> No
     assert adapters["gaia_orchestrated"].directory == "gaia"
     assert adapters["rlm_bench"].directory == "rlm-bench"
     assert adapters["osworld"].directory == "OSWorld"
-    assert adapters["mmau"].directory == "mmau"
+    assert adapters["mmau"].directory == "mmau-audio"
     assert adapters["voicebench_quality"].directory == "voicebench-quality"
     assert adapters["voiceagentbench"].directory == "voiceagentbench"
     assert "elizaos_mmau" not in discover_adapters(_workspace_root()).all_directories
@@ -129,7 +132,7 @@ def test_audio_benchmark_registry_commands_and_scores(tmp_path: Path) -> None:
         ModelSpec(provider="cerebras", model="gpt-oss-120b"),
         {"agent": "hermes", "limit": 2, "no_traces": True},
     )
-    assert mmau_command[:3] == [mmau_command[0], "-m", "benchmarks.mmau"]
+    assert mmau_command[:3] == [mmau_command[0], "-m", "elizaos_mmau_audio"]
     assert mmau_command[mmau_command.index("--agent") + 1] == "hermes"
     assert mmau_command[mmau_command.index("--limit") + 1] == "2"
     assert "--mock" not in mmau_command
@@ -165,6 +168,33 @@ def test_audio_benchmark_registry_commands_and_scores(tmp_path: Path) -> None:
     assert voiceagentbench.extract_score(
         {"pass_at_1": 1.0, "tasks": [{"task_id": "t1"}]}
     ).score == 1.0
+
+
+def test_mmau_legacy_module_shims_find_renamed_audio_package(tmp_path: Path) -> None:
+    env = dict(os.environ)
+    env["PYTHONPATH"] = str(_workspace_root() / "packages")
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "benchmarks.mmau",
+            "--mock",
+            "--limit",
+            "1",
+            "--output",
+            str(tmp_path / "mmau-legacy"),
+            "--json",
+        ],
+        cwd=_workspace_root(),
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert (tmp_path / "mmau-legacy" / "mmau-results.json").exists()
 
 
 def test_hermes_native_envs_are_hermes_only() -> None:

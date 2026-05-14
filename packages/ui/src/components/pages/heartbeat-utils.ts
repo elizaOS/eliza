@@ -15,6 +15,7 @@ import type {
 
 export type TriggerKind = "text" | "workflow";
 
+import { parsePositiveInteger } from "@elizaos/shared";
 import { CronExpressionParser } from "cron-parser";
 import type { TranslateFn as AppTranslateFn } from "../../types";
 import { formatDurationMs } from "../../utils/format";
@@ -214,12 +215,7 @@ export function railMonogram(label: string): string {
   return (initials || label.slice(0, 1).toUpperCase() || "?").slice(0, 2);
 }
 
-export function parsePositiveInteger(value: string): number | undefined {
-  const trimmed = value.trim();
-  if (!/^\d+$/.test(trimmed)) return undefined;
-  const parsed = Number.parseInt(trimmed, 10);
-  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : undefined;
-}
+export { parsePositiveInteger };
 
 export function scheduleLabel(
   trigger: TriggerSummary,

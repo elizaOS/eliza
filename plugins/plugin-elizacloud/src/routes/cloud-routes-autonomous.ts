@@ -142,7 +142,6 @@ const CLOUD_WALLET_ROLLBACK_ENV_KEYS = [
   ELIZA_CLOUD_CLIENT_ADDRESS_KEY_ENV,
   "ELIZA_CLOUD_EVM_ADDRESS",
   "ELIZA_CLOUD_SOLANA_ADDRESS",
-  "ENABLE_EVM_PLUGIN",
   "WALLET_SOURCE_EVM",
   "WALLET_SOURCE_SOLANA",
 ] as const;
@@ -667,7 +666,6 @@ export async function handleCloudRoute(
             );
           }
 
-          await persistConfigEnv("ENABLE_EVM_PLUGIN", "1");
           if (descriptors.evm) {
             await persistConfigEnv("WALLET_SOURCE_EVM", "cloud");
           }

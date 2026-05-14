@@ -258,7 +258,7 @@ type GoogleGmailListResponse = {
 
 type ManagedGoogleConnectorDeps = {
   dbRead: {
-    select: (...args: unknown[]) => any;
+    select: typeof dbRead.select;
   };
   oauthService: {
     listConnections: typeof oauthService.listConnections;

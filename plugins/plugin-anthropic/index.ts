@@ -3,6 +3,7 @@ import type {
   IAgentRuntime,
   ImageDescriptionParams,
   Plugin,
+  ProcessEnvLike,
   TestCase,
   TestSuite,
   TextStreamResult,
@@ -131,8 +132,6 @@ const pluginTests = [
     ] as TestCase[],
   },
 ] as TestSuite[];
-
-type ProcessEnvLike = Record<string, string | undefined>;
 
 function getProcessEnv(): ProcessEnvLike {
   // In browsers, `process` is not defined (and we must not reference it unguarded).

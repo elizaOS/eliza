@@ -970,7 +970,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             str(output_dir),
         ]
         agent = extra.get("agent")
-        provider_name = (model.provider or "").strip().lower()
+        (model.provider or "").strip().lower()
         if agent in {"deterministic", "python"}:
             args.extend(["--mode", "deterministic"])
         else:
@@ -1216,7 +1216,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         args = [
             python,
             "-m",
-            "benchmarks.mmau",
+            "elizaos_mmau_audio",
             "--output",
             str(output_dir),
             "--no-traces",
@@ -2377,12 +2377,12 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
                 "ICLR 2025) — 10k audio MCQs across speech/sound/music and 27 "
                 "reasoning skills. Not the Salesforce agent MMAU (arXiv:2407.18961)."
             ),
-            cwd_rel="packages/benchmarks/mmau",
+            cwd_rel="packages/benchmarks/mmau-audio",
             requirements=BenchmarkRequirements(
                 env_vars=(),
                 paths=(
-                    "packages/benchmarks/mmau",
-                    "packages/benchmarks/mmau/fixtures/smoke.jsonl",
+                    "packages/benchmarks/mmau-audio",
+                    "packages/benchmarks/mmau-audio/fixtures/smoke.jsonl",
                 ),
                 notes=(
                     "Pure MCQ — deterministic exact-match scoring, no LLM-judge. "

@@ -6,8 +6,8 @@ import {
 	isStockKvCacheType,
 	ModelDoesNotFitError,
 	resolveLocalInferenceLoadArgs,
-	validateLocalInferenceLoadArgs,
 	VoiceBundleDoesNotFitError,
+	validateLocalInferenceLoadArgs,
 } from "./active-model";
 import { resolveIdleUnloadMs } from "./engine";
 import type { InstalledModel } from "./types";
