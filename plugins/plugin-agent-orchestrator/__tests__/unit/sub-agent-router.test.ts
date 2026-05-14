@@ -495,6 +495,49 @@ describe("SubAgentRouter", () => {
       expect(posted?.content?.text).not.toContain("[verification:");
     });
 
+    it("ignores model-introduced same-path external URL aliases when the requested target verifies", async () => {
+      const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url === "http://127.0.0.1:6900/apps/asset-check/") {
+          return new Response("<html><body>ok</body></html>", {
+            status: 200,
+            headers: { "content-type": "text/html" },
+          });
+        }
+        if (url === "https://nubilio.org/apps/asset-check/") {
+          return new Response("<html><body>ok</body></html>", {
+            status: 200,
+            headers: { "content-type": "text/html" },
+          });
+        }
+        return new Response("not found", { status: 404 });
+      });
+      vi.stubGlobal("fetch", fetchMock);
+      session = sessionWithTask(
+        "build and verify https://nubilio.org/apps/asset-check/",
+      );
+      acp = makeAcpService(session);
+      const { runtime, handleMessage, spawnSession } = makeRuntime({
+        acp: acp.service,
+      });
+      await SubAgentRouter.start(runtime);
+
+      acp.emit(SESSION_ID, "task_complete", {
+        response:
+          "Done — local: http://127.0.0.1:6900/apps/asset-check/, mirror: https://nubidio.org/apps/asset-check/, public: https://nubilio.org/apps/asset-check/",
+      });
+      await new Promise((r) => setTimeout(r, 200));
+
+      const fetched = fetchMock.mock.calls.map(([url]) => String(url));
+      expect(fetched).toContain("http://127.0.0.1:6900/apps/asset-check/");
+      expect(fetched).toContain("https://nubilio.org/apps/asset-check/");
+      expect(fetched).not.toContain("https://nubidio.org/apps/asset-check/");
+      expect(spawnSession).not.toHaveBeenCalled();
+      expect(handleMessage).toHaveBeenCalledTimes(1);
+      const posted = handleMessage.mock.calls[0]?.[1];
+      expect(posted?.content?.text).not.toContain("[verification:");
+    });
+
     it("does not retry when ELIZA_BUILD_VERIFY_MAX_RETRIES=0", async () => {
       process.env.ELIZA_BUILD_VERIFY_MAX_RETRIES = "0";
       session = sessionWithTask(`build it at ${DEAD_URL}`);
