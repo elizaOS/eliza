@@ -13,7 +13,6 @@
  * - Cross-platform: If same phone is used for both, accounts are automatically linked
  */
 
-import { animated, useSpring, useTrail } from "@react-spring/web";
 import { ArrowLeft, Check, Copy, ExternalLink, Info, Send } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
@@ -606,30 +605,26 @@ export default function GetStartedPage() {
     return () => clearTimeout(timer);
   }, []);
 
-  // Header animation
-  const headerSpring = useSpring({
+  const headerStyle = {
     opacity: showContent ? 1 : 0,
     transform: showContent ? "translateY(0px)" : "translateY(-20px)",
-    config: { mass: 1, tension: 280, friction: 24 },
-    delay: 200,
-  });
+    transition: "opacity 280ms ease 200ms, transform 280ms ease 200ms",
+  };
 
-  // Title animation
-  const titleSpring = useSpring({
+  const titleStyle = {
     opacity: showContent ? 1 : 0,
     transform: showContent ? "translateY(0px)" : "translateY(30px)",
-    config: { mass: 1, tension: 280, friction: 24 },
-    delay: 400,
-  });
+    transition: "opacity 320ms ease 400ms, transform 320ms ease 400ms",
+  };
 
-  // Cards staggered animation (trail)
-  const cardTrail = useTrail(4, {
+  const getCardStyle = (index: number) => ({
     opacity: showContent ? 1 : 0,
     transform: showContent
       ? "translateY(0px) scale(1)"
       : "translateY(40px) scale(0.95)",
-    config: { mass: 1, tension: 280, friction: 24 },
-    delay: 600,
+    transition: `opacity 320ms ease ${600 + index * 80}ms, transform 320ms ease ${
+      600 + index * 80
+    }ms`,
   });
 
   // Country options (from shared hook)
@@ -1161,9 +1156,9 @@ export default function GetStartedPage() {
         }}
       />
       {/* Header */}
-      <animated.header
+      <header
         className="relative z-10 p-4 flex items-center justify-between"
-        style={headerSpring}
+        style={headerStyle}
       >
         <div className="w-16">
           {step === "DISCORD_SETUP_GUIDE" ? null : showBackButton ? (
@@ -1187,7 +1182,7 @@ export default function GetStartedPage() {
         </div>
         <ElizaLogo className="h-8" />
         <div className="w-16" /> {/* Spacer for centering */}
-      </animated.header>
+      </header>
 
       {/* Content */}
       <div className="relative z-10 flex-1 flex flex-col items-center justify-center px-4 pb-20">
@@ -1209,7 +1204,7 @@ export default function GetStartedPage() {
           {step === "SELECT_METHOD" && (
             <>
               {/* Chat teaser — shows the welcome message before login */}
-              <animated.div style={titleSpring} className="w-full mb-6">
+              <div style={titleStyle} className="w-full mb-6">
                 <div className="w-full px-4 py-3 rounded-xl bg-white/40 backdrop-blur-sm border border-white/60 flex items-start gap-3">
                   <div className="w-7 h-7 rounded-full bg-neutral-800 flex items-center justify-center shrink-0 mt-0.5 text-[10px] font-bold text-white">
                     E
@@ -1219,16 +1214,16 @@ export default function GetStartedPage() {
                     space ready — we can talk while it warms up.
                   </p>
                 </div>
-              </animated.div>
+              </div>
 
-              <animated.div style={titleSpring}>
+              <div style={titleStyle}>
                 <h1 className="text-2xl sm:text-3xl font-bold text-neutral-900 text-center mb-2 whitespace-nowrap">
                   Anywhere you want her to be.
                 </h1>
                 <p className="text-neutral-600 text-center mb-8">
                   Choose your path(s)
                 </p>
-              </animated.div>
+              </div>
 
               {/* Error banner (shown when returning from a failed OAuth or linking attempt) */}
               {(discordError || telegramError) && (
@@ -1241,10 +1236,10 @@ export default function GetStartedPage() {
 
               <div className="w-full flex flex-col gap-3">
                 {/* Telegram */}
-                <animated.button
+                <button
                   onClick={() => handleMethodSelect("telegram")}
                   className="w-full h-[72px] bg-white/40 hover:bg-white/60 backdrop-blur-sm rounded-xl border border-white/60 hover:border-white/80 transition-all flex items-center gap-4 px-5 cursor-pointer"
-                  style={cardTrail[0]}
+                  style={getCardStyle(0)}
                 >
                   <div className="w-12 h-12 rounded-xl bg-[#229ED9]/20 flex items-center justify-center shrink-0">
                     <TelegramIcon className="size-6 text-[#229ED9]" />
@@ -1255,13 +1250,13 @@ export default function GetStartedPage() {
                       Use the Telegram app
                     </p>
                   </div>
-                </animated.button>
+                </button>
 
                 {/* iMessage */}
-                <animated.button
+                <button
                   onClick={() => handleMethodSelect("imessage")}
                   className="w-full h-[72px] bg-white/40 hover:bg-white/60 backdrop-blur-sm rounded-xl border border-white/60 hover:border-white/80 transition-all flex items-center gap-4 px-5 cursor-pointer"
-                  style={cardTrail[1]}
+                  style={getCardStyle(1)}
                 >
                   <div className="w-12 h-12 shrink-0 flex items-center justify-center">
                     <AppleMessagesIcon className="size-12" />
@@ -1272,13 +1267,13 @@ export default function GetStartedPage() {
                       Use text messages
                     </p>
                   </div>
-                </animated.button>
+                </button>
 
                 {/* WhatsApp */}
-                <animated.button
+                <button
                   onClick={() => handleMethodSelect("whatsapp")}
                   className="w-full h-[72px] bg-white/40 hover:bg-white/60 backdrop-blur-sm rounded-xl border border-white/60 hover:border-white/80 transition-all flex items-center gap-4 px-5 cursor-pointer"
-                  style={cardTrail[2]}
+                  style={getCardStyle(2)}
                 >
                   <div className="w-12 h-12 rounded-xl bg-[#25D366]/20 flex items-center justify-center shrink-0">
                     <WhatsAppIcon className="size-6 text-[#25D366]" />
@@ -1289,13 +1284,13 @@ export default function GetStartedPage() {
                       Use the WhatsApp app
                     </p>
                   </div>
-                </animated.button>
+                </button>
 
                 {/* Discord */}
-                <animated.button
+                <button
                   onClick={() => handleMethodSelect("discord")}
                   className="w-full h-[72px] bg-white/40 hover:bg-white/60 backdrop-blur-sm rounded-xl border border-white/60 hover:border-white/80 transition-all flex items-center gap-4 px-5 cursor-pointer"
-                  style={cardTrail[3]}
+                  style={getCardStyle(3)}
                 >
                   <div className="w-12 h-12 rounded-xl bg-[#5865F2]/20 flex items-center justify-center shrink-0">
                     <DiscordIcon className="size-6 text-[#5865F2]" />
@@ -1306,7 +1301,7 @@ export default function GetStartedPage() {
                       Use the Discord app
                     </p>
                   </div>
-                </animated.button>
+                </button>
               </div>
             </>
           )}

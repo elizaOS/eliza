@@ -20,12 +20,19 @@ export type DesktopActionType =
   | "click_with_modifiers"
   | "double_click"
   | "right_click"
+  | "middle_click"
+  | "mouse_down"
+  | "mouse_up"
   | "mouse_move"
   | "type"
   | "key"
+  | "key_down"
+  | "key_up"
   | "key_combo"
   | "scroll"
   | "drag"
+  | "left_click_drag"
+  | "drag_to"
   | "detect_elements"
   | "ocr"
   | "accessibility_tree";
@@ -115,6 +122,16 @@ export interface BrowserActionParams {
 
 export type WindowActionType =
   | "list"
+  | "open"
+  | "launch"
+  | "get_current_window_id"
+  | "get_application_windows"
+  | "get_window_name"
+  | "get_window_size"
+  | "get_window_position"
+  | "set_window_size"
+  | "set_window_position"
+  | "activate_window"
   | "focus"
   | "switch"
   | "arrange"
@@ -140,6 +157,9 @@ export interface WindowActionParams {
   /** Coordinates for move action */
   x?: number;
   y?: number;
+  /** Size for set_window_size */
+  width?: number;
+  height?: number;
 }
 
 // ── File Actions ──────────────────────────────────────────────────────────
@@ -184,16 +204,32 @@ export interface BrowserActionResult extends ComputerUseResult {
 export interface WindowActionResult extends ComputerUseResult {
   /** Window list for "list" action */
   windows?: WindowInfo[];
+  window?: WindowInfo;
+  windowId?: string;
+  window_id?: string;
+  name?: string;
+  title?: string;
+  app?: string;
+  x?: number;
+  y?: number;
+  width?: number;
+  height?: number;
   count?: number;
 }
 
 export type FileActionType =
   | "read"
   | "write"
+  | "read_bytes"
+  | "write_bytes"
   | "edit"
   | "append"
   | "delete"
   | "exists"
+  | "directory_exists"
+  | "create_directory"
+  | "create_dir"
+  | "get_file_size"
   | "list"
   | "list_directory"
   | "delete_directory"
@@ -207,6 +243,7 @@ export interface FileActionParams {
   filepath?: string;
   dirpath?: string;
   content?: string;
+  content_b64?: string;
   oldText?: string;
   newText?: string;
   old_text?: string;
@@ -214,6 +251,9 @@ export interface FileActionParams {
   find?: string;
   replace?: string;
   encoding?: BufferEncoding;
+  offset?: number;
+  length?: number;
+  append?: boolean;
 }
 
 export interface FileEntry {
@@ -225,6 +265,7 @@ export interface FileEntry {
 export interface FileActionResult extends ComputerUseResult {
   path?: string;
   content?: string;
+  content_b64?: string;
   exists?: boolean;
   isFile?: boolean;
   isDirectory?: boolean;
@@ -270,6 +311,11 @@ export interface WindowInfo {
   id: string;
   title: string;
   app: string;
+  x?: number;
+  y?: number;
+  width?: number;
+  height?: number;
+  bounds?: [number, number, number, number];
 }
 
 export interface ScreenRegion {

@@ -42,7 +42,9 @@ import {
   type MatrixUserInfo,
 } from "./types.js";
 
-type MatrixRoomMessageContent = sdk.IContent;
+type MatrixRoomMessageContent = ReturnType<
+  typeof sdk.ContentHelpers.makeTextMessage
+>;
 
 function normalizeSearchQuery(query: string): string {
   return query.trim().toLowerCase();

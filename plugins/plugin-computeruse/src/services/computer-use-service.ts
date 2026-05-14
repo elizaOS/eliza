@@ -46,12 +46,17 @@ import {
 } from "../platform/driver.js";
 import {
   appendFile,
+  createDirectory,
   deleteDirectory,
   deleteFile,
+  directoryExists,
   editFile,
   fileExists,
+  getFileSize,
   listDirectory,
+  readBytes,
   readFile,
+  writeBytes,
   writeFile,
 } from "../platform/file-ops.js";
 import { commandExists, currentPlatform } from "../platform/helpers.js";
@@ -293,10 +298,15 @@ export class ComputerUseService extends Service {
         });
       case "file_read":
       case "file_write":
+      case "read_bytes":
+      case "write_bytes":
       case "file_edit":
       case "file_append":
       case "file_delete":
       case "file_exists":
+      case "directory_exists":
+      case "create_dir":
+      case "get_file_size":
       case "directory_list":
       case "directory_delete":
       case "file_upload":
@@ -923,6 +933,11 @@ export class ComputerUseService extends Service {
             entry,
             await readFile(targetPath, this.normalizeEncoding(params.encoding)),
           );
+        case "read_bytes":
+          return this.finishFileEntry(
+            entry,
+            await readBytes(targetPath, params.offset ?? 0, params.length),
+          );
         case "write":
         case "upload":
           if (typeof params.content !== "string") {
@@ -931,6 +946,14 @@ export class ComputerUseService extends Service {
           return this.finishFileEntry(
             entry,
             await writeFile(targetPath, params.content),
+          );
+        case "write_bytes":
+          if (typeof params.content_b64 !== "string") {
+            throw new Error("content_b64 is required for file write_bytes");
+          }
+          return this.finishFileEntry(
+            entry,
+            await writeBytes(targetPath, params.content_b64, params.append),
           );
         case "edit":
           if (typeof params.old_text !== "string") {
@@ -955,9 +978,15 @@ export class ComputerUseService extends Service {
           return this.finishFileEntry(entry, await deleteFile(targetPath));
         case "exists":
           return this.finishFileEntry(entry, await fileExists(targetPath));
+        case "directory_exists":
+          return this.finishFileEntry(entry, await directoryExists(targetPath));
+        case "get_file_size":
+          return this.finishFileEntry(entry, await getFileSize(targetPath));
         case "list":
         case "list_downloads":
           return this.finishFileEntry(entry, await listDirectory(targetPath));
+        case "create_directory":
+          return this.finishFileEntry(entry, await createDirectory(targetPath));
         case "delete_directory":
           return this.finishFileEntry(entry, await deleteDirectory(targetPath));
         default:
@@ -1166,10 +1195,17 @@ export class ComputerUseService extends Service {
   ): FileActionParams {
     return {
       ...params,
+      action: this.normalizeFileAction(params.action),
       path: params.path ?? params.filepath ?? params.dirpath,
       old_text: params.old_text ?? params.oldText ?? params.find,
       new_text: params.new_text ?? params.newText ?? params.replace,
     };
+  }
+
+  private normalizeFileAction(
+    action: FileActionParams["action"],
+  ): FileActionParams["action"] {
+    return action === "create_dir" ? "create_directory" : action;
   }
 
   private normalizeTerminalActionParams(
@@ -1281,8 +1317,10 @@ export class ComputerUseService extends Service {
   private fileApprovalCommand(action: FileActionParams["action"]): string {
     switch (action) {
       case "read":
+      case "read_bytes":
         return "file_read";
       case "write":
+      case "write_bytes":
         return "file_write";
       case "edit":
         return "file_edit";
@@ -1291,9 +1329,14 @@ export class ComputerUseService extends Service {
       case "delete":
         return "file_delete";
       case "exists":
+      case "directory_exists":
+      case "get_file_size":
         return "file_exists";
       case "list":
         return "directory_list";
+      case "create_directory":
+      case "create_dir":
+        return "file_write";
       case "delete_directory":
         return "directory_delete";
       case "upload":
@@ -1390,6 +1433,10 @@ export class ComputerUseService extends Service {
         return "read";
       case "file_write":
         return "write";
+      case "read_bytes":
+        return "read_bytes";
+      case "write_bytes":
+        return "write_bytes";
       case "file_edit":
         return "edit";
       case "file_append":
@@ -1398,6 +1445,12 @@ export class ComputerUseService extends Service {
         return "delete";
       case "file_exists":
         return "exists";
+      case "directory_exists":
+        return "directory_exists";
+      case "create_dir":
+        return "create_directory";
+      case "get_file_size":
+        return "get_file_size";
       case "directory_list":
         return "list";
       case "directory_delete":

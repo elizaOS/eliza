@@ -2708,10 +2708,14 @@ export async function handleChatRoutes(
 
     const platformName =
       typeof safeBody.platformName === "string" ? safeBody.platformName : null;
-    const channelType =
-      typeof safeBody.channelType === "string"
-        ? (safeBody.channelType as ChannelType)
-        : ChannelType.API;
+    const channelType = parseRequestChannelType(
+      safeBody.channelType,
+      ChannelType.API,
+    );
+    if (!channelType) {
+      json(res, { error: "channelType is invalid" }, 400);
+      return true;
+    }
     const source = platformName || "agent_message_api";
 
     try {

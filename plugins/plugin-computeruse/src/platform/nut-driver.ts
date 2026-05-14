@@ -222,6 +222,44 @@ export async function nutRightClick(x: number, y: number): Promise<void> {
   await m.mouse.click(m.Button.RIGHT);
 }
 
+export async function nutMiddleClick(x: number, y: number): Promise<void> {
+  const m = nut();
+  await m.mouse.setPosition(new m.Point(validateInt(x), validateInt(y)));
+  await m.mouse.click(m.Button.MIDDLE);
+}
+
+export async function nutMouseDown(
+  x: number,
+  y: number,
+  button: "left" | "middle" | "right" = "left",
+): Promise<void> {
+  const m = nut();
+  const nutButton =
+    button === "right"
+      ? m.Button.RIGHT
+      : button === "middle"
+        ? m.Button.MIDDLE
+        : m.Button.LEFT;
+  await m.mouse.setPosition(new m.Point(validateInt(x), validateInt(y)));
+  await m.mouse.pressButton(nutButton);
+}
+
+export async function nutMouseUp(
+  x: number,
+  y: number,
+  button: "left" | "middle" | "right" = "left",
+): Promise<void> {
+  const m = nut();
+  const nutButton =
+    button === "right"
+      ? m.Button.RIGHT
+      : button === "middle"
+        ? m.Button.MIDDLE
+        : m.Button.LEFT;
+  await m.mouse.setPosition(new m.Point(validateInt(x), validateInt(y)));
+  await m.mouse.releaseButton(nutButton);
+}
+
 export async function nutMouseMove(x: number, y: number): Promise<void> {
   const m = nut();
   await m.mouse.setPosition(new m.Point(validateInt(x), validateInt(y)));
@@ -277,6 +315,16 @@ export async function nutKeyPress(key: string): Promise<void> {
   const code = resolveKeyCode(key);
   await m.keyboard.pressKey(code);
   await m.keyboard.releaseKey(code);
+}
+
+export async function nutKeyDown(key: string): Promise<void> {
+  const m = nut();
+  await m.keyboard.pressKey(resolveKeyCode(key));
+}
+
+export async function nutKeyUp(key: string): Promise<void> {
+  const m = nut();
+  await m.keyboard.releaseKey(resolveKeyCode(key));
 }
 
 export async function nutKeyCombo(combo: string): Promise<void> {

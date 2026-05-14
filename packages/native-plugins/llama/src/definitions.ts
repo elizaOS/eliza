@@ -9,6 +9,8 @@
  */
 
 export interface LoadOptions {
+  /** Stable model id when available; preferred over filename heuristics. */
+  modelId?: string;
   /**
    * Absolute or sandbox path to a GGUF file on device storage. On iOS this
    * lives under `Application Support/`. On Android under the app's internal
