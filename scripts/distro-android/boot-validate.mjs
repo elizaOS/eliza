@@ -43,6 +43,15 @@ const REQUIRED_GRANTED_PERMISSIONS = [
   "android.permission.POST_NOTIFICATIONS",
 ];
 
+const REQUIRED_PRIVILEGED_PERMISSIONS = [
+  "android.permission.PACKAGE_USAGE_STATS",
+  "android.permission.MANAGE_APP_OPS_MODES",
+  "android.permission.MANAGE_VIRTUAL_MACHINE",
+  "android.permission.READ_FRAME_BUFFER",
+  "android.permission.INJECT_EVENTS",
+  "android.permission.REAL_GET_TASKS",
+];
+
 const FORBIDDEN_STOCK_PACKAGES = [
   "com.android.browser",
   "com.android.calendar",
@@ -291,6 +300,27 @@ function validateHomeResolution(adb, serial, brand) {
   return resolved;
 }
 
+function validateAssistantResolutions(adb, serial, brand) {
+  const resolutions = {};
+  for (const action of [
+    "android.intent.action.ASSIST",
+    "android.intent.action.VOICE_COMMAND",
+  ]) {
+    const resolved = shell(
+      adb,
+      serial,
+      `cmd package resolve-activity --brief -a ${action}`,
+    );
+    if (!resolved.includes(brand.packageName)) {
+      throw new Error(
+        `${action} did not resolve to ${brand.packageName}; got:\n${resolved}`,
+      );
+    }
+    resolutions[action] = resolved;
+  }
+  return resolutions;
+}
+
 /**
  * For every system intent whose default app we stripped from
  * PRODUCT_PACKAGES, prove a brand activity is the resolver. Without
@@ -380,7 +410,48 @@ function validatePackageFlagsAndPermissions(adb, serial, brand) {
       `${permission} grant`,
     );
   }
+  for (const permission of REQUIRED_PRIVILEGED_PERMISSIONS) {
+    assertMatches(
+      dump,
+      new RegExp(`${escapeRegExp(permission)}[^\\n]*granted=true`, "i"),
+      `${permission} privileged grant`,
+    );
+  }
+  for (const component of [
+    `${brand.packageName}.${brand.classPrefix}AssistActivity`,
+    `${brand.packageName}.${brand.classPrefix}BootReceiver`,
+    `${brand.packageName}.${brand.classPrefix}AgentService`,
+    `${brand.packageName}.${brand.classPrefix}VoiceCaptureService`,
+    `${brand.packageName}.GatewayConnectionService`,
+  ]) {
+    assertIncludes(dump, component, `${brand.appName} package component`);
+  }
   return dump;
+}
+
+function validateCapabilityManifest(adb, serial, brand) {
+  const manifestPath = "/product/etc/eliza/aosp-assistant-full-control.json";
+  const manifest = shell(adb, serial, `cat ${manifestPath}`);
+  for (const marker of [
+    `"packageName": "${brand.packageName}"`,
+    '"android.app.role.ASSISTANT"',
+    '"android.intent.action.ASSIST"',
+    '"android.intent.action.VOICE_COMMAND"',
+    '"ElizaAssistActivity"',
+    '"ElizaBootReceiver"',
+    '"ElizaVoiceCaptureService"',
+    '"READ_FRAME_BUFFER"',
+    '"INJECT_EVENTS"',
+    '"REAL_GET_TASKS"',
+    '"accessibility"',
+    '"notificationListener"',
+    '"screenCapture"',
+    '"allowed": false',
+    '"stripTarget": "android-cloud"',
+  ]) {
+    assertIncludes(manifest, marker, manifestPath);
+  }
+  return manifestPath;
 }
 
 function validateAppOps(adb, serial, brand) {
@@ -447,8 +518,10 @@ export async function validateBootedDevice(options, brand) {
     bootProperties: validateBootProperties(adb, serial, brand),
     packagePath: validatePackagePath(adb, serial, brand),
     homeResolution: validateHomeResolution(adb, serial, brand),
+    assistantResolutions: validateAssistantResolutions(adb, serial, brand),
     replacementIntents: validateReplacementIntents(adb, serial, brand),
     roles: validateRoles(adb, serial, brand),
+    capabilityManifest: validateCapabilityManifest(adb, serial, brand),
     appOps: validateAppOps(adb, serial, brand),
     forbiddenPackages: validateForbiddenPackages(adb, serial),
     logcat: options.skipLogcat ? "skipped" : validateLogcat(adb, serial, brand),
