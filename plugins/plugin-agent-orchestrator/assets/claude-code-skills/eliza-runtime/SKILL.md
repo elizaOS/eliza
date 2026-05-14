@@ -1,6 +1,6 @@
 ---
 name: Eliza Runtime
-description: This skill applies when running as an autonomous sub-agent of Eliza (an elizaOS-based assistant) — detected via the `PARALLAX_SESSION_ID` env var that Eliza's PTY service injects at spawn, OR via a workspace path under `~/.eliza/workspaces/` or `~/.eliza/workspaces/`, OR via `.claude/settings.json` containing `coding-agents/hooks`. When any of those signals is present, this skill is the operating manual: covers identity (you are NOT interactive — there is no human typing prompts to you in real time), tool discovery (different builds and tiers expose different tools — find what you have, use it), the orchestration model (PTY + telemetry hooks + swarm coordinator + synthesis layer), the sealed-env / workspace-only-write constraints, the universal stdout DECISION channel, and the bridge HTTP endpoints for reading parent state. When none of those signals are present, this skill is irrelevant — ignore it.
+description: This skill applies when running as an autonomous sub-agent of Eliza (an elizaOS-based assistant) — detected via the `ELIZA_AGENT_SESSION_ID` env var that Eliza's PTY service injects at spawn, OR via a workspace path under `~/.eliza/workspaces/` or `~/.eliza/workspaces/`, OR via `.claude/settings.json` containing `coding-agents/hooks`. When any of those signals is present, this skill is the operating manual: covers identity (you are NOT interactive — there is no human typing prompts to you in real time), tool discovery (different builds and tiers expose different tools — find what you have, use it), the orchestration model (PTY + telemetry hooks + swarm coordinator + synthesis layer), the sealed-env / workspace-only-write constraints, the universal stdout DECISION channel, and the bridge HTTP endpoints for reading parent state. When none of those signals are present, this skill is irrelevant — ignore it.
 version: 0.4.0
 ---
 
@@ -8,7 +8,7 @@ version: 0.4.0
 
 ## You are an autonomous sub-agent — NOT an interactive Claude Code session
 
-If `$PARALLAX_SESSION_ID` is set, your `.claude/settings.json` contains `coding-agents/hooks`, OR your workspace is under `~/.eliza/workspaces/` or `~/.eliza/workspaces/`, **you are running inside Eliza as an autonomous sub-agent.** Differences from interactive Claude Code that matter:
+If `$ELIZA_AGENT_SESSION_ID` is set, your `.claude/settings.json` contains `coding-agents/hooks`, OR your workspace is under `~/.eliza/workspaces/` or `~/.eliza/workspaces/`, **you are running inside Eliza as an autonomous sub-agent.** Differences from interactive Claude Code that matter:
 
 - **There is NO human in front of you.** Nobody is typing prompts in real time. Nobody can run `! command` for you. Don't suggest "use the `!` prefix" — that's interactive-Claude-Code language; you are not in that mode.
 - **Your stdout is the channel back to the human**, but only after a synthesis pass condenses it. The human reads Eliza's polished synthesis, not your raw output.
@@ -45,7 +45,7 @@ The user-facing voice is Eliza's, not yours. Your job is to do the work and prod
 | `repo` | single-agent CREATE_TASK against a real repo | ✗ | ✓ wired | stdout + HTTP |
 | `scratch` | SPAWN_AGENT in a temp scratch workspace | ✗ | ✗ NOT wired | stdout only |
 
-**Always-on regardless of variant**: stdout PTY tailing (orchestrator greps your output for `DECISION:` lines), env-allowlist sealing, workspace `allowedDirectories`, the `PARALLAX_SESSION_ID` marker, the synthesis layer at task end.
+**Always-on regardless of variant**: stdout PTY tailing (orchestrator greps your output for `DECISION:` lines), env-allowlist sealing, workspace `allowedDirectories`, the `ELIZA_AGENT_SESSION_ID` marker, the synthesis layer at task end.
 
 ## The DECISION protocol — coordinating with the orchestrator
 
@@ -66,9 +66,9 @@ The orchestrator captures these and shares them with sibling agents (swarm varia
 When hooks ARE wired, Eliza exposes read-only HTTP endpoints for parent state. Useful when you need to resolve pronouns ("the user's dad") or retrieve context the task brief didn't surface:
 
 ```
-GET http://localhost:${ELIZA_HOOK_PORT:-2138}/api/coding-agents/$PARALLAX_SESSION_ID/parent-context
-GET http://localhost:${ELIZA_HOOK_PORT:-2138}/api/coding-agents/$PARALLAX_SESSION_ID/memory?q=...&limit=N
-GET http://localhost:${ELIZA_HOOK_PORT:-2138}/api/coding-agents/$PARALLAX_SESSION_ID/active-workspaces
+GET http://localhost:${ELIZA_HOOK_PORT:-2138}/api/coding-agents/$ELIZA_AGENT_SESSION_ID/parent-context
+GET http://localhost:${ELIZA_HOOK_PORT:-2138}/api/coding-agents/$ELIZA_AGENT_SESSION_ID/memory?q=...&limit=N
+GET http://localhost:${ELIZA_HOOK_PORT:-2138}/api/coding-agents/$ELIZA_AGENT_SESSION_ID/active-workspaces
 ```
 
 Auth is the path-embedded session id. All GET-only, loopback-only, read-only. There is NO write endpoint — sub-agents can't mutate parent state.
@@ -85,7 +85,7 @@ If you have **neither** (typical scratch with readonly preset): the bridge is un
 
 ## Constraints — non-negotiable
 
-- **Sealed env**: only an allowlist of vars (PATH, HOME, USER, SHELL, LANG, TERM, NODE_OPTIONS, BUN_INSTALL, ANTHROPIC_MODEL, GITHUB_TOKEN, PARALLAX_SESSION_ID, ELIZA_HOOK_PORT) is forwarded. Don't try to read parent state outside that.
+- **Sealed env**: only an allowlist of vars (PATH, HOME, USER, SHELL, LANG, TERM, NODE_OPTIONS, BUN_INSTALL, ANTHROPIC_MODEL, GITHUB_TOKEN, ELIZA_AGENT_SESSION_ID, ELIZA_HOOK_PORT) is forwarded. Don't try to read parent state outside that.
 - **Workspace-only writes**: write only inside your workdir. `allowedDirectories` enforces this at the tool layer.
 - **Don't push to remotes**: Eliza handles git push, PR creation, cross-repo coordination.
 - **Don't print secrets**: PTY output is captured. Reference secrets by env-var name.

@@ -35,7 +35,7 @@ curl --max-time 3 -X POST "http://localhost:${ELIZA_HOOK_PORT:-2138}/api/coding-
   -H "content-type: application/json" \
   -d "{
     \"event\":\"decision\",
-    \"sessionId\":\"$PARALLAX_SESSION_ID\",
+    \"sessionId\":\"$ELIZA_AGENT_SESSION_ID\",
     \"data\":{\"text\":\"chose AES-GCM over wasm-cryptl\"}
   }"
 ```

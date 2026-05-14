@@ -21,11 +21,11 @@ if [ -z "${1:-}" ]; then
 fi
 
 decision_text="$1"
-session_id="${PARALLAX_SESSION_ID:-}"
+session_id="${ELIZA_AGENT_SESSION_ID:-}"
 hook_port="${ELIZA_HOOK_PORT:-2138}"
 
 if [ -z "$session_id" ]; then
-    echo "eliza-decision: PARALLAX_SESSION_ID unset — not a Eliza session, skipping." >&2
+    echo "eliza-decision: ELIZA_AGENT_SESSION_ID unset — not a Eliza session, skipping." >&2
     exit 1
 fi
 
