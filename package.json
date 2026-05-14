@@ -128,6 +128,7 @@
     "test:lifeops": "node scripts/run-all-tests.mjs --filter=plugins/app-lifeops --only=e2e",
     "lifeops:verify-cerebras": "bun --bun plugins/app-lifeops/scripts/verify-cerebras-wiring.ts",
     "lifeops:bench": "bun --bun packages/app-core/scripts/lifeops-prompt-benchmark.ts",
+    "check-actions-manifest": "node scripts/lifeops-bench/check-action-manifest.mjs",
     "lifeops:full": "node scripts/lifeops-full-run.mjs",
     "lifeops:eliza": "ELIZA_BENCH_AGENT=eliza node scripts/lifeops-full-run.mjs",
     "lifeops:hermes": "ELIZA_BENCH_AGENT=hermes node scripts/lifeops-full-run.mjs",
