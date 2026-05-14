@@ -16,11 +16,11 @@
  * access and don't need a workspace folder grant.
  */
 
+import { isStoreBuild } from "../build-variant";
 import {
   pickDesktopWorkspaceFolder,
   resolveDesktopWorkspaceFolderBookmark,
 } from "../bridge/electrobun-rpc";
-import { isStoreBuild } from "../build-variant";
 import {
   clearStoredWorkspaceFolder,
   persistStoredWorkspaceFolder,
