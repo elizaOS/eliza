@@ -60,3 +60,23 @@ bun run build:desktop -- --build-variant=store
 
 If `ELECTROBUN_SKIP_CODESIGN=1` is set, the MAS step is skipped and the ad-hoc
 Eliza signing is applied instead (useful for local dev builds).
+
+## Verifying entitlements on a built bundle
+
+`scripts/mas-smoke.mjs` walks a built `.app`, parses the entitlements off every
+Mach-O via `codesign -d --entitlements - --xml`, and asserts that the outer
+bundle, the Bun helper, and every other child match the tightened MAS profile
+(no `allow-jit` / `allow-unsigned-executable-memory` /
+`disable-library-validation` on the parent or on children; `allow-jit` scoped
+to `Contents/MacOS/bun` only). Exit code 1 with a per-key diff on any
+mismatch.
+
+```
+node packages/app-core/scripts/mas-smoke.mjs --app=/Applications/Milady.app
+```
+
+Wired into `desktop-build.mjs` behind `--verify-mas` (or `ELIZA_VERIFY_MAS=1`)
+so CI store builds run it automatically after `codesign-mas.mjs`. Skipped by
+default for local builds. See
+[`JUSTIFICATIONS.md`](./JUSTIFICATIONS.md) for the App Review-facing rationale
+behind each entitlement.
