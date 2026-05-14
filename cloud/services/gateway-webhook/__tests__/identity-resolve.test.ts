@@ -63,7 +63,8 @@ describe("resolveIdentity", () => {
     expect(capturedRequest?.method).toBe("POST");
     expect(capturedRequest?.url).toBe("https://api.elizacloud.ai/api/internal/identity/resolve");
     expect(capturedRequest?.headers.get("authorization")).toBe("Bearer internal");
-    await expect(capturedRequest?.json()).resolves.toEqual({
+    expect(capturedRequest).not.toBeNull();
+    expect(await capturedRequest!.json()).toEqual({
       platform: "blooio",
       platformId: "+15551234567",
       platformName: "Ada",

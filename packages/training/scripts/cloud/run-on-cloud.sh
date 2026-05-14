@@ -183,7 +183,7 @@ ${SMOKE_MODEL:+packages/inference/verify/cuda_runner.sh --report /tmp/cuda-repor
   ${SMOKE_MODEL:+|| true}
 ${SMOKE_MODEL:+test -f /tmp/cuda-report.json && cp /tmp/cuda-report.json /workspace/cuda-report.json}
 # No smoke model → still emit a fixture-parity-only evidence stub.
-${SMOKE_MODEL:+:} || cat > /workspace/cuda-report.json <<'JSON'
+${SMOKE_MODEL:+:} || cat > /workspace/cuda-report.json <<JSON
 {"schemaVersion":1,"runner":"run-on-cloud kernel-verify","status":"pass","passRecordable":false,
  "exitCode":0,"note":"cuda-verify + cuda-verify-fused fixture parity only; no ELIZA_DFLASH_SMOKE_MODEL → graph smoke skipped, so this is NOT a runtime-ready record. Pass --smoke-model to upgrade."}
 JSON
@@ -200,8 +200,8 @@ REMOTE
 # dir; we point it at /workspace and copy out.
 ELIZA1_BENCH_TIER=$TIER ELIZA1_BENCH_REGISTRY_KEY=$REG_KEY \
   node packages/inference/verify/eliza1_gates_collect.mjs --backend cuda --bench --out /workspace/bench.json || \
-  { echo 'bench harness not present on this commit — emitting toolchain-only stub'; \
-    printf '{"schemaVersion":1,"backend":"cuda","gpu":"%s","tier":"%s","status":"toolchain-only","note":"eliza1 bench harness not on this commit"}\n' "$GPU" "$TIER" > /workspace/bench.json; }
+  { echo "bench harness not present on this commit - emitting toolchain-only stub"; \
+    printf "{\"schemaVersion\":1,\"backend\":\"cuda\",\"gpu\":\"%s\",\"tier\":\"%s\",\"status\":\"toolchain-only\",\"note\":\"eliza1 bench harness not on this commit\"}\\n" "$GPU" "$TIER" > /workspace/bench.json; }
 cp /workspace/bench.json /workspace/eliza/bench.json 2>/dev/null || true
 REMOTE
 )"
