@@ -16,13 +16,17 @@ import { readJsonBody } from "@elizaos/shared";
 
 const EXPRESS_SHIM = Symbol("elizaExpressResponseShim");
 
-let x402RoutesModulePromise: Promise<{
+type X402RoutesModule = {
   createPaymentAwareHandler: (route: PaymentEnabledRoute) => Route["handler"];
   isRoutePaymentWrapped: (route: Route) => boolean;
-}> | null = null;
+};
 
-function getX402RoutesModule() {
-  x402RoutesModulePromise ??= import("@elizaos/plugin-x402");
+let x402RoutesModulePromise: Promise<X402RoutesModule> | null = null;
+
+function getX402RoutesModule(): Promise<X402RoutesModule> {
+  x402RoutesModulePromise ??= import(
+    "@elizaos/plugin-x402"
+  ) as unknown as Promise<X402RoutesModule>;
   return x402RoutesModulePromise;
 }
 
@@ -245,9 +249,10 @@ export async function tryHandleRuntimePluginRoute(options: {
       const { createPaymentAwareHandler, isRoutePaymentWrapped } =
         await getX402RoutesModule();
       if (!isRoutePaymentWrapped(route)) {
-        effectiveHandler = createPaymentAwareHandler(
-          route as PaymentEnabledRoute,
-        );
+        const wrapped = createPaymentAwareHandler(route as PaymentEnabledRoute);
+        if (wrapped) {
+          effectiveHandler = wrapped;
+        }
       }
     }
 
