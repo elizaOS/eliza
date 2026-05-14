@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Provision a Vast.ai GPU instance, sync the training tree, and run a
 # full-parameter SFT (APOLLO), DPO warmup, or GRPO RL pipeline on a
-# Qwen3.5/3.6 model.
+# Qwen3.5 model.
 #
 # Pipeline selection (--pipeline sft|dpo|grpo, default sft):
 #   sft   — run train_local.py with APOLLO + Liger + FSDP (the historical
@@ -21,7 +21,7 @@
 # VAST_GPU_TARGET):
 #   qwen3.5-2b  → blackwell6000-1x   (96 GB; 15.5 GB budget = 16% util)
 #   qwen3.5-9b  → blackwell6000-1x   (96 GB; 80 GB budget   = 83% util)
-#   qwen3.6-27b → b200-2x            (~366 GB; 190 GB budget = 52% util)
+#   qwen3.5-27b → b200-2x            (~366 GB; 190 GB budget = 52% util)
 #
 # Other targets (use VAST_GPU_TARGET=...):
 #   blackwell6000-2x — 2× RTX PRO 6000 Blackwell, 192 GB total. Safe for
@@ -46,7 +46,7 @@
 #     1× H100 SXM      (80 GB)   ~51 h  ~$121    nearly 3× faster; 80 GB tight
 #     1× H200 SXM     (141 GB)   ~51 h  ~$162    same wall, more headroom
 #     2× B200          (366 GB)  ~11 h   ~$84    fastest, also cheapish
-#   qwen3.6-27b:
+#   qwen3.5-27b:
 #     2× B200          (366 GB)  ~33 h  ~$253    DEFAULT (fast + safe)
 #     2× H200 SXM     (282 GB)   ~76 h  ~$485    2× as slow, 2× as expensive
 #     2× Blackwell 6000 (192 GB) ~208 h ~$558    cheapest $/hr, slowest;
@@ -62,7 +62,7 @@
 #   HUGGING_FACE_HUB_TOKEN     # for gated Qwen access
 #
 # Optional env:
-#   REGISTRY_KEY               # default: qwen3.6-27b
+#   REGISTRY_KEY               # default: qwen3.5-27b
 #   RUN_NAME                   # default: <registry-key>-apollo
 #   VAST_GPU_TARGET            # default: auto-picked from REGISTRY_KEY
 #   VAST_INSTANCE_LABEL        # default: eliza-train-vast-${REGISTRY_KEY//./-}
@@ -274,7 +274,7 @@ case "$PIPELINE" in
         DEFAULT_GPU_TARGET="h200-4x"
         DEFAULT_FSDP_WORLD_SIZE=4
         ;;
-      qwen3.6-27b)
+      qwen3.5-27b)
         DEFAULT_GPU_TARGET="h200-8x"
         DEFAULT_FSDP_WORLD_SIZE=8
         ;;
@@ -332,7 +332,7 @@ BENCHMARK_AFTER="${BENCHMARK_AFTER:-1}"
 # 100/bucket for 27B unless caller overrides.
 if [ -z "${BENCH_MAX_PER_BUCKET:-}" ]; then
   case "$REGISTRY_KEY" in
-    qwen3.6-27b) BENCH_MAX_PER_BUCKET=100 ;;
+    qwen3.5-27b) BENCH_MAX_PER_BUCKET=100 ;;
     *)           BENCH_MAX_PER_BUCKET=200 ;;
   esac
 fi
@@ -963,7 +963,7 @@ provision_and_train() {
         local _sft_default
         case "$REGISTRY_KEY" in
           qwen3.5-2b|qwen3.5-9b) _sft_default="blackwell6000-1x" ;;
-          qwen3.6-27b)           _sft_default="b200-2x" ;;
+          qwen3.5-27b)           _sft_default="b200-2x" ;;
           *)                     _sft_default="blackwell6000-2x" ;;
         esac
         log "  3. run_grpo_remote (bash scripts/train_grpo_verl.sh \\"
