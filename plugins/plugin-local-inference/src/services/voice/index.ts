@@ -166,6 +166,19 @@ export {
 	type RollbackResult,
 	type TaggedAudioChunk,
 } from "./prefix-preserving-queue";
+export {
+	isOutlier,
+	VOICE_PROFILE_RECORD_SCHEMA_VERSION,
+	type VoiceImprintMatchHandle,
+	type VoiceProfileAudioRef,
+	type VoiceProfileConsentState,
+	type VoiceProfileObservation,
+	type VoiceProfileRecord,
+	VoiceProfileStore,
+	type VoiceProfileStoreOptions,
+	welfordUpdate,
+	welfordVariance,
+} from "./profile-store";
 export { InMemoryAudioSink, PcmRingBuffer } from "./ring-buffer";
 export { type RollbackEvent, RollbackQueue } from "./rollback-queue";
 export {
@@ -184,18 +197,11 @@ export {
 	type SharedTokenizer,
 } from "./shared-resources";
 export {
-	isOutlier,
-	VOICE_PROFILE_RECORD_SCHEMA_VERSION,
-	VoiceProfileStore,
-	type VoiceImprintMatchHandle,
-	type VoiceProfileAudioRef,
-	type VoiceProfileConsentState,
-	type VoiceProfileObservation,
-	type VoiceProfileRecord,
-	type VoiceProfileStoreOptions,
-	welfordUpdate,
-	welfordVariance,
-} from "./profile-store";
+	type VoiceAttributionOutput,
+	VoiceAttributionPipeline,
+	type VoiceAttributionPipelineDeps,
+	type VoiceAttributionRequest,
+} from "./speaker/attribution-pipeline";
 export {
 	classifyFramesToSegments,
 	type Diarizer,
@@ -210,8 +216,8 @@ export {
 	PYANNOTE_SEGMENTATION_3_FP32_MODEL_ID,
 	PYANNOTE_SEGMENTATION_3_INT8_MODEL_ID,
 	PYANNOTE_WINDOW_SECONDS,
-	type PyannoteDiarizerModelId,
 	PyannoteDiarizer,
+	type PyannoteDiarizerModelId,
 } from "./speaker/diarizer";
 export {
 	averageEmbeddings,
@@ -225,12 +231,6 @@ export {
 	WespeakerEncoder,
 	type WespeakerModelId,
 } from "./speaker/encoder";
-export {
-	VoiceAttributionPipeline,
-	type VoiceAttributionOutput,
-	type VoiceAttributionPipelineDeps,
-	type VoiceAttributionRequest,
-} from "./speaker/attribution-pipeline";
 export {
 	type AttributedVoiceObservation,
 	attributeVoiceImprintObservations,

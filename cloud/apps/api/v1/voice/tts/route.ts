@@ -27,6 +27,7 @@ import type { AppEnv } from "@/types/cloud-worker-env";
  */
 
 import { z } from "zod";
+import { firstSentenceSnip, FIRST_SENTENCE_SNIP_VERSION } from "@elizaos/shared";
 import { userVoicesRepository } from "@/db/repositories/user-voices";
 import { ApiError } from "@/lib/api/cloud-worker-errors";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
@@ -40,8 +41,29 @@ import {
   InsufficientCreditsError,
 } from "@/lib/services/credits";
 import { getElevenLabsService } from "@/lib/services/elevenlabs";
+import {
+  fingerprintCloudVoiceSettings,
+  getCloudFirstLineCacheService,
+  shouldBypassCloudFirstLineCache,
+} from "@/lib/services/tts-first-line-cache";
 import { usageService } from "@/lib/services/usage";
 import { logger } from "@/lib/utils/logger";
+
+/**
+ * Default ElevenLabs output format. Must stay in sync with the ElevenLabs
+ * service so cached bytes match what fresh synthesis returns.
+ */
+const DEFAULT_OUTPUT_FORMAT = "mp3_44100_128";
+
+/**
+ * Resolve a stable `voiceRevision` token for the ElevenLabs path. The real
+ * impl could query `client.voices.get(voiceId).voice_settings` and hash it;
+ * for the v1 cache we pin a static revision per voice/format and let a future
+ * voice-settings change bump it manually.
+ */
+function resolveElevenLabsVoiceRevision(voiceId: string, modelId: string): string {
+  return `elevenlabs:${voiceId}:${modelId}:${DEFAULT_OUTPUT_FORMAT}`;
+}
 
 const MAX_TEXT_LENGTH = 5000;
 
@@ -127,6 +149,64 @@ async function __hono_POST(request: Request) {
           userVoiceId: voice.id,
           voiceName: voice.name,
         });
+      }
+    }
+
+    // ---------------------------------------------------------------------
+    // First-line cache hit path.
+    //
+    // Try to serve the request entirely from the first-line cache when the
+    // whole input is a single short opener (e.g. "Got it.", "No problem!").
+    // For longer messages we currently fall through to fresh synthesis but
+    // still populate the cache in the background — concat-with-remainder is
+    // a follow-up.
+    // ---------------------------------------------------------------------
+    const resolvedVoiceId = voiceId || "EXAVITQu4vr4xnSDxMaL";
+    const resolvedModelId = modelId || "eleven_flash_v2_5";
+    const snipResult = firstSentenceSnip(text);
+    const cacheBypass = shouldBypassCloudFirstLineCache({ modelId: resolvedModelId });
+    const cacheScope = isCustomVoice ? `org:${user.organization_id}` : "global";
+    const voiceSettingsFingerprint = fingerprintCloudVoiceSettings({
+      outputFormat: DEFAULT_OUTPUT_FORMAT,
+    });
+
+    if (
+      snipResult &&
+      !cacheBypass &&
+      // Cache currently only serves WHOLE-input hits to avoid mp3 stream
+      // alignment hazards on the concat path.
+      snipResult.endOffset === text.trimEnd().length
+    ) {
+      try {
+        const cacheService = getCloudFirstLineCacheService();
+        const cached = await cacheService.get({
+          algoVersion: FIRST_SENTENCE_SNIP_VERSION,
+          provider: "elevenlabs",
+          voiceId: resolvedVoiceId,
+          voiceRevision: resolveElevenLabsVoiceRevision(resolvedVoiceId, resolvedModelId),
+          sampleRate: 44100,
+          codec: "mp3",
+          voiceSettingsFingerprint,
+          normalizedText: snipResult.normalized,
+          scope: cacheScope,
+        });
+        if (cached) {
+          logger.info(
+            `[Voice TTS API] first-line cache HIT (${cacheScope}, ${cached.byteSize}B, hits=${cached.hitCount})`,
+          );
+          return new Response(cached.bytes as unknown as BodyInit, {
+            headers: {
+              "Content-Type": cached.contentType,
+              "Cache-Control": "no-cache",
+              "X-TTS-Cache": "hit; first-sentence",
+            },
+          });
+        }
+      } catch (err) {
+        // Cache failure is non-fatal — fall through to normal synthesis.
+        logger.warn?.(
+          `[Voice TTS API] first-line cache lookup failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
       }
     }
 
@@ -227,11 +307,80 @@ async function __hono_POST(request: Request) {
       }
     })();
 
+    // ---------------------------------------------------------------------
+    // First-line cache populate path.
+    //
+    // Re-synthesise JUST the snipped first sentence and store it (the
+    // already-streamed-out bytes can't be sliced reliably at sentence
+    // boundaries — mp3 frames aren't aligned). The fan-out is bounded by
+    // the ≤ 10-word snip cap and skipped entirely on bypass / no-snip.
+    // ---------------------------------------------------------------------
+    if (snipResult && !cacheBypass) {
+      void (async () => {
+        try {
+          const cacheService = getCloudFirstLineCacheService();
+          const cacheKey = {
+            algoVersion: FIRST_SENTENCE_SNIP_VERSION,
+            provider: "elevenlabs",
+            voiceId: resolvedVoiceId,
+            voiceRevision: resolveElevenLabsVoiceRevision(
+              resolvedVoiceId,
+              resolvedModelId,
+            ),
+            sampleRate: 44100,
+            codec: "mp3" as const,
+            voiceSettingsFingerprint,
+            normalizedText: snipResult.normalized,
+            scope: cacheScope,
+          };
+          if (await cacheService.has(cacheKey)) return;
+          const snipStream = await elevenlabs.textToSpeech({
+            text: snipResult.raw,
+            voiceId,
+            modelId,
+          });
+          const reader = snipStream.getReader();
+          const chunks: Uint8Array[] = [];
+          let total = 0;
+          while (true) {
+            const r = await reader.read();
+            if (r.done) break;
+            const chunk = r.value as Uint8Array;
+            chunks.push(chunk);
+            total += chunk.byteLength;
+          }
+          if (total === 0) return;
+          const merged = new Uint8Array(total);
+          let off = 0;
+          for (const c of chunks) {
+            merged.set(c, off);
+            off += c.byteLength;
+          }
+          await cacheService.put({
+            ...cacheKey,
+            bytes: merged,
+            rawText: snipResult.raw,
+            contentType: "audio/mpeg",
+            durationMs: 0,
+            wordCount: snipResult.wordCount,
+          });
+          logger.info(
+            `[Voice TTS API] first-line cache POPULATE ok (${cacheScope}, ${total}B, "${snipResult.normalized}")`,
+          );
+        } catch (err) {
+          logger.warn?.(
+            `[Voice TTS API] first-line cache populate failed: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
+      })();
+    }
+
     return new Response(audioStream, {
       headers: {
         "Content-Type": "audio/mpeg",
         "Transfer-Encoding": "chunked",
         "Cache-Control": "no-cache",
+        "X-TTS-Cache": "miss",
       },
     });
   } catch (error) {
