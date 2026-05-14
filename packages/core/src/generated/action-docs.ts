@@ -3866,6 +3866,29 @@ export const allActionsSpec = {
 					},
 					descriptionCompressed: "Scroll tick count.",
 				},
+				{
+					name: "displayId",
+					description:
+						"Display the coordinate is local to. Required for any coordinate-bearing action on multi-monitor hosts. See the `computerState` provider for the live `displays[]` list.",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed:
+						"Display the coordinate is local to. Required for any coordinate-bearing action on multi-monitor hosts. See the `computerState` provider for the live...",
+				},
+				{
+					name: "coordSource",
+					description:
+						"Coordinate space of the coordinate fields: 'logical' (default; matches display.bounds) or 'backing' (raw retina pixels — macOS only).",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["logical", "backing"],
+					},
+					descriptionCompressed:
+						"Coordinate space of the coordinate fields: 'logical' (default. matches display. bounds) or 'backing' (raw retina pixels - macOS only).",
+				},
 			],
 			descriptionCompressed:
 				"Canonical cross-platform desktop control: screenshot/click/modified click/double/right/move/type/key/key_combo/scroll/drag/detect_elements/ocr.",
@@ -3904,6 +3927,8 @@ export const allActionsSpec = {
 							clicks: 1,
 							scrollDirection: "up",
 							scrollAmount: 3,
+							displayId: 1,
+							coordSource: "logical",
 						},
 					},
 				},
@@ -7481,6 +7506,17 @@ export const allActionsSpec = {
 						"Working directory for action=create/action=spawn_agent.",
 				},
 				{
+					name: "lockWorkdir",
+					description:
+						"When true, the supplied `workdir` is used verbatim and operator ",
+					required: false,
+					schema: {
+						type: "boolean",
+					},
+					descriptionCompressed:
+						"When true, the supplied `workdir` is used verbatim and operator",
+				},
+				{
 					name: "memoryContent",
 					description:
 						"Additional memory/context for action=create / action=spawn_agent.",
@@ -8001,6 +8037,7 @@ export const allActionsSpec = {
 							agents: "example",
 							repo: "example",
 							workdir: "example",
+							lockWorkdir: false,
 							memoryContent: "example",
 							label: "example",
 							approvalPreset: "readonly",
