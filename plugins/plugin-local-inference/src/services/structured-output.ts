@@ -110,6 +110,8 @@ function isFreeSpan(span: ResponseSkeletonSpan): boolean {
 	return (
 		span.kind === "free-string" ||
 		span.kind === "free-json" ||
+		span.kind === "number" ||
+		span.kind === "boolean" ||
 		(span.kind === "enum" &&
 			Array.isArray(span.enumValues) &&
 			span.enumValues.length > 1)
@@ -230,6 +232,27 @@ export function compileSkeletonToGbnf(
 		if (span.kind === "free-string") {
 			const ruleName = span.rule ?? `freestr${freeIdx++}`;
 			if (!rules.has(ruleName)) rules.set(ruleName, GBNF_JSON_STRING);
+			rootParts.push(ruleName);
+			continue;
+		}
+		if (span.kind === "number") {
+			// jsonnumber lives inside GBNF_JSON_VALUE; pulling that whole block
+			// in is overkill for a leaf number span — emit a local rule.
+			const ruleName = span.rule ?? `jsonnum${freeIdx++}`;
+			if (!rules.has(ruleName)) {
+				rules.set(
+					ruleName,
+					'"-"? ( [0-9] | [1-9] [0-9]* ) ( "." [0-9]+ )? ( [eE] [-+]? [0-9]+ )?',
+				);
+			}
+			rootParts.push(ruleName);
+			continue;
+		}
+		if (span.kind === "boolean") {
+			const ruleName = span.rule ?? `jsonbool${freeIdx++}`;
+			if (!rules.has(ruleName)) {
+				rules.set(ruleName, '"true" | "false"');
+			}
 			rootParts.push(ruleName);
 			continue;
 		}
