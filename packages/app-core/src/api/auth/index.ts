@@ -1,9 +1,7 @@
 /**
- * Barrel for the P0 auth subsystem.
+ * Barrel for the auth subsystem.
  *
- * Consumers should import from here rather than reaching into the individual
- * module files; this keeps the public surface explicit and lets us reshape
- * internals during P1+ without rippling through callers.
+ * Import from here rather than reaching into individual module files.
  */
 
 export {
