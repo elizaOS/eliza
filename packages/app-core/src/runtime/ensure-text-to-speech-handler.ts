@@ -1,6 +1,7 @@
 import process from "node:process";
 import { loadElizaConfig } from "@elizaos/agent";
 import { type AgentRuntime, logger, ModelType } from "@elizaos/core";
+import { wrapEdgeTtsHandlerWithFirstLineCache } from "./tts-cache-wiring.js";
 
 export interface EdgeTtsConfig {
   plugins?: {
@@ -91,9 +92,16 @@ export async function ensureTextToSpeechHandler(
       );
     }
 
+    // Wrap the Edge TTS handler with the first-sentence LRU cache so short
+    // opener phrases like "Got it." / "Sure!" reuse synthesised bytes across
+    // turns. The wrapper is a no-op when sqlite is unavailable or
+    // `ELIZA_TTS_CACHE_DISABLE=1` is set.
+    const wrappedHandler =
+      (await wrapEdgeTtsHandlerWithFirstLineCache(handler)) ?? handler;
+
     runtimeWithRegistration.registerModel(
       ModelType.TEXT_TO_SPEECH,
-      handler,
+      wrappedHandler,
       "edge-tts",
       0,
     );
