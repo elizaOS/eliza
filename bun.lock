@@ -2341,6 +2341,19 @@
         "@capacitor/core",
       ],
     },
+    "plugins/plugin-benchmarks": {
+      "name": "@elizaos/plugin-benchmarks",
+      "version": "2.0.0-beta.0",
+      "dependencies": {
+        "@elizaos/core": "workspace:*",
+      },
+      "devDependencies": {
+        "@biomejs/biome": "^2.4.14",
+        "@types/node": "^25.0.3",
+        "typescript": "^6.0.3",
+        "vitest": "^4.0.18",
+      },
+    },
     "plugins/plugin-bluebubbles": {
       "name": "@elizaos/plugin-bluebubbles",
       "version": "2.0.0-beta.2",
@@ -4292,6 +4305,8 @@
     "@elizaos/plugin-app-control": ["@elizaos/plugin-app-control@workspace:plugins/plugin-app-control"],
 
     "@elizaos/plugin-background-runner": ["@elizaos/plugin-background-runner@workspace:plugins/plugin-background-runner"],
+
+    "@elizaos/plugin-benchmarks": ["@elizaos/plugin-benchmarks@workspace:plugins/plugin-benchmarks"],
 
     "@elizaos/plugin-bluebubbles": ["@elizaos/plugin-bluebubbles@workspace:plugins/plugin-bluebubbles"],
 

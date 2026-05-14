@@ -7587,7 +7587,7 @@ export const allActionsSpec = {
 		{
 			name: "TASKS",
 			description:
-				"Orchestrator surface for delegating coding work to dedicated sub-agents (claude / codex / opencode / gemini / aider). ",
+				"Planner surface for orchestrator workspace operations and coding task delegation to dedicated coding sub-agents (claude / codex / opencode / gemini / aider). ",
 			parameters: [
 				{
 					name: "action",
@@ -7670,6 +7670,17 @@ export const allActionsSpec = {
 					},
 					descriptionCompressed:
 						"Working directory for action=create/action=spawn_agent.",
+				},
+				{
+					name: "lockWorkdir",
+					description:
+						"When true, the supplied `workdir` is used verbatim and operator ",
+					required: false,
+					schema: {
+						type: "boolean",
+					},
+					descriptionCompressed:
+						"When true, the supplied `workdir` is used verbatim and operator",
 				},
 				{
 					name: "memoryContent",
@@ -8084,7 +8095,7 @@ export const allActionsSpec = {
 				},
 			],
 			descriptionCompressed:
-				"delegate coding work to a sub-agent (claude/codex/opencode/gemini/aider). action=spawn_agent for new work, send to talk to one, control to pause/resume, list_agents/history to read state",
+				"delegate coding work to a coding sub-agent (claude/codex/opencode/gemini/aider). action=spawn_agent for new work, send to talk to one, control to pause/resume, list_agents/history to read state",
 			similes: [
 				"CREATE_AGENT_TASK",
 				"CREATE_TASK",
@@ -8192,6 +8203,7 @@ export const allActionsSpec = {
 							agents: "example",
 							repo: "example",
 							workdir: "example",
+							lockWorkdir: false,
 							memoryContent: "example",
 							label: "example",
 							approvalPreset: "readonly",
