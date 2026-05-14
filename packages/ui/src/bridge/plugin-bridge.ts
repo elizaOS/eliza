@@ -232,16 +232,11 @@ function wrapPlugin<T extends Record<string, unknown>>(
     get(target, prop) {
       const value = target[prop as keyof T];
       if (typeof value === "function") {
-        return async (...args: unknown[]) => {
-          try {
-            return await (
-              value as (...args: unknown[]) => Promise<unknown>
-            ).apply(target, args);
-          } catch (error) {
-            console.error(`[Plugin Bridge] ${String(prop)} failed:`, error);
-            throw error;
-          }
-        };
+        return (...args: unknown[]) =>
+          (value as (...args: unknown[]) => Promise<unknown>).apply(
+            target,
+            args,
+          );
       }
       return value;
     },

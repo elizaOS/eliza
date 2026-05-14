@@ -62,14 +62,24 @@ export function ttsDebugTextPreview(
   return `${singleLine.slice(0, maxChars)}…`;
 }
 
+/**
+ * Sink for TTS debug output. Set by the host app (e.g. pino on the server,
+ * Web Inspector in the renderer). No-op when null.
+ */
+let _ttsSink:
+  | ((phase: string, detail?: Record<string, unknown>) => void)
+  | null = null;
+
+export function setTtsDebugSink(
+  sink: ((phase: string, detail?: Record<string, unknown>) => void) | null,
+): void {
+  _ttsSink = sink;
+}
+
 export function ttsDebug(
   phase: string,
   detail?: Record<string, unknown>,
 ): void {
-  if (!ttsDebugEnabled()) return;
-  if (detail && Object.keys(detail).length > 0) {
-    console.info(`[eliza][tts] ${phase}`, detail);
-  } else {
-    console.info(`[eliza][tts] ${phase}`);
-  }
+  if (!ttsDebugEnabled() || !_ttsSink) return;
+  _ttsSink(phase, detail);
 }

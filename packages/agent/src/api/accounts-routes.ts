@@ -584,7 +584,7 @@ export async function handleAccountsRoutes(
   }
 
   if (pathname === ACCOUNTS_PREFIX && method === "GET") {
-    return await handleListAllAccounts(ctx);
+    return handleListAllAccounts(ctx);
   }
 
   // ── /api/accounts/:providerId... ──────────────────────────────────
@@ -601,12 +601,12 @@ export async function handleAccountsRoutes(
 
   // ── POST /api/accounts/:providerId (api-key add) ──────────────────
   if (segments.length === 1 && method === "POST") {
-    return await handleCreateApiKeyAccount(ctx, providerId);
+    return handleCreateApiKeyAccount(ctx, providerId);
   }
 
   // ── OAuth flow trio ───────────────────────────────────────────────
   if (segments[1] === "oauth") {
-    return await handleOAuthRoutes(ctx, providerId, segments.slice(2));
+    return handleOAuthRoutes(ctx, providerId, segments.slice(2));
   }
 
   // ── /:accountId actions ───────────────────────────────────────────
@@ -614,18 +614,18 @@ export async function handleAccountsRoutes(
     const accountId = segments[1];
     if (segments.length === 2) {
       if (method === "PATCH") {
-        return await handlePatchAccount(ctx, providerId, accountId);
+        return handlePatchAccount(ctx, providerId, accountId);
       }
       if (method === "DELETE") {
-        return await handleDeleteAccount(ctx, providerId, accountId);
+        return handleDeleteAccount(ctx, providerId, accountId);
       }
     }
     if (segments.length === 3 && method === "POST") {
       if (segments[2] === "test") {
-        return await handleTestAccount(ctx, providerId, accountId);
+        return handleTestAccount(ctx, providerId, accountId);
       }
       if (segments[2] === "refresh-usage") {
-        return await handleRefreshUsage(ctx, providerId, accountId);
+        return handleRefreshUsage(ctx, providerId, accountId);
       }
     }
   }

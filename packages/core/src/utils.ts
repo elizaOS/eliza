@@ -935,7 +935,7 @@ export async function trimTokens(
 	const truncatedTokens = tokens.slice(-maxTokens);
 
 	// Decode back to text
-	return await runtime.useModel(ModelType.TEXT_TOKENIZER_DECODE, {
+	return runtime.useModel(ModelType.TEXT_TOKENIZER_DECODE, {
 		tokens: truncatedTokens,
 		modelType: ModelType.TEXT_TOKENIZER_DECODE,
 	});

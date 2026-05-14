@@ -742,7 +742,7 @@ export class AutonomyService extends Service {
 		}
 		this.runtime.promptBatcher.think("autonomy", {
 			contextBuilder: async (_runtime, _messages) => {
-				return await this.buildAutonomyContextForBatcher();
+				return this.buildAutonomyContextForBatcher();
 			},
 			preamble: [
 				"You are in autonomous mode. Output your thought, chosen actions, and text response.",

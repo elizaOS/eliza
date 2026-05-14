@@ -7,24 +7,17 @@
  */
 
 import { logger } from "@elizaos/core";
+import type { LogEntry } from "@elizaos/shared";
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-export interface EarlyLogEntry {
-  timestamp: number;
-  level: string;
-  message: string;
-  source: string;
-  tags: string[];
-}
+// EarlyLogEntry is structurally identical to LogEntry. Using the canonical
+// shared type avoids a redundant local definition.
+export type { LogEntry as EarlyLogEntry };
 
 // ---------------------------------------------------------------------------
 // Module-level state (shared via the exported accessors)
 // ---------------------------------------------------------------------------
 
-let earlyLogBuffer: EarlyLogEntry[] | null = null;
+let earlyLogBuffer: LogEntry[] | null = null;
 let earlyPatchCleanup: (() => void) | null = null;
 
 // ---------------------------------------------------------------------------
@@ -103,7 +96,7 @@ export function captureEarlyLogs(): void {
  *
  * Returns the buffered entries (empty array if none).
  */
-export function flushEarlyLogs(): EarlyLogEntry[] {
+export function flushEarlyLogs(): LogEntry[] {
   const entries = earlyLogBuffer ? [...earlyLogBuffer] : [];
   if (earlyPatchCleanup) {
     earlyPatchCleanup();

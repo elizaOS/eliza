@@ -84,7 +84,7 @@ export function assertPasswordStrong(plain: string): void {
  * Errors propagate to the caller — fail-fast policy.
  */
 export async function hashPassword(plain: string): Promise<string> {
-  return await hash(plain, ARGON2_PARAMS);
+  return hash(plain, ARGON2_PARAMS);
 }
 
 /**
@@ -100,5 +100,5 @@ export async function verifyPassword(
   plain: string,
   encodedHash: string,
 ): Promise<boolean> {
-  return await verify(encodedHash, plain);
+  return verify(encodedHash, plain);
 }

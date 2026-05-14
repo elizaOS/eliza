@@ -4,127 +4,84 @@ Tests for MINT dataset loader.
 
 import pytest
 
-from benchmarks.mint.types import MINTCategory
+from benchmarks.mint.types import MINTSubtask
 from benchmarks.mint.dataset import MINTDataset
 
 
-class TestMINTDataset:
-    """Tests for MINTDataset class."""
-
+class TestUpstreamMINTDataset:
     @pytest.fixture
     def dataset(self) -> MINTDataset:
-        """Create a dataset instance."""
         return MINTDataset()
 
     @pytest.mark.asyncio
-    async def test_load_builtin_tasks(self, dataset: MINTDataset) -> None:
-        """Test loading built-in tasks."""
+    async def test_load_upstream(self, dataset: MINTDataset) -> None:
         await dataset.load()
-        
-        # Should have tasks in all categories
-        for cat in MINTCategory:
-            assert cat in dataset.tasks
-            assert len(dataset.tasks[cat]) > 0
+
+        # We expect samples from each non-alfworld subtask.
+        loaded_subtasks = [
+            st for st, entries in dataset.tasks.items() if entries
+        ]
+        assert MINTSubtask.GSM8K in loaded_subtasks
+        assert MINTSubtask.HUMANEVAL in loaded_subtasks
+        assert MINTSubtask.MATH in loaded_subtasks
+        # AlfWorld is intentionally lazy.
+        assert dataset.tasks[MINTSubtask.ALFWORLD] == []
 
     @pytest.mark.asyncio
-    async def test_get_all_tasks(self, dataset: MINTDataset) -> None:
-        """Test getting all tasks."""
+    async def test_get_tasks_filters_by_subtask(self, dataset: MINTDataset) -> None:
         await dataset.load()
-        tasks = dataset.get_tasks()
-        
-        assert len(tasks) > 0
-        # Should have tasks from all categories
-        categories_found = {task.category for task in tasks}
-        assert len(categories_found) == len(MINTCategory)
+        gsm = dataset.get_tasks(subtasks=[MINTSubtask.GSM8K])
+        assert gsm
+        assert all(t.subtask == MINTSubtask.GSM8K for t in gsm)
 
     @pytest.mark.asyncio
-    async def test_get_tasks_by_category(self, dataset: MINTDataset) -> None:
-        """Test filtering tasks by category."""
+    async def test_limit_per_subtask(self, dataset: MINTDataset) -> None:
         await dataset.load()
-        
-        reasoning_tasks = dataset.get_tasks(categories=[MINTCategory.REASONING])
-        assert all(t.category == MINTCategory.REASONING for t in reasoning_tasks)
-        
-        coding_tasks = dataset.get_tasks(categories=[MINTCategory.CODING])
-        assert all(t.category == MINTCategory.CODING for t in coding_tasks)
-
-    @pytest.mark.asyncio
-    async def test_get_tasks_with_limit(self, dataset: MINTDataset) -> None:
-        """Test limiting tasks per category."""
-        await dataset.load()
-        
         tasks = dataset.get_tasks(limit=2)
-        # Should have at most 2 tasks per category
-        for cat in MINTCategory:
-            cat_tasks = [t for t in tasks if t.category == cat]
-            assert len(cat_tasks) <= 2
+        # 7 non-alfworld subtasks * 2 -> at most 14.
+        assert len(tasks) <= 14
+        per_subtask: dict[MINTSubtask, int] = {}
+        for t in tasks:
+            per_subtask[t.subtask] = per_subtask.get(t.subtask, 0) + 1
+        for cnt in per_subtask.values():
+            assert cnt <= 2
 
     @pytest.mark.asyncio
-    async def test_get_task_by_id(self, dataset: MINTDataset) -> None:
-        """Test getting a specific task by ID."""
+    async def test_task_fields(self, dataset: MINTDataset) -> None:
         await dataset.load()
-        
-        # Get a known task
-        task = dataset.get_task_by_id("reasoning-001")
-        assert task is not None
-        assert task.id == "reasoning-001"
-        assert task.category == MINTCategory.REASONING
-
-    @pytest.mark.asyncio
-    async def test_get_nonexistent_task(self, dataset: MINTDataset) -> None:
-        """Test getting a task that doesn't exist."""
-        await dataset.load()
-        
-        task = dataset.get_task_by_id("nonexistent-task")
-        assert task is None
-
-    @pytest.mark.asyncio
-    async def test_get_category_stats(self, dataset: MINTDataset) -> None:
-        """Test getting category statistics."""
-        await dataset.load()
-        
-        stats = dataset.get_category_stats()
-        
-        assert len(stats) == len(MINTCategory)
-        for cat_value, cat_stats in stats.items():
-            assert "total" in cat_stats
-            assert "easy" in cat_stats
-            assert "medium" in cat_stats
-            assert "hard" in cat_stats
-            assert cat_stats["total"] >= 0
+        tasks = dataset.get_tasks(subtasks=[MINTSubtask.GSM8K], limit=3)
+        for t in tasks:
+            assert t.id.startswith("gsm8k-")
+            assert t.initial_prompt
+            assert t.ground_truth
+            assert t.evaluation_metric == "numeric"
+            assert t.subtask == MINTSubtask.GSM8K
 
     @pytest.mark.asyncio
     async def test_double_load_is_safe(self, dataset: MINTDataset) -> None:
-        """Test that loading twice doesn't duplicate tasks."""
         await dataset.load()
-        first_count = sum(len(tasks) for tasks in dataset.tasks.values())
-        
+        first = sum(len(v) for v in dataset.tasks.values())
         await dataset.load()
-        second_count = sum(len(tasks) for tasks in dataset.tasks.values())
-        
-        assert first_count == second_count
+        second = sum(len(v) for v in dataset.tasks.values())
+        assert first == second
+
+
+class TestSampleSmokeTasks:
+    @pytest.fixture
+    def dataset(self) -> MINTDataset:
+        return MINTDataset(use_sample_tasks=True)
 
     @pytest.mark.asyncio
-    async def test_task_has_required_fields(self, dataset: MINTDataset) -> None:
-        """Test all tasks have required fields."""
+    async def test_smoke_set_has_three_tasks(self, dataset: MINTDataset) -> None:
         await dataset.load()
         tasks = dataset.get_tasks()
-        
-        for task in tasks:
-            assert task.id, "Task must have an ID"
-            assert task.category in MINTCategory, "Task must have valid category"
-            assert task.description, "Task must have description"
-            assert task.initial_prompt, "Task must have initial prompt"
-            assert task.ground_truth, "Task must have ground truth"
-            assert task.max_turns > 0, "Task must have positive max_turns"
-            assert task.tools_allowed, "Task must have tools_allowed"
+        assert len(tasks) == 3
+        subtasks = {t.subtask for t in tasks}
+        assert subtasks == {MINTSubtask.GSM8K, MINTSubtask.HUMANEVAL, MINTSubtask.MMLU}
 
     @pytest.mark.asyncio
-    async def test_builtin_tasks_have_variety(self, dataset: MINTDataset) -> None:
-        """Test built-in tasks cover different difficulties."""
+    async def test_get_task_by_id(self, dataset: MINTDataset) -> None:
         await dataset.load()
-        tasks = dataset.get_tasks()
-        
-        difficulties = {task.difficulty for task in tasks}
-        # Should have at least 2 different difficulties
-        assert len(difficulties) >= 2
+        task = dataset.get_task_by_id("gsm8k-smoke-0")
+        assert task is not None
+        assert task.subtask is MINTSubtask.GSM8K

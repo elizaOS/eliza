@@ -82,8 +82,8 @@ export interface OpenPermissionSettingsDeps {
 
 /**
  * Open the system settings pane for the given permission. Resolves once the
- * opener has been invoked (it doesn't wait for the user). Win32 / Linux
- * stub: logs a warning and resolves without opening anything.
+ * opener has been invoked (it doesn't wait for the user). Win32 / Linux:
+ * no-op (no system settings deep links implemented for those platforms yet).
  */
 export async function openPermissionSettings(
   id: PermissionId,
@@ -91,11 +91,6 @@ export async function openPermissionSettings(
 ): Promise<void> {
   const platform = deps.platform ?? detectPlatform();
   if (platform !== "darwin") {
-    // TODO(permissions): wire ms-settings:privacy-* (win32) and
-    // gnome-control-center privacy (linux) once we ship those targets.
-    console.warn(
-      `[permission-deep-links] openPermissionSettings is a no-op on ${platform}; permission=${id}`,
-    );
     return;
   }
   const url = getMacPermissionDeepLink(id);

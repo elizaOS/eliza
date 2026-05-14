@@ -4,19 +4,34 @@
 
 import type {
   TrajectoryExportFormat,
-  TriggerConfig,
-  TriggerKind,
   TriggerLastStatus,
   TriggerRunRecord,
   TriggerType,
   TriggerWakeMode,
-  UUID,
 } from "@elizaos/core";
 import type {
   CustomActionDef,
   CustomActionHandler,
   DatabaseProviderType,
   ReleaseChannel,
+  AgentAutomationMode as SharedAgentAutomationMode,
+  ColumnInfo as SharedColumnInfo,
+  ConnectionTestResult as SharedConnectionTestResult,
+  ConversationAutomationType as SharedConversationAutomationType,
+  ConversationMetadata as SharedConversationMetadata,
+  ConversationScope as SharedConversationScope,
+  CreateTriggerRequest as SharedCreateTriggerRequest,
+  DatabaseStatus as SharedDatabaseStatus,
+  QueryResult as SharedQueryResult,
+  RuntimeOrderItem as SharedRuntimeOrderItem,
+  RuntimeServiceOrderItem as SharedRuntimeServiceOrderItem,
+  StreamEventEnvelope as SharedStreamEventEnvelope,
+  StreamEventType as SharedStreamEventType,
+  TableInfo as SharedTableInfo,
+  TriggerHealthSnapshot as SharedTriggerHealthSnapshot,
+  TriggerSummary as SharedTriggerSummary,
+  TriggerTaskMetadata as SharedTriggerTaskMetadata,
+  UpdateTriggerRequest as SharedUpdateTriggerRequest,
 } from "@elizaos/shared";
 
 export type {
@@ -34,42 +49,24 @@ export type {
 // Use server-types / types only — do not re-export from api/server or
 // api/trajectory-routes (those modules pull the full API + app-training into Vite).
 
-export type ConversationScope =
-  | "general"
-  | "automation-coordinator"
-  | "automation-workflow"
-  | "automation-workflow-draft"
-  | "automation-draft"
-  | "page-character"
-  | "page-apps"
-  | "page-connectors"
-  | "page-phone"
-  | "page-plugins"
-  | "page-lifeops"
-  | "page-settings"
-  | "page-wallet"
-  | "page-browser"
-  | "page-automations";
-
-export type ConversationAutomationType = "coordinator_text" | "workflow";
-
-export interface ConversationMetadata {
-  scope?: ConversationScope;
-  automationType?: ConversationAutomationType;
-  taskId?: string;
-  triggerId?: string;
-  workflowId?: string;
-  workflowName?: string;
-  draftId?: string;
-  pageId?: string;
-  sourceConversationId?: string;
-  terminalBridgeConversationId?: string;
-}
-
-export type StreamEventType =
-  | "agent_event"
-  | "heartbeat_event"
-  | "training_event";
+export type ConversationScope = SharedConversationScope;
+export type ConversationAutomationType = SharedConversationAutomationType;
+export type ConversationMetadata = SharedConversationMetadata;
+export type StreamEventType = SharedStreamEventType;
+export type StreamEventEnvelope = SharedStreamEventEnvelope;
+export type AgentAutomationMode = SharedAgentAutomationMode;
+export type TriggerTaskMetadata = SharedTriggerTaskMetadata;
+export type TriggerSummary = SharedTriggerSummary;
+export type TriggerHealthSnapshot = SharedTriggerHealthSnapshot;
+export type CreateTriggerRequest = SharedCreateTriggerRequest;
+export type UpdateTriggerRequest = SharedUpdateTriggerRequest;
+export type DatabaseStatus = SharedDatabaseStatus;
+export type ConnectionTestResult = SharedConnectionTestResult;
+export type TableInfo = SharedTableInfo;
+export type ColumnInfo = SharedColumnInfo;
+export type QueryResult = SharedQueryResult;
+export type RuntimeOrderItem = SharedRuntimeOrderItem;
+export type RuntimeServiceOrderItem = SharedRuntimeServiceOrderItem;
 
 export type TradePermissionMode =
   | "user-sign-only"
@@ -87,105 +84,6 @@ export type SignalPairingStatus =
   | "error";
 
 export type WhatsAppPairingStatus = SignalPairingStatus;
-
-export interface TriggerTaskMetadata {
-  updatedAt?: number;
-  updateInterval?: number;
-  blocking?: boolean;
-  trigger?: TriggerConfig;
-  triggerRuns?: TriggerRunRecord[];
-  [key: string]:
-    | string
-    | number
-    | boolean
-    | string[]
-    | number[]
-    | Record<string, string | number | boolean>
-    | undefined
-    | TriggerConfig
-    | TriggerRunRecord[];
-}
-
-export interface TriggerSummary {
-  id: UUID;
-  taskId: UUID;
-  displayName: string;
-  instructions: string;
-  triggerType: TriggerType;
-  enabled: boolean;
-  wakeMode: TriggerWakeMode;
-  createdBy: string;
-  timezone?: string;
-  intervalMs?: number;
-  scheduledAtIso?: string;
-  cronExpression?: string;
-  eventKind?: string;
-  maxRuns?: number;
-  runCount: number;
-  nextRunAtMs?: number;
-  lastRunAtIso?: string;
-  lastStatus?: TriggerLastStatus;
-  lastError?: string;
-  updatedAt?: number;
-  updateInterval?: number;
-  kind?: TriggerKind;
-  workflowId?: string;
-  workflowName?: string;
-}
-
-export interface TriggerHealthSnapshot {
-  triggersEnabled: boolean;
-  activeTriggers: number;
-  disabledTriggers: number;
-  totalExecutions: number;
-  totalFailures: number;
-  totalSkipped: number;
-  lastExecutionAt?: number;
-}
-
-export interface CreateTriggerRequest {
-  displayName?: string;
-  instructions?: string;
-  triggerType?: TriggerType;
-  wakeMode?: TriggerWakeMode;
-  enabled?: boolean;
-  createdBy?: string;
-  timezone?: string;
-  intervalMs?: number;
-  scheduledAtIso?: string;
-  cronExpression?: string;
-  eventKind?: string;
-  maxRuns?: number;
-  kind?: TriggerKind;
-  workflowId?: string;
-  workflowName?: string;
-}
-
-export interface UpdateTriggerRequest {
-  displayName?: string;
-  instructions?: string;
-  triggerType?: TriggerType;
-  wakeMode?: TriggerWakeMode;
-  enabled?: boolean;
-  timezone?: string;
-  intervalMs?: number;
-  scheduledAtIso?: string;
-  cronExpression?: string;
-  eventKind?: string;
-  maxRuns?: number;
-  kind?: TriggerKind;
-  workflowId?: string;
-  workflowName?: string;
-}
-
-export interface DatabaseStatus {
-  provider: DatabaseProviderType;
-  connected: boolean;
-  serverVersion: string | null;
-  tableCount: number;
-  pgliteDataDir: string | null;
-  postgresHost: string | null;
-}
 
 export interface DatabaseConfigResponse {
   config: {
@@ -205,28 +103,6 @@ export interface DatabaseConfigResponse {
   needsRestart: boolean;
 }
 
-export interface ConnectionTestResult {
-  success: boolean;
-  serverVersion: string | null;
-  error: string | null;
-  durationMs: number;
-}
-
-export interface TableInfo {
-  name: string;
-  schema: string;
-  rowCount: number;
-  columns: ColumnInfo[];
-}
-
-export interface ColumnInfo {
-  name: string;
-  type: string;
-  nullable: boolean;
-  defaultValue: string | null;
-  isPrimaryKey: boolean;
-}
-
 export interface TableRowsResponse {
   table: string;
   rows: Record<string, unknown>[];
@@ -234,13 +110,6 @@ export interface TableRowsResponse {
   total: number;
   offset: number;
   limit: number;
-}
-
-export interface QueryResult {
-  columns: string[];
-  rows: Record<string, unknown>[];
-  rowCount: number;
-  durationMs: number;
 }
 
 export type AgentState =
@@ -275,8 +144,6 @@ export interface AgentStatus {
   pendingRestartReasons?: string[];
   startup?: AgentStartupDiagnostics;
 }
-
-export type AgentAutomationMode = "connectors-only" | "full";
 
 export type ProviderModelCategory =
   | "chat"
@@ -422,20 +289,6 @@ export function isRateLimitedError(value: unknown): value is ApiError {
   );
 }
 
-export interface RuntimeOrderItem {
-  index: number;
-  name: string;
-  className: string;
-  id: string | null;
-}
-
-export interface RuntimeServiceOrderItem {
-  index: number;
-  serviceType: string;
-  count: number;
-  instances: RuntimeOrderItem[];
-}
-
 export interface RuntimeDebugSnapshot {
   runtimeAvailable: boolean;
   generatedAt: number;
@@ -517,20 +370,6 @@ export interface SandboxWindowInfo {
   id: string;
   title: string;
   app: string;
-}
-
-export interface StreamEventEnvelope {
-  type: StreamEventType;
-  version: 1;
-  eventId: string;
-  ts: number;
-  runId?: string;
-  seq?: number;
-  stream?: string;
-  sessionKey?: string;
-  agentId?: string;
-  roomId?: string;
-  payload: object;
 }
 
 export interface AgentEventsResponse {

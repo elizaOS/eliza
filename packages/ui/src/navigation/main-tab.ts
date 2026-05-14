@@ -56,14 +56,8 @@ export function getMainTabApp(apps: RegistryAppInfo[]): MainTabApp | null {
 
   declarers.sort((a, b) => a.name.localeCompare(b.name));
 
-  if (declarers.length > 1) {
-    const names = declarers.map((a) => a.name).join(", ");
-    console.warn(
-      `[main-tab] multiple apps declare elizaos.app.mainTab=true (${names}); ` +
-        `falling back to "${declarers[0].name}". ` +
-        `Set mainTab on exactly one installed app.`,
-    );
-  }
+  // Multiple apps declaring mainTab=true is a misconfiguration; use the first
+  // alphabetically and continue.
 
   const winner = declarers[0];
   const tabId = packageNameToAppRouteSlug(winner.name);

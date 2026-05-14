@@ -367,7 +367,6 @@ export const ConfigRenderer = forwardRef<
     ): Promise<unknown> => {
       const handler = registry.resolveAction(action);
       if (!handler) {
-        console.warn(`[config-renderer] No handler for action: ${action}`);
         return undefined;
       }
       return handler(params ?? {}, values);

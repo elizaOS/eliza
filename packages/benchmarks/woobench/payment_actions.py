@@ -30,6 +30,10 @@ CHECK_PAYMENT_COMMANDS = {
     "CHECK_PAYMENT_REQUEST",
     "VERIFY_PAYMENT",
     "PAYMENT_STATUS",
+    # Promoted virtual subaction name from `promoteSubactionsToActions(paymentOpAction)`
+    # in plugins/plugin-mysticism — keeps the bench in sync with the canonical
+    # PAYMENT action's virtual children (PAYMENT_CHECK / PAYMENT_REQUEST).
+    "PAYMENT_CHECK",
 }
 
 PAYMENT_TEXT_INTENT_RE = re.compile(
@@ -129,9 +133,14 @@ def detect_payment_check(turn: AgentTurn) -> str | None:
             return command
     for action in turn.actions:
         normalized = action.strip().upper()
+        # Canonical PAYMENT action uses `action` (matches plugin-mysticism payment-op.ts).
+        # `op` is kept as a legacy alias for older traces.
+        payment_op = (
+            str(payload.get("action", "")).strip().lower()
+            or str(payload.get("op", "")).strip().lower()
+        )
         if normalized in CHECK_PAYMENT_COMMANDS or (
-            normalized == "PAYMENT"
-            and str(payload.get("op", "")).strip().lower() == "check"
+            normalized == "PAYMENT" and payment_op == "check"
         ):
             return normalized
     text_payload = _payload_from_text(turn.text)
@@ -154,7 +163,13 @@ def _payment_action_payload(turn: AgentTurn) -> dict[str, Any] | None:
         normalized = action.strip().upper()
         if normalized in CREATE_PAYMENT_COMMANDS:
             return {"command": normalized, **payload}
-        if normalized == "PAYMENT" and str(payload.get("op", "")).strip().lower() == "request":
+        # Canonical PAYMENT action uses `action` (matches plugin-mysticism payment-op.ts).
+        # `op` is kept as a legacy alias for older traces.
+        payment_op = (
+            str(payload.get("action", "")).strip().lower()
+            or str(payload.get("op", "")).strip().lower()
+        )
+        if normalized == "PAYMENT" and payment_op == "request":
             return {"command": "REQUEST_PAYMENT", **payload}
     text_payload = _payload_from_text(turn.text)
     if text_payload is not None and _normalized_command(text_payload) in CREATE_PAYMENT_COMMANDS:

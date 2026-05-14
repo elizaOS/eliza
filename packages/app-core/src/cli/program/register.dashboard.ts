@@ -42,7 +42,6 @@ async function openInBrowser(url: string): Promise<void> {
 }
 
 const DEFAULT_PORT = 2138;
-const APP_DEV_PORT = 2138;
 
 export function registerDashboardCommand(program: Command) {
   program
@@ -70,8 +69,8 @@ export function registerDashboardCommand(program: Command) {
         return;
       }
 
-      if (await isPortListening(APP_DEV_PORT)) {
-        const url = `http://localhost:${APP_DEV_PORT}`;
+      if (await isPortListening(DEFAULT_PORT)) {
+        const url = `http://localhost:${DEFAULT_PORT}`;
         console.log(
           `${theme.muted("→")} Opening Control UI (dev server): ${url}`,
         );
@@ -130,7 +129,7 @@ export function registerDashboardCommand(program: Command) {
       const tryOpen = () => {
         if (opened) return;
         opened = true;
-        const devUrl = `http://localhost:${APP_DEV_PORT}`;
+        const devUrl = `http://localhost:${DEFAULT_PORT}`;
         console.log(`${theme.muted("→")} Opening Control UI: ${devUrl}`);
         openInBrowser(devUrl);
       };

@@ -212,11 +212,9 @@ export async function handleInternalWakeRoute(
   try {
     const result = await runDueTasksOnce(taskService, { maxWallTimeMs });
     const durationMs = Date.now() - startedAt;
-    const resultRecord = result as unknown as { ranTasks?: unknown };
-    const ranTasks =
-      result && typeof resultRecord.ranTasks === "number"
-        ? Number(resultRecord.ranTasks)
-        : 0;
+    // ranTasks is 0 today because runDueTasks returns void; surfaced for
+    // forward-compat when core exposes an executed count.
+    const ranTasks = 0;
     wakeTelemetry.lastWakeFiredAt = startedAt;
     wakeTelemetry.lastWakeKind = parsed.kind;
     wakeTelemetry.lastWakeDurationMs = durationMs;

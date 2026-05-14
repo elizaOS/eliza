@@ -58,8 +58,7 @@ export function CustomActionsPanel({
       setError("");
       const result = await client.listCustomActions();
       setActions(result || []);
-    } catch (err) {
-      console.error("Failed to load custom actions:", err);
+    } catch {
       setError(
         t("customactionspanel.LoadFailed", {
           defaultValue: "Couldn't load custom actions. Try again.",
@@ -146,8 +145,7 @@ export function CustomActionsPanel({
             : item,
         ),
       );
-    } catch (err) {
-      console.error("Failed to toggle action:", err);
+    } catch {
       setError(
         t("customactionspanel.UpdateFailed", {
           defaultValue: "Couldn't update this action. Try again.",
@@ -173,8 +171,7 @@ export function CustomActionsPanel({
     try {
       await client.deleteCustomAction(action.id);
       setActions((prev) => prev.filter((item) => item.id !== action.id));
-    } catch (err) {
-      console.error("Failed to delete action:", err);
+    } catch {
       setError(
         t("customactionspanel.DeleteFailed", {
           defaultValue: "Couldn't delete this action. Try again.",

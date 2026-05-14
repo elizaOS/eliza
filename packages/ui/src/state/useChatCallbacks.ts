@@ -78,16 +78,6 @@ function traceGreeting(phase: string, detail?: Record<string, unknown>): void {
   }
 }
 
-function isTransientConversationHydrationFetchFailure(err: unknown): boolean {
-  if (!(err instanceof Error)) return false;
-  if (!/^(Failed to fetch|Request aborted)$/i.test(err.message)) return false;
-  if (err.name === "TypeError") return true;
-  return (
-    err.name === "ApiError" &&
-    (err as Error & { kind?: string }).kind === "network"
-  );
-}
-
 import { isRoutineCodingAgentMessage } from "../chat";
 
 const COMPANION_STALE_THREAD_MAX_AGE_MS = 30 * 60 * 1000;
@@ -494,11 +484,8 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
         if (status.state === "running" && !greetingFiredRef.current) {
           await fetchGreeting(convId);
         }
-      } catch (err) {
-        console.warn(
-          "[eliza][chat:init] failed to confirm runtime state for greeting",
-          err,
-        );
+      } catch {
+        // best-effort greeting; will be triggered on next connect
       }
     },
     [fetchGreeting],
@@ -550,16 +537,11 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
           conversationMessagesRef.current = nextMessages;
           setConversationMessages(nextMessages);
           return nextMessages.length === 0 ? restoredConversation.id : null;
-        } catch (err) {
+        } catch {
           if (!isCurrentHydration()) {
             return null;
           }
-          if (!isTransientConversationHydrationFetchFailure(err)) {
-            console.warn(
-              "[eliza][chat:init] failed to load restored conversation messages",
-              err,
-            );
-          }
+          // transient fetch failures are expected on early load; others are silent
           greetingFiredRef.current = false;
           conversationMessagesRef.current = [];
           setConversationMessages([]);
@@ -627,20 +609,13 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
         }
 
         return conversation.id;
-      } catch (err) {
+      } catch {
         if (!isCurrentHydration()) {
           return null;
         }
-        console.warn(
-          "[eliza][chat:init] failed to create initial conversation",
-          err,
-        );
         return null;
       }
-    } catch (err) {
-      if (!isTransientConversationHydrationFetchFailure(err)) {
-        console.warn("[eliza][chat:init] failed to hydrate conversations", err);
-      }
+    } catch {
       return null;
     }
   }, [

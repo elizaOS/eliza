@@ -114,6 +114,16 @@ export const PostConversationCleanupEmptyRequestSchema = z
 export type ConversationMetadataInput = z.infer<
   typeof ConversationMetadataSchema
 >;
+
+// ── Canonical TS type aliases derived from the Zod schemas above ─────────────
+// These are the single source of truth for the conversation domain types.
+// Consumers that previously defined these types locally should import from here.
+
+export type ConversationScope = z.infer<typeof ConversationScopeSchema>;
+export type ConversationAutomationType = z.infer<
+  typeof ConversationAutomationTypeSchema
+>;
+export type ConversationMetadata = z.infer<typeof ConversationMetadataSchema>;
 export type PostConversationRequest = z.infer<
   typeof PostConversationRequestSchema
 >;

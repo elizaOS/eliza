@@ -97,12 +97,10 @@ export interface CreateScenarioRuntimeOptions {
 
 const SAVE_TRAJECTORY_ENV_FLAGS = [
   "ELIZA_SAVE_TRAJECTORIES",
-  "ELIZA_SAVE_TRAJECTORIES",
   "SCENARIO_SAVE_TRAJECTORIES",
 ] as const;
 
 const SCENARIO_PGLITE_DIR_ENV_VARS = [
-  "ELIZA_SCENARIO_PGLITE_DIR",
   "ELIZA_SCENARIO_PGLITE_DIR",
   "SCENARIO_PGLITE_DIR",
 ] as const;
@@ -335,39 +333,6 @@ export async function createScenarioRuntime(
   } catch (err) {
     logger.warn(
       `[scenario-runner] @elizaos/app-lifeops unavailable: ${
-        err instanceof Error ? err.message : String(err)
-      }`,
-    );
-  }
-
-  // Load the separate LifeOps route bridge plugin so scenario API turns can
-  // exercise the same HTTP handlers the app exposes at runtime.
-  try {
-    const lifeOpsRoutesPluginSpecifier = "@elizaos/app-lifeops";
-    const lifeOpsRoutesModule = (await import(
-      lifeOpsRoutesPluginSpecifier
-    )) as Record<string, unknown>;
-    const lifeOpsRoutesPlugin = extractPlugin(lifeOpsRoutesModule, [
-      "default",
-      "lifeopsPlugin",
-    ]);
-    if (lifeOpsRoutesPlugin) {
-      if (lifeOpsRoutesPlugin.routes?.length) {
-        for (const route of lifeOpsRoutesPlugin.routes) {
-          const routePath = route.path.startsWith("/")
-            ? route.path
-            : `/${route.path}`;
-          runtime.routes.push({ ...route, path: routePath });
-        }
-      }
-    } else {
-      logger.warn(
-        "[scenario-runner] @elizaos/app-lifeops did not export the LifeOps route Plugin; skipping",
-      );
-    }
-  } catch (err) {
-    logger.warn(
-      `[scenario-runner] @elizaos/app-lifeops route plugin unavailable: ${
         err instanceof Error ? err.message : String(err)
       }`,
     );

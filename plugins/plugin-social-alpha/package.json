@@ -38,8 +38,6 @@
 		"class-variance-authority": "^0.7.1",
 		"clsx": "^2.1.1",
 		"dotenv": "^17.0.0",
-		"fast-xml-parser": "^5.7.2",
-		"p-limit": "^5.0.0",
 		"tailwindcss-animate": "^1.0.7",
 		"uuid": "^14.0.0",
 		"zod": "^4.4.3"

@@ -105,20 +105,53 @@ class Turn:
     proposed_solution: bool = False
 
 
-@dataclass
 class MINTTask:
-    """A MINT benchmark task."""
+    """A MINT benchmark task.
+
+    Backwards-compat: accepts both ``subtask=`` (new) and ``category=``
+    (legacy) for the same value. Implemented as a plain class (rather than
+    a dataclass) so the legacy keyword works without surprises.
+    """
 
     id: str
     subtask: MINTSubtask
     description: str
     initial_prompt: str
     ground_truth: str
-    max_turns: int = 5
-    tools_allowed: list[str] = field(default_factory=lambda: ["python"])
-    evaluation_metric: str = "exact_match"
-    difficulty: str = "medium"  # easy, medium, hard
-    metadata: dict[str, str | int | float | bool] = field(default_factory=dict)
+    max_turns: int
+    tools_allowed: list[str]
+    evaluation_metric: str
+    difficulty: str
+    metadata: dict[str, str | int | float | bool]
+
+    def __init__(
+        self,
+        id: str,
+        subtask: Optional["MINTSubtask"] = None,
+        description: str = "",
+        initial_prompt: str = "",
+        ground_truth: str = "",
+        max_turns: int = 5,
+        tools_allowed: Optional[list[str]] = None,
+        evaluation_metric: str = "exact_match",
+        difficulty: str = "medium",
+        metadata: Optional[dict[str, str | int | float | bool]] = None,
+        category: Optional["MINTSubtask"] = None,
+    ) -> None:
+        if subtask is None:
+            subtask = category
+        if subtask is None:
+            raise TypeError("MINTTask requires a subtask (or legacy 'category')")
+        self.id = id
+        self.subtask = subtask
+        self.description = description
+        self.initial_prompt = initial_prompt
+        self.ground_truth = ground_truth
+        self.max_turns = max_turns
+        self.tools_allowed = ["python"] if tools_allowed is None else list(tools_allowed)
+        self.evaluation_metric = evaluation_metric
+        self.difficulty = difficulty
+        self.metadata = {} if metadata is None else dict(metadata)
 
     # Backwards-compatible alias for callers that still read ``task.category``.
     @property
@@ -128,6 +161,46 @@ class MINTTask:
     @property
     def task_type(self) -> MINTTaskType:
         return SUBTASK_TO_TASK_TYPE[self.subtask]
+
+    def replace(self, **changes) -> "MINTTask":
+        """Return a copy with the given fields overridden.
+
+        Mirrors ``dataclasses.replace`` so ``runner.py`` can keep using
+        ``replace(task, max_turns=...)``.
+        """
+        kwargs = {
+            "id": self.id,
+            "subtask": self.subtask,
+            "description": self.description,
+            "initial_prompt": self.initial_prompt,
+            "ground_truth": self.ground_truth,
+            "max_turns": self.max_turns,
+            "tools_allowed": list(self.tools_allowed),
+            "evaluation_metric": self.evaluation_metric,
+            "difficulty": self.difficulty,
+            "metadata": dict(self.metadata),
+        }
+        kwargs.update(changes)
+        return MINTTask(**kwargs)
+
+    def __repr__(self) -> str:
+        return (
+            f"MINTTask(id={self.id!r}, subtask={self.subtask.value!r}, "
+            f"metric={self.evaluation_metric!r})"
+        )
+
+    def __eq__(self, other) -> bool:
+        if not isinstance(other, MINTTask):
+            return NotImplemented
+        return (
+            self.id == other.id
+            and self.subtask == other.subtask
+            and self.initial_prompt == other.initial_prompt
+            and self.ground_truth == other.ground_truth
+        )
+
+    def __hash__(self) -> int:
+        return hash((self.id, self.subtask))
 
 
 @dataclass

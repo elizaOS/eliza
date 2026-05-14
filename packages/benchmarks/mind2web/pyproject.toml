@@ -39,12 +39,19 @@ dev = [
 hf = [
     "datasets>=2.0",
 ]
+ranker = [
+    # DeBERTa-v3 cross-encoder for MindAct stage 1 (candidate ranker).
+    # First run downloads ~750MB from HuggingFace.
+    "transformers>=4.30",
+    "torch>=2.0",
+    "lxml>=4.9",
+]
 groq = [
 ]
 openai = [
 ]
 all = [
-    "elizaos-mind2web[dev,hf,groq,openai]",
+    "elizaos-mind2web[dev,hf,groq,openai,ranker]",
 ]
 
 [project.scripts]

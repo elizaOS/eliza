@@ -3,7 +3,7 @@
 // Update*, Extension*, Workbench*, Character*, Voice*, Skill*
 // ---------------------------------------------------------------------------
 
-import type { MessageExampleContent } from "@elizaos/shared";
+import type { MessageExampleContent, PluginParamDef } from "@elizaos/shared";
 import type { ConfigUiHint } from "../types";
 import type {
   ConversationScope,
@@ -91,18 +91,7 @@ export interface SecretInfo {
   usedBy: Array<{ pluginId: string; pluginName: string; enabled: boolean }>;
 }
 
-export interface PluginParamDef {
-  key: string;
-  type: string;
-  description: string;
-  required: boolean;
-  sensitive: boolean;
-  default?: string;
-  /** Predefined options for dropdown selection (e.g. model names). */
-  options?: string[];
-  currentValue: string | null;
-  isSet: boolean;
-}
+export type { PluginParamDef };
 
 export interface PluginInfo {
   id: string;

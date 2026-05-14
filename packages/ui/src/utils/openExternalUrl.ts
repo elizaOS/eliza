@@ -53,22 +53,17 @@ export async function openExternalUrl(url: string): Promise<void> {
   // Inside Electrobun — never fall through to window.open() which spawns an
   // unmanaged BrowserView to an external URL and crashes the shell.
   if (getElectrobunRendererRpc() !== undefined) {
-    console.warn(
-      "[openExternalUrl] desktopOpenExternal RPC returned null — skipping window.open fallback",
-    );
+    // desktopOpenExternal RPC returned null — skip window.open fallback to
+    // avoid spawning an unmanaged BrowserView inside Electrobun.
     return;
   }
 
   // Non-desktop (web browser) fallback.
   if (typeof window === "undefined" || typeof window.open !== "function") {
-    console.warn("[openExternalUrl] window.open unavailable — URL:", url);
     return;
   }
 
-  const popup = window.open(url, "_blank", "noopener,noreferrer");
-  if (!popup) {
-    console.warn("[openExternalUrl] popup blocked — URL:", url);
-  }
+  window.open(url, "_blank", "noopener,noreferrer");
 }
 
 export async function closeExternalBrowser(): Promise<void> {

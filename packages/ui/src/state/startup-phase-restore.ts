@@ -391,17 +391,10 @@ export async function runRestoringSession(
       try {
         const det = await scanProviderCredentials();
         if (!cancelled.current && det.length > 0) {
-          console.log(
-            `[eliza][startup] Keychain scan found ${det.length} provider(s):`,
-            det.map((p) => p.id),
-          );
           deps.applyDetectedProviders(det);
         }
-      } catch (scanErr) {
-        console.warn(
-          "[eliza][startup] Keychain credential scan failed:",
-          scanErr,
-        );
+      } catch {
+        // keychain scan is best-effort; proceed with fresh onboarding
       }
     }
     deps.setOnboardingComplete(false);

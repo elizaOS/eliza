@@ -147,9 +147,7 @@ export function useStartupCoordinator(
     effectRunRef.current += 1;
     const cancelled = { current: false };
 
-    runRestoringSession(d, dispatch, _ctx, cancelled).catch((err) => {
-      console.error("[eliza][startup:restore] Unexpected error:", err);
-    });
+    runRestoringSession(d, dispatch, _ctx, cancelled).catch(() => {});
 
     return () => {
       cancelled.current = true;
@@ -181,9 +179,7 @@ export function useStartupCoordinator(
       effectRunRef,
       cancelled,
       tidRef,
-    ).catch((err) => {
-      console.error("[eliza][startup:poll] Unexpected error:", err);
-    });
+    ).catch(() => {});
 
     return () => {
       cancelled.current = true;
@@ -208,9 +204,7 @@ export function useStartupCoordinator(
       effectRunRef,
       cancelled,
       tidRef,
-    ).catch((err) => {
-      console.error("[eliza][startup:runtime] Unexpected error:", err);
-    });
+    ).catch(() => {});
 
     return () => {
       cancelled.current = true;
@@ -225,9 +219,7 @@ export function useStartupCoordinator(
     if (!currentDeps) return;
     const cancelled = { current: false };
 
-    runHydrating(currentDeps, dispatch, cancelled).catch((err) => {
-      console.error("[eliza][startup:hydrate] Unexpected error:", err);
-    });
+    runHydrating(currentDeps, dispatch, cancelled).catch(() => {});
 
     return () => {
       cancelled.current = true;

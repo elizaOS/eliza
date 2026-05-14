@@ -64,7 +64,7 @@ describe("AbortSignal propagation through streaming context", () => {
 		// same thing — llama-cpp threads `stopOnAbortSignal` into the
 		// sampler loop, fetch-based providers thread it into the request.
 		async function slowUseModel(signal: AbortSignal): Promise<string> {
-			return await new Promise<string>((resolve, reject) => {
+			return new Promise<string>((resolve, reject) => {
 				const onAbort = () => {
 					signal.removeEventListener("abort", onAbort);
 					const err = new Error("aborted");

@@ -529,6 +529,11 @@ packages/inference/verify/hardware-results/
 packages/inference/verify/android-vulkan-smoke/
 packages/inference/verify/cpu_bench
 packages/inference/verify/cpu_simd_bench
+# llama.cpp benchmark run outputs (timestamped JSON/HTML/log from individual runs)
+packages/inference/llama.cpp/benches/**/*allresults.json
+packages/inference/llama.cpp/benches/**/*.html
+packages/inference/llama.cpp/benches/**/*.log
+!packages/inference/llama.cpp/benches/**/*.md
 
 # Generated audit output. Keep curated source docs and README files in-tree;
 # keep raw audit dumps and prompt manifests out of source control.
@@ -546,6 +551,10 @@ packages/inference/verify/vulkan_dispatch_smoke
 packages/app-core/scripts/omnivoice-fuse/libelizainference_stub.so
 packages/app-core/scripts/omnivoice-fuse/libelizainference_stub.dylib
 packages/training/vendor/
+
+# Generated run output — never source data.
+packages/app-core/collision-report.json
+plugins/app-lifeops/docs/audit/cerebras-journey-eval-results.json
 
 .swarm/
 packages/training/out/

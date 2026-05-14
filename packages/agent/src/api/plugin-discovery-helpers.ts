@@ -11,6 +11,7 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { logger, type UUID } from "@elizaos/core";
+import type { LogEntry, SkillEntry } from "@elizaos/shared";
 import { applySignalQrOverride } from "@elizaos/plugin-signal";
 import { applyWhatsAppQrOverride } from "@elizaos/plugin-whatsapp";
 import type { ElizaConfig } from "../config/config.ts";
@@ -50,44 +51,13 @@ function findPluginsManifestRoot(startDir: string): string {
 }
 
 export type { PluginEntry, PluginParamDef } from "./server-types.ts";
+export type { LogEntry, SkillEntry } from "@elizaos/shared";
+export type {
+  StreamEventEnvelope,
+  StreamEventType,
+} from "@elizaos/shared";
 
 import type { PluginEntry, PluginParamDef } from "./server-types.ts";
-
-export interface SkillEntry {
-  id: string;
-  name: string;
-  description: string;
-  enabled: boolean;
-  /** Set automatically when a scan report exists for this skill. */
-  scanStatus?: "clean" | "warning" | "critical" | "blocked" | null;
-}
-
-export interface LogEntry {
-  timestamp: number;
-  level: string;
-  message: string;
-  source: string;
-  tags: string[];
-}
-
-export type StreamEventType =
-  | "agent_event"
-  | "heartbeat_event"
-  | "training_event";
-
-export interface StreamEventEnvelope {
-  type: StreamEventType;
-  version: 1;
-  eventId: string;
-  ts: number;
-  runId?: string;
-  seq?: number;
-  stream?: string;
-  sessionKey?: string;
-  agentId?: string;
-  roomId?: UUID;
-  payload: unknown;
-}
 
 export function getReleaseBundledPluginIds(): Set<string> {
   const packageRoot = findOwnPackageRoot(

@@ -42,22 +42,22 @@ describe("PTYService.defaultAgentType + explicitDefaultAgentType", () => {
     expect(svc.defaultAgentType).toBe("claude");
   });
 
-  it("accepts PARALLAX_DEFAULT_AGENT_TYPE=opencode from config-file env", () => {
+  it("accepts ELIZA_DEFAULT_AGENT_TYPE=opencode from config-file env", () => {
     // Regression: prior to widening the allowed list, opencode was
     // silently rejected and the resolver fell back to claude even when
     // the user explicitly asked for opencode. This pins the fix.
-    const svc = instantiate({}, { PARALLAX_DEFAULT_AGENT_TYPE: "opencode" });
+    const svc = instantiate({}, { ELIZA_DEFAULT_AGENT_TYPE: "opencode" });
     expect(svc.defaultAgentType).toBe("opencode");
   });
 
-  it("accepts PARALLAX_DEFAULT_AGENT_TYPE=opencode from runtime setting (process.env)", () => {
-    const svc = instantiate({ PARALLAX_DEFAULT_AGENT_TYPE: "opencode" });
+  it("accepts ELIZA_DEFAULT_AGENT_TYPE=opencode from runtime setting (process.env)", () => {
+    const svc = instantiate({ ELIZA_DEFAULT_AGENT_TYPE: "opencode" });
     expect(svc.defaultAgentType).toBe("opencode");
   });
 
   it("still accepts claude/codex/gemini/aider as before", () => {
     for (const choice of ["claude", "codex", "gemini", "aider"] as const) {
-      const svc = instantiate({}, { PARALLAX_DEFAULT_AGENT_TYPE: choice });
+      const svc = instantiate({}, { ELIZA_DEFAULT_AGENT_TYPE: choice });
       expect(svc.defaultAgentType).toBe(choice);
     }
   });
@@ -65,15 +65,15 @@ describe("PTYService.defaultAgentType + explicitDefaultAgentType", () => {
   it("ignores unrecognized agent types and falls back to claude", () => {
     const svc = instantiate(
       {},
-      { PARALLAX_DEFAULT_AGENT_TYPE: "totally-made-up-cli" },
+      { ELIZA_DEFAULT_AGENT_TYPE: "totally-made-up-cli" },
     );
     expect(svc.defaultAgentType).toBe("claude");
   });
 
   it("config-file value wins over process.env value (when both set)", () => {
     const svc = instantiate(
-      { PARALLAX_DEFAULT_AGENT_TYPE: "claude" },
-      { PARALLAX_DEFAULT_AGENT_TYPE: "opencode" },
+      { ELIZA_DEFAULT_AGENT_TYPE: "claude" },
+      { ELIZA_DEFAULT_AGENT_TYPE: "opencode" },
     );
     expect(svc.defaultAgentType).toBe("opencode");
   });

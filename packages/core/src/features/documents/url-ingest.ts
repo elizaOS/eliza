@@ -158,7 +158,7 @@ async function requestWithPinnedAddress(
 	const method = (init.method ?? "GET").toUpperCase();
 	const headers = toRequestHeaders(new Headers(init.headers));
 	const requestFn = url.protocol === "https:" ? requestHttps : requestHttp;
-	return await new Promise<Response>((resolve, reject) => {
+	return new Promise<Response>((resolve, reject) => {
 		let settled = false;
 		const signal = init.signal;
 		let timeoutHandle: ReturnType<typeof setTimeout> | null = null;

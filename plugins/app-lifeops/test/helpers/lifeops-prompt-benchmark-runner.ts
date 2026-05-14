@@ -748,17 +748,17 @@ export async function createLifeOpsPromptBenchmarkRuntime(args?: {
     tierProviderPreference = "local-llama-cpp";
     // Configure the OpenAI plugin to point at the local server. Prefer the
     // dflash fork (when built); otherwise fall back to Ollama via
-    // PARALLAX_OPENCODE_BASE_URL.
+    // ELIZA_OPENCODE_BASE_URL.
     const dflashBinary = probeDflashFork();
     if (!dflashBinary) {
       const fallback = resolveLocalBaseUrl();
       if (
         fallback.source === "ollama-default" &&
-        !process.env.PARALLAX_OPENCODE_BASE_URL
+        !process.env.ELIZA_OPENCODE_BASE_URL
       ) {
         throw new Error(
           "MODEL_TIER=small|mid requires the dflash llama-cpp fork at " +
-            "~/.cache/eliza-dflash/eliza-llama-cpp or PARALLAX_OPENCODE_BASE_URL " +
+            "~/.cache/eliza-dflash/eliza-llama-cpp or ELIZA_OPENCODE_BASE_URL " +
             "pointing at a local OpenAI-compatible endpoint. Neither was found.",
         );
       }

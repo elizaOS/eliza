@@ -643,7 +643,7 @@ export class CharacterFileManager extends Service {
 			return { success: false, error: "Corresponding backup file not found" };
 		}
 
-		return await this.restoreFromBackup(backup.path);
+		return this.restoreFromBackup(backup.path);
 	}
 
 	async stop(): Promise<void> {

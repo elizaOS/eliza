@@ -6432,7 +6432,7 @@ export class DefaultMessageService implements IMessageService {
 			userRole: senderRole,
 		};
 
-		return await runWithTrajectoryContext<MessageProcessingResult>(
+		return runWithTrajectoryContext<MessageProcessingResult>(
 			typeof trajectoryStepId === "string" && trajectoryStepId.trim() !== ""
 				? {
 						...trajectoryContextBase,

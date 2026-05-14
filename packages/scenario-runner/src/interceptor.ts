@@ -484,7 +484,7 @@ function captureConnectorDispatchesFromAction(
     });
   };
 
-  if (actionName === "MESSAGE" || actionName === "MESSAGE") {
+  if (actionName === "MESSAGE") {
     const channels = [
       ...toStringArray(params?.channel),
       ...toStringArray(resultData?.channel),

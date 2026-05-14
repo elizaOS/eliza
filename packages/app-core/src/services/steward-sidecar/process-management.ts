@@ -1,5 +1,6 @@
 import * as fs from "node:fs";
 import { fileURLToPath } from "node:url";
+import { logger } from "@elizaos/core";
 
 function resolveOptionalModuleEntry(specifier: string): string | null {
   try {
@@ -22,7 +23,7 @@ export async function findStewardEntryPoint(): Promise<string | null> {
 
   for (const candidate of candidates) {
     if (fs.existsSync(candidate)) {
-      console.log(`[StewardSidecar] Found entry point: ${candidate}`);
+      logger.info(`[StewardSidecar] Found entry point: ${candidate}`);
       return candidate;
     }
   }
@@ -31,7 +32,7 @@ export async function findStewardEntryPoint(): Promise<string | null> {
 }
 
 /**
- * Pipe a ReadableStream to console, calling onLog for each line.
+ * Pipe a ReadableStream to the structured logger, calling onLog for each line.
  */
 export async function pipeOutput(
   stream: ReadableStream<Uint8Array> | null,
@@ -49,7 +50,11 @@ export async function pipeOutput(
       const text = decoder.decode(value).trimEnd();
       if (text) {
         const prefix = name === "stderr" ? "[Steward:err]" : "[Steward]";
-        console.log(`${prefix} ${text}`);
+        if (name === "stderr") {
+          logger.warn(`${prefix} ${text}`);
+        } else {
+          logger.info(`${prefix} ${text}`);
+        }
         onLog?.(text, name);
       }
     }

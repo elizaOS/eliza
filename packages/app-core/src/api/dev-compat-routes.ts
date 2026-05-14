@@ -1,5 +1,4 @@
 import type http from "node:http";
-import { buildVoiceLatencyDevPayload } from "@elizaos/plugin-local-inference/services";
 import { ensureRouteAuthorized } from "./auth.ts";
 import {
   type CompatRuntimeState,
@@ -197,6 +196,7 @@ export async function handleDevCompatRoutes(
     }
     const limitRaw = url.searchParams.get("limit");
     const limit = limitRaw ? Number(limitRaw) : undefined;
+    const { buildVoiceLatencyDevPayload } = await import("@elizaos/plugin-local-inference/services");
     const payload = buildVoiceLatencyDevPayload(
       undefined,
       Number.isFinite(limit) && (limit as number) > 0

@@ -1,38 +1,103 @@
 # Terminal-Bench for ElizaOS
 
-A benchmark evaluating AI agents' proficiency in performing complex tasks within terminal environments. This implementation integrates Terminal-Bench with the ElizaOS Python framework.
+A faithful re-implementation of [Terminal-Bench](https://www.tbench.ai/)
+(Laude Institute, Apache-2.0) wired into the ElizaOS Python harness. The
+real upstream task corpus is vendored under `tasks/` and run inside
+per-task Docker images driven by tmux, matching upstream semantics.
 
-## Overview
+## What's in the box
 
-Terminal-Bench tests AI agents across diverse terminal tasks including:
-- **Code Compilation**: Building and compiling projects
-- **System Administration**: Managing files, processes, and configurations  
-- **Machine Learning**: Setting up and training ML models
-- **File Operations**: Creating, modifying, and organizing files
-- **Scripting**: Writing and executing shell scripts
-- **Database Operations**: Managing databases via CLI
-- **Network Configuration**: Configuring network settings
+- **Vendored task corpus** at `packages/benchmarks/terminal-bench/tasks/`
+  (241 tasks, snapshot of upstream `original-tasks/`, Apache-2.0).
+- **Tmux-backed Docker environment** (`TmuxDockerEnvironment`) — builds
+  each task's Dockerfile, launches a persistent tmux session, and routes
+  every agent command through `tmux send-keys` + `tmux wait`. Required
+  for tasks that use interactive tools (vim, python -i, less, ...).
+- **One-shot Docker fallback** (`TerminalEnvironment`, `--one-shot`) for
+  images where tmux is unavailable.
+- **Local-temp-workspace path** (`LocalTerminalEnvironment`,
+  `--local-sandbox`) for smoke runs without Docker.
+- **Gated mock environment** (`MockTerminalEnvironment`, `--mock`) —
+  always reports success, only legal for unit tests.
+- **Fail-loud dataset loader** — `TerminalBenchDataset` raises
+  `TerminalBenchDatasetMissingError` if the corpus is missing rather
+  than quietly falling back to `SAMPLE_TASKS`.
+
+Categories present in the vendored corpus: algorithms, audio-processing,
+computer-vision, data-processing, data-querying, data-science,
+debugging, file-operations, file-system, game(s), machine-learning,
+math(ematics), model-training, optimization, personal-assistant,
+protocol-analysis, reproducible-builds, research, scientific-computing,
+security, software-engineering, system-administration, video-processing.
 
 ## Installation
 
 ```bash
 # From the terminal-bench directory
 pip install -e ".[dev]"
-
-# Or install dependencies manually
-pip install elizaos docker aiofiles pexpect httpx pydantic
 ```
+
+Docker is required for the default tmux backend. tmux is installed
+automatically inside containers that don't already ship it.
 
 ## Quick Start
 
-### Run with Sample Tasks (Recommended for Testing)
+### Smoke run (no Docker corpus required)
+
+```bash
+# Tiny built-in SAMPLE_TASKS — CI / wiring check ONLY, not Terminal-Bench.
+terminal-bench --use-sample-tasks --local-sandbox
+```
+
+### Run the real benchmark
+
+```bash
+# Default backend = tmux inside per-task Docker images.
+terminal-bench --task-ids hello-world
+
+# All 241 tasks (slow).
+terminal-bench
+
+# Force the legacy one-shot exec_run path (no tmux).
+terminal-bench --task-ids hello-world --one-shot
+
+# Fail-loud check: missing corpus raises rather than running SAMPLE_TASKS.
+terminal-bench --data-path /no/such/path  # -> TerminalBenchDatasetMissingError
+```
+
+### Network policy
+
+Network is disabled by default (`network_mode="none"`). Some upstream
+tasks install `uv` from astral.sh inside `run-tests.sh` and so need a
+bridge network at grading time. Pass `--network ...` per task or rely
+on per-task `network_enabled=True` in `task.yaml` to flip this. To
+enforce hermetic runs, set `network_mode="none"` explicitly in
+`TerminalBenchConfig`.
+
+### Refreshing the vendored corpus
+
+```bash
+git clone --depth 1 https://github.com/laude-institute/terminal-bench.git /tmp/tb
+cp -r /tmp/tb/original-tasks/* packages/benchmarks/terminal-bench/tasks/
+cp /tmp/tb/LICENSE packages/benchmarks/terminal-bench/tasks/LICENSE.upstream
+```
+
+### Leaderboard
+
+`LEADERBOARD_SCORES` ships empty — leaderboard numbers move too fast
+to embed. Compare your score against the live leaderboard at
+<https://www.tbench.ai/leaderboard>.
+
+## Original quick-start (legacy section, retained for compat)
+
+### Run with Sample Tasks
 
 ```bash
 # Run sample tasks to verify installation
-terminal-bench --sample
+terminal-bench --use-sample-tasks --local-sandbox
 
 # Verbose output
-terminal-bench --sample --verbose
+terminal-bench --use-sample-tasks --local-sandbox --verbose
 ```
 
 ### Run Full Benchmark

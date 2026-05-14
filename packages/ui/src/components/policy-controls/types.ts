@@ -69,5 +69,5 @@ export function getPolicyConfig<T extends PolicyType>(
   policy: PolicyRule | undefined,
   fallback: PolicyConfigMap[T],
 ): PolicyConfigMap[T] {
-  return policy?.config ? Object.assign({}, fallback, policy.config) : fallback;
+  return policy?.config ? { ...fallback, ...policy.config } : fallback;
 }

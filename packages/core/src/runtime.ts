@@ -688,7 +688,7 @@ function isMessagingAdapter(
 }
 
 export class AgentRuntime implements IAgentRuntime {
-	#conversationLength = 100 as number;
+	#conversationLength = 100;
 	readonly agentId: UUID;
 	readonly character: Character;
 	public adapter!: IDatabaseAdapter;
@@ -911,10 +911,8 @@ export class AgentRuntime implements IAgentRuntime {
 			this.#conversationLength =
 				parseInt(String(opts.settings.CONVERSATION_LENGTH), 10) || 100;
 		} else {
-			this.#conversationLength = getNumberEnv(
-				"CONVERSATION_LENGTH",
-				100,
-			) as number;
+			this.#conversationLength =
+				getNumberEnv("CONVERSATION_LENGTH", 100) ?? 100;
 		}
 		if (opts.adapter) {
 			this.registerDatabaseAdapter(opts.adapter);
@@ -3250,11 +3248,11 @@ export class AgentRuntime implements IAgentRuntime {
 	}
 
 	async getParticipantsForEntity(entityId: UUID): Promise<Participant[]> {
-		return await this.adapter.getParticipantsForEntities([entityId]);
+		return this.adapter.getParticipantsForEntities([entityId]);
 	}
 
 	async getParticipantsForEntities(entityIds: UUID[]): Promise<Participant[]> {
-		return await this.adapter.getParticipantsForEntities(entityIds);
+		return this.adapter.getParticipantsForEntities(entityIds);
 	}
 
 	async getParticipantsForRoom(roomId: UUID): Promise<UUID[]> {
@@ -3265,7 +3263,7 @@ export class AgentRuntime implements IAgentRuntime {
 	async getParticipantsForRooms(
 		roomIds: UUID[],
 	): Promise<import("./types/database").ParticipantsForRoomsResult> {
-		return await this.adapter.getParticipantsForRooms(roomIds);
+		return this.adapter.getParticipantsForRooms(roomIds);
 	}
 
 	async isRoomParticipant(roomId: UUID, entityId: UUID): Promise<boolean> {
@@ -3278,7 +3276,7 @@ export class AgentRuntime implements IAgentRuntime {
 	async areRoomParticipants(
 		pairs: Array<{ roomId: UUID; entityId: UUID }>,
 	): Promise<boolean[]> {
-		return await this.adapter.areRoomParticipants(pairs);
+		return this.adapter.areRoomParticipants(pairs);
 	}
 
 	async addParticipant(entityId: UUID, roomId: UUID): Promise<boolean> {
@@ -3290,7 +3288,7 @@ export class AgentRuntime implements IAgentRuntime {
 		entityIds: UUID[],
 		roomId: UUID,
 	): Promise<UUID[]> {
-		return await this.adapter.createRoomParticipants(entityIds, roomId);
+		return this.adapter.createRoomParticipants(entityIds, roomId);
 	}
 
 	/**
@@ -7091,42 +7089,42 @@ ${section_end}`;
 		return agents[0] ?? null;
 	}
 	async getAgents(): Promise<Partial<Agent>[]> {
-		return await this.adapter.getAgents();
+		return this.adapter.getAgents();
 	}
 	async createAgent(agent: Partial<Agent>): Promise<boolean> {
 		const ids = await this.adapter.createAgents([agent]);
 		return ids.length > 0;
 	}
 	async updateAgent(agentId: UUID, agent: Partial<Agent>): Promise<boolean> {
-		return await this.adapter.updateAgents([{ agentId, agent }]);
+		return this.adapter.updateAgents([{ agentId, agent }]);
 	}
 	async deleteAgent(agentId: UUID): Promise<boolean> {
-		return await this.adapter.deleteAgents([agentId]);
+		return this.adapter.deleteAgents([agentId]);
 	}
 	async countAgents(): Promise<number> {
-		return await this.adapter.countAgents();
+		return this.adapter.countAgents();
 	}
 	async cleanupAgents(): Promise<void> {
-		return await this.adapter.cleanupAgents();
+		return this.adapter.cleanupAgents();
 	}
 
 	// Batch agent methods
 	async getAgentsByIds(agentIds: UUID[]): Promise<Agent[]> {
-		return await this.adapter.getAgentsByIds(agentIds);
+		return this.adapter.getAgentsByIds(agentIds);
 	}
 	async createAgents(agents: Partial<Agent>[]): Promise<UUID[]> {
-		return await this.adapter.createAgents(agents);
+		return this.adapter.createAgents(agents);
 	}
 	async upsertAgents(agents: Partial<Agent>[]): Promise<void> {
-		return await this.adapter.upsertAgents(agents);
+		return this.adapter.upsertAgents(agents);
 	}
 	async updateAgents(
 		updates: Array<{ agentId: UUID; agent: Partial<Agent> }>,
 	): Promise<boolean> {
-		return await this.adapter.updateAgents(updates);
+		return this.adapter.updateAgents(updates);
 	}
 	async deleteAgents(agentIds: UUID[]): Promise<boolean> {
-		return await this.adapter.deleteAgents(agentIds);
+		return this.adapter.deleteAgents(agentIds);
 	}
 
 	async ensureAgentExists(agent: Partial<Agent>): Promise<Agent> {
@@ -7226,7 +7224,7 @@ ${section_end}`;
 		roomIds: UUID[],
 		includeComponents?: boolean,
 	): Promise<import("./types/database").EntitiesForRoomsResult> {
-		return await this.adapter.getEntitiesForRooms(roomIds, includeComponents);
+		return this.adapter.getEntitiesForRooms(roomIds, includeComponents);
 	}
 
 	async getEntitiesForRoom(
@@ -7262,7 +7260,7 @@ ${section_end}`;
 		entities.forEach((e) => {
 			e.agentId = this.agentId;
 		});
-		return await this.adapter.upsertEntities(entities);
+		return this.adapter.upsertEntities(entities);
 	}
 
 	async getComponents(
@@ -7270,7 +7268,7 @@ ${section_end}`;
 		worldId?: UUID,
 		sourceEntityId?: UUID,
 	): Promise<Component[]> {
-		return await this.adapter.getComponentsForEntities(
+		return this.adapter.getComponentsForEntities(
 			[entityId],
 			worldId,
 			sourceEntityId,
@@ -7285,7 +7283,7 @@ ${section_end}`;
 			sourceEntityId?: UUID;
 		}>,
 	): Promise<(Component | null)[]> {
-		return await this.adapter.getComponentsByNaturalKeys(keys);
+		return this.adapter.getComponentsByNaturalKeys(keys);
 	}
 
 	async getComponentsForEntities(
@@ -7293,7 +7291,7 @@ ${section_end}`;
 		worldId?: UUID,
 		sourceEntityId?: UUID,
 	): Promise<Component[]> {
-		return await this.adapter.getComponentsForEntities(
+		return this.adapter.getComponentsForEntities(
 			entityIds,
 			worldId,
 			sourceEntityId,
@@ -7377,7 +7375,7 @@ ${section_end}`;
 		orderBy?: "createdAt";
 		orderDirection?: "asc" | "desc";
 	}): Promise<Memory[]> {
-		return await this.adapter.getMemories({
+		return this.adapter.getMemories({
 			...params,
 			limit: params.limit ?? params.count,
 			tableName: params.tableName ?? "messages",
@@ -7399,14 +7397,14 @@ ${section_end}`;
 		return allMemories;
 	}
 	async getMemoriesByIds(ids: UUID[], tableName?: string): Promise<Memory[]> {
-		return await this.adapter.getMemoriesByIds(ids, tableName);
+		return this.adapter.getMemoriesByIds(ids, tableName);
 	}
 	async getMemoriesByRoomIds(params: {
 		tableName: string;
 		roomIds: UUID[];
 		limit?: number;
 	}): Promise<Memory[]> {
-		return await this.adapter.getMemoriesByRoomIds(params);
+		return this.adapter.getMemoriesByRoomIds(params);
 	}
 
 	async getCachedEmbeddings(params: {
@@ -7417,7 +7415,7 @@ ${section_end}`;
 		query_field_sub_name: string;
 		query_match_count: number;
 	}): Promise<{ embedding: number[]; levenshtein_score: number }[]> {
-		return await this.adapter.getCachedEmbeddings(params);
+		return this.adapter.getCachedEmbeddings(params);
 	}
 	async searchMemories(params: {
 		embedding: number[];
@@ -7529,13 +7527,13 @@ ${section_end}`;
 		tableName?: string,
 	): Promise<number> {
 		if (typeof roomIdOrParams === "string") {
-			return await this.adapter.countMemories({
+			return this.adapter.countMemories({
 				roomIds: [roomIdOrParams as UUID],
 				unique,
 				tableName: tableName ?? "messages",
 			});
 		}
-		return await this.adapter.countMemories({
+		return this.adapter.countMemories({
 			roomIds: roomIdOrParams.roomId ? [roomIdOrParams.roomId] : undefined,
 			unique: roomIdOrParams.unique,
 			tableName: roomIdOrParams.tableName ?? "messages",
@@ -7551,11 +7549,11 @@ ${section_end}`;
 		limit?: number;
 		offset?: number;
 	}): Promise<Log[]> {
-		return await this.adapter.getLogs(params);
+		return this.adapter.getLogs(params);
 	}
 	// Batch log methods
 	async getLogsByIds(logIds: UUID[]): Promise<Log[]> {
-		return await this.adapter.getLogsByIds(logIds);
+		return this.adapter.getLogsByIds(logIds);
 	}
 
 	async createLogs(
@@ -7566,17 +7564,17 @@ ${section_end}`;
 			type: string;
 		}>,
 	): Promise<void> {
-		return await this.adapter.createLogs(params);
+		return this.adapter.createLogs(params);
 	}
 
 	async updateLogs(
 		logs: Array<{ id: UUID; updates: Partial<Log> }>,
 	): Promise<void> {
-		return await this.adapter.updateLogs(logs);
+		return this.adapter.updateLogs(logs);
 	}
 
 	async deleteLogs(logIds: UUID[]): Promise<void> {
-		return await this.adapter.deleteLogs(logIds);
+		return this.adapter.deleteLogs(logIds);
 	}
 	async createWorld(world: World): Promise<UUID> {
 		const ids = await this.adapter.createWorlds([world]);
@@ -7590,7 +7588,7 @@ ${section_end}`;
 		await this.adapter.deleteWorlds([worldId]);
 	}
 	async getAllWorlds(): Promise<World[]> {
-		return await this.adapter.getAllWorlds();
+		return this.adapter.getAllWorlds();
 	}
 	async updateWorld(world: World): Promise<void> {
 		await this.adapter.updateWorlds([world]);
@@ -7598,13 +7596,13 @@ ${section_end}`;
 
 	// Batch world methods
 	async getWorldsByIds(worldIds: UUID[]): Promise<World[]> {
-		return await this.adapter.getWorldsByIds(worldIds);
+		return this.adapter.getWorldsByIds(worldIds);
 	}
 	async createWorlds(worlds: World[]): Promise<UUID[]> {
-		return await this.adapter.createWorlds(worlds);
+		return this.adapter.createWorlds(worlds);
 	}
 	async upsertWorlds(worlds: World[]): Promise<void> {
-		return await this.adapter.upsertWorlds(worlds);
+		return this.adapter.upsertWorlds(worlds);
 	}
 	async deleteWorlds(worldIds: UUID[]): Promise<void> {
 		await this.adapter.deleteWorlds(worldIds);
@@ -7620,7 +7618,7 @@ ${section_end}`;
 	}
 
 	async getRoomsByIds(roomIds: UUID[]): Promise<Room[]> {
-		return await this.adapter.getRoomsByIds(roomIds);
+		return this.adapter.getRoomsByIds(roomIds);
 	}
 	async createRoom({
 		id,
@@ -7648,30 +7646,30 @@ ${section_end}`;
 	}
 
 	async createRooms(rooms: Room[]): Promise<UUID[]> {
-		return await this.adapter.createRooms(rooms);
+		return this.adapter.createRooms(rooms);
 	}
 	async upsertRooms(rooms: Room[]): Promise<void> {
-		return await this.adapter.upsertRooms(rooms);
+		return this.adapter.upsertRooms(rooms);
 	}
 
 	async deleteRoomsByWorldId(worldId: UUID): Promise<void> {
 		await this.adapter.deleteRoomsByWorldIds([worldId]);
 	}
 	async getRoomsForParticipant(entityId: UUID): Promise<UUID[]> {
-		return await this.adapter.getRoomsForParticipants([entityId]);
+		return this.adapter.getRoomsForParticipants([entityId]);
 	}
 
 	async getRoomsForParticipants(entityIds: UUID[]): Promise<UUID[]> {
-		return await this.adapter.getRoomsForParticipants(entityIds);
+		return this.adapter.getRoomsForParticipants(entityIds);
 	}
 
 	// deprecate this one
 	async getRooms(worldId: UUID): Promise<Room[]> {
-		return await this.adapter.getRoomsByWorlds([worldId]);
+		return this.adapter.getRoomsByWorlds([worldId]);
 	}
 
 	async getRoomsByWorld(worldId: UUID): Promise<Room[]> {
-		return await this.adapter.getRoomsByWorlds([worldId]);
+		return this.adapter.getRoomsByWorlds([worldId]);
 	}
 	async getParticipantUserState(
 		roomId: UUID,
@@ -7695,7 +7693,7 @@ ${section_end}`;
 	async getParticipantUserStates(
 		pairs: Array<{ roomId: UUID; entityId: UUID }>,
 	): Promise<("FOLLOWED" | "MUTED" | null)[]> {
-		return await this.adapter.getParticipantUserStates(pairs);
+		return this.adapter.getParticipantUserStates(pairs);
 	}
 
 	async updateParticipantUserStates(
@@ -7720,7 +7718,7 @@ ${section_end}`;
 				: params.entityId
 					? [params.entityId]
 					: [];
-		return await this.adapter.getRelationships({
+		return this.adapter.getRelationships({
 			entityIds,
 			tags: params.tags,
 			limit: params.limit,
@@ -7729,17 +7727,17 @@ ${section_end}`;
 	}
 	// Batch cache methods
 	async getCaches<T>(keys: string[]): Promise<Map<string, T>> {
-		return await this.adapter.getCaches<T>(keys);
+		return this.adapter.getCaches<T>(keys);
 	}
 
 	async setCaches<T>(
 		entries: Array<{ key: string; value: T }>,
 	): Promise<boolean> {
-		return await this.adapter.setCaches<T>(entries);
+		return this.adapter.setCaches<T>(entries);
 	}
 
 	async deleteCaches(keys: string[]): Promise<boolean> {
-		return await this.adapter.deleteCaches(keys);
+		return this.adapter.deleteCaches(keys);
 	}
 
 	async getTasks(params: {
@@ -7747,10 +7745,10 @@ ${section_end}`;
 		tags?: string[];
 		entityId?: UUID;
 	}): Promise<Task[]> {
-		return await this.adapter.getTasks({ ...params, agentIds: [this.agentId] });
+		return this.adapter.getTasks({ ...params, agentIds: [this.agentId] });
 	}
 	async getTasksByName(name: string): Promise<Task[]> {
-		return await this.adapter.getTasksByName(name);
+		return this.adapter.getTasksByName(name);
 	}
 
 	/** WHY fire-and-forget: Notify companion that tasks changed so it can poll/process; no need to block. */
@@ -7781,7 +7779,7 @@ ${section_end}`;
 	}
 
 	async deleteTask(id: UUID): Promise<void> {
-		return await this.adapter.deleteTasks([id]);
+		return this.adapter.deleteTasks([id]);
 	}
 
 	async log(params: {
@@ -7790,11 +7788,11 @@ ${section_end}`;
 		roomId: UUID;
 		type: string;
 	}): Promise<void> {
-		return await this.adapter.createLogs([params]);
+		return this.adapter.createLogs([params]);
 	}
 
 	async deleteLog(logId: UUID): Promise<void> {
-		return await this.adapter.deleteLogs([logId]);
+		return this.adapter.deleteLogs([logId]);
 	}
 
 	async getCache<T>(key: string): Promise<T | undefined> {
@@ -7803,11 +7801,11 @@ ${section_end}`;
 	}
 
 	async setCache<T>(key: string, value: T): Promise<boolean> {
-		return await this.adapter.setCaches<T>([{ key, value }]);
+		return this.adapter.setCaches<T>([{ key, value }]);
 	}
 
 	async deleteCache(key: string): Promise<boolean> {
-		return await this.adapter.deleteCaches([key]);
+		return this.adapter.deleteCaches([key]);
 	}
 
 	// Batch task methods
@@ -7818,7 +7816,7 @@ ${section_end}`;
 	}
 
 	async getTasksByIds(taskIds: UUID[]): Promise<Task[]> {
-		return await this.adapter.getTasksByIds(taskIds);
+		return this.adapter.getTasksByIds(taskIds);
 	}
 
 	async updateTasks(
@@ -7829,7 +7827,7 @@ ${section_end}`;
 	}
 
 	async deleteTasks(taskIds: UUID[]): Promise<void> {
-		return await this.adapter.deleteTasks(taskIds);
+		return this.adapter.deleteTasks(taskIds);
 	}
 
 	/**
@@ -7841,7 +7839,7 @@ ${section_end}`;
 		callback: (tx: IDatabaseAdapter<object>) => Promise<T>,
 		options?: { entityContext?: UUID },
 	): Promise<T> {
-		return await this.adapter.transaction(callback, options);
+		return this.adapter.transaction(callback, options);
 	}
 
 	async queryEntities(params: {
@@ -7855,7 +7853,7 @@ ${section_end}`;
 		includeAllComponents?: boolean;
 		entityContext?: UUID;
 	}): Promise<Entity[]> {
-		return await this.adapter.queryEntities({
+		return this.adapter.queryEntities({
 			...params,
 			agentId: params.agentId ?? this.agentId,
 		});
@@ -7863,22 +7861,22 @@ ${section_end}`;
 
 	// Batch entity methods
 	async getEntitiesByIds(entityIds: UUID[]): Promise<Entity[]> {
-		return await this.adapter.getEntitiesByIds(entityIds);
+		return this.adapter.getEntitiesByIds(entityIds);
 	}
 
 	async updateEntities(entities: Entity[]): Promise<void> {
-		return await this.adapter.updateEntities(entities);
+		return this.adapter.updateEntities(entities);
 	}
 
 	async deleteEntities(entityIds: UUID[]): Promise<void> {
-		return await this.adapter.deleteEntities(entityIds);
+		return this.adapter.deleteEntities(entityIds);
 	}
 	async searchEntitiesByName(params: {
 		query: string;
 		agentId?: UUID;
 		limit?: number;
 	}): Promise<Entity[]> {
-		return await this.adapter.searchEntitiesByName({
+		return this.adapter.searchEntitiesByName({
 			query: params.query,
 			agentId: params.agentId ?? this.agentId,
 			limit: params.limit,
@@ -7888,7 +7886,7 @@ ${section_end}`;
 		names: string[];
 		agentId?: UUID;
 	}): Promise<Entity[]> {
-		return await this.adapter.getEntitiesByNames({
+		return this.adapter.getEntitiesByNames({
 			names: params.names,
 			agentId: params.agentId ?? this.agentId,
 		});
@@ -7896,24 +7894,24 @@ ${section_end}`;
 
 	// Single-item entity wrapper
 	async updateEntity(entity: Entity): Promise<void> {
-		return await this.adapter.updateEntities([entity]);
+		return this.adapter.updateEntities([entity]);
 	}
 
 	// Batch component methods
 	async createComponents(components: Component[]): Promise<UUID[]> {
-		return await this.adapter.createComponents(components);
+		return this.adapter.createComponents(components);
 	}
 
 	async getComponentsByIds(componentIds: UUID[]): Promise<Component[]> {
-		return await this.adapter.getComponentsByIds(componentIds);
+		return this.adapter.getComponentsByIds(componentIds);
 	}
 
 	async updateComponents(components: Component[]): Promise<void> {
-		return await this.adapter.updateComponents(components);
+		return this.adapter.updateComponents(components);
 	}
 
 	async deleteComponents(componentIds: UUID[]): Promise<void> {
-		return await this.adapter.deleteComponents(componentIds);
+		return this.adapter.deleteComponents(componentIds);
 	}
 
 	// Single-item component wrappers
@@ -7937,22 +7935,22 @@ ${section_end}`;
 	}
 
 	async updateComponent(component: Component): Promise<void> {
-		return await this.adapter.updateComponents([component]);
+		return this.adapter.updateComponents([component]);
 	}
 
 	async deleteComponent(componentId: UUID): Promise<void> {
-		return await this.adapter.deleteComponents([componentId]);
+		return this.adapter.deleteComponents([componentId]);
 	}
 
 	async upsertComponent(component: Component): Promise<void> {
-		return await this.adapter.upsertComponents([component]);
+		return this.adapter.upsertComponents([component]);
 	}
 
 	async upsertComponents(
 		components: Component[],
 		options?: { entityContext?: UUID },
 	): Promise<void> {
-		return await this.adapter.upsertComponents(components, options);
+		return this.adapter.upsertComponents(components, options);
 	}
 
 	async patchComponent(
@@ -7960,14 +7958,14 @@ ${section_end}`;
 		ops: PatchOp[],
 		options?: { entityContext?: UUID },
 	): Promise<void> {
-		return await this.adapter.patchComponents([{ componentId, ops }], options);
+		return this.adapter.patchComponents([{ componentId, ops }], options);
 	}
 
 	async patchComponents(
 		updates: Array<{ componentId: UUID; ops: PatchOp[] }>,
 		options?: { entityContext?: UUID },
 	): Promise<void> {
-		return await this.adapter.patchComponents(updates, options);
+		return this.adapter.patchComponents(updates, options);
 	}
 
 	async patchComponentField(
@@ -7975,10 +7973,7 @@ ${section_end}`;
 		op: PatchOp,
 		options?: { entityContext?: UUID },
 	): Promise<void> {
-		return await this.adapter.patchComponents(
-			[{ componentId, ops: [op] }],
-			options,
-		);
+		return this.adapter.patchComponents([{ componentId, ops: [op] }], options);
 	}
 
 	async getComponentsByType(
@@ -8025,14 +8020,14 @@ ${section_end}`;
 				},
 			};
 		}
-		return await this.adapter.upsertMemories([{ memory, tableName }], options);
+		return this.adapter.upsertMemories([{ memory, tableName }], options);
 	}
 
 	async upsertMemories(
 		memories: Array<{ memory: Memory; tableName: string }>,
 		options?: { entityContext?: UUID },
 	): Promise<void> {
-		return await this.adapter.upsertMemories(memories, options);
+		return this.adapter.upsertMemories(memories, options);
 	}
 
 	// Batch relationship methods
@@ -8044,27 +8039,27 @@ ${section_end}`;
 			metadata?: Metadata;
 		}>,
 	): Promise<UUID[]> {
-		return await this.adapter.createRelationships(relationships);
+		return this.adapter.createRelationships(relationships);
 	}
 
 	async getRelationshipsByIds(
 		relationshipIds: UUID[],
 	): Promise<Relationship[]> {
-		return await this.adapter.getRelationshipsByIds(relationshipIds);
+		return this.adapter.getRelationshipsByIds(relationshipIds);
 	}
 
 	async getRelationshipsByPairs(
 		pairs: Array<{ sourceEntityId: UUID; targetEntityId: UUID }>,
 	): Promise<(Relationship | null)[]> {
-		return await this.adapter.getRelationshipsByPairs(pairs);
+		return this.adapter.getRelationshipsByPairs(pairs);
 	}
 
 	async updateRelationships(relationships: Relationship[]): Promise<void> {
-		return await this.adapter.updateRelationships(relationships);
+		return this.adapter.updateRelationships(relationships);
 	}
 
 	async deleteRelationships(relationshipIds: UUID[]): Promise<void> {
-		return await this.adapter.deleteRelationships(relationshipIds);
+		return this.adapter.deleteRelationships(relationshipIds);
 	}
 
 	// Single-item relationship wrappers
@@ -8089,7 +8084,7 @@ ${section_end}`;
 	}
 
 	async updateRelationship(relationship: Relationship): Promise<void> {
-		return await this.adapter.updateRelationships([relationship]);
+		return this.adapter.updateRelationships([relationship]);
 	}
 
 	// ── Batch memory passthroughs ────────────────────────────────────────
@@ -8100,17 +8095,17 @@ ${section_end}`;
 	async createMemories(
 		memories: Array<{ memory: Memory; tableName: string; unique?: boolean }>,
 	): Promise<UUID[]> {
-		return await this.adapter.createMemories(memories);
+		return this.adapter.createMemories(memories);
 	}
 
 	async updateMemories(
 		memories: Array<Partial<Memory> & { id: UUID; metadata?: MemoryMetadata }>,
 	): Promise<void> {
-		return await this.adapter.updateMemories(memories);
+		return this.adapter.updateMemories(memories);
 	}
 
 	async deleteMemories(memoryIds: UUID[]): Promise<void> {
-		return await this.adapter.deleteMemories(memoryIds);
+		return this.adapter.deleteMemories(memoryIds);
 	}
 
 	// ── Single-item memory wrappers ────────────────────────────────────
@@ -8167,14 +8162,14 @@ ${section_end}`;
 	}
 
 	async deleteMemory(memoryId: UUID): Promise<void> {
-		return await this.adapter.deleteMemories([memoryId]);
+		return this.adapter.deleteMemories([memoryId]);
 	}
 
 	// ── Participant passthroughs & wrappers ──────────────────────────────
 	async deleteParticipants(
 		participants: Array<{ entityId: UUID; roomId: UUID }>,
 	): Promise<boolean> {
-		return await this.adapter.deleteParticipants(participants);
+		return this.adapter.deleteParticipants(participants);
 	}
 
 	async updateParticipants(
@@ -8184,29 +8179,29 @@ ${section_end}`;
 			updates: Partial<Participant>;
 		}>,
 	): Promise<void> {
-		return await this.adapter.updateParticipants(participants);
+		return this.adapter.updateParticipants(participants);
 	}
 
 	async removeParticipant(entityId: UUID, roomId: UUID): Promise<boolean> {
-		return await this.adapter.deleteParticipants([{ entityId, roomId }]);
+		return this.adapter.deleteParticipants([{ entityId, roomId }]);
 	}
 
 	// ── Room passthroughs & wrappers ────────────────────────────────────
 	async updateRooms(rooms: Room[]): Promise<void> {
-		return await this.adapter.updateRooms(rooms);
+		return this.adapter.updateRooms(rooms);
 	}
 
 	async deleteRooms(roomIds: UUID[]): Promise<void> {
-		return await this.adapter.deleteRooms(roomIds);
+		return this.adapter.deleteRooms(roomIds);
 	}
 
 	// Single-item room wrappers
 	async updateRoom(room: Room): Promise<void> {
-		return await this.adapter.updateRooms([room]);
+		return this.adapter.updateRooms([room]);
 	}
 
 	async deleteRoom(roomId: UUID): Promise<void> {
-		return await this.adapter.deleteRooms([roomId]);
+		return this.adapter.deleteRooms([roomId]);
 	}
 
 	on(event: string, callback: (data: EventPayload) => void): void {
@@ -8636,7 +8631,7 @@ ${section_end}`;
 		limit?: number;
 		tableName?: string;
 	}): Promise<Memory[]> {
-		return await this.adapter.getMemoriesByWorldId(params);
+		return this.adapter.getMemoriesByWorldId(params);
 	}
 	async runMigrations(migrationsPaths?: string[]): Promise<void> {
 		if (this.adapter?.runMigrations) {
@@ -8653,7 +8648,7 @@ ${section_end}`;
 		if (!this.adapter) {
 			throw new Error("Database adapter not registered");
 		}
-		return await this.adapter.isReady();
+		return this.adapter.isReady();
 	}
 
 	// Pairing Methods
@@ -8672,7 +8667,7 @@ ${section_end}`;
 	async getPairingRequests(
 		queries: Array<{ channel: PairingChannel; agentId: UUID }>,
 	): Promise<import("./types/database").PairingRequestsResult> {
-		return await this.adapter.getPairingRequests(queries);
+		return this.adapter.getPairingRequests(queries);
 	}
 
 	async getPairingAllowlistForChannel(
@@ -8688,36 +8683,36 @@ ${section_end}`;
 	async getPairingAllowlists(
 		queries: Array<{ channel: PairingChannel; agentId: UUID }>,
 	): Promise<import("./types/database").PairingAllowlistsResult> {
-		return await this.adapter.getPairingAllowlists(queries);
+		return this.adapter.getPairingAllowlists(queries);
 	}
 
 	// Batch pairing methods
 	async createPairingRequests(requests: PairingRequest[]): Promise<UUID[]> {
-		return await this.adapter.createPairingRequests(requests);
+		return this.adapter.createPairingRequests(requests);
 	}
 
 	async updatePairingRequests(requests: PairingRequest[]): Promise<void> {
-		return await this.adapter.updatePairingRequests(requests);
+		return this.adapter.updatePairingRequests(requests);
 	}
 
 	async deletePairingRequests(ids: UUID[]): Promise<void> {
-		return await this.adapter.deletePairingRequests(ids);
+		return this.adapter.deletePairingRequests(ids);
 	}
 
 	async createPairingAllowlistEntries(
 		entries: PairingAllowlistEntry[],
 	): Promise<UUID[]> {
-		return await this.adapter.createPairingAllowlistEntries(entries);
+		return this.adapter.createPairingAllowlistEntries(entries);
 	}
 
 	async updatePairingAllowlistEntries(
 		entries: PairingAllowlistEntry[],
 	): Promise<void> {
-		return await this.adapter.updatePairingAllowlistEntries(entries);
+		return this.adapter.updatePairingAllowlistEntries(entries);
 	}
 
 	async deletePairingAllowlistEntries(ids: UUID[]): Promise<void> {
-		return await this.adapter.deletePairingAllowlistEntries(ids);
+		return this.adapter.deletePairingAllowlistEntries(ids);
 	}
 
 	// Single-item pairing wrappers
@@ -8727,11 +8722,11 @@ ${section_end}`;
 	}
 
 	async updatePairingRequest(request: PairingRequest): Promise<void> {
-		return await this.adapter.updatePairingRequests([request]);
+		return this.adapter.updatePairingRequests([request]);
 	}
 
 	async deletePairingRequest(id: UUID): Promise<void> {
-		return await this.adapter.deletePairingRequests([id]);
+		return this.adapter.deletePairingRequests([id]);
 	}
 
 	async createPairingAllowlistEntry(
@@ -8742,14 +8737,14 @@ ${section_end}`;
 	}
 
 	async deletePairingAllowlistEntry(id: UUID): Promise<void> {
-		return await this.adapter.deletePairingAllowlistEntries([id]);
+		return this.adapter.deletePairingAllowlistEntries([id]);
 	}
 
 	// Connector account storage passthroughs
 	async listConnectorAccounts(
 		params: ListConnectorAccountsParams = {},
 	): Promise<ConnectorAccountRecord[]> {
-		return await this.adapter.listConnectorAccounts({
+		return this.adapter.listConnectorAccounts({
 			...params,
 			agentId: params.agentId ?? this.agentId,
 		});
@@ -8758,7 +8753,7 @@ ${section_end}`;
 	async getConnectorAccount(
 		params: GetConnectorAccountParams,
 	): Promise<ConnectorAccountRecord | null> {
-		return await this.adapter.getConnectorAccount({
+		return this.adapter.getConnectorAccount({
 			...params,
 			agentId: params.id ? params.agentId : (params.agentId ?? this.agentId),
 		});
@@ -8767,7 +8762,7 @@ ${section_end}`;
 	async upsertConnectorAccount(
 		params: UpsertConnectorAccountParams,
 	): Promise<ConnectorAccountRecord> {
-		return await this.adapter.upsertConnectorAccount({
+		return this.adapter.upsertConnectorAccount({
 			...params,
 			agentId: params.agentId ?? this.agentId,
 		});
@@ -8776,7 +8771,7 @@ ${section_end}`;
 	async deleteConnectorAccount(
 		params: DeleteConnectorAccountParams,
 	): Promise<boolean> {
-		return await this.adapter.deleteConnectorAccount({
+		return this.adapter.deleteConnectorAccount({
 			...params,
 			agentId: params.id ? params.agentId : (params.agentId ?? this.agentId),
 		});
@@ -8785,25 +8780,25 @@ ${section_end}`;
 	async setConnectorAccountCredentialRef(
 		params: SetConnectorAccountCredentialRefParams,
 	): Promise<ConnectorAccountCredentialRefRecord> {
-		return await this.adapter.setConnectorAccountCredentialRef(params);
+		return this.adapter.setConnectorAccountCredentialRef(params);
 	}
 
 	async getConnectorAccountCredentialRef(
 		params: GetConnectorAccountCredentialRefParams,
 	): Promise<ConnectorAccountCredentialRefRecord | null> {
-		return await this.adapter.getConnectorAccountCredentialRef(params);
+		return this.adapter.getConnectorAccountCredentialRef(params);
 	}
 
 	async listConnectorAccountCredentialRefs(
 		params: ListConnectorAccountCredentialRefsParams,
 	): Promise<ConnectorAccountCredentialRefRecord[]> {
-		return await this.adapter.listConnectorAccountCredentialRefs(params);
+		return this.adapter.listConnectorAccountCredentialRefs(params);
 	}
 
 	async appendConnectorAccountAuditEvent(
 		params: AppendConnectorAccountAuditEventParams,
 	): Promise<ConnectorAccountAuditEventRecord> {
-		return await this.adapter.appendConnectorAccountAuditEvent({
+		return this.adapter.appendConnectorAccountAuditEvent({
 			...params,
 			agentId: params.agentId ?? this.agentId,
 		});
@@ -8812,7 +8807,7 @@ ${section_end}`;
 	async createOAuthFlowState(
 		params: CreateOAuthFlowStateParams,
 	): Promise<OAuthFlowRecord> {
-		return await this.adapter.createOAuthFlowState({
+		return this.adapter.createOAuthFlowState({
 			...params,
 			agentId: params.agentId ?? this.agentId,
 		});
@@ -8821,7 +8816,7 @@ ${section_end}`;
 	async consumeOAuthFlowState(
 		params: ConsumeOAuthFlowStateParams,
 	): Promise<OAuthFlowRecord | null> {
-		return await this.adapter.consumeOAuthFlowState({
+		return this.adapter.consumeOAuthFlowState({
 			...params,
 			agentId: params.agentId ?? this.agentId,
 		});
@@ -8830,7 +8825,7 @@ ${section_end}`;
 	async getOAuthFlowState(
 		params: GetOAuthFlowStateParams,
 	): Promise<OAuthFlowRecord | null> {
-		return await this.adapter.getOAuthFlowState({
+		return this.adapter.getOAuthFlowState({
 			...params,
 			agentId: params.agentId ?? this.agentId,
 		});
@@ -8839,7 +8834,7 @@ ${section_end}`;
 	async updateOAuthFlowState(
 		params: UpdateOAuthFlowStateParams,
 	): Promise<OAuthFlowRecord | null> {
-		return await this.adapter.updateOAuthFlowState({
+		return this.adapter.updateOAuthFlowState({
 			...params,
 			agentId: params.agentId ?? this.agentId,
 		});
@@ -8848,7 +8843,7 @@ ${section_end}`;
 	async deleteOAuthFlowState(
 		params: DeleteOAuthFlowStateParams,
 	): Promise<boolean> {
-		return await this.adapter.deleteOAuthFlowState({
+		return this.adapter.deleteOAuthFlowState({
 			...params,
 			agentId: params.agentId ?? this.agentId,
 		});

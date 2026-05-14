@@ -49,13 +49,13 @@ async function migrateOsStoreWalletKeysIntoVault(
   const migrated: string[] = [];
 
   for (const envKey of envKeys) {
-    const kind = keychainKindFor[envKey as string];
+    const kind = keychainKindFor[envKey];
     if (!kind) continue;
     const got = await store.get(vaultId, kind);
     if (!got.ok) continue;
     process.env[envKey] = got.value;
-    if (!(await vault.has(envKey as string))) {
-      await vault.set(envKey as string, got.value, {
+    if (!(await vault.has(envKey))) {
+      await vault.set(envKey, got.value, {
         sensitive: true,
         caller: "wallet-os-store-migrate",
       });
@@ -84,8 +84,8 @@ export async function hydrateWalletKeysFromNodePlatformSecureStore(): Promise<vo
   for (const envKey of WALLET_VAULT_KEYS) {
     const cur = process.env[envKey];
     if (typeof cur === "string" && cur.trim()) continue;
-    if (await vault.has(envKey as string)) {
-      const value = await vault.reveal(envKey as string, "wallet-hydrate-boot");
+    if (await vault.has(envKey)) {
+      const value = await vault.reveal(envKey, "wallet-hydrate-boot");
       process.env[envKey] = value;
       continue;
     }

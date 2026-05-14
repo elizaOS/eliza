@@ -1,276 +1,181 @@
-# ElizaOS Tau-bench Benchmark
-
-A comprehensive implementation of the **τ-bench (Tau-bench)** benchmark for evaluating ElizaOS agents on real-world tool-augmented customer service tasks.
-
-## Overview
-
-Tau-bench evaluates LLMs' ability to effectively utilize tools in realistic customer service scenarios across multiple domains:
-
-- **Retail Domain**: E-commerce customer support (orders, returns, refunds)
-- **Airline Domain**: Flight booking and management (reservations, changes, cancellations)
-
-### Key Metrics
-
-- **Pass^k**: Reliability metric measuring success across k independent trials (key innovation from the original paper)
-- **Tool Selection Accuracy**: Correct tool selection and parameter extraction
-- **Policy Compliance**: Adherence to domain-specific business rules
-- **Response Quality**: Helpfulness and accuracy of final responses
-
-## Installation
-
-```bash
-# From the benchmark directory
-cd benchmarks/tau-bench/python
-
-# Install in development mode
-pip install -e ".[dev]"
-
-# Or just install dependencies
-pip install -e .
-```
-
-## Quick Start
-
-### Run with Sample Tasks (No External Data Required)
-
-```bash
-# Run all domains with sample tasks
-python -m elizaos_tau_bench --sample
-
-# Run specific domain
-python -m elizaos_tau_bench --sample --domain retail
-
-# Run with multiple trials for Pass^k evaluation
-python -m elizaos_tau_bench --sample --trials 8
-```
-
-### Run with a Real LLM (ElizaOS Runtime)
-
-The Python benchmark currently supports the **OpenAI** model provider via the `elizaos-plugin-openai` package.
-
-```bash
-cd benchmarks/tau-bench/python
-
-# Install benchmark deps
-pip install -e ".[dev]"
-
-# Install OpenAI provider plugin (from this monorepo)
-pip install -e ../../../plugins/plugin-openai/python
-
-# (Recommended) Install trajectory logger plugin (from this monorepo)
-# This captures full end-to-end ElizaOS trajectories and exports them for training.
-pip install -e ../../../plugins/plugin-trajectory-logger/python
-
-# Provide credentials
-export OPENAI_API_KEY="..."
-
-# Optional: choose models (defaults are gpt-5 / gpt-5-mini)
-export OPENAI_SMALL_MODEL="gpt-5-mini"
-export OPENAI_LARGE_MODEL="gpt-5-mini"
-
-# Run full dataset with real LLM
-python -m elizaos_tau_bench --all --real-llm --trials 1
-```
-
-### Trajectory Logging (ART / GRPO)
-
-When running with `--real-llm`, tau-bench exports trajectories compatible with the training system (OpenPipe ART / GRPO).
-
-- **ART JSONL**: `OUTPUT/trajectories/trajectories.art.jsonl`
-- **GRPO groups**: `OUTPUT/trajectories/trajectories.grpo.groups.json`
-
-```bash
-# Default: trajectories enabled in real-llm mode (ART)
-python -m elizaos_tau_bench --all --real-llm --output ./results/tau-bench-run
-
-# Disable explicitly
-python -m elizaos_tau_bench --all --real-llm --no-trajectories
-
-# Export in GRPO grouped format (best for RL training rollouts)
-python -m elizaos_tau_bench --all --real-llm --trajectory-format grpo
-```
-
-### Run with Custom Data
-
-```bash
-# Run with benchmark data
-python -m elizaos_tau_bench --all --data-path ./benchmark-data/tau-bench
-
-# Run specific domain with verbose output
-python -m elizaos_tau_bench --domain airline --verbose
-
-# Run with custom output directory
-python -m elizaos_tau_bench --all --output ./results/tau-bench-2026
-```
-
-## CLI Options
-
-```
-Usage: python -m elizaos_tau_bench [OPTIONS]
-
-Options:
-  --all                 Run all domains (retail + airline)
-  --domain {retail,airline}
-                        Run specific domain only
-  --sample              Use built-in sample tasks
-  --data-path PATH      Path to benchmark data directory
-  --output PATH         Output directory for results
-  --trials N            Number of trials per task (for Pass^k)
-  --max-tasks N         Maximum tasks per domain
-  --max-turns N         Maximum turns per task
-  --timeout MS          Timeout per task in milliseconds
-  --difficulty {easy,medium,hard}
-                        Filter by task difficulty
-  --verbose             Enable verbose output
-  --json                Output results as JSON to stdout
-  --llm-judge           Use LLM to evaluate response quality
-  --real-llm            Use real LLM via ElizaOS runtime (default: mock agent)
-  --temperature FLOAT   Temperature for model calls (provider-dependent)
-  --model-provider STR  Provider selection (Python: openai)
-  --trajectories        Enable trajectory logging + export (requires elizaos-plugin-trajectory-logger)
-  --no-trajectories     Disable trajectory logging
-  --trajectory-format {art,grpo}
-                        Export format for trajectories
-```
-
-## Benchmark Data Format
-
-Tasks are defined in JSON format:
-
-```json
-{
-  "task_id": "retail_001",
-  "domain": "retail",
-  "user_instruction": "I want to return my order #ORD-12345",
-  "user_profile": "Customer: John Smith, Gold member",
-  "user_goal": "Successfully initiate a return",
-  "difficulty": "easy",
-  "expected_tool_calls": [
-    {"tool_name": "get_order_details", "arguments": {"order_id": "ORD-12345"}},
-    {"tool_name": "initiate_return", "arguments": {"order_id": "ORD-12345"}}
-  ],
-  "policy_constraints": [
-    {"policy_id": "RETURN_WINDOW", "description": "Returns within 30 days"}
-  ],
-  "success_criteria": ["return_initiated"],
-  "ground_truth_response": "Return initiated. You'll receive a return label via email."
-}
-```
-
-## Output
-
-Results are saved to the output directory:
-
-- `tau-bench-results.json` - Main benchmark results with metrics
-- `tau-bench-summary.md` - Human-readable markdown summary
-- `tau-bench-detailed.json` - Per-task detailed results (if `--save-details`)
-
-### Sample Output
-
-```
-╔═══════════════════════════════════════════════════════════════════════╗
-║                  ElizaOS Tau-bench Benchmark Runner                   ║
-╚═══════════════════════════════════════════════════════════════════════╝
-
-📋 Configuration:
-   Domains: retail, airline
-   Trials per Task: 8
-   Max Tasks: unlimited
-
-🚀 Starting Tau-bench evaluation...
-
-📊 TAU-BENCH RESULTS SUMMARY
-======================================================================
-
-🎯 Overall Performance:
-   Status: PARTIAL
-   Success Rate: 62.5%
-   Total Tasks: 16 (128 trials)
-
-📈 Pass^k Reliability:
-   Pass^1: 68.8%
-   Pass^2: 56.3%
-   Pass^4: 43.8%
-   Pass^8: 31.3%
-
-⚡ Performance Metrics:
-   Tool Accuracy: 78.5%
-   Policy Compliance: 94.2%
-   Response Quality: 71.3%
-
-🏆 Leaderboard Comparison:
-   Closest Model: gpt-5
-   Difference: +8.5% better
-
-✅ Tau-bench evaluation completed successfully!
-```
-
-## Pass^k Metric
-
-The **Pass^k** metric is the key innovation from the original τ-bench paper. It measures the probability that an agent successfully completes a task in **ALL** of k independent trials.
-
-- **Pass^1**: Standard success rate (probability of success on first try)
-- **Pass^k**: Probability of succeeding in all k trials consecutively
-
-This metric captures **reliability and consistency**, which is critical for production deployments. Even state-of-the-art models like GPT-4o show significant drops from Pass^1 to Pass^8.
-
-## Leaderboard Comparison
-
-The benchmark compares results against published scores from the official leaderboard:
-
-| Model | Retail Pass^1 | Airline Pass^1 |
-|-------|---------------|----------------|
-| Gemini 3 Pro | 90.7% | 89.2% |
-| Kimi K2 | 74.3% | 72.1% |
-| o3 | 73.9% | 71.5% |
-| o4-mini | 71.8% | 69.5% |
-| GPT-4o | 48.5% | 46.2% |
-
-## Running Tests
-
-```bash
-# Install test dependencies
-pip install -e ".[dev]"
-
-# Run all tests
-pytest tests/
-
-# Run with coverage
-pytest tests/ --cov=elizaos_tau_bench --cov-report=html
-
-# Run specific test file
-pytest tests/test_environments.py -v
-
-# Run integration tests only
-pytest tests/test_integration.py -v
-```
+# ElizaOS tau-bench Benchmark
+
+Faithful, vendored implementation of Sierra's [tau-bench](https://github.com/sierra-research/tau-bench) (Yao et al., 2024) wired into the ElizaOS evaluation harness.
+
+## What this package contains
+
+This package **vendors** the upstream tau-bench source tree under
+`elizaos_tau_bench/upstream/` (MIT, see `elizaos_tau_bench/upstream/LICENSE`)
+and provides an ElizaOS-friendly runner + LLM judge + pass^k harness on top
+of it.
+
+Vendored from:
+- repo: `https://github.com/sierra-research/tau-bench`
+- commit: `59a200c6d575d595120f1cb70fea53cef0632f6b`
+
+Upstream modules used directly:
+- `upstream/envs/base.py` (`Env`, action/tool/reward semantics)
+- `upstream/envs/retail/` (115 tools, products/users/orders DBs, wiki, rules)
+- `upstream/envs/airline/` (50 tools, flights/reservations/users DBs, wiki, rules)
+- `upstream/envs/retail/tasks_test.py` -- 115 official retail tasks
+- `upstream/envs/airline/tasks_test.py` -- 50 official airline tasks
+- `upstream/envs/user.py` -- LLM-based User simulator (LLM / React / Verify / Reflection strategies)
+- `upstream/types.py` -- Action, Task, EnvResponse, ...
+
+Total tasks loaded: **165** (115 retail + 50 airline test split). Retail also
+exposes `dev` and `train` splits via `--task-split`.
 
 ## Architecture
 
 ```
-elizaos_tau_bench/
-├── __init__.py           # Package exports
-├── constants.py          # Leaderboard baselines (reference)
-├── types.py              # Core type definitions
-├── dataset.py            # Task loading and management
-├── agent.py              # Legacy mock agent (kept for reference)
-├── eliza_agent.py        # Real LLM agent integration (ElizaOS runtime)
-├── executor.py           # Tool execution engine
-├── evaluator.py          # Result evaluation and Pass^k
-├── runner.py             # Benchmark runner
-├── cli.py                # Command-line interface
-└── environments/
-    ├── base.py           # Abstract environment
-    ├── retail.py         # Retail domain simulator
-    └── airline.py        # Airline domain simulator
+TauBenchRunner (elizaos_tau_bench/runner.py)
+  iter_tasks() -> for each task:
+    for trial in num_trials:
+      Env = upstream.get_env(...)   # real DB + 115/50 tools + wiki + rules
+      agent.solve(Env, task_index)  # multi-turn tool-calling loop:
+        while not done:
+          LLM -> Action
+          Env.step(Action)
+            if tool: invoke against real DB
+            if RESPOND: User.step(msg)   # LLM user simulator (gpt-4o)
+                                         # produces next user turn
+                                         # until ###STOP###
+      judge_outputs_satisfied(...)     # gpt-4o-mini gates task.outputs
+  pass_k.calculate_pass_hat_k(...)     # unbiased pass^k estimator
 ```
 
-## References
+The agent loop mirrors upstream `ToolCallingAgent.solve`: the agent emits
+either a function/tool call (executed by `Env`) or a RESPOND action (forwarded
+to the user simulator). The user simulator is a real multi-turn LLM by
+default (`--user-model gpt-4o`); the rollout ends when it emits
+`###STOP###` or `agent_max_turns` is reached.
 
-- **Official τ-bench Repository**: https://github.com/sierra-research/tau-bench
-- **Paper**: "τ-bench: A Benchmark for Tool-Agent-User Interaction in Real-World Domains" (2024)
-- **Sierra Research**: https://sierra.ai/resources/research/tau-bench
+## Installation
+
+```bash
+cd packages/benchmarks/tau-bench
+pip install -e ".[dev]"
+```
+
+Dependencies: `litellm`, `openai`, `pydantic`, `pytest`, `pytest-asyncio`.
+Both the user simulator and the agent talk to LLMs through litellm, so any
+provider litellm supports works.
+
+## Required environment variables
+
+| Component        | Env var (default provider = openai) | Default model |
+|------------------|--------------------------------------|---------------|
+| Agent LLM        | `OPENAI_API_KEY`                     | `gpt-4o`      |
+| User simulator   | `OPENAI_API_KEY`                     | `gpt-4o`      |
+| LLM judge        | `OPENAI_API_KEY`                     | `gpt-4o-mini` |
+
+Override providers with `--agent-provider`, `--user-provider`, `--judge-provider`
+(`openai` / `anthropic` / `google` / `groq` / `openrouter` / ..., anything litellm
+supports). The runner checks each provider's API key up front and refuses to
+start unless every required one is present (or you pass `--mock`).
+
+## Quick start
+
+Run the full 165-task benchmark with pass^4 (paper default):
+
+```bash
+python -m elizaos_tau_bench --num-trials 4
+```
+
+Run only retail dev split with a single trial:
+
+```bash
+python -m elizaos_tau_bench --domain retail --task-split dev --num-trials 1
+```
+
+Run a tiny smoke (4 sample tasks) with the deterministic mock agent -- no LLM,
+no API keys required:
+
+```bash
+python -m elizaos_tau_bench --mock --use-sample-tasks
+```
+
+Run a specific task subset:
+
+```bash
+python -m elizaos_tau_bench --domain retail --task-ids 0 1 2 --num-trials 4
+```
+
+Use a non-OpenAI model for the agent but keep openai for user/judge:
+
+```bash
+python -m elizaos_tau_bench \
+    --agent-provider anthropic --agent-model claude-3-5-sonnet-latest \
+    --user-provider openai --user-model gpt-4o \
+    --judge-provider openai --judge-model gpt-4o-mini
+```
+
+Disable the LLM judge (fall back to upstream's literal substring check):
+
+```bash
+python -m elizaos_tau_bench --no-llm-judge
+```
+
+## Pass^k
+
+pass^k = probability that **all** k independent trials of a task succeed.
+We compute the unbiased estimator from the paper:
+
+    pass^k = E_task [ C(c, k) / C(n, k) ]
+
+where n = total trials, c = successful trials, per task. Defaults to k in {1,2,4}
+and `--num-trials 4` (paper default).
+
+## LLM judge
+
+Upstream's reward gate for `task.outputs` is a literal substring search in the
+agent's RESPOND messages -- brittle when the agent paraphrases correctly. The
+judge here calls a small LLM (`--judge-model gpt-4o-mini`) with a strict JSON
+schema:
+
+    {"per_output": {"<output>": true|false, ...}, "explanation": "..."}
+
+A task passes when both (a) the upstream data-hash check succeeds (agent's
+actions reach the same DB state as the ground-truth actions) and (b) every
+required output is satisfied per the judge. If the judge LLM is unavailable
+(missing API key, transient failure, unparseable response) it falls back to
+the upstream substring check and records that in the explanation.
+
+## Programmatic API
+
+```python
+from elizaos_tau_bench import TauBenchConfig, TauBenchRunner
+
+cfg = TauBenchConfig(
+    domains=["retail", "airline"],
+    task_split="test",
+    num_trials=4,
+    agent_model="gpt-4o",
+    user_model="gpt-4o",
+    judge_model="gpt-4o-mini",
+    output_dir="./out",
+)
+report = TauBenchRunner(cfg).run()
+print(report.pass_k[4].pass_hat_k)
+```
+
+`report.results` is the per-(task, trial) list; `report.to_dict()` serializes
+everything in a stable JSON shape that's also written to
+`<output_dir>/report.json` and `<output_dir>/trajectories.json`.
+
+## Tests
+
+```bash
+pytest packages/benchmarks/tau-bench/
+```
+
+Tests cover dataset loading, pass^k math, judge behaviour, and an end-to-end
+smoke that runs one retail task with a stubbed litellm -- verifying the
+multi-turn user-simulator loop runs and at least one tool call lands.
 
 ## License
 
-MIT License - See [LICENSE](../../../LICENSE) for details.
+This package is MIT-licensed. The vendored `elizaos_tau_bench/upstream/` tree
+is (c) 2024 Sierra and distributed under the upstream MIT license -- see
+`elizaos_tau_bench/upstream/LICENSE`. Copyright headers (`# Copyright Sierra`)
+are preserved verbatim across every vendored file.

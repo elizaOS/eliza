@@ -3,7 +3,7 @@ import re
 from copy import deepcopy
 from typing import Dict, List, Tuple
 
-from bfcl_eval.eval_checker.multi_turn_eval.func_source_code.memory_api_metaclass import (
+from benchmarks.bfcl.executable_runtime.func_source_code.memory_api_metaclass import (
     MemoryAPI,
 )
 from rank_bm25 import BM25Plus
