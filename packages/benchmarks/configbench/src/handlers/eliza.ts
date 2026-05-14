@@ -335,12 +335,14 @@ async function tryImportDeps(): Promise<boolean> {
  * sendMessage callback never fires.
  */
 export async function loadModelProviderPlugin(): Promise<Plugin | null> {
-  const explicit = (process.env.CONFIGBENCH_AGENT_PROVIDER ?? "")
-    .trim()
-    .toLowerCase();
+  applyOpenAICompatibleEnvAliases(rawConfiguredProvider());
+
+  const explicit = normalizeConfigBenchProviderName(
+    process.env.CONFIGBENCH_AGENT_PROVIDER ?? "",
+  );
   const hasGroq = !!process.env.GROQ_API_KEY;
   const hasAnthropic = !!process.env.ANTHROPIC_API_KEY;
-  const hasOpenAI = !!process.env.OPENAI_API_KEY;
+  const hasOpenAI = hasOpenAICompatibleCredential();
 
   let order: string[];
   if (explicit) {

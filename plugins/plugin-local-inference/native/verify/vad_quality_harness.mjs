@@ -19,7 +19,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const REPO_ROOT = path.resolve(__dirname, "..", "..", "..");
+const REPO_ROOT = path.resolve(__dirname, "..", "..", "..", "..");
 const DEFAULT_REPORT = path.join(
   __dirname,
   "..",
@@ -119,11 +119,10 @@ function makeRunnerSource(bundleRoot) {
   const vadUrl = pathToFileURL(
     path.join(
       REPO_ROOT,
-      "packages",
-      "app-core",
+      "plugins",
+      "plugin-local-inference",
       "src",
       "services",
-      "local-inference",
       "voice",
       "vad.ts",
     ),
@@ -131,11 +130,10 @@ function makeRunnerSource(bundleRoot) {
   const fixtureUrl = pathToFileURL(
     path.join(
       REPO_ROOT,
-      "packages",
-      "app-core",
+      "plugins",
+      "plugin-local-inference",
       "src",
       "services",
-      "local-inference",
       "voice",
       "__test-helpers__",
       "synthetic-speech.ts",

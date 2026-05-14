@@ -2464,17 +2464,8 @@ function shouldIncludeIosLlama(env = process.env) {
   return !isIosAppStoreBuild(env) && isIosLlamaRequested(env);
 }
 
-function isIosAppStoreLocalRuntimeEnabled(env = process.env) {
-  return !/^(0|false|no|off)$/i.test(
-    String(env.ELIZA_IOS_APP_STORE_LOCAL_RUNTIME ?? "1").trim(),
-  );
-}
-
 function shouldIncludeIosFullBunEngine(env = process.env) {
-  return (
-    isFullIosBunEngineRequested(env) ||
-    (isIosAppStoreBuild(env) && isIosAppStoreLocalRuntimeEnabled(env))
-  );
+  return !isIosAppStoreBuild(env) && isFullIosBunEngineRequested(env);
 }
 
 export function isIosAppStoreBuild(env = process.env) {
@@ -4915,7 +4906,6 @@ function configureIosLocalBuildDefaults() {
   setDefaultProcessEnv("LOCAL_RUNTIME_MODE", "local-safe");
   setDefaultProcessEnv("VITE_ELIZA_RUNTIME_MODE", "local-safe");
   setDefaultProcessEnv("ELIZA_IOS_INCLUDE_LLAMA", "1");
-  setDefaultProcessEnv("ELIZA_IOS_FULL_BUN_ENGINE", "1");
   setDefaultProcessEnv(
     "ELIZA_IOS_BUILD_DESTINATION",
     "generic/platform=iOS Simulator",
@@ -4926,22 +4916,12 @@ function configureIosLocalBuildDefaults() {
 function configureIosAppStoreBuildDefaults() {
   setDefaultProcessEnv("ELIZA_BUILD_VARIANT", "store");
   setDefaultProcessEnv("ELIZA_RELEASE_AUTHORITY", "apple-app-store");
-  if (isIosAppStoreLocalRuntimeEnabled()) {
-    setDefaultProcessEnv("ELIZA_IOS_RUNTIME_MODE", "cloud-hybrid");
-    setDefaultProcessEnv("VITE_ELIZA_IOS_RUNTIME_MODE", "cloud-hybrid");
-    setDefaultProcessEnv("ELIZA_RUNTIME_MODE", "local-safe");
-    setDefaultProcessEnv("RUNTIME_MODE", "local-safe");
-    setDefaultProcessEnv("LOCAL_RUNTIME_MODE", "local-safe");
-    setDefaultProcessEnv("VITE_ELIZA_RUNTIME_MODE", "local-safe");
-    setDefaultProcessEnv("ELIZA_IOS_FULL_BUN_ENGINE", "1");
-  } else {
-    setDefaultProcessEnv("ELIZA_IOS_RUNTIME_MODE", "cloud");
-    setDefaultProcessEnv("VITE_ELIZA_IOS_RUNTIME_MODE", "cloud");
-    setDefaultProcessEnv("ELIZA_RUNTIME_MODE", "cloud");
-    setDefaultProcessEnv("RUNTIME_MODE", "cloud");
-    setDefaultProcessEnv("LOCAL_RUNTIME_MODE", "cloud");
-    setDefaultProcessEnv("VITE_ELIZA_RUNTIME_MODE", "cloud");
-  }
+  setDefaultProcessEnv("ELIZA_IOS_RUNTIME_MODE", "cloud");
+  setDefaultProcessEnv("VITE_ELIZA_IOS_RUNTIME_MODE", "cloud");
+  setDefaultProcessEnv("ELIZA_RUNTIME_MODE", "cloud");
+  setDefaultProcessEnv("RUNTIME_MODE", "cloud");
+  setDefaultProcessEnv("LOCAL_RUNTIME_MODE", "cloud");
+  setDefaultProcessEnv("VITE_ELIZA_RUNTIME_MODE", "cloud");
 }
 
 async function buildIos({ local = false } = {}) {
