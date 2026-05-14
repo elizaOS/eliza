@@ -52,7 +52,7 @@ vi.mock("./auth.ts", async (importOriginal) => {
 import type { EndToEndLatencyTracer } from "@elizaos/plugin-local-inference/services";
 import { handleDevCompatRoutes } from "./dev-compat-routes";
 
-let voiceLatencyTracer: EndToEndLatencyTracer;
+let voiceLatencyTracer!: EndToEndLatencyTracer;
 beforeAll(async () => {
   const mod = await import("@elizaos/plugin-local-inference/services");
   voiceLatencyTracer = mod.voiceLatencyTracer;
