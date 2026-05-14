@@ -955,6 +955,16 @@ function applyBenchmarkStructuredActionRoute(
 	message: Memory,
 ): boolean {
 	if (!isBenchmarkForcingToolCall(message)) return false;
+	const contentMetadata = message.content?.metadata as
+		| Record<string, unknown>
+		| undefined;
+	const metadataCandidateActions = Array.isArray(
+		contentMetadata?.benchmarkCandidateActions,
+	)
+		? contentMetadata.benchmarkCandidateActions
+				.map((entry) => String(entry).trim())
+				.filter(Boolean)
+		: [];
 	messageHandler.processMessage = "RESPOND";
 	const contexts = new Set(
 		(messageHandler.plan.contexts ?? [])
@@ -969,12 +979,14 @@ function applyBenchmarkStructuredActionRoute(
 	messageHandler.plan.candidateActions = Array.from(
 		new Set([
 			...stringArrayProperty(messageHandler.plan.candidateActions),
+			...metadataCandidateActions,
 			"BENCHMARK_ACTION",
 		]),
 	);
 	messageHandler.plan.parentActionHints = Array.from(
 		new Set([
 			...stringArrayProperty(messageHandler.plan.parentActionHints),
+			...metadataCandidateActions,
 			"BENCHMARK_ACTION",
 		]),
 	);
