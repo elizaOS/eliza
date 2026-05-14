@@ -17,8 +17,17 @@ Reference:
 
 from elizaos_vending_bench.agent import (
     LLMProvider,
-    MockLLMProvider,
     VendingAgent,
+)
+from elizaos_vending_bench.sub_agents import (
+    EmailSubAgent,
+    ResearchSubAgent,
+    SubAgentReport,
+)
+from elizaos_vending_bench.tool_simulators import (
+    EmailSimulator,
+    Notepad,
+    WebSimulator,
 )
 from elizaos_vending_bench.environment import (
     EconomicModel,
