@@ -312,6 +312,27 @@ describe("runShell", () => {
     await expect(vfs.readFile("src/generated.txt")).resolves.toBe("mobile\n");
   });
 
+  it("local-safe uses the builtin VFS shell for vfs:// cwd when no sandbox manager is available", async () => {
+    process.env.ELIZA_RUNTIME_MODE = "local-safe";
+    const vfs = createVirtualFilesystemService({ projectId: "builtin-vfs" });
+    await vfs.initialize();
+    await vfs.writeFile("src/input.txt", "ready\n");
+
+    const result = await runShell(
+      {
+        command: "rg",
+        args: ["--files"],
+        cwd: "vfs://builtin-vfs/src",
+        toolName: "test:vfs-builtin",
+      },
+      { sandboxManager: null },
+    );
+
+    expect(result.sandbox).toBe("vfs");
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toBe("src/input.txt\n");
+  });
+
   it("local-safe throws when no SandboxManager is available", async () => {
     process.env.ELIZA_RUNTIME_MODE = "local-safe";
     await expect(
