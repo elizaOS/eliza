@@ -840,7 +840,7 @@ export async function ensureTrajectoriesTable(
     } catch {
       // Table doesn't exist at all — create fresh (no data loss)
       needsRecreate = true;
-      console.warn(
+      coreLogger.warn(
         "[trajectory-persistence] Trajectories table does not exist, creating...",
       );
     }
@@ -1032,7 +1032,7 @@ export async function ensureTrajectoriesTable(
     await forwardMigrateStepsJsonToRows(runtime);
 
     if (needsRecreate) {
-      console.warn(
+      coreLogger.warn(
         "[trajectory-persistence] Recreated trajectories table with updated schema",
       );
     }
@@ -1041,7 +1041,7 @@ export async function ensureTrajectoriesTable(
     initializedRuntimes.add(key);
     return true;
   } catch (err) {
-    console.error(
+    coreLogger.error(
       "[trajectory-persistence] ensureTrajectoriesTable error:",
       err,
     );
@@ -1147,7 +1147,7 @@ async function forwardMigrateStepsJsonToRows(
     }
 
     if (migrated > 0) {
-      console.warn(
+      coreLogger.warn(
         `[trajectory-persistence] Forward-migrated ${migrated} step rows from steps_json into trajectory_steps`,
       );
     }
@@ -1896,7 +1896,7 @@ export async function saveTrajectory(
       await executeRawSql(runtime, compatSql);
       saved = true;
     } catch (compatErr) {
-      console.error("[trajectory-persistence] saveTrajectory error:", {
+      coreLogger.error("[trajectory-persistence] saveTrajectory error:", {
         modern: err instanceof Error ? err.message : String(err),
         compat:
           compatErr instanceof Error ? compatErr.message : String(compatErr),
