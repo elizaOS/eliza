@@ -56,8 +56,11 @@ export async function handleMobileOptionalRoutes(
 
   if (method === "POST" && pathname === "/api/stream/settings") {
     try {
-      const { readStreamSettings, validateStreamSettings, writeStreamSettings } =
-        await getStreamingSettingsModule();
+      const {
+        readStreamSettings,
+        validateStreamSettings,
+        writeStreamSettings,
+      } = await getStreamingSettingsModule();
       const body = parseJsonPayload(await readRequestBody(req)) as
         | { settings?: unknown }
         | undefined;

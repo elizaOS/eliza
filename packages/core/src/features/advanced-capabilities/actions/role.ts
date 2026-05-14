@@ -648,8 +648,7 @@ export const roleAction: Action = {
 		},
 		{
 			name: "label",
-			description:
-				"Natural label (boss, coworker, etc.) to derive role.",
+			description: "Natural label (boss, coworker, etc.) to derive role.",
 			required: false,
 			schema: { type: "string" as const },
 		},

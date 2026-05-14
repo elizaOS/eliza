@@ -45,7 +45,7 @@ elizaos-mmau = "elizaos_mmau_audio.cli:main"
 packages = ["elizaos_mmau_audio"]
 
 [tool.hatch.build.targets.wheel.force-include]
-"fixtures/smoke.jsonl" = "elizaos_mmau_audio/fixtures/smoke.jsonl"
+fixtures = "fixtures"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

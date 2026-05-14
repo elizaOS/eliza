@@ -512,8 +512,7 @@ export const roomOpAction: Action = {
 		},
 		{
 			name: "roomId",
-			description:
-				"Target room id. Default current room.",
+			description: "Target room id. Default current room.",
 			required: false,
 			schema: { type: "string" as const },
 		},
@@ -526,8 +525,7 @@ export const roomOpAction: Action = {
 		},
 		{
 			name: "chatName",
-			description:
-				"Channel/group title for non-current room.",
+			description: "Channel/group title for non-current room.",
 			required: false,
 			schema: { type: "string" as const },
 		},
@@ -834,8 +832,7 @@ function makeRoomOpChildAction(args: {
 export const muteRoomAction = makeRoomOpChildAction({
 	name: "MUTE_ROOM",
 	op: "mute",
-	description:
-		"Mute room/chat if agent not already muted.",
+	description: "Mute room/chat if agent not already muted.",
 	descriptionCompressed:
 		"mute room/chat if current participant state is not MUTED; optional roomId|platform+chatName|durationMinutes",
 	similes: ["MUTE_CHAT", "SILENCE_GROUP_CHAT", "MUTE_CHANNEL"],
@@ -844,8 +841,7 @@ export const muteRoomAction = makeRoomOpChildAction({
 export const unmuteRoomAction = makeRoomOpChildAction({
 	name: "UNMUTE_ROOM",
 	op: "unmute",
-	description:
-		"Unmute room/chat only if agent muted.",
+	description: "Unmute room/chat only if agent muted.",
 	descriptionCompressed:
 		"unmute room/chat only from MUTED participant state; optional roomId|platform+chatName",
 	similes: ["UNMUTE_CHAT", "RESTORE_CHAT", "UNMUTE_CHANNEL"],
@@ -854,8 +850,7 @@ export const unmuteRoomAction = makeRoomOpChildAction({
 export const followRoomAction = makeRoomOpChildAction({
 	name: "FOLLOW_ROOM",
 	op: "follow",
-	description:
-		"Follow room/chat if agent not followed/muted.",
+	description: "Follow room/chat if agent not followed/muted.",
 	descriptionCompressed:
 		"follow room/chat if state is neither FOLLOWED nor MUTED; optional roomId|platform+chatName",
 	similes: ["FOLLOW_CHAT", "FOLLOW_CHANNEL", "JOIN_ROOM"],
@@ -864,8 +859,7 @@ export const followRoomAction = makeRoomOpChildAction({
 export const unfollowRoomAction = makeRoomOpChildAction({
 	name: "UNFOLLOW_ROOM",
 	op: "unfollow",
-	description:
-		"Unfollow room/chat only if agent following.",
+	description: "Unfollow room/chat only if agent following.",
 	descriptionCompressed:
 		"unfollow room/chat only from FOLLOWED participant state; optional roomId|platform+chatName",
 	similes: ["UNFOLLOW_CHAT", "UNFOLLOW_THREAD", "LEAVE_ROOM"],

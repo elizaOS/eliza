@@ -195,6 +195,12 @@ export {
 	SIMPLE_CONTEXT_ID,
 	type V5MessageHandlerOutput,
 } from "./runtime/message-handler";
+export {
+	type ExtractedPlanAction,
+	extractPlanActionsFromContent,
+	type PlanActionRecoverySource,
+} from "./runtime/plan-actions-extractor";
+export { looksLikeRefusal } from "./runtime/refusal-detector";
 export * from "./runtime/response-grammar";
 export * from "./runtime/response-handler-evaluators";
 export * from "./runtime/response-handler-field-evaluator";
@@ -317,6 +323,10 @@ export * from "./utils/read-env";
 export * from "./utils/server-health";
 // Eliza state-dir resolution (ELIZA_STATE_DIR, with the legacy MILADY_STATE_DIR honored → ~/.${ELIZA_NAMESPACE ?? "eliza"})
 export * from "./utils/state-dir";
+// User-chosen workspace folder persisted in <stateDir>/workspace-folder.json,
+// shared between the Electrobun renderer (writes via desktop RPC) and the
+// agent runtime (reads at boot to seed ELIZA_WORKSPACE_DIR for store builds).
+export * from "./utils/workspace-folder-config";
 // Export streaming utilities
 export * from "./utils/streaming";
 export { ResponseSkeletonStreamExtractor } from "./utils/streaming";

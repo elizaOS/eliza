@@ -585,8 +585,7 @@ export const POST_PARAMETERS: ActionParameter[] = [
 	},
 	{
 		name: "accountId",
-		description:
-			"Connector account id for multi-account posts.",
+		description: "Connector account id for multi-account posts.",
 		required: false,
 		schema: { type: "string" },
 	},
@@ -612,15 +611,13 @@ export const POST_PARAMETERS: ActionParameter[] = [
 	},
 	{
 		name: "replyTo",
-		description:
-			"Post/cast/media/thread ID for reply/comment.",
+		description: "Post/cast/media/thread ID for reply/comment.",
 		required: false,
 		schema: { type: "string" },
 	},
 	{
 		name: "mediaId",
-		description:
-			"Media ID for media comments/replies.",
+		description: "Media ID for media comments/replies.",
 		required: false,
 		schema: { type: "string" },
 	},
@@ -632,8 +629,7 @@ export const POST_PARAMETERS: ActionParameter[] = [
 	},
 	{
 		name: "attachments",
-		description:
-			"Media attachments for supported connectors.",
+		description: "Media attachments for supported connectors.",
 		required: false,
 		schema: { type: "array" },
 	},

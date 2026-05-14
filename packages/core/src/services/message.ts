@@ -82,6 +82,7 @@ import {
 	type PlannerTrajectory,
 	runPlannerLoop,
 } from "../runtime/planner-loop";
+import { looksLikeRefusal } from "../runtime/refusal-detector";
 import {
 	buildResponseGrammar,
 	buildSpanSamplerPlan,
@@ -2673,7 +2674,7 @@ export function messageHandlerFromFieldResult(
 					: "RESPOND";
 	const preemptDirect =
 		preempt?.mode === "ack-and-stop" || preempt?.mode === "direct-reply";
-	const replyText =
+	const replyTextRaw =
 		typeof result.replyText === "string" ? result.replyText : "";
 	const routedContexts = preemptDirect
 		? Array.from(new Set([...contexts, SIMPLE_CONTEXT_ID]))
@@ -2695,6 +2696,12 @@ export function messageHandlerFromFieldResult(
 					]),
 				)
 			: routedContexts;
+	// Refusal suppression for the planning path (elizaOS/eliza#7620). Mirrors
+	// the logic in `parseMessageHandlerOutput`: when the planner is about to
+	// run, a refusal-shaped `replyText` from a safety-tuned hosted model is
+	// dropped so the planner's own message reaches the user instead.
+	const replyText =
+		shouldPlan && looksLikeRefusal(replyTextRaw) ? "" : replyTextRaw;
 	const plan: MessageHandlerResult["plan"] = {
 		contexts: finalContexts,
 		reply: replyText,

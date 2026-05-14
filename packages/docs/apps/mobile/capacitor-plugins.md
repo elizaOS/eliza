@@ -1,12 +1,12 @@
 ---
 title: "Capacitor Plugins"
 sidebarTitle: "Capacitor Plugins"
-description: "Nine custom Capacitor plugins that give the Eliza mobile app access to native iOS and Android capabilities."
+description: "Workspace Capacitor plugins that give the Eliza mobile app access to native iOS and Android capabilities."
 ---
 
-The Eliza mobile app ships nine custom Capacitor plugins plus the core `@capacitor/haptics` plugin. Each plugin is an independent package under `eliza/packages/native-plugins/<name>/` and must be compiled before the web app can bundle it (`bun run plugin:build` from `apps/app`). Plugins are wrapped by the plugin bridge (`src/bridge/plugin-bridge.ts`), which performs capability detection per platform and provides graceful degradation to web API fallbacks where possible.
+The Eliza mobile app ships custom Capacitor plugins plus core `@capacitor/*` plugins. Each custom plugin is an independent package under `packages/native-plugins/<name>/` and must be compiled before the web app can bundle it (`bun run plugin:build` from `packages/app`). Platform availability differs by package: some plugins ship Swift and Kotlin implementations, some are iOS-only or Android-only, and some are web or TypeScript facades used by the app shell.
 
-All plugins follow the same structure: a TypeScript interface describing the web-facing API, a web implementation used in browser environments, and native implementations for iOS (Swift) and Android (Kotlin). On platforms where a feature is unavailable, plugin calls are silently caught and logged by the bridge's `Proxy` wrapper.
+Most plugins follow the same structure: a TypeScript interface describing the web-facing API, a web implementation used in browser environments, and native implementations for iOS (Swift) or Android (Kotlin) when the platform allows the feature. Platform-specific gaps are intentional for phone, SMS, contacts, Wi-Fi, system settings, Apple Calendar, and iOS Screen Time surfaces.
 
 ## Plugin Bridge
 

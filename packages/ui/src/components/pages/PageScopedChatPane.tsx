@@ -19,6 +19,11 @@ import type {
 } from "../../api/client-types";
 import { useConnectorSendAsAccount } from "../../hooks/useConnectorSendAsAccount";
 import { useVoiceChat } from "../../hooks/useVoiceChat";
+import {
+  buildAssistantLaunchMetadata,
+  clearAssistantLaunchPayloadFromHash,
+  readAssistantLaunchPayloadFromHash,
+} from "../../platform/assistant-launch-payload";
 import { useApp } from "../../state";
 import { AccountRequiredCard } from "../chat/AccountRequiredCard";
 import { ConnectorAccountPicker } from "../chat/ConnectorAccountPicker";
@@ -175,6 +180,7 @@ export function PageScopedChatPane({
   const scrollRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const conversationAdapterRef = useRef(conversationAdapter);
+  const assistantLaunchHandledRef = useRef<string | null>(null);
 
   const [conversation, setConversation] = useState<Conversation | null>(null);
   const [messages, setMessages] = useState<PageScopedMessage[]>([]);
@@ -422,6 +428,7 @@ export function PageScopedChatPane({
     async (options?: {
       channelType?: ConversationChannelType;
       images?: ImageAttachment[];
+      metadata?: Record<string, unknown>;
       text?: string;
     }) => {
       const raw = (options?.text ?? input).trim();
@@ -447,7 +454,7 @@ export function PageScopedChatPane({
           sourceConversationId,
         });
       const metadata = mergeConnectorSendAsMetadata(
-        routingMetadata,
+        { ...routingMetadata, ...(options?.metadata ?? {}) },
         sendAsMetadata,
       );
 
@@ -662,6 +669,31 @@ export function PageScopedChatPane({
       window.removeEventListener(CHAT_PREFILL_EVENT, handlePrefill);
     };
   }, [voice.isListening, voice.stopListening]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || scope !== "page-lifeops") return;
+    if (!conversation || sending) return;
+
+    const consumeLaunchPayload = () => {
+      const payload = readAssistantLaunchPayloadFromHash(window.location.hash);
+      if (!payload || payload.route !== "lifeops") return;
+      if (assistantLaunchHandledRef.current === payload.launchId) return;
+      assistantLaunchHandledRef.current = payload.launchId;
+      clearAssistantLaunchPayloadFromHash();
+      void handleSend({
+        metadata: buildAssistantLaunchMetadata(payload),
+        text: payload.text,
+      }).catch(() => {
+        setInput(payload.text);
+      });
+    };
+
+    consumeLaunchPayload();
+    window.addEventListener("hashchange", consumeLaunchPayload);
+    return () => {
+      window.removeEventListener("hashchange", consumeLaunchPayload);
+    };
+  }, [conversation, handleSend, scope, sending]);
 
   const handleInputChange = useCallback(
     (value: string) => {

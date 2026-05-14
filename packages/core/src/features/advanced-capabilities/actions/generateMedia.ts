@@ -22,8 +22,7 @@ import { hasActionContext } from "../../../utils/action-validation.ts";
 
 const spec: ActionDoc = getActionSpec("GENERATE_MEDIA") ?? {
 	name: "GENERATE_MEDIA",
-	description:
-		"Generate/process image, audio, or video from prompt.",
+	description: "Generate/process image, audio, or video from prompt.",
 	descriptionCompressed: "generate media image audio video prompt",
 	similes: [
 		"GENERATE_IMAGE",

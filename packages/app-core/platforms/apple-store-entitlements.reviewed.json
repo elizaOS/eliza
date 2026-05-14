@@ -1,0 +1,173 @@
+{
+  "$schema": "./apple-store-entitlements.reviewed.schema.json",
+  "description": "Reviewed allowlist for App Store-facing Apple entitlement files. Any entitlement added here requires a reviewer-owned justification. MAS runtime exceptions also require currentEvidence tied to files in this checkout.",
+  "targets": [
+    {
+      "id": "macos-mas-app",
+      "platform": "macos",
+      "distribution": "mac-app-store",
+      "source": "platforms/electrobun/entitlements/mas.entitlements",
+      "allowedEntitlements": {
+        "com.apple.security.app-sandbox": {
+          "value": true,
+          "justification": "Mac App Store builds must use App Sandbox."
+        },
+        "com.apple.security.network.client": {
+          "value": true,
+          "justification": "Required for AI provider API calls, Eliza Cloud API calls, push setup, and user-initiated network features."
+        },
+        "com.apple.security.network.server": {
+          "value": true,
+          "reviewSensitive": true,
+          "appReviewJustification": "The desktop app exposes a loopback-only local gateway for app-to-agent coordination and OAuth/callback style local flows. This entitlement must not be broadened beyond that reviewed use."
+        },
+        "com.apple.security.files.user-selected.read-write": {
+          "value": true,
+          "justification": "Required for user-selected import/export and workspace file access."
+        },
+        "com.apple.security.files.downloads.read-write": {
+          "value": true,
+          "reviewSensitive": true,
+          "appReviewJustification": "Allows user-approved import/export flows that target the Downloads folder. Keep this entitlement under review because it grants a broad scoped location."
+        },
+        "com.apple.security.device.camera": {
+          "value": true,
+          "justification": "Required for user-initiated camera capture features."
+        },
+        "com.apple.security.device.microphone": {
+          "value": true,
+          "justification": "Required for user-initiated voice input and audio capture features."
+        },
+        "com.apple.security.personal-information.addressbook": {
+          "value": true,
+          "justification": "Required for native Contacts integration paths."
+        },
+        "com.apple.security.personal-information.calendars": {
+          "value": true,
+          "justification": "Required for native EventKit calendar integration paths."
+        },
+        "com.apple.security.automation.apple-events": {
+          "value": true,
+          "reviewSensitive": true,
+          "appReviewJustification": "Required for remaining user-approved Apple Events automation paths such as Messages and Notes. New automation targets need separate review before this justification is reused."
+        },
+        "com.apple.security.cs.allow-jit": {
+          "value": true,
+          "reviewSensitive": true,
+          "appReviewJustification": "Required by the bundled Electrobun/Bun JavaScript runtime. Removing it is not currently safe for the MAS runtime, and signed bundle scans must continue to show executable-memory/JIT evidence before release."
+        },
+        "com.apple.security.cs.allow-unsigned-executable-memory": {
+          "value": true,
+          "reviewSensitive": true,
+          "appReviewJustification": "Required only while the bundled Electrobun/Bun runtime shows executable-memory/JIT behavior in the signed MAS bundle. The codesign audit fails if a current built-app scan no longer finds that evidence.",
+          "currentEvidence": [
+            {
+              "path": "platforms/electrobun/package.json",
+              "regex": "\"electrobun\"\\s*:\\s*\"\\^?1\\.18\\.1\"",
+              "summary": "MAS desktop shell currently depends on Electrobun 1.18.1, which bundles the Bun-based native runtime rather than a pure WebKit-only wrapper."
+            },
+            {
+              "path": "platforms/electrobun/entitlements/README.md",
+              "contains": "--app=/path/to/Built.app",
+              "summary": "The MAS signing docs require built-app entitlement and native-symbol verification before release packaging."
+            }
+          ]
+        },
+        "com.apple.security.cs.disable-library-validation": {
+          "value": true,
+          "reviewSensitive": true,
+          "appReviewJustification": "Required only while the MAS bundle contains signed nested runtime/native-plugin libraries that are loaded from the app bundle. The codesign audit fails if a current built-app scan no longer finds native library evidence.",
+          "currentEvidence": [
+            {
+              "path": "platforms/electrobun/scripts/stage-macos-release-artifacts.sh",
+              "regex": "lib(NativeWrapper|webgpu_dawn|asar)\\.dylib",
+              "summary": "The macOS release artifact stager currently expects bundled runtime dylibs inside the app bundle."
+            },
+            {
+              "path": "platforms/electrobun/scripts/postwrap-sign-runtime-macos.ts",
+              "regex": "\\.(bare|dylib|node|so)",
+              "summary": "Post-wrap runtime signing still treats native runtime extensions as signable bundle payloads."
+            }
+          ]
+        },
+        "com.apple.developer.push-notifications": {
+          "value": true,
+          "justification": "Required for APNs registration."
+        },
+        "aps-environment": {
+          "value": "production",
+          "justification": "MAS distribution uses the production APNs environment."
+        }
+      }
+    },
+    {
+      "id": "macos-mas-child",
+      "platform": "macos",
+      "distribution": "mac-app-store",
+      "source": "platforms/electrobun/entitlements/mas-child.entitlements",
+      "allowedEntitlements": {
+        "com.apple.security.app-sandbox": {
+          "value": true,
+          "justification": "Nested MAS binaries must remain sandboxed."
+        },
+        "com.apple.security.inherit": {
+          "value": true,
+          "justification": "Nested MAS binaries inherit the parent app sandbox scope."
+        }
+      }
+    },
+    {
+      "id": "ios-app",
+      "platform": "ios",
+      "distribution": "app-store",
+      "source": "platforms/ios/App/App/App.entitlements",
+      "allowedEntitlements": {
+        "com.apple.developer.family-controls": {
+          "value": true,
+          "reviewSensitive": true,
+          "appReviewJustification": "Required for Screen Time and website blocking features exposed through the iOS app and extension."
+        },
+        "com.apple.security.application-groups": {
+          "arrayStringPatterns": ["^group\\.[A-Za-z0-9.-]+$"],
+          "justification": "Required to share scoped state with app extensions."
+        },
+        "com.apple.developer.healthkit": {
+          "value": true,
+          "reviewSensitive": true,
+          "appReviewJustification": "Required for HealthKit-backed health features. Use must remain tied to explicit user consent and health data purpose strings."
+        },
+        "com.apple.developer.healthkit.background-delivery": {
+          "value": true,
+          "reviewSensitive": true,
+          "appReviewJustification": "Required for HealthKit background delivery so user-approved health updates can refresh app state."
+        },
+        "aps-environment": {
+          "stringPattern": "^(\\$\\(APS_ENVIRONMENT\\)|development|production)$",
+          "justification": "Resolved by Xcode build settings for APNs."
+        },
+        "com.apple.developer.kernel.increased-memory-limit": {
+          "value": true,
+          "reviewSensitive": true,
+          "appReviewJustification": "Required for memory-heavy local runtime and native inference paths on supported devices. Keep this entitlement under review for App Store submission."
+        },
+        "com.apple.developer.kernel.extended-virtual-addressing": {
+          "value": true,
+          "reviewSensitive": true,
+          "appReviewJustification": "Required for large-address-space local runtime and native inference paths on supported devices. Keep this entitlement under review for App Store submission."
+        }
+      }
+    },
+    {
+      "id": "ios-website-blocker-extension",
+      "platform": "ios",
+      "distribution": "app-store",
+      "source": "platforms/ios/App/App/WebsiteBlockerContentExtension/WebsiteBlockerContentExtension.entitlements",
+      "allowedEntitlements": {
+        "com.apple.security.application-groups": {
+          "arrayStringPatterns": ["^group\\.[A-Za-z0-9.-]+$"],
+          "justification": "Required to share scoped website-blocking state between the containing app and extension."
+        }
+      }
+    }
+  ]
+}

@@ -404,6 +404,10 @@ public class MobileSignalsPlugin: CAPPlugin, CAPBridgedPlugin {
             return [
                 "status": overrideStatus ?? "not-applicable",
                 "canRequest": overrideCanRequest ?? false,
+                "canOpenSettings": true,
+                "settingsTarget": "app",
+                "engine": "healthkit-screen-time",
+                "capabilities": mobileSignalsCapabilities(),
                 "reason": overrideReason ?? "HealthKit is not available on this device.",
                 "permissions": [
                     "sleep": false,
@@ -445,10 +449,15 @@ public class MobileSignalsPlugin: CAPPlugin, CAPBridgedPlugin {
             }
             return "not-determined"
         }()
+        let settingsTarget: Any = status == "granted" ? NSNull() : "health"
 
         return [
             "status": status,
             "canRequest": overrideCanRequest ?? (status != "granted" && hasRequestedTypes),
+            "canOpenSettings": true,
+            "settingsTarget": settingsTarget,
+            "engine": "healthkit-screen-time",
+            "capabilities": mobileSignalsCapabilities(),
             "reason": overrideReason ?? NSNull(),
             "screenTime": screenTimeStatus,
             "setupActions": buildSetupActions(
@@ -461,6 +470,15 @@ public class MobileSignalsPlugin: CAPPlugin, CAPBridgedPlugin {
                 "sleep": sleepGranted,
                 "biometrics": biometricGranted,
             ],
+        ]
+    }
+
+    private func mobileSignalsCapabilities() -> [String: Any] {
+        [
+            "health": HKHealthStore.isHealthDataAvailable(),
+            "screenTime": true,
+            "notifications": true,
+            "settings": true,
         ]
     }
 

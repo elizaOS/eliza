@@ -117,7 +117,11 @@ interface LlamaCppPluginLike {
   ) => Promise<PluginListenerHandle | undefined>;
 }
 
-const CONTEXT_ID = 1;
+// completion(contextId=X) must run against the model that was initContext'd
+// with X — every adapter instance owns its own monotonically-allocated id so
+// the chat LLM and the embedding model never collide on the same native
+// context.
+let nextContextId = 1;
 const DEFAULT_MAX_TOKENS = 256;
 
 /**
@@ -375,14 +379,27 @@ function normalizeHardwareInfo(
   };
 }
 
-class CapacitorLlamaAdapter implements LlamaAdapter {
+export class CapacitorLlamaAdapter implements LlamaAdapter {
   private plugin: LlamaCppPluginLike | null = null;
   /** Cached loader promise so concurrent `load()` calls don't race to register duplicate listeners. */
   private pluginLoadPromise: Promise<LlamaCppPluginLike> | null = null;
   private loadedPath: string | null = null;
+  /**
+   * Native context id this adapter owns. Allocated lazily on first `load()`
+   * from the process-wide `nextContextId` counter so distinct adapter
+   * instances never share a context — see the module-level invariant comment.
+   */
+  private contextId: number | null = null;
   private tokenIndex = 0;
   private tokenListeners = new Set<(token: string, index: number) => void>();
   private pluginListenerHandle: PluginListenerHandle | null = null;
+
+  private requireContextId(): number {
+    if (this.contextId === null) {
+      throw new Error("No model loaded. Call load() first.");
+    }
+    return this.contextId;
+  }
 
   private async loadPlugin(): Promise<LlamaCppPluginLike> {
     if (this.plugin) return this.plugin;
@@ -526,21 +543,23 @@ class CapacitorLlamaAdapter implements LlamaAdapter {
     }
     const plugin = await this.loadPlugin();
 
-    // Always tear down any prior native context before initializing a new
-    // one. This adapter is a singleton shared by the chat LLM and the
-    // embedding model (the AOSP loader swaps roles on one loader instance),
-    // and every initContext/completion uses the same CONTEXT_ID. The native
-    // plugin auto-assigns its own internal context numbers and does not
-    // reuse CONTEXT_ID, so a *conditional* release — gated on
-    // `this.loadedPath`, which is null mid-swap during concurrent
-    // chat/embedding role loads — can leave a stale context live. Then
-    // `completion(CONTEXT_ID)` resolves to whichever model registered last
-    // (typically the bge-small embedding model), and a BERT model forced to
-    // autoregress emits `[unused{N}]` / `[PAD]` reserved tokens. An
-    // unconditional release guarantees exactly one native context after
-    // every load().
-    await plugin.releaseAllContexts();
+    // Release this adapter's own prior context (if any) before reusing the
+    // context id for a new model. We do NOT call `releaseAllContexts` here
+    // — that would destroy contexts owned by sibling adapter instances
+    // (e.g. tear down the embedding model when the chat model reloads).
+    if (this.contextId !== null && this.loadedPath !== null) {
+      try {
+        await plugin.releaseContext({ contextId: this.contextId });
+      } catch {
+        // The native side may have already cleared this context; safe to
+        // proceed to reinit on the same id.
+      }
+    }
     this.loadedPath = null;
+
+    if (this.contextId === null) {
+      this.contextId = nextContextId++;
+    }
 
     const speculativeSamples = options.mobileSpeculative
       ? Math.min(options.speculativeSamples ?? options.draftMax ?? 3, 4)
@@ -572,17 +591,21 @@ class CapacitorLlamaAdapter implements LlamaAdapter {
     };
 
     await plugin.initContext({
-      contextId: CONTEXT_ID,
+      contextId: this.contextId,
       params,
     });
     this.loadedPath = options.modelPath;
   }
 
   async unload(): Promise<void> {
-    if (!this.plugin || !this.loadedPath) return;
+    if (!this.plugin || !this.loadedPath || this.contextId === null) return;
     try {
-      await this.plugin.releaseContext({ contextId: CONTEXT_ID });
+      await this.plugin.releaseContext({ contextId: this.contextId });
     } catch {
+      // Fall back to a targeted release-all only when the per-context
+      // release fails; this used to be the always-path but it now risks
+      // tearing down sibling adapter instances and is reserved for the
+      // pathological case where the native side has lost track of our id.
       await this.plugin.releaseAllContexts();
     }
     this.loadedPath = null;
@@ -625,11 +648,12 @@ class CapacitorLlamaAdapter implements LlamaAdapter {
       ).slot_id = slotId;
     }
 
+    const contextId = this.requireContextId();
     const started = Date.now();
     const result =
       typeof this.plugin.completion === "function"
         ? await this.plugin.completion({
-            contextId: CONTEXT_ID,
+            contextId,
             params: {
               prompt: options.prompt,
               emit_partial_completion: Boolean(params.emit_partial_completion),
@@ -637,7 +661,7 @@ class CapacitorLlamaAdapter implements LlamaAdapter {
             },
           })
         : await this.plugin.generateText?.({
-            contextId: CONTEXT_ID,
+            contextId,
             prompt: options.prompt,
             params,
           });
@@ -660,8 +684,8 @@ class CapacitorLlamaAdapter implements LlamaAdapter {
   }
 
   async cancelGenerate(): Promise<void> {
-    if (!this.plugin) return;
-    await this.plugin.stopCompletion({ contextId: CONTEXT_ID });
+    if (!this.plugin || this.contextId === null) return;
+    await this.plugin.stopCompletion({ contextId: this.contextId });
   }
 
   /**
@@ -681,7 +705,7 @@ class CapacitorLlamaAdapter implements LlamaAdapter {
       return null;
     }
     const result = await this.plugin.getFormattedChat({
-      contextId: CONTEXT_ID,
+      contextId: this.requireContextId(),
       messages: JSON.stringify(messages),
       params: { jinja: true },
     });
@@ -700,8 +724,9 @@ class CapacitorLlamaAdapter implements LlamaAdapter {
     const params: NativeEmbeddingParams = {
       embd_normalize: options.embdNormalize ?? 0,
     };
+    const contextId = this.requireContextId();
     const result = await this.plugin.embedding({
-      contextId: CONTEXT_ID,
+      contextId,
       text: options.input,
       params,
     });
@@ -709,7 +734,7 @@ class CapacitorLlamaAdapter implements LlamaAdapter {
     if (typeof this.plugin.tokenize === "function") {
       try {
         const tokenized = await this.plugin.tokenize({
-          contextId: CONTEXT_ID,
+          contextId,
           text: options.input,
         });
         tokenCount = tokenized.tokens.length;
@@ -743,21 +768,75 @@ class CapacitorLlamaAdapter implements LlamaAdapter {
   }
 }
 
+/**
+ * Default singleton kept for back-compat with device-bridge-client and
+ * hardware-probe callers that don't distinguish chat vs embedding roles.
+ * The runtime's `localInferenceLoader` service uses per-role instances
+ * instead — see `registerCapacitorLlamaLoader`.
+ */
 export const capacitorLlama: LlamaAdapter = new CapacitorLlamaAdapter();
+
+/**
+ * Lightweight heuristic for routing a `loadModel(modelPath)` call to either
+ * the chat adapter or the embedding adapter. Embedding GGUFs the runtime
+ * ships or that users typically install for `TEXT_EMBEDDING` carry one of
+ * these markers in the filename. Anything else is assumed to be a
+ * generative chat model.
+ */
+function looksLikeEmbeddingModelPath(modelPath: string): boolean {
+  const lowered = modelPath.toLowerCase();
+  return (
+    lowered.includes("bge-") ||
+    lowered.includes("bge_") ||
+    lowered.includes("nomic-embed") ||
+    lowered.includes("all-minilm") ||
+    lowered.includes("gte-") ||
+    lowered.includes("e5-") ||
+    lowered.includes("/embedding/") ||
+    lowered.endsWith("embedding.gguf")
+  );
+}
 
 export function registerCapacitorLlamaLoader(runtime: {
   registerService?: (name: string, impl: unknown) => unknown;
 }): void {
   if (typeof runtime.registerService !== "function") return;
+
+  // Two distinct adapter instances so the chat LLM and embedding model
+  // each allocate their own native context id. This is the fix for
+  // elizaOS/eliza#7681 — the previous single-adapter design routed every
+  // operation through CONTEXT_ID=1, and a `completion(contextId=1)` call
+  // would resolve to whichever model registered against id 1 last
+  // (typically the bge-small embedding model on Android), emitting
+  // `[unused{N}]` / `[PAD]` reserved tokens.
+  const chatAdapter = new CapacitorLlamaAdapter();
+  const embeddingAdapter = new CapacitorLlamaAdapter();
+
+  function adapterFor(modelPath: string): CapacitorLlamaAdapter {
+    return looksLikeEmbeddingModelPath(modelPath)
+      ? embeddingAdapter
+      : chatAdapter;
+  }
+
   runtime.registerService("localInferenceLoader", {
     async loadModel(args: LoadOptions): Promise<void> {
-      await capacitorLlama.load(args);
+      await adapterFor(args.modelPath).load(args);
     },
     async unloadModel(): Promise<void> {
-      await capacitorLlama.unload();
+      // No-op: each adapter manages its own context lifecycle inside
+      // `load()` (releasing the prior context before reinitializing on the
+      // same id). Tearing down both adapters here would defeat the
+      // per-instance routing — `ensureAssignedModelLoaded` calls
+      // `unloadModel()` before every `loadModel()` on the assumption of
+      // single-model behaviour, and we must not let that unconditionally
+      // kill the embedding adapter when only the chat model is swapping.
     },
     currentModelPath(): string | null {
-      return capacitorLlama.currentModelPath();
+      // The chat path is the primary "active" model from the runtime's
+      // perspective; embedding is treated as a sidecar.
+      return (
+        chatAdapter.currentModelPath() ?? embeddingAdapter.currentModelPath()
+      );
     },
     async generate(args: {
       prompt: string;
@@ -765,7 +844,7 @@ export function registerCapacitorLlamaLoader(runtime: {
       maxTokens?: number;
       temperature?: number;
     }): Promise<string> {
-      const result = await capacitorLlama.generate({
+      const result = await chatAdapter.generate({
         prompt: args.prompt,
         stopSequences: args.stopSequences,
         maxTokens: args.maxTokens,
@@ -776,7 +855,7 @@ export function registerCapacitorLlamaLoader(runtime: {
     async embed(args: {
       input: string;
     }): Promise<{ embedding: number[]; tokens: number }> {
-      return capacitorLlama.embed({ input: args.input });
+      return embeddingAdapter.embed({ input: args.input });
     },
   });
 }

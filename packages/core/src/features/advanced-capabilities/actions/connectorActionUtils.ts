@@ -635,15 +635,13 @@ export const PAGINATION_PARAMETERS: ActionParameter[] = [
 	},
 	{
 		name: "before",
-		description:
-			"Read before platform timestamp or message/post ID.",
+		description: "Read before platform timestamp or message/post ID.",
 		required: false,
 		schema: { type: "string" },
 	},
 	{
 		name: "after",
-		description:
-			"Read after platform timestamp or message/post ID.",
+		description: "Read after platform timestamp or message/post ID.",
 		required: false,
 		schema: { type: "string" },
 	},

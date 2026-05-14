@@ -2666,5 +2666,142 @@ export async function handleChatRoutes(
     return true;
   }
 
+  // ── POST /api/agents/:id/message ───────────────────────────────────────
+  // Local-mode mirror of the cloud agent-server's per-agent message
+  // endpoint (`cloud/services/agent-server/src/routes.ts`). Shares the
+  // same `generateChatResponse` path as `/v1/chat/completions` so model
+  // routing (incl. local-inference TEXT_LARGE handlers) is identical.
+  if (method === "POST" && /^\/api\/agents\/[^/]+\/message$/.test(pathname)) {
+    const rawId = pathname.split("/")[3] ?? "";
+    const decoded = decodePathComponent(rawId, res, "agent id");
+    if (!decoded) return true;
+    const agentIdParam = decoded.trim();
+    if (!agentIdParam) {
+      json(res, { error: "agent id is required" }, 400);
+      return true;
+    }
+
+    if (!state.runtime) {
+      json(res, { error: "Agent is not running" }, 503);
+      return true;
+    }
+
+    // Surface a 404 only when the caller targeted an agent that this
+    // process doesn't actually run — distinct from "route missing", which
+    // is what the original issue (#7680) was reporting.
+    if (state.runtime.agentId !== agentIdParam) {
+      json(res, { error: "Agent not found" }, 404);
+      return true;
+    }
+
+    const body = await readJsonBody<Record<string, unknown>>(req, res);
+    if (!body) return true;
+    if (hasBlockedObjectKeyDeep(body)) {
+      json(res, { error: "Request body contains a blocked object key" }, 400);
+      return true;
+    }
+    const safeBody = cloneWithoutBlockedObjectKeys(body);
+
+    const userId =
+      typeof safeBody.userId === "string" && safeBody.userId.trim().length > 0
+        ? safeBody.userId.trim()
+        : null;
+    const text =
+      typeof safeBody.text === "string" && safeBody.text.trim().length > 0
+        ? safeBody.text
+        : null;
+    if (!userId || !text) {
+      json(res, { error: "userId and text are required" }, 400);
+      return true;
+    }
+
+    const platformName =
+      typeof safeBody.platformName === "string" ? safeBody.platformName : null;
+    const channelType =
+      typeof safeBody.channelType === "string"
+        ? (safeBody.channelType as ChannelType)
+        : ChannelType.API;
+    const source = platformName || "agent_message_api";
+
+    try {
+      const runtime = state.runtime;
+      const agentName = runtime.character.name ?? "Eliza";
+      // Per-user room key — matches cloud `handleMessage`'s
+      // `stringToUuid(\`${agentId}:${userId}\`)` shape closely enough that
+      // both surfaces produce stable, user-scoped conversation rooms.
+      const { roomId, userId: connUserId } = await ensureCompatChatConnection(
+        state,
+        runtime,
+        agentName,
+        "agent-message",
+        `${agentIdParam}:${userId}`.slice(0, 120),
+      );
+
+      const message = createMessageMemory({
+        id: crypto.randomUUID() as UUID,
+        entityId: connUserId,
+        agentId: runtime.agentId,
+        roomId,
+        content: {
+          text,
+          source,
+          channelType,
+        },
+      });
+
+      const result = await generateChatResponse(
+        runtime,
+        message,
+        state.agentName,
+        {
+          resolveNoResponseText: () =>
+            resolveNoResponseFallback(state.logBuffer, runtime),
+        },
+      );
+      syncRuntimeCharacterToChatStateConfig(state);
+
+      const resolvedText = normalizeChatResponseText(
+        result.text,
+        state.logBuffer,
+        state.runtime,
+      );
+
+      json(res, {
+        response: resolvedText,
+        agentName: result.agentName,
+        ...(result.failureKind ? { failureKind: result.failureKind } : {}),
+        ...(result.localInference
+          ? { localInference: result.localInference }
+          : {}),
+      });
+    } catch (err) {
+      if (isLocalInferenceError(err)) {
+        const localFailure = await getLocalInferenceChatStatus("status", err);
+        json(
+          res,
+          {
+            error: localFailure.text,
+            type: "local_inference",
+            localInference: localFailure.localInference,
+          },
+          503,
+        );
+      } else if (isNoProviderError(err)) {
+        json(
+          res,
+          {
+            error: NO_PROVIDER_CHAT_MESSAGE,
+            type: "no_provider",
+            code: "NO_PROVIDER_REGISTERED",
+          },
+          503,
+        );
+      } else {
+        json(res, { error: getErrorMessage(err) }, 500);
+      }
+    }
+    return true;
+  }
+
   return false;
 }

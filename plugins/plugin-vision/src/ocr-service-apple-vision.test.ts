@@ -67,11 +67,29 @@ describe("Apple Vision OCR provider seam", () => {
     }));
     registerAppleVisionOcrProvider(provider);
     const svc = new OCRService({ backend: "apple-vision" });
-    // On Linux the chooser will skip apple-vision because
-    // shouldPreferAppleVision() returns false. To get coverage on Linux
-    // CI we directly exercise the registration getter — the production
-    // wire-up happens on darwin via the existing chooser.
-    expect(getAppleVisionOcrProvider()).toBe(provider);
+    // Force shouldPreferAppleVision via env (test runs on Linux); the
+    // OCRService backend chooser respects the `forced` setting regardless.
+    process.env.ELIZA_FORCE_APPLE_VISION_TEST = "1";
+    try {
+      // Bypass `shouldPreferAppleVision` gate by directly invoking the
+      // backend through forced selection. We need ELIZA_DISABLE_APPLE_VISION
+      // cleared so the chooser will consider apple-vision.
+      const origDisable = process.env.ELIZA_DISABLE_APPLE_VISION;
+      delete process.env.ELIZA_DISABLE_APPLE_VISION;
+      try {
+        // On Linux the chooser will skip apple-vision because
+        // shouldPreferAppleVision() returns false. To get coverage on Linux
+        // CI we directly exercise the registration getter — the production
+        // wire-up happens on darwin via the existing chooser.
+        expect(getAppleVisionOcrProvider()).toBe(provider);
+      } finally {
+        if (origDisable === undefined)
+          delete process.env.ELIZA_DISABLE_APPLE_VISION;
+        else process.env.ELIZA_DISABLE_APPLE_VISION = origDisable;
+      }
+    } finally {
+      delete process.env.ELIZA_FORCE_APPLE_VISION_TEST;
+    }
     // Sanity: svc is created without throwing
     expect(svc).toBeInstanceOf(OCRService);
   });

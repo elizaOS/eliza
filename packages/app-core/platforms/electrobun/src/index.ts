@@ -21,7 +21,6 @@ import {
 import {
 	buildApplicationMenu,
 	findAppMenuEntryBySlug,
-	getAppMenuEntries,
 	parseSettingsWindowAction,
 } from "./application-menu";
 import { setApplicationMenuActionHandler } from "./application-menu-action-registry";
@@ -2194,35 +2193,13 @@ async function main(): Promise<void> {
 
 	const desktop = getDesktopManager();
 	try {
+		// Tray is created here so the icon appears at startup, but the menu is
+		// owned by the renderer (DesktopTrayRuntime + main.tsx → Desktop.setTrayMenu).
+		// That keeps a single source of truth for tray items and their handlers.
 		await desktop.createTray({
 			icon: resolveDesktopAppIconPath(),
 			tooltip: BRAND.appName,
 			title: BRAND.appName,
-			menu: [
-				{ id: "tray-show-window", label: "Show Window", type: "normal" },
-				{ id: "sep-apps", type: "separator" },
-				// One entry per known app — clicks dispatch to handleApplicationMenuAction
-				// via the bun-side `tray-clicked` listener below, which then opens (or
-				// focuses) the dedicated native window for that app.
-				...getAppMenuEntries().map((entry) => ({
-					id: `tray-app-${entry.slug}`,
-					label: entry.displayName,
-					type: "normal" as const,
-				})),
-				{ id: "sep-lifecycle", type: "separator" },
-				{
-					id: "tray-toggle-lifecycle",
-					label: "Start/Stop Agent",
-					type: "normal",
-				},
-				{
-					id: "tray-restart",
-					label: "Restart Agent",
-					type: "normal",
-				},
-				{ id: "sep-quit", type: "separator" },
-				{ id: "quit", label: "Quit", type: "normal" },
-			],
 		});
 	} catch (err) {
 		logger.warn(

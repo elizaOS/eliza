@@ -4,12 +4,19 @@ Two entitlement files drive the Mac App Store distribution variant:
 
 | File                      | Applied to                                     | Purpose                                               |
 |---------------------------|------------------------------------------------|-------------------------------------------------------|
-| `mas.entitlements`        | Outer `.app` bundle                            | App Sandbox + JIT + network + data/privacy permissions |
+| `mas.entitlements`        | Outer `.app` bundle                            | App Sandbox + network + data/privacy permissions |
 | `mas-child.entitlements`  | Every nested Mach-O, framework, helper bundle  | App Sandbox + `cs.inherit` so children inherit scope  |
+| `mas-bun.entitlements`    | `Contents/MacOS/bun` only                      | App Sandbox + `cs.inherit` + Bun-scoped `allow-jit` |
 
 The direct (non-store) build variant uses neither — it ships with inline
 hardened-runtime entitlements only (no App Sandbox), defined in
 [`electrobun.config.ts`](../electrobun.config.ts).
+
+The Store variant intentionally does not request
+`com.apple.security.cs.allow-unsigned-executable-memory` or
+`com.apple.security.cs.disable-library-validation`. Bun's macOS runtime is the
+only known MAS JIT consumer, so `allow-jit` is scoped to `mas-bun.entitlements`
+instead of the outer app.
 
 ## Signing order
 
@@ -38,7 +45,8 @@ bun run codesign:mas:dry-run -- --app=/path/to/Built.app
 ```
 
 This prints the codesign command order without executing anything. Useful for
-debugging the walk order against a real built bundle.
+debugging the walk order against a real built bundle; `Contents/MacOS/bun`
+should be the only target signed with `mas-bun.entitlements`.
 
 ## Build invocation
 

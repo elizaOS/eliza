@@ -10,12 +10,18 @@
 
 package ai.elizaos.computeruse
 
+import android.Manifest
 import android.app.Activity
+import android.content.Context
 import android.content.ComponentCallbacks2
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.content.res.Configuration
+import android.hardware.camera2.CameraAccessException
+import android.hardware.camera2.CameraManager
 import android.media.projection.MediaProjectionManager
 import android.os.Build
+import androidx.core.content.ContextCompat
 import com.getcapacitor.JSObject
 import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
@@ -328,12 +334,57 @@ class ComputerUsePlugin : Plugin() {
         }
     }
 
+    // ── Probe ────────────────────────────────────────────────────────────────
+
+    @PluginMethod
+    fun probe(call: PluginCall) {
+        call.resolve(JSObject().apply {
+            put("ok", true)
+            put("data", JSObject().apply {
+                put("platform", "android")
+                put("osVersion", Build.VERSION.RELEASE ?: "")
+                put("sdkInt", Build.VERSION.SDK_INT)
+                put("capabilities", JSObject().apply {
+                    put("mediaProjection", hasMediaProjectionCapability())
+                    put("accessibilityService", MiladyAccessibilityService.instance != null)
+                    put("usageStats", UsageStatsHelper.hasUsageStatsPermission(context))
+                    put("camera", hasCameraCapability())
+                    put("aospPrivileged", AospPrivilegedBridge.createIfAvailable() != null)
+                })
+            })
+        })
+    }
+
     // ── AOSP privileged path skeleton (consumer build — disabled) ─────────────
     // See docs/AOSP_SYSTEM_APP.md for the privileged path using
     // SurfaceControl.captureDisplay() and InputManager.injectInputEvent().
     // In the consumer build flavor these are never called.
 
     // ── Helpers ───────────────────────────────────────────────────────────────
+
+    private fun hasMediaProjectionCapability(): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP) return false
+        val service = context.getSystemService(Context.MEDIA_PROJECTION_SERVICE)
+        return service is MediaProjectionManager
+    }
+
+    private fun hasCameraCapability(): Boolean {
+        val pm = context.packageManager
+        if (!pm.hasSystemFeature(PackageManager.FEATURE_CAMERA_ANY)) return false
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA)
+            != PackageManager.PERMISSION_GRANTED
+        ) {
+            return false
+        }
+        return try {
+            val manager = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
+            manager.cameraIdList.isNotEmpty()
+        } catch (_: CameraAccessException) {
+            false
+        } catch (_: RuntimeException) {
+            false
+        }
+    }
 
     private fun err(code: String, message: String): JSObject = JSObject().apply {
         put("ok", false)

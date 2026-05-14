@@ -40,6 +40,15 @@ interface ConnectorTarget {
   file: string;
   /** Expected name of the `Route[]` export. */
   exportName: string;
+  /** True once the connector has been migrated to the shared contract. */
+  migrated?: boolean;
+  /**
+   * True when the connector also exposes post-setup data routes under
+   * `/api/<connector>/` alongside the canonical `/api/setup/<connector>/`
+   * setup endpoints. Rule 1 (prefix-only) stays `test.fails` in that case
+   * because the data routes legitimately live outside `/api/setup/`.
+   */
+  hasDataRoutes?: boolean;
 }
 
 const REPO_ROOT = path.resolve(__dirname, "..", "..");
@@ -49,31 +58,34 @@ const CONNECTORS: ConnectorTarget[] = [
     connector: "discord",
     file: "plugins/plugin-discord/setup-routes.ts",
     exportName: "discordSetupRoutes",
+    migrated: true,
+    hasDataRoutes: true,
   },
   {
     connector: "telegram",
     file: "plugins/plugin-telegram/src/setup-routes.ts",
     exportName: "telegramSetupRoutes",
+    migrated: true,
   },
   {
     connector: "signal",
     file: "plugins/plugin-signal/src/setup-routes.ts",
     exportName: "signalSetupRoutes",
+    migrated: true,
   },
   {
     connector: "imessage",
     file: "plugins/plugin-imessage/src/setup-routes.ts",
     exportName: "imessageSetupRoutes",
+    migrated: true,
+    hasDataRoutes: true,
   },
   {
     connector: "bluebubbles",
     file: "plugins/plugin-bluebubbles/src/setup-routes.ts",
     exportName: "blueBubblesSetupRoutes",
-  },
-  {
-    connector: "documents",
-    file: "plugins/app-documents/src/setup-routes.ts",
-    exportName: "documentsRoutes",
+    migrated: true,
+    hasDataRoutes: true,
   },
 ];
 
@@ -178,8 +190,21 @@ for (const target of CONNECTORS) {
       ).toBeGreaterThan(0);
     });
 
+    // For migrated connectors the contract rules must really PASS; for
+    // unmigrated ones the failures are expected and pinned with `test.fails`
+    // so the suite still produces useful signal.
+    //
+    // Rule 1 (prefix-only) is a stricter form: even after migration, some
+    // connectors coexist with post-setup data routes under `/api/<connector>/`
+    // (Discord, BlueBubbles, iMessage). For those, rule 1 stays `test.fails`
+    // even though rules 2-5 pass. Connectors with no data routes (Signal,
+    // Telegram) satisfy rule 1 directly.
+    const contractTest = target.migrated ? test : test.fails;
+    const prefixTest =
+      target.migrated && !target.hasDataRoutes ? test : test.fails;
+
     // ── Contract rule 1: path prefix `/api/setup/<connector>/`
-    test.fails(`all routes use prefix /api/setup/${target.connector}/`, () => {
+    prefixTest(`all routes use prefix /api/setup/${target.connector}/`, () => {
       const expectedPrefix = `/api/setup/${target.connector}/`;
       const offending = parsed.routes.filter(
         (r) => !r.path.startsWith(expectedPrefix),
@@ -188,7 +213,7 @@ for (const target of CONNECTORS) {
     });
 
     // ── Contract rule 2: GET /api/setup/<connector>/status
-    test.fails(`exposes GET /api/setup/${target.connector}/status`, () => {
+    contractTest(`exposes GET /api/setup/${target.connector}/status`, () => {
       const target_path = `/api/setup/${target.connector}/status`;
       const found = parsed.routes.some(
         (r) => r.type === "GET" && r.path === target_path,
@@ -197,7 +222,7 @@ for (const target of CONNECTORS) {
     });
 
     // ── Contract rule 3: POST /api/setup/<connector>/start
-    test.fails(`exposes POST /api/setup/${target.connector}/start`, () => {
+    contractTest(`exposes POST /api/setup/${target.connector}/start`, () => {
       const target_path = `/api/setup/${target.connector}/start`;
       const found = parsed.routes.some(
         (r) => r.type === "POST" && r.path === target_path,
@@ -206,7 +231,7 @@ for (const target of CONNECTORS) {
     });
 
     // ── Contract rule 4: POST /api/setup/<connector>/cancel
-    test.fails(`exposes POST /api/setup/${target.connector}/cancel`, () => {
+    contractTest(`exposes POST /api/setup/${target.connector}/cancel`, () => {
       const target_path = `/api/setup/${target.connector}/cancel`;
       const found = parsed.routes.some(
         (r) => r.type === "POST" && r.path === target_path,
@@ -215,7 +240,7 @@ for (const target of CONNECTORS) {
     });
 
     // ── Contract rule 5: error responses use { error: { code, message } }
-    test.fails("error responses use structured { error: { code, message } } envelope", () => {
+    contractTest("error responses use structured { error: { code, message } } envelope", () => {
       expect(
         parsed.hasBareErrorString,
         'found bare `error: "string"` in responses',

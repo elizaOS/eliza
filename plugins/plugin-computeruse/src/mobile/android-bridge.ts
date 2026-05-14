@@ -225,6 +225,9 @@ export interface AndroidBridgeProbe {
  * resolves to `Capacitor.Plugins.ComputerUse` on Android and iOS alike.
  */
 export interface AndroidComputerUseBridge {
+  // --- Probe ---
+  readonly probe: () => Promise<AndroidBridgeResult<AndroidBridgeProbe>>;
+
   // --- MediaProjection ---
   /** Triggers the system screen-capture consent dialog, then starts the service. */
   readonly startMediaProjection: (
