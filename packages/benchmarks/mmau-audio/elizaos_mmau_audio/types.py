@@ -55,6 +55,7 @@ class MMAUSample:
     dataset: str
     audio_path: Path | None = None
     audio_bytes: bytes | None = None
+    transcript: str = ""
     context: str = ""
     metadata: dict[str, Any] = field(default_factory=dict)
 
