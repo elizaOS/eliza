@@ -180,6 +180,47 @@ describe("privacy filter — deep walk of providerAccesses and metadata", () => 
     expect(meta.userEmail).toBe("[REDACTED_EMAIL]");
     expect(meta.nested.phone).toContain("[REDACTED_PHONE]");
   });
+
+  it("preserves the voice.emotion sub-block on a non-private user (I3 contract)", () => {
+    // Voice Wave 2 / I3: MessageMetadata.voice.emotion is biometric-adjacent
+    // inference and must travel through the privacy filter on every cloud
+    // export. For a non-private participant we keep the data (the filter only
+    // touches string values that match redaction patterns); for a private
+    // participant the whole trajectory is dropped further upstream.
+    const t = makeTrajectory({
+      metadata: {
+        voice: {
+          emotion: {
+            label: "angry",
+            confidence: 0.82,
+            method: "acoustic_text_fused",
+            vad: { valence: 0.15, arousal: 0.85, dominance: 0.8 },
+          },
+          transcript: "I am furious about this",
+          audio: { sampleRate: 16000, durationMs: 2400, source: "local_mic" },
+          timestamp: 1737833240000,
+        },
+        userEmail: "private@example.com",
+      },
+    });
+    const { trajectories } = applyPrivacyFilter([t], { envKeySnapshot: [] });
+    const meta = trajectories[0].metadata as {
+      voice: {
+        emotion: { label: string; confidence: number; method: string };
+        transcript: string;
+        audio: { sampleRate: number; durationMs: number; source: string };
+      };
+      userEmail: string;
+    };
+    // Emotion structure is preserved.
+    expect(meta.voice.emotion.label).toBe("angry");
+    expect(meta.voice.emotion.confidence).toBe(0.82);
+    expect(meta.voice.emotion.method).toBe("acoustic_text_fused");
+    // Numerical-only audio block is untouched.
+    expect(meta.voice.audio.sampleRate).toBe(16000);
+    // Email inside a sibling field still gets redacted (filter still walks).
+    expect(meta.userEmail).toBe("[REDACTED_EMAIL]");
+  });
 });
 
 describe("privacy filter — handle anonymization", () => {
