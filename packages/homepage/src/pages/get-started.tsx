@@ -83,6 +83,7 @@ function generateOAuthState(): string {
 type OnboardingMethod = "telegram" | "imessage" | "discord" | "whatsapp";
 
 type OnboardingStep =
+  | "CHAT_ONBOARDING"
   | "SELECT_METHOD"
   | "TELEGRAM_OAUTH"
   | "PHONE_INPUT"
@@ -1106,6 +1107,9 @@ export default function GetStartedPage() {
     navigate("/connected");
   };
 
+  const showBackButton =
+    step !== "SELECT_METHOD" && step !== "CHAT_ONBOARDING";
+
   // ============================================================================
   // Render
   // ============================================================================
@@ -1163,8 +1167,7 @@ export default function GetStartedPage() {
         style={headerSpring}
       >
         <div className="w-16">
-          {step === "DISCORD_SETUP_GUIDE" ? null : step !== "SELECT_METHOD" &&
-            step !== "CHAT_ONBOARDING" ? (
+          {step === "DISCORD_SETUP_GUIDE" ? null : showBackButton ? (
             <button
               type="button"
               onClick={handleBack}

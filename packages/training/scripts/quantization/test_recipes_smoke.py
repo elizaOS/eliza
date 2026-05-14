@@ -120,15 +120,9 @@ def test_qjl_apply_kv_bytes_per_token_analytic_qwen():
     try:
         cfg = AutoConfig.from_pretrained(repo_id, trust_remote_code=True)
     except KeyError:
-<<<<<<< HEAD
-        # Older pinned Transformers builds do not know qwen3_5 yet. The
-        # analytic formula only needs numeric config fields, so a tiny Hub
-        # config.json is enough and avoids forcing a dependency bump.
-=======
         # Older pinned Transformers builds do not know the qwen3_5 model_type
         # yet. The analytic function only needs numeric config fields, so use
         # the tiny Hub config.json instead of forcing a Transformers upgrade.
->>>>>>> 28842967fa (chore: checkpoint credential tunnel updates)
         hf_hub_download = pytest.importorskip("huggingface_hub").hf_hub_download
         with open(hf_hub_download(repo_id, "config.json"), encoding="utf-8") as f:
             cfg = SimpleNamespace(**json.load(f))
