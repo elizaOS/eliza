@@ -1,5 +1,5 @@
 /*
- * libelizainference FFI ABI v3.
+ * libelizainference FFI ABI v4.
  *
  * Single source of truth for the C-callable surface that the fused
  * omnivoice + llama.cpp build (`libelizainference.{dylib,so,dll}`)
@@ -42,6 +42,20 @@
  *     the JS Silero contract: 16 kHz, 512-sample windows, one speech
  *     probability per window.
  *
+ * ABI v4 adds the OmniVoice frozen-voice preset surface:
+ *   - the runtime resolves `speaker_preset_id` against
+ *     `<bundle_dir>/cache/voice-preset-<id>.bin` (ELZ2 v2) on every TTS
+ *     call and applies the persisted `(instruct, ref_audio_tokens, ref_T,
+ *     ref_text)` triple to `ov_tts_params`. v3 callers that passed
+ *     `speaker_preset_id == NULL` (auto-voice) keep that behaviour;
+ *     `speaker_preset_id == "default"` / `"samantha"` / etc. now resolve
+ *     to a real preset file instead of being misread as a VoiceDesign
+ *     attribute string.
+ *   - `eliza_inference_encode_reference` is added so the freeze CLI can
+ *     pre-encode a reference WAV's HuBERT+RVQ tokens once and persist
+ *     them in the preset file. Symbol is additive — v3 callers that
+ *     don't use it are unaffected.
+ *
  * Errors are propagated via heap-allocated `char *` strings written to
  * `out_error` arguments; callers MUST free them with
  * `eliza_inference_free_string`. A NULL `out_error` parameter is a
@@ -67,9 +81,9 @@ extern "C" {
 /* Bump on any breaking shape change. The Node loader checks the value
  * returned by `eliza_inference_abi_version()` against this constant on
  * load and refuses to bind if they disagree. */
-#define ELIZA_INFERENCE_ABI_VERSION 3
+#define ELIZA_INFERENCE_ABI_VERSION 4
 
-/* Returns a static, NUL-terminated string of the form "3" matching
+/* Returns a static, NUL-terminated string of the form "4" matching
  * ELIZA_INFERENCE_ABI_VERSION at the time the library was built. The
  * pointer is owned by the library — do NOT free. */
 const char * eliza_inference_abi_version(void);
@@ -210,6 +224,52 @@ int eliza_inference_tts_synthesize_stream(
 int eliza_inference_cancel_tts(
     EliInferenceContext * ctx,
     char ** out_error);
+
+/* ---- OmniVoice reference encode (ABI v4) -------------------------- *
+ *
+ * Encode a 24 kHz mono fp32 PCM buffer through the OmniVoice tokenizer
+ * (HuBERT semantic encoder + RVQ codec) and return the resulting
+ * reference-audio-token tensor `[K=8, ref_T]` as int32 row-major.
+ *
+ * This is the encode-only half of the TTS pipeline that the freeze CLI
+ * (`packages/app-core/scripts/omnivoice-fuse/freeze-voice.mjs`) uses to
+ * persist a samantha-locked preset under
+ * `<bundle_dir>/cache/voice-preset-samantha.bin`. At runtime the
+ * synthesis path reads the preset back and feeds the persisted tokens
+ * into `params.ref_audio_tokens` — there is no per-utterance encode
+ * cost.
+ *
+ * On success the library writes:
+ *   - `*out_K`     : number of codebooks (always 8 for OmniVoice)
+ *   - `*out_ref_T` : number of frames per codebook
+ *   - `out_tokens` : `*out_K * *out_ref_T` int32 values, row-major
+ *                    `tokens[k * ref_T + t]`. The buffer is allocated by
+ *                    the library via malloc; callers MUST release it via
+ *                    `eliza_inference_free_tokens` (a thin wrapper around
+ *                    `free`). A NULL `out_tokens` parameter is a
+ *                    programmer error.
+ *
+ * The TTS region must have been acquired (`mmap_acquire("tts")`) before
+ * the call — the same OmniVoice context is reused. Returns ELIZA_OK on
+ * success, negative ELIZA_* on failure with `*out_error` populated.
+ *
+ * `sample_rate_hz` must be 24000 today; passing a different rate returns
+ * ELIZA_ERR_INVALID_ARG with a diagnostic. The library does not resample
+ * on this entrypoint to keep the freeze artifact deterministic — the
+ * caller is responsible for upstream resampling to 24 kHz mono fp32. */
+int eliza_inference_encode_reference(
+    EliInferenceContext * ctx,
+    const float * pcm,
+    size_t n_samples,
+    int sample_rate_hz,
+    int * out_K,
+    int * out_ref_T,
+    int ** out_tokens,
+    char ** out_error);
+
+/* Free a token buffer the library returned from
+ * `eliza_inference_encode_reference`. Safe on NULL. */
+void eliza_inference_free_tokens(int * tokens);
 
 /* ---- DFlash verifier callback (ABI v2) ---------------------------- *
  *

@@ -8,3 +8,13 @@
 
 export * from "./local-inference-compat-routes.js";
 export * from "./local-inference-tts-route.js";
+export {
+	__resetVoiceOnboardingSessions,
+	type EncoderFactory as VoiceOnboardingEncoderFactory,
+	handleVoiceOnboardingRoutes,
+	ONBOARDING_SCRIPT,
+	type OnboardingScriptStep,
+	setVoiceOnboardingEncoderFactory,
+	setVoiceOnboardingProfileStore,
+	setVoiceOnboardingSettingsWriter,
+} from "./voice-onboarding-routes.js";

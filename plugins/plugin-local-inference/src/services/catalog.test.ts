@@ -225,7 +225,7 @@ describe("local inference catalog", () => {
 		expect(model?.sourceModel?.finetuned).toBe(false);
 		const components = model?.sourceModel?.components;
 		expect(components?.text).toEqual({
-			repo: "elizalabs/eliza-1",
+			repo: "elizaos/eliza-1",
 			file: "bundles/27b-1m/text/eliza-1-27b-1m.gguf",
 		});
 		// WS2 (vision-describe): vision is enabled on the 1M-context tier
@@ -235,7 +235,7 @@ describe("local inference catalog", () => {
 		// projector cost on server-class hosts. On smaller hosts the
 		// arbiter evicts vision under pressure before the text model.
 		expect(components?.vision).toEqual({
-			repo: "elizalabs/eliza-1",
+			repo: "elizaos/eliza-1",
 			file: "bundles/27b-1m/vision/mmproj-27b-1m.gguf",
 		});
 	});

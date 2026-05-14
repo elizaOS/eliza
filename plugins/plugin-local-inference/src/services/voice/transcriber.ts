@@ -113,7 +113,7 @@ export function resampleLinear(
  */
 export abstract class BaseStreamingTranscriber implements StreamingTranscriber {
 	private readonly listeners = new Set<TranscriberEventListener>();
-	private readonly metadata: TranscriptMetadataDefaults;
+	private metadata: TranscriptMetadataDefaults;
 	/** True between `speech-start`/first-frame and the next `flush()`. */
 	protected segmentOpen = false;
 	/** Latched once `words` is emitted for the current segment. */
@@ -135,6 +135,17 @@ export abstract class BaseStreamingTranscriber implements StreamingTranscriber {
 	on(listener: TranscriberEventListener): () => void {
 		this.listeners.add(listener);
 		return () => this.listeners.delete(listener);
+	}
+
+	/**
+	 * Update the metadata defaults that `withMetadata()` merges into every
+	 * partial / final emission. The voice pipeline calls this once the
+	 * async speaker-ID / diarizer lookup resolves, so the speaker /
+	 * segments are attached to the rest of the turn without buffering all
+	 * partials for the lookup.
+	 */
+	setMetadataDefaults(metadata: TranscriptMetadataDefaults): void {
+		this.metadata = { ...this.metadata, ...metadata };
 	}
 
 	feed(frame: PcmFrame): void {

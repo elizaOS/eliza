@@ -25,6 +25,7 @@
 import type { Plugin, Route } from "@elizaos/core";
 import { promoteSubactionsToActions } from "@elizaos/core";
 import { useComputerAction } from "./actions/use-computer.js";
+import { computerUseAgentAction } from "./actions/use-computer-agent.js";
 import { windowAction } from "./actions/window.js";
 import { computerStateProvider } from "./providers/computer-state.js";
 import { sceneProvider } from "./providers/scene.js";
@@ -79,6 +80,7 @@ export const computerUsePlugin: Plugin = {
   actions: [
     ...promoteSubactionsToActions(useComputerAction),
     ...promoteSubactionsToActions(windowAction),
+    computerUseAgentAction,
   ],
 
   providers: [computerStateProvider, sceneProvider],
@@ -100,6 +102,15 @@ export { ComputerUseService } from "./services/computer-use-service.js";
 
 // iOS computer-use surface. See `docs/IOS_CONSTRAINTS.md` for the honest scope.
 export * from "./mobile/index.js";
+
+// WS7: Brain / Actor / Cascade / Dispatch — autonomous desktop loop.
+export * from "./actor/index.js";
+export {
+  computerUseAgentAction,
+  runComputerUseAgentLoop,
+  type ComputerUseAgentParams,
+  type ComputerUseAgentReport,
+} from "./actions/use-computer-agent.js";
 
 // WS6: scene-builder surface — consumed by WS7 (Brain) and WS10 verifiers.
 export {
