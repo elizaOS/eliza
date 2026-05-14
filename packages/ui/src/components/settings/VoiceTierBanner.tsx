@@ -11,9 +11,9 @@
  * "Use cloud" CTA group depending on the tier.
  */
 
-// biome-ignore lint/correctness/noUnusedImports: Required for JSX transform.
-import * as React from "react";
 import { AlertTriangle, BadgeCheck, Gauge, Sparkles } from "lucide-react";
+// biome-ignore lint/correctness/noUnusedImports: Required for JSX transform.
+import type * as React from "react";
 
 import { cn } from "../../lib/utils";
 
@@ -40,7 +40,12 @@ export interface VoiceTierBannerProps {
 
 const TIER_COPY: Record<
   VoiceDeviceTier,
-  { title: string; description: string; tone: "ok" | "accent" | "warn" | "danger"; icon: React.ComponentType<{ className?: string }> }
+  {
+    title: string;
+    description: string;
+    tone: "ok" | "accent" | "warn" | "danger";
+    icon: React.ComponentType<{ className?: string }>;
+  }
 > = {
   MAX: {
     title: "Your device can run everything at once.",

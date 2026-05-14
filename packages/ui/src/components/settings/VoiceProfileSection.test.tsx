@@ -9,7 +9,10 @@ import {
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { VoiceProfilesClient, type VoiceProfile } from "../../api/client-voice-profiles";
+import {
+  type VoiceProfile,
+  VoiceProfilesClient,
+} from "../../api/client-voice-profiles";
 import { VoiceProfileSection } from "./VoiceProfileSection";
 
 afterEach(() => {
@@ -46,7 +49,11 @@ describe("VoiceProfileSection", () => {
   it("renders OWNER pinned at top + Crown badge", () => {
     const client = makeClient();
     const profiles: VoiceProfile[] = [
-      fakeProfile({ id: "guest-1", displayName: "Unknown A", lastHeardAtMs: 5 }),
+      fakeProfile({
+        id: "guest-1",
+        displayName: "Unknown A",
+        lastHeardAtMs: 5,
+      }),
       fakeProfile({
         id: "owner-1",
         displayName: "Shaw",

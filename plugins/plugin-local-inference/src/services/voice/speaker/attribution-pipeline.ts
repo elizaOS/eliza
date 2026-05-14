@@ -18,11 +18,11 @@
  * encoder / profile-store dependencies into the streaming-ASR contract.
  */
 
-import {
-	matchVoiceImprint,
-	voiceSpeakerFromImprintMatch,
-	type VoiceImprintMatch,
-} from "../speaker-imprint";
+import type {
+	VoiceProfileObservation,
+	VoiceProfileStore,
+} from "../profile-store";
+import { voiceSpeakerFromImprintMatch } from "../speaker-imprint";
 import type {
 	VoiceInputSource,
 	VoiceSegment,
@@ -32,10 +32,6 @@ import type {
 import type { Diarizer, LocalSpeakerSegment } from "./diarizer";
 import type { SpeakerEncoder } from "./encoder";
 import { WESPEAKER_MIN_SAMPLES } from "./encoder";
-import type {
-	VoiceProfileObservation,
-	VoiceProfileStore,
-} from "../profile-store";
 
 export interface VoiceAttributionPipelineDeps {
 	encoder: SpeakerEncoder;

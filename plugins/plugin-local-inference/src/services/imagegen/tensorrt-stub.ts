@@ -33,18 +33,17 @@
  * and the selector falls through to sd-cpp.
  */
 
-import { existsSync, mkdtempSync, promises as fs } from "node:fs";
+import { spawn } from "node:child_process";
+import { existsSync, promises as fs, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { spawn } from "node:child_process";
 import { ImageGenBackendUnavailableError } from "./errors";
+import type { SdCppSpawnLike } from "./sd-cpp";
 import type {
 	ImageGenBackend,
 	ImageGenLoadArgs,
-	ImageGenRequest,
 	ImageGenResult,
 } from "./types";
-import type { SdCppSpawnLike } from "./sd-cpp";
 
 const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a] as const;
 
@@ -110,7 +109,7 @@ export async function loadTensorRtImageGenBackend(
 					"[imagegen/tensorrt] generate called after dispose()",
 				);
 			}
-			if (!req.prompt || !req.prompt.trim()) {
+			if (!req.prompt?.trim()) {
 				throw new ImageGenBackendUnavailableError(
 					"tensorrt",
 					"unsupported_request",
@@ -201,7 +200,7 @@ export async function loadTensorRtImageGenBackend(
 function resolveBinary(override?: string): string {
 	if (override) return override;
 	const envBin = process.env.IMAGEGEN_TRT_BIN;
-	if (envBin && envBin.trim()) return envBin.trim();
+	if (envBin?.trim()) return envBin.trim();
 	return DEFAULT_BIN;
 }
 

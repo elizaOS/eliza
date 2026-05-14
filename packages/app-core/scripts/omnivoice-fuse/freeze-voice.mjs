@@ -376,10 +376,17 @@ async function maybeEncodeReference(pcm24k, args) {
 	if (args.skipEncode) {
 		return { K: 0, refT: 0, tokens: new Int32Array(0) };
 	}
+	if (!args.dylib) {
+		throw new Error(
+			"[freeze-voice] --dylib is required to encode without --skip-encode " +
+				"(loadElizaInferenceFfi takes a dylib path). " +
+				"Typical path: <bundle>/lib/libelizainference.so (or .dylib on macOS).",
+		);
+	}
 	const mod = await import(
 		"../../../../plugins/plugin-local-inference/src/services/voice/ffi-bindings.ts"
 	);
-	const ffi = mod.loadElizaInferenceFfi({ libraryPath: args.dylib });
+	const ffi = mod.loadElizaInferenceFfi(args.dylib);
 	if (typeof ffi.encodeReferenceSupported !== "function" || !ffi.encodeReferenceSupported()) {
 		throw new Error(
 			"[freeze-voice] libelizainference does not export encodeReference (ABI < v4 or stub build). " +

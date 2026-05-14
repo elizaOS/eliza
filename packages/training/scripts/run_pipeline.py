@@ -380,10 +380,17 @@ def main() -> int:
         raise SystemExit("--publish requires --bundle-dir")
 
     entry = registry_get(args.registry_key)
-    if not entry.can_train_locally and not args.skip_finetune:
+    if (
+        not entry.can_train_locally
+        and not args.skip_finetune
+        and os.environ.get("ELIZA_FORCE_LOCAL_TRAIN") != "1"
+    ):
         raise SystemExit(
             f"{entry.public_name} (tier={entry.tier.value}) cannot train locally. "
-            f"Use train_vast.sh or pass --skip-finetune."
+            f"Use train_vast.sh, pass --skip-finetune, or set "
+            f"ELIZA_FORCE_LOCAL_TRAIN=1 when the local box can fit the tier "
+            f"(e.g. an H200 SXM is enough for the 9B tier per the registry's "
+            f"80 GB train budget)."
         )
 
     tier_id = normalize_tier(entry.public_name)

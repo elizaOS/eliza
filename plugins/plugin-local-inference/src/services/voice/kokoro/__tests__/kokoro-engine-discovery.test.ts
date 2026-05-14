@@ -4,6 +4,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
+	isKokoroGgufFile,
 	kokoroEngineModelDir,
 	resolveKokoroEngineConfig,
 } from "../kokoro-engine-discovery";
@@ -147,6 +148,64 @@ describe("resolveKokoroEngineConfig", () => {
 		const cfg = resolveKokoroEngineConfig();
 		expect(cfg).not.toBeNull();
 		expect(cfg?.layout.modelFile).toBe("custom-export.onnx");
+	});
+
+	it("reports runtimeKind=onnx for ONNX model files", () => {
+		const fx = makeStaged({
+			modelFile: "kokoro-v1.0.onnx",
+			voices: ["af_bella.bin"],
+		});
+		cleanups.push(fx.cleanup);
+		process.env.ELIZA_KOKORO_MODEL_DIR = fx.root;
+		const cfg = resolveKokoroEngineConfig();
+		expect(cfg).not.toBeNull();
+		expect(cfg?.runtimeKind).toBe("onnx");
+	});
+
+	it("reports runtimeKind=gguf for fused-GGUF model files", () => {
+		const fx = makeStaged({
+			modelFile: "kokoro-82m-v1_0-Q4_K_M.gguf",
+			voices: ["af_bella.bin"],
+		});
+		cleanups.push(fx.cleanup);
+		process.env.ELIZA_KOKORO_MODEL_DIR = fx.root;
+		const cfg = resolveKokoroEngineConfig();
+		expect(cfg).not.toBeNull();
+		expect(cfg?.runtimeKind).toBe("gguf");
+		expect(cfg?.layout.modelFile).toBe("kokoro-82m-v1_0-Q4_K_M.gguf");
+	});
+
+	it("prefers the GGUF over an ONNX when both are staged", () => {
+		// Stage both files; the discovery should pick the GGUF since the
+		// fused path beats the ORT path on TTFB (see
+		// kokoro-llama-cpp-feasibility.md §5).
+		const root = mkdtempSync(path.join(os.tmpdir(), "kokoro-engine-test-"));
+		writeFileSync(path.join(root, "kokoro-v1.0.onnx"), Buffer.alloc(4));
+		writeFileSync(path.join(root, "kokoro-82m-v1_0-Q4_K_M.gguf"), Buffer.alloc(4));
+		mkdirSync(path.join(root, "voices"), { recursive: true });
+		writeFileSync(path.join(root, "voices", "af_bella.bin"), Buffer.alloc(1024));
+		cleanups.push(() => rmSync(root, { recursive: true, force: true }));
+
+		process.env.ELIZA_KOKORO_MODEL_DIR = root;
+		const cfg = resolveKokoroEngineConfig();
+		expect(cfg).not.toBeNull();
+		expect(cfg?.runtimeKind).toBe("gguf");
+		expect(cfg?.layout.modelFile).toBe("kokoro-82m-v1_0-Q4_K_M.gguf");
+	});
+});
+
+describe("isKokoroGgufFile", () => {
+	it("identifies GGUF model files by extension", () => {
+		expect(isKokoroGgufFile("kokoro-82m-v1_0.gguf")).toBe(true);
+		expect(isKokoroGgufFile("kokoro-82m-v1_0-Q4_K_M.gguf")).toBe(true);
+		expect(isKokoroGgufFile("KOKORO.GGUF")).toBe(true);
+	});
+
+	it("identifies ONNX model files as not GGUF", () => {
+		expect(isKokoroGgufFile("kokoro-v1.0.onnx")).toBe(false);
+		expect(isKokoroGgufFile("model.onnx")).toBe(false);
+		expect(isKokoroGgufFile("model_quantized.onnx")).toBe(false);
+		expect(isKokoroGgufFile("model_q4.onnx")).toBe(false);
 	});
 });
 

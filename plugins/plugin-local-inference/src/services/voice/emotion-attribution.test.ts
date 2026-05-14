@@ -94,9 +94,9 @@ describe("emotion-attribution", () => {
 			arousal: 0.85,
 			dominance: 0.8,
 		});
-		expect(
-			result.evidence.some((row) => row.source === "acoustic_model"),
-		).toBe(true);
+		expect(result.evidence.some((row) => row.source === "acoustic_model")).toBe(
+			true,
+		);
 	});
 
 	it("attributes acoustic_model alone when only the classifier output is provided", () => {

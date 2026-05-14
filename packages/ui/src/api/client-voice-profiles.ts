@@ -207,10 +207,7 @@ export class VoiceProfilesClient {
       });
     } catch (err) {
       if (isMissingEndpointError(err)) return;
-      throw new VoiceProfilesUnavailableError(
-        `/api/voice/profiles/${id}`,
-        err,
-      );
+      throw new VoiceProfilesUnavailableError(`/api/voice/profiles/${id}`, err);
     }
   }
 
@@ -254,10 +251,7 @@ export class VoiceProfilesClient {
       });
     } catch (err) {
       if (isMissingEndpointError(err)) return;
-      throw new VoiceProfilesUnavailableError(
-        `/api/voice/profiles/${id}`,
-        err,
-      );
+      throw new VoiceProfilesUnavailableError(`/api/voice/profiles/${id}`, err);
     }
   }
 
@@ -332,16 +326,12 @@ function normaliseProfile(raw: unknown): VoiceProfile | null {
     relationshipLabel:
       typeof r.relationshipLabel === "string" ? r.relationshipLabel : null,
     isOwner: r.isOwner === true,
-    embeddingCount:
-      typeof r.embeddingCount === "number" ? r.embeddingCount : 0,
-    firstHeardAtMs:
-      typeof r.firstHeardAtMs === "number" ? r.firstHeardAtMs : 0,
-    lastHeardAtMs:
-      typeof r.lastHeardAtMs === "number" ? r.lastHeardAtMs : 0,
+    embeddingCount: typeof r.embeddingCount === "number" ? r.embeddingCount : 0,
+    firstHeardAtMs: typeof r.firstHeardAtMs === "number" ? r.firstHeardAtMs : 0,
+    lastHeardAtMs: typeof r.lastHeardAtMs === "number" ? r.lastHeardAtMs : 0,
     cohort: isCohort(r.cohort) ? r.cohort : "unknown",
     source: isSource(r.source) ? r.source : "auto-clustered",
-    retentionDays:
-      typeof r.retentionDays === "number" ? r.retentionDays : null,
+    retentionDays: typeof r.retentionDays === "number" ? r.retentionDays : null,
     samplePreviewUri:
       typeof r.samplePreviewUri === "string" ? r.samplePreviewUri : null,
   };
@@ -358,9 +348,7 @@ function isCohort(value: unknown): value is VoiceProfileCohort {
 
 function isSource(value: unknown): value is VoiceProfileSource {
   return (
-    value === "onboarding" ||
-    value === "auto-clustered" ||
-    value === "manual"
+    value === "onboarding" || value === "auto-clustered" || value === "manual"
   );
 }
 
