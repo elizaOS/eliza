@@ -32,7 +32,7 @@ import {
 
 describe("iOS bridge constants", () => {
   it("uses the App Group id that matches App.entitlements", () => {
-    expect(IOS_APP_GROUP_ID).toBe("group.com.miladyai.milady");
+    expect(IOS_APP_GROUP_ID).toBe("group.ai.elizaos.app");
   });
   it("exposes the Capacitor plugin jsName", () => {
     expect(IOS_BRIDGE_JS_NAME).toBe("ComputerUse");
