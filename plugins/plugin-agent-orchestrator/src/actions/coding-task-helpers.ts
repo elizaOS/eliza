@@ -236,8 +236,11 @@ function expandHomePath(p: string): string {
  *     — it is NOT trustworthy even when it happens to exist on disk (the
  *     planner will cheerfully pick `/home/milady` or the repo root).
  *     Operator-declared routes are deliberate policy and outrank the guess.
- *  3. No route → the explicit workdir as-is (caller creates it if missing).
- *  4. Nothing supplied → `process.cwd()`.
+ *  3. No route → the explicit workdir, but only when it actually exists on
+ *     disk. gpt-oss-class models routinely typo the path (`/home/milody`,
+ *     `/home/miliday`); a non-existent guess can't even be created (mkdir
+ *     under `/home` needs root), so the spawn would fail outright.
+ *  4. Nothing usable supplied → `process.cwd()`.
  *
  * Returns the resolved workdir plus the matched route (if any) so callers can
  * surface the route's `instructions` to the sub-agent.
@@ -257,7 +260,15 @@ export function resolveSpawnWorkdir(
   }
   const route = resolveWorkdirRoute(runtime, task, userRequest);
   if (route) return { workdir: route.workdir, route };
-  if (expandedExplicit) return { workdir: expandedExplicit };
+  if (expandedExplicit && fs.existsSync(expandedExplicit)) {
+    return { workdir: expandedExplicit };
+  }
+  if (expandedExplicit) {
+    logger.warn(
+      `[workdir-routes] Planner workdir does not exist, ignoring it: ` +
+        `${expandedExplicit} — falling back to ${process.cwd()}`,
+    );
+  }
   return { workdir: process.cwd() };
 }
 
