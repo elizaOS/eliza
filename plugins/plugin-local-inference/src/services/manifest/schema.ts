@@ -1,8 +1,12 @@
 // Eliza-1 manifest schema (`eliza-1.manifest.json`).
 //
-// Source of truth: packages/inference/AGENTS.md §6 (manifest), §3 (mandatory
-// kernels), §2 (bundle/tier matrix). This module only defines the schema
-// and tier/kernel constants — runtime validation lives in `validator.ts`.
+// Source of truth in this checkout: this file (the schema) and the sibling
+// `eliza-1.manifest.v1.json` JSON Schema. The upstream elizaOS source has
+// a longer prose specification under `packages/inference/AGENTS.md` (§6
+// manifest, §3 mandatory kernels, §2 bundle/tier matrix); that file does
+// not exist in the milady checkout — when editing the schema, treat the
+// Zod definitions below as canonical and consult R5-versioning.md §1 for
+// the latest gap analysis between bundle and per-sub-model versioning.
 //
 // Coupling notes:
 // - The kernel names here are *manifest-level* capabilities (what the bundle
@@ -21,9 +25,15 @@
 //   is not the same thing as a shared *token-embedding tensor*: each component
 //   carries its own `token_embd.weight` (different fine-tunes, often different
 //   hidden sizes), so the vocab matrix is duplicated per GGUF and cannot be
-//   deduplicated without a fused-architecture container — out of scope per
-//   inference/AGENTS.md §2. See
-//   `packages/inference/reports/porting/2026-05-11/qwen-backbone-unification.md`.
+//   deduplicated without a fused-architecture container — out of scope. See
+//   `plugins/plugin-local-inference/native/reports/porting/2026-05-11/` for
+//   the in-tree porting reports.
+// - Per-sub-model versioning (kokoro, omnivoice, turn-detector, voice-emotion,
+//   diarizer, speaker-encoder, vad, wakeword, embedding, asr) lives in
+//   `packages/shared/src/local-inference/voice-models.ts` and the matching
+//   `models/voice/CHANGELOG.md`. The bundle manifest below ships the *current*
+//   per-tier set of files; the voice-models module ships the *history* the
+//   auto-updater walks.
 
 import type { LocalRuntimeKernel } from "@elizaos/shared";
 import { z } from "zod";
