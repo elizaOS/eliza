@@ -64,6 +64,7 @@ const SESSION_TTL_SECONDS = 14 * 24 * 60 * 60;
 const MAX_HISTORY_MESSAGES = 200;
 const CEREBRAS_BASE_URL = "https://api.cerebras.ai/v1";
 const CEREBRAS_MODEL = "gpt-oss-120b";
+const DEFAULT_ONBOARDING_APP_URL = "https://app.elizacloud.ai";
 
 function sessionCacheKey(sessionId: string): string {
   return `eliza-app:onboarding:${sessionId}`;
@@ -166,6 +167,20 @@ function getCerebrasClient(): ReturnType<typeof createOpenAI> | null {
     apiKey: env.CEREBRAS_API_KEY,
     baseURL: CEREBRAS_BASE_URL,
   });
+}
+
+function getOnboardingAppUrl(): string {
+  const env = getCloudAwareEnv();
+  const configured =
+    env.ELIZA_ONBOARDING_APP_URL ||
+    env.NEXT_PUBLIC_ELIZA_APP_URL ||
+    env.NEXT_PUBLIC_APP_URL ||
+    DEFAULT_ONBOARDING_APP_URL;
+  return configured.replace(/\/+$/, "");
+}
+
+function onboardingAppPath(path: string): string {
+  return `${getOnboardingAppUrl()}${path.startsWith("/") ? path : `/${path}`}`;
 }
 
 function buildSystemPrompt(args: {
@@ -318,7 +333,9 @@ async function copyTranscriptToManagedAgent(
 }
 
 function controlPanelUrl(agentId?: string | null): string {
-  return agentId ? `/dashboard/containers/agents/${agentId}` : "/dashboard/containers";
+  return onboardingAppPath(
+    agentId ? `/dashboard/containers/agents/${agentId}` : "/dashboard/containers",
+  );
 }
 
 export async function runOnboardingChat(input: OnboardingChatInput): Promise<OnboardingChatResult> {
@@ -385,7 +402,9 @@ export async function runOnboardingChat(input: OnboardingChatInput): Promise<Onb
     handoffComplete = copied.copied;
   }
 
-  const loginUrl = `/get-started?onboardingSession=${encodeURIComponent(session.id)}`;
+  const loginUrl = onboardingAppPath(
+    `/get-started?onboardingSession=${encodeURIComponent(session.id)}`,
+  );
   const panelUrl = controlPanelUrl(session.agentId);
   const reply = await generateOnboardingReply({
     session,

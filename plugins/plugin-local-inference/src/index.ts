@@ -16,7 +16,6 @@ export {
 } from "./local-inference-routes.js";
 export * from "./routes/index.js";
 export * from "./runtime/index.js";
-export * from "./services/index.js";
 export {
 	createLocalInferenceModelHandlers,
 	isLocalInferenceUnavailableError,
