@@ -108,18 +108,22 @@ export async function executePlannedToolCall(
 		return emitToolResult(toolCall, failureResult(action.name, gateFailure));
 	}
 
-	const normalizedArgs = expandEnumShortForm(action, normalizeToolArgs(toolCall), {
-		onExpand: (info) => {
-			runtime.logger?.debug?.(
-				{
-					src: "execute-planned-tool-call",
-					action: action.name,
-					...info,
-				},
-				"expanded enum short-form tool arguments",
-			);
+	const normalizedArgs = expandEnumShortForm(
+		action,
+		normalizeToolArgs(toolCall),
+		{
+			onExpand: (info) => {
+				runtime.logger?.debug?.(
+					{
+						src: "execute-planned-tool-call",
+						action: action.name,
+						...info,
+					},
+					"expanded enum short-form tool arguments",
+				);
+			},
 		},
-	});
+	);
 	const validation = validateToolArgs(action, normalizedArgs);
 	if (!validation.valid) {
 		return emitToolResult(

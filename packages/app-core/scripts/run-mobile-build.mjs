@@ -858,6 +858,79 @@ function stageIosAgentRuntime() {
   );
 }
 
+function looksLikeMachO(filePath) {
+  let fd = null;
+  try {
+    fd = fs.openSync(filePath, "r");
+    const header = Buffer.alloc(4);
+    if (fs.readSync(fd, header, 0, 4, 0) !== 4) return false;
+    const magic = header.readUInt32BE(0);
+    return (
+      magic === 0xfeedface ||
+      magic === 0xfeedfacf ||
+      magic === 0xcafebabe ||
+      magic === 0xcafed00d
+    );
+  } catch {
+    return false;
+  } finally {
+    if (fd !== null) fs.closeSync(fd);
+  }
+}
+
+export function findIosAppStoreForbiddenLocalAssets(
+  root,
+  { allowLlama = false, allowFullBunEngine = false } = {},
+) {
+  const findings = [];
+  if (!fs.existsSync(root)) return findings;
+  walkFiles(root, (filePath) => {
+    const relative = path.relative(root, filePath);
+    const basename = path.basename(filePath);
+    const matchesForbiddenName = IOS_APP_STORE_FORBIDDEN_AGENT_ASSET_PATTERNS.some(
+      (pattern) => {
+        if (allowLlama && /llama/i.test(pattern.source)) return false;
+        if (allowFullBunEngine && /bun/i.test(pattern.source)) return false;
+        return pattern.test(relative) || pattern.test(basename);
+      },
+    );
+    if (matchesForbiddenName) {
+      findings.push({
+        path: relative,
+        reason: "local-only native/toolchain asset name",
+      });
+      return;
+    }
+    if (looksLikeMachO(filePath)) {
+      findings.push({
+        path: relative,
+        reason: "Mach-O/native binary in agent resources",
+      });
+    }
+  });
+  return findings;
+}
+
+function validateIosAppStoreLocalRuntimeAssets() {
+  const policy = assertIosAppStoreLocalRuntimePolicy({ platform: "ios" });
+  if (!policy.enabled) return;
+  const agentRoot = path.join(iosDir, "App", "public", "agent");
+  const findings = findIosAppStoreForbiddenLocalAssets(agentRoot, {
+    allowLlama: policy.includeLlama,
+    allowFullBunEngine: policy.includeFullBunEngine,
+  });
+  if (findings.length > 0) {
+    throw new Error(
+      `[mobile-build] iOS App Store local runtime resources contain non-compliant payloads:\n${findings
+        .map((finding) => `- ${finding.path}: ${finding.reason}`)
+        .join("\n")}`,
+    );
+  }
+  console.log(
+    "[mobile-build] iOS App Store local runtime assets passed compliance scan.",
+  );
+}
+
 // ── Phase 3: Capacitor sync ────────────────────────────────────────────
 
 async function ensurePlatform(platform) {
