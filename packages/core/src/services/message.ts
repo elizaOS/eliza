@@ -3208,7 +3208,7 @@ async function executeV5PlannedToolCall(
 	return actionResultToPlannerToolResult(actionResult);
 }
 
-function subPlannerResultToPlannerToolResult(
+export function subPlannerResultToPlannerToolResult(
 	subResult: Awaited<ReturnType<typeof runSubPlanner>>,
 ): PlannerToolResult {
 	const evaluator = subResult.evaluator;
@@ -3222,6 +3222,13 @@ function subPlannerResultToPlannerToolResult(
 		userFacingText,
 		data: lastStep?.result?.data,
 		error: lastStep?.result?.error,
+		// Propagate the terminal sub-action's chain signal to the parent
+		// loop. A sub-action that returns `continueChain: false` (e.g.
+		// TASKS_SPAWN_AGENT — fire-and-forget) terminates the sub-planner,
+		// but without this the parent planner loop never sees the flag,
+		// evaluates CONTINUE, and re-runs the umbrella action — producing
+		// duplicate spawns on a single user turn.
+		continueChain: lastStep?.result?.continueChain,
 	};
 }
 
