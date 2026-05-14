@@ -1215,12 +1215,14 @@ function handleDeepLink(url: string): void {
         "source",
         "assistant-entry",
       );
+      params.set("action", params.get("action") ?? "ask");
       ensureAssistantLaunchId(params);
       setHashRoute("chat", params);
       break;
     }
     case "chat": {
       const params = new URLSearchParams(parsed.searchParams);
+      params.set("action", params.get("action") ?? "chat");
       ensureAssistantLaunchId(params);
       setHashRoute("chat", params);
       break;
@@ -1244,6 +1246,7 @@ function handleDeepLink(url: string): void {
         "source",
         "assistant-entry",
       );
+      params.set("action", params.get("action") ?? "lifeops.daily-brief");
       ensureAssistantLaunchId(params);
       params.set("lifeops.section", "overview");
       setHashRoute("lifeops", params);
@@ -1257,9 +1260,10 @@ function handleDeepLink(url: string): void {
         "source",
         "assistant-entry",
       );
+      params.set("action", params.get("action") ?? "lifeops.create");
       ensureAssistantLaunchId(params);
       params.set("lifeops.section", "reminders");
-      setHashRoute("lifeops", params);
+      setHashRoute(hasAssistantLaunchText(params) ? "chat" : "lifeops", params);
       break;
     }
     case "phone":
@@ -1391,10 +1395,7 @@ function withDefaultSearchParam(
 function ensureAssistantLaunchId(params: URLSearchParams): void {
   if (params.has("assistant.launchId")) return;
   const hasAssistantPayload =
-    params.has("text") ||
-    params.has("q") ||
-    params.has("query") ||
-    params.has("body") ||
+    hasAssistantLaunchText(params) ||
     params.has("action") ||
     params.has("source");
   if (!hasAssistantPayload) return;
@@ -1402,6 +1403,15 @@ function ensureAssistantLaunchId(params: URLSearchParams): void {
     globalThis.crypto?.randomUUID?.() ??
     `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
   params.set("assistant.launchId", randomSuffix);
+}
+
+function hasAssistantLaunchText(params: URLSearchParams): boolean {
+  return (
+    params.has("text") ||
+    params.has("q") ||
+    params.has("query") ||
+    params.has("body")
+  );
 }
 
 async function initializeDesktopShell(): Promise<void> {
@@ -1419,10 +1429,20 @@ async function initializeDesktopShell(): Promise<void> {
     accelerator: "CommandOrControl+K",
   });
 
-  await Desktop.addListener("shortcutPressed", (event: { id: string }) => {
-    if (event.id === "command-palette") {
-      dispatchAppEvent(COMMAND_PALETTE_EVENT);
-    }
+  // Global shortcuts are pushed from the Electrobun host as
+  // `desktopShortcutPressed` over the RPC bridge. The Capacitor `Desktop`
+  // plugin's `addListener` web impl never fires those events, so we subscribe
+  // through the bridge directly. The canonical Cmd+K fallback for the focused
+  // renderer lives in CommandPalette.tsx (window keydown listener).
+  subscribeDesktopBridgeEvent({
+    rpcMessage: "desktopShortcutPressed",
+    ipcChannel: "desktop:shortcutPressed",
+    listener: (payload) => {
+      const id = (payload as { id?: string } | null | undefined)?.id;
+      if (id === "command-palette") {
+        dispatchAppEvent(COMMAND_PALETTE_EVENT);
+      }
+    },
   });
 
   await Desktop.setTrayMenu({
