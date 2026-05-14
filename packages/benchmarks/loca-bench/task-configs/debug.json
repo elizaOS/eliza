@@ -12,7 +12,7 @@
       },
       "mcp_servers": {
         "canvas": {
-          "enabled": true,
+          "enabled": false,
           "type": "canvas",
           "params": {
             "data_dir": "{task_workspace}/local_db/canvas",
@@ -21,14 +21,14 @@
           }
         },
         "python_execute": {
-          "enabled": true,
+          "enabled": false,
           "type": "python_execute",
           "params": {
             "workspace_dir": "{agent_workspace}"
           }
         },
         "claim_done": {
-          "enabled": true,
+          "enabled": false,
           "type": "claim_done",
           "params": {}
         },

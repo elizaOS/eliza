@@ -16,7 +16,7 @@ import { cn } from "../../lib/utils";
 import { Button } from "../button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../collapsible";
 import { Input } from "../input";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../tooltip";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../tooltip";
 
 export type WebPreviewContextValue = {
   url: string;
@@ -103,25 +103,23 @@ export const WebPreviewNavigationButton = ({
   children,
   ...props
 }: WebPreviewNavigationButtonProps) => (
-  <TooltipProvider>
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Button
-          className="h-8 w-8 p-0 hover:text-foreground"
-          disabled={disabled}
-          onClick={onClick}
-          size="sm"
-          variant="ghost"
-          {...props}
-        >
-          {children}
-        </Button>
-      </TooltipTrigger>
-      <TooltipContent>
-        <p>{tooltip}</p>
-      </TooltipContent>
-    </Tooltip>
-  </TooltipProvider>
+  <Tooltip>
+    <TooltipTrigger asChild>
+      <Button
+        className="h-8 w-8 p-0 hover:text-foreground"
+        disabled={disabled}
+        onClick={onClick}
+        size="sm"
+        variant="ghost"
+        {...props}
+      >
+        {children}
+      </Button>
+    </TooltipTrigger>
+    <TooltipContent>
+      <p>{tooltip}</p>
+    </TooltipContent>
+  </Tooltip>
 );
 
 export type WebPreviewUrlProps = ComponentProps<typeof Input>;

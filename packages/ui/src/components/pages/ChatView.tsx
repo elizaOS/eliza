@@ -349,7 +349,6 @@ export function ChatView({
   useChatAvatarVoiceBridge({
     mouthOpen: voice.mouthOpen,
     isSpeaking: voice.isSpeaking,
-    usingAudioAnalysis: voice.usingAudioAnalysis,
     onSpeakingChange: handleChatAvatarSpeakingChange,
   });
 

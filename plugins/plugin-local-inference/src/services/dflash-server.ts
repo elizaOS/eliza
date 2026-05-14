@@ -64,6 +64,7 @@ import { localInferenceRoot } from "./paths";
 import { ramHeadroomReserveMb, resolveRamBudget } from "./ram-budget";
 import {
 	grammarRequestFields,
+	prefillPlanRequestFields,
 	repairStructuredOutput,
 	resolveGuidedDecodeForParams,
 	type StructuredGenerateParams,
@@ -377,6 +378,21 @@ export function parseDflashMetrics(body: string): DflashMetricsSnapshot | null {
 function readBool(name: string): boolean {
 	const raw = process.env[name]?.trim().toLowerCase();
 	return raw === "1" || raw === "true" || raw === "yes";
+}
+
+function envWithBinaryLibraryPath(binaryPath: string): NodeJS.ProcessEnv {
+	const env = { ...process.env };
+	const binaryDir = path.dirname(binaryPath);
+	const prependPath = (name: string) => {
+		const existing = env[name]?.trim();
+		env[name] = existing
+			? `${binaryDir}${path.delimiter}${existing}`
+			: binaryDir;
+	};
+
+	prependPath("LD_LIBRARY_PATH");
+	if (process.platform === "darwin") prependPath("DYLD_LIBRARY_PATH");
+	return env;
 }
 
 function allowZeroDraftForDiagnostics(): boolean {
@@ -884,6 +900,7 @@ export function probeCtxCheckpointsSupported(binaryPath: string): boolean {
 	try {
 		const result = spawnSync(binaryPath, ["--help"], {
 			encoding: "utf8",
+			env: envWithBinaryLibraryPath(binaryPath),
 			// Cold Metal/fused binaries can spend several seconds loading native
 			// libraries before printing the full arg table. A short timeout creates
 			// a false "no --spec-type dflash" negative and blocks otherwise-valid
@@ -985,6 +1002,7 @@ function llamaServerHelpText(binaryPath: string): string {
 	try {
 		const result = spawnSync(binaryPath, ["--help"], {
 			encoding: "utf8",
+			env: envWithBinaryLibraryPath(binaryPath),
 			timeout: 30_000,
 			maxBuffer: 4 * 1024 * 1024,
 		});
@@ -3316,7 +3334,7 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 		fs.mkdirSync(path.join(localInferenceRoot(), "logs"), { recursive: true });
 		this.stderrTail = [];
 		const child = spawn(status.binaryPath, args, {
-			env: { ...process.env },
+			env: envWithBinaryLibraryPath(status.binaryPath),
 			stdio: ["ignore", "pipe", "pipe"],
 		});
 		this.child = child;
@@ -4142,11 +4160,7 @@ export function buildChatCompletionBody(
 		Object.assign(payload, grammarRequestFields(guided.grammar));
 	}
 	if (guided.prefillPlan) {
-		payload.eliza_prefill_plan = {
-			prefix: guided.prefillPlan.prefix,
-			runs: guided.prefillPlan.runs,
-			free_count: guided.prefillPlan.freeCount,
-		};
+		Object.assign(payload, prefillPlanRequestFields(guided.prefillPlan));
 	}
 	return payload;
 }

@@ -113,7 +113,7 @@ _CC_BY_NC_SA = "CC-BY-NC-SA-4.0.txt"
 
 # Each entry's upstream is the *v1 source repo* recorded in
 # ELIZA_1_RELEASE_ASSET_STATUS.md ("v1 source repos per tier /
-# component"). Text tiers use the public Qwen3.5 0.8B / 1.7B / 4B line.
+# component"). Text tiers use Qwen3.5 0.8B / 2B / 4B / 9B and Qwen3.6 27B.
 # ASR and embedding are deliberate upstream exceptions: they remain published
 # Qwen3-ASR / Qwen3-Embedding artifacts rather than being rewritten as Qwen3.5.
 ATTESTATIONS: Final[tuple[LicenseAttestation, ...]] = (
@@ -122,11 +122,15 @@ ATTESTATIONS: Final[tuple[LicenseAttestation, ...]] = (
         component="text backbone",
         spdx="Apache-2.0",
         text_file=_APACHE,
-        upstream_repo="Qwen/Qwen3.5-0.8B / Qwen/Qwen3.5-2B / Qwen/Qwen3.5-4B (lineage recorded per tier in the manifest)",
+        upstream_repo=(
+            "Qwen/Qwen3.5-0.8B / Qwen/Qwen3.5-2B / Qwen/Qwen3.5-4B / "
+            "Qwen/Qwen3.5-9B / Qwen/Qwen3.6-27B (lineage recorded per tier "
+            "in the manifest)"
+        ),
         upstream_url="https://huggingface.co/Qwen/Qwen3.5-2B",
         copyright_holder="Alibaba Cloud (Qwen team) and contributors",
         note=(
-            "The text weights in this bundle are derived from the Qwen3.5 family "
+            "The text weights in this bundle are derived from the Qwen3.5/Qwen3.6 family "
             "(GGUF-converted via the elizaOS/llama.cpp fork and Eliza-quantized), "
             "rebranded \"Eliza-1\" in user-facing strings per the project's "
             "branding policy. The upstream lineage and Apache-2.0 terms are "

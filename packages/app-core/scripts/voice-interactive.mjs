@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * Interactive end-to-end voice harness for Eliza-1 (`eliza-1-1_7b`).
+ * Interactive end-to-end voice harness for Eliza-1 (`eliza-1-2b`).
  *
  * Send a voice message, get a voice response back — the full optimized
  * voice-assistant loop the W1–W13 swarm landed, run interactively:
@@ -16,7 +16,7 @@
  * with DFlash speculative decoding, KV-prefix prewarm, streaming LLM→TTS,
  * barge-in (pause/resume/hard-stop), and force-stop on a keypress.
  *
- * **No faking.** If the real `eliza-1-1_7b` bundle, the DFlash `llama-server`
+ * **No faking.** If the real `eliza-1-2b` bundle, the DFlash `llama-server`
  * binary, the fused `libelizainference` (or whisper.cpp), a mic, or the
  * Silero VAD model is missing, this prints the exact missing-prereq
  * checklist + the fix command and exits non-zero. It never emits
@@ -139,14 +139,14 @@ async function inspectActiveOptimizations(args) {
   const active = [];
   const missing = [];
 
-  // ── Catalog entry for eliza-1-1_7b ─────────────────────────────────────
+  // ── Catalog entry for eliza-1-2b ─────────────────────────────────────
   let catalogEntry = null;
   let drafterEntry = null;
   try {
     const { findCatalogModel, FIRST_RUN_DEFAULT_MODEL_ID } = await import(
       "../../shared/src/local-inference/catalog.ts"
     );
-    // The duet harness passes `args.modelId` (e.g. `eliza-1-0_6b`); the
+    // The duet harness passes `args.modelId` (e.g. `eliza-1-0_8b`); the
     // interactive harness leaves it unset → the first-run default.
     catalogEntry = findCatalogModel(
       args?.modelId ?? FIRST_RUN_DEFAULT_MODEL_ID,
@@ -155,7 +155,7 @@ async function inspectActiveOptimizations(args) {
     if (drafterId) drafterEntry = findCatalogModel(drafterId);
   } catch (err) {
     missing.push({
-      what: `resolve the eliza-1-1_7b catalog entry (${err instanceof Error ? err.message : String(err)})`,
+      what: `resolve the eliza-1-2b catalog entry (${err instanceof Error ? err.message : String(err)})`,
       fix: "ensure @elizaos/shared is built: bun run build (or turbo run build --filter=@elizaos/shared)",
     });
   }
@@ -181,7 +181,7 @@ async function inspectActiveOptimizations(args) {
     );
     const candidate = path.join(
       elizaModelsDir(),
-      `${(catalogEntry?.id ?? "eliza-1-1_7b").replace(/[^a-zA-Z0-9._-]/g, "_")}.bundle`,
+      `${(catalogEntry?.id ?? "eliza-1-2b").replace(/[^a-zA-Z0-9._-]/g, "_")}.bundle`,
     );
     if (existsSync(candidate)) bundleRoot = candidate;
   } catch {
@@ -195,7 +195,7 @@ async function inspectActiveOptimizations(args) {
     });
   } else {
     missing.push({
-      what: `the ${catalogEntry?.id ?? "eliza-1-1_7b"} bundle is not installed`,
+      what: `the ${catalogEntry?.id ?? "eliza-1-2b"} bundle is not installed`,
       fix: "download it (run the harness without --list-active for the auto-download prompt) or follow RELEASE_V1.md to acquire/convert/quantize the bundle, then place it under <state-dir>/local-inference/models/<id>.bundle/",
     });
   }
@@ -211,7 +211,7 @@ async function inspectActiveOptimizations(args) {
   } else {
     try {
       const { getDflashRuntimeStatus } = await import(
-        "../src/services/local-inference/dflash-server.ts"
+        "../../../plugins/plugin-local-inference/src/services/dflash-server.ts"
       );
       const status = getDflashRuntimeStatus();
       if (status.enabled && status.binaryPath) {
@@ -231,7 +231,7 @@ async function inspectActiveOptimizations(args) {
           const lacking = required.filter((k) => advertised[k] !== true);
           if (lacking.length > 0) {
             missing.push({
-              what: `the installed llama-server (${status.capabilities?.target ?? "unknown target"}) does not advertise the kernels ${catalogEntry?.id ?? "eliza-1-1_7b"} requires: {${lacking.join(", ")}} — the eliza-1 path is gated on these (packages/inference/AGENTS.md §3). On Linux/Windows CPU/CUDA builds, some kernels (qjl_full, polarquant, turbo3_tcq) ship Metal-only.`,
+              what: `the installed llama-server (${status.capabilities?.target ?? "unknown target"}) does not advertise the kernels ${catalogEntry?.id ?? "eliza-1-2b"} requires: {${lacking.join(", ")}} — the eliza-1 path is gated on these (packages/inference/AGENTS.md §3). On Linux/Windows CPU/CUDA builds, some kernels (qjl_full, polarquant, turbo3_tcq) ship Metal-only.`,
               fix: `rebuild the fork with the matching backend and kernels: node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target <triple>  (a real interactive turn currently needs the macOS-Metal fused build, which advertises the full kernel set)`,
             });
             active.push({
@@ -357,7 +357,7 @@ async function inspectActiveOptimizations(args) {
   let vadPath = null;
   try {
     const { resolveSileroVadPath } = await import(
-      "../src/services/local-inference/voice/vad.ts"
+      "../../../plugins/plugin-local-inference/src/services/voice/vad.ts"
     );
     vadPath = resolveSileroVadPath({
       modelPath: process.env.ELIZA_VAD_MODEL_PATH,
@@ -390,7 +390,7 @@ async function inspectActiveOptimizations(args) {
     let recorderName = null;
     try {
       const { resolveDesktopRecorder } = await import(
-        "../src/services/local-inference/voice/mic-source.ts"
+        "../../../plugins/plugin-local-inference/src/services/voice/mic-source.ts"
       );
       const rec = resolveDesktopRecorder(16_000);
       recorderName = rec ? rec.program : null;
@@ -748,7 +748,7 @@ async function inspectHostPeripherals() {
   const out = { recorder: null, player: null, ort: null, ortError: null };
   try {
     const { resolveDesktopRecorder } = await import(
-      "../src/services/local-inference/voice/mic-source.ts"
+      "../../../plugins/plugin-local-inference/src/services/voice/mic-source.ts"
     );
     const rec = resolveDesktopRecorder(16_000);
     out.recorder = rec ? rec.program : null;
@@ -757,7 +757,7 @@ async function inspectHostPeripherals() {
   }
   try {
     const { resolveSystemPlayerName } = await import(
-      "../src/services/local-inference/voice/system-audio-sink.ts"
+      "../../../plugins/plugin-local-inference/src/services/voice/system-audio-sink.ts"
     );
     out.player = resolveSystemPlayerName(24_000);
   } catch {
@@ -765,7 +765,7 @@ async function inspectHostPeripherals() {
   }
   try {
     const { loadOnnxRuntime } = await import(
-      "../src/services/local-inference/voice/onnx-runtime.ts"
+      "../../../plugins/plugin-local-inference/src/services/voice/onnx-runtime.ts"
     );
     await loadOnnxRuntime();
     out.ort = "onnxruntime-node";
@@ -879,7 +879,7 @@ async function tryAutoDownloadBundle(catalogEntry) {
   if (!catalogEntry) return null;
   try {
     const { Downloader } = await import(
-      "../src/services/local-inference/downloader.ts"
+      "../../../plugins/plugin-local-inference/src/services/downloader.ts"
     );
     const { elizaModelsDir } = await import(
       "../../shared/src/local-inference/paths.ts"
@@ -928,7 +928,7 @@ async function tryAutoDownloadBundle(catalogEntry) {
 async function makeAudioSink(opts) {
   const { sampleRate, noAudio } = opts;
   const { SystemAudioSink, WavFileAudioSink } = await import(
-    "../src/services/local-inference/voice/system-audio-sink.ts"
+    "../../../plugins/plugin-local-inference/src/services/voice/system-audio-sink.ts"
   );
   if (noAudio) {
     const out = path.resolve(process.cwd(), `out-${Date.now()}.wav`);
@@ -966,7 +966,7 @@ async function makeAudioSink(opts) {
 // ---------------------------------------------------------------------------
 
 /**
- * Ensure the eliza-1-1_7b bundle on disk is registered in the local-inference
+ * Ensure the eliza-1-2b bundle on disk is registered in the local-inference
  * registry (so `listInstalledModels()` returns it and the engine can activate
  * it). A bundle downloaded via the dashboard registers itself; a bundle that
  * was staged/copied onto disk (e.g. a manual `RELEASE_V1.md` install) may not
@@ -977,14 +977,14 @@ async function makeAudioSink(opts) {
 async function ensureBundleRegistered(catalogEntry, bundleRoot) {
   if (!catalogEntry || !bundleRoot || !existsSync(bundleRoot)) return null;
   const { listInstalledModels } = await import(
-    "../src/services/local-inference/registry.ts"
+    "../../../plugins/plugin-local-inference/src/services/registry.ts"
   );
   const installed = await listInstalledModels();
   const already = installed.find((m) => m.id === catalogEntry.id);
   if (already?.path && existsSync(already.path)) return already;
 
   const { upsertElizaModel } = await import(
-    "../src/services/local-inference/registry.ts"
+    "../../../plugins/plugin-local-inference/src/services/registry.ts"
   );
   const manifestPath = path.join(
     bundleRoot,
@@ -1069,7 +1069,7 @@ async function ensureBundleRegistered(catalogEntry, bundleRoot) {
 
 /**
  * Boot a minimal standalone AgentRuntime with the local-inference handler
- * registered and `eliza-1-1_7b` assigned to TEXT_SMALL. Returns
+ * registered and `eliza-1-2b` assigned to TEXT_SMALL. Returns
  * `{ runtime, generate }` where `generate` runs one transcript through the
  * runtime's message handler and streams `replyText` chunks via `onChunk`.
  *
@@ -1092,14 +1092,14 @@ async function bootStandaloneRuntime({ roomId }) {
     );
   }
 
-  // In-memory DB; assign the eliza-1-1_7b model to TEXT_SMALL.
+  // In-memory DB; assign the eliza-1-2b model to TEXT_SMALL.
   process.env.PGLITE_DATA_DIR = process.env.PGLITE_DATA_DIR || "memory://";
 
   const runtime = new AgentRuntime({
     character: {
       name: "Eliza",
       bio: [
-        "A local-first AI assistant running the eliza-1-1_7b model with the full optimized voice stack.",
+        "A local-first AI assistant running the eliza-1-2b model with the full optimized voice stack.",
       ],
       messageExamples: [],
       adjectives: [],
@@ -1113,19 +1113,19 @@ async function bootStandaloneRuntime({ roomId }) {
   // Register the local-inference model handlers (TEXT_SMALL / TEXT_LARGE /
   // TRANSCRIPTION / TEXT_TO_SPEECH) + prewarmResponseHandler / prewarmSystemPrefix.
   const { ensureLocalInferenceHandler, prewarmResponseHandler } = await import(
-    "../src/runtime/ensure-local-inference-handler.ts"
+    "../../../plugins/plugin-local-inference/src/runtime/ensure-local-inference-handler.ts"
   );
   await ensureLocalInferenceHandler(runtime);
 
-  // Ensure the eliza-1-1_7b model is assigned to TEXT_SMALL (the eliza-1
+  // Ensure the eliza-1-2b model is assigned to TEXT_SMALL (the eliza-1
   // tiers route through the dflash llama-server). Best-effort: if no model
   // is installed this throws downstream and the caller reports it.
   try {
     const { setAssignment, readAssignments } = await import(
-      "../src/services/local-inference/assignments.ts"
+      "../../../plugins/plugin-local-inference/src/services/assignments.ts"
     );
     if (typeof setAssignment === "function") {
-      await setAssignment("TEXT_SMALL", "eliza-1-1_7b");
+      await setAssignment("TEXT_SMALL", "eliza-1-2b");
     } else if (typeof readAssignments === "function") {
       // older API — skip; ensure-local-inference-handler auto-assigns
     }
@@ -1211,7 +1211,7 @@ async function bootStandaloneRuntime({ roomId }) {
 async function readDflashAcceptance() {
   try {
     const { dflashLlamaServer } = await import(
-      "../src/services/local-inference/dflash-server.ts"
+      "../../../plugins/plugin-local-inference/src/services/dflash-server.ts"
     );
     // Scrape the running llama-server's /metrics endpoint (drafted/accepted
     // speculative counters). Returns null when no server / no drafter.
@@ -1237,7 +1237,7 @@ function fmtMs(v) {
 async function printTurnLatency(_roomId) {
   try {
     const { voiceLatencyTracer } = await import(
-      "../src/services/local-inference/latency-trace.ts"
+      "../../../plugins/plugin-local-inference/src/services/latency-trace.ts"
     );
     const traces = voiceLatencyTracer.recentTraces(1);
     const t = traces[traces.length - 1];
@@ -1258,7 +1258,7 @@ async function printTurnLatency(_roomId) {
 async function printLatencyHistogram() {
   try {
     const { voiceLatencyTracer } = await import(
-      "../src/services/local-inference/latency-trace.ts"
+      "../../../plugins/plugin-local-inference/src/services/latency-trace.ts"
     );
     const summaries =
       typeof voiceLatencyTracer.histogramSummaries === "function"
@@ -1359,7 +1359,7 @@ async function main() {
     log(
       c(
         "dim",
-        "Set ELIZA_AUTO_DOWNLOAD_BUNDLE=1 to auto-download the (large) eliza-1-1_7b bundle, or follow RELEASE_V1.md.",
+        "Set ELIZA_AUTO_DOWNLOAD_BUNDLE=1 to auto-download the (large) eliza-1-2b bundle, or follow RELEASE_V1.md.",
       ),
     );
     process.exit(1);
@@ -1372,7 +1372,7 @@ async function main() {
     log(
       c(
         "red",
-        `Failed to register the eliza-1-1_7b bundle: ${err instanceof Error ? err.message : String(err)}`,
+        `Failed to register the eliza-1-2b bundle: ${err instanceof Error ? err.message : String(err)}`,
       ),
     );
     process.exit(1);
@@ -1382,7 +1382,7 @@ async function main() {
   tag(
     "boot",
     "blue",
-    "starting standalone AgentRuntime (in-memory, eliza-1-1_7b → TEXT_SMALL)…",
+    "starting standalone AgentRuntime (in-memory, eliza-1-2b → TEXT_SMALL)…",
   );
   let runtime;
   let generate;
@@ -1415,25 +1415,25 @@ async function main() {
 
   // ── Engine + voice bridge ──────────────────────────────────────────────
   const { localInferenceEngine } = await import(
-    "../src/services/local-inference/engine.ts"
+    "../../../plugins/plugin-local-inference/src/services/engine.ts"
   );
   const engine = localInferenceEngine;
 
-  // Load the eliza-1-1_7b model into the engine (this activates the bundle).
+  // Load the eliza-1-2b model into the engine (this activates the bundle).
   try {
     const { listInstalledModels } = await import(
-      "../src/services/local-inference/registry.ts"
+      "../../../plugins/plugin-local-inference/src/services/registry.ts"
     );
     const installed = await listInstalledModels();
-    const target = installed.find((m) => m.id === "eliza-1-1_7b");
+    const target = installed.find((m) => m.id === "eliza-1-2b");
     if (!target)
-      throw new Error("eliza-1-1_7b is not registered as an installed model");
+      throw new Error("eliza-1-2b is not registered as an installed model");
     await engine.load(target.path);
   } catch (err) {
     log(
       c(
         "red",
-        `Failed to activate the eliza-1-1_7b bundle in the engine: ${err instanceof Error ? err.message : String(err)}`,
+        `Failed to activate the eliza-1-2b bundle in the engine: ${err instanceof Error ? err.message : String(err)}`,
       ),
     );
     process.exit(1);
@@ -1590,7 +1590,7 @@ async function main() {
     try {
       // Mark the latency trace's vad-trigger so the trace has a t0.
       const { markVoiceLatency } = await import(
-        "../src/services/local-inference/latency-trace.ts"
+        "../../../plugins/plugin-local-inference/src/services/latency-trace.ts"
       );
       markVoiceLatency(args.room, "vad-trigger");
       markVoiceLatency(args.room, "asr-final");
@@ -1634,13 +1634,13 @@ async function main() {
     );
     try {
       const { PushMicSource } = await import(
-        "../src/services/local-inference/voice/mic-source.ts"
+        "../../../plugins/plugin-local-inference/src/services/voice/mic-source.ts"
       );
       const { decodeMonoPcm16Wav } = await import(
-        "../src/services/local-inference/voice/engine-bridge.ts"
+        "../../../plugins/plugin-local-inference/src/services/voice/engine-bridge.ts"
       );
       const { createSileroVadDetector } = await import(
-        "../src/services/local-inference/voice/vad.ts"
+        "../../../plugins/plugin-local-inference/src/services/voice/vad.ts"
       );
       const wavBytes = await fs.readFile(wavPath);
       const decoded = decodeMonoPcm16Wav(new Uint8Array(wavBytes));
@@ -1702,10 +1702,10 @@ async function main() {
   );
   try {
     const { DesktopMicSource } = await import(
-      "../src/services/local-inference/voice/mic-source.ts"
+      "../../../plugins/plugin-local-inference/src/services/voice/mic-source.ts"
     );
     const { createSileroVadDetector } = await import(
-      "../src/services/local-inference/voice/vad.ts"
+      "../../../plugins/plugin-local-inference/src/services/voice/vad.ts"
     );
     micSource = new DesktopMicSource();
     const vad = await createSileroVadDetector({

@@ -15,10 +15,10 @@ n_gpu_layers, KV cache types, TPS estimates, and verify recipes) see
 
 | GPU | VRAM | Compute | Primary tier | DFlash drafter | Ctx size |
 |---|---|---|---|---|---|
-| NVIDIA RTX 3090 | 24 GB | 8.6 | 7b-q4 | 0_6b | 32 768 tokens |
-| NVIDIA RTX 4090 | 24 GB | 8.9 | 7b-q8 | 0_6b | 65 536 tokens |
-| NVIDIA RTX 5090 | 32 GB | 12.0 | 14b-q8 | 1_7b | 131 072 tokens |
-| NVIDIA H200 | 141 GB | 9.0 | 27b-q8 | 2b | 262 144 tokens |
+| NVIDIA RTX 3090 | 24 GB | 8.6 | eliza-1-9b | eliza-1-0_8b | 65 536 tokens |
+| NVIDIA RTX 4090 | 24 GB | 8.9 | eliza-1-27b | eliza-1-2b | 131 072 tokens |
+| NVIDIA RTX 5090 | 32 GB | 12.0 | eliza-1-27b-256k | eliza-1-2b | 262 144 tokens |
+| NVIDIA H200 | 141 GB | 9.0 | eliza-1-27b-1m | eliza-1-4b | 1 048 576 tokens |
 
 **Columns:**
 - **Primary tier** — the recommended model tier for this card under normal
@@ -126,5 +126,5 @@ buun-llama-cpp fork) before activating FP4 kernels. If the probe fails
 the runtime falls back to FP8 with a structured warning.
 
 FP4 accelerates speculative decoding (DFlash) in particular — the 5090
-profile uses a larger drafter tier (`1_7b`) and a wider speculative
+profile uses a larger drafter tier (`eliza-1-2b`) and a wider speculative
 window (8 tokens) to take advantage of the higher throughput.

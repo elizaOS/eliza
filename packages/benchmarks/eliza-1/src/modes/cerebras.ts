@@ -34,7 +34,7 @@ export interface CerebrasClient {
   chatCompletions(req: CerebrasRequest): Promise<CerebrasResponse>;
 }
 
-export interface CerebrasRequest {
+interface CerebrasRequest {
   model: string;
   max_tokens: number;
   temperature?: number;
@@ -56,7 +56,7 @@ export interface CerebrasRequest {
   };
 }
 
-export interface CerebrasResponse {
+interface CerebrasResponse {
   choices: Array<{
     message: {
       role: "assistant";
@@ -203,7 +203,7 @@ function createFetchClient(endpoint: string, apiKey: string): CerebrasClient {
  * function-tool's `parameters`. Wraps the user-provided `jsonSchema` when one
  * is set, otherwise synthesises from the skeleton fields.
  */
-export function buildToolParameters(req: ModeRequest): JsonValue {
+function buildToolParameters(req: ModeRequest): JsonValue {
   if (
     req.jsonSchema &&
     typeof req.jsonSchema === "object" &&

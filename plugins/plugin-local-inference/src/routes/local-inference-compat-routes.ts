@@ -36,20 +36,16 @@ import type {
 } from "../services/types";
 import { AGENT_MODEL_SLOTS } from "../services/types";
 import {
+	type CompatRuntimeState,
 	ensureCompatSensitiveRouteAuthorized,
 	ensureRouteAuthorized,
 	getCompatApiToken,
 	getProvidedApiToken,
-	tokenMatches,
-} from "@elizaos/app-core/api/auth";
-import {
-	type CompatRuntimeState,
 	readCompatJsonBody,
-} from "@elizaos/app-core/api/compat-route-shared";
-import {
 	sendJsonError as sendJsonErrorResponse,
 	sendJson as sendJsonResponse,
-} from "@elizaos/app-core/api/response";
+	tokenMatches,
+} from "./compat-helpers";
 
 function isCatalogModel(value: unknown): value is CatalogModel {
 	if (!value || typeof value !== "object" || Array.isArray(value)) {

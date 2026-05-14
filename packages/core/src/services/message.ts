@@ -89,7 +89,6 @@ import {
 } from "../runtime/response-grammar";
 import {
 	type ResponseHandlerEvaluator,
-	type ResponseHandlerPatch,
 	runResponseHandlerEvaluators,
 } from "../runtime/response-handler-evaluators";
 import type {
@@ -2212,505 +2211,6 @@ function filterSelectedContextsForRole(
 	return selected;
 }
 
-function contextAvailableForRepair(
-	context: AgentContext,
-	availableContexts: readonly ContextDefinition[] | undefined,
-): boolean {
-	return (
-		!availableContexts ||
-		availableContexts.length === 0 ||
-		availableContexts.some((definition) => definition.id === context)
-	);
-}
-
-/**
- * Resolve a Stage 1 repair's `parentActionHints` to the first umbrella from
- * `preferred` that is present in `availableActionNames`. When none of the
- * preferred umbrellas are present, fall back to `fallback` so legacy callers
- * (and runtimes that don't expose the umbrella action) still receive a usable
- * hint.
- *
- * Names are compared case-insensitively after the same identifier normalization
- * the planner alias map uses (`A_B` and `AB` both match the `AB` umbrella).
- */
-function resolveActionAwareParentHint(
-	preferred: readonly string[],
-	fallback: string,
-	availableActionNames: readonly string[] | undefined,
-): string {
-	const available = new Set(
-		(availableActionNames ?? []).map((name) => normalizeActionIdentifier(name)),
-	);
-	for (const candidate of preferred) {
-		if (available.has(normalizeActionIdentifier(candidate))) {
-			return candidate;
-		}
-	}
-	return fallback;
-}
-
-function addRepairPlanToPatch(
-	patch: {
-		setContexts?: AgentContext[];
-		addContexts: AgentContext[];
-		addCandidateActions: string[];
-		addParentActionHints: string[];
-	},
-	repair: {
-		contexts: AgentContext[];
-		candidateActions: string[];
-		parentActionHints: string[];
-	},
-	mode: "replace-contexts" | "add-contexts",
-): void {
-	if (mode === "replace-contexts") {
-		patch.setContexts = mergeAgentContexts([], repair.contexts);
-	} else {
-		patch.addContexts = mergeAgentContexts(patch.addContexts, repair.contexts);
-	}
-	patch.addCandidateActions = [
-		...new Set([...patch.addCandidateActions, ...repair.candidateActions]),
-	];
-	patch.addParentActionHints = [
-		...new Set([...patch.addParentActionHints, ...repair.parentActionHints]),
-	];
-}
-
-function getStage1OwnerPreferenceRepairPlan(args: {
-	message: Memory;
-	availableContexts: readonly ContextDefinition[];
-}): {
-	contexts: AgentContext[];
-	candidateActions: string[];
-	parentActionHints: string[];
-} | null {
-	const text = (getUserMessageText(args.message) ?? "").trim();
-	if (!text) {
-		return null;
-	}
-	const lower = text.toLowerCase();
-	const explicitDocumentArtifactIntent =
-		/\b(?:document|doc|file|markdown|pdf|spreadsheet|sheet|notes?\s+(?:file|document|page)|save\s+(?:this|that|it)\s+as)\b/.test(
-			lower,
-		);
-	const stablePreferenceIntent =
-		/\b(?:remember|save|store|record|keep|note)\b[\s\S]{0,120}\b(?:i|me|my)\b[\s\S]{0,80}\b(?:prefer|preference|preferences|prefs?|like|usually|always)\b/.test(
-			lower,
-		) ||
-		/\b(?:travel|booking|flight|hotel)\s+(?:preference|preferences|prefs?)\b/.test(
-			lower,
-		);
-	if (!stablePreferenceIntent || explicitDocumentArtifactIntent) {
-		return null;
-	}
-	const travelPreferenceIntent =
-		/\b(?:travel|booking|flight|flights?|seat|seats?|aisle|window|carry-?on|checked bags?|luggage|hotel|hotels?|venue|venues?)\b/.test(
-			lower,
-		);
-	const contexts = (
-		["memory", "settings", "calendar"] as AgentContext[]
-	).filter((context) =>
-		contextAvailableForRepair(context, args.availableContexts),
-	);
-	return {
-		contexts: contexts.length > 0 ? contexts : ["general"],
-		candidateActions: travelPreferenceIntent
-			? [
-					"save_travel_preferences",
-					"store_travel_preferences",
-					"store_preference",
-				]
-			: ["store_preference", "save_owner_profile"],
-		parentActionHints: ["REPLY", "DOCUMENT"],
-	};
-}
-
-function getStage1ApprovalResolutionRepairPlan(args: {
-	message: Memory;
-	availableContexts: readonly ContextDefinition[];
-}): {
-	contexts: AgentContext[];
-	candidateActions: string[];
-	parentActionHints: string[];
-} | null {
-	const text = (getUserMessageText(args.message) ?? "").trim();
-	if (!text) {
-		return null;
-	}
-	const lower = text.toLowerCase();
-	const resolutionIntent =
-		/\b(?:approve|accept|confirm|reject|deny|decline)\b[\s\S]{0,120}\b(?:pending\s+)?(?:approval|request)\b/.test(
-			lower,
-		) ||
-		/\b(?:pending\s+)?(?:approval|request)\b[\s\S]{0,120}\b(?:approve|accept|confirm|reject|deny|decline)\b/.test(
-			lower,
-		);
-	if (!resolutionIntent) {
-		return null;
-	}
-	const rejectIntent = /\b(?:reject|deny|decline)\b/.test(lower);
-	const contexts = (
-		["tasks", "automation", "admin", "general"] as AgentContext[]
-	).filter((context) =>
-		contextAvailableForRepair(context, args.availableContexts),
-	);
-	return {
-		contexts: contexts.length > 0 ? contexts : ["general"],
-		candidateActions: rejectIntent
-			? ["resolve_pending_approval", "reject_approval", "deny_approval"]
-			: ["resolve_pending_approval", "approve_approval", "approve_request"],
-		parentActionHints: ["RESOLVE_REQUEST"],
-	};
-}
-
-function getStage1PasswordManagerRepairPlan(args: {
-	message: Memory;
-	availableContexts: readonly ContextDefinition[];
-}): {
-	contexts: AgentContext[];
-	candidateActions: string[];
-	parentActionHints: string[];
-} | null {
-	const text = (getUserMessageText(args.message) ?? "").trim();
-	if (!text) {
-		return null;
-	}
-	const lower = text.toLowerCase();
-	const lookupVerb =
-		/\b(?:look\s*up|find|search|show|list|copy|retrieve|get)\b/.test(lower);
-	const credentialNoun =
-		/\b(?:passwords?|saved\s+logins?|logins?|credentials?|1password|onepassword|protonpass|passkey|passkeys)\b/.test(
-			lower,
-		);
-	const explicitFillIntent =
-		/\b(?:fill|autofill|type|enter)\b[\s\S]{0,80}\b(?:password|login|field|form)\b/.test(
-			lower,
-		);
-	if (!lookupVerb || !credentialNoun || explicitFillIntent) {
-		return null;
-	}
-	const contexts = (
-		["secrets", "settings", "browser", "automation"] as AgentContext[]
-	).filter((context) =>
-		contextAvailableForRepair(context, args.availableContexts),
-	);
-	return {
-		contexts: contexts.length > 0 ? contexts : ["secrets"],
-		candidateActions: [
-			"password_manager_search",
-			"saved_login_lookup",
-			"credential_lookup",
-			"search_password_manager",
-		],
-		parentActionHints: ["CREDENTIALS"],
-	};
-}
-
-function getStage1CheckinRepairPlan(args: {
-	message: Memory;
-	availableContexts: readonly ContextDefinition[];
-	availableActionNames?: readonly string[];
-}): {
-	contexts: AgentContext[];
-	candidateActions: string[];
-	parentActionHints: string[];
-} | null {
-	const text = (getUserMessageText(args.message) ?? "").trim();
-	if (!text) {
-		return null;
-	}
-	const lower = text.toLowerCase();
-	const checkinIntent =
-		/\b(?:run|give|start|do|show|open)\b[\s\S]{0,80}\b(?:morning|night|daily|evening|bedtime)\s+check-?in\b/.test(
-			lower,
-		) ||
-		/\b(?:morning|night|daily|evening|bedtime)\s+check-?in\b[\s\S]{0,80}\b(?:now|today|tonight|please|for me)?\b/.test(
-			lower,
-		);
-	if (!checkinIntent) {
-		return null;
-	}
-	const nightIntent = /\b(?:night|evening|bedtime|tonight)\b/.test(lower);
-	const morningIntent = /\bmorning\b/.test(lower);
-	const contexts = (
-		["tasks", "health", "automation", "calendar", "email"] as AgentContext[]
-	).filter((context) =>
-		contextAvailableForRepair(context, args.availableContexts),
-	);
-	// Action-aware umbrella: prefer the dedicated `CHECKIN` action when the
-	// runtime exposes it (LifeOps deployments), otherwise fall back to the
-	// generic `SCHEDULED_TASKS` umbrella that hosts check-in subactions in
-	// vanilla runtimes.
-	const parentActionHint = resolveActionAwareParentHint(
-		["CHECKIN"],
-		"SCHEDULED_TASKS",
-		args.availableActionNames,
-	);
-	return {
-		contexts: contexts.length > 0 ? contexts : ["tasks"],
-		candidateActions: nightIntent
-			? ["night_checkin", "run_night_checkin", "lifeops_night_checkin"]
-			: morningIntent
-				? ["morning_checkin", "run_morning_checkin", "lifeops_morning_checkin"]
-				: ["run_checkin", "daily_checkin", "lifeops_checkin"],
-		parentActionHints: [parentActionHint],
-	};
-}
-
-function getStage1CalendlyRepairPlan(args: {
-	message: Memory;
-	availableContexts: readonly ContextDefinition[];
-}): {
-	contexts: AgentContext[];
-	candidateActions: string[];
-	parentActionHints: string[];
-} | null {
-	const text = (getUserMessageText(args.message) ?? "").trim();
-	if (!text) {
-		return null;
-	}
-	const lower = text.toLowerCase();
-	const calendlyIntent = /\bcalendly\b|api\.calendly\.com/u.test(lower);
-	if (!calendlyIntent) {
-		return null;
-	}
-	const availabilityIntent =
-		/\b(?:availability|available|open|slots?|times?)\b/u.test(lower);
-	const singleUseLinkIntent =
-		/\b(?:single[\s-]?use|one[\s-]?time|booking\s+link|book(?:ing)?\s+link|link)\b/u.test(
-			lower,
-		) && /\b(?:create|make|generate|get|give|send)\b/u.test(lower);
-	if (!availabilityIntent && !singleUseLinkIntent) {
-		return null;
-	}
-	const contexts = (
-		["calendar", "connectors", "tasks"] as AgentContext[]
-	).filter((context) =>
-		contextAvailableForRepair(context, args.availableContexts),
-	);
-	return {
-		contexts: contexts.length > 0 ? contexts : ["calendar"],
-		candidateActions: singleUseLinkIntent
-			? [
-					"calendly_single_use_link",
-					"calendly_create_single_use_link",
-					"calendar_calendly_single_use_link",
-				]
-			: [
-					"calendly_availability",
-					"calendar_check_calendly_availability",
-					"check_calendly_availability",
-				],
-		parentActionHints: ["CALENDAR"],
-	};
-}
-
-function looksLikeCalendarTravelFeasibilityRequest(text: string): boolean {
-	const lower = text.toLowerCase();
-	const hasTravelSignal =
-		/\b(?:flight|flights?|airport|arriv(?:e|es|al|ing)|land(?:s|ed|ing)?|depart(?:s|ed|ure)?|itinerary|travel|jfk|sfo|lax|ord|ewr|lga)\b/u.test(
-			lower,
-		);
-	const hasCalendarSignal =
-		/\b(?:meeting|board|calendar|schedule|appointment|event|conflict|make\s+(?:my|the|it))\b/u.test(
-			lower,
-		);
-	const hasFeasibilitySignal =
-		/\b(?:can|could|will|would|make|given|tight|conflict|overlap|rebook|move|reschedule|enough time)\b/u.test(
-			lower,
-		);
-	return hasTravelSignal && hasCalendarSignal && hasFeasibilitySignal;
-}
-
-function getStage1CalendarTravelRepairPlan(args: {
-	message: Memory;
-	availableContexts: readonly ContextDefinition[];
-}): {
-	contexts: AgentContext[];
-	candidateActions: string[];
-	parentActionHints: string[];
-} | null {
-	const text = (getUserMessageText(args.message) ?? "").trim();
-	if (!text || !looksLikeCalendarTravelFeasibilityRequest(text)) {
-		return null;
-	}
-	const contexts = (["calendar", "tasks"] as AgentContext[]).filter((context) =>
-		contextAvailableForRepair(context, args.availableContexts),
-	);
-	return {
-		contexts: contexts.length > 0 ? contexts : ["calendar"],
-		candidateActions: [
-			"check_flight_conflict",
-			"flight_conflict_rebooking",
-			"calendar_search_events",
-			"calendar_read",
-		],
-		parentActionHints: ["CALENDAR"],
-	};
-}
-
-function looksLikeCalendarSignatureDeadlineRequest(text: string): boolean {
-	const lower = text.toLowerCase();
-	const hasSignatureSignal =
-		/\b(?:nda|docusign|signature|signed|signing|sign\s+(?:the|a)?\s*(?:document|doc|nda)|document\s+sign(?:ing|ature)?)\b/u.test(
-			lower,
-		);
-	const hasCalendarDeadlineSignal =
-		/\b(?:meeting|appointment|kick-?off|deadline|before|due|in\s+\d+\s+days?|partnership)\b/u.test(
-			lower,
-		);
-	const hasInitiationSignal =
-		/\b(?:initiate|start|begin|draft|queue|prepare|send|get\s+(?:it|the\s+nda)\s+signed|signing\s+flow)\b/u.test(
-			lower,
-		);
-	return hasSignatureSignal && hasCalendarDeadlineSignal && hasInitiationSignal;
-}
-
-function getStage1CalendarSignatureDeadlineRepairPlan(args: {
-	message: Memory;
-	availableContexts: readonly ContextDefinition[];
-}): {
-	contexts: AgentContext[];
-	candidateActions: string[];
-	parentActionHints: string[];
-} | null {
-	const text = (getUserMessageText(args.message) ?? "").trim();
-	if (!text || !looksLikeCalendarSignatureDeadlineRequest(text)) {
-		return null;
-	}
-	const contexts = (["calendar"] as AgentContext[]).filter((context) =>
-		contextAvailableForRepair(context, args.availableContexts),
-	);
-	return {
-		contexts: contexts.length > 0 ? contexts : ["calendar"],
-		candidateActions: [
-			"personal_assistant_sign_document",
-			"sign_document",
-			"calendar_search_events",
-			"calendar_read",
-		],
-		parentActionHints: ["PERSONAL_ASSISTANT", "CALENDAR"],
-	};
-}
-
-function buildKnownToolRequestResponseHandlerPatch(args: {
-	message: Memory;
-	availableContexts: readonly ContextDefinition[];
-	availableActionNames?: readonly string[];
-}): ResponseHandlerPatch | null {
-	const text = (getUserMessageText(args.message) ?? "").trim();
-	if (!text) {
-		return null;
-	}
-
-	const lower = text.toLowerCase();
-	const patch = {
-		setContexts: undefined as AgentContext[] | undefined,
-		addContexts: [] as AgentContext[],
-		addCandidateActions: [] as string[],
-		addParentActionHints: [] as string[],
-	};
-
-	const replaceRepairs = [
-		getStage1ApprovalResolutionRepairPlan(args),
-		getStage1PasswordManagerRepairPlan(args),
-		getStage1CheckinRepairPlan(args),
-		getStage1CalendarSignatureDeadlineRepairPlan(args),
-		getStage1CalendarTravelRepairPlan(args),
-		getStage1CalendlyRepairPlan(args),
-	].filter(
-		(
-			repair,
-		): repair is {
-			contexts: AgentContext[];
-			candidateActions: string[];
-			parentActionHints: string[];
-		} => repair !== null,
-	);
-	for (const repair of replaceRepairs) {
-		addRepairPlanToPatch(patch, repair, "replace-contexts");
-	}
-
-	const targetLookupReplyIntent =
-		/\b(draft|prepare|write|compose)\b[\s\S]{0,80}\brepl(?:y|ies|ied|ying)\b/.test(
-			lower,
-		) ||
-		/\brepl(?:y|ies|ied|ying|respond)\b[\s\S]{0,80}\b(to|from|latest|last|recent|email|message|dm|text)\b/.test(
-			lower,
-		);
-	const mentionsMailOrMessageTarget =
-		/\b(e-?mail|inbox|message|dm|direct message|text|sms|slack|discord|telegram|signal|whatsapp|imessage|from\s+[a-z][\w'-]*)\b/.test(
-			lower,
-		);
-	if (targetLookupReplyIntent && mentionsMailOrMessageTarget) {
-		const contexts = (
-			["email", "messaging", "connectors"] as AgentContext[]
-		).filter((context) =>
-			contextAvailableForRepair(context, args.availableContexts),
-		);
-		addRepairPlanToPatch(
-			patch,
-			{
-				contexts,
-				candidateActions: ["draft_reply", "message_draft_reply", "send_email"],
-				parentActionHints: ["MESSAGE"],
-			},
-			"add-contexts",
-		);
-	}
-
-	const ownerPreferenceRepair = getStage1OwnerPreferenceRepairPlan(args);
-	if (ownerPreferenceRepair) {
-		addRepairPlanToPatch(patch, ownerPreferenceRepair, "replace-contexts");
-	}
-
-	const desktopScreenshotIntent =
-		/\b(screen\s*shot|screenshot|capture\s+(?:my\s+|the\s+|current\s+)?screen|see\s+(?:my\s+|the\s+)?screen)\b/.test(
-			lower,
-		) &&
-		!/\b(generate|create|draw|make)\b[\s\S]{0,40}\b(image|picture|art|graphic)\b/.test(
-			lower,
-		);
-	if (desktopScreenshotIntent) {
-		const contexts = (["browser", "automation"] as AgentContext[]).filter(
-			(context) => contextAvailableForRepair(context, args.availableContexts),
-		);
-		addRepairPlanToPatch(
-			patch,
-			{
-				contexts,
-				candidateActions: ["take_screenshot", "capture_screen"],
-				parentActionHints: ["COMPUTER_USE"],
-			},
-			"add-contexts",
-		);
-	}
-
-	if (
-		!patch.setContexts &&
-		patch.addContexts.length === 0 &&
-		patch.addCandidateActions.length === 0 &&
-		patch.addParentActionHints.length === 0
-	) {
-		return null;
-	}
-
-	return {
-		requiresTool: true,
-		simple: false,
-		clearReply: true,
-		...(patch.setContexts ? { setContexts: patch.setContexts } : {}),
-		...(patch.addContexts.length > 0 ? { addContexts: patch.addContexts } : {}),
-		...(patch.addCandidateActions.length > 0
-			? { addCandidateActions: patch.addCandidateActions }
-			: {}),
-		...(patch.addParentActionHints.length > 0
-			? { addParentActionHints: patch.addParentActionHints }
-			: {}),
-		debug: ["known tool request repair"],
-	};
-}
-
 const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvaluator[] =
 	[
 		{
@@ -2733,22 +2233,6 @@ const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvaluator[] =
 					],
 				};
 			},
-		},
-		{
-			name: "core.known_tool_request_repair",
-			description:
-				"Deterministically repairs Stage 1 routing for explicit known tool requests.",
-			priority: 20,
-			shouldRun: ({ message }) =>
-				Boolean((getUserMessageText(message) ?? "").trim()),
-			evaluate: ({ runtime, message, availableContexts }) =>
-				buildKnownToolRequestResponseHandlerPatch({
-					message,
-					availableContexts,
-					availableActionNames: (runtime.actions ?? []).map(
-						(action) => action.name,
-					),
-				}) ?? undefined,
 		},
 	];
 
@@ -3101,24 +2585,17 @@ function normalizeRawParsedForFieldRegistry(
 	raw: Record<string, unknown>,
 ): Record<string, unknown> {
 	const normalized = { ...raw };
-	const plan =
-		raw.plan && typeof raw.plan === "object" && !Array.isArray(raw.plan)
-			? (raw.plan as Record<string, unknown>)
-			: undefined;
-	const fields = plan ?? raw;
 	if (normalized.shouldRespond === undefined) {
-		normalized.shouldRespond = raw.processMessage ?? raw.action ?? "RESPOND";
+		normalized.shouldRespond = "RESPOND";
 	}
 	if (normalized.replyText === undefined) {
-		normalized.replyText =
-			raw.replyText ?? raw.reply ?? fields.replyText ?? fields.reply ?? "";
+		normalized.replyText = "";
 	}
 	if (normalized.contexts === undefined) {
-		normalized.contexts = fields.contexts ?? [];
+		normalized.contexts = [];
 	}
 	if (normalized.candidateActionNames === undefined) {
-		normalized.candidateActionNames =
-			raw.candidateActionNames ?? fields.candidateActions ?? [];
+		normalized.candidateActionNames = [];
 	}
 	const extract =
 		raw.extract &&
@@ -3127,14 +2604,13 @@ function normalizeRawParsedForFieldRegistry(
 			? (raw.extract as Record<string, unknown>)
 			: undefined;
 	if (normalized.facts === undefined) {
-		normalized.facts = extract?.facts ?? raw.facts ?? [];
+		normalized.facts = extract?.facts ?? [];
 	}
 	if (normalized.relationships === undefined) {
-		normalized.relationships =
-			extract?.relationships ?? raw.relationships ?? [];
+		normalized.relationships = extract?.relationships ?? [];
 	}
 	if (normalized.addressedTo === undefined) {
-		normalized.addressedTo = extract?.addressedTo ?? raw.addressedTo ?? [];
+		normalized.addressedTo = extract?.addressedTo ?? [];
 	}
 	return normalized;
 }
@@ -6967,7 +6443,8 @@ export class DefaultMessageService implements IMessageService {
 				//
 				// The `streamTextFallback` path exists for action handlers or other
 				// call sites that don't provide `accumulated` (raw token streams).
-				let firstSentenceSent = false;
+					let firstSentenceSent = false;
+					let firstSentenceText = "";
 				let streamTextFallback = "";
 				const userOnStreamChunk = options?.onStreamChunk;
 				const wrappedOnStreamChunk: StreamChunkCallback | undefined =
@@ -7016,11 +6493,12 @@ export class DefaultMessageService implements IMessageService {
 									accumulated !== undefined &&
 									hasFirstSentence(streamText)
 								) {
-									const { first } = extractFirstSentence(streamText);
-									if (first.length > 5) {
-										firstSentenceSent = true;
+										const { first } = extractFirstSentence(streamText);
+										if (first.length > 5) {
+											firstSentenceSent = true;
+											firstSentenceText = first;
 
-										(async () => {
+											(async () => {
 											try {
 												const voiceSettings = runtime.character.settings
 													?.voice as
@@ -7045,6 +6523,9 @@ export class DefaultMessageService implements IMessageService {
 													text: first,
 													voice: voiceId,
 													model: model,
+													...(opts.abortSignal
+														? { signal: opts.abortSignal }
+														: {}),
 												};
 												const result = runtime.getModel(
 													ModelType.TEXT_TO_SPEECH,
@@ -7258,11 +6739,7 @@ export class DefaultMessageService implements IMessageService {
 										abortSignal: opts.abortSignal,
 									}
 								: undefined;
-					// Voice handling state
-					const firstSentenceSent = false;
-					const firstSentenceText = "";
-
-					const processingPromise = runtime.turnControllers.runWith(
+						const processingPromise = runtime.turnControllers.runWith(
 						message.roomId,
 						(turnSignal) => {
 							const abortSignal = mergeAbortSignals([
@@ -7328,10 +6805,13 @@ export class DefaultMessageService implements IMessageService {
 									const params: TextToSpeechParams & {
 										model?: string;
 									} = {
-										text: rest,
-										voice: voiceId,
-										model: model,
-									};
+											text: rest,
+											voice: voiceId,
+											model: model,
+											...(opts.abortSignal
+												? { signal: opts.abortSignal }
+												: {}),
+										};
 									const result = runtime.getModel(ModelType.TEXT_TO_SPEECH)
 										? await runtime.useModel(ModelType.TEXT_TO_SPEECH, params)
 										: undefined;

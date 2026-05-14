@@ -102,7 +102,7 @@ function bundleToOverrides(
     cacheTypeV: rec.kv_cache_v,
   };
   if (rec.mlock !== undefined) out.mlock = rec.mlock;
-  if (profile.dflash.enabled && bundleId === "eliza-1-2b") {
+  if (profile.dflash.enabled && bundleId !== "eliza-1-0_8b") {
     out.draftMin = profile.dflash.draft_min;
     out.draftMax = profile.dflash.draft_max;
     out.draftGpuLayers = profile.dflash.draft_gpu_layers;

@@ -4,7 +4,7 @@
  *
  * @returns {UseAudioRecorderReturn} Audio recorder state and control functions
  */
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   getSupportedMimeType,
   supportsGetUserMedia,
@@ -35,6 +35,33 @@ export function useAudioRecorder(): UseAudioRecorderReturn {
   const audioChunksRef = useRef<Blob[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const mountedRef = useRef(true);
+
+  const clearTimer = useCallback(() => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+  }, []);
+
+  const stopStream = useCallback(() => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false;
+      clearTimer();
+      const recorder = mediaRecorderRef.current;
+      if (recorder && recorder.state !== "inactive") {
+        recorder.stop();
+      }
+      stopStream();
+    };
+  }, [clearTimer, stopStream]);
 
   const startRecording = useCallback(async () => {
     setError(null);
@@ -71,7 +98,7 @@ export function useAudioRecorder(): UseAudioRecorderReturn {
       const mimeType = getSupportedMimeType();
       if (!mimeType) {
         setError("No supported audio format found");
-        stream.getTracks().forEach((track) => track.stop());
+        stopStream();
         return;
       }
 
@@ -94,21 +121,14 @@ export function useAudioRecorder(): UseAudioRecorderReturn {
       // Handle recording stop
       mediaRecorder.addEventListener("stop", () => {
         const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
-        setAudioBlob(audioBlob);
-        setIsRecording(false);
-        setIsPaused(false);
-
-        // Stop all tracks
-        if (streamRef.current) {
-          streamRef.current.getTracks().forEach((track) => track.stop());
-          streamRef.current = null;
+        if (mountedRef.current) {
+          setAudioBlob(audioBlob);
+          setIsRecording(false);
+          setIsPaused(false);
         }
 
-        // Clear timer
-        if (timerRef.current) {
-          clearInterval(timerRef.current);
-          timerRef.current = null;
-        }
+        stopStream();
+        clearTimer();
       });
 
       // Start recording
@@ -135,7 +155,7 @@ export function useAudioRecorder(): UseAudioRecorderReturn {
         setError("Failed to start recording. Please try again.");
       }
     }
-  }, []);
+  }, [clearTimer, stopStream]);
 
   const stopRecording = useCallback(() => {
     if (mediaRecorderRef.current && isRecording) {
@@ -147,13 +167,9 @@ export function useAudioRecorder(): UseAudioRecorderReturn {
     if (mediaRecorderRef.current && isRecording && !isPaused) {
       mediaRecorderRef.current.pause();
       setIsPaused(true);
-
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-        timerRef.current = null;
-      }
+      clearTimer();
     }
-  }, [isRecording, isPaused]);
+  }, [clearTimer, isRecording, isPaused]);
 
   const resumeRecording = useCallback(() => {
     if (mediaRecorderRef.current && isRecording && isPaused) {
@@ -173,16 +189,30 @@ export function useAudioRecorder(): UseAudioRecorderReturn {
     audioChunksRef.current = [];
   }, []);
 
-  return {
-    isRecording,
-    isPaused,
-    recordingTime,
-    audioBlob,
-    error,
-    startRecording,
-    stopRecording,
-    pauseRecording,
-    resumeRecording,
-    clearRecording,
-  };
+  return useMemo(
+    () => ({
+      isRecording,
+      isPaused,
+      recordingTime,
+      audioBlob,
+      error,
+      startRecording,
+      stopRecording,
+      pauseRecording,
+      resumeRecording,
+      clearRecording,
+    }),
+    [
+      isRecording,
+      isPaused,
+      recordingTime,
+      audioBlob,
+      error,
+      startRecording,
+      stopRecording,
+      pauseRecording,
+      resumeRecording,
+      clearRecording,
+    ],
+  );
 }

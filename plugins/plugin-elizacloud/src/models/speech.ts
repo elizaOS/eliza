@@ -160,6 +160,64 @@ async function fetchTextToSpeech(
   }
 }
 
+function toUint8Array(chunk: unknown): Uint8Array {
+  if (chunk instanceof Uint8Array) return chunk;
+  if (chunk instanceof ArrayBuffer) return new Uint8Array(chunk);
+  if (typeof chunk === "string") return new TextEncoder().encode(chunk);
+  throw new TypeError(`Unexpected TTS chunk type: ${typeof chunk}`);
+}
+
+function concatChunks(chunks: Uint8Array[]): Uint8Array {
+  const total = chunks.reduce((sum, chunk) => sum + chunk.byteLength, 0);
+  const out = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    out.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return out;
+}
+
+async function webStreamToUint8Array(
+  stream: ReadableStream<Uint8Array>,
+): Promise<Uint8Array> {
+  const reader = stream.getReader();
+  const chunks: Uint8Array[] = [];
+  try {
+    while (true) {
+      const result = await reader.read();
+      if (result.done) break;
+      chunks.push(toUint8Array(result.value));
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  return concatChunks(chunks);
+}
+
+async function nodeStreamToUint8Array(stream: Readable): Promise<Uint8Array> {
+  const chunks: Uint8Array[] = [];
+  for await (const chunk of stream) {
+    chunks.push(toUint8Array(chunk));
+  }
+  return concatChunks(chunks);
+}
+
+function isReadableStream(
+  stream: ReadableStream<Uint8Array> | Readable,
+): stream is ReadableStream<Uint8Array> {
+  return typeof (stream as { getReader?: unknown }).getReader === "function";
+}
+
+async function ttsStreamToBytes(
+  stream: ReadableStream<Uint8Array> | Readable,
+): Promise<Uint8Array> {
+  if (isReadableStream(stream)) {
+    return webStreamToUint8Array(stream);
+  }
+  return nodeStreamToUint8Array(stream);
+}
+
 /**
  * TEXT_TO_SPEECH handler for plugin-elizacloud.
  *
@@ -177,7 +235,7 @@ async function fetchTextToSpeech(
 export async function handleTextToSpeech(
   runtime: IAgentRuntime,
   input: string | CloudTextToSpeechParams | OpenAITextToSpeechParams,
-): Promise<ReadableStream<Uint8Array> | Readable> {
+): Promise<Uint8Array> {
   if (!isCloudConnected(toRuntimeSettings(runtime))) {
     throw new CloudTtsUnavailableError(
       "Eliza Cloud is not connected — falling through to next TTS handler",
@@ -193,7 +251,7 @@ export async function handleTextToSpeech(
   logger.log(`[ELIZAOS_CLOUD] Using TEXT_TO_SPEECH model: ${resolvedModel}`);
   try {
     const speechStream = await fetchTextToSpeech(runtime, options);
-    return speechStream;
+    return ttsStreamToBytes(speechStream);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     logger.error(`Error in TEXT_TO_SPEECH: ${message}`);

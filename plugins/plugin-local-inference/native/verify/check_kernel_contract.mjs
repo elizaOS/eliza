@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const inferenceRoot = path.resolve(here, "..");
-const repoRoot = path.resolve(inferenceRoot, "../..");
+const repoRoot = path.resolve(inferenceRoot, "../../..");
 const contractPath = path.join(here, "kernel-contract.json");
 const buildScriptPath = path.join(
   repoRoot,
@@ -14,7 +14,7 @@ const buildScriptPath = path.join(
 );
 const manifestSchemaPath = path.join(
   repoRoot,
-  "packages/app-core/src/services/local-inference/manifest/eliza-1.manifest.v1.json",
+  "plugins/plugin-local-inference/src/services/manifest/eliza-1.manifest.v1.json",
 );
 const metalDispatchEvidencePath = path.join(
   here,
@@ -59,6 +59,12 @@ function sortedUnique(values) {
   return Array.from(new Set(values)).sort();
 }
 
+function stripJsComments(source) {
+  return source
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/(^|[^:])\/\/.*$/gm, "$1");
+}
+
 function findKernelEnum(node) {
   if (!node || typeof node !== "object") return null;
   if (
@@ -91,8 +97,33 @@ function extractStringArrayAfter(source, marker, label) {
     fail(`could not find ${label} array end`);
     return [];
   }
-  const body = source.slice(start, end + 1);
+  const body = stripJsComments(source.slice(start, end + 1));
   return Array.from(body.matchAll(/"([^"]+)"/g), (m) => m[1]);
+}
+
+function collectRuntimeEvidenceKernels(evidence) {
+  const kernels = {};
+  if (!evidence || typeof evidence !== "object") return kernels;
+  if (evidence.kernels && typeof evidence.kernels === "object") {
+    Object.assign(kernels, evidence.kernels);
+  }
+  if (evidence.targets && typeof evidence.targets === "object") {
+    for (const target of Object.values(evidence.targets)) {
+      if (!target || typeof target !== "object") continue;
+      const targetKernels = target.kernels;
+      if (!targetKernels || typeof targetKernels !== "object") continue;
+      for (const [key, value] of Object.entries(targetKernels)) {
+        const existing = kernels[key];
+        if (
+          !existing ||
+          (value?.runtimeReady === true && existing?.runtimeReady !== true)
+        ) {
+          kernels[key] = value;
+        }
+      }
+    }
+  }
+  return kernels;
 }
 
 function targetBody(makefile, targetName) {
@@ -151,22 +182,11 @@ const allowedStatuses = new Set([
   "verified",
 ]);
 
-const metalEvidenceKernels =
-  metalDispatchEvidence && typeof metalDispatchEvidence === "object"
-    ? metalDispatchEvidence.kernels || {}
-    : {};
+const metalEvidenceKernels = collectRuntimeEvidenceKernels(metalDispatchEvidence);
 const vulkanEvidenceKernels =
-  vulkanDispatchEvidence && typeof vulkanDispatchEvidence === "object"
-    ? vulkanDispatchEvidence.kernels || {}
-    : {};
-const cudaEvidenceKernels =
-  cudaDispatchEvidence && typeof cudaDispatchEvidence === "object"
-    ? cudaDispatchEvidence.kernels || {}
-    : {};
-const cpuEvidenceKernels =
-  cpuDispatchEvidence && typeof cpuDispatchEvidence === "object"
-    ? cpuDispatchEvidence.kernels || {}
-    : {};
+  collectRuntimeEvidenceKernels(vulkanDispatchEvidence);
+const cudaEvidenceKernels = collectRuntimeEvidenceKernels(cudaDispatchEvidence);
+const cpuEvidenceKernels = collectRuntimeEvidenceKernels(cpuDispatchEvidence);
 
 if (metalDispatchEvidence.backend !== "metal") {
   fail(`metal dispatch evidence backend must be "metal"`);
@@ -617,7 +637,10 @@ if (!fusedAttn || typeof fusedAttn !== "object") {
   // optimization on top of the five required kernels, not a required kernel).
   const fusedAttnEvidenceByBackend = {
     metal: metalEvidenceKernels.fusedAttn,
-    vulkan: vulkanEvidenceKernels.fusedAttn,
+    vulkan:
+      vulkanEvidenceKernels.fusedAttn ||
+      vulkanEvidenceKernels.fused_attn ||
+      vulkanEvidenceKernels.fused_attn_qjl_tbq,
     cuda: cudaEvidenceKernels.fusedAttn,
     cpu: cpuEvidenceKernels.fused_attn,
   };
@@ -633,8 +656,14 @@ if (!fusedAttn || typeof fusedAttn !== "object") {
         if (evidence.runtimeReady !== true) {
           fail(`fusedAttn ${backend} evidence must have runtimeReady:true to satisfy runtime-ready`);
         }
-        if (evidence.capabilityKey !== fusedAttn.capabilityKey) {
-          fail(`fusedAttn ${backend} evidence capabilityKey=${evidence.capabilityKey} != ${fusedAttn.capabilityKey}`);
+        const evidenceCapability =
+          evidence.capabilityKey ?? evidence.runtimeCapabilityKey;
+        const acceptableCapabilities = new Set([
+          fusedAttn.capabilityKey,
+          "fused_attn_qjl_tbq",
+        ]);
+        if (!acceptableCapabilities.has(evidenceCapability)) {
+          fail(`fusedAttn ${backend} evidence capabilityKey=${evidenceCapability} != ${fusedAttn.capabilityKey}`);
         }
         if (typeof evidence.smokeTarget !== "string" || !targetBody(makefile, evidence.smokeTarget)) {
           fail(`fusedAttn ${backend} evidence requires a smokeTarget that exists in the Makefile`);

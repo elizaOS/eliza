@@ -43,6 +43,54 @@ bundle_recommendations:
     estimated_decode_tps: 460
     estimated_prefill_tps: 18000
     notes: "First-run active Qwen3.5 tier."
+  eliza-1-4b:
+    n_gpu_layers: -1
+    ctx_size: 65536
+    parallel: 16
+    batch_size: 4096
+    ubatch_size: 1024
+    kv_cache_k: qjl1_256
+    kv_cache_v: q4_polar
+    flash_attention: true
+    estimated_decode_tps: 260
+    estimated_prefill_tps: 12000
+    notes: "Balanced Qwen3.5 tier for high-throughput local serving."
+  eliza-1-9b:
+    n_gpu_layers: -1
+    ctx_size: 65536
+    parallel: 8
+    batch_size: 4096
+    ubatch_size: 1024
+    kv_cache_k: qjl1_256
+    kv_cache_v: q4_polar
+    flash_attention: true
+    estimated_decode_tps: 180
+    estimated_prefill_tps: 7600
+    notes: "High-quality Qwen3.5 tier with Blackwell headroom."
+  eliza-1-27b:
+    n_gpu_layers: -1
+    ctx_size: 131072
+    parallel: 4
+    batch_size: 4096
+    ubatch_size: 1024
+    kv_cache_k: qjl1_256
+    kv_cache_v: q4_polar
+    flash_attention: true
+    estimated_decode_tps: 95
+    estimated_prefill_tps: 3900
+    notes: "High-quality Qwen3.5 27B tier for RTX 5090."
+  eliza-1-27b-256k:
+    n_gpu_layers: -1
+    ctx_size: 262144
+    parallel: 2
+    batch_size: 4096
+    ubatch_size: 1024
+    kv_cache_k: qjl1_256
+    kv_cache_v: q4_polar
+    flash_attention: true
+    estimated_decode_tps: 75
+    estimated_prefill_tps: 3000
+    notes: "Best-fit long-context 27B tier for 32 GiB Blackwell."
 
 dflash:
   enabled: true
@@ -70,5 +118,5 @@ verify_recipe:
   # because some FP4 / FP8 fast paths may not be ported yet. The script
   # warns (not fails) when a kernel is absent — runtime falls back.
   warn_on_kernel_absent: true
-  smoke_bundle: eliza-1-2b
+  smoke_bundle: eliza-1-27b-256k
   tolerance_pct: 15                 # wider tolerance — first-class kernels still maturing on Blackwell

@@ -59,7 +59,6 @@ import {
 	decodeMonoPcm16Wav,
 	type TranscriptionAudio,
 } from "../services/voice";
-import { getRuntimeMode } from "@elizaos/app-core/runtime/mode/runtime-mode";
 
 type GenerateTextHandler = (
 	runtime: IAgentRuntime,
@@ -136,6 +135,41 @@ const LOCAL_INFERENCE_PRIORITY = 0;
 
 export function shouldRegisterLocalInferenceHandlers(mode: string): boolean {
 	return mode === "local" || mode === "local-only";
+}
+
+function normalizeRuntimeMode(value: unknown): string | null {
+	if (typeof value !== "string") return null;
+	const normalized = value.trim().toLowerCase();
+	if (normalized === "local-safe" || normalized === "local-yolo") return "local";
+	if (
+		normalized === "local" ||
+		normalized === "local-only" ||
+		normalized === "cloud" ||
+		normalized === "remote"
+	) {
+		return normalized;
+	}
+	return null;
+}
+
+function getRuntimeMode(runtime: IAgentRuntime): string {
+	for (const key of [
+		"ELIZA_DEPLOYMENT_RUNTIME",
+		"ELIZA_RUNTIME_MODE",
+		"RUNTIME_MODE",
+	] as const) {
+		const fromSetting = normalizeRuntimeMode(runtime.getSetting?.(key));
+		if (fromSetting) return fromSetting;
+		const fromEnv = normalizeRuntimeMode(process.env[key]);
+		if (fromEnv) return fromEnv;
+	}
+	if (
+		process.env.ELIZA_CLOUD_PROVISIONED === "1" ||
+		process.env.ELIZAOS_CLOUD_ENABLED === "1"
+	) {
+		return "cloud";
+	}
+	return "local";
 }
 
 function getLoader(runtime: IAgentRuntime): LocalInferenceLoader | null {
@@ -496,6 +530,14 @@ function extractSpeechText(params: TextToSpeechParams | string): string {
 	);
 }
 
+function extractSpeechSignal(
+	params: TextToSpeechParams | string,
+): AbortSignal | undefined {
+	return typeof params === "object" && params !== null
+		? params.signal
+		: undefined;
+}
+
 function makeTextToSpeechHandler(): TextToSpeechHandler {
 	return async (_runtime, params) => {
 		const text = extractSpeechText(params);
@@ -508,7 +550,10 @@ function makeTextToSpeechHandler(): TextToSpeechHandler {
 		// local voice bundle advertises its expressive capability in the
 		// manifest; runtime safety policy lives above this model adapter.
 		await localInferenceEngine.ensureActiveBundleVoiceReady();
-		return localInferenceEngine.synthesizeSpeech(text);
+		return localInferenceEngine.synthesizeSpeech(
+			text,
+			extractSpeechSignal(params),
+		);
 	};
 }
 
@@ -609,11 +654,12 @@ async function tryRegisterAospLlamaLoader(
 ): Promise<boolean> {
 	if (process.env.ELIZA_LOCAL_LLAMA?.trim() !== "1") return false;
 	try {
-		const mod = (await import(
-			"@elizaos/plugin-aosp-local-inference"
-		)) as typeof import("@elizaos/plugin-aosp-local-inference") & {
+		const dynamicImport = new Function("id", "return import(id)") as (
+			id: string,
+		) => Promise<{
 			registerAospLlamaLoader?: (r: AgentRuntime) => Promise<boolean> | boolean;
-		};
+		}>;
+		const mod = await dynamicImport("@elizaos/plugin-aosp-local-inference");
 		if (typeof mod.registerAospLlamaLoader !== "function") {
 			logger.error(
 				"[local-inference] AOSP llama adapter import resolved but missing registerAospLlamaLoader export",
@@ -737,7 +783,7 @@ export async function prewarmSystemPrefix(
 export async function ensureLocalInferenceHandler(
 	runtime: AgentRuntime,
 ): Promise<void> {
-	const runtimeMode = getRuntimeMode();
+	const runtimeMode = getRuntimeMode(runtime);
 	if (!shouldRegisterLocalInferenceHandlers(runtimeMode)) {
 		logger.info(
 			`[local-inference] Runtime mode is ${runtimeMode}; skipping local model handler registration`,

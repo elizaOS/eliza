@@ -10,10 +10,8 @@
  *   --n <count>                                                     (default: 10)
  *   --out <path.json>                                               (default: ./bench-results-<ISO>.json)
  *   --cerebras-model <name>                                         (default: llama3.1-8b; use gpt-oss-120b for the 27B tier)
+ *   --allow-skip-local                                           allow selected local modes to skip
  *   --help
- *
- * Exit code is always 0 even when modes are skipped, so this is safe to wire
- * into CI without secrets / without the GGUF.
  */
 import { resolve } from "node:path";
 import type { Eliza1TierId } from "./engine-resolver.ts";
@@ -41,6 +39,7 @@ interface Args {
   out: string;
   cerebrasModel?: string;
   tier?: Eliza1TierId;
+  allowSkipLocal: boolean;
 }
 
 const HELP = `eliza-1 bench
@@ -62,6 +61,9 @@ Flags:
       eliza-1-0_8b, eliza-1-2b, eliza-1-4b, eliza-1-9b,
       eliza-1-27b, eliza-1-27b-256k, eliza-1-27b-1m.
       The GGUF must be on disk (downloaded via the eliza-1 manifest flow).
+  --allow-skip-local
+      Allow selected local modes (guided/unguided) to skip without a nonzero
+      exit. Release-evidence runs should not use this flag.
   --help, -h
       Show this help.
 
@@ -76,6 +78,7 @@ function parseArgs(argv: string[]): Args {
     modes: "all",
     n: 10,
     out: defaultOutPath(),
+    allowSkipLocal: false,
   };
   const tasks: TaskSelection[] = [];
   const modes: ModeName[] = [];
@@ -121,6 +124,8 @@ function parseArgs(argv: string[]): Args {
         );
       }
       args.tier = next as Eliza1TierId;
+    } else if (arg === "--allow-skip-local") {
+      args.allowSkipLocal = true;
     } else {
       throw new Error(`unknown flag: ${arg}`);
     }
@@ -178,6 +183,17 @@ async function main(): Promise<void> {
   const outPath = resolve(args.out);
   writeReportJson(report, outPath);
   process.stdout.write(`wrote ${outPath}\n`);
+  const skippedLocalModes = report.skipped
+    .filter((skip) => skip.modeId === "guided" || skip.modeId === "unguided")
+    .filter((skip) => modes.some((mode) => mode.id === skip.modeId));
+  if (skippedLocalModes.length > 0 && !args.allowSkipLocal) {
+    process.stderr.write(
+      `fatal: selected local mode(s) skipped without --allow-skip-local: ${skippedLocalModes
+        .map((skip) => `${skip.modeId} (${skip.reason})`)
+        .join(", ")}\n`,
+    );
+    process.exitCode = 1;
+  }
 }
 
 if (import.meta.main) {

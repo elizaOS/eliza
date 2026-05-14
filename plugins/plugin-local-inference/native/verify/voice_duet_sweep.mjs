@@ -31,9 +31,9 @@
  * grid + the commands it would run, then exits.
  *
  *   bun packages/inference/verify/voice_duet_sweep.mjs \
- *     --model eliza-1-0_6b --turns 20 \
+ *     --model eliza-1-0_8b --turns 20 \
  *     --parallel 1,2 --draft-max 8,16 --ring-ms 160,200,240 \
- *     --out reports/porting/<date>/voice-duet-sweep-0_6b.csv
+ *     --out reports/porting/<date>/voice-duet-sweep-0_8b.csv
  */
 
 import { spawn } from "node:child_process";
@@ -58,7 +58,7 @@ const VOICE_DUET = path.join(
 
 function parseArgs(argv) {
   const out = {
-    model: "eliza-1-0_6b",
+    model: "eliza-1-0_8b",
     turns: 20,
     out: null,
     dryRun: false,
@@ -107,7 +107,7 @@ function parseArgs(argv) {
 
 const USAGE = `Usage: bun packages/inference/verify/voice_duet_sweep.mjs [options]
 
-  --model <id>            tier bundle (default eliza-1-0_6b)
+  --model <id>            tier bundle (default eliza-1-0_8b)
   --turns <N>             round-trips per cell (default 20)
   --out <path>            CSV output (default reports/porting/<date>/voice-duet-sweep-<model>.csv)
   --two-process           pass --two-process to voice-duet.mjs (1.7b RSS split)

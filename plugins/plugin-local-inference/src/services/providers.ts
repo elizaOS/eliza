@@ -23,7 +23,6 @@ import type {
 	ProviderMeta,
 	ProviderStatus,
 } from "@elizaos/shared";
-import { getDefaultAccountPool } from "@elizaos/app-core/account-pool";
 import { deviceBridge } from "./device-bridge";
 import { getDflashRuntimeStatus } from "./dflash-server";
 import { handlerRegistry } from "./handler-registry";
@@ -397,15 +396,39 @@ export const BUILT_IN_PROVIDERS: readonly ProviderDefinition[] = [
 	MISTRAL_PROVIDER,
 ];
 
-function apiKeyOrLinkedAccountState(
+interface LinkedAccountLike {
+	enabled?: boolean;
+	health?: string;
+}
+
+type OptionalAccountPoolModule = {
+	getDefaultAccountPool?: () => {
+		list?: (providerId: string) => LinkedAccountLike[];
+	};
+};
+
+async function listLinkedAccounts(providerId: string): Promise<LinkedAccountLike[]> {
+	try {
+		const dynamicImport = new Function("id", "return import(id)") as (
+			id: string,
+		) => Promise<OptionalAccountPoolModule>;
+		const mod = await dynamicImport("@elizaos/app-core/account-pool");
+		const pool = mod.getDefaultAccountPool?.();
+		return pool?.list?.(providerId) ?? [];
+	} catch {
+		return [];
+	}
+}
+
+async function apiKeyOrLinkedAccountState(
 	providerId: "deepseek-api" | "zai-api" | "moonshot-api",
 	envKeys: readonly string[],
-): ProviderEnableState {
+): Promise<ProviderEnableState> {
 	const hasEnv = envKeys.some((key) => process.env[key]?.trim());
 	if (hasEnv) return { enabled: true, reason: "API key set" };
-	const accounts = getDefaultAccountPool()
-		.list(providerId)
-		.filter((account) => account.enabled && account.health === "ok");
+	const accounts = (await listLinkedAccounts(providerId)).filter(
+		(account) => account.enabled && account.health === "ok",
+	);
 	if (accounts.length === 0) {
 		return { enabled: false, reason: "No API key or linked account" };
 	}
@@ -423,18 +446,18 @@ type SubscriptionProviderStatusId =
 	| "kimi-coding"
 	| "deepseek-coding";
 
-function subscriptionEnableState(
+async function subscriptionEnableState(
 	providerId: SubscriptionProviderStatusId,
-): ProviderEnableState {
+): Promise<ProviderEnableState> {
 	if (providerId === "deepseek-coding") {
 		return {
 			enabled: false,
 			reason: "Unavailable: no first-party coding subscription integration",
 		};
 	}
-	const accounts = getDefaultAccountPool()
-		.list(providerId)
-		.filter((account) => account.enabled && account.health === "ok");
+	const accounts = (await listLinkedAccounts(providerId)).filter(
+		(account) => account.enabled && account.health === "ok",
+	);
 	if (accounts.length === 0) {
 		const reason =
 			providerId === "gemini-cli"

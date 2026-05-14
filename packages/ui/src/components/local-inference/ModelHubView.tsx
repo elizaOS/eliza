@@ -8,6 +8,7 @@ import type {
   InstalledModel,
   ModelBucket,
 } from "../../api/client-local-inference";
+import { useRenderGuard } from "../../hooks/useRenderGuard";
 import { Button } from "../ui/button";
 import { DownloadProgress } from "./DownloadProgress";
 import {
@@ -59,6 +60,7 @@ export function ModelHubView({
   onRedownload,
   busy,
 }: ModelHubViewProps) {
+  useRenderGuard("ModelHubView");
   const grouped = useMemo(() => groupByBucket(catalog), [catalog]);
 
   return (

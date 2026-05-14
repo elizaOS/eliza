@@ -21,13 +21,13 @@ const MODELS_ROOT = path.join(
   "local-inference",
   "models",
 );
-const DEFAULT_BUNDLE = path.join(MODELS_ROOT, "eliza-1-0_6b.bundle");
+const DEFAULT_BUNDLE = path.join(MODELS_ROOT, "eliza-1-0_8b.bundle");
 const DEFAULT_TARGET = firstExisting(
-  path.join(DEFAULT_BUNDLE, "text", "eliza-1-0_6b-64k.gguf"),
-  path.join(DEFAULT_BUNDLE, "text", "eliza-1-0_6b-32k.gguf"),
+  path.join(DEFAULT_BUNDLE, "text", "eliza-1-0_8b-64k.gguf"),
+  path.join(DEFAULT_BUNDLE, "text", "eliza-1-0_8b-32k.gguf"),
 );
 const DEFAULT_DRAFTER = firstExisting(
-  path.join(DEFAULT_BUNDLE, "dflash", "drafter-0_6b.gguf"),
+  path.join(DEFAULT_BUNDLE, "dflash", "drafter-0_8b.gguf"),
 );
 const DEFAULT_BIN = path.join(
   process.env.ELIZA_STATE_DIR?.trim() || path.join(os.homedir(), ".eliza"),
@@ -118,7 +118,7 @@ function parseArgs(argv) {
           "Usage: node packages/inference/verify/dflash_drafter_runtime_smoke.mjs [options]",
           "",
           "Options:",
-          "  --target-model <path>          Target GGUF (default: local eliza-1-0_6b bundle)",
+          "  --target-model <path>          Target GGUF (default: local eliza-1-0_8b bundle)",
           "  --drafter-model <path>         DFlash drafter GGUF",
           "  --spec-binary <path>           llama-speculative-simple binary to test",
           "  --reference-binary <path>      Optional known-DFlash binary to compare loader errors",

@@ -1673,7 +1673,7 @@ export class LocalInferenceEngine {
 		}
 	}
 
-	async synthesizeSpeech(text: string): Promise<Uint8Array> {
+	async synthesizeSpeech(text: string, signal?: AbortSignal): Promise<Uint8Array> {
 		this.markActivity();
 		const bridge = this.requireVoiceBridge("synthesize speech");
 		if ((bridge.backend as { id?: string }).id === "stub") {
@@ -1682,7 +1682,7 @@ export class LocalInferenceEngine {
 				"[voice] Cannot synthesize speech with StubOmniVoiceBackend (it emits silence). Start voice with useFfiBackend:true or inject a real backend.",
 			);
 		}
-		return bridge.synthesizeTextToWav(text);
+		return bridge.synthesizeTextToWav(text, signal);
 	}
 
 	async prewarmVoicePhrases(

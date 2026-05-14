@@ -27,8 +27,10 @@ import { InMemoryDatabaseAdapter } from "../../core/src/database/inMemoryAdapter
 import { AgentRuntime } from "../../core/src/runtime";
 import { runWithStreamingContext } from "../../core/src/streaming-context";
 import { ModelType } from "../../core/src/types";
-import { PhraseChunker } from "../src/services/local-inference/voice/phrase-chunker";
-import type { AcceptedToken } from "../src/services/local-inference/voice/types";
+import {
+	type AcceptedToken,
+	PhraseChunker,
+} from "@elizaos/plugin-local-inference/services";
 import { PhraseChunkedTts } from "../src/services/phrase-chunked-tts";
 
 // ---------------------------------------------------------------------------

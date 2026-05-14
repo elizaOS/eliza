@@ -96,15 +96,10 @@ export type {
 } from "./planner-types";
 
 interface RawPlannerOutput {
+	action?: unknown;
+	parameters?: unknown;
 	thought?: unknown;
 	toolCalls?: unknown;
-	tools?: unknown;
-	actions?: unknown;
-	action?: unknown;
-	actionName?: unknown;
-	name?: unknown;
-	tool?: unknown;
-	function?: unknown;
 	messageToUser?: unknown;
 	text?: unknown;
 }
@@ -433,24 +428,9 @@ export async function runPlannerLoop(
 			};
 		}
 
-		let evaluator = await evaluateTrajectory(params, trajectory, iteration);
+		const evaluator = await evaluateTrajectory(params, trajectory, iteration);
 		trajectory.evaluatorOutputs.push(evaluator);
 		appendEvaluatorContextEvent(trajectory, evaluator, iteration);
-
-		// Repair pass (PR #7497): if FINISH after tool use without
-		// `messageToUser`, ask once more for a user-facing answer.
-		if (
-			evaluator.decision === "FINISH" &&
-			!getNonEmptyString(evaluator.messageToUser) &&
-			hasExecutedNonTerminalTool(trajectory)
-		) {
-			evaluator = await repairFinishWithoutUserMessage({
-				params,
-				trajectory,
-				iteration,
-				evaluator,
-			});
-		}
 
 		if (evaluator.decision === "FINISH") {
 			return {
@@ -667,28 +647,9 @@ export function parsePlannerOutput(raw: string | GenerateTextResult): {
 	}
 
 	const nativeToolCalls = normalizeToolCalls(raw.toolCalls);
-	if (nativeToolCalls.length > 0) {
-		return {
-			thought: undefined,
-			toolCalls: nativeToolCalls,
-			messageToUser: getNonEmptyString(raw.text),
-			raw: {
-				text: raw.text,
-				toolCalls: raw.toolCalls,
-			} as Record<string, unknown>,
-		};
-	}
-
-	if (typeof raw.text === "string" && raw.text.trim().length > 0) {
-		const fromText = parseJsonPlannerOutput(raw.text);
-		if (fromText.toolCalls.length > 0 || fromText.messageToUser) {
-			return fromText;
-		}
-	}
-
 	return {
 		thought: undefined,
-		toolCalls: [],
+		toolCalls: nativeToolCalls,
 		messageToUser: getNonEmptyString(raw.text),
 		raw: {
 			text: raw.text,
@@ -706,16 +667,6 @@ function parseJsonPlannerOutput(raw: string): {
 	const trimmed = raw.trim();
 	const parsed = parseJsonObject<RawPlannerOutput>(trimmed);
 	if (!parsed) {
-		const array = parseJsonArrayFromText(raw);
-		const arrayToolCalls = normalizeToolCalls(array);
-		if (arrayToolCalls.length > 0) {
-			return {
-				thought: undefined,
-				toolCalls: arrayToolCalls,
-				messageToUser: undefined,
-				raw: { toolCalls: array } as Record<string, unknown>,
-			};
-		}
 		return {
 			toolCalls: [],
 			messageToUser: getNonEmptyString(trimmed),
@@ -723,115 +674,15 @@ function parseJsonPlannerOutput(raw: string): {
 		};
 	}
 	const messageToUser = getNonEmptyString(parsed.messageToUser ?? parsed.text);
-	const rawToolCalls =
-		parsed.toolCalls ??
-		parsed.tools ??
-		parsed.actions ??
-		(parsed.action != null ||
-		parsed.actionName != null ||
-		parsed.name != null ||
-		parsed.tool != null ||
-		parsed.function != null
-			? parsed
-			: undefined);
-	const toolCalls = normalizeToolCalls(rawToolCalls);
-	if (toolCalls.length > 0 || messageToUser) {
-		return {
-			thought: typeof parsed.thought === "string" ? parsed.thought : undefined,
-			toolCalls,
-			messageToUser,
-			raw: parsed as Record<string, unknown>,
-		};
-	}
-
-	const array = parseJsonArrayFromText(raw);
-	const arrayToolCalls = normalizeToolCalls(array);
-	if (arrayToolCalls.length > 0) {
-		return {
-			thought: undefined,
-			toolCalls: arrayToolCalls,
-			messageToUser: undefined,
-			raw: { toolCalls: array } as Record<string, unknown>,
-		};
-	}
-
+	const toolCalls = normalizeToolCalls(parsed.toolCalls);
+	const bareActionCalls =
+		toolCalls.length === 0 ? normalizeBarePlannerAction(parsed) : [];
 	return {
 		thought: typeof parsed.thought === "string" ? parsed.thought : undefined,
-		toolCalls: [],
+		toolCalls: toolCalls.length > 0 ? toolCalls : bareActionCalls,
 		messageToUser,
 		raw: parsed as Record<string, unknown>,
 	};
-}
-
-function parseJsonArrayFromText(raw: string): unknown[] | null {
-	const trimmed = raw.trim();
-	if (!trimmed) {
-		return null;
-	}
-
-	const candidates: string[] = [];
-	const fullFence = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
-	candidates.push(fullFence?.[1]?.trim() ?? trimmed);
-
-	for (const match of trimmed.matchAll(/```(?:json)?\s*([\s\S]*?)\s*```/gi)) {
-		const candidate = match[1]?.trim();
-		if (candidate) {
-			candidates.push(candidate);
-		}
-	}
-
-	const arrayText = extractFirstJsonArray(trimmed);
-	if (arrayText) {
-		candidates.push(arrayText);
-	}
-
-	for (const candidate of [...new Set(candidates)]) {
-		try {
-			const parsed = JSON.parse(candidate);
-			if (Array.isArray(parsed)) {
-				return parsed;
-			}
-		} catch {
-			// Try the next candidate.
-		}
-	}
-	return null;
-}
-
-function extractFirstJsonArray(raw: string): string | null {
-	const start = raw.indexOf("[");
-	if (start < 0) return null;
-
-	let depth = 0;
-	let inString = false;
-	let escaped = false;
-	for (let index = start; index < raw.length; index++) {
-		const char = raw[index];
-		if (inString) {
-			if (escaped) {
-				escaped = false;
-			} else if (char === "\\") {
-				escaped = true;
-			} else if (char === '"') {
-				inString = false;
-			}
-			continue;
-		}
-		if (char === '"') {
-			inString = true;
-			continue;
-		}
-		if (char === "[") {
-			depth++;
-			continue;
-		}
-		if (char !== "]") continue;
-		depth--;
-		if (depth === 0) {
-			return raw.slice(start, index + 1);
-		}
-	}
-	return null;
 }
 
 async function callPlanner(params: {
@@ -1502,44 +1353,6 @@ function appendEvaluatorContextEvent(
 	});
 }
 
-async function repairFinishWithoutUserMessage(args: {
-	params: PlannerLoopParams;
-	trajectory: PlannerTrajectory;
-	iteration: number;
-	evaluator: EvaluatorOutput;
-}): Promise<EvaluatorOutput> {
-	const createdAt = Date.now();
-	args.params.runtime.logger?.warn?.(
-		{
-			iteration: args.iteration,
-			decision: args.evaluator.decision,
-			success: args.evaluator.success,
-		},
-		"Evaluator selected FINISH without a user-facing message; retrying evaluation",
-	);
-	args.trajectory.context = appendContextEvent(args.trajectory.context, {
-		id: `evaluation-missing-message:${args.iteration}:${createdAt}`,
-		type: "instruction",
-		source: "planner-loop",
-		createdAt,
-		content:
-			"The previous evaluator selected FINISH after tool use but did not include messageToUser. Re-evaluate and, if the task is complete, include a concise user-facing message grounded in the completed tool results. Do not paste raw tool transcripts, command banners, or internal logs unless the user explicitly asked for raw output.",
-		metadata: {
-			iteration: args.iteration,
-			decision: args.evaluator.decision,
-			success: args.evaluator.success,
-		},
-	});
-	const repaired = await evaluateTrajectory(
-		args.params,
-		args.trajectory,
-		args.iteration,
-	);
-	args.trajectory.evaluatorOutputs.push(repaired);
-	appendEvaluatorContextEvent(args.trajectory, repaired, args.iteration);
-	return repaired;
-}
-
 function appendTerminalPlannerOutputEvent(args: {
 	context: ContextObject;
 	iteration: number;
@@ -1805,6 +1618,27 @@ function normalizeToolCalls(value: unknown): PlannerToolCall[] {
 		}
 	}
 	return calls;
+}
+
+function normalizeBarePlannerAction(
+	parsed: RawPlannerOutput,
+): PlannerToolCall[] {
+	if (typeof parsed.action !== "string" || parsed.action.trim().length === 0) {
+		return [];
+	}
+	const call = normalizeToolCall(parsed);
+	if (!call) return [];
+	if (
+		call.params === undefined &&
+		"parameters" in parsed &&
+		(parsed.parameters === null ||
+			typeof parsed.parameters === "string" ||
+			typeof parsed.parameters === "number" ||
+			typeof parsed.parameters === "boolean")
+	) {
+		call.params = { parameters: parsed.parameters };
+	}
+	return [call];
 }
 
 /**

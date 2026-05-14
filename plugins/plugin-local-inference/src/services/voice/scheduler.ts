@@ -282,7 +282,7 @@ export class VoiceScheduler {
 		await Promise.all(all);
 	}
 
-	async synthesizeText(text: string): Promise<AudioChunk> {
+	async synthesizeText(text: string, signal?: AbortSignal): Promise<AudioChunk> {
 		const phrase: Phrase = {
 			id: this.nextStandalonePhraseId--,
 			text,
@@ -290,6 +290,10 @@ export class VoiceScheduler {
 			toIndex: 0,
 			terminator: "max-cap",
 		};
+		if (signal?.aborted) {
+			this.emitTtsCancel(phrase, "synthesis-cancelled");
+			throw new Error("[voice-scheduler] synthesis cancelled by abort signal");
+		}
 
 		const cached = this.phraseCache.get(text);
 		if (cached) {
@@ -321,6 +325,14 @@ export class VoiceScheduler {
 		});
 
 		const cancelSignal = { cancelled: false };
+		const abort = () => {
+			cancelSignal.cancelled = true;
+			this.cancelNativeTts();
+		};
+		if (signal?.aborted) {
+			abort();
+		}
+		signal?.addEventListener("abort", abort, { once: true });
 		const detach = this.bargeIn.attach({
 			onCancel: () => {
 				cancelSignal.cancelled = true;
@@ -359,6 +371,7 @@ export class VoiceScheduler {
 			return chunk;
 		} finally {
 			detach();
+			signal?.removeEventListener("abort", abort);
 		}
 	}
 

@@ -1,5 +1,5 @@
 import type http from "node:http";
-import { buildVoiceLatencyDevPayload } from "../services/local-inference/latency-trace";
+import { buildVoiceLatencyDevPayload } from "@elizaos/plugin-local-inference/services";
 import { ensureRouteAuthorized } from "./auth.ts";
 import {
   type CompatRuntimeState,

@@ -76,8 +76,8 @@ const RTX_3090: GpuProfile = {
   cuda_compute: "8.6",
   features: ["fp16", "bf16", "int8", "int4"],
   recommended_tiers: {
-    primary: "7b-q4",
-    secondary: "3b-q8",
+    primary: "eliza-1-9b",
+    secondary: "eliza-1-4b",
     heavy: null,
   },
   llama_cpp_flags: {
@@ -89,12 +89,12 @@ const RTX_3090: GpuProfile = {
   },
   dflash: {
     enabled: true,
-    drafter_tier: "0_8b",
+    drafter_tier: "eliza-1-0_8b",
     speculative_window: 5,
   },
   ctx_size_tokens: 32768,
   notes:
-    "24 GB GDDR6X. Comfortably fits 7B Q4_K_M with context. Use 3B Q8 for highest quality in 24 GB. DFlash enabled with 0.8B drafter.",
+    "24 GB GDDR6X. Best fit is Eliza-1 9B with 4B/2B/0.8B fallbacks. DFlash enabled with the 0.8B drafter.",
 };
 
 const RTX_4090: GpuProfile = {
@@ -104,8 +104,8 @@ const RTX_4090: GpuProfile = {
   cuda_compute: "8.9",
   features: ["fp16", "bf16", "int8", "int4", "fp8"],
   recommended_tiers: {
-    primary: "7b-q8",
-    secondary: "14b-q4",
+    primary: "eliza-1-27b",
+    secondary: "eliza-1-9b",
     heavy: null,
   },
   llama_cpp_flags: {
@@ -117,12 +117,12 @@ const RTX_4090: GpuProfile = {
   },
   dflash: {
     enabled: true,
-    drafter_tier: "0_8b",
+    drafter_tier: "eliza-1-2b",
     speculative_window: 6,
   },
   ctx_size_tokens: 65536,
   notes:
-    "24 GB GDDR6X, Ada Lovelace. FP8 available. Fits 7B Q8 fully; 14B Q4 with KV cache compression. Higher memory bandwidth than 3090.",
+    "24 GB GDDR6X, Ada Lovelace. FP8 available. Runs Eliza-1 27B with compressed KV and keeps 9B/4B as fast fallbacks.",
 };
 
 const RTX_5090: GpuProfile = {
@@ -132,9 +132,9 @@ const RTX_5090: GpuProfile = {
   cuda_compute: "12.0",
   features: ["fp16", "bf16", "int8", "int4", "fp8", "fp4"],
   recommended_tiers: {
-    primary: "14b-q8",
-    secondary: "27b-q4",
-    heavy: "27b-q8",
+    primary: "eliza-1-27b-256k",
+    secondary: "eliza-1-27b",
+    heavy: "eliza-1-9b",
   },
   llama_cpp_flags: {
     n_gpu_layers: 99,
@@ -145,12 +145,12 @@ const RTX_5090: GpuProfile = {
   },
   dflash: {
     enabled: true,
-    drafter_tier: "2b",
+    drafter_tier: "eliza-1-2b",
     speculative_window: 8,
   },
   ctx_size_tokens: 131072,
   notes:
-    "32 GB GDDR7, Blackwell. FP4 available. First consumer card to fit 27B at Q4. Native FP4 acceleration for speculative decoding.",
+    "32 GB GDDR7, Blackwell. FP4 available. Best fit is the 27B 256k bundle with 27B and 9B fallbacks.",
 };
 
 const H200: GpuProfile = {
@@ -160,9 +160,9 @@ const H200: GpuProfile = {
   cuda_compute: "9.0",
   features: ["fp16", "bf16", "int8", "int4", "fp8"],
   recommended_tiers: {
-    primary: "27b-q8",
-    secondary: "27b-f16",
-    heavy: "27b-256k",
+    primary: "eliza-1-27b-1m",
+    secondary: "eliza-1-27b-256k",
+    heavy: "eliza-1-27b",
   },
   llama_cpp_flags: {
     n_gpu_layers: 99,
@@ -173,12 +173,12 @@ const H200: GpuProfile = {
   },
   dflash: {
     enabled: true,
-    drafter_tier: "2b",
+    drafter_tier: "eliza-1-4b",
     speculative_window: 10,
   },
   ctx_size_tokens: 262144,
   notes:
-    "141 GB HBM3e. SXM5 form factor. Fits 27B at full F16. NUMA-aware for multi-socket SXM. DFlash with 2B drafter for high throughput.",
+    "141 GB HBM3e. SXM5 form factor. Best fit is the 27B 1M bundle in the single-GPU profile. DFlash uses the 4B drafter for high throughput.",
 };
 
 // ---------------------------------------------------------------------------

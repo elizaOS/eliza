@@ -35,7 +35,7 @@ export type TaskSelection =
   | `action:${string}`
   | "action:all";
 
-export interface ProgressEvent {
+interface ProgressEvent {
   taskId: TaskName;
   modeId: ModeName;
   cases: number;
@@ -45,7 +45,7 @@ export interface ProgressEvent {
  * Resolve a task selection into the concrete `TaskName` list. `"all"` fans out
  * to the full set: should-respond + planner + every action-fixture group.
  */
-export function expandTaskSelection(selections: TaskSelection[]): TaskName[] {
+function expandTaskSelection(selections: TaskSelection[]): TaskName[] {
   const out = new Set<TaskName>();
   for (const sel of selections) {
     if (sel === "all") {

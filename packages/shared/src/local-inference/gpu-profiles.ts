@@ -18,7 +18,8 @@
  * them straight through to `--cache-type-k` / `--cache-type-v`.
  *
  * The active mobile/local release exposes Qwen3.5-backed Eliza-1 0_8b, 2b,
- * and 4b tiers, with modeled future 9b/27b variants for larger cards.
+ * 4b, 9b, and 27b tiers, with larger cards recommended toward the biggest
+ * installed bundle that leaves memory headroom.
  */
 
 import type { Eliza1TierId } from "./catalog.js";
@@ -104,7 +105,7 @@ export interface GpuProfile {
 /**
  * RTX 3090 — Ampere, 24 GiB, no FP8.
  *
- * Best current release fit: Eliza-1 2B with Qwen3.5 0_8B as fallback.
+ * Best current release fit: Eliza-1 9B with 4B/2B/0.8B fallbacks.
  * Flash-attn helps Ampere meaningfully.
  */
 const RTX_3090: GpuProfile = {
@@ -140,7 +141,7 @@ const RTX_3090: GpuProfile = {
 /**
  * RTX 4090 — Ada Lovelace, 24 GiB, FP8 (no flash-attn-FP8 yet).
  *
- * Best current release fit: Eliza-1 2B with Qwen3.5 0_8B as fallback.
+ * Best current release fit: Eliza-1 27B with 9B/4B/2B/0.8B fallbacks.
  */
 const RTX_4090: GpuProfile = {
   id: "rtx-4090",
@@ -174,7 +175,7 @@ const RTX_4090: GpuProfile = {
 /**
  * RTX 5090 — Blackwell, 32 GiB, FP8/FP4 first-class.
  *
- * Best current release fit: Eliza-1 2B. Blackwell sm_120 is new enough that
+ * Best current release fit: Eliza-1 27B-256k. Blackwell sm_120 is new enough that
  * the Polar/QJL kernels may not be pre-built — the runtime should probe
  * `CAPABILITIES.json` and surface a structured error rather than silently
  * falling back.
@@ -212,7 +213,7 @@ const RTX_5090: GpuProfile = {
 /**
  * H200 — Hopper, 141 GiB HBM3e, 4.8 TB/s.
  *
- * Best current release fit: Eliza-1 2B. H200 still runs the full kernel
+ * Best current release fit: Eliza-1 27B-1M. H200 still runs the full kernel
  * verification recipe before defaulting to the maximum-context bundle.
  */
 const H200: GpuProfile = {

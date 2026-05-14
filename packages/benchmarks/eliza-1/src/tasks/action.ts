@@ -45,7 +45,7 @@ export function loadActionFixtures(): ActionFixture[] {
  * `action:<NAME>` task per group; the bench's `--task` filter can target a
  * specific action.
  */
-export function groupFixturesByAction(
+function groupFixturesByAction(
 	fixtures: ActionFixture[],
 ): Map<string, ActionFixture[]> {
 	const groups = new Map<string, ActionFixture[]>();

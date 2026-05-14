@@ -385,12 +385,21 @@ export function composeBenchmarkPrompt(params: {
   image?: unknown;
 }): string {
   const segments: string[] = [params.text.trim()];
+  const benchmark =
+    typeof params.context?.benchmark === "string"
+      ? params.context.benchmark
+      : undefined;
+  const isLocaBenchmark =
+    benchmark === "loca_bench" || benchmark === "loca-bench";
 
   if (params.context && Object.keys(params.context).length > 0) {
+    const contextForPrompt = isLocaBenchmark
+      ? compactLocaContextForPrompt(params.context)
+      : params.context;
     segments.push(
       [
         "BENCHMARK CONTEXT (authoritative):",
-        JSON.stringify(params.context, null, 2),
+        JSON.stringify(contextForPrompt, null, 2),
       ].join("\n"),
     );
   }
@@ -401,13 +410,18 @@ export function composeBenchmarkPrompt(params: {
     );
   }
 
-  const benchmark =
-    typeof params.context?.benchmark === "string"
-      ? params.context.benchmark
-      : undefined;
   if (benchmark === "action-calling") {
     segments.push(
       "This is an action-calling benchmark. Use the available benchmark tool through Eliza's normal native action/function-calling path. Do not serialize tool calls in prose, XML, markdown, or JSON text.",
+    );
+  } else if (isLocaBenchmark) {
+    segments.push(
+      [
+        "This is LOCA-bench. If work remains, emit exactly one benchmark tool call; progress text is invalid.",
+        "Use actions: [\"BENCHMARK_ACTION\"] with params.BENCHMARK_ACTION.tool_name set to one of the available LOCA tool names and params.BENCHMARK_ACTION.arguments set to that tool's JSON arguments.",
+        "For example: {\"actions\":[\"BENCHMARK_ACTION\"],\"text\":\"\",\"params\":{\"BENCHMARK_ACTION\":{\"tool_name\":\"filesystem_list_directory\",\"arguments\":{\"path\":\"source_data\"}}}}",
+        "Only use REPLY after the requested output files have been written.",
+      ].join(" "),
     );
   } else {
     segments.push(
@@ -416,6 +430,38 @@ export function composeBenchmarkPrompt(params: {
   }
 
   return segments.join("\n\n");
+}
+
+function compactLocaContextForPrompt(
+  context: Record<string, unknown>,
+): Record<string, unknown> {
+  const toolNames = Array.isArray(context.tools)
+    ? context.tools
+        .map((tool) => {
+          if (!tool || typeof tool !== "object") return "";
+          const record = tool as Record<string, unknown>;
+          const fn =
+            record.function && typeof record.function === "object"
+              ? (record.function as Record<string, unknown>)
+              : undefined;
+          const name = fn?.name ?? record.name;
+          return typeof name === "string" ? name : "";
+        })
+        .filter(Boolean)
+    : [];
+
+  return {
+    benchmark: context.benchmark,
+    task_id: context.task_id ?? context.taskId,
+    taskId: context.taskId ?? context.task_id,
+    session_id: context.session_id,
+    tool_names: toolNames,
+    tool_schema_count: toolNames.length,
+    system_prompt: context.system_prompt,
+    temperature: context.temperature,
+    top_p: context.top_p,
+    max_tokens: context.max_tokens ?? context.max_completion_tokens,
+  };
 }
 
 export function coerceActions(value: unknown): string[] {

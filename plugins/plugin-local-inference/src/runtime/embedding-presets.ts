@@ -1,57 +1,78 @@
-import {
-	detectEmbeddingTier,
-	EMBEDDING_PRESETS as upstreamEmbeddingPresets,
-} from "@elizaos/agent";
+import os from "node:os";
 
-export { detectEmbeddingTier };
+export type EmbeddingTier = "fallback" | "standard" | "performance";
 
-/**
- * Upstream presets plus a local override of the `performance` preset so the
- * large E5-Mistral **embedding** GGUF is not mistaken for a chat LLM (the
- * filename contains `instruct` from the E5 family).
- *
- * CYCLE-BREAK NOTE: an `agent ↔ app-core` ESM cycle was crashing the bench
- * server boot with `Cannot access 'upstreamEmbeddingPresets' before
- * initialization` (TDZ at the module-load eager spread). Defer the spread
- * until first read via a lazy-init Proxy. By the time anything READS
- * `EMBEDDING_PRESETS.fallback`, the upstream module has fully initialized,
- * so the spread succeeds.
- */
-let _embeddingPresetsCache: typeof upstreamEmbeddingPresets | null = null;
-function _computeEmbeddingPresets(): typeof upstreamEmbeddingPresets {
-	if (_embeddingPresetsCache) return _embeddingPresetsCache;
-	_embeddingPresetsCache = {
-		...upstreamEmbeddingPresets,
-		performance: {
-			...upstreamEmbeddingPresets.performance,
-			label: "Efficient (compact text embedding)",
-			description:
-				"384-dim compact text-embedding model (~133MB). Powers memory / knowledge vectors only — not chat. " +
-				"The framework keeps the default SQL-safe and fast instead of auto-selecting a multi-GB embedding GGUF.",
-		},
-	} as typeof upstreamEmbeddingPresets;
-	return _embeddingPresetsCache;
+export interface EmbeddingPreset {
+	tier: EmbeddingTier;
+	label: string;
+	description: string;
+	model: string;
+	modelRepo: string;
+	dimensions: number;
+	gpuLayers: "auto" | 0;
+	contextSize: number;
+	downloadSizeMB: number;
 }
 
-export const EMBEDDING_PRESETS: typeof upstreamEmbeddingPresets = new Proxy(
-	{} as typeof upstreamEmbeddingPresets,
-	{
-		get(_t, prop) {
-			return Reflect.get(_computeEmbeddingPresets(), prop);
-		},
-		has(_t, prop) {
-			return Reflect.has(_computeEmbeddingPresets(), prop);
-		},
-		ownKeys() {
-			return Reflect.ownKeys(_computeEmbeddingPresets());
-		},
-		getOwnPropertyDescriptor(_t, prop) {
-			return Reflect.getOwnPropertyDescriptor(_computeEmbeddingPresets(), prop);
-		},
-	},
-);
+const COMPACT_ELIZA_1_EMBEDDING = {
+	model: "text/eliza-1-0_8b-32k.gguf",
+	modelRepo: "elizaos/eliza-1-0_8b",
+	dimensions: 1024,
+	contextSize: 32768,
+	downloadSizeMB: 512,
+} as const;
 
-export function detectEmbeddingPreset() {
-	const tier = detectEmbeddingTier();
-	return _computeEmbeddingPresets()[tier];
+export const EMBEDDING_PRESETS: Record<EmbeddingTier, EmbeddingPreset> = {
+	fallback: {
+		tier: "fallback",
+		label: "Efficient (CPU)",
+		description:
+			"Eliza-1 lite local embeddings for Intel Macs and low-RAM machines",
+		model: COMPACT_ELIZA_1_EMBEDDING.model,
+		modelRepo: COMPACT_ELIZA_1_EMBEDDING.modelRepo,
+		dimensions: COMPACT_ELIZA_1_EMBEDDING.dimensions,
+		gpuLayers: 0,
+		contextSize: COMPACT_ELIZA_1_EMBEDDING.contextSize,
+		downloadSizeMB: COMPACT_ELIZA_1_EMBEDDING.downloadSizeMB,
+	},
+	standard: {
+		tier: "standard",
+		label: "Efficient (Metal GPU)",
+		description: "Eliza-1 lite local embeddings with Metal acceleration",
+		model: COMPACT_ELIZA_1_EMBEDDING.model,
+		modelRepo: COMPACT_ELIZA_1_EMBEDDING.modelRepo,
+		dimensions: COMPACT_ELIZA_1_EMBEDDING.dimensions,
+		gpuLayers: "auto",
+		contextSize: COMPACT_ELIZA_1_EMBEDDING.contextSize,
+		downloadSizeMB: COMPACT_ELIZA_1_EMBEDDING.downloadSizeMB,
+	},
+	performance: {
+		tier: "performance",
+		label: "Efficient (compact text embedding)",
+		description:
+			"1024-dim compact Eliza-1 text embedding model. Powers memory / knowledge vectors only; not chat. " +
+			"The framework keeps the default SQL-safe and fast instead of auto-selecting a multi-GB embedding GGUF.",
+		model: COMPACT_ELIZA_1_EMBEDDING.model,
+		modelRepo: COMPACT_ELIZA_1_EMBEDDING.modelRepo,
+		dimensions: COMPACT_ELIZA_1_EMBEDDING.dimensions,
+		gpuLayers: "auto",
+		contextSize: COMPACT_ELIZA_1_EMBEDDING.contextSize,
+		downloadSizeMB: COMPACT_ELIZA_1_EMBEDDING.downloadSizeMB,
+	},
+};
+
+const BYTES_PER_GB = 1024 ** 3;
+
+export function detectEmbeddingTier(): EmbeddingTier {
+	const totalRamGB = Math.round(os.totalmem() / BYTES_PER_GB);
+	const isMac = process.platform === "darwin";
+	const isAppleSilicon = isMac && process.arch === "arm64";
+
+	if (!isAppleSilicon || totalRamGB <= 8) return "fallback";
+	if (totalRamGB >= 128) return "performance";
+	return "standard";
+}
+
+export function detectEmbeddingPreset(): EmbeddingPreset {
+	return EMBEDDING_PRESETS[detectEmbeddingTier()];
 }

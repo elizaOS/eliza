@@ -408,6 +408,8 @@ function shouldBridgeFetchUrl(url: URL): boolean {
 
 function localAgentUrlForFetch(url: URL): string {
   if (isMobileLocalAgentUrl(url.toString())) return url.toString();
+  // Internal URL identity only. iOS never opens this as a TCP socket; the
+  // request is intercepted below and dispatched over ITTP/Capacitor IPC.
   return `http://127.0.0.1:31337${url.pathname}${url.search}`;
 }
 

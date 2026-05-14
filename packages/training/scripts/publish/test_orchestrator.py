@@ -107,6 +107,12 @@ def _build_fixture_bundle(
     _write(
         bundle / "tts" / "omnivoice-tokenizer-Q4_K_M.gguf", b"\x00tts-tok\x00"
     )
+    _write(bundle / "tts" / "kokoro" / "model_q4.onnx", b"\x00kokoro\x00")
+    _write(bundle / "tts" / "kokoro" / "tokenizer.json", b"{}")
+    _write(
+        bundle / "tts" / "kokoro" / "voices" / "af_bella.bin",
+        b"\x00kokoro-voice\x00",
+    )
     _write(bundle / "asr" / "asr.gguf", b"\x00asr\x00")
     _write(bundle / "vad" / "eliza-1-vad.onnx", b"\x00vad\x00")
     _write(bundle / "vision" / f"mmproj-{tier}.gguf", b"\x00mmproj\x00")
@@ -331,7 +337,7 @@ def _write_release_evidence(
 ) -> None:
     def rels(subdir: str) -> list[str]:
         base = bundle / subdir
-        return sorted(str(p.relative_to(bundle)) for p in base.iterdir() if p.is_file())
+        return sorted(str(p.relative_to(bundle)) for p in base.rglob("*") if p.is_file())
 
     evidence: dict[str, Any] = {
         "schemaVersion": 1,
@@ -596,12 +602,12 @@ def test_missing_vad_model_fails(tmp_path: Path) -> None:
     assert rc != EXIT_OK
 
 
-def test_missing_frozen_voice_tokenizer_fails(tmp_path: Path) -> None:
+def test_stale_omnivoice_checksum_fails_release_evidence(tmp_path: Path) -> None:
     bundle = _build_fixture_bundle(tmp_path)
     (bundle / "tts" / "omnivoice-tokenizer-Q4_K_M.gguf").unlink()
     metal = _metal_report(tmp_path)
     rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
-    assert rc == EXIT_MISSING_FILE
+    assert rc == EXIT_RELEASE_EVIDENCE_FAIL
 
 
 def test_missing_release_evidence_fails_in_dry_run(tmp_path: Path) -> None:

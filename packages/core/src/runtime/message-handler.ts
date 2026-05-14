@@ -37,18 +37,11 @@ export const SIMPLE_CONTEXT_ID = "simple";
 /**
  * Parse a HANDLE_RESPONSE payload into the internal {@link MessageHandlerResult}.
  *
- * Accepts two on-the-wire shapes:
- *  - the canonical flat envelope `{ shouldRespond, thought?, replyText, contexts,
- *    contextSlices?, candidateActions?, parentActionHints?, requiresTool?, extract? }`
- *    (what Eliza-1 / the current `HANDLE_RESPONSE_SCHEMA` emit), and
- *  - the legacy nested form `{ processMessage, thought, plan:{ contexts, reply,
- *    requiresTool?, simple?, ... }, extract? }` (older trajectories, older tool
- *    callers).
- *
- * Mapping: `shouldRespond`↔`processMessage`, `replyText`↔`plan.reply`,
- * `contexts`↔`plan.contexts`. `plan.simple === true` (or root `simple === true`)
- * with no contexts folds into `contexts: ["simple"]`. The internal result still
- * carries the `plan` sub-object so the rest of the message pipeline is unchanged.
+ * Expects the canonical flat envelope `{ shouldRespond, thought?, replyText,
+ * contexts, contextSlices?, candidateActions?, parentActionHints?,
+ * requiresTool?, extract? }` (what Eliza-1 / the current `HANDLE_RESPONSE_SCHEMA`
+ * emit). The internal result still carries the `plan` sub-object so the rest of
+ * the message pipeline is unchanged.
  */
 export function parseMessageHandlerOutput(
 	raw: string,
@@ -58,55 +51,17 @@ export function parseMessageHandlerOutput(
 		return null;
 	}
 
-	// Flat envelope keeps its hint/control fields at the top level; legacy
-	// callers nest them under `plan`. Read from `plan` when present, else root.
-	const legacyPlan =
-		parsed.plan &&
-		typeof parsed.plan === "object" &&
-		!Array.isArray(parsed.plan)
-			? (parsed.plan as Record<string, unknown>)
-			: undefined;
-	const fields = legacyPlan ?? parsed;
-	const processMessage = normalizeMessageHandlerAction(
-		parsed.shouldRespond ?? parsed.processMessage ?? parsed.action,
-	);
-	const rawContexts = Array.isArray(fields.contexts)
-		? fields.contexts.map((context) => String(context).trim()).filter(Boolean)
+	const processMessage = normalizeMessageHandlerAction(parsed.shouldRespond);
+	const contexts = Array.isArray(parsed.contexts)
+		? parsed.contexts.map((context) => String(context).trim()).filter(Boolean)
 		: [];
-	// Canonical field is `replyText`; legacy nested form used `plan.reply`.
-	const replyRaw =
-		typeof parsed.replyText === "string"
-			? parsed.replyText
-			: typeof fields.reply === "string"
-				? (fields.reply as string)
-				: typeof fields.replyText === "string"
-					? (fields.replyText as string)
-					: undefined;
-	const reply = replyRaw;
+	const reply =
+		typeof parsed.replyText === "string" ? parsed.replyText : undefined;
 	const requiresTool =
-		typeof fields.requiresTool === "boolean" ? fields.requiresTool : undefined;
-	// back-compat: legacy trajectories emitted `plan.simple` / root `simple`
-	// before the contexts-array unification. The only *emitting* path for the
-	// simple-vs-planning signal today is `contexts: ["simple"]` (no `simple`
-	// field exists in the field-registry schema or `HANDLE_RESPONSE_SCHEMA`);
-	// this read stays solely to decode older fixtures/trajectories.
-	const simple =
-		typeof fields.simple === "boolean"
-			? (fields.simple as boolean)
-			: typeof (parsed as { simple?: unknown }).simple === "boolean"
-				? ((parsed as { simple?: boolean }).simple as boolean)
-				: undefined;
-	const contextSlices = normalizeStringHints(fields.contextSlices, 12);
-	const candidateActions = normalizeStringHints(fields.candidateActions, 12);
-	const parentActionHints = normalizeStringHints(fields.parentActionHints, 6);
-
-	// back-compat: legacy `simple === true` with empty contexts folds to
-	// `["simple"]`. Current callers emit `contexts: ["simple"]` directly — this
-	// is the single emitting path for the simple-vs-planning signal.
-	const contexts =
-		rawContexts.length === 0 && simple === true
-			? [SIMPLE_CONTEXT_ID]
-			: rawContexts;
+		typeof parsed.requiresTool === "boolean" ? parsed.requiresTool : undefined;
+	const contextSlices = normalizeStringHints(parsed.contextSlices, 12);
+	const candidateActions = normalizeStringHints(parsed.candidateActions, 12);
+	const parentActionHints = normalizeStringHints(parsed.parentActionHints, 6);
 
 	const extract = parseExtract(parsed.extract);
 
@@ -118,16 +73,13 @@ export function parseMessageHandlerOutput(
 	const planningContexts = contexts.filter(
 		(context) => context !== SIMPLE_CONTEXT_ID,
 	);
-	const willPlan =
-		simple !== true &&
-		(planningContexts.length > 0 || candidateActions.length > 0);
+	const willPlan = planningContexts.length > 0 || candidateActions.length > 0;
 	const sanitizedReply = willPlan && looksLikeRefusal(reply) ? "" : reply;
 
 	const normalizedPlan: V5MessageHandlerOutput["plan"] = {
 		contexts,
 		reply: sanitizedReply,
 		...(requiresTool !== undefined ? { requiresTool } : {}),
-		...(simple !== undefined ? { simple } : {}),
 	};
 	if (contextSlices.length > 0) {
 		normalizedPlan.contextSlices = contextSlices;
@@ -233,12 +185,8 @@ export function routeMessageHandlerOutput(
 		return { type: "stopped", output };
 	}
 
-	const legacyContexts = (output as { contexts?: AgentContext[] }).contexts;
-	const allContexts = [...(output.plan?.contexts ?? legacyContexts ?? [])];
+	const allContexts = [...(output.plan?.contexts ?? [])];
 	const requiresTool = output.plan?.requiresTool === true;
-	const explicitlyNonSimple =
-		output.plan?.simple === false ||
-		(output as { simple?: unknown }).simple === false;
 
 	// `simple` is the shortcut marker. If it is the only context (or contexts
 	// is empty), Stage 1 owns the reply and we never enter the planner — unless
@@ -248,7 +196,7 @@ export function routeMessageHandlerOutput(
 		(context) => context !== SIMPLE_CONTEXT_ID,
 	);
 
-	if ((requiresTool || explicitlyNonSimple) && nonSimpleContexts.length === 0) {
+	if (requiresTool && nonSimpleContexts.length === 0) {
 		return {
 			type: "planning_needed",
 			output,

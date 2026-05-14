@@ -50,6 +50,41 @@ interface CannedResponse {
 	body: unknown;
 }
 
+function stage1Response(fields: {
+	shouldRespond?: "RESPOND" | "IGNORE" | "STOP";
+	thought?: string;
+	contexts?: string[];
+	intents?: string[];
+	candidateActionNames?: string[];
+	replyText?: string;
+	facts?: string[];
+	relationships?: unknown[];
+	addressedTo?: string[];
+	extra?: Record<string, unknown>;
+}) {
+	return {
+		text: "",
+		toolCalls: [
+			{
+				id: "handle-response-1",
+				name: "HANDLE_RESPONSE",
+				arguments: {
+					shouldRespond: fields.shouldRespond ?? "RESPOND",
+					thought: fields.thought ?? "",
+					contexts: fields.contexts ?? [],
+					intents: fields.intents ?? [],
+					candidateActionNames: fields.candidateActionNames ?? [],
+					replyText: fields.replyText ?? "",
+					facts: fields.facts ?? [],
+					relationships: fields.relationships ?? [],
+					addressedTo: fields.addressedTo ?? [],
+					...(fields.extra ?? {}),
+				},
+			},
+		],
+	};
+}
+
 function createResponseHandlerFieldRegistry(): ResponseHandlerFieldRegistry {
 	const responseHandlerFieldRegistry = new ResponseHandlerFieldRegistry();
 	for (const evaluator of BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS) {
@@ -238,9 +273,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 				// Stage 1: messageHandler — RESPOND with contexts → planning path
 				{
 					expectModelType: ModelType.RESPONSE_HANDLER,
-					body: JSON.stringify({
-						action: "RESPOND",
-						simple: false,
+					body: stage1Response({
 						contexts: ["web"],
 						thought: "User wants a web search; web context applies.",
 					}),
@@ -448,9 +481,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 			responses: [
 				{
 					expectModelType: ModelType.RESPONSE_HANDLER,
-					body: JSON.stringify({
-						action: "RESPOND",
-						simple: false,
+					body: stage1Response({
 						contexts: ["general"],
 						thought: "Try the action.",
 					}),

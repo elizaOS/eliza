@@ -98,15 +98,13 @@ export interface KvGeometry {
  * Fallback per-token KV estimate when the manifest doesn't carry an explicit
  * figure. Order-of-magnitude only: QJL K-cache is ~1 bit/coord + a bf16 norm,
  * Polar V-cache is ~4 bits/coord + per-block norms, summed over the
- * full-attention layers. For Qwen3.5/3.6-class geometry that lands roughly at
+ * full-attention layers. For Qwen3.5-class geometry that lands roughly at
  * the table below (bytes/token across the whole cache). These are the figures
  * the catalog's per-tier `ramBudgetMb` was sized against.
  */
 const QUANTIZED_KV_BYTES_PER_TOKEN_BY_PARAMS: Readonly<Record<string, number>> =
 	{
-		"0.6B": 1_200,
 		"0.8B": 1_400,
-		"1.7B": 2_200,
 		"2B": 2_400,
 		"4B": 4_800,
 		"9B": 9_000,

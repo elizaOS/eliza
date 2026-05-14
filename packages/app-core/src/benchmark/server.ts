@@ -384,16 +384,13 @@ export async function startBenchmarkServer() {
     "@elizaos/plugin-elizacloud", // Requires elizaOS cloud auth, conflicts with local LLM
   ]);
 
-  // Skip `@elizaos/plugin-local-inference` by default in benchmark mode:
-  // - It downloads a ~500MB GGUF from `huggingface.co/elizaos/eliza-1-0_6b`
-  //   on first `TEXT_EMBEDDING` call. The repo is gated/private, so every turn
-  //   spams a 401 from HuggingFace.
-  // - Benchmarks don't score on semantic retrieval, so a deterministic
-  //   zero-vector handler is a fine stand-in.
-  // - Opt-out by setting `ELIZA_BENCH_SKIP_EMBEDDING=0` (e.g. for a benchmark
-  //   that genuinely depends on real embeddings).
+  // Local-inference stays enabled by default in benchmark mode so embedding,
+  // memory, and retrieval behavior remain representative of the Eliza-1 stack.
+  // A zero-vector stand-in is allowed only as an explicit diagnostic escape
+  // hatch, and logs loudly because those runs are not release evidence.
   const skipEmbeddingPlugin =
-    (process.env.ELIZA_BENCH_SKIP_EMBEDDING ?? "1") !== "0";
+    process.env.ELIZA_BENCH_ALLOW_STUB_EMBEDDING === "1" ||
+    process.env.ELIZA_BENCH_SKIP_EMBEDDING === "1";
   if (skipEmbeddingPlugin) {
     skipPlugins.add("@elizaos/plugin-local-inference");
   }
@@ -489,21 +486,19 @@ export async function startBenchmarkServer() {
     );
   }
 
-  // Register a zero-vector TEXT_EMBEDDING stand-in when local-embedding is
-  // skipped. The runtime calls `useModel(TEXT_EMBEDDING, ...)` for every
+  // Register a zero-vector TEXT_EMBEDDING stand-in only when explicitly
+  // requested. The runtime calls `useModel(TEXT_EMBEDDING, ...)` for every
   // persisted memory; without ANY handler, those calls throw and abort the
-  // turn. The benchmarks don't score retrieval, so a deterministic
-  // 1024-dim zero vector is the right stub. Dimensions match the local-
-  // embedding default (eliza-1-0_6b → 1024) so downstream code that
-  // assumes that shape (vector columns sized at boot) still works.
+  // turn. This path is diagnostic-only because it does not measure real
+  // Eliza-1 retrieval behavior.
   if (skipEmbeddingPlugin) {
     const EMBEDDING_DIMENSIONS = 1024;
     const benchEmbeddingPlugin: Plugin = {
       name: "@elizaos/bench-stub-embedding",
       description:
         "Benchmark-mode zero-vector TEXT_EMBEDDING handler. Replaces " +
-        "@elizaos/plugin-local-inference so we never download the gated " +
-        "HuggingFace GGUF on every turn.",
+        "@elizaos/plugin-local-inference only when " +
+        "ELIZA_BENCH_ALLOW_STUB_EMBEDDING=1 is set.",
       // Higher than local-embedding's `priority: 10` so we win even if a
       // CORE_PLUGINS race were to register a competing handler later.
       priority: 100,
@@ -513,9 +508,9 @@ export async function startBenchmarkServer() {
       },
     };
     plugins.push(toPlugin(benchEmbeddingPlugin, "bench-stub-embedding"));
-    elizaLogger.info(
-      `[bench] Registered zero-vector TEXT_EMBEDDING stub (dim=${EMBEDDING_DIMENSIONS}); ` +
-        "set ELIZA_BENCH_SKIP_EMBEDDING=0 to use @elizaos/plugin-local-inference instead.",
+    elizaLogger.warn(
+      `[bench] Registered zero-vector TEXT_EMBEDDING stand-in (dim=${EMBEDDING_DIMENSIONS}, standIn=true); ` +
+        "this run is not valid release evidence. Unset ELIZA_BENCH_ALLOW_STUB_EMBEDDING and ELIZA_BENCH_SKIP_EMBEDDING to use @elizaos/plugin-local-inference.",
     );
   }
 

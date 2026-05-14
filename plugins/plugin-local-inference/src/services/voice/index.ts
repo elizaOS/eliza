@@ -77,6 +77,7 @@ export {
 	type VoiceTurnSignal,
 } from "./eot-classifier";
 export { VoiceStartupError } from "./errors";
+export * from "./ffi-bindings";
 export {
 	type ArmedResources,
 	type TextResources,

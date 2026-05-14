@@ -3,7 +3,7 @@
  * Two-agents-talking-endlessly voice harness for Eliza-1 (`bun run voice:duet`).
  *
  * Agent A and agent B are two `LocalInferenceEngine` instances on the **same
- * tier bundle** (`eliza-1-0_6b` by default, then `eliza-1-1_7b`) but with
+ * tier bundle** (`eliza-1-0_8b` by default, then `eliza-1-2b`) but with
  * **different characters** — A's `replyText` → A's OmniVoice TTS →
  * `InMemoryAudioSink`-shaped `DuetSink` (24 kHz → 16 kHz) → a ring →
  * B's `PushMicSource` → B's VAD + streaming ASR → B's `VoiceTurnController`
@@ -17,7 +17,7 @@
  * reduced-optimization fallback (`MILADY_LOCAL_ALLOW_STOCK_KV=1`) only where a
  * backend genuinely can't dispatch a §3 kernel.
  *
- * `--two-process` (recommended for `eliza-1-1_7b`, RSS): runs agent B in a
+ * `--two-process` (recommended for `eliza-1-2b`, RSS): runs agent B in a
  * child process — the parent pumps A's PCM frames to the child as
  * newline-delimited base64 over stdio, the child runs B's full voice loop and
  * streams B's reply PCM frames back the same way. Same wiring, two address
@@ -31,7 +31,7 @@
  * Run:
  *   bun run voice:duet                                  # 0.6b, endless, in-process
  *   bun run voice:duet -- --turns 20 --report out.json  # 20 round-trips → bench JSON
- *   bun run voice:duet -- --model eliza-1-1_7b --two-process
+ *   bun run voice:duet -- --model eliza-1-2b --two-process
  *   bun run voice:duet -- --list-active                 # prereq report, then exit
  *   bun run voice:duet -- --platform-report             # cross-platform matrix, then exit
  *   bun run voice:duet -- --character-a a.json --character-b b.json --seed-text "hey there"
@@ -60,7 +60,7 @@ const __filename = fileURLToPath(import.meta.url);
 
 function parseArgs(argv) {
   const out = {
-    model: "eliza-1-0_6b",
+    model: "eliza-1-0_8b",
     turns: Infinity,
     characterA: null,
     characterB: null,
@@ -126,7 +126,7 @@ function intArg(s) {
 
 const USAGE = `Usage: bun run voice:duet [-- <options>]
 
-  --model <id>            tier bundle (default eliza-1-0_6b; also eliza-1-1_7b)
+  --model <id>            tier bundle (default eliza-1-0_8b; also eliza-1-2b)
   --turns <N>             stop after N round-trips (default: endless)
   --character-a <path>    agent A's Character JSON (default: a baked-in persona)
   --character-b <path>    agent B's Character JSON (default: a baked-in persona)
@@ -312,12 +312,12 @@ async function bootAgentRuntime({ roomId, character, modelId }) {
   });
   await runtime.initialize();
   const { ensureLocalInferenceHandler, prewarmResponseHandler } = await import(
-    "../src/runtime/ensure-local-inference-handler.ts"
+    "../../../plugins/plugin-local-inference/src/runtime/ensure-local-inference-handler.ts"
   );
   await ensureLocalInferenceHandler(runtime);
   try {
     const { setAssignment } = await import(
-      "../src/services/local-inference/assignments.ts"
+      "../../../plugins/plugin-local-inference/src/services/assignments.ts"
     );
     if (typeof setAssignment === "function") {
       await setAssignment("TEXT_SMALL", modelId);
@@ -418,7 +418,7 @@ async function bootAgentEngine({
 async function snapshotTrace(roomId) {
   try {
     const { voiceLatencyTracer } = await import(
-      "../src/services/local-inference/latency-trace.ts"
+      "../../../plugins/plugin-local-inference/src/services/latency-trace.ts"
     );
     const all = voiceLatencyTracer.recentTraces();
     const t =
@@ -433,7 +433,7 @@ async function snapshotTrace(roomId) {
 async function snapshotHistograms() {
   try {
     const { voiceLatencyTracer } = await import(
-      "../src/services/local-inference/latency-trace.ts"
+      "../../../plugins/plugin-local-inference/src/services/latency-trace.ts"
     );
     return typeof voiceLatencyTracer.histogramSummaries === "function"
       ? voiceLatencyTracer.histogramSummaries()
@@ -446,7 +446,7 @@ async function snapshotHistograms() {
 async function readDflashMetrics() {
   try {
     const { dflashLlamaServer } = await import(
-      "../src/services/local-inference/dflash-server.ts"
+      "../../../plugins/plugin-local-inference/src/services/dflash-server.ts"
     );
     if (typeof dflashLlamaServer.getMetrics === "function") {
       return await dflashLlamaServer.getMetrics();
@@ -461,7 +461,7 @@ async function readServerRssMb() {
   // Best-effort: scrape VmHWM from /proc/<pid>/status of the dflash server.
   try {
     const { getDflashRuntimeStatus } = await import(
-      "../src/services/local-inference/dflash-server.ts"
+      "../../../plugins/plugin-local-inference/src/services/dflash-server.ts"
     );
     const status = getDflashRuntimeStatus();
     const pid = status?.serverPid ?? status?.pid;
@@ -613,7 +613,7 @@ async function main() {
   );
 
   const { LocalInferenceEngine } = await import(
-    "../src/services/local-inference/engine.ts"
+    "../../../plugins/plugin-local-inference/src/services/engine.ts"
   );
   // Register the bundle in the local-inference registry if it isn't already
   // (the same step `voice-interactive.mjs` does before `engine.load`).
@@ -630,7 +630,7 @@ async function main() {
     process.exit(1);
   }
   const { listInstalledModels } = await import(
-    "../src/services/local-inference/registry.ts"
+    "../../../plugins/plugin-local-inference/src/services/registry.ts"
   );
   const installed = await listInstalledModels();
   const target = installed.find((m) => m.id === args.model);
@@ -646,17 +646,17 @@ async function main() {
   const bundlePath = target.path;
 
   const [{ PushMicSource }, vadMod] = await Promise.all([
-    import("../src/services/local-inference/voice/mic-source.ts"),
-    import("../src/services/local-inference/voice/vad.ts"),
+    import("../../../plugins/plugin-local-inference/src/services/voice/mic-source.ts"),
+    import("../../../plugins/plugin-local-inference/src/services/voice/vad.ts"),
   ]);
   const {
     markVoiceLatency,
     endVoiceLatencyTurn,
     voiceLatencyTracer,
     VoiceRunMetrics,
-  } = await import("../src/services/local-inference/latency-trace.ts");
+  } = await import("../../../plugins/plugin-local-inference/src/services/latency-trace.ts");
   const { parseExpressiveTags, asrEmotionToTag } = await import(
-    "../src/services/local-inference/voice/expressive-tags.ts"
+    "../../../plugins/plugin-local-inference/src/services/voice/expressive-tags.ts"
   );
 
   const charA = await loadCharacter(args.characterA, DEFAULT_CHARACTER_A);
@@ -1247,12 +1247,12 @@ async function runAsPeerB(args) {
       process.exit(1);
     }
     const { LocalInferenceEngine } = await import(
-      "../src/services/local-inference/engine.ts"
+      "../../../plugins/plugin-local-inference/src/services/engine.ts"
     );
     const { PushMicSource } = await import(
-      "../src/services/local-inference/voice/mic-source.ts"
+      "../../../plugins/plugin-local-inference/src/services/voice/mic-source.ts"
     );
-    const vadMod = await import("../src/services/local-inference/voice/vad.ts");
+    const vadMod = await import("../../../plugins/plugin-local-inference/src/services/voice/vad.ts");
     const { DuetSink } = await import("./lib/duet-bridge.mjs");
     const charB = await loadCharacter(args.characterB, DEFAULT_CHARACTER_B);
     const roomB = "voice-duet-B";

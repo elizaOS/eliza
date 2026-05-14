@@ -11,6 +11,21 @@
 			"import": "./dist/index.js",
 			"default": "./dist/index.js"
 		},
+		"./runtime": {
+			"types": "./dist/runtime/index.d.ts",
+			"import": "./dist/runtime/index.js",
+			"default": "./dist/runtime/index.js"
+		},
+		"./routes": {
+			"types": "./dist/routes/index.d.ts",
+			"import": "./dist/routes/index.js",
+			"default": "./dist/routes/index.js"
+		},
+		"./services": {
+			"types": "./dist/services/index.d.ts",
+			"import": "./dist/services/index.js",
+			"default": "./dist/services/index.js"
+		},
 		"./*.css": "./dist/*.css",
 		"./*": {
 			"import": "./dist/*.js",

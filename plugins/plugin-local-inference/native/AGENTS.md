@@ -347,7 +347,7 @@ catalogs drift from it — generate them.
 
 ```json
 {
-  "$schema": "https://elizalabs.ai/schemas/eliza-1.manifest.v1.json",
+  "$schema": "https://elizaos.ai/schemas/eliza-1.manifest.v1.json",
   "id": "eliza-1-4b",
   "tier": "4b",
   "version": "1.0.0",
