@@ -49,14 +49,19 @@ public class MobileAgentBridgePlugin: CAPPlugin, CAPBridgedPlugin {
         self.session = session
         self.task = task
         task.resume()
+        receiveLoop()
         sendFrame([
             "type": "tunnel.register",
             "role": "phone-agent",
             "deviceId": id,
             "pairingToken": pairingToken ?? NSNull(),
-        ])
-        transition("registered", reason: nil)
-        receiveLoop()
+        ]) { [weak self] error in
+            if let error {
+                self?.transition("error", reason: error.localizedDescription)
+            } else {
+                self?.transition("registered", reason: nil)
+            }
+        }
         call.resolve(status())
     }
 
@@ -204,16 +209,29 @@ public class MobileAgentBridgePlugin: CAPPlugin, CAPBridgedPlugin {
         }
     }
 
-    private func sendFrame(_ frame: [String: Any]) {
-        guard let task else { return }
+    private func sendFrame(_ frame: [String: Any], completion: ((Error?) -> Void)? = nil) {
+        guard let task else {
+            completion?(NSError(
+                domain: "MobileAgentBridge",
+                code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "WebSocket is not connected"]
+            ))
+            return
+        }
         guard let data = try? JSONSerialization.data(withJSONObject: frame),
               let text = String(data: data, encoding: .utf8) else {
+            completion?(NSError(
+                domain: "MobileAgentBridge",
+                code: 2,
+                userInfo: [NSLocalizedDescriptionKey: "Failed to encode tunnel frame"]
+            ))
             return
         }
         task.send(.string(text)) { [weak self] error in
             if let error {
                 self?.transition("error", reason: error.localizedDescription)
             }
+            completion?(error)
         }
     }
 }
