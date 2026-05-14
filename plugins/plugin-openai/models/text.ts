@@ -921,7 +921,8 @@ async function generateTextByModelType(
   // before this, callers asking for json_object were silently ignored
   // and Cerebras returned plain text, dropping us into the simple-reply
   // fallback every turn.
-  const callerResponseFormat = (paramsWithAttachments as { responseFormat?: unknown }).responseFormat;
+  const callerResponseFormat = (paramsWithAttachments as { responseFormat?: unknown })
+    .responseFormat;
   const wireResponseFormat: { type: "json" } | { type: "text" } | undefined =
     callerResponseFormat &&
     typeof callerResponseFormat === "object" &&
