@@ -609,6 +609,51 @@ export class CapacitorLlamaAdapter implements LlamaAdapter {
       contextId: this.contextId,
       params,
     });
+
+    // Fork builds expose a separate `setSpecType` bridge that configures
+    // the DFlash drafter after the main context is up. Stock builds lack
+    // the method and the setter is a warn-no-op. We auto-call here so
+    // callers only need to pass `draftModelPath` once via load() — the
+    // adapter then handles both the params-bag path (stock fallback) and
+    // the explicit setSpecType path (fork build) in one shot.
+    if (options.draftModelPath && typeof plugin.setSpecType === "function") {
+      try {
+        await plugin.setSpecType({
+          target: options.modelPath,
+          drafter: options.draftModelPath,
+          specType: "dflash",
+          draftMin: options.draftMin ?? 1,
+          draftMax: options.draftMax ?? 3,
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.warn(
+          "[capacitor-llama] setSpecType failed; spec decode disabled",
+          { error: message },
+        );
+      }
+    }
+
+    // Same pattern for cache_type_k/v: fork builds may surface a separate
+    // setCacheType bridge; stock builds rely on the params bag only.
+    if (
+      (options.cacheTypeK || options.cacheTypeV) &&
+      typeof plugin.setCacheType === "function"
+    ) {
+      try {
+        await plugin.setCacheType({
+          cacheTypeK: options.cacheTypeK ?? "f16",
+          cacheTypeV: options.cacheTypeV ?? "f16",
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.warn(
+          "[capacitor-llama] setCacheType failed; cache types may be unchanged",
+          { error: message },
+        );
+      }
+    }
+
     this.loadedPath = options.modelPath;
   }
 

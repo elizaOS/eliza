@@ -1076,6 +1076,12 @@ public struct LlamaGenerateResult {
     }
 }
 
+public enum SpecDecodeMode {
+    case auto
+    case on
+    case off
+}
+
 public struct LlamaHardwareInfo {
     public let backend: String
     public let totalRamGB: Double
@@ -1083,16 +1089,23 @@ public struct LlamaHardwareInfo {
     public let cpuCores: Int
     public let isSimulator: Bool
     public let metalSupported: Bool
+    public let dflashSupported: Bool
+    public let dflashReason: String?
 
     public func asDict() -> [String: Any] {
-        return [
+        var dict: [String: Any] = [
             "backend": backend,
             "total_ram_gb": NSNumber(value: totalRamGB),
             "available_ram_gb": NSNumber(value: availableRamGB),
             "cpu_cores": NSNumber(value: cpuCores),
             "is_simulator": NSNumber(value: isSimulator),
-            "metal_supported": NSNumber(value: metalSupported)
+            "metal_supported": NSNumber(value: metalSupported),
+            "dflash_supported": NSNumber(value: dflashSupported)
         ]
+        if let reason = dflashReason {
+            dict["dflash_reason"] = reason
+        }
+        return dict
     }
 }
 
@@ -1113,7 +1126,14 @@ public final class LlamaBridgeImpl {
         path: String,
         contextSize: UInt32 = 4096,
         useGPU: Bool = true,
-        threads: Int32? = nil
+        threads: Int32? = nil,
+        draftModelPath: String? = nil,
+        draftContextSize: UInt32 = 4096,
+        draftGpuLayers: Int32? = nil,
+        draftMin: Int32 = 1,
+        draftMax: Int32 = 3,
+        cacheTypeK: String? = nil,
+        cacheTypeV: String? = nil
     ) -> LlamaLoadResult {
         return .failure("llama.cpp is not bundled in this iOS build")
     }
@@ -1126,6 +1146,10 @@ public final class LlamaBridgeImpl {
         topP: Float = 0.95,
         topK: Int32 = 40,
         stopSequences: [String] = [],
+        specDecode: SpecDecodeMode = .auto,
+        draftMin: Int32? = nil,
+        draftMax: Int32? = nil,
+        tokenTreeTrie: Data? = nil,
         onToken: ((String, Bool) -> Void)? = nil
     ) -> LlamaGenerateResult {
         onToken?("", true)
@@ -1149,7 +1173,9 @@ public final class LlamaBridgeImpl {
             availableRamGB: totalRAM,
             cpuCores: pi.activeProcessorCount,
             isSimulator: Self.isRunningInSimulator,
-            metalSupported: false
+            metalSupported: false,
+            dflashSupported: false,
+            dflashReason: "llama.cpp is not bundled in this iOS build"
         )
     }
 }

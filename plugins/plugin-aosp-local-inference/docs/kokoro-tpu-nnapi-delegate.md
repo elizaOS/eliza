@@ -4,6 +4,12 @@ Issue: elizaOS/eliza#7667.
 
 Status: blocked on elizaOS/eliza#7666 and real Tensor TPU/NPU hardware.
 
+Snapshot checked on 2026-05-14 with
+`gh issue view 7667 --repo elizaOS/eliza --comments` and
+`gh issue view 7666 --repo elizaOS/eliza --comments`: #7667 is still queued
+behind #7666, and #7666 still requires the AOSP/package-boundary decision for a
+CPU Kokoro TTS baseline.
+
 ## Current Repo State
 
 - `plugins/plugin-aosp-local-inference/src/aosp-local-inference-bootstrap.ts`

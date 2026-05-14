@@ -9,9 +9,9 @@ do publish (the privacy-filtered SFT datasets, the eval/bench results, the
 honest pending-status cards on the bundle repos) and prints a single summary.
 
 Publishable today (no fork build / no held-out-quality gate needed):
-  - dataset ``elizalabs/eliza-1-training``  (the broader SFT corpus — refreshed
+  - dataset ``elizaos/eliza-1-training``  (the broader SFT corpus — refreshed
     only if ``data/final/{train,val,test}.jsonl`` exists locally)
-  - dataset ``elizalabs/eliza-1-evals``     (the eval/bench results, kernel-verify
+  - dataset ``elizaos/eliza-1-evals``     (the eval/bench results, kernel-verify
     evidence, the ``eliza1_gates.yaml`` thresholds, throughput snapshots)
 
 Gated (this script reports the blocker, never bypasses it):
@@ -50,6 +50,7 @@ if str(TRAINING_ROOT) not in sys.path:
 from scripts.manifest import eliza1_manifest as M  # noqa: E402
 
 ORG = "elizaos"
+MODEL_REPO_ID = M.ELIZA_1_HF_REPO
 
 # Active Eliza-1 device bundles. Retired Qwen3 size-specific repos are handled
 # by deprecation tooling, not by the current release publisher.
@@ -150,7 +151,7 @@ def _publish_datasets(api, dry_run: bool) -> list[Outcome]:
 
 def _bundle_dry_run(tier: str, bundle_dir: Path) -> Outcome:
     """Dry-run the bundle orchestrator and turn its verdict into an Outcome."""
-    repo = f"{ORG}/eliza-1"
+    repo = MODEL_REPO_ID
     remote = f"bundles/{tier}/"
     if not bundle_dir.is_dir():
         return Outcome(repo, "model-bundle", "pending",
@@ -192,7 +193,7 @@ def _bundle_status(bundles_root: Path) -> list[Outcome]:
 def _sft_weights_status(tier: str = "0_8b") -> Outcome:
     """Report whether a full-corpus active-tier SFT is done + cleared its gate."""
     ckpt_root = TRAINING_ROOT / "checkpoints"
-    repo = f"{ORG}/eliza-1"
+    repo = MODEL_REPO_ID
     runs = sorted(ckpt_root.glob(f"eliza-1-{tier}-apollo-fullcorpus-*")) if ckpt_root.is_dir() else []
     if not runs:
         return Outcome(repo, "model-weights", "pending",

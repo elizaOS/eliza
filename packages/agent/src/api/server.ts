@@ -263,7 +263,6 @@ type PermissionsExtraRouteArg = Parameters<
   typeof handlePermissionsExtraRoutes
 >[0];
 type WorkbenchRouteArg = Parameters<typeof handleWorkbenchRoutes>[0];
-// LifeOpsRouteArg removed — routes extracted to lifeopsPlugin
 type MiscRouteArg = Parameters<typeof handleMiscRoutes>[0];
 
 export {
@@ -272,12 +271,6 @@ export {
   stripAssistantStageDirections,
 } from "./chat-text-helpers.ts";
 
-// Re-export the helpers in server-helpers.ts that have external consumers
-// (apps, plugins, packages outside @elizaos/agent itself). The rest stay
-// internal — agent-side files import them directly from ./server-helpers.ts.
-// External-consumer audit kept this list minimal: drop a name only after
-// `grep -rln <name> packages/ apps/ plugins/ | grep -v "packages/agent/"`
-// returns nothing.
 export {
   cloneWithoutBlockedObjectKeys,
   decodePathComponent,
@@ -286,10 +279,6 @@ export {
   isUuidLike,
   persistConversationRoomTitle,
 } from "./server-helpers.ts";
-
-// NOTE: Internal usage of these functions is handled by individual `import`
-// statements placed where each function was originally defined (see below).
-// The `export { ... } from` above re-exports them for external consumers.
 
 import {
   getInventoryProviderOptions,
@@ -1003,13 +992,8 @@ function writeFavoriteAppsToConfig(
   return sanitized;
 }
 
-// Config redaction, skill validation extracted to server-helpers-config.ts
-// isBlockedObjectKey, redactDeep, redactConfigSecrets, isRedactedSecretValue,
-// stripRedactedPlaceholderValuesDeep imported from server-helpers-config.ts above.
-// isBlockedObjectKey alias for local usage:
 const isBlockedObjectKey = isBlockedObjectKeyFromConfig;
 
-// MCP validation helpers extracted to server-helpers-mcp.ts
 import {
   resolveMcpServersRejection as _resolveMcpServersRejection,
   resolveMcpTerminalAuthorizationRejection as _resolveMcpTerminalAuthorizationRejection,
@@ -1022,10 +1006,6 @@ export {
 } from "./server-helpers-mcp.ts";
 
 const resolveMcpServersRejection = _resolveMcpServersRejection;
-
-// ---------------------------------------------------------------------------
-// Onboarding / config helpers — extracted to server-helpers-config.ts
-// ---------------------------------------------------------------------------
 
 import { pickRandomNames } from "../runtime/onboarding-names.ts";
 import { resolveDefaultAgentWorkspaceDir } from "../shared/workspace-resolution.ts";
@@ -1202,7 +1182,6 @@ function buildPluginEvmDiagnosticEntry(
   };
 }
 
-// Wallet intent/export helpers extracted to server-helpers-wallet.ts
 import { resolveWalletExportRejection as _resolveWalletExportRejection } from "./server-helpers-wallet.ts";
 
 export {
@@ -1214,7 +1193,6 @@ export {
 
 const resolveWalletExportRejection = _resolveWalletExportRejection;
 
-// Plugin config helpers extracted to server-helpers-plugin.ts
 import { resolvePluginConfigMutationRejections as _resolvePluginConfigMutationRejections } from "./server-helpers-plugin.ts";
 
 export {
@@ -1298,7 +1276,6 @@ async function setActiveTrainingServiceIfAvailable(
 const resolveMcpTerminalAuthorizationRejection =
   _resolveMcpTerminalAuthorizationRejection;
 
-// Auth, CORS, pairing, terminal, WebSocket auth helpers extracted to server-helpers-auth.ts
 import {
   applyCors as _applyCors,
   clearPairing as _clearPairing,
@@ -1564,11 +1541,6 @@ async function handleRequest(
     if (serveStaticUi(req, res, pathname)) return;
   }
 
-  // Single auth gate. The previous two-block arrangement (a cloud-provisioned
-  // copy followed by an unconditional copy) was redundant: the unconditional
-  // block already applied to cloud-provisioned requests because
-  // `isAuthorized` consults `isCloudProvisionedContainer()` when no token is
-  // configured.
   if (
     method !== "OPTIONS" &&
     isAuthProtectedPath &&
@@ -1732,7 +1704,6 @@ async function handleRequest(
     return;
   }
 
-  // ── Onboarding GET routes (extracted to onboarding-routes.ts) ─────────
   if (
     await handleOnboardingRoutes({
       req,
@@ -1972,11 +1943,6 @@ async function handleRequest(
     return;
   }
 
-  // ── NFA routes (/api/nfa/*) ─────────────────────────────────────────
-  // Extracted — will move to @elizaos/plugin-bnb-identity (Plugin.routes)
-  // when the plugin directory is created. Until then, NFA routes are
-  // served inline from nfa-routes.ts if needed, or disabled.
-
   if (
     await handleRegistryRoutes({
       req,
@@ -1996,9 +1962,6 @@ async function handleRequest(
     return;
   }
 
-  // ═══════════════════════════════════════════════════════════════════════
-  // Plugin routes (extracted to plugin-routes.ts)
-  // ═══════════════════════════════════════════════════════════════════════
   if (
     pathname === "/api/plugins" ||
     pathname.startsWith("/api/plugins/") ||

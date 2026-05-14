@@ -12,8 +12,9 @@ Read both before changing anything that crosses the boundary (artifacts,
 manifest, kernel ABI, GGML pin).
 
 **Fork source.** The patched llama.cpp ships in-tree as a git submodule at
-[`packages/inference/llama.cpp`](llama.cpp) — `elizaOS/llama.cpp` tracking the
-`v1.2.0-eliza` line (HEAD currently `ce85787c`; resolve via
+[`plugins/plugin-local-inference/native/llama.cpp`](llama.cpp) — `elizaOS/llama.cpp`
+tracking the `v1.2.0-eliza` line (gitlink currently `33c888a7b`, with
+`ce85787c` as the validated DFlash/SWA build base; resolve via
 `git -C plugins/plugin-local-inference/native/llama.cpp describe --always`; the
 `v1.0.0-eliza` / `08032d57` pin documented previously is **stale** — do not copy
 that pin into new tooling or scripts). `git submodule update --init --recursive`
@@ -618,7 +619,7 @@ backend nightly.
 - `packages/app-core/scripts/build-llama-cpp-dflash.mjs` — the build
   hook. Every kernel patch lives here. It (and the AOSP cross-compile at
   `packages/app-core/scripts/aosp/compile-libllama.mjs`) default to building
-  from the in-repo `packages/inference/llama.cpp` submodule.
+  from the in-repo `plugins/plugin-local-inference/native/llama.cpp` submodule.
 - `packages/training/AGENTS.md` — the training-side contract, including
   what the bundle/publish flow expects.
 - the repo-root `AGENTS.md` — repo-wide cleanup mandate and conventions

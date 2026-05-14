@@ -65,4 +65,19 @@ describe("assessKokoroDelegateReadiness", () => {
     expect(result.recommendedPath).toBe("tflite-delegate");
     expect(result.blockers).toEqual([]);
   });
+
+  it("blocks when no ONNX or TFLite Kokoro artifact is selectable", () => {
+    const result = assessKokoroDelegateReadiness({
+      cpuKokoroTtsPresent: true,
+      androidApiLevel: 35,
+      modelFormat: "unknown",
+      realTensorTpuDevice: true,
+      powerTelemetryAvailable: true,
+      qualityCorpusAvailable: true,
+    });
+
+    expect(result.status).toBe("blocked");
+    expect(result.recommendedPath).toBeNull();
+    expect(result.blockers.join("\n")).toMatch(/No delegate prototype path/);
+  });
 });
