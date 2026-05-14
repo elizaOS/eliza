@@ -10,7 +10,6 @@ import type { CloudRouteState } from "@elizaos/plugin-elizacloud";
 import type {
   AgentAutomationMode,
   AgentStartupDiagnostics,
-  ChatImageAttachment,
   ConversationMetadata,
   LogEntry,
   PluginParamDef,

@@ -1858,7 +1858,7 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             "strict_capabilities": True,
         },
         "orchestrator_lifecycle": {
-            "max_scenarios": 12,
+            "max_scenarios": 3,
             "strict": True,
         },
         "hermes_tblite": {
