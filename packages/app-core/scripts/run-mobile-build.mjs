@@ -2161,12 +2161,17 @@ function generatePodfile() {
   const customPods = [
     ["ElizaosCapacitorAgent", "@elizaos/capacitor-agent"],
     ["ElizaosCapacitorAppblocker", "@elizaos/capacitor-appblocker"],
+    ["ElizaosCapacitorBunRuntime", "@elizaos/capacitor-bun-runtime"],
     ["ElizaosCapacitorCamera", "@elizaos/capacitor-camera"],
     ["ElizaosCapacitorCalendar", "@elizaos/capacitor-calendar"],
     ["ElizaosCapacitorCanvas", "@elizaos/capacitor-canvas"],
     ["ElizaosCapacitorElizaTasks", "@elizaos/capacitor-eliza-tasks"],
     ["ElizaosCapacitorGateway", "@elizaos/capacitor-gateway"],
     ["ElizaosCapacitorLocation", "@elizaos/capacitor-location"],
+    [
+      "ElizaosCapacitorMobileAgentBridge",
+      "@elizaos/capacitor-mobile-agent-bridge",
+    ],
     ["ElizaosCapacitorMobileSignals", "@elizaos/capacitor-mobile-signals"],
     ["ElizaosCapacitorScreencapture", "@elizaos/capacitor-screencapture"],
     ["ElizaosCapacitorSwabble", "@elizaos/capacitor-swabble"],
@@ -2178,9 +2183,6 @@ function generatePodfile() {
     ...(includeLlama ? [["LlamaCppCapacitor", "llama-cpp-capacitor"]] : []),
     ...(includeFullBunEngine
       ? [["ElizaBunEngine", "@elizaos/bun-ios-runtime"]]
-      : []),
-    ...(includeLlama || includeFullBunEngine
-      ? [["ElizaosCapacitorBunRuntime", "@elizaos/capacitor-bun-runtime"]]
       : []),
   ];
   if (!includeLlama) {
@@ -3371,9 +3373,14 @@ const ANDROID_CLOUD_STRIPPED_ASSET_FILES = new Set(["llama-cpp-kernels.json"]);
 
 const ANDROID_CLOUD_STRIPPED_NATIVE_PLUGINS = [
   ["@elizaos/capacitor-agent", "elizaos-capacitor-agent"],
+  ["@elizaos/capacitor-bun-runtime", "elizaos-capacitor-bun-runtime"],
   ["@elizaos/capacitor-appblocker", "elizaos-capacitor-appblocker"],
   ["@elizaos/capacitor-contacts", "elizaos-capacitor-contacts"],
   ["@elizaos/capacitor-messages", "elizaos-capacitor-messages"],
+  [
+    "@elizaos/capacitor-mobile-agent-bridge",
+    "elizaos-capacitor-mobile-agent-bridge",
+  ],
   ["@elizaos/capacitor-mobile-signals", "elizaos-capacitor-mobile-signals"],
   ["@elizaos/capacitor-phone", "elizaos-capacitor-phone"],
   ["@elizaos/capacitor-system", "elizaos-capacitor-system"],
@@ -4290,6 +4297,7 @@ function configureIosLocalBuildDefaults() {
   setDefaultProcessEnv("ELIZA_IOS_RUNTIME_MODE", "local");
   setDefaultProcessEnv("VITE_ELIZA_IOS_RUNTIME_MODE", "local");
   setDefaultProcessEnv("ELIZA_IOS_INCLUDE_LLAMA", "1");
+  setDefaultProcessEnv("ELIZA_IOS_FULL_BUN_ENGINE", "1");
   setDefaultProcessEnv(
     "ELIZA_IOS_BUILD_DESTINATION",
     "generic/platform=iOS Simulator",

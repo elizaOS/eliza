@@ -10,6 +10,20 @@ import {
 } from "./token-tree";
 import { TokenizerClient } from "./tokenizer-client";
 
+/**
+ * Tiny assertion helper — biome's `noNonNullAssertion` rule forbids `value!`,
+ * but the tests deliberately exercise the unhappy paths of nullable returns
+ * and need to narrow the type after asserting the value is present. Using
+ * `expect(x).toBeDefined()` doesn't narrow; an explicit guard does and gives
+ * a useful failure message if the producer ever regresses.
+ */
+function present<T>(value: T | null | undefined, label: string): T {
+  if (value === null || value === undefined) {
+    throw new Error(`expected ${label} to be present, got ${String(value)}`);
+  }
+  return value;
+}
+
 describe("buildTokenTrie", () => {
   it("returns an empty root for an empty input", () => {
     const trie = buildTokenTrie([]);
@@ -25,11 +39,10 @@ describe("buildTokenTrie", () => {
       { name: "REPLY", tokens: [12, 34] },
     ]);
     expect(countTerminals(trie)).toBe(1);
-    const node12 = step(trie, 12);
-    expect(node12).not.toBeNull();
-    const node34 = step(node12!, 34);
-    expect(node34?.isTerminal).toBe(true);
-    expect(node34?.leafName).toBe("REPLY");
+    const node12 = present(step(trie, 12), "node12");
+    const node34 = present(step(node12, 34), "node34");
+    expect(node34.isTerminal).toBe(true);
+    expect(node34.leafName).toBe("REPLY");
   });
 
   it("shares prefixes across leaves with a common start", () => {
@@ -39,13 +52,13 @@ describe("buildTokenTrie", () => {
     ]);
     // Both leaves share the [10, 20] prefix; the divergence is at depth 2.
     expect(trie.children.size).toBe(1);
-    const a = step(trie, 10)!;
+    const a = present(step(trie, 10), "a");
     expect(a.children.size).toBe(1);
-    const b = step(a, 20)!;
+    const b = present(step(a, 20), "b");
     expect(b.children.size).toBe(2);
     expect(b.isTerminal).toBe(false);
-    const reminders = step(b, 30)!;
-    const actions = step(b, 40)!;
+    const reminders = present(step(b, 30), "reminders");
+    const actions = present(step(b, 40), "actions");
     expect(reminders.isTerminal).toBe(true);
     expect(reminders.leafName).toBe("OWNER_REMINDERS");
     expect(actions.isTerminal).toBe(true);
@@ -58,12 +71,12 @@ describe("buildTokenTrie", () => {
       { name: "REPLY", tokens: [1, 2] },
       { name: "REPLY_THREAD", tokens: [1, 2, 3] },
     ]);
-    const inner = step(step(trie, 1)!, 2)!;
+    const inner = present(step(present(step(trie, 1), "depth1"), 2), "inner");
     expect(inner.isTerminal).toBe(true);
     expect(inner.leafName).toBe("REPLY");
     expect(inner.children.size).toBe(1);
     expect(isUniqueContinuation(inner)).toBe(false); // has children
-    const leaf = step(inner, 3)!;
+    const leaf = present(step(inner, 3), "leaf");
     expect(isUniqueContinuation(leaf)).toBe(true); // no children, terminal
   });
 
@@ -73,7 +86,7 @@ describe("buildTokenTrie", () => {
       { name: "ALPHA", tokens: [7, 8] },
     ]);
     expect(countTerminals(trie)).toBe(1);
-    const node = step(step(trie, 7)!, 8)!;
+    const node = present(step(present(step(trie, 7), "depth1"), 8), "node");
     expect(node.isTerminal).toBe(true);
     expect(node.leafName).toBe("ALPHA");
   });
@@ -103,14 +116,12 @@ describe("buildTokenTreeDescriptor", () => {
 
   it("skips names without a tokenization", () => {
     const map = new Map([["REPLY", [1, 2]]]);
-    const descriptor = buildTokenTreeDescriptor(
-      "action",
-      ["MISSING", "REPLY"],
-      map,
+    const descriptor = present(
+      buildTokenTreeDescriptor("action", ["MISSING", "REPLY"], map),
+      "descriptor",
     );
-    expect(descriptor).not.toBeNull();
-    expect(descriptor?.leaves).toHaveLength(1);
-    expect(descriptor?.leaves[0].name).toBe("REPLY");
+    expect(descriptor.leaves).toHaveLength(1);
+    expect(descriptor.leaves[0].name).toBe("REPLY");
   });
 
   it("deduplicates repeated names while preserving the first occurrence", () => {
@@ -118,8 +129,11 @@ describe("buildTokenTreeDescriptor", () => {
       ["A", [1]],
       ["B", [2]],
     ]);
-    const descriptor = buildTokenTreeDescriptor("action", ["A", "B", "A"], map);
-    expect(descriptor?.leaves).toHaveLength(2);
+    const descriptor = present(
+      buildTokenTreeDescriptor("action", ["A", "B", "A"], map),
+      "descriptor",
+    );
+    expect(descriptor.leaves).toHaveLength(2);
   });
 
   it("sorts leaves by name for byte-stable output", () => {
@@ -128,28 +142,25 @@ describe("buildTokenTreeDescriptor", () => {
       ["ALPHA", [10]],
       ["MIKE", [50]],
     ]);
-    const d1 = buildTokenTreeDescriptor(
-      "action",
-      ["ZULU", "ALPHA", "MIKE"],
-      map,
+    const d1 = present(
+      buildTokenTreeDescriptor("action", ["ZULU", "ALPHA", "MIKE"], map),
+      "d1",
     );
-    const d2 = buildTokenTreeDescriptor(
-      "action",
-      ["MIKE", "ALPHA", "ZULU"],
-      map,
+    const d2 = present(
+      buildTokenTreeDescriptor("action", ["MIKE", "ALPHA", "ZULU"], map),
+      "d2",
     );
-    expect(d1?.leaves.map((l) => l.name)).toEqual(["ALPHA", "MIKE", "ZULU"]);
-    expect(d1?.leaves).toEqual(d2?.leaves);
+    expect(d1.leaves.map((l) => l.name)).toEqual(["ALPHA", "MIKE", "ZULU"]);
+    expect(d1.leaves).toEqual(d2.leaves);
   });
 
   it("path is preserved verbatim", () => {
     const map = new Map([["X", [1]]]);
-    const descriptor = buildTokenTreeDescriptor(
-      "parameters.agentType",
-      ["X"],
-      map,
+    const descriptor = present(
+      buildTokenTreeDescriptor("parameters.agentType", ["X"], map),
+      "descriptor",
     );
-    expect(descriptor?.path).toBe("parameters.agentType");
+    expect(descriptor.path).toBe("parameters.agentType");
   });
 });
 
@@ -300,12 +311,10 @@ describe("end-to-end: TokenizerClient → buildTokenTrie", () => {
       "REPLY",
       "STOP",
     ]);
-    const desc1 = buildTokenTreeDescriptor(
-      "action",
-      ["REPLY", "STOP"],
-      tokens1,
+    const desc1 = present(
+      buildTokenTreeDescriptor("action", ["REPLY", "STOP"], tokens1),
+      "desc1",
     );
-    if (!desc1) throw new Error("desc1 unexpectedly undefined");
     const trie1 = buildTokenTrie(desc1.leaves);
     expect(countTerminals(trie1)).toBe(2);
     // OWNER_REMINDERS was NOT exposed this turn -> not reachable.
@@ -318,19 +327,24 @@ describe("end-to-end: TokenizerClient → buildTokenTrie", () => {
       "OWNER_REMINDERS",
       "OWNER_ACTIONS",
     ]);
-    const desc2 = buildTokenTreeDescriptor(
-      "action",
-      ["REPLY", "STOP", "OWNER_REMINDERS", "OWNER_ACTIONS"],
-      tokens2,
+    const desc2 = present(
+      buildTokenTreeDescriptor(
+        "action",
+        ["REPLY", "STOP", "OWNER_REMINDERS", "OWNER_ACTIONS"],
+        tokens2,
+      ),
+      "desc2",
     );
-    if (!desc2) throw new Error("desc2 unexpectedly undefined");
     const trie2 = buildTokenTrie(desc2.leaves);
     expect(countTerminals(trie2)).toBe(4);
     // Prefix sharing on OWNER_*: [3, 4] is shared.
-    const ownerPrefix = step(step(trie2, 3)!, 4)!;
+    const ownerPrefix = present(
+      step(present(step(trie2, 3), "trie2[3]"), 4),
+      "ownerPrefix",
+    );
     expect(ownerPrefix.children.size).toBe(2);
     // Leaf ordering inside descriptor is name-sorted.
-    expect(desc2?.leaves.map((l) => l.name)).toEqual([
+    expect(desc2.leaves.map((l) => l.name)).toEqual([
       "OWNER_ACTIONS",
       "OWNER_REMINDERS",
       "REPLY",

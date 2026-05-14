@@ -83,5 +83,3 @@ You must follow these rules:
     ],
   ],
 });
-
-export default character;

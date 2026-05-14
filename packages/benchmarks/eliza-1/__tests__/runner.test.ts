@@ -15,6 +15,7 @@ import {
   checkParamsMatch,
   checkPlannerSchema,
   checkShouldRespondSchema,
+  computeSkipRatio,
   deepEqual,
   percentile,
   summarize,
@@ -22,6 +23,7 @@ import {
 } from "../src/metrics.ts";
 import { type CerebrasClient, CerebrasMode } from "../src/modes/cerebras.ts";
 import { ElizaGuidedMode } from "../src/modes/eliza-guided.ts";
+import { ElizaStrictGuidedMode } from "../src/modes/eliza-strict-guided.ts";
 import { buildTableRows, renderReport, renderTable } from "../src/report.ts";
 import { runBench } from "../src/runner.ts";
 import { listActionNames, loadActionFixtures } from "../src/tasks/action.ts";
@@ -109,6 +111,30 @@ describe("metrics helpers", () => {
     expect(percentile([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], 95)).toBeCloseTo(9.55);
   });
 
+  it("computeSkipRatio sums literal spans / total output bytes", () => {
+    const skeleton = {
+      spans: [
+        { value: '{"action":"' }, // 11 bytes
+        { kind: "enum" },
+        { value: '","parameters":' }, // 15 bytes (includes the comma and quotes)
+        { kind: "free-json" },
+        { value: "}" }, // 1 byte
+      ],
+    };
+    // Expected output: '{"action":"ALPHA","parameters":{"x":1}}'
+    // Total length: 39 bytes
+    // Literal bytes: 11 + 15 + 1 = 27
+    const output = '{"action":"ALPHA","parameters":{"x":1}}';
+    const ratio = computeSkipRatio(skeleton, output);
+    expect(ratio).toBeCloseTo(27 / 39, 1);
+  });
+
+  it("computeSkipRatio returns undefined when skeleton is missing or malformed", () => {
+    expect(computeSkipRatio(null, "output")).toBeUndefined();
+    expect(computeSkipRatio({}, "output")).toBeUndefined();
+    expect(computeSkipRatio({ spans: null }, "output")).toBeUndefined();
+  });
+
   it("buildMetric derives tok/s from totalLatency", () => {
     const metric = buildMetric({
       taskId: "should_respond",
@@ -127,11 +153,40 @@ describe("metrics helpers", () => {
     expect(metric.tokens_per_second).toBeCloseTo(10);
     expect(metric.first_token_latency_ms).toBe(50);
   });
+
+  it("buildMetric computes skip_ratio when skeleton is provided", () => {
+    const skeleton = {
+      spans: [
+        { value: '{"shouldRespond":"' }, // 19 bytes
+        { kind: "enum" },
+        { value: "}" }, // 1 byte
+      ],
+    };
+    // Output: '{"shouldRespond":"RESPOND"}'  = 27 bytes
+    // Literal: 19 + 1 = 20 bytes
+    // Ratio: 20/27
+    const metric = buildMetric({
+      taskId: "should_respond",
+      modeId: "guided",
+      caseId: "x",
+      result: {
+        rawOutput: '{"shouldRespond":"RESPOND"}',
+        firstTokenLatencyMs: 50,
+        totalLatencyMs: 1000,
+        tokensGenerated: 10,
+        _skeleton: skeleton,
+      },
+      parse_success: true,
+      schema_valid: true,
+      label_match: true,
+    });
+    expect(metric.skip_ratio).toBeCloseTo(20 / 27, 1);
+  });
 });
 
 describe("runner with mock modes", () => {
   function mockMode(args: {
-    id: "unguided" | "guided" | "cerebras";
+    id: "unguided" | "guided" | "strict-guided" | "cerebras";
     output: (req: ModeRequest) => string;
   }): ModeAdapter {
     return {
@@ -229,6 +284,21 @@ describe("runner with mock modes", () => {
     ]);
     expect(report.cases).toEqual([]);
     expect(report.modes).toEqual([]);
+  });
+});
+
+describe("strict-guided mode", () => {
+  it("initializes with id 'strict-guided'", () => {
+    const mode = new ElizaStrictGuidedMode();
+    expect(mode.id).toBe("strict-guided");
+  });
+
+  it("available() returns null or skip reason (depending on engine state)", async () => {
+    const mode = new ElizaStrictGuidedMode();
+    const skipReason = await mode.available();
+    // Engine availability varies by environment; just check that the method
+    // returns either null (available) or a string (skip reason).
+    expect(skipReason === null || typeof skipReason === "string").toBe(true);
   });
 });
 

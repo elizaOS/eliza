@@ -59,18 +59,19 @@ Hub. Tracked here so the fixes don't get lost.
 
 ## 4. Planned model repos referenced in dataset cards don't exist yet
 
-- **Symptom:** dataset cards (and some docs) reference `elizaos/eliza-1-2b`,
-  `elizaos/eliza-1-9b`, `elizaos/eliza-1-27b`, and `elizaos/eliza-1-pipeline`
-  as if they were published. They are not — only `elizaos/eliza-1-assets`
-  currently exists under the `elizaos` org for this family.
-- **Reality:** the smallest / first target is now **`elizaos/eliza-1-0_6b`**,
-  fine-tuned from **`Qwen/Qwen3-0.6B`** (older docs called this
-  `eliza-1-lite-0_6b`). The larger tiers and the `eliza-1-pipeline` repo are
-  roadmap, not shipped.
-- **Fix:** when the first model actually publishes, create
-  `elizaos/eliza-1-0_6b` (and later `-2b` / `-9b` / `-27b`, `-pipeline`) and
-  then update the dataset cards' cross-links. Until then, dataset cards
-  shouldn't link to repos that 404. Needs write to the `elizaos` org.
+- **Symptom:** dataset cards (and some docs) still reference per-tier repos
+  like `elizaos/eliza-1-2b`, `elizaos/eliza-1-9b`, `elizaos/eliza-1-27b`, and
+  `elizaos/eliza-1-pipeline` as if they were the canonical destinations.
+- **Reality:** the canonical destination is the consolidated bundle repo
+  **`elizaos/eliza-1`** with per-tier subdirectories under
+  `bundles/<tier>/...`. Seven tiers are published there as of 2026-05-14
+  (`0_6b, 0_8b, 2b, 4b, 9b, 27b, 27b-256k`; `27b-1m` is planned).
+  `elizaos/eliza-1-pipeline` does NOT exist yet; the publish scripts
+  (`publish_pipeline_to_hf.py`, `push_pipeline_to_hf.py`) auto-create it
+  on first run via `huggingface_hub.create_repo`.
+- **Fix:** update dataset cards (and any docs that still cite per-tier
+  repos) to point at `elizaos/eliza-1/bundles/<tier>/...`. Needs write
+  to the `elizaos` org.
 
 ## What this repo *can* do without a token
 

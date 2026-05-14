@@ -4,21 +4,20 @@ Outbound tunnel from a phone-hosted Eliza agent so a remote Mac client
 can reach it. Phone-side companion to the Mac-side
 `TunnelToMobileClient` in `@elizaos/app-core`.
 
-This package is **scaffold-only**. The JS surface
-(`startInboundTunnel`, `stopInboundTunnel`, `getTunnelStatus`,
-`stateChange` event) is locked here so the runtime can call into the
-plugin today, but the iOS and Android transports report
-`not_implemented` until the cloud-managed relay or Headscale path
-lands. See `docs/reverse-direction-tunneling.md` in the repo root for
-the full design and phased plan.
+This package owns the phone-to-relay tunnel for a phone-hosted Eliza
+agent. The JS surface (`startInboundTunnel`, `stopInboundTunnel`,
+`getTunnelStatus`, `stateChange` event) is stable, and the native
+implementations now hold an outbound WebSocket to the relay. Relay
+requests are proxied into the same local agent route surface used by the
+rest of the mobile app.
 
 ## Status
 
 | Platform | Status |
 | --- | --- |
 | Web    | Stub. Returns `state: "error"` with an explanatory message. |
-| iOS    | Scaffold. Native methods present, transport not yet implemented. |
-| Android | Scaffold. Native methods present, transport not yet implemented. |
+| iOS    | Outbound WebSocket tunnel. Proxies path-only requests through the WebView IPC bridge; no listening port is opened. |
+| Android | Outbound WebSocket tunnel. Proxies path-only requests to the token-protected local agent service. |
 
 ## Why this exists
 
@@ -28,6 +27,12 @@ to Mac-hosted agents. To support the reverse — a Mac dialing an agent
 running on the user's phone — the phone must hold an outbound
 connection that a relay (Eliza Cloud) brokers to a matching connection
 from the Mac.
+
+Tunnel frames use a path-only HTTP request envelope. The relay never
+sends absolute URLs, and the plugin rejects `//host` and scheme-bearing
+paths before dispatching to the agent. On iOS, dispatch goes through
+`window.__ELIZA_IOS_LOCAL_AGENT_REQUEST__`, which is the same Capacitor
+IPC bridge the UI uses for full-Bun local mode.
 
 ## Usage
 

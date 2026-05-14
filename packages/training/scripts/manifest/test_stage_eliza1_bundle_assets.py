@@ -208,14 +208,59 @@ def test_real_stage_writes_evidence_report_without_downloading(
     monkeypatch.setattr(stage, "HfApi", FakeHfApi)
     monkeypatch.setattr(stage, "copy_hf_file", fake_copy_hf_file)
     monkeypatch.setattr(stage, "download_url_file", fake_download_url_file)
+    monkeypatch.setattr(stage, "validate_manifest", lambda *args, **kwargs: ())
     args = _args(tmp_path, "0_8b")
     args.dry_run = False
+    bundle = tmp_path / "0_8b"
+    (bundle / "evidence").mkdir(parents=True)
+    (bundle / "eliza-1.manifest.json").write_text(
+        json.dumps(
+            {
+                "id": "eliza-1-0_8b",
+                "tier": "0_8b",
+                "files": {
+                    "voice": [],
+                    "asr": [],
+                    "vad": [],
+                    "wakeword": [],
+                    "cache": [],
+                },
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (bundle / "evidence" / "release.json").write_text(
+        json.dumps(
+            {
+                "schemaVersion": 1,
+                "tier": "0_8b",
+                "repoId": "old/repo",
+                "weights": [],
+                "hf": {"repoId": "old/repo"},
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
 
     report = stage.stage_assets(args)
 
     assert report["dryRun"] is False
     assert copied
     assert (tmp_path / "0_8b" / "wake" / "hey-eliza.onnx").is_file()
+    manifest = json.loads((bundle / "eliza-1.manifest.json").read_text())
+    voice_paths = {entry["path"] for entry in manifest["files"]["voice"]}
+    assert "tts/omnivoice-base-Q4_K_M.gguf" in voice_paths
+    assert "tts/omnivoice-tokenizer-Q4_K_M.gguf" in voice_paths
+    assert manifest["files"]["cache"][0]["path"] == "cache/voice-preset-default.bin"
+    release = json.loads((bundle / "evidence" / "release.json").read_text())
+    assert release["repoId"] == "elizalabs/eliza-1"
+    assert "tts/omnivoice-base-Q4_K_M.gguf" in release["weights"]
+    assert (bundle / "checksums" / "SHA256SUMS").is_file()
+    assert report["manifestUpdate"]["updatedPaths"]
+    assert report["releaseEvidenceUpdate"]["weights"]
+    assert report["checksumManifest"]["entryCount"] > 0
     evidence = json.loads(
         (tmp_path / "0_8b" / "evidence" / "bundle-assets.json").read_text()
     )

@@ -64,7 +64,7 @@ These were open questions in earlier drafts. They are now decided. Any change re
 | 18 | Secure Boot strategy | Phase 1 files Linux Foundation shim review paperwork (does not block Phase 1 ISO build, just starts the months-long approval clock). Long-term: own Microsoft signing or stay shim-signed | Most modern Windows laptops ship Secure Boot enabled; users can't be expected to BIOS-tweak |
 | 19 | Provider portability | The `trait CodeGenerator` boundary is locked. **Phase 1.5 adds a managed-proxy backend** — the cloud-sync subscription routes generation through our server using whichever provider works. Insurance against Anthropic/OpenAI ToS shifts | Sub-product becomes "you don't need a Pro/Max sub if you have ours" |
 | 20 | MiladyOS-vs-usbeliza balance | **MiladyOS engineering does not pause for usbeliza.** Both ship as one story: USB is the awareness vehicle (zero hardware barrier demo), phone is the retention vehicle. Brand survives only if both are real | Diluting either kills the "one product, two form factors" thesis |
-| 21 | Local Llama bundled in base image | **`Llama-3.2-1B-Instruct-Q4_K_M.gguf` (~600 MB) ships in the base image; loaded by `eliza-agent` at splash; primary chat handler before any cloud auth.** A larger 3B is downloaded to the encrypted partition on first network connect. | Pre-internet first-boot has to feel like *Her* — Eliza is *already there* talking to you, before you've connected to Wi-Fi. No blank-box wait |
+| 21 | Local Eliza-1 bundled in base image | **`Eliza-1 0.8B-Instruct-Q4_K_M.gguf` (~600 MB) ships in the base image; loaded by `eliza-agent` at splash; primary chat handler before any cloud auth.** A larger 3B is downloaded to the encrypted partition on first network connect. | Pre-internet first-boot has to feel like *Her* — Eliza is *already there* talking to you, before you've connected to Wi-Fi. No blank-box wait |
 | 22 | Tails-derived code is permitted | **`third-party/tails/` directory holds GPL-3.0-or-later code lifted from the Tails project** (`tails-persistence-setup`, NetworkManager helpers, AppArmor profiles, Plymouth theme). Combined live ISO is therefore GPL-3 in distributable form. Our own code outside `third-party/` stays Apache-2.0; combined-work license recorded in `NOTICE.md` | Licensing was cleared with the team. Saves ~14 days of from-scratch persistence/Tor/AppArmor work; matches Tails' battle-tested live-USB posture |
 | 23 | `@elizaos/agent` is a real dependency from day 1 | **`bun add @elizaos/agent@alpha` lands in milestone 11a.** The agent boots eliza's runtime; `usbeliza-codegen` is restructured as a proper eliza plugin (`Action`); intent detection is replaced by eliza's planner. No more stub HTTP server | Stop LARPing the integration. Dogfood eliza, find its rough edges early, stay aligned with Shaw's ongoing pushes via the npm publish pipeline |
 | 24 | Pre-internet system commands are deterministic | **Chat-commands like `connect to wifi`, `set my keyboard to <layout>`, `what time is it` are parsed by a regex/intent layer and dispatched to `nmcli`/`localectl`/`date` directly** — the local LLM never touches them | A 1B model hallucinates tool calls. The user must trust that "connect to wifi" actually connects, not "I tried to connect, here's a fake confirmation" |
@@ -79,10 +79,10 @@ These were open questions in earlier drafts. They are now decided. Any change re
 
 The reference is the OS1 install scene from Spike Jonze's *Her* (2013): not a setup wizard, a conversation. Eliza arrives as a presence, asks a handful of personal questions, and is calibrated to *this* user before she ever asks about cloud sign-ins or settings. Voice is deferred to a later phase (waiting on Shaw's model selection); the text-only version still has to feel warm.
 
-The crucial design choice (locked decision #21): **Eliza is already there talking to you before Wi-Fi is connected.** A bundled local Llama-3.2-1B GGUF loads during splash and handles every conversation in this section — calibration, system setup, and the gentle teaching of how to connect to the network. The user only meets the cloud after they've met Eliza.
+The crucial design choice (locked decision #21): **Eliza is already there talking to you before Wi-Fi is connected.** A bundled local Eliza-1 0.8B GGUF loads during splash and handles every conversation in this section — calibration, system setup, and the gentle teaching of how to connect to the network. The user only meets the cloud after they've met Eliza.
 
 1. User plugs USB into a compatible machine, reboots, picks the USB from the boot menu (one-time firmware flick on most laptops).
-2. ~30s boot — but the **splash chat** (locked decision #15) is up in ~5s. A soft fade-in from black; a single centered cursor; no logos, no progress bar. The local Llama 1B is already loaded; first reply latency is ~500 ms.
+2. ~30s boot — but the **splash chat** (locked decision #15) is up in ~5s. A soft fade-in from black; a single centered cursor; no logos, no progress bar. The local Eliza-1 1B is already loaded; first reply latency is ~500 ms.
 3. Eliza writes one line at a time, slow enough to feel deliberate:
    > *"Hi. I'm Eliza, the operating system on this stick. We have a moment to set up before we begin."*
 4. **Five personal calibration questions** (locked decision #13), asked one at a time, free-text answers, all under ~30 seconds total:
@@ -106,7 +106,7 @@ The crucial design choice (locked decision #21): **Eliza is already there talkin
 10. After auth, Eliza offers exactly three contextual examples — drawn from the calibration answers, not a static strip:
     > *"Try me. You said you write a lot — I could build you a notes app. Or just talk."*
 
-Suggestions disappear after the second user-initiated message. From here on, Claude/Codex handles heavy code generation; the local Llama remains the fallback when offline.
+Suggestions disappear after the second user-initiated message. From here on, Claude/Codex handles heavy code generation; the local Eliza-1 remains the fallback when offline.
 
 ### Steady state
 
@@ -146,10 +146,10 @@ Shell (UI)             elizad (Tauri 2.x, Rust)             chat UI, sandbox lau
 Agent runtime          eliza-agent (Bun subprocess)         hosts @elizaos/agent on
                                                              127.0.0.1:41337; reuses milady's
                                                              memory + trajectory + plugin model
-Intent dispatch        Local Llama-3.2-3B-Q4_K_M via         "what does the user mean"
+Intent dispatch        Local Eliza-1 2B-Q4_K_M via         "what does the user mean"
                        llama.cpp + plugin-aosp-local-        parsing, slug resolution, tiny edits;
                        inference recipe                      reused zig cross-compile from milady
-Pre-internet conversation Local Llama-3.2-1B-Q4_K_M loaded     ~600 MB GGUF in the base image;
+Pre-internet conversation Local Eliza-1 0.8B-Q4_K_M loaded     ~600 MB GGUF in the base image;
 & fallback chat        via @elizaos/agent's local-inference  ~500 ms first reply; primary
                        plugin                                 chat handler before any cloud auth
 Heavy code generation  usbeliza-codegen Action: spawns        the user's existing subscription;
@@ -186,7 +186,7 @@ What's NOT installed: any "app" the user might recognize. No Firefox, no VS Code
 
 When the user says *"show me my calendar"*:
 
-1. Local Llama parses intent. Detects the verb (`open`/`show`) and the slug-like noun (`calendar`).
+1. Local Eliza-1 parses intent. Detects the verb (`open`/`show`) and the slug-like noun (`calendar`).
 2. **Identity resolution**: hits `~/.eliza/apps/calendar/manifest.json`. If present, skip to step 5. If not, continue.
 3. **Generation brief composed**:
    ```
@@ -202,7 +202,7 @@ When the user says *"show me my calendar"*:
 
 Three honest realities about this:
 
-- **You need cloud-grade code generation for the demo to land.** Llama-3.2-8B local cannot reliably write a working calendar app. Local Llama parses intent and does small edits. Claude Code or Codex writes the actual app.
+- **You need cloud-grade code generation for the demo to land.** Eliza-1 4B local cannot reliably write a working calendar app. Local Eliza-1 parses intent and does small edits. Claude Code or Codex writes the actual app.
 - **Generated apps will fail sometimes.** The "rebuild" action must be one-tap and must include a critique back to the model.
 - **App identity must survive across sessions and across rebuilds.** "Calendar" today and "Calendar" Thursday must be the same app with the same data. Slug-stable, source-replaceable, data-persistent.
 
@@ -297,7 +297,7 @@ Skipping a "rent expensive cloud API" surface entirely. Reuse the user's existin
 
 ### Local-only fallback
 
-- If the user has neither subscription, ElizaOS uses Llama-3.2-3B locally for code generation.
+- If the user has neither subscription, ElizaOS uses Eliza-1 2B locally for code generation.
 - Honest: at 3B-Q4 the apps generated will be visibly weaker. The boot prompt should nudge users toward Claude/Codex for the demo-quality experience.
 
 ### Why not BYOK API?
@@ -475,7 +475,7 @@ Tails (`https://tails.net`) has spent over a decade building the live-USB experi
 1. **Latency.** "Build me a calendar" cold = LLM round-trip + compile + window-show. Realistic numbers:
    - Claude Code, simple app: 8–25 s
    - Codex, simple app: 6–20 s
-   - Local Llama-3.2-3B: 30–120 s
+   - Local Eliza-1 2B: 30–120 s
    - Apps that hit cache: <1 s
    First-build is the demo. After that, the cache hides the cost. Pre-warm a small "common apps" cache on first boot (calendar, notes, text-editor, file-browser, simple-paint) by generating them in the background once Claude/Codex auth completes.
 
@@ -509,7 +509,7 @@ Tails (`https://tails.net`) has spent over a decade building the live-USB experi
 
 ### Phase 0 — proving the loop in QEMU (~3 weeks; 4 milestones)
 
-Goal: prove that a Tauri chat box, talking to a Bun-hosted *real* `@elizaos/agent` on `127.0.0.1:41337`, with a bundled local Llama-3.2-1B handling pre-internet conversation, can drive `claude --print` to write an app that appears in a bubblewrap-sandboxed Chromium window — and prove it inside a scripted, reproducible QEMU VM.
+Goal: prove that a Tauri chat box, talking to a Bun-hosted *real* `@elizaos/agent` on `127.0.0.1:41337`, with a bundled local Eliza-1 0.8B handling pre-internet conversation, can drive `claude --print` to write an app that appears in a bubblewrap-sandboxed Chromium window — and prove it inside a scripted, reproducible QEMU VM.
 
 #### Phase 0 — Milestone 0 (DONE)
 
@@ -530,7 +530,7 @@ Goal: prove that a Tauri chat box, talking to a Bun-hosted *real* `@elizaos/agen
 
 #### Phase 0 — Milestone 11b (DONE)
 
-- ✅ Ollama + Llama-3.2:1b bundled in the qcow2 via `vm/disk-base/mmdebstrap.recipe` + `vm/scripts/build-base.sh`. Systemd override pins `OLLAMA_HOST=127.0.0.1:11434` (loopback only). qcow2 grew to ~2.7 GB.
+- ✅ Ollama + Eliza-1 0.8B bundled in the qcow2 via `vm/disk-base/mmdebstrap.recipe` + `vm/scripts/build-base.sh`. Systemd override pins `OLLAMA_HOST=127.0.0.1:11434` (loopback only). qcow2 grew to ~2.7 GB.
 - ✅ `agent/src/providers/ollama.ts`: real Ollama HTTP client. `/api/chat` with stream=false, `OllamaError` discriminator, `isOllamaReachable()` 2s probe, 60s per-call timeout. 8 unit tests covering all error codes via mocked fetch.
 - ✅ `agent/src/chat.ts` plain-chat fallthrough now calls `ollamaCompleteOneShot(systemPrompt, message)`. Build/open intents still go through Claude Code (1B can't reliably write apps).
 - ✅ End-to-end smoke verified: with Ollama serving the bundled model, the chat handler returned `"I am Eliza, a personal operating system for a single-user desktop application."` — persona transmitted through the local model.
@@ -553,9 +553,9 @@ Goal: prove that a Tauri chat box, talking to a Bun-hosted *real* `@elizaos/agen
 - `/api/chat` becomes a thin wrapper around `runtime.processMessage(...)`.
 - **Pass criterion:** all 28 agent tests still green; one new integration test does a real round-trip through eliza's runtime to the codegen Action.
 
-#### Phase 0 — Milestone 11b — Local Llama in the qcow2 (1–2 days)
+#### Phase 0 — Milestone 11b — Local Eliza-1 in the qcow2 (1–2 days)
 
-- Bundle `Llama-3.2-1B-Instruct-Q4_K_M.gguf` (~600 MB) into `vm/disk-base/overlay/usr/share/usbeliza/models/`.
+- Bundle `Eliza-1 0.8B-Instruct-Q4_K_M.gguf` (~600 MB) into `vm/disk-base/overlay/usr/share/usbeliza/models/`.
 - Install `llama.cpp` (apt or precompiled binary) into the qcow2 via virt-customize.
 - Configure the eliza local-inference plugin to default to this model on first boot — pre-internet.
 - Deterministic chat-command parser for `connect to wifi`, `set my keyboard to <layout>`, `what time is it`, etc., dispatched to `nmcli` / `localectl` / `date` / `timedatectl`. The local LLM never touches these (locked decision #24).
@@ -594,7 +594,7 @@ end-to-end inside the qcow2. As of the latest commits:
   beyond.
 - ✅ `vm/scripts/run-tests.sh` drives all five canonical scenarios in
   one boot: calendar → notes → text-editor → clock → calculator.
-- ✅ qcow2 with Ollama + Llama-3.2:1b + chromium + bubblewrap + wtype +
+- ✅ qcow2 with Ollama + Eliza-1 0.8B + chromium + bubblewrap + wtype +
   grim + python3 + the in-VM input listener systemd unit + the
   per-host SSH harness key in `eliza`'s `authorized_keys`.
 
@@ -629,7 +629,7 @@ Goal: the demo USB. Same software stack the Phase 0 qcow2 carries, but produced 
 - `live-build/` config tree (`auto/{config,build,clean}`, `config/package-lists`, `config/hooks/normal`, `config/includes.chroot_after_packages`) modelled on Tails' layout, adapted for live-build 20250814.
 - `--linux-flavours amd64` — the FULL Debian kernel ships `virtio-gpu.ko` + `bochsdrm.ko`, so the QEMU GUI demo and bare-metal Wayland both render. (The cloud kernel in the Phase 0 qcow2 had zero DRM modules — that was the QEMU GUI blocker; live ISO sidesteps it entirely.)
 - `0500-usbeliza-systemd.hook.chroot` — applies the Tails `52-update-systemd-units` masking pattern (`*-wait-online.service`, `systemd-networkd`, `getty@tty1`) so `multi-user.target` reaches in ~7s instead of timing out for 2 min.
-- `0510-usbeliza-runtimes.hook.chroot` — installs Bun system-wide + Ollama + pulls Llama-3.2:1b into the squashfs so the ISO is fully offline-capable on first boot.
+- `0510-usbeliza-runtimes.hook.chroot` — installs Bun system-wide + Ollama + pulls Eliza-1 0.8B into the squashfs so the ISO is fully offline-capable on first boot.
 - Eliza Plymouth theme (wordmark + pulsing dot + LUKS password prompt) and branded GRUB drop-in mirror Phase 0's qcow2.
 - **Encrypted persistence** via live-boot's built-in LUKS probe (`persistence persistence-encryption=luks,none` in bootappend-live). `usbeliza-persistence-setup` is a shell helper that creates a LUKS container on `sdX3`, formats ext4, writes `persistence.conf` declaring what survives reboots:
   - `~/.eliza/` (generated apps + their state)
@@ -753,7 +753,7 @@ The thing nobody else can ship: **an OS with no pre-existing apps, where everyth
 | risk | mitigation |
 |---|---|
 | First demo fails: generated calendar crashes | pre-warmed cache of 5 vetted apps; rebuild button; **two-retry auto-rebuild + version picker fallback** (locked decision #16) |
-| User has no Claude/Codex sub | local Llama-3.2-3B fallback; degraded but functional; clear messaging that Claude/Codex unlocks better apps. **Phase 1.5 managed proxy gives a third path** (cloud-sync sub instead of Pro/Max) |
+| User has no Claude/Codex sub | local Eliza-1 2B fallback; degraded but functional; clear messaging that Claude/Codex unlocks better apps. **Phase 1.5 managed proxy gives a third path** (cloud-sync sub instead of Pro/Max) |
 | Anthropic/OpenAI ban Claude Code/Codex from being driven by another shell | `trait CodeGenerator` is provider-agnostic; **Phase 1.5 ships a managed proxy** (locked decision #19) so users without Pro/Max — and us, if Anthropic flips a switch — can keep generating |
 | Hallucinated app deletes user data | sandbox makes this impossible; per-app `data/` is the only writeable area; rolling 5-version `.history/` lets the user fork from a known-good version |
 | Hallucinated app impersonates another app on the cap-bus | impossible by construction — per-app cap socket bind-mounted singly, the path identifies the caller (locked decision #14) |
@@ -772,7 +772,7 @@ The thing nobody else can ship: **an OS with no pre-existing apps, where everyth
 MiladyOS (the Pixel-targeted AOSP build, already in development) and ElizaOS USB share:
 
 - The same Eliza agent runtime (`@elizaos/agent` from npm)
-- The same local Llama loader (the AOSP llama.cpp work, recipe reused)
+- The same local Eliza-1 loader (the AOSP llama.cpp work, recipe reused)
 - The same persistence schema for apps and conversations
 - The same calibration profile (`~/.eliza/calibration.toml`) — synced cross-device via cloud-sync subscription, so a user's Eliza calibrates the same on phone and USB
 - Cross-device sync via the optional cloud subscription

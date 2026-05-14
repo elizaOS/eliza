@@ -79,21 +79,27 @@ pricing model.
 
 ## HuggingFace model layout
 
-`scripts/push_model_to_hf.py` writes one HF repo per (size × quant
-level), suffixing the registry's `eliza_repo_id` with the quant flag.
-For GGUF this means a separate repo per K-quant level, NOT an umbrella
-`-gguf` repo.
+The canonical destination is a single consolidated bundle repo
+`elizaos/eliza-1` with per-tier subdirectories. `scripts/publish/orchestrator.py`
+uploads each tier under `bundles/<tier>/` (text + tts + asr + vad + dflash +
+cache + evals + licenses + quantization + checksums + manifest + lineage).
+See `packages/inference/AGENTS.md §2` for the full bundle contract.
 
-| Size | Base (bf16) | GGUF Q4_K_M | GGUF Q5_K_M | GGUF Q6_K | PolarQuant | FP8 |
-|------|-------------|-------------|-------------|-----------|------------|-----|
-| 2B   | `elizaos/eliza-1-2b`    | `elizaos/eliza-1-2b-gguf-q4_k_m`    | `elizaos/eliza-1-2b-gguf-q5_k_m`    | `elizaos/eliza-1-2b-gguf-q6_k`    | `elizaos/eliza-1-2b-polarquant`    | — (skipped, bf16 is small enough) |
-| 9B   | `elizaos/eliza-1-9b`    | `elizaos/eliza-1-9b-gguf-q4_k_m`    | `elizaos/eliza-1-9b-gguf-q5_k_m`    | `elizaos/eliza-1-9b-gguf-q6_k`    | `elizaos/eliza-1-9b-polarquant`    | — (skipped, bf16 is small enough) |
-| 27B  | `elizaos/eliza-1-27b`   | `elizaos/eliza-1-27b-gguf-q4_k_m`   | `elizaos/eliza-1-27b-gguf-q5_k_m`   | `elizaos/eliza-1-27b-gguf-q6_k`   | `elizaos/eliza-1-27b-polarquant`   | `elizaos/eliza-1-27b-fp8` |
+| Tier      | Path inside `elizaos/eliza-1`                                    |
+|-----------|------------------------------------------------------------------|
+| 0_8b      | `bundles/0_8b/`                                                  |
+| 2b        | `bundles/2b/`                                                    |
+| 4b        | `bundles/4b/`                                                    |
+| 9b        | `bundles/9b/`                                                    |
+| 27b       | `bundles/27b/`                                                   |
+| 27b-256k  | `bundles/27b-256k/`                                              |
+| 27b-1m    | `bundles/27b-1m/` (planned; not yet published)                   |
 
-None of these repos exist until `scripts/publish_all_eliza1.sh` runs
-against a trained checkpoint. The smaller sizes skip explicit FP8
-publish because vLLM compiles FP8 W8A8 from bf16 weights at load on
-Hopper, so the bf16 base repo is enough for FP8 serving.
+Per-quant variants (Q4_K_M / Q6_K / Q8_0) live inside the same tier as
+sibling files under `bundles/<tier>/text/`. vLLM-specific quants (FP8,
+AWQ-Marlin, PolarQuant) require separate repos because vLLM cannot load
+from a subpath — those per-quant repos do not yet exist on HF and are
+tracked as Wave 3+ publish work.
 
 ## Subdirectory map
 

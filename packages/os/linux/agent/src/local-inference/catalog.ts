@@ -6,7 +6,7 @@
  *
  * The Linux agent offers only the active Eliza-1 release line by default.
  * Every installable runtime artifact resolves from the single
- * `elizalabs/eliza-1` Hugging Face repo under `bundles/<tier>/`.
+ * `elizaos/eliza-1` Hugging Face repo under `bundles/<tier>/`.
  *
  * Tier scoring is "minRamGb + 4 GB headroom" — the model picker hides any
  * tier whose minRamGb + 4 would exceed `/proc/meminfo` MemTotal at boot,
@@ -32,7 +32,7 @@ export interface CatalogModel {
     readonly id: ModelTierId | "eliza-1-embedding";
     /** Human-readable label for the picker. */
     readonly displayName: string;
-    /** HuggingFace `<owner>/<repo>`. Active defaults must use `elizalabs/eliza-1`. */
+    /** HuggingFace `<owner>/<repo>`. Active defaults must use `elizaos/eliza-1`. */
     readonly hfRepo: string;
     /** Exact GGUF filename inside the repo. We construct the resolve URL from this. */
     readonly ggufFile: string;
@@ -69,7 +69,7 @@ export const BASELINE_MODEL_ID: ModelTierId = "eliza-1-0_8b";
  */
 export const BASELINE_EMBEDDING_ID = "eliza-1-embedding" as const;
 
-const ELIZA_1_REPO = "elizalabs/eliza-1";
+const ELIZA_1_REPO = "elizaos/eliza-1";
 
 export const MODEL_CATALOG: readonly CatalogModel[] = [
     // ─── Always-on embeddings ────────────────────────────────────────

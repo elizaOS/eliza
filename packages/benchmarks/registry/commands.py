@@ -140,7 +140,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
                 args.extend(["--model", model_name])
         if extra.get("mock") is True or provider_name == "mock":
             args.append("--mock")
-        sample = extra.get("sample")
+        sample = extra.get("sample", extra.get("max_tasks"))
         if isinstance(sample, int) and sample > 0:
             args.extend(["--sample", str(sample)])
         max_per_category = extra.get("max_per_category")
@@ -1599,7 +1599,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         provider = (model.provider or "").strip().lower() or "vllm"
         agent = str(extra.get("agent") or extra.get("harness") or "").strip().lower()
         if agent in {"eliza", "hermes", "openclaw"}:
-            provider = "eliza"
+            provider = agent
         args = [
             python,
             "-m",

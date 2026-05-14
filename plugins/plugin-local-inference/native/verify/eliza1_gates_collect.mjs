@@ -34,15 +34,36 @@ import { fileURLToPath } from "node:url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+function findRepoRoot(startDir) {
+  let current = startDir;
+  while (true) {
+    const candidate = path.join(
+      current,
+      "packages",
+      "training",
+      "benchmarks",
+      "eliza1_gates.yaml",
+    );
+    if (fs.existsSync(candidate)) return current;
+    const parent = path.dirname(current);
+    if (parent === current) {
+      throw new Error(
+        `could not locate repo root from ${startDir}; missing packages/training/benchmarks/eliza1_gates.yaml`,
+      );
+    }
+    current = parent;
+  }
+}
+
+const REPO_ROOT = findRepoRoot(__dirname);
 const REPORTS_ROOT = path.join(__dirname, "..", "reports");
 const VERIFY_ROOT = __dirname;
 const BENCH_RESULTS_ROOT = path.join(VERIFY_ROOT, "bench_results");
 const HARDWARE_RESULTS_ROOT = path.join(VERIFY_ROOT, "hardware-results");
 const VERIFY_REPORTS_ROOT = path.join(VERIFY_ROOT, "reports");
 const DEFAULT_GATES = path.join(
-  __dirname,
-  "..",
-  "..",
+  REPO_ROOT,
+  "packages",
   "training",
   "benchmarks",
   "eliza1_gates.yaml",

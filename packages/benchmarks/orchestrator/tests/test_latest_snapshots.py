@@ -405,6 +405,9 @@ def test_rebuild_latest_indexes_cross_harness_comparison_signature(
         f"{comparison_signature}::woobench::openclaw",
     }
     assert index["benchmark_comparability"]["woobench"]["comparable"] is True
+    assert index["matrix_contract"]["status"] == "complete"
+    assert index["matrix_contract"]["summary"]["required_real_cells"] == 3
+    assert index["matrix_contract"]["summary"]["succeeded_required_real_cells"] == 3
 
 
 def test_rebuild_latest_marks_mixed_latest_configs_not_comparable(
@@ -644,6 +647,13 @@ def test_rebuild_latest_routes_current_incompatible_rows_out_of_latest(
     assert payload["quarantine_reason"] == "incompatible_harness"
     index = json.loads((tmp_path / "latest" / "index.json").read_text(encoding="utf-8"))
     assert index["latest"] == {}
+    assert index["matrix_contract"]["benchmarks"]["loca_bench"]["cells"]["openclaw"] == {
+        "required": False,
+        "state": "unsupported",
+        "status": "unsupported",
+        "score": None,
+        "run_id": None,
+    }
 
 
 def test_rebuild_latest_prunes_unknown_benchmark_snapshots(

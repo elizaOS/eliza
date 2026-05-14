@@ -69,7 +69,6 @@ public class MainActivity extends BridgeActivity {
             WebView.setWebContentsDebuggingEnabled(true);
         }
 
-        registerPlugin(AgentPlugin.class);
         registerPlugin(BatteryOptimizationPlugin.class);
         super.onCreate(savedInstanceState);
 

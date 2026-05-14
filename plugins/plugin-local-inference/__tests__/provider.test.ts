@@ -123,7 +123,7 @@ describe("local inference provider", () => {
 				text: "say this",
 			} as never),
 		).resolves.toEqual(wav);
-		expect(synthesizeSpeech).toHaveBeenCalledWith("say this");
+		expect(synthesizeSpeech).toHaveBeenCalledWith("say this", undefined);
 
 		const pcm = new Float32Array([0, 0.1, -0.1]);
 		await expect(

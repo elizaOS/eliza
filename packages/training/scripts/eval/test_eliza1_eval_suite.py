@@ -275,3 +275,90 @@ def test_real_text_model_override_produces_real_score(tmp_path: Path, monkeypatc
     assert 0.0 <= blob["score"] <= 1.0
     assert blob["perplexity"] > 1.0
     assert blob["modelIsBundleText"] is False
+
+
+# ---------------------------------------------------------------------------
+# Held-out text corpus — wave2 T5 made this dataset-derived instead of the
+# 5-paragraph hand-typed fallback.
+# ---------------------------------------------------------------------------
+
+
+def test_load_text_corpus_from_jsonl_extracts_assistant_turns(tmp_path: Path) -> None:
+    """The loader reads ``messages[role==assistant]`` content from each row."""
+    src = tmp_path / "test.jsonl"
+    src.write_text(
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "messages": [
+                            {"role": "system", "content": "irrelevant prefix"},
+                            {"role": "user", "content": "hi"},
+                            {
+                                "role": "assistant",
+                                "content": "Hello! How can I help you today?",
+                            },
+                        ],
+                        "task": "assistant",
+                    }
+                ),
+                json.dumps(
+                    {
+                        "messages": [
+                            {"role": "user", "content": "do an action"},
+                            {
+                                "role": "assistant",
+                                "content": (
+                                    "ACTION: REPLY {\"text\":\"sure thing\"}\n"
+                                    "I'm replying to you now."
+                                ),
+                            },
+                        ],
+                        "task": "tool_use",
+                    }
+                ),
+                "",
+                "not-json-skip-me",
+                json.dumps({"text": "Legacy flat-text row used by older corpora."}),
+            ]
+        ),
+        encoding="utf-8",
+    )
+    out = suite._load_text_corpus_from_jsonl(src)
+    assert any("Hello!" in s for s in out)
+    assert any("ACTION: REPLY" in s for s in out)
+    assert any("Legacy flat-text" in s for s in out)
+
+
+def test_default_text_eval_corpus_prefers_dataset(monkeypatch, tmp_path: Path) -> None:
+    """When the canonical test.jsonl is on disk, the default corpus comes from it."""
+    fake_test = tmp_path / "test.jsonl"
+    fake_test.write_text(
+        json.dumps(
+            {
+                "messages": [
+                    {"role": "user", "content": "ping"},
+                    {
+                        "role": "assistant",
+                        "content": "This row makes the corpus dataset-derived not hand-typed.",
+                    },
+                ],
+                "task": "assistant",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("ELIZA_EVAL_TEXT_CORPUS", str(fake_test))
+    corpus = suite._default_text_eval_corpus()
+    assert any("dataset-derived" in s for s in corpus)
+
+
+def test_default_text_eval_corpus_falls_back_when_dataset_missing(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """No dataset on disk → the hardcoded 5-paragraph fallback is used."""
+    missing = tmp_path / "missing.jsonl"
+    monkeypatch.setenv("ELIZA_EVAL_TEXT_CORPUS", str(missing))
+    corpus = suite._default_text_eval_corpus()
+    assert corpus == suite._HARDCODED_TEXT_EVAL_CORPUS_FALLBACK

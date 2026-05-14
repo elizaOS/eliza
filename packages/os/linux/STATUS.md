@@ -78,7 +78,7 @@ The combination of OPEN_TERMINAL + INSTALL_PACKAGE means the agent can boot a va
 
 v15 closes the audit's "Eliza is everywhere" punch list: every visible turn from the dispatcher routes through `maybeRephrase` → `rephraseAsEliza` when the gate is on. That covers Action replies (since v11), flow continuations + bail-outs + chat-model errors (new in v15), and onboarding questions / completion message (also new — gated separately by `USBELIZA_LLM_ONBOARDING` with auto-on when Claude/Codex signed in). Six bug fixes landed in v15:
 
-1. **Local Llama "No sequences left"** — `local-llama-plugin.ts` was leaking sequences (`createContext({sequences:1})` + never `dispose`). Fixed: `sequences:8` + `try/finally sequence.dispose()`.
+1. **Local Eliza-1 "No sequences left"** — `local-llama-plugin.ts` was leaking sequences (`createContext({sequences:1})` + never `dispose`). Fixed: `sequences:8` + `try/finally sequence.dispose()`.
 2. **Chromium didn't spawn for LOGIN_CLAUDE / OPEN_URL** — `eliza-agent.service` was missing `WAYLAND_DISPLAY` / `XDG_RUNTIME_DIR` / `DISPLAY` so chromium silently exited. Three new `Environment=` lines.
 3. **Timezone garbled** ("America/Los Angeles" → "america/lo_sangeles") — `parseTimezone` rewrote with a 6-step algorithm + 23 new test cases. Natural phrasings now map ("Los Angeles", "pacific time", "I'm in tokyo").
 4. **Offer flags dropped on save** — `serializeCalibrationToml` now persists `wifi_offer_accepted` + `claude_offer_accepted`.
@@ -99,7 +99,7 @@ v14 bumps the inner display from 1920x1080 to **2560x1440** so the chat box fill
 
 Plus a **live-build chroot-cache trap fix** in the Justfile: after the first build, `lb`'s `--cache-stages "bootstrap chroot"` restores the chroot tarball wholesale and skips `chroot_local-includes`, silently freezing /opt/usbeliza at the first-build code. `iso-stage` now force-mirrors the staged tree into chroot/ whenever it exists.
 
-Real `claude` CLI 2.1.138 + `codex` 0.130.0 ship in the chroot. Real `node-llama-cpp` + bundled Llama-3.2-1B GGUF runs in-process. Onboarding asks 10 questions, all 10 verified by the harness. Multi-turn flows for wifi + LUKS. No Ollama daemon. No persistent topbar. Chat is the desktop.
+Real `claude` CLI 2.1.138 + `codex` 0.130.0 ship in the chroot. Real `node-llama-cpp` + bundled Eliza-1 0.8B GGUF runs in-process. Onboarding asks 10 questions, all 10 verified by the harness. Multi-turn flows for wifi + LUKS. No Ollama daemon. No persistent topbar. Chat is the desktop.
 
 **284 agent tests, 4 rust tests, 47/47 E2E probes — all green.** All work pushed to `origin/main`.
 
@@ -108,12 +108,12 @@ Real `claude` CLI 2.1.138 + `codex` 0.130.0 ship in the chroot. Real `node-llama
 | Surface | State |
 |---|---|
 | Boot chain | GRUB (themed, 2s auto-advance, orange splash) → Plymouth (orange Eliza wordmark + pulsing dot) → sway → elizad chat box |
-| First-boot script | Eliza asks: name, then **offers Wi-Fi setup** (multi-turn picker), then **offers Claude/Codex auth** (browser OAuth via chromium), then 5 personality questions, then 3 system questions (keyboard / language / timezone). Local Llama-3.2-1B handles every turn before any cloud auth. |
+| First-boot script | Eliza asks: name, then **offers Wi-Fi setup** (multi-turn picker), then **offers Claude/Codex auth** (browser OAuth via chromium), then 5 personality questions, then 3 system questions (keyboard / language / timezone). Local Eliza-1 0.8B handles every turn before any cloud auth. |
 | Action surface (chat verbs) | BUILD_APP, OPEN_APP, LIST_APPS, DELETE_APP, LIST_WIFI, CONNECT_WIFI, NETWORK_STATUS, LOGIN_CLAUDE, LOGIN_CODEX, OPEN_URL, LIST_MODELS, DOWNLOAD_MODEL, BATTERY_STATUS, CURRENT_TIME, SETUP_PERSISTENCE, SET_WALLPAPER, HELP |
 | Reply phrasing (v11) | Every Action reply runs through `rephraseAsEliza()` → `runtime.useModel(TEXT_LARGE)` with the full Eliza system prompt + the action's structured data, so user-facing turns sound like Eliza. Default-on when Claude/Codex is signed in; falls back to the suggested preset on timeout/error. Toggle with `USBELIZA_LLM_REPLIES`. |
 | Dream-world surface (v10) | `SET_WALLPAPER` (ImageMagick + `swaymsg output * bg`); manifest runtime enum extended to `webview / gtk4 / terminal / wallpaper / panel-{top,bottom,left,right} / dock / widget`; sway `for_window [app_id="^usbeliza\\.<runtime>\\..*"]` rules dock generated apps at the requested screen position. |
 | Multi-turn flows | `connect to wifi` → list networks → pick → ask password → connect; `set up persistence` → confirm → passphrase → confirm passphrase → LUKS |
-| Local inference | `node-llama-cpp@3.10.0` linking `libllama.so` in-process; Llama-3.2-1B Q4_K_M GGUF baked at `/usr/share/usbeliza/models/`. No Ollama daemon. |
+| Local inference | `node-llama-cpp@3.10.0` linking `libllama.so` in-process; Eliza-1 0.8B Q4_K_M GGUF baked at `/usr/share/usbeliza/models/`. No Ollama daemon. |
 | Cloud codegen | Real `claude` CLI 2.1.138 + `codex` CLI 0.130.0 bundled. LOGIN_CLAUDE opens chromium fullscreen for OAuth, polls token file at `~/.config/claude/.credentials.json`, kills the window when signed-in. |
 | Cap-bus | Per-app sockets at `/run/eliza/cap-<slug>.sock`. v1 capability handlers: `time:read`, `storage:scoped`, `notifications:write`, `clipboard:read/write`, `network:fetch` (manifest-declared allowlist, 5 MiB body cap). |
 | App lifecycle | Atomic-swap via `src.next/` + rolling `.history/v<N>/` (max 5 versions); 2-retry critique loop on failure; `rollbackTo()` for the version picker. `data/` never touched. |

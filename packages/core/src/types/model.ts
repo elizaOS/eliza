@@ -304,22 +304,30 @@ export interface ChatMessage {
 /**
  * Kind of a single span in a {@link ResponseSkeleton}.
  *
- * - `literal`    — fixed text injected verbatim into the output (a key name,
+ * - `literal`     — fixed text injected verbatim into the output (a key name,
  *   a `": "` separator, a closing brace, or an enum collapsed to its single
  *   allowed value). The decode loop spends **zero** sampled tokens on a
  *   `literal` span — the engine splices the bytes in and continues.
- * - `enum`       — a key whose value must be one of {@link ResponseSkeletonSpan.enumValues}.
+ * - `enum`        — a key whose value must be one of {@link ResponseSkeletonSpan.enumValues}.
  *   With two-or-more values the engine constrains sampling to those tokens
  *   (and can shortcut as soon as a value is unambiguous); a single value is
  *   normally lowered to a `literal` by the producer.
- * - `free-string`— a key whose value is a free-form JSON string the model
+ * - `number`      — a key whose value is a JSON number. Grammar pins the
+ *   number-token shape; with per-span argmax sampling the engine picks the
+ *   most-likely number rather than letting non-zero temperature occasionally
+ *   tip the digit.
+ * - `boolean`     — a key whose value is `true` or `false`. Grammar pins the
+ *   alternation; argmax sampling makes the decision deterministic.
+ * - `free-string` — a key whose value is a free-form JSON string the model
  *   samples normally (e.g. `replyText`, `thought`).
- * - `free-json`  — a key whose value is a free-form JSON sub-document the model
+ * - `free-json`   — a key whose value is a free-form JSON sub-document the model
  *   samples normally (e.g. `extract`, an action `parameters` object).
  */
 export type ResponseSkeletonSpanKind =
 	| "literal"
 	| "enum"
+	| "number"
+	| "boolean"
 	| "free-string"
 	| "free-json";
 
@@ -388,6 +396,57 @@ export interface ResponseSkeleton {
 }
 
 /**
+ * Per-span sampler override for structured generation. Indexed by position
+ * into `ResponseSkeleton.spans` (NOT free-span index). For positions whose
+ * skeleton span is an `enum`, `number`, or `boolean`, the engine should pick
+ * the argmax (force temperature=0 / top_k=1) so the model never "randomly"
+ * picks an unlikely value at a position that already has a single
+ * high-probability winner.
+ *
+ * Engines that don't honor per-span sampling either ignore this field
+ * entirely (grammar still constrains the same tokens, just without the
+ * argmax guarantee) or apply it as a whole-call override when every free
+ * span has an override (`strict` mode in {@link SpanSamplerPlan} surfaces
+ * the strict-mode requirement).
+ */
+export interface SpanSamplerOverride {
+	/** Index into {@link ResponseSkeleton.spans} this override applies to. */
+	spanIndex: number;
+	/** Override temperature for the duration of this span. 0 = greedy argmax. */
+	temperature: number;
+	/**
+	 * Override top_k for the duration of this span. 1 = greedy argmax. Most
+	 * engines need this set in addition to temperature=0 to get a true argmax.
+	 */
+	topK?: number;
+	/** Override top_p. Rarely needed when temperature=0. */
+	topP?: number;
+}
+
+/**
+ * Bundle of per-span sampler overrides for a structured generation call. The
+ * agent's structure-forcing layer derives this from the {@link ResponseSkeleton}:
+ * every `enum` / `number` / `boolean` span gets `temperature: 0, topK: 1` so the
+ * model never randomly tips an enum or numerical decision that has a clear
+ * argmax winner.
+ *
+ * Producer: `@elizaos/core` `buildSpanSamplerPlan(skeleton)`.
+ * Consumer: local-inference engine (W4) → llama-server fork extension
+ *           `eliza_span_samplers` body field. Eliza Cloud fork extension
+ *           `x-eliza-span-samplers` header.
+ */
+export interface SpanSamplerPlan {
+	/** Per-position overrides. Spans not listed keep the call-level sampler. */
+	overrides: SpanSamplerOverride[];
+	/**
+	 * When true, the backend must honor the per-span overrides — fail loudly
+	 * (do not silently fall back to whole-call sampling) if it cannot. Default
+	 * `false`: engines that can't honor it simply ignore the field.
+	 */
+	strict?: boolean;
+}
+
+/**
  * Parameters for generating text using a language model.
  * This structure is typically passed to `AgentRuntime.useModel` when the `modelType` is one of
  * `ModelType.TEXT_SMALL`, `ModelType.TEXT_LARGE`, or `ModelType.TEXT_COMPLETION`.
@@ -399,9 +458,11 @@ export interface ResponseSkeleton {
  * Check your provider's documentation to determine which parameters are supported.
  *
  * **Local structure-forcing fields** (`prefill`, `responseSkeleton`, `grammar`,
- * `streamStructured`): honoured only by the local llama-server engine (W4).
- * Cloud / HTTP adapters that can't act on them simply leave them unread — there
- * is no fallback branch; the request still works, just without forcing.
+ * `streamStructured`, `spanSamplerPlan`): honoured only by the local llama-server
+ * engine (W4) — and, on the cloud path, the Eliza Cloud fork of llama-server
+ * that backs the hosted `eliza-1` deployments. Cloud / HTTP adapters that can't
+ * act on them simply leave them unread — there is no fallback branch; the
+ * request still works, just without forcing.
  */
 export interface GenerateTextParams {
 	/**
@@ -527,6 +588,25 @@ export interface GenerateTextParams {
 	 * Consumer: local-inference engine (W4) + the runtime's field-event plumbing.
 	 */
 	streamStructured?: boolean;
+	/**
+	 * Per-span sampler overrides for the {@link responseSkeleton}. Derived from
+	 * the skeleton's per-position kinds (every `enum` / `number` / `boolean` span
+	 * gets `temperature: 0, topK: 1`) so the model never "randomly" tips a
+	 * decision that has a clear argmax winner — the classic case being a
+	 * `shouldRespond: "RESPOND" | "IGNORE" | "STOP"` enum where the model's
+	 * 51/49 logits sometimes flip to the minority option under default
+	 * temperature.
+	 *
+	 * Engines that honour it swap the sampler chain at the indicated spans; those
+	 * that don't ignore it entirely — the grammar still constrains to the same
+	 * tokens, we just lose the per-span argmax determinism guarantee.
+	 *
+	 * Producer: `@elizaos/core` `buildSpanSamplerPlan` (W8).
+	 * Consumer: local-inference engine (W4) → llama-server fork
+	 *           `eliza_span_samplers` body field. Eliza Cloud llama-server fork
+	 *           via the `x-eliza-span-samplers` header.
+	 */
+	spanSamplerPlan?: SpanSamplerPlan;
 }
 
 /**
@@ -691,6 +771,7 @@ export interface ImageGenerationResult {
 export interface TranscriptionParams {
 	audioUrl: string;
 	prompt?: string;
+	signal?: AbortSignal;
 }
 
 /**

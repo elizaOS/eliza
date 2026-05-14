@@ -246,8 +246,12 @@ describe("PhraseChunkedTts", () => {
     // Synchronous dispatch of the TTS handler within the same tick.
     await Promise.resolve();
     await Promise.resolve();
-    expect(dispatchAt[0]).toBeGreaterThanOrEqual(t);
-    expect(dispatchAt[0]! - t).toBeLessThan(5);
+    const firstDispatchAt = dispatchAt[0];
+    if (firstDispatchAt === undefined) {
+      throw new Error("Expected TTS dispatch timestamp");
+    }
+    expect(firstDispatchAt).toBeGreaterThanOrEqual(t);
+    expect(firstDispatchAt - t).toBeLessThan(5);
 
     await pipe.finish();
   });

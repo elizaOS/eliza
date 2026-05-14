@@ -66,11 +66,26 @@ from benchmarks.eliza1_gates import (  # noqa: E402
 
 SCHEMA_VERSION = 1
 
-# Held-out text-eval corpus. A small fixed paragraph set; kept tiny so the
-# eval is CPU-runnable. Replace with a larger held-out split when training
-# ships one — the score (mean per-token NLL → mapped to a 0..1 scale) is
-# what the gate compares.
-DEFAULT_TEXT_EVAL_CORPUS: tuple[str, ...] = (
+# Held-out text-eval corpus.
+#
+# Source of truth: the eliza-1 training dataset's held-out test split at
+# ``packages/training/datasets/eliza1-sft-0_8b/test.jsonl`` (also published as
+# ``elizaos/eliza-1-training/test.jsonl``). The eval suite reads it at boot,
+# extracts the assistant-turn text from each ``{"messages":[...]}`` row, and
+# uses that concatenation as the perplexity corpus.
+#
+# The previous 5-paragraph hand-typed fallback is kept ONLY as the absolute
+# last-resort when neither the local dataset checkout nor the operator's
+# ``--text-corpus`` override is available. That keeps offline unit tests
+# (which run without the dataset on disk) working without silently degrading
+# the real publish-time eval.
+
+_DATASET_TEST_RELATIVE: Path = Path("datasets/eliza1-sft-0_8b/test.jsonl")
+
+_TEXT_CORPUS_MIN_CHARS: int = 32
+_TEXT_CORPUS_MAX_RECORDS: int = 200
+
+_HARDCODED_TEXT_EVAL_CORPUS_FALLBACK: tuple[str, ...] = (
     "The capital of France is Paris, a city on the Seine known for the "
     "Louvre, the Eiffel Tower, and a long tradition of philosophy.",
     "Speculative decoding lets a small draft model propose several tokens "
@@ -86,6 +101,101 @@ DEFAULT_TEXT_EVAL_CORPUS: tuple[str, ...] = (
     "stream so the recognizer can skip silence and the system can react the "
     "moment the speaker stops talking.",
 )
+
+
+def _extract_text_from_row(row: dict[str, Any]) -> str | None:
+    """Return the row's assistant turn(s) joined into a single string.
+
+    Rows in ``test.jsonl`` follow the ``{"messages":[{role,content},...]}``
+    chat-message schema (``eliza_record_v1`` / ``chat_messages_v1``). We pull
+    every ``assistant`` content field as the text the model is expected to
+    produce; concatenated, those form a representative held-out distribution.
+
+    Returns ``None`` if the row has no assistant content or doesn't match the
+    expected schema.
+    """
+    messages = row.get("messages")
+    if not isinstance(messages, list):
+        return None
+    chunks: list[str] = []
+    for msg in messages:
+        if not isinstance(msg, dict):
+            continue
+        if msg.get("role") != "assistant":
+            continue
+        content = msg.get("content")
+        if isinstance(content, str) and content.strip():
+            chunks.append(content.strip())
+    if not chunks:
+        return None
+    joined = "\n".join(chunks)
+    if len(joined) < _TEXT_CORPUS_MIN_CHARS:
+        return None
+    return joined
+
+
+def _load_text_corpus_from_jsonl(path: Path) -> tuple[str, ...]:
+    """Read up to ``_TEXT_CORPUS_MAX_RECORDS`` assistant turns from ``path``."""
+    out: list[str] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(row, dict):
+            continue
+        text = _extract_text_from_row(row)
+        if text is None:
+            # Allow legacy ``{"text": "..."}`` rows (used by some older corpora).
+            raw = row.get("text")
+            if isinstance(raw, str) and len(raw.strip()) >= _TEXT_CORPUS_MIN_CHARS:
+                text = raw.strip()
+        if text is not None:
+            out.append(text)
+        if len(out) >= _TEXT_CORPUS_MAX_RECORDS:
+            break
+    return tuple(out)
+
+
+def _dataset_test_jsonl() -> Path | None:
+    """Locate the canonical test.jsonl on disk.
+
+    Search order:
+      1. ``ELIZA_EVAL_TEXT_CORPUS`` env var (explicit operator override).
+      2. ``packages/training/datasets/eliza1-sft-0_8b/test.jsonl`` next to
+         the training package (this is the in-repo source-of-truth split).
+    """
+    override = os.environ.get("ELIZA_EVAL_TEXT_CORPUS")
+    if override:
+        p = Path(override).expanduser().resolve()
+        return p if p.is_file() else None
+    candidate = (_TRAINING_ROOT / _DATASET_TEST_RELATIVE).resolve()
+    return candidate if candidate.is_file() else None
+
+
+def _default_text_eval_corpus() -> tuple[str, ...]:
+    """Return the held-out corpus to score perplexity against.
+
+    Prefers the dataset's ``test.jsonl`` split; falls back to the hardcoded
+    5-paragraph mini-corpus only when no dataset checkout is present (so
+    standalone unit tests still work without the dataset on disk).
+    """
+    src = _dataset_test_jsonl()
+    if src is None:
+        return _HARDCODED_TEXT_EVAL_CORPUS_FALLBACK
+    extracted = _load_text_corpus_from_jsonl(src)
+    if not extracted:
+        return _HARDCODED_TEXT_EVAL_CORPUS_FALLBACK
+    return extracted
+
+
+# Backwards-compat alias. Existing callers and tests import
+# ``DEFAULT_TEXT_EVAL_CORPUS`` as a module constant; keep it as a snapshot of
+# the dataset-derived corpus so behavior is identical at import time.
+DEFAULT_TEXT_EVAL_CORPUS: tuple[str, ...] = _default_text_eval_corpus()
 
 # Map mean per-token negative log-likelihood to a 0..1 "text quality" score:
 # score = exp(-_NLL_DECAY * meanNll). Lower NLL → higher score. Calibrated so a
@@ -1337,15 +1447,10 @@ def _default_text_corpus(path: Path | None) -> tuple[str, ...]:
     if not path.is_file():
         raise SystemExit(f"--text-corpus not found: {path}")
     if path.suffix == ".jsonl":
-        out: list[str] = []
-        for line in path.read_text(encoding="utf-8").splitlines():
-            line = line.strip()
-            if not line:
-                continue
-            obj = json.loads(line)
-            text = obj.get("text") if isinstance(obj, dict) else line
-            if isinstance(text, str) and text.strip():
-                out.append(text)
+        # Same row schema as ``_load_text_corpus_from_jsonl`` — prefer the
+        # ``messages[].role=="assistant"`` extraction, fall back to a flat
+        # ``{"text": "..."}`` field for legacy corpora.
+        out = list(_load_text_corpus_from_jsonl(path))
         return tuple(out) or DEFAULT_TEXT_EVAL_CORPUS
     return tuple(
         ln for ln in path.read_text(encoding="utf-8").splitlines() if ln.strip()

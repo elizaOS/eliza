@@ -1841,8 +1841,12 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         return;
       }
 
-      const unsent = remainderAfter(speakable, state.queuedSpeakablePrefix);
-      if (!unsent) {
+      const boundaryPrefix = queueableSpeechPrefix(speakable, isFinal);
+      const boundaryUnsent = boundaryPrefix
+        ? remainderAfter(boundaryPrefix, state.queuedSpeakablePrefix)
+        : "";
+      const rawUnsent = remainderAfter(speakable, state.queuedSpeakablePrefix);
+      if (!rawUnsent) {
         if (isFinal) {
           clearAssistantTtsDebounce();
           state.finalQueued = true;
@@ -1851,10 +1855,19 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
       }
 
       const isFirstClip = state.queuedSpeakablePrefix.length === 0;
-      const flushNow =
+      const thresholdFlush =
         isFinal ||
-        (isFirstClip && unsent.length >= ASSISTANT_TTS_FIRST_FLUSH_CHARS) ||
-        (!isFirstClip && unsent.length >= ASSISTANT_TTS_MIN_CHUNK_CHARS);
+        (isFirstClip && rawUnsent.length >= ASSISTANT_TTS_FIRST_FLUSH_CHARS) ||
+        (!isFirstClip && rawUnsent.length >= ASSISTANT_TTS_MIN_CHUNK_CHARS);
+      const targetPrefix = boundaryUnsent
+        ? boundaryPrefix
+        : thresholdFlush
+          ? speakable
+          : "";
+      const unsent = targetPrefix
+        ? remainderAfter(targetPrefix, state.queuedSpeakablePrefix)
+        : "";
+      const flushNow = Boolean(unsent);
 
       if (flushNow) {
         clearAssistantTtsDebounce();
@@ -1880,7 +1893,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
           debugUtteranceContext: dbgUtterance,
           telemetry: state.telemetry,
         });
-        state.queuedSpeakablePrefix = speakable;
+        state.queuedSpeakablePrefix = targetPrefix;
         if (isFinal) state.finalQueued = true;
         return;
       }

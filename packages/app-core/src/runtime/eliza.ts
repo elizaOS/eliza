@@ -1110,12 +1110,12 @@ export async function startEliza(
   // without an explicit one; `startApiServer` later seeds that same
   // singleton with the live runtime via its `server.updateRuntime` wrapper,
   // so the early listener picks up the runtime as soon as it's available.
-  const { patchHttpCreateServerForCompat, getSharedCompatRuntimeState } =
-    await import("../api/server");
-  patchHttpCreateServerForCompat();
-  const earlyCompatState = getSharedCompatRuntimeState();
-
   try {
+    const { patchHttpCreateServerForCompat, getSharedCompatRuntimeState } =
+      await import("../api/server");
+    patchHttpCreateServerForCompat();
+    const earlyCompatState = getSharedCompatRuntimeState();
+
     // Eagerly download the embedding model with progress reporting
     await warmupEmbeddingModel(options?.onEmbeddingProgress);
 
@@ -1175,6 +1175,7 @@ export async function startEliza(
           currentRuntime = restarted
             ? await repairRuntimeAfterBoot(restarted)
             : undefined;
+          earlyCompatState.current = currentRuntime ?? null;
 
           return currentRuntime ?? null;
         },

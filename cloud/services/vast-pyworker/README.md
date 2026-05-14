@@ -1,13 +1,14 @@
 # vast-pyworker — GGUF / DFlash on Vast Serverless
 
-PyWorker that fronts a `llama.cpp` `llama-server` hosting the Q6_K GGUF of
-[`elizaos/eliza-1-27b-fp8`][1]
-on a single RTX 5090 worker. Deployed by Vast.ai Serverless; the template
-defines the image and the on-start script, both committed in this repo.
-The same worker can serve Eliza-1/3.6 DFlash target+drafter pairs when the
-template image provides a DFlash-capable `llama-server` fork.
+PyWorker that fronts a `llama.cpp` `llama-server` hosting a Q4_K_M / Q6_K
+GGUF from the consolidated Eliza-1 bundle repo
+[`elizaos/eliza-1`][1] (subpath `bundles/27b/text/`) on a single RTX 5090
+worker. Deployed by Vast.ai Serverless; the template defines the image and
+the on-start script, both committed in this repo. The same worker can serve
+Eliza-1/3.6 DFlash target+drafter pairs when the template image provides a
+DFlash-capable `llama-server` fork.
 
-[1]: https://huggingface.co/elizaos/eliza-1-27b-fp8
+[1]: https://huggingface.co/elizaos/eliza-1
 
 ## Why GGUF + llama.cpp (not vLLM)
 
@@ -121,8 +122,8 @@ docker push ghcr.io/YOUR_ORG/buun-llama-cpp:cuda-dflash
 
 VAST_TEMPLATE_NAME=eliza-cloud-eliza-1-27b \
 VAST_IMAGE=ghcr.io/YOUR_ORG/buun-llama-cpp:cuda-dflash \
-MODEL_REPO=elizaos/eliza-1-27b-gguf-q4_k_m \
-MODEL_FILE=text/eliza-1-pro-27b-128k.gguf \
+MODEL_REPO=elizaos/eliza-1 \
+MODEL_FILE=bundles/27b/text/eliza-1-pro-27b-128k.gguf \
 MODEL_ALIAS=vast/eliza-1-27b \
 DFLASH_DRAFTER_REPO=spiritbuun/Eliza-1-27B-DFlash-GGUF \
 DFLASH_DRAFTER_FILE=dflash-draft-3.6-q8_0.gguf \
@@ -132,8 +133,9 @@ LLAMA_DRAFT_MAX=16 \
 bun cloud/scripts/vast/upsert-template.ts
 ```
 
-For smaller tiers, use the canonical `elizaos/eliza-1-*` GGUF repos as the
-target repo and the corresponding Eliza-1 DFlash drafter. Those drafters are
+For smaller tiers, use the canonical `elizaos/eliza-1` repo with the
+appropriate `bundles/<tier>/text/...` subpath and the corresponding Eliza-1
+DFlash drafter (also under `bundles/<tier>/dflash/`). Those drafters are
 repaired on startup
 when they are missing `tokenizer.ggml.merges`; bundle llama.cpp's `gguf-py`
 next to `llama-server` or set `GGUF_PYTHONPATH` in the template image.
@@ -221,8 +223,8 @@ retryable 5xx/timeout/capacity errors from 27B to 9B, and from 9B to 2B.
 ## Swapping in a fine-tuned model
 
 After the training pipeline (`/training/scripts/train_nebius.sh` or vast)
-emits a checkpoint and pushes it to HF as a GGUF (e.g.
-`elizaos/eliza-1-27b-eliza-v0.1-gguf`):
+emits a checkpoint and pushes it to HF as a GGUF inside the consolidated
+bundle repo (e.g. `elizaos/eliza-1` with `bundles/27b/text/eliza-1-pro-27b-128k.gguf`):
 
 1. Update the Vast template's `MODEL_REPO` / `MODEL_FILE` env (re-run
    `upsert-template.ts` with the new env, or change in the Vast UI).
