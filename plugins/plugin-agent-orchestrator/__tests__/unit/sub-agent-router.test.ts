@@ -334,22 +334,22 @@ describe("SubAgentRouter", () => {
   });
 
   describe("verify-retry on incomplete builds", () => {
-    const origMax = process.env.PARALLAX_BUILD_VERIFY_MAX_RETRIES;
-    const origSettle = process.env.PARALLAX_URL_VERIFY_SETTLE_MS;
+    const origMax = process.env.ELIZA_BUILD_VERIFY_MAX_RETRIES;
+    const origSettle = process.env.ELIZA_URL_VERIFY_SETTLE_MS;
 
     beforeEach(() => {
       // Disable the settle-retry so the dead-URL probe is a single fast
       // connection-refused rather than a 2.5s wait.
-      process.env.PARALLAX_URL_VERIFY_SETTLE_MS = "0";
-      delete process.env.PARALLAX_BUILD_VERIFY_MAX_RETRIES;
+      process.env.ELIZA_URL_VERIFY_SETTLE_MS = "0";
+      delete process.env.ELIZA_BUILD_VERIFY_MAX_RETRIES;
     });
     afterEach(() => {
       if (origMax === undefined)
-        delete process.env.PARALLAX_BUILD_VERIFY_MAX_RETRIES;
-      else process.env.PARALLAX_BUILD_VERIFY_MAX_RETRIES = origMax;
+        delete process.env.ELIZA_BUILD_VERIFY_MAX_RETRIES;
+      else process.env.ELIZA_BUILD_VERIFY_MAX_RETRIES = origMax;
       if (origSettle === undefined)
-        delete process.env.PARALLAX_URL_VERIFY_SETTLE_MS;
-      else process.env.PARALLAX_URL_VERIFY_SETTLE_MS = origSettle;
+        delete process.env.ELIZA_URL_VERIFY_SETTLE_MS;
+      else process.env.ELIZA_URL_VERIFY_SETTLE_MS = origSettle;
       vi.unstubAllGlobals();
     });
 
@@ -451,8 +451,8 @@ describe("SubAgentRouter", () => {
       expect(posted?.content?.text).not.toContain("[verification:");
     });
 
-    it("does not retry when PARALLAX_BUILD_VERIFY_MAX_RETRIES=0", async () => {
-      process.env.PARALLAX_BUILD_VERIFY_MAX_RETRIES = "0";
+    it("does not retry when ELIZA_BUILD_VERIFY_MAX_RETRIES=0", async () => {
+      process.env.ELIZA_BUILD_VERIFY_MAX_RETRIES = "0";
       session = sessionWithTask(`build it at ${DEAD_URL}`);
       acp = makeAcpService(session);
       const { runtime, handleMessage, spawnSession } = makeRuntime({

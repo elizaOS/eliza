@@ -195,9 +195,12 @@ describe("resolveSpawnWorkdir", () => {
     expect(result.route).toBeUndefined();
   });
 
-  it("keeps the explicit workdir when no route matches", () => {
+  it("keeps the explicit workdir when it exists on disk and no route matches", () => {
     delete process.env[ENV_KEY];
     const fresh = path.join(tmpRoot, "fresh-scratch");
+    // resolveSpawnWorkdir only trusts an explicit workdir that exists —
+    // the planner routinely emits typo'd paths that can't be created.
+    fs.mkdirSync(fresh, { recursive: true });
 
     const result = resolveSpawnWorkdir(
       undefined,

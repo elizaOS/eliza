@@ -11,12 +11,12 @@ import { buildOpencodeSpawnConfig } from "../../src/services/agent-credentials.t
 import { readConfigEnvKey } from "../../src/services/config-env.ts";
 
 /**
- * Auto-detect mode: when no PARALLAX_OPENCODE_* / PARALLAX_LLM_PROVIDER /
- * PARALLAX_OPENCODE_LOCAL is set, the spawn config should be derived from
+ * Auto-detect mode: when no ELIZA_OPENCODE_* / ELIZA_LLM_PROVIDER /
+ * ELIZA_OPENCODE_LOCAL is set, the spawn config should be derived from
  * the user's standard provider env var (CEREBRAS_API_KEY, OPENROUTER_API_KEY,
  * GROQ_API_KEY, TOGETHER_API_KEY, DEEPSEEK_API_KEY, OPENAI_API_KEY).
  *
- * The point is "BYO API key on any device with zero PARALLAX_* setup".
+ * The point is "BYO API key on any device with zero ELIZA_* setup".
  * The user sets their normal provider key (the same one they'd use for
  * direct API access) and opencode just works.
  */
@@ -144,10 +144,10 @@ describe("buildOpencodeSpawnConfig auto-detect from provider env", () => {
     expect(result?.providerId).toBe("openrouter");
   });
 
-  it("auto-detect is skipped when PARALLAX_OPENCODE_BASE_URL is set (Mode 2 wins)", () => {
+  it("auto-detect is skipped when ELIZA_OPENCODE_BASE_URL is set (Mode 2 wins)", () => {
     (readConfigEnvKey as ReturnType<typeof vi.fn>).mockImplementation(
       (key: string) =>
-        key === "PARALLAX_OPENCODE_BASE_URL"
+        key === "ELIZA_OPENCODE_BASE_URL"
           ? "http://localhost:1234/v1"
           : undefined,
     );
@@ -161,13 +161,13 @@ describe("buildOpencodeSpawnConfig auto-detect from provider env", () => {
     );
   });
 
-  it("PARALLAX_OPENCODE_MODEL_POWERFUL overrides the provider's default model", () => {
+  it("ELIZA_OPENCODE_MODEL_POWERFUL overrides the provider's default model", () => {
     const runtime = buildRuntime({
       CEREBRAS_API_KEY: "csk-test",
-      PARALLAX_OPENCODE_MODEL_POWERFUL: "gpt-oss-120b",
+      ELIZA_OPENCODE_MODEL_POWERFUL: "gpt-oss-120b",
     });
     const result = buildOpencodeSpawnConfig(runtime);
-    // Mode 3 (user-config alone) wins because PARALLAX_OPENCODE_MODEL_POWERFUL is set.
+    // Mode 3 (user-config alone) wins because ELIZA_OPENCODE_MODEL_POWERFUL is set.
     // But the auto-detect path still applies when only the key is set with no powerful model override.
     // This test pins: explicit model wins over auto-default.
     expect(result?.model).toBe("gpt-oss-120b");
