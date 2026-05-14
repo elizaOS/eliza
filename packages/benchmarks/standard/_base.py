@@ -303,7 +303,7 @@ class HarnessClient:
             "tools": [dict(tool) for tool in config.tools],
             "tool_choice": config.tool_choice or "auto",
         }
-        if system_prompt and not any(m.role == "system" for m in messages):
+        if system_prompt and self._harness != "hermes":
             context["system_prompt"] = system_prompt
         response = self._client.send_message(
             user_text,

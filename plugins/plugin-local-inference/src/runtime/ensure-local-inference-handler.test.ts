@@ -29,6 +29,13 @@ const engineState = vi.hoisted(() => ({
 	transcribePcm: vi.fn(async () => "transcribed"),
 	warnIfParallelTooLow: vi.fn(),
 }));
+const arbiterState = vi.hoisted(() => ({
+	hasCapability: vi.fn((capability: string) => capability === "vision-describe"),
+	requestVisionDescribe: vi.fn(async () => ({
+		title: "A small image",
+		description: "A tiny synthetic image.",
+	})),
+}));
 
 vi.mock("../services/active-model", () => ({
 	resolveLocalInferenceLoadArgs: vi.fn(async (target) => target),
@@ -63,6 +70,10 @@ vi.mock("../services/handler-registry", () => ({
 	handlerRegistry: {
 		installOn: vi.fn(),
 	},
+}));
+
+vi.mock("../services/memory-arbiter", () => ({
+	tryGetMemoryArbiter: vi.fn(() => arbiterState),
 }));
 
 vi.mock("../services/registry", () => ({
@@ -101,6 +112,7 @@ function makeRuntime(): {
 			key === "ELIZA_RUNTIME_MODE" ? modeState.mode : undefined,
 		),
 		getService: vi.fn(() => null),
+		setSetting: vi.fn(),
 		registerModel: vi.fn(
 			(
 				modelType: string | number,
@@ -130,6 +142,13 @@ beforeEach(() => {
 	engineState.currentModelPath.mockReturnValue(null);
 	engineState.canEmbed.mockReturnValue(false);
 	engineState.hasLoadedModel.mockReturnValue(false);
+	arbiterState.hasCapability.mockImplementation(
+		(capability: string) => capability === "vision-describe",
+	);
+	arbiterState.requestVisionDescribe.mockResolvedValue({
+		title: "A small image",
+		description: "A tiny synthetic image.",
+	});
 });
 
 describe("ensureLocalInferenceHandler", () => {
@@ -162,6 +181,11 @@ describe("ensureLocalInferenceHandler", () => {
 				}),
 				expect.objectContaining({
 					modelType: ModelType.TRANSCRIPTION,
+					provider: "eliza-local-inference",
+					priority: 0,
+				}),
+				expect.objectContaining({
+					modelType: ModelType.IMAGE_DESCRIPTION,
 					provider: "eliza-local-inference",
 					priority: 0,
 				}),
@@ -222,6 +246,43 @@ describe("ensureLocalInferenceHandler", () => {
 				temperature: 0.1,
 				topP: 0.9,
 			}),
+		);
+	});
+
+	it("routes image description through the Eliza-1 vision arbiter", async () => {
+		const { registrations, runtime } = makeRuntime();
+
+		await ensureLocalInferenceHandler(runtime);
+		const registration = registrations.find(
+			(entry) => entry.modelType === ModelType.IMAGE_DESCRIPTION,
+		);
+		const handler = registration?.handler as
+			| ((
+					runtime: AgentRuntime,
+					params: Record<string, unknown>,
+			  ) => Promise<{ title: string; description: string }>)
+			| undefined;
+		expect(handler).toBeDefined();
+
+		await expect(
+			handler?.(runtime, {
+				imageUrl: "data:image/png;base64,AAAA",
+				prompt: "describe this",
+			}),
+		).resolves.toEqual({
+			title: "A small image",
+			description: "A tiny synthetic image.",
+		});
+		expect(arbiterState.requestVisionDescribe).toHaveBeenCalledWith({
+			modelKey: "qwen3-vl",
+			payload: {
+				image: { kind: "dataUrl", dataUrl: "data:image/png;base64,AAAA" },
+				prompt: "describe this",
+			},
+		});
+		expect(runtime.setSetting).toHaveBeenCalledWith(
+			"ELIZA1_VISION_HANDLER_PRESENT",
+			"1",
 		);
 	});
 });

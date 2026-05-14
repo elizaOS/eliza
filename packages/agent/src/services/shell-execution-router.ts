@@ -79,11 +79,6 @@ interface ParsedVfsShellCwd {
   virtualPath: string;
 }
 
-interface VfsAwareSandboxManager extends SandboxManager {
-  getWorkspaceRoot?: () => string;
-  getContainerWorkspacePath?: (hostPath: string) => string | null;
-}
-
 export function resolveShellExecutionMode(
   ctx?: Pick<ShellRouterContext, "mode" | "runtime"> | null,
 ): ShellExecutionMode {
@@ -241,8 +236,7 @@ async function runVfsInSandbox(
   cwd: ParsedVfsShellCwd,
   manager: SandboxManager,
 ): Promise<ShellResult> {
-  const vfsManager = manager as VfsAwareSandboxManager;
-  const workspaceRoot = vfsManager.getWorkspaceRoot?.();
+  const workspaceRoot = manager.getWorkspaceRoot();
   if (!workspaceRoot) {
     throw new Error(
       "[shell-router] VFS sandbox execution requires SandboxManager.getWorkspaceRoot()",
@@ -271,7 +265,7 @@ async function runVfsInSandbox(
   }
   await fsp.mkdir(hostCwd, { recursive: true, mode: 0o700 });
   const sandboxCwd =
-    vfsManager.getContainerWorkspacePath?.(hostCwd) ??
+    manager.getContainerWorkspacePath(hostCwd) ??
     `/workspace/${path
       .relative(workspaceRoot, hostCwd)
       .replace(/\\/g, "/")

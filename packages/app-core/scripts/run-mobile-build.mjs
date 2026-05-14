@@ -2305,7 +2305,8 @@ export function resolveIosCustomPods({
   includeMobileAgentBridge = false,
 } = {}) {
   const includeBunRuntime = includeCompatBunRuntime || includeFullBunEngine;
-  const includeTunnelBridge = !appStoreBuild && includeMobileAgentBridge;
+  const includeTunnelBridge =
+    includeFullBunEngine && (!appStoreBuild || includeMobileAgentBridge);
   return [
     ["ElizaosCapacitorAgent", "@elizaos/capacitor-agent"],
     ["ElizaosCapacitorAppblocker", "@elizaos/capacitor-appblocker"],
@@ -2449,6 +2450,12 @@ function isFullIosBunEngineRequested(env = process.env) {
   return isTruthyEnv(env.ELIZA_IOS_FULL_BUN_ENGINE);
 }
 
+function isIosAppStoreLocalRuntimeEnabled(env = process.env) {
+  return !/^(0|false|no|off)$/i.test(
+    String(env.ELIZA_IOS_APP_STORE_LOCAL_RUNTIME ?? "1").trim(),
+  );
+}
+
 function isIosLlamaRequested(env = process.env) {
   return (
     isTruthyEnv(env.ELIZA_IOS_INCLUDE_LLAMA) ||
@@ -2461,7 +2468,10 @@ function shouldIncludeIosLlama(env = process.env) {
 }
 
 function shouldIncludeIosFullBunEngine(env = process.env) {
-  return !isIosAppStoreBuild(env) && isFullIosBunEngineRequested(env);
+  return (
+    isFullIosBunEngineRequested(env) ||
+    (isIosAppStoreBuild(env) && isIosAppStoreLocalRuntimeEnabled(env))
+  );
 }
 
 export function isIosAppStoreBuild(env = process.env) {
@@ -4837,8 +4847,11 @@ function withCocoaPodsEnv(baseEnv = process.env) {
 function configureIosLocalBuildDefaults() {
   setDefaultProcessEnv("ELIZA_IOS_RUNTIME_MODE", "local");
   setDefaultProcessEnv("VITE_ELIZA_IOS_RUNTIME_MODE", "local");
+  setDefaultProcessEnv("ELIZA_RUNTIME_MODE", "local-safe");
+  setDefaultProcessEnv("RUNTIME_MODE", "local-safe");
+  setDefaultProcessEnv("LOCAL_RUNTIME_MODE", "local-safe");
+  setDefaultProcessEnv("VITE_ELIZA_RUNTIME_MODE", "local-safe");
   setDefaultProcessEnv("ELIZA_IOS_INCLUDE_LLAMA", "1");
-  setDefaultProcessEnv("ELIZA_IOS_FULL_BUN_ENGINE", "1");
   setDefaultProcessEnv(
     "ELIZA_IOS_BUILD_DESTINATION",
     "generic/platform=iOS Simulator",
@@ -4849,14 +4862,12 @@ function configureIosLocalBuildDefaults() {
 function configureIosAppStoreBuildDefaults() {
   setDefaultProcessEnv("ELIZA_BUILD_VARIANT", "store");
   setDefaultProcessEnv("ELIZA_RELEASE_AUTHORITY", "apple-app-store");
-  if (isIosAppStoreLocalRuntimeEnabled()) {
-    setDefaultProcessEnv("ELIZA_IOS_RUNTIME_MODE", "cloud-hybrid");
-    setDefaultProcessEnv("VITE_ELIZA_IOS_RUNTIME_MODE", "cloud-hybrid");
-    setDefaultProcessEnv("ELIZA_IOS_FULL_BUN_ENGINE", "1");
-  } else {
-    setDefaultProcessEnv("ELIZA_IOS_RUNTIME_MODE", "cloud");
-    setDefaultProcessEnv("VITE_ELIZA_IOS_RUNTIME_MODE", "cloud");
-  }
+  setDefaultProcessEnv("ELIZA_IOS_RUNTIME_MODE", "cloud");
+  setDefaultProcessEnv("VITE_ELIZA_IOS_RUNTIME_MODE", "cloud");
+  setDefaultProcessEnv("ELIZA_RUNTIME_MODE", "cloud");
+  setDefaultProcessEnv("RUNTIME_MODE", "cloud");
+  setDefaultProcessEnv("LOCAL_RUNTIME_MODE", "cloud");
+  setDefaultProcessEnv("VITE_ELIZA_RUNTIME_MODE", "cloud");
 }
 
 async function buildIos({ local = false } = {}) {
@@ -4870,9 +4881,12 @@ async function buildIos({ local = false } = {}) {
   }
 
   const buildTarget = resolveIosBuildTarget();
-  const includesFullBunRuntime = local || shouldIncludeIosFullBunEngine();
+  const includesFullBunRuntime = shouldIncludeIosFullBunEngine();
+  const includesLocalAgentPayload = local || includesFullBunRuntime;
   if (includesFullBunRuntime) {
     ensureIosFullBunEngineArtifact({ buildTarget });
+  }
+  if (includesLocalAgentPayload) {
     await buildMobileAgentBundle({ target: "ios" });
   }
 
@@ -4884,7 +4898,7 @@ async function buildIos({ local = false } = {}) {
 
   await buildWeb(local ? "ios-local" : "ios");
   await ensurePlatform("ios");
-  if (includesFullBunRuntime) {
+  if (includesLocalAgentPayload) {
     // Stage once before CocoaPods/Capacitor native dependency work so a
     // missing local toolchain still leaves the iOS app bundle resources in an
     // inspectable state. Capacitor sync may rewrite app resources, so we stage
@@ -4897,7 +4911,7 @@ async function buildIos({ local = false } = {}) {
     await run("bash", [cocoapodsScript], { cwd: repoRoot });
   }
   await runCapacitor(["sync", "ios"]);
-  if (includesFullBunRuntime) {
+  if (includesLocalAgentPayload) {
     stageIosAgentRuntime();
   } else if (isIosAppStoreBuild()) {
     removeIosLocalExecutionAssets();
