@@ -53,8 +53,6 @@ export default function RootLayout() {
           content="Managed hosting, provisioning, billing, and deployment for AI agents"
         />
         <meta name="twitter:image" content="/cloudlogo.png" />
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
         <link rel="icon" href="/favicon.ico" />
         <link rel="shortcut icon" href="/favicon.ico" />
         <link rel="apple-touch-icon" href="/favicon.ico" />
