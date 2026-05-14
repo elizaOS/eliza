@@ -2336,9 +2336,7 @@ export function resolveIosCustomPods({
           ],
         ]
       : []),
-    ...(includeLlama && !appStoreBuild
-      ? [["LlamaCppCapacitor", "llama-cpp-capacitor"]]
-      : []),
+    ...(includeLlama ? [["LlamaCppCapacitor", "llama-cpp-capacitor"]] : []),
     ...(includeFullBunEngine
       ? [["ElizaBunEngine", "@elizaos/bun-ios-runtime"]]
       : []),

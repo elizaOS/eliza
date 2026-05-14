@@ -207,7 +207,7 @@ test("iOS App Store pod selection keeps no-JIT Bun runtime and gates tunnel brid
   }).map(([name]) => name);
 
   assert.equal(isIosAppStoreBuild({ ELIZA_BUILD_VARIANT: "store" }), true);
-  assert.equal(pods.includes("LlamaCppCapacitor"), true);
+  assert.equal(pods.includes("LlamaCppCapacitor"), false);
   assert.equal(pods.includes("ElizaosCapacitorBunRuntime"), true);
   assert.equal(pods.includes("ElizaosCapacitorMobileAgentBridge"), false);
   assert.equal(pods.includes("ElizaBunEngine"), true);
