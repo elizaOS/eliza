@@ -4,8 +4,8 @@
 > ICLR 2025, gamma-lab-umd/MMAU-test-mini). It is **not** related to
 > Salesforce's MMAU agent-capability benchmark (Yin et al.,
 > arXiv:2407.18961). The PyPI distribution is published as
-> `elizaos-mmau-audio` to reflect this. The legacy distribution name
-> `elizaos-mmau` and CLI entry `mmau` are kept temporarily as aliases.
+> `elizaos-mmau-audio` to reflect this. The legacy CLI entries
+> `elizaos-mmau` and `mmau` are kept temporarily as aliases.
 
 Vendored Python implementation of Audio MMAU (ICLR 2025) for the elizaOS
 benchmark suite.
@@ -35,18 +35,16 @@ letter — **no LLM-judge is ever required**.
 
 ```
 packages/benchmarks/
-  elizaos_mmau/        Distribution-name shim so `python -m elizaos_mmau` works
-    __init__.py
-    __main__.py
-  mmau/
-    __init__.py
-    __main__.py
-    cli.py             argparse CLI (`python -m benchmarks.mmau`)
-    types.py           MMAUSample / MMAUPrediction / MMAUResult / MMAUReport / MMAUConfig
-    dataset.py         JSONL fixture + Hugging Face streaming loader
-    evaluator.py       Deterministic MCQ scoring + per-skill aggregation
-    agent.py           OracleMMAUAgent, CascadedSTTAgent, AgentFn / SttFn types
-    runner.py          load -> dispatch -> score -> report -> persist
+  mmau-audio/
+    elizaos_mmau_audio/
+      __init__.py
+      __main__.py
+      cli.py           argparse CLI (`python -m elizaos_mmau_audio`)
+      types.py         MMAUSample / MMAUPrediction / MMAUResult / MMAUReport / MMAUConfig
+      dataset.py       JSONL fixture + Hugging Face streaming loader
+      evaluator.py     Deterministic MCQ scoring + per-skill aggregation
+      agent.py         OracleMMAUAgent, CascadedSTTAgent, AgentFn / SttFn types
+      runner.py        load -> dispatch -> score -> report -> persist
     fixtures/
       smoke.jsonl      8-sample bundled fixture (covers all 3 categories)
     tests/             pytest suite — exercises evaluator, dataset, runner, CLI
@@ -55,25 +53,26 @@ packages/benchmarks/
 ## Run
 
 Two equivalent invocations work — pick whichever fits the calling
-context. Run from the `packages/` root or with that on `PYTHONPATH`:
+context. Run from this package root or with it on `PYTHONPATH`:
 
 ```bash
-# canonical module path (preferred from scripts / the registry)
-python -m benchmarks.mmau --mock --limit 2
+# canonical module path
+python -m elizaos_mmau_audio --mock --limit 2
+python -m elizaos_mmau_audio --mock --output ./results --json
 
-# distribution-name shim (matches the README + task spec)
-python -m elizaos_mmau --mock --limit 2
-python -m elizaos_mmau --mock --output ./results --json
+# installed console scripts
+mmau-audio --mock --limit 2
+elizaos-mmau-audio --mock --output ./results --json
 ```
 
 Run through the elizaOS bridge (cascaded STT -> text agent baseline):
 
 ```bash
-python -m elizaos_mmau --agent eliza --split test-mini --limit 100 \
+python -m elizaos_mmau_audio --agent eliza --split test-mini --limit 100 \
     --output ./results
-python -m elizaos_mmau --agent hermes --split test --category speech \
+python -m elizaos_mmau_audio --agent hermes --split test --category speech \
     --output ./results
-python -m elizaos_mmau --agent openclaw --split test --category sound,music
+python -m elizaos_mmau_audio --agent openclaw --split test --category sound,music
 ```
 
 The CLI accepts `--category {speech,sound,music,all}` (or a
@@ -108,9 +107,9 @@ The mock / oracle run path needs no credentials.
 ## Verification
 
 ```bash
-cd packages/benchmarks/mmau
+cd packages/benchmarks/mmau-audio
 python -m pytest tests/ -x
-python -m elizaos_mmau --mock --limit 2
+python -m elizaos_mmau_audio --mock --limit 2
 ```
 
 Both must pass before publishing run results.

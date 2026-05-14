@@ -39,6 +39,10 @@ const SEED_TARGETS = [
     dir: path.join(ELIZA_ROOT, "packages", "vault"),
   },
   {
+    label: "@elizaos/cloud-sdk",
+    dir: path.join(ELIZA_ROOT, "cloud", "packages", "sdk"),
+  },
+  {
     label: "@elizaos/cloud-routing",
     dir: path.join(ELIZA_ROOT, "packages", "cloud-routing"),
   },
@@ -295,6 +299,12 @@ async function packUpstreams() {
       `Could not find eliza workspace at ${ELIZA_ROOT}. Run this from a standalone eliza checkout or a Eliza checkout with eliza/ present.`,
     );
   }
+
+  await runCommand(
+    "node",
+    [path.join(ELIZA_ROOT, "scripts", "patch-tsup-dts.mjs")],
+    ELIZA_ROOT,
+  );
 
   if (!existsSync(ARTIFACTS_DIR)) {
     mkdirSync(ARTIFACTS_DIR, { recursive: true });

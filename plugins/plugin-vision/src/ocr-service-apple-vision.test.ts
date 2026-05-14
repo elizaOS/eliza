@@ -62,9 +62,7 @@ describe("Apple Vision OCR provider seam", () => {
 
   it("OCRService picks the apple-vision backend when forced and registered", async () => {
     const provider = stubProvider(async () => ({
-      lines: [
-        { text: "Save", confidence: 0.97, boundingBox: RECT },
-      ],
+      lines: [{ text: "Save", confidence: 0.97, boundingBox: RECT }],
       fullText: "Save",
     }));
     registerAppleVisionOcrProvider(provider);
@@ -85,7 +83,8 @@ describe("Apple Vision OCR provider seam", () => {
         // wire-up happens on darwin via the existing chooser.
         expect(getAppleVisionOcrProvider()).toBe(provider);
       } finally {
-        if (origDisable === undefined) delete process.env.ELIZA_DISABLE_APPLE_VISION;
+        if (origDisable === undefined)
+          delete process.env.ELIZA_DISABLE_APPLE_VISION;
         else process.env.ELIZA_DISABLE_APPLE_VISION = origDisable;
       }
     } finally {
