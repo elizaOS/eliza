@@ -243,10 +243,7 @@ describe("resolveSpawnWorkdir", () => {
 });
 
 describe("resolvePinnedAdapter", () => {
-  const KEYS = [
-    "ELIZA_DEFAULT_AGENT_TYPE",
-    "ELIZA_AGENT_SELECTION_STRATEGY",
-  ];
+  const KEYS = ["ELIZA_DEFAULT_AGENT_TYPE", "ELIZA_AGENT_SELECTION_STRATEGY"];
   const original: Record<string, string | undefined> = {};
 
   beforeEach(() => {

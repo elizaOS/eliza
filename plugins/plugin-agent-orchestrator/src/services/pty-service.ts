@@ -62,6 +62,7 @@ import {
   captureSessionOpen,
   isDebugCaptureEnabled,
 } from "./debug-capture.js";
+import { OPENCODE_SKILL_ESSENTIALS } from "./opencode-essentials.js";
 import {
   handleGeminiAuth as handleGeminiAuthFlow,
   pushDefaultRules as pushDefaultAutoResponseRules,
@@ -101,7 +102,6 @@ import {
 } from "./session-log-merger.js";
 import { readClaudeCodeSession } from "./session-log-reader.js";
 import { CLAUDE_SKILL_ESSENTIALS } from "./skill-essentials.js";
-import { OPENCODE_SKILL_ESSENTIALS } from "./opencode-essentials.js";
 import {
   TRAJECTORY_CHILD_STEP_ENV_KEY,
   TRAJECTORY_CHILD_STEP_METADATA_KEY,
