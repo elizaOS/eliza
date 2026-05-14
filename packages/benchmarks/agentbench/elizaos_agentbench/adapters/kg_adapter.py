@@ -43,35 +43,18 @@ class ParsedQuery(TypedDict):
     params: dict[str, JSONValue]
 
 
-SAMPLE_ENTITIES: dict[str, KGEntity] = {
-    "e001": {"name": "Albert Einstein", "type": "person", "birth_year": 1879, "death_year": 1955},
-    "e002": {"name": "Germany", "type": "country", "continent": "Europe"},
-    "e003": {"name": "United States", "type": "country", "continent": "North America"},
-    "e004": {"name": "Physics", "type": "field"},
-    "e005": {"name": "Nobel Prize in Physics", "type": "award"},
-    "e006": {"name": "Theory of Relativity", "type": "theory"},
-    "e007": {"name": "Marie Curie", "type": "person", "birth_year": 1867, "death_year": 1934},
-    "e008": {"name": "Poland", "type": "country", "continent": "Europe"},
-    "e009": {"name": "France", "type": "country", "continent": "Europe"},
-    "e010": {"name": "Chemistry", "type": "field"},
-    "e011": {"name": "Nobel Prize in Chemistry", "type": "award"},
-    "e012": {"name": "Radioactivity", "type": "concept"},
-}
-
-SAMPLE_RELATIONS: list[KGRelation] = [
-    {"subject": "e001", "predicate": "born_in", "object": "e002"},
-    {"subject": "e001", "predicate": "worked_in", "object": "e003"},
-    {"subject": "e001", "predicate": "field", "object": "e004"},
-    {"subject": "e001", "predicate": "won", "object": "e005"},
-    {"subject": "e001", "predicate": "developed", "object": "e006"},
-    {"subject": "e007", "predicate": "born_in", "object": "e008"},
-    {"subject": "e007", "predicate": "worked_in", "object": "e009"},
-    {"subject": "e007", "predicate": "field", "object": "e004"},
-    {"subject": "e007", "predicate": "field", "object": "e010"},
-    {"subject": "e007", "predicate": "won", "object": "e005"},
-    {"subject": "e007", "predicate": "won", "object": "e011"},
-    {"subject": "e007", "predicate": "discovered", "object": "e012"},
-]
+# NOTE: there is intentionally no built-in entity/relation corpus.
+#
+# The official AgentBench KnowledgeGraph environment queries Freebase
+# via a SPARQL endpoint (Virtuoso). To get comparable scores you must
+# run upstream's containerized Virtuoso service and point KG_SPARQL_URL
+# at it. For unit tests, ``initial_state["entities"]`` /
+# ``initial_state["relations"]`` can inject a tiny graph.
+KG_REQUIRES_SPARQL_MSG = (
+    "Knowledge Graph tasks require a Freebase SPARQL endpoint (see "
+    "AgentBench's docker-compose). The local adapter falls back to the "
+    "task-provided entities/relations subgraph when no endpoint is set."
+)
 
 
 class KnowledgeGraphAdapter(EnvironmentAdapter):
@@ -97,8 +80,11 @@ class KnowledgeGraphAdapter(EnvironmentAdapter):
     async def initialize(self) -> None:
         if self._initialized:
             return
-        self._entities = SAMPLE_ENTITIES.copy()
-        self._relations = SAMPLE_RELATIONS.copy()
+        # No built-in graph; per-task ``initial_state`` supplies the
+        # entity / relation subgraph or upstream's SPARQL endpoint
+        # handles the lookups.
+        self._entities = {}
+        self._relations = []
         self._initialized = True
 
     def _validate_entities(self, raw: object) -> dict[str, KGEntity]:
@@ -449,11 +435,20 @@ class KnowledgeGraphAdapter(EnvironmentAdapter):
         return {"type": "invalid", "params": {}}
 
     async def evaluate(self, task: AgentBenchTask, trajectory: list[str]) -> bool:
-        if not task.ground_truth:
-            return False
+        # Prefer the upstream ``metadata.gold_names`` / ``gold_ids``
+        # set-equality scoring (matches AgentBench's KG metric: exact
+        # set match for "correct", F1 reported alongside).
+        gold_names_raw: object = task.metadata.get("gold_names") if isinstance(task.metadata, dict) else None
+        gold_ids_raw: object = task.metadata.get("gold_ids") if isinstance(task.metadata, dict) else None
 
-        expected = task.ground_truth.lower().strip()
-        expected_parts = [p.strip() for p in expected.split(",") if p.strip()]
+        expected_parts: list[str] = []
+        if isinstance(gold_names_raw, list) and gold_names_raw:
+            expected_parts = [str(x).lower().strip() for x in gold_names_raw if isinstance(x, str)]
+        elif isinstance(gold_ids_raw, list) and gold_ids_raw:
+            expected_parts = [str(x).lower().strip() for x in gold_ids_raw if isinstance(x, str)]
+        elif task.ground_truth:
+            expected = task.ground_truth.lower().strip()
+            expected_parts = [p.strip() for p in expected.split(",") if p.strip()]
         if not expected_parts:
             return False
 

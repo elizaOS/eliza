@@ -126,6 +126,12 @@ class TauBenchConfig:
 
     # Agent
     use_mock: bool = False
+    # Which agent harness drives per-turn completions:
+    #   "litellm"  – built-in LiteLLM tool-calling agent (default)
+    #   "eliza"    – elizaos TS bench server bridge
+    #   "hermes"   – hermes-adapter (OpenAI-compatible, in_process when available)
+    #   "openclaw" – openclaw-adapter (OpenAI-compatible direct mode by default)
+    agent_harness: str = "litellm"
     agent_model: str = "gpt-4o"
     agent_provider: str = "openai"
     agent_temperature: float = 0.0
@@ -159,6 +165,7 @@ class TauBenchConfig:
             "max_tasks_per_domain": self.max_tasks_per_domain,
             "use_sample_tasks": self.use_sample_tasks,
             "use_mock": self.use_mock,
+            "agent_harness": self.agent_harness,
             "agent_model": self.agent_model,
             "agent_provider": self.agent_provider,
             "agent_temperature": self.agent_temperature,

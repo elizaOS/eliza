@@ -108,7 +108,7 @@ EXIT_MANIFEST_INVALID = 14
 EXIT_HF_PUSH_FAIL = 15
 EXIT_RELEASE_EVIDENCE_FAIL = 16
 
-ELIZA_1_HF_ORG = "elizalabs"
+ELIZA_1_HF_ORG = "elizaos"
 
 # ---------------------------------------------------------------------------
 # Constants — bundle layout per inference/AGENTS.md §2

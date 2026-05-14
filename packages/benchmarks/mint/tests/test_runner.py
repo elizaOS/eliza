@@ -4,7 +4,7 @@ Tests for MINT benchmark runner.
 
 import pytest
 
-from benchmarks.mint.types import MINTConfig, MINTCategory
+from benchmarks.mint.types import MINTConfig, MINTSubtask
 from benchmarks.mint.runner import MINTRunner
 
 
@@ -53,12 +53,12 @@ class TestMINTRunner:
         config = MINTConfig(
             data_path="/nonexistent/path",
             use_docker=False,
-            categories=[],  # Empty categories should result in no tasks
+            subtasks=[],  # Empty subtasks should result in no tasks
         )
         runner = MINTRunner(config=config)
 
         # Manually set empty tasks to simulate no data
-        runner.dataset.tasks = {cat: [] for cat in MINTCategory}
+        runner.dataset.tasks = {st: [] for st in MINTSubtask}
         runner.dataset._loaded = True
 
         with pytest.raises(ValueError, match="No tasks loaded"):

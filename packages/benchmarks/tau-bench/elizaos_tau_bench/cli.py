@@ -85,6 +85,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
     # Agent
     p.add_argument("--mock", action="store_true", help="Use mock ground-truth-replay agent.")
+    p.add_argument(
+        "--agent-harness",
+        choices=["litellm", "eliza", "hermes", "openclaw"],
+        default="litellm",
+        help="Which agent harness drives the per-turn completion. "
+        "'litellm' (default) uses the built-in LiteLLM tool-calling agent; "
+        "'eliza' / 'hermes' / 'openclaw' route through the matching adapter.",
+    )
     p.add_argument("--agent-model", default="gpt-4o")
     p.add_argument("--agent-provider", default="openai")
     p.add_argument("--agent-temperature", type=float, default=0.0)
@@ -134,6 +142,7 @@ def build_config(args: argparse.Namespace) -> TauBenchConfig:
         max_tasks_per_domain=args.max_tasks_per_domain,
         use_sample_tasks=args.use_sample_tasks,
         use_mock=args.mock,
+        agent_harness=args.agent_harness,
         agent_model=args.agent_model,
         agent_provider=args.agent_provider,
         agent_temperature=args.agent_temperature,

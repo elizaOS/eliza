@@ -119,20 +119,27 @@ def test_bfcl_agent_fn_returns_first_tool_call(client: OpenClawClient) -> None:
     assert len(result["tool_calls"]) == 2
 
 
-def test_lifeops_bench_factory_requires_snapshot(client: OpenClawClient, tmp_path: Path) -> None:
-    """Builder raises eagerly when the snapshot path is missing."""
+def test_lifeops_bench_factory_ignores_missing_snapshot(client: OpenClawClient, tmp_path: Path) -> None:
+    """Snapshot is no longer loaded by the adapter — missing path is fine.
+
+    The LifeOpsBench runner owns the in-memory LifeWorld and exposes it
+    through the tool catalog; the adapter just threads (history, tools).
+    Earlier revisions inlined the entire snapshot into the system prompt,
+    which blew past gpt-oss-120b's 131k context window for the medium
+    seed. ``world_snapshot_path`` is preserved as a no-op kwarg.
+    """
     pytest.importorskip(
         "eliza_lifeops_bench.types",
         reason="LifeOpsBench types package not on sys.path",
     )
-    with pytest.raises(FileNotFoundError):
-        build_lifeops_bench_agent_fn(
-            client=client,
-            world_snapshot_path=str(tmp_path / "no-such.json"),
-        )
+    agent_fn = build_lifeops_bench_agent_fn(
+        client=client,
+        world_snapshot_path=str(tmp_path / "no-such.json"),
+    )
+    assert callable(agent_fn)
 
 
-def test_lifeops_bench_factory_loads_snapshot(client: OpenClawClient, tmp_path: Path) -> None:
+def test_lifeops_bench_factory_accepts_snapshot(client: OpenClawClient, tmp_path: Path) -> None:
     pytest.importorskip(
         "eliza_lifeops_bench.types",
         reason="LifeOpsBench types package not on sys.path",

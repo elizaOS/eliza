@@ -313,6 +313,53 @@ export interface MessageMetadata {
 
 	transcript?: string;
 
+	/**
+	 * Voice-mode metadata attached when this message came in on the audio path.
+	 *
+	 * Populated by the local-inference voice pipeline (`engine-bridge.ts` →
+	 * `DefaultMessageService`) on `isFinal` transcript snapshots, then carried
+	 * into the storage layer for retrieval. The acoustic-emotion read (`emotion`)
+	 * is the fused voice + text attribution from
+	 * `attributeVoiceEmotion()`; the text-side enum from the Stage-1
+	 * `emotion` field-evaluator rides on `Content.emotion` directly. Two fields,
+	 * not one merged emotion — voice (acoustic) and text (lexical) disagree
+	 * often and meaningfully; downstream consumers fuse where they care.
+	 *
+	 * The block is biometric-adjacent: the `privacy-filter.ts` redacts it on
+	 * cloud export. See R3-emotion §3 ("Runtime channel design").
+	 */
+	voice?: {
+		emotion?: {
+			label:
+				| "happy"
+				| "sad"
+				| "angry"
+				| "nervous"
+				| "calm"
+				| "excited"
+				| "whisper";
+			confidence: number;
+			vad?: { valence: number; arousal: number; dominance: number };
+			method:
+				| "wav2small_distill"
+				| "audeering_msp_dim"
+				| "sensevoice_inline"
+				| "qwen3_native"
+				| "text_tag"
+				| "explicit_asr_metadata"
+				| "text_audio_heuristic"
+				| "heuristic_fallback";
+			modelVersion?: string;
+		};
+		transcript?: string;
+		audio?: {
+			sampleRate: number;
+			durationMs: number;
+			source: string;
+		};
+		timestamp?: number;
+	};
+
 	commandSource?: string;
 	commandTargetSessionKey?: string;
 	gatewayClientScopes?: string[];

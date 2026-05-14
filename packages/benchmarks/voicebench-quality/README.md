@@ -34,6 +34,20 @@ model LifeOpsBench uses as a simulated user, reused via
 `eliza_lifeops_bench.clients.cerebras` so retry / pricing / rate-limit
 policy is one canonical implementation in the repo.
 
+### Sibling — voice-emotion bench
+
+The voice-emotion classifier (Wav2Small + Stage-1 LM text emotion field) is
+benched in its own sibling package at `packages/benchmarks/voice-emotion/`
+(Voice Wave 2 / R3-emotion / I3). That package covers:
+
+  - Acoustic intrinsic accuracy on IEMOCAP / MELD / MSP-Podcast.
+  - GoEmotions text-emotion intrinsic accuracy (Stage-1 LM vs roberta-go-emotions).
+  - Closed-loop fidelity over the duet harness.
+
+Kept separate from voicebench-quality because the audio corpora + the duet
+fidelity loop have requirements (soundfile, onnxruntime, optional running
+eliza-1 API) that voicebench-quality's response-quality scoring does not.
+
 ## Audio input
 
 VoiceBench is a speech-in, text-out task. The Eliza, Hermes, and

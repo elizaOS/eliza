@@ -1,0 +1,123 @@
+{
+  "instance_id": "p4_instance_057",
+  "city_map": {
+    "locations": [
+      "stadium",
+      "airport",
+      "mall",
+      "park",
+      "downtown",
+      "suburb"
+    ],
+    "distances": {
+      "stadium-airport": 45,
+      "airport-stadium": 45,
+      "stadium-mall": 41,
+      "mall-stadium": 41,
+      "stadium-park": 32,
+      "park-stadium": 32,
+      "stadium-downtown": 29,
+      "downtown-stadium": 29,
+      "stadium-suburb": 32,
+      "suburb-stadium": 32,
+      "airport-mall": 34,
+      "mall-airport": 34,
+      "airport-park": 29,
+      "park-airport": 29,
+      "airport-downtown": 31,
+      "downtown-airport": 31,
+      "airport-suburb": 24,
+      "suburb-airport": 24,
+      "mall-park": 32,
+      "park-mall": 32,
+      "mall-downtown": 15,
+      "downtown-mall": 15,
+      "mall-suburb": 33,
+      "suburb-mall": 33,
+      "park-downtown": 41,
+      "downtown-park": 41,
+      "park-suburb": 36,
+      "suburb-park": 36,
+      "downtown-suburb": 27,
+      "suburb-downtown": 27
+    }
+  },
+  "ride_requests": [
+    {
+      "passenger_id": "p001",
+      "pickup": "suburb",
+      "dropoff": "stadium",
+      "time_window": [
+        16.0,
+        16.566666666666666
+      ],
+      "deadline": 43
+    },
+    {
+      "passenger_id": "p002",
+      "pickup": "suburb",
+      "dropoff": "stadium",
+      "time_window": [
+        12.5,
+        12.1
+      ],
+      "deadline": 31
+    },
+    {
+      "passenger_id": "p003",
+      "pickup": "park",
+      "dropoff": "mall",
+      "time_window": [
+        15.25,
+        15.933333333333334
+      ],
+      "deadline": 22
+    },
+    {
+      "passenger_id": "p004",
+      "pickup": "park",
+      "dropoff": "mall",
+      "time_window": [
+        16.0,
+        16.583333333333332
+      ],
+      "deadline": 27
+    }
+  ],
+  "vehicles": [
+    {
+      "vehicle_id": "v001",
+      "location": "stadium",
+      "capacity": 6,
+      "fuel": 54
+    },
+    {
+      "vehicle_id": "v002",
+      "location": "park",
+      "capacity": 5,
+      "fuel": 52
+    },
+    {
+      "vehicle_id": "v003",
+      "location": "mall",
+      "capacity": 4,
+      "fuel": 75
+    },
+    {
+      "vehicle_id": "v004",
+      "location": "airport",
+      "capacity": 4,
+      "fuel": 98
+    }
+  ],
+  "description": "Urban ride-sharing with disruptions instance",
+  "disruptions": [
+    {
+      "type": "construction",
+      "route": "suburb-park",
+      "start_time": 10,
+      "duration": 133,
+      "impact": "reduced_capacity"
+    }
+  ]
+}

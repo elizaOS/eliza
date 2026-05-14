@@ -35,7 +35,7 @@ sys.path.insert(0, str(benchmark_root))
 sys.path.insert(0, str(benchmark_root / "benchmarks" / "eliza-adapter"))
 
 # Now we can import
-from benchmarks.mint.types import MINTCategory, MINTConfig
+from benchmarks.mint.types import MINTSubtask, MINTConfig
 from benchmarks.mint.runner import MINTRunner
 
 
@@ -66,16 +66,32 @@ def parse_args() -> argparse.Namespace:
 
     # Task selection
     parser.add_argument(
-        "--categories",
+        "--subtasks",
         nargs="+",
-        choices=["reasoning", "coding", "decision_making", "information_seeking"],
-        help="Categories to evaluate (default: all)",
+        choices=[s.value for s in MINTSubtask],
+        help="Subtasks to evaluate (default: all except alfworld which is lazy)",
     )
     parser.add_argument(
         "--max-tasks",
         type=int,
         default=None,
-        help="Maximum tasks per category (default: all)",
+        help="Maximum tasks per subtask (default: all)",
+    )
+    parser.add_argument(
+        "--use-sample-tasks",
+        action="store_true",
+        help="Use the tiny hand-written smoke set instead of upstream data",
+    )
+    parser.add_argument(
+        "--mock",
+        action="store_true",
+        help="Use the MockExecutor (no code is actually executed)",
+    )
+    parser.add_argument(
+        "--feedback",
+        choices=["templated", "llm"],
+        default="templated",
+        help="Feedback mode (default: templated)",
     )
 
     # Execution settings
@@ -134,7 +150,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--llm-feedback",
         action="store_true",
-        help="Generate feedback using the selected model provider (costly; default: rule-based)",
+        help="(legacy) alias for --feedback llm",
     )
     parser.add_argument(
         "--provider",
@@ -185,24 +201,29 @@ def parse_args() -> argparse.Namespace:
 
 def create_config(args: argparse.Namespace) -> MINTConfig:
     """Create benchmark configuration from arguments."""
-    categories = None
-    if args.categories:
-        categories = [MINTCategory(c) for c in args.categories]
+    subtasks = None
+    if args.subtasks:
+        subtasks = [MINTSubtask(c) for c in args.subtasks]
+
+    feedback_mode = "llm" if (args.feedback == "llm" or args.llm_feedback) else "templated"
 
     return MINTConfig(
         output_dir=args.output_dir,
-        max_tasks_per_category=args.max_tasks,
+        max_tasks_per_subtask=args.max_tasks,
         timeout_per_task_ms=args.timeout * 1000,
         max_turns=args.max_turns,
         use_docker=not args.no_docker,
-        categories=categories,
+        subtasks=subtasks,
         enable_tools=not args.no_tools,
         enable_feedback=not args.no_feedback,
         run_ablation=not args.no_ablation,
         save_detailed_logs=True,
         save_trajectories=args.save_trajectories,
         generate_report=not args.no_report,
-        use_llm_feedback=args.llm_feedback,
+        feedback_mode=feedback_mode,
+        use_mock_executor=bool(args.mock),
+        use_sample_tasks=bool(args.use_sample_tasks),
+        allow_ground_truth_mock=False,
     )
 
 
@@ -432,8 +453,18 @@ async def run_benchmark(
                 "[mint] using direct %s model provider", runtime_provider
             )
         else:
-            runner.agent.allow_ground_truth_mock = runtime_provider == "mock"
-            logging.getLogger(__name__).info("[mint] using local mock MINTAgent")
+            # The CLI's ``--provider mock`` flag is an explicit opt-in for the
+            # ground-truth mock answer path. The runner constructor already
+            # threads ``config.allow_ground_truth_mock`` (defaulting to False)
+            # so we only flip it on here when the user actually asked for it.
+            if runtime_provider == "mock":
+                runner.agent.allow_ground_truth_mock = True
+                logging.getLogger(__name__).warning(
+                    "[mint] --provider mock enabled; agent will return ground-truth answers"
+                )
+            else:
+                runner.agent.allow_ground_truth_mock = False
+                logging.getLogger(__name__).info("[mint] using local MINTAgent (no runtime)")
         _ = enable_trajectory_logging  # trajectory logging now lives in the bridge
         results = await runner.run_benchmark()
 
@@ -495,14 +526,16 @@ def main() -> int:
     print(f"  Provider: {args.provider}")
     if args.model:
         print(f"  Model: {args.model}")
-    print(f"  Categories: {[c.value for c in (config.categories or list(MINTCategory))]}")
-    print(f"  Max tasks per category: {config.max_tasks_per_category or 'all'}")
+    print(f"  Subtasks: {[c.value for c in (config.subtasks or list(MINTSubtask))]}")
+    print(f"  Max tasks per subtask: {config.max_tasks_per_subtask or 'all'}")
     print(f"  Max turns: {config.max_turns}")
     print(f"  Tools enabled: {config.enable_tools}")
     print(f"  Feedback enabled: {config.enable_feedback}")
-    print(f"  LLM feedback: {config.use_llm_feedback}")
+    print(f"  Feedback mode: {config.feedback_mode}")
     print(f"  Ablation study: {config.run_ablation}")
     print(f"  Docker: {config.use_docker}")
+    print(f"  Mock executor: {config.use_mock_executor}")
+    print(f"  Sample tasks: {config.use_sample_tasks}")
     print()
 
     return asyncio.run(

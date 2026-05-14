@@ -493,17 +493,17 @@ class VendingBenchRunner:
 
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-        # Save JSON results
+        # Save JSON results (UTF-8 explicitly so emoji in the report survive cp1252)
         json_path = output_dir / f"vending-bench-results-{timestamp}.json"
         results_dict = self._report_to_dict(report)
-        with open(json_path, "w") as f:
-            json.dump(results_dict, f, indent=2, default=str)
+        with open(json_path, "w", encoding="utf-8") as f:
+            json.dump(results_dict, f, indent=2, default=str, ensure_ascii=False)
         logger.info(f"[VendingBenchRunner] Saved JSON results to {json_path}")
 
         # Generate and save markdown report
         report_path = output_dir / f"VENDING-BENCH-REPORT-{timestamp}.md"
         markdown_report = self.reporter.generate_report(report)
-        with open(report_path, "w") as f:
+        with open(report_path, "w", encoding="utf-8") as f:
             f.write(markdown_report)
         logger.info(f"[VendingBenchRunner] Saved markdown report to {report_path}")
 
@@ -511,8 +511,8 @@ class VendingBenchRunner:
         if self.config.save_detailed_logs:
             detailed_path = output_dir / f"vending-bench-detailed-{timestamp}.json"
             detailed_dict = self._report_to_detailed_dict(report)
-            with open(detailed_path, "w") as f:
-                json.dump(detailed_dict, f, indent=2)
+            with open(detailed_path, "w", encoding="utf-8") as f:
+                json.dump(detailed_dict, f, indent=2, ensure_ascii=False)
             logger.info(f"[VendingBenchRunner] Saved detailed logs to {detailed_path}")
 
         # Save trajectories if configured
@@ -535,8 +535,8 @@ class VendingBenchRunner:
                         "error": result.error,
                     }
                 )
-            with open(trajectories_path, "w") as f:
-                json.dump(trajectories, f, indent=2)
+            with open(trajectories_path, "w", encoding="utf-8") as f:
+                json.dump(trajectories, f, indent=2, ensure_ascii=False)
             logger.info(f"[VendingBenchRunner] Saved trajectories to {trajectories_path}")
 
     def _report_to_dict(self, report: VendingBenchReport) -> dict:

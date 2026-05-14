@@ -183,6 +183,9 @@ class PlanningTrajectory:
     solution: dict[str, Any] = field(default_factory=dict)
     # Replanning attempts (for disruption scenarios)
     replanning_attempts: list[dict[str, Any]] = field(default_factory=list)
+    # Deprecated. Kept as a write-only attribute for adapter back-compat.
+    # The new evaluator ignores this field — see ``benchmarks.realm.evaluator``.
+    plan_quality_score: float = 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -371,6 +374,13 @@ class REALMConfig:
     # Model
     model_name: str = "gpt-4"
     temperature: float = 0.3
+
+    # Solver wall-clock budget (seconds) per instance. Applies to the
+    # OR-Tools CP-SAT (JSSP) and RoutingModel (TSP-TW / DARP) calls. A
+    # short timeout still produces a valid bound: CP-SAT returns its
+    # best FEASIBLE schedule, RoutingModel returns the best route found
+    # so far.
+    solver_timeout_s: float = 30.0
 
     # Back-compat aliases
     @property

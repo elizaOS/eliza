@@ -294,22 +294,51 @@ class TerminalBenchRunner:
             network_mode="bridge" if task.network_enabled else "none",
         )
 
-    async def _run_with_bridge(self, task: TerminalTask) -> TerminalBenchResult:
-        """Run task by routing decisions through the elizaOS TS benchmark bridge."""
-        from eliza_adapter.terminal_bench import ElizaBridgeTerminalAgent
+    def _build_agent_for_harness(self, env):
+        """Construct the per-turn decision agent for the configured harness.
 
-        env = self._create_environment(task)
+        Returns an object implementing ``solve_task(task) -> TerminalBenchResult``
+        and ``async cleanup()``. Each adapter is lazy-imported so a harness with
+        broken / missing deps does not prevent the others from running.
+        """
+        harness = (self.config.agent_harness or "eliza").lower()
+        if harness == "hermes":
+            from hermes_adapter.terminal_bench import build_terminal_bench_agent_fn
 
-        agent: Optional[ElizaBridgeTerminalAgent] = None
-        try:
-            await env.start(task)
-
-            agent = ElizaBridgeTerminalAgent(
+            return build_terminal_bench_agent_fn(
                 environment=env,
                 max_iterations=self.config.max_iterations,
                 model_name=self.config.model_name,
                 verbose=self.config.verbose,
             )
+        if harness == "openclaw":
+            from openclaw_adapter.terminal_bench import build_terminal_bench_agent_fn
+
+            return build_terminal_bench_agent_fn(
+                environment=env,
+                max_iterations=self.config.max_iterations,
+                model_name=self.config.model_name,
+                verbose=self.config.verbose,
+            )
+        # Default: elizaOS TS bridge.
+        from eliza_adapter.terminal_bench import ElizaBridgeTerminalAgent
+
+        return ElizaBridgeTerminalAgent(
+            environment=env,
+            max_iterations=self.config.max_iterations,
+            model_name=self.config.model_name,
+            verbose=self.config.verbose,
+        )
+
+    async def _run_with_bridge(self, task: TerminalTask) -> TerminalBenchResult:
+        """Run task by routing decisions through the configured agent harness."""
+        env = self._create_environment(task)
+
+        agent = None
+        try:
+            await env.start(task)
+
+            agent = self._build_agent_for_harness(env)
 
             result = await asyncio.wait_for(
                 agent.solve_task(task),

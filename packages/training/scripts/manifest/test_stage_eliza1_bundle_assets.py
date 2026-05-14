@@ -49,6 +49,13 @@ def _args(tmp_path: Path, tier: str) -> argparse.Namespace:
         asr_mmproj_file=None,
         include_vad_onnx_fallback=False,
         skip_wakeword=False,
+        # Voice Wave 2: turn detector defaults — skip during dry runs because
+        # the staging step calls copy_hf_file for the LiveKit/Turnsense ONNX
+        # which is independent of the asr_repo / VOICE_REPO test scaffolding.
+        # Dedicated turn-detector tests live in
+        # `test_stage_turn_detector.py`.
+        skip_turn_detector=True,
+        turn_license="livekit",
         upload_repo=None,
         upload_prefix="",
         public=False,

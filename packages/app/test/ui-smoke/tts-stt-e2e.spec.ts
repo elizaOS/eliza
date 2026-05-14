@@ -173,8 +173,9 @@ async function installSpeechRecognitionShim(page: Page): Promise<void> {
     }
 
     // Both names — different code paths probe either.
-    (window as unknown as { webkitSpeechRecognition: unknown })
-      .webkitSpeechRecognition = makeRecognition;
+    (
+      window as unknown as { webkitSpeechRecognition: unknown }
+    ).webkitSpeechRecognition = makeRecognition;
     (window as unknown as { SpeechRecognition: unknown }).SpeechRecognition =
       makeRecognition;
 
@@ -437,9 +438,7 @@ test("STT capture path fires onTranscript with the recognized string", async ({
   // `aria-label` which contains "Voice input". Match the first such button
   // — this is the page-level composer's mic that triggers
   // `useVoiceChat.startListening("compose")`.
-  const micButton = page
-    .getByRole("button", { name: /Voice input/i })
-    .first();
+  const micButton = page.getByRole("button", { name: /Voice input/i }).first();
   await expect(micButton).toBeVisible({ timeout: 15_000 });
   await micButton.click();
 

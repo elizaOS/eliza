@@ -244,6 +244,7 @@ class REALMDataset:
                 logger.warning("[REALMDataset] Failed to parse %s: %s", path, exc)
                 continue
             instance_id = data.get("instance_id") or path.stem
+            data = _normalize_instance(problem, data)
             self._register_instance(problem, instance_id, data)
 
     def _load_p11(self, problem_dir: Path) -> None:
@@ -496,6 +497,50 @@ def _problem_constraints(problem: RealmProblem, instance: dict[str, Any]) -> dic
     elif problem == RealmProblem.P10:
         out["budget"] = instance.get("budget", 0)
         out["delivery_deadlines"] = instance.get("delivery_deadlines", {})
+    return out
+
+
+def _normalize_instance(problem: RealmProblem, instance: dict[str, Any]) -> dict[str, Any]:
+    """Bring upstream-instance schema variations into a single shape.
+
+    The upstream JSON files use slightly different key names depending on
+    the generator (``ride_requests`` vs ``passengers``,
+    ``passenger_id`` vs ``id``, …). We normalise here so the solvers and
+    evaluator can rely on a single shape.
+    """
+    out = dict(instance)
+
+    # P3/P4: ride_requests -> passengers, passenger_id -> id
+    if problem in (RealmProblem.P3, RealmProblem.P4):
+        if "ride_requests" in out and "passengers" not in out:
+            out["passengers"] = out.pop("ride_requests")
+        for p in out.get("passengers", []) or []:
+            if "id" not in p and "passenger_id" in p:
+                p["id"] = p["passenger_id"]
+        for v in out.get("vehicles", []) or []:
+            if "id" not in v and "vehicle_id" in v:
+                v["id"] = v["vehicle_id"]
+        # Flatten city_map.distances to top-level for solver convenience.
+        if "distances" not in out and isinstance(out.get("city_map"), dict):
+            d = out["city_map"].get("distances")
+            if isinstance(d, dict):
+                out["distances"] = d
+
+    # P2: ensure visitor_groups/tour_guides ids accessible.
+    if problem == RealmProblem.P2:
+        for g in out.get("visitor_groups", []) or []:
+            if "id" not in g and "group_id" in g:
+                g["id"] = g["group_id"]
+        for g in out.get("tour_guides", []) or []:
+            if "id" not in g and "guide_id" in g:
+                g["id"] = g["guide_id"]
+
+    # P7: regions may use region_id
+    if problem == RealmProblem.P7:
+        for r in out.get("regions", []) or []:
+            if "id" not in r and "region_id" in r:
+                r["id"] = r["region_id"]
+
     return out
 
 
