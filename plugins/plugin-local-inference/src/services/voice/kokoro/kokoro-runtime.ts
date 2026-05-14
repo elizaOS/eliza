@@ -223,6 +223,19 @@ export class KokoroOnnxRuntime implements KokoroRuntime {
 	}
 
 	async synthesize(args: KokoroRuntimeInputs): Promise<{ cancelled: boolean }> {
+		// Kokoro's BERT encoder is exported with a fixed max sequence length of
+		// 510 phoneme tokens (matches `kokoro-onnx` upstream
+		// `kokoro_onnx/__init__.py:MAX_PHONEME_LENGTH`). Anything longer trips
+		// an unhelpful "invalid expand shape" failure deep inside ORT's
+		// `/encoder/bert/Expand` node and surfaces to callers as an opaque 502.
+		// Reject early with a clear message so the API layer can map it to a
+		// 4xx and so the user sees what to do about it (split into chunks).
+		if (args.phonemes.ids.length > 510) {
+			throw new Error(
+				`[kokoro] phoneme sequence is too long: ${args.phonemes.ids.length} > 510. ` +
+					`The Kokoro ONNX export caps the BERT encoder at 510 tokens; split the input into shorter chunks before synthesizing.`,
+			);
+		}
 		const { ort, session } = await this.ensureSession();
 		const fullStyle = await this.loadVoiceStyle(args.voice);
 		const inputIds = new BigInt64Array(args.phonemes.ids.length);
