@@ -39,7 +39,7 @@ def test_server_manager_does_not_default_stub_embedding_env(
     assert "ELIZA_BENCH_ALLOW_STUB_EMBEDDING" not in captured["kwargs"]["env"]
 
 
-def test_server_manager_defaults_stub_embedding_for_benchmark_harness(
+def test_server_manager_does_not_default_stub_embedding_for_benchmark_harness(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
@@ -63,7 +63,7 @@ def test_server_manager_defaults_stub_embedding_for_benchmark_harness(
     manager.start()
     manager._proc = None
 
-    assert captured["kwargs"]["env"]["ELIZA_BENCH_ALLOW_STUB_EMBEDDING"] == "1"
+    assert "ELIZA_BENCH_ALLOW_STUB_EMBEDDING" not in captured["kwargs"]["env"]
 
 
 def test_server_manager_uses_ephemeral_port_by_default(monkeypatch, tmp_path: Path) -> None:

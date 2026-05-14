@@ -1790,6 +1790,12 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             "max_tokens": 256,
             "timeout_s": 5,
         },
+        "gaia": {
+            "max_questions": 2,
+        },
+        "gauntlet": {
+            "max_scenarios": 3,
+        },
         "mmlu": {
             "limit": 2,
             "max_tokens": 8,
