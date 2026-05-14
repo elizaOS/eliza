@@ -1,0 +1,80 @@
+#!/bin/sh
+
+set -e
+set -u
+set -x
+
+VERSIONS="6.0~testoverlayfs 6.2~testoverlayfs 6.3~testoverlayfs"
+SOURCE_DATE_EPOCH=$(date --utc '+%s')
+export SOURCE_DATE_EPOCH
+
+[ -d "$TAILS_CHECKOUT" ] || exit 2
+
+WORKDIR=$(mktemp -d)
+
+for version in $VERSIONS; do
+   ISO_SRC="$WORKDIR/$version"/iso_src
+   for dir in EFI/BOOT isolinux live utils/linux utils/mbr; do
+      mkdir -p "$ISO_SRC/$dir"
+   done
+   SQUASHFS_SRC="$WORKDIR/$version"/squashfs_src
+   mkdir -p "$SQUASHFS_SRC"
+   mkdir -p "$SQUASHFS_SRC"/etc/amnesia "$SQUASHFS_SRC"/usr/share
+
+   cp -a /usr/share/common-licenses "$SQUASHFS_SRC"/usr/share/
+   mkdir -p "$SQUASHFS_SRC"/usr/share/doc
+   if [ "$version" = '6.0~testoverlayfs' ]; then
+      mkdir -p "$SQUASHFS_SRC"/usr/share/doc/tor
+      echo "Some content" > "$SQUASHFS_SRC"/usr/share/doc/tor/README.Debian
+   fi
+   if [ "$version" != '6.0~testoverlayfs' ]; then
+      echo "Some content" > "$SQUASHFS_SRC"/some_new_file
+      rm "$SQUASHFS_SRC"/usr/share/common-licenses/BSD
+   fi
+   if [ "$version" = '6.3~testoverlayfs' ]; then
+      echo "Some content 6.3" > "$SQUASHFS_SRC"/some_new_file_6.3
+      rm "$SQUASHFS_SRC"/usr/share/common-licenses/MPL-1.1
+   fi
+   cat > "$SQUASHFS_SRC"/etc/os-release <<EOF
+NAME="Tails"
+VERSION="$version"
+EOF
+   mksquashfs \
+      "$SQUASHFS_SRC" \
+      "$ISO_SRC"/live/filesystem.squashfs \
+      -no-progress -noappend -comp xz -Xbcj x86 -b 1024K -Xdict-size 1024K \
+      -all-root
+
+   echo vmlinuz > "$ISO_SRC"/live/vmlinuz
+   echo initrd > "$ISO_SRC"/live/initrd.img
+   echo isolinux > "$ISO_SRC"/isolinux/isolinux.cfg
+   echo 'filesystem.squashfs' > "$ISO_SRC"/live/Tails.module
+   cp /usr/lib/syslinux/mbr/gptmbr.bin "$ISO_SRC"/utils/mbr/mbr.bin
+   if [ "$version" = '6.0~testoverlayfs' ]; then
+      cp /usr/bin/syslinux "$ISO_SRC"/utils/linux
+   fi
+   if [ "$version" = '6.3~testoverlayfs' ]; then
+      rm "$ISO_SRC"/utils/mbr/mbr.bin
+   fi
+   xorriso \
+      -as mkisofs -R -r -J -joliet-long -l -cache-inodes -iso-level 3 \
+      --modification-date=2019112316114600 \
+      -o "$WORKDIR/$version.iso" "$ISO_SRC"
+done
+
+for dest_version in 6.2~testoverlayfs 6.3~testoverlayfs; do
+   echo "Generating IUK file from 6.0~testoverlayfs to $dest_version"
+   sudo su -c \
+         "SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH \
+          LC_ALL=C \
+          TMPDIR=\"${TMPDIR:-/tmp}\" \
+          PERL5LIB=\"${TAILS_CHECKOUT:?}/config/chroot_local-includes/usr/src/perl5lib/lib\" \
+          ${TAILS_CHECKOUT:?}/config/chroot_local-includes/usr/src/iuk/bin/tails-create-iuk \
+               --squashfs_diff_name \"${dest_version}.squashfs\"           \
+               --old_iso \"$WORKDIR/6.0~testoverlayfs.iso\" \
+               --new_iso \"$WORKDIR/${dest_version}.iso\" \
+               --outfile \"$WORKDIR/Tails_amd64_6.0~testoverlayfs_to_${dest_version}.iuk\""
+done
+
+echo "Generated test IUKS:"
+ls -lh "$WORKDIR"/*.iuk

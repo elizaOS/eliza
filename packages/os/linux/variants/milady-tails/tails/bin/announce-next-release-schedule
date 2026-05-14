@@ -1,0 +1,30 @@
+#!/bin/bash
+
+set -eu
+set -o pipefail
+
+NEXT_PLANNED_VERSION="$1"
+
+./bin/automailer.py <<EOF
+To: tails-dev@boum.org,tails-l10n@boum.org
+Subject: Release schedule for Tails ${NEXT_PLANNED_VERSION:?}
+
+Hi,
+
+XXX will be the RM for Tails ${NEXT_PLANNED_VERSION:?}.
+
+The current plan is:
+
+ - Wednesday, XXX: build images, start testing
+ - Thursday, XXX: release
+
+Developers, please:
+
+  - Book time for automated and manual QA during office hours,
+    from Wednesday 13:00 to Thursday 11:00 (Europe/Berlin).
+    If you can't, please let the RM know.
+
+  - During these 2 days, don't push any change to the branch
+    used for the release.
+
+EOF

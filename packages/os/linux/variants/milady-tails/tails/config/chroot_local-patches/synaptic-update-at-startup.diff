@@ -1,0 +1,6 @@
+--- a/usr/bin/synaptic-pkexec	2021-10-14 11:27:59.886325207 +0000
++++ b/usr/bin/synaptic-pkexec	2021-10-14 11:29:52.228168451 +0000
+@@ -1,2 +1,2 @@
+ #!/bin/sh
+-pkexec "/usr/sbin/synaptic" "$@"
++pkexec "/usr/sbin/synaptic" --update-at-startup "$@"

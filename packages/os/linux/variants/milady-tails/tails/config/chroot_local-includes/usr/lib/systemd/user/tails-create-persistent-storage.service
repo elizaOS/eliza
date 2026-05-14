@@ -1,0 +1,14 @@
+[Unit]
+Description=Create a Persistent Storage (if the user chose to do so in the Welcome Screen)
+ConditionUser=1000
+ConditionPathExists=/var/lib/live/config/tails.create-persistence
+
+[Service]
+Type=oneshot
+Restart=no
+
+StandardError=journal
+ExecStart=/usr/local/bin/tails-persistent-storage
+
+[Install]
+WantedBy=desktop.target

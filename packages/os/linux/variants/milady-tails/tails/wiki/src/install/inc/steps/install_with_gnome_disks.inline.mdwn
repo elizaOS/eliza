@@ -1,0 +1,68 @@
+[[!meta robots="noindex"]]
+
+1. Open *GNOME Disks* (also called *Disks*).
+
+   <div class="linux">
+     For example, you can press the <b>Super</b> ([[!img lib/start.png class="symbolic" link="no" alt=""]]) key,
+     then enter <code>disks</code> and select <b>Disks</b>.
+   </div>
+   <div class="upgrade">
+     Choose
+     <b>Apps&nbsp;▸ Utilities&nbsp;▸ Disks</b>.
+   </div>
+
+   The storage devices in the computer are listed in the left pane.
+
+   [[!img install/inc/icons/gnome-disks.png link="no" alt=""]]
+
+1. Plug in the <span class="upgrade">intermediary</span> USB stick <span class="linux">on which you want to install Tails</span>.
+
+   <div class="caution">
+
+   <p>All the data on this USB stick will be lost.</p>
+
+   <p>Some data might still be recovered using advanced forensics tools.</p>
+
+   </div>
+
+
+   <div class="note upgrade"><p>The Persistent Storage of your Tails USB stick will not be
+   copied to the temporary Tails.</p></div>
+
+   A new drive appears in the list of storage devices. Select it.
+
+   [[!img install/inc/screenshots/gnome_disks_drive.png class="screenshot" alt=""]]
+
+1. Click on the
+   [[!img lib/view-more.png alt="Drive Options" class="symbolic" link="no"]] button in
+   the title bar and choose **Restore Disk Image**.
+
+   [[!img install/inc/screenshots/gnome_disks_menu.png class="screenshot" alt=""]]
+
+1. In the **Restore Disk Image** dialog, click on
+   the file selector button.
+
+   Choose the USB image that you downloaded earlier.
+
+   <div class="note">
+   <p>Make sure that the USB image is called <i>[[!inline pages="inc/stable_amd64_img_filename" raw="yes" sort="age"]]</i> and has an
+   <i>.img</i> file extension.</p>
+
+   <p>If the image has an <i>.iso</i> file
+   extension, it is the wrong image. Please go back to the
+   <span class="linux">[[download step|linux#download]].</span>
+   <span class="upgrade-tails">[[download step|doc/upgrade/tails#download]].</span>
+   <span class="upgrade-linux">[[download step|doc/upgrade/linux#download]].</span></p>
+   </div>
+
+1. Click the **Start Restoring** button.
+
+1. In the confirmation dialog click **Restore**.
+
+   Depending on your Linux distribution, you might be asked for your
+   administration password.
+
+   The installation takes a few minutes.
+
+1. After the installation is finished, select the
+   [[!img lib/system-shutdown.png alt="Power Off this Disk" class="symbolic" link="no"]] button.

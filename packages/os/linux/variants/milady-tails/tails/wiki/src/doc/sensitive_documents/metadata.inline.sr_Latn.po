@@ -1,0 +1,60 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2024-01-31 15:45+0100\n"
+"PO-Revision-Date: 2023-03-13 17:37+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: sr_Latn\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=3; plural=n%10==1 && n%100!=11 ? 0 : n%10>=2 && "
+"n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2;\n"
+"X-Generator: Weblate 4.9.1\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta robots=\"noindex\"]]\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"caution\">\n"
+msgstr "<div class=\"caution\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>Most files contain metadata, which is information used to describe,\n"
+"identify, categorize, and sort files. For example:</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<ul>\n"
+"<li>Cameras record data about when and where a picture was taken and what\n"
+"camera was used.</li>\n"
+"<li>Office documents automatically add author\n"
+"and company information to texts and spreadsheets.</li>\n"
+"</ul>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>Use [[<i>Metadata Cleaner</i>|doc/sensitive_documents/metadata]] to clean\n"
+"metadata from your files before sharing them.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"

@@ -1,0 +1,92 @@
+{# Jinja2 template used by bin/generate-call-for-testing -#}
+[[!meta title="Call for testing: {{version}}"]]
+[[!meta date="{{date}}"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag announce]]
+
+We are very excited to present you a release candidate of the upcoming Tails {{final_version}}.
+
+We plan to release Tails {{final_version}} officially on {{final_date}}. You can help us by
+testing already a release candidate of Tails {{final_version}} before {{deadline}}.
+
+FIXME: Description of Tails {{final_version}}
+
+[[!toc levels=2]]
+
+<h1 id="features">New features</h1>
+
+FIXME: new features go here
+
+<h1 id="changes">Changes and updates</h1>
+
+FIXME: changes and updates go here
+
+# Changelog
+
+For more details about what has changed in Tails {{version}}, read our
+[changelog](https://gitlab.tails.boum.org/tails/tails/-/raw/{{tag}}/debian/changelog).
+
+# Known issues
+
+* FIXME: known issues specific to this beta/RC go here
+
+# Send us feedback
+
+Keep in mind that this is a test image. We tested that it is not broken in
+obvious ways, but it might still contain undiscovered issues.
+
+Please, report any new problem before {{deadline}} to either:
+
+- <tails-testers@boum.org> (public mailing list)
+
+- <support@tails.net> (private email)
+
+# Get Tails {{version}}
+
+## To upgrade your Tails USB stick and keep your Persistent Storage
+
+- Automatic upgrades are available from 4.2 or later to {{version}}.
+
+  To do an automatic upgrade to Tails {{version}}:
+
+  1. Start Tails 4.2 or later and
+     [[set an administration password|doc/first_steps/welcome_screen/administration_password]].
+
+  1. Run this command in a *Terminal*:
+
+         echo TAILS_CHANNEL=\"alpha\" | sudo tee -a /etc/os-release && \
+              tails-upgrade-frontend-wrapper
+
+     Enter the administration password when asked for the "password
+     for amnesia".
+
+  1. After the upgrade is applied, restart Tails and choose
+     **Applications&nbsp;▸ Tails&nbsp;▸ About Tails**
+     to verify that you are running Tails {{version}}.
+
+- If you cannot do an automatic upgrade or if Tails fails to start after an
+  automatic upgrade, please try to do a [[manual upgrade|doc/upgrade/#manual]].
+
+## To download {{version}}
+
+  - <a href="https://download.tails.net/tails/alpha/tails-amd64-{{version}}/tails-amd64-{{version}}.img">For USB sticks (USB image)</a>
+    ([[OpenPGP signature|torrents/files/tails-amd64-{{version}}.img.sig]])
+
+  - <a href="https://download.tails.net/tails/alpha/tails-amd64-{{version}}/tails-amd64-{{version}}.iso">For DVDs and virtual machines (ISO image)</a>
+    ([[OpenPGP signature|torrents/files/tails-amd64-{{version}}.iso.sig]])
+
+## To install Tails {{version}} on a new USB stick
+
+Follow our installation instructions:
+
+- [[Install from Windows|install/windows]]
+
+- [[Install from macOS|install/mac]]
+
+- [[Install from Linux|install/linux]]
+
+- [[Install from Debian or Ubuntu using the command line and GnuPG|install/expert]]
+
+<div class="caution"><p>the persistent storage on the USB stick will be lost if
+you install instead of upgrading.</p></div>

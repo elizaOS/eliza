@@ -1,0 +1,271 @@
+#!/usr/bin/python3 -I
+
+import argparse
+import gettext
+import logging
+import os
+import pwd
+import shutil
+import subprocess
+
+import additional_software
+from additional_software import (
+    notify_failure,
+    OLD_APT_LISTS_DIR,
+    get_additional_packages,
+    has_additional_packages_list,
+    notify,
+    APT_LISTS_DIR,
+    get_packages_list_path,
+)
+from tailslib import LIVE_USERNAME
+from tailslib.locale import apply_selected_locale
+
+apply_selected_locale()
+gettext.textdomain("tails")
+_ = gettext.gettext
+
+
+def upgrade_additional_packages():
+    """Subcommand which upgrades all additional packages."""
+    logging.info("Starting to upgrade additional software...")
+
+    if not has_additional_packages_list():
+        return True
+
+    # Save a copy of APT lists that we'll delete only once the upgrade
+    # has succeeded, to ensure that the APT packages cache is up-to-date
+    # wrt. the APT lists.
+    logging.info("Saving old APT lists...")
+    save_old_apt_lists()
+
+    apt_get_returncode = _launch_apt_get(["update"])
+    if apt_get_returncode:
+        logging.warning("Warning: the update failed.")
+        notify_failure(
+            _("The check for upgrades of your additional software failed"),
+            _(
+                "Please check your network connection, "
+                "restart Tails, or read the system log to "
+                "understand the problem."
+            ),
+        )
+        return False
+    if install_additional_packages(upgrade_mode=True):
+        logging.info("The upgrade was successful.")
+    else:
+        notify_failure(
+            _("The upgrade of your additional software failed"),
+            _(
+                "Please check your network connection, "
+                "restart Tails, or read the system log to "
+                "understand the problem."
+            ),
+        )
+        return False
+
+    # We now know that the APT packages cache is up-to-date wrt. the APT lists,
+    # so we can delete the copy of the old lists
+    delete_old_apt_lists()
+
+    # Remove outdated packages from the local package cache. This is needed as
+    # we disable apt-daily*.timer (via APT::Periodic::Enable), which would
+    # else take care of this cleanup.
+    # We do this after the upgrade has succeeded so that the old packages
+    # remain available in the cache in case we have to restore the old lists.
+    # In the past we did this before upgrading in order to remove the
+    # i386 packages from the cache before downloading amd64 ones, but
+    # this does not matter anymore now that all persistent volumes
+    # must have been upgraded already.
+    apt_get_returncode = _launch_apt_get(["autoclean"])
+    if apt_get_returncode:
+        logging.warning("Warning: autoclean failed.")
+    return True
+
+
+def install_additional_packages(upgrade_mode=False):
+    """Subcommand which activates and installs all additional packages.
+
+    If upgrade_mode is True, don't attempt to restore old apt lists and don't
+    notify the user using desktop notifications."""
+    logging.info("Starting to install additional software...")
+
+    if not has_additional_packages_list():
+        return True
+
+    # If a copy of old APT lists is found, then the previous upgrade
+    # attempt has not completed successfully (it may have failed e.g.
+    # due to network problems, or it may have been interrupted).
+    # In many of these cases, the APT package cache lacks some
+    # packages the new APT lists reference, so the (offline)
+    # installation step below in this function will fail. To avoid
+    # that, we restore the old APT lists: there are greater chances
+    # that the APT packages cache still has the corresponding packages.
+    if os.path.isdir(OLD_APT_LISTS_DIR) and not upgrade_mode:
+        logging.warning("Found a copy of old APT lists, restoring it.")
+        try:
+            restore_old_apt_lists()
+        except Exception as e:
+            logging.warning(
+                "Restoring old APT lists failed with %r, "
+                "deleting them and proceeding anyway." % e
+            )
+        # In all cases, delete the old APT lists: if they could be
+        # restored we don't need them anymore (and we don't want to
+        # restore them again next time); if they could not be
+        # restored, chances are restoration will fail next time
+        # as well.
+        delete_old_apt_lists()
+
+    packages = get_additional_packages()
+    if not packages:
+        logging.warning("Warning: no packages to install, exiting")
+        return True
+
+    installing_notification_id: int | None = None
+    if not upgrade_mode:
+        installing_notification_id = notify(
+            _("Installing your additional software from persistent storage..."),
+            _("This can take several minutes."),
+            return_id=True,
+        )
+    logging.info("Will install the following packages: %s" % " ".join(packages))
+    apt_get_returncode = _launch_apt_get(
+        [
+            "--no-remove",
+            "--option",
+            "DPkg::Options::=--force-confold",
+            "install",
+            *list(packages),
+        ]
+    )
+    if apt_get_returncode:
+        logging.warning("Warning: installation of %s failed" % " ".join(packages))
+        if not upgrade_mode:
+            if installing_notification_id is not None:
+                _close_notification(installing_notification_id)
+            notify_failure(_("The installation of your additional software failed"))
+        return False
+    else:
+        logging.info("Installation completed successfully.")
+        if not upgrade_mode:
+            if installing_notification_id is not None:
+                _close_notification(installing_notification_id)
+            # XXX: there should be a "Configure" button in this notification.
+            # However, the easy way to implement it makes this process not
+            # return until the notification is clicked. The notification
+            # process could be detached, and handle the "configure" action
+            # itself.
+            #  if _notify(_("Additional software installed successfully"),
+            #             accept_label=_("Configure")):
+            #      show_configuration_window()
+            notify(_("Additional software installed successfully"))
+        return True
+
+
+def _launch_apt_get(specific_args: list[str]):
+    """Launch apt-get with given arguments.
+
+    Launch apt-get with given arguments list, log its standard and error output
+    and return its returncode."""
+    apt_get_env = os.environ.copy()
+    # The environnment provided in GDM PostLogin hooks doesn't contain /sbin/
+    # which is required by dpkg. Let's use the default path for root in Tails.
+    apt_get_env["PATH"] = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+    # We will log the output and want it in English when included in bug
+    # reports
+    apt_get_env["LANG"] = "C"
+    apt_get_env["DEBIAN_PRIORITY"] = "critical"
+    args = ["apt-get", "--quiet", "--yes"]
+    args.extend(specific_args)
+    apt_get = subprocess.Popen(
+        args,
+        env=apt_get_env,
+        universal_newlines=True,
+        stderr=subprocess.STDOUT,
+        stdout=subprocess.PIPE,
+    )
+    for line in iter(apt_get.stdout.readline, ""):
+        if not line.startswith("("):
+            logging.info(line.rstrip())
+    apt_get.wait()
+    if apt_get.returncode:
+        logging.warning("apt-get exited with returncode %i" % apt_get.returncode)
+    return apt_get.returncode
+
+
+def save_old_apt_lists(srcdir=APT_LISTS_DIR, destdir=OLD_APT_LISTS_DIR):
+    """Save a copy of the APT lists"""
+    if os.path.exists(destdir):
+        logging.warning(
+            "Warning: a copy of the APT lists already exists, "
+            "which should never happen. Removing it."
+        )
+        delete_old_apt_lists(destdir)
+    subprocess.run(["/bin/cp", "--archive", srcdir, destdir], check=True)
+
+
+def delete_old_apt_lists(old_apt_lists_dir=OLD_APT_LISTS_DIR):
+    """Delete the copy of the old APT lists, if any."""
+    shutil.rmtree(old_apt_lists_dir)
+
+
+# Note: we can't do nicer delete + move operations because the directory
+# we want to replace is bind-mounted. So we have to delete the content
+# we want to replace, and then move the content we want to restore.
+def restore_old_apt_lists(srcdir=OLD_APT_LISTS_DIR, dstdir=APT_LISTS_DIR):
+    """Restore the copy of the old APT lists."""
+    # Empty dstdir
+    for basename in os.listdir(dstdir):
+        path = os.path.join(dstdir, basename)
+        if os.path.isfile(path):
+            os.remove(path)
+        elif os.path.isdir(path):
+            shutil.rmtree(path)
+    # Move the content of srcdir to dstdir
+    for basename in os.listdir(srcdir):
+        path = os.path.join(srcdir, basename)
+        shutil.move(path, dstdir)
+
+
+def _close_notification(notification_id):
+    """Close a notification shown to the user of the live system."""
+    subprocess.run(
+        [
+            "/bin/sudo",
+            "-u",
+            LIVE_USERNAME,
+            "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{uid}/bus".format(
+                uid=pwd.getpwnam(LIVE_USERNAME).pw_uid
+            ),
+            "gdbus",
+            "call",
+            "--session",
+            "--dest",
+            "org.freedesktop.Notifications",
+            "--object-path",
+            "/org/freedesktop/Notifications",
+            "--method",
+            "org.freedesktop.Notifications.CloseNotification",
+            str(notification_id),
+        ],
+        stdout=subprocess.DEVNULL,
+        check=False,
+    )
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--upgrade", action="store_true")
+    args = parser.parse_args()
+
+    additional_software.set_up_logging()
+
+    if args.upgrade:
+        upgrade_additional_packages()
+    else:
+        install_additional_packages()
+
+
+if __name__ == "__main__":
+    main()

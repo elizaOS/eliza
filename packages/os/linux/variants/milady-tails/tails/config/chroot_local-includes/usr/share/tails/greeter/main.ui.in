@@ -1,0 +1,881 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Generated with glade 3.40.0 -->
+<interface domain="tails">
+  <requires lib="gtk+" version="3.20"/>
+  <requires lib="libhandy" version="0.0"/>
+  <object class="GtkBox" id="box_main">
+    <property name="visible">True</property>
+    <property name="can-focus">False</property>
+    <property name="orientation">vertical</property>
+    <child>
+      <object class="GtkInfoBar" id="infobar_settings_loaded">
+        <property name="app-paintable">True</property>
+        <property name="can-focus">False</property>
+        <property name="show-close-button">True</property>
+        <signal name="close" handler="cb_infobar_close" swapped="no"/>
+        <signal name="response" handler="cb_infobar_response" swapped="no"/>
+        <child internal-child="action_area">
+          <object class="GtkButtonBox" id="infobar_settings_loaded-action_area">
+            <property name="can-focus">False</property>
+            <property name="spacing">6</property>
+            <property name="layout-style">end</property>
+            <child>
+              <placeholder/>
+            </child>
+            <child>
+              <placeholder/>
+            </child>
+            <child>
+              <placeholder/>
+            </child>
+          </object>
+          <packing>
+            <property name="expand">False</property>
+            <property name="fill">False</property>
+            <property name="position">0</property>
+          </packing>
+        </child>
+        <child internal-child="content_area">
+          <object class="GtkBox" id="infobar_settings_loaded-content_area">
+            <property name="can-focus">False</property>
+            <property name="spacing">16</property>
+            <child>
+              <object class="GtkLabel" id="label_infobar_settings_loaded">
+                <property name="visible">True</property>
+                <property name="can-focus">False</property>
+                <property name="label" translatable="yes">Settings were loaded from the Persistent Storage.</property>
+                <property name="xalign">0</property>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">True</property>
+                <property name="position">0</property>
+              </packing>
+            </child>
+            <child>
+              <placeholder/>
+            </child>
+            <child>
+              <placeholder/>
+            </child>
+          </object>
+          <packing>
+            <property name="expand">False</property>
+            <property name="fill">False</property>
+            <property name="position">0</property>
+          </packing>
+        </child>
+        <child>
+          <placeholder/>
+        </child>
+      </object>
+      <packing>
+        <property name="expand">False</property>
+        <property name="fill">True</property>
+        <property name="position">1</property>
+      </packing>
+    </child>
+    <child>
+      <object class="GtkBox" id="box_inner">
+        <property name="visible">True</property>
+        <property name="can-focus">False</property>
+        <property name="margin-left">18</property>
+        <property name="margin-right">18</property>
+        <property name="margin-top">18</property>
+        <property name="margin-bottom">18</property>
+        <property name="orientation">vertical</property>
+        <property name="spacing">18</property>
+        <child>
+          <object class="GtkBox" id="box_header">
+            <property name="visible">True</property>
+            <property name="can-focus">False</property>
+            <property name="orientation">vertical</property>
+            <property name="spacing">6</property>
+            <child>
+              <object class="GtkLabel" id="label_header_title">
+                <property name="visible">True</property>
+                <property name="can-focus">False</property>
+                <property name="label" translatable="yes">Welcome to Tails!</property>
+                <attributes>
+                  <attribute name="weight" value="semibold"/>
+                  <attribute name="scale" value="1.5"/>
+                </attributes>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">True</property>
+                <property name="position">0</property>
+              </packing>
+            </child>
+        </object>
+        <packing>
+            <property name="expand">True</property>
+            <property name="fill">True</property>
+            <property name="position">0</property>
+        </packing>
+    </child>
+    <child>
+        <object class="GtkBox" id="box_language">
+            <property name="visible">True</property>
+            <property name="can-focus">False</property>
+            <property name="orientation">vertical</property>
+            <property name="spacing">6</property>
+            <child>
+                <object class="GtkBox" id="box_language_header">
+                    <property name="visible">True</property>
+                    <property name="can-focus">False</property>
+                    <child>
+                        <object class="GtkLabel" id="label_language_header_title">
+                            <property name="visible">True</property>
+                            <property name="can-focus">False</property>
+                            <property name="label" translatable="yes">Language and Formats</property>
+                            <attributes>
+                                <attribute name="weight" value="bold"/>
+                            </attributes>
+                        </object>
+                        <packing>
+                            <property name="expand">False</property>
+                            <property name="fill">True</property>
+                            <property name="position">0</property>
+                        </packing>
+                    </child>
+                    <child>
+                        <object class="GtkLinkButton" id="linkbutton_language_help">
+                            <property name="visible">True</property>
+                            <property name="can-focus">False</property>
+                            <property name="receives-default">True</property>
+                            <property name="relief">none</property>
+                            <property name="uri">doc/first_steps/welcome_screen.en.html#locale</property>
+                            <signal name="activate-link" handler="cb_linkbutton_help_activate" swapped="no"/>
+                            <child>
+                                <object class="GtkImage" id="image_language_help">
+                                    <property name="visible">True</property>
+                                    <property name="can-focus">False</property>
+                                    <property name="icon-name">tails-help</property>
+                                </object>
+                            </child>
+                        </object>
+                        <packing>
+                            <property name="expand">False</property>
+                            <property name="fill">True</property>
+                            <property name="position">1</property>
+                        </packing>
+                    </child>
+                    <child>
+                        <object class="GtkLabel" id="label_language_header_status">
+                            <property name="can-focus">False</property>
+                            <property name="label" translatable="yes">Default Settings</property>
+                            <attributes>
+                                <attribute name="style" value="italic"/>
+                            </attributes>
+                        </object>
+                        <packing>
+                            <property name="expand">False</property>
+                            <property name="fill">True</property>
+                            <property name="position">2</property>
+                        </packing>
+                    </child>
+                </object>
+                <packing>
+                    <property name="expand">False</property>
+                    <property name="fill">True</property>
+                    <property name="position">0</property>
+                </packing>
+            </child>
+            <child>
+                <object class="GtkFrame" id="frame_language">
+                    <property name="visible">True</property>
+                    <property name="can-focus">False</property>
+                    <property name="label-xalign">0</property>
+                    <property name="shadow-type">in</property>
+                    <child>
+                        <object class="GtkListBox" id="listbox_region">
+                            <property name="visible">True</property>
+                            <property name="can-focus">False</property>
+                            <signal name="row-activated" handler="cb_listbox_region_row_activated" swapped="no"/>
+                        </object>
+                    </child>
+                </object>
+                <packing>
+                    <property name="expand">False</property>
+                    <property name="fill">True</property>
+                    <property name="position">1</property>
+                </packing>
+            </child>
+            <child>
+                <object class="GtkBox" id="save_language_keyboard_box">
+                    <property name="visible">True</property>
+                    <property name="can-focus">False</property>
+                    <property name="valign">center</property>
+                    <property name="halign">end</property>
+                    <property name="margin-start">6</property>
+                    <property name="spacing">6</property>
+                    <child>
+                        <object class="GtkLabel" id="save_language_keyboard_label">
+                            <property name="visible">True</property>
+                            <property name="can-focus">False</property>
+                            <property name="label" translatable="yes">Save</property>
+                            <property name="use-underline">False</property>
+                            <accessibility>
+                                <relation type="label-for" target="save_language_keyboard_switch"/>
+                            </accessibility>
+                        </object>
+                        <packing>
+                            <property name="expand">False</property>
+                            <property name="fill">True</property>
+                            <property name="position">0</property>
+                        </packing>
+                    </child>
+                    <child>
+                        <object class="GtkSwitch" id="save_language_keyboard_switch">
+                            <property name="visible">True</property>
+                            <property name="can-focus">True</property>
+                            <property name="halign">end</property>
+                            <property name="valign">center</property>
+                            <signal name="state-set" handler="cb_save_language_keyboard_switch_changed" swapped="no"/>
+                            <child internal-child="accessible">
+                                <object class="AtkObject" id="save_language_keyboard_switch-atkobject">
+                                    <property name="AtkObject::accessible-name" translatable="yes">Save</property>
+                                </object>
+                            </child>
+                        </object>
+                        <packing>
+                            <property name="expand">False</property>
+                            <property name="fill">True</property>
+                            <property name="position">1</property>
+                        </packing>
+                    </child>
+                </object>
+            </child>
+        </object>
+        <packing>
+            <property name="expand">True</property>
+            <property name="fill">True</property>
+            <property name="position">1</property>
+        </packing>
+    </child>
+        <child>
+          <object class="GtkBox" id="box_storagecreate">
+            <property name="can-focus">False</property>
+            <property name="orientation">vertical</property>
+            <property name="spacing">12</property>
+            <child>
+              <object class="GtkLabel" id="create_tps_label">
+                <property name="visible">True</property>
+                <property name="can-focus">False</property>
+                <property name="halign">start</property>
+                <property name="label" translatable="yes">_Persistent Storage</property>
+                <property name="use-underline">True</property>
+                <property name="mnemonic-widget">create_tps_switch</property>
+                <attributes>
+                  <attribute name="weight" value="bold"/>
+                </attributes>
+                <accessibility>
+                  <relation type="label-for" target="create_tps_settings_listbox"/>
+                </accessibility>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">True</property>
+                <property name="position">0</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkLabel" id="label_storagecreate_explain">
+                <property name="visible">True</property>
+                <property name="can-focus">False</property>
+                <property name="label" translatable="yes">You can save some of your files and configuration in an encrypted Persistent Storage on your Tails USB stick: your documents, browser bookmarks, Wi-Fi passwords, and so on.</property>
+                <property name="wrap">True</property>
+                <property name="track-visited-links">False</property>
+                <property name="xalign">0</property>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">True</property>
+                <property name="position">1</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkFrame">
+                <property name="visible">True</property>
+                <property name="can-focus">False</property>
+                <property name="label-xalign">0</property>
+                <child>
+                  <object class="GtkListBox" id="create_tps_settings_listbox">
+                    <property name="visible">True</property>
+                    <property name="can-focus">False</property>
+                    <property name="selection-mode">none</property>
+                    <child>
+                      <object class="HdyActionRow" id="create_tps_row">
+                        <property name="visible">True</property>
+                        <property name="can-focus">False</property>
+                        <property name="title" translatable="yes">Create Persistent Storage</property>
+                        <property name="icon-name">tails-persistent-storage</property>
+                        <property name="subtitle" translatable="yes">Create and configure a Persistent Storage after starting Tails</property>
+                        <child>
+                          <object class="GtkBox" id="create_tps_row_box">
+                            <property name="visible">True</property>
+                            <property name="can-focus">False</property>
+                            <property name="valign">center</property>
+                            <property name="margin-start">6</property>
+                            <property name="spacing">6</property>
+                            <child>
+                              <object class="GtkSwitch" id="create_tps_switch">
+                                <property name="visible">True</property>
+                                <property name="can-focus">True</property>
+                                <property name="halign">end</property>
+                                <property name="valign">center</property>
+                                <signal name="notify::active" handler="cb_create_tps_switch_active_changed" swapped="no"/>
+                                <child internal-child="accessible">
+                                  <object class="AtkObject" id="create_tps_switch-atkobject">
+                                    <property name="AtkObject::accessible-name" translatable="yes">Create Persistent Storage</property>
+                                  </object>
+                                </child>
+                              </object>
+                              <packing>
+                                <property name="expand">False</property>
+                                <property name="fill">True</property>
+                                <property name="position">0</property>
+                              </packing>
+                            </child>
+                          </object>
+                        </child>
+                      </object>
+                    </child>
+                    <accessibility>
+                      <relation type="labelled-by" target="create_tps_label"/>
+                    </accessibility>
+                  </object>
+                </child>
+              </object>
+              <packing>
+                <property name="expand">True</property>
+                <property name="fill">True</property>
+                <property name="position">2</property>
+              </packing>
+            </child>
+          </object>
+          <packing>
+            <property name="expand">False</property>
+            <property name="fill">True</property>
+            <property name="position">2</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkBox" id="box_storage">
+            <property name="visible">True</property>
+            <property name="can-focus">False</property>
+            <property name="orientation">vertical</property>
+            <property name="spacing">6</property>
+            <child>
+              <object class="GtkBox" id="box_storage_header">
+                <property name="visible">True</property>
+                <property name="can-focus">False</property>
+                <property name="spacing">8</property>
+                <child>
+                  <object class="GtkLabel" id="label_storage_header_title">
+                    <property name="visible">True</property>
+                    <property name="can-focus">False</property>
+                    <property name="label" translatable="yes">_Persistent Storage</property>
+                    <property name="use-underline">True</property>
+                    <property name="mnemonic-widget">entry_storage_passphrase</property>
+                    <attributes>
+                      <attribute name="weight" value="bold"/>
+                    </attributes>
+                  </object>
+                  <packing>
+                    <property name="expand">False</property>
+                    <property name="fill">True</property>
+                    <property name="position">0</property>
+                  </packing>
+                </child>
+                <child>
+                  <object class="GtkImage" id="image_storage_state">
+                    <property name="visible">True</property>
+                    <property name="can-focus">False</property>
+                    <property name="icon-name">tails-locked</property>
+                  </object>
+                  <packing>
+                    <property name="expand">False</property>
+                    <property name="fill">True</property>
+                    <property name="position">1</property>
+                  </packing>
+                </child>
+                <child>
+                  <object class="GtkCheckButton" id="checkbutton_storage_show_passphrase">
+                    <property name="label" translatable="yes">Show Passphrase</property>
+                    <property name="can-focus">True</property>
+                    <property name="receives-default">False</property>
+                    <property name="xalign">0</property>
+                    <property name="draw-indicator">True</property>
+                  </object>
+                  <packing>
+                    <property name="expand">False</property>
+                    <property name="fill">True</property>
+                    <property name="pack-type">end</property>
+                    <property name="position">3</property>
+                  </packing>
+                </child>
+                <child>
+                  <object class="GtkLinkButton" id="linkbutton_storage_help">
+                    <property name="can-focus">True</property>
+                    <property name="receives-default">True</property>
+                    <property name="relief">none</property>
+                    <property name="uri">doc/persistent_storage/use.en.html</property>
+                    <signal name="activate-link" handler="cb_linkbutton_help_activate" swapped="no"/>
+                    <child>
+                      <object class="GtkImage" id="image_storage_help">
+                        <property name="visible">True</property>
+                        <property name="can-focus">False</property>
+                        <property name="icon-name">tails-help</property>
+                      </object>
+                    </child>
+                  </object>
+                  <packing>
+                    <property name="expand">False</property>
+                    <property name="fill">True</property>
+                    <property name="position">4</property>
+                  </packing>
+                </child>
+                <child>
+                  <placeholder/>
+                </child>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">True</property>
+                <property name="position">0</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkBox" id="box_storage_unlock">
+                <property name="can-focus">False</property>
+                <property name="spacing">6</property>
+                <child>
+                  <object class="GtkBox">
+                    <property name="visible">True</property>
+                    <property name="can-focus">False</property>
+                    <child>
+                      <object class="GtkEntry" id="entry_storage_passphrase">
+                        <property name="visible">True</property>
+                        <property name="can-focus">True</property>
+                        <property name="visibility">False</property>
+                        <property name="placeholder-text" translatable="yes">Enter your passphrase</property>
+                        <signal name="activate" handler="cb_entry_storage_passphrase_activated" swapped="no"/>
+                        <signal name="changed" handler="cb_entry_storage_passphrase_changed" swapped="no"/>
+                        <style>
+                          <class name="linked_left"/>
+                        </style>
+                      </object>
+                      <packing>
+                        <property name="expand">True</property>
+                        <property name="fill">True</property>
+                        <property name="position">1</property>
+                      </packing>
+                    </child>
+                    <child>
+                      <object class="GtkButton" id="button_storage_unlock">
+                        <property name="label" translatable="yes">Unlock Encryption</property>
+                        <property name="visible">True</property>
+                        <property name="sensitive">False</property>
+                        <property name="can-focus">True</property>
+                        <property name="receives-default">True</property>
+                        <signal name="clicked" handler="cb_button_storage_unlock_clicked" swapped="no"/>
+                        <style>
+                          <class name="suggested-action"/>
+                          <class name="linked_right"/>
+                        </style>
+                      </object>
+                      <packing>
+                        <property name="expand">False</property>
+                        <property name="fill">True</property>
+                        <property name="position">2</property>
+                      </packing>
+                    </child>
+                    <style>
+                      <class name="linked"/>
+                    </style>
+                  </object>
+                  <packing>
+                    <property name="expand">True</property>
+                    <property name="fill">True</property>
+                    <property name="position">1</property>
+                  </packing>
+                </child>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">True</property>
+                <property name="position">2</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkBox" id="box_storage_unlock_status">
+                <property name="can-focus">False</property>
+                <property name="spacing">5</property>
+                <child>
+                  <object class="GtkImage" id="image_storage_unlock_failed">
+                    <property name="can-focus">False</property>
+                    <property name="icon-name">dialog-warning</property>
+                    <property name="valign">start</property>
+                  </object>
+                </child>
+                <child>
+                  <object class="GtkSpinner" id="spinner_storage_unlock">
+                    <property name="can-focus">False</property>
+                    <property name="active">True</property>
+                  </object>
+                </child>
+                <child>
+                  <object class="GtkLabel" id="label_storage_unlock_status">
+                    <property name="can-focus">False</property>
+                    <property name="xalign">0</property>
+                    <property name="wrap">True</property>
+                  </object>
+                </child>
+              </object>
+            </child>
+            <child>
+              <object class="GtkBox" id="box_storage_error">
+                <property name="can-focus">False</property>
+                <child>
+                  <object class="GtkLabel" id="label_storage_error">
+                    <property name="visible">True</property>
+                    <property name="can-focus">False</property>
+                    <property name="label" translatable="yes">Impossible to unlock the Persistent Storage.</property>
+                    <property name="xalign">0</property>
+                  </object>
+                  <packing>
+                    <property name="expand">False</property>
+                    <property name="fill">True</property>
+                    <property name="position">0</property>
+                  </packing>
+                </child>
+                <child>
+                  <object class="GtkLinkButton" id="linkbutton_storage_readonly_help">
+                    <property name="visible">True</property>
+                    <property name="can-focus">True</property>
+                    <property name="receives-default">True</property>
+                    <property name="relief">none</property>
+                    <property name="uri">doc/persistent_storage/use.en.html#read-only</property>
+                    <signal name="activate-link" handler="cb_linkbutton_help_activate" swapped="no"/>
+                    <child>
+                      <object class="GtkImage" id="image_storage_readonly_help">
+                        <property name="visible">True</property>
+                        <property name="can-focus">False</property>
+                        <property name="icon-name">tails-help</property>
+                      </object>
+                    </child>
+                  </object>
+                  <packing>
+                    <property name="expand">False</property>
+                    <property name="fill">True</property>
+                    <property name="position">1</property>
+                  </packing>
+                </child>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">True</property>
+                <property name="position">4</property>
+              </packing>
+            </child>
+          </object>
+          <packing>
+            <property name="expand">True</property>
+            <property name="fill">True</property>
+            <property name="position">3</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkBox" id="box_partition_errors">
+            <property name="visible">False</property>
+            <property name="can-focus">False</property>
+            <property name="orientation">vertical</property>
+            <property name="spacing">6</property>
+            <child>
+              <object class="GtkBox" id="box_partition_errors_header">
+                <property name="visible">True</property>
+                <property name="can-focus">False</property>
+                <property name="spacing">8</property>
+                <child>
+                  <object class="GtkLabel" id="label_partition_errors_header_title">
+                    <property name="visible">True</property>
+                    <property name="can-focus">False</property>
+                    <property name="label" translatable="yes">Partitioning Errors</property>
+                    <property name="use-underline">True</property>
+                    <property name="mnemonic-widget">entry_storage_passphrase</property>
+                    <attributes>
+                      <attribute name="weight" value="bold"/>
+                    </attributes>
+                  </object>
+                  <packing>
+                    <property name="expand">False</property>
+                    <property name="fill">True</property>
+                    <property name="position">0</property>
+                  </packing>
+                </child>
+                <child>
+                  <object class="GtkImage" id="image_partition_errors">
+                    <property name="visible">True</property>
+                    <property name="can-focus">False</property>
+                    <property name="icon-name">dialog-warning</property>
+                  </object>
+                  <packing>
+                    <property name="expand">False</property>
+                    <property name="fill">True</property>
+                    <property name="position">1</property>
+                  </packing>
+                </child>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">True</property>
+                <property name="position">0</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkLabel" id="label_partition_errors">
+                <property name="visible">True</property>
+                <property name="can-focus">False</property>
+                <property name="label" translatable="yes">Errors were detected in the partitioning of your Tails USB stick.
+
+Try reinstalling Tails. If the error persists, reinstall on a new USB stick.</property>
+                <property name="xalign">0</property>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">True</property>
+                <property name="position">1</property>
+              </packing>
+            </child>
+          </object>
+          <packing>
+            <property name="expand">True</property>
+            <property name="fill">True</property>
+            <property name="position">4</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkBox" id="box_settings">
+            <property name="visible">True</property>
+            <property name="can-focus">False</property>
+            <property name="orientation">vertical</property>
+            <property name="spacing">6</property>
+            <child>
+              <object class="GtkBox" id="box_settings_header">
+                <property name="visible">True</property>
+                <property name="can-focus">False</property>
+                <child>
+                  <object class="GtkLabel" id="label_settings_header_title">
+                    <property name="visible">True</property>
+                    <property name="can-focus">False</property>
+                    <property name="label" translatable="yes">_Additional Settings</property>
+                    <property name="use-underline">True</property>
+                    <property name="mnemonic-widget">toolbutton_settings_add</property>
+                    <attributes>
+                      <attribute name="weight" value="bold"/>
+                    </attributes>
+                  </object>
+                  <packing>
+                    <property name="expand">False</property>
+                    <property name="fill">True</property>
+                    <property name="position">0</property>
+                  </packing>
+                </child>
+                <child>
+                  <object class="GtkLinkButton" id="linkbutton_settings_help">
+                    <property name="visible">True</property>
+                    <property name="can-focus">False</property>
+                    <property name="receives-default">True</property>
+                    <property name="relief">none</property>
+                    <property name="uri">doc/first_steps/welcome_screen.en.html#additional</property>
+                    <signal name="activate-link" handler="cb_linkbutton_help_activate" swapped="no"/>
+                    <child>
+                      <object class="GtkImage" id="image_settings_help">
+                        <property name="visible">True</property>
+                        <property name="can-focus">False</property>
+                        <property name="icon-name">tails-help</property>
+                      </object>
+                    </child>
+                  </object>
+                  <packing>
+                    <property name="expand">False</property>
+                    <property name="fill">True</property>
+                    <property name="position">1</property>
+                  </packing>
+                </child>
+                <child>
+                  <placeholder/>
+                </child>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">True</property>
+                <property name="position">0</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkBox" id="box_settings_values">
+                <property name="visible">True</property>
+                <property name="can-focus">False</property>
+                <property name="orientation">vertical</property>
+                <child>
+                  <object class="GtkFrame" id="frame_settings">
+                    <property name="visible">True</property>
+                    <property name="can-focus">False</property>
+                    <property name="label-xalign">0</property>
+                    <property name="shadow-type">in</property>
+                    <child>
+                      <object class="GtkListBox" id="listbox_settings">
+                        <property name="visible">True</property>
+                        <property name="can-focus">False</property>
+                        <signal name="row-activated" handler="cb_listbox_settings_row_activated" after="yes" swapped="no"/>
+                      </object>
+                    </child>
+                    <child type="label_item">
+                      <placeholder/>
+                    </child>
+                  </object>
+                  <packing>
+                    <property name="expand">True</property>
+                    <property name="fill">True</property>
+                    <property name="position">0</property>
+                  </packing>
+                </child>
+                <child>
+                  <object class="GtkToolbar" id="toolbar_settings">
+                    <property name="visible">True</property>
+                    <property name="can-focus">False</property>
+                    <property name="show-arrow">False</property>
+                    <property name="icon_size">2</property>
+                    <child>
+                      <object class="GtkToolButton" id="toolbutton_settings_add">
+                        <property name="visible">True</property>
+                        <property name="can-focus">False</property>
+                        <property name="label" translatable="yes">Add an additional setting</property>
+                        <property name="icon-name">list-add-symbolic</property>
+                        <signal name="clicked" handler="cb_toolbutton_settings_add_clicked" swapped="no"/>
+                        <signal name="mnemonic-activate" handler="cb_toolbutton_settings_mnemonic_activate" swapped="no"/>
+                      </object>
+                      <packing>
+                        <property name="expand">False</property>
+                        <property name="homogeneous">True</property>
+                      </packing>
+                    </child>
+                    <style>
+                      <class name="inline-toolbar"/>
+                    </style>
+                  </object>
+                  <packing>
+                    <property name="expand">False</property>
+                    <property name="fill">True</property>
+                    <property name="position">1</property>
+                  </packing>
+                </child>
+              </object>
+              <packing>
+                <property name="expand">True</property>
+                <property name="fill">True</property>
+                <property name="position">1</property>
+              </packing>
+            </child>
+          </object>
+          <packing>
+            <property name="expand">True</property>
+            <property name="fill">True</property>
+            <property name="position">5</property>
+          </packing>
+        </child>
+      </object>
+      <packing>
+        <property name="expand">True</property>
+        <property name="fill">True</property>
+        <property name="position">3</property>
+      </packing>
+    </child>
+  </object>
+  <object class="GtkHeaderBar" id="headerbar">
+    <property name="visible">True</property>
+    <property name="can-focus">False</property>
+    <child>
+      <object class="GtkButton" id="button_shutdown">
+        <property name="label" translatable="yes">Shutdown</property>
+        <property name="visible">True</property>
+        <property name="can-focus">True</property>
+        <property name="receives-default">False</property>
+        <signal name="clicked" handler="cb_button_shutdown_clicked" swapped="no"/>
+      </object>
+    </child>
+    <child>
+      <object class="GtkButton" id="button_start">
+        <property name="label" translatable="yes">_Start Tails</property>
+        <property name="visible">True</property>
+        <property name="can-focus">True</property>
+        <property name="receives-default">False</property>
+        <property name="use-underline">True</property>
+        <signal name="clicked" handler="cb_button_start_clicked" swapped="no"/>
+        <style>
+          <class name="suggested-action"/>
+        </style>
+      </object>
+      <packing>
+        <property name="pack-type">end</property>
+        <property name="position">1</property>
+      </packing>
+    </child>
+  </object>
+  <object class="GtkSizeGroup">
+    <widgets>
+      <widget name="button_shutdown"/>
+      <widget name="button_start"/>
+    </widgets>
+  </object>
+  <object class="GtkLabel" id="label_settings_default">
+    <property name="visible">True</property>
+    <property name="can-focus">False</property>
+    <property name="margin-left">6</property>
+    <property name="margin-right">6</property>
+    <property name="margin-top">6</property>
+    <property name="margin-bottom">6</property>
+    <property name="label" translatable="yes">The default settings are safe in most situations. To add a custom setting, press the "+" button below.</property>
+    <property name="justify">fill</property>
+    <property name="wrap">True</property>
+    <property name="lines">2</property>
+    <property name="xalign">0</property>
+    <property name="yalign">0</property>
+  </object>
+  <object class="GtkListBox" id="listbox_add_setting">
+    <property name="width-request">400</property>
+    <property name="visible">True</property>
+    <property name="can-focus">False</property>
+    <property name="margin-left">18</property>
+    <property name="margin-right">18</property>
+    <property name="margin-top">18</property>
+    <property name="margin-bottom">18</property>
+    <signal name="focus" handler="cb_listbox_add_setting_focus" after="yes" swapped="no"/>
+    <signal name="row-activated" handler="cb_listbox_add_setting_row_activated" swapped="no"/>
+  </object>
+  <object class="GtkListStore" id="liststore_settings_add">
+    <columns>
+      <!-- column-name setting-id -->
+      <column type="gchararray"/>
+      <!-- column-name setting-label -->
+      <column type="gchararray"/>
+    </columns>
+    <data>
+      <row>
+        <col id="0">admin-account</col>
+        <col id="1" translatable="yes">Administration Password</col>
+      </row>
+      <row>
+        <col id="0">mac-spoofing</col>
+        <col id="1" translatable="yes">MAC Address Anonymization</col>
+      </row>
+      <row>
+        <col id="0">network-configuration</col>
+        <col id="1" translatable="yes">Network Configuration</col>
+      </row>
+    </data>
+  </object>
+</interface>

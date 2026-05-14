@@ -1,0 +1,25 @@
+[[!meta title="Isabella, May 2017"]]
+
+Isabella is a 50 years old Debian user living in Brazil. She used to
+be a journalist at a magazine that talked a lot about FOSS (among
+other things), then got in touch with people working on privacy
+enhancing technologies (PET) and switched jobs: she now works with
+a collective that defends freedom and privacy online, learns about
+privacy tools and does advocacy for them.
+
+She has been demonstrating Tails to people since 2 years: she finds it
+easier to advocate for than Debian since it's easy to try (without
+replacing one's current OS) and is pre-configured for privacy.
+She started using Tails herself 3 months ago. She found it easy, and
+doesn't need to ask for help anymore. She uses Tails about twice
+a month, mainly to upload sensitive material and for web browsing.
+
+### What she likes
+
+- "the bundle", i.e. everything pre-configured shipped in a box
+- She found Tails very didactic and liked how she could understand how
+  to use it.
+
+### What she dislikes
+
+- upgrades are painful when using Tails not so often

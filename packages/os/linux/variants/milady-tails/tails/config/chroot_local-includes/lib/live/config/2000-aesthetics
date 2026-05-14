@@ -1,0 +1,4 @@
+#!/bin/sh
+
+echo ""
+echo "Configuring Tails"

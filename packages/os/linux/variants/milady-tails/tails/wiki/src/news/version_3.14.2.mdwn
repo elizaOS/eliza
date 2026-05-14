@@ -1,0 +1,101 @@
+[[!meta date="Tue, 23 Jun 2019 12:34:56 +0000"]]
+[[!meta title="Tails 3.14.2 is out"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+
+This release is an emergency release to fix a critical security
+vulnerability in *Tor Browser*.
+
+You should upgrade as soon as possible.
+
+[[!toc levels=1]]
+
+# Changes and upgrades
+
+- Update *Tor Browser* to [8.5.3](https://blog.torproject.org/new-release-tor-browser-853),
+  which fixes a critical vulnerability in *Tor Browser*, a [[*sandbox escape*|news/version_3.14.1#sandbox-escape]],
+  that we couldn't fix in time for 3.14.1.
+
+# Fixed problems
+
+For more details, read our [[!tails_gitweb debian/changelog desc="changelog"]].
+
+<a id="known-issues"></a>
+
+# Known issues
+
+## Tails fails to start a second time on some computers ([[!tails_ticket 16389]])
+
+On some computers, after installing Tails to a USB stick,
+Tails starts a first time but fails to start a second time. In some
+cases, only BIOS (Legacy) was affected and the USB stick was not listed
+in the Boot Menu.
+
+We partially fix this issue in 3.14.1 but are still investigating it, so if it happens to you, please
+report your findings by email to <tails-testers@boum.org>. Mention the
+model of the computer and the USB stick. This mailing
+list is [archived publicly](https://lists.autistici.org/list/tails-testers.html).
+
+To fix this issue:
+
+1. Reinstall your USB stick using the same installation method.
+
+1. Start Tails for the first time and [[set up an administration
+   password|doc/first_steps/welcome_screen/administration_password]].
+
+1. Choose
+   **Applications&nbsp;▸ System Tools&nbsp;▸ Root Terminal**
+   to open a *Root Terminal*.
+
+1. Execute the following command:
+
+   <p class="pre command">sgdisk --recompute-chs /dev/bilibop</p>
+
+You can also test an experimental image:
+
+1. Download the *.img* file from our development
+   server.
+
+1. Install it using the same installation methods.
+
+   We don't provide any OpenPGP signature or other verification technique
+   for this test image. Please only use it for testing.
+
+See the list of [[long-standing issues|support/known_issues]].
+
+# Get Tails 3.14.2
+
+## To upgrade your Tails USB stick and keep your Persistent Storage
+
+- Automatic upgrades are available from 3.13, 3.13.1, 3.13.2, 3.14, and 3.14.1
+  to 3.14.2.
+
+- If you cannot do an automatic upgrade or if Tails fails to start after an
+  automatic upgrade, please try to do a [[manual upgrade|doc/upgrade#manual]].
+
+## To install Tails on a new USB stick
+
+Follow our installation instructions:
+
+  - [[Install from Windows|install/windows]]
+  - [[Install from macOS|install/mac]]
+  - [[Install from Linux|install/linux]]
+
+<div class="caution"><p>All the data on this USB stick will be lost.</p></div>
+
+## To download only
+
+If you don't need installation or upgrade instructions, you can directly download
+Tails 3.14.2:
+
+  - [[For USB sticks (USB image)|install/download]]
+  - [[For DVDs and virtual machines (ISO image)|install/download-iso]]
+
+# What's coming up?
+
+Tails 3.15 is [[scheduled|contribute/calendar]] for July 9.
+
+
+We need your help and there are many ways to [[contribute to
+Tails|contribute]] (<a href="https://tails.net/donate/?r=3.14.2">donating</a> is only one of
+them). Come [[talk to us|doc/about/contact#tails-dev]]!

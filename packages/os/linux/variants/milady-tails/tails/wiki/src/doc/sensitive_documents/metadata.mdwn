@@ -1,0 +1,102 @@
+[[!meta title="Removing metadata from files"]]
+
+[[!toc levels=1]]
+
+What is metadata?
+=================
+
+Metadata is "data about data" or "information about information" that is embedded
+in computer files, usually automatically. Metadata is used to describe,
+identify, categorize, and sort files.
+
+However, metadata can also be used to deanonymize users and expose
+private information.
+
+Examples of metadata include:
+
+- In images:
+
+  * The location where a photo was taken
+
+  * The date and time a photo was taken
+
+  * The model and serial number of the camera used to take a photo
+
+- In other documents:
+
+  * The author of the document
+
+  * Changes to the document
+
+To learn more about how metadata can be used to identify and reveal personal information, see
+[Behind the Data: Investigating metadata](https://exposingtheinvisible.org/en/guides/behind-the-data-metadata-investigations/).
+
+Removing metadata using *Metadata Cleaner*
+==========================================
+
+Tails includes
+[*Metadata Cleaner*](https://gitlab.com/metadatacleaner/metadatacleaner)
+so you can remove metadata from files before you publish or share them.
+
+<div class="tip">
+
+<p>If, instead of cleaning your own files, you want to sanitize untrusted
+documents shared with you by others, you can install
+[[<i>Dangerzone</i>|persistent_storage/additional_software/dangerzone]] as
+additional software.</p>
+
+</div>
+
+*Metadata Cleaner* works on many file formats, including:
+
+- Images, such as .jpg, .gif, .svg, .tiff, and .png
+
+- *Microsoft Office* documents, such as .docx, .xlsx, and .pptx
+
+- *LibreOffice* documents, such as .odt and .ods
+
+- Audio files, such as .mp3, .flac, and .ogg
+
+- Video files, such as .mp4 and .avi
+
+- Archive files, such as .zip and .tar
+
+- PDFs
+
+To open *Metadata Cleaner*, choose **Apps&nbsp;▸ Accessories&nbsp;▸
+Metadata Cleaner**.
+
+<div class="caution">
+
+<p>It is impossible to reliably find and remove all metadata in complex file
+formats. For example, <i>Microsoft Office</i> documents can contain embedded images,
+audio, and other files containing their own metadata that Tails cannot
+remove.</p>
+
+<p>You should remove metadata on any files before you embed them into another
+document.</p>
+
+<p>Also, you should save files in simpler formats whenever possible.
+For example, instead of saving a text document as a .docx file,
+you can save the document as a plain .txt file.</p>
+
+</div>
+
+Removing metadata from the command line
+=======================================
+
+*Metadata Cleaner* is a graphical interface for
+[*mat2*](https://0xacab.org/jvoisin/mat2).
+
+You can also use *mat2* directly on the command line:
+
+1. Open a *Console*.
+
+1. Execute the following command. Replace
+   <span class="command-placeholder">file.ext</span> with a path to the file
+   that you want to clean.
+
+   <p class="command-template">mat2 <span class="command-placeholder">file.ext</span></p>
+
+1. After *mat2* finishes, a copy of your file without metadata is available as
+   <span class="command-placeholder">file.cleaned.ext</span>.

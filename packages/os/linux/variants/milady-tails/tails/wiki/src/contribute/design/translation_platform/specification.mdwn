@@ -1,0 +1,50 @@
+[[!meta title="Choosing a translation web platform"]]
+
+These are the requirements that we have defined for our translation web platform
+before we started working on it.
+
+MUST
+====
+
+* provide a usable easy web interface
+* be usable from Tor Browser
+* automatic pull from main Git repo
+* provide a common glossary for each language, easy to use and improve
+* allow translators to view, in the correct order, all strings that
+  come from the entire page being translated, both in English and in
+  the target language
+* make it easy to view the translations in context i.e. when translating
+  an entire page, all strings to be translated should only come from
+  this page. translators should be able to view the page in context.
+* provide user roles (admin, reviewer, translator)
+
+SHOULD
+======
+
+* be "privacy sensitive", i.e. be operated by a nonprofit
+* allow translators to push translations through Git (so that core
+  developers only have to fetch reviewed translations from there)
+* provide support for Git standard development branches (devel, stable,
+  and testing) but we could also agree upon translation only master
+  through this interface
+* provide checks for inconsistent translations
+* provide feature to write/read comments between translators
+
+MAY
+===
+
+* allow translating topic branches without confusing translators,
+  causing duplicate/premature work, fragmentation or merge conflicts
+  -- e.g. present only new or updated strings in topic branches
+* provide a feature to easily see what is new, what needs updating, what are translation priorities
+* provide possibility to set up new languages easily
+* send email notifications
+  - to reviewers whenever new strings have been translated or updated
+  - to translators whenever a resource is updated
+* respect authorship (different committers?)
+* provide statistics about the percentage of translated and fuzzy strings
+* Letting translators report about problems in original strings, e.g.
+  with a "Report a problem in the original English text" link, that
+  e.g. results in an email being sent to tails-l10n@boum.org or support@tails.net .
+  If we don't have that, then [[contribute/how/translate]] MUST
+  document how to report issues in the original English text.

@@ -1,0 +1,9 @@
+#!/usr/bin/python3
+
+import sys
+
+from gitlab.config import GitlabConfigParser
+
+gitlab_id = sys.argv[1]
+
+print(GitlabConfigParser(gitlab_id=gitlab_id).url)

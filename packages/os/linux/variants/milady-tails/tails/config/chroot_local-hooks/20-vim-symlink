@@ -1,0 +1,13 @@
+#!/bin/sh
+
+set -e
+
+echo "Creating vim symlink"
+
+if [ -e /usr/bin/vim.tiny ]; then
+    update-alternatives --install /usr/bin/vim vim /usr/bin/vim.tiny 15
+else
+    echo "/usr/bin/vim.tiny doesn't exist; either that is a problem," \
+         "or this hook should be removed" >&2
+    exit 1
+fi

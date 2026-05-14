@@ -1,0 +1,95 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2024-05-27 21:54+0000\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: sr_Latn\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Protection against cold boot attacks\"]]\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"While using a computer, all the data manipulated is written temporarily in "
+"[[!wikipedia Random-access_memory desc=\"RAM\"]]: texts, saved files, but "
+"also passwords and encryption keys. The more recent the activity, the more "
+"likely it is for the data to still be in RAM."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"After a computer is powered off, the data in RAM disappears rapidly, but it "
+"can remain in RAM up to several minutes after shutdown. An attacker having "
+"access to a computer before the data in RAM disappears completely could "
+"recover important data from your session."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"This can be achieved using a technique called [[!wikipedia cold boot "
+"attack]]. To prevent such attacks, the data in RAM is overwritten by random "
+"data when you shut down Tails."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Moreover, an attacker having physical access to the computer *while Tails is "
+"running* can recover data from RAM as well. To avoid that, learn the "
+"different methods to [[shutdown Tails|doc/first_steps/shutdown]] rapidly."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"attack\">\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>As far as we know, cold boot attacks are not a common procedure for\n"
+"data recovery.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>In a <a\n"
+"href=\"https://www.forensicfocus.com/stable/wp-content/uploads/2011/08/cold_boot_attack_for_forensiscs1.pdf\">research\n"
+"report from 2011</a>, Defense Research and Development Canada concluded that\n"
+"cold boot attacks can be useful in some cases to acquire data in memory but are\n"
+"not a panacea and have many drawbacks dictated by the laws of physics, which\n"
+"cannot be overcome by the technique. The authors recommend to only use cold\n"
+"boot attacks as a last resort when all other avenues have been exhausted.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"next\">\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>See how we implement this [[memory\n"
+"erasure|contribute/design/memory_erasure]], for example, if you want to\n"
+"implement this feature outside of Tails.</p>\n"
+msgstr ""

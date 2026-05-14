@@ -1,0 +1,53 @@
+[[!meta date="Tue, 10 Jun 2014 12:00:00 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!meta title="Tails 1.0.1 is out"]]
+[[!tag announce]]
+
+Tails, The Amnesic Incognito Live System, version 1.0.1, is out.
+
+All users must [[upgrade|doc/upgrade]] as soon as possible: this release fixes
+[[numerous security issues|security/Numerous_security_holes_in_1.0]].
+
+[[!toc levels=1]]
+
+# Changes
+
+Notable user-visible changes include:
+
+* Security fixes
+  - Upgrade the web browser to 24.6.0esr-0+tails1~bpo60+1
+    (Firefox 24.6.0esr + Iceweasel patches + Torbrowser patches).
+  - Install Linux 3.14 from Debian unstable (fixes CVE-2014-3153 and
+    others).
+  - Install openssl from Squeeze LTS (fixes CVE-2014-0076,
+    CVE-2014-0195, CVE-2014-0221, CVE-2014-3470 and CVE-2014-0224).
+  - Install GnuTLS from Squeeze LTS (fixes CVE-2014-3466).
+
+* Minor improvements
+  - Upgrade Tor to 0.2.4.22-1~d60.squeeze+1.
+  - Upgrade I2P to 0.9.13-1~deb6u+1.
+
+See the online
+Changelog
+for technical details.
+
+# Known issues
+
+* [[Longstanding|support/known_issues]] known issues.
+
+# I want to try it or to upgrade!
+
+Go to the [[install]] page.
+
+As no software is ever perfect, we maintain a list of [[problems
+that affects the last release of Tails|support/known_issues]].
+
+# What's coming up?
+
+The next Tails release is [[scheduled|contribute/calendar]] for
+July 22.
+
+
+Would you want to help? There are many ways [[**you** can
+contribute to Tails|contribute]]. If you want to help, come talk
+to us!

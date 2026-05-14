@@ -1,0 +1,88 @@
+*.mo
+*.mo~
+*.po~
+*.pot~
+*.pyc
+*.swp
+\#*\#
+*.ui.in~
+**/__pycache__
+**/.mypy_cache
+/*.apt-sources
+/*.build-manifest
+/*.buildlog
+/*.img
+/*.iso
+/*.list
+/*.packages
+/*.rake_tasks~
+/*.vdi
+/binary
+/cache
+/chroot/
+/config/binary
+/config/bootstrap
+/config/chroot
+/config/common
+/config/source
+/config/chroot_local-includes/etc/amnesia/version
+/config/chroot_local-includes/usr/share/doc/Changelog
+/config/chroot_local-includes/usr/share/doc/tails/Changelog
+/config/chroot_local-includes/usr/share/doc/tails/website
+/config/chroot_local-includes/usr/share/tails/build/variables
+/config/chroot_local-includes/usr/share/tails/greeter/supported_languages
+/config/chroot_local-includes/usr/share/tails/greeter/supported_locales
+/.lock
+/.stage
+/source
+/vagrant/.vagrant
+/vagrant/definitions/squeeze/preseed.cfg
+/vagrant/iso
+/vagrant/squeeze.box
+/vmdb2.log
+# Jenkins artifacts directory
+/build-artifacts/
+
+# Files managed by intltool
+/config/chroot_local-includes/usr/local/share/mime/packages/unlock-veracrypt-volumes.xml
+/config/chroot_local-includes/usr/share/applications/org.boum.tails.AdditionalSoftware.desktop
+/config/chroot_local-includes/usr/share/applications/org.boum.tails.PersistentStorage.desktop
+/config/chroot_local-includes/usr/share/applications/tails-documentation.desktop
+/config/chroot_local-includes/usr/share/applications/tails-reboot.desktop
+/config/chroot_local-includes/usr/share/applications/unsafe-browser.desktop
+/config/chroot_local-includes/usr/share/applications/tails-shutdown.desktop
+/config/chroot_local-includes/usr/share/applications/org.boum.tails.TorBrowser.desktop
+/config/chroot_local-includes/usr/share/applications/tca.desktop
+/config/chroot_local-includes/usr/share/applications/tails-about.desktop
+/config/chroot_local-includes/usr/share/applications/tails-backup.desktop
+/config/chroot_local-includes/usr/share/applications/tails-installer.desktop
+/config/chroot_local-includes/usr/share/applications/unlock-veracrypt-volumes.desktop
+/config/chroot_local-includes/usr/share/applications/whisperback.desktop
+/config/chroot_local-includes/usr/share/desktop-directories/Tails.directory
+/config/chroot_local-includes/usr/share/polkit-1/actions/org.boum.tails.AdditionalSoftware.policy
+/config/chroot_local-includes/usr/share/tails/greeter/*.ui
+/config/chroot_local-includes/usr/share/tails/persistent-storage/*.ui
+/config/chroot_local-includes/usr/share/tails/tca/*.ui
+/config/chroot_local-includes/usr/share/tails/tca/*.ui.in~
+/config/chroot_local-includes/usr/share/tails/unlock-veracrypt-volumes/*.ui
+/config/chroot_local-includes/usr/share/tails-installer/*.ui
+/config/chroot_local-includes/usr/share/whisperback/*.ui
+/tmp/
+
+# The test suite's local configuration files
+/features/config/local.yml
+/features/config/*.d/
+
+# workarounds
+/config/chroot_local-includes/tmp/tails-workarounds
+
+# early_patch= (aka. --early-patch) hook
+/hook
+
+# local configuration files
+/ruff.toml
+
+.flatpak-builder/
+
+# Cambalache files
+*.ui.cmb

@@ -1,0 +1,194 @@
+[[!meta title="Tails report for March, 2019"]]
+[[!meta date="Fri, 26 Apr 2019 11:10:06 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!toc ]]
+
+Releases
+========
+
+* [[Tails 3.13 was released on March 19|news/version_3.13]].
+
+* Tails 3.14 is [[scheduled for May 14|contribute/calendar]].
+
+The following changes were introduced in Tails 3.13:
+
+- Add support for the Bopomofo input method for Chinese using the
+  *Chewing* library and improve support for the Pinyin input method.
+  ([[!tails_ticket 11292]])
+
+- Save a backup of the configuration of the persistent storage every time it is
+  modified. ([[!tails_ticket 16461]])
+
+  This will help us understand and solve why sometimes all the settings of the
+  persistent storage disappear. ([[!tails_ticket 10976]])
+
+- Prevent *Additional Software* from downloading packages that are already
+  saved in the persistent storage. ([[!tails_ticket 15957]])
+
+- Fix the localization of *Tor Launcher*, the application to configure a Tor
+  bridge or a local proxy.
+  ([[!tails_ticket 16338]])
+
+- Fix accessibility when opening *Tor Browser* from a desktop notification.
+  ([[!tails_ticket 16475]])
+
+- Fix *WhisperBack* crashing when additional APT repositories is configured.
+  ([[!tails_ticket 16563]])
+
+Code
+====
+
+- We agreed on a list of languages that we want to support
+  out-of-the-box in Tails and started implementing it. The *Additional
+  Software* feature will make it possible
+  for other users to add their favorite dictionaries and language packs while
+  making our USB image a bit smaller for everybody. ([[!tails_ticket 15807]],
+  [[!tails_ticket 16095]], [[!tails_ticket 9956]])
+
+- We identified another possible cause for partially applied
+  automatic upgrades. ([[!tails_ticket 16603]])
+
+- We coordinated with the Tor Browser team regarding their upcoming 8.5
+  major release and its implications for Tails.
+
+- We continued deprecating *Tails Installer* from
+  Debian and Ubuntu.
+
+Documentation and website
+=========================
+
+- We improved how installation and upgrade instructions are linked from
+  our release notes and download pages. ([[!tails_ticket 16470]])
+
+- We documented [[how to run Tails from a USB image in
+  `virt-manager`|doc/advanced_topics/virtualization/virt-manager#usb_image]],
+  which is the only virtualization solution that allows to use a
+  persistent volume in a virtual machine.
+
+User experience
+===============
+
+- We drafted how to explain Tails in a new
+  homepage and about
+  page and tested it with 5 people with
+  the help from Simply Secure.
+  ([[!tails_ticket 16536]])
+
+- We analyzed the [success metrics of *Additional Software* and the
+  integration of
+  *VeraCrypt*](https://lists.autistici.org/message/20190326.173900.138d9b45.en.html):
+
+  - Both features probably participated in getting our boot stats to
+    increase again (20% more since September 2019).
+  - Both features didn't change much the tech-savviness of our user
+    base.
+  - The number of people who use *VeraCrypt* in Tails almost doubled.
+
+  Results are good but we expected more. We need to improve how we let
+  the world know about new features.
+
+- We analyzed the [success metrics for USB
+  images](https://lists.autistici.org/message/20190331.183400.d3d2350c.en.html):
+
+  - The percentage of people using Tails from macOS at least doubled
+    since 3.12.
+  - USB images account for 76% of our downloads and our download buttons
+    are hit 3970 times a day on average.
+
+- We created a new version of our logo that can be used
+  with or without tagline. ([[!tails_ticket 14835]])
+
+  [[!img contribute/how/promote/logo/tails-logo-flat.svg link="no" size="300x"]] [[!img contribute/how/promote/logo/tails-logo-flat-notagline.svg link="no" size="300x"]]
+
+- We documented *Kazam* instead of *recordMyDesktop* to [[record
+  screencasts when doing usability
+  testing|contribute/how/user_experience/recording#screencast]] because
+  it is more reliable.
+
+Hot topics on our help desk
+===========================
+
+1. Partially applied incremental upgrades cause all kinds of trouble ([[!tails_ticket 14754]])
+
+1. persistence.conf lost, recoverable by reconfiguring ([[!tails_ticket 10976]])
+
+Infrastructure
+==============
+
+- We started making plans to migrate to GitLab.
+
+- We interviewed 2 candidates for our open sysadmin position.
+
+- We made good progress on switching to better maintained Puppet
+  modules. ([[!tails_ticket 15510]])
+
+- We worked on the software configuration of the prototype node for
+  our next-generation CI hardware. ([[!tails_ticket 15501]])
+
+- We fixed our LimeSurvey security updates monitoring system.
+  ([[!tails_ticket 15466]])
+
+- We stopped having public monthly meetings in favor of internal stand-up
+  meetings.
+
+Funding
+=======
+
+- We documented how to donate in cash.
+
+- We explained on our donation page why we don't accept donations in
+  more cryptocurrencies.
+
+- We updated the statistics on how we spend our
+  money.
+
+Outreach
+========
+
+Past events
+-----------
+
+- 2 of us attended a [Debian Bug Squashing
+  Party](https://wiki.debian.org/BSP/2019/03/fr/Paris) in Paris on March
+  30&ndash;31.
+
+On-going discussions
+====================
+
+- We started a [discussion about possible security implications that
+  would arise from shipping the code of the Verification Extension in
+  our website instead](http://lists.autistici.org/message/20190320.132313.7c24cc99.en.html).
+
+Translations
+============
+
+## All the website
+
+  - de: 45% (2832) strings translated, 7% strings fuzzy, 41% words translated
+  - es: 50% (3138) strings translated, 4% strings fuzzy, 42% words translated
+  - fa: 32% (1982) strings translated, 10% strings fuzzy, 33% words translated
+  - fr: 88% (5478) strings translated, 1% strings fuzzy, 87% words translated
+  - it: 31% (1970) strings translated, 5% strings fuzzy, 28% words translated
+  - pt: 25% (1553) strings translated, 7% strings fuzzy, 21% words translated
+
+Total original words: 65408
+
+## [[Core pages of the website|contribute/l10n_tricks/core_po_files.txt]]
+
+  - de: 71% (1252) strings translated, 12% strings fuzzy, 74% words translated
+  - es: 80% (1417) strings translated, 9% strings fuzzy, 82% words translated
+  - fa: 34% (615) strings translated, 13% strings fuzzy, 33% words translated
+  - fr: 96% (1712) strings translated, 1% strings fuzzy, 97% words translated
+  - it: 63% (1112) strings translated, 17% strings fuzzy, 65% words translated
+  - pt: 45% (798) strings translated, 13% strings fuzzy, 48% words translated
+
+Total original words: 16439
+
+Metrics
+=======
+
+* Tails has been started more than 809 770 times in March. This makes 26 121 boots a day on average.
+* 9 970 downloads of the OpenPGP signature of a Tails USB image or ISO from our website.
+* 73 bug reports were received through WhisperBack.
+

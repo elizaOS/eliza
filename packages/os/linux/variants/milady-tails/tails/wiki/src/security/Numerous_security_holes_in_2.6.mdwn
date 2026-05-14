@@ -1,0 +1,34 @@
+[[!meta date="Tue, 15 Nov 2016 15:23:42 +0000"]]
+[[!meta title="Numerous security holes in Tails 2.6"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+Several security holes that affect Tails 2.6 are now fixed in Tails 2.7.
+
+We **strongly** encourage you to
+[[upgrade to Tails 2.7|news/version_2.7]] as soon as possible.
+
+Details
+=======
+
+* linux [[!debsa2016 3696]]
+* tor [[!debsa2016 3694]]
+* Tor Browser: [[!mfsa 2016-90]]
+* icedove [[!debsa2016 3690]] and [[!debsa2016 3686]]
+* pillow [[!debsa2016 3710]]
+* libxslt [[!debsa2016 3709]]
+* mat [[!debsa2016 3708]]
+* openjdk-7 [[!debsa2016 3707]]
+* curl [[!debsa2016 3705]]
+* bind9 [[!debsa2016 3680]] and [[!debsa2016 3703]]
+* tar [[!debsa2016 3702]]
+* libgd2 [[!debsa2016 3693]]
+* ghostscript [[!debsa2016 3691]]
+* nss [[!debsa2016 3688]]
+* nspr [[!debsa2016 3687]]
+* libav [[!debsa2016 3685]]
+* c-ares [[!debsa2016 3682]]
+* libarchive [[!debsa2016 3677]]
+* unadf [[!debsa2016 3676]]
+* imagemagick [[!debsa2016 3675]]

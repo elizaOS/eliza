@@ -1,0 +1,18 @@
+#!/bin/sh
+
+set -e
+
+# Compile and install a custom udev-watchdog program
+
+echo "Compiling and installing a custom udev-watchdog program"
+
+# Import ensure_hook_dependency_is_installed()
+. /usr/local/lib/tails-shell-library/build.sh
+
+ensure_hook_dependency_is_installed build-essential binutils libudev-dev
+
+SRC="/usr/src/udev-watchdog.c"
+DST="/usr/local/sbin/udev-watchdog"
+
+gcc -o "$DST" "$SRC" -Wall -ludev -lrt
+strip --strip-all "$DST"

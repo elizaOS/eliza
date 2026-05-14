@@ -1,0 +1,422 @@
+### Self-bla
+# profiling => squashfs optimization
+python3-pyinotify
+# contains mkpasswd, that we use in a couple places
+whois
+# needed by tails-security-check
+libcarp-assert-perl
+libcarp-assert-more-perl
+libintl-perl
+libintl-xs-perl
+libio-socket-ssl-perl
+liblwp-protocol-socks-perl
+libnet-ssleay-perl
+libwww-perl
+libxml-atom-perl
+# needed by htpdate
+curl
+libdatetime-perl
+libdatetime-format-dateparse-perl
+libgetopt-long-descriptive-perl
+# needed by htpdate and tails-security-check
+libtry-tiny-perl
+# needed by our chroot_local-hooks
+live-build
+# We use notify-send in a number of places, either directly or via tails-notify-user
+libnotify-bin
+# needed by the Persistent Storage service
+acl
+libblockdev-crypto3
+strace
+# needed by the Persistent Storage frontend
+diceware
+gir1.2-handy-1
+gnome-icon-theme
+libpwquality-tools
+# needed by the Unsafe Browser
+zenity
+# Needed by tails-htp-notify-user and others
+libdesktop-notify-perl
+# Needed by SSH's ProxyCommand
+netcat-openbsd
+# Needed by config/chroot_local-includes/usr/local/lib/udev-watchdog-wrapper
+eject
+# Needed by Additional Software
+python3-apt
+python3-atomicwrites
+# Needed by the Greeter
+console-setup
+gir1.2-accountsservice-1.0
+gir1.2-gdm-1.0
+gir1.2-glib-2.0
+gir1.2-gnomedesktop-3.0
+gir1.2-gtk-3.0
+gir1.2-webkit2-4.1
+python3-gi
+python3-pycountry
+python3-tz
+# Needed by early-patch hooks
+bindfs
+# Needed to run apps via Flatpak
+flatpak
+libappstream-glib8
+
+### Software
+
+7zip
+adwaita-qt6
+alsa-utils
+apparmor
+apparmor-profiles
+apparmor-profiles-extra
+apt-transport-tor
+audacity
+bilibop-udev
+bind9-host
+console-data
+cups
+cups-pk-helper
+cryptsetup-bin
+rsync
+bash-completion
+bookletimposer
+cracklib-runtime
+dbus-user-session
+desktop-base
+dmz-cursor-theme
+dosfstools
+electrum
+evince
+exfatprogs
+exiv2
+file-roller
+fonts-cantarell
+fonts-dejavu
+fonts-liberation
+fonts-linuxlibertine
+gddrescue
+gdm3
+gimp
+git
+gkbd-capplet
+gnome-calculator
+gnome-console
+gnome-control-center
+gnome-disk-utility
+gnome-keyring
+gnome-menus
+gnome-session
+gnome-shell
+gnome-shell-extension-apps-menu
+gnome-shell-extension-window-list
+gnome-sound-recorder
+gnome-system-monitor
+gnome-text-editor
+gnome-themes-extra
+gnome-user-docs
+gnupg-agent
+gnupg2
+gobi-loader
+#if ARCHITECTURE amd64
+grub-efi-amd64-signed
+grub-efi-ia32
+shim-signed
+#endif
+gstreamer1.0-libav
+gstreamer1.0-plugins-bad
+gstreamer1.0-plugins-ugly
+gtk2-engines-pixbuf
+gvfs-backends
+gvfs-fuse
+haveged
+# needed by laptop-mode-tools to spin-down hard drives
+hdparm
+inkscape
+iptables
+# ships isolinux.bin in syslinux 6.x packaging
+isolinux
+ferm
+secrets
+kleopatra
+memlockd
+less
+laptop-mode-tools
+libgail-common
+libgdk-pixbuf2.0-bin
+libsane-hpaio
+live-config
+live-config-systemd
+live-tools
+loupe
+lsb-release
+lvm2
+macchanger
+mat2
+mesa-utils
+metadata-cleaner
+nautilus
+network-manager
+nm-connection-editor
+ntfs-3g
+onionshare
+libreoffice-calc
+libreoffice-draw
+libreoffice-gnome
+libreoffice-gtk3
+libreoffice-impress
+libreoffice-writer
+libreoffice-l10n-ar
+libreoffice-l10n-de
+libreoffice-l10n-es
+libreoffice-l10n-fa
+libreoffice-l10n-fr
+libreoffice-l10n-hi
+libreoffice-l10n-id
+libreoffice-l10n-it
+libreoffice-l10n-pt
+libreoffice-l10n-ru
+libreoffice-l10n-tr
+libreoffice-l10n-zh-cn
+onioncircuits
+openssh-client
+parted
+patch
+pidgin
+pidgin-guifications
+pidgin-otr
+pinentry-gtk2
+pkexec
+powermgmt-base
+ppp
+pppoe
+pipewire-audio
+rng-tools-debian
+rfkill
+rtkit
+sane-airscan
+sane-utils
+scdaemon
+secure-delete
+simple-scan
+# ships the *.c32 modules in syslinux 6.x packaging
+syslinux-common
+system-config-printer-common
+synaptic
+torsocks
+totem-plugins
+tcpdump
+tcpflow
+thunderbird
+thunderbird-l10n-ar
+thunderbird-l10n-de
+thunderbird-l10n-es-es
+thunderbird-l10n-es-mx
+thunderbird-l10n-fr
+thunderbird-l10n-id
+thunderbird-l10n-it
+thunderbird-l10n-pt-br
+thunderbird-l10n-ru
+thunderbird-l10n-tr
+thunderbird-l10n-zh-cn
+tor
+tor-geoipdb
+sound-juicer
+totem
+usbutils
+user-setup
+vim-tiny
+wireless-tools
+wpasupplicant
+xdg-user-dirs-gtk
+xsel
+xz-utils
+zram-tools
+
+#if ARCHITECTURE amd64
+open-vm-tools
+#endif
+
+### Graphics support
+libdrm-nouveau2
+libdrm-radeon1
+mesa-vulkan-drivers
+
+### Firmwares
+alsa-topology-conf
+firmware-amd-graphics
+firmware-ath9k-htc
+firmware-atheros
+firmware-brcm80211
+firmware-carl9170
+firmware-intel-graphics
+firmware-intel-misc
+firmware-intel-sound
+firmware-ipw2x00
+firmware-iwlwifi
+firmware-libertas
+firmware-linux
+firmware-linux-free
+firmware-linux-nonfree
+firmware-mediatek
+firmware-misc-nonfree
+firmware-nvidia-graphics
+firmware-realtek
+firmware-sof-signed
+firmware-ti-connectivity
+firmware-zd1211
+
+### Input methods
+ibus-gtk
+ibus-gtk3
+## Chinese Pinyin and ZhuYin (Bopomofo)
+ibus-libpinyin
+## Chinese ZhuYin (Bopomofo)
+ibus-chewing
+## Japanese
+ibus-mozc
+## Korean
+ibus-hangul
+## Vietnamese
+ibus-unikey
+
+### l10n, i18n
+## Translation files for Qt
+qt6-translations-l10n
+## Hebrew support
+fonts-culmus
+libfribidi0
+## Noto fonts
+fonts-noto-core
+fonts-noto-cjk
+fonts-noto-mono
+fonts-noto-ui-core
+fonts-noto-unhinted
+
+### CD burning
+brasero
+cdrdao
+
+### Accessibility
+## text-to-speech
+at-spi2-core
+orca
+speech-dispatcher-espeak-ng
+## high-contrast theme
+gnome-accessibility-themes
+
+### CPU microcodes
+amd64-microcode
+intel-microcode
+
+### Dictionaries and spell checking
+hunspell-ar
+hunspell-de-de
+hunspell-en-us
+hunspell-es
+myspell-fa
+hunspell-fr
+hunspell-hi
+hunspell-id
+hunspell-it
+hunspell-pt-br
+hunspell-ru
+hunspell-tr
+
+### Mobile broadband devices support (GSM, 3G...)
+mobile-broadband-provider-info
+modemmanager
+usb-modeswitch
+usb-modeswitch-data
+
+### Printing support
+foomatic-db
+foomatic-db-engine
+hplip
+ipp-usb
+printer-driver-all-enforce
+
+### WhisperBack and tails-gdm-error-message use lspci(8)
+pciutils
+
+### SmartCard
+libccid
+pcscd
+
+### Spice
+spice-vdagent
+
+### Wireless regulation
+wireless-regdb
+
+### Automated test suite
+python3-dogtail
+python3-serial
+python3-systemd
+xdotool
+
+# Enable Electrum's Ledger hardware wallet support
+python3-btchip
+
+# Enable Electrum's Jade Blockstream wallet support
+python3-cbor
+
+# onion-grater
+python3-psutil
+python3-yaml
+
+# needed for "Test speakers"
+libcanberra-pulse
+sound-theme-freedesktop
+
+# needed for tails-screen-locker
+python3-pampy
+python3-pydbus
+
+# For our python "shell" scripting support
+python3-sh
+
+# For Unlock VeraCrypt Volumes
+gir1.2-gudev-1.0
+
+# For partitioning script in initramfs
+fatresize
+
+# For Thunderbolt
+bolt
+
+# IPhone tethering support
+ipheth-utils
+libimobiledevice-utils
+usbmuxd
+
+# Requested by SecureDrop for their air-gapped machines (#17178)
+tesseract-ocr
+# On top of SecureDrop, needed by our test suite
+# (feed_qr_code_video_to_virtual_webcam)
+ffmpeg
+
+# U2F support (i.e. in TorBrowser)
+libu2f-udev
+
+# Allow running Qt applications as native Wayland
+qt6-wayland
+
+# Make Qt applications look more like GTK ones,
+# e.g. window border and titlebar. See tails/tails#20834.
+qgnomeplatform-qt6
+
+# Needed by our curl wrapper
+xxd
+
+# Needed by Synaptic test suite
+dbus-x11
+
+# Needed by the GNOME USB protection feature
+usbguard
+
+# Install systemd-oomd to provide better experience for users in OOM
+# situations (#19454)
+systemd-oomd
+
+# For detecting counterfeit USB drives (#20662)
+f3

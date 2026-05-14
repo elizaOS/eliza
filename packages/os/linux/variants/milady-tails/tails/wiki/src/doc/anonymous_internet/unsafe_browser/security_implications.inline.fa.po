@@ -1,0 +1,44 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"POT-Creation-Date: 2025-06-10 12:51+0200\n"
+"PO-Revision-Date: 2023-03-11 19:34+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: fa\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n > 1;\n"
+"X-Generator: Weblate 4.9.1\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta robots=\"noindex\"]]\n"
+msgstr "[[!meta robots=\"noindex\"]]\n"
+
+#. type: Plain text
+msgid ""
+"The *Unsafe Browser* does not use Tor. The websites that you visit can see "
+"your real IP address."
+msgstr ""
+
+#. type: Plain text
+msgid "This is why we recommend that you:"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"Only use the *Unsafe Browser* to sign in to a network using a captive portal "
+"or [[browse trusted web pages on the local network|advanced_topics/"
+"lan#browser]]."
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "Close the *Unsafe Browser* after signing in to the network."
+msgstr ""

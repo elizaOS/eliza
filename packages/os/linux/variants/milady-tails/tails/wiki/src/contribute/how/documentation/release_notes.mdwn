@@ -1,0 +1,108 @@
+[[!meta title="Checklist for release notes"]]
+
+  - Fetch and checkout the `web/release-x.y` branch that was pushed
+    by the Release Manager
+    - Copy template from `contribute/how/documentation/release_notes/template.mdwn` to `news/version_x.y.mdwn`
+    - Replace placeholders in template
+  - Gather information about changes
+    - Tails changelog
+      - [[!tails_gitlab tails/tails/-/blob/stable/debian/changelog]]
+      - [[!tails_gitlab tails/tails/-/blob/testing/debian/changelog]]
+      - If the changelog of the final release has not been written
+        yet, either book some time to update the release notes on the
+        day of the release, or generate the changelog entry yourself:
+
+        1. `sudo apt install python3-debian python3-gitlab python3-jinja2`
+
+        2. Ensure `~/.python-gitlab.cfg` has at least this content:
+
+               [global]
+               ssl_verify = true
+
+               [Tails]
+               url = https://gitlab.tails.boum.org
+               per_page = 100
+               private_token = XXX
+
+        3. Set the value of the `private_token` option to a GitLab API token for
+           your own user.
+
+        4. Finally, to generate the changelog entry, in a checkout of the main
+           Git repository, run:<br />
+           `./bin/generate-changelog --version $VERSION`
+    - If a release candidate was announced, read the call for testing
+    - Analyze the diff of packages
+      - in testing for a major release: `wget https://nightly.tails.boum.org/build_Tails_ISO_testing/lastSuccessful/archive/latest.packages`
+      - in stable for a bugfix release: `wget https://nightly.tails.boum.org/build_Tails_ISO_stable/lastSuccessful/archive/latest.packages`
+      - `diff -u ~/Persistent/master/wiki/src/torrents/files/tails-amd64-*.packages latest.packages | wdiff --diff-input --terminal --auto-pager`
+    - If an important application was updated to a new upstream release, read its Changelog to find relevant highlights:
+      - Tor: <https://blog.torproject.org/>
+      - Tor: <https://gitlab.torproject.org/tpo/core/tor/-/blob/HEAD/ChangeLog>
+      - Tor Browser: <https://gitlab.torproject.org/tpo/applications/tor-browser-build/-/blob/main/projects/browser/Bundle-Data/Docs/ChangeLog.txt>
+        (switch to the relevant `maint-X.Y` branch)
+      - Firefox: <https://www.mozilla.org/en-US/firefox/52.0/releasenotes/>
+      - Thunderbird: <https://www.mozilla.org/en-US/thunderbird/notes/>
+      - Electrum: <https://github.com/spesmilo/electrum/blob/master/RELEASE-NOTES>
+      - obfs4proxy: <https://gitlab.com/yawning/obfs4/-/blob/master/ChangeLog>
+      - Secrets: <https://gitlab.gnome.org/World/secrets/-/blob/master/CHANGELOG.md?ref_type=heads>
+      - OnionShare: <https://github.com/micahflee/onionshare/blob/develop/CHANGELOG.md>
+    - Add [[screenshots|contribute/how/documentation/style_guide#screenshot]] of
+      - Cool stuff, to show off!
+      - Known issues, if that makes them easier to understand.
+    - Add HTML anchors `<a id="$anchor"></a>` where our help desk might
+      need to point people to, for example:
+      - Known issues
+      - Major changes that might confuse users
+    - Document manual steps that users with a Persistent Storage may need to go
+      through, taking into account that we support automatic updates (not mentioning manual updates).
+      It may imply to refer to, or copy from, such instructions that
+      were documented in the _previous_ release notes.
+  - Write the draft
+    - As a rule of thumb, get inspiration from all these data sources
+      but write new sentences yourself. Changelog and release notes are
+      written for different audiences and for different purposes.
+    - Focus on what is the benefit for the user (if any, if relevant,
+      and not to wordy).
+      - *For example:* Automatically save the database of *Secrets* after
+        every change to prevent data loss when shutting down.
+    - Our release notes should satisfy a diverse audience of both very
+      technical and less technical users. As such, it's all-right to include
+      more technical language, for example for security benefits that are not
+      visible, as long as:
+      - Changes that are noticeable by less technical users are still
+        understandable by them.
+      - What we are describing in non-technical language is
+        understandable by more technical users.
+      - We point to more technical sources like issues and design
+        documents.
+      - Technical items are less proheminent.
+      - *For example:* Harden our firewall by rejecting `RELATED` packets
+        and restricting Tor to only send `NEW TCP` syn packets. ([[!tails_ticket 11391]])
+    - Use full sentences for major changes ("*We installed*", "*You can*")
+    - Use present tense without subject for minor changes ("*Upgrade*", "*Fix*")
+    - Mention updates as "Update *Xyz* to [1.2.4]."
+      - Mention previous version if we skipped some "Update *Xyz* from 1.0.0 to [1.2.3]."
+      - Link to release notes if any, or changelog
+    - Order items to put the most visible, less technical, and most popular
+      items first while not being afraid of putting more technical items as
+      well down the list.
+    - Document known issues
+    - Update the `meta title` directive.
+    - Update the `meta date` directive.
+  - Update the [[support/known_issues]] page:
+    - Add regressions brought by the new release.
+    - Remove older known issues that are fixed by the new release.
+  - Format
+    - Link to issue for fixed problems and changes that are well justified in GitLab
+    - Put the period before issue number
+      - "Bla bla. ([!tails_ticket 1234])"
+  - Push to the `web/release-x.y` branch
+  - Check the GitLab CI results (in particular the `codespell` job)
+    for the draft merge request corresponding to the `web/release-x.y` branch
+  - Prepare a tweet with highlights:
+    - Tails x.y is out:
+
+      https://tails.net/news/version_x.y/
+
+      It bla bla bla, and more.
+    - Add it as a comment to the issue for the release notes.

@@ -1,0 +1,6 @@
+# This  configuration should not run during Tails build. It is enabled in the
+# end of the build by config/chroot_local-hooks/99-zz-install-ASP-DPKG-hooks
+DPkg::Pre-Install-Pkgs { "/usr/local/lib/additional-software/asp-pre-apt"; };
+DPkg::Post-Invoke { "/usr/local/lib/additional-software/asp-post-apt"; };
+DPkg::Tools::Options::/usr/local/lib/additional-software/asp-pre-apt::Version "3";
+DPkg::Tools::Options::/usr/local/lib/additional-software/asp-post-apt::Version "3";

@@ -1,0 +1,276 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"POT-Creation-Date: 2025-11-05 08:59+0000\n"
+"PO-Revision-Date: 2026-02-03 20:16+0000\n"
+"Last-Translator: victor dargallo <victordargallo@disroot.org>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: ca\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Content of: <div>
+msgid "[[!meta title=\"Limitations of the Tor network\"]]"
+msgstr "[[!meta title=\"Limitacions de la xarxa Tor\"]]"
+
+#. type: Content of: <h1>
+msgid "Limitations of Tor"
+msgstr "Limitacions de Tor"
+
+#. type: Content of: <div>
+msgid ""
+"[[!inline pages=\"doc/about/warning/tor.inline\" raw=\"yes\" sort=\"age\"]] "
+"[[!toc levels=2]]"
+msgstr ""
+"[[!inline pages=\"doc/about/warning/tor.inline.ca\" raw=\"yes\" "
+"sort=\"age\"]] [[!toc levels=2]]"
+
+#. type: Content of: <h2>
+msgid "Tails makes it clear that you are using Tor and probably Tails"
+msgstr "Tails deixa clar que esteu utilitzant Tor i probablement Tails"
+
+#. type: Content of: <p>
+msgid ""
+"Everything you do on the Internet from Tails goes through the Tor network."
+msgstr "Tot el que feu a Internet des de Tails passa per la xarxa Tor."
+
+#. type: Content of: <p>
+msgid ""
+"Tor and Tails don't protect you by making you look like any random Internet "
+"user, but by making all Tor and Tails users look the same. It becomes "
+"impossible to know who is who among all users."
+msgstr ""
+"Tor i Tails no us protegeixen fent-vos semblar un usuari d'Internet "
+"qualsevol, sinó fent que tots els usuaris de Tor i Tails semblin iguals. Es "
+"fa impossible saber qui és qui entre tots els usuaris."
+
+#. type: Content of: <ul><li><p>
+msgid ""
+"Your Internet service provider (ISP) and local network can see that you "
+"connect to the Tor network. But, they cannot know which sites you visit.  To "
+"also hide that you connect to Tor, use a [[Tor bridge|doc/anonymous_internet/"
+"tor]]."
+msgstr ""
+"El vostre proveïdor de serveis d'Internet (PSI) i la xarxa local poden veure "
+"que us connecteu a la xarxa Tor. Encara que no saben quins llocs visiteu. "
+"Per ocultar també que us connecteu a Tor, utilitzeu un "
+"[[pont de Tor|doc/anonymous_internet/tor]]."
+
+#. type: Content of: <ul><li><p>
+msgid ""
+"The sites that you visit can know that you are using Tor, because the <a "
+"href=\"https://metrics.torproject.org/exonerator.html\">list of exit nodes "
+"of the Tor network</a> is public."
+msgstr ""
+"Els llocs que visiteu poden saber que utilitzeu Tor, perquè la <a "
+"href=\"https://metrics.torproject.org/exonerator.html\">llista de nodes de "
+"sortida de la xarxa Tor</a> és pública."
+
+#. type: Content of: <div><p>
+msgid ""
+"Parental controls, Internet service providers, and countries with heavy "
+"censorship can identify and block connections to the Tor network that don't "
+"use Tor bridges."
+msgstr ""
+"Els controls parentals, els proveïdors de serveis d'Internet i els països "
+"amb una forta censura poden identificar i bloquejar connexions a la xarxa "
+"Tor que no utilitzen ponts de Tor."
+
+#. type: Content of: <div><p>
+msgid ""
+"Many websites ask you to solve a CAPTCHA or block access from the Tor "
+"network."
+msgstr ""
+"Molts llocs web us demanen que resolgueu un CAPTCHA o bloquegen l'accés des "
+"de la xarxa Tor."
+
+#. type: Content of: <h2>
+msgid "Exit nodes can intercept traffic to the destination server"
+msgstr ""
+"Els nodes de sortida poden interceptar el trànsit al servidor de destinació"
+
+#. type: Content of: <p>
+msgid ""
+"Tor hides your location from destination servers, but it does not encrypt "
+"<i>all</i> your communication. The last relay of a Tor circuit, called the "
+"<i>exit node</i>, establishes the actual connection to the destination "
+"server. This last step can be unencrypted, for example, if you connect to a "
+"website using HTTP instead of HTTPS."
+msgstr ""
+"Tor amaga la vostra ubicació dels servidors de destinació, però no encripta "
+"<i>totes</i> les vostres comunicacions. L'últim repetidor d'un circuit Tor, "
+"anomenat <i>node de sortida</i>, estableix la connexió real amb el servidor "
+"de destinació. Aquest darrer pas es pot desencriptar, per exemple, si us "
+"connecteu a un lloc web utilitzant HTTP en comptes d'HTTPS."
+
+#. type: Content of: outside any tag (error?)
+msgid ""
+"[[!img doc/anonymous_internet/tor/tor.svg size=\"600x\" link=\"no\" alt=\"A "
+"Tor connection goes through 3 relays with the last one establishing the "
+"actual connection to the final destination\"]]"
+msgstr ""
+"[[!img doc/anonymous_internet/tor/tor.svg size=\"600x\" link=\"no\" "
+"alt=\"Una connexió Tor passa per tres repetidors i l'últim estableix la "
+"connexió real amb la destinació final\"]]"
+
+#. type: Content of: <p>
+msgid "The exit node can:"
+msgstr "El node de sortida pot:"
+
+#. type: Content of: <ul><li><p>
+msgid ""
+"Observe your traffic. That is why <i>Tor Browser</i> and Tails include tools "
+"to encrypt the connection between the exit node and the destination server, "
+"whenever possible."
+msgstr ""
+"Observar el vostre trànsit. És per això que el <i>Navegador Tor</i> i Tails "
+"inclouen eines per encriptar la connexió entre el node de sortida i el "
+"servidor de destinació, sempre que sigui possible."
+
+#. type: Content of: <ul><li><p>
+msgid ""
+"Pretend to be the destination server, a technique known as <i>machine-in-the-"
+"middle</i> attack (MitM). That is why you should pay even more attention to "
+"the security warnings in <i>Tor Browser</i>. If you get such a warning, use "
+"the [[New Identity|doc/anonymous_internet/Tor_Browser#new-identity]] feature "
+"of <i>Tor Browser</i> to change exit node."
+msgstr ""
+"Pretén ser el servidor de destinació, una tècnica coneguda com a atac de "
+"<i>màquina al mig</i> (MitM, machine-in-the-middle en anglès). És per això "
+"que hauríeu de prestar encara més atenció a les advertències de seguretat "
+"del <i>Navegador Tor</i>. Si rebeu aquest avís, utilitzeu la funció de "
+"[[Identitat nova|doc/anonymous_internet/Tor_Browser#new-identity]] del "
+"<i>Navegador Tor</i> per canviar el node de sortida."
+
+#. type: Content of: <ul>
+msgid ""
+"[[!img ssl_warning.png link=\"no\" alt=\"Warning: Potential Security Risk "
+"Ahead\"]]"
+msgstr ""
+"[[!img ssl_warning.png link=\"no\" alt="
+"\"Avís: Risc potencial per a la seguretat\"]]"
+
+#. type: Content of: <p>
+msgid ""
+"To learn more about what information is available to someone observing the "
+"different parts of a Tor circuit, see the interactive graphics at [[Tor "
+"Support: How HTTPS encryption and Tor works in Tor Browser to enhance your "
+"privacy and anonymity|https://support.torproject.org/about-tor/security/"
+"https-encryption-and-tor/]]."
+msgstr ""
+"Per saber més sobre quina informació està disponible per a algú que observa "
+"les diferents parts d'un circuit de Tor, consulteu els gràfics interactius a "
+"[[Assistència de Tor: Com funciona el xifratge HTTPS i Tor al Navegador Tor "
+"per a millorar la vostra privadesa i anonimat|https://support.torproject.org/"
+"about-tor/security/https-encryption-and-tor/]]."
+
+#. type: Content of: <div><p>
+msgid ""
+"Tor exit nodes have been used in the past to collect sensitive information "
+"from unencrypted connections. Malicious exit nodes are regularly identified "
+"and removed from the Tor network. For an example, see <a href=\"https://"
+"arstechnica.com/information-technology/2007/09/security-expert-used-tor-to-"
+"collect-government-e-mail-passwords/\">Ars Technica: Security expert used "
+"Tor to collect government e-mail passwords</a>."
+msgstr ""
+"Els nodes de sortida de Tor s'han utilitzat en el passat per recollir "
+"informació sensible de connexions no encriptades. Els nodes de sortida "
+"maliciosos s'identifiquen i s'eliminen regularment de la xarxa Tor. Per "
+"obtenir un exemple, vegeu <a href=\"https://arstechnica.com/information-"
+"technology/2007/09/security-expert-used-tor-to-collect-government-e-mail-"
+"passwords/\">Ars Technica : L'expert en seguretat que va utilitzar Tor per "
+"recollir contrasenyes de correu electrònic del govern</a>."
+
+#. type: Content of: <h2>
+msgid "Adversaries watching both ends of a Tor circuit could identify users"
+msgstr ""
+"Els adversaris que miren els dos extrems d'un circuit Tor podrien "
+"identificar els usuaris"
+
+#. type: Content of: <p>
+msgid ""
+"An adversary, who could control the 3 relays in a circuit, could deanonymize "
+"Tor users."
+msgstr ""
+"Un adversari, que pogués controlar els tres repetidors d'un circuit, podria "
+"desanonimitzar els usuaris de Tor."
+
+#. type: Content of: <div><p>
+msgid ""
+"Tor chooses 3 relays that belong to 3 different network operators for each "
+"circuit."
+msgstr ""
+"Tor tria tres repetidors que pertanyen a tres operadors de xarxa diferents "
+"per a cada circuit."
+
+#. type: Content of: <div><p>
+msgid ""
+"Tails takes extra measures to [[use different circuits for different "
+"applications|contribute/design/stream_isolation]]."
+msgstr ""
+"Tails pren mesures addicionals per [[utilitzar diferents circuits per a "
+"diferents aplicacions|contribute/design/stream_isolation]]."
+
+#. type: Content of: <div><p>
+msgid ""
+"The Tor network has more than 6&#8239;000 relays. Organizations running Tor "
+"relays include universities like the MIT, activist groups like Riseup, "
+"nonprofits like Derechos Digitales, Internet hosting companies like Private "
+"Internet Access, and so on. The huge diversity of people and organizations "
+"running Tor relays makes it more secure and more sustainable."
+msgstr ""
+"La xarxa Tor té més de 6&#8239;000 repetidors. Les organitzacions que "
+"gestionen els repetidors de Tor inclouen universitats com el MIT, grups "
+"d'activistes com Riseup, organitzacions sense ànim de lucre com Derechos "
+"Digitales, empreses d'allotjament d'Internet com Private Internet Access, "
+"entre d'altres. La gran diversitat de persones i organitzacions que "
+"gestionen els repetidors de Tor fa que sigui més segur i sostenible."
+
+#. type: Content of: <p>
+msgid ""
+"A powerful adversary, who could analyze the timing and shape of the traffic "
+"entering and exiting the Tor network, might be able to deanonymize Tor "
+"users.  These attacks are called <i>end-to-end correlation</i> attacks, "
+"because the attacker has to observe both ends of a Tor circuit at the same "
+"time."
+msgstr ""
+"Un adversari poderós, que pogués analitzar el moment i la forma del trànsit "
+"que entra i surt de la xarxa Tor, podria ser capaç de desanonimitzar els "
+"usuaris de Tor. Aquests atacs s'anomenen atacs de <i>correlació d'extrem a "
+"extrem</i>, perquè l'atacant ha d'observar els dos extrems d'un circuit Tor "
+"al mateix temps."
+
+#. type: Content of: <p>
+msgid ""
+"No anonymity network used for rapid connections, like browsing the web or "
+"instant messaging, can protect 100% from end-to-end correlation attacks. In "
+"this case, VPNs (Virtual Private Networks) are less secure than Tor, because "
+"they do not use 3 independent relays."
+msgstr ""
+"Cap xarxa d'anonimat utilitzada per a connexions ràpides, com ara la "
+"navegació per la web o la missatgeria instantània, pot protegir al 100% dels "
+"atacs de correlació d'extrem a extrem. En aquest cas, les VPN (Xarxes "
+"Privades Virtuals) són menys segures que Tor, perquè no utilitzen tres "
+"repetidors independents."
+
+#. type: Content of: <div><p>
+msgid ""
+"End-to-end correlation attacks have been studied in research papers, but we "
+"don't know of any actual use to deanonymize Tor users. For an example, see "
+"<a href=\"https://www.freehaven.net/anonbib/cache/murdoch-"
+"pet2007.pdf\">Murdoch and Zieliński: Sampled Traffic Analysis by Internet-"
+"Exchange-Level Adversaries</a>."
+msgstr ""
+"Els atacs de correlació d'extrem a extrem s'han estudiat en articles de "
+"recerca, però no sabem de cap ús real per desanonimitzar els usuaris de Tor. "
+"Per obtenir un exemple, vegeu <a href=\"https://www.freehaven.net/anonbib/"
+"cache/murdoch-pet2007.pdf\">Murdoch i Zieliński: anàlisi de trànsit mostrat "
+"per adversaris a nivell d'Internet-Exchange</a>."

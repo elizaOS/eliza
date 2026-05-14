@@ -1,0 +1,12 @@
+#! /bin/sh
+
+set -e
+set -u
+set -o pipefail
+
+echo "Ensuring filesystem permissions are correct"
+
+# Despite our attempt to set these permissions correctly in auto/config,
+# sometimes /tmp ends up with incorrect permissions in the chroot,
+# which breaks some APT operations in later stages of the build.
+chmod 2777 /tmp

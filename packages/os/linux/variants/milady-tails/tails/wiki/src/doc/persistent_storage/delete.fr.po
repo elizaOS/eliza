@@ -1,0 +1,155 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: \n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-09-17 11:40+0200\n"
+"PO-Revision-Date: 2025-09-21 08:19+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: \n"
+"Language: fr\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n > 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Deleting the Persistent Storage\"]]\n"
+msgstr "[[!meta title=\"Supprimer le stockage persistant\"]]\n"
+
+#. type: Bullet: '1. '
+msgid ""
+"Start Tails from the USB stick on which you want to delete the Persistent "
+"Storage."
+msgstr ""
+"Démarrez Tails depuis la clé USB dont vous voulez supprimer le stockage "
+"persistant."
+
+#. type: Bullet: '1. '
+msgid "In the Welcome Screen, keep the Persistent Storage locked."
+msgstr ""
+"Dans l'écran de bienvenue, maintenir le stockage persistant verrouillé."
+
+#. type: Bullet: '1. '
+msgid "Choose **Apps&nbsp;▸ Tails&nbsp;▸ Persistent Storage**."
+msgstr "Choisir **Applications&nbsp;▸ Tails&nbsp;▸ Stockage persistant**."
+
+#. type: Bullet: '1. '
+msgid "Click **Delete** in the right of the title bar."
+msgstr "Cliquer sur **Suppression** à droite de la barre de titre."
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"caution\">\n"
+msgstr "<div class=\"caution\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<!-- We should get rid of this warning once we have\n"
+"     #8436 (Wipe the LUKS header when deleting a persistent volume). -->\n"
+msgstr ""
+"<!-- We should get rid of this warning once we have\n"
+"     #8436 (Wipe the LUKS header when deleting a persistent volume). -->\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>This technique might not prevent a strong attacker from\n"
+"recovering files from an old Persistent Storage using advanced data\n"
+"recovery techniques, especially if\n"
+"the Persistent Storage had a weak passphrase.</p>\n"
+msgstr ""
+"<p>Cette technique n'empêchera peut-être pas un attaquant expérimenté de\n"
+"récupérer des fichiers depuis un ancien stockage persistant en utilisant des\n"
+"techniques de récupération de données, surtout si\n"
+"le stockage persistant avait une phrase de passe faible.</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<p>See the [[limitations of file deletion|doc/encryption_and_privacy/secure_deletion#spare]].</p>\n"
+msgstr "<p>Voir les [[limites de l'effacement de fichier|doc/encryption_and_privacy/secure_deletion#spare]].</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<p>To securely delete the Persistent Storage, you have to [[securely\n"
+#~ "delete the entire USB stick|encryption_and_privacy/secure_deletion#device]],\n"
+#~ "which is a much slower operation.</p>\n"
+#~ msgstr ""
+#~ "<p>Pour effacer de manière sécurisée le stockage persistant, vous devez [[effacer\n"
+#~ "de manière sécurisée toute la clé USB|encryption_and_privacy/secure_deletion#device]],\n"
+#~ "c'est une opération beaucoup plus lente.</p>\n"
+
+#~ msgid ""
+#~ "Choose <span class=\"menuchoice\"> <span class=\"guimenu\">Applications</"
+#~ "span>&nbsp;▸ **Tails**&nbsp;▸ <span class=\"guimenuitem\">Delete "
+#~ "persistent volume</span></span>."
+#~ msgstr ""
+#~ "Choisissez <span class=\"menuchoice\"> <span "
+#~ "class=\"guimenu\">Applications</span>&nbsp;▸ <span "
+#~ "class=\"guisubmenu\">Tails</span>&nbsp;▸ <span "
+#~ "class=\"guimenuitem\">Supprimer le volume de stockage persistant</span></"
+#~ "span>."
+
+#~ msgid "Click **Delete**."
+#~ msgstr "Cliquez sur **Supprimer**."
+
+#, fuzzy
+#~ msgid "     Do not enable the persistent volume in the Welcome Screen.\n"
+#~ msgstr ""
+#~ "     N'activez pas le volume persistant dans le <span "
+#~ "class=\"application\">Tails Greeter</span>.\n"
+
+#~ msgid ""
+#~ "This can be useful in order to delete all the files saved to the "
+#~ "persistent volume in a single operation. You can later create a new "
+#~ "persistent volume on the same USB stick without having to reinstall Tails."
+#~ msgstr ""
+#~ "Cela peut être utilisé pour supprimer en une seule opération tous les "
+#~ "fichiers sauvegardés sur le volume persistant. Vous pouvez ensuite créer "
+#~ "un nouveau volume persistant sur la même clé USB sans devoir réinstaller "
+#~ "Tails."
+
+#~ msgid "Securely delete the persistent volume\n"
+#~ msgstr "Effacer le volume persistant de manière sécurisée\n"
+
+#~ msgid ""
+#~ "<ol>\n"
+#~ "<li>[[Format the USB stick and create a single encrypted partition|"
+#~ "encryption_and_privacy/encrypted_volumes]]\n"
+#~ "on the whole USB stick. This step deletes both Tails and the persistent "
+#~ "volume.</li>\n"
+#~ "<li>[[Securely clean all the available disk\n"
+#~ "space|encryption_and_privacy/secure_deletion#clean_disk_space]] on this "
+#~ "new encrypted\n"
+#~ "partition.</li>\n"
+#~ "<li>[[Reinstall Tails|install]] on the USB stick.</li>\n"
+#~ "<li>Start Tails from the USB stick and [[create a new persistent\n"
+#~ "volume|persistence/configure]].</li>\n"
+#~ "</ol>\n"
+#~ msgstr ""
+#~ "<ol>\n"
+#~ "<li>[[Formatez la clé USB et créez une partition chiffrée|"
+#~ "encryption_and_privacy/encrypted_volumes]]\n"
+#~ "sur la totalité de la clé USB. Cette étape supprime à la fois Tails et le "
+#~ "volume persistant\n"
+#~ ".</li>\n"
+#~ "<li>[[Supprimez de manière sécurisée tout l'espace disque disponible\n"
+#~ "|encryption_and_privacy/secure_deletion#clean_disk_space]] sur cette "
+#~ "nouvelle partition\n"
+#~ "chiffrée.</li>\n"
+#~ "<li>[[Reinstallez Tails|install]] sur la clé USB.</li>\n"
+#~ "<li>Démarrez Tails depuis la clé USB et [[créez un nouveau\n"
+#~ "volume persistant|persistence/configure]].</li>\n"
+#~ "</ol>\n"

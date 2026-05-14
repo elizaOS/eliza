@@ -1,0 +1,403 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<!-- Created with Cambalache 0.99.8 -->
+<!-- Generated with glade 3.38.2 -->
+<interface>
+  <!-- interface-name passphrase_view.ui.in -->
+  <requires lib="gtk+" version="3.24"/>
+  <object class="GtkBox" id="box">
+    <property name="hexpand">True</property>
+    <property name="margin-bottom">20</property>
+    <property name="margin-end">20</property>
+    <property name="margin-start">20</property>
+    <property name="margin-top">20</property>
+    <property name="orientation">vertical</property>
+    <property name="vexpand">True</property>
+    <property name="visible">True</property>
+    <child>
+      <object class="GtkScrolledWindow">
+        <property name="hscrollbar-policy">never</property>
+        <property name="vexpand">True</property>
+        <property name="visible">True</property>
+        <child>
+          <object class="GtkViewport">
+            <property name="shadow-type">none</property>
+            <property name="visible">True</property>
+            <child>
+              <object class="GtkBox">
+                <property name="margin-bottom">20</property>
+                <property name="margin-end">20</property>
+                <property name="margin-start">20</property>
+                <property name="margin-top">20</property>
+                <property name="orientation">vertical</property>
+                <property name="spacing">50</property>
+                <property name="valign">center</property>
+                <property name="vexpand">True</property>
+                <property name="visible">True</property>
+                <child>
+                  <object class="GtkBox">
+                    <property name="spacing">50</property>
+                    <property name="visible">True</property>
+                    <child>
+                      <object class="GtkImage" id="image1">
+                        <property name="pixbuf">/usr/share/pixmaps/tails-persistent-storage.svg</property>
+                        <property name="visible">True</property>
+                      </object>
+                      <packing>
+                        <property name="expand">False</property>
+                        <property name="fill">True</property>
+                        <property name="position">0</property>
+                      </packing>
+                    </child>
+                    <child>
+                      <object class="GtkBox">
+                        <property name="can-focus">False</property>
+                        <property name="orientation">vertical</property>
+                        <property name="spacing">20</property>
+                        <property name="visible">True</property>
+                        <child>
+                          <object class="GtkLabel" id="placeholder_label1">
+                            <property name="can-focus">False</property>
+                            <property name="label" translatable="yes">Choose the passphrase that you will use to unlock the encryption of your Persistent Storage and all its data.</property>
+                            <property name="max-width-chars">50</property>
+                            <property name="use-markup">True</property>
+                            <property name="visible">True</property>
+                            <property name="wrap">True</property>
+                            <property name="xalign">0</property>
+                          </object>
+                          <packing>
+                            <property name="expand">False</property>
+                            <property name="fill">True</property>
+                            <property name="position">1</property>
+                          </packing>
+                        </child>
+                        <child>
+                          <object class="GtkBox">
+                            <property name="can-focus">False</property>
+                            <property name="visible">True</property>
+                            <child>
+                              <object class="GtkLabel" id="placeholder_label2">
+                                <property name="can-focus">False</property>
+                                <property name="label" translatable="yes">We recommend a long passphrase of 5 to 7 random words.</property>
+                                <property name="visible">True</property>
+                              </object>
+                              <packing>
+                                <property name="expand">False</property>
+                                <property name="fill">True</property>
+                                <property name="position">0</property>
+                              </packing>
+                            </child>
+                            <child>
+                              <object class="GtkLabel" id="placeholder_label3">
+                                <property name="can-focus">False</property>
+                                <property name="label" translatable="yes"> For example:</property>
+                                <property name="visible">True</property>
+                              </object>
+                              <packing>
+                                <property name="expand">False</property>
+                                <property name="fill">True</property>
+                                <property name="position">1</property>
+                              </packing>
+                            </child>
+                          </object>
+                          <packing>
+                            <property name="expand">False</property>
+                            <property name="fill">True</property>
+                            <property name="position">2</property>
+                          </packing>
+                        </child>
+                        <child>
+                          <object class="GtkBox">
+                            <property name="can-focus">False</property>
+                            <property name="spacing">10</property>
+                            <property name="visible">True</property>
+                            <child>
+                              <object class="GtkLabel" id="passphrase_suggestion_label">
+                                <property name="can-focus">False</property>
+                                <property name="halign">start</property>
+                                <property name="selectable">True</property>
+                                <property name="visible">True</property>
+                                <property name="xalign">0</property>
+                              </object>
+                              <packing>
+                                <property name="expand">False</property>
+                                <property name="fill">True</property>
+                                <property name="position">0</property>
+                              </packing>
+                            </child>
+                            <child>
+                              <object class="GtkEventBox">
+                                <property name="visible">True</property>
+                                <signal name="button-press-event" handler="on_refresh_image_clicked"/>
+                                <child>
+                                  <object class="GtkImage" id="refresh_image">
+                                    <property name="can-focus">False</property>
+                                    <property name="stock">gtk-refresh</property>
+                                    <property name="visible">True</property>
+                                  </object>
+                                </child>
+                              </object>
+                              <packing>
+                                <property name="expand">False</property>
+                                <property name="fill">True</property>
+                                <property name="position">1</property>
+                              </packing>
+                            </child>
+                          </object>
+                          <packing>
+                            <property name="expand">False</property>
+                            <property name="fill">True</property>
+                            <property name="position">3</property>
+                          </packing>
+                        </child>
+                      </object>
+                      <packing>
+                        <property name="expand">False</property>
+                        <property name="fill">True</property>
+                        <property name="position">1</property>
+                      </packing>
+                    </child>
+                  </object>
+                  <packing>
+                    <property name="expand">False</property>
+                    <property name="fill">True</property>
+                    <property name="position">0</property>
+                  </packing>
+                </child>
+                <child>
+                  <!-- n-columns=3 n-rows=4 -->
+                  <object class="GtkGrid">
+                    <property name="column-spacing">15</property>
+                    <property name="row-spacing">5</property>
+                    <property name="visible">True</property>
+                    <child>
+                      <object class="GtkLabel" id="passphrase_entry_label">
+                        <property name="halign">start</property>
+                        <property name="label" translatable="yes">Passphrase:</property>
+                        <property name="visible">True</property>
+                        <accessibility>
+                          <relation type="label-for" target="passphrase_entry"/>
+                        </accessibility>
+                        <child internal-child="accessible">
+                          <object class="AtkObject">
+                            <property name="accessible-role">label</property>
+                          </object>
+                        </child>
+                      </object>
+                      <packing>
+                        <property name="left-attach">0</property>
+                        <property name="top-attach">0</property>
+                      </packing>
+                    </child>
+                    <child>
+                      <object class="GtkLabel" id="verify_entry_label">
+                        <property name="halign">start</property>
+                        <property name="label" translatable="yes">Confirm:</property>
+                        <property name="visible">True</property>
+                        <accessibility>
+                          <relation type="label-for" target="verify_entry"/>
+                        </accessibility>
+                        <child internal-child="accessible">
+                          <object class="AtkObject">
+                            <property name="accessible-role">label</property>
+                          </object>
+                        </child>
+                      </object>
+                      <packing>
+                        <property name="left-attach">0</property>
+                        <property name="top-attach">2</property>
+                      </packing>
+                    </child>
+                    <child>
+                      <object class="GtkEntry" id="passphrase_entry">
+                        <property name="activates-default">True</property>
+                        <property name="can-focus">True</property>
+                        <property name="has-focus">True</property>
+                        <property name="hexpand">True</property>
+                        <property name="input-purpose">password</property>
+                        <property name="visibility">False</property>
+                        <property name="visible">True</property>
+                        <signal name="changed" handler="on_passphrase_entry_changed"/>
+                        <accessibility>
+                          <relation type="labelled-by" target="passphrase_entry_label"/>
+                        </accessibility>
+                        <child internal-child="accessible">
+                          <object class="AtkObject">
+                            <property name="accessible-role">password-text</property>
+                          </object>
+                        </child>
+                      </object>
+                      <packing>
+                        <property name="left-attach">1</property>
+                        <property name="top-attach">0</property>
+                      </packing>
+                    </child>
+                    <child>
+                      <object class="GtkEntry" id="verify_entry">
+                        <property name="activates-default">True</property>
+                        <property name="can-focus">True</property>
+                        <property name="hexpand">True</property>
+                        <property name="input-purpose">password</property>
+                        <property name="visibility">False</property>
+                        <property name="visible">True</property>
+                        <signal name="changed" handler="on_verify_entry_changed"/>
+                        <accessibility>
+                          <relation type="labelled-by" target="verify_entry_label"/>
+                        </accessibility>
+                        <child internal-child="accessible">
+                          <object class="AtkObject">
+                            <property name="accessible-role">password-text</property>
+                          </object>
+                        </child>
+                      </object>
+                      <packing>
+                        <property name="left-attach">1</property>
+                        <property name="top-attach">2</property>
+                      </packing>
+                    </child>
+                    <child>
+                      <object class="GtkProgressBar" id="passphrase_hint_progress_bar">
+                        <property name="show-text">True</property>
+                        <property name="visible">True</property>
+                      </object>
+                      <packing>
+                        <property name="left-attach">1</property>
+                        <property name="top-attach">1</property>
+                      </packing>
+                    </child>
+                    <child>
+                      <object class="GtkBox">
+                        <property name="visible">True</property>
+                        <child type="center">
+                          <object class="GtkBox" id="verify_hint_box">
+                            <property name="halign">center</property>
+                            <property name="spacing">5</property>
+                            <child>
+                              <object class="GtkImage">
+                                <property name="can-focus">False</property>
+                                <property name="icon-name">dialog-warning-symbolic</property>
+                                <property name="valign">start</property>
+                                <property name="visible">True</property>
+                              </object>
+                              <packing>
+                                <property name="expand">False</property>
+                                <property name="fill">True</property>
+                                <property name="position">0</property>
+                              </packing>
+                            </child>
+                            <child>
+                              <object class="GtkLabel" id="verify_hint_label">
+                                <property name="label" translatable="yes">The passphrases do not match</property>
+                                <property name="valign">start</property>
+                                <property name="visible">True</property>
+                                <property name="wrap">True</property>
+                                <attributes>
+                                  <attribute name="scale" value="0.82999999999999996"/>
+                                </attributes>
+                                <style>
+                                  <class name="dim-label"/>
+                                </style>
+                              </object>
+                              <packing>
+                                <property name="expand">False</property>
+                                <property name="fill">False</property>
+                                <property name="position">1</property>
+                              </packing>
+                            </child>
+                          </object>
+                          <packing>
+                            <property name="expand">False</property>
+                            <property name="fill">True</property>
+                            <property name="position">1</property>
+                          </packing>
+                        </child>
+                        <child>
+                          <object class="GtkCheckButton" id="show_passphrase_checkbutton">
+                            <property name="can-focus">True</property>
+                            <property name="draw-indicator">True</property>
+                            <property name="label" translatable="yes">_Show Passphrase</property>
+                            <property name="receives-default">False</property>
+                            <property name="use-underline">True</property>
+                            <property name="visible">True</property>
+                            <property name="xalign">0</property>
+                            <signal name="toggled" handler="on_show_passphrase_button_toggled"/>
+                          </object>
+                          <packing>
+                            <property name="expand">False</property>
+                            <property name="fill">True</property>
+                            <property name="position">0</property>
+                          </packing>
+                        </child>
+                      </object>
+                      <packing>
+                        <property name="left-attach">1</property>
+                        <property name="top-attach">3</property>
+                      </packing>
+                    </child>
+                  </object>
+                  <packing>
+                    <property name="expand">False</property>
+                    <property name="fill">True</property>
+                    <property name="position">1</property>
+                  </packing>
+                </child>
+              </object>
+            </child>
+          </object>
+        </child>
+      </object>
+      <packing>
+        <property name="expand">True</property>
+        <property name="fill">True</property>
+        <property name="position">0</property>
+      </packing>
+    </child>
+    <child>
+      <object class="GtkBox">
+        <property name="visible">True</property>
+        <child>
+          <object class="GtkButton" id="back_button">
+            <property name="can-focus">True</property>
+            <property name="halign">start</property>
+            <property name="label" translatable="yes">_Back</property>
+            <property name="receives-default">False</property>
+            <property name="use-underline">True</property>
+            <property name="visible">True</property>
+            <signal name="clicked" handler="on_back_button_clicked"/>
+          </object>
+          <packing>
+            <property name="expand">False</property>
+            <property name="fill">True</property>
+            <property name="position">0</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkButton" id="create_button">
+            <property name="can-default">True</property>
+            <property name="can-focus">True</property>
+            <property name="halign">end</property>
+            <property name="label" translatable="yes">_Create Persistent Storage</property>
+            <property name="receives-default">True</property>
+            <property name="sensitive">False</property>
+            <property name="use-underline">True</property>
+            <property name="visible">True</property>
+            <signal name="clicked" handler="on_create_button_clicked"/>
+            <style>
+              <class name="suggested-action"/>
+            </style>
+          </object>
+          <packing>
+            <property name="expand">False</property>
+            <property name="fill">True</property>
+            <property name="pack-type">end</property>
+            <property name="position">1</property>
+          </packing>
+        </child>
+      </object>
+      <packing>
+        <property name="expand">False</property>
+        <property name="fill">True</property>
+        <property name="position">1</property>
+      </packing>
+    </child>
+  </object>
+</interface>

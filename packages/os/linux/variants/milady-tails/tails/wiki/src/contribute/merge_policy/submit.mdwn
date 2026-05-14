@@ -1,0 +1,71 @@
+[[!meta title="How to propose changes"]]
+
+We use [[!tails_gitlab desc="GitLab"]] for tracking issues, merge requests, and
+code. Please ensure you are familiar with [[how we use GitLab at
+Tails|contribute/working_together/GitLab]].
+
+All proposed changes should be prepared in topic branches.
+A branch about issue number NNNN should be named `NNNN-XXX`.
+
+To submit your branch for review:
+
+1. Test your branch. If your branch contains code changes, test it with its
+   target branch (`config/base_branch`) merged into it.
+
+2. Push your branch
+
+   If you have commit access to the official Tails Git repository,
+   push your branch there so our CI picks it up.
+
+   Else, push to your own fork of the Tails
+   [[!tails_gitweb_repo tails desc="Git repository"]].
+
+3. Once you would like your branch to be reviewed, and possibly merged,
+   submit it:
+
+   1. If your branch contains code changes and you have access to our Jenkins
+      instance:
+
+      - Ensure your branch builds on Jenkins.
+
+      - Either take note of the test suite scenarios you've seen pass
+        successfully locally, or check that the test suite passes on Jenkins.
+
+   2. On the corresponding GitLab issue:
+
+      - Set the *Milestone* field to the release you would like your changes to
+        land in.
+
+      - If there's a *To Do* or *Doing* label, replace it with the *Needs
+        Validation* label.
+
+   3. Create a [[!tails_gitlab help/user/project/merge_requests/index.md desc="Merge
+      Request"]] (aka. MR). There are [[!tails_gitlab
+      help/user/project/merge_requests/creating_merge_requests.html desc="many
+      ways"]] to do so. For example, you can click the *Create merge request*
+      button on the corresponding issue.
+
+      In this new MR:
+
+      - Use the description to:
+
+         - Summarize what problem this MR will fix, in terms of impact on users.
+
+         - Reference the issues this MR will solve: `Closes #xxx, #yyyy`.
+
+      - Set the target branch your branch should be merged into.
+        See the [[documentation for our main branches|contribute/git#branches]].
+
+      - If it's obvious to you who can, and should, review your branch,
+        and you're allowed to request reviews on MRs: request a review
+        by making that person the _Reviewer_ on the MR.<br/>
+        Else, leave the MR with no _Reviewer_:
+        the [Tails Team](https://gitlab.tails.boum.org/tails/team/-/wikis/home) will
+        either handle the review themselves or help you find a suitable reviewer.
+
+      - If you have run some test suite scenarios locally: report about your
+        results in a new comment.
+
+Then, for every subsequent submit/review/fix cycle: once you've fixed all
+problems raised by the reviewer, update the issue and MR metadata again as
+documented above (milestone, reviewer, and labels).

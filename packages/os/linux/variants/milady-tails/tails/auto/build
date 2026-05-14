@@ -1,0 +1,202 @@
+#!/bin/bash
+
+set -e
+set -u
+set -x
+set -o pipefail
+
+. "$(dirname "$0")/scripts/utils.sh"
+
+# get $BUILD_BASENAME
+. tmp/build_environment
+
+umask 022
+
+### Clone all output, from this point on, to the log file
+
+BUILD_LOG="${BUILD_BASENAME}.buildlog"
+exec > >(tee -a "$BUILD_LOG")
+# shellcheck disable=SC2064
+trap "kill -9 $! 2>/dev/null" EXIT HUP INT QUIT TERM
+exec 2> >(tee -a "$BUILD_LOG" >&2)
+# shellcheck disable=SC2064
+trap "kill -9 $! 2>/dev/null" EXIT HUP INT QUIT TERM
+
+### Main
+
+# we require building from git
+git rev-parse --is-inside-work-tree &>/dev/null ||
+    fatal "${PWD} is not a Git tree."
+
+. config/variables
+
+# a clean starting point
+rm -rf cache/stages_rootfs
+
+# get LB_ARCHITECTURE and LB_DISTRIBUTION
+. config/bootstrap
+
+# save variables that are needed by chroot_local-hooks
+{
+    if [ -n "${JENKINS_URL:-}" ]; then
+        echo "JENKINS_URL=${JENKINS_URL}"
+    fi
+    echo "KERNEL_VERSION=${KERNEL_VERSION}"
+    echo "LB_DISTRIBUTION=${LB_DISTRIBUTION}"
+    echo "POTFILES_DOT_IN='$(
+        /bin/grep -E --no-filename '[^ #]*\.in$' po/POTFILES.in |
+            sed -e 's,^config/chroot_local-includes,,' | tr "\n" ' '
+    )'"
+    echo "TAILS_PROXY_TYPE=${TAILS_PROXY_TYPE}"
+} >>config/chroot_local-includes/usr/share/tails/build/variables
+
+# fix permissions on some source files that will be copied as is to the chroot.
+# they may be wrong, e.g. if the Git repository was cloned with a strict umask.
+chown 0:0 config/chroot_local-includes/etc/resolv.conf
+chmod -R go+rX config/binary_local-includes/
+chmod -R go-w config/chroot_local-includes/
+chmod -R go+rX config/chroot_local-includes/etc
+chmod 0440 config/chroot_local-includes/etc/sudoers.d/*
+chmod go+rX config/chroot_local-includes/lib
+chmod go+rX config/chroot_local-includes/lib/live
+chmod -R go+rx config/chroot_local-includes/lib/live/config
+chmod go+rX config/chroot_local-includes/lib/live/mount
+chmod -R go+rX config/chroot_local-includes/lib/systemd
+chmod go+rX config/chroot_local-includes/live
+chmod -R u=rwX,go= config/chroot_local-includes/root
+chmod -R go+rX config/chroot_local-includes/usr
+chmod -R go+rx config/chroot_local-includes/usr/local/bin
+chmod -R go+rx config/chroot_local-includes/usr/local/sbin
+chmod -R go+rX config/chroot_local-includes/usr/share/doc
+chmod -R go+rX config/chroot_local-includes/var
+chmod -R go+rX config/chroot_apt
+chmod -R go+rX config/chroot_sources
+
+# normalize file timestamps
+find \
+    config/binary_local-includes \
+    config/chroot_local-includes \
+    wiki/src \
+    -exec touch --no-dereference --date="@$SOURCE_DATE_EPOCH" '{}' \;
+
+# build the image
+
+# we need /debootstrap/deburis to build a manifest of used packages:
+DEBOOTSTRAP_OPTIONS="${DEBOOTSTRAP_OPTIONS:-} --keep-debootstrap-dir"
+
+# use our own APT repository's key:
+DEBOOTSTRAP_KEYRING="$(mktemp --tmpdir tmp.debootstrap-gnupg-XXXXXXXX)"
+pgp_flatten_keyring config/chroot_sources/tails.chroot.gpg \
+    >"${DEBOOTSTRAP_KEYRING}"
+DEBOOTSTRAP_OPTIONS="$DEBOOTSTRAP_OPTIONS --keyring=$DEBOOTSTRAP_KEYRING"
+
+export DEBOOTSTRAP_OPTIONS
+
+# shellcheck disable=SC2223
+: ${MKSQUASHFS_OPTIONS:='-comp zstd -Xcompression-level 22 -b 1024K -no-exports'}
+MKSQUASHFS_OPTIONS="${MKSQUASHFS_OPTIONS} -mem 512M -wildcards -ef chroot/usr/share/tails/build/mksquashfs-excludes"
+export MKSQUASHFS_OPTIONS
+
+# build the doc wiki
+if [ "${TAILS_WEBSITE_CACHE:-no}" = "yes" ]; then
+    export WEBSITE_DEST_DIR=.
+    export WEBSITE_CACHE_BASEDIR
+
+    echo "I: Website cache filesystem usage before migration:"
+    df "$WEBSITE_CACHE_BASEDIR"
+    df --inodes "$WEBSITE_CACHE_BASEDIR"
+
+    website-cache migrate
+
+    echo "I: Website cache filesystem usage before garbage collection:"
+    df "$WEBSITE_CACHE_BASEDIR"
+    df --inodes "$WEBSITE_CACHE_BASEDIR"
+
+    website-cache gc
+
+    echo "I: Website cache filesystem usage after garbage collection:"
+    df "$WEBSITE_CACHE_BASEDIR"
+    df --inodes "$WEBSITE_CACHE_BASEDIR"
+
+    WEBSITE_CACHE_KEY=$(website-cache key)
+    if ! website-cache get "$WEBSITE_CACHE_KEY"; then
+        ./build-website
+        WEBSITE_BUILD_DIR="config/chroot_local-includes/usr/share/doc/tails/website"
+        echo "I: Website cache entry size: $(du --apparent-size --summarize "${WEBSITE_BUILD_DIR}" | cut -f1)"
+        echo "I: Website cache entry inodes: $(du --inodes --summarize "${WEBSITE_BUILD_DIR}" | cut -f1)"
+
+        if ! website-cache put "$WEBSITE_CACHE_KEY"; then
+            # Delete incomplete cache entry
+            rm -rf "${WEBSITE_CACHE_BASEDIR:?}/${WEBSITE_CACHE_KEY:?}"
+            cat <<EOF
+If this has started to fail with "No space left on device",
+check whether we're short on actual disk space or on inodes. And then:
+
+ - If we're short on actual disk space: have "website-cache gc" ensure
+   that 10% disk space is available, by deleting as many cache entries
+   as necessary, by decreasing age.
+
+ - Else, if we're short on inodes: this is unexpected since the
+   cache entries are now stored as zip files. You'll need to investigate.
+
+For more context, see #20150.
+EOF
+            exit 1
+        fi
+        echo "I: Website cache filesystem usage after storing new cache entry:"
+        df "$WEBSITE_CACHE_BASEDIR"
+        df --inodes "$WEBSITE_CACHE_BASEDIR"
+    fi
+else
+    ./build-website
+fi
+
+# refresh translations of our programs
+./refresh-translations || fatal "refresh-translations failed ($?)."
+
+# generate list of supported languages
+generate-languages-list || fatal "generate-languages-list failed ($?)."
+
+BUILD_ISO_FILENAME="${BUILD_BASENAME}.iso"
+BUILD_MANIFEST="${BUILD_BASENAME}.build-manifest"
+BUILD_APT_SOURCES="${BUILD_BASENAME}.apt-sources"
+BUILD_PACKAGES="${BUILD_BASENAME}.packages"
+BUILD_USB_IMAGE_FILENAME="${BUILD_BASENAME}.img"
+
+(
+    echo "Mirrors:"
+    apt-mirror debian
+    apt-mirror debian-security
+    apt-mirror torproject
+    echo "Additional sources:"
+    cat config/chroot_sources/*.chroot
+) >"$BUILD_APT_SOURCES"
+
+# make submodules available in the chroot:
+SUBMODULES_SRC="submodules/tails-workarounds"
+SUBMODULES_DST="config/chroot_local-includes/tmp/submodules"
+mkdir -p "$SUBMODULES_DST"
+# shellcheck disable=SC2086
+cp -a $SUBMODULES_SRC "$SUBMODULES_DST"/
+
+# Inject the Tor Browser AppArmor policy into the chroot
+APPARMOR_D="config/chroot_local-includes/etc/apparmor.d"
+cp submodules/torbrowser-launcher/apparmor/torbrowser.Browser.firefox \
+    "$APPARMOR_D"/
+cp submodules/torbrowser-launcher/apparmor/tunables/* \
+    "$APPARMOR_D"/tunables/
+
+echo "I: Building ISO image ${BUILD_ISO_FILENAME}..."
+time lb build noauto "${@}"
+BUILD_EXIT_CODE=$?
+[ -e binary.iso ] || fatal "lb build failed (${BUILD_EXIT_CODE})."
+
+echo "I: Renaming generated files..."
+mv -i binary.iso "${BUILD_ISO_FILENAME}"
+mv -i binary.packages "${BUILD_PACKAGES}"
+
+echo "I: Generating build manifest..."
+generate-build-manifest chroot/debootstrap "${BUILD_MANIFEST}"
+
+echo "I: Creating USB image ${BUILD_USB_IMAGE_FILENAME}..."
+create-usb-image-from-iso "${BUILD_ISO_FILENAME}"

@@ -1,0 +1,154 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-09-17 11:40+0200\n"
+"PO-Revision-Date: 2026-01-23 15:29+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: ca\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Shutting down Tails\"]]\n"
+msgstr "[[!meta title=\"Apagar Tails\"]]\n"
+
+#. type: Plain text
+msgid "There are 2 ways of shutting down Tails."
+msgstr "Hi ha dues maneres d'apagar Tails."
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!toc levels=1]]\n"
+msgstr "[[!toc levels=1]]\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid ""
+#| "When you shut down Tails, all the data stored in [[!wikipedia\n"
+#| "Random-access_memory desc=\"RAM\"]] is erased\n"
+#| "to protect you from [[cold boot\n"
+#| "attacks|doc/advanced_topics/cold_boot_attacks]].\n"
+msgid ""
+"With both techniques, all the data stored in [[!wikipedia Random-access_memory\n"
+"desc=\"RAM\"]] is securely erased to protect you from [[cold boot\n"
+"attacks|doc/advanced_topics/cold_boot_attacks]].\n"
+msgstr ""
+"Quan tanqueu Tails, totes les dades emmagatzemades a la memòria [[!wikipedia_ca\n"
+"Memòria_d'accés_aleatori desc=\"RAM\"]] s'esborren\n"
+"per protegir-vos d'[[atacs d'arrencada\n"
+"en fred|doc/advanced_topics/cold_boot_attacks]].\n"
+
+#. type: Title =
+#, no-wrap
+msgid "Shutdown from the system menu"
+msgstr "Apagar des del menú del sistema"
+
+#. type: Plain text
+#, fuzzy
+#| msgid ""
+#| "By clicking on the system menu located in the upper right corner of the "
+#| "screen and choosing either:"
+msgid "Click on the system menu in the upper right corner of the screen."
+msgstr ""
+"Fent clic al menú del sistema situat a la cantonada superior dreta de la "
+"pantalla i escollint:"
+
+#. type: Bullet: '* '
+msgid ""
+"Choose [[!img lib/system-shutdown.png link=\"no\" class=\"symbolic\" "
+"alt=\"Power Off\"]] to shutdown the computer."
+msgstr ""
+"Seleccioneu [[!img lib/system-shutdown.png link=\"no\" class=\"symbolic\" "
+"alt=\"icona d'apagar\"]] per apagar l'ordinador."
+
+#. type: Bullet: '* '
+#, fuzzy
+#| msgid ""
+#| "[[!img lib/view-refresh.png link=\"no\" class=\"symbolic\" alt=\"Restart "
+#| "icon\"]] to restart the computer."
+msgid ""
+"Choose [[!img lib/view-refresh.png link=\"no\" class=\"symbolic\" "
+"alt=\"Restart\"]] to restart the computer on Tails or on your regular "
+"operating system."
+msgstr ""
+"[[!img lib/view-refresh.png link=\"no\" class=\"symbolic\" alt=\"icona de "
+"reiniciar\"]] per reiniciar l'ordinador."
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!img desktop/system-with-wifi-only.png class=\"screenshot\" alt=\"\"]]\n"
+msgstr ""
+"[[!img desktop/system-with-wifi-only.png class=\"screenshot\" alt=\"\"]]\n"
+
+#. type: Title =
+#, no-wrap
+msgid "Emergency shutdown"
+msgstr "Apagada d’emergència"
+
+#. type: Plain text
+msgid ""
+"To trigger an emergency shutdown, unplug the USB stick or eject the DVD from "
+"which Tails is running. Doing so might be faster than shutting down from the "
+"system menu."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"caution\">\n"
+msgstr "<div class=\"caution\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>You risk breaking your Persistent Storage and losing data when you unplug\n"
+"your USB stick while Tails is running.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>If you use a Persistent Storage, only unplug your Tails USB stick in an\n"
+"emergency.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+#~ msgid ""
+#~ "- By physically removing the USB stick or DVD that Tails is running from."
+#~ msgstr ""
+#~ "- Traient físicament el llapis USB o el DVD des del qual s'està executant "
+#~ "Tails."
+
+#, no-wrap
+#~ msgid ""
+#~ "  <p>Only physically remove the USB stick in case of emergency as doing\n"
+#~ "  so can sometimes break the file system of the Persistent Storage.</p>\n"
+#~ msgstr ""
+#~ "  <p>Traieu físicament el llapis USB només en cas d'emergència ja que\n"
+#~ "  de vegades pot trencar el sistema de fitxers de l'Emmagatzematge Persistent.</p>\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "  <p>If you cannot unlock the Persistent Storage anymore after\n"
+#~ "  physically removing the USB stick, try to do a [[file system check on\n"
+#~ "  the Persistent Storage|persistent_storage/check]]\n"
+#~ "  to fix it.</p>\n"
+#~ msgstr ""
+#~ "  <p>Si després d'eliminar físicament el llapis USB ja no podeu desbloquejar\n"
+#~ "  l'Emmagatzematge Persistent, proveu de fer una [[comprovació del sistema de fitxers\n"
+#~ "  de l'Emmagatzematge Persistent|persistent_storage/check]]\n"
+#~ "  per solucionar-ho.</p>\n"

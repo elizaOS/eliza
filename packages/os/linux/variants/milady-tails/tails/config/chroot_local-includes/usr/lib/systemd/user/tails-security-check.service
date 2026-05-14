@@ -1,0 +1,11 @@
+[Unit]
+Description=Check Tails known, unfixed security issues
+Documentation=https://tails.net/contribute/design/
+After=tails-wait-until-tor-has-bootstrapped.service
+
+[Service]
+ExecStart=/usr/local/bin/tails-security-check
+RemainAfterExit=yes
+
+[Install]
+WantedBy=desktop.target

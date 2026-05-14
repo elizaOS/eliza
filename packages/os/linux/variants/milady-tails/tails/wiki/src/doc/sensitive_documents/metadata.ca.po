@@ -1,0 +1,333 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2026-01-19 18:24+0000\n"
+"PO-Revision-Date: 2026-01-23 15:29+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: ca\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Removing metadata from files\"]]\n"
+msgstr "[[!meta title=\"Eliminació de metadades dels fitxers\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!toc levels=1]]\n"
+msgstr "[[!toc levels=1]]\n"
+
+#. type: Title =
+#, no-wrap
+msgid "What is metadata?"
+msgstr "Què són les metadades?"
+
+#. type: Plain text
+msgid ""
+"Metadata is \"data about data\" or \"information about information\" that is "
+"embedded in computer files, usually automatically. Metadata is used to "
+"describe, identify, categorize, and sort files."
+msgstr ""
+"Les metadades són \"dades sobre dades\" o \"informació sobre informació\" "
+"que s'incorporen als fitxers informàtics, normalment de manera automàtica. "
+"Les metadades s'utilitzen per descriure, identificar, categoritzar i ordenar "
+"fitxers."
+
+#. type: Plain text
+msgid ""
+"However, metadata can also be used to deanonymize users and expose private "
+"information."
+msgstr ""
+"Tanmateix, les metadades també es poden utilitzar per desanonimitzar els "
+"usuaris i exposar informació privada."
+
+#. type: Plain text
+msgid "Examples of metadata include:"
+msgstr "Alguns exemples de metadades inclouen:"
+
+#. type: Bullet: '- '
+msgid "In images:"
+msgstr "En imatges:"
+
+#. type: Bullet: '  * '
+msgid "The location where a photo was taken"
+msgstr "El lloc on es va fer la foto"
+
+#. type: Bullet: '  * '
+msgid "The date and time a photo was taken"
+msgstr "La data i l'hora en què es va fer la foto"
+
+#. type: Bullet: '  * '
+msgid "The model and serial number of the camera used to take a photo"
+msgstr "El model i el número de sèrie de la càmera utilitzada per fer una foto"
+
+#. type: Bullet: '- '
+msgid "In other documents:"
+msgstr "En altres documents:"
+
+#. type: Bullet: '  * '
+msgid "The author of the document"
+msgstr "L'autor del document"
+
+#. type: Bullet: '  * '
+msgid "Changes to the document"
+msgstr "Canvis al document"
+
+#. type: Plain text
+msgid ""
+"To learn more about how metadata can be used to identify and reveal personal "
+"information, see [Behind the Data: Investigating metadata](https://"
+"exposingtheinvisible.org/en/guides/behind-the-data-metadata-investigations/)."
+msgstr ""
+"Per obtenir més informació sobre com es poden utilitzar les metadades per "
+"identificar i revelar informació personal, consulteu [Behind the Data: "
+"Investigating metadata](https://exposingtheinvisible.org/en/guides/behind-"
+"the-data-metadata-investigations/) (en anglès)."
+
+#. type: Title =
+#, no-wrap
+msgid "Removing metadata using *Metadata Cleaner*"
+msgstr "Eliminació de metadades amb el *Netejador de Metadades*"
+
+#. type: Plain text
+#, fuzzy
+#| msgid ""
+#| "Tails includes [*Metadata Cleaner*](https://gitlab.com/rmnvgr/metadata-"
+#| "cleaner)  so you can remove metadata from files before you publish or "
+#| "share them."
+msgid ""
+"Tails includes [*Metadata Cleaner*](https://gitlab.com/metadatacleaner/"
+"metadatacleaner)  so you can remove metadata from files before you publish "
+"or share them."
+msgstr ""
+"Tails inclou el [*Netejador de Metadades*](https://gitlab.com/rmnvgr/"
+"metadata-cleaner) perquè pugueu eliminar les metadades dels fitxers abans de "
+"publicar-los o compartir-los."
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"tip\">\n"
+msgstr "<div class=\"tip\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>If, instead of cleaning your own files, you want to sanitize untrusted\n"
+"documents shared with you by others, you can install\n"
+"[[<i>Dangerzone</i>|persistent_storage/additional_software/dangerzone]] as\n"
+"additional software.</p>\n"
+msgstr ""
+"<p>Si, en comptes de netejar els vostres propis fitxers, voleu desinfectar els\n"
+"documents no fiables compartits amb vosaltres per altres persones, podeu\n"
+"instal·lar el [[<i>Dangerzone</i>|persistent_storage/additional_software/dangerzone]]\n"
+"com a programari addicional.</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "*Metadata Cleaner* works on many file formats, including:\n"
+msgstr "El *Netejador de Metadades* funciona en molts formats de fitxer, com ara:\n"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid "- Images, such as .jpg, .gif, .svg, .tiff, and .png"
+msgid "Images, such as .jpg, .gif, .svg, .tiff, and .png"
+msgstr "- Fitxers d'imatge, com ara .jpeg, .png i .gif"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid "- *Microsoft Office* documents, such as .docx, .xlsx, and .pptx"
+msgid "*Microsoft Office* documents, such as .docx, .xlsx, and .pptx"
+msgstr "- Documents de *Microsoft Office*, com ara .docx, .xlsx i .pptx"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid "- *LibreOffice* documents, such as .odt and .ods"
+msgid "*LibreOffice* documents, such as .odt and .ods"
+msgstr "- Documents del *LibreOffice*, com ara .odt i .ods"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid "- Audio files, such as .mp3, .flac, and .ogg"
+msgid "Audio files, such as .mp3, .flac, and .ogg"
+msgstr "- Fitxers d'àudio, com ara .mp3, .flac i .ogg"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid "- Video files, such as .mp4 and .avi"
+msgid "Video files, such as .mp4 and .avi"
+msgstr "- Fitxers de vídeo, com ara .mp4 i .avi"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid "- Archive files, such as .zip and .tar"
+msgid "Archive files, such as .zip and .tar"
+msgstr "- Fitxers d'arxiu, com ara .zip i .tar"
+
+#. type: Bullet: '- '
+msgid "PDFs"
+msgstr "PDF"
+
+#. type: Plain text
+#, fuzzy
+#| msgid ""
+#| "To open *Metadata Cleaner* choose **Applications**&nbsp;▸ **Accessories** "
+#| "&nbsp;▸ **Metadata Cleaner**."
+msgid ""
+"To open *Metadata Cleaner*, choose **Apps&nbsp;▸ Accessories&nbsp;▸ Metadata "
+"Cleaner**."
+msgstr ""
+"Per obrir el *Netejador de Metadades*, trieu **Aplicacions**&nbsp;▸ "
+"**Accessoris** &nbsp;▸ **Netejador de Metadades**."
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"caution\">\n"
+msgstr "<div class=\"caution\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>It is impossible to reliably find and remove all metadata in complex file\n"
+"formats. For example, <i>Microsoft Office</i> documents can contain embedded images,\n"
+"audio, and other files containing their own metadata that Tails cannot\n"
+"remove.</p>\n"
+msgstr ""
+"<p>És impossible trobar i eliminar de manera fiable totes les metadades en formats de fitxer\n"
+"complexos. Per exemple, els documents de <i>Microsoft Office</i> poden contenir imatges incrustades,\n"
+"àudio i altres fitxers que contenen les seves pròpies metadades que Tails no pot\n"
+"eliminar.</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>You should remove metadata on any files before you embed them into another\n"
+"document.</p>\n"
+msgstr ""
+"<p>Heu d'eliminar les metadades de qualsevol fitxer abans d'incorporar-los a un altre\n"
+"document.</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>Also, you should save files in simpler formats whenever possible.\n"
+"For example, instead of saving a text document as a .docx file,\n"
+"you can save the document as a plain .txt file.</p>\n"
+msgstr ""
+"<p>A més, hauríeu de desar fitxers en formats més senzills sempre que sigui possible.\n"
+"Per exemple, en lloc de desar un document de text com a fitxer .docx,\n"
+"podeu desar el document com a fitxer .txt normal.</p>\n"
+
+#. type: Title =
+#, no-wrap
+msgid "Removing metadata from the command line"
+msgstr "Eliminació de metadades des de la línia d'ordres"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"*Metadata Cleaner* is a graphical interface for\n"
+"[*mat2*](https://0xacab.org/jvoisin/mat2).\n"
+msgstr ""
+"El *Netejador de Metadades* és una interfície gràfica per a\n"
+"[*mat2*](https://0xacab.org/jvoisin/mat2).\n"
+
+#. type: Plain text
+msgid "You can also use *mat2* directly on the command line:"
+msgstr "També podeu utilitzar *mat2* directament a la línia d'ordres:"
+
+#. type: Bullet: '1. '
+#, fuzzy
+#| msgid "Open a *Terminal*."
+msgid "Open a *Console*."
+msgstr "Obriu un *Terminal*."
+
+#. type: Bullet: '1. '
+#, fuzzy
+#| msgid ""
+#| "   Replace <span class=\"command-placeholder\">file.ext</span> with a "
+#| "path to the\n"
+#| "   file that you want to clean.\n"
+msgid ""
+"Execute the following command. Replace <span class=\"command-"
+"placeholder\">file.ext</span> with a path to the file that you want to clean."
+msgstr ""
+"   Substituïu <span class=\"command-placeholder\">file.ext</span> per una "
+"ruta al\n"
+"   fitxer que voleu netejar.\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "   <p class=\"command-template\">mat2 <span class=\"command-placeholder\">file.ext</span></p>\n"
+msgstr "   <p class=\"command-template\">mat2 <span class=\"command-placeholder\">file.ext</span></p>\n"
+
+#. type: Bullet: '1. '
+msgid ""
+"After *mat2* finishes, a copy of your file without metadata is available as "
+"<span class=\"command-placeholder\">file.cleaned.ext</span>."
+msgstr ""
+"Un cop finalitzi *mat2*, una còpia del vostre fitxer sense metadades està "
+"disponible com a <span class=\"command-placeholder\">file.cleaned.ext</span>."
+
+#~ msgid "Execute the following command."
+#~ msgstr "Executeu l'ordre següent."
+
+#~ msgid "Open the *Files* browser."
+#~ msgstr "Obriu el navegador de *Fitxers*."
+
+#~ msgid ""
+#~ "Navigate to the folder containing the files that you want to remove "
+#~ "metadata from."
+#~ msgstr ""
+#~ "Navegueu a la carpeta que conté els fitxers dels quals voleu eliminar les "
+#~ "metadades."
+
+#~ msgid "Select the files that you want to remove metadata from."
+#~ msgstr "Seleccioneu els fitxers dels quals voleu eliminar les metadades."
+
+#~ msgid ""
+#~ "Right-click (on Mac, click with two fingers) on the files and choose "
+#~ "**Remove metadata**."
+#~ msgstr ""
+#~ "Feu clic amb el botó dret (a Mac, feu clic amb dos dits) als fitxers i "
+#~ "trieu **Elimina metadades**."
+
+#, no-wrap
+#~ msgid ""
+#~ "<p>Both techniques rely on the <a\n"
+#~ "href=\"https://0xacab.org/jvoisin/mat2\">mat2</a> toolkit to remove\n"
+#~ "metadata, so they work on the same file formats and remove the same\n"
+#~ "metadata.</p>\n"
+#~ msgstr ""
+#~ "<p>Ambdues tècniques es basen en el <a\n"
+#~ "href=\"https://0xacab.org/jvoisin/mat2\">mat2</a> per eliminar\n"
+#~ "metadades, de manera que funcionen amb els mateixos formats de fitxer i eliminen les mateixes\n"
+#~ "metadades.</p>\n"
+
+#~ msgid ""
+#~ "- Image files, such as .jpeg, .png, and .gif - *LibreOffice* files, such "
+#~ "as .odt and .ods - *Microsoft Office* documents, such as .docx, .xlsx, "
+#~ "and .pptx - Audio files, such as .mp3, .flac, and .ogg - Video files, "
+#~ "such as .mp4 and .avi - Archive files, such as .zip and .tar"
+#~ msgstr ""
+#~ "- Fitxers d'imatge, com ara .jpeg, .png i .gif\n"
+#~ "- Fitxers *LibreOffice*, com .odt i .ods\n"
+#~ "- Documents de *Microsoft Office*, com .docx, .xlsx i .pptx\n"
+#~ "- Fitxers d'àudio, com ara .mp3, .flac i .ogg\n"
+#~ "- Fitxers de vídeo, com .mp4 i .avi\n"
+#~ "- Fitxers d'arxiu, com .zip i .tar"

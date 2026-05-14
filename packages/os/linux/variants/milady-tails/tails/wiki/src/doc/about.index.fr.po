@@ -1,0 +1,130 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: Tails\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2026-03-09 12:03+0000\n"
+"PO-Revision-Date: 2026-03-29 13:22+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: Tails translators <tails@boum.org>\n"
+"Language: fr\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n > 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Bullet: '- '
+msgid "[[System requirements and recommended USB sticks|about/requirements]]"
+msgstr "[[Configuration requise et clés USB recommandées|about/requirements]]"
+
+#. type: Bullet: '- '
+msgid "[[Warnings: Tails is safe but not magic!|about/warnings]]"
+msgstr "[[Avertissements : Tails est sûr mais pas magique !|about/warnings]]"
+
+#. type: Bullet: '  * '
+msgid "[[Protecting your identity when using Tails|about/warnings/identity]]"
+msgstr ""
+"[[Protéger votre identité lorsque vous utilisez Tails|about/warnings/"
+"identity]]"
+
+#. type: Bullet: '  * '
+msgid "[[Limitations of the Tor network|about/warnings/tor]]"
+msgstr "[[Limites du réseau Tor|about/warnings/tor]]"
+
+#. type: Bullet: '  * '
+msgid ""
+"[[Reducing risks when using untrusted computers|about/warnings/computer]]"
+msgstr ""
+"[[Réduire les risques avec les ordinateurs peu dignes de confiance|about/"
+"warnings/computer]]"
+
+#. type: Bullet: '- '
+msgid "[[Features and included software|about/features]]"
+msgstr "[[Fonctionnalités et logiciels inclus|about/features]]"
+
+#. type: Bullet: '- '
+msgid "[[How can I trust Tails?|about/trust]]"
+msgstr "[[Comment avoir confiance en Tails ?|about/trust]]"
+
+#. type: Bullet: '- '
+msgid "[[License and source code distribution|about/license]]"
+msgstr "[[Licence et distribution du code source|about/license]]"
+
+#. type: Bullet: '- '
+msgid ""
+"[[Acknowledgments and similar projects|about/"
+"acknowledgments_and_similar_projects]]"
+msgstr ""
+"[[Remerciements et projets similaires|about/"
+"acknowledgments_and_similar_projects]]"
+
+#. type: Bullet: '- '
+msgid "[[Contact|doc/about/contact]]"
+msgstr "[[Contact|doc/about/contact]]"
+
+#. type: Bullet: '  * '
+msgid "[[OpenPGP keys|about/openpgp_keys]]"
+msgstr "[[Clés OpenPGP|about/openpgp_keys]]"
+
+#~ msgid ""
+#~ "[Social contract](https://community.torproject.org/policies/"
+#~ "social_contract/)"
+#~ msgstr ""
+#~ "[Contrat social](https://community.torproject.org/policies/"
+#~ "social_contract/)"
+
+#~ msgid ""
+#~ "- [Social contract](https://community.torproject.org/policies/"
+#~ "social_contract/)"
+#~ msgstr ""
+#~ "- [Contrat social](https://community.torproject.org/policies/"
+#~ "social_contract/)"
+
+#~ msgid "- [[Social Contract|doc/about/social_contract]]"
+#~ msgstr "- [[Contrat social|doc/about/social_contract]]"
+
+#~ msgid "- [[Finances|about/finances]]"
+#~ msgstr "- [[Finances|about/finances]]"
+
+#, no-wrap
+#~ msgid ""
+#~ "  - [[!traillink Warnings:_Tails_is_safe_but_not_magic!|about/warnings]]\n"
+#~ "    - [[!traillink Protecting_your_identity_when_using_Tails|about/warnings/identity]]\n"
+#~ "    - [[!traillink Limitations_of_the_Tor_network|about/warnings/tor]]\n"
+#~ "    - [[!traillink Reducing_risks_when_using_untrusted_computers|about/warnings/computer]]\n"
+#~ "  - [[!traillink Features_and_included_software|about/features]]\n"
+#~ "  - [[!traillink Social_Contract|doc/about/social_contract]]\n"
+#~ "  - [[!traillink How_can_I_trust_Tails?|about/trust]]\n"
+#~ "  - [[!traillink License_and_source_code_distribution|about/license]]\n"
+#~ "  - [[!traillink Acknowledgments_and_similar_projects|about/acknowledgments_and_similar_projects]]\n"
+#~ "  - [[!traillink Finances|about/finances]]\n"
+#~ "  - [[!traillink Contact|about/contact]]\n"
+#~ "    - [[!traillink OpenPGP_keys|about/openpgp_keys]]\n"
+#~ msgstr ""
+#~ "  - [[!traillink Avertissements_:_Tails_est_sûr_mais_pas_magique_!|about/warnings]]\n"
+#~ "    - [[!traillink Protéger_votre_identité_quand_vous_utilisez_Tails|about/warnings/identity]]\n"
+#~ "    - [[!traillink Limites_du_réseau_Tor|about/warnings/tor]]\n"
+#~ "    - [[!traillink Réduire_les_risques_lors_de_l'utilisation_d'ordinateurs_non_fiables|about/warnings/computer]]\n"
+#~ "  - [[!traillink Fonctionnalités_et_logiciels_inclus|about/features]]\n"
+#~ "  - [[!traillink Contrat_social|doc/about/social_contract]]\n"
+#~ "  - [[!traillink Comment_puis-je_avoir_confiance_en_Tails_?|about/trust]]\n"
+#~ "  - [[!traillink Licence_et_distribution_du_code_source|about/license]]\n"
+#~ "  - [[!traillink Remerciements_et_projets_similaires|about/acknowledgments_and_similar_projects]]\n"
+#~ "  - [[!traillink Finances|about/finances]]\n"
+#~ "  - [[!traillink Contact|about/contact]]\n"
+#~ "    - [[!traillink Paires_de_clés_OpenPGP|about/openpgp_keys]]\n"
+
+#~ msgid "[[!traillink Why_does_Tails_use_Tor?|about/tor]]"
+#~ msgstr "[[!traillink Pourquoi_Tails_utilise_Tor_?|about/tor]]"
+
+#~ msgid ""
+#~ "  - [[!traillink Contact|about/contact]]\n"
+#~ "    - [[!traillink OpenPGP_keys|about/openpgp_keys]]\n"
+#~ msgstr ""
+#~ "  - [[!traillink Contact|about/contact]]\n"
+#~ "    - [[!traillink Clés_OpenPGP|about/openpgp_keys]]\n"

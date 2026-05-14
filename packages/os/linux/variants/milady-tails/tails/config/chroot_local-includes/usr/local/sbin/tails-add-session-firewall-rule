@@ -1,0 +1,23 @@
+#!/bin/sh
+
+set -e
+set -u
+
+if [ "${1}" = --apply ]; then
+    APPLY=yes
+    shift
+else
+    APPLY=no
+fi
+
+RULE="${*}"
+
+mkdir -p /var/lib/iptables
+if ! grep --silent --no-messages --line-regexp --fixed-strings -- "${RULE}" /var/lib/iptables/session-rules; then
+    echo "${RULE}" >> /var/lib/iptables/session-rules
+fi
+
+if [ "${APPLY}" = yes ]; then
+    # shellcheck disable=SC2086
+    iptables ${RULE}
+fi
