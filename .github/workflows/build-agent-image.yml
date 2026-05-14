@@ -19,6 +19,7 @@ on:
       - "packages/app/**"
       - "packages/app-core/**"
       - ".github/workflows/build-agent-image.yml"
+      - ".dockerignore"
   workflow_dispatch:
 
 env:
