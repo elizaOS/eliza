@@ -86,7 +86,8 @@ export async function loadTensorRtImageGenBackend(
 		}
 	}
 
-	const outputDir = opts.outputDir ?? mkdtempSync(join(tmpdir(), "trt-imagegen-"));
+	const outputDir =
+		opts.outputDir ?? mkdtempSync(join(tmpdir(), "trt-imagegen-"));
 	let disposed = false;
 
 	return {
@@ -116,9 +117,10 @@ export async function loadTensorRtImageGenBackend(
 					"[imagegen/tensorrt] prompt is empty",
 				);
 			}
-			const seed = typeof req.seed === "number" && req.seed >= 0
-				? req.seed
-				: Math.floor(Math.random() * 0x7fffffff);
+			const seed =
+				typeof req.seed === "number" && req.seed >= 0
+					? req.seed
+					: Math.floor(Math.random() * 0x7fffffff);
 			const width = req.width ?? 1024;
 			const height = req.height ?? 1024;
 			const steps = req.steps ?? 25;
@@ -129,7 +131,8 @@ export async function loadTensorRtImageGenBackend(
 			if (opts.fakeImageBytes) {
 				await fs.writeFile(outputPath, opts.fakeImageBytes);
 				const elapsed = Math.max(1, now() - startMs);
-				if (req.onProgressChunk) req.onProgressChunk({ step: steps, total: steps });
+				if (req.onProgressChunk)
+					req.onProgressChunk({ step: steps, total: steps });
 				return {
 					image: opts.fakeImageBytes,
 					mime: "image/png",
@@ -145,14 +148,22 @@ export async function loadTensorRtImageGenBackend(
 			}
 
 			const args = [
-				"--plan", opts.loadArgs.modelPath,
-				"--prompt", req.prompt,
-				"--width", String(width),
-				"--height", String(height),
-				"--steps", String(steps),
-				"--cfg", String(guidanceScale),
-				"--seed", String(seed),
-				"--output", outputPath,
+				"--plan",
+				opts.loadArgs.modelPath,
+				"--prompt",
+				req.prompt,
+				"--width",
+				String(width),
+				"--height",
+				String(height),
+				"--steps",
+				String(steps),
+				"--cfg",
+				String(guidanceScale),
+				"--seed",
+				String(seed),
+				"--output",
+				outputPath,
 			];
 			if (req.negativePrompt) {
 				args.push("--negative", req.negativePrompt);
@@ -200,10 +211,9 @@ async function assertBinaryAvailable(
 ): Promise<void> {
 	try {
 		const code = await new Promise<number | null>((resolve, reject) => {
-			const proc = (spawnImpl ?? (spawn as unknown as SdCppSpawnLike))(
-				binary,
-				["--version"],
-			);
+			const proc = (spawnImpl ?? (spawn as unknown as SdCppSpawnLike))(binary, [
+				"--version",
+			]);
 			proc.on("error", (err: Error) => reject(err));
 			proc.on("exit", (c: number | null) => resolve(c));
 		});

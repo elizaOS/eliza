@@ -161,13 +161,7 @@ export interface ImageGenLoadArgs {
  */
 export interface ImageGenBackend {
 	/** Stable identifier — matches the backend module name. */
-	readonly id:
-		| "sd-cpp"
-		| "mflux"
-		| "coreml"
-		| "tensorrt"
-		| "aosp"
-		| "fake";
+	readonly id: "sd-cpp" | "mflux" | "coreml" | "tensorrt" | "aosp" | "fake";
 	/**
 	 * Best-effort capability check. Implementations return `false` for
 	 * requests whose `width`/`height`/`scheduler` aren't supported by

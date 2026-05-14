@@ -137,7 +137,9 @@ export async function loadAospVisionBackend(
 			`[vision/aosp] mmproj GGUF not found: ${loadArgs.mmprojPath}`,
 		);
 	}
-	const handle = await mtmdBinding.initMtmd({ mmprojPath: loadArgs.mmprojPath });
+	const handle = await mtmdBinding.initMtmd({
+		mmprojPath: loadArgs.mmprojPath,
+	});
 	return {
 		id: "aosp",
 		async describe(request) {
