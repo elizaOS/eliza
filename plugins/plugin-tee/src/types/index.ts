@@ -58,7 +58,7 @@ export interface TeeServiceConfig {
 }
 
 export interface TeeProviderResult {
-  readonly data: Record<string, string> | null;
+  readonly data?: Record<string, string>;
   readonly values: Record<string, string>;
   readonly text: string;
 }

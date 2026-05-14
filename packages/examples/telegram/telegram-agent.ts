@@ -8,12 +8,15 @@
 import { AgentRuntime, createCharacter } from "@elizaos/core";
 
 async function main() {
-  const [{ openaiPlugin }, { default: sqlPlugin }, { default: telegramPlugin }] =
-    await Promise.all([
-      import("@elizaos/plugin-openai"),
-      import("@elizaos/plugin-sql"),
-      import("@elizaos/plugin-telegram"),
-    ]);
+  const [
+    { openaiPlugin },
+    { default: sqlPlugin },
+    { default: telegramPlugin },
+  ] = await Promise.all([
+    import("@elizaos/plugin-openai"),
+    import("@elizaos/plugin-sql"),
+    import("@elizaos/plugin-telegram"),
+  ]);
 
   const telegramBotToken = process.env.TELEGRAM_BOT_TOKEN;
   const openaiApiKey = process.env.OPENAI_API_KEY;

@@ -120,7 +120,7 @@ declare module "telegram/sessions" {
   }
 }
 declare module "@elizaos/plugin-elizacloud" {
-  import type { IAgentRuntime } from "@elizaos/core";
+  import type { IAgentRuntime, Service } from "@elizaos/core";
 
   export interface CloudConfigLike {
     apiKey?: string | null;
@@ -152,6 +152,11 @@ declare module "@elizaos/plugin-elizacloud" {
     config?: unknown;
     runtime?: unknown;
     [key: string]: unknown;
+  }
+
+  export interface CloudAuthApiKeyService {
+    isAuthenticated: () => boolean;
+    getApiKey?: () => string | undefined;
   }
 
   export interface CloudWalletDescriptor {
@@ -192,6 +197,12 @@ declare module "@elizaos/plugin-elizacloud" {
   export function normalizeCloudSecret(
     value: string | null | undefined,
   ): string | null;
+  export function normalizeCloudApiKey(
+    value: string | null | undefined,
+  ): string | null;
+  export function isCloudAuthApiKeyService(
+    value: Service | null | undefined,
+  ): value is Service & CloudAuthApiKeyService;
   export function validateCloudBaseUrl(value: string): string | null;
   export function resolveCloudApiBaseUrl(...args: unknown[]): string;
   export function resolveCloudApiKey(...args: unknown[]): string | null;

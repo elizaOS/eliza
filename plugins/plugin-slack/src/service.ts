@@ -1100,8 +1100,11 @@ export class SlackService extends Service implements ISlackService {
 
     const existingEntity = await this.runtime.getEntityById(memory.entityId);
     if (!existingEntity) {
-      const user = await this.getUser(message.user, accountId);
-      const displayName = user ? getSlackUserDisplayName(user) : message.user;
+      const slackUserId = message.user ?? memory.entityId;
+      const user = message.user
+        ? await this.getUser(message.user, accountId)
+        : null;
+      const displayName = user ? getSlackUserDisplayName(user) : slackUserId;
       await this.runtime.createEntity({
         id: memory.entityId,
         names: [displayName],
@@ -1110,9 +1113,9 @@ export class SlackService extends Service implements ISlackService {
           accountId,
           slack: {
             accountId,
-            id: message.user,
+            id: slackUserId,
             name: displayName,
-            userName: user?.name || message.user,
+            userName: user?.name || slackUserId,
           },
         },
         agentId: this.runtime.agentId,
@@ -2871,17 +2874,31 @@ export class SlackService extends Service implements ISlackService {
     let lastTs = "";
 
     for (const msg of messages) {
-      const result = await client.chat.postMessage({
+      const messageArgs = {
         channel: channelId,
         text: msg,
-        thread_ts: options?.threadTs,
-        reply_broadcast: options?.replyBroadcast,
-        unfurl_links: options?.unfurlLinks,
-        unfurl_media: options?.unfurlMedia,
         mrkdwn: options?.mrkdwn ?? true,
-        attachments: options?.attachments as never,
-        blocks: options?.blocks as never,
-      });
+      } as Parameters<typeof client.chat.postMessage>[0];
+      if (options?.threadTs) messageArgs.thread_ts = options.threadTs;
+      if (options?.replyBroadcast !== undefined) {
+        messageArgs.reply_broadcast = options.replyBroadcast;
+      }
+      if (options?.unfurlLinks !== undefined) {
+        messageArgs.unfurl_links = options.unfurlLinks;
+      }
+      if (options?.unfurlMedia !== undefined) {
+        messageArgs.unfurl_media = options.unfurlMedia;
+      }
+      if (options?.attachments) {
+        (messageArgs as unknown as Record<string, unknown>).attachments =
+          options.attachments;
+      }
+      if (options?.blocks) {
+        (messageArgs as unknown as Record<string, unknown>).blocks =
+          options.blocks;
+      }
+
+      const result = await client.chat.postMessage(messageArgs);
 
       lastTs = result.ts as string;
     }
@@ -3141,15 +3158,18 @@ export class SlackService extends Service implements ISlackService {
       throw new Error("Slack client not initialized");
     }
 
-    const result = await client.files.uploadV2({
+    const uploadArgs = {
       channel_id: channelId,
-      content: typeof content === "string" ? content : undefined,
-      file: typeof content !== "string" ? content : undefined,
       filename,
-      title: options?.title,
-      initial_comment: options?.initialComment,
-      thread_ts: options?.threadTs,
-    });
+      ...(typeof content === "string" ? { content } : { file: content }),
+    } as Parameters<typeof client.files.uploadV2>[0];
+    if (options?.title) uploadArgs.title = options.title;
+    if (options?.initialComment) {
+      uploadArgs.initial_comment = options.initialComment;
+    }
+    if (options?.threadTs) uploadArgs.thread_ts = options.threadTs;
+
+    const result = await client.files.uploadV2(uploadArgs);
 
     const resultWithFile = result as WebAPICallResult & {
       file?: { id: string; permalink: string };

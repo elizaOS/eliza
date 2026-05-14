@@ -13,7 +13,7 @@ import {
 } from "@elizaos/core";
 import { stableSerialize } from "../stable-serialize";
 
-type CompatDatabaseMethod = (...args: unknown[]) => Promise<unknown> | unknown;
+type CompatDatabaseMethod = (...args: any[]) => Promise<unknown> | unknown;
 type CompatDatabaseAdapter = IDatabaseAdapter & Record<string, unknown>;
 type LegacyDeleteAllMemories = (roomId: UUID, tableName: string) => Promise<void>;
 type LegacyCountMemories = (roomId: UUID, unique?: boolean, tableName?: string) => Promise<number>;

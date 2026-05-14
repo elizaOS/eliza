@@ -474,8 +474,7 @@ export const skillRefinementEvaluator: Evaluator<
 	RefinementPrepared
 > = {
 	name: "skillRefinement",
-	description:
-		"Refines active skills after failed/retried trajectory.",
+	description: "Refines active skills after failed/retried trajectory.",
 	priority: EvaluatorPriority.SKILL_REFINEMENT,
 	schema: skillRefinementSchema,
 	async shouldRun({ runtime, message }) {

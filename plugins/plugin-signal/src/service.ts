@@ -891,9 +891,10 @@ export class SignalService extends Service implements ISignalService {
               return null;
             }
 
-            const recentMessages = (
-              await service.getRecentMessages(50, targetAccountId).catch(() => [])
-            )
+            const signalRecentMessages: SignalRecentMessage[] = await service
+              .getRecentMessages(50, targetAccountId)
+              .catch((): SignalRecentMessage[] => []);
+            const recentMessages = signalRecentMessages
               .filter((recent) => recent.channelId === channelId || recent.roomId === target.roomId)
               .slice(0, 10)
               .map((recent) => ({

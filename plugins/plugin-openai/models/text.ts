@@ -132,11 +132,11 @@ interface NativeGenerateTextResult {
 
 type NativeTextModelResult = string & NativeGenerateTextResult;
 
-const TEXT_NANO_MODEL_TYPE = (ModelType.TEXT_NANO) as ModelTypeName;
-const TEXT_MEDIUM_MODEL_TYPE = (ModelType.TEXT_MEDIUM) as ModelTypeName;
-const TEXT_MEGA_MODEL_TYPE = (ModelType.TEXT_MEGA) as ModelTypeName;
-const RESPONSE_HANDLER_MODEL_TYPE = (ModelType.RESPONSE_HANDLER) as ModelTypeName;
-const ACTION_PLANNER_MODEL_TYPE = (ModelType.ACTION_PLANNER) as ModelTypeName;
+const TEXT_NANO_MODEL_TYPE = ModelType.TEXT_NANO as ModelTypeName;
+const TEXT_MEDIUM_MODEL_TYPE = ModelType.TEXT_MEDIUM as ModelTypeName;
+const TEXT_MEGA_MODEL_TYPE = ModelType.TEXT_MEGA as ModelTypeName;
+const RESPONSE_HANDLER_MODEL_TYPE = ModelType.RESPONSE_HANDLER as ModelTypeName;
+const ACTION_PLANNER_MODEL_TYPE = ModelType.ACTION_PLANNER as ModelTypeName;
 
 function buildUserContent(params: GenerateTextParamsWithOpenAIOptions): UserContent {
   const content: Array<

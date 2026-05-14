@@ -945,8 +945,7 @@ export const relationshipEvaluator: Evaluator<
 	ReflectionPrepared
 > = {
 	name: "relationships",
-	description:
-		"Extracts relationship updates between known room participants.",
+	description: "Extracts relationship updates between known room participants.",
 	priority: EvaluatorPriority.REFLECTION_RELATIONSHIPS,
 	providers: ["CONVERSATION_PROXIMITY"],
 	schema: relationshipSchema,
@@ -1002,8 +1001,7 @@ export const identityEvaluator: Evaluator<
 	ReflectionPrepared
 > = {
 	name: "identities",
-	description:
-		"Extracts platform identities for known room participants.",
+	description: "Extracts platform identities for known room participants.",
 	priority: EvaluatorPriority.REFLECTION_IDENTITY,
 	schema: identitySchema,
 	async shouldRun({ message }) {
@@ -1055,8 +1053,7 @@ ${formatEntities(prepared.entities)}`;
 
 export const successEvaluator: Evaluator<SuccessOutput, SuccessPrepared> = {
 	name: "success",
-	description:
-		"Evaluates whether user task is complete this turn.",
+	description: "Evaluates whether user task is complete this turn.",
 	priority: EvaluatorPriority.REFLECTION_SUCCESS,
 	schema: successSchema,
 	async shouldRun({ message }) {
