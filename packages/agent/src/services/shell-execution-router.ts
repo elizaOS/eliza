@@ -398,6 +398,29 @@ export async function runShell(
     throw new Error("Local shell execution disabled in cloud mode.");
   }
 
+  if (isVfsUri(req.cwd)) {
+    const vfsCwd = parseVfsShellCwd(req.cwd);
+    if (mode === "local-yolo") {
+      throw new Error(
+        "[shell-router] local-yolo uses the normal host filesystem; pass a real cwd path instead of vfs://",
+      );
+    }
+    const manager = await resolveSandboxManager(ctx);
+    if (manager) {
+      assertShellCapability(req, mode, `sandbox.${req.toolName}`);
+      return await runVfsInSandbox(req, vfsCwd, manager);
+    }
+    const result = await runVfsBuiltinShell({
+      cwdUri: req.cwd,
+      command: req.command,
+      args: req.args,
+      ...(req.timeoutMs ? { timeoutMs: req.timeoutMs } : {}),
+    });
+    if (result.stdout) req.onStdout?.(result.stdout);
+    if (result.stderr) req.onStderr?.(result.stderr);
+    return result;
+  }
+
   if (mode === "local-safe") {
     assertShellCapability(req, mode, `sandbox.${req.toolName}`);
     if (process.platform === "win32") {
