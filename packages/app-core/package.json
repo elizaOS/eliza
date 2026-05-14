@@ -43,6 +43,7 @@
     "build:flatpak": "node ./scripts/build-flatpak.mjs",
     "build:flatpak:store": "ELIZA_BUILD_VARIANT=store node ./scripts/build-flatpak.mjs",
     "build:flatpak:direct": "ELIZA_BUILD_VARIANT=direct node ./scripts/build-flatpak.mjs",
+    "audit:apple-store-sandbox": "node ./scripts/audit-apple-store-sandbox.mjs",
     "codesign:mas": "node ./scripts/codesign-mas.mjs",
     "codesign:mas:dry-run": "node ./scripts/codesign-mas.mjs --dry-run"
   },

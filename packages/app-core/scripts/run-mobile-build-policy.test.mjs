@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
 import test from "node:test";
 
 import {
@@ -105,4 +107,40 @@ test("iOS app entitlements do not request JIT or dynamic code signing", () => {
     entitlements.includes("com.apple.security.cs.disable-library-validation"),
     false,
   );
+});
+
+test("Mac App Store entitlements scope JIT to Bun and reject broad executable-memory exceptions", () => {
+  const entitlementsRoot = path.join(
+    import.meta.dirname,
+    "..",
+    "platforms",
+    "electrobun",
+    "entitlements",
+  );
+  const parent = fs.readFileSync(
+    path.join(entitlementsRoot, "mas.entitlements"),
+    "utf8",
+  );
+  const child = fs.readFileSync(
+    path.join(entitlementsRoot, "mas-child.entitlements"),
+    "utf8",
+  );
+  const bun = fs.readFileSync(
+    path.join(entitlementsRoot, "mas-bun.entitlements"),
+    "utf8",
+  );
+
+  for (const content of [parent, child, bun]) {
+    assert.equal(
+      content.includes("com.apple.security.cs.allow-unsigned-executable-memory"),
+      false,
+    );
+    assert.equal(
+      content.includes("com.apple.security.cs.disable-library-validation"),
+      false,
+    );
+  }
+  assert.equal(parent.includes("com.apple.security.cs.allow-jit"), false);
+  assert.equal(child.includes("com.apple.security.cs.allow-jit"), false);
+  assert.equal(bun.includes("com.apple.security.cs.allow-jit"), true);
 });

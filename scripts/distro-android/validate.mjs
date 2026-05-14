@@ -165,6 +165,26 @@ function xmlElementBlockByName(xml, tagName, name, label) {
   return match[0];
 }
 
+function readJson(filePath, label) {
+  const raw = read(filePath);
+  try {
+    return JSON.parse(raw);
+  } catch (error) {
+    fail(`${label} is not valid JSON: ${error.message}`);
+  }
+}
+
+function assertJsonStringArrayIncludes(value, expected, label) {
+  if (!Array.isArray(value)) {
+    fail(`${label} must be an array`);
+  }
+  for (const item of expected) {
+    if (!value.includes(item)) {
+      fail(`${label} is missing ${item}`);
+    }
+  }
+}
+
 function run(command, args) {
   const result = spawnSync(command, args, {
     encoding: "utf8",
@@ -323,6 +343,16 @@ export function validateProductLayer(vendorDir, brand) {
     brand.initRcName,
     `${brand.commonMakefile} PRODUCT_COPY_FILES`,
   );
+  assertIncludes(
+    common,
+    "aosp-assistant-full-control.json",
+    `${brand.commonMakefile} PRODUCT_COPY_FILES`,
+  );
+  assertIncludes(
+    common,
+    "product/etc/eliza/aosp-assistant-full-control.json",
+    `${brand.commonMakefile} artifact allow list`,
+  );
   assertIncludes(common, "BOARD_VENDOR_SEPOLICY_DIRS", brand.commonMakefile);
   assertIncludes(
     common,
@@ -438,6 +468,58 @@ export function validateProductLayer(vendorDir, brand) {
         `framework-res overlay ${resourceName} must be ${brand.packageName}; found ${value || "<empty>"}`,
       );
     }
+  }
+
+  const capabilityManifest = readJson(
+    path.join(vendorDir, "manifests", "aosp-assistant-full-control.json"),
+    "AOSP assistant/full-control capability manifest",
+  );
+  if (capabilityManifest.packageName !== brand.packageName) {
+    fail(
+      `AOSP capability manifest packageName must be ${brand.packageName}; found ${capabilityManifest.packageName}`,
+    );
+  }
+  if (
+    capabilityManifest.roleDefaults?.["android.app.role.ASSISTANT"] !==
+    brand.packageName
+  ) {
+    fail(
+      `AOSP capability manifest ASSISTANT role default must be ${brand.packageName}`,
+    );
+  }
+  assertJsonStringArrayIncludes(
+    capabilityManifest.assistantEntryPoints,
+    ["android.intent.action.ASSIST", "android.intent.action.VOICE_COMMAND"],
+    "AOSP capability manifest assistantEntryPoints",
+  );
+  assertJsonStringArrayIncludes(
+    capabilityManifest.privilegedPermissions,
+    privilegedPermissions,
+    "AOSP capability manifest privilegedPermissions",
+  );
+  assertJsonStringArrayIncludes(
+    capabilityManifest.runtimeAndNormalPermissions,
+    [
+      "android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION",
+      "android.permission.FOREGROUND_SERVICE_MICROPHONE",
+      "android.permission.FOREGROUND_SERVICE_SPECIAL_USE",
+      "android.permission.RECEIVE_BOOT_COMPLETED",
+    ],
+    "AOSP capability manifest runtimeAndNormalPermissions",
+  );
+  for (const capability of [
+    "accessibility",
+    "notificationListener",
+    "screenCapture",
+    "inputControl",
+    "appInventory",
+  ]) {
+    if (!capabilityManifest.capabilityDeclarations?.[capability]) {
+      fail(`AOSP capability manifest is missing ${capability} declaration`);
+    }
+  }
+  if (capabilityManifest.playStorePolicy?.stripTarget !== "android-cloud") {
+    fail("AOSP capability manifest must route Play-safe stripping to android-cloud");
   }
 
   const obsoleteRoleFiles = findFiles(vendorDir, (file) =>
