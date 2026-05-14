@@ -1,5 +1,5 @@
 import type { Memory } from "@elizaos/core";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   extractSubResources,
   normalizeUrlsInText,
@@ -63,8 +63,20 @@ function makeRuntime(opts: {
   // The router binds two independent event sources: ACP_SUBPROCESS_SERVICE
   // and PTY_SERVICE. These tests drive the ACP path, so PTY is a no-op stub
   // that still binds cleanly — both sources bound means no bind-retry timer
-  // is left dangling after the test.
-  const ptyService = { onSessionEvent: vi.fn(() => () => undefined) };
+  // is left dangling after the test. spawnSession backs the verify-retry
+  // path (router re-dispatches a sub-agent on a failed verification).
+  const spawnSession = vi.fn(async (o: { workdir?: string }) => ({
+    sessionId: "retry-session-id",
+    id: "retry-session-id",
+    name: "retry",
+    agentType: "opencode",
+    workdir: o.workdir ?? "/tmp/wf",
+    status: "ready",
+  }));
+  const ptyService = {
+    onSessionEvent: vi.fn(() => () => undefined),
+    spawnSession,
+  };
   const runtime = {
     agentId: opts.agentId ?? "00000000-0000-0000-0000-000000000001",
     logger: {
@@ -90,6 +102,7 @@ function makeRuntime(opts: {
     createEntity,
     addParticipant,
     emitEvent,
+    spawnSession,
   };
 }
 
@@ -318,6 +331,114 @@ describe("SubAgentRouter", () => {
     // first delivers, second triggers cap-exceeded notice (and stop), third is suppressed.
     expect(handleMessage).toHaveBeenCalledTimes(2);
     expect(stopSession).toHaveBeenCalledTimes(1);
+  });
+
+  describe("verify-retry on incomplete builds", () => {
+    const origMax = process.env.PARALLAX_BUILD_VERIFY_MAX_RETRIES;
+    const origSettle = process.env.PARALLAX_URL_VERIFY_SETTLE_MS;
+
+    beforeEach(() => {
+      // Disable the settle-retry so the dead-URL probe is a single fast
+      // connection-refused rather than a 2.5s wait.
+      process.env.PARALLAX_URL_VERIFY_SETTLE_MS = "0";
+      delete process.env.PARALLAX_BUILD_VERIFY_MAX_RETRIES;
+    });
+    afterEach(() => {
+      if (origMax === undefined)
+        delete process.env.PARALLAX_BUILD_VERIFY_MAX_RETRIES;
+      else process.env.PARALLAX_BUILD_VERIFY_MAX_RETRIES = origMax;
+      if (origSettle === undefined)
+        delete process.env.PARALLAX_URL_VERIFY_SETTLE_MS;
+      else process.env.PARALLAX_URL_VERIFY_SETTLE_MS = origSettle;
+    });
+
+    // A localhost port that reliably refuses — fast, no external network.
+    const DEAD_URL = "http://127.0.0.1:1/apps/x/";
+
+    function sessionWithTask(
+      initialTask: string,
+      retryCount?: number,
+    ): SessionInfo {
+      return makeSession({
+        metadata: {
+          label: "build-app",
+          roomId: ROOM,
+          worldId: WORLD,
+          userId: USER,
+          messageId: PARENT_MSG,
+          source: "telegram",
+          initialTask,
+          ...(retryCount !== undefined
+            ? { buildVerifyRetryCount: retryCount }
+            : {}),
+        },
+      });
+    }
+
+    it("re-dispatches a sub-agent when a claimed URL is unreachable", async () => {
+      session = sessionWithTask(`build a calculator at ${DEAD_URL}`);
+      acp = makeAcpService(session);
+      const { runtime, handleMessage, spawnSession } = makeRuntime({
+        acp: acp.service,
+      });
+      await SubAgentRouter.start(runtime);
+
+      acp.emit(SESSION_ID, "task_complete", {
+        response: `Done — the app is live at ${DEAD_URL}`,
+      });
+      await new Promise((r) => setTimeout(r, 1000));
+
+      expect(spawnSession).toHaveBeenCalledTimes(1);
+      const arg = spawnSession.mock.calls[0]?.[0] as {
+        initialTask?: string;
+        metadata?: Record<string, unknown>;
+      };
+      expect(arg?.initialTask).toContain("VERIFICATION FEEDBACK");
+      expect(arg?.initialTask).toContain("build a calculator");
+      expect(arg?.metadata?.buildVerifyRetryCount).toBe(1);
+      // A retry was spawned → the failure is NOT posted to the parent yet;
+      // the retry's own task_complete will report the outcome.
+      expect(handleMessage).not.toHaveBeenCalled();
+    });
+
+    it("stops retrying once the budget is exhausted and posts honestly", async () => {
+      // Already at the default max (2) → no further retry.
+      session = sessionWithTask(`build it at ${DEAD_URL}`, 2);
+      acp = makeAcpService(session);
+      const { runtime, handleMessage, spawnSession } = makeRuntime({
+        acp: acp.service,
+      });
+      await SubAgentRouter.start(runtime);
+
+      acp.emit(SESSION_ID, "task_complete", {
+        response: `Done — live at ${DEAD_URL}`,
+      });
+      await new Promise((r) => setTimeout(r, 1000));
+
+      expect(spawnSession).not.toHaveBeenCalled();
+      // Budget exhausted → the honest "build incomplete" report IS posted.
+      expect(handleMessage).toHaveBeenCalledTimes(1);
+      const posted = handleMessage.mock.calls[0]?.[1];
+      expect(posted?.content?.text).toContain("NOT reachable");
+    });
+
+    it("does not retry when PARALLAX_BUILD_VERIFY_MAX_RETRIES=0", async () => {
+      process.env.PARALLAX_BUILD_VERIFY_MAX_RETRIES = "0";
+      session = sessionWithTask(`build it at ${DEAD_URL}`);
+      acp = makeAcpService(session);
+      const { runtime, handleMessage, spawnSession } = makeRuntime({
+        acp: acp.service,
+      });
+      await SubAgentRouter.start(runtime);
+
+      acp.emit(SESSION_ID, "task_complete", {
+        response: `Done — live at ${DEAD_URL}`,
+      });
+      await new Promise((r) => setTimeout(r, 1000));
+
+      expect(spawnSession).not.toHaveBeenCalled();
+      expect(handleMessage).toHaveBeenCalledTimes(1);
+    });
   });
 });
 
