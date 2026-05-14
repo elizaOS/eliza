@@ -41,7 +41,7 @@
  */
 
 import { spawn } from "node:child_process";
-import { existsSync, mkdtempSync, promises as fs } from "node:fs";
+import { existsSync, promises as fs, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ImageGenBackendUnavailableError } from "./errors";
@@ -56,19 +56,17 @@ import type {
  * Optional test seam. Production code uses Node's `child_process.spawn`;
  * tests inject a fake to drive deterministic outputs without forking.
  */
-export interface SdCppSpawnLike {
-	(
-		command: string,
-		args: readonly string[],
-		options?: { signal?: AbortSignal; cwd?: string },
-	): {
-		stdout: AsyncIterable<Buffer> | NodeJS.ReadableStream | null;
-		stderr: AsyncIterable<Buffer> | NodeJS.ReadableStream | null;
-		on(event: "exit", listener: (code: number | null) => void): unknown;
-		on(event: "error", listener: (err: Error) => void): unknown;
-		kill?(signal?: NodeJS.Signals): void;
-	};
-}
+export type SdCppSpawnLike = (
+	command: string,
+	args: readonly string[],
+	options?: { signal?: AbortSignal; cwd?: string },
+) => {
+	stdout: AsyncIterable<Buffer> | NodeJS.ReadableStream | null;
+	stderr: AsyncIterable<Buffer> | NodeJS.ReadableStream | null;
+	on(event: "exit", listener: (code: number | null) => void): unknown;
+	on(event: "error", listener: (err: Error) => void): unknown;
+	kill?(signal?: NodeJS.Signals): void;
+};
 
 export interface SdCppBackendOptions {
 	loadArgs: ImageGenLoadArgs;
@@ -150,7 +148,7 @@ export async function loadSdCppImageGenBackend(
 					"[imagegen/sd-cpp] generate called after dispose()",
 				);
 			}
-			if (!req.prompt || !req.prompt.trim()) {
+			if (!req.prompt?.trim()) {
 				throw new ImageGenBackendUnavailableError(
 					"sd-cpp",
 					"unsupported_request",
@@ -242,7 +240,7 @@ export async function loadSdCppImageGenBackend(
 function resolveBinaryPath(override?: string): string {
 	if (override) return override;
 	const envBin = process.env.SD_CPP_BIN;
-	if (envBin && envBin.trim()) return envBin.trim();
+	if (envBin?.trim()) return envBin.trim();
 	return DEFAULT_BIN;
 }
 

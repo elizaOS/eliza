@@ -387,8 +387,8 @@ export class FollowUpService extends Service {
 						metadata: {
 							type: MemoryType.CUSTOM,
 							source: "relationships",
-							targetEntityId: targetEntityId as string,
-							taskId: (task.id ?? "") as string,
+							targetEntityId: targetEntityId,
+							taskId: task.id ?? "",
 							priority: (task.metadata?.priority as string) ?? "medium",
 						},
 						createdAt: Date.now(),

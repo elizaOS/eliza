@@ -1,13 +1,18 @@
 import { afterEach, describe, expect, it } from "vitest";
 import {
+	assertManifestEvalsPassed,
 	assertModelFitsHost,
+	assertVoiceBundleFitsHost,
+	CandidateModelActivationError,
 	isForkOnlyKvCacheType,
 	isStockKvCacheType,
 	ModelDoesNotFitError,
 	resolveLocalInferenceLoadArgs,
+	VoiceBundleDoesNotFitError,
 	validateLocalInferenceLoadArgs,
 } from "./active-model";
 import { resolveIdleUnloadMs } from "./engine";
+import type { Eliza1Manifest } from "./manifest";
 import type { InstalledModel } from "./types";
 
 function makeInstalledModel(id: string, filePath: string): InstalledModel {
@@ -271,6 +276,213 @@ describe("assertModelFitsHost (RAM-budget admission control)", () => {
 		expect(() =>
 			assertModelFitsHost(m, 16 * 1024, { manifestLoader: bigManifestLoader }),
 		).toThrow(ModelDoesNotFitError);
+	});
+});
+
+describe("assertVoiceBundleFitsHost (R9 §1.4 cross-model admission)", () => {
+	it("fits when host RAM comfortably exceeds the bundle peak", () => {
+		const r = assertVoiceBundleFitsHost({
+			tierSlot: "desktop-0_8b",
+			deviceTier: "GOOD",
+			hostRamMb: 32 * 1024,
+		});
+		expect(r.level).toBe("fits");
+		expect(r.fits).toBe(true);
+		expect(r.peakMb).toBeGreaterThan(r.steadyStateMb);
+	});
+
+	it("throws VoiceBundleDoesNotFitError when wontfit and strict (default)", () => {
+		let caught: unknown;
+		try {
+			assertVoiceBundleFitsHost({
+				tierSlot: "workstation-27b",
+				deviceTier: "POOR",
+				hostRamMb: 8 * 1024,
+			});
+		} catch (err) {
+			caught = err;
+		}
+		expect(caught).toBeInstanceOf(VoiceBundleDoesNotFitError);
+		const e = caught as VoiceBundleDoesNotFitError;
+		expect(e.tierSlot).toBe("workstation-27b");
+		expect(e.deviceTier).toBe("POOR");
+		expect(e.requiredSteadyStateMb).toBeGreaterThan(e.usableMb);
+		expect(e.message).toContain("voice bundle");
+	});
+
+	it("returns wontfit without throwing when strict=false", () => {
+		const r = assertVoiceBundleFitsHost({
+			tierSlot: "workstation-27b",
+			deviceTier: "POOR",
+			hostRamMb: 8 * 1024,
+			strict: false,
+		});
+		expect(r.level).toBe("wontfit");
+		expect(r.fits).toBe(false);
+	});
+
+	it("is permissive for unknown tier slots (delegates to per-tier check)", () => {
+		const r = assertVoiceBundleFitsHost({
+			tierSlot: "ad-hoc-experimental",
+			deviceTier: "GOOD",
+			hostRamMb: 8 * 1024,
+		});
+		expect(r.fits).toBe(true);
+		expect(r.steadyStateMb).toBe(0);
+	});
+});
+
+// #7679: refuse to activate a model whose own `eliza-1.manifest.json`
+// reports `evals.textEval.passed=false` (candidate.* / weights-staged.*).
+describe("assertManifestEvalsPassed (#7679 activation gate)", () => {
+	function makeStrictManifest(
+		overrides: Partial<Eliza1Manifest> = {},
+	): Eliza1Manifest {
+		return {
+			id: "eliza-1-2b",
+			tier: "2b",
+			version: "1.0.0",
+			publishedAt: "2026-05-14T00:00:00.000Z",
+			lineage: {
+				text: { base: "eliza-1-2b", license: "apache-2.0" },
+				voice: { base: "omnivoice", license: "apache-2.0" },
+				drafter: { base: "dflash", license: "apache-2.0" },
+			},
+			files: {
+				text: [{ path: "t.gguf", sha256: "a".repeat(64), ctx: 32768 }],
+				voice: [{ path: "v.gguf", sha256: "b".repeat(64) }],
+				asr: [],
+				vision: [],
+				dflash: [{ path: "d.gguf", sha256: "c".repeat(64) }],
+				cache: [{ path: "c.bin", sha256: "d".repeat(64) }],
+			},
+			kernels: {
+				required: ["turboquant_q4", "qjl", "polarquant", "dflash"],
+				optional: [],
+				verifiedBackends: {
+					metal: { status: "pass", atCommit: "x", report: "ok" },
+					vulkan: { status: "pass", atCommit: "x", report: "ok" },
+					cuda: { status: "pass", atCommit: "x", report: "ok" },
+					rocm: { status: "pass", atCommit: "x", report: "ok" },
+					cpu: { status: "pass", atCommit: "x", report: "ok" },
+				},
+			},
+			evals: {
+				textEval: { score: 0.9, passed: true },
+				voiceRtf: { rtf: 0.5, passed: true },
+				e2eLoopOk: true,
+				thirtyTurnOk: true,
+			},
+			ramBudgetMb: { min: 4096, recommended: 6144 },
+			defaultEligible: true,
+			...overrides,
+		} as Eliza1Manifest;
+	}
+
+	it("refuses activation when the manifest reports textEval.passed=false", () => {
+		const installed = makeInstalledModel(
+			"eliza-1-0_6b",
+			"/tmp/bundle/eliza-1-0_6b.gguf",
+		);
+		const candidateManifest = makeStrictManifest({
+			id: "eliza-1-0_6b",
+			tier: "0_8b", // candidate tier in the manifest
+			version: "1.0.0-candidate.1",
+			defaultEligible: false,
+			evals: {
+				textEval: { score: 0.2, passed: false },
+				voiceRtf: { rtf: 1.2, passed: false },
+				e2eLoopOk: false,
+				thirtyTurnOk: false,
+			},
+		});
+
+		let caught: unknown;
+		try {
+			assertManifestEvalsPassed(installed, () => candidateManifest);
+		} catch (err) {
+			caught = err;
+		}
+
+		expect(caught).toBeInstanceOf(CandidateModelActivationError);
+		const e = caught as CandidateModelActivationError;
+		expect(e.modelId).toBe("eliza-1-0_6b");
+		expect(e.manifestVersion).toBe("1.0.0-candidate.1");
+		expect(e.failedEvals).toContain("textEval");
+		expect(e.failedEvals).toContain("voiceRtf");
+		expect(e.failedEvals).toContain("e2eLoopOk");
+		expect(e.failedEvals).toContain("thirtyTurnOk");
+		// The error message names the manifest version + the failed evals so
+		// downstream HTTP callers can render an actionable refusal.
+		expect(e.message).toMatch(/candidate-only/);
+		expect(e.message).toContain("1.0.0-candidate.1");
+		expect(e.message).toContain("textEval");
+	});
+
+	it("allows activation when textEval.passed=true (strict release)", () => {
+		const installed = makeInstalledModel(
+			"eliza-1-2b",
+			"/tmp/bundle/eliza-1-2b.gguf",
+		);
+		expect(() =>
+			assertManifestEvalsPassed(installed, () => makeStrictManifest()),
+		).not.toThrow();
+	});
+
+	it("passes through bundles with no manifest (external HF blobs)", () => {
+		const installed = makeInstalledModel(
+			"external-blob-xyz",
+			"/tmp/external.gguf",
+		);
+		expect(() =>
+			assertManifestEvalsPassed(installed, () => null),
+		).not.toThrow();
+	});
+
+	it("aggregates every failed eval slot into failedEvals (not just textEval)", () => {
+		const installed = makeInstalledModel(
+			"eliza-1-0_6b",
+			"/tmp/bundle/eliza-1-0_6b.gguf",
+		);
+		const candidateManifest = makeStrictManifest({
+			version: "1.0.0-candidate.1",
+			defaultEligible: false,
+			evals: {
+				textEval: { score: 0.1, passed: false },
+				voiceRtf: { rtf: 2.0, passed: false },
+				e2eLoopOk: true,
+				thirtyTurnOk: true,
+				asrWer: { wer: 0.4, passed: false },
+				expressive: {
+					tagFaithfulness: 0.1,
+					mosExpressive: 2.0,
+					tagLeakage: 0.5,
+					passed: false,
+				},
+				dflash: { acceptanceRate: null, speedup: null, passed: false },
+			},
+		});
+
+		let caught: CandidateModelActivationError | null = null;
+		try {
+			assertManifestEvalsPassed(installed, () => candidateManifest);
+		} catch (err) {
+			caught = err as CandidateModelActivationError;
+		}
+		expect(caught).not.toBeNull();
+		const failed = caught?.failedEvals ?? [];
+		expect(failed).toEqual(
+			expect.arrayContaining([
+				"textEval",
+				"voiceRtf",
+				"asrWer",
+				"expressive",
+				"dflash",
+			]),
+		);
+		// e2eLoopOk / thirtyTurnOk passed in this fixture; they must not appear.
+		expect(failed).not.toContain("e2eLoopOk");
+		expect(failed).not.toContain("thirtyTurnOk");
 	});
 });
 

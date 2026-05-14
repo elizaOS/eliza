@@ -1,11 +1,13 @@
 /**
  * Eliza-curated local model catalog.
  *
- * Default local inference is restricted to the active Eliza-1 line:
- * Qwen3.5 0.8B/2B/4B, Qwen3.5 9B until an official Qwen3.6 9B
- * exists, and Qwen3.6 27B including long-context 27B variants.
- * External Hub search remains custom/opt-in and never enters first-run or
- * default eligibility.
+ * Default local inference is restricted to the active Eliza-1 line, all on
+ * Qwen3.5 bases: 0.8B, 2B, 4B, 9B, and 27B (including long-context 27B
+ * variants at 256k and 1M). The 2026-05-12 mandate retired the legacy
+ * Qwen3 bases and any Qwen3.6 references; see
+ * packages/training/scripts/training/model_registry.py for the active
+ * registry. External Hub search remains custom/opt-in and never enters
+ * first-run or default eligibility.
  */
 
 import type {
@@ -346,10 +348,83 @@ function bundleComponent(
   return { repo: ELIZA_1_HF_REPO, file: bundleRemotePath(id, file) };
 }
 
-function voiceQuantForTier(id: Eliza1TierId): "Q4_K_M" | "Q8_0" {
+/**
+ * K-quant ladder for the OmniVoice TTS GGUFs. The omnivoice.cpp
+ * `tools/quantize.cpp` binary already supports the full set Q2_K..Q8_0;
+ * we publish a curated subset that matches the device-class memory budgets
+ * the downloader is expected to choose from. The runtime selects ONE level
+ * via {@link voiceQuantForTier}; the publish path emits ALL levels from
+ * {@link voiceQuantLadderForTier} so the bundle can support a downloader
+ * that picks the level matching the host's RAM/SOC class at install time
+ * (R8 §3 / §7.2). No silent fallback — AGENTS.md §3 forbids "try the
+ * next smaller one" at runtime.
+ *
+ * R8 §2 + omnivoice.cpp/AGENTS.md PolarQuant note: the K-quant family
+ * (Q3..Q6) is the only weight-quant currently wired for OmniVoice's
+ * Qwen3-shaped LM head — PolarQuant / TurboQuant for the LM weight bank
+ * is *plausible* (same arch) but no recipe wires it yet; QJL is N/A
+ * (OmniVoice has no KV cache between MaskGIT steps); V-cache PolarQuant
+ * is N/A for the same reason. See `docs/inference/voice-quant-matrix.md`.
+ */
+export type OmniVoiceQuantLevel =
+  | "Q3_K_M"
+  | "Q4_K_M"
+  | "Q5_K_M"
+  | "Q6_K"
+  | "Q8_0";
+
+/**
+ * Default OmniVoice K-quant the runtime picks per tier when no
+ * device-class override applies. Mobile-class tiers (0_8b/2b/4b) default
+ * to Q4_K_M (~4.5 bits/weight, the canonical sweet spot for llama.cpp /
+ * Ollama / LM Studio). Desktop / workstation tiers default to Q8_0 (≈8
+ * bits/weight, near-bf16 quality) because RAM headroom permits it.
+ */
+function voiceQuantForTier(id: Eliza1TierId): OmniVoiceQuantLevel {
   return id === "eliza-1-0_8b" || id === "eliza-1-2b" || id === "eliza-1-4b"
     ? "Q4_K_M"
     : "Q8_0";
+}
+
+/**
+ * Full K-quant ladder published per tier. The downloader inspects the
+ * device's RAM/SoC class at install time and picks the appropriate level
+ * from this list. The ladder is monotonically decreasing in bits-per-weight
+ * (smallest first): {@link OmniVoiceQuantLevel}.
+ *
+ * Mobile tiers ship Q3_K_M..Q5_K_M (the host won't fit Q6/Q8 comfortably
+ * alongside the text LM + ASR). Desktop / workstation tiers ship the
+ * full Q3..Q8 ladder so a `--memory-budget okay` host can step down to
+ * Q3_K_M and a `--memory-budget good` host can take Q6_K.
+ *
+ * Tiers whose default voice backend is Kokoro (0_8b/2b/4b currently) do
+ * not publish an OmniVoice ladder — the empty list signals "no voice
+ * ladder for this tier". The publish wiring (stage_eliza1_bundle_assets.py)
+ * skips OmniVoice staging entirely for these tiers; the runtime serves
+ * Kokoro at `tts/kokoro/model_q4.onnx`.
+ */
+const OMNIVOICE_QUANT_LADDER_BY_TIER: Readonly<
+  Record<Eliza1TierId, ReadonlyArray<OmniVoiceQuantLevel>>
+> = {
+  "eliza-1-0_8b": [],
+  "eliza-1-2b": [],
+  "eliza-1-4b": [],
+  "eliza-1-9b": ["Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"],
+  "eliza-1-27b": ["Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"],
+  "eliza-1-27b-256k": ["Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"],
+  "eliza-1-27b-1m": ["Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"],
+};
+
+export function voiceQuantLadderForTier(
+  id: Eliza1TierId,
+): ReadonlyArray<OmniVoiceQuantLevel> {
+  return OMNIVOICE_QUANT_LADDER_BY_TIER[id];
+}
+
+export function defaultVoiceQuantForTier(
+  id: Eliza1TierId,
+): OmniVoiceQuantLevel {
+  return voiceQuantForTier(id);
 }
 
 function primaryVoiceFileForTier(id: Eliza1TierId): string {

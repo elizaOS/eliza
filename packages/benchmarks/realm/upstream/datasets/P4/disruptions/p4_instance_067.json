@@ -1,0 +1,124 @@
+{
+  "instance_id": "p4_instance_067",
+  "city_map": {
+    "locations": [
+      "suburb",
+      "downtown",
+      "airport",
+      "park",
+      "hospital"
+    ],
+    "distances": {
+      "suburb-downtown": 15,
+      "downtown-suburb": 15,
+      "suburb-airport": 18,
+      "airport-suburb": 18,
+      "suburb-park": 12,
+      "park-suburb": 12,
+      "suburb-hospital": 13,
+      "hospital-suburb": 13,
+      "downtown-airport": 36,
+      "airport-downtown": 36,
+      "downtown-park": 45,
+      "park-downtown": 45,
+      "downtown-hospital": 17,
+      "hospital-downtown": 17,
+      "airport-park": 5,
+      "park-airport": 5,
+      "airport-hospital": 27,
+      "hospital-airport": 27,
+      "park-hospital": 39,
+      "hospital-park": 39
+    }
+  },
+  "ride_requests": [
+    {
+      "passenger_id": "p001",
+      "pickup": "park",
+      "dropoff": "downtown",
+      "time_window": [
+        11.25,
+        11.566666666666666
+      ],
+      "deadline": 51
+    },
+    {
+      "passenger_id": "p002",
+      "pickup": "downtown",
+      "dropoff": "airport",
+      "time_window": [
+        16.25,
+        16.533333333333335
+      ],
+      "deadline": 56
+    },
+    {
+      "passenger_id": "p003",
+      "pickup": "hospital",
+      "dropoff": "park",
+      "time_window": [
+        12.75,
+        12.3
+      ],
+      "deadline": 58
+    },
+    {
+      "passenger_id": "p004",
+      "pickup": "hospital",
+      "dropoff": "suburb",
+      "time_window": [
+        11.0,
+        11.383333333333333
+      ],
+      "deadline": 51
+    },
+    {
+      "passenger_id": "p005",
+      "pickup": "downtown",
+      "dropoff": "suburb",
+      "time_window": [
+        14.75,
+        14.366666666666667
+      ],
+      "deadline": 57
+    }
+  ],
+  "vehicles": [
+    {
+      "vehicle_id": "v001",
+      "location": "airport",
+      "capacity": 6,
+      "fuel": 74
+    },
+    {
+      "vehicle_id": "v002",
+      "location": "park",
+      "capacity": 5,
+      "fuel": 77
+    }
+  ],
+  "description": "Urban ride-sharing with disruptions instance",
+  "disruptions": [
+    {
+      "type": "road_closure",
+      "route": "park-hospital",
+      "start_time": 10,
+      "duration": 154,
+      "impact": "route_unavailable"
+    },
+    {
+      "type": "accident",
+      "location": "suburb",
+      "start_time": 14,
+      "duration": 21,
+      "impact": "local_traffic_congestion"
+    },
+    {
+      "type": "construction",
+      "route": "suburb-park",
+      "start_time": 10,
+      "duration": 120,
+      "impact": "reduced_capacity"
+    }
+  ]
+}

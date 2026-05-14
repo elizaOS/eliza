@@ -3,8 +3,10 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { AgentRuntime } from "@elizaos/core";
-import type { SwarmCoordinator } from "@elizaos/plugin-agent-orchestrator";
-import { PTYService } from "@elizaos/plugin-agent-orchestrator";
+import type {
+	PTYService,
+	SwarmCoordinator,
+} from "@elizaos/plugin-agent-orchestrator";
 import { createTestRuntime } from "../helpers/pglite-runtime.ts";
 
 async function waitFor(
@@ -55,6 +57,7 @@ async function cleanup(): Promise<void> {
 
 async function main(): Promise<void> {
 	({ runtime, cleanup: cleanupRuntime } = await createTestRuntime());
+	const { PTYService } = await import("@elizaos/plugin-agent-orchestrator");
 	service = await PTYService.start(runtime);
 	(runtime.services as Map<string, unknown[]>).set("PTY_SERVICE", [
 		service as unknown,

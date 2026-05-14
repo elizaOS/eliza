@@ -5,13 +5,13 @@
  * without circular dependency issues.
  */
 
+import { stripAssistantStageDirections } from "@elizaos/shared";
 import { getBootConfig, setBootConfig } from "../config/boot-config";
 import {
   NETWORK_STATUS_CHANGE_EVENT,
   type NetworkStatusChangeDetail,
 } from "../events";
 import { hydrateAndroidLocalAgentTokenForUrl } from "../onboarding/local-agent-token";
-import { stripAssistantStageDirections } from "../utils/assistant-text";
 import {
   clearElizaApiBase,
   clearElizaApiToken,

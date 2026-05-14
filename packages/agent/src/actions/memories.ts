@@ -79,12 +79,12 @@ function scoreText(text: string, query: string): number {
 function toListItem(memory: Memory, type: MemoryType): MemoryListItem {
   const content = memory.content as Record<string, unknown> | undefined;
   return {
-    id: (memory.id as string) ?? "",
+    id: memory.id ?? "",
     type,
     text: (content?.text as string) ?? "",
-    entityId: (memory.entityId as string) ?? null,
-    roomId: (memory.roomId as string) ?? null,
-    agentId: (memory.agentId as string) ?? null,
+    entityId: memory.entityId ?? null,
+    roomId: memory.roomId ?? null,
+    agentId: memory.agentId ?? null,
     createdAt: memory.createdAt ?? 0,
   };
 }

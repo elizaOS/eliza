@@ -1,3 +1,6 @@
+/* Vendored fonts — loaded from local bundle, no Google Fonts CDN request. */
+@import "@fontsource-variable/geist";
+@import "@fontsource-variable/geist-mono";
 @import "tailwindcss";
 @import "tw-animate-css";
 

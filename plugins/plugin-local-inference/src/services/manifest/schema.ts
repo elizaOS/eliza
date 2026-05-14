@@ -1,8 +1,12 @@
 // Eliza-1 manifest schema (`eliza-1.manifest.json`).
 //
-// Source of truth: packages/inference/AGENTS.md §6 (manifest), §3 (mandatory
-// kernels), §2 (bundle/tier matrix). This module only defines the schema
-// and tier/kernel constants — runtime validation lives in `validator.ts`.
+// Source of truth in this checkout: this file (the schema) and the sibling
+// `eliza-1.manifest.v1.json` JSON Schema. The upstream elizaOS source has
+// a longer prose specification under `packages/inference/AGENTS.md` (§6
+// manifest, §3 mandatory kernels, §2 bundle/tier matrix); that file does
+// not exist in the milady checkout — when editing the schema, treat the
+// Zod definitions below as canonical and consult R5-versioning.md §1 for
+// the latest gap analysis between bundle and per-sub-model versioning.
 //
 // Coupling notes:
 // - The kernel names here are *manifest-level* capabilities (what the bundle
@@ -21,9 +25,15 @@
 //   is not the same thing as a shared *token-embedding tensor*: each component
 //   carries its own `token_embd.weight` (different fine-tunes, often different
 //   hidden sizes), so the vocab matrix is duplicated per GGUF and cannot be
-//   deduplicated without a fused-architecture container — out of scope per
-//   inference/AGENTS.md §2. See
-//   `packages/inference/reports/porting/2026-05-11/qwen-backbone-unification.md`.
+//   deduplicated without a fused-architecture container — out of scope. See
+//   `plugins/plugin-local-inference/native/reports/porting/2026-05-11/` for
+//   the in-tree porting reports.
+// - Per-sub-model versioning (kokoro, omnivoice, turn-detector, voice-emotion,
+//   diarizer, speaker-encoder, vad, wakeword, embedding, asr) lives in
+//   `packages/shared/src/local-inference/voice-models.ts` and the matching
+//   `models/voice/CHANGELOG.md`. The bundle manifest below ships the *current*
+//   per-tier set of files; the voice-models module ships the *history* the
+//   auto-updater walks.
 
 import type { LocalRuntimeKernel } from "@elizaos/shared";
 import { z } from "zod";
@@ -188,6 +198,16 @@ export const Eliza1LineageSchema = z.object({
 	// pruned Qwen2.5-0.5B), this records the upstream repo + license. Apache-2.0
 	// fallback path is `latishab/turnsense`.
 	turn: lineageEntry.optional(),
+	// Voice Wave 2 (2026-05-14): acoustic-prosody emotion classifier lineage.
+	// When `files.emotion` ships the bundled `wav2small-msp-dim-int8.onnx`
+	// (72K params, ~120 KB), this records the audeering teacher repo + license
+	// as research-only attribution (the audeering teacher is CC-BY-NC-SA-4.0
+	// and NEVER bundled — only the Apache-2.0 student is shipped, distilled
+	// via `packages/training/scripts/emotion/distill_wav2small.py`). The
+	// SamLowe/roberta-base-go_emotions-onnx text classifier may optionally
+	// also ship under this slot when the operator enables the text-classifier
+	// shadow path; see R3-emotion.md §2.
+	emotion: lineageEntry.optional(),
 });
 
 export const Eliza1FileEntrySchema = z.object({
@@ -229,6 +249,17 @@ export const Eliza1FilesSchema = z.object({
 	// 0_8b/2b ship the EN-only SmolLM2-135M distill (~66 MB Q8 ONNX);
 	// 4b/9b/27b ship the multilingual pruned Qwen2.5-0.5B (~396 MB Q8 ONNX).
 	turn: z.array(Eliza1FileEntrySchema).optional(),
+	// Voice Wave 2 (2026-05-14): bundled acoustic-prosody emotion classifier
+	// (Wav2Small student, ~120 KB int8 ONNX). Optional — when omitted, the
+	// runtime falls back to the lexicon + audio-prosody heuristic path inside
+	// `attributeVoiceEmotion()` (no acoustic-model evidence row). When present,
+	// the runtime loads the ONNX via `VoiceEmotionClassifier`, runs it on
+	// `isFinal` transcript snapshots, and fuses the output with the Stage-1
+	// text-emotion field via the single fusion point in `emotion-attribution.ts`.
+	// All tiers ship the same Wav2Small student (the on-device budget is
+	// dominated by the LM, not this 120 KB head); a 0_8b bundle may still
+	// choose to omit it to save the cold-start cost.
+	emotion: z.array(Eliza1FileEntrySchema).optional(),
 });
 
 export const Eliza1KernelEnumSchema = z.enum(ELIZA_1_KERNELS);
@@ -371,6 +402,24 @@ export const Eliza1EvalsSchema = z.object({
 			passed: z.boolean(),
 		})
 		.optional(),
+	// Voice Wave 2 (2026-05-14): acoustic-emotion classifier eval gates.
+	// Required when `files.emotion` is non-empty (validator enforces).
+	// Thresholds applied by the bench harness under
+	// `packages/benchmarks/voice-emotion/`:
+	//   macroF1Meld     ≥ EMOTION_CLASSIFIER_MELD_F1_THRESHOLD     (0.35)
+	//   macroF1Iemocap  ≥ EMOTION_CLASSIFIER_IEMOCAP_F1_THRESHOLD  (0.60)
+	// The MELD threshold is intentionally low — 7-class conversational SER
+	// macro-F1 is 0.40-0.50 even for strong models on MELD; we set the gate so
+	// a real improvement does not get refused (R3-emotion §6 risk).
+	emotionClassifier: z
+		.object({
+			macroF1Meld: z.number().min(0).max(1),
+			macroF1Iemocap: z.number().min(0).max(1),
+			/** Mean per-clip inference latency on CPU. */
+			meanLatencyMs: z.number().nonnegative(),
+			passed: z.boolean(),
+		})
+		.optional(),
 });
 
 /** Eval-gate threshold: minimum acceptable F1 on the EOU benchmark. */
@@ -378,6 +427,15 @@ export const TURN_DETECTOR_F1_THRESHOLD = 0.85 as const;
 
 /** Eval-gate threshold: maximum acceptable mean inference latency (ms). */
 export const TURN_DETECTOR_MEAN_LATENCY_MS_LIMIT = 30 as const;
+
+/** Eval-gate threshold: minimum macro-F1 on MELD test (7-class). */
+export const EMOTION_CLASSIFIER_MELD_F1_THRESHOLD = 0.35 as const;
+
+/** Eval-gate threshold: minimum macro-F1 on IEMOCAP test (4-class). */
+export const EMOTION_CLASSIFIER_IEMOCAP_F1_THRESHOLD = 0.6 as const;
+
+/** Eval-gate threshold: maximum mean CPU inference latency (ms) per window. */
+export const EMOTION_CLASSIFIER_MEAN_LATENCY_MS_LIMIT = 30 as const;
 
 export const Eliza1RamBudgetSchema = z
 	.object({

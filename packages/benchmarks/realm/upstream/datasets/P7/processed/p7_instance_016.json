@@ -1,0 +1,77 @@
+{
+  "instance_id": "p7_instance_016",
+  "regions": [
+    {
+      "id": "region1",
+      "severity": "critical",
+      "needs": [
+        "medical",
+        "food"
+      ],
+      "population": 3203,
+      "location": {
+        "lat": 30.430968374392695,
+        "lon": -88.7715697279714
+      }
+    },
+    {
+      "id": "region2",
+      "severity": "urgent",
+      "needs": [
+        "water",
+        "shelter"
+      ],
+      "population": 536,
+      "location": {
+        "lat": 32.42898839630121,
+        "lon": -89.87430565138423
+      }
+    }
+  ],
+  "resources": {
+    "medical_supplies": 823,
+    "food": 5382,
+    "water": 2242,
+    "shelter": 773
+  },
+  "personnel": {
+    "doctors": 20,
+    "nurses": 51,
+    "logistics": 25
+  },
+  "vehicles": [
+    {
+      "id": "helicopter1",
+      "type": "helicopter",
+      "capacity": 1000,
+      "speed": "fast",
+      "location": "base"
+    },
+    {
+      "id": "truck1",
+      "type": "truck",
+      "capacity": 5000,
+      "speed": "slow",
+      "location": "base"
+    }
+  ],
+  "deadlines": {
+    "critical": 2,
+    "urgent": 6,
+    "normal": 24
+  },
+  "disruption_scenarios": [
+    {
+      "type": "weather_event",
+      "region": "region1",
+      "impact": "transport_blocked",
+      "duration": 8
+    },
+    {
+      "type": "resource_shortage",
+      "resource": "medical_supplies",
+      "shortage": 0.3879219541681586
+    }
+  ],
+  "description": "Disaster relief deployment instance"
+}

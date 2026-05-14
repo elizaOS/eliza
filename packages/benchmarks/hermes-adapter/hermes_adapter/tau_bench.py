@@ -1,257 +1,350 @@
 """Tau-bench agent backed by hermes-agent.
 
-Drop-in equivalent of :class:`eliza_adapter.tau_bench.ElizaTauAgent` but
-routes per-turn decision-making through :class:`HermesClient`. Tau-bench's
-runner uses ``process_task(task) -> (tool_calls, final_response, conversation)``
-so this agent matches that signature exactly.
+Drop-in equivalent of :class:`elizaos_tau_bench.eliza_agent.LiteLLMToolCallingAgent`
+but routes the agent-side completion through :class:`HermesClient`.
 
-Key difference vs the eliza version: hermes-agent natively speaks the
-OpenAI tool-call shape, so the adapter passes the task's available tools
-in as OpenAI-format function specs and reads ``params['tool_calls']``
-directly rather than parsing assistant message text.
+The control flow mirrors ``LiteLLMToolCallingAgent.solve`` exactly — same
+upstream ``Env`` reset / step loop, same message-building, same
+``_message_to_action`` semantics — so reward computation stays identical to
+the litellm path. The only difference is *how* the per-turn completion is
+produced: ``HermesClient`` is used in ``in_process`` mode (auto-detected when
+``openai`` is importable in the parent venv) so we hit the Cerebras
+OpenAI-compatible endpoint directly without spawning the hermes-agent venv.
+
+Cerebras quirk: ``gpt-oss-120b`` returns a ``reasoning_content`` field on
+assistant turns, then rejects subsequent requests that include that field
+on prior assistant messages. We strip ``reasoning_content`` and
+``provider_specific_fields`` from assistant messages before feeding them
+back into the next call.
 """
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import logging
-from typing import TYPE_CHECKING, Any
+import os
+import time
+from typing import Any, Final, Optional
 
-from hermes_adapter.client import HermesClient
+from hermes_adapter.client import HermesClient, MessageResponse
 
-if TYPE_CHECKING:
-    from elizaos_tau_bench.executor import ToolExecutor
-    from elizaos_tau_bench.types import (
-        ConversationTurn,
-        TauBenchTask,
-        ToolCall,
-    )
-
-
-def _tau_types():
-    from elizaos_tau_bench.types import (
-        ConversationTurn,
-        TauBenchTask,
-        ToolCall,
-    )
-
-    return ConversationTurn, TauBenchTask, ToolCall
-
+from elizaos_tau_bench.eliza_agent import AgentRunResult, BaseTauAgent
+from elizaos_tau_bench.types import Action, RESPOND_ACTION_NAME
+from elizaos_tau_bench.upstream.envs.base import Env
 
 logger = logging.getLogger(__name__)
 
 
-def _tool_to_openai_spec(tool: Any) -> dict[str, Any]:
-    """Convert a Tau-bench ``ToolDefinition`` to an OpenAI ``function`` spec."""
-    return {
-        "type": "function",
-        "function": {
-            "name": getattr(tool, "name", ""),
-            "description": getattr(tool, "description", "") or "",
-            "parameters": getattr(tool, "parameters", {}) or {"type": "object", "properties": {}},
-        },
-    }
+# Per-million-token USD pricing for Cerebras gpt-oss-120b. Mirrors the
+# ``_CEREBRAS_PRICING`` constant in ``hermes_adapter.lifeops_bench`` so
+# tau-bench's per-trial ``agent_cost`` is consistent with lifeops-bench
+# numbers when both hit the same provider.
+_CEREBRAS_PRICING: Final[dict[str, dict[str, float]]] = {
+    "gpt-oss-120b": {"input_per_million_usd": 0.35, "output_per_million_usd": 0.75},
+}
 
 
-def _parse_arguments(arguments_raw: Any) -> dict[str, Any]:
-    if isinstance(arguments_raw, dict):
-        return dict(arguments_raw)
-    if isinstance(arguments_raw, str):
-        try:
-            parsed = json.loads(arguments_raw)
-            if isinstance(parsed, dict):
-                return parsed
-        except json.JSONDecodeError:
-            return {}
-    return {}
+def _compute_cost_usd(
+    model: str | None, prompt_tokens: int, completion_tokens: int
+) -> float:
+    """Return USD cost for a Cerebras completion or ``0.0`` when unpriced."""
+    if not model:
+        return 0.0
+    bare = model.rsplit("/", 1)[-1]
+    pricing = _CEREBRAS_PRICING.get(bare)
+    if pricing is None:
+        return 0.0
+    return (
+        (prompt_tokens / 1_000_000.0) * pricing["input_per_million_usd"]
+        + (completion_tokens / 1_000_000.0) * pricing["output_per_million_usd"]
+    )
 
 
-class HermesTauAgent:
-    """Tau-bench agent that delegates to hermes-agent for tool-call decisions.
+def _strip_cerebras_quirks(message: dict[str, Any]) -> dict[str, Any]:
+    """Strip fields Cerebras emits but rejects on re-submission.
 
-    Drop-in replacement for :class:`eliza_adapter.tau_bench.ElizaTauAgent` —
-    same ``process_task`` interface, same return shape.
+    ``reasoning_content`` and ``provider_specific_fields`` are returned on
+    assistant turns by gpt-oss-120b but cause ``BadRequestError:
+    messages.X.assistant.reasoning_content: property unsupported`` if echoed
+    back in the conversation history.
+    """
+    for key in ("reasoning_content", "provider_specific_fields"):
+        message.pop(key, None)
+    return message
+
+
+def _detect_in_process_default() -> bool:
+    """Pick ``in_process`` if ``openai`` is importable in the parent venv."""
+    return importlib.util.find_spec("openai") is not None
+
+
+def _message_to_action(message: dict[str, Any]) -> Action:
+    """Convert an OpenAI-shape assistant message into an upstream ``Action``."""
+    tool_calls = message.get("tool_calls")
+    if tool_calls and len(tool_calls) > 0:
+        tc = tool_calls[0]
+        if isinstance(tc, dict):
+            fn = tc.get("function") or {}
+            name = fn.get("name") or ""
+            args_raw = fn.get("arguments")
+        else:
+            fn = getattr(tc, "function", None)
+            name = getattr(fn, "name", "") if fn is not None else ""
+            args_raw = getattr(fn, "arguments", "") if fn is not None else ""
+        if isinstance(args_raw, str):
+            try:
+                kwargs = json.loads(args_raw or "{}")
+            except json.JSONDecodeError:
+                kwargs = {}
+        elif isinstance(args_raw, dict):
+            kwargs = dict(args_raw)
+        else:
+            kwargs = {}
+        if name:
+            return Action(name=str(name), kwargs=kwargs)
+    return Action(
+        name=RESPOND_ACTION_NAME,
+        kwargs={"content": message.get("content") or ""},
+    )
+
+
+def _normalize_tool_calls_for_history(
+    raw_tool_calls: list[Any] | None,
+) -> list[dict[str, Any]]:
+    """Return OpenAI chat-completions-shape tool_calls for the message history.
+
+    HermesClient surfaces tool calls in a flat ``{id, name, arguments}`` shape;
+    upstream's user simulator (and our env.step parser) expect the OpenAI
+    nested ``{id, type, function: {name, arguments}}`` shape. Convert here so
+    the message history is consistent.
+    """
+    if not raw_tool_calls:
+        return []
+    out: list[dict[str, Any]] = []
+    for tc in raw_tool_calls:
+        if isinstance(tc, dict):
+            if "function" in tc and isinstance(tc["function"], dict):
+                fn = tc["function"]
+                fn_name = fn.get("name") or ""
+                fn_args = fn.get("arguments")
+            else:
+                fn_name = tc.get("name") or ""
+                fn_args = tc.get("arguments")
+            tc_id = tc.get("id") or f"call_{len(out)}"
+        else:
+            continue
+        if not fn_name:
+            continue
+        if isinstance(fn_args, dict):
+            args_str = json.dumps(fn_args)
+        elif isinstance(fn_args, str):
+            args_str = fn_args or "{}"
+        else:
+            args_str = "{}"
+        out.append(
+            {
+                "id": str(tc_id),
+                "type": "function",
+                "function": {"name": fn_name, "arguments": args_str},
+            }
+        )
+    return out
+
+
+class HermesTauAgent(BaseTauAgent):
+    """Tau-bench agent that drives an upstream ``Env`` via hermes-agent.
+
+    Mirrors :class:`LiteLLMToolCallingAgent.solve` step-for-step; only the
+    chat-completions call is replaced.
     """
 
     def __init__(
         self,
-        executor: "ToolExecutor",
-        max_turns: int = 15,
+        model: str = "gpt-oss-120b",
+        provider: str = "cerebras",
+        temperature: float = 0.0,
         client: HermesClient | None = None,
-        system_prompt: str | None = None,
+        mode: str | None = None,
     ) -> None:
-        self.executor = executor
-        self.max_turns = max_turns
-        self._client = client or HermesClient()
-        self._system_prompt = system_prompt
+        self.model = model
+        self.provider = provider
+        self.temperature = temperature
+        if client is not None:
+            self.client = client
+        else:
+            chosen_mode = mode
+            if chosen_mode is None:
+                chosen_mode = "in_process" if _detect_in_process_default() else "subprocess"
+            self.client = HermesClient(
+                provider=provider,
+                model=model,
+                mode=chosen_mode,
+                temperature=temperature,
+            )
 
-    async def initialize(self) -> None:
-        self._client.wait_until_ready(timeout=120)
+    # ------------------------------------------------------------------
+    # BaseTauAgent
+    # ------------------------------------------------------------------
 
-    async def process_task(
-        self,
-        task: "TauBenchTask",
-    ) -> tuple[list["ToolCall"], str, list["ConversationTurn"]]:
-        ConversationTurn, _, ToolCall = _tau_types()
+    def solve(self, env: Env, task_index: int, max_num_steps: int = 30) -> AgentRunResult:
+        reset = env.reset(task_index=task_index)
+        obs = reset.observation
+        info: dict[str, Any] = reset.info.model_dump()
+        reward = 0.0
+        total_cost = 0.0
+        num_tool_calls = 0
+        actions_taken: list[Action] = []
 
-        conversation: list[ConversationTurn] = []
-        tool_calls_made: list[ToolCall] = []
-        final_response = ""
+        messages: list[dict[str, Any]] = [
+            {"role": "system", "content": env.wiki},
+            {"role": "user", "content": obs},
+        ]
+        tools_info = list(env.tools_info)
 
         try:
-            self._client.reset(task_id=task.task_id, benchmark="tau_bench")
-        except Exception as exc:  # noqa: BLE001
-            logger.debug("hermes reset failed (continuing): %s", exc)
+            for _step_i in range(max_num_steps):
+                response = self._one_turn(messages, tools_info)
+                next_message = self._response_to_assistant_message(response)
+                _strip_cerebras_quirks(next_message)
 
-        tools_spec = [_tool_to_openai_spec(t) for t in task.available_tools]
+                # Token accounting
+                usage = response.params.get("usage") if isinstance(response.params, dict) else None
+                if isinstance(usage, dict):
+                    prompt_tokens = int(usage.get("prompt_tokens") or usage.get("promptTokens") or 0)
+                    completion_tokens = int(
+                        usage.get("completion_tokens") or usage.get("completionTokens") or 0
+                    )
+                    total_cost += _compute_cost_usd(self.model, prompt_tokens, completion_tokens)
 
-        # Build the OpenAI-shape message history. Tau-bench's ``task`` carries
-        # a pre-existing ``conversation_history`` plus a new user instruction.
-        messages: list[dict[str, Any]] = []
-        system_lines: list[str] = []
-        if self._system_prompt:
-            system_lines.append(self._system_prompt)
-        if task.policy_constraints:
-            policy_dump = json.dumps(
-                [
-                    {"policy_id": p.policy_id, "description": p.description}
-                    for p in task.policy_constraints
-                ],
-                ensure_ascii=True,
+                action = _message_to_action(next_message)
+                actions_taken.append(action)
+
+                env_response = env.step(action)
+                reward = env_response.reward
+                info = {**info, **env_response.info.model_dump()}
+
+                if action.name != RESPOND_ACTION_NAME:
+                    num_tool_calls += 1
+                    tcs = next_message.get("tool_calls") or []
+                    if tcs:
+                        # Trim to single tool call per upstream parity
+                        next_message["tool_calls"] = tcs[:1]
+                        tc = next_message["tool_calls"][0]
+                        messages.extend(
+                            [
+                                next_message,
+                                {
+                                    "role": "tool",
+                                    "tool_call_id": tc["id"],
+                                    "name": tc["function"]["name"],
+                                    "content": env_response.observation,
+                                },
+                            ]
+                        )
+                    else:
+                        # Recovered text tool call had no structured calls;
+                        # treat as plain assistant turn so the env can still
+                        # advance via the user simulator.
+                        messages.append(next_message)
+                        messages.append(
+                            {"role": "user", "content": env_response.observation}
+                        )
+                else:
+                    messages.extend(
+                        [
+                            next_message,
+                            {"role": "user", "content": env_response.observation},
+                        ]
+                    )
+
+                if env_response.done:
+                    break
+        except Exception as e:
+            logger.exception("[hermes-tau] solve loop failed: %s", e)
+            return AgentRunResult(
+                reward=reward,
+                messages=messages,
+                info=info,
+                actions_taken=actions_taken,
+                num_tool_calls=num_tool_calls,
+                num_turns=len(messages),
+                agent_cost=total_cost,
+                error=str(e),
             )
-            system_lines.append(f"Policies:\n{policy_dump}")
-        if task.user_profile:
-            system_lines.append(f"User profile:\n{json.dumps(task.user_profile)}")
-        if system_lines:
-            messages.append({"role": "system", "content": "\n\n".join(system_lines)})
 
-        for msg in task.conversation_history:
-            messages.append({"role": msg["role"], "content": msg["content"]})
-            conversation.append(ConversationTurn(role=msg["role"], content=msg["content"]))
-
-        messages.append({"role": "user", "content": task.user_instruction})
-        conversation.append(
-            ConversationTurn(role="user", content=task.user_instruction)
+        return AgentRunResult(
+            reward=reward,
+            messages=messages,
+            info=info,
+            actions_taken=actions_taken,
+            num_tool_calls=num_tool_calls,
+            num_turns=len(messages),
+            agent_cost=total_cost,
         )
 
-        for _turn_idx in range(self.max_turns):
-            context: dict[str, object] = {
-                "benchmark": "tau_bench",
-                "task_id": task.task_id,
-                "messages": list(messages),
-                "tools": tools_spec,
-                "tool_choice": "auto",
-                "_stateless": True,
-            }
-            if task.user_goal:
-                context["goal"] = task.user_goal
-            if task.success_criteria:
-                context["success_criteria"] = task.success_criteria
+    # ------------------------------------------------------------------
+    # Internals
+    # ------------------------------------------------------------------
 
-            response = self._client.send_message(text=task.user_instruction, context=context)
-            raw_calls = (
-                response.params.get("tool_calls") if isinstance(response.params, dict) else None
-            )
-            normalized: list[dict[str, Any]] = []
-            if isinstance(raw_calls, list):
-                for entry in raw_calls:
-                    if not isinstance(entry, dict):
-                        continue
-                    name = str(entry.get("name") or "").strip()
-                    if not name:
-                        continue
-                    normalized.append(
-                        {
-                            "id": str(entry.get("id") or f"call_{len(normalized)}"),
-                            "name": name,
-                            "arguments": entry.get("arguments", "{}"),
-                        }
-                    )
-
-            if not normalized:
-                # No tool call → treat as final response.
-                final_response = response.text or ""
-                conversation.append(
-                    ConversationTurn(role="assistant", content=final_response)
-                )
+    def _one_turn(
+        self,
+        messages: list[dict[str, Any]],
+        tools_info: list[dict[str, Any]],
+    ) -> MessageResponse:
+        """Send one chat-completions request via the hermes bridge."""
+        # We bypass HermesClient's prompt-flattening by passing the full
+        # message list under context["messages"]. The empty ``text`` here is
+        # only used as a fallback by subprocess mode.
+        context: dict[str, object] = {
+            "messages": _scrub_history_for_cerebras(messages),
+        }
+        if tools_info:
+            context["tools"] = tools_info
+            context["tool_choice"] = "auto"
+        if self.temperature is not None:
+            context["temperature"] = float(self.temperature)
+        # Use the last user-ish text as a bare fallback prompt.
+        last_user = ""
+        for m in reversed(messages):
+            if m.get("role") == "user":
+                last_user = str(m.get("content") or "")
                 break
+        return self.client.send_message(last_user, context=context)
 
-            # Record assistant tool_calls in the message history.
-            assistant_tool_calls: list[dict[str, Any]] = []
-            for nc in normalized:
-                args = nc["arguments"]
-                if isinstance(args, dict):
-                    args_str = json.dumps(args)
-                else:
-                    args_str = str(args)
-                assistant_tool_calls.append(
-                    {
-                        "id": nc["id"],
-                        "type": "function",
-                        "function": {"name": nc["name"], "arguments": args_str},
-                    }
-                )
-            messages.append(
-                {
-                    "role": "assistant",
-                    "content": response.text or None,
-                    "tool_calls": assistant_tool_calls,
-                }
-            )
+    @staticmethod
+    def _response_to_assistant_message(response: MessageResponse) -> dict[str, Any]:
+        """Build an OpenAI chat-completions-shape assistant message."""
+        tool_calls = _normalize_tool_calls_for_history(
+            response.params.get("tool_calls") if isinstance(response.params, dict) else None
+        )
+        msg: dict[str, Any] = {
+            "role": "assistant",
+            "content": response.text or "",
+        }
+        if tool_calls:
+            msg["tool_calls"] = tool_calls
+            if not msg["content"]:
+                msg["content"] = None
+        return msg
 
-            # Execute each tool call and feed results back as tool messages.
-            for nc in normalized:
-                arguments = _parse_arguments(nc["arguments"])
-                tool_call = ToolCall(tool_name=nc["name"], arguments=arguments)
-                executed = await self.executor.execute(tool_call)
-                tool_calls_made.append(executed)
 
-                conversation.append(
-                    ConversationTurn(
-                        role="assistant",
-                        content=f"Executing tool: {nc['name']}",
-                        tool_call=executed,
-                    )
-                )
-                result_str = json.dumps(executed.result, default=str)
-                conversation.append(
-                    ConversationTurn(role="tool", content=result_str)
-                )
-                messages.append(
-                    {
-                        "role": "tool",
-                        "tool_call_id": nc["id"],
-                        "name": nc["name"],
-                        "content": result_str[:4000],
-                    }
-                )
+def _scrub_history_for_cerebras(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Drop Cerebras-only fields from prior assistant turns before resending.
+
+    Returns a shallow copy with ``reasoning_content`` /
+    ``provider_specific_fields`` removed from every assistant message.
+    """
+    out: list[dict[str, Any]] = []
+    for m in messages:
+        if m.get("role") == "assistant":
+            scrubbed = dict(m)
+            scrubbed.pop("reasoning_content", None)
+            scrubbed.pop("provider_specific_fields", None)
+            out.append(scrubbed)
         else:
-            # Loop exhausted without a final non-tool response.
-            final_response = response.text or final_response
-
-        return tool_calls_made, final_response, conversation
-
-    async def close(self) -> None:
-        return None
+            out.append(m)
+    return out
 
 
-def build_tau_bench_agent_fn(
-    *,
-    executor: "ToolExecutor",
-    client: HermesClient | None = None,
-    max_turns: int = 15,
-    system_prompt: str | None = None,
-) -> HermesTauAgent:
-    """Factory matching the ``build_<bench>_agent_fn`` shape of the BFCL adapter."""
-    return HermesTauAgent(
-        executor=executor,
-        max_turns=max_turns,
-        client=client,
-        system_prompt=system_prompt,
-    )
-
-
-__all__ = [
-    "HermesTauAgent",
-    "build_tau_bench_agent_fn",
-]
+__all__ = ["HermesTauAgent"]

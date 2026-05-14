@@ -130,9 +130,7 @@ export function getHostExecutionCapabilities(
  * `getHostExecutionCapabilities` but as a structured object that's
  * easier to serialize into `/api/health` extensions.
  */
-export function describeHostExecutionCapabilities(
-  runtime: IAgentRuntime,
-): {
+export function describeHostExecutionCapabilities(runtime: IAgentRuntime): {
   profiles: TaskExecutionProfileForHost[];
   isCapacitor: boolean;
   hasBackgroundRunner: boolean;
@@ -155,7 +153,9 @@ export function describeHostExecutionCapabilities(
     typeof plugins === "object" &&
     plugins.BackgroundRunner != null;
   const hasElizaTasksPlugin =
-    plugins != null && typeof plugins === "object" && plugins.ElizaTasks != null;
+    plugins != null &&
+    typeof plugins === "object" &&
+    plugins.ElizaTasks != null;
   const getSetting = (runtime as { getSetting?: (k: string) => unknown })
     .getSetting;
   const raw =

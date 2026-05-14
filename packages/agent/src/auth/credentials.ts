@@ -19,6 +19,7 @@ import {
   resolveStateDir,
   resolveUserPath,
 } from "@elizaos/core";
+import type { SubscriptionCredentialSource } from "@elizaos/shared";
 import {
   type AccountCredentialRecord,
   deleteAccount,
@@ -294,15 +295,7 @@ function hasCodexCliSubscriptionAuth(): boolean {
   }
 }
 
-export type SubscriptionCredentialSource =
-  | "app"
-  | "claude-code-cli"
-  | "setup-token"
-  | "codex-cli"
-  | "gemini-cli"
-  | "coding-plan-key"
-  | "unavailable"
-  | null;
+export type { SubscriptionCredentialSource } from "@elizaos/shared";
 
 /**
  * Per-account subscription status row used by the dashboard / API.

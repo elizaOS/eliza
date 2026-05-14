@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+import sys
 from pathlib import Path
 from unittest.mock import patch
 
@@ -70,7 +71,7 @@ def test_client_init_default_binary_falls_back(monkeypatch: pytest.MonkeyPatch, 
         tmp_path / "missing.json",
     )
     c = OpenClawClient()
-    assert str(c.binary_path).endswith("node_modules/.bin/openclaw")
+    assert c.binary_path.parts[-3:] == ("node_modules", ".bin", "openclaw")
 
 
 def test_client_init_reads_manifest(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -127,6 +128,14 @@ def test_client_health_reports_error_on_nonzero(
     assert "boom" in str(result["error"])
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason=(
+        "health() spawns the binary; on Windows a fixture file without a "
+        ".cmd/.exe extension isn't executable. Production binary resolution "
+        "picks .cmd via OPENCLAW_BIN/manifest."
+    ),
+)
 def test_client_is_ready_checks_path(fake_binary: Path, tmp_path: Path) -> None:
     assert OpenClawClient(binary_path=fake_binary, repo_path=fake_binary.parent).is_ready() is True
     assert OpenClawClient(binary_path=tmp_path / "absent", repo_path=tmp_path).is_ready() is False

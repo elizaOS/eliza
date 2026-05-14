@@ -112,7 +112,7 @@ export async function loadAospImageGenBackend(
 	opts: LoadAospImageGenBackendOptions,
 ): Promise<ImageGenBackend> {
 	const binding = opts.binding;
-	if (!binding || !binding.hasImageGen()) {
+	if (!binding?.hasImageGen()) {
 		throw new ImageGenBackendUnavailableError(
 			"aosp",
 			"binding_unavailable",
@@ -143,7 +143,7 @@ export async function loadAospImageGenBackend(
 					"[imagegen/aosp] generate called after dispose()",
 				);
 			}
-			if (!req.prompt || !req.prompt.trim()) {
+			if (!req.prompt?.trim()) {
 				throw new ImageGenBackendUnavailableError(
 					"aosp",
 					"unsupported_request",

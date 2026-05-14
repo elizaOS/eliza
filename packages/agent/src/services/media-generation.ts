@@ -30,7 +30,7 @@ function getMediaProviderOptions(): MediaProviderFactoryOptions {
 export class AgentMediaGenerationService extends IMediaGenerationService {
   static override readonly serviceType = ServiceType.MEDIA_GENERATION;
 
-  readonly capabilityDescription =
+  override readonly capabilityDescription: string =
     "Generates image, video, and audio through configured local media providers.";
 
   static async start(

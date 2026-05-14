@@ -4992,7 +4992,7 @@ export class AgentRuntime implements IAgentRuntime {
 		const response = await this.useModel(modelType, params);
 
 		return {
-			text: response as string,
+			text: response,
 		};
 	}
 

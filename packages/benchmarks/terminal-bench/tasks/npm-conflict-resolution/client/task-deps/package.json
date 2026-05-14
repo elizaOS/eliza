@@ -50,7 +50,7 @@
         "react-native-i18n": "^2.0.15",
         "react-native-idle-timer": "^2.1.7",
         "react-native-keychain": "^7.0.0",
-        "react-native-reanimated": "2.2.4",
+        "react-native-reanimated": "2.10.0",
         "react-native-safe-area-context": "^3.3.2",
         "react-native-screens": "^3.4.0",
         "react-native-svg": "^12.1.1",

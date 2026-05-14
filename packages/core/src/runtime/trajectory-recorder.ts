@@ -752,7 +752,7 @@ function sanitizeForRecord(
 	if (typeof value === "bigint") {
 		return value.toString();
 	}
-	if (typeof value === "undefined") {
+	if (value === undefined) {
 		return undefined;
 	}
 	if (typeof value === "function") {

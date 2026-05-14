@@ -45,7 +45,8 @@
 				"vision": { "$ref": "#/$defs/lineageEntry" },
 				"vad": { "$ref": "#/$defs/lineageEntry" },
 				"wakeword": { "$ref": "#/$defs/lineageEntry" },
-				"turn": { "$ref": "#/$defs/lineageEntry" }
+				"turn": { "$ref": "#/$defs/lineageEntry" },
+				"emotion": { "$ref": "#/$defs/lineageEntry" }
 			}
 		},
 		"files": {
@@ -85,6 +86,10 @@
 					"items": { "$ref": "#/$defs/fileEntry" }
 				},
 				"turn": {
+					"type": "array",
+					"items": { "$ref": "#/$defs/fileEntry" }
+				},
+				"emotion": {
 					"type": "array",
 					"items": { "$ref": "#/$defs/fileEntry" }
 				}
@@ -232,6 +237,33 @@
 					"required": ["f1", "meanLatencyMs", "passed"],
 					"properties": {
 						"f1": {
+							"type": "number",
+							"minimum": 0,
+							"maximum": 1
+						},
+						"meanLatencyMs": {
+							"type": "number",
+							"minimum": 0
+						},
+						"passed": { "type": "boolean" }
+					}
+				},
+				"emotionClassifier": {
+					"type": "object",
+					"additionalProperties": false,
+					"required": [
+						"macroF1Meld",
+						"macroF1Iemocap",
+						"meanLatencyMs",
+						"passed"
+					],
+					"properties": {
+						"macroF1Meld": {
+							"type": "number",
+							"minimum": 0,
+							"maximum": 1
+						},
+						"macroF1Iemocap": {
 							"type": "number",
 							"minimum": 0,
 							"maximum": 1

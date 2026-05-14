@@ -172,6 +172,7 @@ import { fileURLToPath } from "node:url";
 import { resolveRepoRootFromImportMeta } from "../lib/repo-root.mjs";
 import {
   appendCmakeGraft,
+  appendKokoroCmakeGraft,
   fusedCmakeBuildTargets,
   fusedExtraCmakeFlags,
 } from "../omnivoice-fuse/cmake-graft.mjs";
@@ -857,15 +858,45 @@ export function buildLibllamaForAbi({
   // out `llama` + `llama-server` upstream (the dedicated build steps below
   // already handle those), so the extra-target invocation only adds NEW
   // CMake target names. The non-fused path passes an empty list.
-  for (const extraTarget of extraBuildTargets) {
-    log(
-      `[compile-libllama] Building extra cmake target ${extraTarget} for ${abi}`,
-    );
-    spawn(
+  //
+  // Targets are filtered against what the configured build tree actually
+  // exposes. The eliza llama.cpp fork's target set drifts from the script's
+  // pinned expectations — e.g. `llama-speculative-simple` is an upstream
+  // example the fork drops in favour of DFlash spec-decode. A
+  // requested-but-absent *auxiliary* target must not abort the whole
+  // libllama build: the libllama.so + libggml*.so family is the critical
+  // output and is fully built by the `llama` target above. We warn on the
+  // gap and continue. A target that *exists* but fails to build still
+  // hard-errors via `spawn()`.
+  if (extraBuildTargets.length > 0) {
+    const helpProbe = spawnSync(
       "cmake",
-      ["--build", buildDir, "--target", extraTarget, "-j", String(jobs)],
-      {},
+      ["--build", buildDir, "--target", "help"],
+      { encoding: "utf8" },
     );
+    const availableTargets = new Set(
+      (helpProbe.stdout || "")
+        .split("\n")
+        .map((line) => line.replace(/^\.\.\.\s*/, "").trim())
+        .filter(Boolean),
+    );
+    for (const extraTarget of extraBuildTargets) {
+      if (availableTargets.size > 0 && !availableTargets.has(extraTarget)) {
+        log(
+          `[compile-libllama] Skipping extra cmake target ${extraTarget} for ${abi} — ` +
+            `not defined in this llama.cpp checkout (auxiliary target; libllama.so is unaffected).`,
+        );
+        continue;
+      }
+      log(
+        `[compile-libllama] Building extra cmake target ${extraTarget} for ${abi}`,
+      );
+      spawn(
+        "cmake",
+        ["--build", buildDir, "--target", extraTarget, "-j", String(jobs)],
+        {},
+      );
+    }
   }
 
   // llama-server target. Built in a second --target invocation so a future
@@ -1435,11 +1466,22 @@ export function applyOmnivoiceGraft({
     llamaCppRoot: srcDir,
   });
   const grafted = appendCmakeGraft({ llamaCppRoot: srcDir });
+  // Append the Kokoro graft block when Kokoro sources have been staged
+  // (kokoro-graft sources are copied by prepare.mjs alongside the
+  // OmniVoice sources; absent if the operator deleted them). The block
+  // hard-fails the CMake configure unless ELIZA_FUSE_OMNIVOICE=ON, so
+  // we only emit the flag when sources exist.
+  let kokoroGrafted = false;
+  if ((omnivoiceInfo.kokoroSourceCount ?? 0) > 0) {
+    kokoroGrafted = appendKokoroCmakeGraft({ llamaCppRoot: srcDir });
+  }
   log(
     `[compile-libllama] omnivoice-fuse: pin=${omnivoiceInfo.commit} ` +
       `ggmlSubmodule=${omnivoiceInfo.ggmlSubmoduleCommit} ` +
       `sources=${omnivoiceInfo.sourceCount} ` +
-      `cmakeGraftAppended=${grafted}`,
+      `cmakeGraftAppended=${grafted} ` +
+      `kokoroSources=${omnivoiceInfo.kokoroSourceCount ?? 0} ` +
+      `kokoroGraftAppended=${kokoroGrafted}`,
   );
   return omnivoiceInfo;
 }

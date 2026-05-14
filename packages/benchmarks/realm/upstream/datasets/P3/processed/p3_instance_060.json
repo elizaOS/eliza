@@ -1,0 +1,87 @@
+{
+  "instance_id": "p3_instance_060",
+  "city_map": {
+    "locations": [
+      "park",
+      "stadium",
+      "hospital",
+      "suburb",
+      "airport"
+    ],
+    "distances": {
+      "park-stadium": 26,
+      "stadium-park": 26,
+      "park-hospital": 14,
+      "hospital-park": 14,
+      "park-suburb": 39,
+      "suburb-park": 39,
+      "park-airport": 7,
+      "airport-park": 7,
+      "stadium-hospital": 24,
+      "hospital-stadium": 24,
+      "stadium-suburb": 33,
+      "suburb-stadium": 33,
+      "stadium-airport": 9,
+      "airport-stadium": 9,
+      "hospital-suburb": 41,
+      "suburb-hospital": 41,
+      "hospital-airport": 34,
+      "airport-hospital": 34,
+      "suburb-airport": 24,
+      "airport-suburb": 24
+    }
+  },
+  "ride_requests": [
+    {
+      "passenger_id": "p001",
+      "pickup": "hospital",
+      "dropoff": "stadium",
+      "time_window": [
+        10.25,
+        10.933333333333334
+      ],
+      "deadline": 59
+    },
+    {
+      "passenger_id": "p002",
+      "pickup": "hospital",
+      "dropoff": "suburb",
+      "time_window": [
+        14.25,
+        14.766666666666667
+      ],
+      "deadline": 29
+    },
+    {
+      "passenger_id": "p003",
+      "pickup": "park",
+      "dropoff": "airport",
+      "time_window": [
+        11.0,
+        11.55
+      ],
+      "deadline": 60
+    }
+  ],
+  "vehicles": [
+    {
+      "vehicle_id": "v001",
+      "location": "stadium",
+      "capacity": 3,
+      "fuel": 63
+    },
+    {
+      "vehicle_id": "v002",
+      "location": "stadium",
+      "capacity": 4,
+      "fuel": 53
+    },
+    {
+      "vehicle_id": "v003",
+      "location": "suburb",
+      "capacity": 5,
+      "fuel": 70
+    }
+  ],
+  "description": "Urban ride-sharing instance"
+}

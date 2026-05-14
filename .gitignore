@@ -66,6 +66,11 @@ characters/**/private/
 
 cache/*
 models/*
+# Track the voice sub-model changelog (R5-versioning §2.1) alongside the
+# weights staging dir — the file is the human-readable twin of
+# packages/shared/src/local-inference/voice-models.ts.
+!models/voice/
+!models/voice/CHANGELOG.md
 
 tsup.config.bundled_*.mjs
 
@@ -527,6 +532,7 @@ scripts/ai-qa/.static-stack.json
 # Generated inference verification output and hardware evidence.
 packages/inference/reports/
 packages/inference/verify/bench_results/
+plugins/plugin-local-inference/native/verify/bench_results/
 packages/inference/verify/hardware-results/
 packages/inference/verify/android-vulkan-smoke/
 packages/inference/verify/cpu_bench

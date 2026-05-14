@@ -174,6 +174,15 @@ Environment Variables:
         type=str,
         help="Path to local BFCL data (instead of HuggingFace)",
     )
+    run_parser.add_argument(
+        "--enable-network",
+        action="store_true",
+        help=(
+            "Allow execution of network-gated categories (REST, web_search). "
+            "Without this flag those categories are reported in the "
+            "'skipped_no_credentials' bucket and excluded from accuracy."
+        ),
+    )
 
     # Models command
     models_parser = subparsers.add_parser("models", help="List available models")
@@ -219,6 +228,7 @@ async def run_benchmark(args: argparse.Namespace) -> int:
         timeout_per_test_ms=args.timeout,
         run_exec_eval=not args.no_exec,
         generate_report=not args.no_report,
+        enable_network=getattr(args, "enable_network", False),
     )
 
     # Set categories if specified

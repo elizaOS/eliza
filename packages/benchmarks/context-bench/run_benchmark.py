@@ -117,11 +117,27 @@ def _make_mock_llm_query():
     return mock_llm_query
 
 
-def get_llm_query_fn(provider: str, client: object | None = None):
-    """Return the selected benchmark query function."""
+def get_llm_query_fn(provider: str, client: object | None = None, harness: str = "eliza"):
+    """Return the selected benchmark query function.
+
+    ``harness`` selects the agent harness: ``eliza`` (default; routes through
+    the elizaOS TS bench server), ``hermes`` (in-process HermesClient against
+    an OpenAI-compatible endpoint), or ``openclaw`` (direct OpenAI-compat with
+    ``OPENCLAW_DIRECT_OPENAI_COMPAT=1``).
+    """
     normalized = provider.strip().lower()
     if normalized == "mock":
         return _make_mock_llm_query()
+
+    harness_key = (harness or "eliza").strip().lower()
+    if harness_key == "hermes":
+        from hermes_adapter.context_bench import make_hermes_llm_query
+
+        return make_hermes_llm_query()
+    if harness_key == "openclaw":
+        from openclaw_adapter.context_bench import make_openclaw_llm_query
+
+        return make_openclaw_llm_query()
 
     from eliza_adapter.context_bench import make_eliza_llm_query
 
@@ -135,6 +151,7 @@ async def run_benchmark(
     context_lengths: list[int] | None = None,
     positions: list[NeedlePosition] | None = None,
     tasks_per_position: int | None = None,
+    harness: str = "eliza",
 ) -> object:
     """Run the context benchmark via the eliza TS bridge."""
 
@@ -184,8 +201,9 @@ async def run_benchmark(
         bar = "█" * filled + "░" * (bar_len - filled)
         print(f"\r{suite}: [{bar}] {completed}/{total} ({pct:.1f}%)", end="", flush=True)
 
+    harness_key = (harness or "eliza").strip().lower()
     bridge_manager = None
-    if provider.strip().lower() != "mock":
+    if provider.strip().lower() != "mock" and harness_key == "eliza":
         from eliza_adapter.server_manager import ElizaServerManager
 
         bridge_manager = ElizaServerManager()
@@ -194,6 +212,7 @@ async def run_benchmark(
     llm_fn = get_llm_query_fn(
         provider,
         client=bridge_manager.client if bridge_manager is not None else None,
+        harness=harness_key,
     )
 
     try:
@@ -266,6 +285,12 @@ def main() -> int:
         default=None,
         help="Override number of tasks per position/length",
     )
+    parser.add_argument(
+        "--harness",
+        default="eliza",
+        choices=["eliza", "hermes", "openclaw"],
+        help="Agent harness routing the LLM query (default: eliza)",
+    )
     args = parser.parse_args()
     context_lengths = (
         [int(value) for value in args.context_lengths.split(",") if value.strip()]
@@ -286,6 +311,7 @@ def main() -> int:
             context_lengths=context_lengths,
             positions=positions,
             tasks_per_position=args.tasks_per_position,
+            harness=args.harness,
         )
     )
     return 0

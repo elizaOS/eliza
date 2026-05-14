@@ -82,6 +82,7 @@ import {
 	type PlannerTrajectory,
 	runPlannerLoop,
 } from "../runtime/planner-loop";
+import { looksLikeRefusal } from "../runtime/refusal-detector";
 import {
 	buildResponseGrammar,
 	buildSpanSamplerPlan,
@@ -2608,9 +2609,10 @@ function normalizeRawParsedForFieldRegistry(
 	return normalized;
 }
 
-function messageHandlerFromFieldResult(
+export function messageHandlerFromFieldResult(
 	result: ResponseHandlerResult,
 	fieldRun?: ResponseHandlerFieldRunResult,
+	runtimeContext?: { actions: ReadonlyArray<Pick<Action, "name">> },
 ): MessageHandlerResult {
 	const contexts = Array.isArray(result.contexts)
 		? result.contexts.map((context) => String(context).trim()).filter(Boolean)
@@ -2620,6 +2622,21 @@ function messageHandlerFromFieldResult(
 				.map((action) => String(action).trim())
 				.filter(Boolean)
 		: [];
+	// When the caller passes the runtime's `actions`, narrow the candidate set
+	// to those that are (a) registered actions OR (b) canonical control names
+	// (REPLY / IGNORE / STOP). All-bogus candidate lists collapse to length 0,
+	// which lets the routing logic below fall back to simple-reply when the
+	// only context is "simple". When no `runtimeContext` is provided, behaviour
+	// is unchanged (back-compat).
+	const validCandidateCount = runtimeContext
+		? candidateActions.filter((name) => {
+				const normalized = normalizeActionIdentifier(name);
+				if (canonicalPlannerControlActionName(normalized) !== null) return true;
+				return runtimeContext.actions.some(
+					(action) => normalizeActionIdentifier(action.name) === normalized,
+				);
+			}).length
+		: candidateActions.length;
 	const facts = Array.isArray(result.facts)
 		? result.facts.map((fact) => String(fact).trim()).filter(Boolean)
 		: [];
@@ -2663,7 +2680,7 @@ function messageHandlerFromFieldResult(
 					: "RESPOND";
 	const preemptDirect =
 		preempt?.mode === "ack-and-stop" || preempt?.mode === "direct-reply";
-	const replyText =
+	const replyTextRaw =
 		typeof result.replyText === "string" ? result.replyText : "";
 	const routedContexts = preemptDirect
 		? Array.from(new Set([...contexts, SIMPLE_CONTEXT_ID]))
@@ -2673,7 +2690,7 @@ function messageHandlerFromFieldResult(
 	);
 	const shouldPlan =
 		!preemptDirect &&
-		(initialPlanningContexts.length > 0 || candidateActions.length > 0);
+		(initialPlanningContexts.length > 0 || validCandidateCount > 0);
 	const finalContexts =
 		shouldPlan && initialPlanningContexts.length === 0
 			? Array.from(
@@ -2685,6 +2702,12 @@ function messageHandlerFromFieldResult(
 					]),
 				)
 			: routedContexts;
+	// Refusal suppression for the planning path (elizaOS/eliza#7620). Mirrors
+	// the logic in `parseMessageHandlerOutput`: when the planner is about to
+	// run, a refusal-shaped `replyText` from a safety-tuned hosted model is
+	// dropped so the planner's own message reaches the user instead.
+	const replyText =
+		shouldPlan && looksLikeRefusal(replyTextRaw) ? "" : replyTextRaw;
 	const plan: MessageHandlerResult["plan"] = {
 		contexts: finalContexts,
 		reply: replyText,
@@ -3425,6 +3448,7 @@ export async function runV5MessageRuntimeStage1(args: {
 			messageHandler = messageHandlerFromFieldResult(
 				fieldRunResult.parsed,
 				fieldRunResult,
+				{ actions: args.runtime.actions },
 			);
 		}
 		if (!messageHandler) {

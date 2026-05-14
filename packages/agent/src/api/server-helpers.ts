@@ -20,6 +20,10 @@ import {
   sendJsonError,
   type UUID,
 } from "@elizaos/core";
+import type {
+  AgentStartupDiagnostics,
+  ConversationMetadata,
+} from "@elizaos/shared";
 import {
   normalizeCharacterLanguage,
   normalizeOnboardingProviderId,
@@ -28,10 +32,6 @@ import {
   resolveStylePresetByAvatarIndex,
   resolveStylePresetById,
   resolveStylePresetByName,
-} from "@elizaos/shared";
-import type {
-  AgentStartupDiagnostics,
-  ConversationMetadata,
 } from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.ts";
 import { resolveStateDir } from "../config/paths.ts";
@@ -249,8 +249,7 @@ const APP_OWNER_NAME_MAX_LENGTH = 60;
 
 /** Resolve the app owner's display name from config, or fall back to "User". */
 export function resolveAppUserName(config: ElizaConfig): string {
-  const ownerName = (config.ui as Record<string, unknown> | undefined)
-    ?.ownerName as string | undefined;
+  const ownerName = config.ui?.ownerName;
   const normalized = ownerName?.trim().slice(0, APP_OWNER_NAME_MAX_LENGTH);
   return normalized || "User";
 }

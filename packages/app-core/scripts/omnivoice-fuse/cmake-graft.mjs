@@ -260,10 +260,187 @@ export function appendCmakeGraft({ llamaCppRoot }) {
 /**
  * The CMake -D flags a fused build must add on top of the per-target
  * defaults. Returns an array of `-D…=…` strings.
+ *
+ * Kokoro shares the omnivoice-core static library — when the in-tree
+ * `omnivoice/src/kokoro-*.cpp` sources exist, append
+ * `-DELIZA_FUSE_KOKORO=ON` so the Kokoro graft block in CMakeLists.txt
+ * kicks in. The block itself FATAL_ERRORs if ELIZA_FUSE_OMNIVOICE is
+ * off, so the two flags are always consistent.
  */
 export function fusedExtraCmakeFlags() {
-  return ["-DELIZA_FUSE_OMNIVOICE=ON", "-DBUILD_SHARED_LIBS=ON"];
+  const flags = ["-DELIZA_FUSE_OMNIVOICE=ON", "-DBUILD_SHARED_LIBS=ON"];
+  if (hasKokoroSourcesInTree()) {
+    flags.push("-DELIZA_FUSE_KOKORO=ON");
+  }
+  return flags;
 }
+
+const KOKORO_SENTINEL = "# ELIZA-KOKORO-FUSION-GRAFT-V1";
+
+/**
+ * CMake snippet appended verbatim to llama.cpp's root CMakeLists.txt
+ * after the OmniVoice graft block. The block declares an additional
+ * source set inside the existing `omnivoice-core` STATIC library +
+ * `elizainference` SHARED library, gated on `-DELIZA_FUSE_KOKORO=ON`.
+ *
+ * Why "compile into omnivoice-core" rather than a separate kokoro-core
+ * archive: the Kokoro sources reuse the OmniVoice port's
+ * `backend.h`/`gguf-weights.h`/`weight-ctx.h`/`ov-error.h` helpers. A
+ * separate static library would either need to re-include those (and
+ * collide at link time) or expose them as a public surface (and we
+ * don't want a new internal-only ABI). One library, two source sets is
+ * simpler.
+ */
+function buildKokoroGraftSnippet() {
+  return `
+
+${KOKORO_SENTINEL}
+# ----------------------------------------------------------------------
+# Source-level fusion of the Kokoro-82M TTS engine into the same
+# libelizainference target the OmniVoice graft built above. See
+# plugins/plugin-local-inference/native/reports/porting/2026-05-14/
+# kokoro-llama-cpp-feasibility.md for the design (no new GGML op, no
+# new model arch, free-standing ggml_backend graph mirroring OmniVoice's
+# PipelineTTS).
+#
+# The Kokoro sources are staged by prepare.mjs into the same
+# omnivoice/src/ directory as the OmniVoice port so they share the
+# GGML_MAX_NAME=128 bump and the gguf-weights.h / weight-ctx.h /
+# backend.h helpers.
+#
+# This block requires ELIZA_FUSE_OMNIVOICE=ON: Kokoro reuses the
+# omnivoice-core build context and the OmniVoice FFI dispatcher
+# (eliza_pick_kokoro_files() is called from eliza_load_tts() before
+# falling through to OmniVoice's own picker).
+# ----------------------------------------------------------------------
+
+if(ELIZA_FUSE_KOKORO)
+    if(NOT ELIZA_FUSE_OMNIVOICE)
+        message(FATAL_ERROR
+            "ELIZA_FUSE_KOKORO=ON requires ELIZA_FUSE_OMNIVOICE=ON: the "
+            "Kokoro graft compiles into the same omnivoice-core static "
+            "library and reuses its backend/weight-ctx helpers.")
+    endif()
+
+    file(GLOB ELIZA_KOKORO_SOURCES
+        CONFIGURE_DEPENDS
+        \${CMAKE_CURRENT_SOURCE_DIR}/${OMNIVOICE_GRAFT_SUBDIR}/src/kokoro-*.cpp)
+    file(GLOB ELIZA_KOKORO_HEADERS
+        CONFIGURE_DEPENDS
+        \${CMAKE_CURRENT_SOURCE_DIR}/${OMNIVOICE_GRAFT_SUBDIR}/src/kokoro-*.h)
+
+    if(NOT ELIZA_KOKORO_SOURCES)
+        message(FATAL_ERROR
+            "ELIZA_FUSE_KOKORO=ON but no sources under "
+            "${OMNIVOICE_GRAFT_SUBDIR}/src/kokoro-*.cpp. Re-run "
+            "packages/app-core/scripts/omnivoice-fuse/prepare.mjs.")
+    endif()
+
+    # Compile Kokoro sources straight into the existing omnivoice-core
+    # static library so they share its compile flags + GGML_MAX_NAME=128
+    # bump + include path set. Avoids a parallel kokoro-core target with
+    # a duplicate set of link rules to maintain.
+    target_sources(omnivoice-core PRIVATE \${ELIZA_KOKORO_SOURCES})
+
+    # Also compile them into the shared \`elizainference\` library so the
+    # FFI symbol set is co-resident with the OmniVoice symbols (one
+    # dlopen, one ABI surface; AGENTS.md §4 one-process rule).
+    if(TARGET elizainference)
+        target_sources(elizainference PRIVATE \${ELIZA_KOKORO_SOURCES})
+        target_compile_definitions(elizainference PRIVATE ELIZA_FUSE_KOKORO)
+    endif()
+
+    # llama-server already links omnivoice-core (above); the Kokoro
+    # sources are now compiled into that archive, so the route in
+    # tools/server/server.cpp gated on \`#ifdef ELIZA_FUSE_KOKORO\` picks
+    # up the new dispatcher without an additional target_link_libraries.
+    if(TARGET llama-server)
+        target_compile_definitions(llama-server PRIVATE ELIZA_FUSE_KOKORO)
+    endif()
+
+    # Optional: install the Python convert script alongside
+    # convert_hf_to_gguf.py so deployments that ship the binary also
+    # ship the GGUF generator.
+    if(EXISTS \${CMAKE_CURRENT_SOURCE_DIR}/${OMNIVOICE_GRAFT_SUBDIR}/tools/convert_kokoro_to_gguf.py)
+        install(
+            FILES \${CMAKE_CURRENT_SOURCE_DIR}/${OMNIVOICE_GRAFT_SUBDIR}/tools/convert_kokoro_to_gguf.py
+            PERMISSIONS
+                OWNER_READ OWNER_WRITE OWNER_EXECUTE
+                GROUP_READ GROUP_EXECUTE
+                WORLD_READ WORLD_EXECUTE
+            DESTINATION \${CMAKE_INSTALL_BINDIR})
+    endif()
+endif()
+# ----------------------------------------------------------------------
+# end ${KOKORO_SENTINEL}
+`;
+}
+
+/**
+ * Append the Kokoro graft snippet to `<llamaCppRoot>/CMakeLists.txt`
+ * after the OmniVoice graft. Idempotent (sentinel-guarded). Returns
+ * true when the snippet is written, false when the sentinel was
+ * already present.
+ *
+ * Caller (prepare.mjs / build-llama-cpp-dflash.mjs) invokes this
+ * after `appendCmakeGraft` once the Kokoro sources have been staged
+ * into `omnivoice/src/`.
+ */
+export function appendKokoroCmakeGraft({ llamaCppRoot } = {}) {
+  if (!llamaCppRoot) {
+    throw new Error("[omnivoice-fuse] appendKokoroCmakeGraft: llamaCppRoot is required");
+  }
+  const cmakePath = path.join(llamaCppRoot, "CMakeLists.txt");
+  const original = fs.readFileSync(cmakePath, "utf8");
+  if (hasKokoroCmakeGraft(original)) return false;
+  fs.writeFileSync(cmakePath, original + buildKokoroGraftSnippet(), "utf8");
+  return true;
+}
+
+/**
+ * True when the in-tree submodule has `omnivoice/src/kokoro-*.cpp`
+ * sources staged. The Kokoro fuse step is opt-in based on this signal
+ * so a fork checkout without the port still builds OmniVoice cleanly.
+ */
+export function hasKokoroSourcesInTree(forkRoot) {
+  const root = forkRoot ?? defaultForkRoot();
+  if (!root) return false;
+  const dir = path.join(root, "omnivoice", "src");
+  let entries;
+  try {
+    entries = fs.readdirSync(dir);
+  } catch {
+    return false;
+  }
+  return entries.some(
+    (name) => name.startsWith("kokoro-") && name.endsWith(".cpp"),
+  );
+}
+
+function defaultForkRoot() {
+  // Probe the standard in-tree location. Returns null when the
+  // submodule has not been initialised.
+  const candidate = path.resolve(
+    process.cwd(),
+    "plugins/plugin-local-inference/native/llama.cpp",
+  );
+  try {
+    return fs.statSync(candidate).isDirectory() ? candidate : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * True when the root CMakeLists.txt already contains the Kokoro graft
+ * sentinel. Used by `applyKokoroCmakeGraft` to stay idempotent across
+ * repeated runs of the orchestrator's fuse prep step.
+ */
+export function hasKokoroCmakeGraft(cmakeListsContents) {
+  return cmakeListsContents.includes(KOKORO_SENTINEL);
+}
+
+export { KOKORO_SENTINEL as KOKORO_CMAKE_GRAFT_SENTINEL };
 
 /**
  * Names of CMake build targets the fused build must produce. Caller

@@ -88,11 +88,11 @@ def test_jssp_compute_makespan_sample() -> None:
     assert ms is not None and ms >= 5
 
 
-def test_jssp_oracle_returns_lower_bound() -> None:
+def test_jssp_oracle_returns_optimum() -> None:
+    """OR-Tools is now required; oracle returns true optimum (=5)."""
     jobs = [[(0, 3), (1, 2)], [(1, 2), (0, 1)]]
-    lb = jssp_oracle_makespan(jobs)
-    # LB is the larger of max_job_dur (5) or max_machine_load (4).
-    assert lb >= 4
+    opt = jssp_oracle_makespan(jobs, timeout_s=5.0)
+    assert opt == 5
 
 
 def test_tsp_tw_oracle_brute_force_small() -> None:

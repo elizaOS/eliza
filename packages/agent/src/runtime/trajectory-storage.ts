@@ -756,7 +756,10 @@ export async function installDatabaseTrajectoryLogger(
 
       return { trajectories, total, offset, limit };
     } catch (err) {
-      coreLogger.error("[trajectory-persistence] listTrajectories error:", err instanceof Error ? err.message : String(err));
+      coreLogger.error(
+        "[trajectory-persistence] listTrajectories error:",
+        err instanceof Error ? err.message : String(err),
+      );
       return { trajectories: [], total: 0, offset, limit };
     }
   };
