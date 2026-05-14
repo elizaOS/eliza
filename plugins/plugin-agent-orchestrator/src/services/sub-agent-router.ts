@@ -430,6 +430,7 @@ export class SubAgentRouter {
         (m) => this.log("debug", m),
         verificationReferenceText,
         ignoredVerifyUrls,
+        this.runtime,
       );
       text = verified.text;
       deadUrls = verified.dead;
@@ -533,7 +534,7 @@ export class SubAgentRouter {
     sessionId: string,
   ): HandlerCallback | undefined {
     const sendToTarget = (
-      this.runtime as {
+      this.runtime as unknown as {
         sendMessageToTarget?: (
           target: { source: string; roomId?: UUID; accountId?: string },
           content: Content,
@@ -660,6 +661,7 @@ Do not report done until every referenced URL in the final page resolves without
         metadata: {
           ...meta,
           buildVerifyRetryCount: nextRetry,
+          keepAliveAfterComplete: false,
           retryOfSessionId: session.id,
           ...(cachedStaleMissUrls.size > 0
             ? { cachedStaleMissUrls: [...cachedStaleMissUrls] }
@@ -832,6 +834,7 @@ async function annotateUnverifiedUrls(
   log?: (message: string) => void,
   referenceText?: string,
   ignoredUrls?: ReadonlySet<string>,
+  runtime?: IAgentRuntime,
 ): Promise<{ text: string; dead: DeadUrl[] }> {
   const urls = extractVerifiableUrls(text, 5, referenceText, ignoredUrls);
   if (urls.length === 0) return { text, dead: [] };
@@ -902,7 +905,9 @@ async function annotateUnverifiedUrls(
   // only there to ride out a transient network blip on the checker side,
   // not a write→serve race. Tunable via ELIZA_URL_VERIFY_SETTLE_MS
   // (default 2500ms); 0 disables the retry (single probe).
-  const settleRaw = process.env.ELIZA_URL_VERIFY_SETTLE_MS;
+  const settleRaw = runtime
+    ? readSetting(runtime, "ELIZA_URL_VERIFY_SETTLE_MS")
+    : process.env.ELIZA_URL_VERIFY_SETTLE_MS;
   const settleParsed = settleRaw ? Number.parseInt(settleRaw, 10) : 2500;
   const settleMs =
     Number.isFinite(settleParsed) && settleParsed >= 0 ? settleParsed : 2500;

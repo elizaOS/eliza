@@ -85,9 +85,7 @@ describe("v5 planner loop skeleton", () => {
 			text:
 				'{"type":"REPLY","args":{"text":"On it."}}\n' +
 				'{"type":"TASKS_SPAWN_AGENT","args":{"action":"spawn_agent","agentType":"opencode"}}',
-			toolCalls: [
-				{ id: "tc1", name: "REPLY", arguments: { text: "On it." } },
-			],
+			toolCalls: [{ id: "tc1", name: "REPLY", arguments: { text: "On it." } }],
 		});
 
 		expect(output.toolCalls.map((call) => call.name)).toEqual([
@@ -117,6 +115,37 @@ describe("v5 planner loop skeleton", () => {
 
 		expect(output.toolCalls.map((call) => call.name)).toEqual([
 			"TASKS_SPAWN_AGENT",
+		]);
+	});
+
+	it("preserves same-name recovered calls when their parameters differ", () => {
+		const output = parsePlannerOutput({
+			text:
+				'{"type":"WRITE_FILE","args":{"path":"a.txt","contents":"a"}}' +
+				'{"type":"WRITE_FILE","args":{"path":"b.txt","contents":"b"}}',
+			toolCalls: [
+				{
+					id: "tc1",
+					name: "WRITE_FILE",
+					arguments: { path: "a.txt", contents: "a" },
+				},
+			],
+		});
+
+		expect(
+			output.toolCalls.map((call) => ({
+				name: call.name,
+				params: call.params,
+			})),
+		).toEqual([
+			{
+				name: "WRITE_FILE",
+				params: { path: "a.txt", contents: "a" },
+			},
+			{
+				name: "WRITE_FILE",
+				params: { path: "b.txt", contents: "b" },
+			},
 		]);
 	});
 

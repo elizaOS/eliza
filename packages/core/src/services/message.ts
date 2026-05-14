@@ -2771,8 +2771,26 @@ function containsEmbeddedJsonObject(text: unknown): boolean {
 	const withoutThink = text.replace(/<think>[\s\S]*?<\/think>/g, "");
 	let depth = 0;
 	let start = -1;
+	let inString = false;
+	let escaped = false;
 	for (let i = 0; i < withoutThink.length; i++) {
 		const ch = withoutThink[i];
+		if (inString) {
+			if (escaped) {
+				escaped = false;
+				continue;
+			}
+			if (ch === "\\") {
+				escaped = true;
+				continue;
+			}
+			if (ch === '"') inString = false;
+			continue;
+		}
+		if (ch === '"') {
+			inString = true;
+			continue;
+		}
 		if (ch === "{") {
 			if (depth === 0) start = i;
 			depth++;

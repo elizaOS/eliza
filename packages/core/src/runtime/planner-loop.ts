@@ -1736,9 +1736,9 @@ function parseEmbeddedToolCalls(text: string | undefined): PlannerToolCall[] {
 
 /**
  * Merge native tool calls with calls recovered from the model's text
- * narration, deduped by normalized name. Native calls are authoritative and
- * keep their order; text-recovered calls only fill in actions the native
- * extraction missed.
+ * narration, deduped by normalized name and parameters. Native calls are
+ * authoritative and keep their order; text-recovered calls only fill in exact
+ * calls the native extraction missed.
  */
 function mergeToolCalls(
 	native: PlannerToolCall[],
@@ -1747,10 +1747,12 @@ function mergeToolCalls(
 	if (fromText.length === 0) {
 		return native;
 	}
-	const seen = new Set(native.map((call) => call.name.toUpperCase()));
+	const callKey = (call: PlannerToolCall) =>
+		`${call.name.toUpperCase()}:${JSON.stringify(call.params ?? {})}`;
+	const seen = new Set(native.map(callKey));
 	const merged = [...native];
 	for (const call of fromText) {
-		const key = call.name.toUpperCase();
+		const key = callKey(call);
 		if (seen.has(key)) {
 			continue;
 		}
