@@ -32,7 +32,7 @@ ELIZA_1_MANIFEST_SCHEMA_VERSION: Final[str] = "1"
 ELIZA_1_MANIFEST_SCHEMA_URL: Final[str] = (
     "https://elizaos.ai/schemas/eliza-1.manifest.v1.json"
 )
-ELIZA_1_HF_REPO: Final[str] = "elizaos/eliza-1"
+ELIZA_1_HF_REPO: Final[str] = "elizalabs/eliza-1"
 
 # The canonical current Eliza-1 release tiers.
 ELIZA_1_TIERS: Final[tuple[str, ...]] = (
@@ -180,16 +180,12 @@ VOICE_QUANT_BY_TIER: Final[Mapping[str, str]] = {
 # of ``OMNIVOICE_QUANT_LADDER_BY_TIER`` in
 # ``packages/shared/src/local-inference/catalog.ts``. The downloader picks
 # the appropriate level from this ladder at install time based on the
-# host's RAM/SoC class (no silent fallback — AGENTS.md §3). Tiers whose
-# default voice backend is Kokoro (0_8b/2b/4b currently) publish no
-# OmniVoice ladder; the empty tuple signals "no voice ladder, runtime
-# uses Kokoro instead". OmniVoice's ``tools/quantize.cpp`` already supports
-# Q2_K..Q8_0; this curated subset matches the device-class budgets in the
-# voice-quant matrix doc (``docs/inference/voice-quant-matrix.md``).
+# host's RAM/SoC class (no silent fallback — AGENTS.md §3). Kokoro-only
+# small tiers publish no OmniVoice ladder.
 VOICE_QUANT_LADDER_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
-    "0_8b": (),
-    "2b": (),
-    "4b": (),
+    "0_8b": ("Q3_K_M", "Q4_K_M", "Q5_K_M"),
+    "2b": ("Q3_K_M", "Q4_K_M", "Q5_K_M"),
+    "4b": ("Q3_K_M", "Q4_K_M", "Q5_K_M"),
     "9b": ("Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"),
     "27b": ("Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"),
     "27b-256k": ("Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"),
@@ -197,10 +193,10 @@ VOICE_QUANT_LADDER_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
 }
 
 VOICE_BACKENDS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
-    "0_8b": ("kokoro",),
-    "2b": ("kokoro",),
-    "4b": ("kokoro",),
-    "9b": ("kokoro", "omnivoice"),
+    "0_8b": ("omnivoice", "kokoro"),
+    "2b": ("omnivoice", "kokoro"),
+    "4b": ("omnivoice", "kokoro"),
+    "9b": ("omnivoice", "kokoro"),
     "27b": ("omnivoice",),
     "27b-256k": ("omnivoice",),
     "27b-1m": ("omnivoice",),
@@ -217,9 +213,9 @@ def required_voice_artifacts_for_tier(tier: str) -> tuple[str, ...]:
     """Return the frozen TTS artifacts required for ``tier``.
 
     Paths are relative to the bundle's ``tts/`` directory. The active Eliza-1
-    release line uses Kokoro as the required/default backend for 0.8B, 2B,
-    and 4B. The 9B tier ships Kokoro first plus OmniVoice. The 27B
-    long-context tiers ship OmniVoice only.
+    release line uses Kokoro as the required/default backend for 0_8b, 2b,
+    and 4b, Kokoro plus OmniVoice for 9b, and OmniVoice only for 27B-class
+    tiers.
     """
 
     out: list[str] = []

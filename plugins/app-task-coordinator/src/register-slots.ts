@@ -16,9 +16,11 @@ import { registerTaskCoordinatorSlots } from "@elizaos/ui";
 import { CodingAgentControlChip } from "./CodingAgentControlChip.js";
 import { CodingAgentSettingsSection } from "./CodingAgentSettingsSection.js";
 import { CodingAgentTasksPanel } from "./CodingAgentTasksPanel.js";
+import { PtyConsoleBase } from "./PtyConsoleBase.js";
 
 registerTaskCoordinatorSlots({
   CodingAgentControlChip,
   CodingAgentSettingsSection,
   CodingAgentTasksPanel,
+  PtyConsoleBase,
 });

@@ -13,10 +13,7 @@ function terminalSupportedByEnv(env: Record<string, string | undefined>): boolea
   const mode = (env.ELIZA_RUNTIME_MODE ?? env.RUNTIME_MODE ?? env.LOCAL_RUNTIME_MODE ?? "")
     .trim()
     .toLowerCase();
-  const aosp = ["1", "true", "yes", "on"].includes(
-    (env.ELIZA_AOSP_BUILD ?? "").trim().toLowerCase()
-  );
-  return platform === "android" && aosp && mode === "local-yolo";
+  return platform === "android" && mode === "local-yolo";
 }
 
 export const shellPlugin: Plugin = {

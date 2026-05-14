@@ -312,6 +312,32 @@ describe("eliza-guided skeleton compiler", () => {
 });
 
 describe("cerebras mode with mock client", () => {
+  function shouldRespondRequest(): ModeRequest {
+    return {
+      taskId: "should_respond",
+      caseId: "demo#0",
+      systemPrompt: "system",
+      userPrompt: "hello",
+      jsonSchema: {
+        type: "object",
+        properties: {
+          shouldRespond: {
+            type: "string",
+            enum: ["RESPOND", "IGNORE", "STOP"],
+          },
+        },
+        required: ["shouldRespond"],
+      },
+      skeletonHint: {
+        type: "object",
+        freeFields: [],
+        enumKey: "shouldRespond",
+        enumValues: ["RESPOND", "IGNORE", "STOP"],
+      },
+      maxTokens: 32,
+    };
+  }
+
   it("runs through the tool-use path and returns the tool arguments as JSON", async () => {
     const mockClient: CerebrasClient = {
       async chatCompletions() {
@@ -345,32 +371,176 @@ describe("cerebras mode with mock client", () => {
     const mode = new CerebrasMode({ client: mockClient });
     const skipReason = await mode.available();
     expect(skipReason).toBeNull();
-    const result = await mode.generate({
-      taskId: "should_respond",
-      caseId: "demo#0",
-      systemPrompt: "system",
-      userPrompt: "hello",
-      jsonSchema: {
-        type: "object",
-        properties: {
-          shouldRespond: {
-            type: "string",
-            enum: ["RESPOND", "IGNORE", "STOP"],
-          },
-        },
-        required: ["shouldRespond"],
-      },
-      skeletonHint: {
-        type: "object",
-        freeFields: [],
-        enumKey: "shouldRespond",
-        enumValues: ["RESPOND", "IGNORE", "STOP"],
-      },
-      maxTokens: 32,
-    });
+    const result = await mode.generate(shouldRespondRequest());
     expect(result.error).toBeUndefined();
     const parsed = JSON.parse(result.rawOutput) as { shouldRespond: string };
     expect(parsed.shouldRespond).toBe("RESPOND");
+  });
+
+  it("falls back to JSON-schema mode when tool-use returns empty output with tokens", async () => {
+    const requests: unknown[] = [];
+    const mockClient: CerebrasClient = {
+      async chatCompletions(req) {
+        requests.push(req);
+        if (requests.length === 1) {
+          return {
+            choices: [
+              {
+                message: {
+                  role: "assistant",
+                  content: "",
+                },
+                finish_reason: "stop",
+              },
+            ],
+            usage: {
+              prompt_tokens: 5,
+              completion_tokens: 11,
+              total_tokens: 16,
+            },
+          };
+        }
+        return {
+          choices: [
+            {
+              message: {
+                role: "assistant",
+                content: JSON.stringify({ shouldRespond: "IGNORE" }),
+              },
+              finish_reason: "stop",
+            },
+          ],
+          usage: {
+            prompt_tokens: 9,
+            completion_tokens: 4,
+            total_tokens: 13,
+          },
+        };
+      },
+    };
+    const mode = new CerebrasMode({ client: mockClient });
+    await mode.available();
+    const result = await mode.generate(shouldRespondRequest());
+
+    expect(JSON.parse(result.rawOutput)).toEqual({ shouldRespond: "IGNORE" });
+    expect(result.tokensGenerated).toBe(4);
+    expect(result.warnings?.[0]).toContain("completion_tokens=11");
+    expect(requests).toHaveLength(2);
+    expect((requests[0] as { tools?: unknown[] }).tools).toHaveLength(1);
+    expect(
+      (requests[1] as { response_format?: { type: string } }).response_format
+        ?.type,
+    ).toBe("json_schema");
+  });
+
+  it("falls back to prompt-only JSON when JSON-schema setup fails", async () => {
+    const requests: unknown[] = [];
+    const mockClient: CerebrasClient = {
+      async chatCompletions(req) {
+        requests.push(req);
+        if (requests.length === 1) {
+          return {
+            choices: [
+              {
+                message: {
+                  role: "assistant",
+                  content: "   ",
+                },
+                finish_reason: "stop",
+              },
+            ],
+            usage: {
+              prompt_tokens: 5,
+              completion_tokens: 6,
+              total_tokens: 11,
+            },
+          };
+        }
+        if (requests.length === 2) {
+          throw new Error("unsupported response_format");
+        }
+        return {
+          choices: [
+            {
+              message: {
+                role: "assistant",
+                content: JSON.stringify({ shouldRespond: "STOP" }),
+              },
+              finish_reason: "stop",
+            },
+          ],
+          usage: {
+            prompt_tokens: 10,
+            completion_tokens: 4,
+            total_tokens: 14,
+          },
+        };
+      },
+    };
+    const mode = new CerebrasMode({ client: mockClient });
+    await mode.available();
+    const result = await mode.generate(shouldRespondRequest());
+
+    expect(JSON.parse(result.rawOutput)).toEqual({ shouldRespond: "STOP" });
+    expect(result.warnings?.join("\n")).toContain(
+      "unsupported response_format",
+    );
+    expect(requests).toHaveLength(3);
+    expect((requests[2] as { response_format?: unknown }).response_format).toBe(
+      undefined,
+    );
+    expect((requests[2] as { tools?: unknown }).tools).toBeUndefined();
+  });
+
+  it("reports empty output after all fallback attempts without dropping usage tokens", async () => {
+    const mockClient: CerebrasClient = {
+      async chatCompletions() {
+        return {
+          choices: [
+            {
+              message: {
+                role: "assistant",
+                content: "",
+              },
+              finish_reason: "stop",
+            },
+          ],
+          usage: {
+            prompt_tokens: 5,
+            completion_tokens: 9,
+            total_tokens: 14,
+          },
+        };
+      },
+    };
+    const mode = new CerebrasMode({ client: mockClient });
+    await mode.available();
+    const result = await mode.generate(shouldRespondRequest());
+
+    expect(result.rawOutput).toBe("");
+    expect(result.tokensGenerated).toBe(9);
+    expect(result.error).toContain("empty output");
+    expect(result.error).toContain("prompt-only");
+    expect(result.error).toContain("completion_tokens=9");
+    expect(result.warnings).toHaveLength(3);
+  });
+
+  it("aborts transport failures instead of publishing them as scored zero cases", async () => {
+    const mockClient: CerebrasClient = {
+      async chatCompletions() {
+        throw new Error("ECONNRESET");
+      },
+    };
+    const mode = new CerebrasMode({ client: mockClient });
+    await mode.available();
+
+    await expect(
+      runBench({
+        tasks: ["should_respond"],
+        modes: [mode],
+        n: 1,
+      }),
+    ).rejects.toThrow(/adapter failed before producing/);
   });
 
   it("skips with a reason when CEREBRAS_API_KEY is absent and no client is injected", async () => {

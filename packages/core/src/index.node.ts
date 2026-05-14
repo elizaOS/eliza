@@ -227,6 +227,11 @@ export {
 export * from "./runtime-composition";
 export * from "./runtime-env";
 export * from "./runtime-route-context";
+export {
+	_setAppBundleRootForTests,
+	assertDlopenPathAllowed,
+	isPathInsideAppBundle,
+} from "./sandbox/dlopen-gate";
 export * from "./sandbox-policy";
 // Export character schemas
 export * from "./schemas/character";

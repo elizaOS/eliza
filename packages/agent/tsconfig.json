@@ -81,6 +81,10 @@
       "@elizaos/workflows": ["../workflows/src/index.ts"],
       "@elizaos/plugin-sql": ["../../plugins/plugin-sql/src/index.node.ts"],
       "@elizaos/shared": ["../shared/src/index.ts"],
+      "@elizaos/shared/local-inference": [
+        "../shared/src/local-inference/index.ts"
+      ],
+      "@elizaos/shared/*": ["../shared/src/*"],
       "@elizaos/skills": ["../skills/src/index.ts"],
       "react": ["../app-core/node_modules/@types/react/index.d.ts"],
       "react/jsx-runtime": [

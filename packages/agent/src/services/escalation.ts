@@ -115,20 +115,18 @@ export function registerEscalationChannel(channelName: string): boolean {
     const cfg = loadElizaConfig();
 
     if (!cfg.agents) {
-      (cfg as Record<string, unknown>).agents = {};
+      cfg.agents = {};
     }
-    const agents = cfg.agents as Record<string, unknown>;
-    if (!agents.defaults) {
-      agents.defaults = {};
+    if (!cfg.agents.defaults) {
+      cfg.agents.defaults = {};
     }
-    const defaults = agents.defaults as Record<string, unknown>;
-    if (!defaults.escalation) {
-      defaults.escalation = {};
+    if (!cfg.agents.defaults.escalation) {
+      cfg.agents.defaults.escalation = {};
     }
-    const escalation = defaults.escalation as Record<string, unknown>;
+    const escalation = cfg.agents.defaults.escalation;
 
     const existing = Array.isArray(escalation.channels)
-      ? (escalation.channels as string[])
+      ? [...escalation.channels]
       : [...DEFAULT_CHANNELS];
 
     if (existing.includes(trimmed)) {

@@ -74,22 +74,31 @@ function runCollector(tier) {
       `missing Eliza-1 gate collector; tried ${COLLECTOR_CANDIDATES.join(", ")}`,
     );
   }
-  const output = execFileSync(
-    "node",
-    [
-      collector,
-      "--tier",
-      tier,
-      "--gates",
-      "packages/training/benchmarks/eliza1_gates.yaml",
-      "--json",
-    ],
-    {
-      cwd: REPO_ROOT,
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "pipe"],
-    },
-  );
+  let output;
+  try {
+    output = execFileSync(
+      "node",
+      [
+        collector,
+        "--tier",
+        tier,
+        "--gates",
+        "packages/training/benchmarks/eliza1_gates.yaml",
+        "--json",
+      ],
+      {
+        cwd: REPO_ROOT,
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "pipe"],
+      },
+    );
+  } catch (error) {
+    if (typeof error.stdout === "string" && error.stdout.trim()) {
+      output = error.stdout;
+    } else {
+      throw error;
+    }
+  }
   return JSON.parse(output);
 }
 

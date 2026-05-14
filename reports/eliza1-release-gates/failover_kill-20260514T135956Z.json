@@ -1,0 +1,16 @@
+{
+  "gate": "failover_kill",
+  "status": "pass",
+  "completedAt": "2026-05-14T13:59:56.929Z",
+  "killedNode": "eliza1-release-primary-3090",
+  "fallbackNode": "eliza1-release-fallback-3090",
+  "primaryBaseUrl": "http://79.116.54.219:53777",
+  "fallbackBaseUrl": "http://79.112.108.70:39575",
+  "distinctFallbackNode": true,
+  "readinessFlipped": true,
+  "trafficMoved": true,
+  "primaryBeforeStatus": 200,
+  "primaryAfterStatus": 0,
+  "fallbackAfterStatus": 200,
+  "summary": "killed eliza1-release-primary-3090; readiness flipped true; traffic moved true"
+}

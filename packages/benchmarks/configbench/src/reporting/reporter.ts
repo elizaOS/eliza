@@ -124,6 +124,22 @@ export function printComparison(results: HandlerResult[]): void {
   console.log("");
 }
 
+export function printSetupIncompatibleHandlers(
+  results: BenchmarkResults,
+): void {
+  const entries = results.setupIncompatibleHandlers ?? [];
+  if (entries.length === 0) return;
+
+  header("SETUP INCOMPATIBLE");
+  for (const entry of entries) {
+    console.log(`  ${Y}${entry.handlerName}${X}: ${entry.reason}`);
+    for (const trace of entry.traces.slice(1, 4)) {
+      console.log(`    ${D}→ ${trace}${X}`);
+    }
+  }
+  console.log("");
+}
+
 export function writeJsonResults(
   results: BenchmarkResults,
   outputDir: string,
@@ -154,6 +170,15 @@ export function writeMarkdownReport(
     `**Validation:** ${results.validationPassed ? "PASSED (Perfect handler = 100%)" : "FAILED"}`,
   );
   lines.push("");
+
+  if ((results.setupIncompatibleHandlers?.length ?? 0) > 0) {
+    lines.push("## Setup Incompatible Handlers");
+    lines.push("");
+    for (const entry of results.setupIncompatibleHandlers ?? []) {
+      lines.push(`- **${entry.handlerName}**: ${entry.reason}`);
+    }
+    lines.push("");
+  }
 
   lines.push("## Handler Comparison");
   lines.push("");

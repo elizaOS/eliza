@@ -163,7 +163,8 @@ export function validateTaskDefinition(
     errors.push("approval task definitions require a typed subject.");
   }
 
-  const completionKind = definition.completionCheck?.kind;
+  const completionKind =
+    "completionCheck" in definition ? definition.completionCheck?.kind : undefined;
   if (completionKind) {
     const allowed = allowedCompletionChecks[definition.definitionKind];
     if (!allowed.has(completionKind)) {

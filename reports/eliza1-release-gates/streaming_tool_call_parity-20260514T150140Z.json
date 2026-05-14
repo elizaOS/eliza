@@ -1,0 +1,40 @@
+{
+  "gate": "streaming_tool_call_parity",
+  "status": "pass",
+  "completedAt": "2026-05-14T15:01:40.619Z",
+  "baseUrl": "http://79.116.54.219:53777",
+  "model": "vast/eliza-1-27b-256k",
+  "nonStreamingToolCalls": [
+    {
+      "name": "record_probe",
+      "arguments": "{\"code\":\"eliza-stream-parity\",\"value\":7}"
+    }
+  ],
+  "streamingToolCalls": [
+    {
+      "name": "record_probe",
+      "arguments": "{\"code\":\"eliza-stream-parity\",\"value\":7}"
+    }
+  ],
+  "usageParity": true,
+  "nonStreamingUsage": {
+    "completion_tokens": 42,
+    "prompt_tokens": 310,
+    "total_tokens": 352,
+    "prompt_tokens_details": {
+      "cached_tokens": 0
+    }
+  },
+  "streamingUsage": {
+    "completion_tokens": 42,
+    "prompt_tokens": 310,
+    "total_tokens": 352,
+    "prompt_tokens_details": {
+      "cached_tokens": 306
+    }
+  },
+  "nonStreamingLatencyMs": 1627,
+  "streamingFirstByteMs": 332,
+  "streamingLatencyMs": 1365,
+  "summary": "non-stream 200; stream 200; tool parity true; usage parity true"
+}

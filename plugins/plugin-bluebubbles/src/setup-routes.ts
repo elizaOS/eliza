@@ -1,5 +1,5 @@
 /**
- * BlueBubbles connector HTTP routes.
+ * BlueBubbles connector HTTP setup routes.
  *
  * Implements the shared setup contract defined in
  * `@elizaos/app-core/api/setup-contract.ts`:
@@ -12,15 +12,9 @@
  * accepts the server URL and password and persists them through the
  * connector-setup service; `cancel` wipes those credentials.
  *
- * Post-setup data routes live under `/api/bluebubbles/` (chats, messages)
- * and the webhook receiver stays put at `/webhooks/bluebubbles` since it's
- * called by the BlueBubbles server, not by the UI setup flow.
- *
- * The webhook path is read from `service.getWebhookPath()`. We register a
- * route at the default `/webhooks/bluebubbles` path; if the service is
- * configured to use a different path, that path is exposed via the runtime
- * plugin route system through the same handler — but we keep the default
- * here since the runtime route table is keyed by the path string.
+ * Post-setup data routes (`/api/bluebubbles/chats`, `/api/bluebubbles/messages`)
+ * and the public webhook receiver (`/webhooks/bluebubbles`) live in
+ * `./data-routes.ts`.
  *
  * Each handler pulls the BlueBubblesService instance off the runtime via
  * `runtime.getService("bluebubbles")` and calls public methods. If the
@@ -58,28 +52,9 @@ function setupError(code: string, message: string): SetupErrorResponse {
 const BLUEBUBBLES_SERVICE_NAME = "bluebubbles";
 const DEFAULT_WEBHOOK_PATH = "/webhooks/bluebubbles";
 
-type BlueBubblesWebhookPayload = {
-	type: string;
-	data: Record<string, unknown>;
-};
-
-type BlueBubblesChat = Record<string, unknown>;
-type BlueBubblesMessage = Record<string, unknown>;
-
-interface BlueBubblesClientLike {
-	listChats(limit?: number, offset?: number): Promise<BlueBubblesChat[]>;
-	getMessages(
-		chatGuid: string,
-		limit?: number,
-		offset?: number,
-	): Promise<BlueBubblesMessage[]>;
-}
-
 interface BlueBubblesServiceLike {
 	isConnected(): boolean;
 	getWebhookPath(): string;
-	getClient(): BlueBubblesClientLike | null;
-	handleWebhook(payload: BlueBubblesWebhookPayload): Promise<void>;
 }
 
 interface ConnectorSetupService {
@@ -274,177 +249,10 @@ async function handleCancel(
 	} satisfies SetupStatusResponse<undefined>);
 }
 
-// ── GET /api/bluebubbles/chats ─────────────────────────────────────
-async function handleChats(
-	req: RouteRequest,
-	res: RouteResponse,
-	runtime: IAgentRuntime,
-): Promise<void> {
-	const service = resolveService(runtime);
-	if (!service) {
-		res
-			.status(503)
-			.json(
-				setupError("service_unavailable", "bluebubbles service not registered"),
-			);
-		return;
-	}
-	const client = service.getClient();
-	if (!client) {
-		res
-			.status(503)
-			.json(
-				setupError("service_unavailable", "bluebubbles client not available"),
-			);
-		return;
-	}
-	const url = new URL(req.url ?? "/api/bluebubbles/chats", "http://localhost");
-	const limit = Math.min(
-		Math.max(
-			1,
-			Number.parseInt(url.searchParams.get("limit") ?? "100", 10) || 100,
-		),
-		500,
-	);
-	const offset = Math.max(
-		0,
-		Number.parseInt(url.searchParams.get("offset") ?? "0", 10) || 0,
-	);
-	try {
-		const chats = await client.listChats(limit, offset);
-		res.status(200).json({ chats, count: chats.length, limit, offset });
-	} catch (error) {
-		res
-			.status(500)
-			.json(
-				setupError(
-					"internal_error",
-					`failed to read bluebubbles chats: ${error instanceof Error ? error.message : String(error)}`,
-				),
-			);
-	}
-}
-
-// ── GET /api/bluebubbles/messages ──────────────────────────────────
-async function handleMessages(
-	req: RouteRequest,
-	res: RouteResponse,
-	runtime: IAgentRuntime,
-): Promise<void> {
-	const service = resolveService(runtime);
-	if (!service) {
-		res
-			.status(503)
-			.json(
-				setupError("service_unavailable", "bluebubbles service not registered"),
-			);
-		return;
-	}
-	const client = service.getClient();
-	if (!client) {
-		res
-			.status(503)
-			.json(
-				setupError("service_unavailable", "bluebubbles client not available"),
-			);
-		return;
-	}
-	const url = new URL(
-		req.url ?? "/api/bluebubbles/messages",
-		"http://localhost",
-	);
-	const chatGuid = (url.searchParams.get("chatGuid") ?? "").trim();
-	if (!chatGuid) {
-		res
-			.status(400)
-			.json(setupError("bad_request", "chatGuid query parameter is required"));
-		return;
-	}
-	const limit = Math.min(
-		Math.max(
-			1,
-			Number.parseInt(url.searchParams.get("limit") ?? "50", 10) || 50,
-		),
-		500,
-	);
-	const offset = Math.max(
-		0,
-		Number.parseInt(url.searchParams.get("offset") ?? "0", 10) || 0,
-	);
-	try {
-		const messages = await client.getMessages(chatGuid, limit, offset);
-		res.status(200).json({
-			chatGuid,
-			messages,
-			count: messages.length,
-			limit,
-			offset,
-		});
-	} catch (error) {
-		res
-			.status(500)
-			.json(
-				setupError(
-					"internal_error",
-					`failed to read bluebubbles messages: ${error instanceof Error ? error.message : String(error)}`,
-				),
-			);
-	}
-}
-
-// ── POST /webhooks/bluebubbles ─────────────────────────────────────
-async function handleWebhook(
-	req: RouteRequest,
-	res: RouteResponse,
-	runtime: IAgentRuntime,
-): Promise<void> {
-	const service = resolveService(runtime);
-	if (!service) {
-		res
-			.status(503)
-			.json(
-				setupError("service_unavailable", "bluebubbles service not registered"),
-			);
-		return;
-	}
-	const payload = req.body as BlueBubblesWebhookPayload | undefined;
-	if (
-		!payload ||
-		typeof payload.type !== "string" ||
-		!payload.type.trim() ||
-		typeof payload.data !== "object" ||
-		payload.data === null ||
-		Array.isArray(payload.data)
-	) {
-		res
-			.status(400)
-			.json(setupError("bad_request", "invalid BlueBubbles webhook payload"));
-		return;
-	}
-	try {
-		await service.handleWebhook(payload);
-		res.status(200).json({ ok: true });
-	} catch (error) {
-		res
-			.status(500)
-			.json(
-				setupError(
-					"internal_error",
-					`failed to handle bluebubbles webhook: ${error instanceof Error ? error.message : String(error)}`,
-				),
-			);
-	}
-}
-
 /**
- * Plugin routes for BlueBubbles.
- * Registered with `rawPath: true` to mount at canonical paths.
- *
- * The setup-shaped routes live under `/api/setup/bluebubbles/`. Post-setup
- * data routes (chats, messages) remain under `/api/bluebubbles/`. The
- * webhook stays at `/webhooks/bluebubbles` and is registered as a public
- * route (no auth required) since the BlueBubbles server posts to it from
- * outside the loopback API.
+ * Setup-contract routes for BlueBubbles. All routes live strictly under
+ * `/api/setup/bluebubbles/`. Post-setup data routes and the webhook
+ * receiver are registered separately via `blueBubblesDataRoutes`.
  */
 export const blueBubblesSetupRoutes: Route[] = [
 	{
@@ -464,25 +272,5 @@ export const blueBubblesSetupRoutes: Route[] = [
 		path: "/api/setup/bluebubbles/cancel",
 		handler: handleCancel,
 		rawPath: true,
-	},
-	{
-		type: "GET",
-		path: "/api/bluebubbles/chats",
-		handler: handleChats,
-		rawPath: true,
-	},
-	{
-		type: "GET",
-		path: "/api/bluebubbles/messages",
-		handler: handleMessages,
-		rawPath: true,
-	},
-	{
-		type: "POST",
-		path: DEFAULT_WEBHOOK_PATH,
-		handler: handleWebhook,
-		rawPath: true,
-		public: true,
-		name: "bluebubbles-webhook",
 	},
 ];

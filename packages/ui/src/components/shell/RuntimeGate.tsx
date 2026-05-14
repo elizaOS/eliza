@@ -369,13 +369,6 @@ async function probeCloudAgentReachable(
   }
 }
 
-// TODO: replace with real onboarding artwork per runtime choice
-// const CHOICE_IMAGE_PATH: Record<RuntimeChoice, string> = {
-//   cloud: "app-heroes/agentDOD.png",
-//   local: "app-heroes/runtime-debugger.png",
-//   remote: "app-heroes/log-viewer.png",
-// };
-
 export function resolveRuntimeChoices(args: {
   isAndroid: boolean;
   isIOS: boolean;

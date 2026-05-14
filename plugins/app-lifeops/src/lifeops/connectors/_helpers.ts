@@ -1,15 +1,11 @@
 /**
  * Internal helpers for connector wrappers.
  *
- * The legacy `service-mixin-*` files surface their own bespoke status shapes
- * (`LifeOpsTelegramConnectorStatus`, `LifeOpsDiscordConnectorStatus`, ...).
- * Each connector wrapper translates that shape into the contract:
+ * Provides translation from service-mixin bespoke status shapes into the
+ * canonical contract:
  *
  *   - {@link ConnectorStatus} — uniform `ok | degraded | disconnected` triple.
  *   - {@link DispatchResult}  — typed success / failure for `send`.
- *
- * This module centralises the translation and the error → DispatchResult
- * mapping so each individual connector wrapper stays small.
  */
 import { LifeOpsServiceError } from "../service.js";
 import type { ConnectorStatus, DispatchResult } from "./contract.js";
@@ -56,8 +52,8 @@ export function legacyStatusToConnectorStatus(
 }
 
 /**
- * Translate a thrown {@link LifeOpsServiceError} (or generic Error) raised by a
- * legacy mixin send method into the {@link DispatchResult} failure shape.
+ * Translate a thrown {@link LifeOpsServiceError} (or generic Error) into the
+ * {@link DispatchResult} failure shape.
  *
  * Status code → failure-reason mapping mirrors the dispatch-policy decisions:
  *   - 401 / 410 / token-expired → `auth_expired` (userActionable: true).

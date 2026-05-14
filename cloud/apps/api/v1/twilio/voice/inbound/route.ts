@@ -1,10 +1,9 @@
 /**
  * Twilio voice inbound webhook.
  *
- * Records the incoming call envelope and returns TwiML that plays a short
- * acknowledgement. Full voice-AI routing (Media Streams → agent → TwiML
- * Say/Gather loop) is deliberately out of scope for T9e; this lands the call
- * receipt on the DB so downstream voice plugins (future work) can pick it up.
+ * Records the incoming call envelope and drives a speech Gather loop. Twilio
+ * handles speech recognition, then this route sends the recognized text to
+ * the mapped Eliza agent and replies with TwiML <Say> output.
  *
  * The route intentionally does not require a bearer token — Twilio does not
  * send one. Signature verification uses `X-Twilio-Signature` against the
@@ -34,10 +33,46 @@ const TwilioVoicePayloadSchema = z
     From: z.string().min(1),
     To: z.string().min(1),
     CallStatus: z.string().min(1),
+    SpeechResult: z.string().optional(),
+    Confidence: z.string().optional(),
   })
   .passthrough();
 
-const TWIML_ACK = `<?xml version="1.0" encoding="UTF-8"?><Response><Say>Thanks — your call is being routed to the assistant.</Say></Response>`;
+const INITIAL_PROMPT = "Hi, you're connected to Eliza. What would you like to work on?";
+const NOT_CONFIGURED_PROMPT =
+  "This phone number is not configured for voice yet. Please check the Eliza Cloud control panel.";
+const NO_SPEECH_PROMPT = "I didn't catch that. Please say that again.";
+const EMPTY_AGENT_REPLY = "I heard you, but I don't have a response yet. Please try again.";
+
+function escapeTwiML(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
+function truncateForVoice(value: string): string {
+  const trimmed = value.replace(/\s+/g, " ").trim();
+  if (trimmed.length <= 1_500) return trimmed;
+  return `${trimmed.slice(0, 1_497)}...`;
+}
+
+function twimlSay(text: string): string {
+  return `<Say>${escapeTwiML(truncateForVoice(text))}</Say>`;
+}
+
+function buildGatherTwiML(actionUrl: string, prompt: string): string {
+  const action = escapeTwiML(actionUrl);
+  return `<?xml version="1.0" encoding="UTF-8"?><Response><Gather input="speech" action="${action}" method="POST" speechTimeout="auto" timeout="8">${twimlSay(
+    prompt,
+  )}</Gather>${twimlSay(NO_SPEECH_PROMPT)}<Redirect method="POST">${action}</Redirect></Response>`;
+}
+
+function buildTerminalTwiML(prompt: string): string {
+  return `<?xml version="1.0" encoding="UTF-8"?><Response>${twimlSay(prompt)}</Response>`;
+}
 
 function resolveForwardedUrl(c: AppContext): string {
   const url = new URL(c.req.url);
@@ -87,6 +122,7 @@ app.post("/", async (c) => {
   const event = parsed.data;
   const normalizedFrom = normalizePhoneNumber(event.From);
   const normalizedTo = normalizePhoneNumber(event.To);
+  const speechText = event.SpeechResult?.trim();
   const [phoneNumber] = await dbWrite
     .select({
       agentId: agentPhoneNumbers.agent_id,
@@ -135,9 +171,55 @@ app.post("/", async (c) => {
     from: event.From,
     to: event.To,
     status: event.CallStatus,
+    hasSpeech: Boolean(speechText),
   });
 
-  return new Response(TWIML_ACK, {
+  if (!phoneNumber) {
+    return new Response(buildTerminalTwiML(NOT_CONFIGURED_PROMPT), {
+      status: 200,
+      headers: { "Content-Type": "text/xml" },
+    });
+  }
+
+  const actionUrl = resolveForwardedUrl(c);
+  if (!speechText) {
+    return new Response(buildGatherTwiML(actionUrl, INITIAL_PROMPT), {
+      status: 200,
+      headers: { "Content-Type": "text/xml" },
+    });
+  }
+
+  let reply = EMPTY_AGENT_REPLY;
+  try {
+    const { messageRouterService } = await import("@/lib/services/message-router");
+    const agentResponse = await messageRouterService.processWithAgent(
+      phoneNumber.agentId,
+      phoneNumber.organizationId,
+      {
+        from: normalizedFrom,
+        to: normalizedTo,
+        body: speechText,
+        provider: "twilio",
+        providerMessageId: event.CallSid,
+        messageType: "voice",
+        metadata: {
+          callSid: event.CallSid,
+          confidence: event.Confidence ?? null,
+          source: "twilio-voice",
+        },
+      },
+    );
+    reply = agentResponse?.text?.trim() || EMPTY_AGENT_REPLY;
+  } catch (error) {
+    logger.error("[twilio-voice-inbound] agent voice routing failed", {
+      callSid: event.CallSid,
+      agentId: phoneNumber.agentId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    reply = "I hit a temporary issue reaching the agent. Please try again.";
+  }
+
+  return new Response(buildGatherTwiML(actionUrl, reply), {
     status: 200,
     headers: { "Content-Type": "text/xml" },
   });

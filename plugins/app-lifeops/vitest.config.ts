@@ -22,6 +22,14 @@ const appCoreTestSetup = path.join(
 );
 const lifeopsTestSetup = path.join(here, "test", "setup.ts");
 const lifeopsTestStubsRoot = path.join(here, "test", "stubs");
+const appCoreNativeLibraryPolicy = path.join(
+  elizaRoot,
+  "packages",
+  "app-core",
+  "src",
+  "platform",
+  "native-library-policy.ts",
+);
 const agentSourceRoot = path.join(elizaRoot, "packages", "agent", "src");
 const corePackageRequire = createRequire(
   path.join(elizaRoot, "packages", "core", "package.json"),
@@ -150,6 +158,10 @@ export default defineConfig({
     ...baseConfig.resolve,
     preserveSymlinks: false,
     alias: [
+      {
+        find: /^@elizaos\/app-core\/platform\/native-library-policy$/,
+        replacement: appCoreNativeLibraryPolicy,
+      },
       // These packages are imported by @elizaos/core while this suite inlines
       // core. Resolve them through Bun's real package-store path so their own
       // nested dependencies remain visible with preserveSymlinks enabled.

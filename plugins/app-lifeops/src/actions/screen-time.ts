@@ -356,9 +356,7 @@ export const SCREEN_TIME_PARAMETERS: readonly ActionParameter[] = [
 /**
  * Handler function backing the OWNER_SCREENTIME umbrella.
  *
- * Folded out of the legacy `SCREEN_TIME` action surface — Audit F. The
- * umbrella in `./owner-surfaces.ts` is the only caller; no `SCREEN_TIME`-named
- * action is registered.
+ * Called from `./owner-surfaces.ts`; no `SCREEN_TIME`-named action is registered.
  */
 export async function runScreenTimeHandler(
   runtime: IAgentRuntime,

@@ -57,7 +57,10 @@ function rowToPersistedStep(row: Record<string, unknown>): PersistedStep {
   const startedAt = toOptionalNumber(readRecordValue(row, ["started_at"]));
   const endedAt = toOptionalNumber(readRecordValue(row, ["ended_at"]));
   const kindRaw = toText(readRecordValue(row, ["step_type"]), "");
-  const kind = kindRaw === "llm" || kindRaw === "action" ? kindRaw : undefined;
+  const kind =
+    kindRaw === "llm" || kindRaw === "action" || kindRaw === "evaluator"
+      ? kindRaw
+      : undefined;
   const scriptValue = readRecordValue(row, ["script"]);
   const script =
     typeof scriptValue === "string" && scriptValue.length > 0
@@ -66,6 +69,11 @@ function rowToPersistedStep(row: Record<string, unknown>): PersistedStep {
   const scriptHash =
     typeof payloadRecord.scriptHash === "string"
       ? payloadRecord.scriptHash
+      : undefined;
+  const evaluatorName =
+    typeof payloadRecord.evaluatorName === "string" &&
+    payloadRecord.evaluatorName.length > 0
+      ? payloadRecord.evaluatorName
       : undefined;
 
   return {
@@ -79,6 +87,7 @@ function rowToPersistedStep(row: Record<string, unknown>): PersistedStep {
     ...(script !== undefined ? { script } : {}),
     ...(scriptHash !== undefined ? { scriptHash } : {}),
     ...(usedSkills !== undefined ? { usedSkills } : {}),
+    ...(evaluatorName !== undefined ? { evaluatorName } : {}),
   };
 }
 

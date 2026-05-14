@@ -53,10 +53,6 @@ function isIosRuntime(): boolean {
   return process.env.ELIZA_PLATFORM?.trim().toLowerCase() === "ios";
 }
 
-function isMobileRuntime(): boolean {
-  return isAndroidRuntime() || isIosRuntime();
-}
-
 function isTruthyEnv(value: string | undefined): boolean {
   if (!value) return false;
   return ["1", "true", "yes", "on"].includes(value.trim().toLowerCase());
@@ -145,7 +141,7 @@ export function resolveTerminalShell(): ShellResolution {
   }
 
   const candidates = isAndroidRuntime()
-    ? ["/system/bin/sh", "sh", "/bin/sh"]
+    ? ["/system/bin/sh", "sh"]
     : ["/bin/bash", "bash", "/bin/sh", "sh"];
   const shell = firstExecutable(candidates);
   if (shell) {
@@ -163,7 +159,7 @@ export function resolveTerminalShell(): ShellResolution {
     available: false,
     source: "fallback",
     warning: isAndroidRuntime()
-      ? "No executable POSIX shell was detected. AOSP builds must expose /system/bin/sh or set CODING_TOOLS_SHELL to an executable shell."
+      ? "No executable POSIX shell was detected. Android direct/AOSP local-yolo builds must expose /system/bin/sh or set CODING_TOOLS_SHELL to an executable shell."
       : "No executable POSIX shell was detected. Set SHELL or CODING_TOOLS_SHELL to an executable shell.",
   };
 }
@@ -202,7 +198,7 @@ export function missingToolMessage(tool: TerminalToolName): string {
     return resolveTerminalShell().warning ?? "No executable shell was detected.";
   }
   const suffix = isAndroidRuntime()
-    ? " On AOSP, ensure the binary is staged into the agent image and PATH includes /system/bin or the tool's install directory."
+    ? " On Android direct/AOSP builds, ensure the binary is staged into the agent image and PATH includes /system/bin or the tool's install directory."
     : " Install it or add it to PATH.";
   return `${tool} CLI is not available in PATH.${suffix}`;
 }
@@ -232,21 +228,22 @@ export function detectTerminalSupport(): TerminalSupport {
     };
   }
 
-  if (isMobileRuntime()) {
-    if (!isAospTerminalRuntime()) {
-      return {
-        supported: false,
-        reason: "vanilla_mobile",
-        message:
-          "Local terminal execution is only available on branded AOSP builds. Vanilla mobile and store builds do not expose shell, coding, or orchestrator subprocess capabilities.",
-      };
-    }
+  if (isIosRuntime()) {
+    return {
+      supported: false,
+      reason: "vanilla_mobile",
+      message:
+        "Local terminal execution is unavailable on iOS because the runtime does not expose shell, coding, or orchestrator subprocess capabilities.",
+    };
+  }
+
+  if (isAndroidRuntime()) {
     if (runtimeMode() !== "local-yolo") {
       return {
         supported: false,
         reason: "not_local_yolo",
         message:
-          "AOSP terminal execution requires ELIZA_RUNTIME_MODE=local-yolo so commands run in the local agent environment.",
+          "Android direct/AOSP terminal execution requires ELIZA_RUNTIME_MODE=local-yolo so commands run in the local agent environment.",
       };
     }
     const shell = resolveTerminalShell();
@@ -256,7 +253,7 @@ export function detectTerminalSupport(): TerminalSupport {
         reason: "missing_shell",
         message:
           shell.warning ??
-          "AOSP terminal execution requires an executable shell. Set CODING_TOOLS_SHELL or SHELL to a staged shell binary.",
+          "Android direct/AOSP terminal execution requires an executable shell. Set CODING_TOOLS_SHELL or SHELL to a staged shell binary.",
       };
     }
   }

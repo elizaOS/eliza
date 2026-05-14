@@ -29,6 +29,11 @@
 import { existsSync, readdirSync, statSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import {
+	type KokoroEngineDiscoveryResult,
+	KokoroOnnxRuntime,
+	KokoroTtsBackend,
+} from "@elizaos/shared/local-inference";
 import { localInferenceRoot } from "../paths";
 import { VoiceStartupError } from "./errors";
 import type {
@@ -37,9 +42,6 @@ import type {
 	NativeVerifierEvent,
 } from "./ffi-bindings";
 import { loadElizaInferenceFfi } from "./ffi-bindings";
-import { KokoroTtsBackend } from "./kokoro/kokoro-backend";
-import type { KokoroEngineDiscoveryResult } from "./kokoro/kokoro-engine-discovery";
-import { KokoroOnnxRuntime } from "./kokoro/kokoro-runtime";
 import {
 	VoiceLifecycle,
 	VoiceLifecycleError,

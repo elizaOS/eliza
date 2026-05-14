@@ -12,6 +12,7 @@ import {
 	type Plugin,
 } from "@elizaos/core";
 import { createBlueBubblesConnectorAccountProvider } from "./connector-account-provider.js";
+import { blueBubblesDataRoutes } from "./data-routes.js";
 import { BlueBubblesService } from "./service.js";
 import {
 	blueBubblesSetupRoutes,
@@ -42,6 +43,7 @@ export * from "./constants.js";
 export * from "./types.js";
 export {
 	BlueBubblesService,
+	blueBubblesDataRoutes,
 	blueBubblesSetupRoutes,
 	resolveBlueBubblesWebhookPath,
 };
@@ -56,7 +58,7 @@ const blueBubblesPlugin: Plugin = {
 	services: [BlueBubblesService, BlueBubblesWorkflowCredentialProvider],
 	actions: [],
 	providers: [],
-	routes: blueBubblesSetupRoutes,
+	routes: [...blueBubblesSetupRoutes, ...blueBubblesDataRoutes],
 	tests: [],
 
 	// Self-declared auto-enable: activate when the "bluebubbles" connector is

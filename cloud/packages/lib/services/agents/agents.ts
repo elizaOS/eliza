@@ -373,6 +373,3 @@ class AgentsService {
 
 // Export singleton instance
 export const agentsService = new AgentsService();
-
-// Also export as agentService for backward compatibility with MCP route
-export const agentService = agentsService;

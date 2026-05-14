@@ -8,5 +8,9 @@ export function determineExitCode(
     return 2;
   }
 
+  if ((results.setupIncompatibleHandlers?.length ?? 0) > 0) {
+    return 4;
+  }
+
   return 0;
 }

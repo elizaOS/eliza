@@ -154,7 +154,7 @@ def build_pipeline_card(repo_id: str) -> str:
         "\n"
         "- `elizaos/eliza-1-training` — SFT data: top-level `train/val/test.jsonl + manifest.json`, "
         "adversarial scam set under `scambench/`, and small Claude-teacher synthesis sets under `synthesized/`.\n"
-        "- `elizaos/eliza-1` — single app-facing model repo; GGUF bundles live under `bundles/<tier>/`.\n"
+        "- `elizalabs/eliza-1` — single app-facing model repo; GGUF bundles live under `bundles/<tier>/`.\n"
         "\n"
         "## Vast.ai bootstrap\n"
         "\n"

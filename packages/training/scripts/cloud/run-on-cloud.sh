@@ -110,19 +110,18 @@ gpu_to_train_vast_token() {
 }
 tier_to_registry_key() {
   # Keys must match scripts/training/model_registry.py REGISTRY. The canonical
-  # eliza-1 fused-model line is Qwen3.5-only (Qwen3 doesn't work with dflash —
-  # the dflash kernels are validated against the Qwen3.5 architecture +
-  # 248320 tokenizer; a Qwen3 base has the wrong vocab + attention shape for
-  # the fused QJL/Polar paths). All entries train from the published -Base
-  # pretrain checkpoints; Qwen/Qwen3.5-27B has no -Base variant — that
-  # release IS the base. The 0_6b/1_7b legacy tier ids in the runtime
+  # eliza-1 fused-model line uses Qwen3.5 for 0_8b/2b/4b/9b and Qwen3.6 for
+  # 27B. Qwen3 doesn't work with dflash — the dflash kernels are validated
+  # against the Qwen3.5/3.6 architecture + 248320 tokenizer; a Qwen3 base has
+  # the wrong vocab + attention shape for the fused QJL/Polar paths. The
+  # 0_6b/1_7b legacy tier ids in the runtime
   # manifest stay addressable but no longer route to a registry key.
   case "$1" in
     0_8b) echo qwen3.5-0.8b ;;
     2b)   echo qwen3.5-2b ;;
     4b)   echo qwen3.5-4b ;;
     9b)   echo qwen3.5-9b ;;
-    27b|27b-256k|27b-1m) echo qwen3.5-27b ;;
+    27b|27b-256k|27b-1m) echo qwen3.6-27b ;;
   esac
 }
 
@@ -203,8 +202,8 @@ REMOTE
 # dir; we point it at /workspace and copy out.
 ELIZA1_BENCH_TIER=$TIER ELIZA1_BENCH_REGISTRY_KEY=$REG_KEY \
   node packages/inference/verify/eliza1_gates_collect.mjs --backend cuda --bench --out /workspace/bench.json || \
-  { echo 'bench harness not present on this commit — emitting toolchain-only stub'; \
-    printf '{"schemaVersion":1,"backend":"cuda","gpu":"%s","tier":"%s","status":"toolchain-only","note":"eliza1 bench harness not on this commit"}\n' "$GPU" "$TIER" > /workspace/bench.json; }
+  { echo "bench harness not present on this commit — emitting toolchain-only stub"; \
+    printf "{\"schemaVersion\":1,\"backend\":\"cuda\",\"gpu\":\"%s\",\"tier\":\"%s\",\"status\":\"toolchain-only\",\"note\":\"eliza1 bench harness not on this commit\"}\\n" "$GPU" "$TIER" > /workspace/bench.json; }
 cp /workspace/bench.json /workspace/eliza/bench.json 2>/dev/null || true
 REMOTE
 )"

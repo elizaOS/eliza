@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_action_chat_short">Chat</string>
+    <string name="app_action_chat_long">Chat with Eliza</string>
+    <string name="app_action_voice_short">Voice</string>
+    <string name="app_action_voice_long">Start voice chat</string>
+    <string name="app_action_daily_brief_short">Daily brief</string>
+    <string name="app_action_daily_brief_long">Open daily brief</string>
+    <string name="app_action_tasks_short">Tasks</string>
+    <string name="app_action_tasks_long">Open LifeOps tasks</string>
+
+    <string-array name="app_action_chat_features">
+        <item>chat</item>
+        <item>ask</item>
+        <item>assistant</item>
+    </string-array>
+    <string-array name="app_action_voice_features">
+        <item>voice</item>
+        <item>voice chat</item>
+        <item>talk</item>
+    </string-array>
+    <string-array name="app_action_daily_brief_features">
+        <item>daily brief</item>
+        <item>daily briefing</item>
+        <item>lifeops daily brief</item>
+        <item>briefing</item>
+        <item>recap</item>
+    </string-array>
+    <string-array name="app_action_tasks_features">
+        <item>task</item>
+        <item>tasks</item>
+        <item>lifeops tasks</item>
+        <item>reminders</item>
+        <item>to do</item>
+    </string-array>
+</resources>

@@ -196,7 +196,7 @@ using `qjl+polarq4` as the assumed layout, not f16.
 ### RESOLVED — `eliza-1-4b` is in `catalog.ts`
 
 `model_registry.py` has a real, buildable `qwen3.5-4b` → `eliza-1-4b` entry; the
-catalog now includes the 4B tier at `elizaos/eliza-1/bundles/4b`. The 4B fits
+catalog now includes the 4B tier at `elizalabs/eliza-1/bundles/4b`. The 4B fits
 an 8 GB phone when the compressed cache path is available (compressed cache,
 ~155k ceiling, though the base model caps at 40960) and is a strong 16 GB-GPU
 default (~436k KV ceiling, ~90k even at f16).

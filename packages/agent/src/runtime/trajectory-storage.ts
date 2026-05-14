@@ -183,6 +183,17 @@ async function appendLlmCall(
   }
 
   step.llmCalls.push(call);
+  // M14: when the LLM call carries an evaluation purpose, the enclosing
+  // step represents an evaluator turn. Mark the step `kind: "evaluator"`
+  // and stash the evaluator name (when supplied) so the trajectory viewer
+  // and training pipelines can isolate the evaluator seam.
+  if (purpose === "evaluation") {
+    step.kind = "evaluator";
+    const evaluatorNameRaw = toText(params.evaluatorName, "");
+    if (evaluatorNameRaw.length > 0) {
+      step.evaluatorName = evaluatorNameRaw;
+    }
+  }
   trajectory.startTime = Math.min(trajectory.startTime, now);
   trajectory.endTime = Math.max(trajectory.endTime ?? now, now);
   trajectory.updatedAt = new Date(now).toISOString();
@@ -965,6 +976,7 @@ export async function annotateTrajectoryStep({
   appendChildSteps,
   usedSkills,
   appendSkillInvocations,
+  evaluatorName,
 }: {
   runtime: IAgentRuntime;
   stepId: string;
@@ -981,6 +993,11 @@ export async function annotateTrajectoryStep({
    * state.
    */
   appendSkillInvocations?: TrajectorySkillInvocation[];
+  /**
+   * Name of the evaluator that owns this step. Set when `kind === "evaluator"`
+   * so reviewers can identify the responsible evaluator. Closes M14.
+   */
+  evaluatorName?: string;
 }): Promise<boolean> {
   if (!hasRuntimeDb(runtime)) return false;
   const normalizedStepId = normalizeStepId(stepId);
@@ -998,6 +1015,9 @@ export async function annotateTrajectoryStep({
 
     if (kind !== undefined) {
       step.kind = kind;
+    }
+    if (evaluatorName !== undefined) {
+      step.evaluatorName = evaluatorName;
     }
     if (script !== undefined) {
       const capped = capScriptForPersistence(script);

@@ -45,6 +45,41 @@ That command syncs `vendor/eliza`, validates the product layer against the
 AOSP source, runs `lunch eliza_cf_x86_64_phone-trunk_staging-userdebug && m`,
 launches Cuttlefish, and then runs the boot validator.
 
+## AOSP assistant/full-control contract
+
+The AOSP image makes `ai.elizaos.app` the device assistant, not just another
+app that can answer an intent. The product overlay sets
+`config_defaultAssistant`, the APK declares `ElizaAssistActivity` for both
+`android.intent.action.ASSIST` and `android.intent.action.VOICE_COMMAND`, and
+the boot validator checks the role holder plus both activity resolutions.
+
+The machine-readable contract lives at
+`vendor/eliza/manifests/aosp-assistant-full-control.json` and is copied into
+the image at `/product/etc/eliza/aosp-assistant-full-control.json`. It records
+the full AOSP-only control surface:
+
+- `ROLE_ASSISTANT`, `ACTION_ASSIST`, and `VOICE_COMMAND` ownership.
+- Accessibility and notification-listener capability declarations. These are
+  declarations of the allowed system path; add concrete services only on the
+  AOSP/system build path, never in the Play/cloud build.
+- Usage stats through `PACKAGE_USAGE_STATS` plus the boot-time
+  `GET_USAGE_STATS` appop grant path.
+- MediaProjection/foreground-service screen capture for user-consented paths
+  and privileged `READ_FRAME_BUFFER` capture for system images.
+- Input control through accessibility gestures on user-consented paths and
+  `INJECT_EVENTS` on privileged system images.
+- Direct-boot receiver coverage for `LOCKED_BOOT_COMPLETED`,
+  `BOOT_COMPLETED`, and package replacement.
+- Foreground service declarations for the local agent runtime, gateway sync,
+  background voice capture, and screen capture.
+- System-image requirements: `/system/priv-app/Eliza/Eliza.apk`, platform
+  certificate, `privileged: true`, default-permissions XML, and privapp XML.
+
+Google Play builds must use `android-cloud`. Static checks assert that the
+cloud build strips assistant/default-role components, boot/direct-boot
+receivers, background microphone foreground service, MediaProjection service
+permission, privileged permissions, and native system-control plugins.
+
 ## Whitelabel — building a downstream brand
 
 Provide a brand config and a corresponding vendor tree, then drive every

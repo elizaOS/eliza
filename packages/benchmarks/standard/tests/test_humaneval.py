@@ -5,11 +5,13 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
 
 from benchmarks.standard._base import MockClient
 from benchmarks.standard._cli import main_entry
 from benchmarks.standard.humaneval import (
     BENCHMARK_ID,
+    DEFAULT_MAX_TOKENS,
     SMOKE_FIXTURES,
     HumanEvalRunner,
     _build_program,
@@ -179,6 +181,23 @@ def test_humaneval_runner_records_failures(tmp_path: Path) -> None:
     )
     assert result.metrics["score"] == 0.0
     assert len(result.failures) >= 1
+
+
+def test_humaneval_runner_raises_when_all_visible_outputs_empty(tmp_path: Path) -> None:
+    runner = HumanEvalRunner(examples=list(SMOKE_FIXTURES), timeout_s=10.0)
+
+    with pytest.raises(RuntimeError, match="empty visible output for all"):
+        runner.run(
+            client=MockClient([""]),
+            model="m",
+            endpoint="http://mock",
+            output_dir=tmp_path,
+            limit=None,
+        )
+
+
+def test_humaneval_default_token_budget_allows_reasoning_models() -> None:
+    assert DEFAULT_MAX_TOKENS >= 2048
 
 
 def test_humaneval_cli_end_to_end(tmp_path: Path) -> None:

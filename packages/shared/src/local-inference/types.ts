@@ -113,6 +113,36 @@ export type ModelCategory =
 
 export type LocalRuntimeBackend = "node-llama-cpp" | "llama-server";
 
+export type OpenVinoDeviceKind = "CPU" | "GPU" | "NPU";
+
+export interface OpenVinoHardwareProbe {
+  /**
+   * True when an OpenVINO runtime install is discoverable from env vars or
+   * common Linux install paths. CPU execution still requires this runtime.
+   */
+  runtimeAvailable: boolean;
+  devices: OpenVinoDeviceKind[];
+  /**
+   * Intel GPU plugin candidates. On Linux these are `/dev/dri/renderD*`
+   * render nodes plus the Intel Compute Runtime userspace libraries.
+   */
+  gpu: {
+    renderNodes: string[];
+    computeRuntimeReady: boolean;
+    missingLinuxPackages: string[];
+  };
+  /**
+   * Intel NPU plugin candidates. On Linux these are `/dev/accel/accel*`
+   * nodes; their presence only means the device is wireable, not validated.
+   */
+  npu: {
+    accelNodes: string[];
+  };
+  /** Best-known OpenVINO device for static-graph ASR workloads. */
+  recommendedAsrDevice: OpenVinoDeviceKind | null;
+  warnings: string[];
+}
+
 /**
  * Specialised llama.cpp kernels shipped by the buun-llama-cpp / DFlash fork.
  * Models that declare a `requiresKernel` advertise that they only run
@@ -294,7 +324,7 @@ export interface CatalogModel {
   displayName: string;
   /** Hosting backend. Defaults to Hugging Face when omitted. */
   hub?: CatalogHub;
-  /** HuggingFace repo slug, e.g. "elizaos/eliza-1". */
+  /** HuggingFace repo slug, e.g. "elizalabs/eliza-1". */
   hfRepo: string;
   /**
    * Optional path prefix inside `hfRepo`. Eliza-1 publishes every tier under
@@ -449,6 +479,8 @@ export interface HardwareProbe {
   recommendedBucket: ModelBucket;
   /** Source of the probe; "node-llama-cpp" when GPU values come from the binding. */
   source: "node-llama-cpp" | "os-fallback";
+  /** OpenVINO CPU/GPU/NPU availability hints for Intel hosts. */
+  openvino?: OpenVinoHardwareProbe;
   /** Mobile-only details used for minspec, storage, and native DFlash gating. */
   mobile?: MobileHardwareProbe;
 }

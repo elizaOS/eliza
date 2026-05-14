@@ -8,6 +8,7 @@
 import { platform } from "node:os";
 import { getConnectorAccountManager, type IAgentRuntime, logger, type Plugin } from "@elizaos/core";
 import { createIMessageConnectorAccountProvider } from "./connector-account-provider.js";
+import { imessageDataRoutes } from "./data-routes.js";
 // The former iMessage-specific send action duplicated the MessageConnector
 // path. The connector registered by IMessageService.registerSendHandlers is
 // now the canonical delivery path through MESSAGE operation=send. This plugin
@@ -105,7 +106,7 @@ const imessagePlugin: Plugin = {
   services: [IMessageService],
   actions: [],
   providers: [],
-  routes: imessageSetupRoutes,
+  routes: [...imessageSetupRoutes, ...imessageDataRoutes],
   tests: [],
 
   // Self-declared auto-enable: activate when the "imessage" connector is

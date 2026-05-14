@@ -30,6 +30,20 @@ LifeOps.
 | Android consumer | Static shortcuts + App Actions | `shortcuts.xml` and assistant intents open the app custom scheme; LifeOps scheduling happens after runtime routing. |
 | Android AOSP | `ROLE_ASSISTANT` + privileged system app | Assistant role may wake Eliza more directly, but scheduled behavior still goes through the same `ScheduledTask` runner. |
 
+Android consumer App Actions coverage:
+
+| Flow | BII/static shortcut |
+|---|---|
+| Ask/chat | `actions.intent.CREATE_MESSAGE`, `actions.intent.GET_THING`, `eliza_app_action_chat` |
+| Voice chat | `actions.intent.OPEN_APP_FEATURE` inline inventory, `eliza_app_action_voice` |
+| LifeOps daily brief | `actions.intent.OPEN_APP_FEATURE` inline inventory, `eliza_app_action_daily_brief` |
+| LifeOps task creation | `actions.intent.CREATE_THING` |
+| LifeOps task list | `actions.intent.OPEN_APP_FEATURE` inline inventory, `eliza_app_action_tasks` |
+
+The Play/Pixel build does not request `ROLE_ASSISTANT`,
+`ACTION_ASSIST`, `VOICE_COMMAND`, or `BIND_VOICE_INTERACTION`; those are
+reserved for AOSP/system validation builds.
+
 ## External Assistant Landscape
 
 Checked 2026-05-14 against primary vendor docs:

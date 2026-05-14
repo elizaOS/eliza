@@ -27,14 +27,54 @@ What this target deliberately does **not** ship:
   `ElizaInCallService`, `ElizaMmsReceiver`,
   `ElizaRespondViaMessageService`, `ElizaSmsComposeActivity`).
 - No `ElizaBootReceiver`.
+- No screen-capture native plugin or MediaProjection foreground-service
+  declaration.
 - No system-only or Play-Store-restricted permissions:
   `MANAGE_APP_OPS_MODES`, `PACKAGE_USAGE_STATS`, `BIND_DEVICE_ADMIN`,
+  `READ_FRAME_BUFFER`, `INJECT_EVENTS`, `REAL_GET_TASKS`,
   `READ_SMS` / `SEND_SMS` / `RECEIVE_SMS` / `RECEIVE_MMS` /
   `RECEIVE_WAP_PUSH`, `CALL_PHONE` / `READ_PHONE_STATE` /
   `ANSWER_PHONE_CALLS` / `MANAGE_OWN_CALLS` / `READ_CALL_LOG` /
   `WRITE_CALL_LOG`, `READ_CONTACTS` / `WRITE_CONTACTS`,
   `ACCESS_BACKGROUND_LOCATION`, `RECEIVE_BOOT_COMPLETED`,
-  `SYSTEM_ALERT_WINDOW`, `FOREGROUND_SERVICE_SPECIAL_USE`.
+  `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`, `SYSTEM_ALERT_WINDOW`,
+  `FOREGROUND_SERVICE_MEDIA_PROJECTION`, `FOREGROUND_SERVICE_SPECIAL_USE`.
+
+What this target still ships for Pixel/Google Android entry points:
+
+- `res/xml/shortcuts.xml` registered from `MainActivity` with
+  `android.app.shortcuts`.
+- App Actions capabilities for `OPEN_APP_FEATURE`, `CREATE_MESSAGE`,
+  `CREATE_THING`, and `GET_THING`. These cover chat/ask, voice, LifeOps
+  daily brief, and LifeOps tasks by opening source-tagged deep links in
+  the app.
+- Static launcher/Assistant shortcuts for chat, voice, daily brief, and
+  tasks.
+
+Entry-point mapping:
+
+| User flow | Android surface | Fulfillment |
+|---|---|---|
+| Ask or chat with Eliza | `CREATE_MESSAGE` for message text, `GET_THING` for search-style ask text, plus the chat static shortcut | `eliza://chat?...` source-tagged deep links |
+| Start voice chat | `OPEN_APP_FEATURE` inline inventory plus the voice static shortcut | `eliza://voice?source=android-static-shortcut` |
+| Open LifeOps daily brief | `OPEN_APP_FEATURE` inline inventory plus the daily-brief static shortcut | `eliza://lifeops/daily-brief?source=android-static-shortcut` |
+| Create a LifeOps task | `CREATE_THING` for task title/description | `eliza://lifeops/task/new?...` deep link, then runtime confirmation/planning |
+| View LifeOps tasks | `OPEN_APP_FEATURE` inline inventory plus the tasks static shortcut | `eliza://lifeops/tasks?source=android-static-shortcut` |
+
+There is no general third-party "be Gemini/default assistant" API for the
+Play build. Current Android docs route normal app voice entry through
+App Actions capabilities in `shortcuts.xml` and Android shortcuts; custom
+Gemini/Assistant intent formats documented for navigation apps are
+navigation-specific, not a general assistant surface for this app.
+
+The Play build intentionally does not request default-assistant or
+system-only powers. It has no `ACTION_ASSIST`, `VOICE_COMMAND`,
+`ROLE_ASSISTANT`, `BIND_VOICE_INTERACTION`, usage-stats appop, SMS/call
+default-role components, boot receiver, MediaProjection foreground
+service, or special-use foreground service. Gemini/Assistant
+interoperability for this target is through Google App Actions and
+Android shortcuts, not by trying to become the device's default
+assistant.
 
 Build-time flag set: `VITE_ELIZA_ANDROID_RUNTIME_MODE=cloud`. The
 renderer reads this via
@@ -59,7 +99,10 @@ bun run build:android
 What it does ship: full default-role activities, BootReceiver, the
 on-device agent staged via
 [`stage-android-agent.mjs`](../../scripts/lib/stage-android-agent.mjs),
-and the AOSP-aimed permission set.
+the AOSP-aimed permission set, and the same App Actions/static shortcuts
+metadata used by the Play build. `ElizaAssistActivity` handles
+`android.intent.action.ASSIST` for sideload/AOSP assistant-role testing;
+the Play build strips that activity.
 
 ## `build:android:system` — AOSP privileged platform-signed APK
 
@@ -68,11 +111,19 @@ bun run build:android:system
 ```
 
 Release APK signed by Soong's platform key for Eliza OS / ElizaOS
-device builds. The privileged `MANAGE_APP_OPS_MODES` /
-`PACKAGE_USAGE_STATS` permissions are granted via the
-`privapp-permissions-com.elizaai.eliza.xml` whitelist baked into the
-vendor tree, so this APK is intended for `priv-app/` placement on
+device builds. The privileged `MANAGE_APP_OPS_MODES`,
+`PACKAGE_USAGE_STATS`, `READ_FRAME_BUFFER`, `INJECT_EVENTS`, and
+`REAL_GET_TASKS` permissions are granted via the
+`privapp-permissions-ai.elizaos.app.xml` whitelist baked into the vendor
+tree, so this APK is intended for `priv-app/` placement on
 Eliza-flavored AOSP devices, **not** for Play Store distribution.
+
+The matching system image also copies
+`/product/etc/eliza/aosp-assistant-full-control.json`, which records the
+AOSP-only assistant/full-control contract: `ROLE_ASSISTANT`,
+`ACTION_ASSIST`, `VOICE_COMMAND`, boot/direct-boot, foreground services,
+usage stats, MediaProjection/SurfaceControl screen capture, Accessibility
+input control, and notification-listener capability status.
 
 The release APK is staged at
 `<repoRoot>/packages/os/android/vendor/eliza/apps/Eliza/Eliza.apk` (or

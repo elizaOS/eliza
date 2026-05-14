@@ -14,6 +14,7 @@ from pathlib import Path
 
 import pytest
 
+from benchmarks.bfcl.dataset import BFCLDataset
 from benchmarks.bfcl.runner import BFCLRunner
 from benchmarks.bfcl.types import (
     BFCLCategory,
@@ -91,6 +92,71 @@ def test_simple_multiple_smoke_full_score(fixture_dir: Path) -> None:
     assert results.metrics.total_tests == 2
     assert results.metrics.ast_accuracy == pytest.approx(1.0, abs=0.001)
     assert all(r.status == TestStatus.PASSED for r in results.results)
+
+
+def test_sample_selection_is_deterministic(tmp_path: Path) -> None:
+    """Sample ids must be stable across harnesses and category order."""
+    simple_rows = []
+    multiple_rows = []
+    simple_answers = []
+    multiple_answers = []
+    for idx in range(4):
+        simple_id = f"simple_det_{idx}"
+        multiple_id = f"multiple_det_{idx}"
+        simple_rows.append({
+            "id": simple_id,
+            "question": [[{"role": "user", "content": f"weather {idx}"}]],
+            "function": [{"name": "get_weather", "description": "", "parameters": {
+                "type": "dict",
+                "required": ["location"],
+                "properties": {"location": {"type": "string", "description": ""}},
+            }}],
+        })
+        multiple_rows.append({
+            "id": multiple_id,
+            "question": [[{"role": "user", "content": f"weather and search {idx}"}]],
+            "function": [{"name": "search", "description": "", "parameters": {
+                "type": "dict",
+                "required": ["query"],
+                "properties": {"query": {"type": "string", "description": ""}},
+            }}],
+        })
+        simple_answers.append({
+            "id": simple_id,
+            "ground_truth": [{"get_weather": {"location": [f"city {idx}"]}}],
+        })
+        multiple_answers.append({
+            "id": multiple_id,
+            "ground_truth": [{"search": {"query": [f"query {idx}"]}}],
+        })
+
+    _write_ndjson(tmp_path / "BFCL_v3_simple.json", simple_rows)
+    _write_ndjson(tmp_path / "BFCL_v3_multiple.json", multiple_rows)
+    _write_ndjson(tmp_path / "possible_answer" / "BFCL_v3_simple.json", simple_answers)
+    _write_ndjson(tmp_path / "possible_answer" / "BFCL_v3_multiple.json", multiple_answers)
+
+    config = BFCLConfig(
+        data_path=str(tmp_path),
+        use_huggingface=False,
+        categories=[BFCLCategory.SIMPLE, BFCLCategory.MULTIPLE],
+        generate_report=False,
+        save_raw_responses=False,
+    )
+    dataset = BFCLDataset(config)
+    asyncio.run(dataset.load())
+
+    sample_a = dataset.get_sample(
+        2,
+        [BFCLCategory.SIMPLE, BFCLCategory.MULTIPLE],
+        seed=7,
+    )
+    sample_b = dataset.get_sample(
+        2,
+        [BFCLCategory.MULTIPLE, BFCLCategory.SIMPLE],
+        seed=7,
+    )
+
+    assert [tc.id for tc in sample_a] == [tc.id for tc in sample_b]
 
 
 def test_rest_without_network_is_skipped(tmp_path: Path) -> None:

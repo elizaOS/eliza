@@ -22,6 +22,7 @@ type X402RoutesModule = {
   ) => NonNullable<Route["handler"]>;
   isRoutePaymentWrapped: (route: Route) => boolean;
 };
+type RuntimePluginRouteHandler = NonNullable<Route["handler"]>;
 
 let x402RoutesModulePromise: Promise<X402RoutesModule> | null = null;
 
@@ -246,7 +247,8 @@ export async function tryHandleRuntimePluginRoute(options: {
       return true;
     }
 
-    let effectiveHandler = handler as NonNullable<Route["handler"]>;
+    let effectiveHandler: RuntimePluginRouteHandler =
+      handler as RuntimePluginRouteHandler;
     if (route.x402 != null) {
       const { createPaymentAwareHandler, isRoutePaymentWrapped } =
         await getX402RoutesModule();

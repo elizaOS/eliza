@@ -48,8 +48,8 @@
 
     <section>
       <h2>Executive Answer</h2>
-      <p>The implementation-plan items are handled in the main code paths. The second review found and fixed evaluator skeleton/test mismatches, then continued the residual schema work by adding strict grammar support for <code>oneOf</code>/<code>anyOf</code>, object-only fallback, closed empty objects, and typed additional-property maps.</p>
-      <div class="callout"><strong>Remaining caveat:</strong> live proof that a deployed fork backend honors these guidance fields still requires running against that backend. Local unit/type tests prove the producers and adapters generate and forward the contract.</div>
+      <p>The implementation-plan items are handled in the main code paths. The second review found and fixed evaluator skeleton/test mismatches, then continued the residual schema work by adding strict grammar support for <code>oneOf</code>/<code>anyOf</code>, object-only fallback, closed empty objects, and typed additional-property maps. The final pass also closed stale planner-prompt assertions and added proof that regex <code>pattern</code> constraints remain enforced by validation/reroll when not grammar-compiled.</p>
+      <div class="callout"><strong>Remaining caveat:</strong> a deployed eliza-1 fork backend must still be exercised directly to prove it honors these fields at generation time. Local tests already cover the contract boundary: grammar/skeleton/pre-fill wiring in <code>plugins/plugin-local-inference/src/services/structured-output.test.ts</code> and <code>plugins/plugin-local-inference/src/services/dflash-structured.test.ts</code>, plus stage-1 response-skeleton and span-sampler emission in <code>packages/core/src/__tests__/message-runtime-stage1.test.ts</code>.</div>
     </section>
 
     <section>
@@ -60,7 +60,7 @@
           <tr><td>Enum argmax and illegal-token filtering</td><td><span class="badge done">Done</span></td><td>GBNF filters enums; span sampler pins enum/number/boolean spans to <code>temperature:0</code>, <code>topK:1</code>, including planner action choice and evaluator decision/success.</td><td>Non-fork providers may ignore sampler extensions.</td></tr>
           <tr><td>Infer/fill structure tokens</td><td><span class="badge done">Done</span></td><td>Response, planner, and evaluator calls now emit skeleton/GBNF/guided decode metadata for fork-aware engines.</td><td>Actual mid-token fast-forward behavior is backend-owned.</td></tr>
           <tr><td>Escape raw JSON string breaks</td><td><span class="badge done">Done</span></td><td>Shared JSON string grammar rejects raw controls and invalid escapes; parser repair handles LF, CRLF, CR, tabs, controls, and invalid backslashes.</td><td>Streaming token repair still depends on backend adherence.</td></tr>
-          <tr><td>Required params/subparams</td><td><span class="badge done">Done</span></td><td>Strict planner grammar emits required object fields, nested objects/arrays, single-use optionals, bounded integers, <code>oneOf</code>/<code>anyOf</code>, closed empty objects, and typed maps; validation remains the hard gate.</td><td>General regex <code>pattern</code> is validation-backed, not grammar-compiled.</td></tr>
+          <tr><td>Required params/subparams</td><td><span class="badge done">Done</span></td><td>Strict planner grammar emits required object fields, nested objects/arrays, single-use optionals, bounded integers, <code>oneOf</code>/<code>anyOf</code>, closed empty objects, typed maps, and a narrow anchored-regex subset; validation remains the hard gate.</td><td>Unsupported regex features stay validation-backed.</td></tr>
           <tr><td>Quick wins</td><td><span class="badge done">Done</span></td><td>Evaluator reroll, enum dedupe, candidate action hint cap/canonicalization, and adapter guidance forwarding are in place.</td><td>Enum short-form remains opt-in by design.</td></tr>
         </tbody>
       </table>
@@ -71,11 +71,20 @@
       <table>
         <thead><tr><th>Scope</th><th>Command</th><th>Result</th></tr></thead>
         <tbody>
-          <tr><td>Guidance core suite</td><td><code>node ../../scripts/run-vitest.mjs run ...</code> over evaluator, response grammar, JSON repair, planner loop, Stage 1, action schema, enum short-form, and happy-path tests.</td><td><span class="badge done">Passed</span> Latest pass: 11 files, 166 tests.</td></tr>
+          <tr><td>Guidance core suite</td><td><code>node ../../scripts/run-vitest.mjs run ...</code> over evaluator, response grammar, JSON repair, planner loop, message-handler output, Stage 1, action schema, enum short-form, schema-validation/reroll, and happy-path tests.</td><td><span class="badge done">Passed</span> Latest pass: 12 files, 180 tests.</td></tr>
           <tr><td>Core typecheck</td><td><code>./node_modules/.bin/tsc --noEmit -p ./tsconfig.json</code> in <code>packages/core</code>.</td><td><span class="badge done">Passed</span></td></tr>
+          <tr><td>Local inference contract</td><td><code>node scripts/run-vitest.mjs run plugins/plugin-local-inference/src/services/structured-output.test.ts ...</code> plus <code>../../node_modules/.bin/tsc --noEmit -p ./tsconfig.json</code>.</td><td><span class="badge done">Passed</span> 3 files, 52 tests, and typecheck.</td></tr>
           <tr><td>Eliza Cloud plugin</td><td><code>./node_modules/.bin/vitest run</code> and <code>./node_modules/.bin/tsc --noEmit -p tsconfig.json</code>.</td><td><span class="badge done">Passed</span> 11 files, 83 passed, 1 skipped.</td></tr>
           <tr><td>Native llama adapter</td><td><code>../../../node_modules/.bin/vitest run</code> and <code>../../../node_modules/.bin/tsc --noEmit -p tsconfig.json</code>.</td><td><span class="badge done">Passed</span> 2 files, 16 tests.</td></tr>
           <tr><td>Full core package test pass</td><td><code>node ../../scripts/run-vitest.mjs run</code> in <code>packages/core</code>.</td><td><span class="badge partial">Attempted</span> Exited with code <code>-1</code> before a completion summary; not counted as a verified pass.</td></tr>
+        </tbody>
+      </table>
+      <h3>Non-live Verification Plan</h3>
+      <table>
+        <thead><tr><th>Step</th><th>Prerequisites</th><th>Checks</th></tr></thead>
+        <tbody>
+          <tr><td>Adapter/provider contract smoke</td><td>Local checkout, Bun/Vitest available, no model weights or backend URL required.</td><td>Run the focused unit files that assert request serialization and span planning: <code>plugins/plugin-local-inference/src/services/structured-output.test.ts</code>, <code>plugins/plugin-local-inference/src/services/dflash-structured.test.ts</code>, and <code>packages/core/src/__tests__/message-runtime-stage1.test.ts</code>.</td></tr>
+          <tr><td>Live honor test</td><td>A running eliza-1 fork backend that accepts <code>grammar</code>, <code>response_skeleton</code>, <code>eliza_prefill_plan</code>, and <code>eliza_span_samplers</code>, plus whatever auth or base URL that backend requires.</td><td>Issue one real guided request and confirm the backend produces the expected constrained output. This is the only step that can prove backend honor; the local tests above only prove forwarding.</td></tr>
         </tbody>
       </table>
     </section>
@@ -86,8 +95,8 @@
         <thead><tr><th>Item</th><th>Status</th><th>Reason</th></tr></thead>
         <tbody>
           <tr><td>Live backend honor test</td><td><span class="badge partial">Needs environment</span></td><td>Requires a running eliza-1 fork backend that actually consumes <code>grammar</code>, <code>response_skeleton</code>, and sampler fields.</td></tr>
-          <tr><td>Regex <code>pattern</code> to GBNF compilation</td><td><span class="badge partial">Validation-backed</span></td><td>Arbitrary JS regex cannot be safely and compactly compiled to GBNF in this pass. Validation still enforces patterns before action execution.</td></tr>
-          <tr><td>Legacy <code>HANDLE_RESPONSE_SCHEMA</code></td><td><span class="badge partial">Intentional compatibility</span></td><td>Production uses field-registry schema; legacy schema remains for fallback/tests until a compatibility removal is scheduled.</td></tr>
+          <tr><td>Regex <code>pattern</code> to GBNF compilation</td><td><span class="badge partial">Subset compiled</span></td><td>Anchored literal / character-class / quantifier patterns compile into GBNF; unsupported regex features such as backrefs and lookarounds fall back to validation-backed enforcement. Validation/reroll coverage proves patterns reject invalid values before action execution.</td></tr>
+          <tr><td>Legacy <code>HANDLE_RESPONSE_SCHEMA</code></td><td><span class="badge partial">Intentional compatibility</span></td><td>Production uses field-registry schema; the split is pinned by unit tests, and the legacy schema remains for fallback/tests until parser trajectories retire the W3 fields.</td></tr>
           <tr><td>Enum short-form default</td><td><span class="badge partial">Opt-in</span></td><td>Kept behind <code>ELIZA_SHORT_FORM_ENUMS=1</code> to avoid masking generation regressions.</td></tr>
         </tbody>
       </table>

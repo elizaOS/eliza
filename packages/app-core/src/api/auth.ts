@@ -290,14 +290,11 @@ export type AuthSessionOrBootstrapResult =
 
 /**
  * Decide whether a request carries a valid session cookie or a bootstrap
- * bearer eligible for exchange. This is the single chokepoint that replaces
- * the deleted "cloud-provisioned bypass" branches.
+ * bearer eligible for exchange.
  *
- * The function does NOT exchange the bootstrap token here — that's the job
+ * The function does NOT exchange the bootstrap token — that's the job
  * of `POST /api/auth/bootstrap/exchange`, which is rate-limited and audited.
- * On the legacy onboarding routes we treat a valid session OR an unconsumed
- * bootstrap bearer as authorisation to read; the exchange route is the
- * single place that flips bootstrap → session.
+ * The exchange route is the single place that flips bootstrap → session.
  *
  * Fails closed on every error path. There is no path through this function
  * that returns "session" without a real session row id.
@@ -356,20 +353,16 @@ interface CompatStateLike {
 }
 
 /**
- * Canonical async route guard. Replaces every call site of
- * {@link ensureCompatApiAuthorized}. Behaviour:
+ * Canonical async route guard.
  *
- *   - When the runtime DB is up, delegate to
- *     {@link ensureCompatApiAuthorizedAsync} so cookie + CSRF +
- *     machine-session paths all work.
- *   - When the runtime DB is not yet available (early boot), fall back
- *     to {@link ensureCompatApiAuthorized} (bearer-only). This preserves
- *     the existing behaviour for cold boot probes that ran before the
- *     auth subsystem was available.
+ * When the runtime DB is up, delegates to {@link ensureCompatApiAuthorizedAsync}
+ * so cookie + CSRF + machine-session paths work. When the DB is not yet
+ * available (early boot), falls back to {@link ensureCompatApiAuthorized}
+ * (bearer-only).
  *
- * Pass `skipCsrf: true` for routes that mint cookies / handle their own
- * CSRF (login, setup, bootstrap exchange) where the SPA cannot present a
- * CSRF token because the session doesn't exist yet.
+ * Pass `skipCsrf: true` for routes that mint cookies / handle their own CSRF
+ * (login, setup, bootstrap exchange) where the SPA cannot present a CSRF
+ * token because the session doesn't exist yet.
  */
 export async function ensureRouteAuthorized(
   req: Pick<http.IncomingMessage, "headers" | "socket" | "method">,

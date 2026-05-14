@@ -789,11 +789,19 @@ async function main() {
   }
 
   const requiredKernelNames = ["turbo3", "turbo4", "qjl", "polar"];
+  const runtimeKernelReady = (dispatch, name) => {
+    if (dispatch?.data?.kernels?.[name]?.runtimeReady === true) return true;
+    const targets = dispatch?.data?.targets;
+    if (!targets || typeof targets !== "object") return false;
+    return Object.values(targets).some(
+      (target) => target?.kernels?.[name]?.runtimeReady === true,
+    );
+  };
   const metalKernelReady = requiredKernelNames.every(
-    (name) => metalDispatch?.data?.kernels?.[name]?.runtimeReady === true,
+    (name) => runtimeKernelReady(metalDispatch, name),
   );
   const vulkanKernelReady = requiredKernelNames.every(
-    (name) => vulkanDispatch?.data?.kernels?.[name]?.runtimeReady === true,
+    (name) => runtimeKernelReady(vulkanDispatch, name),
   );
   const cpuSimdEvidence = cpuSimd ? extractCpuSimd(cpuSimd.data) : null;
   const cpuKernelReady = Boolean(cpuSimdEvidence?.qjlReady && cpuSimdEvidence?.polarReady);
