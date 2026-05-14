@@ -350,6 +350,7 @@ describe("SubAgentRouter", () => {
       if (origSettle === undefined)
         delete process.env.PARALLAX_URL_VERIFY_SETTLE_MS;
       else process.env.PARALLAX_URL_VERIFY_SETTLE_MS = origSettle;
+      vi.unstubAllGlobals();
     });
 
     // A localhost port that reliably refuses — fast, no external network.
@@ -420,6 +421,34 @@ describe("SubAgentRouter", () => {
       expect(handleMessage).toHaveBeenCalledTimes(1);
       const posted = handleMessage.mock.calls[0]?.[1];
       expect(posted?.content?.text).toContain("NOT reachable");
+    });
+
+    it("treats a 405 (reachable, GET-not-allowed) URL as not dead — no retry", async () => {
+      // Sub-agents dump raw HTTP headers into their narration; incidental
+      // URLs there (CDN telemetry / NEL `report-to`, POST-only APIs) 405 a
+      // GET. 405 means the server responded — the URL exists — so it must
+      // not be flagged dead and must not trigger a retry of a build that
+      // actually succeeded.
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => new Response(null, { status: 405 })),
+      );
+      session = sessionWithTask("build it at https://example.test/apps/x/");
+      acp = makeAcpService(session);
+      const { runtime, handleMessage, spawnSession } = makeRuntime({
+        acp: acp.service,
+      });
+      await SubAgentRouter.start(runtime);
+
+      acp.emit(SESSION_ID, "task_complete", {
+        response: "Done — live at https://example.test/apps/x/",
+      });
+      await new Promise((r) => setTimeout(r, 200));
+
+      expect(spawnSession).not.toHaveBeenCalled();
+      expect(handleMessage).toHaveBeenCalledTimes(1);
+      const posted = handleMessage.mock.calls[0]?.[1];
+      expect(posted?.content?.text).not.toContain("[verification:");
     });
 
     it("does not retry when PARALLAX_BUILD_VERIFY_MAX_RETRIES=0", async () => {
