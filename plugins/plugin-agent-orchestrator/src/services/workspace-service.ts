@@ -774,12 +774,11 @@ export class CodingWorkspaceService {
   }
 
   private getScratchDecisionTtlMs(): number {
-    const setting = this.runtime.getSetting(
-      "ELIZA_SCRATCH_DECISION_TTL_MS",
-    ) as string | number | undefined;
-    const parsed = Number(
-      setting ?? process.env.ELIZA_SCRATCH_DECISION_TTL_MS,
-    );
+    const setting = this.runtime.getSetting("ELIZA_SCRATCH_DECISION_TTL_MS") as
+      | string
+      | number
+      | undefined;
+    const parsed = Number(setting ?? process.env.ELIZA_SCRATCH_DECISION_TTL_MS);
     if (Number.isFinite(parsed) && parsed > 0) return parsed;
     return 24 * 60 * 60 * 1000;
   }
