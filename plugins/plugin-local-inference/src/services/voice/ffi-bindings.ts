@@ -32,8 +32,16 @@ import { VoiceLifecycleError } from "./lifecycle";
  *
  * Bump in lockstep with `ELIZA_INFERENCE_ABI_VERSION` in
  * `scripts/omnivoice-fuse/ffi.h` whenever the C surface changes shape.
+ *
+ * v4: the FFI bridge resolves `speaker_preset_id` against the bundle's
+ *     `cache/voice-preset-<id>.bin` (ELZ2 v2) and applies the
+ *     `(instruct, ref_audio_tokens, ref_T, ref_text)` triple to
+ *     `ov_tts_params` before calling `ov_synthesize`. Adds the
+ *     `eliza_inference_encode_reference` entrypoint that the freeze CLI
+ *     uses to pre-encode reference WAVs into the preset file. A v3 caller
+ *     remains source-compatible: every v3 entry point keeps its v3 shape.
  */
-export const ELIZA_INFERENCE_ABI_VERSION = 3 as const;
+export const ELIZA_INFERENCE_ABI_VERSION = 4 as const;
 
 /** Status codes mirrored from `ffi.h`. Negative = failure. */
 export const ELIZA_OK = 0;

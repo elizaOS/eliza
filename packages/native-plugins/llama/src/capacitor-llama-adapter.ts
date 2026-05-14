@@ -526,10 +526,21 @@ class CapacitorLlamaAdapter implements LlamaAdapter {
     }
     const plugin = await this.loadPlugin();
 
-    if (this.loadedPath && this.loadedPath !== options.modelPath) {
-      await plugin.releaseAllContexts();
-      this.loadedPath = null;
-    }
+    // Always tear down any prior native context before initializing a new
+    // one. This adapter is a singleton shared by the chat LLM and the
+    // embedding model (the AOSP loader swaps roles on one loader instance),
+    // and every initContext/completion uses the same CONTEXT_ID. The native
+    // plugin auto-assigns its own internal context numbers and does not
+    // reuse CONTEXT_ID, so a *conditional* release — gated on
+    // `this.loadedPath`, which is null mid-swap during concurrent
+    // chat/embedding role loads — can leave a stale context live. Then
+    // `completion(CONTEXT_ID)` resolves to whichever model registered last
+    // (typically the bge-small embedding model), and a BERT model forced to
+    // autoregress emits `[unused{N}]` / `[PAD]` reserved tokens. An
+    // unconditional release guarantees exactly one native context after
+    // every load().
+    await plugin.releaseAllContexts();
+    this.loadedPath = null;
 
     const speculativeSamples = options.mobileSpeculative
       ? Math.min(options.speculativeSamples ?? options.draftMax ?? 3, 4)

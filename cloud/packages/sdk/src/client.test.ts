@@ -128,3 +128,31 @@ describe("ElizaCloudClient payment and monetization helpers", () => {
     );
   });
 });
+
+describe("ElizaCloudClient CLI login", () => {
+  it("uses the API host for session creation but the web host for browser auth", async () => {
+    let requestedUrl: string | undefined;
+    const fetchImpl = (async (input) => {
+      requestedUrl = String(input);
+      return new Response(
+        JSON.stringify({ status: "pending", expiresAt: "2026-05-14T08:00:00.000Z" }),
+        {
+          status: 201,
+          headers: { "content-type": "application/json" },
+        },
+      );
+    }) as typeof fetch;
+
+    const client = new ElizaCloudClient({
+      baseUrl: "https://api.elizacloud.ai",
+      fetchImpl,
+    });
+
+    const result = await client.startCliLogin({ sessionId: "cli-test-session" });
+
+    expect(requestedUrl).toBe("https://api.elizacloud.ai/api/auth/cli-session");
+    expect(result.browserUrl).toBe(
+      "https://www.elizacloud.ai/auth/cli-login?session=cli-test-session",
+    );
+  });
+});
