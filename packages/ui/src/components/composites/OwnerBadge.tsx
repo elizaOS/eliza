@@ -15,9 +15,9 @@
  * use it inline without a wrapping conditional.
  */
 
-// biome-ignore lint/correctness/noUnusedImports: required for JSX transform.
-import * as React from "react";
 import { Crown } from "lucide-react";
+// biome-ignore lint/correctness/noUnusedImports: required for JSX transform.
+import type * as React from "react";
 
 import { cn } from "../../lib/utils";
 
