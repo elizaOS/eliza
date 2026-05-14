@@ -492,3 +492,94 @@ of cancel-storms, with two root causes:
 
 Watching the e42a613ae7 push's Tests run for the terminal verdict.
 
+
+## Item 4 (Tests CI) — definitive root-cause analysis
+
+Spent the latter half of this round driving Tests CI workflow toward
+green. Identified three independent root causes; landed fixes for two,
+one is a CI infrastructure issue outside this lane.
+
+### Server Tests (`packages/app-core` test suite) — FIXED → success
+Was failing for 24+ hours with:
+  `Error: Failed to resolve entry for package "@elizaos/plugin-<name>"`
+on each plugin packaged dynamically imported by
+`packages/agent/src/runtime/eliza.ts`. Vitest's transform resolved each
+bare specifier against `dist/<plugin>/index.js`, which CI didn't have
+because the workflow's `build:core` script (in package.json) filtered
+only 6 packages.
+
+Commit **723db99a52** expanded `build:core`'s `--filter=` list to
+include all 11 plugins dynamically imported in eliza.ts:
+plugin-ollama, plugin-commands, plugin-shell, plugin-coding-tools,
+plugin-agent-orchestrator, plugin-video, plugin-background-runner,
+plugin-mlx, plugin-anthropic, plugin-openai, plugin-elizacloud.
+
+**Result: Server Tests `success` on Tests run 25845379280** —
+first green Server Tests on develop in 24+ hours (per gh run list
+--workflow Tests --branch develop history).
+
+### Plugin Tests (`plugins/*` test suite) — TWO BUGS FIXED
+Two separate bugs:
+
+1. `plugin-elizacloud` `cloud-tts-roundtrip.test.ts` — the test was
+   iterating `handleTextToSpeech`'s return value as a Readable, but a
+   recent refactor changed the function to materialize via
+   `ttsStreamToBytes` and return a single `Uint8Array`. Iterating a
+   `Uint8Array` yields Numbers, which fell through the
+   `chunk instanceof Uint8Array` filter. Test merged-buffer ended up
+   empty: `[]` vs expected `[255,251,0,0,16,32]`.
+   **Fixed in e42a613ae7** — replaced stream-collect loop with direct
+   `toBeInstanceOf(Uint8Array)` + `Array.from()` equality matching
+   the real consumer contract.
+
+2. `app-hyperliquid` `perpetual-market.test.ts` — vitest resolution
+   error `ENOTDIR: not a directory, open
+   'plugins/plugin-local-inference/src/index.ts/runtime'`. After the
+   earlier fix mapped `@elizaos/plugin-local-inference` at the
+   package's `src/index.ts` (tsup doesn't emit .d.ts), the base
+   alias caught the bare specifier but vite's resolver naively
+   appended subpaths like `/runtime` to the mapped file.
+   **Fixed in da9611f66c** — added explicit subpath maps
+   for `/runtime`, `/routes`, `/services` in both
+   `tsconfig.dist-paths.json` and `packages/app-core/vitest.config.ts`,
+   matching the shape of the package.json `exports` object.
+
+Plus **1cb2cae48c** — biome format pass on plugin-vision src to
+unblock the Quality (Extended) Format Check (which had been failing
+on a WS4 vision-work format drift in
+`face-detector-mediapipe.ts`/`yolo-detector.ts`/etc.).
+
+### Client Tests (`packages/app` test suite) — STILL FAILING
+Not addressable from this lane. The failure is:
+
+  `Error: [vitest-pool]: Failed to start forks worker for test files
+   /home/runner/work/eliza/eliza/packages/app/test/background-runner.test.ts
+  Caused by: Cannot find module 'whatwg-url/webidl2js-wrapper'`
+
+`whatwg-url` is a transitive dep of jsdom (which packages/app's
+vitest setup uses). The package IS in `node_modules/.bun/` but
+jsdom's CommonJS `require()` chain can't resolve it. This is a
+bun-install symlink/hoist behavior in CI (`bun install
+--ignore-scripts`), unrelated to anything in this codebase.
+
+### Workflows green on most recent push
+- **Quality (Extended)** — green on 723db99a52 + b34a088973 +
+  prior pushes after my verify-fix chain.
+- **Scenario Matrix (develop)** — consistently green.
+- **Cloud Live E2E (Eliza Cloud)** — green.
+- **Electrobun Desktop Contract** — green.
+- **CodeQL** — green.
+- **Tests / Server Tests** — green on 723db99a52 (first time in
+  24h+).
+- **Tests / Plugin Tests** — should be green now with e42a613ae7
+  + da9611f66c (waiting for terminal state on a non-cancelled run).
+- **Tests / Client Tests** — still failing on jsdom transitive
+  dep resolution; pre-existing infrastructure issue.
+
+### Files modified in Item 4 work
+- `package.json` (build:core filter expansion)
+- `plugins/plugin-elizacloud/__tests__/cloud-tts-roundtrip.test.ts`
+- `tsconfig.dist-paths.json` (subpath aliases)
+- `packages/app-core/vitest.config.ts` (subpath aliases)
+- `plugins/plugin-vision/src/*` (biome format pass on 11 files)
+
