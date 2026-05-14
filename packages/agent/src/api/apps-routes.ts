@@ -4,7 +4,6 @@ import type http from "node:http";
 import { ServerResponse } from "node:http";
 import path from "node:path";
 import type { IAgentRuntime, RouteRequestMeta } from "@elizaos/core";
-import { isLegacyAppsWorkspaceDiscoveryEnabled } from "../config/feature-flags.ts";
 import type { RouteHelpers } from "@elizaos/shared";
 import {
   type AppLaunchResult,
@@ -39,6 +38,7 @@ import {
   parseAppIsolation,
   parseAppPermissions,
 } from "@elizaos/shared";
+import { isLegacyAppsWorkspaceDiscoveryEnabled } from "../config/feature-flags.ts";
 import {
   importAppRouteModule,
   resolveWorkspacePackageDir,
