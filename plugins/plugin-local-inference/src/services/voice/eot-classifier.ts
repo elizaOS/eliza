@@ -317,6 +317,33 @@ export const LIVEKIT_TURN_DETECTOR_EN_REVISION = "v1.2.2-en";
 export const LIVEKIT_TURN_DETECTOR_INTL_REVISION = "v0.4.1-intl";
 
 /**
+ * Resolve the upstream `livekit/turn-detector` revision a given Eliza-1 tier
+ * should bundle. Mobile/small tiers (`0_8b`, `2b`) get the ~66 MB EN-only
+ * SmolLM2-135M distill (`v1.2.2-en`); desktop/server tiers (`4b`+) get the
+ * ~396 MB multilingual pruned Qwen2.5-0.5B (`v0.4.1-intl`).
+ *
+ * Accepts both bare tier ids (`"4b"`) and prefixed catalog ids
+ * (`"eliza-1-4b"`) so both the bundle stager (Python tier strings) and the
+ * runtime engine (catalog `Eliza1TierId`) can call it.
+ *
+ * @see packages/training/scripts/manifest/stage_eliza1_bundle_assets.py — the
+ * staging step that pulls the matching ONNX for each tier.
+ */
+export function turnDetectorRevisionForTier(
+	tierId: string,
+):
+	| typeof LIVEKIT_TURN_DETECTOR_EN_REVISION
+	| typeof LIVEKIT_TURN_DETECTOR_INTL_REVISION {
+	const bare = tierId.startsWith("eliza-1-")
+		? tierId.slice("eliza-1-".length)
+		: tierId;
+	if (bare === "0_8b" || bare === "2b") {
+		return LIVEKIT_TURN_DETECTOR_EN_REVISION;
+	}
+	return LIVEKIT_TURN_DETECTOR_INTL_REVISION;
+}
+
+/**
  * Default ONNX filename inside the bundle's turn-detector dir. Upstream
  * publishes the INT8 graph as `onnx/model_q8.onnx` under both
  * `v1.2.2-en` and `v0.4.1-intl`. The historical Eliza staging path used a

@@ -269,6 +269,40 @@ int eliza_inference_set_verifier_callback(
 }
 
 /* ----------------------------------------------------------------- */
+/* OmniVoice reference encode (ABI v4)                               */
+/* ----------------------------------------------------------------- */
+
+int eliza_inference_encode_reference(
+    EliInferenceContext * ctx,
+    const float * pcm,
+    size_t n_samples,
+    int sample_rate_hz,
+    int * out_K,
+    int * out_ref_T,
+    int ** out_tokens,
+    char ** out_error)
+{
+    (void)pcm;
+    (void)n_samples;
+    (void)sample_rate_hz;
+    (void)out_K;
+    (void)out_ref_T;
+    (void)out_tokens;
+    if (!ctx) {
+        set_error(out_error,
+            "[libelizainference-stub] encode_reference: ctx is NULL");
+        return ELIZA_ERR_INVALID_ARG;
+    }
+    set_error(out_error,
+        "[libelizainference-stub] encode_reference: not implemented in stub — fused build required");
+    return ELIZA_ERR_NOT_IMPLEMENTED;
+}
+
+void eliza_inference_free_tokens(int * tokens) {
+    if (tokens) free(tokens);
+}
+
+/* ----------------------------------------------------------------- */
 /* Native VAD (ABI v3)                                               */
 /* ----------------------------------------------------------------- */
 

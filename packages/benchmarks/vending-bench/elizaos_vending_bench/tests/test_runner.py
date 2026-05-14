@@ -237,8 +237,8 @@ class TestReportOutput:
             md_files = list(output_path.glob("*.md"))
             assert len(md_files) >= 1
 
-            # Check markdown content
-            md_content = md_files[0].read_text()
+            # Check markdown content (utf-8 — reports embed emoji)
+            md_content = md_files[0].read_text(encoding="utf-8")
             assert "# Vending-Bench" in md_content
             assert "Executive Summary" in md_content
             assert "Performance Metrics" in md_content

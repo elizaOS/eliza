@@ -7,12 +7,26 @@
  * that the orchestrated golden path produces a click coordinate inside
  * the OCR-detected bbox.
  *
- * When WS2 (vision arbiter) / WS8 (OCR + grounding) finish landing, the
- * stub contracts here become the integration contract — swap the stub
- * for the real `IModelArbiter` and re-run.
+ * The bottom test (`via the live cascade`) wires the WS7 Brain/Cascade/
+ * Dispatch stack against an OCR-only Scene and a stubbed Brain, then
+ * checks the same coordinate-inside-bbox property end-to-end. That's the
+ * integration anchor for WS10: once WS2 vision-arbiter is the source of
+ * the IMAGE_DESCRIPTION model and WS8 produces the OCR boxes, replace
+ * the stubs and the assertions still hold.
  */
 
 import { describe, expect, it } from "vitest";
+import { Brain } from "../../src/actor/brain.js";
+import { Cascade } from "../../src/actor/cascade.js";
+import { OcrCoordinateGroundingActor } from "../../src/actor/actor.js";
+import { dispatch } from "../../src/actor/dispatch.js";
+import type {
+  ComputerInterface,
+  DisplayPoint,
+} from "../../src/actor/computer-interface.js";
+import type { DisplayCapture } from "../../src/platform/capture.js";
+import type { Scene } from "../../src/scene/scene-types.js";
+import type { DisplayDescriptor } from "../../src/types.js";
 
 /* --------------------------------------------------------------------- */
 /* Stub contracts (these mirror the WS2/WS8 expected interfaces).         */
@@ -145,5 +159,96 @@ describe("golden path: screen → OCR → click grounding", () => {
     expect(() => stubGround({ target: "DoesNotExist", screen, ocr })).toThrow(
       /no OCR hit/,
     );
+  });
+});
+
+/* --------------------------------------------------------------------- */
+/* WS7 cascade integration: same property, real Brain → Cascade →         */
+/* OcrCoordinateGroundingActor → dispatch.                                 */
+/* --------------------------------------------------------------------- */
+
+describe("golden path: via the live cascade (WS7 wired end-to-end)", () => {
+  it("Brain → Cascade → dispatch yields a click inside the OCR bbox", async () => {
+    const display: DisplayDescriptor = {
+      id: 0,
+      bounds: [0, 0, 1920, 1080],
+      scaleFactor: 1,
+      primary: true,
+      name: "fake",
+    };
+    const scene: Scene = {
+      timestamp: 1,
+      displays: [display],
+      focused_window: null,
+      apps: [],
+      ocr: [
+        {
+          id: "t0-1",
+          text: "Save",
+          bbox: [1700, 1000, 80, 32],
+          conf: 0.97,
+          displayId: 0,
+        },
+        {
+          id: "t0-2",
+          text: "Cancel",
+          bbox: [1600, 1000, 80, 32],
+          conf: 0.95,
+          displayId: 0,
+        },
+      ],
+      ax: [],
+      vlm_scene: null,
+      vlm_elements: null,
+    };
+    const captures = new Map<number, DisplayCapture>([
+      [0, { display, frame: ONE_PX_PNG }],
+    ]);
+    const brain = new Brain(null, {
+      invokeModel: async () =>
+        JSON.stringify({
+          scene_summary: "save dialog visible",
+          target_display_id: 0,
+          roi: [],
+          proposed_action: {
+            kind: "click",
+            ref: "t0-1",
+            rationale: "click the Save button",
+          },
+        }),
+    });
+    const cascade = new Cascade({
+      brain,
+      actor: new OcrCoordinateGroundingActor(() => scene),
+    });
+    const cascadeResult = await cascade.run({ scene, goal: "click save", captures });
+    expect(cascadeResult.proposed.kind).toBe("click");
+    expect(cascadeResult.proposed.displayId).toBe(0);
+    // The cascade resolves t0-1's center (1740, 1016).
+    expect(cascadeResult.proposed.x).toBe(1740);
+    expect(cascadeResult.proposed.y).toBe(1016);
+
+    // Now dispatch through a fake interface and assert the click point
+    // lands inside the Save bbox.
+    let received: DisplayPoint | null = null;
+    const iface: Partial<ComputerInterface> = {
+      leftClick: async (p) => {
+        received = p;
+      },
+      getCursorPosition: () => ({ displayId: 0, x: 0, y: 0 }),
+    };
+    const dispatchResult = await dispatch(cascadeResult.proposed, {
+      interface: iface as ComputerInterface,
+      listDisplays: () => [display],
+    });
+    expect(dispatchResult.success).toBe(true);
+    expect(received).not.toBeNull();
+    const click = received as DisplayPoint | null;
+    expect(click).not.toBeNull();
+    const saveBox = scene.ocr[0]!.bbox;
+    expect(click!.x).toBeGreaterThanOrEqual(saveBox[0]);
+    expect(click!.x).toBeLessThanOrEqual(saveBox[0] + saveBox[2]);
+    expect(click!.y).toBeGreaterThanOrEqual(saveBox[1]);
+    expect(click!.y).toBeLessThanOrEqual(saveBox[1] + saveBox[3]);
   });
 });

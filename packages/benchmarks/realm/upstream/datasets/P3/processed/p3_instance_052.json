@@ -1,0 +1,121 @@
+{
+  "instance_id": "p3_instance_052",
+  "city_map": {
+    "locations": [
+      "airport",
+      "suburb",
+      "park",
+      "downtown",
+      "hospital"
+    ],
+    "distances": {
+      "airport-suburb": 44,
+      "suburb-airport": 44,
+      "airport-park": 15,
+      "park-airport": 15,
+      "airport-downtown": 18,
+      "downtown-airport": 18,
+      "airport-hospital": 7,
+      "hospital-airport": 7,
+      "suburb-park": 35,
+      "park-suburb": 35,
+      "suburb-downtown": 20,
+      "downtown-suburb": 20,
+      "suburb-hospital": 8,
+      "hospital-suburb": 8,
+      "park-downtown": 20,
+      "downtown-park": 20,
+      "park-hospital": 41,
+      "hospital-park": 41,
+      "downtown-hospital": 28,
+      "hospital-downtown": 28
+    }
+  },
+  "ride_requests": [
+    {
+      "passenger_id": "p001",
+      "pickup": "hospital",
+      "dropoff": "park",
+      "time_window": [
+        14.0,
+        14.516666666666667
+      ],
+      "deadline": 54
+    },
+    {
+      "passenger_id": "p002",
+      "pickup": "downtown",
+      "dropoff": "park",
+      "time_window": [
+        9.0,
+        9.45
+      ],
+      "deadline": 37
+    },
+    {
+      "passenger_id": "p003",
+      "pickup": "hospital",
+      "dropoff": "park",
+      "time_window": [
+        12.25,
+        12.6
+      ],
+      "deadline": 27
+    },
+    {
+      "passenger_id": "p004",
+      "pickup": "airport",
+      "dropoff": "park",
+      "time_window": [
+        9.25,
+        9.716666666666667
+      ],
+      "deadline": 22
+    },
+    {
+      "passenger_id": "p005",
+      "pickup": "downtown",
+      "dropoff": "suburb",
+      "time_window": [
+        12.5,
+        12.8
+      ],
+      "deadline": 41
+    },
+    {
+      "passenger_id": "p006",
+      "pickup": "suburb",
+      "dropoff": "downtown",
+      "time_window": [
+        13.25,
+        13.516666666666667
+      ],
+      "deadline": 44
+    },
+    {
+      "passenger_id": "p007",
+      "pickup": "suburb",
+      "dropoff": "airport",
+      "time_window": [
+        12.0,
+        12.633333333333333
+      ],
+      "deadline": 27
+    }
+  ],
+  "vehicles": [
+    {
+      "vehicle_id": "v001",
+      "location": "suburb",
+      "capacity": 4,
+      "fuel": 88
+    },
+    {
+      "vehicle_id": "v002",
+      "location": "hospital",
+      "capacity": 3,
+      "fuel": 65
+    }
+  ],
+  "description": "Urban ride-sharing instance"
+}

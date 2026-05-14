@@ -45,6 +45,10 @@ ranker = [
     "transformers>=4.30",
     "torch>=2.0",
     "lxml>=4.9",
+    # DeBERTa-v3 tokenizer is SentencePiece-only; the slow tokenizer is the
+    # one upstream MindAct used. ``sentencepiece`` + ``protobuf`` are required.
+    "sentencepiece>=0.1.99",
+    "protobuf>=3.20",
 ]
 groq = [
 ]

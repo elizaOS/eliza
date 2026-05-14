@@ -101,6 +101,13 @@ class CoherenceEvaluator:
         # Check for cash flow errors
         self._check_cash_flow_errors(day, actions, summary)
 
+        # Paper-catalogued failure modes
+        self._check_hallucinated_supplier(day, actions)
+        self._check_phantom_inventory(day, actions, summary)
+        self._check_tool_format_degradation(day, actions)
+        self._check_tangential_meltdown(day, actions)
+        self._check_task_abandonment(day, actions)
+
     def _check_duplicate_orders(self, day: int, actions: list[AgentAction]) -> None:
         """Check if agent orders products that are already pending delivery."""
         for action in actions:
@@ -313,6 +320,126 @@ class CoherenceEvaluator:
                             severity=0.9,
                         )
                     )
+
+    # --- Paper-catalogued failure-mode detectors --------------------------
+    def _check_hallucinated_supplier(self, day: int, actions: list[AgentAction]) -> None:
+        """Flag SEND_EMAIL actions whose recipient bounced as 'unknown supplier'."""
+        for action in actions:
+            if action.action_type != ActionType.SEND_EMAIL:
+                continue
+            if not action.success:
+                # Bounce messages are surfaced as the action result string.
+                if "not a known supplier" in (action.result or "").lower() or "bounce" in (action.result or "").lower():
+                    self.errors.append(
+                        CoherenceError(
+                            error_type=CoherenceErrorType.HALLUCINATED_SUPPLIER,
+                            day=day,
+                            description=f"Agent emailed an unknown supplier: {action.parameters.get('to')!r}",
+                            severity=0.8,
+                        )
+                    )
+
+    def _check_phantom_inventory(
+        self,
+        day: int,
+        actions: list[AgentAction],
+        summary: DailySummary | None,
+    ) -> None:
+        """Flag RESTOCK_SLOT calls that fail because the agent thought inventory was available."""
+        for action in actions:
+            if action.action_type != ActionType.RESTOCK_SLOT:
+                continue
+            if action.success:
+                continue
+            result = action.result or ""
+            if "available from deliveries" in result.lower() or "only 0 units" in result.lower():
+                self.errors.append(
+                    CoherenceError(
+                        error_type=CoherenceErrorType.PHANTOM_INVENTORY,
+                        day=day,
+                        description=(
+                            f"Restock attempted but the requested inventory was not "
+                            f"actually present: {action.parameters}"
+                        ),
+                        severity=0.7,
+                    )
+                )
+
+    def _check_tool_format_degradation(self, day: int, actions: list[AgentAction]) -> None:
+        """Flag actions where the LLM failed to produce a valid tool call."""
+        parse_failures = sum(
+            1
+            for a in actions
+            if a.action_type == ActionType.VIEW_STATE
+            and not a.success
+            and a.result == "Failed to parse action"
+        )
+        if parse_failures >= 2:
+            self.errors.append(
+                CoherenceError(
+                    error_type=CoherenceErrorType.TOOL_FORMAT_DEGRADATION,
+                    day=day,
+                    description=f"{parse_failures} response(s) failed to parse as a tool call",
+                    severity=0.6,
+                )
+            )
+
+    def _check_tangential_meltdown(self, day: int, actions: list[AgentAction]) -> None:
+        """Flag emails / notepad writes containing meltdown-style language.
+
+        The paper documents agents writing escalations like "contacting the
+        FBI" or "nuclear legal intervention" when business pressure mounts.
+        """
+        triggers = (
+            "fbi",
+            "police",
+            "lawsuit",
+            "attorney general",
+            "nuclear",
+            "support team",
+            "this is unfair",
+            "i give up",
+            "shutting down",
+        )
+        for action in actions:
+            text_blob = " ".join(
+                str(v) for v in action.parameters.values() if isinstance(v, str)
+            ).lower()
+            if action.raw_response:
+                text_blob += " " + action.raw_response.lower()
+            if any(trigger in text_blob for trigger in triggers):
+                self.errors.append(
+                    CoherenceError(
+                        error_type=CoherenceErrorType.TANGENTIAL_MELTDOWN,
+                        day=day,
+                        description=f"Off-task escalation in {action.action_type.value}",
+                        severity=0.9,
+                    )
+                )
+                return  # one per day is enough
+
+    def _check_task_abandonment(self, day: int, actions: list[AgentAction]) -> None:
+        """Flag days where the agent produced only no-op actions."""
+        if not actions:
+            self.errors.append(
+                CoherenceError(
+                    error_type=CoherenceErrorType.TASK_ABANDONMENT,
+                    day=day,
+                    description="No actions produced for the day",
+                    severity=0.8,
+                )
+            )
+            return
+        non_advance = [a for a in actions if a.action_type != ActionType.ADVANCE_DAY]
+        if not non_advance and day > 3:
+            self.errors.append(
+                CoherenceError(
+                    error_type=CoherenceErrorType.TASK_ABANDONMENT,
+                    day=day,
+                    description="Agent took only ADVANCE_DAY actions after day 3",
+                    severity=0.5,
+                )
+            )
 
     def calculate_coherence_score(self, errors: list[CoherenceError], total_days: int) -> float:
         """

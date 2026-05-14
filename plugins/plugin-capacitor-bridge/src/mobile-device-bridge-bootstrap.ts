@@ -322,14 +322,14 @@ class MobileDeviceBridge {
 		});
 		this.wss = wss;
 
-		wss.on("error", (err) => {
+		wss.on("error", (err: Error) => {
 			logger.warn("[mobile-device-bridge] WSS error:", err.message);
 		});
 
 		server.on("upgrade", (request, socket, head) => {
 			const url = new URL(request.url ?? "/", "http://localhost");
 			if (url.pathname !== DEVICE_BRIDGE_PATH) return;
-			wss.handleUpgrade(request, socket, head, (client) => {
+			wss.handleUpgrade(request, socket, head, (client: MinimalWebSocket) => {
 				this.handleConnection(client, ws.WebSocket);
 			});
 		});

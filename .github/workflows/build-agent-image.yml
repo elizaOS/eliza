@@ -66,14 +66,21 @@ jobs:
             bun-${{ runner.os }}-
 
       - name: Install dependencies
+        # Intentionally NOT using `--ignore-scripts` here. The per-plugin
+        # `bun run build` loop below invokes binaries (`tsup`, `tsc`) that
+        # Bun resolves through `<plugin>/node_modules/.bin` symlinks, and
+        # those symlinks are only fully populated when the install also
+        # runs the repo postinstall (which calls
+        # `ensure-workspace-symlinks.mjs` + the patch-deps pass). The
+        # heavy submodule fetch is guarded by NODE_LLAMA_CPP_SKIP_DOWNLOAD.
         env:
           NODE_LLAMA_CPP_SKIP_DOWNLOAD: "true"
         run: |
           install_log="$(mktemp)"
-          if ! bun install --ignore-scripts --frozen-lockfile 2>&1 | tee "$install_log"; then
+          if ! bun install --frozen-lockfile 2>&1 | tee "$install_log"; then
             if grep -q "lockfile had changes, but lockfile is frozen" "$install_log"; then
               echo "::warning::Bun frozen lockfile drift — validating with non-frozen install + git diff"
-              if bun install --ignore-scripts --no-frozen-lockfile; then
+              if bun install --no-frozen-lockfile; then
                 if git diff --quiet -- bun.lock; then
                   rm -f "$install_log"
                   exit 0
@@ -91,17 +98,15 @@ jobs:
           rm -f "$install_log"
 
       - name: Materialize @types packages
-        # `bun install --ignore-scripts` skips the repo postinstall, so the
-        # `@types/*` packages aren't repaired in `node_modules/@types`. The
-        # per-plugin `tsc` declaration step in `bun run build` then trips
-        # `TS2688: Cannot find type definition file for 'bun-types' / 'node'`
-        # (root cause: Bun's virtual store entries get pruned by patch-deps
-        # at postinstall time; without that pass the resolver can't see the
-        # types). Run the two scripts the postinstall would have run.
+        # Belt-and-suspenders: even with postinstall enabled, the
+        # `@types/*` packages occasionally end up in Bun's virtual store
+        # rather than under `node_modules/@types/*`. The per-plugin `tsc`
+        # declaration step trips `TS2688: Cannot find type definition file
+        # for 'bun' / 'node'` when that happens. Run the same script
+        # `docker-ci-smoke.sh` runs after install to be safe.
         env:
           NODE_LLAMA_CPP_SKIP_DOWNLOAD: "true"
         run: |
-          node packages/app-core/scripts/patch-deps.mjs || true
           node packages/app-core/scripts/ensure-type-package-aliases.mjs
 
       - name: Build workspace plugins

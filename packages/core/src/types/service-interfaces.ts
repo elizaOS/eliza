@@ -336,7 +336,7 @@ export interface MediaGenerationResponse {
 export abstract class IMediaGenerationService extends Service {
 	static override readonly serviceType = ServiceType.MEDIA_GENERATION;
 
-	public readonly capabilityDescription =
+	public readonly capabilityDescription: string =
 		"Generates image, video, and audio media from prompts.";
 
 	canGenerateMedia(

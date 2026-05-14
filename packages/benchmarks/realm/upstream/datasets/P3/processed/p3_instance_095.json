@@ -1,0 +1,99 @@
+{
+  "instance_id": "p3_instance_095",
+  "city_map": {
+    "locations": [
+      "hospital",
+      "suburb",
+      "downtown",
+      "stadium",
+      "airport"
+    ],
+    "distances": {
+      "hospital-suburb": 12,
+      "suburb-hospital": 12,
+      "hospital-downtown": 21,
+      "downtown-hospital": 21,
+      "hospital-stadium": 26,
+      "stadium-hospital": 26,
+      "hospital-airport": 12,
+      "airport-hospital": 12,
+      "suburb-downtown": 17,
+      "downtown-suburb": 17,
+      "suburb-stadium": 6,
+      "stadium-suburb": 6,
+      "suburb-airport": 7,
+      "airport-suburb": 7,
+      "downtown-stadium": 10,
+      "stadium-downtown": 10,
+      "downtown-airport": 44,
+      "airport-downtown": 44,
+      "stadium-airport": 20,
+      "airport-stadium": 20
+    }
+  },
+  "ride_requests": [
+    {
+      "passenger_id": "p001",
+      "pickup": "stadium",
+      "dropoff": "downtown",
+      "time_window": [
+        13.5,
+        13.0
+      ],
+      "deadline": 53
+    },
+    {
+      "passenger_id": "p002",
+      "pickup": "downtown",
+      "dropoff": "airport",
+      "time_window": [
+        12.25,
+        12.683333333333334
+      ],
+      "deadline": 50
+    },
+    {
+      "passenger_id": "p003",
+      "pickup": "airport",
+      "dropoff": "suburb",
+      "time_window": [
+        10.0,
+        10.4
+      ],
+      "deadline": 59
+    }
+  ],
+  "vehicles": [
+    {
+      "vehicle_id": "v001",
+      "location": "stadium",
+      "capacity": 5,
+      "fuel": 52
+    },
+    {
+      "vehicle_id": "v002",
+      "location": "hospital",
+      "capacity": 6,
+      "fuel": 56
+    },
+    {
+      "vehicle_id": "v003",
+      "location": "airport",
+      "capacity": 5,
+      "fuel": 94
+    },
+    {
+      "vehicle_id": "v004",
+      "location": "airport",
+      "capacity": 5,
+      "fuel": 70
+    },
+    {
+      "vehicle_id": "v005",
+      "location": "suburb",
+      "capacity": 6,
+      "fuel": 58
+    }
+  ],
+  "description": "Urban ride-sharing instance"
+}
