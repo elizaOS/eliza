@@ -2866,46 +2866,43 @@ export const allActionsSpec = {
 		},
 		{
 			name: "BLOCK",
-			description:
-				"Block or unblock specific phone apps (Family Controls / Usage Access) and ",
+			description: "Block/unblock phone apps or desktop websites. ",
 			parameters: [
 				{
 					name: "target",
 					description:
-						"Which surface to act on: 'app' (phone apps) or 'website' (desktop hosts-file/SelfControl). ",
+						"app phone apps | website desktop hosts-file/SelfControl. Omit ok: infer request_permission|release|list_active -> website, params, user text.",
 					required: false,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"Which surface to act on: 'app' (phone apps) or 'website' (desktop hosts-file/SelfControl).",
+						"app phone apps | website desktop hosts-file/SelfControl. Omit ok: infer request_permission|release|list_active -> website, params, user text.",
 				},
 				{
 					name: "action",
 					description:
-						"One of: block, unblock, status, request_permission, release, list_active. ",
+						"block | unblock | status | request_permission | release | list_active. request_permission|release|list_active website-only.",
 					required: true,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"One of: block, unblock, status, request_permission, release, list_active.",
+						"block | unblock | status | request_permission | release | list_active. request_permission|release|list_active website-only.",
 				},
 				{
 					name: "intent",
-					description:
-						"Free-form description of what the owner wants. Used by the block action to extract apps/hostnames + duration.",
+					description: "Owner intent text; extract apps/hostnames + duration.",
 					required: false,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"Free-form description of what the owner wants. Used by the block action to extract apps/hostnames + duration.",
+						"Owner intent text. extract apps/hostnames + duration.",
 				},
 				{
 					name: "hostnames",
-					description:
-						"(target=website) Public hostnames or URLs to block, e.g. ['x.com','twitter.com'].",
+					description: "(target=website) Public hostnames/URLs.",
 					required: false,
 					schema: {
 						type: "array",
@@ -2913,68 +2910,65 @@ export const allActionsSpec = {
 							type: "string",
 						},
 					},
-					descriptionCompressed:
-						"(target=website) Public hostnames or URLs to block, e. g. ['x. com', 'twitter. com'].",
+					descriptionCompressed: "(target=website) Public hostnames/URLs.",
 				},
 				{
 					name: "confirmed",
 					description:
-						"(target=website) Set true only when the owner has explicitly confirmed the block. Without it, block returns a draft confirmation request. Required by release.",
+						"(target=website) true after owner confirmed. Without: block drafts. Required by release.",
 					required: false,
 					schema: {
 						type: "boolean",
 					},
 					descriptionCompressed:
-						"(target=website) Set true only when the owner has explicitly confirmed the block. without it, block returns a draft confirmation request. Required by release.",
+						"(target=website) true after owner confirmed. without: block drafts. Required by release.",
 				},
 				{
 					name: "ruleId",
-					description:
-						"(target=website, action=release) ID of the managed block rule to release.",
+					description: "(target=website action=release) Managed block rule id.",
 					required: false,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"(target=website, action=release) ID of the managed block rule to release.",
+						"(target=website action=release) Managed block rule id.",
 				},
 				{
 					name: "reason",
 					description:
-						"(target=website, action=release) Optional reason recorded on the rule when released.",
+						"(target=website action=release) Optional release reason; audit record.",
 					required: false,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"(target=website, action=release) Optional reason recorded on the rule when released.",
+						"(target=website action=release) Optional release reason. audit record.",
 				},
 				{
 					name: "includeLiveStatus",
 					description:
-						"(target=website, action=list_active) Include the current hosts-file/SelfControl live block state. Default true.",
+						"(target=website action=list_active) Include hosts-file/SelfControl live state. Default true.",
 					required: false,
 					schema: {
 						type: "boolean",
 					},
 					descriptionCompressed:
-						"(target=website, action=list_active) Include the current hosts-file/SelfControl live block state. Default true.",
+						"(target=website action=list_active) Include hosts-file/SelfControl live state. Default true.",
 				},
 				{
 					name: "includeManagedRules",
 					description:
-						"(target=website, action=list_active) Include managed owner block rules. Default true.",
+						"(target=website action=list_active) Include managed rules. Default true.",
 					required: false,
 					schema: {
 						type: "boolean",
 					},
 					descriptionCompressed:
-						"(target=website, action=list_active) Include managed owner block rules. Default true.",
+						"(target=website action=list_active) Include managed rules. Default true.",
 				},
 				{
 					name: "packageNames",
-					description:
-						"(target=app, Android) Package names to block, e.g. ['com.twitter.android'].",
+					description: "(target=app Android) Package names.",
 					required: false,
 					schema: {
 						type: "array",
@@ -2982,13 +2976,11 @@ export const allActionsSpec = {
 							type: "string",
 						},
 					},
-					descriptionCompressed:
-						"(target=app, Android) Package names to block, e. g. ['com. twitter. android'].",
+					descriptionCompressed: "(target=app Android) Package names.",
 				},
 				{
 					name: "appTokens",
-					description:
-						"(target=app, iOS) iPhone app tokens from a previous selectApps() call.",
+					description: "(target=app iOS) iPhone app tokens from selectApps().",
 					required: false,
 					schema: {
 						type: "array",
@@ -2997,22 +2989,22 @@ export const allActionsSpec = {
 						},
 					},
 					descriptionCompressed:
-						"(target=app, iOS) iPhone app tokens from a previous selectApps() call.",
+						"(target=app iOS) iPhone app tokens from selectApps().",
 				},
 				{
 					name: "durationMinutes",
 					description:
-						"How long to block, in minutes. Omit/null for an indefinite block that stays active until manually removed.",
+						"Block duration minutes. Omit/null = indefinite until manual removal.",
 					required: false,
 					schema: {
 						type: "number",
 					},
 					descriptionCompressed:
-						"How long to block, in minutes. Omit/null for an indefinite block that stays active until manually removed.",
+						"Block duration minutes. Omit/null = indefinite until manual removal.",
 				},
 			],
 			descriptionCompressed:
-				"block/unblock phone apps + desktop websites only (NOT calendar time-blocks/focus-blocks — those go to CALENDAR create_event); actions block|unblock|status|request_permission|release|list_active; web requires confirmed:true",
+				"BLOCK apps+websites only; NOT calendar/focus; block|unblock|status|permission|release",
 			similes: [
 				"SELFCONTROL",
 				"SITE_BLOCKER",
@@ -3050,58 +3042,58 @@ export const allActionsSpec = {
 		{
 			name: "BRIEF",
 			description:
-				"Compose the owner's morning, evening, or weekly briefing by pulling calendar feed, inbox triage, life-domain due items, and money recurring charges into a single LifeOpsBriefing. Subactions: compose_morning, compose_evening, compose_weekly.",
+				"Compose owner LifeOpsBriefing: morning/evening/weekly; calendar feed, inbox triage, life due, money recurring charges. Subactions: compose_morning, compose_evening, compose_weekly.",
 			parameters: [
 				{
 					name: "action",
 					description:
-						"Canonical brief operation: compose_morning | compose_evening | compose_weekly.",
+						"Brief op: compose_morning | compose_evening | compose_weekly.",
 					required: false,
 					schema: {
 						type: "string",
 						enum: ["compose_morning", "compose_evening", "compose_weekly"],
 					},
 					descriptionCompressed:
-						"Canonical brief operation: compose_morning | compose_evening | compose_weekly.",
+						"Brief op: compose_morning | compose_evening | compose_weekly.",
 				},
 				{
 					name: "period",
 					description:
-						"Time window the brief covers: today | tomorrow | this_week. Defaults to the subaction's natural period.",
+						"Brief window: today | tomorrow | this_week. Default subaction period.",
 					required: false,
 					schema: {
 						type: "string",
 						enum: ["today", "tomorrow", "this_week"],
 					},
 					descriptionCompressed:
-						"Time window the brief covers: today | tomorrow | this_week. Defaults to the subaction's natural period.",
+						"Brief window: today | tomorrow | this_week. Default subaction period.",
 				},
 				{
 					name: "include",
 					description:
-						"Per-domain include flags; each defaults to true. Shape: { calendar?, inbox?, life?, money? }.",
+						"Include flags, default true: { calendar?, inbox?, life?, money? }.",
 					required: false,
 					schema: {
 						type: "object",
 					},
 					descriptionCompressed:
-						"Per-domain include flags. each defaults to true. Shape: { calendar?, inbox?, life?, money? }.",
+						"Include flags, default true: { calendar?, inbox?, life?, money? }.",
 				},
 				{
 					name: "format",
 					description:
-						"narrative renders the LLM compose pass; json returns only the structured LifeOpsBriefing. Defaults to narrative.",
+						"Format: narrative = LLM compose; json = LifeOpsBriefing only. Default narrative.",
 					required: false,
 					schema: {
 						type: "string",
 						enum: ["narrative", "json"],
 					},
 					descriptionCompressed:
-						"narrative renders the LLM compose pass. json returns only the structured LifeOpsBriefing. Defaults to narrative.",
+						"Format: narrative = LLM compose. json = LifeOpsBriefing only. Default narrative.",
 				},
 			],
 			descriptionCompressed:
-				"briefing: compose_morning|compose_evening|compose_weekly; LifeOpsBriefing shape; LLM narrative pass",
+				"BRIEF compose_morning|compose_evening|compose_weekly; LifeOpsBriefing",
 			exampleCalls: [
 				{
 					user: "Use BRIEF with the provided parameters.",
@@ -3120,12 +3112,12 @@ export const allActionsSpec = {
 		{
 			name: "BROWSER",
 			description:
-				"Single BROWSER action — control whichever browser target is registered. Targets are pluggable: `workspace` (electrobun-embedded BrowserView, the default; falls back to a JSDOM web mode when the desktop bridge isn't configured), `bridge` (the user's real Chrome/Safari via the Agent Browser Bridge companion extension), and `computeruse` (a local puppeteer-driven Chromium via plugin-computeruse). The agent uses what is available — the BrowserService picks the active target when none is specified. Use `action: \"autofill_login\"` with `domain` (and optional `username`, `submit`) to vault-gated autofill into an open workspace tab.",
+				"BROWSER action. Control registered target: workspace default, bridge Chrome/Safari, computeruse Chromium. BrowserService picks target if omitted. action=autofill_login + domain vault-gated autofills open workspace tab.",
 			parameters: [
 				{
 					name: "action",
 					description:
-						"Browser action to perform. Snake_case values are canonical; legacy kebab-case and subaction are also accepted.",
+						"Browser action. Snake_case canonical; legacy kebab-case and subaction accepted.",
 					required: false,
 					schema: {
 						type: "string",
@@ -3164,7 +3156,7 @@ export const allActionsSpec = {
 						],
 					},
 					descriptionCompressed:
-						"Browser action to perform. Snake_case values are canonical. legacy kebab-case and subaction are also accepted.",
+						"Browser action. Snake_case canonical. legacy kebab-case and subaction accepted.",
 				},
 				{
 					name: "tabAction",
@@ -3179,35 +3171,35 @@ export const allActionsSpec = {
 				{
 					name: "domain",
 					description:
-						"Required when action is autofill_login: registrable hostname (e.g. `github.com`).",
+						"Required for action=autofill_login: registrable hostname, e.g. github.com.",
 					required: false,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"Required when action is autofill_login: registrable hostname (e. g. `github.com`).",
+						"Required for action=autofill_login: registrable hostname, e. g. github. com.",
 				},
 				{
 					name: "username",
 					description:
-						"When using autofill-login: specific saved login; omit for most recently modified.",
+						"For autofill-login: saved login username; omit for latest.",
 					required: false,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"When using autofill-login: specific saved login. omit for most recently modified.",
+						"For autofill-login: saved login username. omit for latest.",
 				},
 				{
 					name: "submit",
 					description:
-						"When using autofill-login: submit the form after filling (default false).",
+						"For autofill-login: submit after filling. Default false.",
 					required: false,
 					schema: {
 						type: "boolean",
 					},
 					descriptionCompressed:
-						"When using autofill-login: submit the form after filling (default false).",
+						"For autofill-login: submit after filling. Default false.",
 				},
 				{
 					name: "id",
@@ -3284,13 +3276,13 @@ export const allActionsSpec = {
 				{
 					name: "watchMode",
 					description:
-						"Hint that the user is watching; prefers realistic-* subactions for click/fill so the cursor moves visibly and pointer events fire faithfully.",
+						"User watching hint; prefer realistic-* click/fill, visible cursor, pointer events.",
 					required: false,
 					schema: {
 						type: "boolean",
 					},
 					descriptionCompressed:
-						"Hint that user is watching. prefers realistic-* subactions for click/fill so the cursor moves visibly and pointer events fire faithfully.",
+						"User watching hint. prefer realistic-* click/fill, visible cursor, pointer events.",
 				},
 				{
 					name: "cursorDurationMs",
@@ -3317,13 +3309,13 @@ export const allActionsSpec = {
 				{
 					name: "replace",
 					description:
-						"Replace existing input value when filling (vs append) — applies to realistic-fill",
+						"For realistic-fill: replace existing input, not append.",
 					required: false,
 					schema: {
 						type: "boolean",
 					},
 					descriptionCompressed:
-						"Replace existing input value when filling (vs append) - applies to realistic-fill",
+						"For realistic-fill: replace existing input, not append.",
 				},
 				{
 					name: "x",
@@ -3345,7 +3337,7 @@ export const allActionsSpec = {
 				},
 			],
 			descriptionCompressed:
-				"Browser tab/page control: open/navigate/click/type/screenshot/state; action autofill_login + domain autofill vault-gated credential into workspace tab pre-authorized in Settings Vault Logins. Bridge settings/status use MANAGE_BROWSER_BRIDGE.",
+				"Browser open|navigate|click|type|screenshot|state|autofill_login; bridge status elsewhere",
 			similes: [
 				"BROWSE_SITE",
 				"BROWSER_SESSION",
@@ -3397,12 +3389,12 @@ export const allActionsSpec = {
 		{
 			name: "CALENDAR",
 			description:
-				"Manage live calendar events plus availability and meeting preferences. Subactions: ",
+				"Live calendar: event CRUD, availability, meeting prefs. Subactions: ",
 			parameters: [
 				{
 					name: "action",
 					description:
-						"Which calendar operation to run. Calendar: feed, next_event, search_events, create_event, update_event, delete_event, trip_window, bulk_reschedule. Availability: check_availability, propose_times. Preferences: update_preferences.",
+						"Calendar op. feed, next_event, search_events, create_event, update_event, delete_event, trip_window, bulk_reschedule, check_availability, propose_times, update_preferences.",
 					required: false,
 					schema: {
 						type: "string",
@@ -3421,45 +3413,44 @@ export const allActionsSpec = {
 						],
 					},
 					descriptionCompressed:
-						"Which calendar operation to run. Calendar: feed, next_event, search_events, create_event, update_event, delete_event, trip_window, bulk_reschedule...",
+						"Calendar op. feed, next_event, search_events, create_event, update_event, delete_event, trip_window, bulk_reschedule, check_availability, propose_times...",
 				},
 				{
 					name: "intent",
 					description:
-						'Natural-language description of the calendar request (e.g. "what is on my calendar today", "do i have any flights this week", "create a meeting tomorrow at 3pm").',
+						'Natural-language request. Examples: "calendar today", "flights this week", "create meeting tomorrow 3pm".',
 					required: false,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						'Natural-language description of the calendar request (e. g. "what is on my calendar today", "do i have any flights this week", "create a meeting tomorrow at...',
+						'Natural-language request. Examples: "calendar today", "flights this week", "create meeting tomorrow 3pm".',
 				},
 				{
 					name: "title",
-					description:
-						"Event title when creating a calendar event. TOP-LEVEL (flat) field — ",
+					description: "Event title for create_event. TOP-LEVEL flat. ",
 					required: false,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"Event title, TOP-LEVEL flat field (NOT inside details). Example: { subaction: 'create_event', title: 'Dentist', details: { start, end } }",
+						"title TOP-LEVEL; NOT details. create_event needs title + details.start/end",
 				},
 				{
 					name: "query",
 					description:
-						"Search phrase for search_events / travel_itinerary (e.g. flight, dentist, Denver).",
+						"Search phrase for search_events/travel_itinerary: flight, dentist, Denver.",
 					required: false,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"Search phrase for search_events/travel_itinerary (e. g. flight, dentist, Denver).",
+						"Search phrase for search_events/travel_itinerary: flight, dentist, Denver.",
 				},
 				{
 					name: "queries",
 					description:
-						"Optional array of search phrases for search_events. Combined and deduped.",
+						"Optional search_events phrases array. Combined/deduped.",
 					required: false,
 					schema: {
 						type: "array",
@@ -3468,12 +3459,12 @@ export const allActionsSpec = {
 						},
 					},
 					descriptionCompressed:
-						"Optional array of search phrases for search_events. Combined and deduped.",
+						"Optional search_events phrases array. Combined/deduped.",
 				},
 				{
 					name: "details",
 					description:
-						"Structured calendar fields for create_event / update_event / delete_event. ",
+						"Structured fields for create_event/update_event/delete_event. ",
 					required: false,
 					schema: {
 						type: "object",
@@ -3538,141 +3529,132 @@ export const allActionsSpec = {
 						},
 					},
 					descriptionCompressed:
-						"details (for create/update/delete_event ONLY): { calendarId, start (ISO-8601), end (ISO-8601), eventId, newTitle, location, attendees, description }. ",
+						"details create|update|delete: calendarId,start/end,eventId,location; title/window TOP",
 				},
 				{
 					name: "durationMinutes",
-					description:
-						"Top-level flat field. Meeting length in minutes for propose_times. ",
+					description: "TOP-LEVEL flat. propose_times length minutes. ",
 					required: false,
 					schema: {
 						type: "number",
 					},
 					descriptionCompressed:
-						"Top-level flat field. Meeting length in minutes for propose_times.",
+						"TOP-LEVEL flat. propose_times length minutes.",
 				},
 				{
 					name: "daysAhead",
 					description:
-						"Days ahead for propose_times search window (defaults to 7, ignored when windowStart/windowEnd are supplied).",
+						"propose_times days ahead. Default 7. Ignored with windowStart/windowEnd.",
 					required: false,
 					schema: {
 						type: "number",
 					},
 					descriptionCompressed:
-						"Days ahead for propose_times search window (defaults to 7, ignored when windowStart/windowEnd are supplied).",
+						"propose_times days ahead. Default 7. Ignored with windowStart/windowEnd.",
 				},
 				{
 					name: "slotCount",
-					description:
-						"Number of candidate slots for propose_times (defaults to 3).",
+					description: "propose_times slot count. Default 3.",
 					required: false,
 					schema: {
 						type: "number",
 					},
-					descriptionCompressed:
-						"Number of candidate slots for propose_times (defaults to 3).",
+					descriptionCompressed: "propose_times slot count. Default 3.",
 				},
 				{
 					name: "windowStart",
-					description:
-						"ISO-8601 earliest start of the propose_times search window.",
+					description: "propose_times window earliest start. ISO-8601.",
 					required: false,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"ISO-8601 earliest start of the propose_times search window.",
+						"propose_times window earliest start. ISO-8601.",
 				},
 				{
 					name: "windowEnd",
-					description:
-						"ISO-8601 latest end of the propose_times search window.",
+					description: "propose_times window latest end. ISO-8601.",
 					required: false,
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed:
-						"ISO-8601 latest end of the propose_times search window.",
+					descriptionCompressed: "propose_times window latest end. ISO-8601.",
 				},
 				{
 					name: "startAt",
-					description:
-						"Top-level flat field. ISO-8601 start time for check_availability. ",
+					description: "TOP-LEVEL flat. check_availability start. ISO-8601. ",
 					required: false,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"Top-level flat field. ISO-8601 start time for check_availability.",
+						"TOP-LEVEL flat. check_availability start. ISO-8601.",
 				},
 				{
 					name: "endAt",
 					description:
-						"Top-level flat field. ISO-8601 end time for check_availability. See `startAt`.",
+						"TOP-LEVEL flat. check_availability end. ISO-8601. See `startAt`.",
 					required: false,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"Top-level flat field. ISO-8601 end time for check_availability. See `startAt`.",
+						"TOP-LEVEL flat. check_availability end. ISO-8601. See `startAt`.",
 				},
 				{
 					name: "timeZone",
-					description:
-						"IANA time zone for update_preferences (interprets preferred hours).",
+					description: "IANA timeZone for update_preferences hours.",
 					required: false,
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed:
-						"IANA time zone for update_preferences (interprets preferred hours).",
+					descriptionCompressed: "IANA timeZone for update_preferences hours.",
 				},
 				{
 					name: "preferredStartLocal",
 					description:
-						"Top-level flat field for update_preferences. Earliest preferred meeting start time-of-day (local HH:MM, 24h). ",
+						"TOP-LEVEL flat for update_preferences. Earliest start local HH:MM 24h. ",
 					required: false,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"Top-level flat field for update_preferences. Earliest preferred meeting start time-of-day (local HH:MM, 24h).",
+						"TOP-LEVEL flat for update_preferences. Earliest start local HH:MM 24h.",
 				},
 				{
 					name: "preferredEndLocal",
 					description:
-						"Top-level flat field for update_preferences. Latest preferred meeting end time-of-day (local HH:MM, 24h). See `preferredStartLocal`.",
+						"TOP-LEVEL flat for update_preferences. Latest end local HH:MM 24h. See `preferredStartLocal`.",
 					required: false,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"Top-level flat field for update_preferences. Latest preferred meeting end time-of-day (local HH:MM, 24h). See `preferredStartLocal`.",
+						"TOP-LEVEL flat for update_preferences. Latest end local HH:MM 24h. See `preferredStartLocal`.",
 				},
 				{
 					name: "defaultDurationMinutes",
-					description: "Default meeting duration in minutes (5–480).",
+					description: "Default duration minutes (5–480).",
 					required: false,
 					schema: {
 						type: "number",
 					},
-					descriptionCompressed: "Default meeting duration in minutes (5-480).",
+					descriptionCompressed: "Default duration minutes (5-480).",
 				},
 				{
 					name: "travelBufferMinutes",
-					description: "Minutes to reserve before/after each meeting (0–240).",
+					description: "Buffer minutes before/after meetings (0–240).",
 					required: false,
 					schema: {
 						type: "number",
 					},
 					descriptionCompressed:
-						"Minutes to reserve before/after each meeting (0-240).",
+						"Buffer minutes before/after meetings (0-240).",
 				},
 				{
 					name: "blackoutWindows",
 					description:
-						"Array of { label, startLocal (HH:MM), endLocal (HH:MM), daysOfWeek? (0=Sun..6=Sat) }.",
+						"Array: { label, startLocal HH:MM, endLocal HH:MM, daysOfWeek? 0=Sun..6=Sat }.",
 					required: false,
 					schema: {
 						type: "array",
@@ -3706,7 +3688,7 @@ export const allActionsSpec = {
 				},
 			],
 			descriptionCompressed:
-				"calendar event CRUD + availability + prefs; subactions create_event|update_event|delete_event|search_events|propose_times|check_availability|next_event|feed",
+				"calendar feed|next|search|create|update|delete|trip_window|reschedule|availability|propose",
 			exampleCalls: [
 				{
 					user: "Use CALENDAR with the provided parameters.",
@@ -3740,7 +3722,7 @@ export const allActionsSpec = {
 		{
 			name: "COMPUTER_USE",
 			description:
-				"computer_use:\n  purpose: Canonical cross-platform computer-use action for real desktop interaction on macOS, Linux, and Windows when direct computer operation is required.\n  guidance: Take a screenshot before acting. After each desktop action, the result includes a screenshot when available. Use this standard plugin action, not a LifeOps wrapper, for Finder/Desktop/native-app/browser/file/terminal workflows on the owner's machine.\n  actions: screenshot/click/click_with_modifiers/double_click/right_click/mouse_move/type/key/key_combo/scroll/drag/detect_elements/ocr.",
+				"computer_use: real desktop control on macOS/Linux/Windows. Screenshot before acting. Results include screenshot when available. Use for Finder/Desktop/native-app/browser/file/terminal on owner's machine. actions: screenshot/click/click_with_modifiers/double_click/right_click/mouse_move/type/key/key_combo/scroll/drag/detect_elements/ocr.",
 			parameters: [
 				{
 					name: "action",
@@ -3802,7 +3784,7 @@ export const allActionsSpec = {
 				{
 					name: "modifiers",
 					description:
-						"Modifier keys to hold during click_with_modifiers, e.g. ['cmd', 'shift'] or ['ctrl'].",
+						"Modifier keys for click_with_modifiers, e.g. ['cmd','shift'] or ['ctrl'].",
 					required: false,
 					schema: {
 						type: "array",
@@ -3811,7 +3793,7 @@ export const allActionsSpec = {
 						},
 					},
 					descriptionCompressed:
-						"Modifier keys to hold during click_with_modifiers, e. g. ['cmd', 'shift'] or ['ctrl'].",
+						"Modifier keys for click_with_modifiers, e. g. ['cmd', 'shift'] or ['ctrl'].",
 				},
 				{
 					name: "key",
@@ -3869,29 +3851,29 @@ export const allActionsSpec = {
 				{
 					name: "displayId",
 					description:
-						"Display the coordinate is local to. Required for any coordinate-bearing action on multi-monitor hosts. See the `computerState` provider for the live `displays[]` list.",
+						"Display for coordinate. Required for coordinate actions on multi-monitor. See computerState displays[].",
 					required: false,
 					schema: {
 						type: "number",
 					},
 					descriptionCompressed:
-						"Display the coordinate is local to. Required for any coordinate-bearing action on multi-monitor hosts. See the `computerState` provider for the live...",
+						"Display for coordinate. Required for coordinate actions on multi-monitor. See computerState displays[].",
 				},
 				{
 					name: "coordSource",
 					description:
-						"Coordinate space of the coordinate fields: 'logical' (default; matches display.bounds) or 'backing' (raw retina pixels — macOS only).",
+						"Coordinate space: logical default matches display.bounds; backing raw retina pixels macOS only.",
 					required: false,
 					schema: {
 						type: "string",
 						enum: ["logical", "backing"],
 					},
 					descriptionCompressed:
-						"Coordinate space of the coordinate fields: 'logical' (default. matches display. bounds) or 'backing' (raw retina pixels - macOS only).",
+						"Coordinate space: logical default matches display. bounds. backing raw retina pixels macOS only.",
 				},
 			],
 			descriptionCompressed:
-				"Canonical cross-platform desktop control: screenshot/click/modified click/double/right/move/type/key/key_combo/scroll/drag/detect_elements/ocr.",
+				"Desktop: screenshot|click|double|right|move|type|key|scroll|drag|detect|ocr",
 			similes: [
 				"USE_COMPUTER",
 				"CONTROL_COMPUTER",
@@ -3937,23 +3919,23 @@ export const allActionsSpec = {
 		{
 			name: "COMPUTER_USE_AGENT",
 			description:
-				'computer_use_agent:\n  purpose: High-level autonomous desktop agent — given a goal, run Brain/Cascade/Dispatch loop until the goal is reached or maxSteps is exhausted. Uses the WS6 scene-builder, WS7 Brain+Actor cascade, and WS5 multi-monitor coords.\n  guidance: Prefer COMPUTER_USE for single explicit actions you can already name. Use COMPUTER_USE_AGENT when the user gives a goal ("click the save button", "open VS Code") and you want the system to plan and click for you.',
+				"computer_use_agent: autonomous desktop loop for a goal until done or maxSteps. Uses WS6 scene-builder, WS7 Brain+Actor cascade, WS5 multi-monitor coords. Prefer COMPUTER_USE for named single steps; use COMPUTER_USE_AGENT for goal-level screen tasks.",
 			parameters: [
 				{
 					name: "goal",
 					description:
-						"Natural-language goal, e.g. 'click the save button in the dialog'.",
+						"Natural-language goal, e.g. click save button in dialog.",
 					required: true,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"Natural-language goal, e. g. 'click the save button in the dialog'.",
+						"Natural-language goal, e. g. click save button in dialog.",
 				},
 				{
 					name: "maxSteps",
 					description:
-						"Maximum Brain→dispatch cycles before giving up (default 5).",
+						"Max Brain->dispatch cycles before giving up. Default 5.",
 					required: false,
 					schema: {
 						type: "number",
@@ -3962,7 +3944,7 @@ export const allActionsSpec = {
 						maximum: 20,
 					},
 					descriptionCompressed:
-						"max Brain→dispatch cycles before giving up (default 5).",
+						"Max Brain->dispatch cycles before giving up. Default 5.",
 				},
 			],
 			descriptionCompressed:
@@ -3984,45 +3966,45 @@ export const allActionsSpec = {
 		{
 			name: "CONFLICT_DETECT",
 			description:
-				"Proactively scan the owner's calendar for overlapping events, or evaluate a proposed event window against the owner's feed. Subactions: scan_today, scan_week, scan_event_proposal.",
+				"Scan owner calendar overlaps. Compare proposed window vs owner feed. Subactions: scan_today, scan_week, scan_event_proposal.",
 			parameters: [
 				{
 					name: "action",
 					description:
-						"Canonical conflict scan operation: scan_today | scan_week | scan_event_proposal.",
+						"Conflict op: scan_today | scan_week | scan_event_proposal.",
 					required: false,
 					schema: {
 						type: "string",
 						enum: ["scan_today", "scan_week", "scan_event_proposal"],
 					},
 					descriptionCompressed:
-						"Canonical conflict scan operation: scan_today | scan_week | scan_event_proposal.",
+						"Conflict op: scan_today | scan_week | scan_event_proposal.",
 				},
 				{
 					name: "range",
 					description:
-						"Either 'today' | 'week' or an explicit { start, end } ISO window. Defaults to subaction's natural range.",
+						"'today' | 'week' or { start, end } ISO window. Default subaction range.",
 					required: false,
 					schema: {
 						type: "object",
 					},
 					descriptionCompressed:
-						"Either 'today' | 'week' or an explicit { start, end } ISO window. Defaults to subaction's natural range.",
+						"'today' | 'week' or { start, end } ISO window. Default subaction range.",
 				},
 				{
 					name: "proposal",
 					description:
-						"scan_event_proposal only: { startISO, endISO, attendees? } describing the candidate event.",
+						"scan_event_proposal candidate: { startISO, endISO, attendees? }.",
 					required: false,
 					schema: {
 						type: "object",
 					},
 					descriptionCompressed:
-						"scan_event_proposal only: { startISO, endISO, attendees? } describing the candidate event.",
+						"scan_event_proposal candidate: { startISO, endISO, attendees? }.",
 				},
 			],
 			descriptionCompressed:
-				"calendar conflicts: scan_today|scan_week|scan_event_proposal; severity warning|hard based on attendee overlap",
+				"calendar conflicts: scan_today|scan_week|scan_event_proposal; severity warning|hard",
 			exampleCalls: [
 				{
 					user: "Use CONFLICT_DETECT with the provided parameters.",
@@ -4040,29 +4022,29 @@ export const allActionsSpec = {
 		{
 			name: "CONNECTOR",
 			description:
-				"Manage **account** state for installed connectors: connect (log in), ",
+				"Installed connector account state: connect, disconnect, verify, status, list. ",
 			parameters: [
 				{
 					name: "connector",
 					description:
-						"Which connector to manage (kind from ConnectorRegistry, e.g. google, x, telegram, signal, discord, imessage, whatsapp, twilio, calendly, duffel, health, browser_bridge). Optional when subaction=list.",
+						"ConnectorRegistry kind: google, x, telegram, signal, discord, imessage, whatsapp, twilio, calendly, duffel, health, browser_bridge. Optional action=list.",
 					required: false,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"Which connector to manage (kind from ConnectorRegistry, e. g. google, x, telegram, signal, discord, imessage, whatsapp, twilio, calendly, duffel, health...",
+						"ConnectorRegistry kind: google, x, telegram, signal, discord, imessage, whatsapp, twilio, calendly, duffel, health, browser_bridge. Optional action=list.",
 				},
 				{
 					name: "action",
 					description:
-						"Lifecycle operation. connect (start auth/pairing); disconnect (revoke + clear grant); verify (active read/send probe where available). status/list are read-only diagnostics for explicit troubleshooting; prefer provider/core registry context when available. Strongly preferred - when omitted, the handler runs an LLM extraction over the conversation to recover it.",
+						"connect auth/pairing; disconnect revoke+clear grant; verify active read/send probe; status/list read-only diagnostics. Omit ok: handler LLM-extracts.",
 					required: false,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"Lifecycle operation. connect (start auth/pairing). disconnect (revoke + clear grant). verify (active read/send probe where available). status/list are...",
+						"connect auth/pairing. disconnect revoke+clear grant. verify active read/send probe. status/list read-only diagnostics. Omit ok: handler LLM-extracts.",
 				},
 				{
 					name: "side",
@@ -4077,105 +4059,97 @@ export const allActionsSpec = {
 				{
 					name: "mode",
 					description:
-						"Connection mode: local | cloud_managed | remote. Defaults vary by connector.",
+						"local | cloud_managed | remote. Default connector-specific.",
 					required: false,
 					schema: {
 						type: "string",
 						enum: ["local", "cloud_managed", "remote"],
 					},
 					descriptionCompressed:
-						"Connection mode: local | cloud_managed | remote. Defaults vary by connector.",
+						"local | cloud_managed | remote. Default connector-specific.",
 				},
 				{
 					name: "recentLimit",
-					description:
-						"verify only — how many recent messages/dialogs to read where the connector supports passive reads.",
+					description: "verify only: recent messages/dialogs read limit.",
 					required: false,
 					schema: {
 						type: "number",
 					},
-					descriptionCompressed:
-						"verify only - how many recent msgs/dialogs to read where the connector supports passive reads.",
+					descriptionCompressed: "verify only: recent msgs/dialogs read limit.",
 				},
 				{
 					name: "query",
 					description:
-						"Discord verify only — optional search text to prove browser-message reads.",
+						"Discord verify only: search text for browser-message reads.",
 					required: false,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"Discord verify only - optional search text to prove browser-msg reads.",
+						"Discord verify only: search text for browser-msg reads.",
 				},
 				{
 					name: "sendTarget",
 					description:
-						"verify only — destination chat/recipient/channel for the self-test send.",
+						"verify only: destination chat/recipient/channel for self-test send.",
 					required: false,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"verify only - destination chat/recipient/channel for the self-test send.",
+						"verify only: destination chat/recipient/channel for self-test send.",
 				},
 				{
 					name: "sendMessage",
-					description: "verify only — text body for the self-test send.",
+					description: "verify only: self-test send body.",
 					required: false,
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed:
-						"verify only - text body for the self-test send.",
+					descriptionCompressed: "verify only: self-test send body.",
 				},
 				{
 					name: "browser",
-					description: "browser_bridge connect only — chrome | safari.",
+					description: "browser_bridge connect only: chrome | safari.",
 					required: false,
 					schema: {
 						type: "string",
 						enum: ["chrome", "safari"],
 					},
 					descriptionCompressed:
-						"browser_bridge connect only - chrome | safari.",
+						"browser_bridge connect only: chrome | safari.",
 				},
 				{
 					name: "profileId",
-					description:
-						"browser_bridge connect only — profile identifier within the browser.",
+					description: "browser_bridge connect only: profile id.",
 					required: false,
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed:
-						"browser_bridge connect only - profile id within the browser.",
+					descriptionCompressed: "browser_bridge connect only: profile id.",
 				},
 				{
 					name: "profileLabel",
-					description:
-						"browser_bridge connect only — human-readable profile label.",
+					description: "browser_bridge connect only: profile label.",
 					required: false,
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed:
-						"browser_bridge connect only - human-readable profile label.",
+					descriptionCompressed: "browser_bridge connect only: profile label.",
 				},
 				{
 					name: "redirectUrl",
-					description:
-						"google/x connect only — optional OAuth redirect URL override.",
+					description: "google/x connect only: OAuth redirect URL override.",
 					required: false,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"google/x connect only - optional OAuth redirect URL override.",
+						"google/x connect only: OAuth redirect URL override.",
 				},
 			],
 			descriptionCompressed:
-				"account-level connector lifecycle: connect(log in)|disconnect(log out)|verify|status|list; registry-driven kinds; for plugin install/uninstall use PLUGIN",
+				"CONNECTOR accounts: connect|disconnect|verify|status|list; plugin install/config -> PLUGIN",
 			similes: [
 				"CONNECT_GOOGLE",
 				"CONNECT_TELEGRAM",
@@ -4211,109 +4185,104 @@ export const allActionsSpec = {
 		{
 			name: "CREDENTIALS",
 			description:
-				"Owner-only password and autofill operations across browser autofill (LifeOps extension) and the OS password manager (1Password / ProtonPass). ",
+				"Owner-only credentials. Browser autofill + OS password manager (1Password/ProtonPass). ",
 			parameters: [
 				{
 					name: "action",
 					description:
-						"fill | whitelist_add | whitelist_list (autofill) | search | list | inject_username | inject_password (password manager).",
+						"fill | whitelist_add | whitelist_list | search | list | inject_username | inject_password.",
 					required: true,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"fill | whitelist_add | whitelist_list (autofill) | search | list | inject_username | inject_password (password manager).",
+						"fill | whitelist_add | whitelist_list | search | list | inject_username | inject_password.",
 				},
 				{
 					name: "field",
 					description:
-						"(action=fill) One of email, password, name, phone, custom. Tells the password manager which field to resolve.",
+						"(action=fill) email | password | name | phone | custom.",
 					required: false,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"(action=fill) One of email, password, name, phone, custom. Tells the password manager which field to resolve.",
+						"(action=fill) email | password | name | phone | custom.",
 				},
 				{
 					name: "domain",
 					description:
-						"(action=fill | whitelist_add) Domain to act on. For fill, used as the tab URL when url is omitted.",
+						"(action=fill|whitelist_add) Domain. fill fallback when url omitted.",
 					required: false,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"(action=fill | whitelist_add) Domain to act on. For fill, used as the tab URL when url is omitted.",
+						"(action=fill|whitelist_add) Domain. fill fallback when url omitted.",
 				},
 				{
 					name: "url",
-					description:
-						"(action=fill) Optional explicit tab URL (used for whitelist enforcement).",
+					description: "(action=fill) Optional tab URL; whitelist enforcement.",
 					required: false,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"(action=fill) Optional explicit tab URL (used for whitelist enforcement).",
+						"(action=fill) Optional tab URL. whitelist enforcement.",
 				},
 				{
 					name: "intent",
-					description:
-						"(action=search) Natural-language description of the lookup intent.",
+					description: "(action=search) Lookup intent text.",
 					required: false,
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed:
-						"(action=search) Natural-language description of the lookup intent.",
+					descriptionCompressed: "(action=search) Lookup intent text.",
 				},
 				{
 					name: "query",
-					description:
-						"(action=search) Search string matched against item title, URL, username, and tags.",
+					description: "(action=search) Match title, URL, username, tags.",
 					required: false,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"(action=search) Search string matched against item title, URL, username, and tags.",
+						"(action=search) Match title, URL, username, tags.",
 				},
 				{
 					name: "itemId",
 					description:
-						"(action=inject_username | inject_password) Password manager item id.",
+						"(action=inject_username|inject_password) Password manager item id.",
 					required: false,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"(action=inject_username | inject_password) Password manager item id.",
+						"(action=inject_username|inject_password) Password manager item id.",
 				},
 				{
 					name: "limit",
-					description: "(action=list) Optional item limit (default 20).",
+					description: "(action=list) Item limit. Default 20.",
 					required: false,
 					schema: {
 						type: "number",
 					},
-					descriptionCompressed:
-						"(action=list) Optional item limit (default 20).",
+					descriptionCompressed: "(action=list) Item limit. Default 20.",
 				},
 				{
 					name: "confirmed",
 					description:
-						"Required true for whitelist_add and for either inject_* action. Ensures the owner approved the change.",
+						"true required for whitelist_add and inject_*; owner gate.",
 					required: false,
 					schema: {
 						type: "boolean",
 					},
 					descriptionCompressed:
-						"Required true for whitelist_add and for either inject_* action. Ensures the owner approved the change.",
+						"true required for whitelist_add and inject_*. owner gate.",
 				},
 			],
 			descriptionCompressed:
-				"credentials: fill|whitelist_add|whitelist_list|search|list|inject_username|inject_password; clipboard-only; confirmed:true required for inject and whitelist_add",
+				"CREDENTIALS fill|whitelist_add|list|search|inject_username|inject_password; clipboard-only",
 			exampleCalls: [
 				{
 					user: "Use CREDENTIALS with the provided parameters.",
@@ -4337,12 +4306,12 @@ export const allActionsSpec = {
 		{
 			name: "ENTITY",
 			description:
-				"Manage people, organizations, projects, and concepts the owner cares about, plus typed relationships between them. Subactions: create, read, set_identity, set_relationship, log_interaction, merge. For rolodex/contact lifecycle (CRUD on a single contact's profile) use CONTACT; ENTITY is the owner-graph umbrella for identity, relationships, and interaction history. Use SCHEDULED_TASKS for follow-up cadence; use OWNER_REMINDERS for one-off dated reminders to call/text someone.",
+				"Owner graph: people, orgs, projects, concepts, typed relationships. Ops: create|read|set_identity|set_relationship|log_interaction|merge. Contact CRUD -> CONTACT. Identity/relationships/history -> ENTITY. Follow-up cadence -> SCHEDULED_TASKS. One-off dated call/text reminders -> OWNER_REMINDERS.",
 			parameters: [
 				{
 					name: "action",
 					description:
-						"Which ENTITY operation to run: create (new contact), read (load rolodex), log_interaction (record contact event), set_identity (force-merge a platform handle onto an entity), set_relationship (typed edge between entities), merge (collapse duplicate entities). For rolodex/contact lifecycle (read full profile, search, update fields) use CONTACT. Follow-up cadence belongs to SCHEDULED_TASKS.",
+						"ENTITY op: create contact|read rolodex|log_interaction event|set_identity platform handle on Entity|set_relationship typed edge|merge duplicate Entities. Contact CRUD -> CONTACT. Follow-up cadence -> SCHEDULED_TASKS.",
 					required: false,
 					schema: {
 						type: "string",
@@ -4353,8 +4322,7 @@ export const allActionsSpec = {
 				},
 				{
 					name: "intent",
-					description:
-						"Free-form user intent used to infer action when not set.",
+					description: "Free-form intent; infer action if unset.",
 					required: false,
 					schema: {
 						type: "string",
@@ -4364,7 +4332,7 @@ export const allActionsSpec = {
 				{
 					name: "name",
 					description:
-						"Contact display name. When relationshipId is omitted, the handler resolves an existing contact by this name.",
+						"Contact display name; resolves existing if relationshipId omitted.",
 					required: false,
 					schema: {
 						type: "string",
@@ -4374,7 +4342,7 @@ export const allActionsSpec = {
 				{
 					name: "channel",
 					description:
-						"Primary channel for the contact (email, telegram, discord, signal, sms, twilio_voice, imessage, whatsapp).",
+						"Primary channel: email|telegram|discord|signal|sms|twilio_voice|imessage|whatsapp.",
 					required: false,
 					schema: {
 						type: "string",
@@ -4385,31 +4353,30 @@ export const allActionsSpec = {
 				},
 				{
 					name: "handle",
-					description: "Primary handle/address on the chosen channel.",
+					description: "Primary channel handle/address.",
 					required: false,
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed:
-						"Primary handle/address on the chosen channel.",
+					descriptionCompressed: "Primary channel handle/address.",
 				},
 				{
 					name: "email",
-					description: "Optional email address for the contact.",
+					description: "Optional contact email.",
 					required: false,
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "Optional email address for the contact.",
+					descriptionCompressed: "Optional contact email.",
 				},
 				{
 					name: "phone",
-					description: "Optional phone number for the contact.",
+					description: "Optional contact phone.",
 					required: false,
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "Optional phone number for the contact.",
+					descriptionCompressed: "Optional contact phone.",
 				},
 				{
 					name: "notes",
@@ -4422,12 +4389,12 @@ export const allActionsSpec = {
 				},
 				{
 					name: "relationshipId",
-					description: "Target relationship id.",
+					description: "Target Relationship id.",
 					required: false,
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "Target relationship id.",
+					descriptionCompressed: "Target Relationship id.",
 				},
 				{
 					name: "reason",
@@ -4440,28 +4407,28 @@ export const allActionsSpec = {
 				},
 				{
 					name: "confirmed",
-					description: "Optional explicit confirmation flag.",
+					description: "Optional confirmation flag.",
 					required: false,
 					schema: {
 						type: "boolean",
 					},
-					descriptionCompressed: "Optional explicit confirmation flag.",
+					descriptionCompressed: "Optional confirmation flag.",
 				},
 				{
 					name: "entityId",
 					description:
-						"Target entity id. Used by set_identity (force a new identity onto a known entity), merge (target id), and any operation that needs a stable EntityStore id.",
+						"Target Entity id: set_identity target, merge target, stable EntityStore id.",
 					required: false,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"Target entity id. Used by set_identity (force a new identity onto a known entity), merge (target id), and any operation that needs a stable EntityStore id.",
+						"Target Entity id: set_identity target, merge target, stable EntityStore id.",
 				},
 				{
 					name: "platform",
 					description:
-						"Identity platform for set_identity (e.g. telegram, slack, email, twitter). Combine with handle.",
+						"set_identity platform: telegram|slack|email|twitter|phone; pair with handle.",
 					required: false,
 					schema: {
 						type: "string",
@@ -4472,39 +4439,37 @@ export const allActionsSpec = {
 				},
 				{
 					name: "displayName",
-					description:
-						"Display name shown alongside an observed identity (set_identity).",
+					description: "Observed identity displayName for set_identity.",
 					required: false,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"Display name shown alongside an observed identity (set_identity).",
+						"Observed identity displayName for set_identity.",
 				},
 				{
 					name: "toEntityId",
-					description: "Target entity id for set_relationship.",
+					description: "Target Entity id for set_relationship.",
 					required: false,
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "Target entity id for set_relationship.",
+					descriptionCompressed: "Target Entity id for set_relationship.",
 				},
 				{
 					name: "fromEntityId",
-					description:
-						"Source entity id for set_relationship. Defaults to 'self' when omitted.",
+					description: "Source Entity id for set_relationship; default 'self'.",
 					required: false,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"Source entity id for set_relationship. Defaults to 'self' when omitted.",
+						"Source Entity id for set_relationship. default 'self'.",
 				},
 				{
 					name: "relationshipType",
 					description:
-						"Edge type label for set_relationship (e.g. manages, colleague_of, works_at, partner_of, family_of).",
+						"set_relationship edge type: manages|colleague_of|works_at|partner_of|family_of.",
 					required: false,
 					schema: {
 						type: "string",
@@ -4516,7 +4481,7 @@ export const allActionsSpec = {
 				{
 					name: "sourceEntityIds",
 					description:
-						"Entity ids being folded into the target entity (merge). Provide as a JSON array of strings.",
+						"merge source Entity ids folded into target; JSON string array.",
 					required: false,
 					schema: {
 						type: "array",
@@ -4525,22 +4490,22 @@ export const allActionsSpec = {
 						},
 					},
 					descriptionCompressed:
-						"Entity ids being folded into the target entity (merge). Provide as a JSON array of strings.",
+						"merge source Entity ids folded into target. JSON string array.",
 				},
 				{
 					name: "evidence",
 					description:
-						"Free-form evidence string captured alongside set_identity / set_relationship observations.",
+						"Evidence string for set_identity/set_relationship observations.",
 					required: false,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"Free-form evidence string captured alongside set_identity/set_relationship observations.",
+						"Evidence string for set_identity/set_relationship observations.",
 				},
 			],
 			descriptionCompressed:
-				"people+relationships: create|read|set_identity|set_relationship|log_interaction|merge; rolodex CRUD → CONTACT; follow-up cadence → SCHEDULED_TASK",
+				"ENTITY people+relations create|read|set_identity|set_relationship|log_interaction|merge",
 			similes: [
 				"CONTACTS",
 				"ROLODEX",
@@ -4584,7 +4549,7 @@ export const allActionsSpec = {
 		{
 			name: "FILE",
 			description:
-				"Read, write, edit, search, find, or list files through one FILE action. Choose action=read/write/edit/grep/glob/ls. Use target=device for device-filesystem reads, writes, and directory lists; workspace paths must be absolute unless an operation explicitly defaults to the session cwd.",
+				"FILE action: read/write/edit/grep/glob/ls. Use target=device for device filesystem reads/writes/ls. Workspace paths absolute unless op defaults to session cwd.",
 			parameters: [
 				{
 					name: "action",
@@ -4599,14 +4564,14 @@ export const allActionsSpec = {
 				{
 					name: "target",
 					description:
-						"Optional target filesystem. Use device for relative paths under the device filesystem bridge; omit for workspace files.",
+						"Target filesystem. device = relative paths via device bridge; omit for workspace.",
 					required: false,
 					schema: {
 						type: "string",
 						enum: ["workspace", "device"],
 					},
 					descriptionCompressed:
-						"Optional target filesystem. Use device for relative paths under the device filesystem bridge. omit for workspace files.",
+						"Target filesystem. device = relative paths via device bridge. omit for workspace.",
 				},
 				{
 					name: "file_path",
@@ -4621,13 +4586,13 @@ export const allActionsSpec = {
 				{
 					name: "path",
 					description:
-						"Absolute file or directory path for grep/glob/ls. Defaults to the session cwd where supported.",
+						"File/dir path for grep/glob/ls. Default session cwd where supported.",
 					required: false,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"Absolute file or directory path for grep/glob/ls. Defaults to the session cwd where supported.",
+						"File/dir path for grep/glob/ls. Default session cwd where supported.",
 				},
 				{
 					name: "content",
@@ -4658,14 +4623,13 @@ export const allActionsSpec = {
 				},
 				{
 					name: "replace_all",
-					description:
-						"For action=edit, replace every occurrence instead of requiring one match.",
+					description: "For action=edit: replace all matches, not exactly one.",
 					required: false,
 					schema: {
 						type: "boolean",
 					},
 					descriptionCompressed:
-						"For action=edit, replace every occurrence instead of requiring one match.",
+						"For action=edit: replace all matches, not exactly one.",
 				},
 				{
 					name: "pattern",
@@ -4769,14 +4733,13 @@ export const allActionsSpec = {
 				},
 				{
 					name: "show_line_numbers",
-					description:
-						"For action=grep, include 1-based line numbers in content output.",
+					description: "For action=grep: include 1-based line numbers.",
 					required: false,
 					schema: {
 						type: "boolean",
 					},
 					descriptionCompressed:
-						"For action=grep, include 1-based line numbers in content output.",
+						"For action=grep: include 1-based line numbers.",
 				},
 				{
 					name: "offset",
@@ -4812,14 +4775,14 @@ export const allActionsSpec = {
 				{
 					name: "encoding",
 					description:
-						"For target=device read/write: utf8 or base64. Defaults to utf8.",
+						"For target=device read/write: utf8 or base64. Default utf8.",
 					required: false,
 					schema: {
 						type: "string",
 						enum: ["utf8", "base64"],
 					},
 					descriptionCompressed:
-						"For target=device read/write: utf8 or base64. Defaults to utf8.",
+						"For target=device read/write: utf8 or base64. Default utf8.",
 				},
 			],
 			descriptionCompressed:
@@ -5013,7 +4976,7 @@ export const allActionsSpec = {
 				},
 			],
 			descriptionCompressed:
-				"GitHub: pr_list|pr_review|issue_create|issue_assign|issue_close|issue_reopen|issue_comment|issue_label|notification_triage",
+				"GitHub pr_list|pr_review|issue_create|assign|close|reopen|comment|label|triage",
 			similes: [
 				"GITHUB_PR_OP",
 				"GITHUB_ISSUE_OP",
@@ -5049,23 +5012,22 @@ export const allActionsSpec = {
 		{
 			name: "INBOX",
 			description:
-				"Cross-channel inbox: fan out to Gmail, Slack, Discord, Telegram, Signal, iMessage, and WhatsApp and merge into a single recency-ordered feed. Subactions: list, search, summarize.",
+				"Inbox: Gmail, Slack, Discord, Telegram, Signal, iMessage, WhatsApp. Merge recency feed. Subactions: list, search, summarize.",
 			parameters: [
 				{
 					name: "action",
-					description: "Canonical inbox operation: list | search | summarize.",
+					description: "Inbox op: list | search | summarize.",
 					required: false,
 					schema: {
 						type: "string",
 						enum: ["list", "search", "summarize"],
 					},
-					descriptionCompressed:
-						"Canonical inbox operation: list | search | summarize.",
+					descriptionCompressed: "Inbox op: list | search | summarize.",
 				},
 				{
 					name: "platforms",
 					description:
-						"Optional array of platforms to limit fan-out: gmail | slack | discord | telegram | signal | imessage | whatsapp. Default: all.",
+						"Optional platform filter: gmail | slack | discord | telegram | signal | imessage | whatsapp. Default all.",
 					required: false,
 					schema: {
 						type: "array",
@@ -5074,39 +5036,38 @@ export const allActionsSpec = {
 						},
 					},
 					descriptionCompressed:
-						"Optional array of platforms to limit fan-out: gmail | slack | discord | telegram | signal | imessage | whatsapp. Default: all.",
+						"Optional platform filter: gmail | slack | discord | telegram | signal | imessage | whatsapp. Default all.",
 				},
 				{
 					name: "since",
-					description: "ISO-8601 lower bound on receivedAt.",
+					description: "receivedAt lower bound. ISO-8601.",
 					required: false,
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "ISO-8601 lower bound on receivedAt.",
+					descriptionCompressed: "receivedAt lower bound. ISO-8601.",
 				},
 				{
 					name: "limit",
-					description: "Per-platform limit; default 50.",
+					description: "Limit per platform. Default 50.",
 					required: false,
 					schema: {
 						type: "number",
 					},
-					descriptionCompressed: "Per-platform limit. default 50.",
+					descriptionCompressed: "Limit per platform. Default 50.",
 				},
 				{
 					name: "query",
-					description: "Required for search; free-form search string.",
+					description: "Required for search. Free-form query.",
 					required: false,
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed:
-						"Required for search. free-form search string.",
+					descriptionCompressed: "Required for search. Free-form query.",
 				},
 			],
 			descriptionCompressed:
-				"inbox: list|search|summarize across gmail|slack|discord|telegram|signal|imessage|whatsapp; dedupe by id+thread topic",
+				"INBOX list|search|summarize gmail|slack|discord|telegram|signal|imessage|whatsapp",
 			exampleCalls: [
 				{
 					user: "Use INBOX with the provided parameters.",
@@ -5126,12 +5087,12 @@ export const allActionsSpec = {
 		{
 			name: "LINEAR",
 			description:
-				"Manage Linear issues, comments, and activity. Operations: create_issue, get_issue, update_issue, delete_issue, create_comment, update_comment, delete_comment, list_comments, get_activity, clear_activity, search_issues. The op is inferred from the message text when not explicitly provided.",
+				"Manage Linear issues/comments/activity. Ops: create_issue, get_issue, update_issue, delete_issue, create_comment, update_comment, delete_comment, list_comments, get_activity, clear_activity, search_issues. Infer op if omitted.",
 			parameters: [
 				{
 					name: "action",
 					description:
-						"Operation to perform. One of: create_issue, get_issue, update_issue, delete_issue, create_comment, update_comment, delete_comment, list_comments, get_activity, clear_activity, search_issues. Inferred from message text when omitted.",
+						"Operation: create_issue, get_issue, update_issue, delete_issue, create_comment, update_comment, delete_comment, list_comments, get_activity, clear_activity, search_issues. Infer if omitted.",
 					required: false,
 					schema: {
 						type: "string",
@@ -5150,11 +5111,11 @@ export const allActionsSpec = {
 						],
 					},
 					descriptionCompressed:
-						"Operation to perform. One of: create_issue, get_issue, update_issue, delete_issue, create_comment, update_comment, delete_comment, list_comments...",
+						"Operation: create_issue, get_issue, update_issue, delete_issue, create_comment, update_comment, delete_comment, list_comments, get_activity, clear_activity...",
 				},
 			],
 			descriptionCompressed:
-				"Linear: create/get/update/delete issue, create/update/delete/list comment, search issues, get/clear activity.",
+				"Linear: issue CRUD, comment CRUD/list, search issues, get/clear activity",
 			similes: [
 				"LINEAR_ISSUES",
 				"LINEAR_COMMENTS",
@@ -5180,23 +5141,23 @@ export const allActionsSpec = {
 		{
 			name: "MANAGE_BROWSER_BRIDGE",
 			description:
-				"Owner-only management of the Agent Browser Bridge companion extension that connects Eliza to the user's Chrome and Safari browsers. Actions: refresh (show settings/status/connection state), install (build and reveal the extension for setup), reveal_folder (open the built extension folder), open_manager (open chrome://extensions only when the owner explicitly asks). The action parameter is inferred from message text when omitted; show/settings/status maps to refresh and 'open chrome extensions' maps to open_manager. Prefer the browser-bridge provider for passive companion status and use this action's refresh child action only for an explicit live refresh.",
+				"Owner-only Agent Browser Bridge management for Chrome/Safari. Actions: refresh status/settings/connection, install build+reveal setup, reveal_folder open build folder, open_manager chrome://extensions only on explicit ask. Infer action if omitted.",
 			parameters: [
 				{
 					name: "action",
 					description:
-						"Bridge management action. Use refresh for show/settings/status/connection-state requests. Use open_manager only for explicit chrome://extensions or extension-manager requests. install builds/reveals/opens setup; reveal_folder opens the build folder. Inferred from message text if omitted.",
+						"Bridge action. refresh=status/settings; open_manager only explicit chrome://extensions; install setup; reveal_folder build folder. Infer if omitted.",
 					required: false,
 					schema: {
 						type: "string",
 						enum: ["install", "reveal_folder", "open_manager", "refresh"],
 					},
 					descriptionCompressed:
-						"Bridge management action. Use refresh for show/settings/status/connection-state requests. Use open_manager only for explicit chrome://extensions or...",
+						"Bridge action. refresh=status/settings. open_manager only explicit chrome://extensions; install setup. reveal_folder build folder. Infer if omitted.",
 				},
 			],
 			descriptionCompressed:
-				"Manage LifeOps Browser Bridge: refresh shows settings/status; install setup; reveal_folder build folder; open_manager chrome://extensions.",
+				"Browser Bridge: refresh|install|reveal_folder|open_manager chrome://extensions",
 			similes: [
 				"INSTALL_BROWSER_BRIDGE",
 				"SETUP_BROWSER_BRIDGE",
@@ -5656,7 +5617,7 @@ export const allActionsSpec = {
 				},
 			],
 			descriptionCompressed:
-				"Verb-shaped: play/pause/resume/skip/stop, queue_view/queue_add/queue_clear, playlist_play/playlist_save, search/play_query/download/play_audio, set_routing/set_zone, generate/extend/custom_generate.",
+				"Music play|pause|resume|skip|stop; queue|playlist|search|download|audio|routing|generate",
 			similes: [
 				"GENERATE_MUSIC",
 				"CREATE_MUSIC",
@@ -5871,7 +5832,7 @@ export const allActionsSpec = {
 				},
 			],
 			descriptionCompressed:
-				"OSWorld ops: click, double_click, right_click, type, key, scroll, drag, screenshot, wait, done, fail.",
+				"OSWorld click|double|right|type|key|scroll|drag|screenshot|wait|done|fail",
 			similes: [
 				"OSWORLD_CLICK",
 				"OSWORLD_TYPE",
@@ -5903,7 +5864,7 @@ export const allActionsSpec = {
 		{
 			name: "OWNER_ALARMS",
 			description:
-				"Owner alarms: create, update, delete, complete, skip, snooze, or review alarm-like reminders.",
+				"Owner alarms: create/update/delete/complete/skip/snooze/review alarm reminders.",
 			parameters: [],
 			descriptionCompressed:
 				"owner alarms: action=create|update|delete|complete|skip|snooze|review",
@@ -5912,12 +5873,12 @@ export const allActionsSpec = {
 		{
 			name: "OWNER_DOCUMENTS",
 			description:
-				"Manage the owner's document workflow surface: signature requests, approvals, deadline tracking, portal uploads, ID/form collection, and request close-out. Subactions: request_signature, request_approval, track_deadline, upload_asset, collect_id, close_request.",
+				"Owner documents: signature requests, approvals, deadlines, portal uploads, ID/form collection, close-out. Ops: request_signature|request_approval|track_deadline|upload_asset|collect_id|close_request.",
 			parameters: [
 				{
 					name: "action",
 					description:
-						"Canonical document operation: request_signature | request_approval | track_deadline | upload_asset | collect_id | close_request.",
+						"Document op: request_signature|request_approval|track_deadline|upload_asset|collect_id|close_request.",
 					required: false,
 					schema: {
 						type: "string",
@@ -5931,126 +5892,122 @@ export const allActionsSpec = {
 						],
 					},
 					descriptionCompressed:
-						"Canonical document operation: request_signature | request_approval | track_deadline | upload_asset | collect_id | close_request.",
+						"Document op: request_signature|request_approval|track_deadline|upload_asset|collect_id|close_request.",
 				},
 				{
 					name: "documentRequestId",
 					description:
-						"Existing DocumentRequest id. Required for track_deadline and close_request.",
+						"Existing DocumentRequest id; required track_deadline/close_request.",
 					required: false,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"Existing DocumentRequest id. Required for track_deadline and close_request.",
+						"Existing DocumentRequest id. required track_deadline/close_request.",
 				},
 				{
 					name: "requesteeEntityId",
 					description:
-						"Entity id of the person we are asking. Required for request_signature and collect_id.",
+						"Requestee Entity id; required request_signature/collect_id.",
 					required: false,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"Entity id of the person we are asking. Required for request_signature and collect_id.",
+						"Requestee Entity id. required request_signature/collect_id.",
 				},
 				{
 					name: "documentTitle",
-					description: "Short human-readable label for the document.",
+					description: "Short doc label.",
 					required: false,
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "Short human-readable label for the document.",
+					descriptionCompressed: "Short doc label.",
 				},
 				{
 					name: "deadline",
-					description: "ISO-8601 deadline for the request.",
+					description: "Deadline ISO-8601.",
 					required: false,
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "ISO-8601 deadline for the request.",
+					descriptionCompressed: "Deadline ISO-8601.",
 				},
 				{
 					name: "portalUrl",
 					description:
-						"Portal endpoint for upload_asset and (optionally) collect_id.",
+						"Portal URL; required upload_asset, optional collect_id.",
 					required: false,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"Portal endpoint for upload_asset and (optionally) collect_id.",
+						"Portal URL. required upload_asset, optional collect_id.",
 				},
 				{
 					name: "assetPath",
-					description:
-						"Local path or URL of the asset to upload. Required for upload_asset.",
+					description: "Asset path/URL; required upload_asset.",
 					required: false,
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed:
-						"Local path or URL of the asset to upload. Required for upload_asset.",
+					descriptionCompressed: "Asset path/URL. required upload_asset.",
 				},
 				{
 					name: "assetKind",
 					description:
-						"What kind of asset: deck, headshot, id, form, etc. Required for upload_asset and collect_id.",
+						"Asset kind deck|headshot|id|form|etc.; required upload_asset/collect_id.",
 					required: false,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"What kind of asset: deck, headshot, id, form, etc. Required for upload_asset and collect_id.",
+						"Asset kind deck|headshot|id|form|etc. required upload_asset/collect_id.",
 				},
 				{
 					name: "signatureUrl",
-					description:
-						"Optional signing portal URL (DocuSign / HelloSign / etc.).",
+					description: "Optional signing portal URL: DocuSign|HelloSign|etc.",
 					required: false,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"Optional signing portal URL (DocuSign/HelloSign/etc.).",
+						"Optional signing portal URL: DocuSign|HelloSign|etc.",
 				},
 				{
 					name: "approvalReason",
-					description: "Reason label for request_approval.",
+					description: "request_approval reason label.",
 					required: false,
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "Reason label for request_approval.",
+					descriptionCompressed: "request_approval reason label.",
 				},
 				{
 					name: "note",
-					description: "Free-form note recorded on the DocumentRequest.",
+					description: "Free-form DocumentRequest note.",
 					required: false,
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed:
-						"Free-form note recorded on the DocumentRequest.",
+					descriptionCompressed: "Free-form DocumentRequest note.",
 				},
 				{
 					name: "resolution",
 					description:
-						"close_request only: completed | expired | cancelled. Defaults to completed.",
+						"close_request only: completed|expired|cancelled; default completed.",
 					required: false,
 					schema: {
 						type: "string",
 						enum: ["completed", "expired", "cancelled"],
 					},
 					descriptionCompressed:
-						"close_request only: completed | expired | cancelled. Defaults to completed.",
+						"close_request only: completed|expired|cancelled. default completed.",
 				},
 			],
 			descriptionCompressed:
-				"docs: request_signature|request_approval|track_deadline|upload_asset|collect_id|close_request; deadline-aware; owner-gated for signature+upload",
+				"OWNER_DOCUMENTS signature|approval|deadline|upload_asset|collect_id|close_request",
 			exampleCalls: [
 				{
 					user: "Use OWNER_DOCUMENTS with the provided parameters.",
@@ -6077,20 +6034,20 @@ export const allActionsSpec = {
 		{
 			name: "OWNER_FINANCES",
 			description:
-				"Owner finances: payment sources, transaction imports, spending summaries, recurring charges, and subscription audits.",
+				"Owner finances: sources, imports, spending, recurring charges, subscriptions.",
 			parameters: [
 				{
 					name: "action",
-					description: "Owner finance action.",
+					description: "Owner finance op.",
 					required: false,
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "Owner finance action.",
+					descriptionCompressed: "Owner finance op.",
 				},
 			],
 			descriptionCompressed:
-				"owner finances: dashboard|list_sources|add_source|remove_source|import_csv|list_transactions|spending_summary|recurring_charges|subscription_audit|subscription_cancel|subscription_status",
+				"owner finances dashboard|sources|csv|transactions|spending|recurring|subscription",
 			similes: ["FINANCES"],
 			exampleCalls: [
 				{
@@ -6106,8 +6063,7 @@ export const allActionsSpec = {
 		},
 		{
 			name: "OWNER_GOALS",
-			description:
-				"Owner goals: create, update, delete, or review long-term goals and progress.",
+			description: "Owner goals: create/update/delete/review goals/progress.",
 			parameters: [],
 			descriptionCompressed:
 				"owner goals: action=create|update|delete|review; backing kind=goal",
@@ -6116,18 +6072,17 @@ export const allActionsSpec = {
 		{
 			name: "OWNER_HEALTH",
 			description:
-				"Owner health telemetry reads across HealthKit, Google Fit, Strava, Fitbit, Withings, or Oura. Actions: today, trend, by_metric, status.",
+				"Owner health telemetry reads: HealthKit, Google Fit, Strava, Fitbit, Withings, Oura. Ops: today|trend|by_metric|status.",
 			parameters: [
 				{
 					name: "action",
-					description:
-						"Owner health read action: today, trend, by_metric, or status.",
+					description: "Owner health read op: today|trend|by_metric|status.",
 					required: false,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"Owner health read action: today, trend, by_metric, or status.",
+						"Owner health read op: today|trend|by_metric|status.",
 				},
 			],
 			descriptionCompressed:
@@ -6148,7 +6103,7 @@ export const allActionsSpec = {
 		{
 			name: "OWNER_REMINDERS",
 			description:
-				"Owner reminders: create, update, delete, complete, skip, snooze, or review one-off and recurring reminders.",
+				"Owner reminders: create/update/delete/complete/skip/snooze/review one-off/recurring.",
 			parameters: [],
 			descriptionCompressed:
 				"owner reminders: action=create|update|delete|complete|skip|snooze|review",
@@ -6163,22 +6118,22 @@ export const allActionsSpec = {
 		{
 			name: "OWNER_ROUTINES",
 			description:
-				"Owner routines and habits: create or manage recurring routines, and inspect passive schedule inference.",
+				"Owner routines/habits: recurring routines; passive schedule inference.",
 			parameters: [
 				{
 					name: "action",
 					description:
-						"Routine operation: create, update, delete, complete, skip, snooze, review, schedule_summary, or schedule_inspect.",
+						"Routine op: create|update|delete|complete|skip|snooze|review|schedule_summary|schedule_inspect.",
 					required: false,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"Routine operation: create, update, delete, complete, skip, snooze, review, schedule_summary, or schedule_inspect.",
+						"Routine op: create|update|delete|complete|skip|snooze|review|schedule_summary|schedule_inspect.",
 				},
 			],
 			descriptionCompressed:
-				"owner routines: action=create|update|delete|complete|skip|snooze|review|schedule_summary|schedule_inspect",
+				"owner routines create|update|delete|complete|skip|snooze|review|schedule_summary|inspect",
 			similes: [
 				"HABIT",
 				"HABITS",
@@ -6202,20 +6157,20 @@ export const allActionsSpec = {
 		{
 			name: "OWNER_SCREENTIME",
 			description:
-				"Owner screen-time and activity analytics across local activity, app usage, and browser reports.",
+				"Owner screen-time/activity analytics: local activity, app usage, browser.",
 			parameters: [
 				{
 					name: "action",
-					description: "Owner screentime read action.",
+					description: "Owner screentime op.",
 					required: false,
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "Owner screentime read action.",
+					descriptionCompressed: "Owner screentime op.",
 				},
 			],
 			descriptionCompressed:
-				"owner screentime: summary|today|weekly|by_app|by_website|activity_report|time_on_app|time_on_site|browser_activity",
+				"owner screentime summary|today|weekly|by_app|by_website|activity|time_on_app|time_on_site",
 			similes: ["SCREENTIME", "ACTIVITY_REPORT"],
 			exampleCalls: [
 				{
@@ -6232,7 +6187,7 @@ export const allActionsSpec = {
 		{
 			name: "OWNER_TODOS",
 			description:
-				"Owner todos: create, update, delete, complete, skip, snooze, or review personal todos.",
+				"Owner todos: create/update/delete/complete/skip/snooze/review personal.",
 			parameters: [],
 			descriptionCompressed:
 				"owner todos: action=create|update|delete|complete|skip|snooze|review",
@@ -6431,16 +6386,17 @@ export const allActionsSpec = {
 		{
 			name: "PERSONAL_ASSISTANT",
 			description:
-				"Owner personal-assistant workflows. Use action=book_travel for real travel booking, action=scheduling for scheduling negotiation, and action=sign_document for document-signature flows that must be queued for owner approval.",
+				"Owner personal-assistant workflows: action=book_travel travel booking; action=scheduling negotiation; action=sign_document signature, owner approval queue.",
 			parameters: [
 				{
 					name: "action",
-					description: "Assistant workflow to run.",
+					description: "Assistant op: book_travel|scheduling|sign_document.",
 					required: true,
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "Assistant workflow to run.",
+					descriptionCompressed:
+						"Assistant op: book_travel|scheduling|sign_document.",
 				},
 			],
 			descriptionCompressed:
@@ -6512,52 +6468,49 @@ export const allActionsSpec = {
 		{
 			name: "PRIORITIZE",
 			description:
-				"Rank the owner's open todos, message threads, or pending decisions by urgency × importance via an LLM compose pass. Subactions: rank_todos, rank_threads, rank_decisions.",
+				"Rank owner open todos, message threads, pending decisions by urgency × importance. LLM pass. Subactions: rank_todos, rank_threads, rank_decisions.",
 			parameters: [
 				{
 					name: "action",
 					description:
-						"Canonical prioritization operation: rank_todos | rank_threads | rank_decisions.",
+						"Prioritize op: rank_todos | rank_threads | rank_decisions.",
 					required: false,
 					schema: {
 						type: "string",
 						enum: ["rank_todos", "rank_threads", "rank_decisions"],
 					},
 					descriptionCompressed:
-						"Canonical prioritization operation: rank_todos | rank_threads | rank_decisions.",
+						"Prioritize op: rank_todos | rank_threads | rank_decisions.",
 				},
 				{
 					name: "subject",
 					description:
-						"Alternative selector: todos | threads | decisions. Maps onto the matching subaction.",
+						"Alt selector: todos | threads | decisions. Maps to subaction.",
 					required: false,
 					schema: {
 						type: "string",
 						enum: ["todos", "threads", "decisions"],
 					},
 					descriptionCompressed:
-						"Alternative selector: todos | threads | decisions. Maps onto the matching subaction.",
+						"Alt selector: todos | threads | decisions. Maps to subaction.",
 				},
 				{
 					name: "topN",
-					description: "How many items to return at the top. Defaults to 5.",
+					description: "Top item count. Default 5.",
 					required: false,
 					schema: {
 						type: "number",
 					},
-					descriptionCompressed:
-						"How many items to return at the top. Defaults to 5.",
+					descriptionCompressed: "Top item count. Default 5.",
 				},
 				{
 					name: "criteria",
-					description:
-						"Free-form additional weighting criteria the owner wants applied.",
+					description: "Owner weighting criteria.",
 					required: false,
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed:
-						"Free-form additional weighting criteria the owner wants applied.",
+					descriptionCompressed: "Owner weighting criteria.",
 				},
 			],
 			descriptionCompressed:
@@ -6580,11 +6533,11 @@ export const allActionsSpec = {
 		{
 			name: "REMOTE_DESKTOP",
 			description:
-				"Manage remote-desktop sessions so the owner can connect to this machine from another device. ",
+				"Remote-desktop sessions; owner connects to this machine from another device. ",
 			parameters: [
 				{
 					name: "action",
-					description: "One of: start, status, end, list, revoke.",
+					description: "start | status | end | list | revoke.",
 					required: false,
 					schema: {
 						type: "string",
@@ -6596,8 +6549,7 @@ export const allActionsSpec = {
 				},
 				{
 					name: "sessionId",
-					description:
-						"Session id - required for status, end, and revoke actions.",
+					description: "Session id. Required status|end|revoke.",
 					required: false,
 					schema: {
 						type: "string",
@@ -6607,7 +6559,7 @@ export const allActionsSpec = {
 				},
 				{
 					name: "confirmed",
-					description: "Must be true for start (security sensitive).",
+					description: "true required for start; security gate.",
 					required: false,
 					schema: {
 						type: "boolean",
@@ -6617,7 +6569,7 @@ export const allActionsSpec = {
 				{
 					name: "pairingCode",
 					description:
-						"6-digit one-time pairing code for start. Required unless ELIZA_REMOTE_LOCAL_MODE=1.",
+						"6-digit pairingCode for start. Required unless ELIZA_REMOTE_LOCAL_MODE=1.",
 					required: false,
 					schema: {
 						type: "string",
@@ -6629,8 +6581,7 @@ export const allActionsSpec = {
 				},
 				{
 					name: "requesterIdentity",
-					description:
-						"Identifier for who is asking (entity id, friend name, device id). Logged for audit on start.",
+					description: "Requester id/name/device. Audit start.",
 					required: false,
 					schema: {
 						type: "string",
@@ -6639,8 +6590,7 @@ export const allActionsSpec = {
 				},
 				{
 					name: "intent",
-					description:
-						"Freeform owner intent / reason for the session. Logged for audit.",
+					description: "Owner intent/reason. Audit.",
 					required: false,
 					schema: {
 						type: "string",
@@ -6649,7 +6599,7 @@ export const allActionsSpec = {
 				},
 			],
 			descriptionCompressed:
-				"remote-desktop sessions: start|status|end|list|revoke; start requires confirmed:true (+ pairing code in cloud mode)",
+				"REMOTE_DESKTOP start|status|end|list|revoke; start confirmed:true; cloud pairingCode",
 			similes: [
 				"REMOTE_SESSION",
 				"VNC_SESSION",
@@ -6677,43 +6627,42 @@ export const allActionsSpec = {
 		{
 			name: "RESOLVE_REQUEST",
 			description:
-				"Approve or reject a pending action queued for owner confirmation (send_email, send_message, book_travel, voice_call, etc.). Subactions: approve, reject. requestId is optional — the handler inspects the pending queue and infers the target from owner intent, or asks a follow-up.",
+				"Approve/reject pending owner-confirmation action: send_email, send_message, book_travel, voice_call, etc. ",
 			parameters: [
 				{
 					name: "action",
-					description: "One of: approve, reject.",
+					description: "approve | reject.",
 					required: false,
 					schema: {
 						type: "string",
 						enum: ["approve", "reject"],
 					},
-					descriptionCompressed: "One of: approve, reject.",
+					descriptionCompressed: "approve | reject.",
 				},
 				{
 					name: "requestId",
 					description:
-						"Approval request id to approve or reject. Optional: omit it when the user references the pending request in natural language.",
+						"Approval request id. Optional when user references pending request.",
 					required: false,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"Approval request id to approve or reject. Optional: omit it when user references the pending request in natural language.",
+						"Approval request id. Optional when user references pending request.",
 				},
 				{
 					name: "reason",
-					description:
-						"Optional short reason for the approval or rejection, in the user's language.",
+					description: "Optional approve/reject reason, user language.",
 					required: false,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"Optional short reason for the approval or rejection, in user's language.",
+						"Optional approve/reject reason, user language.",
 				},
 			],
 			descriptionCompressed:
-				"approve|reject queued action; requestId optional; covers send_email|send_message|book_travel|voice_call",
+				"approve|reject queue; requestId optional; send_email|send_message|book_travel|voice_call",
 			similes: [
 				"APPROVE",
 				"REJECT",
@@ -6985,12 +6934,12 @@ export const allActionsSpec = {
 		{
 			name: "SCHEDULED_TASKS",
 			description:
-				"Manage the owner's scheduled-task spine: reminders, check-ins, follow-ups, approvals, recaps, watchers, outputs, and custom tasks. Actions: list, get, create, update, snooze, skip, complete, acknowledge, dismiss, cancel, reopen, history.",
+				"Owner ScheduledTask spine. Kinds: reminder, checkin, followup, approval, recap, watcher, output, custom. Ops: list|get|create|update|snooze|skip|complete|acknowledge|dismiss|cancel|reopen|history.",
 			parameters: [
 				{
 					name: "action",
 					description:
-						"Which scheduled-task operation to run: list | get | create | update | snooze | skip | complete | acknowledge | dismiss | cancel | reopen | history.",
+						"ScheduledTask op: list|get|create|update|snooze|skip|complete|acknowledge|dismiss|cancel|reopen|history.",
 					required: false,
 					schema: {
 						type: "string",
@@ -7010,12 +6959,12 @@ export const allActionsSpec = {
 						],
 					},
 					descriptionCompressed:
-						"Which scheduled-task operation to run: list | get | create | update | snooze | skip | complete | acknowledge | dismiss | cancel | reopen | history.",
+						"ScheduledTask op: list|get|create|update|snooze|skip|complete|acknowledge|dismiss|cancel|reopen|history.",
 				},
 				{
 					name: "taskId",
 					description:
-						"Target taskId for get / update / snooze / skip / complete / acknowledge / dismiss / cancel / reopen / history.",
+						"Target taskId for get/update/snooze/skip/complete/acknowledge/dismiss/cancel/reopen/history.",
 					required: false,
 					schema: {
 						type: "string",
@@ -7026,35 +6975,35 @@ export const allActionsSpec = {
 				{
 					name: "kind",
 					description:
-						"ScheduledTaskKind for create + filter for list. One of reminder, checkin, followup, approval, recap, watcher, output, custom.",
+						"ScheduledTaskKind create/filter: reminder|checkin|followup|approval|recap|watcher|output|custom.",
 					required: false,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"ScheduledTaskKind for create + filter for list. One of reminder, checkin, followup, approval, recap, watcher, output, custom.",
+						"ScheduledTaskKind create/filter: reminder|checkin|followup|approval|recap|watcher|output|custom.",
 				},
 				{
 					name: "status",
 					description:
-						"Status filter for list (string or string[]). One of scheduled, fired, acknowledged, completed, skipped, expired, failed, dismissed.",
+						"List status filter string|string[]: scheduled|fired|acknowledged|completed|skipped|expired|failed|dismissed.",
 					required: false,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"Status filter for list (string or string[]). One of scheduled, fired, acknowledged, completed, skipped, expired, failed, dismissed.",
+						"List status filter string|string[]: scheduled|fired|acknowledged|completed|skipped|expired|failed|dismissed.",
 				},
 				{
 					name: "subjectKind",
 					description:
-						"ScheduledTaskSubject.kind: entity | relationship | thread | document | calendar_event | self.",
+						"ScheduledTaskSubject.kind: entity|relationship|thread|document|calendar_event|self.",
 					required: false,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"ScheduledTaskSubject. kind: entity | relationship | thread | document | calendar_event | self.",
+						"ScheduledTaskSubject. kind: entity|relationship|thread|document|calendar_event|self.",
 				},
 				{
 					name: "subjectId",
@@ -7068,100 +7017,99 @@ export const allActionsSpec = {
 				},
 				{
 					name: "ownerVisibleOnly",
-					description: "When true, list returns only ownerVisible tasks.",
+					description: "true: list ownerVisible tasks only.",
 					required: false,
 					schema: {
 						type: "boolean",
 					},
-					descriptionCompressed:
-						"When true, list returns only ownerVisible tasks.",
+					descriptionCompressed: "true: list ownerVisible tasks only.",
 				},
 				{
 					name: "promptInstructions",
-					description: "create-only: prompt instructions stored on the task.",
+					description:
+						"create-only: promptInstructions stored on ScheduledTask.",
 					required: false,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"create-only: prompt instructions stored on the task.",
+						"create-only: promptInstructions stored on ScheduledTask.",
 				},
 				{
 					name: "trigger",
 					description:
-						"create-only: ScheduledTaskTrigger object (once / cron / interval / relative_to_anchor / during_window / event / manual / after_task).",
+						"create-only: ScheduledTaskTrigger once/cron/interval/relative_to_anchor/during_window/event/manual/after_task.",
 					required: false,
 					schema: {
 						type: "object",
 					},
 					descriptionCompressed:
-						"create-only: ScheduledTaskTrigger object (once/cron/interval/relative_to_anchor/during_window/event/manual/after_task).",
+						"create-only: ScheduledTaskTrigger once/cron/interval/relative_to_anchor/during_window/event/manual/after_task.",
 				},
 				{
 					name: "contextRequest",
 					description:
-						"create-only: structured context request for owner facts, entities, relationships, recent task states, or event payload.",
+						"create-only: contextRequest facts/entities/relationships/recent task states/event payload.",
 					required: false,
 					schema: {
 						type: "object",
 					},
 					descriptionCompressed:
-						"create-only: structured context request for owner facts, entities, relationships, recent task states, or event payload.",
+						"create-only: contextRequest facts/entities/relationships/recent task states/event payload.",
 				},
 				{
 					name: "shouldFire",
 					description:
-						"create-only: structural gate composition; use gate refs rather than prompt text conditions.",
+						"create-only: structural shouldFire gates; gate refs, no prompt text conditions.",
 					required: false,
 					schema: {
 						type: "object",
 					},
 					descriptionCompressed:
-						"create-only: structural gate composition. use gate refs rather than prompt text conditions.",
+						"create-only: structural shouldFire gates. gate refs, no prompt text conditions.",
 				},
 				{
 					name: "completionCheck",
 					description:
-						"create-only: structural completion check such as user_replied_within, user_acknowledged, subject_updated, or health_signal_observed.",
+						"create-only: structural completionCheck: user_replied_within|user_acknowledged|subject_updated|health_signal_observed.",
 					required: false,
 					schema: {
 						type: "object",
 					},
 					descriptionCompressed:
-						"create-only: structural completion check such as user_replied_within, user_acknowledged, subject_updated, or health_signal_observed.",
+						"create-only: structural completionCheck: user_replied_within|user_acknowledged|subject_updated|health_signal_observed.",
 				},
 				{
 					name: "output",
 					description:
-						"create-only: output destination/target, e.g. { destination: 'channel', target: 'in_app:<roomId>' }.",
+						"create-only: output destination/target, e.g. channel -> in_app:<roomId>.",
 					required: false,
 					schema: {
 						type: "object",
 					},
 					descriptionCompressed:
-						"create-only: output destination/target, e. g. { destination: 'channel', target: 'in_app:<roomId>' }.",
+						"create-only: output destination/target, e. g. channel -> in_app:<roomId>.",
 				},
 				{
 					name: "pipeline",
 					description:
-						"create-only: child ScheduledTask refs for onComplete/onSkip/onFail.",
+						"create-only: pipeline child ScheduledTask refs: onComplete|onSkip|onFail.",
 					required: false,
 					schema: {
 						type: "object",
 					},
 					descriptionCompressed:
-						"create-only: child ScheduledTask refs for onComplete/onSkip/onFail.",
+						"create-only: pipeline child ScheduledTask refs: onComplete|onSkip|onFail.",
 				},
 				{
 					name: "escalation",
-					description:
-						"create-only: escalation ladder or explicit channel steps.",
+					description: "create-only: escalation ladder/channel steps.",
 					required: false,
 					schema: {
 						type: "object",
 					},
 					descriptionCompressed:
-						"create-only: escalation ladder or explicit channel steps.",
+						"create-only: escalation ladder/channel steps.",
 				},
 				{
 					name: "metadata",
@@ -7174,132 +7122,123 @@ export const allActionsSpec = {
 				},
 				{
 					name: "idempotencyKey",
-					description:
-						"create-only: stable key for deduping repeated schedules.",
+					description: "create-only: stable dedupe key for repeated schedules.",
 					required: false,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"create-only: stable key for deduping repeated schedules.",
+						"create-only: stable dedupe key for repeated schedules.",
 				},
 				{
 					name: "priority",
-					description: "create-only: low | medium | high (default medium).",
+					description: "create-only: low|medium|high; default medium.",
 					required: false,
 					schema: {
 						type: "string",
 						enum: ["low", "medium", "high"],
 					},
 					descriptionCompressed:
-						"create-only: low | medium | high (default medium).",
+						"create-only: low|medium|high. default medium.",
 				},
 				{
 					name: "respectsGlobalPause",
-					description:
-						"create-only: when true, the task skips during global pause.",
+					description: "create-only: true skips during global pause.",
 					required: false,
 					schema: {
 						type: "boolean",
 					},
-					descriptionCompressed:
-						"create-only: when true, the task skips during global pause.",
+					descriptionCompressed: "create-only: true skips during global pause.",
 				},
 				{
 					name: "ownerVisible",
-					description:
-						"create-only: when true, the task surfaces in owner views.",
+					description: "create-only: true shows in owner views.",
 					required: false,
 					schema: {
 						type: "boolean",
 					},
-					descriptionCompressed:
-						"create-only: when true, the task surfaces in owner views.",
+					descriptionCompressed: "create-only: true shows in owner views.",
 				},
 				{
 					name: "source",
 					description:
-						"create-only: task source (default_pack | user_chat | first_run | plugin).",
+						"create-only: source default_pack|user_chat|first_run|plugin.",
 					required: false,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"create-only: task source (default_pack | user_chat | first_run | plugin).",
+						"create-only: source default_pack|user_chat|first_run|plugin.",
 				},
 				{
 					name: "minutes",
-					description: "snooze-only: minutes to defer next fire.",
+					description: "snooze-only: defer next fire N minutes.",
 					required: false,
 					schema: {
 						type: "number",
 					},
-					descriptionCompressed: "snooze-only: minutes to defer next fire.",
+					descriptionCompressed: "snooze-only: defer next fire N minutes.",
 				},
 				{
 					name: "untilIso",
-					description: "snooze-only: ISO-8601 timestamp to defer next fire to.",
+					description: "snooze-only: defer next fire until ISO-8601 timestamp.",
 					required: false,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"snooze-only: ISO-8601 timestamp to defer next fire to.",
+						"snooze-only: defer next fire until ISO-8601 timestamp.",
 				},
 				{
 					name: "reason",
 					description:
-						"skip / complete / acknowledge / dismiss / reopen: free-form reason recorded on the state log.",
+						"skip/complete/acknowledge/dismiss/reopen: reason on state log.",
 					required: false,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"skip/complete/acknowledge/dismiss/reopen: free-form reason recorded on the state log.",
+						"skip/complete/acknowledge/dismiss/reopen: reason on state log.",
 				},
 				{
 					name: "patch",
 					description:
-						"update-only: shallow patch of editable ScheduledTask fields.",
+						"update-only: shallow patch editable ScheduledTask fields.",
 					required: false,
 					schema: {
 						type: "object",
 					},
 					descriptionCompressed:
-						"update-only: shallow patch of editable ScheduledTask fields.",
+						"update-only: shallow patch editable ScheduledTask fields.",
 				},
 				{
 					name: "sinceIso",
-					description:
-						"history-only: ISO-8601 lower bound on log occurredAtIso.",
+					description: "history-only: occurredAtIso >= ISO-8601.",
 					required: false,
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed:
-						"history-only: ISO-8601 lower bound on log occurredAtIso.",
+					descriptionCompressed: "history-only: occurredAtIso >= ISO-8601.",
 				},
 				{
 					name: "untilHistoryIso",
-					description:
-						"history-only: ISO-8601 upper bound on log occurredAtIso.",
+					description: "history-only: occurredAtIso <= ISO-8601.",
 					required: false,
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed:
-						"history-only: ISO-8601 upper bound on log occurredAtIso.",
+					descriptionCompressed: "history-only: occurredAtIso <= ISO-8601.",
 				},
 				{
 					name: "includeRollups",
 					description:
-						"history-only: include rolled-up daily summary log rows (default false; raw rows only).",
+						"history-only: include daily rollups; default false/raw only.",
 					required: false,
 					schema: {
 						type: "boolean",
 					},
 					descriptionCompressed:
-						"history-only: include rolled-up daily summary log rows (default false. raw rows only).",
+						"history-only: include daily rollups. default false/raw only.",
 				},
 				{
 					name: "limit",
@@ -7312,7 +7251,7 @@ export const allActionsSpec = {
 				},
 			],
 			descriptionCompressed:
-				"scheduled tasks: list|get|create|update|snooze|skip|complete|acknowledge|dismiss|cancel|reopen|history; kinds reminder|checkin|followup|approval|recap|watcher|output|custom",
+				"ScheduledTask list|get|create|update|snooze|skip|complete|ack|dismiss|cancel|history",
 			exampleCalls: [
 				{
 					user: "Use SCHEDULED_TASKS with the provided parameters.",
@@ -7356,7 +7295,7 @@ export const allActionsSpec = {
 		{
 			name: "SHELL",
 			description:
-				"Canonical shell action. action=run executes a shell command via the configured local shell. action=clear_history clears recorded shell command history for this conversation. action=view_history returns recent recorded shell commands. command is required only for action=run. Paths under the configured blocklist are off-limits as cwd.",
+				"Shell action. action=run executes command via local shell. action=clear_history clears conversation command history. action=view_history returns recent commands. command required only for run. Blocklisted paths off-limits as cwd.",
 			parameters: [
 				{
 					name: "action",
@@ -7372,24 +7311,22 @@ export const allActionsSpec = {
 				{
 					name: "command",
 					description:
-						"Shell command to run for action=run; executed via /bin/bash -c <command>.",
+						"For action=run: shell command, executed via /bin/bash -c.",
 					required: false,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"Shell command to run for action=run. executed via /bin/bash -c <command>.",
+						"For action=run: shell command, executed via /bin/bash -c.",
 				},
 				{
 					name: "description",
-					description:
-						"Five to ten word humanly-readable summary of the command.",
+					description: "5-10 word human-readable command summary.",
 					required: false,
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed:
-						"Five to ten word humanly-readable summary of the command.",
+					descriptionCompressed: "5-10 word human-readable command summary.",
 				},
 				{
 					name: "timeout",
@@ -7405,28 +7342,26 @@ export const allActionsSpec = {
 				{
 					name: "cwd",
 					description:
-						"Absolute working directory; must not resolve under a blocked path. Defaults to the session cwd.",
+						"Absolute cwd; must not resolve under blocked path. Default session cwd.",
 					required: false,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"Absolute working directory. must not resolve under a blocked path. Defaults to the session cwd.",
+						"Absolute cwd. must not resolve under blocked path. Default session cwd.",
 				},
 				{
 					name: "limit",
-					description:
-						"For action=view_history: maximum number of recorded commands to return.",
+					description: "For action=view_history: max recorded commands.",
 					required: false,
 					schema: {
 						type: "number",
 					},
 					descriptionCompressed:
-						"For action=view_history: max number of recorded commands to return.",
+						"For action=view_history: max recorded commands.",
 				},
 			],
-			descriptionCompressed:
-				"Run shell commands or manage shell command history.",
+			descriptionCompressed: "Run shell commands; clear/view shell history.",
 			similes: ["EXEC", "RUN_COMMAND"],
 			exampleCalls: [
 				{
@@ -7534,12 +7469,12 @@ export const allActionsSpec = {
 		{
 			name: "SKILL",
 			description:
-				"Manage skill catalog. Operations: search (browse available skills), details (info about a specific skill), sync (refresh catalog from registry), toggle (enable/disable installed skill), install (install from registry), uninstall (remove non-bundled skill). For invoking an enabled skill, use USE_SKILL instead.",
+				"Manage skill catalog. Ops: search, details, sync, toggle, install, uninstall. Use USE_SKILL to invoke enabled skill.",
 			parameters: [
 				{
 					name: "action",
 					description:
-						"Operation to perform. One of: search, details, sync, toggle, install, uninstall. Inferred from message text when omitted.",
+						"Operation: search, details, sync, toggle, install, uninstall. Infer if omitted.",
 					required: false,
 					schema: {
 						type: "string",
@@ -7553,7 +7488,7 @@ export const allActionsSpec = {
 						],
 					},
 					descriptionCompressed:
-						"Operation to perform. One of: search, details, sync, toggle, install, uninstall. Inferred from msg text when omitted.",
+						"Operation: search, details, sync, toggle, install, uninstall. Infer if omitted.",
 				},
 			],
 			descriptionCompressed:
@@ -7586,7 +7521,7 @@ export const allActionsSpec = {
 		{
 			name: "TASKS",
 			description:
-				"Planner surface for orchestrator workspace operations and coding task delegation to dedicated coding sub-agents (claude / codex / opencode / gemini / aider). ",
+				"Planner surface for orchestrator workspace operations and coding task delegation to dedicated ACP coding sub-agents (claude / codex / opencode). ",
 			parameters: [
 				{
 					name: "action",
@@ -7629,13 +7564,13 @@ export const allActionsSpec = {
 				{
 					name: "agentType",
 					description:
-						"Agent type (codex, claude, etc.) for create / spawn_agent / control.resume.",
+						"Agent type (codex, claude, or opencode) for create / spawn_agent / control.resume.",
 					required: false,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"Agent type (codex, claude, etc.) for create/spawn_agent/control. resume.",
+						"Agent type (codex, claude, or opencode) for create/spawn_agent/control. resume.",
 				},
 				{
 					name: "agents",
@@ -8094,7 +8029,7 @@ export const allActionsSpec = {
 				},
 			],
 			descriptionCompressed:
-				"delegate coding work to a coding sub-agent (claude/codex/opencode/gemini/aider). action=spawn_agent for new work, send to talk to one, control to pause/resume, list_agents/history to read state",
+				"ACP coding sub-agent claude|codex|opencode: spawn|send|control|list|history",
 			similes: [
 				"CREATE_AGENT_TASK",
 				"CREATE_TASK",
@@ -8275,7 +8210,7 @@ export const allActionsSpec = {
 				},
 			],
 			descriptionCompressed:
-				"tau-bench dynamic tool call: { tool_name, arguments } passed straight to the bench harness.",
+				"tau-bench dynamic tool call {tool_name,arguments} passthrough",
 			similes: [
 				"TAU_BENCH",
 				"TAU_RETAIL",
@@ -8523,18 +8458,18 @@ export const allActionsSpec = {
 				{
 					name: "slug",
 					description:
-						"Slug (canonical name) of an enabled skill to invoke. Must match a skill returned by the enabled_skills provider.",
+						"Enabled skill slug. Must match enabled_skills provider.",
 					required: true,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"Slug (canonical name) of an enabled skill to invoke. Must match a skill returned by the enabled_skills provider.",
+						"Enabled skill slug. Must match enabled_skills provider.",
 				},
 				{
 					name: "mode",
 					description:
-						"How to invoke the skill: 'script' to run the bundled executable, 'guidance' to load the SKILL.md instructions, or 'auto' to pick automatically based on whether the skill ships scripts.",
+						"Invoke mode: script runs executable, guidance loads SKILL.md, auto picks by scripts.",
 					required: false,
 					schema: {
 						type: "string",
@@ -8542,29 +8477,29 @@ export const allActionsSpec = {
 						default: "auto",
 					},
 					descriptionCompressed:
-						"How to invoke the skill: 'script' to run the bundled executable, 'guidance' to load the SKILL. md instructions, or 'auto' to pick automatically based on...",
+						"Invoke mode: script runs executable, guidance loads SKILL. md, auto picks by scripts.",
 				},
 				{
 					name: "script",
 					description:
-						"Optional script filename to run (used with mode='script' or mode='auto' when the skill has multiple scripts). Defaults to the first script in the skill.",
+						"Script filename for mode=script/auto when multiple scripts. Default first script.",
 					required: false,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"Optional script filename to run (used with mode='script' or mode='auto' when the skill has multiple scripts). Defaults to the first script in the skill.",
+						"Script filename for mode=script/auto when multiple scripts. Default first script.",
 				},
 				{
 					name: "args",
 					description:
-						"Optional arguments to pass to the skill's script. Either an array of strings or a JSON object whose values become positional arguments.",
+						"Script args: string array or JSON object values as positional args.",
 					required: false,
 					schema: {
 						type: "object",
 					},
 					descriptionCompressed:
-						"Optional arguments to pass to the skill's script. Either an array of strings or a JSON object whose values become positional arguments.",
+						"Script args: string array or JSON object values as positional args.",
 				},
 			],
 			descriptionCompressed: "Invoke an enabled skill by slug.",
@@ -8769,7 +8704,7 @@ export const allActionsSpec = {
 				},
 			],
 			descriptionCompressed:
-				"VisualWebBench tasks: web_caption, webqa, heading/element_ocr, element_ground, action_prediction, action_ground.",
+				"VisualWebBench web_caption|webqa|heading_ocr|element_ocr|ground|action_predict",
 			similes: [
 				"VISUALWEBBENCH",
 				"WEB_CAPTION",
@@ -8796,83 +8731,79 @@ export const allActionsSpec = {
 		{
 			name: "VOICE_CALL",
 			description:
-				"Owner-only. Place an outbound voice call via a registered provider. Action: `dial` with recipientKind=owner|external|e164. Current dispatch provider is Twilio; Android/app-phone is implementation-only until wired as a VOICE_CALL provider. Owner uses the env-configured owner number + standing escalation policy; external resolves a contact name via relationships then checks the allow-list; e164 dials a raw phone number. All paths draft first, require confirmed:true to dispatch, and use the approval queue.",
+				"Owner-only outbound voice call via registered provider. Action dial; recipientKind=owner|external|e164. ",
 			parameters: [
 				{
 					name: "action",
-					description: "Single canonical verb: `dial`.",
+					description: "dial.",
 					required: false,
 					schema: {
 						type: "string",
 						enum: ["dial"],
 					},
-					descriptionCompressed: "Single canonical verb: `dial`.",
+					descriptionCompressed: "dial.",
 				},
 				{
 					name: "recipientKind",
 					description:
-						"Recipient discriminator: `owner` (escalation; uses owner number env), `external` (third party; recipient name resolved via relationships, allow-list checked), or `e164` (raw E.164 phone in `phoneNumber`).",
+						"owner escalation env number | external RelationshipStore lookup + allow-list | e164 raw E.164 phoneNumber.",
 					required: true,
 					schema: {
 						type: "string",
 						enum: ["owner", "external", "e164"],
 					},
 					descriptionCompressed:
-						"Recipient discriminator: `owner` (escalation. uses owner number env), `external` (third party. recipient name resolved via relationships, allow-list...",
+						"owner escalation env number | external RelationshipStore lookup + allow-list | e164 raw E. 164 phoneNumber.",
 				},
 				{
 					name: "phoneNumber",
-					description:
-						"For recipientKind=e164: destination phone number in E.164 format (e.g. +15551234567).",
+					description: "recipientKind=e164: destination E.164 phoneNumber.",
 					required: false,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"For recipientKind=e164: destination phone number in E. 164 format (e. g. +15551234567).",
+						"recipientKind=e164: destination E. 164 phoneNumber.",
 				},
 				{
 					name: "recipient",
 					description:
-						"For recipientKind=external: contact name or E.164 phone number. Names resolve via the relationships store.",
+						"recipientKind=external: contact name or E.164; names via RelationshipStore.",
 					required: false,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"For recipientKind=external: contact name or E. 164 phone number. Names resolve via the relationships store.",
+						"recipientKind=external: contact name or E. 164. names via RelationshipStore.",
 				},
 				{
 					name: "bodyText",
-					description: "Optional spoken message played when the call connects.",
+					description: "Optional spoken message on connect.",
 					required: false,
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed:
-						"Optional spoken msg played when the call connects.",
+					descriptionCompressed: "Optional spoken msg on connect.",
 				},
 				{
 					name: "confirmed",
 					description:
-						"Must be true to actually place the call. Without it the action returns a draft / approval-queue entry.",
+						"true required to place call. Without: draft/approval-queue.",
 					required: false,
 					schema: {
 						type: "boolean",
 					},
 					descriptionCompressed:
-						"Must be true to place the call. without it the action returns a draft/approval-queue entry.",
+						"true required to place call. without: draft/approval-queue.",
 				},
 				{
 					name: "reason",
-					description:
-						"Optional reason describing why the call is being placed (recorded with the approval task).",
+					description: "Optional call reason; approval task audit.",
 					required: false,
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed:
-						"Optional reason describing why the call is being placed (recorded with the approval task).",
+					descriptionCompressed: "Optional call reason. approval task audit.",
 				},
 			],
 			descriptionCompressed:
@@ -8993,7 +8924,7 @@ export const allActionsSpec = {
 		{
 			name: "WINDOW",
 			description:
-				"Single WINDOW action — manages local desktop windows through the computer-use service. ",
+				"WINDOW action. Manage local desktop windows via computer-use service. actions: list, focus, switch, arrange, move, minimize, maximize, restore, close. Pointer/keyboard use COMPUTER_USE; file/shell use FILE/SHELL.",
 			parameters: [
 				{
 					name: "action",
@@ -9035,14 +8966,13 @@ export const allActionsSpec = {
 				},
 				{
 					name: "arrangement",
-					description:
-						"Layout for window arrange: tile, cascade, vertical, or horizontal.",
+					description: "For arrange: tile, cascade, vertical, horizontal.",
 					required: false,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"Layout for window arrange: tile, cascade, vertical, or horizontal.",
+						"For arrange: tile, cascade, vertical, horizontal.",
 				},
 				{
 					name: "x",
@@ -9064,7 +8994,7 @@ export const allActionsSpec = {
 				},
 			],
 			descriptionCompressed:
-				"Single WINDOW action; action=list|focus|switch|arrange|move|minimize|maximize|restore|close manages local desktop windows.",
+				"WINDOW action=list|focus|switch|arrange|move|minimize|maximize|restore|close",
 			similes: ["MANAGE_WINDOW", "WINDOW", "USE_WINDOW", "WINDOW_ACTION"],
 			exampleCalls: [
 				{
@@ -9086,12 +9016,12 @@ export const allActionsSpec = {
 		{
 			name: "WORK_THREAD",
 			description:
-				"Create, steer, stop, wait, complete, merge, attach source refs to, or schedule follow-up work for owner work threads. Use only for thread lifecycle/routing; domain work stays on existing task/messaging/workflow actions.",
+				"Owner work-thread lifecycle: create, steer, stop, wait, complete, merge, attach source refs, schedule follow-up. Use only thread lifecycle/routing; domain work -> task/messaging/workflow actions.",
 			parameters: [
 				{
 					name: "operations",
 					description:
-						"Array of thread lifecycle operations. Each item has type, optional workThreadId, sourceWorkThreadIds, instruction, reason, title, summary, sourceRef, and trigger for schedule_followup.",
+						"Thread lifecycle ops array. Item: type, optional workThreadId, sourceWorkThreadIds, instruction, reason, title, summary, sourceRef, trigger for schedule_followup.",
 					required: true,
 					schema: {
 						type: "array",
@@ -9100,11 +9030,11 @@ export const allActionsSpec = {
 						},
 					},
 					descriptionCompressed:
-						"Array of thread lifecycle operations. Each item has type, optional workThreadId, sourceWorkThreadIds, instruction, reason, title, summary, sourceRef, and...",
+						"Thread lifecycle ops array. Item: type, optional workThreadId, sourceWorkThreadIds, instruction, reason, title, summary, sourceRef, trigger for...",
 				},
 			],
 			descriptionCompressed:
-				"work-thread lifecycle: create|steer|stop|mark_waiting|mark_completed|merge|attach_source|schedule_followup",
+				"work-thread lifecycle: create|steer|stop|waiting|completed|merge|attach_source|followup",
 			exampleCalls: [
 				{
 					user: "Use WORK_THREAD with the provided parameters.",
@@ -9203,7 +9133,7 @@ export const allActionsSpec = {
 				},
 			],
 			descriptionCompressed:
-				"manage workflows; action-based dispatch (create modify activate deactivate toggle_active delete executions)",
+				"workflow create|modify|activate|deactivate|toggle_active|delete|executions",
 			similes: [
 				"CREATE_WORKFLOW",
 				"DELETE_WORKFLOW",
@@ -9249,7 +9179,7 @@ export const allActionsSpec = {
 		{
 			name: "WORKTREE",
 			description:
-				"Manage the current git worktree stack. Choose action=enter to create and switch into an isolated worktree, or action=exit to leave the current worktree and optionally remove it.",
+				"Manage current git worktree stack. action=enter creates/switches isolated worktree; action=exit leaves and optionally removes it.",
 			parameters: [
 				{
 					name: "action",
@@ -9264,24 +9194,24 @@ export const allActionsSpec = {
 				{
 					name: "name",
 					description:
-						"For action=enter, optional worktree branch/dir name. Defaults to auto-*.",
+						"For action=enter: worktree branch/dir name. Default auto-*.",
 					required: false,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"For action=enter, optional worktree branch/dir name. Defaults to auto-*.",
+						"For action=enter: worktree branch/dir name. Default auto-*.",
 				},
 				{
 					name: "path",
 					description:
-						"For action=enter, optional absolute worktree directory within sandbox roots.",
+						"For action=enter: absolute worktree dir within sandbox roots.",
 					required: false,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"For action=enter, optional absolute worktree directory within sandbox roots.",
+						"For action=enter: absolute worktree dir within sandbox roots.",
 				},
 				{
 					name: "base",
@@ -9296,13 +9226,13 @@ export const allActionsSpec = {
 				{
 					name: "cleanup",
 					description:
-						"For action=exit, remove the popped worktree directory with git worktree remove --force.",
+						"For action=exit: remove popped worktree dir with git worktree remove --force.",
 					required: false,
 					schema: {
 						type: "boolean",
 					},
 					descriptionCompressed:
-						"For action=exit, remove the popped worktree directory with git worktree remove --force.",
+						"For action=exit: remove popped worktree dir with git worktree remove --force.",
 				},
 			],
 			descriptionCompressed: "Git worktree umbrella: action=enter/exit.",
