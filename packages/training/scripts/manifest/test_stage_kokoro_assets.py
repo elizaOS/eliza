@@ -143,6 +143,45 @@ def test_stage_updates_manifest_evidence_license_and_checksums(
     assert "evidence/kokoro-assets.json" in sums
 
 
+def test_voice_remote_template_overrides_default_path(tmp_path: Path) -> None:
+    """Per-voice HF repos ship the embedding at a different remote path.
+
+    Default template is `voices/{voice}.bin` (matches upstream onnx-community).
+    Per-voice repos like `elizaos/eliza-1-voice-kokoro-samantha-v01` ship
+    `voice.bin` at the repo root — the template lets the caller override it.
+    """
+    bundle = _write_bundle(tmp_path)
+    report = stage.stage_kokoro_bundle(
+        bundle,
+        voices=("af_samantha",),
+        dry_run=True,
+        voice_remote_template="voice.bin",
+        include_base_assets=False,
+    )
+    remotes = {f["remote_path"] for f in report["files"]}
+    # No base-asset remotes when include_base_assets=False.
+    assert "onnx/model_q4.onnx" not in remotes
+    assert "tokenizer.json" not in remotes
+    # The voice itself was looked up at the overridden remote path.
+    assert "voice.bin" in remotes
+    # Bundle path stays at the canonical kokoro layout regardless of remote.
+    paths = {f["bundle_path"] for f in report["files"]}
+    assert "tts/kokoro/voices/af_samantha.bin" in paths
+
+
+def test_voice_remote_template_placeholder_per_voice(tmp_path: Path) -> None:
+    """Templates with `{voice}` interpolate the voice name in the remote path."""
+    bundle = _write_bundle(tmp_path)
+    report = stage.stage_kokoro_bundle(
+        bundle,
+        voices=("af_samantha", "af_bella"),
+        dry_run=True,
+        voice_remote_template="custom/{voice}-pack.bin",
+    )
+    remotes = {f["remote_path"] for f in report["files"] if f["role"] == "kokoro-voice"}
+    assert remotes == {"custom/af_samantha-pack.bin", "custom/af_bella-pack.bin"}
+
+
 def test_kokoro_only_prunes_omnivoice_payloads_from_small_bundle(
     tmp_path: Path,
     monkeypatch,
