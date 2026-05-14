@@ -641,6 +641,11 @@ Always respond with valid JSON containing your action. You may include a "reason
                 '{"action": "NOTEPAD_WRITE", "text": '
                 '"beverage_dist contacted day 1 for water/cola/energy quotes."}'
             )
+        # Day 2: read the email replies that arrived overnight (paper flow).
+        if day == 2 and any(
+            m.direction == "in" and not m.read for m in state.inbox
+        ):
+            return '{"action": "READ_EMAIL"}'
 
         # Check for delivered inventory to restock
         if state.delivered_inventory:

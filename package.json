@@ -18,7 +18,7 @@
     "node": "24.15.0"
   },
   "scripts": {
-    "postinstall": "node scripts/fix-windows-bun-stub.mjs && bun scripts/patch-nested-core-dist.mjs && bun scripts/patch-nested-agent-dist.mjs && bun scripts/patch-tsup-dts.mjs && bun scripts/patch-rolldown-wasi-fallback.mjs && bun scripts/ensure-workspace-symlinks.mjs && node scripts/ensure-native-plugins-linked.mjs && node scripts/patch-bigint-buffer.mjs && node scripts/patch-solana-ts-peer.mjs && node plugins/plugin-local-inference/scripts/ensure-llama-cpp-submodule.mjs && node scripts/ensure-omnivoice-submodule.mjs",
+    "postinstall": "node scripts/fix-windows-bun-stub.mjs && bun scripts/patch-nested-core-dist.mjs && bun scripts/patch-nested-agent-dist.mjs && bun scripts/patch-tsup-dts.mjs && bun scripts/patch-rolldown-wasi-fallback.mjs && bun scripts/ensure-workspace-symlinks.mjs && node scripts/ensure-native-plugins-linked.mjs && node scripts/patch-bigint-buffer.mjs && node scripts/patch-solana-ts-peer.mjs && node plugins/plugin-local-inference/scripts/ensure-llama-cpp-submodule.mjs && node scripts/ensure-omnivoice-submodule.mjs && node scripts/ensure-opencode-submodule.mjs",
     "fix-deps": "bun scripts/fix-workspace-deps.mjs",
     "fix-deps:check": "bun scripts/fix-workspace-deps.mjs --check",
     "fix-deps:restore": "bun scripts/fix-workspace-deps.mjs --restore",
@@ -128,6 +128,7 @@
     "test:lifeops": "node scripts/run-all-tests.mjs --filter=plugins/app-lifeops --only=e2e",
     "lifeops:verify-cerebras": "bun --bun plugins/app-lifeops/scripts/verify-cerebras-wiring.ts",
     "lifeops:bench": "bun --bun packages/app-core/scripts/lifeops-prompt-benchmark.ts",
+    "check-actions-manifest": "node scripts/lifeops-bench/check-action-manifest.mjs",
     "lifeops:full": "node scripts/lifeops-full-run.mjs",
     "lifeops:eliza": "ELIZA_BENCH_AGENT=eliza node scripts/lifeops-full-run.mjs",
     "lifeops:hermes": "ELIZA_BENCH_AGENT=hermes node scripts/lifeops-full-run.mjs",
@@ -367,6 +368,16 @@
     "workerd"
   ],
   "dependencies": {
+    "@elizaos/plugin-agent-orchestrator": "workspace:*",
+    "@elizaos/plugin-anthropic": "workspace:*",
+    "@elizaos/plugin-elizacloud": "workspace:*",
+    "@elizaos/plugin-groq": "workspace:*",
+    "@elizaos/plugin-local-inference": "workspace:*",
+    "@elizaos/plugin-ollama": "workspace:*",
+    "@elizaos/plugin-openai": "workspace:*",
+    "@elizaos/plugin-sql": "workspace:*",
+    "@elizaos/plugin-zai": "workspace:*",
+    "@elysiajs/cors": "^1.4.1",
     "@radix-ui/react-checkbox": "^1.3.3",
     "@radix-ui/react-dialog": "^1.1.15",
     "@radix-ui/react-dropdown-menu": "^2.1.16",
@@ -381,19 +392,10 @@
     "@radix-ui/react-tooltip": "^1.2.8",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
-    "tailwind-merge": "^3.0.0",
-    "@elizaos/plugin-agent-orchestrator": "workspace:*",
-    "@elizaos/plugin-anthropic": "workspace:*",
-    "@elizaos/plugin-elizacloud": "workspace:*",
-    "@elizaos/plugin-groq": "workspace:*",
-    "@elizaos/plugin-local-inference": "workspace:*",
-    "@elizaos/plugin-ollama": "workspace:*",
-    "@elizaos/plugin-openai": "workspace:*",
-    "@elizaos/plugin-zai": "workspace:*",
-    "@elizaos/plugin-sql": "workspace:*",
-    "@elysiajs/cors": "^1.4.1",
     "elysia": "^1.4.21",
+    "hono": "^4.12.18",
     "node-edge-tts": "^1.2.9",
+    "tailwind-merge": "^3.0.0",
     "zod": "^4.4.3"
   }
 }

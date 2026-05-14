@@ -79,9 +79,9 @@ export async function checkSecretHandler(
 	const context: SecretContext = {
 		level,
 		agentId: runtime.agentId,
-		worldId: level === "world" ? (message.roomId as string) : undefined,
-		userId: level === "user" ? (message.entityId as string) : undefined,
-		requesterId: message.entityId as string,
+		worldId: level === "world" ? message.roomId : undefined,
+		userId: level === "user" ? message.entityId : undefined,
+		requesterId: message.entityId,
 	};
 
 	const normalizedKeys = rawKeys.map(normalizeKey);

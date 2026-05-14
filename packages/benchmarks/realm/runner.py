@@ -69,7 +69,9 @@ class REALMRunner:
         else:
             self.agent = agent
 
-        self.evaluator = REALMEvaluator()
+        self.evaluator = REALMEvaluator(
+            solver_timeout_s=getattr(config, "solver_timeout_s", 30.0),
+        )
         self.metrics_calculator = MetricsCalculator()
 
         self._start_time = 0.0
@@ -192,7 +194,7 @@ class REALMRunner:
             await self._save_results(report)
 
         logger.info(
-            "[REALMRunner] Done in %.1fs. Success: %.1%%",
+            "[REALMRunner] Done in %.1fs. Success: %.1f%%",
             duration,
             metrics.overall_success_rate * 100,
         )
@@ -469,6 +471,7 @@ class _MockREALMAgent:
                 start_location=task.instance.get("start_location", "entrance"),
                 end_location=task.instance.get("end_location", "entrance"),
                 max_duration=float(task.instance.get("max_duration", 1e9)),
+                timeout_s=getattr(self.config, "solver_timeout_s", 30.0),
             )
             sol = {"route": route, "cost": cost}
         elif task.problem in (RealmProblem.P3, RealmProblem.P4):
@@ -477,6 +480,7 @@ class _MockREALMAgent:
                 task.instance.get("passengers", []),
                 task.instance.get("city_map", {}).get("distances")
                 or task.instance.get("distances", {}),
+                timeout_s=getattr(self.config, "solver_timeout_s", 30.0),
             )
             sol = {"assignments": assignments, "cost": cost}
         elif task.problem == RealmProblem.P7:

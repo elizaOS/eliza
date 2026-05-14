@@ -48,15 +48,15 @@ DEFAULT_TIERS: dict[ModelTier, TierSpec] = {
     "small": TierSpec(
         tier="small",
         provider="local-llama-cpp",
-        model_name="qwen3-0.8b-q8_0",
-        bundle_path="~/.eliza/local-inference/models/eliza-1-0.8b.bundle",
+        model_name="qwen3.5-0.8b-q8_0",
+        bundle_path="~/.eliza/local-inference/models/eliza-1-0_8b.bundle",
         context_window=32_768,
         notes="Tier-A smoke lane; dflash fork or Ollama fallback",
     ),
     "mid": TierSpec(
         tier="mid",
         provider="local-llama-cpp",
-        model_name="qwen3-2b-q4_k_m",
+        model_name="qwen3.5-2b-q4_k_m",
         bundle_path="~/.eliza/local-inference/models/eliza-1-2b.bundle",
         context_window=65_536,
         notes="Tier-B manual/scheduled",

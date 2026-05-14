@@ -59,22 +59,115 @@ class RapidBackend implements OCRBackend {
 }
 
 /**
- * Apple Vision backend stub — the actual JNI / Swift bridge lives in WS9
- * (plugin-ios). Until that lands the stub deliberately throws on
- * `extractText` so the chooser falls through to the next backend. The class
- * still exists so the chooser logic can express the priority correctly.
+ * External provider seam for the Apple Vision OCR backend.
+ *
+ * `plugin-vision` does not take a runtime dep on `@elizaos/plugin-computeruse`
+ * — that would invert the layering (computeruse is the higher-level seam).
+ * Instead, the runtime registers a provider here on iOS/macOS startup using
+ * `createIosVisionOcrProvider(...)` from
+ * `@elizaos/plugin-computeruse/mobile/ocr-provider`. Until a provider is
+ * registered, `AppleVisionBackend.extractText` throws so the chooser falls
+ * through to RapidOCR / Tesseract.
+ *
+ * The provider shape is intentionally structural so plugin-vision stays
+ * Node-importable on hosts that don't ship Capacitor.
+ */
+export interface AppleVisionOcrProvider {
+  /** Stable id used in logs/telemetry. */
+  readonly name: string;
+  /** True when the underlying bridge is registered and ready. */
+  available(): boolean;
+  /**
+   * Recognize text in the JPEG/PNG bytes. The plugin-computeruse iOS provider
+   * returns `OcrResult`; we map to plugin-vision's `OCRResult` shape inline.
+   */
+  recognize(input: { kind: "bytes"; data: Uint8Array }): Promise<{
+    readonly lines: ReadonlyArray<{
+      readonly text: string;
+      readonly confidence: number;
+      readonly boundingBox: {
+        readonly x: number;
+        readonly y: number;
+        readonly width: number;
+        readonly height: number;
+      };
+    }>;
+    readonly fullText: string;
+  }>;
+}
+
+let registeredAppleVisionProvider: AppleVisionOcrProvider | null = null;
+
+/**
+ * Register the Apple Vision OCR provider. Idempotent — last call wins so a
+ * hot-reload of the bridge swaps cleanly. Pass `null` to unregister.
+ */
+export function registerAppleVisionOcrProvider(
+  provider: AppleVisionOcrProvider | null,
+): void {
+  registeredAppleVisionProvider = provider;
+  logger.info(
+    `[OCR] AppleVision provider ${provider ? "registered" : "cleared"}${
+      provider?.name ? ` (${provider.name})` : ""
+    }`,
+  );
+}
+
+/** Test/inspection helper. */
+export function getAppleVisionOcrProvider(): AppleVisionOcrProvider | null {
+  return registeredAppleVisionProvider;
+}
+
+/**
+ * Apple Vision backend — delegates to a runtime-registered provider supplied
+ * by WS9's `createIosVisionOcrProvider`. When no provider is registered the
+ * backend throws so the chooser falls through to the next entry in the
+ * priority chain.
  */
 class AppleVisionBackend implements OCRBackend {
   readonly name: OCRBackendName = "apple-vision";
   async initialize(): Promise<void> {
-    throw new Error(
-      "Apple Vision OCR backend not implemented in this package — handled by plugin-ios (WS9).",
-    );
+    if (!registeredAppleVisionProvider) {
+      throw new Error(
+        "Apple Vision OCR backend has no registered provider — call registerAppleVisionOcrProvider(createIosVisionOcrProvider(getBridge)) from the runtime.",
+      );
+    }
+    if (!registeredAppleVisionProvider.available()) {
+      throw new Error(
+        "Apple Vision OCR provider reports unavailable (Capacitor ComputerUse bridge not yet registered).",
+      );
+    }
   }
-  async extractText(): Promise<OCRResult> {
-    throw new Error("Apple Vision backend stub");
+  async extractText(buffer: Buffer): Promise<OCRResult> {
+    const provider = registeredAppleVisionProvider;
+    if (!provider) {
+      throw new Error(
+        "Apple Vision OCR backend has no registered provider at extract time",
+      );
+    }
+    const result = await provider.recognize({
+      kind: "bytes",
+      data: new Uint8Array(buffer),
+    });
+    const blocks = result.lines.map((line) => ({
+      text: line.text,
+      confidence: line.confidence,
+      bbox: {
+        x: line.boundingBox.x,
+        y: line.boundingBox.y,
+        width: line.boundingBox.width,
+        height: line.boundingBox.height,
+      } as BoundingBox,
+    }));
+    return {
+      text: result.fullText,
+      blocks,
+      fullText: result.fullText,
+    };
   }
-  async dispose(): Promise<void> {}
+  async dispose(): Promise<void> {
+    /* Provider lifecycle is owned by the registrant, not this backend. */
+  }
 }
 
 /**

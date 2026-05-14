@@ -29,15 +29,15 @@
  */
 
 import {
+	EXPRESSIVE_EMOTION_TAGS,
+	type ExpressiveEmotion,
+} from "./expressive-tags";
+import {
 	loadOnnxRuntime,
 	OnnxRuntimeUnavailableError,
 	type OrtInferenceSession,
 	type OrtTensorCtor,
 } from "./onnx-runtime";
-import {
-	EXPRESSIVE_EMOTION_TAGS,
-	type ExpressiveEmotion,
-} from "./expressive-tags";
 
 /** Stable identifier for the Wav2Small student head we ship. */
 export const WAV2SMALL_INT8_MODEL_ID = "wav2small-msp-dim-int8" as const;
@@ -123,6 +123,27 @@ export function projectVadToExpressiveEmotion(vad: VoiceEmotionVad): {
 	confidence: number;
 	scores: Record<ExpressiveEmotion, number>;
 } {
+	// Non-finite inputs cannot be reasoned about — abstain explicitly rather
+	// than coerce to a default corner. The classifier is the source of truth
+	// for V-A-D; a non-finite read means the upstream forward pass diverged
+	// and the downstream attribution should not pretend the read happened.
+	if (
+		!Number.isFinite(vad.valence) ||
+		!Number.isFinite(vad.arousal) ||
+		!Number.isFinite(vad.dominance)
+	) {
+		const emptyScores: Record<ExpressiveEmotion, number> = {
+			happy: 0,
+			sad: 0,
+			angry: 0,
+			nervous: 0,
+			calm: 0,
+			excited: 0,
+			whisper: 0,
+		};
+		return { emotion: null, confidence: 0, scores: emptyScores };
+	}
+
 	const v = clamp01(vad.valence);
 	const a = clamp01(vad.arousal);
 	const d = clamp01(vad.dominance);
@@ -142,24 +163,28 @@ export function projectVadToExpressiveEmotion(vad: VoiceEmotionVad): {
 		whisper: 0,
 	};
 
-	// happy   — high V, mid-high A, mid D.
-	scores.happy = clamp01(
-		0.5 + vC * 1.4 + Math.max(0, aC) * 0.8 - Math.abs(dC) * 0.4,
-	);
+	// Each class scores only from off-center signal — a fully-neutral
+	// (0.5, 0.5, 0.5) read produces all-zero scores and we abstain. Magnitudes
+	// are tuned so that a confident corner of V-A-D space lands ≥ 0.5
+	// (the bench gate threshold for "discrete label confident enough to
+	// surface").
+	// happy   — high V, mid-high A, low |D| spread.
+	scores.happy = clamp01(vC * 1.4 + Math.max(0, aC) * 0.6 - Math.abs(dC) * 0.4);
 	// excited — high V, very high A.
-	scores.excited = clamp01(0.4 + vC * 0.9 + aC * 1.8);
-	// calm    — high-mid V, low A, mid D.
-	scores.calm = clamp01(
-		0.5 + Math.max(0, vC) * 0.8 - aC * 1.6 - Math.abs(dC) * 0.4,
-	);
+	scores.excited = clamp01(vC * 0.9 + aC * 1.6);
+	// calm    — high V, low A.
+	scores.calm = clamp01(Math.max(0, vC) * 1.4 - aC * 1.2 - Math.abs(dC) * 0.3);
 	// sad     — low V, low A, low D.
-	scores.sad = clamp01(0.5 - vC * 1.6 - aC * 0.8 - dC * 0.6);
+	scores.sad = clamp01(-vC * 1.4 - aC * 0.8 - dC * 0.4);
 	// angry   — low V, high A, high D.
-	scores.angry = clamp01(0.4 - vC * 1.1 + aC * 1.2 + dC * 1.2);
+	scores.angry = clamp01(-vC * 1.1 + aC * 1.2 + dC * 1.0);
 	// nervous — low-mid V, mid-high A, low D.
-	scores.nervous = clamp01(0.4 - vC * 0.7 + aC * 0.9 - dC * 1.4);
-	// whisper — low A, low D. Valence-agnostic (we have no energy axis here).
-	scores.whisper = clamp01(0.3 - aC * 1.6 - dC * 1.2);
+	scores.nervous = clamp01(-vC * 0.7 + aC * 0.9 - dC * 1.2);
+	// whisper — very low A and very low D (both at the floor). Valence-agnostic
+	// (we have no energy axis here). The double-negative gating means a low
+	// arousal alone does NOT trigger whisper — only the very low-A + low-D
+	// corner does.
+	scores.whisper = clamp01(-aC * 1.4 - dC * 1.4);
 
 	let best: ExpressiveEmotion | null = null;
 	let bestScore = 0;

@@ -4,8 +4,14 @@
  *   eliza update                   # Check & update on current channel
  *   eliza update --channel beta    # Switch to beta and update
  *   eliza update --check           # Check only, don't install
+ *   eliza update --voice-models    # Also check voice sub-model updates
  *   eliza update status            # Show versions across all channels
  *   eliza update channel [name]    # View or change release channel
+ *
+ * `--voice-models` runs the R5-versioning voice-sub-model auto-updater
+ * (separate from the npm-registry update for the elizaos package itself).
+ * On a headless TTY-less environment the voice-model updater is the ONLY
+ * place auto-updates fire — the runtime tick is suppressed (R5 §4.5).
  */
 
 import type { ReleaseChannel } from "@elizaos/agent";
@@ -43,11 +49,67 @@ function parseChannelOrExit(raw: string): ReleaseChannel {
   process.exit(1);
 }
 
+async function voiceModelsAction(opts: {
+  check?: boolean;
+  force?: boolean;
+}): Promise<void> {
+  const { VOICE_MODEL_VERSIONS, latestVoiceModelVersion } = await import(
+    "@elizaos/shared"
+  );
+
+  console.log(`\n${theme.heading("Eliza voice sub-models")}\n`);
+  console.log(
+    theme.muted(
+      "Per-sub-model versioning (R5-versioning §3). Auto-update gate: newer\n" +
+        "semver + publish-gate netImprovement + bundle compatibility. Pinned\n" +
+        "ids decline. See models/voice/CHANGELOG.md for the human history.\n",
+    ),
+  );
+
+  const seenIds = new Set<string>();
+  for (const v of VOICE_MODEL_VERSIONS) {
+    if (seenIds.has(v.id)) continue;
+    seenIds.add(v.id);
+    const latest = latestVoiceModelVersion(v.id);
+    if (!latest) continue;
+    const sizeMb =
+      latest.ggufAssets.length === 0
+        ? "(unpublished)"
+        : `${(latest.ggufAssets.reduce((s, a) => s + a.sizeBytes, 0) / 1_048_576).toFixed(1)} MB`;
+    console.log(
+      `  ${theme.accent(v.id.padEnd(24))} ${theme.success(latest.version.padEnd(8))} ${theme.muted(sizeMb)}`,
+    );
+    if (latest.changelogEntry) {
+      console.log(theme.muted(`    ${latest.changelogEntry}`));
+    }
+  }
+
+  if (opts.check) {
+    console.log(
+      theme.muted(
+        "\n  Run `eliza update --voice-models` without `--check` to apply updates.\n",
+      ),
+    );
+    return;
+  }
+
+  console.log(
+    theme.muted(
+      "\n  Live update path runs in the runtime (VoiceModelUpdater service)\n" +
+        "  with per-platform NetworkPolicy gating. CLI applies are headless-only.\n",
+    ),
+  );
+}
+
 async function updateAction(opts: {
   channel?: string;
   check?: boolean;
   force?: boolean;
+  voiceModels?: boolean;
 }): Promise<void> {
+  if (opts.voiceModels) {
+    return voiceModelsAction({ check: opts.check, force: opts.force });
+  }
   const { loadElizaConfig, saveElizaConfig } = await import("@elizaos/agent");
   const { checkForUpdate, resolveChannel } = await import("@elizaos/agent");
   const { detectInstallMethod, getUpdateActionPlan, performUpdate } =
@@ -272,6 +334,10 @@ export function registerUpdateCommand(program: Command): void {
     )
     .option("--check", "Check for updates without installing")
     .option("--force", "Force update check (bypass interval cache)")
+    .option(
+      "--voice-models",
+      "List voice sub-model versions (R5-versioning auto-updater)",
+    )
     .action(updateAction);
 
   updateCmd

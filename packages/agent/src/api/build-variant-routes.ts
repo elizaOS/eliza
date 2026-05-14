@@ -12,8 +12,9 @@
  */
 
 import type http from "node:http";
+import type { BuildVariant } from "@elizaos/core";
 
-export type BuildVariant = "store" | "direct";
+export type { BuildVariant };
 
 export interface BuildVariantResponse {
   variant: BuildVariant;

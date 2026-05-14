@@ -124,6 +124,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-steps", type=int, default=32)
     parser.add_argument("--timeout", type=int, default=300_000)
     parser.add_argument(
+        "--solver-timeout",
+        type=float,
+        default=30.0,
+        help=(
+            "OR-Tools oracle wall-clock budget (seconds) per instance. "
+            "Applies to JSSP CP-SAT and TSP-TW/DARP RoutingModel."
+        ),
+    )
+    parser.add_argument(
         "--execution-model",
         choices=["sequential", "parallel", "dag"],
         default="dag",
@@ -215,6 +224,7 @@ def create_config(args: argparse.Namespace) -> REALMConfig:
         generate_report=not args.no_save,
         model_name=args.model,
         use_sample_tasks=args.use_sample_tasks,
+        solver_timeout_s=args.solver_timeout,
     )
 
 

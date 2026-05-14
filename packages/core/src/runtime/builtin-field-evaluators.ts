@@ -32,6 +32,36 @@
 import type { JSONSchema } from "../types/model";
 import type { ResponseHandlerFieldEvaluator } from "./response-handler-field-evaluator";
 
+/**
+ * Stage-1 envelope `emotion` enum value set — kept in lock-step with
+ * `EXPRESSIVE_EMOTION_ENUM` exported from
+ * `plugins/plugin-local-inference/src/services/voice/expressive-tags.ts`.
+ *
+ * It is **redeclared here** instead of imported because `@elizaos/core` may not
+ * depend on `@elizaos/plugin-local-inference` (dependency direction is inward
+ * per AGENTS.md "10 Clean Architecture Commandments" §1). A vitest in the
+ * plugin verifies the two arrays stay byte-equal; if you change one, update
+ * the other.
+ */
+const EXPRESSIVE_EMOTION_ENUM_VALUES = [
+	"none",
+	"happy",
+	"sad",
+	"angry",
+	"nervous",
+	"calm",
+	"excited",
+	"whisper",
+] as const;
+type ExpressiveEmotionEnumValue =
+	(typeof EXPRESSIVE_EMOTION_ENUM_VALUES)[number];
+
+function isExpressiveEmotionEnumValue(
+	value: string,
+): value is ExpressiveEmotionEnumValue {
+	return (EXPRESSIVE_EMOTION_ENUM_VALUES as readonly string[]).includes(value);
+}
+
 // ---------------------------------------------------------------------------
 // shouldRespond — priority 5 (always first)
 // ---------------------------------------------------------------------------
@@ -309,6 +339,43 @@ export const addressedToFieldEvaluator: ResponseHandlerFieldEvaluator<
 };
 
 // ---------------------------------------------------------------------------
+// emotion — priority 95. Text-side emotion enum (Stage-1).
+//
+// Per R3-emotion §2 (Option A): reuse the eliza-1 LM with the existing
+// structured-decode singleton-fill path to emit a single emotion label for
+// the user's text. Zero additional binary, zero additional download —
+// shares the inline-tag vocabulary with the assistant-side
+// `expressiveTagPromptClause()`. The value rides on `Content.emotion`
+// (`Content` already permits dynamic fields) and the voice-side acoustic
+// emotion rides on `MessageMetadata.voice.emotion`. Downstream fusion
+// happens in `attributeVoiceEmotion()` so consumers don't reinvent it.
+// ---------------------------------------------------------------------------
+
+export const emotionFieldEvaluator: ResponseHandlerFieldEvaluator<ExpressiveEmotionEnumValue> =
+	{
+		name: "emotion",
+		description:
+			'The user\'s expressed emotion in this turn, as a single tag from a fixed seven-class set plus "none". Pick "none" when no strong affective cue is present (the default — bias toward this when ambiguous). Otherwise pick the single best match: happy / sad / angry / nervous / calm / excited / whisper. Read the text content + transcript metadata only; do NOT guess from prior turns. This is a *user-side* read; the assistant\'s own emotion is expressed inline via [happy] / [sad] / [excited] etc. tags in replyText when the active TTS bundle supports them.',
+		priority: 95,
+		schema: {
+			type: "string",
+			enum: [...EXPRESSIVE_EMOTION_ENUM_VALUES],
+			description:
+				'User\'s expressed emotion. "none" = no strong cue (default). The other seven values map to the inline expressive-tag vocabulary used by the omnivoice/omnivoice-singing TTS.',
+		},
+		parse(value) {
+			const normalized =
+				typeof value === "string" ? value.trim().toLowerCase() : "";
+			if (normalized && isExpressiveEmotionEnumValue(normalized)) {
+				return normalized;
+			}
+			// Defensive default: emit "none" on malformed input — same as the
+			// "no strong cue" path. Never throw; the field is advisory.
+			return "none";
+		},
+	};
+
+// ---------------------------------------------------------------------------
 // Canonical set — registered at runtime init
 // ---------------------------------------------------------------------------
 
@@ -327,4 +394,5 @@ export const BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS: ReadonlyArray<ResponseHa
 		factsFieldEvaluator,
 		relationshipsFieldEvaluator,
 		addressedToFieldEvaluator,
+		emotionFieldEvaluator,
 	];

@@ -2,10 +2,7 @@ import { describe, expect, it } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import {
-  installPrebuiltCarrot,
-  loadInstalledCarrot,
-} from "../../src/store.js";
+import { installPrebuiltCarrot, loadInstalledCarrot } from "../../src/store.js";
 
 const CARROT_CLOCK_DIR = resolve(import.meta.dir);
 

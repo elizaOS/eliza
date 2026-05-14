@@ -1,5 +1,20 @@
 export type { LocalInferenceLoader } from "./active-model";
 export {
+	assertVoiceBundleFitsHost,
+	VoiceBundleDoesNotFitError,
+} from "./active-model";
+export {
+	classifyDeviceTier,
+	DEVICE_TIER_ORDER,
+	DEVICE_TIER_THRESHOLDS,
+	type DeviceTier,
+	type DeviceTierAssessment,
+	effectiveModelMemoryGb,
+	type RecommendedMode,
+	TIER_WARNING_COPY,
+	totalRamMb,
+} from "./device-tier";
+export {
 	type BackendDecision,
 	BackendDispatcher,
 	type BackendOverride,

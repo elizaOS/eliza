@@ -31,56 +31,49 @@
  */
 
 export {
-	type ImageGenBackend,
-	type ImageGenBackendLoader,
-	type ImageGenLoadArgs,
-	type ImageGenMimeType,
-	type ImageGenRequest,
-	type ImageGenResult,
-} from "./types";
-
+	type AospImageGenBinding,
+	type AospImageGenHandle,
+	type LoadAospImageGenBackendOptions,
+	loadAospImageGenBackend,
+} from "./aosp-stub";
+export {
+	type ImageGenBackendChoice,
+	type ImageGenBackendId,
+	type ImageGenRuntimeProfile,
+	resolveDefaultImageGenModel,
+	selectImageGenBackends,
+	TIER_TO_DEFAULT_IMAGE_MODEL,
+} from "./backend-selector";
+export {
+	type CoreMlImageGenBridge,
+	type LoadCoreMlImageGenBackendOptions,
+	loadCoreMlImageGenBackend,
+} from "./coreml-stub";
 export {
 	ImageGenBackendUnavailableError,
 	isImageGenUnavailable,
 } from "./errors";
-
+export {
+	loadMfluxImageGenBackend,
+	type MfluxBackendOptions,
+} from "./mflux";
 export {
 	loadSdCppImageGenBackend,
 	type SdCppBackendOptions,
 	type SdCppSpawnLike,
 } from "./sd-cpp";
-
-export {
-	loadMfluxImageGenBackend,
-	type MfluxBackendOptions,
-} from "./mflux";
-
-export {
-	loadCoreMlImageGenBackend,
-	type CoreMlImageGenBridge,
-	type LoadCoreMlImageGenBackendOptions,
-} from "./coreml-stub";
-
 export {
 	loadTensorRtImageGenBackend,
 	type TensorRtBackendOptions,
 } from "./tensorrt-stub";
-
-export {
-	loadAospImageGenBackend,
-	type AospImageGenBinding,
-	type AospImageGenHandle,
-	type LoadAospImageGenBackendOptions,
-} from "./aosp-stub";
-
-export {
-	selectImageGenBackends,
-	resolveDefaultImageGenModel,
-	TIER_TO_DEFAULT_IMAGE_MODEL,
-	type ImageGenBackendChoice,
-	type ImageGenBackendId,
-	type ImageGenRuntimeProfile,
-} from "./backend-selector";
+export type {
+	ImageGenBackend,
+	ImageGenBackendLoader,
+	ImageGenLoadArgs,
+	ImageGenMimeType,
+	ImageGenRequest,
+	ImageGenResult,
+} from "./types";
 
 import type {
 	ArbiterCapability,

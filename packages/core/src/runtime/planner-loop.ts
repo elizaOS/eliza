@@ -43,6 +43,7 @@ import {
 	type ModelInputBudget,
 	withModelInputBudgetProviderOptions,
 } from "./model-input-budget";
+import { extractPlanActionsFromContent } from "./plan-actions-extractor";
 import {
 	cacheProviderOptions,
 	toolMessageContent,
@@ -649,13 +650,42 @@ export function parsePlannerOutput(raw: string | GenerateTextResult): {
 	}
 
 	const nativeToolCalls = normalizeToolCalls(raw.toolCalls);
+	const text = getNonEmptyString(raw.text);
+
+	// Tolerant PLAN_ACTIONS-in-text fallback (elizaOS/eliza#7620). When a
+	// hosted model emits the planner envelope as message content instead of
+	// as a native tool call — observed with Cerebras-served `gpt-oss-120b`,
+	// where the character prompt's worked example seeds the bytes — recover
+	// the call here so the planner-loop's downstream resolver still
+	// dispatches the action.
+	let textRecoveredCalls: PlannerToolCall[] = [];
+	let recoverySource: string | undefined;
+	let recoveredThought: string | undefined;
+	if (nativeToolCalls.length === 0 && typeof text === "string") {
+		const extracted = extractPlanActionsFromContent(text);
+		if (extracted) {
+			textRecoveredCalls = [
+				{
+					name: extracted.action,
+					params: extracted.parameters,
+				},
+			];
+			recoverySource = extracted.recoverySource;
+			recoveredThought = extracted.thought;
+		}
+	}
+
 	return {
-		thought: undefined,
-		toolCalls: nativeToolCalls,
-		messageToUser: getNonEmptyString(raw.text),
+		thought: recoveredThought,
+		toolCalls:
+			nativeToolCalls.length > 0 ? nativeToolCalls : textRecoveredCalls,
+		// When we recovered a tool call from the text, blank `messageToUser`:
+		// the text WAS the tool call envelope, not a user-facing message.
+		messageToUser: textRecoveredCalls.length > 0 ? undefined : text,
 		raw: {
 			text: raw.text,
 			toolCalls: raw.toolCalls,
+			...(recoverySource ? { textRecoverySource: recoverySource } : {}),
 		} as Record<string, unknown>,
 	};
 }
@@ -669,6 +699,19 @@ function parseJsonPlannerOutput(raw: string): {
 	const trimmed = raw.trim();
 	const parsed = parseJsonObject<RawPlannerOutput>(trimmed);
 	if (!parsed) {
+		// Tolerant in-text fallback (elizaOS/eliza#7620): the raw output isn't
+		// JSON, but it might contain a `PLAN_ACTIONS({...})` envelope as text.
+		const extracted = extractPlanActionsFromContent(trimmed);
+		if (extracted) {
+			return {
+				thought: extracted.thought,
+				toolCalls: [{ name: extracted.action, params: extracted.parameters }],
+				raw: {
+					text: trimmed,
+					textRecoverySource: extracted.recoverySource,
+				},
+			};
+		}
 		return {
 			toolCalls: [],
 			messageToUser: getNonEmptyString(trimmed),

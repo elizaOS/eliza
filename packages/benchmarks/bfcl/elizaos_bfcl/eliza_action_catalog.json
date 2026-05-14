@@ -1,0 +1,775 @@
+{
+  "version": "1.0",
+  "generated_at": "2026-05-14T00:00:00.000Z",
+  "filter": {
+    "include": [
+      "plugin-mysticism",
+      "plugin-coding-tools",
+      "plugin-todos",
+      "plugin-github",
+      "plugin-linear",
+      "plugin-music",
+      "plugin-browser",
+      "plugin-form",
+      "plugin-vision",
+      "plugin-wallet",
+      "plugin-mcp"
+    ],
+    "exclude": [],
+    "tags": [],
+    "domains": [],
+    "capabilities": [],
+    "surfaces": [],
+    "excludeRisks": []
+  },
+  "actions": [
+    {
+      "type": "function",
+      "function": {
+        "name": "PAYMENT",
+        "description": "Payment router for the active mysticism reading session. Set action to 'check' to read payment status, or 'request' to ask the user to pay (set amount or include $X.XX in the message).",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "description": "Operation: check or request.",
+              "enum": ["check", "request"]
+            },
+            "amount": {
+              "type": "string",
+              "description": "For request - payment amount as a string (e.g. '3.00')."
+            },
+            "entityId": {
+              "type": "string",
+              "description": "For check - optional entity id whose active reading payment should be checked."
+            },
+            "roomId": {
+              "type": "string",
+              "description": "For check - optional room id whose active reading payment should be checked."
+            }
+          },
+          "required": ["action"],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_source": "plugins/plugin-mysticism/src/actions/payment-op.ts",
+      "_plugin": "@elizaos/plugin-mysticism",
+      "_similes": [
+        "REQUEST_PAYMENT",
+        "CHARGE_USER",
+        "ASK_FOR_PAYMENT",
+        "SET_PRICE",
+        "CHECK_PAYMENT",
+        "VERIFY_PAYMENT",
+        "PAYMENT_STATUS"
+      ]
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "SHELL",
+        "description": "Canonical shell action. action=run executes a shell command via the configured local shell. action=clear_history clears recorded shell command history for this conversation. action=view_history returns recent recorded shell commands.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "description": "Shell operation: run | clear_history | view_history.",
+              "enum": ["run", "clear_history", "view_history"]
+            },
+            "command": {
+              "type": "string",
+              "description": "Shell command to run for action=run."
+            },
+            "description": {
+              "type": "string",
+              "description": "Five to ten word humanly-readable summary of the command."
+            },
+            "timeout": {
+              "type": "number",
+              "description": "Hard timeout in ms; clamped to [100, 600000]. Default 120000."
+            },
+            "cwd": {
+              "type": "string",
+              "description": "Absolute working directory."
+            },
+            "limit": {
+              "type": "number",
+              "description": "For action=view_history: max number of recorded commands to return."
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_source": "plugins/plugin-coding-tools/src/actions/bash.ts",
+      "_plugin": "@elizaos/plugin-coding-tools",
+      "_similes": ["EXEC", "RUN_COMMAND"]
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "FILE",
+        "description": "Read, write, edit, search, find, or list files through one FILE action. Choose action=read/write/edit/grep/glob/ls. Use target=device for device-filesystem reads, writes, and directory lists; workspace paths must be absolute unless an operation explicitly defaults to the session cwd.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "description": "File operation to run.",
+              "enum": ["read", "write", "edit", "grep", "glob", "ls"]
+            },
+            "target": {
+              "type": "string",
+              "description": "Optional target filesystem.",
+              "enum": ["workspace", "device"]
+            },
+            "file_path": {
+              "type": "string",
+              "description": "Absolute path for read/write/edit operations."
+            },
+            "path": {
+              "type": "string",
+              "description": "Absolute file or directory path for grep/glob/ls."
+            },
+            "content": {
+              "type": "string",
+              "description": "Full file contents for action=write."
+            },
+            "old_string": {
+              "type": "string",
+              "description": "Exact substring to replace for action=edit."
+            },
+            "new_string": {
+              "type": "string",
+              "description": "Replacement substring for action=edit."
+            },
+            "replace_all": {
+              "type": "boolean",
+              "description": "For action=edit, replace every occurrence."
+            },
+            "pattern": {
+              "type": "string",
+              "description": "Regex for action=grep or glob pattern for action=glob."
+            },
+            "glob": {
+              "type": "string",
+              "description": "Optional ripgrep glob filter for action=grep."
+            },
+            "output_mode": {
+              "type": "string",
+              "description": "For action=grep: content, files_with_matches, or count.",
+              "enum": ["content", "files_with_matches", "count"]
+            }
+          },
+          "required": ["action"],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_source": "plugins/plugin-coding-tools/src/actions/file.ts",
+      "_plugin": "@elizaos/plugin-coding-tools",
+      "_similes": ["FILE_OPERATION", "FILE_IO"]
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "TODO",
+        "description": "Manage the user's todo list. Actions: write, create, update, complete, cancel, delete, list, clear. Todos are user-scoped (entityId), persistent, and shared across rooms for the same user.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "description": "write, create, update, complete, cancel, delete, list, clear.",
+              "enum": ["write", "create", "update", "complete", "cancel", "delete", "list", "clear"]
+            },
+            "id": {
+              "type": "string",
+              "description": "Todo id (update/complete/cancel/delete)."
+            },
+            "content": {
+              "type": "string",
+              "description": "Imperative form, e.g. 'Add tests' (create/update)."
+            },
+            "activeForm": {
+              "type": "string",
+              "description": "Present-continuous form, e.g. 'Adding tests' (create/update)."
+            },
+            "status": {
+              "type": "string",
+              "description": "pending | in_progress | completed | cancelled.",
+              "enum": ["pending", "in_progress", "completed", "cancelled"]
+            },
+            "parentTodoId": {
+              "type": "string",
+              "description": "Parent todo id for sub-tasks (create/update)."
+            },
+            "todos": {
+              "type": "array",
+              "description": "Array of todos for action=write.",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {"type": "string"},
+                  "content": {"type": "string"},
+                  "status": {"type": "string", "enum": ["pending", "in_progress", "completed", "cancelled"]},
+                  "activeForm": {"type": "string"}
+                },
+                "required": ["content", "status"]
+              }
+            },
+            "includeCompleted": {
+              "type": "boolean",
+              "description": "Include completed/cancelled todos in action=list output."
+            },
+            "limit": {
+              "type": "number",
+              "description": "Max rows to return for action=list."
+            }
+          },
+          "required": ["action"],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_source": "plugins/plugin-todos/src/actions/todo.ts",
+      "_plugin": "@elizaos/plugin-todos",
+      "_similes": [
+        "TODO_WRITE", "WRITE_TODOS", "SET_TODOS", "UPDATE_TODOS",
+        "TODO_CREATE", "CREATE_TODO", "TODO_UPDATE", "UPDATE_TODO",
+        "TODO_COMPLETE", "COMPLETE_TODO", "FINISH_TODO",
+        "TODO_CANCEL", "CANCEL_TODO", "TODO_DELETE", "DELETE_TODO", "REMOVE_TODO",
+        "TODO_LIST", "LIST_TODOS", "GET_TODOS", "SHOW_TODOS",
+        "TODO_CLEAR", "CLEAR_TODOS"
+      ]
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "GITHUB",
+        "description": "GitHub umbrella for pull requests, issues, and notification triage. Use action=pr_list/pr_review/issue_create/issue_assign/issue_close/issue_reopen/issue_comment/issue_label/notification_triage.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "description": "GitHub operation to run.",
+              "enum": [
+                "pr_list", "pr_review",
+                "issue_create", "issue_assign", "issue_close", "issue_reopen",
+                "issue_comment", "issue_label",
+                "notification_triage"
+              ]
+            },
+            "repo": {
+              "type": "string",
+              "description": "Repository in owner/name form."
+            },
+            "number": {
+              "type": "number",
+              "description": "Pull request or issue number."
+            },
+            "state": {
+              "type": "string",
+              "description": "PR state for pr_list.",
+              "enum": ["open", "closed", "all"],
+              "default": "open"
+            },
+            "author": {
+              "type": "string",
+              "description": "Optional PR author username filter for pr_list."
+            },
+            "review_action": {
+              "type": "string",
+              "description": "For action=pr_review: approve, request-changes, or comment.",
+              "enum": ["approve", "request-changes", "comment"]
+            },
+            "title": {
+              "type": "string",
+              "description": "Issue title for action=issue_create."
+            },
+            "body": {
+              "type": "string",
+              "description": "Issue body, issue comment body, or PR review body."
+            },
+            "assignees": {
+              "type": "array",
+              "description": "GitHub usernames to assign.",
+              "items": {"type": "string"}
+            },
+            "labels": {
+              "type": "array",
+              "description": "Labels to apply on issue create or issue_label.",
+              "items": {"type": "string"}
+            },
+            "as": {
+              "type": "string",
+              "description": "Identity to use: agent or user.",
+              "enum": ["agent", "user"],
+              "default": "agent"
+            },
+            "accountId": {
+              "type": "string",
+              "description": "Optional GitHub account id from GITHUB_ACCOUNTS."
+            },
+            "confirmed": {
+              "type": "boolean",
+              "description": "Must be true for GitHub write operations.",
+              "default": false
+            }
+          },
+          "required": ["action"],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_source": "plugins/plugin-github/src/actions/github.ts",
+      "_plugin": "@elizaos/plugin-github",
+      "_similes": [
+        "GITHUB_PR_OP", "GITHUB_ISSUE_OP", "GITHUB_NOTIFICATION_TRIAGE",
+        "GITHUB_PULL_REQUEST", "GITHUB_ISSUE", "GITHUB_NOTIFICATIONS"
+      ]
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "LINEAR",
+        "description": "Manage Linear issues, comments, and activity. Operations: create_issue, get_issue, update_issue, delete_issue, create_comment, update_comment, delete_comment, list_comments, get_activity, clear_activity, search_issues. The op is inferred from the message text when not explicitly provided.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "description": "Operation to perform.",
+              "enum": [
+                "create_issue", "get_issue", "update_issue", "delete_issue",
+                "create_comment", "update_comment", "delete_comment", "list_comments",
+                "get_activity", "clear_activity", "search_issues"
+              ]
+            },
+            "accountId": {
+              "type": "string",
+              "description": "Optional Linear account id."
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_source": "plugins/plugin-linear/src/actions/linear.ts",
+      "_plugin": "@elizaos/plugin-linear",
+      "_similes": [
+        "LINEAR_ISSUE", "LINEAR_ISSUES", "LINEAR_COMMENT", "LINEAR_COMMENTS",
+        "LINEAR_WORKFLOW", "LINEAR_ACTIVITY", "LINEAR_SEARCH",
+        "GET_LINEAR_ISSUE", "UPDATE_LINEAR_ISSUE", "DELETE_LINEAR_ISSUE",
+        "MANAGE_LINEAR_ISSUE", "MANAGE_LINEAR_ISSUES",
+        "CREATE_LINEAR_COMMENT", "COMMENT_LINEAR_ISSUE",
+        "UPDATE_LINEAR_COMMENT", "DELETE_LINEAR_COMMENT", "LIST_LINEAR_COMMENTS",
+        "GET_LINEAR_ACTIVITY", "CLEAR_LINEAR_ACTIVITY",
+        "SEARCH_LINEAR_ISSUES", "LINEAR_WORKFLOW_SEARCH"
+      ]
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "CREATE_LINEAR_ISSUE",
+        "description": "Create a new Linear issue with title, description, priority, team, assignee, and labels. Use when the user wants to file, log, or track a new ticket, bug, story, or task in Linear from chat.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "issueData": {
+              "type": "object",
+              "description": "Structured Linear issue fields.",
+              "properties": {
+                "title": {"type": "string"},
+                "description": {"type": "string"},
+                "priority": {"type": "number"},
+                "teamId": {"type": "string"},
+                "assigneeId": {"type": "string"},
+                "labelIds": {"type": "array", "items": {"type": "string"}}
+              }
+            },
+            "accountId": {
+              "type": "string",
+              "description": "Optional Linear account id."
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_source": "plugins/plugin-linear/src/actions/createIssue.ts",
+      "_plugin": "@elizaos/plugin-linear",
+      "_similes": ["create-linear-issue", "new-linear-issue", "add-linear-issue"]
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "MUSIC",
+        "description": "Unified music action. Use verb-shaped action for playback, queue, library, routing/zones, and generation (Suno-backed).",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "description": "Verb-shaped subaction.",
+              "enum": [
+                "play", "pause", "resume", "skip", "stop",
+                "queue_view", "queue_add", "queue_clear",
+                "playlist_play", "playlist_save",
+                "search", "play_query", "download", "play_audio",
+                "set_routing", "set_zone",
+                "generate", "extend", "custom_generate"
+              ]
+            },
+            "query": {
+              "type": "string",
+              "description": "Search/play/queue query."
+            },
+            "url": {
+              "type": "string",
+              "description": "Direct media URL when using play_audio or play."
+            },
+            "playlistName": {
+              "type": "string",
+              "description": "Playlist name for playlist_play / playlist_save."
+            },
+            "song": {
+              "type": "string",
+              "description": "Song query when adding to a playlist."
+            },
+            "limit": {
+              "type": "number",
+              "description": "Search result limit."
+            },
+            "confirmed": {
+              "type": "boolean",
+              "description": "Must be true when the underlying operation requires confirmation.",
+              "default": false
+            },
+            "prompt": {
+              "type": "string",
+              "description": "Suno generation prompt for action=generate/custom_generate."
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_source": "plugins/plugin-music/src/actions/music.ts",
+      "_plugin": "@elizaos/plugin-music",
+      "_similes": [
+        "GENERATE_MUSIC", "CREATE_MUSIC", "MAKE_MUSIC",
+        "COMPOSE_MUSIC", "CUSTOM_GENERATE_MUSIC", "EXTEND_AUDIO",
+        "PLAY_MUSIC", "PAUSE_MUSIC", "RESUME_MUSIC"
+      ]
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "BROWSER",
+        "description": "Single BROWSER action - control whichever browser target is registered (workspace, bridge, or computeruse).",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "description": "Browser action to perform.",
+              "enum": [
+                "back", "click", "close", "context", "forward", "get",
+                "get_context", "hide", "info", "list_tabs", "navigate",
+                "open", "open_tab", "press", "reload", "screenshot",
+                "show", "snapshot", "state", "tab", "type", "wait",
+                "close_tab", "switch_tab",
+                "realistic_click", "realistic_fill", "realistic_type", "realistic_press",
+                "cursor_move", "cursor_hide", "autofill_login"
+              ]
+            },
+            "tabAction": {
+              "type": "string",
+              "description": "Tab operation when subaction is tab.",
+              "enum": ["close", "list", "new", "switch"]
+            },
+            "domain": {
+              "type": "string",
+              "description": "Domain for autofill_login or session restriction."
+            },
+            "url": {
+              "type": "string",
+              "description": "URL to open or navigate to."
+            },
+            "selector": {
+              "type": "string",
+              "description": "CSS selector for click/type interactions."
+            },
+            "text": {
+              "type": "string",
+              "description": "Text to type for type/realistic_type."
+            },
+            "id": {
+              "type": "string",
+              "description": "Tab id for switch/close operations."
+            },
+            "key": {
+              "type": "string",
+              "description": "Key for press/realistic_press."
+            },
+            "username": {
+              "type": "string",
+              "description": "Username for autofill_login."
+            },
+            "submit": {
+              "type": "boolean",
+              "description": "Whether to submit after autofill_login."
+            },
+            "target": {
+              "type": "string",
+              "description": "Browser target.",
+              "enum": ["workspace", "bridge", "computeruse"]
+            },
+            "timeoutMs": {
+              "type": "number",
+              "description": "Per-operation timeout in milliseconds."
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_source": "plugins/plugin-browser/src/actions/browser.ts",
+      "_plugin": "@elizaos/plugin-browser",
+      "_similes": [
+        "BROWSE_SITE", "BROWSER_SESSION", "CONTROL_BROWSER",
+        "CONTROL_BROWSER_SESSION", "MANAGE_ELIZA_BROWSER_WORKSPACE",
+        "NAVIGATE_SITE", "OPEN_SITE", "USE_BROWSER", "BROWSER_ACTION",
+        "BROWSER_AUTOFILL_LOGIN", "AGENT_AUTOFILL", "AUTOFILL_BROWSER_LOGIN",
+        "AUTOFILL_LOGIN", "FILL_BROWSER_CREDENTIALS",
+        "LOG_INTO_SITE", "SIGN_IN_TO_SITE"
+      ]
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "FORM",
+        "description": "Form session router. action=restore rehydrates the most recent stashed form for the current user.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "description": "Form verb: restore. Defaults to restore when omitted.",
+              "enum": ["restore"]
+            },
+            "sessionId": {
+              "type": "string",
+              "description": "Optional stashed form session id to restore."
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_source": "plugins/plugin-form/src/actions/form.ts",
+      "_plugin": "@elizaos/plugin-form",
+      "_similes": ["FORM_RESTORE", "RESUME_FORM", "CONTINUE_FORM"]
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "VISION",
+        "description": "Camera and screen vision: describe scene, capture image, switch vision mode (off/camera/screen/both), name a visible entity, identify a person, or start tracking an entity.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "description": "Operation to perform.",
+              "enum": ["describe", "capture", "set_mode", "name_entity", "identify_person", "track_entity"]
+            },
+            "subaction": {
+              "type": "string",
+              "description": "Legacy alias for action.",
+              "enum": ["describe", "capture", "set_mode", "name_entity", "identify_person", "track_entity"]
+            },
+            "detailLevel": {
+              "type": "string",
+              "description": "For action=describe: 'summary' or 'detailed'.",
+              "enum": ["summary", "detailed"],
+              "default": "detailed"
+            },
+            "mode": {
+              "type": "string",
+              "description": "For action=set_mode: vision mode to set.",
+              "enum": ["off", "camera", "screen", "both"]
+            },
+            "name": {
+              "type": "string",
+              "description": "For action=name_entity: the name to assign."
+            },
+            "targetHint": {
+              "type": "string",
+              "description": "For name_entity or identify_person: phrase describing target."
+            },
+            "description": {
+              "type": "string",
+              "description": "For action=track_entity: optional description."
+            },
+            "includeUnknown": {
+              "type": "boolean",
+              "description": "For identify_person: whether to mention unidentified people.",
+              "default": true
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_source": "plugins/plugin-vision/src/action.ts",
+      "_plugin": "@elizaos/plugin-vision",
+      "_similes": [
+        "DESCRIBE_SCENE", "CAPTURE_IMAGE", "SET_VISION_MODE",
+        "NAME_ENTITY", "IDENTIFY_PERSON", "TRACK_ENTITY",
+        "ANALYZE_SCENE", "WHAT_DO_YOU_SEE", "VISION_CHECK", "LOOK_AROUND",
+        "TAKE_PHOTO", "SCREENSHOT", "CAPTURE_FRAME", "TAKE_PICTURE"
+      ]
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "WALLET",
+        "description": "Route wallet operations: action=transfer|swap|bridge|gov for on-chain ops; action=token_info for token/market data; action=search_address for Birdeye wallet/portfolio lookup.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "description": "Wallet operation to perform.",
+              "enum": ["transfer", "swap", "bridge", "gov", "token_info", "search_address"]
+            },
+            "target": {
+              "type": "string",
+              "description": "Chain id/name for write ops; analytics provider for token_info."
+            },
+            "toChain": {
+              "type": "string",
+              "description": "Destination chain for bridge."
+            },
+            "fromToken": {
+              "type": "string",
+              "description": "Source token symbol, native token alias, or token address."
+            },
+            "toToken": {
+              "type": "string",
+              "description": "Destination token symbol, native token alias, or token address."
+            },
+            "amount": {
+              "type": "string",
+              "description": "Human-readable token amount."
+            },
+            "recipient": {
+              "type": "string",
+              "description": "Recipient address for transfer."
+            },
+            "slippageBps": {
+              "type": "number",
+              "description": "Maximum swap slippage in basis points."
+            },
+            "mode": {
+              "type": "string",
+              "description": "Prepare without submitting, or execute the operation."
+            },
+            "dryRun": {
+              "type": "boolean",
+              "description": "Simulate without executing."
+            },
+            "query": {
+              "type": "string",
+              "description": "Free-form query for token_info."
+            },
+            "address": {
+              "type": "string",
+              "description": "Address for search_address or token_info by address."
+            },
+            "chain": {
+              "type": "string",
+              "description": "Chain context for token_info."
+            }
+          },
+          "required": ["action"],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_source": "plugins/plugin-wallet/src/chains/wallet-action.ts",
+      "_plugin": "@elizaos/plugin-wallet",
+      "_similes": [
+        "SWAP", "SWAP_SOLANA", "TRANSFER", "TRANSFER_TOKEN",
+        "WALLET_SWAP", "WALLET_TRANSFER", "CROSS_CHAIN_TRANSFER",
+        "PREPARE_TRANSFER", "WALLET_ACTION", "WALLET_GOV",
+        "TOKEN_INFO", "BIRDEYE_LOOKUP", "BIRDEYE_SEARCH",
+        "WALLET_SEARCH_ADDRESS"
+      ]
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "MCP",
+        "description": "Single MCP entry point. Use action=call_tool to invoke an MCP tool, action=read_resource to read an MCP resource. Cloud runtimes also accept action=search_actions and action=list_connections.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "description": "MCP operation.",
+              "enum": ["call_tool", "read_resource", "search_actions", "list_connections"]
+            },
+            "serverName": {
+              "type": "string",
+              "description": "Optional MCP server name that owns the tool or resource."
+            },
+            "toolName": {
+              "type": "string",
+              "description": "For action=call_tool: optional exact MCP tool name to call."
+            },
+            "arguments": {
+              "type": "object",
+              "description": "For action=call_tool: optional JSON arguments to pass."
+            },
+            "uri": {
+              "type": "string",
+              "description": "For action=read_resource: exact MCP resource URI to read."
+            },
+            "query": {
+              "type": "string",
+              "description": "Natural-language description or keyword query."
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_source": "plugins/plugin-mcp/src/actions/mcp.ts",
+      "_plugin": "@elizaos/plugin-mcp",
+      "_similes": [
+        "MCP_ACTION", "MCP_ROUTER", "USE_MCP",
+        "CALL_MCP_TOOL", "CALL_TOOL", "USE_TOOL", "USE_MCP_TOOL",
+        "EXECUTE_TOOL", "EXECUTE_MCP_TOOL", "RUN_TOOL", "RUN_MCP_TOOL",
+        "INVOKE_TOOL", "INVOKE_MCP_TOOL",
+        "READ_MCP_RESOURCE", "READ_RESOURCE", "GET_RESOURCE", "GET_MCP_RESOURCE",
+        "FETCH_RESOURCE", "FETCH_MCP_RESOURCE",
+        "ACCESS_RESOURCE", "ACCESS_MCP_RESOURCE"
+      ]
+    }
+  ]
+}

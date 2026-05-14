@@ -3,10 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import {
-  installPrebuiltCarrot,
-  loadInstalledCarrot,
-} from "../../src/store.js";
+import { installPrebuiltCarrot, loadInstalledCarrot } from "../../src/store.js";
 
 const HELLO_CARROT_DIR = resolve(import.meta.dir);
 
@@ -33,7 +30,9 @@ describe("hello-carrot example", () => {
       expect(installed.manifest.id).toBe("hello-carrot");
       expect(installed.manifest.mode).toBe("background");
       expect(existsSync(installed.workerPath)).toBe(true);
-      expect(installed.workerPath).toContain(".bunny/carrot-bun-entrypoint.mjs");
+      expect(installed.workerPath).toContain(
+        ".bunny/carrot-bun-entrypoint.mjs",
+      );
 
       const bootstrap = readFileSync(installed.workerPath, "utf8");
       expect(bootstrap).toContain("__bunnyCarrotBootstrap");
@@ -100,8 +99,7 @@ describe("hello-carrot example", () => {
       expect(logsText).toContain("channel=carrot:hello-carrot");
 
       const actionLogs = messages.filter(
-        (m): m is ActionMessage =>
-          m.type === "action" && m.action === "log",
+        (m): m is ActionMessage => m.type === "action" && m.action === "log",
       );
       expect(actionLogs).toHaveLength(1);
       expect(actionLogs[0].payload?.level).toBe("info");

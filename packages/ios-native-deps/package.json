@@ -1,6 +1,7 @@
 {
   "name": "@elizaos/ios-native-deps",
   "version": "0.1.0",
+  "private": true,
   "description": "iOS cross-build harness for native dependencies used by on-device runtimes: llama.cpp (LlamaCpp.xcframework via elizaOS/llama.cpp fork) and sqlite-vec.",
   "keywords": [
     "ios",
@@ -26,7 +27,7 @@
     "build:llama-cpp:device": "bash llama.cpp/build-ios.sh device",
     "build:llama-cpp:simulator": "bash llama.cpp/build-ios.sh simulator",
     "clean:llama-cpp": "bash llama.cpp/build-ios.sh clean",
-    "build:sqlite-vec": "echo 'TODO: sqlite-vec build script; see sqlite-vec/README.md'",
+    "build:sqlite-vec": "node -e \"process.stderr.write('sqlite-vec build script not yet wired; see sqlite-vec/README.md\\n'); process.exit(1)\"",
     "build": "bun run build:llama-cpp"
   },
   "files": [

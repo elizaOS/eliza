@@ -41,6 +41,12 @@ export {
   listIosAppIntents,
 } from "./ios-app-intent-registry.js";
 export {
+  IOS_LOGICAL_DISPLAY_ID,
+  IosComputerInterface,
+  type IosComputerInterfaceDeps,
+  makeIosComputerInterface,
+} from "./ios-computer-interface.js";
+export {
   IOS_APP_GROUP_ID,
   IOS_BRIDGE_JS_NAME,
   REPLAYKIT_FOREGROUND_MAX_BUFFER,

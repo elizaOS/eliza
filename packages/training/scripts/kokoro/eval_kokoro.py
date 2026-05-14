@@ -183,10 +183,25 @@ def _real_eval(args: argparse.Namespace, cfg: dict[str, Any]) -> int:
     )
     pipeline = KPipeline(lang_code=cfg.get("voice_lang", "a"), repo_id=cfg["base_model"])
 
+    # Voice resolution. The Kokoro `KPipeline.__call__` accepts:
+    #   - a stock voice id string (e.g. "af_bella") — auto-downloads voices/<id>.pt
+    #   - a path string ending in `.pt`
+    #   - a torch.FloatTensor of shape (510, 1, 256)
+    # eval_kokoro produces `.bin` files (raw float32 LE bytes); load those as a
+    # tensor. When --voice-bin is not set, fall back to the baseline-voice id
+    # (default af_bella) — this is what the absolute eval gates compare against.
     voice_bin = args.voice_bin
+    if voice_bin and str(voice_bin).endswith(".bin"):
+        import numpy as np  # noqa: PLC0415
+        _arr = np.fromfile(str(voice_bin), dtype="<f4").reshape(510, 1, 256)
+        voice_obj: Any = torch.from_numpy(_arr).float()
+    elif voice_bin:
+        voice_obj = str(voice_bin)
+    else:
+        voice_obj = args.baseline_voice_id
 
     def synth(prompt: str):
-        out = pipeline(prompt, voice=str(voice_bin) if voice_bin else None)
+        out = pipeline(prompt, voice=voice_obj)
         for _gs, _ps, audio in out:
             return audio.cpu().numpy(), 24000
         raise RuntimeError("Kokoro pipeline produced no audio")
@@ -341,6 +356,13 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     p.add_argument("--synthetic-smoke", action="store_true")
+    p.add_argument(
+        "--baseline-voice-id",
+        type=str,
+        default="af_bella",
+        help="Stock Kokoro voice id used when --voice-bin is not set "
+        "(baseline eval). Default af_bella.",
+    )
     return p
 
 

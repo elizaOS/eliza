@@ -11,11 +11,33 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any, Awaitable, Callable
+from typing import Any, Awaitable, Callable, Final
 
 from openclaw_adapter.client import OpenClawClient
 
 logger = logging.getLogger(__name__)
+
+
+# Per-million-token USD pricing for Cerebras gpt-oss-120b. Mirrors the table
+# in ``hermes_adapter`` so multi-harness ClawBench numbers are directly
+# comparable across runners.
+_CEREBRAS_PRICING: Final[dict[str, dict[str, float]]] = {
+    "gpt-oss-120b": {"input_per_million_usd": 0.35, "output_per_million_usd": 0.75},
+}
+
+
+def _compute_cost_usd(
+    model: str | None, prompt_tokens: int, completion_tokens: int
+) -> float | None:
+    if not model:
+        return None
+    pricing = _CEREBRAS_PRICING.get(model)
+    if pricing is None:
+        return None
+    return (
+        (prompt_tokens / 1_000_000.0) * pricing["input_per_million_usd"]
+        + (completion_tokens / 1_000_000.0) * pricing["output_per_million_usd"]
+    )
 
 
 def build_clawbench_agent_fn(
@@ -86,13 +108,36 @@ def build_clawbench_agent_fn(
                         "arguments": entry.get("arguments", {}),
                     }
                 )
+
+        usage = resp.params.get("usage") if isinstance(resp.params, dict) else None
+        if not isinstance(usage, dict):
+            usage = {}
+        prompt_tokens_raw = usage.get("prompt_tokens")
+        completion_tokens_raw = usage.get("completion_tokens")
+        prompt_tokens = int(prompt_tokens_raw) if isinstance(prompt_tokens_raw, (int, float)) else 0
+        completion_tokens = (
+            int(completion_tokens_raw)
+            if isinstance(completion_tokens_raw, (int, float))
+            else 0
+        )
+        pricing_model = model_name or bridge.model
+        cost = _compute_cost_usd(pricing_model, prompt_tokens, completion_tokens)
+
         result: dict[str, Any] = {
             "text": resp.text,
             "tool_calls": tool_calls,
             "thought": resp.thought,
+            "usage": {
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": completion_tokens,
+            },
         }
         if model_name:
             result["model_name"] = model_name
+        elif pricing_model:
+            result["model_name"] = pricing_model
+        if cost is not None:
+            result["cost_usd"] = float(cost)
         return result
 
     return _agent_fn

@@ -20,8 +20,11 @@ import {
 } from "./catalog";
 import { localInferenceEngine } from "./engine";
 import { probeHardware } from "./hardware";
+import type { Eliza1Manifest } from "./manifest";
 import {
 	assessRamFit,
+	defaultManifestLoader,
+	type ManifestLoader,
 	pickFittingContextVariant,
 	type RamFitOptions,
 } from "./ram-budget";
@@ -33,6 +36,11 @@ import type {
 	HardwareProbe,
 	InstalledModel,
 } from "./types";
+import {
+	assessVoiceBundleFits,
+	VOICE_ENSEMBLE_BUDGETS,
+	type VoiceTierSlot,
+} from "./voice/voice-budget";
 
 export {
 	ELIZA_1_PLACEHOLDER_IDS,
@@ -587,8 +595,203 @@ export function assertModelFitsHost(
 	});
 }
 
+/**
+ * Typed error for refused local-voice sessions. Mirrors
+ * `ModelDoesNotFitError` but at the bundle level — emitted by
+ * `assertVoiceBundleFitsHost` when the whole co-resident voice + text stack
+ * cannot fit a host's RAM (per R9 §2.3 / §3.2).
+ *
+ * Catch this at the runtime's voice-session-start boundary and surface the
+ * tier-warning copy (`TIER_WARNING_COPY[<tier>]`) — DO NOT load weights and
+ * watch `MemoryMonitor` evict mid-session.
+ */
+export class VoiceBundleDoesNotFitError extends Error {
+	readonly tierSlot: string;
+	readonly deviceTier: string;
+	readonly requiredPeakMb: number;
+	readonly requiredSteadyStateMb: number;
+	readonly usableMb: number;
+	readonly hostRamMb: number;
+
+	constructor(args: {
+		tierSlot: string;
+		deviceTier: string;
+		requiredPeakMb: number;
+		requiredSteadyStateMb: number;
+		usableMb: number;
+		hostRamMb: number;
+	}) {
+		super(
+			`[local-inference] The voice bundle for tier "${args.tierSlot}" needs ~${args.requiredSteadyStateMb} MB steady-state (+~${args.requiredPeakMb - args.requiredSteadyStateMb} MB transient TTS peak) but only ~${args.usableMb} MB are usable on this host (${args.hostRamMb} MB total, after the OS/runtime headroom reserve). Refusing to start local voice; the runtime should fall back to cloud TTS+ASR or refuse the user-facing action.`,
+		);
+		this.name = "VoiceBundleDoesNotFitError";
+		this.tierSlot = args.tierSlot;
+		this.deviceTier = args.deviceTier;
+		this.requiredPeakMb = args.requiredPeakMb;
+		this.requiredSteadyStateMb = args.requiredSteadyStateMb;
+		this.usableMb = args.usableMb;
+		this.hostRamMb = args.hostRamMb;
+	}
+}
+
+/**
+ * Cross-model admission gate for the local-voice session. Sums the whole
+ * co-resident bundle (LM + drafter + ASR + TTS + embedding + VAD +
+ * wake-word + turn-detector + emotion + speaker-encoder + transient TTS
+ * peak) and refuses entry when the host can't fit it.
+ *
+ * Returns the decision on `fits`. Throws `VoiceBundleDoesNotFitError` when
+ * `wontfit` (when `strict=true`, the default), or just returns the
+ * `wontfit` decision when `strict=false` (the runtime then logs and
+ * degrades silently). Pair with `TIER_WARNING_COPY[deviceTier]` for
+ * user-facing UX.
+ *
+ * R9 §1.4 + §2.3 + §3.2 spec.
+ */
+export function assertVoiceBundleFitsHost(args: {
+	tierSlot: string;
+	deviceTier: string;
+	hostRamMb: number;
+	reserveMb?: number;
+	strict?: boolean;
+}): {
+	level: "fits" | "tight" | "wontfit";
+	steadyStateMb: number;
+	peakMb: number;
+	usableMb: number;
+	fits: boolean;
+} {
+	if (!(args.tierSlot in VOICE_ENSEMBLE_BUDGETS)) {
+		// Unknown tier slot — be permissive: the runtime hasn't built a
+		// canonical slot for this combination yet, and falling through to
+		// `assertModelFitsHost` (the per-tier check) is the right default.
+		return {
+			level: "fits",
+			steadyStateMb: 0,
+			peakMb: 0,
+			usableMb: Math.max(0, args.hostRamMb - (args.reserveMb ?? 1536)),
+			fits: true,
+		};
+	}
+	const decision = assessVoiceBundleFits({
+		tierSlot: args.tierSlot as VoiceTierSlot,
+		deviceTier: args.deviceTier as "MAX" | "GOOD" | "OKAY" | "POOR",
+		hostRamMb: args.hostRamMb,
+		reserveMb: args.reserveMb,
+	});
+	if (decision.level === "wontfit" && args.strict !== false) {
+		throw new VoiceBundleDoesNotFitError({
+			tierSlot: args.tierSlot,
+			deviceTier: args.deviceTier,
+			requiredPeakMb: Math.round(decision.peakMb),
+			requiredSteadyStateMb: Math.round(decision.steadyStateMb),
+			usableMb: Math.round(decision.usableMb),
+			hostRamMb: args.hostRamMb,
+		});
+	}
+	return {
+		level: decision.level,
+		steadyStateMb: decision.steadyStateMb,
+		peakMb: decision.peakMb,
+		usableMb: decision.usableMb,
+		fits: decision.fits,
+	};
+}
+
 function hostRamMbFromProbe(probe: HardwareProbe): number {
 	return Math.round(probe.totalRamGb * MB_PER_GB);
+}
+
+/**
+ * Refusal raised when activation is asked for a model whose own
+ * `eliza-1.manifest.json` says its text eval has not passed (`candidate.*` /
+ * `weights-staged.*` tiers). Carries the structured payload the route layer
+ * surfaces verbatim to the API consumer: `manifestVersion` so the UI can
+ * say "this tier isn't ready" with the actual version string, and
+ * `failedEvals` so the user sees which checks are still red.
+ *
+ * Why we gate here, not just at download:
+ * - the bundle may already be on disk (hand-staged, manually copied, or
+ *   downloaded before a fail-state was recorded), so the download gate
+ *   alone leaves a window where a candidate-only bundle can be flipped
+ *   into the active model slot and silently emit `[unused]` tokens.
+ *
+ * See issue #7679 for the original symptom: the runtime activated the
+ * `eliza-1-0_6b` `1.0.0-candidate.1` bundle whose every `evals.*.passed`
+ * was `false`, then served BERT/WordPiece reserved tokens (`[unused0..99]`
+ * / `[PAD]`) as chat output with no actionable error.
+ */
+export class CandidateModelActivationError extends Error {
+	readonly modelId: string;
+	readonly manifestVersion: string;
+	readonly failedEvals: ReadonlyArray<string>;
+
+	constructor(args: {
+		modelId: string;
+		manifestVersion: string;
+		failedEvals: ReadonlyArray<string>;
+	}) {
+		const evalSuffix =
+			args.failedEvals.length > 0
+				? ` Failed evals: ${args.failedEvals.join(", ")}.`
+				: "";
+		super(
+			`Model "${args.modelId}" is candidate-only — its manifest (version ${args.manifestVersion}) reports evals.textEval.passed=false. Refusing to activate.${evalSuffix} Wait for the publisher to flip the manifest off candidate/weights-staged and re-fetch the bundle.`,
+		);
+		this.name = "CandidateModelActivationError";
+		this.modelId = args.modelId;
+		this.manifestVersion = args.manifestVersion;
+		this.failedEvals = args.failedEvals;
+	}
+}
+
+/**
+ * Activation eval gate. Reads the installed bundle's manifest and refuses
+ * activation when `evals.textEval.passed` is not `true`. A bundle with no
+ * `eliza-1.manifest.json` on disk (third-party HF GGUFs, external scans,
+ * pre-bundle installs) is *not* gated — the gate only applies to bundles
+ * that ship a published manifest, which is the source of truth for the
+ * publish state.
+ *
+ * Throws `CandidateModelActivationError` on a failing manifest; returns
+ * silently otherwise.
+ */
+export function assertManifestEvalsPassed(
+	installed: InstalledModel,
+	manifestLoader: ManifestLoader = defaultManifestLoader,
+): void {
+	const manifest = manifestLoader(installed.id, installed);
+	if (!manifest) return;
+	if (manifest.evals.textEval.passed === true) return;
+	throw new CandidateModelActivationError({
+		modelId: installed.id,
+		manifestVersion: manifest.version,
+		failedEvals: collectFailedEvalNames(manifest),
+	});
+}
+
+function collectFailedEvalNames(manifest: Eliza1Manifest): string[] {
+	const failed: string[] = [];
+	const evals = manifest.evals;
+	if (evals.textEval.passed !== true) failed.push("textEval");
+	if (evals.voiceRtf.passed !== true) failed.push("voiceRtf");
+	if (evals.e2eLoopOk !== true) failed.push("e2eLoopOk");
+	if (evals.thirtyTurnOk !== true) failed.push("thirtyTurnOk");
+	if (evals.asrWer && evals.asrWer.passed !== true) failed.push("asrWer");
+	if (evals.embedMteb && evals.embedMteb.passed !== true) {
+		failed.push("embedMteb");
+	}
+	if (evals.vadLatencyMs && evals.vadLatencyMs.passed !== true) {
+		failed.push("vadLatencyMs");
+	}
+	if (evals.expressive && evals.expressive.passed !== true) {
+		failed.push("expressive");
+	}
+	if (evals.dflash && evals.dflash.passed !== true) failed.push("dflash");
+	if (evals.turnDetector && evals.turnDetector.passed !== true) {
+		failed.push("turnDetector");
+	}
+	return failed;
 }
 
 function isLoader(value: unknown): value is LocalInferenceLoader {
@@ -673,8 +876,17 @@ export class ActiveModelCoordinator {
 		runtime: AgentRuntime | null,
 		installed: InstalledModel,
 		overrides?: LocalInferenceLoadOverrides,
-		opts: { hardware?: HardwareProbe } = {},
+		opts: { hardware?: HardwareProbe; manifestLoader?: ManifestLoader } = {},
 	): Promise<ActiveModelState> {
+		// Activation eval gate (#7679). Refuse to flip a candidate-only /
+		// weights-staged bundle into the active model slot — the manifest
+		// already says its text eval hasn't passed, so the only thing
+		// activation buys is `[unused]`/`[PAD]` tokens in chat output and
+		// a confused user. Runs BEFORE the loading state is emitted so
+		// the UI never shows "loading → error" for a known-bad bundle;
+		// it sees the 422 from the route layer directly.
+		assertManifestEvalsPassed(installed, opts.manifestLoader);
+
 		this.state = {
 			modelId: installed.id,
 			loadedAt: null,

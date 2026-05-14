@@ -34,14 +34,14 @@
  */
 
 import { existsSync, promises as fs } from "node:fs";
-import {
-	type VisionDescribeBackend,
-	type VisionDescribeBackendOptions,
-	type VisionDescribeLoadArgs,
-	type VisionDescribeRequest,
-	type VisionDescribeResult,
-} from "./types";
 import { resolveImageBytes } from "./hash";
+import type {
+	VisionDescribeBackend,
+	VisionDescribeBackendOptions,
+	VisionDescribeLoadArgs,
+	VisionDescribeRequest,
+	VisionDescribeResult,
+} from "./types";
 
 export class VisionBackendUnavailableError extends Error {
 	readonly code = "VISION_BACKEND_UNAVAILABLE";

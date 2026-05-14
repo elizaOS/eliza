@@ -188,7 +188,7 @@ function buildLegacyShim(args: {
   req.body = parseBodyAsJson(args.body);
   req.get = (name: string) => {
     const v = incomingHeaders[name.toLowerCase()];
-    return Array.isArray(v) ? v[0] : (v as string | undefined);
+    return Array.isArray(v) ? v[0] : v;
   };
 
   const captured: CapturedResponse = {

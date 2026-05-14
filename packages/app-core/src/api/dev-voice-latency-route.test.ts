@@ -1,5 +1,13 @@
 import { Socket } from "node:net";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import type { CompatRuntimeState } from "./compat-route-shared";
 
 vi.mock("@elizaos/core", async (importOriginal) => {
@@ -40,8 +48,15 @@ vi.mock("./auth.ts", async (importOriginal) => {
   };
 });
 
-import { voiceLatencyTracer } from "@elizaos/plugin-local-inference/services";
+// Loaded lazily to avoid a static boundary violation from src/ into plugin packages.
+import type { EndToEndLatencyTracer } from "@elizaos/plugin-local-inference/services";
 import { handleDevCompatRoutes } from "./dev-compat-routes";
+
+let voiceLatencyTracer: EndToEndLatencyTracer;
+beforeAll(async () => {
+  const mod = await import("@elizaos/plugin-local-inference/services");
+  voiceLatencyTracer = mod.voiceLatencyTracer;
+});
 
 /** Minimal fake req/res that captures the JSON body and status. */
 function makeReqRes(opts: { url: string; remoteAddress?: string }) {

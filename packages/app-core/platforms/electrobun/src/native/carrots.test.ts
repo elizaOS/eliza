@@ -449,7 +449,10 @@ describe("CarrotManager", () => {
 				}),
 				"utf8",
 			);
-			writeFileSync(join(secondDir, "worker.ts"), "postMessage({type:'ready'});");
+			writeFileSync(
+				join(secondDir, "worker.ts"),
+				"postMessage({type:'ready'});",
+			);
 			writeFileSync(join(secondDir, "views", "index.html"), "<div>Calc</div>");
 			nextWorker = workerB;
 			manager.installFromDirectory({ sourceDir: secondDir });
@@ -459,7 +462,11 @@ describe("CarrotManager", () => {
 				type: "host-request",
 				requestId: 99,
 				method: "invoke-carrot",
-				params: { carrotId: "bunny.calc", method: "add", params: { a: 2, b: 3 } },
+				params: {
+					carrotId: "bunny.calc",
+					method: "add",
+					params: { a: 2, b: 3 },
+				},
 			});
 
 			const forwarded = workerB.messages.find((m) => m.type === "request");
@@ -514,7 +521,9 @@ describe("CarrotManager", () => {
 				requestId: 7,
 				success: false,
 			});
-			expect((response as { error?: string }).error).toContain("does-not-exist");
+			expect((response as { error?: string }).error).toContain(
+				"does-not-exist",
+			);
 		}));
 
 	it("invoke-carrot fails caller when target stops mid-flight", () =>
@@ -551,7 +560,10 @@ describe("CarrotManager", () => {
 				}),
 				"utf8",
 			);
-			writeFileSync(join(secondDir, "worker.ts"), "postMessage({type:'ready'});");
+			writeFileSync(
+				join(secondDir, "worker.ts"),
+				"postMessage({type:'ready'});",
+			);
 			writeFileSync(join(secondDir, "views", "index.html"), "<div>Calc</div>");
 			nextWorker = workerB;
 			manager.installFromDirectory({ sourceDir: secondDir });

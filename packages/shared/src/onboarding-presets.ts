@@ -39,7 +39,7 @@ export function normalizeCharacterLanguage(input: unknown): CharacterLanguage {
     return DEFAULT_LANGUAGE;
   }
 
-  if ((CHARACTER_LANGUAGES as readonly string[]).includes(trimmed as string)) {
+  if ((CHARACTER_LANGUAGES as readonly string[]).includes(trimmed)) {
     return trimmed as CharacterLanguage;
   }
 

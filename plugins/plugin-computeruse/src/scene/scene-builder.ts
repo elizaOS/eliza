@@ -28,7 +28,7 @@
 
 import { EventEmitter } from "node:events";
 import { findDisplay, listDisplays } from "../platform/displays.js";
-import { captureAllDisplays, captureDisplay } from "../platform/capture.js";
+import { captureAllDisplays, captureDisplay, captureDisplayRegion } from "../platform/capture.js";
 import type { DisplayCapture } from "../platform/capture.js";
 import type { DisplayDescriptor } from "../types.js";
 import {
@@ -39,14 +39,17 @@ import { enumerateApps } from "./apps.js";
 import {
   type BlockGrid,
   blockGrid,
+  coalesceDirtyBlocks,
   diffBlocks,
   frameDhash,
   hamming,
+  pngDimensions,
 } from "./dhash.js";
 import {
   type OcrAdapterIdState,
   makeOcrIdState,
   runOcrOnPng,
+  runOcrOnRegions,
   setOcrLoggingHook,
 } from "./ocr-adapter.js";
 import type {
@@ -64,11 +67,30 @@ const FRAME_HAMMING_THRESHOLD = 5;
 export interface SceneBuilderDeps {
   captureAll?: () => Promise<DisplayCapture[]>;
   captureOne?: (displayId: number) => Promise<DisplayCapture>;
+  /**
+   * Capture a region within a display in display-local coordinates. Used by
+   * the dirty-block re-OCR fast path to avoid full-frame OCR when only a
+   * small slice of the screen changed. Default: `captureDisplayRegion`.
+   */
+  captureRegion?: (
+    displayId: number,
+    region: { x: number; y: number; width: number; height: number },
+  ) => Promise<DisplayCapture>;
   enumerateApps?: () => SceneApp[];
   listDisplays?: () => DisplayDescriptor[];
   accessibilityProvider?: AccessibilityProvider;
   runOcrOnFrame?: (
     png: Buffer,
+    displayId: number,
+    idState: OcrAdapterIdState,
+  ) => Promise<SceneOcrBox[]>;
+  /**
+   * Run OCR on a list of cropped PNGs, each carrying its display-local bbox.
+   * Returned boxes have their bboxes translated back into source-frame
+   * display-local coordinates. Default: `runOcrOnRegions`.
+   */
+  runOcrOnCrops?: (
+    crops: Array<{ png: Buffer; bbox: [number, number, number, number] }>,
     displayId: number,
     idState: OcrAdapterIdState,
   ) => Promise<SceneOcrBox[]>;
@@ -115,9 +137,16 @@ export class SceneBuilder extends EventEmitter {
           }))),
       accessibilityProvider:
         deps.accessibilityProvider ?? resolveAccessibilityProvider(),
+      captureRegion:
+        deps.captureRegion ??
+        ((displayId, region) => captureDisplayRegion(displayId, region)),
       runOcrOnFrame:
         deps.runOcrOnFrame ??
         ((png, displayId, idState) => runOcrOnPng(png, displayId, idState)),
+      runOcrOnCrops:
+        deps.runOcrOnCrops ??
+        ((crops, displayId, idState) =>
+          runOcrOnRegions(crops, displayId, idState)),
       log,
     };
     setOcrLoggingHook(log);
@@ -181,7 +210,7 @@ export class SceneBuilder extends EventEmitter {
       // Agent turns ALWAYS re-OCR — the planner has to see fresh text even
       // if the screen looks pixel-identical (e.g. blinking cursor in a
       // text box that just received an enter key).
-      const wholeFrameCacheHit =
+      const wholeFrameMatch =
         mode !== "agent-turn" &&
         !changed &&
         state.lastScene.dhash !== null &&
@@ -192,32 +221,87 @@ export class SceneBuilder extends EventEmitter {
       const idleNow = t0 - state.lastChangeAt > IDLE_THRESHOLD_MS;
       const wantOcr = mode === "agent-turn" || (mode === "active" && !idleNow);
 
-      if (wholeFrameCacheHit && state.lastScene.scene.ocr) {
+      // Compute block-grid diff up-front so the dirty-block fast path can
+      // fire even when the whole-frame dHash is unchanged. A single text
+      // field flipping characters typically does not shift the resampled
+      // 8×8 frame dHash but does flip one or two 16×16 blocks.
+      const grid = wantOcr ? blockGrid(capture.frame) : null;
+      const dims = wantOcr ? pngDimensions(capture.frame) : null;
+      const dirty =
+        wantOcr && grid && state.lastBlockGrid && dims
+          ? diffBlocks(state.lastBlockGrid, grid, dims.width, dims.height)
+          : null;
+      const totalBlocks = grid ? grid.cols * grid.rows : 0;
+      const dirtyFraction =
+        dirty && totalBlocks > 0 ? dirty.length / totalBlocks : 1;
+      const prevOcr = state.lastScene.scene.ocr ?? [];
+
+      // 1. Whole-frame match + zero dirty blocks → cache hit.
+      if (
+        wholeFrameMatch &&
+        state.lastScene.scene.ocr &&
+        dirty !== null &&
+        dirty.length === 0
+      ) {
         const cached = state.lastScene.scene.ocr.filter((b) => b.displayId === displayId);
         ocr.push(...cached);
       } else if (wantOcr) {
-        const grid = blockGrid(capture.frame);
-        const dirty =
-          grid && state.lastBlockGrid
-            ? diffBlocks(state.lastBlockGrid, grid)
-            : null;
+        // 2. Dirty-block fast path: only re-capture + re-OCR the changed
+        //    rectangles. We coalesce adjacent dirty blocks so a single
+        //    changed text field is one OS region capture, not a dozen.
         if (
           dirty &&
-          dirty.length < grid!.cols * grid!.rows / 2 &&
-          state.lastScene.scene.ocr
+          grid &&
+          dims &&
+          dirtyFraction > 0 &&
+          dirtyFraction < 0.5 &&
+          prevOcr.length > 0
         ) {
-          // Re-OCR only dirty blocks. For now, since we don't have a PNG
-          // cropper in-tree, the conservative fallback is whole-frame OCR
-          // when dirty-block re-OCR would require cropping. The hook is
-          // staged so a future patch can plug in a cropper without
-          // touching call sites.
-          const refreshed = await this.deps.runOcrOnFrame(
-            capture.frame,
-            displayId,
-            this.ocrIdState,
-          );
-          ocr.push(...refreshed);
+          const rects = coalesceDirtyBlocks(dirty, grid, dims.width, dims.height);
+          const crops: Array<{
+            png: Buffer;
+            bbox: [number, number, number, number];
+          }> = [];
+          for (const rect of rects) {
+            try {
+              const regionCapture = await this.deps.captureRegion(displayId, {
+                x: rect.bbox[0],
+                y: rect.bbox[1],
+                width: rect.bbox[2],
+                height: rect.bbox[3],
+              });
+              crops.push({ png: regionCapture.frame, bbox: rect.bbox });
+            } catch (err) {
+              this.deps.log(
+                `[scene-builder] captureRegion(${displayId}, ${rect.bbox.join(",")}) failed: ${
+                  err instanceof Error ? err.message : String(err)
+                } — falling back to full-frame OCR for this display`,
+              );
+              crops.length = 0;
+              break;
+            }
+          }
+          if (crops.length > 0) {
+            const refreshed = await this.deps.runOcrOnCrops(
+              crops,
+              displayId,
+              this.ocrIdState,
+            );
+            // Drop previous OCR boxes that intersect any dirty rect; keep the rest.
+            const keep = prevOcr.filter(
+              (b) => b.displayId === displayId && !intersectsAnyRect(b.bbox, rects),
+            );
+            ocr.push(...keep, ...refreshed);
+          } else {
+            const refreshed = await this.deps.runOcrOnFrame(
+              capture.frame,
+              displayId,
+              this.ocrIdState,
+            );
+            ocr.push(...refreshed);
+          }
         } else {
+          // 3. Full-frame OCR (no usable dirty diff, or too many blocks dirty).
           const refreshed = await this.deps.runOcrOnFrame(
             capture.frame,
             displayId,
@@ -389,4 +473,17 @@ export function getDefaultSceneBuilder(): SceneBuilder {
 /** Test-only reset. */
 export function _resetDefaultSceneBuilderForTests(): void {
   singleton = null;
+}
+
+function intersectsAnyRect(
+  bbox: [number, number, number, number],
+  rects: Array<{ bbox: [number, number, number, number] }>,
+): boolean {
+  const [bx, by, bw, bh] = bbox;
+  for (const r of rects) {
+    const [rx, ry, rw, rh] = r.bbox;
+    const overlap = bx < rx + rw && bx + bw > rx && by < ry + rh && by + bh > ry;
+    if (overlap) return true;
+  }
+  return false;
 }

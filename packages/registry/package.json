@@ -1,6 +1,7 @@
 {
   "name": "elizaos-plugins",
   "version": "0.0.1",
+  "private": true,
   "main": "index.json",
   "scripts": {
     "generate-registry": "node scripts/generate-registry.js",

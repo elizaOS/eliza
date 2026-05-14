@@ -1242,7 +1242,24 @@ int eliza_inference_tts_synthesize_stream(
     ov_tts_default_params(&params);
     eliza_apply_tts_env_overrides(&params);
     params.text = text_owned.c_str();
-    params.instruct = speaker_preset_id ? speaker_preset_id : "";
+    /* Default to OmniVoice's auto-voice path. The preset (if any)
+     * overwrites params.instruct / ref_audio_tokens / ref_text via
+     * eliza_apply_preset_to_params below. */
+    params.instruct = "";
+    if (speaker_preset_id && speaker_preset_id[0] != '\\0') {
+        std::string preset_err;
+        const EliVoicePreset * preset = nullptr;
+        {
+            std::lock_guard<std::mutex> preset_lock(ctx->preset_mutex);
+            preset = eliza_load_voice_preset_locked(ctx, speaker_preset_id, preset_err);
+        }
+        if (preset && !preset->empty_payload) {
+            eliza_apply_preset_to_params(*preset, &params);
+        }
+        /* A missing or v1-only preset is not fatal — auto-voice mode
+         * still produces audio. The preset_err is only surfaced via
+         * out_error when synthesis itself fails. */
+    }
     params.cancel = eliza_tts_cancel_requested;
     params.cancel_user_data = ctx;
 
@@ -1296,6 +1313,68 @@ int eliza_inference_set_verifier_callback(
         "[libelizainference] native DFlash verifier callback is not implemented in this build; "
         "the JS scheduler synthesizes verifier events from llama-server streaming deltas");
     return ELIZA_ERR_NOT_IMPLEMENTED;
+}
+
+/* ---- OmniVoice reference encode (ABI v4) -------------------------- *
+ *
+ * Thin wrapper around ov_encode_reference. The TTS region must have
+ * been acquired (\`mmap_acquire("tts")\`) before the call. The library
+ * malloc-allocates the token buffer; callers release it via
+ * eliza_inference_free_tokens.
+ */
+int eliza_inference_encode_reference(
+    EliInferenceContext * ctx,
+    const float * pcm,
+    size_t n_samples,
+    int sample_rate_hz,
+    int * out_K,
+    int * out_ref_T,
+    int ** out_tokens,
+    char ** out_error) {
+    if (!ctx || !pcm || !out_K || !out_ref_T || !out_tokens) {
+        eliza_set_error(out_error, "[libelizainference] encode_reference: invalid arguments");
+        return ELIZA_ERR_INVALID_ARG;
+    }
+    if (n_samples == 0) {
+        eliza_set_error(out_error, "[libelizainference] encode_reference: n_samples must be > 0");
+        return ELIZA_ERR_INVALID_ARG;
+    }
+    if (sample_rate_hz != 24000) {
+        eliza_set_error(out_error,
+            "[libelizainference] encode_reference: sample_rate_hz must be 24000 (got %d); "
+            "caller is responsible for upstream resample",
+            sample_rate_hz);
+        return ELIZA_ERR_INVALID_ARG;
+    }
+
+    std::lock_guard<std::mutex> lock(ctx->tts_mutex);
+    if (!ctx->ov) {
+        eliza_set_error(out_error,
+            "[libelizainference] encode_reference: TTS region is not acquired; "
+            "call mmap_acquire(\\"tts\\") after arming voice");
+        return ELIZA_ERR_INVALID_ARG;
+    }
+
+    int32_t * tokens = nullptr;
+    int K = 0;
+    int ref_T = 0;
+    ov_status rc = ov_encode_reference(ctx->ov, pcm, (int) n_samples,
+                                       &tokens, &K, &ref_T);
+    if (rc != OV_STATUS_OK) {
+        std::string msg = "[libelizainference] ov_encode_reference failed: ";
+        msg += ov_last_error();
+        eliza_set_error(out_error, msg);
+        if (tokens) std::free(tokens);
+        return eliza_map_ov_status(rc);
+    }
+    *out_tokens = tokens;
+    *out_K = K;
+    *out_ref_T = ref_T;
+    return ELIZA_OK;
+}
+
+void eliza_inference_free_tokens(int * tokens) {
+    if (tokens) std::free(tokens);
 }
 
 /* ---- Native VAD (ABI v3) ------------------------------------------- *
@@ -2119,6 +2198,38 @@ export function prepareOmnivoiceFusion({
     ...applyPatches({ patchesDir, llamaCppRoot }),
   ];
 
+  // Stage the Kokoro graft alongside OmniVoice. The Kokoro sources live in
+  // `packages/app-core/scripts/omnivoice-fuse/kokoro-graft/{src,tools}` and
+  // are copied into the same `omnivoice/` directory so they compile into the
+  // same `omnivoice-core` static library + `elizainference` shared library.
+  // See kokoro-llama-cpp-feasibility.md §3.
+  const kokoroStagingDir = new URL("./kokoro-graft/", import.meta.url).pathname;
+  let kokoroSourceCount = 0;
+  if (fs.existsSync(kokoroStagingDir)) {
+    for (const subdir of ["src", "tools"]) {
+      const from = path.join(kokoroStagingDir, subdir);
+      const to = path.join(graftRoot, subdir);
+      if (!fs.existsSync(from)) continue;
+      for (const entry of fs.readdirSync(from, { withFileTypes: true })) {
+        // Only copy kokoro-* and convert_kokoro_* files; never overwrite
+        // OmniVoice's own files in src/ or tools/. The CMake graft block
+        // globs `kokoro-*.cpp` specifically so the two sets stay
+        // distinguishable on the build side.
+        if (
+          !entry.name.startsWith("kokoro") &&
+          !entry.name.startsWith("convert_kokoro")
+        ) {
+          continue;
+        }
+        if (entry.isDirectory()) continue;
+        const srcFile = path.join(from, entry.name);
+        const dstFile = path.join(to, entry.name);
+        fs.copyFileSync(srcFile, dstFile);
+        if (/\.(c|cc|cpp|cxx|h|hpp)$/.test(entry.name)) kokoroSourceCount += 1;
+      }
+    }
+  }
+
   // Count source files actually grafted, for the manifest.
   let sourceCount = 0;
   const stack = [graftRoot];
@@ -2142,5 +2253,6 @@ export function prepareOmnivoiceFusion({
     sourceCount,
     sourceSurface,
     appliedPatches,
+    kokoroSourceCount,
   };
 }
