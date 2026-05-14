@@ -24,6 +24,7 @@ describe("buildOpencodeSpawnConfig", () => {
     expect(config.provider.cerebras.options.baseURL).toBe(
       "https://api.cerebras.ai/v1",
     );
+    expect(config.provider.cerebras.npm).toBe("@ai-sdk/cerebras");
     expect(config.provider.cerebras.options.apiKey).toBe("csk-test");
   });
 
