@@ -57,13 +57,14 @@ describe("Eliza handler setup helpers", () => {
   });
 
   it("keeps plugin-openai TEXT_EMBEDDING for Cerebras fallback", async () => {
-    vi.stubEnv("CONFIGBENCH_AGENT_PROVIDER", "openai");
-    vi.stubEnv("OPENAI_API_KEY", "sk-test");
+    vi.stubEnv("CONFIGBENCH_AGENT_PROVIDER", "cerebras");
+    vi.stubEnv("CEREBRAS_API_KEY", "csk-test");
     vi.stubEnv("OPENAI_BASE_URL", "https://api.cerebras.ai/v1");
 
     const plugin = await loadModelProviderPlugin();
 
     expect(plugin?.name).toBe("openai");
     expect(plugin?.models).toHaveProperty("TEXT_EMBEDDING");
+    expect(process.env.OPENAI_API_KEY).toBe("csk-test");
   });
 });
