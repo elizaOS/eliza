@@ -8,11 +8,11 @@ vi.mock("../api/runtime-mode-client", () => ({
 }));
 
 import { fetchRuntimeModeSnapshot } from "../api/runtime-mode-client";
-import { __resetRuntimeModeCacheForTests } from "./useRuntimeMode";
 import {
-  useDefaultProviderPresets,
   type UseDefaultProviderPresetsResult,
+  useDefaultProviderPresets,
 } from "./useDefaultProviderPresets";
+import { __resetRuntimeModeCacheForTests } from "./useRuntimeMode";
 
 const fetchMock = vi.mocked(fetchRuntimeModeSnapshot);
 

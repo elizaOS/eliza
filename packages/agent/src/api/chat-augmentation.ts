@@ -17,7 +17,7 @@ import crypto from "node:crypto";
 import {
   type AgentRuntime,
   type Content,
-  createMessageMemory,
+  type createMessageMemory,
   ModelType,
   parseJSONObjectFromText,
   type UUID,

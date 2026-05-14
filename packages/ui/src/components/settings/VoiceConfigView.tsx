@@ -1,3 +1,4 @@
+import { ASR_PROVIDERS } from "@elizaos/shared";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   type AsrProvider,
@@ -6,7 +7,6 @@ import {
   type VoiceMode,
   type VoiceProvider,
 } from "../../api";
-import { ASR_PROVIDERS } from "@elizaos/shared";
 import { invokeDesktopBridgeRequest, isElectrobunRuntime } from "../../bridge";
 import {
   getSwabblePlugin,
@@ -37,10 +37,7 @@ import {
 import { Input } from "../ui/input";
 import { SaveFooter } from "../ui/save-footer";
 import { Switch } from "../ui/switch";
-import {
-  AdvancedToggle,
-  useAdvancedSettingsEnabled,
-} from "./AdvancedToggle";
+import { AdvancedToggle, useAdvancedSettingsEnabled } from "./AdvancedToggle";
 import { useSettingsSave } from "./settings-control-primitives";
 
 const DEFAULT_ELEVEN_FAST_MODEL = "eleven_flash_v2_5";
@@ -709,8 +706,8 @@ function AsrAdvancedSection({
       </div>
       {currentAsrProvider === "local-inference" && localStatusBusy && (
         <div className="rounded-xl border border-warn/35 bg-warn/10 px-3 py-2 text-xs-tight leading-5 text-warn">
-          Downloading Qwen3-ASR bundle... ASR will use the cloud fallback
-          until the local model is ready.
+          Downloading Qwen3-ASR bundle... ASR will use the cloud fallback until
+          the local model is ready.
         </div>
       )}
       {currentAsrProvider === "openai" && (
@@ -1094,7 +1091,8 @@ export function VoiceConfigView() {
             Advanced settings
           </span>
           <span className="text-2xs text-muted">
-            Show ASR (speech-to-text) provider picker and per-provider overrides.
+            Show ASR (speech-to-text) provider picker and per-provider
+            overrides.
           </span>
         </div>
         <AdvancedToggle label="Advanced" />

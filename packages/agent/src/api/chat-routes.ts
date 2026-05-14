@@ -53,6 +53,10 @@ import {
   parseFallbackActionBlocks,
 } from "./binance-skill-helpers.ts";
 import {
+  maybeAugmentChatMessageWithDocuments,
+  maybeAugmentChatMessageWithLanguage,
+} from "./chat-augmentation.ts";
+import {
   isClientVisibleNoResponse,
   isNoResponsePlaceholder,
 } from "./chat-text-helpers.ts";
@@ -67,10 +71,6 @@ import {
   isInsufficientCreditsError,
   isInsufficientCreditsMessage,
 } from "./credit-detection.ts";
-import {
-  maybeAugmentChatMessageWithDocuments,
-  maybeAugmentChatMessageWithLanguage,
-} from "./chat-augmentation.ts";
 import {
   buildWalletActionNotExecutedReply,
   cloneWithoutBlockedObjectKeys,
