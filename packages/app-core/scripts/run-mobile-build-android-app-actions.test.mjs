@@ -44,6 +44,21 @@ test("Android App Actions shortcuts are rewritten to the configured package and 
         <parameter android:name="feature" android:key="feature" />
       </intent>
     </capability>
+    <capability android:name="actions.intent.CREATE_MESSAGE">
+      <intent>
+        <url-template android:value="eliza://chat?source=android-app-actions&amp;action=ask{&amp;text}" />
+      </intent>
+    </capability>
+    <capability android:name="actions.intent.CREATE_THING">
+      <intent>
+        <url-template android:value="eliza://lifeops/task/new?source=android-app-actions{&amp;title}" />
+      </intent>
+    </capability>
+    <capability android:name="actions.intent.GET_THING">
+      <intent>
+        <url-template android:value="eliza://chat?source=android-app-actions&amp;action=ask{&amp;query}" />
+      </intent>
+    </capability>
     <shortcut android:shortcutId="eliza_app_action_chat">
       <intent
         android:action="android.intent.action.VIEW"

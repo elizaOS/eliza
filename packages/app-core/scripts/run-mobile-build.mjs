@@ -2491,9 +2491,7 @@ export function prepareIosOverlay({ buildTarget = null } = {}) {
   const syncedFiles = syncPlatformTemplateFiles("ios");
   overlayIos();
   stripSpmIncompatiblePlugins();
-  const includeLlama =
-    isTruthyEnv(process.env.ELIZA_IOS_INCLUDE_LLAMA) ||
-    isTruthyEnv(process.env.ELIZA_IOS_INCLUDE_LLAMA);
+  const includeLlama = shouldIncludeIosLlama();
   if (isIosSimulatorBuildTarget(buildTarget) || !includeLlama) {
     // Strip the SPM LlamaCppCapacitor entry whenever we're not bundling the
     // pod — either because the simulator build replaces it with a CocoaPod
