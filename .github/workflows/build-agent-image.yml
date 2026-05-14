@@ -66,36 +66,20 @@ jobs:
             bun-${{ runner.os }}-
 
       - name: Install dependencies
-        # Intentionally NOT using `--ignore-scripts` here. The per-plugin
-        # `bun run build` loop below invokes binaries (`tsup`, `tsc`) that
-        # Bun resolves through `<plugin>/node_modules/.bin` symlinks, and
-        # those symlinks are only fully populated when the install also
-        # runs the repo postinstall (which calls
-        # `ensure-workspace-symlinks.mjs` + the patch-deps pass). The
-        # heavy submodule fetch is guarded by NODE_LLAMA_CPP_SKIP_DOWNLOAD.
+        # Use `--no-frozen-lockfile` so a downstream lockfile drift in
+        # `develop` doesn't short-circuit the install before postinstall
+        # gets a chance to run (which is what was happening with the
+        # earlier `--frozen-lockfile` + fallback dance — the frozen
+        # install would fail, Bun's silent retry would no-op against
+        # the already-extracted virtual store, and postinstall would
+        # never run, leaving root-level deps like `uuid`, `drizzle-orm`,
+        # and the patched `tsup/dist/rollup.js` unavailable to the
+        # per-plugin build loop). The heavy submodule fetch is guarded
+        # by NODE_LLAMA_CPP_SKIP_DOWNLOAD.
         env:
           NODE_LLAMA_CPP_SKIP_DOWNLOAD: "true"
         run: |
-          install_log="$(mktemp)"
-          if ! bun install --frozen-lockfile 2>&1 | tee "$install_log"; then
-            if grep -q "lockfile had changes, but lockfile is frozen" "$install_log"; then
-              echo "::warning::Bun frozen lockfile drift — validating with non-frozen install + git diff"
-              if bun install --no-frozen-lockfile; then
-                if git diff --quiet -- bun.lock; then
-                  rm -f "$install_log"
-                  exit 0
-                fi
-                echo "::error::bun.lock changed during install — commit the updated lockfile"
-                git diff -- bun.lock
-                rm -f "$install_log"
-                exit 1
-              fi
-            fi
-            cat "$install_log"
-            rm -f "$install_log"
-            exit 1
-          fi
-          rm -f "$install_log"
+          bun install --no-frozen-lockfile
 
       - name: Apply postinstall patches
         # Belt-and-suspenders for the postinstall path: even with
