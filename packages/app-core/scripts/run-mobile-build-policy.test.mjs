@@ -4,11 +4,11 @@ import path from "node:path";
 import test from "node:test";
 
 import {
-  applyAndroidCleartextPolicy,
   ANDROID_CLOUD_STRIPPED_COMPONENTS,
   ANDROID_CLOUD_STRIPPED_NATIVE_PLUGINS,
   ANDROID_CLOUD_STRIPPED_PERMISSIONS,
   ANDROID_PERMISSIONS,
+  applyAndroidCleartextPolicy,
   IOS_OFFICIAL_PODS,
   isIosAppStoreBuild,
   resolveIosBuildTarget,

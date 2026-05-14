@@ -171,10 +171,7 @@ export class SandboxManager {
     const workspaceRoot = path.resolve(this.resolveWorkspaceRoot());
     const absoluteHostPath = path.resolve(hostPath);
     const relative = path.relative(workspaceRoot, absoluteHostPath);
-    if (
-      relative.startsWith("..") ||
-      path.isAbsolute(relative)
-    ) {
+    if (relative.startsWith("..") || path.isAbsolute(relative)) {
       return null;
     }
 

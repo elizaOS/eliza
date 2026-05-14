@@ -2294,11 +2294,13 @@ export const IOS_OFFICIAL_PODS = [
 
 export function resolveIosCustomPods({
   includeLlama = false,
+  includeCompatBunRuntime = false,
   includeFullBunEngine = false,
   appStoreBuild = false,
   includeMobileAgentBridge = false,
 } = {}) {
-  const includeStoreSafeFullBun = includeFullBunEngine;
+  const includeCompatRuntime = !appStoreBuild && (includeCompatBunRuntime || includeFullBunEngine);
+  const includeFullBunRuntime = !appStoreBuild && includeFullBunEngine;
   return [
     ["ElizaosCapacitorAgent", "@elizaos/capacitor-agent"],
     ["ElizaosCapacitorAppblocker", "@elizaos/capacitor-appblocker"],
@@ -2313,12 +2315,12 @@ export function resolveIosCustomPods({
     ["ElizaosCapacitorSwabble", "@elizaos/capacitor-swabble"],
     ["ElizaosCapacitorTalkmode", "@elizaos/capacitor-talkmode"],
     ["ElizaosCapacitorWebsiteblocker", "@elizaos/capacitor-websiteblocker"],
-    ...(includeStoreSafeFullBun
+    ...(includeCompatRuntime
       ? [
           ["ElizaosCapacitorBunRuntime", "@elizaos/capacitor-bun-runtime"],
         ]
       : []),
-    ...(includeStoreSafeFullBun && (!appStoreBuild || includeMobileAgentBridge)
+    ...(includeFullBunRuntime || (!appStoreBuild && includeMobileAgentBridge)
       ? [
           [
             "ElizaosCapacitorMobileAgentBridge",
@@ -2327,7 +2329,7 @@ export function resolveIosCustomPods({
         ]
       : []),
     ...(includeLlama ? [["LlamaCppCapacitor", "llama-cpp-capacitor"]] : []),
-    ...(includeStoreSafeFullBun
+    ...(includeFullBunRuntime
       ? [["ElizaBunEngine", "@elizaos/bun-ios-runtime"]]
       : []),
   ];
@@ -2453,17 +2455,8 @@ function shouldIncludeIosLlama(env = process.env) {
   return !isIosAppStoreBuild(env) && isIosLlamaRequested(env);
 }
 
-function isIosAppStoreLocalRuntimeEnabled(env = process.env) {
-  return !/^(0|false|no|off)$/i.test(
-    String(env.ELIZA_IOS_APP_STORE_LOCAL_RUNTIME ?? "1").trim(),
-  );
-}
-
 function shouldIncludeIosFullBunEngine(env = process.env) {
-  return (
-    isFullIosBunEngineRequested(env) ||
-    (isIosAppStoreBuild(env) && isIosAppStoreLocalRuntimeEnabled(env))
-  );
+  return !isIosAppStoreBuild(env) && isFullIosBunEngineRequested(env);
 }
 
 export function isIosAppStoreBuild(env = process.env) {
@@ -2517,14 +2510,12 @@ function generatePodfile() {
   // LlamaCppCapacitor ships an on-device llama.cpp xcframework. The App Store
   // target ships the no-JIT Bun runtime by default, but still omits llama.cpp
   // unless explicitly requested because it is a separate native model backend.
-  const includeLlama =
-    isTruthyEnv(process.env.ELIZA_IOS_INCLUDE_LLAMA) ||
-    isTruthyEnv(process.env.ELIZA_IOS_INCLUDE_LLAMA);
+  const includeLlama = shouldIncludeIosLlama();
   const appStoreBuild = isIosAppStoreBuild();
   const includeFullBunEngine = shouldIncludeIosFullBunEngine();
-  const includeMobileAgentBridge = isTruthyEnv(
-    process.env.ELIZA_IOS_INCLUDE_MOBILE_AGENT_BRIDGE,
-  );
+  const includeMobileAgentBridge =
+    !appStoreBuild &&
+    isTruthyEnv(process.env.ELIZA_IOS_INCLUDE_MOBILE_AGENT_BRIDGE);
   const customPods = resolveIosCustomPods({
     includeLlama,
     includeFullBunEngine,
@@ -2543,7 +2534,7 @@ function generatePodfile() {
   }
   if (appStoreBuild) {
     console.log(
-      "[mobile-build] iOS Podfile: App Store build keeps local Bun runtime and omits mobile-agent tunnel bridge unless ELIZA_IOS_INCLUDE_MOBILE_AGENT_BRIDGE=1",
+      "[mobile-build] iOS Podfile: App Store build keeps local Bun runtime and omits mobile-agent tunnel bridge",
     );
   }
   const deploymentTarget = resolveIosDeploymentTarget();

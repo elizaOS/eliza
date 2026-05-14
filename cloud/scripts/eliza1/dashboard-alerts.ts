@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -237,8 +238,15 @@ async function verifyDashboardRender(dashboardUrl?: string) {
   const { chromium } = await import("playwright");
   const browser = await chromium.launch({ headless: true });
   try {
-    const page = await browser.newPage();
+    const context = await browser.newContext();
+    const authCookies = createDashboardTestAuthCookies(dashboardUrl);
+    if (authCookies.length > 0) {
+      await context.addCookies(authCookies);
+    }
+    const page = await context.newPage();
     await page.goto(dashboardUrl, { waitUntil: "networkidle", timeout: 60_000 });
+    await page.locator('[data-alert-severity="critical"]').first().waitFor({ timeout: 30_000 }).catch(() => {});
+    await page.locator('[data-alert-severity="warning"]').first().waitFor({ timeout: 30_000 }).catch(() => {});
     const redStateRendered = (await page.locator('[data-alert-severity="critical"]').count()) > 0;
     const yellowStateRendered = (await page.locator('[data-alert-severity="warning"]').count()) > 0;
     return {
@@ -250,6 +258,54 @@ async function verifyDashboardRender(dashboardUrl?: string) {
   } finally {
     await browser.close();
   }
+}
+
+function createDashboardTestAuthCookies(dashboardUrl: string) {
+  if (process.env.ELIZA1_DASHBOARD_TEST_AUTH !== "true") return [];
+  const userId = process.env.ELIZA1_DASHBOARD_TEST_USER_ID?.trim();
+  const organizationId = process.env.ELIZA1_DASHBOARD_TEST_ORGANIZATION_ID?.trim();
+  const secret = process.env.PLAYWRIGHT_TEST_AUTH_SECRET?.trim();
+  if (!userId || !organizationId || !secret || secret.length < 16) return [];
+
+  const claims = {
+    userId,
+    organizationId,
+    exp: Math.floor(Date.now() / 1000) + 60 * 60,
+  };
+  const payload = Buffer.from(JSON.stringify(claims)).toString("base64url");
+  const signature = crypto.createHmac("sha256", secret).update(payload).digest("base64url");
+  const url = new URL(dashboardUrl);
+  const secure = url.protocol === "https:";
+  const domain = url.hostname;
+  return [
+    {
+      name: "eliza-test-auth",
+      value: "1",
+      domain,
+      path: "/",
+      secure,
+      httpOnly: false,
+      sameSite: "Lax" as const,
+    },
+    {
+      name: "steward-authed",
+      value: "1",
+      domain,
+      path: "/",
+      secure,
+      httpOnly: false,
+      sameSite: "Lax" as const,
+    },
+    {
+      name: "eliza-test-session",
+      value: `${payload}.${signature}`,
+      domain,
+      path: "/",
+      secure,
+      httpOnly: true,
+      sameSite: "Lax" as const,
+    },
+  ];
 }
 
 async function main() {

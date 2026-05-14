@@ -309,6 +309,104 @@ function createFetchClient(endpoint: string, apiKey: string): CerebrasClient {
   };
 }
 
+function buildJsonMessages(
+  messages: CerebrasRequest["messages"],
+  parameters: JsonValue,
+): CerebrasRequest["messages"] {
+  const out = messages.map((message) => ({ ...message }));
+  const jsonInstruction =
+    "Return only a JSON object that matches the requested schema. Do not include markdown fences, prose, comments, or tool-call wrappers.";
+  if (out[0]?.role === "system") {
+    out[0] = {
+      ...out[0],
+      content: `${out[0].content}\n${jsonInstruction}`,
+    };
+  } else {
+    out.unshift({ role: "system", content: jsonInstruction });
+  }
+  out.push({
+    role: "user",
+    content: [
+      "Use this JSON schema for the response object:",
+      JSON.stringify(parameters),
+    ].join("\n"),
+  });
+  return out;
+}
+
+function responseFormatName(toolName: string): string {
+  const cleaned = toolName.replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 64);
+  return cleaned || "eliza_1_response";
+}
+
+function extractRawOutput(
+  response: CerebrasResponse,
+  attemptKind: CerebrasAttemptKind,
+): ExtractedOutput {
+  const first = response.choices[0];
+  const toolCalls = first?.message.tool_calls ?? [];
+  for (const toolCall of toolCalls) {
+    const args = toolCall.function.arguments;
+    if (typeof args === "string" && args.trim().length > 0) {
+      return {
+        rawOutput: args,
+        tokens: response.usage?.completion_tokens ?? approxTokens(args),
+        emptyDiagnostic: null,
+      };
+    }
+  }
+
+  const content = first?.message.content;
+  if (typeof content === "string" && content.trim().length > 0) {
+    return {
+      rawOutput: content,
+      tokens: response.usage?.completion_tokens ?? approxTokens(content),
+      emptyDiagnostic: null,
+    };
+  }
+
+  const tokens = response.usage?.completion_tokens ?? 0;
+  return {
+    rawOutput: "",
+    tokens,
+    emptyDiagnostic: describeEmptyResponse(response, attemptKind, tokens),
+  };
+}
+
+function describeEmptyResponse(
+  response: CerebrasResponse,
+  attemptKind: CerebrasAttemptKind,
+  completionTokens: number,
+): string {
+  const first = response.choices[0];
+  const content = first?.message.content;
+  const contentChars = typeof content === "string" ? content.length : 0;
+  const contentState =
+    content === null
+      ? "null"
+      : typeof content === "string"
+        ? `${contentChars} chars`
+        : "missing";
+  const details = [
+    `choices=${response.choices.length}`,
+    `finish_reason=${first?.finish_reason ?? "missing"}`,
+    `tool_calls=${first?.message.tool_calls?.length ?? 0}`,
+    `content=${contentState}`,
+    `completion_tokens=${completionTokens}`,
+  ].join(", ");
+  return `cerebras ${attemptKind} returned empty output (${details})`;
+}
+
+function formatErrorMessage(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  if (typeof err === "string") return err;
+  try {
+    return JSON.stringify(err);
+  } catch {
+    return String(err);
+  }
+}
+
 /**
  * Translate the bench's `SkeletonHint` into a JSON schema usable as the
  * function-tool's `parameters`. Wraps the user-provided `jsonSchema` when one
