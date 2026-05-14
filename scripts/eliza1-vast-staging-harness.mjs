@@ -238,11 +238,25 @@ function mergeStreamingToolCall(acc, delta) {
 
 async function chatCompletion(args, body, baseUrl = args.baseUrl) {
   const started = performance.now();
-  const res = await fetch(`${baseUrl}/v1/chat/completions`, {
-    method: "POST",
-    headers: authHeaders(args),
-    body: JSON.stringify(body),
-  });
+  let res;
+  try {
+    res = await fetch(`${baseUrl}/v1/chat/completions`, {
+      method: "POST",
+      headers: authHeaders(args),
+      body: JSON.stringify(body),
+    });
+  } catch (error) {
+    return {
+      ok: false,
+      status: 0,
+      text: String(error?.message ?? error),
+      json: null,
+      latencyMs: Math.round(performance.now() - started),
+      content: "",
+      toolCalls: [],
+      usage: null,
+    };
+  }
   const text = await res.text();
   const latencyMs = Math.round(performance.now() - started);
   let json = null;
