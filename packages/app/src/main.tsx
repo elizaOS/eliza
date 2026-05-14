@@ -1806,7 +1806,7 @@ function initializeMobileRuntimeModeListener(): void {
     if (mode === "cloud-hybrid" || mode === "local") {
       stopMobileDeviceBridge();
       void stopMobileAgentTunnel();
-      void initializeMobileDeviceBridge();
+      if (isAndroid) void initializeMobileDeviceBridge();
       void configureMobileBackgroundRunner();
       return;
     }

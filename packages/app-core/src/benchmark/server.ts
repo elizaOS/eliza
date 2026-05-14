@@ -1414,6 +1414,7 @@ export async function startBenchmarkServer() {
       const actions = coerceActions(result.responseContent?.actions);
       const params = coerceParams(result.responseContent?.params);
       const capturedAction = getCapturedAction();
+      const capturedActions = getCapturedActions();
 
       // Map captured Eliza actions into lifeops_bench tool calls.
       // Strategy: each action name in `actions` is treated as a tool name;
@@ -1432,20 +1433,27 @@ export async function startBenchmarkServer() {
       // shape: `{tool_name, arguments}`). Unwrap that capture into a real tool
       // call against the LifeOps fake backend instead of forwarding the
       // generic BENCHMARK_ACTION sentinel (which the fake backend rejects).
-      if (
-        capturedAction &&
-        typeof capturedAction.toolName === "string" &&
-        capturedAction.toolName.trim().length > 0
-      ) {
+      const capturedToolNames = new Set<string>();
+      for (const action of capturedActions) {
+        if (
+          !action ||
+          typeof action.toolName !== "string" ||
+          action.toolName.trim().length === 0
+        ) {
+          continue;
+        }
+        const args = stripRuntimeActionContext(
+          capturedLifeOpsActionArguments(action),
+        );
+        if (!isMeaningfulLifeOpsCapture(args)) {
+          continue;
+        }
         toolCalls.push({
-          id: "call_0",
-          name: capturedAction.toolName,
-          arguments:
-            capturedAction.arguments &&
-            typeof capturedAction.arguments === "object"
-              ? capturedAction.arguments
-              : {},
+          id: `call_${toolCalls.length}`,
+          name: action.toolName,
+          arguments: args,
         });
+        capturedToolNames.add(action.toolName);
       }
 
       // Also pass through any directly-named actions (e.g. when the planner
@@ -1462,9 +1470,10 @@ export async function startBenchmarkServer() {
         )
           continue;
         if (
-          capturedAction &&
-          typeof capturedAction.toolName === "string" &&
-          capturedAction.toolName === name
+          capturedToolNames.has(name) ||
+          (capturedAction &&
+            typeof capturedAction.toolName === "string" &&
+            capturedAction.toolName === name)
         )
           continue;
         const paramsForAction = params[name];
