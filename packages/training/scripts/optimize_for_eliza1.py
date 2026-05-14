@@ -189,18 +189,25 @@ def _run_apply_stage(
     prior: list[StageResult],
 ) -> StageResult:
     out_dir = _stage_output_dir(plan.output_dir, stage)
+    actual_stage = stage
+    if (
+        stage == "turboquant"
+        and plan.has_cuda
+        and os.environ.get("ELIZA_FORCE_PURE_TURBOQUANT", "").strip() != "1"
+    ):
+        actual_stage = "fused_turboquant"
     sidecar_filename = {
         "polarquant": "polarquant_artifacts.safetensors",
         "qjl": "qjl_config.json",
         "turboquant": "turboquant.json",
         "fused_turboquant": "turboquant.json",
-    }.get(stage)
+    }.get(actual_stage)
 
     # Skip TurboQuant on CPU-only — Triton + the pure-PyTorch path both
     # need CUDA when calibrating and importing turbokv. We document the
     # skip in the manifest so the consumer knows the V-cache config is
     # the framework default rather than a calibrated profile.
-    if stage in ("turboquant", "fused_turboquant") and not plan.has_cuda:
+    if actual_stage in ("turboquant", "fused_turboquant") and not plan.has_cuda:
         log.warning(
             "stage %s requires CUDA; running in skip mode (manifest will "
             "fall back to default tbq3_0 V-cache config)",
@@ -216,7 +223,10 @@ def _run_apply_stage(
             skip_reason="CUDA unavailable; using upstream defaults",
         )
 
-    apply_script = _resolve_apply_script(stage)
+    if actual_stage != stage:
+        log.info("stage %s: CUDA detected, using %s", stage, actual_stage)
+
+    apply_script = _resolve_apply_script(actual_stage)
     input_model = _select_input_for_stage(plan, stage, prior)
 
     cmd: list[str] = [
@@ -236,10 +246,12 @@ def _run_apply_stage(
     # raise on a CPU box. Force ``--device cpu`` when CUDA isn't
     # available so the dry-run path here mirrors the production CPU-only
     # smoke target.
-    if stage in ("qjl", "turboquant", "fused_turboquant") and not plan.has_cuda:
+    if actual_stage in ("qjl", "turboquant", "fused_turboquant") and not plan.has_cuda:
         cmd += ["--device", "cpu"]
 
     cmd += plan.extra_apply_args.get(stage, [])
+    if actual_stage != stage:
+        cmd += plan.extra_apply_args.get(actual_stage, [])
 
     if plan.dry_run:
         cmd += ["--dry-run"]

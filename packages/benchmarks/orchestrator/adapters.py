@@ -49,6 +49,9 @@ IGNORED_BENCHMARK_DIRS = {
     "hermes-adapter",
     "openclaw-adapter",
     "lib",
+    # Stale scaffold shim; the actual registry-backed MMAU benchmark lives in
+    # mmau-audio and is exposed as the `mmau` benchmark id.
+    "mmau",
     "nl2repo",
     "orchestrator",
     "qwen-claw-bench",
@@ -1899,6 +1902,7 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
         "openclaw_bench": "openclaw-benchmark",
         "lifeops_bench": "lifeops-bench",
         "voicebench_quality": "voicebench-quality",
+        "mmau": "mmau-audio",
         "mmlu": "standard",
         "humaneval": "standard",
         "gsm8k": "standard",

@@ -35,12 +35,19 @@ import logging
 import math
 import sys
 from pathlib import Path
-from typing import Callable
+from typing import TYPE_CHECKING, Any, Callable
 
 import torch
 import torch.nn as nn
-from transformers.cache_utils import Cache
 from transformers.tokenization_utils_base import PreTrainedTokenizerBase
+
+if TYPE_CHECKING:
+    try:
+        from transformers.cache_utils import Cache
+    except ModuleNotFoundError:  # pragma: no cover - older Transformers typing only
+        Cache = Any  # type: ignore[assignment]
+else:
+    Cache = Any
 
 _HERE = Path(__file__).resolve().parent
 if str(_HERE) not in sys.path:

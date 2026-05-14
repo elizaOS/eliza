@@ -610,7 +610,7 @@ def finalize(bundle_dir: Path, repo_root: Path) -> dict[str, Any]:
     hf = dict(evidence.get("hf") or {})
     hf["repoId"] = ELIZA_1_HF_REPO
     hf.setdefault("pathPrefix", f"bundles/{tier}")
-    hf["status"] = "ready" if publish_eligible else f"blocked-{release_state}"
+    hf["status"] = "upload-ready" if publish_eligible else f"blocked-{release_state}"
     evidence["hf"] = hf
 
     rel_path.parent.mkdir(parents=True, exist_ok=True)

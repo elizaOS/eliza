@@ -956,8 +956,30 @@ def _h_mail_send(world: LifeWorld, kw: dict[str, Any], _name: str) -> dict[str, 
 
 
 def _h_mail_archive(world: LifeWorld, kw: dict[str, Any], _name: str) -> dict[str, Any]:
-    msg = world.archive_email(kw["message_id"])
-    return {"id": msg.id, "folder": msg.folder}
+    msg_id = kw.get("message_id") or kw.get("messageId") or kw.get("id")
+    thread_id = kw.get("thread_id") or kw.get("threadId")
+    if msg_id is not None:
+        msg = world.archive_email(str(msg_id))
+        return {"id": msg.id, "folder": msg.folder}
+    if thread_id is not None:
+        return _archive_email_thread(world, str(thread_id))
+    raise KeyError("MAIL.archive needs message_id or thread_id")
+
+
+def _h_mail_archive_thread(world: LifeWorld, kw: dict[str, Any], _name: str) -> dict[str, Any]:
+    thread_id = kw.get("threadId") or kw.get("thread_id") or kw.get("id") or kw.get("target")
+    if thread_id is None:
+        raise KeyError("ARCHIVE_EMAIL_THREAD needs threadId or thread_id")
+    return _archive_email_thread(world, str(thread_id))
+
+
+def _archive_email_thread(world: LifeWorld, thread_id: str) -> dict[str, Any]:
+    archived: list[str] = []
+    for eid, em in list(world.emails.items()):
+        if em.thread_id == thread_id and em.folder != "archive":
+            world.archive_email(eid)
+            archived.append(eid)
+    return {"thread_id": thread_id, "archived_ids": archived}
 
 
 def _h_mail_mark_read(world: LifeWorld, kw: dict[str, Any], _name: str) -> dict[str, Any]:
@@ -1557,12 +1579,7 @@ def _manage_email_via_message(world: LifeWorld, kw: dict[str, Any]) -> dict[str,
             msg = world.archive_email(msg_id)
             return {"id": msg.id, "folder": msg.folder}
         if thread_id is not None:
-            archived: list[str] = []
-            for eid, em in list(world.emails.items()):
-                if em.thread_id == thread_id and em.folder != "archive":
-                    world.archive_email(eid)
-                    archived.append(eid)
-            return {"thread_id": thread_id, "archived_ids": archived}
+            return _archive_email_thread(world, str(thread_id))
         raise KeyError("MESSAGE/manage(archive) needs messageId or threadId")
     if op == "mark_read":
         if msg_id is None:
@@ -2664,6 +2681,7 @@ _ACTION_HANDLERS: dict[
     "CALENDAR.cancel": _h_calendar_cancel,
     "MAIL.send": _h_mail_send,
     "MAIL.archive": _h_mail_archive,
+    "ARCHIVE_EMAIL_THREAD": _h_mail_archive_thread,
     "MAIL.mark_read": _h_mail_mark_read,
     "MAIL.star": _h_mail_star,
     "MAIL.trash": _h_mail_trash,

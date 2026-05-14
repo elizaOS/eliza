@@ -1,9 +1,9 @@
 /**
  * Runtime-side exports for plugin-local-inference.
  *
- * Consumers (app-core/runtime/eliza.ts, agent bootstrap) import from
- * `@elizaos/plugin-local-inference/runtime` to wire boot-time handler
- * registration, embedding warm-up policy, and the mobile inference gate.
+ * The package root re-exports these helpers so app consumers use the public
+ * `@elizaos/plugin-local-inference` barrel for boot-time handler registration,
+ * embedding warm-up policy, and the mobile inference gate.
  */
 
 export {

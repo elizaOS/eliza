@@ -111,8 +111,7 @@ export {
 import {
   handleLocalInferenceCompatRoutes,
   handleLocalInferenceTtsRoute,
-} from "@elizaos/plugin-local-inference/routes";
-import { deviceBridge } from "@elizaos/plugin-local-inference/services";
+} from "@elizaos/plugin-local-inference";
 import {
   ensureRuntimeSqlCompatibility,
   executeRawSql,
@@ -154,13 +153,6 @@ const lazyEnsureTTS = () =>
   import("../runtime/ensure-text-to-speech-handler.js").then(
     (m) => m.ensureTextToSpeechHandler,
   );
-
-const LOCAL_TTS_PROVIDER_IDS = [
-  "eliza-local-inference",
-  "capacitor-llama",
-  "eliza-device-bridge",
-  "eliza-aosp-llama",
-] as const;
 
 import { clearCloudSecrets, getCloudSecret } from "@elizaos/shared";
 import { getStartupEmbeddingAugmentation } from "../runtime/startup-overlay.js";
@@ -1032,7 +1024,7 @@ export function patchHttpCreateServerForCompat(): () => void {
     // HTTP server created through this patched factory. Safe to call on
     // every server — `attachToHttpServer` is idempotent and only installs
     // the upgrade listener once. Imported dynamically to avoid static boundary violation.
-    void import("@elizaos/plugin-local-inference/services")
+    void import("@elizaos/plugin-local-inference")
       .then(({ deviceBridge }) => deviceBridge.attachToHttpServer(created))
       .catch((err: unknown) => {
         logger.warn(
