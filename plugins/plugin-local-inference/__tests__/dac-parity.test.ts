@@ -22,7 +22,14 @@
  */
 
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -142,9 +149,7 @@ function findCodecGguf(fixture: DacParityFixture): string | null {
     if (dir === undefined) break;
     let entries: string[];
     try {
-      // require, not import, so this stays sync in the test body.
-      const fs = require("node:fs") as typeof import("node:fs");
-      entries = fs.readdirSync(dir);
+      entries = readdirSync(dir);
     } catch {
       continue;
     }
@@ -152,8 +157,7 @@ function findCodecGguf(fixture: DacParityFixture): string | null {
       const full = path.join(dir, name);
       let stat: import("node:fs").Stats;
       try {
-        const fs = require("node:fs") as typeof import("node:fs");
-        stat = fs.statSync(full);
+        stat = statSync(full);
       } catch {
         continue;
       }
@@ -282,24 +286,13 @@ function resolveHarness(): { ok: ResolvedHarness } | { skip: string } {
     };
   }
   if (!existsSync(fixture.baseline_wav_path)) {
-    // Fall back to the inline prefix if the full WAV is gone.
-    if (
-      Array.isArray(fixture.baseline_inline_prefix) &&
-      fixture.baseline_inline_prefix.length > 0
-    ) {
-      return {
-        ok: {
-          fixture,
-          codecBin: "",
-          codecGguf: "",
-          inputRvqPath,
-          baselineSamples: Float32Array.from(fixture.baseline_inline_prefix),
-          baselineSampleRate: fixture.baseline_sample_rate,
-        },
-      };
-    }
+    // The fixture JSON carries a small inline-prefix sample slice for
+    // documentation, but full numeric parity needs the gitignored WAV.
+    // When the WAV is missing, skip cleanly rather than silently
+    // comparing only the prefix — a partial comparison would hide
+    // regressions outside the first ~10ms of audio.
     return {
-      skip: `baseline WAV absent at ${fixture.baseline_wav_path} and no inline prefix in fixture.`,
+      skip: `baseline WAV absent at ${fixture.baseline_wav_path}. Re-run gen_dac_parity_fixture.mjs against a pre-merge omnivoice-codec.`,
     };
   }
   const codecBin = findCurrentCodec();
@@ -337,28 +330,11 @@ const resolved = resolveHarness();
 describe.skipIf("skip" in resolved)(
   "DAC ConvTranspose1d parity (#7660)",
   () => {
-    // When the harness resolves but the codec binary is empty (because
-    // only the inline prefix is available) we fall through to a
-    // skip-with-note inside the test body — `describe.skipIf` above
-    // only guards the catastrophic-missing-fixture case.
-
     it("current omnivoice-codec decode matches captured pre-merge baseline", () => {
       if ("skip" in resolved) {
         throw new Error("describe.skipIf should have skipped this branch");
       }
       const harness = resolved.ok;
-
-      // Inline-prefix-only mode (baseline WAV missing). Compare against
-      // the inline prefix only — this still detects most regressions
-      // because the first ~10ms of the decode walks every block 0
-      // upsampling step.
-      if (harness.codecBin === "") {
-        // Without a current codec we cannot compare; skip cleanly.
-        console.warn(
-          "[dac-parity] inline-prefix mode: current omnivoice-codec not available, skipping numeric compare",
-        );
-        return;
-      }
 
       // Run the current codec against the fixed input RVQ.
       const tmpDir = mkdtempSync(path.join(os.tmpdir(), "dac-parity-"));
