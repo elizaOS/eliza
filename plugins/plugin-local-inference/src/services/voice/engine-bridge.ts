@@ -69,7 +69,6 @@ import {
 	SharedResourceRegistry,
 } from "./shared-resources";
 import {
-	DEFAULT_VOICE_ID,
 	DEFAULT_VOICE_PRESET_REL_PATH,
 	SpeakerPresetCache,
 } from "./speaker-preset-cache";

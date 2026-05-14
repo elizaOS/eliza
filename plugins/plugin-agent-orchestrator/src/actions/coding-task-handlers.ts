@@ -897,8 +897,7 @@ export async function handleMultiAgent(
 
   // Read LLM provider once before the spawn loop to avoid repeated sync I/O
   // and ensure consistent provider selection across all agents in this swarm.
-  const llmProvider =
-    readConfigEnvKey("ELIZA_LLM_PROVIDER") || "subscription";
+  const llmProvider = readConfigEnvKey("ELIZA_LLM_PROVIDER") || "subscription";
 
   const coordinator = getCoordinator(runtime);
   const threadTitle = explicitLabel || generateLabel(repo, userRequest);
