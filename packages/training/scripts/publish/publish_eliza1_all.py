@@ -49,7 +49,7 @@ if str(TRAINING_ROOT) not in sys.path:
 
 from scripts.manifest import eliza1_manifest as M  # noqa: E402
 
-ORG = "elizaos"
+ORG = "elizalabs"
 
 # Active Eliza-1 device bundles. Retired Qwen3 size-specific repos are handled
 # by deprecation tooling, not by the current release publisher.

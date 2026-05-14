@@ -111,10 +111,10 @@ def test_eliza1_tier_ids_are_canonical():
         "dflash",
         "turbo3_tcq",
     )
-    assert VOICE_BACKENDS_BY_TIER["0_8b"] == ("kokoro",)
-    assert VOICE_BACKENDS_BY_TIER["2b"] == ("kokoro",)
-    assert VOICE_BACKENDS_BY_TIER["4b"] == ("kokoro",)
-    assert VOICE_BACKENDS_BY_TIER["9b"] == ("kokoro", "omnivoice")
+    assert VOICE_BACKENDS_BY_TIER["0_8b"] == ("omnivoice", "kokoro")
+    assert VOICE_BACKENDS_BY_TIER["2b"] == ("omnivoice", "kokoro")
+    assert VOICE_BACKENDS_BY_TIER["4b"] == ("omnivoice", "kokoro")
+    assert VOICE_BACKENDS_BY_TIER["9b"] == ("omnivoice", "kokoro")
     assert VOICE_BACKENDS_BY_TIER["27b-1m"] == ("omnivoice",)
 
 
