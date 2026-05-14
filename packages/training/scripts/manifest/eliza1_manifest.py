@@ -180,14 +180,12 @@ VOICE_QUANT_BY_TIER: Final[Mapping[str, str]] = {
 # of ``OMNIVOICE_QUANT_LADDER_BY_TIER`` in
 # ``packages/shared/src/local-inference/catalog.ts``. The downloader picks
 # the appropriate level from this ladder at install time based on the
-# host's RAM/SoC class (no silent fallback — AGENTS.md §3). Tiers whose
-# active tier carries OmniVoice so the fused voice-profile / expressive TTS
-# path is always available; small tiers keep a narrow ladder and also ship
-# Kokoro as a fallback.
+# host's RAM/SoC class (no silent fallback — AGENTS.md §3). Kokoro-only
+# small tiers publish no OmniVoice ladder.
 VOICE_QUANT_LADDER_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
-    "0_8b": ("Q3_K_M", "Q4_K_M", "Q5_K_M"),
-    "2b": ("Q3_K_M", "Q4_K_M", "Q5_K_M"),
-    "4b": ("Q3_K_M", "Q4_K_M", "Q5_K_M"),
+    "0_8b": (),
+    "2b": (),
+    "4b": (),
     "9b": ("Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"),
     "27b": ("Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"),
     "27b-256k": ("Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"),

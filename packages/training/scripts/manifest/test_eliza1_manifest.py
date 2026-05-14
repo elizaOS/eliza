@@ -571,7 +571,7 @@ def _base_v1_provenance() -> dict:
             "asr": {"repo": "ggml-org/Qwen3-ASR-0.6B-GGUF"},
             "vad": {"repo": "ggml-org/whisper-vad"},
             "vision": {"repo": "unsloth/Qwen3.5-4B-GGUF", "file": "mmproj-F16.gguf"},
-            "drafter": {"repo": "elizalabs/eliza-1", "file": "bundles/4b/dflash/drafter-4b.gguf"},
+            "drafter": {"repo": "elizaos/eliza-1", "file": "bundles/4b/dflash/drafter-4b.gguf"},
         },
     }
 
@@ -667,19 +667,18 @@ def test_provenance_rejects_unknown_component_slot():
 
 
 def test_voice_quant_ladder_covers_every_tier():
-    """Every tier in VOICE_QUANT_BY_TIER must have a ladder entry, even if it
-    is empty (Kokoro-only tiers). Missing keys would silently break the
+    """Every tier in VOICE_QUANT_BY_TIER must have a ladder entry. Missing
+    keys would silently break the
     stage_eliza1_bundle_assets.py ladder loop."""
     assert set(VOICE_QUANT_LADDER_BY_TIER.keys()) == set(VOICE_QUANT_BY_TIER.keys())
 
 
-def test_voice_quant_ladder_mobile_tiers_has_mobile_kokoro_policy():
-    """Mobile tiers (0_8b / 2b / 4b) ship OmniVoice first plus Kokoro
-    fallback, so they publish the narrow mobile OmniVoice ladder."""
-    expected = ("Q3_K_M", "Q4_K_M", "Q5_K_M")
+def test_voice_quant_ladder_mobile_tiers_have_narrow_omnivoice_policy():
+    """Mobile tiers (0_8b / 2b / 4b) publish a narrow OmniVoice ladder and
+    keep Kokoro as fallback."""
     for tier in ("0_8b", "2b", "4b"):
-        assert VOICE_QUANT_LADDER_BY_TIER[tier] == expected
-        assert VOICE_BACKENDS_BY_TIER[tier] == ("kokoro",)
+        assert VOICE_QUANT_LADDER_BY_TIER[tier] == ("Q3_K_M", "Q4_K_M", "Q5_K_M")
+        assert VOICE_BACKENDS_BY_TIER[tier] == ("omnivoice", "kokoro")
 
 
 def test_voice_quant_ladder_large_tiers_have_full_kquant_ladder():
