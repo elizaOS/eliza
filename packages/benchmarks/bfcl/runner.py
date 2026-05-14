@@ -26,7 +26,13 @@ from typing import Optional
 from benchmarks.bfcl.agent import BFCLAgent, MockBFCLAgent
 from benchmarks.bfcl.dataset import BFCLDataset
 from benchmarks.bfcl.evaluators import ASTEvaluator, ExecutionEvaluator, RelevanceEvaluator
-from benchmarks.bfcl.executable_runtime import RuntimeNetworkRequired, decode_python_calls
+from benchmarks.bfcl.executable_runtime import (
+    MEMORY_PREREQ_CONVERSATION_PATH,
+    RESTCallSpec,
+    RESTRateLimited,
+    RuntimeNetworkRequired,
+    decode_python_calls,
+)
 from benchmarks.bfcl.metrics import MetricsCalculator
 from benchmarks.bfcl.reporting import BFCLReporter
 from benchmarks.bfcl.types import (
@@ -289,7 +295,7 @@ class BFCLRunner:
         """Dispatch a test to the correct evaluation path."""
         cat = test_case.category
 
-        # 1) Network-gated categories
+        # 1) Network-gated categories (without enable_network)
         if cat in NETWORK_REQUIRED_CATEGORIES and not self.config.enable_network:
             return self._skip(
                 test_case,
@@ -297,23 +303,21 @@ class BFCLRunner:
                 f"Category {cat.value} requires --enable-network",
             )
 
-        # 2) Agentic memory categories — we don't vendor the full upstream
-        # memory scaffolding (snapshot dirs, prereq conversations). Skip them
-        # with a clear reason so they're excluded from the denominator and
-        # reported in the run summary.
+        # 2) Memory categories — drive the snapshot-backed runtime and
+        # agentic_checker. Vector + rec_sum need optional deps; missing
+        # deps surface as SKIPPED_UNSUPPORTED via the eval path.
         if cat in MEMORY_CATEGORIES:
-            return self._skip(
-                test_case,
-                TestStatus.SKIPPED_UNSUPPORTED,
-                "Memory categories require upstream `bfcl_eval.utils` "
-                "scaffolding not vendored.",
-            )
+            return await self._run_memory_test(test_case)
 
-        # 3) Multi-turn
+        # 3) REST API with enable_network — actually hit the endpoint.
+        if cat == BFCLCategory.REST_API and self.config.enable_network:
+            return await self._run_rest_test(test_case)
+
+        # 4) Multi-turn
         if cat in MULTI_TURN_CATEGORIES:
             return await self._run_multi_turn(test_case)
 
-        # 4) Single-turn (incl. web_search if --enable-network was set,
+        # 5) Single-turn (incl. web_search if --enable-network was set,
         # though in practice the model just sees the question text).
         return await self._run_single_turn(test_case)
 
@@ -542,165 +546,145 @@ class BFCLRunner:
         )
 
     # ------------------------------------------------------------------
-    # Summary
+    # Memory evaluation
     # ------------------------------------------------------------------
-    def _generate_summary(
-        self,
-        metrics: BFCLMetrics,
-        baseline_comparison: dict[str, float],
-    ) -> dict[str, str | list[str]]:
-        """Generate human-readable summary."""
-        summary: dict[str, str | list[str]] = {}
+    async def _run_memory_test(self, test_case: BFCLTestCase) -> BFCLResult:
+        """Drive a memory test against the snapshot-backed runtime.
 
-        if metrics.overall_score >= 0.8:
-            summary["status"] = "excellent"
-        elif metrics.overall_score >= 0.6:
-            summary["status"] = "good"
-        elif metrics.overall_score >= 0.4:
-            summary["status"] = "fair"
-        else:
-            summary["status"] = "needs_improvement"
+        Strategy:
+          * Load the matching prereq fixture (memory_<scenario>.json) and
+            extract the user-content strings as ``prereq_messages`` — these
+            seed the memory backend with realistic state.
+          * Ask the agent the test question (single user turn).
+          * Pull out python-list-of-calls from the response (if any) and
+            execute them against the runtime.
+          * Score the response with agentic_checker against the
+            ``possible_answers`` extracted from the test case metadata or
+            ground truth.
+        """
+        from benchmarks.bfcl.executable_runtime import extract_memory_backend_type
 
-        findings: list[str] = []
-        findings.append(
-            f"Overall score: {metrics.overall_score:.2%} "
-            f"(AST: {metrics.ast_accuracy:.2%}, Exec: {metrics.exec_accuracy:.2%})"
+        cat_name = test_case.category.value
+        try:
+            backend = extract_memory_backend_type(cat_name)
+        except ValueError:
+            return self._skip(
+                test_case,
+                TestStatus.SKIPPED_UNSUPPORTED,
+                f"Cannot extract memory backend from {cat_name}",
+            )
+
+        possible_answers = self._extract_memory_possible_answers(test_case)
+        if not possible_answers:
+            return self._skip(
+                test_case,
+                TestStatus.SKIPPED_NO_GROUND_TRUTH,
+                "Memory test has no possible_answer ground truth",
+            )
+
+        scenario = self._extract_memory_scenario(test_case)
+        prereq_msgs = self._load_memory_prereq_messages(scenario)
+
+        predicted_calls, raw_response, latency_ms = await self.agent.query(test_case)
+
+        tool_calls = decode_python_calls(raw_response)
+        if not tool_calls:
+            for fc in predicted_calls:
+                args_repr = ", ".join(f"{k}={v!r}" for k, v in fc.arguments.items())
+                tool_calls.append(f"{fc.name}({args_repr})")
+
+        try:
+            passed, details = self.exec_evaluator.evaluate_memory(
+                backend=backend,
+                scenario=scenario or "scenario",
+                test_id=test_case.id,
+                prereq_messages=prereq_msgs,
+                agent_tool_calls=tool_calls,
+                agent_final_response=raw_response,
+                possible_answers=possible_answers,
+            )
+        except Exception as e:
+            logger.error("Memory eval failed for %s: %s", test_case.id, e)
+            return BFCLResult(
+                test_case_id=test_case.id,
+                category=test_case.category,
+                predicted_calls=predicted_calls,
+                expected_calls=test_case.expected_calls,
+                ast_match=False,
+                exec_success=False,
+                relevance_correct=False,
+                latency_ms=latency_ms,
+                error=str(e),
+                status=TestStatus.ERROR,
+            )
+
+        # If the runtime init failed because of missing optional deps,
+        # bucket as SKIPPED_UNSUPPORTED instead of FAILED.
+        err = str(details.get("error") or "")
+        if "optional ML deps" in err or "requires optional" in err:
+            return self._skip(
+                test_case,
+                TestStatus.SKIPPED_UNSUPPORTED,
+                err,
+            )
+
+        return BFCLResult(
+            test_case_id=test_case.id,
+            category=test_case.category,
+            predicted_calls=predicted_calls,
+            expected_calls=test_case.expected_calls,
+            ast_match=passed,
+            exec_success=passed,
+            relevance_correct=True,
+            latency_ms=latency_ms,
+            raw_response=raw_response if self.config.save_raw_responses else None,
+            details=details,  # type: ignore[arg-type]
+            status=TestStatus.PASSED if passed else TestStatus.FAILED,
         )
 
-        if metrics.skipped_tests:
-            findings.append(
-                f"Skipped: {metrics.skipped_tests} tests "
-                f"({', '.join(f'{k}={v}' for k, v in metrics.skipped_by_reason.items())})"
-            )
+    def _extract_memory_possible_answers(
+        self, test_case: BFCLTestCase
+    ) -> list[str]:
+        """Pull possible answers out of the dataset's ground-truth payload.
 
-        if metrics.category_metrics:
-            sorted_cats = sorted(
-                metrics.category_metrics.items(),
-                key=lambda x: x[1].ast_accuracy,
-                reverse=True,
-            )
-            best = sorted_cats[0] if sorted_cats else None
-            worst = sorted_cats[-1] if len(sorted_cats) > 1 else None
+        Upstream memory ground truth is a flat list of acceptable
+        substrings stored in ``possible_answer/<file>.json`` under
+        ``ground_truth``. The dataset loader keeps the raw payload on
+        ``_ground_truth[test_id]`` — we handle the common shapes here.
+        """
+        gt = self.dataset._ground_truth.get(test_case.id)
+        if gt is None:
+            md = test_case.metadata or {}
+            gt = md.get("possible_answer") or md.get("ground_truth")
+        if gt is None:
+            return []
+        if isinstance(gt, str):
+            return [gt]
+        if isinstance(gt, list):
+            flat: list[str] = []
+            for x in gt:
+                if isinstance(x, str):
+                    flat.append(x)
+                elif isinstance(x, list):
+                    flat.extend(str(y) for y in x)
+            return flat
+        return []
 
-            if best:
-                findings.append(
-                    f"Best category: {best[0].value} ({best[1].ast_accuracy:.2%})"
-                )
-            if worst and worst != best:
-                findings.append(
-                    f"Needs work: {worst[0].value} ({worst[1].ast_accuracy:.2%})"
-                )
+    def _extract_memory_scenario(self, test_case: BFCLTestCase) -> str:
+        """Memory test ids look like ``memory_kv_0-finance-2`` — the
+        middle segment is the scenario name. Fall back to a metadata
+        ``scenario`` field if the id doesn't parse."""
+        md_scenario = (test_case.metadata or {}).get("scenario")
+        if isinstance(md_scenario, str) and md_scenario:
+            return md_scenario
+        parts = test_case.id.split("-")
+        if len(parts) >= 2:
+            return parts[1]
+        return ""
 
-        if baseline_comparison:
-            closest = min(
-                baseline_comparison.items(),
-                key=lambda x: abs(x[1]),
-            )
-            if closest[1] > 0:
-                findings.append(f"Outperforms {closest[0]} by {closest[1]:.2%}")
-            else:
-                findings.append(f"Behind {closest[0]} by {abs(closest[1]):.2%}")
-
-        summary["key_findings"] = findings
-
-        recommendations: list[str] = []
-
-        if metrics.ast_accuracy < 0.7:
-            recommendations.append("Focus on improving function name and argument matching")
-        if metrics.exec_accuracy < 0.7:
-            recommendations.append("Improve argument type handling and validation")
-        if metrics.relevance_accuracy < 0.8:
-            recommendations.append("Better detection of irrelevant queries")
-        if metrics.skipped_tests and not self.config.enable_network:
-            recommendations.append(
-                "Pass --enable-network to score network-gated categories "
-                "(REST, web_search)"
-            )
-
-        summary["recommendations"] = recommendations
-
-        return summary
-
-    async def run_category(
-        self,
-        category: BFCLCategory,
-    ) -> list[BFCLResult]:
-        """Run tests for a specific category only."""
-        await self._initialize()
-        await self.dataset.load()
-
-        try:
-            results: list[BFCLResult] = []
-            for test_case in self.dataset.get_by_category(category):
-                result = await self._run_single_test(test_case)
-                results.append(result)
-
-            return results
-        finally:
-            await self._cleanup()
-
-    async def run_sample(
-        self,
-        n: int = 50,
-        categories: Optional[list[BFCLCategory]] = None,
-    ) -> BFCLBenchmarkResults:
-        """Run a quick sample of tests for rapid evaluation."""
-        await self._initialize()
-        await self.dataset.load()
-
-        try:
-            sample = self.dataset.get_sample(n, categories, require_ground_truth=True)
-            logger.info(f"Running sample of {len(sample)} tests")
-
-            results: list[BFCLResult] = []
-            for test_case in sample:
-                result = await self._run_single_test(test_case)
-                results.append(result)
-
-            metrics = self.metrics_calculator.calculate(results)
-            baseline_comparison = self.metrics_calculator.compare_to_baselines(metrics)
-
-            if hasattr(self.agent, "model_name") and self.agent.model_name:
-                self._model_name = self.agent.model_name
-
-            benchmark_results = BFCLBenchmarkResults(
-                metadata={
-                    "benchmark": "BFCL",
-                    "version": self.config.version,
-                    "mode": "sample",
-                    "sample_size": len(sample),
-                    "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ"),
-                    "model": self._model_name or "unknown",
-                    "enable_network": self.config.enable_network,
-                },
-                config=self.config,
-                metrics=metrics,
-                results=results,
-                baseline_comparison=baseline_comparison,
-                summary=self._generate_summary(metrics, baseline_comparison),
-                model_name=self._model_name,
-                provider=self._provider,
-            )
-
-            if self.config.generate_report:
-                await self.reporter.generate_report(benchmark_results)
-
-            return benchmark_results
-        finally:
-            await self._cleanup()
-
-    def get_results(self) -> list[BFCLResult]:
-        """Get results from the last run."""
-        return self._results.copy()
-
-
-async def run_bfcl_benchmark(
-    config: Optional[BFCLConfig] = None,
-    use_mock: bool = False,
-) -> BFCLBenchmarkResults:
-    """Convenience function to run BFCL benchmark."""
-    if config is None:
-        config = BFCLConfig()
-
-    runner = BFCLRunner(config, use_mock_agent=use_mock)
-    return await runner.run()
+    def _load_memory_prereq_messages(self, scenario: str) -> list[str]:
+        """Read the prereq conversation fixture for ``scenario`` and flatten
+        its user-content strings into a single list. Returns an empty list
+        if the fixture isn't present."""
+        if not scenario:
+   
