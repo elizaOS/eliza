@@ -199,57 +199,157 @@ prefer the voice-clone artifact.
 
 ---
 
-## 3. Eval (in progress)
+## 3. Eval — full harness, real numbers
 
-### Baseline
+### Eval bug fix landed during impl
 
-`eval_kokoro.py --run-dir /tmp/kokoro-runs/samantha/lora --config
-kokoro_samantha.yaml --eval-out eval-bella.json --allow-gate-fail`
+`eval_kokoro.py` had a bug: the baseline path passed `voice=None` into
+`KPipeline.__call__`, which raises `ValueError('Specify a voice')`. It
+also only accepted `.pt` paths or stock ids — not the `.bin` files
+`extract_voice_embedding.py` produces. Both fixed in commit
+`51b4b5d682`:
 
-Uses the stock `af_bella` voice (the pipeline's default), the 5 val
-clips, Whisper large-v3 round-trip WER, ECAPA-TDNN speaker similarity,
-torchaudio SQUIM-MOS as UTMOS fallback, and RTF on the val prompts.
+- New `--baseline-voice-id` arg (default `af_bella`) used when
+  `--voice-bin` is not set.
+- New `.bin` path branch: load as torch tensor with the canonical
+  `(510, 1, 256)` shape.
 
-(Run in progress at write time; numbers will be patched in once
-complete.)
+### Baseline (af_bella, 5 val clips)
 
-### Candidate (af_samantha mel-fit v2)
+```
+{
+  "metrics": {
+    "utmos": 26.378,           # SQUIM-MOS scale (utmos pkg not installed → fallback)
+    "wer": 0.065,              # PASS (≤0.08)
+    "speaker_similarity": 0.462, # FAIL relaxed gate (≥0.55) — af_bella vs samantha refs ARE different speakers
+    "rtf": 97.26               # PASS (≥5.0)
+  },
+  "gateResult": { "passed": false }   # spkSim fails — expected, this is the FLOOR
+}
+```
 
-Same harness with `--voice-bin /tmp/kokoro-runs/samantha/release/af_samantha/voice.bin
---baseline-eval eval-bella.json`. Emits `comparison.beatsBaseline`
-gated on `utmosΔ ≥ 0`, `werΔ ≤ 0`, `spkSimΔ ≥ +0.05`.
+`utmos: 26.4` looks suspicious but is correct: when `utmos` package
+is absent, `eval_kokoro.py` falls back to `torchaudio.pipelines.SQUIM_OBJECTIVE`
+which returns objective MOS on a different scale. Both runs use the
+same fallback so the **delta** is comparable; the absolute UTMOS gate
+of 3.8 was tuned for the `utmos` package and triggers spuriously here
+(both runs trivially clear 3.8 against the baseline; the candidate
+trivially fails against it). Per follow-up: install `utmos` in CI and
+re-tune the gate.
+
+### Candidate (af_samantha mel-fit, lr=0.01, anchor=0.5, 400 steps)
+
+```
+{
+  "metrics": {
+    "utmos": -7.91,            # WORSE than baseline (Δ -34.3)
+    "wer": 0.599,              # FAIL (≥0.08); Δ +0.53 — Whisper struggles
+    "speaker_similarity": 0.257, # WORSE than baseline (Δ -0.21)
+    "rtf": 105.27              # PASS (≥5.0); Δ +8.0
+  },
+  "gateResult": { "passed": false },
+  "comparison": {
+    "utmosDelta": -34.29,
+    "werDelta": +0.534,
+    "speakerSimDelta": -0.206,    # NEGATIVE — voice MOVED AWAY from samantha
+    "rtfDelta": +8.01,
+    "speakerSimBeatThreshold": 0.05,
+    "beatsBaseline": false
+  }
+}
+```
+
+### Honest finding
+
+**The current mel-fit voice clone does NOT beat the baseline.** Every
+quality-related metric regressed; speaker similarity *moved away*
+from the samantha references (0.46 → 0.26). The synthesized output
+is still audible (5.22 s for the same test phrase as af_bella's
+5.17 s, RMS ≈ half of bella — quieter, slightly degraded), but the
+WER 0.60 says Whisper can't reliably transcribe it, and the spkSim
+0.26 says ECAPA-TDNN says the synth sounds even *less* like samantha
+than baseline af_bella does.
+
+Root causes (best guesses for follow-up):
+
+1. **Anchor weight too aggressive on prosody half**. anchor=0.5
+   locked `ref_s[128:]` near af_bella; the timbre half is the only
+   degree of freedom, but the mel-fit loss in that subspace produced
+   a vector that the decoder maps to lower-quality audio (timbre and
+   prosody co-evolved in the StyleTTS-2 trainer; pulling them apart
+   has a quality cost).
+2. **5 val prompts is too noisy a sample.** ECAPA-TDNN cosine on 5
+   short prompts vs heterogeneous samantha references will fluctuate
+   ±0.1 trivially.
+3. **Mel-fit minimizes per-frame mel L1, not speaker identity.** The
+   right objective for "make this voice sound like samantha" is
+   speaker-embedding loss (e.g. ECAPA cosine) — which we don't have
+   in the inference pipeline. Mel-fit can converge to a local minimum
+   that reduces frame-level reconstruction error without moving the
+   speaker centroid.
+
+### What this means for publishing
+
+**The voice.bin produced by this run is NOT a publish candidate.**
+The dry-run HF push correctly refuses to publish: `gateResult.passed=False`
++ `comparison.beatsBaseline=False`. The `--allow-gate-fail` override
+in the dry-run is for plumbing-verification only; the override
+justification message says exactly this.
 
 ### Gates (from `kokoro_samantha.yaml`, set in 6bed228abc)
 
-| Metric | Gate | Source |
-| --- | --- | --- |
-| UTMOS | ≥ 3.8 | R7 §4 |
-| WER | ≤ 0.08 | R7 §4 |
-| Speaker similarity | **≥ 0.55** (relaxed) | R7 §4 — small-corpus |
-| RTF | ≥ 5.0 | R7 §4 |
+| Metric | Gate | Source | Baseline | Candidate |
+| --- | --- | --- | --- | --- |
+| UTMOS | ≥ 3.8 | R7 §4 | 26.38 (SQUIM-scaled) | -7.91 — FAIL |
+| WER | ≤ 0.08 | R7 §4 | 0.065 — PASS | 0.599 — FAIL |
+| Speaker similarity | **≥ 0.55** (relaxed) | R7 §4 small-corpus | 0.462 — n/a (floor) | 0.257 — FAIL |
+| RTF | ≥ 5.0 | R7 §4 | 97.26 — PASS | 105.27 — PASS |
+| comparison.beatsBaseline | true | R7 §4 | — | **false** |
 
 ---
 
-## 4. HF push (gated on eval)
+## 4. HF push — DRY RUN ONLY; real push BLOCKED
 
 `packages/training/scripts/kokoro/push_voice_to_hf.py` (landed in
 6bed228abc, 6 tests passing) handles the upload. Target:
-`elizaos/eliza-1-voice-kokoro-samantha-v01` with `private=true` per
+`elizaos/eliza-1-voice-kokoro-samantha-v01` with `private=True` per
 R12 license caveat (samantha is derivative of *Her* 2013, research-
 only).
 
-Will execute as dry-run first:
+**Dry-run executed** against the produced release dir + real eval.json:
 
 ```bash
-python3 packages/training/scripts/kokoro/push_voice_to_hf.py \
-  --release-dir /tmp/kokoro-runs/samantha/release/af_samantha \
-  --hf-repo elizaos/eliza-1-voice-kokoro-samantha-v01 \
-  --private --dry-run --create-if-missing
+$ python3 push_voice_to_hf.py \
+    --release-dir /tmp/kokoro-runs/samantha/release/af_samantha \
+    --hf-repo elizaos/eliza-1-voice-kokoro-samantha-v01 \
+    --dry-run --allow-gate-fail "<see §3 finding>"
+
+2026-05-14 02:32:56 WARNING OVERRIDE: publish blocked: gateResult.passed=False,
+    comparison.beatsBaseline=False, perMetric={'utmos': False, 'wer': False,
+    'speaker_similarity': False, 'rtf': True}
+2026-05-14 02:32:56 INFO dry-run: would upload 6 files to
+    elizaos/eliza-1-voice-kokoro-samantha-v01 (private=True)
+2026-05-14 02:32:56 INFO wrote /tmp/kokoro-runs/samantha/release/af_samantha/hf-receipt.json
 ```
 
-The real push is **gated on user/operator authorization** — the model
-card explicitly says "research-only, *Her* (2013) derivative; do not
-promote to public release without explicit owner sign-off."
+Receipt persisted at `/tmp/kokoro-runs/samantha/release/af_samantha/hf-receipt.json`:
+6 files queued (voice.bin 510 KB, kokoro.onnx, voice-preset.json,
+manifest-fragment.json, eval.json, README.md), private=true,
+generated README.md inline.
+
+**Real push NOT executed.** Two blockers:
+
+1. **Eval regression vs baseline** (§3). The current voice.bin is not
+   publishable — it doesn't beat af_bella on any quality metric.
+   Even private-HF push should wait for a candidate that at minimum
+   moves speaker similarity *toward* the target.
+2. **License + ownership review.** Even for a quality-passing voice,
+   the *Her* derivative provenance + missing upstream LICENSE on
+   `lalalune/ai_voices` per R12 require explicit owner sign-off
+   before pushing to any HF repo, public or private.
+
+The dry-run flow is verified; the real upload is one CLI invocation
+away once a quality-passing voice + owner-authorization land.
 
 ---
 
@@ -352,11 +452,45 @@ voice-id resolves to a kokoro voice with an emotion request.
 - [x] `af_samantha.bin` produced + verified loadable via `KPipeline`.
 - [x] `prep_ljspeech.py` validated on filtered samantha corpus (48
   clips after dropping `<1.0s` clips + the s002 hallucination).
-- [ ] Eval baseline (af_bella) — running.
-- [ ] Eval candidate (af_samantha) + comparison block.
-- [ ] HF push (dry-run) — gated on eval.
+- [x] `eval_kokoro.py` baseline + comparison bug fixed (`--baseline-voice-id`
+  arg + `.bin` path branch).
+- [x] Eval baseline (af_bella) — passed (rtf+wer; spkSim 0.46 is the
+  af_bella↔samantha floor).
+- [x] Eval candidate (af_samantha) — **failed** (utmos/wer/spkSim all
+  regressed; beatsBaseline=false).
+- [x] HF push (dry-run) — verified; real push blocked on
+  (a) quality regression in current voice.bin, (b) owner sign-off for
+  *Her*-derivative provenance.
 - [x] LoRA path documented as blocked on training-fork integration.
 - [x] Emotion-knob gap documented (handoff to I3).
-- [x] All pre-existing kokoro tests still pass.
+- [x] All pre-existing kokoro tests still pass (29/29 across
+  `__tests__/`, `manifest/test_stage_kokoro_assets.py`,
+  `voice/test_build_samantha_manifest.py`).
+- [x] `bun run typecheck` in `plugins/plugin-local-inference` green
+  (no diagnostics; new `af_samantha` voice-presets entry typechecks).
 
-Remaining work is eval execution + HF dry-run + sign-off.
+### What's left for a publishable voice (out of I7 scope)
+
+The plumbing is end-to-end. The remaining is a model-quality problem
+that needs one of:
+
+1. **Tune mel-fit hyperparameters.** Try anchor_weight ∈ {0.0, 0.1,
+   0.2}, lr ∈ {0.005, 0.002}, steps up to 1500–2000, different init
+   voices (af_nicole is closer in tone to samantha than af_bella).
+   The current numbers say lr=0.01 + anchor=0.5 over-regularizes —
+   the timbre half moves enough to break voice quality but not enough
+   to match the target speaker.
+2. **Integrate the StyleTTS-2 trainer for a real fine-tune** (the
+   LoRA path documented in §2). Vendor `jonirajala/kokoro_training`,
+   bridge `forward_train`, and run an actual LoRA pass. 3.5 min is
+   still tight but the recipe is at least targeting the right loss.
+3. **Use a speaker-embedding-conditioned model** (e.g. XTTS-v2,
+   F5-TTS). These accept a reference audio clip at synthesis time
+   and don't need any training. Out of scope for I7 (Kokoro), but
+   worth noting that 3.5 min of *Her* audio is much better suited to
+   a reference-audio TTS than to a small-corpus fine-tune of a fixed-
+   voice model like Kokoro.
+
+I7's deliverable per the brief — "produce af_samantha.bin, eval both
+paths, document" — is **complete**. The eval surfaced a quality
+regression that the next round of model-tuning will need to fix.

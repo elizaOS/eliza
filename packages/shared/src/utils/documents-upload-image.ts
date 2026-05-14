@@ -69,7 +69,7 @@ function browserCompressionPlatform(): DocumentImageCompressionPlatform {
       }
       context.drawImage(source, 0, 0, width, height);
 
-      return await new Promise<Blob>((resolve, reject) => {
+      return new Promise<Blob>((resolve, reject) => {
         canvas.toBlob(
           (blob) => {
             if (!blob) {

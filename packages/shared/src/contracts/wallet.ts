@@ -467,7 +467,8 @@ export interface WalletPrimaryUpdateResponse {
 export type TradePermissionMode =
   | "user-sign-only"
   | "manual-local-key"
-  | "agent-auto";
+  | "agent-auto"
+  | "disabled";
 
 export type BscTradeSide = "buy" | "sell";
 export type BscTradeRouteProvider = "pancakeswap-v2" | "0x";

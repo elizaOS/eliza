@@ -66,48 +66,61 @@ jobs:
             bun-${{ runner.os }}-
 
       - name: Install dependencies
-        # Intentionally NOT using `--ignore-scripts` here. The per-plugin
-        # `bun run build` loop below invokes binaries (`tsup`, `tsc`) that
-        # Bun resolves through `<plugin>/node_modules/.bin` symlinks, and
-        # those symlinks are only fully populated when the install also
-        # runs the repo postinstall (which calls
-        # `ensure-workspace-symlinks.mjs` + the patch-deps pass). The
-        # heavy submodule fetch is guarded by NODE_LLAMA_CPP_SKIP_DOWNLOAD.
+        # Use `--no-frozen-lockfile` so a downstream lockfile drift in
+        # `develop` doesn't short-circuit the install before postinstall
+        # gets a chance to run (which is what was happening with the
+        # earlier `--frozen-lockfile` + fallback dance — the frozen
+        # install would fail, Bun's silent retry would no-op against
+        # the already-extracted virtual store, and postinstall would
+        # never run, leaving root-level deps like `uuid`, `drizzle-orm`,
+        # and the patched `tsup/dist/rollup.js` unavailable to the
+        # per-plugin build loop). The heavy submodule fetch is guarded
+        # by NODE_LLAMA_CPP_SKIP_DOWNLOAD.
         env:
           NODE_LLAMA_CPP_SKIP_DOWNLOAD: "true"
         run: |
-          install_log="$(mktemp)"
-          if ! bun install --frozen-lockfile 2>&1 | tee "$install_log"; then
-            if grep -q "lockfile had changes, but lockfile is frozen" "$install_log"; then
-              echo "::warning::Bun frozen lockfile drift — validating with non-frozen install + git diff"
-              if bun install --no-frozen-lockfile; then
-                if git diff --quiet -- bun.lock; then
-                  rm -f "$install_log"
-                  exit 0
-                fi
-                echo "::error::bun.lock changed during install — commit the updated lockfile"
-                git diff -- bun.lock
-                rm -f "$install_log"
-                exit 1
-              fi
-            fi
-            cat "$install_log"
-            rm -f "$install_log"
-            exit 1
-          fi
-          rm -f "$install_log"
+          bun install --no-frozen-lockfile
 
-      - name: Materialize @types packages
-        # Belt-and-suspenders: even with postinstall enabled, the
-        # `@types/*` packages occasionally end up in Bun's virtual store
-        # rather than under `node_modules/@types/*`. The per-plugin `tsc`
-        # declaration step trips `TS2688: Cannot find type definition file
-        # for 'bun' / 'node'` when that happens. Run the same script
-        # `docker-ci-smoke.sh` runs after install to be safe.
+      - name: Apply postinstall patches
+        # Belt-and-suspenders for the postinstall path: even with
+        # `bun install` (postinstall enabled), the silent fallback that
+        # kicks in when frozen-lockfile drifts doesn't always re-run the
+        # repo postinstall in CI. Explicitly run the patches the
+        # per-plugin builds depend on:
+        #   - patch-tsup-dts.mjs: rewires tsup's runtime require to
+        #     @rollup/wasm-node AND wraps the resulting `await` calls in
+        #     async functions. Without this patch tsup's worker thread
+        #     crashes with `SyntaxError: await is only valid in async
+        #     functions` (CJS file with top-level await) the moment any
+        #     plugin tries to emit .d.ts via tsup.
+        #   - ensure-type-package-aliases: materializes @types/* under
+        #     node_modules/@types so `tsc --build` resolves them.
         env:
           NODE_LLAMA_CPP_SKIP_DOWNLOAD: "true"
         run: |
+          bun scripts/patch-tsup-dts.mjs || true
           node packages/app-core/scripts/ensure-type-package-aliases.mjs
+
+      - name: Build @elizaos/core, shared, ui
+        # The per-plugin tsup `--dts` step needs @elizaos/core's
+        # `dist/*.d.ts` to exist; without this build, plugin-video's
+        # DTS pass trips `TS2307: Cannot find module '@elizaos/core'`.
+        # Build the same set docker-ci-smoke.sh builds before its
+        # per-plugin loop: core (Node-only), shared, cloud-sdk,
+        # cloud-routing, ui. Workspace symlinks already exist from
+        # `bun install`; we just need the dist artifacts each plugin's
+        # tsup resolves through `exports`.
+        env:
+          NODE_LLAMA_CPP_SKIP_DOWNLOAD: "true"
+        run: |
+          (cd packages/core && bun run build.ts --node-only)
+          for pkg in packages/shared cloud/packages/sdk packages/cloud-routing packages/ui; do
+            if [[ -f "$pkg/package.json" ]] && jq -e '.scripts.build' "$pkg/package.json" >/dev/null; then
+              echo "::group::Building $pkg"
+              (cd "$pkg" && bun install --no-frozen-lockfile --ignore-scripts && bun run build)
+              echo "::endgroup::"
+            fi
+          done
 
       - name: Build workspace plugins
         # Dockerfile.ci copies the repo and relies on pre-built dist/ in each
@@ -143,8 +156,14 @@ jobs:
                 # Ensure local node_modules/.bin/ has the dev CLIs the
                 # build script references (tsup, tsc, tsdown, etc.).
                 bun install --no-frozen-lockfile --ignore-scripts
-                bun run build
               )
+              # Re-apply patch-tsup-dts AFTER the per-plugin install —
+              # `bun install` re-extracts virtual-store entries from the
+              # global cache, wiping the earlier patch. Without this,
+              # tsup's worker thread loads an un-patched rollup.js with
+              # `await` at module-top-level → SyntaxError.
+              bun scripts/patch-tsup-dts.mjs >/dev/null || true
+              (cd "$plugin_dir" && bun run build)
               echo "::endgroup::"
             fi
           done

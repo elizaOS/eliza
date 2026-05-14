@@ -66,7 +66,7 @@ function textareaCls(hasError: boolean, className?: string): string {
 export function renderTextField(props: FieldRenderProps) {
   const value = props.isSet ? String(props.value ?? "") : "";
   const placeholder =
-    (props.hint.placeholder as string | undefined) ??
+    props.hint.placeholder ??
     (props.schema.default != null
       ? `Default: ${props.schema.default}`
       : "Enter value...");
@@ -174,14 +174,12 @@ export function renderNumberField(props: FieldRenderProps) {
 }
 
 function NumberFieldInner({ fp: props }: { fp: FieldRenderProps }) {
-  const minVal =
-    props.schema.minimum ?? (props.hint.min as number | undefined) ?? undefined;
-  const maxVal =
-    props.schema.maximum ?? (props.hint.max as number | undefined) ?? undefined;
-  const stepVal = (props.hint.step as number | undefined) ?? 1;
-  const unit = props.hint.unit as string | undefined;
+  const minVal = props.schema.minimum ?? props.hint.min;
+  const maxVal = props.schema.maximum ?? props.hint.max;
+  const stepVal = props.hint.step ?? 1;
+  const unit = props.hint.unit;
   const placeholder =
-    (props.hint.placeholder as string | undefined) ??
+    props.hint.placeholder ??
     (props.schema.default != null
       ? `Default: ${props.schema.default}`
       : "Enter number...");
@@ -318,7 +316,7 @@ function BooleanFieldInner({ fp: props }: { fp: FieldRenderProps }) {
 export function renderUrlField(props: FieldRenderProps) {
   const value = props.isSet ? String(props.value ?? "") : "";
   const placeholder =
-    (props.hint.placeholder as string | undefined) ??
+    props.hint.placeholder ??
     (props.schema.default != null
       ? `Default: ${props.schema.default}`
       : "https://...");
@@ -365,7 +363,7 @@ export function RenderSelectField(props: FieldRenderProps) {
     : plainOptions.map((o) => ({
         value: o,
         label: o,
-        description: undefined as string | undefined,
+        description: undefined,
       }));
 
   const value = props.isSet ? String(props.value ?? "") : "";
@@ -632,8 +630,7 @@ export function renderTextareaField(props: FieldRenderProps) {
 
 function TextareaFieldInner({ fp: props }: { fp: FieldRenderProps }) {
   const value = props.isSet ? String(props.value ?? "") : "";
-  const placeholder =
-    (props.hint.placeholder as string | undefined) ?? "Enter text...";
+  const placeholder = props.hint.placeholder ?? "Enter text...";
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const autoResize = useCallback(() => {
@@ -672,8 +669,7 @@ function TextareaFieldInner({ fp: props }: { fp: FieldRenderProps }) {
 /** Email input with type="email" browser validation. */
 export function renderEmailField(props: FieldRenderProps) {
   const value = props.isSet ? String(props.value ?? "") : "";
-  const placeholder =
-    (props.hint.placeholder as string | undefined) ?? "user@example.com";
+  const placeholder = props.hint.placeholder ?? "user@example.com";
 
   return (
     <input
@@ -1005,8 +1001,7 @@ function JsonFieldInner({ fp: props }: { fp: FieldRenderProps }) {
 /** Monospaced code editor textarea for templates and snippets. */
 export function renderCodeField(props: FieldRenderProps) {
   const value = props.isSet ? String(props.value ?? "") : "";
-  const placeholder =
-    (props.hint.placeholder as string | undefined) ?? "Enter code...";
+  const placeholder = props.hint.placeholder ?? "Enter code...";
 
   return (
     <textarea
@@ -1332,8 +1327,7 @@ export function renderDatetimeField(props: FieldRenderProps) {
 export function RenderFileField(props: FieldRenderProps) {
   const { t } = useApp();
   const value = props.isSet ? String(props.value ?? "") : "";
-  const placeholder =
-    (props.hint.placeholder as string | undefined) ?? "/path/to/file";
+  const placeholder = props.hint.placeholder ?? "/path/to/file";
 
   return (
     <div>

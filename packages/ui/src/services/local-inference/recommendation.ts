@@ -99,7 +99,7 @@ function chatCandidates(catalog: CatalogModel[]): CatalogModel[] {
 export function classifyRecommendationPlatform(
   hardware: HardwareProbe,
 ): RecommendationPlatformClass {
-  const platform = hardware.mobile?.platform ?? (hardware.platform as string);
+  const platform = hardware.mobile?.platform ?? hardware.platform;
   if (platform === "android" || platform === "ios") return "mobile";
   if (hardware.appleSilicon) return "apple-silicon";
   if (platform === "linux" && hardware.gpu) return "linux-gpu";

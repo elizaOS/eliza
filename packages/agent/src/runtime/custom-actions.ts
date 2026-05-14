@@ -219,7 +219,7 @@ async function runCodeHandler(
   ) as (fn: typeof safeCodeFetch) => typeof safeCodeFetch;
   context.fetch = wrapFetch(safeCodeFetch);
 
-  return await vmRunner.runInNewContext(`"use strict"; ${script}`, context, {
+  return vmRunner.runInNewContext(`"use strict"; ${script}`, context, {
     filename: "eliza-custom-action",
     timeout: 30_000,
   });

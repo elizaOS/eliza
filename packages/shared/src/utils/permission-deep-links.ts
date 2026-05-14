@@ -91,6 +91,9 @@ export async function openPermissionSettings(
 ): Promise<void> {
   const platform = deps.platform ?? detectPlatform();
   if (platform !== "darwin") {
+    console.warn(
+      `[permission-deep-links] openPermissionSettings: no system-settings deep link for platform=${platform} (id=${id}); please open settings manually.`,
+    );
     return;
   }
   const url = getMacPermissionDeepLink(id);

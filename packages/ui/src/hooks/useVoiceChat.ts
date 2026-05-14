@@ -1002,7 +1002,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
             });
           }
 
-          return await fetchWithCsrf(
+          return fetchWithCsrf(
             resolveApiUrl("/api/tts/elevenlabs"),
             makeProxyRequestInit(),
           );

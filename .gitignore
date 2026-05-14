@@ -532,6 +532,7 @@ scripts/ai-qa/.static-stack.json
 # Generated inference verification output and hardware evidence.
 packages/inference/reports/
 packages/inference/verify/bench_results/
+plugins/plugin-local-inference/native/verify/bench_results/
 packages/inference/verify/hardware-results/
 packages/inference/verify/android-vulkan-smoke/
 packages/inference/verify/cpu_bench

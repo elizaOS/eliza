@@ -11,6 +11,7 @@ callable matching the duck-typed shape BFCL runners expect.
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import logging
 import os
@@ -269,10 +270,23 @@ class HermesBFCLAgent:
         provider: str | None = None,
     ) -> None:
         self._model_name = _default_model_name(model_name)
-        self._client = client or HermesClient(
-            provider=provider or _default_underlying_provider(),
-            model=self._model_name,
-        )
+        if client is None:
+            requested_mode = os.environ.get("HERMES_ADAPTER_MODE", "").strip()
+            if requested_mode in {"in_process", "subprocess"}:
+                mode = requested_mode
+            else:
+                mode = (
+                    "in_process"
+                    if importlib.util.find_spec("openai")
+                    else "subprocess"
+                )
+            self._client = HermesClient(
+                provider=provider or _default_underlying_provider(),
+                model=self._model_name,
+                mode=mode,
+            )
+        else:
+            self._client = client
         self._initialized = False
 
     @property

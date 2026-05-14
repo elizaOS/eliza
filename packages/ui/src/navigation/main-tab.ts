@@ -55,6 +55,7 @@ export function getMainTabApp(apps: RegistryAppInfo[]): MainTabApp | null {
   declarers.sort((a, b) => a.name.localeCompare(b.name));
 
   const winner = declarers[0];
+  if (!winner) return null;
   const tabId = packageNameToAppRouteSlug(winner.name);
   if (!tabId) return null;
 

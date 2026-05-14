@@ -105,6 +105,7 @@ import {
   getStylePresets,
   isMobilePlatform,
   normalizeCharacterLanguage,
+  parseClampedInteger,
   resolveApiBindHost,
   resolveDesktopApiPort,
   resolveServerOnlyPort,
@@ -183,7 +184,6 @@ import {
   normalizeTriggerDraft,
 } from "../triggers/scheduling.ts";
 import { deployTextTriggerWorkflow } from "../triggers/text-to-workflow.ts";
-import { parseClampedInteger } from "../utils/number-parsing.ts";
 import { handleAccountsRoutes } from "./accounts-routes.ts";
 import { handleAgentAdminRoutes } from "./agent-admin-routes.ts";
 import { handleAgentLifecycleRoutes } from "./agent-lifecycle-routes.ts";

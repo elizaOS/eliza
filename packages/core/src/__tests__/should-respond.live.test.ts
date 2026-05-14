@@ -119,7 +119,7 @@ liveDescribe("shouldRespond live", () => {
 	});
 
 	async function classify(recentMessages: string) {
-		return await runtime.dynamicPromptExecFromState({
+		return runtime.dynamicPromptExecFromState({
 			state: buildShouldRespondState(recentMessages),
 			params: {
 				prompt: shouldRespondTemplate,

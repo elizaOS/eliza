@@ -316,7 +316,7 @@ function splitShellPipeline(command: string): {
   });
 
   if (!result.ok) {
-    return { ok: false, reason: result.reason, segments: [] };
+    return { ok: false, reason: (result as { reason: string }).reason, segments: [] };
   }
   if (emptySegment || result.parts.length === 0) {
     return {

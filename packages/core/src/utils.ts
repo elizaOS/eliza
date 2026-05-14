@@ -1015,7 +1015,7 @@ export function validateUuid(value: unknown): UUID | null {
  */
 export function stringToUuid(target: string | number): UUID {
 	if (typeof target === "number") {
-		target = (target as number).toString();
+		target = target.toString();
 	}
 
 	if (typeof target !== "string") {
