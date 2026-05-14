@@ -5,7 +5,7 @@ Output: ``packages/training/datasets/eliza1-sft-0_8b/{train,val,test}.jsonl`` â€
 ChatML ``{"messages": [...]}`` rows that ``train_local.py`` ingests directly via
 ``--train-file`` / ``--val-file`` (the ``chat_messages`` shape understood by
 ``scripts/format_for_training.py::_format_messages_record``). The 0.8b base is
-upstream ``Qwen/Qwen3.5-0.8B`` (Qwen2/Qwen3 ChatML template, vocab 151,936); rows
+upstream ``Qwen/Qwen3.5-0.8B`` (Qwen3.5 ChatML template, vocab 248,320); rows
 are length-filtered against its 4096-token training window.
 
 Task mix (benchmark-aligned with ``scripts/eval/eliza1_eval_suite.py`` text gate
@@ -905,7 +905,7 @@ def main() -> int:
         "schema": "eliza.eliza1_sft_0_8b_manifest.v1",
         "base_model": "Qwen/Qwen3.5-0.8B",
         "published_name": "eliza-1-0_8b",
-        "chat_template": "qwen2/qwen3 chatml",
+        "chat_template": "qwen3.5 chatml",
         "format": "chat_messages â€” {\"messages\":[...]} rows (train_local.py --train-file compatible)",
         "max_seq_len": MAX_SEQ_LEN,
         "max_record_chars": MAX_RECORD_CHARS,

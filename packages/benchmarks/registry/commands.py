@@ -140,7 +140,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
                 args.extend(["--model", model_name])
         if extra.get("mock") is True or provider_name == "mock":
             args.append("--mock")
-        sample = extra.get("sample")
+        sample = extra.get("sample", extra.get("max_tasks"))
         if isinstance(sample, int) and sample > 0:
             args.extend(["--sample", str(sample)])
         max_per_category = extra.get("max_per_category")

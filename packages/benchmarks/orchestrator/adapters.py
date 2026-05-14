@@ -1735,6 +1735,9 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             "max_examples": 2,
             "max_new_tokens": 512,
         },
+        "bfcl": {
+            "sample": 2,
+        },
         "context_bench": {
             "quick": True,
             "context_lengths": [1024],
