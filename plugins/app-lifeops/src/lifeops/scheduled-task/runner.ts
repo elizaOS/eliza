@@ -32,6 +32,7 @@ import {
   type ActivitySignalBusView,
   APPROVAL_DEFAULT_FOLLOWUP_AFTER_MINUTES,
   type CompletionCheckContext,
+  DEFAULT_TASK_EXECUTION_PROFILE,
   type GateDecision,
   type GateEvaluationContext,
   type GlobalPauseView,
@@ -43,6 +44,8 @@ import {
   type ScheduledTaskState,
   type ScheduledTaskVerb,
   type SubjectStoreView,
+  TASK_EXECUTION_PROFILES,
+  type TaskExecutionProfile,
   type TerminalState,
 } from "./types.js";
 
@@ -238,11 +241,31 @@ export interface ScheduledTaskRunnerDeps {
    * module to keep the spine free of channel-layer dependencies.
    */
   channelKeys?: () => ReadonlySet<string>;
+  /**
+   * Returns the set of `TaskExecutionProfile` values the current host can
+   * actually run. The runner consults this AFTER the atomic fire-claim but
+   * BEFORE dispatch: if `task.executionProfile` is not in the set, dispatch
+   * is rewritten to `notify-only` and a `"substituted"` state-log row is
+   * recorded. Default (when not provided): all four profiles available —
+   * appropriate for tests and Node desktop. Mobile / Capacitor callers
+   * inject a real probe from
+   * `@elizaos/app-core/services/local-inference/host-capabilities`.
+   */
+  hostCapabilities?: () => ReadonlySet<TaskExecutionProfile>;
   /** Override for tests. */
   newTaskId?: () => string;
   /** Override for tests. */
   now?: () => Date;
 }
+
+/**
+ * Default capability probe — assumes a full host (test/Node). Mobile callers
+ * inject a real probe so heavy tasks substitute to notify-only on incapable
+ * hosts instead of silently failing under a 30s wake budget.
+ */
+const ALL_PROFILES_AVAILABLE: ReadonlySet<TaskExecutionProfile> = new Set(
+  TASK_EXECUTION_PROFILES,
+);
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -1032,12 +1055,33 @@ export function createScheduledTaskRunner(
     // `persist` recomputes `next_fire_at` from the now-`fired` row.
     await persist(claimed);
     await logger.log(claimed.taskId, "fired");
+
+    // Host-capability gate. If the host can't satisfy the task's profile,
+    // rewrite the dispatch channel to `in_app` (notify-only) and record a
+    // "substituted" log row. The substitution does not change the task's
+    // status — it merely shifts the wire-out mechanism so a `bg-heavy-fgs`
+    // task on iOS becomes a banner the user can tap.
+    const hostCaps = deps.hostCapabilities?.() ?? ALL_PROFILES_AVAILABLE;
+    const taskProfile = claimed.executionProfile ?? DEFAULT_TASK_EXECUTION_PROFILE;
+    const substituted = !hostCaps.has(taskProfile);
+    const dispatchChannelKey = substituted ? "in_app" : pickChannelKey(claimed);
+    if (substituted) {
+      await logger.log(claimed.taskId, "substituted", {
+        reason: "host_incapable",
+        detail: {
+          originalProfile: taskProfile,
+          substituteProfile: "notify-only" satisfies TaskExecutionProfile,
+          availableProfiles: Array.from(hostCaps),
+        },
+      });
+    }
+
     let dispatchResult: DispatchResult | void | undefined;
     try {
       dispatchResult = await dispatcher.dispatch({
         taskId: claimed.taskId,
         firedAtIso: fireAtIso,
-        channelKey: pickChannelKey(claimed),
+        channelKey: dispatchChannelKey,
         intensity: pickIntensity(claimed),
         promptInstructions: claimed.promptInstructions,
         contextRequest: claimed.contextRequest,

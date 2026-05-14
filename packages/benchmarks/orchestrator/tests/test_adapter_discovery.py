@@ -82,7 +82,7 @@ def test_synthetic_calibration_payloads_exercise_all_score_extractors(tmp_path: 
             assert summary.score == pytest.approx(expected[harness])
 
 
-def test_default_env_does_not_enable_benchmark_stub_embedding(
+def test_default_env_enables_benchmark_stub_embedding_for_eliza(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.delenv("ELIZA_BENCH_ALLOW_STUB_EMBEDDING", raising=False)
@@ -98,7 +98,7 @@ def test_default_env_does_not_enable_benchmark_stub_embedding(
         ),
     )
 
-    assert "ELIZA_BENCH_ALLOW_STUB_EMBEDDING" not in env
+    assert env["ELIZA_BENCH_ALLOW_STUB_EMBEDDING"] == "1"
 
 
 def test_default_env_respects_disabled_benchmark_stub_embedding(
