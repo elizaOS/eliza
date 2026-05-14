@@ -546,12 +546,126 @@ function createTranscriptionHandler() {
 	};
 }
 
+/**
+ * Arbiter accessor shape used by the IMAGE_DESCRIPTION handler. Two
+ * call paths converge here:
+ *
+ *   (a) The WS2 arbiter path. When the loader service exposes
+ *       `getMemoryArbiter()` AND that arbiter has the `vision-describe`
+ *       capability registered, IMAGE_DESCRIPTION dispatches through
+ *       `arbiter.requestVisionDescribe(...)`.
+ *
+ *   (b) Legacy `service.describeImage(...)` / `service.imageDescription`.
+ *       Pre-WS2 callers (the AOSP bootstrap, Florence-2 LocalAIManager)
+ *       still hit this fallback.
+ */
+interface ArbiterLike {
+	hasCapability?: (capability: string) => boolean;
+	requestVisionDescribe?: <Req, Res>(req: {
+		modelKey: string;
+		payload: Req;
+	}) => Promise<Res>;
+}
+
+function tryGetArbiter(
+	service: LocalInferenceRuntimeService | null,
+): ArbiterLike | null {
+	if (!service?.getMemoryArbiter) return null;
+	const arbiter = service.getMemoryArbiter();
+	if (!arbiter || typeof arbiter !== "object") return null;
+	const cand = arbiter as ArbiterLike;
+	if (
+		typeof cand.hasCapability === "function" &&
+		typeof cand.requestVisionDescribe === "function" &&
+		cand.hasCapability("vision-describe")
+	) {
+		return cand;
+	}
+	return null;
+}
+
+function paramsToVisionRequest(
+	params: ImageDescriptionParams | string,
+): {
+	image:
+		| { kind: "dataUrl"; dataUrl: string }
+		| { kind: "url"; url: string };
+	prompt?: string;
+} {
+	const url = typeof params === "string" ? params : params.imageUrl;
+	if (typeof url !== "string" || !url) {
+		throw unavailable(
+			ModelType.IMAGE_DESCRIPTION,
+			"invalid_input",
+			"[local-inference] IMAGE_DESCRIPTION requires a non-empty imageUrl",
+		);
+	}
+	const prompt = typeof params === "object" ? params.prompt : undefined;
+	if (url.startsWith("data:")) {
+		return {
+			image: { kind: "dataUrl", dataUrl: url },
+			prompt,
+		};
+	}
+	return {
+		image: { kind: "url", url },
+		prompt,
+	};
+}
+
+/**
+ * Runtime setting marker that plugin-vision's `hasEliza1VisionHandler`
+ * polls. Setting this to `"1"` makes VisionService prefer the eliza-1
+ * IMAGE_DESCRIPTION handler over local Florence-2. We set it the first
+ * time the handler runs against an arbiter that has the
+ * `vision-describe` capability registered, so the marker reflects
+ * actual capability rather than plugin presence.
+ */
+const ELIZA1_VISION_MARKER = "ELIZA1_VISION_HANDLER_PRESENT";
+
+function markEliza1VisionHandlerPresent(runtime: IAgentRuntime): void {
+	const r = runtime as IAgentRuntime & {
+		setSetting?: (key: string, value: unknown) => void;
+		getSetting?: (key: string) => unknown;
+	};
+	if (typeof r.setSetting !== "function") return;
+	if (typeof r.getSetting === "function") {
+		const existing = r.getSetting(ELIZA1_VISION_MARKER);
+		if (existing === "1" || existing === true) return;
+	}
+	try {
+		r.setSetting(ELIZA1_VISION_MARKER, "1");
+	} catch {
+		// Some test runtimes don't accept setSetting at runtime — non-fatal.
+	}
+}
+
 function createImageDescriptionHandler() {
 	return async (
 		runtime: IAgentRuntime,
 		params: ImageDescriptionParams | string,
 	): Promise<ImageDescriptionResult> => {
 		const service = requireService(runtime, ModelType.IMAGE_DESCRIPTION);
+		const arbiter = tryGetArbiter(service);
+		if (arbiter?.requestVisionDescribe) {
+			// WS2 path. The arbiter owns the model handle and the projector
+			// cache; we forward the request and let it dispatch.
+			markEliza1VisionHandlerPresent(runtime);
+			const modelKeyCandidate =
+				typeof params === "object"
+					? (params as unknown as { modelKey?: unknown }).modelKey
+					: undefined;
+			const modelKey =
+				typeof modelKeyCandidate === "string" && modelKeyCandidate
+					? modelKeyCandidate
+					: "qwen3-vl";
+			const request = paramsToVisionRequest(params);
+			const result = await arbiter.requestVisionDescribe<
+				typeof request,
+				ImageDescriptionResult | string
+			>({ modelKey, payload: request });
+			return normalizeImageDescription(result);
+		}
 		if (typeof service.describeImage === "function") {
 			return normalizeImageDescription(await service.describeImage(params));
 		}
