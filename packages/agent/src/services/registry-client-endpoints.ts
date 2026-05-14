@@ -8,6 +8,46 @@ import {
 } from "../security/network-policy.ts";
 import type { RegistryPluginInfo } from "./registry-client-types.ts";
 
+/** Raw shape of a single entry returned by a registry endpoint's JSON response. */
+interface RawRegistryVersionRef {
+  branch?: string;
+}
+
+interface RawRegistryGit {
+  repo?: string;
+  v0?: RawRegistryVersionRef;
+  v1?: RawRegistryVersionRef;
+  v2?: RawRegistryVersionRef;
+}
+
+interface RawRegistryNpm {
+  repo?: string;
+  v0?: string;
+  v1?: string;
+  v2?: string;
+}
+
+interface RawRegistryEntry {
+  git?: RawRegistryGit;
+  npm?: RawRegistryNpm;
+  supports?: { v0: boolean; v1: boolean; v2: boolean };
+  directory?: string | null;
+  description?: string;
+  homepage?: string | null;
+  topics?: string[];
+  stargazers_count?: number;
+  language?: string;
+  kind?: string;
+  registryKind?: string;
+  origin?: string;
+  source?: string;
+  support?: string;
+  builtIn?: boolean;
+  firstParty?: boolean;
+  thirdParty?: boolean;
+  status?: string;
+}
+
 const BLOCKED_REGISTRY_HOST_LITERALS = new Set([
   "localhost",
   "127.0.0.1",
@@ -181,7 +221,7 @@ async function fetchSingleEndpoint(
       return null;
     }
     const data = (await resp.json()) as {
-      registry?: Record<string, unknown>;
+      registry?: Record<string, RawRegistryEntry>;
     };
     if (!data.registry || typeof data.registry !== "object") {
       logger.warn(
@@ -190,49 +230,41 @@ async function fetchSingleEndpoint(
       return null;
     }
     const plugins = new Map<string, RegistryPluginInfo>();
-    for (const [name, raw] of Object.entries(data.registry)) {
-      const e = raw as Record<string, unknown>;
-      const git = (e.git ?? {}) as Record<string, unknown>;
-      const npm = (e.npm ?? {}) as Record<string, unknown>;
-      const supports = (e.supports ?? { v0: false, v1: false, v2: false }) as {
-        v0: boolean;
-        v1: boolean;
-        v2: boolean;
-      };
+    for (const [name, e] of Object.entries(data.registry)) {
+      const git = e.git ?? {};
+      const npm = e.npm ?? {};
+      const supports = e.supports ?? { v0: false, v1: false, v2: false };
       plugins.set(name, {
         name,
-        gitRepo: (git.repo as string) ?? "unknown/unknown",
-        gitUrl: `https://github.com/${(git.repo as string) ?? "unknown/unknown"}.git`,
-        directory: (e.directory as string | null) ?? null,
-        description: (e.description as string) ?? "",
-        homepage: (e.homepage as string) ?? null,
-        topics: (e.topics as string[]) ?? [],
-        stars: (e.stargazers_count as number) ?? 0,
-        language: (e.language as string) ?? "TypeScript",
+        gitRepo: git.repo ?? "unknown/unknown",
+        gitUrl: `https://github.com/${git.repo ?? "unknown/unknown"}.git`,
+        directory: e.directory ?? null,
+        description: e.description ?? "",
+        homepage: e.homepage ?? null,
+        topics: e.topics ?? [],
+        stars: e.stargazers_count ?? 0,
+        language: e.language ?? "TypeScript",
         npm: {
-          package: (npm.repo as string) ?? name,
-          v0Version: (npm.v0 as string) ?? null,
-          v1Version: (npm.v1 as string) ?? null,
-          v2Version: (npm.v2 as string) ?? null,
+          package: npm.repo ?? name,
+          v0Version: npm.v0 ?? null,
+          v1Version: npm.v1 ?? null,
+          v2Version: npm.v2 ?? null,
         },
         git: {
-          v0Branch:
-            ((git.v0 as Record<string, unknown>)?.branch as string) ?? null,
-          v1Branch:
-            ((git.v1 as Record<string, unknown>)?.branch as string) ?? null,
-          v2Branch:
-            ((git.v2 as Record<string, unknown>)?.branch as string) ?? null,
+          v0Branch: git.v0?.branch ?? null,
+          v1Branch: git.v1?.branch ?? null,
+          v2Branch: git.v2?.branch ?? null,
         },
         supports,
-        kind: e.kind as string | undefined,
-        registryKind: e.registryKind as string | undefined,
-        origin: e.origin as string | undefined,
-        source: e.source as string | undefined,
-        support: e.support as string | undefined,
-        builtIn: e.builtIn as boolean | undefined,
-        firstParty: e.firstParty as boolean | undefined,
-        thirdParty: e.thirdParty as boolean | undefined,
-        status: e.status as string | undefined,
+        kind: e.kind,
+        registryKind: e.registryKind,
+        origin: e.origin,
+        source: e.source,
+        support: e.support,
+        builtIn: e.builtIn,
+        firstParty: e.firstParty,
+        thirdParty: e.thirdParty,
+        status: e.status,
       });
     }
     return plugins;

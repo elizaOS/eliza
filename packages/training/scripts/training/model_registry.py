@@ -1,10 +1,10 @@
-"""Qwen3.5 model registry for the eliza training pipeline.
+"""Qwen3.5/Qwen3.6 model registry for the eliza training pipeline.
 
 Single source of truth for which Qwen variant trains where, with what
 optimizer + quantization combination, and what its memory budget looks like.
 
-The eliza-1 line trains against Qwen3.5 for 0.8B/2B/4B/9B and the active
-27B-class releases.
+The eliza-1 line trains against Qwen3.5 for 0.8B/2B/4B/9B and Qwen3.6 for
+the active 27B-class releases.
 The legacy Qwen3 base models (``Qwen/Qwen3-0.6B`` / ``Qwen/Qwen3-1.7B`` /
 ``Qwen/Qwen3-4B``) were dropped on 2026-05-12 per operator directive — the
 Qwen3 dense bases do not work with the eliza-1 dflash spec-decode path
@@ -23,10 +23,10 @@ by the runtime model catalog (``packages/shared/src/local-inference/catalog.ts``
   - ``qwen3.5-2b``   → ``Qwen/Qwen3.5-2B-Base``   → ``eliza-1-2b``    (mid local tier; full-param SFT on a 16-24 GB GPU)
   - ``qwen3.5-4b``   → ``Qwen/Qwen3.5-4B-Base``   → ``eliza-1-4b``    (local/workstation tier; full-param SFT on a 24-28 GB GPU)
   - ``qwen3.5-9b``   → ``Qwen/Qwen3.5-9B``        → ``eliza-1-9b``    (workstation tier; 80 GB-class GPU)
-  - ``qwen3.5-27b``  → ``Qwen/Qwen3.5-27B``       → ``eliza-1-27b``   (cloud tier; dense 27B; gpu-h200x2)
+  - ``qwen3.6-27b``  → ``Qwen/Qwen3.6-27B``       → ``eliza-1-27b``   (cloud tier; dense 27B; gpu-h200x2)
 
 All active bases are published on the Hub. The 9b/27b tiers need workstation /
-cloud-class GPUs (or FSDP). Every Qwen3.5 target's DFlash
+cloud-class GPUs (or FSDP). Every Qwen3.5/Qwen3.6 target's DFlash
 speculative-decode drafter is distilled from ``Qwen/Qwen3.5-0.8B-Base``
 (the Qwen3.5 tokenizer — vocab 248320 — must match the target). See
 ``DFLASH_DRAFTER_BASE`` below and ``scripts/distill_dflash_drafter.py``.
@@ -69,7 +69,7 @@ class ModelEntry:
     is intentionally conservative (64k) so the registry's memory budget
     leaves real headroom on a 2× H200 / 2× B200 cluster; bump it via
     ``--max-seq-len`` for long-context runs when you've validated capacity
-    with ``scripts/training/memory_calc.py --shape qwen3.5-27b``."""
+    with ``scripts/training/memory_calc.py --shape qwen3.6-27b``."""
 
     optimizer: str
     """One of: apollo, apollo_mini."""

@@ -34,7 +34,10 @@ function realpath(value: string): string | null {
 
 function isWithinPath(parent: string, child: string): boolean {
   const relative = path.relative(parent, child);
-  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+  return (
+    relative === "" ||
+    (!relative.startsWith("..") && !path.isAbsolute(relative))
+  );
 }
 
 function findMacAppBundleRoot(value: string | undefined): string | null {
@@ -58,7 +61,9 @@ function trustedBundleRoots(opts: NativeLibraryPolicyOptions): string[] {
 }
 
 function candidateLabel(candidate: NativeLibraryCandidate): string {
-  return candidate.label ? `${candidate.label} (${candidate.path})` : candidate.path;
+  return candidate.label
+    ? `${candidate.label} (${candidate.path})`
+    : candidate.path;
 }
 
 export function resolveNativeLibraryCandidate(

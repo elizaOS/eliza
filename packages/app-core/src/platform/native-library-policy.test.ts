@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -31,7 +31,7 @@ describe("resolveNativeLibraryCandidate", () => {
           moduleDir: root,
         },
       ),
-    ).toBe(dylib);
+    ).toBe(realpathSync.native(dylib));
   });
 
   it("allows the expected dylib inside the trusted app bundle in store builds", () => {
@@ -60,7 +60,13 @@ describe("resolveNativeLibraryCandidate", () => {
     const appRoot = path.join(root, "Eliza.app");
     const execPath = touch(path.join(appRoot, "Contents", "MacOS", "Eliza"));
     const pluginDylib = touch(
-      path.join(root, "Library", "Caches", "plugins", "libMacWindowEffects.dylib"),
+      path.join(
+        root,
+        "Library",
+        "Caches",
+        "plugins",
+        "libMacWindowEffects.dylib",
+      ),
     );
     const warnings: string[] = [];
 
@@ -83,7 +89,9 @@ describe("resolveNativeLibraryCandidate", () => {
     const root = tempRoot();
     const appRoot = path.join(root, "Eliza.app");
     const execPath = touch(path.join(appRoot, "Contents", "MacOS", "Eliza"));
-    const dylib = touch(path.join(appRoot, "Contents", "Resources", "plugin.dylib"));
+    const dylib = touch(
+      path.join(appRoot, "Contents", "Resources", "plugin.dylib"),
+    );
 
     expect(
       resolveNativeLibraryCandidate(

@@ -4,6 +4,10 @@ import path from "node:path";
 import test from "node:test";
 
 import {
+  ANDROID_CLOUD_STRIPPED_COMPONENTS,
+  ANDROID_CLOUD_STRIPPED_NATIVE_PLUGINS,
+  ANDROID_CLOUD_STRIPPED_PERMISSIONS,
+  ANDROID_PERMISSIONS,
   IOS_OFFICIAL_PODS,
   isIosAppStoreBuild,
   resolveIosBuildTarget,
@@ -42,6 +46,59 @@ test("resolveMobileBuildPolicy marks AOSP Android as an OTA-owned system image",
     releaseAuthority: "aosp-ota",
     appControlledOta: false,
   });
+});
+
+test("AOSP Android keeps assistant/full-control permissions in the system manifest overlay", () => {
+  for (const permission of [
+    "PACKAGE_USAGE_STATS",
+    "MANAGE_APP_OPS_MODES",
+    "MANAGE_VIRTUAL_MACHINE",
+    "READ_FRAME_BUFFER",
+    "INJECT_EVENTS",
+    "REAL_GET_TASKS",
+    "FOREGROUND_SERVICE_MEDIA_PROJECTION",
+    "FOREGROUND_SERVICE_SPECIAL_USE",
+    "RECEIVE_BOOT_COMPLETED",
+  ]) {
+    assert.ok(
+      ANDROID_PERMISSIONS.includes(permission),
+      `ANDROID_PERMISSIONS should include ${permission}`,
+    );
+  }
+});
+
+test("Google Play Android strips AOSP assistant/full-control components and permissions", () => {
+  for (const component of [
+    "ElizaAssistActivity",
+    "ElizaAgentService",
+    "ElizaBootReceiver",
+  ]) {
+    assert.ok(
+      ANDROID_CLOUD_STRIPPED_COMPONENTS.includes(component),
+      `android-cloud should strip ${component}`,
+    );
+  }
+  for (const permission of [
+    "PACKAGE_USAGE_STATS",
+    "MANAGE_APP_OPS_MODES",
+    "READ_FRAME_BUFFER",
+    "INJECT_EVENTS",
+    "REAL_GET_TASKS",
+    "FOREGROUND_SERVICE_MEDIA_PROJECTION",
+    "FOREGROUND_SERVICE_SPECIAL_USE",
+    "RECEIVE_BOOT_COMPLETED",
+  ]) {
+    assert.ok(
+      ANDROID_CLOUD_STRIPPED_PERMISSIONS.includes(permission),
+      `android-cloud should strip ${permission}`,
+    );
+  }
+  assert.ok(
+    ANDROID_CLOUD_STRIPPED_NATIVE_PLUGINS.some(
+      ([pkg]) => pkg === "@elizaos/capacitor-screencapture",
+    ),
+    "android-cloud should strip the MediaProjection screen-capture plugin",
+  );
 });
 
 test("resolveMobileBuildPolicy separates App Store iOS from local iOS builds", () => {
