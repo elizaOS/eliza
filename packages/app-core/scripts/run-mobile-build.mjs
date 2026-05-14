@@ -1434,6 +1434,85 @@ export function patchAndroidAppActionsXmlResource(
   return patched;
 }
 
+export const ANDROID_APP_ACTION_CAPABILITIES = [
+  "actions.intent.OPEN_APP_FEATURE",
+  "actions.intent.CREATE_MESSAGE",
+  "actions.intent.CREATE_THING",
+  "actions.intent.GET_THING",
+];
+
+export const ANDROID_APP_ACTION_SHORTCUT_IDS = [
+  "eliza_app_action_chat",
+  "eliza_app_action_voice",
+  "eliza_app_action_daily_brief",
+  "eliza_app_action_tasks",
+];
+
+export function validateAndroidAppActionsXmlResource(
+  xml,
+  { androidPackage, urlScheme },
+) {
+  const failures = [];
+
+  for (const capability of ANDROID_APP_ACTION_CAPABILITIES) {
+    if (!xml.includes(`android:name="${capability}"`)) {
+      failures.push(`shortcuts.xml is missing ${capability}`);
+    }
+  }
+
+  for (const shortcutId of ANDROID_APP_ACTION_SHORTCUT_IDS) {
+    if (!xml.includes(`android:shortcutId="${shortcutId}"`)) {
+      failures.push(`shortcuts.xml is missing ${shortcutId}`);
+    }
+  }
+
+  for (const source of ["android-app-actions", "android-static-shortcut"]) {
+    if (!xml.includes(`source=${source}`)) {
+      failures.push(`shortcuts.xml is missing source=${source} deep links`);
+    }
+  }
+
+  for (const match of xml.matchAll(/\bandroid:targetPackage="([^"]+)"/g)) {
+    if (match[1] !== androidPackage) {
+      failures.push(
+        `shortcuts.xml targetPackage ${match[1]} was not rewritten to ${androidPackage}`,
+      );
+    }
+  }
+
+  const expectedTargetClass = `${androidPackage}.MainActivity`;
+  for (const match of xml.matchAll(/\bandroid:targetClass="([^"]+)"/g)) {
+    if (match[1] !== expectedTargetClass) {
+      failures.push(
+        `shortcuts.xml targetClass ${match[1]} was not rewritten to ${expectedTargetClass}`,
+      );
+    }
+  }
+
+  if (!xml.includes(`${urlScheme}://`)) {
+    failures.push(
+      `shortcuts.xml URL templates were not rewritten to ${urlScheme}://`,
+    );
+  }
+
+  const staleLiterals = [
+    androidPackage === "app.eliza" ? null : 'android:targetPackage="app.eliza"',
+    androidPackage === "ai.elizaos.app"
+      ? null
+      : 'android:targetClass="ai.elizaos.app.MainActivity"',
+    urlScheme === "eliza" ? null : "eliza://",
+    urlScheme === "ai.elizaos.app" ? null : "ai.elizaos.app://",
+    urlScheme === "app.eliza" ? null : "app.eliza://",
+  ].filter(Boolean);
+  for (const stale of staleLiterals) {
+    if (xml.includes(stale)) {
+      failures.push(`shortcuts.xml still contains stale literal ${stale}`);
+    }
+  }
+
+  return failures;
+}
+
 function syncAndroidAppActionsResources() {
   const templateResDir = path.join(
     platformsDir,

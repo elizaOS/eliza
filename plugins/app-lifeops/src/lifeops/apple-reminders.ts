@@ -130,16 +130,26 @@ let nativeReminderBridgeOverride: NativeReminderBridge | null | undefined;
 
 const NATIVE_DYLIB_BASENAME = "libMacWindowEffects.dylib";
 
-const NATIVE_DYLIB_CANDIDATES: NativeLibraryCandidate[] = [
-  {
-    label: "ELIZA_NATIVE_PERMISSIONS_DYLIB",
-    path: process.env.ELIZA_NATIVE_PERMISSIONS_DYLIB ?? "",
-  },
-  {
-    label: "bundled Apple permissions bridge",
-    path: `../../../../packages/app-core/platforms/electrobun/src/${NATIVE_DYLIB_BASENAME}`,
-  },
-].filter((candidate) => candidate.path.trim().length > 0);
+function nativeDylibCandidates(): NativeLibraryCandidate[] {
+  return [
+    {
+      label: "ELIZA_NATIVE_PERMISSIONS_DYLIB",
+      path: process.env.ELIZA_NATIVE_PERMISSIONS_DYLIB ?? "",
+    },
+    {
+      label: "packaged Apple permissions bridge",
+      path: `../../../../../../../${NATIVE_DYLIB_BASENAME}`,
+    },
+    {
+      label: "packaged Apple permissions bridge",
+      path: `../../../../../../${NATIVE_DYLIB_BASENAME}`,
+    },
+    {
+      label: "local Apple permissions bridge",
+      path: `../../../../packages/app-core/platforms/electrobun/src/${NATIVE_DYLIB_BASENAME}`,
+    },
+  ].filter((candidate) => candidate.path.trim().length > 0);
+}
 
 function cStringBuffer(value: string): Buffer {
   const bytes = Buffer.from(value, "utf8");
@@ -156,7 +166,7 @@ async function loadNativeReminderBridge(): Promise<NativeReminderBridge | null> 
   nativeReminderBridge = null;
   if (process.platform !== "darwin") return null;
 
-  for (const candidate of NATIVE_DYLIB_CANDIDATES) {
+  for (const candidate of nativeDylibCandidates()) {
     const dylibPath = resolveNativeLibraryCandidate(candidate, {
       expectedBasename: NATIVE_DYLIB_BASENAME,
       moduleDir: import.meta.dir,
@@ -508,4 +518,5 @@ export const __testing = {
   setNativeReminderBridgeForTest(bridge: NativeReminderBridge | null): void {
     nativeReminderBridgeOverride = bridge;
   },
+  nativeDylibCandidates,
 };

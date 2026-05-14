@@ -79,7 +79,7 @@ describe("v5 planner loop skeleton", () => {
 
 	it("instructs planners to use exposed tools for unresolved current work", () => {
 		expect(plannerTemplate).toContain(
-			"incomplete while user needs live/current/external data",
+			"incomplete while user needs live/current/external data, filesystem/runtime state, command output, repo work, build, PR, deploy, verify, side effect, and exposed tool can try",
 		);
 		expect(plannerTemplate).toContain(
 			"attachments/memory/snippets do not replace explicit current run/check/fetch/inspect/build/deploy/verify/look up now",
