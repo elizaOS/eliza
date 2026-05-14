@@ -1544,9 +1544,7 @@ describe("buildBoundedNumberRule — boundary, single-value, and degenerate rang
 			.find((l) => l.includes("_pin_bounded ::="));
 		expect(boundedRule).toBeDefined();
 		// Exactly one alternative, the literal `"7"` — no alternation pipe.
-		expect(boundedRule).toBe(
-			'paramsofaction_FIXED7_pin_bounded ::= "\\"7\\""',
-		);
+		expect(boundedRule).toBe('paramsofaction_FIXED7_pin_bounded ::= "\\"7\\""');
 		expect(boundedRule).not.toContain(" | ");
 	});
 
