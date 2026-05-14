@@ -1752,7 +1752,9 @@ async function initializeMobileAgentTunnel(): Promise<void> {
         ...(runtimeConfig.tunnelPairingToken
           ? { pairingToken: runtimeConfig.tunnelPairingToken }
           : {}),
-        ...(isAndroid ? { localAgentApiBase: MOBILE_LOCAL_AGENT_API_BASE } : {}),
+        ...(isAndroid
+          ? { localAgentApiBase: MOBILE_LOCAL_AGENT_API_BASE }
+          : {}),
       });
       console.info(
         `${APP_LOG_PREFIX} Mobile agent tunnel ${status.state}`,
