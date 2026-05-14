@@ -197,11 +197,7 @@ export async function handleDevCompatRoutes(
     const limitRaw = url.searchParams.get("limit");
     const limit = limitRaw ? Number(limitRaw) : undefined;
     const { buildVoiceLatencyDevPayload } = await import(
-<<<<<<< HEAD
-      "@elizaos/plugin-local-inference"
-=======
       "@elizaos/plugin-local-inference/services"
->>>>>>> 7883acf251 (chore: checkpoint app core dirty state)
     );
     const payload = buildVoiceLatencyDevPayload(
       undefined,
