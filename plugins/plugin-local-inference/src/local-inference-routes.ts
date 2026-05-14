@@ -29,6 +29,10 @@ import {
 	LOCAL_INFERENCE_PROVIDER_ID,
 	LOCAL_INFERENCE_TEXT_MODEL_TYPES,
 } from "./provider.js";
+import {
+	assertManifestEvalsPassed,
+	CandidateModelActivationError,
+} from "./services/active-model.js";
 
 type ModelRole = "chat" | "embedding" | "drafter";
 type DownloadState =
@@ -1286,6 +1290,32 @@ export async function handleLocalInferenceRoutes(
 		if (!installed) {
 			sendJsonError(res, `Model not installed: ${body.modelId}`, 404);
 			return true;
+		}
+		// #7679: refuse to activate a candidate-only / weights-staged bundle
+		// whose manifest reports `evals.textEval.passed=false`. Runs before
+		// any assignment write or device-bridge load so a known-bad bundle
+		// can't take over the assignment slots nor leave the bridge holding
+		// a half-loaded model. The gate only fires for tiers whose
+		// `eliza-1.manifest.json` is reachable next to the installed bundle
+		// (see `defaultManifestLoader`); external-scan / non-bundle installs
+		// are passed through.
+		try {
+			assertManifestEvalsPassed(installed);
+		} catch (err) {
+			if (err instanceof CandidateModelActivationError) {
+				sendJson(
+					res,
+					{
+						error: err.message,
+						modelId: err.modelId,
+						manifestVersion: err.manifestVersion,
+						failedEvals: err.failedEvals,
+					},
+					422,
+				);
+				return true;
+			}
+			throw err;
 		}
 		const catalog = CATALOG.find((model) => model.id === installed.id);
 		if (catalog) await assignModel(catalog, true);
