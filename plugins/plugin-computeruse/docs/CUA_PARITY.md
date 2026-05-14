@@ -52,7 +52,7 @@ to expose. Cua has two related APIs:
 | Cua grouped interface | Cua actions | plugin-computeruse surface | Status |
 | --- | --- | --- | --- |
 | `shell` | `run` | `execute_command`, `terminal_execute` | Supported through guarded local command execution. |
-| `terminal` | `create`, `send_input`, `resize`, `close` | `terminal_connect`, `terminal_type`, `terminal_clear`, `terminal_close` | Partial. There is a session abstraction, but no real PTY resize yet. |
+| `terminal` | `create`, `send_input`, `resize`, `close` | `terminal_connect`/`terminal_create`, `terminal_type`/`terminal_send_input`, `terminal_resize`, `terminal_read`, `terminal_close` | PTY-backed when `node-pty` is available; falls back to interactive `child_process.spawn` sessions. |
 | `files` / computer file commands | `file_exists`, `directory_exists`, `list_dir`, `read_text`, `write_text`, `read_bytes`, `write_bytes`, `delete_file`, `create_dir`, `delete_dir`, `get_file_size` | `file_*`, `directory_list`, `directory_delete` | Partial. Text read/write/edit/append/delete/list/exists are supported. Binary chunked read/write and create-dir alias should be added for exact Cua parity. |
 | `clipboard` | `get`/`copy_to_clipboard`, `set`/`set_clipboard` | none | Gap. Add cross-platform clipboard commands. |
 | `window` | `get_active_title` | `WINDOW list/focus/switch/...` | Partial. Window listing and management exists; active-title direct alias should be added. |

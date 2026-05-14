@@ -1,8 +1,5 @@
+import { type JsonSchema, validateSchema } from "../actions/validate-tool-args";
 import { evaluatorSchema, evaluatorTemplate } from "../prompts/evaluator";
-import {
-	type JsonSchema,
-	validateSchema,
-} from "../actions/validate-tool-args";
 import { emitStreamingHook, getStreamingContext } from "../streaming-context";
 import type { EvaluationResult } from "../types/components";
 import {
@@ -81,7 +78,12 @@ interface ParsedEvaluatorObject {
 
 type RawEvaluatorModelResult =
 	| string
-	| { text?: string; object?: unknown; providerMetadata?: unknown; usage?: unknown };
+	| {
+			text?: string;
+			object?: unknown;
+			providerMetadata?: unknown;
+			usage?: unknown;
+	  };
 
 const EVALUATOR_STRICT_REROLL_SCHEMA: JsonSchema = {
 	type: "object",
@@ -257,7 +259,10 @@ async function callEvaluatorModel(args: {
 		>[0],
 	);
 	const rerollBudget = shouldReroll
-		? Math.min(DEFAULT_REMOTE_REROLL_BUDGET, ceiling ?? DEFAULT_REMOTE_REROLL_BUDGET)
+		? Math.min(
+				DEFAULT_REMOTE_REROLL_BUDGET,
+				ceiling ?? DEFAULT_REMOTE_REROLL_BUDGET,
+			)
 		: 0;
 	const maxAttempts = rerollBudget + 1;
 	let lastRaw: RawEvaluatorModelResult = "";
@@ -269,7 +274,11 @@ async function callEvaluatorModel(args: {
 				params: GenerateTextParams,
 				provider?: string,
 			) => Promise<RawEvaluatorModelResult>
-		)(args.modelType, args.modelParams, args.provider)) as RawEvaluatorModelResult;
+		)(
+			args.modelType,
+			args.modelParams,
+			args.provider,
+		)) as RawEvaluatorModelResult;
 
 		if (!shouldReroll || isEvaluatorOutputSchemaValid(lastRaw)) {
 			return lastRaw;
@@ -301,9 +310,11 @@ function shouldRerollEvaluatorOutput(args: {
 		);
 	if (!provider) return false;
 	const guidedDecode =
-		(args.modelParams.providerOptions?.eliza as
-			| Record<string, unknown>
-			| undefined)?.guidedDecode === true;
+		(
+			args.modelParams.providerOptions?.eliza as
+				| Record<string, unknown>
+				| undefined
+		)?.guidedDecode === true;
 	if (isLocalProvider(provider)) {
 		return !guidedDecode;
 	}

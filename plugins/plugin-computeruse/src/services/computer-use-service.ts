@@ -210,7 +210,7 @@ export class ComputerUseService extends Service {
   static serviceType = "computeruse";
 
   capabilityDescription =
-    "Desktop automation, screenshots, browser control, file operations, terminal access, window management, and approval-gated local actions";
+    "Desktop automation, screenshots, browser control, file operations, terminal access, window management, clipboard access, and approval-gated local actions";
 
   private capabilities!: PlatformCapabilities;
   private recentActions: ActionHistoryEntry[] = [];
@@ -1112,6 +1112,7 @@ export class ComputerUseService extends Service {
             params.text ??
             params.content ??
             params.value ??
+            params.clipboard ??
             this.requireIdentifier(undefined, "text is required for clipboard set");
           await setClipboardText(text);
           return this.succeedEntry(entry, {
@@ -1459,7 +1460,7 @@ export class ComputerUseService extends Service {
   ): ClipboardActionParams {
     return {
       ...params,
-      text: params.text ?? params.content ?? params.value,
+      text: params.text ?? params.content ?? params.value ?? params.clipboard,
     };
   }
 

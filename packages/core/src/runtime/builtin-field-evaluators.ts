@@ -62,6 +62,16 @@ function isExpressiveEmotionEnumValue(
 	return (EXPRESSIVE_EMOTION_ENUM_VALUES as readonly string[]).includes(value);
 }
 
+function normalizeCandidateActionName(value: unknown): string {
+	return String(value ?? "")
+		.trim()
+		.replace(/[\s:-]+/g, "_")
+		.replace(/[^A-Za-z0-9_]/g, "")
+		.replace(/_+/g, "_")
+		.replace(/^_+|_+$/g, "")
+		.toUpperCase();
+}
+
 // ---------------------------------------------------------------------------
 // shouldRespond — priority 5 (always first)
 // ---------------------------------------------------------------------------
@@ -183,11 +193,10 @@ export const candidateActionNamesFieldEvaluator: ResponseHandlerFieldEvaluator<
 		const seen = new Set<string>();
 		const result: string[] = [];
 		for (const item of value) {
-			const normalized = String(item ?? "").trim();
+			const normalized = normalizeCandidateActionName(item);
 			if (!normalized) continue;
-			const key = normalized.toUpperCase();
-			if (seen.has(key)) continue;
-			seen.add(key);
+			if (seen.has(normalized)) continue;
+			seen.add(normalized);
 			result.push(normalized);
 		}
 		return result;

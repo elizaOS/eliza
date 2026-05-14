@@ -5,6 +5,8 @@
  * `docs/IOS_CONSTRAINTS.md`.
  */
 
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   _resetOcrProvidersForTests,
@@ -29,6 +31,12 @@ import {
   type IosComputerUseBridge,
   type VisionOcrResult,
 } from "../mobile/index.js";
+
+const REPO_ROOT = path.resolve(import.meta.dirname, "..", "..", "..", "..");
+
+function readRepoFile(...segments: string[]): string {
+  return readFileSync(path.join(REPO_ROOT, ...segments), "utf8");
+}
 
 // ── Bridge constants ─────────────────────────────────────────────────────────
 
@@ -189,6 +197,44 @@ describe("iOS AppIntent registry", () => {
       expect(required.length).toBeGreaterThan(0);
     }
   });
+});
+
+// ── Native source alignment ──────────────────────────────────────────────────
+
+describe("iOS native AppIntent source alignment", () => {
+  it("keeps the native x-callback switch aligned with the TS registry", () => {
+    const swift = readRepoFile(
+      "packages/app-core/platforms/ios/App/App/ComputerUseBridge.swift",
+    );
+    const nativeCases = Array.from(swift.matchAll(/case "([^"]+)":/g)).map(
+      (match) => match[1],
+    );
+
+    expect(nativeCases).toEqual(
+      expect.arrayContaining([...IOS_NATIVE_X_CALLBACK_INTENT_IDS]),
+    );
+
+    for (const intent of listIosAppIntents()) {
+      const hasNativeCase = nativeCases.includes(intent.id);
+      expect(hasNativeCase).toBe(
+        isIosNativeXCallbackIntent(intent.id),
+      );
+    }
+  });
+
+  it("keeps AppIntent discovery local to the app instead of claiming cross-app enumeration", () => {
+    const swift = readRepoFile(
+      "packages/app-core/platforms/ios/App/App/ComputerUseBridge.swift",
+    );
+
+    expect(swift).toContain("import AppIntents");
+    expect(swift).toContain("appIntentList");
+    expect(swift).toContain("AppShortcutsProvider");
+    expect(swift).toContain("iOS does not");
+    expect(swift).toContain("static registry covers known");
+  });
+
+  it.todo("adds a first-party AppShortcutsProvider when Siri phrase donation lands");
 });
 
 // ── OCR provider chain ───────────────────────────────────────────────────────

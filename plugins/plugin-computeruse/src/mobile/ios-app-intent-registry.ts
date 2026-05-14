@@ -299,7 +299,9 @@ export function findIosAppIntent(intentId: string): IntentSpec | undefined {
 }
 
 export function isIosNativeXCallbackIntent(intentId: string): boolean {
-  return (IOS_NATIVE_X_CALLBACK_INTENT_IDS as readonly string[]).includes(intentId);
+  return (IOS_NATIVE_X_CALLBACK_INTENT_IDS as readonly string[]).includes(
+    intentId,
+  );
 }
 
 export function findIosAppIntentsForBundle(

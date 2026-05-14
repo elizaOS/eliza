@@ -1207,9 +1207,54 @@ function handleDeepLink(url: string): void {
   }
 
   switch (path) {
+    case "ask":
+    case "assistant":
+    case "chat/ask": {
+      const params = withDefaultSearchParam(
+        parsed.searchParams,
+        "source",
+        "assistant-entry",
+      );
+      setHashRoute("chat", params);
+      break;
+    }
     case "chat":
       window.location.hash = "#chat";
       break;
+    case "voice":
+    case "chat/voice": {
+      const params = withDefaultSearchParam(
+        parsed.searchParams,
+        "source",
+        "assistant-entry",
+      );
+      params.set("voice", "1");
+      setHashRoute("chat", params);
+      break;
+    }
+    case "daily-brief":
+    case "lifeops/daily-brief": {
+      const params = withDefaultSearchParam(
+        parsed.searchParams,
+        "source",
+        "assistant-entry",
+      );
+      params.set("lifeops.section", "overview");
+      setHashRoute("lifeops", params);
+      break;
+    }
+    case "lifeops/create":
+    case "lifeops/task":
+    case "lifeops/reminder": {
+      const params = withDefaultSearchParam(
+        parsed.searchParams,
+        "source",
+        "assistant-entry",
+      );
+      params.set("lifeops.section", "reminders");
+      setHashRoute("lifeops", params);
+      break;
+    }
     case "phone":
     case "phone/call":
       setHashRoute("phone", parsed.searchParams);
@@ -1319,6 +1364,16 @@ function getDeepLinkPath(parsed: URL): string {
 function setHashRoute(route: string, params: URLSearchParams): void {
   const query = params.toString();
   window.location.hash = query ? `#${route}?${query}` : `#${route}`;
+}
+
+function withDefaultSearchParam(
+  params: URLSearchParams,
+  key: string,
+  value: string,
+): URLSearchParams {
+  const next = new URLSearchParams(params);
+  if (!next.has(key)) next.set(key, value);
+  return next;
 }
 
 async function initializeDesktopShell(): Promise<void> {

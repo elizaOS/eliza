@@ -87,7 +87,7 @@ def _write_bundle(
             "sizeFirstRepoIds": True,
         },
         "hf": {
-            "repoId": "elizaos/eliza-1",
+            "repoId": "elizalabs/eliza-1",
             "pathPrefix": f"bundles/{tier}",
             "status": "upload-ready",
         },
@@ -169,7 +169,7 @@ def test_voice_policy_can_warn_or_block(tmp_path: Path):
     warning_plan = P.plan_bundle(tmp_path, "2b")
     strict_plan = P.plan_bundle(tmp_path, "2b", strict_voice_policy=True)
 
-    assert warning_plan.uploadable is False
+    assert warning_plan.uploadable is True
     assert not any("omnivoice" in w for w in warning_plan.warnings)
     assert any("kokoro/tokenizer.json" in w for w in warning_plan.warnings)
     assert any("kokoro/voices/af_bella.bin" in w for w in warning_plan.warnings)

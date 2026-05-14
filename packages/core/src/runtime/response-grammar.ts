@@ -979,10 +979,10 @@ export function buildPlannerActionGrammarStrict(
 
 	builder.root([branchRuleNames.join(" | ")]);
 
-		const responseSkeleton: ResponseSkeleton = buildPlannerActionSamplerSkeleton(
-			names,
-			cacheKey,
-		);
+	const responseSkeleton: ResponseSkeleton = buildPlannerActionSamplerSkeleton(
+		names,
+		cacheKey,
+	);
 
 	const result: PlannerActionGrammarResult = {
 		responseSkeleton,
@@ -1094,7 +1094,10 @@ function emitObjectRule(
 					propertyTokens[key],
 					...optionalKeys
 						.slice(index + 1)
-						.map((nextKey) => `( ${gbnfLiteral(",")} ${propertyTokens[nextKey]} )?`),
+						.map(
+							(nextKey) =>
+								`( ${gbnfLiteral(",")} ${propertyTokens[nextKey]} )?`,
+						),
 				].join(" "),
 			);
 			parts.push(`( ${alternatives.join(" | ")} )?`);
@@ -1178,13 +1181,13 @@ function buildBoundedNumberRule(
 
 		// For manageable integer ranges, enumerate directly.
 		// This is pragmatic for small ranges like [0, 100].
-			if (Number.isFinite(min) && Number.isFinite(max) && max - min <= 200) {
-				const literals: string[] = [];
-				for (let i = min; i <= max; i++) {
-					literals.push(gbnfLiteral(String(i)));
-				}
-				builder.rule(ruleName, literals.join(" | "));
-				return ruleName;
+		if (Number.isFinite(min) && Number.isFinite(max) && max - min <= 200) {
+			const literals: string[] = [];
+			for (let i = min; i <= max; i++) {
+				literals.push(gbnfLiteral(String(i)));
+			}
+			builder.rule(ruleName, literals.join(" | "));
+			return ruleName;
 		}
 
 		// For larger ranges, fall back to unbounded (the grammar won't tightly constrain).
