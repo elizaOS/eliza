@@ -1,12 +1,17 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   collectConfigBenchProviderSettings,
   isCerebrasBaseUrl,
   isTextEmbeddingSetupFailure,
+  loadModelProviderPlugin,
   normalizeConfigBenchProviderName,
 } from "../src/handlers/eliza.js";
 
 describe("Eliza handler setup helpers", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it("routes OpenAI-compatible provider labels through plugin-openai", () => {
     expect(normalizeConfigBenchProviderName("cerebras")).toBe("openai");
     expect(normalizeConfigBenchProviderName("openrouter")).toBe("openai");
@@ -49,5 +54,16 @@ describe("Eliza handler setup helpers", () => {
     expect(isTextEmbeddingSetupFailure(new Error("planner parse failed"))).toBe(
       false,
     );
+  });
+
+  it("keeps plugin-openai TEXT_EMBEDDING for Cerebras fallback", async () => {
+    vi.stubEnv("CONFIGBENCH_AGENT_PROVIDER", "openai");
+    vi.stubEnv("OPENAI_API_KEY", "sk-test");
+    vi.stubEnv("OPENAI_BASE_URL", "https://api.cerebras.ai/v1");
+
+    const plugin = await loadModelProviderPlugin();
+
+    expect(plugin?.name).toBe("openai");
+    expect(plugin?.models).toHaveProperty("TEXT_EMBEDDING");
   });
 });
