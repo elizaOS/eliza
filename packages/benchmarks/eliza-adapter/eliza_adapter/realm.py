@@ -386,6 +386,23 @@ class ElizaREALMAgent:
                         last_action_text = "Adaptation disabled; ignoring ADAPT_PLAN."
 
                 elif selected_action == "COMPLETE_TASK":
+                    # Capture an optional solution payload from the bridge
+                    # response, so the new extrinsic evaluator can score
+                    # the agent against the oracle.
+                    bench_params = _benchmark_action_params(response.params)
+                    raw_sol = (
+                        response.params.get("solution")
+                        or bench_params.get("solution")
+                    )
+                    if isinstance(raw_sol, dict):
+                        trajectory.solution = raw_sol
+                    elif isinstance(response.text, str) and response.text.strip().startswith("{"):
+                        try:
+                            maybe = json.loads(response.text)
+                            if isinstance(maybe, dict):
+                                trajectory.solution = maybe
+                        except json.JSONDecodeError:
+                            pass
                     logger.info("[eliza-realm] Task completed via COMPLETE_TASK action")
                     break
 

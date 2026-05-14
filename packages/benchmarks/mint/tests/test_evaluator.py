@@ -4,7 +4,7 @@ Tests for MINT evaluator.
 
 import pytest
 
-from benchmarks.mint.types import MINTCategory, MINTTask, MINTTrajectory, Turn, TurnType
+from benchmarks.mint.types import MINTSubtask, MINTTask, MINTTrajectory, Turn, TurnType
 from benchmarks.mint.evaluator import MINTEvaluator, BatchEvaluator
 
 
@@ -128,7 +128,7 @@ class TestMINTEvaluator:
         """Test evaluating a successful trajectory."""
         task = MINTTask(
             id="test-001",
-            category=MINTCategory.REASONING,
+            subtask=MINTSubtask.GSM8K,
             description="Test task",
             initial_prompt="What is 2+2?",
             ground_truth="4",
@@ -153,13 +153,13 @@ class TestMINTEvaluator:
         assert result.success is True
         assert result.score == 1.0
         assert result.task_id == "test-001"
-        assert result.category == MINTCategory.REASONING
+        assert result.subtask == MINTSubtask.GSM8K
 
     def test_evaluate_trajectory_failure(self, evaluator: MINTEvaluator) -> None:
         """Test evaluating a failed trajectory."""
         task = MINTTask(
             id="test-002",
-            category=MINTCategory.REASONING,
+            subtask=MINTSubtask.GSM8K,
             description="Test task",
             initial_prompt="What is 2+2?",
             ground_truth="4",
@@ -203,7 +203,7 @@ class TestBatchEvaluator:
         """Test aggregating results."""
         task = MINTTask(
             id="test-001",
-            category=MINTCategory.REASONING,
+            subtask=MINTSubtask.GSM8K,
             description="Test",
             initial_prompt="Test",
             ground_truth="4",
