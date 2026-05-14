@@ -33,7 +33,7 @@ const InternalEventSchema = z.object({
   payload: z.record(z.string(), z.unknown()),
 });
 
-export type InternalEvent = z.infer<typeof InternalEventSchema>;
+type InternalEvent = z.infer<typeof InternalEventSchema>;
 
 interface InternalEventDeps {
   redis: RoutingRedis;

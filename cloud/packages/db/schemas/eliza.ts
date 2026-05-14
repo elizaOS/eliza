@@ -30,4 +30,3 @@ export const {
   channelParticipantsTable,
 } = elizaSchema;
 
-export const serverAgentsTable = messageServerAgentsTable;

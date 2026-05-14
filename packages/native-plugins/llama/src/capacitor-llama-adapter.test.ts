@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 interface InitContextCall {
   contextId: number;
   model: string;
+  params: Record<string, unknown>;
 }
 
 interface CompletionCall {
@@ -17,67 +18,102 @@ interface ReleaseCall {
   contextId: number;
 }
 
+interface SetSpecTypeCall {
+  target: string;
+  drafter: string;
+  specType: string;
+  draftMin: number;
+  draftMax: number;
+}
+
+interface SetCacheTypeCall {
+  cacheTypeK: string;
+  cacheTypeV: string;
+}
+
 interface MockPluginState {
   initContextCalls: InitContextCall[];
   completionCalls: CompletionCall[];
   embeddingCalls: EmbeddingCall[];
   releaseCalls: ReleaseCall[];
   releaseAllCalls: number;
+  setSpecTypeCalls: SetSpecTypeCall[];
+  setCacheTypeCalls: SetCacheTypeCall[];
 }
 
-function installMockPlugin(): MockPluginState {
+interface MockOptions {
+  /** When true, include the fork-only setSpecType / setCacheType methods. */
+  forkBuild?: boolean;
+}
+
+function installMockPlugin(opts: MockOptions = {}): MockPluginState {
   const state: MockPluginState = {
     initContextCalls: [],
     completionCalls: [],
     embeddingCalls: [],
     releaseCalls: [],
     releaseAllCalls: 0,
+    setSpecTypeCalls: [],
+    setCacheTypeCalls: [],
   };
 
-  vi.doMock("llama-cpp-capacitor", () => ({
-    LlamaCpp: {
-      initContext: vi.fn(
-        async (options: { contextId: number; params: { model: string } }) => {
-          state.initContextCalls.push({
-            contextId: options.contextId,
-            model: options.params.model,
-          });
-          return { contextId: options.contextId };
-        },
-      ),
-      releaseContext: vi.fn(async (options: { contextId: number }) => {
-        state.releaseCalls.push({ contextId: options.contextId });
-      }),
-      releaseAllContexts: vi.fn(async () => {
-        state.releaseAllCalls += 1;
-      }),
-      completion: vi.fn(async (options: { contextId: number }) => {
-        state.completionCalls.push({ contextId: options.contextId });
-        return {
-          text: "ok",
-          tokens_evaluated: 10,
-          tokens_predicted: 20,
-          timings: { predicted_ms: 100 },
-        };
-      }),
-      stopCompletion: vi.fn(async () => undefined),
-      embedding: vi.fn(async (options: { contextId: number }) => {
-        state.embeddingCalls.push({ contextId: options.contextId });
-        return { embedding: [0.1, 0.2, 0.3] };
-      }),
-      tokenize: vi.fn(async () => ({ tokens: [1, 2, 3] })),
-      addListener: vi.fn(async () => ({ remove: async () => undefined })),
-      getHardwareInfo: vi.fn(async () => ({
-        platform: "android",
-        deviceModel: "Pixel 9a",
-        totalRamGb: 8,
-        availableRamGb: 4,
-        cpuCores: 8,
-        gpu: null,
-        gpuSupported: false,
-      })),
-    },
-  }));
+  const baseMock: Record<string, unknown> = {
+    initContext: vi.fn(
+      async (options: {
+        contextId: number;
+        params: { model: string } & Record<string, unknown>;
+      }) => {
+        state.initContextCalls.push({
+          contextId: options.contextId,
+          model: options.params.model,
+          params: { ...options.params },
+        });
+        return { contextId: options.contextId };
+      },
+    ),
+    releaseContext: vi.fn(async (options: { contextId: number }) => {
+      state.releaseCalls.push({ contextId: options.contextId });
+    }),
+    releaseAllContexts: vi.fn(async () => {
+      state.releaseAllCalls += 1;
+    }),
+    completion: vi.fn(async (options: { contextId: number }) => {
+      state.completionCalls.push({ contextId: options.contextId });
+      return {
+        text: "ok",
+        tokens_evaluated: 10,
+        tokens_predicted: 20,
+        timings: { predicted_ms: 100 },
+      };
+    }),
+    stopCompletion: vi.fn(async () => undefined),
+    embedding: vi.fn(async (options: { contextId: number }) => {
+      state.embeddingCalls.push({ contextId: options.contextId });
+      return { embedding: [0.1, 0.2, 0.3] };
+    }),
+    tokenize: vi.fn(async () => ({ tokens: [1, 2, 3] })),
+    addListener: vi.fn(async () => ({ remove: async () => undefined })),
+    getHardwareInfo: vi.fn(async () => ({
+      platform: "android",
+      deviceModel: "Pixel 9a",
+      totalRamGb: 8,
+      availableRamGb: 4,
+      cpuCores: 8,
+      gpu: null,
+      gpuSupported: false,
+    })),
+  };
+
+  if (opts.forkBuild) {
+    baseMock.setSpecType = vi.fn(async (args: SetSpecTypeCall) => {
+      state.setSpecTypeCalls.push(args);
+    });
+    baseMock.setCacheType = vi.fn(async (args: SetCacheTypeCall) => {
+      state.setCacheTypeCalls.push(args);
+    });
+  }
+
+  vi.doMock("llama-cpp-capacitor", () => ({ LlamaCpp: baseMock }));
 
   // Capacitor presence shim so isCapacitorNative() reports true.
   (globalThis as Record<string, unknown>).Capacitor = {
@@ -174,5 +210,121 @@ describe("CapacitorLlamaAdapter context-id allocation (issue #7681)", () => {
     expect(
       state.releaseCalls.find((r) => r.contextId === firstId),
     ).toBeDefined();
+  });
+});
+
+describe("CapacitorLlamaAdapter DFlash + cache type wiring", () => {
+  it("forwards draftModelPath / draftMin / draftMax through initContext params on stock builds", async () => {
+    vi.resetModules();
+    const state = installMockPlugin({ forkBuild: false });
+    const { CapacitorLlamaAdapter } = await import("./capacitor-llama-adapter");
+    const adapter = new CapacitorLlamaAdapter();
+    await adapter.load({
+      modelPath: "/tmp/target.gguf",
+      draftModelPath: "/tmp/drafter.gguf",
+      draftMin: 2,
+      draftMax: 5,
+      draftContextSize: 2048,
+    });
+    expect(state.initContextCalls).toHaveLength(1);
+    const params = state.initContextCalls[0].params;
+    expect(params.draft_model).toBe("/tmp/drafter.gguf");
+    expect(params.draft_min).toBe(2);
+    expect(params.draft_max).toBe(5);
+    expect(params.n_ctx_draft).toBe(2048);
+    expect(state.setSpecTypeCalls).toHaveLength(0); // stock build — no fork bridge
+  });
+
+  it("auto-calls setSpecType after init on fork builds when draftModelPath is set", async () => {
+    vi.resetModules();
+    const state = installMockPlugin({ forkBuild: true });
+    const { CapacitorLlamaAdapter } = await import("./capacitor-llama-adapter");
+    const adapter = new CapacitorLlamaAdapter();
+    await adapter.load({
+      modelPath: "/tmp/target.gguf",
+      draftModelPath: "/tmp/drafter.gguf",
+      draftMin: 1,
+      draftMax: 4,
+    });
+    expect(state.setSpecTypeCalls).toHaveLength(1);
+    expect(state.setSpecTypeCalls[0]).toMatchObject({
+      target: "/tmp/target.gguf",
+      drafter: "/tmp/drafter.gguf",
+      specType: "dflash",
+      draftMin: 1,
+      draftMax: 4,
+    });
+  });
+
+  it("does NOT call setSpecType when draftModelPath is missing, even on fork builds", async () => {
+    vi.resetModules();
+    const state = installMockPlugin({ forkBuild: true });
+    const { CapacitorLlamaAdapter } = await import("./capacitor-llama-adapter");
+    const adapter = new CapacitorLlamaAdapter();
+    await adapter.load({ modelPath: "/tmp/target.gguf" });
+    expect(state.setSpecTypeCalls).toHaveLength(0);
+  });
+
+  it("forwards cacheTypeK / cacheTypeV through initContext and auto-calls setCacheType on fork builds", async () => {
+    vi.resetModules();
+    const state = installMockPlugin({ forkBuild: true });
+    const { CapacitorLlamaAdapter } = await import("./capacitor-llama-adapter");
+    const adapter = new CapacitorLlamaAdapter();
+    await adapter.load({
+      modelPath: "/tmp/target.gguf",
+      cacheTypeK: "q8_0",
+      cacheTypeV: "q4_0",
+    });
+    expect(state.initContextCalls[0].params.cache_type_k).toBe("q8_0");
+    expect(state.initContextCalls[0].params.cache_type_v).toBe("q4_0");
+    expect(state.setCacheTypeCalls).toHaveLength(1);
+    expect(state.setCacheTypeCalls[0]).toEqual({
+      cacheTypeK: "q8_0",
+      cacheTypeV: "q4_0",
+    });
+  });
+
+  it("does NOT throw when the fork bridge setSpecType rejects — only warns and continues", async () => {
+    vi.resetModules();
+    const state = installMockPlugin({ forkBuild: true });
+    // Override setSpecType to reject.
+    const { CapacitorLlamaAdapter } = await import("./capacitor-llama-adapter");
+    const adapter = new CapacitorLlamaAdapter();
+
+    // Replace the mock fn after import so we observe the rejection path.
+    const llamaCppCapacitor = await import("llama-cpp-capacitor");
+    const plugin = (llamaCppCapacitor as unknown as { LlamaCpp: { setSpecType: unknown } })
+      .LlamaCpp;
+    (plugin as { setSpecType: unknown }).setSpecType = vi.fn(async () => {
+      throw new Error("simulated fork bridge error");
+    });
+
+    await expect(
+      adapter.load({
+        modelPath: "/tmp/target.gguf",
+        draftModelPath: "/tmp/drafter.gguf",
+      }),
+    ).resolves.not.toThrow();
+    // initContext should have completed successfully — load() does not
+    // abort just because the secondary spec-type bridge rejected.
+    expect(state.initContextCalls).toHaveLength(1);
+  });
+
+  it("setSpecType TS method warns and no-ops when underlying plugin lacks the method (stock build)", async () => {
+    vi.resetModules();
+    installMockPlugin({ forkBuild: false });
+    const { CapacitorLlamaAdapter } = await import("./capacitor-llama-adapter");
+    const adapter = new CapacitorLlamaAdapter();
+    await adapter.load({ modelPath: "/tmp/target.gguf" });
+    // Direct call should not throw — falls through to the warn-no-op.
+    await expect(
+      adapter.setSpecType({
+        target: "/tmp/target.gguf",
+        drafter: "/tmp/drafter.gguf",
+        specType: "dflash",
+        draftMin: 1,
+        draftMax: 3,
+      }),
+    ).resolves.toBeUndefined();
   });
 });

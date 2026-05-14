@@ -156,7 +156,7 @@ function parseNamespaceFromUrl(serverUrl: string): string | null {
   return match?.[1] ?? null;
 }
 
-export async function wakeServer(serverName: string, serverUrl: string): Promise<void> {
+async function wakeServer(serverName: string, serverUrl: string): Promise<void> {
   const token = getK8sToken();
   if (!token) return;
 

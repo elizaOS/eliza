@@ -134,13 +134,13 @@ test("Android manifest cleartext policy is inserted when absent", () => {
   );
 });
 
-test("resolveMobileBuildPolicy keeps App Store iOS local-runtime capable", () => {
+test("resolveMobileBuildPolicy clamps iOS execution to cloud or local-safe", () => {
   assert.deepEqual(resolveMobileBuildPolicy("ios"), {
     capacitorTarget: "ios",
     buildVariant: "store",
     androidRuntimeMode: null,
-    iosRuntimeMode: "cloud-hybrid",
-    runtimeExecutionMode: "local-safe",
+    iosRuntimeMode: "cloud",
+    runtimeExecutionMode: "cloud",
     releaseAuthority: "apple-app-store",
     appControlledOta: false,
   });
@@ -181,19 +181,18 @@ test("iOS background runner pod resolves through the official package", () => {
   );
 });
 
-test("iOS App Store pod selection strips local execution bridge pods", () => {
+test("iOS App Store pod selection keeps no-JIT Bun runtime and gates tunnel bridge", () => {
   const pods = resolveIosCustomPods({
     appStoreBuild: true,
-    includeLlama: true,
-    includeCompatBunRuntime: true,
+    includeLlama: false,
     includeFullBunEngine: true,
   }).map(([name]) => name);
 
   assert.equal(isIosAppStoreBuild({ ELIZA_BUILD_VARIANT: "store" }), true);
-  assert.equal(pods.includes("LlamaCppCapacitor"), true);
-  assert.equal(pods.includes("ElizaosCapacitorBunRuntime"), false);
+  assert.equal(pods.includes("LlamaCppCapacitor"), false);
+  assert.equal(pods.includes("ElizaosCapacitorBunRuntime"), true);
   assert.equal(pods.includes("ElizaosCapacitorMobileAgentBridge"), false);
-  assert.equal(pods.includes("ElizaBunEngine"), false);
+  assert.equal(pods.includes("ElizaBunEngine"), true);
 });
 
 test("iOS direct compat pod selection includes JSContext runtime without full Bun", () => {

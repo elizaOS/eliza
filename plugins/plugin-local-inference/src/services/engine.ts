@@ -27,6 +27,7 @@ import type {
 	LocalInferenceBackend,
 } from "./backend";
 import { BackendDispatcher, gpuLayersForKvOffload } from "./backend";
+import { resolveKokoroEngineConfig } from "@elizaos/shared/local-inference";
 import {
 	ELIZA_1_PLACEHOLDER_IDS,
 	type Eliza1TierId,
@@ -70,7 +71,6 @@ import {
 	type EngineVoiceBridgeOptions,
 	VoiceStartupError,
 } from "./voice/engine-bridge";
-import { resolveKokoroEngineConfig } from "./voice/kokoro/kokoro-engine-discovery";
 import type { VoicePipelineEvents } from "./voice/pipeline";
 import {
 	type DflashTextRunner,

@@ -35,4 +35,20 @@ describe("determineExitCode", () => {
   it("keeps harness validation failures as process failures", () => {
     expect(determineExitCode(results({ validationPassed: false }))).toBe(2);
   });
+
+  it("returns a non-publishable setup-incompatible exit code", () => {
+    expect(
+      determineExitCode(
+        results({
+          setupIncompatibleHandlers: [
+            {
+              handlerName: "Eliza (LLM Agent)",
+              reason: "TEXT_EMBEDDING probe failed",
+              traces: ["SETUP_INCOMPATIBLE: TEXT_EMBEDDING probe failed"],
+            },
+          ],
+        }),
+      ),
+    ).toBe(4);
+  });
 });

@@ -392,7 +392,7 @@ export function parseArgs(argv) {
           "  --src-dir <PATH>  Use an existing llama.cpp checkout instead of the\n" +
           "                    in-repo submodule / a fresh clone. The directory's HEAD\n" +
           "                    is used as-is; the pinned LLAMA_CPP_TAG/COMMIT is ignored.\n" +
-          `  Default source:   the git submodule packages/inference/llama.cpp\n` +
+          `  Default source:   the git submodule plugins/plugin-local-inference/native/llama.cpp\n` +
           `                    (elizaOS/llama.cpp @ ${LLAMA_CPP_TAG}) when initialized;\n` +
           `                    otherwise a standalone clone under --cache-dir.\n` +
           "  --cache-dir <PATH>  Force the standalone-clone path even when the submodule\n" +
@@ -1678,12 +1678,14 @@ export async function main(argv = process.argv.slice(2)) {
       );
       run("git", ["-C", srcDir, "checkout", "--", "."], {});
       run("git", ["-C", srcDir, "clean", "-fdx"], {});
-      srcDescription = `submodule packages/inference/llama.cpp @ ${headRef.slice(0, 12)}`;
+      assertSwaSpecDecodeFallback({ srcDir });
+      srcDescription = `submodule plugins/plugin-local-inference/native/llama.cpp @ ${headRef.slice(0, 12)}`;
     } else {
       console.log(
         `[compile-libllama] Using --src-dir ${srcDir} (HEAD: ${headRef}); ` +
           `pinned tag ${LLAMA_CPP_TAG} ignored.`,
       );
+      assertSwaSpecDecodeFallback({ srcDir });
       srcDescription = `external src-dir ${srcDir}`;
     }
   } else {
@@ -1777,8 +1779,9 @@ export async function mainTargets(args) {
     const isSubmodule =
       path.resolve(srcDir) === path.resolve(LLAMA_CPP_SUBMODULE_DIR);
     srcDescription = isSubmodule
-      ? `submodule packages/inference/llama.cpp`
+      ? `submodule plugins/plugin-local-inference/native/llama.cpp`
       : `external src-dir ${srcDir}`;
+    if (!args.dryRun) assertSwaSpecDecodeFallback({ srcDir });
   } else if (args.dryRun) {
     // In a dry run with no --src-dir and no submodule, just describe the
     // intended cache path; we never clone in dry-run.

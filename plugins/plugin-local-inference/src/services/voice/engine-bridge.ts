@@ -37,9 +37,11 @@ import type {
 	NativeVerifierEvent,
 } from "./ffi-bindings";
 import { loadElizaInferenceFfi } from "./ffi-bindings";
-import { KokoroTtsBackend } from "./kokoro/kokoro-backend";
-import type { KokoroEngineDiscoveryResult } from "./kokoro/kokoro-engine-discovery";
-import { KokoroOnnxRuntime } from "./kokoro/kokoro-runtime";
+import {
+	KokoroOnnxRuntime,
+	KokoroTtsBackend,
+	type KokoroEngineDiscoveryResult,
+} from "@elizaos/shared/local-inference";
 import {
 	VoiceLifecycle,
 	VoiceLifecycleError,

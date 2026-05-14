@@ -9,6 +9,7 @@ export type IosRuntimeMode =
 
 export interface IosRuntimeConfig {
   mode: IosRuntimeMode;
+  fullBun: boolean;
   apiBase?: string;
   apiToken?: string;
   cloudApiBase: string;
@@ -67,6 +68,16 @@ function normalizeMode(value: string | undefined): IosRuntimeMode {
   }
 }
 
+function readBool(env: RuntimeEnv, keys: string[]): boolean {
+  for (const key of keys) {
+    const value = env[key];
+    if (typeof value === "boolean") return value;
+    if (typeof value !== "string") continue;
+    if (/^(1|true|yes|on)$/i.test(value.trim())) return true;
+  }
+  return false;
+}
+
 export function resolveCloudApiBase(env: RuntimeEnv): string {
   return (
     readString(env, ["VITE_ELIZA_CLOUD_BASE", "VITE_CLOUD_BASE"]) ??
@@ -109,6 +120,14 @@ export function resolveIosRuntimeConfig(env: RuntimeEnv): IosRuntimeConfig {
 
   return {
     mode,
+    fullBun: readBool(env, [
+      "VITE_ELIZA_IOS_FULL_BUN_AVAILABLE",
+      "VITE_ELIZA_IOS_FULL_BUN_STRICT",
+      "VITE_ELIZA_IOS_FULL_BUN_SMOKE",
+      "VITE_MILADY_IOS_FULL_BUN_AVAILABLE",
+      "VITE_MILADY_IOS_FULL_BUN_STRICT",
+      "VITE_MILADY_IOS_FULL_BUN_SMOKE",
+    ]),
     ...(apiBase ? { apiBase } : {}),
     ...(apiToken ? { apiToken } : {}),
     cloudApiBase: resolveCloudApiBase(env),

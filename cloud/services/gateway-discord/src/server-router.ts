@@ -8,61 +8,10 @@ const FORWARD_TIMEOUT_MS = 30_000;
 const RETRY_ATTEMPTS = 5;
 const RETRY_BASE_DELAY_MS = 2_000;
 const RETRY_INCREMENT_MS = 1_000;
-const IDENTITY_CACHE_TTL_SECONDS = 300;
 
 interface ServerRoute {
   serverName: string;
   serverUrl: string;
-}
-
-interface ResolvedIdentity {
-  userId: string;
-  organizationId: string;
-  agentId: string;
-}
-
-async function resolveIdentity(
-  redis: Redis,
-  cloudBaseUrl: string,
-  authHeader: Record<string, string>,
-  platform: string,
-  platformId: string,
-  platformName?: string,
-): Promise<ResolvedIdentity | null> {
-  const cacheKey = `identity:${platform}:${platformId}`;
-  const cached = await redis.get<ResolvedIdentity>(cacheKey);
-  if (cached) return cached;
-
-  let url = `${cloudBaseUrl}/api/internal/identity/resolve?platform=${encodeURIComponent(platform)}&platformId=${encodeURIComponent(platformId)}`;
-  if (platformName) url += `&platformName=${encodeURIComponent(platformName)}`;
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), FORWARD_TIMEOUT_MS);
-
-  try {
-    const res = await fetch(url, {
-      headers: authHeader,
-      signal: controller.signal,
-    });
-    if (res.status === 404) return null;
-    if (!res.ok) throw new Error(`Identity resolve failed: ${res.status}`);
-
-    const data = (await res.json()) as {
-      userId: string;
-      organizationId: string;
-      agentId: string;
-    };
-    const identity: ResolvedIdentity = {
-      userId: data.userId,
-      organizationId: data.organizationId,
-      agentId: data.agentId,
-    };
-    await redis.set(cacheKey, identity, {
-      ex: IDENTITY_CACHE_TTL_SECONDS,
-    });
-    return identity;
-  } finally {
-    clearTimeout(timeoutId);
-  }
 }
 
 export async function resolveAgentServer(
