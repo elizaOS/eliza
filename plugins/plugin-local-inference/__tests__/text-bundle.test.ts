@@ -5,7 +5,7 @@
  *   - the catalog entry resolves (and is visible/not hidden),
  *   - the bundle's text GGUF path is declared (per-tier `textFile`),
  *   - the bundle's embedding GGUF path is declared on tiers that have a
- *     dedicated 1024-dim Matryoshka region (4b/9b/27b/27b-256k/27b-1m),
+ *     dedicated 1024-dim Matryoshka region (2b/4b/9b/27b/27b-256k/27b-1m),
  *   - the bundle's drafter GGUF path is declared (DFlash speculative
  *     decoding companion),
  *   - the HuggingFace resolve URL for the text and embedding components
@@ -19,7 +19,7 @@
  * every backend. This test pins the per-tier components catalogue as a
  * single source of truth.
  *
- * On 0_8b / 2b the embedding model is the text backbone pooled with
+ * On 0_8b the embedding model is the text backbone pooled with
  * `--pooling last` (see `services/voice/embedding.ts`), so the catalog
  * does NOT declare a `components.embedding`. The test mirrors that
  * exception explicitly.
@@ -34,7 +34,6 @@ import {
 
 const TIERS_WITHOUT_DEDICATED_EMBEDDING: ReadonlySet<string> = new Set([
 	"eliza-1-0_8b",
-	"eliza-1-2b",
 ]);
 
 describe("per-tier text + embedding bundle resolution", () => {
@@ -70,7 +69,7 @@ describe("per-tier text + embedding bundle resolution", () => {
 			it("declares the embedding GGUF component on tiers that ship a dedicated 1024-dim region", () => {
 				const components = model?.sourceModel?.components;
 				if (TIERS_WITHOUT_DEDICATED_EMBEDDING.has(tierId)) {
-					// 0_8b + 2b serve embeddings by pooling the text backbone.
+					// 0_8b serves embeddings by pooling the text backbone.
 					expect(components?.embedding).toBeUndefined();
 				} else {
 					expect(components?.embedding).toBeTruthy();
