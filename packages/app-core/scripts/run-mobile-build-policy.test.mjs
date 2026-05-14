@@ -206,20 +206,20 @@ test("iOS App Store pod selection keeps no-JIT Bun runtime and gates tunnel brid
   }).map(([name]) => name);
 
   assert.equal(isIosAppStoreBuild({ ELIZA_BUILD_VARIANT: "store" }), true);
-  assert.equal(pods.includes("LlamaCppCapacitor"), false);
+  assert.equal(pods.includes("LlamaCppCapacitor"), true);
   assert.equal(pods.includes("ElizaosCapacitorBunRuntime"), true);
   assert.equal(pods.includes("ElizaosCapacitorMobileAgentBridge"), false);
   assert.equal(pods.includes("ElizaBunEngine"), true);
 });
 
-test("iOS App Store agent payload is copied by explicit runtime asset allowlist", () => {
+test("iOS App Store agent payload is omitted from the cloud client", () => {
   assert.deepEqual(resolveIosAgentRuntimeAssetPlan({ appStoreBuild: true }), {
-    agentAssets: IOS_AGENT_RUNTIME_ASSETS,
-    rootAssets: ["vector.tar.gz", "fuzzystrmatch.tar.gz"],
+    agentAssets: null,
+    rootAssets: [],
   });
-  assert.equal(
+  assert.deepEqual(
     resolveIosAgentRuntimeAssetPlan({ appStoreBuild: false }).agentAssets,
-    null,
+    IOS_AGENT_RUNTIME_ASSETS,
   );
 });
 

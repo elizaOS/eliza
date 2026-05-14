@@ -5,6 +5,7 @@ import type {
   HandlerOptions,
   IAgentRuntime,
   Memory,
+  State,
 } from "@elizaos/core";
 import { getCircadianInsightContract } from "@elizaos/plugin-health";
 import { hasLifeOpsAccess } from "../lifeops/access.js";
@@ -141,7 +142,7 @@ function scheduleInspectionActionData(
 export async function runScheduleHandler(
   runtime: IAgentRuntime,
   message: Memory,
-  _state: unknown,
+  _state: State | undefined,
   options: HandlerOptions | undefined,
   callback?: HandlerCallback,
 ): Promise<ActionResult> {

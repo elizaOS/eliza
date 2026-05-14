@@ -78,7 +78,12 @@ const factOpsSchema: JSONSchema = {
 					},
 					claim: { type: "string" },
 					category: { type: "string" },
-					structured_fields: { type: "object", additionalProperties: true },
+					// Strict-mode JSON schema validators (Groq, Cerebras, OpenAI strict
+					// tools) require every nested object to carry
+					// `additionalProperties: false`. We accept this means no extra keys
+					// land in `structured_fields` — the field stays for API contract,
+					// the model can always omit it (not in `required`).
+					structured_fields: { type: "object", additionalProperties: false },
 					keywords: {
 						type: "array",
 						items: { type: "string" },
@@ -91,7 +96,9 @@ const factOpsSchema: JSONSchema = {
 					reason: { type: "string" },
 				},
 				required: ["op"],
-				additionalProperties: true,
+				// Strict structured-output mode (Groq/Cerebras/OpenAI strict)
+				// requires every object to set additionalProperties: false.
+				additionalProperties: false,
 			},
 		},
 	},
@@ -110,7 +117,9 @@ const relationshipSchema: JSONSchema = {
 					sourceEntityId: { type: "string" },
 					targetEntityId: { type: "string" },
 					tags: { type: "array", items: { type: "string" } },
-					metadata: { type: "object" },
+					// Strict mode: every object must carry additionalProperties:false
+					// even when the property is logically open-ended.
+					metadata: { type: "object", additionalProperties: false },
 				},
 				required: ["sourceEntityId", "targetEntityId"],
 				additionalProperties: false,

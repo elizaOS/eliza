@@ -768,8 +768,8 @@ export function resolveIosAgentRuntimeAssetPlan({
   appStoreBuild = false,
 } = {}) {
   return {
-    agentAssets: appStoreBuild ? IOS_AGENT_RUNTIME_ASSETS : null,
-    rootAssets: IOS_AGENT_ROOT_EXTENSION_ASSETS,
+    agentAssets: appStoreBuild ? null : IOS_AGENT_RUNTIME_ASSETS,
+    rootAssets: appStoreBuild ? [] : IOS_AGENT_ROOT_EXTENSION_ASSETS,
   };
 }
 

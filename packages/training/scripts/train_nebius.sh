@@ -494,7 +494,7 @@ fetch() {
 #   DFLASH_TARGET_MODEL_ID   (optional) canonical Eliza-1 target model id.
 #                            Defaults to the tier's entry in
 #                            distill_dflash_drafter.py::DEFAULT_TARGET_MODEL
-#                            (e.g. elizaos/eliza-1/bundles/2b for tier=2b).
+#                            (e.g. elizalabs/eliza-1/bundles/2b for tier=2b).
 #   DFLASH_STUDENT_BASE      HF id of the student base. Defaults to
 #                            Qwen/Qwen3.5-0.8B-Base (the Eliza-1 mandated
 #                            student for every active tier — keep this aligned
