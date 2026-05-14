@@ -135,8 +135,11 @@ export function buildOpencodeSpawnConfig(
     usableApiKey(setting(runtime, env, "ELIZA_E2E_CEREBRAS_API_KEY"));
   const wantsCerebras =
     isCerebrasBaseUrl(customBaseUrl) ||
-    isCerebrasBaseUrl(cerebrasBaseUrl) ||
-    Boolean(cerebrasApiKey);
+    Boolean(cerebrasApiKey) ||
+    (!customBaseUrl &&
+      !localOptIn &&
+      Boolean(opencodeApiKey) &&
+      isCerebrasBaseUrl(cerebrasBaseUrl));
   if (wantsCerebras && (opencodeApiKey || cerebrasApiKey || customBaseUrl)) {
     return providerConfig(
       "cerebras",

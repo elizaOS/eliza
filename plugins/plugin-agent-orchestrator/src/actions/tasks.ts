@@ -35,6 +35,11 @@ import type {
   State,
 } from "@elizaos/core";
 import { logger as coreLogger } from "@elizaos/core";
+import {
+  type ResolvedWorkdirRoute,
+  resolvePinnedAdapter,
+  resolveSpawnWorkdir,
+} from "../services/task-agent-routing.js";
 import { requireTaskAgentAccess } from "../services/task-policy.js";
 import type { AgentType, SpawnResult } from "../services/types.js";
 import type {
@@ -43,11 +48,6 @@ import type {
   WorkspaceResult,
 } from "../services/workspace-service.js";
 import { getCodingWorkspaceService } from "../services/workspace-service.js";
-import {
-  type ResolvedWorkdirRoute,
-  resolvePinnedAdapter,
-  resolveSpawnWorkdir,
-} from "../services/task-agent-routing.js";
 import {
   callbackText,
   contentRecord,
@@ -124,12 +124,6 @@ type ControlAction =
   | "reopen";
 
 type HistoryMetric = "list" | "count" | "detail";
-type HistoryWindow =
-  | "active"
-  | "today"
-  | "yesterday"
-  | "last_7_days"
-  | "last_30_days";
 
 function readOp(params: Record<string, unknown>): TaskOp | null {
   const raw = typeof params.action === "string" ? params.action : undefined;
@@ -872,26 +866,6 @@ function textValue(value: unknown): string | undefined {
     : undefined;
 }
 
-function startOfDay(date: Date): Date {
-  const copy = new Date(date);
-  copy.setHours(0, 0, 0, 0);
-  return copy;
-}
-
-function endOfDay(date: Date): Date {
-  const copy = new Date(date);
-  copy.setHours(23, 59, 59, 999);
-  return copy;
-}
-
-function formatDate(date: Date): string {
-  return new Intl.DateTimeFormat("en-US", {
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-  }).format(date);
-}
-
 function inferMetric(text: string, value?: string): HistoryMetric {
   const normalized = value?.trim().toLowerCase();
   if (
@@ -905,127 +879,6 @@ function inferMetric(text: string, value?: string): HistoryMetric {
   if (/\bshow me\b|\bgive me\b|\blist\b|\bwhat are\b/i.test(text))
     return "list";
   return "detail";
-}
-
-function inferStatuses(
-  text: string,
-  rawStatuses?: string[],
-): string[] | undefined {
-  if (rawStatuses && rawStatuses.length > 0) {
-    return rawStatuses;
-  }
-  const statuses = new Set<string>();
-  if (/\bactive\b|\bright now\b|\bworking on right now\b/i.test(text)) {
-    statuses.add("active");
-  }
-  if (/\bblocked\b/i.test(text)) {
-    statuses.add("blocked");
-  }
-  if (/\binterrupted\b|\bpaused\b/i.test(text)) {
-    statuses.add("interrupted");
-  }
-  if (/\bdone\b|\bcompleted\b|\bfinished\b/i.test(text)) {
-    statuses.add("done");
-  }
-  if (/\bfailed\b|\berror\b/i.test(text)) {
-    statuses.add("failed");
-  }
-  return statuses.size > 0 ? Array.from(statuses) : undefined;
-}
-
-function inferWindow(text: string, raw?: string): HistoryWindow | undefined {
-  const normalized = raw?.trim().toLowerCase();
-  if (
-    normalized === "active" ||
-    normalized === "today" ||
-    normalized === "yesterday" ||
-    normalized === "last_7_days" ||
-    normalized === "last_30_days"
-  ) {
-    return normalized;
-  }
-  if (/\bright now\b|\bcurrently\b|\bactive\b/i.test(text)) return "active";
-  if (/\byesterday\b/i.test(text)) return "yesterday";
-  if (/\blast week\b|\blast 7 days\b|\bin the last week\b/i.test(text)) {
-    return "last_7_days";
-  }
-  if (/\blast month\b|\blast 30 days\b/i.test(text)) return "last_30_days";
-  if (/\btoday\b/i.test(text)) return "today";
-  return undefined;
-}
-
-function inferSearch(text: string, raw?: string): string | undefined {
-  if (raw?.trim()) return raw.trim();
-  const quoted =
-    text.match(/"([^"]{3,120})"/)?.[1] ?? text.match(/'([^']{3,120})'/)?.[1];
-  if (quoted) return quoted.trim();
-  const topical =
-    text.match(/\bworking on\s+(.+?)(?:[?.!,]|$)/i)?.[1] ??
-    text.match(
-      /\ball tasks where we were working on\s+(.+?)(?:[?.!,]|$)/i,
-    )?.[1];
-  return topical?.trim();
-}
-
-function buildWindowFilters(window: HistoryWindow | undefined): {
-  latestActivityAfter?: number;
-  latestActivityBefore?: number;
-  label?: string;
-} {
-  const now = new Date();
-  if (window === "active") {
-    return { label: "active tasks right now" };
-  }
-  if (window === "today") {
-    const start = startOfDay(now);
-    const end = endOfDay(now);
-    return {
-      latestActivityAfter: start.getTime(),
-      latestActivityBefore: end.getTime(),
-      label: `${formatDate(start)} through ${formatDate(end)}`,
-    };
-  }
-  if (window === "yesterday") {
-    const start = startOfDay(new Date(now.getTime() - 24 * 60 * 60 * 1000));
-    const end = endOfDay(start);
-    return {
-      latestActivityAfter: start.getTime(),
-      latestActivityBefore: end.getTime(),
-      label: `${formatDate(start)} through ${formatDate(end)}`,
-    };
-  }
-  if (window === "last_7_days") {
-    const start = startOfDay(new Date(now.getTime() - 6 * 24 * 60 * 60 * 1000));
-    return {
-      latestActivityAfter: start.getTime(),
-      latestActivityBefore: now.getTime(),
-      label: `${formatDate(start)} through ${formatDate(now)}`,
-    };
-  }
-  if (window === "last_30_days") {
-    const start = startOfDay(
-      new Date(now.getTime() - 29 * 24 * 60 * 60 * 1000),
-    );
-    return {
-      latestActivityAfter: start.getTime(),
-      latestActivityBefore: now.getTime(),
-      label: `${formatDate(start)} through ${formatDate(now)}`,
-    };
-  }
-  return {};
-}
-
-function renderThreadLine(entry: {
-  title: string;
-  status: string;
-  latestActivityAt?: number | null;
-  summary?: string;
-}): string {
-  const activity =
-    typeof entry.latestActivityAt === "number"
-      ? new Date(entry.latestActivityAt).toLocaleString("en-US")
-      : "unknown time";
-  return `- ${entry.title} [${entry.status}] (${activity})${entry.summary ? `: ${entry.summary}` : ""}`;
 }
 
 function failureResult(
@@ -1934,7 +1787,7 @@ async function runManageIssues(
 // ── action: archive / reopen (ARCHIVE_CODING_TASK / REOPEN_CODING_TASK) ────
 
 async function runArchive(
-  runtime: IAgentRuntime,
+  _runtime: IAgentRuntime,
   _message: Memory,
   _state: State | undefined,
   params: Record<string, unknown>,
@@ -1968,7 +1821,7 @@ async function runArchive(
 }
 
 async function runReopen(
-  runtime: IAgentRuntime,
+  _runtime: IAgentRuntime,
   _message: Memory,
   _state: State | undefined,
   params: Record<string, unknown>,
