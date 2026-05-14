@@ -11,9 +11,9 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { logger, type UUID } from "@elizaos/core";
-import type { LogEntry, SkillEntry } from "@elizaos/shared";
 import { applySignalQrOverride } from "@elizaos/plugin-signal";
 import { applyWhatsAppQrOverride } from "@elizaos/plugin-whatsapp";
+import type { LogEntry, SkillEntry } from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.ts";
 import { resolveDefaultAgentWorkspaceDir } from "../providers/workspace.ts";
 import { getBundledRuntimePluginIds } from "../runtime/release-plugin-policy.ts";
@@ -50,12 +50,13 @@ function findPluginsManifestRoot(startDir: string): string {
   return manifestRoot ?? findOwnPackageRoot(startDir);
 }
 
-export type { PluginEntry, PluginParamDef } from "./server-types.ts";
-export type { LogEntry, SkillEntry } from "@elizaos/shared";
 export type {
+  LogEntry,
+  SkillEntry,
   StreamEventEnvelope,
   StreamEventType,
 } from "@elizaos/shared";
+export type { PluginEntry, PluginParamDef } from "./server-types.ts";
 
 import type { PluginEntry, PluginParamDef } from "./server-types.ts";
 
