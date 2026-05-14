@@ -124,8 +124,78 @@ class BFCLDataset:
         else:
             await self._load_from_local()
 
+        # Upstream packs web_search_base and web_search_no_snippet into the
+        # same source file, distinguishing them via a per-entry ``show_snippet``
+        # flag tied to the test id. Split them apart now so consumers asking
+        # for ``WEB_SEARCH_NO_SNIPPET`` get exactly those entries.
+        self._finalize_web_search_split()
+
         self._loaded = True
         logger.info(f"Loaded {len(self._test_cases)} BFCL test cases")
+
+    def _finalize_web_search_split(self) -> None:
+        """Partition the loaded WEB_SEARCH_BASE entries into base + no_snippet
+        buckets, mirroring upstream's ``process_web_search_test_case``.
+
+        Upstream uses one source file for both categories and distinguishes
+        them via a per-entry ``show_snippet`` initial-config flag. Without
+        this method, the no_snippet bucket would always be empty.
+        """
+        cats_wanted = self.config.categories or []
+        want_no_snippet = (
+            not cats_wanted or BFCLCategory.WEB_SEARCH_NO_SNIPPET in cats_wanted
+        )
+        want_base = (
+            not cats_wanted or BFCLCategory.WEB_SEARCH_BASE in cats_wanted
+        )
+
+        explicit_no_snippet: list[BFCLTestCase] = []
+        kept_base: list[BFCLTestCase] = []
+        for tc in self._test_cases:
+            if tc.category != BFCLCategory.WEB_SEARCH_BASE:
+                continue
+            if "no_snippet" in tc.id.lower():
+                explicit_no_snippet.append(tc)
+            else:
+                kept_base.append(tc)
+
+        self._test_cases = [
+            tc
+            for tc in self._test_cases
+            if tc.category != BFCLCategory.WEB_SEARCH_BASE
+        ]
+
+        for tc in explicit_no_snippet:
+            tc.category = BFCLCategory.WEB_SEARCH_NO_SNIPPET
+
+        synthesized_no_snippet: list[BFCLTestCase] = []
+        if want_no_snippet:
+            from dataclasses import replace as _replace
+            for tc in kept_base:
+                synthesized_no_snippet.append(
+                    _replace(
+                        tc,
+                        id=tc.id.replace(
+                            "web_search", "web_search_no_snippet", 1
+                        ) if "web_search" in tc.id else f"{tc.id}_no_snippet",
+                        category=BFCLCategory.WEB_SEARCH_NO_SNIPPET,
+                    )
+                )
+
+        if want_base:
+            for tc in kept_base:
+                if (
+                    "web_search" in tc.id
+                    and "web_search_base" not in tc.id
+                    and "no_snippet" not in tc.id
+                ):
+                    tc.id = tc.id.replace("web_search", "web_search_base", 1)
+
+        if want_base:
+            self._test_cases.extend(kept_base)
+        if want_no_snippet:
+            self._test_cases.extend(explicit_no_snippet)
+            self._test_cases.extend(synthesized_no_snippet)
 
     async def _load_from_huggingface(self) -> None:
         """Load dataset from HuggingFace cache or download."""

@@ -29,39 +29,39 @@ const prefsCellularToo: NetworkPolicyPreferences = {
 
 describe("classifyNetwork", () => {
   it("maps the five canonical classes", () => {
-    expect(
-      classifyNetwork({ connectionType: "wifi", metered: false }),
-    ).toBe("wifi-unmetered");
-    expect(
-      classifyNetwork({ connectionType: "wifi", metered: true }),
-    ).toBe("wifi-metered");
+    expect(classifyNetwork({ connectionType: "wifi", metered: false })).toBe(
+      "wifi-unmetered",
+    );
+    expect(classifyNetwork({ connectionType: "wifi", metered: true })).toBe(
+      "wifi-metered",
+    );
     expect(
       classifyNetwork({ connectionType: "ethernet", metered: false }),
     ).toBe("ethernet-unmetered");
-    expect(
-      classifyNetwork({ connectionType: "ethernet", metered: true }),
-    ).toBe("ethernet-metered");
-    expect(
-      classifyNetwork({ connectionType: "cellular", metered: null }),
-    ).toBe("cellular");
+    expect(classifyNetwork({ connectionType: "ethernet", metered: true })).toBe(
+      "ethernet-metered",
+    );
+    expect(classifyNetwork({ connectionType: "cellular", metered: null })).toBe(
+      "cellular",
+    );
   });
 
   it("returns unknown when the metered flag is missing on wifi/ethernet", () => {
-    expect(
-      classifyNetwork({ connectionType: "wifi", metered: null }),
-    ).toBe("unknown");
-    expect(
-      classifyNetwork({ connectionType: "ethernet", metered: null }),
-    ).toBe("unknown");
+    expect(classifyNetwork({ connectionType: "wifi", metered: null })).toBe(
+      "unknown",
+    );
+    expect(classifyNetwork({ connectionType: "ethernet", metered: null })).toBe(
+      "unknown",
+    );
   });
 
   it("offline/none collapses to unknown", () => {
-    expect(
-      classifyNetwork({ connectionType: "none", metered: null }),
-    ).toBe("unknown");
-    expect(
-      classifyNetwork({ connectionType: "unknown", metered: null }),
-    ).toBe("unknown");
+    expect(classifyNetwork({ connectionType: "none", metered: null })).toBe(
+      "unknown",
+    );
+    expect(classifyNetwork({ connectionType: "unknown", metered: null })).toBe(
+      "unknown",
+    );
   });
 });
 
@@ -81,7 +81,8 @@ describe("applyNetworkPolicy", () => {
       applyNetworkPolicy("wifi-unmetered", prefsAllOff, 1, { now: noon }).allow,
     ).toBe(false);
     expect(
-      applyNetworkPolicy("wifi-unmetered", prefsWifiOnly, 1, { now: noon }).allow,
+      applyNetworkPolicy("wifi-unmetered", prefsWifiOnly, 1, { now: noon })
+        .allow,
     ).toBe(true);
   });
 

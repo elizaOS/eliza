@@ -21,14 +21,14 @@ import { CustomModelSearch } from "./CustomModelSearch";
 import { DeviceBridgeStatusBar } from "./DeviceBridgeStatus";
 import { DevicesPanel } from "./DevicesPanel";
 import { DownloadQueue } from "./DownloadQueue";
-import {
-  ModelUpdatesPanel,
-  useStaticVoiceUpdatePreferences,
-} from "./ModelUpdatesPanel";
 import { FirstRunOffer } from "./FirstRunOffer";
 import { HardwareBadge } from "./HardwareBadge";
 import { displayModelName } from "./hub-utils";
 import { ModelHubView } from "./ModelHubView";
+import {
+  ModelUpdatesPanel,
+  useStaticVoiceUpdatePreferences,
+} from "./ModelUpdatesPanel";
 import { SlotAssignments } from "./SlotAssignments";
 import { useDeviceBridgeStatus } from "./useDeviceBridgeStatus";
 

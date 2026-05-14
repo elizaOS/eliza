@@ -206,7 +206,13 @@ elizaos/eliza-1/
       kokoro/model_q4.onnx
       kokoro/tokenizer.json
       kokoro/voices/<voice>.bin
-      # OmniVoice shipped on 9b/27b/27b-256k/27b-1m:
+      # OmniVoice shipped on 9b/27b/27b-256k/27b-1m. Default install
+      # stages a single quant (VOICE_QUANT_BY_TIER); --include-voice-ladder
+      # at stage time emits the full ladder (Q3_K_M, Q4_K_M, Q5_K_M, Q6_K,
+      # Q8_0) so the downloader can pick the level matching the host's
+      # RAM/SoC class at install time. See `voiceQuantLadderForTier()` in
+      # packages/shared/src/local-inference/catalog.ts and
+      # docs/inference/voice-quant-matrix.md.
       omnivoice-base-<quant>.gguf
       omnivoice-tokenizer-<quant>.gguf
     asr/
@@ -241,9 +247,42 @@ elizaos/eliza-1/
   README.md                        # mono-repo overview
 ```
 
-The voice quant per tier is the same as in `voiceQuantForTier()`:
-`Q4_K_M` for `0_8b/2b/4b`, `Q8_0` for `9b/27b/27b-256k/27b-1m` (only the
-ones that ship omnivoice).
+The **runtime default** voice quant per tier (the level the runtime
+selects when no device-class override applies) is the value returned by
+`voiceQuantForTier()` in `packages/shared/src/local-inference/catalog.ts`:
+`Q4_K_M` for `0_8b/2b/4b`, `Q8_0` for `9b/27b/27b-256k/27b-1m`.
+
+The **publish ladder** per tier (every level that gets staged when
+`--include-voice-ladder` is passed) is the value returned by
+`voiceQuantLadderForTier()`:
+
+- Mobile tiers (`0_8b/2b/4b`) ship Kokoro only — empty OmniVoice ladder.
+- All OmniVoice-shipping tiers (`9b/27b/27b-256k/27b-1m`) publish
+  `Q3_K_M, Q4_K_M, Q5_K_M, Q6_K, Q8_0`.
+
+The downloader picks the level matching the host's memory class at
+install time (MAX / GOOD / OKAY / POOR per `memory-budget.ts`).
+**No silent fallback** — §3 forbids "try the next smaller one" at
+runtime; if the resolved level isn't in the bundle, the install fails
+loudly with an actionable diagnostic.
+
+#### OmniVoice quant rules (per R6 §5.6 + R8 §2)
+
+- **K-quant ladder Q3..Q8** — applies. `omnivoice.cpp/tools/quantize.cpp`
+  already supports the full Q2_K..Q8_0 set; the curated publish subset is
+  the ladder above.
+- **PolarQuant on the LM weight bank** — *applies* (OmniVoice's LM head
+  is Qwen3-shaped), but no recipe is wired yet. Landing this requires
+  either grafting `Q4_POLAR` recognition into OmniVoice's loader via
+  `omnivoice-fuse/cmake-graft.mjs`, or running PolarQuant before
+  `omnivoice.cpp/convert.py`. Gated on a measured TTS-MOS comparison.
+- **V-cache PolarQuant** — **N/A**. OmniVoice has no KV cache between
+  MaskGIT steps; there's no V-cache to compress.
+- **QJL** — *conditional, deferred*. Only matters for long-form
+  multi-chunk synth where the cumulative cache becomes large. Off the
+  Wave-2 critical path.
+- **TurboQuant V-cache** — same applicability as QJL — N/A absent a KV
+  cache.
 
 A literal single `.gguf` containing all of text + voice + ASR + vision
 + drafter is **not** the deliverable — that requires either a custom

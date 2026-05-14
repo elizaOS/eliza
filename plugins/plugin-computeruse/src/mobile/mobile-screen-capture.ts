@@ -78,8 +78,9 @@ export class MobileScreenCaptureSource {
     }
     const result = await bridge.captureFrame();
     if (!result.ok) {
+      const err = result as { ok: false; code: string; message: string };
       throw new Error(
-        `[computeruse/mobile-capture] captureFrame failed: ${result.code} — ${result.message}`,
+        `[computeruse/mobile-capture] captureFrame failed: ${err.code} — ${err.message}`,
       );
     }
     const frame = result.data;

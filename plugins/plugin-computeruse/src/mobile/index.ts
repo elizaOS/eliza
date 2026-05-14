@@ -11,29 +11,6 @@
  */
 
 export { ANDROID_BRIDGE_JS_NAME, ANDROID_DEFAULT_FPS } from "./android-bridge.js";
-export {
-  androidAxIdToSceneId,
-  normalizeAndroidAxNode,
-  parseAndroidAxTree,
-  sceneAxToAndroidAxNode,
-} from "./android-scene.js";
-export {
-  emitAndroidAction,
-  emitAndroidAgentStep,
-  type AndroidActionKind,
-  type AndroidTrajectoryActionEvent,
-  type AndroidTrajectoryStepEvent,
-} from "./android-trajectory.js";
-export {
-  ANDROID_LOGICAL_DISPLAY_ID,
-  MobileScreenCaptureSource,
-  type MobileScreenCaptureSourceDeps,
-} from "./mobile-screen-capture.js";
-export {
-  makeMobileComputerInterface,
-  MobileComputerInterface,
-  type MobileComputerInterfaceDeps,
-} from "./mobile-computer-interface.js";
 export type {
   AndroidAxNode,
   AndroidBridgeErrorCode,

@@ -53,7 +53,8 @@ const EXPRESSIVE_EMOTION_ENUM_VALUES = [
 	"excited",
 	"whisper",
 ] as const;
-type ExpressiveEmotionEnumValue = (typeof EXPRESSIVE_EMOTION_ENUM_VALUES)[number];
+type ExpressiveEmotionEnumValue =
+	(typeof EXPRESSIVE_EMOTION_ENUM_VALUES)[number];
 
 function isExpressiveEmotionEnumValue(
 	value: string,
