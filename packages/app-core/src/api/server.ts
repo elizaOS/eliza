@@ -1032,9 +1032,32 @@ export async function handleElizaCompatRoute(
   return await handleCompatRoute(req, res, state);
 }
 
+/**
+ * Module-scoped singleton compat-state. Both the early
+ * `patchHttpCreateServerForCompat()` call (from `startEliza` before upstream's
+ * boot binds the listener) AND the later `startApiServer` wrapper need to
+ * share the SAME state object — otherwise the early-bound listener captures
+ * an empty state by closure and never sees the runtime that `startApiServer`
+ * assigns to its own local state. `getSharedCompatRuntimeState()` returns
+ * this singleton so both call sites can read/mutate the same reference.
+ */
+const sharedCompatRuntimeState: CompatRuntimeState = {
+  current: null,
+  pendingAgentName: null,
+  pendingRestartReasons: [],
+};
+
+export function getSharedCompatRuntimeState(): CompatRuntimeState {
+  return sharedCompatRuntimeState;
+}
+
 export function patchHttpCreateServerForCompat(
   state?: CompatRuntimeState,
 ): () => void {
+  // When no state is passed in, fall back to the shared singleton so that
+  // an early-installed patch (before any local state is created) can still
+  // observe the runtime once startApiServer or startEliza assigns it.
+  const effectiveState = state ?? sharedCompatRuntimeState;
   const originalCreateServer = http.createServer.bind(http);
 
   http.createServer = ((...args: Parameters<typeof originalCreateServer>) => {
@@ -1057,9 +1080,7 @@ export function patchHttpCreateServerForCompat(
       // is picked up without a restart.
       ensureCloudTtsApiKeyAlias();
       mirrorCompatHeaders(req);
-      if (state) {
-        patchCompatStatusResponse(req, res, state);
-      }
+      patchCompatStatusResponse(req, res, effectiveState);
 
       // CORS: allow local renderer servers (Vite, static loopback, WKWebView).
       // WKWebView sometimes omits `Origin` on cross-port fetches; allow Referer
@@ -1117,17 +1138,17 @@ export function patchHttpCreateServerForCompat(
         syncCompatConfigFiles();
       });
 
-      if (state) {
+      {
         const pathname = new URL(req.url ?? "/", "http://localhost").pathname;
         if (
           pathname.startsWith("/api/database") ||
           pathname.startsWith("/api/trajectories")
         ) {
-          await ensureRuntimeSqlCompatibility(state.current);
+          await ensureRuntimeSqlCompatibility(effectiveState.current);
         }
 
         try {
-          if (await handleCompatRoute(req, res, state)) {
+          if (await handleCompatRoute(req, res, effectiveState)) {
             return;
           }
         } catch (err) {
@@ -1202,11 +1223,17 @@ export async function startApiServer(
   // Pre-load steward wallet addresses so getWalletAddresses() has them
   // available synchronously from the start.
   await initStewardWalletCache();
-  const compatState: CompatRuntimeState = {
-    current: (args[0]?.runtime as AgentRuntime | null) ?? null,
-    pendingAgentName: null,
-    pendingRestartReasons: [],
-  };
+  // Use the module-scoped shared state instead of a fresh local object so
+  // any earlier patch installation (e.g. the `startEliza` boot-time install
+  // that ensures upstream's listener engages the compat dispatcher) sees the
+  // runtime once we receive it here. The shared state is created at module
+  // load with `current: null`; we seed it now from the caller's optional
+  // runtime arg, then upstream's `server.updateRuntime` wrapper continues to
+  // mutate the same reference per hot-swap.
+  const compatState = sharedCompatRuntimeState;
+  if (args[0]?.runtime) {
+    compatState.current = args[0].runtime as AgentRuntime;
+  }
   const restoreCreateServer = patchHttpCreateServerForCompat(compatState);
 
   try {
