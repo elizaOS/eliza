@@ -5,9 +5,7 @@
 # those card-level defaults with per-bundle overrides + TPS expectations.
 #
 # All TPS numbers are *estimates* — they have not been measured on real
-# hardware. Current release smoke uses Eliza-1 2B; larger recipes remain
-# hidden until final weights and release evidence exist. NVLink/SXM
-# multi-card setups are *out of scope* per the single-GPU
+# hardware. NVLink/SXM multi-card setups are *out of scope* per the single-GPU
 # framing; see `docs/eliza-1-gpu-tier.md` for the constraint discussion.
 
 gpu_id: h200
@@ -43,6 +41,66 @@ bundle_recommendations:
     estimated_decode_tps: 780
     estimated_prefill_tps: 56000
     notes: "First-run active Qwen3.5 tier."
+  eliza-1-4b:
+    n_gpu_layers: -1
+    ctx_size: 65536
+    parallel: 32
+    batch_size: 8192
+    ubatch_size: 2048
+    kv_cache_k: qjl1_256
+    kv_cache_v: q4_polar
+    flash_attention: true
+    estimated_decode_tps: 440
+    estimated_prefill_tps: 34000
+    notes: "Balanced Qwen3.5 tier for dense batch serving."
+  eliza-1-9b:
+    n_gpu_layers: -1
+    ctx_size: 65536
+    parallel: 16
+    batch_size: 8192
+    ubatch_size: 2048
+    kv_cache_k: qjl1_256
+    kv_cache_v: q4_polar
+    flash_attention: true
+    estimated_decode_tps: 270
+    estimated_prefill_tps: 21000
+    notes: "High-quality Qwen3.5 tier with large HBM headroom."
+  eliza-1-27b:
+    n_gpu_layers: -1
+    ctx_size: 131072
+    parallel: 16
+    batch_size: 8192
+    ubatch_size: 2048
+    kv_cache_k: qjl1_256
+    kv_cache_v: q4_polar
+    flash_attention: true
+    estimated_decode_tps: 160
+    estimated_prefill_tps: 9200
+    notes: "High-quality Qwen3.5 27B tier for Hopper."
+  eliza-1-27b-256k:
+    n_gpu_layers: -1
+    ctx_size: 262144
+    parallel: 8
+    batch_size: 8192
+    ubatch_size: 2048
+    kv_cache_k: qjl1_256
+    kv_cache_v: q4_polar
+    flash_attention: true
+    estimated_decode_tps: 130
+    estimated_prefill_tps: 7200
+    notes: "Long-context Qwen3.5 27B tier for single H200."
+  eliza-1-27b-1m:
+    n_gpu_layers: -1
+    ctx_size: 1048576
+    parallel: 4
+    batch_size: 8192
+    ubatch_size: 2048
+    kv_cache_k: qjl1_256
+    kv_cache_v: q4_polar
+    flash_attention: true
+    estimated_decode_tps: 120
+    estimated_prefill_tps: 5400
+    notes: "Maximum single-GPU Qwen3.5 27B context tier."
 
 dflash:
   enabled: true
@@ -66,5 +124,5 @@ verify_recipe:
     - polarquant
     - dflash
   unavailable_kernels: []
-  smoke_bundle: eliza-1-2b
+  smoke_bundle: eliza-1-27b-1m
   tolerance_pct: 10

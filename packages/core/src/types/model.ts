@@ -700,6 +700,7 @@ export interface TextToSpeechParams {
 	text: string;
 	voice?: string;
 	speed?: number;
+	signal?: AbortSignal;
 }
 
 /**

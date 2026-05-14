@@ -70,11 +70,15 @@ describe("v5 message handler routing", () => {
 	});
 
 	it("preserves requiresTool through parsing", () => {
-		const parsed = parseMessageHandlerOutput(`{
-  "processMessage": "RESPOND",
-  "thought": "Tool needed.",
-  "plan": { "contexts": ["general"], "requiresTool": true }
-}`);
+		const parsed = parseMessageHandlerOutput(
+			JSON.stringify({
+				shouldRespond: "RESPOND",
+				thought: "Tool needed.",
+				replyText: "",
+				contexts: ["general"],
+				requiresTool: true,
+			}),
+		);
 		expect(parsed?.plan?.requiresTool).toBe(true);
 	});
 
@@ -94,12 +98,16 @@ describe("v5 message handler routing", () => {
 		}
 	});
 
-	it("parses new shape (contexts: ['simple']) JSON output", () => {
-		const parsed = parseMessageHandlerOutput(`{
-  "processMessage": "RESPOND",
-  "thought": "Direct.",
-  "plan": { "contexts": ["simple"], "reply": "Done.", "requiresTool": false }
-}`);
+	it("parses canonical contexts: ['simple'] flat envelope output", () => {
+		const parsed = parseMessageHandlerOutput(
+			JSON.stringify({
+				shouldRespond: "RESPOND",
+				thought: "Direct.",
+				replyText: "Done.",
+				contexts: ["simple"],
+				requiresTool: false,
+			}),
+		);
 		expect(parsed).toMatchObject({
 			processMessage: "RESPOND",
 			thought: "Direct.",
@@ -271,26 +279,6 @@ describe("v5 message handler routing", () => {
 		expect(routeMessageHandlerOutput(stop).type).toBe("stopped");
 	});
 
-	it("still parses the legacy nested plan:{} form", () => {
-		const parsed = parseMessageHandlerOutput(
-			JSON.stringify({
-				processMessage: "RESPOND",
-				thought: "Legacy.",
-				plan: {
-					contexts: ["simple"],
-					reply: "legacy reply",
-					requiresTool: false,
-					simple: true,
-				},
-			}),
-		);
-		expect(parsed?.processMessage).toBe("RESPOND");
-		expect(parsed?.plan.contexts).toEqual(["simple"]);
-		expect(parsed?.plan.reply).toBe("legacy reply");
-		expect(parsed?.plan.requiresTool).toBe(false);
-		expect(parsed?.plan.simple).toBe(true);
-	});
-
 	it("plans against general when Stage 1 marks an otherwise simple route as tool-required", () => {
 		const output = {
 			processMessage: "RESPOND" as const,
@@ -308,50 +296,22 @@ describe("v5 message handler routing", () => {
 		}
 	});
 
-	it("coerces legacy simple:true with empty contexts to ['simple']", () => {
-		const parsed = parseMessageHandlerOutput(`{
-  "action": "RESPOND",
-  "thought": "Direct.",
-  "contexts": [],
-  "reply": "Done.",
-  "simple": true
-}`);
-		expect(parsed?.plan.contexts).toEqual([SIMPLE_CONTEXT_ID]);
-		expect(parsed?.plan.reply).toBe("Done.");
-	});
-
-	it("ignores legacy simple:true when contexts is non-empty", () => {
-		const parsed = parseMessageHandlerOutput(`{
-  "processMessage": "RESPOND",
-  "thought": "Mixed.",
-  "plan": { "simple": true, "contexts": ["calendar"] }
-}`);
-		expect(parsed?.plan.contexts).toEqual(["calendar"]);
-	});
-
-	it("ignores legacy simple:true when contexts is non-empty (root form)", () => {
-		const parsed = parseMessageHandlerOutput(`{
-  "action": "RESPOND",
-  "thought": "Mixed.",
-  "simple": true,
-  "contexts": ["email"]
-}`);
-		expect(parsed?.plan.contexts).toEqual(["email"]);
-	});
-
 	it("parses extract.facts and extract.relationships when present", () => {
-		const parsed = parseMessageHandlerOutput(`{
-  "processMessage": "RESPOND",
-  "thought": "Capturing user fact.",
-  "plan": { "contexts": ["memory"] },
-  "extract": {
-    "facts": ["the user's birthday is 1990-03-05", "  ", ""],
-    "relationships": [
-      { "subject": "user", "predicate": "works_with", "object": "Alice" },
-      { "subject": "user", "predicate": "", "object": "Bob" }
-    ]
-  }
-}`);
+		const parsed = parseMessageHandlerOutput(
+			JSON.stringify({
+				shouldRespond: "RESPOND",
+				thought: "Capturing user fact.",
+				replyText: "",
+				contexts: ["memory"],
+				extract: {
+					facts: ["the user's birthday is 1990-03-05", "  ", ""],
+					relationships: [
+						{ subject: "user", predicate: "works_with", object: "Alice" },
+						{ subject: "user", predicate: "", object: "Bob" },
+					],
+				},
+			}),
+		);
 		expect(parsed?.extract?.facts).toEqual([
 			"the user's birthday is 1990-03-05",
 		]);
@@ -361,11 +321,14 @@ describe("v5 message handler routing", () => {
 	});
 
 	it("omits extract when no facts or relationships were emitted", () => {
-		const parsed = parseMessageHandlerOutput(`{
-  "processMessage": "RESPOND",
-  "thought": "No durable info.",
-  "plan": { "contexts": ["simple"], "reply": "hi" }
-}`);
+		const parsed = parseMessageHandlerOutput(
+			JSON.stringify({
+				shouldRespond: "RESPOND",
+				thought: "No durable info.",
+				replyText: "hi",
+				contexts: ["simple"],
+			}),
+		);
 		expect(parsed?.extract).toBeUndefined();
 	});
 });

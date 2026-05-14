@@ -18,7 +18,7 @@
   ],
   "latestReports": [
     "reports/porting/2026-05-10/platform-verification-performance-grid.md",
-    "reports/porting/2026-05-11/remaining-work-ledger.md",
+    "reports/porting/2026-05-11/guided-structured-decoding.md",
     "verify/HARDWARE_VERIFICATION.md",
     "verify/CUDA_VERIFICATION.md",
     "reports/porting/2026-05-11/cuda-kernel-optimization.md"
@@ -467,9 +467,21 @@
     },
     "linux-x64-vulkan": {
       "kernelVerification": "standalone-verified",
-      "runtimeDispatch": "needs-runtime-smoke",
+      "runtimeDispatch": "runtime-ready",
+      "deviceRun": "verified",
+      "nextGate": "Run a discrete Vulkan GPU e2e voice loop after the Intel ANV and Android Mali graph-dispatch smokes; current runtime evidence is target-scoped in verify/vulkan-runtime-dispatch-evidence.json."
+    },
+    "linux-x64-sycl": {
+      "kernelVerification": "compile-only",
+      "runtimeDispatch": "needs-hardware",
       "deviceRun": "needs-hardware",
-      "nextGate": "Run native Intel/AMD/NVIDIA built-fork graph smoke, not only standalone SPIR-V or MoltenVK."
+      "nextGate": "Build with Intel oneAPI on a SYCL host and record whether upstream ggml-sycl is useful for Eliza-1 fallback routing; custom Eliza kernels remain CUDA/Vulkan/Metal/CPU."
+    },
+    "linux-x64-openvino": {
+      "kernelVerification": "compile-only",
+      "runtimeDispatch": "needs-hardware",
+      "deviceRun": "needs-hardware",
+      "nextGate": "Build with OpenVINO 2026 runtime and run CPU/GPU/NPU device-selection smoke; custom Eliza kernels remain CUDA/Vulkan/Metal/CPU."
     },
     "linux-aarch64-cpu": {
       "kernelVerification": "needs-hardware",
@@ -572,38 +584,6 @@
       "runtimeDispatch": "needs-hardware",
       "deviceRun": "needs-hardware",
       "nextGate": "Run Windows CUDA hardware runner first, then fused Windows CUDA voice/runtime smoke."
-    },
-    "android-x86_64-cpu": {
-      "kernelVerification": "runtime-ready",
-      "runtimeDispatch": "runtime-ready",
-      "deviceRun": "verified",
-      "evidenceFile": "verify/evidence/platform/android-x86_64-cpu.json",
-      "nextGate": "Kernel C-reference parity now verified on Cuttlefish (cvd-1) via the cross-compiled gen_fixture --self-test (NDK r29 Android Clang 20.0.0, target x86_64-unknown-linux-android24, scores bit-identical to host: turbo3=-2.501480 / turbo4=-23.721790 / turbo3_tcq=-4.822659 / qjl=3.696591 / polar=-1.994053 / polar_qjl=-1.438744, fused-attn + tbq V-cache parity OK). The cross-compiled fork llama-server loads on the cvd and exposes the full Eliza-1 KV-cache-type whitelist (tbq3_0, tbq4_0, qjl1_256, q4_polar, tbq3_tcq); version banner `built with Clang 20.0.0 for Android x86_64`, fork 536ff214. Evidence file verify/evidence/platform/android-x86_64-cpu.json. The remaining (orthogonal) gate is the full 8-step Cuttlefish cvd smoke (aosp/smoke-cuttlefish.mjs) \u2014 5/6 infra steps PASS already; step 6 chat completion needs a model staged in the privileged APK (build-aosp.mjs --launch rebuild). Vulkan-on-cvd (gfxstream/SwiftShader) stays diagnostic-only: a SwiftShader fallback is software and produces no recordable evidence (verify/evidence/platform/android-x86_64-vulkan.json captures the 8/8 diagnostic pass)."
-    },
-    "android-x86_64-vulkan": {
-      "kernelVerification": "standalone-verified",
-      "runtimeDispatch": "needs-hardware",
-      "deviceRun": "needs-hardware",
-      "evidenceFile": "verify/evidence/platform/android-x86_64-vulkan.json",
-      "nextGate": "NDK cross-build with -DANDROID_ABI=x86_64 + Vulkan headers. Cross-build of vulkan_verify (Android Clang 20.0.0, target x86_64-unknown-linux-android28) loads on cvd-1 and dispatches all 8 SPIR-V fixture cases (turbo3, turbo4, turbo3_tcq, qjl, polar x2, polar_preht x2) \u2014 PASS with max diff < 1e-5, but the cvd virtio-gpu ICD is SwiftShader (software, vendor 0x1ae0); per the fail-closed software-ICD rule, this is DIAGNOSTIC-ONLY and NOT recordable runtime-ready evidence (evidence file verify/evidence/platform/android-x86_64-vulkan.json). Graph dispatch needs real ChromeOS x86_64 GPU (Adreno/Mali under ARCVM) or a passed-through host GPU via crosvm gfxstream + real-GPU host."
-    },
-    "android-x86_64-cpu-fused": {
-      "kernelVerification": "compile-only",
-      "runtimeDispatch": "needs-hardware",
-      "deviceRun": "needs-hardware",
-      "nextGate": "Fused libelizainference (OmniVoice TTS + Qwen3-ASR) carried alongside libllama for the in-process voice path on cvd/Chromebook. NDK cross-build via the omnivoice-fuse graft. Device verify host-gated."
-    },
-    "android-arm64-cpu-fused": {
-      "kernelVerification": "needs-hardware",
-      "runtimeDispatch": "needs-hardware",
-      "deviceRun": "needs-hardware",
-      "nextGate": "Fused libelizainference carried in the AAR alongside libllama for the in-process mic\u2192VAD\u2192ASR\u2192DFlash-text\u2192TTS path (the path-b common_speculative shim \u2014 aosp/llama-shim/eliza_llama_shim_speculative.cpp \u2014 runs the spec loop in-process). NDK cross-build locally; device run = needs a Pixel (exact `adb` cmd: aosp/deploy-pixel.mjs --abi arm64-v8a --voice)."
-    },
-    "android-arm64-vulkan-fused": {
-      "kernelVerification": "needs-hardware",
-      "runtimeDispatch": "needs-hardware",
-      "deviceRun": "needs-hardware",
-      "nextGate": "Fused libelizainference carried in the AAR alongside libllama for the in-process mic\u2192VAD\u2192ASR\u2192DFlash-text\u2192TTS path (the path-b common_speculative shim \u2014 aosp/llama-shim/eliza_llama_shim_speculative.cpp \u2014 runs the spec loop in-process). NDK cross-build locally; device run = needs a Pixel (exact `adb` cmd: aosp/deploy-pixel.mjs --abi arm64-v8a --voice)."
     }
   }
 }

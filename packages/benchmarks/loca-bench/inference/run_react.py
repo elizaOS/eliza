@@ -19,6 +19,7 @@ import io
 import json
 import os
 import signal
+import shutil
 import sys
 import time
 import importlib
@@ -66,6 +67,7 @@ for logger_name in ["mcp", "fastmcp", "mcp.server", "mcp.client", "httpx", "http
     logging.getLogger(logger_name).setLevel(logging.WARNING)
 
 # Import all potential tools and wrappers
+from gem.tools.base_tool import BaseTool
 from gem.tools.mcp_tool import MCPTool
 from gem.tools.mcp_server.programmatic_tool_calling.helper import ProgrammaticToolCallingTool
 from gem.tools.tool_env_wrapper import ToolEnvWrapperClaimDone, ToolEnvWrapperOpenAI
@@ -260,6 +262,8 @@ def _snapshot_loca_output_files(agent_workspace: Path) -> Dict[str, bytes]:
         rel = path.relative_to(agent_workspace)
         if rel.parts and rel.parts[0] in {"memory", ".git"}:
             continue
+        if rel.parts and rel.parts[0] == "source_data":
+            continue
         if path.name.startswith("."):
             continue
         try:
@@ -294,9 +298,258 @@ def _loca_output_completion_rejection(unchanged_files: List[str]) -> str:
         "Your previous response was not accepted because the requested output "
         f"file(s) are still unchanged: {listed}. Existing rows may be examples "
         "or placeholders. Use the available tools to derive the final state and "
-        "call filesystem_write_file or filesystem_edit_file to update every "
+        "read source_data/local_db and source_data/files when Canvas tools are "
+        "not available. Then call filesystem_write_file or filesystem_edit_file to update every "
         "requested file before replying or calling claim_done."
     )
+
+
+def _expose_loca_source_data(task_workspace: Path, agent_workspace: Path) -> List[str]:
+    """Expose non-answer task inputs inside the tool-visible workspace."""
+
+    source_root = agent_workspace / "source_data"
+    if source_root.exists():
+        shutil.rmtree(source_root)
+    source_root.mkdir(parents=True, exist_ok=True)
+    exposed: List[str] = []
+    for name in ("local_db", "files"):
+        src = task_workspace / name
+        if not src.exists():
+            continue
+        dst = source_root / name
+        if src.is_dir():
+            shutil.copytree(src, dst)
+        else:
+            shutil.copy2(src, dst)
+        exposed.append(str(dst.relative_to(agent_workspace)))
+    return exposed
+
+
+class LocalLocaTool(BaseTool):
+    """In-process filesystem/memory tool for LOCA debug runs.
+
+    The npm/FastMCP filesystem and memory servers are slow and can hang during
+    discovery in CI-like local workspaces. The debug LOCA benchmark only needs
+    deterministic workspace reads/writes plus optional memory inspection, so keep
+    that path in-process and reserve MCP for configs that enable richer tools.
+    """
+
+    tool_type = "local_loca"
+
+    def __init__(self, agent_workspace: Path):
+        super().__init__()
+        self.agent_workspace = agent_workspace.resolve()
+
+    def instruction_string(self) -> str:
+        names = ", ".join(tool["function"]["name"] for tool in self.get_tool_function())
+        return f"Available local LOCA tools: {names}"
+
+    def get_tool_function(self) -> List[Dict[str, Any]]:
+        path_param = {
+            "type": "string",
+            "description": "Path inside the LOCA agent workspace.",
+        }
+        paths_param = {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Paths inside the LOCA agent workspace.",
+        }
+        content_param = {"type": "string", "description": "File content."}
+        pattern_param = {"type": "string", "description": "Glob pattern to search for."}
+
+        def tool(
+            name: str,
+            description: str,
+            properties: Dict[str, Any],
+            required: List[str] | None = None,
+        ) -> Dict[str, Any]:
+            return {
+                "type": "function",
+                "function": {
+                    "name": name,
+                    "description": description,
+                    "parameters": {
+                        "type": "object",
+                        "properties": properties,
+                        "required": required or [],
+                    },
+                },
+            }
+
+        return [
+            tool("filesystem_list_allowed_directories", "List allowed directories.", {}),
+            tool("filesystem_list_directory", "List files in a directory.", {"path": path_param}, ["path"]),
+            tool("filesystem_directory_tree", "Return a recursive directory tree.", {"path": path_param}, ["path"]),
+            tool("filesystem_search_files", "Search files by glob pattern.", {"path": path_param, "pattern": pattern_param}, ["path", "pattern"]),
+            tool("filesystem_read_file", "Read a text file.", {"path": path_param}, ["path"]),
+            tool("filesystem_read_text_file", "Read a text file.", {"path": path_param}, ["path"]),
+            tool("filesystem_read_multiple_files", "Read multiple text files.", {"paths": paths_param}, ["paths"]),
+            tool("filesystem_write_file", "Write a text file.", {"path": path_param, "content": content_param}, ["path", "content"]),
+            tool("filesystem_edit_file", "Edit a text file by replacing text.", {"path": path_param, "edits": {"type": "array", "items": {"type": "object"}}}, ["path", "edits"]),
+            tool("filesystem_get_file_info", "Return file metadata.", {"path": path_param}, ["path"]),
+            tool("memory_read_graph", "Read benchmark memory graph.", {}),
+            tool("memory_search_nodes", "Search benchmark memory graph.", {"query": {"type": "string"}}, ["query"]),
+            tool("memory_open_nodes", "Open benchmark memory nodes by name.", {"names": paths_param}, ["names"]),
+        ]
+
+    def execute_action(self, _action: str):
+        return False, False, "", ""
+
+    def execute_tool(
+        self,
+        tool_name: str,
+        tool_args: Dict[str, Any],
+        tool_call_id: str,
+    ):
+        handlers = {
+            "filesystem_list_allowed_directories": self._list_allowed_directories,
+            "filesystem_list_directory": self._list_directory,
+            "filesystem_directory_tree": self._directory_tree,
+            "filesystem_search_files": self._search_files,
+            "filesystem_read_file": self._read_file,
+            "filesystem_read_text_file": self._read_file,
+            "filesystem_read_multiple_files": self._read_multiple_files,
+            "filesystem_write_file": self._write_file,
+            "filesystem_edit_file": self._edit_file,
+            "filesystem_get_file_info": self._get_file_info,
+            "memory_read_graph": self._memory_read_graph,
+            "memory_search_nodes": self._memory_search_nodes,
+            "memory_open_nodes": self._memory_open_nodes,
+        }
+        handler = handlers.get(tool_name)
+        if handler is None:
+            return False, False, "", tool_name, tool_call_id
+        try:
+            return True, False, handler(tool_args), tool_name, tool_call_id
+        except Exception as exc:  # noqa: BLE001
+            return True, True, f"[Tool execution failed: {exc}]", tool_name, tool_call_id
+
+    def _resolve(self, raw_path: Any) -> Path:
+        path_text = str(raw_path or ".")
+        path = Path(path_text)
+        if not path.is_absolute():
+            path = self.agent_workspace / path
+        resolved = path.resolve()
+        if resolved != self.agent_workspace and self.agent_workspace not in resolved.parents:
+            raise ValueError(f"path outside allowed workspace: {path_text}")
+        return resolved
+
+    def _relative(self, path: Path) -> str:
+        return str(path.resolve().relative_to(self.agent_workspace))
+
+    def _list_allowed_directories(self, _args: Dict[str, Any]) -> str:
+        return f"Allowed directories:\n{self.agent_workspace}"
+
+    def _list_directory(self, args: Dict[str, Any]) -> str:
+        path = self._resolve(args.get("path", "."))
+        entries = []
+        for child in sorted(path.iterdir(), key=lambda item: item.name):
+            kind = "DIR" if child.is_dir() else "FILE"
+            entries.append(f"[{kind}] {child.name}")
+        return "\n".join(entries)
+
+    def _directory_tree(self, args: Dict[str, Any]) -> str:
+        root = self._resolve(args.get("path", "."))
+        rows = []
+        for path in sorted(root.rglob("*")):
+            rel = path.relative_to(root)
+            depth = len(rel.parts) - 1
+            prefix = "  " * depth
+            rows.append(f"{prefix}{'[DIR]' if path.is_dir() else '[FILE]'} {path.name}")
+        return "\n".join(rows)
+
+    def _search_files(self, args: Dict[str, Any]) -> str:
+        root = self._resolve(args.get("path", "."))
+        pattern = str(args.get("pattern") or "*")
+        matches = [self._relative(path) for path in sorted(root.rglob(pattern)) if path.is_file()]
+        return json.dumps(matches, ensure_ascii=False)
+
+    def _read_file(self, args: Dict[str, Any]) -> str:
+        path = self._resolve(args.get("path"))
+        return path.read_text(encoding="utf-8", errors="replace")
+
+    def _read_multiple_files(self, args: Dict[str, Any]) -> str:
+        paths = args.get("paths") or []
+        if not isinstance(paths, list):
+            raise ValueError("paths must be a list")
+        payload = {}
+        for raw in paths:
+            path = self._resolve(raw)
+            payload[self._relative(path)] = path.read_text(encoding="utf-8", errors="replace")
+        return json.dumps(payload, ensure_ascii=False, indent=2)
+
+    def _write_file(self, args: Dict[str, Any]) -> str:
+        path = self._resolve(args.get("path"))
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(str(args.get("content") or ""), encoding="utf-8")
+        return f"Wrote {self._relative(path)}"
+
+    def _edit_file(self, args: Dict[str, Any]) -> str:
+        path = self._resolve(args.get("path"))
+        text = path.read_text(encoding="utf-8", errors="replace")
+        edits = args.get("edits") or []
+        if not isinstance(edits, list):
+            raise ValueError("edits must be a list")
+        for edit in edits:
+            if not isinstance(edit, dict):
+                continue
+            old = str(edit.get("oldText") or edit.get("old_text") or "")
+            new = str(edit.get("newText") or edit.get("new_text") or "")
+            if old:
+                text = text.replace(old, new)
+        path.write_text(text, encoding="utf-8")
+        return f"Edited {self._relative(path)}"
+
+    def _get_file_info(self, args: Dict[str, Any]) -> str:
+        path = self._resolve(args.get("path"))
+        stat = path.stat()
+        return json.dumps(
+            {
+                "path": self._relative(path),
+                "size": stat.st_size,
+                "is_directory": path.is_dir(),
+                "is_file": path.is_file(),
+                "modified_time": stat.st_mtime,
+            },
+            ensure_ascii=False,
+        )
+
+    def _memory_path(self) -> Path:
+        return self.agent_workspace / "memory" / "memory.json"
+
+    def _memory_read_graph(self, _args: Dict[str, Any]) -> str:
+        path = self._memory_path()
+        if not path.exists():
+            return json.dumps({"entities": [], "relations": []})
+        return path.read_text(encoding="utf-8", errors="replace")
+
+    def _memory_search_nodes(self, args: Dict[str, Any]) -> str:
+        graph_text = self._memory_read_graph(args)
+        query = str(args.get("query") or "").lower()
+        if not query:
+            return graph_text
+        data = json.loads(graph_text)
+        entities = data.get("entities", []) if isinstance(data, dict) else []
+        matches = [
+            item
+            for item in entities
+            if query in json.dumps(item, ensure_ascii=False).lower()
+        ]
+        return json.dumps({"entities": matches, "relations": []}, ensure_ascii=False)
+
+    def _memory_open_nodes(self, args: Dict[str, Any]) -> str:
+        names = args.get("names") or []
+        if not isinstance(names, list):
+            raise ValueError("names must be a list")
+        wanted = {str(name).lower() for name in names}
+        data = json.loads(self._memory_read_graph(args))
+        entities = data.get("entities", []) if isinstance(data, dict) else []
+        matches = [
+            item
+            for item in entities
+            if str(item.get("name", "")).lower() in wanted
+        ]
+        return json.dumps({"entities": matches, "relations": []}, ensure_ascii=False)
 
 
 def extract_stop_reason(response: Dict[str, Any]) -> Optional[str]:
@@ -1585,7 +1838,14 @@ def run_single_task(
             or "api.cerebras.ai" in base_url
         )
 
-        if has_programmatic:
+        enabled_server_types = {
+            str(config.get("type") or "").replace("-", "_")
+            for config in mcp_configs.values()
+            if config.get("enabled", True)
+        }
+        if enabled_server_types and enabled_server_types <= {"filesystem", "memory"}:
+            tool = LocalLocaTool(agent_workspace)
+        elif has_programmatic:
             tool = ProgrammaticToolCallingTool(mcp_config, validate_on_init=False, execution_timeout=120.0, fix_schema_for_openai=fix_schema)
         else:
             tool = MCPTool(mcp_config, validate_on_init=False, execution_timeout=120.0, fix_schema_for_openai=fix_schema)
@@ -1595,6 +1855,7 @@ def run_single_task(
         # Always suppress preprocessing output in runner mode.
         with suppress_all_output():
             obs, info, user_prompt, tools = env.reset()
+        exposed_source_paths = _expose_loca_source_data(task_workspace, agent_workspace)
 
         # Save tools information for later storage
         tools_info = tools[0] if tools else None
@@ -1617,8 +1878,14 @@ def run_single_task(
             "- Existing workspace files may contain examples or placeholders; use them for headers, schema, and formatting only.\n"
             "- Do not treat existing rows as proof that the task is complete.\n"
             "- Derive the final requested state from the provided tools, local_db files, workspace files, and memory records.\n"
+            "- If Canvas-specific tools are unavailable, inspect the copied read-only task inputs under source_data/local_db and source_data/files with filesystem tools.\n"
             "- For CSV-output tasks, overwrite or edit every requested CSV file with the derived final rows before replying or calling claim_done."
         )
+        if exposed_source_paths:
+            enhanced_user_prompt += (
+                "\n"
+                f"- Tool-visible source data paths: {', '.join(exposed_source_paths)}."
+            )
 
         # Add memory protocol if memory_tool is included
         if has_memory_tool:

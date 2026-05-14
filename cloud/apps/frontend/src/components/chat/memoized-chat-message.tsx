@@ -345,6 +345,24 @@ interface MemoizedChatMessageProps {
   onTextReveal?: () => void;
 }
 
+function getAttachmentSignature(attachments: ChatMediaAttachment[] | undefined): string {
+  return (
+    attachments
+      ?.map((attachment) =>
+        [
+          attachment.id,
+          attachment.url,
+          attachment.contentType,
+          attachment.title,
+          attachment.description,
+          attachment.source,
+          attachment.text,
+        ].join("\u0000"),
+      )
+      .join("\u0001") ?? ""
+  );
+}
+
 // Markdown components configuration
 const markdownComponents = {
   code: ({
@@ -789,6 +807,10 @@ export const MemoizedChatMessage = memo(ChatMessageComponent, (prevProps, nextPr
   return (
     prevProps.message.id === nextProps.message.id &&
     prevProps.message.content.text === nextProps.message.content.text &&
+    getAttachmentSignature(prevProps.message.content.attachments) ===
+      getAttachmentSignature(nextProps.message.content.attachments) &&
+    prevProps.characterName === nextProps.characterName &&
+    prevProps.characterAvatarUrl === nextProps.characterAvatarUrl &&
     prevProps.copiedMessageId === nextProps.copiedMessageId &&
     prevProps.currentPlayingId === nextProps.currentPlayingId &&
     prevProps.isPlaying === nextProps.isPlaying &&

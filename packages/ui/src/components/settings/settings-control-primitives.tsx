@@ -105,13 +105,22 @@ export function AdvancedSettingsDisclosure({
   title = "Advanced",
   children,
   className,
+  lazy = false,
+  defaultOpen = false,
 }: {
   title?: string;
   children: React.ReactNode;
   className?: string;
+  lazy?: boolean;
+  defaultOpen?: boolean;
 }) {
+  const [open, setOpen] = useState(defaultOpen);
+  const shouldRenderChildren = !lazy || open;
+
   return (
     <details
+      open={open}
+      onToggle={(event) => setOpen(event.currentTarget.open)}
       className={cn(
         "group rounded-xl border border-border/60 bg-card/45 px-3 py-2",
         className,
@@ -120,7 +129,9 @@ export function AdvancedSettingsDisclosure({
       <summary className="cursor-pointer select-none list-none text-xs font-semibold uppercase tracking-wide text-muted transition-colors hover:text-txt">
         {title}
       </summary>
-      <div className="mt-3 border-t border-border/40 pt-3">{children}</div>
+      {shouldRenderChildren ? (
+        <div className="mt-3 border-t border-border/40 pt-3">{children}</div>
+      ) : null}
     </details>
   );
 }

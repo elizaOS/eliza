@@ -29,7 +29,7 @@
  * Usage:
  *   bun packages/inference/verify/asr_bench.ts \
  *     --dylib ~/.eliza/local-inference/bin/dflash/linux-x64-cpu-fused/libelizainference.so \
- *     --bundle ~/.eliza/local-inference/models/eliza-1-0_6b.bundle \
+ *     --bundle ~/.eliza/local-inference/models/eliza-1-0_8b.bundle \
  *     --backend cpu --out packages/inference/verify/bench_results/asr_2026-05-11.json
  */
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -38,7 +38,7 @@ import os from "node:os";
 import path from "node:path";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 
-import { loadElizaInferenceFfi } from "../../app-core/src/services/local-inference/voice/ffi-bindings";
+import { loadElizaInferenceFfi } from "../../src/services/voice/ffi-bindings";
 
 /* --------------------------------- args --------------------------------- */
 
@@ -84,7 +84,7 @@ const dylib = arg(
   "--dylib",
   defaultDylib(backend),
 );
-const bundle = arg("--bundle", `${HOME}/.eliza/local-inference/models/eliza-1-0_6b.bundle`);
+const bundle = arg("--bundle", `${HOME}/.eliza/local-inference/models/eliza-1-0_8b.bundle`);
 const outPath = arg(
   "--out",
   path.resolve(__dirname, "bench_results", `tts_asr_self_labelled_${new Date().toISOString().slice(0, 10)}.json`),

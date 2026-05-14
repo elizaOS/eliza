@@ -1,8 +1,8 @@
 /**
  * Eliza-curated local model catalog.
  *
- * Default local inference is restricted to the active Qwen3.5-backed Eliza-1
- * release line: 0_8b, 2b, 4b, and the modeled future 9b/27b tiers.
+ * Default local inference is restricted to the active Eliza-1 line:
+ * Qwen3.5 0.8B/2B/4B/9B/27B, including long-context 27B variants.
  * External Hub search remains custom/opt-in and never enters first-run or
  * default eligibility.
  */
@@ -107,10 +107,10 @@ export const ELIZA_1_VOICE_BACKENDS: Record<
   Eliza1TierId,
   ReadonlyArray<VoiceBackendId>
 > = {
-  "eliza-1-0_8b": ["kokoro"],
-  "eliza-1-2b": ["kokoro"],
-  "eliza-1-4b": ["kokoro"],
-  "eliza-1-9b": ["kokoro", "omnivoice"],
+  "eliza-1-0_8b": ["omnivoice", "kokoro"],
+  "eliza-1-2b": ["omnivoice", "kokoro"],
+  "eliza-1-4b": ["omnivoice", "kokoro"],
+  "eliza-1-9b": ["omnivoice", "kokoro"],
   "eliza-1-27b": ["omnivoice"],
   "eliza-1-27b-256k": ["omnivoice"],
   "eliza-1-27b-1m": ["omnivoice"],
@@ -283,12 +283,20 @@ function bundleComponent(
   return { repo: ELIZA_1_HF_REPO, file: bundleRemotePath(id, file) };
 }
 
+function voiceQuantForTier(id: Eliza1TierId): "Q4_K_M" | "Q8_0" {
+  return id === "eliza-1-0_8b" ||
+    id === "eliza-1-2b" ||
+    id === "eliza-1-4b"
+    ? "Q4_K_M"
+    : "Q8_0";
+}
+
 function primaryVoiceFileForTier(id: Eliza1TierId): string {
-  const backends = ELIZA_1_VOICE_BACKENDS[id];
-  if (backends.includes("kokoro")) {
-    return "tts/kokoro/model_q4.onnx";
+  const defaultBackend = ELIZA_1_VOICE_BACKENDS[id][0];
+  if (defaultBackend === "omnivoice") {
+    return `tts/omnivoice-base-${voiceQuantForTier(id)}.gguf`;
   }
-  return "tts/omnivoice-base-Q8_0.gguf";
+  return "tts/kokoro/model_q4.onnx";
 }
 
 function sourceModelForTier(id: Eliza1TierId): CatalogModel["sourceModel"] {

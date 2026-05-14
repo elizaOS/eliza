@@ -30,10 +30,6 @@ const engineState = vi.hoisted(() => ({
 	warnIfParallelTooLow: vi.fn(),
 }));
 
-vi.mock("./mode/runtime-mode", () => ({
-	getRuntimeMode: () => modeState.mode,
-}));
-
 vi.mock("../services/active-model", () => ({
 	resolveLocalInferenceLoadArgs: vi.fn(async (target) => target),
 }));
@@ -101,6 +97,9 @@ function makeRuntime(): {
 	const runtime = {
 		agentId: "agent-test",
 		getModel: vi.fn(() => undefined),
+		getSetting: vi.fn((key: string) =>
+			key === "ELIZA_RUNTIME_MODE" ? modeState.mode : undefined,
+		),
 		getService: vi.fn(() => null),
 		registerModel: vi.fn(
 			(

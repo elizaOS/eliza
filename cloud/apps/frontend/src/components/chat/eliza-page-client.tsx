@@ -11,7 +11,7 @@
 
 "use client";
 
-import { useSetPageHeader } from "@elizaos/cloud-ui";
+import { useRenderGuard, useSetPageHeader } from "@elizaos/cloud-ui";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { type Character, useChatStore } from "@/lib/stores/chat-store";
@@ -84,6 +84,7 @@ export function ElizaPageClient({
   isOwnerOfSelectedCharacter,
   accessError,
 }: ElizaPageClientProps) {
+  useRenderGuard("ElizaPageClient");
   const [anonymousSession, setAnonymousSession] = useState<{
     messageCount: number;
     messagesLimit: number;

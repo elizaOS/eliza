@@ -36,11 +36,23 @@ import {
 } from "./dflash-server";
 
 const originalEnv = { ...process.env };
+const originalFetch = globalThis.fetch;
 
 afterEach(() => {
 	process.env = { ...originalEnv };
 	__resetLlamaServerHelpTextForTests();
-	vi.unstubAllGlobals();
+	const vitestGlobals = vi as unknown as {
+		restoreAllMocks?: () => void;
+		unstubAllGlobals?: () => void;
+	};
+	if (vitestGlobals.unstubAllGlobals) {
+		vitestGlobals.unstubAllGlobals();
+	} else if (originalFetch) {
+		globalThis.fetch = originalFetch;
+	} else {
+		delete (globalThis as { fetch?: typeof fetch }).fetch;
+	}
+	vitestGlobals.restoreAllMocks?.();
 });
 
 function makeManagedBinary(root: string): string {
@@ -179,14 +191,19 @@ function notFoundResponse(): Response {
 function installDflashFetchMock(
 	handler: (url: URL, init: FetchInit) => Response | Promise<Response>,
 ): void {
-	vi.stubGlobal(
-		"fetch",
-		vi.fn((input: FetchInput, init?: FetchInit) => {
-			const rawUrl =
-				typeof input === "string" || input instanceof URL ? input : input.url;
-			return handler(new URL(rawUrl), init);
-		}),
-	);
+	const fetchMock = vi.fn((input: FetchInput, init?: FetchInit) => {
+		const rawUrl =
+			typeof input === "string" || input instanceof URL ? input : input.url;
+		return handler(new URL(rawUrl), init);
+	});
+	const vitestGlobals = vi as unknown as {
+		stubGlobal?: (name: string, value: unknown) => void;
+	};
+	if (vitestGlobals.stubGlobal) {
+		vitestGlobals.stubGlobal("fetch", fetchMock);
+	} else {
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+	}
 }
 
 describe("DFlash runtime discovery", () => {

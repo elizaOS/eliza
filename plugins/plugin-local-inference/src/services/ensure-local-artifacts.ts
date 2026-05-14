@@ -32,7 +32,6 @@
  * whether the text model is cloud-routed.
  */
 
-import type { RuntimeMode } from "../../../../packages/app-core/src/runtime/mode/runtime-mode";
 import type { Eliza1Tier } from "./manifest";
 import {
 	classifyRecommendationPlatform,
@@ -40,6 +39,8 @@ import {
 } from "./recommendation";
 import type { LocalInferenceService } from "./service";
 import type { CatalogModel, HardwareProbe, InstalledModel } from "./types";
+
+type RuntimeMode = "local" | "local-only" | "cloud" | "remote";
 
 /**
  * Resolve the default service facade lazily. Static-importing

@@ -27,12 +27,12 @@
  * we just hand sentence-sized strings to the TTS function in order.
  */
 
-import { PhraseChunker } from "./local-inference/voice/phrase-chunker";
 import type {
-  AcceptedToken,
-  Phrase,
-  PhraseChunkerConfig,
-} from "./local-inference/voice/types";
+	AcceptedToken,
+	Phrase,
+	PhraseChunkerConfig,
+} from "@elizaos/plugin-local-inference/services";
+import { PhraseChunker } from "@elizaos/plugin-local-inference/services";
 
 export interface PhraseChunkedTtsOptions {
   /** Phrase chunker configuration. See `PhraseChunkerConfig`. */

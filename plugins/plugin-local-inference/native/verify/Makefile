@@ -13,7 +13,7 @@ REF_OBJ = turbo_kernels.o
 QJL_POLAR_SRC = qjl_polar_ref.c
 QJL_POLAR_OBJ = qjl_polar_ref.o
 
-.PHONY: all reference-test kernel-contract two-agent-voice-demo vulkan vulkan-spirv vulkan-verify vulkan-verify-multiblock vulkan-verify-fallbacks vulkan-verify-fused vulkan-qjl-polar vulkan-bench vulkan-dispatch-smoke vulkan-native-smoke android-vulkan-smoke android-vulkan-graph-smoke metal metal-verify metal-verify-multiblock metal-verify-fused metal-bench metal-bench-batched metal-bench-multiblock metal-bench-fused metal-upscale-probe metal-upscale-probe-require cpu-bench bench cuda cuda-verify cuda-verify-fused cuda-hardware rocm-hardware gh200-hardware windows-hardware verify-fork dispatch-smoke dispatch-smoke-implemented clean
+.PHONY: all reference-test kernel-contract two-agent-voice-demo vulkan vulkan-spirv vulkan-verify vulkan-verify-multiblock vulkan-verify-fallbacks vulkan-verify-fused vulkan-qjl-polar vulkan-bench vulkan-dispatch-smoke vulkan-native-smoke android-vulkan-smoke android-vulkan-graph-smoke metal metal-verify metal-verify-multiblock metal-verify-fused metal-bench metal-bench-batched metal-bench-multiblock metal-bench-fused metal-upscale-probe metal-upscale-probe-require cpu-dispatch-smoke cpu-bench bench cuda cuda-verify cuda-verify-fused cuda-hardware rocm-hardware gh200-hardware windows-hardware verify-fork dispatch-smoke dispatch-smoke-implemented clean
 
 all: reference-test
 	@echo "[kernels/verify] Built reference test."
@@ -367,6 +367,29 @@ metal-bench-fused: metal_bench
 
 # CPU reference baseline. Single-threaded scalar C, no GPU. Same workload
 # constants as metal_bench so the BENCHMARK doc can join the two tables.
+HOST_UNAME_S := $(shell uname -s)
+HOST_UNAME_M := $(shell uname -m)
+HOST_DFLASH_TARGET := $(if $(filter Darwin,$(HOST_UNAME_S)),darwin-arm64-metal-fused,$(if $(filter aarch64 arm64,$(HOST_UNAME_M)),linux-aarch64-cpu,linux-x64-cpu))
+ELIZA_DFLASH_LLAMA_DIR ?= ../llama.cpp
+ELIZA_DFLASH_CPU_BIN_DIR ?= $(firstword \
+    $(wildcard $(ELIZA_DFLASH_LLAMA_DIR)/build/$(HOST_DFLASH_TARGET)/bin) \
+    $(wildcard $(HOME)/.eliza/local-inference/bin/dflash/$(HOST_DFLASH_TARGET)) \
+    $(wildcard $(ELIZA_DFLASH_LLAMA_DIR)/build/linux-x64-cpu/bin) \
+    $(wildcard $(HOME)/.eliza/local-inference/bin/dflash/linux-x64-cpu))
+GGML_INC_DIR ?= $(ELIZA_DFLASH_LLAMA_DIR)/ggml/include
+CPU_DISPATCH_SMOKE_BIN ?= qjl_mt_check.$(HOST_DFLASH_TARGET)
+
+$(CPU_DISPATCH_SMOKE_BIN): qjl_mt_check.c
+	@test -n "$(ELIZA_DFLASH_CPU_BIN_DIR)" || { echo "cpu-dispatch-smoke needs a built llama.cpp CPU-compatible binary dir (set ELIZA_DFLASH_CPU_BIN_DIR)."; exit 1; }
+	$(CC) $(CFLAGS) -I$(GGML_INC_DIR) qjl_mt_check.c \
+		-L$(ELIZA_DFLASH_CPU_BIN_DIR) -lggml -lggml-base -lggml-cpu \
+		-Wl,-rpath,$(ELIZA_DFLASH_CPU_BIN_DIR) -lm -o $(CPU_DISPATCH_SMOKE_BIN)
+
+cpu-dispatch-smoke: $(CPU_DISPATCH_SMOKE_BIN)
+	DYLD_LIBRARY_PATH=$(ELIZA_DFLASH_CPU_BIN_DIR):$${DYLD_LIBRARY_PATH:-} \
+	LD_LIBRARY_PATH=$(ELIZA_DFLASH_CPU_BIN_DIR):$${LD_LIBRARY_PATH:-} \
+	./$(CPU_DISPATCH_SMOKE_BIN)
+
 cpu-bench: cpu_bench
 cpu_bench: cpu_bench.c $(REF_OBJ) $(QJL_POLAR_OBJ)
 	$(CC) $(CFLAGS) -I../reference cpu_bench.c $(REF_OBJ) $(QJL_POLAR_OBJ) -lm -o cpu_bench

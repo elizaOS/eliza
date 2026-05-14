@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { client } from "../../api";
 import type {
   AgentModelSlot,
@@ -6,16 +6,10 @@ import type {
   RoutingPolicy,
   RoutingPreferences,
 } from "../../api/client-local-inference";
+import { useRenderGuard } from "../../hooks/useRenderGuard";
+import { LOCAL_INFERENCE_SLOT_DESCRIPTORS } from "./slot-metadata";
 
 const DEFAULT_POLICY: RoutingPolicy = "prefer-local";
-
-const SLOTS: AgentModelSlot[] = [
-  "TEXT_SMALL",
-  "TEXT_LARGE",
-  "TEXT_EMBEDDING",
-  "TEXT_TO_SPEECH",
-  "TRANSCRIPTION",
-];
 
 const POLICIES: Array<{ value: RoutingPolicy; label: string; hint: string }> = [
   {
@@ -41,77 +35,95 @@ const POLICIES: Array<{ value: RoutingPolicy; label: string; hint: string }> = [
   },
 ];
 
-// Runtime model type strings for each agent slot. Keep in sync with the
-// server-side ModelType enum via router-handler.ts#slotToModelType.
-const SLOT_MODEL_TYPE: Record<AgentModelSlot, string> = {
-  TEXT_SMALL: "TEXT_SMALL",
-  TEXT_LARGE: "TEXT_LARGE",
-  TEXT_EMBEDDING: "TEXT_EMBEDDING",
-  TEXT_TO_SPEECH: "TEXT_TO_SPEECH",
-  TRANSCRIPTION: "TRANSCRIPTION",
-};
-
-const SLOT_LABEL: Record<AgentModelSlot, string> = {
-  TEXT_SMALL: "Small text",
-  TEXT_LARGE: "Large text",
-  TEXT_EMBEDDING: "Embeddings",
-  TEXT_TO_SPEECH: "Voice output",
-  TRANSCRIPTION: "Transcription",
-};
-
 export function RoutingMatrix() {
+  useRenderGuard("RoutingMatrix");
   const [registrations, setRegistrations] = useState<PublicRegistration[]>([]);
   const [preferences, setPreferences] = useState<RoutingPreferences>({
     preferredProvider: {},
     policy: {},
   });
   const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState<AgentModelSlot | null>(null);
+  const [busySlots, setBusySlots] = useState<Set<AgentModelSlot>>(
+    () => new Set(),
+  );
+  const requestSeqRef = useRef(new Map<AgentModelSlot, number>());
 
-  const refresh = useCallback(async () => {
-    try {
-      const data = await client.getLocalInferenceRouting();
-      setRegistrations(data.registrations);
-      setPreferences(data.preferences);
-      setError(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load routing");
-    }
+  const setSlotBusy = useCallback((slot: AgentModelSlot, busy: boolean) => {
+    setBusySlots((prev) => {
+      const next = new Set(prev);
+      if (busy) {
+        next.add(slot);
+      } else {
+        next.delete(slot);
+      }
+      return next;
+    });
   }, []);
 
   useEffect(() => {
-    void refresh();
-    const interval = setInterval(() => void refresh(), 15_000);
-    return () => clearInterval(interval);
-  }, [refresh]);
+    let active = true;
+    const refreshIfActive = async () => {
+      try {
+        const data = await client.getLocalInferenceRouting();
+        if (!active) return;
+        setRegistrations(data.registrations);
+        setPreferences(data.preferences);
+        setError(null);
+      } catch (err) {
+        if (active) {
+          setError(
+            err instanceof Error ? err.message : "Failed to load routing",
+          );
+        }
+      }
+    };
+    void refreshIfActive();
+    const interval = setInterval(() => void refreshIfActive(), 15_000);
+    return () => {
+      active = false;
+      clearInterval(interval);
+    };
+  }, []);
 
   const handlePolicy = useCallback(
     async (slot: AgentModelSlot, policy: RoutingPolicy) => {
-      setBusy(slot);
+      const requestId = (requestSeqRef.current.get(slot) ?? 0) + 1;
+      requestSeqRef.current.set(slot, requestId);
+      setSlotBusy(slot, true);
       try {
         const res = await client.setLocalInferencePolicy(slot, policy);
-        setPreferences(res.preferences);
+        if (requestSeqRef.current.get(slot) === requestId) {
+          setPreferences(res.preferences);
+        }
       } finally {
-        setBusy(null);
+        if (requestSeqRef.current.get(slot) === requestId) {
+          setSlotBusy(slot, false);
+        }
       }
     },
-    [],
+    [setSlotBusy],
   );
 
   const handlePreferred = useCallback(
     async (slot: AgentModelSlot, provider: string | null) => {
-      setBusy(slot);
+      const requestId = (requestSeqRef.current.get(slot) ?? 0) + 1;
+      requestSeqRef.current.set(slot, requestId);
+      setSlotBusy(slot, true);
       try {
         const res = await client.setLocalInferencePreferredProvider(
           slot,
           provider,
         );
-        setPreferences(res.preferences);
+        if (requestSeqRef.current.get(slot) === requestId) {
+          setPreferences(res.preferences);
+        }
       } finally {
-        setBusy(null);
+        if (requestSeqRef.current.get(slot) === requestId) {
+          setSlotBusy(slot, false);
+        }
       }
     },
-    [],
+    [setSlotBusy],
   );
 
   return (
@@ -128,15 +140,14 @@ export function RoutingMatrix() {
       ) : null}
 
       <div className="flex flex-col gap-2">
-        {SLOTS.map((slot) => {
-          const modelType = SLOT_MODEL_TYPE[slot];
+        {LOCAL_INFERENCE_SLOT_DESCRIPTORS.map(({ slot, modelType, label }) => {
           const candidates = registrations
             .filter((r) => r.modelType === modelType)
             .filter((r) => r.provider !== "eliza-router")
             .sort((a, b) => b.priority - a.priority);
           const policy = preferences.policy[slot] ?? DEFAULT_POLICY;
           const preferred = preferences.preferredProvider[slot] ?? "";
-          const disabled = busy === slot;
+          const disabled = busySlots.has(slot);
           return (
             <div
               key={slot}
@@ -144,7 +155,7 @@ export function RoutingMatrix() {
             >
               <div className="flex items-center justify-between gap-2">
                 <span className="font-medium text-sm" title={slot}>
-                  {SLOT_LABEL[slot]}
+                  {label}
                 </span>
                 <span
                   className={`h-2 w-2 rounded-full ${

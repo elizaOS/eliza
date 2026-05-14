@@ -259,7 +259,7 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
         </section>
       </div>
 
-      <AdvancedSettingsDisclosure title="Model settings">
+      <AdvancedSettingsDisclosure title="Model settings" lazy>
         <div className="flex flex-col gap-3">
           <ProvidersList />
           <RoutingMatrix />

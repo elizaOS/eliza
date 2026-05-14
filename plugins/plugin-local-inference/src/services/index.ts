@@ -13,6 +13,19 @@ export {
 	readBackendOverride,
 	resolveCatalogForPlan,
 } from "./backend";
+export { deviceBridge, type DeviceBridgeStatus } from "./device-bridge";
+export {
+	type HandlerRegistration,
+	handlerRegistry,
+	type PublicRegistration,
+	toPublicRegistration,
+} from "./handler-registry";
+export {
+	LocalInferenceEngine,
+	localInferenceEngine,
+	resolveIdleUnloadMs,
+	resolveMaxConcurrentSpeculativeResponses,
+} from "./engine";
 export {
 	ELIZA_1_PLACEHOLDER_IDS,
 	FIRST_RUN_DEFAULT_MODEL_ID,
@@ -29,6 +42,12 @@ export {
 	makeCloudFallbackHandler,
 } from "./cloud-fallback";
 export { getDflashRuntimeStatus } from "./dflash-server";
+export {
+	type DflashDoctorCheck,
+	type DflashDoctorReport,
+	type DflashDoctorStatus,
+	runDflashDoctor,
+} from "./dflash-doctor";
 export { assessFit, probeHardware } from "./hardware";
 export {
 	InferenceTelemetry,
@@ -74,6 +93,7 @@ export {
 	mlxBackendEligible,
 	mlxLocalServer,
 } from "./mlx-server";
+export * from "./manifest/index";
 export {
 	buildPlanActionsSkeleton,
 	buildPlannerGuidedDecode,
@@ -114,6 +134,7 @@ export {
 	type SupportedHostPlatform,
 } from "./runtime-target";
 export { LocalInferenceService, localInferenceService } from "./service";
+export * from "./voice/index";
 export type {
 	ActiveModelState,
 	CatalogModel,

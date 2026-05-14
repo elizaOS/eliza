@@ -68,10 +68,10 @@ sys.stdout.buffer.write(pcm.tobytes())
 
 async function main() {
   const { createStreamingTranscriber } = await import(
-    "../src/services/local-inference/voice/transcriber.ts"
+    "../../../plugins/plugin-local-inference/src/services/voice/transcriber.ts"
   );
   const { resolveOpenVinoWhisperRuntime } = await import(
-    "../src/services/local-inference/voice/openvino-whisper-asr.ts"
+    "../../../plugins/plugin-local-inference/src/services/voice/openvino-whisper-asr.ts"
   );
 
   const runtime = resolveOpenVinoWhisperRuntime();

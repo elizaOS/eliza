@@ -1,3 +1,4 @@
+import { useRenderGuard } from "@elizaos/cloud-ui";
 import { Menu } from "lucide-react";
 import { useCallback, useState } from "react";
 import { Outlet } from "react-router-dom";
@@ -9,6 +10,7 @@ import { ChatSidebar } from "../../components/layout/chat-sidebar";
  * its own sidebar/header chrome, so this layout owns the entire viewport.
  */
 export default function ChatBuildLayout() {
+  useRenderGuard("ChatBuildLayout");
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const handleToggleSidebar = useCallback(() => {

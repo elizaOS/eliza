@@ -122,8 +122,9 @@ import {
   settingsDebugCloudSummary,
   sqlLiteral,
 } from "@elizaos/shared";
+import { deviceBridge } from "@elizaos/plugin-local-inference/services";
+import { handleLocalInferenceCompatRoutes } from "@elizaos/plugin-local-inference/routes";
 import { buildCharacterFromConfig } from "../runtime/build-character-from-config";
-import { deviceBridge } from "../services/local-inference/device-bridge";
 import { handleAuthBootstrapRoutes } from "./auth-bootstrap-routes";
 import { handleAuthPairingCompatRoutes } from "./auth-pairing-routes";
 import { handleAuthSessionRoutes } from "./auth-session-routes";
@@ -132,8 +133,6 @@ import { handleCatalogRoutes } from "./catalog-routes";
 import { handleDatabaseRowsCompatRoute } from "./database-rows-compat-routes";
 import { handleDevCompatRoutes } from "./dev-compat-routes";
 import { handleInternalWakeRoute } from "./internal-routes";
-// Local-inference routes intentionally remain in app-core (no plugin-local-inference exists).
-import { handleLocalInferenceCompatRoutes } from "./local-inference-compat-routes";
 import { handleOnboardingCompatRoute } from "./onboarding-routes";
 import { handlePluginsCompatRoutes } from "./plugins-routes";
 import { handleSecretsInventoryRoute } from "./secrets-inventory-routes";
@@ -533,12 +532,17 @@ function isMissingTtsProviderError(error: unknown): boolean {
 async function useLocalInferenceTts(
   runtime: AgentRuntime,
   text: string,
+  signal?: AbortSignal,
 ): Promise<Uint8Array> {
   let lastError: unknown;
   for (const provider of LOCAL_TTS_PROVIDER_IDS) {
     try {
       return normalizeAudioBytes(
-        await runtime.useModel(ModelType.TEXT_TO_SPEECH, { text }, provider),
+        await runtime.useModel(
+          ModelType.TEXT_TO_SPEECH,
+          { text, ...(signal ? { signal } : {}) },
+          provider,
+        ),
       );
     } catch (err) {
       lastError = err;
@@ -575,14 +579,28 @@ async function _handleLocalInferenceTtsRoute(
     return true;
   }
 
+  const abortController = new AbortController();
+  let completed = false;
+  const abortOnClose = () => {
+    if (!completed && !abortController.signal.aborted) {
+      abortController.abort();
+    }
+  };
+  req.on("close", abortOnClose);
+  res.on("close", abortOnClose);
   try {
-    const bytes = await useLocalInferenceTts(runtime, text);
+    const bytes = await useLocalInferenceTts(
+      runtime,
+      text,
+      abortController.signal,
+    );
     if (bytes.length === 0) {
       sendJsonResponse(res, 502, {
         error: "Local inference TEXT_TO_SPEECH returned empty audio",
       });
       return true;
     }
+    completed = true;
     res.writeHead(200, {
       "Content-Type": sniffAudioContentType(bytes),
       "Cache-Control": "no-store",
@@ -593,6 +611,10 @@ async function _handleLocalInferenceTtsRoute(
     sendJsonResponse(res, 502, {
       error: `Local inference TTS error: ${err instanceof Error ? err.message : String(err)}`,
     });
+  } finally {
+    completed = true;
+    req.off("close", abortOnClose);
+    res.off("close", abortOnClose);
   }
   return true;
 }

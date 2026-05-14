@@ -1,0 +1,13 @@
+diff --git a/src/cli/package.json b/src/cli/package.json
+index c1a5327280b3c88ab6b14e7629838116b93066a0..68486adbaceb35b75f60ddc7da8a966daed5054a 100644
+--- a/src/cli/package.json
++++ b/src/cli/package.json
+@@ -4,7 +4,7 @@
+ 	"type": "module",
+ 	"devDependencies": {},
+ 	"peerDependencies": {
+-		"typescript": "^5.0.0"
++		"typescript": ">=5.0.0"
+ 	},
+ 	"dependencies": {},
+ 	"trustedDependencies": []

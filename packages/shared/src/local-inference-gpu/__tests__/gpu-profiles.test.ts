@@ -70,7 +70,9 @@ describe("getGpuProfile", () => {
     expect(p?.features).not.toContain("fp4");
     expect(p?.ctx_size_tokens).toBe(65536);
     expect(p?.dflash.enabled).toBe(true);
-    expect(p?.dflash.drafter_tier).toBe("0_8b");
+    expect(p?.recommended_tiers.primary).toBe("eliza-1-27b");
+    expect(p?.recommended_tiers.secondary).toBe("eliza-1-9b");
+    expect(p?.dflash.drafter_tier).toBe("eliza-1-2b");
     expect(p?.dflash.speculative_window).toBe(6);
   });
 

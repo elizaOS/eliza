@@ -40,7 +40,7 @@ export interface EngineLike {
   unload(): Promise<void>;
 }
 
-export interface EngineGenerateArgs {
+interface EngineGenerateArgs {
   prompt: string;
   maxTokens?: number;
   temperature?: number;
@@ -51,7 +51,7 @@ export interface EngineGenerateArgs {
   signal?: AbortSignal;
 }
 
-export interface ResolvedEngine {
+interface ResolvedEngine {
   engine: EngineLike;
   modelPath: string;
   tierId: Eliza1TierId;
@@ -104,11 +104,18 @@ async function tryImport<T>(spec: string): Promise<T | null> {
   }
 }
 
+function pluginLocalInferenceServicesUrl(): string {
+	return new URL(
+		"../../../../plugins/plugin-local-inference/src/services/index.ts",
+		import.meta.url,
+	).href;
+}
+
 /**
  * Resolve the eliza-1 model path under the configured local-inference root.
  * Returns null when the GGUF isn't present so the caller can short-circuit.
  */
-export async function resolveElizaModelPath(
+async function resolveElizaModelPath(
   tierId: Eliza1TierId = DEFAULT_TIER,
 ): Promise<{ modelPath: string; tierId: Eliza1TierId } | null> {
   const paths = await tryImport<SharedPathsLike>(
@@ -162,21 +169,16 @@ export async function resolveElizaEngine(
       reason: `eliza-1 GGUF not found locally for tier ${tierId}`,
     };
   }
-  // The local-inference engine moved from `@elizaos/app-core/services/local-inference/`
-  // to `@elizaos/plugin-local-inference/services/`. Try the new home first;
-  // fall back to the legacy path for repos pinned to the older layout.
   const engineMod =
     (await tryImport<AppCoreEngineLike>(
-      "@elizaos/plugin-local-inference/services/engine",
+      "@elizaos/plugin-local-inference/services",
     )) ??
-    (await tryImport<AppCoreEngineLike>(
-      "@elizaos/app-core/services/local-inference/engine",
-    ));
+    (await tryImport<AppCoreEngineLike>(pluginLocalInferenceServicesUrl()));
   if (!engineMod) {
     return {
       kind: "skip",
       reason:
-        "failed to import local-inference engine (tried @elizaos/plugin-local-inference + legacy app-core)",
+        "failed to import local-inference engine from @elizaos/plugin-local-inference/services or plugin source",
     };
   }
   let engine: EngineLike;

@@ -113,7 +113,7 @@ export class ElizaGuidedMode implements ModeAdapter {
  * free spans, and a trailing `}`. Single-value enums collapse to literals
  * automatically inside app-core (`collapseSkeleton`).
  */
-export function skeletonFromHint(hint: SkeletonHint): BenchSkeleton {
+function skeletonFromHint(hint: SkeletonHint): BenchSkeleton {
   const spans: BenchSkeletonSpan[] = [];
   const fields = hint.freeFields;
   if (fields.length === 0 && hint.enumKey && hint.enumValues) {

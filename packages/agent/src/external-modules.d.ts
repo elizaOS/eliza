@@ -120,29 +120,8 @@ declare module "telegram/sessions" {
   }
 }
 declare module "@elizaos/plugin-elizacloud" {
-  export interface CloudOnboardingResult {
-    apiKey: string;
-    agentId: string | undefined;
-    baseUrl: string;
-    bridgeUrl?: string;
-  }
-  export interface CloudOnboardingObserver {
-    [key: string]: unknown;
-  }
-  export class ClackObserver implements CloudOnboardingObserver {
-    constructor(clack: unknown);
-    [key: string]: unknown;
-  }
-  export class NullCloudOnboardingObserver implements CloudOnboardingObserver {
-    [key: string]: unknown;
-  }
-  export function runCloudOnboarding(
-    observer: CloudOnboardingObserver,
-    name: string,
-    chosenTemplate?: unknown,
-  ): Promise<CloudOnboardingResult | null>;
-}
-declare module "@elizaos/plugin-elizacloud" {
+  import type { IAgentRuntime } from "@elizaos/core";
+
   export interface CloudConfigLike {
     apiKey?: string | null;
     baseUrl?: string | null;
@@ -154,6 +133,19 @@ declare module "@elizaos/plugin-elizacloud" {
     agentId: string | undefined;
     baseUrl: string;
     bridgeUrl?: string;
+  }
+
+  export interface CloudOnboardingObserver {
+    [key: string]: unknown;
+  }
+
+  export class ClackObserver implements CloudOnboardingObserver {
+    constructor(clack: unknown);
+    [key: string]: unknown;
+  }
+
+  export class NullCloudOnboardingObserver implements CloudOnboardingObserver {
+    [key: string]: unknown;
   }
 
   export interface CloudRouteState {
@@ -171,6 +163,15 @@ declare module "@elizaos/plugin-elizacloud" {
   }
 
   export type CloudWalletProvider = "privy" | "steward";
+
+  export interface CloudVoiceCatalogEntry {
+    id: string;
+    name: string;
+    gender?: string;
+    preview?: string;
+    category?: string;
+    language?: string;
+  }
 
   export class ElizaCloudClient {
     constructor(...args: unknown[]);
@@ -197,6 +198,9 @@ declare module "@elizaos/plugin-elizacloud" {
   export function __resetCloudBaseUrlCache(): void;
   export function clearCloudSecrets(): void;
   export function ensureCloudTtsApiKeyAlias(...args: unknown[]): void;
+  export function fetchCloudVoiceCatalog(
+    runtime: IAgentRuntime,
+  ): Promise<CloudVoiceCatalogEntry[]>;
   export function getCloudSecret(...args: unknown[]): string | undefined;
   export function getOrCreateClientAddressKey(): Promise<{ address: string }>;
   export function isCloudProvisionedContainer(...args: unknown[]): boolean;
@@ -225,6 +229,12 @@ declare module "@elizaos/plugin-elizacloud" {
   export function mirrorCompatHeaders(...args: unknown[]): void;
 
   const plugin: unknown;
+  export default plugin;
+}
+declare module "@elizaos/plugin-video" {
+  import type { Plugin } from "@elizaos/core";
+
+  const plugin: Plugin;
   export default plugin;
 }
 declare module "@elizaos/plugin-commands";
@@ -359,7 +369,6 @@ declare module "@elizaos/plugin-imessage" {
   const imessagePlugin: unknown;
   export default imessagePlugin;
 }
-declare module "@elizaos/plugin-local-inference";
 declare module "@elizaos/plugin-ollama";
 declare module "@elizaos/plugin-mlx";
 declare module "@elizaos/plugin-openai";
@@ -393,8 +402,6 @@ declare module "@elizaos/plugin-x402" {
     options?: { agentId?: string },
   ): X402StartupValidationResult;
 }
-declare module "@elizaos/signal-native";
-
 declare module "fast-redact" {
   interface FastRedactOptions {
     paths: string[];

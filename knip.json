@@ -37,6 +37,23 @@
   "ignoreUnresolved": ["bun-types", "node:sqlite"],
   "ignoreWorkspaces": ["."],
   "workspaces": {
+    "cloud/packages/sdk": {
+      "entry": [
+        "src/index.ts",
+        "src/**/*.test.ts",
+        "src/**/*.e2e.test.ts",
+        "build.ts",
+        "vitest.live.config.ts",
+        "scripts/**/*.mjs"
+      ],
+      "project": [
+        "src/**/*.ts",
+        "build.ts",
+        "vitest.live.config.ts",
+        "scripts/**/*.mjs"
+      ],
+      "ignore": ["dist/**", ".turbo/**"]
+    },
     "packages/app": {
       "entry": [
         "src/**/*.{ts,tsx}",

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Helmet } from "react-helmet-async";
 import { Link, useParams } from "react-router-dom";
 import { useSessionAuth } from "@/lib/hooks/use-session-auth";
+import type { ElizaCharacter } from "@/lib/types";
 import { ElizaPageClient } from "../../../components/chat/eliza-page-client";
 import { api } from "../../../lib/api-client";
 
@@ -21,6 +22,8 @@ interface PublicCharacterResponse {
   data?: PublicCharacterInfo;
   error?: string;
 }
+
+const EMPTY_CHARACTERS: ElizaCharacter[] = [];
 
 function normalizeCharacterRef(ref: string | undefined): string | null {
   const trimmed = ref?.trim();
@@ -72,6 +75,20 @@ export default function PublicChatPage() {
     () => (character ? `Chat with ${character.name} | Eliza Cloud` : "Chat | Eliza Cloud"),
     [character],
   );
+  const sharedCharacter = useMemo(
+    () =>
+      character
+        ? {
+            id: character.id,
+            name: character.name,
+            username: character.username,
+            avatarUrl: character.avatarUrl,
+            bio: character.bio ?? undefined,
+            creatorUsername: character.creatorUsername,
+          }
+        : null,
+    [character],
+  );
 
   if (loading) {
     return (
@@ -115,18 +132,11 @@ export default function PublicChatPage() {
       </Helmet>
       <div className="dashboard-theme flex h-screen min-h-screen bg-neutral-950 text-white">
         <ElizaPageClient
-          initialCharacters={[]}
+          initialCharacters={EMPTY_CHARACTERS}
           isAuthenticated={authenticated}
           userId={user?.id ?? null}
           initialCharacterId={character.id}
-          sharedCharacter={{
-            id: character.id,
-            name: character.name,
-            username: character.username,
-            avatarUrl: character.avatarUrl,
-            bio: character.bio ?? undefined,
-            creatorUsername: character.creatorUsername,
-          }}
+          sharedCharacter={sharedCharacter}
           isOwnerOfSelectedCharacter={false}
           accessError={undefined}
         />

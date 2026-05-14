@@ -117,6 +117,7 @@ const REQUIRED_GATES = [
     requiredFields: [
       "policiesEvaluated",
       "redStateRendered",
+      "yellowStateRendered",
       "alertEventsPersisted",
     ],
   },

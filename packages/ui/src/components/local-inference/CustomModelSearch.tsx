@@ -7,6 +7,7 @@ import type {
   HardwareProbe,
   InstalledModel,
 } from "../../api/client-local-inference";
+import { useRenderGuard } from "../../hooks/useRenderGuard";
 import {
   DEFAULT_LOCAL_MODEL_SEARCH_PROVIDER_ID,
   getLocalModelSearchProvider,
@@ -63,6 +64,7 @@ export function CustomModelSearch({
   onUninstall,
   busy,
 }: CustomModelSearchProps) {
+  useRenderGuard("CustomModelSearch");
   const [providerId, setProviderId] = useState<LocalModelSearchProviderId>(
     DEFAULT_LOCAL_MODEL_SEARCH_PROVIDER_ID,
   );
@@ -105,29 +107,33 @@ export function CustomModelSearch({
       setResultsRequestKey("");
     }
     lastRequestRef.current = requestKey;
+    let active = true;
     const handle = setTimeout(async () => {
       setLoading(true);
       setError(null);
       try {
         const nextResults = await searchProviderViaClient(providerId, trimmed);
-        if (lastRequestRef.current === requestKey) {
+        if (active && lastRequestRef.current === requestKey) {
           setResults(nextResults);
           setResultsRequestKey(requestKey);
         }
       } catch (err) {
-        if (lastRequestRef.current === requestKey) {
+        if (active && lastRequestRef.current === requestKey) {
           setError(err instanceof Error ? err.message : "Search failed");
           setResults([]);
           setResultsRequestKey("");
         }
       } finally {
-        if (lastRequestRef.current === requestKey) {
+        if (active && lastRequestRef.current === requestKey) {
           setLoading(false);
         }
       }
     }, 400);
 
-    return () => clearTimeout(handle);
+    return () => {
+      active = false;
+      clearTimeout(handle);
+    };
   }, [provider.searchSupported, providerId, query]);
   const visibleResults =
     resultsRequestKey === currentRequestKey ? results : EMPTY_SEARCH_RESULTS;

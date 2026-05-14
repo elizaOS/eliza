@@ -38,6 +38,7 @@ try:
         write_bundle_licenses,
     )
     from scripts.manifest.eliza1_manifest import (
+        ELIZA_1_HF_REPO,
         SUPPORTED_BACKENDS_BY_TIER,
         validate_manifest,
     )
@@ -47,7 +48,7 @@ try:
     )
 except ImportError:  # pragma: no cover - script execution path
     from eliza1_licenses import verify_bundle_licenses, write_bundle_licenses  # type: ignore
-    from eliza1_manifest import SUPPORTED_BACKENDS_BY_TIER, validate_manifest  # type: ignore
+    from eliza1_manifest import ELIZA_1_HF_REPO, SUPPORTED_BACKENDS_BY_TIER, validate_manifest  # type: ignore
     from eliza1_platform_plan import (  # type: ignore
         REQUIRED_PLATFORM_EVIDENCE_BY_TIER,
         _target_backend,
@@ -436,6 +437,27 @@ def _collect_files_under(bundle_dir: Path, *rels: str) -> list[str]:
     return out
 
 
+def _manifest_weight_paths(bundle_dir: Path) -> list[str]:
+    """Return final weight payloads from the manifest, not stale disk extras."""
+
+    manifest = _read_json(bundle_dir / "eliza-1.manifest.json") or {}
+    files = manifest.get("files")
+    if not isinstance(files, dict):
+        return []
+    weight_dirs = {"text", "tts", "asr", "vad", "vision", "embedding", "dflash"}
+    out: set[str] = set()
+    for entries in files.values():
+        if not isinstance(entries, list):
+            continue
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            rel = entry.get("path")
+            if isinstance(rel, str) and rel.split("/", 1)[0] in weight_dirs:
+                out.add(rel)
+    return sorted(out)
+
+
 def finalize(bundle_dir: Path, repo_root: Path) -> dict[str, Any]:
     tier = _detect_tier(bundle_dir)
     components = _detect_components(bundle_dir)
@@ -543,10 +565,11 @@ def finalize(bundle_dir: Path, repo_root: Path) -> dict[str, Any]:
     # 7. Write back. Keep the existing structure; refresh the derived bits.
     evidence["schemaVersion"] = 1
     evidence["tier"] = tier
-    evidence["repoId"] = "elizaos/eliza-1"
+    evidence["repoId"] = ELIZA_1_HF_REPO
     evidence["repoPath"] = f"bundles/{tier}"
     evidence["generatedAt"] = _utc_now()
     evidence["final"] = final
+    evidence["weights"] = _manifest_weight_paths(bundle_dir)
     evidence["releaseState"] = release_state
     evidence["publishEligible"] = publish_eligible
     evidence["defaultEligible"] = default_eligible
@@ -585,7 +608,7 @@ def finalize(bundle_dir: Path, repo_root: Path) -> dict[str, Any]:
         t: f"evidence/platform/{t}.json" for t in required_targets
     }
     hf = dict(evidence.get("hf") or {})
-    hf["repoId"] = "elizaos/eliza-1"
+    hf["repoId"] = ELIZA_1_HF_REPO
     hf.setdefault("pathPrefix", f"bundles/{tier}")
     hf["status"] = "ready" if publish_eligible else f"blocked-{release_state}"
     evidence["hf"] = hf

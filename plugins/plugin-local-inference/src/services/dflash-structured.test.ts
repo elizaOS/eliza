@@ -257,11 +257,21 @@ describe("elizaHarnessSchemaFromSkeleton + guided decode wiring", () => {
 		expect(body.grammar_lazy).toBe(true);
 		// Prefill plan present.
 		const plan = body.eliza_prefill_plan as
-			| { prefix: string; runs: unknown[]; free_count: number }
+			| {
+					prefix: string;
+					runs: Array<{ after_free_span: number; text: string }>;
+					free_count: number;
+			  }
 			| undefined;
 		expect(plan).toBeDefined();
 		expect(plan?.prefix).toBe('{"action":');
 		expect(plan?.free_count).toBe(3);
+		expect(plan?.runs).toEqual([
+			{ after_free_span: -1, text: '{"action":' },
+			{ after_free_span: 0, text: ',"parameters":' },
+			{ after_free_span: 1, text: ',"thought":' },
+			{ after_free_span: 2, text: "}" },
+		]);
 		// Leading literal run seeded as an assistant-turn prefill.
 		expect(body.messages).toEqual([
 			{ role: "user", content: "say hello" },
