@@ -50,4 +50,30 @@ describe("runVfsBuiltinShell", () => {
     expect(echo.exitCode).toBe(0);
     await expect(vfs.readFile("src/generated.txt")).resolves.toBe("hello\n");
   });
+
+  it("runs grep and rg over VFS files without host ripgrep", async () => {
+    const vfs = createVirtualFilesystemService({ projectId: "searchable" });
+    await vfs.initialize();
+    await vfs.writeFile("src/a.ts", "alpha\nneedle one\n");
+    await vfs.writeFile("src/nested/b.ts", "Needle two\n");
+    await vfs.writeFile("README.md", "outside\n");
+
+    const rg = await runVfsBuiltinShell({
+      cwdUri: "vfs://searchable/src",
+      command: "rg",
+      args: ["-i", "needle"],
+    });
+    expect(rg).toMatchObject({ exitCode: 0 });
+    expect(rg.stdout).toContain("src/a.ts:2:needle one");
+    expect(rg.stdout).toContain("src/nested/b.ts:1:Needle two");
+    expect(rg.stdout).not.toContain("README.md");
+
+    const files = await runVfsBuiltinShell({
+      cwdUri: "vfs://searchable/src",
+      command: "rg",
+      args: ["--files"],
+    });
+    expect(files.stdout).toContain("src/a.ts");
+    expect(files.stdout).toContain("src/nested/b.ts");
+  });
 });

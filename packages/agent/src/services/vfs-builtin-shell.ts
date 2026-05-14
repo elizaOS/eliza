@@ -89,9 +89,13 @@ async function runBuiltin(
       return "";
     case "echo":
       return await echo(vfs, cwd, args);
+    case "grep":
+      return await grep(vfs, cwd, parseSearchArgs(args, "grep"));
+    case "rg":
+      return await grep(vfs, cwd, parseSearchArgs(args, "rg"));
     default:
       throw new Error(
-        `VFS shell supports pwd, ls, cat, mkdir, rm, and echo > file; got ${command ?? "(empty)"}`,
+        `VFS shell supports pwd, ls, cat, mkdir, rm, grep, rg, and echo > file; got ${command ?? "(empty)"}`,
       );
   }
 }
@@ -131,6 +135,127 @@ async function echo(
   const content = args.slice(0, redirect).join(" ");
   await vfs.writeFile(resolveVfsPath(cwd, target), `${content}\n`);
   return "";
+}
+
+interface SearchRequest {
+  pattern: string | null;
+  paths: string[];
+  ignoreCase: boolean;
+  lineNumbers: boolean;
+  filesWithMatches: boolean;
+  listFiles: boolean;
+}
+
+async function grep(
+  vfs: ReturnType<typeof createVirtualFilesystemService>,
+  cwd: string,
+  req: SearchRequest,
+): Promise<string> {
+  const files = await vfs.exportFiles();
+  const roots = req.paths.length > 0 ? req.paths : ["."];
+  const scopedFiles = files.filter(
+    (file) =>
+      !file.path.startsWith("/.vfs-git/") &&
+      roots.some((root) => isPathInScope(file.path, resolveVfsPath(cwd, root))),
+  );
+
+  if (req.listFiles) {
+    return scopedFiles
+      .map((file) => file.path.replace(/^\//, ""))
+      .join("\n")
+      .concat(scopedFiles.length > 0 ? "\n" : "");
+  }
+
+  if (!req.pattern) {
+    throw new Error("Missing grep/rg pattern");
+  }
+
+  const regex = compileSearchPattern(req.pattern, req.ignoreCase);
+  const output: string[] = [];
+  for (const file of scopedFiles) {
+    const text = Buffer.from(file.bytes).toString("utf-8");
+    const lines = text.split(/\r?\n/);
+    let matchedFile = false;
+    for (let index = 0; index < lines.length; index += 1) {
+      regex.lastIndex = 0;
+      if (!regex.test(lines[index] ?? "")) continue;
+      matchedFile = true;
+      if (req.filesWithMatches) break;
+      const name = file.path.replace(/^\//, "");
+      const line = req.lineNumbers ? `${index + 1}:` : "";
+      output.push(`${name}:${line}${lines[index] ?? ""}`);
+    }
+    if (req.filesWithMatches && matchedFile) {
+      output.push(file.path.replace(/^\//, ""));
+    }
+  }
+  return output.join("\n").concat(output.length > 0 ? "\n" : "");
+}
+
+function parseSearchArgs(args: string[], command: "grep" | "rg"): SearchRequest {
+  const request: SearchRequest = {
+    pattern: null,
+    paths: [],
+    ignoreCase: false,
+    lineNumbers: command === "rg",
+    filesWithMatches: false,
+    listFiles: false,
+  };
+
+  for (const arg of args) {
+    if (arg === "--files" && command === "rg") {
+      request.listFiles = true;
+      continue;
+    }
+    if (arg === "-n" || arg === "--line-number") {
+      request.lineNumbers = true;
+      continue;
+    }
+    if (arg === "-i" || arg === "--ignore-case") {
+      request.ignoreCase = true;
+      continue;
+    }
+    if (arg === "-l" || arg === "--files-with-matches") {
+      request.filesWithMatches = true;
+      continue;
+    }
+    if (arg === "-r" || arg === "-R" || arg === "--recursive") {
+      continue;
+    }
+    if (arg.startsWith("-")) {
+      throw new Error(`Unsupported VFS ${command} flag: ${arg}`);
+    }
+    if (!request.pattern && !request.listFiles) {
+      request.pattern = arg;
+      continue;
+    }
+    request.paths.push(arg);
+  }
+
+  return request;
+}
+
+function compileSearchPattern(pattern: string, ignoreCase: boolean): RegExp {
+  try {
+    return new RegExp(pattern, ignoreCase ? "gi" : "g");
+  } catch {
+    return new RegExp(escapeRegExp(pattern), ignoreCase ? "gi" : "g");
+  }
+}
+
+function isPathInScope(filePath: string, root: string): boolean {
+  const normalizedFile = filePath.replace(/^\/+/, "");
+  const normalizedRoot = root.replace(/^\/+/, "").replace(/\/+$/, "");
+  return (
+    normalizedRoot === "." ||
+    normalizedRoot === "" ||
+    normalizedFile === normalizedRoot ||
+    normalizedFile.startsWith(`${normalizedRoot}/`)
+  );
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function parseVfsUri(uri: string): ParsedVfsUri {

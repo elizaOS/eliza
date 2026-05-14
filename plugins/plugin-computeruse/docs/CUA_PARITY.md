@@ -34,7 +34,7 @@ to expose. Cua has two related APIs:
 | `hotkey`, `keyboard.keypress([...])` | `COMPUTER_USE` `action=key_combo`; WS7 `hotkey` | Supported. |
 | `key_down`, `key_up` | `COMPUTER_USE` `action=key_down/key_up`; WS7 `ComputerInterface.keyDown/keyUp` | Supported. |
 | `get_accessibility_tree` | `COMPUTER_USE` `action=accessibility_tree`; `scene` provider | Supported via scene builder. |
-| `find_element` | `COMPUTER_USE` `action=detect_elements` | Supported as scene element extraction from AX + OCR. Exact role/title/value filtering is a follow-up. |
+| `find_element` | `COMPUTER_USE` `action=find_element` | Supported as filtered scene element extraction over AX + OCR fields. |
 | `to_screen_coordinates` | WS7 `ComputerInterface.toScreenCoordinates()` | Supported. |
 | `to_screenshot_coordinates` | WS7 `ComputerInterface.toScreenshotCoordinates()` | Supported. |
 
@@ -54,7 +54,7 @@ to expose. Cua has two related APIs:
 | `shell` | `run` | `execute_command`, `terminal_execute` | Supported through guarded local command execution. |
 | `terminal` | `create`, `send_input`, `resize`, `close` | `terminal_connect`/`terminal_create`, `terminal_type`/`terminal_send_input`, `terminal_resize`, `terminal_read`, `terminal_close` | PTY-backed when `node-pty` is available; falls back to interactive `child_process.spawn` sessions. |
 | `files` / computer file commands | `file_exists`, `directory_exists`, `list_dir`, `read_text`, `write_text`, `read_bytes`, `write_bytes`, `delete_file`, `create_dir`, `delete_dir`, `get_file_size` | `file_*`, `directory_list`, `directory_delete` | Partial. Text read/write/edit/append/delete/list/exists are supported. Binary chunked read/write and create-dir alias should be added for exact Cua parity. |
-| `clipboard` | `get`/`copy_to_clipboard`, `set`/`set_clipboard` | none | Gap. Add cross-platform clipboard commands. |
+| `clipboard` | `get`/`copy_to_clipboard`, `set`/`set_clipboard` | `clipboard_get`, `get_clipboard`, `copy_to_clipboard`, `set_clipboard`, `clipboard_set` | Supported with macOS, Linux, and Windows backends. |
 | `window` | `get_active_title` | `WINDOW list/focus/switch/...` | Partial. Window listing and management exists; active-title direct alias should be added. |
 | computer window commands | `open`, `launch`, `get_current_window_id`, `get_application_windows`, `get_window_name`, `get_window_size`, `get_window_position`, `set_window_size`, `set_window_position`, `maximize_window`, `minimize_window`, `activate_window`, `close_window` | `WINDOW list/focus/switch/arrange/move/minimize/maximize/restore/close` | Partial. Existing local implementation covers common management; exact ID/size/position getters and open/launch aliases are follow-up. |
 | desktop metadata | `get_desktop_environment`, `set_wallpaper` | none | Gap. |
@@ -81,9 +81,7 @@ to expose. Cua has two related APIs:
 
 ## Immediate follow-ups
 
-1. Add clipboard commands with macOS/Linux/Windows backends.
-2. Add Cua file aliases for `directory_exists`, `create_dir`, `read_bytes`,
-   `write_bytes`, and `get_file_size`.
-3. Add window getters/open/launch aliases matching Cua names.
-4. Add direct `find_element` filters over scene AX/OCR fields.
-5. Add PTY-backed terminal sessions with resize.
+1. Add a full CuaBench task runner/session wrapper around
+   `fromCuaBenchAction`.
+2. Add live CuaBench smoke tasks once the runner can own setup/evaluate
+   lifecycle safely.

@@ -1,7 +1,7 @@
 import type { ResponseSkeleton, SpanSamplerPlan } from "../types/model";
 import {
-  buildSpanSamplerPlan,
-  withGuidedDecodeProviderOptions,
+	buildSpanSamplerPlan,
+	withGuidedDecodeProviderOptions,
 } from "./response-grammar";
 
 export interface EvaluatorGuidance {
