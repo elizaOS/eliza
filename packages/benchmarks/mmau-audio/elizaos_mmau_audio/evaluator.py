@@ -1,4 +1,4 @@
-"""Deterministic MCQ scoring for MMAU.
+"""Deterministic MCQ scoring for Audio MMAU.
 
 MMAU is pure multiple choice -- every sample has a labelled ground-truth
 letter, so scoring is exact match on the parsed letter. No LLM-judge is
@@ -12,7 +12,7 @@ from __future__ import annotations
 import re
 import string
 
-from benchmarks.mmau.types import MMAUPrediction, MMAUResult, MMAUSample
+from elizaos_mmau_audio.types import MMAUPrediction, MMAUResult, MMAUSample
 
 
 _PARENS_LETTER = re.compile(r"\(\s*([A-Z])\s*\)")

@@ -38,7 +38,12 @@ from benchmarks.bfcl.executable_runtime import (
     CLASS_FILE_PATH_MAPPING,
     NETWORK_REQUIRED_CLASSES,
     ExecutableRuntime,
+    RESTCallSpec,
+    RESTExecutionError,
+    RESTRateLimited,
+    RESTRunner,
     RuntimeNetworkRequired,
+    agentic_checker,
 )
 from benchmarks.bfcl.types import (
     ArgumentValue,
@@ -58,6 +63,13 @@ EXEC_SUPPORTED_CATEGORIES: set[BFCLCategory] = {
     BFCLCategory.MULTI_TURN_MISS_FUNC,
     BFCLCategory.MULTI_TURN_MISS_PARAM,
     BFCLCategory.MULTI_TURN_LONG_CONTEXT,
+    # Memory categories are scored by the agentic_checker over the final
+    # model response after the snapshot-backed memory runtime has been
+    # exercised. Vector + rec_sum need optional deps; the runner gates
+    # them on a try/except around runtime construction.
+    BFCLCategory.MEMORY_KV,
+    BFCLCategory.MEMORY_VECTOR,
+    BFCLCategory.MEMORY_REC_SUM,
 }
 
 
@@ -199,6 +211,164 @@ class ExecutionEvaluator:
             except Exception:
                 return repr(a) == repr(b)
         return repr(a) == repr(b)
+
+    # ------------------------------------------------------------------
+    # Memory category scoring
+    # ------------------------------------------------------------------
+    def evaluate_memory(
+        self,
+        *,
+        backend: str,
+        scenario: str,
+        test_id: str,
+        prereq_messages: Optional[list[str]] = None,
+        agent_tool_calls: list[str],
+        agent_final_response: str,
+        possible_answers: list[str],
+    ) -> tuple[bool, dict[str, object]]:
+        """Score a memory entry by exercising the snapshot-backed memory
+        runtime, then doing a substring match against the possible answers.
+
+        Args:
+            backend: memory backend name (``kv`` / ``vector`` / ``rec_sum``).
+            scenario: prereq scenario name (``finance`` / ``customer`` / ...).
+            test_id: full test entry id; used for the snapshot folder
+                layout. Must include the upstream-canonical prefix
+                conventions if it's a prereq entry.
+            prereq_messages: optional list of user messages from the prereq
+                conversation chain. We *don't* drive an LLM during the
+                prereq; instead we pre-populate the memory snapshot using
+                the API surface so the test entry sees realistic state.
+                Callers that want the real prereq write phase (LLM-driven)
+                should populate the snapshot directly and pass an empty list.
+            agent_tool_calls: python-call strings the agent emitted while
+                answering the test question.
+            agent_final_response: the agent's plain-text response. Compared
+                against ``possible_answers``.
+            possible_answers: list of acceptable substrings (per upstream's
+                ``agentic_checker``).
+
+        Returns ``(passed, details)``.
+        """
+        details: dict[str, object] = {
+            "backend": backend,
+            "scenario": scenario,
+            "test_id": test_id,
+            "agent_tool_calls": agent_tool_calls,
+        }
+
+        backend_class = f"MemoryAPI_{backend}"
+        if backend_class not in CLASS_FILE_PATH_MAPPING:
+            details["error"] = f"Unknown memory backend: {backend}"
+            return False, details
+
+        initial_config = {
+            backend_class: {
+                "scenario": scenario,
+                "test_id": test_id,
+                "test_category": f"memory_{backend}",
+            }
+        }
+
+        try:
+            runtime = ExecutableRuntime(
+                involved_classes=[backend_class],
+                initial_config=initial_config,
+                memory_backend=backend,
+            )
+        except Exception as exc:
+            details["error"] = f"Memory runtime init failed: {exc}"
+            return False, details
+
+        # Optionally pre-populate the memory with prereq messages. Each
+        # message gets stored under a synthetic key so downstream searches
+        # have something to hit. This isn't a real LLM-driven write phase
+        # (upstream uses one); it's a lightweight deterministic surrogate
+        # that gives the agent something to read in unit / CI runs.
+        for i, msg in enumerate(prereq_messages or []):
+            key = f"prereq_msg_{i:02d}"
+            try:
+                if backend == "rec_sum":
+                    runtime.execute_calls(
+                        [f"memory_append(text={msg!r})"]
+                    )
+                else:
+                    runtime.execute_calls(
+                        [f"core_memory_add(key={key!r}, value={msg!r})"]
+                    )
+            except Exception as exc:  # pragma: no cover — defensive
+                details.setdefault("prereq_errors", []).append(str(exc))  # type: ignore[union-attr]
+
+        # Execute the agent's tool calls against the prepared memory.
+        try:
+            tool_outputs = runtime.execute_calls(list(agent_tool_calls))
+        except Exception as exc:
+            details["error"] = f"Memory tool execution failed: {exc}"
+            runtime.cleanup()
+            return False, details
+
+        details["tool_outputs"] = tool_outputs
+
+        # Score: agentic_checker over the final response. Upstream concats
+        # tool outputs into the response context implicitly; we mirror that
+        # so a model that returned an empty assistant turn but exfiltrated
+        # the answer via a tool result still passes (parity w/ upstream).
+        scoring_text = "\n".join([agent_final_response or "", *tool_outputs])
+        check = agentic_checker(scoring_text, possible_answers)
+        details["agentic_check"] = check
+        runtime.cleanup()
+        return bool(check.get("valid", False)), details
+
+    # ------------------------------------------------------------------
+    # REST category scoring
+    # ------------------------------------------------------------------
+    def evaluate_rest(
+        self,
+        *,
+        spec: RESTCallSpec,
+        expected: object,
+        runner: Optional[RESTRunner] = None,
+    ) -> tuple[bool, dict[str, object]]:
+        """Execute a REST call and compare the response against the upstream
+        expected output.
+
+        Honors ``self.enable_network``: if False, raises
+        :class:`RuntimeNetworkRequired` so the runner can map the test to
+        ``SKIPPED_NO_CREDENTIALS`` — matching the gating behavior for the
+        web_search and multi-turn-with-WebSearchAPI categories.
+
+        Returns ``(passed, details)``.
+
+        Raises :class:`RESTRateLimited` on HTTP 429 so the caller can map
+        it to ``SKIPPED_RATE_LIMITED``.
+        """
+        if not self.enable_network:
+            raise RuntimeNetworkRequired(
+                "REST execution requires enable_network=True"
+            )
+
+        rest_runner = runner or RESTRunner(
+            enable_network=True,
+            timeout_seconds=self.timeout_ms / 1000.0,
+        )
+        try:
+            response = rest_runner.execute(spec)
+        except RESTRateLimited:
+            raise
+        except RESTExecutionError as exc:
+            return False, {"error": str(exc)}
+
+        details: dict[str, object] = {
+            "status_code": response.status_code,
+            "elapsed_seconds": response.elapsed_seconds,
+            "response_preview": response.text[:512],
+        }
+        passed = (
+            200 <= response.status_code < 300
+            and response.matches(expected)
+        )
+        details["expected_matched"] = passed
+        return passed, details
 
     # ------------------------------------------------------------------
     # Legacy single-call execution (only used by unit tests now).
