@@ -111,11 +111,14 @@ async function verifyEd25519Signature(args: {
     import("@noble/ed25519"),
     import("bs58"),
   ]);
-  const bs58 = (bs58Module as { default?: typeof bs58Module }).default ?? bs58Module;
+  const bs58Namespace = bs58Module as unknown as {
+    default?: { decode: (s: string) => Uint8Array };
+    decode?: (s: string) => Uint8Array;
+  };
+  const bs58 = bs58Namespace.default ?? bs58Namespace;
 
   const decodeBs58 = (input: string): Uint8Array => {
-    const decoder = (bs58 as unknown as { decode: (s: string) => Uint8Array }).decode;
-    return decoder(input);
+    return bs58.decode(input);
   };
 
   let publicKey: Uint8Array;

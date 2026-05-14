@@ -65,6 +65,11 @@ public struct RuntimePolicy {
         return Self.isAllowedEnvironmentKey(key)
     }
 
+    public func allowsFullBunEngine(env: [String: String]) -> Bool {
+        guard appStoreCompliantLocalRuntime else { return true }
+        return false
+    }
+
     private static func isPath(_ path: URL, inside root: URL) -> Bool {
         let rootPath = root.standardizedFileURL.path
         let candidate = path.standardizedFileURL.path
