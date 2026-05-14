@@ -37,6 +37,35 @@ interface DeadUrl {
   via?: string;
 }
 
+function extractVerifiableUrls(text: string, limit = 5): string[] {
+  const seen = new Set<string>();
+  const candidates: string[] = [];
+  for (const match of text.matchAll(URL_IN_TEXT_RE)) {
+    const raw = match[0];
+    const index = match.index ?? -1;
+    const suffix =
+      index >= 0 ? text.slice(index + raw.length, index + raw.length + 4) : "";
+    // Route instructions and docs often contain URL templates such as
+    // `https://host/apps/<slug>/`. The regexp stops before `<slug>`, so the
+    // raw match looks like a real collection URL (`/apps/`). Do not verify
+    // the template stem as if the sub-agent claimed that directory is live.
+    if (suffix.startsWith("<") || suffix.startsWith("&lt;")) continue;
+
+    const url = raw.replace(/[.,;:]+$/, "");
+    if (seen.has(url)) continue;
+    seen.add(url);
+    candidates.push(url);
+  }
+
+  const filtered = candidates.filter((url) => {
+    const prefix = url.endsWith("/") ? url : `${url}/`;
+    return !candidates.some(
+      (other) => other !== url && other.startsWith(prefix),
+    );
+  });
+  return filtered.slice(0, limit);
+}
+
 /**
  * SubAgentRouter takes terminal-significant ACPX session events
  * (`task_complete`, `error`, `blocked`) and posts them as synthetic inbound
@@ -689,17 +718,8 @@ async function annotateUnverifiedUrls(
   text: string,
   log?: (message: string) => void,
 ): Promise<{ text: string; dead: DeadUrl[] }> {
-  const urlMatches = text.match(URL_IN_TEXT_RE);
-  if (!urlMatches || urlMatches.length === 0) return { text, dead: [] };
-  const seen = new Set<string>();
-  const urls: string[] = [];
-  for (const raw of urlMatches) {
-    const url = raw.replace(/[.,;:]+$/, "");
-    if (seen.has(url)) continue;
-    seen.add(url);
-    urls.push(url);
-    if (urls.length >= 5) break;
-  }
+  const urls = extractVerifiableUrls(text);
+  if (urls.length === 0) return { text, dead: [] };
   log?.(
     `[verify] start @ ${new Date().toISOString()} — ${urls.length} url(s): ${urls.join(", ")}`,
   );
