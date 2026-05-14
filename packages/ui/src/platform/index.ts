@@ -17,10 +17,10 @@ export {
   ASSISTANT_LAUNCH_PARAM_KEYS,
   ASSISTANT_LAUNCH_SOURCES,
   ASSISTANT_LAUNCH_TEXT_KEYS,
-  type AssistantLaunchPayload,
   buildAssistantLaunchMetadata,
   clearAssistantLaunchPayloadFromHash,
   readAssistantLaunchPayloadFromHash,
+  type AssistantLaunchPayload,
 } from "./assistant-launch-payload";
 export {
   applyLaunchConnection,

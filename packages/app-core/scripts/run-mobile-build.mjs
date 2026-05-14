@@ -144,6 +144,24 @@ const IOS_BUN_ENGINE_REQUIRED_SYMBOLS = [
   "_eliza_bun_engine_call",
   "_eliza_bun_engine_free",
 ];
+const IOS_BUN_ENGINE_EXECUTION_PROFILE = "ios-app-store-nojit";
+const IOS_BUN_ENGINE_FORBIDDEN_IMPORTS = [
+  "_dlopen",
+  "_dlsym",
+  "_posix_spawn",
+  "_fork",
+  "_execve",
+  "_system",
+  "_pthread_jit_write_protect_np",
+  "_mach_vm_protect",
+  "_vm_protect",
+];
+const IOS_BUN_ENGINE_FORBIDDEN_STRINGS = [
+  /\bMAP_JIT\b/i,
+  /\ballow-jit\b/i,
+  /\bdynamic-codesigning\b/i,
+  /\bunsigned-executable-memory\b/i,
+];
 // ── Phase 1: Resolve app identity from app.config.ts ────────────────────
 
 function readAppIdentity() {
@@ -3456,9 +3474,9 @@ function ensureIosFullBunEngineArtifact({ buildTarget = null } = {}) {
 // The default Android target injects an on-device agent runtime, default
 // roles (dialer, SMS, browser, contacts, camera, calendar, clock,
 // assistant, in-call), a boot receiver, and the privileged appop /
-// usage-stats permissions that AOSP needs but Play Store rejects. The
-// `android-cloud` target produces a thin Capacitor client backed by Eliza
-// Cloud and must not ship any of those components.
+// usage-stats / full-control permissions that AOSP needs but Play Store
+// rejects. The `android-cloud` target produces a thin Capacitor client
+// backed by Eliza Cloud and must not ship any of those components.
 //
 // Components deleted from the manifest (and from app/src/main/java/...):
 export const ANDROID_CLOUD_STRIPPED_COMPONENTS = [
@@ -3484,7 +3502,9 @@ export const ANDROID_CLOUD_STRIPPED_COMPONENTS = [
 // dropped. The remainder — INTERNET, POST_NOTIFICATIONS, FOREGROUND_SERVICE
 // + FOREGROUND_SERVICE_DATA_SYNC for the Gateway sync service, WAKE_LOCK,
 // scoped storage SDK fallbacks, RECORD_AUDIO/CAMERA/LOCATION needed for
-// Capacitor plugins the cloud renderer still uses — stays in place.
+// Capacitor plugins the cloud renderer still uses — stays in place. Screen
+// capture is AOSP/direct-only, so MediaProjection FGS and the native
+// screencapture plugin are stripped here.
 export const ANDROID_CLOUD_STRIPPED_PERMISSIONS = [
   "READ_CONTACTS",
   "WRITE_CONTACTS",
