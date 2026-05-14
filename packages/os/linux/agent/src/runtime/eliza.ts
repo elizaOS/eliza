@@ -120,7 +120,7 @@ async function createRuntime(): Promise<AgentRuntime> {
             LOCAL_LARGE_MODEL:
                 Bun.env.LOCAL_LARGE_MODEL ??
                 Bun.env.USBELIZA_GGUF ??
-                "/usr/share/usbeliza/models/llama-3.2-1b-instruct-q4_k_m.gguf",
+                "/usr/share/usbeliza/models/eliza-1-0_8b-32k.gguf",
         },
     };
 
@@ -131,7 +131,7 @@ async function createRuntime(): Promise<AgentRuntime> {
         // bootstrap — its Discord/Telegram-style default actions (NONE /
         // IGNORE / CONTINUE / FOLLOW_ROOM ...) would clutter the chat-box.
         // usbelizaPlugin owns the user-visible Actions; localLlamaPlugin
-        // owns the local-1B TEXT_* model handlers; claudeCloudPlugin owns
+        // owns the smallest Eliza-1 TEXT_* model handlers; claudeCloudPlugin owns
         // the *higher-priority* TEXT_LARGE handler that takes over once
         // the user signs into Claude. Registration order matters: claude
         // is appended AFTER local-llama so even in priority-tie scenarios

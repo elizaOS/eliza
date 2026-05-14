@@ -197,9 +197,9 @@ def required_voice_artifacts_for_tier(tier: str) -> tuple[str, ...]:
     """Return the frozen TTS artifacts required for ``tier``.
 
     Paths are relative to the bundle's ``tts/`` directory. The active Eliza-1
-    release line uses OmniVoice as the required/default backend for active
-    local tiers. The 0.8B, 2B, 4B, and 9B tiers also carry Kokoro as a
-    fallback, while the 27B long-context tiers ship OmniVoice only.
+    release line uses OmniVoice as the required/default backend for the
+    0.8B, 2B, 4B, and 9B local tiers, with Kokoro retained as a fallback
+    on those smaller bundles. The 27B long-context tiers ship OmniVoice only.
     """
 
     out: list[str] = []

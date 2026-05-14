@@ -111,14 +111,14 @@ describe("parseCurlPercent", () => {
 });
 
 describe("resolveRequestedModel", () => {
-    test("matches 'download qwen 7b' to Qwen2.5 7B Instruct", () => {
-        const m = resolveRequestedModel("download qwen 7b");
-        expect(m?.id).toBe("mid-7b");
+    test("matches 'download eliza 4b' to eliza-1-4b", () => {
+        const m = resolveRequestedModel("download eliza 4b");
+        expect(m?.id).toBe("eliza-1-4b");
     });
 
-    test("matches 'pull llama 3.2 1b' to Llama-3.2 1B", () => {
-        const m = resolveRequestedModel("pull llama 3.2 1b");
-        expect(m?.id).toBe("tiny-1b");
+    test("matches 'pull eliza 0.8b' to eliza-1-0_8b", () => {
+        const m = resolveRequestedModel("pull eliza 0.8b");
+        expect(m?.id).toBe("eliza-1-0_8b");
     });
 
     test("returns null when no model words match", () => {
@@ -131,8 +131,8 @@ describe("resolveRequestedModel", () => {
 
 describe("buildActiveModelToml", () => {
     test("emits `path = \"<abs>\"` newline", () => {
-        const toml = buildActiveModelToml("/home/eliza/.eliza/models/qwen.gguf");
-        expect(toml).toBe('path = "/home/eliza/.eliza/models/qwen.gguf"\n');
+        const toml = buildActiveModelToml("/home/eliza/.eliza/models/eliza-1-4b.gguf");
+        expect(toml).toBe('path = "/home/eliza/.eliza/models/eliza-1-4b.gguf"\n');
     });
 
     test("escapes embedded quotes and backslashes", () => {
@@ -209,7 +209,7 @@ describe("DOWNLOAD_MODEL handler", () => {
         const captured: string[] = [];
         const result = await DOWNLOAD_MODEL_ACTION.handler(
             fakeRuntime,
-            memoryOf("download qwen 7b"),
+            memoryOf("download eliza 4b"),
             undefined,
             { spawnFn },
             async (response) => {
@@ -219,10 +219,10 @@ describe("DOWNLOAD_MODEL handler", () => {
         );
 
         expect(result?.success).toBe(true);
-        expect(result?.text).toMatch(/Downloaded Qwen2\.5 7B Instruct/);
+        expect(result?.text).toMatch(/Downloaded eliza-1-4b/);
         // active-model.toml should point at the new gguf.
         const toml = readFileSync(activeModelTomlPath(), "utf8");
-        expect(toml).toContain("Qwen2.5-7B-Instruct-Q4_K_M.gguf");
+        expect(toml).toContain("eliza-1-4b-64k.gguf");
         // Progress callback fired at least once.
         expect(captured.some((t) => t.includes("Downloading"))).toBe(true);
     });
@@ -231,7 +231,7 @@ describe("DOWNLOAD_MODEL handler", () => {
         const spawnFn = buildSpawn({ percentages: [], exitCode: 6 });
         const result = await DOWNLOAD_MODEL_ACTION.handler(
             fakeRuntime,
-            memoryOf("download qwen 7b"),
+            memoryOf("download eliza 4b"),
             undefined,
             { spawnFn },
         );
@@ -243,7 +243,7 @@ describe("DOWNLOAD_MODEL handler", () => {
 
     test("already-on-disk path re-pins without re-downloading", async () => {
         // Pre-create the destination GGUF.
-        const dest = join(tempRoot, "models", "Qwen2.5-7B-Instruct-Q4_K_M.gguf");
+        const dest = join(tempRoot, "models", "eliza-1-4b-64k.gguf");
         await mkdir(dirname(dest), { recursive: true });
         writeFileSync(dest, "already here");
 
@@ -259,7 +259,7 @@ describe("DOWNLOAD_MODEL handler", () => {
 
         const result = await DOWNLOAD_MODEL_ACTION.handler(
             fakeRuntime,
-            memoryOf("download qwen 7b"),
+            memoryOf("download eliza 4b"),
             undefined,
             { spawnFn },
         );
@@ -268,7 +268,7 @@ describe("DOWNLOAD_MODEL handler", () => {
         expect(spawned).toBe(false);
         // Still pinned.
         expect(readFileSync(activeModelTomlPath(), "utf8")).toContain(
-            "Qwen2.5-7B-Instruct-Q4_K_M.gguf",
+            "eliza-1-4b-64k.gguf",
         );
     });
 });
@@ -289,8 +289,8 @@ describe("Action selection (similes)", () => {
         expect(m?.action.name).toBe("LIST_MODELS");
     });
 
-    test("'download qwen' picks DOWNLOAD_MODEL", () => {
-        const m = matchAction("download qwen", USBELIZA_ACTIONS);
+    test("'download eliza' picks DOWNLOAD_MODEL", () => {
+        const m = matchAction("download eliza", USBELIZA_ACTIONS);
         expect(m?.action.name).toBe("DOWNLOAD_MODEL");
     });
 });

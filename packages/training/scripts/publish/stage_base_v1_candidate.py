@@ -2,7 +2,7 @@
 
 Unlike `scripts/publish/orchestrator.py` (which refuses to push unless every
 release-blocking gate is green), this stages a *candidate* bundle: a real
-fine-tuned text GGUF + the frozen `elizalabs/eliza-1-assets` voice/ASR/VAD bytes
+fine-tuned text GGUF + the frozen `elizaos/eliza-1-assets` voice/ASR/VAD bytes
 + an honestly-labelled drafter, with the eval suite run and folded in. The
 resulting bundle is installable on a device whose backend the manifest verified
 `pass` (post-commit `ae7c9e5fcd` to the runtime validator) but is NOT
@@ -542,7 +542,7 @@ library_name: gguf
 tags: [eliza, elizaos, eliza-1, gguf, on-device, candidate]
 ---
 
-# elizalabs/eliza-1-{tier} — base-v1 candidate bundle
+# elizaos/eliza-1-{tier} — base-v1 candidate bundle
 
 This is the Eliza-1 **{tier}** on-device bundle, published as a
 **`base-v1-candidate`** (`defaultEligible: false`). The runtime can download

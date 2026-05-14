@@ -576,9 +576,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 			actions: [search, save],
 			responses: [
 				{
-					body: JSON.stringify({
-						action: "RESPOND",
-						simple: false,
+					body: stage1Response({
 						contexts: ["web", "memory"],
 						thought: "Search then save.",
 					}),
@@ -643,9 +641,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 			responses: [
 				// Stage 1: contexts trigger planning
 				{
-					body: JSON.stringify({
-						action: "RESPOND",
-						simple: false,
+					body: stage1Response({
 						contexts: ["general"],
 						thought: "Context selected.",
 					}),
@@ -731,9 +727,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 			responses: [
 				// Stage 1
 				{
-					body: JSON.stringify({
-						action: "RESPOND",
-						simple: false,
+					body: stage1Response({
 						contexts: ["calendar"],
 						thought: "Calendar context.",
 					}),
@@ -852,9 +846,8 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 				// Stage 1: just stop after seeing the prompt — we only care about the
 				// rendered prompt content, not the routing.
 				{
-					body: JSON.stringify({
-						action: "IGNORE",
-						simple: false,
+					body: stage1Response({
+						shouldRespond: "IGNORE",
 						contexts: [],
 						thought: "Just inspecting the prompt.",
 					}),
@@ -936,9 +929,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 			responses: [
 				// Stage 1
 				{
-					body: JSON.stringify({
-						action: "RESPOND",
-						simple: false,
+					body: stage1Response({
 						contexts: ["web"],
 						thought: "Two-step task.",
 					}),

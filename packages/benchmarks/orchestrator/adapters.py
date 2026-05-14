@@ -1445,7 +1445,7 @@ def _command_loca_bench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> lis
         if key in ctx.request.extra_config:
             args.extend([flag, str(caster(ctx.request.extra_config[key]))])
     context_summary = ctx.request.extra_config.get("context_summary")
-    if context_summary is not False:
+    if context_summary is True:
         args.append("--context-summary")
     if ctx.request.extra_config.get("context_awareness") is True:
         args.append("--context-awareness")
@@ -1566,6 +1566,12 @@ def _env_loca_bench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> dict[st
         or ctx.request.extra_config.get("harness")
         or ctx.request.agent
     ).strip().lower()
+    if harness == "eliza":
+        # LOCA runs through native tool calls and does not use Eliza retrieval,
+        # but the benchmark server still initializes the runtime and probes
+        # TEXT_EMBEDDING. Local Eliza-1 inference is not guaranteed in bench
+        # worktrees, so skip plugin-local-inference for this LOCA bridge.
+        env["ELIZA_BENCH_ALLOW_STUB_EMBEDDING"] = "1"
     if harness == "openclaw":
         openclaw_thinking = ctx.request.extra_config.get("openclaw_thinking")
         if isinstance(openclaw_thinking, str) and openclaw_thinking.strip():
@@ -2083,11 +2089,11 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             score_extractor=_score_from_loca_bench,
             env_builder=_env_loca_bench,
             default_extra_config={
-                "max_steps": 24,
-                "max_tool_uses": 25,
+                "max_steps": 36,
+                "max_tool_uses": 40,
                 "max_retries": 3,
-                "timeout": 600,
-                "context_summary": True,
+                "timeout": 900,
+                "context_summary": False,
                 "max_context_size": 32768,
                 "reset_size": 16384,
             },

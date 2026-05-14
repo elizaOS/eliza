@@ -4,45 +4,35 @@
 /**
  * usbeliza local-inference model catalog.
  *
- * Source of truth for which local LLMs the boot-time calibration model
- * picker offers and which the agent can load at runtime. Every entry is
- * **publicly resolvable** on HuggingFace via the unauthenticated
- * `https://huggingface.co/<repo>/resolve/main/<file>` endpoint — verified
- * to return HTTP 200 to anonymous requests.
- *
- * **Why we do not use milady's `elizaos/eliza-1-*` catalog:**
- * the entire `elizaos/eliza-1-{lite,mobile,desktop,pro,server}` family is
- * gated on HuggingFace and returns HTTP 401 to anonymous downloads. The
- * milady codepath supports them but a fresh usbeliza USB booter cannot
- * actually fetch one. We pick public-equivalents that match each tier's
- * RAM target and tokenizer family so the DFlash drafter/target pairing
- * still works.
+ * The Linux agent offers only the active Eliza-1 release line by default.
+ * Every installable runtime artifact resolves from the single
+ * `elizalabs/eliza-1` Hugging Face repo under `bundles/<tier>/`.
  *
  * Tier scoring is "minRamGb + 4 GB headroom" — the model picker hides any
  * tier whose minRamGb + 4 would exceed `/proc/meminfo` MemTotal at boot,
  * so users never see a tier they cannot fit.
- *
- * Adapted from milady's
- * `eliza/packages/ui/src/services/local-inference/catalog.ts`. Same shape,
- * different IDs — milady's `Eliza1TierId` is gated, ours is public.
  */
 
 export type ModelTierId =
-    | "tiny-1b"
-    | "drafter-0_8b"
-    | "mid-7b"
-    | "dflash-9b"
-    | "heavy-32b";
+    | "eliza-1-0_8b"
+    | "eliza-1-2b"
+    | "eliza-1-4b"
+    | "eliza-1-9b"
+    | "eliza-1-27b"
+    | "eliza-1-2b-drafter"
+    | "eliza-1-4b-drafter"
+    | "eliza-1-9b-drafter"
+    | "eliza-1-27b-drafter";
 
 export type ModelCategory = "chat" | "drafter" | "embedding";
 export type ModelBucket = "small" | "mid" | "large";
 
 export interface CatalogModel {
     /** Stable identifier used in calibration.toml and the runtime store. */
-    readonly id: ModelTierId | "embedding-bge-small";
+    readonly id: ModelTierId | "eliza-1-embedding";
     /** Human-readable label for the picker. */
     readonly displayName: string;
-    /** HuggingFace `<owner>/<repo>` (e.g. `bartowski/Qwen3.5-9B-DFlash-FP16-GGUF`). */
+    /** HuggingFace `<owner>/<repo>`. Active defaults must use `elizalabs/eliza-1`. */
     readonly hfRepo: string;
     /** Exact GGUF filename inside the repo. We construct the resolve URL from this. */
     readonly ggufFile: string;
@@ -57,7 +47,7 @@ export interface CatalogModel {
     /** Coarse size bucket — drives UX grouping in the picker. */
     readonly bucket: ModelBucket;
     /** Tokenizer family — DFlash drafter+target MUST share family. */
-    readonly tokenizerFamily: "llama3" | "qwen2" | "qwen3" | "bert";
+    readonly tokenizerFamily: "qwen35" | "bert";
     /** Picker copy. One sentence, present-tense. */
     readonly blurb: string;
     /**
@@ -69,112 +59,157 @@ export interface CatalogModel {
 }
 
 /**
- * The single canonical first-boot baseline. **Bundled into the base ISO**
- * so a freshly-booted live USB can chat with no network. Sized to fit
- * any reasonable laptop (<2 GB resident).
+ * The single canonical first-boot baseline. Sized to fit low-memory hosts
+ * while staying on the Eliza-1 model line.
  */
-export const BASELINE_MODEL_ID: ModelTierId = "tiny-1b";
+export const BASELINE_MODEL_ID: ModelTierId = "eliza-1-0_8b";
 
 /**
  * The default embedding model. Tiny and always bundled.
  */
-export const BASELINE_EMBEDDING_ID = "embedding-bge-small" as const;
+export const BASELINE_EMBEDDING_ID = "eliza-1-embedding" as const;
+
+const ELIZA_1_REPO = "elizalabs/eliza-1";
 
 export const MODEL_CATALOG: readonly CatalogModel[] = [
     // ─── Always-on embeddings ────────────────────────────────────────
     {
-        id: "embedding-bge-small",
-        displayName: "BGE-small (embeddings)",
-        hfRepo: "ChristianAzinn/bge-small-en-v1.5-gguf",
-        ggufFile: "bge-small-en-v1.5.Q4_K_M.gguf",
-        params: "33M",
-        sizeGb: 0.03,
-        minRamGb: 0.5,
+        id: "eliza-1-embedding",
+        displayName: "eliza-1 embeddings",
+        hfRepo: ELIZA_1_REPO,
+        ggufFile: "bundles/2b/embedding/eliza-1-embedding.gguf",
+        params: "0.6B",
+        sizeGb: 0.4,
+        minRamGb: 2,
         category: "embedding",
         bucket: "small",
-        tokenizerFamily: "bert",
-        blurb: "Sentence embeddings for retrieval, recall, and search inside generated apps.",
+        tokenizerFamily: "qwen35",
+        blurb: "Eliza-1 sentence embeddings for retrieval, recall, and search inside generated apps.",
     },
 
-    // ─── tiny-1b — fits anywhere, baseline pre-network chat ──────────
+    // ─── Active Eliza-1 chat tiers ───────────────────────────────────
     {
-        id: "tiny-1b",
-        displayName: "Llama-3.2 1B Instruct",
-        hfRepo: "bartowski/Llama-3.2-1B-Instruct-GGUF",
-        ggufFile: "Llama-3.2-1B-Instruct-Q4_K_M.gguf",
-        params: "1B",
-        sizeGb: 0.8,
-        minRamGb: 2,
-        category: "chat",
-        bucket: "small",
-        tokenizerFamily: "llama3",
-        blurb: "Pre-network baseline. Fits a 4 GB laptop, runs at 80–120 t/s on Lunar Lake CPU.",
-    },
-
-    // ─── drafter-0_8b — Qwen3.5 family, pairs with dflash-9b ─────────
-    {
-        id: "drafter-0_8b",
-        displayName: "Qwen3.5 0.8B (DFlash drafter)",
-        hfRepo: "unsloth/Qwen3.5-0.8B-GGUF",
-        ggufFile: "Qwen3.5-0.8B-Q4_K_M.gguf",
+        id: "eliza-1-0_8b",
+        displayName: "eliza-1-0_8b",
+        hfRepo: ELIZA_1_REPO,
+        ggufFile: "bundles/0_8b/text/eliza-1-0_8b-32k.gguf",
         params: "0.8B",
         sizeGb: 0.5,
         minRamGb: 2,
-        category: "drafter",
+        category: "chat",
         bucket: "small",
-        tokenizerFamily: "qwen3",
-        blurb:
-            "Speculative-decoding drafter. Pairs with Qwen3.5-9B-DFlash for a 2–3× speedup on the laptop tier.",
+        tokenizerFamily: "qwen35",
+        blurb: "Smallest Eliza-1 local tier for low-memory phones, USB boots, and CPU fallback.",
     },
-
-    // ─── mid-7b — laptop default without DFlash ──────────────────────
     {
-        id: "mid-7b",
-        displayName: "Qwen2.5 7B Instruct",
-        hfRepo: "bartowski/Qwen2.5-7B-Instruct-GGUF",
-        ggufFile: "Qwen2.5-7B-Instruct-Q4_K_M.gguf",
-        params: "7B",
-        sizeGb: 4.7,
-        minRamGb: 8,
+        id: "eliza-1-2b",
+        displayName: "eliza-1-2b",
+        hfRepo: ELIZA_1_REPO,
+        ggufFile: "bundles/2b/text/eliza-1-2b-32k.gguf",
+        params: "2B",
+        sizeGb: 1.4,
+        minRamGb: 4,
+        category: "chat",
+        bucket: "small",
+        tokenizerFamily: "qwen35",
+        blurb: "Recommended first-run Eliza-1 tier for responsive local text and voice.",
+        dflashDrafter: "eliza-1-2b-drafter",
+    },
+    {
+        id: "eliza-1-4b",
+        displayName: "eliza-1-4b",
+        hfRepo: ELIZA_1_REPO,
+        ggufFile: "bundles/4b/text/eliza-1-4b-64k.gguf",
+        params: "4B",
+        sizeGb: 2.6,
+        minRamGb: 10,
         category: "chat",
         bucket: "mid",
-        tokenizerFamily: "qwen2",
-        blurb: "Strong all-rounder for 12 GB+ laptops. Reasonable coding + chat at 20–30 t/s on Lunar Lake.",
+        tokenizerFamily: "qwen35",
+        blurb: "Balanced Eliza-1 local tier for modern laptops and desktops.",
+        dflashDrafter: "eliza-1-4b-drafter",
     },
-
-    // ─── dflash-9b — recommended tier for Lunar Lake (32 GB) ─────────
-    // Paired with drafter-0_8b for speculative decoding (2-3x speedup).
-    // Both Qwen3.5 family -> tokenizer compatibility guaranteed.
     {
-        id: "dflash-9b",
-        displayName: "Qwen3.5 9B DFlash",
-        hfRepo: "psychopenguin/Qwen3.5-9B-DFlash-FP16-GGUF",
-        ggufFile: "Qwen3.5-9B-DFlash-Q4_K_M.gguf",
+        id: "eliza-1-9b",
+        displayName: "eliza-1-9b",
+        hfRepo: ELIZA_1_REPO,
+        ggufFile: "bundles/9b/text/eliza-1-9b-64k.gguf",
         params: "9B",
-        sizeGb: 5.8,
+        sizeGb: 5.4,
         minRamGb: 12,
         category: "chat",
-        bucket: "mid",
-        tokenizerFamily: "qwen3",
-        blurb:
-            "Recommended for laptops with 16 GB+. Uses Qwen3.5 0.8B as a speculative-decoding drafter — 30–60 t/s on Lunar Lake.",
-        dflashDrafter: "drafter-0_8b",
+        bucket: "large",
+        tokenizerFamily: "qwen35",
+        blurb: "Workstation Eliza-1 tier for stronger reasoning with DFlash drafting.",
+        dflashDrafter: "eliza-1-9b-drafter",
     },
-
-    // ─── heavy-32b — workstation tier ────────────────────────────────
     {
-        id: "heavy-32b",
-        displayName: "Qwen2.5 32B Instruct",
-        hfRepo: "bartowski/Qwen2.5-32B-Instruct-GGUF",
-        ggufFile: "Qwen2.5-32B-Instruct-Q4_K_M.gguf",
-        params: "32B",
-        sizeGb: 18,
+        id: "eliza-1-27b",
+        displayName: "eliza-1-27b",
+        hfRepo: ELIZA_1_REPO,
+        ggufFile: "bundles/27b/text/eliza-1-27b-128k.gguf",
+        params: "27B",
+        sizeGb: 16.8,
         minRamGb: 32,
         category: "chat",
         bucket: "large",
-        tokenizerFamily: "qwen2",
-        blurb:
-            "Workstation tier. Needs 32 GB+ RAM; runs at 4–7 t/s on CPU-only Lunar Lake (faster with GPU offload).",
+        tokenizerFamily: "qwen35",
+        blurb: "High-quality Eliza-1 local/cloud tier for GPU workstations.",
+        dflashDrafter: "eliza-1-27b-drafter",
+    },
+
+    // ─── DFlash sidecars. Not offered as chat models. ────────────────
+    {
+        id: "eliza-1-2b-drafter",
+        displayName: "eliza-1-2b drafter",
+        hfRepo: ELIZA_1_REPO,
+        ggufFile: "bundles/2b/dflash/drafter-2b.gguf",
+        params: "0.8B",
+        sizeGb: 0.5,
+        minRamGb: 4,
+        category: "drafter",
+        bucket: "small",
+        tokenizerFamily: "qwen35",
+        blurb: "DFlash drafter sidecar for eliza-1-2b.",
+    },
+    {
+        id: "eliza-1-4b-drafter",
+        displayName: "eliza-1-4b drafter",
+        hfRepo: ELIZA_1_REPO,
+        ggufFile: "bundles/4b/dflash/drafter-4b.gguf",
+        params: "0.8B",
+        sizeGb: 0.7,
+        minRamGb: 10,
+        category: "drafter",
+        bucket: "small",
+        tokenizerFamily: "qwen35",
+        blurb: "DFlash drafter sidecar for eliza-1-4b.",
+    },
+    {
+        id: "eliza-1-9b-drafter",
+        displayName: "eliza-1-9b drafter",
+        hfRepo: ELIZA_1_REPO,
+        ggufFile: "bundles/9b/dflash/drafter-9b.gguf",
+        params: "2B",
+        sizeGb: 1.4,
+        minRamGb: 12,
+        category: "drafter",
+        bucket: "mid",
+        tokenizerFamily: "qwen35",
+        blurb: "DFlash drafter sidecar for eliza-1-9b.",
+    },
+    {
+        id: "eliza-1-27b-drafter",
+        displayName: "eliza-1-27b drafter",
+        hfRepo: ELIZA_1_REPO,
+        ggufFile: "bundles/27b/dflash/drafter-27b.gguf",
+        params: "4B",
+        sizeGb: 2.6,
+        minRamGb: 32,
+        category: "drafter",
+        bucket: "mid",
+        tokenizerFamily: "qwen35",
+        blurb: "DFlash drafter sidecar for eliza-1-27b.",
     },
 ];
 
@@ -203,16 +238,16 @@ export function buildHuggingFaceResolveUrl(model: CatalogModel): string {
  * Memory-aware tier filter: returns the chat-eligible tiers a host with
  * `memTotalGb` GiB of RAM can actually run, sorted largest-first so the
  * picker can show the best fit at the top. Always includes the baseline
- * `tiny-1b` even if memTotalGb < 6 — without it the picker can't offer
+ * `eliza-1-0_8b` even if memTotalGb < 6 — without it the picker can't offer
  * anything and the boot stalls. (We already require minRamGb=2 for
- * tiny-1b, so any usable host trivially clears the gate.)
+ * eliza-1-0_8b, so any usable host trivially clears the gate.)
  */
 export function pickEligibleTiers(memTotalGb: number): CatalogModel[] {
     const HEADROOM_GB = 4;
     const chatTiers = MODEL_CATALOG.filter((m) => m.category === "chat");
     const eligible = chatTiers.filter((m) => m.minRamGb + HEADROOM_GB <= memTotalGb);
-    if (eligible.find((m) => m.id === "tiny-1b") === undefined) {
-        const baseline = findCatalogModel("tiny-1b");
+    if (eligible.find((m) => m.id === BASELINE_MODEL_ID) === undefined) {
+        const baseline = findCatalogModel(BASELINE_MODEL_ID);
         if (baseline !== undefined) eligible.push(baseline);
     }
     return eligible.sort((a, b) => b.minRamGb - a.minRamGb);

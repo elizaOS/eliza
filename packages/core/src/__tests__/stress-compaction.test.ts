@@ -26,6 +26,48 @@ import type { UUID } from "../types/primitives";
 import type { IAgentRuntime } from "../types/runtime";
 import type { State } from "../types/state";
 
+function stage1Response(fields: {
+	shouldRespond?: "RESPOND" | "IGNORE" | "STOP";
+	thought?: string;
+	contexts?: string[];
+	intents?: string[];
+	candidateActionNames?: string[];
+	replyText?: string;
+	facts?: string[];
+	relationships?: unknown[];
+	addressedTo?: string[];
+	extra?: Record<string, unknown>;
+}): {
+	text: string;
+	toolCalls: Array<{
+		id: string;
+		name: string;
+		arguments: Record<string, unknown>;
+	}>;
+} {
+	return {
+		text: "",
+		toolCalls: [
+			{
+				id: "handle-response-1",
+				name: HANDLE_RESPONSE_TOOL_NAME,
+				arguments: {
+					shouldRespond: fields.shouldRespond ?? "RESPOND",
+					thought: fields.thought ?? "",
+					contexts: fields.contexts ?? [],
+					intents: fields.intents ?? [],
+					candidateActionNames: fields.candidateActionNames ?? [],
+					replyText: fields.replyText ?? "",
+					facts: fields.facts ?? [],
+					relationships: fields.relationships ?? [],
+					addressedTo: fields.addressedTo ?? [],
+					...(fields.extra ?? {}),
+				},
+			},
+		],
+	};
+}
+
 const MSG_ID = "10000000-0000-0000-0000-000000000001" as UUID;
 const SENDER_ID = "10000000-0000-0000-0000-000000000002" as UUID;
 const AGENT_ID = "10000000-0000-0000-0000-000000000003" as UUID;
@@ -405,21 +447,11 @@ describe("v5 stress path — long build, compaction, gates, trajectory export", 
 			responses: [
 				{
 					expectModelType: ModelType.RESPONSE_HANDLER,
-					body: {
-						text: "",
-						toolCalls: [
-							{
-								id: "mh-1",
-								name: HANDLE_RESPONSE_TOOL_NAME,
-								arguments: {
-									processMessage: "RESPOND",
-									plan: { contexts: ["general"] },
-									thought:
-										"The user requested a multi-step build and verification task.",
-								},
-							},
-						],
-					},
+					body: stage1Response({
+						contexts: ["general"],
+						thought:
+							"The user requested a multi-step build and verification task.",
+					}),
 				},
 				{
 					expectModelType: ModelType.ACTION_PLANNER,

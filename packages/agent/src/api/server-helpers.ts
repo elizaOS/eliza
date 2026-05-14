@@ -41,9 +41,12 @@ import {
   isPluginManagerLike,
   type PluginManagerLike,
 } from "../services/plugin-manager-types.ts";
-import { maybeAugmentChatMessageWithDocuments as augmentChatMessageWithDocuments } from "./chat-augmentation.ts";
 import { extractCompatTextContent } from "./compat-utils.ts";
-import type { ChatAttachmentWithData, ServerState } from "./server-types.ts";
+import type {
+  ChatAttachmentWithData,
+  ChatImageAttachment,
+  ServerState,
+} from "./server-types.ts";
 import { getWalletAddresses } from "./wallet.ts";
 import {
   resolvePluginEvmLoaded,
@@ -438,21 +441,8 @@ export function cloneWithoutBlockedObjectKeys<T>(value: T): T {
 }
 
 // ---------------------------------------------------------------------------
-// Chat language augmentation (re-exported from chat-augmentation.ts)
-// ---------------------------------------------------------------------------
-
-export { maybeAugmentChatMessageWithLanguage } from "./chat-augmentation.ts";
-
-// ---------------------------------------------------------------------------
 // Chat image validation
 // ---------------------------------------------------------------------------
-
-interface ChatImageAttachment {
-  /** Base64-encoded image data (no data URL prefix). */
-  data: string;
-  mimeType: string;
-  name: string;
-}
 
 const MAX_CHAT_IMAGES = 4;
 const MAX_IMAGE_DATA_BYTES = 5 * 1_048_576;
@@ -688,13 +678,6 @@ export function maybeAugmentChatMessageWithWalletContext(
       text: buildWalletContextPrompt(runtime, userPrompt),
     },
   };
-}
-
-export async function maybeAugmentChatMessageWithDocuments(
-  runtime: AgentRuntime,
-  message: ReturnType<typeof createMessageMemory>,
-): Promise<ReturnType<typeof createMessageMemory>> {
-  return augmentChatMessageWithDocuments(runtime, message);
 }
 
 // ---------------------------------------------------------------------------

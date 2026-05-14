@@ -8,7 +8,13 @@ const ROOT = resolve(import.meta.dirname, "..");
 const ROOT_KNIP_CONFIG = existsSync(join(ROOT, "knip.json"))
   ? "knip.json"
   : null;
-const DIRECTORY_SCOPED_WORKSPACES = new Set(["cloud/packages/sdk"]);
+const DIRECTORY_SCOPED_WORKSPACES = new Set([
+  "cloud/packages/sdk",
+  "packages/app-core",
+  "packages/app-core/deploy/cloud-agent-template",
+  "packages/app-core/platforms/electrobun",
+  "packages/core",
+]);
 
 function normalizePathForCli(path) {
   return path.replace(/\\/g, "/");

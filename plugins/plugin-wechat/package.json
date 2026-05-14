@@ -47,13 +47,13 @@
     "clean": "rm -rf dist"
   },
   "peerDependencies": {
-    "@elizaos/core": "2.0.0-alpha.537"
+    "@elizaos/core": "workspace:*"
   },
   "publishConfig": {
     "access": "public"
   },
   "devDependencies": {
-    "@elizaos/core": "2.0.0-alpha.537",
+    "@elizaos/core": "workspace:*",
     "tsup": "^8.5.1",
     "typescript": "^6.0.3",
     "vitest": "^4.0.18"

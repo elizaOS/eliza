@@ -445,7 +445,6 @@ describe("runV5MessageRuntimeStage1", () => {
 				shouldRun: () => true,
 				evaluate: () => ({
 					requiresTool: true,
-					simple: false,
 					clearReply: true,
 					addContexts: ["general"],
 				}),

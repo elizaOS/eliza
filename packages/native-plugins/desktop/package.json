@@ -29,7 +29,7 @@
   "author": "elizaOS",
   "license": "MIT",
   "dependencies": {
-    "@elizaos/app-core": "2.0.0-beta.2"
+    "@elizaos/app-core": "workspace:*"
   },
   "repository": {
     "type": "git",

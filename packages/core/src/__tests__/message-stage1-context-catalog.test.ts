@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { HANDLE_RESPONSE_TOOL_NAME } from "../actions/to-tool";
 import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../runtime/builtin-field-evaluators";
 import { ContextRegistry } from "../runtime/context-registry";
 import { ResponseHandlerFieldRegistry } from "../runtime/response-handler-field-registry";
@@ -11,6 +12,48 @@ import type { Memory } from "../types/memory";
 import type { UUID } from "../types/primitives";
 import type { IAgentRuntime } from "../types/runtime";
 import type { State } from "../types/state";
+
+function stage1Response(fields: {
+	shouldRespond?: "RESPOND" | "IGNORE" | "STOP";
+	thought?: string;
+	contexts?: string[];
+	intents?: string[];
+	candidateActionNames?: string[];
+	replyText?: string;
+	facts?: string[];
+	relationships?: unknown[];
+	addressedTo?: string[];
+	extra?: Record<string, unknown>;
+}): {
+	text: string;
+	toolCalls: Array<{
+		id: string;
+		name: string;
+		arguments: Record<string, unknown>;
+	}>;
+} {
+	return {
+		text: "",
+		toolCalls: [
+			{
+				id: "handle-response-1",
+				name: HANDLE_RESPONSE_TOOL_NAME,
+				arguments: {
+					shouldRespond: fields.shouldRespond ?? "RESPOND",
+					thought: fields.thought ?? "",
+					contexts: fields.contexts ?? [],
+					intents: fields.intents ?? [],
+					candidateActionNames: fields.candidateActionNames ?? [],
+					replyText: fields.replyText ?? "",
+					facts: fields.facts ?? [],
+					relationships: fields.relationships ?? [],
+					addressedTo: fields.addressedTo ?? [],
+					...(fields.extra ?? {}),
+				},
+			},
+		],
+	};
+}
 
 function useModelCalls(runtime: IAgentRuntime): unknown[][] {
 	return (runtime.useModel as { mock: { calls: unknown[][] } }).mock.calls;
@@ -50,7 +93,7 @@ function createResponseHandlerFieldRegistry(): ResponseHandlerFieldRegistry {
 
 function makeRuntimeWithContexts(
 	contexts: readonly ContextDefinition[],
-	stage1Response: unknown,
+	stage1ResponseBody: unknown,
 ): IAgentRuntime {
 	const registry = new ContextRegistry(contexts);
 	const responseHandlerFieldRegistry = createResponseHandlerFieldRegistry();
@@ -67,7 +110,7 @@ function makeRuntimeWithContexts(
 		composeState: vi.fn(async () => makeState()),
 		runActionsByMode: vi.fn(async () => undefined),
 		emitEvent: vi.fn(async () => undefined),
-		useModel: vi.fn(async () => stage1Response),
+		useModel: vi.fn(async () => stage1ResponseBody),
 		logger: {
 			debug: vi.fn(),
 			info: vi.fn(),
@@ -127,12 +170,10 @@ describe("Stage 1 prompt — available contexts catalog", () => {
 	it("includes USER-accessible contexts and excludes OWNER-only contexts for a USER sender", async () => {
 		const runtime = makeRuntimeWithContexts(
 			FIXTURE_CONTEXTS,
-			JSON.stringify({
-				action: "RESPOND",
-				simple: true,
+			stage1Response({
 				contexts: [],
 				thought: "Direct answer.",
-				reply: "Hello.",
+				replyText: "Hello.",
 			}),
 		);
 
@@ -175,12 +216,10 @@ describe("Stage 1 prompt — available contexts catalog", () => {
 			runActionsByMode: vi.fn(async () => undefined),
 			emitEvent: vi.fn(async () => undefined),
 			useModel: vi.fn(async () =>
-				JSON.stringify({
-					action: "RESPOND",
-					simple: true,
+				stage1Response({
 					contexts: [],
 					thought: "Direct answer.",
-					reply: "Hello.",
+					replyText: "Hello.",
 				}),
 			),
 			logger: {

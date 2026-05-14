@@ -54,7 +54,7 @@
     "node": ">=24.0.0"
   },
   "dependencies": {
-    "@elizaos/core": "2.0.0-alpha.537",
+    "@elizaos/core": "workspace:*",
     "yaml": "^2.8.2"
   },
   "devDependencies": {

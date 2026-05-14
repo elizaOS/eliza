@@ -68,20 +68,25 @@ import {
   isInsufficientCreditsMessage,
 } from "./credit-detection.ts";
 import {
+  maybeAugmentChatMessageWithDocuments,
+  maybeAugmentChatMessageWithLanguage,
+} from "./chat-augmentation.ts";
+import {
   buildWalletActionNotExecutedReply,
   cloneWithoutBlockedObjectKeys,
   decodePathComponent,
   getErrorMessage,
   hasBlockedObjectKeyDeep,
   isWalletActionRequiredIntent,
-  maybeAugmentChatMessageWithDocuments,
-  maybeAugmentChatMessageWithLanguage,
   maybeAugmentChatMessageWithWalletContext,
   normalizeIncomingChatPrompt,
   resolveAppUserName,
   trimWalletProgressPrefix,
   validateChatImages,
 } from "./server-helpers.ts";
+import type { ChatImageAttachment } from "./server-types.ts";
+
+export type { ChatImageAttachment };
 
 const CHAT_MAX_BODY_BYTES = 20 * 1024 * 1024; // 20 MB (image-capable)
 
@@ -139,13 +144,6 @@ function resolveCallbackMergeMode(
   return content.merge === "append" || content.merge === "replace"
     ? content.merge
     : fallback;
-}
-
-export interface ChatImageAttachment {
-  /** Base64-encoded image data (no data URL prefix). */
-  data: string;
-  mimeType: string;
-  name: string;
 }
 
 function normalizeActionCallbackText(text: string): string {
@@ -1599,7 +1597,6 @@ export async function generateChatResponse(
                   src: "eliza-api",
                   mode: resultRecord?.mode,
                   actions: rc?.actions,
-                  simple: rc?.simple,
                   hasText: Boolean(rc?.text),
                 },
                 "[eliza-api] Chat response metadata",
