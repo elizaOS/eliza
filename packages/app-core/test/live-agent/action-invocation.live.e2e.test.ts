@@ -231,8 +231,7 @@ describe("Action Invocation E2E", () => {
     if (!canRunLiveTests) return;
 
     process.env.LOG_LEVEL = process.env.ELIZA_E2E_LOG_LEVEL ?? "error";
-    process.env.ENABLE_TRAJECTORIES = "false";
-    process.env.ELIZA_TRAJECTORY_LOGGING = "false";
+    process.env.ELIZA_DISABLE_TRAJECTORY_LOGGING = "1";
     process.env.ELIZA_DISABLE_PROACTIVE_AGENT = "1";
     previousDisableLifeOpsScheduler =
       process.env.ELIZA_DISABLE_LIFEOPS_SCHEDULER;

@@ -29,7 +29,7 @@ export function readConfigEnvKey(key: string): string | undefined {
   // changes take effect without a process restart. Fall back to process.env
   // so operators who set values via a systemd EnvironmentFile (service.env)
   // or shell export are honoured — these paths were silently ignored before,
-  // causing `PARALLAX_OPENCODE_*` overrides to be dropped on the floor.
+  // causing `ELIZA_OPENCODE_*` overrides to be dropped on the floor.
   const config = readConfig();
   const val = (config?.env as Record<string, unknown> | undefined)?.[key];
   if (typeof val === "string" && val.length > 0) return val;

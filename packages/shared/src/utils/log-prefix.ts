@@ -8,14 +8,12 @@ export function getLogPrefix(): string {
     return cachedPrefix;
   }
 
-  // Check APP_CLI_NAME env var first (set by the host app).
   const appCliName = process.env.APP_CLI_NAME?.trim();
   if (appCliName) {
     cachedPrefix = `[${appCliName}]`;
     return cachedPrefix;
   }
 
-  // Also check if CLI passed --name
   const nameArgMatch = process.argv.find((a) => a.startsWith("--name="));
   if (nameArgMatch) {
     const name = nameArgMatch.split("=")[1];
@@ -34,20 +32,14 @@ export function getLogPrefix(): string {
           cachedPrefix = "[eliza]";
           return cachedPrefix;
         }
-        if (name === "elizaos" || name.includes("eliza")) {
-          cachedPrefix = "[eliza]";
-          return cachedPrefix;
-        }
-
         cachedPrefix = `[${name}]`;
         return cachedPrefix;
       }
     }
-  } catch (_e) {
-    // Ignore parsing errors
+  } catch {
+    // package.json missing or malformed — continue to fallbacks
   }
 
-  // Fallbacks based on directory structure
   if (
     process.cwd().includes("eliza-workspace") ||
     process.cwd().includes("eliza")

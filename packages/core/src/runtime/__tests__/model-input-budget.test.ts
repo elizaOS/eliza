@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { ChatMessage } from "../../types/model";
+import type { ChatMessage, ToolDefinition } from "../../types/model";
 import {
 	buildModelInputBudget,
 	DEFAULT_COMPACTION_RESERVE_TOKENS,
@@ -241,17 +241,16 @@ describe("buildModelInputBudget", () => {
 		});
 
 		it("counts tool definitions toward the estimate", () => {
-			const baseTools = [
+			const baseTools: ToolDefinition[] = [
 				{ name: "X", description: "a".repeat(1000) },
 				{ name: "Y", description: "b".repeat(1000) },
-			] as Array<{ name: string; description: string }>;
+			];
 			const noTools = buildModelInputBudget({
 				messages: [userMessageOfChars(100)],
 			});
 			const withTools = buildModelInputBudget({
 				messages: [userMessageOfChars(100)],
-				// biome-ignore lint/suspicious/noExplicitAny: minimal shape for estimator test
-				tools: baseTools as any,
+				tools: baseTools,
 			});
 			expect(withTools.estimatedInputTokens).toBeGreaterThan(
 				noTools.estimatedInputTokens,

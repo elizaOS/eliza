@@ -15,7 +15,9 @@ RUN apt-get update && apt-get install -y \
 # Create working directory
 WORKDIR /root
 
-# Download video file from GitHub
+# NOTE: super-mario.mp4 is not included in the repo (Nintendo copyright).
+# Provide it in the build context before building this image.
+# The file should be a screen recording of Super Mario gameplay (~15MB MP4).
 COPY super-mario.mp4 /root/super-mario.mp4
 COPY coin.png /root/coin.png
 COPY enemy.png /root/enemy.png

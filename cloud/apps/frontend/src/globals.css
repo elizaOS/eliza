@@ -1,41 +1,21 @@
-/* Font imports. CSS custom properties (--font-dm-mono, --font-inter, --font-sf-pro)
+/* Font imports — vendored via @fontsource so fonts load from the local bundle.
+ * No network request to fonts.googleapis.com; works offline and in Electrobun.
+ * CSS custom properties (--font-dm-mono, --font-inter, --font-open-sans)
  * match what we apply on the `<body>` via RootLayout className.
  */
-@import url("https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Inter:wght@400;500;600;700;800&display=swap");
-
-@font-face {
-  font-family: "SF Pro Display";
-  src: url("/fonts/sf-pro/SF-Pro-Display-Regular.otf") format("opentype");
-  font-weight: 400;
-  font-style: normal;
-  font-display: swap;
-}
-@font-face {
-  font-family: "SF Pro Display";
-  src: url("/fonts/sf-pro/SF-Pro-Display-Medium.otf") format("opentype");
-  font-weight: 500;
-  font-style: normal;
-  font-display: swap;
-}
-@font-face {
-  font-family: "SF Pro Display";
-  src: url("/fonts/sf-pro/SF-Pro-Display-Semibold.otf") format("opentype");
-  font-weight: 600;
-  font-style: normal;
-  font-display: swap;
-}
-@font-face {
-  font-family: "SF Pro Display";
-  src: url("/fonts/sf-pro/SF-Pro-Display-Bold.otf") format("opentype");
-  font-weight: 700;
-  font-style: normal;
-  font-display: swap;
-}
+@import "@fontsource-variable/inter";
+@import "@fontsource-variable/open-sans";
+@import "@fontsource/dm-mono/300.css";
+@import "@fontsource/dm-mono/400.css";
+@import "@fontsource/dm-mono/500.css";
+@import "@fontsource/dm-mono/300-italic.css";
+@import "@fontsource/dm-mono/400-italic.css";
+@import "@fontsource/dm-mono/500-italic.css";
 
 :root {
   --font-dm-mono: "DM Mono", ui-monospace, monospace;
   --font-inter: "Inter", system-ui, sans-serif;
-  --font-sf-pro: "SF Pro Display", system-ui, sans-serif;
+  --font-open-sans: "Open Sans", system-ui, sans-serif;
 }
 
 @import "tailwindcss";

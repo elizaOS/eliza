@@ -93,7 +93,7 @@ function isDialogueMessage(msg: Memory): boolean {
 	return (
 		!isSyntheticConversationArtifactMemory(msg) &&
 		!(
-			(msg.content?.type as string) === "action_result" &&
+			msg.content?.type === "action_result" &&
 			(msg.metadata?.type as string) === "action_result"
 		) &&
 		((msg.metadata?.type as string) === "agent_response_message" ||

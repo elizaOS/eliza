@@ -2,6 +2,7 @@
  * Steward Sidecar - health check polling.
  */
 
+import { logger } from "@elizaos/core";
 import { sleep } from "./helpers";
 import { HEALTH_CHECK_INTERVAL_MS, HEALTH_CHECK_TIMEOUT_MS } from "./types";
 
@@ -28,7 +29,7 @@ export async function waitForHealthy(
       if (response.ok) {
         const body = (await response.json()) as { status?: string };
         if (body.status === "ok") {
-          console.log(
+          logger.info(
             `[StewardSidecar] Healthy after ${Date.now() - startTime}ms`,
           );
           return;

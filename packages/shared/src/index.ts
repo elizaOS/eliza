@@ -4,10 +4,12 @@
  * Public surface: barrel exports for the shared workspace contract.
  */
 
+export * from "./api/agent-api-types.js";
 export * from "./api/http-helpers.js";
 export * from "./api/route-helpers.js";
 // Leaf modules (no internal collisions)
 export * from "./app-hero-art.js";
+export * from "./cli/parse-duration.js";
 // Awareness + themes barrels
 export * from "./awareness/index.js";
 // Re-export moved app-core modules so consumers can import the package barrel.
@@ -265,4 +267,5 @@ export * from "./utils/subscription-auth.js";
 export * from "./utils/trajectory-format.js";
 export * from "./utils/tts-debug.js";
 export * from "./validation-keywords.js";
+export * from "./voice/first-sentence-snip.js";
 export * from "./voice.js";

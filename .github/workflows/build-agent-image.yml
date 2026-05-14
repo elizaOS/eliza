@@ -66,29 +66,61 @@ jobs:
             bun-${{ runner.os }}-
 
       - name: Install dependencies
+        # Use `--no-frozen-lockfile` so a downstream lockfile drift in
+        # `develop` doesn't short-circuit the install before postinstall
+        # gets a chance to run (which is what was happening with the
+        # earlier `--frozen-lockfile` + fallback dance — the frozen
+        # install would fail, Bun's silent retry would no-op against
+        # the already-extracted virtual store, and postinstall would
+        # never run, leaving root-level deps like `uuid`, `drizzle-orm`,
+        # and the patched `tsup/dist/rollup.js` unavailable to the
+        # per-plugin build loop). The heavy submodule fetch is guarded
+        # by NODE_LLAMA_CPP_SKIP_DOWNLOAD.
         env:
           NODE_LLAMA_CPP_SKIP_DOWNLOAD: "true"
         run: |
-          install_log="$(mktemp)"
-          if ! bun install --ignore-scripts --frozen-lockfile 2>&1 | tee "$install_log"; then
-            if grep -q "lockfile had changes, but lockfile is frozen" "$install_log"; then
-              echo "::warning::Bun frozen lockfile drift — validating with non-frozen install + git diff"
-              if bun install --ignore-scripts --no-frozen-lockfile; then
-                if git diff --quiet -- bun.lock; then
-                  rm -f "$install_log"
-                  exit 0
-                fi
-                echo "::error::bun.lock changed during install — commit the updated lockfile"
-                git diff -- bun.lock
-                rm -f "$install_log"
-                exit 1
-              fi
+          bun install --no-frozen-lockfile
+
+      - name: Apply postinstall patches
+        # Belt-and-suspenders for the postinstall path: even with
+        # `bun install` (postinstall enabled), the silent fallback that
+        # kicks in when frozen-lockfile drifts doesn't always re-run the
+        # repo postinstall in CI. Explicitly run the patches the
+        # per-plugin builds depend on:
+        #   - patch-tsup-dts.mjs: rewires tsup's runtime require to
+        #     @rollup/wasm-node AND wraps the resulting `await` calls in
+        #     async functions. Without this patch tsup's worker thread
+        #     crashes with `SyntaxError: await is only valid in async
+        #     functions` (CJS file with top-level await) the moment any
+        #     plugin tries to emit .d.ts via tsup.
+        #   - ensure-type-package-aliases: materializes @types/* under
+        #     node_modules/@types so `tsc --build` resolves them.
+        env:
+          NODE_LLAMA_CPP_SKIP_DOWNLOAD: "true"
+        run: |
+          bun scripts/patch-tsup-dts.mjs || true
+          node packages/app-core/scripts/ensure-type-package-aliases.mjs
+
+      - name: Build @elizaos/core, shared, ui
+        # The per-plugin tsup `--dts` step needs @elizaos/core's
+        # `dist/*.d.ts` to exist; without this build, plugin-video's
+        # DTS pass trips `TS2307: Cannot find module '@elizaos/core'`.
+        # Build the same set docker-ci-smoke.sh builds before its
+        # per-plugin loop: core (Node-only), shared, cloud-sdk,
+        # cloud-routing, ui. Workspace symlinks already exist from
+        # `bun install`; we just need the dist artifacts each plugin's
+        # tsup resolves through `exports`.
+        env:
+          NODE_LLAMA_CPP_SKIP_DOWNLOAD: "true"
+        run: |
+          (cd packages/core && bun run build.ts --node-only)
+          for pkg in packages/shared cloud/packages/sdk packages/cloud-routing packages/ui; do
+            if [[ -f "$pkg/package.json" ]] && jq -e '.scripts.build' "$pkg/package.json" >/dev/null; then
+              echo "::group::Building $pkg"
+              (cd "$pkg" && bun install --no-frozen-lockfile --ignore-scripts && bun run build)
+              echo "::endgroup::"
             fi
-            cat "$install_log"
-            rm -f "$install_log"
-            exit 1
-          fi
-          rm -f "$install_log"
+          done
 
       - name: Build workspace plugins
         # Dockerfile.ci copies the repo and relies on pre-built dist/ in each
@@ -96,6 +128,18 @@ jobs:
         # workflow) is the canonical place this lives; reuse the same loop so
         # plugin-sql, plugin-elizacloud, etc. land in the image with their
         # built artifacts.
+        #
+        # Why we re-install each plugin's deps before the build loop:
+        # Bun's workspace install leaves per-plugin `node_modules/.bin/`
+        # empty for CLI deps that live in DEVDependencies of a workspace
+        # *peer* (tsup is declared in plugin-video's own devDeps but Bun
+        # still routes its bin symlink through the hoisted root rather
+        # than the plugin's local .bin/, and `bun run build` runs the
+        # script under bash which only consults the local .bin/). The
+        # cheapest workaround: run `bun install --no-frozen-lockfile`
+        # inside each plugin dir before the build so the local .bin/ is
+        # actually populated. Idempotent and fast — bun reuses the global
+        # store.
         env:
           NODE_LLAMA_CPP_SKIP_DOWNLOAD: "true"
         run: |
@@ -107,6 +151,18 @@ jobs:
             plugin_dir="plugins/$plugin"
             if [[ -f "$plugin_dir/package.json" ]] && jq -e '.scripts.build' "$plugin_dir/package.json" >/dev/null; then
               echo "::group::Building @elizaos/$plugin"
+              (
+                cd "$plugin_dir"
+                # Ensure local node_modules/.bin/ has the dev CLIs the
+                # build script references (tsup, tsc, tsdown, etc.).
+                bun install --no-frozen-lockfile --ignore-scripts
+              )
+              # Re-apply patch-tsup-dts AFTER the per-plugin install —
+              # `bun install` re-extracts virtual-store entries from the
+              # global cache, wiping the earlier patch. Without this,
+              # tsup's worker thread loads an un-patched rollup.js with
+              # `await` at module-top-level → SyntaxError.
+              bun scripts/patch-tsup-dts.mjs >/dev/null || true
               (cd "$plugin_dir" && bun run build)
               echo "::endgroup::"
             fi

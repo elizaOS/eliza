@@ -70,8 +70,8 @@ export function useNavigationState(deps: NavigationStateDeps) {
         } else {
           window.history.pushState(null, "", path);
         }
-      } catch (err) {
-        console.warn("[eliza][nav] failed to update browser location", err);
+      } catch {
+        // non-fatal: browser history update fails in restricted environments
       }
     },
     [hasActiveGameRun, setTabRaw, setAppsSubTab],
@@ -117,9 +117,6 @@ export function useNavigationState(deps: NavigationStateDeps) {
   const switchShellView = useCallback(
     (view: ShellView) => {
       const nextTab = getTabForShellView(view, lastNativeTab);
-      console.log(
-        `[shell] switchShellView: ${view} → tab=${nextTab}, lastNativeTab=${lastNativeTab}`,
-      );
       setTab(nextTab);
     },
     [lastNativeTab, setTab],
@@ -168,11 +165,8 @@ export function useNavigationState(deps: NavigationStateDeps) {
     for (const task of pending) {
       try {
         task();
-      } catch (err) {
-        console.warn(
-          "[eliza][navigation] scheduleAfterTabCommit task failed",
-          err,
-        );
+      } catch {
+        // task errors must not block remaining scheduled work
       }
     }
   }, [tab, uiShellMode]);

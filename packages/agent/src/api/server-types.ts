@@ -7,6 +7,15 @@
 import type http from "node:http";
 import type { AgentRuntime, Media, UUID } from "@elizaos/core";
 import type { CloudRouteState } from "@elizaos/plugin-elizacloud";
+import type {
+  AgentAutomationMode,
+  AgentStartupDiagnostics,
+  ConversationMetadata,
+  LogEntry,
+  PluginParamDef,
+  SkillEntry,
+  StreamEventEnvelope,
+} from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.ts";
 import type { AppManager } from "../services/app-manager.ts";
 import type { SandboxManager } from "../services/sandbox-manager.ts";
@@ -14,7 +23,22 @@ import type { ConnectorHealthMonitor } from "./connector-health.ts";
 
 // PluginEntry and PluginParamDef are defined here to avoid a circular dependency
 // with plugin-discovery-helpers.ts (which imports from server-helpers.ts).
+// PluginParamDef is now canonical in @elizaos/shared; re-exported below.
 
+// Re-export shared types so existing imports from this module continue to work.
+export type {
+  AgentAutomationMode,
+  AgentStartupDiagnostics,
+  ChatImageAttachment,
+  ConversationAutomationType,
+  ConversationMetadata,
+  ConversationScope,
+  LogEntry,
+  PluginParamDef,
+  SkillEntry,
+  StreamEventEnvelope,
+  StreamEventType,
+} from "@elizaos/shared";
 export type {
   TrainingServiceLike,
   TrainingServiceWithRuntime,
@@ -22,53 +46,9 @@ export type {
 
 import type { TrainingServiceWithRuntime } from "./training-service-like.ts";
 
-// ---------------------------------------------------------------------------
-// Chat image attachments
-// ---------------------------------------------------------------------------
-
-export interface ChatImageAttachment {
-  /** Base64-encoded image data (no data URL prefix). */
-  data: string;
-  mimeType: string;
-  name: string;
-}
-
-// ---------------------------------------------------------------------------
-// Conversation metadata
-// ---------------------------------------------------------------------------
-
-export type ConversationScope =
-  | "general"
-  | "automation-coordinator"
-  | "automation-workflow"
-  | "automation-workflow-draft"
-  | "automation-draft"
-  | "page-character"
-  | "page-apps"
-  | "page-connectors"
-  | "page-phone"
-  | "page-plugins"
-  | "page-lifeops"
-  | "page-settings"
-  | "page-wallet"
-  | "page-browser"
-  | "page-automations";
-
-export type ConversationAutomationType = "coordinator_text" | "workflow";
-
-export interface ConversationMetadata {
-  scope?: ConversationScope;
-  automationType?: ConversationAutomationType;
-  taskId?: string;
-  triggerId?: string;
-  workflowId?: string;
-  workflowName?: string;
-  draftId?: string;
-  /** Sub-entity id for page-scoped conversations (e.g. a character id). */
-  pageId?: string;
-  sourceConversationId?: string;
-  terminalBridgeConversationId?: string;
-}
+// ConversationScope, ConversationAutomationType, ConversationMetadata,
+// ChatImageAttachment, SkillEntry, LogEntry, AgentStartupDiagnostics are
+// canonical in @elizaos/shared and re-exported at the top of this file.
 
 /** Metadata for a web-chat conversation. */
 export interface ConversationMeta {
@@ -78,18 +58,6 @@ export interface ConversationMeta {
   metadata?: ConversationMetadata;
   createdAt: string;
   updatedAt: string;
-}
-
-// ---------------------------------------------------------------------------
-// Agent startup diagnostics
-// ---------------------------------------------------------------------------
-
-export interface AgentStartupDiagnostics {
-  phase: string;
-  attempt: number;
-  lastError?: string;
-  lastErrorAt?: number;
-  nextRetryAt?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -106,41 +74,8 @@ export interface ShareIngestItem {
   receivedAt: number;
 }
 
-export interface SkillEntry {
-  id: string;
-  name: string;
-  description: string;
-  enabled: boolean;
-  /** Set automatically when a scan report exists for this skill. */
-  scanStatus?: "clean" | "warning" | "critical" | "blocked" | null;
-}
-
-export interface LogEntry {
-  timestamp: number;
-  level: string;
-  message: string;
-  source: string;
-  tags: string[];
-}
-
-export type StreamEventType =
-  | "agent_event"
-  | "heartbeat_event"
-  | "training_event";
-
-export interface StreamEventEnvelope {
-  type: StreamEventType;
-  version: 1;
-  eventId: string;
-  ts: number;
-  runId?: string;
-  seq?: number;
-  stream?: string;
-  sessionKey?: string;
-  agentId?: string;
-  roomId?: UUID;
-  payload: unknown;
-}
+// StreamEventType, StreamEventEnvelope, AgentAutomationMode, PluginParamDef are
+// canonical in @elizaos/shared and re-exported at the top of this file.
 
 /** A connector-registered route handler. Returns `true` if the request was handled. */
 export type ConnectorRouteHandler = (
@@ -150,29 +85,13 @@ export type ConnectorRouteHandler = (
   method: string,
 ) => Promise<boolean>;
 
-export type AgentAutomationMode = "connectors-only" | "full";
-
-export type TradePermissionMode =
-  import("./trade-safety.ts").TradePermissionMode;
+export type { TradePermissionMode } from "@elizaos/shared";
 
 // ---------------------------------------------------------------------------
 // Plugin entry types (canonical definitions — re-exported by plugin-discovery-helpers)
 // ---------------------------------------------------------------------------
 
-export interface PluginParamDef {
-  key: string;
-  type: string;
-  description: string;
-  required: boolean;
-  sensitive: boolean;
-  default?: string;
-  /** Predefined options for dropdown selection (e.g. model names). */
-  options?: string[];
-  /** Current value from process.env (masked if sensitive). */
-  currentValue: string | null;
-  /** Whether a value is currently set in the environment. */
-  isSet: boolean;
-}
+// PluginParamDef is canonical in @elizaos/shared and re-exported at the top of this file.
 
 export interface PluginEntry {
   id: string;

@@ -935,7 +935,7 @@ export async function trimTokens(
 	const truncatedTokens = tokens.slice(-maxTokens);
 
 	// Decode back to text
-	return await runtime.useModel(ModelType.TEXT_TOKENIZER_DECODE, {
+	return runtime.useModel(ModelType.TEXT_TOKENIZER_DECODE, {
 		tokens: truncatedTokens,
 		modelType: ModelType.TEXT_TOKENIZER_DECODE,
 	});
@@ -1015,7 +1015,7 @@ export function validateUuid(value: unknown): UUID | null {
  */
 export function stringToUuid(target: string | number): UUID {
 	if (typeof target === "number") {
-		target = (target as number).toString();
+		target = target.toString();
 	}
 
 	if (typeof target !== "string") {

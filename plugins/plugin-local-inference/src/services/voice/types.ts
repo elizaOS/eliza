@@ -39,10 +39,54 @@ export interface AudioChunk {
 	sampleRate: number;
 }
 
+/**
+ * Reference-audio-token payload mirrored on `SpeakerPreset` for v2 presets.
+ * Empty (K=0, refT=0, tokens.length=0) when the preset has no reference
+ * audio attached (instruct-only voice or legacy v1 file).
+ */
+export interface SpeakerPresetRefAudioTokens {
+	K: number;
+	refT: number;
+	tokens: Int32Array;
+}
+
 export interface SpeakerPreset {
 	voiceId: string;
 	embedding: Float32Array;
 	bytes: Uint8Array;
+	/**
+	 * Preset file format version. `1` for legacy Kokoro-style presets; `2`
+	 * for the OmniVoice freeze format that also carries `refAudioTokens`,
+	 * `refText`, and `instruct`. Defaulted to `1` for older readers that
+	 * haven't been rebuilt yet.
+	 */
+	version?: number;
+	/**
+	 * OmniVoice reference-audio-token packet (`[K, refT]` int32). Empty for
+	 * v1 files and v2 files that intentionally ship instruct-only voices.
+	 * The FFI bridge passes the tokens through to `params.ref_audio_tokens`
+	 * + `params.ref_T`.
+	 */
+	refAudioTokens?: SpeakerPresetRefAudioTokens;
+	/**
+	 * UTF-8 transcript of the reference clip that produced `refAudioTokens`.
+	 * The FFI bridge passes this through to `params.ref_text`. Empty when
+	 * the preset is instruct-only or v1.
+	 */
+	refText?: string;
+	/**
+	 * Resolved VoiceDesign instruct string (e.g. `"female, young adult,
+	 * american accent, moderate pitch"`). The FFI bridge passes this
+	 * through to `params.instruct` instead of the historical "use the
+	 * voiceId as the instruct string" misreading.
+	 */
+	instruct?: string;
+	/**
+	 * Free-form metadata attached at freeze time (codec sha256, corpus hash,
+	 * source bundle id, etc.). The runtime never relies on this for
+	 * correctness.
+	 */
+	metadata?: Record<string, unknown>;
 }
 
 export interface AudioSink {
@@ -246,6 +290,16 @@ export interface TranscriptUpdate {
 	 * the LLM stage's job there).
 	 */
 	tokens?: number[];
+	/**
+	 * Voice-side emotion attribution attached to `isFinal` snapshots only.
+	 * Running partials never carry this — the acoustic classifier wants a
+	 * stable utterance window and the lexicon read on partial text is noise.
+	 * Produced by `attributeVoiceEmotion()` after fusing the acoustic
+	 * classifier output (`VoiceEmotionClassifier`) with text-side evidence;
+	 * the fusion rule lives in `emotion-attribution.ts` so no consumer
+	 * re-implements it. See R3-emotion §3 + §5.
+	 */
+	voiceEmotion?: import("./emotion-attribution").VoiceEmotionAttribution;
 }
 
 /** Events a `StreamingTranscriber` emits while consuming PCM frames. */

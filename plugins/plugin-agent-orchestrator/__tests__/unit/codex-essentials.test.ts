@@ -48,6 +48,6 @@ describe("CODEX_SKILL_ESSENTIALS", () => {
   it("preserves the sealed-env reminder", () => {
     expect(CODEX_SKILL_ESSENTIALS).toContain("Sealed env");
     expect(CODEX_SKILL_ESSENTIALS).toContain("CODEX_HOME");
-    expect(CODEX_SKILL_ESSENTIALS).toContain("PARALLAX_SESSION_ID");
+    expect(CODEX_SKILL_ESSENTIALS).toContain("ELIZA_AGENT_SESSION_ID");
   });
 });

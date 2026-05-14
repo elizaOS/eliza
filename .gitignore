@@ -66,6 +66,11 @@ characters/**/private/
 
 cache/*
 models/*
+# Track the voice sub-model changelog (R5-versioning §2.1) alongside the
+# weights staging dir — the file is the human-readable twin of
+# packages/shared/src/local-inference/voice-models.ts.
+!models/voice/
+!models/voice/CHANGELOG.md
 
 tsup.config.bundled_*.mjs
 
@@ -226,6 +231,8 @@ tasks/
 !packages/benchmarks/claw-eval/tasks/**
 !packages/benchmarks/skillsbench/tasks/
 !packages/benchmarks/skillsbench/tasks/**
+!packages/benchmarks/terminal-bench/tasks/
+!packages/benchmarks/terminal-bench/tasks/**
 !packages/benchmarks/swe-bench-pro/run_scripts/**
 !packages/benchmarks/nl2repo/test_files/
 !packages/benchmarks/nl2repo/test_files/**
@@ -525,10 +532,16 @@ scripts/ai-qa/.static-stack.json
 # Generated inference verification output and hardware evidence.
 packages/inference/reports/
 packages/inference/verify/bench_results/
+plugins/plugin-local-inference/native/verify/bench_results/
 packages/inference/verify/hardware-results/
 packages/inference/verify/android-vulkan-smoke/
 packages/inference/verify/cpu_bench
 packages/inference/verify/cpu_simd_bench
+# llama.cpp benchmark run outputs (timestamped JSON/HTML/log from individual runs)
+packages/inference/llama.cpp/benches/**/*allresults.json
+packages/inference/llama.cpp/benches/**/*.html
+packages/inference/llama.cpp/benches/**/*.log
+!packages/inference/llama.cpp/benches/**/*.md
 
 # Generated audit output. Keep curated source docs and README files in-tree;
 # keep raw audit dumps and prompt manifests out of source control.
@@ -546,6 +559,10 @@ packages/inference/verify/vulkan_dispatch_smoke
 packages/app-core/scripts/omnivoice-fuse/libelizainference_stub.so
 packages/app-core/scripts/omnivoice-fuse/libelizainference_stub.dylib
 packages/training/vendor/
+
+# Generated run output — never source data.
+packages/app-core/collision-report.json
+plugins/app-lifeops/docs/audit/cerebras-journey-eval-results.json
 
 .swarm/
 packages/training/out/

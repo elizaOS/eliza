@@ -112,6 +112,14 @@ const HYPERLIQUID_PLACE_ORDER_COMPAT_SIMILES = [
   "HYPERLIQUID_SELL",
   "HYPERLIQUID_LONG",
   "HYPERLIQUID_SHORT",
+  // HyperliquidBench Rust plan-step kinds (packages/benchmarks/HyperliquidBench/types.py)
+  // — keep these as similes so retrieval/fine-tune transfer covers the bench's vocabulary.
+  "HYPERLIQUID_PERP_ORDERS",
+  "HYPERLIQUID_CANCEL_LAST",
+  "HYPERLIQUID_CANCEL_OIDS",
+  "HYPERLIQUID_CANCEL_ALL",
+  "HYPERLIQUID_USD_CLASS_TRANSFER",
+  "HYPERLIQUID_SET_LEVERAGE",
 ] as const;
 const HYPERLIQUID_READ_OP_ALIASES = new Set([
   ...READ_KINDS,

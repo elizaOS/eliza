@@ -372,9 +372,8 @@ export function CloudServicesSection() {
           },
         });
         setNeedsRestart(true);
-      } catch (err) {
+      } catch {
         setServices(services);
-        console.error("[config] Failed to save cloud services:", err);
       } finally {
         setSaving(false);
       }

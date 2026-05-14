@@ -3,7 +3,7 @@ import type {
   DispatchSensitiveRequest as SensitiveRequest,
   SensitiveRequestDeliveryAdapter,
 } from "@elizaos/core";
-import { normalizeCloudSiteUrl } from "@elizaos/plugin-elizacloud";
+import { normalizeCloudSiteUrl } from "@elizaos/shared";
 
 export interface CloudLinkAdapterDeps {
   /**

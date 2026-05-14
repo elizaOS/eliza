@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import type { SpeakerPreset } from "./types";
 import {
+	type RefAudioTokens,
 	readVoicePresetFile,
 	type VoicePresetSeedPhrase,
 } from "./voice-preset-format";
@@ -27,12 +28,14 @@ export interface SpeakerPresetCacheOptions {
 	 * is generous; the bound exists so a connector that switches voices per
 	 * speaker (e.g. a Discord room with many users) does not grow unbounded.
 	 * On insert past the bound the least-recently-used voice is evicted.
+	 *
+	 * Defaults to 8 hot voices (R6 §1: "LRU 8 hot, mmap-backed").
 	 */
 	maxVoices?: number;
 }
 
 export const DEFAULT_VOICE_ID = "default";
-const DEFAULT_MAX_VOICES = 16;
+const DEFAULT_MAX_VOICES = 8;
 
 export const DEFAULT_VOICE_PRESET_REL_PATH = path.join(
 	"cache",
@@ -67,6 +70,11 @@ interface CacheEntry {
  * embedding, the raw preset bytes (for FFI handoff), and the phrase-cache seed
  * list parsed from the preset file. Multi-voice: `load(bundleRoot, voiceId)`
  * reads `cache/voice-preset-<voiceId>.bin` from the bundle on a miss.
+ *
+ * v2 preset fields (`refAudioTokens`, `refText`, `instruct`) are surfaced
+ * on the `SpeakerPreset` shape so the FFI bridge can pass them through to
+ * `ov_tts_params` without going through the legacy "instruct == voiceId"
+ * misreading.
  */
 export class SpeakerPresetCache {
 	// `Map` preserves insertion order; we re-insert on access so the first key
@@ -160,10 +168,16 @@ export class SpeakerPresetCache {
 		}
 		const bytes = new Uint8Array(readFileSync(fullPath));
 		const parsed = readVoicePresetFile(bytes);
+		const refTokens: RefAudioTokens = parsed.refAudioTokens;
 		const preset: SpeakerPreset = {
 			voiceId,
 			embedding: parsed.embedding,
 			bytes,
+			version: parsed.version,
+			refAudioTokens: refTokens,
+			refText: parsed.refText,
+			instruct: parsed.instruct,
+			metadata: parsed.metadata,
 		};
 		const entry: CacheEntry = { preset, phrases: parsed.phrases };
 		this.entries.set(voiceId, entry);

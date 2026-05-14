@@ -49,6 +49,13 @@ def _args(tmp_path: Path, tier: str) -> argparse.Namespace:
         asr_mmproj_file=None,
         include_vad_onnx_fallback=False,
         skip_wakeword=False,
+        # Voice Wave 2: turn detector defaults — skip during dry runs because
+        # the staging step calls copy_hf_file for the LiveKit/Turnsense ONNX
+        # which is independent of the asr_repo / VOICE_REPO test scaffolding.
+        # Dedicated turn-detector tests live in
+        # `test_stage_turn_detector.py`.
+        skip_turn_detector=True,
+        turn_license="livekit",
         upload_repo=None,
         upload_prefix="",
         public=False,
@@ -255,7 +262,7 @@ def test_real_stage_writes_evidence_report_without_downloading(
     assert "tts/omnivoice-tokenizer-Q4_K_M.gguf" in voice_paths
     assert manifest["files"]["cache"][0]["path"] == "cache/voice-preset-default.bin"
     release = json.loads((bundle / "evidence" / "release.json").read_text())
-    assert release["repoId"] == "elizalabs/eliza-1"
+    assert release["repoId"] == "elizaos/eliza-1"
     assert "tts/omnivoice-base-Q4_K_M.gguf" in release["weights"]
     assert (bundle / "checksums" / "SHA256SUMS").is_file()
     assert report["manifestUpdate"]["updatedPaths"]

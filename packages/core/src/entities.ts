@@ -298,8 +298,8 @@ export async function findEntityByName(
 
 	const prompt = utils.composePrompt({
 		state: {
-			roomName: (room.name || room.id) as string,
-			worldName: (world?.name || "Unknown") as string,
+			roomName: room.name || room.id,
+			worldName: world?.name || "Unknown",
 			entitiesInRoom: JSON.stringify(filteredEntities, null, 2),
 			entityId: message.entityId,
 			senderId: message.entityId,

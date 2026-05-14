@@ -38,7 +38,6 @@ const localPackages = [
   "eliza/plugins/plugin-discord",
   "eliza/plugins/plugin-elizacloud",
   "eliza/plugins/plugin-imessage",
-  "eliza/plugins/plugin-local-embedding",
   "eliza/plugins/plugin-local-inference",
   "eliza/plugins/plugin-mcp",
   "eliza/plugins/plugin-pdf",

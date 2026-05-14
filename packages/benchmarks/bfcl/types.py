@@ -13,17 +13,97 @@ from typing import Optional
 
 
 class BFCLCategory(str, Enum):
-    """Test categories in BFCL benchmark."""
+    """Test categories in BFCL benchmark.
 
+    Mirrors the upstream BFCL v3/v4 category taxonomy from
+    https://github.com/ShishirPatil/gorilla/blob/main/berkeley-function-call-leaderboard/bfcl_eval/constants/category_mapping.py
+    """
+
+    # Non-live single-turn
     SIMPLE = "simple"
     MULTIPLE = "multiple"
     PARALLEL = "parallel"
     PARALLEL_MULTIPLE = "parallel_multiple"
     RELEVANCE = "relevance"
+    IRRELEVANCE = "irrelevance"
     REST_API = "rest_api"
     SQL = "sql"
     JAVA = "java"
     JAVASCRIPT = "javascript"
+
+    # Live (user-contributed) single-turn
+    LIVE_SIMPLE = "live_simple"
+    LIVE_MULTIPLE = "live_multiple"
+    LIVE_PARALLEL = "live_parallel"
+    LIVE_PARALLEL_MULTIPLE = "live_parallel_multiple"
+    LIVE_RELEVANCE = "live_relevance"
+    LIVE_IRRELEVANCE = "live_irrelevance"
+
+    # Multi-turn (stateful tool-use trajectories)
+    MULTI_TURN_BASE = "multi_turn_base"
+    MULTI_TURN_MISS_FUNC = "multi_turn_miss_func"
+    MULTI_TURN_MISS_PARAM = "multi_turn_miss_param"
+    MULTI_TURN_LONG_CONTEXT = "multi_turn_long_context"
+
+    # Agentic (v4)
+    WEB_SEARCH_BASE = "web_search_base"
+    WEB_SEARCH_NO_SNIPPET = "web_search_no_snippet"
+    MEMORY_KV = "memory_kv"
+    MEMORY_VECTOR = "memory_vector"
+    MEMORY_REC_SUM = "memory_rec_sum"
+
+    # Non-scoring (v4)
+    FORMAT_SENSITIVITY = "format_sensitivity"
+
+
+# Convenience groupings (match upstream `category_mapping.py`)
+NON_LIVE_CATEGORIES: list[BFCLCategory] = [
+    BFCLCategory.SIMPLE,
+    BFCLCategory.MULTIPLE,
+    BFCLCategory.PARALLEL,
+    BFCLCategory.PARALLEL_MULTIPLE,
+    BFCLCategory.IRRELEVANCE,
+    BFCLCategory.JAVA,
+    BFCLCategory.JAVASCRIPT,
+]
+
+LIVE_CATEGORIES: list[BFCLCategory] = [
+    BFCLCategory.LIVE_SIMPLE,
+    BFCLCategory.LIVE_MULTIPLE,
+    BFCLCategory.LIVE_PARALLEL,
+    BFCLCategory.LIVE_PARALLEL_MULTIPLE,
+    BFCLCategory.LIVE_RELEVANCE,
+    BFCLCategory.LIVE_IRRELEVANCE,
+]
+
+MULTI_TURN_CATEGORIES: list[BFCLCategory] = [
+    BFCLCategory.MULTI_TURN_BASE,
+    BFCLCategory.MULTI_TURN_MISS_FUNC,
+    BFCLCategory.MULTI_TURN_MISS_PARAM,
+    BFCLCategory.MULTI_TURN_LONG_CONTEXT,
+]
+
+WEB_SEARCH_CATEGORIES: list[BFCLCategory] = [
+    BFCLCategory.WEB_SEARCH_BASE,
+    BFCLCategory.WEB_SEARCH_NO_SNIPPET,
+]
+
+MEMORY_CATEGORIES: list[BFCLCategory] = [
+    BFCLCategory.MEMORY_KV,
+    BFCLCategory.MEMORY_VECTOR,
+    BFCLCategory.MEMORY_REC_SUM,
+]
+
+AGENTIC_CATEGORIES: list[BFCLCategory] = WEB_SEARCH_CATEGORIES + MEMORY_CATEGORIES
+
+# Categories that require network/external services to evaluate executably.
+# These are marked SKIPPED_NO_CREDENTIALS (and excluded from the accuracy
+# denominator) unless the runner is started with `enable_network=True`.
+NETWORK_REQUIRED_CATEGORIES: set[BFCLCategory] = {
+    BFCLCategory.REST_API,
+    BFCLCategory.WEB_SEARCH_BASE,
+    BFCLCategory.WEB_SEARCH_NO_SNIPPET,
+}
 
 
 class BFCLLanguage(str, Enum):
@@ -42,6 +122,25 @@ class EvaluationType(str, Enum):
     AST = "ast"
     EXECUTION = "execution"
     RELEVANCE = "relevance"
+    MULTI_TURN = "multi_turn"
+    AGENTIC = "agentic"
+
+
+class TestStatus(str, Enum):
+    """Status of a single test case run.
+
+    Anything starting with ``skipped_`` is excluded from the accuracy denominator
+    (with a logged warning) and surfaced in a dedicated bucket in the run summary.
+    """
+    # Tell pytest not to try to collect this enum as a test class.
+    __test__ = False
+
+    PASSED = "passed"
+    FAILED = "failed"
+    SKIPPED_NO_CREDENTIALS = "skipped_no_credentials"
+    SKIPPED_NO_GROUND_TRUTH = "skipped_no_ground_truth"
+    SKIPPED_UNSUPPORTED = "skipped_unsupported"
+    ERROR = "error"
 
 
 @dataclass
@@ -88,7 +187,13 @@ class FunctionCall:
 
 @dataclass
 class BFCLTestCase:
-    """A single BFCL benchmark test case."""
+    """A single BFCL benchmark test case.
+
+    For single-turn categories, ``question`` is the flattened user prompt.
+    For multi-turn categories, ``turns`` carries each conversational round
+    (list of message dicts), and ``initial_config`` / ``involved_classes``
+    drive the stateful tool runtime.
+    """
 
     id: str
     category: BFCLCategory
@@ -101,6 +206,13 @@ class BFCLTestCase:
     ground_truth_output: Optional[str] = None  # For execution verification
     has_ground_truth: bool = True  # False if expected_calls is missing/unavailable
     metadata: dict[str, str | int | float | bool] = field(default_factory=dict)
+    # Multi-turn / agentic fields
+    turns: Optional[list[list[dict[str, str]]]] = None
+    initial_config: Optional[dict[str, object]] = None
+    involved_classes: Optional[list[str]] = None
+    excluded_function: Optional[list[str]] = None
+    # Multi-turn ground truth: per-turn list of upstream-style call strings.
+    multi_turn_ground_truth: Optional[list[list[str]]] = None
 
 
 # Type alias for details dict that can contain lists
@@ -122,11 +234,18 @@ class BFCLResult:
     error: Optional[str] = None
     raw_response: Optional[str] = None
     details: ResultDetails = field(default_factory=dict)
+    # Status drives whether this test counts toward the accuracy denominator.
+    # Skipped buckets are reported separately in the run summary.
+    status: TestStatus = TestStatus.PASSED
 
     def __post_init__(self) -> None:
         """Validate result after initialization."""
         if self.latency_ms < 0:
             raise ValueError("latency_ms must be non-negative")
+
+    @property
+    def is_skipped(self) -> bool:
+        return self.status.value.startswith("skipped_")
 
 
 @dataclass
@@ -158,6 +277,8 @@ class BFCLMetrics:
     total_tests: int = 0
     passed_tests: int = 0
     failed_tests: int = 0
+    skipped_tests: int = 0  # Excluded from accuracy denominator
+    skipped_by_reason: dict[str, int] = field(default_factory=dict)
 
     # Latency statistics
     latency_p50: float = 0.0
@@ -196,7 +317,7 @@ class BFCLConfig:
     # Dataset settings
     use_huggingface: bool = True
     huggingface_dataset: str = "gorilla-llm/Berkeley-Function-Calling-Leaderboard"
-    version: str = "v3"  # BFCL version
+    version: str = "v3"  # BFCL version ("v3" or "v4")
 
     # Reporting
     save_detailed_logs: bool = True
@@ -206,6 +327,15 @@ class BFCLConfig:
 
     # Model settings
     temperature: float = 0.0  # Temperature for deterministic results
+
+    # Network-gated categories (REST API, web_search) only run when the user
+    # explicitly opts in. Otherwise they're marked SKIPPED_NO_CREDENTIALS and
+    # excluded from the accuracy denominator.
+    enable_network: bool = False
+
+    # Multi-turn loop limit. Each conversational "turn" in a multi_turn_*
+    # entry may itself require several agent steps to satisfy.
+    max_multi_turn_steps: int = 20
 
 
 @dataclass

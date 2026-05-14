@@ -65,7 +65,7 @@ function rowToPersistedStep(row: Record<string, unknown>): PersistedStep {
       : undefined;
   const scriptHash =
     typeof payloadRecord.scriptHash === "string"
-      ? (payloadRecord.scriptHash as string)
+      ? payloadRecord.scriptHash
       : undefined;
 
   return {

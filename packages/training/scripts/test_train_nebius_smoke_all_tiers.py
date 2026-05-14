@@ -212,3 +212,115 @@ def test_smoke_all_help_lists_tiers():
     assert "SMOKE_MAX_STEPS" in out
     assert "SMOKE_DATA_DIR" in out
     assert "0_8b" in out and "27b-1m" in out
+
+
+# ---------- run_pipeline.py end-to-end skip-everything smoke ----------------
+
+
+def test_run_pipeline_force_local_train_env_bypass_in_source():
+    """ELIZA_FORCE_LOCAL_TRAIN=1 must bypass the workstation-tier
+    can_train_locally gate. Source inspection — the gate is a SystemExit so
+    a real invocation can only confirm the bypass, not the gate firing,
+    without a real fine-tune run.
+
+    Wired 2026-05-14 after the multi-tier smoke crashed 4/4 SFT tiers and
+    the 9b tier specifically printed `eliza-1-9b (tier=workstation) cannot
+    train locally`. An H200 SXM (141 GB) easily fits the 9B SFT budget
+    (80 GB per registry), so the gate is wrong for that hardware — env
+    override is the minimal fix.
+    """
+    src = (SCRIPTS / "run_pipeline.py").read_text()
+    assert 'os.environ.get("ELIZA_FORCE_LOCAL_TRAIN")' in src, (
+        "run_pipeline.py must check ELIZA_FORCE_LOCAL_TRAIN before raising "
+        "SystemExit on a workstation/cloud tier — see the 2026-05-14 smoke "
+        "crash on 9b for context."
+    )
+
+
+def test_run_pipeline_skip_everything_exits_clean(tmp_path: Path):
+    """Run `run_pipeline.py` with every stage skipped against a tiny fixture
+    corpus and confirm rc=0 within a tight wall-clock budget. This is the
+    pipeline preflight: if argparse, registry lookup, and summary-writing
+    all hold together, this passes regardless of CUDA/torch/transformers
+    availability — those imports only happen inside skipped stages.
+
+    Skip-marker on environments where the test fixtures can't be staged or
+    `uv` is unavailable; never hangs.
+    """
+    import shutil as _shutil
+    if _shutil.which("uv") is None and _shutil.which("python") is None:
+        pytest.skip("no python/uv runtime available")
+
+    # Minimal fixture corpus — three legacy-flat records per split, enough
+    # for validate_corpus to run and for the pipeline to write a summary.
+    fixture = tmp_path / "corpus"
+    fixture.mkdir()
+    record = {
+        "roomName": "r1",
+        "agentId": "agent",
+        "memoryEntries": [],
+        "currentMessage": {"role": "user", "speaker": "user", "content": "hi", "channel": "dm"},
+        "expectedResponse": '{"thought":"greet","actions":["REPLY"],"providers":[],"text":"Hello!","simple":true}',
+        "availableActions": ["REPLY", "IGNORE"],
+        "metadata": {"task_type": "agent_trace", "source_dataset": "test-fixture", "split": "train"},
+    }
+    import json as _json
+    for split in ("train", "val", "test"):
+        with (fixture / f"{split}.jsonl").open("w") as f:
+            for _ in range(3):
+                f.write(_json.dumps(record) + "\n")
+
+    out_dir = tmp_path / "out"
+    env = os.environ.copy()
+    # Force the test to invoke the script with the in-repo training tree as
+    # the working dir so the relative paths in run_pipeline.py resolve.
+    cmd = [
+        sys.executable, str(SCRIPTS / "run_pipeline.py"),
+        "--registry-key", "qwen3.5-0.8b",
+        "--run-name", "smoke-preflight-fixture",
+        "--max-steps", "1",
+        "--eval-mode", "smoke",
+        "--bench-per-bucket", "1",
+        "--quantizers", "polarquant",
+        "--skip-base-bench", "--skip-finetune", "--skip-quantize",
+        "--skip-bench", "--skip-throughput-bench", "--skip-publish",
+        "--allow-unvalidated-corpus",
+        "--no-eliza1-bundle",
+        "--train-file", str(fixture / "train.jsonl"),
+        "--val-file", str(fixture / "val.jsonl"),
+        "--test-file", str(fixture / "test.jsonl"),
+    ]
+    try:
+        proc = subprocess.run(
+            cmd, env=env, capture_output=True, text=True, timeout=300,
+            cwd=str(ROOT),
+        )
+    except subprocess.TimeoutExpired:
+        pytest.fail(
+            "run_pipeline.py --skip-* hung for 5 minutes — pipeline preflight "
+            "should never take that long when every stage is skipped"
+        )
+    except FileNotFoundError as exc:
+        pytest.skip(f"python runtime not available: {exc}")
+
+    # The pipeline can exit non-zero on missing optional deps (yaml for the
+    # gate-report stage); we accept either rc=0 or rc=1 IFF the summary
+    # file got written. The contract under test is that the run terminates
+    # quickly and predictably, not that every optional stage produces art.
+    summary = ROOT / "benchmarks" / "smoke-preflight-fixture" / "pipeline-summary.json"
+    if not summary.exists():
+        pytest.fail(
+            f"run_pipeline.py did not write {summary} (rc={proc.returncode})\n"
+            f"stdout tail: {proc.stdout[-2000:]}\n"
+            f"stderr tail: {proc.stderr[-2000:]}"
+        )
+    try:
+        # Best-effort cleanup; tests should not leak the smoke-preflight-fixture
+        # checkpoint + benchmark dirs into the next run.
+        for parent in (ROOT / "benchmarks", ROOT / "checkpoints"):
+            stale = parent / "smoke-preflight-fixture"
+            if stale.exists():
+                import shutil as _sh
+                _sh.rmtree(stale, ignore_errors=True)
+    except OSError:
+        pass

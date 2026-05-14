@@ -1204,11 +1204,12 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
     def _voicebench_result(output_dir: Path) -> Path:
         return find_latest_file(output_dir, glob_pattern="voicebench-typescript-*.json")
 
-    # MMAU - audio MCQ benchmark (Sakshi et al., ICLR 2025)
+    # Audio MMAU - audio MCQ benchmark (Sakshi et al., ICLR 2025).
+    # Not Salesforce's agent MMAU (arXiv:2407.18961).
     def _mmau_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
-        """Build the elizaos-mmau CLI invocation.
+        """Build the elizaos-mmau-audio CLI invocation.
 
-        Routes through the Python-native MMAU package. Pure MCQ -- no
+        Routes through the Python-native Audio MMAU package. Pure MCQ -- no
         LLM-judge dispatch. Defaults to the bundled fixture and oracle
         agent when no provider is configured so smoke runs work offline.
         """
@@ -2370,10 +2371,11 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         ),
         BenchmarkDefinition(
             id="mmau",
-            display_name="MMAU",
+            display_name="MMAU (Audio)",
             description=(
-                "Massive Multi-task Audio Understanding (Sakshi et al., ICLR 2025) — "
-                "10k audio MCQs across speech/sound/music and 27 reasoning skills"
+                "Audio MMAU — Massive Multi-task Audio Understanding (Sakshi et al., "
+                "ICLR 2025) — 10k audio MCQs across speech/sound/music and 27 "
+                "reasoning skills. Not the Salesforce agent MMAU (arXiv:2407.18961)."
             ),
             cwd_rel="packages/benchmarks/mmau",
             requirements=BenchmarkRequirements(

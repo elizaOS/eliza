@@ -3935,6 +3935,53 @@ export const allActionsSpec = {
 			],
 		},
 		{
+			name: "COMPUTER_USE_AGENT",
+			description:
+				'computer_use_agent:\n  purpose: High-level autonomous desktop agent — given a goal, run Brain/Cascade/Dispatch loop until the goal is reached or maxSteps is exhausted. Uses the WS6 scene-builder, WS7 Brain+Actor cascade, and WS5 multi-monitor coords.\n  guidance: Prefer COMPUTER_USE for single explicit actions you can already name. Use COMPUTER_USE_AGENT when the user gives a goal ("click the save button", "open VS Code") and you want the system to plan and click for you.',
+			parameters: [
+				{
+					name: "goal",
+					description:
+						"Natural-language goal, e.g. 'click the save button in the dialog'.",
+					required: true,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Natural-language goal, e. g. 'click the save button in the dialog'.",
+				},
+				{
+					name: "maxSteps",
+					description:
+						"Maximum Brain→dispatch cycles before giving up (default 5).",
+					required: false,
+					schema: {
+						type: "number",
+						default: 5,
+						minimum: 1,
+						maximum: 20,
+					},
+					descriptionCompressed:
+						"max Brain→dispatch cycles before giving up (default 5).",
+				},
+			],
+			descriptionCompressed:
+				"Autonomous desktop loop: scene → Brain → cascade → click. Pass {goal, maxSteps?}.",
+			similes: ["AUTOMATE_SCREEN", "RUN_COMPUTER_AGENT", "SCREEN_AGENT"],
+			exampleCalls: [
+				{
+					user: "Use COMPUTER_USE_AGENT with the provided parameters.",
+					actions: ["COMPUTER_USE_AGENT"],
+					params: {
+						COMPUTER_USE_AGENT: {
+							goal: "example",
+							maxSteps: 5,
+						},
+					},
+				},
+			],
+		},
+		{
 			name: "CONFLICT_DETECT",
 			description:
 				"Proactively scan the owner's calendar for overlapping events, or evaluate a proposed event window against the owner's feed. Subactions: scan_today, scan_week, scan_event_proposal.",
@@ -7506,17 +7553,6 @@ export const allActionsSpec = {
 						"Working directory for action=create/action=spawn_agent.",
 				},
 				{
-					name: "lockWorkdir",
-					description:
-						"When true, the supplied `workdir` is used verbatim and operator ",
-					required: false,
-					schema: {
-						type: "boolean",
-					},
-					descriptionCompressed:
-						"When true, the supplied `workdir` is used verbatim and operator",
-				},
-				{
 					name: "memoryContent",
 					description:
 						"Additional memory/context for action=create / action=spawn_agent.",
@@ -8037,7 +8073,6 @@ export const allActionsSpec = {
 							agents: "example",
 							repo: "example",
 							workdir: "example",
-							lockWorkdir: false,
 							memoryContent: "example",
 							label: "example",
 							approvalPreset: "readonly",

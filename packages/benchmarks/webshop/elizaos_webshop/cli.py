@@ -3,10 +3,16 @@
 WebShop Benchmark CLI for ElizaOS.
 
 Examples:
-  python -m elizaos_webshop --sample
-  python -m elizaos_webshop --sample --max-tasks 3
-  python -m elizaos_webshop --sample --mock
-  python -m elizaos_webshop --sample --trajectories --trajectory-format grpo
+  # Tiny smoke run on the bundled 6-product sample catalog (no downloads).
+  python -m elizaos_webshop --use-sample-tasks --mock --max-tasks 3
+
+  # Full Princeton WebShop, 1k-product profile (needs `fetch_data.py` first).
+  python scripts/fetch_data.py --profile small
+  python -m elizaos_webshop --profile small --bridge --max-tasks 50
+
+  # 1.18M-product profile (large download).
+  python scripts/fetch_data.py --profile full
+  python -m elizaos_webshop --profile full --bridge --max-tasks 500
 """
 
 from __future__ import annotations
@@ -58,9 +64,28 @@ def _maybe_load_dotenv() -> None:
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="WebShop Benchmark CLI")
-    p.add_argument("--sample", action="store_true", help="Use built-in sample tasks/products")
-    p.add_argument("--hf", action="store_true", help="Load tasks from HuggingFace (tasks only)")
-    p.add_argument("--split", type=str, default="test", help="HF split (default: test)")
+    p.add_argument(
+        "--use-sample-tasks",
+        "--sample",
+        dest="use_sample_tasks",
+        action="store_true",
+        help=(
+            "Use the tiny built-in ~6-product catalog with ~6 instructions. "
+            "No external downloads required. Suitable for smoke tests only."
+        ),
+    )
+    p.add_argument(
+        "--profile",
+        choices=["small", "full"],
+        default="small",
+        help=(
+            "Upstream data profile. 'small' = 1k products (default), "
+            "'full' = ~1.18M products. Requires running "
+            "`python scripts/fetch_data.py --profile <profile>` first."
+        ),
+    )
+    p.add_argument("--hf", action="store_true", help="(deprecated) Load tasks from HuggingFace (tasks only)")
+    p.add_argument("--split", type=str, default="test", choices=["train", "test"], help="Data split")
     p.add_argument("--max-tasks", type=int, default=None, help="Maximum tasks to run")
     p.add_argument("--trials", type=int, default=1, help="Trials per task (default: 1)")
     p.add_argument("--max-turns", type=int, default=20, help="Max turns per task (default: 20)")
@@ -140,8 +165,21 @@ def create_config(args: argparse.Namespace) -> WebShopConfig:
     )
 
 
-async def run(config: WebShopConfig, *, split: str, use_hf: bool) -> dict[str, object]:
-    runner = WebShopRunner(config, split=split, use_hf=use_hf)
+async def run(
+    config: WebShopConfig,
+    *,
+    split: str,
+    use_hf: bool,
+    profile: str = "small",
+    use_sample_tasks: bool = False,
+) -> dict[str, object]:
+    runner = WebShopRunner(
+        config,
+        split=split,
+        use_hf=use_hf,
+        profile=profile,
+        use_sample_tasks=use_sample_tasks,
+    )
     report = await runner.run_benchmark()
     # For stdout, keep this short; full files are written to disk.
     return {
@@ -160,10 +198,7 @@ def main() -> int:
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)
 
-    # Default behavior: sample unless HF explicitly requested.
     use_hf = bool(args.hf)
-    if not args.sample and not args.hf:
-        args.sample = True
 
     config = create_config(args)
     provider = (config.model_provider or os.environ.get("BENCHMARK_MODEL_PROVIDER", "")).strip().lower()
@@ -218,7 +253,15 @@ def main() -> int:
             return 1
 
     try:
-        results = asyncio.run(run(config, split=str(args.split), use_hf=use_hf))
+        results = asyncio.run(
+            run(
+                config,
+                split=str(args.split),
+                use_hf=use_hf,
+                profile=str(args.profile),
+                use_sample_tasks=bool(args.use_sample_tasks),
+            )
+        )
         if args.json:
             print(json.dumps(results, indent=2, default=str))
         else:

@@ -19,8 +19,11 @@ from typing import Any
 
 from benchmarks.mind2web.types import (
     Mind2WebAction,
+    Mind2WebActionStep,
     Mind2WebConfig,
+    Mind2WebElement,
     Mind2WebOperation,
+    Mind2WebRankerMode,
     Mind2WebTask,
 )
 
@@ -57,12 +60,17 @@ def get_mind2web_context() -> Mind2WebContext:
     return _global_context
 
 
-def _format_element(step_index: int, task: Mind2WebTask) -> str:
+def _format_element(
+    step_index: int,
+    task: Mind2WebTask,
+    candidates: list[Mind2WebElement] | None = None,
+) -> str:
     if step_index >= len(task.actions):
         return "No remaining ground-truth step is available."
 
-    step = task.actions[step_index]
-    candidates = step.pos_candidates + step.neg_candidates
+    if candidates is None:
+        step = task.actions[step_index]
+        candidates = step.pos_candidates + step.neg_candidates
     if not candidates:
         return "No candidate elements are available for this step."
 
@@ -74,6 +82,49 @@ def _format_element(step_index: int, task: Mind2WebTask) -> str:
             f"{idx}. backend_node_id={elem.backend_node_id} tag={elem.tag} {attrs}{text}".strip()
         )
     return "\n".join(lines)
+
+
+def select_candidates_for_step(
+    step: Mind2WebActionStep,
+    *,
+    mode: Mind2WebRankerMode,
+    task_description: str,
+    previous_actions: list[str],
+    top_k: int = 50,
+    model_name: str | None = None,
+    device: str | None = None,
+) -> tuple[list[Mind2WebElement], float]:
+    """Pick the candidate list shown to the LLM for ``step``.
+
+    Returns ``(elements, recall_at_k)``. ``recall_at_k`` is NaN unless
+    ``mode == REAL``.
+
+    - ``REAL``: run the DeBERTa cross-encoder ranker (faithful MindAct stage 1).
+    - ``ORACLE``: GT positives first, then negatives -- leaks the answer.
+      Useful for upper-bound studies; NOT leaderboard-comparable.
+    - ``NONE``: full candidate pool (pos + neg). Lets the LLM see everything.
+    """
+    if mode == Mind2WebRankerMode.ORACLE:
+        return list(step.pos_candidates) + list(step.neg_candidates), float("nan")
+
+    if mode == Mind2WebRankerMode.NONE:
+        return list(step.pos_candidates) + list(step.neg_candidates), float("nan")
+
+    if mode == Mind2WebRankerMode.REAL:
+        # Lazy import -- only pay the cost if the ranker is actually used.
+        from benchmarks.mind2web.ranker import rank_step_candidates
+
+        elements, recall = rank_step_candidates(
+            step,
+            task_description=task_description,
+            previous_actions=previous_actions,
+            top_k=top_k,
+            model_name=model_name,
+            device=device,
+        )
+        return elements, recall
+
+    raise ValueError(f"Unknown Mind2WebRankerMode: {mode!r}")
 
 
 @dataclass
@@ -163,11 +214,27 @@ class Mind2WebActionHandler:
         )
 
 
-class MockMind2WebAgent:
-    """Deterministic offline agent that replays ground-truth sample actions."""
+class OracleMind2WebAgent:
+    """Deterministic offline agent that replays the ground-truth annotation.
+
+    This is a sanity-check / harness-validation agent -- it achieves 100% step
+    accuracy by construction because it returns the dataset's own annotated
+    answer at each step. It is **only available when the harness is explicitly
+    started with ``--mock`` / ``Mind2WebConfig.use_mock=True``**.
+
+    Previously named ``MockMind2WebAgent``; the rename clarifies that this is
+    an oracle baseline, not a stand-in for real model behavior.
+    """
 
     def __init__(self, config: Mind2WebConfig) -> None:
+        if not config.use_mock:
+            raise RuntimeError(
+                "OracleMind2WebAgent may only be constructed when "
+                "Mind2WebConfig.use_mock is True. Pass --mock on the CLI to "
+                "run the oracle harness check, or use the real agent path."
+            )
         self.config = config
+        self.ranker_recalls: list[float] = []
 
     async def initialize(self) -> None:
         return None
@@ -175,15 +242,17 @@ class MockMind2WebAgent:
     async def process_task(self, task: Mind2WebTask) -> list[Mind2WebAction]:
         set_mind2web_context(task)
         actions: list[Mind2WebAction] = []
+        self.ranker_recalls = []
         for step in task.actions[: self.config.max_steps_per_task]:
             target = step.target_element
             action = Mind2WebAction(
                 operation=step.operation,
                 element_id=target.backend_node_id if target else "",
                 value=step.value,
-                reasoning="Mock agent replayed the ground-truth action.",
+                reasoning="Oracle agent replayed the ground-truth action.",
             )
             actions.append(action)
+            self.ranker_recalls.append(float("nan"))
             _global_context.executed_actions.append(action)
             _global_context.current_step_index += 1
         _global_context.done = _global_context.current_step_index >= len(task.actions)
@@ -191,6 +260,11 @@ class MockMind2WebAgent:
 
     async def close(self) -> None:
         return None
+
+
+# Backwards-compatible alias. Existing callers (CI smoke tests, older imports)
+# can keep using the old name; new code should use OracleMind2WebAgent.
+MockMind2WebAgent = OracleMind2WebAgent
 
 
 class OpenAICompatibleMind2WebAgent:
@@ -215,6 +289,9 @@ class OpenAICompatibleMind2WebAgent:
         self.model_name: str | None = None
         self.api_key: str | None = None
         self.key_var: str | None = None
+        # Per-step ranker Recall@K, populated during process_task. NaN for
+        # steps where the ranker was not invoked (e.g. --ranker oracle/none).
+        self.ranker_recalls: list[float] = []
 
     async def initialize(self) -> None:
         provider = (self.config.model_provider or "").strip().lower()
@@ -256,10 +333,37 @@ class OpenAICompatibleMind2WebAgent:
     async def process_task(self, task: Mind2WebTask) -> list[Mind2WebAction]:
         set_mind2web_context(task)
         predictions: list[Mind2WebAction] = []
+        self.ranker_recalls = []
         for step_index, step in enumerate(task.actions[: self.config.max_steps_per_task]):
+            # Stage 1: candidate selection (DeBERTa ranker / oracle / none).
+            previous_action_reprs = (
+                task.action_reprs[:step_index] if task.action_reprs else []
+            )
+            try:
+                candidates, recall = await asyncio.to_thread(
+                    select_candidates_for_step,
+                    step,
+                    mode=self.config.ranker_mode,
+                    task_description=task.confirmed_task,
+                    previous_actions=previous_action_reprs,
+                    top_k=self.config.ranker_top_k,
+                    model_name=self.config.ranker_model,
+                    device=self.config.ranker_device,
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    "Mind2Web ranker failed at step %d (%s); falling back to "
+                    "the dataset's pos+neg candidate list (oracle-equivalent).",
+                    step_index,
+                    exc,
+                )
+                candidates = list(step.pos_candidates) + list(step.neg_candidates)
+                recall = float("nan")
+            self.ranker_recalls.append(recall)
+
             action: Mind2WebAction | None = None
             if self.provider and self.model_name and self.api_key:
-                prompt = self._build_prompt(task, step_index, predictions)
+                prompt = self._build_prompt(task, step_index, predictions, candidates)
                 try:
                     response = await asyncio.to_thread(self._chat_completion, prompt)
                     action = self._parse_provider_action(response)
@@ -289,7 +393,7 @@ class OpenAICompatibleMind2WebAgent:
                 )
                 break
             else:
-                action = self._normalize_action(step, action)
+                action = self._normalize_action(step, action, candidates)
 
             predictions.append(action)
             _global_context.executed_actions.append(action)
@@ -320,6 +424,7 @@ class OpenAICompatibleMind2WebAgent:
         task: Mind2WebTask,
         step_index: int,
         previous_actions: list[Mind2WebAction],
+        ranked_candidates: list[Mind2WebElement] | None = None,
     ) -> str:
         previous = "\n".join(
             f"- {action.operation.value} element_id={action.element_id} value={action.value!r}"
@@ -340,7 +445,7 @@ class OpenAICompatibleMind2WebAgent:
             f"Website: {task.website}",
             f"Domain: {task.domain}",
             f"Current step: {step_index + 1} of {len(task.actions)}",
-            "Available elements:\n" + _format_element(step_index, task),
+            "Available elements:\n" + _format_element(step_index, task, ranked_candidates),
         ]
         if current_repr:
             sections.append(
@@ -414,8 +519,19 @@ class OpenAICompatibleMind2WebAgent:
             return parse_mind2web_action(match.group(0))
         return None
 
-    def _normalize_action(self, step: Any, action: Mind2WebAction) -> Mind2WebAction:
-        candidates = step.pos_candidates + step.neg_candidates
+    def _normalize_action(
+        self,
+        step: Any,
+        action: Mind2WebAction,
+        ranked_candidates: list[Mind2WebElement] | None = None,
+    ) -> Mind2WebAction:
+        # The LLM addresses candidates by 1-based index of the prompt list. Use
+        # the ranked candidate order shown to it, so we resolve into the right
+        # element when the ranker has reordered the pool.
+        if ranked_candidates is not None:
+            candidates: list[Mind2WebElement] = list(ranked_candidates)
+        else:
+            candidates = list(step.pos_candidates) + list(step.neg_candidates)
         element_id = action.element_id.strip()
         if element_id.isdigit():
             index = int(element_id) - 1
@@ -443,10 +559,18 @@ class OpenAICompatibleMind2WebAgent:
 ElizaOSMind2WebAgent = OpenAICompatibleMind2WebAgent
 
 
-def create_mind2web_agent(config: Mind2WebConfig) -> MockMind2WebAgent | OpenAICompatibleMind2WebAgent:
-    """Create the local Mind2Web agent used by the runner."""
+def create_mind2web_agent(
+    config: Mind2WebConfig,
+) -> OracleMind2WebAgent | OpenAICompatibleMind2WebAgent:
+    """Create the local Mind2Web agent used by the runner.
+
+    With ``config.use_mock=True`` returns the ground-truth-replaying
+    ``OracleMind2WebAgent`` (only intended for harness smoke tests). Without it,
+    returns the real OpenAI-compatible agent that drives an LLM through the
+    MindAct two-stage pipeline (``ranker_mode`` selects the stage-1 strategy).
+    """
     if config.use_mock:
-        return MockMind2WebAgent(config)
+        return OracleMind2WebAgent(config)
     return OpenAICompatibleMind2WebAgent(config)
 
 

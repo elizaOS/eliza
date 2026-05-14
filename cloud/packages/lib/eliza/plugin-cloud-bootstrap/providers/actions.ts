@@ -101,6 +101,103 @@ type ValidationCacheEntry = {
 
 const validationCache = new Map<string, ValidationCacheEntry>();
 
+function numberSetting(
+  runtime: IAgentRuntime,
+  key: string,
+  fallback: number,
+): number {
+  const env =
+    typeof globalThis === "object" && "process" in globalThis
+      ? (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env
+      : undefined;
+  const raw = runtime.getSetting?.(key) ?? env?.[key];
+  const value = typeof raw === "string" ? Number(raw) : raw;
+  return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : fallback;
+}
+
+function unrefTimer(handle: ReturnType<typeof setTimeout>): void {
+  (handle as { unref?: () => void }).unref?.();
+}
+
+type LastGoodValidation = {
+  actions: Action[];
+  discoverableToolCount: number;
+  createdAt: number;
+};
+
+let lastGoodValidation: LastGoodValidation | null = null;
+
+function getMessageText(message: Memory): string {
+  const content = message.content;
+  if (typeof content === "string") return content;
+  return typeof content?.text === "string" ? content.text : "";
+}
+
+function isImageGenerationRequest(message: Memory): boolean {
+  const text = getMessageText(message);
+  return (
+    /\b(generate|create|make|draw|render|produce|publish)\b[\s\S]{0,100}\b(image|picture|poster|meme|png|photo|illustration|ad creative|creative pack|ad pack|advertisement|campaign creative)\b/i.test(
+      text,
+    ) ||
+    /\b(image|picture|poster|meme|png|photo|illustration|ad creative|creative pack|ad pack|advertisement|campaign creative)\b[\s\S]{0,100}\b(generate|create|make|draw|render|produce|publish)\b/i.test(
+      text,
+    ) ||
+    /\bfal\b/i.test(text)
+  );
+}
+
+function keepAction(action: Action, wanted: Set<string>): boolean {
+  const name = action.name.trim().toUpperCase();
+  const similes = (action.similes ?? []).map((value) => String(value).trim().toUpperCase());
+  return wanted.has(name) || similes.some((simile) => wanted.has(simile));
+}
+
+function narrowActionsForIntent(actions: Action[], message: Memory): Action[] {
+  if (!isImageGenerationRequest(message)) {
+    return actions;
+  }
+
+  const wanted = new Set([
+    "GENERATE_MEDIA",
+    "GENERATE_IMAGE",
+    "CREATE_IMAGE",
+    "CAPTURE_IMAGE",
+    "PRODUCE_AGENT_AD_CREATIVE",
+    "PUBLISH_AGENT_AD_PACK",
+    "MANAGE_AGENT_ADS",
+    "REPLY",
+    "NONE",
+    "FINISH",
+  ]);
+  const narrowed = actions.filter((action) => keepAction(action, wanted));
+  return narrowed.length > 0 ? narrowed : actions;
+}
+
+async function validateActionFast(
+  action: Action,
+  runtime: IAgentRuntime,
+  message: Memory,
+  state: State,
+  timeoutMs: number,
+): Promise<Action | null> {
+  const timeout = new Promise<null>((resolve) => {
+    const handle = setTimeout(() => resolve(null), timeoutMs);
+    unrefTimer(handle);
+  });
+
+  const validation = (async () => {
+    try {
+      return (await action.validate(runtime, message, state)) ? action : null;
+    } catch (e) {
+      const errorMessage = e instanceof Error ? e.message : String(e);
+      logger.error(`[ACTIONS] validate error: ${action.name}`, errorMessage);
+      return null;
+    }
+  })();
+
+  return Promise.race([validation, timeout]);
+}
+
 /** Invalidate cached validation for a message (e.g., after SEARCH_ACTIONS registers new tools). */
 export function invalidateActionValidationCache(messageId: string): void {
   const cached = validationCache.get(messageId);
@@ -126,19 +223,45 @@ export const actionsProvider: Provider = {
       let cached = cacheKey ? validationCache.get(cacheKey) : undefined;
 
       if (!cached) {
-        const actionsData = (
-          await Promise.all(
-            runtime.actions.map(async (action: Action) => {
-              try {
-                return (await action.validate(runtime, message, state)) ? action : null;
-              } catch (e) {
-                const errorMessage = e instanceof Error ? e.message : String(e);
-                logger.error(`[ACTIONS] validate error: ${action.name}`, errorMessage);
-                return null;
-              }
-            }),
-          )
-        ).filter((a): a is Action => a !== null);
+        const actionValidateTimeoutMs = numberSetting(runtime, "ACTIONS_VALIDATE_TIMEOUT_MS", 250);
+        const providerValidationBudgetMs = numberSetting(runtime, "ACTIONS_PROVIDER_VALIDATION_BUDGET_MS", 1200);
+        const lastGoodCacheTtlMs = numberSetting(runtime, "ACTIONS_LAST_GOOD_CACHE_TTL_MS", 120_000);
+        const freshLastGood =
+          lastGoodValidation && Date.now() - lastGoodValidation.createdAt < lastGoodCacheTtlMs
+            ? lastGoodValidation
+            : null;
+
+        let actionsData: Action[];
+        if (isImageGenerationRequest(message)) {
+          // Media/ad turns need a deterministic tiny catalog. Do this before
+          // consulting the last-good full cache so we do not spend the Discord
+          // reply window filtering/formatting hundreds of unrelated actions
+          // and then hide the image/ad action behind a provider timeout.
+          actionsData = narrowActionsForIntent(runtime.actions, message);
+        } else if (freshLastGood) {
+          actionsData = freshLastGood.actions;
+        } else {
+          const validation = Promise.all(
+            runtime.actions.map((action: Action) =>
+              validateActionFast(action, runtime, message, state, actionValidateTimeoutMs),
+            ),
+          ).then((actions) => actions.filter((a): a is Action => a !== null));
+
+          const timed = new Promise<"timeout">((resolve) => {
+            const handle = setTimeout(() => resolve("timeout"), providerValidationBudgetMs);
+            unrefTimer(handle);
+          });
+
+          const validationResult = await Promise.race([validation, timed]);
+          if (validationResult === "timeout") {
+            logger.warn(
+              `[ACTIONS] validation exceeded ${providerValidationBudgetMs}ms; using unvalidated action catalog for this turn`,
+            );
+            actionsData = runtime.actions;
+          } else {
+            actionsData = validationResult;
+          }
+        }
 
         let discoverableToolCount = 0;
         try {
@@ -152,20 +275,26 @@ export const actionsProvider: Provider = {
           /* MCP service may not be available */
         }
 
+        if (actionsData.length > 0) {
+          lastGoodValidation = {
+            actions: actionsData,
+            discoverableToolCount,
+            createdAt: Date.now(),
+          };
+        }
+
         cached = { actions: actionsData, discoverableToolCount };
         if (cacheKey) {
           const timeoutHandle = setTimeout(() => validationCache.delete(cacheKey), 120_000);
-          if (typeof timeoutHandle === "object" && typeof timeoutHandle?.unref === "function") {
-            timeoutHandle.unref();
-          }
+          unrefTimer(timeoutHandle);
           cached.timeoutHandle = timeoutHandle;
           validationCache.set(cacheKey, cached);
         }
       }
 
-      const actionsData = filterActionsByRouting(
-        cached.actions,
-        getContextRoutingFromMessage(message),
+      const actionsData = narrowActionsForIntent(
+        filterActionsByRouting(cached.actions, getContextRoutingFromMessage(message)),
+        message,
       ).filter((action) => !HIDDEN_NATIVE_PLANNER_ACTIONS.has(action.name.trim().toUpperCase()));
       const discoverableToolCount = cached.discoverableToolCount;
       const hasActions = actionsData.length > 0;

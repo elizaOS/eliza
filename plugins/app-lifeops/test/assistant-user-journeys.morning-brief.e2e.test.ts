@@ -149,14 +149,12 @@ describeIf(LIVE_SUITE_ENABLED)(
         "PGLITE_DATA_DIR",
         "ELIZA_STATE_DIR",
         "ELIZA_GOOGLE_OAUTH_DESKTOP_CLIENT_ID",
-        "ENABLE_TRAJECTORIES",
-        "ELIZA_TRAJECTORY_LOGGING",
+        "ELIZA_DISABLE_TRAJECTORY_LOGGING",
       );
       process.env.PGLITE_DATA_DIR = pgliteDir;
       process.env.ELIZA_STATE_DIR = stateDir;
       process.env.ELIZA_GOOGLE_OAUTH_DESKTOP_CLIENT_ID = GOOGLE_CLIENT_ID;
-      process.env.ENABLE_TRAJECTORIES = "false";
-      process.env.ELIZA_TRAJECTORY_LOGGING = "false";
+      process.env.ELIZA_DISABLE_TRAJECTORY_LOGGING = "1";
       process.env.LOG_LEVEL = process.env.ELIZA_E2E_LOG_LEVEL ?? "error";
 
       for (const key of LIVE_PROVIDER_ENV_KEYS) {

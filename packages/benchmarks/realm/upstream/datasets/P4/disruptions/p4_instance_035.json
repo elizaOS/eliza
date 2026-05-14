@@ -1,0 +1,117 @@
+{
+  "instance_id": "p4_instance_035",
+  "city_map": {
+    "locations": [
+      "university",
+      "hospital",
+      "downtown",
+      "park",
+      "stadium"
+    ],
+    "distances": {
+      "university-hospital": 24,
+      "hospital-university": 24,
+      "university-downtown": 40,
+      "downtown-university": 40,
+      "university-park": 35,
+      "park-university": 35,
+      "university-stadium": 26,
+      "stadium-university": 26,
+      "hospital-downtown": 11,
+      "downtown-hospital": 11,
+      "hospital-park": 9,
+      "park-hospital": 9,
+      "hospital-stadium": 43,
+      "stadium-hospital": 43,
+      "downtown-park": 8,
+      "park-downtown": 8,
+      "downtown-stadium": 17,
+      "stadium-downtown": 17,
+      "park-stadium": 28,
+      "stadium-park": 28
+    }
+  },
+  "ride_requests": [
+    {
+      "passenger_id": "p001",
+      "pickup": "university",
+      "dropoff": "stadium",
+      "time_window": [
+        13.0,
+        13.566666666666666
+      ],
+      "deadline": 58
+    },
+    {
+      "passenger_id": "p002",
+      "pickup": "park",
+      "dropoff": "university",
+      "time_window": [
+        14.5,
+        14.833333333333334
+      ],
+      "deadline": 58
+    },
+    {
+      "passenger_id": "p003",
+      "pickup": "park",
+      "dropoff": "downtown",
+      "time_window": [
+        12.25,
+        12.783333333333333
+      ],
+      "deadline": 22
+    },
+    {
+      "passenger_id": "p004",
+      "pickup": "stadium",
+      "dropoff": "hospital",
+      "time_window": [
+        13.5,
+        13.233333333333333
+      ],
+      "deadline": 22
+    },
+    {
+      "passenger_id": "p005",
+      "pickup": "park",
+      "dropoff": "stadium",
+      "time_window": [
+        13.0,
+        13.266666666666667
+      ],
+      "deadline": 55
+    }
+  ],
+  "vehicles": [
+    {
+      "vehicle_id": "v001",
+      "location": "downtown",
+      "capacity": 4,
+      "fuel": 88
+    },
+    {
+      "vehicle_id": "v002",
+      "location": "stadium",
+      "capacity": 6,
+      "fuel": 54
+    }
+  ],
+  "description": "Urban ride-sharing with disruptions instance",
+  "disruptions": [
+    {
+      "type": "accident",
+      "location": "hospital",
+      "start_time": 13,
+      "duration": 29,
+      "impact": "local_traffic_congestion"
+    },
+    {
+      "type": "construction",
+      "route": "hospital-park",
+      "start_time": 10,
+      "duration": 181,
+      "impact": "reduced_capacity"
+    }
+  ]
+}

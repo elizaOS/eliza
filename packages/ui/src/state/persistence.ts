@@ -21,8 +21,7 @@ import { normalizeAvatarIndex } from "./vrm";
 function tryLocalStorage<T>(fn: () => T, fallback: T): T {
   try {
     return fn();
-  } catch (err) {
-    console.warn("[persistence] localStorage operation failed:", err);
+  } catch {
     return fallback;
   }
 }

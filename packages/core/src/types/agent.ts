@@ -54,7 +54,6 @@ export interface CharacterSettings {
 	ENABLE_PLUGIN_MANAGER?: boolean | string;
 	ENABLE_DOCUMENTS?: boolean | string;
 	ENABLE_RELATIONSHIPS?: boolean | string;
-	ENABLE_TRAJECTORIES?: boolean | string;
 	secrets?: Record<string, string | boolean | number>;
 	[key: string]: JsonValue | undefined;
 }

@@ -5,12 +5,18 @@ import {
 	enumToEmotion,
 	parseExpressiveTags,
 } from "./expressive-tags";
+import type {
+	VoiceEmotionClassifierOutput,
+	VoiceEmotionVad,
+} from "./voice-emotion-classifier";
 
 export type VoiceEmotionAttributionMethod =
 	| "none"
 	| "text_tag"
 	| "text_audio_heuristic"
-	| "explicit_asr_metadata";
+	| "explicit_asr_metadata"
+	| "acoustic_model"
+	| "acoustic_text_fused";
 
 export interface VoiceEmotionAudioFeatures {
 	durationMs?: number;
@@ -33,10 +39,30 @@ export interface VoiceEmotionAsrFeatures {
 	emotionLabelSupported?: boolean;
 }
 
+/**
+ * Acoustic-model emotion read fed in as a *fusion* source — the result of
+ * running the Wav2Small student (`VoiceEmotionClassifier.classify()`) over
+ * the utterance window. Pass the raw classifier output directly; the
+ * fusion logic in `attributeVoiceEmotion` is the single place that combines
+ * acoustic + text-side evidence (R3-emotion §3, "Two confidence scores,
+ * no fusion rule" risk).
+ */
+export interface VoiceEmotionModelInput {
+	output: VoiceEmotionClassifierOutput;
+	/** Stable model id recorded on the resulting evidence row. */
+	modelId?: string;
+}
+
 export interface VoiceEmotionAttributionInput {
 	text?: string;
 	asr?: VoiceEmotionAsrFeatures;
 	audio?: VoiceEmotionAudioFeatures;
+	/**
+	 * Acoustic classifier output — the Wav2Small read. Optional; when absent
+	 * the attribution falls back to the lexicon + audio-prosody heuristic
+	 * (which is what `evidence.source === "audio_prosody"` covers).
+	 */
+	model?: VoiceEmotionModelInput;
 }
 
 export interface VoiceEmotionEvidence {
@@ -46,7 +72,8 @@ export interface VoiceEmotionEvidence {
 		| "audio_prosody"
 		| "asr_transcript"
 		| "asr_emotion_metadata"
-		| "asr_emotion_metadata_ignored";
+		| "asr_emotion_metadata_ignored"
+		| "acoustic_model";
 	detail: string;
 	confidence: number;
 }
@@ -58,6 +85,13 @@ export interface VoiceEmotionAttribution {
 	modelNativeEmotion: false;
 	evidence: VoiceEmotionEvidence[];
 	scores: Record<ExpressiveEmotion, number>;
+	/**
+	 * Continuous V-A-D from the acoustic classifier when one was supplied via
+	 * `model`. Carried through so downstream consumers (planner provider,
+	 * memory tagging, bench) can read the raw continuous signal instead of the
+	 * projected discrete label.
+	 */
+	vad?: VoiceEmotionVad;
 }
 
 const TEXT_WEIGHTS: ReadonlyArray<{
@@ -166,6 +200,32 @@ export function attributeVoiceEmotion(
 	const scores = emptyScores();
 	const evidence: VoiceEmotionEvidence[] = [];
 
+	// (1) Acoustic-model read — Wav2Small (or equivalent) is the strongest
+	// single signal when present. We weight it on the classifier's own
+	// confidence so a low-mass continuous read does not dominate the lexicon
+	// (the projection table itself abstains under `confidence < 0.35`).
+	const modelOutput = input.model?.output;
+	if (modelOutput?.emotion) {
+		const w = clamp01(modelOutput.confidence) * 0.92;
+		if (w > 0) {
+			addScore(scores, modelOutput.emotion, w);
+			evidence.push({
+				source: "acoustic_model",
+				detail: `${input.model?.modelId ?? modelOutput.modelId} → ${modelOutput.emotion} (${roundEvidence(modelOutput.confidence)})`,
+				confidence: roundEvidence(w),
+			});
+		}
+		// Also propagate the soft scores so the discrete label is not the only
+		// thing the projection has agreed with — small contribution per class
+		// keeps the per-class mass coherent across consumers.
+		for (const tag of EXPRESSIVE_EMOTION_TAGS) {
+			const score = clamp01(modelOutput.scores[tag] ?? 0);
+			if (score > 0.05 && tag !== modelOutput.emotion) {
+				addScore(scores, tag, score * 0.18);
+			}
+		}
+	}
+
 	if (parsed.dominantEmotion) {
 		addScore(scores, parsed.dominantEmotion, 0.88);
 		evidence.push({
@@ -247,6 +307,7 @@ export function attributeVoiceEmotion(
 		}
 	}
 
+	const vad = modelOutput?.vad;
 	const best = selectBest(scores);
 	if (!best.emotion || best.score < 0.18) {
 		return {
@@ -256,14 +317,33 @@ export function attributeVoiceEmotion(
 			modelNativeEmotion: false,
 			evidence,
 			scores,
+			...(vad ? { vad } : {}),
 		};
 	}
 
-	const method = evidence.some((row) => row.source === "text_expressive_tag")
-		? "text_tag"
-		: evidence.some((row) => row.source === "asr_emotion_metadata")
-			? "explicit_asr_metadata"
-			: "text_audio_heuristic";
+	// Fusion-rule method derivation — single deterministic order so consumers
+	// reading `.method` get the same answer regardless of evidence shape. The
+	// acoustic-model methods win over text-only methods when the acoustic
+	// signal contributed to the winning class.
+	const hasAcoustic = evidence.some((row) => row.source === "acoustic_model");
+	const hasTextual = evidence.some(
+		(row) =>
+			row.source === "text_expressive_tag" ||
+			row.source === "text_lexicon" ||
+			row.source === "asr_transcript",
+	);
+	let method: VoiceEmotionAttributionMethod;
+	if (hasAcoustic && hasTextual) {
+		method = "acoustic_text_fused";
+	} else if (hasAcoustic) {
+		method = "acoustic_model";
+	} else if (evidence.some((row) => row.source === "text_expressive_tag")) {
+		method = "text_tag";
+	} else if (evidence.some((row) => row.source === "asr_emotion_metadata")) {
+		method = "explicit_asr_metadata";
+	} else {
+		method = "text_audio_heuristic";
+	}
 
 	return {
 		emotion: best.emotion,
@@ -272,6 +352,7 @@ export function attributeVoiceEmotion(
 		modelNativeEmotion: false,
 		evidence,
 		scores,
+		...(vad ? { vad } : {}),
 	};
 }
 

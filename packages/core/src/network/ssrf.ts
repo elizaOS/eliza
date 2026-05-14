@@ -323,7 +323,7 @@ export async function resolvePinnedHostname(
 	hostname: string,
 	lookupFn?: LookupFn,
 ): Promise<PinnedHostname> {
-	return await resolvePinnedHostnameWithPolicy(hostname, { lookupFn });
+	return resolvePinnedHostnameWithPolicy(hostname, { lookupFn });
 }
 
 /**

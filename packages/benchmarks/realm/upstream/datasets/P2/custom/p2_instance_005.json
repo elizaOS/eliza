@@ -1,0 +1,52 @@
+{
+  "instance_id": "p2_instance_005",
+  "visitor_groups": [
+    {
+      "group_id": "group1",
+      "size": 14,
+      "preferred_time": 10,
+      "arrival_time": 12
+    },
+    {
+      "group_id": "group2",
+      "size": 8,
+      "preferred_time": 9,
+      "arrival_time": 12
+    },
+    {
+      "group_id": "group3",
+      "size": 5,
+      "preferred_time": 14,
+      "arrival_time": 8
+    }
+  ],
+  "tour_guides": [
+    {
+      "guide_id": "guide1",
+      "availability": [
+        8,
+        17
+      ],
+      "max_group_size": 15
+    },
+    {
+      "guide_id": "guide2",
+      "availability": [
+        10,
+        16
+      ],
+      "max_group_size": 15
+    },
+    {
+      "guide_id": "guide3",
+      "availability": [
+        8,
+        17
+      ],
+      "max_group_size": 15
+    }
+  ],
+  "tour_duration": 90,
+  "max_group_size": 15,
+  "description": "Multi-group campus tours with multiple guides"
+}

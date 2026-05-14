@@ -239,9 +239,7 @@ export async function applyLaunchConnectionFromUrl(): Promise<boolean> {
     return false;
   }
   if (params.get("token")?.trim()) {
-    console.warn(
-      "[launch] Ignoring raw token URL parameter; use cloudLaunchSession instead.",
-    );
+    // Raw token URL parameter is not accepted; cloudLaunchSession must be used.
     stripLaunchParams();
     return false;
   }

@@ -118,12 +118,8 @@ export function useContentPack(): UseContentPackResult {
           return [...prev, pack];
         });
       })
-      .catch((err) => {
+      .catch(() => {
         if (cancelled) return;
-        console.error(
-          "[eliza][content-packs] Failed to restore persisted pack:",
-          err,
-        );
         savePersistedActivePackUrl(null);
         setState("activePackId", null);
       });

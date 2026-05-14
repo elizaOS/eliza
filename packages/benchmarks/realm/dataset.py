@@ -1,633 +1,559 @@
 """
-REALM-Bench Dataset Loader
+REALM-Bench dataset loader.
 
-Loads and manages REALM benchmark tasks from various sources.
+Loads the 11 canonical scenarios (P1..P11) from the vendored upstream
+dataset directory at ``packages/benchmarks/realm/upstream/datasets``.
+
+P1..P10 are JSON instance files (one JSON per instance).
+P11 (JSSP) is plain text in the Taillard / DMU format (n_jobs n_machines
+header + (machine, time) pairs per row).
+
+A ``use_sample_tasks`` mode is exposed for smoke tests that don't want
+to hit disk — it returns one tiny synthetic P1 instance and one tiny
+synthetic P11 instance.
 """
+
+from __future__ import annotations
 
 import json
 import logging
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from benchmarks.realm.types import (
-    REALMCategory,
+    MULTI_AGENT_PROBLEMS,
+    PROBLEM_DESCRIPTIONS,
+    PROBLEMS_WITH_DISRUPTIONS,
     REALMTask,
     REALMTestCase,
+    RealmProblem,
 )
 
 logger = logging.getLogger(__name__)
 
 
-class REALMDataset:
-    """Dataset loader for REALM benchmark tasks."""
+DEFAULT_UPSTREAM_PATH = Path(__file__).resolve().parent / "upstream" / "datasets"
 
-    def __init__(self, data_path: str = "./data/realm"):
+# Default per-problem instance counts when iterating (cap to keep runs cheap).
+DEFAULT_INSTANCES_PER_PROBLEM = 5
+
+
+# ---------------------------------------------------------------------------
+# JSSP (P11) text-format parser. Used for DMU and TA file families.
+# ---------------------------------------------------------------------------
+
+
+def parse_jssp_instance(text: str) -> dict[str, Any]:
+    """Parse a JSSP instance in the Taillard/DMU plain-text format.
+
+    Two variants are common:
+
+    * ``cscmax`` / Taillard short form: first non-blank line is
+      ``n_jobs n_machines``; each subsequent row contains
+      ``machine_idx_1 time_1 machine_idx_2 time_2 ...`` for one job.
+
+    * Taillard long form ("TA01"): header with metadata, then a
+      ``Times`` block (n_jobs x n_machines processing times), then a
+      ``Machines`` block (n_jobs x n_machines machine indices).
+
+    Returns ``{"n_jobs", "n_machines", "jobs"}`` where ``jobs`` is a
+    list of lists of ``(machine_idx, duration)`` tuples (machine_idx is
+    0-indexed).
+    """
+    lines = [ln.rstrip() for ln in text.splitlines() if ln.strip()]
+    if not lines:
+        raise ValueError("Empty JSSP instance")
+
+    # Taillard long form starts with "Nb of jobs..." header.
+    if lines[0].lower().startswith("nb of jobs"):
+        # Header has metadata. Look for "Times" / "Machines" sections.
+        header_row = lines[1].split()
+        n_jobs = int(header_row[0])
+        n_machines = int(header_row[1])
+        upper_bound = int(header_row[4]) if len(header_row) > 4 else 0
+        # find Times and Machines sections
+        try:
+            times_idx = next(
+                i for i, ln in enumerate(lines) if ln.strip().lower() == "times"
+            )
+            machines_idx = next(
+                i for i, ln in enumerate(lines) if ln.strip().lower() == "machines"
+            )
+        except StopIteration:
+            raise ValueError("Taillard JSSP missing Times/Machines blocks")
+
+        times_block = lines[times_idx + 1 : machines_idx]
+        machines_block = lines[machines_idx + 1 : machines_idx + 1 + n_jobs]
+        times = [[int(x) for x in row.split()] for row in times_block[:n_jobs]]
+        machines = [[int(x) for x in row.split()] for row in machines_block]
+        jobs = []
+        for j in range(n_jobs):
+            row_ops = []
+            for k in range(n_machines):
+                # Taillard machines are 1-indexed; convert to 0-indexed.
+                row_ops.append((machines[j][k] - 1, times[j][k]))
+            jobs.append(row_ops)
+        return {
+            "n_jobs": n_jobs,
+            "n_machines": n_machines,
+            "jobs": jobs,
+            "upper_bound": upper_bound,
+        }
+
+    # cscmax / short form
+    header = lines[0].split()
+    n_jobs = int(header[0])
+    n_machines = int(header[1])
+    jobs: list[list[tuple[int, int]]] = []
+    for row in lines[1 : 1 + n_jobs]:
+        tokens = [int(t) for t in row.split()]
+        ops: list[tuple[int, int]] = []
+        for k in range(0, len(tokens), 2):
+            machine_idx = tokens[k]
+            duration = tokens[k + 1]
+            ops.append((machine_idx, duration))
+        jobs.append(ops)
+    return {"n_jobs": n_jobs, "n_machines": n_machines, "jobs": jobs}
+
+
+# ---------------------------------------------------------------------------
+# Loader
+# ---------------------------------------------------------------------------
+
+
+class REALMDataset:
+    """Loads the 11 canonical REALM-Bench problem instances."""
+
+    def __init__(
+        self,
+        data_path: str | Path = DEFAULT_UPSTREAM_PATH,
+        *,
+        max_instances_per_problem: int = DEFAULT_INSTANCES_PER_PROBLEM,
+        use_sample_tasks: bool = False,
+    ) -> None:
         self.data_path = Path(data_path)
+        self.max_instances_per_problem = max_instances_per_problem
+        self.use_sample_tasks = use_sample_tasks
         self.tasks: list[REALMTask] = []
         self.test_cases: list[REALMTestCase] = []
         self._loaded = False
 
     async def load(self) -> None:
-        """Load REALM benchmark tasks from data files or generate built-in tasks."""
         if self._loaded:
             return
-
-        logger.info(f"[REALMDataset] Loading tasks from {self.data_path}")
-
-        # Try to load from files first
-        if self.data_path.exists():
-            await self._load_from_files()
-
-        # If no tasks loaded, generate built-in tasks
-        if not self.tasks:
-            logger.info("[REALMDataset] No external data found, generating built-in tasks")
-            await self._generate_builtin_tasks()
-
+        if self.use_sample_tasks:
+            self._load_sample_tasks()
+        else:
+            self._load_upstream()
         self._loaded = True
-        logger.info(f"[REALMDataset] Loaded {len(self.tasks)} tasks")
-
-    async def _load_from_files(self) -> None:
-        """Load tasks from JSON files in the data directory."""
-        json_files = list(self.data_path.glob("*.json"))
-
-        for file_path in json_files:
-            try:
-                with open(file_path) as f:
-                    data = json.load(f)
-
-                if "tasks" in data:
-                    for task_data in data["tasks"]:
-                        task = self._parse_task(task_data)
-                        if task:
-                            self.tasks.append(task)
-                            self.test_cases.append(self._create_test_case(task, task_data))
-            except Exception as e:
-                logger.warning(f"[REALMDataset] Error loading {file_path}: {e}")
-
-    def _parse_task(self, data: dict[str, object]) -> Optional[REALMTask]:
-        """Parse a task from JSON data with validation."""
-        try:
-            # Validate required fields
-            required_fields = ["id", "name", "description", "goal"]
-            for field in required_fields:
-                if field not in data:
-                    logger.warning(f"[REALMDataset] Missing required field: {field}")
-                    return None
-
-            # Validate and extract ID
-            task_id = data.get("id")
-            if not isinstance(task_id, str) or not task_id.strip():
-                logger.warning("[REALMDataset] Invalid task id")
-                return None
-
-            # Validate and extract name
-            name = data.get("name")
-            if not isinstance(name, str) or not name.strip():
-                logger.warning("[REALMDataset] Invalid task name")
-                return None
-
-            # Validate and extract description
-            description = data.get("description")
-            if not isinstance(description, str):
-                logger.warning("[REALMDataset] Invalid task description")
-                return None
-
-            # Validate and extract goal
-            goal = data.get("goal")
-            if not isinstance(goal, str) or not goal.strip():
-                logger.warning("[REALMDataset] Invalid task goal")
-                return None
-
-            # Parse category
-            category_raw = data.get("category", "")
-            category_str = str(category_raw).lower() if category_raw else ""
-            try:
-                category = REALMCategory(category_str) if category_str else REALMCategory.SEQUENTIAL
-            except ValueError:
-                logger.warning(f"[REALMDataset] Unknown category: {category_str}, defaulting to sequential")
-                category = REALMCategory.SEQUENTIAL
-
-            # Validate requirements (list of strings)
-            requirements_raw = data.get("requirements", [])
-            requirements: list[str] = []
-            if isinstance(requirements_raw, list):
-                requirements = [str(r) for r in requirements_raw if r is not None]
-
-            # Validate constraints (dict)
-            constraints_raw = data.get("constraints", {})
-            constraints: dict[str, str | int | float | bool] = {}
-            if isinstance(constraints_raw, dict):
-                for k, v in constraints_raw.items():
-                    if isinstance(v, (str, int, float, bool)):
-                        constraints[str(k)] = v
-
-            # Validate available_tools (list of strings)
-            tools_raw = data.get("available_tools", [])
-            available_tools: list[str] = []
-            if isinstance(tools_raw, list):
-                available_tools = [str(t) for t in tools_raw if t is not None]
-
-            # Validate expected_outcome
-            expected_outcome = str(data.get("expected_outcome", ""))
-
-            # Validate numeric fields
-            timeout_raw = data.get("timeout_ms", 60000)
-            timeout_ms = int(timeout_raw) if isinstance(timeout_raw, (int, float)) else 60000
-
-            max_steps_raw = data.get("max_steps", 10)
-            max_steps = int(max_steps_raw) if isinstance(max_steps_raw, (int, float)) else 10
-
-            # Validate difficulty
-            difficulty_raw = data.get("difficulty", "medium")
-            difficulty = str(difficulty_raw) if difficulty_raw else "medium"
-            if difficulty not in ("easy", "medium", "hard"):
-                difficulty = "medium"
-
-            # Validate metadata (dict)
-            metadata_raw = data.get("metadata", {})
-            metadata: dict[str, str | int | float | bool] = {}
-            if isinstance(metadata_raw, dict):
-                for k, v in metadata_raw.items():
-                    if isinstance(v, (str, int, float, bool)):
-                        metadata[str(k)] = v
-
-            return REALMTask(
-                id=task_id,
-                name=name,
-                description=description,
-                goal=goal,
-                category=category,
-                requirements=requirements,
-                constraints=constraints,
-                expected_outcome=expected_outcome,
-                available_tools=available_tools,
-                timeout_ms=timeout_ms,
-                max_steps=max_steps,
-                difficulty=difficulty,
-                metadata=metadata,
-            )
-        except Exception as e:
-            logger.warning(f"[REALMDataset] Error parsing task: {e}")
-            return None
-
-    def _create_test_case(self, task: REALMTask, data: dict[str, object]) -> REALMTestCase:
-        """Create a test case from a task and raw data with validation."""
-        # Parse input data
-        input_raw = data.get("input", {})
-        input_data: dict[str, str | dict[str, str]] = {}
-        
-        if isinstance(input_raw, dict):
-            message = input_raw.get("message")
-            input_data["message"] = str(message) if message else task.goal
-            
-            context_raw = input_raw.get("context", {})
-            if isinstance(context_raw, dict):
-                context: dict[str, str] = {}
-                for k, v in context_raw.items():
-                    context[str(k)] = str(v) if v is not None else ""
-                input_data["context"] = context
-            else:
-                input_data["context"] = {}
-        else:
-            input_data = {"message": task.goal, "context": {}}
-
-        # Parse expected data
-        expected_raw = data.get("expected", {})
-        expected: dict[str, list[str] | str | dict[str, int | list[str]]] = {}
-        
-        if isinstance(expected_raw, dict):
-            # Actions
-            actions_raw = expected_raw.get("actions", task.available_tools[:3])
-            expected_actions: list[str]
-            if isinstance(actions_raw, list):
-                expected_actions = [str(a) for a in actions_raw]
-            else:
-                expected_actions = task.available_tools[:3]
-            expected["actions"] = expected_actions
-            
-            # Outcome
-            outcome_raw = expected_raw.get("outcome", task.expected_outcome)
-            expected["outcome"] = str(outcome_raw) if outcome_raw else task.expected_outcome
-            
-            # Metrics
-            metrics_raw = expected_raw.get("metrics", {})
-            if isinstance(metrics_raw, dict):
-                metrics: dict[str, int | list[str]] = {
-                    "max_duration": task.timeout_ms,
-                    "max_steps": task.max_steps,
-                    # Default required actions should match the expected action set (not all tools)
-                    "required_actions": expected_actions,
-                }
-                if "max_duration" in metrics_raw:
-                    val = metrics_raw["max_duration"]
-                    metrics["max_duration"] = int(val) if isinstance(val, (int, float)) else task.timeout_ms
-                if "max_steps" in metrics_raw:
-                    val = metrics_raw["max_steps"]
-                    metrics["max_steps"] = int(val) if isinstance(val, (int, float)) else task.max_steps
-                if "required_actions" in metrics_raw:
-                    val = metrics_raw["required_actions"]
-                    if isinstance(val, list):
-                        metrics["required_actions"] = [str(a) for a in val]
-                    else:
-                        metrics["required_actions"] = expected_actions
-                expected["metrics"] = metrics
-            else:
-                expected["metrics"] = {
-                    "max_duration": task.timeout_ms,
-                    "max_steps": task.max_steps,
-                    "required_actions": expected_actions,
-                }
-        else:
-            fallback_actions = task.available_tools[:3]
-            expected = {
-                "actions": fallback_actions,
-                "outcome": task.expected_outcome,
-                "metrics": {
-                    "max_duration": task.timeout_ms,
-                    "max_steps": task.max_steps,
-                    "required_actions": fallback_actions,
-                },
-            }
-
-        return REALMTestCase(task=task, input=input_data, expected=expected)
-
-    async def _generate_builtin_tasks(self) -> None:
-        """Generate built-in benchmark tasks."""
-        # Sequential Planning Tasks
-        sequential_tasks = [
-            {
-                "id": "seq-001",
-                "name": "Mathematical Chain",
-                "description": "Execute a chain of mathematical operations",
-                "goal": "Calculate the sum of 1234 and 5678, multiply by 5, then compute logarithm",
-                "category": "sequential",
-                "requirements": ["mathematical calculation", "step sequencing"],
-                "constraints": {"max_time": 30000, "max_steps": 5},
-                "expected_outcome": "Final logarithm result of approximately 10.45",
-                "available_tools": ["sum_two_elements", "multiply_two_elements", "compute_log"],
-                "timeout_ms": 30000,
-                "max_steps": 5,
-                "difficulty": "easy",
-                "input": {
-                    "message": "Calculate sum of 1234 and 5678, multiply result by 5, take logarithm",
-                    "context": {},
-                },
-                "expected": {
-                    "actions": ["sum_two_elements", "multiply_two_elements", "compute_log"],
-                    "outcome": "log(34560) ≈ 10.45",
-                    "metrics": {"max_duration": 30000, "max_steps": 5},
-                },
-            },
-            {
-                "id": "seq-002",
-                "name": "Data Pipeline",
-                "description": "Process data through a sequential pipeline",
-                "goal": "Fetch user data, filter by active status, sort by date, export to CSV",
-                "category": "sequential",
-                "requirements": ["data retrieval", "filtering", "sorting", "export"],
-                "constraints": {"max_time": 45000, "max_steps": 6},
-                "expected_outcome": "CSV file with filtered and sorted user data",
-                "available_tools": ["fetch_data", "filter_data", "sort_data", "export_data"],
-                "timeout_ms": 45000,
-                "max_steps": 6,
-                "difficulty": "medium",
-                "input": {
-                    "message": "Fetch user data, filter active users, sort by date, export to CSV",
-                    "context": {},
-                },
-                "expected": {
-                    "actions": ["fetch_data", "filter_data", "sort_data", "export_data"],
-                    "outcome": "CSV export of filtered users",
-                    "metrics": {"max_duration": 45000, "max_steps": 6},
-                },
-            },
-            {
-                "id": "seq-003",
-                "name": "Document Processing",
-                "description": "Process document through transformation stages",
-                "goal": "Read document, extract key points, summarize, generate report",
-                "category": "sequential",
-                "requirements": ["document reading", "extraction", "summarization"],
-                "constraints": {"max_time": 60000, "max_steps": 8},
-                "expected_outcome": "Executive summary report",
-                "available_tools": ["read_document", "extract_key_points", "summarize_text", "generate_report"],
-                "timeout_ms": 60000,
-                "max_steps": 8,
-                "difficulty": "medium",
-                "input": {
-                    "message": "Read quarterly report, extract metrics, summarize findings, generate executive summary",
-                    "context": {},
-                },
-                "expected": {
-                    "actions": ["read_document", "extract_key_points", "summarize_text", "generate_report"],
-                    "outcome": "Executive summary report",
-                    "metrics": {"max_duration": 60000, "max_steps": 8},
-                },
-            },
-        ]
-
-        # Reactive Planning Tasks
-        reactive_tasks = [
-            {
-                "id": "react-001",
-                "name": "System Monitoring",
-                "description": "Monitor system and react to conditions",
-                "goal": "Monitor CPU usage and scale resources when threshold exceeded",
-                "category": "reactive",
-                "requirements": ["condition monitoring", "threshold detection", "scaling"],
-                "constraints": {"max_time": 45000, "max_steps": 6},
-                "expected_outcome": "System scaled when CPU > 80%",
-                "available_tools": ["check_condition", "adapt_plan", "scale_resources", "monitor_status"],
-                "timeout_ms": 45000,
-                "max_steps": 6,
-                "difficulty": "medium",
-                "input": {
-                    "message": "Monitor system, scale resources if CPU exceeds 80%",
-                    "context": {},
-                },
-                "expected": {
-                    "actions": ["monitor_status", "check_condition", "scale_resources"],
-                    "outcome": "Resources scaled based on condition",
-                    "metrics": {"max_duration": 45000, "max_steps": 6},
-                },
-            },
-            {
-                "id": "react-002",
-                "name": "Deployment with Rollback",
-                "description": "Deploy application with error handling and rollback",
-                "goal": "Deploy application, rollback if failed, notify team",
-                "category": "reactive",
-                "requirements": ["deployment", "error detection", "rollback", "notification"],
-                "constraints": {"max_time": 60000, "max_steps": 8},
-                "expected_outcome": "Successful deployment or clean rollback",
-                "available_tools": ["deploy_application", "check_health", "rollback_deployment", "send_notification"],
-                "timeout_ms": 60000,
-                "max_steps": 8,
-                "difficulty": "hard",
-                "input": {
-                    "message": "Deploy to production, rollback if health checks fail, notify ops team",
-                    "context": {},
-                },
-                "expected": {
-                    "actions": ["deploy_application", "check_health", "send_notification"],
-                    "outcome": "Deployment with error handling",
-                    "metrics": {"max_duration": 60000, "max_steps": 8},
-                },
-            },
-        ]
-
-        # Complex Planning Tasks
-        complex_tasks = [
-            {
-                "id": "complex-001",
-                "name": "Project Planning",
-                "description": "Create comprehensive project plan with constraints",
-                "goal": "Plan mobile app project with 3 developers, 2-month deadline, $50K budget",
-                "category": "complex",
-                "requirements": ["resource allocation", "timeline management", "dependencies"],
-                "constraints": {"max_time": 90000, "max_steps": 12, "developers": 3, "budget": 50000},
-                "expected_outcome": "Complete project plan with resource allocation",
-                "available_tools": ["allocate_resource", "schedule_task", "coordinate_execution", "validate_constraints"],
-                "timeout_ms": 90000,
-                "max_steps": 12,
-                "difficulty": "hard",
-                "input": {
-                    "message": "Create project plan for mobile app: 3 devs, 2 months, $50K budget",
-                    "context": {},
-                },
-                "expected": {
-                    "actions": ["allocate_resource", "schedule_task", "coordinate_execution"],
-                    "outcome": "Project plan with milestones",
-                    "metrics": {"max_duration": 90000, "max_steps": 12},
-                },
-            },
-            {
-                "id": "complex-002",
-                "name": "CI/CD Pipeline",
-                "description": "Set up CI/CD with parallel testing and deployment",
-                "goal": "Configure parallel tests and conditional deployment",
-                "category": "complex",
-                "requirements": ["parallel execution", "test orchestration", "deployment"],
-                "constraints": {"max_time": 60000, "max_steps": 10},
-                "expected_outcome": "CI/CD pipeline with parallel tests",
-                "available_tools": ["configure_pipeline", "run_tests_parallel", "gate_deployment", "deploy_staging"],
-                "timeout_ms": 60000,
-                "max_steps": 10,
-                "difficulty": "hard",
-                "input": {
-                    "message": "Set up CI/CD: parallel unit/integration/e2e tests, deploy if all pass",
-                    "context": {},
-                },
-                "expected": {
-                    "actions": ["configure_pipeline", "run_tests_parallel", "gate_deployment"],
-                    "outcome": "CI/CD pipeline configured",
-                    "metrics": {"max_duration": 60000, "max_steps": 10},
-                },
-            },
-        ]
-
-        # Multi-Agent Tasks
-        multi_agent_tasks = [
-            {
-                "id": "multi-001",
-                "name": "Research Collaboration",
-                "description": "Coordinate multiple agents for comprehensive research",
-                "goal": "Gather and synthesize information from multiple sources",
-                "category": "multi_agent",
-                "requirements": ["task delegation", "parallel research", "synthesis"],
-                "constraints": {"max_time": 90000, "max_steps": 12, "agents": 3},
-                "expected_outcome": "Synthesized research report",
-                "available_tools": ["delegate_task", "search_academic", "search_industry", "aggregate_results"],
-                "timeout_ms": 90000,
-                "max_steps": 12,
-                "difficulty": "hard",
-                "input": {
-                    "message": "Research AI trends: academic papers, industry reports, social media",
-                    "context": {},
-                },
-                "expected": {
-                    "actions": ["delegate_task", "aggregate_results"],
-                    "outcome": "Synthesized research report",
-                    "metrics": {"max_duration": 90000, "max_steps": 12},
-                },
-            },
-            {
-                "id": "multi-002",
-                "name": "Collaborative Debugging",
-                "description": "Debug production issue with specialized agents",
-                "goal": "Identify and resolve production issue through collaboration",
-                "category": "multi_agent",
-                "requirements": ["log analysis", "metrics analysis", "code review"],
-                "constraints": {"max_time": 75000, "max_steps": 10, "agents": 3},
-                "expected_outcome": "Root cause analysis and resolution",
-                "available_tools": ["analyze_logs", "check_metrics", "review_code_changes", "correlate_findings"],
-                "timeout_ms": 75000,
-                "max_steps": 10,
-                "difficulty": "hard",
-                "input": {
-                    "message": "Debug production issue: analyze logs, check metrics, review code changes",
-                    "context": {},
-                },
-                "expected": {
-                    "actions": ["analyze_logs", "check_metrics", "correlate_findings"],
-                    "outcome": "Root cause identified",
-                    "metrics": {"max_duration": 75000, "max_steps": 10},
-                },
-            },
-        ]
-
-        # Tool Use Tasks
-        tool_use_tasks = [
-            {
-                "id": "tool-001",
-                "name": "API Chain",
-                "description": "Plan sequence of API calls with data dependencies",
-                "goal": "Get user profile, extract email, send welcome message",
-                "category": "tool_use",
-                "requirements": ["API calls", "data extraction", "sequencing"],
-                "constraints": {"max_time": 30000, "max_steps": 5},
-                "expected_outcome": "Welcome email sent",
-                "available_tools": ["call_api", "parse_json", "send_email"],
-                "timeout_ms": 30000,
-                "max_steps": 5,
-                "difficulty": "easy",
-                "input": {
-                    "message": "Get user profile from API, extract email, send welcome message",
-                    "context": {},
-                },
-                "expected": {
-                    "actions": ["call_api", "parse_json", "send_email"],
-                    "outcome": "Welcome email sent",
-                    "metrics": {"max_duration": 30000, "max_steps": 5},
-                },
-            },
-            {
-                "id": "tool-002",
-                "name": "File Operations",
-                "description": "Plan file read, transform, and write operations",
-                "goal": "Read config.json, update database URL, save changes",
-                "category": "tool_use",
-                "requirements": ["file I/O", "JSON parsing", "modification"],
-                "constraints": {"max_time": 30000, "max_steps": 5},
-                "expected_outcome": "Config file updated",
-                "available_tools": ["read_file", "parse_json", "modify_json", "write_file"],
-                "timeout_ms": 30000,
-                "max_steps": 5,
-                "difficulty": "easy",
-                "input": {
-                    "message": "Read config.json, update database URL, save changes",
-                    "context": {},
-                },
-                "expected": {
-                    "actions": ["read_file", "parse_json", "modify_json", "write_file"],
-                    "outcome": "Config updated",
-                    "metrics": {"max_duration": 30000, "max_steps": 5},
-                },
-            },
-        ]
-
-        # Reasoning Tasks
-        reasoning_tasks = [
-            {
-                "id": "reason-001",
-                "name": "Decision Under Uncertainty",
-                "description": "Make decision with incomplete information",
-                "goal": "Recommend launch decision with 70% user feedback and volatile market",
-                "category": "reasoning",
-                "requirements": ["risk assessment", "decision making", "contingency planning"],
-                "constraints": {"max_time": 45000, "max_steps": 6},
-                "expected_outcome": "Launch recommendation with reasoning",
-                "available_tools": ["gather_information", "evaluate_options", "estimate_probability", "make_decision"],
-                "timeout_ms": 45000,
-                "max_steps": 6,
-                "difficulty": "hard",
-                "input": {
-                    "message": "Recommend launch decision: 70% feedback, volatile market",
-                    "context": {},
-                },
-                "expected": {
-                    "actions": ["gather_information", "evaluate_options", "make_decision"],
-                    "outcome": "Launch recommendation",
-                    "metrics": {"max_duration": 45000, "max_steps": 6},
-                },
-            },
-            {
-                "id": "reason-002",
-                "name": "Fallback Planning",
-                "description": "Create plan with alternative paths",
-                "goal": "Book flight to NYC, fallback to connecting flight, then train",
-                "category": "reasoning",
-                "requirements": ["primary planning", "fallback options", "prioritization"],
-                "constraints": {"max_time": 45000, "max_steps": 8},
-                "expected_outcome": "Travel booking with fallbacks",
-                "available_tools": ["search_direct_flights", "search_connections", "search_trains", "book_travel"],
-                "timeout_ms": 45000,
-                "max_steps": 8,
-                "difficulty": "medium",
-                "input": {
-                    "message": "Book flight to NYC. If unavailable, try connections, then train",
-                    "context": {},
-                },
-                "expected": {
-                    "actions": ["search_direct_flights", "search_connections", "book_travel"],
-                    "outcome": "Travel booked with fallbacks",
-                    "metrics": {"max_duration": 45000, "max_steps": 8},
-                },
-            },
-        ]
-
-        # Combine all tasks
-        all_tasks = (
-            sequential_tasks
-            + reactive_tasks
-            + complex_tasks
-            + multi_agent_tasks
-            + tool_use_tasks
-            + reasoning_tasks
+        logger.info(
+            "[REALMDataset] Loaded %d tasks (sample=%s)",
+            len(self.tasks),
+            self.use_sample_tasks,
         )
 
-        for task_data in all_tasks:
-            task = self._parse_task(task_data)
-            if task:
-                self.tasks.append(task)
-                self.test_cases.append(self._create_test_case(task, task_data))
+    # ------------------------------------------------------------------
+    # Built-in sample tasks (smoke runs)
+    # ------------------------------------------------------------------
+
+    def _load_sample_tasks(self) -> None:
+        """Two small synthetic instances — P1 + P11 — for smoke tests."""
+        # P1 — tiny tour
+        p1_instance = {
+            "instance_id": "p1_sample",
+            "locations": ["entrance", "library", "cafeteria", "entrance"],
+            "start_location": "entrance",
+            "end_location": "entrance",
+            "distances": {
+                "entrance-library": 5,
+                "library-entrance": 5,
+                "entrance-cafeteria": 7,
+                "cafeteria-entrance": 7,
+                "library-cafeteria": 4,
+                "cafeteria-library": 4,
+            },
+            "time_windows": {"library": [9, 12], "cafeteria": [11, 14]},
+            "max_duration": 60,
+        }
+        self._register_instance(RealmProblem.P1, "p1_sample", p1_instance)
+
+        # P11 — 2 jobs x 2 machines, known optimal makespan 5.
+        # Job0: M0(3) -> M1(2). Job1: M1(2) -> M0(1).
+        # Optimal makespan = 5 (Job1's M0 runs at t=4..5 after Job0's M0).
+        p11_instance = {
+            "instance_id": "p11_sample",
+            "n_jobs": 2,
+            "n_machines": 2,
+            "jobs": [[(0, 3), (1, 2)], [(1, 2), (0, 1)]],
+            "upper_bound": 5,
+        }
+        self._register_instance(
+            RealmProblem.P11,
+            "p11_sample",
+            p11_instance,
+            oracle={"makespan": 5},
+        )
+
+    # ------------------------------------------------------------------
+    # Upstream JSON / JSSP loader
+    # ------------------------------------------------------------------
+
+    def _load_upstream(self) -> None:
+        if not self.data_path.exists():
+            logger.warning(
+                "[REALMDataset] data path %s does not exist; falling back to sample tasks",
+                self.data_path,
+            )
+            self._load_sample_tasks()
+            return
+
+        for problem in RealmProblem:
+            self._load_problem(problem)
+
+    def _load_problem(self, problem: RealmProblem) -> None:
+        problem_dir = self.data_path / problem.value
+        if not problem_dir.exists():
+            logger.debug(
+                "[REALMDataset] No directory for %s under %s", problem.value, self.data_path
+            )
+            return
+
+        if problem == RealmProblem.P11:
+            self._load_p11(problem_dir)
+            return
+
+        # P1..P10 are JSON instances under a few possible subdirs.
+        candidate_subdirs = ["custom", "processed", "disruptions", ""]
+        json_paths: list[Path] = []
+        for sub in candidate_subdirs:
+            base = problem_dir / sub if sub else problem_dir
+            if base.is_dir():
+                json_paths.extend(sorted(base.glob("*.json")))
+        # de-dupe while preserving order
+        seen: set[Path] = set()
+        unique_paths: list[Path] = []
+        for p in json_paths:
+            if p not in seen:
+                seen.add(p)
+                unique_paths.append(p)
+
+        for path in unique_paths[: self.max_instances_per_problem]:
+            try:
+                data = json.loads(path.read_text(encoding="utf-8"))
+            except Exception as exc:
+                logger.warning("[REALMDataset] Failed to parse %s: %s", path, exc)
+                continue
+            instance_id = data.get("instance_id") or path.stem
+            data = _normalize_instance(problem, data)
+            self._register_instance(problem, instance_id, data)
+
+    def _load_p11(self, problem_dir: Path) -> None:
+        """Load JSSP instances from the TA / DMU / abzswvyn text families."""
+        instances: list[tuple[str, Path]] = []
+        # Prefer Taillard small instances (TA01/TA02) and small DMU ones.
+        for sub in ("TA", "DMU", "abzswvyn"):
+            sub_dir = problem_dir / sub
+            if not sub_dir.is_dir():
+                continue
+            for path in sorted(sub_dir.glob("*.txt")):
+                instances.append((path.stem, path))
+
+        for instance_id, path in instances[: self.max_instances_per_problem]:
+            try:
+                parsed = parse_jssp_instance(path.read_text(encoding="utf-8"))
+            except Exception as exc:
+                logger.warning("[REALMDataset] Failed JSSP parse %s: %s", path, exc)
+                continue
+            instance = {
+                "instance_id": instance_id,
+                "source_file": str(path.relative_to(self.data_path)),
+                **parsed,
+            }
+            oracle = (
+                {"makespan": parsed["upper_bound"]}
+                if parsed.get("upper_bound")
+                else None
+            )
+            self._register_instance(
+                RealmProblem.P11, instance_id, instance, oracle=oracle
+            )
+
+    # ------------------------------------------------------------------
+    # Task registration
+    # ------------------------------------------------------------------
+
+    def _register_instance(
+        self,
+        problem: RealmProblem,
+        instance_id: str,
+        instance: dict[str, Any],
+        *,
+        oracle: Optional[dict[str, Any]] = None,
+    ) -> None:
+        task_id = f"{problem.value}-{instance_id}"
+        name = f"{problem.value}: {PROBLEM_DESCRIPTIONS[problem].split(' — ', 1)[0]}"
+        description = PROBLEM_DESCRIPTIONS[problem]
+
+        num_agents = self._infer_num_agents(problem, instance)
+        has_disruptions = (
+            problem in PROBLEMS_WITH_DISRUPTIONS
+            or bool(instance.get("disruption_scenarios"))
+        )
+
+        # Goal phrasing fed to the agent. Concrete, problem-specific.
+        goal = _build_goal_text(problem, instance)
+
+        # Embed any oracle that came along in the instance file
+        # (e.g. JSSP upper_bound) into the explicit ``oracle`` field.
+        if oracle is None and "upper_bound" in instance:
+            oracle = {"makespan": instance["upper_bound"]}
+
+        task = REALMTask(
+            id=task_id,
+            name=name,
+            description=description,
+            goal=goal,
+            problem=problem,
+            instance=instance,
+            oracle=oracle,
+            timeout_ms=300_000,
+            max_steps=64,
+            difficulty=_infer_difficulty(problem, instance),
+            num_agents=num_agents,
+            has_disruptions=has_disruptions,
+            metadata={
+                "available_tools": _suggested_tools(problem),
+                "constraints": _problem_constraints(problem, instance),
+                "requirements": [],
+                "expected_outcome": goal,
+            },
+        )
+
+        test_case = REALMTestCase(
+            task=task,
+            input={"message": goal, "context": {"instance_id": instance_id}},
+            expected={
+                "problem": problem.value,
+                "oracle": oracle or {},
+                "disruptions": instance.get("disruption_scenarios", []),
+                # Back-compat: keep an ``actions`` key (list of suggested
+                # tools). Older smoke code may read it.
+                "actions": _suggested_tools(problem),
+            },
+        )
+
+        self.tasks.append(task)
+        self.test_cases.append(test_case)
+
+    def _infer_num_agents(self, problem: RealmProblem, instance: dict[str, Any]) -> int:
+        if problem not in MULTI_AGENT_PROBLEMS:
+            return 1
+        # Common shapes: ``tour_guides`` (P2), ``vehicles`` (P3/4/5/6/8/9),
+        # ``personnel`` (P7), ``suppliers`` (P10).
+        for key in ("tour_guides", "vehicles", "personnel", "suppliers"):
+            if isinstance(instance.get(key), list):
+                return max(1, len(instance[key]))
+            if isinstance(instance.get(key), dict):
+                return max(1, len(instance[key]))
+        return 2
+
+    # ------------------------------------------------------------------
+    # Selection API
+    # ------------------------------------------------------------------
 
     def get_tasks(
         self,
-        categories: Optional[list[REALMCategory]] = None,
+        problems: Optional[list[RealmProblem]] = None,
         limit: Optional[int] = None,
     ) -> list[REALMTask]:
-        """Get tasks, optionally filtered by category."""
-        if categories:
-            filtered = [t for t in self.tasks if t.category in categories]
-        else:
-            filtered = self.tasks
-
+        filtered = (
+            [t for t in self.tasks if t.problem in problems]
+            if problems
+            else list(self.tasks)
+        )
         return filtered[:limit] if limit else filtered
 
     def get_test_cases(
         self,
-        categories: Optional[list[REALMCategory]] = None,
+        problems: Optional[list[RealmProblem]] = None,
+        categories: Optional[list[RealmProblem]] = None,  # back-compat alias
         limit: Optional[int] = None,
     ) -> list[REALMTestCase]:
-        """
-        Get test cases, optionally filtered by category.
+        """Return test cases, optionally filtered.
 
-        Note: If `limit` is provided, it is interpreted as **limit per category**
-        (aligned with `REALMConfig.max_tasks_per_category` and the CLI flag `--max-tasks`).
+        ``limit`` is interpreted as **limit per problem** (matches the
+        old ``max_tasks_per_category`` semantics).
         """
-        category_order = categories if categories is not None else list(REALMCategory)
-        buckets: dict[REALMCategory, list[REALMTestCase]] = {c: [] for c in category_order}
-
+        selected = problems if problems is not None else categories
+        problem_order = selected if selected is not None else list(RealmProblem)
+        buckets: dict[RealmProblem, list[REALMTestCase]] = {p: [] for p in problem_order}
         for tc in self.test_cases:
-            if tc.task.category in buckets:
-                buckets[tc.task.category].append(tc)
+            if tc.task.problem in buckets:
+                buckets[tc.task.problem].append(tc)
 
         if limit is None:
-            return [tc for c in category_order for tc in buckets[c]]
-
-        return [tc for c in category_order for tc in buckets[c][:limit]]
+            return [tc for p in problem_order for tc in buckets[p]]
+        return [tc for p in problem_order for tc in buckets[p][:limit]]
 
     def get_tasks_by_difficulty(self, difficulty: str) -> list[REALMTask]:
-        """Get tasks filtered by difficulty level."""
         return [t for t in self.tasks if t.difficulty == difficulty]
+
+
+# ---------------------------------------------------------------------------
+# Per-problem helpers
+# ---------------------------------------------------------------------------
+
+
+def _build_goal_text(problem: RealmProblem, instance: dict[str, Any]) -> str:
+    """Build a concrete agent-facing goal string."""
+    iid = instance.get("instance_id", "?")
+    if problem == RealmProblem.P1:
+        locs = instance.get("locations", [])
+        return (
+            f"[{iid}] Visit all locations {locs[1:-1]} starting from "
+            f"{instance.get('start_location', 'entrance')} respecting time windows "
+            f"and minimizing total travel time."
+        )
+    if problem == RealmProblem.P2:
+        n_groups = len(instance.get("visitor_groups", []))
+        n_guides = len(instance.get("tour_guides", []))
+        return (
+            f"[{iid}] Assign {n_guides} tour guides to {n_groups} visitor groups "
+            "respecting size capacity and minimizing wait times."
+        )
+    if problem in (RealmProblem.P3, RealmProblem.P4):
+        n_pass = len(instance.get("passengers", []))
+        n_veh = len(instance.get("vehicles", []))
+        return (
+            f"[{iid}] Route {n_veh} vehicles to serve {n_pass} passengers under "
+            "capacity, fuel, and deadline constraints; minimize total distance."
+            + (" Adapt to live disruptions." if problem == RealmProblem.P4 else "")
+        )
+    if problem in (RealmProblem.P5, RealmProblem.P8):
+        return (
+            f"[{iid}] Coordinate guest pickups, errands, and shared vehicles to "
+            f"the wedding deadline ({instance.get('constraints', {}).get('wedding_deadline', '18:00')})."
+            + (" Adapt to road closures." if problem == RealmProblem.P8 else "")
+        )
+    if problem in (RealmProblem.P6, RealmProblem.P9):
+        return (
+            f"[{iid}] Coordinate family pickups and dinner preparation to be served by "
+            f"{instance.get('constraints', {}).get('dinner_deadline', '18:00')}."
+            + (" Adapt to flight delays." if problem == RealmProblem.P9 else "")
+        )
+    if problem == RealmProblem.P7:
+        n_regions = len(instance.get("regions", []))
+        return (
+            f"[{iid}] Allocate aid to {n_regions} regions weighted by severity, "
+            "subject to resource and personnel constraints; minimize unmet need."
+        )
+    if problem == RealmProblem.P10:
+        return (
+            f"[{iid}] Plan procurement, manufacturing, and delivery for the GPU "
+            "supply chain to meet deadlines under budget and capacity constraints."
+        )
+    if problem == RealmProblem.P11:
+        return (
+            f"[{iid}] Job-shop schedule with {instance.get('n_jobs')} jobs on "
+            f"{instance.get('n_machines')} machines; minimize makespan."
+        )
+    return f"[{iid}] {PROBLEM_DESCRIPTIONS[problem]}"
+
+
+def _suggested_tools(problem: RealmProblem) -> list[str]:
+    """Suggested tool palette for prompt-side hints. Not enforced by the evaluator."""
+    if problem in (RealmProblem.P1, RealmProblem.P2):
+        return ["plan_route", "check_time_window", "compute_distance", "submit_solution"]
+    if problem in (RealmProblem.P3, RealmProblem.P4):
+        return ["assign_passenger", "compute_route", "check_constraints", "submit_solution", "adapt_to_disruption"]
+    if problem in (RealmProblem.P5, RealmProblem.P6, RealmProblem.P8, RealmProblem.P9):
+        return ["schedule_task", "assign_vehicle", "check_deadline", "submit_solution", "adapt_to_disruption"]
+    if problem == RealmProblem.P7:
+        return ["allocate_resource", "prioritize_region", "dispatch_personnel", "submit_solution"]
+    if problem == RealmProblem.P10:
+        return ["order_components", "schedule_facility", "check_budget", "submit_solution"]
+    if problem == RealmProblem.P11:
+        return ["sequence_operations", "compute_makespan", "submit_solution"]
+    return ["submit_solution"]
+
+
+def _problem_constraints(problem: RealmProblem, instance: dict[str, Any]) -> dict[str, Any]:
+    """Extract problem-level constraints from an upstream instance."""
+    out: dict[str, Any] = {}
+    if problem == RealmProblem.P1:
+        out["max_duration"] = instance.get("max_duration", 180)
+        out["time_windows"] = instance.get("time_windows", {})
+    elif problem == RealmProblem.P2:
+        out["tour_duration"] = instance.get("tour_duration", 90)
+        out["max_group_size"] = instance.get("max_group_size", 15)
+    elif problem in (RealmProblem.P3, RealmProblem.P4):
+        out["deadlines"] = {
+            p.get("id"): p.get("deadline")
+            for p in instance.get("passengers", [])
+            if p.get("deadline") is not None
+        }
+    elif problem == RealmProblem.P7:
+        out["deadlines"] = instance.get("deadlines", {})
+    elif problem == RealmProblem.P10:
+        out["budget"] = instance.get("budget", 0)
+        out["delivery_deadlines"] = instance.get("delivery_deadlines", {})
+    return out
+
+
+def _normalize_instance(problem: RealmProblem, instance: dict[str, Any]) -> dict[str, Any]:
+    """Bring upstream-instance schema variations into a single shape.
+
+    The upstream JSON files use slightly different key names depending on
+    the generator (``ride_requests`` vs ``passengers``,
+    ``passenger_id`` vs ``id``, …). We normalise here so the solvers and
+    evaluator can rely on a single shape.
+    """
+    out = dict(instance)
+
+    # P3/P4: ride_requests -> passengers, passenger_id -> id
+    if problem in (RealmProblem.P3, RealmProblem.P4):
+        if "ride_requests" in out and "passengers" not in out:
+            out["passengers"] = out.pop("ride_requests")
+        for p in out.get("passengers", []) or []:
+            if "id" not in p and "passenger_id" in p:
+                p["id"] = p["passenger_id"]
+        for v in out.get("vehicles", []) or []:
+            if "id" not in v and "vehicle_id" in v:
+                v["id"] = v["vehicle_id"]
+        # Flatten city_map.distances to top-level for solver convenience.
+        if "distances" not in out and isinstance(out.get("city_map"), dict):
+            d = out["city_map"].get("distances")
+            if isinstance(d, dict):
+                out["distances"] = d
+
+    # P2: ensure visitor_groups/tour_guides ids accessible.
+    if problem == RealmProblem.P2:
+        for g in out.get("visitor_groups", []) or []:
+            if "id" not in g and "group_id" in g:
+                g["id"] = g["group_id"]
+        for g in out.get("tour_guides", []) or []:
+            if "id" not in g and "guide_id" in g:
+                g["id"] = g["guide_id"]
+
+    # P7: regions may use region_id
+    if problem == RealmProblem.P7:
+        for r in out.get("regions", []) or []:
+            if "id" not in r and "region_id" in r:
+                r["id"] = r["region_id"]
+
+    return out
+
+
+def _infer_difficulty(problem: RealmProblem, instance: dict[str, Any]) -> str:
+    if problem == RealmProblem.P11:
+        n = int(instance.get("n_jobs", 0)) * int(instance.get("n_machines", 0))
+        if n <= 100:
+            return "easy"
+        if n <= 400:
+            return "medium"
+        return "hard"
+    if problem in PROBLEMS_WITH_DISRUPTIONS:
+        return "hard"
+    if problem in MULTI_AGENT_PROBLEMS:
+        return "medium"
+    return "easy"

@@ -131,11 +131,11 @@ export async function generateTextEmbedding(
 
 	try {
 		if (config.EMBEDDING_PROVIDER === "local") {
-			return await generateLocalEmbedding(runtime, text);
+			return generateLocalEmbedding(runtime, text);
 		} else if (config.EMBEDDING_PROVIDER === "openai") {
-			return await generateOpenAIEmbedding(text, config, dimensions);
+			return generateOpenAIEmbedding(text, config, dimensions);
 		} else if (config.EMBEDDING_PROVIDER === "google") {
-			return await generateGoogleEmbedding(text, config);
+			return generateGoogleEmbedding(text, config);
 		}
 
 		throw new Error(
@@ -252,7 +252,7 @@ async function generateOpenAIEmbedding(
 		createOpenAI: CreateOpenAI;
 	}>("@ai-sdk/openai");
 	const openai = createOpenAI({
-		apiKey: config.OPENAI_API_KEY as string,
+		apiKey: config.OPENAI_API_KEY ?? "",
 		baseURL: config.OPENAI_BASE_URL,
 	});
 
@@ -344,7 +344,7 @@ export async function generateText(
 			async () => {
 				switch (provider) {
 					case "anthropic":
-						return await generateAnthropicText(
+						return generateAnthropicText(
 							runtime,
 							config,
 							prompt,
@@ -353,7 +353,7 @@ export async function generateText(
 							maxTokens,
 						);
 					case "openai":
-						return await generateOpenAIText(
+						return generateOpenAIText(
 							runtime,
 							config,
 							prompt,
@@ -362,7 +362,7 @@ export async function generateText(
 							maxTokens,
 						);
 					case "openrouter":
-						return await generateOpenRouterText(
+						return generateOpenRouterText(
 							runtime,
 							config,
 							prompt,
@@ -374,7 +374,7 @@ export async function generateText(
 							autoCacheContextualRetrieval,
 						);
 					case "google":
-						return await generateGoogleText(
+						return generateGoogleText(
 							runtime,
 							prompt,
 							system,
@@ -405,7 +405,7 @@ async function generateAnthropicText(
 		createAnthropic: CreateAnthropic;
 	}>("@ai-sdk/anthropic");
 	const anthropic = createAnthropic({
-		apiKey: config.ANTHROPIC_API_KEY as string,
+		apiKey: config.ANTHROPIC_API_KEY ?? "",
 		baseURL: config.ANTHROPIC_BASE_URL,
 	});
 
@@ -463,7 +463,7 @@ async function generateOpenAIText(
 		createOpenAI: CreateOpenAI;
 	}>("@ai-sdk/openai");
 	const openai = createOpenAI({
-		apiKey: config.OPENAI_API_KEY as string,
+		apiKey: config.OPENAI_API_KEY ?? "",
 		baseURL: config.OPENAI_BASE_URL,
 	});
 
@@ -545,7 +545,7 @@ async function generateOpenRouterText(
 		createOpenRouter: CreateOpenRouter;
 	}>("@openrouter/ai-sdk-provider");
 	const openrouter = createOpenRouter({
-		apiKey: config.OPENROUTER_API_KEY as string,
+		apiKey: config.OPENROUTER_API_KEY ?? "",
 		baseURL: config.OPENROUTER_BASE_URL,
 	});
 
@@ -574,7 +574,7 @@ async function generateOpenRouterText(
 		}
 
 		if (isClaudeModel) {
-			return await generateClaudeWithCaching(
+			return generateClaudeWithCaching(
 				runtime,
 				promptText,
 				system,
@@ -584,7 +584,7 @@ async function generateOpenRouterText(
 				documentForCaching,
 			);
 		} else if (isGeminiModel) {
-			return await generateGeminiWithCaching(
+			return generateGeminiWithCaching(
 				runtime,
 				promptText,
 				system,
@@ -597,7 +597,7 @@ async function generateOpenRouterText(
 		}
 	}
 
-	return await generateStandardOpenRouterText(
+	return generateStandardOpenRouterText(
 		runtime,
 		prompt,
 		system,

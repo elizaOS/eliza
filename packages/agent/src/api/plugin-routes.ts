@@ -1,7 +1,7 @@
 import type http from "node:http";
 import type { AgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import type { ReadJsonBodyOptions } from "@elizaos/shared";
+import type { PluginParamDef, ReadJsonBodyOptions } from "@elizaos/shared";
 import {
   asRecord,
   isElizaSettingsDebugEnabled,
@@ -63,17 +63,7 @@ const ADVANCED_CAPABILITY_SERVICE_BY_PLUGIN_ID: Partial<
 // Types — kept lean to avoid circular deps with server.ts
 // ---------------------------------------------------------------------------
 
-interface PluginParamDef {
-  key: string;
-  type: string;
-  description: string;
-  required: boolean;
-  sensitive: boolean;
-  default?: string;
-  options?: string[];
-  currentValue: string | null;
-  isSet: boolean;
-}
+// PluginParamDef is imported from @elizaos/shared above.
 
 interface PluginEntry {
   id: string;
@@ -673,7 +663,7 @@ export async function handlePluginRoutes(
     config: ElizaConfig,
   ): Promise<ResolvedPlugin[]> => {
     const { resolvePlugins } = await import("../runtime/plugin-resolver.ts");
-    return await resolvePlugins(config, { quiet: true });
+    return resolvePlugins(config, { quiet: true });
   };
 
   const resolvePluginsSnapshotSafe = async (

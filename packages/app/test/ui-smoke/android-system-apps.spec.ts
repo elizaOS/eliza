@@ -166,7 +166,9 @@ test("Phone, Contacts, WiFi, Messages, and Device Settings handle core interacti
   page,
 }) => {
   const issues = installIssueGuards(page);
-  const byName = new Map(ANDROID_SYSTEM_APP_CASES.map((route) => [route.name, route]));
+  const byName = new Map(
+    ANDROID_SYSTEM_APP_CASES.map((route) => [route.name, route]),
+  );
 
   await openAppWindow(page, byName.get("phone")!);
   await page.getByTestId("phone-dial-key-1").click();
@@ -179,7 +181,9 @@ test("Phone, Contacts, WiFi, Messages, and Device Settings handle core interacti
   const phoneContactsTab = page.getByRole("tab", { name: "Contacts" });
   if (await phoneContactsTab.isEnabled()) {
     await phoneContactsTab.click();
-    await expect(page.getByText("No contacts with phone numbers.")).toBeVisible();
+    await expect(
+      page.getByText("No contacts with phone numbers."),
+    ).toBeVisible();
   } else {
     await expect(phoneContactsTab).toBeDisabled();
   }

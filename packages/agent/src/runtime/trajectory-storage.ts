@@ -494,7 +494,11 @@ async function loadPersistedTrajectoriesForExport(
       .filter((trajectory): trajectory is PersistedTrajectory =>
         Boolean(trajectory),
       );
-  } catch {
+  } catch (err) {
+    coreLogger.warn(
+      "[trajectory-persistence] exportPersistedTrajectoriesRaw failed:",
+      err instanceof Error ? err.message : String(err),
+    );
     return [];
   }
 }
@@ -507,7 +511,7 @@ export async function installDatabaseTrajectoryLogger(
   runtime: IAgentRuntime,
 ): Promise<void> {
   if (!hasRuntimeDb(runtime)) {
-    console.warn(
+    coreLogger.warn(
       "[trajectory-persistence] installDatabaseTrajectoryLogger: no database adapter found on runtime",
     );
     return;
@@ -515,7 +519,7 @@ export async function installDatabaseTrajectoryLogger(
 
   const logger = await resolveTrajectoryLogger(runtime);
   if (!logger) {
-    console.warn(
+    coreLogger.warn(
       "[trajectory-persistence] installDatabaseTrajectoryLogger: no logger found to patch",
     );
     return;
@@ -752,7 +756,10 @@ export async function installDatabaseTrajectoryLogger(
 
       return { trajectories, total, offset, limit };
     } catch (err) {
-      console.error("[trajectory-persistence] listTrajectories error:", err);
+      coreLogger.error(
+        "[trajectory-persistence] listTrajectories error:",
+        err instanceof Error ? err.message : String(err),
+      );
       return { trajectories: [], total: 0, offset, limit };
     }
   };
@@ -1187,7 +1194,7 @@ export class DatabaseTrajectoryLogger extends Service {
       pruneOldTrajectories(this.runtime, 30)
         .then((count) => {
           if (count && count > 0) {
-            console.warn(
+            coreLogger.warn(
               `[trajectory-persistence] Pruned ${count} trajectories older than 30 days`,
             );
           }
@@ -1375,7 +1382,10 @@ export class DatabaseTrajectoryLogger extends Service {
 
       return { trajectories, total, offset, limit };
     } catch (err) {
-      console.error("[DatabaseTrajectoryLogger] listTrajectories error:", err);
+      coreLogger.error(
+        "[DatabaseTrajectoryLogger] listTrajectories error:",
+        err instanceof Error ? err.message : String(err),
+      );
       return { trajectories: [], total: 0, offset, limit };
     }
   }
@@ -1529,9 +1539,9 @@ export async function pruneOldTrajectories(
         return 0;
       }
     } catch (err) {
-      console.warn(
+      coreLogger.warn(
         "[trajectory-persistence] Could not write compressed trajectory archive, skipping prune",
-        err,
+        err instanceof Error ? err.message : String(err),
       );
       return null;
     }
@@ -1596,14 +1606,14 @@ export async function pruneOldTrajectories(
         );
         summaryArchived = true;
       } catch {
-        console.warn(
+        coreLogger.warn(
           "[trajectory-persistence] Could not write summary trajectory archive rows",
         );
       }
     }
 
     if (!summaryArchived) {
-      console.warn(
+      coreLogger.warn(
         "[trajectory-persistence] Summary archive insert failed, skipping prune delete",
       );
       return null;

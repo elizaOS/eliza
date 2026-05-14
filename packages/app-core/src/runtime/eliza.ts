@@ -37,17 +37,6 @@ import {
 } from "@elizaos/core";
 import type { EmbeddingProgressCallback } from "@elizaos/plugin-local-inference/runtime";
 import {
-  DEFAULT_MODELS_DIR,
-  detectEmbeddingPreset,
-  embeddingGgufFilePresent,
-  ensureLocalInferenceHandler,
-  ensureModel,
-  findExistingEmbeddingModelForWarmupReuse,
-  isEmbeddingWarmupReuseDisabled,
-  shouldEnableMobileLocalInference,
-  shouldWarmupLocalEmbeddingModel,
-} from "@elizaos/plugin-local-inference/runtime";
-import {
   ensureRuntimeSqlCompatibility,
   isMobilePlatform,
   resolveDesktopApiPort,
@@ -62,6 +51,20 @@ import {
   type AppRoutePluginRegistryEntry,
   listAppRoutePluginLoaders,
 } from "./app-route-plugin-registry.js";
+
+// plugin-local-inference loaded lazily to avoid static plugin boundary violations.
+let _localInferenceRuntime:
+  | typeof import("@elizaos/plugin-local-inference/runtime")
+  | undefined;
+async function _localInference() {
+  if (!_localInferenceRuntime) {
+    _localInferenceRuntime = await import(
+      "@elizaos/plugin-local-inference/runtime"
+    );
+  }
+  return _localInferenceRuntime;
+}
+
 import {
   ensureTextToSpeechHandler,
   isEdgeTtsDisabled as isTextToSpeechEdgeTtsDisabled,
@@ -444,8 +447,8 @@ async function repairRuntimeAfterBoot(
   // them here is what the mobile bundle has to do to avoid crashing on first
   // turn — feature parity comes from cloud-side services, not on-device state.
   if (isMobilePlatform()) {
-    if (shouldEnableMobileLocalInference()) {
-      await ensureLocalInferenceHandler(runtime);
+    if ((await _localInference()).shouldEnableMobileLocalInference()) {
+      await (await _localInference()).ensureLocalInferenceHandler(runtime);
     }
     logger.info(
       "[eliza] Mobile platform detected — skipping desktop-only boot helpers",
@@ -454,7 +457,7 @@ async function repairRuntimeAfterBoot(
   }
 
   await ensureTextToSpeechHandler(runtime);
-  await ensureLocalInferenceHandler(runtime);
+  await (await _localInference()).ensureLocalInferenceHandler(runtime);
   await ensureAutonomyBootstrapContext(runtime);
 
   // ── Register app-specific route plugins ─────────────────────────────
@@ -720,7 +723,8 @@ async function warmupEmbeddingModelImpl(
     return;
   }
 
-  if (!shouldWarmupLocalEmbeddingModel()) {
+  const li = await _localInference();
+  if (!li.shouldWarmupLocalEmbeddingModel()) {
     logger.info(
       "[eliza] Skipping local embedding (GGUF) warmup — not needed for this configuration (e.g. Eliza Cloud embeddings, or local embeddings disabled).",
     );
@@ -730,17 +734,17 @@ async function warmupEmbeddingModelImpl(
   const config = loadElizaConfig();
   upstreamConfigureLocalEmbeddingPlugin({} as Plugin, config);
 
-  const preset = detectEmbeddingPreset();
-  const modelsDir = process.env.MODELS_DIR ?? DEFAULT_MODELS_DIR;
+  const preset = li.detectEmbeddingPreset();
+  const modelsDir = process.env.MODELS_DIR ?? li.DEFAULT_MODELS_DIR;
   let model = process.env.LOCAL_EMBEDDING_MODEL?.trim() || preset.model;
   let modelRepo =
     process.env.LOCAL_EMBEDDING_MODEL_REPO?.trim() || preset.modelRepo;
 
   if (
-    !isEmbeddingWarmupReuseDisabled() &&
-    !embeddingGgufFilePresent(modelsDir, model)
+    !li.isEmbeddingWarmupReuseDisabled() &&
+    !li.embeddingGgufFilePresent(modelsDir, model)
   ) {
-    const reuse = findExistingEmbeddingModelForWarmupReuse(modelsDir);
+    const reuse = li.findExistingEmbeddingModelForWarmupReuse(modelsDir);
     if (reuse) {
       logger.info(
         `[eliza] Embedding warmup: configured file "${model}" not found in MODELS_DIR — reusing existing ${reuse.model} to avoid a large re-download. ` +
@@ -778,7 +782,7 @@ async function warmupEmbeddingModelImpl(
   };
 
   try {
-    await ensureModel(modelsDir, modelRepo, model, false, progressCb);
+    await li.ensureModel(modelsDir, modelRepo, model, false, progressCb);
   } catch (err) {
     // Non-fatal: the plugin will attempt its own download on first use
     logger.warn(

@@ -112,11 +112,8 @@ async function startMobileLocalAgent(): Promise<void> {
       apiBase: isIOS ? IOS_LOCAL_AGENT_IPC_BASE : MOBILE_LOCAL_AGENT_API_BASE,
       mode: "local",
     });
-  } catch (err) {
-    console.warn(
-      "[RuntimeGate] Failed to start mobile local agent",
-      err instanceof Error ? err.message : err,
-    );
+  } catch {
+    // non-fatal: mobile agent start failure is recoverable via retry
   }
 }
 
@@ -732,11 +729,8 @@ export function RuntimeGate() {
           .switchProvider("elizacloud", undefined, undefined, {
             useLocalEmbeddings: true,
           })
-          .catch((err) => {
-            console.warn(
-              "[RuntimeGate] Failed to apply local embeddings preference",
-              err,
-            );
+          .catch(() => {
+            // non-fatal: user can adjust embeddings in Settings → Provider
           });
       }
       completeOnboarding();

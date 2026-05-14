@@ -21,6 +21,7 @@ export {
 export { providersProvider } from "./providers.ts";
 export { recentMessagesProvider } from "./recentMessages.ts";
 export { uiContextProvider } from "./uiContext.ts";
+export { userEmotionSignalProvider } from "./userEmotionSignal.ts";
 export { worldProvider } from "./world.ts";
 
 // Bundle-safety: force binding identities into the module's init
@@ -45,6 +46,7 @@ import {
 import { providersProvider as _bs_13_providersProvider } from "./providers.ts";
 import { recentMessagesProvider as _bs_14_recentMessagesProvider } from "./recentMessages.ts";
 import { uiContextProvider as _bs_15_uiContextProvider } from "./uiContext.ts";
+import { userEmotionSignalProvider as _bs_17_userEmotionSignalProvider } from "./userEmotionSignal.ts";
 import { worldProvider as _bs_16_worldProvider } from "./world.ts";
 
 // Path-derived symbol so parents that `export *` two of these don't
@@ -66,6 +68,7 @@ const __bundle_safety_FEATURES_BASIC_CAPABILITIES_PROVIDERS_INDEX__ = [
 	_bs_14_recentMessagesProvider,
 	_bs_15_uiContextProvider,
 	_bs_16_worldProvider,
+	_bs_17_userEmotionSignalProvider,
 ];
 (
 	globalThis as Record<string, unknown>

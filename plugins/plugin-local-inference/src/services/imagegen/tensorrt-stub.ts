@@ -33,18 +33,17 @@
  * and the selector falls through to sd-cpp.
  */
 
-import { existsSync, mkdtempSync, promises as fs } from "node:fs";
+import { spawn } from "node:child_process";
+import { existsSync, promises as fs, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { spawn } from "node:child_process";
 import { ImageGenBackendUnavailableError } from "./errors";
+import type { SdCppSpawnLike } from "./sd-cpp";
 import type {
 	ImageGenBackend,
 	ImageGenLoadArgs,
-	ImageGenRequest,
 	ImageGenResult,
 } from "./types";
-import type { SdCppSpawnLike } from "./sd-cpp";
 
 const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a] as const;
 
@@ -86,7 +85,8 @@ export async function loadTensorRtImageGenBackend(
 		}
 	}
 
-	const outputDir = opts.outputDir ?? mkdtempSync(join(tmpdir(), "trt-imagegen-"));
+	const outputDir =
+		opts.outputDir ?? mkdtempSync(join(tmpdir(), "trt-imagegen-"));
 	let disposed = false;
 
 	return {
@@ -109,16 +109,17 @@ export async function loadTensorRtImageGenBackend(
 					"[imagegen/tensorrt] generate called after dispose()",
 				);
 			}
-			if (!req.prompt || !req.prompt.trim()) {
+			if (!req.prompt?.trim()) {
 				throw new ImageGenBackendUnavailableError(
 					"tensorrt",
 					"unsupported_request",
 					"[imagegen/tensorrt] prompt is empty",
 				);
 			}
-			const seed = typeof req.seed === "number" && req.seed >= 0
-				? req.seed
-				: Math.floor(Math.random() * 0x7fffffff);
+			const seed =
+				typeof req.seed === "number" && req.seed >= 0
+					? req.seed
+					: Math.floor(Math.random() * 0x7fffffff);
 			const width = req.width ?? 1024;
 			const height = req.height ?? 1024;
 			const steps = req.steps ?? 25;
@@ -129,7 +130,8 @@ export async function loadTensorRtImageGenBackend(
 			if (opts.fakeImageBytes) {
 				await fs.writeFile(outputPath, opts.fakeImageBytes);
 				const elapsed = Math.max(1, now() - startMs);
-				if (req.onProgressChunk) req.onProgressChunk({ step: steps, total: steps });
+				if (req.onProgressChunk)
+					req.onProgressChunk({ step: steps, total: steps });
 				return {
 					image: opts.fakeImageBytes,
 					mime: "image/png",
@@ -145,14 +147,22 @@ export async function loadTensorRtImageGenBackend(
 			}
 
 			const args = [
-				"--plan", opts.loadArgs.modelPath,
-				"--prompt", req.prompt,
-				"--width", String(width),
-				"--height", String(height),
-				"--steps", String(steps),
-				"--cfg", String(guidanceScale),
-				"--seed", String(seed),
-				"--output", outputPath,
+				"--plan",
+				opts.loadArgs.modelPath,
+				"--prompt",
+				req.prompt,
+				"--width",
+				String(width),
+				"--height",
+				String(height),
+				"--steps",
+				String(steps),
+				"--cfg",
+				String(guidanceScale),
+				"--seed",
+				String(seed),
+				"--output",
+				outputPath,
 			];
 			if (req.negativePrompt) {
 				args.push("--negative", req.negativePrompt);
@@ -190,7 +200,7 @@ export async function loadTensorRtImageGenBackend(
 function resolveBinary(override?: string): string {
 	if (override) return override;
 	const envBin = process.env.IMAGEGEN_TRT_BIN;
-	if (envBin && envBin.trim()) return envBin.trim();
+	if (envBin?.trim()) return envBin.trim();
 	return DEFAULT_BIN;
 }
 
@@ -200,10 +210,9 @@ async function assertBinaryAvailable(
 ): Promise<void> {
 	try {
 		const code = await new Promise<number | null>((resolve, reject) => {
-			const proc = (spawnImpl ?? (spawn as unknown as SdCppSpawnLike))(
-				binary,
-				["--version"],
-			);
+			const proc = (spawnImpl ?? (spawn as unknown as SdCppSpawnLike))(binary, [
+				"--version",
+			]);
 			proc.on("error", (err: Error) => reject(err));
 			proc.on("exit", (c: number | null) => resolve(c));
 		});

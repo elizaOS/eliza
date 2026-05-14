@@ -1,0 +1,109 @@
+{
+  "config": {
+    "domains": [
+      "retail",
+      "airline"
+    ],
+    "task_split": "test",
+    "num_trials": 1,
+    "pass_k_values": [
+      1
+    ],
+    "task_ids": null,
+    "start_index": 0,
+    "end_index": -1,
+    "max_tasks_per_domain": null,
+    "use_sample_tasks": true,
+    "use_mock": true,
+    "agent_model": "gpt-4o",
+    "agent_provider": "openai",
+    "agent_temperature": 0.0,
+    "agent_max_turns": 30,
+    "user_strategy": "llm",
+    "user_model": "gpt-4o",
+    "user_provider": "openai",
+    "use_llm_judge": false,
+    "judge_model": "gpt-4o-mini",
+    "judge_provider": "openai",
+    "output_dir": "./_smoke_out",
+    "seed": 10,
+    "max_concurrency": 1,
+    "verbose": false
+  },
+  "num_tasks": 4,
+  "num_trials_per_task": 1,
+  "avg_reward": 1.0,
+  "pass_k": {
+    "1": {
+      "k": 1,
+      "num_tasks": 4,
+      "pass_hat_k": 1.0
+    }
+  },
+  "domain_results": {
+    "retail": [
+      {
+        "task_id": 0,
+        "trial": 0,
+        "reward": 1.0,
+        "success": true,
+        "judge_passed": null,
+        "judge_explanation": "",
+        "r_actions": 1.0,
+        "r_outputs": null,
+        "num_turns": 14,
+        "num_tool_calls": 5,
+        "user_cost": 0.0,
+        "agent_cost": 0.0,
+        "error": null
+      },
+      {
+        "task_id": 1,
+        "trial": 0,
+        "reward": 1.0,
+        "success": true,
+        "judge_passed": null,
+        "judge_explanation": "",
+        "r_actions": 1.0,
+        "r_outputs": null,
+        "num_turns": 14,
+        "num_tool_calls": 5,
+        "user_cost": 0.0,
+        "agent_cost": 0.0,
+        "error": null
+      }
+    ],
+    "airline": [
+      {
+        "task_id": 0,
+        "trial": 0,
+        "reward": 1.0,
+        "success": true,
+        "judge_passed": null,
+        "judge_explanation": "",
+        "r_actions": 1.0,
+        "r_outputs": null,
+        "num_turns": 6,
+        "num_tool_calls": 1,
+        "user_cost": 0.0,
+        "agent_cost": 0.0,
+        "error": null
+      },
+      {
+        "task_id": 1,
+        "trial": 0,
+        "reward": 1.0,
+        "success": true,
+        "judge_passed": null,
+        "judge_explanation": "",
+        "r_actions": 1.0,
+        "r_outputs": null,
+        "num_turns": 6,
+        "num_tool_calls": 1,
+        "user_cost": 0.0,
+        "agent_cost": 0.0,
+        "error": null
+      }
+    ]
+  }
+}

@@ -327,32 +327,35 @@ finally:
 
 
 class MockExecutor:
-    """Mock executor for testing without actual code execution."""
+    """Mock executor for smoke tests only.
+
+    Must be opted into via ``MINTConfig.use_mock_executor=True`` (or the
+    ``--mock`` CLI flag). The default-"42" fallback that used to live here
+    has been removed: when no caller-supplied response matches and no print
+    statement is detectable, the executor returns an empty failure result so
+    metrics surface that nothing was actually executed.
+    """
 
     def __init__(self, responses: Optional[dict[str, str]] = None) -> None:
         self.responses = responses or {}
         self.executions: list[str] = []
 
     async def execute(self, code: str) -> ExecutionResult:
-        """Return mock execution result."""
         self.executions.append(code)
 
-        # Check for predefined responses
         for pattern, response in self.responses.items():
             if pattern in code:
                 return ExecutionResult(output=response, success=True)
 
-        # Default: extract print statements and return their arguments
         prints = re.findall(r'print\s*\(\s*["\']?([^"\')\n]+)["\']?\s*\)', code)
         if prints:
             return ExecutionResult(output=prints[-1], success=True)
 
-        # Try to find numeric results
-        numbers = re.findall(r'\b(\d+(?:\.\d+)?)\b', code)
-        if numbers:
-            return ExecutionResult(output=numbers[-1], success=True)
-
         return ExecutionResult(
-            output="42",  # Default mock response
-            success=True,
+            output="",
+            success=False,
+            error=(
+                "MockExecutor has no matching response. Provide one via the "
+                "constructor or run with a real PythonExecutor."
+            ),
         )

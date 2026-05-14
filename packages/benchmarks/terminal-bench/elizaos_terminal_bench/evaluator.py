@@ -293,9 +293,11 @@ class TerminalBenchEvaluator:
         # Error analysis
         error_categories = self.categorize_errors(results)
 
-        # Leaderboard comparison
+        # Leaderboard comparison. Skipped when LEADERBOARD_SCORES is empty,
+        # which is the default state (live leaderboard at
+        # https://www.tbench.ai/leaderboard).
         leaderboard_comparison = None
-        if compare_leaderboard and results:
+        if compare_leaderboard and results and LEADERBOARD_SCORES:
             accuracy = metrics["passed"] / metrics["total"]
             leaderboard_comparison = self.compare_to_leaderboard(accuracy)
 

@@ -381,7 +381,7 @@ async function resolveTargetRoom(args: {
 	chatName?: string;
 }): Promise<Awaited<ReturnType<IAgentRuntime["getRoom"]>> | null> {
 	if (args.roomId) {
-		return await args.runtime.getRoom(args.roomId as UUID);
+		return args.runtime.getRoom(args.roomId as UUID);
 	}
 	const roomIds =
 		(await args.runtime.getRoomsForParticipant?.(args.runtime.agentId)) ?? [];
@@ -772,7 +772,7 @@ export const roomOpAction: Action = {
 			};
 		}
 
-		return await applyOp({
+		return applyOp({
 			runtime,
 			message,
 			op,

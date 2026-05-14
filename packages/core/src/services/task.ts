@@ -86,7 +86,6 @@ export class TaskService extends Service {
 		// worker per prompt. Discriminated by metadata.kind = 'prompt'.
 		runtime.registerTaskWorker(promptRunnerTaskWorker);
 		await service.startTimer();
-		// await service.createTestTasks();
 		return service;
 	}
 

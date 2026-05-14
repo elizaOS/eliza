@@ -21,7 +21,7 @@
  *       databaseAdapter: myAdapter,
  *     });
  *
- *     console.log(`Using inference: ${inferenceProvider && inferenceProvider.name}`);
+ *     logger.info({ provider: inferenceProvider?.name }, "Using inference provider");
  *
  *     try {
  *       const memory = await runtime.createMemory({

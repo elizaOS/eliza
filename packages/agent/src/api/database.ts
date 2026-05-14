@@ -26,8 +26,13 @@ import {
   sendJsonError,
 } from "@elizaos/core";
 import {
+  type ColumnInfo,
+  type ConnectionTestResult,
+  type DatabaseStatus,
   readJsonBody as parseJsonBody,
+  type QueryResult,
   resolveApiBindHost,
+  type TableInfo,
 } from "@elizaos/shared";
 import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
 import type {
@@ -40,48 +45,6 @@ import {
   normalizeHostLike,
   normalizeIpForPolicy,
 } from "../security/network-policy.ts";
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-interface DatabaseStatus {
-  provider: DatabaseProviderType;
-  connected: boolean;
-  serverVersion: string | null;
-  tableCount: number;
-  pgliteDataDir: string | null;
-  postgresHost: string | null;
-}
-
-interface TableInfo {
-  name: string;
-  schema: string;
-  rowCount: number;
-  columns: ColumnInfo[];
-}
-
-interface ColumnInfo {
-  name: string;
-  type: string;
-  nullable: boolean;
-  defaultValue: string | null;
-  isPrimaryKey: boolean;
-}
-
-interface QueryResult {
-  columns: string[];
-  rows: Record<string, unknown>[];
-  rowCount: number;
-  durationMs: number;
-}
-
-interface ConnectionTestResult {
-  success: boolean;
-  serverVersion: string | null;
-  error: string | null;
-  durationMs: number;
-}
 
 // ---------------------------------------------------------------------------
 // Helpers

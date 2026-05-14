@@ -80,11 +80,11 @@ export function getAcpService(
   return (runtime.getService?.("PTY_SERVICE") ??
     runtime.getService?.("ACP_SERVICE") ??
     runtime.getService?.("ACP_SUBPROCESS_SERVICE") ??
-    undefined) as AcpActionService | undefined;
+    undefined) as unknown as AcpActionService | undefined;
 }
 
-export function logger(runtime: IAgentRuntime) {
-  return runtime.logger ?? {};
+export function logger(runtime: IAgentRuntime): IAgentRuntime["logger"] {
+  return runtime.logger;
 }
 
 export function contentRecord(message: Memory): Record<string, unknown> {
@@ -218,7 +218,7 @@ const TERMINAL_SESSION_STATUSES = new Set([
  * leak), and gives up waiting after `maxWaitMs` so a wedged session can
  * never deadlock the queue — the spawn just proceeds.
  *
- * Tunable via `PARALLAX_MAX_CONCURRENT_SPAWNS` (default 2). Set to 0 or a
+ * Tunable via `ELIZA_MAX_CONCURRENT_SPAWNS` (default 2). Set to 0 or a
  * negative value to disable the gate entirely.
  */
 export async function waitForSpawnSlot(
@@ -228,10 +228,10 @@ export async function waitForSpawnSlot(
 ): Promise<void> {
   const limitRaw =
     (typeof runtime.getSetting === "function"
-      ? (runtime.getSetting("PARALLAX_MAX_CONCURRENT_SPAWNS") as
+      ? (runtime.getSetting("ELIZA_MAX_CONCURRENT_SPAWNS") as
           | string
           | undefined)
-      : undefined) ?? process.env.PARALLAX_MAX_CONCURRENT_SPAWNS;
+      : undefined) ?? process.env.ELIZA_MAX_CONCURRENT_SPAWNS;
   const limit = limitRaw ? Number.parseInt(limitRaw, 10) : 2;
   if (!Number.isFinite(limit) || limit <= 0) return;
   const maxWaitMs = opts.maxWaitMs ?? 8 * 60_000;

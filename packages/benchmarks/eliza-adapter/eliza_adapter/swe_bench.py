@@ -77,4 +77,13 @@ def make_eliza_swe_bench_model_handler(
     return _eliza_text_large
 
 
-__all__ = ["make_eliza_swe_bench_model_handler", "SWEBenchModelHandler"]
+# Parity alias for the tri-harness CLI router. Same handler shape as the
+# hermes / openclaw adapters' ``build_swe_bench_agent_fn``.
+build_swe_bench_agent_fn = make_eliza_swe_bench_model_handler
+
+
+__all__ = [
+    "make_eliza_swe_bench_model_handler",
+    "build_swe_bench_agent_fn",
+    "SWEBenchModelHandler",
+]
