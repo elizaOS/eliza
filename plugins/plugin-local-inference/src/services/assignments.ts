@@ -82,16 +82,17 @@ export function buildRecommendedAssignments(
 	if (best) {
 		return {
 			TEXT_SMALL: best.id,
-			TEXT_LARGE: best.id,
-			TEXT_TO_SPEECH: best.id,
-			TRANSCRIPTION: best.id,
-			IMAGE_DESCRIPTION: best.id,
-		};
-	}
+				TEXT_LARGE: best.id,
+				TEXT_TO_SPEECH: best.id,
+				TRANSCRIPTION: best.id,
+				IMAGE_DESCRIPTION: best.id,
+			};
+		}
 
-	// Fallback: no curated Eliza-1 default is installed, but the user may
-	// have hand-installed a generic text-gen GGUF. Auto-assign the largest non-embedding model
-	// to TEXT_SMALL / TEXT_LARGE so the slot isn't left empty — empty slots
+		// Fallback: no curated Eliza-1 default is installed, but the user may
+		// have hand-installed a generic text-gen GGUF (e.g. a Llama / Qwen /
+		// Mistral instruct quant). Auto-assign the largest non-embedding model
+		// to TEXT_SMALL / TEXT_LARGE so the slot isn't left empty — empty slots
 	// cause `ensureAssignedModelLoaded()` to fall through and chat
 	// completions silently run against whichever model is currently loaded
 	// (typically the embedding model on Android, producing `[unused{N}]`

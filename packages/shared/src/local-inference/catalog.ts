@@ -17,7 +17,7 @@ import type {
   LocalRuntimeKernel,
 } from "./types.js";
 
-export const ELIZA_1_HF_REPO = "elizalabs/eliza-1" as const;
+export const ELIZA_1_HF_REPO = "elizaos/eliza-1" as const;
 
 export const ELIZA_1_TIER_IDS = [
   "eliza-1-0_8b",
