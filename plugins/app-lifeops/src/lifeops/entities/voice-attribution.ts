@@ -9,7 +9,7 @@
  */
 
 import type { EntityStore } from "./store.js";
-import { SELF_ENTITY_ID } from "./types.js";
+import type { SELF_ENTITY_ID } from "./types.js";
 
 /**
  * Regex-first extractor of a self-name claim in an utterance.
@@ -27,24 +27,33 @@ import { SELF_ENTITY_ID } from "./types.js";
  * fallback is wired in `voice-observer.ts` so this module stays
  * dependency-free for unit testing.
  */
+// Trigger phrases ("my name is", "i'm", "this is", …) match
+// case-insensitively because ASR-emitted prefixes are unreliably cased.
+// The captured *name* is still anchored on an uppercase first letter to
+// filter lowercased noise — the captures use an explicit
+// "first letter [A-Z], rest [A-Za-z…]" pattern even though the regex as
+// a whole carries the `i` flag, by wrapping the inner pattern in a
+// case-sensitive `(?-i:…)` group.
 const NAME_CLAIM_PATTERNS: RegExp[] = [
-	/\bmy\s+name\s+is\s+([A-Z][A-Za-z'.-]{1,40}(?:\s+[A-Z][A-Za-z'.-]{1,40}){0,2})\b/,
-	/\bi\s+am\s+([A-Z][A-Za-z'.-]{1,40}(?:\s+[A-Z][A-Za-z'.-]{1,40}){0,2})\b/,
-	/\bi['’]?m\s+([A-Z][A-Za-z'.-]{1,40}(?:\s+[A-Z][A-Za-z'.-]{1,40}){0,2})\b/,
-	/\bthis\s+is\s+([A-Z][A-Za-z'.-]{1,40}(?:\s+[A-Z][A-Za-z'.-]{1,40}){0,2})\b/,
-	/\bit['’]?s\s+([A-Z][A-Za-z'.-]{1,40}(?:\s+[A-Z][A-Za-z'.-]{1,40}){0,2})\b/,
+  /\bmy\s+name\s+is\s+((?-i:[A-Z][A-Za-z'.-]{1,40}(?:\s+[A-Z][A-Za-z'.-]{1,40}){0,2}))\b/i,
+  /\bi\s+am\s+((?-i:[A-Z][A-Za-z'.-]{1,40}(?:\s+[A-Z][A-Za-z'.-]{1,40}){0,2}))\b/i,
+  /\bi['’]?m\s+((?-i:[A-Z][A-Za-z'.-]{1,40}(?:\s+[A-Z][A-Za-z'.-]{1,40}){0,2}))\b/i,
+  /\bthis\s+is\s+((?-i:[A-Z][A-Za-z'.-]{1,40}(?:\s+[A-Z][A-Za-z'.-]{1,40}){0,2}))\b/i,
+  /\bit['’]?s\s+((?-i:[A-Z][A-Za-z'.-]{1,40}(?:\s+[A-Z][A-Za-z'.-]{1,40}){0,2}))\b/i,
 ];
 
-export function extractSelfNameClaim(text: string | null | undefined): string | null {
-	if (!text) return null;
-	for (const pattern of NAME_CLAIM_PATTERNS) {
-		const m = pattern.exec(text);
-		if (m?.[1]) {
-			const cleaned = m[1].replace(/[.,;:!?]+$/, "").trim();
-			if (cleaned.length > 0) return cleaned;
-		}
-	}
-	return null;
+export function extractSelfNameClaim(
+  text: string | null | undefined,
+): string | null {
+  if (!text) return null;
+  for (const pattern of NAME_CLAIM_PATTERNS) {
+    const m = pattern.exec(text);
+    if (m?.[1]) {
+      const cleaned = m[1].replace(/[.,;:!?]+$/, "").trim();
+      if (cleaned.length > 0) return cleaned;
+    }
+  }
+  return null;
 }
 
 /**
@@ -60,70 +69,70 @@ export function extractSelfNameClaim(text: string | null | undefined): string | 
  * enough to warrant punting until we have a real classifier.
  */
 const PARTNER_LABELS = [
-	"wife",
-	"husband",
-	"spouse",
-	"partner",
-	"girlfriend",
-	"boyfriend",
-	"fiance",
-	"fiancée",
-	"fiancé",
+  "wife",
+  "husband",
+  "spouse",
+  "partner",
+  "girlfriend",
+  "boyfriend",
+  "fiance",
+  "fiancée",
+  "fiancé",
 ];
 
 interface PartnerClaim {
-	name: string;
-	label: string;
-	type: "partner_of";
+  name: string;
+  label: string;
+  type: "partner_of";
 }
 
 const PARTNER_CLAIM_PATTERNS: ReadonlyArray<{
-	pattern: RegExp;
-	nameGroup: number;
-	labelGroup: number;
+  pattern: RegExp;
+  nameGroup: number;
+  labelGroup: number;
 }> = [
-	{
-		pattern: new RegExp(
-			`\\b([A-Z][A-Za-z'.-]{1,40}(?:\\s+[A-Z][A-Za-z'.-]{1,40}){0,2})\\s+is\\s+my\\s+(${PARTNER_LABELS.join("|")})\\b`,
-			"i",
-		),
-		nameGroup: 1,
-		labelGroup: 2,
-	},
-	{
-		pattern: new RegExp(
-			`\\bthis\\s+is\\s+([A-Z][A-Za-z'.-]{1,40}(?:\\s+[A-Z][A-Za-z'.-]{1,40}){0,2})\\s*,\\s*my\\s+(${PARTNER_LABELS.join("|")})\\b`,
-			"i",
-		),
-		nameGroup: 1,
-		labelGroup: 2,
-	},
+  {
+    pattern: new RegExp(
+      `\\b([A-Z][A-Za-z'.-]{1,40}(?:\\s+[A-Z][A-Za-z'.-]{1,40}){0,2})\\s+is\\s+my\\s+(${PARTNER_LABELS.join("|")})\\b`,
+      "i",
+    ),
+    nameGroup: 1,
+    labelGroup: 2,
+  },
+  {
+    pattern: new RegExp(
+      `\\bthis\\s+is\\s+([A-Z][A-Za-z'.-]{1,40}(?:\\s+[A-Z][A-Za-z'.-]{1,40}){0,2})\\s*,\\s*my\\s+(${PARTNER_LABELS.join("|")})\\b`,
+      "i",
+    ),
+    nameGroup: 1,
+    labelGroup: 2,
+  },
 ];
 
 export function extractPartnerClaim(
-	text: string | null | undefined,
+  text: string | null | undefined,
 ): PartnerClaim | null {
-	if (!text) return null;
-	for (const { pattern, nameGroup, labelGroup } of PARTNER_CLAIM_PATTERNS) {
-		const m = pattern.exec(text);
-		if (m?.[nameGroup] && m?.[labelGroup]) {
-			const name = m[nameGroup].replace(/[.,;:!?]+$/, "").trim();
-			const label = m[labelGroup].toLowerCase();
-			if (name.length > 0) {
-				return { name, label, type: "partner_of" };
-			}
-		}
-	}
-	return null;
+  if (!text) return null;
+  for (const { pattern, nameGroup, labelGroup } of PARTNER_CLAIM_PATTERNS) {
+    const m = pattern.exec(text);
+    if (m?.[nameGroup] && m?.[labelGroup]) {
+      const name = m[nameGroup].replace(/[.,;:!?]+$/, "").trim();
+      const label = m[labelGroup].toLowerCase();
+      if (name.length > 0) {
+        return { name, label, type: "partner_of" };
+      }
+    }
+  }
+  return null;
 }
 
 export interface PendingRelationship {
-	type: "partner_of";
-	fromEntityId: typeof SELF_ENTITY_ID;
-	toName: string;
-	label: string;
-	evidenceId: string;
-	createdAt: string;
+  type: "partner_of";
+  fromEntityId: typeof SELF_ENTITY_ID;
+  toName: string;
+  label: string;
+  evidenceId: string;
+  createdAt: string;
 }
 
 /**
@@ -135,42 +144,44 @@ export interface PendingRelationship {
  * id into the relationship audit log on resolution.
  */
 export class PendingRelationshipQueue {
-	private pending: PendingRelationship[] = [];
+  private pending: PendingRelationship[] = [];
 
-	enqueue(claim: PendingRelationship): void {
-		// De-dupe by (toName, type) — the most recent claim wins.
-		this.pending = this.pending.filter(
-			(p) =>
-				p.toName.toLowerCase() !== claim.toName.toLowerCase() ||
-				p.type !== claim.type,
-		);
-		this.pending.push(claim);
-	}
+  enqueue(claim: PendingRelationship): void {
+    // De-dupe by (toName, type) — the most recent claim wins.
+    this.pending = this.pending.filter(
+      (p) =>
+        p.toName.toLowerCase() !== claim.toName.toLowerCase() ||
+        p.type !== claim.type,
+    );
+    this.pending.push(claim);
+  }
 
-	resolveByName(name: string): PendingRelationship[] {
-		const lower = name.toLowerCase();
-		const resolved = this.pending.filter((p) => p.toName.toLowerCase() === lower);
-		this.pending = this.pending.filter((p) => p.toName.toLowerCase() !== lower);
-		return resolved;
-	}
+  resolveByName(name: string): PendingRelationship[] {
+    const lower = name.toLowerCase();
+    const resolved = this.pending.filter(
+      (p) => p.toName.toLowerCase() === lower,
+    );
+    this.pending = this.pending.filter((p) => p.toName.toLowerCase() !== lower);
+    return resolved;
+  }
 
-	all(): readonly PendingRelationship[] {
-		return this.pending;
-	}
+  all(): readonly PendingRelationship[] {
+    return this.pending;
+  }
 
-	size(): number {
-		return this.pending.length;
-	}
+  size(): number {
+    return this.pending.length;
+  }
 }
 
 /**
  * Result of binding a voice-imprint observation to an Entity.
  */
 export interface BindVoiceTurnResult {
-	entityId: string;
-	wasCreated: boolean;
-	resolvedClaimedName: string | null;
-	pendingRelationships: PendingRelationship[];
+  entityId: string;
+  wasCreated: boolean;
+  resolvedClaimedName: string | null;
+  pendingRelationships: PendingRelationship[];
 }
 
 /**
@@ -183,43 +194,43 @@ export interface BindVoiceTurnResult {
  * caller pulls `result.pendingRelationships` and applies them.
  */
 export async function bindVoiceTurnToEntity(args: {
-	entityStore: EntityStore;
-	pendingQueue: PendingRelationshipQueue;
-	matchedEntityId: string | null;
-	utteranceText: string;
-	imprintClusterId: string;
-	evidenceIds: string[];
-	matchConfidence: number;
+  entityStore: EntityStore;
+  pendingQueue: PendingRelationshipQueue;
+  matchedEntityId: string | null;
+  utteranceText: string;
+  imprintClusterId: string;
+  evidenceIds: string[];
+  matchConfidence: number;
 }): Promise<BindVoiceTurnResult> {
-	if (args.matchedEntityId) {
-		const resolved = args.pendingQueue.resolveByName(
-			(await args.entityStore.get(args.matchedEntityId))?.preferredName ?? "",
-		);
-		return {
-			entityId: args.matchedEntityId,
-			wasCreated: false,
-			resolvedClaimedName: null,
-			pendingRelationships: resolved,
-		};
-	}
-	const claimedName = extractSelfNameClaim(args.utteranceText);
-	const result = await args.entityStore.observeIdentity({
-		platform: "voice",
-		handle: args.imprintClusterId,
-		...(claimedName ? { displayName: claimedName } : {}),
-		evidence: args.evidenceIds,
-		confidence: claimedName ? Math.max(0.7, args.matchConfidence) : 0.5,
-		suggestedType: "person",
-	});
+  if (args.matchedEntityId) {
+    const resolved = args.pendingQueue.resolveByName(
+      (await args.entityStore.get(args.matchedEntityId))?.preferredName ?? "",
+    );
+    return {
+      entityId: args.matchedEntityId,
+      wasCreated: false,
+      resolvedClaimedName: null,
+      pendingRelationships: resolved,
+    };
+  }
+  const claimedName = extractSelfNameClaim(args.utteranceText);
+  const result = await args.entityStore.observeIdentity({
+    platform: "voice",
+    handle: args.imprintClusterId,
+    ...(claimedName ? { displayName: claimedName } : {}),
+    evidence: args.evidenceIds,
+    confidence: claimedName ? Math.max(0.7, args.matchConfidence) : 0.5,
+    suggestedType: "person",
+  });
 
-	const pendingRelationships = claimedName
-		? args.pendingQueue.resolveByName(claimedName)
-		: [];
+  const pendingRelationships = claimedName
+    ? args.pendingQueue.resolveByName(claimedName)
+    : [];
 
-	return {
-		entityId: result.entity.entityId,
-		wasCreated: result.mergedFrom === undefined,
-		resolvedClaimedName: claimedName,
-		pendingRelationships,
-	};
+  return {
+    entityId: result.entity.entityId,
+    wasCreated: result.mergedFrom === undefined,
+    resolvedClaimedName: claimedName,
+    pendingRelationships,
+  };
 }
