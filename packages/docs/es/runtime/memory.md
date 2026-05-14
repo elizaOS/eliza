@@ -4,7 +4,7 @@ sidebarTitle: "Memoria"
 description: "Persistencia de memoria, generación de embeddings, búsqueda vectorial, tipos de memoria y la API de recuperación."
 ---
 
-El sistema de memoria de Eliza está respaldado por `@elizaos/plugin-sql` para la persistencia y `@elizaos/plugin-local-embedding` para los embeddings vectoriales. Esta página cubre la infraestructura de memoria desde la perspectiva del runtime.
+El sistema de memoria de Eliza está respaldado por `@elizaos/plugin-sql` para la persistencia y `@elizaos/plugin-local-inference` para los embeddings vectoriales. Esta página cubre la infraestructura de memoria desde la perspectiva del runtime.
 
 <div id="memory-architecture">
 
@@ -80,7 +80,7 @@ Para despliegues en producción o compartidos, establezca `database.provider = "
 
 </div>
 
-`@elizaos/plugin-local-embedding` se registra previamente antes de `runtime.initialize()` para asegurar que su handler `TEXT_EMBEDDING` (prioridad 10) tenga precedencia sobre el handler de cualquier proveedor en la nube (prioridad 0).
+`@elizaos/plugin-local-inference` se registra previamente antes de `runtime.initialize()` para asegurar que su handler `TEXT_EMBEDDING` (prioridad 10) tenga precedencia sobre el handler de cualquier proveedor en la nube (prioridad 0).
 
 <div id="default-model">
 

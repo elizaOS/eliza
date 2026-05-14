@@ -1,0 +1,31 @@
+[[!meta date="Sat, 01 Feb 2014 00:00:00 +0000"]]
+[[!meta title="Numerous security holes in Tails 0.22"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+Several security holes affect Tails 0.22.
+
+We **strongly** encourage you to [[upgrade to Tails
+0.22.1|news/version_0.22.1]] as soon as possible.
+
+Details
+=======
+
+ - Iceweasel and its bundled NSS: [[!mfsa 2014-12]]
+ - Linux kernel: [[!cve 2012-2372]], [[!cve 2013-2147]],
+   [[!cve 2013-2889]], [[!cve 2013-2891]], [[!cve 2013-2893]],
+   [[!cve 2013-2894]], [[!cve 2013-2895]], [[!cve 2013-2897]],
+   [[!cve 2013-2929]], [[!cve 2013-2930]], [[!cve 2013-4299]],
+   [[!cve 2013-4343]], [[!cve 2013-4345]], [[!cve 2013-4348]],
+   [[!cve 2013-4350]], [[!cve 2013-4387]], [[!cve 2013-4563]],
+   [[!cve 2013-4587]], [[!cve 2013-6367]], [[!cve 2013-6368]],
+   [[!cve 2013-6376]], [[!cve 2013-6378]], [[!cve 2013-6382]],
+   [[!cve 2013-6405]], [[!cve 2013-6432]], [[!cve 2014-1438]]
+ - djvulibre: [[!debsa2014 2844]]
+ - GnuPG: [[!debsa2013 2821]]
+ - hplip: [[!debsa2013 2829]]
+ - libtar: [[!debsa2013 2817]]
+ - Pidgin: [[!cve 2013-6477]], [[!cve 2013-6478]], [[!cve 2013-6479]],
+   [[!cve 2013-6483]], [[!cve 2013-6484]], [[!cve 2013-6486]],
+   [[!cve 2014-0020]], [[!cve 2014-6485]]

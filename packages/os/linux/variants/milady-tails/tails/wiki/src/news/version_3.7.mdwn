@@ -1,0 +1,71 @@
+[[!meta date="Wed, 09 May 2018 17:26:18 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!meta title="Tails 3.7 is out"]]
+[[!tag announce]]
+
+This release fixes [[several security
+issues|security/Numerous_security_holes_in_3.6.2]] and users should
+upgrade as soon as possible.
+
+[[!toc levels=1]]
+
+# Changes
+
+## Upgrades and changes
+
+- Update *Tor Browser* to 7.5.4.
+
+  This fixes a [critical issue in
+  Firefox](https://www.mozilla.org/en-US/security/advisories/mfsa2018-12/)
+  announced on May 9.
+
+## Fixed problems
+
+- Allow removing the optional OpenPGP key in *WhisperBack*, in case you
+  specified one.
+
+For more details, read our [[!tails_gitweb debian/changelog desc="changelog"]].
+
+<a id="known-issues"></a>
+
+# Known issues
+
+None specific to this release.
+
+See the list of [[long-standing issues|support/known_issues]].
+
+# Get Tails 3.7
+
+- To install, follow our [[installation instructions|install]].
+
+- To upgrade, automatic upgrades are available from 3.6, 3.6.1, and
+  3.6.2 to 3.7.
+
+  If you cannot do an automatic upgrade or if Tails fails to start after an
+  automatic upgrade, please try to do a [[manual upgrade|doc/upgrade#manual]].
+
+  If you are doing a manual upgrade from Tails 3.2, 3.3, 3.4, or 3.5, it
+  is only possible to select an ISO image when running Tails in English. For
+  other languages, the file chooser button remains inactive:
+
+  [[!img news/version_3.5/broken-file-chooser.png link="no"]]
+
+  To do a manual upgrade from Tails 3.2, 3.3, 3.4, or 3.5, you can either:
+
+  - Restart Tails in English.
+
+  - Start *Tails Installer* in
+    English from the command line:
+
+    <pre>LANG=en_US tails-installer</pre>
+
+- [[Download Tails 3.7.|install/download]]
+
+# What's coming up?
+
+Tails 3.8 is [[scheduled|contribute/calendar]] for June 26.
+
+
+We need your help and there are many ways to [[contribute to
+Tails|contribute]] (<a href="https://tails.net/donate/?r=3.7">donating</a> is only one of
+them). Come [[talk to us|doc/about/contact#tails-dev]]!

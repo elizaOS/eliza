@@ -8,8 +8,9 @@ machine. This document is the operational runbook.
 
 ## Eliza-1 bundle publish (orchestrator)
 
-Eliza-1 device-tier bundles ship to `elizaos/eliza-1-<tier>`. The
-canonical entry point is the publish orchestrator:
+Eliza-1 device-tier bundles ship to the single `elizaos/eliza-1` model
+repo under `bundles/<tier>/`. The canonical entry point is the publish
+orchestrator:
 
 ```bash
 python -m scripts.publish.orchestrator \
@@ -38,7 +39,8 @@ with a specific code (see "Exit codes" below):
    `checksums/SHA256SUMS`. The evidence sidecar must declare final
    weights, final hashes, final eval outputs, complete licenses, runtime
    graph-dispatch reports, platform evidence for every supported
-   backend, the exact `elizaos/eliza-1-<tier>` destination, and
+   backend, the exact `elizaos/eliza-1` destination plus
+   `bundles/<tier>/` path, and
    size-first repo IDs. The checksum manifest is verified against the
    actual bytes that will be uploaded. A dry-run fails here the same way
    a real publish does.
@@ -72,7 +74,7 @@ with a specific code (see "Exit codes" below):
    No marketing copy. User-visible text stays Eliza-1-first; upstream
    lineage is recorded only in the manifest's `lineage` block.
 7. **HF push + git tag.** Uploads weights, manifest, README, licenses,
-   and eval blobs to `elizaos/eliza-1-<tier>` via
+   and eval blobs to `elizaos/eliza-1/bundles/<tier>/` via
    `huggingface_hub.HfApi.create_commit`, then tags the local training
    repo with `eliza-1-<tier>-v<version>`. In `--dry-run` neither side
    effect happens; the would-be commands are logged.
@@ -115,7 +117,7 @@ Per `packages/inference/AGENTS.md` §2 the bundle root must look like:
 ```
 
 The text variants encode their context length in the filename (e.g.
-`eliza-1-9b-64k.gguf` → `ctx=65536`). Variants with `ctx > 64k`
+`eliza-1-4b-64k.gguf` → `ctx=65536`). Variants with `ctx > 64k`
 automatically force `turbo3_tcq` into `kernels.required`; desktop/pro/server
 tiers require it even for the 64k default.
 
@@ -167,7 +169,7 @@ the evidence is real; do not paste placeholders. Minimum shape:
 {
   "schemaVersion": 1,
   "tier": "9b",
-  "repoId": "elizaos/eliza-1-9b",
+  "repoId": "elizaos/eliza-1",
   "releaseState": "upload-candidate",
   "final": {
     "weights": true,
@@ -179,7 +181,7 @@ the evidence is real; do not paste placeholders. Minimum shape:
     "sizeFirstRepoIds": true
   },
   "weights": [
-    "text/eliza-1-9b-64k.gguf",
+    "text/eliza-1-4b-64k.gguf",
     "tts/omnivoice-base-Q8_0.gguf",
     "tts/omnivoice-tokenizer-Q8_0.gguf",
     "asr/eliza-1-asr.gguf",
@@ -220,7 +222,7 @@ the evidence is real; do not paste placeholders. Minimum shape:
     "windows-x64-cpu": "evidence/platform/windows-x64-cpu.json"
   },
   "hf": {
-    "repoId": "elizaos/eliza-1-9b",
+    "repoId": "elizaos/eliza-1",
     "status": "pending-upload"
   }
 }
@@ -240,9 +242,9 @@ The publish flow writes the manifest + README into the bundle dir
 `create_commit` but before `git tag`, the HF repo is consistent and the
 local repo is missing only the tag. To recover:
 
-1. Confirm the upload at `https://huggingface.co/elizaos/eliza-1-<tier>`
-   — every file from `_build_upload_list` plus `README.md` and
-   `eliza-1.manifest.json` should be present.
+1. Confirm the upload at `https://huggingface.co/elizaos/eliza-1/tree/main/bundles/<tier>`
+   — every file from `_build_upload_list` plus `bundles/<tier>/README.md`
+   and `bundles/<tier>/eliza-1.manifest.json` should be present.
 2. Re-tag manually:
    ```bash
    git -C packages/training tag -a eliza-1-<tier>-v<version> \
@@ -369,7 +371,7 @@ from your local machine:
 ```bash
 # Option A: use the existing provision-and-train flow with HF bootstrap.
 bash scripts/train_vast.sh provision-and-train \
-    --registry-key eliza-1-9b --epochs 1 --bootstrap hf
+    --registry-key eliza-1-4b --epochs 1 --bootstrap hf
 
 # Option B: take it step by step.
 bash scripts/train_vast.sh provision
@@ -405,9 +407,9 @@ powered off after `bootstrap-from-hf` returns.
 
 ## elizaos org — fused-kernel optimized models
 
-The `elizaos/eliza-1-*` repos ship the Eliza-1 device-tier bundles. Each
-published GGUF should be the fused-kernel artifact the local runtimes
-actually install:
+The `elizaos/eliza-1` repo ships every Eliza-1 device-tier bundle under
+`bundles/<tier>/`. Each published GGUF should be the fused-kernel artifact
+the local runtimes actually install:
 
 - **Q4_POLAR** weight quantization (4-bit, Hadamard-rotated, ~38% of bf16)
 - **QJL1_256** 1-bit JL-transform K-cache (~7.5x KV-K reduction realized)
@@ -464,9 +466,9 @@ public for public repos.
 
 | Role                     | Repo                                                  |
 |--------------------------|-------------------------------------------------------|
-| Inference target (full)  | `elizaos/eliza-1-<tier>`                              |
-| Drafter for that target  | hidden companion file in the same `elizaos/eliza-1-<tier>` repo |
-| Pairing manifest (siblings) | `manifest.json` inside each repo (target points at drafter) |
+| Inference target (full)  | `elizaos/eliza-1/bundles/<tier>/text/...gguf`         |
+| Drafter for that target  | hidden companion file in the same `bundles/<tier>/dflash/` bundle |
+| Pairing manifest (siblings) | `eliza-1.manifest.json` inside each bundle path |
 
 `<tier>` follows the catalog ids: `0_8b`, `2b`,
 `9b`, `27b`, and `27b-256k`. The target the user installs
@@ -474,18 +476,17 @@ is visible; the drafter is hidden from the catalog and only downloaded
 as a companion (matching the `runtimeRole: "dflash-drafter"` pattern in
 `catalog.ts`).
 
-**Why two repos per pair instead of one with two GGUFs?** HuggingFace
-caches the resolve URL per file, the existing downloader keys by
-`(hfRepo, ggufFile)`, and the catalog already encodes companion ids.
-Keeping target and drafter in the same Eliza-1 repo keeps one ownership
-boundary per device tier while preserving the downloader's explicit
-`(hfRepo, ggufFile)` key.
+**Why one repo with bundle paths?** Hugging Face resolve URLs are already
+file-scoped, and the app catalog keys by `(hfRepo, hfPathPrefix, ggufFile)`.
+Keeping target, drafter, voice, ASR, VAD, manifests, and evidence in the
+same `elizaos/eliza-1/bundles/<tier>/` tree gives the downloader one
+ownership boundary for the whole model line.
 
 ### Drafter pairing manifest
 
-Every `elizaos/eliza-1-<tier>` repo ships a `manifest.json` alongside
-its GGUFs that records which drafter and which optimization stack the
-file expects. Schema:
+Every `bundles/<tier>/` directory ships an `eliza-1.manifest.json`
+alongside its GGUFs that records which drafter and which optimization
+stack the file expects. Schema:
 
 ```json
 {
@@ -514,23 +515,22 @@ file expects. Schema:
     "requiresFork": "elizaOS/llama.cpp@v1.0.0-eliza"
   },
   "drafter": {
-    "repo": "elizaos/eliza-1-2b",
-    "file": "text/eliza-1-2b-drafter.gguf",
+    "repo": "elizaos/eliza-1",
+    "file": "bundles/2b/dflash/drafter-2b.gguf",
     "params": "0.8B",
     "tokenizerFamily": "eliza1"
   },
   "pipeline": {
     "publishedAt": "2026-05-10T00:00:00Z",
-    "trainedFrom": "elizaos/eliza-1-9b",
+    "trainedFrom": "elizaos/eliza-1/bundles/4b",
     "trainingPipeline": "elizaos/eliza-1-pipeline",
     "buildScript": "packages/training/scripts/publish_eliza1_model.py"
   }
 }
 ```
 
-The drafter repo ships the inverse — a `manifest.json` whose
-`"kind": "eliza-1-drafter"` block points back at the target repo so the
-catalog sync script can walk either side and reconstruct pairings.
+The drafter block points back at the target bundle so the catalog sync
+script can reconstruct pairings without discovering extra model repos.
 
 ### Publishing flow
 
@@ -539,7 +539,7 @@ catalog sync script can walk either side and reconstruct pairings.
 # would upload. No HF_TOKEN required.
 uv run python scripts/publish_eliza1_model.py \
     --model-dir /path/to/eliza-1-2b \
-    --repo-id elizaos/eliza-1-2b \
+    --repo-id elizaos/eliza-1 \
     --dry-run
 
 # Real push. The script refuses to ship a stock-format GGUF (one
@@ -549,7 +549,7 @@ uv run python scripts/publish_eliza1_model.py \
 # existing remote LFS pointer.
 HF_TOKEN=hf_xxx uv run python scripts/publish_eliza1_model.py \
     --model-dir /path/to/eliza-1-2b \
-    --repo-id elizaos/eliza-1-2b
+    --repo-id elizaos/eliza-1
 ```
 
 After a publish run, refresh the local-inference catalog so the phone

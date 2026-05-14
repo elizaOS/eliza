@@ -1,0 +1,32 @@
+[[!meta title="Alex, March 2017"]]
+
+Alex is a journalist working for a big news room in Western Europe.
+
+She got an authorization from her network administrator to have two
+machines at work: the official Windows machine from where she can access
+the company's back office and her own machine running Debian and
+sometimes Tails.
+
+They have a partnership with a whistleblowing platform and when working
+on their documents they do everything from Tails.
+
+Things she likes:
+
+- The fact that Tails is all-in-one. For example, she sometimes sets up
+  a Tails USB stick for a few colleagues in the "war room" while working
+  a sensitive paper and they have all they need to review and edit
+  documents or do some additional research.
+- Qubes OS is a nice idea but Tails remains more straight-forward and
+  you can use it immediately. You can clone a new key for someone and
+  that's all they need.
+- Tails Installer in Debian! For example it's super useful to manually
+  upgrade a relatively old version or to install a new USB stick for
+  someone without having to restart on Tails.
+- The installation documentation is much better now.
+
+Things she dislikes:
+
+- She misses a screen locker. For example, to have a break during long
+  working sessions while working on sensitive documents.
+- GMail doesn't work with Icedove and TorBirdy. So you have to switch to
+  the Unsafe Browser to connect to GMail.

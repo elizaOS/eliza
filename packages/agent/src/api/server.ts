@@ -211,6 +211,7 @@ import { wireCoordinatorBridgesWhenReady } from "./coordinator-wiring.ts";
 import { handleCuratedSkillsRoutes } from "./curated-skills-routes.ts";
 import { handleDiagnosticsRoutes } from "./diagnostics-routes.ts";
 import { handleHealthRoutes } from "./health-routes.ts";
+import { tryHandleHonoRuntimeRoute } from "./hono-mount.ts";
 import { pushWithBatchEvict } from "./memory-bounds.ts";
 import { handleMemoryRoutes } from "./memory-routes.ts";
 import { handleMiscRoutes } from "./misc-routes.ts";
@@ -293,30 +294,19 @@ export {
   stripAssistantStageDirections,
 } from "./chat-text-helpers.ts";
 
-// Re-export helper functions from server-helpers.ts for backwards compatibility
+// Re-export the helpers in server-helpers.ts that have external consumers
+// (apps, plugins, packages outside @elizaos/agent itself). The rest stay
+// internal — agent-side files import them directly from ./server-helpers.ts.
+// External-consumer audit kept this list minimal: drop a name only after
+// `grep -rln <name> packages/ apps/ plugins/ | grep -v "packages/agent/"`
+// returns nothing.
 export {
-  buildChatAttachments,
-  buildUserMessages,
-  buildWalletActionNotExecutedReply,
   cloneWithoutBlockedObjectKeys,
   decodePathComponent,
   findOwnPackageRoot,
   getErrorMessage,
-  hasBlockedObjectKeyDeep,
-  IMAGE_ONLY_CHAT_FALLBACK_PROMPT,
   isUuidLike,
-  isWalletActionRequiredIntent,
-  maybeAugmentChatMessageWithLanguage,
-  maybeAugmentChatMessageWithWalletContext,
-  normalizeIncomingChatPrompt,
   persistConversationRoomTitle,
-  resolveAppUserName,
-  resolveConversationGreetingText,
-  resolveWalletModeGuidanceReply,
-  trimWalletProgressPrefix,
-  validateChatImages,
-  WALLET_EXECUTION_INTENT_RE,
-  WALLET_PROGRESS_ONLY_RE,
 } from "./server-helpers.ts";
 
 // NOTE: Internal usage of these functions is handled by individual `import`
@@ -2884,6 +2874,21 @@ async function handleRequest(
       method,
       runtime: state.runtime,
       res,
+    })
+  ) {
+    return;
+  }
+
+  // ── Hono adapter for runtime.routes with `routeHandler` (new shape) ─────
+  // Covers any plugin route registered via the new return-shape RouteHandler
+  // contract. Legacy Express-shaped `handler` routes are still served by
+  // `tryHandleRuntimePluginRoute` above.
+  if (
+    await tryHandleHonoRuntimeRoute({
+      req,
+      res,
+      runtime: state.runtime,
+      isAuthorized: () => isAuthorized(req),
     })
   ) {
     return;

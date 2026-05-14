@@ -1,0 +1,575 @@
+{
+  "note": "Planner fixtures. Each case ships a small action registry (3-5 actions) with mixed parameter shapes including enum-valued params. expected_action_name + expected_params capture the ground truth used for label_match scoring. THIS GROUND TRUTH IS BEST-EFFORT, NOT AUTHORITATIVE — the bench compares model picks against the author's intent; for cases where multiple actions could be defensible the author picked the most direct one. Treat label_match as a comparison signal between modes, not an absolute correctness rate.",
+  "cases": [
+    {
+      "id": "reply-simple-greeting",
+      "input": "say hi back",
+      "availableActions": [
+        {
+          "name": "REPLY",
+          "description": "Send a user-facing message reply.",
+          "parameters": [
+            {
+              "name": "text",
+              "type": "string",
+              "description": "The user-visible message text.",
+              "required": true
+            }
+          ]
+        },
+        {
+          "name": "SEND_EMAIL",
+          "description": "Send an email to a recipient.",
+          "parameters": [
+            {
+              "name": "to",
+              "type": "string",
+              "description": "Recipient email address.",
+              "required": true
+            },
+            {
+              "name": "subject",
+              "type": "string",
+              "description": "Email subject.",
+              "required": true
+            },
+            {
+              "name": "body",
+              "type": "string",
+              "description": "Email body.",
+              "required": true
+            }
+          ]
+        },
+        {
+          "name": "CREATE_REMINDER",
+          "description": "Schedule a reminder for the user.",
+          "parameters": [
+            {
+              "name": "text",
+              "type": "string",
+              "description": "Reminder description.",
+              "required": true
+            },
+            {
+              "name": "when",
+              "type": "string",
+              "description": "ISO 8601 timestamp.",
+              "required": true
+            }
+          ]
+        }
+      ],
+      "expected_action_name": "REPLY",
+      "expected_params": { "text": "<<any>>" },
+      "notes": "Trivial reply — REPLY action."
+    },
+    {
+      "id": "create-reminder-at-time",
+      "input": "remind me to call mom at 6pm tomorrow",
+      "availableActions": [
+        {
+          "name": "REPLY",
+          "description": "Send a user-facing message reply.",
+          "parameters": [
+            {
+              "name": "text",
+              "type": "string",
+              "description": "Reply text.",
+              "required": true
+            }
+          ]
+        },
+        {
+          "name": "CREATE_REMINDER",
+          "description": "Schedule a reminder for the user.",
+          "parameters": [
+            {
+              "name": "text",
+              "type": "string",
+              "description": "Reminder description.",
+              "required": true
+            },
+            {
+              "name": "when",
+              "type": "string",
+              "description": "Human-readable time string.",
+              "required": true
+            }
+          ]
+        },
+        {
+          "name": "CREATE_NOTE",
+          "description": "Create a freeform note.",
+          "parameters": [
+            {
+              "name": "content",
+              "type": "string",
+              "description": "Note body.",
+              "required": true
+            }
+          ]
+        }
+      ],
+      "expected_action_name": "CREATE_REMINDER",
+      "expected_params": { "text": "<<any>>" }
+    },
+    {
+      "id": "send-email-to-named-recipient",
+      "input": "send a quick email to alice@example.com asking when she's free tomorrow",
+      "availableActions": [
+        {
+          "name": "REPLY",
+          "description": "Send a user-facing message reply.",
+          "parameters": [
+            {
+              "name": "text",
+              "type": "string",
+              "description": "Reply text.",
+              "required": true
+            }
+          ]
+        },
+        {
+          "name": "SEND_EMAIL",
+          "description": "Send an email to a recipient.",
+          "parameters": [
+            {
+              "name": "to",
+              "type": "string",
+              "description": "Recipient email address.",
+              "required": true
+            },
+            {
+              "name": "subject",
+              "type": "string",
+              "description": "Email subject.",
+              "required": true
+            },
+            {
+              "name": "body",
+              "type": "string",
+              "description": "Email body.",
+              "required": true
+            }
+          ]
+        }
+      ],
+      "expected_action_name": "SEND_EMAIL",
+      "expected_params": { "to": "alice@example.com" }
+    },
+    {
+      "id": "set-status-enum",
+      "input": "set my status to away",
+      "availableActions": [
+        {
+          "name": "REPLY",
+          "description": "Send a user-facing message reply.",
+          "parameters": [
+            {
+              "name": "text",
+              "type": "string",
+              "description": "Reply text.",
+              "required": true
+            }
+          ]
+        },
+        {
+          "name": "SET_STATUS",
+          "description": "Set the user's presence status.",
+          "parameters": [
+            {
+              "name": "status",
+              "type": "string",
+              "description": "Presence status.",
+              "enum": ["online", "away", "do_not_disturb", "offline"],
+              "required": true
+            }
+          ]
+        }
+      ],
+      "expected_action_name": "SET_STATUS",
+      "expected_params": { "status": "away" }
+    },
+    {
+      "id": "set-status-enum-dnd",
+      "input": "put me on do not disturb for the next hour please",
+      "availableActions": [
+        {
+          "name": "SET_STATUS",
+          "description": "Set the user's presence status.",
+          "parameters": [
+            {
+              "name": "status",
+              "type": "string",
+              "description": "Presence status.",
+              "enum": ["online", "away", "do_not_disturb", "offline"],
+              "required": true
+            }
+          ]
+        },
+        {
+          "name": "REPLY",
+          "description": "Send a user-facing message reply.",
+          "parameters": [
+            {
+              "name": "text",
+              "type": "string",
+              "description": "Reply text.",
+              "required": true
+            }
+          ]
+        }
+      ],
+      "expected_action_name": "SET_STATUS",
+      "expected_params": { "status": "do_not_disturb" }
+    },
+    {
+      "id": "create-note-no-other-action-fits",
+      "input": "jot down: idea for landing page — start with a single sentence value prop, then a demo gif",
+      "availableActions": [
+        {
+          "name": "CREATE_NOTE",
+          "description": "Create a freeform note.",
+          "parameters": [
+            {
+              "name": "content",
+              "type": "string",
+              "description": "Note body.",
+              "required": true
+            }
+          ]
+        },
+        {
+          "name": "REPLY",
+          "description": "Send a user-facing message reply.",
+          "parameters": [
+            {
+              "name": "text",
+              "type": "string",
+              "description": "Reply text.",
+              "required": true
+            }
+          ]
+        }
+      ],
+      "expected_action_name": "CREATE_NOTE",
+      "expected_params": {}
+    },
+    {
+      "id": "delete-file-with-confirmation-flag",
+      "input": "delete the file foo.tmp — do it without asking, I'm sure",
+      "availableActions": [
+        {
+          "name": "DELETE_FILE",
+          "description": "Delete a file by path.",
+          "parameters": [
+            {
+              "name": "path",
+              "type": "string",
+              "description": "File path.",
+              "required": true
+            },
+            {
+              "name": "confirm",
+              "type": "boolean",
+              "description": "When true, skip user confirmation.",
+              "required": false
+            }
+          ]
+        },
+        {
+          "name": "REPLY",
+          "description": "Send a user-facing message reply.",
+          "parameters": [
+            {
+              "name": "text",
+              "type": "string",
+              "description": "Reply text.",
+              "required": true
+            }
+          ]
+        }
+      ],
+      "expected_action_name": "DELETE_FILE",
+      "expected_params": { "path": "foo.tmp", "confirm": true }
+    },
+    {
+      "id": "delete-file-default-confirm",
+      "input": "remove the temp file at /tmp/old.log",
+      "availableActions": [
+        {
+          "name": "DELETE_FILE",
+          "description": "Delete a file by path.",
+          "parameters": [
+            {
+              "name": "path",
+              "type": "string",
+              "description": "File path.",
+              "required": true
+            },
+            {
+              "name": "confirm",
+              "type": "boolean",
+              "description": "When true, skip user confirmation.",
+              "required": false
+            }
+          ]
+        }
+      ],
+      "expected_action_name": "DELETE_FILE",
+      "expected_params": { "path": "/tmp/old.log" }
+    },
+    {
+      "id": "search-web-with-count",
+      "input": "find the top 5 search results for 'qwen 3.5 gguf'",
+      "availableActions": [
+        {
+          "name": "SEARCH_WEB",
+          "description": "Search the public web.",
+          "parameters": [
+            {
+              "name": "query",
+              "type": "string",
+              "description": "Search query.",
+              "required": true
+            },
+            {
+              "name": "limit",
+              "type": "number",
+              "description": "Max results to return.",
+              "required": false
+            }
+          ]
+        },
+        {
+          "name": "REPLY",
+          "description": "Send a user-facing message reply.",
+          "parameters": [
+            {
+              "name": "text",
+              "type": "string",
+              "description": "Reply text.",
+              "required": true
+            }
+          ]
+        }
+      ],
+      "expected_action_name": "SEARCH_WEB",
+      "expected_params": { "query": "qwen 3.5 gguf", "limit": 5 }
+    },
+    {
+      "id": "translate-language-enum",
+      "input": "translate 'good morning' to spanish",
+      "availableActions": [
+        {
+          "name": "TRANSLATE",
+          "description": "Translate text to a target language.",
+          "parameters": [
+            {
+              "name": "text",
+              "type": "string",
+              "description": "Source text.",
+              "required": true
+            },
+            {
+              "name": "target",
+              "type": "string",
+              "description": "Target language.",
+              "enum": ["en", "es", "fr", "de", "ja"],
+              "required": true
+            }
+          ]
+        }
+      ],
+      "expected_action_name": "TRANSLATE",
+      "expected_params": { "text": "good morning", "target": "es" }
+    },
+    {
+      "id": "translate-language-enum-japanese",
+      "input": "how do you say 'thank you' in japanese?",
+      "availableActions": [
+        {
+          "name": "TRANSLATE",
+          "description": "Translate text to a target language.",
+          "parameters": [
+            {
+              "name": "text",
+              "type": "string",
+              "description": "Source text.",
+              "required": true
+            },
+            {
+              "name": "target",
+              "type": "string",
+              "description": "Target language.",
+              "enum": ["en", "es", "fr", "de", "ja"],
+              "required": true
+            }
+          ]
+        },
+        {
+          "name": "REPLY",
+          "description": "Send a user-facing message reply.",
+          "parameters": [
+            {
+              "name": "text",
+              "type": "string",
+              "description": "Reply text.",
+              "required": true
+            }
+          ]
+        }
+      ],
+      "expected_action_name": "TRANSLATE",
+      "expected_params": { "text": "thank you", "target": "ja" }
+    },
+    {
+      "id": "schedule-meeting",
+      "input": "schedule a 30-minute meeting with bob about Q1 planning for tomorrow at 2pm",
+      "availableActions": [
+        {
+          "name": "SCHEDULE_MEETING",
+          "description": "Create a calendar event.",
+          "parameters": [
+            {
+              "name": "title",
+              "type": "string",
+              "description": "Event title.",
+              "required": true
+            },
+            {
+              "name": "attendee",
+              "type": "string",
+              "description": "Primary attendee name or email.",
+              "required": true
+            },
+            {
+              "name": "duration_minutes",
+              "type": "number",
+              "description": "Duration in minutes.",
+              "required": true
+            }
+          ]
+        },
+        {
+          "name": "CREATE_REMINDER",
+          "description": "Schedule a reminder for the user.",
+          "parameters": [
+            {
+              "name": "text",
+              "type": "string",
+              "description": "Reminder description.",
+              "required": true
+            },
+            {
+              "name": "when",
+              "type": "string",
+              "description": "Human-readable time.",
+              "required": true
+            }
+          ]
+        }
+      ],
+      "expected_action_name": "SCHEDULE_MEETING",
+      "expected_params": { "attendee": "bob", "duration_minutes": 30 }
+    },
+    {
+      "id": "ignore-acknowledgment",
+      "input": "thanks, that's all I needed",
+      "availableActions": [
+        {
+          "name": "REPLY",
+          "description": "Send a user-facing message reply.",
+          "parameters": [
+            {
+              "name": "text",
+              "type": "string",
+              "description": "Reply text.",
+              "required": true
+            }
+          ]
+        }
+      ],
+      "expected_action_name": "REPLY",
+      "expected_params": {}
+    },
+    {
+      "id": "boolean-flag-vs-default",
+      "input": "publish the new draft, make it public",
+      "availableActions": [
+        {
+          "name": "PUBLISH_POST",
+          "description": "Publish a draft.",
+          "parameters": [
+            {
+              "name": "draft_id",
+              "type": "string",
+              "description": "Draft identifier.",
+              "required": false
+            },
+            {
+              "name": "public",
+              "type": "boolean",
+              "description": "When true, post is publicly visible.",
+              "required": false
+            }
+          ]
+        },
+        {
+          "name": "REPLY",
+          "description": "Send a user-facing message reply.",
+          "parameters": [
+            {
+              "name": "text",
+              "type": "string",
+              "description": "Reply text.",
+              "required": true
+            }
+          ]
+        }
+      ],
+      "expected_action_name": "PUBLISH_POST",
+      "expected_params": { "public": true }
+    },
+    {
+      "id": "priority-enum",
+      "input": "create a task to fix the login bug and mark it as high priority",
+      "availableActions": [
+        {
+          "name": "CREATE_TASK",
+          "description": "Create a tracked task.",
+          "parameters": [
+            {
+              "name": "title",
+              "type": "string",
+              "description": "Task title.",
+              "required": true
+            },
+            {
+              "name": "priority",
+              "type": "string",
+              "description": "Priority bucket.",
+              "enum": ["low", "medium", "high", "urgent"],
+              "required": false
+            }
+          ]
+        },
+        {
+          "name": "CREATE_NOTE",
+          "description": "Create a freeform note.",
+          "parameters": [
+            {
+              "name": "content",
+              "type": "string",
+              "description": "Note body.",
+              "required": true
+            }
+          ]
+        }
+      ],
+      "expected_action_name": "CREATE_TASK",
+      "expected_params": { "priority": "high" }
+    }
+  ]
+}

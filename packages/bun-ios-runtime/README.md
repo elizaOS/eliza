@@ -23,6 +23,11 @@ You can override the path with:
 ELIZA_IOS_BUN_ENGINE_XCFRAMEWORK=/absolute/path/ElizaBunEngine.xcframework
 ```
 
+The app build validates an override first, then stages it into
+`packages/bun-ios-runtime/artifacts/` before CocoaPods runs. The Podspec only
+accepts vendored frameworks inside this package so full-Bun builds do not depend
+on an external absolute path at install/sign time.
+
 If full-engine mode is requested and the framework is missing, the iOS build
 fails before CocoaPods instead of falling back to the JSContext compatibility
 host.
@@ -47,8 +52,11 @@ build script wraps that Bun API into `ElizaBunEngine.framework`.
 The exported Eliza ABI is documented in `BRIDGE_CONTRACT.md`:
 
 - `eliza_bun_engine_abi_version`
+- `eliza_bun_engine_last_error`
+- `eliza_bun_engine_set_host_callback`
 - `eliza_bun_engine_start`
 - `eliza_bun_engine_stop`
+- `eliza_bun_engine_is_running`
 - `eliza_bun_engine_call`
 - `eliza_bun_engine_free`
 
@@ -106,8 +114,7 @@ public/agent/agent-bundle.js ios-bridge --stdio
 ```
 
 `packages/agent/src/cli/ios-bridge.ts` then boots the real agent runtime and
-starts the existing API server on an ephemeral loopback port inside the Bun
-process. The WebView never connects to that TCP port. UI calls flow:
+handles foreground routes over the Capacitor-owned stdio IPC. UI calls flow:
 
 ```text
 React fetch / Agent.request
@@ -115,13 +122,13 @@ React fetch / Agent.request
   -> ElizaBunEngine C ABI
   -> stdio NDJSON
   -> agent ios-bridge
-  -> existing backend routes
+  -> in-process routes / buffered legacy handlers
 ```
 
-That gives the app a full local backend over a Capacitor-owned IPC surface. The
-remaining architectural cleanup is to expose the backend as a direct
-fetch/Hono-style route kernel so `ios-bridge` can call routes without the
-internal loopback server.
+Native llama calls use the same channel in the reverse direction. The agent
+bundle emits `host_call` frames, the C shim invokes Swift, and Swift delegates
+to `LlamaBridgeImpl`. No WebView, Bun, or native layer opens a TCP port for the
+full-Bun local backend.
 
 ## Current status
 
@@ -130,8 +137,11 @@ Implemented in this repo:
 - iOS app build gate for full-engine mode.
 - CocoaPods podspec for a generated `ElizaBunEngine.xcframework`.
 - C shim that wraps a `bun_start(...)` iOS fork into the Eliza ABI.
+- ABI v3 host-call callback for native llama operations.
 - Agent-side `ios-bridge --stdio` command for bridged HTTP requests and
   `send_message`.
+- iOS full-Bun local-inference status and text-generation handlers over
+  native IPC.
 - React/UI transport that uses the full Bun bridge when the Capacitor plugin is
   present, otherwise falls back to the JSContext ITTP compatibility kernel.
 - Runtime dynamic-loader ABI that can boot a full Bun engine when the framework

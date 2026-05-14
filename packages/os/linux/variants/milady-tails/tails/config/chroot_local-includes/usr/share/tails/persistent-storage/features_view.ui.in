@@ -1,0 +1,854 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<!-- Created with Cambalache 0.99.8 -->
+<!-- Generated with glade 3.40.0 -->
+<interface>
+  <!-- interface-name features_view.ui.in -->
+  <requires lib="gtk+" version="3.24"/>
+  <requires lib="libhandy" version="0.0"/>
+  <object class="GtkBox" id="box">
+    <property name="can-focus">False</property>
+    <property name="orientation">vertical</property>
+    <property name="visible">True</property>
+    <child>
+      <object class="GtkScrolledWindow">
+        <property name="can-focus">True</property>
+        <property name="hexpand">True</property>
+        <property name="hscrollbar-policy">never</property>
+        <property name="kinetic-scrolling">False</property>
+        <property name="overlay-scrolling">False</property>
+        <property name="vexpand">True</property>
+        <property name="visible">True</property>
+        <property name="window-placement-set">False</property>
+        <child>
+          <object class="GtkViewport">
+            <property name="can-focus">False</property>
+            <property name="visible">True</property>
+            <child>
+              <object class="HdyClamp">
+                <property name="visible">True</property>
+                <property name="can-focus">False</property>
+                <property name="margin-start">12</property>
+                <property name="margin-end">12</property>
+                <property name="margin-top">32</property>
+                <property name="margin-bottom">32</property>
+                <child>
+                  <object class="GtkBox">
+                    <property name="visible">True</property>
+                    <property name="can-focus">False</property>
+                    <property name="hexpand">True</property>
+                    <property name="orientation">vertical</property>
+                    <property name="spacing">12</property>
+                    <child>
+                      <object class="GtkBox">
+                        <property name="visible">True</property>
+                        <property name="can-focus">False</property>
+                        <property name="spacing">10</property>
+                        <child>
+                          <object class="GtkImage">
+                            <property name="visible">True</property>
+                            <property name="can-focus">False</property>
+                            <property name="icon-name">tails-unlocked</property>
+                            <property name="icon_size">6</property>
+                          </object>
+                          <packing>
+                            <property name="expand">False</property>
+                            <property name="fill">True</property>
+                            <property name="position">0</property>
+                          </packing>
+                        </child>
+                        <child>
+                          <object class="GtkLabel">
+                            <property name="visible">True</property>
+                            <property name="can-focus">False</property>
+                            <property name="label" translatable="yes">Your Persistent Storage is unlocked.
+
+Its content is available until you shut down Tails.
+
+&lt;a href="doc/persistent_storage/backup"&gt;Learn how to make a backup of your Persistent Storage.&lt;/a&gt;</property>
+                            <property name="use-markup">True</property>
+                            <property name="wrap">True</property>
+                            <property name="max-width-chars">50</property>
+                            <signal name="activate-link" handler="on_activate_link" swapped="no"/>
+                          </object>
+                          <packing>
+                            <property name="expand">False</property>
+                            <property name="fill">True</property>
+                            <property name="position">1</property>
+                          </packing>
+                        </child>
+                      </object>
+                      <packing>
+                        <property name="expand">False</property>
+                        <property name="fill">True</property>
+                        <property name="position">0</property>
+                      </packing>
+                    </child>
+                    <child>
+                      <object class="GtkLabel">
+                        <property name="visible">True</property>
+                        <property name="can-focus">False</property>
+                        <property name="margin-top">18</property>
+                        <property name="label" translatable="yes">Turn on the features of the Persistent Storage for the data that you want to save to your Tails USB stick.</property>
+                        <property name="wrap">True</property>
+                        <property name="max-width-chars">50</property>
+                        <property name="xalign">0</property>
+                      </object>
+                      <packing>
+                        <property name="expand">False</property>
+                        <property name="fill">True</property>
+                        <property name="position">1</property>
+                      </packing>
+                    </child>
+                    <child>
+                      <object class="GtkLabel" id="personal_data_label">
+                        <property name="visible">True</property>
+                        <property name="can-focus">False</property>
+                        <property name="halign">start</property>
+                        <property name="margin-top">18</property>
+                        <property name="label" translatable="yes">Personal Documents</property>
+                        <attributes>
+                          <attribute name="weight" value="bold"/>
+                        </attributes>
+                        <accessibility>
+                          <relation type="label-for" target="personal_data_list_box"/>
+                        </accessibility>
+                      </object>
+                      <packing>
+                        <property name="expand">False</property>
+                        <property name="fill">True</property>
+                        <property name="position">2</property>
+                      </packing>
+                    </child>
+                    <child>
+                      <object class="GtkFrame">
+                        <property name="visible">True</property>
+                        <property name="can-focus">False</property>
+                        <property name="label-xalign">0</property>
+                        <child>
+                          <object class="GtkListBox" id="personal_data_list_box">
+                            <property name="visible">True</property>
+                            <property name="can-focus">False</property>
+                            <property name="selection-mode">none</property>
+                            <child>
+                              <object class="HdyActionRow" id="persistent_directory_row">
+                                <property name="visible">True</property>
+                                <property name="can-focus">False</property>
+                                <property name="title" translatable="yes">Persistent Folder</property>
+                                <property name="subtitle" translatable="yes">A folder where you can save your documents.</property>
+                                <property name="icon-name">stock_folder</property>
+                                <child>
+                                  <object class="GtkBox" id="persistent_directory_box">
+                                    <property name="valign">center</property>
+                                    <property name="margin_start">6</property>
+                                    <property name="spacing">6</property>
+                                    <property name="visible">True</property>
+                                    <child>
+                                      <object class="GtkButton" id="persistent_directory_open_button">
+                                        <property name="visible">True</property>
+                                        <property name="can-focus">True</property>
+                                        <property name="receives-default">True</property>
+                                        <property name="halign">end</property>
+                                        <property name="valign">center</property>
+                                        <signal name="clicked" handler="on_persistent_directory_open_button_clicked" swapped="no"/>
+                                        <child>
+                                          <object class="GtkImage">
+                                            <property name="visible">True</property>
+                                            <property name="can-focus">False</property>
+                                            <property name="icon-name">folder-open-symbolic</property>
+                                          </object>
+                                        </child>
+                                        <child internal-child="accessible">
+                                          <object class="AtkObject">
+                                            <property name="AtkObject::accessible-name" translatable="yes">Open Persistent Folder</property>
+                                          </object>
+                                        </child>
+                                      </object>
+                                    </child>
+                                    <child>
+                                      <object class="GtkSwitch" id="persistent_directory_switch">
+                                        <property name="visible">True</property>
+                                        <property name="can-focus">True</property>
+                                        <property name="halign">end</property>
+                                        <property name="valign">center</property>
+                                        <child internal-child="accessible">
+                                          <object class="AtkObject" id="persistent_directory_switch-atkobject">
+                                            <property name="AtkObject::accessible-name" translatable="yes">Activate Persistent Folder</property>
+                                          </object>
+                                        </child>
+                                      </object>
+                                    </child>
+                                  </object>
+                                </child>
+                              </object>
+                            </child>
+                            <accessibility>
+                              <relation type="labelled-by" target="personal_data_label"/>
+                            </accessibility>
+                          </object>
+                        </child>
+                      </object>
+                      <packing>
+                        <property name="expand">False</property>
+                        <property name="fill">True</property>
+                        <property name="position">3</property>
+                      </packing>
+                    </child>
+                    <child>
+                      <object class="GtkLabel" id="system_settings_label">
+                        <property name="visible">True</property>
+                        <property name="can-focus">False</property>
+                        <property name="halign">start</property>
+                        <property name="margin-top">18</property>
+                        <property name="label" translatable="yes">System Settings</property>
+                        <attributes>
+                          <attribute name="weight" value="bold"/>
+                        </attributes>
+                        <accessibility>
+                          <relation type="label-for" target="system_settings_list_box"/>
+                        </accessibility>
+                      </object>
+                      <packing>
+                        <property name="expand">False</property>
+                        <property name="fill">True</property>
+                        <property name="position">4</property>
+                      </packing>
+                    </child>
+                    <child>
+                      <object class="GtkFrame">
+                        <property name="visible">True</property>
+                        <property name="can-focus">False</property>
+                        <property name="label-xalign">0</property>
+                        <child>
+                          <object class="GtkListBox" id="system_settings_list_box">
+                            <property name="visible">True</property>
+                            <property name="can-focus">False</property>
+                            <property name="selection-mode">none</property>
+                            <child>
+                              <object class="HdyActionRow" id="welcome_screen_row">
+                                <property name="visible">True</property>
+                                <property name="can-focus">False</property>
+                                <property name="title" translatable="yes">Welcome Screen</property>
+                                <property name="icon-name">tps-WelcomeScreen</property>
+                                <child>
+                                  <object class="GtkBox" id="welcome_screen_box">
+                                    <property name="valign">center</property>
+                                    <property name="margin_start">6</property>
+                                    <property name="spacing">6</property>
+                                    <property name="visible">True</property>
+                                    <child>
+                                      <object class="GtkSwitch" id="welcome_screen_switch">
+                                        <property name="visible">True</property>
+                                        <property name="can-focus">True</property>
+                                        <property name="halign">end</property>
+                                        <property name="valign">center</property>
+                                        <child internal-child="accessible">
+                                          <object class="AtkObject" id="welcome_screen_switch-atkobject">
+                                            <property name="AtkObject::accessible-name" translatable="yes">Activate Welcome Screen</property>
+                                          </object>
+                                        </child>
+                                      </object>
+                                    </child>
+                                  </object>
+                                </child>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="HdyActionRow" id="printers_row">
+                                <property name="visible">True</property>
+                                <property name="can-focus">False</property>
+                                <property name="title" translatable="yes">Printers</property>
+                                <property name="icon-name">printer</property>
+                                <child>
+                                  <object class="GtkBox" id="printers_box">
+                                    <property name="valign">center</property>
+                                    <property name="margin_start">6</property>
+                                    <property name="spacing">6</property>
+                                    <property name="visible">True</property>
+                                    <child>
+                                      <object class="GtkSwitch" id="printers_switch">
+                                        <property name="visible">True</property>
+                                        <property name="can-focus">True</property>
+                                        <property name="halign">end</property>
+                                        <property name="valign">center</property>
+                                        <child internal-child="accessible">
+                                          <object class="AtkObject" id="printers_switch-atkobject">
+                                            <property name="AtkObject::accessible-name" translatable="yes">Activate Printers</property>
+                                          </object>
+                                        </child>
+                                      </object>
+                                    </child>
+                                  </object>
+                                </child>
+                              </object>
+                            </child>
+                            <accessibility>
+                              <relation type="labelled-by" target="system_settings_label"/>
+                            </accessibility>
+                          </object>
+                        </child>
+                      </object>
+                      <packing>
+                        <property name="expand">False</property>
+                        <property name="fill">True</property>
+                        <property name="position">5</property>
+                      </packing>
+                    </child>
+                    <child>
+                      <object class="GtkLabel" id="network_label">
+                        <property name="visible">True</property>
+                        <property name="can-focus">False</property>
+                        <property name="halign">start</property>
+                        <property name="margin-top">18</property>
+                        <property name="label" translatable="yes">Network</property>
+                        <attributes>
+                          <attribute name="weight" value="bold"/>
+                        </attributes>
+                        <accessibility>
+                          <relation type="label-for" target="network_list_box"/>
+                        </accessibility>
+                      </object>
+                      <packing>
+                        <property name="expand">False</property>
+                        <property name="fill">True</property>
+                        <property name="position">6</property>
+                      </packing>
+                    </child>
+                    <child>
+                      <object class="GtkFrame">
+                        <property name="visible">True</property>
+                        <property name="can-focus">False</property>
+                        <property name="label-xalign">0</property>
+                        <child>
+                          <object class="GtkListBox" id="network_list_box">
+                            <property name="visible">True</property>
+                            <property name="can-focus">False</property>
+                            <property name="selection-mode">none</property>
+                            <child>
+                              <object class="HdyActionRow" id="network_connections_row">
+                                <property name="visible">True</property>
+                                <property name="can-focus">False</property>
+                                <property name="title" translatable="yes">Network Connections</property>
+                                <property name="subtitle" translatable="yes">Save Wi-Fi passwords and mobile broadband configuration.</property>
+                                <property name="icon-name">tps-NetworkConnections</property>
+                                <child>
+                                  <object class="GtkBox" id="network_connections_box">
+                                    <property name="valign">center</property>
+                                    <property name="margin_start">6</property>
+                                    <property name="spacing">6</property>
+                                    <property name="visible">True</property>
+                                    <child>
+                                      <object class="GtkSwitch" id="network_connections_switch">
+                                        <property name="visible">True</property>
+                                        <property name="can-focus">True</property>
+                                        <property name="halign">end</property>
+                                        <property name="valign">center</property>
+                                        <child internal-child="accessible">
+                                          <object class="AtkObject" id="network_connections_switch-atkobject">
+                                            <property name="AtkObject::accessible-name" translatable="yes">Activate Network Connections</property>
+                                          </object>
+                                        </child>
+                                      </object>
+                                    </child>
+                                  </object>
+                                </child>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="HdyActionRow" id="tor_configuration_row">
+                                <property name="visible">True</property>
+                                <property name="can-focus">False</property>
+                                <property name="title" translatable="yes">Tor Bridge</property>
+                                <property name="icon-name">tor-connection</property>
+                                <child>
+                                  <object class="GtkBox" id="tor_configuration_box">
+                                    <property name="valign">center</property>
+                                    <property name="margin_start">6</property>
+                                    <property name="spacing">6</property>
+                                    <property name="visible">True</property>
+                                    <child>
+                                      <object class="GtkSwitch" id="tor_configuration_switch">
+                                        <property name="visible">True</property>
+                                        <property name="can-focus">True</property>
+                                        <property name="halign">end</property>
+                                        <property name="valign">center</property>
+                                        <child internal-child="accessible">
+                                          <object class="AtkObject" id="tor_configuration_switch-atkobject">
+                                            <property name="AtkObject::accessible-name" translatable="yes">Activate Tor Bridge</property>
+                                          </object>
+                                        </child>
+                                      </object>
+                                    </child>
+                                  </object>
+                                </child>
+                              </object>
+                            </child>
+                            <accessibility>
+                              <relation type="labelled-by" target="network_label"/>
+                            </accessibility>
+                          </object>
+                        </child>
+                      </object>
+                      <packing>
+                        <property name="expand">False</property>
+                        <property name="fill">True</property>
+                        <property name="position">7</property>
+                      </packing>
+                    </child>
+                    <child>
+                      <object class="GtkLabel" id="applications_label">
+                        <property name="visible">True</property>
+                        <property name="can-focus">False</property>
+                        <property name="halign">start</property>
+                        <property name="margin-top">18</property>
+                        <property name="label" translatable="yes">Applications</property>
+                        <attributes>
+                          <attribute name="weight" value="bold"/>
+                        </attributes>
+                        <accessibility>
+                          <relation type="label-for" target="applications_list_box"/>
+                        </accessibility>
+                      </object>
+                      <packing>
+                        <property name="expand">False</property>
+                        <property name="fill">True</property>
+                        <property name="position">8</property>
+                      </packing>
+                    </child>
+                    <child>
+                      <object class="GtkFrame">
+                        <property name="visible">True</property>
+                        <property name="can-focus">False</property>
+                        <property name="label-xalign">0</property>
+                        <child>
+                          <object class="GtkListBox" id="applications_list_box">
+                            <property name="visible">True</property>
+                            <property name="can-focus">False</property>
+                            <property name="selection-mode">none</property>
+                            <child>
+                              <object class="HdyActionRow" id="browser_bookmarks_row">
+                                <property name="visible">True</property>
+                                <property name="can-focus">True</property>
+                                <property name="title" translatable="yes">Tor Browser Bookmarks</property>
+                                <property name="icon-name">user-bookmarks</property>
+                                <child>
+                                  <object class="GtkBox" id="browser_bookmarks_box">
+                                    <property name="valign">center</property>
+                                    <property name="margin_start">6</property>
+                                    <property name="spacing">6</property>
+                                    <property name="visible">True</property>
+                                    <child>
+                                      <object class="GtkSwitch" id="browser_bookmarks_switch">
+                                        <property name="visible">True</property>
+                                        <property name="can-focus">True</property>
+                                        <property name="halign">end</property>
+                                        <property name="valign">center</property>
+                                        <child internal-child="accessible">
+                                          <object class="AtkObject" id="browser_bookmarks_switch-atkobject">
+                                            <property name="AtkObject::accessible-name" translatable="yes">Activate Tor Browser Bookmarks</property>
+                                          </object>
+                                        </child>
+                                      </object>
+                                    </child>
+                                  </object>
+                                </child>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="HdyActionRow" id="electrum_row">
+                                <property name="visible">True</property>
+                                <property name="can-focus">False</property>
+                                <property name="title" translatable="yes">Electrum Bitcoin Wallet</property>
+                                <property name="icon-name">electrum</property>
+                                <child>
+                                  <object class="GtkBox" id="electrum_box">
+                                    <property name="valign">center</property>
+                                    <property name="margin_start">6</property>
+                                    <property name="spacing">6</property>
+                                    <property name="visible">True</property>
+                                    <child>
+                                      <object class="GtkSwitch" id="electrum_switch">
+                                        <property name="visible">True</property>
+                                        <property name="can-focus">True</property>
+                                        <property name="halign">end</property>
+                                        <property name="valign">center</property>
+                                        <child internal-child="accessible">
+                                          <object class="AtkObject" id="electrum_switch-atkobject">
+                                            <property name="AtkObject::accessible-name" translatable="yes">Activate Electrum Bitcoin Wallet</property>
+                                          </object>
+                                        </child>
+                                      </object>
+                                    </child>
+                                  </object>
+                                </child>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="HdyActionRow" id="thunderbird_row">
+                                <property name="visible">True</property>
+                                <property name="can-focus">False</property>
+                                <property name="title" translatable="yes">Thunderbird Email Client</property>
+                                <property name="icon-name">thunderbird</property>
+                                <child>
+                                  <object class="GtkBox" id="thunderbird_box">
+                                    <property name="valign">center</property>
+                                    <property name="margin_start">6</property>
+                                    <property name="spacing">6</property>
+                                    <property name="visible">True</property>
+                                    <child>
+                                      <object class="GtkSwitch" id="thunderbird_switch">
+                                        <property name="visible">True</property>
+                                        <property name="can-focus">True</property>
+                                        <property name="halign">end</property>
+                                        <property name="valign">center</property>
+                                        <child internal-child="accessible">
+                                          <object class="AtkObject" id="thunderbird_switch-atkobject">
+                                            <property name="AtkObject::accessible-name" translatable="yes">Activate Thunderbird Email Client</property>
+                                          </object>
+                                        </child>
+                                      </object>
+                                    </child>
+                                  </object>
+                                </child>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="HdyActionRow" id="gnupg_row">
+                                <property name="visible">True</property>
+                                <property name="can-focus">False</property>
+                                <property name="title" translatable="yes">GnuPG</property>
+                                <property name="subtitle" translatable="yes">OpenPGP keys outside of Thunderbird, including in Kleopatra.</property>
+                                <property name="icon-name">seahorse-key</property>
+                                <child>
+                                  <object class="GtkBox" id="gnupg_box">
+                                    <property name="valign">center</property>
+                                    <property name="margin_start">6</property>
+                                    <property name="spacing">6</property>
+                                    <property name="visible">True</property>
+                                    <child>
+                                      <object class="GtkSwitch" id="gnupg_switch">
+                                        <property name="visible">True</property>
+                                        <property name="can-focus">True</property>
+                                        <property name="halign">end</property>
+                                        <property name="valign">center</property>
+                                        <child internal-child="accessible">
+                                          <object class="AtkObject" id="gnupg_switch-atkobject">
+                                            <property name="AtkObject::accessible-name" translatable="yes">Activate GnuPG</property>
+                                          </object>
+                                        </child>
+                                      </object>
+                                    </child>
+                                  </object>
+                                </child>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="HdyActionRow" id="pidgin_row">
+                                <property name="visible">True</property>
+                                <property name="can-focus">False</property>
+                                <property name="title" translatable="yes">Pidgin Internet Messenger</property>
+                                <property name="icon-name">pidgin</property>
+                                <child>
+                                  <object class="GtkBox" id="pidgin_box">
+                                    <property name="valign">center</property>
+                                    <property name="margin_start">6</property>
+                                    <property name="spacing">6</property>
+                                    <property name="visible">True</property>
+                                    <child>
+                                      <object class="GtkSwitch" id="pidgin_switch">
+                                        <property name="visible">True</property>
+                                        <property name="can-focus">True</property>
+                                        <property name="halign">end</property>
+                                        <property name="valign">center</property>
+                                        <child internal-child="accessible">
+                                          <object class="AtkObject" id="pidgin_switch-atkobject">
+                                            <property name="AtkObject::accessible-name" translatable="yes">Activate Pidgin Internet Messenger</property>
+                                          </object>
+                                        </child>
+                                      </object>
+                                    </child>
+                                  </object>
+                                </child>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="HdyActionRow" id="ssh_client_row">
+                                <property name="visible">True</property>
+                                <property name="can-focus">False</property>
+                                <property name="title" translatable="yes">SSH Client</property>
+                                <property name="icon-name">seahorse-key-ssh</property>
+                                <child>
+                                  <object class="GtkBox" id="ssh_client_box">
+                                    <property name="valign">center</property>
+                                    <property name="margin_start">6</property>
+                                    <property name="spacing">6</property>
+                                    <property name="visible">True</property>
+                                    <child>
+                                      <object class="GtkSwitch" id="ssh_client_switch">
+                                        <property name="visible">True</property>
+                                        <property name="can-focus">True</property>
+                                        <property name="halign">end</property>
+                                        <property name="valign">center</property>
+                                        <child internal-child="accessible">
+                                          <object class="AtkObject" id="ssh_client_switch-atkobject">
+                                            <property name="AtkObject::accessible-name" translatable="yes">Activate SSH Client</property>
+                                          </object>
+                                        </child>
+                                      </object>
+                                    </child>
+                                  </object>
+                                </child>
+                              </object>
+                            </child>
+                            <accessibility>
+                              <relation type="labelled-by" target="applications_label"/>
+                            </accessibility>
+                          </object>
+                        </child>
+                      </object>
+                      <packing>
+                        <property name="expand">False</property>
+                        <property name="fill">True</property>
+                        <property name="position">9</property>
+                      </packing>
+                    </child>
+                    <child>
+                      <object class="GtkLabel" id="advanced_settings_label">
+                        <property name="visible">True</property>
+                        <property name="can-focus">False</property>
+                        <property name="halign">start</property>
+                        <property name="margin-top">18</property>
+                        <property name="label" translatable="yes">Advanced Settings</property>
+                        <attributes>
+                          <attribute name="weight" value="bold"/>
+                        </attributes>
+                        <accessibility>
+                          <relation type="label-for" target="advanced_settings_list_box"/>
+                        </accessibility>
+                      </object>
+                      <packing>
+                        <property name="expand">False</property>
+                        <property name="fill">True</property>
+                        <property name="position">10</property>
+                      </packing>
+                    </child>
+                    <child>
+                      <object class="GtkFrame">
+                        <property name="visible">True</property>
+                        <property name="can-focus">False</property>
+                        <property name="label-xalign">0</property>
+                        <child>
+                          <object class="GtkListBox" id="advanced_settings_list_box">
+                            <property name="visible">True</property>
+                            <property name="can-focus">False</property>
+                            <property name="selection-mode">none</property>
+                            <child>
+                              <object class="HdyActionRow" id="additional_software_row">
+                                <property name="visible">True</property>
+                                <property name="can-focus">False</property>
+                                <property name="title" translatable="yes">Additional Software</property>
+                                <property name="subtitle" translatable="yes">Install additional software automatically when starting Tails.</property>
+                                <property name="icon-name">package-x-generic</property>
+                                <child>
+                                  <object class="GtkBox" id="additional_software_box">
+                                    <property name="valign">center</property>
+                                    <property name="margin_start">6</property>
+                                    <property name="spacing">6</property>
+                                    <property name="visible">True</property>
+                                    <child>
+                                      <object class="GtkButton">
+                                        <property name="visible">True</property>
+                                        <property name="can-focus">True</property>
+                                        <property name="receives-default">True</property>
+                                        <property name="halign">end</property>
+                                        <property name="valign">center</property>
+                                        <signal name="clicked" handler="on_additional_software_button_clicked" swapped="no"/>
+                                        <child>
+                                          <object class="GtkImage">
+                                            <property name="visible">True</property>
+                                            <property name="can-focus">False</property>
+                                            <property name="icon-name">applications-system-symbolic</property>
+                                          </object>
+                                        </child>
+                                        <child internal-child="accessible">
+                                          <object class="AtkObject">
+                                            <property name="AtkObject::accessible-name" translatable="yes">Configure Additional Software</property>
+                                          </object>
+                                        </child>
+                                      </object>
+                                    </child>
+                                    <child>
+                                      <object class="GtkSwitch" id="additional_software_switch">
+                                        <property name="visible">True</property>
+                                        <property name="can-focus">True</property>
+                                        <property name="halign">end</property>
+                                        <property name="valign">center</property>
+                                        <child internal-child="accessible">
+                                          <object class="AtkObject" id="additional_software_switch-atkobject">
+                                            <property name="AtkObject::accessible-name" translatable="yes">Activate Additional Software</property>
+                                          </object>
+                                        </child>
+                                      </object>
+                                    </child>
+                                  </object>
+                                </child>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="HdyActionRow" id="dotfiles_row">
+                                <property name="visible">True</property>
+                                <property name="can-focus">False</property>
+                                <property name="title" translatable="yes">Dotfiles</property>
+                                <property name="subtitle" translatable="yes">Symlink every file in the Dotfiles folder into the Home folder.</property>
+                                <property name="icon-name">preferences-desktop</property>
+                                <child>
+                                  <object class="GtkBox" id="dotfiles_box">
+                                    <property name="valign">center</property>
+                                    <property name="margin_start">6</property>
+                                    <property name="spacing">6</property>
+                                    <property name="visible">True</property>
+                                    <child>
+                                      <object class="GtkLinkButton">
+                                        <property name="visible">True</property>
+                                        <property name="can_focus">False</property>
+                                        <property name="receives_default">True</property>
+                                        <property name="relief">none</property>
+                                        <property name="uri">doc/persistent_storage/configure#dotfiles</property>
+                                        <signal name="activate-link" handler="on_activate_link_button" swapped="no"/>
+                                        <child>
+                                          <object class="GtkImage">
+                                            <property name="visible">True</property>
+                                            <property name="can_focus">False</property>
+                                            <property name="icon_name">tails-help</property>
+                                          </object>
+                                        </child>
+                                      </object>
+                                    </child>
+                                    <child>
+                                      <object class="GtkSwitch" id="dotfiles_switch">
+                                        <property name="visible">True</property>
+                                        <property name="can-focus">True</property>
+                                        <property name="halign">end</property>
+                                        <property name="valign">center</property>
+                                        <child internal-child="accessible">
+                                          <object class="AtkObject" id="dotfiles_switch-atkobject">
+                                            <property name="AtkObject::accessible-name" translatable="yes">Activate Dotfiles</property>
+                                          </object>
+                                        </child>
+                                      </object>
+                                    </child>
+                                  </object>
+                                </child>
+                              </object>
+                            </child>
+                            <accessibility>
+                              <relation type="labelled-by" target="advanced_settings_label"/>
+                            </accessibility>
+                          </object>
+                        </child>
+                      </object>
+                      <packing>
+                        <property name="expand">False</property>
+                        <property name="fill">True</property>
+                        <property name="position">11</property>
+                      </packing>
+                    </child>
+                    <child>
+                      <object class="GtkBox" id="custom_features_box">
+                        <property name="can-focus">False</property>
+                        <property name="orientation">vertical</property>
+                        <property name="spacing">10</property>
+                        <child>
+                          <object class="GtkLabel" id="custom_features_label">
+                            <property name="visible">True</property>
+                            <property name="can-focus">False</property>
+                            <property name="halign">start</property>
+                            <property name="margin-top">18</property>
+                            <property name="label" translatable="yes">Custom</property>
+                            <attributes>
+                              <attribute name="weight" value="bold"/>
+                            </attributes>
+                            <accessibility>
+                              <relation type="label-for" target="custom_features_list_box"/>
+                            </accessibility>
+                          </object>
+                          <packing>
+                            <property name="expand">False</property>
+                            <property name="fill">True</property>
+                            <property name="position">0</property>
+                          </packing>
+                        </child>
+                        <child>
+                          <object class="GtkLabel">
+                            <property name="visible">True</property>
+                            <property name="can-focus">False</property>
+                            <property name="halign">start</property>
+                            <property name="label" translatable="yes">To add or remove custom features, modify /live/persistence/TailsData_unlocked/persistence.conf.</property>
+                            <property name="selectable">True</property>
+                          </object>
+                          <packing>
+                            <property name="expand">False</property>
+                            <property name="fill">True</property>
+                            <property name="position">1</property>
+                          </packing>
+                        </child>
+                        <child>
+                          <object class="GtkFrame" id="custom_features_frame">
+                            <property name="can-focus">False</property>
+                            <property name="label-xalign">0</property>
+                            <child>
+                              <object class="GtkListBox" id="custom_features_list_box">
+                                <property name="visible">True</property>
+                                <property name="can-focus">False</property>
+                                <property name="selection-mode">none</property>
+                                <accessibility>
+                                  <relation type="labelled-by" target="custom_features_label"/>
+                                </accessibility>
+                              </object>
+                            </child>
+                          </object>
+                          <packing>
+                            <property name="expand">False</property>
+                            <property name="fill">True</property>
+                            <property name="position">1</property>
+                          </packing>
+                        </child>
+                      </object>
+                      <packing>
+                        <property name="expand">False</property>
+                        <property name="fill">True</property>
+                        <property name="position">12</property>
+                      </packing>
+                    </child>
+                    <child>
+                      <object class="GtkLabel">
+                        <property name="visible">True</property>
+                        <property name="can-focus">False</property>
+                        <property name="margin-top">18</property>
+                        <property name="label" translatable="yes">&lt;a href="doc/persistent_storage"&gt;Learn more about the Persistent Storage.&lt;/a&gt;</property>
+                        <property name="use-markup">True</property>
+                        <property name="wrap">True</property>
+                        <property name="max-width-chars">50</property>
+                        <property name="xalign">0</property>
+                        <signal name="activate-link" handler="on_activate_link" swapped="no"/>
+                      </object>
+                      <packing>
+                        <property name="expand">False</property>
+                        <property name="fill">True</property>
+                        <property name="position">13</property>
+                      </packing>
+                    </child>
+                  </object>
+                </child>
+              </object>
+            </child>
+          </object>
+        </child>
+      </object>
+      <packing>
+        <property name="expand">False</property>
+        <property name="fill">True</property>
+        <property name="position">1</property>
+      </packing>
+    </child>
+  </object>
+</interface>

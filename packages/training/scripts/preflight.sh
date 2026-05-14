@@ -39,10 +39,10 @@
 # costs cents to run locally and saves dollars on Vast.
 #
 # Usage:
-#   bash scripts/preflight.sh [--registry-key qwen3.6-27b] [--gpu-target b200-2x]
+#   bash scripts/preflight.sh [--registry-key qwen3.5-4b] [--gpu-target b200-2x]
 #
 # Reads (env, all optional with sensible defaults):
-#   REGISTRY_KEY           — same as train_vast.sh; default qwen3.6-27b
+#   REGISTRY_KEY           — same as train_vast.sh; default qwen3.5-4b
 #   VAST_GPU_TARGET        — same as train_vast.sh; default auto-picked
 #   ELIZA_PREFLIGHT_SAMPLE_LINES — schema sample size per file; default 1000
 #   ELIZA_PREFLIGHT_MAX_UTIL_PCT — memory headroom cutoff; default 85
@@ -59,7 +59,7 @@ log_ok()   { printf '[preflight] PASS  %s\n' "$*"; }
 log_err()  { printf '[preflight] FAIL  %s\n' "$*" >&2; }
 log_skip() { printf '[preflight] SKIP  %s\n' "$*"; }
 
-REGISTRY_KEY="${REGISTRY_KEY:-qwen3.6-27b}"
+REGISTRY_KEY="${REGISTRY_KEY:-qwen3.5-4b}"
 SAMPLE_LINES="${ELIZA_PREFLIGHT_SAMPLE_LINES:-1000}"
 MAX_UTIL_PCT="${ELIZA_PREFLIGHT_MAX_UTIL_PCT:-85}"
 SMOKE_MAX_AGE_HOURS="${ELIZA_PREFLIGHT_SMOKE_MAX_AGE_HOURS:-24}"
@@ -68,8 +68,8 @@ MIN_CONTENT_PCT="${ELIZA_PREFLIGHT_MIN_CONTENT_PCT:-80}"
 # Mirror train_vast.sh's GPU-target auto-pick so a user who only sets
 # REGISTRY_KEY gets the same default the launcher would.
 case "$REGISTRY_KEY" in
-  qwen3.5-2b|qwen3.5-9b) DEFAULT_GPU_TARGET="blackwell6000-1x" ;;
-  qwen3.6-27b)           DEFAULT_GPU_TARGET="b200-2x" ;;
+  qwen3.5-2b|qwen3.5-4b) DEFAULT_GPU_TARGET="blackwell6000-1x" ;;
+  qwen3.5-4b)           DEFAULT_GPU_TARGET="b200-2x" ;;
   qwen3.5-0.8b)            DEFAULT_GPU_TARGET="blackwell6000-1x" ;;
   *)                     DEFAULT_GPU_TARGET="blackwell6000-2x" ;;
 esac
@@ -290,7 +290,7 @@ if uv run --extra train python - "$REGISTRY_KEY" "$VAST_GPU_TARGET" "$MAX_UTIL_P
 MAX_UTIL_PCT % of the target hardware's per-GPU capacity.
 
 The 85% cutoff buffers the empirical +30 GB all-gather peak we measured
-on the 27B FSDP-2 Blackwell smoke (memory_calc projected 67 GB,
+on the 4B FSDP-2 Blackwell smoke (memory_calc projected 67 GB,
 realtime nvidia-smi peaked at 95 GB). Any combo predicted >85% of cap
 should NOT be paid for on Vast — drop seq_len, scale up world_size,
 or pick a higher-VRAM GPU target.

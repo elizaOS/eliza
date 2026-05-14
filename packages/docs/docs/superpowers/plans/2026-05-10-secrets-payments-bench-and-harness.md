@@ -15,7 +15,7 @@ This plan defines (a) a new **SecretsBench** + **PaymentsBench** suite, (b) targ
 LLM provider for the entire harness pass:
 
 ```
-CEREBRAS_API_KEY=csk-8c9hf68jfm6h955kx492dtnm8jwn682n6exhew4jpe85vwy6
+CEREBRAS_API_KEY=<redacted>
 CEREBRAS_MODEL=gpt-oss-120b
 ```
 
@@ -233,7 +233,7 @@ Per AGENTS.md: review benchmarks against the available action catalog before run
 
 ```bash
 # 0. Set the cerebras keys (do once per shell)
-export CEREBRAS_API_KEY=csk-8c9hf68jfm6h955kx492dtnm8jwn682n6exhew4jpe85vwy6
+export CEREBRAS_API_KEY=<redacted>
 export CEREBRAS_MODEL=gpt-oss-120b
 export OPENAI_BASE_URL=https://api.cerebras.ai/v1
 export OPENAI_API_KEY=$CEREBRAS_API_KEY

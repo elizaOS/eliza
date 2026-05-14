@@ -1,0 +1,60 @@
+[[!meta title="Tails report for April 2023"]]
+[[!meta date="Mon, 15 May 2023 15:32:51 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!toc]]
+
+Highlights
+==========
+
+- [Radically Open Security](https://www.radicallyopensecurity.com/) audited the
+  security of the new Persistent Storage, our migration to Wayland, and the
+  Unsafe Browser.
+
+  We already started releasing fixes to the issues that they identified. We
+  will publish more about this audit and our mitigation plans in the coming
+  months.
+
+- We [analyzed the usability
+  tests](https://lists.autistici.org/message/20230510.091842.23ed75ba.en.html)
+  of the Persistent Storage done in March in Ecuador.
+
+- We applied to the Spyware Accountability
+  Initiative
+  to improve Tails for the journalists who use Tails to investigate and report
+  on spyware or protect themselves from spyware in sensitive data.
+
+- Our entire team gathered in Paris, France to discuss internal matters,
+  financial and product strategy.
+
+Releases
+========
+
+[[Tails 5.12 was released on April 19.|news/version_5.12]]
+
+It fixes many usability and reliability issues in the new Persistent Storage:
+
+- After you turn off a feature of the Persistent Storage, you can now click the
+  **Delete Data** button to delete the data stored for this feature.
+
+- When creating the Persistent Storage, a random and very secure passphrase is
+  now displayed as a suggestion, using the diceware technique.
+
+- Use a new icon for the backup utility for the Persistent Storage.
+
+- Improve the error message when a feature of the Persistent Storage fails
+  to activate from the Welcome Screen to clarify which feature is affected.
+
+- Make the activation of the Persistent Storage more reliable in 2 error
+  cases. ([[!tails_ticket 19376]] and [[!tails_ticket 19331]])
+
+- Add a progress indicator while turning on a new feature to clarify that
+  it can take some time. ([[!tails_ticket 19291]])
+
+- Make sure that all data that is already available in Tails is really
+  copied to the USB stick when turning on a feature. ([[!tails_ticket 19368]])
+
+Metrics
+=======
+
+Tails has been started more than 724 299 times this month. This makes 24 143 boots a day on average.

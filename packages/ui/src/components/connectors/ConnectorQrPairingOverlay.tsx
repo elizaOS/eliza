@@ -1,7 +1,7 @@
-import { Button } from "@elizaos/ui";
 import type { ReactNode } from "react";
 import { useEffect, useRef } from "react";
 import { useApp } from "../../state";
+import { Button } from "../ui/button";
 
 type ConnectorPairingStatus =
   | "idle"
@@ -68,11 +68,17 @@ export function ConnectorQrPairingOverlay({
   const firedRef = useRef(false);
 
   useEffect(() => {
-    if (status !== "connected" || !onConnected || firedRef.current) {
+    if (status !== "connected") {
+      firedRef.current = false;
       return;
     }
-    firedRef.current = true;
-    const timer = setTimeout(onConnected, 1200);
+    if (!onConnected || firedRef.current) {
+      return;
+    }
+    const timer = setTimeout(() => {
+      firedRef.current = true;
+      onConnected();
+    }, 1200);
     return () => clearTimeout(timer);
   }, [onConnected, status]);
 

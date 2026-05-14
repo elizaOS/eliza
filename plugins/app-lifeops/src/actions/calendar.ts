@@ -1,23 +1,18 @@
 /**
  * CALENDAR — umbrella action for the owner's calendar surface.
  *
- * Routes to the existing handlers for live calendar reads/writes, availability checks,
- * meeting-preference updates, and the bulk-reschedule preview. Decomposed in
- * Wave 2 W2-C per `docs/audit/HARDCODING_AUDIT.md` §6 #13 / §7 and
- * `docs/audit/IMPLEMENTATION_PLAN.md` §5.3:
+ * Routes to the existing handlers for live calendar reads/writes, availability
+ * checks, meeting-preference updates, and the bulk-reschedule preview.
  *
- *   - `calendly_*` verbs moved out into a Calendly contribution registered
- *     through `ConnectorRegistry` (W2-B owns the connector wrapper at
- *     `src/lifeops/connectors/calendly.ts`). The standalone `calendlyAction`
- *     in `./lib/calendly-handler.ts` is now a top-level Action — Calendly is a
+ *   - `calendly_*` verbs are a Calendly contribution registered through
+ *     `ConnectorRegistry`. The standalone `calendlyAction` in
+ *     `./lib/calendly-handler.ts` is a top-level Action — Calendly is a
  *     provider, not a CALENDAR subaction.
- *   - multi-turn scheduling negotiation is delegated through
- *     PERSONAL_ASSISTANT action=scheduling. It is a long-running stateful
- *     actor, not a calendar verb (§7, §8.3).
+ *   - Multi-turn scheduling negotiation is delegated through
+ *     PERSONAL_ASSISTANT action=scheduling (long-running stateful actor).
  *
- * What stays compound here is exactly the irreducible calendar-provider
- * surface plus `bulk_reschedule`, which `HARDCODING_AUDIT.md` §7 explicitly
- * keeps as a transactional preview-then-commit step.
+ * What stays compound here is the irreducible calendar-provider surface plus
+ * `bulk_reschedule` (a transactional preview-then-commit step).
  */
 
 import type {

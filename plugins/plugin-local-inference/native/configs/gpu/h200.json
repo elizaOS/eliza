@@ -1,0 +1,78 @@
+{
+  "$schema": "./gpu-config.schema.json",
+  "id": "h200",
+  "name": "NVIDIA H200 (SXM 141 GiB)",
+  "match_names": ["H200", "NVIDIA H200"],
+  "vram_gb": 141,
+  "compute_capability": "9.0",
+  "arch": "hopper",
+  "memory_bandwidth_gbs": 4800,
+  "fp8": true,
+  "fp4": false,
+  "flash_attn_3": true,
+  "llama_server_flags": {
+    "n_gpu_layers": 999,
+    "ctx_size": 262144,
+    "batch_size": 4096,
+    "ubatch_size": 2048,
+    "n_parallel": 16,
+    "cache_type_k": "qjl1_256",
+    "cache_type_v": "q4_polar",
+    "flash_attn": true,
+    "split_mode": "none",
+    "main_gpu": 0,
+    "mlock": true,
+    "no_mmap": false,
+    "no_kv_offload": false,
+    "ctx_checkpoints": 16,
+    "ctx_checkpoint_interval": 8192,
+    "draft_max": 32,
+    "draft_min": 8,
+    "draft_p_min": 0.5
+  },
+  "bundle_recommendations": {
+    "voice": {
+      "ctx_size": 16384,
+      "max_parallel": 32,
+      "batch_size": 2048,
+      "ubatch_size": 512
+    },
+    "eliza-1-2b": {
+      "ctx_size": 1048576,
+      "max_parallel": 64
+    },
+    "eliza-1-4b": {
+      "ctx_size": 1048576,
+      "max_parallel": 32
+    },
+    "eliza-1-9b": {
+      "ctx_size": 1048576,
+      "max_parallel": 32
+    },
+    "eliza-1-27b": {
+      "ctx_size": 131072,
+      "max_parallel": 16
+    },
+    "eliza-1-27b-256k": {
+      "ctx_size": 262144,
+      "max_parallel": 6
+    },
+    "eliza-1-27b-1m": {
+      "ctx_size": 1048576,
+      "max_parallel": 2
+    }
+  },
+  "expected_metrics": {
+    "ttfa_p50_ms": 110,
+    "ttfa_p95_ms": 180,
+    "rtf": 0.2,
+    "tokens_per_second_decode": 320,
+    "_provenance": "extrapolated"
+  },
+  "known_limits": [
+    "FP4 not supported on sm_90 (Blackwell-only)",
+    "27B-1M @ parallel > 2 requires prefix sharing via radix cache",
+    "PCIe spill path defeats the bandwidth advantage; keep KV in HBM"
+  ],
+  "_provenance": "extrapolated; numbers derived from VRAM + mem-bw math in SPECS.md"
+}

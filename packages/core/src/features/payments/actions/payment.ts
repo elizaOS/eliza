@@ -25,6 +25,8 @@ import {
 	type CreatePaymentRequestInput,
 	eligibleDeliveryTargetsFor,
 	PAYMENT_BUS_CLIENT_SERVICE,
+	PAYMENT_CONTEXT_KINDS,
+	PAYMENT_CONTEXT_SCOPES,
 	PAYMENT_REQUESTS_CLIENT_SERVICE,
 	PAYMENT_SETTLER_SERVICE,
 	type PaymentBusClient,
@@ -714,7 +716,21 @@ export const paymentAction: Action = {
 			description:
 				"For create_request: payer constraint object with kind any_payer, verified_payer, or specific_payer.",
 			required: false,
-			schema: { type: "object" as const },
+			schema: {
+				type: "object" as const,
+				properties: {
+					kind: {
+						type: "string" as const,
+						enum: [...PAYMENT_CONTEXT_KINDS],
+					},
+					scope: {
+						type: "string" as const,
+						enum: [...PAYMENT_CONTEXT_SCOPES],
+					},
+					payerIdentityId: { type: "string" as const },
+				},
+				required: ["kind"],
+			},
 		},
 		{
 			name: "reason",

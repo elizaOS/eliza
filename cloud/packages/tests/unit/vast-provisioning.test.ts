@@ -71,4 +71,24 @@ describe("Vast provisioning payloads", () => {
     expect(workergroup.gpu_ram).toBe(96);
     expect(workergroup.search_params).toBe("gpu_name=H100_SXM gpu_ram>=90000");
   });
+
+  test("builds a single-3090 262K llama.cpp workergroup from the 3090 manifest", () => {
+    const manifest = readVastManifest("eliza-1-27b-256k-3090.json").manifest;
+    const endpoint = buildEndpointJobPayload(manifest);
+    const workergroup = buildWorkergroupPayload(333, endpoint, manifest);
+
+    expect(endpoint.endpoint_name).toBe("eliza-cloud-eliza-1-27b-256k");
+    expect(workergroup).toMatchObject({
+      endpoint_name: "eliza-cloud-eliza-1-27b-256k",
+      template_id: 333,
+      gpu_ram: 24,
+    });
+    expect(workergroup.search_params).toContain("gpu_name in [RTX_3090]");
+    expect(workergroup.search_params).toContain("num_gpus>=1");
+    expect(workergroup.search_params).toContain("gpu_ram>=24000");
+    expect(manifest.vast_template_env?.LLAMA_CONTEXT).toBe("262144");
+    expect(manifest.vast_template_env?.LLAMA_PARALLEL).toBe("1");
+    expect(manifest.vast_template_env?.LLAMA_CACHE_TYPE_K).toBe("q4_0");
+    expect(manifest.vast_template_env?.LLAMA_CACHE_TYPE_V).toBe("q4_0");
+  });
 });

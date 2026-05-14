@@ -1,0 +1,147 @@
+[[!meta title="Tails report for August, 2018"]]
+[[!meta date="Tue, 11 Sep 2018 08:55:00 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!toc]]
+
+Tails Summit, 2018
+==================
+
+Once a year a dozen or two Tails contributors meet in person to shape
+the project and define our priorities. This year, we met in August and
+enjoyed one week of discussions, skill sharing and hands-on work
+sessions. A great number of uninvited mosquitoes joined us as well but
+we managed to find efficient mitigation measures :)
+
+Read the full report!
+
+Releases
+========
+
+* Tails 3.10 is [[scheduled for October 23|contribute/calendar]].
+
+Code
+====
+
+- We organized the [[contribute/working_together/roles/Foundations_Team]] biggest tasks for the end of the year: porting Tails to Buster, [[!tails_ticket 15349 desc="migrate away from vmdebootstrap"]], [[!tails_ticket 15460 desc="make our test suite work with Java 9+"]], [[!tails_ticket 8415 desc="migrate from `aufs` to `overlayfs`"]], [[!tails_ticket 15281 desc="improve the upgrade UX"]].
+- We completed lots of work in time for Tails 3.9:
+  - Updated *Tor Browser* to 8.0, based on *Firefox* 60 ESR.
+  - Updated *Thunderbird* from 52 to [60](https://www.thunderbird.net/en-US/thunderbird/60.0/releasenotes/).
+  - Updated *Tor* to 0.3.4.7-rc.
+  - Updated *Linux* to 4.17 which also fixes the
+    [Foreshadow](https://foreshadowattack.eu/) attack.
+  - Use *Tor Browser* again for browsing the documentation offline.
+    ([[!tails_ticket 15720]])
+- We fixed a number of regressions identified in Tails 3.9~rc1.
+- We worked on making our branch based on Debian 10 (Buster)
+  build again. ([[!tails_ticket 15857]])
+
+Documentation and website
+=========================
+
+We documented how to:
+
+- Install additional software.
+
+- [[Unlock VeraCrypt volumes|doc/encryption_and_privacy/veracrypt]].
+
+- Fix [[Persistent folder disappearing and persistent feature
+  configurations not loading|support/known_issues#persistence-disappears]].
+
+- Fix [[Tails behaving weirdly if an automatic upgrade is only
+  partially applied|support/known_issues#partial-upgrade]].
+
+- Calculate the food budget for contributors attending events
+  on behalf of Tails.
+
+User experience
+===============
+
+- We presented a first version of our personas to the community and
+  agreed on focusing on Riou, The Censorship
+  Evader, as our primary persona.
+
+- We completed the collaboration with Simply
+  Secure on the Tails identity (aka.
+  "brand") and making it easier to understand what is Tails and how it
+  works. This work lays the foundation to:
+
+  - Redefining our visual style and tone.
+  - Explanation of Tails on our home and about pages.
+
+  We will report on this in more details later.
+
+- We improved the readability of our HTML tables. See for example
+  [[support/known_issues/graphics]].
+
+Hot topics on our help desk
+===========================
+
+Like in previous months, most users writing to Help Desk are having issues with hardware support.
+
+1. Several users reported hard or soft lockups with recent Dell XPS
+   and other laptops with recent NVIDIA graphics cards. We're still
+   waiting for more test results before we can document a workaround.
+   ([[!tails_ticket 15774]])
+
+1. Some problems were also reported with some Intel graphics cards on Tails 3.9~rc1.
+   This was fixed in Tails 3.9. ([[!tails_ticket 15821]])
+
+1. Many users still lose temporarily their persistence configuration.
+   To fix this, see [[the documented workaround|support/known_issues/#persistence-disappears]].
+
+Funding
+=======
+
+- *DeepOnion* donated 0.154 btc.
+
+- *Handshake Foundation* donated
+  $200&thinsp;000.
+
+Outreach
+========
+
+Upcoming events
+---------------
+
+- intrigeri and sajolida will be at [Tor meeting in Mexico
+  City](https://trac.torproject.org/projects/tor/wiki/org/meetings/2018MexicoCity)
+  from September 29 to October 3 and will present Tails during the open
+  days on October 2.
+
+- sajolida will discuss Tails, user experience, and free software at the
+  Coloquio de Privacidad y Anonimato of UNAM in Mexico City on October
+  4&ndash;5.
+
+Translation
+===========
+
+## All the website
+
+  - de: 55% (3192) strings translated, 6% strings fuzzy, 48% words translated
+  - es: 57% (3331) strings translated, 1% strings fuzzy, 47% words translated
+  - fa: 36% (2094) strings translated, 9% strings fuzzy, 38% words translated
+  - fr: 91% (5296) strings translated, 1% strings fuzzy, 89% words translated
+  - it: 32% (1874) strings translated, 6% strings fuzzy, 28% words translated
+  - pt: 27% (1614) strings translated, 7% strings fuzzy, 24% words translated
+
+Total original words: 61403
+
+## [[Core pages of the website|contribute/l10n_tricks/core_po_files.txt]]
+
+  - de: 81% (1562) strings translated, 9% strings fuzzy, 81% words translated
+  - es: 96% (1850) strings translated, 1% strings fuzzy, 93% words translated
+  - fa: 33% (639) strings translated, 11% strings fuzzy, 33% words translated
+  - fr: 98% (1894) strings translated, 0% strings fuzzy, 98% words translated
+  - it: 67% (1291) strings translated, 15% strings fuzzy, 66% words translated
+  - pt: 45% (877) strings translated, 12% strings fuzzy, 49% words translated
+
+Total original words: 17456
+
+Metrics
+=======
+
+* Tails has been started more than 669&thinsp;403 times this month. This makes 22&thinsp;313 boots a day on average.
+* 6819 downloads of the OpenPGP signature of Tails ISO from our website.
+* 74 bug reports were received through WhisperBack.
+

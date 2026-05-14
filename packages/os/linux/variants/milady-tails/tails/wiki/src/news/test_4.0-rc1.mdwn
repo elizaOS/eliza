@@ -1,0 +1,121 @@
+[[!meta title="Call for testing: 4.0~rc1"]]
+[[!meta date="Fri, 11 Oct 2019 17:00:00 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag announce]]
+
+Tails 4.0 will be the first version of Tails based on Debian 10
+(Buster). It brings new versions of most of the software included in
+Tails and some important usability and performance improvements.
+
+You can help Tails by testing the release candidate for the upcoming version 4.0!
+
+We are very excited about it and cannot wait to hear your feedback :)
+
+[[!toc levels=1]]
+
+# Changes and upgrades
+
+## Major changes to included software
+
+- Update *Tor Browser* to 9.0a7, based on Firefox 68.1.0esr.
+
+- Update *Electrum* to 3.3.8, which works with the current Bitcoin network.
+
+- Update *Linux* to 5.3.2.
+
+- Update *tor* to 0.4.1.6.
+
+## Usability improvements to *Tails Greeter*
+
+We improved various aspects of the usability of *Tails Greeter*,
+especially for non-English users.
+
+- To make it easier to select a language, we curated the list of
+  proposed languages by removing the ones that had too little
+  translations to be useful.
+
+- We also simplified the list of keyboard layouts.
+
+- We fixed the **Formats** setting, which was not being applied.
+
+- We prevented additional settings to be applied when clicking on
+  **Cancel** or **Back**.
+
+# Fixed problems
+
+- Fix the delivery of *WhisperBack* reports. ([[!tails_ticket 17110]])
+
+- Dozens of other problems — literally. For more details, read our
+  [changelog](https://salsa.debian.org/tails-team/tails/blob/testing/debian/changelog).
+
+<a id="known_issues"></a>
+
+# Known issues
+
+- Spellchecking only works for English. ([[!tails_ticket 17150]])
+
+  To fix it, set `spellchecker.dictionary_path` to `/usr/share/hunspell`
+  in `about:config`.
+
+- *Unsafe Browser* tabs have the "Private Browsing" name and the *Tor
+  Browser*'s icon. ([[!tails_ticket 17142]])
+
+- The *On-screen keyboard* does not allow to input any accentuated char.
+  ([[!tails_ticket 17021]])
+
+- Other [open tickets for Tails 4.0](https://redmine.tails.boum.org/code/projects/tails/issues?query_id=279)
+
+See the list of [[long-standing issues|support/known_issues]].
+
+# How to test Tails 4.0~rc1?
+
+We will provide security upgrades for Tails 4.0~rc1 like we do for regular
+versions of Tails.
+
+Keep in mind that this is a test image. We tested that it is not broken in
+obvious ways, but it might still contain undiscovered issues.
+
+Please, report any new problem to <tails-testers@boum.org> (public mailing list).
+
+# Get Tails 4.0~rc1
+
+## To upgrade your Tails USB stick and keep your Persistent Storage
+
+- Automatic upgrades are available from 4.0~beta1 and 4.0~beta2.
+
+- You can do a manual upgrade.
+
+## To download 4.0~rc1
+
+### Direct download
+
+  - For USB sticks (USB image)
+    (OpenPGP signature)
+
+  - For DVDs and virtual machines (ISO image)
+    (OpenPGP signature)
+
+### BitTorrent download
+
+  - For USB sticks (USB image)
+
+  - For DVDs and virtual machines (ISO image)
+
+## To install Tails on a new USB stick
+
+Follow our installation instructions:
+
+  - Install from Windows
+  - Install from macOS
+  - Install from Linux
+
+<div class="caution"><p>All the data on this USB stick will be lost.</p></div>
+
+# What's coming up?
+
+Tails 4.0 is [[scheduled|contribute/calendar]] for October 22.
+
+We need your help and there are many ways to [[contribute to
+Tails|contribute]] (<a href="https://tails.net/donate/?r=4.0-rc1">donating</a> is only one of
+them). Come [[talk to us|doc/about/contact#tails-dev]]!

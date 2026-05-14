@@ -1,0 +1,872 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: Tails\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2026-03-12 10:28+0000\n"
+"PO-Revision-Date: 2026-03-26 15:22+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: Tails Language Team <tails@boum.org>\n"
+"Language: de\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Reporting an error using WhisperBack\"]]\n"
+msgstr "[[!meta title=\"Einen Fehler melden mit WhisperBack\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"*WhisperBack* allows you to report errors anonymously from inside Tails. Reports\n"
+"are sent to us encrypted and over the Tor network.\n"
+msgstr ""
+"*WhisperBack* ermöglicht es Ihnen, Fehler anonym aus Tails zu melden. Die Berichte \n"
+"werden verschlüsselt und über das Tor-Netzwerk an uns gesendet.\n"
+
+#. type: Plain text
+#, fuzzy
+#| msgid ""
+#| "<p>Even if we are not able to reply to every report, we analyze all "
+#| "reports to\n"
+#| "improve Tails.</p>\n"
+msgid ""
+"Reporting errors is a great way of helping us improve Tails. Even if we are "
+"not able to reply to every report, we analyze all reports."
+msgstr ""
+"<p>Auch wenn wir nicht in der Lage sind, auf jeden Bericht zu antworten, "
+"analysieren wir alle Berichte, um Tails zu verbessern.</p>⬤\n"
+
+#. type: Plain text
+msgid ""
+"The more effectively you report an error, the more likely we are to fix it."
+msgstr ""
+"Je detaillierter Sie einen Fehler beschreiben, umso eher können wir ihn "
+"beheben."
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!toc levels=2]]\n"
+msgstr "[[!toc levels=2]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"known\">Check if the error is already known</h1>\n"
+msgstr "<h1 id=\"known\">Überprüfen Sie, ob der Fehler bereits bekannt ist</h1>\n"
+
+#. type: Plain text
+msgid "You might already find help on our [[support pages|support]]."
+msgstr ""
+"Vielleicht finden Sie bereits Hilfe auf unseren [[Support-Seiten|support]]."
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"whisperback\">Reporting an error using <i>WhisperBack</i></h1>\n"
+msgstr "<h1 id=\"whisperback\">Fehler melden mit <i>WhisperBack</i></h1>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"note\">\n"
+msgstr "<div class=\"note\">\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "If you cannot connect to the Internet or the Tor network, you cannot send us your error report using *WhisperBack*."
+msgid ""
+"<p>If you are not connected to the Tor network yet, your cannot send us your\n"
+"report from Tails.</p>\n"
+msgstr "Wenn Sie keine Verbindung zum Internet oder zum Tor-Netzwerk herstellen können, können Sie uns Ihren Fehlerbericht nicht über *WhisperBack* senden."
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>Either, send your report after you connected to Tor or [[save your\n"
+"report|whisperback#offline]] and [[contact us outside of\n"
+"Tails|support/talk]].</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+#. type: Bullet: '1. '
+#, fuzzy
+#| msgid ""
+#| "To start *WhisperBack*, choose **Applications**&nbsp;▸ **System "
+#| "Tools**&nbsp;▸ **WhisperBack Error Reporting**."
+msgid ""
+"Choose **Apps&nbsp;▸ System Tools&nbsp;▸ WhisperBack Error Reporting** to "
+"open *WhisperBack*."
+msgstr ""
+"Um *WhisperBack* zu starten, wählen Sie **Anwendungen**&nbsp;▸ "
+"**Systemwerkzeuge**&nbsp;▸ **WhisperBack-Fehlerberichterstattung**."
+
+#. type: Bullet: '1. '
+msgid "*WhisperBack* helps you write a useful error report."
+msgstr ""
+"*WhisperBack* hilft dir dabei, einen nützlichen Fehlerbericht zu erstellen."
+
+#. type: Bullet: '   - '
+msgid "**Tell us exactly how to make the error happen again.**"
+msgstr ""
+"**Teilen Sie uns genau mit, wie der Fehler erneut reproduziert werden kann.**"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"     Our team needs to be able to reproduce the error to know whether we really\n"
+"     fixed it.\n"
+msgstr ""
+"     Unser Team muss in der Lage sein, den Fehler zu reproduzieren, um festzustellen,\n"
+"     ob wir ihn wirklich behoben haben.\n"
+
+#. type: Bullet: '   - '
+msgid "**Describe the error in detail.**"
+msgstr "**Beschreiben Sie den Fehler im Detail.**"
+
+#. type: Plain text
+#, no-wrap
+msgid "     Write down the exact error messages.\n"
+msgstr "     Notieren Sie die genauen Fehlermeldungen.\n"
+
+#. type: Bullet: '   - '
+msgid "**Write clearly and precisely.**"
+msgstr "**Schreiben Sie klar und präzise.**"
+
+#. type: Bullet: '1. '
+msgid "You can also enter an email address."
+msgstr "Es kann auch eine E-Mail-Adresse eingegeben werden."
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   Giving us an email address allows us to ask you for more information if we\n"
+"   need it. This is the case for the vast majority of reports.\n"
+msgstr ""
+"   Wenn Sie uns eine E-Mail-Adresse geben, können wir Sie um weitere Informationen bitten,\n"
+"       falls wir diese benötigen. Dies ist in den meisten Fällen der Fall.\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   But giving us your email address also makes it possible for your email\n"
+"   provider to know that you are using Tails, if we write back to you.\n"
+msgstr ""
+"   Wenn Sie uns Ihre E-Mail-Adresse geben, kann Ihr E-Mail-Anbieter auch erfahren, \n"
+"       dass Sie Tails verwenden, wenn wir Ihnen zurückschreiben.\n"
+
+#. type: Bullet: '1. '
+msgid ""
+"Optionally, enter your OpenPGP public key, if you want us to write back to "
+"you in an encrypted email."
+msgstr ""
+"Optional können Sie Ihren OpenPGP- öffentlichen Schlüssel eingeben, wenn Sie "
+"möchten, dass wir Ihnen in einer verschlüsselten E-Mail antworten."
+
+#. type: Plain text
+#, no-wrap
+msgid "   You can specify either:\n"
+msgstr "   Sie können entweder Folgendes angeben:\n"
+
+#. type: Bullet: '   - '
+msgid "A **key ID**, if your key is available on <https://keys.openpgp.org/>"
+msgstr ""
+"Eine **Schlüssel-ID**, wenn Ihr Schlüssel auf <https://keys.openpgp.org/> "
+"verfügbar ist"
+
+#. type: Bullet: '   - '
+msgid "A **link to the key**, if your key is available elsewhere on the web"
+msgstr ""
+"einen **Link zu dem Schlüssel**, falls Ihr Schlüssel im Web abrufbar ist"
+
+#. type: Bullet: '   - '
+msgid "A **public key block**, if your key is not publicly available"
+msgstr ""
+"Einen **öffentlichen Schlüsselblock**, wenn Ihr Schlüssel nicht öffentlich "
+"verfügbar ist"
+
+#. type: Bullet: '1. '
+msgid ""
+"You can have a look at the **Technical Details** that are included in your "
+"report. They give us information about your hardware, your version of Tails, "
+"and all the errors that happened since you started Tails."
+msgstr ""
+"Es können die **technischen Details** im Bericht eingesehen werden. Diese "
+"liefern Informationen über die Hardware, die verwendete Tails-Version und "
+"alle Fehler, die seit dem Start von Tails aufgetreten sind."
+
+#. type: Bullet: '1. '
+msgid "Click **Send** to send your report."
+msgstr "Auf **Senden** klicken, um den Bericht zu übermitteln."
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "<h1 id=\"special-cases\">If you cannot use <i>WhisperBack</i></h1>\n"
+msgid "<h1 id=\"offline\">Saving your <i>WhisperBack</i> report</h1>\n"
+msgstr "<h1 id=\"special-cases\">Falls Sie <i>WhisperBack</i> nicht benutzen können</h1>\n"
+
+#. type: Plain text
+msgid ""
+"To save your *WhisperBack* report and share it with us outside of Tails, for "
+"example by email:"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"Plug in another USB stick to be able to open your report outside of Tails."
+msgstr ""
+"Stecken Sie einen weiteren USB-Stick ein, um Ihren Bericht außerhalb von "
+"Tails öffnen zu können."
+
+#. type: Bullet: '1. '
+#, fuzzy
+#| msgid ""
+#| "To start *WhisperBack*, choose **Applications**&nbsp;▸ **System "
+#| "Tools**&nbsp;▸ **WhisperBack Error Reporting**."
+msgid ""
+"To open *WhisperBack*, choose **Apps&nbsp;▸ System Tools&nbsp;▸ WhisperBack "
+"Error Reporting**."
+msgstr ""
+"Um *WhisperBack* zu starten, wählen Sie **Anwendungen**&nbsp;▸ "
+"**Systemwerkzeuge**&nbsp;▸ **WhisperBack-Fehlerberichterstattung**."
+
+#. type: Bullet: '1. '
+#, fuzzy
+#| msgid ""
+#| "In parallel, choose **Applications**&nbsp;▸ **Accessories**&nbsp;▸ **Text "
+#| "Editor** to open the *Text Editor*."
+msgid ""
+"In parallel, choose **Apps&nbsp;▸ Accessories&nbsp;▸ Text Editor** to open "
+"the *Text Editor*."
+msgstr ""
+"Wählen Sie parallel **Anwendungen**&nbsp;▸ **Zubehör**&nbsp;▸ "
+"**Texteditor**, um den *Texteditor* zu öffnen."
+
+#. type: Bullet: '1. '
+msgid ""
+"In the **Technical Details** tab, copy everything from the **Headers** "
+"section and paste it into the *Text Editor*."
+msgstr ""
+"Im Tab **Technische Details** kopieren Sie alles aus dem Abschnitt "
+"**Header** und fügen es in den *Texteditor* ein."
+
+#. type: Bullet: '1. '
+msgid ""
+"In the **Technical Details** tab, copy everything from the **Debugging "
+"Information** section and paste it into the *Text Editor*."
+msgstr ""
+"Im Tab **Technische Details** kopieren Sie alles aus dem Abschnitt "
+"**Fehlerbehebungsinformationen** und fügen es in den *Texteditor* ein."
+
+#. type: Bullet: '1. '
+msgid "Save your report from the *Text Editor* to the other USB stick."
+msgstr ""
+"Speichern Sie Ihren Bericht aus dem *Texteditor* auf dem anderen USB-Stick."
+
+#. type: Bullet: '1. '
+msgid "Check the [[other ways of contacting us|support/talk]]."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"debian\">Reproducing the error in Debian (for advanced users)</h1>\n"
+msgstr "<h1 id=\"debian\">Fehler in Debian reproduzieren (für fortgeschrittene Benutzer)</h1>\n"
+
+#. type: Plain text
+msgid ""
+"It is very useful for us to know if your error only affects Tails or also "
+"affects Debian, on which Tails is based."
+msgstr ""
+"Es ist sehr hilfreich für uns zu wissen, ob der Fehler nur Tails betrifft "
+"oder auch Debian, worauf Tails basiert."
+
+#. type: Plain text
+#, fuzzy
+#| msgid ""
+#| "Doing so takes much more time so, in doubt, report your error as "
+#| "instructed earlier and wait for guidance from our help desk."
+msgid ""
+"Doing so takes much more time so, in doubt, report your error as instructed "
+"earlier and wait for guidance from us."
+msgstr ""
+"Dies zu tun benötigt viel mehr Zeit. Melden Sie im Zweifelsfall den Fehler "
+"wie zuvor beschrieben und warten Sie auf Anweisungen von unserem Help Desk."
+
+#. type: Bullet: '- '
+msgid ""
+"If your error also affects Debian *stable*, then the problem must be fixed "
+"in Debian directly and not in Tails."
+msgstr ""
+"Falls Ihr Fehler ebenfalls Debian *stable* betrifft, muss das Problem direkt "
+"in Debian und nicht in Tails behoben werden."
+
+#. type: Bullet: '- '
+msgid ""
+"If your error affects Debian *stable* but not Debian *testing*, then the "
+"problem might have been solved already in Debian."
+msgstr ""
+"Falls Ihr Fehler Debian *stable*, jedoch nicht Debian *testing* betrifft, "
+"könnte das Problem bereits in Debian behoben sein."
+
+#. type: Plain text
+msgid ""
+"Debian also distributes *live* images that you can install on a USB stick "
+"using the same installation procedure as for installing Tails."
+msgstr ""
+"Debian stellt ebenfalls *Live*-Images zur Verfügung, die Sie auf einem USB-"
+"Stick installieren können, indem Sie dasselbe Installationsverfahren wie bei "
+"der Installation von Tails verwenden."
+
+#. type: Title -
+#, no-wrap
+msgid "Debian stable"
+msgstr "Debian stable"
+
+#. type: Plain text
+msgid ""
+"Live images for Debian stable, on which Tails is based, are available on:"
+msgstr ""
+"Live-Images für Debian Stable, auf dem Tails basiert, sind verfügbar unter:"
+
+#. type: Plain text
+msgid ""
+"<https://cdimage.debian.org/images/release/current-live/amd64/iso-hybrid/>"
+msgstr ""
+"<https://cdimage.debian.org/images/release/current-live/amd64/iso-hybrid/>"
+
+#. type: Plain text
+msgid ""
+"Download the file that ends with *amd64-gnome.iso* to have the GNOME desktop."
+msgstr ""
+"Laden Sie die Datei herunter, die mit *amd64-gnome.iso* endet, um den GNOME-"
+"Desktop zu erhalten."
+
+#. type: Title -
+#, no-wrap
+msgid "Debian testing"
+msgstr "Debian testing"
+
+#. type: Plain text
+msgid "Live images for the testing version of Debian are available on:"
+msgstr "Live-Images für die Testversion von Debian sind verfügbar unter:"
+
+#. type: Plain text
+msgid ""
+"<https://cdimage.debian.org/images/weekly-live-builds/amd64/iso-hybrid/>"
+msgstr ""
+"<https://cdimage.debian.org/images/weekly-live-builds/amd64/iso-hybrid/>"
+
+#~ msgid "Reporting errors is a great way of helping us improve Tails."
+#~ msgstr ""
+#~ "Fehler zu melden ist eine gute Möglichkeit, um uns zu helfen, Tails zu "
+#~ "verbessern."
+
+#, no-wrap
+#~ msgid "<h1 id=\"offline\">If you cannot connect to the Internet or the Tor network</h1>\n"
+#~ msgstr "<h1 id=\"offline\">Wenn Sie keine Verbindung zum Internet oder zum Tor-Netzwerk herstellen können</h1>\n"
+
+#, no-wrap
+#~ msgid "<div class=\"next\">\n"
+#~ msgstr "<div class=\"next\">\n"
+
+#, no-wrap
+#~ msgid "<p>See also: [[Troubleshooting Wi-Fi not working|anonymous_internet/no-wifi]]</p>\n"
+#~ msgstr "<p>Siehe auch: [[Fehlerbehebung bei nicht funktionierendem Wi-Fi|anonymous_internet/no-wifi]]</p>\n"
+
+#~ msgid "To send us your error report by email instead:"
+#~ msgstr "Um uns Ihren Fehlerbericht stattdessen per E-Mail zu senden:"
+
+#~ msgid "Restart on your regular operating system."
+#~ msgstr "Starten Sie Ihr reguläres Betriebssystem neu."
+
+#, fuzzy
+#~| msgid "Send your report to [[support@tails.net|about/contact#support]]."
+#~ msgid "Send your report to [[support@tails.net|doc/about/contact#support]]."
+#~ msgstr ""
+#~ "Senden Sie Ihren Bericht an [[support@tails.net|about/contact#support]]."
+
+#~ msgid "Have a look at:"
+#~ msgstr "Werfen Sie einen Blick auf:"
+
+#, fuzzy
+#~| msgid "the [[list of known issues|support/known_issues]]"
+#~ msgid "- The [[list of known issues|support/known_issues]]"
+#~ msgstr "die [[Liste bekannter Probleme|support/known_issues]]"
+
+#, fuzzy
+#~| msgid ""
+#~| "the [[!tails_gitlab groups/tails/-/milestones desc=\"list of things that "
+#~| "will be fixed or improved in the next release\"]]"
+#~ msgid ""
+#~ "The [[!tails_gitlab groups/tails/-/milestones desc=\"list of things that "
+#~ "will be fixed or improved in the next release\"]]"
+#~ msgstr ""
+#~ "die [[!tails_gitlab groups/tails/-/milestones desc=\"Liste der Dinge, die "
+#~ "in der nächsten Version behoben oder verbessert werden\"]]"
+
+#, fuzzy
+#~| msgid ""
+#~| "The first aim of a bug report is to **tell the developers exactly how to "
+#~| "reproduce the failure**, so try to reproduce the issue yourself and "
+#~| "describe how you did that."
+#~ msgid ""
+#~ "The first aim of a error report is to **tell the developers exactly how "
+#~ "to reproduce the failure**, so try to reproduce the issue yourself and "
+#~ "describe how you did that."
+#~ msgstr ""
+#~ "Das Hauptziel einer Fehlerbeschreibung ist es, **den Entwicklern genau zu "
+#~ "sagen, wie der Fehler reproduziert werden kann**. Versuchen Sie also "
+#~ "selbst, das Problem wiederherzustellen und beschreiben Sie, wie Sie das "
+#~ "erreicht haben."
+
+#~ msgid ""
+#~ "If that is not possible, try to **describe what went wrong in detail**.  "
+#~ "Write down the error messages, especially if they have numbers."
+#~ msgstr ""
+#~ "Falls das nicht möglich ist, versuchen Sie **detailliert zu beschreiben, "
+#~ "was nicht funktionierte**. Schreiben Sie die Fehlermeldungen auf, vor "
+#~ "allem wenn diese Nummern haben."
+
+#~ msgid ""
+#~ "Write **clearly and be precise**. Say what you mean, and make sure it "
+#~ "cannot be misinterpreted."
+#~ msgstr ""
+#~ "Schreiben Sie **klar und präzise**. Sagen Sie, was Sie meinen und stellen "
+#~ "Sie sicher, dass es nicht falsch verstanden werden kann."
+
+#~ msgid ""
+#~ "Be ready to provide extra information if the developers need it. If they "
+#~ "did not need it, they would not be asking for it."
+#~ msgstr ""
+#~ "Seien Sie bereit, zusätzliche Angaben zu machen, falls die Entwickler "
+#~ "diese brauchen. Andernfalls würden sie nicht danach fragen."
+
+#~ msgid ""
+#~ "You can also refer to the great [How to Report Bugs Effectively](http://"
+#~ "www.chiark.greenend.org.uk/~sgtatham/bugs.html), by Simon Tatham."
+#~ msgstr ""
+#~ "Sie können auch im großartigen Text [Fehlerberichte - wie Sie "
+#~ "Softwarefehler melden sollten](http://www.chiark.greenend.org.uk/"
+#~ "~sgtatham/bugs-de.html) von Simon Tatham nachlesen."
+
+#, fuzzy, no-wrap
+#~| msgid ""
+#~| "**WhisperBack is an application written specifically to report bugs anonymously\n"
+#~| "from inside Tails. If you are not able to use WhisperBack, see the [[special\n"
+#~| "cases|bug_reporting#special_cases]].**\n"
+#~ msgid ""
+#~ "***WhisperBack* is an application written specifically to report errors anonymously\n"
+#~ "from inside Tails. If you are not able to use *WhisperBack*, see the [[special\n"
+#~ "cases|bug_reporting#special]].**\n"
+#~ msgstr ""
+#~ "**WhisperBack ist eine Anwendung, die speziell dafür geschrieben wurde, Fehler anonym\n"
+#~ "aus Tails heraus zu melden. Falls Sie WhisperBack nicht verwenden können, lesen Sie\n"
+#~ "[[Spezialfälle|bug_reporting#special_cases]].**\n"
+
+#, fuzzy, no-wrap
+#~| msgid "WhisperBack will help you fill-up a bug report, including relevant technical details and send it to us encrypted and through Tor."
+#~ msgid ""
+#~ "*WhisperBack* will help you fill-up an error report, including relevant technical\n"
+#~ "details and send it to us encrypted and through Tor.\n"
+#~ msgstr "WhisperBack hilft Ihnen, eine Fehlerbeschreibung zu erstellen, die die relevanten technischen Informationen enthält, und uns diese verschlüsselt über Tor zukommen zu lassen."
+
+#, fuzzy, no-wrap
+#~| msgid "Start WhisperBack"
+#~ msgid "Start *WhisperBack*"
+#~ msgstr "Starten Sie WhisperBack"
+
+#, no-wrap
+#~ msgid "Write the report"
+#~ msgstr "Schreiben Sie die Fehlerbeschreibung"
+
+#, fuzzy, no-wrap
+#~| msgid "WhisperBack lets you give plenty of useful information about your bug:"
+#~ msgid "*WhisperBack* lets you give plenty of useful information about your error:\n"
+#~ msgstr "WhisperBack lässt Sie zahlreiche Informationen zu dem Fehler angeben:"
+
+#, fuzzy
+#~| msgid ""
+#~| "**Summary** a summary of the bug, try to be short, clear and informative"
+#~ msgid ""
+#~ "- **Summary** a summary of the error, try to be short, clear and "
+#~ "informative"
+#~ msgstr ""
+#~ "**Zusammenfassung** eine Zusammenfassung des Fehlers, versuchen Sie sich "
+#~ "kurz zu halten und klar und informativ zu formulieren"
+
+#, fuzzy
+#~| msgid "**Name of the affected software**"
+#~ msgid "- **Name of the affected software**"
+#~ msgstr "**Name der betroffenen Software**"
+
+#, fuzzy
+#~| msgid "**Exact steps to reproduce the error**"
+#~ msgid "- **Exact steps to reproduce the error**"
+#~ msgstr "**Genaue Schritte um den Fehler zu reproduzieren**"
+
+#, fuzzy
+#~| msgid "**Actual result and description of the error**"
+#~ msgid "- **Actual result and description of the error**"
+#~ msgstr "**Tatsächliches Ergebnis und Fehlerbeschreibung**"
+
+#, fuzzy
+#~| msgid "**Desired result**"
+#~ msgid "- **Desired result**"
+#~ msgstr "**Erwartetes Ergebnis**"
+
+#~ msgid ""
+#~ "Giving us an email address allows us to contact you to clarify the "
+#~ "problem. This is needed for the vast majority of the reports we receive "
+#~ "as most reports without any contact information are useless. But note "
+#~ "that it also provides an opportunity for eavesdroppers, like your email "
+#~ "or Internet provider, to confirm that you are using Tails."
+#~ msgstr ""
+#~ "Wenn Sie uns eine E-Mail-Adresse angeben, ermöglichen Sie es uns, mit "
+#~ "Ihnen in Kontakt zu treten, um das Problem zu klären. Dies wird für die "
+#~ "überwiegende Mehrheit der Berichte, die wir bekommen, benötigt, da die "
+#~ "meisten Berichte ohne Kontaktinformationen unbrauchbar sind. Nehmen Sie "
+#~ "jedoch zur Kenntnis, dass dies auch eine Möglichkeit zur Überwachung "
+#~ "bietet, z.B. von Ihrem E-Mail- oder Internetprovider, um zu bestätigen, "
+#~ "dass Sie Tails benutzen."
+
+#, no-wrap
+#~ msgid "Optional OpenPGP key"
+#~ msgstr "Optionaler OpenPGP Schlüssel"
+
+#~ msgid ""
+#~ "You can also indicate an OpenPGP key corresponding to this email address. "
+#~ "You can either give:"
+#~ msgstr ""
+#~ "Sie können auch einen OpenPGP Schlüssel angeben, der zu der E-Mail-"
+#~ "Adresse gehört. Sie können entweder angeben:"
+
+#~ msgid ""
+#~ "Once you are done writing your report, send it by clicking the *Send* "
+#~ "button."
+#~ msgstr ""
+#~ "Wenn Sie fertig sind, Ihre Fehlerbeschreibung zu verfassen, senden Sie "
+#~ "diese, indem Sie den *Senden*-Button klicken."
+
+#, fuzzy
+#~| msgid ""
+#~| "Once your email has been sent correctly you will get the following\n"
+#~| "notification: <span class=\"guilabel\">Your message has been sent</"
+#~| "span>.\n"
+#~ msgid ""
+#~ "Once your email has been sent correctly you will get the following "
+#~ "notification: **Your message has been sent**."
+#~ msgstr ""
+#~ "Sobald Ihre E-Mail korrekt versandt wurde, werden Sie folgenden\n"
+#~ "Hinweis sehen: <span class=\"guilabel\">Ihre Nachricht wurde versandt</"
+#~ "span>.\n"
+
+#, fuzzy
+#~| msgid ""
+#~| "You might not always be able to use WhisperBack. In those cases, you can "
+#~| "also send your bug report by [[email|support/talk]] directly."
+#~ msgid ""
+#~ "You might not always be able to use *WhisperBack*. In those cases, you "
+#~ "can also send your error report by [[email|support/talk]] directly."
+#~ msgstr ""
+#~ "Sie können möglicherweise nicht immer WhisperBack benutzen. In diesem "
+#~ "Falle können Sie uns die Fehlerbeschreibung auch per [[E-Mail|support/"
+#~ "talk]] direkt zusenden."
+
+#~ msgid ""
+#~ "Note that if you send the report yourself, it might not be anonymous "
+#~ "unless you take special care (for example, using Tor with a throw-away "
+#~ "email account)."
+#~ msgstr ""
+#~ "Falls Sie die Fehlerbeschreibung selber versenden, denken Sie daran, dass "
+#~ "diese nicht anonym sein wird, solange Sie keine speziellen Vorkehrungen "
+#~ "treffen (z.B. indem Sie Tor mit einem Wegwerf-E-Mail Account verwenden)."
+
+#, fuzzy, no-wrap
+#~| msgid "<h2 id=\"no-internet-access\">No Internet access</h2>\n"
+#~ msgid "<h2 id=\"offline\">No Internet access</h2>\n"
+#~ msgstr "<h2 id=\"no-internet-access\">Kein Internetzugang</h2>\n"
+
+#, fuzzy, no-wrap
+#~| msgid "WhisperBack won't be able to send your bug report if you are not connected to the Internet."
+#~ msgid ""
+#~ "*WhisperBack* won't be able to send your error report if you are not connected to\n"
+#~ "the Internet.\n"
+#~ msgstr "WhisperBack ist nicht in der Lage, Ihren Fehlerbericht zu senden, wenn Sie nicht mit dem Internet verbunden sind."
+
+#, fuzzy
+#~| msgid ""
+#~| "The following steps can be used as an alternative method to send your "
+#~| "bug report:"
+#~ msgid ""
+#~ "The following steps can be used as an alternative method to send your "
+#~ "error report:"
+#~ msgstr ""
+#~ "Die folgenden Schritte können als alternative Methode zum Senden Ihres "
+#~ "Fehlerberichts verwendet werden:"
+
+#, fuzzy
+#~| msgid "In Tails, start WhisperBack"
+#~ msgid "In Tails, start *WhisperBack*."
+#~ msgstr "Starten Sie Whisperback in Tails"
+
+#, fuzzy
+#~| msgid "In the bug report window, expand \"technical details to include\""
+#~ msgid "In the error report window, expand \"technical details to include\"."
+#~ msgstr ""
+#~ "Im Fehlerberichtsfenster erweitern Sie \"Technische Details, die "
+#~ "enthalten sein sollen\""
+
+#, fuzzy
+#~| msgid "Copy everything in the \"debugging info\" box"
+#~ msgid "Copy everything in the \"debugging info\" box."
+#~ msgstr "Kopieren Sie alles im Feld \"Informationen zur Fehlersuche\""
+
+#, fuzzy
+#~| msgid "Paste it to another document (using gedit for instance)"
+#~ msgid "Paste it to another document (using the *Text Editor* for instance)."
+#~ msgstr "Fügen Sie es in ein anderes Dokument ein (z.B. mit Gedit)"
+
+#, fuzzy
+#~| msgid "Save the document on a USB stick"
+#~ msgid "Save the document on a USB stick."
+#~ msgstr "Speichern Sie das Dokument auf einem USB Stick"
+
+#, fuzzy
+#~| msgid "Boot into a system with Internet connection and send your report"
+#~ msgid "Boot into a system with Internet connection and send your report."
+#~ msgstr ""
+#~ "Starten Sie ein System, das eine Internetverbindung hat und versenden Sie "
+#~ "Ihre Fehlerbeschreibung"
+
+#, fuzzy, no-wrap
+#~| msgid "<h2 id=\"does-not-start\">Tails does not start</h2>\n"
+#~ msgid "<h2 id=\"not_start\">Tails does not start</h2>\n"
+#~ msgstr "<h2 id=\"does-not-start\">Tails startet nicht</h2>\n"
+
+#~ msgid ""
+#~ "For troubleshooting instructions in case Tails fails to start, refer to "
+#~ "our installation instructions on:"
+#~ msgstr ""
+#~ "Falls Tails nicht startet, finden Sie Hinweise zur Fehlerbehebung in "
+#~ "unserer Installationsanleitung auf:"
+
+#, fuzzy
+#~| msgid "[[Starting a PC on a USB|install/win/usb#start-tails]]"
+#~ msgid "- [[Starting a PC on a USB stick|doc/first_steps/start/pc]]"
+#~ msgstr "[[Starten von USB mit einem PC|install/win/usb#start-tails]]"
+
+#, fuzzy
+#~| msgid "[[Starting a Mac on a USB|install/mac/usb#start-tails]]"
+#~ msgid "- [[Starting a Mac on a USB stick|doc/first_steps/start/mac]]"
+#~ msgstr "[[Starten von USB mit einem Mac|install/mac/usb#start-tails]]"
+
+#~ msgid ""
+#~ "Download the `gnome+nonfree.iso` image to have the GNOME desktop and all "
+#~ "the non-free firmware for better hardware compatibility."
+#~ msgstr ""
+#~ "Laden Sie das Image `gnome+nonfree.iso` herunter, um die GNOME-"
+#~ "Arbeitsumgebung und alle unfreie Firmware für bessere "
+#~ "Hardwarekompatibilität zu erhalten."
+
+#~ msgid ""
+#~ "In this documentation we use the term *bug* to refer to a software error."
+#~ msgstr ""
+#~ "In dieser Dokumentation verwenden wir das Wort *Bug*, wenn wir von einem "
+#~ "Softwarefehler reden."
+
+#, fuzzy, no-wrap
+#~| msgid ""
+#~| "To start *WhisperBack*, choose\n"
+#~| "<span class=\"menuchoice\">\n"
+#~| "  **Applications**&nbsp;▸\n"
+#~| "  **System Tools**&nbsp;▸\n"
+#~| "  **WhisperBack Error Reporting**</span>.\n"
+#~ msgid ""
+#~ "To start *WhisperBack*, choose\n"
+#~ "<span class=\"menuchoice\">\n"
+#~ "  **Applications**&nbsp;▸\n"
+#~ "  **System Tools**&nbsp;▸\n"
+#~ "  **WhisperBack Error Reporting**</span>.\n"
+#~ msgstr ""
+#~ "Um *WhisperBack* zu starten, wählen Sie\n"
+#~ "<span class=\"menuchoice\">\n"
+#~ "  **Anwendungen**&nbsp;▸\n"
+#~ "  **Systemwerkzeuge**&nbsp;▸\n"
+#~ "  **WhisperBack Error Reporting**</span>.\n"
+
+#, no-wrap
+#~ msgid "<h2 id=\"screenshot\">Take a screenshot</h2>\n"
+#~ msgstr "<h2 id=\"Bildschirmfoto\">erstelle ein Bildschirmfoto</h2>\n"
+
+#~ msgid "It might be helpful to include a screenshot with your bug report."
+#~ msgstr ""
+#~ "Es könnte hilfreich sein, ein Bildschiormfoto zu Ihrem Fehlerbericht "
+#~ "hinzuzufügen."
+
+#, fuzzy
+#~| msgid ""
+#~| "To take a screenshot of the entire desktop, press <span "
+#~| "class=\"keycap\">Print Screen</span>."
+#~ msgid "To take a screenshot of the entire desktop, press **Print Screen**."
+#~ msgstr ""
+#~ "Um einen Bildschirmfoto des gesamten Desktops zu erstellen, drücken Sie "
+#~ "**Drucken**."
+
+#, fuzzy
+#~| msgid ""
+#~| "To take a screenshot of a single window, press <span "
+#~| "class=\"keycap\">Alt + Print Screen</span>."
+#~ msgid ""
+#~ "To take a screenshot of a single window, press **Alt + Print Screen**."
+#~ msgstr ""
+#~ "Um einen Screenshot eines einzelnen Fensters zu erstellen, drücken Sie "
+#~ "**Alt + Drucken**."
+
+#, fuzzy
+#~| msgid ""
+#~| "To take a screenshot of an area you select, press <span "
+#~| "class=\"keycap\">Shift + Print Screen</span>."
+#~ msgid ""
+#~ "To take a screenshot of an area you select, press **Shift + Print "
+#~ "Screen**."
+#~ msgstr ""
+#~ "Um ein Bildschirmfoto von einem ausgewählten Bereich zu erstellen, "
+#~ "drücken Sie **Umschalttaste + Drucken**."
+
+#, no-wrap
+#~ msgid ""
+#~ "The screenshot will automatically be saved in the\n"
+#~ "*Pictures* folder located in your\n"
+#~ "*Home* folder. The file name will begin with the\n"
+#~ "word *Screenshot*.\n"
+#~ msgstr ""
+#~ "Das Bildschirmfoto wird automatisch im Ordner\n"
+#~ "*Bilder*-Ordner gespeichert, der sich in Ihrem\n"
+#~ "*Home*-Ordner befindet. Der Dateiname beginnt mit dem\n"
+#~ "Wort *Screenshot*.\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "You can also take a screenshot using\n"
+#~ "*GNOME Screenshot*.\n"
+#~ msgstr ""
+#~ "Sie können auch ein Bildschirmfoto erstellen mit\n"
+#~ "*GNOME Screenshot*.\n"
+
+#, fuzzy, no-wrap
+#~| msgid ""
+#~| "To start *WhisperBack*, choose\n"
+#~| "<span class=\"menuchoice\">\n"
+#~| "  **Applications**&nbsp;▸\n"
+#~| "  **System Tools**&nbsp;▸\n"
+#~| "  **WhisperBack Error Reporting**</span>.\n"
+#~ msgid ""
+#~ "To start *GNOME Screenshot*, choose\n"
+#~ "<span class=\"menuchoice\">\n"
+#~ "  **Applications**&nbsp;▸\n"
+#~ "  **Utilities**&nbsp;▸\n"
+#~ "  **Screenshot**</span>.\n"
+#~ msgstr ""
+#~ "Um *WhisperBack* zu starten, wählen Sie\n"
+#~ "<span class=\"menuchoice\">\n"
+#~ "  **Anwendungen**&nbsp;▸\n"
+#~ "  **Systemwerkzeuge**&nbsp;▸\n"
+#~ "  **WhisperBack Error Reporting**</span>.\n"
+
+#~ msgid ""
+#~ "You can upload the screenshot to an [encrypted Up1 host](https://"
+#~ "github.com/Upload/Up1) such as the one available at:"
+#~ msgstr ""
+#~ "Sie können das Bildschirmfoto auf einen [verschlüsselten Up1-Host] "
+#~ "(https://github.com/Upload/Up1) hochladen, der z. B. unter folgender "
+#~ "Adresse verfügbar ist:"
+
+#~ msgid "<https://share.riseup.net/>"
+#~ msgstr "<https://share.riseup.net/>"
+
+#~ msgid "Make sure to include in your bug report a link to the screenshot."
+#~ msgstr ""
+#~ "Stellen Sie sicher, dass Sie in Ihrem Fehlerbericht einen Link zum "
+#~ "Bildschirmfoto angeben."
+
+#, fuzzy, no-wrap
+#~| msgid "[[!inline pages=\"support/talk/languages.inline\" raw=\"yes\" sort=\"age\"]]\n"
+#~ msgid "[[!inline pages=\"support/talk/no_reply_every_request.inline\" raw=\"yes\"]]\n"
+#~ msgstr "[[!inline pages=\"support/talk/languages.inline.de\" raw=\"yes\" sort=\"age\"]]\n"
+
+#, no-wrap
+#~ msgid "[[!inline pages=\"support/talk/languages.inline\" raw=\"yes\" sort=\"age\"]]\n"
+#~ msgstr "[[!inline pages=\"support/talk/languages.inline.de\" raw=\"yes\" sort=\"age\"]]\n"
+
+#~ msgid "<a id=\"already_known\"></a>\n"
+#~ msgstr "<a id=\"already_known\"></a>\n"
+
+#~ msgid "<a id=\"useful_bug_report\"></a>\n"
+#~ msgstr "<a id=\"useful_bug_report\"></a>\n"
+
+#, fuzzy
+#~| msgid "Use WhisperBack\n"
+#~ msgid "Use WhisperBack"
+#~ msgstr "Benutzen Sie WhisperBack\n"
+
+#~ msgid "<a id=\"special_cases\"></a>\n"
+#~ msgstr "<a id=\"special_cases\"></a>\n"
+
+#, fuzzy
+#~| msgid "No internet access\n"
+#~ msgid "No Internet access"
+#~ msgstr "Keine Internetverbindung\n"
+
+#, fuzzy
+#~| msgid "Tails does not start\n"
+#~ msgid "Tails does not start"
+#~ msgstr "Tails startet nicht\n"
+
+#~ msgid "<a id=\"debian\"></a>\n"
+#~ msgstr "<a id=\"debian\"></a>\n"
+
+#, fuzzy
+#~| msgid ""
+#~| "the [list of things that will be fixed or improved in the next release]"
+#~| "(https://redmine.tails.boum.org/code/projects/tails/issues?query_id=111)"
+#~ msgid ""
+#~ "the [list of things that will be fixed or improved in the next release]"
+#~ "(https://redmine.tails.boum.org/code/projects/tails/issues?query_id=327)"
+#~ msgstr ""
+#~ "die [Liste an Dingen, die in der nächsten Version repariert oder "
+#~ "verbessert werden](https://redmine.tails.boum.org/code/projects/tails/"
+#~ "issues?query_id=111)"
+
+#~ msgid ""
+#~ "Debian also distributes images (*Debian live*) that you can install on a\n"
+#~ "USB stick, like Tails. To do so, you can follow our instructions to\n"
+#~ "[[Install an intermediary Tails|install/linux/usb#install-intermediary]]\n"
+#~ "from Linux using *GNOME Disks*.\n"
+#~ msgstr ""
+#~ "Debian stellt auch Images (*Debian live*) zur Verfügung, die Sie auf "
+#~ "einen USB-Stick, genauso wie Tails, installieren können.\n"
+#~ "Um dies zu tun, können Sie unsere Anweisungen zum [[Installieren eines "
+#~ "zwischenzeitlichen Tails|install/linux/usb#install-intermediary]]\n"
+#~ "von Linux aus unter der Nutzung von <span class=\"application\">GNOME "
+#~ "Disks</span> befolgen.\n"
+
+#~ msgid "[[Starting a Mac on a DVD|install/mac/dvd#start-dvd]]"
+#~ msgstr "[[Starten von DVD mit einem Mac|install/mac/dvd#start-dvd]]"
+
+#~ msgid "the [[!tails_redmine desc=\"list of things to do\"]]"
+#~ msgstr "die [[!tails_redmine desc=\"Todo-Liste\"]]"
+
+#~ msgid "Special cases\n"
+#~ msgstr "Spezialfälle\n"
+
+#~ msgid "See [[Tails_does_not_start]]."
+#~ msgstr "Lesen Sie [[Tails startet nicht|Tails_does_not_start]]."

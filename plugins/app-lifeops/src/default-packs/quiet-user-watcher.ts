@@ -7,15 +7,10 @@
  *   - "you missed yesterday's check-in" when the previous-day check-in
  *     terminal-stated `expired` or `skipped` without a follow-up reply.
  *
- * Threshold: 3 days quiet (per IMPL §3.4 owned-files note).
- *
- * Closes journey J5 (user-quiet concern). The watcher emits its observations
- * for the morning-brief pack to fold in; it does **not** send a separate
+ * Threshold: 3 days quiet. The watcher emits its observations for the
+ * morning-brief pack to fold in; it does **not** send a separate
  * notification (that's what the consolidation policy on `wake.confirmed` is
  * for — see `consolidation-policies.ts`).
- *
- * Stub status: see `contract-stubs.ts` — `RecentTaskStatesProvider` is
- * declared locally until W1-C ships the real provider.
  */
 
 import type {

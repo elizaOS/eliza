@@ -50,22 +50,22 @@ import {
   type AppRoutePluginRegistryEntry,
   listAppRoutePluginLoaders,
 } from "./app-route-plugin-registry.js";
-import type { EmbeddingProgressCallback } from "./embedding-manager-support.js";
+import type { EmbeddingProgressCallback } from "@elizaos/plugin-local-inference/runtime";
 import {
   DEFAULT_MODELS_DIR,
+  detectEmbeddingPreset,
   embeddingGgufFilePresent,
+  ensureLocalInferenceHandler,
   ensureModel,
   findExistingEmbeddingModelForWarmupReuse,
   isEmbeddingWarmupReuseDisabled,
-} from "./embedding-manager-support.js";
-import { detectEmbeddingPreset } from "./embedding-presets.js";
-import { shouldWarmupLocalEmbeddingModel } from "./embedding-warmup-policy.js";
-import { ensureLocalInferenceHandler } from "./ensure-local-inference-handler.js";
+  shouldEnableMobileLocalInference,
+  shouldWarmupLocalEmbeddingModel,
+} from "@elizaos/plugin-local-inference/runtime";
 import {
   ensureTextToSpeechHandler,
   isEdgeTtsDisabled as isTextToSpeechEdgeTtsDisabled,
 } from "./ensure-text-to-speech-handler.js";
-import { shouldEnableMobileLocalInference } from "./mobile-local-inference-gate.js";
 import { updateStartupEmbeddingProgress } from "./startup-overlay.js";
 import { handleTelegramStandaloneMessage } from "./telegram-standalone-handler.js";
 import { shouldStartTelegramStandaloneBot } from "./telegram-standalone-policy.js";
@@ -1095,6 +1095,26 @@ export async function startEliza(
     process.env.ELIZA_AGENT_ORCHESTRATOR = "1";
   }
 
+  // Install the compat-route http.createServer wrapper BEFORE the upstream
+  // agent's bootElizaRuntime path (which calls upstream startApiServer →
+  // http.createServer at packages/agent/src/runtime/eliza.ts ~3984). The
+  // upstream call binds the port and creates the listener that will receive
+  // every request from the renderer; if our patch isn't already in place,
+  // /api/tts/local-inference, /api/database, /api/runtime/mode, and every
+  // other compat-dispatcher path 404 because the wrapper never runs on the
+  // active listener. The app-core `startApiServer` wrapper (line ~1188 of
+  // ../api/server.ts) ALSO installs the patch, but that's too late — the
+  // upstream listener is already bound by then.
+  //
+  // The patch falls back to a module-scoped singleton state when called
+  // without an explicit one; `startApiServer` later seeds that same
+  // singleton with the live runtime via its `server.updateRuntime` wrapper,
+  // so the early listener picks up the runtime as soon as it's available.
+  const { patchHttpCreateServerForCompat, getSharedCompatRuntimeState } =
+    await import("../api/server");
+  patchHttpCreateServerForCompat();
+  const earlyCompatState = getSharedCompatRuntimeState();
+
   try {
     // Eagerly download the embedding model with progress reporting
     await warmupEmbeddingModel(options?.onEmbeddingProgress);
@@ -1119,6 +1139,13 @@ export async function startEliza(
       if (!currentRuntime) {
         return currentRuntime;
       }
+
+      // Hand the live runtime to the early-installed compat wrapper so
+      // `/api/tts/*`, `/api/database`, `/api/runtime/mode`, and every other
+      // compat-dispatcher path can resolve. Without this, `state.current`
+      // stays null and `handleCompatRoute` is never invoked even though the
+      // patch is in place — the wrapper short-circuits on null state.
+      earlyCompatState.current = currentRuntime;
 
       const { startApiServer } = await import("../api/server");
       // Desktop launcher sets ELIZA_API_PORT (default 31337) to match the
@@ -1214,7 +1241,13 @@ export async function startEliza(
     }
 
     const runtime = await upstreamStartElizaWithPgliteCompat(options);
-    return runtime ? await repairRuntimeAfterBoot(runtime) : runtime;
+    const repaired = runtime ? await repairRuntimeAfterBoot(runtime) : runtime;
+    // Same wiring as the serverOnly branch above — hand the live runtime to
+    // the early-installed compat wrapper so its dispatcher engages.
+    if (repaired) {
+      earlyCompatState.current = repaired;
+    }
+    return repaired;
   } finally {
     syncElizaEnvAliases();
   }

@@ -1,0 +1,37 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2026-01-14 10:27+0100\n"
+"PO-Revision-Date: 2020-04-05 23:30+0000\n"
+"Last-Translator: Muri Nicanor <muri@immerda.ch>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: de\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 3.5.1\n"
+
+#. type: Plain text
+msgid ""
+"We decided to stop providing BitTorrent files since 2026. See [[!"
+"tails_ticket 19275]]."
+msgstr ""
+
+#. type: Plain text
+#, fuzzy
+#| msgid ""
+#| "The BitTorrent files, signatures, and corresponding package lists [can be "
+#| "found here](/torrents/files/)."
+msgid ""
+"Signatures and corresponding package lists [can be found here](/torrents/"
+"files/)."
+msgstr ""
+"Bittorrent-Dateien, Signaturen und dazugehörige Paketlisten [finden Sie hier]"
+"(/torrents/files/)."

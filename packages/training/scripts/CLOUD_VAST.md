@@ -62,10 +62,10 @@ instance unless `.vast_instance_id` already points at a live one (set
 | Size | Command | Default GPU | Wall (1B tokens) | Cost |
 |------|---------|-------------|------------------|------|
 | 2B   | `bash scripts/train_vast.sh provision-and-train --registry-key qwen3.5-2b --epochs 1` | 1x Blackwell 6000 (96 GB) | ~31 h | ~$41 |
-| 9B   | `bash scripts/train_vast.sh provision-and-train --registry-key qwen3.5-9b --epochs 1` | 1x Blackwell 6000 (96 GB) | ~139 h | ~$186 |
-| 27B  | `bash scripts/train_vast.sh provision-and-train --registry-key qwen3.6-27b --epochs 1` | 2x B200 (366 GB) | ~33 h | ~$253 |
+| 4B   | `bash scripts/train_vast.sh provision-and-train --registry-key qwen3.5-4b --epochs 1` | 1x Blackwell 6000 (96 GB) | ~139 h | ~$186 |
+| 4B  | `bash scripts/train_vast.sh provision-and-train --registry-key qwen3.5-4b --epochs 1` | 2x B200 (366 GB) | ~33 h | ~$253 |
 
-Faster alternatives are documented in the script header (e.g. 9B on 2x B200
+Faster alternatives are documented in the script header (e.g. 4B on 2x B200
 is ~11 h / ~$84). Override the GPU target with
 `VAST_GPU_TARGET=b200-2x bash ... provision-and-train ...`.
 
@@ -148,13 +148,13 @@ Vast template `on_start`. The script reads `ELIZA_VAST_MANIFEST` to pick
 flags from one of:
 
 - `eliza-1-2b.json` — 1x RTX 5090 / Blackwell, AWQ-Marlin weights, bf16 KV.
-- `eliza-1-9b.json` — 1x H200, FP8 weights, FP8 KV.
-- `eliza-1-27b.json` — 2x B200, FP8 weights, FP8 KV, EP=2.
+- `eliza-1-4b.json` — 1x H200, FP8 weights, FP8 KV.
+- `eliza-1-4b.json` — 2x B200, FP8 weights, FP8 KV, EP=2.
 
 Set the template env on the Vast instance (or pass via `vastai create`):
 
 ```bash
-ELIZA_VAST_MANIFEST=eliza-1-9b.json
+ELIZA_VAST_MANIFEST=eliza-1-4b.json
 HUGGING_FACE_HUB_TOKEN=<token>
 ```
 
@@ -229,7 +229,7 @@ or you want a clean reproduce-from-public-state run.
 
 ```bash
 bash scripts/train_vast.sh provision-and-train \
-    --registry-key qwen3.5-9b --epochs 1 --bootstrap hf
+    --registry-key qwen3.5-4b --epochs 1 --bootstrap hf
 ```
 
 `--bootstrap hf` swaps the local rsync for two `hf download`

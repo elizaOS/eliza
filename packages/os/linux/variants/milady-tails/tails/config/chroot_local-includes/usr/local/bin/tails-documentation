@@ -1,0 +1,116 @@
+#!/usr/bin/python3 -I
+
+import os
+import re
+import sys
+from argparse import ArgumentParser
+
+from tailslib.website import WEBSITE_URL
+
+ALREADY_LOCALIZED = re.compile(r"/index.[a-z][a-z].html$")
+
+
+def sanitize_page_uri(page: str) -> str:
+    """
+    A relative link is passed through
+    >>> sanitize_page_uri("contribute/release_process")
+    'contribute/release_process'
+
+    A link to the website is made relative
+    >>> sanitize_page_uri("https://tails.net/install/")
+    'install'
+
+    Localized links are de-localized
+    >>> sanitize_page_uri("https://tails.net/install/index.de.html")
+    'install'
+    """
+    page = page.removeprefix(WEBSITE_URL + "/")
+    m = ALREADY_LOCALIZED.search(page)
+    if m is not None:
+        page = page.removesuffix(m.group(0))
+
+    return page.removesuffix("/")
+
+
+def get_parser():
+    p = ArgumentParser()
+    p.add_argument("--doctest", default=False, action="store_true")
+    p.add_argument("--dry-run", default=False, action="store_true")
+    p.add_argument("page", default="doc", nargs="?")
+    p.add_argument("anchor", default=None, nargs="?")
+    return p
+
+
+def parse_args(_args=None):
+    """
+
+    >>> parse_args([]).page
+    'doc'
+    >>> parse_args([]).anchor is None
+    True
+
+    >>> parse_args(['foo']).page
+    'foo'
+    >>> parse_args(['foo']).anchor is None
+    True
+
+    >>> parse_args(['foo', 'bar']).page
+    'foo'
+    >>> parse_args(['foo', 'bar']).anchor
+    'bar'
+    """
+    return get_parser().parse_args(_args)
+
+
+def main():
+    args = parse_args()
+
+    if args.doctest:
+        import doctest
+
+        ret = doctest.testmod(verbose=False)
+        print("tails-documentation doctest:", ret)
+        if ret.failed:
+            sys.exit(1)
+        else:
+            sys.exit(0)
+        return
+
+    # We rely on the logic in the tor-browser script to resolve this
+    # to a local page if necessary.
+    if args.page.startswith(WEBSITE_URL):
+        uri = args.page
+    else:
+        page = sanitize_page_uri(args.page)
+        uri = f"https://tails.net/{page}"
+
+    if args.anchor:
+        uri = f"{uri}#{args.anchor}"
+
+    if args.dry_run:
+        print(uri)
+        return
+
+    os.environ["TOR_BROWSER_SKIP_OFFLINE_WARNING"] = "yes"
+    # Some of our callers capture the stderr of the
+    # tails-documentation command, which, if we did not use
+    # systemd-cat, would make them block until Tor Browser was closed:
+    # the stderr of tails-documentation would be passed to Tor
+    # Browser, so the stderr file descriptor would be kept open by Tor
+    # Browser until it's closed.
+    #
+    # By using systemd-cat, we avoid passing our stderr to Tor Browser,
+    # and is therefore closed immediately when tails-documentation exits.
+    os.execv(
+        "/usr/bin/systemd-cat",
+        [
+            "/usr/bin/systemd-cat",
+            "/usr/local/bin/gtk-abspath-launch",
+            "/usr/share/applications/org.boum.tails.TorBrowser.desktop",
+            uri,
+        ],
+    )
+
+
+if __name__ == "__main__":
+    main()

@@ -1,4 +1,3 @@
-import { Button } from "@elizaos/ui";
 import { CheckCircle2, Play } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { client } from "../../api";
@@ -10,30 +9,36 @@ import type {
   InstalledModel,
   ModelHubSnapshot,
 } from "../../api/client-local-inference";
+import { useRenderGuard } from "../../hooks/useRenderGuard";
+import { filterSettingsDefaultLocalModels } from "../../services/local-inference/catalog-policy";
 import { useApp } from "../../state";
 import { resolveApiUrl } from "../../utils/asset-url";
 import { getElizaApiToken } from "../../utils/eliza-globals";
 import { AdvancedSettingsDisclosure } from "../settings/settings-control-primitives";
+import { Button } from "../ui/button";
 import { ActiveModelBar } from "./ActiveModelBar";
+import { CustomModelSearch } from "./CustomModelSearch";
 import { DeviceBridgeStatusBar } from "./DeviceBridgeStatus";
 import { DevicesPanel } from "./DevicesPanel";
 import { DownloadQueue } from "./DownloadQueue";
 import { FirstRunOffer } from "./FirstRunOffer";
 import { HardwareBadge } from "./HardwareBadge";
-import { HuggingFaceSearch } from "./HuggingFaceSearch";
 import { displayModelName } from "./hub-utils";
 import { ModelHubView } from "./ModelHubView";
 import { SlotAssignments } from "./SlotAssignments";
+import { useDeviceBridgeStatus } from "./useDeviceBridgeStatus";
 
 type HubTab = "curated" | "search" | "downloads";
 
 export function LocalInferencePanel() {
+  useRenderGuard("LocalInferencePanel");
   const { setActionNotice } = useApp();
   const [hub, setHub] = useState<ModelHubSnapshot | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<HubTab>("curated");
   const eventSourceRef = useRef<EventSource | null>(null);
+  const deviceBridgeStatus = useDeviceBridgeStatus();
 
   const refresh = useCallback(async () => {
     try {
@@ -273,14 +278,12 @@ export function LocalInferencePanel() {
     return <p className="text-sm text-muted">Loading local models…</p>;
   }
 
-  const catalog = hub.catalog.filter((model) =>
-    model.id.startsWith("eliza-1-"),
-  );
+  const catalog = filterSettingsDefaultLocalModels(hub.catalog);
 
   return (
     <div className="flex flex-col gap-3">
       <HardwareBadge hardware={hub.hardware} />
-      <DeviceBridgeStatusBar />
+      <DeviceBridgeStatusBar status={deviceBridgeStatus} />
       <FirstRunOffer
         catalog={catalog}
         installed={hub.installed}
@@ -299,7 +302,7 @@ export function LocalInferencePanel() {
         {(
           [
             ["curated", "Eliza-1"],
-            ["search", "Custom HF"],
+            ["search", "Search"],
             ["downloads", "Downloads"],
           ] as const
         ).map(([id, label]) => {
@@ -346,7 +349,7 @@ export function LocalInferencePanel() {
       )}
 
       {tab === "search" && (
-        <HuggingFaceSearch
+        <CustomModelSearch
           installed={hub.installed}
           downloads={hub.downloads}
           active={hub.active}
@@ -367,14 +370,14 @@ export function LocalInferencePanel() {
         />
       )}
 
-      <AdvancedSettingsDisclosure title="Local model assignments">
+      <AdvancedSettingsDisclosure title="Local model assignments" lazy>
         <div className="flex flex-col gap-3">
           <SlotAssignments
             installed={hub.installed}
             assignments={hub.assignments}
             onChange={handleAssignmentsChange}
           />
-          <DevicesPanel />
+          <DevicesPanel status={deviceBridgeStatus} />
           <ExternalInstalledSummary
             installed={hub.installed}
             onActivate={handleActivate}

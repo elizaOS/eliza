@@ -15,8 +15,8 @@ Args:
                           containing config.json + safetensors / sharded
                           state). Step is parsed from the dir name:
                           `checkpoint-<N>` -> N; `final` -> max known step + 1.
-  --registry-key <k>      Model registry key (qwen3.5-2b / qwen3.5-9b /
-                          qwen3.6-27b). Recorded in the result JSON so the
+  --registry-key <k>      Model registry key (qwen3.5-2b / qwen3.5-4b /
+                          qwen3.5-4b). Recorded in the result JSON so the
                           UI can pick the right axis labels.
   --val-jsonl <path>      Validation JSONL. Default: data/smoke/val.jsonl.
   --max-examples <n>      Per-bucket cap for the native benchmark. Default 50 — the

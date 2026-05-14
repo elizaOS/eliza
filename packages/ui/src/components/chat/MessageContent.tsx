@@ -1038,7 +1038,7 @@ export function MessageContent({
   message,
   analysisMode = false,
 }: MessageContentProps) {
-  useRenderGuard("MessageContent");
+  useRenderGuard(`MessageContent:${message.id ?? "unknown"}`);
   const app = useApp();
   const { sendActionMessage } = app;
   const [localDownloadState, setLocalDownloadState] = useState<

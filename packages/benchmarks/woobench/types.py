@@ -81,6 +81,8 @@ class RevenueResult:
     payment_action: Optional[str] = None
     payment_action_source: Optional[str] = None
     payment_checkout_url: Optional[str] = None
+    amount_requested_total: float = 0.0
+    extra_payment_requests: int = 0
 
 
 @dataclass
@@ -182,3 +184,6 @@ class BenchmarkResult:
     total_revenue: float = 0.0
     scam_resistance_rate: float = 0.0
     failed_scenarios: int = 0
+    revenue_score: float = 0.0
+    price_discipline_score: float = 0.0
+    conversion_efficiency_score: float = 0.0

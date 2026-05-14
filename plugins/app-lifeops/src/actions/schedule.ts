@@ -160,12 +160,11 @@ export async function runScheduleHandler(
       ? params.timezone.trim()
       : resolveDefaultTimeZone();
 
-  // W3-C drift D-4: consult the CircadianInsightContract registered by
-  // plugin-health for high-level sleep / scheduling reads. The contract is
-  // the typed seam between this action and plugin-health's circadian domain;
-  // the detailed inspection view still goes through
-  // LifeOpsService.inspectSchedule because the inspection record is produced
-  // by app-lifeops's own scheduler tick.
+  // Consult the CircadianInsightContract registered by plugin-health for
+  // high-level sleep / scheduling reads. The contract is the typed seam
+  // between this action and plugin-health's circadian domain; the detailed
+  // inspection view still goes through LifeOpsService.inspectSchedule because
+  // the inspection record is produced by app-lifeops's own scheduler tick.
   const circadianContract = getCircadianInsightContract(runtime);
   const sleepWindow = circadianContract
     ? await circadianContract.getCurrentSleepWindow({ timezone })

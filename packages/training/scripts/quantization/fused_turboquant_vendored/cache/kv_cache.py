@@ -26,7 +26,7 @@ class TurboQuantKVCache:
     Stores keys and values in compressed form (uint8 indices + fp32 norms)
     and decompresses on-the-fly when attention reads them.
 
-    For Qwen3.5-9B, only full_attention layers (8 of 32) use this cache.
+    For active Qwen3.5 models, only full_attention layers use this cache.
     Linear attention (DeltaNet) layers have a different state representation
     and are not affected.
 

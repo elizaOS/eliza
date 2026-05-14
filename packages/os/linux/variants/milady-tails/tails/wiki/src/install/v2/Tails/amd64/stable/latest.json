@@ -1,0 +1,32 @@
+{
+    "build_target": "amd64",
+    "channel": "stable",
+    "installations": [
+        {
+            "installation-paths": [
+                {
+                    "target-files": [
+                        {
+                            "sha256": "d66e4a103d5974404e26391923ef69bd79bee9254276d58ef23ab6dda0c25d0e",
+                            "size": 2035286016,
+                            "url": "https://download.tails.net/tails/stable/tails-amd64-7.7.2/tails-amd64-7.7.2.img"
+                        }
+                    ],
+                    "type": "img"
+                },
+                {
+                    "target-files": [
+                        {
+                            "sha256": "ff2dec3208d4bc7a4f6c1814bde9f327b600bb029fcd4f4cdf95f9da4da7e3d1",
+                            "size": 2025277440,
+                            "url": "https://download.tails.net/tails/stable/tails-amd64-7.7.2/tails-amd64-7.7.2.iso"
+                        }
+                    ],
+                    "type": "iso"
+                }
+            ],
+            "version": "7.7.2"
+        }
+    ],
+    "product-name": "Tails"
+}

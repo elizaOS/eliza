@@ -589,7 +589,7 @@ class TestElizaExplorerConstruction:
     def test_zero_message_run_returns_output_dir_path(self, tmp_path):
         from benchmarks.solana.eliza_explorer import ElizaExplorer
         explorer = ElizaExplorer(max_messages=0, output_dir=str(tmp_path))
-        path = asyncio.get_event_loop().run_until_complete(explorer.run())
+        path = asyncio.run(explorer.run())
         assert path.parent == tmp_path
         assert path.exists()
 

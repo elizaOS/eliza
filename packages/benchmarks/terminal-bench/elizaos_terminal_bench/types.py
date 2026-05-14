@@ -217,6 +217,7 @@ class TerminalBenchConfig:
     verbose: bool = False
     dry_run: bool = False
     oracle: bool = False
+    local_sandbox: bool = False
 
 
 # Leaderboard scores as of December 2025

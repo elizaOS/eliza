@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import * as _earlyFs from "node:fs";
 // Static import so `Bun.build` pulls the AOSP llama loader into the mobile
 // bundle. The adapter self-gates on `ELIZA_LOCAL_LLAMA=1` and no-ops on
 // every other platform/runtime, so the import is safe everywhere; we only
@@ -21,11 +22,6 @@
 // symbol out (the only consumer is a dynamic import in `cli/index.ts`,
 // which is enough for resolution but not for inclusion in some Bun.build
 // configurations). Mirror the `__elizaAospLlamaLoader` pattern.
-import {
-  registerAospLlamaLoader as __elizaAospLlamaLoader,
-  ensureAospLocalInferenceHandlers as __elizaAospLocalInferenceBootstrap,
-} from "@elizaos/plugin-aosp-local-inference";
-import { ensureMobileDeviceBridgeInferenceHandlers as __elizaMobileDeviceBridgeBootstrap } from "@elizaos/plugin-capacitor-bridge";
 import { runAutonomousCli } from "./cli/index.ts";
 
 // Pull @elizaos/app-{wifi,contacts,phone}'s runtime plugin adapter into the
@@ -40,33 +36,94 @@ import { runAutonomousCli } from "./cli/index.ts";
 // crash at module init when those workspace packages aren't installed.
 // Bun.build still bundles the target because the path is a string
 // literal, so the Android bundle keeps the same behavior.
-try {
-  await import("./runtime/android-app-plugins.ts");
-} catch {
-  // Android-only app plugins not bundled in this build; plugin-resolver.ts
-  // returns null for these IDs and the rest of the runtime is unaffected.
+// Early diagnostic logger for Android: captures errors before the fs shim runs.
+// Uses the raw node:fs (captured above) so the shim can't interfere.
+// Writes to $ELIZA_STATE_DIR/bin-debug.log — readable via adb run-as.
+const _binDebugLog =
+  process.env.ELIZA_PLATFORM === "android"
+    ? (() => {
+        const stateDir =
+          process.env.ELIZA_STATE_DIR ||
+          process.env.MILADY_STATE_DIR ||
+          `${process.env.HOME ?? "/data/local/tmp"}/.eliza`;
+        const logPath = `${stateDir}/bin-debug.log`;
+        try {
+          _earlyFs.mkdirSync(stateDir, { recursive: true });
+        } catch {
+          /* ignore */
+        }
+        return (msg: string) => {
+          try {
+            _earlyFs.appendFileSync(
+              logPath,
+              `${new Date().toISOString()} ${msg}\n`,
+            );
+          } catch {
+            /* ignore */
+          }
+        };
+      })()
+    : () => {};
+_binDebugLog(
+  `[bin.ts] started ELIZA_PLATFORM=${process.env.ELIZA_PLATFORM ?? "(unset)"} ELIZA_STATE_DIR=${process.env.ELIZA_STATE_DIR ?? "(unset)"}`,
+);
+
+if (process.env.ELIZA_PLATFORM === "android") {
+  _binDebugLog("[bin.ts] entering android block");
+  try {
+    const { registerAospLlamaLoader, ensureAospLocalInferenceHandlers } =
+      await import("@elizaos/plugin-aosp-local-inference");
+    (
+      globalThis as {
+        __elizaAospLlamaLoader?: typeof registerAospLlamaLoader;
+      }
+    ).__elizaAospLlamaLoader = registerAospLlamaLoader;
+    (
+      globalThis as {
+        __elizaAospLocalInferenceBootstrap?: typeof ensureAospLocalInferenceHandlers;
+      }
+    ).__elizaAospLocalInferenceBootstrap = ensureAospLocalInferenceHandlers;
+  } catch (e) {
+    // Android-only local inference is optional outside the privileged AOSP build.
+    _binDebugLog(
+      `[bin.ts] aosp-local-inference init error (ok): ${e instanceof Error ? e.message : String(e)}`,
+    );
+  }
+
+  try {
+    await import("./runtime/android-app-plugins.ts");
+    _binDebugLog("[bin.ts] android-app-plugins loaded ok");
+  } catch (e) {
+    // Android-only app plugins not bundled in this build; plugin-resolver.ts
+    // returns null for these IDs and the rest of the runtime is unaffected.
+    _binDebugLog(
+      `[bin.ts] android-app-plugins init error (ok): ${e instanceof Error ? e.message : String(e)}`,
+    );
+  }
+}
+_binDebugLog("[bin.ts] pre-runAutonomousCli");
+
+if (process.env.ELIZA_DEVICE_BRIDGE_ENABLED === "1") {
+  try {
+    const { ensureMobileDeviceBridgeInferenceHandlers } = await import(
+      "@elizaos/plugin-capacitor-bridge"
+    );
+    (
+      globalThis as {
+        __elizaMobileDeviceBridgeBootstrap?: typeof ensureMobileDeviceBridgeInferenceHandlers;
+      }
+    ).__elizaMobileDeviceBridgeBootstrap =
+      ensureMobileDeviceBridgeInferenceHandlers;
+  } catch {
+    // Device bridge is explicitly opt-in; absence just leaves cloud/local-model
+    // provider selection to the runtime.
+  }
 }
 
-(
-  globalThis as { __elizaAospLlamaLoader?: typeof __elizaAospLlamaLoader }
-).__elizaAospLlamaLoader = __elizaAospLlamaLoader;
-
-(
-  globalThis as {
-    __elizaAospLocalInferenceBootstrap?: typeof __elizaAospLocalInferenceBootstrap;
-  }
-).__elizaAospLocalInferenceBootstrap = __elizaAospLocalInferenceBootstrap;
-
-(
-  globalThis as {
-    __elizaMobileDeviceBridgeBootstrap?: typeof __elizaMobileDeviceBridgeBootstrap;
-  }
-).__elizaMobileDeviceBridgeBootstrap = __elizaMobileDeviceBridgeBootstrap;
-
 runAutonomousCli().catch((error) => {
-  console.error(
-    "[eliza-autonomous] Failed to start:",
-    error instanceof Error ? (error.stack ?? error.message) : error,
-  );
+  const msg =
+    error instanceof Error ? (error.stack ?? error.message) : String(error);
+  _binDebugLog(`[bin.ts] FATAL runAutonomousCli threw: ${msg}`);
+  console.error("[eliza-autonomous] Failed to start:", msg);
   process.exit(1);
 });

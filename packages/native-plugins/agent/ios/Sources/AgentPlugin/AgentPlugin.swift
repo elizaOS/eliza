@@ -5,6 +5,8 @@ import WebKit
 private let maxRequestBodyBytes = 10 * 1024 * 1024
 private let maxResponseBodyBytes = 10 * 1024 * 1024
 private let localAgentPort = 31337
+private let localAgentIpcScheme = "eliza-local-agent"
+private let localAgentIpcHost = "ipc"
 
 private struct AgentEndpoint {
     let baseURL: URL
@@ -22,9 +24,10 @@ private struct AgentHTTPResponse {
 ///
 /// Remote/cloud modes bridge the Capacitor Agent API to an explicitly
 /// configured HTTP agent endpoint, such as a local Mac dev server or a remote
-/// Eliza agent. Local dev/sideload mode is represented by the stable loopback
-/// URL shape but requests are handled by the WebView ITTP route kernel, not by
-/// a native TCP listener.
+/// Eliza agent. Local dev/sideload mode uses a path-only in-app identity; full
+/// Bun foreground traffic goes through the ElizaBunRuntime Capacitor bridge,
+/// while this plugin keeps the foreground WebView ITTP route kernel as a
+/// compatibility path. It never starts an iOS local TCP listener.
 @objc(AgentPlugin)
 public class AgentPlugin: CAPPlugin, CAPBridgedPlugin {
     public let identifier = "AgentPlugin"
@@ -40,6 +43,20 @@ public class AgentPlugin: CAPPlugin, CAPBridgedPlugin {
 
     private static var conversationIdByBaseURL: [String: String] = [:]
     private static var localStartedAt: Date?
+    private static let apiBaseConfigKeys = [
+        "apiBase",
+        "baseUrl",
+        "baseURL",
+        "agentApiBase",
+        "ELIZA_AGENT_API_BASE",
+        "ELIZA_API_BASE",
+        "ELIZA_IOS_API_BASE",
+        "ELIZA_IOS_REMOTE_API_BASE",
+        "ELIZA_MOBILE_API_BASE",
+        "VITE_ELIZA_IOS_API_BASE",
+        "VITE_ELIZA_MOBILE_API_BASE",
+        "VITE_ELIZA_IOS_API_BASE",
+    ]
 
     @objc func start(_ call: CAPPluginCall) {
         if isLocalAgentMode(call: call) {
@@ -603,20 +620,7 @@ public class AgentPlugin: CAPPlugin, CAPBridgedPlugin {
     private func resolveEndpoint(call: CAPPluginCall? = nil) -> AgentEndpoint? {
         guard let rawBaseURL = readConfiguredString(
             call: call,
-            keys: [
-                "apiBase",
-                "baseUrl",
-                "baseURL",
-                "agentApiBase",
-                "ELIZA_AGENT_API_BASE",
-                "ELIZA_API_BASE",
-                "ELIZA_IOS_API_BASE",
-                "ELIZA_IOS_REMOTE_API_BASE",
-                "ELIZA_MOBILE_API_BASE",
-                "VITE_ELIZA_IOS_API_BASE",
-                "VITE_ELIZA_MOBILE_API_BASE",
-                "VITE_ELIZA_IOS_API_BASE",
-            ]
+            keys: Self.apiBaseConfigKeys
         ) else {
             return nil
         }
@@ -694,6 +698,13 @@ public class AgentPlugin: CAPPlugin, CAPBridgedPlugin {
             return true
         }
 
+        if let rawBaseURL = readConfiguredString(
+            call: call,
+            keys: Self.apiBaseConfigKeys
+        ), isLocalAgentIdentity(rawBaseURL) {
+            return true
+        }
+
         guard let rawMode = readConfiguredString(
             call: call,
             keys: [
@@ -718,11 +729,19 @@ public class AgentPlugin: CAPPlugin, CAPBridgedPlugin {
     }
 
     private func isLocalAgentEndpoint(_ url: URL) -> Bool {
-        guard url.scheme?.lowercased() == "http",
-              let host = url.host?.lowercased() else {
-            return false
+        guard let scheme = url.scheme?.lowercased(),
+              let host = url.host?.lowercased() else { return false }
+        if scheme == localAgentIpcScheme && host == localAgentIpcHost {
+            return true
         }
+        guard scheme == "http" else { return false }
         return (host == "127.0.0.1" || host == "localhost") && (url.port ?? 80) == localAgentPort
+    }
+
+    private func isLocalAgentIdentity(_ value: String) -> Bool {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let url = URL(string: trimmed) else { return false }
+        return isLocalAgentEndpoint(url)
     }
 
     private func localAgentStatus(state: String, error: String?) -> JSObject {

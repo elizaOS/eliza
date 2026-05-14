@@ -1,0 +1,31 @@
+[[!meta date="Fri, 25 Oct 2013 00:00:00 +0000"]]
+[[!meta title="Numerous security holes in Tails 0.20.1"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+Several security holes affect Tails 0.20.1.
+
+We **strongly** urge you to [[upgrade to Tails 0.21|news/version_0.21]]
+as soon as possible in case you are still using an older version.
+
+Details
+=======
+
+ - Tails:
+   - An attacker able to run arbitrary code as the desktop user could
+     obtain the public IP.
+   - An attacker able to run arbitrary code as the desktop user could
+     leverage this feature to gain persistent root access, as
+    long as persistence was enabled.
+ - Iceweasel:
+   - [[!mfsa 2013-93]]
+   - [[!mfsa 2013-95]]
+   - [[!mfsa 2013-96]]
+   - [[!mfsa 2013-98]]
+   - [[!mfsa 2013-100]]
+   - [[!mfsa 2013-101]]
+ - GnuPG: [[!debsa2013 2773]]
+ - libxml2: [[!debsa2013 2779]]
+ - python-crypto: [[!debsa2013 2781]]
+ - python-openssl: [[!debsa2013 2763]]

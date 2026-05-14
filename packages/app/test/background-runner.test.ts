@@ -95,6 +95,30 @@ describe("public/runners/eliza-tasks.js", () => {
     });
   });
 
+  it("records an explicit iOS full-Bun IPC background skip instead of probing TCP", async () => {
+    const runner = loadRunner();
+    await runner.dispatch("configure", {
+      platform: "ios",
+      mode: "local",
+      localRouteKernel: "bun-host-ipc",
+    });
+
+    const result = await runner.dispatch("wake", {});
+
+    expect(result).toMatchObject({
+      ok: true,
+      skipped: true,
+      platform: "ios",
+      mode: "local",
+      reason: "ios_bun_host_ipc_unavailable_in_background_jscontext",
+    });
+    expect(runner.fetchMock).not.toHaveBeenCalled();
+    expect(runner.readKv("eliza.background.lastResult")).toMatchObject({
+      skipped: true,
+      reason: "ios_bun_host_ipc_unavailable_in_background_jscontext",
+    });
+  });
+
   it("still posts to a configured non-local background endpoint", async () => {
     const runner = loadRunner();
     const result = await runner.dispatch("wake", {

@@ -7,7 +7,6 @@ import {
 export interface UseChatAvatarVoiceBridgeOptions {
   mouthOpen: number;
   isSpeaking: boolean;
-  usingAudioAnalysis: boolean;
   onSpeakingChange: (isSpeaking: boolean) => void;
 }
 

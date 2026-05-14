@@ -1,0 +1,103 @@
+[[!meta title="Developing and debugging Tor Connection"]]
+
+Hacking tips for TCA
+=======================
+
+This document provides tips&tricks for hacking on _Tor Connection_, formerly known as `tca`. NONE of this
+tricks is safe to use on a regular Tails: they can lead to deanonymization!
+
+Testing failures
+-------------------
+
+If you want to test failures to Tor connection, the easiest thing you can do is block any outgoing connection
+from the debian-tor user
+
+    iptables -I OUTPUT 1 ! -o lo -m owner --uid-owner debian-tor -j REJECT
+
+If you want to test tor-not-working-but-my-bridges-are-working, you can use
+
+    iptables -I OUTPUT 1 ! -o lo -m owner --uid-owner debian-tor -j REJECT
+    iptables -I OUTPUT 1 -m owner --uid-owner debian-tor -d $BRIDGE_IP -j ACCEPT
+
+If you want to test tor-not-working-but-default-bridges-are-working, you can use:
+
+    iptables -I OUTPUT 1 ! -o lo -m owner --uid-owner debian-tor -j REJECT
+    DEFAULT_BRIDGES_IPS=$(grep -E '^obfs4' /usr/share/tails/tca/default_bridges.txt |
+      grep -Po '(\d{1,3}\.){3}\d{1,3}:\d{1,5}' |
+      cut -d: -f1 | sort -u)
+    for BRIDGE_IP in $DEFAULT_BRIDGES_IPS; do
+        iptables -I OUTPUT 1 -m owner --uid-owner debian-tor -d $BRIDGE_IP -j ACCEPT
+    done
+
+If you want to reach the *Error connecting to Tor* screen with all available
+options to fix the problem:
+
+ - Choose "hide" mode
+ - Enter a valid bridge address that points to a non-existent bridge,
+   e.g. `obfs4 1.1.1.1:11 asd`
+
+Reset TCA state
+-------------
+
+tca state is kept in `/var/lib/tca/` . That directory is owned by root, and a regular user can't
+access, nor delete it.
+
+    sudo rm -rf /var/lib/tca/ /run/tca/
+
+Really restart tor
+---------------------
+
+just using `systemctl restart tor@default` is probably not what you want. This is what you probably want:
+
+    systemctl stop tor@default
+    find /var/lib/tor/ -mindepth 1 -delete
+    echo DisableNetwork 1 >> /etc/tor/torrc
+    systemctl start tor@default
+
+Simulate a slow network
+-------------------------
+
+Use libvirt's own QoS support: https://libvirt.org/formatnetwork.html#elementQoS
+
+For example, to limit bandwidth to 24 KiB/s, add to the `<interface
+type="network">` section:
+
+    <bandwidth>
+      <inbound average="24" peak="24"/>
+      <outbound average="24" peak="24"/>
+    </bandwidth>
+
+Simulate Moat failures
+----------------------
+
+Examples:
+
+* `moat_internal_error` (`SSLError`): `sudo sed -i 's,^MOAT_SERVICE_URL = .*$,MOAT_SERVICE_URL = "https://127.0.0.1",' /usr/local/lib/tails-circumvention-settings` (file must not have been edited before!)
+* `moat_command_failed`: `sudo rm /usr/local/lib/tails-circumvention-settings`
+* `moat_invalid_json`: `echo 'echo this is not valid json' | sudo tee /usr/local/lib/tails-circumvention-settings`
+
+Command line options
+--------------------
+
+amnesia can only run tca with no options. Any argument is ignored. However, tca *has* options. You can enable
+them editing /usr/local/bin/tca, adding `sys.argv[1:]` to the list of arguments.
+
+Debug more
+----------
+
+tca honors the debug kernel cmdline flag; if passed, its `--log-level` will default to DEBUG, not INFO.
+
+tca will send logs to syslog when run without a tty attached (ie: on the automatic nm-dispatcher thing), but
+will send logs to stderr when run from terminal. This behaviour can be changed using `--log-target`
+
+Change interface CSS
+---------------------
+
+yes, gtk has css ;)
+
+TCA style file is in `/usr/share/tails/tca/tca.css`.
+
+To try real-time changes, you can edit `/usr/local/bin/tca`: replace `/usr/lib/python3/dist-packages/tca/application.py` with `env GTK_DEBUG=interactive /usr/lib/python3/dist-packages/tca/application.py`.
+Now start `tca` again and you will have gtk inspector running!
+
+

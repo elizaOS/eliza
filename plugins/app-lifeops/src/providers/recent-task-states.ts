@@ -61,10 +61,8 @@ const TASK_LOG_CACHE_KEY = "eliza:lifeops:scheduled-task-log:v1";
 const DEFAULT_LOOKBACK_DAYS = 7;
 
 /**
- * Read the scheduled-task log. W1-A will swap the implementation to read
- * from the real `scheduled_task_log` SQL table; the wave-1 fallback is the
- * cache-backed list maintained alongside the in-memory runner. Either way,
- * entries surface in **chronological order (oldest first)**.
+ * Read the scheduled-task log from the cache-backed list maintained alongside
+ * the in-memory runner. Entries surface in **chronological order (oldest first)**.
  */
 export async function readScheduledTaskLog(
   runtime: IAgentRuntime,

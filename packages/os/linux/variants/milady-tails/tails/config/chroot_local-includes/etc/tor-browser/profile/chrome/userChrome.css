@@ -1,0 +1,5 @@
+@namespace url("http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul");
+
+/* The "Remember this key" option is mostly broken on Tails given its
+   amnesic nature, so let's hide it for now. */
+#tor-clientauth-persistkey-checkbox {display: none !important}

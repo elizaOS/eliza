@@ -1,0 +1,77 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 NubsCarson and contributors
+//
+// Plymouth boot splash — minimal, opinionated, ASCII-safe.
+//
+// Pure black bg, centered "Eliza" wordmark in warm accent orange,
+// a thin pulsing dot beneath. NO unicode glyphs (the framebuffer
+// console fonts available to plymouth's text fallback don't all
+// carry middle-dot etc — the previous version's "·" silently
+// failed and plymouth dropped to its default dots theme).
+
+# pure black 0x0a0a0a
+Window.SetBackgroundTopColor(0.039, 0.039, 0.039);
+Window.SetBackgroundBottomColor(0.039, 0.039, 0.039);
+
+# warm orange 0xFF6B35
+or_r = 1.0;
+or_g = 0.420;
+or_b = 0.208;
+
+# Center the wordmark. Use SansSerif Bold; SansSerif is more reliably
+# available than Serif on framebuffer setups (Debian's plymouth pulls
+# DejaVu Sans by default; Serif fallbacks to the same).
+wordmark = Image.Text("Eliza", or_r, or_g, or_b, 1.0, "Sans Bold 96");
+wm = Sprite(wordmark);
+wm.SetX(Window.GetX() + Window.GetWidth() / 2 - wordmark.GetWidth() / 2);
+wm.SetY(Window.GetY() + Window.GetHeight() / 2 - wordmark.GetHeight() / 2);
+
+# Subtitle in muted orange.
+sub = Image.Text("the OS on this stick", or_r, or_g, or_b, 0.55, "Sans 14");
+sub_sprite = Sprite(sub);
+sub_sprite.SetX(Window.GetX() + Window.GetWidth() / 2 - sub.GetWidth() / 2);
+sub_sprite.SetY(wm.GetY() + wordmark.GetHeight() + 20);
+
+# Pulsing dot — plain period "." which every font has. Alpha-pulse via
+# a precomputed 30-frame cycle (avoids per-frame Image.Text alloc that
+# leaked memory in the previous script and crashed plymouth on slow
+# disks).
+dot_frames = ();
+i = 0;
+while (i < 30) {
+    a = 0.4 + 0.6 * (1 + Math.Sin(i * 0.21)) / 2;
+    dot_frames[i] = Image.Text(".", or_r, or_g, or_b, a, "Sans Bold 56");
+    i = i + 1;
+}
+dot_idx = 0;
+dot = Sprite();
+fun refresh_cb() {
+    img = dot_frames[dot_idx];
+    dot.SetImage(img);
+    dot.SetX(Window.GetX() + Window.GetWidth() / 2 - img.GetWidth() / 2);
+    dot.SetY(sub_sprite.GetY() + sub.GetHeight() + 24);
+    dot_idx = (dot_idx + 1) % 30;
+}
+Plymouth.SetRefreshFunction(refresh_cb);
+
+# LUKS passphrase prompt for the persistence flow.
+fun on_password(prompt_text, bullets) {
+    pi = Image.Text(prompt_text, or_r, or_g, or_b, 1.0, "Sans 14");
+    ps = Sprite(pi);
+    ps.SetX(Window.GetX() + Window.GetWidth() / 2 - pi.GetWidth() / 2);
+    ps.SetY(Window.GetY() + Window.GetHeight() * 0.75);
+    if (bullets > 0) {
+        bs = "";
+        j = 0;
+        while (j < bullets) { bs = bs + "*"; j = j + 1; }
+        bi = Image.Text(bs, or_r, or_g, or_b, 1.0, "Sans Bold 18");
+        bsp = Sprite(bi);
+        bsp.SetX(Window.GetX() + Window.GetWidth() / 2 - bi.GetWidth() / 2);
+        bsp.SetY(Window.GetY() + Window.GetHeight() * 0.80);
+    }
+}
+Plymouth.SetDisplayPasswordFunction(on_password);
+
+# Suppress kernel chatter on the splash.
+fun on_message(text) { }
+Plymouth.SetMessageFunction(on_message);

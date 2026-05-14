@@ -1,31 +1,12 @@
-import { useEffect, useState } from "react";
-import type { DeviceBridgeStatus as DeviceStatus } from "../../api/client-local-inference";
-import { resolveApiUrl } from "../../utils/asset-url";
-import { getElizaApiToken } from "../../utils/eliza-globals";
+import type { DeviceBridgeStatus } from "../../api/client-local-inference";
+import { useRenderGuard } from "../../hooks/useRenderGuard";
 
-export function DeviceBridgeStatusBar() {
-  const [status, setStatus] = useState<DeviceStatus | null>(null);
-
-  useEffect(() => {
-    const raw = resolveApiUrl("/api/local-inference/device/stream");
-    const token = getElizaApiToken()?.trim();
-    const url = token
-      ? `${raw}${raw.includes("?") ? "&" : "?"}token=${encodeURIComponent(token)}`
-      : raw;
-    const es = new EventSource(url);
-    es.onmessage = (event) => {
-      try {
-        const payload = JSON.parse(event.data) as {
-          type: "status";
-          status: DeviceStatus;
-        };
-        if (payload.type === "status") setStatus(payload.status);
-      } catch {
-        /* ignore */
-      }
-    };
-    return () => es.close();
-  }, []);
+export function DeviceBridgeStatusBar({
+  status,
+}: {
+  status: DeviceBridgeStatus | null;
+}) {
+  useRenderGuard("DeviceBridgeStatusBar");
 
   if (!status) return null;
 

@@ -29,6 +29,7 @@ if str(_TRAINING_ROOT) not in sys.path:
 try:
     from .eliza1_manifest import (
         ELIZA_1_BACKENDS,
+        ELIZA_1_HF_REPO,
         ELIZA_1_VOICE_MANIFEST_VERSION,
         REQUIRED_KERNELS_BY_TIER,
         SUPPORTED_BACKENDS_BY_TIER,
@@ -45,6 +46,7 @@ try:
 except ImportError:  # pragma: no cover - direct script execution path
     from eliza1_manifest import (
         ELIZA_1_BACKENDS,
+        ELIZA_1_HF_REPO,
         ELIZA_1_VOICE_MANIFEST_VERSION,
         REQUIRED_KERNELS_BY_TIER,
         SUPPORTED_BACKENDS_BY_TIER,
@@ -59,8 +61,8 @@ except ImportError:  # pragma: no cover - direct script execution path
     )
     from eliza1_platform_plan import CONTEXTS_BY_TIER, text_artifact_name
 
-from benchmarks.eliza1_gates import apply_gates
-from scripts.quantization._kernel_manifest import kernel_manifest_fragment
+from benchmarks.eliza1_gates import apply_gates  # noqa: E402
+from scripts.quantization._kernel_manifest import kernel_manifest_fragment  # noqa: E402
 
 LOCAL_MODEL_ROOT: Final[Path] = (
     Path.home() / ".eliza" / "local-inference" / "models"
@@ -80,15 +82,16 @@ DEFAULT_DRAFTER_STANDIN_CANDIDATES: Final[tuple[Path, ...]] = (
     LOCAL_MODEL_ROOT / "qwen3.5-4b-dflash-drafter-q4.repaired.gguf",
     LOCAL_MODEL_ROOT / "qwen3.5-4b-dflash-drafter-q4.gguf",
 )
-VISION_TIERS: Final[set[str]] = {"4b", "9b", "27b", "27b-256k"}
+VISION_TIERS: Final[set[str]] = {"4b"}
 
 DEFAULT_RAM_BUDGET_MB: Final[Mapping[str, tuple[int, int]]] = {
-    "0_8b": (1800, 2400),
-    "2b": (3500, 5000),
+    "0_8b": (2500, 3700),
+    "2b": (4000, 5500),
     "4b": (6000, 8000),
-    "9b": (7000, 9500),
+    "9b": (10000, 14000),
     "27b": (24000, 32000),
-    "27b-256k": (48000, 64000),
+    "27b-256k": (36000, 48000),
+    "27b-1m": (64000, 96000),
 }
 DEFAULT_VOICE_CAPABILITIES: Final[tuple[str, ...]] = (
     "tts",
@@ -308,14 +311,14 @@ def _write_licenses(bundle_dir: Path, *, tier: str, force: bool) -> list[str]:
         "LICENSE.text": (
             "Eliza-1 local text stand-in provenance note.\n\n"
             "This bundle uses a local stand-in text GGUF for runtime layout "
-            "testing. It is not a final Eliza-1 2B text checkpoint and "
+            f"testing. It is not a final Eliza-1 {tier} text checkpoint and "
             "is not release-reviewed for publishing.\n"
         ),
         "LICENSE.dflash": (
             "Eliza-1 local DFlash stand-in provenance note.\n\n"
             "This bundle uses a local stand-in drafter GGUF for runtime "
             "layout testing. It is not trained or verified against final "
-            "Eliza-1 2B text weights and is not publishable.\n"
+            f"Eliza-1 {tier} text weights and is not publishable.\n"
         ),
         "LICENSE.eliza-1": (
             "Eliza-1 local bundle license notice.\n\n"
@@ -981,7 +984,8 @@ def _write_release_evidence(
         "schemaVersion": 1,
         "generatedAt": generated_at,
         "tier": tier,
-        "repoId": f"elizaos/eliza-1-{tier}",
+        "repoId": ELIZA_1_HF_REPO,
+        "repoPath": f"bundles/{tier}",
         "releaseState": release_state,
         "publishEligible": False,
         "defaultEligible": False,
@@ -1019,7 +1023,8 @@ def _write_release_evidence(
             "darwin-arm64-metal": "evidence/platform/darwin-arm64-metal.json"
         },
         "hf": {
-            "repoId": f"elizaos/eliza-1-{tier}",
+            "repoId": ELIZA_1_HF_REPO,
+            "pathPrefix": f"bundles/{tier}",
             "status": "blocked-local-standin",
         },
         "publishBlockingReasons": list(reasons),

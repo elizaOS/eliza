@@ -4,13 +4,21 @@ import { describe, expect, it, vi } from "vitest";
 import { handleBackgroundTasksRoute } from "./background-tasks-routes";
 import type { CompatRuntimeState } from "./compat-route-shared";
 
-vi.mock("@elizaos/core", () => ({
-  ServiceType: { TASK: "task" },
-}));
+vi.mock("@elizaos/core", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@elizaos/core")>();
+  return {
+    ...actual,
+    ServiceType: { TASK: "task" },
+  };
+});
 
-vi.mock("./auth.ts", () => ({
-  ensureRouteAuthorized: vi.fn(async () => true),
-}));
+vi.mock("./auth.ts", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./auth.ts")>();
+  return {
+    ...actual,
+    ensureRouteAuthorized: vi.fn(async () => true),
+  };
+});
 
 interface FakeRes {
   res: http.ServerResponse;

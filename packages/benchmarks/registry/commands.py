@@ -118,11 +118,15 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
     def _bfcl_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
         args = [python, "-m", "benchmarks.bfcl", "run", "--output", str(output_dir)]
         provider_name = (model.provider or "").strip().lower()
-        agent = extra.get("agent")
+        agent = str(extra.get("agent") or extra.get("harness") or "").strip().lower()
         # Route LLM-backed providers through the eliza TS bridge so the
         # ElizaBFCLAgent + registered runtime is exercised.
         bridge_providers = {"cerebras", "openai", "groq", "openrouter", "vllm", "eliza"}
-        if agent == "eliza" or provider_name in bridge_providers:
+        if agent in {"eliza", "hermes", "openclaw"}:
+            args.extend(["--provider", agent])
+            if model.model:
+                args.extend(["--model", model.model])
+        elif provider_name in bridge_providers:
             args.extend(["--provider", "eliza"])
             if model.model:
                 args.extend(["--model", model.model])
@@ -148,8 +152,6 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         local_data = extra.get("local_data")
         if isinstance(local_data, str) and local_data.strip():
             args.extend(["--local-data", local_data])
-        if extra.get("no_report") is True:
-            args.append("--no-report")
         if extra.get("no_exec") is True:
             args.append("--no-exec")
         return args
@@ -159,15 +161,26 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
 
     def _realm_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
         args = [python, "-m", "benchmarks.realm.cli", "--output", str(output_dir)]
+        agent = str(extra.get("agent") or extra.get("harness") or "").strip().lower()
+        if agent in {"hermes", "openclaw"}:
+            raise ValueError(f"realm: native {agent} harness adapter is not implemented")
         data_path = extra.get("data_path")
         if isinstance(data_path, str) and data_path.strip():
             args.extend(["--data-path", data_path.strip()])
         categories = extra.get("categories")
         if isinstance(categories, list) and all(isinstance(x, str) for x in categories):
             args.extend(["--categories", *cast(list[str], categories)])
+        elif extra.get("max_tasks") == 1:
+            args.extend(["--categories", "sequential"])
         max_tasks = extra.get("max_tasks")
         if isinstance(max_tasks, int) and max_tasks > 0:
             args.extend(["--max-tasks", str(max_tasks)])
+        max_steps = extra.get("max_steps")
+        if isinstance(max_steps, int) and max_steps > 0:
+            args.extend(["--max-steps", str(max_steps)])
+        timeout = extra.get("timeout")
+        if isinstance(timeout, int) and timeout > 0:
+            args.extend(["--timeout", str(timeout)])
         if model.model:
             # REALM treats --model as a reporting label only; the actual LLM is
             # picked by the in-process elizaOS Python runtime (default) or by the
@@ -178,7 +191,6 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             args.append("--mock")
         # Route the planning loop through the TS benchmark server when the
         # caller asks for the eliza agent or any LLM-backed provider.
-        agent = extra.get("agent")
         if agent == "eliza" or provider_name in {
             "eliza",
             "cerebras",
@@ -206,24 +218,29 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         # to the direct OpenAI-compatible runtime instead of silently using mock.
         agent = str(extra.get("agent") or extra.get("harness") or "").strip().lower()
         provider_name = (model.provider or "").strip().lower()
-        if agent in {"eliza", "hermes", "openclaw"} or provider_name in {
-            "eliza",
+        if agent in {"hermes", "openclaw"}:
+            raise ValueError(f"mint: native {agent} harness adapter is not implemented")
+        if agent == "eliza" or provider_name == "eliza":
+            args.extend(["--provider", "eliza"])
+        elif provider_name in {
             "cerebras",
             "openai",
             "groq",
             "openrouter",
             "vllm",
         }:
-            args.extend(["--provider", "eliza"])
-        elif provider_name in {"mock", ""}:
-            args.extend(["--provider", "mock"])
-        elif provider_name in {"openai", "groq", "openrouter"}:
             args.extend(["--provider", provider_name])
             if model.model:
                 args.extend(["--model", model.model])
             base_url = extra.get("base_url")
             if isinstance(base_url, str) and base_url.strip():
                 args.extend(["--base-url", base_url.strip()])
+        elif provider_name in {
+            "eliza",
+        }:
+            args.extend(["--provider", "eliza"])
+        elif provider_name in {"mock", ""}:
+            args.extend(["--provider", "mock"])
         elif model.provider:
             raise ValueError(f"mint: unsupported provider '{model.provider}'")
         if extra.get("no_ablation") is True:
@@ -358,8 +375,6 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         if agent in {"eliza", "hermes", "openclaw"}:
             if model.model:
                 args.extend(["--model", model.model])
-            if agent == "eliza":
-                args.extend(["--model-provider", "eliza"])
         elif provider_name in bridge_providers:
             if model.model:
                 args.extend(["--model", model.model])
@@ -383,8 +398,10 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         sample = extra.get("sample")
         if sample is True:
             args.append("--sample")
-        if extra.get("dry_run") is True or extra.get("no_docker") is True:
+        if extra.get("dry_run") is True:
             args.append("--dry-run")
+        elif extra.get("no_docker") is True:
+            args.append("--local-sandbox")
         if extra.get("oracle") is True:
             args.append("--oracle")
         if extra.get("no_markdown") is True:
@@ -451,6 +468,37 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             return find_latest_file(output_dir, glob_pattern="**/gaia-results-latest.json")
         except FileNotFoundError:
             return find_latest_file(output_dir, glob_pattern="**/gaia-results_*.json")
+
+    def _gaia_orchestrated_cmd(
+        output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]
+    ) -> list[str]:
+        args = [
+            python,
+            "-m",
+            "elizaos_gaia.orchestrated",
+            "--output",
+            str(output_dir),
+        ]
+        if model.model:
+            args.extend(["--model", model.model])
+        dataset = extra.get("dataset")
+        if isinstance(dataset, str) and dataset in {"gaia", "sample", "jsonl"}:
+            args.extend(["--dataset", dataset])
+        max_q = extra.get("max_questions")
+        if isinstance(max_q, int) and max_q > 0:
+            args.extend(["--max-questions", str(max_q)])
+        providers = extra.get("providers")
+        if isinstance(providers, list) and all(isinstance(x, str) for x in providers):
+            args.extend(["--providers", *cast(list[str], providers)])
+        required_capabilities = extra.get("required_capabilities")
+        if isinstance(required_capabilities, list) and all(isinstance(x, str) for x in required_capabilities):
+            args.extend(["--required-capabilities", *cast(list[str], required_capabilities)])
+        if extra.get("strict_capabilities") is True:
+            args.append("--strict-capabilities")
+        return args
+
+    def _gaia_orchestrated_result(output_dir: Path) -> Path:
+        return output_dir / "gaia-orchestrated-latest.json"
 
     def _tau_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
         args = [
@@ -522,9 +570,11 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         if not isinstance(days, int):
             days = extra.get("max_days_per_run")
         if isinstance(days, int) and days > 0:
-            args.extend(["--days", str(days)])
+            args.extend(["--days", str(max(days, 3))])
         elif extra.get("max_tasks") == 1:
-            args.extend(["--days", "1"])
+            args.extend(["--days", "3"])
+        args.extend(["--starter-inventory", "balanced"])
+        args.extend(["--max-actions-per-day", "6"])
         return args
 
     def _vending_result(output_dir: Path) -> Path:
@@ -784,7 +834,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
 
     def _rlm_bench_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
         """Build command for RLM benchmark.
-        
+
         Supports S-NIAH (Streaming Needle-in-a-Haystack) and OOLONG benchmarks
         from the RLM paper (arXiv:2512.24601).
         """
@@ -825,7 +875,8 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         no_oolong = extra.get("no_oolong")
         if no_oolong is True:
             args.append("--no-oolong")
-        _ = model
+        if model.model:
+            args.extend(["--root-model", model.model, "--subcall-model", model.model])
         return args
 
     def _rlm_bench_result(output_dir: Path) -> Path:
@@ -1244,6 +1295,8 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         stt_provider = extra.get("stt_provider")
         if isinstance(stt_provider, str) and stt_provider.strip():
             args.extend(["--stt-provider", stt_provider.strip()])
+        if extra.get("fixtures") is True:
+            args.append("--fixtures")
         if mock_flag:
             args.append("--mock")
         return args
@@ -1431,6 +1484,9 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         scenario = extra.get("scenario")
         if isinstance(scenario, str) and scenario.strip():
             args.extend(["--scenario", scenario.strip()])
+        scenarios = extra.get("scenarios")
+        if isinstance(scenarios, list) and all(isinstance(x, str) for x in scenarios):
+            args.extend(["--scenarios", ",".join(cast(list[str], scenarios))])
         system = extra.get("system")
         if isinstance(system, str) and system.strip():
             args.extend(["--system", system.strip()])
@@ -1529,10 +1585,10 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         if isinstance(temperature, (int, float)) and not isinstance(temperature, bool) and temperature >= 0:
             args.extend(["--temperature", str(float(temperature))])
         tool_choice = extra.get("tool_choice")
-        if isinstance(tool_choice, str) and tool_choice in {"auto", "required"}:
+        if isinstance(tool_choice, str) and tool_choice in {"auto", "required", "none"}:
             args.extend(["--tool-choice", tool_choice])
         else:
-            args.extend(["--tool-choice", "required"])
+            args.extend(["--tool-choice", "none"])
         return args
 
     def _abliteration_robustness_result(output_dir: Path) -> Path:
@@ -1575,6 +1631,9 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         temperature = extra.get("temperature")
         if isinstance(temperature, (int, float)) and not isinstance(temperature, bool) and temperature >= 0:
             args.extend(["--temperature", str(float(temperature))])
+        tool_choice = extra.get("tool_choice")
+        if isinstance(tool_choice, str) and tool_choice in {"auto", "required", "none"}:
+            args.extend(["--tool-choice", tool_choice])
         return args
 
     def _action_calling_result(output_dir: Path) -> Path:
@@ -1780,6 +1839,12 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         scenario = extra.get("scenario")
         if isinstance(scenario, str) and scenario.strip():
             args.extend(["--scenario", scenario.strip()])
+        suite = extra.get("suite")
+        if isinstance(suite, str) and suite.strip():
+            args.extend(["--suite", suite.strip()])
+        limit = extra.get("limit")
+        if isinstance(limit, int) and limit > 0:
+            args.extend(["--limit", str(limit)])
         seeds = extra.get("seeds")
         if isinstance(seeds, int) and seeds > 0:
             args.extend(["--seeds", str(seeds)])
@@ -2052,8 +2117,8 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
                 paths=(),
                 notes="Uses the GAIA runner with orchestrator profile defaults; safe sample/mock runs avoid gated HF access and provider keys.",
             ),
-            build_command=_gaia_cmd,
-            locate_result=_gaia_result,
+            build_command=_gaia_orchestrated_cmd,
+            locate_result=_gaia_orchestrated_result,
             extract_score=_score_from_gaia_json,
         ),
         BenchmarkDefinition(

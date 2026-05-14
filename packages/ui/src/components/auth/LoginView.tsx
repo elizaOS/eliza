@@ -1,15 +1,6 @@
-import {
-  Button,
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  cn,
-  Input,
-  Label,
-} from "@elizaos/ui";
 import { type FormEvent, useCallback, useId, useState } from "react";
 import { type AuthLoginResult, authLoginPassword } from "../../api/auth-client";
+import { cn } from "../../lib/utils";
 import {
   OnboardingStepDivider,
   onboardingBodyTextShadowStyle,
@@ -17,6 +8,10 @@ import {
   onboardingEyebrowClass,
   onboardingTitleClass,
 } from "../onboarding/onboarding-step-chrome";
+import { Button } from "../ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
+import { Input } from "../ui/input";
+import { Label } from "../ui/label";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 

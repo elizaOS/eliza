@@ -30,7 +30,6 @@ from __future__ import annotations
 import argparse
 import json
 import logging
-import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -104,7 +103,6 @@ def _manifest_fragment(
 
 def _write_synthetic_onnx(path: Path) -> None:
     """Emit a minimal-but-valid ONNX file (one Identity node) for smoke runs."""
-    import numpy as np  # noqa: PLC0415
     import onnx  # noqa: PLC0415
     from onnx import TensorProto, helper  # noqa: PLC0415
 

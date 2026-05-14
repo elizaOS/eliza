@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+_Name=About Tails
+_Comment=Learn more about Tails
+Exec=tails-about
+Icon=gtk-about
+Terminal=false
+Categories=Utilities;Tails;
+StartupNotify=true

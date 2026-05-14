@@ -217,6 +217,8 @@ tasks/
 !packages/benchmarks/app-eval/tasks/__init__.py
 !packages/benchmarks/app-eval/tasks/*-tasks.json
 !packages/benchmarks/app-eval/tasks/*_evaluator.py
+!packages/benchmarks/eliza-1/src/tasks/
+!packages/benchmarks/eliza-1/src/tasks/*.ts
 !plugins/plugin-agent-skills/src/tasks/
 # Vendored benchmark task fixtures — these ARE the benchmark, not generated.
 # We own all benchmark code in-tree; no submodules (only llama.cpp is a submodule).
@@ -509,6 +511,8 @@ research/native-tool-calling
 test/mocks/mockoon/.mockoon-pids/
 lifeops_bench_results/
 reports/ai-qa/
+reports/apps-manual-qa/
+reports/porting/
 scripts/ai-qa/.static-stack.json
 
 # Generated inference verification output and hardware evidence.
@@ -518,6 +522,12 @@ packages/inference/verify/hardware-results/
 packages/inference/verify/android-vulkan-smoke/
 packages/inference/verify/cpu_bench
 packages/inference/verify/cpu_simd_bench
+
+# Generated audit output. Keep curated source docs and README files in-tree;
+# keep raw audit dumps and prompt manifests out of source control.
+docs/audits/**/prompts/
+docs/audits/**/prompts-manifest.json
+docs/audits/**/retrieval-funnel.json
 packages/inference/verify/cuda_verify
 packages/inference/verify/dispatch_smoke
 packages/inference/verify/metal_bench

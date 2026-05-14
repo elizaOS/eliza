@@ -1,0 +1,25 @@
+[[!meta date="Mon, 17 Jan 2011 11:12:13 +0000"]]
+[[!meta title="Numerous security holes in T(A)ILS 0.6.1"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+The following security holes affect T(A)ILS 0.6.1; one of those is a
+bug that probably allows remote code execution; see the [Tor project
+blog
+post](https://blog.torproject.org/blog/tor-02129-released-security-patches)
+for details.
+
+We **strongly** urge you to [[upgrade to T(A)ILS
+0.6.2|news/version_0.6.2]] in case you are still using an older version.
+
+  - Tor (DSA-2148-1)
+  - Linux kernel ([many issues](http://lists.debian.org/debian-testing-security-announce/2011/01/msg00011.html))
+  - Iceweasel libraries: NSS (DSA-2141-2)
+  - OpenSSL (DSA-2141)
+  - Glibc (DSA-2122)
+  - libxml2 (DSA-2137)
+  - dpkg (DSA-2142)
+
+These are Debian security announces; details can be found on
+<http://security.debian.org/>.

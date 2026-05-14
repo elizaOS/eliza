@@ -126,6 +126,22 @@ def test_hf_load_preflight_rejects_split_feature_drift(publish_dataset, tmp_path
     )
 
 
+def test_hf_load_preflight_rejects_empty_test_split(publish_dataset, tmp_path):
+    pytest.importorskip("datasets")
+    candidate = tmp_path / "lifeops-candidate"
+    data = candidate / "data"
+    data.mkdir(parents=True)
+    row = '{"messages":[{"role":"user","content":"hi"},{"role":"assistant","content":"ok"}]}\n'
+    (data / "train.jsonl").write_text(row)
+    (data / "validation.jsonl").write_text(row)
+    (data / "test.jsonl").write_text("")
+    (candidate / "manifest.json").write_text("{}")
+
+    assert not publish_dataset.validate_hf_loadable(
+        publish_dataset._spec_training_from_dir(candidate)
+    )
+
+
 def test_scambench_spec_only_includes_scambench(publish_dataset):
     spec = publish_dataset._spec_scambench()
     # All files must live under data/normalized/ or data/synthesized/scambench/
@@ -341,6 +357,13 @@ def test_dataset_card_includes_license(publish_dataset):
     spec = publish_dataset._spec_training()
     assert "license: cc-by-4.0" in spec.card.lower()
     assert "manifest.json" in spec.card
+    assert "eliza-1-0_8b" in spec.card
+    assert "eliza-1-2b" in spec.card
+    assert "0.8B-4B" in spec.card
+    stale_small_tier = "eliza-1-0_" + "6b"
+    stale_mobile_tier = "eliza-1-1_" + "7b"
+    assert stale_small_tier not in spec.card
+    assert stale_mobile_tier not in spec.card
 
     sb = publish_dataset._spec_scambench()
     assert "cc-by-sa-4.0" in sb.card.lower()
@@ -602,24 +625,55 @@ def test_sync_catalog_selects_manifest_text_file(sync_catalog):
     manifest = {
         "files": {
             "text": [
-                {"path": "text/eliza-1-9b-32k.gguf", "sha256": "a" * 64, "ctx": 32768},
-                {"path": "text/eliza-1-9b-64k.gguf", "sha256": "b" * 64, "ctx": 65536},
+                {"path": "text/eliza-1-4b-32k.gguf", "sha256": "a" * 64, "ctx": 32768},
+                {"path": "text/eliza-1-4b-64k.gguf", "sha256": "b" * 64, "ctx": 65536},
             ],
-            "dflash": [{"path": "dflash/drafter-9b.gguf", "sha256": "c" * 64}],
+            "dflash": [{"path": "dflash/drafter-4b.gguf", "sha256": "c" * 64}],
         },
     }
     file_index = {
-        "text/eliza-1-9b-32k.gguf": ("a" * 64, 100),
-        "text/eliza-1-9b-64k.gguf": ("b" * 64, 200),
-        "dflash/drafter-9b.gguf": ("c" * 64, 50),
+        "text/eliza-1-4b-32k.gguf": ("a" * 64, 100),
+        "text/eliza-1-4b-64k.gguf": ("b" * 64, 200),
+        "dflash/drafter-4b.gguf": ("c" * 64, 50),
     }
 
     selected = sync_catalog._primary_text_file_from_manifest(
         manifest,
         file_index,
-        "elizaos/eliza-1-9b",
+        "elizaos/eliza-1-4b",
     )
     bundle_size = sync_catalog._bundle_size_from_manifest(manifest, file_index)
 
-    assert selected == ("text/eliza-1-9b-64k.gguf", "b" * 64, 200)
+    assert selected == ("text/eliza-1-4b-64k.gguf", "b" * 64, 200)
     assert bundle_size == 350
+
+
+def test_sync_catalog_selects_single_repo_bundle_paths(sync_catalog):
+    manifest = {
+        "id": "eliza-1-9b",
+        "files": {
+            "text": [
+                {"path": "text/eliza-1-9b-64k.gguf", "sha256": "d" * 64, "ctx": 65536},
+            ],
+            "dflash": [{"path": "dflash/drafter-9b.gguf", "sha256": "e" * 64}],
+        },
+    }
+    file_index = {
+        "bundles/9b/text/eliza-1-9b-64k.gguf": ("d" * 64, 900),
+        "bundles/9b/dflash/drafter-9b.gguf": ("e" * 64, 90),
+    }
+
+    selected = sync_catalog._primary_text_file_from_manifest(
+        manifest,
+        file_index,
+        "elizaos/eliza-1",
+        "bundles/9b",
+    )
+    bundle_size = sync_catalog._bundle_size_from_manifest(
+        manifest,
+        file_index,
+        "bundles/9b",
+    )
+
+    assert selected == ("text/eliza-1-9b-64k.gguf", "d" * 64, 900)
+    assert bundle_size == 990

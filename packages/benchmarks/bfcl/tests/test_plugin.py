@@ -54,3 +54,33 @@ def test_pythonish_parameter_types_are_normalized() -> None:
     assert properties["payload"]["type"] == "object"
     assert properties["payload"]["properties"]["items"]["type"] == "array"
     assert properties["payload"]["properties"]["items"]["items"]["type"] == "string"
+
+
+def test_array_shape_wins_over_stale_scalar_type() -> None:
+    function = FunctionDefinition(
+        name="sql.execute",
+        description="Execute SQL.",
+        parameters={
+            "columns": FunctionParameter(
+                name="columns",
+                param_type="string",
+                description="Columns to use.",
+                items={"type": "string"},
+            ),
+            "timestamp": FunctionParameter(
+                name="timestamp",
+                param_type="boolean",
+                description="Append timestamp.",
+                default="False",
+            ),
+        },
+        required_params=["columns"],
+    )
+
+    schema = generate_function_schema(function)
+
+    properties = schema["parameters"]["properties"]
+    assert properties["columns"]["type"] == "array"
+    assert properties["columns"]["items"]["type"] == "string"
+    assert properties["timestamp"]["type"] == "boolean"
+    assert properties["timestamp"]["default"] is False

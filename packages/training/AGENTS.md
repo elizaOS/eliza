@@ -15,14 +15,16 @@ contract.
 
 ## 1. What this package owns
 
-- Text fine-tuning of the Qwen3.5 / Qwen3.6 backbones used by Eliza-1.
+- Text fine-tuning of the Qwen3.5/Qwen3.6 0.8B / 2B / 4B / 9B / 27B
+  backbones used by the current Eliza-1 release line.
 - Drafter training for DFlash speculative decoding.
 - Voice handling (freeze, cache, evaluate — see §4; we do not retrain
   voice weights right now).
 - Quantization recipes that produce shippable Eliza-1 artifacts:
   TurboQuant, QJL, PolarQuant, plus the fused TurboQuant pipeline.
 - Eval harness for text, voice, and end-to-end voice loop.
-- HuggingFace publishing of bundles to `elizaos/eliza-1-<tier>`.
+- HuggingFace publishing of bundles to `elizaos/eliza-1` under
+  `bundles/<tier>/`.
 - Dataset preparation, deslop, and validation.
 
 This package does NOT own:
@@ -42,7 +44,7 @@ unchanged for now):
 
 | Component       | Status                                        | Why                                  |
 | --------------- | --------------------------------------------- | ------------------------------------ |
-| Text backbone   | **Fine-tune** (Qwen3.5 / 3.6)                 | This is the primary product loop.    |
+| Text backbone   | **Fine-tune** (Qwen3.5 0.8B / 2B / 4B)        | This is the primary product loop.    |
 | DFlash drafter  | **Fine-tune to match the text checkpoint**    | Acceptance rate depends on alignment.|
 | OmniVoice TTS   | **Frozen**                                    | No license to retrain; no eval lift. |
 | ASR             | **Frozen**                                    | Same.                                |
@@ -147,7 +149,8 @@ entry points for training and publishing:
 - `eval_checkpoint.py` / `eval_loop.sh` / `benchmarks/` — eval harness.
 - `push_model_to_hf.py` / `push_pipeline_to_hf.py` /
   `publish_pipeline_to_hf.py` / `publish_all_eliza1.sh` — HF publishing.
-  These MUST be the *only* paths that push to `elizaos/eliza-1-*`.
+  These MUST be the *only* paths that push app-facing bundles to
+  `elizaos/eliza-1`.
 - `inference/serve_local.py` / `inference/serve_vllm.py` — eval-time
   serving harnesses (not production runtime — that is app-core).
 
@@ -160,7 +163,7 @@ published bundle.
 
 ## 6. Publishing to HuggingFace
 
-Every Eliza-1 bundle published to `elizaos/eliza-1-<tier>` MUST go
+Every Eliza-1 bundle published to `elizaos/eliza-1/bundles/<tier>` MUST go
 through `publish_all_eliza1.sh` (or the per-tier publish script it
 calls). That script:
 

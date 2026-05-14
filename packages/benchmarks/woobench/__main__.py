@@ -17,6 +17,7 @@ import json
 import logging
 import os
 import random
+import signal
 import sys
 from typing import Any
 
@@ -60,6 +61,13 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--scenario",
         help="Run a single scenario by ID (e.g. skeptic_tarot_01)",
+    )
+    parser.add_argument(
+        "--scenarios",
+        help=(
+            "Run a comma-separated list of scenario IDs "
+            "(e.g. friend_supporter_tarot_01,repeat_customer_tarot_01)"
+        ),
     )
     parser.add_argument(
         "--model",
@@ -231,9 +239,38 @@ async def _run(args: argparse.Namespace) -> None:
     if args.random_seed is not None:
         random.seed(args.random_seed)
 
+    def _handle_signal(signum: int, _frame: Any) -> None:
+        raise KeyboardInterrupt(f"received signal {signum}")
+
+    old_sigterm = signal.getsignal(signal.SIGTERM)
+    signal.signal(signal.SIGTERM, _handle_signal)
+
     # Select scenarios
     scenarios = None
-    if args.scenario:
+    if args.scenarios:
+        from .scenarios import SCENARIOS_BY_ID
+
+        scenario_ids = [
+            item.strip()
+            for item in str(args.scenarios).split(",")
+            if item.strip()
+        ]
+        scenarios = []
+        missing: list[str] = []
+        for scenario_id in scenario_ids:
+            scenario = SCENARIOS_BY_ID.get(scenario_id)
+            if scenario is None:
+                missing.append(scenario_id)
+            else:
+                scenarios.append(scenario)
+        if missing:
+            print(
+                f"Error: scenario(s) not found: {', '.join(missing)}",
+                file=sys.stderr,
+            )
+            _list_scenarios()
+            sys.exit(1)
+    elif args.scenario:
         from .scenarios import SCENARIOS_BY_ID
         s = SCENARIOS_BY_ID.get(args.scenario)
         if s is None:
@@ -304,9 +341,19 @@ async def _run(args: argparse.Namespace) -> None:
         print(f"Payment mock: {args.payment_mock_url}")
     print(f"Concurrency: {args.concurrency}\n")
 
+    interrupted = False
     try:
         result = await runner.run_all()
+    except KeyboardInterrupt as exc:
+        interrupted = True
+        logging.getLogger(__name__).warning(
+            "interrupted; writing partial WooBench results: %s",
+            exc,
+        )
+        result = runner.compile_result(runner.last_results, interrupted=True)
+        setattr(result, "interrupted", True)
     finally:
+        signal.signal(signal.SIGTERM, old_sigterm)
         if server_manager is not None:
             server_manager.stop()
 
@@ -314,6 +361,8 @@ async def _run(args: argparse.Namespace) -> None:
     filepath = WooBenchRunner.save_results(result, output_dir=args.output)
     WooBenchRunner.print_summary(result)
     print(f"Full results saved to: {filepath}")
+    if interrupted:
+        raise SystemExit(130)
 
 
 def main() -> None:

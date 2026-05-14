@@ -1,17 +1,13 @@
 /**
- * W2-F — Autofill whitelist default pack.
+ * Autofill whitelist default pack.
  *
- * The 49 brand domains used to live as a literal in
- * `src/lifeops/autofill-whitelist.ts:7-55` (HARDCODING_AUDIT.md flagged this
- * as an inline-list smell). This module owns the canonical list and exposes
- * it through `getDefaultAutofillWhitelist()` so callers (autofill action
- * effective-list builder, the autofill action's "already shipped" check)
- * read from the pack registration instead of an inline literal.
+ * Canonical source for the brand-domain whitelist. Exposes the list through
+ * `getDefaultAutofillWhitelist()` so callers (autofill action effective-list
+ * builder, the "already shipped" check) read from the pack registration.
  *
  * The list is the agent-side first gate before a request hits the browser
  * companion — unsafe domains are rejected even if the companion is
- * unreachable. Adding a domain is a literal-edit here, not a change to the
- * autofill-whitelist module.
+ * unreachable. Adding a domain is a literal-edit here.
  */
 
 const DEFAULT_AUTOFILL_WHITELIST_DOMAINS: readonly string[] = [

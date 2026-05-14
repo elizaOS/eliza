@@ -282,6 +282,7 @@ async def _run_analysis(args: argparse.Namespace) -> dict[str, Any]:
                         "benchmark_quality_scored_items": case_quality_scored_items,
                         "invalid_expected_conflicts": case_invalid_expected_conflicts,
                         "judge_refusals": case_judge_refusals,
+                        "manual_review_items": _manual_review_items(case_cycles),
                         "cycles": [_cycle_to_dict(cycle) for cycle in case_cycles],
                     },
                 )
@@ -450,8 +451,9 @@ def _repair_generated_case(case: Any) -> tuple[Any, dict[str, int]]:
     Some generated cases put the same normalized phrase in both
     ``locked_decisions`` and ``forbidden_behaviors``. The benchmark cannot
     fairly require a model to both recall and avoid the same value, so latest
-    locked decisions win: conflicting forbidden entries and their
-    ``forbidden_absent`` probes are removed.
+    locked decisions win: conflicting forbidden entries and impossible probes are
+    removed. If a generated ``set_match`` item mixed a valid required value with
+    a conflicting forbidden value, only the conflicting value is removed.
     """
 
     conflicts = _ground_truth_conflict_values(case.ground_truth)
@@ -585,6 +587,88 @@ def _cycle_to_dict(cycle: CycleAnalysis) -> dict[str, Any]:
         "artifact_context": cycle.artifact_context,
         "items": [item.__dict__ for item in cycle.items],
     }
+
+
+def _manual_review_items(
+    cycles: list[CycleAnalysis],
+    *,
+    limit: int = 20,
+) -> list[dict[str, Any]]:
+    records: list[dict[str, Any]] = []
+    for cycle in cycles:
+        for item in cycle.items:
+            records.append(
+                {
+                    "cycle_number": cycle.cycle_number,
+                    "item_key": item.item_key,
+                    "score": item.score,
+                    "raw_lexical_score": item.raw_lexical_score,
+                    "expected_answer": item.expected,
+                    "model_input": item.prompt,
+                    "model_output": item.response,
+                    "scoring_reason": item.reason,
+                    "valid_false_negative": item.valid_false_negative,
+                    "semantic_false_positive": item.semantic_false_positive,
+                    "judge_refusal": item.judge_refusal,
+                    "compaction_event": {
+                        "cycle_number": cycle.cycle_number,
+                        "compression_ratio": cycle.compression_ratio,
+                        "latency_ms": cycle.latency_ms,
+                    },
+                    "artifact_context": cycle.artifact_context,
+                }
+            )
+    records.sort(
+        key=lambda item: (
+            float(item["score"]) >= 1.0,
+            item["cycle_number"],
+            item["item_key"],
+        )
+    )
+    return records[:limit]
+
+
+def _manual_review_items_from_event(
+    cycles: list[dict[str, Any]],
+    *,
+    limit: int = 20,
+) -> list[dict[str, Any]]:
+    records: list[dict[str, Any]] = []
+    for cycle in cycles:
+        if not isinstance(cycle, dict):
+            continue
+        for item in cycle.get("items", []):
+            if not isinstance(item, dict):
+                continue
+            records.append(
+                {
+                    "cycle_number": cycle.get("cycle_number"),
+                    "item_key": item.get("item_key"),
+                    "score": item.get("score"),
+                    "raw_lexical_score": item.get("raw_lexical_score"),
+                    "expected_answer": item.get("expected"),
+                    "model_input": item.get("prompt"),
+                    "model_output": item.get("response"),
+                    "scoring_reason": item.get("reason"),
+                    "valid_false_negative": item.get("valid_false_negative"),
+                    "semantic_false_positive": item.get("semantic_false_positive"),
+                    "judge_refusal": item.get("judge_refusal"),
+                    "compaction_event": {
+                        "cycle_number": cycle.get("cycle_number"),
+                        "compression_ratio": cycle.get("compression_ratio"),
+                        "latency_ms": cycle.get("latency_ms"),
+                    },
+                    "artifact_context": cycle.get("artifact_context"),
+                }
+            )
+    records.sort(
+        key=lambda item: (
+            float(item["score"] or 0.0) >= 1.0,
+            int(item["cycle_number"] or 0),
+            str(item["item_key"] or ""),
+        )
+    )
+    return records[:limit]
 
 
 def _write_event(fh: Any, event: dict[str, Any]) -> None:
@@ -754,6 +838,9 @@ def _rescore_case_event(event: dict[str, Any]) -> dict[str, Any]:
     updated["benchmark_quality_scored_items"] = quality_scored_items
     updated["invalid_expected_conflicts"] = invalid_expected_conflicts
     updated["judge_refusals"] = judge_refusals
+    updated["manual_review_items"] = _manual_review_items_from_event(
+        updated.get("cycles", [])
+    )
     for key in (
         "official_case_score",
         "adjusted_case_score",
@@ -806,6 +893,23 @@ def _repair_case_event_expected_conflicts(event: dict[str, Any]) -> dict[str, in
             ):
                 removed += 1
                 continue
+            if (
+                isinstance(expected, dict)
+                and expected.get("check") == "set_match"
+                and (_expected_values(expected) & invalid_values)
+            ):
+                raw_values = expected.get("values", [])
+                if isinstance(raw_values, list):
+                    repaired_values = [
+                        value
+                        for value in raw_values
+                        if not isinstance(value, str)
+                        or normalize_text(value) not in invalid_values
+                    ]
+                    if not repaired_values:
+                        removed += 1
+                        continue
+                    item["expected"] = {**expected, "values": repaired_values}
             repaired_items.append(item)
         cycle["items"] = repaired_items
 

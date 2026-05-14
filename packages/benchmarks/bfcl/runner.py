@@ -7,6 +7,7 @@ Main runner that orchestrates BFCL benchmark execution.
 from __future__ import annotations
 
 import logging
+import os
 import time
 from typing import Optional
 
@@ -69,13 +70,46 @@ class BFCLRunner:
         self.metrics_calculator = MetricsCalculator()
         self.reporter = BFCLReporter(config)
 
+        harness = (
+            os.environ.get("BENCHMARK_HARNESS")
+            or os.environ.get("BENCHMARK_AGENT")
+            or ""
+        ).strip().lower()
+        effective_provider = (
+            harness
+            if harness in {"hermes", "openclaw"} and provider == "eliza"
+            else provider
+        )
+
         if use_mock_agent:
             self.agent: BFCLAgent | MockBFCLAgent = MockBFCLAgent(config)
             self._model_name: Optional[str] = "mock"
         elif agent:
             self.agent = agent
             self._model_name = getattr(agent, 'model_name', None)
-        elif provider == "eliza":
+        elif effective_provider == "hermes":
+            import sys
+            from pathlib import Path
+
+            adapter_path = Path(__file__).resolve().parents[1] / "hermes-adapter"
+            if adapter_path.exists() and str(adapter_path) not in sys.path:
+                sys.path.insert(0, str(adapter_path))
+            from hermes_adapter.bfcl import HermesBFCLAgent
+
+            self.agent = HermesBFCLAgent(model_name=model)
+            self._model_name = model or self.agent.model_name
+        elif effective_provider == "openclaw":
+            import sys
+            from pathlib import Path
+
+            adapter_path = Path(__file__).resolve().parents[1] / "openclaw-adapter"
+            if adapter_path.exists() and str(adapter_path) not in sys.path:
+                sys.path.insert(0, str(adapter_path))
+            from openclaw_adapter.bfcl import OpenClawBFCLAgent
+
+            self.agent = OpenClawBFCLAgent(model_name=model)
+            self._model_name = model or self.agent.model_name
+        elif effective_provider == "eliza":
             # Route LLM calls through the elizaOS TypeScript benchmark bridge.
             import sys
             from pathlib import Path
@@ -92,7 +126,7 @@ class BFCLRunner:
             self._model_name = None  # Will be set after initialization
 
         self._results: list[BFCLResult] = []
-        self._provider = provider
+        self._provider = effective_provider
         self._model = model
 
     async def run(self) -> BFCLBenchmarkResults:

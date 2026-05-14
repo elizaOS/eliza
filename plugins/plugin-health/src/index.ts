@@ -78,15 +78,15 @@ export const healthPlugin: Plugin = {
         busFamilies: HEALTH_BUS_FAMILIES,
         defaultPacks: HEALTH_DEFAULT_PACKS.map((p) => p.key),
       },
-      "Initializing plugin-health (Wave-1 W1-B)",
+      "Initializing plugin-health",
     );
     registerHealthConnectors(runtime);
     registerHealthAnchors(runtime);
     registerHealthBusFamilies(runtime);
     registerHealthDefaultPacks(runtime);
-    // W3-C drift D-4: register the CircadianInsightContract so consumers
-    // (SCHEDULE, SCHEDULED_TASK, future planner reads) read through a
-    // typed runtime seam instead of reaching into plugin-health internals.
+    // Register the CircadianInsightContract so consumers (SCHEDULE,
+    // SCHEDULED_TASK, planner reads) read through a typed runtime seam
+    // instead of reaching into plugin-health internals.
     registerCircadianInsightContract(
       runtime,
       createDefaultCircadianInsightContract(),

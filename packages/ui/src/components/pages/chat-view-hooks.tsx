@@ -1,4 +1,3 @@
-import { useDocumentVisibility, useTimeout } from "@elizaos/ui";
 import {
   useCallback,
   useEffect,
@@ -18,6 +17,8 @@ import {
   ELIZA_CLOUD_STATUS_UPDATED_EVENT,
   VOICE_CONFIG_UPDATED_EVENT,
 } from "../../events";
+import { useDocumentVisibility } from "../../hooks/useDocumentVisibility";
+import { useTimeout } from "../../hooks/useTimeout";
 import { useVoiceChat } from "../../hooks/useVoiceChat";
 import type { useApp } from "../../state/useApp";
 import { ttsDebug } from "../../utils/tts-debug";
@@ -35,6 +36,8 @@ import { useCompanionSceneStatus } from "../companion/injected";
 const COMPANION_VISIBLE_MESSAGE_LIMIT = 2;
 const COMPANION_HISTORY_HOLD_MS = 30_000;
 const COMPANION_HISTORY_FADE_MS = 5_000;
+const VOICE_TURN_LATENCY_WINDOW_MS = 15_000;
+const VOICE_TURN_OUTPUT_WINDOW_MS = 10 * 60_000;
 
 /* ── Helpers ───────────────────────────────────────────────────────── */
 
@@ -85,6 +88,7 @@ type VoiceLatencyState = {
 type PendingVoiceTurnState = {
   id: string;
   expiresAtMs: number;
+  latencyExpiresAtMs: number;
   firstSegmentCached?: boolean;
   firstTokenAtMs?: number;
   assistantFirstMessageId?: string;
@@ -320,7 +324,8 @@ export function useChatVoiceController(options: {
       const voiceTurnId = event?.turn.id ?? makeVoiceTurnId(speechEndedAtMs);
       pendingVoiceTurnRef.current = {
         id: voiceTurnId,
-        expiresAtMs: speechEndedAtMs + 15000,
+        expiresAtMs: speechEndedAtMs + VOICE_TURN_OUTPUT_WINDOW_MS,
+        latencyExpiresAtMs: speechEndedAtMs + VOICE_TURN_LATENCY_WINDOW_MS,
         speechEndedAtMs,
       };
       setVoiceLatency(null);
@@ -374,6 +379,7 @@ export function useChatVoiceController(options: {
         pendingVoiceTurnRef.current = null;
         return;
       }
+      if (event.startedAtMs > pending.latencyExpiresAtMs) return;
       if (pending.voiceStartedAtMs != null) return;
 
       pending.voiceStartedAtMs = event.startedAtMs;
@@ -682,10 +688,7 @@ export function useChatVoiceController(options: {
   useEffect(() => {
     const pending = pendingVoiceTurnRef.current;
     if (!pending || !chatFirstTokenReceived) return;
-    if (nowMs() > pending.expiresAtMs) {
-      pendingVoiceTurnRef.current = null;
-      return;
-    }
+    if (nowMs() > pending.latencyExpiresAtMs) return;
     if (pending.firstTokenAtMs != null) return;
 
     const firstTokenAtMs = nowMs();

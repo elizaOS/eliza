@@ -26,8 +26,7 @@ app.get("/", async (c) => {
       return c.json({ success: true, data: { status: "none" } });
     }
 
-    const bridgeUrl =
-      sandbox.status === "running" ? (sandbox.bridge_url ?? null) : null;
+    const bridgeUrl = sandbox.status === "running" ? (sandbox.bridge_url ?? null) : null;
 
     return c.json({
       success: true,

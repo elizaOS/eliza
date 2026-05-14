@@ -5,12 +5,6 @@
  */
 
 import {
-  ConfirmDialog,
-  PromptDialog,
-  useConfirm,
-  usePrompt,
-} from "@elizaos/ui";
-import {
   type ReactNode,
   useCallback,
   useEffect,
@@ -19,6 +13,12 @@ import {
   useState,
 } from "react";
 import { client } from "../api";
+import {
+  ConfirmDialog,
+  PromptDialog,
+  useConfirm,
+  usePrompt,
+} from "../components/ui/confirm-dialog";
 import { AppBootContext } from "../config/boot-config-react";
 import { getBootConfig } from "../config/boot-config-store";
 import { BrandingContext, DEFAULT_BRANDING } from "../config/branding";
@@ -108,7 +108,6 @@ export {
   type LoadConversationMessagesResult,
   loadAvatarIndex,
   loadChatAvatarVisible,
-  loadChatMode,
   loadChatVoiceMuted,
   loadCompanionAnimateWhenHidden,
   loadCompanionHalfFramerateMode,
@@ -143,7 +142,6 @@ export {
   type StartupPhase,
   saveAvatarIndex,
   saveChatAvatarVisible,
-  saveChatMode,
   saveChatVoiceMuted,
   saveCompanionAnimateWhenHidden,
   saveCompanionHalfFramerateMode,
@@ -375,7 +373,6 @@ function AppProviderInner({
       chatLastUsage,
       chatAvatarVisible,
       chatAgentVoiceMuted,
-      chatMode,
       chatAvatarSpeaking,
       conversations,
       activeConversationId,
@@ -394,7 +391,6 @@ function AppProviderInner({
     setChatLastUsage,
     setChatAvatarVisible,
     setChatAgentVoiceMuted,
-    setChatMode,
     setChatAvatarSpeaking,
     setConversations,
     setActiveConversationId,
@@ -1270,7 +1266,6 @@ function AppProviderInner({
     tab,
     agentStatus,
     chatInput,
-    chatMode,
     conversations,
     activeConversationId,
     companionMessageCutoffTs,
@@ -1472,7 +1467,6 @@ function AppProviderInner({
         chatAvatarVisible: setChatAvatarVisible,
         chatAgentVoiceMuted: setChatAgentVoiceMuted,
         chatLastUsage: setChatLastUsage,
-        chatMode: setChatMode,
         chatAvatarSpeaking: setChatAvatarSpeaking,
         companionMessageCutoffTs: setCompanionMessageCutoffTs,
         uiShellMode: setUiShellMode,
@@ -1632,7 +1626,6 @@ function AppProviderInner({
       setChatAvatarVisible,
       setChatInput,
       setChatLastUsage,
-      setChatMode,
       setCompanionMessageCutoffTs,
       setOnboardingApiKey,
       setOnboardingAvatar,
@@ -2055,7 +2048,6 @@ function AppProviderInner({
       chatLastUsage,
       chatAvatarVisible,
       chatAgentVoiceMuted,
-      chatMode,
       chatAvatarSpeaking,
       conversations,
       activeConversationId,
@@ -2472,7 +2464,6 @@ function AppProviderInner({
       chatLastUsage,
       chatAvatarVisible,
       chatAgentVoiceMuted,
-      chatMode,
       chatAvatarSpeaking,
       conversations,
       activeConversationId,

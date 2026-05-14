@@ -1,0 +1,40 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 NubsCarson and contributors
+#
+# usbeliza systemd preset policy. Loaded by systemctl-preset(1) at first
+# boot (and on every `systemctl preset-all` run); the `00-` prefix sorts it
+# ahead of Debian's defaults so our enable/disable decisions win.
+#
+# Why this exists: both `elizad-session.service` (headless, qcow2 smoke) and
+# `elizad-session-interactive.service` (DRM, live ISO + bare metal) ship a
+# `[Install] WantedBy=graphical.target` section, so Debian's default
+# `enable *` preset would auto-enable BOTH at first boot — the headless one
+# then paints to memory in parallel with the interactive one and they fight
+# over the tty. The chroot hook (hooks/normal/0500-usbeliza-systemd.hook.chroot)
+# also calls `systemctl enable/disable/mask` for these, but presets are what
+# survive across `preset-all` runs and live-config-systemd's first-boot pass.
+
+# The headless session is qcow2-smoke only. Never wanted on the live ISO.
+disable elizad-session.service
+
+# The DRM session is the only graphical entry point on the live ISO.
+enable elizad-session-interactive.service
+
+# Bun agent supervisor (eliza-agent.service) — must be up before the session.
+enable eliza-agent.service
+
+# USB hotkey listener (Ctrl+Alt+F2 escape, persistence-unlock prompt, etc).
+enable usbeliza-input-listener.service
+
+# tty1 is owned by the sway session; getty would race for it.
+disable getty@tty1.service
+
+# Wait-online units block multi-user.target for 2 min when the network
+# never settles — normal in QEMU and on many bare-metal Wi-Fi setups.
+# Same logic as Tails' 52-update-systemd-units chroot hook.
+disable systemd-networkd-wait-online.service
+disable NetworkManager-wait-online.service
+
+# systemd-networkd fights NetworkManager. Decision #24: NetworkManager owns
+# network end-to-end on usbeliza.
+disable systemd-networkd.service

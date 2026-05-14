@@ -17,31 +17,28 @@
  * plugin exposes a richer validation endpoint.
  */
 
-import {
-  Button,
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  PagePanel,
-  Spinner,
-  StatusBadge,
-  Textarea,
-} from "@elizaos/ui";
 import { Play, RefreshCw, Save, Sparkles, Wand2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { client } from "../../api";
 import {
   isMissingCredentialsResponse,
   type WorkflowDefinition,
+  type WorkflowDefinitionGenerateResponse,
 } from "../../api/client-types-chat";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue";
+import { useModalState } from "../../hooks/useModalState";
 import {
   parseWorkflowJson,
   toWriteRequest,
   type WorkflowJsonResult,
   workflowToJsonText,
 } from "../../utils/workflow-json";
+import { PagePanel } from "../composites/page-panel";
+import { Button } from "../ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
+import { Spinner } from "../ui/spinner";
+import { StatusBadge } from "../ui/status-badge";
+import { Textarea } from "../ui/textarea";
 import { WorkflowGraphViewer } from "./WorkflowGraphViewer";
 
 export interface WorkflowEditorProps {
@@ -72,10 +69,14 @@ export function WorkflowEditor({
   });
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const [generating, setGenerating] = useState(false);
   const [generatorPrompt, setGeneratorPrompt] = useState("");
-  const [generatorOpen, setGeneratorOpen] = useState(false);
-  const [generatorError, setGeneratorError] = useState<string | null>(null);
+  const generatorModal = useModalState();
+  const generatorOpen = generatorModal.state.status !== "closed";
+  const generating = generatorModal.state.status === "submitting";
+  const generatorError =
+    generatorModal.state.status === "error"
+      ? generatorModal.state.error.message
+      : null;
 
   // Re-parse on debounced text change.
   useEffect(() => {
@@ -139,40 +140,37 @@ export function WorkflowEditor({
   const handleGenerate = useCallback(async () => {
     const prompt = generatorPrompt.trim();
     if (!prompt) return;
-    setGenerating(true);
-    setGeneratorError(null);
-    try {
-      const res = await client.generateWorkflowDefinition({
-        prompt,
-        workflowId: initial?.id,
-      });
+    await generatorModal.submit(async () => {
+      let res: WorkflowDefinitionGenerateResponse;
+      try {
+        res = await client.generateWorkflowDefinition({
+          prompt,
+          workflowId: initial?.id,
+        });
+      } catch (e) {
+        throw e instanceof Error
+          ? e
+          : new Error("Failed to generate workflow.");
+      }
       if ("status" in res && res.status === "needs_clarification") {
-        setGeneratorError(
+        throw new Error(
           "The workflow generator needs clarification — open the Automations chat to answer.",
         );
-        return;
       }
       if (isMissingCredentialsResponse(res)) {
-        setGeneratorError(
+        throw new Error(
           `Generated, but missing credentials: ${res.missingCredentials
             .map((c) => c.credType)
             .join(", ")}`,
         );
-        return;
       }
       const definition = res as WorkflowDefinition;
       setLastValidWorkflow(definition);
       setText(workflowToJsonText(definition));
-      setGeneratorOpen(false);
       setGeneratorPrompt("");
-    } catch (e) {
-      setGeneratorError(
-        e instanceof Error ? e.message : "Failed to generate workflow.",
-      );
-    } finally {
-      setGenerating(false);
-    }
-  }, [generatorPrompt, initial?.id]);
+      return definition;
+    });
+  }, [generatorPrompt, generatorModal, initial?.id]);
 
   const lineErrorBanner = useMemo(() => {
     if (parseState.ok) return null;
@@ -197,7 +195,7 @@ export function WorkflowEditor({
         <Button
           variant="outline"
           size="sm"
-          onClick={() => setGeneratorOpen(true)}
+          onClick={generatorModal.open}
           disabled={generating}
         >
           <Sparkles className="mr-1.5 h-3.5 w-3.5" aria-hidden />
@@ -294,7 +292,7 @@ export function WorkflowEditor({
               isGenerating={generating}
               emptyStateActionLabel="Generate from prompt"
               emptyStateHelpText="Describe the trigger and the steps. The graph re-renders on every JSON change."
-              onEmptyStateAction={() => setGeneratorOpen(true)}
+              onEmptyStateAction={generatorModal.open}
             />
           </div>
         </PagePanel>
@@ -304,7 +302,7 @@ export function WorkflowEditor({
       <Dialog
         open={generatorOpen}
         onOpenChange={(open) => {
-          if (!generating) setGeneratorOpen(open);
+          if (!open && !generating) generatorModal.close();
         }}
       >
         <DialogContent className="max-w-lg">
@@ -328,7 +326,7 @@ export function WorkflowEditor({
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => setGeneratorOpen(false)}
+                onClick={generatorModal.close}
                 disabled={generating}
               >
                 Cancel

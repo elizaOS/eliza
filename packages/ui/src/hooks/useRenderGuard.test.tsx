@@ -54,4 +54,22 @@ describe("useRenderGuard", () => {
       window.removeEventListener(RENDER_TELEMETRY_EVENT, onTelemetry);
     }
   });
+
+  it("does not carry render counts across telemetry names", () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => {});
+    const { rerender } = render(<Probe name="FirstProbe" />);
+
+    rerender(<Probe name="SecondProbe" />);
+    expect(info).not.toHaveBeenCalled();
+
+    rerender(<Probe name="SecondProbe" />);
+    expect(info).toHaveBeenCalledWith(
+      expect.stringContaining('"SecondProbe" rendered 2 times'),
+      expect.objectContaining({
+        name: "SecondProbe",
+        renderCount: 2,
+        severity: "info",
+      }),
+    );
+  });
 });

@@ -59,6 +59,7 @@ export class AgentNotReadyError extends Error {
 import type {
 	AuthMeSnapshot,
 	AuthStatusSnapshot,
+	ConfigSchemaSnapshot,
 	ConfigSnapshot,
 } from "./rpc-schema";
 
@@ -105,6 +106,49 @@ export async function composeConfigSnapshot(
 		// surfaces the same kind of transport error to its polling loop.
 		throw new AgentNotReadyError("getConfig");
 	}
+	return value;
+}
+
+// ── getConfigSchema ─────────────────────────────────────────────────
+
+export type ConfigSchemaReader = (
+	port: number,
+) => Promise<ConfigSchemaSnapshot | null>;
+
+export const readConfigSchemaViaHttp: ConfigSchemaReader = async (port) => {
+	const raw = await fetchJsonRaw(port, "/api/config/schema");
+	if (!raw || raw.status < 200 || raw.status >= 300) return null;
+	if (!raw.body || typeof raw.body !== "object" || Array.isArray(raw.body)) {
+		return null;
+	}
+	const body = raw.body as Record<string, unknown>;
+	if (
+		!body.schema ||
+		typeof body.schema !== "object" ||
+		Array.isArray(body.schema) ||
+		!body.uiHints ||
+		typeof body.uiHints !== "object" ||
+		Array.isArray(body.uiHints) ||
+		typeof body.version !== "string" ||
+		typeof body.generatedAt !== "string"
+	) {
+		return null;
+	}
+	return {
+		schema: body.schema as Record<string, unknown>,
+		uiHints: body.uiHints as Record<string, unknown>,
+		version: body.version,
+		generatedAt: body.generatedAt,
+	};
+};
+
+export async function composeConfigSchemaSnapshot(
+	port: number | null,
+	read: ConfigSchemaReader,
+): Promise<ConfigSchemaSnapshot> {
+	if (port === null) throw new AgentNotReadyError("getConfigSchema");
+	const value = await read(port);
+	if (value === null) throw new AgentNotReadyError("getConfigSchema");
 	return value;
 }
 
@@ -177,6 +221,58 @@ function readUnauthorizedBody(
 	};
 }
 
+function readAuthIdentity(
+	body: Record<string, unknown>,
+): AuthMeSnapshot["identity"] {
+	if (!body.identity || typeof body.identity !== "object") return undefined;
+	const id = body.identity as Record<string, unknown>;
+	if (typeof id.id !== "string") return undefined;
+	return {
+		id: id.id,
+		displayName: typeof id.displayName === "string" ? id.displayName : id.id,
+		kind: typeof id.kind === "string" ? id.kind : "machine",
+	};
+}
+
+function readAuthSession(
+	body: Record<string, unknown>,
+): AuthMeSnapshot["session"] {
+	if (!body.session || typeof body.session !== "object") return undefined;
+	const session = body.session as Record<string, unknown>;
+	return {
+		id: typeof session.id === "string" ? session.id : "",
+		kind: typeof session.kind === "string" ? session.kind : "machine",
+		expiresAt:
+			typeof session.expiresAt === "number" &&
+			Number.isFinite(session.expiresAt)
+				? session.expiresAt
+				: null,
+	};
+}
+
+function readAuthAccess(
+	body: Record<string, unknown>,
+): AuthMeSnapshot["access"] {
+	if (!body.access || typeof body.access !== "object") return undefined;
+	const access = body.access as Record<string, unknown>;
+	return {
+		mode: typeof access.mode === "string" ? access.mode : "remote",
+		passwordConfigured: access.passwordConfigured === true,
+		ownerConfigured: access.ownerConfigured === true,
+	};
+}
+
+function readAuthorizedBody(body: Record<string, unknown>): AuthMeSnapshot {
+	const snap: AuthMeSnapshot = {};
+	const identity = readAuthIdentity(body);
+	const session = readAuthSession(body);
+	const access = readAuthAccess(body);
+	if (identity) snap.identity = identity;
+	if (session) snap.session = session;
+	if (access) snap.access = access;
+	return snap;
+}
+
 export const readAuthMeViaHttp: AuthMeReader = async (port) => {
 	const raw = await fetchJsonRaw(port, "/api/auth/me");
 	if (!raw?.body || typeof raw.body !== "object") return null;
@@ -189,38 +285,7 @@ export const readAuthMeViaHttp: AuthMeReader = async (port) => {
 	}
 
 	if (raw.status >= 200 && raw.status < 300) {
-		const snap: AuthMeSnapshot = {};
-		if (body.identity && typeof body.identity === "object") {
-			const id = body.identity as Record<string, unknown>;
-			if (typeof id.id === "string") {
-				snap.identity = {
-					id: id.id,
-					displayName:
-						typeof id.displayName === "string" ? id.displayName : id.id,
-					kind: typeof id.kind === "string" ? id.kind : "machine",
-				};
-			}
-		}
-		if (body.session && typeof body.session === "object") {
-			const s = body.session as Record<string, unknown>;
-			snap.session = {
-				id: typeof s.id === "string" ? s.id : "",
-				kind: typeof s.kind === "string" ? s.kind : "machine",
-				expiresAt:
-					typeof s.expiresAt === "number" && Number.isFinite(s.expiresAt)
-						? s.expiresAt
-						: null,
-			};
-		}
-		if (body.access && typeof body.access === "object") {
-			const a = body.access as Record<string, unknown>;
-			snap.access = {
-				mode: typeof a.mode === "string" ? a.mode : "remote",
-				passwordConfigured: a.passwordConfigured === true,
-				ownerConfigured: a.ownerConfigured === true,
-			};
-		}
-		return snap;
+		return readAuthorizedBody(body);
 	}
 
 	return null;

@@ -275,7 +275,7 @@
       "@elizaos/plugin-mysticism": [
         "./plugins/plugin-mysticism/dist/index.d.ts"
       ],
-      "@elizaos/plugin-groq": ["./plugins/plugin-groq/index.ts"],
+      "@elizaos/plugin-groq": ["./plugins/plugin-groq/dist/index.d.ts"],
       "@elizaos/plugin-openai": ["./plugins/plugin-openai/dist/index.d.ts"],
       "@elizaos/plugin-commands": ["./plugins/plugin-commands/dist/index.d.ts"],
       "@elizaos/plugin-x": ["./plugins/plugin-x/dist/index.d.ts"],
@@ -286,7 +286,7 @@
       ],
       "@elizaos/plugin-calendly": ["./plugins/plugin-calendly/dist/index.d.ts"],
       "@elizaos/app-wifi": ["./plugins/app-wifi/dist/index.d.ts"],
-      "@elizaos/plugin-xai": ["./plugins/plugin-xai/index.ts"],
+      "@elizaos/plugin-xai": ["./plugins/plugin-xai/dist/index.d.ts"],
       "@elizaos/plugin-xai/*": ["./plugins/plugin-xai/*"],
       "@elizaos/plugin-cli": ["./plugins/plugin-cli/dist/index.d.ts"],
       "@elizaos/plugin-signal": ["./plugins/plugin-signal/dist/index.d.ts"],
@@ -302,7 +302,9 @@
       "@elizaos/plugin-tee": ["./plugins/plugin-tee/dist/index.d.ts"],
       "@elizaos/plugin-github": ["./plugins/plugin-github/dist/index.d.ts"],
       "@elizaos/plugin-wechat": ["./plugins/plugin-wechat/dist/index.d.ts"],
-      "@elizaos/plugin-local-ai": ["./plugins/plugin-local-ai/dist/index.d.ts"],
+      "@elizaos/plugin-local-inference": [
+        "./plugins/plugin-local-inference/dist/index.d.ts"
+      ],
       "@elizaos/app-task-coordinator": [
         "./plugins/app-task-coordinator/dist/index.d.ts"
       ],
@@ -325,9 +327,6 @@
         "./plugins/plugin-bluebubbles/dist/index.d.ts"
       ],
       "@elizaos/app-training": ["./plugins/app-training/dist/index.d.ts"],
-      "@elizaos/plugin-local-embedding": [
-        "./plugins/plugin-local-embedding/dist/index.d.ts"
-      ],
       "@elizaos/cloud-sdk": ["./cloud/packages/sdk/dist/index.d.ts"]
     }
   },

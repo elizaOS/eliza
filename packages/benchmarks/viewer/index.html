@@ -86,6 +86,7 @@
 
       <section class="panel">
         <h2>Latest Scores</h2>
+        <p class="hint">Real-agent rows only. Synthetic / calibration baselines are listed separately below.</p>
         <div class="table-wrap">
           <table>
             <thead>
@@ -101,6 +102,27 @@
               </tr>
             </thead>
             <tbody id="latest-body"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Synthetic baselines (no model invoked)</h2>
+        <p class="hint">
+          Hardcoded calibration knobs (<code>perfect_v1=1.0</code>, <code>half_v1=0.5</code>, <code>wrong_v1=0.0</code>, <code>random_v1</code>).
+          These do not exercise any agent or model. They exist to verify the score-extraction pipeline.
+        </p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>benchmark</th>
+                <th>run_id</th>
+                <th>agent</th>
+                <th>score</th>
+              </tr>
+            </thead>
+            <tbody id="synthetic-body"></tbody>
           </table>
         </div>
       </section>

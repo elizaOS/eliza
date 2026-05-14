@@ -159,7 +159,7 @@ export const PROVIDER_PLUGIN_MAP: Readonly<Record<string, string>> = {
 const LOCAL_MODEL_PROVIDER_PLUGINS = new Set<string>([
   "@elizaos/plugin-ollama",
   "@elizaos/plugin-mlx",
-  "@elizaos/plugin-local-ai",
+  "@elizaos/plugin-local-inference",
 ]);
 
 const REMOTE_MODEL_PROVIDER_PLUGINS = new Set(
@@ -169,6 +169,30 @@ const REMOTE_MODEL_PROVIDER_PLUGINS = new Set(
       !LOCAL_MODEL_PROVIDER_PLUGINS.has(pluginName),
   ),
 );
+
+const DIRECT_MODEL_PROVIDER_PLUGINS = new Set(
+  Object.values(PROVIDER_PLUGIN_MAP).filter(
+    (pluginName) => pluginName !== "@elizaos/plugin-elizacloud",
+  ),
+);
+
+function removeLocalModelSurfaces(pluginsToLoad: Set<string>): void {
+  for (const pluginName of LOCAL_MODEL_PROVIDER_PLUGINS) {
+    pluginsToLoad.delete(pluginName);
+  }
+}
+
+function removeDirectModelProviderSurfaces(pluginsToLoad: Set<string>): void {
+  for (const pluginName of DIRECT_MODEL_PROVIDER_PLUGINS) {
+    pluginsToLoad.delete(pluginName);
+  }
+  removeLocalModelSurfaces(pluginsToLoad);
+}
+
+function removeAllModelProviderSurfaces(pluginsToLoad: Set<string>): void {
+  pluginsToLoad.delete("@elizaos/plugin-elizacloud");
+  removeDirectModelProviderSurfaces(pluginsToLoad);
+}
 
 /**
  * Optional feature plugins keyed by feature name.
@@ -290,9 +314,9 @@ export function collectPluginNames(
   // provider. It does NOT mean "strip every other provider": subscription
   // accounts (anthropic-subscription, openai-codex) and API-key cloud
   // plugins must keep loading so the user can route slots to them.
-  // The local handler already registers at priority -1 (see
-  // ensure-local-inference-handler.ts), so cloud/direct providers win when
-  // the user has them configured, and local fills in otherwise.
+  // The local handler registers in the same priority band as direct providers;
+  // the top-priority router's default prefer-local policy decides the winner
+  // when the user has multiple configured candidates.
   const localOnlyInference =
     legacyLocalOnlyInference ||
     (cloudExplicitlyDisabled &&
@@ -390,7 +414,7 @@ export function collectPluginNames(
     );
   }
   if (localEmbeddingsExplicitlyDisabled) {
-    pluginsToLoad.delete("@elizaos/plugin-local-embedding");
+    pluginsToLoad.delete("@elizaos/plugin-local-inference");
   }
 
   // Allow list is additive — extra plugins on top of auto-detection,
@@ -464,6 +488,21 @@ export function collectPluginNames(
   }
 
   const applyProviderPrecedence = (): void => {
+    if (deploymentTarget.runtime === "remote") {
+      removeAllModelProviderSurfaces(pluginsToLoad);
+      return;
+    }
+
+    if (deploymentTarget.runtime === "cloud") {
+      removeDirectModelProviderSurfaces(pluginsToLoad);
+      if (cloudEffectivelyEnabled) {
+        pluginsToLoad.add("@elizaos/plugin-elizacloud");
+      } else {
+        pluginsToLoad.delete("@elizaos/plugin-elizacloud");
+      }
+      return;
+    }
+
     if (localOnlyInference) {
       pluginsToLoad.delete("@elizaos/plugin-elizacloud");
       for (const pluginName of REMOTE_MODEL_PROVIDER_PLUGINS) {
@@ -476,11 +515,7 @@ export function collectPluginNames(
       pluginsToLoad.add("@elizaos/plugin-elizacloud");
 
       if (cloudHandlesInference) {
-        const directProviders = new Set(Object.values(PROVIDER_PLUGIN_MAP));
-        directProviders.delete("@elizaos/plugin-elizacloud");
-        for (const p of directProviders) {
-          pluginsToLoad.delete(p);
-        }
+        removeDirectModelProviderSurfaces(pluginsToLoad);
         return;
       }
       return;

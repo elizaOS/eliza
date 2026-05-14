@@ -11,7 +11,6 @@ export {
   requestRestart,
   setRestartHandler,
 } from "@elizaos/shared";
-export * from "@elizaos/ui";
 export { App } from "./App.tsx";
 export * from "./api/index.ts";
 export * from "./api/response.ts";
@@ -67,14 +66,10 @@ export * from "./hooks/useActivityEvents.ts";
 export * from "./hooks/useBugReport.tsx";
 export * from "./hooks/useChatAvatarVoiceBridge.ts";
 export * from "./hooks/useContextMenu.ts";
-export {
-  COMMON_SHORTCUTS,
-  useShortcutsHelp,
-} from "./hooks/useKeyboardShortcuts.ts";
+export { COMMON_SHORTCUTS } from "./hooks/useKeyboardShortcuts.ts";
 export * from "./hooks/useMediaQuery.ts";
 export * from "./hooks/useRenderGuard.ts";
 export * from "./hooks/useSignalPairing.ts";
-export * from "./hooks/useStreamPopoutNavigation.ts";
 export * from "./hooks/useVoiceChat.ts";
 export * from "./hooks/useWhatsAppPairing.ts";
 export * from "./i18n/index.ts";

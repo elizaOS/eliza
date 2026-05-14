@@ -13,12 +13,10 @@ This script therefore measures the things TurboQuant actually changes:
   * Output sanity (the quantized model still produces a non-empty native JSON-
     looking response on each of 5 sampled prompts)
 
-Default model is ``Qwen/Qwen3-0.8B``. ``Qwen/Qwen3.5-0.8B`` is a hybrid
-linear-attention + Gated Attention model with a vision encoder; the
-linear layers do not have a (B, H, T, D) KV cache and so are bypassed by
-the cache machinery. Use ``--model Qwen/Qwen3.5-0.8B`` to opt-in to the
-hybrid path; the assertions below are looser in that case (the savings
-only apply to the ~6/24 full-attention layers).
+Default model is ``Qwen/Qwen3.5-0.8B``. This is a hybrid
+linear-attention + Gated Attention model; the cache machinery applies to
+the full-attention layers and bypasses linear-attention layers. The
+assertions are correspondingly looser than old dense-Qwen3 smoke runs.
 
 Usage::
 
@@ -258,7 +256,7 @@ def directory_size_bytes(path: Path) -> int:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n", 1)[0])
-    ap.add_argument("--model", default="Qwen/Qwen3-0.8B")
+    ap.add_argument("--model", default="Qwen/Qwen3.5-0.8B")
     ap.add_argument("--num-prompts", type=int, default=5)
     ap.add_argument("--max-new-tokens", type=int, default=128)
     ap.add_argument("--calibration-samples", type=int, default=32)

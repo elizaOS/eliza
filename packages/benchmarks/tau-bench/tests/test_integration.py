@@ -116,6 +116,40 @@ class TestAgentExecution:
 
         assert len(conversation) > 0
 
+    @pytest.mark.parametrize(
+        ("harness", "expected_class"),
+        [
+            ("hermes", "HermesTauAgent"),
+            ("openclaw", "OpenClawTauAgent"),
+        ],
+    )
+    def test_runner_selects_configured_real_harness(
+        self, monkeypatch, tmp_path, harness, expected_class
+    ):
+        """Hermes/OpenClaw labels must not silently instantiate the Eliza bridge."""
+        monkeypatch.setenv("BENCHMARK_HARNESS", harness)
+        config = TauBenchConfig(
+            data_path=str(tmp_path / "data"),
+            output_dir=str(tmp_path / "output"),
+            domains=[TauDomain.RETAIL],
+            max_tasks=1,
+            enable_memory_tracking=False,
+            enable_trajectory_logging=False,
+            use_mock=False,
+        )
+        runner = TauBenchRunner(config)
+        task = TauBenchTask(
+            task_id="harness_select",
+            domain=TauDomain.RETAIL,
+            user_instruction="Check an order.",
+        )
+        executor = ToolExecutor(RetailEnvironment(task))
+
+        agent = runner._create_agent(executor)
+
+        assert agent.__class__.__name__ == expected_class
+        assert runner._bridge_manager is None
+
 
 class TestEndToEndBenchmark:
     """End-to-end benchmark tests."""

@@ -1,17 +1,12 @@
 /**
  * `PRIORITIZE` umbrella action — LLM-ranked importance × urgency.
  *
- * PRD: `prd-lifeops-executive-assistant.md` §Daily Operations and Wave-2
- * scenario matrix. Today the agent has ad-hoc planner reasoning per turn;
- * `PRIORITIZE` makes "what should I focus on right now?" a first-class
- * callable surface that returns a ranked list with reasoning.
- *
  * Subactions:
  *   - `rank_todos`     — todo items in the owner's life domain
  *   - `rank_threads`   — open inbox / messaging threads
  *   - `rank_decisions` — pending approval queue decisions
  *
- * Behavior: load items via the relevant loader hook, then call
+ * Loads items via the relevant loader hook, then calls
  * `runtime.useModel(ModelType.TEXT_LARGE)` once with a structured prompt that
  * asks for a JSON ranking by urgency × importance, with a short reasoning
  * string per item.
@@ -82,10 +77,8 @@ export interface PrioritizeRankedItem extends PrioritizeRankableItem {
 }
 
 /**
- * Per-subject loader hooks. Wave-2 wires these to the real underlying
- * services (todos store, inbox triage, approval queue). Wave-1 leaves the
- * default loaders empty so tests can mock per-subject inputs without
- * standing up the full graph.
+ * Per-subject loader hooks. Default loaders are empty stubs so tests can
+ * mock per-subject inputs without standing up the full service graph.
  */
 export interface PrioritizeLoaders {
   loadTodos: (args: {

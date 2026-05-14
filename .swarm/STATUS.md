@@ -166,7 +166,7 @@ Then the user must still teardown the VM via nebius CLI after re-auth.
 ## v4 RUN TERMINATED at step ~1241 due to driver's built-in 6h watchdog
 
 ### What happened
-- 2026-05-13T03:33:34Z (6h after `run_remote` started polling): the driver hit `scripts/train_nebius.sh` line 439 cap: `if [ "$i" -gt 360 ]; then echo "ERROR: still running after 6h — bailing"; return 1; fi`. 
+- 2026-05-13T03:33:34Z (6h after `run_remote` started polling): the driver hit `scripts/train_nebius.sh` line 439 cap: `if [ "$i" -gt 360 ]; then echo "ERROR: still running after 6h — bailing"; return 1; fi`.
 - `run_remote` returned 1 → bash's `set -euo pipefail` aborted the `full` flow → `fetch` was SKIPPED → EXIT trap ran only `teardown`.
 - The EXIT trap's `teardown` function (line 544) called `instance_id_by_name` → `nebius compute v1 instance list` → expired-auth hang → I had to kill the driver process (3652060) manually at 03:35:51Z.
 - **Final remote step: 1003** (per remote `run_eliza-1-0_8b-apollo-fullcorpus-h200-1778619044.log`).
@@ -286,4 +286,3 @@ Then arm a fresh watcher copied from `/tmp/nebius-finish-q35-0_8b-v4b.sh` (SSH-b
 - `/tmp/q35-0_8b-v4-manual-fetch.log` — manual rsync log
 - `/tmp/nebius-finish-q35-0_8b-v4b.sh` — SSH-based watcher template for v5
 - `packages/training/checkpoints/eliza-1-0_8b-apollo-fullcorpus-h200-1778619044/` — both partial checkpoints (500 + 1000) with full trainer state
-

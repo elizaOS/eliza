@@ -1542,7 +1542,7 @@ final class ElizaIosRuntimeSmokeTests: XCTestCase {
     path.join(tempDir, "project.yml"),
     `name: ElizaIosRuntimeSmoke
 options:
-  bundleIdPrefix: ai.elizalabs
+  bundleIdPrefix: ai.elizaos
 settings:
   base:
     CODE_SIGN_STYLE: Automatic
@@ -1559,7 +1559,7 @@ targets:
         buildPhase: resources
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: ai.elizalabs.ElizaIosRuntimeSmokeHost
+        PRODUCT_BUNDLE_IDENTIFIER: ai.elizaos.ElizaIosRuntimeSmokeHost
         INFOPLIST_FILE: Sources/HostApp/Info.plist
         OTHER_LDFLAGS:
 ${yamlList(hostOtherLdFlags)}
@@ -1573,7 +1573,7 @@ ${yamlList(hostOtherLdFlags)}
       - target: ElizaIosRuntimeSmokeHost
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: ai.elizalabs.ElizaIosRuntimeSmokeTests
+        PRODUCT_BUNDLE_IDENTIFIER: ai.elizaos.ElizaIosRuntimeSmokeTests
         GENERATE_INFOPLIST_FILE: YES
         TEST_HOST: "$(BUILT_PRODUCTS_DIR)/ElizaIosRuntimeSmokeHost.app/ElizaIosRuntimeSmokeHost"
         BUNDLE_LOADER: "$(TEST_HOST)"

@@ -12,12 +12,83 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_PACKAGES_DIR = path.resolve(__dirname, "..", "..", "..");
+const REPO_ROOT = path.resolve(REPO_PACKAGES_DIR, "..");
 const DFLASH_DRAFT_SOURCE = path.join(
-  REPO_PACKAGES_DIR,
-  "inference",
+  REPO_ROOT,
+  "plugins",
+  "plugin-local-inference",
+  "native",
   "dflash",
   "dflash_draft.cpp",
 );
+
+function usesModelSubclassApi(llamaCppRoot) {
+  const candidates = [
+    path.join(llamaCppRoot, "src", "models", "models.h"),
+    path.join(llamaCppRoot, "src", "llama-model.h"),
+  ];
+  return candidates.some((file) => {
+    if (!fs.existsSync(file)) return false;
+    const source = fs.readFileSync(file, "utf8");
+    return source.includes("llama_model_base");
+  });
+}
+
+function hparamsMemberExpr(llamaCppRoot, member) {
+  const header = path.join(llamaCppRoot, "src", "llama-hparams.h");
+  if (fs.existsSync(header)) {
+    const source = fs.readFileSync(header, "utf8");
+    if (
+      source.includes(` ${member};`) ||
+      source.includes(` ${member} =`) ||
+      source.includes(` ${member} //`)
+    ) {
+      return `hparams.${member}`;
+    }
+  }
+  return `hparams.${member}()`;
+}
+
+function adaptDflashDraftSource(source, llamaCppRoot) {
+  return source
+    .replaceAll(
+      "hparams.n_embd_head_v()",
+      hparamsMemberExpr(llamaCppRoot, "n_embd_head_v"),
+    )
+    .replaceAll(
+      "hparams.n_embd_head_k()",
+      hparamsMemberExpr(llamaCppRoot, "n_embd_head_k"),
+    );
+}
+
+function dflashDraftSourceForRoot(llamaCppRoot) {
+  const source = adaptDflashDraftSource(
+    fs.readFileSync(DFLASH_DRAFT_SOURCE, "utf8"),
+    llamaCppRoot,
+  );
+  if (usesModelSubclassApi(llamaCppRoot)) {
+    return source;
+  }
+  const start = source.indexOf(
+    "void llama_model_dflash_draft::load_arch_hparams",
+  );
+  const end = source.indexOf("class llm_graph_input_dflash");
+  if (start === -1 || end === -1 || end <= start) {
+    return source;
+  }
+  return `${source.slice(0, start)}${source.slice(end)}`;
+}
+
+function loaderMetadataExpr(llamaCppRoot) {
+  const header = path.join(llamaCppRoot, "src", "llama-model-loader.h");
+  if (fs.existsSync(header)) {
+    const source = fs.readFileSync(header, "utf8");
+    if (source.includes("gguf_context_ptr meta;")) {
+      return "ml.meta.get()";
+    }
+  }
+  return "ml.metadata";
+}
 
 function requireIncludes(source, needle, rel) {
   if (!source.includes(needle)) {
@@ -62,6 +133,12 @@ function patchTextFile(llamaCppRoot, rel, transform, touched) {
 }
 
 function patchCmake(source, rel) {
+  if (
+    source.includes('file(GLOB LLAMA_MODELS_SOURCES "models/*.cpp")') ||
+    source.includes("models/dflash_draft.cpp")
+  ) {
+    return source;
+  }
   return insertAfter(
     source,
     "            models/dream.cpp\n",
@@ -123,10 +200,15 @@ function patchArchCpp(source, rel) {
     '    { LLM_TENSOR_DFLASH_FC,                              "dflash_fc" },\n    { LLM_TENSOR_DFLASH_HIDDEN_NORM,                     "dflash_hidden_norm" },\n',
     rel,
   );
-  out = insertBefore(
-    out,
-    "        case LLM_ARCH_QWEN35:\n            return {\n",
-    `        case LLM_ARCH_DFLASH_DRAFT:
+  // Older llama.cpp pins kept the per-architecture tensor set in
+  // llama-arch.cpp as a switch returning `{ LLM_TENSOR_* }`. Newer pins moved
+  // tensor construction into src/models/*.cpp; when the DFlash draft model is
+  // already registered there, there is no Qwen35 tensor-set anchor to patch.
+  if (!out.includes("LLM_ARCH_DFLASH_DRAFT")) {
+    out = insertBefore(
+      out,
+      "        case LLM_ARCH_QWEN35:\n            return {\n",
+      `        case LLM_ARCH_DFLASH_DRAFT:
             return {
                 LLM_TENSOR_TOKEN_EMBD,
                 LLM_TENSOR_OUTPUT_NORM,
@@ -146,14 +228,27 @@ function patchArchCpp(source, rel) {
                 LLM_TENSOR_FFN_UP,
             };
 `,
-    rel,
-  );
-  out = insertAfter(
-    out,
-    "    {LLM_TENSOR_OUTPUT_NORM_LFM2,           {LLM_TENSOR_LAYER_OUTPUT, GGML_OP_MUL}},\n",
-    "    {LLM_TENSOR_DFLASH_FC,                  {LLM_TENSOR_LAYER_INPUT,  GGML_OP_MUL_MAT}},\n    {LLM_TENSOR_DFLASH_HIDDEN_NORM,         {LLM_TENSOR_LAYER_INPUT,  GGML_OP_MUL}},\n",
-    rel,
-  );
+      rel,
+    );
+  }
+  if (!out.includes("{LLM_TENSOR_DFLASH_FC,")) {
+    const dflashTensorInfo =
+      "    {LLM_TENSOR_DFLASH_FC,                  {LLM_TENSOR_LAYER_INPUT,  GGML_OP_MUL_MAT}},\n" +
+      "    {LLM_TENSOR_DFLASH_HIDDEN_NORM,         {LLM_TENSOR_LAYER_INPUT,  GGML_OP_MUL}},\n";
+    const lfm2TensorInfoAnchors = [
+      "    {LLM_TENSOR_OUTPUT_NORM_LFM2,           {LLM_TENSOR_LAYER_OUTPUT,    GGML_OP_MUL}},\n",
+      "    {LLM_TENSOR_OUTPUT_NORM_LFM2,           {LLM_TENSOR_LAYER_OUTPUT, GGML_OP_MUL}},\n",
+    ];
+    const anchor = lfm2TensorInfoAnchors.find((candidate) =>
+      out.includes(candidate),
+    );
+    if (!anchor) {
+      throw new Error(
+        `[dflash-build] dflash-drafter-arch: anchor not found in ${rel}: LLM_TENSOR_OUTPUT_NORM_LFM2 tensor info row`,
+      );
+    }
+    out = out.replace(anchor, `${anchor}${dflashTensorInfo}`);
+  }
   return out;
 }
 
@@ -187,20 +282,71 @@ function patchModelHeader(source, rel) {
 }
 
 function patchModelsHeader(source, rel) {
-  return insertAfter(
-    source,
-    "struct llm_build_qwen3moe : public llm_graph_context {\n    llm_build_qwen3moe(const llama_model & model, const llm_graph_params & params);\n};\n",
-    `
+  if (
+    source.includes("struct llm_build_dflash_draft") &&
+    (!source.includes(
+      "struct llama_model_mistral3 : public llama_model_base",
+    ) ||
+      source.includes("struct llama_model_dflash_draft"))
+  ) {
+    return source;
+  }
+  let out = source;
+  if (!out.includes("struct llm_build_dflash_draft")) {
+    out = insertAfter(
+      out,
+      "struct llm_build_qwen3moe : public llm_graph_context {\n    llm_build_qwen3moe(const llama_model & model, const llm_graph_params & params);\n};\n",
+      `
 struct llm_build_dflash_draft : public llm_graph_context {
     llm_build_dflash_draft(const llama_model & model, const llm_graph_params & params);
 };
 `,
-    rel,
-  );
+      rel,
+    );
+  }
+  if (out.includes("struct llama_model_mistral3 : public llama_model_base {")) {
+    out = insertBefore(
+      out,
+      "struct llama_model_mistral3 : public llama_model_base {\n",
+      `
+struct llama_model_dflash_draft : public llama_model_base {
+    llama_model_dflash_draft(const struct llama_model_params & params) : llama_model_base(params) {}
+    void load_arch_hparams(llama_model_loader & ml) override;
+    void load_arch_tensors(llama_model_loader & ml) override;
+    std::unique_ptr<llm_graph_context> build_arch_graph(const llm_graph_params & params) const override;
+};
+
+`,
+      rel,
+    );
+  }
+  return out;
 }
 
-function patchModelCpp(source, rel) {
-  let out = source;
+function patchModelCpp(source, rel, metadataExpr = "ml.metadata") {
+  let out = source.replaceAll("ml.metadata", metadataExpr);
+  if (out.includes("return new llama_model_dflash_draft(params);")) {
+    return out;
+  }
+  if (out.includes("return new llama_model_qwen35(params);")) {
+    out = insertBefore(
+      out,
+      "        case LLM_ARCH_MISTRAL3:\n",
+      `        case LLM_ARCH_DFLASH_DRAFT:
+            return new llama_model_dflash_draft(params);
+`,
+      rel,
+      "new llama_model_dflash_draft",
+    );
+    out = insertAfter(
+      out,
+      "        case LLM_ARCH_QWEN3NEXT:\n        case LLM_ARCH_MIMO2:\n",
+      "        case LLM_ARCH_DFLASH_DRAFT:\n",
+      rel,
+      "        case LLM_ARCH_DFLASH_DRAFT:\n        case LLM_ARCH_STEP35:\n",
+    );
+    return out;
+  }
   out = insertBefore(
     out,
     "        case LLM_ARCH_MAINCODER:\n",
@@ -213,12 +359,12 @@ function patchModelCpp(source, rel) {
                 ml.get_key(LLM_KV_DFLASH_N_TARGET_FEATURES,    hparams.dflash_n_target_features, false);
 
                 const std::string key = ml.llm_kv(LLM_KV_DFLASH_TARGET_LAYER_IDS);
-                const int kid = gguf_find_key(ml.meta.get(), key.c_str());
-                if (kid >= 0 && gguf_get_kv_type(ml.meta.get(), kid) == GGUF_TYPE_ARRAY) {
-                    const enum gguf_type arr_type = gguf_get_arr_type(ml.meta.get(), kid);
-                    const size_t n = gguf_get_arr_n(ml.meta.get(), kid);
+                const int kid = gguf_find_key(${metadataExpr}, key.c_str());
+                if (kid >= 0 && gguf_get_kv_type(${metadataExpr}, kid) == GGUF_TYPE_ARRAY) {
+                    const enum gguf_type arr_type = gguf_get_arr_type(${metadataExpr}, kid);
+                    const size_t n = gguf_get_arr_n(${metadataExpr}, kid);
                     hparams.dflash_n_target_layers = std::min((uint32_t) n, (uint32_t) 8);
-                    const void * data = gguf_get_arr_data(ml.meta.get(), kid);
+                    const void * data = gguf_get_arr_data(${metadataExpr}, kid);
                     for (uint32_t i = 0; i < hparams.dflash_n_target_layers; ++i) {
                         if (arr_type == GGUF_TYPE_UINT32) {
                             hparams.dflash_target_layer_ids[i] = ((const uint32_t *) data)[i];
@@ -301,6 +447,49 @@ function patchModelCpp(source, rel) {
   return out;
 }
 
+function verifyDflashDrafterArchPatch(llamaCppRoot) {
+  const requiredMarkers = [
+    ["src/CMakeLists.txt", "models/dflash_draft.cpp"],
+    ["src/llama-arch.h", "LLM_ARCH_DFLASH_DRAFT"],
+    ["src/llama-arch.cpp", '"dflash-draft"'],
+    ["src/llama-hparams.h", "dflash_n_target_features"],
+    ["src/llama-model.h", "dflash_hidden_norm"],
+    ["src/models/models.h", "llm_build_dflash_draft"],
+    [
+      "src/models/dflash_draft.cpp",
+      "llm_build_dflash_draft::llm_build_dflash_draft",
+    ],
+  ];
+  const missing = [];
+  for (const [rel, marker] of requiredMarkers) {
+    const file = path.join(llamaCppRoot, rel);
+    if (!fs.existsSync(file)) {
+      missing.push(`${rel} (missing file)`);
+      continue;
+    }
+    if (!fs.readFileSync(file, "utf8").includes(marker)) {
+      missing.push(`${rel} (missing ${marker})`);
+    }
+  }
+  if (missing.length > 0) {
+    throw new Error(
+      `[dflash-build] dflash-drafter-arch: patch verification failed: ${missing.join(", ")}`,
+    );
+  }
+  const modelCpp = fs.readFileSync(
+    path.join(llamaCppRoot, "src", "llama-model.cpp"),
+    "utf8",
+  );
+  if (
+    !modelCpp.includes("new llama_model_dflash_draft") &&
+    !modelCpp.includes("std::make_unique<llm_build_dflash_draft>")
+  ) {
+    throw new Error(
+      `[dflash-build] dflash-drafter-arch: patch verification failed: src/llama-model.cpp (missing dflash-draft model wiring)`,
+    );
+  }
+}
+
 export function patchDflashDrafterArch(llamaCppRoot, { dryRun = false } = {}) {
   const touched = [];
   const dest = path.join(llamaCppRoot, "src", "models", "dflash_draft.cpp");
@@ -309,7 +498,7 @@ export function patchDflashDrafterArch(llamaCppRoot, { dryRun = false } = {}) {
       `[dflash-build] dflash-drafter-arch: missing source ${DFLASH_DRAFT_SOURCE}`,
     );
   }
-  const source = fs.readFileSync(DFLASH_DRAFT_SOURCE, "utf8");
+  const source = dflashDraftSourceForRoot(llamaCppRoot);
   if (!fs.existsSync(dest) || fs.readFileSync(dest, "utf8") !== source) {
     if (!dryRun) fs.writeFileSync(dest, source, "utf8");
     touched.push("src/models/dflash_draft.cpp");
@@ -322,7 +511,11 @@ export function patchDflashDrafterArch(llamaCppRoot, { dryRun = false } = {}) {
     ["src/llama-hparams.h", patchHparams],
     ["src/llama-model.h", patchModelHeader],
     ["src/models/models.h", patchModelsHeader],
-    ["src/llama-model.cpp", patchModelCpp],
+    [
+      "src/llama-model.cpp",
+      (source, rel) =>
+        patchModelCpp(source, rel, loaderMetadataExpr(llamaCppRoot)),
+    ],
   ];
 
   if (dryRun) {
@@ -334,6 +527,7 @@ export function patchDflashDrafterArch(llamaCppRoot, { dryRun = false } = {}) {
   for (const [rel, transform] of transforms) {
     patchTextFile(llamaCppRoot, rel, transform, touched);
   }
+  verifyDflashDrafterArchPatch(llamaCppRoot);
   if (touched.length === 0) {
     console.log(
       "[dflash-build] dflash-draft architecture support already present",

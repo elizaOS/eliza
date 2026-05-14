@@ -178,9 +178,7 @@ export async function submitPluginToRegistry(
   }
 }
 
-export function createThirdPartyMetadata(
-  projectDir: string,
-): ThirdPartyMetadata {
+function createThirdPartyMetadata(projectDir: string): ThirdPartyMetadata {
   const packageJsonPath = path.join(projectDir, "package.json");
   if (!fs.existsSync(packageJsonPath)) {
     throw new Error(`No package.json found at ${packageJsonPath}`);
@@ -239,9 +237,7 @@ export function createThirdPartyMetadata(
   return metadata;
 }
 
-export function normalizeGithubRepo(
-  value: string | null | undefined,
-): string | null {
+function normalizeGithubRepo(value: string | null | undefined): string | null {
   if (!value) {
     return null;
   }

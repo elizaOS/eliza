@@ -78,9 +78,10 @@ export function getBackendStartupTimeoutMs(): number {
   //  - AOSP / branded ElizaOS Capacitor builds — UA carries `ElizaOS/<tag>`
   //  - Stock Capacitor sideloads (Pixel 6a, Solana Seeker, Moto G,
   //    iOS test installs) — UA has no ElizaOS marker but still runs
-  //    the bundled agent on 127.0.0.1:31337. Cold-boot is ~30s PGlite
-  //    migration + ~30s agent registration before /api/auth/status
-  //    binds, vs. <5s for cloud/remote backends.
+  //    the bundled local agent. Android exposes the agent over loopback;
+  //    iOS uses the Capacitor/ITTP bridge with no TCP listener. Cold-boot is
+  //    ~30s PGlite migration + ~30s agent registration before auth status
+  //    responds, vs. <5s for cloud/remote backends.
   // Web / hosted-cloud builds keep the snappy 30s budget so a real
   // backend outage surfaces fast instead of staring at the splash.
   if (

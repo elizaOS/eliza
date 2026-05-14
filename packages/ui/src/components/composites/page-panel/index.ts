@@ -1,5 +1,6 @@
 import { PagePanelCollapsibleSection } from "./page-panel-collapsible-section";
 import { PageEmptyState } from "./page-panel-empty";
+import { PagePanelFeatureEmpty } from "./page-panel-feature-empty";
 import { PagePanelContentArea, PagePanelFrame } from "./page-panel-frame";
 import {
   MetaPill,
@@ -14,6 +15,7 @@ import { PagePanelToolbar } from "./page-panel-toolbar";
 
 export * from "./page-panel-collapsible-section";
 export * from "./page-panel-empty";
+export * from "./page-panel-feature-empty";
 export * from "./page-panel-frame";
 export * from "./page-panel-header";
 export * from "./page-panel-loading";
@@ -30,6 +32,7 @@ export const PagePanel = Object.assign(PagePanelRoot, {
   Notice: PanelNotice,
   SummaryCard,
   Empty: PageEmptyState,
+  FeatureEmpty: PagePanelFeatureEmpty,
   Loading: PageLoadingState,
   ActionRail: PageActionRail,
   Toolbar: PagePanelToolbar,

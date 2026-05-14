@@ -1,0 +1,78 @@
+#!/usr/bin/python3 -I
+
+import logging
+import os
+from pathlib import Path
+import sys
+
+import apt.cache
+
+import additional_software
+
+"""Command to handle Dpkg::Pre-Install-Pkgs."""
+
+
+def main():
+    # Exit with success if running inside live-build.
+    if "SOURCE_DATE_EPOCH" in os.environ:
+        sys.exit(0)
+
+    additional_software.set_up_logging(log_to_journal=True)
+    logging.info("Saving package changes")
+
+    apt_cache = apt.cache.Cache()
+
+    installed_packages = []
+    removed_packages = []
+
+    line = sys.stdin.readline()
+    if not line.startswith("VERSION 3"):
+        raise additional_software.ASPDataError(f"Expected APT data version 3, got: '{line}'")
+    line = sys.stdin.readline()
+    # Ignore configuration space, which ends with an empty line
+    while line != "\n":
+        line = sys.stdin.readline()
+    # Package action lines
+    for line in sys.stdin:
+        # Package action lines consist of five fields in Version 2: package
+        # name (without architecture qualification even if foreign), old
+        # version, direction of version change (< for upgrades, > for
+        # downgrades, = for no change), new version, action. The version
+        # fields are "-" for no version at all (for example when installing
+        # a package for the first time; no version is treated as earlier
+        # than any real version, so that is an upgrade, indicated as - <
+        # 1.23.4). The action field is "**CONFIGURE**" if the package is
+        # being configured, "**REMOVE**" if it is being removed, or the
+        # filename of a .deb file if it is being unpacked.
+        #
+        # In Version 3 after each version field follows the architecture of
+        # this version, which is "-" if there is no version, and a field
+        # showing the MultiArch type "same", "foreign", "allowed" or "none".
+        # Note that "none" is an incorrect typename which is just kept to
+        # remain compatible, it should be read as "no" and users are
+        # encouraged to support both.
+        #
+        # Example:
+        #
+        # colordif - - none < 1.0.16-1 all none **CONFIGURE**
+        package_name, old_version, old_arch, old_multiarch, direction, \
+                new_version, new_arch, new_multiarch, action = line.split()
+        if action.endswith(".deb"):
+            # Filter packages that will only be upgraded
+            if not apt_cache[package_name].is_installed:
+                installed_packages.append(package_name)
+        elif action.endswith("**REMOVE**"):
+            removed_packages.append(package_name)
+
+    packages_state_dir = Path(additional_software.PACKAGES_STATE_DIR)
+    packages_state_dir.mkdir(mode=0o0600, parents=True, exist_ok=True)
+
+    installed_packages_file = Path(additional_software.INSTALLED_PACKAGES_FILE)
+    installed_packages_file.write_text("\n".join(installed_packages))
+
+    removed_packages_file = Path(additional_software.REMOVED_PACKAGES_FILE)
+    removed_packages_file.write_text("\n".join(removed_packages))
+
+
+if __name__ == "__main__":
+    main()

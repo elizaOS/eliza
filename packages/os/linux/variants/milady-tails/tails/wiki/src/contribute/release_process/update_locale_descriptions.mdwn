@@ -1,0 +1,98 @@
+[[!meta title="Update the locale descriptions file"]]
+
+[[!toc levels=2]]
+
+
+Context
+============
+
+For Tails to be correctly localized, we need to have a list of valid languages.
+
+How to fix a FTBFS
+==========================
+
+If you are reading this, it's likely you just met a FTBFS. Ouch!
+
+If your build logs include a line that starts with `The following supported browser locales lack descriptions in`, then this section is for you, so you can read on. Otherwise, you hit a different kind of bug, that we still haven't documented how to fix.
+
+First thing: jump to the ["How to add new locales"](#add-new) section, do it all, build again. If Tails still
+FTBFS, go on with this.
+
+In the logs, look for `The following supported browser locales lack descriptions in` line.
+The last two characters in that line will tell you *which* is the missing language.
+
+Now, we must determine what *territories* are relevant for that language:
+see [How to manually associate a territory to a language](#get-territory).
+
+Add it to `po/po-to-mozilla.toml`, in the `extra_languages` list (which itself is in the `[extra]` section).
+
+Finally, run
+
+    ./bin/locale-descriptions generate > config/chroot_local-includes/usr/share/tails/browser-localization/descriptions
+
+
+
+<a id="add-new"></a>
+How to add new locales
+============================
+
+Our goal here is to add more locales to the `[map]` section of `po/po-to-mozilla.toml`.
+
+Running this will provide you with suggestions:
+
+    ./bin/locale-descriptions suggest
+
+The first part of the output gives you suggestions. For each language, a list of possible locales is shown.
+Pick the ones that you consider more fid, using the methods and principles from [How to manually associate a territory to a language](#get-territory).
+
+The second part of the output is introduced by `## You can add the following block as-is, but please verify it first!`.
+
+As it says, you need to verify. Hopefully, copy-pasting will be enough.
+
+Finally, run
+
+    ./bin/locale-descriptions generate > config/chroot_local-includes/usr/share/tails/browser-localization/descriptions
+
+<a id="get-territory">
+How to manually associate a territory to a language
+====================================================
+
+Given a language, our goal is to decide which territories it needs to be associated with.
+
+<a id="no-underscore">
+If the language does not include any underscore or hyphen
+---------------------------------------------------------
+
+
+You look at [wikipedia's list of iso-639-1 codes](https://en.wikipedia.org/wiki/List_of_ISO_639-1_codes), find
+the corresponding line.
+Then, you visit the wikipedia page about that language, and try to understand where it is most commonly
+spoken.
+
+### If there is a single prevalent territory
+
+This is, for example, the case of `ki` (Kikuyu) or `it` (Italian).
+
+Look for the 2-letter code of the territory in [wikipedia's list of iso-3166-1
+codes](https://en.wikipedia.org/wiki/ISO_3166-1#Current_codes)
+
+Result: `${mozLocale}:${territory}` (ie: `it:IT`, or `ki:KE`)
+
+### If it's spoken in multiple territories
+
+This is, for example, the case of `es` (Spanish).
+How do we go here?
+We do pick all territories which are "important enough". This definition is very vague, not purely technical
+(political in fact). Those principles can help:
+
+ - we at least include the single territory which includes the most native speakers (ie: Mexico for Spanish,
+   Egypt for Arabic)
+
+ - we at least include the territory which is more commonly associated with the language, if there is one (ie:
+   Spain for Spanish)
+
+<a id="with-underscore">
+If the language includes an underscore or an hyphen
+---------------------------------------------------
+
+For example, `pt_BR`. In this case, the territory is the part after the hyphen: `BR`.

@@ -7,8 +7,10 @@ Important caveats:
 
 - Text, TTS, ASR, and DFlash payloads are GGUF artifacts in the final plan.
 - VAD is a native GGML artifact at `vad/silero-vad-v5.1.2.ggml.bin`. It is not GGUF. Legacy bundles may additionally carry the ONNX fallback `vad/silero-vad-int8.onnx`, but the fallback is not the release readiness path.
+- Canonical small text tiers are Qwen3.5 0.8B (`0_8b`) and Qwen3.5 2B (`2b`). ASR and embedding are real Qwen3 upstream exceptions: Qwen3-ASR and Qwen3-Embedding artifacts must stay Qwen3, not be renamed to Qwen3.5.
 - v1 release shape (`releaseState=base-v1`): the upstream BASE models — GGUF-converted via the elizaOS/llama.cpp fork and fully Eliza-optimized (every quant/kernel trick in `packages/inference/AGENTS.md` §3) — but NOT fine-tuned. `evidence/release.json` records `finetuned=false` and a `sourceModels` map (which upstream HF repo each component comes from). For `base-v1`, `final.weights` need not be `true` (the bytes are the upstream base GGUFs by design) — but `final.{hashes,evals,licenses,kernelDispatchReports,platformEvidence,sizeFirstRepoIds}` must all be `true`, and the runnable-on-base evals (text perplexity vs the upstream GGUF, voice RTF, ASR WER, VAD latency/boundary/endpoint/false-barge-in, dflash acceptance, e2e loop, 30-turn) must pass — but NOT a fine-tuned-text-quality eval. Fine-tuning ships in v2 (`releaseState=finetuned-v2`).
 - Release evidence must use real final hashes, evals, licenses, platform reports, and Hugging Face upload records — and real GGUF/quant-sidecar bytes from a real fork build. Fabricated hashes / not-yet-built tiers are blockers.
+- No-larp release readiness requires canonical local bundle names, real `checksums/SHA256SUMS`, real license evidence, and `hf.status=uploaded` with `hf.uploadEvidence` commit/url/uploaded paths. `pending-upload` or blocked local evidence is not release-ready.
 
 ## 0_8b
 
@@ -93,6 +95,10 @@ Missing files/evidence:
 - `tts/omnivoice-tokenizer-Q4_K_M.gguf`
 - `vad/silero-vad-v5.1.2.ggml.bin`
 - `vision/mmproj-0_8b.gguf`
+
+Publish-blocking status:
+- `bundle`: missing canonical local bundle `eliza-1-0_8b.bundle` or `eliza-1-0_8b`; final payloads, checksums, license evidence, and HF upload evidence cannot be verified
+- `evidence/release.json`: missing; release state, final flags, source models, and HF upload evidence are not proven
 
 ## 2b
 
@@ -179,6 +185,10 @@ Missing files/evidence:
 - `tts/omnivoice-tokenizer-Q4_K_M.gguf`
 - `vad/silero-vad-v5.1.2.ggml.bin`
 - `vision/mmproj-2b.gguf`
+
+Publish-blocking status:
+- `bundle`: missing canonical local bundle `eliza-1-2b.bundle` or `eliza-1-2b`; final payloads, checksums, license evidence, and HF upload evidence cannot be verified
+- `evidence/release.json`: missing; release state, final flags, source models, and HF upload evidence are not proven
 
 ## 4b
 
@@ -275,6 +285,10 @@ Missing files/evidence:
 - `vad/silero-vad-v5.1.2.ggml.bin`
 - `vision/mmproj-4b.gguf`
 
+Publish-blocking status:
+- `bundle`: missing canonical local bundle `eliza-1-4b.bundle` or `eliza-1-4b`; final payloads, checksums, license evidence, and HF upload evidence cannot be verified
+- `evidence/release.json`: missing; release state, final flags, source models, and HF upload evidence are not proven
+
 ## 9b
 
 - Text quant: `Q4_K_M`
@@ -330,8 +344,11 @@ Publish-blocking status:
 - `evidence/release.json`: final.kernelDispatchReports is not true
 - `evidence/release.json`: final.platformEvidence is not true
 - `evidence/release.json`: final.sizeFirstRepoIds is not true
+- `evidence/release.json`: hf.status is not `uploaded`; final Hugging Face payload upload is not proven
+- `evidence/release.json`: hf.uploadEvidence missing; final Hugging Face commit/url/uploaded paths are not proven
 - `evidence/release.json`: publishEligible is not true
 - `evidence/release.json`: releaseState is `local-standin`, not one of ['base-v1', 'upload-candidate', 'final']
+- `evidence/release.json`: weights missing final payload path(s): ['vad/silero-vad-v5.1.2.ggml.bin']
 
 ## 27b
 
@@ -388,8 +405,11 @@ Publish-blocking status:
 - `evidence/release.json`: final.kernelDispatchReports is not true
 - `evidence/release.json`: final.platformEvidence is not true
 - `evidence/release.json`: final.sizeFirstRepoIds is not true
+- `evidence/release.json`: hf.status is not `uploaded`; final Hugging Face payload upload is not proven
+- `evidence/release.json`: hf.uploadEvidence missing; final Hugging Face commit/url/uploaded paths are not proven
 - `evidence/release.json`: publishEligible is not true
 - `evidence/release.json`: releaseState is `local-standin`, not one of ['base-v1', 'upload-candidate', 'final']
+- `evidence/release.json`: weights missing final payload path(s): ['vad/silero-vad-v5.1.2.ggml.bin']
 
 ## 27b-256k
 
@@ -445,8 +465,11 @@ Publish-blocking status:
 - `evidence/release.json`: final.kernelDispatchReports is not true
 - `evidence/release.json`: final.platformEvidence is not true
 - `evidence/release.json`: final.sizeFirstRepoIds is not true
+- `evidence/release.json`: hf.status is not `uploaded`; final Hugging Face payload upload is not proven
+- `evidence/release.json`: hf.uploadEvidence missing; final Hugging Face commit/url/uploaded paths are not proven
 - `evidence/release.json`: publishEligible is not true
 - `evidence/release.json`: releaseState is `local-standin`, not one of ['base-v1', 'upload-candidate', 'final']
+- `evidence/release.json`: weights missing final payload path(s): ['vad/silero-vad-v5.1.2.ggml.bin']
 
 ## 27b-1m
 
@@ -514,3 +537,7 @@ Missing files/evidence:
 - `tts/omnivoice-tokenizer-Q8_0.gguf`
 - `vad/silero-vad-v5.1.2.ggml.bin`
 - `vision/mmproj-27b-1m.gguf`
+
+Publish-blocking status:
+- `bundle`: missing canonical local bundle `eliza-1-27b-1m.bundle` or `eliza-1-27b-1m`; final payloads, checksums, license evidence, and HF upload evidence cannot be verified
+- `evidence/release.json`: missing; release state, final flags, source models, and HF upload evidence are not proven

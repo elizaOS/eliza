@@ -1,0 +1,151 @@
+#!/bin/sh
+
+set -e
+set -u
+
+. gettext.sh
+TEXTDOMAIN="tails"
+export TEXTDOMAIN
+
+# Import localized_tails_doc_page().
+. /usr/local/lib/tails-shell-library/localization.sh
+
+# Import setup_chroot_for_browser() and configure_chroot_browser().
+. /usr/local/lib/tails-shell-library/chroot-browser.sh
+
+# Import unsafe_browser_is_enabled and persistence_is_enabled
+. /usr/local/lib/tails-shell-library/tails-greeter.sh
+
+# Import nm_is_connected
+. /usr/local/lib/tails-shell-library/network.sh
+
+_zenity() {
+    AT_SPI_BUS_ADDRESS="$(
+        /usr/local/lib/run-with-user-env \
+            dbus-send --session --print-reply=literal \
+            --dest=org.a11y.Bus /org/a11y/bus org.a11y.Bus.GetAddress |
+            sed 's/^ *//'
+    )"
+    sudo -u "${SUDO_USER}" \
+        env AT_SPI_BUS_ADDRESS="${AT_SPI_BUS_ADDRESS}" \
+        /usr/bin/zenity "${@}"
+}
+
+error() {
+    local cli_text dialog_text
+    cli_text="${CMD}: $(gettext "error:") ${*}"
+    dialog_text="<b><big>$(gettext "Error")</big></b>
+
+${*}"
+    echo "${cli_text}" >&2
+    _zenity --error --title "" --text "${dialog_text}"
+    exit 1
+}
+
+exit_because_disabled() {
+    local msg restart cancel confirm_msg confirm_button
+    msg="$(gettext "The Unsafe Browser was disabled in the Welcome Screen.\n\n")"
+    # People with a Persistent Storage might have the Unsafe Browser disabled by default
+    if persistence_is_enabled; then
+        msg="${msg}""$(gettext "To use the Unsafe Browser, restart Tails and make sure that the Unsafe Browser is enabled in the additional settings of the Welcome Screen.")"
+    else
+        msg="${msg}""$(gettext "To use the Unsafe Browser, restart Tails.")"
+    fi
+
+    restart="$(gettext "_Restart")"
+    cancel="$(gettext "_Cancel")"
+    confirm_msg="$(gettext "Do you really want to restart Tails now?\n\nAll your current work will be lost.")"
+    confirm_button="$(gettext "Restart Now")"
+    if _zenity --question --title "" --text "${msg}" --icon-name="dialog-error" \
+        --ok-label "${restart}" --cancel-label "${cancel}" --default-cancel &&
+        _zenity --question --width=300 --title "" --text "${confirm_msg}" \
+            --ok-label "${confirm_button}" --cancel-label "${cancel}" --default-cancel; then
+        /sbin/reboot || error "$(gettext "Failed to restart the system.")"
+    fi
+
+    exit 1
+}
+
+show_shutdown_notification() {
+    local title body
+    title="$(gettext "Shutting down the Unsafe Browser...")"
+    body="$(gettext "This may take a while, and you may not restart the Unsafe Browser until it is properly shut down.")"
+    tails-notify-user "${title}" "${body}" 10000
+}
+
+# Main script:
+
+CMD="$(basename "${0}")"
+LOCK="/run/lock/${CMD}"
+CONF_DIR="/var/lib/unsafe-browser"
+COW="${CONF_DIR}/cow"
+CHROOT="${CONF_DIR}/chroot"
+BROWSER_NAME="unsafe-browser"
+BROWSER_USER="amnesia"
+HUMAN_READABLE_NAME="$(gettext "Unsafe Browser")"
+if [ -f /run/tor-has-bootstrapped/done ]; then
+    WARNING_PAGE='/usr/share/doc/tails/website/misc/unsafe_browser_warning'
+else
+    WARNING_PAGE='/usr/share/doc/tails/website/misc/captive_portal_warning'
+fi
+HOME_PAGE="$(localized_tails_doc_page "${WARNING_PAGE}")"
+
+# Check if the Unsafe Browser was disabled in the startup options
+unsafe_browser_is_enabled || exit_because_disabled
+
+# Prevent multiple instances of the script. Note that this is not
+# vulnerable to symlink attacks because fs.protected_symlinks is set.
+exec 9>"${LOCK}"
+if ! flock -x -n 9; then
+    error "$(gettext "Another Unsafe Browser is currently running, or being cleaned up. Please retry in a while.")"
+fi
+
+# Clean up the chroot on exit
+# shellcheck disable=SC2064
+trap "try_cleanup_browser_chroot \"${CHROOT}\" \"${COW}\"" INT EXIT
+
+echo "* Setting up chroot"
+setup_chroot_for_browser "${CHROOT}" "${COW}" "${BROWSER_USER}"
+
+echo "* Configuring chroot"
+configure_chroot_browser "${CHROOT}" "${BROWSER_USER}" "${BROWSER_NAME}" \
+    "${HUMAN_READABLE_NAME}" "${HOME_PAGE}" \
+    /usr/share/tails/chroot-browsers/unsafe-browser/extensions/*.xpi
+
+if ! nm_is_connected; then
+    error "$(gettext "You are not connected to a local network yet.\n\nTo be able to start the Unsafe Browser, you first need to connect to a Wi-Fi, wired, or mobile network.")"
+fi
+
+# Disable some Firefox "phone home" features
+# (https://bugzilla.mozilla.org/show_bug.cgi?id=1598562)
+echo '127.0.0.42 firefox.settings.services.mozilla.com' \
+    >>"${CHROOT}"/etc/hosts
+
+echo "* Starting Unsafe Browser"
+# Do not localize $WM_CLASS: it becomes WM_CLASS and then GNOME
+# displays the localized app name found in the matching .desktop file;
+# if WM_CLASS were localized then not only string encoding problems
+# would happen, but GNOME would pick the wrong icon. It is also passed
+# as the value for the --name Firefox option.
+WM_CLASS='Unsafe Browser'
+PROFILE="$(browser_profile_dir "${BROWSER_NAME}" "${BROWSER_USER}")"
+CHROOT_USER_UID="$(id --user "${BROWSER_USER}")"
+
+# We use brwap here to make the /var/lib/unsafe-browser/chroot directory
+# accessible at /chroot to make it accessible to amnesia.
+# The former is not accessible by amnesia because it's below
+# /var/lib/unsafe-browser which has permissions 0700. That's to avoid
+# that amnesia outside of the Unsafe Browser sandbox can write to it.
+# Refs: #19585
+bwrap --bind / / --bind "$CHROOT" /chroot --proc /proc --dev /dev \
+    /usr/local/lib/unsafe-browser \
+    --chroot "/chroot" \
+    --profile "$PROFILE" \
+    --chroot-user-uid "$CHROOT_USER_UID" \
+    --wm-class "$WM_CLASS" ||
+    error "$(gettext "Failed to run browser.")"
+
+echo "* Exiting the Unsafe Browser"
+show_shutdown_notification
+
+exit 0

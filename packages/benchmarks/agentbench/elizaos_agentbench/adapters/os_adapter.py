@@ -103,6 +103,13 @@ class OSEnvironmentAdapter(EnvironmentAdapter):
         self._command_history: list[str] = []
         self._working_directory = "/"
 
+    def _initialize_local_sandbox(self) -> None:
+        """Create a local temp sandbox when Docker is unavailable."""
+        self._container_id = None
+        if self._temp_dir is None:
+            self._temp_dir = tempfile.mkdtemp(prefix="agentbench_os_")
+        self._working_directory = self._temp_dir
+
     async def initialize(self) -> None:
         """Initialize Docker container for sandboxed execution."""
         if self._initialized:
@@ -120,7 +127,12 @@ class OSEnvironmentAdapter(EnvironmentAdapter):
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
                 )
-                await pull_proc.communicate()
+                _, pull_stderr = await pull_proc.communicate()
+                if pull_proc.returncode != 0:
+                    raise RuntimeError(
+                        f"docker pull failed with exit code {pull_proc.returncode}: "
+                        f"{pull_stderr.decode(errors='replace').strip()}"
+                    )
 
                 # Create container
                 create_proc = await asyncio.create_subprocess_exec(
@@ -134,8 +146,15 @@ class OSEnvironmentAdapter(EnvironmentAdapter):
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
                 )
-                stdout, _ = await create_proc.communicate()
+                stdout, create_stderr = await create_proc.communicate()
+                if create_proc.returncode != 0:
+                    raise RuntimeError(
+                        f"docker create failed with exit code {create_proc.returncode}: "
+                        f"{create_stderr.decode(errors='replace').strip()}"
+                    )
                 self._container_id = stdout.decode().strip()
+                if not self._container_id:
+                    raise RuntimeError("docker create returned an empty container id")
 
                 # Start container
                 start_proc = await asyncio.create_subprocess_exec(
@@ -145,17 +164,21 @@ class OSEnvironmentAdapter(EnvironmentAdapter):
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
                 )
-                await start_proc.communicate()
+                _, start_stderr = await start_proc.communicate()
+                if start_proc.returncode != 0:
+                    raise RuntimeError(
+                        f"docker start failed with exit code {start_proc.returncode}: "
+                        f"{start_stderr.decode(errors='replace').strip()}"
+                    )
 
                 logger.info(f"[OS] Docker container started: {self._container_id[:12]}")
 
             except Exception as e:
                 logger.warning(f"[OS] Docker initialization failed, using local execution: {e}")
-                self._container_id = None
+                self._initialize_local_sandbox()
         else:
             # Create temp directory for local sandboxed execution
-            self._temp_dir = tempfile.mkdtemp(prefix="agentbench_os_")
-            self._working_directory = self._temp_dir
+            self._initialize_local_sandbox()
 
         self._initialized = True
         logger.info("[OS] OS environment adapter initialized")

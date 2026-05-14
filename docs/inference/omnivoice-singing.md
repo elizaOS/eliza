@@ -204,3 +204,85 @@ echo "[singing] [sad] Quiet rain falls on the stone." \
 A successful run produces a 24 kHz mono WAV. If the binary errors with
 "unknown tensor", the GGUF schema upstream changed — re-run the
 conversion with the latest `omnivoice.cpp` checkout.
+
+## CI
+
+A GitHub Actions workflow runs the conversion pipeline above on a
+hosted runner, so contributors do not need a local Python + cmake
+toolchain to mint a fresh GGUF. The workflow lives at
+[`.github/workflows/convert-omnivoice-singing.yml`](../../.github/workflows/convert-omnivoice-singing.yml).
+
+### Trigger
+
+The workflow is `workflow_dispatch` only — it downloads ~3 GB of
+safetensors and compiles `omnivoice.cpp` quantize, so it is never run
+automatically on push.
+
+```bash
+# Default: Q8_0 quant, artifact only, no HF upload.
+gh workflow run convert-omnivoice-singing.yml \
+  -f quantize=Q8_0 \
+  -f upload_to_hf=false
+
+# Mint a Q4_K_M and push it to the elizaOS mirror.
+gh workflow run convert-omnivoice-singing.yml \
+  -f quantize=Q4_K_M \
+  -f upload_to_hf=true \
+  -f target_hf_repo=elizaOS/OmniVoice-Singing-GGUF
+```
+
+Inputs:
+
+| Input | Default | Notes |
+| --- | --- | --- |
+| `quantize` | `Q8_0` | `none` / `F16` / `BF16` / `Q8_0` / `Q4_K_M`. `none` keeps the F32 base. |
+| `upload_to_hf` | `false` | When `true`, the converted GGUFs are pushed to `target_hf_repo`. Requires `HF_WRITE_TOKEN`. |
+| `target_hf_repo` | `elizaOS/OmniVoice-Singing-GGUF` | The HF mirror repo to push to. |
+
+### Required secrets
+
+Set these under **Settings -> Secrets and variables -> Actions** on the
+repo (or at the organization scope, with this repo in the allow-list):
+
+| Secret | Scope | Purpose |
+| --- | --- | --- |
+| `HUGGINGFACE_HUB_TOKEN` | repo or org | Authenticates the `hf download` step. Optional for the public `ModelsLab/omnivoice-singing` repo, but raises the per-IP rate limit and is the only way to download if the upstream ever gates the model. |
+| `HF_WRITE_TOKEN` | repo or org | Required **only** when `upload_to_hf=true`. Must be a HF user/org access token with **write** scope to `target_hf_repo`. The upload step fails fast if this secret is missing while `upload_to_hf=true`. |
+
+Without those secrets the workflow still parses + dispatches; it will
+fail at the download or upload step with an actionable error message.
+
+### Runtime + cost
+
+- **Runner:** `ubuntu-22.04` (GitHub-hosted, 4 vCPU / 16 GB RAM / ~30 GB
+  free disk after checkout). A disk pre-check fails fast under 25 GB.
+- **Wall-clock:** ~15-30 minutes end-to-end.
+  - HF download: 2-5 min depending on CDN.
+  - `convert.py` (safetensors -> F32 GGUF pair): ~3-5 min on CPU.
+  - `omnivoice.cpp` quantize build: ~5-10 min (skipped when `quantize=none`).
+  - Quantize pass: ~30 s per quant.
+  - Optional HF upload: 1-3 min.
+- **Cost:** Free for public repos. On a paid org plan a single run costs
+  roughly $0.05-$0.10 of `ubuntu-22.04` minutes (8 cents/min Linux rate
+  at time of writing).
+
+### Where the artifact lands
+
+Every successful run uploads the converted files as a workflow artifact
+named **`omnivoice-singing-gguf-<quantize>`** (e.g.
+`omnivoice-singing-gguf-Q8_0`). The artifact contains:
+
+```
+omnivoice-singing-base-F32.gguf            (always)
+omnivoice-singing-base-<QUANT>.gguf        (when quantize != none)
+omnivoice-singing-tokenizer-F32.gguf       (always)
+manifest.json                              sha256 + bytes for each file
+```
+
+Retention is 14 days. Download via the run page in the Actions UI or
+with `gh run download <run-id> -n omnivoice-singing-gguf-<quantize>`.
+
+When `upload_to_hf=true` the same files are also pushed to the
+configured HF mirror (default `elizaOS/OmniVoice-Singing-GGUF`) with a
+commit message referencing the GitHub run id, so the mirror provenance
+chain is auditable from either side.

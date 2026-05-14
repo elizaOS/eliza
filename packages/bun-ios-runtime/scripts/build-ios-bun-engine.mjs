@@ -28,14 +28,18 @@ const webKitIosPatch = path.join(
   "webkit-ios-simulator-nojit.patch",
 );
 const frameworkName = "ElizaBunEngine";
+const expectedEngineAbiVersion = "3";
 const requiredSymbols = [
   "_eliza_bun_engine_abi_version",
   "_eliza_bun_engine_last_error",
+  "_eliza_bun_engine_set_host_callback",
   "_eliza_bun_engine_start",
   "_eliza_bun_engine_stop",
+  "_eliza_bun_engine_is_running",
   "_eliza_bun_engine_call",
   "_eliza_bun_engine_free",
 ];
+const allowedExportedSymbols = new Set(requiredSymbols);
 
 function argValue(name, fallback = null) {
   const prefix = `${name}=`;
@@ -180,6 +184,35 @@ function validateEngineBinary(binary) {
   if (missing.length > 0) {
     fail(`${binary} is missing required ABI symbols: ${missing.join(", ")}`);
   }
+  const exportedSymbols = output
+    .split(/\r?\n/)
+    .map((line) => line.trim().split(/\s+/).at(-1))
+    .filter((symbol) => symbol?.startsWith("_"));
+  const unexpected = exportedSymbols.filter(
+    (symbol) => !allowedExportedSymbols.has(symbol),
+  );
+  if (unexpected.length > 0) {
+    fail(
+      `${binary} exports non-ABI symbols: ${unexpected
+        .slice(0, 24)
+        .join(", ")}${unexpected.length > 24 ? ", ..." : ""}`,
+    );
+  }
+}
+
+function validateEngineFrameworkMetadata(frameworkDir) {
+  const infoPlist = path.join(frameworkDir, "Info.plist");
+  if (!fs.existsSync(infoPlist)) {
+    fail(`${frameworkDir} is missing Info.plist`);
+  }
+  const plist = parsePlistJson(infoPlist);
+  if (String(plist.ElizaBunEngineABIVersion ?? "") !== expectedEngineAbiVersion) {
+    fail(
+      `${infoPlist} has ElizaBunEngineABIVersion=${String(
+        plist.ElizaBunEngineABIVersion,
+      )}; expected ${expectedEngineAbiVersion}`,
+    );
+  }
 }
 
 function parsePlistJson(plistPath) {
@@ -242,12 +275,13 @@ function resolveXcframeworkBinary(root, targetInfo = info) {
     libraryPath,
     frameworkName,
   );
+  const frameworkDir = path.dirname(binary);
   if (!fs.existsSync(binary)) {
     fail(
       `${root} selected ${library.LibraryIdentifier}, but ${binary} does not exist`,
     );
   }
-  return { binary, libraryIdentifier: library.LibraryIdentifier };
+  return { binary, frameworkDir, libraryIdentifier: library.LibraryIdentifier };
 }
 
 function findFrameworkBinaries(root) {
@@ -273,6 +307,7 @@ function findFrameworkBinaries(root) {
 
 function validateXcframework(root) {
   const selected = resolveXcframeworkBinary(root, info);
+  validateEngineFrameworkMetadata(selected.frameworkDir);
   validateEngineBinary(selected.binary);
   const binaries = findFrameworkBinaries(root);
   if (binaries.length === 0) {
@@ -280,7 +315,10 @@ function validateXcframework(root) {
       `${root} does not contain ${frameworkName}.framework/${frameworkName}`,
     );
   }
-  for (const binary of binaries) validateEngineBinary(binary);
+  for (const binary of binaries) {
+    validateEngineFrameworkMetadata(path.dirname(binary));
+    validateEngineBinary(binary);
+  }
   console.log(
     `[bun-ios-runtime] Validated ${selected.libraryIdentifier} ABI symbols`,
   );
@@ -444,6 +482,7 @@ function stageWebKitIfRequested(info) {
   const headerRoots = [
     path.join(src, "JavaScriptCore", "Headers"),
     path.join(src, "JavaScriptCore", "PrivateHeaders"),
+    path.join(src, "JavaScriptCore", "DerivedSources", "inspector"),
     path.join(src, "WTF", "Headers"),
     path.join(src, "bmalloc", "Headers"),
     path.join(src, "ICU", "Headers"),
@@ -470,6 +509,17 @@ function stageWebKitIfRequested(info) {
       fs.cpSync(headerRoot, path.join(staged, "include"), { recursive: true });
     }
   }
+  const inspectorDerivedHeaders = path.join(
+    src,
+    "JavaScriptCore",
+    "DerivedSources",
+    "inspector",
+  );
+  if (fs.existsSync(inspectorDerivedHeaders)) {
+    fs.cpSync(inspectorDerivedHeaders, path.join(staged, "include", "JavaScriptCore"), {
+      recursive: true,
+    });
+  }
   const cmakeConfig = path.join(src, "cmakeconfig.h");
   if (fs.existsSync(cmakeConfig)) {
     fs.copyFileSync(cmakeConfig, path.join(staged, "include", "cmakeconfig.h"));
@@ -480,27 +530,91 @@ function stageWebKitIfRequested(info) {
 }
 
 function validateStagedWebKit(webkitPath) {
+  const requiredArchives = [
+    {
+      name: "JavaScriptCore",
+      path: path.join(webkitPath, "lib", "libJavaScriptCore.a"),
+      symbols: ["_JSEvaluateScript", "__ZN3JSC14JSGlobalObject14finishCreationERNS_2VME"],
+    },
+    {
+      name: "WTF",
+      path: path.join(webkitPath, "lib", "libWTF.a"),
+      symbols: ["__ZN3WTF10initializeEv"],
+    },
+    {
+      name: "bmalloc",
+      path: path.join(webkitPath, "lib", "libbmalloc.a"),
+      symbols: ["_bmalloc_allocate"],
+    },
+  ];
+  for (const archive of requiredArchives) {
+    if (!fs.existsSync(archive.path)) {
+      fail(`${webkitPath} is missing required static archive ${archive.path}`);
+    }
+    const archs = runCapture("lipo", ["-archs", archive.path]).stdout
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean);
+    if (!archs.includes("arm64")) {
+      fail(`${archive.path} does not contain an arm64 slice; archs=${archs.join(",") || "none"}`);
+    }
+    const symbols = runCapture("nm", ["-gU", archive.path], {
+      maxBuffer: 256 * 1024 * 1024,
+    }).stdout;
+    const missingSymbols = archive.symbols.filter(
+      (symbol) => !symbols.includes(symbol),
+    );
+    if (missingSymbols.length > 0) {
+      fail(
+        `${archive.path} is missing required ${archive.name} symbols: ${missingSymbols.join(", ")}`,
+      );
+    }
+  }
+
   const candidates = [
     path.join(webkitPath, "include", "cmakeconfig.h"),
     path.join(webkitPath, "cmakeconfig.h"),
     path.join(webkitPath, "CMakeCache.txt"),
   ].filter((file) => fs.existsSync(file));
+  if (candidates.length === 0) {
+    fail(
+      `${webkitPath} is missing cmakeconfig.h or CMakeCache.txt; cannot prove the JSC iOS build flags`,
+    );
+  }
+  const observedFlags = new Map();
   for (const file of candidates) {
     const contents = fs.readFileSync(file, "utf8");
-    if (
-      /#\s*define\s+ENABLE_WEBASSEMBLY\s+0\b/.test(contents) ||
-      /^ENABLE_WEBASSEMBLY(?::BOOL)?=(?:0|OFF|FALSE)$/im.test(contents)
-    ) {
-      fail(
-        `${file} has ENABLE_WEBASSEMBLY=0/OFF; iOS Bun JSC must be staged with WebAssembly enabled`,
+    for (const flag of [
+      "ENABLE_C_LOOP",
+      "ENABLE_JIT",
+      "ENABLE_STATIC_JSC",
+      "ENABLE_WEBASSEMBLY",
+      "USE_BUN_JSC_ADDITIONS",
+    ]) {
+      const define = contents.match(
+        new RegExp(`#\\s*define\\s+${flag}\\s+(\\d+)\\b`),
       );
+      const cache = contents.match(new RegExp(`^${flag}(?::\\w+)?=([^\\r\\n]+)$`, "im"));
+      const raw = define?.[1] ?? cache?.[1]?.trim();
+      if (raw == null) continue;
+      observedFlags.set(flag, /^(1|ON|TRUE|YES)$/i.test(raw));
     }
-    if (
-      /#\s*define\s+ENABLE_C_LOOP\s+1\b/.test(contents) ||
-      /^ENABLE_C_LOOP(?::BOOL)?=(?:1|ON|TRUE)$/im.test(contents)
-    ) {
+  }
+  const requiredFlags = [
+    ["ENABLE_C_LOOP", false],
+    ["ENABLE_JIT", false],
+    ["ENABLE_STATIC_JSC", true],
+    ["ENABLE_WEBASSEMBLY", true],
+    ["USE_BUN_JSC_ADDITIONS", true],
+  ];
+  for (const [flag, expected] of requiredFlags) {
+    if (!observedFlags.has(flag)) {
+      fail(`${webkitPath} does not expose ${flag}; cannot validate the staged iOS JSC build`);
+    }
+    const actual = observedFlags.get(flag);
+    if (actual !== expected) {
       fail(
-        `${file} has ENABLE_C_LOOP=1/ON; iOS Bun JSC must be staged with ENABLE_C_LOOP=OFF`,
+        `${webkitPath} has ${flag}=${actual ? "ON" : "OFF"}; expected ${expected ? "ON" : "OFF"}`,
       );
     }
   }
@@ -593,12 +707,17 @@ function collectStaticInputs(buildDir, webkitPath) {
       "release",
       "liblolhtml.a",
     ),
-    path.join(webkitPath, "lib", "libJavaScriptCore.a"),
-    path.join(webkitPath, "lib", "libWTF.a"),
-    path.join(webkitPath, "lib", "libbmalloc.a"),
   ];
   for (const input of optionalInputs) {
     if (fs.existsSync(input)) inputs.push({ kind: "normal", path: input });
+  }
+  for (const input of [
+    path.join(webkitPath, "lib", "libJavaScriptCore.a"),
+    path.join(webkitPath, "lib", "libWTF.a"),
+    path.join(webkitPath, "lib", "libbmalloc.a"),
+  ]) {
+    if (!fs.existsSync(input)) fail(`missing required static WebKit input ${input}`);
+    inputs.push({ kind: "normal", path: input });
   }
   return inputs;
 }
@@ -641,6 +760,7 @@ function writeFrameworkMetadata(frameworkDir) {
       "  <key>CFBundlePackageType</key><string>FMWK</string>",
       "  <key>CFBundleShortVersionString</key><string>0.0.0</string>",
       "  <key>CFBundleVersion</key><string>0</string>",
+      `  <key>ElizaBunEngineABIVersion</key><string>${expectedEngineAbiVersion}</string>`,
       "  <key>MinimumOSVersion</key><string>16.0</string>",
       "</dict>",
       "</plist>",
@@ -663,6 +783,8 @@ function linkFramework({ buildDir, webkitPath, info }) {
   fs.rmSync(stageRoot, { recursive: true, force: true });
   fs.mkdirSync(frameworkDir, { recursive: true });
   writeFrameworkMetadata(frameworkDir);
+  const exportedSymbolsList = path.join(stageRoot, "exported-symbols.txt");
+  fs.writeFileSync(exportedSymbolsList, `${requiredSymbols.join("\n")}\n`);
 
   const sdkPath = runCapture("xcrun", [
     "--sdk",
@@ -686,6 +808,7 @@ function linkFramework({ buildDir, webkitPath, info }) {
     path.join(webkitPath, "include"),
     "-install_name",
     `@rpath/${frameworkName}.framework/${frameworkName}`,
+    `-Wl,-exported_symbols_list,${exportedSymbolsList}`,
     "-o",
     binary,
     shimSource,

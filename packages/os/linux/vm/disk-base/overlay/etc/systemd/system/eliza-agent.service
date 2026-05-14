@@ -1,0 +1,45 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 NubsCarson and contributors
+#
+# The Bun-hosted eliza-agent process, listening on 127.0.0.1:41337.
+# Decoupled from sway/elizad so it starts unconditionally on boot —
+# elizad's supervisor short-circuits when /api/status is already
+# responding. This keeps the agent alive across UI restarts and lets
+# the smoke harness drive it via curl independent of the chat UI.
+
+[Unit]
+Description=usbeliza eliza-agent (Bun)
+# live-config.service creates the `eliza` user on the live ISO at boot.
+# Without After=live-config.service we race it — User=eliza in this unit
+# resolves to "user not found" when the unit starts before live-config
+# finishes seeding /etc/passwd + /home/eliza.
+After=network-online.target ollama.service live-config.service
+Wants=ollama.service
+
+[Service]
+Type=simple
+User=eliza
+Group=eliza
+WorkingDirectory=/opt/usbeliza/agent
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+Environment=USBELIZA_AGENT_DIR=/opt/usbeliza/agent
+Environment=USBELIZA_CODEGEN_STUB=1
+Environment=USBELIZA_OLLAMA_URL=http://127.0.0.1:11434
+Environment=HOME=/home/eliza
+# Wait until the source tree exists AND the user is resolvable. On the
+# live ISO both happen at first-boot via live-config (the user) and
+# our chroot rsync (the source). On dev VM both are pre-staged by the
+# qcow2 build.
+ExecStartPre=/bin/sh -c 'until [ -d /opt/usbeliza/agent/src ] && id -u eliza >/dev/null 2>&1; do sleep 1; done'
+# bun caches under $HOME/.bun. live-config creates /home/eliza from
+# /etc/skel, but the cache dir won't exist until first user login.
+# Pre-create with the right ownership so `bun run` doesn't fail with EACCES.
+ExecStartPre=/bin/sh -c 'install -d -o eliza -g eliza -m 0755 /home/eliza/.bun /home/eliza/.cache'
+ExecStart=/usr/local/bin/bun run start
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

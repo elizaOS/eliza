@@ -1,0 +1,78 @@
+#columns {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-evenly;
+  gap: 20px;
+}
+
+#columns > div {
+  width: 290px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 1em;
+}
+
+#columns h3 {
+  height: 3em;
+}
+
+#columns > p {
+  display: none;
+}
+
+#columns img {
+  display: block;
+  margin: 0 auto 2em;
+}
+
+#columns button {
+  width: 100%;
+  background-image: url(../../lib/go-down.png) !important;
+  background-repeat: no-repeat !important;
+  background-position: right 8px center !important;
+  padding-right: 32px !important;
+  text-align: center;
+}
+
+/* You must always use this together with .button */
+#columns .button-revealed {
+  background: var(--medium-light-green) url(../../lib/go-up.png) no-repeat right 8px center !important;
+}
+
+#columns .button-revealed:hover {
+  background: var(--medium-dark-green) url(../../lib/go-up.png) no-repeat right 8px center !important;
+}
+
+#columns .button a {
+  color: black;
+  border-bottom: none !important;
+  cursor: pointer;
+}
+
+div.toggleable.warning {
+  display: block;
+  transition: max-height 1s ease-out;
+  overflow: hidden;
+  max-height: 0;
+}
+
+div.toggleable.warning.hidden {
+  display: none;
+}
+
+@media (min-width: 986px) {
+  #columns {
+    justify-content: space-between;
+  }
+}
+
+.standalone {
+  display: none;
+}
+
+.embedded {
+  display: block;
+  color: var(--medium-purple);
+  margin-top: 10px;
+}

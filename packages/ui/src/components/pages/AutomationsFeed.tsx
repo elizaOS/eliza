@@ -19,7 +19,6 @@
  * No backend changes are required.
  */
 
-import { Button, PagePanel, Spinner, StatusBadge } from "@elizaos/ui";
 import {
   Calendar,
   CheckCircle2,
@@ -45,6 +44,10 @@ import {
 } from "../../utils/automation-feed-filter";
 import { formatSchedule } from "../../utils/cron-format";
 import { decodeScheduleTags } from "../../utils/task-schedule";
+import { PagePanel } from "../composites/page-panel";
+import { Button } from "../ui/button";
+import { Spinner } from "../ui/spinner";
+import { StatusBadge } from "../ui/status-badge";
 import { AutomationsChatPane } from "./AutomationsChatPane";
 import { TaskEditor } from "./TaskEditor";
 import { WorkflowEditor } from "./WorkflowEditor";

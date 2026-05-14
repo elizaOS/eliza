@@ -308,12 +308,31 @@ export interface AnalyticsProjectionAlertDto {
   message: string;
   projectedValue?: number;
   projectedDate?: DateLike;
+  eventId?: string;
+  severity?: "warning" | "critical" | "info";
+  status?: string;
+}
+
+export interface AnalyticsAlertEventDto {
+  id: string;
+  organization_id: string;
+  policy_id: string;
+  severity: "warning" | "critical" | "info" | string;
+  status: string;
+  source: string;
+  title: string;
+  message: string;
+  evidence: Record<string, unknown>;
+  dedupe_key: string;
+  evaluated_at: DateLike;
+  created_at: DateLike;
 }
 
 export interface ProjectionsDataDto {
   historicalData: AnalyticsTimeSeriesPointDto[];
   projections: AnalyticsProjectionPointDto[];
   alerts: AnalyticsProjectionAlertDto[];
+  alertEvents?: AnalyticsAlertEventDto[];
   creditBalance: number;
 }
 

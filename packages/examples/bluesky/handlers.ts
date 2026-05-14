@@ -493,10 +493,3 @@ export function registerBlueskyHandlers(runtime: IAgentRuntime): void {
     "Registered Bluesky event handlers (full elizaOS pipeline)",
   );
 }
-
-// Export types for tests
-export type {
-  BlueSkyCreatePostEventPayload,
-  BlueSkyNotification,
-  BlueSkyNotificationEventPayload,
-};

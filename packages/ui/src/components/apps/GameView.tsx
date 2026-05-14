@@ -9,13 +9,6 @@
  */
 
 import { packageNameToAppRouteSlug } from "@elizaos/shared";
-import {
-  Button,
-  Input,
-  useDocumentVisibility,
-  useIntervalWhenDocumentVisible,
-  useTimeout,
-} from "@elizaos/ui";
 import { Pin, PinOff } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -28,7 +21,12 @@ import {
 import { invokeDesktopBridgeRequest, isElectrobunRuntime } from "../../bridge";
 import { useBranding } from "../../config/branding";
 import { useMediaQuery } from "../../hooks";
+import {
+  useDocumentVisibility,
+  useIntervalWhenDocumentVisible,
+} from "../../hooks/useDocumentVisibility";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
+import { useTimeout } from "../../hooks/useTimeout";
 import { useApp } from "../../state";
 import {
   navigatePreOpenedWindow,
@@ -37,6 +35,8 @@ import {
 } from "../../utils";
 import type { DesktopClickAuditItem } from "../../utils/desktop-workspace";
 import { formatTime } from "../../utils/format";
+import { Button } from "../ui/button";
+import { Input } from "../ui/input";
 import { getAppOperatorSurface } from "./surfaces/registry";
 import {
   buildViewerSessionKey,
@@ -657,10 +657,14 @@ export function GameView() {
   const [gameWindowId, setGameWindowId] = useState<string | null>(null);
   const gameWindowIdRef = useRef<string | null>(null);
   const appRunsRef = useRef(appRuns);
+  const activeGameRunIdRef = useRef(activeGameRunId);
+  const activeGameAppRef = useRef(activeGameApp);
   const activeGameSessionRef = useRef(activeGameSession);
   const sessionStateRef = useRef(sessionState);
-  const refreshSessionPromiseRef =
-    useRef<Promise<AppSessionState | null> | null>(null);
+  const refreshSessionPromiseRef = useRef<{
+    key: string;
+    promise: Promise<AppSessionState | null>;
+  } | null>(null);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const authSentRef = useRef(false);
   const viewerSessionRef = useRef<string>("");
@@ -713,6 +717,14 @@ export function GameView() {
   }, [appRuns]);
 
   useEffect(() => {
+    activeGameRunIdRef.current = activeGameRunId;
+  }, [activeGameRunId]);
+
+  useEffect(() => {
+    activeGameAppRef.current = activeGameApp;
+  }, [activeGameApp]);
+
+  useEffect(() => {
     activeGameSessionRef.current = activeGameSession;
   }, [activeGameSession]);
 
@@ -724,11 +736,12 @@ export function GameView() {
     (nextSession: AppSessionState | null) => {
       setSessionState(nextSession);
       sessionStateRef.current = nextSession;
-      if (!activeGameRunId) return;
+      const currentRunId = activeGameRunIdRef.current;
+      if (!currentRunId) return;
       const currentRuns = appRunsRef.current;
       const nextUpdatedAt = new Date().toISOString();
       const nextRuns = currentRuns.map((run) => {
-        if (run.runId !== activeGameRunId) return run;
+        if (run.runId !== currentRunId) return run;
         const nextHealth =
           nextSession?.status === "disconnected"
             ? {
@@ -755,16 +768,16 @@ export function GameView() {
       appRunsRef.current = nextRuns;
       setState("appRuns", nextRuns);
     },
-    [activeGameRunId, setState],
+    [setState],
   );
 
   const applyRunState = useCallback(
     (nextRun: AppRunSummary | null) => {
       if (!nextRun) return;
+      if (nextRun.runId !== activeGameRunIdRef.current) return;
       const nextUpdatedAt = new Date().toISOString();
       setSessionState(nextRun.session ?? null);
       sessionStateRef.current = nextRun.session ?? null;
-      if (nextRun.runId !== activeGameRunId) return;
       const currentRuns = appRunsRef.current;
       const nextRuns = currentRuns.map((run) => {
         if (run.runId !== nextRun.runId) return run;
@@ -797,21 +810,35 @@ export function GameView() {
       appRunsRef.current = nextRuns;
       setState("appRuns", nextRuns);
     },
-    [activeGameRunId, setState],
+    [setState],
   );
 
   const refreshSessionState = useCallback(async () => {
-    if (refreshSessionPromiseRef.current) {
-      return refreshSessionPromiseRef.current;
+    const currentSession =
+      sessionStateRef.current ?? activeGameSessionRef.current;
+    const refreshKey = activeGameRunId
+      ? `run:${activeGameRunId}`
+      : activeGameApp && currentSession?.sessionId
+        ? `session:${activeGameApp}:${currentSession.sessionId}`
+        : "none";
+
+    if (refreshSessionPromiseRef.current?.key === refreshKey) {
+      return refreshSessionPromiseRef.current.promise;
     }
 
-    const refreshTask = (async () => {
-      const currentSession =
-        sessionStateRef.current ?? activeGameSessionRef.current;
+    const isCurrentRefresh = () =>
+      activeGameRunIdRef.current === activeGameRunId &&
+      activeGameAppRef.current === activeGameApp &&
+      (activeGameRunId ||
+        activeGameSessionRef.current?.sessionId ===
+          currentSession?.sessionId) &&
+      refreshSessionPromiseRef.current?.key === refreshKey;
 
+    const refreshTask = (async () => {
       if (activeGameRunId) {
         try {
           const nextRun = await client.getAppRun(activeGameRunId);
+          if (!isCurrentRefresh()) return sessionStateRef.current;
           if (nextRun) {
             applyRunState(nextRun);
             setConnectionStatus(
@@ -824,6 +851,7 @@ export function GameView() {
           }
         } catch (err) {
           console.warn("[GameView] Failed to refresh app run state:", err);
+          if (!isCurrentRefresh()) return sessionStateRef.current;
           if (!activeGameApp || !currentSession?.sessionId) {
             setConnectionStatus("disconnected");
             return currentSession ?? null;
@@ -837,11 +865,13 @@ export function GameView() {
           activeGameApp,
           currentSession.sessionId,
         );
+        if (!isCurrentRefresh()) return sessionStateRef.current;
         applySessionState(nextSession);
         setConnectionStatus("connected");
         return nextSession;
       } catch (err) {
         console.warn("[GameView] Failed to refresh app session state:", err);
+        if (!isCurrentRefresh()) return sessionStateRef.current;
         if (activeGameRunId) {
           setConnectionStatus("disconnected");
           return currentSession ?? null;
@@ -852,11 +882,14 @@ export function GameView() {
       }
     })();
 
-    refreshSessionPromiseRef.current = refreshTask;
+    refreshSessionPromiseRef.current = {
+      key: refreshKey,
+      promise: refreshTask,
+    };
     try {
       return await refreshTask;
     } finally {
-      if (refreshSessionPromiseRef.current === refreshTask) {
+      if (refreshSessionPromiseRef.current?.promise === refreshTask) {
         refreshSessionPromiseRef.current = null;
       }
     }
@@ -892,8 +925,9 @@ export function GameView() {
   // 90s grace window covers brief tab-switching.
   useIntervalWhenDocumentVisible(
     () => {
-      if (!activeGameRunId) return;
-      void client.heartbeatAppRun(activeGameRunId).catch((err: unknown) => {
+      const heartbeatRunId = activeGameRunId;
+      if (!heartbeatRunId) return;
+      void client.heartbeatAppRun(heartbeatRunId).catch((err: unknown) => {
         // 404 means the run was reaped (sweeper or another window) — drop
         // local state so the user sees the empty-state UI instead of a
         // ghost session that no longer exists server-side.
@@ -901,9 +935,11 @@ export function GameView() {
         if (status === 404) {
           setState(
             "appRuns",
-            appRunsRef.current.filter((run) => run.runId !== activeGameRunId),
+            appRunsRef.current.filter((run) => run.runId !== heartbeatRunId),
           );
-          setState("activeGameRunId", "");
+          if (activeGameRunIdRef.current === heartbeatRunId) {
+            setState("activeGameRunId", "");
+          }
         }
       });
     },

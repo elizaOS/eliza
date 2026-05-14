@@ -1,7 +1,7 @@
 {
   "$schema": "../profile-config.schema.json",
   "description": "iOS / iPadOS Metal profiling matrix. Targets the @elizaos/llama-cpp-capacitor build once the dylib lands (porting plan task #21). Excludes QJL until the MSL kernel is shipped. Profiles Eliza-1 on iOS Metal with supported KV-cache settings.",
-  "models": ["eliza-1-mobile-1_7b", "eliza-1-desktop-9b"],
+  "models": ["eliza-1-0_8b", "eliza-1-2b", "eliza-1-4b"],
   "kvCacheConfigs": [
     { "name": "baseline-fp16", "k": "f16", "v": "f16" },
     { "name": "tbq4-tbq3", "k": "tbq4_0", "v": "tbq3_0" }

@@ -195,7 +195,7 @@ def normalize_tier(value: str | None) -> str:
     """Map a tier id or registry/public name to the canonical tier id.
 
     ``"eliza-1-0_8b"`` → ``"0_8b"``; ``"0_8b"`` → ``"0_8b"``;
-    ``"eliza-1-27b-256k"`` → ``"27b-256k"``.
+    ``"eliza-1-2b"`` → ``"2b"``.
     """
     if not value:
         raise ValueError("tier is required (got empty value)")

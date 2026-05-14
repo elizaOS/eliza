@@ -1,11 +1,9 @@
-import {
-  SidebarContent,
-  SidebarHeader,
-  SidebarPanel,
-  SidebarScrollRegion,
-} from "@elizaos/ui";
 import { Crown } from "lucide-react";
 import type { RelationshipsGraphSnapshot } from "../../../api/client-types-relationships";
+import { SidebarContent } from "../../composites/sidebar/sidebar-content";
+import { SidebarHeader } from "../../composites/sidebar/sidebar-header";
+import { SidebarPanel } from "../../composites/sidebar/sidebar-panel";
+import { SidebarScrollRegion } from "../../composites/sidebar/sidebar-scroll-region";
 import { AppPageSidebar } from "../../shared/AppPageSidebar";
 
 export function RelationshipsSidebar({

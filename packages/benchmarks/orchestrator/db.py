@@ -274,9 +274,9 @@ def insert_run_start(
         INSERT INTO benchmark_runs (
             run_id,
             run_group_id,
+            signature,
             benchmark_id,
             benchmark_directory,
-            signature,
             status,
             attempt,
             agent,
@@ -308,9 +308,9 @@ def insert_run_start(
         (
             run_id,
             run_group_id,
+            signature,
             benchmark_id,
             benchmark_directory,
-            signature,
             attempt,
             agent,
             provider,
@@ -553,6 +553,7 @@ def list_runs(
         SELECT
             run_id,
             run_group_id,
+            signature,
             benchmark_id,
             benchmark_directory,
             status,

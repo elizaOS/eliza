@@ -180,33 +180,6 @@ def _looks_like_webshop_action(action_line: str) -> bool:
     )
 
 
-def _fallback_action(task: "WebShopTask", observation: "PageObservation") -> str:
-    if observation.page_type.value == "results":
-        for product_id in task.target_product_ids:
-            action = f"click[{product_id}]"
-            if action in observation.available_actions:
-                return action
-        for available in observation.available_actions:
-            if available.lower().startswith("click["):
-                return available
-    if observation.page_type.value == "product" and observation.product is not None:
-        for option_name, target_value in task.goal_attributes.items():
-            if option_name in observation.product.options and observation.selected_options.get(option_name) != target_value:
-                action = f"select_option[{option_name}, {target_value}]"
-                if action in observation.available_actions:
-                    return action
-        if "buy" in observation.available_actions:
-            return "buy"
-    for available in observation.available_actions:
-        if _looks_like_webshop_action(available) and available != "search[query]":
-            return available
-    if "search[query]" in observation.available_actions:
-        query = " ".join(task.instruction.split()[:6]).strip() or "product"
-        return f"search[{query}]"
-    query = " ".join(task.instruction.split()[:6]).strip() or "product"
-    return f"search[{query}]"
-
-
 class ElizaBridgeWebShopAgent:
     """WebShop agent driven by the eliza TS bridge (no Python AgentRuntime)."""
 
@@ -265,9 +238,6 @@ class ElizaBridgeWebShopAgent:
                 prompt_parts.append(
                     f"Goal attributes: {json.dumps(task.goal_attributes)}"
                 )
-            prompt_parts.append(
-                f"Target product ids: {', '.join(task.target_product_ids)}"
-            )
             prompt_parts.append("\n# Current observation\n" + obs_str)
             if action_history:
                 prompt_parts.append("\n# Recent actions\n" + history_str)
@@ -288,7 +258,6 @@ class ElizaBridgeWebShopAgent:
                         "model_name": self._model,
                         "instruction": task.instruction,
                         "page": observation.page_type.value if observation else "",
-                        "target_product_ids": list(task.target_product_ids),
                         "budget": task.budget,
                     },
                 )
@@ -315,14 +284,12 @@ class ElizaBridgeWebShopAgent:
             )
 
             if chosen_action == "REPLY" or (not chosen_action and not action_line):
-                fallback = _fallback_action(task, observation)
                 logger.warning(
-                    "[webshop-bridge] turn %d: no parseable action; replacing response %r with %r",
+                    "[webshop-bridge] turn %d: no parseable action; scoring invalid response %r",
                     turn,
                     (response.text or "")[:200],
-                    fallback,
                 )
-                action_line = fallback
+                action_line = "__invalid__"
 
             if not action_line:
                 # Couldn't parse a usable action — give the agent one more turn
@@ -337,14 +304,11 @@ class ElizaBridgeWebShopAgent:
                 continue
 
             if not _looks_like_webshop_action(action_line):
-                fallback = _fallback_action(task, observation)
                 logger.warning(
-                    "[webshop-bridge] turn %d: replacing invalid action %r with %r",
+                    "[webshop-bridge] turn %d: scoring invalid action %r",
                     turn,
                     action_line,
-                    fallback,
                 )
-                action_line = fallback
 
             outcome = self.env.step(action_line)
             steps.append(

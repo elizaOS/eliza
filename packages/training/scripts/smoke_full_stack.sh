@@ -3,7 +3,7 @@
 # training+quant+inference+bench stack.
 #
 # Single command. ~15-30 minutes on one consumer GPU (RTX 4090/5090/H100).
-# Trains the smallest model (Qwen/Qwen3-0.8B), produces every quant
+# Trains the smallest model (Qwen/Qwen3.5-0.8B), produces every quant
 # sidecar, serves with vLLM, hits the OpenAI-compat tool-call endpoint,
 # benchmarks each variant, and gates on hard pass criteria.
 #

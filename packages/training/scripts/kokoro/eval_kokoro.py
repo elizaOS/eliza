@@ -155,7 +155,6 @@ def _real_eval(args: argparse.Namespace, cfg: dict[str, Any]) -> int:
 
     except ImportError:
         log.warning("utmos not installed; falling back to torchaudio SQUIM-MOS")
-        import torchaudio  # noqa: PLC0415
         from torchaudio.pipelines import SQUIM_OBJECTIVE  # type: ignore  # noqa: PLC0415
 
         squim = SQUIM_OBJECTIVE.get_model().to(device).eval()

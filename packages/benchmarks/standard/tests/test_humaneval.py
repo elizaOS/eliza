@@ -15,6 +15,7 @@ from benchmarks.standard.humaneval import (
     HumanEvalRunner,
     _build_program,
     _execute_program,
+    _reindent_function_body,
     _strip_code_fence,
     _HumanEvalFactory,
 )
@@ -53,6 +54,63 @@ def test_build_program_accepts_full_function_completion() -> None:
     assert program.count("def add") == 1
     ok, err = _execute_program(program, timeout_s=10.0)
     assert ok, err
+
+
+def test_reindent_function_body_fixes_dropped_first_line_indent() -> None:
+    """Regression: gpt-oss-120b via the eliza REPLY action sometimes emits the
+    first body line at column 0 while indenting the rest. The standard
+    HumanEval task expects every body line to be indented under the prompt's
+    function signature; we re-indent before splicing.
+    """
+    body = (
+        "numbers = sorted(numbers)\n"
+        "    if len(numbers) < 2:\n"
+        "        return False\n"
+        "    return True\n"
+    )
+    fixed = _reindent_function_body(body)
+    expected = (
+        "    numbers = sorted(numbers)\n"
+        "    if len(numbers) < 2:\n"
+        "        return False\n"
+        "    return True\n"
+    )
+    assert fixed == expected
+
+
+def test_reindent_function_body_leaves_well_indented_body_alone() -> None:
+    body = "    return a + b\n"
+    assert _reindent_function_body(body) == body
+
+
+def test_reindent_function_body_leaves_fully_unindented_body_alone() -> None:
+    """If every line is at column 0 (the model returned only a one-liner body
+    that the dedent path will handle elsewhere, or pure dedented prose),
+    leave it alone — we only fix the mixed-indent regression."""
+    body = "return a + b\n"
+    assert _reindent_function_body(body) == body
+
+
+def test_build_program_recovers_from_dropped_first_line_indent() -> None:
+    """End-to-end: ``def f():\\n  return 1`` (canonical, indented) and
+    ``return 1`` alone-but-after-a-real-completion-with-mixed-indent should
+    both execute cleanly after _build_program post-processes them."""
+    prompt = "def f() -> int:\n    \"\"\"Return the count.\"\"\"\n"
+    test = "def check(candidate):\n    assert candidate() == 1\n"
+    # Canonical: leading 4-space indent already present.
+    good = _build_program(prompt, "    return 1\n", test, "f")
+    ok_good, err_good = _execute_program(good, timeout_s=10.0)
+    assert ok_good, err_good
+    # Mixed-indent regression: gpt-oss style — first stmt unindented,
+    # subsequent block correctly indented.
+    mixed = _build_program(
+        prompt,
+        "x = 1\n    if x:\n        return 1\n    return 0\n",
+        test,
+        "f",
+    )
+    ok_mixed, err_mixed = _execute_program(mixed, timeout_s=10.0)
+    assert ok_mixed, err_mixed
 
 
 def test_execute_program_runs_canonical_solution() -> None:

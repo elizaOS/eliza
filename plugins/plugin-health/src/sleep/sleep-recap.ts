@@ -1,9 +1,8 @@
 /**
  * Sleep recap surfaced to the night-summary check-in prompt.
  *
- * Originally defined in `app-lifeops/src/lifeops/checkin/types.ts`. Moved
- * here in Wave-1 (W1-B) because it is sleep-domain. app-lifeops re-exports
- * `SleepRecap` from its old location for backward compatibility.
+ * Canonical home is this file (sleep-domain). app-lifeops re-exports
+ * `SleepRecap` from its checkin types for backward compatibility.
  */
 
 import type { LifeOpsRegularityClass } from "../contracts/health.js";

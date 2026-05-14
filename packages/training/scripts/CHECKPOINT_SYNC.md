@@ -31,12 +31,12 @@ provisioned, so no extra config is needed.
 
 ```bash
 # Terminal 2 — pull intermediate checkpoints back every 30 min.
-bash scripts/checkpoint_sync_loop.sh --run-name qwen3-5-9b-apollo &
+bash scripts/checkpoint_sync_loop.sh --run-name qwen3-5-4b-apollo &
 
 # Terminal 3 — score each new checkpoint as it arrives.
 bash scripts/eval_loop.sh \
-  --run-name qwen3-5-9b-apollo \
-  --registry-key qwen3.5-9b &
+  --run-name qwen3-5-4b-apollo \
+  --registry-key qwen3.5-4b &
 ```
 
 Both loops trap `SIGTERM` and `SIGINT`, so a plain `kill <pid>` (or
@@ -62,8 +62,8 @@ bash scripts/checkpoint_sync_loop.sh --run-name <name> --max-checkpoints 4
 ## View progress
 
 ```bash
-python scripts/progress_report.py --run-name qwen3-5-9b-apollo
-# wrote 7-row progress report to .../checkpoints/qwen3-5-9b-apollo/_progress.html
+python scripts/progress_report.py --run-name qwen3-5-4b-apollo
+# wrote 7-row progress report to .../checkpoints/qwen3-5-4b-apollo/_progress.html
 ```
 
 Then open the printed HTML path in a browser. The chart loads Plotly from
@@ -108,7 +108,7 @@ the rightmost X position on the progress curve.
   "tokens_per_sec": 38.2,
   "peak_vram_mb": 14336,
   "evaluated_at": "2026-05-04T17:42:08Z",
-  "registry_key": "qwen3.5-9b"
+  "registry_key": "qwen3.5-4b"
 }
 ```
 

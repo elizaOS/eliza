@@ -1,0 +1,159 @@
+[[!meta title="Welcome Screen"]]
+
+The Welcome Screen
+appears after the Boot Loader, but before the
+GNOME Desktop.
+
+You can use the Welcome Screen to specify startup options that alter some of the basic
+functioning of Tails.
+
+[[!img welcome_screen.png class="screenshot" alt="Welcome to Tails!"]]
+
+To start Tails without options, click on the
+**Start Tails** button.
+
+<div class="note">
+
+<p>To store the settings of the Welcome Screen across different Tails sessions,
+turn on the [[Welcome Screen|persistent_storage/configure#welcome_screen]]
+feature of the Persistent Storage.</p>
+
+<p>With this feature turned on, unlock your Persistent Storage to
+restore your settings in the Welcome Screen.</p>
+
+</div>
+
+[[!toc levels=2]]
+
+<a id="accessibility"></a>
+
+Assistive technologies
+======================
+
+You can activate several assistive technologies, like a screen reader or large
+text, from the accessibility menu in the top bar, the
+[[!img lib/accessibility.png alt="accessibility menu" class="symbolic" link="no"]]
+icon that looks like a person.
+
+<a id="locale"></a>
+
+Language and formats
+====================
+
+You can configure Tails depending on your language and location from
+the Welcome Screen.
+
+[[!img locale.png class="screenshot" alt=""]]
+
+* The **Language** option allows you to change
+  the main language of the interface.
+
+  Text that is not translated yet will appear in English. You can [[help
+  to translate more text|contribute/how/translate]].
+
+* The **Keyboard Layout** option allows you to
+  change the layout of the keyboard. For example to switch to an
+  *AZERTY* keyboard which is common in France.
+
+  You will still be able to switch between different keyboard layouts from the
+  desktop after starting Tails.
+
+  [[!img desktop/keyboard.png class="screenshot" alt="Keyboard Menu"]]
+
+* The **Formats** option allows you to change
+  the date and time format, first day of the week, measurement units,
+  and default paper size according to the standards in use in a country.
+
+  For example, the USA and the United Kingdom, two English-speaking countries,
+  have different standards:
+
+  <table>
+  <tr><th></th><th>USA</th><th>United Kingdom</th></tr>
+  <tr><td>Date & time</td><td>3/17/2017 3:56 PM</td><td>17/03/2017 15:56</td></tr>
+  <tr><td>First day of the week</td><td>Sunday</td><td>Monday</td></tr>
+  <tr><td>Unit system</td><td>Imperial</td><td>Metric</td></tr>
+  <tr><td>Paper size</td><td>Letter</td><td>A4</td></tr>
+  </table>
+
+  With this option you can also display the calendar in a different language
+  than the main language. For example, to display a US calendar, with weeks
+  starting on Sunday, when the main language is Russian.
+
+<a id="persistent_storage"></a>
+
+Persistent Storage
+==================
+
+You can save some of your files and configuration in an encrypted [[Persistent
+Storage|persistent_storage]] on your Tails USB stick.
+
+- If no Persistent Storage is detected on the USB stick, you can click the
+  **Create Persistent Storage** button to automatically start the Persistent
+  Storage settings after you start Tails and the desktop appears.
+
+  [[!img create_persistent_storage.png class="screenshot" alt=""]]
+
+- If a Persistent Storage is detected on the USB stick, enter your passphrase
+  and click **Unlock Encryption** to unlock and activate your Persistent
+  Storage.
+
+  [[!img unlock_persistent_storage.png class="screenshot" alt=""]]
+
+See also our [[documentation on the Persistent Storage|persistent_storage]].
+
+<a id="additional"></a>
+
+Additional settings
+===================
+
+Tails is configured with care to be as safe as possible by default. But,
+depending on your situation, you can change one of the following
+settings from the Welcome Screen.
+
+[[!img additional.png class="screenshot" alt=""]]
+
+Administration Password
+-----------------------
+
+Set an **Administration Password** to be
+able to perform administrative tasks like installing additional
+software or accessing the internal hard disks of the computer.
+
+See our documentation about [[the administration password and its
+security implications|administration_password]].
+
+MAC Address Anonymization
+-------------------------
+
+Disable **MAC Address Anonymization** to prevent
+connectivity problems with your network interfaces.
+
+See our documentation about [[MAC address anonymization|mac_spoofing]].
+
+Offline Mode
+------------
+
+Turn on the **Offline Mode** if you want to work completely offline for
+increased security.
+
+Unsafe Browser
+--------------
+
+Disable the ** *Unsafe Browser* **.
+
+See our documentation about [[the *Unsafe Browser* and its security
+implications|anonymous_internet/unsafe_browser]].
+
+Keyboard shortcuts
+==================
+
+<table>
+<tr><td><b>Alt+L</b></td><td><b>Language</b></td></tr>
+<tr><td><b>Alt+K</b></td><td><b>Keyboard Layout</b></td></tr>
+<tr><td><b>Alt+F</b></td><td><b>Formats</b></td></tr>
+<tr><td><b>Alt+P</b></td><td><b>Persistent Storage</b></td></tr>
+<tr><td><b>Alt+A</b></td><td><b>Additional Settings</b></td></tr>
+<tr><td><b>Ctrl+Shift+A</b></td><td><b>Administration Password</b></td></tr>
+<tr><td><b>Ctrl+Shift+M</b></td><td><b>MAC Address Anonymization</b></td></tr>
+<tr><td><b>Alt+S</b></td><td><b>Start Tails</b></td></tr>
+</table>

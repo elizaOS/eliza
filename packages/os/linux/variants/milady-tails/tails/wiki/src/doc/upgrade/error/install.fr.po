@@ -1,0 +1,167 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: Tails\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-11-12 12:16+0100\n"
+"PO-Revision-Date: 2026-03-26 15:22+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: Tails translators <tails@boum.org>\n"
+"Language: fr\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n > 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Error while installing the upgrade\"]]\n"
+msgstr "[[!meta title=\"Erreur lors de l'installation de la mise à jour\"]]\n"
+
+#. type: Plain text
+msgid "The upgrade could not be installed."
+msgstr "La mise à jour n'a pas pu être installée."
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"caution\">\n"
+msgstr "<div class=\"caution\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<p>Your Tails USB stick needs to be repaired and might be unable to restart.</p>\n"
+msgstr "<p>Votre clé USB Tails a besoin d'être réparée et pourrait être incapable de redémarrer.</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+#. type: Plain text
+msgid "This is probably caused by a software error in Tails Upgrader."
+msgstr "Cela est probablement dû à une erreur logicielle dans Tails Upgrader."
+
+#. type: Plain text
+msgid ""
+"If you set up an [[administration password|first_steps/welcome_screen/"
+"administration_password]] when starting Tails and are comfortable with the "
+"command line, please [[report the problem to us|install#report]] before "
+"repairing your Tails USB stick."
+msgstr ""
+"Si vous avez défini un [[mot de passe d'administration|first_steps/"
+"welcome_screen/administration_password]] lors du démarrage de Tails et que "
+"vous êtes à l'aise avec la ligne de commande, veuillez [[nous signaler le "
+"problème|install#report]] avant de réparer votre clé USB Tails."
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"repair\">Repairing your Tails USB stick</h2>\n"
+msgstr "<h2 id=\"repair\">Réparer votre clé USB Tails</h2>\n"
+
+#. type: Plain text
+msgid ""
+"To repair your Tails USB stick, please try doing a [[manual upgrade|"
+"upgrade#manual]]."
+msgstr ""
+"Pour réparer votre clé USB Tails, veuillez essayer de faire une [[mise à "
+"jour manuelle|upgrade#manual]]."
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"note\">\n"
+msgstr "<div class=\"note\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<p>The Persistent Storage on the USB stick will be preserved.</p>\n"
+msgstr "<p>Le stockage persistant sur la clé USB sera préservé.</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"report\">Reporting us the problem</h2>\n"
+msgstr "<h2 id=\"report\">Nous signaler le problème</h2>\n"
+
+#. type: Bullet: '1. '
+msgid "Open a *Console*."
+msgstr "Ouvrez une *Console*."
+
+#. type: Bullet: '1. '
+msgid "Execute the following command."
+msgstr "Exécutez la commande suivante."
+
+#. type: Plain text
+#, no-wrap
+msgid "   <p class=\"command\">sudo tails-debugging-info > /home/amnesia/tails-debugging-info</p>\n"
+msgstr "   <p class=\"command\">sudo tails-debugging-info > /home/amnesia/tails-debugging-info</p>\n"
+
+#. type: Bullet: '1. '
+msgid ""
+"Copy the file *tails-debugging-info* from your *Home* folder to another USB "
+"stick."
+msgstr ""
+"Copiez le fichier *tails-debugging-info* depuis votre **Dossier personnel** "
+"vers une autre clé USB."
+
+#. type: Bullet: '1. '
+msgid "Send us the file *tails-debugging-info* by [[email|support/talk]]."
+msgstr ""
+"Envoyez-nous le fichier *tails-debugging-info* par [[courrier électronique|"
+"support/talk]]."
+
+#, fuzzy
+#~| msgid ""
+#~| "If you are comfortable with the command line, please [[report the "
+#~| "problem to our help desk|support/talk]]."
+#~ msgid ""
+#~ "If you are comfortable with the command line, please [[report us the "
+#~ "problem|support/talk]]."
+#~ msgstr ""
+#~ "Si vous êtes à l'aise avec la ligne de commande, merci de [[signaler le "
+#~ "problème à notre équipe d'assistance|support/talk]]."
+
+#~ msgid "Include in your report:"
+#~ msgstr "Inclure dans votre signalement :"
+
+#~ msgid "- The debugging information that appears in the error message"
+#~ msgstr ""
+#~ "- Les informations de débogage qui apparaissent dans le message d'erreur"
+
+#~ msgid ""
+#~ "The output of the five following commands, run in a [[*Terminal*|"
+#~ "first_steps/desktop#terminal]]:"
+#~ msgstr ""
+#~ "La sortie des cinq commandes suivantes, lancées dans un [[*Terminal*|"
+#~ "first_steps/desktop#terminal]] :"
+
+#, no-wrap
+#~ msgid ""
+#~ "      ls -l /lib/live/mount/medium/live\n"
+#~ "      cat /lib/live/mount/medium/live/Tails.module\n"
+#~ "      mount\n"
+#~ "      df -h\n"
+#~ "      free -m\n"
+#~ msgstr ""
+#~ "      ls -l /lib/live/mount/medium/live\n"
+#~ "      cat /lib/live/mount/medium/live/Tails.module\n"
+#~ "      mount\n"
+#~ "      df -h\n"
+#~ "      free -m\n"
+
+#~ msgid ""
+#~ "If the manual upgrade fails as well, please [[report another error|"
+#~ "first_steps/whisperback]]."
+#~ msgstr ""
+#~ "Si la mise à jour manuelle échoue également, veuillez [[signaler cette "
+#~ "autre erreur|first_steps/whisperback]]."
+
+#~ msgid ""
+#~ "1. Please [[report an error|support]] and include in your\n"
+#~ "report:\n"
+#~ msgstr ""
+#~ "1. Veuillez [[signaler cette erreur|support]] et inclure dans votre\n"
+#~ "rapport :\n"

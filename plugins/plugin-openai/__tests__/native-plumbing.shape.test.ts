@@ -166,6 +166,70 @@ describe("OpenAI native text plumbing", () => {
     });
   }, 180_000);
 
+  it("keeps streaming native tool-call plumbing in parity with non-streaming", async () => {
+    const toolCalls = [{ toolName: "lookup", input: { q: "x" } }];
+    const usage = { inputTokens: 7, outputTokens: 3, cachedInputTokens: 5 };
+
+    aiMocks.generateText.mockResolvedValue({
+      text: "ok",
+      toolCalls,
+      finishReason: "tool-calls",
+      usage,
+    });
+    aiMocks.streamText.mockResolvedValue({
+      textStream: (async function* textStream() {
+        yield "ok";
+      })(),
+      text: Promise.resolve("ok"),
+      toolCalls: Promise.resolve(toolCalls),
+      finishReason: Promise.resolve("tool-calls"),
+      usage: Promise.resolve(usage),
+    });
+
+    const { handleTextSmall } = await import("../models/text");
+    const baseParams = {
+      prompt: "legacy prompt",
+      messages: [{ role: "user", content: "use the tool" }],
+      tools: { lookup: { description: "Lookup", inputSchema: { type: "object" } } },
+      toolChoice: { type: "tool", toolName: "lookup" },
+      responseSchema: { type: "object", properties: { answer: { type: "string" } } },
+      providerOptions: {
+        openai: { promptCacheKey: "cache-key", promptCacheRetention: "24h" },
+        custom: { enabled: true },
+      },
+    };
+
+    const nonStream = await handleTextSmall(createRuntime(), baseParams as never);
+    const stream = await handleTextSmall(createRuntime(), { ...baseParams, stream: true } as never);
+
+    const nonStreamCall = aiMocks.generateText.mock.calls[0][0] as Record<string, unknown>;
+    const streamCall = aiMocks.streamText.mock.calls[0][0] as Record<string, unknown>;
+
+    expect(streamCall.messages).toEqual(nonStreamCall.messages);
+    expect(streamCall).not.toHaveProperty("prompt");
+    expect(streamCall.tools).toBe(nonStreamCall.tools);
+    expect(streamCall.toolChoice).toBe(nonStreamCall.toolChoice);
+    expect(streamCall.providerOptions).toEqual(nonStreamCall.providerOptions);
+    await expect(
+      (streamCall.output as { responseFormat: Promise<unknown> }).responseFormat
+    ).resolves.toEqual(
+      await (nonStreamCall.output as { responseFormat: Promise<unknown> }).responseFormat
+    );
+
+    expectNativeTextResult(nonStream);
+    expect(nonStream).toMatchObject({ toolCalls, finishReason: "tool-calls" });
+    await expect((stream as { toolCalls: Promise<unknown> }).toolCalls).resolves.toEqual(toolCalls);
+    await expect((stream as { finishReason: Promise<unknown> }).finishReason).resolves.toBe(
+      "tool-calls"
+    );
+    await expect((stream as { usage: Promise<unknown> }).usage).resolves.toMatchObject({
+      promptTokens: 7,
+      completionTokens: 3,
+      totalTokens: 10,
+      cachedPromptTokens: 5,
+    });
+  }, 180_000);
+
   it("preserves Cerebras cache keys while stripping OpenAI-only cache retention", async () => {
     aiMocks.generateText.mockResolvedValue({
       text: "ok",

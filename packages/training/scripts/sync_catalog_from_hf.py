@@ -1,11 +1,12 @@
-"""Walk elizaos/eliza-1-* repos and emit a catalog diff for local inference.
+"""Walk the elizaos/eliza-1 bundle repo and emit a catalog diff for local inference.
 
 The local-inference catalog (`packages/app-core/src/services/local-inference/catalog.ts`)
 is the source of truth for which models the phone offers and where it
 downloads them from. This script:
 
-  1. Lists every Eliza-1 repo under the elizaos HF org.
-  2. For each repo, reads `eliza-1.manifest.json` (or legacy `manifest.json`)
+  1. Lists the Eliza-1 bundle repo under the elizaos HF org.
+  2. Reads each `bundles/<tier>/eliza-1.manifest.json` plus legacy
+     per-tier `eliza-1-*` manifests when present.
      and the GGUF metadata (via the `huggingface_hub` repo_info API;
      `lfs.sha256` and `size` come for free with `files_metadata=True`).
   3. Emits a JSON diff describing which catalog entries should be
@@ -22,7 +23,8 @@ schema is intentionally tiny:
       "entries": [
         {
           "id": "eliza-1-2b",
-          "hfRepo": "elizaos/eliza-1-2b",
+          "hfRepo": "elizaos/eliza-1",
+          "hfPathPrefix": "bundles/2b",
           "ggufFile": "text/eliza-1-2b-q4_k_m.gguf",
           "sha256": "<64-hex>",
           "sizeBytes": 0,
@@ -82,6 +84,7 @@ class CatalogEntry:
     sha256: str
     size_bytes: int
     manifest: dict[str, Any]
+    hf_path_prefix: str | None = None
     bundle_manifest_file: str | None = None
     bundle_manifest_sha256: str | None = None
     bundle_size_bytes: int | None = None
@@ -95,6 +98,8 @@ class CatalogEntry:
             "sizeBytes": self.size_bytes,
             "manifest": self.manifest,
         }
+        if self.hf_path_prefix is not None:
+            out["hfPathPrefix"] = self.hf_path_prefix
         if self.bundle_manifest_file is not None:
             out["bundleManifestFile"] = self.bundle_manifest_file
         if self.bundle_manifest_sha256 is not None:
@@ -112,13 +117,17 @@ def _sha256_file(path: Path, chunk: int = 1024 * 1024) -> str:
     return h.hexdigest()
 
 
-def _read_remote_manifest(api, repo_id: str) -> tuple[str, dict[str, Any], str] | None:
+def _read_remote_manifest(
+    api,
+    repo_id: str,
+    filenames: tuple[str, ...] = MANIFEST_FILENAMES,
+) -> tuple[str, dict[str, Any], str] | None:
     """Fetch an Eliza manifest from a model repo, or None if missing/unparseable."""
     from huggingface_hub import hf_hub_download
     from huggingface_hub.errors import EntryNotFoundError
 
     missing: list[str] = []
-    for filename in MANIFEST_FILENAMES:
+    for filename in filenames:
         try:
             path = Path(
                 hf_hub_download(
@@ -200,6 +209,7 @@ def _primary_text_file_from_manifest(
     manifest: Mapping[str, Any],
     file_index: Mapping[str, tuple[str | None, int | None]],
     repo_id: str,
+    path_prefix: str = "",
 ) -> tuple[str, str, int] | None:
     files = manifest.get("files")
     text_files = files.get("text") if isinstance(files, dict) else None
@@ -216,8 +226,9 @@ def _primary_text_file_from_manifest(
     )
     for entry in candidates:
         rel = entry["path"]
+        remote_rel = f"{path_prefix}/{rel}" if path_prefix else rel
         sha = entry.get("sha256")
-        lfs_sha, size = file_index.get(rel, (None, None))
+        lfs_sha, size = file_index.get(remote_rel, (None, None))
         if not isinstance(sha, str):
             sha = lfs_sha
         if sha and size is not None:
@@ -229,6 +240,7 @@ def _primary_text_file_from_manifest(
 def _bundle_size_from_manifest(
     manifest: Mapping[str, Any],
     file_index: Mapping[str, tuple[str | None, int | None]],
+    path_prefix: str = "",
 ) -> int | None:
     files = manifest.get("files")
     if not isinstance(files, dict):
@@ -245,7 +257,8 @@ def _bundle_size_from_manifest(
             if rel in seen:
                 continue
             seen.add(rel)
-            _, size = file_index.get(rel, (None, None))
+            remote_rel = f"{path_prefix}/{rel}" if path_prefix else rel
+            _, size = file_index.get(remote_rel, (None, None))
             if size is None:
                 return None
             total += size
@@ -270,6 +283,52 @@ def collect_entries(
     for repo in repos:
         repo_id = repo.id
         repo_name = repo_id.split("/", 1)[1] if "/" in repo_id else repo_id
+        if repo_name == "eliza-1":
+            log.info("inspecting single bundle repo %s", repo_id)
+            file_index = _repo_file_index(api, repo_id)
+            bundle_manifests = sorted(
+                name
+                for name in file_index
+                if name.startswith("bundles/")
+                and name.endswith("/eliza-1.manifest.json")
+            )
+            for manifest_path in bundle_manifests:
+                path_prefix = manifest_path.rsplit("/", 1)[0]
+                tier = path_prefix.split("/", 1)[1]
+                manifest_result = _read_remote_manifest(
+                    api, repo_id, (manifest_path,)
+                )
+                if manifest_result is None:
+                    continue
+                _, manifest, manifest_sha = manifest_result
+                gguf_info = _primary_text_file_from_manifest(
+                    manifest, file_index, repo_id, path_prefix
+                )
+                if gguf_info is None:
+                    log.info(
+                        "bundle %s/%s has no published text GGUF yet; skipping",
+                        repo_id,
+                        path_prefix,
+                    )
+                    continue
+                gguf_file, sha, size = gguf_info
+                entries.append(
+                    CatalogEntry(
+                        id=str(manifest.get("id") or f"eliza-1-{tier}"),
+                        hf_repo=repo_id,
+                        hf_path_prefix=path_prefix,
+                        gguf_file=gguf_file,
+                        sha256=sha,
+                        size_bytes=size,
+                        manifest=manifest,
+                        bundle_manifest_file="eliza-1.manifest.json",
+                        bundle_manifest_sha256=manifest_sha,
+                        bundle_size_bytes=_bundle_size_from_manifest(
+                            manifest, file_index, path_prefix
+                        ),
+                    )
+                )
+            continue
         if filter_prefix and not repo_name.startswith(filter_prefix):
             continue
         if filter_suffix and not repo_id.endswith(f"-{filter_suffix}"):
@@ -297,8 +356,7 @@ def collect_entries(
             )
             continue
         gguf_file, sha, size = gguf_info
-        # Catalog id == bare repo name (after the org/), e.g.
-        # `elizaos/eliza-1-2b` -> `eliza-1-2b`.
+        # Legacy catalog id == bare repo name (after the org/).
         catalog_id = repo_name
         entries.append(CatalogEntry(
             id=catalog_id,

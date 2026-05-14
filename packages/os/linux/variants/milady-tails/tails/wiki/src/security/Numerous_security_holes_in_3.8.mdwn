@@ -1,0 +1,27 @@
+[[!meta date="Mon, 3 Sep 2018 17:25:18 +0000"]]
+[[!meta title="Numerous security holes in Tails 3.8"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+Several security holes that affect Tails 3.8 are now fixed in Tails 3.9.
+
+We **strongly** encourage you to
+[[upgrade to Tails 3.9|news/version_3.9]] as soon as possible.
+
+ - Tor Browser: [[!mfsa 2018-21]]
+ - Thunderbird: [[!mfsa 2018-19]]
+ - Linux and intel-microcode:
+   - [[!cve CVE-2018-3620]] aka. Foreshadow aka. L1 Terminal Fault
+   - too many other CVEs to list them all here
+ - CUPS: [[!debsa2018 4243]]
+ - Exiv2: [[!debsa2018 4238]]
+ - FUSE: [[!debsa2018 4257]]
+ - GDM: [[!debsa2018 4270]]
+ - libsoup: [[!debsa2018 4241]]
+ - Imagemagick: [[!debsa2018 4245]]
+ - ffmpeg: [[!debsa2018 4258]]
+ - libmspack: [[!debsa2018 4260]]
+ - Samba: [[!debsa2018 4271]]
+ - Apache XML Security for C++ library: [[!debsa2018 4265]]
+ - OpenSSH: [[!debsa2018 4280]]

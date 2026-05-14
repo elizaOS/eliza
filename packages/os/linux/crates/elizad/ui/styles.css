@@ -1,0 +1,167 @@
+/*
+ * SPDX-License-Identifier: Apache-2.0
+ * Copyright 2026 NubsCarson and contributors
+ *
+ * Phase 0 chat-box styling. Words on near-black with a single cursor;
+ * the Her-inspired calibration flow uses the same surface so the user
+ * never feels like they switched contexts. No persistent chrome — chat
+ * IS the desktop. The "thinking" indicator lives quietly in the input
+ * placeholder so there's nothing else on the screen to distract.
+ */
+
+/*
+ * ElizaOS palette — pure black with a single warm orange accent.
+ * The orange is the Her-film terminal hue; it lands on the user's text,
+ * the input caret, hovered choice chips, and the "ready" status dot.
+ * Everything else is monochrome on #0a0a0a so the eye reads the orange
+ * first: that's Eliza's voice.
+ */
+:root {
+    --bg: #0a0a0a;
+    --fg: #f2f2f2;
+    --muted: #6e6e6e;
+    --accent: #FF6B35;
+    --accent-hover: #FF8855;
+    --accent-dim: #9c3d18;
+    --rule: #1f1208;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+html,
+body {
+    height: 100%;
+    margin: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font-family:
+        ui-sans-serif, system-ui, -apple-system, "Helvetica Neue", "Segoe UI",
+        sans-serif;
+    font-size: 16px;
+    line-height: 1.5;
+}
+
+body {
+    display: flex;
+    flex-direction: column;
+}
+
+#chat {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+}
+
+#transcript {
+    width: min(720px, 92vw);
+    min-height: 4rem;
+    margin-bottom: 1rem;
+    white-space: pre-wrap;
+}
+
+.turn {
+    margin: 0.4rem 0;
+}
+
+.turn.eliza {
+    color: var(--fg);
+}
+
+.turn.user {
+    color: var(--accent);
+}
+
+.turn.eliza::before {
+    content: "Eliza ";
+    color: var(--accent);
+    font-weight: 600;
+    letter-spacing: 0.04em;
+}
+
+.turn.user::before {
+    content: "› ";
+    color: var(--accent-dim);
+}
+
+.turn.system {
+    color: var(--muted);
+    font-style: italic;
+}
+
+.turn.queued {
+    color: var(--muted);
+}
+
+.choice-row {
+    display: flex;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    margin: 0.5rem 0;
+}
+
+.choice {
+    background: transparent;
+    border: 1px solid var(--rule);
+    border-radius: 0.4rem;
+    color: var(--accent);
+    cursor: pointer;
+    font: inherit;
+    padding: 0.4rem 0.85rem;
+    transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.choice:hover,
+.choice:focus-visible {
+    border-color: var(--accent);
+    color: var(--accent-hover);
+    outline: none;
+}
+
+#composer {
+    width: min(720px, 92vw);
+    display: flex;
+    border-top: 1px solid var(--rule);
+    padding-top: 0.75rem;
+}
+
+#composer {
+    border-top-color: var(--accent-dim);
+}
+
+#composer input {
+    flex: 1;
+    background: transparent;
+    color: inherit;
+    border: 0;
+    outline: 0;
+    font: inherit;
+    caret-color: var(--accent);
+}
+
+#composer input:disabled {
+    opacity: 0.5;
+}
+
+#composer input::placeholder {
+    color: var(--muted);
+}
+
+#composer.hidden {
+    display: none;
+}
+
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    border: 0;
+}

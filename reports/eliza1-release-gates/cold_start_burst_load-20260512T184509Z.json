@@ -1,0 +1,19 @@
+{
+  "gate": "cold_start_burst_load",
+  "status": "pass",
+  "completedAt": "2026-05-12T18:45:09.677Z",
+  "baseUrl": "http://ssh3.vast.ai:11983",
+  "model": "vast/eliza-1-27b-256k",
+  "standIn": true,
+  "modelArtifact": "unsloth/Qwen3.6-27B-GGUF/Qwen3.6-27B-UD-Q3_K_XL.gguf",
+  "coldStartMs": 25000,
+  "burstRequests": 6,
+  "burstConcurrency": 2,
+  "burstP50Ms": 608,
+  "burstP95Ms": 1242,
+  "burstMaxMs": 1242,
+  "durationMs": 2711,
+  "errorRate": 0,
+  "errors": 0,
+  "summary": "6 burst requests at concurrency 2; p95 1242ms; error rate 0"
+}

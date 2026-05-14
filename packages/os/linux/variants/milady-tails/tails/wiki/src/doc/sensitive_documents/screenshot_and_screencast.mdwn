@@ -1,0 +1,36 @@
+[[!meta title="Screenshot and screencast"]]
+
+To take a screenshot or record a screencast:
+
+1. To start the camera widget, either:
+
+   - Press the **PrtScn** key of the keyboard.
+
+   - Select the [[!img lib/applets-screenshoter.png alt="Take Screenshot"
+     class="symbolic" link="no"]] button in the system menu.
+
+     [[!img first_steps/desktop/system-with-wifi-only.png class="screenshot" alt=""]]
+
+1. The camera widget appears at the bottom of the screen.
+
+   [[!img camera.png class="screenshot" alt=""]]
+
+   - To turn on the screenshot mode, click on the [[!img lib/camera-photo.png
+     alt="Screenshot" class="symbolic" link="no"]] button.
+
+   - To turn on the screencast mode, click on the [[!img lib/camera-web.png
+     alt="Screencast" class="symbolic" link="no"]] button.
+
+1. Click on the [[!img lib/media-record.png alt="Screencast" class="symbolic"
+   link="no"]] button to take a screenshot or start recording a screencast.
+
+   - Screenshots are saved in the *Pictures* folder, accessible from the *Files* browser.
+
+   - Screencasts are saved in the *Videos* folder, accessible from the *Files* browser.
+
+<div class="bug">
+
+<p>Screencasts don't record sound. You can record ambient sound using
+<i>[[Sound Recorder|sound_and_video]]</i>.</p>
+
+</div>

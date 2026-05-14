@@ -157,5 +157,3 @@ Remember: You're responding on Bluesky, so keep it brief and engaging!`,
     maxOutputTokens: 300,
   },
 });
-
-export default character;

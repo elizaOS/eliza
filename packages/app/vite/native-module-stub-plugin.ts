@@ -14,6 +14,61 @@ export function generateNodeBuiltinStub(
   req: NodeRequire,
 ): string {
   const bareModule = moduleId.replace(/^node:/, "");
+  if (bareModule === "process" || bareModule === "process/browser") {
+    return [
+      "const fallbackProcess = {",
+      "  env: { NODE_ENV: 'development' },",
+      "  argv: [],",
+      "  execArgv: [],",
+      "  cwd: () => '/',",
+      "  platform: 'browser',",
+      "  version: 'v0.0.0',",
+      "  versions: {},",
+      "  nextTick: (cb, ...args) => Promise.resolve().then(() => cb(...args)),",
+      "  stdout: { write: () => {} },",
+      "  stderr: { write: () => {} },",
+      "  pid: 0,",
+      "  title: 'browser',",
+      "  browser: true,",
+      "  exit: () => {},",
+      "  on: function() { return this; },",
+      "  off: function() { return this; },",
+      "  once: function() { return this; },",
+      "  emit: () => false,",
+      "};",
+      "const processRef = globalThis.process && typeof globalThis.process === 'object' ? globalThis.process : fallbackProcess;",
+      "if (!Array.isArray(processRef.argv)) processRef.argv = [];",
+      "if (!Array.isArray(processRef.execArgv)) processRef.execArgv = [];",
+      "processRef.env ||= fallbackProcess.env;",
+      "processRef.cwd ||= fallbackProcess.cwd;",
+      "processRef.nextTick ||= fallbackProcess.nextTick;",
+      "processRef.stdout ||= fallbackProcess.stdout;",
+      "processRef.stderr ||= fallbackProcess.stderr;",
+      "processRef.on ||= fallbackProcess.on;",
+      "processRef.off ||= fallbackProcess.off;",
+      "processRef.once ||= fallbackProcess.once;",
+      "processRef.emit ||= fallbackProcess.emit;",
+      "globalThis.process = processRef;",
+      "export default processRef;",
+      "export const env = processRef.env;",
+      "export const argv = processRef.argv;",
+      "export const execArgv = processRef.execArgv;",
+      "export const cwd = processRef.cwd;",
+      "export const platform = processRef.platform || 'browser';",
+      "export const version = processRef.version || 'v0.0.0';",
+      "export const versions = processRef.versions || {};",
+      "export const nextTick = processRef.nextTick;",
+      "export const stdout = processRef.stdout;",
+      "export const stderr = processRef.stderr;",
+      "export const pid = processRef.pid || 0;",
+      "export const browser = processRef.browser !== false;",
+      "export const exit = processRef.exit;",
+      "export const on = processRef.on;",
+      "export const off = processRef.off;",
+      "export const once = processRef.once;",
+      "export const emit = processRef.emit;",
+    ].join("\n");
+  }
   const lines = [
     // noop: returns itself (for chained calls like createRequire(url)(id)),
     // and is a valid class base (so `class X extends noop` works).
@@ -149,7 +204,7 @@ export function nativeModuleStubPlugin(
     // Their exports maps nest browser/node conditional exports that Vite 6's
     // commonjs--resolver cannot walk. Stubbing returns an empty Proxy virtual
     // module so the browser bundle never tries to execute server-only code.
-    "@elizaos/plugin-local-embedding",
+    "@elizaos/plugin-local-inference",
     "@elizaos/plugin-anthropic",
     "@elizaos/plugin-pdf",
     "@elizaos/plugin-sql",
@@ -235,6 +290,7 @@ export function nativeModuleStubPlugin(
         "string_decoder",
         "querystring",
         "punycode",
+        "process",
       ]);
       if (nodeBuiltins.has(id) || nodeBuiltins.has(id.split("/")[0]))
         return `${VIRTUAL_PREFIX}node:${id}`;
@@ -280,7 +336,7 @@ export function nativeModuleStubPlugin(
           "const handler = { get: (_, p) => (p === Symbol.toPrimitive ? () => 0 : typeof p === 'string' ? (() => {}) : undefined) };",
           "const stub = new Proxy({}, handler);",
           "export default stub;",
-          // Known named exports used by @elizaos/plugin-local-embedding and
+          // Known named exports used by @elizaos/plugin-local-inference and
           // other consumers — extend as needed:
           "export const getLlama = () => Promise.resolve(stub);",
           "export const LlamaLogLevel = Object.freeze({ error: 0, warn: 1, info: 2, debug: 3 });",
@@ -516,6 +572,66 @@ export function nativeModuleStubPlugin(
         ].join("\n");
       }
 
+      // @elizaos/plugin-local-inference sub-paths used by app-core sources.
+      // The plugin is server-only (Node llama.cpp bindings, fs paths, etc.) but
+      // app-core's `api/server.ts` and `runtime/eliza.ts` import named symbols
+      // from `/routes`, `/runtime`, and `/services` at module top level. The
+      // dist barrel pulls those imports into the renderer graph where Rollup
+      // needs a static export shape to satisfy the named-import scan.
+      if (
+        strippedId === "@elizaos/plugin-local-inference" ||
+        strippedId === "@elizaos/plugin-local-inference/routes" ||
+        strippedId === "@elizaos/plugin-local-inference/runtime" ||
+        strippedId === "@elizaos/plugin-local-inference/services"
+      ) {
+        return [
+          "const noop = () => undefined;",
+          "const asyncNoop = async () => undefined;",
+          "const proxy = new Proxy(noop, { get: () => proxy, apply: () => proxy });",
+          // Server-only constants
+          "export const DEFAULT_MODELS_DIR = '/.eliza/models';",
+          // Server-only functions used by app-core/runtime/eliza.ts
+          "export const detectEmbeddingPreset = noop;",
+          "export const embeddingGgufFilePresent = () => false;",
+          "export const ensureLocalInferenceHandler = asyncNoop;",
+          "export const ensureModel = asyncNoop;",
+          "export const findExistingEmbeddingModelForWarmupReuse = () => null;",
+          "export const isEmbeddingWarmupReuseDisabled = () => true;",
+          "export const shouldEnableMobileLocalInference = () => false;",
+          "export const shouldWarmupLocalEmbeddingModel = () => false;",
+          // Server-only routes used by app-core/api/server.ts
+          "export const handleLocalInferenceCompatRoutes = async () => false;",
+          // Server-only services used by app-core/api/dev-compat-routes.ts +
+          // phrase-chunked-tts.ts (a phrase chunker that runs in node but is
+          // imported as a type/class). Provide minimal class stubs.
+          "export const buildVoiceLatencyDevPayload = () => ({});",
+          "export const deviceBridge = proxy;",
+          "export const voiceLatencyTracer = proxy;",
+          "export class PhraseChunker {",
+          "  constructor() {}",
+          "  push() { return null; }",
+          "  flushPending() { return null; }",
+          "  flushIfTimeBudgetExceeded() { return null; }",
+          "  msUntilTimeBudget() { return Infinity; }",
+          "  reset() {}",
+          "}",
+          "export default proxy;",
+        ].join("\n");
+      }
+
+      // @elizaos/plugin-anthropic — server-only model provider. The dist barrel
+      // re-exports it; the renderer never instantiates the provider directly.
+      if (
+        strippedId === "@elizaos/plugin-anthropic" ||
+        strippedId.startsWith("@elizaos/plugin-anthropic/")
+      ) {
+        return [
+          "const noop = () => undefined;",
+          "const proxy = new Proxy(noop, { get: () => proxy, apply: () => proxy });",
+          "export default proxy;",
+        ].join("\n");
+      }
+
       if (strippedId === "@elizaos/plugin-elizacloud") {
         // Mirrors packages/app-core/src/platform/elizaos-plugin-elizacloud-browser-stub.ts.
         // Every server-only export resolves to a noop in the renderer; the
@@ -586,6 +702,17 @@ export function nativeModuleStubPlugin(
             "const noop = () => Promise.resolve({ value: null });const noopObj = new Proxy({}, { get: () => noop });",
             "export const Preferences = noopObj;",
             "export default noopObj;",
+          ].join("\n");
+        }
+        if (capPkg === "@capacitor/background-runner") {
+          return [
+            "const asyncNoop = async () => {};",
+            "export const BackgroundRunner = {",
+            "  dispatchEvent: asyncNoop,",
+            "  addListener: async () => ({ remove: asyncNoop }),",
+            "  removeAllListeners: asyncNoop,",
+            "};",
+            "export default BackgroundRunner;",
           ].join("\n");
         }
         if (capPkg === "@capacitor/push-notifications") {

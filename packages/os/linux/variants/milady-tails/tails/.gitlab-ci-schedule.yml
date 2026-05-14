@@ -1,0 +1,11 @@
+Ensure MR from master into stable:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+  image: registry.gitlab.tails.boum.org/sysadmin-team/container-images/python3-gitlab:trixie
+  script:
+    - |
+      ./bin/ensure-merge-request \
+          --project tails/tails \
+          --source master \
+          --target stable \
+          --pipeline-timeout 120

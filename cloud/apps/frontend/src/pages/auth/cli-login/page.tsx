@@ -6,6 +6,7 @@ import { useSearchParams } from "react-router-dom";
 import { useSessionAuth } from "@/lib/hooks/use-session-auth";
 import { clearStaleStewardSession } from "@/lib/providers/StewardProvider";
 import { ApiError, apiFetch } from "../../../lib/api-client";
+import { getErrorMessage } from "../../../lib/error-message";
 
 const COMPLETE_TIMEOUT_MS = 30_000;
 
@@ -71,10 +72,6 @@ function getPageState({
   }
 
   return { status: "loading" };
-}
-
-function getErrorMessage(error: unknown, fallback: string) {
-  return error instanceof Error ? error.message : fallback;
 }
 
 function getUserEmail(user: unknown) {

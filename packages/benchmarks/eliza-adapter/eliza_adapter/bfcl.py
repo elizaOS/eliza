@@ -224,7 +224,8 @@ class ElizaBFCLAgent:
         except Exception as exc:
             logger.debug("Eliza reset failed (continuing): %s", exc)
 
-        tools_json = str(_bfcl_tools_formatter()(test_case.functions))
+        tools = _bfcl_tools_formatter()(test_case.functions)
+        tools_json = json.dumps(tools, ensure_ascii=False)
 
         prompt = (
             "You are a function-calling AI assistant being evaluated on the "
@@ -247,7 +248,7 @@ class ElizaBFCLAgent:
                 "task_id": test_case.id,
                 "category": test_case.category.value,
                 "question": test_case.question,
-                "tools": tools_json,
+                "tools": tools,
                 "is_relevant": test_case.is_relevant,
             },
         )

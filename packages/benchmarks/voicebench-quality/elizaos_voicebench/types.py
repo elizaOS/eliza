@@ -2,8 +2,8 @@
 
 These types are deliberately distinct from the latency benchmark at
 ``packages/benchmarks/voicebench/``. That package measures end-to-end
-latency over fixture audio. This one scores response quality over the
-upstream 6783-sample VoiceBench dataset.
+latency over packaged audio samples. This one scores response quality over
+the upstream VoiceBench dataset.
 """
 
 from __future__ import annotations
@@ -60,8 +60,8 @@ class Sample:
     dataset. Cascaded baselines transcribe these via an STT provider and
     feed the resulting text to the text-only adapter.
 
-    ``reference_text`` is the upstream prompt transcript — used both as
-    the STT ground-truth and as the fallback prompt in mock mode.
+    ``reference_text`` is the upstream prompt transcript and is used only for
+    prompt wrapping / evaluation metadata, never as a substitute for STT.
 
     ``answer`` is the gold reference answer:
       * MCQ suites: single letter (A/B/C/D).

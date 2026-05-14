@@ -209,16 +209,32 @@ class GAIAEvaluator:
             if not pred_nums or not exp_nums:
                 return False
 
-            # Compare first number found
-            pred_num = float(pred_nums[0])
-            exp_num = float(exp_nums[0])
+            def close(pred_num: float, exp_num: float) -> bool:
+                if exp_num == 0:
+                    return abs(pred_num) < tolerance
 
-            # Check if they're equal within tolerance
-            if exp_num == 0:
-                return abs(pred_num) < tolerance
+                relative_diff = abs(pred_num - exp_num) / abs(exp_num)
+                return relative_diff < tolerance
 
-            relative_diff = abs(pred_num - exp_num) / abs(exp_num)
-            return relative_diff < tolerance
+            expected_values = [float(num) for num in exp_nums]
+            predicted_values = [float(num) for num in pred_nums]
+
+            if len(expected_values) == 1:
+                # GAIA answers often include scratch arithmetic before the
+                # final answer. Use the final numeric value in that case.
+                return close(predicted_values[-1], expected_values[0])
+
+            if len(predicted_values) != len(expected_values):
+                return False
+
+            return all(
+                close(pred_num, exp_num)
+                for pred_num, exp_num in zip(
+                    predicted_values,
+                    expected_values,
+                    strict=True,
+                )
+            )
 
         except (ValueError, IndexError):
             return False

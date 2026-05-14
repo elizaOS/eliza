@@ -6,6 +6,17 @@ from benchmarks.realm.runner import REALMRunner
 from benchmarks.realm.types import REALMConfig
 
 
+def test_runner_requires_agent_unless_mock_enabled() -> None:
+    config = REALMConfig(
+        data_path="./does-not-exist",
+        output_dir="./benchmark_results/realm/_test",
+        generate_report=False,
+    )
+
+    with pytest.raises(ValueError, match="requires an agent"):
+        REALMRunner(config, use_mock=False)
+
+
 @pytest.mark.asyncio
 async def test_runner_report_invariants_with_mock_agent() -> None:
     random.seed(0)
@@ -34,4 +45,3 @@ async def test_runner_report_invariants_with_mock_agent() -> None:
         total_from_breakdown += int(total_val)
 
     assert total_from_breakdown == report.metrics.total_tasks
-

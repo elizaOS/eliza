@@ -1,10 +1,9 @@
 /**
  * Default-pack registration for plugin-health.
  *
- * Per `wave1-interfaces.md` §5.4: plugin-health ships `bedtime`, `wake-up`,
- * and `sleep-recap` packs. The pack records consume the W1-A `ScheduledTask`
- * schema. Until W1-D's `DefaultPackRegistry` is wired into `IAgentRuntime`,
- * `registerHealthDefaultPacks` logs a one-line skip and continues.
+ * Registers `bedtime`, `wake-up`, and `sleep-recap` packs with the
+ * `DefaultPackRegistry` when it is available on the runtime. If the registry
+ * is absent, logs a one-line skip and continues.
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
@@ -32,7 +31,7 @@ export function registerHealthDefaultPacks(runtime: IAgentRuntime): void {
     .defaultPackRegistry;
   if (!registry) {
     logger.info(
-      { src: "plugin:health", waiting_on: "W1-D defaultPackRegistry" },
+      { src: "plugin:health" },
       "Skipping plugin-health default-pack registration (registry not yet available)",
     );
     return;

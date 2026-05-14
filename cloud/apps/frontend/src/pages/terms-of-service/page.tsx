@@ -15,20 +15,8 @@ export const metadata: Metadata = generatePageMetadata({
 
 export default function TermsOfServicePage() {
   return (
-    <div className="relative flex min-h-screen w-full flex-col overflow-hidden">
+    <div className="relative flex min-h-screen w-full flex-col overflow-hidden bg-black">
       <LandingHeader />
-
-      <video
-        src="/videos/Hero Cloud_x3 Slower_1_Scale 5.mp4"
-        autoPlay
-        loop
-        muted
-        playsInline
-        className="absolute inset-0 w-full h-full object-cover"
-        style={{
-          filter: "brightness(0.4) blur(2px)",
-        }}
-      />
 
       <div className="absolute inset-0 bg-gradient-to-br from-black/60 via-black/40 to-black/60" />
 

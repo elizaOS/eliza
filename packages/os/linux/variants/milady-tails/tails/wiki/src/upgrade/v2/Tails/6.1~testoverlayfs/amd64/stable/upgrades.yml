@@ -1,0 +1,23 @@
+---
+build-target: amd64
+channel: stable
+initial-install-version: '6.1~testoverlayfs'
+product-name: Tails
+upgrades:
+- details-url: https://tails.boum.org/news/version_6.3-test/
+  type: major
+  upgrade-paths:
+  - target-files:
+    - sha256: ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+      size: 1234567890
+      url: https://download.tails.net/tails/stable/tails-amd64-6.3~testoverlayfs/tails-amd64-6.3~testoverlayfs.iso
+    type: full
+  - target-files:
+    - sha256: 1f7d4cbb5efaeeb6309e63ce189a46f3e27242d430e7580ead4aed802dd4421c
+      size: 4096
+      # This is really a 6.0~testoverlayfs to 6.3~testoverlayfs IUK, but in the context of our
+      # test suite, it's applied on a Tails that's been fooled to think
+      # it was initially installed as Tails 6.1.
+      url: https://download.tails.net/tails/stable/iuk/v2/Tails_amd64_6.0~testoverlayfs_to_6.3~testoverlayfs.iuk
+    type: incremental
+  version: 6.3~testoverlayfs

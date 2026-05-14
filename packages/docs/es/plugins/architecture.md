@@ -27,7 +27,7 @@ La fuente de verdad sobre qué plugins se cargan siempre se encuentra en `eliza/
 ```typescript
 export const CORE_PLUGINS: readonly string[] = [
   "@elizaos/plugin-sql",               // database adapter — required
-  "@elizaos/plugin-local-embedding",   // local embeddings — required for memory
+  "@elizaos/plugin-local-inference",   // local embeddings — required for memory
   "knowledge",         // RAG knowledge management — required for knowledge tab
   "trajectories", // trajectory logging for debugging and RL training
   "@elizaos/plugin-agent-orchestrator",// multi-agent orchestration (PTY, SwarmCoordinator, workspace provisioning)

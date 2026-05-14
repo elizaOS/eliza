@@ -49,6 +49,46 @@ _PATCH_FENCE_RE = re.compile(
 )
 _DIFF_HEADER_RE = re.compile(r"^\s*diff --git ", re.MULTILINE)
 _SOURCE_CONTEXT_CACHE: dict[tuple[str, str, str], str | None] = {}
+_CODE_PROVIDER_CAPABILITIES = {
+    "code.read",
+    "code.write",
+    "code.edit",
+    "code.search",
+    "code.shell",
+}
+_DEFAULT_PROVIDER_CAPABILITIES: dict[str, set[str]] = {
+    "claude-code": _CODE_PROVIDER_CAPABILITIES,
+    "codex": _CODE_PROVIDER_CAPABILITIES,
+    "direct_shell": _CODE_PROVIDER_CAPABILITIES,
+    "eliza-code": _CODE_PROVIDER_CAPABILITIES,
+    "swe-agent": _CODE_PROVIDER_CAPABILITIES,
+}
+
+
+def _parse_required_capabilities(raw: str | None) -> list[str]:
+    if raw is None:
+        return []
+
+    required: list[str] = []
+    seen: set[str] = set()
+    for capability in str(raw).split(","):
+        normalized = capability.strip()
+        if normalized and normalized not in seen:
+            required.append(normalized)
+            seen.add(normalized)
+    return required
+
+
+def _capability_report(provider: str, required: list[str]) -> dict[str, object]:
+    available = _DEFAULT_PROVIDER_CAPABILITIES.get(provider, set())
+    missing = [capability for capability in required if capability not in available]
+    return {
+        "provider": provider,
+        "required": required,
+        "available": sorted(available),
+        "missing": missing,
+        "satisfied": not missing,
+    }
 
 
 def _normalize_patch_text(text: str) -> str:
@@ -355,7 +395,12 @@ def _build_report(
         in (PatchStatus.APPLIED, PatchStatus.TESTS_PASSED, PatchStatus.TESTS_FAILED)
     )
     avg_duration = sum(r.duration_seconds for r in results) / total if total else 0.0
-    avg_tokens = sum(r.tokens_used for r in results) / total if total else 0.0
+    observed_tokens = [r.tokens_used for r in results if r.tokens_used is not None]
+    avg_tokens = (
+        sum(observed_tokens) / len(observed_tokens)
+        if observed_tokens
+        else 0.0
+    )
 
     by_repo: dict[str, RepoStats] = {}
     grouped: dict[str, list[SWEBenchResult]] = {}
@@ -412,8 +457,10 @@ def _report_to_dict(report: SWEBenchReport) -> dict[str, object]:
             {
                 "instance_id": r.instance_id,
                 "patch_status": r.patch_status.value,
+                "status": r.status,
                 "success": r.success,
                 "duration_seconds": r.duration_seconds,
+                "tokens_used": r.tokens_used,
                 "tests_passed": r.tests_passed,
                 "tests_failed": r.tests_failed,
                 "error": r.error,
@@ -476,13 +523,61 @@ async def _run(args: argparse.Namespace) -> int:
     )
     if config.use_docker_eval and not docker_ok:
         logger.warning(
-            "[swe_bench] docker not available — falling back to basic validation"
+            "[swe_bench] docker not available; generated patches will be "
+            "reported as incompatible"
         )
 
     try:
         timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
         if args.orchestrated:
             providers = args.providers or [args.provider or "direct_shell"]
+            required_capabilities = _parse_required_capabilities(
+                args.required_capabilities
+            )
+            capability_reports = {
+                provider: _capability_report(provider, required_capabilities)
+                for provider in providers
+            }
+            if args.strict_capabilities:
+                missing = {
+                    provider: report["missing"]
+                    for provider, report in capability_reports.items()
+                    if report["missing"]
+                }
+                if missing:
+                    payload = {
+                        "summary": {
+                            "variant": config.variant.value,
+                            "total_instances": 0,
+                            "resolved": 0,
+                            "unresolved": 0,
+                            "resolve_rate": 0.0,
+                            "apply_rate": 0.0,
+                            "average_duration": 0.0,
+                            "average_tokens": 0.0,
+                        },
+                        "metrics": {
+                            "overall_score": 0.0,
+                            "provider_scores": {},
+                        },
+                        "matrix": {
+                            "execution_mode": args.execution_mode,
+                            "providers": providers,
+                            "required_capabilities": required_capabilities,
+                            "strict_capabilities": True,
+                            "capabilities": capability_reports,
+                        },
+                        "orchestrated": {},
+                        "error": f"Missing required capabilities: {missing}",
+                    }
+                    out_path = (
+                        Path(config.output_dir)
+                        / f"orchestrated-{timestamp}.json"
+                    )
+                    out_path.write_text(json.dumps(payload, indent=2))
+                    print(json.dumps(payload["summary"], indent=2))
+                    print(f"\nResult file: {out_path}")
+                    return 2
             provider_payloads: dict[str, dict[str, object]] = {}
             provider_scores: dict[str, float] = {}
             all_results: list[SWEBenchResult] = []
@@ -518,6 +613,9 @@ async def _run(args: argparse.Namespace) -> int:
                 "matrix": {
                     "execution_mode": args.execution_mode,
                     "providers": providers,
+                    "required_capabilities": required_capabilities,
+                    "strict_capabilities": args.strict_capabilities,
+                    "capabilities": capability_reports,
                 },
                 "orchestrated": provider_payloads,
             }

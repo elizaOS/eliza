@@ -1,0 +1,179 @@
+[[!meta date="Mon, 10 Dec 2012 21:00:00 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!meta title="Tails report for November, 2012"]]
+
+November was pretty intense a month for Tails, including two major
+releases. It was not the happiest though, due to personal issues,
+unresolved conflicts within the team and server hard disks dying.
+
+Anyhow, Tails' life does go on. Here is a report of what happened
+last month.
+
+[[!toc levels=1]]
+
+Releases
+========
+
+Tails 0.14 was [[released on November 13th|news/version_0.14]] and
+0.15 was [[released on November 28th|news/version_0.15]]. From now on,
+we should be in a position to stick to the [[6-weeks release
+cycle|contribute/release_schedule]] we have been aiming at for a while.
+
+The Tails 0.16 release is scheduled for the first half of January.
+
+People
+======
+
+Tails has been started and successfully connected to the Tor network
+around 83731 times in November. That makes a boot every 31 seconds on
+average. This number is an approximation from the requests made for the
+security announcements feed. The later is retrieved by Tails after being
+connected to Tor to eventually encourage users to update.
+
+41 reports were received through WhisperBack.
+
+The forum activity is still very high:
+903 messages, 151 signed by Tails.
+
+Code
+====
+
+Some preliminary work to [[!tails_ticket 5606 desc="add VirtualBox host software"]] has been done.
+
+Useless cookies exceptions in iceweasel were removed.
+
+Preliminary support for some OpenPGP SmartCards was added.
+
+LCD-optimized fonts settings were implemented.
+
+Do not run setupcon on X.
+
+Better support for printers that us the IJS driver was added.
+
+The Monkeysphere XUL extension and the I2P console bookmark, that were
+broken by the move to TorBrowser patches,
+were
+fixed.
+
+The OpenPGP Applet was fixed to be compatible with the Windows
+camouflage mode.
+
+Custom APT sources handling was fixed for release
+candidates.
+
+Bridge mode was found to have problems with Tor
+restarts and
+fixed.
+While we were at it, some refactoring happened, and code was extracted
+into a shell library to avoid too much duplication in the source tree.
+
+Iceweasel 10.0.11esr-1 + TorBrowser patches was build.
+
+A font for Sinhala script (spoken by 15-20 millions of people, mainly
+in Sri Lanka) was added.
+
+The Unsafe Browser window name was set to... *Unsafe Browser*.
+
+Discrepancies between the various build setups used by Tails
+developers was discovered and
+fixed.
+
+APT pinning was cleaned
+up.
+
+Our fake FireGPG package was
+removed,
+eventually. RIP.
+
+The SCIM was fixed in the autostarted web browser.
+
+Work started
+to set wireless devices state to something sane at boot time.
+
+The move to using a recent `live-boot` was almost
+completed,
+but blocked due to a bug we found in upstream `live-boot`.
+A patch is in the works.
+
+Work to install a password manager
+was started.
+
+A poedit 1.5 backport that fixes a long-standing annoying bug was
+prepared
+and tested.
+
+Preliminary steps towards installing the Minitube YouTube
+client were
+walked.
+Many thanks to Alessandro Grassi for starting this effort, and going
+on with it!
+
+The `Persistent` directory is now displayed in the Places
+menu.
+
+Work has
+started
+to set iceweasel homepage to Tails news.
+
+Shutdown messages were fixed to talk of DVD, not of CD.
+
+IPv6 was
+disabled
+to workaround a recently discovered leak.
+
+Work towards a better power off button is
+ongoing.
+
+[[!tails_ticket 5937 desc="obfsproxy support"]] was added.
+
+A number of candidate branches for 0.15 were merged.
+
+Documentation and website
+=========================
+
+The Tails website now has a Press & media information page.
+
+The [[News]] can now be translated.
+
+As planned, the website was
+locked-down
+a bit more.
+
+On-going discussions
+====================
+
+Improve Polipo
+configuration,
+switch to
+Privoxy,
+or drop it all?
+
+Progress report on the automated test
+suite
+triggered some discussion.
+
+Helping adrelanos to proper copyright and licensing practices when forking Tails documentation pages.
+
+Testing incremental
+updates
+and tails-create-iuk.
+
+Benchmarking Redmine.
+
+How to implement remembering installed packages?
+
+Supporting
+EntropyKey.
+
+Promoting Persistence features.
+
+What to do with Liferea
+Cookies?
+
+If/How to ship the Minitube native YouTube
+client?
+
+What's the safest value to set the time from Tor consensus?
+
+Stop shipping bugs/* and todo/* in
+ISO?

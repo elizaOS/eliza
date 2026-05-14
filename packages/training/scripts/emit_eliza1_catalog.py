@@ -49,8 +49,8 @@ Notes:
     catalog entry at all — see
     ``packages/training/docs/training/gguf-to-runtime.md`` for the
     state-dir / external-scan path. This script is for the
-    "published to ``elizaos/eliza-1-<tier>`` and want it in the curated
-    catalog" case.
+    "published to ``elizaos/eliza-1`` under ``bundles/<tier>/`` and want it
+    in the curated catalog" case.
 """
 
 from __future__ import annotations
@@ -79,7 +79,7 @@ CANONICAL_CATALOG_PATH = "packages/shared/src/local-inference/catalog.ts"
 # Heuristic mapping from base model name → catalog metadata. New
 # entries go here when adding a new optimization target.
 KNOWN_BASE_MODELS = {
-    "elizaos/eliza-1-0_8b": {
+    "elizaos/eliza-1/bundles/0_8b": {
         "params": "0.8B",
         "context_length": 32768,
         "tokenizer_family": "eliza1",
@@ -88,7 +88,7 @@ KNOWN_BASE_MODELS = {
         "min_ram_gb": 2,
         "size_gb_estimate": 0.4,  # Q4_POLAR 0.8B ≈ 380-450 MB
     },
-    "elizaos/eliza-1-2b": {
+    "elizaos/eliza-1/bundles/2b": {
         "params": "2B",
         "context_length": 32768,
         "tokenizer_family": "eliza1",
@@ -97,32 +97,32 @@ KNOWN_BASE_MODELS = {
         "min_ram_gb": 4,
         "size_gb_estimate": 1.4,
     },
-    "elizaos/eliza-1-9b": {
+    "elizaos/eliza-1/bundles/4b": {
+        "params": "4B",
+        "context_length": 32768,
+        "tokenizer_family": "eliza1",
+        "category": "chat",
+        "bucket": "mid",
+        "min_ram_gb": 8,
+        "size_gb_estimate": 2.8,
+    },
+    "elizaos/eliza-1/bundles/9b": {
         "params": "9B",
         "context_length": 65536,
         "tokenizer_family": "eliza1",
         "category": "chat",
         "bucket": "mid",
         "min_ram_gb": 12,
-        "size_gb_estimate": 5.5,
+        "size_gb_estimate": 5.4,
     },
-    "elizaos/eliza-1-27b-256k": {
-        "params": "27B",
-        "context_length": 262144,
-        "tokenizer_family": "eliza1",
-        "category": "chat",
-        "bucket": "large",
-        "min_ram_gb": 96,
-        "size_gb_estimate": 16.0,
-    },
-    "elizaos/eliza-1-27b": {
+    "elizaos/eliza-1/bundles/27b": {
         "params": "27B",
         "context_length": 131072,
         "tokenizer_family": "eliza1",
         "category": "chat",
         "bucket": "large",
-        "min_ram_gb": 32,
-        "size_gb_estimate": 16.0,
+        "min_ram_gb": 48,
+        "size_gb_estimate": 16.8,
     },
 }
 
@@ -200,7 +200,9 @@ class Eliza1CatalogEntry:
 
 
 def _slug_from_repo(hf_repo: str) -> str:
-    """Convert ``elizaos/eliza-1-2b`` to a catalog id."""
+    """Convert ``elizaos/eliza-1/bundles/2b`` to a catalog id."""
+    if "/bundles/" in hf_repo:
+        return f"eliza-1-{hf_repo.rsplit('/bundles/', 1)[1].strip('/')}".lower()
     last = hf_repo.split("/")[-1]
     return last.lower()
 

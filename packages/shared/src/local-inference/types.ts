@@ -12,7 +12,12 @@
  */
 
 /** Agent slot ids the runtime maps to a local model. */
-export type AgentModelSlot = "TEXT_SMALL" | "TEXT_LARGE" | "TEXT_EMBEDDING";
+export type AgentModelSlot =
+  | "TEXT_SMALL"
+  | "TEXT_LARGE"
+  | "TEXT_EMBEDDING"
+  | "TEXT_TO_SPEECH"
+  | "TRANSCRIPTION";
 
 /** Subset of `AgentModelSlot` that participates in text generation. */
 export type TextGenerationSlot = Extract<
@@ -24,6 +29,8 @@ export const AGENT_MODEL_SLOTS: AgentModelSlot[] = [
   "TEXT_SMALL",
   "TEXT_LARGE",
   "TEXT_EMBEDDING",
+  "TEXT_TO_SPEECH",
+  "TRANSCRIPTION",
 ];
 
 export const TEXT_GENERATION_SLOTS: TextGenerationSlot[] = [
@@ -175,6 +182,13 @@ export interface LocalRuntimeOptimizations {
   contBatching?: boolean;
   /** Unified KV cache toggle (`--kv-unified` / `--no-kv-unified`). */
   kvUnified?: boolean;
+  /**
+   * Number of runtime context checkpoints the cache bridge should keep for
+   * interruption/resume. Maps to the fused llama-server checkpoint support.
+   */
+  ctxCheckpoints?: number;
+  /** Token interval between saved context checkpoints. */
+  ctxCheckpointInterval?: number;
   /** Host tensor op offload toggle (`--op-offload` / `--no-op-offload`). */
   opOffload?: boolean;
   /**
@@ -193,6 +207,11 @@ export interface LocalRuntimeOptimizations {
   alias?: string;
   /** `-fa on` (flash attention). Always on for DFlash. */
   flashAttention?: boolean;
+  /**
+   * Bundle-level opt-in for native structured DFlash event frames. Runtime
+   * support is still capability-probed before enabling the event path.
+   */
+  nativeDflashEvents?: boolean;
   /**
    * Specialised kernels this model requires from the llama-server fork.
    * The dispatcher uses this to pick `llama-server` over `node-llama-cpp`
@@ -252,12 +271,40 @@ export type TokenizerFamily =
   | "sentencepiece"
   | (string & {});
 
+export type CatalogHub = "huggingface" | "modelscope";
+
+export type CatalogQuantizationId = "q4_0" | "q4_k_m" | "q6_k" | "q8_0";
+
+export interface CatalogQuantizationVariant {
+  id: CatalogQuantizationId;
+  label: "4-bit" | "6-bit" | "8-bit";
+  ggufFile: string;
+  sizeGb: number;
+  minRamGb: number;
+  status: "published" | "planned";
+}
+
+export interface CatalogQuantization {
+  defaultVariantId: CatalogQuantizationId;
+  variants: CatalogQuantizationVariant[];
+}
+
+export type CatalogQuantizationMatrix = CatalogQuantization;
+
 export interface CatalogModel {
   /** Stable Eliza id — used as the primary key. */
   id: string;
   displayName: string;
-  /** HuggingFace repo slug, e.g. "elizaos/eliza-1-1_7b". */
+  /** Hosting backend. Defaults to Hugging Face when omitted. */
+  hub?: CatalogHub;
+  /** HuggingFace repo slug, e.g. "elizalabs/eliza-1". */
   hfRepo: string;
+  /**
+   * Optional path prefix inside `hfRepo`. Eliza-1 publishes every tier under
+   * one Hugging Face model repo, so app downloads resolve bundle-relative
+   * paths like `text/eliza-1-2b-32k.gguf` under `bundles/2b/`.
+   */
+  hfPathPrefix?: string;
   /** Exact GGUF filename in the repo. */
   ggufFile: string;
   /**
@@ -276,10 +323,8 @@ export interface CatalogModel {
   params:
     | "360M"
     | "0.5B"
-    | "0.6B"
     | "0.8B"
     | "1B"
-    | "1.7B"
     | "2B"
     | "3B"
     | "4B"
@@ -292,6 +337,8 @@ export interface CatalogModel {
     | "24B"
     | "27B"
     | "32B";
+  /** Optional human-facing parameter label when `params` is normalized. */
+  parameterLabel?: string;
   quant: string;
   sizeGb: number;
   /** Minimum system RAM (GB) we recommend before offering this model. */
@@ -314,11 +361,17 @@ export interface CatalogModel {
   contextLength?: number;
   /** Default GPU offload strategy for this model. */
   gpuLayers?: "auto" | number;
+  /** Optional recommended hardware profile id for copy/UI sorting. */
+  gpuProfile?: string;
+  /** Available text quantization variants for this tier. */
+  quantization?: CatalogQuantization;
   /**
    * Tokenizer/vocabulary family this GGUF emits. Required for any entry
    * that participates in DFlash pairing.
    */
   tokenizerFamily?: TokenizerFamily;
+  /** Voice backends whose artifacts ship in this Eliza-1 bundle. */
+  voiceBackends?: ReadonlyArray<"kokoro" | "omnivoice">;
   /**
    * Provenance for the Eliza-1 v1 release shape (`releaseState=base-v1`):
    * Eliza-1 v1 is the upstream BASE models — GGUF-converted via the
@@ -342,6 +395,25 @@ export interface CatalogModel {
   };
   /** Runtime-specific acceleration metadata. */
   runtime?: LocalRuntimeAcceleration;
+  /**
+   * Whether this tier's bundle (body + drafter + manifest) is published
+   * on Hugging Face yet. Defaults to `"published"` when omitted, which
+   * preserves prior behaviour for any catalog entry that doesn't set it.
+   *
+   *   - `"published"`: HF repo has a real manifest + weights + drafter.
+   *     The recommender may route first-run users here.
+   *   - `"pending"`: catalog points at a tier whose HF repo is not
+   *     usable yet (404, empty manifest, `releaseState=local-standin`,
+   *     or drafter file missing). `recommendForFirstRun` falls through
+   *     to the next ladder candidate. Used to keep the catalog reflecting
+   *     the intended product shape while the publish pipeline catches up.
+   *
+   * See elizaOS/eliza#7629 — published Eliza-1 Qwen3.5/3.6 tiers may
+   * lack a distilled DFlash drafter on HF for some time after their
+   * catalog entries land, so the recommender must not route users to a
+   * tier whose bundle isn't reachable.
+   */
+  publishStatus?: "published" | "pending";
 }
 
 export type HardwareFitLevel = "fits" | "tight" | "wontfit";

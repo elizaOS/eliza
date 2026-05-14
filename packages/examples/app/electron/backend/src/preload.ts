@@ -22,5 +22,3 @@ const api = {
 };
 
 contextBridge.exposeInMainWorld("elizaChat", api);
-
-export type ElizaChatBridge = typeof api;

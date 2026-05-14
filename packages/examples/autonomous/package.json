@@ -13,13 +13,11 @@
   "dependencies": {
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-inmemorydb": "workspace:*",
-    "@elizaos/plugin-local-ai": "workspace:*",
     "@elizaos/plugin-shell": "workspace:*",
     "uuid": "^14.0.0"
   },
   "devDependencies": {
     "@types/node": "^25.0.3",
-    "@types/uuid": "^11.0.0",
     "typescript": "^6.0.3"
   },
   "engines": {

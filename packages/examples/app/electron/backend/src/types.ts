@@ -91,7 +91,7 @@ export type ChatMessage = {
   timestamp: number;
 };
 
-export function hasValidCredentials(config: AppConfig): boolean {
+function hasValidCredentials(config: AppConfig): boolean {
   switch (config.mode) {
     case "elizaClassic":
       return true;

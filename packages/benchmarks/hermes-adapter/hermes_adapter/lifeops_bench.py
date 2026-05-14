@@ -12,6 +12,7 @@ hermes-agent venv as the source of truth for tool execution.
 
 from __future__ import annotations
 
+import json
 import logging
 import time
 from typing import Any, Awaitable, Callable, Final
@@ -28,6 +29,101 @@ logger = logging.getLogger(__name__)
 _CEREBRAS_PRICING: Final[dict[str, dict[str, float]]] = {
     "gpt-oss-120b": {"input_per_million_usd": 0.35, "output_per_million_usd": 0.75},
 }
+
+
+def _tool_name_from_manifest(tool: dict[str, Any]) -> str | None:
+    """Return the benchmark tool name from flat or OpenAI tool schemas."""
+    name = tool.get("name")
+    if isinstance(name, str) and name.strip():
+        return name.strip()
+    function = tool.get("function")
+    if isinstance(function, dict):
+        fn_name = function.get("name")
+        if isinstance(fn_name, str) and fn_name.strip():
+            return fn_name.strip()
+    return None
+
+
+def _json_prefix_candidates(text: str) -> list[object]:
+    """Decode JSON object/array candidates embedded in model text."""
+    stripped = text.strip()
+    if not stripped:
+        return []
+    if stripped.startswith("```"):
+        lines = stripped.splitlines()
+        if len(lines) >= 3 and lines[-1].strip() == "```":
+            stripped = "\n".join(lines[1:-1]).strip()
+
+    decoder = json.JSONDecoder()
+    candidates: list[object] = []
+    for start in (idx for idx, ch in enumerate(stripped) if ch in "[{"):
+        try:
+            value, _end = decoder.raw_decode(stripped[start:])
+        except json.JSONDecodeError:
+            continue
+        candidates.append(value)
+        break
+    return candidates
+
+
+def _iter_tool_records(value: object) -> list[dict[str, Any]]:
+    if isinstance(value, list):
+        return [item for item in value if isinstance(item, dict)]
+    if isinstance(value, dict):
+        calls = value.get("calls") or value.get("tool_calls")
+        if calls is not None:
+            return _iter_tool_records(calls)
+        return [value]
+    return []
+
+
+def _recover_text_tool_calls(
+    text: str,
+    tools: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Promote explicit Hermes JSON action text to benchmark tool calls."""
+    allowed_names = {
+        name
+        for tool in tools
+        for name in [_tool_name_from_manifest(tool)]
+        if name is not None
+    }
+    if not allowed_names:
+        return []
+
+    out: list[dict[str, Any]] = []
+    for candidate in _json_prefix_candidates(text):
+        for record in _iter_tool_records(candidate):
+            function = record.get("function")
+            source = function if isinstance(function, dict) else record
+            name_raw = (
+                source.get("name")
+                or source.get("tool")
+                or source.get("tool_name")
+                or source.get("function_name")
+            )
+            if not isinstance(name_raw, str) or name_raw not in allowed_names:
+                continue
+            args = (
+                source.get("arguments")
+                if "arguments" in source
+                else source.get("parameters", source.get("args", {}))
+            )
+            if isinstance(args, str):
+                try:
+                    args = json.loads(args)
+                except json.JSONDecodeError:
+                    args = {}
+            if not isinstance(args, dict):
+                args = {}
+            out.append(
+                {
+                    "id": str(record.get("id") or f"text_call_{len(out)}"),
+                    "type": "function",
+                    "function": {"name": name_raw, "arguments": dict(args)},
+                }
+            )
+    return out
 
 
 def _compute_cost_usd(
@@ -247,6 +343,8 @@ def build_lifeops_bench_agent_fn(
                         "function": {"name": name, "arguments": args},
                     }
                 )
+        if not tool_calls:
+            tool_calls = _recover_text_tool_calls(resp.text or "", tools)
 
         turn = MessageTurn(
             role="assistant",
@@ -284,5 +382,3 @@ def build_lifeops_bench_agent_fn(
         return turn
 
     return _agent_fn
-
-

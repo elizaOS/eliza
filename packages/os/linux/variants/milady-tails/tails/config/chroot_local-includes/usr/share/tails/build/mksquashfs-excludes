@@ -1,0 +1,16 @@
+boot/initrd.img-*
+boot/vmlinux-*
+boot/vmlinuz-*
+debootstrap
+debootstrap/*
+root/.wget-hsts
+tmp/*
+usr/lib/firmware/amd/*
+usr/lib/firmware/amd-ucode/*
+usr/lib/firmware/amdtee/*
+usr/lib/firmware/intel-ucode/*
+usr/share/tails/build/variables
+var/cache/apt/pkgcache.bin
+var/cache/apt/srcpkgcache.bin
+var/lib/apt/lists/*
+var/lib/initramfs-tools/*-amd64

@@ -11,6 +11,7 @@ import type {
 } from "../../../../types/index.ts";
 import type { TriageService } from "../triage-service.ts";
 import { getDefaultTriageService } from "../triage-service.ts";
+import { MANAGE_OPERATION_KINDS } from "../types.ts";
 import {
 	type ManageMessageParams,
 	messageIdParameter,
@@ -75,7 +76,7 @@ export const manageMessageAction: Action = {
 			description:
 				"Operation to apply: archive, trash, spam, mark_read, label_add, label_remove, tag_add, tag_remove, mute_thread, or unsubscribe.",
 			required: true,
-			schema: { type: "string" as const },
+			schema: { type: "string" as const, enum: [...MANAGE_OPERATION_KINDS] },
 		},
 		{
 			name: "label",

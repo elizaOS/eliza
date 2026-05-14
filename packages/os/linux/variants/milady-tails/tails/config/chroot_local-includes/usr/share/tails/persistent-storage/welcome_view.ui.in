@@ -1,0 +1,166 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<!-- Created with Cambalache 0.99.8 -->
+<!-- Generated with glade 3.38.2 -->
+<interface>
+  <!-- interface-name welcome_view.ui.in -->
+  <requires lib="gtk+" version="3.24"/>
+  <object class="GtkBox" id="box">
+    <property name="margin-bottom">20</property>
+    <property name="margin-end">20</property>
+    <property name="margin-start">20</property>
+    <property name="margin-top">20</property>
+    <property name="orientation">vertical</property>
+    <property name="spacing">50</property>
+    <property name="visible">True</property>
+    <child>
+      <object class="GtkScrolledWindow">
+        <property name="can-focus">True</property>
+        <property name="hexpand">True</property>
+        <property name="hscrollbar-policy">never</property>
+        <property name="kinetic-scrolling">False</property>
+        <property name="overlay-scrolling">False</property>
+        <property name="vexpand">True</property>
+        <property name="visible">True</property>
+        <property name="window-placement-set">False</property>
+        <child>
+          <object class="GtkViewport">
+            <property name="shadow-type">none</property>
+            <property name="visible">True</property>
+            <child>
+              <!-- n-columns=2 n-rows=2 -->
+              <object class="GtkGrid" id="description_box">
+                <property name="column-spacing">40</property>
+                <property name="halign">center</property>
+                <property name="orientation">vertical</property>
+                <property name="row-spacing">50</property>
+                <property name="valign">center</property>
+                <property name="vexpand">True</property>
+                <property name="visible">True</property>
+                <child>
+                  <object class="GtkImage" id="image">
+                    <property name="halign">end</property>
+                    <property name="pixbuf">/usr/share/pixmaps/tails-persistent-storage.svg</property>
+                    <property name="valign">start</property>
+                    <property name="visible">True</property>
+                  </object>
+                  <packing>
+                    <property name="left-attach">0</property>
+                    <property name="top-attach">0</property>
+                  </packing>
+                </child>
+                <child>
+                  <object class="GtkLabel" id="welcome_label">
+                    <property name="can-default">False</property>
+                    <property name="can-focus">True</property>
+                    <property name="halign">start</property>
+                    <property name="label" translatable="yes">Everything you do disappears automatically when you shut down Tails.
+
+But you can save some of your files and configuration in an encrypted Persistent Storage on your Tails USB stick, for example:
+
+• Your documents
+• Your Wi-Fi passwords
+• Your browser bookmarks
+• ...
+
+&lt;a href="doc/persistent_storage"&gt;Learn more about the Persistent Storage.&lt;/a&gt;</property>
+                    <property name="max-width-chars">50</property>
+                    <property name="use-markup">True</property>
+                    <property name="visible">True</property>
+                    <property name="wrap">True</property>
+                    <signal name="activate-link" handler="on_activate_link"/>
+                  </object>
+                  <packing>
+                    <property name="left-attach">1</property>
+                    <property name="top-attach">0</property>
+                  </packing>
+                </child>
+                <child>
+                  <object class="GtkImage" id="warning_icon">
+                    <property name="halign">end</property>
+                    <property name="icon-name">gtk-dialog-warning</property>
+                    <property name="icon-size">6</property>
+                    <property name="valign">start</property>
+                    <property name="visible">True</property>
+                  </object>
+                  <packing>
+                    <property name="left-attach">0</property>
+                    <property name="top-attach">1</property>
+                  </packing>
+                </child>
+                <child>
+                  <object class="GtkLabel" id="device_not_supported_label">
+                    <property name="halign">start</property>
+                    <property name="label" translatable="yes">Sorry, it is impossible to create a Persistent Storage on this device.
+
+To be able to use Tails with a Persistent Storage, please follow our instructions on &lt;a href="install"&gt;installing Tails on a USB stick&lt;/a&gt;.</property>
+                    <property name="max-width-chars">50</property>
+                    <property name="use-markup">True</property>
+                    <property name="wrap">True</property>
+                    <signal name="activate-link" handler="on_activate_link"/>
+                  </object>
+                  <packing>
+                    <property name="left-attach">1</property>
+                    <property name="top-attach">1</property>
+                  </packing>
+                </child>
+              </object>
+            </child>
+          </object>
+        </child>
+      </object>
+      <packing>
+        <property name="expand">True</property>
+        <property name="fill">True</property>
+        <property name="position">0</property>
+      </packing>
+    </child>
+    <child>
+      <object class="GtkBox">
+        <property name="visible">True</property>
+        <child>
+          <object class="GtkButton" id="cancel_button">
+            <property name="can-focus">True</property>
+            <property name="halign">start</property>
+            <property name="label" translatable="yes">_Cancel</property>
+            <property name="receives-default">False</property>
+            <property name="use-underline">True</property>
+            <property name="visible">True</property>
+            <signal name="clicked" handler="on_cancel_button_clicked"/>
+          </object>
+          <packing>
+            <property name="expand">False</property>
+            <property name="fill">True</property>
+            <property name="position">0</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkButton" id="continue_button">
+            <property name="can-default">True</property>
+            <property name="can-focus">True</property>
+            <property name="halign">end</property>
+            <property name="label" translatable="yes">Co_ntinue</property>
+            <property name="receives-default">True</property>
+            <property name="use-underline">True</property>
+            <property name="visible">True</property>
+            <signal name="clicked" handler="on_continue_button_clicked"/>
+            <style>
+              <class name="suggested-action"/>
+            </style>
+          </object>
+          <packing>
+            <property name="expand">False</property>
+            <property name="fill">True</property>
+            <property name="pack-type">end</property>
+            <property name="position">1</property>
+          </packing>
+        </child>
+      </object>
+      <packing>
+        <property name="expand">False</property>
+        <property name="fill">True</property>
+        <property name="pack-type">end</property>
+        <property name="position">1</property>
+      </packing>
+    </child>
+  </object>
+</interface>

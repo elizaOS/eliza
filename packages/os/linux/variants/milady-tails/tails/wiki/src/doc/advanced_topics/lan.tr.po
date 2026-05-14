@@ -1,0 +1,144 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-09-17 11:40+0200\n"
+"PO-Revision-Date: 2018-07-02 07:17+0000\n"
+"Last-Translator: emmapeel <emma.peel@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: tr\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n > 1;\n"
+"X-Generator: Weblate 2.10.1\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Accessing resources on the local network\"]]\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"The term \"local network\" refers to the set of computers and devices that "
+"can be reached directly from your computer without going through the "
+"Internet."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"For example, your home router, your network printer, or the intranet of your "
+"company are usually on your local network, also called LAN for Local Area "
+"Network. In technical terms, this refers to the set of IP addresses defined "
+"in [RFC1918](https://tools.ietf.org/html/rfc1918), like IP addresses that "
+"start with `192.168`."
+msgstr ""
+
+#. type: Title =
+#, no-wrap
+msgid "Security considerations"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Accessing resources on the local network can be useful in the context of "
+"Tails, for example to exchange documents with someone on the same local "
+"network without going through the Internet."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"But an application that can connect to both resources on the Internet (going "
+"through Tor) and resources on the local network (without going through Tor) "
+"can deanonymize you."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"This page describes some of the security measures built into Tails to "
+"protect from such attacks and explains how to access some types of resources "
+"on the local network."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"caution\">\n"
+msgstr "<div class=\"caution\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>Connections made to the local network are not anonymous and do not go\n"
+"through Tor.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<a id=\"browser\"></a>\n"
+msgstr "<a id=\"browser\"></a>\n"
+
+#. type: Title =
+#, no-wrap
+msgid "Browsing web pages on the local network"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"It is impossible to access web pages on the local network using *Tor "
+"Browser*.  This prevents websites on the Internet from deanonymizing you "
+"using the content of other web pages that might be specific to your local "
+"network and reveal where you are."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"To access web pages on the local network, use the [[*Unsafe Browser*|"
+"anonymous_internet/unsafe_browser]] instead."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<a id=\"http\"></a>\n"
+msgstr "<a id=\"http\"></a>\n"
+
+#. type: Title =
+#, no-wrap
+msgid "Downloading files from web pages on the local network"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"To download files from web pages on the local network, you can use the "
+"`curl` command instead. For example, to download a document available on the "
+"local network at *http://192.168.1.40/document.pdf* execute the following "
+"command:"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "    curl http://192.168.1.40/document.pdf\n"
+msgstr "    curl http://192.168.1.40/document.pdf\n"
+
+#, no-wrap
+#~ msgid "[[!inline pages=\"doc/anonymous_internet/unsafe_browser/chroot.inline\" raw=\"yes\" sort=\"age\"]]\n"
+#~ msgstr "[[!inline pages=\"doc/anonymous_internet/unsafe_browser/chroot.inline.tr\" raw=\"yes\" sort=\"age\"]]\n"
+
+#~ msgid "Downloading files from an FTP server on the local network\n"
+#~ msgstr "Dateien von einem FTP-Server im lokalen Netzwerk herunterladen\n"
+
+#~ msgid "<a id=\"ftp\"></a>\n"
+#~ msgstr "<a id=\"ftp\"></a>\n"
+
+#, fuzzy
+#~ msgid "       ftp://192.168.1.25/\n"
+#~ msgstr "    curl http://192.168.1.40/document.pdf\n"

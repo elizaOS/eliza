@@ -1,0 +1,105 @@
+[desktop/gnome/crypto/pgp]
+keyservers = ['hkp://zkaan2xfbuxia2wpf7ofnkbz6r5zdbbvxbunvp5g2iebopbfc4iqmbad.onion']
+
+[org/freedesktop/tracker/miner/files]
+enable-monitors = false
+index-recursive-directories = @as []
+index-single-directories = @as []
+
+[org/gnome/desktop/a11y]
+always-show-universal-access-status=true
+
+[org/gnome/desktop/background]
+picture-uri='file:///usr/share/tails/desktop_wallpaper.png'
+
+[org/gnome/desktop/interface]
+clock-format='24h'
+clock-show-date=true
+menus-have-icons=true
+
+[org/gnome/desktop/lockdown]
+disable-log-out = true
+disable-user-switching = true
+
+[org/gnome/desktop/media-handling]
+automount = true
+automount-open = false
+autorun-x-content-start-app = @as []
+autorun-x-content-ignore = @as []
+
+[org/gnome/desktop/peripherals/touchpad]
+click-method = 'default'
+natural-scroll = true
+tap-to-click = true
+two-finger-scrolling-enabled = true
+
+[org/gnome/desktop/privacy]
+usb-protection = true
+usb-protection-level = 'lockscreen'
+
+[org/gnome/desktop/screensaver]
+lock-enabled = true
+picture-uri = 'file:///usr/share/tails/screensaver_background.png'
+user-switch-enabled = false
+
+[org/gnome/desktop/search-providers]
+disabled = ['org.gnome.Calculator.desktop', 'org.gnome.Contacts.desktop', 'org.gnome.Documents.desktop', 'org.gnome.Nautilus.desktop', 'org.gnome.Terminal.desktop']
+
+[org/gnome/desktop/sound]
+event-sounds=false
+allow-volume-above-100-percent=true
+
+[org/gnome/desktop/wm/preferences]
+button-layout = 'appmenu:minimize,maximize,close'
+
+[org/gnome/nautilus/desktop]
+volumes-visible = false
+
+[org/gnome/nautilus/icon-view]
+default-zoom-level = 'small'
+
+[org/gnome/settings-daemon/plugins/media-keys]
+custom-keybindings=['/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/custom0/', '/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/custom1/']
+screensaver=['']
+max-screencast-length=uint32 0
+
+[org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/custom0]
+binding='<Super>l'
+command='tails-screen-locker'
+name='Lock Screen'
+
+[org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/custom1]
+binding='<Primary><Alt>t'
+command='kgx'
+name='Console'
+
+[org/gnome/settings-daemon/plugins/power]
+power-button-action = 'nothing'
+lid-close-ac-action = 'blank'
+lid-close-battery-action = 'blank'
+sleep-inactive-ac-type ='nothing'
+sleep-inactive-battery-type ='nothing'
+
+[org/gnome/shell]
+enabled-extensions = ['apps-menu@gnome-shell-extensions.gcampax.github.com', 'window-list@gnome-shell-extensions.gcampax.github.com', 'status-menu-helper@tails.boum.org', 'date@tails.boum.org', 'torstatus@tails.boum.org', 'no-overview@fthx']
+favorite-apps=['org.boum.tails.TorBrowser.desktop', 'tca.desktop', 'org.boum.tails.PersistentStorage.desktop', 'tails-documentation.desktop', 'whisperback.desktop', 'tails-installer.desktop', 'thunderbird.desktop', 'org.gnome.World.Secrets.desktop', 'org.gnome.Nautilus.desktop']
+
+[org/gnome/shell/extensions/ding]
+icon-size='standard'
+show-drop-place = false
+show-home = false
+show-network-volumes = false
+show-trash = true
+show-volumes = false
+
+[org/gnome/system/smb]
+workgroup = 'localhost'
+
+[org/gnome/system/location]
+enabled = false
+
+[org/gnome/TextEditor]
+restore-session = false
+
+[org/gnome/World/Secrets]
+save-automatically = true

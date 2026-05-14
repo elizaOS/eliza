@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-workflow",
-  "version": "2.0.0-beta.1",
+  "version": "2.0.0-beta.2",
   "description": "ElizaOS plugin for generating and running workflows in-process",
   "type": "module",
   "main": "dist/index.js",
@@ -36,7 +36,7 @@
   "scripts": {
     "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc --noCheck -p tsconfig.json",
     "dev": "tsc --watch",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit -p tsconfig.typecheck.json",
     "test": "bun test",
     "test:unit": "bun test __tests__/unit/",
     "test:e2e": "node ../../packages/app-core/scripts/run-local-plugin-live-smoke.mjs",
@@ -64,12 +64,12 @@
   },
   "homepage": "https://github.com/elizaos-plugins/plugin-workflow#readme",
   "peerDependencies": {
-    "@elizaos/core": "2.0.0-beta.1"
+    "@elizaos/core": "workspace:*"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.14",
     "@electric-sql/pglite": "^0.2.17",
-    "@elizaos/core": "2.0.0-beta.1",
+    "@elizaos/core": "workspace:*",
     "@types/bun": "^1.3.8",
     "@types/node": "^25.1.0",
     "bun-types": "^1.3.8",
@@ -86,7 +86,7 @@
     "node": ">=24.0.0"
   },
   "dependencies": {
-    "@elizaos/workflows": "2.0.0-beta.1",
+    "@elizaos/workflows": "workspace:*",
     "drizzle-orm": "^0.45.1",
     "quickjs-emscripten": "0.32.0"
   }

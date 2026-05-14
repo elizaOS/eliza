@@ -10,7 +10,6 @@ import type { State } from "../types/state";
 export interface ResponseHandlerPatch {
 	processMessage?: MessageHandlerAction;
 	requiresTool?: boolean;
-	simple?: boolean;
 	setContexts?: readonly AgentContext[];
 	addContexts?: readonly AgentContext[];
 	addCandidateActions?: readonly string[];
@@ -123,10 +122,6 @@ function applyResponseHandlerPatch(
 	if (typeof patch.requiresTool === "boolean") {
 		messageHandler.plan.requiresTool = patch.requiresTool;
 		changed.push("requiresTool");
-	}
-	if (typeof patch.simple === "boolean") {
-		messageHandler.plan.simple = patch.simple;
-		changed.push("simple");
 	}
 	if (patch.setContexts) {
 		messageHandler.plan.contexts = filterAvailableContexts(

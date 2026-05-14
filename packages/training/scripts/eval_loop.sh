@@ -38,7 +38,7 @@ on each, and appends the result to training/checkpoints/<run-name>/_progress.jso
 
 Required:
   --run-name <name>
-  --registry-key <k>            qwen3.5-2b / qwen3.5-9b / qwen3.6-27b
+  --registry-key <k>            qwen3.5-2b / qwen3.5-4b / qwen3.5-4b
 
 Optional:
   --interval-seconds <n>        default 600 (10 min)

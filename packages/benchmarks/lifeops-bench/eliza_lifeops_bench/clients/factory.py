@@ -9,7 +9,11 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Final, Literal
 
-from dotenv import load_dotenv
+try:
+    from dotenv import load_dotenv
+except ImportError:  # pragma: no cover - exercised in lean benchmark envs
+    def load_dotenv(*_args: object, **_kwargs: object) -> bool:
+        return False
 
 from .anthropic import AnthropicClient
 from .base import BaseClient

@@ -5,13 +5,14 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Mapping, Sequence
-from urllib.parse import urlparse
+from urllib.parse import urlencode, urlparse
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +25,22 @@ class MessageResponse:
     thought: str | None
     actions: list[str]
     params: dict[str, object]
+    metadata: dict[str, object] = field(default_factory=dict)
+
+
+_SECRET_RE = re.compile(
+    r"(?i)\b((?:sk|csk)-[a-z0-9_-]{12,}|password\s*[:=]\s*[^\s,;]+|api[_ -]?key\s*[:=]\s*[^\s,;]+)"
+)
+
+
+def _redact(value: object) -> object:
+    if isinstance(value, str):
+        return _SECRET_RE.sub("[REDACTED]", value)
+    if isinstance(value, Mapping):
+        return {str(k): _redact(v) for k, v in value.items()}
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+        return [_redact(v) for v in value]
+    return value
 
 
 def _prompt_text(text: str, context: Mapping[str, object] | None) -> str:
@@ -57,6 +74,155 @@ def _jsonable(value: object) -> object:
     return str(value)
 
 
+_TELEMETRY_TURN_COUNTER = 0
+_TELEMETRY_FALLBACK_PATH: str | None = None
+
+
+def _resolve_telemetry_path() -> str | None:
+    """Resolve the per-turn telemetry JSONL path.
+
+    Precedence:
+      1. ``BENCHMARK_TELEMETRY_JSONL`` — explicit override (legacy callers).
+      2. ``BENCHMARK_RUN_DIR`` — orchestrator-supplied run dir; we append
+         ``telemetry.jsonl``.
+      3. Process-local fallback via ``tempfile.mkdtemp`` so out-of-orchestrator
+         smoke tests still produce a record on disk instead of dropping data.
+    """
+    explicit = os.environ.get("BENCHMARK_TELEMETRY_JSONL", "").strip()
+    if explicit:
+        return explicit
+    run_dir = os.environ.get("BENCHMARK_RUN_DIR", "").strip()
+    if run_dir:
+        return str(Path(run_dir) / "telemetry.jsonl")
+    global _TELEMETRY_FALLBACK_PATH
+    if _TELEMETRY_FALLBACK_PATH is None:
+        import tempfile
+
+        _TELEMETRY_FALLBACK_PATH = str(
+            Path(tempfile.mkdtemp(prefix="eliza-adapter-telemetry-")) / "telemetry.jsonl"
+        )
+        logger.info(
+            "BENCHMARK_RUN_DIR not set; writing per-turn telemetry to %s",
+            _TELEMETRY_FALLBACK_PATH,
+        )
+    return _TELEMETRY_FALLBACK_PATH
+
+
+def _extract_usage_tokens(usage: Mapping[str, object]) -> dict[str, int | None]:
+    def pick(*keys: str) -> int | None:
+        for key in keys:
+            value = usage.get(key)
+            if isinstance(value, (int, float)):
+                return int(value)
+        return None
+
+    return {
+        "prompt_tokens": pick("prompt_tokens", "promptTokens", "input_tokens"),
+        "completion_tokens": pick(
+            "completion_tokens", "completionTokens", "output_tokens"
+        ),
+        "total_tokens": pick("total_tokens", "totalTokens"),
+        "cache_read_input_tokens": pick(
+            "cache_read_input_tokens", "cachedTokens", "cached_tokens"
+        ),
+        "cache_creation_input_tokens": pick(
+            "cache_creation_input_tokens", "cacheCreationInputTokens"
+        ),
+    }
+
+
+def _context_tool_schemas(context: Mapping[str, object] | None) -> list[dict[str, object]]:
+    if not isinstance(context, Mapping):
+        return []
+    tools = context.get("tools")
+    if not isinstance(tools, Sequence) or isinstance(tools, (str, bytes)):
+        return []
+    return [dict(tool) for tool in tools if isinstance(tool, Mapping)]
+
+
+def _tool_name(tool: Mapping[str, object]) -> str:
+    function = tool.get("function")
+    if isinstance(function, Mapping):
+        raw = function.get("name")
+        if isinstance(raw, str):
+            return raw
+    raw = tool.get("name")
+    return raw if isinstance(raw, str) else ""
+
+
+def _metadata_from_response(response: MessageResponse | None) -> dict[str, object]:
+    if response is None:
+        return {}
+    metadata = dict(response.metadata)
+    params_metadata = response.params.get("eliza_metadata")
+    if isinstance(params_metadata, Mapping):
+        metadata.update(dict(params_metadata))
+    return metadata
+
+
+def _capture_trajectory_enabled() -> bool:
+    raw = os.environ.get("ELIZA_ADAPTER_CAPTURE_TRAJECTORY")
+    if raw is not None:
+        return raw.strip().lower() not in {"0", "false", "no", "off"}
+    return bool(
+        os.environ.get("BENCHMARK_RUN_DIR", "").strip()
+        or os.environ.get("BENCHMARK_TELEMETRY_JSONL", "").strip()
+    )
+
+
+def _query(values: Mapping[str, str | None]) -> str:
+    compact = {key: value for key, value in values.items() if value}
+    return f"?{urlencode(compact)}" if compact else ""
+
+
+def _tool_calls_from_captured_actions(raw: object) -> list[dict[str, object]]:
+    if not isinstance(raw, Sequence) or isinstance(raw, (str, bytes)):
+        return []
+    calls: list[dict[str, object]] = []
+    for item in raw:
+        if not isinstance(item, Mapping):
+            continue
+        params = item.get("params")
+        if not isinstance(params, Mapping):
+            params = {}
+        name = (
+            item.get("toolName")
+            or item.get("tool_name")
+            or params.get("tool_name")
+            or item.get("command")
+            or params.get("command")
+            or item.get("operation")
+            or params.get("operation")
+        )
+        if not isinstance(name, str) or not name.strip():
+            continue
+        arguments = item.get("arguments")
+        if not isinstance(arguments, Mapping):
+            arguments = params.get("arguments")
+        if isinstance(arguments, str):
+            try:
+                arguments = json.loads(arguments)
+            except json.JSONDecodeError:
+                arguments = {"_raw": arguments}
+        if not isinstance(arguments, Mapping):
+            arguments = {
+                str(key): value
+                for key, value in params.items()
+                if key not in {"tool_name", "command", "operation"}
+            }
+        calls.append(
+            {
+                "id": str(item.get("id") or f"call_benchmark_{len(calls)}"),
+                "type": "function",
+                "function": {
+                    "name": name.strip(),
+                    "arguments": json.dumps(_jsonable(arguments), ensure_ascii=False),
+                },
+            }
+        )
+    return calls
+
+
 def _write_telemetry(
     *,
     text: str,
@@ -65,30 +231,80 @@ def _write_telemetry(
     response: MessageResponse | None = None,
     error: str | None = None,
 ) -> None:
-    telemetry_path = os.environ.get("BENCHMARK_TELEMETRY_JSONL", "").strip()
+    telemetry_path = _resolve_telemetry_path()
     if not telemetry_path:
         return
-    usage: object = {}
+    usage: dict[str, object] = {}
     if response is not None:
         usage_raw = response.params.get("usage")
         if isinstance(usage_raw, Mapping):
             usage = dict(usage_raw)
     prompt = _prompt_text(text, context)
+    tool_schemas = _context_tool_schemas(context)
+    metadata = _metadata_from_response(response)
+    tool_calls = []
+    if response is not None:
+        raw_tool_calls = response.params.get("tool_calls")
+        if isinstance(raw_tool_calls, Sequence) and not isinstance(raw_tool_calls, (str, bytes)):
+            tool_calls = [dict(call) for call in raw_tool_calls if isinstance(call, Mapping)]
+    trajectory_snapshot = (
+        response.params.get("_eliza_trajectory_snapshot") if response is not None else None
+    )
+    trajectory_snapshot_error = (
+        response.params.get("_eliza_trajectory_snapshot_error")
+        if response is not None
+        else None
+    )
+    global _TELEMETRY_TURN_COUNTER
+    turn_index = _TELEMETRY_TURN_COUNTER
+    _TELEMETRY_TURN_COUNTER += 1
+    tokens = _extract_usage_tokens(usage) if usage else {
+        "prompt_tokens": None,
+        "completion_tokens": None,
+        "total_tokens": None,
+        "cache_read_input_tokens": None,
+        "cache_creation_input_tokens": None,
+    }
     record: dict[str, Any] = {
         "harness": "eliza",
         "provider": os.environ.get("BENCHMARK_MODEL_PROVIDER", ""),
         "model": os.environ.get("BENCHMARK_MODEL_NAME", ""),
         "benchmark": context.get("benchmark") if isinstance(context, Mapping) else None,
         "task_id": context.get("task_id") if isinstance(context, Mapping) else None,
-        "prompt_text": prompt,
+        "session_id": context.get("session_id") if isinstance(context, Mapping) else None,
+        "turn_index": turn_index,
+        "agent_label": metadata.get("agent_label", "eliza"),
+        "prompt_text": _redact(prompt),
         "prompt_chars": len(prompt),
         "latency_ms": latency_ms,
-        "usage": _jsonable(usage),
+        "usage": _jsonable(_redact(usage)),
+        "prompt_tokens": tokens["prompt_tokens"],
+        "completion_tokens": tokens["completion_tokens"],
+        "total_tokens": tokens["total_tokens"],
+        "cache_read_input_tokens": tokens["cache_read_input_tokens"],
+        "cache_creation_input_tokens": tokens["cache_creation_input_tokens"],
+        "tool_schema_count": len(tool_schemas),
+        "tool_names": [_tool_name(tool) for tool in tool_schemas if _tool_name(tool)],
+        "tools": _jsonable(_redact(tool_schemas)),
+        "tool_calls": _jsonable(_redact(tool_calls)),
+        "tool_call_count": len(tool_calls),
         "actions": list(response.actions) if response is not None else [],
-        "response_text": response.text if response is not None else "",
+        "response_text": _redact(response.text if response is not None else ""),
+        "metadata": _jsonable(_redact(metadata)),
+        "trajectory_snapshot": _jsonable(_redact(trajectory_snapshot))
+        if trajectory_snapshot is not None
+        else None,
+        "trajectory_snapshot_error": _redact(trajectory_snapshot_error)
+        if trajectory_snapshot_error
+        else None,
+        "trajectory_step": metadata.get("trajectory_step"),
+        "trajectory_endpoint": metadata.get("trajectory_endpoint"),
+        "diagnostics_endpoint": metadata.get("diagnostics_endpoint"),
+        "native_trajectory_step_id": metadata.get("native_trajectory_step_id"),
+        "compaction_strategy": metadata.get("compaction_strategy"),
+        "compaction_threshold_tokens": metadata.get("compaction_threshold_tokens"),
+        "error_if_any": _redact(error) if error else None,
     }
-    if error:
-        record["error"] = error
     try:
         path = Path(telemetry_path)
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -219,6 +435,30 @@ class ElizaClient:
             {"task_id": task_id},
         )
 
+    def trajectory(
+        self,
+        *,
+        benchmark: str | None = None,
+        task_id: str | None = None,
+    ) -> dict[str, object]:
+        """GET /api/benchmark/trajectory for the active or named session."""
+        if self._delegate is not None:
+            return {"status": "unavailable", "steps": [], "outbox": []}
+        query = _query({"benchmark": benchmark, "task_id": task_id})
+        return self._get(f"/api/benchmark/trajectory{query}")
+
+    def diagnostics(
+        self,
+        *,
+        benchmark: str | None = None,
+        task_id: str | None = None,
+    ) -> dict[str, object]:
+        """GET /api/benchmark/diagnostics for compaction/memory metadata."""
+        if self._delegate is not None:
+            return {"status": "unavailable", "diagnostics": None}
+        query = _query({"benchmark": benchmark, "task_id": task_id})
+        return self._get(f"/api/benchmark/diagnostics{query}")
+
     def send_message(
         self,
         text: str,
@@ -242,7 +482,12 @@ class ElizaClient:
                 error=f"{type(exc).__name__}: {exc}",
             )
             raise
-        params = dict(raw.get("params", {}))
+        raw_params = raw.get("params", {})
+        params = dict(raw_params) if isinstance(raw_params, Mapping) else {}
+        for key in ("usage", "tool_calls", "metadata"):
+            value = raw.get(key)
+            if value is not None and key not in params:
+                params[key if key != "metadata" else "eliza_metadata"] = value
         captured_actions = raw.get("captured_actions")
         if isinstance(captured_actions, list) and "BENCHMARK_ACTIONS" not in params:
             normalized_actions: list[object] = []
@@ -254,12 +499,50 @@ class ElizaClient:
                     normalized_actions.append(action_params)
             if normalized_actions:
                 params["BENCHMARK_ACTIONS"] = normalized_actions
+        if "tool_calls" not in params:
+            normalized_tool_calls = _tool_calls_from_captured_actions(captured_actions)
+            if normalized_tool_calls:
+                params["tool_calls"] = normalized_tool_calls
+        metadata = raw.get("metadata")
+        if not isinstance(metadata, Mapping):
+            maybe = params.get("eliza_metadata")
+            metadata = maybe if isinstance(maybe, Mapping) else {}
+        raw_actions = raw.get("actions", [])
+        actions = (
+            [str(action) for action in raw_actions if isinstance(action, str)]
+            if isinstance(raw_actions, Sequence)
+            and not isinstance(raw_actions, (str, bytes))
+            else []
+        )
         response = MessageResponse(
             text=str(raw.get("text", "")),
             thought=raw.get("thought") if isinstance(raw.get("thought"), str) else None,
-            actions=list(raw.get("actions", [])),
+            actions=actions,
             params=params,
+            metadata=dict(metadata),
         )
+        if _capture_trajectory_enabled():
+            try:
+                response.params["_eliza_trajectory_snapshot"] = self.trajectory(
+                    benchmark=str(
+                        (context or {}).get("benchmark")
+                        or metadata.get("benchmark")
+                        or ""
+                    )
+                    or None,
+                    task_id=str(
+                        (context or {}).get("task_id")
+                        or (context or {}).get("taskId")
+                        or metadata.get("task_id")
+                        or metadata.get("taskId")
+                        or ""
+                    )
+                    or None,
+                )
+            except Exception as exc:
+                response.params["_eliza_trajectory_snapshot_error"] = (
+                    f"{type(exc).__name__}: {exc}"
+                )
         _write_telemetry(
             text=text,
             context=context,

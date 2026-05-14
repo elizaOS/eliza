@@ -1,0 +1,12 @@
+[Unit]
+Description=Warn the user if the system has too little RAM installed
+Documentation=https://tails.net/doc/about/requirements/
+After=tails-wait-until-htpdate-has-succeeded.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/lib/tails-low-ram-notify-user
+RemainAfterExit=yes
+
+[Install]
+WantedBy=desktop.target

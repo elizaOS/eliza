@@ -5,10 +5,12 @@ export const MOBILE_RUNTIME_MODE_STORAGE_KEY = "eliza:mobile-runtime-mode";
 
 /**
  * Constants describing the bundled mobile on-device agent endpoint. Android
- * serves this over loopback; iOS uses the same URL shape as a stable client
- * identity and resolves it through the in-process ITTP transport.
+ * serves this over loopback. iOS keeps the same URL shape only as a stable
+ * legacy client identity; full-Bun builds resolve it through Capacitor/native
+ * IPC, and compatibility builds resolve it through the in-process ITTP kernel.
  */
 export const MOBILE_LOCAL_AGENT_API_BASE = "http://127.0.0.1:31337";
+export const IOS_LOCAL_AGENT_IPC_BASE = "eliza-local-agent://ipc";
 export const MOBILE_LOCAL_AGENT_SERVER_ID = "local:mobile";
 export const MOBILE_LOCAL_AGENT_LABEL = "On-device agent";
 

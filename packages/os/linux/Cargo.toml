@@ -1,0 +1,53 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/elizad",
+    "crates/eliza-cap-bus",
+    "crates/eliza-sandbox",
+    "crates/eliza-types",
+]
+
+[workspace.package]
+version = "0.0.1"
+edition = "2024"
+rust-version = "1.95"
+license = "Apache-2.0"
+repository = "https://github.com/nubscarson/usbeliza"
+authors = ["NubsCarson <nubscarson@proton.me>"]
+
+[workspace.dependencies]
+anyhow = "1"
+thiserror = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.9"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "process", "net", "io-util", "fs", "sync"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Internal crates resolve by path.
+eliza-types = { path = "crates/eliza-types" }
+eliza-cap-bus = { path = "crates/eliza-cap-bus" }
+eliza-sandbox = { path = "crates/eliza-sandbox" }
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+unused = { level = "warn", priority = -1 }
+missing_docs = "warn"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+# Pragmatic relaxations, not blanket allow:
+module_name_repetitions = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "debuginfo"
+panic = "abort"
+
+[profile.dev]
+debug = "line-tables-only"

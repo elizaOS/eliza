@@ -1,0 +1,56 @@
+section section {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-evenly;
+}
+
+.image, .text {
+  width: 80%;
+}
+
+.image img {
+  width: 100%;
+}
+
+.text {
+  margin-bottom: 4em;
+}
+
+@media (min-width: 579px) {
+  .image, .text {
+    width: 463px;
+    padding: 0 30px;
+  }
+}
+
+/* Content is always ordered image → title → text in the HTML but images
+ * are displayed alternatively on the left and on the right on big
+ * screens. */
+@media (min-width: 986px) {
+  section {
+    justify-content: space-between;
+  }
+  .image {
+    margin-bottom: 4em;
+    margin-top: 100px !important;
+  }
+  .order-1 {
+    order: 1;
+  }
+  .order-2 {
+    order: 2;
+  }
+}
+
+.metaphor {
+  color: var(--medium-dark-gray);
+  font-size: var(--font-size-small);
+}
+
+.big {
+  font-size: var(--font-size-h3);
+}
+
+.medium {
+  color: var(--medium-dark-gray);
+}

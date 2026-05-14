@@ -1,0 +1,215 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: \n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2026-03-09 12:03+0000\n"
+"PO-Revision-Date: 2024-11-27 10:18+0000\n"
+"Last-Translator: jade time <jade4time@proton.me>\n"
+"Language-Team: \n"
+"Language: de\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.3\n"
+
+#. type: Content of: <div>
+msgid "[[!meta title=\"Install Tails\"]]"
+msgstr "[[!meta title=\"Installieren von Tails\"]]"
+
+#. type: Content of: outside any tag (error?)
+msgid "[[!meta stylesheet=\"install\" rel=\"stylesheet\" title=\"\"]]"
+msgstr "[[!meta stylesheet=\"install\" rel=\"stylesheet\" title=\"\"]]"
+
+#. type: Content of: <div><div><div>
+msgid ""
+"[[ [[!img install/inc/icons/windows.png link=\"no\" class=\"svg\" alt=\"\"]]"
+msgstr ""
+"[[ [[!img install/inc/icons/windows.png link=\"no\" class=\"svg\" alt=\"\"]]"
+
+#. type: Content of: <div><div><div><p>
+msgid "Windows"
+msgstr "Windows"
+
+#. type: Content of: <div><div><div>
+msgid "|install/windows]]"
+msgstr "|install/windows]]"
+
+#. type: Content of: <div><div><div>
+msgid ""
+"[[ [[!img install/inc/icons/apple.png link=\"no\" class=\"svg\" alt=\"\"]]"
+msgstr ""
+"[[ [[!img install/inc/icons/apple.png link=\"no\" class=\"svg\" alt=\"\"]]"
+
+#. type: Content of: <div><div><div><p>
+msgid "macOS"
+msgstr "macOS"
+
+#. type: Content of: <div><div><div>
+msgid "|install/mac]]"
+msgstr "|install/mac]]"
+
+#. type: Content of: <div><div><div>
+msgid ""
+"[[ [[!img install/inc/icons/linux.png link=\"no\" class=\"svg\" alt=\"\"]]"
+msgstr ""
+"[[ [[!img install/inc/icons/linux.png link=\"no\" class=\"svg\" alt=\"\"]]"
+
+#. type: Content of: <div><div><div><p>
+msgid "Linux"
+msgstr "Linux"
+
+#. type: Content of: <div><div><div>
+msgid "|install/linux]]"
+msgstr "|install/linux]]"
+
+#. type: Content of: <div><div><div>
+msgid ""
+"[[ [[!img install/inc/icons/expert.png link=\"no\" class=\"svg\" alt=\"\"]]"
+msgstr ""
+"[[ [[!img install/inc/icons/expert.png link=\"no\" class=\"svg\" alt=\"\"]]"
+
+#. type: Content of: <div><div><div><p>
+msgid "Console"
+msgstr ""
+
+#. type: Content of: <div><div><div><p>
+msgid "Debian or Ubuntu using the command line and GnuPG"
+msgstr "Debian oder Ubuntu über die Befehlszeile und GnuPG"
+
+#. type: Content of: <div><div><div>
+msgid "|install/expert]]"
+msgstr "|install/expert]]"
+
+#. type: Content of: <div><p>
+msgid "[[Download Tails only (for USB sticks)|install/download]]"
+msgstr "[[Tails nur herunterladen (für USB-Sticks)|install/download]]"
+
+#. type: Content of: <div><p>
+msgid ""
+"Latest version: [[Tails [[!inline pages=\"inc/stable_amd64_version\" "
+"raw=\"yes\" sort=\"age\"]] from [[!inline pages=\"inc/stable_amd64_date\" "
+"raw=\"yes\" sort=\"age\"]]|latest]]"
+msgstr ""
+
+#. type: Content of: <div><p>
+msgid ""
+"If you know someone you trust who uses Tails already, you can install your "
+"Tails by cloning their Tails:"
+msgstr ""
+"Wenn Sie jemanden kennen, dem Sie vertrauen und der Tails bereits verwendet, "
+"können Sie Ihr Tails installieren, indem Sie dessen Tails klonen:"
+
+#. type: Content of: <div><ul><li>
+msgid "[[Install by cloning from another Tails on PC|install/clone/pc]]"
+msgstr ""
+"[[Installation durch Klonen von einem anderen Tails auf PC|install/clone/pc]]"
+
+#. type: Content of: <div><ul><li>
+msgid "[[Install by cloning from another Tails on Mac|install/clone/mac]]"
+msgstr ""
+"[[Installation durch Klonen von einem anderen Tails auf Mac|install/clone/"
+"mac]]"
+
+#. type: Content of: <div><p>
+msgid ""
+"<strong>Tails doesn't work on smartphones or tablets.</strong> The hardware "
+"of smartphones and tablets is very different from the hardware of "
+"computers.  For now, it's impossible to make smartphone and tablet hardware "
+"work with Linux distributions like Tails."
+msgstr ""
+"<strong>Tails funktioniert nicht auf Smartphones oder Tablets.</strong> Die "
+"Hardware von Smartphones und Tablets unterscheidet sich erheblich von der "
+"Hardware von Computern. \n"
+"Derzeit ist es unmöglich, die Hardware von Smartphones und Tablets mit Linux-"
+"Distributionen wie Tails zum Laufen zu bringen."
+
+#. type: Content of: outside any tag (error?)
+#, fuzzy
+#| msgid ""
+#| "[[Detailed system requirements and recommended hardware.|doc/about/"
+#| "requirements]]"
+msgid ""
+"[[System requirements and recommended USB sticks|doc/about/requirements]]"
+msgstr ""
+"[[Detaillierte Systemanforderungen und empfohlene Hardware.|doc/about/"
+"requirements]]"
+
+#. type: Content of: <h1>
+msgid "Other options"
+msgstr "Weitere Optionen"
+
+#. type: Content of: <ul><li>
+msgid "[[Burning a Tails DVD|install/dvd]]"
+msgstr "[[Brennen einer Tails-DVD|install/dvd]]"
+
+#. type: Content of: <ul><li>
+msgid ""
+"[[Running Tails in a virtual machine|doc/advanced_topics/virtualization]]"
+msgstr ""
+"[[Tails in einer Virtuellen Machine laufen lassen|doc/advanced_topics/"
+"virtualization]]"
+
+#~ msgid "Terminal"
+#~ msgstr "Terminal"
+
+#~ msgid "Thank you for your interest in Tails."
+#~ msgstr "Danke für Ihr Interesse an Tails."
+
+#~ msgid ""
+#~ "Installing Tails can be quite long but we hope you will still have a good "
+#~ "time :)"
+#~ msgstr ""
+#~ "Tails zu installieren kann recht lange dauern, wir hoffen jedoch, dass "
+#~ "Sie eine schöne Zeit haben :)"
+
+#~ msgid ""
+#~ "We will first ask you a few questions to choose your installation "
+#~ "scenario and then guide you step by step."
+#~ msgstr ""
+#~ "Wir werden Ihnen zuerst ein paar Fragen stellen, um Ihr "
+#~ "Installationsszenarium auszuwählen, und Sie dann Schritt für Schritt "
+#~ "anleiten."
+
+#~ msgid "Which operating system are you installing Tails from?"
+#~ msgstr "Von welchem Betriebssystem aus installieren Sie Tails?"
+
+#~ msgid "[["
+#~ msgstr "[["
+
+#~ msgid "|install/debian]]"
+#~ msgstr "|install/debian]]"
+
+#~ msgid "<small>(Red Hat, Fedora, etc.)</small>"
+#~ msgstr "<small>(Red Hat, Fedora, usw.)</small>"
+
+#~ msgid "Let's start the journey!"
+#~ msgstr "Lassen Sie uns die Reise beginnen!"
+
+#~ msgid "Welcome to the"
+#~ msgstr "Willkommen beim"
+
+#~ msgid "<strong>Tails Installation Assistant</strong>"
+#~ msgstr "<strong>Tails Installations-Assistenten</strong>"
+
+#~ msgid ""
+#~ "The following set of instructions is quite new. If you face problems "
+#~ "following them:"
+#~ msgstr ""
+#~ "Die folgenden Anweisungen sind noch recht neu. Falls Sie Probleme bei der "
+#~ "Durchführung haben:"
+
+#~ msgid "[[Report your problem.|support/talk]]"
+#~ msgstr "[[Berichten Sie Ihr Problem.|support/talk]]"
+
+#~ msgid ""
+#~ "Try following our old instructions for [[downloading|install]] or "
+#~ "[[installing|doc/first_steps]] instead."
+#~ msgstr ""
+#~ "Versuchen Sie stattdessen unsere alten Anleitungen zum [[Herunterladen|/"
+#~ "download]] oder [[Installieren|doc/first_steps]]."

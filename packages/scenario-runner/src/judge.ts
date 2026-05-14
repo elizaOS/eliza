@@ -8,7 +8,7 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
-import { ModelType, logger } from "@elizaos/core";
+import { logger, ModelType } from "@elizaos/core";
 import { isCerebrasEvalEnabled } from "../../../plugins/app-lifeops/test/helpers/lifeops-eval-model.ts";
 import {
   CerebrasJudge,
@@ -41,23 +41,20 @@ export interface JudgeResult {
   raw?: string;
 }
 
-function judgeResponseToResult(
-  response: JudgeResponse,
-): JudgeResult | null {
+function judgeResponseToResult(response: JudgeResponse): JudgeResult | null {
   if (response.score === undefined) return null;
   return {
     score: response.score,
-    reason: response.reason && response.reason.length > 0
-      ? response.reason
-      : "(no reason)",
+    reason:
+      response.reason && response.reason.length > 0
+        ? response.reason
+        : "(no reason)",
     verdict: response.verdict,
     raw: response.raw,
   };
 }
 
 function parseJudgeJson(raw: string): JudgeResult | null {
-  // Kept for the non-Cerebras path (runtime.useModel fallback). Uses the
-  // same tolerant parser the shared CerebrasJudge transport uses.
   const balanced = extractBalancedJsonObject(raw);
   if (!balanced) return null;
   let parsed: Record<string, unknown>;

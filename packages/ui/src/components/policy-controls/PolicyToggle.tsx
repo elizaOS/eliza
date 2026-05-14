@@ -1,6 +1,6 @@
-import { Switch } from "@elizaos/ui";
 import type React from "react";
 import { useState } from "react";
+import { Switch } from "../ui/switch";
 
 /**
  * Collapsible policy card with toggle, summary in header, and expand-on-click.

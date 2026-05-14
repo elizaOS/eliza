@@ -2,7 +2,7 @@
 /**
  * Long-running NIAH-style drift harness.
  *
- * Drives multi-turn synthetic conversations through a chosen model (real
+ * Drives multi-turn planted-fact conversations through a chosen model (real
  * Cerebras gpt-oss-120b by default; a fake offline model under --dry-run),
  * forces compaction on a fixed cadence using a chosen strategy, then probes
  * planted facts at every compaction event and at end-of-run to measure
@@ -15,7 +15,7 @@
  *   bun run scripts/benchmark/drift-harness.ts --strategy none --turns 50 \
  *     --compact-every 10 --plant-facts 5 --output results.jsonl
  *
- *   # offline plumbing smoke test:
+ *   # offline plumbing smoke test (prints JSONL to stdout; writes no artifact):
  *   bun run scripts/benchmark/drift-harness.ts --strategy none --turns 3 \
  *     --compact-every 100 --plant-facts 1 --output /tmp/drift.jsonl --dry-run
  */
@@ -115,7 +115,8 @@ Flags:
   --with-tool-calls            Interleave a synthetic tool-call/tool-result pair
                                every 5 turns and probe its preservation
   --probe-max-tokens <n>       Max tokens for probe answers (default: 600)
-  --dry-run                    Use a fake model (no API calls); for plumbing tests
+  --dry-run                    Use a fake model (no API calls); prints JSONL to
+                               stdout and never writes --output
   --help, -h                   Show this help
 
 Env:
@@ -2274,13 +2275,19 @@ export async function main(argv: readonly string[]): Promise<number> {
           reasoningEffort: args.compactorReasoningEffort,
         }),
   });
-  await Bun.write(args.output, sink.serialize());
+  if (args.dryRun) {
+    process.stdout.write(sink.serialize());
+  } else {
+    await Bun.write(args.output, sink.serialize());
+  }
   const summary = sink.events.find((e) => e.event === "summary");
   if (summary && summary.event === "summary") {
     process.stdout.write(
       `[harness] strategy=${summary.strategy} accuracy=${(summary.overallAccuracy * 100).toFixed(1)}% ` +
         `compactions=${summary.totalCompactions} tokensSaved=${summary.totalTokensSaved} ` +
-        `probes=${summary.totalProbes} → ${args.output}\n`,
+        `probes=${summary.totalProbes}${
+          args.dryRun ? " (dry-run: no output artifact written)" : ` → ${args.output}`
+        }\n`,
     );
   }
   // Surface unavailable strategies as a non-fatal note.

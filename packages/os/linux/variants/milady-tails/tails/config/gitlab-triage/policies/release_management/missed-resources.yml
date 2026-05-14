@@ -1,0 +1,31 @@
+resource_rules:
+  issues:
+    rules:
+      - name: Postpone resources that missed their milestone
+        conditions:
+          state: opened
+          milestone: any
+          ruby: |
+            return false unless ENV['VERSION']
+            return false unless ENV['NEXT_PLANNED_VERSION']
+            return false unless milestone&.title == "Tails_#{ENV['VERSION']}"
+            true
+        actions:
+          comment: |
+            /label ~"missed:#{ENV['VERSION']}"
+            /milestone %"Tails_#{ENV['NEXT_PLANNED_VERSION']}"
+  merge_requests:
+    rules:
+      - name: Postpone resources that missed their milestone
+        conditions:
+          state: opened
+          milestone: any
+          ruby: |
+            return false unless ENV['VERSION']
+            return false unless ENV['NEXT_PLANNED_VERSION']
+            return false unless milestone&.title == "Tails_#{ENV['VERSION']}"
+            true
+        actions:
+          comment: |
+            /label ~"missed:#{ENV['VERSION']}"
+            /milestone %"Tails_#{ENV['NEXT_PLANNED_VERSION']}"
