@@ -42,14 +42,6 @@ export {
 } from "./computer-interface.js";
 export { dispatch, type DispatchDeps } from "./dispatch.js";
 export {
-  AospInputActor,
-  MOTION_EVENT_ACTION_DOWN,
-  MOTION_EVENT_ACTION_MOVE,
-  MOTION_EVENT_ACTION_UP,
-  type AospInputActorDeps,
-  type AospPrivilegedInputBridge,
-} from "./aosp-input-actor.js";
-export {
   type ActionResult as ActorActionResult,
   type BrainActionKind,
   type BrainOutput,

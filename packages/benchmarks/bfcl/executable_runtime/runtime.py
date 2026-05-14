@@ -37,6 +37,8 @@ import importlib
 import inspect
 import json
 import re
+import tempfile
+from pathlib import Path
 from typing import Any, Optional
 
 
@@ -53,9 +55,22 @@ CLASS_FILE_PATH_MAPPING: dict[str, str] = {
     "TravelAPI": f"{_BACKEND_PATH_PREFIX}.travel_booking",
     "VehicleControlAPI": f"{_BACKEND_PATH_PREFIX}.vehicle_control",
     "WebSearchAPI": f"{_BACKEND_PATH_PREFIX}.web_search",
+    # Memory backends are pseudo-classes — upstream maps the generic
+    # "MemoryAPI" involved-class to one of the three concrete variants based
+    # on the test category. We register each variant under its concrete name;
+    # the generic "MemoryAPI" alias is resolved at runtime via
+    # ``MEMORY_BACKEND_CLASSES`` below.
     "MemoryAPI_kv": f"{_BACKEND_PATH_PREFIX}.memory_kv",
     "MemoryAPI_vector": f"{_BACKEND_PATH_PREFIX}.memory_vector",
     "MemoryAPI_rec_sum": f"{_BACKEND_PATH_PREFIX}.memory_rec_sum",
+}
+
+# Memory variant class names — used when resolving the generic "MemoryAPI"
+# involved-class against a concrete backend.
+MEMORY_BACKEND_CLASSES: dict[str, str] = {
+    "kv": "MemoryAPI_kv",
+    "vector": "MemoryAPI_vector",
+    "rec_sum": "MemoryAPI_rec_sum",
 }
 
 # Stateless tools don't carry per-test state.
@@ -64,6 +79,11 @@ STATELESS_CLASSES = {"MathAPI"}
 # Tools that require live network or credentials. Tests touching these are
 # skipped (NOT failed) unless the runtime is constructed with enable_network=True.
 NETWORK_REQUIRED_CLASSES = {"WebSearchAPI"}
+
+# Memory backends that need heavy ML dependencies (faiss + sentence-transformers
+# for vector). Gated separately so the runtime gracefully reports the missing
+# dep instead of dying with an opaque ImportError.
+HEAVY_DEPS_CLASSES = {"MemoryAPI_vector"}
 
 
 class RuntimeNetworkRequired(RuntimeError):
@@ -99,14 +119,34 @@ class ExecutableRuntime:
         *,
         long_context: bool = False,
         enable_network: bool = False,
+        memory_backend: Optional[str] = None,
     ) -> None:
         self.involved_classes = list(involved_classes or [])
         self.initial_config = initial_config or {}
         self.long_context = long_context
         self.enable_network = enable_network
+        self.memory_backend = memory_backend
 
         self._instances: dict[str, Any] = {}
         self._method_to_class: dict[str, str] = {}
+        self._memory_tempdir: Optional[tempfile.TemporaryDirectory] = None
+
+        # Resolve the generic "MemoryAPI" alias (used in raw fixture
+        # ``involved_classes``) to a concrete backend class.
+        resolved_classes: list[str] = []
+        for class_name in self.involved_classes:
+            if class_name == "MemoryAPI":
+                backend = self.memory_backend or "kv"
+                resolved = MEMORY_BACKEND_CLASSES.get(backend)
+                if resolved is None:
+                    raise ValueError(
+                        f"Unknown memory backend {backend!r}; "
+                        f"expected one of {list(MEMORY_BACKEND_CLASSES)}"
+                    )
+                resolved_classes.append(resolved)
+            else:
+                resolved_classes.append(class_name)
+        self.involved_classes = resolved_classes
 
         for class_name in self.involved_classes:
             if class_name not in CLASS_FILE_PATH_MAPPING:
@@ -118,11 +158,26 @@ class ExecutableRuntime:
                 )
 
             module_name = CLASS_FILE_PATH_MAPPING[class_name]
-            module = importlib.import_module(module_name)
+            try:
+                module = importlib.import_module(module_name)
+            except ImportError as exc:
+                if class_name in HEAVY_DEPS_CLASSES:
+                    raise RuntimeError(
+                        f"Class {class_name!r} requires optional ML deps "
+                        f"(faiss-cpu, sentence-transformers): {exc}"
+                    ) from exc
+                raise
             cls = getattr(module, class_name)
             instance = cls()
             if class_name not in STATELESS_CLASSES:
                 class_initial_config = self.initial_config.get(class_name, {})
+                # Memory classes need a ``model_result_dir`` for the snapshot
+                # dance. Provide a per-runtime tempdir so memory tests run
+                # fully isolated when the caller didn't supply one.
+                if class_name.startswith("MemoryAPI_"):
+                    class_initial_config = self._ensure_memory_snapshot_dir(
+                        class_initial_config
+                    )
                 # Deep copy to avoid mutation of the shared config dict
                 instance._load_scenario(
                     copy.deepcopy(class_initial_config), long_context=long_context
@@ -138,6 +193,41 @@ class ExecutableRuntime:
                 if method_name.startswith("_"):
                     continue
                 self._method_to_class[method_name] = class_name
+
+    def _ensure_memory_snapshot_dir(self, cfg: dict[str, Any]) -> dict[str, Any]:
+        """Inject a tempdir-backed ``model_result_dir`` if the caller didn't
+        supply one. Memory backends require this path to exist for snapshot
+        files; if upstream's full directory layout isn't provided we mint
+        a private one and clean it up when the runtime is garbage-collected.
+        """
+        cfg = dict(cfg)
+        if "model_result_dir" in cfg:
+            mrd = cfg["model_result_dir"]
+            cfg["model_result_dir"] = Path(mrd) if not isinstance(mrd, Path) else mrd
+        else:
+            if self._memory_tempdir is None:
+                self._memory_tempdir = tempfile.TemporaryDirectory(
+                    prefix="bfcl_memory_"
+                )
+            cfg["model_result_dir"] = Path(self._memory_tempdir.name)
+        cfg.setdefault("test_id", "memory_unit_test-scenario-0")
+        cfg.setdefault("scenario", "scenario")
+        return cfg
+
+    def cleanup(self) -> None:
+        """Best-effort cleanup of any temp dirs created for memory tests."""
+        if self._memory_tempdir is not None:
+            try:
+                self._memory_tempdir.cleanup()
+            except Exception:
+                pass
+            self._memory_tempdir = None
+
+    def __del__(self) -> None:
+        try:
+            self.cleanup()
+        except Exception:
+            pass
 
     def execute_calls(self, func_call_list: list[str]) -> list[str]:
         """Execute a list of BFCL python call strings against the tool
