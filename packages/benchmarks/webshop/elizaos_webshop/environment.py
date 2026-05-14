@@ -247,10 +247,13 @@ class WebShopEnvironment:
         _install_bm25_after_load_products()
 
         from web_agent_site import utils as _utils  # type: ignore[import-not-found]
+        from web_agent_site.engine import engine as _engine_mod  # type: ignore[import-not-found]
         if attr_path is not None:
             _utils.DEFAULT_ATTR_PATH = str(attr_path)
+            _engine_mod.DEFAULT_ATTR_PATH = str(attr_path)
         if human_attr_path is not None:
             _utils.HUMAN_ATTR_PATH = str(human_attr_path)
+            _engine_mod.HUMAN_ATTR_PATH = str(human_attr_path)
 
         from web_agent_site.envs.web_agent_text_env import (  # type: ignore[import-not-found]
             WebAgentTextEnv,

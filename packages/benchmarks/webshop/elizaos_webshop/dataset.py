@@ -174,11 +174,14 @@ class WebShopDataset:
         _install_bm25_after_load_products()
 
         from web_agent_site import utils as _utils  # type: ignore[import-not-found]
+        from web_agent_site.engine import engine as _engine_mod  # type: ignore[import-not-found]
         from web_agent_site.engine.engine import load_products  # type: ignore[import-not-found]
         from web_agent_site.engine.goal import get_goals  # type: ignore[import-not-found]
 
         _utils.DEFAULT_ATTR_PATH = str(paths.attributes)
         _utils.HUMAN_ATTR_PATH = str(paths.human_instructions)
+        _engine_mod.DEFAULT_ATTR_PATH = str(paths.attributes)
+        _engine_mod.HUMAN_ATTR_PATH = str(paths.human_instructions)
 
         if self.human_goals and not paths.has_human_goals:
             logger.warning(
