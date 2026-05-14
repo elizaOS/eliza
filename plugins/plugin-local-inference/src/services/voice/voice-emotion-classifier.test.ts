@@ -124,9 +124,9 @@ describe("projectVadToExpressiveEmotion", () => {
 
 describe("VoiceEmotionClassifier construction", () => {
 	it("requires a non-empty model path", () => {
-		expect(
-			() => new VoiceEmotionClassifier({ modelPath: "" }),
-		).toThrow(VoiceEmotionClassifierError);
+		expect(() => new VoiceEmotionClassifier({ modelPath: "" })).toThrow(
+			VoiceEmotionClassifierError,
+		);
 	});
 
 	it("defaults the model id to the int8 student", () => {
@@ -149,8 +149,8 @@ describe("VoiceEmotionClassifier construction", () => {
 	it("classify rejects a non-Float32Array PCM input", async () => {
 		const c = new VoiceEmotionClassifier({ modelPath: "/tmp/nope.onnx" });
 		// @ts-expect-error — deliberate runtime type-check coverage.
-		await expect(c.classify(new Uint8Array(WAV2SMALL_SAMPLE_RATE))).rejects.toBeInstanceOf(
-			VoiceEmotionClassifierError,
-		);
+		await expect(
+			c.classify(new Uint8Array(WAV2SMALL_SAMPLE_RATE)),
+		).rejects.toBeInstanceOf(VoiceEmotionClassifierError);
 	});
 });

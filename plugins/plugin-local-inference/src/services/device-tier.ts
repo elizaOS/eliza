@@ -72,10 +72,7 @@ export const DEVICE_TIER_THRESHOLDS = {
 } as const;
 
 /** What the runtime should do by default given the tier classification. */
-export type RecommendedMode =
-	| "local"
-	| "cloud-with-local-voice"
-	| "cloud-only";
+export type RecommendedMode = "local" | "cloud-with-local-voice" | "cloud-only";
 
 /** A complete tier assessment — what the UI renders + what the runtime gates on. */
 export interface DeviceTierAssessment {
@@ -377,10 +374,15 @@ function topRecommendationFor(tier: DeviceTier, mobile: boolean): string {
  * I10 surfaces these via the `voice-tier.json` i18n bundle. Keep this in
  * sync with `packages/ui/src/i18n/voice-tier.json`.
  */
-export const TIER_WARNING_COPY: Readonly<Record<DeviceTier, {
-	header: string;
-	body: string;
-}>> = {
+export const TIER_WARNING_COPY: Readonly<
+	Record<
+		DeviceTier,
+		{
+			header: string;
+			body: string;
+		}
+	>
+> = {
 	MAX: {
 		header: "Your device is in the MAX tier for on-device Eliza.",
 		body: "Your device can run every local model in parallel: text, voice, ASR, turn detection, speaker recognition, and emotion — all resident at the same time. Expected first-audio latency under 250 ms.",

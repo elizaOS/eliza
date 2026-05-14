@@ -40,7 +40,13 @@
  */
 
 import crypto from "node:crypto";
-import { mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import {
+	mkdirSync,
+	readFileSync,
+	renameSync,
+	unlinkSync,
+	writeFileSync,
+} from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import process from "node:process";
@@ -342,12 +348,17 @@ export class FirstLineCache {
 		this.blobsDir = path.join(this.rootDir, "blobs");
 		this.indexPath = path.join(this.rootDir, "index.sqlite");
 		this.maxBytes =
-			opts.maxBytes ?? parseIntEnv("ELIZA_TTS_CACHE_MAX_BYTES") ?? DEFAULT_MAX_BYTES;
+			opts.maxBytes ??
+			parseIntEnv("ELIZA_TTS_CACHE_MAX_BYTES") ??
+			DEFAULT_MAX_BYTES;
 		this.maxBytesPerEntry =
 			opts.maxBytesPerEntry ??
 			parseIntEnv("ELIZA_TTS_CACHE_MAX_BYTES_PER_ENTRY") ??
 			DEFAULT_MAX_BYTES_PER_ENTRY;
-		const ttlDays = opts.ttlDays ?? parseIntEnv("ELIZA_TTS_CACHE_TTL_DAYS") ?? DEFAULT_TTL_DAYS;
+		const ttlDays =
+			opts.ttlDays ??
+			parseIntEnv("ELIZA_TTS_CACHE_TTL_DAYS") ??
+			DEFAULT_TTL_DAYS;
 		this.ttlMs = ttlDays * MS_PER_DAY;
 		this.disabled = opts.disabled ?? envDisabled();
 	}
@@ -397,7 +408,9 @@ export class FirstLineCache {
 		if (!this.ensureInit() || !this.db) return null;
 		if (!key.voiceRevision) return null;
 		const keyHash = hashCacheKey(key);
-		const row = this.db.prepare(`SELECT * FROM tts_first_line WHERE key_hash = ?`).get(keyHash);
+		const row = this.db
+			.prepare(`SELECT * FROM tts_first_line WHERE key_hash = ?`)
+			.get(keyHash);
 		if (!row) return null;
 
 		const blobAbs = this.resolveBlobAbs(row.blob_path as string);
@@ -547,7 +560,9 @@ export class FirstLineCache {
 			.prepare(`SELECT blob_path FROM tts_first_line WHERE key_hash = ?`)
 			.get(keyHash);
 		if (!row) return false;
-		this.db.prepare(`DELETE FROM tts_first_line WHERE key_hash = ?`).run(keyHash);
+		this.db
+			.prepare(`DELETE FROM tts_first_line WHERE key_hash = ?`)
+			.run(keyHash);
 		try {
 			unlinkSync(this.resolveBlobAbs(row.blob_path as string));
 		} catch {
@@ -563,9 +578,13 @@ export class FirstLineCache {
 		if (!this.ensureInit() || !this.db) return 0;
 		const cutoff = now - this.ttlMs;
 		const rows = this.db
-			.prepare(`SELECT key_hash, blob_path FROM tts_first_line WHERE last_accessed_at_ms < ?`)
+			.prepare(
+				`SELECT key_hash, blob_path FROM tts_first_line WHERE last_accessed_at_ms < ?`,
+			)
 			.all(cutoff);
-		const del = this.db.prepare(`DELETE FROM tts_first_line WHERE key_hash = ?`);
+		const del = this.db.prepare(
+			`DELETE FROM tts_first_line WHERE key_hash = ?`,
+		);
 		let count = 0;
 		for (const r of rows) {
 			del.run(r.key_hash as string);
@@ -614,7 +633,9 @@ export class FirstLineCache {
 		if (!this.db) return;
 		// Cheap path: only evict if current byte sum > budget.
 		const sumRow = this.db
-			.prepare(`SELECT COALESCE(SUM(byte_size), 0) AS total FROM tts_first_line`)
+			.prepare(
+				`SELECT COALESCE(SUM(byte_size), 0) AS total FROM tts_first_line`,
+			)
 			.get();
 		let total = (sumRow?.total as number) ?? 0;
 		if (total <= this.maxBytes) return;
@@ -624,7 +645,9 @@ export class FirstLineCache {
 				 ORDER BY last_accessed_at_ms ASC`,
 			)
 			.all();
-		const del = this.db.prepare(`DELETE FROM tts_first_line WHERE key_hash = ?`);
+		const del = this.db.prepare(
+			`DELETE FROM tts_first_line WHERE key_hash = ?`,
+		);
 		for (const r of rows) {
 			if (total <= this.maxBytes) break;
 			const size = (r.byte_size as number) ?? 0;
@@ -687,4 +710,3 @@ export {
 	firstSentenceSnip,
 	wordCount,
 };
-

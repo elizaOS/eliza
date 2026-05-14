@@ -43,8 +43,8 @@ export const PYANNOTE_SAMPLE_RATE = 16_000;
 /** Number of output frames per 5 s window (= 293 in the upstream export). */
 export const PYANNOTE_FRAMES_PER_WINDOW = 293;
 /** Per-frame stride in milliseconds (5_000ms / 293 frames ≈ 17.06 ms). */
-export const PYANNOTE_FRAME_STRIDE_MS = (1_000 * PYANNOTE_WINDOW_SECONDS) /
-	PYANNOTE_FRAMES_PER_WINDOW;
+export const PYANNOTE_FRAME_STRIDE_MS =
+	(1_000 * PYANNOTE_WINDOW_SECONDS) / PYANNOTE_FRAMES_PER_WINDOW;
 /** Output class count — 3 single + 3 overlap + 1 silence = 7. */
 export const PYANNOTE_CLASS_COUNT = 7;
 
@@ -306,13 +306,14 @@ export class PyannoteDiarizer implements Diarizer {
 		// Pad / truncate to one 5 s window. The pyannote ONNX graph
 		// expects a fixed-shape input; the caller has to slide windows
 		// itself for anything longer than 5 s.
-		const window = pcm.length === expected
-			? pcm
-			: (() => {
-					const out = new Float32Array(expected);
-					out.set(pcm.subarray(0, Math.min(pcm.length, expected)));
-					return out;
-				})();
+		const window =
+			pcm.length === expected
+				? pcm
+				: (() => {
+						const out = new Float32Array(expected);
+						out.set(pcm.subarray(0, Math.min(pcm.length, expected)));
+						return out;
+					})();
 		const input = new this.Tensor("float32", window, [1, 1, window.length]);
 		const out = await this.session.run({ [this.inputName]: input });
 		const tensor = out[this.outputName];

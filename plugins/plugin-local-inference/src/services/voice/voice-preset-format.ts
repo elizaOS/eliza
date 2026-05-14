@@ -198,7 +198,10 @@ function readHeader(view: DataView): ParsedHeader {
 		);
 	}
 	const version = view.getUint32(4, true);
-	if (version !== VOICE_PRESET_VERSION_V1 && version !== VOICE_PRESET_VERSION_V2) {
+	if (
+		version !== VOICE_PRESET_VERSION_V1 &&
+		version !== VOICE_PRESET_VERSION_V2
+	) {
 		throw new VoicePresetFormatError(
 			`voice preset unsupported version: ${version} (this build supports 1 and 2)`,
 			"bad-version",
@@ -372,11 +375,7 @@ function readMetadata(
 			"bad-metadata",
 		);
 	}
-	if (
-		parsed === null ||
-		typeof parsed !== "object" ||
-		Array.isArray(parsed)
-	) {
+	if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
 		throw new VoicePresetFormatError(
 			`voice preset metadata must be a JSON object`,
 			"bad-metadata",
@@ -596,10 +595,7 @@ export function writeVoicePresetFileV2(file: {
 	const instruct = file.instruct ?? "";
 	const metadata = file.metadata ?? {};
 
-	if (
-		refAudioTokens.K * refAudioTokens.refT !==
-		refAudioTokens.tokens.length
-	) {
+	if (refAudioTokens.K * refAudioTokens.refT !== refAudioTokens.tokens.length) {
 		throw new VoicePresetFormatError(
 			`ref_audio_tokens shape mismatch: K=${refAudioTokens.K}, ref_T=${refAudioTokens.refT}, but tokens.length=${refAudioTokens.tokens.length}`,
 			"bad-ref-tokens",
