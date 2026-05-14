@@ -83,7 +83,6 @@ export {
 	TURNSENSE_HF_REPO,
 	TurnsenseEotClassifier,
 	type TurnsenseEotClassifierOptions,
-	turnDetectorRevisionForTier,
 	turnSignalFromProbability,
 	type VoiceNextSpeaker,
 	type VoiceTurnSignal,
