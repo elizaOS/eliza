@@ -13,6 +13,7 @@
  * - Cross-platform: If same phone is used for both, accounts are automatically linked
  */
 
+import { animated, useSpring, useTrail } from "@react-spring/web";
 import { ArrowLeft, Check, Copy, ExternalLink, Info, Send } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
@@ -35,7 +36,7 @@ import {
   type TelegramAuthData,
   useAuth,
 } from "@/lib/context/auth-context";
-import { useElizaAppOnboardingChat } from "@/lib/hooks/use-eliza-app-onboarding-chat";
+import { useElizaAppProvisioningChat } from "@/lib/hooks/use-eliza-app-provisioning-chat";
 
 type TelegramLoginApi = {
   Login?: {
@@ -82,7 +83,6 @@ function generateOAuthState(): string {
 type OnboardingMethod = "telegram" | "imessage" | "discord" | "whatsapp";
 
 type OnboardingStep =
-  | "CHAT_ONBOARDING"
   | "SELECT_METHOD"
   | "TELEGRAM_OAUTH"
   | "PHONE_INPUT"
@@ -256,24 +256,9 @@ function SuccessRedirect({
 
 const MONO = "'Courier New', 'Courier', 'Monaco', monospace";
 
-function ProvisioningChatStep({
-  onContinue,
-  onSelectMethod,
-  showPlatformShortcuts = false,
-}: {
-  onContinue: () => void;
-  onSelectMethod?: (method: OnboardingMethod) => void;
-  showPlatformShortcuts?: boolean;
-}) {
-  const {
-    messages,
-    actions,
-    sendMessage,
-    containerStatus,
-    isLoading,
-    isReady,
-    handoffComplete,
-  } = useElizaAppOnboardingChat(true);
+function ProvisioningChatStep({ onContinue }: { onContinue: () => void }) {
+  const { messages, sendMessage, containerStatus, isLoading, isReady } =
+    useElizaAppProvisioningChat(true);
   const [input, setInput] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -290,15 +275,11 @@ function ProvisioningChatStep({
     inputRef.current?.focus();
   }, [input, isLoading, sendMessage]);
 
-  const statusLabel = handoffComplete
-    ? "Container running"
-    : isReady
-      ? "Ready! Connecting..."
-      : containerStatus === "error"
-        ? "Setup failed — please refresh."
-        : containerStatus === "none"
-          ? "Onboarding chat"
-          : "Setting up your AI space...";
+  const statusLabel = isReady
+    ? "Ready! Connecting..."
+    : containerStatus === "error"
+      ? "Setup failed — please refresh."
+      : "Setting up your AI space...";
 
   const statusColor = isReady
     ? "#4ade80"
@@ -324,7 +305,7 @@ function ProvisioningChatStep({
         <span className="text-xs text-neutral-500 uppercase tracking-widest">
           {statusLabel}
         </span>
-        {!isReady && containerStatus !== "none" && (
+        {!isReady && (
           <button
             type="button"
             onClick={onContinue}
@@ -454,64 +435,6 @@ function ProvisioningChatStep({
         </button>
       </div>
 
-      {actions.length > 0 && (
-        <div className="mt-3 flex flex-col gap-2">
-          {actions.map((action) => (
-            <a
-              key={`${action.type}-${action.href}`}
-              href={action.href}
-              target={action.type === "launch" ? "_blank" : undefined}
-              rel={action.type === "launch" ? "noreferrer" : undefined}
-              className="w-full h-[44px] rounded-xl bg-neutral-900 hover:bg-neutral-800 text-white text-sm font-medium flex items-center justify-center gap-2 transition-colors"
-            >
-              {action.label}
-              {action.type === "launch" && <ExternalLink className="size-4" />}
-            </a>
-          ))}
-        </div>
-      )}
-
-      {showPlatformShortcuts && onSelectMethod && (
-        <div className="mt-5 grid grid-cols-2 gap-2">
-          <Button
-            type="button"
-            variant="ghost"
-            onClick={() => onSelectMethod("telegram")}
-            className="h-11 rounded-xl bg-white/45 hover:bg-white/65 text-neutral-800 gap-2"
-          >
-            <TelegramIcon className="size-4 text-[#229ED9]" />
-            Telegram
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            onClick={() => onSelectMethod("discord")}
-            className="h-11 rounded-xl bg-white/45 hover:bg-white/65 text-neutral-800 gap-2"
-          >
-            <DiscordIcon className="size-4 text-[#5865F2]" />
-            Discord
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            onClick={() => onSelectMethod("imessage")}
-            className="h-11 rounded-xl bg-white/45 hover:bg-white/65 text-neutral-800 gap-2"
-          >
-            <AppleMessagesIcon className="size-4" />
-            iMessage
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            onClick={() => onSelectMethod("whatsapp")}
-            className="h-11 rounded-xl bg-white/45 hover:bg-white/65 text-neutral-800 gap-2"
-          >
-            <WhatsAppIcon className="size-4 text-[#25D366]" />
-            WhatsApp
-          </Button>
-        </div>
-      )}
-
       {/* Continue button when ready */}
       {isReady && (
         <Button
@@ -558,7 +481,7 @@ export default function GetStartedPage() {
     (isAuthenticated && !!discordCode);
 
   // Flow state
-  const [step, setStep] = useState<OnboardingStep>("CHAT_ONBOARDING");
+  const [step, setStep] = useState<OnboardingStep>("SELECT_METHOD");
   const [, setSelectedMethod] = useState<OnboardingMethod | null>(null);
   const [initialMethodHandled, setInitialMethodHandled] = useState(false);
 
@@ -605,26 +528,30 @@ export default function GetStartedPage() {
     return () => clearTimeout(timer);
   }, []);
 
-  const headerStyle = {
+  // Header animation
+  const headerSpring = useSpring({
     opacity: showContent ? 1 : 0,
     transform: showContent ? "translateY(0px)" : "translateY(-20px)",
-    transition: "opacity 280ms ease 200ms, transform 280ms ease 200ms",
-  };
+    config: { mass: 1, tension: 280, friction: 24 },
+    delay: 200,
+  });
 
-  const titleStyle = {
+  // Title animation
+  const titleSpring = useSpring({
     opacity: showContent ? 1 : 0,
     transform: showContent ? "translateY(0px)" : "translateY(30px)",
-    transition: "opacity 320ms ease 400ms, transform 320ms ease 400ms",
-  };
+    config: { mass: 1, tension: 280, friction: 24 },
+    delay: 400,
+  });
 
-  const getCardStyle = (index: number) => ({
+  // Cards staggered animation (trail)
+  const cardTrail = useTrail(4, {
     opacity: showContent ? 1 : 0,
     transform: showContent
       ? "translateY(0px) scale(1)"
       : "translateY(40px) scale(0.95)",
-    transition: `opacity 320ms ease ${600 + index * 80}ms, transform 320ms ease ${
-      600 + index * 80
-    }ms`,
+    config: { mass: 1, tension: 280, friction: 24 },
+    delay: 600,
   });
 
   // Country options (from shared hook)
@@ -678,8 +605,7 @@ export default function GetStartedPage() {
       !guideParam &&
       !isLinkMode &&
       !discordCode &&
-      step !== "PROVISIONING_CHAT" &&
-      step !== "CHAT_ONBOARDING"
+      step !== "PROVISIONING_CHAT"
     ) {
       navigate("/connected", { replace: true });
     }
@@ -1102,8 +1028,6 @@ export default function GetStartedPage() {
     navigate("/connected");
   };
 
-  const showBackButton = step !== "SELECT_METHOD" && step !== "CHAT_ONBOARDING";
-
   // ============================================================================
   // Render
   // ============================================================================
@@ -1122,8 +1046,7 @@ export default function GetStartedPage() {
     !isLinkMode &&
     !guideParam &&
     !discordCode &&
-    step !== "PROVISIONING_CHAT" &&
-    step !== "CHAT_ONBOARDING"
+    step !== "PROVISIONING_CHAT"
   ) {
     return (
       <main className="min-h-screen bg-[#0d0d0f] flex flex-col items-center justify-center px-4">
@@ -1156,12 +1079,12 @@ export default function GetStartedPage() {
         }}
       />
       {/* Header */}
-      <header
+      <animated.header
         className="relative z-10 p-4 flex items-center justify-between"
-        style={headerStyle}
+        style={headerSpring}
       >
         <div className="w-16">
-          {step === "DISCORD_SETUP_GUIDE" ? null : showBackButton ? (
+          {step === "DISCORD_SETUP_GUIDE" ? null : step !== "SELECT_METHOD" ? (
             <button
               type="button"
               onClick={handleBack}
@@ -1182,29 +1105,18 @@ export default function GetStartedPage() {
         </div>
         <ElizaLogo className="h-8" />
         <div className="w-16" /> {/* Spacer for centering */}
-      </header>
+      </animated.header>
 
       {/* Content */}
       <div className="relative z-10 flex-1 flex flex-col items-center justify-center px-4 pb-20">
         <div className="w-full max-w-[400px] flex flex-col items-center">
-          {/* ============================================================ */}
-          {/* STEP: CHAT_ONBOARDING */}
-          {/* ============================================================ */}
-          {step === "CHAT_ONBOARDING" && (
-            <ProvisioningChatStep
-              onContinue={handleContinueToConnected}
-              onSelectMethod={handleMethodSelect}
-              showPlatformShortcuts
-            />
-          )}
-
           {/* ============================================================ */}
           {/* STEP: SELECT_METHOD */}
           {/* ============================================================ */}
           {step === "SELECT_METHOD" && (
             <>
               {/* Chat teaser — shows the welcome message before login */}
-              <div style={titleStyle} className="w-full mb-6">
+              <animated.div style={titleSpring} className="w-full mb-6">
                 <div className="w-full px-4 py-3 rounded-xl bg-white/40 backdrop-blur-sm border border-white/60 flex items-start gap-3">
                   <div className="w-7 h-7 rounded-full bg-neutral-800 flex items-center justify-center shrink-0 mt-0.5 text-[10px] font-bold text-white">
                     E
@@ -1214,16 +1126,16 @@ export default function GetStartedPage() {
                     space ready — we can talk while it warms up.
                   </p>
                 </div>
-              </div>
+              </animated.div>
 
-              <div style={titleStyle}>
+              <animated.div style={titleSpring}>
                 <h1 className="text-2xl sm:text-3xl font-bold text-neutral-900 text-center mb-2 whitespace-nowrap">
                   Anywhere you want her to be.
                 </h1>
                 <p className="text-neutral-600 text-center mb-8">
                   Choose your path(s)
                 </p>
-              </div>
+              </animated.div>
 
               {/* Error banner (shown when returning from a failed OAuth or linking attempt) */}
               {(discordError || telegramError) && (
@@ -1236,11 +1148,10 @@ export default function GetStartedPage() {
 
               <div className="w-full flex flex-col gap-3">
                 {/* Telegram */}
-                <button
-                  type="button"
+                <animated.button
                   onClick={() => handleMethodSelect("telegram")}
                   className="w-full h-[72px] bg-white/40 hover:bg-white/60 backdrop-blur-sm rounded-xl border border-white/60 hover:border-white/80 transition-all flex items-center gap-4 px-5 cursor-pointer"
-                  style={getCardStyle(0)}
+                  style={cardTrail[0]}
                 >
                   <div className="w-12 h-12 rounded-xl bg-[#229ED9]/20 flex items-center justify-center shrink-0">
                     <TelegramIcon className="size-6 text-[#229ED9]" />
@@ -1251,14 +1162,13 @@ export default function GetStartedPage() {
                       Use the Telegram app
                     </p>
                   </div>
-                </button>
+                </animated.button>
 
                 {/* iMessage */}
-                <button
-                  type="button"
+                <animated.button
                   onClick={() => handleMethodSelect("imessage")}
                   className="w-full h-[72px] bg-white/40 hover:bg-white/60 backdrop-blur-sm rounded-xl border border-white/60 hover:border-white/80 transition-all flex items-center gap-4 px-5 cursor-pointer"
-                  style={getCardStyle(1)}
+                  style={cardTrail[1]}
                 >
                   <div className="w-12 h-12 shrink-0 flex items-center justify-center">
                     <AppleMessagesIcon className="size-12" />
@@ -1269,14 +1179,13 @@ export default function GetStartedPage() {
                       Use text messages
                     </p>
                   </div>
-                </button>
+                </animated.button>
 
                 {/* WhatsApp */}
-                <button
-                  type="button"
+                <animated.button
                   onClick={() => handleMethodSelect("whatsapp")}
                   className="w-full h-[72px] bg-white/40 hover:bg-white/60 backdrop-blur-sm rounded-xl border border-white/60 hover:border-white/80 transition-all flex items-center gap-4 px-5 cursor-pointer"
-                  style={getCardStyle(2)}
+                  style={cardTrail[2]}
                 >
                   <div className="w-12 h-12 rounded-xl bg-[#25D366]/20 flex items-center justify-center shrink-0">
                     <WhatsAppIcon className="size-6 text-[#25D366]" />
@@ -1287,14 +1196,13 @@ export default function GetStartedPage() {
                       Use the WhatsApp app
                     </p>
                   </div>
-                </button>
+                </animated.button>
 
                 {/* Discord */}
-                <button
-                  type="button"
+                <animated.button
                   onClick={() => handleMethodSelect("discord")}
                   className="w-full h-[72px] bg-white/40 hover:bg-white/60 backdrop-blur-sm rounded-xl border border-white/60 hover:border-white/80 transition-all flex items-center gap-4 px-5 cursor-pointer"
-                  style={getCardStyle(3)}
+                  style={cardTrail[3]}
                 >
                   <div className="w-12 h-12 rounded-xl bg-[#5865F2]/20 flex items-center justify-center shrink-0">
                     <DiscordIcon className="size-6 text-[#5865F2]" />
@@ -1305,7 +1213,7 @@ export default function GetStartedPage() {
                       Use the Discord app
                     </p>
                   </div>
-                </button>
+                </animated.button>
               </div>
             </>
           )}

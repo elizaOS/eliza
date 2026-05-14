@@ -51,7 +51,6 @@ try:
         _score_from_vendingbench_json,
         _score_from_visualwebbench_json,
         _score_from_voiceagentbench_json,
-        _score_from_voice_emotion_json,
         _score_from_voicebench_json,
         _score_from_voicebench_quality_json,
         _score_from_webshop_json,
@@ -103,7 +102,6 @@ except ImportError:
         _score_from_vendingbench_json,
         _score_from_visualwebbench_json,
         _score_from_voiceagentbench_json,
-        _score_from_voice_emotion_json,
         _score_from_voicebench_json,
         _score_from_voicebench_quality_json,
         _score_from_webshop_json,
@@ -145,9 +143,6 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         sample = extra.get("sample", extra.get("max_tasks"))
         if isinstance(sample, int) and sample > 0:
             args.extend(["--sample", str(sample)])
-        seed = extra.get("seed")
-        if isinstance(seed, int):
-            args.extend(["--seed", str(seed)])
         max_per_category = extra.get("max_per_category")
         if isinstance(max_per_category, int) and max_per_category > 0:
             args.extend(["--max-per-category", str(max_per_category)])
@@ -1221,7 +1216,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         args = [
             python,
             "-m",
-            "elizaos_mmau_audio",
+            "benchmarks.mmau",
             "--output",
             str(output_dir),
             "--no-traces",
@@ -1309,34 +1304,6 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
 
     def _voicebench_quality_result(output_dir: Path) -> Path:
         return output_dir / "voicebench-quality-results.json"
-
-    def _voice_emotion_cmd(
-        output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]
-    ) -> list[str]:
-        mode = str(extra.get("mode") or "intrinsic").strip()
-        if mode not in {"intrinsic", "text-intrinsic"}:
-            mode = "intrinsic"
-        suite = str(extra.get("suite") or "fixture").strip()
-        model_name = str(extra.get("emotion_model") or model.model or "fixture").strip()
-        args = [
-            python,
-            "-m",
-            "elizaos_voice_emotion",
-            mode,
-            "--suite",
-            suite,
-            "--model",
-            model_name,
-            "--out",
-            str(output_dir / "voice-emotion-results.json"),
-        ]
-        api_base = extra.get("api_base")
-        if mode == "text-intrinsic" and isinstance(api_base, str) and api_base.strip():
-            args.extend(["--api-base", api_base.strip()])
-        return args
-
-    def _voice_emotion_result(output_dir: Path) -> Path:
-        return output_dir / "voice-emotion-results.json"
 
     # Social-Alpha - trust-marketplace benchmark on real Discord crypto chat data
     def _social_alpha_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
@@ -2410,12 +2377,12 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
                 "ICLR 2025) — 10k audio MCQs across speech/sound/music and 27 "
                 "reasoning skills. Not the Salesforce agent MMAU (arXiv:2407.18961)."
             ),
-            cwd_rel="packages/benchmarks/mmau-audio",
+            cwd_rel="packages/benchmarks/mmau",
             requirements=BenchmarkRequirements(
                 env_vars=(),
                 paths=(
-                    "packages/benchmarks/mmau-audio",
-                    "packages/benchmarks/mmau-audio/fixtures/smoke.jsonl",
+                    "packages/benchmarks/mmau",
+                    "packages/benchmarks/mmau/fixtures/smoke.jsonl",
                 ),
                 notes=(
                     "Pure MCQ — deterministic exact-match scoring, no LLM-judge. "
@@ -2452,27 +2419,6 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             build_command=_voicebench_quality_cmd,
             locate_result=_voicebench_quality_result,
             extract_score=_score_from_voicebench_quality_json,
-        ),
-        BenchmarkDefinition(
-            id="voice_emotion",
-            display_name="Voice Emotion",
-            description=(
-                "Voice-emotion classifier and closed-loop fidelity benchmark. "
-                "Default registry smoke runs the bundled fixture intrinsic path."
-            ),
-            cwd_rel="packages/benchmarks/voice-emotion",
-            requirements=BenchmarkRequirements(
-                env_vars=(),
-                paths=("packages/benchmarks/voice-emotion",),
-                notes=(
-                    "Fixture intrinsic mode is hermetic. Real MELD/IEMOCAP/MSP "
-                    "or closed-loop fidelity paths require staged corpora or a "
-                    "running duet host."
-                ),
-            ),
-            build_command=_voice_emotion_cmd,
-            locate_result=_voice_emotion_result,
-            extract_score=_score_from_voice_emotion_json,
         ),
         BenchmarkDefinition(
             id="social_alpha",

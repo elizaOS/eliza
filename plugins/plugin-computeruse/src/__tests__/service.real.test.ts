@@ -334,41 +334,6 @@ describeIfDesktop("ComputerUseService desktop actions (real)", () => {
     expect(result.error).toContain("key is required");
   });
 
-  it("returns error for missing coordinate on raw mouse actions", async () => {
-    const downResult = await service.executeDesktopAction({
-      action: "mouse_down",
-    });
-    const middleResult = await service.executeDesktopAction({
-      action: "middle_click",
-    });
-
-    expect(downResult.success).toBe(false);
-    expect(downResult.error).toContain("coordinate");
-    expect(middleResult.success).toBe(false);
-    expect(middleResult.error).toContain("coordinate");
-  });
-
-  it("returns error for missing key on raw key actions", async () => {
-    const downResult = await service.executeDesktopAction({
-      action: "key_down",
-    });
-    const upResult = await service.executeDesktopAction({ action: "key_up" });
-
-    expect(downResult.success).toBe(false);
-    expect(downResult.error).toContain("key is required");
-    expect(upResult.success).toBe(false);
-    expect(upResult.error).toContain("key is required");
-  });
-
-  it("normalizes drag aliases without changing drag requirements", async () => {
-    const result = await service.executeCommand("drag_to", {
-      coordinate: [100, 100],
-    });
-
-    expect(result.success).toBe(false);
-    expect(result.error).toContain("startCoordinate");
-  });
-
   it("returns error for unknown action", async () => {
     const result = await executeRawDesktopAction(service, {
       action: "nonexistent",
@@ -408,33 +373,6 @@ describe("ComputerUseService window actions (real)", () => {
     expect(result.success).toBe(true);
     expect(Array.isArray(result.windows)).toBe(true);
   }, 15000);
-
-  it("supports Cua-compatible read-only window aliases", async () => {
-    const result = await service.executeCommand("get_application_windows", {
-      appName: "__eliza_unlikely_app__",
-    });
-
-    expect(result.success).toBe(true);
-    expect(Array.isArray(result.windows)).toBe(true);
-    expect(result.count).toBe(result.windows?.length);
-  });
-
-  it("routes Cua-compatible window mutation aliases without falling back to list", async () => {
-    const openResult = await service.executeCommand("open");
-    expect(openResult.success).toBe(false);
-    expect(openResult.error).toContain("appName");
-
-    const activateResult = await service.executeCommand("activate_window");
-    expect(activateResult.success).toBe(false);
-    expect(activateResult.error).toContain("windowId");
-
-    const resizeResult = await service.executeCommand("set_window_size", {
-      windowId: "1",
-      width: 640,
-    });
-    expect(resizeResult.success).toBe(false);
-    expect(resizeResult.error).toContain("height");
-  });
 
   it("returns error for focus without windowId", async () => {
     const result = await service.executeWindowAction({ action: "focus" });

@@ -1,18 +1,6 @@
 import type { CapacitorConfig } from "@capacitor/cli";
 import appConfig from "./app.config";
 
-const capacitorBuildTarget =
-  process.env.ELIZA_CAPACITOR_BUILD_TARGET ??
-  process.env.CAPACITOR_PLATFORM ??
-  (process.argv.includes("android")
-    ? "android"
-    : process.argv.includes("ios")
-      ? "ios"
-      : "");
-
-const loopbackNavigationHosts =
-  capacitorBuildTarget === "android" ? ["localhost", "127.0.0.1"] : [];
-
 const config: CapacitorConfig = {
   appId: appConfig.appId,
   appName: appConfig.appName,
@@ -20,11 +8,10 @@ const config: CapacitorConfig = {
   server: {
     androidScheme: "https",
     iosScheme: "https",
-    // Android local mode owns a loopback API/device bridge. iOS local mode is
-    // IPC-only through the native Bun runtime bridge, so it must not whitelist
-    // localhost navigation.
+    // Allow the webview to connect to the embedded API server and game servers
     allowNavigation: [
-      ...loopbackNavigationHosts,
+      "localhost",
+      "127.0.0.1",
       "*.elizacloud.ai",
       "app.eliza.how",
       "cloud.eliza.how",

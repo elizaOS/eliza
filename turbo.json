@@ -297,14 +297,6 @@
       "dependsOn": ["@elizaos/app-lifeops#build", "@elizaos/ui#build"],
       "outputs": []
     },
-    "@elizaos/electrobun#typecheck": {
-      "dependsOn": ["@elizaos/plugin-browser#build"],
-      "outputs": []
-    },
-    "@elizaos/example-app-capacitor-backend#typecheck": {
-      "dependsOn": ["@elizaos/core#build"],
-      "outputs": []
-    },
     "@elizaos/example-telegram#typecheck": {
       "dependsOn": ["@elizaos/plugin-sql#build"],
       "outputs": []

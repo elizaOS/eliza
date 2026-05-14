@@ -33,23 +33,6 @@
                 <data android:scheme="@string/custom_url_scheme" />
             </intent-filter>
 
-            <meta-data
-                android:name="android.app.shortcuts"
-                android:resource="@xml/shortcuts" />
-
-        </activity>
-
-        <activity
-            android:name=".ElizaAssistActivity"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.intent.action.ASSIST" />
-                <category android:name="android.intent.category.DEFAULT" />
-            </intent-filter>
-            <intent-filter>
-                <action android:name="android.intent.action.VOICE_COMMAND" />
-                <category android:name="android.intent.category.DEFAULT" />
-            </intent-filter>
         </activity>
 
         <service

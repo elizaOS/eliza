@@ -39,7 +39,6 @@ describe("local inference assignments", () => {
       TEXT_LARGE: "eliza-1-2b",
       TEXT_TO_SPEECH: "eliza-1-2b",
       TRANSCRIPTION: "eliza-1-2b",
-      IMAGE_DESCRIPTION: "eliza-1-2b",
     });
   });
 

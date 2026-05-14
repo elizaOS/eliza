@@ -183,8 +183,8 @@ export class AwarenessRegistry {
         bodyLen + suffix.length + headerLen + 1 > SUMMARY_TOTAL_CHAR_LIMIT &&
         included.length > 1
       ) {
-        const removed = included.pop();
-        if (removed === undefined) break;
+        // included.length > 1 is checked above, so pop() always returns a string
+        const removed = included.pop()!;
         bodyLen -= removed.length + 1;
         remaining++;
         suffix = `\n[+${remaining} more]`;

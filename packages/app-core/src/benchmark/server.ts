@@ -21,7 +21,6 @@ import {
 } from "./lifeops-bench-handler.js";
 import type { LifeOpsFakeBackend } from "./lifeops-fake-backend.js";
 import {
-  type CapturedAction,
   clearCapturedAction,
   createBenchmarkPlugin,
   getCapturedAction,
@@ -343,78 +342,6 @@ function buildLifeOpsBenchmarkContext(
     calendarEvents,
     previousToolResults,
   };
-}
-
-function capturedLifeOpsActionArguments(
-  action: CapturedAction,
-): Record<string, unknown> {
-  if (action.arguments && typeof action.arguments === "object") {
-    return action.arguments;
-  }
-  const params =
-    action.params && typeof action.params === "object" ? action.params : {};
-  const rawArguments = params.arguments;
-  if (typeof rawArguments === "string") {
-    try {
-      const parsed = JSON.parse(rawArguments) as unknown;
-      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-        return parsed as Record<string, unknown>;
-      }
-    } catch {
-      return { _raw: rawArguments };
-    }
-  }
-  if (
-    rawArguments &&
-    typeof rawArguments === "object" &&
-    !Array.isArray(rawArguments)
-  ) {
-    return rawArguments as Record<string, unknown>;
-  }
-  return Object.fromEntries(
-    Object.entries(params).filter(
-      ([key]) =>
-        ![
-          "tool_name",
-          "command",
-          "operation",
-          "arguments",
-          "actionContext",
-        ].includes(key),
-    ),
-  );
-}
-
-function stripRuntimeActionContext(
-  args: Record<string, unknown>,
-): Record<string, unknown> {
-  const { actionContext: _actionContext, ...rest } = args;
-  return rest;
-}
-
-function isMeaningfulLifeOpsCapture(args: Record<string, unknown>): boolean {
-  return Object.keys(stripRuntimeActionContext(args)).length > 0;
-}
-
-function lifeOpsCandidateActionsForText(userText: string): string[] {
-  const text = userText.toLowerCase();
-  const candidates = new Set<string>(["BENCHMARK_ACTION"]);
-  if (
-    /\barchive\b/.test(text) &&
-    (/\bthread_[a-z0-9_]+\b/.test(text) || /\bthread\b/.test(text))
-  ) {
-    candidates.add("ARCHIVE_EMAIL_THREAD");
-    candidates.add("MESSAGE_MANAGE");
-    candidates.add("MESSAGE");
-  }
-  if (
-    /\b(free|available|availability)\b/.test(text) ||
-    /\b\d{1,2}(?::\d{2})?\s*(?:am|pm)?\s*(?:-|to)\s*\d{1,2}/.test(text)
-  ) {
-    candidates.add("CALENDAR_CHECK_AVAILABILITY");
-    candidates.add("CALENDAR");
-  }
-  return [...candidates];
 }
 
 function isAllowedOrigin(origin: string | undefined): boolean {
@@ -1358,9 +1285,6 @@ export async function startBenchmarkServer() {
       const session = resolveSession(taskId, "lifeops_bench", true);
       if (!session) throw new Error("Failed to resolve lifeops_bench session");
       await ensureBenchmarkSessionContext(runtime, session);
-      const hasSuccessfulLifeOpsToolResult = previousTurns.some((turn) =>
-        turn.toolCalls.some((call) => call.ok === true),
-      );
 
       const benchmarkContext = normalizeBenchmarkContext(session, {
         benchmark: "lifeops_bench",
@@ -1385,8 +1309,6 @@ export async function startBenchmarkServer() {
           metadata: {
             benchmark: "lifeops_bench",
             taskId,
-            forceBenchmarkToolCall: !hasSuccessfulLifeOpsToolResult,
-            benchmarkCandidateActions: lifeOpsCandidateActionsForText(userText),
           },
         },
         entityId: session.userEntityId,
@@ -1434,7 +1356,6 @@ export async function startBenchmarkServer() {
       const actions = coerceActions(result.responseContent?.actions);
       const params = coerceParams(result.responseContent?.params);
       const capturedAction = getCapturedAction();
-      const capturedActions = getCapturedActions();
 
       // Map captured Eliza actions into lifeops_bench tool calls.
       // Strategy: each action name in `actions` is treated as a tool name;
@@ -1453,27 +1374,20 @@ export async function startBenchmarkServer() {
       // shape: `{tool_name, arguments}`). Unwrap that capture into a real tool
       // call against the LifeOps fake backend instead of forwarding the
       // generic BENCHMARK_ACTION sentinel (which the fake backend rejects).
-      const capturedToolNames = new Set<string>();
-      for (const action of capturedActions) {
-        if (
-          !action ||
-          typeof action.toolName !== "string" ||
-          action.toolName.trim().length === 0
-        ) {
-          continue;
-        }
-        const args = stripRuntimeActionContext(
-          capturedLifeOpsActionArguments(action),
-        );
-        if (!isMeaningfulLifeOpsCapture(args)) {
-          continue;
-        }
+      if (
+        capturedAction &&
+        typeof capturedAction.toolName === "string" &&
+        capturedAction.toolName.trim().length > 0
+      ) {
         toolCalls.push({
-          id: `call_${toolCalls.length}`,
-          name: action.toolName,
-          arguments: args,
+          id: "call_0",
+          name: capturedAction.toolName,
+          arguments:
+            capturedAction.arguments &&
+            typeof capturedAction.arguments === "object"
+              ? capturedAction.arguments
+              : {},
         });
-        capturedToolNames.add(action.toolName);
       }
 
       // Also pass through any directly-named actions (e.g. when the planner
@@ -1490,10 +1404,9 @@ export async function startBenchmarkServer() {
         )
           continue;
         if (
-          capturedToolNames.has(name) ||
-          (capturedAction &&
-            typeof capturedAction.toolName === "string" &&
-            capturedAction.toolName === name)
+          capturedAction &&
+          typeof capturedAction.toolName === "string" &&
+          capturedAction.toolName === name
         )
           continue;
         const paramsForAction = params[name];

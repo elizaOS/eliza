@@ -110,16 +110,19 @@ gpu_to_train_vast_token() {
 }
 tier_to_registry_key() {
   # Keys must match scripts/training/model_registry.py REGISTRY. The canonical
-  # eliza-1 fused-model line uses Qwen3.6 where available and Qwen3.5
-  # otherwise: 0_8b/2b/4b/9b route to Qwen3.5, while 27b/27b-256k/27b-1m
-  # route to Qwen3.6-27B. The legacy 0_6b/1_7b tier ids stay addressable in
-  # older runtime manifests but no longer route to a training registry key.
+  # eliza-1 fused-model line is Qwen3.5-only (Qwen3 doesn't work with dflash —
+  # the dflash kernels are validated against the Qwen3.5 architecture +
+  # 248320 tokenizer; a Qwen3 base has the wrong vocab + attention shape for
+  # the fused QJL/Polar paths). All entries train from the published -Base
+  # pretrain checkpoints; Qwen/Qwen3.5-27B has no -Base variant — that
+  # release IS the base. The 0_6b/1_7b legacy tier ids in the runtime
+  # manifest stay addressable but no longer route to a registry key.
   case "$1" in
     0_8b) echo qwen3.5-0.8b ;;
     2b)   echo qwen3.5-2b ;;
     4b)   echo qwen3.5-4b ;;
     9b)   echo qwen3.5-9b ;;
-    27b|27b-256k|27b-1m) echo qwen3.6-27b ;;
+    27b|27b-256k|27b-1m) echo qwen3.5-27b ;;
   esac
 }
 
@@ -155,7 +158,7 @@ IMAGE="nvidia/cuda:12.8.0-devel-ubuntu24.04"
 DISK_GB=80
 
 # The remote bootstrap. Heredoc'd onto the instance and run there.
-read -r -d '' REMOTE_SCRIPT <<REMOTE || true
+REMOTE_SCRIPT="$(cat <<REMOTE
 set -euxo pipefail
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -q && apt-get install -y -q git curl ca-certificates build-essential cmake unzip
@@ -170,11 +173,12 @@ bun install --frozen-lockfile || bun install
 ELIZA_DFLASH_SKIP_SERVER_STRUCTURED_OUTPUT=1 node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target linux-x64-cuda
 make -C packages/inference/verify kernel-contract reference-test
 REMOTE
+)"
 
 case "$TASK" in
   kernel-verify)
     OUT="$RESULTS_DIR/cuda-linux-${GPU}-${DATE_TAG}.json"
-    read -r -d '' REMOTE_TASK <<REMOTE || true
+    REMOTE_TASK="$(cat <<REMOTE
 make -C packages/inference/verify cuda-verify
 make -C packages/inference/verify cuda-verify-fused
 ${SMOKE_MODEL:+export ELIZA_DFLASH_SMOKE_MODEL=/workspace/smoke.gguf}
@@ -182,26 +186,28 @@ ${SMOKE_MODEL:+packages/inference/verify/cuda_runner.sh --report /tmp/cuda-repor
   ${SMOKE_MODEL:+|| true}
 ${SMOKE_MODEL:+test -f /tmp/cuda-report.json && cp /tmp/cuda-report.json /workspace/cuda-report.json}
 # No smoke model → still emit a fixture-parity-only evidence stub.
-${SMOKE_MODEL:+:} || cat > /workspace/cuda-report.json <<JSON
+${SMOKE_MODEL:+:} || cat > /workspace/cuda-report.json <<'JSON'
 {"schemaVersion":1,"runner":"run-on-cloud kernel-verify","status":"pass","passRecordable":false,
  "exitCode":0,"note":"cuda-verify + cuda-verify-fused fixture parity only; no ELIZA_DFLASH_SMOKE_MODEL → graph smoke skipped, so this is NOT a runtime-ready record. Pass --smoke-model to upgrade."}
 JSON
 REMOTE
+)"
     PULL_REMOTE="/workspace/eliza/cuda-report.json:$OUT /workspace/cuda-report.json:$OUT"
     mkdir -p "$RESULTS_DIR"
     ;;
   bench)
     REG_KEY="$(tier_to_registry_key "$TIER")"
     OUT="$BENCH_DIR/cuda_${GPU}_${TIER}_${DATE_TAG}.json"
-    read -r -d '' REMOTE_TASK <<REMOTE || true
+    REMOTE_TASK="$(cat <<REMOTE
 # e2e CUDA bench harness. The repo's bench entrypoint reads the bench_results
 # dir; we point it at /workspace and copy out.
 ELIZA1_BENCH_TIER=$TIER ELIZA1_BENCH_REGISTRY_KEY=$REG_KEY \
   node packages/inference/verify/eliza1_gates_collect.mjs --backend cuda --bench --out /workspace/bench.json || \
-  { echo "bench harness not present on this commit - emitting toolchain-only stub"; \
-    printf "{\"schemaVersion\":1,\"backend\":\"cuda\",\"gpu\":\"%s\",\"tier\":\"%s\",\"status\":\"toolchain-only\",\"note\":\"eliza1 bench harness not on this commit\"}\\n" "$GPU" "$TIER" > /workspace/bench.json; }
+  { echo 'bench harness not present on this commit — emitting toolchain-only stub'; \
+    printf '{"schemaVersion":1,"backend":"cuda","gpu":"%s","tier":"%s","status":"toolchain-only","note":"eliza1 bench harness not on this commit"}\n' "$GPU" "$TIER" > /workspace/bench.json; }
 cp /workspace/bench.json /workspace/eliza/bench.json 2>/dev/null || true
 REMOTE
+)"
     PULL_REMOTE="/workspace/bench.json:$OUT /workspace/eliza/bench.json:$OUT"
     mkdir -p "$BENCH_DIR"
     ;;
@@ -274,7 +280,7 @@ fi
 
 # 5. Run bootstrap + task.
 log "running bootstrap + $TASK on the instance (this can take 10-40 min)..."
-ssh -o StrictHostKeyChecking=no "$SSH_HOSTPORT" "bash -lc 'mkdir -p /workspace && cd /workspace && cat > bootstrap.sh'" <<< "$REMOTE_SCRIPT"$'\n'"$REMOTE_TASK"
+ssh -o StrictHostKeyChecking=no "$SSH_HOSTPORT" "bash -lc 'mkdir -p /workspace && cd /workspace && cat > bootstrap.sh' " <<< "$REMOTE_SCRIPT"$'\n'"$REMOTE_TASK"
 ssh -o StrictHostKeyChecking=no "$SSH_HOSTPORT" "bash -l /workspace/bootstrap.sh"
 
 # 6. Pull evidence.

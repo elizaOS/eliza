@@ -602,9 +602,9 @@ def test_missing_vad_model_fails(tmp_path: Path) -> None:
     assert rc != EXIT_OK
 
 
-def test_stale_voice_checksum_fails_release_evidence(tmp_path: Path) -> None:
+def test_stale_omnivoice_checksum_fails_release_evidence(tmp_path: Path) -> None:
     bundle = _build_fixture_bundle(tmp_path)
-    (bundle / "tts" / "kokoro" / "tokenizer.json").write_text('{"stale":true}')
+    (bundle / "tts" / "omnivoice-tokenizer-Q4_K_M.gguf").unlink()
     metal = _metal_report(tmp_path)
     rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
     assert rc == EXIT_RELEASE_EVIDENCE_FAIL

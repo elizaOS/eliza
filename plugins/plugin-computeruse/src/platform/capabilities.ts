@@ -18,12 +18,10 @@ export function detectPlatformCapabilities(
     browser: { available: false, tool: "none" },
     terminal: { available: false, tool: "none" },
     fileSystem: { available: true, tool: "node:fs" },
-    clipboard: { available: false, tool: "none" },
   };
 
   if (options.osName === "darwin") {
     caps.screenshot = { available: true, tool: "screencapture (built-in)" };
-    caps.clipboard = { available: true, tool: "pbcopy/pbpaste" };
     caps.computerUse = options.commandExists("cliclick")
       ? { available: true, tool: "cliclick" }
       : {
@@ -62,24 +60,10 @@ export function detectPlatformCapabilities(
         tool: "none (install wmctrl or xdotool)",
       };
     }
-
-    if (options.commandExists("wl-copy") && options.commandExists("wl-paste")) {
-      caps.clipboard = { available: true, tool: "wl-clipboard" };
-    } else if (options.commandExists("xclip")) {
-      caps.clipboard = { available: true, tool: "xclip" };
-    } else if (options.commandExists("xsel")) {
-      caps.clipboard = { available: true, tool: "xsel" };
-    } else {
-      caps.clipboard = {
-        available: false,
-        tool: "none (install wl-clipboard, xclip, or xsel)",
-      };
-    }
   } else if (options.osName === "win32") {
     caps.screenshot = { available: true, tool: "PowerShell System.Drawing" };
     caps.computerUse = { available: true, tool: "PowerShell user32.dll" };
     caps.windowList = { available: true, tool: "PowerShell Get-Process" };
-    caps.clipboard = { available: true, tool: "PowerShell Get/Set-Clipboard" };
   }
 
   caps.browser = options.isBrowserAvailable()

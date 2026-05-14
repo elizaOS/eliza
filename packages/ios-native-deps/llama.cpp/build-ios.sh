@@ -83,10 +83,8 @@ ensure_source_checkout() {
   # branch name, or a raw commit SHA. `git clone --branch` would refuse
   # a SHA, and the elizaOS fork pins by SHA, not by upstream-style tag.
   ( cd "$SRC_DIR" \
-    && { [[ -d .git ]] || git init -q; } \
-    && { git remote get-url origin >/dev/null 2>&1 \
-      && git remote set-url origin "$LLAMA_CPP_REPO" \
-      || git remote add origin "$LLAMA_CPP_REPO"; } \
+    && git init -q \
+    && git remote add origin "$LLAMA_CPP_REPO" \
     && git fetch --depth 1 origin "$PINNED_REF" \
     && git checkout --quiet FETCH_HEAD ) \
     || die "fetch/checkout failed; verify '$PINNED_REF' exists at $LLAMA_CPP_REPO"

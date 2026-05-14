@@ -287,12 +287,6 @@ class MobileDeviceBridge {
 		string,
 		Pending<string | null>
 	>();
-	private readonly expectedPairingToken: string | null =
-		process.env.ELIZA_DEVICE_PAIRING_TOKEN?.trim() ||
-		process.env.ELIZA_DEVICE_BRIDGE_TOKEN?.trim() ||
-		null;
-	private readonly requirePairingToken =
-		process.env.ELIZA_DEVICE_BRIDGE_ALLOW_UNPAIRED?.trim() !== "1";
 
 	status(): MobileDeviceBridgeStatus {
 		const devices = [...this.devices.values()].map((device) => ({
@@ -302,9 +296,7 @@ class MobileDeviceBridge {
 			connectedSince: new Date(device.connectedAt).toISOString(),
 		}));
 		return {
-			enabled:
-				SERVICE_ENABLED &&
-				(!this.requirePairingToken || Boolean(this.expectedPairingToken)),
+			enabled: SERVICE_ENABLED,
 			connected: devices.length > 0,
 			devices,
 			primaryDeviceId: devices[0]?.deviceId ?? null,
@@ -319,12 +311,6 @@ class MobileDeviceBridge {
 
 	async attachToHttpServer(server: HttpServer): Promise<void> {
 		if (!SERVICE_ENABLED || this.wss) return;
-		if (this.requirePairingToken && !this.expectedPairingToken) {
-			logger.warn(
-				"[mobile-device-bridge] Disabled: ELIZA_DEVICE_PAIRING_TOKEN is required when ELIZA_DEVICE_BRIDGE_ENABLED=1",
-			);
-			return;
-		}
 		const wsModule = await import("ws");
 		if (!isWsModule(wsModule)) {
 			throw new Error("ws module did not expose WebSocketServer/WebSocket");
@@ -344,7 +330,7 @@ class MobileDeviceBridge {
 			const url = new URL(request.url ?? "/", "http://localhost");
 			if (url.pathname !== DEVICE_BRIDGE_PATH) return;
 			wss.handleUpgrade(request, socket, head, (client: MinimalWebSocket) => {
-				this.handleConnection(client, ws.WebSocket, url);
+				this.handleConnection(client, ws.WebSocket);
 			});
 		});
 
@@ -353,22 +339,7 @@ class MobileDeviceBridge {
 		);
 	}
 
-	private handleConnection(
-		socket: MinimalWebSocket,
-		WsCtor: WsConstructor,
-		url: URL,
-	) {
-		const queryToken = url.searchParams.get("token")?.trim();
-		if (
-			this.requirePairingToken &&
-			(!this.expectedPairingToken || queryToken !== this.expectedPairingToken)
-		) {
-			logger.warn(
-				"[mobile-device-bridge] Rejecting connection: bad query token",
-			);
-			socket.close(4001, "unauthorized");
-			return;
-		}
+	private handleConnection(socket: MinimalWebSocket, WsCtor: WsConstructor) {
 		let registeredDeviceId: string | null = null;
 
 		socket.on("message", (raw) => {
@@ -384,24 +355,6 @@ class MobileDeviceBridge {
 			if (!registeredDeviceId) {
 				if (msg.type !== "register") {
 					socket.close(4002, "must-register-first");
-					return;
-				}
-				if (msg.payload.capabilities.platform === "ios") {
-					logger.warn(
-						"[mobile-device-bridge] Rejecting iOS registration: use native IPC",
-					);
-					socket.close(4003, "ios-ipc-required");
-					return;
-				}
-				if (
-					this.requirePairingToken &&
-					(!this.expectedPairingToken ||
-						msg.payload.pairingToken !== this.expectedPairingToken)
-				) {
-					logger.warn(
-						"[mobile-device-bridge] Rejecting register: bad pairing token",
-					);
-					socket.close(4001, "unauthorized");
 					return;
 				}
 				registeredDeviceId = msg.payload.deviceId;

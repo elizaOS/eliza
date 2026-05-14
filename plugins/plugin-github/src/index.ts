@@ -61,7 +61,6 @@ export { prOpAction } from "./actions/pr-op.js";
 export { createGitHubConnectorAccountProvider } from "./connector-account-provider.js";
 export { GitHubService } from "./services/github-service.js";
 export * from "./types.js";
-export * from "./vfs-git-client.js";
 
 const githubRoutes: Route[] = [
   {

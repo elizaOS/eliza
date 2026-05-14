@@ -12,7 +12,6 @@ export interface IosRuntimeConfig {
   apiBase?: string;
   apiToken?: string;
   cloudApiBase: string;
-  /** Deprecated: iOS local transport is native IPC, not a WebSocket bridge. */
   deviceBridgeUrl?: string;
   deviceBridgeToken?: string;
   /**
@@ -102,6 +101,9 @@ export function resolveIosRuntimeConfig(env: RuntimeEnv): IosRuntimeConfig {
     "VITE_ELIZA_IOS_API_TOKEN",
     "VITE_ELIZA_MOBILE_API_TOKEN",
   ]);
+  const explicitDeviceBridgeUrl = readString(env, [
+    "VITE_ELIZA_DEVICE_BRIDGE_URL",
+  ]);
   const deviceBridgeToken = readString(env, ["VITE_ELIZA_DEVICE_BRIDGE_TOKEN"]);
   const tunnelRelayUrl = readString(env, ["VITE_ELIZA_TUNNEL_RELAY_URL"]);
   const tunnelPairingToken = readString(env, [
@@ -113,6 +115,11 @@ export function resolveIosRuntimeConfig(env: RuntimeEnv): IosRuntimeConfig {
     ...(apiBase ? { apiBase } : {}),
     ...(apiToken ? { apiToken } : {}),
     cloudApiBase: resolveCloudApiBase(env),
+    ...(explicitDeviceBridgeUrl
+      ? { deviceBridgeUrl: explicitDeviceBridgeUrl }
+      : mode === "cloud-hybrid" && apiBase
+        ? { deviceBridgeUrl: apiBaseToDeviceBridgeUrl(apiBase) }
+        : {}),
     ...(deviceBridgeToken ? { deviceBridgeToken } : {}),
     ...(tunnelRelayUrl ? { tunnelRelayUrl } : {}),
     ...(tunnelPairingToken ? { tunnelPairingToken } : {}),

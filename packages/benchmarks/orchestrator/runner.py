@@ -263,9 +263,6 @@ def _default_env(workspace_root: Path, request: RunRequest) -> dict[str, str]:
     env["BENCHMARK_HARNESS"] = harness
     env["ELIZA_BENCH_HARNESS"] = harness
     env["BENCHMARK_AGENT"] = harness
-    if harness == "hermes":
-        env.setdefault("HERMES_READY_TIMEOUT_S", "300")
-        env.setdefault("HERMES_HEALTH_PROBE_TIMEOUT_S", "120")
     env["ELIZA_PROVIDER"] = provider or request.provider
     env["MODEL_NAME"] = model_name
     env["OPENAI_MODEL"] = model_name

@@ -1,10 +1,10 @@
-"""Qwen3.5 / Qwen3.6 model registry for the eliza training pipeline.
+"""Qwen3.5 model registry for the eliza training pipeline.
 
 Single source of truth for which Qwen variant trains where, with what
 optimizer + quantization combination, and what its memory budget looks like.
 
-The eliza-1 line trains against Qwen3.5 for 0.8B/2B/4B/9B and Qwen3.6
-for the active 27B-class releases.
+The eliza-1 line trains against Qwen3.5 for 0.8B/2B/4B/9B and the active
+27B-class releases.
 The legacy Qwen3 base models (``Qwen/Qwen3-0.6B`` / ``Qwen/Qwen3-1.7B`` /
 ``Qwen/Qwen3-4B``) were dropped on 2026-05-12 per operator directive — the
 Qwen3 dense bases do not work with the eliza-1 dflash spec-decode path
@@ -23,10 +23,10 @@ by the runtime model catalog (``packages/shared/src/local-inference/catalog.ts``
   - ``qwen3.5-2b``   → ``Qwen/Qwen3.5-2B-Base``   → ``eliza-1-2b``    (mid local tier; full-param SFT on a 16-24 GB GPU)
   - ``qwen3.5-4b``   → ``Qwen/Qwen3.5-4B-Base``   → ``eliza-1-4b``    (local/workstation tier; full-param SFT on a 24-28 GB GPU)
   - ``qwen3.5-9b``   → ``Qwen/Qwen3.5-9B``        → ``eliza-1-9b``    (workstation tier; 80 GB-class GPU)
-  - ``qwen3.6-27b``  → ``Qwen/Qwen3.6-27B``       → ``eliza-1-27b``   (cloud tier; dense 27B; gpu-h200x2)
+  - ``qwen3.5-27b``  → ``Qwen/Qwen3.5-27B``       → ``eliza-1-27b``   (cloud tier; dense 27B; gpu-h200x2)
 
 All active bases are published on the Hub. The 9b/27b tiers need workstation /
-cloud-class GPUs (or FSDP). Every Qwen3.5/Qwen3.6 target's DFlash
+cloud-class GPUs (or FSDP). Every Qwen3.5 target's DFlash
 speculative-decode drafter is distilled from ``Qwen/Qwen3.5-0.8B-Base``
 (the Qwen3.5 tokenizer — vocab 248320 — must match the target). See
 ``DFLASH_DRAFTER_BASE`` below and ``scripts/distill_dflash_drafter.py``.
@@ -69,7 +69,7 @@ class ModelEntry:
     is intentionally conservative (64k) so the registry's memory budget
     leaves real headroom on a 2× H200 / 2× B200 cluster; bump it via
     ``--max-seq-len`` for long-context runs when you've validated capacity
-    with ``scripts/training/memory_calc.py --shape qwen3.6-27b``."""
+    with ``scripts/training/memory_calc.py --shape qwen3.5-27b``."""
 
     optimizer: str
     """One of: apollo, apollo_mini."""
@@ -228,7 +228,7 @@ def _entry(**kw) -> ModelEntry:
 
 
 # Layer counts / head shapes come straight from the HF `config.json` of each
-# base model. Active entries are Qwen3.5/Qwen3.6 hybrid linear-attn VLMs
+# base model. All entries are Qwen3.5 hybrid linear-attn VLMs
 # (`model_type: qwen3_5`, `full_attention_interval=4` → 3:1 linear:full), so
 # the KV-bearing layer count is total_layers // 4.
 #   total layers   q_heads  kv_heads  head_dim   vocab    (HF base id)
@@ -240,8 +240,8 @@ def _entry(**kw) -> ModelEntry:
 # from the Qwen3.5-0.8B-Base pretrain checkpoint — published, vocab 248320 —
 # and the *shipped* drafter GGUF is that base distilled down to ~0.6B params
 # (a smaller Qwen3.5-arch student; `scripts/distill_dflash_drafter.py` is the
-# distiller, run on a cloud GPU; the artifact is not produced here). Active
-# tiers ship a DFlash companion so the app can exercise the same
+# distiller, run on a cloud GPU; the artifact is not produced here). The
+# all active tiers ship a DFlash companion so the app can exercise the same
 # optimized runtime path end to end. Mirrors `DEFAULT_STUDENT_BASE` in
 # `scripts/distill_dflash_drafter.py` — keep the two in sync.
 DFLASH_DRAFTER_BASE: dict[str, str] = {
@@ -251,6 +251,7 @@ DFLASH_DRAFTER_BASE: dict[str, str] = {
     "eliza-1-4b": "Qwen/Qwen3.5-0.8B-Base",
     "eliza-1-9b": "Qwen/Qwen3.5-0.8B-Base",
     "eliza-1-27b": "Qwen/Qwen3.5-0.8B-Base",
+    # eliza-1-0_8b: no drafter (smallest tier).
 }
 
 REGISTRY: dict[str, ModelEntry] = {
@@ -296,7 +297,7 @@ REGISTRY: dict[str, ModelEntry] = {
         infer_kv_layers=6, infer_kv_heads=2, infer_kv_head_dim=256,
         quantization_after=(
             "polarquant",
-            "fused_turboquant",
+            "turboquant",
             "qjl",
             "gguf-q4_k_m",
             "gguf-q6_k",
@@ -329,7 +330,7 @@ REGISTRY: dict[str, ModelEntry] = {
         infer_kv_layers=6, infer_kv_heads=2, infer_kv_head_dim=256,
         quantization_after=(
             "polarquant",
-            "fused_turboquant",
+            "turboquant",
             "qjl",
             "gguf-q4_k_m",
             "gguf-q6_k",
@@ -350,7 +351,7 @@ REGISTRY: dict[str, ModelEntry] = {
         infer_kv_layers=7, infer_kv_heads=2, infer_kv_head_dim=256,
         quantization_after=(
             "polarquant",
-            "fused_turboquant",
+            "turboquant",
             "qjl",
             "gguf-q4_k_m",
             "gguf-q6_k",
@@ -373,7 +374,7 @@ REGISTRY: dict[str, ModelEntry] = {
         infer_kv_layers=8, infer_kv_heads=4, infer_kv_head_dim=256,
         quantization_after=(
             "polarquant",
-            "fused_turboquant",
+            "turboquant",
             "qjl",
             "gguf-q4_k_m",
             "gguf-q6_k",
@@ -384,28 +385,6 @@ REGISTRY: dict[str, ModelEntry] = {
     ),
     "qwen3.5-27b": _entry(
         hf_id="Qwen/Qwen3.5-27B", short_name="qwen3.5-27b",
-        eliza_short_name="", eliza_repo_id="",
-        abliteration_repo_id="",
-        params_billion=27.0, tier=Tier.CLOUD,
-        seq_len=65536, optimizer="apollo_mini", optimizer_rank=512,
-        micro_batch=1, grad_accum=8, train_mem_gb_budget=190.0,
-        train_dtype="bf16",
-        infer_max_in=131072, infer_max_out=16384,
-        infer_kv_layers=16, infer_kv_heads=4, infer_kv_head_dim=256,
-        quantization_after=(
-            "polarquant",
-            "fused_turboquant",
-            "qjl",
-            "gguf-q4_k_m",
-            "gguf-q6_k",
-            "gguf-q8_0",
-        ),
-        notes="Legacy 27B lookup retained for experiments only. The active "
-              "eliza-1 27B release family uses Qwen/Qwen3.6-27B.",
-        extra={"legacy": "true", "replaced_by": "qwen3.6-27b"},
-    ),
-    "qwen3.6-27b": _entry(
-        hf_id="Qwen/Qwen3.6-27B", short_name="qwen3.6-27b",
         eliza_short_name="eliza-1-27b", eliza_repo_id="elizaos/eliza-1",
         abliteration_repo_id="",
         params_billion=27.0, tier=Tier.CLOUD,
@@ -416,13 +395,13 @@ REGISTRY: dict[str, ModelEntry] = {
         infer_kv_layers=16, infer_kv_heads=4, infer_kv_head_dim=256,
         quantization_after=(
             "polarquant",
-            "fused_turboquant",
+            "turboquant",
             "qjl",
             "gguf-q4_k_m",
             "gguf-q6_k",
             "gguf-q8_0",
         ),
-        notes="Canonical cloud tier for eliza-1-27b on the Qwen3.6 dense "
+        notes="Canonical cloud tier for eliza-1-27b on the Qwen3.5 dense "
               "27B backbone. Use this for the 27B, 27B-256k, and 27B-1m "
               "release families.",
         extra={"vast_gpu_target": "h200-2x", "fsdp_world_size": "2"},
@@ -438,8 +417,6 @@ def get(name: str) -> ModelEntry:
         "qwen3-4b": "qwen3.5-4b",
         "qwen-qwen3-4b": "qwen3.5-4b",
         "qwen/qwen3-4b": "qwen3.5-4b",
-        "qwen-qwen3.5-27b": "qwen3.5-27b",
-        "qwen/qwen3.5-27b": "qwen3.5-27b",
     }
     key = aliases.get(lowered, aliases.get(key, key))
     if key in REGISTRY:
@@ -456,12 +433,8 @@ def get(name: str) -> ModelEntry:
     raise KeyError(f"unknown model {name!r}; known: {sorted(REGISTRY)}")
 
 
-def by_tier(tier: Tier, *, include_legacy: bool = False) -> list[ModelEntry]:
-    return [
-        e
-        for e in REGISTRY.values()
-        if e.tier == tier and (include_legacy or e.extra.get("legacy") != "true")
-    ]
+def by_tier(tier: Tier) -> list[ModelEntry]:
+    return [e for e in REGISTRY.values() if e.tier == tier]
 
 
 def summary_table() -> str:
@@ -469,8 +442,6 @@ def summary_table() -> str:
             "infer ctx (in+out)", "infer bf16", "infer Q4+TQ", "optimizer")
     rows = [cols]
     for e in REGISTRY.values():
-        if e.extra.get("legacy") == "true":
-            continue
         rows.append((
             e.public_name,
             f"{e.params_billion:.1f}",

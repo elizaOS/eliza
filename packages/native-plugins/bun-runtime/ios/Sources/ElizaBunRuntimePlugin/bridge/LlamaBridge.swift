@@ -18,11 +18,8 @@ public final class LlamaBridge {
     private var contexts: [Int: LlamaContextState] = [:]
     private var streamCallbacks: [String: ManagedCallback] = [:]
     private let inferenceQueue = DispatchQueue(label: "ai.eliza.bun.runtime.llama", qos: .userInitiated)
-    private let policy: RuntimePolicy
 
-    public init(policy: RuntimePolicy) {
-        self.policy = policy
-    }
+    public init() {}
 
     public func install(into ctx: JSContext) {
         self.context = ctx
@@ -89,9 +86,6 @@ public final class LlamaBridge {
         let path = opts.objectForKeyedSubscript("path")?.toString() ?? ""
         if path.isEmpty {
             return Self.rejectedAsync(in: ctx, error: "llama_load_model: missing path")
-        }
-        if !policy.allowsFilesystemPath(path, operation: .read) {
-            return Self.rejectedAsync(in: ctx, error: "llama_load_model: path is outside the iOS app container policy")
         }
         let contextSize = opts.objectForKeyedSubscript("context_size")?.toNumber()?.intValue ?? 4096
         let useGpu = opts.objectForKeyedSubscript("use_gpu")?.toBool() ?? true

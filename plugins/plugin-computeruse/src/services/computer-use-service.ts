@@ -37,34 +37,23 @@ import {
   driverClickWithModifiers,
   driverDoubleClick,
   driverDrag,
-  driverKeyDown,
   driverKeyCombo,
   driverKeyPress,
-  driverKeyUp,
-  driverMiddleClick,
-  driverMouseDown,
   driverMouseMove,
-  driverMouseUp,
   driverRightClick,
   driverScroll,
   driverType,
 } from "../platform/driver.js";
 import {
   appendFile,
-  createDirectory,
   deleteDirectory,
   deleteFile,
-  directoryExists,
   editFile,
   fileExists,
-  getFileSize,
   listDirectory,
-  readBytes,
   readFile,
-  writeBytes,
   writeFile,
 } from "../platform/file-ops.js";
-import { getClipboardText, setClipboardText } from "../platform/clipboard.js";
 import { commandExists, currentPlatform } from "../platform/helpers.js";
 import { classifyPermissionDeniedError } from "../platform/permissions.js";
 import {
@@ -74,30 +63,18 @@ import {
   connectTerminal,
   executeTerminal,
   readTerminal,
-  resizeTerminal,
-  sendInputTerminal,
   typeTerminal,
 } from "../platform/terminal.js";
 import {
   arrangeWindows,
   closeWindow,
   focusWindow,
-  getApplicationWindows,
-  getCurrentWindow,
-  getCurrentWindowId,
-  getWindowName,
-  getWindowPosition,
-  getWindowSize,
   getScreenSize,
   listWindows,
-  openWindow,
-  launchApplication,
   maximizeWindow,
   minimizeWindow,
   moveWindow,
   restoreWindow,
-  setWindowPosition,
-  setWindowSize,
   switchWindow,
 } from "../platform/windows-list.js";
 import type {
@@ -107,8 +84,6 @@ import type {
   ApprovalSnapshot,
   BrowserActionParams,
   BrowserActionResult,
-  ClipboardActionParams,
-  ClipboardActionResult,
   ComputerActionResult,
   ComputerUseConfig,
   ComputerUseResult,
@@ -128,7 +103,6 @@ import {
   type SceneUpdateEvent,
 } from "../scene/scene-builder.js";
 import type { Scene } from "../scene/scene-types.js";
-import { registerVisionOcrProvider } from "../scene/vision-ocr-provider.js";
 
 const MAX_RECENT_ACTIONS = 10;
 const BROWSER_NOT_OPEN_ERROR = "Browser not open";
@@ -142,26 +116,10 @@ const COORDINATE_BEARING_ACTIONS = new Set<DesktopActionParams["action"]>([
   "click_with_modifiers",
   "double_click",
   "right_click",
-  "middle_click",
-  "mouse_down",
-  "mouse_up",
   "mouse_move",
   "scroll",
   "drag",
-  "left_click_drag",
-  "drag_to",
 ]);
-
-type SceneElement = {
-  id: string;
-  source: "accessibility" | "ocr";
-  label: string;
-  role: string;
-  bbox: [number, number, number, number];
-  displayId: number;
-  confidence?: number;
-  actions?: string[];
-};
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -221,7 +179,7 @@ export class ComputerUseService extends Service {
   static serviceType = "computeruse";
 
   capabilityDescription =
-    "Desktop automation, screenshots, browser control, file operations, terminal access, window management, clipboard access, and approval-gated local actions";
+    "Desktop automation, screenshots, browser control, file operations, terminal access, window management, and approval-gated local actions";
 
   private capabilities!: PlatformCapabilities;
   private recentActions: ActionHistoryEntry[] = [];
@@ -243,7 +201,6 @@ export class ComputerUseService extends Service {
     const instance = new ComputerUseService(runtime);
     instance.loadConfig(runtime);
     instance.capabilities = instance.detectCapabilities();
-    registerVisionOcrProvider(runtime);
 
     try {
       instance.screenSize = getScreenSize();
@@ -281,24 +238,14 @@ export class ComputerUseService extends Service {
       case "click_with_modifiers":
       case "double_click":
       case "right_click":
-      case "middle_click":
-      case "mouse_down":
-      case "mouse_up":
       case "mouse_move":
       case "type":
       case "key_press":
-      case "key_down":
-      case "key_up":
       case "key_combo":
       case "scroll":
       case "drag":
-      case "left_click_drag":
-      case "drag_to":
       case "detect_elements":
-      case "find_element":
       case "ocr":
-      case "get_accessibility_tree":
-      case "accessibility_tree":
         return this.executeDesktopAction({
           ...commandParameters<DesktopActionParams>(parameters),
           action: this.mapDesktopCommandToAction(command),
@@ -329,20 +276,6 @@ export class ComputerUseService extends Service {
           action: this.mapBrowserCommandToAction(command),
         });
       case "list_windows":
-      case "open":
-      case "window_open":
-      case "open_window":
-      case "launch":
-      case "window_launch":
-      case "launch_application":
-      case "get_current_window_id":
-      case "get_application_windows":
-      case "get_window_name":
-      case "get_window_size":
-      case "get_window_position":
-      case "set_window_size":
-      case "set_window_position":
-      case "activate_window":
       case "switch_to_window":
       case "arrange_windows":
       case "move_window":
@@ -354,30 +287,12 @@ export class ComputerUseService extends Service {
           ...commandParameters<WindowActionParams>(parameters),
           action: this.mapWindowCommandToAction(command),
         });
-      case "clipboard_get":
-      case "get_clipboard":
-        return this.executeClipboardAction({
-          ...commandParameters<ClipboardActionParams>(parameters),
-          action: "get",
-        });
-      case "copy_to_clipboard":
-      case "set_clipboard":
-      case "clipboard_set":
-        return this.executeClipboardAction({
-          ...commandParameters<ClipboardActionParams>(parameters),
-          action: "set",
-        });
       case "file_read":
       case "file_write":
-      case "read_bytes":
-      case "write_bytes":
       case "file_edit":
       case "file_append":
       case "file_delete":
       case "file_exists":
-      case "directory_exists":
-      case "create_dir":
-      case "get_file_size":
       case "directory_list":
       case "directory_delete":
       case "file_upload":
@@ -388,12 +303,9 @@ export class ComputerUseService extends Service {
           action: this.mapFileCommandToAction(command),
         });
       case "terminal_connect":
-      case "terminal_create":
       case "terminal_execute":
       case "terminal_read":
       case "terminal_type":
-      case "terminal_send_input":
-      case "terminal_resize":
       case "terminal_clear":
       case "terminal_close":
       case "execute_command":
@@ -422,6 +334,22 @@ export class ComputerUseService extends Service {
       );
       if (approvalError) {
         return this.failEntry(entry, { success: false, error: approvalError });
+      }
+
+      if (params.action === "detect_elements") {
+        return this.failEntry(entry, {
+          success: false,
+          error:
+            "Element detection is not available on local machines. Use a screenshot plus model reasoning instead.",
+        });
+      }
+
+      if (params.action === "ocr") {
+        return this.failEntry(entry, {
+          success: false,
+          error:
+            "OCR is not available on local machines. Use a screenshot plus model reasoning instead.",
+        });
       }
 
       const targetDisplayId = this.resolveDisplayIdForAction(params);
@@ -460,24 +388,6 @@ export class ComputerUseService extends Service {
           await driverRightClick(g.x, g.y);
           break;
         }
-        case "middle_click": {
-          this.requireCoordinate(params.coordinate, "middle_click");
-          const g = this.toGlobal(params, params.coordinate);
-          await driverMiddleClick(g.x, g.y);
-          break;
-        }
-        case "mouse_down": {
-          this.requireCoordinate(params.coordinate, "mouse_down");
-          const g = this.toGlobal(params, params.coordinate);
-          await driverMouseDown(g.x, g.y, params.button ?? "left");
-          break;
-        }
-        case "mouse_up": {
-          this.requireCoordinate(params.coordinate, "mouse_up");
-          const g = this.toGlobal(params, params.coordinate);
-          await driverMouseUp(g.x, g.y, params.button ?? "left");
-          break;
-        }
         case "mouse_move": {
           this.requireCoordinate(params.coordinate, "mouse_move");
           const g = this.toGlobal(params, params.coordinate);
@@ -491,14 +401,6 @@ export class ComputerUseService extends Service {
         case "key":
           if (!params.key) throw new Error("key is required for key action");
           await driverKeyPress(params.key);
-          break;
-        case "key_down":
-          if (!params.key) throw new Error("key is required for key_down action");
-          await driverKeyDown(params.key);
-          break;
-        case "key_up":
-          if (!params.key) throw new Error("key is required for key_up action");
-          await driverKeyUp(params.key);
           break;
         case "key_combo":
           if (!params.key) {
@@ -528,73 +430,6 @@ export class ComputerUseService extends Service {
           const end = this.toGlobal(params, params.coordinate);
           await driverDrag(start.x, start.y, end.x, end.y);
           break;
-        }
-        case "ocr": {
-          const scene = await this.sceneBuilder.onAgentTurn();
-          const ocr = scene.ocr.filter(
-            (box) =>
-              params.displayId === undefined || box.displayId === params.displayId,
-          );
-          return this.succeedEntry(entry, {
-            success: true,
-            data: {
-              fullText: ocr.map((box) => box.text).join("\n"),
-              boxes: ocr,
-            },
-            message: `Detected ${ocr.length} OCR text box${ocr.length === 1 ? "" : "es"}.`,
-          });
-        }
-        case "detect_elements": {
-          const scene = await this.sceneBuilder.onAgentTurn();
-          const elements = this.sceneElements(scene, params.displayId);
-          return this.succeedEntry(entry, {
-            success: true,
-            data: {
-              elements,
-              ax: scene.ax.filter(
-                (node) =>
-                  params.displayId === undefined ||
-                  node.displayId === params.displayId,
-              ),
-              ocr: scene.ocr.filter(
-                (box) =>
-                  params.displayId === undefined ||
-                  box.displayId === params.displayId,
-              ),
-              displays: scene.displays,
-              focusedWindow: scene.focused_window,
-            },
-            message: `Detected ${elements.length} scene element${elements.length === 1 ? "" : "s"}.`,
-          });
-        }
-        case "find_element": {
-          const scene = await this.sceneBuilder.onAgentTurn();
-          const elements = this.findSceneElements(
-            scene,
-            params.displayId,
-            params,
-          );
-          return this.succeedEntry(entry, {
-            success: true,
-            data: {
-              element: elements[0] ?? null,
-              elements,
-              count: elements.length,
-            },
-            message: `Found ${elements.length} matching scene element${elements.length === 1 ? "" : "s"}.`,
-          });
-        }
-        case "accessibility_tree": {
-          const scene = await this.sceneBuilder.onAgentTurn();
-          const ax = scene.ax.filter(
-            (node) =>
-              params.displayId === undefined || node.displayId === params.displayId,
-          );
-          return this.succeedEntry(entry, {
-            success: true,
-            data: { ax },
-            message: `Fetched ${ax.length} accessibility node${ax.length === 1 ? "" : "s"}.`,
-          });
         }
         default:
           return this.failEntry(entry, {
@@ -945,97 +780,6 @@ export class ComputerUseService extends Service {
             count: windows.length,
           });
         }
-        case "open":
-          return this.succeedEntry(
-            entry,
-            openWindow(this.requireApplicationTarget(params, "open")),
-          );
-        case "launch":
-          return this.succeedEntry(
-            entry,
-            launchApplication(this.requireApplicationTarget(params, "launch")),
-          );
-        case "get_current_window_id": {
-          const window = getCurrentWindow();
-          return this.succeedEntry(entry, {
-            success: true,
-            window,
-            windowId: window.id,
-            window_id: window.id,
-            message: `Current window id: ${window.id}`,
-          });
-        }
-        case "get_application_windows": {
-          const windows = getApplicationWindows(
-            this.requireApplicationTarget(params, "get_application_windows"),
-          );
-          return this.succeedEntry(entry, {
-            success: true,
-            windows,
-            count: windows.length,
-          });
-        }
-        case "get_window_name": {
-          const name = getWindowName(this.requireWindowTarget(params));
-          return this.succeedEntry(entry, {
-            success: true,
-            name,
-            title: name,
-            message: name,
-          });
-        }
-        case "get_window_size": {
-          const size = getWindowSize(this.requireWindowTarget(params));
-          return this.succeedEntry(entry, {
-            success: true,
-            ...size,
-            message: `${size.width}x${size.height}`,
-          });
-        }
-        case "get_window_position": {
-          const position = getWindowPosition(this.requireWindowTarget(params));
-          return this.succeedEntry(entry, {
-            success: true,
-            ...position,
-            message: `(${position.x}, ${position.y})`,
-          });
-        }
-        case "set_window_size":
-          return this.succeedEntry(
-            entry,
-            setWindowSize(
-              this.requireWindowTarget(params),
-              this.requireNumber(
-                params.width,
-                "width is required for set_window_size",
-              ),
-              this.requireNumber(
-                params.height,
-                "height is required for set_window_size",
-              ),
-            ),
-          );
-        case "set_window_position":
-          return this.succeedEntry(
-            entry,
-            setWindowPosition(
-              this.requireWindowTarget(params),
-              this.requireNumber(
-                params.x,
-                "x is required for set_window_position",
-              ),
-              this.requireNumber(
-                params.y,
-                "y is required for set_window_position",
-              ),
-            ),
-          );
-        case "activate_window":
-          focusWindow(this.requireWindowTarget(params));
-          return this.succeedEntry(entry, {
-            success: true,
-            message: "Activated window.",
-          });
         case "focus":
           focusWindow(this.requireWindowTarget(params));
           return this.succeedEntry(entry, {
@@ -1108,59 +852,6 @@ export class ComputerUseService extends Service {
     }
   }
 
-  async executeClipboardAction(
-    rawParams: ClipboardActionParams,
-  ): Promise<ClipboardActionResult> {
-    const params = this.normalizeClipboardActionParams(rawParams);
-    const entry = this.createEntry(
-      `clipboard_${params.action}`,
-      this.toParamsRecord(params),
-    );
-
-    try {
-      const approvalError = await this.awaitApproval(
-        this.clipboardApprovalCommand(params.action),
-        this.toParamsRecord(params),
-      );
-      if (approvalError) {
-        return this.failEntry(entry, { success: false, error: approvalError });
-      }
-
-      switch (params.action) {
-        case "get": {
-          const text = await getClipboardText();
-          return this.succeedEntry(entry, {
-            success: true,
-            text,
-            content: text,
-            value: text,
-          });
-        }
-        case "set": {
-          const text = this.requireIdentifier(
-            params.text,
-            "text is required for clipboard set",
-          );
-          await setClipboardText(text);
-          return this.succeedEntry(entry, {
-            success: true,
-            message: "Clipboard updated.",
-          });
-        }
-        default:
-          return this.failEntry(entry, {
-            success: false,
-            error: `Unknown clipboard action: ${(params as { action: string }).action}`,
-          });
-      }
-    } catch (error) {
-      return this.failEntry(entry, {
-        success: false,
-        error: errorMessage(error),
-      });
-    }
-  }
-
   async executeFileAction(
     rawParams: FileActionParams,
   ): Promise<FileActionResult> {
@@ -1194,11 +885,6 @@ export class ComputerUseService extends Service {
             entry,
             await readFile(targetPath, this.normalizeEncoding(params.encoding)),
           );
-        case "read_bytes":
-          return this.finishFileEntry(
-            entry,
-            await readBytes(targetPath, params.offset ?? 0, params.length),
-          );
         case "write":
         case "upload":
           if (typeof params.content !== "string") {
@@ -1207,14 +893,6 @@ export class ComputerUseService extends Service {
           return this.finishFileEntry(
             entry,
             await writeFile(targetPath, params.content),
-          );
-        case "write_bytes":
-          if (typeof params.content_b64 !== "string") {
-            throw new Error("content_b64 is required for file write_bytes");
-          }
-          return this.finishFileEntry(
-            entry,
-            await writeBytes(targetPath, params.content_b64, params.append),
           );
         case "edit":
           if (typeof params.old_text !== "string") {
@@ -1239,15 +917,9 @@ export class ComputerUseService extends Service {
           return this.finishFileEntry(entry, await deleteFile(targetPath));
         case "exists":
           return this.finishFileEntry(entry, await fileExists(targetPath));
-        case "directory_exists":
-          return this.finishFileEntry(entry, await directoryExists(targetPath));
-        case "get_file_size":
-          return this.finishFileEntry(entry, await getFileSize(targetPath));
         case "list":
         case "list_downloads":
           return this.finishFileEntry(entry, await listDirectory(targetPath));
-        case "create_directory":
-          return this.finishFileEntry(entry, await createDirectory(targetPath));
         case "delete_directory":
           return this.finishFileEntry(entry, await deleteDirectory(targetPath));
         default:
@@ -1284,15 +956,9 @@ export class ComputerUseService extends Service {
 
       switch (params.action) {
         case "connect":
-        case "create":
           return this.finishTerminalEntry(
             entry,
-            await connectTerminal({
-              cwd: params.cwd,
-              cols: params.cols,
-              rows: params.rows,
-              shell: params.shell,
-            }),
+            await connectTerminal(params.cwd),
           );
         case "execute":
           return this.finishTerminalEntry(
@@ -1318,34 +984,11 @@ export class ComputerUseService extends Service {
           return this.finishTerminalEntry(
             entry,
             await typeTerminal(
-              {
-                text: this.requireIdentifier(
-                  params.text,
-                  "text is required for terminal type",
-                ),
-                sessionId: params.sessionId,
-              },
-            ),
-          );
-        case "send_input":
-          return this.finishTerminalEntry(
-            entry,
-            await sendInputTerminal({
-              text: this.requireIdentifier(
-                params.text ?? params.input,
-                "text or input is required for terminal send_input",
+              this.requireIdentifier(
+                params.text,
+                "text is required for terminal type",
               ),
-              sessionId: params.sessionId,
-            }),
-          );
-        case "resize":
-          return this.finishTerminalEntry(
-            entry,
-            await resizeTerminal({
-              sessionId: params.sessionId,
-              cols: params.cols,
-              rows: params.rows,
-            }),
+            ),
           );
         case "clear":
           return this.finishTerminalEntry(
@@ -1452,7 +1095,6 @@ export class ComputerUseService extends Service {
 
     return {
       ...params,
-      action: this.normalizeDesktopAction(params.action),
       coordinate: endCoordinate,
       startCoordinate,
       modifiers: params.modifiers ?? params.hold_keys,
@@ -1476,18 +1118,8 @@ export class ComputerUseService extends Service {
   ): WindowActionParams {
     return {
       ...params,
-      action: this.normalizeWindowAction(params.action),
       windowId: params.windowId ?? params.window ?? params.title,
       windowTitle: params.windowTitle ?? params.window ?? params.title,
-    };
-  }
-
-  private normalizeClipboardActionParams(
-    params: ClipboardActionParams,
-  ): ClipboardActionParams {
-    return {
-      ...params,
-      text: params.text ?? params.content ?? params.value ?? params.clipboard,
     };
   }
 
@@ -1496,17 +1128,10 @@ export class ComputerUseService extends Service {
   ): FileActionParams {
     return {
       ...params,
-      action: this.normalizeFileAction(params.action),
       path: params.path ?? params.filepath ?? params.dirpath,
       old_text: params.old_text ?? params.oldText ?? params.find,
       new_text: params.new_text ?? params.newText ?? params.replace,
     };
-  }
-
-  private normalizeFileAction(
-    action: FileActionParams["action"],
-  ): FileActionParams["action"] {
-    return action === "create_dir" ? "create_directory" : action;
   }
 
   private normalizeTerminalActionParams(
@@ -1516,7 +1141,6 @@ export class ComputerUseService extends Service {
       ...params,
       timeout: params.timeout ?? params.timeoutSeconds,
       sessionId: params.sessionId ?? params.session_id,
-      text: params.text ?? params.input,
       action:
         params.action === "execute_command" ? "execute_command" : params.action,
     };
@@ -1532,31 +1156,6 @@ export class ComputerUseService extends Service {
         return "clickables";
       case "get_context":
         return "context";
-      default:
-        return action;
-    }
-  }
-
-  private normalizeWindowAction(
-    action: WindowActionParams["action"],
-  ): WindowActionParams["action"] {
-    switch (action) {
-      case "set_window_position":
-        return "set_window_position";
-      case "activate_window":
-        return "activate_window";
-      default:
-        return action;
-    }
-  }
-
-  private normalizeDesktopAction(
-    action: DesktopActionParams["action"],
-  ): DesktopActionParams["action"] {
-    switch (action) {
-      case "left_click_drag":
-      case "drag_to":
-        return "drag";
       default:
         return action;
     }
@@ -1623,22 +1222,6 @@ export class ComputerUseService extends Service {
     switch (action) {
       case "list":
         return "list_windows";
-      case "open":
-        return "window_open";
-      case "launch":
-        return "window_launch";
-      case "get_current_window_id":
-      case "get_application_windows":
-      case "get_window_name":
-      case "get_window_size":
-      case "get_window_position":
-        return action;
-      case "set_window_size":
-        return "set_window_size";
-      case "set_window_position":
-        return "set_window_position";
-      case "activate_window":
-        return "activate_window";
       case "focus":
       case "switch":
         return "switch_to_window";
@@ -1657,19 +1240,11 @@ export class ComputerUseService extends Service {
     }
   }
 
-  private clipboardApprovalCommand(
-    action: ClipboardActionParams["action"],
-  ): string {
-    return action === "get" ? "clipboard_get" : "clipboard_set";
-  }
-
   private fileApprovalCommand(action: FileActionParams["action"]): string {
     switch (action) {
       case "read":
-      case "read_bytes":
         return "file_read";
       case "write":
-      case "write_bytes":
         return "file_write";
       case "edit":
         return "file_edit";
@@ -1678,14 +1253,9 @@ export class ComputerUseService extends Service {
       case "delete":
         return "file_delete";
       case "exists":
-      case "directory_exists":
-      case "get_file_size":
         return "file_exists";
       case "list":
         return "directory_list";
-      case "create_directory":
-      case "create_dir":
-        return "file_write";
       case "delete_directory":
         return "directory_delete";
       case "upload":
@@ -1707,18 +1277,12 @@ export class ComputerUseService extends Service {
     switch (action) {
       case "connect":
         return "terminal_connect";
-      case "create":
-        return "terminal_create";
       case "execute":
         return "terminal_execute";
       case "read":
         return "terminal_read";
       case "type":
         return "terminal_type";
-      case "send_input":
-        return "terminal_send_input";
-      case "resize":
-        return "terminal_resize";
       case "clear":
         return "terminal_clear";
       case "close":
@@ -1734,8 +1298,6 @@ export class ComputerUseService extends Service {
     switch (command) {
       case "key_press":
         return "key";
-      case "get_accessibility_tree":
-        return "accessibility_tree";
       default:
         return command as DesktopActionParams["action"];
     }
@@ -1763,30 +1325,6 @@ export class ComputerUseService extends Service {
     switch (command) {
       case "list_windows":
         return "list";
-      case "open":
-      case "window_open":
-      case "open_window":
-        return "open";
-      case "launch":
-      case "window_launch":
-      case "launch_application":
-        return "launch";
-      case "get_current_window_id":
-        return "get_current_window_id";
-      case "get_application_windows":
-        return "get_application_windows";
-      case "get_window_name":
-        return "get_window_name";
-      case "get_window_size":
-        return "get_window_size";
-      case "get_window_position":
-        return "get_window_position";
-      case "set_window_size":
-        return "set_window_size";
-      case "set_window_position":
-        return "set_window_position";
-      case "activate_window":
-        return "activate_window";
       case "switch_to_window":
         return "switch";
       case "arrange_windows":
@@ -1812,10 +1350,6 @@ export class ComputerUseService extends Service {
         return "read";
       case "file_write":
         return "write";
-      case "read_bytes":
-        return "read_bytes";
-      case "write_bytes":
-        return "write_bytes";
       case "file_edit":
         return "edit";
       case "file_append":
@@ -1824,12 +1358,6 @@ export class ComputerUseService extends Service {
         return "delete";
       case "file_exists":
         return "exists";
-      case "directory_exists":
-        return "directory_exists";
-      case "create_dir":
-        return "create_directory";
-      case "get_file_size":
-        return "get_file_size";
       case "directory_list":
         return "list";
       case "directory_delete":
@@ -1851,18 +1379,12 @@ export class ComputerUseService extends Service {
     switch (command) {
       case "terminal_connect":
         return "connect";
-      case "terminal_create":
-        return "create";
       case "terminal_execute":
         return "execute";
       case "terminal_read":
         return "read";
       case "terminal_type":
         return "type";
-      case "terminal_send_input":
-        return "send_input";
-      case "terminal_resize":
-        return "resize";
       case "terminal_clear":
         return "clear";
       case "terminal_close":
@@ -2012,103 +1534,12 @@ export class ComputerUseService extends Service {
     return this.sceneBuilder.subscribe(handler);
   }
 
-  private sceneElements(
-    scene: Scene,
-    displayId: number | undefined,
-  ): SceneElement[] {
-    const matchesDisplay = (id: number): boolean =>
-      displayId === undefined || id === displayId;
-    return [
-      ...scene.ax.filter((node) => matchesDisplay(node.displayId)).map((node) => ({
-        id: node.id,
-        source: "accessibility" as const,
-        label: node.label ?? "",
-        role: node.role,
-        bbox: node.bbox,
-        displayId: node.displayId,
-        actions: node.actions,
-      })),
-      ...scene.ocr.filter((box) => matchesDisplay(box.displayId)).map((box) => ({
-        id: box.id,
-        source: "ocr" as const,
-        label: box.text,
-        role: "text",
-        bbox: box.bbox,
-        displayId: box.displayId,
-        confidence: box.conf,
-      })),
-    ];
-  }
-
-  private findSceneElements(
-    scene: Scene,
-    displayId: number | undefined,
-    params: DesktopActionParams,
-  ): SceneElement[] {
-    const elements = this.sceneElements(scene, displayId);
-    const query = this.normalizeElementQuery(params.query ?? params.text);
-    const id = this.normalizeElementQuery(params.id);
-    const role = this.normalizeElementQuery(params.role);
-    const label = this.normalizeElementQuery(
-      params.label ?? params.title ?? params.value ?? params.textFilter,
-    );
-    const minConfidence = params.minConfidence;
-    const limit =
-      typeof params.limit === "number" && Number.isFinite(params.limit)
-        ? Math.max(1, Math.floor(params.limit))
-        : undefined;
-
-    const matches = elements.filter((element) => {
-      if (params.source && element.source !== params.source) return false;
-      if (id && this.normalizeElementQuery(element.id) !== id) return false;
-      if (role && !this.normalizeElementQuery(element.role).includes(role)) {
-        return false;
-      }
-      if (
-        label &&
-        !this.normalizeElementQuery(element.label).includes(label)
-      ) {
-        return false;
-      }
-      if (
-        query &&
-        ![
-          element.id,
-          element.source,
-          element.label,
-          element.role,
-          ...(element.actions ?? []),
-        ]
-          .map((value) => this.normalizeElementQuery(value))
-          .some((value) => value.includes(query))
-      ) {
-        return false;
-      }
-      if (
-        minConfidence !== undefined &&
-        element.confidence !== undefined &&
-        element.confidence < minConfidence
-      ) {
-        return false;
-      }
-      return true;
-    });
-
-    return limit === undefined ? matches : matches.slice(0, limit);
-  }
-
-  private normalizeElementQuery(value: unknown): string {
-    return typeof value === "string" ? value.trim().toLowerCase() : "";
-  }
-
   private shouldCaptureAfterDesktopAction(
     action: DesktopActionParams["action"],
   ): boolean {
     return action !== "screenshot" &&
       action !== "detect_elements" &&
-      action !== "find_element" &&
-      action !== "ocr" &&
-      action !== "accessibility_tree"
+      action !== "ocr"
       ? this.cuConfig.screenshotAfterAction
       : false;
   }
@@ -2207,21 +1638,6 @@ export class ComputerUseService extends Service {
       params.windowId ??
       params.windowTitle ??
       this.requireIdentifier(undefined, "windowId or windowTitle is required")
-    );
-  }
-
-  private requireApplicationTarget(
-    params: WindowActionParams,
-    action: string,
-  ): string {
-    return (
-      params.appName ??
-      params.windowTitle ??
-      params.windowId ??
-      this.requireIdentifier(
-        undefined,
-        `appName or windowTitle is required for window ${action}`,
-      )
     );
   }
 

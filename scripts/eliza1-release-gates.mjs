@@ -40,20 +40,20 @@ const REQUIRED_GATES = [
     requiredFields: ["baseUrl", "model", "instanceId"],
   },
   {
+    id: "smoke_0_8b",
+    label: "Eliza-1 0.8B smoke",
+    maxAgeHours: 72,
+    requiredFields: ["tier", "modelLoaded", "generationOk"],
+  },
+  {
     id: "smoke_2b",
     label: "Eliza-1 2B smoke",
     maxAgeHours: 72,
     requiredFields: ["tier", "modelLoaded", "generationOk"],
   },
   {
-    id: "smoke_9b",
-    label: "Eliza-1 9B smoke",
-    maxAgeHours: 72,
-    requiredFields: ["tier", "modelLoaded", "generationOk"],
-  },
-  {
-    id: "smoke_27b",
-    label: "Eliza-1 27B smoke",
+    id: "smoke_4b",
+    label: "Eliza-1 4B smoke",
     maxAgeHours: 72,
     requiredFields: ["tier", "modelLoaded", "generationOk"],
   },

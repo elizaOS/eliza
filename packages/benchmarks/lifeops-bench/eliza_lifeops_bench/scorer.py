@@ -73,16 +73,6 @@ _OUTPUT_EQUIVALENTS: dict[str, tuple[str, ...]] = {
         "removed",
         "deleted",
     ),
-    "archive": (
-        "archive",
-        "archived",
-        "archiving",
-    ),
-    "archived": (
-        "archive",
-        "archived",
-        "archiving",
-    ),
     "slot": (
         "slot",
         "slots",
@@ -129,8 +119,6 @@ _KWARG_ALIASES: dict[str, str] = {
     "start_time": "start",
     "taskId": "task_id",
     "threadId": "thread_id",
-    "timeMax": "end",
-    "timeMin": "start",
     "windowEnd": "window_end",
     "windowStart": "window_start",
 }
@@ -627,21 +615,6 @@ def _canonicalize_action(action: Action) -> Action:
     if name == "PERSONAL_ASSISTANT_BOOK_TRAVEL":
         return Action(name="BOOK_TRAVEL", kwargs=dict(action.kwargs))
 
-    # Legacy/adapter convenience action. The executor accepts
-    # ARCHIVE_EMAIL_THREAD(threadId=...) as a direct alias for the canonical
-    # MESSAGE/manage/archive operation, so the scorer must fold it the same way
-    # or correct Eliza trajectories get zeroed by the triviality guard.
-    if name == "ARCHIVE_EMAIL_THREAD":
-        new_kwargs = {
-            "operation": "manage",
-            "source": "gmail",
-            "manageOperation": "archive",
-        }
-        thread_id = action.kwargs.get("threadId", action.kwargs.get("thread_id"))
-        if thread_id is not None:
-            new_kwargs["threadId"] = thread_id
-        return Action(name="MESSAGE", kwargs=new_kwargs)
-
     # Owner-surface aliases: `OWNER_<AREA>_<SUB>` → `<UMBRELLA>(subaction=<sub>)`.
     # Check before the generic umbrella loop so e.g. `OWNER_HEALTH_TODAY` is
     # not accidentally read as an unknown `OWNER` prefix.
@@ -890,29 +863,6 @@ def _contains_normalized_phrase(haystack: str, needle: str) -> bool:
     return re.search(pattern, haystack) is not None
 
 
-def _availability_search_equivalent(
-    predicted: dict[str, Any],
-    expected: dict[str, Any],
-) -> bool:
-    """Treat an exact-window event search as an availability check.
-
-    A calendar availability query is executable either as
-    `check_availability(start,end)` or as `search_events(start,end)` followed by
-    answering from the returned conflicts. Keep this narrow so a generic event
-    search does not score as availability.
-    """
-    if predicted.get("subaction") != "search_events":
-        return False
-    if expected.get("subaction") != "check_availability":
-        return False
-    for key in ("start", "end"):
-        if key not in predicted or key not in expected:
-            return False
-        if not _values_equivalent(predicted[key], expected[key]):
-            return False
-    return True
-
-
 def _kwargs_match(predicted: dict[str, Any], expected: dict[str, Any]) -> bool:
     """Tolerant kwarg equality: every load-bearing key in `expected` must match in `predicted`.
 
@@ -931,10 +881,6 @@ def _kwargs_match(predicted: dict[str, Any], expected: dict[str, Any]) -> bool:
         if key not in predicted:
             return False
         pred_value = predicted[key]
-        if key == "subaction" and _availability_search_equivalent(
-            predicted, expected
-        ):
-            continue
         # passengers: accept integer count ↔ array-of-objects as equivalent
         # when the count matches. Agents often emit a bare integer while GT
         # scenarios use [{type:"adult"}, ...] or [{name:…, seat_class:…}, …].

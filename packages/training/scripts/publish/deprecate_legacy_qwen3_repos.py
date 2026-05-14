@@ -128,8 +128,7 @@ The dataset itself is **reusable** on the Qwen3.5 Eliza-1 line — it is just
 JSONL with no model-family dependency (privacy-filtered Cerebras-augmented
 SFT corpus covering `structured_decode`, `voice_emotion`, `tool_use`,
 `action_selection`, `personality` tasks). The name's `0_6b` tier infix is
-**legacy** — it predates the 2026-05-12 Eliza-1 directive that keeps Qwen3.5
-for 0.8B/2B/4B/9B and Qwen3.6 for the 27B release family.
+**legacy** — it predates the 2026-05-12 Qwen3.5-only directive.
 
 Going forward, the canonical SFT-corpus repo for the Eliza-1 line is
 [`elizaos/eliza-1-training`](https://huggingface.co/datasets/elizaos/eliza-1-training)

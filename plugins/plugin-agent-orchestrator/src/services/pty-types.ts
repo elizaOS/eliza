@@ -14,7 +14,6 @@ import type {
   ApprovalPreset,
 } from "coding-agent-adapters";
 import type { SessionHandle } from "pty-manager";
-import { opencodeCommandName } from "./opencode-binary.js";
 
 export interface PTYServiceConfig {
   /** Maximum output lines to keep per session (default: 1000) */
@@ -108,18 +107,11 @@ export const toPiCommand = (task: string | undefined): string => {
  * `agent-credentials.ts`.
  */
 export const toOpencodeCommand = (task: string | undefined): string => {
-  const binary = shellQuote(opencodeCommandName());
   const trimmed = task?.trim();
-  if (!trimmed) return binary;
-  return `${binary} run --dangerously-skip-permissions ${shellQuote(trimmed)}`;
+  if (!trimmed) return "opencode";
+  const shellSafe = `'${trimmed.replace(/'/g, `'"'"'`)}'`;
+  return `opencode run --dangerously-skip-permissions ${shellSafe}`;
 };
-
-function shellQuote(value: string): string {
-  if (/^[A-Za-z0-9_./:-]+$/.test(value)) {
-    return value;
-  }
-  return `'${value.replace(/'/g, `'"'"'`)}'`;
-}
 
 export interface SpawnSessionOptions {
   /** Human-readable session name */

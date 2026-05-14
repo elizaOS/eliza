@@ -202,20 +202,7 @@ async function ensureBunBinary({ cacheDir, bunArch, log }) {
   const channelLabel =
     BUN_CHANNEL === "canary" ? "bun-canary" : `bun-${BUN_VERSION}`;
   log(`Downloading ${channelLabel} (${bunArch}-musl) from ${url}`);
-  try {
-    await downloadFile(url, zipPath);
-  } catch (error) {
-    if (fs.existsSync(bunPath) && fs.statSync(bunPath).size > 1_000_000) {
-      log(
-        `WARNING: failed to refresh ${channelLabel} (${bunArch}-musl); using stale cached bun at ${bunPath}: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
-      fs.chmodSync(bunPath, 0o755);
-      return bunPath;
-    }
-    throw error;
-  }
+  await downloadFile(url, zipPath);
   await run("unzip", ["-q", "-o", zipPath, "-d", archCache]);
   const extractedDir = path.join(archCache, `bun-linux-${bunArch}-musl`);
   const extractedBun = path.join(extractedDir, "bun");

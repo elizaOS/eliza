@@ -223,15 +223,7 @@ public final class ElizaBunRuntime {
         env: [String: String]
     ) throws {
         let requestedEngine = engine.lowercased()
-        let policy = RuntimePolicy(paths: SandboxPaths())
-        if !policy.allowsFullBunEngine(env: env) {
-            if requestedEngine == "bun" {
-                throw makeError("Full Bun engine is disabled in iOS App Store local runtime; use engine=compat")
-            }
-            NSLog("[ElizaBunRuntime] Full Bun engine disabled by iOS runtime policy; using JSContext compatibility mode")
-        }
-        if policy.allowsFullBunEngine(env: env) &&
-            (requestedEngine == "bun" || requestedEngine == "auto" || requestedEngine.isEmpty) {
+        if requestedEngine == "bun" || requestedEngine == "auto" || requestedEngine.isEmpty {
             let host = FullBunEngineHost.shared
             do {
                 let paths = SandboxPaths()
@@ -261,10 +253,6 @@ public final class ElizaBunRuntime {
                 fullBunEnv["ELIZA_IOS_AGENT_ASSET_DIR"] = assetDir
                 fullBunEnv["ELIZA_IOS_AGENT_PUBLIC_DIR"] = publicDir
                 fullBunEnv["ELIZA_IOS_BRIDGE_TRANSPORT"] = "bun-host-ipc"
-                if policy.appStoreCompliantLocalRuntime {
-                    fullBunEnv["ELIZA_IOS_APP_STORE_LOCAL_RUNTIME"] = "1"
-                    fullBunEnv["ELIZA_NO_DOWNLOADED_EXECUTABLE_CODE"] = "1"
-                }
                 try host.start(
                     bundlePath: resolvedBundlePath,
                     argv: argv,
@@ -388,7 +376,6 @@ public final class ElizaBunRuntime {
 
     private func resolveAgentBundlePath(override: String?) throws -> String {
         if let override = override, !override.isEmpty {
-            try assertSignedBundleOverride(override)
             return override
         }
         let candidates: [(String, String?, String?)] = [
@@ -413,7 +400,6 @@ public final class ElizaBunRuntime {
 
     private func loadPolyfillSource(override: String?) throws -> String {
         if let override = override, !override.isEmpty {
-            try assertSignedBundleOverride(override)
             return try String(contentsOfFile: override, encoding: .utf8)
         }
         if let url = Bundle.main.url(forResource: "eliza-polyfill-prefix", withExtension: "js") {
@@ -430,19 +416,6 @@ public final class ElizaBunRuntime {
           throw new Error("Bridge version mismatch: expected v1, got " + globalThis.__ELIZA_BRIDGE_VERSION__);
         }
         """
-    }
-
-    private func assertSignedBundleOverride(_ path: String) throws {
-        let policy = RuntimePolicy(paths: SandboxPaths())
-        guard policy.appStoreCompliantLocalRuntime else { return }
-        let overrideURL = URL(fileURLWithPath: path).resolvingSymlinksInPath()
-        let bundleURL = Bundle.main.bundleURL.resolvingSymlinksInPath()
-        guard overrideURL.path == bundleURL.path ||
-              overrideURL.path.hasPrefix(bundleURL.path + "/") else {
-            throw makeError(
-                "App Store local runtime may only load JavaScript from signed app bundle resources"
-            )
-        }
     }
 
     private func installMinimalConsole(into ctx: JSContext) {

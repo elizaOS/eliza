@@ -87,23 +87,6 @@ describe("VirtualFilesystemService", () => {
     expect(service({ projectId: "team-a" }).projectId).toBe("team-a");
   });
 
-  it("rejects virtual file names that cannot round-trip on Windows", async () => {
-    const vfs = service();
-    await vfs.initialize();
-
-    for (const unsafePath of [
-      "notes/live-boot:_patch.txt",
-      "notes/trailing-dot./file.txt",
-      "notes/trailing-space /file.txt",
-      "notes/CON.txt",
-      "notes/a?b.txt",
-    ]) {
-      await expect(vfs.writeFile(unsafePath, "nope")).rejects.toMatchObject({
-        code: "INVALID_PATH",
-      });
-    }
-  });
-
   it("maps missing deletes to VFS not found errors", async () => {
     const vfs = service();
     await vfs.initialize();

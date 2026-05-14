@@ -179,33 +179,6 @@ def test_voice_policy_can_warn_or_block(tmp_path: Path):
     assert any("kokoro/voices/af_bella.bin" in e for e in strict_plan.errors)
 
 
-def test_voice_policy_rejects_omnivoice_on_kokoro_only_tier(tmp_path: Path):
-    _write_bundle(
-        tmp_path,
-        "2b",
-        voice_paths=(
-            "tts/kokoro/model_q4.onnx",
-            "tts/kokoro/tokenizer.json",
-            "tts/kokoro/voices/af_bella.bin",
-            "tts/omnivoice-base-Q4_K_M.gguf",
-        ),
-    )
-
-    warning_plan = P.plan_bundle(tmp_path, "2b")
-    strict_plan = P.plan_bundle(tmp_path, "2b", strict_voice_policy=True)
-
-    assert warning_plan.uploadable is True
-    assert any(
-        "non-policy voice artifact tts/omnivoice-base-q4_k_m.gguf" in warning
-        for warning in warning_plan.warnings
-    )
-    assert strict_plan.uploadable is False
-    assert any(
-        "non-policy voice artifact tts/omnivoice-base-q4_k_m.gguf" in error
-        for error in strict_plan.errors
-    )
-
-
 def test_tier_choices_cover_full_eliza1_matrix() -> None:
     assert P.TIERS == (
         "0_8b",
@@ -225,7 +198,6 @@ def test_plan_bundle_blocks_non_publishable_release_evidence(tmp_path: Path):
     release["releaseState"] = "weights-staged"
     release["publishEligible"] = False
     release["final"]["evals"] = False
-    release["hf"]["status"] = "blocked-weights-staged"
     release_path.write_text(json.dumps(release), encoding="utf-8")
 
     plan = P.plan_bundle(tmp_path, "2b")
@@ -234,7 +206,6 @@ def test_plan_bundle_blocks_non_publishable_release_evidence(tmp_path: Path):
     assert any("releaseState" in e for e in plan.errors)
     assert any("publishEligible" in e for e in plan.errors)
     assert any("final.evals" in e for e in plan.errors)
-    assert not any("hf.status" in e for e in plan.errors)
 
 
 def test_plan_bundle_blocks_uploaded_status_without_hf_evidence(tmp_path: Path):

@@ -121,8 +121,8 @@ interface LocalInferenceTranscriptionService {
  *
  * The concrete return type is intentionally `unknown` here to keep this
  * provider file free of a hard dependency on `./services/memory-arbiter`;
- * consumers should import the `MemoryArbiter` type from the
- * `@elizaos/plugin-local-inference` barrel and cast.
+ * consumers should import the `MemoryArbiter` type from
+ * `@elizaos/plugin-local-inference/services` and cast.
  */
 interface LocalInferenceArbiterAccessor {
 	getMemoryArbiter?: () => unknown;
@@ -915,7 +915,7 @@ export function createLocalInferenceModelHandlers(): NonNullable<
 export const localInferencePlugin: Plugin = {
 	name: LOCAL_INFERENCE_PROVIDER_ID,
 	description:
-		"Unified Eliza-1 local provider for text, embeddings, text-to-speech, transcription, and image description.",
+		"Unified Eliza-1 local provider for text, embeddings, text-to-speech, and transcription.",
 	priority: LOCAL_INFERENCE_PRIORITY,
 	actions: [generateMediaAction],
 	models: createLocalInferenceModelHandlers(),

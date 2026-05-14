@@ -14,7 +14,8 @@
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
-    "@elizaos/plugin-inmemorydb": "workspace:*"
+    "@elizaos/plugin-inmemorydb": "workspace:*",
+    "@clack/prompts": "^0.11.0"
   },
   "devDependencies": {
     "@types/node": "^25.0.3",

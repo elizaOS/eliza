@@ -39,11 +39,6 @@ import {
 } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import {
-  assertReviewedEntitlementsFile,
-  assertReviewedEntitlementsText,
-  loadEntitlementReviewManifest,
-} from "./lib/apple-entitlement-audit.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -151,21 +146,6 @@ function findSigningUnits(appPath) {
   };
 }
 
-function resolveMainExecutablePath(appPath) {
-  const infoPlistPath = path.join(appPath, "Contents", "Info.plist");
-  if (!existsSync(infoPlistPath)) {
-    return null;
-  }
-  const infoPlist = readFileSync(infoPlistPath, "utf8");
-  const match = infoPlist.match(
-    /<key>CFBundleExecutable<\/key>\s*<string>([^<]+)<\/string>/,
-  );
-  if (!match) {
-    return null;
-  }
-  return path.resolve(appPath, "Contents", "MacOS", match[1]);
-}
-
 function runOrPrint(cmd, args, dryRun) {
   const display = `${cmd} ${args.map((a) => (a.includes(" ") ? `"${a}"` : a)).join(" ")}`;
   if (dryRun) {
@@ -181,21 +161,6 @@ function runOrPrint(cmd, args, dryRun) {
   return result;
 }
 
-function runCapture(cmd, args) {
-  const display = `${cmd} ${args.map((a) => (a.includes(" ") ? `"${a}"` : a)).join(" ")}`;
-  const result = spawnSync(cmd, args, {
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  if (result.status !== 0) {
-    process.stderr.write(result.stderr ?? "");
-    process.stdout.write(result.stdout ?? "");
-    process.exitCode = result.status ?? 1;
-    throw new Error(`Command failed (${result.status}): ${display}`);
-  }
-  return result.stdout;
-}
-
 function plistLint(filePath) {
   if (!existsSync(filePath)) {
     throw new Error(`Entitlements file missing: ${filePath}`);
@@ -207,36 +172,6 @@ function plistLint(filePath) {
   if (!/<plist\b[^>]*>[\s\S]*<\/plist>/i.test(content)) {
     throw new Error(`Entitlements not a well-formed plist: ${filePath}`);
   }
-}
-
-function assertSourceEntitlementsReviewed(manifest) {
-  assertReviewedEntitlementsFile({
-    filePath: PARENT_ENTITLEMENTS,
-    targetId: "macos-mas-app",
-    manifest,
-    label: "macOS MAS parent entitlements",
-  });
-  assertReviewedEntitlementsFile({
-    filePath: CHILD_ENTITLEMENTS,
-    targetId: "macos-mas-child",
-    manifest,
-    label: "macOS MAS child entitlements",
-  });
-}
-
-function assertSignedEntitlements(target, targetId, label, manifest) {
-  const entitlementsXml = runCapture("codesign", [
-    "-d",
-    "--entitlements",
-    ":-",
-    target,
-  ]);
-  assertReviewedEntitlementsText({
-    plistXml: entitlementsXml,
-    targetId,
-    manifest,
-    label,
-  });
 }
 
 function sign(target, entitlements, identity, dryRun) {
@@ -296,8 +231,6 @@ function main() {
 
   plistLint(PARENT_ENTITLEMENTS);
   plistLint(CHILD_ENTITLEMENTS);
-  const entitlementManifest = loadEntitlementReviewManifest();
-  assertSourceEntitlementsReviewed(entitlementManifest);
 
   console.log(`MAS codesign for ${appPath}`);
   console.log(`  identity: ${identity}`);
@@ -337,36 +270,6 @@ function main() {
     ["--verify", "--deep", "--strict", "--verbose=2", appPath],
     dryRun,
   );
-
-  if (!dryRun) {
-    console.log(`\nAuditing signed entitlements:`);
-    const mainExecutablePath = resolveMainExecutablePath(appPath);
-    for (const target of machos) {
-      if (mainExecutablePath && path.resolve(target) === mainExecutablePath) {
-        continue;
-      }
-      assertSignedEntitlements(
-        target,
-        "macos-mas-child",
-        `signed child Mach-O ${path.relative(appPath, target)}`,
-        entitlementManifest,
-      );
-    }
-    for (const target of bundles) {
-      assertSignedEntitlements(
-        target,
-        "macos-mas-child",
-        `signed nested bundle ${path.relative(appPath, target)}`,
-        entitlementManifest,
-      );
-    }
-    assertSignedEntitlements(
-      appPath,
-      "macos-mas-app",
-      `signed parent app ${path.basename(appPath)}`,
-      entitlementManifest,
-    );
-  }
 
   // 5. Optional productbuild for MAS submission.
   if (installerIdentity) {

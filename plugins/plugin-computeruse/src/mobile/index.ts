@@ -35,11 +35,9 @@ export type {
 } from "./android-bridge.js";
 export {
   IOS_APP_INTENT_BUNDLE_IDS,
-  IOS_NATIVE_X_CALLBACK_INTENT_IDS,
   IOS_APP_INTENT_REGISTRY,
   findIosAppIntent,
   findIosAppIntentsForBundle,
-  isIosNativeXCallbackIntent,
   listIosAppIntents,
 } from "./ios-app-intent-registry.js";
 export {

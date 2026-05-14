@@ -1,17 +1,13 @@
 /**
  * Single chokepoint for shell execution.
  *
- * The runtime has a policy-aware 3-mode switch via `ELIZA_RUNTIME_MODE`:
+ * The runtime has a 3-mode switch via `ELIZA_RUNTIME_MODE`:
  *  - `cloud`        — agent code runs in the hosted backend; local exec is
  *                     refused with a clear error.
  *  - `local-safe`   — every shell exec is routed through `SandboxManager`
  *                     (Docker / Apple Container) so the host filesystem is
  *                     not directly touched.
  *  - `local-yolo`   — direct host exec (the historical default).
- *
- * `local-yolo` is only honored for unrestricted desktop/direct contexts. Store,
- * mobile, remote, and cloud contexts clamp to `local-safe` or `cloud` before
- * dispatch so a missing or stale setting cannot silently reach the host.
  *
  * Plugins, services, and CLI helpers that previously called `child_process.spawn`
  * for one-shot command execution should call `runShell()` instead. This keeps
@@ -20,20 +16,13 @@
  */
 
 import { spawn } from "node:child_process";
-import fsp from "node:fs/promises";
-import path from "node:path";
 import process from "node:process";
 import {
-  applyRuntimeExecutionModePolicy,
-  type DeploymentTargetConfig,
-  type DistributionProfile,
   type RuntimeExecutionMode,
   resolveRuntimeExecutionMode,
 } from "@elizaos/shared";
 import { CapabilityBroker } from "./capability-broker.ts";
 import type { SandboxManager } from "./sandbox-manager.ts";
-import { isVfsUri, runVfsBuiltinShell } from "./vfs-builtin-shell.ts";
-import { createVirtualFilesystemService } from "./virtual-filesystem.ts";
 
 export type ShellExecutionMode = RuntimeExecutionMode;
 
@@ -43,7 +32,6 @@ export type ShellSandboxBackend =
   | "apple-container"
   | "wsl2"
   | "appcontainer"
-  | "vfs"
   | "none";
 
 export interface ShellRequest {
@@ -67,19 +55,10 @@ export interface ShellResult {
 }
 
 export interface ShellRouterContext {
-  /**
-   * Explicit requested mode. The shared runtime policy still clamps host-yolo
-   * when the deployment/profile/platform cannot use direct host execution.
-   */
+  /** Explicit override for the active mode. When unset, env vars are read. */
   mode?: ShellExecutionMode;
   /** Runtime-style settings source consulted before falling back to env. */
   runtime?: { getSetting?: (key: string) => unknown } | null;
-  /** Deployment target from onboarding/config when the caller has it. */
-  deploymentTarget?: DeploymentTargetConfig | Record<string, unknown> | null;
-  /** Store/direct profile override; otherwise ELIZA_DISTRIBUTION_PROFILE is read. */
-  distributionProfile?: DistributionProfile | string | null;
-  /** Platform override; otherwise ELIZA_PLATFORM is read. */
-  platform?: string | null;
   /** Optional pre-resolved sandbox manager (used by tests + agent code paths). */
   sandboxManager?: SandboxManager | null;
   /**
@@ -89,26 +68,11 @@ export interface ShellRouterContext {
   resolveSandboxManager?: () => Promise<SandboxManager | null>;
 }
 
-interface ParsedVfsShellCwd {
-  projectId: string;
-  virtualPath: string;
-}
-
-interface VfsAwareSandboxManager extends SandboxManager {
-  getWorkspaceRoot?: () => string;
-  getContainerWorkspacePath?: (hostPath: string) => string | null;
-}
-
 export function resolveShellExecutionMode(
-  ctx?: Pick<
-    ShellRouterContext,
-    "deploymentTarget" | "distributionProfile" | "mode" | "platform" | "runtime"
-  > | null,
+  ctx?: Pick<ShellRouterContext, "mode" | "runtime"> | null,
 ): ShellExecutionMode {
-  if (ctx?.mode) {
-    return applyRuntimeExecutionModePolicy(ctx.mode, ctx, ctx.runtime ?? null);
-  }
-  return resolveRuntimeExecutionMode(ctx?.runtime ?? null, ctx ?? null);
+  if (ctx?.mode) return ctx.mode;
+  return resolveRuntimeExecutionMode(ctx?.runtime ?? null);
 }
 
 function backendForSandboxManager(
@@ -256,124 +220,6 @@ async function runInSandbox(
   };
 }
 
-async function runVfsInSandbox(
-  req: ShellRequest,
-  cwd: ParsedVfsShellCwd,
-  manager: SandboxManager,
-): Promise<ShellResult> {
-  const vfsManager = manager as VfsAwareSandboxManager;
-  const workspaceRoot = vfsManager.getWorkspaceRoot?.();
-  if (!workspaceRoot) {
-    throw new Error(
-      "[shell-router] VFS sandbox execution requires SandboxManager.getWorkspaceRoot()",
-    );
-  }
-
-  const vfs = createVirtualFilesystemService({ projectId: cwd.projectId });
-  await vfs.initialize();
-  const materializedRoot = path.join(
-    workspaceRoot,
-    "vfs-projects",
-    cwd.projectId,
-    "files",
-  );
-  await fsp.rm(materializedRoot, { recursive: true, force: true });
-  await fsp.mkdir(materializedRoot, { recursive: true, mode: 0o700 });
-  await copyDirectoryContents(vfs.filesRoot, materializedRoot);
-
-  const hostCwd = path.resolve(
-    materializedRoot,
-    cwd.virtualPath.replace(/^\/+/, ""),
-  );
-  await fsp.mkdir(hostCwd, { recursive: true, mode: 0o700 });
-  const sandboxCwd =
-    vfsManager.getContainerWorkspacePath?.(hostCwd) ??
-    `/workspace/${path
-      .relative(workspaceRoot, hostCwd)
-      .replace(/\\/g, "/")
-      .replace(/^\/+/, "")}`;
-
-  const result = await runInSandbox(
-    {
-      ...req,
-      cwd: sandboxCwd,
-    },
-    manager,
-  );
-  await importMaterializedTree(vfs, materializedRoot);
-  return result;
-}
-
-async function copyDirectoryContents(from: string, to: string): Promise<void> {
-  try {
-    await fsp.cp(from, to, {
-      recursive: true,
-      force: true,
-      errorOnExist: false,
-      dereference: false,
-    });
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-  }
-}
-
-async function importMaterializedTree(
-  vfs: ReturnType<typeof createVirtualFilesystemService>,
-  root: string,
-): Promise<void> {
-  const nextFiles = new Map<string, Buffer>();
-  await walkMaterialized(root, root, nextFiles);
-
-  const currentFiles = await vfs.exportFiles();
-  for (const file of currentFiles) {
-    const normalized = file.path.replace(/^\/+/, "");
-    if (!nextFiles.has(normalized)) {
-      await vfs.delete(normalized);
-    }
-  }
-  for (const [virtualPath, bytes] of nextFiles) {
-    await vfs.writeFile(virtualPath, bytes);
-  }
-}
-
-async function walkMaterialized(
-  root: string,
-  dir: string,
-  files: Map<string, Buffer>,
-): Promise<void> {
-  let entries: Awaited<ReturnType<typeof fsp.readdir>>;
-  try {
-    entries = await fsp.readdir(dir, { withFileTypes: true });
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
-    throw error;
-  }
-  for (const entry of entries) {
-    const absolute = path.join(dir, entry.name);
-    if (entry.isSymbolicLink()) {
-      throw new Error(`VFS sandbox import rejects symlink: ${absolute}`);
-    }
-    if (entry.isDirectory()) {
-      await walkMaterialized(root, absolute, files);
-      continue;
-    }
-    if (!entry.isFile()) continue;
-    const virtualPath = path.relative(root, absolute).replace(/\\/g, "/");
-    files.set(virtualPath, await fsp.readFile(absolute));
-  }
-}
-
-function parseVfsShellCwd(value: string): ParsedVfsShellCwd {
-  const parsed = new URL(value);
-  if (parsed.protocol !== "vfs:" || !parsed.hostname) {
-    throw new Error(`Invalid VFS uri: ${value}`);
-  }
-  return {
-    projectId: parsed.hostname,
-    virtualPath: decodeURIComponent(parsed.pathname || "/"),
-  };
-}
-
 function assertShellCapability(
   req: ShellRequest,
   mode: ShellExecutionMode,
@@ -413,31 +259,6 @@ export async function runShell(
   }
 
   const mode = resolveShellExecutionMode(ctx);
-
-  if (isVfsUri(req.cwd)) {
-    const vfsCwd = parseVfsShellCwd(req.cwd);
-    if (mode === "local-yolo") {
-      throw new Error(
-        "[shell-router] local-yolo uses the normal host filesystem; pass a real cwd path instead of vfs://",
-      );
-    }
-    if (mode === "local-safe") {
-      const manager = await resolveSandboxManager(ctx);
-      if (manager) {
-        assertShellCapability(req, mode, `sandbox.${req.toolName}`);
-        return await runVfsInSandbox(req, vfsCwd, manager);
-      }
-    }
-    const result = await runVfsBuiltinShell({
-      cwdUri: req.cwd,
-      command: req.command,
-      args: req.args,
-      ...(req.timeoutMs ? { timeoutMs: req.timeoutMs } : {}),
-    });
-    if (result.stdout) req.onStdout?.(result.stdout);
-    if (result.stderr) req.onStderr?.(result.stderr);
-    return result;
-  }
 
   if (mode === "cloud") {
     throw new Error("Local shell execution disabled in cloud mode.");

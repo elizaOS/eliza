@@ -12,12 +12,6 @@ Deploying Milady as a privileged system app in a custom AOSP build removes all t
 The `aosp` build flavor enables the `AospPrivilegedBridge` implementation; the `consumer` flavor
 ships the stub that always returns `null` from `createIfAvailable()`.
 
-Being the system assistant does not change LifeOps persistence. Assistant-role
-entry points may wake Eliza and pass an utterance into the app/runtime, but
-reminders, check-ins, follow-ups, watchers, recaps, and approvals must still be
-created as LifeOps `ScheduledTask` records. Do not add a privileged native
-reminder path that bypasses the scheduled-task runner.
-
 ## Required AOSP setup
 
 ### 1. `vendor/elizaos` or `device/elizaos` overlay
@@ -192,21 +186,6 @@ For a full system image build:
 m -j$(nproc)
 fastboot flashall -w
 ```
-
-## Assistant-role validation
-
-On a flashed AOSP image:
-
-1. Confirm `ROLE_ASSISTANT` resolves to Eliza:
-   `adb shell settings get secure assistant`.
-2. Trigger the assistant activity:
-   `adb shell am start -a android.intent.action.ASSIST -n com.elizaai.eliza/ai.elizaos.app.ElizaAssistActivity`.
-3. Trigger voice command routing:
-   `adb shell am start -a android.intent.action.VOICE_COMMAND -n com.elizaai.eliza/ai.elizaos.app.ElizaAssistActivity`.
-4. Ask for a reminder, a check-in, and a follow-up. Verify the app/runtime
-   creates LifeOps `ScheduledTask` records for each request.
-5. Verify privileged capture/input (`SurfaceControl` / `InputManager`) does not
-   introduce a separate scheduling or notification store.
 
 ## Sepolicy considerations
 

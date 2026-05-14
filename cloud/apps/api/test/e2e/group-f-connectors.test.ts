@@ -7,11 +7,10 @@
  *   /api/eliza-app/gateway/:agentId
  *   /api/eliza-app/provision-agent
  *   /api/eliza-app/user/me
- *   /api/eliza-app/webhook/blooio        (forwards to webhook gateway)
- *   /api/eliza-app/webhook/discord       (forwards to Discord webhook handler)
- *   /api/eliza-app/webhook/telegram      (forwards to webhook gateway)
- *   /api/eliza-app/webhook/twilio        (forwards to webhook gateway)
- *   /api/eliza-app/webhook/whatsapp      (forwards to webhook gateway)
+ *   /api/eliza-app/webhook/blooio        (stubbed — 501)
+ *   /api/eliza-app/webhook/discord       (stubbed — 501)
+ *   /api/eliza-app/webhook/telegram      (stubbed — 501)
+ *   /api/eliza-app/webhook/whatsapp      (stubbed — 501)
  *   /api/eliza/rooms/:roomId             (stubbed — 501)
  *   /api/eliza/rooms/:roomId/messages    (stubbed — 501)
  *   /api/eliza/rooms/:roomId/messages/stream (stubbed — 501)
@@ -29,8 +28,8 @@
  *   - /api/webhooks/* — public
  *   - /api/eliza-app/connections requires an eliza-app session token
  *
- * Worker-compatible webhook routes should fail closed with a configuration
- * error when their upstream gateway URL is absent.
+ * Stubbed routes (elizaOS runtime not Workers-compatible) return 501.
+ * Those still need a test so the coverage audit counts them as covered.
  *
  * Webhook signing tests (Blooio, Twilio, WhatsApp) run without a real DB
  *     because the handlers can skip signature verification when
@@ -300,58 +299,44 @@ describe("GET /api/eliza-app/user/me", () => {
 });
 
 // ---------------------------------------------------------------------------
-// /api/eliza-app/webhook/* — forwards when configured; fail closed otherwise
+// /api/eliza-app/webhook/* — stubbed; all methods return 501
 // ---------------------------------------------------------------------------
 
-describe("POST /api/eliza-app/webhook/blooio", () => {
-  test("without gateway URL → 503 WEBHOOK_GATEWAY_NOT_CONFIGURED", async () => {
+describe("POST /api/eliza-app/webhook/blooio (stubbed)", () => {
+  test("any request → 501 not_yet_migrated", async () => {
     const res = await api.post("/api/eliza-app/webhook/blooio", { event: "test" });
-    expect(res.status).toBe(503);
-    const body = (await res.json()) as { code?: string };
-    expect(body.code).toBe("WEBHOOK_GATEWAY_NOT_CONFIGURED");
+    expect(res.status).toBe(501);
+    const body = (await res.json()) as { error?: string };
+    expect(body.error).toBe("not_yet_migrated");
   });
 });
 
-describe("POST /api/eliza-app/webhook/discord", () => {
-  test("without Discord webhook handler URL → 503 DISCORD_WEBHOOK_HANDLER_NOT_CONFIGURED", async () => {
+describe("POST /api/eliza-app/webhook/discord (stubbed)", () => {
+  test("any request → 501 not_yet_migrated", async () => {
     const res = await api.post("/api/eliza-app/webhook/discord", { event: "test" });
-    expect(res.status).toBe(503);
-    const body = (await res.json()) as { code?: string };
-    expect(body.code).toBe("DISCORD_WEBHOOK_HANDLER_NOT_CONFIGURED");
+    expect(res.status).toBe(501);
+    const body = (await res.json()) as { error?: string };
+    expect(body.error).toBe("not_yet_migrated");
   });
 });
 
-describe("POST /api/eliza-app/webhook/telegram", () => {
-  test("without gateway URL → 503 WEBHOOK_GATEWAY_NOT_CONFIGURED", async () => {
+describe("POST /api/eliza-app/webhook/telegram (stubbed)", () => {
+  test("any request → 501 not_yet_migrated", async () => {
     const res = await api.post("/api/eliza-app/webhook/telegram", { update_id: 1 });
-    expect(res.status).toBe(503);
-    const body = (await res.json()) as { code?: string };
-    expect(body.code).toBe("WEBHOOK_GATEWAY_NOT_CONFIGURED");
+    expect(res.status).toBe(501);
+    const body = (await res.json()) as { error?: string };
+    expect(body.error).toBe("not_yet_migrated");
   });
 });
 
-describe("POST /api/eliza-app/webhook/twilio", () => {
-  test("without gateway URL → 503 WEBHOOK_GATEWAY_NOT_CONFIGURED", async () => {
-    const res = await api.post("/api/eliza-app/webhook/twilio", {
-      MessageSid: "SM_test",
-      From: "+15551234567",
-      To: "+15550000000",
-      Body: "hello",
-    });
-    expect(res.status).toBe(503);
-    const body = (await res.json()) as { code?: string };
-    expect(body.code).toBe("WEBHOOK_GATEWAY_NOT_CONFIGURED");
-  });
-});
-
-describe("POST /api/eliza-app/webhook/whatsapp", () => {
-  test("without gateway URL → 503 WEBHOOK_GATEWAY_NOT_CONFIGURED", async () => {
+describe("POST /api/eliza-app/webhook/whatsapp (stubbed)", () => {
+  test("any request → 501 not_yet_migrated", async () => {
     const res = await api.post("/api/eliza-app/webhook/whatsapp", {
       object: "whatsapp_business_account",
     });
-    expect(res.status).toBe(503);
-    const body = (await res.json()) as { code?: string };
-    expect(body.code).toBe("WEBHOOK_GATEWAY_NOT_CONFIGURED");
+    expect(res.status).toBe(501);
+    const body = (await res.json()) as { error?: string };
+    expect(body.error).toBe("not_yet_migrated");
   });
 });
 

@@ -29,10 +29,9 @@
 #   REGISTRY_KEY=qwen3.5-2b   → eliza-1-2b     (single H200 — fits seq 8k)
 #   REGISTRY_KEY=qwen3.5-4b   → eliza-1-4b     (single H200)
 #   REGISTRY_KEY=qwen3.5-9b   → eliza-1-9b     (single H200, ~80 GB peak)
-#   REGISTRY_KEY=qwen3.6-27b  → eliza-1-27b    (prefer 2× B200/H200 for SFT)
-#   (legacy Qwen3/Qwen3.5-27B entries are kept addressable for experiments, but
-#   the active eliza-1 fused-kernel stack validates Qwen3.5 0.8B/2B/4B/9B and
-#   Qwen3.6 27B-class tiers.)
+#   REGISTRY_KEY=qwen3.5-27b  → eliza-1-27b    (single H200 — apollo_mini fits 141 GB)
+#   (legacy Qwen3 line: qwen3-0.6b, qwen3-1.7b, qwen3-4b — kept addressable for
+#   compatibility but the eliza-1 fused-kernel stack only validates Qwen3.5.)
 #
 # Required env:
 #   NEBIUS_PROJECT_ID          # the project (== parent-id), e.g. project-e00kfz6cpr00q21z892vec
@@ -116,8 +115,8 @@ case "$NEBIUS_VM_PRESET" in
 esac
 FSDP_WORLD_SIZE="${FSDP_WORLD_SIZE:-$DEFAULT_WORLD}"
 
-# The transformer decoder-layer class FSDP wraps. Every active Eliza-1 text
-# entry (Qwen3.5 0.8B/2B/4B/9B plus Qwen3.6 27B-class) uses
+# The transformer decoder-layer class FSDP wraps. Every entry in the
+# Qwen3.5-only model registry (qwen3.5-0.8b/2b/4b/9b/27b) uses
 # Qwen3_5DecoderLayer; the legacy Qwen3 dense bases (which would have used
 # Qwen3DecoderLayer) were dropped on 2026-05-12.
 FSDP_WRAP_CLS="Qwen3_5DecoderLayer"

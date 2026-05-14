@@ -106,26 +106,3 @@ def test_tool_manifest_surfaces_life_verbs_with_real_descriptions() -> None:
             f"{verb} fell through to the fallback description"
         )
         assert description == _TOOL_DESCRIPTIONS[verb]
-
-
-def test_archive_email_thread_schema_requires_thread_id() -> None:
-    """Hermes/OpenClaw need a real schema for the promoted archive-thread tool."""
-    schema = _tool_parameters_for_action("ARCHIVE_EMAIL_THREAD")
-    assert schema["required"] == ["threadId"]
-    thread_id = schema["properties"]["threadId"]
-    assert thread_id["type"] == "string"
-    assert "thread_* id" in thread_id["description"]
-
-
-def test_message_manage_schema_documents_archive_thread_shape() -> None:
-    schema = _tool_parameters_for_action("MESSAGE_MANAGE")
-    properties = schema["properties"]
-    assert "manageOperation" in schema["required"]
-    assert properties["manageOperation"]["enum"] == [
-        "archive",
-        "trash",
-        "star",
-        "mark_read",
-    ]
-    assert properties["source"]["enum"] == ["gmail"]
-    assert "threadId" in properties

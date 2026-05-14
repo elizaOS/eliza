@@ -20,8 +20,9 @@ import { logger } from "@elizaos/core";
 
 /**
  * Minimal contract a memory arbiter must implement so vision can plug into
- * WS1's load/unload pipeline. Mirrors the local-inference memory arbiter
- * interface but is declared here so plugin-vision compiles standalone.
+ * WS1's load/unload pipeline. Mirrors the (forthcoming) interface in
+ * `@elizaos/plugin-local-inference/src/services/memory-arbiter.ts` but is
+ * declared here so plugin-vision compiles standalone.
  */
 export interface IModelArbiter {
   /**

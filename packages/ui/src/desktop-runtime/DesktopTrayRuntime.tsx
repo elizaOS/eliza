@@ -275,6 +275,12 @@ export function DesktopTrayRuntime() {
               ipcChannel: "desktop:hideWindow",
             });
             return;
+          case "quit":
+            await invokeDesktopBridgeRequest<void>({
+              rpcMethod: "desktopQuit",
+              ipcChannel: "desktop:quit",
+            });
+            return;
           default:
             return;
         }

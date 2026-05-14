@@ -1,9 +1,9 @@
 /**
  * Twilio inbound call records.
  *
- * One row per incoming voice call landing on the cloud gateway. The inbound
- * route stores each Twilio webhook envelope while its speech Gather loop
- * routes recognized caller text to the mapped agent.
+ * One row per incoming voice call landing on the cloud gateway. Full voice-AI
+ * routing (transcription → agent → TwiML response) is out of scope for T9e;
+ * we record the call envelope so downstream voice plugins can pick it up.
  */
 
 import type { InferInsertModel, InferSelectModel } from "drizzle-orm";

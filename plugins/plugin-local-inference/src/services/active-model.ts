@@ -32,7 +32,6 @@ import { recommendForFirstRun } from "./recommendation";
 import { listInstalledModels, touchElizaModel } from "./registry";
 import type {
 	ActiveModelState,
-	AgentModelSlot,
 	CatalogModel,
 	HardwareProbe,
 	InstalledModel,
@@ -99,7 +98,6 @@ export type KvOffloadMode = "cpu" | "gpu" | "split" | { gpuLayers: number };
  *                            `{gpuLayers}` remains a layer-placement override.
  */
 export interface LocalInferenceLoadArgs {
-	modelId?: string;
 	modelPath: string;
 	contextSize?: number;
 	useGpu?: boolean;
@@ -290,7 +288,6 @@ export interface LocalInferenceLoader {
 	loadModel(args: LocalInferenceLoadArgs): Promise<void>;
 	unloadModel(): Promise<void>;
 	currentModelPath(): string | null;
-	currentModelPathForSlot?(slot: AgentModelSlot): string | null;
 	/**
 	 * Optional generation surface. When a loader implements this, the runtime
 	 * handler (`ensure-local-inference-handler.ts`) routes TEXT_SMALL /
@@ -477,10 +474,7 @@ export async function resolveLocalInferenceLoadArgs(
 	installed: InstalledModel,
 	overrides?: LocalInferenceLoadOverrides,
 ): Promise<LocalInferenceLoadArgs> {
-	const args: LocalInferenceLoadArgs = {
-		modelId: installed.id,
-		modelPath: installed.path,
-	};
+	const args: LocalInferenceLoadArgs = { modelPath: installed.path };
 	const catalog = findCatalogModel(installed.id);
 	const runtime = catalog?.runtime;
 

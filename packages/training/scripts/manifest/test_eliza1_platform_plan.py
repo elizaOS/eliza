@@ -99,8 +99,6 @@ def test_readiness_mentions_vad_native_ggml_caveat() -> None:
     assert "Qwen3.5 0.8B (`0_8b`)" in text
     assert "Qwen3.5 2B (`2b`)" in text
     assert "Qwen3.5 4B (`4b`)" in text
-    assert "Qwen3.5 9B (`9b`)" in text
-    assert "Qwen3.6 27B-class (`27b`, `27b-256k`, `27b-1m`)" in text
     assert "published Qwen3-ASR 0.6B / 1.7B GGUF repos" in text
     assert "Qwen3-Embedding 0.6B / 4B / 8B GGUF repos" in text
     assert "not evaluated in plan-only mode" in text
@@ -150,32 +148,6 @@ def test_release_status_blockers_detect_local_standin_evidence(tmp_path: Path) -
 
     text = render_readiness(plan, missing={}, blockers=blockers)
     assert "Publish-blocking status:" in text
-
-
-def test_release_status_blockers_detect_non_policy_voice_artifacts(
-    tmp_path: Path,
-) -> None:
-    plan = build_plan()
-    bundle = tmp_path / "bundles" / "eliza-1-2b.bundle"
-    bundle.mkdir(parents=True)
-    (bundle / "eliza-1.manifest.json").write_text(
-        json.dumps(
-            {
-                "files": {
-                    "voice": [
-                        {"path": "tts/kokoro/model_q4.onnx"},
-                        {"path": "tts/kokoro/tokenizer.json"},
-                        {"path": "tts/kokoro/voices/af_bella.bin"},
-                        {"path": "tts/omnivoice-base-Q4_K_M.gguf"},
-                    ]
-                }
-            }
-        )
-    )
-
-    blockers = release_status_blockers(tmp_path / "bundles", plan)
-
-    assert any("non-policy artifact" in item for item in blockers["2b"])
 
 
 def test_release_status_blockers_accept_base_v1_uploaded_evidence(

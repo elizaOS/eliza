@@ -80,12 +80,6 @@ type GenerateTextParamsWithNativeOptions = GenerateTextParamsWithAttachments & {
   providerOptions?: Record<string, unknown>;
 };
 
-type ElizaGuidancePayload = {
-  grammar?: string;
-  response_skeleton?: GenerateTextParams["responseSkeleton"];
-  prefill?: string;
-};
-
 type NativeTokenUsage = {
   promptTokens: number;
   completionTokens: number;
@@ -167,7 +161,7 @@ const SPAN_SAMPLER_HONORING_MODEL_PREFIXES = [
   "eliza-1-",
 ] as const;
 
-function isElizaGuidanceHonoringModel(modelName: string): boolean {
+function isSpanSamplerHonoringModel(modelName: string): boolean {
   const lower = modelName.toLowerCase();
   return SPAN_SAMPLER_HONORING_MODEL_PREFIXES.some((prefix) =>
     lower.startsWith(prefix),
@@ -198,44 +192,6 @@ function buildSpanSamplerHeader(
   const body: Record<string, unknown> = { overrides };
   if (plan.strict === true) body.strict = true;
   return JSON.stringify(body);
-}
-
-function buildElizaGuidancePayload(
-  params: Pick<GenerateTextParams, "grammar" | "responseSkeleton" | "prefill">,
-): ElizaGuidancePayload | undefined {
-  const payload: ElizaGuidancePayload = {};
-  if (typeof params.grammar === "string" && params.grammar.trim().length > 0) {
-    payload.grammar = params.grammar;
-  }
-  if (params.responseSkeleton) {
-    payload.response_skeleton = params.responseSkeleton;
-  }
-  if (typeof params.prefill === "string" && params.prefill.length > 0) {
-    payload.prefill = params.prefill;
-  }
-  return Object.keys(payload).length > 0 ? payload : undefined;
-}
-
-function applyElizaGuidanceFields(
-  requestBody: Record<string, unknown>,
-  params: Pick<GenerateTextParams, "grammar" | "responseSkeleton" | "prefill">,
-  modelName: string,
-): void {
-  if (!isElizaGuidanceHonoringModel(modelName)) return;
-
-  const payload = buildElizaGuidancePayload(params);
-  if (!payload) return;
-
-  if (payload.grammar) {
-    requestBody.grammar = payload.grammar;
-  }
-  if (payload.response_skeleton) {
-    requestBody.response_skeleton = payload.response_skeleton;
-  }
-  if (payload.prefill) {
-    requestBody.prefill = payload.prefill;
-  }
-  requestBody.eliza_guidance = payload;
 }
 
 function isReasoningModel(modelName: string): boolean {
@@ -551,7 +507,6 @@ function buildNativeRequestBody(
     requestBody.prompt_cache_key = promptCacheKey;
   }
 
-  applyElizaGuidanceFields(requestBody, params, modelName);
   applyOpenRouterPassthroughFields(requestBody, providerOptions);
   return requestBody;
 }
@@ -812,13 +767,12 @@ async function generateTextWithModel(
   if (!reasoning && typeof params.temperature === "number") {
     requestBody.temperature = params.temperature;
   }
-  applyElizaGuidanceFields(requestBody, params, modelName);
 
   const responsesHeaders: Record<string, string> = {
     "X-Eliza-Llm-Purpose": getPurposeForModelType(modelType),
     "X-Eliza-Model-Type": modelType,
   };
-  if (isElizaGuidanceHonoringModel(modelName)) {
+  if (isSpanSamplerHonoringModel(modelName)) {
     const samplerHeader = buildSpanSamplerHeader(params.spanSamplerPlan);
     if (samplerHeader) {
       responsesHeaders["x-eliza-span-samplers"] = samplerHeader;
@@ -900,7 +854,7 @@ async function generateNativeChatCompletion(
   // upstreams (OpenAI / Anthropic / generic OpenRouter) strip unknown headers
   // safely, but we keep the wire surface narrow until the cloud honor path
   // lands in Wave 3.
-  if (isElizaGuidanceHonoringModel(context.modelName)) {
+  if (isSpanSamplerHonoringModel(context.modelName)) {
     const samplerHeader = buildSpanSamplerHeader(params.spanSamplerPlan);
     if (samplerHeader) {
       headers["x-eliza-span-samplers"] = samplerHeader;

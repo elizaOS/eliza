@@ -22,7 +22,6 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 
@@ -116,16 +115,7 @@ def test_qjl_apply_kv_bytes_per_token_analytic_qwen():
 
     from qjl_apply import kv_bytes_per_token_analytic
 
-    repo_id = "Qwen/Qwen3.5-0.8B"
-    try:
-        cfg = AutoConfig.from_pretrained(repo_id, trust_remote_code=True)
-    except KeyError:
-        # Older pinned Transformers builds do not know the qwen3_5 model_type
-        # yet. The analytic function only needs numeric config fields, so use
-        # the tiny Hub config.json instead of forcing a Transformers upgrade.
-        hf_hub_download = pytest.importorskip("huggingface_hub").hf_hub_download
-        with open(hf_hub_download(repo_id, "config.json"), encoding="utf-8") as f:
-            cfg = SimpleNamespace(**json.load(f))
+    cfg = AutoConfig.from_pretrained("Qwen/Qwen3.5-0.8B", trust_remote_code=True)
     base_bpt, quant_bpt = kv_bytes_per_token_analytic(
         cfg,
         key_quantization_bits=256,

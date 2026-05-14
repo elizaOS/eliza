@@ -216,33 +216,6 @@ def test_compare_actions_accepts_field_registry_action_discriminator_aliases() -
     )
 
 
-def test_archive_email_thread_alias_scores_like_message_manage_archive() -> None:
-    """Executor alias ARCHIVE_EMAIL_THREAD must compare to canonical MESSAGE/manage GT."""
-    predicted = [
-        Action(
-            name="ARCHIVE_EMAIL_THREAD",
-            kwargs={"threadId": "thread_01464"},
-        )
-    ]
-    gt = [
-        Action(
-            name="MESSAGE",
-            kwargs={
-                "operation": "manage",
-                "source": "gmail",
-                "manageOperation": "archive",
-                "threadId": "thread_01464",
-            },
-        )
-    ]
-
-    canon = _canonicalize_action(predicted[0])
-    assert canon.name == "MESSAGE"
-    assert canon.kwargs["operation"] == "manage"
-    assert canon.kwargs["manageOperation"] == "archive"
-    assert compare_actions(predicted, gt) == 1.0
-
-
 # ---------------------------------------------------------------------------
 # Bug 2: `intent` is a soft kwarg
 # ---------------------------------------------------------------------------
@@ -286,56 +259,6 @@ def test_kwargs_match_structural_aliases_are_equivalent() -> None:
         "end": "2026-05-14T10:00:00Z",
     }
     assert _kwargs_match(predicted, expected) is True
-
-
-def test_compare_actions_accepts_exact_window_search_for_availability() -> None:
-    predicted = [
-        Action(
-            name="CALENDAR",
-            kwargs={
-                "action": "search_events",
-                "timeMin": "2026-05-14T09:00:00Z",
-                "timeMax": "2026-05-14T10:00:00Z",
-            },
-        )
-    ]
-    expected = [
-        Action(
-            name="CALENDAR",
-            kwargs={
-                "subaction": "check_availability",
-                "startAt": "2026-05-14T09:00:00Z",
-                "endAt": "2026-05-14T10:00:00Z",
-            },
-        )
-    ]
-
-    assert compare_actions(predicted, expected) == 1.0
-
-
-def test_compare_actions_rejects_wrong_window_search_for_availability() -> None:
-    predicted = [
-        Action(
-            name="CALENDAR",
-            kwargs={
-                "action": "search_events",
-                "timeMin": "2026-05-14T08:00:00Z",
-                "timeMax": "2026-05-14T09:00:00Z",
-            },
-        )
-    ]
-    expected = [
-        Action(
-            name="CALENDAR",
-            kwargs={
-                "subaction": "check_availability",
-                "startAt": "2026-05-14T09:00:00Z",
-                "endAt": "2026-05-14T10:00:00Z",
-            },
-        )
-    ]
-
-    assert compare_actions(predicted, expected) == 0.5
 
 
 def test_kwargs_match_propose_times_window_can_be_same_day_superset() -> None:
@@ -436,20 +359,6 @@ def test_output_substring_match_accepts_slot_plural() -> None:
     matches = output_substring_match(
         [MessageTurn(role="assistant", content="Here are three slots.")],
         ["slot"],
-    )
-
-    assert matches == [True]
-
-
-def test_output_substring_match_accepts_archived_for_archive() -> None:
-    matches = output_substring_match(
-        [
-            MessageTurn(
-                role="assistant",
-                content="The newsletter thread thread_01464 has been archived.",
-            )
-        ],
-        ["archive"],
     )
 
     assert matches == [True]

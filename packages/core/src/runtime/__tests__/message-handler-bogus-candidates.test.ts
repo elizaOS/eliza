@@ -16,8 +16,9 @@
  * The user saw two confused messages.
  *
  * The fix validates `candidateActionNames` against the runtime's action
- * registry. Names that don't resolve no longer drive the shouldPlan signal or
- * ride into the planner surface as fake retrieval hints.
+ * registry. Names that don't resolve no longer drive the shouldPlan signal,
+ * but are preserved in `plan.candidateActions` as retrieval hints (the
+ * planner's narrowing pass already drops unknown names there gracefully).
  *
  * See elizaOS/eliza#7620.
  */
@@ -26,11 +27,11 @@ import { describe, expect, it } from "vitest";
 import { messageHandlerFromFieldResult } from "../../services/message";
 import type { Action } from "../../types/components";
 
-// Minimal Action stub — only `name` / `similes` matter for the lookup.
-function makeAction(name: string, similes: string[] = []): Action {
+// Minimal Action stub — only `name` matters for the lookup.
+function makeAction(name: string): Action {
 	return {
 		name,
-		similes,
+		similes: [],
 		description: `stub action ${name}`,
 		examples: [],
 		validate: async () => true,
@@ -60,7 +61,9 @@ describe("messageHandlerFromFieldResult — bogus candidate actions", () => {
 		expect(handler.plan.simple).toBe(true);
 		expect(handler.plan.requiresTool).toBe(false);
 		expect(handler.plan.contexts).toEqual(["simple"]);
-		expect(handler.plan.candidateActions).toBeUndefined();
+		// candidateActions still preserved as retrieval hints — narrowing
+		// downstream gracefully drops unknown names.
+		expect(handler.plan.candidateActions).toEqual(["REFUSE"]);
 		// The refusal text passes through as the final reply — model intent
 		// is honored, no silent suppression.
 		expect(handler.plan.reply).toBe("I'm sorry, but I can't help with that.");
@@ -86,55 +89,10 @@ describe("messageHandlerFromFieldResult — bogus candidate actions", () => {
 		// "simple" stripped from contexts, "general" added as the planning
 		// fallback context (existing finalContexts logic).
 		expect(handler.plan.contexts).toEqual(["general"]);
-		expect(handler.plan.candidateActions).toEqual(["TASKS_SPAWN_AGENT"]);
-	});
-
-	it("canonicalizes matching candidateActionNames to runtime action names", () => {
-		const handler = messageHandlerFromFieldResult(
-			{
-				shouldRespond: "RESPOND",
-				contexts: ["simple"],
-				candidateActionNames: [
-					"spawn agent",
-					"tasks-spawn-agent",
-					"TASKS_SPAWN_AGENT",
-				],
-				replyText: "Spawning a sub-agent.",
-				intents: [],
-				facts: [],
-				addressedTo: [],
-			},
-			undefined,
-			{
-				actions: [
-					makeAction("TASKS_SPAWN_AGENT", ["spawn agent", "tasks-spawn-agent"]),
-				],
-			},
-		);
-
-		expect(handler.plan.simple).toBe(false);
-		expect(handler.plan.requiresTool).toBe(true);
-		expect(handler.plan.candidateActions).toEqual(["TASKS_SPAWN_AGENT"]);
-	});
-
-	it("suppresses refusal-shaped replyText on the field-result planning path", () => {
-		const handler = messageHandlerFromFieldResult(
-			{
-				shouldRespond: "RESPOND",
-				contexts: ["simple"],
-				candidateActionNames: ["TASKS_SPAWN_AGENT"],
-				replyText: "I can't help with that request.",
-				intents: [],
-				facts: [],
-				addressedTo: [],
-			},
-			undefined,
-			{ actions: REAL_ACTIONS },
-		);
-
-		expect(handler.plan.simple).toBe(false);
-		expect(handler.plan.requiresTool).toBe(true);
-		expect(handler.plan.reply).toBe("");
+		expect(handler.plan.candidateActions).toEqual([
+			"REFUSE",
+			"TASKS_SPAWN_AGENT",
+		]);
 	});
 
 	it("promotes to planning when candidateActions are all real, even with empty contexts", () => {
@@ -176,7 +134,6 @@ describe("messageHandlerFromFieldResult — bogus candidate actions", () => {
 
 		expect(handler.plan.simple).toBe(false);
 		expect(handler.plan.requiresTool).toBe(true);
-		expect(handler.plan.candidateActions).toEqual(["REPLY"]);
 	});
 
 	it("preserves IGNORE / STOP processMessage regardless of bogus candidates", () => {

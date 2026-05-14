@@ -94,39 +94,6 @@ def test_simple_multiple_smoke_full_score(fixture_dir: Path) -> None:
     assert all(r.status == TestStatus.PASSED for r in results.results)
 
 
-def test_sample_selection_is_deterministic(fixture_dir: Path) -> None:
-    config = BFCLConfig(
-        data_path=str(fixture_dir),
-        use_huggingface=False,
-        categories=[BFCLCategory.SIMPLE, BFCLCategory.MULTIPLE],
-        generate_report=False,
-        save_raw_responses=False,
-        sample_seed=7,
-    )
-    runner = BFCLRunner(config, use_mock_agent=True)
-    asyncio.run(runner.dataset.load())
-
-    first = [
-        tc.id
-        for tc in runner.dataset.get_sample(
-            1,
-            categories=config.categories,
-            seed=config.sample_seed,
-        )
-    ]
-    second = [
-        tc.id
-        for tc in runner.dataset.get_sample(
-            1,
-            categories=list(reversed(config.categories or [])),
-            seed=config.sample_seed,
-        )
-    ]
-
-    assert first == second
-    assert len(first) == 1
-
-
 def test_rest_without_network_is_skipped(tmp_path: Path) -> None:
     """REST API tests must be marked SKIPPED_NO_CREDENTIALS when
     --enable-network is not set (previously they were silently dropped)."""

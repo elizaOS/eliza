@@ -154,10 +154,10 @@ describe("CustomModelSearch", () => {
     const first = deferred<{ models: CatalogModel[] }>();
     const nextModel: CatalogModel = {
       ...hfModel,
-      id: "hf:CustomOrg/Example-1B-GGUF::example-1b-q4_k_m.gguf",
-      displayName: "Example 1B GGUF",
-      hfRepo: "CustomOrg/Example-1B-GGUF",
-      ggufFile: "example-1b-q4_k_m.gguf",
+      id: "hf:Meta/Llama-3.2-1B-GGUF::llama-3.2-1b-q4_k_m.gguf",
+      displayName: "Llama 3.2 1B GGUF",
+      hfRepo: "Meta/Llama-3.2-1B-GGUF",
+      ggufFile: "llama-3.2-1b-q4_k_m.gguf",
       params: "1B",
     };
     const second = deferred<{ models: CatalogModel[] }>();
@@ -175,7 +175,7 @@ describe("CustomModelSearch", () => {
       await Promise.resolve();
     });
 
-    fireEvent.change(input, { target: { value: "example" } });
+    fireEvent.change(input, { target: { value: "llama" } });
     await act(async () => {
       first.resolve({ models: [hfModel] });
       await first.promise;
@@ -192,17 +192,17 @@ describe("CustomModelSearch", () => {
       await second.promise;
     });
 
-    expect(screen.getByText("Example 1B GGUF")).toBeTruthy();
+    expect(screen.getByText("Llama 3.2 1B GGUF")).toBeTruthy();
   });
 
   it("hides completed results immediately after the user starts a different valid query", async () => {
     vi.useFakeTimers();
     const nextModel: CatalogModel = {
       ...hfModel,
-      id: "hf:CustomOrg/Example-1B-GGUF::example-1b-q4_k_m.gguf",
-      displayName: "Example 1B GGUF",
-      hfRepo: "CustomOrg/Example-1B-GGUF",
-      ggufFile: "example-1b-q4_k_m.gguf",
+      id: "hf:Meta/Llama-3.2-1B-GGUF::llama-3.2-1b-q4_k_m.gguf",
+      displayName: "Llama 3.2 1B GGUF",
+      hfRepo: "Meta/Llama-3.2-1B-GGUF",
+      ggufFile: "llama-3.2-1b-q4_k_m.gguf",
       params: "1B",
     };
     searchHuggingFaceGguf
@@ -221,7 +221,7 @@ describe("CustomModelSearch", () => {
 
     expect(screen.getByText("Qwen3.5 0.8B GGUF")).toBeTruthy();
 
-    fireEvent.change(input, { target: { value: "example" } });
+    fireEvent.change(input, { target: { value: "llama" } });
     expect(screen.queryByText("Qwen3.5 0.8B GGUF")).toBeNull();
     expect(screen.queryByRole("button", { name: "Download" })).toBeNull();
 
@@ -230,6 +230,6 @@ describe("CustomModelSearch", () => {
       await Promise.resolve();
     });
 
-    expect(screen.getByText("Example 1B GGUF")).toBeTruthy();
+    expect(screen.getByText("Llama 3.2 1B GGUF")).toBeTruthy();
   });
 });

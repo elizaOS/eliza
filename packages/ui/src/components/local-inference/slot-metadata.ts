@@ -41,10 +41,4 @@ export const LOCAL_INFERENCE_SLOT_DESCRIPTORS: LocalInferenceSlotDescriptor[] =
       label: "Transcription",
       description: "Local Eliza-1 ASR for microphone and voice message input.",
     },
-    {
-      slot: "IMAGE_DESCRIPTION",
-      modelType: "IMAGE_DESCRIPTION",
-      label: "Vision",
-      description: "Local Eliza-1 image description for screenshots and media.",
-    },
   ];

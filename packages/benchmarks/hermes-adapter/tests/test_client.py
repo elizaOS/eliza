@@ -67,7 +67,7 @@ def test_client_health_validates_venv(client_with_fake_venv: HermesClient) -> No
     cmd = call_args.args[0] if call_args.args else call_args.kwargs.get("args") or []
     assert cmd[0] == str(client_with_fake_venv.venv_python)
     assert "-c" in cmd
-    assert "find_spec('openai')" in cmd[cmd.index("-c") + 1]
+    assert "import openai" in cmd[cmd.index("-c") + 1]
 
 
 def test_client_health_reports_error_on_missing_venv(tmp_path: Path) -> None:
@@ -340,33 +340,4 @@ def test_client_health_runs_import_check(client_with_fake_venv: HermesClient) ->
         client_with_fake_venv.health()
     cmd = mock_run.call_args.args[0]
     script = cmd[cmd.index("-c") + 1]
-    assert "find_spec('openai')" in script
-
-
-def test_client_health_reports_missing_openai(
-    client_with_fake_venv: HermesClient,
-) -> None:
-    with patch("hermes_adapter.client.subprocess.run") as mock_run:
-        mock_run.return_value = _fake_completed(stdout="missing\n", rc=0)
-        result = client_with_fake_venv.health()
-
-    assert result["status"] == "error"
-    assert "openai not importable" in str(result["error"])
-
-
-def test_client_health_honors_probe_timeout_env(
-    client_with_fake_venv: HermesClient,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    observed: list[float] = []
-
-    def _fake_run(cmd: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
-        observed.append(float(kwargs["timeout"]))
-        raise subprocess.TimeoutExpired(cmd=cmd, timeout=float(kwargs["timeout"]))
-
-    monkeypatch.setenv("HERMES_HEALTH_PROBE_TIMEOUT_S", "9")
-    with patch("hermes_adapter.client.subprocess.run", side_effect=_fake_run):
-        result = client_with_fake_venv.health()
-
-    assert result["status"] == "error"
-    assert observed == [9.0]
+    assert "import openai" in script

@@ -8,24 +8,11 @@
  * a-priori catalog: it lets the agent reason about Mail/Notes/etc. before
  * the user has ever opened those apps.
  *
- * Important: source does not imply native invocability. `invocationMode`
- * is the runtime contract. Only `native-x-callback` entries are mapped in
- * `ComputerUseBridge.swift`; `shortcut-required` and `catalog-only` entries
- * must be treated as non-native and will fail through `appIntentInvoke` unless
- * a separate Shortcut/native implementation is added.
- *
  * Sources for each entry are linked in a comment block above the entry; do
  * not invent intents that Apple has not documented.
  */
 
 import type { IntentParameterSpec, IntentSpec } from "./ios-bridge.js";
-
-export const IOS_NATIVE_X_CALLBACK_INTENT_IDS = Object.freeze([
-  "com.apple.mobilemail.send-email",
-  "com.apple.MobileSMS.send-message",
-  "com.apple.Maps.directions",
-  "com.apple.mobilesafari.open-url",
-] as const);
 
 // ── Helper ───────────────────────────────────────────────────────────────────
 
@@ -59,7 +46,6 @@ const MAIL_INTENTS: readonly IntentSpec[] = [
       param("bcc", "string", false, "Comma-separated BCC recipients."),
     ],
     source: "system",
-    invocationMode: "native-x-callback",
   },
 ];
 
@@ -78,7 +64,6 @@ const MESSAGES_INTENTS: readonly IntentSpec[] = [
       param("body", "string", true, "Message text."),
     ],
     source: "system",
-    invocationMode: "native-x-callback",
   },
 ];
 
@@ -98,7 +83,6 @@ const NOTES_INTENTS: readonly IntentSpec[] = [
       param("folder", "string", false, "Destination folder name."),
     ],
     source: "system",
-    invocationMode: "shortcut-required",
   },
   {
     bundleId: "com.apple.mobilenotes",
@@ -110,7 +94,6 @@ const NOTES_INTENTS: readonly IntentSpec[] = [
       param("body", "string", true, "Text to append."),
     ],
     source: "system",
-    invocationMode: "shortcut-required",
   },
   {
     bundleId: "com.apple.mobilenotes",
@@ -119,7 +102,6 @@ const NOTES_INTENTS: readonly IntentSpec[] = [
     summary: "Search Notes for a query string and return matching note titles.",
     parameters: [param("query", "string", true, "Search query.")],
     source: "system",
-    invocationMode: "shortcut-required",
   },
 ];
 
@@ -146,7 +128,6 @@ const REMINDERS_INTENTS: readonly IntentSpec[] = [
       ),
     ],
     source: "system",
-    invocationMode: "shortcut-required",
   },
   {
     bundleId: "com.apple.reminders",
@@ -158,7 +139,6 @@ const REMINDERS_INTENTS: readonly IntentSpec[] = [
       param("includeCompleted", "boolean", false, "Default false."),
     ],
     source: "system",
-    invocationMode: "shortcut-required",
   },
 ];
 
@@ -183,7 +163,6 @@ const MUSIC_INTENTS: readonly IntentSpec[] = [
       param("shuffle", "boolean", false, "Shuffle the queue. Default false."),
     ],
     source: "system",
-    invocationMode: "shortcut-required",
   },
   {
     bundleId: "com.apple.Music",
@@ -192,7 +171,6 @@ const MUSIC_INTENTS: readonly IntentSpec[] = [
     summary: "Pause Apple Music playback.",
     parameters: [],
     source: "system",
-    invocationMode: "shortcut-required",
   },
   {
     bundleId: "com.apple.Music",
@@ -201,7 +179,6 @@ const MUSIC_INTENTS: readonly IntentSpec[] = [
     summary: "Skip to the next track in Apple Music.",
     parameters: [],
     source: "system",
-    invocationMode: "shortcut-required",
   },
 ];
 
@@ -226,7 +203,6 @@ const MAPS_INTENTS: readonly IntentSpec[] = [
       ),
     ],
     source: "system",
-    invocationMode: "native-x-callback",
   },
   {
     bundleId: "com.apple.Maps",
@@ -239,7 +215,6 @@ const MAPS_INTENTS: readonly IntentSpec[] = [
       param("nearLongitude", "number", false, "Optional longitude bias."),
     ],
     source: "system",
-    invocationMode: "catalog-only",
   },
 ];
 
@@ -257,7 +232,6 @@ const SAFARI_INTENTS: readonly IntentSpec[] = [
       param("inPrivateMode", "boolean", false, "Use private browsing. Default false."),
     ],
     source: "system",
-    invocationMode: "native-x-callback",
   },
   {
     bundleId: "com.apple.mobilesafari",
@@ -269,7 +243,6 @@ const SAFARI_INTENTS: readonly IntentSpec[] = [
       param("title", "string", false, "Bookmark title."),
     ],
     source: "system",
-    invocationMode: "shortcut-required",
   },
 ];
 
@@ -296,12 +269,6 @@ export function listIosAppIntents(): readonly IntentSpec[] {
 
 export function findIosAppIntent(intentId: string): IntentSpec | undefined {
   return listIosAppIntents().find((intent) => intent.id === intentId);
-}
-
-export function isIosNativeXCallbackIntent(intentId: string): boolean {
-  return (IOS_NATIVE_X_CALLBACK_INTENT_IDS as readonly string[]).includes(
-    intentId,
-  );
 }
 
 export function findIosAppIntentsForBundle(

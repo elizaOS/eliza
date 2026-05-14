@@ -36,12 +36,6 @@ What this target deliberately does **not** ship:
   `ACCESS_BACKGROUND_LOCATION`, `RECEIVE_BOOT_COMPLETED`,
   `SYSTEM_ALERT_WINDOW`, `FOREGROUND_SERVICE_SPECIAL_USE`.
 
-What this target still ships: consumer Google Assistant/Gemini App
-Actions metadata in `res/xml/shortcuts.xml`. These actions route through
-the app's custom scheme into `MainActivity` for chat, voice mode,
-LifeOps reminders/tasks, and the daily brief. They do not add default-role
-or system-only assistant components back into the Play build.
-
 Build-time flag set: `VITE_ELIZA_ANDROID_RUNTIME_MODE=cloud`. The
 renderer reads this via
 [`packages/ui/src/platform/android-runtime.ts`](../../../../ui/src/platform/android-runtime.ts)
@@ -65,10 +59,7 @@ bun run build:android
 What it does ship: full default-role activities, BootReceiver, the
 on-device agent staged via
 [`stage-android-agent.mjs`](../../scripts/lib/stage-android-agent.mjs),
-the AOSP-aimed permission set, and the same consumer App Actions metadata
-used by the Play build. The AOSP assistant/default-role path remains the
-`ElizaAssistActivity` `android.intent.action.ASSIST` route; App Actions
-are an additional deep-link entry point, not a second task primitive.
+and the AOSP-aimed permission set.
 
 ## `build:android:system` — AOSP privileged platform-signed APK
 

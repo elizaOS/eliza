@@ -47,9 +47,6 @@ REQUIRED_FINAL_FLAGS = (
     "platformEvidence",
     "sizeFirstRepoIds",
 )
-REQUIRED_FINAL_FLAGS_BASE_V1 = tuple(
-    flag for flag in REQUIRED_FINAL_FLAGS if flag != "weights"
-)
 
 
 @dataclass(frozen=True)
@@ -154,27 +151,9 @@ def _voice_policy_warnings(tier: str, manifest: dict[str, Any]) -> list[str]:
         f"tts/{rel}".lower()
         for rel in M.required_voice_artifacts_for_tier(tier)
     }
-    backends = M.VOICE_BACKENDS_BY_TIER[tier]
     warnings: list[str] = []
     for expected_path in sorted(expected_paths - voice_paths):
         warnings.append(f"{tier}: expected voice artifact {expected_path}")
-    unexpected_paths = sorted(
-        path
-        for path in voice_paths
-        if (
-            ("kokoro" not in backends and path.startswith("tts/kokoro/"))
-            or (
-                "omnivoice" not in backends
-                and path.startswith("tts/omnivoice")
-            )
-        )
-    )
-    for unexpected_path in unexpected_paths:
-        warnings.append(
-            f"{tier}: non-policy voice artifact {unexpected_path}; "
-            "0.8B/2B/4B are Kokoro-only, 9B is Kokoro+OmniVoice, "
-            "27B-class is OmniVoice-only"
-        )
     return warnings
 
 
@@ -203,12 +182,7 @@ def _release_evidence_errors(bundle_dir: Path, tier: str) -> list[str]:
     if not isinstance(final, dict):
         errors.append("evidence/release.json final block is missing or not an object")
     else:
-        required_final_flags = (
-            REQUIRED_FINAL_FLAGS_BASE_V1
-            if release_state == "base-v1"
-            else REQUIRED_FINAL_FLAGS
-        )
-        for flag in required_final_flags:
+        for flag in REQUIRED_FINAL_FLAGS:
             if final.get(flag) is not True:
                 errors.append(f"evidence/release.json final.{flag} is not true")
 
@@ -264,17 +238,10 @@ def _release_evidence_errors(bundle_dir: Path, tier: str) -> list[str]:
                             "evidence/release.json hf.uploadEvidence.uploadedPaths "
                             f"missing required path(s): {missing_paths}"
                         )
-        elif isinstance(hf_status, str) and hf_status.startswith("blocked-"):
-            if evidence.get("publishEligible") is True and release_state in PUBLISHABLE_RELEASE_STATES:
-                errors.append(
-                    "evidence/release.json hf.status is blocked but release evidence "
-                    "claims publishEligible"
-                )
         elif hf_status not in {"pending-upload", "upload-ready"}:
             errors.append(
                 "evidence/release.json hf.status must be 'pending-upload', "
-                "'upload-ready', a 'blocked-*' pending state, or 'uploaded' "
-                "with uploadEvidence"
+                "'upload-ready', or 'uploaded' with uploadEvidence"
             )
     return errors
 

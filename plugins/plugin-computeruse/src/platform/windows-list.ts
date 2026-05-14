@@ -11,7 +11,6 @@ import type { ScreenSize, WindowInfo } from "../types.js";
 import {
   commandExists,
   currentPlatform,
-  escapeAppleScript,
   runCommand,
   validateInt,
   validateWindowId,
@@ -72,37 +71,6 @@ export function resolveWindowMatch(
   windows: WindowInfo[] = listWindows(),
 ): WindowInfo | null {
   return findWindowsByQuery(queryOrId, windows)[0] ?? null;
-}
-
-function withBounds(
-  app: string,
-  title: string,
-  id: string,
-  x?: number,
-  y?: number,
-  width?: number,
-  height?: number,
-): WindowInfo {
-  const info: WindowInfo = { app, title, id };
-  if (
-    x !== undefined &&
-    y !== undefined &&
-    width !== undefined &&
-    height !== undefined
-  ) {
-    info.x = x;
-    info.y = y;
-    info.width = width;
-    info.height = height;
-    info.bounds = [x, y, width, height];
-  }
-  return info;
-}
-
-function parseOptionalNumber(value: string | undefined): number | undefined {
-  if (value === undefined || value.trim().length === 0) return undefined;
-  const parsed = Number.parseInt(value.trim(), 10);
-  return Number.isFinite(parsed) ? parsed : undefined;
 }
 
 function appleScriptWindowMatchTerms(target: WindowInfo): string[] {
@@ -173,34 +141,31 @@ function listWindowsDarwin(): WindowInfo[] {
   try {
     const script = `
       tell application "System Events"
-        set AppleScript's text item delimiters to linefeed
         set windowList to {}
         repeat with proc in (every process whose visible is true)
           try
             repeat with w in (every window of proc)
-              set windowPosition to position of w
-              set windowSize to size of w
-              set end of windowList to (name of proc) & "|||" & (name of w) & "|||" & (id of w as text) & "|||" & (item 1 of windowPosition as text) & "|||" & (item 2 of windowPosition as text) & "|||" & (item 1 of windowSize as text) & "|||" & (item 2 of windowSize as text)
+              set end of windowList to (name of proc) & "|||" & (name of w) & "|||" & (id of w as text)
             end repeat
           end try
         end repeat
         return windowList as text
       end tell`;
-    const output = runCommand("osascript", ["-e", script], 10000);
+    const output = execSync(`osascript -e '${script}'`, {
+      encoding: "utf-8",
+      timeout: 10000,
+      stdio: ["ignore", "pipe", "ignore"],
+    });
     return output
-      .split(/\r?\n/)
+      .split(", ")
       .filter(Boolean)
       .map((entry) => {
         const parts = entry.split("|||");
-        return withBounds(
-          parts[0] ?? "unknown",
-          parts[1] ?? "unknown",
-          parts[2] ?? "0",
-          parseOptionalNumber(parts[3]),
-          parseOptionalNumber(parts[4]),
-          parseOptionalNumber(parts[5]),
-          parseOptionalNumber(parts[6]),
-        );
+        return {
+          app: parts[0] ?? "unknown",
+          title: parts[1] ?? "unknown",
+          id: parts[2] ?? "0",
+        };
       });
   } catch {
     return [];
@@ -210,7 +175,7 @@ function listWindowsDarwin(): WindowInfo[] {
 function listWindowsLinux(): WindowInfo[] {
   try {
     if (commandExists("wmctrl")) {
-      const output = execSync("wmctrl -l -G", {
+      const output = execSync("wmctrl -l", {
         encoding: "utf-8",
         timeout: 5000,
       });
@@ -218,19 +183,11 @@ function listWindowsLinux(): WindowInfo[] {
         .split("\n")
         .filter(Boolean)
         .map((line) => {
-          // wmctrl -l -G format: 0x0400000a  0 x y w h hostname Title
+          // wmctrl format: 0x0400000a  0 hostname Title
           const parts = line.trim().split(/\s+/);
           const id = parts[0] ?? "0";
-          const title = parts.slice(7).join(" ") || "unknown";
-          return withBounds(
-            "unknown",
-            title,
-            id,
-            parseOptionalNumber(parts[2]),
-            parseOptionalNumber(parts[3]),
-            parseOptionalNumber(parts[4]),
-            parseOptionalNumber(parts[5]),
-          );
+          const title = parts.slice(3).join(" ") || "unknown";
+          return { id, title, app: "unknown" };
         });
     }
     const output = execSync(
@@ -253,177 +210,20 @@ function listWindowsLinux(): WindowInfo[] {
 function listWindowsWindows(): WindowInfo[] {
   try {
     const output = execSync(
-      `powershell -Command "Add-Type @'
-using System;
-using System.Runtime.InteropServices;
-public struct RECT { public int Left; public int Top; public int Right; public int Bottom; }
-public class Win32WindowRect { [DllImport(\\"user32.dll\\")] public static extern bool GetWindowRect(IntPtr hWnd, out RECT rect); }
-'@; Get-Process | Where-Object {$_.MainWindowTitle} | ForEach-Object { $rect = New-Object RECT; [Win32WindowRect]::GetWindowRect($_.MainWindowHandle, [ref]$rect) | Out-Null; [PSCustomObject]@{ Id = $_.Id; ProcessName = $_.ProcessName; MainWindowTitle = $_.MainWindowTitle; X = $rect.Left; Y = $rect.Top; Width = $rect.Right - $rect.Left; Height = $rect.Bottom - $rect.Top } } | ConvertTo-Json"`,
+      `powershell -Command "Get-Process | Where-Object {$_.MainWindowTitle} | Select-Object Id, MainWindowTitle | ConvertTo-Json"`,
       { encoding: "utf-8", timeout: 10000 },
     );
     const parsed = JSON.parse(output);
     const list = Array.isArray(parsed) ? parsed : [parsed];
-    return list.map(
-      (p: {
-        Id: number;
-        ProcessName?: string;
-        MainWindowTitle: string;
-        X?: number;
-        Y?: number;
-        Width?: number;
-        Height?: number;
-      }) =>
-        withBounds(
-          p.ProcessName ?? "unknown",
-          p.MainWindowTitle,
-          String(p.Id),
-          p.X,
-          p.Y,
-          p.Width,
-          p.Height,
-        ),
-    );
+    return list.map((p: { Id: number; MainWindowTitle: string }) => ({
+      id: String(p.Id),
+      title: p.MainWindowTitle,
+      app: "unknown",
+    }));
   } catch {
     return [];
   }
 }
-
-export function getCurrentWindow(): WindowInfo {
-  const os = currentPlatform();
-
-  if (os === "darwin") {
-    const script = `
-      tell application "System Events"
-        set frontApp to first process whose frontmost is true
-        set frontWindow to window 1 of frontApp
-        set windowPosition to position of frontWindow
-        set windowSize to size of frontWindow
-        return (name of frontApp) & "|||" & (name of frontWindow) & "|||" & (id of frontWindow as text) & "|||" & (item 1 of windowPosition as text) & "|||" & (item 2 of windowPosition as text) & "|||" & (item 1 of windowSize as text) & "|||" & (item 2 of windowSize as text)
-      end tell`;
-    const parts = runCommand("osascript", ["-e", script], 5000)
-      .trim()
-      .split("|||");
-    return withBounds(
-      parts[0] ?? "unknown",
-      parts[1] ?? "unknown",
-      parts[2] ?? "0",
-      parseOptionalNumber(parts[3]),
-      parseOptionalNumber(parts[4]),
-      parseOptionalNumber(parts[5]),
-      parseOptionalNumber(parts[6]),
-    );
-  }
-
-  if (os === "linux") {
-    if (commandExists("xdotool")) {
-      const id = runCommand("xdotool", ["getactivewindow"], 5000).trim();
-      return resolveWindowTarget(id) ?? withBounds("unknown", "unknown", id);
-    }
-    if (commandExists("xprop")) {
-      const output = runCommand("xprop", ["-root", "_NET_ACTIVE_WINDOW"], 5000);
-      const id = output.match(/0x[0-9a-f]+/i)?.[0];
-      if (id) return resolveWindowTarget(id) ?? withBounds("unknown", "unknown", id);
-    }
-    throw new Error("Current window lookup requires xdotool or xprop on Linux");
-  }
-
-  if (os === "win32") {
-    const ps = `
-      Add-Type @'
-using System;
-using System.Runtime.InteropServices;
-public struct RECT { public int Left; public int Top; public int Right; public int Bottom; }
-public class Win32ActiveWindow {
-  [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
-  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
-  [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
-}
-'@
-      $hwnd = [Win32ActiveWindow]::GetForegroundWindow()
-      [uint32]$pid = 0
-      [Win32ActiveWindow]::GetWindowThreadProcessId($hwnd, [ref]$pid) | Out-Null
-      $proc = Get-Process -Id $pid -ErrorAction SilentlyContinue
-      $rect = New-Object RECT
-      [Win32ActiveWindow]::GetWindowRect($hwnd, [ref]$rect) | Out-Null
-      [PSCustomObject]@{ Id = $pid; ProcessName = $proc.ProcessName; MainWindowTitle = $proc.MainWindowTitle; X = $rect.Left; Y = $rect.Top; Width = $rect.Right - $rect.Left; Height = $rect.Bottom - $rect.Top } | ConvertTo-Json
-    `;
-    const parsed = JSON.parse(runCommand("powershell", ["-Command", ps], 5000));
-    return withBounds(
-      parsed.ProcessName ?? "unknown",
-      parsed.MainWindowTitle ?? "unknown",
-      String(parsed.Id ?? "0"),
-      parsed.X,
-      parsed.Y,
-      parsed.Width,
-      parsed.Height,
-    );
-  }
-
-  throw new Error(`Current window lookup is not supported on ${os}`);
-}
-
-export function getCurrentWindowId(): string {
-  return getCurrentWindow().id;
-}
-
-export function getApplicationWindows(appName: string): WindowInfo[] {
-  const normalized = normalizeWindowQuery(appName);
-  if (!normalized) throw new Error("appName is required");
-  return listWindows().filter((win) =>
-    normalizeWindowQuery(win.app).includes(normalized),
-  );
-}
-
-export function getWindowName(windowId: string): string {
-  return resolveWindowTargetOrThrow(windowId).title;
-}
-
-export function getWindowSize(windowId: string): { width: number; height: number } {
-  const target = resolveWindowTargetOrThrow(windowId);
-  if (target.width === undefined || target.height === undefined) {
-    throw new Error(`Window size is unavailable for: ${windowId}`);
-  }
-  return { width: target.width, height: target.height };
-}
-
-export function getWindowPosition(windowId: string): { x: number; y: number } {
-  const target = resolveWindowTargetOrThrow(windowId);
-  if (target.x === undefined || target.y === undefined) {
-    throw new Error(`Window position is unavailable for: ${windowId}`);
-  }
-  return { x: target.x, y: target.y };
-}
-
-export function openWindow(appName: string): {
-  success: true;
-  message: string;
-} {
-  const normalized = appName.trim();
-  if (!normalized) throw new Error("appName is required for window open");
-  const os = currentPlatform();
-
-  if (os === "darwin") {
-    runCommand("open", ["-a", normalized], 10000);
-  } else if (os === "linux") {
-    if (commandExists("gtk-launch")) {
-      runCommand("gtk-launch", [normalized], 10000);
-    } else {
-      runCommand(normalized, [], 10000);
-    }
-  } else if (os === "win32") {
-    runCommand(
-      "powershell",
-      ["-Command", `Start-Process -FilePath ${escapeAppleScript(normalized)}`],
-      10000,
-    );
-  } else {
-    throw new Error(`Window open is not supported on ${os}`);
-  }
-
-  return { success: true, message: `Opened ${normalized}.` };
-}
-
-export const launchApplication = openWindow;
 
 // ── Focus Window ────────────────────────────────────────────────────────────
 
@@ -472,13 +272,13 @@ export function switchWindow(windowQuery: string): void {
 
 function setWindowBounds(
   windowId: string,
-  x?: number,
-  y?: number,
+  x: number,
+  y: number,
   width?: number,
   height?: number,
 ): void {
-  const safeX = x === undefined ? undefined : validateInt(x);
-  const safeY = y === undefined ? undefined : validateInt(y);
+  const safeX = validateInt(x);
+  const safeY = validateInt(y);
   const safeWidth =
     width === undefined ? undefined : Math.max(1, validateInt(width));
   const safeHeight =
@@ -490,11 +290,7 @@ function setWindowBounds(
     runDarwinWindowScript(
       target,
       `
-              ${
-                safeX !== undefined && safeY !== undefined
-                  ? `set position of window 1 of proc to {${safeX}, ${safeY}}`
-                  : ""
-              }
+              set position of window 1 of proc to {${safeX}, ${safeY}}
               ${
                 safeWidth !== undefined && safeHeight !== undefined
                   ? `set size of window 1 of proc to {${safeWidth}, ${safeHeight}}`
@@ -514,20 +310,18 @@ function setWindowBounds(
           "-r",
           commandId,
           "-e",
-          `0,${safeX ?? -1},${safeY ?? -1},${safeWidth ?? -1},${safeHeight ?? -1}`,
+          `0,${safeX},${safeY},${safeWidth ?? -1},${safeHeight ?? -1}`,
         ],
         5000,
       );
       return;
     }
     if (commandExists("xdotool")) {
-      if (safeX !== undefined && safeY !== undefined) {
-        runCommand(
-          "xdotool",
-          ["windowmove", commandId, String(safeX), String(safeY)],
-          5000,
-        );
-      }
+      runCommand(
+        "xdotool",
+        ["windowmove", commandId, String(safeX), String(safeY)],
+        5000,
+      );
       if (safeWidth !== undefined && safeHeight !== undefined) {
         runCommand(
           "xdotool",
@@ -542,16 +336,14 @@ function setWindowBounds(
 
   if (os === "win32") {
     const noSizeFlag =
-      safeWidth === undefined || safeHeight === undefined ? 0x0001 : 0;
-    const noMoveFlag = safeX === undefined || safeY === undefined ? 0x0002 : 0;
-    const flags = noSizeFlag | noMoveFlag;
+      safeWidth === undefined || safeHeight === undefined ? "0x0001" : "0";
     const widthArg = safeWidth ?? 0;
     const heightArg = safeHeight ?? 0;
     const ps = `
       Add-Type -MemberDefinition '[DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);' -Name Win32 -Namespace Win32
       $proc = Get-Process -Id ${commandId} -ErrorAction SilentlyContinue
       if (-not $proc) { throw "Window not found: ${commandId}" }
-      [Win32.Win32]::SetWindowPos($proc.MainWindowHandle, [IntPtr]::Zero, ${safeX ?? 0}, ${safeY ?? 0}, ${widthArg}, ${heightArg}, ${flags})
+      [Win32.Win32]::SetWindowPos($proc.MainWindowHandle, [IntPtr]::Zero, ${safeX}, ${safeY}, ${widthArg}, ${heightArg}, ${noSizeFlag})
     `;
     runCommand("powershell", ["-Command", ps], 5000);
     return;
@@ -617,42 +409,6 @@ export function arrangeWindows(arrangement = "tile"): {
   return {
     success: true,
     message: `Arranged ${windows.length} window${windows.length === 1 ? "" : "s"} using ${normalized || "tile"} layout.`,
-  };
-}
-
-export function setWindowSize(
-  windowId: string,
-  width?: number,
-  height?: number,
-): {
-  success: true;
-  message: string;
-} {
-  if (typeof width !== "number" || typeof height !== "number") {
-    throw new Error("width and height are required for set_window_size");
-  }
-  setWindowBounds(windowId, undefined, undefined, width, height);
-  return {
-    success: true,
-    message: `Resized window to ${validateInt(width)}x${validateInt(height)}.`,
-  };
-}
-
-export function setWindowPosition(
-  windowId: string,
-  x?: number,
-  y?: number,
-): {
-  success: true;
-  message: string;
-} {
-  if (typeof x !== "number" || typeof y !== "number") {
-    throw new Error("x and y are required for set_window_position");
-  }
-  setWindowBounds(windowId, x, y);
-  return {
-    success: true,
-    message: `Moved window to (${validateInt(x)}, ${validateInt(y)}).`,
   };
 }
 
@@ -805,16 +561,6 @@ export function closeWindow(windowId: string): void {
 }
 
 export const list_windows = listWindows;
-export const open = openWindow;
-export const launch = launchApplication;
-export const get_current_window_id = getCurrentWindowId;
-export const get_application_windows = getApplicationWindows;
-export const get_window_name = getWindowName;
-export const get_window_size = getWindowSize;
-export const get_window_position = getWindowPosition;
-export const set_window_size = setWindowSize;
-export const set_window_position = setWindowPosition;
-export const activate_window = focusWindow;
 export const focus_window = focusWindow;
 export const switch_to_window = switchWindow;
 export const arrange_windows = arrangeWindows;

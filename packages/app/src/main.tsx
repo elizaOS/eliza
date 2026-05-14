@@ -1207,54 +1207,9 @@ function handleDeepLink(url: string): void {
   }
 
   switch (path) {
-    case "ask":
-    case "assistant":
-    case "chat/ask": {
-      const params = withDefaultSearchParam(
-        parsed.searchParams,
-        "source",
-        "assistant-entry",
-      );
-      setHashRoute("chat", params);
-      break;
-    }
     case "chat":
-      setHashRoute("chat", parsed.searchParams);
+      window.location.hash = "#chat";
       break;
-    case "voice":
-    case "chat/voice": {
-      const params = withDefaultSearchParam(
-        parsed.searchParams,
-        "source",
-        "assistant-entry",
-      );
-      params.set("voice", "1");
-      setHashRoute("chat", params);
-      break;
-    }
-    case "daily-brief":
-    case "lifeops/daily-brief": {
-      const params = withDefaultSearchParam(
-        parsed.searchParams,
-        "source",
-        "assistant-entry",
-      );
-      params.set("lifeops.section", "overview");
-      setHashRoute("lifeops", params);
-      break;
-    }
-    case "lifeops/create":
-    case "lifeops/task":
-    case "lifeops/reminder": {
-      const params = withDefaultSearchParam(
-        parsed.searchParams,
-        "source",
-        "assistant-entry",
-      );
-      params.set("lifeops.section", "reminders");
-      setHashRoute("lifeops", params);
-      break;
-    }
     case "phone":
     case "phone/call":
       setHashRoute("phone", parsed.searchParams);
@@ -1358,25 +1313,12 @@ function handleDeepLink(url: string): void {
 function getDeepLinkPath(parsed: URL): string {
   const host = parsed.host.replace(/^\/+|\/+$/g, "");
   const pathname = parsed.pathname.replace(/^\/+|\/+$/g, "");
-  if (host === APP_CONFIG.appId || host === APP_CONFIG.desktop?.bundleId) {
-    return pathname;
-  }
   return [host, pathname].filter(Boolean).join("/");
 }
 
 function setHashRoute(route: string, params: URLSearchParams): void {
   const query = params.toString();
   window.location.hash = query ? `#${route}?${query}` : `#${route}`;
-}
-
-function withDefaultSearchParam(
-  params: URLSearchParams,
-  key: string,
-  value: string,
-): URLSearchParams {
-  const next = new URLSearchParams(params);
-  if (!next.has(key)) next.set(key, value);
-  return next;
 }
 
 async function initializeDesktopShell(): Promise<void> {
@@ -1645,13 +1587,16 @@ async function getOrCreateDeviceBridgeId(): Promise<string> {
 }
 
 function resolveDeviceBridgeUrl(config: IosRuntimeConfig): string | null {
-  if (isIOS) return null;
   if (config.deviceBridgeUrl) {
     return config.deviceBridgeUrl;
   }
   // cloud-hybrid: paired phone dials a remote agent via the cloud apiBase.
   // Android local: the foreground agent service owns the loopback API and the
   // WebView dials its device bridge for native llama.cpp calls.
+  // iOS local: requests are handled by the in-process ITTP route kernel, so a
+  // loopback WebSocket bridge is both unnecessary and unsafe in simulator runs
+  // where host-level adb port forwarding can expose another device's agent.
+  if (config.mode === "local" && isIOS) return null;
   if (config.mode === "local" && isAndroid) {
     return apiBaseToDeviceBridgeUrl(MOBILE_LOCAL_AGENT_API_BASE);
   }
@@ -1728,7 +1673,6 @@ async function initializeMobileDeviceBridge(): Promise<void> {
   const runtimeConfig = getCurrentIosRuntimeConfig();
   if (
     !isNative ||
-    isIOS ||
     (runtimeConfig.mode !== "cloud-hybrid" && runtimeConfig.mode !== "local")
   ) {
     return;
@@ -1864,7 +1808,7 @@ function initializeMobileRuntimeModeListener(): void {
     if (mode === "cloud-hybrid" || mode === "local") {
       stopMobileDeviceBridge();
       void stopMobileAgentTunnel();
-      if (isAndroid) void initializeMobileDeviceBridge();
+      void initializeMobileDeviceBridge();
       void configureMobileBackgroundRunner();
       return;
     }

@@ -108,17 +108,6 @@ const HANDLE_RESPONSE_PLANNING_HINT_PROPERTIES = {
 	} as JSONSchema,
 } as const;
 
-export const HANDLE_RESPONSE_LEGACY_REQUIRED_FIELDS = [
-	"shouldRespond",
-	"replyText",
-	"contexts",
-] as const;
-
-export const HANDLE_RESPONSE_DIRECT_LEGACY_REQUIRED_FIELDS = [
-	"replyText",
-	"contexts",
-] as const;
-
 /**
  * Schema for the full HANDLE_RESPONSE tool — used outside DM channels where the
  * agent must explicitly choose RESPOND / IGNORE / STOP.
@@ -172,7 +161,7 @@ export const HANDLE_RESPONSE_SCHEMA: JSONSchema = {
 		...HANDLE_RESPONSE_PLANNING_HINT_PROPERTIES,
 		extract: HANDLE_RESPONSE_EXTRACT_SCHEMA,
 	},
-	required: [...HANDLE_RESPONSE_LEGACY_REQUIRED_FIELDS],
+	required: ["shouldRespond", "replyText", "contexts"],
 };
 
 /**
@@ -194,7 +183,7 @@ export const HANDLE_RESPONSE_DIRECT_SCHEMA: JSONSchema = {
 		...HANDLE_RESPONSE_PLANNING_HINT_PROPERTIES,
 		extract: HANDLE_RESPONSE_EXTRACT_SCHEMA,
 	},
-	required: [...HANDLE_RESPONSE_DIRECT_LEGACY_REQUIRED_FIELDS],
+	required: ["replyText", "contexts"],
 };
 
 export interface PlannerToolDefinition {
@@ -216,10 +205,10 @@ export function assertNativeToolName(name: string): void {
 }
 
 const HANDLE_RESPONSE_DESCRIPTION =
-	"Legacy Stage 1 fallback schema — production normally passes the field-registry schema into createHandleResponseTool. Call exactly once per inbound message before any action tool calls. Set shouldRespond to RESPOND/IGNORE/STOP. Always write replyText (the user-facing reply). List contexts to engage (directly after replyText); set requiresTool=true when tools/actions/providers/subagents, filesystem/runtime inspection, live/current/external data, side effects, long-running work, or verification are needed. For trivial replies set contexts=['simple'] (replyText is the whole answer). Optionally include action-retrieval hints in candidateActions / parentActionHints / contextSlices and populate `extract` with durable facts/relationships from the message.";
+	"Stage 1 — pick how to handle this turn. Call exactly once per inbound message before any action tool calls. Set shouldRespond to RESPOND/IGNORE/STOP. Always write replyText (the user-facing reply). List contexts to engage (directly after replyText); set requiresTool=true when tools/actions/providers/subagents, filesystem/runtime inspection, live/current/external data, side effects, long-running work, or verification are needed. For trivial replies set contexts=['simple'] (replyText is the whole answer). Optionally include action-retrieval hints in candidateActions / parentActionHints / contextSlices and populate `extract` with durable facts/relationships from the message.";
 
 const HANDLE_RESPONSE_DIRECT_DESCRIPTION =
-	"Legacy Stage 1 direct-message fallback schema — production normally passes the field-registry schema into createHandleResponseTool. shouldRespond is implicit RESPOND for DMs. Always write replyText (the user-facing reply). List contexts to engage (directly after replyText); set requiresTool=true when tools/actions/providers/subagents, filesystem/runtime inspection, live/current/external data, side effects, long-running work, or verification are needed. For trivial replies set contexts=['simple'] (replyText is the whole answer). Optionally include action-retrieval hints in candidateActions / parentActionHints / contextSlices and populate `extract` with durable facts/relationships from the message.";
+	"Stage 1 (direct-message channel) — pick how to handle this turn. Call exactly once per inbound message before any action tool calls. shouldRespond is implicit RESPOND for DMs. Always write replyText (the user-facing reply). List contexts to engage (directly after replyText); set requiresTool=true when tools/actions/providers/subagents, filesystem/runtime inspection, live/current/external data, side effects, long-running work, or verification are needed. For trivial replies set contexts=['simple'] (replyText is the whole answer). Optionally include action-retrieval hints in candidateActions / parentActionHints / contextSlices and populate `extract` with durable facts/relationships from the message.";
 
 /**
  * Build the Stage 1 tool definition. Pass `directMessage: true` for DM /

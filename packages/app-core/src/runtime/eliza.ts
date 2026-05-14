@@ -35,7 +35,7 @@ import {
   type Plugin,
   stringToUuid,
 } from "@elizaos/core";
-import type { EmbeddingProgressCallback } from "@elizaos/plugin-local-inference";
+import type { EmbeddingProgressCallback } from "@elizaos/plugin-local-inference/runtime";
 import {
   ensureRuntimeSqlCompatibility,
   isMobilePlatform,
@@ -54,11 +54,13 @@ import {
 
 // plugin-local-inference loaded lazily to avoid static plugin boundary violations.
 let _localInferenceRuntime:
-  | typeof import("@elizaos/plugin-local-inference")
+  | typeof import("@elizaos/plugin-local-inference/runtime")
   | undefined;
 async function _localInference() {
   if (!_localInferenceRuntime) {
-    _localInferenceRuntime = await import("@elizaos/plugin-local-inference");
+    _localInferenceRuntime = await import(
+      "@elizaos/plugin-local-inference/runtime"
+    );
   }
   return _localInferenceRuntime;
 }

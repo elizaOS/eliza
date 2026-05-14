@@ -5,7 +5,7 @@
  * symbols. The native side is not yet built — when it lands, this file
  * binds the `eliza_llama_mtmd_*` symbols and implements the
  * `AospLlamaMtmdBinding` interface that
- * the plugin-local-inference vision service consumes.
+ * `@elizaos/plugin-local-inference/services/vision` consumes.
  *
  * Until then, this module exports a `getAospLlamaMtmdBinding()` that
  * returns a stub binding whose `hasMtmd()` returns `false`. The
@@ -83,8 +83,8 @@
 import type { IAgentRuntime } from "@elizaos/core";
 
 /**
- * Mirror of the `AospLlamaMtmdBinding` interface from the
- * plugin-local-inference vision service. Defined locally to
+ * Mirror of the `AospLlamaMtmdBinding` interface from
+ * `@elizaos/plugin-local-inference/services/vision`. Defined locally to
  * avoid a workspace import cycle (plugin-aosp-local-inference does NOT
  * depend on plugin-local-inference today — keep that invariant). The
  * vision module's `loadAospVisionBackend` consumes this shape.

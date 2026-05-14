@@ -14,7 +14,7 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { PhraseChunkedTts, speakStreamingText } from "./phrase-chunked-tts";
 
-// PhraseChunker is loaded lazily from @elizaos/plugin-local-inference
+// PhraseChunker is loaded lazily from @elizaos/plugin-local-inference/services
 // to avoid a static boundary violation. Pre-warm it before the first test.
 beforeAll(async () => {
   await PhraseChunkedTts.load();

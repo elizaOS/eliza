@@ -75,16 +75,15 @@ export function fromOSWorldAction(
       };
 
     case "KEY_DOWN":
+      // KEY_DOWN doesn't have a direct equivalent — simulate as key press
       return {
-        action: "key_down",
+        action: "key",
         key: action.key ?? "",
       };
 
     case "KEY_UP":
-      return {
-        action: "key_up",
-        key: action.key ?? "",
-      };
+      // KEY_UP is a no-op in our model (keys are press-and-release)
+      return null;
 
     case "HOTKEY":
       return {
@@ -93,17 +92,17 @@ export function fromOSWorldAction(
       };
 
     case "MOUSE_DOWN":
+      // Start of a drag — just move to position for now
       return {
-        action: "mouse_down",
+        action: "mouse_move",
         coordinate: [action.x ?? 0, action.y ?? 0],
-        button: action.button ?? "left",
       };
 
     case "MOUSE_UP":
+      // End of a drag — just click at position
       return {
-        action: "mouse_up",
+        action: "click",
         coordinate: [action.x ?? 0, action.y ?? 0],
-        button: action.button ?? "left",
       };
 
     case "WAIT":
@@ -144,14 +143,6 @@ export function toOSWorldAction(params: DesktopActionParams): OSWorldAction {
         y: params.coordinate?.[1],
       };
 
-    case "middle_click":
-      return {
-        action_type: "CLICK",
-        x: params.coordinate?.[0],
-        y: params.coordinate?.[1],
-        button: "middle",
-      };
-
     case "mouse_move":
       return {
         action_type: "MOVE_TO",
@@ -171,18 +162,6 @@ export function toOSWorldAction(params: DesktopActionParams): OSWorldAction {
         key: params.key,
       };
 
-    case "key_down":
-      return {
-        action_type: "KEY_DOWN",
-        key: params.key,
-      };
-
-    case "key_up":
-      return {
-        action_type: "KEY_UP",
-        key: params.key,
-      };
-
     case "key_combo":
       return {
         action_type: "HOTKEY",
@@ -199,30 +178,12 @@ export function toOSWorldAction(params: DesktopActionParams): OSWorldAction {
       };
 
     case "drag":
-    case "drag_to":
-    case "left_click_drag":
       return {
         action_type: "DRAG_TO",
         x: params.startCoordinate?.[0],
         y: params.startCoordinate?.[1],
         dx: (params.coordinate?.[0] ?? 0) - (params.startCoordinate?.[0] ?? 0),
         dy: (params.coordinate?.[1] ?? 0) - (params.startCoordinate?.[1] ?? 0),
-      };
-
-    case "mouse_down":
-      return {
-        action_type: "MOUSE_DOWN",
-        x: params.coordinate?.[0],
-        y: params.coordinate?.[1],
-        button: params.button,
-      };
-
-    case "mouse_up":
-      return {
-        action_type: "MOUSE_UP",
-        x: params.coordinate?.[0],
-        y: params.coordinate?.[1],
-        button: params.button,
       };
 
     case "screenshot":

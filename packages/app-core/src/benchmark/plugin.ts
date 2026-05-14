@@ -1020,7 +1020,6 @@ function formatContextAsText(ctx: BenchmarkContext): string {
 // ---------------------------------------------------------------------------
 
 const LIFEOPS_BENCHMARK_TOOL_ACTION_NAMES = [
-  "ARCHIVE_EMAIL_THREAD",
   "CALENDAR",
   "CALENDAR_CREATE_EVENT",
   "CALENDAR_UPDATE_EVENT",
@@ -1030,48 +1029,7 @@ const LIFEOPS_BENCHMARK_TOOL_ACTION_NAMES = [
   "CALENDAR_PROPOSE_TIMES",
   "CALENDAR_NEXT_EVENT",
   "CALENDAR_UPDATE_PREFERENCES",
-  "MESSAGE_MANAGE",
 ] as const;
-
-const LIFEOPS_THREAD_ID_PARAMETERS: ActionParameter[] = [
-  {
-    name: "threadId",
-    description: "Email thread id to archive or manage, e.g. thread_01464.",
-    required: true,
-    schema: { type: "string" },
-  },
-];
-
-const LIFEOPS_MESSAGE_MANAGE_PARAMETERS: ActionParameter[] = [
-  {
-    name: "operation",
-    description:
-      "Message operation. Use manage for archive/trash/mark_read operations.",
-    required: false,
-    schema: { type: "string", enum: ["manage"] },
-  },
-  {
-    name: "source",
-    description: "Connector source. Use gmail for email archive requests.",
-    required: false,
-    schema: { type: "string" },
-  },
-  {
-    name: "manageOperation",
-    description: "Management operation. Use archive for archive requests.",
-    required: true,
-    schema: { type: "string", enum: ["archive"] },
-  },
-  ...LIFEOPS_THREAD_ID_PARAMETERS,
-];
-
-function lifeOpsBenchmarkToolParametersFor(
-  name: (typeof LIFEOPS_BENCHMARK_TOOL_ACTION_NAMES)[number],
-): ActionParameter[] {
-  if (name === "ARCHIVE_EMAIL_THREAD") return LIFEOPS_THREAD_ID_PARAMETERS;
-  if (name === "MESSAGE_MANAGE") return LIFEOPS_MESSAGE_MANAGE_PARAMETERS;
-  return [];
-}
 
 function extractActionParameters(options: unknown): Record<string, unknown> {
   let params: Record<string, unknown> = {};
@@ -1375,8 +1333,7 @@ export function createBenchmarkPlugin(): Plugin {
             data: { action: capturedAction },
           };
         },
-        allowAdditionalParameters: true,
-        parameters: lifeOpsBenchmarkToolParametersFor(name),
+        parameters: [],
       })),
       ...LOCA_BENCHMARK_TOOL_ACTION_NAMES.map((name) => ({
         name,

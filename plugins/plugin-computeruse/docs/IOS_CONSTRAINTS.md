@@ -88,14 +88,6 @@ the user has to donate the action via Shortcuts; we can then invoke via
 `AppIntent` on iOS 16+. The bridge's `appIntentList` returns the runtime
 list of donated intents this app sees.
 
-Siri/App Shortcuts are entry surfaces, not a LifeOps scheduler. If the user
-asks Siri for a reminder, check-in, follow-up, watcher, recap, or approval,
-the iOS layer must hand the request to the Eliza app/runtime. LifeOps then
-creates or updates a `ScheduledTask`; native `UNUserNotificationCenter`
-requests may only deliver or deep-link back to an existing runtime task. The
-cross-platform routing contract and validation checklist live in
-[`MOBILE_ASSISTANT_ROUTING.md`](MOBILE_ASSISTANT_ROUTING.md).
-
 ### 5. UIAccessibility (own-app reading only)
 
 `accessibilitySnapshot` walks the key window's view hierarchy and returns
@@ -196,16 +188,12 @@ target iOS (currently iOS 26.1, with iOS 17.6 as the floor):
 6. **`appIntentInvoke`** with `com.apple.mobilesafari.open-url` — assert
    Safari opens to the provided URL. With `com.apple.MobileSMS.send-message`
    — assert Messages opens with the recipient and body pre-filled.
-7. **Siri/App Shortcuts → LifeOps routing** — ask for a one-off reminder, a
-   recurring check-in, and a follow-up. Assert each request reaches the
-   app/runtime and creates or updates a LifeOps `ScheduledTask`; assert no
-   native-only reminder state is created.
-8. **`accessibilitySnapshot`** — assert the returned tree's top-level node
+7. **`accessibilitySnapshot`** — assert the returned tree's top-level node
    has `role !== "labeled"` and `children.length > 0` on a populated screen.
-9. **`foundationModelGenerate`** — on a device with Apple Intelligence
+8. **`foundationModelGenerate`** — on a device with Apple Intelligence
    enabled, assert a short prompt returns non-empty text. With AI disabled,
    assert the call resolves with `foundation_model_unavailable`.
-10. **`memoryPressureProbe`** — invoke `UIApplication.shared.performMemoryWarning()`
+9. **`memoryPressureProbe`** — invoke `UIApplication.shared.performMemoryWarning()`
    (debug-only) and assert the next probe call returns
    `severity >= 0.7` with `lastWarningAt` set.
 

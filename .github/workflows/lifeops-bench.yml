@@ -160,28 +160,6 @@ jobs:
           if-no-files-found: warn
           retention-days: 30
 
-      - name: Write artifact summary
-        if: steps.gate.outputs.skip != 'true' && always() && steps.run.outputs.run-dir != ''
-        env:
-          RUN_DIR: ${{ steps.run.outputs.run-dir }}
-          RUN_ID: ${{ steps.run.outputs.run-id }}
-          AGENT: ${{ matrix.agent }}
-          ARTIFACT_NAME: lifeops-run-${{ matrix.agent }}-${{ github.run_id }}
-        run: |
-          {
-            echo "### LifeOps Benchmark — \`${AGENT}\`"
-            echo ""
-            echo "- Run ID: \`${RUN_ID}\`"
-            echo "- Artifact: \`${ARTIFACT_NAME}\`"
-            echo "- Run directory: \`${RUN_DIR}\`"
-            echo ""
-            if [ -f "${RUN_DIR}/report.md" ]; then
-              sed -n '1,80p' "${RUN_DIR}/report.md"
-            else
-              echo "_No report.md was produced._"
-            fi
-          } >> "$GITHUB_STEP_SUMMARY"
-
       - name: Annotate PR with side-by-side summary
         if: steps.gate.outputs.skip != 'true' && github.event_name == 'pull_request' && steps.run.outputs.run-dir != ''
         uses: actions/github-script@v9

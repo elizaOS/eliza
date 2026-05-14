@@ -55,9 +55,7 @@ import { patchGgmlTbqPolarAttnOps } from "./metal-kernels.mjs";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Older workstreams staged these under packages/inference/vulkan; the current
-// native plugin owns the verified standalone shader sources.
-const LEGACY_STANDALONE_VULKAN_DIR = path.resolve(
+const STANDALONE_VULKAN_DIR = path.resolve(
   __dirname,
   "..",
   "..",
@@ -65,43 +63,6 @@ const LEGACY_STANDALONE_VULKAN_DIR = path.resolve(
   "inference",
   "vulkan",
 );
-const PLUGIN_STANDALONE_VULKAN_DIR = path.resolve(
-  __dirname,
-  "..",
-  "..",
-  "..",
-  "..",
-  "plugins",
-  "plugin-local-inference",
-  "native",
-  "vulkan",
-);
-const STANDALONE_VULKAN_DIR = fs.existsSync(LEGACY_STANDALONE_VULKAN_DIR)
-  ? LEGACY_STANDALONE_VULKAN_DIR
-  : PLUGIN_STANDALONE_VULKAN_DIR;
-
-const LEGACY_REFERENCE_DIR = path.resolve(
-  __dirname,
-  "..",
-  "..",
-  "..",
-  "inference",
-  "reference",
-);
-const PLUGIN_REFERENCE_DIR = path.resolve(
-  __dirname,
-  "..",
-  "..",
-  "..",
-  "..",
-  "plugins",
-  "plugin-local-inference",
-  "native",
-  "reference",
-);
-const REFERENCE_DIR = fs.existsSync(LEGACY_REFERENCE_DIR)
-  ? LEGACY_REFERENCE_DIR
-  : PLUGIN_REFERENCE_DIR;
 
 const PATCHES_DIR = path.resolve(__dirname, "vulkan-dispatch-patches");
 
@@ -375,13 +336,6 @@ function repairPolarPrehtShaderRegistration(cacheDir, { dryRun }) {
   const anchor = `    string_to_spv("eliza_polar",          "polar.comp",          {});`;
   const line = `    string_to_spv("eliza_polar_preht",    "polar_preht.comp",    {});`;
   const original = fs.readFileSync(targetPath, "utf8");
-  if (dryRun && !original.includes(anchor) && !original.includes(line)) {
-    return {
-      target: targetPath,
-      changed: false,
-      wouldChange: true,
-    };
-  }
   const repaired = ensureLineAfter(original, anchor, line, targetPath);
   if (repaired.changed && !dryRun) {
     fs.writeFileSync(targetPath, repaired.text, "utf8");
@@ -405,17 +359,6 @@ function repairPolarPrehtPipeline(cacheDir, { dryRun }) {
   let changed = false;
 
   {
-    if (
-      dryRun &&
-      !text.includes(`    vk_pipeline pipeline_eliza_polar;`) &&
-      !text.includes(`    vk_pipeline pipeline_eliza_polar_preht;`)
-    ) {
-      return {
-        target: targetPath,
-        changed: false,
-        wouldChange: true,
-      };
-    }
     const r = ensureLineAfter(
       text,
       `    vk_pipeline pipeline_eliza_polar;`,
@@ -426,21 +369,6 @@ function repairPolarPrehtPipeline(cacheDir, { dryRun }) {
     changed = changed || r.changed;
   }
   {
-    if (
-      dryRun &&
-      !text.includes(
-        `    ggml_vk_create_pipeline(device, device->pipeline_eliza_polar,          "eliza_polar",          eliza_polar_len,          eliza_polar_data,          "main", 3, 6 * sizeof(uint32_t), {1, 1, 1}, {}, 1);`,
-      ) &&
-      !text.includes(
-        `    ggml_vk_create_pipeline(device, device->pipeline_eliza_polar_preht,    "eliza_polar_preht",    eliza_polar_preht_len,    eliza_polar_preht_data,    "main", 3, 6 * sizeof(uint32_t), {1, 1, 1}, {}, 1);`,
-      )
-    ) {
-      return {
-        target: targetPath,
-        changed: false,
-        wouldChange: true,
-      };
-    }
     const r = ensureLineAfter(
       text,
       `    ggml_vk_create_pipeline(device, device->pipeline_eliza_polar,          "eliza_polar",          eliza_polar_len,          eliza_polar_data,          "main", 3, 6 * sizeof(uint32_t), {1, 1, 1}, {}, 1);`,
@@ -491,7 +419,15 @@ function repairFusedAttnPipelinePushRanges(cacheDir, { dryRun }) {
 }
 
 function extractTcqCodebookSource() {
-  const referencePath = path.join(REFERENCE_DIR, "turbo_kernels.c");
+  const referencePath = path.resolve(
+    __dirname,
+    "..",
+    "..",
+    "..",
+    "inference",
+    "reference",
+    "turbo_kernels.c",
+  );
   const source = fs.readFileSync(referencePath, "utf8");
   const match = source.match(
     /const float ELIZA_TURBO3_TCQ_CODEBOOK\[512\]\s*=\s*\{([\s\S]*?)\};/,

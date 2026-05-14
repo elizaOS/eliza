@@ -91,11 +91,6 @@ function setCors(req: http.IncomingMessage, res: http.ServerResponse): void {
   );
   res.setHeader("Access-Control-Allow-Credentials", "true");
   res.setHeader("Access-Control-Max-Age", "600");
-  // Chrome's Private Network Access (PNA) blocks fetches from public HTTPS
-  // origins (e.g. https://studio.jup.ag) to loopback (this server) unless we
-  // opt in via this preflight response header. Without it, the wallet shim's
-  // signTransaction fetch fails with net::ERR_FAILED.
-  res.setHeader("Access-Control-Allow-Private-Network", "true");
 }
 
 function sendJson(

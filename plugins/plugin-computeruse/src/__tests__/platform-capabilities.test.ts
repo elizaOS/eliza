@@ -30,22 +30,11 @@ describe("cross-platform computer-use capabilities", () => {
     });
     expect(caps.windowList.available).toBe(true);
     expect(caps.fileSystem.available).toBe(true);
-    expect(caps.clipboard).toMatchObject({
-      available: true,
-      tool: "pbcopy/pbpaste",
-    });
     expect(caps.browser.available).toBe(true);
   });
 
   it("reports Linux desktop control through xdotool and screenshot tools", () => {
-    const caps = detectFor("linux", [
-      "xdotool",
-      "scrot",
-      "wmctrl",
-      "wl-copy",
-      "wl-paste",
-      "/bin/zsh",
-    ]);
+    const caps = detectFor("linux", ["xdotool", "scrot", "wmctrl", "/bin/zsh"]);
 
     expect(caps.screenshot).toMatchObject({
       available: true,
@@ -62,10 +51,6 @@ describe("cross-platform computer-use capabilities", () => {
     expect(caps.terminal).toMatchObject({
       available: true,
       tool: "/bin/zsh",
-    });
-    expect(caps.clipboard).toMatchObject({
-      available: true,
-      tool: "wl-clipboard",
     });
   });
 
@@ -90,10 +75,6 @@ describe("cross-platform computer-use capabilities", () => {
     });
     expect(caps.browser.available).toBe(false);
     expect(caps.fileSystem.available).toBe(true);
-    expect(caps.clipboard).toMatchObject({
-      available: true,
-      tool: "PowerShell Get/Set-Clipboard",
-    });
   });
 
   it("keeps Linux explicit about missing desktop dependencies", () => {
@@ -109,9 +90,5 @@ describe("cross-platform computer-use capabilities", () => {
     });
     expect(caps.windowList.available).toBe(false);
     expect(caps.browser.available).toBe(false);
-    expect(caps.clipboard).toMatchObject({
-      available: false,
-      tool: "none (install wl-clipboard, xclip, or xsel)",
-    });
   });
 });

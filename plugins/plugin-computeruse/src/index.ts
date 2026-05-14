@@ -4,8 +4,8 @@
  * Desktop automation plugin for elizaOS agents — screenshots, mouse/keyboard
  * control, browser CDP automation, and window management.
  *
- * File operations and guarded command execution are exposed through the
- * ComputerUseService compatibility surface for Cua/open-computer-use callers.
+ * File operations belong on the FILE action; shell/terminal access belongs on
+ * the SHELL action. They are not exposed by this plugin.
  *
  * Deeply ported from coasty-ai/open-computer-use (Apache 2.0).
  *
@@ -130,36 +130,6 @@ export type {
   SceneVlmElement,
 } from "./scene/scene-types.js";
 export { serializeSceneForPrompt } from "./scene/serialize.js";
-export {
-  fromOSWorldAction,
-  fromPyAutoGUI,
-  toOSWorldAction,
-} from "./osworld/action-converter.js";
-export { OSWorldAdapter } from "./osworld/adapter.js";
-export type {
-  OSWorldAction,
-  OSWorldActionType,
-  OSWorldAgentConfig,
-  OSWorldObservation,
-  OSWorldObservationType,
-  OSWorldStepResult,
-  OSWorldTaskConfig,
-} from "./osworld/types.js";
-export {
-  fromCuaBenchAction,
-  parseCuaBenchActionString,
-} from "./benchmarks/cuabench-action-converter.js";
-export { CuaBenchSession } from "./benchmarks/cuabench-session.js";
-export type {
-  CuaBenchActionInput,
-  CuaBenchActionObject,
-  CuaBenchControlAction,
-  CuaBenchConvertedAction,
-} from "./benchmarks/cuabench-action-converter.js";
-export type {
-  CuaBenchServiceLike,
-  CuaBenchSessionResult,
-} from "./benchmarks/cuabench-session.js";
 export {
   type BlockGrid,
   blockGrid,

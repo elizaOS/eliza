@@ -425,9 +425,6 @@ async function assignModel(
 		if (overwrite || !assignments.TRANSCRIPTION) {
 			assignments.TRANSCRIPTION = model.id;
 		}
-		if (overwrite || !assignments.IMAGE_DESCRIPTION) {
-			assignments.IMAGE_DESCRIPTION = model.id;
-		}
 	}
 	await writeAssignments(assignments);
 }

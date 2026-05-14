@@ -20,9 +20,7 @@
       ],
       "@elizaos/plugin-local-inference": [
         "../../../plugins/plugin-local-inference/src/index.ts"
-      ],
-      "@elizaos/shared": ["../../../packages/shared/src/index.ts"],
-      "@elizaos/shared/*": ["../../../packages/shared/src/*"]
+      ]
     }
   },
   "include": ["*.ts"],
