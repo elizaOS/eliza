@@ -48,6 +48,10 @@ function parseArgs(argv) {
       process.env.ELIZA1_SOAK_INTERVAL_MS || "30000",
       10,
     ),
+    soakWarmupRequests: Number.parseInt(
+      process.env.ELIZA1_SOAK_WARMUP_REQUESTS || "0",
+      10,
+    ),
     metricsUrl: process.env.ELIZA1_METRICS_URL?.trim() || "",
     rssCommand: process.env.ELIZA1_RSS_COMMAND?.trim() || "",
     rssSshTarget: process.env.ELIZA1_RSS_SSH_TARGET?.trim() || "",
@@ -87,6 +91,8 @@ function parseArgs(argv) {
     else if (arg === "--soak-ms") args.soakMs = Number.parseInt(next(), 10);
     else if (arg === "--soak-interval-ms")
       args.soakIntervalMs = Number.parseInt(next(), 10);
+    else if (arg === "--soak-warmup-requests")
+      args.soakWarmupRequests = Number.parseInt(next(), 10);
     else if (arg === "--metrics-url") args.metricsUrl = next();
     else if (arg === "--rss-command") args.rssCommand = next();
     else if (arg === "--rss-ssh-target") args.rssSshTarget = next();
@@ -650,6 +656,29 @@ async function scrapeResidentMemoryBytes(args) {
 }
 
 async function runSoak(args) {
+  const warmupResults = [];
+  for (let index = 0; index < args.soakWarmupRequests; index += 1) {
+    const result = await chatCompletion(args, {
+      model: args.model,
+      messages: [
+        {
+          role: "user",
+          content: `Reply with exactly: soak-warmup-${index}`,
+        },
+      ],
+      temperature: 0,
+      max_tokens: 12,
+      stream: false,
+    });
+    const contentOk = result.content
+      .toLowerCase()
+      .includes(`soak-warmup-${index}`);
+    warmupResults.push({
+      ok: result.ok && contentOk,
+      status: result.status,
+      latencyMs: result.latencyMs,
+    });
+  }
   const startRss = await scrapeResidentMemoryBytes(args);
   const startedAt = performance.now();
   const results = [];
@@ -680,7 +709,8 @@ async function runSoak(args) {
   const endRss = await scrapeResidentMemoryBytes(args);
   const durationMs = Math.round(performance.now() - startedAt);
   const errors = results.filter((result) => !result.ok).length;
-  const crashFree = errors === 0;
+  const warmupErrors = warmupResults.filter((result) => !result.ok).length;
+  const crashFree = errors === 0 && warmupErrors === 0;
   const rssDeltaBytes =
     startRss !== null && endRss !== null
       ? Math.max(0, endRss - startRss)
@@ -697,6 +727,8 @@ async function runSoak(args) {
     baseUrl: args.baseUrl,
     model: args.model,
     durationMs,
+    soakWarmupRequests: args.soakWarmupRequests,
+    warmupErrors,
     requests: results.length,
     crashFree,
     rssLeakWithinBudget,
