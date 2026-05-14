@@ -115,9 +115,26 @@ jobs:
         # workflow) is the canonical place this lives; reuse the same loop so
         # plugin-sql, plugin-elizacloud, etc. land in the image with their
         # built artifacts.
+        #
+        # PATH prepend: Bun installs tsup / tsdown / tsc / etc. into each
+        # workspace's `node_modules/.bin/`, but with workspace hoisting +
+        # `--frozen-lockfile` quirks the per-plugin `node_modules/.bin/` is
+        # not always populated on Linux runners (the `.bin/tsup` symlink
+        # only lands in the package that DIRECTLY depends on it; other
+        # plugins resolve `tsup` via the hoisted symlink, which doesn't
+        # exist before postinstall finishes). Walk every plugin's
+        # `node_modules/.bin/` onto PATH up front so `tsup --format ...`
+        # resolves regardless of which workspace it actually lives in.
         env:
           NODE_LLAMA_CPP_SKIP_DOWNLOAD: "true"
         run: |
+          # Build PATH augmentation: include every workspace .bin so the
+          # per-plugin build scripts can find their CLI deps.
+          extra_path=""
+          while IFS= read -r bindir; do
+            extra_path="${bindir}:${extra_path}"
+          done < <(find . -maxdepth 4 -type d -path '*/node_modules/.bin' -not -path '*/.bun/*' 2>/dev/null)
+          export PATH="${extra_path}${PATH}"
           for plugin in plugin-sql plugin-video plugin-agent-skills plugin-pdf \
             plugin-browser plugin-capacitor-bridge plugin-coding-tools \
             plugin-computeruse plugin-discord plugin-elizacloud plugin-imessage \
