@@ -15,7 +15,7 @@ contract.
 
 ## 1. What this package owns
 
-- Text fine-tuning of the Qwen3.5/Qwen3.6 0.8B / 2B / 4B / 9B / 27B
+- Text fine-tuning of the Qwen3.5 0.8B / 2B / 4B / 9B / 27B
   backbones used by the current Eliza-1 release line.
 - Drafter training for DFlash speculative decoding.
 - Voice handling (freeze, cache, evaluate — see §4; we do not retrain

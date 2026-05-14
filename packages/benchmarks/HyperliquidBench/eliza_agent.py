@@ -42,16 +42,47 @@ from .types import (
 logger = logging.getLogger(__name__)
 
 
-def _subprocess_timeout_seconds(default: float = 120.0) -> float:
-    raw = os.environ.get("HL_BENCH_COMMAND_TIMEOUT_S") or os.environ.get("HL_RUNNER_TIMEOUT_S")
+class HyperliquidCommandError(RuntimeError):
+    """Failure preparing a bounded HyperliquidBench subprocess command."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        stdout: str = "",
+        stderr: str = "",
+        exit_code: int = -1,
+    ) -> None:
+        super().__init__(message)
+        self.stdout = stdout
+        self.stderr = stderr
+        self.exit_code = exit_code
+
+
+def _timeout_seconds_from_env(names: tuple[str, ...], default: float) -> float:
+    raw = next((os.environ[name] for name in names if os.environ.get(name)), None)
     if not raw:
         return default
     try:
         value = float(raw)
     except ValueError:
-        logger.warning("Ignoring invalid HyperliquidBench command timeout %r", raw)
+        logger.warning("Ignoring invalid HyperliquidBench timeout %r", raw)
         return default
     return value if value > 0 else default
+
+
+def _subprocess_timeout_seconds(default: float = 120.0) -> float:
+    return _timeout_seconds_from_env(
+        ("HL_BENCH_COMMAND_TIMEOUT_S", "HL_RUNNER_TIMEOUT_S"),
+        default,
+    )
+
+
+def _cargo_build_timeout_seconds(default: float = 600.0) -> float:
+    return _timeout_seconds_from_env(
+        ("HL_BENCH_BUILD_TIMEOUT_S", "HL_CARGO_BUILD_TIMEOUT_S"),
+        default,
+    )
 
 
 def _timeout_text(value: str | bytes | None) -> str:
@@ -143,14 +174,56 @@ def _deterministic_plan(scenario: TradingScenario) -> Plan:
     return Plan(steps=steps[: max(1, scenario.max_steps)])
 
 
+def _binary_name(package: str) -> str:
+    return f"{package}.exe" if os.name == "nt" else package
+
+
 def _binary_or_cargo(bench_root: Path, package: str) -> list[str]:
-    binary = bench_root / "target" / "release" / package
+    binary_name = _binary_name(package)
+    for profile in ("release", "debug"):
+        binary = bench_root / "target" / profile / binary_name
+        if binary.exists() and os.access(binary, os.X_OK):
+            return [str(binary)]
+
+    cargo = shutil.which("cargo")
+    if not cargo:
+        raise FileNotFoundError(f"could not find {package} binary and cargo is unavailable")
+
+    timeout_s = _cargo_build_timeout_seconds()
+    build_cmd = [cargo, "build", "-q", "-p", package]
+    try:
+        build_proc = subprocess.run(
+            build_cmd,
+            cwd=bench_root,
+            text=True,
+            capture_output=True,
+            timeout=timeout_s,
+            check=False,
+            env=os.environ.copy(),
+        )
+    except subprocess.TimeoutExpired as exc:
+        message = f"{package} cargo build timed out after {timeout_s:.1f}s"
+        raise HyperliquidCommandError(
+            message,
+            stdout=_timeout_text(exc.stdout),
+            stderr=_timeout_text(exc.stderr) or message,
+        ) from exc
+
+    if build_proc.returncode != 0:
+        raise HyperliquidCommandError(
+            f"{package} cargo build failed with exit code {build_proc.returncode}",
+            stdout=build_proc.stdout,
+            stderr=build_proc.stderr,
+            exit_code=build_proc.returncode,
+        )
+
+    binary = bench_root / "target" / "debug" / binary_name
     if binary.exists() and os.access(binary, os.X_OK):
         return [str(binary)]
-    cargo = shutil.which("cargo")
-    if cargo:
-        return [cargo, "run", "-q", "-p", package, "--"]
-    raise FileNotFoundError(f"could not find {package} binary and cargo is unavailable")
+    raise HyperliquidCommandError(
+        f"{package} cargo build completed but binary was not found at {binary}",
+        stderr=f"missing binary: {binary}",
+    )
 
 
 def _read_json(path: Path) -> dict[str, Any]:
@@ -189,8 +262,23 @@ class ElizaHyperliquidAgent:
         plan_path = out_dir / "plan_input.json"
         plan_path.write_text(json.dumps(plan.to_dict(), indent=2), encoding="utf-8")
 
+        try:
+            runner_binary = _binary_or_cargo(bench_root, "hl-runner")
+        except (FileNotFoundError, HyperliquidCommandError) as exc:
+            message = str(exc)
+            runner = RunnerResult(
+                success=False,
+                out_dir=str(out_dir),
+                run_meta_path=str(out_dir / "run_meta.json"),
+                per_action_path=str(out_dir / "per_action.jsonl"),
+                stdout=getattr(exc, "stdout", ""),
+                stderr=getattr(exc, "stderr", "") or message,
+                exit_code=getattr(exc, "exit_code", -1),
+            )
+            return BenchmarkResult(scenario.scenario_id, plan, runner, None, message)
+
         runner_cmd = [
-            *_binary_or_cargo(bench_root, "hl-runner"),
+            *runner_binary,
             "--plan",
             str(plan_path),
             "--out",
@@ -241,8 +329,26 @@ class ElizaHyperliquidAgent:
         if not runner.success:
             return BenchmarkResult(scenario.scenario_id, plan, runner, None, runner.stderr or runner.stdout)
 
+        try:
+            evaluator_binary = _binary_or_cargo(bench_root, "hl-evaluator")
+        except (FileNotFoundError, HyperliquidCommandError) as exc:
+            message = str(exc)
+            evaluator = EvaluatorResult(
+                success=False,
+                final_score=0.0,
+                base=0.0,
+                bonus=0.0,
+                penalty=0.0,
+                unique_signatures=[],
+                eval_score_path=str(out_dir / "eval_score.json"),
+                stdout=getattr(exc, "stdout", ""),
+                stderr=getattr(exc, "stderr", "") or message,
+                exit_code=getattr(exc, "exit_code", -1),
+            )
+            return BenchmarkResult(scenario.scenario_id, plan, runner, evaluator, message)
+
         evaluator_cmd = [
-            *_binary_or_cargo(bench_root, "hl-evaluator"),
+            *evaluator_binary,
             "--input",
             str(out_dir / "per_action.jsonl"),
             "--domains",
