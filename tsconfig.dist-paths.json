@@ -82,7 +82,6 @@
       "@elizaos/electrobun": [
         "./packages/app-core/platforms/electrobun/dist/index.d.ts"
       ],
-      "@elizaos/example-form": ["./packages/examples/form/dist/index.d.ts"],
       "@elizaos/example-text-adventure": [
         "./packages/examples/text-adventure/dist/index.d.ts"
       ],

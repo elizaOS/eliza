@@ -42,6 +42,24 @@ from .types import (
 logger = logging.getLogger(__name__)
 
 
+def _subprocess_timeout_seconds(default: float = 120.0) -> float:
+    raw = os.environ.get("HL_BENCH_COMMAND_TIMEOUT_S") or os.environ.get("HL_RUNNER_TIMEOUT_S")
+    if not raw:
+        return default
+    try:
+        value = float(raw)
+    except ValueError:
+        logger.warning("Ignoring invalid HyperliquidBench command timeout %r", raw)
+        return default
+    return value if value > 0 else default
+
+
+def _timeout_text(value: str | bytes | None) -> str:
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace")
+    return value or ""
+
+
 def make_coverage_scenario(
     allowed_coins: list[str] | None = None,
     max_steps: int = 5,
@@ -188,15 +206,29 @@ class ElizaHyperliquidAgent:
             runner_cmd.extend(["--builder-code", self.config.builder_code])
 
         env = os.environ.copy()
-        runner_proc = subprocess.run(
-            runner_cmd,
-            cwd=bench_root,
-            text=True,
-            capture_output=True,
-            timeout=30,
-            check=False,
-            env=env,
-        )
+        command_timeout_s = _subprocess_timeout_seconds()
+        try:
+            runner_proc = subprocess.run(
+                runner_cmd,
+                cwd=bench_root,
+                text=True,
+                capture_output=True,
+                timeout=command_timeout_s,
+                check=False,
+                env=env,
+            )
+        except subprocess.TimeoutExpired as exc:
+            message = f"hl-runner timed out after {command_timeout_s:.1f}s"
+            runner = RunnerResult(
+                success=False,
+                out_dir=str(out_dir),
+                run_meta_path=str(out_dir / "run_meta.json"),
+                per_action_path=str(out_dir / "per_action.jsonl"),
+                stdout=_timeout_text(exc.stdout),
+                stderr=(_timeout_text(exc.stderr) or message),
+                exit_code=-1,
+            )
+            return BenchmarkResult(scenario.scenario_id, plan, runner, None, runner.stderr or message)
         runner = RunnerResult(
             success=runner_proc.returncode == 0,
             out_dir=str(out_dir),
@@ -218,15 +250,30 @@ class ElizaHyperliquidAgent:
             "--out-dir",
             str(out_dir),
         ]
-        evaluator_proc = subprocess.run(
-            evaluator_cmd,
-            cwd=bench_root,
-            text=True,
-            capture_output=True,
-            timeout=30,
-            check=False,
-            env=env,
-        )
+        try:
+            evaluator_proc = subprocess.run(
+                evaluator_cmd,
+                cwd=bench_root,
+                text=True,
+                capture_output=True,
+                timeout=command_timeout_s,
+                check=False,
+                env=env,
+            )
+        except subprocess.TimeoutExpired as exc:
+            evaluator = EvaluatorResult(
+                success=False,
+                final_score=0.0,
+                base=0.0,
+                bonus=0.0,
+                penalty=0.0,
+                unique_signatures=[],
+                eval_score_path=str(out_dir / "eval_score.json"),
+                stdout=_timeout_text(exc.stdout),
+                stderr=_timeout_text(exc.stderr) or f"hl-evaluator timed out after {command_timeout_s:.1f}s",
+                exit_code=-1,
+            )
+            return BenchmarkResult(scenario.scenario_id, plan, runner, evaluator, evaluator.stderr)
         score_path = out_dir / "eval_score.json"
         score = _read_json(score_path) if score_path.exists() else {}
         evaluator = EvaluatorResult(

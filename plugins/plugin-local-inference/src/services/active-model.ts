@@ -421,11 +421,15 @@ function mergeOverrides(
  *     the coordinator emits a one-shot warning; vision capability is
  *     unavailable for the session but the text load still succeeds.
  *
- * The path is constructed from the catalog's
- * `sourceModel.components.vision.file` (e.g. `vision/mmproj-2b.gguf`)
- * joined against the installed bundle root. Manifest-validated bundles
- * (`bundleRoot` set) are the only path that lands a vision component —
- * external-scan models (LM Studio / Jan) don't.
+ * Path layout: the catalog's `sourceModel.components.vision.file` is the
+ * Hugging Face-relative path, e.g. `bundles/2b/vision/mmproj-2b.gguf`.
+ * Locally the bundleRoot already represents the per-tier "bundles/<tier>"
+ * subtree, so we strip the leading `bundles/<tier>/` segment before
+ * joining against the local bundleRoot. When that prefix isn't present
+ * (e.g. a custom bundle layout), we fall through to the original path
+ * unchanged. Manifest-validated bundles (`bundleRoot` set) are the only
+ * path that lands a vision component — external-scan models (LM Studio,
+ * Jan) don't.
  */
 export function resolveMmprojPath(
 	installed: InstalledModel,
@@ -436,9 +440,26 @@ export function resolveMmprojPath(
 	if (!visionComponent?.file) return undefined;
 	const bundleRoot = installed.bundleRoot;
 	if (!bundleRoot) return undefined;
-	const candidate = pathJoin(bundleRoot, visionComponent.file);
+	const local = stripBundlePrefix(visionComponent.file, installed.id);
+	const candidate = pathJoin(bundleRoot, local);
 	if (!existsSync(candidate)) return undefined;
 	return candidate;
+}
+
+/**
+ * Strip the `bundles/<tier-slug>/` prefix the catalog uses for HF
+ * paths so the remaining string is bundle-root-relative. When the
+ * prefix isn't present, return the input unchanged.
+ */
+function stripBundlePrefix(catalogFile: string, modelId: string): string {
+	const slug = modelId.startsWith("eliza-1-")
+		? modelId.slice("eliza-1-".length)
+		: modelId;
+	const prefix = `bundles/${slug}/`;
+	if (catalogFile.startsWith(prefix)) {
+		return catalogFile.slice(prefix.length);
+	}
+	return catalogFile;
 }
 
 export async function resolveLocalInferenceLoadArgs(
