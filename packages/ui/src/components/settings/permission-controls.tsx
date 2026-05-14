@@ -654,9 +654,8 @@ export function useDesktopPermissionsState() {
         if (!cancelled) {
           applySnapshot(snapshot);
         }
-      } catch (err) {
+      } catch {
         if (!cancelled) {
-          console.error("Failed to load permissions:", err);
           setPermissions(null);
           setPlatform("unknown");
         }
@@ -712,8 +711,7 @@ export function useDesktopPermissionsState() {
     setRefreshing(true);
     try {
       return await replaceSnapshot(true);
-    } catch (err) {
-      console.error("Failed to refresh permissions:", err);
+    } catch {
       return null;
     } finally {
       setRefreshing(false);
@@ -751,8 +749,8 @@ export function useDesktopPermissionsState() {
         if (status && status !== "granted" && status !== "not-applicable") {
           scheduleSettingsRefreshes();
         }
-      } catch (err) {
-        console.error("Failed to request permission:", err);
+      } catch {
+        // permission request failed; user can retry
       }
     },
     [replaceSnapshot, scheduleSettingsRefreshes],
@@ -778,8 +776,8 @@ export function useDesktopPermissionsState() {
         }
         await replaceSnapshot(true);
         scheduleSettingsRefreshes();
-      } catch (err) {
-        console.error("Failed to open settings:", err);
+      } catch {
+        // settings open failed; user can retry
       }
     },
     [replaceSnapshot, scheduleSettingsRefreshes],
@@ -798,8 +796,8 @@ export function useDesktopPermissionsState() {
           client.setShellEnabled(enabled),
         ]);
         await replaceSnapshot(true);
-      } catch (err) {
-        console.error("Failed to toggle shell:", err);
+      } catch {
+        // shell toggle failed; user can retry
       }
     },
     [replaceSnapshot],

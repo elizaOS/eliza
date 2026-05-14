@@ -344,8 +344,7 @@ export function DocumentsView({
   }, [onDocumentsChange, scopeFilter, t]);
 
   useEffect(() => {
-    loadData().catch((err) => {
-      console.error("[DocumentsView] Failed to load data:", err);
+    loadData().catch(() => {
       setLoading(false);
     });
   }, [loadData]);
@@ -657,9 +656,8 @@ export function DocumentsView({
         let refreshFailed = false;
         try {
           await loadData();
-        } catch (err) {
+        } catch {
           refreshFailed = true;
-          console.error("[DocumentsView] Failed to refresh after upload:", err);
         }
 
         const skippedSummary =

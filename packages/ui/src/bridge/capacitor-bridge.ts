@@ -179,7 +179,6 @@ const pluginRegistry = new Map<string, PluginInstance>();
  */
 export function registerPlugin(name: string, plugin: PluginInstance): void {
   pluginRegistry.set(name, plugin);
-  console.log(`[Capacitor Bridge] Registered plugin: ${name}`);
 }
 
 /**
