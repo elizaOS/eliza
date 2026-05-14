@@ -124,7 +124,7 @@ ATTESTATIONS: Final[tuple[LicenseAttestation, ...]] = (
         text_file=_APACHE,
         upstream_repo=(
             "Qwen/Qwen3.5-0.8B / Qwen/Qwen3.5-2B / Qwen/Qwen3.5-4B / "
-            "Qwen/Qwen3.5-9B / Qwen/Qwen3.5-27B (lineage recorded per tier "
+            "Qwen/Qwen3.5-9B / Qwen/Qwen3.6-27B (lineage recorded per tier "
             "in the manifest)"
         ),
         upstream_url="https://huggingface.co/Qwen/Qwen3.5-2B",

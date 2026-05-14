@@ -11,7 +11,12 @@
     "declaration": false,
     "declarationMap": false,
     "noEmit": true,
-    "types": ["node"]
+    "types": ["node"],
+    "paths": {
+      "@elizaos/plugin-farcaster": [
+        "../../../plugins/plugin-farcaster/index.ts"
+      ]
+    }
   },
   "include": ["*.ts"],
   "exclude": ["node_modules"],
