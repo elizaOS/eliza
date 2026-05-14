@@ -1,0 +1,113 @@
+{
+  "instance_id": "p4_instance_009",
+  "city_map": {
+    "locations": [
+      "stadium",
+      "park",
+      "mall",
+      "hospital",
+      "university",
+      "suburb"
+    ],
+    "distances": {
+      "stadium-park": 21,
+      "park-stadium": 21,
+      "stadium-mall": 6,
+      "mall-stadium": 6,
+      "stadium-hospital": 32,
+      "hospital-stadium": 32,
+      "stadium-university": 28,
+      "university-stadium": 28,
+      "stadium-suburb": 15,
+      "suburb-stadium": 15,
+      "park-mall": 28,
+      "mall-park": 28,
+      "park-hospital": 45,
+      "hospital-park": 45,
+      "park-university": 31,
+      "university-park": 31,
+      "park-suburb": 33,
+      "suburb-park": 33,
+      "mall-hospital": 22,
+      "hospital-mall": 22,
+      "mall-university": 29,
+      "university-mall": 29,
+      "mall-suburb": 21,
+      "suburb-mall": 21,
+      "hospital-university": 25,
+      "university-hospital": 25,
+      "hospital-suburb": 35,
+      "suburb-hospital": 35,
+      "university-suburb": 30,
+      "suburb-university": 30
+    }
+  },
+  "ride_requests": [
+    {
+      "passenger_id": "p001",
+      "pickup": "suburb",
+      "dropoff": "stadium",
+      "time_window": [
+        12.0,
+        12.55
+      ],
+      "deadline": 36
+    },
+    {
+      "passenger_id": "p002",
+      "pickup": "stadium",
+      "dropoff": "mall",
+      "time_window": [
+        11.25,
+        11.816666666666666
+      ],
+      "deadline": 20
+    },
+    {
+      "passenger_id": "p003",
+      "pickup": "hospital",
+      "dropoff": "suburb",
+      "time_window": [
+        12.25,
+        12.75
+      ],
+      "deadline": 53
+    }
+  ],
+  "vehicles": [
+    {
+      "vehicle_id": "v001",
+      "location": "suburb",
+      "capacity": 3,
+      "fuel": 56
+    },
+    {
+      "vehicle_id": "v002",
+      "location": "mall",
+      "capacity": 6,
+      "fuel": 60
+    },
+    {
+      "vehicle_id": "v003",
+      "location": "mall",
+      "capacity": 5,
+      "fuel": 63
+    },
+    {
+      "vehicle_id": "v004",
+      "location": "university",
+      "capacity": 4,
+      "fuel": 99
+    }
+  ],
+  "description": "Urban ride-sharing with disruptions instance",
+  "disruptions": [
+    {
+      "type": "road_closure",
+      "route": "university-suburb",
+      "start_time": 10,
+      "duration": 119,
+      "impact": "route_unavailable"
+    }
+  ]
+}

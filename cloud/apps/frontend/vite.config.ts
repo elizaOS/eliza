@@ -41,6 +41,7 @@ const PUBLIC_ENV_KEYS = [
   "NEXT_PUBLIC_FEATURE_MCP",
   "NEXT_PUBLIC_FEATURE_MEMORIES",
   "NEXT_PUBLIC_FEATURE_VOICE_CLONING",
+  "NEXT_PUBLIC_ASSETS_CDN_URL",
 ] as const;
 
 // `.env.local` lives at `cloud/` (the monorepo's web root), one level above

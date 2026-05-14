@@ -390,8 +390,8 @@ async function runSpawnAgent(
   try {
     const text = messageText(message);
     const task = pickString(params, content, "task") ?? text;
-    // Operator-pinned adapter (PARALLAX_DEFAULT_AGENT_TYPE +
-    // PARALLAX_AGENT_SELECTION_STRATEGY=fixed) is a deployment policy and
+    // Operator-pinned adapter (ELIZA_DEFAULT_AGENT_TYPE +
+    // ELIZA_AGENT_SELECTION_STRATEGY=fixed) is a deployment policy and
     // wins over the planner's `agentType` choice. The planner only sees
     // descriptions of available adapters and routinely guesses one based on
     // context tokens; the operator's explicit pin is authoritative. When no
@@ -1040,8 +1040,9 @@ async function runHistory(
 ): Promise<ActionResult> {
   const access = await requireTaskAgentAccess(runtime, message, "interact");
   if (!access.allowed) {
-    if (callback) await callback({ text: access.reason });
-    return failureResult("TASKS:history", "FORBIDDEN", access.reason, {
+    const reason = (access as { reason: string }).reason;
+    if (callback) await callback({ text: reason });
+    return failureResult("TASKS:history", "FORBIDDEN", reason, {
       reason: "access_denied",
     });
   }
@@ -1205,8 +1206,9 @@ async function runControl(
 ): Promise<ActionResult> {
   const access = await requireTaskAgentAccess(runtime, message, "interact");
   if (!access.allowed) {
-    if (callback) await callback({ text: access.reason });
-    return failureResult("TASKS:control", "FORBIDDEN", access.reason, {
+    const reason = (access as { reason: string }).reason;
+    if (callback) await callback({ text: reason });
+    return failureResult("TASKS:control", "FORBIDDEN", reason, {
       reason: "access_denied",
     });
   }
@@ -1345,8 +1347,9 @@ async function runShare(
 ): Promise<ActionResult> {
   const access = await requireTaskAgentAccess(runtime, message, "interact");
   if (!access.allowed) {
-    if (callback) await callback({ text: access.reason });
-    return { success: false, error: "FORBIDDEN", text: access.reason };
+    const reason = (access as { reason: string }).reason;
+    if (callback) await callback({ text: reason });
+    return { success: false, error: "FORBIDDEN", text: reason };
   }
 
   const coordinator = getCoordinator(runtime);
@@ -1453,8 +1456,9 @@ async function runProvisionWorkspace(
 ): Promise<ActionResult> {
   const access = await requireTaskAgentAccess(runtime, message, "create");
   if (!access.allowed) {
-    if (callback) await callback({ text: access.reason });
-    return { success: false, error: "FORBIDDEN", text: access.reason };
+    const reason = (access as { reason: string }).reason;
+    if (callback) await callback({ text: reason });
+    return { success: false, error: "FORBIDDEN", text: reason };
   }
 
   const workspaceService = getCodingWorkspaceService(runtime);
@@ -1580,8 +1584,9 @@ async function runSubmitWorkspace(
 ): Promise<ActionResult> {
   const access = await requireTaskAgentAccess(runtime, message, "interact");
   if (!access.allowed) {
-    if (callback) await callback({ text: access.reason });
-    return { success: false, error: "FORBIDDEN", text: access.reason };
+    const reason = (access as { reason: string }).reason;
+    if (callback) await callback({ text: reason });
+    return { success: false, error: "FORBIDDEN", text: reason };
   }
 
   const workspaceService = getCodingWorkspaceService(runtime);
@@ -1988,8 +1993,9 @@ async function runManageIssues(
 ): Promise<ActionResult> {
   const access = await requireTaskAgentAccess(runtime, message, "interact");
   if (!access.allowed) {
-    if (callback) await callback({ text: access.reason });
-    return { success: false, error: "FORBIDDEN", text: access.reason };
+    const reason = (access as { reason: string }).reason;
+    if (callback) await callback({ text: reason });
+    return { success: false, error: "FORBIDDEN", text: reason };
   }
 
   const workspaceService = getCodingWorkspaceService(runtime);

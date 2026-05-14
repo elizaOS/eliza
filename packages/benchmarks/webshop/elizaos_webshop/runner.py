@@ -74,14 +74,30 @@ logger = logging.getLogger(__name__)
 
 
 class WebShopRunner:
-    def __init__(self, config: WebShopConfig, *, split: str = "test", use_hf: bool = False) -> None:
+    def __init__(
+        self,
+        config: WebShopConfig,
+        *,
+        split: str = "test",
+        use_hf: bool = False,
+        profile: str = "small",
+        use_sample_tasks: bool = False,
+    ) -> None:
         self.config = config
         self.split = split
         self.use_hf = use_hf
+        self.profile = profile
+        self.use_sample_tasks = use_sample_tasks
 
-        self.dataset = WebShopDataset(split=split)
+        self.dataset = WebShopDataset(
+            split=split,
+            profile=profile,
+            use_sample_tasks=use_sample_tasks,
+        )
         self.evaluator = WebShopEvaluator()
         self._start_time = 0.0
+        # Lazy-constructed: the upstream env is expensive (loads catalog + spaCy).
+        self._env: WebShopEnvironment | None = None
 
         self._bridge_factory, self._bridge_manager = _maybe_make_bridge_factory(config)
         self._trajectory: WebShopTrajectoryIntegration | None = None
@@ -140,25 +156,27 @@ class WebShopRunner:
                 self._bridge_manager.stop()
                 self._bridge_manager = None
 
+    def _ensure_env(self) -> WebShopEnvironment:
+        if self._env is not None:
+            return self._env
+        paths = self.dataset.paths
+        if paths is None:
+            raise RuntimeError(
+                "WebShopRunner.dataset.paths is None; was dataset.load() called?"
+            )
+        self._env = WebShopEnvironment(
+            file_path=paths.items,
+            attr_path=paths.attributes,
+            human_attr_path=paths.human_instructions,
+            human_goals=bool(self.dataset.human_goals and paths.has_human_goals),
+            observation_mode="text",
+        )
+        return self._env
+
     async def _run_task(self, task: WebShopTask, *, trial_number: int) -> WebShopResult:
         start = time.time()
 
-        if not self.dataset.products:
-            # HF mode without products isn't runnable in this lightweight harness.
-            return WebShopResult(
-                task_id=task.task_id,
-                trial_number=trial_number,
-                success=False,
-                purchased_product_id=None,
-                reward=0.0,
-                turns_used=0,
-                duration_ms=(time.time() - start) * 1000,
-                steps=[],
-                final_response="",
-                error="No product catalog available (HF mode not supported for env in this harness)",
-            )
-
-        env = WebShopEnvironment(products=self.dataset.products)
+        env = self._ensure_env()
         if self._bridge_factory is not None:
             agent = self._bridge_factory(env)
         elif self.config.use_mock:
@@ -318,17 +336,25 @@ class WebShopRunner:
 
 ## Summary
 
+Reported following Yao et al. 2022 (WebShop, NeurIPS):
+
 | Metric | Value |
 |---|---:|
 | Status | {str(report.summary.get("status", ""))} |
+| Mode | {str(report.summary.get("mode", ""))} |
 | Total Tasks | {report.total_tasks} |
 | Total Trials | {report.total_trials} |
-| Success Rate | {report.success_rate * 100:.1f}% |
-| Avg Reward | {report.average_reward:.3f} |
+| **Score (avg reward)** | {report.average_reward:.3f} |
+| **SR (reward == 1.0)** | {report.success_rate * 100:.1f}% |
 | Avg Turns | {report.average_turns:.1f} |
 | Avg Steps | {report.average_steps:.1f} |
 | Avg Duration (ms) | {report.average_duration_ms:.0f} |
 
 ## Notes
-- Success is currently defined as reward == 1.0 (perfect match).
+- **Score** = mean reward across instructions (continuous, in [0, 1]).
+- **SR** = fraction of instructions where reward reached 1.0, i.e., the agent
+  purchased a product that fully satisfied the goal's title, attributes,
+  options, and price.
+- Reward is computed by upstream's
+  ``web_agent_site.engine.goal.get_reward`` (TF-IDF / fuzzy-match scoring).
 """

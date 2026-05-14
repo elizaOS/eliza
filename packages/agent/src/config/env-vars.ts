@@ -161,7 +161,7 @@ export function collectConfigEnvVars(
       if (BLOCKED_STARTUP_ENV_KEYS.has(key.toUpperCase())) {
         continue;
       }
-      entries[key] = value as string;
+      entries[key] = value;
     }
   }
 

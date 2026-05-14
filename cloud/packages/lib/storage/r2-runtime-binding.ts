@@ -8,6 +8,12 @@
 
 export interface RuntimeR2Object {
   text(): Promise<string>;
+  /**
+   * Binary access — Workers' real R2 object exposes this; the in-memory test
+   * shim should populate it too. Optional on the type for back-compat with
+   * tests that only need `.text()`.
+   */
+  arrayBuffer?(): Promise<ArrayBuffer>;
 }
 
 export interface RuntimeR2Bucket {

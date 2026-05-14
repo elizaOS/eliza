@@ -162,7 +162,7 @@ export async function extractTextFromDocument(
 	try {
 		if (contentType === "application/pdf") {
 			logger.debug(`Extracting text from PDF: ${originalFilename}`);
-			return await convertPdfToTextFromBuffer(fileBuffer, originalFilename);
+			return convertPdfToTextFromBuffer(fileBuffer, originalFilename);
 		} else {
 			if (
 				contentType.includes("text/") ||
@@ -176,7 +176,7 @@ export async function extractTextFromDocument(
 				}
 			}
 
-			return await extractTextFromFileBuffer(
+			return extractTextFromFileBuffer(
 				fileBuffer,
 				contentType,
 				originalFilename,
@@ -250,7 +250,7 @@ async function splitDocumentIntoChunks(
 	const tokenChunkSize = DEFAULT_CHUNK_TOKEN_SIZE;
 	const tokenChunkOverlap = DEFAULT_CHUNK_OVERLAP_TOKENS;
 
-	return await splitChunks(documentText, tokenChunkSize, tokenChunkOverlap);
+	return splitChunks(documentText, tokenChunkSize, tokenChunkOverlap);
 }
 
 async function processAndSaveFragments({
@@ -420,14 +420,9 @@ async function generateEmbeddingsForChunks(
 	const useBatchEmbeddings = shouldUseBatchEmbeddings(runtime);
 
 	if (useBatchEmbeddings) {
-		return await generateEmbeddingsBatch(
-			runtime,
-			validChunks,
-			rateLimiter,
-			results,
-		);
+		return generateEmbeddingsBatch(runtime, validChunks, rateLimiter, results);
 	} else {
-		return await generateEmbeddingsIndividual(
+		return generateEmbeddingsIndividual(
 			runtime,
 			validChunks,
 			rateLimiter,
@@ -620,7 +615,7 @@ async function generateEmbeddingsIndividual(
 
 		try {
 			const generateEmbeddingOperation = async () => {
-				return await generateEmbeddingWithValidation(
+				return generateEmbeddingWithValidation(
 					runtime,
 					chunk.contextualizedText,
 				);
@@ -677,7 +672,7 @@ async function getContextualizedChunks(
 	const ctxEnabled = getCtxDocumentsEnabled(runtime);
 
 	if (ctxEnabled && fullDocumentText) {
-		return await generateContextsInBatch(
+		return generateContextsInBatch(
 			runtime,
 			fullDocumentText,
 			chunks,
@@ -751,18 +746,13 @@ async function generateContextsInBatch(
 				const generateTextOperation = async () => {
 					if (useCustomLLM) {
 						if (item.usesCaching && item.promptText) {
-							return await generateText(
-								runtime,
-								item.promptText,
-								item.systemPrompt,
-								{
-									cacheDocument: item.fullDocumentTextForContext,
-									cacheOptions: { type: "ephemeral" },
-									autoCacheContextualRetrieval: true,
-								},
-							);
+							return generateText(runtime, item.promptText, item.systemPrompt, {
+								cacheDocument: item.fullDocumentTextForContext,
+								cacheOptions: { type: "ephemeral" },
+								autoCacheContextualRetrieval: true,
+							});
 						} else if (item.prompt) {
-							return await generateText(runtime, item.prompt);
+							return generateText(runtime, item.prompt);
 						}
 						throw new Error("Missing prompt for text generation");
 					} else {
@@ -770,11 +760,11 @@ async function generateContextsInBatch(
 							const combinedPrompt = item.systemPrompt
 								? `${item.systemPrompt}\n\n${item.promptText}`
 								: item.promptText;
-							return await runtime.useModel(ModelType.TEXT_LARGE, {
+							return runtime.useModel(ModelType.TEXT_LARGE, {
 								prompt: combinedPrompt,
 							});
 						} else if (item.prompt) {
-							return await runtime.useModel(ModelType.TEXT_LARGE, {
+							return runtime.useModel(ModelType.TEXT_LARGE, {
 								prompt: item.prompt,
 							});
 						}

@@ -186,7 +186,7 @@ export const planAction: Action = {
 		const subaction = readPlanSubaction(options);
 		try {
 			if (subaction === "create") {
-				return await handleCreate(callback);
+				return handleCreate(callback);
 			}
 			return notYetImplemented(subaction);
 		} catch (error) {

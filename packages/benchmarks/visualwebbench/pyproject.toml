@@ -29,6 +29,7 @@ dev = [
 ]
 hf = [
     "datasets>=2.0",
+    "Pillow>=10.0",
 ]
 all = [
     "elizaos-visualwebbench[dev,hf]",

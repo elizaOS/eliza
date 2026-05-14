@@ -16,7 +16,11 @@ from pathlib import Path
 from typing import Optional
 
 from elizaos_terminal_bench.dataset import TerminalBenchDataset
-from elizaos_terminal_bench.environment import LocalTerminalEnvironment, TerminalEnvironment
+from elizaos_terminal_bench.environment import (
+    LocalTerminalEnvironment,
+    TerminalEnvironment,
+    TmuxDockerEnvironment,
+)
 from elizaos_terminal_bench.evaluator import (
     TerminalBenchEvaluator,
     format_report_markdown,
@@ -273,29 +277,68 @@ class TerminalBenchRunner:
         return await self._run_with_bridge(task)
 
     def _create_environment(self, task: TerminalTask) -> TerminalEnvironment | LocalTerminalEnvironment:
-        environment_cls = LocalTerminalEnvironment if self.config.local_sandbox else TerminalEnvironment
+        backend = (self.config.execution_backend or "tmux").lower()
+        if self.config.local_sandbox or backend == "local":
+            environment_cls: type = LocalTerminalEnvironment
+        elif backend == "one_shot" or backend == "one-shot":
+            environment_cls = TerminalEnvironment
+        elif backend == "mock":
+            from elizaos_terminal_bench.environment import MockTerminalEnvironment
+            environment_cls = MockTerminalEnvironment
+        else:
+            # tmux is the default and faithful upstream path.
+            environment_cls = TmuxDockerEnvironment
         return environment_cls(
             image=task.docker_image,
             timeout_seconds=task.timeout_seconds,
             network_mode="bridge" if task.network_enabled else "none",
         )
 
-    async def _run_with_bridge(self, task: TerminalTask) -> TerminalBenchResult:
-        """Run task by routing decisions through the elizaOS TS benchmark bridge."""
-        from eliza_adapter.terminal_bench import ElizaBridgeTerminalAgent
+    def _build_agent_for_harness(self, env):
+        """Construct the per-turn decision agent for the configured harness.
 
-        env = self._create_environment(task)
+        Returns an object implementing ``solve_task(task) -> TerminalBenchResult``
+        and ``async cleanup()``. Each adapter is lazy-imported so a harness with
+        broken / missing deps does not prevent the others from running.
+        """
+        harness = (self.config.agent_harness or "eliza").lower()
+        if harness == "hermes":
+            from hermes_adapter.terminal_bench import build_terminal_bench_agent_fn
 
-        agent: Optional[ElizaBridgeTerminalAgent] = None
-        try:
-            await env.start(task)
-
-            agent = ElizaBridgeTerminalAgent(
+            return build_terminal_bench_agent_fn(
                 environment=env,
                 max_iterations=self.config.max_iterations,
                 model_name=self.config.model_name,
                 verbose=self.config.verbose,
             )
+        if harness == "openclaw":
+            from openclaw_adapter.terminal_bench import build_terminal_bench_agent_fn
+
+            return build_terminal_bench_agent_fn(
+                environment=env,
+                max_iterations=self.config.max_iterations,
+                model_name=self.config.model_name,
+                verbose=self.config.verbose,
+            )
+        # Default: elizaOS TS bridge.
+        from eliza_adapter.terminal_bench import ElizaBridgeTerminalAgent
+
+        return ElizaBridgeTerminalAgent(
+            environment=env,
+            max_iterations=self.config.max_iterations,
+            model_name=self.config.model_name,
+            verbose=self.config.verbose,
+        )
+
+    async def _run_with_bridge(self, task: TerminalTask) -> TerminalBenchResult:
+        """Run task by routing decisions through the configured agent harness."""
+        env = self._create_environment(task)
+
+        agent = None
+        try:
+            await env.start(task)
+
+            agent = self._build_agent_for_harness(env)
 
             result = await asyncio.wait_for(
                 agent.solve_task(task),

@@ -1,13 +1,6 @@
 // Node/runtime barrel for @elizaos/app-core.
 // Frontend surfaces live in @elizaos/ui; pure contracts/utilities live in @elizaos/shared.
 
-// Local inference handler registration moved to @elizaos/plugin-local-inference.
-// Re-export the public symbols so existing `import { ensureLocalInferenceHandler }
-// from "@elizaos/app-core"` callers keep resolving without code changes.
-export {
-  ensureLocalInferenceHandler,
-  shouldEnableMobileLocalInference,
-} from "@elizaos/plugin-local-inference/runtime";
 export * from "./account-pool";
 export * from "./api/auth";
 export * from "./api/automation-node-contributors";
@@ -50,6 +43,7 @@ export * from "./security/wallet-os-store-actions";
 export * from "./services/account-pool";
 export * from "./services/auth-store";
 export * from "./services/github-credentials";
+export * from "./services/inference-abort";
 export * from "./services/plugin-installer";
 export * from "./services/steward-credentials";
 export * from "./services/steward-sidecar/helpers";
@@ -60,6 +54,7 @@ export * from "./services/steward-sidecar/helpers";
 // dist/services/steward-sidecar/index.json fallback (the Docker production
 // smoke regression observed on PR #7528 / #7530).
 export * from "./services/steward-sidecar.ts";
+export * from "./services/task-host-capabilities";
 export * from "./services/vault-bootstrap";
 export * from "./services/vault-mirror";
 // UI-side compat surface (`selectLatestRunForApp`, `toneFor*`,

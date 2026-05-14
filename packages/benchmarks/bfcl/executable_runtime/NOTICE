@@ -1,0 +1,45 @@
+Berkeley Function-Calling Leaderboard — Vendored Sources
+========================================================
+
+The contents of this directory contain code and data adapted (and in some
+cases copied verbatim) from the upstream Berkeley Function-Calling
+Leaderboard (BFCL) project:
+
+    https://github.com/ShishirPatil/gorilla
+    Path: berkeley-function-call-leaderboard/bfcl_eval/
+
+Upstream is licensed under the Apache License, Version 2.0.
+See https://www.apache.org/licenses/LICENSE-2.0 for the full text.
+
+Vendored modules and their upstream sources:
+
+  * func_source_code/*.py
+      <- bfcl_eval/eval_checker/multi_turn_eval/func_source_code/*.py
+    Tool implementations (GorillaFileSystem, MathAPI, MessageAPI,
+    TwitterAPI, TicketAPI, TradingBot, TravelAPI, VehicleControlAPI,
+    WebSearchAPI, MemoryAPI_*).
+
+  * memory_prereq_conversation/*.json
+      <- bfcl_eval/data/memory_prereq_conversation/*.json
+    Pre-baked conversation states used by the memory category prerequisite
+    write-phase. Copied byte-for-byte.
+
+  * memory_utils.py
+      <- bfcl_eval/utils.py (memory-related helpers only) and
+         bfcl_eval/eval_checker/agentic_eval/agentic_checker.py
+    The subset of utils we need to drive the memory snapshot dance and
+    score agentic responses (substring match w/ punctuation normalization).
+
+  * _upstream_multi_turn_utils.py / _upstream_multi_turn_checker.py
+      <- bfcl_eval/eval_checker/multi_turn_eval/multi_turn_*.py
+    Kept as reference for the runtime/scoring logic we reimplemented in
+    runtime.py (per-test instance scope instead of module globals).
+
+Modifications from upstream:
+  * Package-relative imports
+    (``benchmarks.bfcl.executable_runtime.func_source_code...``).
+  * Network-gated classes raise ``RuntimeNetworkRequired`` instead of
+    failing opaquely when run without credentials.
+  * Per-test ``ExecutableRuntime`` ownership of tool instances.
+
+Apache-2.0 attribution is preserved on each vendored file.

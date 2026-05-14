@@ -146,9 +146,7 @@ function setupStorageProxy(): void {
       // Fire and forget on a later task. Some native bridge calls can stall
       // during early WebView startup; localStorage writes must stay sync-fast.
       setTimeout(() => {
-        Preferences.set({ key, value }).catch((err) => {
-          console.error(`[Storage Bridge] Failed to persist ${key}:`, err);
-        });
+        Preferences.set({ key, value }).catch(() => {});
       }, 0);
     }
   };
@@ -169,9 +167,7 @@ function setupStorageProxy(): void {
     if (SYNCED_KEYS.has(key)) {
       preferencesCache.delete(key);
       setTimeout(() => {
-        Preferences.remove({ key }).catch((err) => {
-          console.error(`[Storage Bridge] Failed to remove ${key}:`, err);
-        });
+        Preferences.remove({ key }).catch(() => {});
       }, 0);
     }
   };

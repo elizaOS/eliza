@@ -1,0 +1,1202 @@
+[
+  {
+    "id": 400,
+    "question": "Which defense mechanism does the restriction modification system represent in bacteria?",
+    "options": [
+      "A. Humoral immune system.",
+      "B. Cell-mediated immune system.",
+      "C. Complement system.",
+      "D. Restriction modification system."
+    ],
+    "answer": "D",
+    "is_few_shot": 0
+  },
+  {
+    "id": 401,
+    "question": "During which stages of the cell cycle does the nuclear DNA replicate?",
+    "options": [
+      "A. G1 phase only.",
+      "B. S phase only.",
+      "C. G2 phase only.",
+      "D. Both G1 and S phases."
+    ],
+    "answer": "D",
+    "is_few_shot": 0
+  },
+  {
+    "id": 402,
+    "question": "Which nucleotides serve as stop codons during protein translation in eukaryotes?",
+    "options": [
+      "A. Adenine, Cytosine, and Guanine.",
+      "B. Adenine, Thymine, and Uracil.",
+      "C. Uracil, Adenine, and Cytosine.",
+      "D. Uracil, Thymine, and Guanine."
+    ],
+    "answer": "C",
+    "is_few_shot": 0
+  },
+  {
+    "id": 403,
+    "question": "Which of the following is the correct chemical equation for the process of photosynthesis?",
+    "options": [
+      "A. 6CO2 + 6H2O + light energy -> C6H12O6 + 6O2",
+      "B. C6H12O6 + 6O2 + light energy -> 6CO2 + 6H2O",
+      "C. 6H2O + 6CO2 + light energy -> C6H12O6 + 6O2",
+      "D. C6H12O6 + 6O2 -> 6CO2 + 6H2O + light energy"
+    ],
+    "answer": "A",
+    "is_few_shot": 0
+  },
+  {
+    "id": 404,
+    "question": "Which organelle system in plant cells is responsible for transporting water, minerals, and sugars?",
+    "options": [
+      "A. Nuclear system.",
+      "B. Endoplasmic reticulum system.",
+      "C. Vascular system.",
+      "D. Golgi complex system."
+    ],
+    "answer": "C",
+    "is_few_shot": 0
+  },
+  {
+    "id": 405,
+    "question": "Which two birds have distinctively different beak shapes and are often confused?",
+    "options": [
+      "A. Flamingo and Pelican",
+      "B. Bald Eagle and Golden Eagle",
+      "C. Kiwi and Ostrich",
+      "D. Sparrow and Swan"
+    ],
+    "answer": "B",
+    "is_few_shot": 0
+  },
+  {
+    "id": 406,
+    "question": "Which organelles do muscle cells and gland cells use to produce energy for their specialized functions?",
+    "options": [
+      "A. Chloroplasts",
+      "B. Mitochondria",
+      "C. Nucleus",
+      "D. Ribosomes"
+    ],
+    "answer": "B",
+    "is_few_shot": 0
+  },
+  {
+    "id": 407,
+    "question": "Which study objective aimed to provide insights into the mechanical basis of invasive carcinomas during the early stages of metastasis?",
+    "options": [
+      "A. Identifying the molecular activities and cellular behaviours proposed to drive epithelial tube morphogenesis.",
+      "B. Determining the interfacial tensions associated with the identified molecular activities and cellular behaviours.",
+      "C. Predicting cell motility behaviour solely by force inference from cell geometry.",
+      "D. Confirming the sufficiency of the identified interfacial tensions to drive epithelial tube morphogenesis."
+    ],
+    "answer": "D",
+    "is_few_shot": 0
+  },
+  {
+    "id": 408,
+    "question": "Which protein is known for its role in regulating glucose metabolism in the human body?",
+    "options": [
+      "A. Hemoglobin",
+      "B. Insulin",
+      "C. Lactase",
+      "D. Pepsin"
+    ],
+    "answer": "B",
+    "is_few_shot": 0
+  },
+  {
+    "id": 409,
+    "question": "What are the main goals of systems biology research in the field of health and disease?",
+    "options": [
+      "A. Developing new ways to diagnose diseases by assessing molecular changes.",
+      "B. Creating 'road maps' of molecules critical for blood cell development to understand blood diseases.",
+      "C. Revealing the role of molecular interactions and cell communication in health and disease.",
+      "D. Developing innovative strategies to target key points in crucial networks for disease treatment."
+    ],
+    "answer": "A",
+    "is_few_shot": 0
+  },
+  {
+    "id": 410,
+    "question": "Which nucleic acid molecule contains all the instructions required to build and maintain cells in an organism?",
+    "options": [
+      "A. Ribonucleic acid (RNA)",
+      "B. Deoxyribonucleic acid (DNA)",
+      "C. Protein",
+      "D. Lipid"
+    ],
+    "answer": "B",
+    "is_few_shot": 0
+  },
+  {
+    "id": 411,
+    "question": "Which techniques does the researcher's program focus on for examining the function of protein interactions in cellular signaling pathways?",
+    "options": [
+      "A. Established structural and cell biological techniques for examining stable protein complexes.",
+      "B. In vitro reconstitution of transient multi-protein assemblies and in cell biochemical measurements.",
+      "C. Genetically encoded techniques for controlling protein interactions in vitro and in cells.",
+      "D. Examination of stable protein complexes using both structural and cell biological methods and in vitro reconstitution of transient multi-protein assemblies."
+    ],
+    "answer": "C",
+    "is_few_shot": 0
+  },
+  {
+    "id": 412,
+    "question": "Which research areas does Dr. Lewis's laboratory focus on to understand the role of chromatin in gene expression and cellular identity?",
+    "options": [
+      "A. Studying the role of mutations in the chromatin machinery in tumorigenesis and gene expression.",
+      "B. Investigating the role of histone variants, such as H3.3, in maintaining silenced regions of the genome and understanding their mechanisms.",
+      "C. Developing new computational models to predict the effects of chromatin modifications on gene expression.",
+      "D. Examining the role of non-coding RNAs in epigenetic regulation and chromatin structure."
+    ],
+    "answer": "A",
+    "is_few_shot": 0
+  },
+  {
+    "id": 413,
+    "question": "Which term refers to a structure in animals that produces reproductive cells (gametes) and secretes hormones that influence secondary sexual characteristics?",
+    "options": [
+      "A. Pelvic girdle",
+      "B. Gonads",
+      "C. Pectoral girdle",
+      "D. Thorn forest"
+    ],
+    "answer": "B",
+    "is_few_shot": 0
+  },
+  {
+    "id": 414,
+    "question": "What is the new role of chromatin that has been discovered in recent studies?",
+    "options": [
+      "A. It is a static structure that only receives signals and regulates gene expression.",
+      "B. It is a dynamic participant that transmits signals back to other proteins to effect changes in cellular responses.",
+      "C. It is responsible for the separation of chromosomes during cell division.",
+      "D. It is involved in the production of antibodies."
+    ],
+    "answer": "B",
+    "is_few_shot": 0
+  },
+  {
+    "id": 415,
+    "question": "Which animal phylum is known to be the sister group of 'true' animals (Eumetazoa) and is considered the ultimate outgroup for all comparative studies of animal development?",
+    "options": [
+      "A. Platyhelminthes",
+      "B. Porifera",
+      "C. Cnidaria",
+      "D. Annelida"
+    ],
+    "answer": "B",
+    "is_few_shot": 0
+  },
+  {
+    "id": 416,
+    "question": "Which amphibian is described in the text as having a long association with European witchcraft as 'familiars', is a culinary delicacy in France, has warty skin, and is native to Britain?",
+    "options": [
+      "A. Spadefoot Toad",
+      "B. Natterjack Toad",
+      "C. Common Frog",
+      "D. Yellow-bellied Toad"
+    ],
+    "answer": "B",
+    "is_few_shot": 0
+  },
+  {
+    "id": 417,
+    "question": "What are some common types of signals used in animal communication?",
+    "options": [
+      "A. Pheromones, auditory cues, visual cues, and tactile cues",
+      "B. Light, water, and electricity",
+      "C. Chemicals, sounds, colors, and touch",
+      "D. Magnetic fields, ultraviolet light, and infrasound"
+    ],
+    "answer": "C",
+    "is_few_shot": 0
+  },
+  {
+    "id": 418,
+    "question": "What is the focus of the Cell and Developmental Biology programme of the CRG in the field of developmental biology?",
+    "options": [
+      "A. Understanding the principles that govern the behavior of protein complexes within and across cells.",
+      "B. Describing the developmental genetic programmes that make an organism at the organismal and molecular genetic level.",
+      "C. Generating specific questions of cell biology within particular contexts and understanding cells in the context of a living organism.",
+      "D. Exploring the genetic make-up and developmental history of specific cells like the heart, the pancreas, or a lung."
+    ],
+    "answer": "C",
+    "is_few_shot": 0
+  },
+  {
+    "id": 419,
+    "question": "Which organs are part of the human endocrine system and release hormones directly into the blood or intercellular fluid?",
+    "options": [
+      "A. Heart and lungs",
+      "B. Liver and pancreas",
+      "C. Stomach and intestines",
+      "D. Hypothalamus, pituitary, thyroid, parathyroids, adrenals, pineal body, and the reproductive glands (ovaries and testes)"
+    ],
+    "answer": "D",
+    "is_few_shot": 0
+  },
+  {
+    "id": 420,
+    "question": "Which element must be present for a compound to be considered organic?",
+    "options": [
+      "A. Nitrogen",
+      "B. Carbon",
+      "C. Oxygen",
+      "D. Hydrogen"
+    ],
+    "answer": "B",
+    "is_few_shot": 0
+  },
+  {
+    "id": 421,
+    "question": "Which type of lipids are the main structural components of biological membranes, including the cellular plasma membrane and intracellular organelle membranes?",
+    "options": [
+      "A. Triglycerides",
+      "B. Sphingomyelin and sterols",
+      "C. Glycerophospholipids",
+      "D. Galactosyldiacylglycerols and sulfoquinovosyldiacylglycerol"
+    ],
+    "answer": "C",
+    "is_few_shot": 0
+  },
+  {
+    "id": 422,
+    "question": "Which of the following statements is true regarding viruses and their impact on organisms?",
+    "options": [
+      "A. Viruses are only harmful to their hosts and do not provide any benefits.",
+      "B. Viruses can cause chronic infections in their hosts, but these infections can sometimes be beneficial.",
+      "C. Antibiotics are effective against viruses.",
+      "D. All viruses cause an immune response in their hosts."
+    ],
+    "answer": "D",
+    "is_few_shot": 0
+  },
+  {
+    "id": 423,
+    "question": "Which protein complex is responsible for sorting ubiquitinated membrane proteins, such as activated growth factor receptors, to the lumen of the lysosome and plays a role in the abscission step of cytokinesis?",
+    "options": [
+      "A. ESCRT-I subcomplex",
+      "B. ESCRT-II subcomplex",
+      "C. ESCRT-III subcomplex",
+      "D. ESCRT-0 subcomplex"
+    ],
+    "answer": "D",
+    "is_few_shot": 0
+  },
+  {
+    "id": 424,
+    "question": "Which two distinct groups have recently been identified within the Kingdom Monera?",
+    "options": [
+      "A. Archaeplasms and Eukaryplasms",
+      "B. Archaebacteria and Eubacteria",
+      "C. Gram-positive and Gram-negative",
+      "D. Prokaryotes and Eukaryotes"
+    ],
+    "answer": "B",
+    "is_few_shot": 0
+  },
+  {
+    "id": 425,
+    "question": "Which enzyme is responsible for the digestion of proteins in the human stomach and what role does dilute hydrochloric acid play in this process?",
+    "options": [
+      "A. Trypsin, which makes the medium alkaline.",
+      "B. Lipase, which activates pepsin.",
+      "C. Pepsin, which requires a neutral medium to function.",
+      "D. Pancreatic enzymes, which emulsify fats."
+    ],
+    "answer": "C",
+    "is_few_shot": 0
+  },
+  {
+    "id": 426,
+    "question": "Which developmental pattern results in the formation of a solid disc, and what structure forms from the flat embryo during this stage?",
+    "options": [
+      "A. Telolecithal cleavage, archenteron formation.",
+      "B. Telolecithal cleavage, yolk sac development.",
+      "C. Meroblastic cleavage, archenteron formation.",
+      "D. Meroblastic cleavage, yolk sac development."
+    ],
+    "answer": "C",
+    "is_few_shot": 0
+  },
+  {
+    "id": 427,
+    "question": "What is the focus of the research mentioned in the text and what methods are used?",
+    "options": [
+      "A. Research on the development and function of large excitatory synapses in the ventral nucleus of the lateral lemniscus, using genetically modified mouse models and electrophysiological techniques.",
+      "B. Study of the Fragile X Syndrome and its effects on synaptic transmission, neural connectivity in the auditory brainstem, using a mouse model with a general knockdown of the FMR1 protein.",
+      "C. Investigation of the development and function of inhibitory neurons within the inferior colliculus of the auditory midbrain, using a transgenic mouse line that labels inhibitory neurons under the promoter of VGAT.",
+      "D. Research on the adaptation of the ascending auditory system of naked mole rats to their specialized environment, using electrophysiological techniques and analysis of sound propagation in their burrows."
+    ],
+    "answer": "A",
+    "is_few_shot": 0
+  },
+  {
+    "id": 428,
+    "question": "Which type of stem cells can differentiate into every cell type in the fully formed body?",
+    "options": [
+      "A. Induced pluripotent stem cells (iPSCs)",
+      "B. Embryonic stem cells",
+      "C. Tissue-specific stem cells (adult stem cells)",
+      "D. Mesenchymal stem cells (MSCs)"
+    ],
+    "answer": "B",
+    "is_few_shot": 0
+  },
+  {
+    "id": 429,
+    "question": "What role do glycans play in the interactions between pathogens and the host immune system?",
+    "options": [
+      "A. Glycans act as protective decoys for the host.",
+      "B. Glycans help promote female tolerance and fertilization.",
+      "C. Glycans are used by pathogens to recognize and attach to host tissues.",
+      "D. Glycans are targeted by the host using an array of innate immune system lectins."
+    ],
+    "answer": "C",
+    "is_few_shot": 0
+  },
+  {
+    "id": 430,
+    "question": "Which organelles play a role in transporting water, minerals, and sugars in plants?",
+    "options": [
+      "A. Mitochondria and chloroplasts",
+      "B. Nucleus and endoplasmic reticulum",
+      "C. Xylem and phloem",
+      "D. Plasma membrane and cell walls"
+    ],
+    "answer": "C",
+    "is_few_shot": 0
+  },
+  {
+    "id": 431,
+    "question": "Which statement describes a mechanism that results in increased frequency of homozygotes at specific gene loci in a population over time?",
+    "options": [
+      "A. Gradual evolution through small changes over a long time.",
+      "B. Rapid evolution due to sudden environmental changes.",
+      "C. Change in gene frequencies between populations of a species.",
+      "D. Selection for specific phenotypes in a population"
+    ],
+    "answer": "C",
+    "is_few_shot": 0
+  },
+  {
+    "id": 432,
+    "question": "Which type of bacteria can survive in extremely hot places like geysers in Yellowstone National Park?",
+    "options": [
+      "A. Eubacteria",
+      "B. Archaebacteria",
+      "C. Thermophiles",
+      "D. Halophiles"
+    ],
+    "answer": "C",
+    "is_few_shot": 0
+  },
+  {
+    "id": 433,
+    "question": "According to the text, what is the definition of a stressor and what are some examples of positive and negative stressors?",
+    "options": [
+      "A. A stressor is a substance or agent that can damage or kill an organism, and positive stressors include regular exercise and deadlines at work, while negative stressors include air pollution and financial difficulties.",
+      "B. A stressor is an external factor that triggers a stress response, and positive stressors include winning the lottery and getting married, while negative stressors include traffic and financial problems.",
+      "C. A stressor is a beneficial factor that promotes growth and development, and positive stressors include regular exercise and deadlines at work, while negative stressors include traffic and financial difficulties.",
+      "D. A stressor is a harmful substance or agent, and positive stressors include regular exercise and getting married, while negative stressors include traffic and financial difficulties."
+    ],
+    "answer": "B",
+    "is_few_shot": 0
+  },
+  {
+    "id": 434,
+    "question": "Which part of the immune system acts rapidly and nonspecifically against pathogens?",
+    "options": [
+      "A. Adaptive immune system.",
+      "B. Innate immune system.",
+      "C. Lymphatic system.",
+      "D. Mucous membranes."
+    ],
+    "answer": "B",
+    "is_few_shot": 0
+  },
+  {
+    "id": 435,
+    "question": "What percentage of the total water on Earth is fresh water, readily available for living organisms?",
+    "options": [
+      "A. 50%",
+      "B. 75%",
+      "C. 90%",
+      "D. 2%"
+    ],
+    "answer": "D",
+    "is_few_shot": 0
+  },
+  {
+    "id": 436,
+    "question": "Which of the following topics will be covered in the 'BIO401: Biochemistry' course related to the structure and function of biomolecules?",
+    "options": [
+      "A. The study of how different organisms acquire and maintain their unique characteristics.",
+      "B. An exploration of the physical and chemical barriers that protect the body from pathogens.",
+      "C. The investigation of the molecular components of life and their interactions.",
+      "D. The analysis of genetic information and its expression."
+    ],
+    "answer": "C",
+    "is_few_shot": 0
+  },
+  {
+    "id": 437,
+    "question": "Which family does the ORTHOMYXOVIRIDAE belong to?",
+    "options": [
+      "A. HERPESVIRIDAE",
+      "B. BUNYAVIRIDAE",
+      "C. FLAVIVIRIDAE",
+      "D. PARAMYXOVIRIDAE"
+    ],
+    "answer": "B",
+    "is_few_shot": 0
+  },
+  {
+    "id": 438,
+    "question": "Which method calculates phylogenetic trees based on distance between sequences and does not necessarily reflect evolutionary relationships?",
+    "options": [
+      "A. Cladistic methods",
+      "B. Neighbor Joining",
+      "C. Parsimony methods",
+      "D. Phenetic methods"
+    ],
+    "answer": "D",
+    "is_few_shot": 0
+  },
+  {
+    "id": 439,
+    "question": "Which doctrine of heredity proposed that the germ evolves to yield offspring similar to the parents?",
+    "options": [
+      "A. Doctrine of Epigenesis",
+      "B. Doctrine of Preformation",
+      "C. Theory of evolution",
+      "D. Modern synthesis"
+    ],
+    "answer": "B",
+    "is_few_shot": 0
+  },
+  {
+    "id": 440,
+    "question": "What are some key elements and processes involved in cellular regulation by tyrosine phosphorylation and how do protein tyrosine phosphatases (PTPs) play a role?",
+    "options": [
+      "A. Tyrosine phosphorylation is a mechanism involved in cellular regulation, and it is utilized in various physiological processes and pathological conditions. PTPs catalyze the reverse reaction of this process and are involved in cell adhesion and oncogenesis.",
+      "B. Tyrosine phosphorylation is the process by which cells regulate their metabolism. PTPs are involved in this process and play no role in oncogenesis.",
+      "C. Tyrosine phosphorylation is a mechanism utilized by bacteria and viruses to infect cells. PTPs are not involved in this process.",
+      "D. Tyrosine phosphorylation is the process by which cells communicate with each other, and PTPs play no role in this process."
+    ],
+    "answer": "A",
+    "is_few_shot": 0
+  },
+  {
+    "id": 441,
+    "question": "Which of the following statements is true about the physical differences between salamanders and lizards?",
+    "options": [
+      "A. Salamanders have dry, scaly skin like lizards.",
+      "B. Salamanders have larger eyes than most lizards.",
+      "C. Salamanders are born with lungs, while lizards are born with gills.",
+      "D. Salamanders have smooth, moist skin, while lizards have bumpy, moist skin."
+    ],
+    "answer": "D",
+    "is_few_shot": 0
+  },
+  {
+    "id": 442,
+    "question": "Which percentage of the nervous system is made up of neurons?",
+    "options": [
+      "A. 90%",
+      "B. 10%",
+      "C. 50%",
+      "D. 80%"
+    ],
+    "answer": "B",
+    "is_few_shot": 0
+  },
+  {
+    "id": 443,
+    "question": "According to the text, which cells have the potential to produce all kinds of specialized cells in the body?",
+    "options": [
+      "A. Totipotent cells.",
+      "B. Pluripotent cells.",
+      "C. Compact bone cells.",
+      "D. Spongy bone cells."
+    ],
+    "answer": "A",
+    "is_few_shot": 0
+  },
+  {
+    "id": 444,
+    "question": "Which part of the human ear is responsible for balance and is located inside the inner ear?",
+    "options": [
+      "A. Cochlea",
+      "B. Vestibular system",
+      "C. External ear",
+      "D. Middle ear"
+    ],
+    "answer": "B",
+    "is_few_shot": 0
+  },
+  {
+    "id": 445,
+    "question": "Which two health issues can chronic stress increase the risk of, according to the text?",
+    "options": [
+      "A. Diabetes and cancer.",
+      "B. Heart disease and depression.",
+      "C. Alzheimer's and Parkinson's.",
+      "D. Arthritis and asthma."
+    ],
+    "answer": "B",
+    "is_few_shot": 0
+  },
+  {
+    "id": 446,
+    "question": "Which hormones are used to treat breast cancer based on their ability to bind to specific hormone receptors?",
+    "options": [
+      "A. Insulin and thyroid hormones.",
+      "B. Estrogen and testosterone.",
+      "C. Growth hormone and gonadotropins.",
+      "D. HER2/neu and proliferation markers."
+    ],
+    "answer": "B",
+    "is_few_shot": 0
+  },
+  {
+    "id": 447,
+    "question": "Which nucleotide is incorporated into RNA in place of thymine when transcribing DNA into RNA?",
+    "options": [
+      "A. Adenine",
+      "B. Cytosine",
+      "C. Guanine",
+      "D. Uracil"
+    ],
+    "answer": "D",
+    "is_few_shot": 0
+  },
+  {
+    "id": 448,
+    "question": "Which biological molecules have been conserved over billions of years of evolution and play essential roles in defining biological structure and maintaining cellular function?",
+    "options": [
+      "A. Proteins and lipids.",
+      "B. DNA and RNA.",
+      "C. Enzymes and ribosomes.",
+      "D. Carbohydrates and water."
+    ],
+    "answer": "B",
+    "is_few_shot": 0
+  },
+  {
+    "id": 449,
+    "question": "What are the main differences between transcription in bacteria and eukaryotes?",
+    "options": [
+      "A. The mRNA is processed before translation in bacteria, but not in eukaryotes.",
+      "B. Transcription and translation occur in the nucleus in eukaryotes, but in the cytoplasm in bacteria.",
+      "C. The protein coding sequence of eukaryotic genes is interrupted by introns, but not in bacterial genes.",
+      "D. The mRNA is capped and has a poly A tail in eukaryotes, but not in bacteria."
+    ],
+    "answer": "C",
+    "is_few_shot": 0
+  },
+  {
+    "id": 450,
+    "question": "According to the text, which language does Nature use for communication among its organisms?",
+    "options": [
+      "A. Artificial and synthetic language.",
+      "B. The language of modern science.",
+      "C. The language of DNA.",
+      "D. The language of material wealth and worshiping customs."
+    ],
+    "answer": "C",
+    "is_few_shot": 0
+  },
+  {
+    "id": 451,
+    "question": "Which hormones promote cell expansion in plants?",
+    "options": [
+      "A. Auxin and gibberellic acid",
+      "B. Abscisic acid and cytokinin",
+      "C. Auxin and abscisic acid",
+      "D. Gibberellic acid and cytokinin"
+    ],
+    "answer": "A",
+    "is_few_shot": 0
+  },
+  {
+    "id": 452,
+    "question": "Which nucleobases form complementary pairs in the double helix structure of DNA?",
+    "options": [
+      "A. Adenine pairs with Thymine and Cytosine pairs with Guanine.",
+      "B. Adenine pairs with Guanine and Cytosine pairs with Thymine.",
+      "C. Adenine pairs with Cytosine and Thymine pairs with Guanine.",
+      "D. Adenine pairs with Uracil and Cytosine pairs with Thymine."
+    ],
+    "answer": "A",
+    "is_few_shot": 0
+  },
+  {
+    "id": 453,
+    "question": "Which type of proteins in eukaryotic cells contain covalently linked fatty acids or phospholipids and function in signal transduction processes across the plasma membrane?",
+    "options": [
+      "A. Small G proteins and Ras proteins.",
+      "B. GPI-anchored proteins.",
+      "C. Fatty acylated proteins.",
+      "D. Lipocalins."
+    ],
+    "answer": "A",
+    "is_few_shot": 0
+  },
+  {
+    "id": 454,
+    "question": "Which structures make up the nervous system?",
+    "options": [
+      "A. Liver and spleen",
+      "B. Muscles and bones",
+      "C. Brain, spinal cord, and nerves",
+      "D. Heart and lungs"
+    ],
+    "answer": "C",
+    "is_few_shot": 0
+  },
+  {
+    "id": 455,
+    "question": "Which kingdom does the Phanerogamae group of plants belong to?",
+    "options": [
+      "A. Monera",
+      "B. Protista",
+      "C. Fungi",
+      "D. Plantae, Animalia or Kingdoms"
+    ],
+    "answer": "D",
+    "is_few_shot": 0
+  },
+  {
+    "id": 456,
+    "question": "Which organelle in a neuron is responsible for protein synthesis and is located in the endoplasmic reticulum?",
+    "options": [
+      "A. Dendrites",
+      "B. Nucleolus",
+      "C. Cell body",
+      "D. Axon"
+    ],
+    "answer": "C",
+    "is_few_shot": 0
+  },
+  {
+    "id": 457,
+    "question": "Which research articles, as cited in the text, discuss investigations into plant adaptations to variable light environments using phylogenetic approaches and the genetic model Arabidopsis thaliana?",
+    "options": [
+      "A. Mathews, Clements, and Beilstein (2010)",
+      "B. Beilstein, Al-Shehbaz, Mathews, and Kellogg (2008)",
+      "C. Burleigh and Mathews (2007)",
+      "D. All of the above"
+    ],
+    "answer": "D",
+    "is_few_shot": 0
+  },
+  {
+    "id": 458,
+    "question": "According to the text, what percentage of the total caloric intake should come from complex carbohydrates and naturally occurring sugars, and from refined and processed sugars?",
+    "options": [
+      "A. 58 percent complex carbohydrates and naturally occurring sugars, 12 percent refined and processed sugars.",
+      "B. 48 percent complex carbohydrates and naturally occurring sugars, 40 percent refined and processed sugars.",
+      "C. 48 percent complex carbohydrates and naturally occurring sugars, 10 percent refined and processed sugars.",
+      "D. 10 percent complex carbohydrates and naturally occurring sugars, 48 percent refined and processed sugars."
+    ],
+    "answer": "C",
+    "is_few_shot": 0
+  },
+  {
+    "id": 459,
+    "question": "Based on the provided text, which of the following is an example of a learned behavior in animals?",
+    "options": [
+      "A. Pecking behavior in gulls.",
+      "B. Habituation to deer grazing on the side of a busy highway.",
+      "C. Imprinting behavior in chicks.",
+      "D. Fixed action patterns in gulls."
+    ],
+    "answer": "B",
+    "is_few_shot": 0
+  },
+  {
+    "id": 460,
+    "question": "Which study demonstrates the importance of the relative chromosomal positioning of genes and their regulatory elements in the evolution of phenotypes?",
+    "options": [
+      "A. Bagadia and Chandradoss et al. report on the loss of proximity between evolutionarily constrained non-coding elements and adjacent brain development genes in rat.",
+      "B. Dahl et al. explore the assumptions made by models used to estimate and correct for unmeasured confounders in functional genomic studies.",
+      "C. Everman et al. use several genome-wide screens to identify genetic positions that impact starvation in flies.",
+      "D. Fischer, Jonkers, and Glass use reporter constructs to define networks that regulate somatic cell fusion in the filamentous fungus Neurospora crassa."
+    ],
+    "answer": "A",
+    "is_few_shot": 0
+  },
+  {
+    "id": 461,
+    "question": "What forms the base of the food pyramid in most terrestrial and freshwater communities?",
+    "options": [
+      "A. Herbivores.",
+      "B. Carnivores.",
+      "C. Detritus and multicellular plants.",
+      "D. Sulfur-oxidizing bacteria."
+    ],
+    "answer": "C",
+    "is_few_shot": 0
+  },
+  {
+    "id": 462,
+    "question": "Which process results in the production of one molecule of ATP (or its equivalent) per turn of the citric acid cycle?",
+    "options": [
+      "A. Glycolysis.",
+      "B. Catabolism.",
+      "C. Anabolism.",
+      "D. Electron transport chain."
+    ],
+    "answer": "D",
+    "is_few_shot": 0
+  },
+  {
+    "id": 463,
+    "question": "Who were Watson and Crick and what discovery did they make regarding DNA?",
+    "options": [
+      "A. They were scientists who discovered the structure of RNA and earned the Nobel Prize for their work.",
+      "B. They were researchers who found that proteins are responsible for the structure and function of cells and earned the Nobel Prize for their discoveries.",
+      "C. They were chemists who determined the structure of DNA and earned the Nobel Prize for their discovery.",
+      "D. They were microbiologists who extracted DNA from different strains of bacteria and studied its properties."
+    ],
+    "answer": "C",
+    "is_few_shot": 0
+  },
+  {
+    "id": 464,
+    "question": "Which scientific fields study pattern formation and its underlying mechanisms?",
+    "options": [
+      "A. Mathematics and computer graphics only.",
+      "B. Biology, physics, and chemistry.",
+      "C. Mathematics and physics only.",
+      "D. Biology and computer graphics only."
+    ],
+    "answer": "B",
+    "is_few_shot": 0
+  },
+  {
+    "id": 465,
+    "question": "Which molecules provide the energy and reducing power for anabolic reactions in cells?",
+    "options": [
+      "A. Adenosine triphosphate (ATP) and pyridine nucleotides (NADH, NADPH).",
+      "B. Glucose and glycogen.",
+      "C. Carbon dioxide and water.",
+      "D. Proteins and lipids."
+    ],
+    "answer": "A",
+    "is_few_shot": 0
+  },
+  {
+    "id": 466,
+    "question": "Which gland produces melatonin and what is its primary function?",
+    "options": [
+      "A. Pituitary gland, primary function is controlling other endocrine glands.",
+      "B. Pineal gland, primary function is producing melatonin.",
+      "C. Thyroid gland, primary function is regulating body metabolism.",
+      "D. Adrenal gland, primary function is producing steroid hormones."
+    ],
+    "answer": "B",
+    "is_few_shot": 0
+  },
+  {
+    "id": 467,
+    "question": "Which TF families are specifically present in the green lineage of algae?",
+    "options": [
+      "A. NF-X1, S1Fa-like, SBP, VARL, Whirly, WRKY, GARP-ARR-B, C2C2-CO-like and C2C2-Dof.",
+      "B. CSD, AP2/ERF, TUB, ABI3/VP1, C2C2-LSD, Double B-box (DBB), and C2C2-GATA.",
+      "C. C3H type zinc finger, bZIP, SHAQKYF, and Nuclear Factor-Y (NF-Y).",
+      "D. HSF, AP2/ERF, C2H2 type zinc finger, and C2C2-GATA."
+    ],
+    "answer": "A",
+    "is_few_shot": 0
+  },
+  {
+    "id": 468,
+    "question": "Which characteristic of bacteria makes them different from eukaryotes in terms of their cell structure?",
+    "options": [
+      "A. Presence of a membrane-bound nucleus.",
+      "B. Absence of a membrane-bound nucleus and complex organelles.",
+      "C. Presence of a peptidoglycan cell wall.",
+      "D. Presence of multiple, linear chromosomes."
+    ],
+    "answer": "B",
+    "is_few_shot": 0
+  },
+  {
+    "id": 469,
+    "question": "What are mitochondria and where are they located in the cell?",
+    "options": [
+      "A. Vacuoles that store water and other solutes.",
+      "B. Membrane-bounded organelles responsible for protein synthesis.",
+      "C. Membrane-bounded organelles that generate ATP through cellular respiration.",
+      "D. Nucleic acids that carry genetic information."
+    ],
+    "answer": "C",
+    "is_few_shot": 0
+  },
+  {
+    "id": 470,
+    "question": "According to the text, what percentage of stress management training time should be spent on sharing scientific frameworks and what percentage on application?",
+    "options": [
+      "A. 80% on scientific frameworks, 20% on application.",
+      "B. 20% on scientific frameworks, 80% on application.",
+      "C. 50% on scientific frameworks, 50% on application.",
+      "D. 10% on scientific frameworks, 90% on application."
+    ],
+    "answer": "B",
+    "is_few_shot": 0
+  },
+  {
+    "id": 471,
+    "question": "Which immune responses help prevent the malaria parasite from infecting new erythrocytes and remove infected ones?",
+    "options": [
+      "A. Humoral responses only",
+      "B. Cell-mediated responses only",
+      "C. Both humoral and cell-mediated responses",
+      "D. Innate immune responses only"
+    ],
+    "answer": "C",
+    "is_few_shot": 0
+  },
+  {
+    "id": 472,
+    "question": "What are the main research areas of the study mentioned in the text?",
+    "options": [
+      "A. Studying gene expression through the life cycle and experimental evolution of budding yeast, maintaining metabolic homeostasis, and displaying genome-scale biological information.",
+      "B. Analyzing and interpreting huge volumes of genomic data, studying gene expression and underlying genomic rearrangements, and developing methods for storing and searching genome-wide data.",
+      "C. Investigating genome-wide gene expression and underlying genomic changes, defining interactions of metabolic regulatory networks, and realizing the value of genome-scale data acquisition methods.",
+      "D. Establishing a microarray database and integrating functions, parsing genetic data, and interpreting and displaying new genome-wide data."
+    ],
+    "answer": "A",
+    "is_few_shot": 0
+  },
+  {
+    "id": 473,
+    "question": "Which two methods does a honey bee use to communicate the location of a food source to other bees in the colony?",
+    "options": [
+      "A. Releasing distinct smells called pheromones and performing a specific dance.",
+      "B. Emitting sounds and vibrations through its wings.",
+      "C. Using color patterns on its body to convey information.",
+      "D. Communicating through intricate body movements and facial expressions."
+    ],
+    "answer": "A",
+    "is_few_shot": 0
+  },
+  {
+    "id": 474,
+    "question": "What environmental threats do amphibians face that put them at serious risk?",
+    "options": [
+      "A. Temperature changes and UV radiation only.",
+      "B. Loss of habitat and fragmentation of populations.",
+      "C. Exposure to chemicals and pollutants.",
+      "D. Diseases and invasive species only."
+    ],
+    "answer": "C",
+    "is_few_shot": 0
+  },
+  {
+    "id": 475,
+    "question": "Which of the following is a cofactor involved in the light-dependent reactions of photosynthesis?",
+    "options": [
+      "A. NADPH",
+      "B. ATP",
+      "C. Nicotinamide adenine dinucleotide (NAD+)",
+      "D. Nicotinamide adenine dinucleotide phosphate (NADP+)"
+    ],
+    "answer": "D",
+    "is_few_shot": 0
+  },
+  {
+    "id": 476,
+    "question": "Which process makes a memory more recallable in the future when it is accessed for retrieval?",
+    "options": [
+      "A. Encoding",
+      "B. Storage",
+      "C. Retrieval",
+      "D. Interference"
+    ],
+    "answer": "C",
+    "is_few_shot": 0
+  },
+  {
+    "id": 477,
+    "question": "What discovery regarding archaeal and eukaryotic chromatin structure was made by the team of researchers, and how did Santangelo's team contribute to the confirmation of this finding?",
+    "options": [
+      "A. The researchers found that archaeal and eukaryotic chromatin structures are identical.",
+      "B. The researchers discovered that archaeal chromatin is composed of nucleosomes, but its structure is different from eukaryotic chromatin.",
+      "C. Santangelo's team found that disrupting the archaeal DNA superhelix caused cell sickness, confirming the structure determined by Luger's group.",
+      "D. The team determined that archaeal chromatin structures are not related to eukaryotic chromatin."
+    ],
+    "answer": "C",
+    "is_few_shot": 0
+  },
+  {
+    "id": 478,
+    "question": "How does the energy required for life on Earth primarily originate?",
+    "options": [
+      "A. Through the process of cellular respiration.",
+      "B. From the oxidation of minerals in the absence of sunlight.",
+      "C. By consuming other organisms.",
+      "D. Primarily from the sun through photosynthesis."
+    ],
+    "answer": "D",
+    "is_few_shot": 0
+  },
+  {
+    "id": 479,
+    "question": "Which part of the biogeochemical cycles refers to the non-living or abiotic phases?",
+    "options": [
+      "A. Biological phase.",
+      "B. Geological phase.",
+      "C. Chemical phase.",
+      "D. Atmospheric phase."
+    ],
+    "answer": "B",
+    "is_few_shot": 0
+  },
+  {
+    "id": 480,
+    "question": "Which type of radiation interacts directly with the critical target in the cell and causes damage through Coulomb interactions?",
+    "options": [
+      "A. X rays and g rays",
+      "B. Energetic neutrons, protons and heavy charged particles",
+      "C. Low LET electrons",
+      "D. High LET electrons"
+    ],
+    "answer": "B",
+    "is_few_shot": 0
+  },
+  {
+    "id": 481,
+    "question": "Which protein is involved in the first checkpoint of the cell cycle, preventing the cell from entering the cycle unless DNA is intact?",
+    "options": [
+      "A. p53.",
+      "B. Rb protein.",
+      "C. Cyclins.",
+      "D. Cdk."
+    ],
+    "answer": "B",
+    "is_few_shot": 0
+  },
+  {
+    "id": 482,
+    "question": "Which type of bacteria have the ability to form spores and survive in harsh environments?",
+    "options": [
+      "A. Gram-positive bacteria.",
+      "B. Anaerobic bacteria.",
+      "C. Flagellated bacteria.",
+      "D. Spirilla bacteria."
+    ],
+    "answer": "A",
+    "is_few_shot": 0
+  },
+  {
+    "id": 483,
+    "question": "Which researchers played a key role in the discovery of genes that control the cell cycle in yeast and identified the role of CDK and cyclins?",
+    "options": [
+      "A. Leland Hartwell and Paul Nurse",
+      "B. Leland Hartwell and Timothy Hunt",
+      "C. Paul Nurse and Timothy Hunt",
+      "D. Leland Hartwell, Paul Nurse, and Timothy Hunt"
+    ],
+    "answer": "A",
+    "is_few_shot": 0
+  },
+  {
+    "id": 484,
+    "question": "Which eukaryotic cell-cycle event is missing in binary fission?",
+    "options": [
+      "A. Mitosis",
+      "B. Meiosis",
+      "C. Cytoplasmic separation",
+      "D. Formation of the mitotic spindle"
+    ],
+    "answer": "D",
+    "is_few_shot": 0
+  },
+  {
+    "id": 485,
+    "question": "Which events occur during the fertilization process that enable the sperm nucleus to transfer into the ovum and form a diploid nucleus?",
+    "options": [
+      "A. The zona pellucida forms around the egg and the acrosome reactions take place, allowing the sperm plasma membrane to fuse with the egg plasma membrane.",
+      "B. The inner cell mass and outer layer (trophoblast) form within the blastula, and the cells arrange themselves to form the three germ layers.",
+      "C. The blastula undergoes gastrulation, which involves the blastula folding in on itself and cells migrating to form the three germ layers.",
+      "D. The nuclear membranes of the egg and sperm break down, and the two haploid nuclei fuse to form a diploid nucleus."
+    ],
+    "answer": "D",
+    "is_few_shot": 0
+  },
+  {
+    "id": 486,
+    "question": "Which of the following terms matches the description: 'a process used by plants and other autotrophs to capture light and energy and use it to power chemical reactions that convert carbon dioxide and water into oxygen and energy-rich carbohydrates, such as sugars and starches'?",
+    "options": [
+      "A. Nucleus.",
+      "B. Glycolysis.",
+      "C. Photosynthesis.",
+      "D. Electron microscope."
+    ],
+    "answer": "C",
+    "is_few_shot": 0
+  },
+  {
+    "id": 487,
+    "question": "Which approach in artificial photosynthesis aims to achieve higher energy efficiencies compared to the biological approach?",
+    "options": [
+      "A. Homogeneous catalysis approach",
+      "B. Heterogeneous catalysis approach",
+      "C. Genetically modified cyanobacteria/algae approach",
+      "D. Artificial leaf approach"
+    ],
+    "answer": "B",
+    "is_few_shot": 0
+  },
+  {
+    "id": 488,
+    "question": "Which protein is Professor Becker and his team focusing on to develop a faster and potentially more reliable way to measure receptor/signal interactions?",
+    "options": [
+      "A. G protein-coupled receptors.",
+      "B. Membrane transport proteins.",
+      "C. Peptides and their receptors.",
+      "D. Amino acid synthesis enzymes."
+    ],
+    "answer": "A",
+    "is_few_shot": 0
+  },
+  {
+    "id": 489,
+    "question": "Based on the provided text, which histone modifications are most static and can be used for functional annotation of genomic elements?",
+    "options": [
+      "A. H3K4me1 and H3K27me3 modifications.",
+      "B. H3K4me1, H3K4me2, and H3K27ac modifications.",
+      "C. H3K4me1, H3K4me2, H3K36me3, and H3K36me3 modifications.",
+      "D. H3K27me3, H3K4me1, and H3K4me2 modifications."
+    ],
+    "answer": "A",
+    "is_few_shot": 0
+  },
+  {
+    "id": 490,
+    "question": "What shape does the DNA molecule have, according to the text?",
+    "options": [
+      "A. It is a long, thin string.",
+      "B. It is a ladder-like structure.",
+      "C. It is a spiral shape.",
+      "D. It is found at the bottom of a tRNA molecule."
+    ],
+    "answer": "B",
+    "is_few_shot": 0
+  },
+  {
+    "id": 491,
+    "question": "Which research group is conducting investigations into the organization of bio-molecules and sub-cellular units in cellular systems, focusing on biomedical applications and medical diagnostics?",
+    "options": [
+      "A. The 'Molecular Biology' research group",
+      "B. The 'Nano-Science' research group",
+      "C. The 'Experimental Biophysics' research group",
+      "D. The 'Theoretical Chemistry' research group"
+    ],
+    "answer": "C",
+    "is_few_shot": 0
+  },
+  {
+    "id": 492,
+    "question": "Based on the text, what are homologous structures and how are they different from analogous structures in the context of comparative anatomy?",
+    "options": [
+      "A. Homologous structures are structures that perform the same function in different organisms, while analogous structures are structures that have similar shapes but evolved independently.",
+      "B. Homologous structures are structures that have similar shapes and evolved independently, while analogous structures are structures that perform the same function in different organisms.",
+      "C. Homologous structures are structures that are present only in humans, while analogous structures are structures that are present in multiple species.",
+      "D. Homologous structures are structures that are present in multiple species and descended from a common ancestor, while analogous structures are structures that are present in humans only."
+    ],
+    "answer": "A",
+    "is_few_shot": 0
+  },
+  {
+    "id": 493,
+    "question": "According to the text, how is positional information generated during biological pattern formation?",
+    "options": [
+      "A. Through a process of mutual interaction between replicating molecule species.",
+      "B. By the spatial differentiation of cells.",
+      "C. Randomly during the evolutionary process.",
+      "D. Through the presence of a membrane that partly separates the cell from the outside."
+    ],
+    "answer": "B",
+    "is_few_shot": 0
+  },
+  {
+    "id": 494,
+    "question": "What is the primary focus of the researchers' investigation in understanding cell-to-cell variability?",
+    "options": [
+      "A. Quantifying cellular responses to various molecular perturbations.",
+      "B. Discovering mechanisms through which tissue cells sense their 'personal space'",
+      "C. Creating heterogeneous social contexts to adapt phenotypic behavior.",
+      "D. Applying knowledge obtained from studies of cell-to-cell variability to inter-individual heterogeneity in cellular populations."
+    ],
+    "answer": "B",
+    "is_few_shot": 0
+  },
+  {
+    "id": 495,
+    "question": "Which research topics does the lab focus on in the field of evolutionary biology?",
+    "options": [
+      "A. Studying the evolution of the brain and neural diversity across species.",
+      "B. Investigating the evolution of the skeletal system and its form-function relationships.",
+      "C. Developing new methods for inferring ancestral states and evolutionary patterns.",
+      "D. All of the above."
+    ],
+    "answer": "D",
+    "is_few_shot": 0
+  },
+  {
+    "id": 496,
+    "question": "Which representation of chemical reactions allows for comparisons between reactions and the generation of global classifications?",
+    "options": [
+      "A. A representation based on functional groups and imposing the functional groups considered important.",
+      "B. A representation using heterogeneous vectors with components representing different things and in different scales.",
+      "C. A vectorial representation of chemical reactions that disregards stereochemistry but is general enough to represent and study whole reactomes.",
+      "D. A representation that takes into account all chemical transformations, including stereochemistry, and allows for global classifications of reactions."
+    ],
+    "answer": "C",
+    "is_few_shot": 0
+  },
+  {
+    "id": 497,
+    "question": "Which immunoglobulin subclass has the longest cytoplasmic tail?",
+    "options": [
+      "A. IgG1",
+      "B. IgG2",
+      "C. IgG3",
+      "D. IgG4"
+    ],
+    "answer": "A",
+    "is_few_shot": 0
+  },
+  {
+    "id": 498,
+    "question": "What are the three main types of tissue produced by meristems in plants?",
+    "options": [
+      "A. Dermal, xylem, and phloem.",
+      "B. Meristematic, permanent, and ground.",
+      "C. Xylem, phloem, and ground.",
+      "D. Apical, lateral, and intercalary."
+    ],
+    "answer": "C",
+    "is_few_shot": 0
+  },
+  {
+    "id": 499,
+    "question": "Which characteristics distinguish newts and salamanders from frogs and toads?",
+    "options": [
+      "A. Longer hindquarters and no tail.",
+      "B. Four equal legs and a long tail.",
+      "C. Bare skin and the ability to breathe through lungs and skin.",
+      "D. Taking care of their babies after they hatch."
+    ],
+    "answer": "B",
+    "is_few_shot": 0
+  }
+]

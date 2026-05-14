@@ -175,32 +175,32 @@ export async function handleAuthSessionRoutes(
 
   // POST /api/auth/setup — first-run owner identity creation
   if (method === "POST" && url.pathname === "/api/auth/setup") {
-    return await handleSetup(req, res, store, { ip, userAgent });
+    return handleSetup(req, res, store, { ip, userAgent });
   }
 
   // POST /api/auth/login/password
   if (method === "POST" && url.pathname === "/api/auth/login/password") {
-    return await handleLoginPassword(req, res, store, { ip, userAgent });
+    return handleLoginPassword(req, res, store, { ip, userAgent });
   }
 
   // POST /api/auth/password/change
   if (method === "POST" && url.pathname === "/api/auth/password/change") {
-    return await handleChangePassword(req, res, store, { ip, userAgent });
+    return handleChangePassword(req, res, store, { ip, userAgent });
   }
 
   // POST /api/auth/logout
   if (method === "POST" && url.pathname === "/api/auth/logout") {
-    return await handleLogout(req, res, store, { ip, userAgent });
+    return handleLogout(req, res, store, { ip, userAgent });
   }
 
   // GET /api/auth/me
   if (method === "GET" && url.pathname === "/api/auth/me") {
-    return await handleMe(req, res, store);
+    return handleMe(req, res, store);
   }
 
   // GET /api/auth/sessions
   if (method === "GET" && url.pathname === "/api/auth/sessions") {
-    return await handleListSessions(req, res, store);
+    return handleListSessions(req, res, store);
   }
 
   // POST /api/auth/sessions/:id/revoke
@@ -209,7 +209,7 @@ export async function handleAuthSessionRoutes(
       ? /^\/api\/auth\/sessions\/([^/]+)\/revoke$/.exec(url.pathname)
       : null;
   if (revokeMatch) {
-    return await handleRevoke(req, res, store, revokeMatch[1], {
+    return handleRevoke(req, res, store, revokeMatch[1], {
       ip,
       userAgent,
     });

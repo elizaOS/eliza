@@ -28,20 +28,51 @@ logger = logging.getLogger(__name__)
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="VisualWebBench benchmark for ElizaOS")
-    parser.add_argument("--fixture", action="store_true", help="Use local JSONL fixture")
-    parser.add_argument("--fixture-path", type=str, default=None, help="Path to local JSONL fixture")
-    parser.add_argument("--hf", action="store_true", help="Stream from Hugging Face")
+    # Source ------------------------------------------------------------------
+    parser.add_argument(
+        "--use-sample-tasks",
+        action="store_true",
+        help=(
+            "Use the bundled labeled JSONL helper (one row per subtask, no images). "
+            "Offline-CI only — scores are not comparable to upstream."
+        ),
+    )
+    parser.add_argument("--fixture-path", type=str, default=None)
     parser.add_argument("--hf-repo", type=str, default="visualwebbench/VisualWebBench")
     parser.add_argument("--split", type=str, default="test")
+    parser.add_argument(
+        "--image-cache-dir",
+        type=str,
+        default=None,
+        help="Where to materialise HF screenshots as PNG (default: ~/.cache/elizaos/visualwebbench/images).",
+    )
+    parser.add_argument(
+        "--no-image-cache",
+        dest="cache_images_to_disk",
+        action="store_false",
+        default=True,
+        help="Keep image bytes in memory instead of caching to disk.",
+    )
+
+    # Tasks -------------------------------------------------------------------
     parser.add_argument(
         "--task-types",
         type=str,
         default=",".join(t.value for t in VISUALWEBBENCH_TASK_TYPES),
-        help="Comma-separated task config names",
     )
     parser.add_argument("--max-tasks", type=int, default=None)
     parser.add_argument("--output", type=str, default=None)
-    parser.add_argument("--dry-run", action="store_true", default=False)
+
+    # Agent -------------------------------------------------------------------
+    parser.add_argument(
+        "--mock",
+        action="store_true",
+        help=(
+            "Run the offline oracle agent that reads task.answer directly. "
+            "Use ONLY for smoke tests and CI — guarantees 100% score, so it is "
+            "never appropriate for real measurements."
+        ),
+    )
     parser.add_argument(
         "--provider",
         type=str,
@@ -54,61 +85,46 @@ def parse_args() -> argparse.Namespace:
             "eliza-browser-app",
             "app-harness",
         ],
-        default=None,
-        help="Use an Eliza integration mode: benchmark API bridge or browser app harness",
+        default="eliza",
+        help="Eliza integration mode (ignored when --mock is set).",
     )
     parser.add_argument("--model", type=str, default=None)
     parser.add_argument("--temperature", type=float, default=0.0)
     parser.add_argument("--timeout", type=int, default=120000)
     parser.add_argument("--bbox-iou-threshold", type=float, default=0.5)
-    parser.add_argument(
-        "--app-harness-script",
-        type=str,
-        default=None,
-        help="Path to scripts/eliza-browser-app-harness.mjs",
-    )
-    parser.add_argument(
-        "--app-harness-runtime",
-        type=str,
-        default="bun",
-        help="Runtime used to invoke the app harness script",
-    )
+
+    # App harness passthrough (unchanged) ------------------------------------
+    parser.add_argument("--app-harness-script", type=str, default=None)
+    parser.add_argument("--app-harness-runtime", type=str, default="bun")
     parser.add_argument(
         "--app-harness-no-launch",
         dest="app_harness_no_launch",
         action="store_true",
         default=True,
-        help="Pass --no-launch to the app harness and attach to an existing Eliza stack",
     )
     parser.add_argument(
         "--app-harness-launch",
         dest="app_harness_no_launch",
         action="store_false",
-        help="Allow the app harness to launch the Eliza desktop stack",
     )
     parser.add_argument(
         "--app-harness-prompt-via-ui",
         dest="app_harness_prompt_via_ui",
         action="store_true",
         default=True,
-        help="Type the task into the Eliza app chat UI with Puppeteer",
     )
     parser.add_argument(
         "--app-harness-prompt-via-api",
         dest="app_harness_prompt_via_ui",
         action="store_false",
-        help="Send the task through the harness conversation API fallback",
     )
-    parser.add_argument(
-        "--app-harness-dry-run",
-        action="store_true",
-        help="Ask the harness to write a run plan without launching, prompting, or polling",
-    )
+    parser.add_argument("--app-harness-dry-run", action="store_true")
     parser.add_argument("--app-harness-api-base", type=str, default=None)
     parser.add_argument("--app-harness-ui-url", type=str, default=None)
     parser.add_argument("--app-harness-poll-interval", type=int, default=None)
+
     parser.add_argument("--no-traces", action="store_true")
-    parser.add_argument("--json", action="store_true", help="Print aggregate JSON")
+    parser.add_argument("--json", action="store_true")
     parser.add_argument("--verbose", action="store_true")
     return parser.parse_args()
 
@@ -121,9 +137,7 @@ def create_config(args: argparse.Namespace) -> VisualWebBenchConfig:
         output_dir = f"./benchmark_results/visualwebbench/{ts}"
 
     task_types = _parse_task_types(args.task_types)
-    use_hf = bool(args.hf)
-    use_fixture = bool(args.fixture or not use_hf)
-    dry_run = bool(args.dry_run or not args.provider)
+    use_sample = bool(args.use_sample_tasks)
 
     return VisualWebBenchConfig(
         output_dir=output_dir,
@@ -132,9 +146,11 @@ def create_config(args: argparse.Namespace) -> VisualWebBenchConfig:
         split=args.split,
         task_types=task_types,
         max_tasks=args.max_tasks,
-        dry_run=dry_run,
-        use_huggingface=use_hf,
-        use_fixture=use_fixture,
+        mock=bool(args.mock),
+        use_huggingface=not use_sample,
+        use_sample_tasks=use_sample,
+        cache_images_to_disk=bool(args.cache_images_to_disk),
+        image_cache_dir=Path(args.image_cache_dir).resolve() if args.image_cache_dir else None,
         provider=args.provider,
         model=args.model,
         temperature=args.temperature,
@@ -161,9 +177,7 @@ async def run(config: VisualWebBenchConfig) -> dict[str, object]:
     return {
         "total_tasks": report.total_tasks,
         "overall_accuracy": report.overall_accuracy,
-        "exact_accuracy": report.exact_accuracy,
-        "choice_accuracy": report.choice_accuracy,
-        "bbox_accuracy": report.bbox_accuracy,
+        "by_task_type": report.by_task_type,
         "average_latency_ms": report.average_latency_ms,
         "summary": report.summary,
         "output_dir": config.output_dir,
@@ -178,7 +192,7 @@ def main() -> int:
     server_mgr = None
     provider = (config.provider or "").strip().lower()
     needs_eliza_bridge = (
-        not config.dry_run
+        not config.mock
         and provider in {"eliza", "eliza-bridge", "eliza-ts"}
         and os.environ.get("BENCHMARK_HARNESS", "").strip().lower()
         not in {"hermes", "openclaw"}
@@ -214,10 +228,12 @@ def main() -> int:
         print("VisualWebBench Results")
         print("=" * 60)
         print(f"Tasks: {results['total_tasks']}")
-        print(f"Overall Accuracy: {float(results['overall_accuracy']) * 100:.1f}%")
-        print(f"Exact Accuracy: {float(results['exact_accuracy']) * 100:.1f}%")
-        print(f"Choice Accuracy: {float(results['choice_accuracy']) * 100:.1f}%")
-        print(f"BBox Accuracy: {float(results['bbox_accuracy']) * 100:.1f}%")
+        print(f"Overall Score: {float(results['overall_accuracy']) * 100:.1f}")
+        summary = results.get("summary", {}) or {}
+        if isinstance(summary, dict):
+            print(f"ROUGE mean: {float(summary.get('rouge_score', 0)) * 100:.1f}")
+            print(f"F1 (webqa): {float(summary.get('f1_score', 0)) * 100:.1f}")
+            print(f"Choice accuracy: {float(summary.get('choice_accuracy', 0)) * 100:.1f}")
         print(f"Results saved to: {config.output_dir}")
         print("=" * 60)
     return 0

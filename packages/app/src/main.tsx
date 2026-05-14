@@ -1725,7 +1725,8 @@ async function initializeMobileAgentTunnel(): Promise<void> {
   if (!isNative || (!isIOS && !isAndroid)) return;
   if (runtimeConfig.mode !== "tunnel-to-mobile") return;
   if (mobileAgentTunnelStartPromise) return;
-  if (!runtimeConfig.tunnelRelayUrl) {
+  const relayUrl = runtimeConfig.tunnelRelayUrl;
+  if (!relayUrl) {
     console.warn(
       `${APP_LOG_PREFIX} tunnel-to-mobile mode requires VITE_ELIZA_TUNNEL_RELAY_URL`,
     );
@@ -1752,7 +1753,7 @@ async function initializeMobileAgentTunnel(): Promise<void> {
       }
 
       const status = await MobileAgentBridge.startInboundTunnel({
-        relayUrl: runtimeConfig.tunnelRelayUrl,
+        relayUrl,
         deviceId,
         ...(runtimeConfig.tunnelPairingToken
           ? { pairingToken: runtimeConfig.tunnelPairingToken }

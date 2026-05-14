@@ -41,7 +41,7 @@
  */
 
 import { spawn } from "node:child_process";
-import { existsSync, mkdtempSync, promises as fs } from "node:fs";
+import { existsSync, promises as fs, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ImageGenBackendUnavailableError } from "./errors";
@@ -56,19 +56,17 @@ import type {
  * Optional test seam. Production code uses Node's `child_process.spawn`;
  * tests inject a fake to drive deterministic outputs without forking.
  */
-export interface SdCppSpawnLike {
-	(
-		command: string,
-		args: readonly string[],
-		options?: { signal?: AbortSignal; cwd?: string },
-	): {
-		stdout: AsyncIterable<Buffer> | NodeJS.ReadableStream | null;
-		stderr: AsyncIterable<Buffer> | NodeJS.ReadableStream | null;
-		on(event: "exit", listener: (code: number | null) => void): unknown;
-		on(event: "error", listener: (err: Error) => void): unknown;
-		kill?(signal?: NodeJS.Signals): void;
-	};
-}
+export type SdCppSpawnLike = (
+	command: string,
+	args: readonly string[],
+	options?: { signal?: AbortSignal; cwd?: string },
+) => {
+	stdout: AsyncIterable<Buffer> | NodeJS.ReadableStream | null;
+	stderr: AsyncIterable<Buffer> | NodeJS.ReadableStream | null;
+	on(event: "exit", listener: (code: number | null) => void): unknown;
+	on(event: "error", listener: (err: Error) => void): unknown;
+	kill?(signal?: NodeJS.Signals): void;
+};
 
 export interface SdCppBackendOptions {
 	loadArgs: ImageGenLoadArgs;
@@ -150,7 +148,7 @@ export async function loadSdCppImageGenBackend(
 					"[imagegen/sd-cpp] generate called after dispose()",
 				);
 			}
-			if (!req.prompt || !req.prompt.trim()) {
+			if (!req.prompt?.trim()) {
 				throw new ImageGenBackendUnavailableError(
 					"sd-cpp",
 					"unsupported_request",
@@ -158,9 +156,7 @@ export async function loadSdCppImageGenBackend(
 				);
 			}
 			const seed =
-				typeof req.seed === "number" && req.seed >= 0
-					? req.seed
-					: pickSeed();
+				typeof req.seed === "number" && req.seed >= 0 ? req.seed : pickSeed();
 			const width = req.width ?? 512;
 			const height = req.height ?? 512;
 			const steps = req.steps ?? 20;
@@ -173,7 +169,8 @@ export async function loadSdCppImageGenBackend(
 				// stub is what `__tests__/imagegen-handler.test.ts` uses.
 				await fs.writeFile(outputPath, opts.fakeImageBytes);
 				const elapsed = Math.max(1, now() - startMs);
-				if (req.onProgressChunk) req.onProgressChunk({ step: steps, total: steps });
+				if (req.onProgressChunk)
+					req.onProgressChunk({ step: steps, total: steps });
 				return {
 					image: opts.fakeImageBytes,
 					mime: "image/png",
@@ -243,7 +240,7 @@ export async function loadSdCppImageGenBackend(
 function resolveBinaryPath(override?: string): string {
 	if (override) return override;
 	const envBin = process.env.SD_CPP_BIN;
-	if (envBin && envBin.trim()) return envBin.trim();
+	if (envBin?.trim()) return envBin.trim();
 	return DEFAULT_BIN;
 }
 
@@ -308,10 +305,16 @@ async function runSdCpp(
 		// denoise iteration. Tail the stream and forward as progress chunks
 		// when the caller asked for them. Tolerate non-stream stderr (the
 		// test spawn may pass null) — progress is best-effort.
-		if (opts.onProgressChunk && stderr && typeof (stderr as NodeJS.ReadableStream).on === "function") {
+		if (
+			opts.onProgressChunk &&
+			stderr &&
+			typeof (stderr as NodeJS.ReadableStream).on === "function"
+		) {
 			let leftover = "";
 			(stderr as NodeJS.ReadableStream).on("data", (chunk: Buffer | string) => {
-				const text = leftover + (typeof chunk === "string" ? chunk : chunk.toString("utf8"));
+				const text =
+					leftover +
+					(typeof chunk === "string" ? chunk : chunk.toString("utf8"));
 				const lines = text.split(/\r?\n/);
 				leftover = lines.pop() ?? "";
 				for (const line of lines) {
@@ -355,14 +358,22 @@ function buildArgs(input: {
 	accelerator?: ImageGenLoadArgs["accelerator"];
 }): string[] {
 	const args: string[] = [
-		"--model", input.modelPath,
-		"--prompt", input.prompt,
-		"--width", String(input.width),
-		"--height", String(input.height),
-		"--steps", String(input.steps),
-		"--cfg-scale", String(input.guidanceScale),
-		"--seed", String(input.seed),
-		"-o", input.output,
+		"--model",
+		input.modelPath,
+		"--prompt",
+		input.prompt,
+		"--width",
+		String(input.width),
+		"--height",
+		String(input.height),
+		"--steps",
+		String(input.steps),
+		"--cfg-scale",
+		String(input.guidanceScale),
+		"--seed",
+		String(input.seed),
+		"-o",
+		input.output,
 	];
 	if (input.vae) {
 		args.push("--vae", input.vae);

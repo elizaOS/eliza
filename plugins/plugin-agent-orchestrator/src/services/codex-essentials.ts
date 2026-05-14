@@ -43,7 +43,7 @@ Auth is the path-embedded session id. Loopback-only, GET-only, read-only.
 
 # Constraints
 
-- Sealed env: only an allowlist of vars is forwarded (PATH, HOME, USER, SHELL, OPENAI_MODEL, CODEX_HOME, GITHUB_TOKEN, PARALLAX_SESSION_ID, etc.).
+- Sealed env: only an allowlist of vars is forwarded (PATH, HOME, USER, SHELL, OPENAI_MODEL, CODEX_HOME, GITHUB_TOKEN, ELIZA_AGENT_SESSION_ID, etc.).
 - Workspace-only writes: write only inside your workdir.
 - Don't push to git remotes — Eliza handles git push, PR creation, cross-repo coordination.
 - Don't print secrets — PTY output is captured. Reference secrets by env-var name.`;

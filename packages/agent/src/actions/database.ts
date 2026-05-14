@@ -24,6 +24,7 @@ import type {
   SearchCategoryRegistration,
 } from "@elizaos/core";
 import { logger, ModelType } from "@elizaos/core";
+import type { ColumnInfo, TableInfo } from "@elizaos/shared";
 
 // ---------------------------------------------------------------------------
 // Op dispatch
@@ -317,21 +318,6 @@ export function registerVectorSearchCategory(runtime: IAgentRuntime): void {
 // ---------------------------------------------------------------------------
 // Op handlers
 // ---------------------------------------------------------------------------
-
-interface ColumnInfo {
-  name: string;
-  type: string;
-  nullable: boolean;
-  defaultValue: string | null;
-  isPrimaryKey: boolean;
-}
-
-interface TableInfo {
-  name: string;
-  schema: string;
-  rowCount: number;
-  columns: ColumnInfo[];
-}
 
 async function opListTables(
   runtime: IAgentRuntime,

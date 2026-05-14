@@ -27,7 +27,6 @@
   ],
   "dependencies": {
     "@elizaos/core": "workspace:*",
-    "@elizaos/plugin-sql": "workspace:*",
     "@elizaos/plugin-suno": "workspace:*",
     "@vookav2/play-dl": "^1.9.9",
     "buffer": "^6.0.3",

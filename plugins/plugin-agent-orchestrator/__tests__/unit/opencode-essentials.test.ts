@@ -55,7 +55,7 @@ describe("OPENCODE_SKILL_ESSENTIALS", () => {
 
   it("preserves the sealed-env reminder", () => {
     expect(OPENCODE_SKILL_ESSENTIALS).toContain("Sealed env");
-    expect(OPENCODE_SKILL_ESSENTIALS).toContain("PARALLAX_SESSION_ID");
+    expect(OPENCODE_SKILL_ESSENTIALS).toContain("ELIZA_AGENT_SESSION_ID");
     expect(OPENCODE_SKILL_ESSENTIALS).toContain("OPENCODE_CONFIG_CONTENT");
   });
 });

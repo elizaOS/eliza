@@ -45,8 +45,7 @@
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
-    "nostr-tools": "^2.0.0",
-    "zod": "^4.4.3"
+    "nostr-tools": "^2.0.0"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.14",

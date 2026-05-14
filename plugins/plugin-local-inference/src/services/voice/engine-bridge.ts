@@ -69,7 +69,6 @@ import {
 	SharedResourceRegistry,
 } from "./shared-resources";
 import {
-	DEFAULT_VOICE_ID,
 	DEFAULT_VOICE_PRESET_REL_PATH,
 	SpeakerPresetCache,
 } from "./speaker-preset-cache";
@@ -106,8 +105,38 @@ const PHRASE_MAX_TOKENS_DEFAULT = 8;
 const STUB_PCM_MS_PER_PHRASE = 100;
 const STUB_PCM_STREAM_CHUNKS = 4;
 
+/**
+ * Resolve the `speaker_preset_id` value to send across the FFI boundary.
+ *
+ * Historically this returned `null` for the default voice — the C side then
+ * treated `null` as "auto-voice mode" and ignored any preset file under
+ * `cache/voice-preset-default.bin`. That was the right behaviour when the
+ * default preset was a 256-fp32-zero placeholder; it's wrong now that the
+ * default preset can be a real (v2) OmniVoice samantha freeze. With ABI v4
+ * the FFI bridge looks up `<bundle>/cache/voice-preset-<id>.bin` when the
+ * id is supplied and applies the `(instruct, ref_audio_tokens, ref_text)`
+ * triple to `ov_tts_params` — so we must always pass the id.
+ *
+ * The only case we return `null` is when the preset shape is degenerate
+ * (no embedding, no ref-audio-tokens, no instruct) — i.e. an explicit
+ * "no preset" signal from a caller that doesn't want a voice bound. The
+ * FFI side honours `null` by running OmniVoice's intrinsic auto-voice
+ * path.
+ */
 function ffiSpeakerPresetId(preset: SpeakerPreset): string | null {
-	return preset.voiceId === DEFAULT_VOICE_ID ? null : preset.voiceId;
+	const hasV2Payload =
+		(preset.instruct !== undefined && preset.instruct.length > 0) ||
+		(preset.refText !== undefined && preset.refText.length > 0) ||
+		(preset.refAudioTokens !== undefined &&
+			preset.refAudioTokens.tokens.length > 0);
+	const hasEmbedding = preset.embedding.length > 0;
+	if (!hasV2Payload && !hasEmbedding) {
+		// Degenerate preset (e.g. the 1052-byte all-zero placeholder). The C
+		// side cannot do anything useful with it; let OmniVoice pick its own
+		// voice via the auto-voice path.
+		return null;
+	}
+	return preset.voiceId;
 }
 
 /** Re-exported from `./errors` so existing `engine-bridge` importers don't churn. */

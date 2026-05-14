@@ -17,6 +17,7 @@ from benchmarks.bfcl.types import (
     BaselineScore,
     CategoryMetrics,
     LEADERBOARD_SCORES,
+    TestStatus,
 )
 
 logger = logging.getLogger(__name__)
@@ -34,17 +35,40 @@ class MetricsCalculator:
     - Baseline comparisons
     """
 
-    # Official BFCL weighting for overall score
+    # BFCL category weighting for the weighted overall score. Mirrors the
+    # upstream leaderboard's broad-bucket weighting (non-live single-turn
+    # carries the largest weight; live and multi-turn carry mid-weight;
+    # agentic categories are lower-weight tail categories).
     CATEGORY_WEIGHTS: dict[BFCLCategory, float] = {
-        BFCLCategory.SIMPLE: 0.15,
-        BFCLCategory.MULTIPLE: 0.15,
-        BFCLCategory.PARALLEL: 0.15,
-        BFCLCategory.PARALLEL_MULTIPLE: 0.15,
-        BFCLCategory.RELEVANCE: 0.10,
-        BFCLCategory.REST_API: 0.10,
-        BFCLCategory.SQL: 0.08,
-        BFCLCategory.JAVA: 0.06,
-        BFCLCategory.JAVASCRIPT: 0.06,
+        # Non-live single-turn
+        BFCLCategory.SIMPLE: 0.10,
+        BFCLCategory.MULTIPLE: 0.10,
+        BFCLCategory.PARALLEL: 0.10,
+        BFCLCategory.PARALLEL_MULTIPLE: 0.10,
+        BFCLCategory.RELEVANCE: 0.05,
+        BFCLCategory.IRRELEVANCE: 0.05,
+        BFCLCategory.REST_API: 0.05,
+        BFCLCategory.SQL: 0.04,
+        BFCLCategory.JAVA: 0.04,
+        BFCLCategory.JAVASCRIPT: 0.04,
+        # Live
+        BFCLCategory.LIVE_SIMPLE: 0.04,
+        BFCLCategory.LIVE_MULTIPLE: 0.04,
+        BFCLCategory.LIVE_PARALLEL: 0.04,
+        BFCLCategory.LIVE_PARALLEL_MULTIPLE: 0.04,
+        BFCLCategory.LIVE_RELEVANCE: 0.02,
+        BFCLCategory.LIVE_IRRELEVANCE: 0.02,
+        # Multi-turn
+        BFCLCategory.MULTI_TURN_BASE: 0.04,
+        BFCLCategory.MULTI_TURN_MISS_FUNC: 0.02,
+        BFCLCategory.MULTI_TURN_MISS_PARAM: 0.02,
+        BFCLCategory.MULTI_TURN_LONG_CONTEXT: 0.02,
+        # Agentic
+        BFCLCategory.WEB_SEARCH_BASE: 0.01,
+        BFCLCategory.WEB_SEARCH_NO_SNIPPET: 0.01,
+        BFCLCategory.MEMORY_KV: 0.01,
+        BFCLCategory.MEMORY_VECTOR: 0.01,
+        BFCLCategory.MEMORY_REC_SUM: 0.01,
     }
 
     def calculate(self, results: list[BFCLResult]) -> BFCLMetrics:
@@ -60,17 +84,28 @@ class MetricsCalculator:
         if not results:
             return self._empty_metrics()
 
-        # Filter out results without ground truth for accuracy calculations
-        # These are tests we cannot evaluate (e.g., REST API without expected calls)
-        valid_results = [
-            r for r in results
-            if not r.details.get("no_ground_truth", False)
-        ]
-        
+        # Bucket out skipped tests. Skipped tests are NEVER counted as
+        # passes (the previous behaviour silently dropped REST tests and
+        # similar from scoring with no audit trail). Each skipped bucket
+        # is reported separately so callers can see why a test was excluded.
+        skipped_results: list[BFCLResult] = [r for r in results if r.is_skipped]
+        valid_results: list[BFCLResult] = [r for r in results if not r.is_skipped]
+
+        skipped_by_reason: dict[str, int] = {}
+        for r in skipped_results:
+            skipped_by_reason[r.status.value] = skipped_by_reason.get(r.status.value, 0) + 1
+        if skipped_results:
+            logger.warning(
+                "BFCL: excluded %d tests from scoring (per bucket: %s)",
+                len(skipped_results), skipped_by_reason,
+            )
+
         if not valid_results:
             logger.warning("No valid results with ground truth available for metrics")
             metrics = self._empty_metrics()
-            metrics.error_counts["no_ground_truth"] = len(results)
+            metrics.skipped_tests = len(skipped_results)
+            metrics.skipped_by_reason = skipped_by_reason
+            metrics.error_counts["skipped_total"] = len(skipped_results)
             return metrics
 
         # Calculate per-category metrics (using valid results only)
@@ -90,12 +125,10 @@ class MetricsCalculator:
 
         # Analyze errors (valid results only)
         error_counts = self._analyze_errors(valid_results)
-        
-        # Track tests without ground truth
-        no_gt_count = len(results) - len(valid_results)
-        if no_gt_count > 0:
-            error_counts["no_ground_truth"] = no_gt_count
-            logger.info(f"Excluded {no_gt_count} tests without ground truth from accuracy calculations")
+
+        if skipped_by_reason:
+            for k, v in skipped_by_reason.items():
+                error_counts[k] = v
 
         return BFCLMetrics(
             overall_score=overall_score,
@@ -103,9 +136,11 @@ class MetricsCalculator:
             exec_accuracy=exec_accuracy,
             relevance_accuracy=relevance_accuracy,
             category_metrics=category_metrics,
-            total_tests=len(valid_results),  # Count only valid tests
+            total_tests=len(valid_results),
             passed_tests=sum(1 for r in valid_results if r.ast_match),
             failed_tests=sum(1 for r in valid_results if not r.ast_match),
+            skipped_tests=len(skipped_results),
+            skipped_by_reason=skipped_by_reason,
             latency_p50=latency_stats.get("p50", 0.0),
             latency_p95=latency_stats.get("p95", 0.0),
             latency_p99=latency_stats.get("p99", 0.0),
@@ -374,6 +409,17 @@ class MetricsCalculator:
                     f"AST: {cat_metrics.ast_accuracy:.2%}  "
                     f"Tests: {cat_metrics.total_tests}"
                 )
+
+        if metrics.skipped_tests:
+            lines.extend([
+                "",
+                "-" * 60,
+                "Skipped (excluded from accuracy denominator):",
+                "-" * 60,
+                f"  Total: {metrics.skipped_tests}",
+            ])
+            for reason, n in sorted(metrics.skipped_by_reason.items()):
+                lines.append(f"    - {reason}: {n}")
 
         lines.extend([
             "",

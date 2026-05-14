@@ -33,15 +33,11 @@
  */
 
 export {
-	type VisionDescribeBackend,
-	type VisionDescribeBackendLoader,
-	type VisionDescribeBackendOptions,
-	type VisionDescribeLoadArgs,
-	type VisionDescribeRequest,
-	type VisionDescribeResult,
-	type VisionImageInput,
-	type VisionImageChannelOrder,
-} from "./types";
+	type AospLlamaMtmdBinding,
+	type AospMtmdHandle,
+	type LoadAospVisionBackendOptions,
+	loadAospVisionBackend,
+} from "./aosp-stub";
 
 export {
 	hashImageBytes,
@@ -49,39 +45,40 @@ export {
 	hashVisionInput,
 	resolveImageBytes,
 } from "./hash";
-
+export {
+	createLlamaServerVisionBackend,
+	type LlamaServerVisionBackendOptions,
+} from "./llama-server";
 export {
 	loadNodeLlamaCppVisionBackend,
 	type NodeLlamaCppMtmdBinding,
 	type NodeLlamaCppMtmdHandle,
 	type NodeLlamaCppVisionBackendOptions,
-	type VisionManagerLike,
 	VisionBackendUnavailableError,
+	type VisionManagerLike,
 } from "./node-llama-cpp";
-
-export {
-	createLlamaServerVisionBackend,
-	type LlamaServerVisionBackendOptions,
-} from "./llama-server";
-
-export {
-	loadAospVisionBackend,
-	type AospLlamaMtmdBinding,
-	type AospMtmdHandle,
-	type LoadAospVisionBackendOptions,
-} from "./aosp-stub";
+export type {
+	VisionDescribeBackend,
+	VisionDescribeBackendLoader,
+	VisionDescribeBackendOptions,
+	VisionDescribeLoadArgs,
+	VisionDescribeRequest,
+	VisionDescribeResult,
+	VisionImageChannelOrder,
+	VisionImageInput,
+} from "./types";
 
 import type {
 	ArbiterCapability,
 	CapabilityRegistration,
 } from "../memory-arbiter";
+import { hashVisionInput } from "./hash";
 import type {
 	VisionDescribeBackend,
 	VisionDescribeBackendLoader,
 	VisionDescribeRequest,
 	VisionDescribeResult,
 } from "./types";
-import { hashVisionInput } from "./hash";
 
 /**
  * Minimal arbiter shape we need from the cache. Lets tests inject a

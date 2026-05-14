@@ -12,7 +12,15 @@ from typing import Optional
 
 
 class TaskCategory(str, Enum):
-    """Categories of Terminal-Bench tasks based on domain."""
+    """Categories of Terminal-Bench tasks based on domain.
+
+    Includes both the original elizaOS category set and the upstream
+    Terminal-Bench category strings (hyphenated). New code should prefer
+    the upstream strings; the older identifiers are kept for backwards
+    compatibility with built-in sample tasks and existing reports.
+    """
+
+    # Legacy elizaOS categories (used by SAMPLE_TASKS and prior reports).
     CODE_COMPILATION = "code_compilation"
     SYSTEM_ADMIN = "system_admin"
     ML_TRAINING = "ml_training"
@@ -24,6 +32,33 @@ class TaskCategory(str, Enum):
     GIT_OPERATIONS = "git_operations"
     TEXT_PROCESSING = "text_processing"
     DEBUGGING = "debugging"
+
+    # Upstream Terminal-Bench categories (from original-tasks/*/task.yaml).
+    ALGORITHMS = "algorithms"
+    AUDIO_PROCESSING = "audio-processing"
+    COMPUTER_VISION = "computer-vision"
+    DATA_PROCESSING = "data-processing"
+    DATA_QUERYING = "data-querying"
+    DATA_SCIENCE = "data-science"
+    FILE_OPERATIONS_UPSTREAM = "file-operations"
+    FILE_SYSTEM = "file-system"
+    GAME = "game"
+    GAMES = "games"
+    MACHINE_LEARNING = "machine-learning"
+    MATH = "math"
+    MATHEMATICS = "mathematics"
+    MODEL_TRAINING = "model-training"
+    OPTIMIZATION = "optimization"
+    PERSONAL_ASSISTANT = "personal-assistant"
+    PROTOCOL_ANALYSIS = "protocol-analysis"
+    REPRODUCIBLE_BUILDS = "reproducible-builds"
+    RESEARCH = "research"
+    SCIENTIFIC_COMPUTING = "scientific-computing"
+    SECURITY = "security"
+    SOFTWARE_ENGINEERING = "software-engineering"
+    SYSTEM_ADMINISTRATION = "system-administration"
+    VIDEO_PROCESSING = "video-processing"
+    UNKNOWN = "unknown"
 
 
 class TaskDifficulty(str, Enum):
@@ -219,75 +254,33 @@ class TerminalBenchConfig:
     oracle: bool = False
     local_sandbox: bool = False
 
+    # Execution backend
+    # ``tmux``: build the per-task Dockerfile and run the agent inside a
+    #   persistent tmux session (default; matches upstream Terminal-Bench).
+    # ``one_shot``: legacy path that uses ``container.exec_run`` per command
+    #   (no tmux). Use this only when tmux is unavailable.
+    # ``local``: run inside a temporary local workspace (no Docker).
+    # ``mock``: never grade — always returns success. CI/unit only.
+    execution_backend: str = "tmux"
 
-# Leaderboard scores as of December 2025
-# Source: https://tbench.ai/leaderboard/terminal-bench/2.0
-LEADERBOARD_SCORES: dict[str, dict[str, float]] = {
-    "Droid (Factory) + GPT-5.2": {
-        "overall": 64.9,
-        "code_compilation": 72.3,
-        "system_admin": 61.5,
-        "ml_training": 58.2,
-        "file_operations": 78.1,
-        "scripting": 65.4,
-    },
-    "Ante (Antigma Labs) + Gemini 3 Pro": {
-        "overall": 64.7,
-        "code_compilation": 71.8,
-        "system_admin": 62.1,
-        "ml_training": 56.9,
-        "file_operations": 76.5,
-        "scripting": 67.2,
-    },
-    "Junie CLI (JetBrains) + Gemini 3 Flash": {
-        "overall": 64.3,
-        "code_compilation": 70.5,
-        "system_admin": 60.8,
-        "ml_training": 57.5,
-        "file_operations": 77.2,
-        "scripting": 64.8,
-    },
-    "Claude Code + Claude Sonnet 4.6": {
-        "overall": 58.2,
-        "code_compilation": 65.1,
-        "system_admin": 54.3,
-        "ml_training": 48.7,
-        "file_operations": 71.5,
-        "scripting": 58.9,
-    },
-    "OpenHands + GPT-4o": {
-        "overall": 52.8,
-        "code_compilation": 59.4,
-        "system_admin": 48.2,
-        "ml_training": 42.6,
-        "file_operations": 65.3,
-        "scripting": 54.1,
-    },
-    "Aider + Claude Sonnet 4.6": {
-        "overall": 47.5,
-        "code_compilation": 53.2,
-        "system_admin": 42.8,
-        "ml_training": 38.4,
-        "file_operations": 58.7,
-        "scripting": 49.2,
-    },
-    "GPT-4 (baseline, no agent)": {
-        "overall": 28.3,
-        "code_compilation": 32.5,
-        "system_admin": 24.1,
-        "ml_training": 18.9,
-        "file_operations": 38.2,
-        "scripting": 31.4,
-    },
-    "Human Expert": {
-        "overall": 92.5,
-        "code_compilation": 95.2,
-        "system_admin": 91.8,
-        "ml_training": 88.5,
-        "file_operations": 96.8,
-        "scripting": 93.2,
-    },
-}
+    # Agent harness selection.
+    # ``eliza``: route per-turn decision-making through the elizaOS TS
+    #   benchmark bridge (default; what existed before this flag).
+    # ``hermes``: route through the hermes-agent OpenAI-compatible loop
+    #   (``hermes_adapter.terminal_bench.HermesTerminalAgent``).
+    # ``openclaw``: route through the OpenClaw CLI
+    #   (``openclaw_adapter.terminal_bench.OpenClawTerminalAgent``).
+    agent_harness: str = "eliza"
+
+
+# The Terminal-Bench leaderboard moves frequently; rather than ship stale or
+# fabricated entries, we keep this dict empty and point callers at the live
+# leaderboard. Code that depends on LEADERBOARD_SCORES should treat an empty
+# dict as "no comparison data available" and skip the comparison.
+#
+# Live leaderboard: https://www.tbench.ai/leaderboard
+LEADERBOARD_URL = "https://www.tbench.ai/leaderboard"
+LEADERBOARD_SCORES: dict[str, dict[str, float]] = {}
 
 
 # Sample tasks for testing without the full dataset

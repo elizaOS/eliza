@@ -80,9 +80,14 @@ print(42)
 
     @pytest.mark.asyncio
     async def test_execution_time_tracked(self, executor: PythonExecutor) -> None:
-        """Test that execution time is tracked."""
+        """Test that execution time is tracked.
+
+        Windows' time.time() can return 0 elapsed for sub-millisecond
+        executions, so assert >= 0 rather than > 0.
+        """
         result = await executor.execute("print('hello')")
-        assert result.execution_time_ms > 0
+        assert result.execution_time_ms >= 0
+        assert result.execution_time_ms < 10_000  # sanity bound
 
     @pytest.mark.asyncio
     async def test_list_comprehension(self, executor: PythonExecutor) -> None:
@@ -126,11 +131,12 @@ class TestMockExecutor:
         assert result.output == "hello"
 
     @pytest.mark.asyncio
-    async def test_mock_default_response(self) -> None:
-        """Test mock executor default response."""
+    async def test_mock_default_response_is_failure(self) -> None:
+        """The default-"42" fallback is gone; unmatched code returns failure."""
         mock = MockExecutor()
         result = await mock.execute("complex_code_without_print()")
-        assert result.success is True
+        assert result.success is False
+        assert "MockExecutor has no matching response" in (result.error or "")
 
 
 class TestExecutionResult:

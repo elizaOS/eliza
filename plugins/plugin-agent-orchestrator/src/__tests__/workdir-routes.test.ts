@@ -241,8 +241,8 @@ describe("resolveSpawnWorkdir", () => {
 
 describe("resolvePinnedAdapter", () => {
   const KEYS = [
-    "PARALLAX_DEFAULT_AGENT_TYPE",
-    "PARALLAX_AGENT_SELECTION_STRATEGY",
+    "ELIZA_DEFAULT_AGENT_TYPE",
+    "ELIZA_AGENT_SELECTION_STRATEGY",
   ];
   const original: Record<string, string | undefined> = {};
 
@@ -265,28 +265,28 @@ describe("resolvePinnedAdapter", () => {
   });
 
   it("returns the configured adapter when default + fixed strategy", () => {
-    process.env.PARALLAX_DEFAULT_AGENT_TYPE = "opencode";
+    process.env.ELIZA_DEFAULT_AGENT_TYPE = "opencode";
     expect(resolvePinnedAdapter(undefined)).toBe("opencode");
   });
 
   it("defaults to fixed strategy when the env var is unset", () => {
-    process.env.PARALLAX_DEFAULT_AGENT_TYPE = "claude";
+    process.env.ELIZA_DEFAULT_AGENT_TYPE = "claude";
     expect(resolvePinnedAdapter(undefined)).toBe("claude");
   });
 
   it("returns undefined when strategy is non-fixed", () => {
-    process.env.PARALLAX_DEFAULT_AGENT_TYPE = "opencode";
-    process.env.PARALLAX_AGENT_SELECTION_STRATEGY = "ranked";
+    process.env.ELIZA_DEFAULT_AGENT_TYPE = "opencode";
+    process.env.ELIZA_AGENT_SELECTION_STRATEGY = "ranked";
     expect(resolvePinnedAdapter(undefined)).toBeUndefined();
   });
 
   it("returns undefined for unrecognised adapter names", () => {
-    process.env.PARALLAX_DEFAULT_AGENT_TYPE = "not-an-adapter";
+    process.env.ELIZA_DEFAULT_AGENT_TYPE = "not-an-adapter";
     expect(resolvePinnedAdapter(undefined)).toBeUndefined();
   });
 
   it("normalises case", () => {
-    process.env.PARALLAX_DEFAULT_AGENT_TYPE = "OPENCODE";
+    process.env.ELIZA_DEFAULT_AGENT_TYPE = "OPENCODE";
     expect(resolvePinnedAdapter(undefined)).toBe("opencode");
   });
 });

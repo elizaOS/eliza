@@ -126,6 +126,7 @@ import {
 import { providersProvider } from "./providers/providers.ts";
 import { recentMessagesProvider } from "./providers/recentMessages.ts";
 import { uiContextProvider } from "./providers/uiContext.ts";
+import { userEmotionSignalProvider } from "./providers/userEmotionSignal.ts";
 import { worldProvider } from "./providers/world.ts";
 
 // Re-export advanced capability modules
@@ -1271,6 +1272,7 @@ export const basicProviders = [
 	providersProvider,
 	recentMessagesProvider,
 	uiContextProvider,
+	userEmotionSignalProvider,
 	worldProvider,
 ];
 

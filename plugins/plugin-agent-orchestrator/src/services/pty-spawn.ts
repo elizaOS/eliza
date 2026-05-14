@@ -539,7 +539,7 @@ export function buildSpawnConfig(
       ...buildSanitizedBaseEnv(),
       ...options.env,
       ...modelEnv,
-      PARALLAX_SESSION_ID: sessionId,
+      ELIZA_AGENT_SESSION_ID: sessionId,
     },
     ...(options.skipAdapterAutoResponse
       ? { skipAdapterAutoResponse: true }

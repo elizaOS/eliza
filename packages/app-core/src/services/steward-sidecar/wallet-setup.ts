@@ -4,6 +4,7 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { logger } from "@elizaos/core";
 import { fingerprintRandomToken, generateApiKey } from "./helpers";
 import type { StewardCredentials, StewardSidecarStatus } from "./types";
 import {
@@ -56,7 +57,7 @@ async function verifyExistingWallet(
         data?: { walletAddress?: string };
       };
       if (result.ok && result.data?.walletAddress) {
-        console.log(
+        logger.info(
           `[StewardSidecar] Wallet verified: ${result.data.walletAddress}`,
         );
         updateStatus({ walletAddress: result.data.walletAddress });
@@ -64,13 +65,13 @@ async function verifyExistingWallet(
       }
     }
 
-    console.warn(
+    logger.warn(
       "[StewardSidecar] Wallet verification returned unexpected result, continuing",
     );
   } catch (err) {
-    console.warn(
-      "[StewardSidecar] Wallet verification failed:",
-      err instanceof Error ? err.message : err,
+    logger.warn(
+      "[StewardSidecar] Wallet verification failed",
+      err instanceof Error ? err.message : String(err),
     );
   }
 }
@@ -81,7 +82,7 @@ async function performFirstLaunchSetup(
   dataDir: string,
   updateStatus: (partial: Partial<StewardSidecarStatus>) => void,
 ): Promise<StewardCredentials> {
-  console.log("[StewardSidecar] First launch - creating tenant and wallet");
+  logger.info("[StewardSidecar] First launch - creating tenant and wallet");
 
   // 1. Create tenant
   const tenantApiKey = generateApiKey();
@@ -173,7 +174,7 @@ async function performFirstLaunchSetup(
     tenantId: credentials.tenantId,
   });
 
-  console.log(`[StewardSidecar] Wallet created: ${credentials.walletAddress}`);
+  logger.info(`[StewardSidecar] Wallet created: ${credentials.walletAddress}`);
 
   return credentials;
 }

@@ -72,54 +72,19 @@ class CartDisplayItemType(TypedDict):
     options: dict[str, str]
 
 
-# Simulated product database for testing
-SAMPLE_PRODUCTS = [
-    {
-        "id": "P001",
-        "name": "Wireless Bluetooth Headphones",
-        "price": 79.99,
-        "category": "Electronics",
-        "rating": 4.5,
-        "features": ["noise cancelling", "40h battery", "comfortable"],
-        "options": {"color": ["black", "white", "blue"]},
-    },
-    {
-        "id": "P002",
-        "name": "Running Shoes - Lightweight",
-        "price": 129.99,
-        "category": "Sports",
-        "rating": 4.3,
-        "features": ["breathable", "cushioned", "lightweight"],
-        "options": {"size": ["7", "8", "9", "10", "11"], "color": ["gray", "black"]},
-    },
-    {
-        "id": "P003",
-        "name": "Organic Green Tea - 100 Bags",
-        "price": 15.99,
-        "category": "Food",
-        "rating": 4.7,
-        "features": ["organic", "antioxidants", "caffeine-free option"],
-        "options": {"type": ["regular", "decaf"]},
-    },
-    {
-        "id": "P004",
-        "name": "Stainless Steel Water Bottle",
-        "price": 24.99,
-        "category": "Sports",
-        "rating": 4.6,
-        "features": ["insulated", "leak-proof", "eco-friendly"],
-        "options": {"size": ["500ml", "750ml", "1L"], "color": ["silver", "blue", "green"]},
-    },
-    {
-        "id": "P005",
-        "name": "USB-C Laptop Charger 65W",
-        "price": 45.99,
-        "category": "Electronics",
-        "rating": 4.4,
-        "features": ["fast charging", "compact", "universal"],
-        "options": {},
-    },
-]
+# NOTE: there is intentionally no built-in product corpus here.
+#
+# The official AgentBench WebShop split uses the WebShop dataset
+# (1.18 million Amazon products, ~25 GB unpacked) served by a separate
+# Flask simulator. Producing comparable benchmark scores requires
+# running against that real corpus. To run smoke/dev tests without the
+# corpus, callers can inject products via ``task.initial_state["products"]``
+# and the local heuristic loop will still exercise the adapter end-to-end.
+WEBSHOP_REQUIRES_CORPUS_MSG = (
+    "WebShop tasks require the official WebShop product corpus (see "
+    "https://github.com/princeton-nlp/WebShop). Set WEBSHOP_DATA_DIR or "
+    "supply products in task.initial_state to run locally."
+)
 
 
 class WebShopEnvironmentAdapter(EnvironmentAdapter):
@@ -152,8 +117,10 @@ class WebShopEnvironmentAdapter(EnvironmentAdapter):
 
         logger.info("[WebShop] Initializing WebShop environment adapter...")
 
-        # Load product catalog (can be extended to load from file/API)
-        self._products = SAMPLE_PRODUCTS.copy()
+        # No built-in corpus; products are supplied per-task via
+        # ``initial_state.products`` (test fixtures) or by a future
+        # WebShop bridge that imports the official Flask sim.
+        self._products = []
 
         self._initialized = True
         logger.info("[WebShop] WebShop environment adapter initialized")

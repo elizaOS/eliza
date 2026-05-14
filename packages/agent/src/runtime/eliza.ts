@@ -2290,15 +2290,15 @@ export function installRuntimeMethodBindings(runtime: AgentRuntime): void {
     "GITHUB_TOKEN",
     "GITHUB_OAUTH_CLIENT_ID",
     // Coding agent model preferences
-    "PARALLAX_CLAUDE_MODEL_POWERFUL",
-    "PARALLAX_CLAUDE_MODEL_FAST",
-    "PARALLAX_GEMINI_MODEL_POWERFUL",
-    "PARALLAX_GEMINI_MODEL_FAST",
-    "PARALLAX_CODEX_MODEL_POWERFUL",
-    "PARALLAX_CODEX_MODEL_FAST",
-    "PARALLAX_AIDER_PROVIDER",
-    "PARALLAX_AIDER_MODEL_POWERFUL",
-    "PARALLAX_AIDER_MODEL_FAST",
+    "ELIZA_CLAUDE_MODEL_POWERFUL",
+    "ELIZA_CLAUDE_MODEL_FAST",
+    "ELIZA_GEMINI_MODEL_POWERFUL",
+    "ELIZA_GEMINI_MODEL_FAST",
+    "ELIZA_CODEX_MODEL_POWERFUL",
+    "ELIZA_CODEX_MODEL_FAST",
+    "ELIZA_AIDER_PROVIDER",
+    "ELIZA_AIDER_MODEL_POWERFUL",
+    "ELIZA_AIDER_MODEL_FAST",
     // AOSP/local coding-tool policy and shell runtime controls.
     "CODING_TOOLS_WORKSPACE_ROOTS",
     "CODING_TOOLS_BLOCKED_PATHS",
@@ -3748,15 +3748,11 @@ export async function startEliza(
   };
 
   const initializeRuntimeServices = async (): Promise<void> => {
-    if (process.env.ELIZA_LEGACY_STEWARD_EVM_BRIDGE !== "0") {
-      try {
-        const { stewardEvmPreBoot } = await loadStewardEvmBridgeModule();
-        await stewardEvmPreBoot?.(runtime);
-      } catch (err) {
-        logger.debug(
-          `[eliza] Steward EVM pre-boot skipped: ${formatError(err)}`,
-        );
-      }
+    try {
+      const { stewardEvmPreBoot } = await loadStewardEvmBridgeModule();
+      await stewardEvmPreBoot?.(runtime);
+    } catch (err) {
+      logger.debug(`[eliza] Steward EVM pre-boot skipped: ${formatError(err)}`);
     }
 
     // 7f. Pre-register ConnectorSetupService so connector plugins can access
@@ -3825,15 +3821,13 @@ export async function startEliza(
       );
     }
 
-    if (process.env.ELIZA_LEGACY_STEWARD_EVM_BRIDGE !== "0") {
-      try {
-        const { stewardEvmPostBoot } = await loadStewardEvmBridgeModule();
-        await stewardEvmPostBoot?.(runtime);
-      } catch (err) {
-        logger.debug(
-          `[eliza] Steward EVM post-boot skipped: ${formatError(err)}`,
-        );
-      }
+    try {
+      const { stewardEvmPostBoot } = await loadStewardEvmBridgeModule();
+      await stewardEvmPostBoot?.(runtime);
+    } catch (err) {
+      logger.debug(
+        `[eliza] Steward EVM post-boot skipped: ${formatError(err)}`,
+      );
     }
 
     try {
@@ -4283,20 +4277,18 @@ export async function startEliza(
       },
     });
     const dashboardUrl = `http://localhost:${actualApiPort}`;
-    console.log(`[eliza] Control UI: ${dashboardUrl}`);
-    logger.info(`[eliza] API server listening on ${dashboardUrl}`);
+    logger.info(`[eliza] Control UI: ${dashboardUrl}`);
   } catch (apiErr) {
     // Log to both stderr (visible to Electrobun agent.ts) and the in-memory
     // logger so the error is never silently swallowed in packaged builds.
     const apiErrMsg = `[eliza] Could not start API server: ${formatError(apiErr)}`;
-    console.error(apiErrMsg);
-    logger.warn(apiErrMsg);
+    logger.error(apiErrMsg);
 
     // In server-only mode (Electrobun desktop), a missing API server is fatal
     // — nothing else can serve requests. Exit so the parent process sees a
     // non-zero exit code instead of the misleading "Server running" message.
     if (opts?.serverOnly) {
-      console.error(
+      logger.error(
         "[eliza] Exiting: API server is required in server-only mode.",
       );
       process.exit(1);
@@ -4307,7 +4299,6 @@ export async function startEliza(
   // ── Server-only mode — keep running without chat loop ────────────────────
   if (opts?.serverOnly) {
     logger.info("[eliza] Running in server-only mode (no interactive chat)");
-    console.log("[eliza] Server running. Press Ctrl+C to stop.");
 
     // Keep process alive — the API server handles all interaction
     const keepAlive = setInterval(() => {}, 1 << 30); // ~12 days
@@ -4464,7 +4455,7 @@ export async function startEliza(
           logger.error(
             "[eliza] runtime.messageService is not available — cannot process messages",
           );
-          console.log("[Error: message service unavailable]\n");
+          process.stdout.write("[Error: message service unavailable]\n\n");
           prompt();
           return;
         }
@@ -4480,14 +4471,14 @@ export async function startEliza(
           },
         );
 
-        console.log("\n");
+        process.stdout.write("\n\n");
       } catch (err) {
         // Log the error and continue the prompt loop — don't let a single
         // failed message kill the interactive session.
-        console.log(`\n[Error: ${formatError(err)}]\n`);
         logger.error(
           `[eliza] Chat message handling failed: ${formatError(err)}`,
         );
+        process.stdout.write(`\n[Error: ${formatError(err)}]\n\n`);
       }
       prompt();
     });
@@ -4587,10 +4578,10 @@ export async function startInCloudMode(
             response = await proxy.handleChatMessage(text);
             process.stdout.write(response);
           }
-          console.log("\n");
+          process.stdout.write("\n\n");
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
-          console.error(`\n[error] ${msg}\n`);
+          process.stdout.write(`\n[error] ${msg}\n\n`);
         }
 
         prompt();
@@ -4598,7 +4589,7 @@ export async function startInCloudMode(
     };
 
     rl.on("close", async () => {
-      console.log("\nDisconnecting from cloud agent...");
+      process.stdout.write("\nDisconnecting from cloud agent...\n");
       await manager.disconnect();
       process.exit(0);
     });

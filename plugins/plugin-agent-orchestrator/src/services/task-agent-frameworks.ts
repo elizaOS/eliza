@@ -221,7 +221,7 @@ const STANDARD_FRAMEWORKS: SupportedTaskAgentAdapter[] = [
 const DEFAULT_FRAMEWORK_PREFLIGHT_TIMEOUT_MS = 5_000;
 
 function resolveFrameworkPreflightTimeoutMs(): number {
-  const raw = process.env.PARALLAX_FRAMEWORK_PREFLIGHT_TIMEOUT_MS?.trim();
+  const raw = process.env.ELIZA_FRAMEWORK_PREFLIGHT_TIMEOUT_MS?.trim();
   if (!raw) return DEFAULT_FRAMEWORK_PREFLIGHT_TIMEOUT_MS;
   const parsed = Number.parseInt(raw, 10);
   return Number.isFinite(parsed) && parsed >= 250
@@ -254,24 +254,24 @@ const TASK_AGENT_MODEL_PREF_SETTING_KEYS: Record<
   { powerful: string; fast: string }
 > = {
   claude: {
-    powerful: "PARALLAX_CLAUDE_MODEL_POWERFUL",
-    fast: "PARALLAX_CLAUDE_MODEL_FAST",
+    powerful: "ELIZA_CLAUDE_MODEL_POWERFUL",
+    fast: "ELIZA_CLAUDE_MODEL_FAST",
   },
   codex: {
-    powerful: "PARALLAX_CODEX_MODEL_POWERFUL",
-    fast: "PARALLAX_CODEX_MODEL_FAST",
+    powerful: "ELIZA_CODEX_MODEL_POWERFUL",
+    fast: "ELIZA_CODEX_MODEL_FAST",
   },
   gemini: {
-    powerful: "PARALLAX_GEMINI_MODEL_POWERFUL",
-    fast: "PARALLAX_GEMINI_MODEL_FAST",
+    powerful: "ELIZA_GEMINI_MODEL_POWERFUL",
+    fast: "ELIZA_GEMINI_MODEL_FAST",
   },
   aider: {
-    powerful: "PARALLAX_AIDER_MODEL_POWERFUL",
-    fast: "PARALLAX_AIDER_MODEL_FAST",
+    powerful: "ELIZA_AIDER_MODEL_POWERFUL",
+    fast: "ELIZA_AIDER_MODEL_FAST",
   },
   opencode: {
-    powerful: "PARALLAX_OPENCODE_MODEL_POWERFUL",
-    fast: "PARALLAX_OPENCODE_MODEL_FAST",
+    powerful: "ELIZA_OPENCODE_MODEL_POWERFUL",
+    fast: "ELIZA_OPENCODE_MODEL_FAST",
   },
 };
 
@@ -574,7 +574,7 @@ function hasOpencodeBinary(): boolean {
 }
 
 function isOpencodeLocalMode(): boolean {
-  const flag = readConfigEnvKey("PARALLAX_OPENCODE_LOCAL");
+  const flag = readConfigEnvKey("ELIZA_OPENCODE_LOCAL");
   return flag === "1" || flag?.toLowerCase() === "true";
 }
 
@@ -653,8 +653,7 @@ async function computeTaskAgentFrameworkState(
   // When the user has selected Eliza Cloud as the LLM provider and has a
   // paired cloud.apiKey, treat Claude/Codex/Aider as fully auth-ready —
   // they'll route through the cloud proxy at spawn time.
-  const llmProvider =
-    readConfigEnvKey("PARALLAX_LLM_PROVIDER") || "subscription";
+  const llmProvider = readConfigEnvKey("ELIZA_LLM_PROVIDER") || "subscription";
   const cloudReady = llmProvider === "cloud" && hasElizaCloudApiKey();
 
   const claudePreflightAuth = getPreflightAuthStatus(
@@ -721,10 +720,10 @@ async function computeTaskAgentFrameworkState(
     !providerPrefersCodex &&
     !providerPrefersGemini &&
     Boolean(
-      readConfigEnvKey("PARALLAX_OPENCODE_BASE_URL") ||
-        readConfigEnvKey("PARALLAX_OPENCODE_LOCAL") === "1" ||
-        readConfigEnvKey("PARALLAX_OPENCODE_API_KEY") ||
-        readConfigEnvKey("PARALLAX_OPENCODE_MODEL_POWERFUL"),
+      readConfigEnvKey("ELIZA_OPENCODE_BASE_URL") ||
+        readConfigEnvKey("ELIZA_OPENCODE_LOCAL") === "1" ||
+        readConfigEnvKey("ELIZA_OPENCODE_API_KEY") ||
+        readConfigEnvKey("ELIZA_OPENCODE_MODEL_POWERFUL"),
     );
 
   const inventory: TaskAgentFrameworkAvailability[] = STANDARD_FRAMEWORKS.map(
@@ -810,7 +809,7 @@ async function computeTaskAgentFrameworkState(
     opencodeReady &&
     (cloudReady ||
       opencodeLocalMode ||
-      Boolean(readConfigEnvKey("PARALLAX_OPENCODE_BASE_URL")) ||
+      Boolean(readConfigEnvKey("ELIZA_OPENCODE_BASE_URL")) ||
       Boolean(opencodeAutoDetectedProvider));
   const opencodeReason = !opencodeReady
     ? "CLI not detected"
@@ -818,11 +817,11 @@ async function computeTaskAgentFrameworkState(
       ? cloudReady
         ? "ready to use Eliza Cloud as the model provider"
         : opencodeLocalMode
-          ? "ready to use a local model provider (PARALLAX_OPENCODE_LOCAL)"
+          ? "ready to use a local model provider (ELIZA_OPENCODE_LOCAL)"
           : opencodeAutoDetectedProvider
             ? `ready to use the auto-detected provider (${opencodeAutoDetectedProvider})`
             : "ready to use the configured OpenCode provider"
-      : "installed but no model provider is configured (set PARALLAX_OPENCODE_LOCAL=1 for local Ollama, pair Eliza Cloud, or set PARALLAX_OPENCODE_BASE_URL)";
+      : "installed but no model provider is configured (set ELIZA_OPENCODE_LOCAL=1 for local Ollama, pair Eliza Cloud, or set ELIZA_OPENCODE_BASE_URL)";
   inventory.push({
     id: "opencode",
     label: FRAMEWORK_LABELS.opencode,
@@ -842,7 +841,7 @@ async function computeTaskAgentFrameworkState(
   }));
   const metrics = probe?.getAgentMetrics?.() ?? {};
   const profile = buildTaskAgentTaskProfile(profileInput);
-  const explicitDefault = safeGetSetting(runtime, "PARALLAX_DEFAULT_AGENT_TYPE")
+  const explicitDefault = safeGetSetting(runtime, "ELIZA_DEFAULT_AGENT_TYPE")
     ?.toLowerCase()
     .trim();
   const selectable = frameworks.filter(
@@ -1046,12 +1045,12 @@ function computeTaskAgentFrameworkStateFromCachedInventory(
     !providerPrefersCodex &&
     !providerPrefersGemini &&
     Boolean(
-      readConfigEnvKey("PARALLAX_OPENCODE_BASE_URL") ||
-        readConfigEnvKey("PARALLAX_OPENCODE_LOCAL") === "1" ||
-        readConfigEnvKey("PARALLAX_OPENCODE_API_KEY") ||
-        readConfigEnvKey("PARALLAX_OPENCODE_MODEL_POWERFUL"),
+      readConfigEnvKey("ELIZA_OPENCODE_BASE_URL") ||
+        readConfigEnvKey("ELIZA_OPENCODE_LOCAL") === "1" ||
+        readConfigEnvKey("ELIZA_OPENCODE_API_KEY") ||
+        readConfigEnvKey("ELIZA_OPENCODE_MODEL_POWERFUL"),
     );
-  const explicitDefault = safeGetSetting(runtime, "PARALLAX_DEFAULT_AGENT_TYPE")
+  const explicitDefault = safeGetSetting(runtime, "ELIZA_DEFAULT_AGENT_TYPE")
     ?.toLowerCase()
     .trim();
   const candidates =
@@ -1292,7 +1291,7 @@ function buildPreferredReason(
     explicitDefault === framework.id &&
     selectionSignals.explicitOverride > 0
   ) {
-    return `explicit PARALLAX_DEFAULT_AGENT_TYPE override, with ${FRAMEWORK_LABELS[framework.id]} still scoring well for ${dominantSignals.join(" + ")} work`;
+    return `explicit ELIZA_DEFAULT_AGENT_TYPE override, with ${FRAMEWORK_LABELS[framework.id]} still scoring well for ${dominantSignals.join(" + ")} work`;
   }
   if (
     configuredSubscriptionProvider === "anthropic-subscription" &&

@@ -130,14 +130,18 @@ EXPECTED_CONTRACT: dict[str, Any] = {
         "SCHEDULED_TASKS_SNOOZE",
         "SCHEDULED_TASKS_UPDATE",
         "SCHEDULED_TASKS_CREATE",
-        # Promoted CALENDAR_* aliases
+        # Promoted CALENDAR_* aliases (auto-derived from manifest by
+        # runner._build_action_handlers via the ``CALENDAR`` umbrella).
+        "CALENDAR_BULK_RESCHEDULE",
+        "CALENDAR_CHECK_AVAILABILITY",
         "CALENDAR_CREATE_EVENT",
-        "CALENDAR_UPDATE_EVENT",
         "CALENDAR_DELETE_EVENT",
+        "CALENDAR_FEED",
+        "CALENDAR_NEXT_EVENT",
         "CALENDAR_PROPOSE_TIMES",
         "CALENDAR_SEARCH_EVENTS",
-        "CALENDAR_CHECK_AVAILABILITY",
-        "CALENDAR_NEXT_EVENT",
+        "CALENDAR_TRIP_WINDOW",
+        "CALENDAR_UPDATE_EVENT",
         "CALENDAR_UPDATE_PREFERENCES",
         # Promoted MESSAGE_* aliases
         "MESSAGE_SEND",
@@ -316,13 +320,18 @@ EXPECTED_CONTRACT: dict[str, Any] = {
         # Promoted CALENDAR_* / MESSAGE_* / CONTACT_* aliases exist in
         # Python _ACTION_HANDLERS but resolve through umbrellaToLowercase
         # in the TS backend — they never need explicit case labels there.
+        # CALENDAR_BULK_RESCHEDULE / CALENDAR_FEED / CALENDAR_TRIP_WINDOW
+        # are auto-derived from manifest entries by _build_action_handlers.
+        "CALENDAR_BULK_RESCHEDULE",
+        "CALENDAR_CHECK_AVAILABILITY",
         "CALENDAR_CREATE_EVENT",
-        "CALENDAR_UPDATE_EVENT",
         "CALENDAR_DELETE_EVENT",
+        "CALENDAR_FEED",
+        "CALENDAR_NEXT_EVENT",
         "CALENDAR_PROPOSE_TIMES",
         "CALENDAR_SEARCH_EVENTS",
-        "CALENDAR_CHECK_AVAILABILITY",
-        "CALENDAR_NEXT_EVENT",
+        "CALENDAR_TRIP_WINDOW",
+        "CALENDAR_UPDATE_EVENT",
         "CALENDAR_UPDATE_PREFERENCES",
         "MESSAGE_SEND",
         "MESSAGE_DRAFT_REPLY",

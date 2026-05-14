@@ -5,13 +5,13 @@
  * without circular dependency issues.
  */
 
+import { stripAssistantStageDirections } from "@elizaos/shared";
 import { getBootConfig, setBootConfig } from "../config/boot-config";
 import {
   NETWORK_STATUS_CHANGE_EVENT,
   type NetworkStatusChangeDetail,
 } from "../events";
 import { hydrateAndroidLocalAgentTokenForUrl } from "../onboarding/local-agent-token";
-import { stripAssistantStageDirections } from "../utils/assistant-text";
 import {
   clearElizaApiBase,
   clearElizaApiToken,
@@ -782,8 +782,6 @@ export class ElizaClient {
     }
 
     if (this.wsSendQueue.length >= this.wsSendQueueLimit) {
-      const droppedType = typeof data.type === "string" ? data.type : "unknown";
-      console.warn("[ws] send queue full - dropping:", droppedType);
       this.wsSendQueue.shift();
     }
     this.wsSendQueue.push(payload);
@@ -1015,8 +1013,7 @@ export class ElizaClient {
           void readPromise.finally(() => clearTimeout(id));
         });
         ({ done, value } = await Promise.race([readPromise, timeoutPromise]));
-      } catch (streamErr) {
-        console.warn("[api-client] SSE stream interrupted:", streamErr);
+      } catch {
         void reader.cancel("elizaos-sse-idle-timeout").catch(() => {});
         break;
       }

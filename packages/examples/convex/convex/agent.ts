@@ -50,7 +50,7 @@ const LLM_PROVIDERS: LLMProvider[] = [
   {
     name: "Groq",
     envKey: "GROQ_API_KEY",
-    plugin: groqPlugin,
+    plugin: groqPlugin as unknown as Plugin,
   },
 ];
 

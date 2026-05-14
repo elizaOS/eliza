@@ -98,6 +98,18 @@ function apiOriginFromApiBaseUrl(value: string): string {
   return value.replace(/\/api\/v1\/?$/, "");
 }
 
+function browserBaseUrlForCliLogin(baseUrl: string): string {
+  try {
+    const url = new URL(baseUrl);
+    if (url.hostname.toLowerCase() === "api.elizacloud.ai") {
+      return DEFAULT_ELIZA_CLOUD_BASE_URL;
+    }
+  } catch {
+    // Fall through to the configured base URL.
+  }
+  return baseUrl;
+}
+
 function encodePathParam(value: string | number): string {
   return encodeURIComponent(String(value));
 }
@@ -192,7 +204,8 @@ export class ElizaCloudClient {
   startCliLogin(options: CliLoginStartOptions = {}): Promise<CliLoginStartResponse> {
     const sessionId = options.sessionId ?? getCryptoRandomUuid();
     const query = options.returnTo ? `?returnTo=${encodeURIComponent(options.returnTo)}` : "";
-    const browserUrl = `${this.baseUrl}/auth/cli-login?session=${encodeURIComponent(
+    const browserBaseUrl = browserBaseUrlForCliLogin(this.baseUrl);
+    const browserUrl = `${browserBaseUrl}/auth/cli-login?session=${encodeURIComponent(
       sessionId,
     )}${query}`;
 

@@ -67,6 +67,7 @@ import { patchServerStructuredOutput as patchServerStructuredOutputImpl } from "
 import { patchVulkanKernels as patchVulkanKernelsImpl } from "./kernel-patches/vulkan-kernels.mjs";
 import {
   appendCmakeGraft,
+  appendKokoroCmakeGraft,
   fusedCmakeBuildTargets,
   fusedExtraCmakeFlags,
 } from "./omnivoice-fuse/cmake-graft.mjs";
@@ -3274,11 +3275,20 @@ function buildTarget({ target, args, ctx }) {
         llamaCppRoot: args.cacheDir,
       });
       const grafted = appendCmakeGraft({ llamaCppRoot: args.cacheDir });
+      // Append the Kokoro graft block when Kokoro sources have been
+      // staged alongside the OmniVoice sources. The block FATAL_ERRORs
+      // if ELIZA_FUSE_OMNIVOICE is off, so the two grafts are coupled.
+      let kokoroGrafted = false;
+      if ((omnivoiceInfo.kokoroSourceCount ?? 0) > 0) {
+        kokoroGrafted = appendKokoroCmakeGraft({ llamaCppRoot: args.cacheDir });
+      }
       console.log(
         `[dflash-build] omnivoice-fuse: pin=${omnivoiceInfo.commit} ` +
           `ggmlSubmodule=${omnivoiceInfo.ggmlSubmoduleCommit} ` +
           `sources=${omnivoiceInfo.sourceCount} ` +
-          `cmakeGraftAppended=${grafted}`,
+          `cmakeGraftAppended=${grafted} ` +
+          `kokoroSources=${omnivoiceInfo.kokoroSourceCount ?? 0} ` +
+          `kokoroGraftAppended=${kokoroGrafted}`,
       );
     }
     flags.push(...fusedExtraCmakeFlags());

@@ -211,7 +211,6 @@ describe("DFlash runtime discovery", () => {
 		const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-dflash-test-"));
 		process.env.ELIZA_STATE_DIR = root;
 		delete process.env.ELIZA_DFLASH_ENABLED;
-		delete process.env.ELIZA_DFLASH_DISABLED;
 		delete process.env.ELIZA_DFLASH_METAL_AUTO;
 		delete process.env.ELIZA_DFLASH_METAL_ENABLED;
 		delete process.env.HIP_VISIBLE_DEVICES;
@@ -296,7 +295,6 @@ describe("fused-vs-two-process spawn selection", () => {
 	}
 	function clearEnv() {
 		delete process.env.ELIZA_DFLASH_ENABLED;
-		delete process.env.ELIZA_DFLASH_DISABLED;
 		delete process.env.ELIZA_DFLASH_METAL_AUTO;
 		delete process.env.ELIZA_DFLASH_METAL_ENABLED;
 		delete process.env.ELIZA_DFLASH_DISABLE_FUSED_SERVER;

@@ -141,7 +141,7 @@ async function ensureOwnerAuthorized(
   state: CompatRuntimeState,
 ): Promise<boolean> {
   if (isOwner(req, state)) return true;
-  return await ensureRouteAuthorized(req, res, state);
+  return ensureRouteAuthorized(req, res, state);
 }
 
 function redactRequest(
@@ -236,12 +236,12 @@ ${reason ? `<div class="row"><strong>Reason:</strong> ${reason}</div>` : ""}
 <pre>${summaryJson}</pre>
 <script>
 (function(){
-  var form = document.getElementById('proof-form');
+  const form = document.getElementById('proof-form');
   if (!form) return;
   form.addEventListener('submit', function(e){
     e.preventDefault();
-    var raw = document.getElementById('proof').value;
-    var body;
+    const raw = document.getElementById('proof').value;
+    let body;
     try { body = JSON.parse(raw); } catch (err) { alert('Invalid JSON'); return; }
     fetch(form.action, {
       method: 'POST',

@@ -13,6 +13,8 @@ import { type IAgentRuntime, logger } from "@elizaos/core";
 
 import { getChannelRegistry } from "../channels/index.js";
 import type { DispatchResult } from "../connectors/contract.js";
+import { getHostExecutionCapabilities } from "@elizaos/app-core";
+
 import { createGlobalPauseStore } from "../global-pause/store.js";
 import {
   ownerFactsToView,
@@ -61,6 +63,7 @@ import type {
   ScheduledTaskFilter,
   ScheduledTaskLogEntry,
   SubjectStoreView,
+  TaskExecutionProfile,
 } from "./types.js";
 
 interface RepositoryBackedStores {
@@ -350,6 +353,13 @@ export interface CreateRuntimeRunnerOptions {
   globalPause?: GlobalPauseView;
   activity?: ActivitySignalBusView;
   subjectStore?: SubjectStoreView;
+  /**
+   * Override the host-capability probe. The default reads
+   * `getHostExecutionCapabilities(runtime)` from `@elizaos/app-core`,
+   * which detects iOS BackgroundRunner / Android FGS / Node desktop. Tests
+   * inject a fixed set to exercise substitution behavior.
+   */
+  hostCapabilities?: () => ReadonlySet<TaskExecutionProfile>;
   now?: () => Date;
 }
 
@@ -402,6 +412,12 @@ export function createRuntimeScheduledTaskRunner(
       if (!registry) return new Set();
       return new Set(registry.list().map((c) => c.kind));
     },
+    hostCapabilities:
+      opts.hostCapabilities ??
+      (() =>
+        getHostExecutionCapabilities(
+          opts.runtime,
+        ) as ReadonlySet<TaskExecutionProfile>),
     dispatcher: createProductionScheduledTaskDispatcher({
       runtime: opts.runtime,
     }),

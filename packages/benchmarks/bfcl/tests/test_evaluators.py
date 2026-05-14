@@ -155,9 +155,15 @@ class TestExecutionEvaluator:
         assert errors == []
 
     @pytest.mark.asyncio
-    async def test_standard_mocks(self, evaluator: ExecutionEvaluator) -> None:
-        """Test standard mock functions."""
-        evaluator.setup_standard_mocks()
+    async def test_no_auto_success_mocks(self, evaluator: ExecutionEvaluator) -> None:
+        """The previous synthetic always-success mock generator has been
+        removed. setup_standard_mocks is now a no-op; unregistered functions
+        must NOT be silently accepted."""
+        evaluator.setup_standard_mocks()  # intentional no-op
+        from benchmarks.bfcl.types import FunctionDefinition
+        evaluator.register_mocks_from_definitions([
+            FunctionDefinition(name="get_weather", description="", parameters={}),
+        ])  # intentional no-op
 
         call = FunctionCall(
             name="get_weather",
@@ -165,9 +171,12 @@ class TestExecutionEvaluator:
         )
         success, result, error = await evaluator.execute(call)
 
-        assert success is True
-        assert result["location"] == "San Francisco"
-        assert result["temperature"] == 22
+        assert success is False, (
+            "Unregistered functions must NOT auto-succeed — the previous "
+            "behaviour made exec_accuracy meaningless."
+        )
+        assert result is None
+        assert "No mock handler" in (error or "")
 
     @pytest.mark.asyncio
     async def test_preconfigured_result(self, evaluator: ExecutionEvaluator) -> None:

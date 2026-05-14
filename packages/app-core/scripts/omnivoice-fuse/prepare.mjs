@@ -126,12 +126,37 @@ function writeElizaFfiAdapter({ graftRoot, commit }) {
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
 #include <memory>
 #include <mutex>
 #include <new>
 #include <string>
 #include <thread>
+#include <unordered_map>
 #include <vector>
+
+/* OmniVoice voice-preset payload parsed from
+ * <bundle_dir>/cache/voice-preset-<id>.bin (ELZ2 v2 binary format). v1
+ * presets (Kokoro-style: embedding + phrase-cache seed only) parse with
+ * empty ref_audio_tokens / ref_text / instruct fields so the C side
+ * falls back to OmniVoice's auto-voice path on those entries.
+ *
+ * The format is described in TypeScript at
+ * plugins/plugin-local-inference/src/services/voice/voice-preset-format.ts.
+ * This C-side parser is a slim, read-only mirror of that contract — it
+ * understands both v1 and v2, returns false on any structural error,
+ * and never copies large buffers (ref_audio_tokens is a 24 KB span at
+ * most for a 30 s reference). */
+struct EliVoicePreset {
+    std::string voice_id;
+    std::string instruct;
+    std::string ref_text;
+    std::vector<int32_t> ref_audio_tokens;
+    int K = 0;
+    int ref_T = 0;
+    int version = 0;
+    bool empty_payload = true;
+};
 
 struct EliInferenceContext {
     std::string bundle_dir;
@@ -149,7 +174,213 @@ struct EliInferenceContext {
     std::atomic<bool> tts_cancel{false};
     std::mutex tts_mutex;
     std::mutex asr_mutex;
+    /* Parsed voice presets, keyed by voice id. Populated lazily on the
+     * first TTS call that mentions the id. The mutex protects the map
+     * itself; presets are immutable once inserted. */
+    std::mutex preset_mutex;
+    std::unordered_map<std::string, EliVoicePreset> presets;
 };
+
+/* ELZ2 magic 'ELZ1' (the ascii bytes 'E','L','Z','1' little-endian).
+ * The magic stays 'ELZ1' across format versions — only the version
+ * word at offset 4 changes between v1 and v2. */
+static constexpr uint32_t ELIZA_VOICE_PRESET_MAGIC = 0x315A4C45u;
+
+static inline uint32_t eliza_le_u32(const uint8_t * p) {
+    return (uint32_t)p[0] | ((uint32_t)p[1] << 8) |
+           ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
+}
+
+static inline int32_t eliza_le_i32(const uint8_t * p) {
+    return (int32_t) eliza_le_u32(p);
+}
+
+/* Validated voice-id allowlist: a single path-safe segment (mirrors the
+ * TypeScript voicePresetPath check). Refuses anything containing '/'
+ * '..' or characters outside [A-Za-z0-9._-]. */
+static bool eliza_is_safe_voice_id(const std::string & id) {
+    if (id.empty()) return false;
+    if (id.find("..") != std::string::npos) return false;
+    for (char c : id) {
+        const bool ok =
+            (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
+            (c >= '0' && c <= '9') || c == '.' || c == '_' || c == '-';
+        if (!ok) return false;
+    }
+    return true;
+}
+
+/* Read a whole file into memory. Returns true on success. */
+static bool eliza_read_file_bytes(const std::filesystem::path & path,
+                                  std::vector<uint8_t> & out) {
+    std::ifstream f(path, std::ios::binary);
+    if (!f.good()) return false;
+    f.seekg(0, std::ios::end);
+    std::streamsize sz = f.tellg();
+    if (sz < 0) return false;
+    out.resize((size_t) sz);
+    if (sz == 0) return true;
+    f.seekg(0, std::ios::beg);
+    f.read(reinterpret_cast<char *>(out.data()), sz);
+    return f.good() || f.eof();
+}
+
+/* Parse an ELZ2 voice-preset blob (also accepts v1 — v2-only fields
+ * stay empty). Returns false on any structural error. */
+static bool eliza_parse_voice_preset(const std::vector<uint8_t> & bytes,
+                                     EliVoicePreset & out,
+                                     std::string & err) {
+    if (bytes.size() < 24) {
+        err = "voice preset truncated: header < 24 bytes";
+        return false;
+    }
+    const uint8_t * p = bytes.data();
+    const size_t len = bytes.size();
+    const uint32_t magic = eliza_le_u32(p);
+    if (magic != ELIZA_VOICE_PRESET_MAGIC) {
+        err = "voice preset bad magic";
+        return false;
+    }
+    const uint32_t version = eliza_le_u32(p + 4);
+    if (version != 1u && version != 2u) {
+        err = "voice preset unsupported version";
+        return false;
+    }
+    out.version = (int) version;
+
+    /* v1 has a 24-byte header (embedding section + phrase section). v2
+     * has a 64-byte header that ADDS ref_audio_tokens / ref_text /
+     * instruct / metadata section descriptors. We only care about the
+     * v2 sections — the embedding + phrase seed are handled in JS. */
+    if (version == 1u) {
+        /* v1: nothing the C side needs (embedding is fp32 for Kokoro
+         * etc., not OmniVoice). Mark empty and return OK. */
+        out.empty_payload = true;
+        return true;
+    }
+    if (len < 64) {
+        err = "voice preset v2 truncated header";
+        return false;
+    }
+    auto section_at = [&](size_t hdr_off, uint32_t & off, uint32_t & sz) {
+        off = eliza_le_u32(p + hdr_off);
+        sz = eliza_le_u32(p + hdr_off + 4);
+    };
+    uint32_t ref_tok_off = 0, ref_tok_sz = 0;
+    uint32_t ref_txt_off = 0, ref_txt_sz = 0;
+    uint32_t instr_off = 0, instr_sz = 0;
+    section_at(24, ref_tok_off, ref_tok_sz);
+    section_at(32, ref_txt_off, ref_txt_sz);
+    section_at(40, instr_off, instr_sz);
+    /* metadata at +48/+52 — we don't consume it on the C side. */
+
+    auto bounds_ok = [&](uint32_t off, uint32_t sz) {
+        if (sz == 0) return true;
+        if (off < 64) return false;
+        const size_t end = (size_t) off + (size_t) sz;
+        return end <= len;
+    };
+    if (!bounds_ok(ref_tok_off, ref_tok_sz) ||
+        !bounds_ok(ref_txt_off, ref_txt_sz) ||
+        !bounds_ok(instr_off, instr_sz)) {
+        err = "voice preset section out of bounds";
+        return false;
+    }
+
+    if (ref_tok_sz > 0) {
+        if (ref_tok_sz < 8) {
+            err = "voice preset ref_audio_tokens truncated";
+            return false;
+        }
+        const uint8_t * rt = p + ref_tok_off;
+        const uint32_t K = eliza_le_u32(rt);
+        const uint32_t refT = eliza_le_u32(rt + 4);
+        const size_t payload = ref_tok_sz - 8;
+        if (payload != (size_t) K * (size_t) refT * 4u) {
+            err = "voice preset ref_audio_tokens shape mismatch";
+            return false;
+        }
+        out.K = (int) K;
+        out.ref_T = (int) refT;
+        out.ref_audio_tokens.resize((size_t) K * (size_t) refT);
+        for (size_t i = 0; i < out.ref_audio_tokens.size(); ++i) {
+            out.ref_audio_tokens[i] = eliza_le_i32(rt + 8 + i * 4u);
+        }
+    }
+    if (ref_txt_sz > 0) {
+        out.ref_text.assign(reinterpret_cast<const char *>(p + ref_txt_off),
+                            (size_t) ref_txt_sz);
+    }
+    if (instr_sz > 0) {
+        out.instruct.assign(reinterpret_cast<const char *>(p + instr_off),
+                            (size_t) instr_sz);
+    }
+    out.empty_payload =
+        out.instruct.empty() && out.ref_text.empty() && out.ref_audio_tokens.empty();
+    return true;
+}
+
+/* Resolve a preset id to a parsed preset. Returns nullptr if the id is
+ * unsafe, the file is missing, or parsing fails — in those cases the
+ * caller falls back to OmniVoice auto-voice (params.instruct = "")
+ * after logging via out_error.
+ *
+ * On a cache hit the cached preset is returned without re-reading the
+ * file. The preset table is keyed by voice id and lives on the
+ * EliInferenceContext, so two different contexts (different bundles)
+ * load independent presets.
+ *
+ * Caller must hold ctx->preset_mutex (or otherwise serialize). */
+static const EliVoicePreset * eliza_load_voice_preset_locked(
+    EliInferenceContext * ctx,
+    const std::string & voice_id,
+    std::string & err) {
+    auto it = ctx->presets.find(voice_id);
+    if (it != ctx->presets.end()) return &it->second;
+
+    if (!eliza_is_safe_voice_id(voice_id)) {
+        err = "voice preset id is not a safe single segment: " + voice_id;
+        return nullptr;
+    }
+    std::filesystem::path file =
+        std::filesystem::path(ctx->bundle_dir) / "cache" /
+        ("voice-preset-" + voice_id + ".bin");
+    std::error_code ec;
+    if (!std::filesystem::is_regular_file(file, ec)) {
+        err = "voice preset file not found: " + file.string();
+        return nullptr;
+    }
+    std::vector<uint8_t> bytes;
+    if (!eliza_read_file_bytes(file, bytes)) {
+        err = "voice preset file unreadable: " + file.string();
+        return nullptr;
+    }
+    EliVoicePreset preset;
+    preset.voice_id = voice_id;
+    if (!eliza_parse_voice_preset(bytes, preset, err)) {
+        return nullptr;
+    }
+    auto ins = ctx->presets.emplace(voice_id, std::move(preset));
+    return &ins.first->second;
+}
+
+/* Apply a resolved preset to an ov_tts_params struct. Sets instruct,
+ * ref_audio_tokens, ref_T, ref_text from the preset. Leaves
+ * ref_audio_24k / ref_n_samples alone — they are only used by the
+ * encode entrypoint, not synthesis. */
+static void eliza_apply_preset_to_params(const EliVoicePreset & preset,
+                                         ov_tts_params * params) {
+    if (!preset.instruct.empty()) {
+        params->instruct = preset.instruct.c_str();
+    }
+    if (!preset.ref_audio_tokens.empty() && preset.K > 0 && preset.ref_T > 0) {
+        params->ref_audio_tokens = preset.ref_audio_tokens.data();
+        params->ref_T = preset.ref_T;
+    }
+    if (!preset.ref_text.empty()) {
+        params->ref_text = preset.ref_text.c_str();
+    }
+}
 
 #define ELIZA_STRINGIFY_IMPL(x) #x
 #define ELIZA_STRINGIFY(x) ELIZA_STRINGIFY_IMPL(x)
@@ -721,7 +952,24 @@ int eliza_inference_tts_synthesize(
     ov_tts_default_params(&params);
     eliza_apply_tts_env_overrides(&params);
     params.text = text_owned.c_str();
-    params.instruct = speaker_preset_id ? speaker_preset_id : "";
+    /* Default to OmniVoice's auto-voice path. The preset (if any)
+     * overwrites params.instruct / ref_audio_tokens / ref_text via
+     * eliza_apply_preset_to_params below. */
+    params.instruct = "";
+    if (speaker_preset_id && speaker_preset_id[0] != '\\0') {
+        std::string preset_err;
+        const EliVoicePreset * preset = nullptr;
+        {
+            std::lock_guard<std::mutex> preset_lock(ctx->preset_mutex);
+            preset = eliza_load_voice_preset_locked(ctx, speaker_preset_id, preset_err);
+        }
+        if (preset && !preset->empty_payload) {
+            eliza_apply_preset_to_params(*preset, &params);
+        }
+        /* A missing or v1-only preset is not fatal — auto-voice mode
+         * still produces audio. The preset_err is only surfaced via
+         * out_error when synthesis itself fails. */
+    }
     params.cancel = eliza_tts_cancel_requested;
     params.cancel_user_data = ctx;
 
@@ -994,7 +1242,24 @@ int eliza_inference_tts_synthesize_stream(
     ov_tts_default_params(&params);
     eliza_apply_tts_env_overrides(&params);
     params.text = text_owned.c_str();
-    params.instruct = speaker_preset_id ? speaker_preset_id : "";
+    /* Default to OmniVoice's auto-voice path. The preset (if any)
+     * overwrites params.instruct / ref_audio_tokens / ref_text via
+     * eliza_apply_preset_to_params below. */
+    params.instruct = "";
+    if (speaker_preset_id && speaker_preset_id[0] != '\\0') {
+        std::string preset_err;
+        const EliVoicePreset * preset = nullptr;
+        {
+            std::lock_guard<std::mutex> preset_lock(ctx->preset_mutex);
+            preset = eliza_load_voice_preset_locked(ctx, speaker_preset_id, preset_err);
+        }
+        if (preset && !preset->empty_payload) {
+            eliza_apply_preset_to_params(*preset, &params);
+        }
+        /* A missing or v1-only preset is not fatal — auto-voice mode
+         * still produces audio. The preset_err is only surfaced via
+         * out_error when synthesis itself fails. */
+    }
     params.cancel = eliza_tts_cancel_requested;
     params.cancel_user_data = ctx;
 
@@ -1048,6 +1313,68 @@ int eliza_inference_set_verifier_callback(
         "[libelizainference] native DFlash verifier callback is not implemented in this build; "
         "the JS scheduler synthesizes verifier events from llama-server streaming deltas");
     return ELIZA_ERR_NOT_IMPLEMENTED;
+}
+
+/* ---- OmniVoice reference encode (ABI v4) -------------------------- *
+ *
+ * Thin wrapper around ov_encode_reference. The TTS region must have
+ * been acquired (\`mmap_acquire("tts")\`) before the call. The library
+ * malloc-allocates the token buffer; callers release it via
+ * eliza_inference_free_tokens.
+ */
+int eliza_inference_encode_reference(
+    EliInferenceContext * ctx,
+    const float * pcm,
+    size_t n_samples,
+    int sample_rate_hz,
+    int * out_K,
+    int * out_ref_T,
+    int ** out_tokens,
+    char ** out_error) {
+    if (!ctx || !pcm || !out_K || !out_ref_T || !out_tokens) {
+        eliza_set_error(out_error, "[libelizainference] encode_reference: invalid arguments");
+        return ELIZA_ERR_INVALID_ARG;
+    }
+    if (n_samples == 0) {
+        eliza_set_error(out_error, "[libelizainference] encode_reference: n_samples must be > 0");
+        return ELIZA_ERR_INVALID_ARG;
+    }
+    if (sample_rate_hz != 24000) {
+        eliza_set_error(out_error,
+            "[libelizainference] encode_reference: sample_rate_hz must be 24000 (got %d); "
+            "caller is responsible for upstream resample",
+            sample_rate_hz);
+        return ELIZA_ERR_INVALID_ARG;
+    }
+
+    std::lock_guard<std::mutex> lock(ctx->tts_mutex);
+    if (!ctx->ov) {
+        eliza_set_error(out_error,
+            "[libelizainference] encode_reference: TTS region is not acquired; "
+            "call mmap_acquire(\\"tts\\") after arming voice");
+        return ELIZA_ERR_INVALID_ARG;
+    }
+
+    int32_t * tokens = nullptr;
+    int K = 0;
+    int ref_T = 0;
+    ov_status rc = ov_encode_reference(ctx->ov, pcm, (int) n_samples,
+                                       &tokens, &K, &ref_T);
+    if (rc != OV_STATUS_OK) {
+        std::string msg = "[libelizainference] ov_encode_reference failed: ";
+        msg += ov_last_error();
+        eliza_set_error(out_error, msg);
+        if (tokens) std::free(tokens);
+        return eliza_map_ov_status(rc);
+    }
+    *out_tokens = tokens;
+    *out_K = K;
+    *out_ref_T = ref_T;
+    return ELIZA_OK;
+}
+
+void eliza_inference_free_tokens(int * tokens) {
+    if (tokens) std::free(tokens);
 }
 
 /* ---- Native VAD (ABI v3) ------------------------------------------- *
@@ -1871,6 +2198,38 @@ export function prepareOmnivoiceFusion({
     ...applyPatches({ patchesDir, llamaCppRoot }),
   ];
 
+  // Stage the Kokoro graft alongside OmniVoice. The Kokoro sources live in
+  // `packages/app-core/scripts/omnivoice-fuse/kokoro-graft/{src,tools}` and
+  // are copied into the same `omnivoice/` directory so they compile into the
+  // same `omnivoice-core` static library + `elizainference` shared library.
+  // See kokoro-llama-cpp-feasibility.md §3.
+  const kokoroStagingDir = new URL("./kokoro-graft/", import.meta.url).pathname;
+  let kokoroSourceCount = 0;
+  if (fs.existsSync(kokoroStagingDir)) {
+    for (const subdir of ["src", "tools"]) {
+      const from = path.join(kokoroStagingDir, subdir);
+      const to = path.join(graftRoot, subdir);
+      if (!fs.existsSync(from)) continue;
+      for (const entry of fs.readdirSync(from, { withFileTypes: true })) {
+        // Only copy kokoro-* and convert_kokoro_* files; never overwrite
+        // OmniVoice's own files in src/ or tools/. The CMake graft block
+        // globs `kokoro-*.cpp` specifically so the two sets stay
+        // distinguishable on the build side.
+        if (
+          !entry.name.startsWith("kokoro") &&
+          !entry.name.startsWith("convert_kokoro")
+        ) {
+          continue;
+        }
+        if (entry.isDirectory()) continue;
+        const srcFile = path.join(from, entry.name);
+        const dstFile = path.join(to, entry.name);
+        fs.copyFileSync(srcFile, dstFile);
+        if (/\.(c|cc|cpp|cxx|h|hpp)$/.test(entry.name)) kokoroSourceCount += 1;
+      }
+    }
+  }
+
   // Count source files actually grafted, for the manifest.
   let sourceCount = 0;
   const stack = [graftRoot];
@@ -1894,5 +2253,6 @@ export function prepareOmnivoiceFusion({
     sourceCount,
     sourceSurface,
     appliedPatches,
+    kokoroSourceCount,
   };
 }

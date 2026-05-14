@@ -24,6 +24,7 @@ from elizaos_agentbench.types import (
     AgentBenchTask,
     AgentRuntimeProtocol,
     BaselineComparisonType,
+    BenchmarkSplit,
     EnvironmentConfig,
     EnvironmentReport,
     GPT4_BASELINE_SCORES,
@@ -35,11 +36,15 @@ from elizaos_agentbench.types import (
     TaskDifficulty,
 )
 from elizaos_agentbench.adapters.base import EnvironmentAdapter
-from elizaos_agentbench.adapters.os_adapter import OSEnvironmentAdapter
+from elizaos_agentbench.adapters.card_game_adapter import CardGameAdapter
 from elizaos_agentbench.adapters.db_adapter import DatabaseEnvironmentAdapter
-from elizaos_agentbench.adapters.webshop_adapter import WebShopEnvironmentAdapter
+from elizaos_agentbench.adapters.householding_adapter import HouseholdingEnvironmentAdapter
 from elizaos_agentbench.adapters.kg_adapter import KnowledgeGraphAdapter
 from elizaos_agentbench.adapters.lateral_thinking_adapter import LateralThinkingAdapter
+from elizaos_agentbench.adapters.os_adapter import OSEnvironmentAdapter
+from elizaos_agentbench.adapters.web_browsing_adapter import WebBrowsingAdapter
+from elizaos_agentbench.adapters.webshop_adapter import WebShopEnvironmentAdapter
+from elizaos_agentbench import upstream_loader
 
 logger = logging.getLogger(__name__)
 
@@ -143,13 +148,22 @@ class AgentBenchRunner:
         env: AgentBenchEnvironment,
         config: EnvironmentConfig,
     ) -> EnvironmentAdapter:
-        """Create adapter for a specific environment."""
+        """Create adapter for a specific environment.
+
+        All 8 AgentBench environments are wired. Some (Card Game,
+        ALFWorld, full WebShop) require external binaries / corpora; in
+        those cases the adapter returns a "skipped" result with a clear
+        reason rather than fabricating data.
+        """
         adapter_map: dict[AgentBenchEnvironment, type[EnvironmentAdapter]] = {
             AgentBenchEnvironment.OS: OSEnvironmentAdapter,
             AgentBenchEnvironment.DATABASE: DatabaseEnvironmentAdapter,
             AgentBenchEnvironment.WEB_SHOPPING: WebShopEnvironmentAdapter,
             AgentBenchEnvironment.KNOWLEDGE_GRAPH: KnowledgeGraphAdapter,
             AgentBenchEnvironment.LATERAL_THINKING: LateralThinkingAdapter,
+            AgentBenchEnvironment.CARD_GAME: CardGameAdapter,
+            AgentBenchEnvironment.HOUSEHOLDING: HouseholdingEnvironmentAdapter,
+            AgentBenchEnvironment.WEB_BROWSING: WebBrowsingAdapter,
         }
 
         adapter_class = adapter_map.get(env)
@@ -228,240 +242,25 @@ class AgentBenchRunner:
             await self._cleanup()
 
     def _load_tasks(self, env: AgentBenchEnvironment) -> list[AgentBenchTask]:
-        """Load tasks for a specific environment."""
-        # Generate sample tasks for testing
-        # In production, these would be loaded from AgentBench dataset files
+        """Load tasks for an environment from the vendored upstream data.
 
-        if env == AgentBenchEnvironment.OS:
-            return self._generate_os_tasks()
-        elif env == AgentBenchEnvironment.DATABASE:
-            return self._generate_db_tasks()
-        elif env == AgentBenchEnvironment.WEB_SHOPPING:
-            return self._generate_webshop_tasks()
-        elif env == AgentBenchEnvironment.KNOWLEDGE_GRAPH:
-            return self._generate_kg_tasks()
-        elif env == AgentBenchEnvironment.LATERAL_THINKING:
-            return self._generate_lateral_thinking_tasks()
-        else:
+        Uses ``upstream_loader.load_tasks`` under the hood. The split
+        (dev / test) is taken from ``self.config.split``.
+        """
+        split = self.config.split.value if isinstance(self.config.split, BenchmarkSplit) else "test"
+        env_cfg = self.config.get_env_config(env)
+        limit = env_cfg.max_tasks
+        try:
+            return upstream_loader.load_tasks(env, split=split, limit=limit)
+        except upstream_loader.UpstreamDataMissingError as e:
+            logger.warning(f"[AgentBenchRunner] {env.value}: upstream data missing ({e})")
             return []
-
-    def _generate_os_tasks(self) -> list[AgentBenchTask]:
-        """Generate sample OS tasks."""
-        return [
-            AgentBenchTask(
-                id="os-001",
-                environment=AgentBenchEnvironment.OS,
-                description="Create a new directory called 'test_dir' and create a file named 'hello.txt' inside it with the content 'Hello, World!'",
-                initial_state={"working_dir": "/home/user"},
-                goal="File test_dir/hello.txt exists with content 'Hello, World!'",
-                max_steps=10,
-                timeout_ms=30000,
-                ground_truth="Hello, World!",
-                metadata={"verify_command": "cat test_dir/hello.txt"},
-            ),
-            AgentBenchTask(
-                id="os-002",
-                environment=AgentBenchEnvironment.OS,
-                description="Find all .txt files in the current directory and count them",
-                initial_state={
-                    "working_dir": "/home/user",
-                    "files": {
-                        "/home/user/file1.txt": "content1",
-                        "/home/user/file2.txt": "content2",
-                        "/home/user/file3.log": "log content",
-                    },
-                },
-                goal="Count the number of .txt files",
-                max_steps=5,
-                timeout_ms=20000,
-                ground_truth="2",
-                difficulty=TaskDifficulty.EASY,
-                metadata={"verify_command": "find . -maxdepth 1 -name \"*.txt\" | wc -l"},
-            ),
-            AgentBenchTask(
-                id="os-003",
-                environment=AgentBenchEnvironment.OS,
-                description="Find the largest file in the logs directory",
-                initial_state={
-                    "working_dir": "/home/user",
-                    "files": {
-                        "/home/user/logs/small.log": "x" * 10,
-                        "/home/user/logs/medium.log": "x" * 100,
-                        "/home/user/logs/large.log": "x" * 1000,
-                    },
-                },
-                goal="Identify the largest file name in logs/",
-                max_steps=8,
-                timeout_ms=30000,
-                difficulty=TaskDifficulty.MEDIUM,
-                ground_truth="large.log",
-                metadata={"verify_command": "ls -S logs | head -1"},
-            ),
-        ]
-
-    def _generate_db_tasks(self) -> list[AgentBenchTask]:
-        """Generate sample database tasks."""
-        return [
-            AgentBenchTask(
-                id="db-001",
-                environment=AgentBenchEnvironment.DATABASE,
-                description="Find all employees who earn more than $50000",
-                initial_state={
-                    "schema": {
-                        "employees": [
-                            {"name": "id", "type": "INTEGER", "primary_key": True},
-                            {"name": "name", "type": "TEXT", "not_null": True},
-                            {"name": "salary", "type": "REAL"},
-                            {"name": "department", "type": "TEXT"},
-                        ]
-                    },
-                    "data": {
-                        "employees": [
-                            {"id": 1, "name": "Alice", "salary": 60000, "department": "Engineering"},
-                            {"id": 2, "name": "Bob", "salary": 45000, "department": "Sales"},
-                            {"id": 3, "name": "Charlie", "salary": 75000, "department": "Engineering"},
-                            {"id": 4, "name": "Diana", "salary": 52000, "department": "HR"},
-                        ]
-                    },
-                },
-                goal="Write a SQL query to find employees earning more than $50000",
-                max_steps=5,
-                timeout_ms=20000,
-                ground_truth="SELECT * FROM employees WHERE salary > 50000",
-                difficulty=TaskDifficulty.EASY,
-            ),
-            AgentBenchTask(
-                id="db-002",
-                environment=AgentBenchEnvironment.DATABASE,
-                description="Calculate the average salary per department",
-                initial_state={
-                    "schema": {
-                        "employees": [
-                            {"name": "id", "type": "INTEGER", "primary_key": True},
-                            {"name": "name", "type": "TEXT"},
-                            {"name": "salary", "type": "REAL"},
-                            {"name": "department", "type": "TEXT"},
-                        ]
-                    },
-                    "data": {
-                        "employees": [
-                            {"id": 1, "name": "Alice", "salary": 60000, "department": "Engineering"},
-                            {"id": 2, "name": "Bob", "salary": 45000, "department": "Sales"},
-                            {"id": 3, "name": "Charlie", "salary": 75000, "department": "Engineering"},
-                            {"id": 4, "name": "Diana", "salary": 52000, "department": "HR"},
-                            {"id": 5, "name": "Eve", "salary": 48000, "department": "Sales"},
-                        ]
-                    },
-                },
-                goal="Write a SQL query to calculate average salary per department",
-                max_steps=5,
-                timeout_ms=20000,
-                ground_truth="SELECT department, AVG(salary) as avg_salary FROM employees GROUP BY department",
-                difficulty=TaskDifficulty.MEDIUM,
-            ),
-        ]
-
-    def _generate_webshop_tasks(self) -> list[AgentBenchTask]:
-        """Generate sample WebShop tasks."""
-        return [
-            AgentBenchTask(
-                id="ws-001",
-                environment=AgentBenchEnvironment.WEB_SHOPPING,
-                description="Buy a pair of black wireless headphones under $100",
-                initial_state={"budget": 100},
-                goal="Purchase wireless headphones in black color within budget",
-                max_steps=15,
-                timeout_ms=60000,
-                metadata={"target_product": "P001", "required_options": {"color": "black"}},
-                difficulty=TaskDifficulty.EASY,
-            ),
-            AgentBenchTask(
-                id="ws-002",
-                environment=AgentBenchEnvironment.WEB_SHOPPING,
-                description="Find and buy the highest-rated product in the Sports category",
-                initial_state={"budget": 200},
-                goal="Purchase the highest-rated sports product",
-                max_steps=20,
-                timeout_ms=60000,
-                metadata={"target_category": "Sports", "selection_criteria": "highest_rating"},
-                difficulty=TaskDifficulty.MEDIUM,
-            ),
-        ]
-
-    def _generate_kg_tasks(self) -> list[AgentBenchTask]:
-        """Generate sample knowledge graph tasks."""
-        return [
-            AgentBenchTask(
-                id="kg-001",
-                environment=AgentBenchEnvironment.KNOWLEDGE_GRAPH,
-                description="Where was Albert Einstein born?",
-                initial_state={},
-                goal="Find the birthplace of Albert Einstein",
-                max_steps=10,
-                timeout_ms=30000,
-                ground_truth="Germany",
-                difficulty=TaskDifficulty.EASY,
-            ),
-            AgentBenchTask(
-                id="kg-002",
-                environment=AgentBenchEnvironment.KNOWLEDGE_GRAPH,
-                description="Find all people who won the Nobel Prize in Physics",
-                initial_state={},
-                goal="List all Nobel Prize in Physics winners in the knowledge graph",
-                max_steps=15,
-                timeout_ms=45000,
-                ground_truth="Albert Einstein, Marie Curie",
-                difficulty=TaskDifficulty.MEDIUM,
-            ),
-            AgentBenchTask(
-                id="kg-003",
-                environment=AgentBenchEnvironment.KNOWLEDGE_GRAPH,
-                description="Which continent is the birthplace of Marie Curie located in?",
-                initial_state={},
-                goal="Find the continent of Marie Curie's birthplace through multi-hop reasoning",
-                max_steps=15,
-                timeout_ms=45000,
-                ground_truth="Europe",
-                difficulty=TaskDifficulty.HARD,
-            ),
-        ]
-
-    def _generate_lateral_thinking_tasks(self) -> list[AgentBenchTask]:
-        """Generate lateral thinking puzzle tasks."""
-        return [
-            AgentBenchTask(
-                id="lt-001",
-                environment=AgentBenchEnvironment.LATERAL_THINKING,
-                description="A man walks into a bar and asks for a glass of water. The bartender pulls out a gun and points it at him. The man says 'Thank you' and walks out. Why?",
-                initial_state={"puzzle_id": "ltp001"},
-                goal="Figure out why the man thanked the bartender",
-                max_steps=20,
-                timeout_ms=120000,
-                ground_truth="hiccups",
-                hints=[
-                    "The man had a physical condition.",
-                    "The gun wasn't meant to harm him.",
-                    "Fear can cure certain conditions.",
-                ],
-                difficulty=TaskDifficulty.MEDIUM,
-            ),
-            AgentBenchTask(
-                id="lt-002",
-                environment=AgentBenchEnvironment.LATERAL_THINKING,
-                description="A man is found dead in a field with an unopened package next to him. There are no other people, animals, or vehicles nearby. How did he die?",
-                initial_state={"puzzle_id": "ltp002"},
-                goal="Figure out how the man died",
-                max_steps=20,
-                timeout_ms=120000,
-                ground_truth="parachute",
-                hints=[
-                    "The package is related to his death.",
-                    "He fell from somewhere.",
-                    "The package should have opened before he landed.",
-                ],
-                difficulty=TaskDifficulty.HARD,
-            ),
-        ]
+        except NotImplementedError as e:
+            logger.warning(f"[AgentBenchRunner] {env.value}: {e}")
+            return []
+        except Exception as e:
+            logger.error(f"[AgentBenchRunner] {env.value}: failed to load tasks: {e}")
+            return []
 
     def _generate_report(self) -> AgentBenchReport:
         """Generate comprehensive benchmark report."""
@@ -611,18 +410,27 @@ class AgentBenchRunner:
             for env in weak_envs:
                 recommendations.append(f"Enhance {env} environment handling capabilities")
 
-        # Compare with GPT-4 baseline
+        # Compare with the published AgentBench leaderboard scores
+        # (GPT-4, GPT-3.5, Claude-2). Comparison is meaningful only
+        # when running the same upstream split this runner loads.
         gpt4_comparison = comparison.get("gpt4_comparison", {})
+        split_label = (
+            self.config.split.value if isinstance(self.config.split, BenchmarkSplit) else "test"
+        )
         beats_gpt4 = [
             env for env, data in gpt4_comparison.items() if data.get("difference", 0.0) > 0.0
         ]
         if beats_gpt4:
             key_findings.append(
-                f"Higher success rate than published GPT-4 baseline (reference) in: {', '.join(beats_gpt4)}"
+                f"Higher success rate than the published GPT-4 leaderboard score in: "
+                f"{', '.join(beats_gpt4)} (run on upstream split={split_label!r})."
             )
         if gpt4_comparison:
             key_findings.append(
-                "Note: baseline scores are published AgentBench results; comparisons are reference-only unless you run the official AgentBench task set."
+                "Baseline scores are the published AgentBench leaderboard numbers "
+                f"(https://llmbench.ai/agent/data). Local results are run on upstream's "
+                f"official {split_label} split; ensure max_tasks matches the leaderboard "
+                "split size before treating differences as final."
             )
 
         # Efficiency analysis

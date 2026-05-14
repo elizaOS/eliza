@@ -411,7 +411,7 @@ export async function createRealTestRuntime(
     if (
       options?.withLLM &&
       !providerConfig &&
-      process.env.ELIZA_DISABLE_LOCAL_EMBEDDING_PLUGIN !== "1"
+      process.env.ELIZA_DISABLE_LOCAL_EMBEDDINGS !== "1"
     ) {
       try {
         const { default: localEmbeddingPlugin } = await import(

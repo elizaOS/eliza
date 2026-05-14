@@ -13,6 +13,7 @@ export {
   buildHuggingFaceResolveUrl,
   buildHuggingFaceResolveUrlForPath,
   DEFAULT_ELIGIBLE_MODEL_IDS,
+  defaultVoiceQuantForTier,
   ELIZA_1_HF_REPO,
   ELIZA_1_PLACEHOLDER_IDS,
   ELIZA_1_RELEASE_TIER_IDS,
@@ -24,6 +25,8 @@ export {
   findCatalogModel,
   isDefaultEligibleId,
   MODEL_CATALOG,
+  type OmniVoiceQuantLevel,
+  voiceQuantLadderForTier,
 } from "./catalog.js";
 export {
   GPU_PROFILE_IDS,
@@ -34,6 +37,25 @@ export {
   matchGpuProfile,
   reservedHeadroomGb,
 } from "./gpu-profiles.js";
+export {
+  type Ed25519PublicKey,
+  ManifestSignatureError,
+  type SignatureVerifyInput,
+  verifyManifestSignature,
+  verifyManifestSignatureText,
+} from "./manifest-signature.js";
+export {
+  applyNetworkPolicy,
+  classifyNetwork,
+  DEFAULT_NETWORK_POLICY_PREFERENCES,
+  evaluateNetworkPolicy,
+  inQuietHours,
+  type NetworkClass,
+  type NetworkPolicyDecision,
+  type NetworkPolicyPreferences,
+  type NetworkPolicyReason,
+  type RawNetworkState,
+} from "./network-policy.js";
 export {
   downloadsStagingDir,
   elizaModelsDir,
@@ -93,3 +115,15 @@ export {
   type VerifyState,
   verifyInstalledModel,
 } from "./verify.js";
+export {
+  compareVoiceModelSemver,
+  findVoiceModelVersion,
+  latestVoiceModelVersion,
+  VOICE_MODEL_VERSIONS,
+  type VoiceModelEvalDeltas,
+  type VoiceModelGgufAsset,
+  type VoiceModelId,
+  type VoiceModelQuant,
+  type VoiceModelVersion,
+  versionsFor,
+} from "./voice-models.js";

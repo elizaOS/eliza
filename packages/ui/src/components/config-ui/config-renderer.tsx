@@ -367,7 +367,6 @@ export const ConfigRenderer = forwardRef<
     ): Promise<unknown> => {
       const handler = registry.resolveAction(action);
       if (!handler) {
-        console.warn(`[config-renderer] No handler for action: ${action}`);
         return undefined;
       }
       return handler(params ?? {}, values);
@@ -540,7 +539,7 @@ export const ConfigRenderer = forwardRef<
     for (const [key, value] of Object.entries(theme)) {
       const cssVar = THEME_TO_CSS[key as keyof typeof THEME_TO_CSS];
       if (cssVar && value) {
-        style[cssVar] = value as string;
+        style[cssVar] = value;
       }
     }
     return Object.keys(style).length > 0 ? style : undefined;

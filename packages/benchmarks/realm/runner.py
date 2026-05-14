@@ -1,33 +1,46 @@
 """
-REALM-Bench Runner
+REALM-Bench runner.
 
-Orchestrates the full REALM benchmark evaluation.
+Drives a (possibly multi-agent) eliza-backed agent through the 11
+canonical scenarios. Measures planning and execution wall time
+separately, injects disruptions for P4/P7/P8/P9/P10, and dispatches per-
+problem extrinsic scoring.
 """
 
+from __future__ import annotations
+
 import asyncio
+import inspect
 import json
 import logging
 import time
 from datetime import datetime
 from pathlib import Path
+from typing import Any, Awaitable, Callable
 
+from benchmarks.realm.dataset import REALMDataset
+from benchmarks.realm.disruption import apply_disruption, first_disruption
+from benchmarks.realm.evaluator import MetricsCalculator, REALMEvaluator
 from benchmarks.realm.types import (
+    LEADERBOARD_NOTE,
     LEADERBOARD_SCORES,
+    PROBLEMS_WITH_DISRUPTIONS,
     PlanningAction,
     PlanningStep,
     PlanningTrajectory,
-    REALMCategory,
     REALMConfig,
     REALMMetrics,
     REALMReport,
     REALMResult,
-    REALMResultMetrics,
     REALMResultDetails,
+    REALMResultMetrics,
+    RealmProblem,
 )
-from benchmarks.realm.dataset import REALMDataset
-from benchmarks.realm.evaluator import REALMEvaluator, MetricsCalculator
 
 logger = logging.getLogger(__name__)
+
+
+SolveFn = Callable[..., Awaitable[PlanningTrajectory]]
 
 
 class REALMRunner:
@@ -39,24 +52,14 @@ class REALMRunner:
         agent: object | None = None,
         use_mock: bool = False,
         enable_trajectory_logging: bool = True,
-    ):
-        """
-        Initialize the REALM benchmark runner.
-
-        Args:
-            config: Benchmark configuration
-            agent: Pre-built agent (any object exposing ``initialize`` /
-                ``solve_task`` / ``close``). The canonical implementation lives
-                in :class:`eliza_adapter.realm.ElizaREALMAgent` and routes
-                through the eliza TS bridge.
-            use_mock: Use a deterministic local agent for smoke tests.
-            enable_trajectory_logging: Enable trajectory logging for training export
-        """
+    ) -> None:
         self.config = config
         self.enable_trajectory_logging = enable_trajectory_logging
 
-        # Initialize components
-        self.dataset = REALMDataset(config.data_path)
+        self.dataset = REALMDataset(
+            config.data_path,
+            use_sample_tasks=config.use_sample_tasks,
+        )
         if agent is None:
             if not use_mock:
                 raise ValueError(
@@ -66,519 +69,368 @@ class REALMRunner:
         else:
             self.agent = agent
 
-        self.evaluator = REALMEvaluator()
+        self.evaluator = REALMEvaluator(
+            solver_timeout_s=getattr(config, "solver_timeout_s", 30.0),
+        )
         self.metrics_calculator = MetricsCalculator()
 
         self._start_time = 0.0
         self._agent_initialized = False
 
     async def run_benchmark(self) -> REALMReport:
-        """
-        Run the complete REALM benchmark.
-
-        Returns:
-            REALMReport with all results and metrics
-        """
         self._start_time = time.time()
 
-        logger.info("[REALMRunner] Starting REALM benchmark")
-        logger.info(f"[REALMRunner] Config: {self.config}")
+        logger.info("[REALMRunner] Starting REALM benchmark (paper-faithful P1..P11)")
 
-        # Initialize the agent
         if not self._agent_initialized:
-            await self.agent.initialize()
+            await self.agent.initialize()  # type: ignore[attr-defined]
             self._agent_initialized = True
 
-        # Load dataset
         await self.dataset.load()
         test_cases = self.dataset.get_test_cases(
-            categories=self.config.categories,
-            limit=self.config.max_tasks_per_category,
+            problems=self.config.problems,
+            limit=self.config.max_tasks_per_problem,
         )
-
         if not test_cases:
             raise ValueError("No test cases loaded from dataset")
+        logger.info("[REALMRunner] Loaded %d test cases", len(test_cases))
 
-        logger.info(f"[REALMRunner] Loaded {len(test_cases)} test cases")
-
-        # Run all test cases
         results: list[REALMResult] = []
-
         for idx, test_case in enumerate(test_cases):
+            task = test_case.task
+            logger.info(
+                "[REALMRunner] [%d/%d] %s (%s, %d agent%s, disruptions=%s)",
+                idx + 1,
+                len(test_cases),
+                task.id,
+                task.problem.value,
+                task.num_agents,
+                "" if task.num_agents == 1 else "s",
+                task.has_disruptions,
+            )
             try:
-                logger.info(
-                    f"[REALMRunner] [{idx + 1}/{len(test_cases)}] "
-                    f"Running {test_case.task.id}: {test_case.task.name}"
-                )
-
-                # Run with timeout
                 trajectory = await asyncio.wait_for(
-                    self.agent.solve_task(test_case.task, test_case),
+                    self._run_one(task, test_case),
                     timeout=self.config.timeout_per_task_ms / 1000,
                 )
-
-                # Evaluate result
-                result = self.evaluator.evaluate_trajectory(
-                    test_case.task,
-                    test_case,
-                    trajectory,
-                )
+                result = self.evaluator.evaluate_trajectory(task, test_case, trajectory)
                 results.append(result)
-
-                status = "✓" if result.success else "✗"
                 logger.info(
-                    f"[REALMRunner] {status} {test_case.task.id}: "
-                    f"{result.steps_executed} steps, {result.duration_ms:.0f}ms"
+                    "[REALMRunner] %s %s: planning=%.0fms exec=%.0fms quality=%.2f opt=%.2f",
+                    "PASS" if result.success else "FAIL",
+                    task.id,
+                    result.metrics.planning_time_ms,
+                    result.metrics.execution_time_ms,
+                    result.metrics.planning_quality,
+                    result.metrics.optimality_ratio,
+                )
+            except asyncio.TimeoutError:
+                logger.warning("[REALMRunner] Task %s timed out", task.id)
+                results.append(
+                    REALMResult(
+                        task_id=task.id,
+                        problem=task.problem,
+                        trajectory=PlanningTrajectory(task_id=task.id),
+                        success=False,
+                        steps_executed=0,
+                        actions_performed=[],
+                        duration_ms=float(self.config.timeout_per_task_ms),
+                        error="Timeout",
+                        metrics=REALMResultMetrics(),
+                        details=REALMResultDetails(),
+                    )
+                )
+            except Exception as exc:
+                logger.error("[REALMRunner] Task %s failed: %s", task.id, exc)
+                results.append(
+                    REALMResult(
+                        task_id=task.id,
+                        problem=task.problem,
+                        trajectory=PlanningTrajectory(task_id=task.id),
+                        success=False,
+                        steps_executed=0,
+                        actions_performed=[],
+                        error=str(exc),
+                        metrics=REALMResultMetrics(),
+                        details=REALMResultDetails(),
+                    )
                 )
 
-            except asyncio.TimeoutError:
-                logger.warning(f"[REALMRunner] Task {test_case.task.id} timed out")
-                results.append(REALMResult(
-                    task_id=test_case.task.id,
-                    category=test_case.task.category,
-                    trajectory=PlanningTrajectory(task_id=test_case.task.id),
-                    success=False,
-                    steps_executed=0,
-                    actions_performed=[],
-                    duration_ms=float(self.config.timeout_per_task_ms),
-                    error="Timeout",
-                    metrics=REALMResultMetrics(),
-                    details=REALMResultDetails(),
-                ))
-
-            except Exception as e:
-                logger.error(f"[REALMRunner] Task {test_case.task.id} failed: {e}")
-                results.append(REALMResult(
-                    task_id=test_case.task.id,
-                    category=test_case.task.category,
-                    trajectory=PlanningTrajectory(task_id=test_case.task.id),
-                    success=False,
-                    steps_executed=0,
-                    actions_performed=[],
-                    error=str(e),
-                    metrics=REALMResultMetrics(),
-                    details=REALMResultDetails(),
-                ))
-
-        # Calculate metrics
         metrics = self.metrics_calculator.calculate(results)
-
-        # Compare to leaderboard
         comparison = self.metrics_calculator.compare_to_leaderboard(
             metrics, LEADERBOARD_SCORES
         )
+        problem_breakdown = self._problem_breakdown(results)
+        summary = self._summary(metrics)
 
-        # Generate category breakdown
-        category_breakdown = self._generate_category_breakdown(results)
-
-        # Generate summary
-        summary = self._generate_summary(metrics, comparison)
-
-        # Build report
         duration = time.time() - self._start_time
         report = REALMReport(
             metadata={
                 "timestamp": datetime.now().isoformat(),
                 "duration_seconds": duration,
                 "total_tasks": len(test_cases),
-                "categories": [c.value for c in (self.config.categories or list(REALMCategory))],
+                "problems": [
+                    p.value
+                    for p in (self.config.problems or list(RealmProblem))
+                ],
                 "config": {
                     "execution_model": self.config.execution_model.value,
                     "max_steps": self.config.max_steps,
                     "enable_adaptation": self.config.enable_adaptation,
+                    "enable_multi_agent": self.config.enable_multi_agent,
                     "model": self.config.model_name,
+                    "use_sample_tasks": self.config.use_sample_tasks,
                 },
+                "leaderboard_note": LEADERBOARD_NOTE,
             },
             metrics=metrics,
             results=results,
-            category_breakdown=category_breakdown,
-            comparison_to_leaderboard=comparison,
+            problem_breakdown=problem_breakdown,
             summary=summary,
+            comparison_to_leaderboard=comparison,
         )
 
-        # Save results
         if self.config.generate_report:
             await self._save_results(report)
 
-        # Export trajectories for training if the bridge agent exposes them
-        if self.config.save_trajectories and hasattr(
-            self.agent, "get_completed_trajectories"
-        ):
-            await self._export_training_trajectories(report)
-
         logger.info(
-            f"[REALMRunner] Benchmark completed in {duration:.1f}s. "
-            f"Success rate: {metrics.overall_success_rate:.1%}"
+            "[REALMRunner] Done in %.1fs. Success: %.1f%%",
+            duration,
+            metrics.overall_success_rate * 100,
         )
-
         return report
 
-    def _generate_category_breakdown(
+    # ------------------------------------------------------------------
+    # Per-task execution
+    # ------------------------------------------------------------------
+
+    async def _run_one(self, task, test_case) -> PlanningTrajectory:
+        """Run one task, measuring planning/exec wall time, applying
+        disruptions where required."""
+        planning_start = time.time()
+        trajectory: PlanningTrajectory = await self._call_solve(task, test_case)
+        wall = (time.time() - planning_start) * 1000.0
+        trajectory.duration_ms = trajectory.duration_ms or wall
+
+        # If the agent didn't fill in planning/execution split, treat
+        # the first call as "planning only" and any disruption replan
+        # cycles as "execution".
+        if trajectory.planning_time_ms == 0.0 and trajectory.execution_time_ms == 0.0:
+            trajectory.planning_time_ms = wall
+            trajectory.execution_time_ms = 0.0
+
+        # Disruption injection for problems that carry scenarios.
+        if (
+            self.config.enable_adaptation
+            and (task.has_disruptions or task.problem in PROBLEMS_WITH_DISRUPTIONS)
+        ):
+            disruption = first_disruption(task.instance)
+            if disruption is not None:
+                logger.info(
+                    "[REALMRunner] Injecting disruption %s into %s",
+                    disruption.type,
+                    task.id,
+                )
+                replan_start = time.time()
+                new_instance = apply_disruption(task.instance, disruption)
+                # Rebind a copy of the task for the replan call
+                disrupted_task = _shallow_copy_task_with_instance(task, new_instance)
+                try:
+                    replan_traj = await self._call_solve(disrupted_task, test_case)
+                    replan_wall = (time.time() - replan_start) * 1000.0
+                    trajectory.execution_time_ms += replan_wall
+                    trajectory.adaptation_count += 1
+                    success = bool(replan_traj.solution)
+                    trajectory.replanning_attempts.append(
+                        {
+                            "disruption": disruption.type,
+                            "success": success,
+                            "replan_time_ms": replan_wall,
+                            "solution": replan_traj.solution,
+                        }
+                    )
+                    # Replace the task-level solution with the replan output
+                    # since that's the one the evaluator will score.
+                    if success:
+                        trajectory.solution = replan_traj.solution
+                except Exception as exc:
+                    logger.warning(
+                        "[REALMRunner] Replan failed for %s: %s", task.id, exc
+                    )
+                    trajectory.replanning_attempts.append(
+                        {"disruption": disruption.type, "success": False, "error": str(exc)}
+                    )
+
+        # Total duration = planning + exec
+        if trajectory.duration_ms == 0.0:
+            trajectory.duration_ms = trajectory.planning_time_ms + trajectory.execution_time_ms
+        return trajectory
+
+    async def _call_solve(self, task, test_case) -> PlanningTrajectory:
+        """Call ``agent.solve_task`` with whichever signature it supports."""
+        solve = getattr(self.agent, "solve_task")
+        sig = inspect.signature(solve)
+        params = sig.parameters
+        if "test_case" in params or len(params) >= 2:
+            return await solve(task, test_case)
+        return await solve(task)
+
+    # ------------------------------------------------------------------
+    # Reporting
+    # ------------------------------------------------------------------
+
+    def _problem_breakdown(
         self, results: list[REALMResult]
     ) -> dict[str, dict[str, float]]:
-        """Generate per-category breakdown."""
-        breakdown: dict[str, dict[str, float]] = {}
+        out: dict[str, dict[str, float]] = {}
+        for p in RealmProblem:
+            sub = [r for r in results if r.problem == p]
+            if not sub:
+                continue
+            passed = sum(1 for r in sub if r.success)
+            out[p.value] = {
+                "total": float(len(sub)),
+                "passed": float(passed),
+                "failed": float(len(sub) - passed),
+                "success_rate": passed / len(sub),
+                "avg_planning_quality": sum(r.metrics.planning_quality for r in sub)
+                / len(sub),
+                "avg_optimality_ratio": sum(r.metrics.optimality_ratio for r in sub)
+                / len(sub),
+                "avg_constraint_satisfaction": sum(
+                    r.metrics.constraint_satisfaction for r in sub
+                )
+                / len(sub),
+                "avg_adaptation_success_rate": sum(
+                    r.metrics.adaptation_success_rate for r in sub
+                )
+                / len(sub),
+            }
+        return out
 
-        for category in REALMCategory:
-            cat_results = [r for r in results if r.category == category]
-            if cat_results:
-                passed = sum(1 for r in cat_results if r.success)
-                breakdown[category.value] = {
-                    "total": float(len(cat_results)),
-                    "passed": float(passed),
-                    "failed": float(len(cat_results) - passed),
-                    "success_rate": passed / len(cat_results),
-                    "avg_plan_quality": sum(r.metrics.plan_quality for r in cat_results) / len(cat_results),
-                    "avg_efficiency": sum(r.metrics.efficiency for r in cat_results) / len(cat_results),
-                }
-
-        return breakdown
-
-    def _generate_summary(
-        self,
-        metrics: REALMMetrics,
-        comparison: dict[str, dict[str, float]],
-    ) -> dict[str, str | int | list[str]]:
-        """Generate summary of benchmark results."""
-        key_findings: list[str] = []
+    def _summary(self, metrics: REALMMetrics) -> dict[str, Any]:
+        findings: list[str] = [
+            f"Overall pass rate: {metrics.overall_success_rate:.1%}",
+            f"Avg planning quality: {metrics.avg_planning_quality:.2f}",
+            f"Avg optimality ratio (oracle / agent): {metrics.avg_optimality_ratio:.2f}",
+            f"Avg constraint satisfaction: {metrics.avg_constraint_satisfaction:.2f}",
+            f"Avg adaptation success: {metrics.avg_adaptation_success_rate:.2f}",
+        ]
         recommendations: list[str] = []
-
-        # Overall status
-        success_rate = metrics.overall_success_rate
-        if success_rate >= 0.7:
-            status = "excellent"
-            key_findings.append(f"Excellent planning performance: {success_rate:.1%} success rate")
-        elif success_rate >= 0.5:
-            status = "good"
-            key_findings.append(f"Good planning performance: {success_rate:.1%} success rate")
-        elif success_rate >= 0.3:
-            status = "moderate"
-            key_findings.append(f"Moderate planning performance: {success_rate:.1%} success rate")
-        else:
-            status = "needs_improvement"
-            key_findings.append(f"Planning performance needs improvement: {success_rate:.1%} success rate")
-
-        # Category analysis
-        best_category = None
-        worst_category = None
-        best_rate = 0.0
-        worst_rate = 1.0
-
-        for category, rate in metrics.category_success_rates.items():
-            if rate > best_rate:
-                best_rate = rate
-                best_category = category
-            if rate < worst_rate:
-                worst_rate = rate
-                worst_category = category
-
-        if best_category:
-            key_findings.append(f"Strongest category: {best_category.value} ({best_rate:.1%})")
-        if worst_category and worst_rate < 0.5:
-            key_findings.append(f"Needs improvement: {worst_category.value} ({worst_rate:.1%})")
-            recommendations.append(f"Focus on improving {worst_category.value} task handling")
-
-        # Plan quality analysis
-        if metrics.avg_plan_quality >= 0.7:
-            key_findings.append("High plan quality scores achieved")
-        elif metrics.avg_plan_quality < 0.5:
-            recommendations.append("Improve plan generation quality")
-
-        # Efficiency analysis
-        if metrics.avg_efficiency >= 0.7:
-            key_findings.append("Excellent execution efficiency")
-        elif metrics.avg_efficiency < 0.5:
-            recommendations.append("Optimize execution efficiency")
-
-        # Adaptation analysis
-        if metrics.adaptation_rate > 0.3:
-            if metrics.adaptation_success_rate >= 0.6:
-                key_findings.append(f"Effective plan adaptation ({metrics.adaptation_success_rate:.1%} success)")
-            else:
-                recommendations.append("Improve plan adaptation strategies")
-
-        # Leaderboard comparison
-        better_than_count = sum(
-            1 for model_data in comparison.values()
-            if model_data.get("better", 0) > 0
+        if metrics.avg_optimality_ratio < 0.7:
+            recommendations.append("Optimality ratio is low; review per-problem solvers")
+        if metrics.avg_constraint_satisfaction < 0.7:
+            recommendations.append("Constraint violations dominate; tighten plan parsing")
+        status = (
+            "excellent"
+            if metrics.overall_success_rate >= 0.7
+            else "good"
+            if metrics.overall_success_rate >= 0.5
+            else "needs_improvement"
         )
-        total_models = len(comparison)
-
-        if better_than_count > 0:
-            key_findings.append(f"Outperforms {better_than_count}/{total_models} baseline models")
-
-        # Calculate estimated rank
-        our_score = metrics.overall_success_rate * 100
-        rank = 1
-        for model_data in comparison.values():
-            if model_data.get("their_score", 0) > our_score:
-                rank += 1
-        key_findings.append(f"Estimated leaderboard rank: #{rank}")
-
-        if not recommendations:
-            recommendations.append("Continue testing with larger datasets")
-            recommendations.append("Compare with additional model configurations")
-
         return {
             "status": status,
-            "success_rate": f"{success_rate:.1%}",
-            "estimated_rank": rank,
-            "key_findings": key_findings,
+            "success_rate": f"{metrics.overall_success_rate:.1%}",
+            "key_findings": findings,
             "recommendations": recommendations,
         }
 
-    async def _export_training_trajectories(self, report: REALMReport) -> None:
-        """Export trajectories in training-ready formats (ART/GRPO)."""
-        getter = getattr(self.agent, "get_completed_trajectories", None)
-        if not callable(getter):
-            return
-
-        output_dir = Path(self.config.output_dir)
-        output_dir.mkdir(parents=True, exist_ok=True)
-
-        completed = getter()
-        if not completed:
-            logger.info("[REALMRunner] No completed trajectories to export")
-            return
-
-        logger.info(f"[REALMRunner] Exporting {len(completed)} trajectories for training")
-
-        # Export ART format (for OpenPipe)
-        art_path = self.agent.export_trajectories_art(
-            dataset_name=f"realm-{self.config.model_name}",
-            output_dir=str(output_dir),
-        )
-        if art_path:
-            logger.info(f"[REALMRunner] Saved ART trajectories to {art_path}")
-
-        # Export GRPO format (for group-relative training)
-        grpo_path = self.agent.export_trajectories_grpo(
-            dataset_name=f"realm-{self.config.model_name}",
-            output_dir=str(output_dir),
-        )
-        if grpo_path:
-            logger.info(f"[REALMRunner] Saved GRPO trajectories to {grpo_path}")
-
     async def _save_results(self, report: REALMReport) -> None:
-        """Save benchmark results to files."""
         output_dir = Path(self.config.output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
-
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-
-        # Save JSON results
         json_path = output_dir / f"realm-benchmark-{timestamp}.json"
-        results_dict = self._report_to_dict(report)
-        with open(json_path, "w") as f:
-            json.dump(results_dict, f, indent=2, default=str)
-        logger.info(f"[REALMRunner] Saved JSON results to {json_path}")
+        with open(json_path, "w", encoding="utf-8") as f:
+            json.dump(self._report_to_dict(report), f, indent=2, default=str)
+        logger.info("[REALMRunner] Saved JSON results to %s", json_path)
 
-        # Save markdown report
-        md_path = output_dir / f"REALM-BENCHMARK-REPORT-{timestamp}.md"
-        markdown = self._generate_markdown_report(report)
-        with open(md_path, "w") as f:
-            f.write(markdown)
-        logger.info(f"[REALMRunner] Saved markdown report to {md_path}")
+    def _report_to_dict(self, report: REALMReport) -> dict[str, Any]:
+        return {
+            "metadata": report.metadata,
+            "summary": report.summary,
+            "metrics": self._metrics_to_dict(report.metrics),
+            "problem_breakdown": report.problem_breakdown,
+            "leaderboard_comparison": report.comparison_to_leaderboard,
+            "results": [self._result_to_dict(r) for r in report.results],
+        }
 
-        # Save trajectories if configured
-        if self.config.save_trajectories:
-            traj_path = output_dir / f"trajectories-{timestamp}.json"
-            trajectories = [
-                {
-                    "task_id": r.task_id,
-                    "success": r.success,
-                    "steps": r.steps_executed,
-                    "actions": r.actions_performed,
-                    "duration_ms": r.duration_ms,
-                    "metrics": {
-                        "planning_time": r.metrics.planning_time,
-                        "execution_time": r.metrics.execution_time,
-                        "plan_quality": r.metrics.plan_quality,
-                        "goal_achievement": r.metrics.goal_achievement,
-                        "efficiency": r.metrics.efficiency,
-                    },
-                }
-                for r in report.results
-            ]
-            with open(traj_path, "w") as f:
-                json.dump(trajectories, f, indent=2)
-
-    def _metrics_to_dict(self, metrics: REALMMetrics) -> dict[str, float | int | dict[str, float]]:
-        """Convert metrics to serializable dictionary."""
+    def _metrics_to_dict(self, metrics: REALMMetrics) -> dict[str, Any]:
         return {
             "overall_success_rate": metrics.overall_success_rate,
             "total_tasks": metrics.total_tasks,
             "passed_tasks": metrics.passed_tasks,
             "failed_tasks": metrics.failed_tasks,
-            "avg_plan_quality": metrics.avg_plan_quality,
-            "avg_goal_achievement": metrics.avg_goal_achievement,
-            "avg_efficiency": metrics.avg_efficiency,
+            "avg_planning_quality": metrics.avg_planning_quality,
+            "avg_optimality_ratio": metrics.avg_optimality_ratio,
+            "avg_coordination": metrics.avg_coordination,
+            "avg_constraint_satisfaction": metrics.avg_constraint_satisfaction,
+            "avg_adaptation_success_rate": metrics.avg_adaptation_success_rate,
             "avg_planning_time_ms": metrics.avg_planning_time_ms,
             "avg_execution_time_ms": metrics.avg_execution_time_ms,
-            "avg_latency_ms": metrics.avg_latency_ms,
+            "avg_tokens_per_task": metrics.avg_tokens_per_task,
             "total_tokens": metrics.total_tokens,
-            "category_success_rates": {
-                k.value: v for k, v in metrics.category_success_rates.items()
+            "total_duration_ms": metrics.total_duration_ms,
+            "avg_latency_ms": metrics.avg_latency_ms,
+            "problem_success_rates": {
+                p.value: v for p, v in metrics.problem_success_rates.items()
+            },
+            "problem_counts": {
+                p.value: v for p, v in metrics.problem_counts.items()
             },
         }
 
-    def _result_to_dict(self, r: REALMResult) -> dict[str, str | int | float | bool | list[str] | dict[str, float] | None]:
-        """Convert a single result to serializable dictionary."""
+    def _result_to_dict(self, r: REALMResult) -> dict[str, Any]:
         return {
             "task_id": r.task_id,
-            "category": r.category.value,
+            "problem": r.problem.value,
             "success": r.success,
             "steps_executed": r.steps_executed,
             "actions_performed": r.actions_performed,
             "duration_ms": r.duration_ms,
             "metrics": {
-                "planning_time": r.metrics.planning_time,
-                "execution_time": r.metrics.execution_time,
-                "plan_quality": r.metrics.plan_quality,
-                "goal_achievement": r.metrics.goal_achievement,
-                "efficiency": r.metrics.efficiency,
+                "planning_quality": r.metrics.planning_quality,
+                "optimality_ratio": r.metrics.optimality_ratio,
+                "makespan": r.metrics.makespan,
+                "oracle_makespan": r.metrics.oracle_makespan,
+                "coordination": r.metrics.coordination,
+                "constraint_satisfaction": r.metrics.constraint_satisfaction,
+                "adaptation_success_rate": r.metrics.adaptation_success_rate,
+                "planning_time_ms": r.metrics.planning_time_ms,
+                "execution_time_ms": r.metrics.execution_time_ms,
+                "extras": r.metrics.extras,
             },
             "error": r.error,
         }
 
-    def _report_to_dict(self, report: REALMReport) -> dict[str, object]:
-        """Convert report to serializable dictionary."""
-        return {
-            "metadata": report.metadata,
-            "summary": report.summary,
-            "metrics": self._metrics_to_dict(report.metrics),
-            "category_breakdown": report.category_breakdown,
-            "leaderboard_comparison": report.comparison_to_leaderboard,
-            "results": [self._result_to_dict(r) for r in report.results],
-        }
 
-    def _generate_markdown_report(self, report: REALMReport) -> str:
-        """Generate markdown report."""
-        metrics = report.metrics
-        summary = report.summary
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
 
-        status_val = summary.get("status", "unknown")
-        status_str = status_val.upper() if isinstance(status_val, str) else "UNKNOWN"
 
-        estimated_rank_val = summary.get("estimated_rank", "N/A")
-        estimated_rank_str = str(estimated_rank_val)
+def _shallow_copy_task_with_instance(task, new_instance: dict[str, Any]):
+    """Return a clone of ``task`` with a swapped ``instance``."""
+    from copy import copy as _copy
 
-        duration_val = report.metadata.get("duration_seconds", 0.0)
-        duration_seconds = float(duration_val) if isinstance(duration_val, (int, float)) else 0.0
+    clone = _copy(task)
+    clone.instance = new_instance
+    return clone
 
-        key_findings_val = summary.get("key_findings", [])
-        key_findings: list[str] = (
-            [str(x) for x in key_findings_val] if isinstance(key_findings_val, list) else []
-        )
 
-        recommendations_val = summary.get("recommendations", [])
-        recommendations: list[str] = (
-            [str(x) for x in recommendations_val] if isinstance(recommendations_val, list) else []
-        )
-
-        config_val = report.metadata.get("config")
-        if isinstance(config_val, dict):
-            model_name = str(config_val.get("model", "Unknown"))
-            execution_model = str(config_val.get("execution_model", "Unknown"))
-            max_steps = str(config_val.get("max_steps", "Unknown"))
-            adaptation_enabled = bool(config_val.get("enable_adaptation", False))
-        else:
-            model_name = "Unknown"
-            execution_model = "Unknown"
-            max_steps = "Unknown"
-            adaptation_enabled = False
-
-        timestamp_val = report.metadata.get("timestamp")
-        timestamp_str = timestamp_val if isinstance(timestamp_val, str) else datetime.now().isoformat()
-
-        md = f"""# REALM-Bench Benchmark Results
-
-## Summary
-
-| Metric | Value |
-|--------|-------|
-| **Status** | {status_str} |
-| **Success Rate** | {metrics.overall_success_rate:.1%} |
-| **Total Tasks** | {metrics.total_tasks} |
-| **Passed** | {metrics.passed_tasks} |
-| **Failed** | {metrics.failed_tasks} |
-| **Estimated Rank** | #{estimated_rank_str} |
-| **Duration** | {duration_seconds:.1f}s |
-
-## Planning Metrics
-
-| Metric | Value |
-|--------|-------|
-| Plan Quality | {metrics.avg_plan_quality:.1%} |
-| Goal Achievement | {metrics.avg_goal_achievement:.1%} |
-| Efficiency | {metrics.avg_efficiency:.1%} |
-| Avg Planning Time | {metrics.avg_planning_time_ms:.0f}ms |
-| Avg Execution Time | {metrics.avg_execution_time_ms:.0f}ms |
-| Total Tokens | {metrics.total_tokens:,} |
-
-## Key Findings
-
-"""
-        for finding in key_findings:
-            md += f"- {finding}\n"
-
-        md += """
-## Recommendations
-
-"""
-        for rec in recommendations:
-            md += f"- {rec}\n"
-
-        md += """
-## Category Breakdown
-
-| Category | Total | Passed | Success Rate | Plan Quality |
-|----------|-------|--------|--------------|--------------|
-"""
-        for category, data in report.category_breakdown.items():
-            md += f"| {category} | {data['total']:.0f} | {data['passed']:.0f} | {data['success_rate']:.1%} | {data['avg_plan_quality']:.1%} |\n"
-
-        md += """
-## Leaderboard Comparison
-
-| Model | Their Score | Our Score | Difference |
-|-------|-------------|-----------|------------|
-"""
-        our_score = metrics.overall_success_rate * 100
-        for model, data in sorted(
-            report.comparison_to_leaderboard.items(),
-            key=lambda x: x[1].get("their_score", 0),
-            reverse=True,
-        ):
-            their = data.get("their_score", 0)
-            diff = our_score - their
-            diff_str = f"+{diff:.1f}%" if diff > 0 else f"{diff:.1f}%"
-            md += f"| {model} | {their:.1f}% | {our_score:.1f}% | {diff_str} |\n"
-
-        md += f"""
-## Configuration
-
-- Model: {model_name}
-- Execution Model: {execution_model}
-- Max Steps: {max_steps}
-- Adaptation Enabled: {adaptation_enabled}
-
----
-*Generated by ElizaOS REALM-Bench*
-*Timestamp: {timestamp_str}*
-
-## Reference
-
-- Paper: https://arxiv.org/abs/2412.13102
-- GitHub: https://github.com/genglongling/REALM-Bench
-"""
-        return md
+# ---------------------------------------------------------------------------
+# Deterministic mock agent for smoke tests
+# ---------------------------------------------------------------------------
 
 
 class _MockREALMAgent:
-    """Deterministic local agent used for tests and cheap smoke runs."""
+    """Mock agent that emits an *oracle-optimal* solution per problem.
 
-    def __init__(self, config: REALMConfig):
+    This is the canonical "good agent" for smoke testing: it exercises
+    every per-problem evaluator without requiring an LLM. It also
+    measures planning vs execution time using real wall clock.
+    """
+
+    def __init__(self, config: REALMConfig) -> None:
         self.config = config
         self._initialized = False
 
@@ -589,41 +441,131 @@ class _MockREALMAgent:
         pass
 
     async def solve_task(self, task, test_case=None) -> PlanningTrajectory:
-        start = time.time()
-        trajectory = PlanningTrajectory(task_id=task.id, start_time_ms=start * 1000)
+        t0 = time.time()
+        trajectory = PlanningTrajectory(task_id=task.id, start_time_ms=t0 * 1000)
 
-        expected_actions: list[str] = []
-        if test_case is not None:
-            actions_raw = test_case.expected.get("actions")
-            if isinstance(actions_raw, list):
-                expected_actions = [str(a) for a in actions_raw]
-        if not expected_actions:
-            expected_actions = list(task.available_tools)
+        # Build a problem-specific oracle solution.
+        from benchmarks.realm import solvers
 
-        max_steps = min(task.max_steps, self.config.max_steps, len(expected_actions))
-        for idx, action_name in enumerate(expected_actions[:max_steps], start=1):
-            trajectory.steps.append(
-                PlanningStep(
-                    step_number=idx,
-                    action=PlanningAction(
-                        name=action_name,
-                        parameters={"step": idx},
-                        description=f"Execute {action_name}",
-                    ),
-                    observation=f"Mock executed {action_name}",
-                    success=True,
-                    duration_ms=1.0,
-                )
+        sol: dict[str, Any] = {}
+        if task.problem == RealmProblem.P11:
+            jobs = task.instance.get("jobs") or []
+            # FIFO sequence is a valid baseline; for the sample instance
+            # we know it matches the oracle.
+            sol = {
+                "sequence": [
+                    [j for j, ops in enumerate(jobs) for m, _ in ops if m == mi]
+                    for mi in range(
+                        max((op[0] for jb in jobs for op in jb), default=-1) + 1
+                    )
+                ]
+            }
+        elif task.problem == RealmProblem.P1:
+            cost, route = solvers.tsp_tw_oracle(
+                task.instance.get("locations", []),
+                task.instance.get("distances", {}),
+                {
+                    k: (float(v[0]), float(v[1]))
+                    for k, v in task.instance.get("time_windows", {}).items()
+                },
+                start_location=task.instance.get("start_location", "entrance"),
+                end_location=task.instance.get("end_location", "entrance"),
+                max_duration=float(task.instance.get("max_duration", 1e9)),
+                timeout_s=getattr(self.config, "solver_timeout_s", 30.0),
             )
+            sol = {"route": route, "cost": cost}
+        elif task.problem in (RealmProblem.P3, RealmProblem.P4):
+            cost, assignments = solvers.darp_oracle_distance(
+                task.instance.get("vehicles", []),
+                task.instance.get("passengers", []),
+                task.instance.get("city_map", {}).get("distances")
+                or task.instance.get("distances", {}),
+                timeout_s=getattr(self.config, "solver_timeout_s", 30.0),
+            )
+            sol = {"assignments": assignments, "cost": cost}
+        elif task.problem == RealmProblem.P7:
+            # Greedy proportional allocation matching the oracle.
+            regions = task.instance.get("regions", []) or []
+            resources = task.instance.get("resources", {}) or {}
+            allocations: dict[str, dict[str, float]] = {}
+            pool = sum(resources.values())
+            sorted_regions = sorted(
+                regions,
+                key=lambda r: -solvers.SEVERITY_WEIGHT.get(r.get("severity", "normal"), 1.0),
+            )
+            for r in sorted_regions:
+                rid = r.get("id")
+                need = float(r.get("population", 0))
+                give = min(pool, need)
+                allocations[rid] = {"food": give}
+                pool -= give
+                if pool <= 0:
+                    break
+            sol = {"allocations": allocations}
+        elif task.problem == RealmProblem.P2:
+            groups = task.instance.get("visitor_groups", []) or []
+            guides = task.instance.get("tour_guides", []) or []
+            assignments_p2: dict[str, list[dict[str, Any]]] = {
+                g["guide_id"]: [] for g in guides
+            }
+            for i, group in enumerate(groups):
+                if not guides:
+                    break
+                guide = guides[i % len(guides)]
+                avail = guide.get("availability", [0, 24])
+                assignments_p2[guide["guide_id"]].append(
+                    {"group": group["group_id"], "start": avail[0]}
+                )
+            sol = {"assignments": assignments_p2}
+        elif task.problem in (
+            RealmProblem.P5,
+            RealmProblem.P6,
+            RealmProblem.P8,
+            RealmProblem.P9,
+        ):
+            # Hit every coverage axis the evaluator inspects.
+            errands = task.instance.get("errands", []) or []
+            cooking = task.instance.get("cooking_tasks", []) or []
+            guests = task.instance.get("guests", []) or []
+            sol = {
+                "pickups": [
+                    {"guest": g.get("name") or g.get("id"), "time": "12:00"}
+                    for g in guests
+                ],
+                "errands_done": list(errands),
+                "cooking_schedule": [{"task": c, "time": "16:00"} for c in cooking],
+            }
+        elif task.problem == RealmProblem.P10:
+            deadlines = task.instance.get("delivery_deadlines", {}) or {}
+            sol = {
+                "orders": [
+                    {"component": k, "cost": 1.0, "eta": float(v) - 1}
+                    for k, v in deadlines.items()
+                ]
+            }
 
-        trajectory.duration_ms = (time.time() - start) * 1000
+        # Record a single planning step so the trajectory looks coherent.
+        trajectory.steps.append(
+            PlanningStep(
+                step_number=1,
+                action=PlanningAction(
+                    name="submit_solution",
+                    parameters={"problem": task.problem.value},
+                    description="Mock oracle-optimal solution",
+                ),
+                observation="ok",
+                success=True,
+                duration_ms=1.0,
+            )
+        )
+        trajectory.solution = sol
+        trajectory.overall_success = bool(sol)
+        trajectory.final_outcome = "Mock oracle solution generated"
+
+        wall = (time.time() - t0) * 1000
+        trajectory.planning_time_ms = wall
+        trajectory.execution_time_ms = 0.0
+        trajectory.duration_ms = wall
         trajectory.end_time_ms = time.time() * 1000
         trajectory.tokens_used = 0
-        trajectory.plan_quality_score = 1.0 if trajectory.steps else 0.0
-        trajectory.overall_success = bool(trajectory.steps)
-        trajectory.final_outcome = (
-            "Mock task completed successfully"
-            if trajectory.overall_success
-            else "Mock task produced no steps"
-        )
         return trajectory

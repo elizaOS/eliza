@@ -551,7 +551,7 @@ async function runInsideRecordedLlmCall<T>(
 		| (TrajectoryContextWithLlmGuard & object)
 		| undefined;
 	if (!ctx) {
-		return await fn();
+		return fn();
 	}
 
 	ctx[RECORD_LLM_CALL_DEPTH_KEY] = getRecordedLlmCallDepth() + 1;
@@ -634,7 +634,7 @@ export async function withStandaloneTrajectory<T>(
 		!runtime ||
 		(typeof activeStepId === "string" && activeStepId.trim() !== "")
 	) {
-		return await callback();
+		return callback();
 	}
 
 	const trajectoryLogger = resolveTrajectoryLogger(runtime);
@@ -645,7 +645,7 @@ export async function withStandaloneTrajectory<T>(
 		(typeof trajectoryLogger.isEnabled === "function" &&
 			!trajectoryLogger.isEnabled())
 	) {
-		return await callback();
+		return callback();
 	}
 
 	const trajectoryId = String(
@@ -655,7 +655,7 @@ export async function withStandaloneTrajectory<T>(
 		}),
 	).trim();
 	if (!trajectoryId) {
-		return await callback();
+		return callback();
 	}
 
 	const stepId =
@@ -827,13 +827,13 @@ async function withChildTrajectoryStep<T>(
 	fn: () => Promise<T> | T,
 ): Promise<T> {
 	if (!runtime) {
-		return await fn();
+		return fn();
 	}
 
 	const parentCtx = getTrajectoryContext();
 	const parentStepId = parentCtx?.trajectoryStepId;
 	if (!(typeof parentStepId === "string" && parentStepId.trim() !== "")) {
-		return await fn();
+		return fn();
 	}
 	const trajectoryId =
 		typeof parentCtx?.trajectoryId === "string" &&
@@ -847,7 +847,7 @@ async function withChildTrajectoryStep<T>(
 		(typeof trajectoryLogger.isEnabled === "function" &&
 			!trajectoryLogger.isEnabled())
 	) {
-		return await fn();
+		return fn();
 	}
 
 	let childStepId = generateChildStepId(options.stepIdPrefix);
@@ -976,7 +976,7 @@ export async function spawnWithTrajectoryLink<T>(
 			}
 		},
 	};
-	return await fn(handle);
+	return fn(handle);
 }
 
 /**

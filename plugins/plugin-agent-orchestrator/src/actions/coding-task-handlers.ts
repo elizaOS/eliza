@@ -896,8 +896,7 @@ export async function handleMultiAgent(
 
   // Read LLM provider once before the spawn loop to avoid repeated sync I/O
   // and ensure consistent provider selection across all agents in this swarm.
-  const llmProvider =
-    readConfigEnvKey("PARALLAX_LLM_PROVIDER") || "subscription";
+  const llmProvider = readConfigEnvKey("ELIZA_LLM_PROVIDER") || "subscription";
 
   const coordinator = getCoordinator(runtime);
   const threadTitle = explicitLabel || generateLabel(repo, userRequest);
@@ -1118,8 +1117,8 @@ export async function handleMultiAgent(
             status: "failed",
             error:
               "OpenCode is selected but no model provider is configured. " +
-              "Set PARALLAX_LLM_PROVIDER=cloud and pair an Eliza Cloud key, " +
-              "or set PARALLAX_OPENCODE_LOCAL=1 to use a local OpenAI-compatible model server.",
+              "Set ELIZA_LLM_PROVIDER=cloud and pair an Eliza Cloud key, " +
+              "or set ELIZA_OPENCODE_LOCAL=1 to use a local OpenAI-compatible model server.",
           });
           continue;
         }

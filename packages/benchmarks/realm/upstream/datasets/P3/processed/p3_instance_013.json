@@ -1,0 +1,111 @@
+{
+  "instance_id": "p3_instance_013",
+  "city_map": {
+    "locations": [
+      "stadium",
+      "university",
+      "hospital",
+      "park",
+      "mall"
+    ],
+    "distances": {
+      "stadium-university": 20,
+      "university-stadium": 20,
+      "stadium-hospital": 38,
+      "hospital-stadium": 38,
+      "stadium-park": 8,
+      "park-stadium": 8,
+      "stadium-mall": 38,
+      "mall-stadium": 38,
+      "university-hospital": 36,
+      "hospital-university": 36,
+      "university-park": 5,
+      "park-university": 5,
+      "university-mall": 21,
+      "mall-university": 21,
+      "hospital-park": 22,
+      "park-hospital": 22,
+      "hospital-mall": 36,
+      "mall-hospital": 36,
+      "park-mall": 26,
+      "mall-park": 26
+    }
+  },
+  "ride_requests": [
+    {
+      "passenger_id": "p001",
+      "pickup": "mall",
+      "dropoff": "hospital",
+      "time_window": [
+        12.75,
+        12.166666666666666
+      ],
+      "deadline": 28
+    },
+    {
+      "passenger_id": "p002",
+      "pickup": "stadium",
+      "dropoff": "hospital",
+      "time_window": [
+        12.75,
+        12.05
+      ],
+      "deadline": 29
+    },
+    {
+      "passenger_id": "p003",
+      "pickup": "mall",
+      "dropoff": "stadium",
+      "time_window": [
+        17.75,
+        17.066666666666666
+      ],
+      "deadline": 33
+    },
+    {
+      "passenger_id": "p004",
+      "pickup": "university",
+      "dropoff": "stadium",
+      "time_window": [
+        15.0,
+        15.366666666666667
+      ],
+      "deadline": 46
+    },
+    {
+      "passenger_id": "p005",
+      "pickup": "hospital",
+      "dropoff": "mall",
+      "time_window": [
+        12.75,
+        12.116666666666667
+      ],
+      "deadline": 47
+    },
+    {
+      "passenger_id": "p006",
+      "pickup": "university",
+      "dropoff": "stadium",
+      "time_window": [
+        12.75,
+        12.4
+      ],
+      "deadline": 35
+    }
+  ],
+  "vehicles": [
+    {
+      "vehicle_id": "v001",
+      "location": "mall",
+      "capacity": 5,
+      "fuel": 62
+    },
+    {
+      "vehicle_id": "v002",
+      "location": "park",
+      "capacity": 3,
+      "fuel": 70
+    }
+  ],
+  "description": "Urban ride-sharing instance"
+}

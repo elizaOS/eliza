@@ -5,7 +5,7 @@
  * full visibility into the skills installed in the parent runtime. The parent
  * agent owns skill execution; spawned agents request skill invocation by
  * calling back to the parent (see skill callback bridge in send-to-agent.ts
- * when ELIZA_ENABLE_CHILD_SKILL_CALLBACK is enabled).
+ * via the child→parent USE_SKILL skill callback bridge).
  *
  * Source of truth is the AGENT_SKILLS_SERVICE (`@elizaos/plugin-agent-skills`).
  *

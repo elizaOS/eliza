@@ -1,0 +1,77 @@
+{
+  "instance_id": "p6_instance_021",
+  "vehicles": [
+    {
+      "id": "car1",
+      "capacity": 4,
+      "location": "home"
+    },
+    {
+      "id": "car2",
+      "capacity": 4,
+      "location": "airport"
+    }
+  ],
+  "cooking_tasks": [
+    "turkey",
+    "stuffing",
+    "gravy",
+    "potatoes",
+    "vegetables",
+    "dessert"
+  ],
+  "family_members": [
+    {
+      "id": "mom",
+      "skills": [
+        "turkey",
+        "gravy"
+      ],
+      "arrival": "home",
+      "flight": null
+    },
+    {
+      "id": "dad",
+      "skills": [
+        "potatoes"
+      ],
+      "arrival": "airport",
+      "flight": "flight1"
+    },
+    {
+      "id": "sister",
+      "skills": [
+        "vegetables",
+        "dessert"
+      ],
+      "arrival": "airport",
+      "flight": "flight2"
+    }
+  ],
+  "flights": {
+    "flight1": {
+      "arrival_time": "14:00",
+      "airport": "JFK"
+    },
+    "flight2": {
+      "arrival_time": "15:30",
+      "airport": "JFK"
+    }
+  },
+  "cooking_dependencies": [
+    [
+      "turkey",
+      "gravy"
+    ],
+    [
+      "potatoes",
+      "mashed_potatoes"
+    ]
+  ],
+  "constraints": {
+    "dinner_deadline": "18:00",
+    "max_cooks": 3,
+    "kitchen_capacity": 3
+  },
+  "description": "Thanksgiving dinner planning instance"
+}

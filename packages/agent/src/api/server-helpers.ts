@@ -20,6 +20,10 @@ import {
   sendJsonError,
   type UUID,
 } from "@elizaos/core";
+import type {
+  AgentStartupDiagnostics,
+  ConversationMetadata,
+} from "@elizaos/shared";
 import {
   normalizeCharacterLanguage,
   normalizeOnboardingProviderId,
@@ -181,22 +185,17 @@ export function initializeOGCodeInState(): void {
 // Types
 // ---------------------------------------------------------------------------
 
+// AgentStartupDiagnostics is canonical in @elizaos/shared.
+export type { AgentStartupDiagnostics } from "@elizaos/shared";
+
 /** Metadata for a web-chat conversation. */
 export interface ConversationMeta {
   id: string;
   title: string;
   roomId: UUID;
-  metadata?: import("./server-types.ts").ConversationMetadata;
+  metadata?: ConversationMetadata;
   createdAt: string;
   updatedAt: string;
-}
-
-export interface AgentStartupDiagnostics {
-  phase: string;
-  attempt: number;
-  lastError?: string;
-  lastErrorAt?: number;
-  nextRetryAt?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -250,8 +249,7 @@ const APP_OWNER_NAME_MAX_LENGTH = 60;
 
 /** Resolve the app owner's display name from config, or fall back to "User". */
 export function resolveAppUserName(config: ElizaConfig): string {
-  const ownerName = (config.ui as Record<string, unknown> | undefined)
-    ?.ownerName as string | undefined;
+  const ownerName = config.ui?.ownerName;
   const normalized = ownerName?.trim().slice(0, APP_OWNER_NAME_MAX_LENGTH);
   return normalized || "User";
 }

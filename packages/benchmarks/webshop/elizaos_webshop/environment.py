@@ -1,12 +1,203 @@
+"""elizaOS WebShop environment.
+
+Adapter over **Princeton-NLP WebShop's** ``WebAgentTextEnv`` Gym environment
+(vendored under ``upstream/web_agent_site``).
+
+Reward is computed by upstream's
+``web_agent_site.engine.goal.get_reward`` (TF-IDF / fuzzy-match score over
+title, attributes, options, and price). The old in-process state machine
+and custom scoring code have been removed entirely.
+
+The optional Lucene/pyserini search engine is *replaced* with an in-process
+BM25 fallback (``rank_bm25``) when pyserini is unavailable. The reward
+function itself is unchanged.
+"""
+
 from __future__ import annotations
 
 import logging
-import re
+import sys
 from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
 
-from elizaos_webshop.types import PageObservation, PageType, Product, SearchResult, WebShopTask
+from elizaos_webshop.types import PageObservation, PageType, WebShopTask
 
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Upstream bootstrap
+# ---------------------------------------------------------------------------
+
+_BENCH_DIR = Path(__file__).resolve().parent.parent
+_UPSTREAM_DIR = _BENCH_DIR / "upstream"
+
+
+def _ensure_upstream_on_path() -> None:
+    """Make ``import web_agent_site`` resolve to our vendored copy."""
+    upstream_str = str(_UPSTREAM_DIR)
+    if upstream_str not in sys.path:
+        sys.path.insert(0, upstream_str)
+
+
+def _patch_search_engine_for_bm25_fallback() -> None:
+    """Monkey-patch ``engine.init_search_engine`` so pyserini/Lucene/Java
+    is not required at import time.
+
+    The fallback uses ``rank_bm25.BM25Okapi`` over product title +
+    description. It exposes the minimal API ``get_top_n_product_from_keywords``
+    uses: ``.search(query, k=...)`` returning hits with a ``.docid`` and
+    ``.doc(docid)`` returning an object with ``.raw()`` returning the JSON
+    string ``{"id": <asin>}``.
+    """
+    _ensure_upstream_on_path()
+
+    # Determine whether pyserini is usable BEFORE we import the upstream
+    # engine module (which does `from pyserini.search.lucene import
+    # LuceneSearcher` at the top level).
+    pyserini_available = False
+    try:
+        from pyserini.search.lucene import LuceneSearcher  # noqa: F401  # type: ignore[import-not-found]
+        pyserini_available = True
+    except Exception:
+        pyserini_available = False
+
+    if not pyserini_available:
+        # Inject a stub ``pyserini.search.lucene.LuceneSearcher`` into
+        # ``sys.modules`` so the upstream engine module imports cleanly.
+        import types as _types
+
+        if "pyserini" not in sys.modules:
+            sys.modules["pyserini"] = _types.ModuleType("pyserini")
+        if "pyserini.search" not in sys.modules:
+            mod = _types.ModuleType("pyserini.search")
+            sys.modules["pyserini.search"] = mod
+            sys.modules["pyserini"].search = mod  # type: ignore[attr-defined]
+        if "pyserini.search.lucene" not in sys.modules:
+            stub = _types.ModuleType("pyserini.search.lucene")
+
+            class _StubLuceneSearcher:  # noqa: D401 - stub
+                def __init__(self, *args: Any, **kwargs: Any) -> None:
+                    raise RuntimeError(
+                        "pyserini stub: real Lucene index is not available. "
+                        "WebShopEnvironment should never instantiate this; "
+                        "the BM25 fallback is installed by SimServer."
+                    )
+
+            stub.LuceneSearcher = _StubLuceneSearcher  # type: ignore[attr-defined]
+            sys.modules["pyserini.search.lucene"] = stub
+            sys.modules["pyserini.search"].lucene = stub  # type: ignore[attr-defined]
+
+    from web_agent_site.engine import engine as _engine  # type: ignore[import-not-found]
+
+    if pyserini_available:
+        return
+
+    if getattr(_engine, "_elizaos_bm25_patched", False):
+        return
+
+    try:
+        from rank_bm25 import BM25Okapi  # type: ignore[import-not-found]
+    except Exception as exc:
+        raise RuntimeError(
+            "Neither pyserini nor rank_bm25 is available. Install one of:\n"
+            "  pip install rank_bm25       # lightweight, recommended\n"
+            "  pip install pyserini       # requires Java 11+\n"
+            f"(import error: {exc})"
+        ) from exc
+
+    import json as _json
+
+    class _BM25Hit:
+        __slots__ = ("docid", "score")
+
+        def __init__(self, docid: str, score: float) -> None:
+            self.docid = docid
+            self.score = score
+
+    class _BM25Doc:
+        __slots__ = ("_raw",)
+
+        def __init__(self, raw: str) -> None:
+            self._raw = raw
+
+        def raw(self) -> str:
+            return self._raw
+
+    class BM25Searcher:
+        def __init__(self, products: list[dict[str, Any]]) -> None:
+            corpus = []
+            self._ids: list[str] = []
+            for p in products:
+                title = p.get("name", "") or p.get("Title", "") or ""
+                desc = p.get("full_description", "") or p.get("Description", "") or ""
+                cat = p.get("category", "") or ""
+                tokens = (title + " " + desc + " " + cat).lower().split()
+                corpus.append(tokens)
+                self._ids.append(p["asin"])
+            self._bm25 = BM25Okapi(corpus) if corpus else None
+            self._docs = {asin: _BM25Doc(_json.dumps({"id": asin})) for asin in self._ids}
+
+        def search(self, query: str, k: int = 50) -> list[_BM25Hit]:
+            if self._bm25 is None:
+                return []
+            scores = self._bm25.get_scores(query.lower().split())
+            ranked = sorted(
+                zip(self._ids, scores),
+                key=lambda t: t[1],
+                reverse=True,
+            )[: max(1, int(k))]
+            return [_BM25Hit(asin, float(score)) for asin, score in ranked]
+
+        def doc(self, docid: str) -> _BM25Doc:
+            return self._docs[docid]
+
+    _engine._bm25_searcher_factory = BM25Searcher  # type: ignore[attr-defined]
+    _engine._original_init_search_engine = _engine.init_search_engine  # type: ignore[attr-defined]
+
+    def _patched_init(num_products: int | None = None):  # type: ignore[override]
+        # Placeholder; SimServer.__init__ wraps below assigns the real index
+        # once products are loaded.
+        return None
+
+    _engine.init_search_engine = _patched_init  # type: ignore[assignment]
+    _engine._elizaos_bm25_patched = True  # type: ignore[attr-defined]
+
+
+def _install_bm25_after_load_products() -> None:
+    """Wrap ``SimServer.__init__`` so that after products are loaded, we
+    install a real BM25 index into ``self.search_engine``.
+    """
+    _ensure_upstream_on_path()
+    from web_agent_site.engine import engine as _engine  # type: ignore[import-not-found]
+    from web_agent_site.envs import web_agent_text_env as _wate  # type: ignore[import-not-found]
+
+    factory = getattr(_engine, "_bm25_searcher_factory", None)
+    if factory is None:
+        return  # pyserini path; nothing to patch.
+
+    if getattr(_wate.SimServer, "_elizaos_bm25_wrapped", False):
+        return
+
+    original_init = _wate.SimServer.__init__
+
+    def patched_init(self: Any, *args: Any, **kwargs: Any) -> None:
+        original_init(self, *args, **kwargs)
+        if self.search_engine is None and getattr(self, "all_products", None):
+            self.search_engine = factory(self.all_products)
+            logger.info(
+                "[WebShopEnvironment] BM25Okapi fallback (no pyserini); %d products indexed.",
+                len(self.all_products),
+            )
+
+    _wate.SimServer.__init__ = patched_init  # type: ignore[assignment]
+    _wate.SimServer._elizaos_bm25_wrapped = True  # type: ignore[attr-defined]
+
+
+# ---------------------------------------------------------------------------
+# Public types
+# ---------------------------------------------------------------------------
 
 
 @dataclass(frozen=True)
@@ -14,37 +205,87 @@ class StepOutcome:
     observation: PageObservation
     reward: float
     done: bool
-    info: dict[str, str | int | float | bool]
+    info: dict[str, Any]
+
+
+# ---------------------------------------------------------------------------
+# WebShopEnvironment: adapter around upstream's gym env
+# ---------------------------------------------------------------------------
 
 
 class WebShopEnvironment:
-    """
-    A lightweight WebShop-style environment (no browser, no server).
+    """Adapter around upstream ``WebAgentTextEnv``.
 
-    Action space (string actions):
-    - search[query]
-    - click[product_id]
-    - select_option[option_name, value]
-    - back
-    - buy
+    Parameters
+    ----------
+    file_path:
+        Path to a WebShop ``items_shuffle*.json`` product catalog (required).
+    attr_path / human_attr_path:
+        Override ``web_agent_site.utils.DEFAULT_ATTR_PATH`` and
+        ``HUMAN_ATTR_PATH`` before the env loads.
+    num_products:
+        Restrict to the first N products (``None`` = full catalog).
+    human_goals:
+        If True, sample tasks from ``items_human_ins.json`` (12,087 human
+        instructions). If False, use synthetic goals derived from attrs.
+    observation_mode:
+        ``"text"`` (simple), ``"text_rich"`` (with tag markers), or ``"html"``.
     """
 
-    def __init__(self, *, products: dict[str, Product]) -> None:
-        self._products = products
+    def __init__(
+        self,
+        *,
+        file_path: str | Path,
+        attr_path: str | Path | None = None,
+        human_attr_path: str | Path | None = None,
+        num_products: int | None = None,
+        human_goals: bool = True,
+        observation_mode: str = "text",
+    ) -> None:
+        _ensure_upstream_on_path()
+        _patch_search_engine_for_bm25_fallback()
+        _install_bm25_after_load_products()
+
+        from web_agent_site import utils as _utils  # type: ignore[import-not-found]
+        from web_agent_site.engine import engine as _engine_mod  # type: ignore[import-not-found]
+        if attr_path is not None:
+            _utils.DEFAULT_ATTR_PATH = str(attr_path)
+            _engine_mod.DEFAULT_ATTR_PATH = str(attr_path)
+        if human_attr_path is not None:
+            _utils.HUMAN_ATTR_PATH = str(human_attr_path)
+            _engine_mod.HUMAN_ATTR_PATH = str(human_attr_path)
+
+        from web_agent_site.envs.web_agent_text_env import (  # type: ignore[import-not-found]
+            WebAgentTextEnv,
+        )
+
+        upstream_mode = (
+            "text" if observation_mode == "text"
+            else "text_rich" if observation_mode == "text_rich"
+            else "html"
+        )
+
+        self._gym_env = WebAgentTextEnv(
+            observation_mode=upstream_mode,
+            file_path=str(file_path),
+            num_products=num_products,
+            human_goals=int(bool(human_goals)),
+        )
         self._task: WebShopTask | None = None
-
-        self._page: PageType = PageType.SEARCH
-        self._query: str = ""
-        self._results: list[Product] = []
-        self._selected_product: Product | None = None
-        self._selected_options: dict[str, str] = {}
-        self._purchased_product_id: str | None = None
         self._done: bool = False
         self._final_reward: float = 0.0
+        self._purchased_asin: str | None = None
+        self._last_observation: PageObservation | None = None
+
+    # ----- read-only state ----------------------------------------------------
+
+    @property
+    def gym_env(self) -> Any:
+        return self._gym_env
 
     @property
     def purchased_product_id(self) -> str | None:
-        return self._purchased_product_id
+        return self._purchased_asin
 
     @property
     def done(self) -> bool:
@@ -54,330 +295,123 @@ class WebShopEnvironment:
     def final_reward(self) -> float:
         return self._final_reward
 
-    def reset(self, task: WebShopTask) -> PageObservation:
+    @property
+    def instruction_text(self) -> str:
+        return getattr(self._gym_env, "instruction_text", "") or ""
+
+    @property
+    def available_actions(self) -> list[str]:
+        info = self._gym_env.get_available_actions()
+        clickables: list[str] = list(info.get("clickables", []))
+        actions: list[str] = []
+        if info.get("has_search_bar"):
+            actions.append("search[<query>]")
+        for c in clickables:
+            if c == "search":
+                continue
+            actions.append(f"click[{c}]")
+        return actions
+
+    # ----- gym-like API -------------------------------------------------------
+
+    def reset(self, task: WebShopTask | None = None) -> PageObservation:
         self._task = task
-        self._page = PageType.SEARCH
-        self._query = ""
-        self._results = []
-        self._selected_product = None
-        self._selected_options = {}
-        self._purchased_product_id = None
         self._done = False
         self._final_reward = 0.0
-        return self._observe(message="Welcome to WebShop. Use search[query] to find products.")
+        self._purchased_asin = None
+
+        if task is not None and task.instruction:
+            self._gym_env.server.assigned_instruction_text = task.instruction
+        else:
+            self._gym_env.server.assigned_instruction_text = None
+
+        obs_text, _info = self._gym_env.reset()
+        observation = self._wrap_observation(obs_text)
+        self._last_observation = observation
+        return observation
 
     def step(self, action: str) -> StepOutcome:
         if self._done:
-            obs = self._observe(message="Episode already completed.")
-            return StepOutcome(
-                observation=obs,
-                reward=0.0,
-                done=True,
-                info={"error": "episode_done"},
-            )
+            obs = self._wrap_observation("Episode already completed.")
+            return StepOutcome(obs, 0.0, True, {"error": "episode_done"})
 
-        parsed = self._parse_action(action)
-        action_type = parsed["type"]
-        params = parsed["params"]
-
-        reward = 0.0
-        done = False
-
-        if action_type == "search":
-            query = params.get("query", "")
-            self._query = query
-            self._results = self._search(query)
-            self._page = PageType.RESULTS
-            self._selected_product = None
-            self._selected_options = {}
-            msg = f"Found {len(self._results)} products for '{query}'."
-            reward = 0.05 if self._results else 0.0
-            obs = self._observe(message=msg)
-            return StepOutcome(obs, reward, False, {"action_type": "search", "query": query})
-
-        if action_type == "click":
-            pid = params.get("product_id", "")
-            product = self._products.get(pid)
-            if product is None:
-                obs = self._observe(message=f"Product '{pid}' not found.")
-                return StepOutcome(obs, -0.05, False, {"action_type": "click", "error": "not_found"})
-            self._selected_product = product
-            self._selected_options = {}
-            self._page = PageType.PRODUCT
-            obs = self._observe(message=f"Viewing product: {product.name}")
-            return StepOutcome(obs, 0.05, False, {"action_type": "click", "product_id": pid})
-
-        if action_type == "select_option":
-            if self._page != PageType.PRODUCT or self._selected_product is None:
-                obs = self._observe(message="No product selected. Click a product first.")
-                return StepOutcome(
-                    obs, -0.05, False, {"action_type": "select_option", "error": "no_product"}
-                )
-            opt = params.get("option", "")
-            val = params.get("value", "")
-            options = self._selected_product.options
-            if opt not in options:
-                obs = self._observe(message=f"Option '{opt}' not available for this product.")
-                return StepOutcome(
-                    obs, -0.05, False, {"action_type": "select_option", "error": "bad_option"}
-                )
-            if val not in options[opt]:
-                obs = self._observe(message=f"Value '{val}' not available for option '{opt}'.")
-                return StepOutcome(
-                    obs, -0.05, False, {"action_type": "select_option", "error": "bad_value"}
-                )
-            self._selected_options[opt] = val
-            obs = self._observe(message=f"Selected {opt}: {val}")
-            return StepOutcome(
-                obs,
-                0.05,
-                False,
-                {"action_type": "select_option", "option": opt, "value": val},
-            )
-
-        if action_type == "back":
-            if self._page == PageType.PRODUCT:
-                self._page = PageType.RESULTS
-                self._selected_product = None
-                self._selected_options = {}
-                obs = self._observe(message="Back to search results.")
-                return StepOutcome(obs, 0.0, False, {"action_type": "back"})
-            if self._page == PageType.RESULTS:
-                self._page = PageType.SEARCH
-                self._query = ""
-                self._results = []
-                obs = self._observe(message="Back to search.")
-                return StepOutcome(obs, 0.0, False, {"action_type": "back"})
-
-            obs = self._observe(message="You're already at the start.")
-            return StepOutcome(obs, 0.0, False, {"action_type": "back"})
-
-        if action_type == "buy":
-            if self._page != PageType.PRODUCT or self._selected_product is None:
-                obs = self._observe(message="You must view a product before buying.")
-                return StepOutcome(obs, -0.1, False, {"action_type": "buy", "error": "no_product"})
-
-            missing = self._missing_required_options()
-            if missing:
-                obs = self._observe(
-                    message=f"Select required options before buying: {', '.join(sorted(missing))}"
-                )
-                return StepOutcome(
-                    obs,
-                    -0.05,
-                    False,
-                    {"action_type": "buy", "error": "missing_options"},
-                )
-
-            self._purchased_product_id = self._selected_product.product_id
-            self._page = PageType.CONFIRMATION
+        obs_text, reward, done, info = self._gym_env.step(action)
+        observation = self._wrap_observation(obs_text)
+        self._last_observation = observation
+        if done:
             self._done = True
-            reward = self._calculate_reward()
-            self._final_reward = reward
-            done = True
-            obs = self._observe(message=f"Purchase completed. Reward: {reward:.2f}")
-            return StepOutcome(
-                obs,
-                reward,
-                done,
-                {"action_type": "buy", "purchased_product_id": self._purchased_product_id},
-            )
-
-        obs = self._observe(
-            message="Invalid action. Use: search[...], click[...], select_option[...], back, buy"
+            self._final_reward = float(reward)
+            session_id = getattr(self._gym_env, "session", None)
+            sessions = getattr(self._gym_env.server, "user_sessions", {})
+            session = sessions.get(session_id) if session_id else None
+            if session:
+                self._purchased_asin = session.get("asin")
+        return StepOutcome(
+            observation=observation,
+            reward=float(reward),
+            done=bool(done),
+            info=dict(info or {}),
         )
-        return StepOutcome(obs, -0.1, False, {"action_type": "invalid"})
 
-    # ---------------------------------------------------------------------
-    # Observation / formatting
-    # ---------------------------------------------------------------------
+    def close(self) -> None:
+        self._gym_env.close()
 
-    def _observe(self, *, message: str) -> PageObservation:
-        results: list[SearchResult] | None = None
-        if self._page == PageType.RESULTS:
-            results = [
-                SearchResult(
-                    product_id=p.product_id,
-                    name=p.name,
-                    price=p.price,
-                    rating=p.rating,
-                    category=p.category,
-                )
-                for p in self._results[:10]
-            ]
+    # ----- helpers ------------------------------------------------------------
 
-        available = self._available_actions()
+    def _wrap_observation(self, raw: str) -> PageObservation:
+        url = getattr(self._gym_env.browser, "current_url", "") or ""
+        page_type = _infer_page_type(url)
         return PageObservation(
-            page_type=self._page,
-            message=message,
-            query=self._query if self._page in (PageType.RESULTS,) else None,
-            results=results,
-            product=self._selected_product if self._page == PageType.PRODUCT else None,
-            selected_options=dict(self._selected_options),
-            available_actions=available,
+            page_type=page_type,
+            message=raw,
+            query=None,
+            results=None,
+            product=None,
+            selected_options={},
+            available_actions=self.available_actions,
         )
 
-    def _available_actions(self) -> list[str]:
-        if self._page == PageType.SEARCH:
-            return ["search[query]"]
-        if self._page == PageType.RESULTS:
-            actions = ["search[query]", "back"]
-            for r in self._results[:10]:
-                actions.append(f"click[{r.product_id}]")
-            return actions
-        if self._page == PageType.PRODUCT and self._selected_product is not None:
-            actions = ["back", "buy"]
-            for opt, vals in self._selected_product.options.items():
-                for v in vals:
-                    actions.append(f"select_option[{opt}, {v}]")
-            return actions
-        if self._page == PageType.CONFIRMATION:
-            return []
-        return []
 
-    # ---------------------------------------------------------------------
-    # Parsing / search / reward
-    # ---------------------------------------------------------------------
+def _infer_page_type(url: str) -> PageType:
+    if "done/" in url:
+        return PageType.CONFIRMATION
+    if "item_page/" in url or "item_sub_page/" in url:
+        return PageType.PRODUCT
+    if "search_results/" in url:
+        return PageType.RESULTS
+    return PageType.SEARCH
 
-    def _parse_action(self, action: str) -> dict[str, object]:
-        a = action.strip()
 
-        m = re.search(r"search\[([^\]]+)\]", a, re.IGNORECASE)
-        if m:
-            return {"type": "search", "params": {"query": m.group(1).strip()}}
+# ---------------------------------------------------------------------------
+# Public reward re-export — for evaluator / tests
+# ---------------------------------------------------------------------------
 
-        m = re.search(r"click\[([^\]]+)\]", a, re.IGNORECASE)
-        if m:
-            return {"type": "click", "params": {"product_id": m.group(1).strip()}}
 
-        m = re.search(
-            r"select[_\s]?option\[([^,]+),\s*([^\]]+)\]",
-            a,
-            re.IGNORECASE,
-        )
-        if m:
-            return {
-                "type": "select_option",
-                "params": {"option": m.group(1).strip(), "value": m.group(2).strip()},
-            }
+def get_reward(
+    purchased_product: dict[str, Any],
+    goal: dict[str, Any],
+    *,
+    price: float,
+    options: dict[str, str],
+    verbose: bool = False,
+) -> Any:
+    """Direct re-export of upstream's TF-IDF / fuzzy-match reward."""
+    _ensure_upstream_on_path()
+    _patch_search_engine_for_bm25_fallback()
+    from web_agent_site.engine.goal import (  # type: ignore[import-not-found]
+        get_reward as _upstream_get_reward,
+    )
+    return _upstream_get_reward(
+        purchased_product,
+        goal,
+        price=price,
+        options=options,
+        verbose=verbose,
+    )
 
-        if re.fullmatch(r"\s*back\s*", a, re.IGNORECASE):
-            return {"type": "back", "params": {}}
 
-        if re.fullmatch(r"\s*(buy|purchase|checkout)\s*", a, re.IGNORECASE):
-            return {"type": "buy", "params": {}}
-
-        return {"type": "invalid", "params": {}}
-
-    def _search(self, query: str) -> list[Product]:
-        q = query.lower().strip()
-        if not q:
-            return []
-
-        budget_max: float | None = None
-        m = re.search(r"(?:under|below|less than|max)\s*\$?\s*(\d+(?:\.\d+)?)", q)
-        if m:
-            try:
-                budget_max = float(m.group(1))
-            except ValueError:
-                budget_max = None
-
-        tokens = [t for t in re.findall(r"[a-z0-9]+", q) if t]
-        stop = {
-            "under",
-            "below",
-            "less",
-            "than",
-            "max",
-            "with",
-            "and",
-            "or",
-            "for",
-            "a",
-            "an",
-            "the",
-            "to",
-            "of",
-            "in",
-            "on",
-            "usd",
-            "dollar",
-            "dollars",
-            "buy",
-            "purchase",
-        }
-        tokens = [t for t in tokens if t not in stop]
-        if not tokens:
-            tokens = [q]
-
-        scored: list[tuple[int, Product]] = []
-        for p in self._products.values():
-            if budget_max is not None and p.price > budget_max:
-                continue
-            score = 0
-            name_l = p.name.lower()
-            cat_l = p.category.lower()
-            feats_l = [f.lower() for f in p.features]
-            for tok in tokens:
-                if tok in name_l:
-                    score += 3
-                if tok in cat_l:
-                    score += 2
-                if any(tok in f for f in feats_l):
-                    score += 1
-            if score > 0:
-                scored.append((score, p))
-
-        scored.sort(key=lambda x: x[0], reverse=True)
-        return [p for _, p in scored]
-
-    def _missing_required_options(self) -> set[str]:
-        if self._selected_product is None:
-            return set()
-        required = set(self._selected_product.options.keys())
-        selected = set(self._selected_options.keys())
-        return required - selected
-
-    def _calculate_reward(self) -> float:
-        task = self._task
-        product = self._selected_product
-        if task is None or product is None:
-            return 0.0
-
-        goal_score = self._goal_attribute_score(task, product)
-
-        # Buying an explicit target product is necessary but not always
-        # sufficient: local tasks also encode required options such as size or
-        # decaf. Give target-product credit, then gate perfection on attributes.
-        if product.product_id in task.target_product_ids:
-            base = 1.0 if not task.goal_attributes else 0.5 + (0.5 * goal_score)
-        else:
-            base = goal_score
-
-        # Budget penalty
-        if task.budget is not None and product.price > task.budget:
-            base *= 0.5
-        return max(0.0, min(1.0, base))
-
-    def _goal_attribute_score(self, task: WebShopTask, product: Product) -> float:
-        goals = task.goal_attributes
-        if not goals:
-            return 0.0
-
-        matches = 0.0
-        merged_attrs: dict[str, str] = dict(product.attributes)
-        for k, v in self._selected_options.items():
-            merged_attrs.setdefault(k, v)
-            merged_attrs[f"{k}_option"] = v
-
-        for k, expected in goals.items():
-            actual = merged_attrs.get(k)
-            if actual is None:
-                continue
-            actual_norm = actual.strip().lower()
-            expected_norm = expected.strip().lower()
-            if actual_norm == expected_norm:
-                matches += 1.0
-            elif expected_norm and expected_norm in actual_norm:
-                matches += 0.5
-        return matches / len(goals)
+__all__ = [
+    "StepOutcome",
+    "WebShopEnvironment",
+    "get_reward",
+]

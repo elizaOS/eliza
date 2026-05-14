@@ -1,4 +1,4 @@
-import { parseClampedInteger } from "../utils/number-parsing.ts";
+import { parseClampedInteger } from "@elizaos/shared";
 
 const TERMINAL_RUN_MAX_CONCURRENT_DEFAULT = 2;
 const TERMINAL_RUN_MAX_CONCURRENT_CAP = 16;

@@ -238,7 +238,7 @@ export class SandboxManager {
   }
 
   async start(): Promise<void> {
-    return await this.queueLifecycle(async () => {
+    return this.queueLifecycle(async () => {
       if (this.config.mode === "off") {
         if (this.state !== "stopped") {
           this.setState("stopped");
@@ -332,7 +332,7 @@ export class SandboxManager {
   }
 
   async recover(): Promise<void> {
-    return await this.queueLifecycle(async () => {
+    return this.queueLifecycle(async () => {
       if (this.state !== "degraded") {
         return; // Only recover from degraded
       }
@@ -377,7 +377,7 @@ export class SandboxManager {
   }
 
   async stop(): Promise<void> {
-    return await this.queueLifecycle(async () => {
+    return this.queueLifecycle(async () => {
       if (this.state === "stopped") {
         return;
       }

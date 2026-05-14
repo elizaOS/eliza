@@ -41,9 +41,9 @@ describe("probeDflashFork", () => {
 });
 
 describe("resolveLocalBaseUrl", () => {
-  it("uses PARALLAX_OPENCODE_BASE_URL when set", () => {
+  it("uses ELIZA_OPENCODE_BASE_URL when set", () => {
     const result = resolveLocalBaseUrl({
-      env: { PARALLAX_OPENCODE_BASE_URL: "http://example:5555/v1" },
+      env: { ELIZA_OPENCODE_BASE_URL: "http://example:5555/v1" },
     });
     expect(result.baseUrl).toBe("http://example:5555/v1");
     expect(result.source).toBe("ollama-env");
@@ -57,7 +57,7 @@ describe("resolveLocalBaseUrl", () => {
 
   it("ignores empty/whitespace override values", () => {
     const result = resolveLocalBaseUrl({
-      env: { PARALLAX_OPENCODE_BASE_URL: "   " },
+      env: { ELIZA_OPENCODE_BASE_URL: "   " },
     });
     expect(result.source).toBe("ollama-default");
   });

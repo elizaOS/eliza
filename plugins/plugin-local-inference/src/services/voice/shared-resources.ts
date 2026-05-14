@@ -40,6 +40,8 @@ interface Logger {
  */
 export type ResidentModelRole =
 	| "drafter"
+	| "emotion"
+	| "speaker-id"
 	| "vision"
 	| "embedding"
 	| "vad"
@@ -49,13 +51,17 @@ export type ResidentModelRole =
 
 /**
  * Eviction priority by role — lower evicts first. Matches the brief's
- * `drafter < vision/mmproj < ASR < TTS < text-target`, with `embedding`
- * (cheap — just `unload()`) just above vision and `vad` near ASR.
+ * `drafter < emotion < speaker-id < vision/mmproj < embedding < vad < ASR <
+ * TTS < text-target`. The cold-3 set (`emotion`, `speaker-id`) is cheap to
+ * load on demand, so evicting them is the first reclamation step under
+ * sustained pressure. See `.swarm/research/R9-memory.md` §4.1.
  */
 export const RESIDENT_ROLE_PRIORITY: Readonly<
 	Record<ResidentModelRole, number>
 > = {
 	drafter: 10,
+	emotion: 15,
+	"speaker-id": 18,
 	vision: 20,
 	embedding: 25,
 	vad: 35,

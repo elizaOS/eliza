@@ -1,3 +1,4 @@
+import { stripAssistantStageDirections } from "@elizaos/shared";
 import {
   type FormEvent,
   useCallback,
@@ -19,7 +20,6 @@ import {
 } from "../../platform/mobile-permissions-client";
 import { useApp } from "../../state/useApp";
 import type { ConfigUiHint } from "../../types";
-import { stripAssistantStageDirections } from "../../utils/assistant-text";
 import {
   createClientPermissionsRegistry,
   PermissionCard,

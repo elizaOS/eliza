@@ -1,4 +1,13 @@
-"""Local dry-run agent for VisualWebBench."""
+"""Offline oracle agent for VisualWebBench.
+
+This agent reads ``task.answer`` directly and echoes a well-formed prediction.
+It is **only** for offline smoke/CI scenarios — running it produces a
+guaranteed-perfect score, so it must never be used as a real benchmark agent.
+
+The runner refuses to instantiate this class unless ``VisualWebBenchConfig.mock``
+is True (set via the ``--mock`` CLI flag). All other code paths route through
+the real eliza adapter.
+"""
 
 from __future__ import annotations
 
@@ -8,11 +17,12 @@ from benchmarks.visualwebbench.types import (
     BBox,
     VisualWebBenchPrediction,
     VisualWebBenchTask,
+    VisualWebBenchTaskType,
 )
 
 
 class OracleVisualWebBenchAgent:
-    """Deterministic offline agent used for smoke tests and dry runs."""
+    """Deterministic offline agent. Use only with ``--mock``."""
 
     async def initialize(self) -> None:
         return None
@@ -23,21 +33,27 @@ class OracleVisualWebBenchAgent:
         choice_index: int | None = None
         bbox: BBox | None = None
 
-        if isinstance(task.answer, int):
-            choice_index = task.answer
-            if task.options and 0 <= task.answer < len(task.options):
-                selected = task.options[task.answer]
-                if isinstance(selected, str):
-                    answer_text = selected
-                else:
-                    bbox = selected
-        elif isinstance(task.answer, tuple):
-            bbox = task.answer
-            answer_text = ",".join(str(x) for x in task.answer)
-        elif isinstance(task.answer, list):
-            answer_text = str(task.answer[0]) if task.answer else ""
+        # MCQ tasks: encode the gold index as a letter so the choice parser
+        # exercises real upstream parsing rather than the structured shortcut.
+        if task.task_type in {
+            VisualWebBenchTaskType.ELEMENT_GROUND,
+            VisualWebBenchTaskType.ACTION_PREDICTION,
+            VisualWebBenchTaskType.ACTION_GROUND,
+        }:
+            if isinstance(task.answer, int) and task.answer >= 0:
+                choice_index = task.answer
+                answer_text = chr(ord("A") + task.answer)
+        elif task.task_type is VisualWebBenchTaskType.WEBQA:
+            if isinstance(task.answer, list) and task.answer:
+                answer_text = str(task.answer[0])
+            elif isinstance(task.answer, str):
+                answer_text = task.answer
         else:
-            answer_text = str(task.answer)
+            # Generative subtasks: echo the reference string.
+            if isinstance(task.answer, list):
+                answer_text = str(task.answer[0]) if task.answer else ""
+            else:
+                answer_text = str(task.answer)
 
         return VisualWebBenchPrediction(
             task_id=task.id,
@@ -45,7 +61,7 @@ class OracleVisualWebBenchAgent:
             answer_text=answer_text,
             choice_index=choice_index,
             bbox=bbox,
-            raw_output={"mode": "dry_run_oracle"},
+            raw_output={"mode": "mock_oracle"},
             latency_ms=(time.time() - started) * 1000,
         )
 

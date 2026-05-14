@@ -1,4 +1,4 @@
-import { ensureLocalInferenceHandler } from "@elizaos/plugin-local-inference/runtime";
+import type { AgentRuntime } from "@elizaos/core";
 import { registerAppCoreRuntimeHooks } from "./runtime/app-core-runtime-hooks";
 import { hydrateWalletKeysFromNodePlatformSecureStore } from "./security/hydrate-wallet-keys-from-platform-store";
 import {
@@ -8,6 +8,16 @@ import {
 } from "./services/account-pool";
 import { runVaultBootstrap } from "./services/vault-bootstrap";
 import { sharedVault } from "./services/vault-mirror";
+
+// Lazy wrapper: avoids static @elizaos/plugin-local-inference import at this boundary.
+async function ensureLocalInferenceHandler(
+  runtime: AgentRuntime,
+): Promise<void> {
+  const { ensureLocalInferenceHandler: _fn } = await import(
+    "@elizaos/plugin-local-inference/runtime"
+  );
+  return _fn(runtime);
+}
 
 registerAppCoreRuntimeHooks({
   applyAccountPoolApiCredentials,

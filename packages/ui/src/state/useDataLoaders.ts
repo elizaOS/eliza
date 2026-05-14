@@ -238,7 +238,7 @@ export function useDataLoaders(deps: DataLoadersDeps) {
         autonomousRunHealthByRunIdRef.current = partial;
         setAutonomousRunHealthByRunId(partial);
       }
-    } catch (err) {
+    } catch {
       if (hasPendingAutonomyGaps(autonomousRunHealthByRunIdRef.current)) {
         const partial = markPendingAutonomyGapsPartial(
           autonomousRunHealthByRunIdRef.current,
@@ -247,7 +247,7 @@ export function useDataLoaders(deps: DataLoadersDeps) {
         autonomousRunHealthByRunIdRef.current = partial;
         setAutonomousRunHealthByRunId(partial);
       }
-      console.warn("[eliza] Failed to fetch autonomous event replay", err);
+      // best-effort; caller can retry on next poll cycle
     } finally {
       autonomousReplayInFlightRef.current = false;
     }
@@ -493,11 +493,8 @@ export function useDataLoaders(deps: DataLoadersDeps) {
           buildLocalizedCharacterPayload(preset, resolvedName),
         );
         await loadCharacter();
-      } catch (err) {
-        console.warn(
-          "[eliza] Failed to sync localized character preset after language change",
-          err,
-        );
+      } catch {
+        // best-effort; user can retry by changing language again
       }
     })();
   }, [

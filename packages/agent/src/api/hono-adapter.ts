@@ -72,7 +72,7 @@ async function readBodyForDispatch(
       return text;
     }
   }
-  return await request.text();
+  return request.text();
 }
 
 function headersToRecord(headers: Headers): Record<string, string> {

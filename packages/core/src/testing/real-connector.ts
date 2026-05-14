@@ -13,6 +13,7 @@
  */
 
 import path from "node:path";
+import { logger } from "../logger";
 
 // Load .env on first connector call. The previous module-init top-level
 // `await import("dotenv")` is incompatible with Bun.build's mobile bundle
@@ -100,7 +101,10 @@ export async function createDiscordTestClient(): Promise<DiscordTestClient | nul
 			},
 		};
 	} catch (err) {
-		console.warn(`[real-connector] Discord client creation failed: ${err}`);
+		logger.warn(
+			{ src: "testing:real-connector", err },
+			"[real-connector] Discord client creation failed",
+		);
 		return null;
 	}
 }
@@ -234,7 +238,10 @@ export async function createTelegramTestBot(): Promise<TelegramTestBot | null> {
 			},
 		};
 	} catch (err) {
-		console.warn(`[real-connector] Telegram bot creation failed: ${err}`);
+		logger.warn(
+			{ src: "testing:real-connector", err },
+			"[real-connector] Telegram bot creation failed",
+		);
 		return null;
 	}
 }

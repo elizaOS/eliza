@@ -105,6 +105,7 @@ import {
   getStylePresets,
   isMobilePlatform,
   normalizeCharacterLanguage,
+  parseClampedInteger,
   resolveApiBindHost,
   resolveDesktopApiPort,
   resolveServerOnlyPort,
@@ -183,7 +184,6 @@ import {
   normalizeTriggerDraft,
 } from "../triggers/scheduling.ts";
 import { deployTextTriggerWorkflow } from "../triggers/text-to-workflow.ts";
-import { parseClampedInteger } from "../utils/number-parsing.ts";
 import { handleAccountsRoutes } from "./accounts-routes.ts";
 import { handleAgentAdminRoutes } from "./agent-admin-routes.ts";
 import { handleAgentLifecycleRoutes } from "./agent-lifecycle-routes.ts";
@@ -2938,7 +2938,7 @@ export async function startApiServer(opts?: {
   ) => void;
 }> {
   const apiStartTime = Date.now();
-  console.log(`[eliza-api] startApiServer called`);
+  logger.debug(`[eliza-api] startApiServer called`);
 
   // Honor ELIZA_API_PORT first (set by the desktop launcher → 31337) so
   // the renderer's hardcoded API base reaches this server. CLI-mode
@@ -2951,7 +2951,7 @@ export async function startApiServer(opts?: {
       : resolveServerOnlyPort(process.env));
   const host = resolveApiBindHost(process.env);
   ensureApiTokenForBindHost(host);
-  console.log(`[eliza-api] Token check done (${Date.now() - apiStartTime}ms)`);
+  logger.debug(`[eliza-api] Token check done (${Date.now() - apiStartTime}ms)`);
 
   let config: ElizaConfig;
   try {
@@ -2962,7 +2962,7 @@ export async function startApiServer(opts?: {
     );
     config = {} as ElizaConfig;
   }
-  console.log(`[eliza-api] Config loaded (${Date.now() - apiStartTime}ms)`);
+  logger.debug(`[eliza-api] Config loaded (${Date.now() - apiStartTime}ms)`);
 
   // Wallet/inventory routes read from process.env at request-time.
   // Hydrate persisted config.env values so addresses remain visible after restarts.
@@ -3031,7 +3031,7 @@ export async function startApiServer(opts?: {
   }
 
   const plugins = discoverPluginsFromManifest();
-  console.log(
+  logger.debug(
     `[eliza-api] Plugins discovered (${Date.now() - apiStartTime}ms)`,
   );
   const workspaceDir =
@@ -3292,7 +3292,7 @@ export async function startApiServer(opts?: {
   // Store the restart callback on the state so the route handler can access it.
   const onRestart = opts?.onRestart ?? null;
 
-  console.log(
+  logger.debug(
     `[eliza-api] Creating http server (${Date.now() - apiStartTime}ms)`,
   );
   const server = http.createServer(async (req, res) => {
@@ -3323,7 +3323,7 @@ export async function startApiServer(opts?: {
       err instanceof Error ? err.message : String(err),
     );
   });
-  console.log(`[eliza-api] Server created (${Date.now() - apiStartTime}ms)`);
+  logger.debug(`[eliza-api] Server created (${Date.now() - apiStartTime}ms)`);
 
   // Node's `http.createServer` defaults are tuned for snappy web traffic:
   //   - requestTimeout: 300_000 ms (5 min) — closes the socket if the
@@ -3381,7 +3381,7 @@ export async function startApiServer(opts?: {
   // requestTimeout above instead. Default in Node 22 is 0 already, but
   // pin explicitly for clarity.
   server.timeout = 0;
-  console.log(
+  logger.debug(
     `[eliza-api] Server timeouts: requestTimeout=${requestTimeoutMs}ms, headersTimeout=${headersTimeoutMs}ms, keepAliveTimeout=${keepAliveTimeoutMs}ms`,
   );
 
@@ -4347,7 +4347,7 @@ export async function startApiServer(opts?: {
     broadcastStatus();
   };
 
-  console.log(
+  logger.debug(
     `[eliza-api] Calling server.listen (${Date.now() - apiStartTime}ms)`,
   );
   try {
@@ -4360,17 +4360,17 @@ export async function startApiServer(opts?: {
 
     server.on("error", (err: NodeJS.ErrnoException) => {
       if (err.code === "EADDRINUSE") {
-        console.warn(
+        logger.warn(
           `[eliza-api] Port ${currentPort} is already in use. Checking fallback...`,
         );
         if (currentPort !== 0) {
-          console.warn(`[eliza-api] Retrying with dynamic port (0)...`);
+          logger.warn(`[eliza-api] Retrying with dynamic port (0)...`);
           currentPort = 0;
           server.listen(0, host);
           return;
         }
       } else {
-        console.error(
+        logger.error(
           `[eliza-api] Server error: ${err.message} (code: ${err.code})`,
         );
       }
@@ -4378,7 +4378,7 @@ export async function startApiServer(opts?: {
     });
 
     server.listen(port, host, () => {
-      console.log(
+      logger.debug(
         `[eliza-api] server.listen callback fired (${Date.now() - apiStartTime}ms)`,
       );
       const addr = server.address();

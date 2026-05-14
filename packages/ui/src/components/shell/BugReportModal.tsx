@@ -151,9 +151,7 @@ export function BugReportModal() {
             : {}),
         }));
       })
-      .catch((err: unknown) => {
-        console.warn("[BugReportModal] Failed to fetch bug report info:", err);
-      });
+      .catch(() => {});
     if (desktopRuntime) {
       loadDesktopBugReportDiagnostics()
         .then((diagnostics) => {
@@ -172,12 +170,7 @@ export function BugReportModal() {
             }));
           }
         })
-        .catch((err: unknown) => {
-          console.warn(
-            "[BugReportModal] Failed to fetch desktop diagnostics:",
-            err,
-          );
-        });
+        .catch(() => {});
     }
     setTimeout(() => descRef.current?.focus(), 50);
 
@@ -307,11 +300,7 @@ export function BugReportModal() {
         try {
           await copyToClipboard(formatMarkdown());
           ok = true;
-        } catch (err) {
-          console.warn(
-            "[BugReportModal] Failed to copy bug report to clipboard:",
-            err,
-          );
+        } catch {
           ok = false;
         }
         setCopied(ok);
@@ -331,11 +320,7 @@ export function BugReportModal() {
     try {
       await copyToClipboard(formatMarkdown());
       ok = true;
-    } catch (err) {
-      console.warn(
-        "[BugReportModal] Failed to copy bug report to clipboard:",
-        err,
-      );
+    } catch {
       ok = false;
     }
     setCopied(ok);
@@ -349,8 +334,8 @@ export function BugReportModal() {
     try {
       await copyToClipboard(diagnosticsText);
       ok = true;
-    } catch (err) {
-      console.warn("[BugReportModal] Failed to copy diagnostics:", err);
+    } catch {
+      // clipboard write failed; ok stays false
     }
     setCopiedDiagnostics(ok);
   }, [buildDiagnosticsBlock, copyToClipboard]);

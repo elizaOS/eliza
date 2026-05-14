@@ -1,0 +1,115 @@
+{
+  "instance_id": "p4_instance_077",
+  "city_map": {
+    "locations": [
+      "downtown",
+      "mall",
+      "university",
+      "hospital",
+      "airport",
+      "stadium"
+    ],
+    "distances": {
+      "downtown-mall": 29,
+      "mall-downtown": 29,
+      "downtown-university": 36,
+      "university-downtown": 36,
+      "downtown-hospital": 19,
+      "hospital-downtown": 19,
+      "downtown-airport": 34,
+      "airport-downtown": 34,
+      "downtown-stadium": 26,
+      "stadium-downtown": 26,
+      "mall-university": 33,
+      "university-mall": 33,
+      "mall-hospital": 6,
+      "hospital-mall": 6,
+      "mall-airport": 30,
+      "airport-mall": 30,
+      "mall-stadium": 45,
+      "stadium-mall": 45,
+      "university-hospital": 29,
+      "hospital-university": 29,
+      "university-airport": 24,
+      "airport-university": 24,
+      "university-stadium": 26,
+      "stadium-university": 26,
+      "hospital-airport": 38,
+      "airport-hospital": 38,
+      "hospital-stadium": 37,
+      "stadium-hospital": 37,
+      "airport-stadium": 27,
+      "stadium-airport": 27
+    }
+  },
+  "ride_requests": [
+    {
+      "passenger_id": "p001",
+      "pickup": "mall",
+      "dropoff": "airport",
+      "time_window": [
+        9.5,
+        9.0
+      ],
+      "deadline": 34
+    },
+    {
+      "passenger_id": "p002",
+      "pickup": "stadium",
+      "dropoff": "university",
+      "time_window": [
+        11.75,
+        11.25
+      ],
+      "deadline": 47
+    },
+    {
+      "passenger_id": "p003",
+      "pickup": "university",
+      "dropoff": "hospital",
+      "time_window": [
+        11.25,
+        11.816666666666666
+      ],
+      "deadline": 55
+    }
+  ],
+  "vehicles": [
+    {
+      "vehicle_id": "v001",
+      "location": "hospital",
+      "capacity": 3,
+      "fuel": 96
+    },
+    {
+      "vehicle_id": "v002",
+      "location": "airport",
+      "capacity": 3,
+      "fuel": 54
+    }
+  ],
+  "description": "Urban ride-sharing with disruptions instance",
+  "disruptions": [
+    {
+      "type": "accident",
+      "location": "airport",
+      "start_time": 10,
+      "duration": 76,
+      "impact": "local_traffic_congestion"
+    },
+    {
+      "type": "construction",
+      "route": "mall-hospital",
+      "start_time": 9,
+      "duration": 283,
+      "impact": "reduced_capacity"
+    },
+    {
+      "type": "construction",
+      "route": "hospital-university",
+      "start_time": 7,
+      "duration": 156,
+      "impact": "reduced_capacity"
+    }
+  ]
+}

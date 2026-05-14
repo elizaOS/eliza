@@ -3,6 +3,16 @@ BFCL Dataset Loader
 
 Loads the Berkeley Function-Calling Leaderboard dataset from HuggingFace
 or local files and converts to internal types.
+
+Supports the full v3/v4 category taxonomy:
+    - non-live single-turn: simple, multiple, parallel, parallel_multiple,
+      relevance, irrelevance, rest, sql, java, javascript
+    - live (user-contributed) single-turn: live_simple, live_multiple,
+      live_parallel, live_parallel_multiple, live_relevance, live_irrelevance
+    - multi-turn: multi_turn_base, multi_turn_miss_func,
+      multi_turn_miss_param, multi_turn_long_context
+    - agentic (v4): web_search_base, web_search_no_snippet, memory_kv,
+      memory_vector, memory_rec_sum
 """
 
 import json
@@ -39,26 +49,70 @@ class BFCLDataset:
         "java": BFCLCategory.JAVA,
         "javascript": BFCLCategory.JAVASCRIPT,
     }
-    
-    # V3 file name to category mapping
+
+    # V3 file name -> category. Includes the live_* and multi_turn_*
+    # variants that ship in the v3 HuggingFace dataset.
     V3_CATEGORY_FILES: dict[str, BFCLCategory] = {
         "BFCL_v3_simple": BFCLCategory.SIMPLE,
         "BFCL_v3_multiple": BFCLCategory.MULTIPLE,
         "BFCL_v3_parallel": BFCLCategory.PARALLEL,
         "BFCL_v3_parallel_multiple": BFCLCategory.PARALLEL_MULTIPLE,
         "BFCL_v3_relevance": BFCLCategory.RELEVANCE,
-        "BFCL_v3_irrelevance": BFCLCategory.RELEVANCE,
+        "BFCL_v3_irrelevance": BFCLCategory.IRRELEVANCE,
         "BFCL_v3_rest": BFCLCategory.REST_API,
         "BFCL_v3_sql": BFCLCategory.SQL,
         "BFCL_v3_java": BFCLCategory.JAVA,
         "BFCL_v3_javascript": BFCLCategory.JAVASCRIPT,
+        # Live (user-contributed)
+        "BFCL_v3_live_simple": BFCLCategory.LIVE_SIMPLE,
+        "BFCL_v3_live_multiple": BFCLCategory.LIVE_MULTIPLE,
+        "BFCL_v3_live_parallel": BFCLCategory.LIVE_PARALLEL,
+        "BFCL_v3_live_parallel_multiple": BFCLCategory.LIVE_PARALLEL_MULTIPLE,
+        "BFCL_v3_live_relevance": BFCLCategory.LIVE_RELEVANCE,
+        "BFCL_v3_live_irrelevance": BFCLCategory.LIVE_IRRELEVANCE,
+        # Multi-turn
+        "BFCL_v3_multi_turn_base": BFCLCategory.MULTI_TURN_BASE,
+        "BFCL_v3_multi_turn_miss_func": BFCLCategory.MULTI_TURN_MISS_FUNC,
+        "BFCL_v3_multi_turn_miss_param": BFCLCategory.MULTI_TURN_MISS_PARAM,
+        "BFCL_v3_multi_turn_long_context": BFCLCategory.MULTI_TURN_LONG_CONTEXT,
+    }
+
+    # V4 file name -> category (adds agentic / web_search / memory).
+    V4_CATEGORY_FILES: dict[str, BFCLCategory] = {
+        "BFCL_v4_simple_python": BFCLCategory.SIMPLE,
+        "BFCL_v4_simple_java": BFCLCategory.JAVA,
+        "BFCL_v4_simple_javascript": BFCLCategory.JAVASCRIPT,
+        "BFCL_v4_multiple": BFCLCategory.MULTIPLE,
+        "BFCL_v4_parallel": BFCLCategory.PARALLEL,
+        "BFCL_v4_parallel_multiple": BFCLCategory.PARALLEL_MULTIPLE,
+        "BFCL_v4_irrelevance": BFCLCategory.IRRELEVANCE,
+        # Live
+        "BFCL_v4_live_simple": BFCLCategory.LIVE_SIMPLE,
+        "BFCL_v4_live_multiple": BFCLCategory.LIVE_MULTIPLE,
+        "BFCL_v4_live_parallel": BFCLCategory.LIVE_PARALLEL,
+        "BFCL_v4_live_parallel_multiple": BFCLCategory.LIVE_PARALLEL_MULTIPLE,
+        "BFCL_v4_live_relevance": BFCLCategory.LIVE_RELEVANCE,
+        "BFCL_v4_live_irrelevance": BFCLCategory.LIVE_IRRELEVANCE,
+        # Multi-turn
+        "BFCL_v4_multi_turn_base": BFCLCategory.MULTI_TURN_BASE,
+        "BFCL_v4_multi_turn_miss_func": BFCLCategory.MULTI_TURN_MISS_FUNC,
+        "BFCL_v4_multi_turn_miss_param": BFCLCategory.MULTI_TURN_MISS_PARAM,
+        "BFCL_v4_multi_turn_long_context": BFCLCategory.MULTI_TURN_LONG_CONTEXT,
+        # Agentic
+        "BFCL_v4_web_search": BFCLCategory.WEB_SEARCH_BASE,
+        "BFCL_v4_memory": BFCLCategory.MEMORY_KV,
+        "BFCL_v4_format_sensitivity": BFCLCategory.FORMAT_SENSITIVITY,
     }
 
     def __init__(self, config: BFCLConfig):
         self.config = config
         self._test_cases: list[BFCLTestCase] = []
         self._loaded = False
-        self._ground_truth: dict[str, list[dict[str, object]]] = {}  # id -> ground_truth calls
+        # Ground-truth payload is heterogeneous:
+        #   - single-turn: list[dict{func_name: {param: [allowed_values]}}]
+        #   - multi-turn:  list[list[str]] (per-turn list of python call strings)
+        #   - agentic:     arbitrary (memory state, expected answer, ...)
+        self._ground_truth: dict[str, object] = {}
 
     async def load(self) -> None:
         """Load BFCL dataset from HuggingFace or local files."""
@@ -70,22 +124,93 @@ class BFCLDataset:
         else:
             await self._load_from_local()
 
+        # Upstream packs web_search_base and web_search_no_snippet into the
+        # same source file, distinguishing them via a per-entry ``show_snippet``
+        # flag tied to the test id. Split them apart now so consumers asking
+        # for ``WEB_SEARCH_NO_SNIPPET`` get exactly those entries.
+        self._finalize_web_search_split()
+
         self._loaded = True
         logger.info(f"Loaded {len(self._test_cases)} BFCL test cases")
+
+    def _finalize_web_search_split(self) -> None:
+        """Partition the loaded WEB_SEARCH_BASE entries into base + no_snippet
+        buckets, mirroring upstream's ``process_web_search_test_case``.
+
+        Upstream uses one source file for both categories and distinguishes
+        them via a per-entry ``show_snippet`` initial-config flag. Without
+        this method, the no_snippet bucket would always be empty.
+        """
+        cats_wanted = self.config.categories or []
+        want_no_snippet = (
+            not cats_wanted or BFCLCategory.WEB_SEARCH_NO_SNIPPET in cats_wanted
+        )
+        want_base = (
+            not cats_wanted or BFCLCategory.WEB_SEARCH_BASE in cats_wanted
+        )
+
+        explicit_no_snippet: list[BFCLTestCase] = []
+        kept_base: list[BFCLTestCase] = []
+        for tc in self._test_cases:
+            if tc.category != BFCLCategory.WEB_SEARCH_BASE:
+                continue
+            if "no_snippet" in tc.id.lower():
+                explicit_no_snippet.append(tc)
+            else:
+                kept_base.append(tc)
+
+        self._test_cases = [
+            tc
+            for tc in self._test_cases
+            if tc.category != BFCLCategory.WEB_SEARCH_BASE
+        ]
+
+        for tc in explicit_no_snippet:
+            tc.category = BFCLCategory.WEB_SEARCH_NO_SNIPPET
+
+        synthesized_no_snippet: list[BFCLTestCase] = []
+        if want_no_snippet:
+            from dataclasses import replace as _replace
+            for tc in kept_base:
+                synthesized_no_snippet.append(
+                    _replace(
+                        tc,
+                        id=tc.id.replace(
+                            "web_search", "web_search_no_snippet", 1
+                        ) if "web_search" in tc.id else f"{tc.id}_no_snippet",
+                        category=BFCLCategory.WEB_SEARCH_NO_SNIPPET,
+                    )
+                )
+
+        if want_base:
+            for tc in kept_base:
+                if (
+                    "web_search" in tc.id
+                    and "web_search_base" not in tc.id
+                    and "no_snippet" not in tc.id
+                ):
+                    tc.id = tc.id.replace("web_search", "web_search_base", 1)
+
+        if want_base:
+            self._test_cases.extend(kept_base)
+        if want_no_snippet:
+            self._test_cases.extend(explicit_no_snippet)
+            self._test_cases.extend(synthesized_no_snippet)
 
     async def _load_from_huggingface(self) -> None:
         """Load dataset from HuggingFace cache or download."""
         logger.info(f"Loading BFCL from HuggingFace: {self.config.huggingface_dataset}")
-        
+
         # First, ensure data is downloaded to cache
         await self._ensure_dataset_cached()
-        
+
         # Load all ground truth from possible_answer directory
         await self._load_ground_truth_from_cache()
 
-        # Load data files directly from cache (NDJSON format)
-        # This bypasses HuggingFace's schema inconsistency issues
+        # Load data files directly from cache (NDJSON format).
+        # This bypasses HuggingFace's schema inconsistency issues.
         data_files_to_load = [
+            # Non-live single-turn
             ("simple", "BFCL_v3_simple.json", BFCLCategory.SIMPLE),
             ("multiple", "BFCL_v3_multiple.json", BFCLCategory.MULTIPLE),
             ("parallel", "BFCL_v3_parallel.json", BFCLCategory.PARALLEL),
@@ -94,9 +219,22 @@ class BFCLDataset:
             ("sql", "BFCL_v3_sql.json", BFCLCategory.SQL),
             ("java", "BFCL_v3_java.json", BFCLCategory.JAVA),
             ("javascript", "BFCL_v3_javascript.json", BFCLCategory.JAVASCRIPT),
-            # Relevance tests (check if model correctly declines irrelevant queries)
             ("relevance", "BFCL_v3_live_relevance.json", BFCLCategory.RELEVANCE),
-            ("irrelevance", "BFCL_v3_irrelevance.json", BFCLCategory.RELEVANCE),
+            ("irrelevance", "BFCL_v3_irrelevance.json", BFCLCategory.IRRELEVANCE),
+            # Live (user-contributed)
+            ("live_simple", "BFCL_v3_live_simple.json", BFCLCategory.LIVE_SIMPLE),
+            ("live_multiple", "BFCL_v3_live_multiple.json", BFCLCategory.LIVE_MULTIPLE),
+            ("live_parallel", "BFCL_v3_live_parallel.json", BFCLCategory.LIVE_PARALLEL),
+            ("live_parallel_multiple", "BFCL_v3_live_parallel_multiple.json", BFCLCategory.LIVE_PARALLEL_MULTIPLE),
+            ("live_irrelevance", "BFCL_v3_live_irrelevance.json", BFCLCategory.LIVE_IRRELEVANCE),
+            # Multi-turn
+            ("multi_turn_base", "BFCL_v3_multi_turn_base.json", BFCLCategory.MULTI_TURN_BASE),
+            ("multi_turn_miss_func", "BFCL_v3_multi_turn_miss_func.json", BFCLCategory.MULTI_TURN_MISS_FUNC),
+            ("multi_turn_miss_param", "BFCL_v3_multi_turn_miss_param.json", BFCLCategory.MULTI_TURN_MISS_PARAM),
+            ("multi_turn_long_context", "BFCL_v3_multi_turn_long_context.json", BFCLCategory.MULTI_TURN_LONG_CONTEXT),
+            # Agentic — v4 files, attempted opportunistically.
+            ("web_search", "BFCL_v4_web_search.json", BFCLCategory.WEB_SEARCH_BASE),
+            ("memory", "BFCL_v4_memory.json", BFCLCategory.MEMORY_KV),
         ]
 
         for file_key, file_name, category in data_files_to_load:
@@ -107,20 +245,20 @@ class BFCLDataset:
             count = await self._load_from_cache_file(file_key, file_name, category)
             if count > 0:
                 logger.info(f"Loaded {count} test cases from {file_name}")
-    
+
     async def _ensure_dataset_cached(self) -> None:
         """Ensure dataset is downloaded to HuggingFace cache."""
         from pathlib import Path
-        
+
         cache_base = Path.home() / ".cache" / "huggingface" / "hub"
         dataset_dir = cache_base / "datasets--gorilla-llm--Berkeley-Function-Calling-Leaderboard"
-        
+
         if dataset_dir.exists():
             snapshots_dir = dataset_dir / "snapshots"
             if snapshots_dir.exists() and list(snapshots_dir.iterdir()):
                 logger.debug("BFCL dataset already in cache")
                 return
-        
+
         # Download dataset to cache using huggingface_hub
         logger.info("Downloading BFCL dataset to cache...")
         try:
@@ -142,7 +280,7 @@ class BFCLDataset:
                 )
             except Exception as e:
                 logger.warning(f"Could not download dataset: {e}")
-    
+
     async def _load_from_cache_file(
         self,
         file_key: str,
@@ -151,43 +289,43 @@ class BFCLDataset:
     ) -> int:
         """Load data from a cached NDJSON file."""
         from pathlib import Path
-        
+
         cache_base = Path.home() / ".cache" / "huggingface" / "hub"
         dataset_dir = cache_base / "datasets--gorilla-llm--Berkeley-Function-Calling-Leaderboard"
-        
+
         if not dataset_dir.exists():
             logger.warning(f"Dataset not in cache: {dataset_dir}")
             return 0
-        
+
         # Find snapshot directory
         snapshots_dir = dataset_dir / "snapshots"
         if not snapshots_dir.exists():
             return 0
-        
+
         snapshot_dirs = list(snapshots_dir.iterdir())
         if not snapshot_dirs:
             return 0
-        
+
         snapshot_dir = snapshot_dirs[0]
         data_file = snapshot_dir / file_name
-        
+
         if not data_file.exists():
             logger.debug(f"Data file not found: {data_file}")
             return 0
-        
+
         count = 0
         max_tests = self.config.max_tests_per_category
-        
+
         try:
             with open(data_file, encoding="utf-8") as f:
                 for idx, line in enumerate(f):
                     if max_tests and count >= max_tests:
                         break
-                    
+
                     line = line.strip()
                     if not line:
                         continue
-                    
+
                     try:
                         item = json.loads(line)
                         test_case = self._parse_test_case(item, category, f"{file_key}_{idx}")
@@ -196,42 +334,42 @@ class BFCLDataset:
                             count += 1
                     except json.JSONDecodeError as e:
                         logger.debug(f"Failed to parse line {idx} in {file_name}: {e}")
-        
+
         except Exception as e:
             logger.warning(f"Error loading {file_name}: {e}")
-        
+
         return count
-    
+
     async def _load_ground_truth_from_cache(self) -> None:
         """Load ground truth from HuggingFace cache's possible_answer directory."""
         from pathlib import Path
-        
+
         # Find the HuggingFace cache directory
         cache_base = Path.home() / ".cache" / "huggingface" / "hub"
         dataset_dir = cache_base / "datasets--gorilla-llm--Berkeley-Function-Calling-Leaderboard"
-        
+
         if not dataset_dir.exists():
             logger.debug("BFCL dataset not in cache, ground truth not available yet")
             return
-        
+
         # Find the snapshots directory
         snapshots_dir = dataset_dir / "snapshots"
         if not snapshots_dir.exists():
             return
-        
+
         # Get the latest snapshot
         snapshot_dirs = list(snapshots_dir.iterdir())
         if not snapshot_dirs:
             return
-        
+
         # Use the first (usually only) snapshot
         snapshot_dir = snapshot_dirs[0]
         possible_answer_dir = snapshot_dir / "possible_answer"
-        
+
         if not possible_answer_dir.exists():
             logger.debug("possible_answer directory not found in BFCL cache")
             return
-        
+
         # Load all ground truth files
         for gt_file in possible_answer_dir.glob("*.json"):
             try:
@@ -247,7 +385,7 @@ class BFCLDataset:
                             self._ground_truth[test_id] = ground_truth
             except Exception as e:
                 logger.debug(f"Error loading ground truth from {gt_file}: {e}")
-        
+
         if self._ground_truth:
             logger.info(f"Loaded ground truth for {len(self._ground_truth)} test cases")
 
@@ -258,7 +396,14 @@ class BFCLDataset:
         if not data_path.exists():
             raise FileNotFoundError(f"BFCL data path not found: {data_path}")
 
-        file_map = {**self.CATEGORY_FILES, **self.V3_CATEGORY_FILES}
+        # Optionally pull ground truth from local possible_answer/ dir.
+        await self._load_ground_truth_from_local(data_path)
+
+        file_map = {
+            **self.CATEGORY_FILES,
+            **self.V3_CATEGORY_FILES,
+            **self.V4_CATEGORY_FILES,
+        }
         for file_name, category in file_map.items():
             # Skip if category not in configured categories
             if (
@@ -283,7 +428,33 @@ class BFCLDataset:
                     self._test_cases.append(test_case)
                     count += 1
 
-            logger.info(f"Loaded {count} test cases for category {category.value}")
+            if count:
+                logger.info(f"Loaded {count} test cases for category {category.value}")
+
+    async def _load_ground_truth_from_local(self, data_path: Path) -> None:
+        """Pick up local possible_answer/*.json files if present."""
+        candidates = [
+            data_path / "possible_answer",
+            data_path.parent / "possible_answer",
+        ]
+        for gt_dir in candidates:
+            if not gt_dir.exists():
+                continue
+            for gt_file in gt_dir.glob("*.json"):
+                try:
+                    with open(gt_file) as f:
+                        for line in f:
+                            line = line.strip()
+                            if not line:
+                                continue
+                            item = json.loads(line)
+                            test_id = item.get("id", "")
+                            ground_truth = item.get("ground_truth", [])
+                            if test_id and ground_truth:
+                                self._ground_truth[test_id] = ground_truth
+                except Exception as e:
+                    logger.debug(f"Error loading local ground truth from {gt_file}: {e}")
+            break
 
     @staticmethod
     def _iter_local_records(file_path: Path) -> Iterator[dict[str, object]]:
@@ -307,7 +478,6 @@ class BFCLDataset:
             if isinstance(item, dict):
                 yield item
 
-
     def _parse_test_case(
         self,
         item: dict[str, object],
@@ -317,7 +487,41 @@ class BFCLDataset:
         """Parse a raw dataset item into a BFCLTestCase."""
         try:
             test_id = str(item.get("id", default_id))
-            question = str(item.get("question", item.get("prompt", "")))
+            # BFCL canonical `question` shape: list[list[dict{role,content}]].
+            # The outer list is per-turn (multi-turn). Single-turn entries
+            # are wrapped as [[{...}]].
+            raw_question = item.get("question", item.get("prompt", ""))
+            turns: Optional[list[list[dict[str, str]]]] = None
+            question: str
+            if isinstance(raw_question, list):
+                normalised: list[list[dict[str, str]]] = []
+                for turn in raw_question:
+                    if isinstance(turn, list):
+                        msgs: list[dict[str, str]] = []
+                        for msg in turn:
+                            if isinstance(msg, dict):
+                                msgs.append({
+                                    "role": str(msg.get("role", "user")),
+                                    "content": str(msg.get("content", "")),
+                                })
+                        normalised.append(msgs)
+                    elif isinstance(turn, dict):
+                        normalised.append([
+                            {
+                                "role": str(turn.get("role", "user")),
+                                "content": str(turn.get("content", "")),
+                            }
+                        ])
+                turns = normalised
+                # Flatten user turns for the single-turn `question` field
+                flat_parts: list[str] = []
+                for t in normalised:
+                    for m in t:
+                        if m.get("role") == "user":
+                            flat_parts.append(m.get("content", ""))
+                question = "\n".join(p for p in flat_parts if p)
+            else:
+                question = str(raw_question)
 
             # Parse functions
             functions_raw = item.get("function", item.get("functions", []))
@@ -331,20 +535,23 @@ class BFCLDataset:
                 if isinstance(f, dict):
                     functions.append(self._parse_function_definition(f))
 
-            # Parse expected calls - check ground truth from possible_answer files first
+            # Parse expected calls — first check possible_answer/ ground truth.
             expected_calls: list[FunctionCall] = []
-            
-            # First check if we have ground truth from the possible_answer directory
+
+            # Single-turn ground truth is list[dict]; multi-turn is list[list[str]].
             if test_id in self._ground_truth:
-                gt_list = self._ground_truth[test_id]
-                expected_calls = self._parse_ground_truth_calls(gt_list)
-            else:
-                # Fall back to expected_call or ground_truth in the item
+                gt_raw = self._ground_truth[test_id]
+                if isinstance(gt_raw, list) and all(isinstance(x, dict) for x in gt_raw):
+                    expected_calls = self._parse_ground_truth_calls(gt_raw)  # type: ignore[arg-type]
+
+            # Fall back to inline expected_call/ground_truth fields ONLY when
+            # we had no possible_answer entry at all (otherwise we'd clobber
+            # multi-turn entries that legitimately have empty single-turn GT).
+            if not expected_calls and test_id not in self._ground_truth:
                 expected_raw = item.get("expected_call", item.get("ground_truth", []))
                 if isinstance(expected_raw, dict):
                     expected_raw = [expected_raw]
                 elif isinstance(expected_raw, str):
-                    # Try to parse as JSON
                     try:
                         expected_raw = json.loads(expected_raw)
                         if isinstance(expected_raw, dict):
@@ -358,19 +565,42 @@ class BFCLDataset:
                     self._parse_function_call(c) for c in expected_raw if c
                 ]
 
-            # Determine if relevant (for relevance detection tests)
+            # Multi-turn ground truth lives in possible_answer files as
+            # list[list[str]] (per-turn list of python call strings).
+            multi_turn_gt: Optional[list[list[str]]] = None
+            if category in {
+                BFCLCategory.MULTI_TURN_BASE,
+                BFCLCategory.MULTI_TURN_MISS_FUNC,
+                BFCLCategory.MULTI_TURN_MISS_PARAM,
+                BFCLCategory.MULTI_TURN_LONG_CONTEXT,
+            } and test_id in self._ground_truth:
+                raw_gt = self._ground_truth[test_id]
+                if isinstance(raw_gt, list) and all(isinstance(x, list) for x in raw_gt):
+                    multi_turn_gt = [[str(c) for c in turn] for turn in raw_gt]
+
+            # Determine relevance (for relevance / irrelevance detection tests)
             is_relevant = True
-            if category == BFCLCategory.RELEVANCE:
-                # Relevance tests check if model correctly identifies relevant queries
-                # If file name contains "irrelevance", these are negative examples
+            relevance_like = {
+                BFCLCategory.RELEVANCE,
+                BFCLCategory.IRRELEVANCE,
+                BFCLCategory.LIVE_RELEVANCE,
+                BFCLCategory.LIVE_IRRELEVANCE,
+            }
+            if category in relevance_like:
                 test_id_lower = test_id.lower()
-                if "irrelevance" in test_id_lower or "irrelevant" in test_id_lower:
+                if (
+                    category in {BFCLCategory.IRRELEVANCE, BFCLCategory.LIVE_IRRELEVANCE}
+                    or "irrelevance" in test_id_lower
+                    or "irrelevant" in test_id_lower
+                ):
                     is_relevant = False
                 else:
-                    # For relevance tests, is_relevant is True if expected calls exist
-                    is_relevant = len(expected_calls) > 0 or bool(item.get("is_relevant", True))
+                    is_relevant = (
+                        len(expected_calls) > 0
+                        or bool(item.get("is_relevant", True))
+                    )
 
-            # Determine language
+            # Language
             language = BFCLLanguage.PYTHON
             if category == BFCLCategory.JAVA:
                 language = BFCLLanguage.JAVA
@@ -381,26 +611,55 @@ class BFCLDataset:
             elif category == BFCLCategory.REST_API:
                 language = BFCLLanguage.REST
 
-            # Validate and convert ground_truth_output
+            # ground_truth_output
             ground_truth_raw = item.get("expected_output")
             ground_truth_output: Optional[str] = None
             if ground_truth_raw is not None:
                 ground_truth_output = str(ground_truth_raw)
 
-            # Determine if we have valid ground truth for AST evaluation
-            # REST API category uses execution-based evaluation, not AST matching
-            # Relevance tests evaluate detection, not function call accuracy
+            # has_ground_truth determines whether we can AST-score this test.
             has_ground_truth = len(expected_calls) > 0
-            
-            # For relevance tests, we evaluate detection accuracy, not AST
-            if category == BFCLCategory.RELEVANCE:
-                # Relevance tests always have ground truth (the is_relevant flag)
+
+            if category in relevance_like:
+                # Relevance/irrelevance is scored by detection (is_relevant flag).
                 has_ground_truth = True
-            
-            # REST API has no ground truth in possible_answer directory
+
             if category == BFCLCategory.REST_API and not expected_calls:
                 has_ground_truth = False
-                logger.debug(f"Test {test_id} (REST API) requires execution-based evaluation")
+                logger.debug(
+                    f"Test {test_id} (REST API) requires execution-based evaluation"
+                )
+
+            if multi_turn_gt is not None:
+                has_ground_truth = True
+
+            # Agentic categories: scored by upstream's stateful checker.
+            if category in {
+                BFCLCategory.WEB_SEARCH_BASE,
+                BFCLCategory.WEB_SEARCH_NO_SNIPPET,
+                BFCLCategory.MEMORY_KV,
+                BFCLCategory.MEMORY_VECTOR,
+                BFCLCategory.MEMORY_REC_SUM,
+            }:
+                has_ground_truth = test_id in self._ground_truth
+
+            # Multi-turn / agentic config
+            initial_config_raw = item.get("initial_config")
+            initial_config = (
+                initial_config_raw if isinstance(initial_config_raw, dict) else None
+            )
+            involved_classes_raw = item.get("involved_classes")
+            involved_classes = (
+                [str(c) for c in involved_classes_raw]
+                if isinstance(involved_classes_raw, list)
+                else None
+            )
+            excluded_function_raw = item.get("excluded_function")
+            excluded_function = (
+                [str(c) for c in excluded_function_raw]
+                if isinstance(excluded_function_raw, list)
+                else None
+            )
 
             return BFCLTestCase(
                 id=test_id,
@@ -412,12 +671,20 @@ class BFCLDataset:
                 language=language,
                 ground_truth_output=ground_truth_output,
                 has_ground_truth=has_ground_truth,
+                turns=turns,
+                initial_config=initial_config,
+                involved_classes=involved_classes,
+                excluded_function=excluded_function,
+                multi_turn_ground_truth=multi_turn_gt,
                 metadata={
                     k: v
                     for k, v in item.items()
-                    if k not in ("id", "question", "function", "functions",
-                                 "expected_call", "ground_truth", "prompt",
-                                 "expected_output")
+                    if k not in (
+                        "id", "question", "function", "functions",
+                        "expected_call", "ground_truth", "prompt",
+                        "expected_output", "initial_config",
+                        "involved_classes", "excluded_function",
+                    )
                     and isinstance(v, (str, int, float, bool))
                 },
             )
@@ -465,40 +732,34 @@ class BFCLDataset:
         )
 
     def _parse_ground_truth_calls(self, gt_list: list[dict[str, object]]) -> list[FunctionCall]:
-        """
-        Parse BFCL ground truth format into FunctionCall objects.
-        
+        """Parse BFCL ground truth format into FunctionCall objects.
+
         BFCL format: [{"function_name": {"param1": [value1], "param2": [value2]}}, ...]
         Each value is a list of acceptable values.
         """
         calls: list[FunctionCall] = []
-        
+
         for item in gt_list:
             if not isinstance(item, dict):
                 continue
-            
-            # Each item is {"function_name": {"arg1": [val1], ...}}
+
             for func_name, params in item.items():
                 if not isinstance(params, dict):
                     continue
-                
-                # Convert the BFCL format to our FunctionCall format
-                # Take the first value from each parameter's list
+
                 arguments: dict[str, object] = {}
                 for param_name, param_values in params.items():
                     if isinstance(param_values, list) and len(param_values) > 0:
-                        # Take the first acceptable value (or empty string if empty)
                         value = param_values[0]
                         if value == "":
-                            # Empty string means use the second value if available
                             if len(param_values) > 1:
                                 value = param_values[1]
                         arguments[param_name] = value
                     else:
                         arguments[param_name] = param_values
-                
+
                 calls.append(FunctionCall(name=func_name, arguments=arguments))
-        
+
         return calls
 
     def _parse_function_call(self, call: dict[str, object]) -> FunctionCall:
@@ -613,7 +874,8 @@ class BFCLDataset:
         # Count per category
         for category in BFCLCategory:
             count = sum(1 for tc in self._test_cases if tc.category == category)
-            stats[f"category_{category.value}"] = count
+            if count:
+                stats[f"category_{category.value}"] = count
 
         # Count relevance split
         relevant = sum(1 for tc in self._test_cases if tc.is_relevant)

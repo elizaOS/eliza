@@ -79,7 +79,7 @@ function primitiveTrajectoryMetadata(
 			typeof item === "boolean" ||
 			item === null
 		) {
-			out[key] = item as string | number | boolean | null;
+			out[key] = item;
 		}
 	}
 	return out;

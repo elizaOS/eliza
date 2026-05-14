@@ -2608,9 +2608,10 @@ function normalizeRawParsedForFieldRegistry(
 	return normalized;
 }
 
-function messageHandlerFromFieldResult(
+export function messageHandlerFromFieldResult(
 	result: ResponseHandlerResult,
 	fieldRun?: ResponseHandlerFieldRunResult,
+	runtimeContext?: { actions: ReadonlyArray<Pick<Action, "name">> },
 ): MessageHandlerResult {
 	const contexts = Array.isArray(result.contexts)
 		? result.contexts.map((context) => String(context).trim()).filter(Boolean)
@@ -2620,6 +2621,21 @@ function messageHandlerFromFieldResult(
 				.map((action) => String(action).trim())
 				.filter(Boolean)
 		: [];
+	// When the caller passes the runtime's `actions`, narrow the candidate set
+	// to those that are (a) registered actions OR (b) canonical control names
+	// (REPLY / IGNORE / STOP). All-bogus candidate lists collapse to length 0,
+	// which lets the routing logic below fall back to simple-reply when the
+	// only context is "simple". When no `runtimeContext` is provided, behaviour
+	// is unchanged (back-compat).
+	const validCandidateCount = runtimeContext
+		? candidateActions.filter((name) => {
+				const normalized = normalizeActionIdentifier(name);
+				if (canonicalPlannerControlActionName(normalized) !== null) return true;
+				return runtimeContext.actions.some(
+					(action) => normalizeActionIdentifier(action.name) === normalized,
+				);
+			}).length
+		: candidateActions.length;
 	const facts = Array.isArray(result.facts)
 		? result.facts.map((fact) => String(fact).trim()).filter(Boolean)
 		: [];
@@ -2673,7 +2689,7 @@ function messageHandlerFromFieldResult(
 	);
 	const shouldPlan =
 		!preemptDirect &&
-		(initialPlanningContexts.length > 0 || candidateActions.length > 0);
+		(initialPlanningContexts.length > 0 || validCandidateCount > 0);
 	const finalContexts =
 		shouldPlan && initialPlanningContexts.length === 0
 			? Array.from(
@@ -3586,6 +3602,7 @@ export async function runV5MessageRuntimeStage1(args: {
 			messageHandler = messageHandlerFromFieldResult(
 				fieldRunResult.parsed,
 				fieldRunResult,
+				{ actions: args.runtime.actions },
 			);
 		}
 		if (!messageHandler) {
@@ -4434,11 +4451,25 @@ const ACTION_REPAIR_PASSIVE_ACTIONS = new Set(
 // "Google Calendar is not connected" in response to a code request. Same
 // precedent as SPAWN_AGENT, the sibling delegation action that's already
 // protected here.
+//
+// Media and advertising actions are also explicit artifact-producing intent.
+// Requests like "generate an image", "make an ad creative", or "publish the
+// ad pack" can contain generic workflow/productivity words that fuzzy metadata
+// scoring over-values for owner/life actions. If the planner already selected
+// a concrete media/ad action, do not rewrite it to LIFE/CALENDAR/etc. based on
+// incidental overlap.
 const EXPLICIT_INTENT_ACTIONS = new Set(
 	[
 		"SPAWN_AGENT",
 		"START_CODING_TASK",
 		"CREATE_TASK",
+		"GENERATE_IMAGE",
+		"GENERATE_MEDIA",
+		"CREATE_IMAGE",
+		"CAPTURE_IMAGE",
+		"PRODUCE_AGENT_AD_CREATIVE",
+		"PUBLISH_AGENT_AD_PACK",
+		"MANAGE_AGENT_ADS",
 		"ATTACHMENT",
 		"TRANSCRIBE_MEDIA",
 		"DOWNLOAD_MEDIA",
@@ -5475,6 +5506,18 @@ function _shouldAttemptActionRescue(
 	}
 
 	if (hasNonPassiveAction(responseContent)) {
+		return false;
+	}
+
+	const draftText = String(responseContent.text ?? "").trim();
+	const source =
+		typeof message.content === "object" && message.content
+			? (message.content as { source?: unknown }).source
+			: undefined;
+	if (source === "discord" && draftText.length > 0) {
+		return false;
+	}
+	if (hasExplicitReplyIntent(responseContent) && draftText.length > 0) {
 		return false;
 	}
 
@@ -6567,7 +6610,7 @@ export class DefaultMessageService implements IMessageService {
 			userRole: senderRole,
 		};
 
-		return await runWithTrajectoryContext<MessageProcessingResult>(
+		return runWithTrajectoryContext<MessageProcessingResult>(
 			typeof trajectoryStepId === "string" && trajectoryStepId.trim() !== ""
 				? {
 						...trajectoryContextBase,

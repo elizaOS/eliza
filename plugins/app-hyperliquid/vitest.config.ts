@@ -6,10 +6,14 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "../..");
 
 // Alias all @elizaos/plugin-* packages that agent/src imports to their source
-// so vitest can resolve them without a pre-built dist.
+// so vitest can resolve them without a pre-built dist. Anchors the find
+// pattern to the exact module so subpath imports like
+// `@elizaos/plugin-local-inference/runtime` resolve via the package's exports
+// map (or the explicit subpath aliases below) instead of being rewritten to
+// `<src>/runtime`, which yields ENOTDIR when <src> points to a single file.
 function pluginAlias(name: string, srcPath?: string) {
   const src = srcPath ?? path.join(repoRoot, `plugins/${name}/src/index.ts`);
-  return { find: `@elizaos/${name}`, replacement: src };
+  return { find: new RegExp(`^@elizaos/${name}$`), replacement: src };
 }
 
 export default defineConfig({
@@ -106,8 +110,31 @@ export default defineConfig({
         "plugin-local-ai",
         path.join(repoRoot, "plugins/plugin-local-ai/index.ts"),
       ),
-      pluginAlias("plugin-local-embedding"),
       pluginAlias("plugin-local-inference"),
+      // plugin-local-inference exposes subpath exports (`/runtime`, `/routes`,
+      // `/services`) consumed via `@elizaos/app-core`; alias each to source so
+      // vitest can resolve them without a built dist.
+      {
+        find: /^@elizaos\/plugin-local-inference\/runtime$/,
+        replacement: path.join(
+          repoRoot,
+          "plugins/plugin-local-inference/src/runtime/index.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/plugin-local-inference\/routes$/,
+        replacement: path.join(
+          repoRoot,
+          "plugins/plugin-local-inference/src/routes/index.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/plugin-local-inference\/services$/,
+        replacement: path.join(
+          repoRoot,
+          "plugins/plugin-local-inference/src/services/index.ts",
+        ),
+      },
       pluginAlias("plugin-local-storage"),
       pluginAlias(
         "plugin-localdb",

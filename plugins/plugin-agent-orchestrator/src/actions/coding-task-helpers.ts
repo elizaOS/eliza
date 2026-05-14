@@ -51,7 +51,7 @@ function resolveNonColliding(baseDir: string, name: string): string {
 /**
  * Create a scratch sandbox directory for non-repo tasks.
  *
- * When `PARALLAX_CODING_DIRECTORY` is set (e.g. `~/Projects`), creates a
+ * When `ELIZA_CODING_DIRECTORY` is set (e.g. `~/Projects`), creates a
  * named subdir like `~/Projects/todo-app/` derived from the task label.
  * Otherwise falls back to `~/.eliza/workspaces/{uuid}`.
  */
@@ -64,9 +64,9 @@ export function createScratchDir(
   // Config file is checked directly because runtime.getSetting() doesn't read
   // the config env section, and process.env is only set at boot time.
   const codingDir =
-    (runtime?.getSetting("PARALLAX_CODING_DIRECTORY") as string) ??
-    readConfigEnvKey("PARALLAX_CODING_DIRECTORY") ??
-    process.env.PARALLAX_CODING_DIRECTORY;
+    (runtime?.getSetting("ELIZA_CODING_DIRECTORY") as string) ??
+    readConfigEnvKey("ELIZA_CODING_DIRECTORY") ??
+    process.env.ELIZA_CODING_DIRECTORY;
 
   if (codingDir?.trim()) {
     const resolved = codingDir.startsWith("~")
@@ -90,7 +90,7 @@ export function createScratchDir(
 
 /**
  * Adapter names recognised by the canonical `coding-agent-adapters` package.
- * Operators that pin one of these via `PARALLAX_DEFAULT_AGENT_TYPE` express a
+ * Operators that pin one of these via `ELIZA_DEFAULT_AGENT_TYPE` express a
  * deployment-level policy: "use this adapter for sub-agent spawns regardless
  * of what the planner LLM decided." When the strategy is `fixed` (the
  * default) the pin overrides planner-supplied `agentType`.
@@ -106,8 +106,8 @@ const KNOWN_ADAPTER_TYPES = new Set([
 
 /**
  * Resolve the operator-pinned coding adapter from configuration. Returns the
- * pinned adapter name when both `PARALLAX_DEFAULT_AGENT_TYPE` is set to a
- * recognised value AND `PARALLAX_AGENT_SELECTION_STRATEGY` is `fixed` (or
+ * pinned adapter name when both `ELIZA_DEFAULT_AGENT_TYPE` is set to a
+ * recognised value AND `ELIZA_AGENT_SELECTION_STRATEGY` is `fixed` (or
  * unset, which defaults to `fixed`). Otherwise returns `undefined` and the
  * caller falls back to the planner's choice or dynamic resolution.
  */
@@ -123,11 +123,11 @@ export function resolvePinnedAdapter(
       fromRuntime ?? readConfigEnvKey(key) ?? process.env[key] ?? undefined
     );
   };
-  const strategy = (getSetting("PARALLAX_AGENT_SELECTION_STRATEGY") ?? "fixed")
+  const strategy = (getSetting("ELIZA_AGENT_SELECTION_STRATEGY") ?? "fixed")
     .toLowerCase()
     .trim();
   if (strategy !== "fixed") return undefined;
-  const raw = getSetting("PARALLAX_DEFAULT_AGENT_TYPE")?.trim().toLowerCase();
+  const raw = getSetting("ELIZA_DEFAULT_AGENT_TYPE")?.trim().toLowerCase();
   if (!raw) return undefined;
   return KNOWN_ADAPTER_TYPES.has(raw) ? raw : undefined;
 }

@@ -32,8 +32,16 @@ import { VoiceLifecycleError } from "./lifecycle";
  *
  * Bump in lockstep with `ELIZA_INFERENCE_ABI_VERSION` in
  * `scripts/omnivoice-fuse/ffi.h` whenever the C surface changes shape.
+ *
+ * v4: the FFI bridge resolves `speaker_preset_id` against the bundle's
+ *     `cache/voice-preset-<id>.bin` (ELZ2 v2) and applies the
+ *     `(instruct, ref_audio_tokens, ref_T, ref_text)` triple to
+ *     `ov_tts_params` before calling `ov_synthesize`. Adds the
+ *     `eliza_inference_encode_reference` entrypoint that the freeze CLI
+ *     uses to pre-encode reference WAVs into the preset file. A v3 caller
+ *     remains source-compatible: every v3 entry point keeps its v3 shape.
  */
-export const ELIZA_INFERENCE_ABI_VERSION = 3 as const;
+export const ELIZA_INFERENCE_ABI_VERSION = 4 as const;
 
 /** Status codes mirrored from `ffi.h`. Negative = failure. */
 export const ELIZA_OK = 0;
@@ -223,6 +231,34 @@ export interface ElizaInferenceFfi {
 		cb: ((event: NativeVerifierEvent) => void) | null,
 	): { close(): void };
 
+	/* ---- OmniVoice reference encode (ABI v4) ---------------------- */
+
+	/**
+	 * True when this build exports the OmniVoice reference-encode symbols
+	 * (`eliza_inference_encode_reference`). The freeze CLI uses this to
+	 * pre-encode samantha reference audio into the persisted voice preset;
+	 * the runtime synthesis path never calls it (it reads pre-encoded
+	 * tokens from the preset file).
+	 */
+	encodeReferenceSupported?(): boolean;
+	/**
+	 * Run the encode-only half of the TTS pipeline (HuBERT semantic + RVQ
+	 * codec) on a 24 kHz mono fp32 PCM buffer and return the resulting
+	 * reference-audio-token tensor `[K=8, ref_T]` as `Int32Array`
+	 * row-major (`tokens[k*ref_T + t]`). The library allocates and the
+	 * binding takes care of freeing the native buffer via
+	 * `eliza_inference_free_tokens` before this returns.
+	 *
+	 * The TTS region must have been acquired (`mmapAcquire("tts")`)
+	 * before the call. `sampleRateHz` must be 24000; the entrypoint does
+	 * NOT resample, by design — the freeze artifact must be deterministic.
+	 */
+	encodeReference?(args: {
+		ctx: ElizaInferenceContextHandle;
+		pcm: Float32Array;
+		sampleRateHz: number;
+	}): { K: number; refT: number; tokens: Int32Array };
+
 	/* ---- Native VAD (ABI v3) -------------------------------------- */
 
 	/** True when this build exports and enables the native Silero VAD backend. */
@@ -411,6 +447,17 @@ interface BunFfiSymbols {
 		userData: bigint | number,
 		outErr: unknown,
 	) => number;
+	eliza_inference_encode_reference?: (
+		ctx: bigint,
+		pcm: unknown,
+		nSamples: bigint | number,
+		sampleRateHz: number,
+		outK: unknown,
+		outRefT: unknown,
+		outTokens: unknown,
+		outErr: unknown,
+	) => number;
+	eliza_inference_free_tokens?: (tokens: bigint | number) => void;
 	eliza_inference_vad_supported?: () => number;
 	eliza_inference_vad_open?: (
 		ctx: bigint,
@@ -671,6 +718,16 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 			args: [T.ptr, T.usize, T.usize, T.ptr],
 			returns: T.i32,
 		},
+		// OmniVoice reference encode (ABI v4) — encode 24 kHz mono PCM
+		// through HuBERT + RVQ and return [K=8, ref_T] int32 row-major
+		// tokens. The library malloc-allocates the buffer; callers MUST
+		// free it via `eliza_inference_free_tokens`.
+		eliza_inference_encode_reference: {
+			// ctx, pcm, n_samples, sample_rate_hz, out_K, out_ref_T, out_tokens (int**), out_error
+			args: [T.ptr, T.ptr, T.usize, T.i32, T.ptr, T.ptr, T.ptr, T.ptr],
+			returns: T.i32,
+		},
+		eliza_inference_free_tokens: { args: [T.usize], returns: T.void },
 		// Streaming ASR (ABI v2).
 		eliza_inference_asr_stream_supported: { args: [], returns: T.i32 },
 		eliza_inference_asr_stream_open: {
@@ -954,6 +1011,69 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 					takeError(err.buf) ??
 					`[ffi-bindings] eliza_inference_cancel_tts rc=${rc}`;
 				throw new VoiceLifecycleError(failureCode(rc), message);
+			}
+		},
+
+		encodeReferenceSupported(): boolean {
+			return typeof lib.symbols.eliza_inference_encode_reference === "function";
+		},
+
+		encodeReference({ ctx, pcm, sampleRateHz }) {
+			if (
+				typeof lib.symbols.eliza_inference_encode_reference !== "function" ||
+				typeof lib.symbols.eliza_inference_free_tokens !== "function"
+			) {
+				throw new VoiceLifecycleError(
+					"kernel-missing",
+					"[ffi-bindings] eliza_inference_encode_reference is not exported by this build",
+				);
+			}
+			if (sampleRateHz !== 24000) {
+				throw new VoiceLifecycleError(
+					"kernel-missing",
+					`[ffi-bindings] encodeReference: sampleRateHz must be 24000 (got ${sampleRateHz})`,
+				);
+			}
+			const err = makeOutErr();
+			// out_K and out_ref_T are int*, out_tokens is int** — give the library
+			// a slot to write into, then read back.
+			const outK = new Int32Array(1);
+			const outRefT = new Int32Array(1);
+			const outTokensPtr = new BigUint64Array(1);
+			const rc = lib.symbols.eliza_inference_encode_reference(
+				ctx,
+				ffi.ptr(pcm),
+				BigInt(pcm.length),
+				sampleRateHz,
+				ffi.ptr(outK),
+				ffi.ptr(outRefT),
+				ffi.ptr(outTokensPtr),
+				err.ptr,
+			);
+			if (rc !== ELIZA_OK) {
+				const message =
+					takeError(err.buf) ??
+					`[ffi-bindings] eliza_inference_encode_reference rc=${rc}`;
+				throw new VoiceLifecycleError(failureCode(rc), message);
+			}
+			const K = outK[0];
+			const refT = outRefT[0];
+			const tokensRaw = outTokensPtr[0];
+			if (K <= 0 || refT <= 0 || tokensRaw === 0n) {
+				throw new VoiceLifecycleError(
+					"kernel-missing",
+					`[ffi-bindings] encodeReference returned empty result (K=${K}, refT=${refT})`,
+				);
+			}
+			const tokenCount = K * refT;
+			try {
+				// Copy out of the library's malloc'ed buffer so we can free it
+				// before returning. Each int32 is 4 bytes.
+				const ab = ffi.toArrayBuffer(tokensRaw, 0, tokenCount * 4);
+				const tokens = new Int32Array(ab.slice(0));
+				return { K, refT, tokens };
+			} finally {
+				lib.symbols.eliza_inference_free_tokens(tokensRaw);
 			}
 		},
 

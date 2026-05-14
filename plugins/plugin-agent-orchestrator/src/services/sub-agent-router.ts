@@ -475,7 +475,7 @@ export class SubAgentRouter {
    * unavailable, or no spawn service is registered — in which case the
    * caller posts the honest "build incomplete" report instead.
    *
-   * Bounded by PARALLAX_BUILD_VERIFY_MAX_RETRIES (default 2; 0 disables).
+   * Bounded by ELIZA_BUILD_VERIFY_MAX_RETRIES (default 2; 0 disables).
    * The retry count rides on the spawned session's metadata so a whole
    * lineage of retries shares one budget. Mirrors the APP-create
    * verification-retry pattern.
@@ -485,7 +485,7 @@ export class SubAgentRouter {
     dead: DeadUrl[],
   ): Promise<boolean> {
     const maxRetriesRaw =
-      readSetting(this.runtime, "PARALLAX_BUILD_VERIFY_MAX_RETRIES") ?? "2";
+      readSetting(this.runtime, "ELIZA_BUILD_VERIFY_MAX_RETRIES") ?? "2";
     const maxRetries = Number.parseInt(maxRetriesRaw, 10);
     if (!Number.isFinite(maxRetries) || maxRetries <= 0) return false;
 
@@ -756,9 +756,9 @@ async function annotateUnverifiedUrls(
   // file writes have landed (verified against real timelines), and the
   // static host serves from disk with no cache lag — so a single retry is
   // only there to ride out a transient network blip on the checker side,
-  // not a write→serve race. Tunable via PARALLAX_URL_VERIFY_SETTLE_MS
+  // not a write→serve race. Tunable via ELIZA_URL_VERIFY_SETTLE_MS
   // (default 2500ms); 0 disables the retry (single probe).
-  const settleRaw = process.env.PARALLAX_URL_VERIFY_SETTLE_MS;
+  const settleRaw = process.env.ELIZA_URL_VERIFY_SETTLE_MS;
   const settleParsed = settleRaw ? Number.parseInt(settleRaw, 10) : 2500;
   const settleMs =
     Number.isFinite(settleParsed) && settleParsed >= 0 ? settleParsed : 2500;
