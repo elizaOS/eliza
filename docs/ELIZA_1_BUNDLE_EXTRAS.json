@@ -1,6 +1,6 @@
 {
   "$comment": [
-    "Eliza-1 bundle EXTRAS (WS10 prep, 2026-05-13).",
+    "Eliza-1 bundle EXTRAS (WS10 prep, last touched 2026-05-14).",
     "",
     "These artifacts are NOT part of the base-v1 release bundle described by",
     "ELIZA_1_GGUF_PLATFORM_PLAN.json. They are runtime-downloaded add-ons that",
@@ -15,14 +15,23 @@
     "diffusion GGUF inside the base-v1 bundle would push the 0_8b/2b tiers far",
     "beyond their advertised on-disk footprint and break first-run UX on phones.",
     "",
+    "Publishing pipeline contract (asserted by validate-bundle-plan.mjs):",
+    "  Every imagegen entry (default + every optional) MUST carry one of:",
+    "    - `url` (HTTPS URL pointing at the runtime download target), or",
+    "    - `staged: true` AND a `buildPlan` block describing how the artifact",
+    "      is produced (tool, source, command). Staged entries are gated off",
+    "      from runtime downloads until the build step lands.",
+    "  A `sha256` field (hex string) is optional but recommended for any entry",
+    "  that has a `url`; the installer verifies it before activating the asset.",
+    "",
     "The validator (eliza/scripts/validate-bundle-plan.mjs) reads this file",
     "alongside ELIZA_1_GGUF_PLATFORM_PLAN.json and asserts every per-tier entry",
     "has a corresponding catalog entry in",
     "eliza/packages/shared/src/local-inference/catalog.ts (or surfaces the gap",
     "as a WS2 / WS3 follow-up)."
   ],
-  "extrasVersion": "0.1.0",
-  "extrasUpdatedAt": "2026-05-13T00:00:00Z",
+  "extrasVersion": "0.2.0",
+  "extrasUpdatedAt": "2026-05-14T00:00:00Z",
   "imagegen": {
     "$comment": [
       "Image-gen GGUFs ride on stable-diffusion.cpp (or a comparable",
@@ -39,7 +48,9 @@
           "id": "imagegen-sd-1_5-q5_0",
           "file": "imagegen/sd-1.5-Q5_0.gguf",
           "estimatedSizeBytes": 1100000000,
-          "license": "licenses/LICENSE.imagegen.sd-1_5.txt"
+          "license": "licenses/LICENSE.imagegen.sd-1_5.txt",
+          "url": "https://huggingface.co/leejet/stable-diffusion-v1-5-GGUF/resolve/main/v1-5-pruned-emaonly-Q5_0.gguf",
+          "source": "https://huggingface.co/leejet/stable-diffusion-v1-5-GGUF"
         },
         "optional": []
       },
@@ -48,7 +59,9 @@
           "id": "imagegen-sd-1_5-q5_0",
           "file": "imagegen/sd-1.5-Q5_0.gguf",
           "estimatedSizeBytes": 1100000000,
-          "license": "licenses/LICENSE.imagegen.sd-1_5.txt"
+          "license": "licenses/LICENSE.imagegen.sd-1_5.txt",
+          "url": "https://huggingface.co/leejet/stable-diffusion-v1-5-GGUF/resolve/main/v1-5-pruned-emaonly-Q5_0.gguf",
+          "source": "https://huggingface.co/leejet/stable-diffusion-v1-5-GGUF"
         },
         "optional": []
       },
@@ -57,7 +70,9 @@
           "id": "imagegen-sd-1_5-q5_0",
           "file": "imagegen/sd-1.5-Q5_0.gguf",
           "estimatedSizeBytes": 1100000000,
-          "license": "licenses/LICENSE.imagegen.sd-1_5.txt"
+          "license": "licenses/LICENSE.imagegen.sd-1_5.txt",
+          "url": "https://huggingface.co/leejet/stable-diffusion-v1-5-GGUF/resolve/main/v1-5-pruned-emaonly-Q5_0.gguf",
+          "source": "https://huggingface.co/leejet/stable-diffusion-v1-5-GGUF"
         },
         "optional": [
           {
@@ -65,7 +80,9 @@
             "file": "imagegen/sdxl-turbo-Q4_0.gguf",
             "estimatedSizeBytes": 3700000000,
             "license": "licenses/LICENSE.imagegen.sdxl-turbo.txt",
-            "gateNote": "Flagship phones / mid-range tablets only. Skip on <8 GB RAM."
+            "gateNote": "Flagship phones / mid-range tablets only. Skip on <8 GB RAM.",
+            "url": "https://huggingface.co/stduhpf/SDXL-Turbo-GGUF/resolve/main/sd_xl_turbo_1.0_fp16-Q4_0.gguf",
+            "source": "https://huggingface.co/stduhpf/SDXL-Turbo-GGUF"
           }
         ]
       },
@@ -74,7 +91,14 @@
           "id": "imagegen-z-image-turbo-q4_k_m",
           "file": "imagegen/z-image-turbo-Q4_K_M.gguf",
           "estimatedSizeBytes": 3500000000,
-          "license": "licenses/LICENSE.imagegen.z-image-turbo.txt"
+          "license": "licenses/LICENSE.imagegen.z-image-turbo.txt",
+          "staged": true,
+          "buildPlan": {
+            "tool": "stable-diffusion.cpp",
+            "source": "https://huggingface.co/Tongyi-MAI/Z-Image-Turbo",
+            "command": "stable-diffusion.cpp/build/bin/sd --convert --input z-image-turbo/ --output z-image-turbo-Q4_K_M.gguf --quant Q4_K_M",
+            "notes": "Z-Image-Turbo is published as safetensors weights. The GGUF quant is built in-house with sd-cpp's converter; CI bundle prep runs this on the linux-x64 build matrix and uploads the result to releases.elizaos.ai."
+          }
         },
         "optional": [
           {
@@ -82,7 +106,9 @@
             "file": "imagegen/flux-1-schnell-Q4_K_M.gguf",
             "estimatedSizeBytes": 6900000000,
             "license": "licenses/LICENSE.imagegen.flux-1-schnell.txt",
-            "gateNote": "Higher quality, requires >=24 GB unified RAM or >=12 GB VRAM."
+            "gateNote": "Higher quality, requires >=24 GB unified RAM or >=12 GB VRAM.",
+            "url": "https://huggingface.co/leejet/FLUX.1-schnell-gguf/resolve/main/flux1-schnell-q4_k.gguf",
+            "source": "https://huggingface.co/leejet/FLUX.1-schnell-gguf"
           }
         ]
       },
@@ -91,7 +117,14 @@
           "id": "imagegen-z-image-turbo-q4_k_m",
           "file": "imagegen/z-image-turbo-Q4_K_M.gguf",
           "estimatedSizeBytes": 3500000000,
-          "license": "licenses/LICENSE.imagegen.z-image-turbo.txt"
+          "license": "licenses/LICENSE.imagegen.z-image-turbo.txt",
+          "staged": true,
+          "buildPlan": {
+            "tool": "stable-diffusion.cpp",
+            "source": "https://huggingface.co/Tongyi-MAI/Z-Image-Turbo",
+            "command": "stable-diffusion.cpp/build/bin/sd --convert --input z-image-turbo/ --output z-image-turbo-Q4_K_M.gguf --quant Q4_K_M",
+            "notes": "Z-Image-Turbo is published as safetensors weights. The GGUF quant is built in-house with sd-cpp's converter; CI bundle prep runs this on the linux-x64 build matrix and uploads the result to releases.elizaos.ai."
+          }
         },
         "optional": [
           {
@@ -99,7 +132,9 @@
             "file": "imagegen/flux-1-schnell-Q4_K_M.gguf",
             "estimatedSizeBytes": 6900000000,
             "license": "licenses/LICENSE.imagegen.flux-1-schnell.txt",
-            "gateNote": "Higher quality, requires >=24 GB unified RAM or >=12 GB VRAM."
+            "gateNote": "Higher quality, requires >=24 GB unified RAM or >=12 GB VRAM.",
+            "url": "https://huggingface.co/leejet/FLUX.1-schnell-gguf/resolve/main/flux1-schnell-q4_k.gguf",
+            "source": "https://huggingface.co/leejet/FLUX.1-schnell-gguf"
           }
         ]
       },
@@ -108,7 +143,14 @@
           "id": "imagegen-z-image-turbo-q4_k_m",
           "file": "imagegen/z-image-turbo-Q4_K_M.gguf",
           "estimatedSizeBytes": 3500000000,
-          "license": "licenses/LICENSE.imagegen.z-image-turbo.txt"
+          "license": "licenses/LICENSE.imagegen.z-image-turbo.txt",
+          "staged": true,
+          "buildPlan": {
+            "tool": "stable-diffusion.cpp",
+            "source": "https://huggingface.co/Tongyi-MAI/Z-Image-Turbo",
+            "command": "stable-diffusion.cpp/build/bin/sd --convert --input z-image-turbo/ --output z-image-turbo-Q4_K_M.gguf --quant Q4_K_M",
+            "notes": "Z-Image-Turbo is published as safetensors weights. The GGUF quant is built in-house with sd-cpp's converter; CI bundle prep runs this on the linux-x64 build matrix and uploads the result to releases.elizaos.ai."
+          }
         },
         "optional": [
           {
@@ -116,7 +158,9 @@
             "file": "imagegen/flux-1-schnell-Q4_K_M.gguf",
             "estimatedSizeBytes": 6900000000,
             "license": "licenses/LICENSE.imagegen.flux-1-schnell.txt",
-            "gateNote": "Long-context tier; image-gen is co-resident with the 27B text weights — flagship workstations only."
+            "gateNote": "Long-context tier; image-gen is co-resident with the 27B text weights — flagship workstations only.",
+            "url": "https://huggingface.co/leejet/FLUX.1-schnell-gguf/resolve/main/flux1-schnell-q4_k.gguf",
+            "source": "https://huggingface.co/leejet/FLUX.1-schnell-gguf"
           }
         ]
       },
@@ -125,7 +169,14 @@
           "id": "imagegen-z-image-turbo-q4_k_m",
           "file": "imagegen/z-image-turbo-Q4_K_M.gguf",
           "estimatedSizeBytes": 3500000000,
-          "license": "licenses/LICENSE.imagegen.z-image-turbo.txt"
+          "license": "licenses/LICENSE.imagegen.z-image-turbo.txt",
+          "staged": true,
+          "buildPlan": {
+            "tool": "stable-diffusion.cpp",
+            "source": "https://huggingface.co/Tongyi-MAI/Z-Image-Turbo",
+            "command": "stable-diffusion.cpp/build/bin/sd --convert --input z-image-turbo/ --output z-image-turbo-Q4_K_M.gguf --quant Q4_K_M",
+            "notes": "Z-Image-Turbo is published as safetensors weights. The GGUF quant is built in-house with sd-cpp's converter; CI bundle prep runs this on the linux-x64 build matrix and uploads the result to releases.elizaos.ai."
+          }
         },
         "optional": [
           {
@@ -133,7 +184,9 @@
             "file": "imagegen/flux-1-schnell-Q4_K_M.gguf",
             "estimatedSizeBytes": 6900000000,
             "license": "licenses/LICENSE.imagegen.flux-1-schnell.txt",
-            "gateNote": "1M-context tier; image-gen is rarely co-resident — server / multi-GPU only."
+            "gateNote": "1M-context tier; image-gen is rarely co-resident — server / multi-GPU only.",
+            "url": "https://huggingface.co/leejet/FLUX.1-schnell-gguf/resolve/main/flux1-schnell-q4_k.gguf",
+            "source": "https://huggingface.co/leejet/FLUX.1-schnell-gguf"
           }
         ]
       }
