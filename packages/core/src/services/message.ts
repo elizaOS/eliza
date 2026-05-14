@@ -515,11 +515,7 @@ export function resolvePlannerActionName(
 ): string[] {
 	const lookup =
 		actionLookup ?? buildRuntimeActionLookup(runtime as IAgentRuntime);
-	const resolved = resolvePlannerActionNameFromLookup(
-		runtime,
-		lookup,
-		actionName,
-	);
+	const resolved = resolvePlannerActionNameFromLookup(lookup, actionName);
 	if (resolved.length > 0) {
 		return resolved;
 	}
@@ -528,7 +524,6 @@ export function resolvePlannerActionName(
 	// like WRITE -> FILE would defeat a candidateActions narrow.
 	if (actionLookup && !options?.strict) {
 		const runtimeResolved = resolvePlannerActionNameFromLookup(
-			runtime,
 			buildRuntimeActionLookup(runtime as IAgentRuntime),
 			actionName,
 		);
@@ -548,7 +543,6 @@ export function resolvePlannerActionName(
 }
 
 function resolvePlannerActionNameFromLookup(
-	runtime: Pick<IAgentRuntime, "actions" | "logger">,
 	lookup: Map<string, Action>,
 	actionName: string,
 ): string[] {
@@ -3000,16 +2994,6 @@ async function runDeterministicPlannerFallback(args: {
 		finalMessage: fallbackMessage,
 	};
 }
-
-const OWNER_SURFACE_ACTIONS = new Set(
-	[
-		"OWNER_TODOS",
-		"OWNER_REMINDERS",
-		"OWNER_ALARMS",
-		"OWNER_ROUTINES",
-		"OWNER_GOALS",
-	].map(normalizeActionIdentifier),
-);
 
 async function executeV5PlannedToolCall(
 	args: ExecuteV5PlannedToolCallParams,
@@ -7141,6 +7125,25 @@ export class DefaultMessageService implements IMessageService {
 			? async (event: ResponseHandlerEarlyReplyEvent): Promise<void> => {
 					const text = event.text.trim();
 					if (!text || !message.id) return;
+					const currentResponseId = latestResponseIds
+						.get(runtime.agentId)
+						?.get(message.roomId);
+					if (currentResponseId !== responseId && !opts.keepExistingResponses) {
+						runtime.logger.info(
+							{
+								src: "service:message",
+								agentId: runtime.agentId,
+								roomId: message.roomId,
+								responseId,
+								currentResponseId,
+							},
+							"Response-handler early voice reply discarded - newer message being processed",
+						);
+						return;
+					}
+					if (getStreamingContext()?.abortSignal?.aborted) {
+						return;
+					}
 					const earlyResponseId = asUUID(v4());
 					const earlyContent: Content = {
 						thought: event.messageHandler.thought,

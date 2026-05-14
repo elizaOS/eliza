@@ -264,6 +264,16 @@
       "project": ["src/**/*.{ts,tsx}", "vite.config.ts"],
       "ignore": ["dist/**"]
     },
+    "packages/examples/farcaster-miniapp": {
+      "entry": [
+        "src/**/*.{ts,tsx}",
+        "server.js",
+        "vite.config.ts",
+        "index.html"
+      ],
+      "project": ["src/**/*.{ts,tsx}", "server.js", "vite.config.ts"],
+      "ignore": ["dist/**"]
+    },
     "packages/examples/aws": {
       "entry": [
         "handler.ts",
