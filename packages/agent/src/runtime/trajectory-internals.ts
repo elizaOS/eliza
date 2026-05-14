@@ -1103,7 +1103,11 @@ async function forwardMigrateStepsJsonToRows(
         const endedAt = startedAt;
         const kindRaw = toText(step.kind, "");
         const stepType =
-          kindRaw === "llm" || kindRaw === "action" ? kindRaw : "llm";
+          kindRaw === "llm" ||
+          kindRaw === "action" ||
+          kindRaw === "evaluator"
+            ? kindRaw
+            : "llm";
         const script =
           typeof step.script === "string" && step.script.length > 0
             ? step.script
@@ -1651,7 +1655,10 @@ function stepRowToPersistedStep(row: Record<string, unknown>): PersistedStep {
   const startedAt = toOptionalNumber(readRecordValue(row, ["started_at"]));
   const endedAt = toOptionalNumber(readRecordValue(row, ["ended_at"]));
   const kindRaw = toText(readRecordValue(row, ["step_type"]), "");
-  const kind = kindRaw === "llm" || kindRaw === "action" ? kindRaw : undefined;
+  const kind =
+    kindRaw === "llm" || kindRaw === "action" || kindRaw === "evaluator"
+      ? kindRaw
+      : undefined;
   const scriptValue = readRecordValue(row, ["script"]);
   const script =
     typeof scriptValue === "string" && scriptValue.length > 0
@@ -1938,7 +1945,11 @@ async function replaceStepsForTrajectoryInternal(
   );
   for (const step of steps) {
     const stepType =
-      step.kind === "llm" || step.kind === "action" ? step.kind : "llm";
+      step.kind === "llm" ||
+      step.kind === "action" ||
+      step.kind === "evaluator"
+        ? step.kind
+        : "llm";
     const script =
       typeof step.script === "string" && step.script.length > 0
         ? step.script

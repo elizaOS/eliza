@@ -151,8 +151,9 @@ describe("runShell", () => {
         sandboxRoot,
         request.workdir.replace(/^\/workspace\/?/, ""),
       );
-      await expect(fsp.readFile(path.join(hostCwd, "input.txt"), "utf-8"))
-        .resolves.toBe("ready");
+      await expect(
+        fsp.readFile(path.join(hostCwd, "input.txt"), "utf-8"),
+      ).resolves.toBe("ready");
       await fsp.writeFile(path.join(hostCwd, "generated.txt"), "sandbox");
       return {
         exitCode: 0,

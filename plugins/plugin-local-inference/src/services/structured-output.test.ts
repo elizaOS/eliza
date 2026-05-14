@@ -329,3 +329,113 @@ describe("compilePrefillPlan + prefillPlanRequestFields — tokenization", () =>
 		}
 	});
 });
+
+describe("compilePrefillPlan tokenIds — mixed spans and empty literals", () => {
+	const mockTokenize = (text: string): number[] => {
+		// Each char maps to its code point as the "token id" — deterministic.
+		return Array.from(text).map((ch) => ch.charCodeAt(0));
+	};
+
+	it("mixed literal → free-span → literal → free-span → literal: each literal run carries its own tokenIds and the free spans interrupt the run sequence", () => {
+		const mixedSkeleton: ResponseSkeleton = {
+			id: "mixed",
+			spans: [
+				{ kind: "literal", value: "A" },
+				{ kind: "free-string", key: "x" },
+				{ kind: "literal", value: "B" },
+				{ kind: "free-string", key: "y" },
+				{ kind: "literal", value: "C" },
+			],
+		};
+		const plan = compilePrefillPlan(mixedSkeleton, mockTokenize);
+		expect(plan).not.toBeNull();
+		if (!plan) return;
+		expect(plan.freeCount).toBe(2);
+		expect(plan.runs.length).toBe(3);
+		// Leading run (before any free span).
+		expect(plan.runs[0]).toEqual({
+			afterFreeSpan: -1,
+			text: "A",
+			tokenIds: [65],
+		});
+		// Run between the two free spans.
+		expect(plan.runs[1]).toEqual({
+			afterFreeSpan: 0,
+			text: "B",
+			tokenIds: [66],
+		});
+		// Tail run after the last free span.
+		expect(plan.runs[2]).toEqual({
+			afterFreeSpan: 1,
+			text: "C",
+			tokenIds: [67],
+		});
+		// And the prefix is the leading run's text.
+		expect(plan.prefix).toBe("A");
+	});
+
+	it("does not tokenize empty literals — empty leading and tail literals are skipped, not emitted as zero-token runs", () => {
+		const calls: string[] = [];
+		const trackingTokenize = (text: string): number[] => {
+			calls.push(text);
+			return mockTokenize(text);
+		};
+		const skeletonWithEmpties: ResponseSkeleton = {
+			id: "with-empties",
+			spans: [
+				{ kind: "literal", value: "" }, // empty leading
+				{ kind: "free-string", key: "a" },
+				{ kind: "literal", value: "X" },
+				{ kind: "free-string", key: "b" },
+				{ kind: "literal", value: "" }, // empty tail
+			],
+		};
+		const plan = compilePrefillPlan(skeletonWithEmpties, trackingTokenize);
+		expect(plan).not.toBeNull();
+		if (!plan) return;
+		// Only the non-empty literal "X" should produce a run; the empty ones
+		// flush as no-ops because pending.length === 0.
+		expect(plan.runs.length).toBe(1);
+		expect(plan.runs[0]).toEqual({
+			afterFreeSpan: 0,
+			text: "X",
+			tokenIds: [88],
+		});
+		// The tokenizer was called exactly once — on "X" — not on the empty strings.
+		expect(calls).toEqual(["X"]);
+		// freeCount still counts both free spans even though the surrounding
+		// literals were empty.
+		expect(plan.freeCount).toBe(2);
+		// No leading deterministic run → empty prefix.
+		expect(plan.prefix).toBe("");
+	});
+
+	it("prefillPlanRequestFields passes the tokenIds through as token_ids in the per-run HTTP payload for a mixed-span plan", () => {
+		const mixedSkeleton: ResponseSkeleton = {
+			id: "mixed-wire",
+			spans: [
+				{ kind: "literal", value: "{" },
+				{ kind: "free-string", key: "p" },
+				{ kind: "literal", value: "}" },
+			],
+		};
+		const plan = compilePrefillPlan(mixedSkeleton, mockTokenize);
+		expect(plan).not.toBeNull();
+		const fields = prefillPlanRequestFields(plan);
+		const planObj = fields.eliza_prefill_plan as Record<string, unknown>;
+		const runs = planObj.runs as Array<Record<string, unknown>>;
+		expect(runs.length).toBe(2);
+		// Run-by-run: the wire field is `token_ids` (snake_case), value is the
+		// same array the in-memory PrefillRun.tokenIds holds.
+		expect(runs[0]).toMatchObject({
+			after_free_span: -1,
+			text: "{",
+			token_ids: [123], // '{' = 0x7B = 123
+		});
+		expect(runs[1]).toMatchObject({
+			after_free_span: 0,
+			text: "}",
+			token_ids: [125], // '}' = 0x7D = 125
+		});
+	});
+});

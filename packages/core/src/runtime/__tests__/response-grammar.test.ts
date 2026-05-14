@@ -1438,7 +1438,8 @@ describe("buildBoundedNumberRule — boundary, single-value, and degenerate rang
 		// The parameter rule references the bounded rule, not the unbounded jsonnumber.
 		const paramRule = result.grammar
 			.split("\n")
-			.find((l) => l.includes("_count_p ::="));
+			.find((l) => l.includes("_p_count ::="));
+		expect(paramRule).toBeDefined();
 		expect(paramRule).toContain("_count_bounded");
 		expect(paramRule).not.toContain("jsonnumber");
 	});
@@ -1463,7 +1464,7 @@ describe("buildBoundedNumberRule — boundary, single-value, and degenerate rang
 		expect(result.grammar).not.toContain("_count_bounded");
 		const paramRule = result.grammar
 			.split("\n")
-			.find((l) => l.includes("_count_p ::="));
+			.find((l) => l.includes("_p_count ::="));
 		expect(paramRule).toBeDefined();
 		// The parameter line is exactly `"\"count\":" jsonnumber` — i.e. the
 		// value part is just the shared rule, with no extra references.
@@ -1491,7 +1492,8 @@ describe("buildBoundedNumberRule — boundary, single-value, and degenerate rang
 		expect(result.grammar).toContain("jsonnumber");
 		const paramRule = result.grammar
 			.split("\n")
-			.find((l) => l.includes("_ratio_p ::="));
+			.find((l) => l.includes("_p_ratio ::="));
+		expect(paramRule).toBeDefined();
 		expect(paramRule).toMatch(/::= "\\"ratio\\":" jsonnumber$/);
 	});
 
@@ -1541,10 +1543,11 @@ describe("buildBoundedNumberRule — boundary, single-value, and degenerate rang
 			.split("\n")
 			.find((l) => l.includes("_pin_bounded ::="));
 		expect(boundedRule).toBeDefined();
-		// Exactly one alternative, the literal `"7"`.
+		// Exactly one alternative, the literal `"7"` — no alternation pipe.
 		expect(boundedRule).toBe(
 			'paramsofaction_FIXED7_pin_bounded ::= "\\"7\\""',
 		);
+		expect(boundedRule).not.toContain(" | ");
 	});
 
 	it("emits an empty-body bounded rule for an inverted integer range [10, 5] (observed impl behavior)", () => {
@@ -1575,7 +1578,8 @@ describe("buildBoundedNumberRule — boundary, single-value, and degenerate rang
 		// No fallback to jsonnumber for this parameter's value position.
 		const paramRule = result.grammar
 			.split("\n")
-			.find((l) => l.includes("_bad_p ::="));
+			.find((l) => l.includes("_p_bad ::="));
+		expect(paramRule).toBeDefined();
 		expect(paramRule).toContain("_bad_bounded");
 		expect(paramRule).not.toContain("jsonnumber");
 	});
