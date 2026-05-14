@@ -761,12 +761,23 @@ function validateApkManifest(manifest, brand) {
   const gatewayService = manifestComponentBlock(
     manifest,
     "service",
-    fq("GatewayConnectionService"),
+    `${brand.packageName}.GatewayConnectionService`,
   );
   assertManifestBlockIncludes(
     gatewayService,
     "android:foregroundServiceType",
-    cls("GatewayConnectionService"),
+    "GatewayConnectionService",
+  );
+
+  const voiceService = manifestComponentBlock(
+    manifest,
+    "service",
+    fq("VoiceCaptureService"),
+  );
+  assertManifestBlockIncludes(
+    voiceService,
+    "android:foregroundServiceType",
+    cls("VoiceCaptureService"),
   );
 
   const inCallService = manifestComponentBlock(

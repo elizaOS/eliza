@@ -38,11 +38,7 @@ function terminalSupportedByEnv(ctx: PluginAutoEnableContext): boolean {
   )
     .trim()
     .toLowerCase();
-  return (
-    platform === "android" &&
-    isTruthy(env.ELIZA_AOSP_BUILD) &&
-    mode === "local-yolo"
-  );
+  return platform === "android" && mode === "local-yolo";
 }
 
 /**

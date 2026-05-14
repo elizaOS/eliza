@@ -5,7 +5,9 @@ import test from "node:test";
 
 import {
   IOS_OFFICIAL_PODS,
+  isIosAppStoreBuild,
   resolveIosBuildTarget,
+  resolveIosCustomPods,
   resolveMobileBuildPolicy,
 } from "./run-mobile-build.mjs";
 
@@ -85,6 +87,33 @@ test("iOS background runner pod resolves through the official package", () => {
     )?.[1],
     "@capacitor/background-runner",
   );
+});
+
+test("iOS App Store pod selection keeps llama optional but strips full Bun bridges", () => {
+  const pods = resolveIosCustomPods({
+    appStoreBuild: true,
+    includeLlama: true,
+    includeFullBunEngine: true,
+  }).map(([name]) => name);
+
+  assert.equal(isIosAppStoreBuild({ ELIZA_BUILD_VARIANT: "store" }), true);
+  assert.equal(pods.includes("LlamaCppCapacitor"), true);
+  assert.equal(pods.includes("ElizaosCapacitorBunRuntime"), false);
+  assert.equal(pods.includes("ElizaosCapacitorMobileAgentBridge"), false);
+  assert.equal(pods.includes("ElizaBunEngine"), false);
+});
+
+test("iOS direct full-Bun pod selection includes local execution bridge pods", () => {
+  const pods = resolveIosCustomPods({
+    appStoreBuild: false,
+    includeLlama: true,
+    includeFullBunEngine: true,
+  }).map(([name]) => name);
+
+  assert.equal(pods.includes("LlamaCppCapacitor"), true);
+  assert.equal(pods.includes("ElizaosCapacitorBunRuntime"), true);
+  assert.equal(pods.includes("ElizaosCapacitorMobileAgentBridge"), true);
+  assert.equal(pods.includes("ElizaBunEngine"), true);
 });
 
 test("iOS app entitlements do not request JIT or dynamic code signing", () => {
