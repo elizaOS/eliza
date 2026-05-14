@@ -28,6 +28,15 @@ const URL_IN_TEXT_RE = /https?:\/\/[^\s<>"'`)\]*]+/g;
 // U+2013, em dash U+2014, horizontal bar U+2015, minus sign U+2212.
 const UNICODE_DASHES_RE = /[\u2010-\u2015\u2212]/g;
 
+// A URL (mentioned by a sub-agent, or a page sub-resource) that did not
+// verify as reachable. Shared by the verification pass and the retry path.
+interface DeadUrl {
+  url: string;
+  status: string;
+  /** Set when this URL was discovered as a sub-resource of another page. */
+  via?: string;
+}
+
 /**
  * SubAgentRouter takes terminal-significant ACPX session events
  * (`task_complete`, `error`, `blocked`) and posts them as synthetic inbound
@@ -676,23 +685,10 @@ function composeNarration(
  * {@link normalizeUrlsInText} so Unicode-dash-corrupted URLs are probed in
  * their intended form.
  */
-interface DeadUrl {
-  url: string;
-  status: string;
-  via?: string;
-}
-
-interface UrlVerification {
-  /** The narration text, with a verification block appended if any URL is dead. */
-  text: string;
-  /** URLs (mentioned or sub-resources) that did not return 2xx. */
-  dead: DeadUrl[];
-}
-
 async function annotateUnverifiedUrls(
   text: string,
   log?: (message: string) => void,
-): Promise<UrlVerification> {
+): Promise<{ text: string; dead: DeadUrl[] }> {
   const urlMatches = text.match(URL_IN_TEXT_RE);
   if (!urlMatches || urlMatches.length === 0) return { text, dead: [] };
   const seen = new Set<string>();
