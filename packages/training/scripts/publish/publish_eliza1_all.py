@@ -15,7 +15,7 @@ Publishable today (no fork build / no held-out-quality gate needed):
     evidence, the ``eliza1_gates.yaml`` thresholds, throughput snapshots)
 
 Gated (this script reports the blocker, never bypasses it):
-  - the active device bundles ``elizalabs/eliza-1/bundles/<tier>`` — gated on the
+  - the active device bundles ``elizaos/eliza-1/bundles/<tier>`` — gated on the
     fork-built GGUFs + per-backend dispatch/verify evidence + the runnable-on-
     base evals + the released license review (orchestrator stage 2/3/4).
   - the fine-tuned ``recommended``-channel weights — gated on the full-corpus

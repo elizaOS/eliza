@@ -38,7 +38,7 @@ def test_dry_run_returns_zero_and_emits_summary(capsys, monkeypatch):
 def test_bundle_dry_run_missing_bundle_is_pending():
     out = P._bundle_dry_run("2b", Path("/nonexistent/eliza-1-2b.bundle"))
     assert out.status == "pending"
-    assert out.repo == "elizalabs/eliza-1"
+    assert out.repo == "elizaos/eliza-1"
     assert out.kind == "model-bundle"
     assert "bundles/2b/" in out.detail
 
@@ -60,7 +60,7 @@ def test_sft_weights_status_pending_without_final(monkeypatch, tmp_path):
     monkeypatch.setattr(P, "TRAINING_ROOT", fake_root)
     out = P._sft_weights_status()
     assert out.status == "pending"
-    assert out.repo == "elizalabs/eliza-1"
+    assert out.repo == "elizaos/eliza-1"
 
 
 def test_bundle_tiers_cover_full_active_matrix():

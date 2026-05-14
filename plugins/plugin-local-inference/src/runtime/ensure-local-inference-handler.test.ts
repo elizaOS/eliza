@@ -30,7 +30,9 @@ const engineState = vi.hoisted(() => ({
 	warnIfParallelTooLow: vi.fn(),
 }));
 const arbiterState = vi.hoisted(() => ({
-	hasCapability: vi.fn((capability: string) => capability === "vision-describe"),
+	hasCapability: vi.fn(
+		(capability: string) => capability === "vision-describe",
+	),
 	requestVisionDescribe: vi.fn(async () => ({
 		title: "A small image",
 		description: "A tiny synthetic image.",
