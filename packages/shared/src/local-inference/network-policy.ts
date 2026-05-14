@@ -176,7 +176,10 @@ export function applyNetworkPolicy(
       break;
   }
 
-  if (autoAllowed && inQuietHours(prefs.quietHours, options?.now ?? new Date())) {
+  if (
+    autoAllowed &&
+    inQuietHours(prefs.quietHours, options?.now ?? new Date())
+  ) {
     autoAllowed = false;
   }
 
@@ -230,5 +233,10 @@ export function evaluateNetworkPolicy(
   estimatedBytes: number,
   options?: { now?: Date; isHeadless?: boolean },
 ): NetworkPolicyDecision {
-  return applyNetworkPolicy(classifyNetwork(state), prefs, estimatedBytes, options);
+  return applyNetworkPolicy(
+    classifyNetwork(state),
+    prefs,
+    estimatedBytes,
+    options,
+  );
 }

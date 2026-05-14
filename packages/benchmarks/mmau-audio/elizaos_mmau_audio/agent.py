@@ -1,4 +1,4 @@
-"""Built-in MMAU agents.
+"""Built-in Audio MMAU agents.
 
 * :class:`OracleMMAUAgent` returns the ground-truth letter -- used for
   smoke tests, harness wiring checks, and ``--mock`` runs.
@@ -20,12 +20,12 @@ import time
 from collections.abc import Awaitable, Callable
 from typing import Protocol
 
-from benchmarks.mmau.evaluator import (
+from elizaos_mmau_audio.evaluator import (
     choice_letters,
     extract_answer_letter,
     extract_letter_from_option,
 )
-from benchmarks.mmau.types import MMAUPrediction, MMAUSample
+from elizaos_mmau_audio.types import MMAUPrediction, MMAUSample
 
 
 AgentFn = Callable[[str, bytes | None], Awaitable[str]]

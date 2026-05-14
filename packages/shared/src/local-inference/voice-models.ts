@@ -180,7 +180,8 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
     hfRevision: "main",
     ggufAssets: [],
     evalDeltas: { netImprovement: true },
-    changelogEntry: "Initial release — kokoro 82M voice-embedding samantha clone.",
+    changelogEntry:
+      "Initial release — kokoro 82M voice-embedding samantha clone.",
     minBundleVersion: "0.0.0",
   },
   {
@@ -292,7 +293,9 @@ export function compareVoiceModelSemver(
 }
 
 /** Return all versions for a given model id, latest first. */
-export function versionsFor(id: VoiceModelId): ReadonlyArray<VoiceModelVersion> {
+export function versionsFor(
+  id: VoiceModelId,
+): ReadonlyArray<VoiceModelVersion> {
   return VOICE_MODEL_VERSIONS.filter((v) => v.id === id).sort((a, b) => {
     const cmp = compareVoiceModelSemver(a.version, b.version);
     if (cmp === null) return 0;

@@ -49,6 +49,18 @@
                 android:value="local-agent-runtime" />
         </service>
 
+        <!--
+            Continuous-chat foreground service (R10 §6.2). Owns the long-
+            lived microphone capture path so VAD-gated / always-on chat
+            survives screen lock + backgrounding. foregroundServiceType
+            "microphone" is required on API 34+ alongside the
+            FOREGROUND_SERVICE_MICROPHONE permission.
+        -->
+        <service
+            android:name=".ElizaVoiceCaptureService"
+            android:exported="false"
+            android:foregroundServiceType="microphone" />
+
         <receiver
             android:name=".ElizaBootReceiver"
             android:directBootAware="true"
@@ -82,6 +94,11 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <!--
+        ElizaVoiceCaptureService runs continuous-chat background mic capture
+        (R10 §6.2). Required on API 34+ alongside RECORD_AUDIO.
+    -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission
         android:name="android.permission.WRITE_EXTERNAL_STORAGE"

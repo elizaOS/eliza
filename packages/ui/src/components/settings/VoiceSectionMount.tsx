@@ -20,13 +20,12 @@
 
 // biome-ignore lint/correctness/noUnusedImports: required for JSX transform.
 import * as React from "react";
-
+import { VoiceProfilesClient } from "../../api/client-voice-profiles";
 import {
   DEFAULT_VOICE_SECTION_PREFS,
   VoiceSection,
   type VoiceSectionPrefs,
 } from "./VoiceSection";
-import { VoiceProfilesClient } from "../../api/client-voice-profiles";
 
 function buildFallbackProfilesClient(): VoiceProfilesClient {
   return new VoiceProfilesClient({

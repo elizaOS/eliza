@@ -39,7 +39,7 @@ function fakeProfile(over: Partial<VoiceProfile> = {}): VoiceProfile {
 
 function makeClient(overrides?: Partial<VoiceProfilesClient>) {
   const base = new VoiceProfilesClient({
-    fetch: async () => ({ profiles: [] }),
+    fetch: async <T,>(): Promise<T> => ({ profiles: [] }) as T,
   });
   // shallow-replace only requested methods.
   return Object.assign(base, overrides);

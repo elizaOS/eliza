@@ -18,7 +18,7 @@
     "node": "24.15.0"
   },
   "scripts": {
-    "postinstall": "node scripts/fix-windows-bun-stub.mjs && bun scripts/patch-nested-core-dist.mjs && bun scripts/patch-nested-agent-dist.mjs && bun scripts/patch-tsup-dts.mjs && bun scripts/patch-rolldown-wasi-fallback.mjs && bun scripts/ensure-workspace-symlinks.mjs && node scripts/ensure-native-plugins-linked.mjs && node scripts/patch-bigint-buffer.mjs && node scripts/patch-solana-ts-peer.mjs && node plugins/plugin-local-inference/scripts/ensure-llama-cpp-submodule.mjs && node scripts/ensure-omnivoice-submodule.mjs",
+    "postinstall": "node scripts/fix-windows-bun-stub.mjs && bun scripts/patch-nested-core-dist.mjs && bun scripts/patch-nested-agent-dist.mjs && bun scripts/patch-tsup-dts.mjs && bun scripts/patch-rolldown-wasi-fallback.mjs && bun scripts/ensure-workspace-symlinks.mjs && node scripts/ensure-native-plugins-linked.mjs && node scripts/patch-bigint-buffer.mjs && node scripts/patch-solana-ts-peer.mjs && node plugins/plugin-local-inference/scripts/ensure-llama-cpp-submodule.mjs && node scripts/ensure-omnivoice-submodule.mjs && node scripts/ensure-opencode-submodule.mjs",
     "fix-deps": "bun scripts/fix-workspace-deps.mjs",
     "fix-deps:check": "bun scripts/fix-workspace-deps.mjs --check",
     "fix-deps:restore": "bun scripts/fix-workspace-deps.mjs --restore",
@@ -128,6 +128,7 @@
     "test:lifeops": "node scripts/run-all-tests.mjs --filter=plugins/app-lifeops --only=e2e",
     "lifeops:verify-cerebras": "bun --bun plugins/app-lifeops/scripts/verify-cerebras-wiring.ts",
     "lifeops:bench": "bun --bun packages/app-core/scripts/lifeops-prompt-benchmark.ts",
+    "check-actions-manifest": "node scripts/lifeops-bench/check-action-manifest.mjs",
     "lifeops:full": "node scripts/lifeops-full-run.mjs",
     "lifeops:eliza": "ELIZA_BENCH_AGENT=eliza node scripts/lifeops-full-run.mjs",
     "lifeops:hermes": "ELIZA_BENCH_AGENT=hermes node scripts/lifeops-full-run.mjs",

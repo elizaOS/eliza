@@ -14,29 +14,28 @@
  *   wired — we fall through to "Continue in background").
  */
 
+import { Crown, Mic, Sparkles, Volume2 } from "lucide-react";
 // biome-ignore lint/correctness/noUnusedImports: required for JSX transform.
 import * as React from "react";
-import { Crown, Mic, Sparkles, Volume2 } from "lucide-react";
-
-import { Button } from "../ui/button";
+import type {
+  VoiceCaptureSession,
+  VoiceCaptureSubmitResult,
+  VoiceProfile,
+  VoiceProfilesClient,
+} from "../../api/client-voice-profiles";
 import {
-  VoiceTierBanner,
-  type VoiceDeviceTier,
-  DEFAULT_VOICE_DEVICE_TIER,
-} from "../settings/VoiceTierBanner";
-import {
-  VOICE_PREFIX_STEP_META,
-  resolveVoicePrefixSteps,
   nextVoicePrefixStep,
   previousVoicePrefixStep,
+  resolveVoicePrefixSteps,
+  VOICE_PREFIX_STEP_META,
   type VoicePrefixStep,
 } from "../../onboarding/voice-prefix";
 import {
-  VoiceProfilesClient,
-  type VoiceCaptureSession,
-  type VoiceCaptureSubmitResult,
-  type VoiceProfile,
-} from "../../api/client-voice-profiles";
+  DEFAULT_VOICE_DEVICE_TIER,
+  type VoiceDeviceTier,
+  VoiceTierBanner,
+} from "../settings/VoiceTierBanner";
+import { Button } from "../ui/button";
 
 export interface VoicePrefixStepsProps {
   /** Active step. Caller drives this — voice-prefix.ts has next/prev helpers. */
@@ -60,7 +59,9 @@ export interface VoicePrefixStepsProps {
   /** Caller skips remaining voice steps and jumps to the legacy flow. */
   onSkipPrefix?: () => void;
   /** OWNER name editor handler — passed the captured display name. */
-  onOwnerSaved?: (result: VoiceCaptureSubmitResult & { displayName: string }) => void;
+  onOwnerSaved?: (
+    result: VoiceCaptureSubmitResult & { displayName: string },
+  ) => void;
   /** Optional initial display name for the OWNER (e.g. from cloud profile). */
   initialOwnerDisplayName?: string;
 }
@@ -127,11 +128,7 @@ export function VoicePrefixSteps(
         {props.step === "welcome" ? (
           <WelcomeStep {...props} />
         ) : props.step === "tier" ? (
-          <TierStep
-            {...props}
-            tier={tier}
-            tierSummary={props.tierSummary}
-          />
+          <TierStep {...props} tier={tier} tierSummary={props.tierSummary} />
         ) : props.step === "models" ? (
           <ModelsStep {...props} />
         ) : props.step === "agent-speaks" ? (
@@ -163,7 +160,9 @@ export function VoicePrefixSteps(
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => props.onAdvance(nextVoicePrefixStep(props.step, tier))}
+              onClick={() =>
+                props.onAdvance(nextVoicePrefixStep(props.step, tier))
+              }
               data-testid="voice-prefix-skip"
             >
               Skip
@@ -171,7 +170,9 @@ export function VoicePrefixSteps(
           ) : null}
           <Button
             size="sm"
-            onClick={() => props.onAdvance(nextVoicePrefixStep(props.step, tier))}
+            onClick={() =>
+              props.onAdvance(nextVoicePrefixStep(props.step, tier))
+            }
             data-testid="voice-prefix-continue"
           >
             Continue
@@ -204,8 +205,8 @@ function WelcomeStep(props: VoicePrefixStepsProps): React.ReactElement {
           <Sparkles className="h-5 w-5" />
         </span>
         <p className="text-sm">
-          You'll talk to your agent, and your agent will talk back. We'll
-          take a minute to set that up.
+          You'll talk to your agent, and your agent will talk back. We'll take a
+          minute to set that up.
         </p>
       </div>
       <Button
@@ -238,7 +239,10 @@ function WelcomeStep(props: VoicePrefixStepsProps): React.ReactElement {
 // ── Step 2 — Hardware tier ───────────────────────────────────────────────
 
 function TierStep(
-  props: VoicePrefixStepsProps & { tier: VoiceDeviceTier; tierSummary?: string },
+  props: VoicePrefixStepsProps & {
+    tier: VoiceDeviceTier;
+    tierSummary?: string;
+  },
 ): React.ReactElement {
   return (
     <div className="flex flex-col gap-3" data-testid="voice-prefix-tier">
@@ -266,8 +270,8 @@ function ModelsStep(props: VoicePrefixStepsProps): React.ReactElement {
     <div className="flex flex-col gap-3" data-testid="voice-prefix-models">
       <p className="text-sm">
         Downloading the voice bundle (ASR, turn detector, emotion classifier,
-        speaker encoder, VAD, wake-word, Kokoro voice). You can continue
-        once the essentials are in place — the rest finishes in the background.
+        speaker encoder, VAD, wake-word, Kokoro voice). You can continue once
+        the essentials are in place — the rest finishes in the background.
       </p>
       <p
         className="text-xs text-muted"
@@ -288,15 +292,14 @@ function AgentSpeaksStep(props: VoicePrefixStepsProps): React.ReactElement {
     setPlayed(true);
   }, [props.onAgentSpeak]);
   return (
-    <div className="flex flex-col gap-3" data-testid="voice-prefix-agent-speaks">
+    <div
+      className="flex flex-col gap-3"
+      data-testid="voice-prefix-agent-speaks"
+    >
       <p className="text-sm">
-        Press play to hear the agent introduce itself in the voice you
-        selected.
+        Press play to hear the agent introduce itself in the voice you selected.
       </p>
-      <Button
-        onClick={onPlay}
-        data-testid="voice-prefix-agent-speaks-play"
-      >
+      <Button onClick={onPlay} data-testid="voice-prefix-agent-speaks-play">
         <Volume2 className="mr-2 h-4 w-4" />
         {played ? "Replay greeting" : "Play greeting"}
       </Button>
@@ -451,15 +454,18 @@ function OwnerConfirmStep(props: VoicePrefixStepsProps): React.ReactElement {
   }, [displayName, props.onOwnerSaved, props.profilesClient]);
 
   return (
-    <div className="flex flex-col gap-3" data-testid="voice-prefix-owner-confirm">
+    <div
+      className="flex flex-col gap-3"
+      data-testid="voice-prefix-owner-confirm"
+    >
       <div className="flex items-center gap-3">
         <Crown
           className="h-5 w-5 text-accent"
           data-testid="voice-prefix-owner-confirm-crown"
         />
         <p className="text-sm">
-          You are the OWNER. The agent will only execute privileged actions
-          for you.
+          You are the OWNER. The agent will only execute privileged actions for
+          you.
         </p>
       </div>
       <label className="flex flex-col gap-1 text-xs text-muted">
@@ -490,8 +496,8 @@ function FamilyStep(props: VoicePrefixStepsProps): React.ReactElement {
   return (
     <div className="flex flex-col gap-3" data-testid="voice-prefix-family">
       <p className="text-sm">
-        Optional: introduce other people the agent might hear. You can add
-        more anytime in Settings → Voice → Profiles.
+        Optional: introduce other people the agent might hear. You can add more
+        anytime in Settings → Voice → Profiles.
       </p>
       <ul
         className="flex flex-col gap-1 text-xs"

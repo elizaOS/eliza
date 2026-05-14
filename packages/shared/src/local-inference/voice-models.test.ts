@@ -56,7 +56,9 @@ describe("VOICE_MODEL_VERSIONS bookkeeping", () => {
     ];
     for (const id of expectedIds) {
       const hits = VOICE_MODEL_VERSIONS.filter((v) => v.id === id);
-      expect(hits.length, `missing entries for ${id}`).toBeGreaterThanOrEqual(1);
+      expect(hits.length, `missing entries for ${id}`).toBeGreaterThanOrEqual(
+        1,
+      );
     }
   });
 

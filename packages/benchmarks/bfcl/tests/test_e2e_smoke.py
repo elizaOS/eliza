@@ -177,9 +177,11 @@ def test_multi_turn_fixture_executes(tmp_path: Path) -> None:
     assert r.status in (TestStatus.PASSED, TestStatus.FAILED, TestStatus.ERROR)
 
 
-def test_memory_category_skipped_unsupported(tmp_path: Path) -> None:
-    """Memory categories require upstream `bfcl_eval.utils` scaffolding
-    that we don't vendor — they're marked SKIPPED_UNSUPPORTED."""
+def test_memory_category_without_ground_truth_skips(tmp_path: Path) -> None:
+    """Memory categories are now evaluated, but a test without
+    ``possible_answer`` ground truth gets bucketed as
+    ``SKIPPED_NO_GROUND_TRUTH`` (we can't score it without expected
+    answers)."""
     rows = [
         {
             "id": "memory_0-customer-0",
@@ -201,4 +203,4 @@ def test_memory_category_skipped_unsupported(tmp_path: Path) -> None:
     results = asyncio.run(runner.run())
 
     assert len(results.results) == 1
-    assert results.results[0].status == TestStatus.SKIPPED_UNSUPPORTED
+    assert results.results[0].status == TestStatus.SKIPPED_NO_GROUND_TRUTH

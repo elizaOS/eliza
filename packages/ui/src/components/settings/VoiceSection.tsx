@@ -18,19 +18,18 @@
  * `messages.tts.*` keys stay; the new `messages.voice.*` keys live here.
  */
 
+import { Cloud, Database, Mic, Shield, Sliders } from "lucide-react";
 // biome-ignore lint/correctness/noUnusedImports: required for JSX transform.
 import * as React from "react";
-import { Cloud, Database, Mic, Shield, Sliders } from "lucide-react";
-
+import type { VoiceProfilesClient } from "../../api/client-voice-profiles";
 import { cn } from "../../lib/utils";
-import { ContinuousChatToggle } from "../composites/chat/ContinuousChatToggle";
 import {
   DEFAULT_VOICE_CONTINUOUS_MODE,
   type VoiceContinuousMode,
 } from "../../voice/voice-chat-types";
-import { VoiceTierBanner, type VoiceDeviceTier } from "./VoiceTierBanner";
+import { ContinuousChatToggle } from "../composites/chat/ContinuousChatToggle";
 import { VoiceProfileSection } from "./VoiceProfileSection";
-import type { VoiceProfilesClient } from "../../api/client-voice-profiles";
+import { type VoiceDeviceTier, VoiceTierBanner } from "./VoiceTierBanner";
 
 export type VoiceLocalCloudStrategy = "auto" | "force-local" | "force-cloud";
 
@@ -157,9 +156,7 @@ export function VoiceSection({
             className="h-4 w-4 rounded border-border/40"
             aria-label="Toggle wake word"
           />
-          <span className="text-muted">
-            {wakeWordEnabled ? "On" : "Off"}
-          </span>
+          <span className="text-muted">{wakeWordEnabled ? "On" : "Off"}</span>
         </label>
       </FieldRow>
 
@@ -198,9 +195,8 @@ export function VoiceSection({
             className="text-xs text-muted"
             data-testid="voice-section-models-empty"
           >
-            Voice models will appear here once they're available. Voice
-            updates appear automatically on Wi-Fi; on cellular we'll ask
-            first.
+            Voice models will appear here once they're available. Voice updates
+            appear automatically on Wi-Fi; on cellular we'll ask first.
           </p>
         )}
       </div>
@@ -219,8 +215,8 @@ export function VoiceSection({
           <span>
             <span className="block text-sm">Cloud first-line cache</span>
             <span className="text-muted">
-              Lets Eliza Cloud cache the agent's short opener phrases for
-              faster replies. Disabled by default.
+              Lets Eliza Cloud cache the agent's short opener phrases for faster
+              replies. Disabled by default.
             </span>
           </span>
           <input
@@ -238,16 +234,14 @@ export function VoiceSection({
           <span>
             <span className="block text-sm">Auto-learn new voices</span>
             <span className="text-muted">
-              When the agent hears an unfamiliar voice, build a profile
-              for them automatically.
+              When the agent hears an unfamiliar voice, build a profile for them
+              automatically.
             </span>
           </span>
           <input
             type="checkbox"
             checked={prefs.autoLearnVoices}
-            onChange={(e) =>
-              updatePrefs({ autoLearnVoices: e.target.checked })
-            }
+            onChange={(e) => updatePrefs({ autoLearnVoices: e.target.checked })}
             data-testid="voice-section-auto-learn-toggle"
             className="h-4 w-4 rounded border-border/40"
             aria-label="Auto-learn new voices"
