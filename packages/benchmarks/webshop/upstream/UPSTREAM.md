@@ -34,7 +34,15 @@ yourself if you wish to use `web_agent_site_env.py`.
 
 ## Modifications
 
-The vendored Python files are **unmodified** from upstream
-(commit fetched at vendoring time). All elizaOS-specific logic lives in
-`../elizaos_webshop/` and wraps the upstream Gym env via composition rather
-than monkey-patching.
+The vendored Python files are kept as close to upstream as possible. One
+small change is required so the package can be imported without Selenium:
+
+- `web_agent_site/envs/__init__.py` — the import of `WebAgentSiteEnv`
+  (which transitively imports `selenium`) is wrapped in `try/except` so
+  that a missing Selenium/chromedriver install does not prevent the
+  headless `WebAgentTextEnv` from being used. The gym registration for
+  `WebAgentSiteEnv-v0` is skipped when the import fails.
+
+All other elizaOS-specific logic lives in `../elizaos_webshop/` and wraps
+the upstream Gym env via composition rather than monkey-patching the
+upstream sources.

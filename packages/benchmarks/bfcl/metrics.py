@@ -84,17 +84,28 @@ class MetricsCalculator:
         if not results:
             return self._empty_metrics()
 
-        # Filter out results without ground truth for accuracy calculations
-        # These are tests we cannot evaluate (e.g., REST API without expected calls)
-        valid_results = [
-            r for r in results
-            if not r.details.get("no_ground_truth", False)
-        ]
-        
+        # Bucket out skipped tests. Skipped tests are NEVER counted as
+        # passes (the previous behaviour silently dropped REST tests and
+        # similar from scoring with no audit trail). Each skipped bucket
+        # is reported separately so callers can see why a test was excluded.
+        skipped_results: list[BFCLResult] = [r for r in results if r.is_skipped]
+        valid_results: list[BFCLResult] = [r for r in results if not r.is_skipped]
+
+        skipped_by_reason: dict[str, int] = {}
+        for r in skipped_results:
+            skipped_by_reason[r.status.value] = skipped_by_reason.get(r.status.value, 0) + 1
+        if skipped_results:
+            logger.warning(
+                "BFCL: excluded %d tests from scoring (per bucket: %s)",
+                len(skipped_results), skipped_by_reason,
+            )
+
         if not valid_results:
             logger.warning("No valid results with ground truth available for metrics")
             metrics = self._empty_metrics()
-            metrics.error_counts["no_ground_truth"] = len(results)
+            metrics.skipped_tests = len(skipped_results)
+            metrics.skipped_by_reason = skipped_by_reason
+            metrics.error_counts["skipped_total"] = len(skipped_results)
             return metrics
 
         # Calculate per-category metrics (using valid results only)
@@ -114,12 +125,10 @@ class MetricsCalculator:
 
         # Analyze errors (valid results only)
         error_counts = self._analyze_errors(valid_results)
-        
-        # Track tests without ground truth
-        no_gt_count = len(results) - len(valid_results)
-        if no_gt_count > 0:
-            error_counts["no_ground_truth"] = no_gt_count
-            logger.info(f"Excluded {no_gt_count} tests without ground truth from accuracy calculations")
+
+        if skipped_by_reason:
+            for k, v in skipped_by_reason.items():
+                error_counts[k] = v
 
         return BFCLMetrics(
             overall_score=overall_score,
@@ -127,9 +136,11 @@ class MetricsCalculator:
             exec_accuracy=exec_accuracy,
             relevance_accuracy=relevance_accuracy,
             category_metrics=category_metrics,
-            total_tests=len(valid_results),  # Count only valid tests
+            total_tests=len(valid_results),
             passed_tests=sum(1 for r in valid_results if r.ast_match),
             failed_tests=sum(1 for r in valid_results if not r.ast_match),
+            skipped_tests=len(skipped_results),
+            skipped_by_reason=skipped_by_reason,
             latency_p50=latency_stats.get("p50", 0.0),
             latency_p95=latency_stats.get("p95", 0.0),
             latency_p99=latency_stats.get("p99", 0.0),
@@ -398,6 +409,17 @@ class MetricsCalculator:
                     f"AST: {cat_metrics.ast_accuracy:.2%}  "
                     f"Tests: {cat_metrics.total_tests}"
                 )
+
+        if metrics.skipped_tests:
+            lines.extend([
+                "",
+                "-" * 60,
+                "Skipped (excluded from accuracy denominator):",
+                "-" * 60,
+                f"  Total: {metrics.skipped_tests}",
+            ])
+            for reason, n in sorted(metrics.skipped_by_reason.items()):
+                lines.append(f"    - {reason}: {n}")
 
         lines.extend([
             "",

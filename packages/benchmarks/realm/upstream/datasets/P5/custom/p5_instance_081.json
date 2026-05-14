@@ -1,0 +1,72 @@
+{
+  "instance_id": "p5_instance_081",
+  "locations": {
+    "B": "Boston Airport",
+    "G": "Gift shop",
+    "T": "Tailor shop",
+    "W": "Wedding venue"
+  },
+  "travel_times": {
+    "B-G": 45,
+    "B-T": 30,
+    "B-W": 40,
+    "G-T": 20,
+    "G-W": 25,
+    "T-W": 15
+  },
+  "guests": [
+    {
+      "name": "Alex",
+      "location": "B",
+      "arrival_time": "11:00",
+      "origin": "Chicago",
+      "needs_ride": true
+    },
+    {
+      "name": "Jamie",
+      "location": "B",
+      "arrival_time": "12:30",
+      "origin": "Atlanta",
+      "needs_ride": true
+    },
+    {
+      "name": "Pat",
+      "location": "W",
+      "arrival_time": "12:00",
+      "origin": "NYC",
+      "has_car": true,
+      "car_capacity": 5
+    }
+  ],
+  "vehicles": [
+    {
+      "id": "van",
+      "capacity": 8,
+      "location": "hotel"
+    },
+    {
+      "id": "car1",
+      "capacity": 4,
+      "location": "church"
+    },
+    {
+      "id": "car2",
+      "capacity": 4,
+      "location": "reception_venue"
+    }
+  ],
+  "errands": [
+    "flowers",
+    "cake",
+    "decorations",
+    "photographer",
+    "music"
+  ],
+  "constraints": {
+    "wedding_deadline": "18:00",
+    "gift_store_opens": "12:00",
+    "tailor_closes": "14:00",
+    "photo_time": "15:00"
+  },
+  "description": "Wedding logistics coordination instance"
+}

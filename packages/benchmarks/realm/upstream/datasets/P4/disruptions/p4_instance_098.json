@@ -1,0 +1,184 @@
+{
+  "instance_id": "p4_instance_098",
+  "city_map": {
+    "locations": [
+      "mall",
+      "hospital",
+      "park",
+      "university",
+      "stadium",
+      "suburb",
+      "downtown"
+    ],
+    "distances": {
+      "mall-hospital": 14,
+      "hospital-mall": 14,
+      "mall-park": 40,
+      "park-mall": 40,
+      "mall-university": 32,
+      "university-mall": 32,
+      "mall-stadium": 38,
+      "stadium-mall": 38,
+      "mall-suburb": 36,
+      "suburb-mall": 36,
+      "mall-downtown": 17,
+      "downtown-mall": 17,
+      "hospital-park": 40,
+      "park-hospital": 40,
+      "hospital-university": 28,
+      "university-hospital": 28,
+      "hospital-stadium": 40,
+      "stadium-hospital": 40,
+      "hospital-suburb": 11,
+      "suburb-hospital": 11,
+      "hospital-downtown": 17,
+      "downtown-hospital": 17,
+      "park-university": 20,
+      "university-park": 20,
+      "park-stadium": 43,
+      "stadium-park": 43,
+      "park-suburb": 33,
+      "suburb-park": 33,
+      "park-downtown": 27,
+      "downtown-park": 27,
+      "university-stadium": 36,
+      "stadium-university": 36,
+      "university-suburb": 23,
+      "suburb-university": 23,
+      "university-downtown": 35,
+      "downtown-university": 35,
+      "stadium-suburb": 30,
+      "suburb-stadium": 30,
+      "stadium-downtown": 26,
+      "downtown-stadium": 26,
+      "suburb-downtown": 20,
+      "downtown-suburb": 20
+    }
+  },
+  "ride_requests": [
+    {
+      "passenger_id": "p001",
+      "pickup": "suburb",
+      "dropoff": "downtown",
+      "time_window": [
+        9.5,
+        9.116666666666667
+      ],
+      "deadline": 32
+    },
+    {
+      "passenger_id": "p002",
+      "pickup": "downtown",
+      "dropoff": "university",
+      "time_window": [
+        16.5,
+        16.25
+      ],
+      "deadline": 56
+    },
+    {
+      "passenger_id": "p003",
+      "pickup": "mall",
+      "dropoff": "downtown",
+      "time_window": [
+        14.75,
+        14.316666666666666
+      ],
+      "deadline": 31
+    },
+    {
+      "passenger_id": "p004",
+      "pickup": "mall",
+      "dropoff": "park",
+      "time_window": [
+        12.0,
+        12.383333333333333
+      ],
+      "deadline": 21
+    },
+    {
+      "passenger_id": "p005",
+      "pickup": "hospital",
+      "dropoff": "downtown",
+      "time_window": [
+        9.0,
+        9.566666666666666
+      ],
+      "deadline": 56
+    },
+    {
+      "passenger_id": "p006",
+      "pickup": "suburb",
+      "dropoff": "park",
+      "time_window": [
+        12.5,
+        12.25
+      ],
+      "deadline": 29
+    },
+    {
+      "passenger_id": "p007",
+      "pickup": "downtown",
+      "dropoff": "mall",
+      "time_window": [
+        13.5,
+        13.95
+      ],
+      "deadline": 29
+    },
+    {
+      "passenger_id": "p008",
+      "pickup": "hospital",
+      "dropoff": "suburb",
+      "time_window": [
+        13.25,
+        13.883333333333333
+      ],
+      "deadline": 54
+    }
+  ],
+  "vehicles": [
+    {
+      "vehicle_id": "v001",
+      "location": "suburb",
+      "capacity": 5,
+      "fuel": 68
+    },
+    {
+      "vehicle_id": "v002",
+      "location": "downtown",
+      "capacity": 4,
+      "fuel": 82
+    },
+    {
+      "vehicle_id": "v003",
+      "location": "mall",
+      "capacity": 6,
+      "fuel": 55
+    },
+    {
+      "vehicle_id": "v004",
+      "location": "suburb",
+      "capacity": 6,
+      "fuel": 75
+    }
+  ],
+  "description": "Urban ride-sharing with disruptions instance",
+  "disruptions": [
+    {
+      "type": "traffic_delay",
+      "route": "mall-stadium",
+      "delay": 17,
+      "start_time": 8,
+      "duration": 114,
+      "impact": "increased_travel_time"
+    },
+    {
+      "type": "road_closure",
+      "route": "hospital-university",
+      "start_time": 12,
+      "duration": 105,
+      "impact": "route_unavailable"
+    }
+  ]
+}

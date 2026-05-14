@@ -51,15 +51,33 @@ class TestEnums:
         assert len(Season) == 4
 
     def test_action_type_values(self) -> None:
-        """Test ActionType enum values."""
+        """Test ActionType enum values.
+
+        The tool surface mirrors the Vending-Bench paper (arXiv 2502.15840):
+        email, web search, notepad, sub-agent delegation, physical actions,
+        time control, plus three eliza convenience actions.
+        """
         assert ActionType.VIEW_STATE.value == "VIEW_BUSINESS_STATE"
         assert ActionType.ADVANCE_DAY.value == "ADVANCE_DAY"
-        assert len(ActionType) == 9
+        assert ActionType.SEND_EMAIL.value == "SEND_EMAIL"
+        assert ActionType.SEARCH_WEB.value == "SEARCH_WEB"
+        assert ActionType.NOTEPAD_WRITE.value == "NOTEPAD_WRITE"
+        assert ActionType.DELEGATE_EMAIL.value == "DELEGATE_EMAIL"
+        # Paper-faithful (13) + eliza convenience (3) = 16
+        assert len(ActionType) == 16
 
     def test_coherence_error_type_values(self) -> None:
-        """Test CoherenceErrorType enum values."""
+        """Test CoherenceErrorType enum values.
+
+        Covers the original structural errors plus the paper's catalogued
+        failure modes (hallucinated supplier/delivery, phantom inventory,
+        tool-format degradation, tangential meltdown, task abandonment).
+        """
         assert CoherenceErrorType.DUPLICATE_ORDER.value == "duplicate_order"
-        assert len(CoherenceErrorType) == 7
+        assert CoherenceErrorType.HALLUCINATED_DELIVERY.value == "hallucinated_delivery"
+        assert CoherenceErrorType.TANGENTIAL_MELTDOWN.value == "tangential_meltdown"
+        # 7 original + 7 paper-failure-mode = 14
+        assert len(CoherenceErrorType) == 14
 
 
 class TestProduct:
@@ -213,11 +231,19 @@ class TestVendingBenchConfig:
     """Test VendingBenchConfig dataclass."""
 
     def test_default_config(self) -> None:
-        """Test default configuration values."""
+        """Test default configuration values.
+
+        Defaults align with the paper (arXiv 2502.15840): $500 cash, $2 daily
+        fee, 30k-token context. Days default to 90 (a tractable middle-ground
+        for the harness; the paper itself runs unbounded).
+        """
         config = VendingBenchConfig()
         assert config.num_runs == 5
-        assert config.max_days_per_run == 30
+        assert config.max_days_per_run == 90
         assert config.initial_cash == Decimal("500.00")
+        assert config.daily_base_fee == Decimal("2.00")
+        assert config.context_window_tokens == 30000
+        assert config.max_messages_per_run == 2000
         assert config.machine_rows == 4
         assert config.machine_columns == 3
 

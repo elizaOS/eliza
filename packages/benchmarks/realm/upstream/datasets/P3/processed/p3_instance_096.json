@@ -1,0 +1,101 @@
+{
+  "instance_id": "p3_instance_096",
+  "city_map": {
+    "locations": [
+      "hospital",
+      "downtown",
+      "university",
+      "mall",
+      "stadium"
+    ],
+    "distances": {
+      "hospital-downtown": 30,
+      "downtown-hospital": 30,
+      "hospital-university": 35,
+      "university-hospital": 35,
+      "hospital-mall": 10,
+      "mall-hospital": 10,
+      "hospital-stadium": 7,
+      "stadium-hospital": 7,
+      "downtown-university": 28,
+      "university-downtown": 28,
+      "downtown-mall": 17,
+      "mall-downtown": 17,
+      "downtown-stadium": 20,
+      "stadium-downtown": 20,
+      "university-mall": 31,
+      "mall-university": 31,
+      "university-stadium": 30,
+      "stadium-university": 30,
+      "mall-stadium": 43,
+      "stadium-mall": 43
+    }
+  },
+  "ride_requests": [
+    {
+      "passenger_id": "p001",
+      "pickup": "university",
+      "dropoff": "downtown",
+      "time_window": [
+        13.5,
+        13.783333333333333
+      ],
+      "deadline": 34
+    },
+    {
+      "passenger_id": "p002",
+      "pickup": "mall",
+      "dropoff": "stadium",
+      "time_window": [
+        8.25,
+        8.516666666666667
+      ],
+      "deadline": 23
+    },
+    {
+      "passenger_id": "p003",
+      "pickup": "mall",
+      "dropoff": "downtown",
+      "time_window": [
+        11.5,
+        11.166666666666666
+      ],
+      "deadline": 45
+    },
+    {
+      "passenger_id": "p004",
+      "pickup": "university",
+      "dropoff": "stadium",
+      "time_window": [
+        9.75,
+        9.183333333333334
+      ],
+      "deadline": 30
+    },
+    {
+      "passenger_id": "p005",
+      "pickup": "mall",
+      "dropoff": "stadium",
+      "time_window": [
+        9.75,
+        9.383333333333333
+      ],
+      "deadline": 52
+    }
+  ],
+  "vehicles": [
+    {
+      "vehicle_id": "v001",
+      "location": "hospital",
+      "capacity": 5,
+      "fuel": 62
+    },
+    {
+      "vehicle_id": "v002",
+      "location": "stadium",
+      "capacity": 5,
+      "fuel": 52
+    }
+  ],
+  "description": "Urban ride-sharing instance"
+}
