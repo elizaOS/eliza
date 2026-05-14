@@ -1,0 +1,88 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<!-- Created with Cambalache 0.99.8 -->
+<!-- Generated with glade 3.38.2 -->
+<interface>
+  <!-- interface-name locked_view.ui.in -->
+  <requires lib="gtk+" version="3.24"/>
+  <object class="GtkBox" id="box">
+    <property name="hexpand">True</property>
+    <property name="margin-bottom">20</property>
+    <property name="margin-end">20</property>
+    <property name="margin-start">20</property>
+    <property name="margin-top">20</property>
+    <property name="orientation">vertical</property>
+    <property name="vexpand">True</property>
+    <property name="visible">True</property>
+    <child>
+      <object class="GtkScrolledWindow">
+        <property name="hscrollbar-policy">never</property>
+        <property name="vexpand">True</property>
+        <property name="visible">True</property>
+        <child>
+          <object class="GtkViewport">
+            <property name="shadow-type">none</property>
+            <property name="visible">True</property>
+            <child>
+              <object class="GtkBox">
+                <property name="margin-bottom">20</property>
+                <property name="margin-end">20</property>
+                <property name="margin-start">20</property>
+                <property name="margin-top">20</property>
+                <property name="orientation">vertical</property>
+                <property name="spacing">50</property>
+                <property name="valign">center</property>
+                <property name="vexpand">True</property>
+                <property name="visible">True</property>
+                <child>
+                  <object class="GtkBox">
+                    <property name="spacing">50</property>
+                    <property name="visible">True</property>
+                    <child>
+                      <object class="GtkImage" id="image1">
+                        <property name="pixbuf">/usr/share/pixmaps/tails-persistent-storage.svg</property>
+                        <property name="visible">True</property>
+                      </object>
+                      <packing>
+                        <property name="expand">False</property>
+                        <property name="fill">True</property>
+                        <property name="position">0</property>
+                      </packing>
+                    </child>
+                    <child>
+                      <object class="GtkLabel" id="placeholder_label1">
+                        <property name="label" translatable="yes">&lt;b&gt;Your Persistent Storage is locked.&lt;/b&gt;
+
+To use or configure your Persistent Storage, unlock it in the Welcome Screen when starting Tails.
+
+To delete your Persistent Storage, click &lt;b&gt;Delete&lt;/b&gt; on the right of the title bar.</property>
+                        <property name="max-width-chars">50</property>
+                        <property name="use-markup">True</property>
+                        <property name="visible">True</property>
+                        <property name="wrap">True</property>
+                      </object>
+                      <packing>
+                        <property name="expand">False</property>
+                        <property name="fill">False</property>
+                        <property name="position">1</property>
+                      </packing>
+                    </child>
+                  </object>
+                  <packing>
+                    <property name="expand">False</property>
+                    <property name="fill">True</property>
+                    <property name="position">0</property>
+                  </packing>
+                </child>
+              </object>
+            </child>
+          </object>
+        </child>
+      </object>
+      <packing>
+        <property name="expand">True</property>
+        <property name="fill">True</property>
+        <property name="position">0</property>
+      </packing>
+    </child>
+  </object>
+</interface>

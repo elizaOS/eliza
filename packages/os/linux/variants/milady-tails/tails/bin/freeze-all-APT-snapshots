@@ -1,0 +1,22 @@
+#!/bin/bash
+
+set -eu
+set -x
+
+git checkout "$RELEASE_BRANCH"
+
+./auto/scripts/apt-snapshots-serials freeze
+
+(
+    set -eux
+    cd vagrant/definitions/tails-builder
+    ../../../auto/scripts/apt-snapshots-serials freeze --freeze-debian-security
+)
+
+git commit \
+    -m "Freeze APT snapshots for ${VERSION}." \
+    config/APT_snapshots.d/*/serial \
+    vagrant/definitions/tails-builder/config/APT_snapshots.d/*/serial
+
+git show
+

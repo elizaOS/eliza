@@ -1,6 +1,5 @@
 import { logger } from "@elizaos/core";
 import { asRecord } from "@elizaos/shared";
-import type { ConversationMode } from "../api/client";
 import { fetchWithCsrf } from "../api/csrf-client";
 import { getBootConfig } from "../config/boot-config-store";
 import {
@@ -752,23 +751,8 @@ export function saveChatVoiceMuted(value: boolean): void {
   }, undefined);
 }
 
-/* ── Chat mode persistence ─────────────────────────────────────────────── */
-const CHAT_MODE_KEY = "eliza:chat:mode";
 const ACTIVE_CONVERSATION_ID_KEY = "eliza:chat:activeConversationId";
 const COMPANION_MESSAGE_CUTOFF_TS_KEY = "eliza:chat:companionMessageCutoffTs";
-
-export function loadChatMode(): ConversationMode {
-  return tryLocalStorage(() => {
-    const stored = localStorage.getItem(CHAT_MODE_KEY);
-    return stored === "power" ? "power" : "simple";
-  }, "simple");
-}
-
-export function saveChatMode(value: ConversationMode): void {
-  tryLocalStorage(() => {
-    localStorage.setItem(CHAT_MODE_KEY, value);
-  }, undefined);
-}
 
 export function loadActiveConversationId(): string | null {
   return tryLocalStorage(() => {

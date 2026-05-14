@@ -1,0 +1,59 @@
+[[!meta date="Wed, 19 Apr 2017 12:34:56 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!meta title="Tails 2.12 is out"]]
+[[!tag announce]]
+
+This release fixes [[many security
+issues|security/Numerous_security_holes_in_2.11]] and users should
+upgrade as soon as possible.
+
+[[!toc levels=1]]
+
+# Changes
+
+## New features
+
+- We installed again *GNOME Sound Recorder* to provide a very simple
+  application for recording sound in addition to the more complex *Audacity*.
+  Sound clips recorded using *GNOME Sound Recorder* are saved to the *Recordings* folder.
+
+  [[!img sound-recorder.png link="no"]]
+
+## Upgrades and changes
+
+- We removed [*I2P*](//geti2p.net/), an alternative anonymity network, because
+  we unfortunately have failed to find a developer to maintain *I2P* in Tails.
+  Maintaining software like *I2P* well-integrated in Tails takes time and
+  effort and our team is too busy with other priorities.
+
+- Upgrade *Linux* to 4.9.13. This should improve the support for newer
+  hardware (graphics, Wi-Fi, etc.).
+
+For more details, read our [[!tails_gitweb debian/changelog desc="changelog"]].
+
+# Known issues
+
+- The video application Totem [[!tails_ticket 12457 desc="may crash Tails"]].
+  You can work around this problem by installing *VLC*.
+
+See the list of [[long-standing issues|support/known_issues]].
+
+# Get Tails 2.12
+
+- To install, follow our [[installation instructions|install]].
+
+- To upgrade, automatic upgrades are available from 2.10 and 2.11 to 2.12.
+
+  If you cannot do an automatic upgrade or if you fail to start after an
+  automatic upgrade, please try to do a [[manual upgrade|doc/upgrade#manual]].
+
+- [[Download Tails 2.12.|install/download]]
+
+# What's coming up?
+
+Tails 3.0 is [[scheduled|contribute/calendar]] for June 13th.
+
+
+We need your help and there are many ways to [[contribute to
+Tails|contribute]] (<a href="https://tails.net/donate/?r=2.12">donating</a> is only one of
+them). Come [[talk to us|doc/about/contact#tails-dev]]!

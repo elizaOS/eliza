@@ -26,7 +26,7 @@ import {
   type TokenUsage,
   type UUID,
 } from "@elizaos/core";
-import localEmbeddingPlugin from "@elizaos/plugin-local-embedding";
+import localEmbeddingPlugin from "@elizaos/plugin-local-inference";
 import { openaiPlugin } from "@elizaos/plugin-openai";
 import { plugin as sqlPlugin } from "@elizaos/plugin-sql";
 import { v4 as uuidv4 } from "uuid";

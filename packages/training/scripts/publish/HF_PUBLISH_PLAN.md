@@ -5,14 +5,14 @@ This is the operator plan for the active Eliza-1 release line.
 Canonical model destination: `elizaos/eliza-1`
 
 Runtime bundles are uploaded under `bundles/<tier>/` in that single model repo.
-Do not publish current release bundles to `elizalabs/*` or to per-tier model
-repos such as `elizaos/eliza-1-0_8b`.
+Do not publish current release bundles to per-tier model repos such as
+`elizaos/eliza-1-0_8b`.
 
 ## Current State
 
 Status as of 2026-05-13:
 
-- Active text tiers are Qwen3.5 only: `0_8b`, `2b`, and `4b`.
+- Active text tiers are Qwen3.5 for `0_8b`, `2b`, `4b`, and `9b`, and Qwen3.6 for `27b`, `27b-256k`, and `27b-1m`.
 - Retired Qwen3 text tiers `0_6b` and `1_7b` are legacy/deprecation targets, not
   current release targets.
 - Local staged bundles exist for the active tiers, but they are still blocked
@@ -27,7 +27,7 @@ Status as of 2026-05-13:
 
 | Repo | Type | Purpose | Publish status |
 | --- | --- | --- | --- |
-| `elizaos/eliza-1` | model | Single release repo for all active device bundles. Active payloads live at `bundles/0_8b/`, `bundles/2b/`, and `bundles/4b/`. | Target repo only; active bundles are blocked until release evidence is publishable. |
+| `elizaos/eliza-1` | model | Single release repo for all active device bundles. Active payloads live at `bundles/0_8b/`, `bundles/2b/`, `bundles/4b/`, `bundles/9b/`, and `bundles/27b*/`. | Target repo only; active bundles are blocked until release evidence is publishable. |
 | `elizaos/eliza-1-training` | dataset | Canonical SFT corpus refresh when final train/val/test splits and manifest are present. | Publishable independently of model-bundle gates. |
 | `elizaos/eliza-1-evals` | dataset | Eval, gate, and runtime evidence record. Negative or blocking results are published honestly. | Publishable independently of model-bundle gates. |
 | `elizaos/eliza-1-assets` | model | Frozen voice/ASR/VAD/cache assets used by bundle staging. | Existing support repo; not the current model-bundle destination. |
@@ -44,6 +44,10 @@ commands except as explicit deprecation work.
 | `0_8b` | `Qwen/Qwen3.5-0.8B` | `bundles/0_8b/` | Small local tier. |
 | `2b` | `Qwen/Qwen3.5-2B` | `bundles/2b/` | Mid local tier. |
 | `4b` | `Qwen/Qwen3.5-4B` | `bundles/4b/` | Workstation / flagship tier. |
+| `9b` | `Qwen/Qwen3.5-9B` | `bundles/9b/` | Workstation tier; stays on Qwen3.5 until Qwen3.6 9B exists. |
+| `27b` | `Qwen/Qwen3.6-27B` | `bundles/27b/` | Dense 27B local/cloud tier. |
+| `27b-256k` | `Qwen/Qwen3.6-27B` | `bundles/27b-256k/` | Long-context dense 27B tier. |
+| `27b-1m` | `Qwen/Qwen3.6-27B` | `bundles/27b-1m/` | Datacenter long-context dense 27B tier. |
 
 ASR and embedding repos are Qwen3 upstream exceptions where applicable; do not
 rename those upstream assets to imaginary Qwen3.5 ASR or embedding repos.
@@ -76,7 +80,7 @@ Dry-run the active single-repo model plan:
 cd packages/training
 python -m scripts.publish.publish_eliza1_model_repo \
   --repo-id elizaos/eliza-1 \
-  --tier 0_8b --tier 2b --tier 4b \
+  --tier 0_8b --tier 2b --tier 4b --tier 9b --tier 27b \
   --dry-run \
   --report ../../packages/inference/reports/local-e2e/2026-05-13/eliza-1-hf-dry-run-report.json
 ```

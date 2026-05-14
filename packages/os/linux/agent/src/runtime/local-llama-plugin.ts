@@ -7,13 +7,17 @@
  * GGUF on disk. No Ollama daemon, no HTTP — just libllama.so + a .gguf
  * model file loaded into the agent process.
  *
- * Why this exists separately from `@elizaos/plugin-local-ai`: that plugin
- * pins `@elizaos/core@2.0.0-alpha.3` (vs our alpha.537) and drags in
- * `@huggingface/transformers` (~1.5GB) + `whisper-node` we don't need.
- * We only need text generation, so we wrap `node-llama-cpp` directly.
- * The same Plugin shape — `models: { TEXT_LARGE: handler }` — that
- * plugin-local-ai uses; runtime.useModel() doesn't care which Plugin owns
- * the handler.
+ * Why this exists separately from `@elizaos/plugin-local-inference`: that
+ * plugin is the canonical desktop/mobile local provider — engine + voice
+ * (Kokoro TTS, Whisper ASR via ONNX, VAD, wake-word), full DFlash spec-
+ * decode, model catalog, downloader, GPU profiles, ~210 service files.
+ * On the live USB ISO we boot from squashfs into tmpfs, run the smallest
+ * Eliza-1 GGUF, and never need voice or download paths — so this
+ * 150-line wrapper keeps the ISO smaller and skips lazy-init for
+ * subsystems we'd never trigger. Same Plugin shape (`models: { TEXT_*:
+ * handler }`); runtime.useModel() doesn't care which Plugin owns the
+ * handler. See docs/eliza-integration.md for the rationale and the path
+ * to adopting plugin-local-inference once we ship LUKS persistence.
  *
  * Hot-load behavior: the LlamaModel + LlamaContext are constructed lazily
  * on first useModel call (the live ISO boots into chat before any user
@@ -72,11 +76,11 @@ function modelPath(runtime: IAgentRuntime): string {
         runtime.getSetting("LOCAL_LARGE_MODEL") ?? runtime.getSetting("USBELIZA_GGUF");
     if (typeof explicitSetting === "string" && explicitSetting.length > 0) return explicitSetting;
 
-    const iso = "/usr/share/usbeliza/models/llama-3.2-1b-instruct-q4_k_m.gguf";
+    const iso = "/usr/share/usbeliza/models/eliza-1-0_8b-32k.gguf";
     if (existsSync(iso)) return iso;
 
     const home = Bun.env.HOME ?? "/home/eliza";
-    return `${home}/.cache/usbeliza-models/llama-3.2-1b-instruct-q4_k_m.gguf`;
+    return `${home}/.cache/usbeliza-models/eliza-1-0_8b-32k.gguf`;
 }
 
 async function resolveModel(runtime: IAgentRuntime): Promise<ResolvedModel> {

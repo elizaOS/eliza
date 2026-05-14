@@ -1,0 +1,31 @@
+{
+  "name": "@elizaos/bench-eliza-1",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Quality + perf bench for eliza-1 (unguided vs guided GBNF decode) compared against Cerebras (Llama-3.1-8B for tiers ≤9B; GPT-OSS-120B for the 27B tier on H200) across the response handler, planner, and per-action tasks.",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./metrics": "./src/metrics.ts",
+    "./report": "./src/report.ts"
+  },
+  "scripts": {
+    "start": "bun run src/index.ts",
+    "fixtures:derive": "node scripts/derive-fixtures.mjs",
+    "fixtures:derive:dry-run": "node scripts/derive-fixtures.mjs --dry-run",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "bunx @biomejs/biome check .",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.3",
+    "typescript": "^6.0.3",
+    "vitest": "4.1.5"
+  }
+}

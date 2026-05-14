@@ -26,7 +26,8 @@ import path from "node:path";
 import { performance } from "node:perf_hooks";
 
 const audioPath =
-  process.argv[2] || path.join(os.homedir(), ".local", "voice-bench", "sample.flac");
+  process.argv[2] ||
+  path.join(os.homedir(), ".local", "voice-bench", "sample.flac");
 
 // Decode audio → 16 kHz mono Float32Array via the OV venv's python soundfile.
 // This keeps the test self-contained (no ffmpeg / sox dependency); soundfile
@@ -34,7 +35,14 @@ const audioPath =
 async function decodeToPcm16k(file) {
   const venvPython =
     process.env.ELIZA_OPENVINO_PYTHON ||
-    path.join(os.homedir(), ".local", "voice-bench", "ov_venv", "bin", "python");
+    path.join(
+      os.homedir(),
+      ".local",
+      "voice-bench",
+      "ov_venv",
+      "bin",
+      "python",
+    );
   const script = `
 import sys, soundfile as sf, numpy as np
 pcm, sr = sf.read(sys.argv[1], dtype="float32", always_2d=False)
@@ -60,10 +68,10 @@ sys.stdout.buffer.write(pcm.tobytes())
 
 async function main() {
   const { createStreamingTranscriber } = await import(
-    "../src/services/local-inference/voice/transcriber.ts"
+    "../../../plugins/plugin-local-inference/src/services/voice/transcriber.ts"
   );
   const { resolveOpenVinoWhisperRuntime } = await import(
-    "../src/services/local-inference/voice/openvino-whisper-asr.ts"
+    "../../../plugins/plugin-local-inference/src/services/voice/openvino-whisper-asr.ts"
   );
 
   const runtime = resolveOpenVinoWhisperRuntime();
@@ -79,7 +87,9 @@ async function main() {
   const t0 = performance.now();
   const pcm = await decodeToPcm16k(audioPath);
   const tLoad = performance.now() - t0;
-  console.log(`[audio] ${pcm.length} samples (${(pcm.length / 16000).toFixed(2)}s) loaded in ${tLoad.toFixed(0)} ms`);
+  console.log(
+    `[audio] ${pcm.length} samples (${(pcm.length / 16000).toFixed(2)}s) loaded in ${tLoad.toFixed(0)} ms`,
+  );
 
   const transcriber = createStreamingTranscriber({
     prefer: "openvino-whisper",
@@ -111,7 +121,9 @@ async function main() {
   const sampleRate = 16000;
   const frameSamples = Math.round(0.03 * sampleRate); // 480 samples = 30 ms
   const frameCount = Math.ceil(pcm.length / frameSamples);
-  console.log(`[feed] starting — ${frameCount} frames of ${frameSamples} samples`);
+  console.log(
+    `[feed] starting — ${frameCount} frames of ${frameSamples} samples`,
+  );
 
   const tFeedStart = performance.now();
   for (let i = 0; i < frameCount; i++) {
@@ -124,17 +136,25 @@ async function main() {
     });
   }
   const tFeedEnd = performance.now();
-  console.log(`[feed] done in ${(tFeedEnd - tFeedStart).toFixed(0)} ms; flushing…`);
+  console.log(
+    `[feed] done in ${(tFeedEnd - tFeedStart).toFixed(0)} ms; flushing…`,
+  );
 
   const final = await transcriber.flush();
   const tFinal = performance.now();
-  console.log(`[final] (${(tFinal - tFeedStart).toFixed(0)} ms total) ${final.partial}`);
+  console.log(
+    `[final] (${(tFinal - tFeedStart).toFixed(0)} ms total) ${final.partial}`,
+  );
   console.log("");
   console.log("=== TIMINGS ===");
   console.log(`audio duration:       ${(pcm.length / 16000).toFixed(2)} s`);
-  console.log(`first partial at:     ${firstPartialAt ? (firstPartialAt - tFeedStart).toFixed(0) + " ms" : "(none emitted)"}`);
+  console.log(
+    `first partial at:     ${firstPartialAt ? `${(firstPartialAt - tFeedStart).toFixed(0)} ms` : "(none emitted)"}`,
+  );
   console.log(`final transcript at:  ${(tFinal - tFeedStart).toFixed(0)} ms`);
-  console.log(`realtime factor:      ${((pcm.length / 16000) / ((tFinal - tFeedStart) / 1000)).toFixed(1)}× (>1 = faster than realtime)`);
+  console.log(
+    `realtime factor:      ${(pcm.length / 16000 / ((tFinal - tFeedStart) / 1000)).toFixed(1)}× (>1 = faster than realtime)`,
+  );
 
   transcriber.dispose();
 }

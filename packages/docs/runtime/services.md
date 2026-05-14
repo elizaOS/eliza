@@ -50,7 +50,7 @@ Core plugins are always loaded and each provides one or more services:
 | Plugin | Service Type | Description |
 |---|---|---|
 | `@elizaos/plugin-sql` | Database adapter | PGLite or PostgreSQL persistence; provides `runtime.adapter` |
-| `@elizaos/plugin-local-embedding` | `TEXT_EMBEDDING` handler | Local GGUF embedding model via node-llama-cpp |
+| `@elizaos/plugin-local-inference` | `TEXT_EMBEDDING` handler | Local GGUF embedding model via node-llama-cpp |
 | `@elizaos/plugin-form` | `FORM` | Structured conversational forms — FormService, form provider/evaluator, and restore action |
 | `knowledge` | Knowledge service | RAG knowledge indexing and retrieval |
 | `trajectories` | `trajectories` | Debug and RL training trajectory capture |

@@ -8,7 +8,7 @@
  * Flow:
  *
  *   1. Resolve which model the user wants: either an explicit phrase
- *      ("download qwen 7b") matched against MODEL_CATALOG.displayName via
+ *      ("download eliza 4b") matched against MODEL_CATALOG.displayName via
  *      a tiny token-overlap scorer, or — if no specific model named —
  *      the recommended tier from `recommendModelTier()`.
  *   2. Stream `curl -fL <url> -o <path>` and tail its stderr for the
@@ -58,7 +58,10 @@ export function resolveRequestedModel(
     let best: { model: CatalogModel; score: number } | null = null;
     for (const model of catalog) {
         if (model.category !== "chat") continue;
-        const nameTokens = new Set(normalize(model.displayName));
+        const nameTokens = new Set([
+            ...normalize(model.displayName),
+            ...normalize(model.id.replace(/[-_]/g, " ")),
+        ]);
         let shared = 0;
         for (const t of msgTokens) if (nameTokens.has(t)) shared++;
         if (shared === 0) continue;
@@ -257,7 +260,7 @@ export function buildActiveModelToml(absPath: string): string {
 /**
  * Resolve which model to download. If `userText` names a model, use it.
  * Otherwise fall back to the recommended tier for this host's RAM (with
- * a final fallback to `mid-7b` when /proc/meminfo can't be read).
+ * a final fallback to `eliza-1-2b` when /proc/meminfo can't be read).
  */
 function resolveTargetModel(userText: string): {
     model: CatalogModel;
@@ -270,11 +273,11 @@ function resolveTargetModel(userText: string): {
         return { model: pick.recommended, reason: "recommended" };
     } catch {
         // Hosts without /proc/meminfo (containers, mocked filesystems):
-        // pick the mid-tier as a sensible "bigger than the bundled 1B".
-        const fallback = MODEL_CATALOG.find((m) => m.id === "mid-7b");
+        // pick the recommended small Eliza-1 tier as a safe default.
+        const fallback = MODEL_CATALOG.find((m) => m.id === "eliza-1-2b");
         if (fallback === undefined) {
             // catalog mis-shape — re-throw via the next caller.
-            throw new Error("catalog missing mid-7b fallback");
+            throw new Error("catalog missing eliza-1-2b fallback");
         }
         return { model: fallback, reason: "fallback" };
     }
@@ -309,15 +312,15 @@ const EXAMPLES: ActionExample[][] = [
         {
             name: "Eliza",
             content: {
-                text: "Downloading Qwen3.5 9B DFlash (5.8 GB). I'll keep you posted.",
+                text: "Downloading eliza-1-9b (5.4 GB). I'll keep you posted.",
             },
         },
     ],
     [
-        { name: "{{user}}", content: { text: "download qwen 7b" } },
+        { name: "{{user}}", content: { text: "download eliza 4b" } },
         {
             name: "Eliza",
-            content: { text: "Downloading Qwen2.5 7B Instruct (4.7 GB)." },
+            content: { text: "Downloading eliza-1-4b (2.6 GB)." },
         },
     ],
     [
@@ -326,7 +329,7 @@ const EXAMPLES: ActionExample[][] = [
             name: "Eliza",
             content: {
                 text:
-                    "Downloaded Qwen3.5 9B DFlash (5.8 GB). I'll load it on the next restart.",
+                    "Downloaded eliza-1-9b (5.4 GB). I'll load it on the next restart.",
             },
         },
     ],
@@ -337,11 +340,11 @@ export const DOWNLOAD_MODEL_ACTION: Action = {
     similes: [
         "download a model",
         "get a better model",
-        "download qwen",
-        "download llama",
+        "download eliza",
+        "download eliza-1",
         "download model",
         "install model",
-        "install llama",
+        "install eliza",
         "give me a bigger model",
         "switch to a bigger model",
         "switch model",
@@ -353,7 +356,7 @@ export const DOWNLOAD_MODEL_ACTION: Action = {
     description:
         "Download a larger local LLM from HuggingFace and pin it as the default. " +
         "Used when the user says 'download a model', 'get a better model', " +
-        "'download qwen 7b', 'give me a bigger model', etc.",
+        "'download eliza 4b', 'give me a bigger model', etc.",
 
     validate: async () => true,
 
@@ -373,7 +376,8 @@ export const DOWNLOAD_MODEL_ACTION: Action = {
         const { model } = target;
 
         const url = buildHuggingFaceResolveUrl(model);
-        const destPath = join(modelsDir(), model.ggufFile);
+        const destFile = model.ggufFile.split("/").pop() ?? model.ggufFile;
+        const destPath = join(modelsDir(), destFile);
 
         if (existsSync(destPath) && opts.skipPersist !== true) {
             // Already downloaded — just pin it.

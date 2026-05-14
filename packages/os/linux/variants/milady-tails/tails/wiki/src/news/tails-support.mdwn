@@ -1,0 +1,53 @@
+[[!meta title="Tails user support mailing list"]]
+[[!meta date="Sat, 10 Aug 2013 10:42:51 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+After we closed off our forum in June, the Tails community was left
+without a public user support channel apart from IRC.
+
+Introducing tails-support@boum.org
+==================================
+
+To compensate this loss, we decided to create a new public mailing list
+for user support.
+
+This list is **the right place** for:
+
+  - **User support**: solving doubts about how to use Tails, security
+    implications of Tails, etc.
+  - **Community interaction**: information and tricks about ways of
+    using Tails that are not officially documented but might be of
+    interest to others.
+  - **Small issues**: pointing out small things that we needed to fix
+    and do not require a complete bug report.  That's fine and we
+    appreciate it.
+
+This list is **the wrong place** for:
+
+  - **Bug reports**: see the [[bug reporting
+    documentation|/doc/first_steps/whisperback]] instead.
+  - **Feature requests**: those should be done on the development
+    mailing list: [[tails-dev@boum.org|doc/about/contact#tails-dev]].
+  - **Computer security essays and conspiranoia** not directly related
+    to Tails.
+
+Some reasons behind this decision
+=================================
+
+Since 2012, we worked on replacing the old forum with a question and
+answer application. We hoped we could have a shared application with The
+Tor Project that was heading in the same direction. For many reasons
+this did not happen.
+
+To solve this we decided to:
+
+- Setup a support mailing list as a new public channel for user support
+  with the help of the Tails community.
+- Gather frequently asked questions from the forum and the list on our
+  website.
+- On the long-run, have Askbot into Debian and improve it with the
+  features we need.
+
+See the corresponding ticket: [[!tails_ticket 5984]].
+
+

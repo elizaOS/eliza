@@ -9,9 +9,10 @@ that bundles the training scripts so a fresh Vast.ai box can:
     bash scripts/train_vast.sh ...
 
 Companion to ``publish_dataset_to_hf.py`` (data) and
-``push_model_to_hf.py`` (trained checkpoints). Distinct from the legacy
-``push_pipeline_to_hf.py`` which targets the older
-``elizaos/eliza-1-pipeline`` repo and includes a wider tree.
+``publish.publish_eliza1_model_repo`` (trained bundles). The wave2 cleanup
+consolidated all three under ``scripts/publish/``: see
+``scripts/publish/publish_pipeline.py``, ``scripts/publish/publish_dataset.py``,
+and ``scripts/publish/publish_model.py``. Those wrappers forward here.
 
 Usage::
 
@@ -151,9 +152,8 @@ def build_pipeline_card(repo_id: str) -> str:
         "\n"
         "Companion repos:\n"
         "\n"
-        "- `elizaos/eliza-1-training` — SFT data (train/val/test).\n"
-        "- `elizaos/eliza-1-scambench` — adversarial scam set.\n"
-        "- `elizaos/eliza-1-synthesized` — small Claude-teacher synthesis sets.\n"
+        "- `elizaos/eliza-1-training` — SFT data: top-level `train/val/test.jsonl + manifest.json`, "
+        "adversarial scam set under `scambench/`, and small Claude-teacher synthesis sets under `synthesized/`.\n"
         "- `elizaos/eliza-1` — single app-facing model repo; GGUF bundles live under `bundles/<tier>/`.\n"
         "\n"
         "## Vast.ai bootstrap\n"

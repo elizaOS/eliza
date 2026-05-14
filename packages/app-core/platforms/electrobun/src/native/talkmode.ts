@@ -1,33 +1,19 @@
 /**
  * TalkMode Native Module for Electrobun
  *
- * Provides text-to-speech via ElevenLabs API (fetch-based, works in Bun)
- * and speech-to-text via Whisper (if available) or Web Speech API fallback.
+ * Provides text-to-speech via ElevenLabs API (fetch-based, works in Bun) or
+ * the platform's system voice (say / espeak / PowerShell). Speech-to-text is
+ * delegated to the renderer's Web Speech API: the native module forwards
+ * audio chunks back through `talkmode:audioChunkPush` instead of running a
+ * native ASR. The previous whisper.cpp pipeline has been removed (it
+ * vendored a second GGML and is not part of the local-inference contract);
+ * native ASR is delivered exclusively through the fused libelizainference
+ * build.
  */
 
-import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
 import type { TalkModeConfig, TalkModeState } from "../rpc-schema";
 import type { SendToWebview } from "../types.js";
 import { diagnosticLog } from "./agent";
-import {
-	isWhisperAvailable,
-	transcribeBunSpawn,
-	writeWavFile,
-} from "./whisper";
-
-const TALKMODE_SAMPLE_RATE = 16000;
-const FLOAT32_BYTES_PER_SAMPLE = 4;
-const TALKMODE_CHUNK_WINDOW_SECONDS = 1.25;
-const TALKMODE_MIN_FLUSH_SECONDS = 0.2;
-const TALKMODE_OVERLAP_RATIO = 0.5;
-const TALKMODE_AUDIO_BUFFER_THRESHOLD =
-	TALKMODE_SAMPLE_RATE *
-	TALKMODE_CHUNK_WINDOW_SECONDS *
-	FLOAT32_BYTES_PER_SAMPLE;
-const TALKMODE_MIN_FLUSH_BYTES =
-	TALKMODE_SAMPLE_RATE * TALKMODE_MIN_FLUSH_SECONDS * FLOAT32_BYTES_PER_SAMPLE;
 
 function talkmodeLog(message: string): void {
 	diagnosticLog(`[TalkMode] ${message}`);
@@ -38,13 +24,10 @@ export class TalkModeManager {
 	private state: TalkModeState = "idle";
 	private speaking = false;
 	private config: TalkModeConfig = {
-		engine: isWhisperAvailable() ? "whisper" : "web",
+		engine: "web",
 		modelSize: "base",
 		language: "en",
 	};
-	private _audioBuffer: Buffer[] = [];
-	private _audioBufferSize = 0;
-	private _processing = false;
 	/** In-flight system TTS process — killed by stopSpeaking(). */
 	private _speakProc: ReturnType<typeof Bun.spawn> | null = null;
 	/** AbortController for in-flight ElevenLabs fetch — aborted by stopSpeaking(). */
@@ -59,42 +42,21 @@ export class TalkModeManager {
 		this.sendToWebview?.("talkmodeStateChanged", { state: newState });
 	}
 
-	private async _waitForProcessing(): Promise<void> {
-		while (this._processing) {
-			await new Promise((resolve) => setTimeout(resolve, 10));
-		}
-	}
-
 	async start() {
-		const whisperOk = isWhisperAvailable();
-		if (!whisperOk && this.config.engine === "whisper") {
-			this.config.engine = "web";
-		}
-
 		talkmodeLog(
-			`start platform=${process.platform} whisper=${whisperOk} engine=${this.config.engine}`,
+			`start platform=${process.platform} engine=${this.config.engine ?? "web"}`,
 		);
 		this.setState("listening");
 		return {
 			available: true,
-			reason: whisperOk
-				? undefined
-				: "Using Web Speech API (Whisper unavailable in Bun)",
+			reason: "Using Web Speech API for STT (native whisper pipeline removed)",
 		};
 	}
 
 	async stop(): Promise<void> {
-		talkmodeLog(
-			`stop state=${this.state} bufferedBytes=${this._audioBufferSize} processing=${this._processing}`,
-		);
-		await this._waitForProcessing();
-		if (this._audioBufferSize >= TALKMODE_MIN_FLUSH_BYTES) {
-			await this._processBuffer({ flush: true });
-		}
+		talkmodeLog(`stop state=${this.state}`);
 		this.setState("idle");
 		this.speaking = false;
-		this._audioBuffer = [];
-		this._audioBufferSize = 0;
 	}
 
 	async speak(options: {
@@ -277,23 +239,6 @@ export class TalkModeManager {
 		return { speaking: this.speaking };
 	}
 
-	async getWhisperInfo() {
-		const available = isWhisperAvailable();
-		talkmodeLog(
-			`getWhisperInfo available=${available} modelSize=${this.config.modelSize}`,
-		);
-		return {
-			available,
-			modelSize: this.config.modelSize,
-		};
-	}
-
-	async isWhisperAvailableCheck() {
-		const available = isWhisperAvailable();
-		talkmodeLog(`isWhisperAvailable ${available}`);
-		return { available };
-	}
-
 	async updateConfig(config: TalkModeConfig): Promise<void> {
 		Object.assign(this.config, config);
 		talkmodeLog(
@@ -302,131 +247,17 @@ export class TalkModeManager {
 	}
 
 	async audioChunk(options: { data: string }): Promise<void> {
-		// Only process audio when actively listening or speaking (not idle/error)
-		if (this.state !== "listening" && this.state !== "speaking") {
-			talkmodeLog(`audioChunk ignored state=${this.state}`);
+		// Only forward audio while listening — Web Speech API in the renderer
+		// drives recognition; the native whisper.cpp pipeline has been removed.
+		if (this.state !== "listening") {
 			return;
 		}
-
-		// Decode base64 Float32 PCM and accumulate
-		const chunkBuffer = Buffer.from(options.data, "base64");
-		const previousBufferSize = this._audioBufferSize;
-		this._audioBuffer.push(chunkBuffer);
-		this._audioBufferSize += chunkBuffer.length;
-		if (previousBufferSize === 0) {
-			talkmodeLog(`audioChunk stream-start bytes=${chunkBuffer.length}`);
-		}
-
-		// Process in smaller rolling windows so text lands in the composer quickly.
-		if (
-			this._audioBufferSize >= TALKMODE_AUDIO_BUFFER_THRESHOLD &&
-			!this._processing
-		) {
-			talkmodeLog(
-				`audioChunk process-threshold bufferedBytes=${this._audioBufferSize}`,
-			);
-			await this._processBuffer();
-		}
-	}
-
-	private async _processBuffer(options?: { flush?: boolean }): Promise<void> {
-		if (this._processing || this._audioBuffer.length === 0) return;
-		this._processing = true;
-		const flush = options?.flush === true;
-
-		// Keep trailing overlap while streaming so we do not clip phrase boundaries.
-		const allBuffers = [...this._audioBuffer];
-		const combined = Buffer.concat(allBuffers);
-		if (!flush) {
-			const overlapBytes = Math.min(
-				Math.floor(combined.byteLength * TALKMODE_OVERLAP_RATIO),
-				combined.byteLength,
-			);
-			if (overlapBytes > 0) {
-				const overlapBuffer = combined.subarray(
-					combined.byteLength - overlapBytes,
-				);
-				this._audioBuffer = [Buffer.from(overlapBuffer)];
-				this._audioBufferSize = overlapBytes;
-			} else {
-				this._audioBuffer = [];
-				this._audioBufferSize = 0;
-			}
-		} else {
-			this._audioBuffer = [];
-			this._audioBufferSize = 0;
-		}
-
-		try {
-			talkmodeLog(
-				`_processBuffer begin flush=${flush} bufferedBytes=${combined.byteLength}`,
-			);
-			// Safe Float32 conversion - avoids alignment issues from Buffer pool offsets.
-			const numSamples = combined.byteLength >>> 2; // divide by 4
-			const float32 = new Float32Array(numSamples);
-			const dv = new DataView(
-				combined.buffer,
-				combined.byteOffset,
-				combined.byteLength,
-			);
-			for (let i = 0; i < numSamples; i++) {
-				float32[i] = dv.getFloat32(i * 4, true); // little-endian
-			}
-
-			// Write to temp WAV file
-			const tmpPath = path.join(
-				os.tmpdir(),
-				`elizaos-talkmode-${Date.now()}.wav`,
-			);
-			writeWavFile(tmpPath, float32, 16000, 1);
-
-			// Transcribe
-			const result = await transcribeBunSpawn(tmpPath);
-
-			// Clean up temp file
-			try {
-				fs.unlinkSync(tmpPath);
-			} catch {}
-
-			if (!result?.text?.trim()) {
-				talkmodeLog(`transcribe empty flush=${flush}`);
-				return;
-			}
-
-			talkmodeLog(
-				`transcribe success chars=${result.text.trim().length} segments=${result.segments.length} flush=${flush}`,
-			);
-
-			// Emit transcript to renderer
-			this.sendToWebview?.("talkmodeTranscript", {
-				text: result.text,
-				segments: result.segments.map((s) => ({
-					text: s.text,
-					start: s.start,
-					end: s.end,
-				})),
-				isFinal: flush,
-			});
-		} catch (err) {
-			talkmodeLog(
-				`_processBuffer error ${err instanceof Error ? err.message : String(err)}`,
-			);
-			this.sendToWebview?.("talkmodeError", {
-				code: "transcription_failed",
-				message: err instanceof Error ? err.message : String(err),
-				recoverable: true,
-			});
-			console.error("[TalkMode] _processBuffer error:", err);
-		} finally {
-			this._processing = false;
-		}
+		this.sendToWebview?.("talkmodeAudioChunkPush", { data: options.data });
 	}
 
 	dispose(): void {
 		this.speaking = false;
 		this.state = "idle";
-		this._audioBuffer = [];
-		this._audioBufferSize = 0;
 		this.sendToWebview = null;
 	}
 }

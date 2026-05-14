@@ -1,0 +1,16 @@
+{
+  "gate": "failover_kill",
+  "status": "fail",
+  "completedAt": "2026-05-14T01:21:35.138Z",
+  "killedNode": "36201983",
+  "fallbackNode": null,
+  "primaryBaseUrl": "http://ssh3.vast.ai:11983",
+  "fallbackBaseUrl": null,
+  "distinctFallbackNode": false,
+  "readinessFlipped": false,
+  "trafficMoved": false,
+  "primaryBeforeStatus": null,
+  "primaryAfterStatus": null,
+  "fallbackAfterStatus": null,
+  "summary": "failover requires --failover-fallback-url, --failover-fallback-node, and --failover-kill-command"
+}

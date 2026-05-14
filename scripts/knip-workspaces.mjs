@@ -8,6 +8,32 @@ const ROOT = resolve(import.meta.dirname, "..");
 const ROOT_KNIP_CONFIG = existsSync(join(ROOT, "knip.json"))
   ? "knip.json"
   : null;
+const DIRECTORY_SCOPED_WORKSPACES = new Set([
+  "cloud/packages/sdk",
+  "packages/app-core",
+  "packages/app-core/deploy/cloud-agent-template",
+  "packages/app-core/platforms/electrobun",
+  "packages/core",
+  "packages/examples/farcaster-miniapp",
+]);
+
+function normalizePathForCli(path) {
+  return path.replace(/\\/g, "/");
+}
+
+function getConfigArgs(pkg, isDirectoryScoped) {
+  if (!ROOT_KNIP_CONFIG) return [];
+
+  if (isDirectoryScoped) {
+    return [
+      "--config",
+      normalizePathForCli(relative(pkg.dir, join(ROOT, ROOT_KNIP_CONFIG))),
+    ];
+  }
+
+  return ["--config", ROOT_KNIP_CONFIG];
+}
+
 function usage() {
   console.log(`Usage: node scripts/knip-workspaces.mjs [options] [-- knip args]
 
@@ -292,9 +318,14 @@ console.log(
 
 for (let index = 0; index < packages.length; index += 1) {
   const pkg = packages[index];
+  const isDirectoryScoped = DIRECTORY_SCOPED_WORKSPACES.has(pkg.path);
   const scopeArgs =
-    pkg.path === "." ? ["--directory", "."] : ["--workspace", pkg.path];
-  const configArgs = ROOT_KNIP_CONFIG ? ["--config", ROOT_KNIP_CONFIG] : [];
+    pkg.path === "."
+      ? ["--directory", "."]
+      : isDirectoryScoped
+        ? ["--directory", pkg.path]
+        : ["--workspace", pkg.path];
+  const configArgs = getConfigArgs(pkg, isDirectoryScoped);
   const args = [
     ...prefixArgs,
     ...configArgs,

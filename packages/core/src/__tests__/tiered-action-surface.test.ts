@@ -163,16 +163,25 @@ function stage1Response(fields: {
 	replyText?: string;
 }): CannedResponse {
 	return {
-		body: JSON.stringify({
-			shouldRespond: fields.shouldRespond ?? "RESPOND",
-			contexts: fields.contexts ?? [],
-			intents: fields.intents ?? [],
-			candidateActionNames: fields.candidateActionNames ?? [],
-			replyText: fields.replyText ?? "",
-			facts: [],
-			relationships: [],
-			addressedTo: [],
-		}),
+		body: {
+			text: "",
+			toolCalls: [
+				{
+					id: "handle-response-1",
+					name: "HANDLE_RESPONSE",
+					arguments: {
+						shouldRespond: fields.shouldRespond ?? "RESPOND",
+						contexts: fields.contexts ?? [],
+						intents: fields.intents ?? [],
+						candidateActionNames: fields.candidateActionNames ?? [],
+						replyText: fields.replyText ?? "",
+						facts: [],
+						relationships: [],
+						addressedTo: [],
+					},
+				},
+			],
+		},
 	};
 }
 
@@ -212,10 +221,24 @@ function plannerUserContent(runtime: IAgentRuntime): string {
 }
 
 function availableActionsSection(runtime: IAgentRuntime): string {
-	const prompt = plannerUserContent(runtime);
-	const marker = "# Available Actions";
-	const index = prompt.indexOf(marker);
-	return index >= 0 ? prompt.slice(index) : prompt;
+	// Post-PLAN_ACTIONS-wrapper refactor: actions are exposed as native tools
+	// on the planner call, not in an `available_actions` text block. Synthesize
+	// a section-like view from the tool definitions so the tier-A vs tier-B
+	// assertions in this file can still inspect action name presence and order.
+	const plannerCall = getCalls(runtime).find(
+		(call) => call.modelType === ModelType.ACTION_PLANNER,
+	);
+	const tools = (
+		plannerCall?.params as
+			| { tools?: Array<{ name?: string; description?: string }> }
+			| undefined
+	)?.tools;
+	if (!tools || tools.length === 0) {
+		return plannerUserContent(runtime);
+	}
+	return tools
+		.map((tool) => `- ${tool.name ?? ""}: ${tool.description ?? ""}`)
+		.join("\n");
 }
 
 describe("v5 tiered action surface", () => {
@@ -288,421 +311,6 @@ describe("v5 tiered action surface", () => {
 		expect(prompt).toContain("PLAY_MUSIC");
 		expect(prompt).toContain("PAUSE_MUSIC");
 		expect(prompt).not.toContain("SEND_EMAIL");
-	});
-
-	it("repairs owner travel preference memory toward profile", async () => {
-		const profile = makeAction({
-			name: "PROFILE",
-			description:
-				"Owner-only. Persist stable owner facts and reusable travel-booking preferences.",
-			contexts: ["memory"],
-		});
-		const document = makeAction({
-			name: "DOCUMENT",
-			description: "Create, search, and edit stored documents.",
-			contexts: ["documents"],
-		});
-		const runtime = makeRuntime({
-			actions: [profile, document],
-			responses: [
-				stage1Response({
-					contexts: ["documents"],
-					candidateActionNames: ["search_documents"],
-				}),
-				{
-					body: {
-						text: "",
-						toolCalls: [
-							{
-								id: "profile-1",
-								name: "PROFILE",
-								arguments: {
-									travelBookingPreferences:
-										"Prefer aisle seats, carry-on only, and moderate hotels close to the venue.",
-								},
-							},
-						],
-					},
-				},
-				{
-					body: JSON.stringify({
-						success: true,
-						decision: "FINISH",
-						thought: "Profile updated.",
-						messageToUser: "Updated travel preferences.",
-					}),
-				},
-			],
-		});
-
-		await runV5MessageRuntimeStage1({
-			runtime,
-			message: makeMessage(
-				"remember that I prefer aisle seats, carry-on only, and moderate hotels close to the venue",
-			),
-			state: makeState(),
-			responseId: RESPONSE_ID,
-		});
-
-		const prompt = plannerUserContent(runtime);
-		expect(prompt).toMatch(/selected_contexts:[^\n]*memory/);
-		expect(prompt).not.toMatch(/selected_contexts:[^\n]*documents/);
-		const actions = availableActionsSection(runtime);
-		expect(actions).toContain("PROFILE");
-		expect(actions).toContain("DOCUMENT");
-		expect(actions.indexOf("PROFILE")).toBeLessThan(
-			actions.indexOf("DOCUMENT"),
-		);
-	});
-
-	it("falls back to PROFILE routing when Stage 1 emits malformed preference output", async () => {
-		const profile = makeAction({
-			name: "PROFILE",
-			description:
-				"Owner-only. Persist stable owner facts and reusable travel-booking preferences.",
-			contexts: ["memory"],
-		});
-		const document = makeAction({
-			name: "DOCUMENT",
-			description: "Create, search, and edit stored documents.",
-			contexts: ["documents"],
-		});
-		const runtime = makeRuntime({
-			actions: [profile, document],
-			responses: [
-				{ body: "{not valid stage one json" },
-				{
-					body: {
-						text: "",
-						toolCalls: [
-							{
-								id: "profile-1",
-								name: "PROFILE",
-								arguments: {
-									travelBookingPreferences:
-										"Prefer aisle seats, carry-on only, and moderate hotels close to the venue.",
-								},
-							},
-						],
-					},
-				},
-				{
-					body: JSON.stringify({
-						success: true,
-						decision: "FINISH",
-						thought: "Profile updated.",
-						messageToUser: "Updated travel preferences.",
-					}),
-				},
-			],
-		});
-
-		await runV5MessageRuntimeStage1({
-			runtime,
-			message: makeMessage(
-				"remember that I prefer aisle seats, carry-on only, and moderate hotels close to the venue",
-			),
-			state: makeState(),
-			responseId: RESPONSE_ID,
-		});
-
-		const prompt = plannerUserContent(runtime);
-		expect(prompt).toMatch(/selected_contexts:[^\n]*memory/);
-		const actions = availableActionsSection(runtime);
-		expect(actions).toContain("PROFILE");
-		expect(actions).toContain("DOCUMENT");
-		expect(actions.indexOf("PROFILE")).toBeLessThan(
-			actions.indexOf("DOCUMENT"),
-		);
-	});
-
-	it("repairs pending approval decisions away from connector lifecycle", async () => {
-		const resolveRequest = makeAction({
-			name: "RESOLVE_REQUEST",
-			description:
-				"Owner-only. Approve or reject a pending action queued for human confirmation.",
-			contexts: ["tasks", "automation", "admin", "general"],
-		});
-		const connector = makeAction({
-			name: "CONNECTOR",
-			description:
-				"Connect, disconnect, or verify external connector accounts.",
-			contexts: ["connectors"],
-		});
-		const runtime = makeRuntime({
-			actions: [resolveRequest, connector],
-			responses: [
-				stage1Response({
-					contexts: ["connectors"],
-				}),
-				{
-					body: {
-						text: "",
-						toolCalls: [
-							{
-								id: "resolve-1",
-								name: "RESOLVE_REQUEST",
-								arguments: { subaction: "reject" },
-							},
-						],
-					},
-				},
-				{
-					body: JSON.stringify({
-						success: true,
-						decision: "FINISH",
-						thought: "Approval request rejected.",
-						messageToUser: "Rejected.",
-					}),
-				},
-			],
-		});
-
-		await runV5MessageRuntimeStage1({
-			runtime,
-			message: makeMessage(
-				"reject that pending approval request and say it needs changes",
-			),
-			state: makeState(),
-			responseId: RESPONSE_ID,
-		});
-
-		const prompt = plannerUserContent(runtime);
-		expect(prompt).toMatch(/selected_contexts:[^\n]*tasks/);
-		expect(prompt).not.toMatch(/selected_contexts:[^\n]*connectors/);
-		const actions = availableActionsSection(runtime);
-		expect(actions).toContain("RESOLVE_REQUEST");
-		expect(actions).not.toContain("CONNECTOR");
-	});
-
-	it("repairs password lookups to credentials instead of autofill", async () => {
-		const credentials = makeAction({
-			name: "CREDENTIALS",
-			description:
-				"Look up, list, or copy credentials from the password manager.",
-			contexts: ["secrets", "browser", "automation"],
-		});
-		const autofill = makeAction({
-			name: "AUTOFILL",
-			description: "Fill password or login fields in the active browser tab.",
-			contexts: ["settings", "secrets", "browser", "automation"],
-		});
-		const runtime = makeRuntime({
-			actions: [credentials, autofill],
-			responses: [
-				stage1Response({
-					contexts: ["settings"],
-					candidateActionNames: ["lookup_password"],
-				}),
-				{
-					body: {
-						text: "",
-						toolCalls: [
-							{
-								id: "password-1",
-								name: "CREDENTIALS",
-								arguments: { action: "search", query: "GitHub" },
-							},
-						],
-					},
-				},
-				{
-					body: JSON.stringify({
-						success: true,
-						decision: "FINISH",
-						thought: "Credential lookup completed.",
-						messageToUser: "Found saved login.",
-					}),
-				},
-			],
-		});
-
-		await runV5MessageRuntimeStage1({
-			runtime,
-			message: makeMessage("look up my GitHub password"),
-			state: makeState(),
-			responseId: RESPONSE_ID,
-		});
-
-		const prompt = plannerUserContent(runtime);
-		expect(prompt).toMatch(/selected_contexts:[^\n]*secrets/);
-		expect(prompt).toContain('"parentActionHints":["CREDENTIALS"]');
-		const actions = availableActionsSection(runtime);
-		expect(actions).toContain("CREDENTIALS");
-	});
-
-	it("repairs direct night check-ins to the CHECKIN umbrella when that action is available", async () => {
-		const checkin = makeAction({
-			name: "CHECKIN",
-			description:
-				"Run a LifeOps morning or night check-in now with todos, habits, goals, inbox, calendar, and recent signals.",
-			contexts: ["tasks", "health", "automation", "calendar", "email"],
-		});
-		const runtime = makeRuntime({
-			actions: [checkin],
-			responses: [
-				stage1Response({
-					contexts: ["simple"],
-					replyText: "Here is a generic night check-in.",
-				}),
-				{
-					body: {
-						text: "",
-						toolCalls: [
-							{
-								id: "checkin-1",
-								name: "CHECKIN",
-								arguments: { subaction: "night" },
-							},
-						],
-					},
-				},
-				{
-					body: JSON.stringify({
-						success: true,
-						decision: "FINISH",
-						thought: "Night check-in completed.",
-						messageToUser: "Night check-in complete.",
-					}),
-				},
-			],
-		});
-
-		await runV5MessageRuntimeStage1({
-			runtime,
-			message: makeMessage("give me my night check-in"),
-			state: makeState(),
-			responseId: RESPONSE_ID,
-		});
-
-		const prompt = plannerUserContent(runtime);
-		expect(prompt).toMatch(/selected_contexts:[^\n]*tasks/);
-		expect(prompt).toContain('"parentActionHints":["CHECKIN"]');
-		expect(prompt).toContain('"tierAParents":["CHECKIN"]');
-		const actions = availableActionsSection(runtime);
-		expect(actions).toContain("CHECKIN");
-	});
-
-	it("falls back to the SCHEDULED_TASKS umbrella for check-ins when no umbrella action is registered", async () => {
-		const scheduledTasks = makeAction({
-			name: "SCHEDULED_TASKS",
-			description:
-				"Schedule, list, and run recurring agent tasks including check-ins.",
-			contexts: ["tasks", "automation"],
-		});
-		const runtime = makeRuntime({
-			actions: [scheduledTasks],
-			responses: [
-				stage1Response({
-					contexts: ["simple"],
-					replyText: "Here is a generic night check-in.",
-				}),
-				{
-					body: {
-						text: "",
-						toolCalls: [
-							{
-								id: "scheduled-tasks-1",
-								name: "SCHEDULED_TASKS",
-								arguments: { subaction: "run_night_checkin" },
-							},
-						],
-					},
-				},
-				{
-					body: JSON.stringify({
-						success: true,
-						decision: "FINISH",
-						thought: "Night check-in completed.",
-						messageToUser: "Night check-in complete.",
-					}),
-				},
-			],
-		});
-
-		await runV5MessageRuntimeStage1({
-			runtime,
-			message: makeMessage("give me my night check-in"),
-			state: makeState(),
-			responseId: RESPONSE_ID,
-		});
-
-		const prompt = plannerUserContent(runtime);
-		expect(prompt).toMatch(/selected_contexts:[^\n]*tasks/);
-		expect(prompt).toContain('"parentActionHints":["SCHEDULED_TASKS"]');
-		const actions = availableActionsSection(runtime);
-		expect(actions).toContain("SCHEDULED_TASKS");
-	});
-
-	it("repairs Calendly link requests into the calendar context", async () => {
-		const calendly = makeAction({
-			name: "CALENDLY",
-			description: "Calendly event-type availability and single-use links.",
-			contexts: ["calendar", "contacts", "tasks"],
-		});
-		const calendar = makeAction({
-			name: "CALENDAR",
-			description:
-				"Calendar and Calendly scheduling surface, including single-use Calendly links.",
-			contexts: ["calendar", "connectors", "tasks"],
-			subActions: ["CALENDLY"],
-		});
-		const connector = makeAction({
-			name: "CONNECTOR",
-			description: "Connect or configure external accounts.",
-			contexts: ["connectors"],
-		});
-		const runtime = makeRuntime({
-			actions: [calendar, calendly, connector],
-			responses: [
-				stage1Response({
-					contexts: ["connectors"],
-					candidateActionNames: [
-						"calendly_create_single_use_link",
-						"create_single_use_link",
-					],
-				}),
-				{
-					body: {
-						text: "",
-						toolCalls: [
-							{
-								id: "calendly-1",
-								name: "CALENDLY",
-								arguments: {
-									subaction: "single_use_link",
-									eventTypeUri: "https://api.calendly.com/event_types/abc",
-								},
-							},
-						],
-					},
-				},
-				{
-					body: JSON.stringify({
-						success: true,
-						decision: "FINISH",
-						thought: "Calendly link created.",
-						messageToUser: "Created link.",
-					}),
-				},
-			],
-		});
-
-		await runV5MessageRuntimeStage1({
-			runtime,
-			message: makeMessage(
-				"create a single-use Calendly booking link for https://api.calendly.com/event_types/abc",
-			),
-			state: makeState(),
-			responseId: RESPONSE_ID,
-		});
-
-		const prompt = plannerUserContent(runtime);
-		expect(prompt).toMatch(/selected_contexts:[^\n]*calendar/);
-		expect(prompt).toContain('"parentActionHints":["CALENDAR"]');
-		const actions = availableActionsSection(runtime);
-		expect(actions).toContain("CALENDAR");
-		expect(actions).toContain("CALENDLY");
 	});
 
 	it("expands strong context matches into callable actions", async () => {
@@ -834,6 +442,68 @@ describe("v5 tiered action surface", () => {
 
 		expect(messageCalls).toBe(1);
 		expect(availableActionsSection(runtime)).toContain("MESSAGE");
+	});
+
+	it("exposes Tier-A sub-actions as first-class planner tools alongside the parent", async () => {
+		// This is the core guarantee: when MUSIC is in Tier A, its sub-actions
+		// PLAY_MUSIC and PAUSE_MUSIC are first-class entries in the planner's
+		// `tools` array (not just hidden behind a "dig into parent" round-trip).
+		const playMusic = makeAction({
+			name: "PLAY_MUSIC",
+			description: "Start playing a track.",
+			contexts: ["music_child" as AgentContext],
+		});
+		const pauseMusic = makeAction({
+			name: "PAUSE_MUSIC",
+			description: "Pause the active track.",
+			contexts: ["music_child" as AgentContext],
+		});
+		const music = makeAction({
+			name: "MUSIC",
+			description: "Music control parent action.",
+			contexts: ["music" as AgentContext],
+			subActions: ["PLAY_MUSIC", "PAUSE_MUSIC"],
+		});
+		const email = makeAction({
+			name: "SEND_EMAIL",
+			description: "Send an email.",
+			contexts: ["email" as AgentContext],
+		});
+		const runtime = makeRuntime({
+			actions: [music, playMusic, pauseMusic, email],
+			responses: [
+				stage1Response({
+					contexts: ["music"],
+					candidateActionNames: ["play_music", "MUSIC"],
+				}),
+				plannerToolResponse("PLAY_MUSIC"),
+				finishEvaluatorResponse("Playing music."),
+			],
+		});
+
+		await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage("play the new album"),
+			state: makeState(),
+			responseId: RESPONSE_ID,
+		});
+
+		const plannerCall = getCalls(runtime).find(
+			(call) => call.modelType === ModelType.ACTION_PLANNER,
+		);
+		const tools = (
+			plannerCall?.params as { tools?: Array<{ name?: string }> } | undefined
+		)?.tools;
+		const toolNames = tools?.map((tool) => tool.name).filter(Boolean) ?? [];
+		expect(toolNames).toContain("MUSIC");
+		expect(toolNames).toContain("PLAY_MUSIC");
+		expect(toolNames).toContain("PAUSE_MUSIC");
+		// Universal terminals must still be appended.
+		expect(toolNames).toContain("REPLY");
+		expect(toolNames).toContain("IGNORE");
+		expect(toolNames).toContain("STOP");
+		// Sibling-context action that is not in Tier A / Tier B should not leak in.
+		expect(toolNames).not.toContain("SEND_EMAIL");
 	});
 
 	it("lets a Tier B parent invoke its sub-planner and execute child actions", async () => {

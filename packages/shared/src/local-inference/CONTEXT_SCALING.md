@@ -193,14 +193,13 @@ already cost ~0.6-0.7 GiB of KV, not 3.5 GiB. Nothing to change — but the doc
 above is the justification, and the memory-aware selector (above) must keep
 using `qjl+polarq4` as the assumed layout, not f16.
 
-### MEDIUM — add `eliza-1-4b` to `catalog.ts`
+### RESOLVED — `eliza-1-4b` is in `catalog.ts`
 
 `model_registry.py` has a real, buildable `qwen3.5-4b` → `eliza-1-4b` entry; the
-catalog jumps 2B → 9B. The 4B fits an 8 GB phone (compressed cache, ~155k
-ceiling — though the base model caps at 40960) and is a strong 16 GB-GPU
-default (~436k KV ceiling, ~90k even at f16). Once the GGUF is published under
-`elizaos/eliza-1/bundles/4b`, add the tier with `contextLength: 32768`, `minRamGb: 6`,
-`bucket: "small"`. (Out of scope here — no GGUF yet.)
+catalog now includes the 4B tier at `elizaos/eliza-1/bundles/4b`. The 4B fits
+an 8 GB phone when the compressed cache path is available (compressed cache,
+~155k ceiling, though the base model caps at 40960) and is a strong 16 GB-GPU
+default (~436k KV ceiling, ~90k even at f16).
 
 ### MEDIUM — `27b-256k` could surface on 24 GB GPUs
 
@@ -321,11 +320,10 @@ error) stays — a slow voice session is worse than a clear "this device can't d
   compressed-cache default (`kvCacheForContext` → `qjl1_256` + `q4_polar` for
   context > 8k) already applies to every tier. There is no obviously-too-
   conservative number to bump without a RoPE-extended GGUF behind it.
-- **Recommended (follow-up work, not done here):** (1) a memory-aware *context*
+- **Recommended:** (1) a memory-aware *context*
   selector in `recommendation.ts` that raises runtime `dflash.contextSize`
   toward `min(tier.contextLength, baseNativeContext, maxFittingContext)` using
-  the `estimateQuantizedKvBytesPerToken` figures; (2) add `eliza-1-4b` to the
-  catalog once `elizaos/eliza-1/bundles/4b` ships a GGUF; (3) an opt-in
+  the `estimateQuantizedKvBytesPerToken` figures; (2) an opt-in
   `preferAccurateKvWhenHeadroom` branch that picks f16/q8_0 KV on hosts with
-  abundant VRAM relative to the chosen model+context; (4) consider surfacing
+  abundant VRAM relative to the chosen model+context; (3) consider surfacing
   `27b-256k` on 24 GB GPUs (gated on a passing on-device spill-latency verify).

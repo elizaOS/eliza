@@ -1,0 +1,134 @@
+[[!meta title="Tails report for July, 2020"]]
+[[!meta date="Mon, 10 Aug 2020 12:34:56 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!toc]]
+
+Releases
+========
+
+* [[Tails 4.9 was released on June 28|news/version_4.9]].
+
+* Tails 4.10 is [[scheduled for August 25|contribute/calendar]].
+
+Code
+====
+
+- Prepared upgrade to tor 0.4.3.6 ([[!tails_ticket 17835]])
+- Researched how to cope with the fact Electrum
+  is not installable on Buster anymore ([[!tails_ticket 17828]])
+- Improved robustness of our automated test suite
+- Documented some internal processes ([[!tails_ticket 17571]], [[!tails_ticket 17772]])
+
+Documentation and website
+=========================
+
+- We documented [[how to use USB
+  tethering|doc/anonymous_internet/networkmanager#no-wifi]] when Wi-Fi doesn't
+  work in Tails. ([[!tails_ticket 16987]])
+
+- We improved our [[FAQ on VPN|support/faq#vpn]]. ([[!tails_ticket 9145]])
+
+User experience
+===============
+
+- Launched a user survey about ease of use, online privacy tools, OpenPGP, and
+  Pidgin. ([[!tails_ticket 17821]])
+
+  We got more than 600 responses so far. Thanks a lot to everybody who
+  participated!
+
+Hot topics on our help desk
+===========================
+
+We started the month with Tails 4.8 and many users wrote to us because of problems with the Tails Welcome Screen:
+
+1. They had issues with [[!tails_ticket 17792 desc="administration passwords that had special characters"]].
+
+1. They could not access their persistent storage because [[!tails_ticket 17794 desc="changing the language on the Welcome Screen didn't change the keyboard layout"]] as usual, although it claimed to do it.
+
+These two issues were very upsetting for the users, although had easy workarounds. They are fixed in Tails 4.9 (Apologies!), but in the same time the kernel upgrade brought new issues (Re: Apologies!):
+
+1. A lot of people reported the starting Tails was impossible since the upgrade to Tails 4.9 with their Intel Corporation [8086:22b0] [[!tails_ticket 16447#note_153909 desc="GPU"]].
+
+1. Some people reported that their Wi-Fi adapter [[!tails_ticket 17786#note_152948 desc="was not working anymore"]].
+
+Infrastructure
+==============
+
+- Put our [translation platform](https://translate.tails.net/).
+  back in sync' with Git
+- Updated our Jenkins and its plugins ([[!tails_gitlab tails/sysadmin/-/issues/16955]])
+- Improved our monitoring of download mirrors
+- Ported detection of stalled issues/MRs to GitLab ([[!tails_mr 110]])
+
+Funding
+=======
+
+- Our proposal to OTF on anti-censorship was paused due to their budget
+  problems.
+
+- Our joint proposal with Tor to DRL was declined but invited to submit again
+  next year.
+
+- We applied to the Mecenat Code
+  Lutins to
+  work on usability improvements.
+
+- We added Wordable and Exam Success as sponsors.
+
+- We coded some A/B testing to measure the impact of a design change on our
+  one-time and monthly donations buttons. ([[!tails_gitweb_commit 52a2d90a42]])
+
+- We made plans to improve our donation process.
+
+- We published our income statement for
+  2019.
+
+Outreach
+========
+
+Past events
+-----------
+
+- Mexico City hackerspace **Rancho Electrónico** did a series of three virtual Tails workshops on July 14 - 21 and August 4 as part of their AutoDefensa Digital sessions.
+
+Translations
+============
+
+## All the website
+
+  - fr: 82% (5350) strings translated, 8% strings fuzzy
+  - es: 46% (3030) strings translated, 8% strings fuzzy
+  - de: 30% (1966) strings translated, 13% strings fuzzy
+  - it: 27% (1795) strings translated, 10% strings fuzzy
+  - fa: 22% (1468) strings translated, 13% strings fuzzy
+  - pt: 21% (1401) strings translated, 9% strings fuzzy
+
+## [[Core pages of the website|contribute/l10n_tricks/core_po_files.txt]]
+
+  - fr: 80% (1678) strings translated, 11% strings fuzzy
+  - es: 75% (1565) strings translated, 11% strings fuzzy
+  - it: 49% (1031) strings translated, 21% strings fuzzy
+  - de: 49% (1025) strings translated, 22% strings fuzzy
+  - pt: 39% (812) strings translated, 14% strings fuzzy
+  - fa: 19% (414) strings translated, 15% strings fuzzy
+
+## Core pages of the website for languages not activated on the website yet
+
+  - zh_TW: 25% (447) strings translated, 12% strings fuzzy
+  - zh: 12% (224) strings translated, 6% strings fuzzy
+  - ru: 8% (160) strings translated, 5% strings fuzzy
+  - pl: 8% (149) strings translated, 4% strings fuzzy
+  - tr: 8% (148) strings translated, 4% strings fuzzy
+  - ar: 7% (132) strings translated, 5% strings fuzzy
+  - ca: 7% (131) strings translated, 5% strings fuzzy
+  - id: 5% (99) strings translated, 3% strings fuzzy
+  - sr_Latn: 4% (80) strings translated, 2% strings fuzzy
+
+Metrics
+=======
+
+* Tails has been started more than 951&#8239;736 times this month. This makes
+  30&#8239;701 boots a day on average.
+

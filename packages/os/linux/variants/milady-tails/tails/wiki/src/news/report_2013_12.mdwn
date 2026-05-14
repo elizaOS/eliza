@@ -1,0 +1,211 @@
+[[!meta title="Tails report for December, 2013"]]
+[[!meta date="Fri, 10 Jan 2014 09:24:25 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+Releases
+========
+
+Tails 0.22 was released on December 11.
+
+Tails 0.22.1 is scheduled for January 21. The schedule for the next
+releases is on our [[contribute/calendar]].
+
+Metrics
+=======
+
+- Tails has been started more than 218 512 times in December.
+  This make 7 049 boots a day in average.
+- 17 791 downloads of the OpenPGP signature of Tails ISO.
+- 103 reports were received through WhisperBack.
+
+Code
+====
+
+New features:
+
+- Huge progress was made on the
+  MAC spoofing feature, that [[can now be
+  tested|news/spoof-mac]] ([[!tails_ticket 5421]]).
+- Experimental UEFI support was completed and is been tested. A bit
+  more work [[!tails_ticket 5739 desc="is needed"]], though.
+- The last mile was basically
+  completed
+  regarding incremental upgrades, that will be enabled by default
+  starting with Tails 0.22.1 ([[!tails_ticket 6014]]).
+
+Work in progress:
+
+- David Wolinsky has started
+  porting
+  the WiNoN design to Tails: multiple, independent VMs connected to
+  independent paths through the Tor network in order to wear multiple
+  hats. Also, as David put it: "There are other benefits of using VMs
+  as the Whonix folks have recognized" ([[!tails_ticket 5748]]).
+- We have struggled against a [[!tails_ticket 6460 desc="memory wipe
+  regression"]] on some hardware with recent Linux kernels. No success
+  so far.
+- Some progress was made towards the
+  migration to Wheezy (Tails 1.1).
+- Early support for
+  Monkeysign was
+  merged
+  ([[!tails_ticket 6455]]), but [[!tails_ticket 6515 desc="more work
+  is needed"]].
+
+Bug and regression fixes:
+
+- Disable
+  WebRTC ([[!tails_ticket 6468]]).
+- Fix keyboard shortcuts
+  ([[!tails_ticket 6478]]).
+- Use the
+  same User-Agent in htpdate as in the Tor Browser ([[!tails_ticket
+  6477]]).
+- Fix the
+  Unsafe Browser configuration ([[!tails_ticket 6479]]).
+- Set the browser
+  icon to IE's one in Windows camouflage mode.
+
+Branches pending review:
+
+- Install a 64-bit
+  kernel.
+- Install
+  poedit from official backports was proposed ([[!tails_ticket
+  6456]]).
+- Do not
+  create auto-login text consoles ([[!tails_ticket 5588]]).
+
+And also:
+
+- Tor 0.2.4 is
+  now stable!
+- The Persistent Volume Assistant now [[!tails_ticket 5311
+  desc="displays nicer paths"]]. Thanks to Andres Gomez!
+- Torbutton was
+  upgraded to 1.6.5.3 ([[!tails_ticket 6566]]).
+- Our Tor Browser build and runtime dependencies
+  were updated.
+- We have fixed various NSS security issues in squeeze-backports
+  ([[!tails_ticket 6497]]).
+
+Documentation and website
+=========================
+
+- A branch to
+  clean up our ikiwiki configuration was started.
+- The Mac installation
+  instructions were made
+  a bit safer.
+- The links to files and branches in cgit were fixed.
+- The tails-support mailing list is now mentioned on [[Help other
+  Tails users|contribute/how/help]].
+- The documentation for incremental upgrades was written.
+- The documentation for MAC spoofing was drafted.
+- The [[draft FAQ|support/faq]] has now more content.
+
+Infrastructure
+==============
+
+Test suite
+----------
+
+- The Tails automated test suite
+  can now be run on pure Debian Wheezy
+  with backports ([[!tails_ticket 6399]]). This allowed us to update
+  the test suite to match current code, fix many bugs in it, and
+  improve style a bit. Most of this was merged, but a few more
+  branches are pending review: [[!tails_ticket 5959]], [[!tails_ticket
+  5465]], and [[!tails_ticket 6544]].
+- Our automated test suite was
+  partially ported to the feature/wheezy branch.
+
+Build system
+------------
+
+- Thanks to David Wolinsky and others, our Vagrant setup
+  was
+  updated to work with newer Vagrant ([[!tails_ticket 6221]]), and
+  the corresponding basebox updated to include up-to-date Debian
+  archive keys. While we were at it, a few lurking bugs were fixed.
+- Thanks to WinterFairy, it is now
+  easy
+  to import translations from Transifex into our various
+  Git repositories.
+
+On-going discussions
+====================
+
+- Tor Browser branding in Tails?
+- Risks of enabled/disabled TCP
+  timestamps?
+  ([[!tails_ticket 6579]])
+
+Funding
+=======
+
+- The Freedom of the Press Foundation launched a [campaign to support
+  encryption tools for
+  journalists](https://pressfreedomfoundation.org/). Tails is among
+  the projects this campaign gathers fund for.
+- The proposal we have sent to sponsor Echo was accepted.
+- Our grant proposal with sponsor Charlie was rejected.
+- We are slowly making progress on our grant proposal with
+  sponsor Golf.
+- We have almost completed a proposal to be sent to sponsor Lima.
+- Our contract with sponsor Bravo is now finished.
+- Tails will soon accept donations in currencies other than Bitcoin.
+- We are now very likely to create a nonprofit organization dedicated
+  to Tails.
+- We have almost wrapped-up our bounties program. A report will be
+  published soonish.
+
+Outreach
+========
+
+Tails participated in the [30th Chaos Communication
+Congress](https://events.ccc.de/congress/2013/wiki/Main_Page). It was
+a great opportunity to meet, in person, a few existing and new
+contributors, as well as many people we are working with.
+
+A self-organized event called *Tails needs your help* was organized.
+It was a success considering the late notice.
+
+See you next year, probably with more space and events dedicated
+to Tails!
+
+Press and testimonials
+======================
+
+* 2013-12: Bruce Schneier
+  [answered](http://www.reddit.com/r/IAmA/comments/1r8ibh/iama_security_technologist_and_author_bruce/cdknf7a)
+  to someone asking him what Linux distribution is its favorite: "I don't
+  use Linux. (Shhh. Don't tell anyone.) Although I have started using Tails".
+* 2013-12-12: In A conversation with Bruce
+  Schneier,
+  as part of the "Snowden, the NSA and free software" cycle at
+  Columbia Law School NYC, Bruce Schneier says:
+  - "I think most of the public domain privacy tools are going to be
+    safe, yes. I think GPG is going to be safe. I think OTR is going
+    to be safe. I think that Tails is going to be safe. I do think
+    that these systems, because they were not -- you know, the NSA has
+    a big lever when a tool is written closed-source by a for-profit
+    corporation. There are levers they have that they don't have in
+    the open source international, altruistic community. And these are
+    generally written by crypto-paranoids, they're pretty well
+    designed. We make mistakes, but we find them and we correct them,
+    and we're getting good at that. I think that if the NSA is going
+    after these tools, they're going after implementations."
+  - "What do I trust? I trust, I trust Tails, I trust GPG [...]"
+  - "We can make it harder, we can make it more expensive, we can make
+    it more risky. And yes, every time we do something to increase one
+    of those, we're making ourselves safer. [...] There are tools we
+    are deploying in countries all over the world, that are keeping
+    people alive. Tor is one of them. I mean, Tor saves lives. [...]
+    And every time you use Tor [...] provides cover for everyone else
+    who uses Tor [...]"
+* Jacob Appelbaum stated at the [Chaos Communication
+  Congress](https://events.ccc.de/congress/2013/Fahrplan/events/5713.html):
+  "if you are a journalist and you are not using Tails, you should
+  probably be using Tails, unless you *really* know what
+  you're doing".

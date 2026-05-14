@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+_Name=Back Up Persistent Storage
+_Comment=Make a backup of the Tails Persistent Storage to another Tails USB stick
+_Keywords=backup
+Icon=tails-backup.svg
+Exec=/usr/bin/kgx --title 'Log of Persistent Storage Backup' -- /usr/local/bin/tails-backup
+Terminal=false
+Categories=System;Tails;
+StartupNotify=false

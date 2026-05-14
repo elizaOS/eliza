@@ -37,7 +37,7 @@
 #   NEBIUS_PROJECT_ID          # the project (== parent-id), e.g. project-e00kfz6cpr00q21z892vec
 #   HUGGING_FACE_HUB_TOKEN     # for gated Qwen access + pushing results
 # Optional env:
-#   REGISTRY_KEY               # default: qwen3-0.6b
+#   REGISTRY_KEY               # default: qwen3.5-0.8b
 #   RUN_NAME                   # default: <registry-key>-apollo-<unix-ts>
 #   NEBIUS_VM_PRESET           # gpu-h200x1 (default) | gpu-h200x2 — selects the
 #                              #   platform/preset pair. x2 == 8×H200 (no 2-GPU
@@ -59,6 +59,18 @@
 #                              #   (default: polarquant,fused_turboquant,qjl)
 #   BENCHMARK_AFTER            # 1 = base-vs-finetuned bench (default 1); 0 skips base bench
 #   PUSH_AFTER                 # 1 = run_pipeline.py --publish at the tail (default 0 — fetch + publish locally)
+#   MAX_STEPS                  # hard cap on remote SFT step count (forwarded
+#                              #   to run_pipeline.py --max-steps → train_local.py
+#                              #   --max-steps → Trainer(max_steps=N)). Default 0
+#                              #   = use --epochs. Set to 1500 to fit a 12h H200
+#                              #   budget at ~25 s/iter with one eval pass; the
+#                              #   v4 incident (2026-05-13) lost work to a
+#                              #   hardcoded 6h cap mid-epoch.
+#   ELIZA_REMOTE_RUN_TIMEOUT_H # hours the remote-poll loop will wait before
+#                              #   bailing (default 12, matches the watcher's
+#                              #   teardown deadline). Override for longer 27B
+#                              #   runs; setting too high risks billing past
+#                              #   the watcher cap if the run hangs.
 #
 # Usage:
 #   bash scripts/train_nebius.sh smoke       # cheap CPU instance up → uname → teardown (pennies)
@@ -83,7 +95,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 : "${NEBIUS_IMAGE_PARENT:=project-e00public-images}"
 
 REMOTE_TRAIN_DIR="/opt/training"
-REGISTRY_KEY="${REGISTRY_KEY:-qwen3-0.6b}"
+REGISTRY_KEY="${REGISTRY_KEY:-qwen3.5-0.8b}"
 RUN_NAME="${RUN_NAME:-${REGISTRY_KEY//./-}-apollo-$(date +%s)}"
 QUANTIZE_AFTER="${QUANTIZE_AFTER:-polarquant,fused_turboquant,qjl}"
 BENCHMARK_AFTER="${BENCHMARK_AFTER:-1}"
@@ -104,9 +116,9 @@ esac
 FSDP_WORLD_SIZE="${FSDP_WORLD_SIZE:-$DEFAULT_WORLD}"
 
 # The transformer decoder-layer class FSDP wraps. Every entry in the
-# Qwen3.5-only model registry (qwen3.5-0.8b/2b/4b/9b/27b + qwen3.6-27b
-# legacy) uses Qwen3_5DecoderLayer; the legacy Qwen3 dense bases (which
-# would have used Qwen3DecoderLayer) were dropped on 2026-05-12.
+# Qwen3.5-only model registry (qwen3.5-0.8b/2b/4b/9b/27b) uses
+# Qwen3_5DecoderLayer; the legacy Qwen3 dense bases (which would have used
+# Qwen3DecoderLayer) were dropped on 2026-05-12.
 FSDP_WRAP_CLS="Qwen3_5DecoderLayer"
 
 cmd="${1:-help}"
@@ -345,7 +357,14 @@ run_remote() {
   local allow_unval_flag=""
   [ "${ALLOW_UNVALIDATED_CORPUS:-1}" = "1" ] && allow_unval_flag="--allow-unvalidated-corpus"
 
-  echo "[train_nebius][run] run_pipeline.py registry=$REGISTRY_KEY run=$RUN_NAME world=$FSDP_WORLD_SIZE"
+  # MAX_STEPS env caps the remote SFT step count. Default 0 = use --epochs.
+  # Set MAX_STEPS=1500 when wall-clock budget is tight (12h H200 at ~25 s/iter
+  # = ~2540 steps; 1500 fits with margin including the 50-min eval pass at the
+  # save-checkpoint boundary). See .swarm/STATUS.md 2026-05-13 v4 incident.
+  local max_steps_flag=""
+  [ "${MAX_STEPS:-0}" -gt 0 ] 2>/dev/null && max_steps_flag="--max-steps ${MAX_STEPS}"
+
+  echo "[train_nebius][run] run_pipeline.py registry=$REGISTRY_KEY run=$RUN_NAME world=$FSDP_WORLD_SIZE max_steps=${MAX_STEPS:-0}"
   echo "[train_nebius][run] corpus: train=$TRAIN_FILE val=$VAL_FILE test=$TEST_FILE rebuild_fullcorpus=$SYNC_FULLCORPUS_SOURCES upsample=$upsample"
 
   # Write the remote runner script (avoids quoting hell), then launch it under
@@ -411,6 +430,7 @@ fi
 uv run --extra train $launch scripts/run_pipeline.py \\
   --registry-key $REGISTRY_KEY --run-name $RUN_NAME \\
   --epochs 1 --lr 1e-5 --use-liger on \\
+  $max_steps_flag \\
   --train-file $TRAIN_FILE --val-file $VAL_FILE --test-file $TEST_FILE \\
   --eval-mode full --bench-per-bucket 200 --skip-throughput-bench \\
   --quantizers $QUANTIZE_AFTER --eliza1-bundle $base_bench_flag $push_flag $allow_unval_flag
@@ -436,7 +456,14 @@ EOF
       [ "$rc" = "0" ] || return 1
       break
     fi
-    if [ "$i" -gt 360 ]; then echo "[train_nebius][run] ERROR: still running after 6h — bailing (VM left up; ssh in to investigate or run teardown)"; return 1; fi
+    # ELIZA_REMOTE_RUN_TIMEOUT_H caps the remote-poll wall (in hours, default
+    # 12 to match the watcher's 12h teardown deadline). Override via env:
+    #   ELIZA_REMOTE_RUN_TIMEOUT_H=24 bash scripts/train_nebius.sh full ...
+    # The v4 incident (2026-05-13) hit the prior 6h hardcoded cap mid-training
+    # at step 1003/9615, with eval_loss=1.145 still descending — see
+    # .swarm/STATUS.md.
+    local max_min=$(( ${ELIZA_REMOTE_RUN_TIMEOUT_H:-12} * 60 ))
+    if [ "$i" -gt "$max_min" ]; then echo "[train_nebius][run] ERROR: still running after ${ELIZA_REMOTE_RUN_TIMEOUT_H:-12}h — bailing (VM left up; ssh in to investigate or run teardown)"; return 1; fi
   done
 }
 
@@ -451,12 +478,12 @@ fetch() {
 
 # --- DFlash drafter distillation (distill_dflash_drafter.py) ----------------
 # Env knobs (defaults frugal — a small KD job, not a full pipeline):
-#   DFLASH_TIER            tier the drafter ships for (default 9b — the 0.6B
+#   DFLASH_TIER            tier the drafter ships for (default 9b — the 0.8B
 #                          Qwen3.5-arch drafter serves the 2b/9b/27b tiers)
 #   DFLASH_TARGET_BASE     HF id of the target text model whose logits we
 #                          distill toward (default Qwen/Qwen3.5-0.8B-Base)
-#   DFLASH_STUDENT_CONFIG  from-scratch ~0.6B student config dir
-#                          (default configs/dflash-drafter-0_6b-qwen3_5)
+#   DFLASH_STUDENT_CONFIG  from-scratch ~0.8B student config dir
+#                          (default configs/dflash-drafter-lite-qwen3_5)
 #   DFLASH_STUDENT_BASE    alternative: a published student HF id (overrides
 #                          DFLASH_STUDENT_CONFIG if set)
 #   DFLASH_DATASET         distillation corpus (default $TRAIN_FILE)
@@ -470,7 +497,7 @@ run_distill_remote() {
   local target; target="$(ssh_target)"
   local tier="${DFLASH_TIER:-9b}"
   local target_base="${DFLASH_TARGET_BASE:-Qwen/Qwen3.5-0.8B-Base}"
-  local student_cfg="${DFLASH_STUDENT_CONFIG:-configs/dflash-drafter-0_6b-qwen3_5}"
+  local student_cfg="${DFLASH_STUDENT_CONFIG:-configs/dflash-drafter-lite-qwen3_5}"
   local student_base="${DFLASH_STUDENT_BASE:-}"
   local ds="${DFLASH_DATASET:-$TRAIN_FILE}"
   local epochs="${DFLASH_EPOCHS:-1}" batch="${DFLASH_BATCH:-8}" ga="${DFLASH_GRAD_ACCUM:-4}"
@@ -579,7 +606,13 @@ case "$cmd" in
   distill) run_distill_remote ;;
   fetch-distill) fetch_distill ;;
   full)
-    trap 'echo "[train_nebius] full: ensuring teardown on exit"; teardown || true' EXIT
+    # EXIT trap: fetch-then-teardown. The v4 incident (2026-05-13) hit the
+    # remote-poll cap → run_remote returned 1 → set -euo pipefail aborted the
+    # `full` flow → fetch was skipped → checkpoint-500/-1000 stayed on the
+    # remote VM, then teardown hung on an expired nebius CLI auth token.
+    # Always attempt fetch first (rsync over ssh works even when nebius CLI
+    # auth has lapsed), then attempt teardown.
+    trap 'echo "[train_nebius] full: ensuring fetch + teardown on exit"; fetch || true; teardown || true' EXIT
     provision
     sync_tree
     run_remote
@@ -589,7 +622,8 @@ case "$cmd" in
     # Provision → sync training tree → sync the one corpus → distill → fetch
     # the drafter → teardown. Frugal: a single H200 for ~1-3 GPU-h on a small
     # KD job. Set DFLASH_MAX_SAMPLES for a short budget-bounded pass.
-    trap 'echo "[train_nebius] distill-full: ensuring teardown on exit"; teardown || true' EXIT
+    # Same fetch-then-teardown pattern as `full` — see v4 incident note above.
+    trap 'echo "[train_nebius] distill-full: ensuring fetch + teardown on exit"; fetch_distill || true; teardown || true' EXIT
     provision
     sync_tree
     sync_distill_dataset

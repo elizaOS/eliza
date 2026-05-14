@@ -1,0 +1,13 @@
+[[!meta date="Thu, 21 Mar 2019 16:22:37 +0100"]]
+[[!meta title="Numerous security holes in Tails 3.13"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+Several security holes that affect Tails 3.13 are now fixed in Tails 3.13.1.
+
+We **strongly** encourage you to
+[[upgrade to Tails 3.13.1|news/version_3.13.1]] as soon as possible.
+
+ - Tor Browser: [[!mfsa 2019-10]]
+ - NTFS-3G: [[!debsa2019 4413]]

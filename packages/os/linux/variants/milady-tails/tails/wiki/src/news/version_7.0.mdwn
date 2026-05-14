@@ -1,0 +1,188 @@
+[[!meta title="Tails 7.0"]]
+[[!meta date="Thu, 18 Sep 2025 00:00:00 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+
+We are very excited to present you Tails 7.0, the first version of Tails based
+on Debian 13 (Trixie) and GNOME 48 (Bengaluru). Tails 7.0 brings new versions
+of many applications included in Tails.
+
+<h1 id="dedication">Dedication</h1>
+
+Tails 7.0 is dedicated to the memory of Lunar (1982&ndash;2024).
+Lunar was a traveling companion for Tails, a Tor volunteer, Free Software hacker,
+and community organizer.
+
+Lunar has always been by our side throughout Tails' history.
+From the first baby steps of the project that eventually became Tails, to the
+merge with Tor, he's provided sensible technical suggestions, out-of-the-box
+product design ideas, outreach support, and caring organizational advice.
+
+Outside of Tor, Lunar worked on highly successful Free Software projects such
+as the [Debian](https://www.debian.org/) project, the Linux distribution on
+which Tails is based, and the [Reproducible
+Builds](https://reproducible-builds.org/) project, which helps us verify the
+[[integrity of Tails releases|contribute/build/reproducible]].
+
+Lunar will be deeply missed, both in our community and in the many other
+communities he participated in.
+
+See also
+[what other projects have written about Lunar](https://lunar.anargeek.net/liens/#autres-sites).
+
+<h1 id="changes">Changes and updates</h1>
+
+## Faster startup
+
+Tails 7.0 starts 10&ndash;15 seconds faster on most computers. 
+
+We achieve this by changing the compression algorithm of the Tails USB and ISO
+images from `xz` to `zstd`. As a consequence, the image is 10% bigger than it
+would be with the previous algorithm.
+
+While testing this change, we noticed that Tails on USB sticks of poor quality
+can also start 20 seconds slower than on quality USB sticks.
+
+If you are in a place where counterfeit electronics are common, we recommend
+that you buy your USB stick from an international supermarket chain, which
+should have a more reliable supply chain.
+
+## Included software
+
+- Replace [*GNOME Terminal*](https://gitlab.gnome.org/GNOME/gnome-terminal)
+  with [*GNOME Console*](https://apps.gnome.org/Console/).
+
+- Replace [*GNOME Image Viewer*](https://wiki.gnome.org/Apps/EyeOfGnome) with
+  [*GNOME Loupe*](https://apps.gnome.org/Loupe/).
+
+- Update *Tor Browser* to [14.5.7](https://blog.torproject.org/new-release-tor-browser-1457).
+
+- Update the *Tor* client to 0.4.8.17.
+
+- Update *Thunderbird* to [128.14.0esr](https://www.thunderbird.net/en-US/thunderbird/128.14.0esr/releasenotes/).
+
+- Update *Electrum* from 4.3.4 to [4.5.8](https://github.com/spesmilo/electrum/blob/master/RELEASE-NOTES).
+
+- Update *OnionShare* from 2.6.2 to [2.6.3](https://github.com/onionshare/onionshare/blob/main/CHANGELOG.md).
+
+- Update *KeePassXC* from 2.7.4 to [2.7.10](https://github.com/keepassxreboot/keepassxc/blob/develop/CHANGELOG.md).
+
+- Update *Kleopatra* from 4:22.12 to 4:24.12
+
+- Update *Inkscape* from 1.2.2 to 1.4.
+
+- Update *GIMP* from 2.10.34 to [3.0.4](https://www.gimp.org/release-notes/gimp-3.0.html).
+
+- Update *Audacity* from 3.2.4 to 3.7.3.
+
+- Update *Text Editor* from 43.2 to 48.3.
+
+- Update *Document Scanner* from 42.5 to 46.0.
+
+## Changes in GNOME
+
+- Many sections of the *Settings* utility have been redesigned, for example
+  Accessibility, Sound, and Mouse & Keyboard in [GNOME
+  44](https://release.gnome.org/44/)
+
+  Accessibility settings also include new accessibility features, such as
+  Overamplication and Always Show Scrollbars.
+
+- The Activities button has been replaced with a dynamic workspace indicator in
+  [GNOME 45](https://release.gnome.org/45/).
+
+  [[!img doc/first_steps/desktop/upper-left.png class="screenshot" alt=""]]
+
+- The Screen Reader has been improved in different ways, for example, with
+  better table navigation and a sleep mode in [GNOME
+  46](https://release.gnome.org/46/).
+
+- A new option to preserve battery health is available in the power settings in
+  [GNOME 48](https://release.gnome.org/48/).
+
+## Removals
+
+- Remove the **Places** menu.
+
+  You can access the same shortcuts from the sidebar of the *Files* browser.
+
+- Remove *Kleopatra* from the Favorites menu.
+
+  To start *Kleopatra*, choose **Apps&nbsp;▸ Accessories&nbsp;▸ Kleopatra**.
+
+- Remove `unar`.
+
+  The *File Roller* utility still opens most RAR archives.
+
+- Remove the `aircrack-ng` package.
+
+  You can still install `aircrack-ng` using the [[Additional
+  Software|doc/persistent_storage/additional_software]] feature.
+
+- Remove the *Power Statistics* utility.
+
+- Remove the `sq` package.
+
+- Remove the obsolete Network Connection option from the Welcome Screen.
+
+## Hardware support
+
+- Update the *Linux* kernel to 6.12.43.
+
+  This improves support for newer hardware: graphics, Wi-Fi, and so on.
+
+- Increase the memory requirements from 2 GB of RAM to 3 GB. ([[!tails_ticket 21114]])
+
+  Tails 7.0 displays a notification when the RAM requirements are not met.
+
+  [[!img test_7.0-rc2/ram.png class="screenshot" alt=""]]
+
+  We estimate that less than 2% of users are affected.
+
+<h1 id="fixes">Fixed problems</h1>
+
+- Fix selecting the correct keyboard for certain languages. ([[!tails_ticket
+  12638]])
+
+For more details, read our [[!tails_gitweb debian/changelog desc="changelog"]].
+
+<!--
+
+<h1 id="issues">Known issues</h1>
+
+Copy the known issues from the previous version if they haven't been
+solved or move them to /support/known_issues if more appropriate.
+
+-->
+
+<h1 id="get">Get Tails 7.0</h1>
+
+## To upgrade your Tails USB stick and keep your Persistent Storage
+
+- Automatic upgrades are only available from Tails 7.0~rc1 and 7.0~rc2 to 7.0.
+
+  All other users have to do a [[manual upgrade|doc/upgrade#manual]].
+
+## To install Tails 7.0 on a new USB stick
+
+Follow our installation instructions:
+
+- [[Install from Windows|install/windows]]
+
+- [[Install from macOS|install/mac]]
+
+- [[Install from Linux|install/linux]]
+
+- [[Install from Debian or Ubuntu using the command line and GnuPG|install/expert]]
+
+<div class="caution"><p>The Persistent Storage on the USB stick will be lost if
+you install instead of upgrading.</p></div>
+
+## To download only
+
+If you don't need installation or upgrade instructions, you can download
+Tails 7.0 directly:
+
+- [[For USB sticks (USB image)|install/download]]
+
+- [[For DVDs and virtual machines (ISO image)|install/download-iso]]

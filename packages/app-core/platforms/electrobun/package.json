@@ -1,6 +1,6 @@
 {
 	"name": "@elizaos/electrobun",
-	"version": "2.0.0-beta.1",
+	"version": "2.0.0-beta.2",
 	"type": "module",
 	"files": [
 		"assets",
@@ -18,15 +18,13 @@
 		"test": "bunx vitest run --config vitest.electrobun.config.ts --passWithNoTests",
 		"lint": "bunx @biomejs/biome check src",
 		"build:preload": "node ../../scripts/build-electrobun-preload.mjs",
-		"build:whisper": "bash scripts/build-whisper.sh",
-		"build:whisper:universal": "bash scripts/build-whisper-universal.sh",
 		"build:native-effects": "bash scripts/build-macos-effects.sh"
 	},
 	"dependencies": {
-		"@elizaos/app-core": "2.0.0-beta.3",
+		"@elizaos/app-core": "workspace:*",
 		"@elizaos/electrobun-carrots": "workspace:*",
-		"@elizaos/plugin-browser": "2.0.0-beta.1",
-		"@elizaos/shared": "2.0.0-beta.1",
+		"@elizaos/plugin-browser": "workspace:*",
+		"@elizaos/shared": "workspace:*",
 		"bonjour-service": "1.3.0",
 		"electrobun": "^1.18.1"
 	},

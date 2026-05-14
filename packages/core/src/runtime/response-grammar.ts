@@ -44,6 +44,8 @@ import type {
 	JSONSchema,
 	ResponseSkeleton,
 	ResponseSkeletonSpan,
+	SpanSamplerOverride,
+	SpanSamplerPlan,
 } from "../types/model.js";
 
 // ---------------------------------------------------------------------------
@@ -329,7 +331,10 @@ function spanKindForKey(key: string): ResponseSkeletonSpan["kind"] {
 
 /**
  * Skeleton span kind for a registered field evaluator's value, derived from its
- * declared JSON schema.
+ * declared JSON schema. Typed primitives (`number` / `integer` / `boolean`) are
+ * tagged with their own span kinds so the per-span sampler plan can force
+ * argmax on them (the model never tips a numerical or boolean decision under
+ * non-zero temperature when there's a clear argmax winner).
  */
 function spanKindForFieldSchema(
 	schema: JSONSchema,
@@ -347,6 +352,8 @@ function spanKindForFieldSchema(
 		}
 		return "free-string";
 	}
+	if (type === "number" || type === "integer") return "number";
+	if (type === "boolean") return "boolean";
 	return "free-json";
 }
 
@@ -406,6 +413,14 @@ function gbnfRefForFieldSchema(
 		}
 		builder.useShared("jsonstring");
 		return "jsonstring";
+	}
+	if (type === "number" || type === "integer") {
+		builder.useShared("jsonnumber");
+		return "jsonnumber";
+	}
+	if (type === "boolean") {
+		builder.useShared("jsonbool");
+		return "jsonbool";
 	}
 	builder.useShared("jsonvalue");
 	return "jsonvalue";
@@ -687,6 +702,50 @@ export function withGuidedDecodeProviderOptions<
 	return providerOptions;
 }
 
+/**
+ * Derive a {@link SpanSamplerPlan} from a {@link ResponseSkeleton} using the
+ * canonical policy: every `enum` (with ≥2 values), `number`, and `boolean` span
+ * gets `temperature: 0, topK: 1` (argmax). `literal`, `free-string`, and
+ * `free-json` spans get no override — the call-level temperature applies.
+ *
+ * `spanIndex` addresses the position INTO `skeleton.spans` directly, so the
+ * caller (and tests) can stare at `skeleton.spans[overrides[i].spanIndex]` to
+ * verify the policy. Engines that need free-span addressing convert at the
+ * boundary by counting non-literal spans up to `spanIndex`.
+ *
+ * Single-value enums are skipped because they collapse to `literal` upstream;
+ * defensively skipped here too. Returns a plan with `overrides: []` when the
+ * skeleton has no argmax-eligible spans (caller decides whether to send it).
+ *
+ * Hardcoded policy matches the user's request: "for any enum or numerical
+ * temperature, we should turn temperature to 0 and in fact just select the
+ * most likely token." Applies to local inference and Eliza Cloud hosted
+ * `eliza-1` (Wave 3 wires the cloud honor path).
+ */
+export function buildSpanSamplerPlan(
+	skeleton: ResponseSkeleton,
+): SpanSamplerPlan {
+	const overrides: SpanSamplerOverride[] = [];
+	for (let i = 0; i < skeleton.spans.length; i += 1) {
+		const span = skeleton.spans[i];
+		if (span.kind === "literal") continue;
+		if (
+			span.kind === "enum" &&
+			(!Array.isArray(span.enumValues) || span.enumValues.length <= 1)
+		) {
+			continue;
+		}
+		if (
+			span.kind === "enum" ||
+			span.kind === "number" ||
+			span.kind === "boolean"
+		) {
+			overrides.push({ spanIndex: i, temperature: 0, topK: 1 });
+		}
+	}
+	return { overrides };
+}
+
 // ---------------------------------------------------------------------------
 // Stage-2: planner action grammar
 // ---------------------------------------------------------------------------
@@ -777,10 +836,11 @@ export function buildPlannerActionGrammar(
 	const actionSchemas: Record<string, JSONSchema> = {};
 	for (const d of descriptors) actionSchemas[d.name] = d.parametersSchema;
 
-	// Skeleton: { "action": <enum>, "thought": <free-string>, "parameters": <free-json> }
-	// (key order matches PLAN_ACTIONS_TOOL's `required: [action, parameters,
-	// thought]` properties order — actually properties order there is action,
-	// parameters, thought; we keep that.)
+	// Skeleton: { "action": <enum>, "parameters": <free-json>, "thought": <free-string> }
+	// Legacy PLAN_ACTIONS-style envelope kept here as the local engine's
+	// guided-decode contract: the model's first sampled field pins the action
+	// name, the second the action's parameters, the third a short thought.
+	// Property order is action, parameters, thought.
 	const spans: ResponseSkeletonSpan[] = [];
 	const builder = new GbnfBuilder();
 	const rootParts: string[] = [];
@@ -831,6 +891,390 @@ export function buildPlannerActionGrammar(
 }
 
 /**
+ * Single-call counterpart to `buildPlannerActionGrammar`: instead of pinning
+ * only the `action` field and leaving `parameters` as free-JSON, the strict
+ * variant produces a per-action *union* grammar where each branch encodes
+ * `{"action":"<NAME>","parameters":<params_NAME>,"thought":<thought>}` with a
+ * GBNF rule for `params_NAME` that constrains every property of that action's
+ * normalized schema. Branches are root-level alternatives, so the chosen
+ * action name and the parameter shape are co-determined by construction —
+ * something a single-pass loose grammar cannot guarantee.
+ *
+ * Tradeoff vs. the loose `buildPlannerActionGrammar`: grammar size grows with
+ * `actions × properties_per_action`, but the model only needs ONE call to
+ * produce a validated structure (no engine-level second pass, no
+ * coercion/reroll round in `validate-tool-args.ts`). Matches the intent of
+ * P2-4 in `packages/training/benchmarks/INFERENCE_OPTIMIZATION_PLAN.md`.
+ *
+ * The returned `responseSkeleton` is intentionally minimal — the grammar
+ * carries the entire structural contract, so the engine's prefill plan has
+ * nothing useful to inject statically. Cloud adapters still ignore the
+ * skeleton + grammar per the W3 contract; `tools` carries the equivalent
+ * unforced contract for them.
+ *
+ * Returns `null` when no actions are exposed.
+ */
+/**
+ * Group action names by longest common prefix (≥3 chars, ≥2 names sharing it).
+ * Returns a map of prefix → suffixes, plus a list of ungrouped names.
+ */
+export function buildPlannerActionGrammarStrict(
+	actions: ReadonlyArray<
+		Pick<Action, "name" | "parameters" | "allowAdditionalParameters">
+	>,
+): PlannerActionGrammarResult | null {
+	const descriptors = actions
+		.map(actionToPlannerDescriptor)
+		.filter((d) => d.name.length > 0);
+	if (descriptors.length === 0) return null;
+	const names = Array.from(new Set(descriptors.map((d) => d.name))).sort();
+
+	const cacheKey = `planner-strict#${hashStringSet(names)}#${JSON.stringify(
+		descriptors
+			.slice()
+			.sort((a, b) => a.name.localeCompare(b.name))
+			.map((d) => [d.name, d.parametersSchema]),
+	)}`;
+	const cached = plannerStrictCache.get(cacheKey);
+	if (cached) return cached;
+
+	const actionSchemas: Record<string, JSONSchema> = {};
+	for (const d of descriptors) actionSchemas[d.name] = d.parametersSchema;
+
+	const builder = new GbnfBuilder();
+	builder.useShared("jsonstring");
+
+	const branchRuleNames: string[] = [];
+	const sortedDescriptors = descriptors
+		.slice()
+		.sort((a, b) => a.name.localeCompare(b.name));
+
+	// One branch per action. A previous version of this function tried to
+	// factor common UPPER_SNAKE_CASE prefixes (e.g. emit "MESSAGE_" once with a
+	// shared `suffix_MESSAGE_` rule). That optimization was broken on two
+	// fronts: (1) the suffix alternation used JSON-quoted literals so the
+	// concatenation produced malformed JSON like `{"action":"MESSAGE_"READ""…`;
+	// and (2) the shared suffix rule decoupled the action name from the
+	// per-action params rule — the model could legally pair `MESSAGE_READ` with
+	// `paramsofaction_MESSAGE_SEND`. Each branch must encode the full action
+	// name as a literal, then bind to its own params rule.
+	for (const descriptor of sortedDescriptors) {
+		const fullName = descriptor.name;
+		const sanitized = sanitizeGbnfRuleName(fullName);
+		const paramsRuleName = `paramsofaction_${sanitized}`;
+		emitActionParamsRule(builder, paramsRuleName, descriptor.parametersSchema);
+		const branchRuleName = `callofaction_${sanitized}`;
+		const branchBody = [
+			gbnfLiteral(`{"action":${JSON.stringify(fullName)}`),
+			gbnfLiteral(',"parameters":'),
+			paramsRuleName,
+			gbnfLiteral(',"thought":'),
+			"jsonstring",
+			gbnfLiteral("}"),
+		].join(" ");
+		builder.rule(branchRuleName, branchBody);
+		branchRuleNames.push(branchRuleName);
+	}
+
+	builder.root([branchRuleNames.join(" | ")]);
+
+	// Minimal skeleton — the grammar carries the entire structural contract.
+	// The engine's prefill plan has nothing useful to inject statically because
+	// every branch starts with the same literal `{"action":"` but diverges on
+	// the first character of the chosen action name.
+	const responseSkeleton: ResponseSkeleton = {
+		spans: [{ kind: "free-json", key: "envelope" }],
+		id: cacheKey,
+	};
+
+	const result: PlannerActionGrammarResult = {
+		responseSkeleton,
+		grammar: builder.build(),
+		actionSchemas,
+	};
+	plannerStrictCache.set(cacheKey, result);
+	return result;
+}
+
+const plannerStrictCache = new Map<string, PlannerActionGrammarResult>();
+
+/**
+ * GBNF rule names must match `[a-zA-Z_][a-zA-Z0-9_-]*`. Action names in the
+ * registry are typically `UPPER_SNAKE_CASE` already, but sanitize defensively
+ * for plugin-supplied action names that might carry `:` / `.` / spaces.
+ */
+function sanitizeGbnfRuleName(name: string): string {
+	const cleaned = name.replace(/[^A-Za-z0-9_]/g, "_");
+	return /^[A-Za-z_]/.test(cleaned) ? cleaned : `_${cleaned}`;
+}
+
+/**
+ * Cap on object-recursion depth in the strict grammar — protects against
+ * accidental schema cycles and keeps the generated GBNF bounded.
+ */
+const MAX_NESTED_OBJECT_DEPTH = 4;
+
+/**
+ * Emit a per-action parameters GBNF rule. Thin wrapper that pins the
+ * top-level depth at 0; `emitObjectRule` does the recursive heavy lifting.
+ */
+function emitActionParamsRule(
+	builder: GbnfBuilder,
+	ruleName: string,
+	schema: JSONSchema,
+): void {
+	emitObjectRule(builder, ruleName, schema, 0);
+}
+
+/**
+ * Emit a GBNF rule for an object schema. Walks `properties`, translates each
+ * value into a constrained GBNF expression, and assembles a body that
+ * sequences required keys in declaration order then permits each optional
+ * key zero-or-more times. (GBNF can't express true unordered sets without
+ * combinatorial blowup; the single-occurrence invariant of optionals is
+ * enforced by the downstream JSON parser rejecting duplicate keys.)
+ *
+ * Recursion: object-typed properties whose schema declares its own
+ * `properties` emit a nested rule via this function, capped at
+ * `MAX_NESTED_OBJECT_DEPTH` so accidental schema cycles can't blow up the
+ * generated grammar.
+ */
+function emitObjectRule(
+	builder: GbnfBuilder,
+	ruleName: string,
+	schema: JSONSchema,
+	depth: number,
+): void {
+	const properties =
+		(schema as { properties?: Record<string, JSONSchema> }).properties ?? {};
+	const requiredList =
+		((schema as { required?: unknown }).required as string[] | undefined) ?? [];
+	const required = new Set(requiredList);
+	const propertyNames = Object.keys(properties);
+	if (propertyNames.length === 0) {
+		builder.rule(ruleName, gbnfLiteral("{}"));
+		return;
+	}
+
+	const requiredKeys = propertyNames.filter((k) => required.has(k));
+	const optionalKeys = propertyNames.filter((k) => !required.has(k));
+
+	const propertyTokens: Record<string, string> = {};
+	for (const key of propertyNames) {
+		const sanitizedKey = sanitizeGbnfRuleName(key);
+		const propertyRuleName = `${ruleName}_p_${sanitizedKey}`;
+		const contextRuleName = `${ruleName}_${sanitizedKey}`;
+		const valueExpr = propertyValueGbnf(
+			builder,
+			properties[key],
+			contextRuleName,
+			depth,
+		);
+		builder.rule(
+			propertyRuleName,
+			[gbnfLiteral(`"${escapeJsonKey(key)}":`), valueExpr].join(" "),
+		);
+		propertyTokens[key] = propertyRuleName;
+	}
+
+	const parts: string[] = [gbnfLiteral("{")];
+	if (requiredKeys.length > 0) {
+		parts.push(propertyTokens[requiredKeys[0]]);
+		for (let i = 1; i < requiredKeys.length; i++) {
+			parts.push(gbnfLiteral(","));
+			parts.push(propertyTokens[requiredKeys[i]]);
+		}
+	}
+	if (optionalKeys.length > 0) {
+		const optionalAlt = optionalKeys.map((k) => propertyTokens[k]).join(" | ");
+		const leadingComma = requiredKeys.length > 0;
+		const optionalGroup = leadingComma
+			? `( ${gbnfLiteral(",")} ( ${optionalAlt} ) )*`
+			: `( ( ${optionalAlt} ) ( ${gbnfLiteral(",")} ( ${optionalAlt} ) )* )?`;
+		parts.push(optionalGroup);
+	}
+	parts.push(gbnfLiteral("}"));
+	builder.rule(ruleName, parts.join(" "));
+}
+
+/**
+ * Map a single property schema to a GBNF expression. Pulls in the matching
+ * shared JSON rules and (for objects / arrays-of-objects) emits nested rules
+ * as a side effect on `builder`.
+ *
+ * `contextRuleName` is the parent-scoped namespace prefix used to mint stable
+ * unique rule names for nested constructs (e.g. `..._obj`, `..._item`).
+ */
+/**
+ * Build a GBNF rule that matches only numbers within a [min, max] range.
+ * For integers: emits a union of literal ranges and digit-length cases.
+ * For numbers: allows integer part + optional fractional digits, bounded by min/max.
+ * Returns a rule name to reference in the GBNF.
+ */
+function buildBoundedNumberRule(
+	builder: GbnfBuilder,
+	ruleName: string,
+	schema: JSONSchema,
+): string {
+	const type = (schema as { type?: unknown }).type;
+	const minimum = (schema as { minimum?: number }).minimum;
+	const maximum = (schema as { maximum?: number }).maximum;
+
+	// No bounds specified: use the shared unbounded rule.
+	if (typeof minimum !== "number" && typeof maximum !== "number") {
+		builder.useShared("jsonnumber");
+		return "jsonnumber";
+	}
+
+	// For integers, emit a rule that matches only in-range values.
+	if (type === "integer") {
+		const min =
+			typeof minimum === "number"
+				? Math.ceil(minimum)
+				: Number.NEGATIVE_INFINITY;
+		const max =
+			typeof maximum === "number"
+				? Math.floor(maximum)
+				: Number.POSITIVE_INFINITY;
+
+		// Handle edge cases: if bounds are missing, fall back to unbounded.
+		if (!Number.isFinite(min) && !Number.isFinite(max)) {
+			builder.useShared("jsonnumber");
+			return "jsonnumber";
+		}
+
+		// For manageable integer ranges, enumerate directly.
+		// This is pragmatic for small ranges like [0, 100].
+		if (Number.isFinite(min) && Number.isFinite(max) && max - min <= 200) {
+			const literals: string[] = [];
+			for (let i = min; i <= max; i++) {
+				literals.push(gbnfJsonStringLiteral(String(i)));
+			}
+			builder.rule(ruleName, literals.join(" | "));
+			return ruleName;
+		}
+
+		// For larger ranges, fall back to unbounded (the grammar won't tightly constrain).
+		builder.useShared("jsonnumber");
+		return "jsonnumber";
+	}
+
+	// For floats, emit a pattern: optional minus, digits, optional fractional part.
+	// Validation of bounds happens server-side (we can't easily express arbitrary float ranges in GBNF).
+	if (type === "number") {
+		// Pragmatic: emit a rule that allows signed integers and decimals.
+		// The server-side validation will reject out-of-range values.
+		builder.useShared("jsonnumber");
+		return "jsonnumber";
+	}
+
+	// Unknown type: use unbounded.
+	builder.useShared("jsonnumber");
+	return "jsonnumber";
+}
+
+function propertyValueGbnf(
+	builder: GbnfBuilder,
+	propSchema: JSONSchema,
+	contextRuleName: string,
+	depth: number,
+): string {
+	const type = (propSchema as { type?: unknown }).type;
+	if (type === "string") {
+		const enumValues = readStringEnumForGrammar(propSchema);
+		if (enumValues !== null) {
+			if (enumValues.length === 1) {
+				return gbnfJsonStringLiteral(enumValues[0]);
+			}
+			return `( ${enumValues
+				.map((v) => gbnfJsonStringLiteral(v))
+				.join(" | ")} )`;
+		}
+		builder.useShared("jsonstring");
+		return "jsonstring";
+	}
+	if (type === "number" || type === "integer") {
+		const minimum = (propSchema as { minimum?: number }).minimum;
+		const maximum = (propSchema as { maximum?: number }).maximum;
+		// If bounds are specified, emit a bounded rule; otherwise use the shared rule.
+		if (typeof minimum === "number" || typeof maximum === "number") {
+			const boundedRuleName = `${contextRuleName}_bounded`;
+			return buildBoundedNumberRule(builder, boundedRuleName, propSchema);
+		}
+		builder.useShared("jsonnumber");
+		return "jsonnumber";
+	}
+	if (type === "boolean") {
+		builder.useShared("jsonbool");
+		return "jsonbool";
+	}
+	if (type === "array") {
+		const items = (propSchema as { items?: JSONSchema }).items;
+		const itemsType = items && (items as { type?: unknown }).type;
+		if (itemsType === "string") {
+			const enumValues = readStringEnumForGrammar(items as JSONSchema);
+			if (enumValues !== null && enumValues.length > 0) {
+				builder.useShared("ws");
+				const elem = `( ${enumValues
+					.map((v) => gbnfJsonStringLiteral(v))
+					.join(" | ")} )`;
+				return `"[" ws ( ${elem} ( ws "," ws ${elem} )* )? ws "]"`;
+			}
+		}
+		if (
+			itemsType === "object" &&
+			depth < MAX_NESTED_OBJECT_DEPTH &&
+			schemaHasDeclaredProperties(items as JSONSchema)
+		) {
+			const itemRuleName = `${contextRuleName}_item`;
+			emitObjectRule(builder, itemRuleName, items as JSONSchema, depth + 1);
+			builder.useShared("ws");
+			return `"[" ws ( ${itemRuleName} ( ws "," ws ${itemRuleName} )* )? ws "]"`;
+		}
+		builder.useShared("jsonarray");
+		return "jsonarray";
+	}
+	if (
+		type === "object" &&
+		depth < MAX_NESTED_OBJECT_DEPTH &&
+		schemaHasDeclaredProperties(propSchema)
+	) {
+		const objRuleName = `${contextRuleName}_obj`;
+		emitObjectRule(builder, objRuleName, propSchema, depth + 1);
+		return objRuleName;
+	}
+	// object without declared properties, null, or unspecified → permit any JSON.
+	builder.useShared("jsonvalue");
+	return "jsonvalue";
+}
+
+function schemaHasDeclaredProperties(schema: JSONSchema): boolean {
+	const properties = (schema as { properties?: Record<string, unknown> })
+		.properties;
+	return (
+		typeof properties === "object" &&
+		properties !== null &&
+		Object.keys(properties).length > 0
+	);
+}
+
+/** Reuse the conservative string-enum reader from buildPlannerParamsSkeleton. */
+function readStringEnumForGrammar(propSchema: JSONSchema): string[] | null {
+	const raw = (propSchema as { enum?: unknown }).enum;
+	if (!Array.isArray(raw) || raw.length === 0) return null;
+	const normalized: string[] = [];
+	for (const v of raw) {
+		if (typeof v !== "string") return null;
+		normalized.push(v);
+	}
+	return normalized;
+}
+
+function escapeJsonKey(key: string): string {
+	return key.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
+/**
  * Build a {@link ResponseSkeleton} for the *second* planner pass: the
  * `parameters` object of a specific chosen action. The engine uses this once it
  * has sampled the `action` value. `properties` whose value is a single-element
@@ -851,28 +1295,57 @@ export function buildPlannerParamsSkeleton(
 		spans.push({ kind: "literal", value: "{}" });
 		return { spans, id: `params#${action.name}` };
 	}
+	const enumDigest: string[] = [];
 	keys.forEach((key, index) => {
 		const glue = index === 0 ? `{"${key}":` : `,"${key}":`;
 		spans.push({ kind: "literal", value: glue });
 		const propSchema = properties[key];
 		const type = (propSchema as { type?: unknown }).type;
 		if (type === "string") {
-			const enumValues = (propSchema as { enum?: unknown[] }).enum;
-			if (Array.isArray(enumValues) && enumValues.length === 1) {
+			const enumValues = readStringEnum(propSchema);
+			if (enumValues !== null && enumValues.length === 1) {
 				spans.push({
 					kind: "literal",
 					key,
-					value: JSON.stringify(String(enumValues[0])),
+					value: JSON.stringify(enumValues[0]),
 				});
+				enumDigest.push(`${key}=${enumValues[0]}`);
+			} else if (enumValues !== null && enumValues.length > 1) {
+				spans.push({ kind: "enum", key, enumValues });
+				enumDigest.push(`${key}∈[${enumValues.join("|")}]`);
 			} else {
 				spans.push({ kind: "free-string", key });
 			}
+		} else if (type === "number" || type === "integer") {
+			spans.push({ kind: "number", key });
+		} else if (type === "boolean") {
+			spans.push({ kind: "boolean", key });
 		} else {
 			spans.push({ kind: "free-json", key });
 		}
 	});
 	spans.push({ kind: "literal", value: "}" });
-	return { spans, id: `params#${action.name}#${keys.join(",")}` };
+	const idSuffix = enumDigest.length > 0 ? `#${enumDigest.join(",")}` : "";
+	return { spans, id: `params#${action.name}#${keys.join(",")}${idSuffix}` };
+}
+
+/**
+ * Read a string-property's `enum` array, normalising to `string[]` and
+ * returning `null` when none is declared or values are non-string.
+ *
+ * Multi-value string enums are pinnable by the GBNF skeleton compiler as an
+ * `enum` span — that's what makes the 2nd-pass per-action parameters grammar
+ * actually constrain the model instead of falling through to `free-string`.
+ */
+function readStringEnum(propSchema: JSONSchema): string[] | null {
+	const raw = (propSchema as { enum?: unknown }).enum;
+	if (!Array.isArray(raw) || raw.length === 0) return null;
+	const normalized: string[] = [];
+	for (const v of raw) {
+		if (typeof v !== "string") return null;
+		normalized.push(v);
+	}
+	return normalized;
 }
 
 // Re-export the local JsonSchema type for convenience.

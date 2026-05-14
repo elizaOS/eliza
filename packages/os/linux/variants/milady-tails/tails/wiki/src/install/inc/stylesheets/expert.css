@@ -1,0 +1,17 @@
+@import url("usb.css");
+
+span.expert, a.expert {
+  display: inline;
+}
+
+div.expert, img.expert, p.expert, h1.expert, h2.expert {
+  display: block;
+}
+
+li.expert {
+  display: list-item;
+}
+
+h1.step:before {
+  content: counter(step)'/7';
+}

@@ -1,0 +1,232 @@
+[[!meta title="Tails report for March, 2014"]]
+[[!meta date="Sat, 12 Apr 2014 18:23:37 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+Releases
+========
+
+Tails 0.23 was released on March 19.
+
+Metrics
+=======
+
+- Tails has been started more than 261 878 times in March.
+  This make 8 448 boots a day in average.
+- 19 076 downloads of the OpenPGP signature of Tails ISO.
+- 80 reports were received through WhisperBack.
+
+Code
+====
+
+- The Cookie Monster extension was
+  removed from our browser.
+  [[!tails_ticket 6790]]
+
+- The new support for bridges was
+  completed. It now uses Tor Launcher to configure Tor when needed.
+
+- A bookmark to the Tor Stack Exchange was
+  added to our browser.
+
+- A launcher for our documentation was
+  added to the Tails menu.
+
+- Some race conditions when starting automatic upgrades were
+  fixed. [[!tails_ticket 6592]]
+
+- The wikileaks.de server was
+  removed from Pidgin.
+
+- The #tor IRC channel was
+  removed from Pidgin.
+
+- We cleaned up a bit
+  our ISO images to make them a bit smaller.
+
+- A bug in the localization of Tor Launcher was
+  fixed.
+
+- We now install Linux 3.12
+  from deb.tails.boum.org not to install Linux 3.13.5-1 from testing yet.
+
+- Some work as been done towards
+  Tails Wheezy, for example on the menus and launchers, the integration
+  of Seahorse Nautilus, network-manager, and the migration from GConf to dconf.
+
+Documentation and website
+=========================
+
+- A new contribute page for sysadmins to
+  improve the infrastructure behind
+  Tails was
+  written.
+
+- Our sample `rtorrent.rc` was improved. [[!tails_ticket 6995]]
+
+- A sample configuration for Tails mirror using nginx was
+  added. [[!tails_ticket 6993]]
+
+- A "News" link was
+  added to the sidebar.
+
+- The expectations for our mirrors in terms of bandwidth were
+  clarified.
+
+- The instructions to securely delete the persistent volume were
+  improved.
+
+- The instructions to manually backup the persistent volume were
+  fixed.
+
+- gpgApplet was
+  renamed "OpenPGP Applet".
+
+- "Tails browser" was consistently renamed "Tor browser". [[!tails_ticket 6574]]
+
+- Our list of related projects was updated:
+  - Freepto was added.
+  - Liberté Linux is in a sleeping state.
+  - uVirtus is abandoned.
+
+- The content of our Troubleshooting page was merging into the main
+  [[Support]] page.
+
+- Email commands to interact with Redmine were
+  documented.
+
+- The documentation for MAC spoofing was
+  [[completed|doc/first_steps/welcome_screen/mac_spoofing]].
+
+Translation
+===========
+
+- The German team which started to work earlier this year, got more volunteers
+  on board and more work done.
+
+- People volunteered on the tails-l10n mailing list to translate our website into
+  Italian, Spanish, Turkish, and Portuguese (Portugal).
+
+Infrastructure
+==============
+
+- The mailing list for early testers, tails-testers@boum.org, was
+  [[announced|news/tails-testers]] and already joined by 35 people.
+
+- We are ready to welcome new contributors to improve the infrastructure behind
+  Tails, and drafted a call on that topic.
+
+- Three branches were merged to improve our automated test suite:
+  - test/5959-antitest-memory-erasure
+  - test/sniffer-vs-mac-spoof
+  - test/tor-is-ready-notification
+
+- Our manual test suite for the browser
+  was reorganized to better
+  match the tests conducted for the TBB.
+
+On-going discussions
+====================
+
+- SHA256sum replacement or
+  patch,
+  about a possible replacement for our hash extension for Firefox.
+
+- Feedback wanted on planned implementation of Feature #5301 - Clone or Backup
+  Persistent
+  Volume
+
+- Testing EHLO messages: simplification
+  proposal
+
+- Perspectives for
+  0.23..1.1
+
+- Upgrading the Linux kernel for
+  1.0?
+
+- Review of
+  https://tails.boum.org/contribute/,
+  about restructuring the links on the Contribute page.
+
+- More tails.boum.org HTTP response
+  headers?
+
+Funding
+=======
+
+- We were [awarded](https://twitter.com/accessnow/status/441043400708857856) the
+  Access Innovation Prize.
+
+- We submitted a proposal to the Knight Foundation [News
+  Challenge](https://www.newschallenge.org/challenge/2014/submissions/improve-tails-to-limit-the-impact-of-security-flaws-isolate-critical-applications-and-provide-same-day-security-updates).
+
+- The [crowdfunding campaign](https://pressfreedomfoundation.org/) by the
+  Freedom of the Press Foundation was extended and revived thanks to some
+  new
+  [articles](https://pressfreedomfoundation.org/blog/2014/04/help-support-little-known-privacy-tool-has-been-critical-journalists-reporting-nsa)
+  by Trevor Timm.
+
+- We applied to be audited through the OpenITP Peer Review
+  Board.
+
+- We are still the process of signing the contract for a grant we were awarded
+  by OpenITP at the end of 2013.
+
+Outreach
+========
+
+- We organized a [[news/logo_contest]] to have a new logo in time
+  for Tails 1.0. We received 36 proposals! Tails contributors
+  started to vote on their favourite proposals.
+
+- We scheduled two usability testing sessions together with [Silicon
+  Sentier](http://siliconsentier.org/) on May 21 and May 28 in Paris.
+
+- We scheduled a public hackfest. It will take place at
+  [IRILL](http://www.irill.org/) (Paris, France) on July 5 and 6.
+
+- We made progress on the organization of the 2014 edition of the
+  yearly Tails contributors summit. We could make use of more
+  funding sources.
+
+Press and testimonials
+======================
+
+* 2014-03-17: In [Index Freedom of Expression Awards: Digital activism
+  nominee
+  Tails](http://www.indexoncensorship.org/2014/03/index-freedom-expression-awards-digital-activism-nominee-tails/),
+  Alice Kirkland interviews the Tails project about our nomination for
+  the *Censorship’s Freedom of Expression Awards*.
+
+* 2014-03-13: In his [Les 7 clés pour protéger ses
+  communications](http://www.tdg.ch/high-tech/web/Les-7-cles-pour-proteger-ses-communications/story/25588689)
+  article (in French) published by the *Tribune de Genève*, Simon Koch
+  recommends using Tails.
+
+* 2014-03-12: In his [Happy 25th Birthday World Wide Web - Let's Not
+  Destroy
+  It](http://www.huffingtonpost.co.uk/mike-harris/world-wide-web_b_4947687.html?utm_hp_ref=uk)
+  article published by the Huffington Post, Mike Harris writes that
+  "Increasing numbers of activists are using high-tech tools such as
+  Tor or Tails to encrypt their internet browsing and email".
+
+* 2014-03-12: In his US and UK Spy Agencies Are "Enemies of the
+  Internet"
+  article, published in the Motherboard section of the Vice network,
+  Joseph Cox covers Reporters Without Borders' latest
+  report,
+  and writes "If you're a journalist working on anything more
+  sensitive than London Fashion Week or League 2 football, you might
+  want to consider using the Linux-based 'Tails' operating
+  system too."
+
+* 2014-03-08: Reporters Without Borders's
+  Grégoire Pouget blogs about Tails: FIC 2014 : Comment être
+  réellement anonyme sur
+  Internet
+  (in French).
+
+* 2014-03-03: In the March edition of the Linux Journal, that
+  [celebrates 20 years of this
+  journal](http://www.linuxjournal.com/content/march-2014-issue-linux-journal-20-years-linux-journal),
+  Kyle demonstrates Tails.

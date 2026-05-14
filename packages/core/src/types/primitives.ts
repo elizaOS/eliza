@@ -129,12 +129,6 @@ export interface Content {
 	responseId?: UUID;
 
 	/**
-	 * Whether this is a simple response (no actions required).
-	 * Used for optimization in the message handler.
-	 */
-	simple?: boolean;
-
-	/**
 	 * Results from action callbacks
 	 */
 	actionCallbacks?: Content;

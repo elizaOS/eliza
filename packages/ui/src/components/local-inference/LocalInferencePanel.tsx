@@ -9,6 +9,7 @@ import type {
   InstalledModel,
   ModelHubSnapshot,
 } from "../../api/client-local-inference";
+import { useRenderGuard } from "../../hooks/useRenderGuard";
 import { filterSettingsDefaultLocalModels } from "../../services/local-inference/catalog-policy";
 import { useApp } from "../../state";
 import { resolveApiUrl } from "../../utils/asset-url";
@@ -25,16 +26,19 @@ import { HardwareBadge } from "./HardwareBadge";
 import { displayModelName } from "./hub-utils";
 import { ModelHubView } from "./ModelHubView";
 import { SlotAssignments } from "./SlotAssignments";
+import { useDeviceBridgeStatus } from "./useDeviceBridgeStatus";
 
 type HubTab = "curated" | "search" | "downloads";
 
 export function LocalInferencePanel() {
+  useRenderGuard("LocalInferencePanel");
   const { setActionNotice } = useApp();
   const [hub, setHub] = useState<ModelHubSnapshot | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<HubTab>("curated");
   const eventSourceRef = useRef<EventSource | null>(null);
+  const deviceBridgeStatus = useDeviceBridgeStatus();
 
   const refresh = useCallback(async () => {
     try {
@@ -279,7 +283,7 @@ export function LocalInferencePanel() {
   return (
     <div className="flex flex-col gap-3">
       <HardwareBadge hardware={hub.hardware} />
-      <DeviceBridgeStatusBar />
+      <DeviceBridgeStatusBar status={deviceBridgeStatus} />
       <FirstRunOffer
         catalog={catalog}
         installed={hub.installed}
@@ -366,14 +370,14 @@ export function LocalInferencePanel() {
         />
       )}
 
-      <AdvancedSettingsDisclosure title="Local model assignments">
+      <AdvancedSettingsDisclosure title="Local model assignments" lazy>
         <div className="flex flex-col gap-3">
           <SlotAssignments
             installed={hub.installed}
             assignments={hub.assignments}
             onChange={handleAssignmentsChange}
           />
-          <DevicesPanel />
+          <DevicesPanel status={deviceBridgeStatus} />
           <ExternalInstalledSummary
             installed={hub.installed}
             onActivate={handleActivate}

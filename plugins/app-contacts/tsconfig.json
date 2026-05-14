@@ -23,8 +23,6 @@
     "paths": {
       "drizzle-orm": ["../plugin-sql/node_modules/drizzle-orm"],
       "drizzle-orm/*": ["../plugin-sql/node_modules/drizzle-orm/*"],
-      "@elizaos/app-core": ["../../packages/app-core/src/index.ts"],
-      "@elizaos/app-core/*": ["../../packages/app-core/src/*"],
       "@elizaos/app-wallet": ["../../plugins/app-wallet/src/index.ts"],
       "@elizaos/app-wallet/*": ["../../plugins/app-wallet/src/*"],
       "@elizaos/ui": ["../../packages/ui/src/index.ts"],

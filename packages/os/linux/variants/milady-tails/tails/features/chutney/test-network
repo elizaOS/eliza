@@ -1,0 +1,63 @@
+Authority = Node(
+    tag="auth",
+    authority=1,
+    relay=1,
+)
+
+BridgeAuthority = Node(
+    tag="ba",
+    authority=1,
+    bridgeauthority=1,
+    relay=1,
+)
+
+NonExitRelay = Node(
+    tag="relay",
+    relay=1,
+)
+
+ExitRelay = Node(
+    tag="relay",
+    relay=1,
+    exit=1,
+)
+
+Client = Node(
+    tag="client",
+    client=1,
+)
+
+Bridge = Node(
+    tag="bridge",
+    bridge=1,
+    relay=1,
+)
+
+BridgeObfs4 = Node(
+    tag="obfs4",
+    bridge=1,
+    pt_bridge=1,
+    relay=1,
+    pt_transport="obfs4",
+    sandbox=0,
+)
+
+BridgeDefault = Node(
+    tag="defbr",
+    bridge=1,
+    pt_bridge=1,
+    relay=1,
+    pt_transport="obfs4",
+    sandbox=0,
+)
+
+NODES = Authority.getN(4) + \
+        BridgeAuthority.getN(1) + \
+        NonExitRelay.getN(10) + \
+        ExitRelay.getN(5) + \
+        Bridge.getN(2) + \
+        BridgeObfs4.getN(2) + \
+        BridgeDefault.getN(1) + \
+        Client.getN(1)
+
+ConfigureNodes(NODES)

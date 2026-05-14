@@ -194,6 +194,20 @@ export const useComputerAction: Action = {
       required: false,
       schema: { type: "number", minimum: 1, maximum: 20, default: 3 },
     },
+    {
+      name: "displayId",
+      description:
+        "Display the coordinate is local to. Required for any coordinate-bearing action on multi-monitor hosts. See the `computerState` provider for the live `displays[]` list.",
+      required: false,
+      schema: { type: "number" },
+    },
+    {
+      name: "coordSource",
+      description:
+        "Coordinate space of the coordinate fields: 'logical' (default; matches display.bounds) or 'backing' (raw retina pixels — macOS only).",
+      required: false,
+      schema: { type: "string", enum: ["logical", "backing"] },
+    },
   ],
   validate: async (
     runtime: IAgentRuntime,

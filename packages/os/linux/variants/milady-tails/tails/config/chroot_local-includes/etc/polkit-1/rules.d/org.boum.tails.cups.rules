@@ -1,0 +1,110 @@
+polkit.addRule(function(action, subject) {
+    if (action.id == "org.opensuse.cupspkhelper.mechanism.server-settings" &&
+        subject.user == "amnesia")
+    {
+        if (subject.active && subject.local) {
+            return polkit.Result.YES;
+        }
+
+    }
+});
+polkit.addRule(function(action, subject) {
+    if (action.id == "org.opensuse.cupspkhelper.mechanism.devices-get" &&
+        subject.user == "amnesia")
+    {
+        if (subject.active && subject.local) {
+            return polkit.Result.YES;
+        }
+
+    }
+});
+polkit.addRule(function(action, subject) {
+    if (action.id == "org.opensuse.cupspkhelper.mechanism.printer-set-default" &&
+        subject.user == "amnesia")
+    {
+        if (subject.active && subject.local) {
+            return polkit.Result.YES;
+        }
+
+    }
+});
+polkit.addRule(function(action, subject) {
+    if (action.id == "org.opensuse.cupspkhelper.mechanism.printer-enable" &&
+        subject.user == "amnesia")
+    {
+        if (subject.active && subject.local) {
+            return polkit.Result.YES;
+        }
+
+    }
+});
+polkit.addRule(function(action, subject) {
+    if (action.id == "org.opensuse.cupspkhelper.mechanism.printer-local-edit" &&
+        subject.user == "amnesia")
+    {
+        if (subject.active && subject.local) {
+            return polkit.Result.YES;
+        }
+
+    }
+});
+polkit.addRule(function(action, subject) {
+    if (action.id == "org.opensuse.cupspkhelper.mechanism.printer-remote-edit" &&
+        subject.user == "amnesia")
+    {
+        if (subject.active && subject.local) {
+            return polkit.Result.YES;
+        }
+
+    }
+});
+polkit.addRule(function(action, subject) {
+    if (action.id == "org.opensuse.cupspkhelper.mechanism.class-edit" &&
+        subject.user == "amnesia")
+    {
+        if (subject.active && subject.local) {
+            return polkit.Result.YES;
+        }
+
+    }
+});
+polkit.addRule(function(action, subject) {
+    if (action.id == "org.opensuse.cupspkhelper.mechanism.job-edit" &&
+        subject.user == "amnesia")
+    {
+        if (subject.active && subject.local) {
+            return polkit.Result.YES;
+        }
+
+    }
+});
+polkit.addRule(function(action, subject) {
+    if (action.id == "org.opensuse.cupspkhelper.mechanism.job-not-owned-edit" &&
+        subject.user == "amnesia")
+    {
+        if (subject.active && subject.local) {
+            return polkit.Result.YES;
+        }
+
+    }
+});
+polkit.addRule(function(action, subject) {
+    if (action.id == "org.opensuse.cupspkhelper.mechanism.all-edit" &&
+        subject.user == "amnesia")
+    {
+        if (subject.active && subject.local) {
+            return polkit.Result.YES;
+        }
+
+    }
+});
+polkit.addRule(function(action, subject) {
+    if (action.id == "org.opensuse.cupspkhelper.mechanism.printeraddremove" &&
+        subject.user == "amnesia")
+    {
+        if (subject.active && subject.local) {
+            return polkit.Result.YES;
+        }
+
+    }
+});

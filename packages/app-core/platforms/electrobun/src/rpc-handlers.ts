@@ -1147,7 +1147,6 @@ export function buildBunRpcHandlers({
 		swabbleUpdateConfig: async (
 			params: Parameters<typeof swabble.updateConfig>[0],
 		) => swabble.updateConfig(params),
-		swabbleIsWhisperAvailable: async () => swabble.isWhisperAvailableCheck(),
 		swabbleAudioChunk: async (
 			params: Parameters<typeof swabble.audioChunk>[0],
 		) => swabble.audioChunk(params),
@@ -1161,8 +1160,6 @@ export function buildBunRpcHandlers({
 		talkmodeGetState: async () => talkmode.getState(),
 		talkmodeIsEnabled: async () => talkmode.isEnabled(),
 		talkmodeIsSpeaking: async () => talkmode.isSpeaking(),
-		talkmodeGetWhisperInfo: async () => talkmode.getWhisperInfo(),
-		talkmodeIsWhisperAvailable: async () => talkmode.isWhisperAvailableCheck(),
 		talkmodeUpdateConfig: async (
 			params: Parameters<typeof talkmode.updateConfig>[0],
 		) => talkmode.updateConfig(params),

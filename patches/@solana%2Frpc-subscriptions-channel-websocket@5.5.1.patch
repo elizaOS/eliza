@@ -1,0 +1,13 @@
+diff --git a/package.json b/package.json
+index d1e26986b822d806c7791ab0379a49b24aa938f8..f7cd743261e705622e8cd19c30289db38083f147 100644
+--- a/package.json
++++ b/package.json
+@@ -62,7 +62,7 @@
+     "@solana/rpc-subscriptions-spec": "5.5.1"
+   },
+   "peerDependencies": {
+-    "typescript": "^5.0.0"
++    "typescript": ">=5.0.0"
+   },
+   "peerDependenciesMeta": {
+     "typescript": {

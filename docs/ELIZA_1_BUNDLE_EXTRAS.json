@@ -1,0 +1,189 @@
+{
+  "$comment": [
+    "Eliza-1 bundle EXTRAS (WS10 prep, 2026-05-13).",
+    "",
+    "These artifacts are NOT part of the base-v1 release bundle described by",
+    "ELIZA_1_GGUF_PLATFORM_PLAN.json. They are runtime-downloaded add-ons that",
+    "the runtime / arbiter pulls on demand the first time a capability is",
+    "requested. Their presence in the user's local cache is gated by:",
+    "  (a) the device class meeting the resident-RAM headroom budget in",
+    "      docs/eliza-1-pipeline/05-memory-budgets.md, and",
+    "  (b) the user opting in to the capability (image-gen, OCR, person-detect)",
+    "      via the desktop/mobile setup flow.",
+    "",
+    "DO NOT add these as required_files on the bundle plan: shipping a 4 GB",
+    "diffusion GGUF inside the base-v1 bundle would push the 0_8b/2b tiers far",
+    "beyond their advertised on-disk footprint and break first-run UX on phones.",
+    "",
+    "The validator (eliza/scripts/validate-bundle-plan.mjs) reads this file",
+    "alongside ELIZA_1_GGUF_PLATFORM_PLAN.json and asserts every per-tier entry",
+    "has a corresponding catalog entry in",
+    "eliza/packages/shared/src/local-inference/catalog.ts (or surfaces the gap",
+    "as a WS2 / WS3 follow-up)."
+  ],
+  "extrasVersion": "0.1.0",
+  "extrasUpdatedAt": "2026-05-13T00:00:00Z",
+  "imagegen": {
+    "$comment": [
+      "Image-gen GGUFs ride on stable-diffusion.cpp (or a comparable",
+      "GGUF-aware diffusion runtime). Sizes are estimates from public",
+      "GGUF quants of each model:",
+      "  - sd-1.5 Q5_0:        ~1.0 GB",
+      "  - sdxl-turbo Q4_0:    ~3.6 GB",
+      "  - z-image-turbo Q4_K_M: ~3.4 GB (Apache-2.0)",
+      "  - flux-1-schnell Q4_K_M: ~6.8 GB (Apache-2.0 weights, Schnell only)"
+    ],
+    "perTier": {
+      "eliza-1-0_8b": {
+        "default": {
+          "id": "imagegen-sd-1_5-q5_0",
+          "file": "imagegen/sd-1.5-Q5_0.gguf",
+          "estimatedSizeBytes": 1100000000,
+          "license": "licenses/LICENSE.imagegen.sd-1_5.txt"
+        },
+        "optional": []
+      },
+      "eliza-1-2b": {
+        "default": {
+          "id": "imagegen-sd-1_5-q5_0",
+          "file": "imagegen/sd-1.5-Q5_0.gguf",
+          "estimatedSizeBytes": 1100000000,
+          "license": "licenses/LICENSE.imagegen.sd-1_5.txt"
+        },
+        "optional": []
+      },
+      "eliza-1-4b": {
+        "default": {
+          "id": "imagegen-sd-1_5-q5_0",
+          "file": "imagegen/sd-1.5-Q5_0.gguf",
+          "estimatedSizeBytes": 1100000000,
+          "license": "licenses/LICENSE.imagegen.sd-1_5.txt"
+        },
+        "optional": [
+          {
+            "id": "imagegen-sdxl-turbo-q4_0",
+            "file": "imagegen/sdxl-turbo-Q4_0.gguf",
+            "estimatedSizeBytes": 3700000000,
+            "license": "licenses/LICENSE.imagegen.sdxl-turbo.txt",
+            "gateNote": "Flagship phones / mid-range tablets only. Skip on <8 GB RAM."
+          }
+        ]
+      },
+      "eliza-1-9b": {
+        "default": {
+          "id": "imagegen-z-image-turbo-q4_k_m",
+          "file": "imagegen/z-image-turbo-Q4_K_M.gguf",
+          "estimatedSizeBytes": 3500000000,
+          "license": "licenses/LICENSE.imagegen.z-image-turbo.txt"
+        },
+        "optional": [
+          {
+            "id": "imagegen-flux-1-schnell-q4_k_m",
+            "file": "imagegen/flux-1-schnell-Q4_K_M.gguf",
+            "estimatedSizeBytes": 6900000000,
+            "license": "licenses/LICENSE.imagegen.flux-1-schnell.txt",
+            "gateNote": "Higher quality, requires >=24 GB unified RAM or >=12 GB VRAM."
+          }
+        ]
+      },
+      "eliza-1-27b": {
+        "default": {
+          "id": "imagegen-z-image-turbo-q4_k_m",
+          "file": "imagegen/z-image-turbo-Q4_K_M.gguf",
+          "estimatedSizeBytes": 3500000000,
+          "license": "licenses/LICENSE.imagegen.z-image-turbo.txt"
+        },
+        "optional": [
+          {
+            "id": "imagegen-flux-1-schnell-q4_k_m",
+            "file": "imagegen/flux-1-schnell-Q4_K_M.gguf",
+            "estimatedSizeBytes": 6900000000,
+            "license": "licenses/LICENSE.imagegen.flux-1-schnell.txt",
+            "gateNote": "Higher quality, requires >=24 GB unified RAM or >=12 GB VRAM."
+          }
+        ]
+      },
+      "eliza-1-27b-256k": {
+        "default": {
+          "id": "imagegen-z-image-turbo-q4_k_m",
+          "file": "imagegen/z-image-turbo-Q4_K_M.gguf",
+          "estimatedSizeBytes": 3500000000,
+          "license": "licenses/LICENSE.imagegen.z-image-turbo.txt"
+        },
+        "optional": [
+          {
+            "id": "imagegen-flux-1-schnell-q4_k_m",
+            "file": "imagegen/flux-1-schnell-Q4_K_M.gguf",
+            "estimatedSizeBytes": 6900000000,
+            "license": "licenses/LICENSE.imagegen.flux-1-schnell.txt",
+            "gateNote": "Long-context tier; image-gen is co-resident with the 27B text weights — flagship workstations only."
+          }
+        ]
+      },
+      "eliza-1-27b-1m": {
+        "default": {
+          "id": "imagegen-z-image-turbo-q4_k_m",
+          "file": "imagegen/z-image-turbo-Q4_K_M.gguf",
+          "estimatedSizeBytes": 3500000000,
+          "license": "licenses/LICENSE.imagegen.z-image-turbo.txt"
+        },
+        "optional": [
+          {
+            "id": "imagegen-flux-1-schnell-q4_k_m",
+            "file": "imagegen/flux-1-schnell-Q4_K_M.gguf",
+            "estimatedSizeBytes": 6900000000,
+            "license": "licenses/LICENSE.imagegen.flux-1-schnell.txt",
+            "gateNote": "1M-context tier; image-gen is rarely co-resident — server / multi-GPU only."
+          }
+        ]
+      }
+    }
+  },
+  "vision": {
+    "$comment": [
+      "Vision mmproj entries are already listed per tier in",
+      "ELIZA_1_GGUF_PLATFORM_PLAN.json under required_files",
+      "(vision/mmproj-<tier>.gguf). This block records the size estimates so",
+      "the budget table and arbiter can plan resident memory.",
+      "Estimates are for Qwen3-VL mmproj at the per-tier matching quant."
+    ],
+    "perTier": {
+      "eliza-1-0_8b": { "estimatedSizeBytes": 220000000, "quant": "Q4_K_M" },
+      "eliza-1-2b":   { "estimatedSizeBytes": 320000000, "quant": "Q8_0"   },
+      "eliza-1-4b":   { "estimatedSizeBytes": 380000000, "quant": "Q8_0"   },
+      "eliza-1-9b":   { "estimatedSizeBytes": 600000000, "quant": "Q8_0"   },
+      "eliza-1-27b":  { "estimatedSizeBytes": 720000000, "quant": "Q8_0"   },
+      "eliza-1-27b-256k": { "estimatedSizeBytes": 720000000, "quant": "Q8_0" },
+      "eliza-1-27b-1m":   { "estimatedSizeBytes": 720000000, "quant": "Q8_0" }
+    }
+  },
+  "ocr": {
+    "$comment": [
+      "OCR ships with the app, not the model bundle. RapidOCR PP-OCRv5 mobile",
+      "(detector + recognizer ONNX) is bundled by the desktop installer and",
+      "linked into the runtime workspace at first launch. Total resident",
+      "footprint is ~80 MB (det ~5 MB, rec ~75 MB)."
+    ],
+    "shippedWith": "app",
+    "components": [
+      { "id": "rapidocr-ppocrv5-det",  "file": "ocr/ppocrv5-mobile-det.onnx", "estimatedSizeBytes": 5000000 },
+      { "id": "rapidocr-ppocrv5-rec",  "file": "ocr/ppocrv5-mobile-rec.onnx", "estimatedSizeBytes": 75000000 }
+    ],
+    "license": "licenses/LICENSE.ocr.rapidocr.txt"
+  },
+  "personDetect": {
+    "$comment": [
+      "Lightweight person/object detector for camera-to-reaction flows.",
+      "YOLOv8n / YOLOv11n at int8 ONNX is ~12 MB; ships with the app like OCR."
+    ],
+    "shippedWith": "app",
+    "components": [
+      { "id": "yolov8n-int8", "file": "detect/yolov8n-int8.onnx", "estimatedSizeBytes": 13000000 }
+    ],
+    "license": "licenses/LICENSE.detect.yolo.txt"
+  },
+  "quantization": {
+    "$comment": "Image-gen quant config sidecar that mirrors the per-tier defaults.",
+    "configFile": "quantization/imagegen_config.json"
+  }
+}

@@ -1,0 +1,141 @@
+[[!meta title="Call for testing: 2.0~rc1"]]
+
+[[!meta date="Mon, 12 Jan 2016 17:00:00 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag announce]]
+
+You can help Tails! The first release candidate for the upcoming
+version 2.0 is out. We are very excited and cannot wait to hear what
+you think about it :)
+
+[[!toc levels=1]]
+
+# What's new in 2.0?
+
+Tails 2.0 will be the first version of Tails based on Debian 8
+(Jessie). As such, it upgrades essentially all included software.
+
+The most noticeable change is probably the move to GNOME Shell,
+configured in *Classic mode*. This desktop environment provides a modern
+and actively developed replacement for the aging GNOME "Flashback".
+GNOME Shell also paves the way for better supporting touchscreens in
+the future.
+
+Under the hood, an amazing amount of code was ported to more modern
+technologies. This, in turn, allowed us to do lots of small changes
+all around the place, that will make the Tails experience both
+safer, and more pleasant. For example, all custom system services
+are harder to exploit thanks to the use of Linux namespaces, set up by
+systemd. And the way Tails tells the user that "Tor is ready" is now
+more accurate.
+
+But really, there are simply too many changes to describe them all
+here, so try Tails 2.0~rc1 yourself!
+
+Technical details of all the changes are listed in the
+Changelog.
+
+There is one piece of bad news, that makes us a bit sad, though: we
+had to remove the Windows camouflage feature, since our call for help
+to port it to GNOME Shell (issued in January, 2015) was unsuccessful.
+
+# What's new since Tails 2.0~beta1?
+
+## New features
+
+* Fix the passphrase strength indicator of GNOME Disks.
+
+## Upgrades and changes
+
+* Remove Claws Mail: Icedove is now the default email client.
+* Upgrade Tor Browser to 5.5a6.
+* Install xserver-xorg-video-intel from Jessie Backports (currently:
+  2.99.917-2~bpo8+1). This adds support for recent chips such as
+  Intel Broadwell's HD Graphics.
+
+## Fixed problems
+
+* Stop offering the option to open downloaded files with external
+* applications in Tor Browser (Closes: #9285). Our AppArmor confinement was
+* blocking most such actions anyway, resulting in poor UX.
+
+* Fix the performance issue of Tails Upgrader that made automatic upgrades
+* very slow to apply.
+
+* Fix Electrum by installing the version from Debian testing.
+
+* Restore default file associations.
+
+* Repair Dotfiles persistence feature.
+
+* Fix ability to reconfigure an existing persistent storage.
+
+* Associate armored OpenPGP public keys named `*.key` with Seahorse.
+
+* Update the list of enabled GNOME Shell extensions, which might fix
+* the "GNOME Shell sometimes leaves Classic mode" bug seen in 2.0~beta1:
+
+# How to test Tails 2.0~rc1?
+
+1. **Keep in mind that this is a test image.** We have ensured
+   that it is not broken in any obvious way, but it might still contain
+   undiscovered issues.
+
+2. Download the ISO image and its signature:
+
+   Tails 2.0~rc1 ISO image
+
+   Tails 2.0~rc1 signature
+
+   Or try the automatic upgrade from
+   2.0~beta1 even though it is very slow.
+   Note that there is no automatic upgrade from 1.8.2 to this release.
+
+1. Verify the ISO image.
+
+1. Have a look at the list of <a href="#known_issues">known issues of
+   this release</a> and the list of
+   [[longstanding known issues|support/known_issues]].
+
+1. Test wildly!
+
+If you find anything that is not working as it should, please report to
+us on <tails-testers@boum.org>.
+
+Bonus points if you first check if it is a
+<a href="#known_issues">known issue of this release</a> or a
+[[longstanding known issue|support/known_issues]].
+
+<a id="known_issues"></a>
+
+Known issues in 2.0~rc1
+=======================
+
+* The documentation was not updated yet.
+
+* Tor Browser does not support MPEG-4 video streaming in Tails 2.0 and
+  newer ([[!tails_ticket 10835]]). Instead, in some cases you can
+  download them and play them with the video player included in Tails.
+  On the other hand, web sites that propose WebM video streaming
+  work fine.
+
+* Sometimes, some of the icons located on the top right corner of the
+  screen are not displayed entirely, or at all. For example, the Vidalia
+  icon, or the icon that allows to change to another keyboard layout,
+  may be hidden. Other information, such as the clock, may not
+  be visible. Restarting Tails often solves this problem.
+  ([[!tails_ticket 10576]] and [[!tails_ticket 10807]])
+
+* Network interfaces sometimes remain turned off ([[!tails_ticket 9012]]).
+  If this happens to you, please [[report the error|doc/first_steps/whisperback]]
+  so we can get enough debugging information to fix it.
+
+* Graphics display operations are slow on computers with graphics
+  adapters of the Nvidia [[!wikipedia GeForce 900 series]], such as the
+  GeForce GTX 960.
+
+* It is not possible to add and configure printers
+  ([[!tails_ticket 10893]]).
+
+* [[Longstanding known issues|support/known_issues]]

@@ -65,7 +65,6 @@ function fieldsToContent(fields: Record<string, unknown>): Content {
 		thought: String(fields.thought ?? ""),
 		actions: finalActions,
 		text: String(fields.text ?? ""),
-		simple: fields.simple === true || fields.simple === "true",
 		providers,
 	};
 }

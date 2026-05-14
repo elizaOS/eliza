@@ -1,0 +1,297 @@
+[[!meta title="Git repositories"]]
+
+<div id="intro">
+
+<p>Tails and its website are developed in numerous Git repositories.</p>
+
+<p><i>Git</i> is a distributed version control
+system. It allows several people to work on the same source code and
+handle changes in a distributed and efficient way.</p>
+
+</div>
+
+[[!toc levels=3]]
+
+<a id="learn_Git"></a>
+
+Learn Git
+=========
+
+To learn more about *Git*, refer to
+its [homepage](https://git-scm.com/) and
+[official documentation](https://git-scm.com/doc).
+
+Here are a couple of links to get started with Git:
+
+- [Git basics](https://www.atlassian.com/git), by Atlassian
+
+- [Git immersion](https://gitimmersion.com/), a step-by-step introduction
+
+- [Pro Git](https://git-scm.com/book/en/v2),
+  a book on Git from basic to advanced usage.
+
+  This book is available in several formats and languages.
+
+<a id="general-information"></a>
+
+General information
+===================
+
+<a id="gitlab"></a>
+
+GitLab
+------
+
+To browse most of our repositories, see [[!tails_gitlab tails desc="our GitLab"]].
+
+To actually contribute, you need to register. See the [[documentation about how
+we're using GitLab|contribute/working_together/GitLab]].
+
+Merge policy
+------------
+
+See our [[contribute/merge_policy]].
+
+Repositories
+============
+
+<a id="main-repo"></a>
+
+Main repository
+---------------
+
+This repository contains the Tails source code and the source of the website.
+
+For instructions about cloning and forking this repository,
+visit it [[!tails_gitlab tails/tails desc="on GitLab"]].
+
+We use Git submodules, so after cloning this repository, in your new Git clone's
+directory, run:
+
+	git submodule update --init
+
+For more information about our usage of Git submodules, see
+[[the dedicated section|git#submodules]].
+
+### Configuration
+
+Developers with write access to the repositories should:
+
+	git config --global url.git@gitlab-ssh.tails.boum.org:.insteadOf \
+	   https://gitlab.tails.boum.org/
+
+We also recommend the following setting in your Tails clone since it
+otherwise is too easy to forget pushing updated submodules:
+
+    git config push.recurseSubmodules check
+
+To have `git blame` ignore specific commits that would make its output less
+useful, such as automated code reformatting, run in your local clone:g ap
+
+    git config --local blame.ignoreRevsFile .git-blame-ignore-revs
+
+<a id="branches"></a>
+
+### Branches
+
+Tails development uses several branches modeled a bit like the
+Debian development process. Here they are.
+
+<a id="master_branch"></a>
+
+#### master
+
+The `master` branch is mostly used to build the website. It is
+merged into `devel` and `stable` from time to time.
+We merge into `master`:
+
+- [[Documentation improvements|contribute/how/documentation]] that
+  affect current Tails (e.g. not the next Tails release).
+
+- Other changes to the website ([[news]], [[security advisories|security/]], layout, and so on).
+
+- [[Translations|contribute/how/translate#website]] of the website.
+
+- When [[releasing a new Tails|contribute/release_process/]], the branch
+  the release was built from (`stable` or `testing`).
+
+#### stable
+
+The `stable` branch is intended to contain:
+
+- the state of the code tagged for the last stable release
+- fixes for security or important bugs.
+
+Its purpose is to prepare bugfix releases.
+
+#### testing
+
+The `testing` branch is used to prepare an imminent major release: at some
+point of the development process, the `devel` branch code is merged
+into `testing`, frozen, and endures careful testing and bug-fixing
+until this branch is considered good enough to become a stable
+release. The `testing` branch is then merged into the `stable` and
+`master` ones, images built and shipped and we go back to code shiny
+new stuff in the `devel` branch.
+
+Please note that the `testing` branch generally has not been granted
+the same testing and attention as code that has made it into a
+stable release: please use it for testing purposes but do not rely
+on it for anything. No guarantee, blablabla.
+
+#### devel
+
+Large changes that need to be included in a release candidate
+before we release them in a major Tails release are based on the
+`devel` branch. This branch will never get released; instead, code
+from it will be merged into testing and then into a real release.
+
+Please note that the `devel` branch can be broken, have awful security
+problems and so on. No guarantee, blablabla.
+
+The `master` branch is merged into `devel` from time to time.
+
+#### Topic branches
+
+We generally use topic branches called `NNNNN-*`, with "NNNNN" being the main
+issue addressed by the branch. Once ready, a topic branch is
+merged (with `--no-ff`) into the appropriate branch (generally
+`devel`). Until it has been merged, a topic branch's history may be
+rewritten, e.g. it may be rebased on top of `devel`.
+
+Unless there are good reasons to do otherwise, bugfix branches must be
+forked off the stable branch, while feature branches
+should be forked off the devel branch.
+
+If you intend to work on a branch not really meant to be proposed to a
+merge at first, like an experimenting branch that you still want to push
+to share with other developers, you can disable Jenkins CI by setting `config/ci/per_branch/$branch.toml` to
+
+```toml
+[test]
+skip = true
+[build]
+skip = true
+```
+
+Our Jenkins instance
+[[!tails_gitweb bin/ci-configuration desc="will not build nor test"]] it.
+
+<a id="promotion-material"></a>
+
+Promotion material
+------------------
+
+This repository contains Tails [[promotion
+material|contribute/how/promote]].
+
+For instructions about cloning and forking this repository,
+visit it [[!tails_gitlab tails/promotion-material desc="on GitLab"]].
+
+<a id="other-repositories"></a>
+
+Other repositories
+------------------
+
+Most other public Tails Git repositories are
+[[!tails_gitlab tails desc="on our GitLab"]].
+
+<a id="submodules"></a>
+
+Submodules
+==========
+
+We use Git submodules to track external repositories from the main
+Tails source tree.
+
+The main practical consequence thereof so far, for most Tails
+contributors, is that one should generally run the following command
+after checking out a branch:
+
+	git submodule update --init
+
+For more information, see:
+
+* the [chapter about
+  submodules](https://git-scm.com/book/en/v2/Git-Tools-Submodules)
+  in the *Pro Git* book;
+
+* the [`git-submodule(1)`](http://manpages.debian.org/git-submodule)
+  man page.
+
+<a id="creating-a-new-repository"></a>
+
+Creating a new repository
+=========================
+
+In the vast majority of cases, your new repository will be hosted
+[[!tails_gitlab desc="our GitLab"]].
+
+If you want to modify files that are already in one of our Git repositories,
+[[!tails_gitlab help/user/project/repository/forking_workflow.md desc="create
+your own fork"]] of this repository from your account on our GitLab.
+
+Else, if you want a new repository for a different project or a new team, request it from the
+[[Tails system administrators|doc/about/contact#tails-sysadmins]].
+Include the following information in your request:
+
+   - your GitLab user name
+   - the preferred name of the new repository
+   - which teams and individuals should have read access to this new repository
+   - which teams and individuals should have write access to this new repository
+
+Once your repository has been created, clone it:
+
+* If you want to encrypt the content of your new Git repository with
+  OpenPGP, go through some arcane
+  [[initialization ritual|contribute/git#initialize-git-remote-gcrypt]]
+  to reach wisdom, bliss and enlightenment.
+
+* Otherwise (lucky you!), find your new repository
+  and instructions to clone it on [[!tails_gitlab desc="GitLab"]].
+
+<a id="initialize-git-remote-gcrypt"></a>
+
+Initializing a git-remote-gcrypt repository
+===========================================
+
+Clone the new, empty repository in a way that tells Git it's going to
+be encrypted:
+
+	git clone gcrypt::git@gitlab-ssh.tails.boum.org:$REPOSITORY
+
+Change directory into the newly cloned repository:
+
+	cd $REPOSITORY
+
+Decide whether you want to hide to the immerda administrators which
+OpenPGP keys this repository will be encrypted for (note that this has
+severe usability drawbacks). Skip to the next step if you really want
+that. Otherwise:
+
+	git config gcrypt.publish-participants true
+
+Tell Git which OpenPGP keys the repository will be encrypted for:
+
+	git config gcrypt.participants "LIST OF OPENPGP FINGERPRINTS"
+
+Write some setup instructions for your team-mates, e.g. copy and
+paste the `git config` command(s) you have just run:
+
+	editor README
+
+Add these setup instructions to the repository and commit:
+
+	git add README && git commit -m 'Add setup documentation.'
+
+Push:
+
+	git push -u origin master
+
+Troubleshooting
+===============
+
+First, check with your team-mates: in some cases they can help you
+troubleshoot your problem, and confirm whether the problem is on your
+side or on the server side. If that is not enough, get in touch with
+the [[Tails system administrators|doc/about/contact#tails-sysadmins]].

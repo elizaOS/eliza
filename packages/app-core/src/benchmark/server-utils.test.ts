@@ -9,6 +9,7 @@ import {
 import {
   benchmarkTurnMetadata,
   capturedActionsToToolCalls,
+  composeBenchmarkPrompt,
 } from "./server-utils";
 
 const uuid = (value: string) =>
@@ -92,6 +93,46 @@ describe("benchmark function-call metadata", () => {
     expect(metadata.tool_schema_count).toBe(1);
     expect(metadata.tool_names).toEqual(["calendar.search"]);
     expect(metadata.trajectory_endpoint).toContain("loca_bench");
+  });
+});
+
+describe("composeBenchmarkPrompt", () => {
+  it("compacts LOCA context before injecting it into the user prompt", () => {
+    const prompt = composeBenchmarkPrompt({
+      text: "Finish the CSV files.",
+      context: {
+        benchmark: "loca_bench",
+        task_id: "task-a",
+        taskId: "task-a",
+        session_id: "session-a",
+        messages: [
+          {
+            role: "assistant",
+            content: "prior assistant text that should not be duplicated",
+          },
+        ],
+        tools: [
+          {
+            type: "function",
+            function: {
+              name: "filesystem_list_directory",
+              parameters: { type: "object" },
+            },
+          },
+        ],
+        temperature: 1,
+        top_p: 1,
+      },
+    });
+
+    expect(prompt).toContain('"tool_names"');
+    expect(prompt).toContain("filesystem_list_directory");
+    expect(prompt).toContain("LOCA-bench");
+    expect(prompt).toContain("BENCHMARK_ACTION");
+    expect(prompt).toContain("source_data is read-only");
+    expect(prompt).toContain("assignment_info.csv");
+    expect(prompt).not.toContain("prior assistant text");
+    expect(prompt).not.toContain('"messages"');
   });
 });
 

@@ -4,7 +4,7 @@ sidebarTitle: "Memoria y Estado"
 description: "Tipos de memoria, composición de estado, configuración de búsqueda vectorial y configuración del modelo de embeddings para agentes Eliza."
 ---
 
-Eliza utiliza el sistema de memoria de elizaOS respaldado por `@elizaos/plugin-sql` para la persistencia y `@elizaos/plugin-local-embedding` para embeddings vectoriales. La memoria se compone en el estado del agente en cada turno de conversación.
+Eliza utiliza el sistema de memoria de elizaOS respaldado por `@elizaos/plugin-sql` para la persistencia y `@elizaos/plugin-local-inference` para embeddings vectoriales. La memoria se compone en el estado del agente en cada turno de conversación.
 
 <div id="memory-backend">
 
@@ -82,7 +82,7 @@ Se puede usar un `connectionString` completo en lugar de campos individuales:
 
 </div>
 
-`@elizaos/plugin-local-embedding` proporciona embeddings vectoriales usando un modelo GGUF local a través de `node-llama-cpp`. Se registra previamente antes de otros plugins para que su handler `TEXT_EMBEDDING` (prioridad 10) esté disponible antes de que los servicios se inicien.
+`@elizaos/plugin-local-inference` proporciona embeddings vectoriales usando un modelo GGUF local a través de `node-llama-cpp`. Se registra previamente antes de otros plugins para que su handler `TEXT_EMBEDDING` (prioridad 10) esté disponible antes de que los servicios se inicien.
 
 <div id="default-model">
 

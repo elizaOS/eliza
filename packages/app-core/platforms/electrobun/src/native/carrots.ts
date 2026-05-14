@@ -600,10 +600,6 @@ export class CarrotManager {
 		handle: CarrotWorkerHandle,
 		request: HostRequestMessage,
 	): void {
-		// invoke-carrot needs async routing through the target worker, so the
-		// dispatcher returns a sentinel and the response is posted later by
-		// `handleWorkerResponse` when the target replies. All other methods
-		// resolve synchronously and post the response inline.
 		if (request.method === "invoke-carrot") {
 			try {
 				this.startInvokeCarrot(callerId, handle, request);
@@ -637,13 +633,6 @@ export class CarrotManager {
 			});
 	}
 
-	/**
-	 * Route an `invoke-carrot` host-request from carrot A to carrot B. Sends
-	 * a fresh `type:"request"` to B's worker, registers the caller's pending
-	 * promise keyed by an internal correlation id, and lets
-	 * `handleWorkerResponse` resolve it when B replies with `type:"response"`.
-	 * Times out after INVOKE_TIMEOUT_MS if B never answers.
-	 */
 	private startInvokeCarrot(
 		callerId: string,
 		callerHandle: CarrotWorkerHandle,
@@ -723,11 +712,6 @@ export class CarrotManager {
 		});
 	}
 
-	/**
-	 * When a worker stops or errors, fail any pending invokes touching it:
-	 * - target stopped → notify caller with a failure response
-	 * - caller stopped → drop the entry (no one to respond to)
-	 */
 	private rejectPendingInvokesForWorker(id: string): void {
 		for (const [invokeId, pending] of this.pendingInvokes) {
 			if (pending.targetId === id) {
@@ -755,13 +739,6 @@ export class CarrotManager {
 		handle.postMessage(response);
 	}
 
-	/**
-	 * Gate an imperative cross-carrot host-request on the calling worker's
-	 * granted `host:manage-carrots` permission. Throws a deny-by-default
-	 * error when the caller didn't declare the permission in its manifest
-	 * (and didn't get it granted at install). Information-only verbs
-	 * (`list-carrots`) and eventing (`emit-carrot-event`) stay ungated.
-	 */
 	private requireManageCarrots(callerId: string, action: string): void {
 		const record = this.workers.get(callerId);
 		const grant = record?.context?.grantedPermissions ?? null;
@@ -814,10 +791,6 @@ export class CarrotManager {
 				return { token: record.context.authToken };
 			}
 			case "invoke-carrot":
-				// Routed asynchronously by `handleHostRequest` via
-				// `startInvokeCarrot` / `handleWorkerResponse`. Reaching this
-				// case indicates a programming error (sync dispatch was used
-				// instead of the async path).
 				throw new Error("invoke-carrot must be routed through startInvokeCarrot");
 			case "set-auth-token": {
 				const record = this.workers.get(callerId);

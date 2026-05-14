@@ -1,0 +1,54 @@
+[[!meta title="Tails report for August 2024"]]
+[[!meta date="Mon, 23 Sep 2024 11:21:36 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!toc]]
+
+Highlights
+==========
+
+In August:
+
+* We continued making it easier for Tails users to recover from the most common
+  failure modes:
+
+  - we released the first iteration of our design to detect a partition table
+    corruption and advise users about it. 
+
+  - we worked on implementing detection of the _Persistent Storage_ corruption
+    on a Tails USB stick, reporting it to users, and repairing it.
+
+* We resumed our work to design a better backup feature for the _Persistent
+  Storage_. We integrated the valuable feedback received in July on our design
+  proposal for the improved backup feature ([mockups on
+  Gitlab](https://gitlab.tails.boum.org/tails/tails/-/issues/20194)).
+
+* We published [[instructions for installing
+  Dangerzone|news/dangerzone/]] in Tails. Dangerzone will help Tails users
+  convert suspicious documents to safe PDFs. This was a significant milestone:
+  this is the first time that we have recommended installing a 3rd party package
+  that is not available in Debian.
+
+Releases
+========
+
+📢 [[We released Tails 6.6|news/version_6.6]]! 
+
+In Tails 6.6, we brought:
+    
+- improved hardware support for graphics, WiFi etc.
+
+- an updated _Tor Browser_ and fixed issues with connecting to the Tor network
+  using default bridges
+
+- fixes that make the _Persisten Storage_ more robust. 
+
+To know more, check out the Tails 6.6 [[release notes|news/version_6.6]] and
+the
+[changelog](https://gitlab.tails.boum.org/tails/tails/-/blob/master/debian/changelog). 
+
+Metrics
+=======
+
+Tails was started more than 767,542 times this month. That's a daily average of
+over 24,759 boots.

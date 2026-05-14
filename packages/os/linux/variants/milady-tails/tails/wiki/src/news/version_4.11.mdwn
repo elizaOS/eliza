@@ -1,0 +1,85 @@
+[[!meta title="Tails 4.11 is out"]]
+[[!meta date="Tue, 22 Sep 2020 12:34:56 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+
+This release fixes [[many security
+vulnerabilities|security/Numerous_security_holes_in_4.10]]. You should upgrade as soon as possible.
+
+[[!toc levels=1]]
+
+# New features
+
+- We added a new feature of the Persistent Storage to save the settings
+  from the Welcome Screen: language, keyboard, and additional settings.
+
+  To restore your settings when starting Tails, unlock your Persistent Storage
+  in the Welcome Screen.
+
+  [[!img version_4.11/welcome_screen.png link="no" alt="new Welcome Screen feature in the Persistent Storage settings"]]
+
+# Changes and updates
+
+- Update *Tor Browser* to [10.0](https://blog.torproject.org/new-release-tor-browser-100).
+
+- Update *Thunderbird* to [68.12](https://www.thunderbird.net/en-US/thunderbird/68.12.0/releasenotes/).
+
+- Update *Linux* to 5.7.17. This should improve the support for newer
+  hardware (graphics, Wi-Fi, etc.).
+
+- Configure *KeePassXC* to use the new default location *Passwords.kdbx*. ([[!tails_ticket 17286]])
+
+- Update <span class="code">python3-trezor</span> to 0.12.2 to add
+  compatibility with the new Trezor Model T.
+
+# Fixed problems
+
+- Disable the feature to **Turn on Wi-Fi Hotspot** in the Wi-Fi settings
+  because it doesn't work in Tails. ([[!tails_ticket 17887]])
+
+For more details, read our [[!tails_gitweb debian/changelog desc="changelog"]].
+
+<a id="known-issues"></a>
+
+# Known issues
+
+None specific to this release.
+
+See the list of [[long-standing issues|support/known_issues]].
+
+# Get Tails 4.11
+
+## To upgrade your Tails USB stick and keep your Persistent Storage
+
+- Automatic upgrades are available from Tails 4.2 or later to 4.11.
+
+- If you cannot do an automatic upgrade or if Tails fails to start after an
+  automatic upgrade, please try to do a [[manual upgrade|doc/upgrade/#manual]].
+
+## To install Tails on a new USB stick
+
+Follow our installation instructions:
+
+  - [[Install from Windows|install/windows]]
+  - [[Install from macOS|install/mac]]
+  - [[Install from Linux|install/linux]]
+
+<div class="caution"><p>The Persistent Storage on the USB stick will be lost if
+you install instead of upgrading.</p></div>
+
+## To download only
+
+If you don't need installation or upgrade instructions, you can download
+Tails 4.11 directly:
+
+  - [[For USB sticks (USB image)|install/download]]
+  - [[For DVDs and virtual machines (ISO image)|install/download-iso]]
+
+# What's coming up?
+
+Tails 4.12 is [[scheduled|contribute/calendar]] for October 20.
+
+
+We need your help and there are many ways to [[contribute to
+Tails|contribute]] (<a href="https://tails.net/donate/?r=4.11">donating</a> is only one of
+them). Come [[talk to us|doc/about/contact#tails-dev]]!

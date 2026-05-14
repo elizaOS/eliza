@@ -1,0 +1,190 @@
+[[!meta title="System requirements and recommended USB sticks"]]
+
+[[!toc startlevel=2 levels=2]]
+
+<h2 id="computer">System requirements</h2>
+
+Tails works on most PC computers that are less than 10 years old.
+
+Tails does not work on:
+
+- Mac computers with an Apple processor (M1, M2, and so on)
+- Smartphones or tablets
+- Raspberry Pi
+
+Tails might not work on some PC computers, for example, if their [[graphics
+card is incompatible with Linux|support/known_issues/graphics]]. Nvidia or AMD
+Radeon cards often do not work in Tails.
+
+<p>See our [[list of known hardware compatibility
+issues|support/known_issues]].</p>
+
+### Detailed hardware requirements
+
+- 3 GB of RAM to work smoothly.
+
+  Tails can work with less than 3 GB RAM but might experience reduced
+  performance, instability, or crashes.
+
+- The ability to start from a USB stick or a DVD reader.
+
+- A 64-bit [[!wikipedia x86-64]] [[!wikipedia IBM PC compatible]]
+  processor.
+
+  * Tails does not works on
+    [[!wikipedia ARM_architecture desc="ARM"]] or
+    [[!wikipedia PowerPC]] processors.
+
+  * Tails does not work on 32-bit computers since [[Tails 3.0|news/Tails_3.0_will_require_a_64-bit_processor]] (June 2017).
+
+### Recommended laptops
+
+Laptop models evolve too rapidly for us to be able to provide an up-to-date
+list of recommended hardware. Below are some guidelines if you, or your
+organization, are considering acquiring a laptop dedicated to running Tails.
+
+#### For PC
+
+- Avoid "gaming" models with Nvidia or AMD Radeon graphics cards.
+
+- Consider buying a refurbished laptop from a high-end (professional) series.
+  These are cheaper and will last longer than new but lower-quality laptops.
+
+  * For example, the Lenovo ThinkPad series work well with Tails,
+    including the X250, X1 Carbon, T440, T480, and T490 models.
+
+  * If you live in a part of the world where buying refurbished laptops is
+    uncommon, look on eBay and Amazon. Amazon offers a 90-day [Amazon Renewed
+    Guarantee](https://www.amazon.com/gp/help/customer/display.html?nodeId=G4ZAA22U35N373NX).
+
+- Consider buying a new laptop from vendors who guarantee the compatibility
+  with Linux and Tails like [ThinkPenguin](https://www.thinkpenguin.com/).
+
+#### For Mac
+
+Tails still works on some older Mac computers with an Intel processor.
+
+Unfortunately, we don't know of any Mac model that works well in Tails and can
+run the latest macOS version.
+
+<!--
+
+To update the list of Mac computer:
+
+1. Store an archive of WhisperBack reports from the last 6 months in a folder.
+
+2. Decrypt all the reports:
+
+   ~/Tails/blueprints/stats/whisperback_scripts/decrypt.rb
+
+3. Extract the list of computer models:
+
+   ~/Tails/blueprints/stats/whisperback_scripts/content_of.rb "/usr/sbin/dmidecode -s system-product-name" > machines
+
+4. Sort and count identical models:
+
+   grep -v Bug_report machines | sort | uniq -c | sort -rhk 1 > top
+
+5. Share WhisperBack reports number with the Tails team and ask them to
+   evaluate hardware compatibility hints in those reports.
+
+   While analyzing the reports corresponding from each model, FT should:
+
+   - Check whether they were sent from the same email address, if any
+
+   - Check whether the wlan0 interface was the same hardware device
+
+   - Check whether the report was about hardware compatibility issues
+
+6. Check whether these Mac models still support the latest version of macOS.
+
+To update the list of PC computers:
+
+- Check what's commonly available with refurbishing companies.
+
+- Ask assembly@ for models.
+
+-->
+
+<h2 id="usb">Recommended USB sticks</h2>
+
+You need a USB stick of 8 GB minimum to use Tails.
+
+All the data on this USB stick is lost when installing Tails.
+
+The quality of your USB stick is crucial when using Tails. A bad USB stick will
+be slower and more likely to corrupt the files in your [[Persistent
+Storage|doc/persistent_storage]].
+
+We recommend that you:
+
+- **Buy new USB sticks.**
+
+  USB sticks become slower and less reliable over the years. Older USB sticks
+  were also built with slower technology.
+
+- **Buy USB sticks from well-known brands, such as
+  [[Kingston|https://www.kingston.com/en/usb-flash-drives]],
+  [[Samsung|https://www.samsung.com/us/computing/memory-storage/usb-flash-drives/]],
+  and [[SanDisk|https://www.sandisk.com/product-portfolio/usb-flash-drives]].**
+
+  Generic brands are more likely to be slower and less reliable.
+
+  Any modern USB stick from a well-known brand is fast enough to use Tails
+  comfortably.
+
+- **Buy your USB sticks from a reputable local store.**
+
+  If you are in a place where counterfeit electronics are common, buy your USB
+  stick from an international supermarket chain, which should have a more
+  reliable supply chain.
+
+  Avoid buying USB sticks online or using USB sticks that were given to you,
+  because they could contain malware.
+
+  <div class="attack">
+
+  <p>In 2020, the [[FBI warned US companies to avoid USB sticks
+  received by
+  mail|https://www.cybereason.com/blog/fbi-warns-us-companies-to-avoid-malicious-usb-devices]]
+  because some of them contained malicious software, such as [[!wikipedia
+  BadUSB]].</p>
+
+  </div>
+
+- **Consider buying faster USB sticks that support USB version 3.0 or later.**
+
+  Check the specifications of your computer to determine whether your USB ports
+  support USB 3.0 or later. USB 3.0 ports are sometimes blue.
+
+  USB 3.0 can be up to 10 times faster than USB 2.0. USB 2.0 has a maximum read
+  speed of around 50 MB/s on USB sticks, while USB 3.0 has a maximum read speed
+  of around 500 MB/s.
+
+  Most quality USB sticks nowadays have read speeds of at least 100 MB/s and
+  are faster when used on USB 3.0 ports. Some USB sticks advertised for USB 3.0
+  have even greater speeds.
+
+  You can test the write speed of your different USB sticks by comparing the
+  time it takes to [[clone Tails|install/clone/pc]], for example.
+
+### How many USB sticks should I buy?
+
+If you want to store personal files and configuration in an encrypted
+[[Persistent Storage|doc/persistent_storage]], we recommend that you buy 2 USB
+sticks, ideally 3:
+
+- 1 USB stick to be your **primary Tails**.
+
+- 1 USB stick of the same size to be your **backup Tails**, if you use the
+  Persistent Storage.
+
+  We recommend that you [[create a backup Tails|doc/persistent_storage/backup]]
+  by cloning your primary Tails, including its Persistent Storage.
+
+- 1 USB stick to do [[manual upgrades|doc/upgrade]] on a few occasions when
+  automatic upgrades are not available.
+
+  This USB stick can be of a smaller size and worse quality.
+
+  <!-- Fixing #16906 would remove the need for this 3rd USB stick. -->

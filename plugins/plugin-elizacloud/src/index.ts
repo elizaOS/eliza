@@ -19,6 +19,7 @@ import {
   handleTextMega,
   handleTextNano,
   handleTextSmall,
+  handleTextToSpeech,
 } from "./models";
 // Cloud services
 import { CloudAuthService } from "./services/cloud-auth";
@@ -55,6 +56,31 @@ export const elizaOSCloudPlugin: Plugin = {
   autoEnable: {
     envKeys: ["ELIZAOS_CLOUD_API_KEY", "ELIZAOS_CLOUD_ENABLED"],
   },
+
+  // Plugin-wide registration priority. Applied to every model handler in
+  // the `models` map below. Higher numbers win the native runtime priority
+  // sort.
+  //
+  // Why 50: in `manual` routing mode (`routing-preferences.ts`) with no
+  // `preferredProvider` set for a slot, the runtime falls through to the
+  // native priority order. Putting cloud above the default-0 of other
+  // direct provider plugins (anthropic, openai, groq, elevenlabs) means
+  // Eliza Cloud wins the "user has paired Cloud but hasn't picked anything
+  // specific" case — which is the desired text-generation default.
+  //
+  // **TTS routing precedence is governed by the router-handler**
+  // (`plugin-local-inference/src/services/router-handler.ts`) at
+  // MAX_SAFE_INTEGER priority, which reads the per-slot `RoutingPolicy`
+  // (default `prefer-local`) and dispatches to local first when available.
+  // This plugin's priority does NOT control whether local TTS wins; the
+  // router does. See `plugin-local-inference/native/AGENTS.md` §1 for the
+  // canonical voice/ASR routing contract.
+  //
+  // Cloud TTS still works as a fallback when local is unavailable: the
+  // handler throws `CloudTtsUnavailableError` when cloud isn't connected
+  // and the router's per-pick retry loop falls through to the next
+  // eligible provider (local kokoro / omnivoice, plugin-elevenlabs, ...).
+  priority: 50,
 
   config: {
     ELIZAOS_CLOUD_API_KEY: env.ELIZAOS_CLOUD_API_KEY ?? null,
@@ -149,6 +175,7 @@ export const elizaOSCloudPlugin: Plugin = {
     [ModelType.RESEARCH]: handleResearch,
     [ModelType.IMAGE]: handleImageGeneration,
     [ModelType.IMAGE_DESCRIPTION]: handleImageDescription,
+    [ModelType.TEXT_TO_SPEECH]: handleTextToSpeech,
   },
 
   tests: [
@@ -347,6 +374,17 @@ export {
   resolveCloudTtsBaseUrl,
   resolveElevenLabsApiKeyForCloudMode,
 } from "./lib/server-cloud-tts";
+export {
+  fetchCloudVoiceCatalog,
+  resetCloudVoiceCatalogCacheForTesting,
+  setCloudVoiceClientFactoryForTesting,
+  type CloudVoiceCatalogEntry,
+  type CloudVoiceClient,
+} from "./cloud-voice-catalog";
+export {
+  CloudTtsUnavailableError,
+  type CloudTextToSpeechParams,
+} from "./models/speech";
 export {
   normalizeCloudSiteUrl,
   resolveCloudApiBaseUrl,

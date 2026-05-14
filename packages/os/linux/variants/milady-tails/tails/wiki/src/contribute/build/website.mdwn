@@ -1,0 +1,61 @@
+[[!meta title="Build a local copy of the website"]]
+
+The website [[https://tails.net/]] is built using
+[ikiwiki](https://ikiwiki.info) from source code that is available in
+our main Git repository, along with the rest of the Tails code.
+
+You can build a local copy of the website on any Debian system, including Tails.
+
+Building the
+website produces a set of HTML pages stored on your system that you can
+open in your usual web browser even while working offline. Doing so is
+useful for writers and designers to see how their
+changes will apply on the website.
+
+1. Clone our main [[Git repository|git]]:
+
+       git clone https://gitlab.tails.boum.org/tails/tails.git \
+       && cd tails
+
+   <div class="tip">
+
+   <p>The source code of the website is located in the
+   <i>wiki/src/</i> folder.</p>
+
+   </div>
+
+2. Configure APT to install:
+
+    - ikiwiki from Debian testing (Forky) or newer
+    - po4a from Trixie
+
+3. Install the required packages:
+
+       sudo apt install \
+          ikiwiki \
+          libyaml-perl \
+          libyaml-libyaml-perl \
+          libyaml-syck-perl \
+          perlmagick \
+          po4a
+
+4. If you want to display the search box in the banner of your local build,
+   uncomment the following line in *ikiwiki.setup*:
+
+       # -  search
+
+5. Build the website:
+
+       ./build-website
+
+   <div class="tip">
+
+   <p>To accelerate the build, you can disable some languages by editing
+   the <code>po_slave_languages</code> parameter in the file
+   <i>ikiwiki.setup</i>.</p>
+
+   </div>
+
+6. You can now browse your local copy of the website in the following folder:
+
+   *config/chroot_local-includes/usr/share/doc/tails/website/*

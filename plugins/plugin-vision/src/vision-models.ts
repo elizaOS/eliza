@@ -98,24 +98,23 @@ export class VisionModels {
         }
       }
 
-      // Load pose detection model
+      // Load pose detection model (MoveNet — modern replacement for the
+      // abandoned standalone @tensorflow-models/posenet package).
       if (config.enablePoseDetection) {
         try {
-          logger.info("[VisionModels] Loading PoseNet model...");
+          logger.info("[VisionModels] Loading MoveNet model...");
           const detectorConfig = {
-            architecture: "MobileNetV1" as const,
-            outputStride: 16 as const,
-            inputResolution: { width: 640, height: 480 },
-            multiplier: 0.75 as const,
+            modelType: "MultiPose.Lightning" as const,
+            enableSmoothing: false,
           };
 
           this.poseDetector = await poseDetection.createDetector(
-            poseDetection.SupportedModels.PoseNet,
+            poseDetection.SupportedModels.MoveNet,
             detectorConfig,
           );
-          logger.info("[VisionModels] PoseNet model loaded");
+          logger.info("[VisionModels] MoveNet model loaded");
         } catch (error) {
-          logger.error("[VisionModels] Failed to load PoseNet model:", error);
+          logger.error("[VisionModels] Failed to load MoveNet model:", error);
         }
       }
 

@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+_Name=Additional Software
+_Comment=Configure the additional software installed from your Persistent Storage when starting Tails
+_Keywords=persistent;storage;package;install
+Exec=tails-additional-software-config
+Icon=package-x-generic
+Terminal=false
+Categories=System;Tails;
+StartupNotify=true
+StartupWMClass=tails-additional-software-config
+DBusActivatable=true

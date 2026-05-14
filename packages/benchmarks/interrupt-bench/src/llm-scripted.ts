@@ -16,7 +16,7 @@ import type { ResponseHandlerResult } from "@elizaos/core";
 import type { SimulatorState } from "./state.ts";
 import type { Scenario, ScenarioScriptStep } from "./types.ts";
 
-export interface ScriptedLlmInput {
+interface ScriptedLlmInput {
   scenario: Scenario;
   callIndex: number;
   /** Conversation history seen so far (oldest first). */
@@ -27,7 +27,7 @@ export interface ScriptedLlmInput {
   state: SimulatorState;
 }
 
-export interface ScriptedLlmOutput {
+interface ScriptedLlmOutput {
   parsed: ResponseHandlerResult;
   /** Latency to simulate (virtual ms). */
   latencyMs: number;

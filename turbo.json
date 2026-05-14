@@ -225,12 +225,13 @@
       "dependsOn": ["@elizaos/core#build", "@elizaos/shared#build", "^build"],
       "outputs": ["dist/**"]
     },
-    "@elizaos/plugin-local-ai#build": {
-      "dependsOn": ["@elizaos/core#build", "^build"],
-      "outputs": ["dist/**"]
-    },
-    "@elizaos/plugin-local-embedding#build": {
-      "dependsOn": ["@elizaos/core#build", "^build"],
+    "@elizaos/plugin-local-inference#build": {
+      "dependsOn": [
+        "@elizaos/core#build",
+        "@elizaos/shared#build",
+        "@elizaos/plugin-capacitor-bridge#build",
+        "^build"
+      ],
       "outputs": ["dist/**"]
     },
     "@elizaos/plugin-ollama#build": {

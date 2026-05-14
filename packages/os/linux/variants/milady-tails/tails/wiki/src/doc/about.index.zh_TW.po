@@ -1,0 +1,95 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2026-03-09 12:03+0000\n"
+"PO-Revision-Date: 2020-05-14 05:56+0000\n"
+"Last-Translator: mdrights Psychi <psychi2009@gmail.com>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: zh_TW\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"X-Generator: Weblate 3.5.1\n"
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid "[[System requirements and recommended USB sticks|about/requirements]]"
+msgstr "[[!traillink 系統需求|about/requirements]]"
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid "[[Warnings: Tails is safe but not magic!|about/warnings]]"
+msgstr "[[!traillink 警告和限制|about/warning]]"
+
+#. type: Bullet: '  * '
+#, fuzzy
+msgid "[[Protecting your identity when using Tails|about/warnings/identity]]"
+msgstr "[[!traillink 我能否不讓別人知道我在使用Tails？|about/fingerprint]]"
+
+#. type: Bullet: '  * '
+#, fuzzy
+msgid "[[Limitations of the Tor network|about/warnings/tor]]"
+msgstr "[[!traillink 警告和限制|about/warning]]"
+
+#. type: Bullet: '  * '
+msgid ""
+"[[Reducing risks when using untrusted computers|about/warnings/computer]]"
+msgstr ""
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid "[[Features and included software|about/features]]"
+msgstr "[[!traillink 功能特性與包含軟體|about/features]]"
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid "[[How can I trust Tails?|about/trust]]"
+msgstr "[[!traillink 信任Tails|about/trust]]"
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid "[[License and source code distribution|about/license]]"
+msgstr "[[!traillink 授權與原始碼散佈版本|about/license]]"
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid ""
+"[[Acknowledgments and similar projects|about/"
+"acknowledgments_and_similar_projects]]"
+msgstr ""
+"[[!traillink 致謝以及相類似的專案|about/"
+"acknowledgments_and_similar_projects]]"
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid "[[Contact|doc/about/contact]]"
+msgstr "[[!traillink 財務|about/finances]]"
+
+#. type: Bullet: '  * '
+#, fuzzy
+msgid "[[OpenPGP keys|about/openpgp_keys]]"
+msgstr "[[!traillink 財務|about/finances]]"
+
+#, fuzzy
+#~ msgid "- [[Social Contract|doc/about/social_contract]]"
+#~ msgstr "[[!traillink 財務|about/finances]]"
+
+#, fuzzy
+#~ msgid "- [[Finances|about/finances]]"
+#~ msgstr "[[!traillink 財務|about/finances]]"
+
+#~ msgid "[[!traillink Why_does_Tails_use_Tor?|about/tor]]"
+#~ msgstr "[[!traillink 為何 Tails 要使用 Tor？|about/tor]]"
+
+#, fuzzy
+#~ msgid ""
+#~ "  - [[!traillink Contact|about/contact]]\n"
+#~ "    - [[!traillink OpenPGP_keys|about/openpgp_keys]]\n"
+#~ msgstr "[[!traillink OpenPGP 密鑰|about/openpgp_keys]]"

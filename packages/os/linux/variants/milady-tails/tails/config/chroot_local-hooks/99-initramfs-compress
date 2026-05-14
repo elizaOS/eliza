@@ -1,0 +1,20 @@
+#!/bin/sh
+
+set -e
+
+echo "Configuring compression of the initramfs"
+
+# Import ensure_hook_dependency_is_installed()
+. /usr/local/lib/tails-shell-library/build.sh
+
+ensure_hook_dependency_is_installed initramfs-tools xz-utils fatresize
+
+# Compress the initramfs using a more size-wise efficient algorithm.
+# We do this late in the build process because compressing with XZ
+# takes much longer than compressing with the default algorithm
+# and earlier stages of the build generate the initramfs quite a few times.
+# live-build will regenerate it later on anyway, which will apply
+# the settings we configure here.
+
+echo 'COMPRESS=xz' > /etc/initramfs-tools/conf.d/compress.conf
+echo 'COMPRESSLEVEL=9' > /etc/initramfs-tools/conf.d/compresslevel.conf

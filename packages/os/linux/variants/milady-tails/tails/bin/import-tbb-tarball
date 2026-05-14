@@ -1,0 +1,34 @@
+#!/bin/bash
+
+set -eu
+set -o pipefail
+
+CHROOT_INCLUDES="config/chroot_local-includes"
+TBB_SHA256SUMS_FILE="${CHROOT_INCLUDES:?}/usr/share/tails/tbb-sha256sums.txt"
+TBB_DIST_URL_FILE="${CHROOT_INCLUDES:?}/usr/share/tails/tbb-dist-url.txt"
+cd "${TAILS_GIT_REPO:?}"
+git checkout "${TBB_IMPORT_BRANCH:?}"
+TBB_TARBALLS_BASE_URL="$(sed "s,^http://,https://," <"${TBB_DIST_URL_FILE:?}")"
+branch=$(git -C "${TAILS_GIT_REPO:?}" branch --show-current)
+
+# Download tarballs
+git -C "${TAILS_GIT_REPO:?}" show "$branch:${TBB_SHA256SUMS_FILE:?}" |
+    while read -r _expected_sha256 tarball; do
+        (
+            cd "$DL_DIR"
+            echo "Retrieving '${TBB_TARBALLS_BASE_URL:?}/${tarball:?}'..."
+            curl --remote-name --retry 20 --continue-at - \
+                "${TBB_TARBALLS_BASE_URL:?}/${tarball:?}"
+        )
+    done
+
+# Verify signatures of the downloaded tarballs
+cd "${DL_DIR:?}"
+git -C "${TAILS_GIT_REPO:?}" show "$branch:${TBB_SHA256SUMS_FILE:?}" |
+    sha256sum -c -
+
+# Import in git annex
+cd "${TBB_ARCHIVE:?}"
+mkdir -p "${TBB_VERSION:?}"
+cd "${TBB_VERSION:?}"
+git annex import --duplicate "${DL_DIR:?}/"* "${TAILS_GIT_REPO:?}/"sha256sums-*

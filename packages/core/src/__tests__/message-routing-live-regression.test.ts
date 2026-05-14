@@ -1,13 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 import { parseActionParams } from "../actions";
-import type { Action, ActionResult, IAgentRuntime } from "../index";
+import type { ActionResult, IAgentRuntime } from "../index";
 import {
 	actionResultsSuppressPostActionContinuation,
 	extractPlannerActionNames,
 	inferLocalShellCommandFromMessageText,
 	inferWebSearchQueryFromMessageText,
 	looksLikeSelfPolicyExplanationRequest,
-	resolvePlannerActionName,
 	shouldPromoteExplicitReplyToOwnedAction,
 	shouldSkipDocumentProviderRescue,
 	stripReplyWhenActionOwnsTurn,
@@ -82,90 +81,14 @@ describe("live routing regressions", () => {
 		).toEqual(["RESPOND"]);
 	});
 
-	it("routes dotted planner subactions through the registered umbrella action", () => {
-		const runtime = {
-			actions: [{ name: "LIFE" }, { name: "CALENDAR" }],
-			logger,
-		} as Pick<IAgentRuntime, "actions" | "logger">;
-
-		expect(
-			resolvePlannerActionName(runtime, undefined, "LIFE.add_goal"),
-		).toEqual(["LIFE"]);
-		expect(
-			resolvePlannerActionName(
-				runtime,
-				undefined,
-				"functions.CALENDAR.create_event",
-			),
-		).toEqual(["CALENDAR"]);
-	});
-
-	it("routes invented atomic planner action names through current registered parents", () => {
-		const runtime = {
-			actions: [
-				{ name: "OWNER_TODOS" },
-				{ name: "OWNER_GOALS" },
-				{ name: "MESSAGE" },
-				{ name: "POST" },
-				{ name: "COMPUTER_USE" },
-			],
-			logger,
-		} as Pick<IAgentRuntime, "actions" | "logger">;
-
-		expect(
-			resolvePlannerActionName(runtime, undefined, "TASKS_ADD_TODO"),
-		).toEqual(["OWNER_TODOS"]);
-		expect(resolvePlannerActionName(runtime, undefined, "todo_create")).toEqual(
-			["OWNER_TODOS"],
-		);
-		expect(
-			resolvePlannerActionName(runtime, undefined, "todos_create"),
-		).toEqual(["OWNER_TODOS"]);
-		expect(resolvePlannerActionName(runtime, undefined, "task_list")).toEqual([
-			"OWNER_TODOS",
-		]);
-		expect(
-			resolvePlannerActionName(runtime, undefined, "DISCORD_POST_MESSAGE"),
-		).toEqual(["MESSAGE"]);
-		expect(
-			resolvePlannerActionName(runtime, undefined, "SEARCH_TWITTER_POSTS"),
-		).toEqual(["POST"]);
-		expect(
-			resolvePlannerActionName(runtime, undefined, "READ_TWITTER_DM"),
-		).toEqual(["MESSAGE"]);
-		expect(
-			resolvePlannerActionName(runtime, undefined, "EMAIL_FETCH_UNREAD"),
-		).toEqual(["MESSAGE"]);
-		expect(
-			resolvePlannerActionName(runtime, undefined, "fetch_unread_emails"),
-		).toEqual(["MESSAGE"]);
-		expect(
-			resolvePlannerActionName(runtime, undefined, "SUMMARIZE_UNREAD_EMAILS"),
-		).toEqual(["MESSAGE"]);
-		expect(resolvePlannerActionName(runtime, undefined, "SET_GOAL")).toEqual([
-			"OWNER_GOALS",
-		]);
-		expect(resolvePlannerActionName(runtime, undefined, "DESKTOP")).toEqual([
-			"COMPUTER_USE",
-		]);
-	});
-
-	it("repairs known aliases against the runtime when the compressed surface omitted the parent", () => {
-		const runtime = {
-			actions: [{ name: "MESSAGE" }, { name: "CONNECTOR" }],
-			logger,
-		} as Pick<IAgentRuntime, "actions" | "logger">;
-		const exposedLookup = new Map<string, Action>([
-			["CONNECTOR", { name: "CONNECTOR" } as Action],
-		]);
-
-		expect(
-			resolvePlannerActionName(runtime, exposedLookup, "list_unread_emails"),
-		).toEqual(["MESSAGE"]);
-		expect(resolvePlannerActionName(runtime, exposedLookup, "MESSAGE")).toEqual(
-			["MESSAGE"],
-		);
-	});
+	// Removed: tests for compound-name splitting (`LIFE.add_goal` →
+	// `LIFE`), invented-action-name alias resolution (`TASKS_ADD_TODO` →
+	// `OWNER_TODOS`), and runtime-alias repair. With actions exposed as
+	// first-class tools + `toolChoice: "required"`, the model picks the
+	// canonical action name from the per-turn tool array directly — no
+	// compound-name decoding or alias repair is needed in the dispatch
+	// path. `PLANNER_ACTION_ALIASES` and `splitPlannerCompoundActionName`
+	// were deleted.
 
 	it("infers safe params for explicit local shell checks", () => {
 		expect(

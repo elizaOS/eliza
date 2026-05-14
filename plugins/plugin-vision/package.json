@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/plugin-vision",
   "description": "Vision plugin for ElizaOS - provides camera integration and visual awareness",
-  "version": "2.0.0-beta.1",
+  "version": "2.0.0-beta.2",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -58,7 +58,7 @@
     }
   },
   "dependencies": {
-    "@elizaos/core": "2.0.0-beta.1",
+    "@elizaos/core": "workspace:*",
     "canvas": "^3.1.2",
     "face-api.js": "^0.22.2",
     "sharp": "^0.34.3",
@@ -69,8 +69,8 @@
     "@tensorflow-models/coco-ssd": "^2.2.3",
     "@tensorflow-models/mobilenet": "^2.1.0",
     "@tensorflow-models/pose-detection": "^2.1.0",
-    "@tensorflow-models/posenet": "^2.2.2",
-    "@tensorflow/tfjs-node": "^4.22.0"
+    "@tensorflow/tfjs-node": "^4.22.0",
+    "onnxruntime-node": "^1.21.0"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.14",

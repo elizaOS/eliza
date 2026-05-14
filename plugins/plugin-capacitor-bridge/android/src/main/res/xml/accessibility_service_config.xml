@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Accessibility service configuration for MiladyAccessibilityService (WS8).
+
+    android:accessibilityFeatureType="featureAccessibility" (not featureGeneric)
+    is required to survive Advanced Protection Mode on Pixel 9+ and some OEM ROMs.
+
+    android:canPerformGestures="true" enables AccessibilityGestureDescription dispatch
+    (API 24+) for tap and swipe actions.
+
+    android:canRetrieveWindowContent="true" enables getRootInActiveWindow() for the
+    node tree snapshot used by getAccessibilityTree().
+
+    See eliza/plugins/plugin-computeruse/docs/ANDROID_CONSTRAINTS.md for caveats.
+-->
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:accessibilityEventTypes="typeWindowStateChanged|typeWindowContentChanged"
+    android:accessibilityFeatureType="featureAccessibility"
+    android:accessibilityFlags="flagReportViewIds|flagRetrieveInteractiveWindows"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:canPerformGestures="true"
+    android:canRetrieveWindowContent="true"
+    android:notificationTimeout="100"
+    android:description="@string/app_name" />

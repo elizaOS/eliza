@@ -415,7 +415,7 @@ export async function createRealTestRuntime(
     ) {
       try {
         const { default: localEmbeddingPlugin } = await import(
-          "@elizaos/plugin-local-embedding"
+          "@elizaos/plugin-local-inference"
         );
         configureLocalEmbeddingPlugin(localEmbeddingPlugin as Plugin);
         await runtime.registerPlugin(localEmbeddingPlugin as Plugin);

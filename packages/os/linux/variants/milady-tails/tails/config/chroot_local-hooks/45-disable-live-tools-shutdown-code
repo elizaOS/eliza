@@ -1,0 +1,11 @@
+#!/bin/sh
+
+set -e
+
+# This code is only useful to display the "Please remove the
+# live-medium […] and press ENTER to continue:" prompt on shutdown,
+# which is not compatible with how we handle shutdown in Tails.
+
+echo "Disabling live-tool's shutdown code"
+
+rm /usr/lib/systemd/system-shutdown/live-tools.shutdown

@@ -43,7 +43,7 @@ def test_lite_tiers_are_source_only_and_keep_dflash_missing(
     assert any("No upstream DFlash drafter" in b for b in report["blockers"])
 
 
-def test_mobile_tier_uses_qwen35_17b_source(
+def test_mobile_tier_uses_qwen35_2b_source(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -76,4 +76,4 @@ def test_stage_sources_accepts_large_active_tier(
 
     report = stage.stage_sources(_args(tmp_path, "27b"))
 
-    assert "unsloth/Qwen3.5-27B-GGUF" in report["sources"]
+    assert "unsloth/Qwen3.6-27B-GGUF" in report["sources"]

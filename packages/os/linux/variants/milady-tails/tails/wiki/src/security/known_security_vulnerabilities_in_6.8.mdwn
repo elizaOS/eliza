@@ -1,0 +1,18 @@
+[[!meta date="Tue, 08 Oct 2024 11:57:33 -0000"]]
+[[!meta title="Known security vulnerabilities in Tails 6.8"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+Tails 6.8.1 fixes known security
+vulnerabilities in 6.8. You should upgrade as soon as possible.
+
+If you are interested in learning more about the security vulnerabilities fixed
+in this release, you can refer to:
+
+- The release notes of *Tor Browser* and other applications linked from
+  the [[release notes of Tails 6.8.1|news/version_6.8.1]].
+
+- The list of recent [Debian security
+  advisories](https://www.debian.org/security/) published since Tails
+  6.8.

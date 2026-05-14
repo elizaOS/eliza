@@ -180,8 +180,14 @@ export class FarcasterClient {
 
     profile.name = neynarUserProfile.display_name ?? "";
     profile.username = neynarUserProfile.username;
-    profile.bio = neynarUserProfile.profile.bio.text;
-    profile.pfp = neynarUserProfile.pfp_url;
+    const bioText = neynarUserProfile.profile.bio.text;
+    if (bioText != null) {
+      profile.bio = bioText;
+    }
+    const profileImageUrl = neynarUserProfile.pfp_url;
+    if (profileImageUrl != null) {
+      profile.pfp = profileImageUrl;
+    }
 
     profileCache.set(fid, profile);
 

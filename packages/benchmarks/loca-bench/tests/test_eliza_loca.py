@@ -175,6 +175,48 @@ def test_yaml_filesystem_config_uses_workspace_path_alias_for_cwd(tmp_path) -> N
     assert str(tmp_path.resolve()) in filesystem["args"]
 
 
+def test_local_loca_tool_keeps_source_data_read_only(tmp_path) -> None:
+    pytest.importorskip("msgspec")
+    from inference.run_react import LocalLocaTool
+
+    workspace = tmp_path / "agent"
+    source_data = workspace / "source_data" / "files"
+    source_data.mkdir(parents=True)
+    (source_data / "assignments.csv").write_text("old", encoding="utf-8")
+    tool = LocalLocaTool(workspace)
+
+    ok, error, content, *_ = tool.execute_tool(
+        "filesystem_write_file",
+        {
+            "path": "source_data/files/assignments.csv",
+            "content": "new",
+        },
+        "call_1",
+    )
+
+    assert ok is True
+    assert error is True
+    assert "source_data is read-only" in content
+    assert "assignment_info.csv" in content
+    assert (source_data / "assignments.csv").read_text(encoding="utf-8") == "old"
+
+    ok, error, content, *_ = tool.execute_tool(
+        "filesystem_write_file",
+        {
+            "path": "assignment_info.csv",
+            "content": "course,assignment\nCS301,Essay\n",
+        },
+        "call_2",
+    )
+
+    assert ok is True
+    assert error is False
+    assert content == "Wrote assignment_info.csv"
+    assert (workspace / "assignment_info.csv").read_text(encoding="utf-8").startswith(
+        "course,assignment"
+    )
+
+
 def test_trajectory_audit_accepts_complete_synthetic_run(tmp_path) -> None:
     root = tmp_path / "run"
     task_dir = root / "tasks" / "DemoTask" / "state0"

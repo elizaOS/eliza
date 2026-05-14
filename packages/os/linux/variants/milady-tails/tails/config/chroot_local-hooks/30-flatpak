@@ -1,0 +1,44 @@
+#!/bin/sh
+
+set -eu
+set -x
+
+# Import ensure_hook_dependency_is_installed()
+. /usr/local/lib/tails-shell-library/build.sh
+
+ensure_hook_dependency_is_installed flatpak-builder ostree
+
+# First let's build the org.boum.tails.Platform flatpak runtime
+
+WORKDIR="$(mktemp -d)"
+BUILD_DIR="${WORKDIR}/build-dir"
+REPO_DIR="${WORKDIR}/repo"
+
+ostree init --mode archive-z2 --repo="${REPO_DIR}"
+mkdir -p "${BUILD_DIR}/export" "${BUILD_DIR}/files" "${BUILD_DIR}/usr"
+cp -a /usr/share/tails/build/flatpak/org.boum.tails.Platform/metadata "${BUILD_DIR}"
+flatpak build-export "${REPO_DIR}" "${BUILD_DIR}" stable
+flatpak --installation=tails remote-add --no-gpg-verify platform-origin "${REPO_DIR}"
+flatpak --installation=tails install --reinstall -y platform-origin org.boum.tails.Platform
+rm -rf "${WORKDIR}"
+
+# Next let's build the org.boum.tails.TorBrowser flatpak app
+
+cd /usr/share/tails/build/flatpak/org.boum.tails.TorBrowser
+# We disable the rofiles-fuse optimization since /dev/fuse isn't
+# available in the live-build chroot.
+flatpak-builder --installation=tails --disable-rofiles-fuse --install \
+    --force-clean build-dir org.boum.tails.TorBrowser.yaml
+# Clear the org.boum.tails.TorBrowser files directory, everything we
+# need is already present in the org.freedesktop.Platform runtime
+# through the tails-flatpak-runtime script.
+FILES_DIR=/var/lib/flatpak-tails/app/org.boum.tails.TorBrowser/x86_64/stable/active/files/
+rm -r "${FILES_DIR}"
+mkdir "${FILES_DIR}"
+# Create the .ref file which is needed to run the flatpak
+touch "${FILES_DIR}/.ref"
+
+# Clean up
+
+flatpak --installation=tails remote-delete --force platform-origin
+rm -r /usr/share/tails/build/flatpak/

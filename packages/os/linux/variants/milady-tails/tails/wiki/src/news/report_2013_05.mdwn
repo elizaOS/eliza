@@ -1,0 +1,123 @@
+[[!meta date="Fri, 07 Jun 2013 12:26:39 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!meta title="Tails report for May, 2013"]]
+
+[[!toc levels=1]]
+
+Releases
+========
+
+Tails 0.18 [[was released|news/version_0.18]] on May 18.
+
+Metrics
+=======
+
+  - 128 676 connections of Tails to the Tor network. This makes a boot
+    every 21 seconds on average (this is an approximation from the
+    requests made to the security announcements feed when Tails is
+    connected to Tor).
+
+  - 51 non-empty bug reports were received through WhisperBack.
+
+  - 630 comments were posted on the forum, with 143 signed by Tails.
+
+Code
+====
+
+- We had a "low-hanging fruits"
+  session
+  on May 22, that was attended by three persons.
+
+- Some important bugs were fixed in
+  tails-greeter,
+  thanks to winterfairy!
+
+- A branch to install
+  Linux 3.8 was developed and merged. It triggered a bug in the
+  Persistent Volume Assistant, that was
+  fixed.
+
+- The automatic re-installation of additional software packages
+  feature
+  was improved.
+
+- live-boot 3.x final
+  is now installed, and the old
+  compatibility symlinks
+  were removed.
+  Same for
+  live-config 3.x final.
+
+- A bug that made it a pain to use our OpenPGP applet
+  was partially fixed.
+
+- More work
+  was done to remove GNOME proxy settings.
+
+- A branch to
+  update virt-what was proposed.
+
+- A branch to use
+  bilibop was proposed.
+
+- Some
+  preliminary work was done to get our nice custom boot
+  splash screen back.
+
+- A smtube backport was
+  prepared.
+
+- Some post-Wheezy work
+  was
+  done.
+
+- More precise plans were
+  drawn
+  about the future of tails-greeter.
+
+- Various TBB settings
+  were imported.
+
+Documentation and Website
+=========================
+
+- The end-user documentation about
+  feature/set-wireless-devices-state was reviewed and improved.
+
+- The Tails [[specification and design document|contribute/design]]
+  received various minor updates and improvements, as did the release
+  process documentation.
+
+- Tons of old forum posts were cleaned up, as part of our effort to
+  import valuable existing knowledge from there into the upcoming
+  Q&A website.
+
+On-going discussions
+====================
+
+- We've discussed inclusion of Martus in Tails.
+
+- Deanonymization potential by the desktop
+  user.
+
+- Adding support for keeping entry
+  guards.
+
+- Removing Iceweasel popups that confuse (some)
+  users.
+
+Infrastructure
+==============
+
+Various bits were updated to reflect the fact that Debian Wheezy
+was released.
+
+Funding
+=======
+
+- We went on working on a grant application for more long-term
+  funding with sponsor Foxtrot.
+
+- Draft contracts were sent to the bounties candidates. Some have
+  started working on their bounty!
+

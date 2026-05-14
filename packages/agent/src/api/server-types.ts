@@ -23,6 +23,17 @@ export type {
 import type { TrainingServiceWithRuntime } from "./training-service-like.ts";
 
 // ---------------------------------------------------------------------------
+// Chat image attachments
+// ---------------------------------------------------------------------------
+
+export interface ChatImageAttachment {
+  /** Base64-encoded image data (no data URL prefix). */
+  data: string;
+  mimeType: string;
+  name: string;
+}
+
+// ---------------------------------------------------------------------------
 // Conversation metadata
 // ---------------------------------------------------------------------------
 

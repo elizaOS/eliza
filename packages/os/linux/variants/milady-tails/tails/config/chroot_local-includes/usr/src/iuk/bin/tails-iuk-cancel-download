@@ -1,0 +1,10 @@
+#!/bin/sh
+
+pkill -u tails-iuk-get-target-file
+pkill_ret=$?
+# Avoid that the Upgrader breaks if pgrep won't match any process
+if [ "$pkill_ret" -eq 1 ]
+then
+    exit 0
+fi
+exit "$pkill_ret"

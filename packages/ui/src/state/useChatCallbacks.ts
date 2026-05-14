@@ -14,7 +14,6 @@ import type {
 import {
   type AgentStatus,
   type ConversationMessage,
-  type ConversationMode,
   client,
   type ImageAttachment,
 } from "../api";
@@ -158,7 +157,6 @@ export interface UseChatCallbacksDeps {
 
   // Chat state from useChatState
   chatInput: string;
-  chatMode: ConversationMode;
   conversations: Conversation[];
   activeConversationId: string | null;
   companionMessageCutoffTs: number;
@@ -307,7 +305,6 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
     uiShellMode,
     tab,
     agentStatus,
-    chatMode,
     conversations,
     activeConversationId,
     companionMessageCutoffTs,
@@ -669,7 +666,6 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
     t,
     uiLanguage,
     tab,
-    chatMode,
     conversations,
     activeConversationId,
     ptySessionsRef,

@@ -1,0 +1,30 @@
+<a id="broken-upgrades"></a>
+
+* Automatic upgrades are broken from Tails 4.14 and earlier.
+
+  To upgrade from Tails 4.14 or earlier, you can either:
+
+  - Do a [[manual upgrade|doc/upgrade#manual]].
+
+  - Fix the automatic upgrade from a terminal. To do so:
+
+    1. Start Tails and set up an
+       [[administration password|doc/first_steps/welcome_screen/administration_password]].
+
+    1. In a terminal, execute the following command:
+
+           torsocks curl --silent https://tails.boum.org/isrg-root-x1-cross-signed.pem \
+           | sudo tee --append /usr/local/etc/ssl/certs/tails.boum.org-CA.pem \
+           && systemctl --user restart tails-upgrade-frontend
+
+       <div class="note">
+
+       <p>This command is a single command that wraps across several lines.
+       Copy and paste the entire block at once and make sure that it executes
+       as a single command.</p>
+
+       </div>
+
+    1. Approximately 30 seconds later, you should be prompted to upgrade to the latest
+       version of Tails. If no prompt appears, you might already be running the
+       latest version of Tails.

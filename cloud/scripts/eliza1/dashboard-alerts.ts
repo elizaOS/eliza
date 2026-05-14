@@ -1,13 +1,11 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { Pool } from "pg";
 import {
   generateProjectionAlerts,
   generateProjections,
 } from "../../packages/lib/analytics/projections";
-import { analyticsService } from "../../packages/lib/services/analytics";
-import { analyticsAlertsService } from "../../packages/lib/services/analytics-alerts";
-import { organizationsService } from "../../packages/lib/services/organizations";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, "../../..");
@@ -18,6 +16,20 @@ interface Args {
   periods: number;
   dashboardUrl?: string;
   evidenceDir: string;
+}
+
+interface TimeSeriesRow {
+  timestamp: Date;
+  totalRequests: number;
+  totalCost: number;
+  inputTokens: number;
+  outputTokens: number;
+  successRate: number;
+}
+
+interface AlertEventRow {
+  id: string;
+  severity: string;
 }
 
 function parseArgs(argv: string[]): Args {
@@ -73,6 +85,145 @@ function writeEvidence(evidenceDir: string, evidence: Record<string, unknown>) {
   console.log(`[eliza1:dashboard-alerts] wrote ${relative(REPO_ROOT, file)} (${evidence.status})`);
 }
 
+function databaseUrl(): string {
+  const url = process.env.TEST_DATABASE_URL || process.env.DATABASE_URL;
+  if (!url) throw new Error("DATABASE_URL or TEST_DATABASE_URL is required");
+  return url;
+}
+
+async function loadDashboardInputs(
+  organizationId: string,
+  startDate: Date,
+  endDate: Date,
+): Promise<{ historicalData: TimeSeriesRow[]; creditBalance: number | null }> {
+  const pool = new Pool({ connectionString: databaseUrl() });
+  try {
+    const [usage, org] = await Promise.all([
+      pool.query<{
+        timestamp: Date;
+        total_requests: number | string;
+        total_cost: number | string;
+        input_tokens: number | string;
+        output_tokens: number | string;
+        success_rate: number | string;
+      }>(
+        `
+          SELECT
+            date_trunc('day', created_at) AS timestamp,
+            count(*)::int AS total_requests,
+            coalesce(sum(input_cost + output_cost), 0)::numeric AS total_cost,
+            coalesce(sum(input_tokens), 0)::int AS input_tokens,
+            coalesce(sum(output_tokens), 0)::int AS output_tokens,
+            coalesce(
+              count(*) FILTER (WHERE is_successful = true)::float /
+              nullif(count(*)::float, 0),
+              1.0
+            ) AS success_rate
+          FROM usage_records
+          WHERE organization_id = $1
+            AND created_at >= $2
+            AND created_at <= $3
+          GROUP BY 1
+          ORDER BY 1
+        `,
+        [organizationId, startDate, endDate],
+      ),
+      pool.query<{ credit_balance: string | number }>(
+        "SELECT credit_balance FROM organizations WHERE id = $1",
+        [organizationId],
+      ),
+    ]);
+
+    return {
+      historicalData: usage.rows.map((row) => ({
+        timestamp: new Date(row.timestamp),
+        totalRequests: Number(row.total_requests),
+        totalCost: Number(row.total_cost),
+        inputTokens: Number(row.input_tokens),
+        outputTokens: Number(row.output_tokens),
+        successRate: Number(row.success_rate),
+      })),
+      creditBalance:
+        org.rows[0]?.credit_balance === undefined ? null : Number(org.rows[0].credit_balance),
+    };
+  } finally {
+    await pool.end();
+  }
+}
+
+function alertPolicyId(title: string): string {
+  return title
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
+function alertSeverity(type: "warning" | "danger" | "info"): "warning" | "critical" | "info" {
+  return type === "danger" ? "critical" : type;
+}
+
+async function persistAlertEvents(input: {
+  organizationId: string;
+  alerts: ReturnType<typeof generateProjectionAlerts>;
+  historicalCount: number;
+  projectedCount: number;
+  creditBalance: number;
+  evaluatedAt: Date;
+}): Promise<AlertEventRow[]> {
+  if (input.alerts.length === 0) return [];
+
+  const pool = new Pool({ connectionString: databaseUrl() });
+  try {
+    const rows: AlertEventRow[] = [];
+    for (const alert of input.alerts) {
+      const policyId = alertPolicyId(alert.title);
+      const dedupeKey = `analytics.projections:${policyId}:${input.evaluatedAt
+        .toISOString()
+        .slice(0, 10)}`;
+      const result = await pool.query<AlertEventRow>(
+        `
+          INSERT INTO analytics_alert_events (
+            organization_id,
+            policy_id,
+            severity,
+            status,
+            source,
+            title,
+            message,
+            evidence,
+            dedupe_key,
+            evaluated_at
+          )
+          VALUES ($1, $2, $3, 'open', 'analytics.projections', $4, $5, $6::jsonb, $7, $8)
+          ON CONFLICT (organization_id, dedupe_key)
+          DO UPDATE SET evaluated_at = excluded.evaluated_at
+          RETURNING id, severity
+        `,
+        [
+          input.organizationId,
+          policyId,
+          alertSeverity(alert.type),
+          alert.title,
+          alert.message,
+          JSON.stringify({
+            projectedValue: alert.projectedValue ?? null,
+            projectedDate: alert.projectedDate?.toISOString?.() ?? null,
+            historicalPoints: input.historicalCount,
+            projectedPoints: input.projectedCount,
+            creditBalance: input.creditBalance,
+          }),
+          dedupeKey,
+          input.evaluatedAt,
+        ],
+      );
+      if (result.rows[0]) rows.push(result.rows[0]);
+    }
+    return rows;
+  } finally {
+    await pool.end();
+  }
+}
+
 async function verifyDashboardRender(dashboardUrl?: string) {
   if (!dashboardUrl) {
     return {
@@ -106,17 +257,12 @@ async function main() {
   const now = new Date();
   const startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
-  let historicalData: Awaited<ReturnType<typeof analyticsService.getUsageTimeSeries>>;
-  let organization: Awaited<ReturnType<typeof organizationsService.getById>>;
+  let historicalData: TimeSeriesRow[];
+  let creditBalance: number | null;
   try {
-    [historicalData, organization] = await Promise.all([
-      analyticsService.getUsageTimeSeries(args.organizationId, {
-        startDate,
-        endDate: now,
-        granularity: "day",
-      }),
-      organizationsService.getById(args.organizationId),
-    ]);
+    const inputs = await loadDashboardInputs(args.organizationId, startDate, now);
+    historicalData = inputs.historicalData;
+    creditBalance = inputs.creditBalance;
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
     writeEvidence(args.evidenceDir, {
@@ -135,7 +281,7 @@ async function main() {
     return;
   }
 
-  if (!organization) {
+  if (creditBalance === null) {
     writeEvidence(args.evidenceDir, {
       gate: "dashboard_alerts",
       status: "fail",
@@ -152,17 +298,36 @@ async function main() {
     return;
   }
 
-  const creditBalance = Number(organization.credit_balance ?? 0);
   const projections = generateProjections(historicalData, args.periods);
   const alerts = generateProjectionAlerts(historicalData, projections, creditBalance);
-  const events = await analyticsAlertsService.persistProjectionAlerts({
-    organizationId: args.organizationId,
-    alerts,
-    historicalData,
-    projectedData: projections,
-    creditBalance,
-    evaluatedAt: now,
-  });
+  let events: AlertEventRow[];
+  try {
+    events = await persistAlertEvents({
+      organizationId: args.organizationId,
+      alerts,
+      historicalCount: historicalData.length,
+      projectedCount: projections.filter((point) => point.isProjected).length,
+      creditBalance,
+      evaluatedAt: now,
+    });
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    writeEvidence(args.evidenceDir, {
+      gate: "dashboard_alerts",
+      status: "fail",
+      completedAt: new Date().toISOString(),
+      organizationId: args.organizationId,
+      policiesEvaluated: 2,
+      projectionAlertsGenerated: alerts.length,
+      redStateRendered: false,
+      yellowStateRendered: false,
+      alertEventsPersisted: 0,
+      error: reason,
+      summary: `dashboard alert events could not be persisted: ${reason}`,
+    });
+    process.exitCode = 1;
+    return;
+  }
   const render = await verifyDashboardRender(args.dashboardUrl);
   const criticalPersisted = events.some((event) => event.severity === "critical");
   const warningPersisted = events.some((event) => event.severity === "warning");

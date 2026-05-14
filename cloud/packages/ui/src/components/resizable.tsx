@@ -27,12 +27,14 @@ const ResizablePanelGroupContext = React.createContext<{
   direction: "horizontal" | "vertical";
   panels: Map<number, { size: number; minSize: number; maxSize: number }>;
   setPanelSize: (index: number, size: number) => void;
+  setPanelSizes: (updates: Array<[index: number, size: number]>) => void;
   registerPanel: (index: number, size: number, minSize: number, maxSize: number) => void;
   unregisterPanel: (index: number) => void;
 }>({
   direction: "horizontal",
   panels: new Map(),
   setPanelSize: () => {},
+  setPanelSizes: () => {},
   registerPanel: () => {},
   unregisterPanel: () => {},
 });
@@ -78,15 +80,29 @@ export function ResizablePanelGroup({
     });
   }, []);
 
+  const setPanelSizes = React.useCallback((updates: Array<[index: number, size: number]>) => {
+    setPanels((prev) => {
+      const next = new Map(prev);
+      for (const [index, size] of updates) {
+        const panel = next.get(index);
+        if (panel) {
+          next.set(index, { ...panel, size });
+        }
+      }
+      return next;
+    });
+  }, []);
+
   const contextValue = React.useMemo(
     () => ({
       direction,
       panels,
       setPanelSize,
+      setPanelSizes,
       registerPanel,
       unregisterPanel,
     }),
-    [direction, panels, setPanelSize, registerPanel, unregisterPanel],
+    [direction, panels, setPanelSize, setPanelSizes, registerPanel, unregisterPanel],
   );
 
   return (
@@ -145,7 +161,7 @@ export function ResizablePanel({
 }
 
 export function ResizableHandle({ withHandle = false, className, ...props }: ResizableHandleProps) {
-  const { direction, panels, setPanelSize } = React.useContext(ResizablePanelGroupContext);
+  const { direction, panels, setPanelSizes } = React.useContext(ResizablePanelGroupContext);
   const [isDragging, setIsDragging] = React.useState(false);
 
   const handleMouseDown = React.useCallback(
@@ -182,8 +198,10 @@ export function ResizableHandle({ withHandle = false, className, ...props }: Res
         // Ensure total is 100%
         const total = newLeftSize + newRightSize;
         if (total > 0) {
-          setPanelSize(leftId, (newLeftSize / total) * 100);
-          setPanelSize(rightId, (newRightSize / total) * 100);
+          setPanelSizes([
+            [leftId, (newLeftSize / total) * 100],
+            [rightId, (newRightSize / total) * 100],
+          ]);
         }
       };
 
@@ -196,7 +214,7 @@ export function ResizableHandle({ withHandle = false, className, ...props }: Res
       document.addEventListener("mousemove", handleMouseMove);
       document.addEventListener("mouseup", handleMouseUp);
     },
-    [direction, panels, setPanelSize],
+    [direction, panels, setPanelSizes],
   );
 
   return (

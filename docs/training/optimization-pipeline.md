@@ -6,9 +6,9 @@ projection, TurboQuant V-cache, DFlash speculative decoding) on top of
 the `elizaOS/llama.cpp` fork — which ships in-tree as the git submodule at
 `packages/inference/llama.cpp` (`elizaOS/llama.cpp @ v1.0.0-eliza`, commit
 `08032d57`; `git submodule update --init --recursive`, which `bun install`
-runs) — and publishing the resulting GGUF + manifest to an `elizaos/eliza-1-<tier>`
-HuggingFace repo so phones can download it via the existing in-app
-downloader.
+runs) — and publishing the resulting GGUF + manifest to the consolidated
+`elizaos/eliza-1` HuggingFace repo under `bundles/<tier>/` so phones can
+download it via the existing in-app downloader.
 
 ## Why this exists
 
@@ -79,7 +79,7 @@ stage-turboquant/  (HF ckpt + turboquant.json)
     ↓  convert_hf_to_gguf.py (elizaOS/llama.cpp v1.0.0-eliza)
 gguf/<name>-eliza-Q4_POLAR.gguf + eliza_manifest.json + README.md
     ↓  push_model_to_hf.py --eliza-manifest
-HuggingFace: elizaos/eliza-1-<tier>
+HuggingFace: elizaos/eliza-1 (bundles/<tier>/)
 ```
 
 ## Running it
@@ -89,10 +89,10 @@ HuggingFace: elizaos/eliza-1-<tier>
 ```bash
 cd packages/training
 uv run python scripts/optimize_for_eliza1.py \
-    --base-model elizaos/eliza-1-lite-0_6b \
-    --output-dir checkpoints/eliza-1-lite \
+    --base-model Qwen/Qwen3.5-0.8B-Base \
+    --output-dir checkpoints/eliza-1-0_8b \
     --apply polarquant qjl turboquant \
-    --hf-repo elizaos/eliza-1-lite-0_6b \
+    --hf-repo elizaos/eliza-1 \
     --dry-run
 ```
 
@@ -107,12 +107,12 @@ consumers know the V-cache config falls back to the framework default.
 ```bash
 HF_TOKEN=hf_xxx \
 uv run python scripts/optimize_for_eliza1.py \
-    --base-model elizaos/eliza-1-lite-0_6b \
-    --output-dir checkpoints/eliza-1-lite \
+    --base-model Qwen/Qwen3.5-0.8B-Base \
+    --output-dir checkpoints/eliza-1-0_8b \
     --apply polarquant qjl turboquant \
     --calibration data/final/val.jsonl \
     --calibration-samples 128 \
-    --hf-repo elizaos/eliza-1-lite-0_6b
+    --hf-repo elizaos/eliza-1
 ```
 
 Production runs need:
@@ -153,7 +153,7 @@ For Eliza-1 lite (base ~1.16 GB bf16, 484 MB Q4_K_M baseline):
 
 | Stage             | Output                                  | Approx. size |
 |-------------------|-----------------------------------------|--------------|
-| base              | `elizaos/eliza-1-lite-0_6b` HF safetensors         | 1.16 GB |
+| base              | upstream Qwen3.5 base safetensors                  | 1.16 GB |
 | stage-polarquant/ | reconstructed fp16 + polar codes sidecar | 1.16 GB + 70 MB sidecar |
 | stage-qjl/        | unchanged + qjl_config.json              | 1.16 GB + <1 KB |
 | stage-turboquant/ | unchanged + turboquant.json              | 1.16 GB + <1 KB |
@@ -186,16 +186,16 @@ inference call.
 
 ```
 $ uv run python scripts/optimize_for_eliza1.py \
-      --base-model elizaos/eliza-1-lite-0_6b \
-      --output-dir /tmp/eliza-1-lite-test \
+      --base-model Qwen/Qwen3.5-0.8B-Base \
+      --output-dir /tmp/eliza-1-0_8b-test \
       --apply polarquant qjl turboquant \
-      --hf-repo elizaos/eliza-1-lite-0_6b --dry-run
+      --hf-repo elizaos/eliza-1 --dry-run
 …
 2026-05-10 02:49:01 polarquant_apply --dry-run → exit=0 (6.0s)
 2026-05-10 02:49:04 qjl_apply --dry-run → exit=0 (3.2s)
 2026-05-10 02:49:04 turboquant skipped — CUDA unavailable
-2026-05-10 02:49:04 (dry-run) GGUF target = eliza-1-lite-Q4_POLAR.gguf
-2026-05-10 02:49:04 (dry-run) push to elizaos/eliza-1-lite-0_6b
+2026-05-10 02:49:04 (dry-run) GGUF target = eliza-1-0_8b-Q4_POLAR.gguf
+2026-05-10 02:49:04 (dry-run) push to elizaos/eliza-1/bundles/0_8b/
 2026-05-10 02:49:04 pipeline ok
 ```
 

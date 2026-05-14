@@ -683,7 +683,7 @@ available_contexts:
 - IGNORE: skip this message
 - STOP: user asked agent to disengage
 {{/if}}
-replyText: the user-facing reply text. Always write it. On the simple path it is the whole answer; on the planning path it is a brief acknowledgement and the planner produces the final message.
+replyText: the user-facing reply text. Always write it. On the simple path it is the whole answer; on the planning path it is a brief acknowledgement ("On it.", "Spawning the sub-agent now.", "Looking into it.") and the planner produces the final message. NEVER refuse the user's request in replyText: if you populated contexts/candidateActions with anything other than "simple", the planner stage will run the tools and your job here is acknowledgement only. Refusal phrasings ("I cannot...", "I am unable to...", "I don't have the ability...", "Sorry, I can't...") are explicitly disallowed on the planning path — the agent has the tools (FILE, BASH, TASKS_SPAWN_AGENT, ...) and the planner will invoke them. If you truly think nothing can attempt the request, route to contexts=["simple"] and explain in replyText.
 
 contexts (directly after replyText): list of ids drawn from available_contexts (calendar, email, ...). Never invent ids. ["simple"] or [] = direct reply, no planner.
 
@@ -747,19 +747,6 @@ JSON only. Return one JSON object. No prose, fences, thinking, or markdown.
 `;
 
 export const MESSAGE_HANDLER_TEMPLATE = messageHandlerTemplate;
-
-export const mobileDirectReplyTemplate = `{{system}}
-
-Answer the user directly. Do not select actions, do not return structured control output, and do not explain internal reasoning.
-If the user asks for exact words, output exactly those words and nothing else.
-
-User: {{userText}}
-{{agentName}}:
-
-Plain text only. No JSON, labels, fences, thinking, or markdown.
-`;
-
-export const MOBILE_DIRECT_REPLY_TEMPLATE = mobileDirectReplyTemplate;
 
 export const observationExtractionTemplate = `You are analyzing recent conversation exchanges between a user and an AI assistant.
 Extract any durable observations about the user that would be useful across future sessions.

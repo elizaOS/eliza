@@ -17,11 +17,9 @@ import {
   type AgentRuntime,
   ChannelType,
   type Content,
-  composePrompt,
   createMessageMemory,
   logger,
   ModelType,
-  mobileDirectReplyTemplate,
   type RouteRequestContext,
   runWithTrajectoryContext,
   stringToUuid,
@@ -55,6 +53,10 @@ import {
   parseFallbackActionBlocks,
 } from "./binance-skill-helpers.ts";
 import {
+  maybeAugmentChatMessageWithDocuments,
+  maybeAugmentChatMessageWithLanguage,
+} from "./chat-augmentation.ts";
+import {
   isClientVisibleNoResponse,
   isNoResponsePlaceholder,
 } from "./chat-text-helpers.ts";
@@ -76,14 +78,15 @@ import {
   getErrorMessage,
   hasBlockedObjectKeyDeep,
   isWalletActionRequiredIntent,
-  maybeAugmentChatMessageWithDocuments,
-  maybeAugmentChatMessageWithLanguage,
   maybeAugmentChatMessageWithWalletContext,
   normalizeIncomingChatPrompt,
   resolveAppUserName,
   trimWalletProgressPrefix,
   validateChatImages,
 } from "./server-helpers.ts";
+import type { ChatImageAttachment } from "./server-types.ts";
+
+export type { ChatImageAttachment };
 
 const CHAT_MAX_BODY_BYTES = 20 * 1024 * 1024; // 20 MB (image-capable)
 
@@ -143,13 +146,6 @@ function resolveCallbackMergeMode(
     : fallback;
 }
 
-export interface ChatImageAttachment {
-  /** Base64-encoded image data (no data URL prefix). */
-  data: string;
-  mimeType: string;
-  name: string;
-}
-
 function normalizeActionCallbackText(text: string): string {
   return text.trim();
 }
@@ -179,125 +175,6 @@ function getLatestVisibleResponseMessageText(
   }
 
   return "";
-}
-
-/**
- * Decide whether to route a chat turn around Stage-1 RESPONSE_HANDLER and
- * straight to the simple-reply template. The bypass exists because small
- * local models (Eliza-1 base/SFT GGUFs below ~7B) cannot reliably invoke
- * the `HANDLE_RESPONSE` tool against the ~19 KB Stage-1 system prompt and
- * emit raw prose that the runtime renders verbatim as the assistant
- * reply. See elizaOS/eliza#7618.
- *
- * Three triggers, any of which fires the bypass:
- *
- * 1. `ELIZA_FORCE_DIRECT_REPLY=1` — explicit user/operator opt-in.
- *    Highest precedence; works on every transport (CLI, mobile, web).
- *    Useful when running a non-tool-call-capable model through any
- *    surface and the operator just wants short direct replies.
- *
- * 2. `ELIZA_DEVICE_BRIDGE_ENABLED=1` + `ELIZA_LOCAL_LLAMA=1` — the mobile
- *    /AOSP bridge route is wired against the bundled llama.cpp local
- *    model. The aosp-local-inference plugin sets `ELIZA_LOCAL_LLAMA=1`
- *    at boot (see agent-model.ts ENV_PROVIDER_SIGNALS). When both are
- *    present the active TEXT model is the on-device llama.cpp and the
- *    Stage-1 prompt is unsafe to use.
- *
- * 3. `ELIZA_DEVICE_BRIDGE_ENABLED=1` + client-set
- *    `message.content.conversationMode === "simple"` — backwards
- *    compatibility for clients that already opt in explicitly (voice
- *    channels in useChatSend, iOS smoke test in app/main.tsx).
- */
-export function shouldUseSimpleChatBypass(
-  message: ReturnType<typeof createMessageMemory>,
-): boolean {
-  if (process.env.ELIZA_FORCE_DIRECT_REPLY === "1") return true;
-  if (process.env.ELIZA_DEVICE_BRIDGE_ENABLED !== "1") return false;
-  if (process.env.ELIZA_LOCAL_LLAMA === "1") return true;
-  const conversationMode = (message.content as { conversationMode?: unknown })
-    .conversationMode;
-  return conversationMode === "simple";
-}
-
-function sanitizeMobileLocalSimpleReply(text: string): string {
-  const trimmed = text.trim();
-  if (!trimmed) return "";
-  const withoutRole = trimmed
-    .replace(/^assistant\s*:\s*/i, "")
-    .replace(/^eliza\s*:\s*/i, "")
-    .trim();
-  const firstLine = withoutRole.split(/\r?\n/).find((line) => line.trim());
-  return (firstLine ?? withoutRole).trim();
-}
-
-function extractExactWordsReplyRequest(userText: string): string | null {
-  const exactWords = /\bexact words?\s*:\s*["'“”‘’]?(.+?)["'“”‘’]?\s*$/i.exec(
-    userText,
-  );
-  if (exactWords?.[1]?.trim()) {
-    return exactWords[1].trim();
-  }
-  const replyWith =
-    /\breply\s+(?:briefly\s+)?with\s+["'“”‘’]([^"'“”‘’]+)["'“”‘’]/i.exec(
-      userText,
-    );
-  if (replyWith?.[1]?.trim()) {
-    return replyWith[1].trim();
-  }
-  return null;
-}
-
-async function generateMobileLocalSimpleReply(
-  runtime: AgentRuntime,
-  message: ReturnType<typeof createMessageMemory>,
-  agentName: string,
-  opts?: ChatGenerateOptions,
-): Promise<ChatGenerationResult | null> {
-  const userText = String(
-    extractCompatTextContent(message.content) ?? "",
-  ).trim();
-  if (!userText) return null;
-  const exactReply = extractExactWordsReplyRequest(userText);
-  if (exactReply) {
-    opts?.onSnapshot?.(exactReply);
-    return {
-      text: exactReply,
-      agentName,
-      responseContent: {
-        text: exactReply,
-        simple: true,
-        actions: ["REPLY"],
-      },
-      responseMessages: [],
-    };
-  }
-  const system =
-    typeof runtime.character.system === "string" &&
-    runtime.character.system.trim().length > 0
-      ? runtime.character.system.trim()
-      : `You are ${agentName}. Reply briefly and directly.`;
-  const prompt = composePrompt({
-    state: { system, userText, agentName },
-    template: mobileDirectReplyTemplate,
-  });
-  const raw = await runtime.useModel(ModelType.TEXT_SMALL, {
-    prompt,
-    maxTokens: 64,
-    temperature: 0.4,
-  });
-  const text = sanitizeMobileLocalSimpleReply(String(raw ?? ""));
-  if (!text) return null;
-  opts?.onSnapshot?.(text);
-  return {
-    text,
-    agentName,
-    responseContent: {
-      text,
-      simple: true,
-      actions: ["REPLY"],
-    },
-    responseMessages: [],
-  };
 }
 
 const EXACT_GROUNDED_VALUE_REQUEST =
@@ -1096,7 +973,6 @@ export async function persistAssistantConversationMemory(
 // ---------------------------------------------------------------------------
 
 const VALID_CHANNEL_TYPES = new Set<string>(Object.values(ChannelType));
-const VALID_CONVERSATION_MODES = new Set(["simple", "power"]);
 
 function parseRequestChannelType(
   value: unknown,
@@ -1113,22 +989,6 @@ function parseRequestChannelType(
     return null;
   }
   return normalized as ChannelType;
-}
-
-function parseConversationMode(
-  value: unknown,
-): "simple" | "power" | undefined | null {
-  if (value === undefined || value === null) {
-    return undefined;
-  }
-  if (typeof value !== "string") {
-    return null;
-  }
-  const normalized = value.trim().toLowerCase();
-  if (!VALID_CONVERSATION_MODES.has(normalized)) {
-    return null;
-  }
-  return normalized as "simple" | "power";
 }
 
 function readUiLanguageHeader(
@@ -1164,7 +1024,6 @@ export async function readChatRequestPayload(
   prompt: string;
   channelType: ChannelType;
   images?: ChatImageAttachment[];
-  conversationMode?: "simple" | "power";
   preferredLanguage?: string;
   source?: string;
   metadata?: Record<string, unknown>;
@@ -1173,7 +1032,6 @@ export async function readChatRequestPayload(
     text?: string;
     channelType?: string;
     images?: ChatImageAttachment[];
-    conversationMode?: string;
     language?: string;
     source?: string;
     metadata?: Record<string, unknown>;
@@ -1187,11 +1045,6 @@ export async function readChatRequestPayload(
   const channelType = parseRequestChannelType(body.channelType, ChannelType.DM);
   if (!channelType) {
     helpers.error(res, "channelType is invalid", 400);
-    return null;
-  }
-  const conversationMode = parseConversationMode(body.conversationMode);
-  if (conversationMode === null) {
-    helpers.error(res, "conversationMode is invalid", 400);
     return null;
   }
   const imageValidationError = validateChatImages(body.images);
@@ -1226,7 +1079,6 @@ export async function readChatRequestPayload(
     prompt: normalizedPrompt,
     channelType,
     images,
-    ...(conversationMode ? { conversationMode } : {}),
     ...(preferredLanguage ? { preferredLanguage } : {}),
     ...(source ? { source } : {}),
     ...(metadata ? { metadata } : {}),
@@ -1623,24 +1475,6 @@ export async function generateChatResponse(
               return;
             }
 
-            if (shouldUseSimpleChatBypass(message)) {
-              const simpleResult = await generateMobileLocalSimpleReply(
-                runtime,
-                message,
-                agentName,
-                opts,
-              );
-              if (simpleResult) {
-                result = {
-                  didRespond: true,
-                  responseContent: simpleResult.responseContent,
-                  responseMessages: simpleResult.responseMessages ?? [],
-                } as typeof result;
-                responseText = simpleResult.text;
-                return;
-              }
-            }
-
             const languageAugmentedMessage =
               maybeAugmentChatMessageWithLanguage(
                 message,
@@ -1763,7 +1597,6 @@ export async function generateChatResponse(
                   src: "eliza-api",
                   mode: resultRecord?.mode,
                   actions: rc?.actions,
-                  simple: rc?.simple,
                   hasText: Boolean(rc?.text),
                 },
                 "[eliza-api] Chat response metadata",

@@ -294,30 +294,19 @@ export {
   stripAssistantStageDirections,
 } from "./chat-text-helpers.ts";
 
-// Re-export helper functions from server-helpers.ts for backwards compatibility
+// Re-export the helpers in server-helpers.ts that have external consumers
+// (apps, plugins, packages outside @elizaos/agent itself). The rest stay
+// internal — agent-side files import them directly from ./server-helpers.ts.
+// External-consumer audit kept this list minimal: drop a name only after
+// `grep -rln <name> packages/ apps/ plugins/ | grep -v "packages/agent/"`
+// returns nothing.
 export {
-  buildChatAttachments,
-  buildUserMessages,
-  buildWalletActionNotExecutedReply,
   cloneWithoutBlockedObjectKeys,
   decodePathComponent,
   findOwnPackageRoot,
   getErrorMessage,
-  hasBlockedObjectKeyDeep,
-  IMAGE_ONLY_CHAT_FALLBACK_PROMPT,
   isUuidLike,
-  isWalletActionRequiredIntent,
-  maybeAugmentChatMessageWithLanguage,
-  maybeAugmentChatMessageWithWalletContext,
-  normalizeIncomingChatPrompt,
   persistConversationRoomTitle,
-  resolveAppUserName,
-  resolveConversationGreetingText,
-  resolveWalletModeGuidanceReply,
-  trimWalletProgressPrefix,
-  validateChatImages,
-  WALLET_EXECUTION_INTENT_RE,
-  WALLET_PROGRESS_ONLY_RE,
 } from "./server-helpers.ts";
 
 // NOTE: Internal usage of these functions is handled by individual `import`

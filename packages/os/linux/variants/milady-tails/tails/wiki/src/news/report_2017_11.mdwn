@@ -1,0 +1,139 @@
+[[!meta title="Tails report for November, 2017"]]
+[[!meta date="Thu, 14 Dec 2017 10:56:17 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!toc ]]
+
+Releases
+========
+
+* [[Tails 3.3 was released on November 14th|news/version_3.3]] (minor release).
+
+* We will not make an emergency release for the latest Tor Browser update, because Tails is [[!tails_ticket 15018 desc="not affected"]].
+
+* Tails 3.5 is [[scheduled for January 16th|contribute/calendar]].
+
+Code
+====
+
+* We fixed issues regarding reproducible builds
+  ([[!tails_ticket 14924]], [[!tails_ticket 14946]],
+  [[!tails_ticket 14933]]) and later realized that one of them fixes
+  did not work in some corner cases… that include the ISO images we
+  build for the Tails official releases. Sadly, due to an internal
+  communication mishap we've announced that Tails 3.3 was reproducible
+  before we had learned about this remaining problem.
+
+* We uploaded a new version of tails-installer (5.0.2) to Debian and Ubuntu.
+  This version has a simpler interface than previous versions.
+
+Documentation and website
+=========================
+
+* We have documented internally how active Tails contributors can be
+  sponsored to attend events on behalf of Tails and are now working
+  towards publishing this documentation so that all contributors are
+  aware of this option ([[!tails_ticket 14727]]).
+
+User experience
+===============
+
+- We almost finished the work on the new download page and verification
+  extension for Firefox and Chrome. We're stuck blocked by security
+  reviews and improvements on the JavaScript code.
+
+- Our survey on file storage encryption was answered 1012 times between
+  October 17 and December 1. It was a huge success and we'll now move on
+  to analyzing the results.
+
+Hot topics on our help desk
+===========================
+ 
+1. [[!tails_ticket 14968 desc="#14968: Ublock is not working in Tails 3.3"]]
+ 
+1. [[!tails_ticket 12328 desc="#12328: Tails Firefox Add-on is not working in last
+   Firefox"]]
+
+Infrastructure
+==============
+
+- Our test suite covers 209 scenarios, 2 more that in October.
+- Cyril Brulebois (kibi) published a [blog post about his early work on reproducible builds](https://debamax.com/blog/2017/11/20/tails-early-work-on-reproducibility/).
+
+Funding
+=======
+
+* We submitted a funding request for the Secure Operating Systems
+  Summit that we are organizing with Qubes OS, Subgraph OS and Whonix.
+
+* We applied to the "Good of the Internet" call for proposals by RIPE
+  NCC. Our proposal is titled "Interoperability and communication
+  continuity between mobile, laptop and desktop computers, in privacy
+  and security-sensitive environments".
+
+* We continued to run our donation campaign.
+
+Outreach
+========
+
+Past events
+-----------
+
+* Some of us attended the Reproducible Builds World summit in Berlin, Germany
+  (report).
+
+* intrigeri attended the OTF summit in Valencia, then followed-up with
+  people he has met there.
+
+* ignifugo gave a talk about Tails at a greek hackerspace.
+
+Upcoming events
+---------------
+
+* Many Tails people will be at the
+  [34th Chaos Communication Congress, aka. 34C3](https://www.ccc.de/en/updates/2017/34C3-in-leipzig)
+  in Leipzig (December 27 to December 30).
+
+* 2018-01-11: Tor & Tails meetup in Mexico City. More details later...
+
+On-going discussions
+====================
+
+* We started a discussion about basing Tails on quarterly snapshots of Debian Testing
+
+* segfault started discussion the implementation of VeraCrypt/TrueCrypt support in GNOME Disks with upstream
+
+Press and testimonials
+======================
+
+* Tails was mentioned in a [conference about journalism and surveillance](https://www.youtube.com/watch?v=NM4vflyaC58) organised by the Grenoble Alpes Data Institute. [Direct link](https://www.youtube.com/watch?v=NM4vflyaC58&t=3772) to the precise moment (tails was presented as something "extremely useful").
+ 
+Translation
+===========
+
+## All the website
+
+  - de: 54% (2902) strings translated, 7% strings fuzzy, 47% words translated
+  - fa: 39% (2103) strings translated, 9% strings fuzzy, 41% words translated
+  - fr: 89% (4742) strings translated, 0% strings fuzzy, 84% words translated
+  - it: 38% (2022) strings translated, 5% strings fuzzy, 33% words translated
+  - pt: 24% (1292) strings translated, 9% strings fuzzy, 20% words translated
+
+Total original words: 57402
+
+## [[Core pages of the website|contribute/l10n_tricks/core_po_files.txt]]
+
+  - de: 80% (1506) strings translated, 12% strings fuzzy, 79% words translated
+  - fa: 34% (647) strings translated, 11% strings fuzzy, 34% words translated
+  - fr: 99% (1864) strings translated, 0% strings fuzzy, 99% words translated
+  - it: 76% (1444) strings translated, 13% strings fuzzy, 77% words translated
+  - pt: 45% (851) strings translated, 16% strings fuzzy, 46% words translated
+
+Total original words: 17062
+
+Metrics
+=======
+
+* Tails has been started more than 655.776 times this month. This makes 21.859 boots a day on average.
+* 12.371 downloads of the OpenPGP signature of Tails ISO from our website.
+* 99 bug reports were received through WhisperBack.

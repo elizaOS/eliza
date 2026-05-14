@@ -20,11 +20,11 @@ def _sha(data: bytes) -> str:
 
 
 def _write_bundle(root: Path) -> Path:
-    bundle = root / "eliza-1-1_7b.bundle"
+    bundle = root / "eliza-1-2b.bundle"
     files = {
-        "text/eliza-1-1_7b-32k.gguf": b"text",
+        "text/eliza-1-2b-32k.gguf": b"text",
         "tts/omnivoice-base-Q4_K_M.gguf": b"omni",
-        "dflash/drafter-1_7b.gguf": b"draft",
+        "dflash/drafter-2b.gguf": b"draft",
         "cache/voice-preset-default.bin": b"cache",
     }
     for rel, payload in files.items():
@@ -33,20 +33,20 @@ def _write_bundle(root: Path) -> Path:
         p.write_bytes(payload)
     manifest = {
         "$schema": "https://elizaos.ai/schemas/eliza-1.manifest.v1.json",
-        "id": "eliza-1-1_7b",
-        "tier": "1_7b",
+        "id": "eliza-1-2b",
+        "tier": "2b",
         "version": "1.0.0",
         "publishedAt": "2026-05-12T00:00:00Z",
         "lineage": {
-            "text": {"base": "Qwen/Qwen3.5-1.7B", "license": "apache-2.0"},
+            "text": {"base": "Qwen/Qwen3.5-2B", "license": "apache-2.0"},
             "voice": {"base": "Serveurperso/OmniVoice-GGUF", "license": "apache-2.0"},
-            "drafter": {"base": "Qwen/Qwen3.5-1.7B", "license": "apache-2.0"},
+            "drafter": {"base": "Qwen/Qwen3.5-0.8B", "license": "apache-2.0"},
         },
         "files": {
             "text": [
                 {
-                    "path": "text/eliza-1-1_7b-32k.gguf",
-                    "sha256": _sha(files["text/eliza-1-1_7b-32k.gguf"]),
+                    "path": "text/eliza-1-2b-32k.gguf",
+                    "sha256": _sha(files["text/eliza-1-2b-32k.gguf"]),
                     "ctx": 32768,
                 }
             ],
@@ -60,8 +60,8 @@ def _write_bundle(root: Path) -> Path:
             "vision": [],
             "dflash": [
                 {
-                    "path": "dflash/drafter-1_7b.gguf",
-                    "sha256": _sha(files["dflash/drafter-1_7b.gguf"]),
+                    "path": "dflash/drafter-2b.gguf",
+                    "sha256": _sha(files["dflash/drafter-2b.gguf"]),
                 }
             ],
             "cache": [
@@ -141,3 +141,43 @@ def test_stage_updates_manifest_evidence_license_and_checksums(
     sums = (bundle / "checksums" / "SHA256SUMS").read_text()
     assert "tts/kokoro/model_q4.onnx" in sums
     assert "evidence/kokoro-assets.json" in sums
+
+
+def test_kokoro_only_prunes_omnivoice_payloads_from_small_bundle(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    bundle = _write_bundle(tmp_path)
+    cache = tmp_path / "cache"
+
+    def fake_download(**kwargs):
+        remote = kwargs["filename"]
+        p = cache / remote
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_bytes(f"payload:{remote}".encode())
+        return str(p)
+
+    monkeypatch.setattr(stage, "HfApi", FakeHfApi)
+    monkeypatch.setattr(stage, "hf_hub_download", fake_download)
+
+    report = stage.stage_kokoro_bundle(
+        bundle,
+        voices=("af_bella",),
+        dry_run=False,
+        kokoro_only=True,
+    )
+
+    manifest = json.loads((bundle / "eliza-1.manifest.json").read_text())
+    voice_paths = {entry["path"] for entry in manifest["files"]["voice"]}
+    assert voice_paths == {
+        "tts/kokoro/model_q4.onnx",
+        "tts/kokoro/tokenizer.json",
+        "tts/kokoro/voices/af_bella.bin",
+    }
+    assert not (bundle / "tts" / "omnivoice-base-Q4_K_M.gguf").exists()
+    assert report["removed"] == ["tts/omnivoice-base-Q4_K_M.gguf"]
+    assert manifest["lineage"]["voice"]["base"].startswith(
+        "onnx-community/Kokoro-82M-v1.0-ONNX@"
+    )
+    sums = (bundle / "checksums" / "SHA256SUMS").read_text()
+    assert "tts/omnivoice-base-Q4_K_M.gguf" not in sums

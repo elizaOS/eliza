@@ -1,0 +1,107 @@
+[[!meta title="Call for testing: 1.7~rc1"]]
+
+[[!meta date="Mon, 27 Oct 2015 12:00:00 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+You can help Tails! The first release candidate for the upcoming version 1.7 is
+out. Please test it and see if it works for you.
+
+[[!toc levels=1]]
+
+How to test Tails 1.7~rc1?
+==========================
+
+1. **Keep in mind that this is a test image.** We have made sure
+   that it is not broken in an obvious way, but it might still contain
+   undiscovered issues.
+
+1. Either try the <a href="#automatic_upgrade">automatic upgrade</a>, or
+   download the ISO image and its signature:
+
+   Tails 1.7~rc1 ISO image
+
+   Tails 1.7~rc1 signature
+
+1. Verify the ISO image.
+
+1. Have a look at the list of <a href="#known_issues">known issues of
+   this release</a> and the list of
+   [[longstanding known issues|support/known_issues]].
+
+1. Test wildly!
+
+If you find anything that is not working as it should, please [[report to
+us|doc/first_steps/whisperback]]! Bonus points if you first check if it is a
+<a href="#known_issues">known issue of this release</a> or a
+[[longstanding known issue|support/known_issues]].
+
+<div id="automatic_upgrade"></a>
+
+How to automatically upgrade from 1.6?
+========================================
+
+These steps allow you to automatically upgrade a device installed with
+*Tails Installer* from Tails 1.6 to Tails 1.7~rc1.
+
+1. Start Tails 1.6 from a USB stick or SD card (installed by the
+   Tails Installer), and
+   [[set an administration password|doc/first_steps/welcome_screen/administration_password]].
+
+1. Run this command in a *Root Terminal*
+   to select the "alpha" upgrade channel
+   and start the upgrade:
+
+       echo TAILS_CHANNEL=\"alpha\" >> /etc/os-release && \
+            tails-upgrade-frontend-wrapper
+
+1. Once the upgrade has been installed, restart Tails and look at
+   **Applications&nbsp;▸ Tails&nbsp;▸ About Tails**
+   to confirm that the running system is Tails 1.7~rc1.
+
+What's new since 1.6?
+=======================
+
+Changes since Tails 1.6 are:
+
+  * Major new features and changes
+    - Add a technology preview of the Icedove Email client (a
+      rebranded version of Mozilla Thunderbird), including OpenPGP
+      support via the Enigmail add-on, general security and anonymity
+      improvements via the Torbirdy add-on, and complete persistence
+      support (which will be enabled automatically if you already have
+      Claws Mail persistence enabled). Icedove will replace Claws Mail
+      as the supported email client in Tails in a future
+      release. (Closes: #6151, #9498, #10285)
+    - Upgrade Tor to 0.2.7.4-rc-1~d70.wheezy+1+tails1. Among the many
+      improvement of this new Tor major release, the new
+      KeepAliveIsolateSOCKSAuth option allows us to drop the
+      bug15482.patch patch (taken from the Tor Browse bundle) that
+      enabled similar (but inferiour) functionality for *all*
+      SocksPort:s -- now the same circuit is only kept alive for
+      extended periods for the SocksPort used by the Tor
+      Browser. (Closes: #10194, #10308)
+    - Add an option to Tails Greeter which disables networking
+      completely. This is useful when intending to use Tails for
+      offline work only. (Closes: #6811)
+
+  * Security fixes
+    - Fix CVE-2015-7665, which could lead to a network interface's IP
+      address being exposed through wget. (Closes: #10364)
+
+  * Minor improvements
+    - Restart Tor if bootstrapping stalls for too long when not using
+      pluggable transports. (Closes: #9516)
+    - Install firmware-amd-graphics, and firmware-misc-nonfree instead
+      of firmware-ralink-nonfree, both from Debian Sid.
+    - Update the Tails signing key. (Closes: #10012)
+
+There are numerous other changes that might not be apparent in the
+daily operation of a typical user. Technical details of all the
+changes are listed in the
+Changelog.
+
+<a id="known_issues"></a>
+
+# Known issues in 1.7~rc1
+
+* [[Longstanding known issues|support/known_issues]]

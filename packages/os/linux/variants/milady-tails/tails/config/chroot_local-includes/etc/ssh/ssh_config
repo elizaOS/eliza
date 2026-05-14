@@ -1,0 +1,17 @@
+Host 192.168.* 10.* 172.16.* 172.17.* 172.18.* 172.19.* 172.20.* 172.21.* 172.22.* 172.23.* 172.24.* 172.25.* 172.26.* 172.27.* 172.28.* 172.29.* 172.30.* 172.31.*
+ProxyCommand none
+
+Host *
+
+ProxyCommand /bin/nc -X 5 -x 127.0.0.1:9050 %h %p
+
+Compression yes
+
+ForwardX11              no
+ForwardX11Trusted       no
+
+# Prevent fingerprinting when username was not specified
+User                    root
+
+# Avoid storing full remote IP / host name connection history in plaintext
+HashKnownHosts          yes

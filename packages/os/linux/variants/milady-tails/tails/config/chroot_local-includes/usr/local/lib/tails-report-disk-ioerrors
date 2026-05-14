@@ -1,0 +1,39 @@
+#!/bin/sh
+
+title="$(gettext 'Error Reading Data from Tails USB Stick')"
+problem="$(gettext 'The hardware of your USB stick is probably failing.')"
+recommendation="$(gettext 'We recommend that you reinstall Tails on a different USB stick.')"
+
+persistence="$(gettext 'We recommend that you reinstall Tails on a different USB stick
+and recover the data from your Persistent Storage as soon as possible.')"
+
+dismiss="$(gettext 'Dismiss')"
+learnmore="$(gettext 'Learn More')"
+
+if ! /usr/local/lib/tpscli is-created
+then
+msg="$(cat <<EOTEXT
+${problem}
+
+${recommendation}
+
+${persistence}
+EOTEXT
+)"
+else
+msg="$(cat <<EOTEXT
+${problem}
+
+${recommendation}
+EOTEXT
+)"
+fi
+
+action="$(notify-send --action=dismiss="$dismiss" --action=doc="$learnmore" --wait \
+         -u critical -c device.error -- "$title" "$msg")"
+
+if [ "$action" = "doc" ]
+then
+# Open Link
+tails-documentation ioerror
+fi

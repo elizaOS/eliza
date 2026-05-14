@@ -54,7 +54,7 @@ Pulled from `PLAN.md` — keep this in sync if `PLAN.md` changes. Any decision c
 | 18 | Secure Boot | Phase 1 files LF shim review paperwork; Phase 5 ships LF-signed shim |
 | 19 | Provider portability | `trait CodeGenerator` is the boundary. Phase 1.5 adds a `ManagedProxy` backend (cloud-sync sub routes through our server) |
 | 20 | MiladyOS balance | Engineering on MiladyOS does not pause for usbeliza. Both ship as one story |
-| 21 | Local Llama in base | Llama-3.2-1B GGUF (~600 MB) bundled in qcow2 / ISO; loaded by `eliza-agent` at splash; primary handler before any cloud auth |
+| 21 | Local Eliza-1 in base | Eliza-1 0.8B GGUF (~600 MB) bundled in qcow2 / ISO; loaded by `eliza-agent` at splash; primary handler before any cloud auth |
 | 22 | Tails code OK | `third-party/tails/**` GPL-3.0-or-later; rest Apache-2.0; combined ISO is GPL-3; `NOTICE.md` documents every derived file |
 | 23 | Real `@elizaos/agent` | `bun add @elizaos/agent@alpha` lands in milestone 11a — the agent boots eliza's runtime; codegen is a real plugin Action |
 | 24 | Deterministic system commands | `connect to wifi`, `set keyboard`, etc. are regex-parsed and dispatched to nmcli/localectl/etc. directly — no LLM in the loop |
@@ -370,7 +370,7 @@ These are the files/repos to read before reinventing something:
 - **canonical apps** — calendar, notes, text editor, file viewer, clock, calculator. Used as smoke tests in Phase 0; pre-warmed in cache after first-auth in Phase 3+.
 - **`ManagedProxy`** — Phase 1.5 backend for `trait CodeGenerator`. Routes generation through our cloud-sync subscription server. Insurance against Anthropic / OpenAI ToS shifts.
 - **LF shim** — Linux Foundation's pre-signed UEFI bootloader shim. We file paperwork in Phase 1, ship signed in Phase 5; lets unsigned ISOs boot on stock Secure Boot machines.
-- **Local Llama** — `Llama-3.2-1B-Instruct-Q4_K_M.gguf`, ~600 MB, bundled in the base image; loaded by `eliza-agent` at splash via `@elizaos/agent`'s local-inference plugin; handles every chat before any cloud auth (locked decision #21).
+- **Local Eliza-1** — `Eliza-1 0.8B-Instruct-Q4_K_M.gguf`, ~600 MB, bundled in the base image; loaded by `eliza-agent` at splash via `@elizaos/agent`'s local-inference plugin; handles every chat before any cloud auth (locked decision #21).
 - **Deterministic chat-command** — a regex-matched user message that dispatches to a system tool (`nmcli`, `localectl`, etc.) without going through the LLM. Used for `connect to wifi`, `set my keyboard to <layout>`, etc. (locked decision #24). The local 1B model is too small to be trusted with tool dispatch.
 - **Tails-derived** — files lifted directly from the Tails project under `third-party/tails/`, staying GPL-3.0-or-later. Documented in `NOTICE.md`. License-header CI gate enforces the per-directory split.
 

@@ -142,15 +142,15 @@ iso-check:
 # into the chroot at the start of the hook stage). Saves ~5 min/build
 # + dodges ollama.com flake (the bug that killed v4). The staged file
 # is gitignored — sources of truth stay in ~/.cache.
-# Pre-fetch the Llama-3.2-1B-Instruct Q4_K_M GGUF for the local-llama-plugin
+# Pre-fetch the Eliza-1 0.8B GGUF for the local-llama-plugin
 # stack (Shaw's node-llama-cpp). The agent loads it directly at runtime via
 # libllama.so — no Ollama daemon. ~770 MB one-time download cached in
 # ~/.cache/usbeliza-build/models; the chroot copy is gitignored.
 #
-# Source: bartowski quants (public). Pinned URL; if it 404s, bump
+# Source: elizaos/eliza-1 (public). Pinned path; if it 404s, bump
 # USBELIZA_GGUF_URL.
-USBELIZA_GGUF_URL := "https://huggingface.co/bartowski/Llama-3.2-1B-Instruct-GGUF/resolve/main/Llama-3.2-1B-Instruct-Q4_K_M.gguf"
-USBELIZA_GGUF_FILE := "llama-3.2-1b-instruct-q4_k_m.gguf"
+USBELIZA_GGUF_URL := "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/0_8b/text/eliza-1-0_8b-32k.gguf"
+USBELIZA_GGUF_FILE := "eliza-1-0_8b-32k.gguf"
 
 iso-cache-model:
     @mkdir -p ~/.cache/usbeliza-build/models

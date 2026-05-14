@@ -1,0 +1,127 @@
+#!/usr/bin/python3
+
+# Iterate through all .po files, run msgfmt for each of them, and output any
+# errors together with their context.
+#
+# This script can also be used to "sanitize" .po files to avoid Ikiwiki build
+# failures. In that case, problematic translations are removed from the .po
+# file and replaced by an empty string. The effect is that the string in the
+# built website will not be translated.
+
+import argparse
+import glob
+import re
+import subprocess
+import sys
+
+
+WARNINGS = [
+    re.compile(r'^[^\s]+\.po:[0-9]: warning:'),
+    re.compile(r'^msgfmt: [^\s]+\.po: warning:'),
+    re.compile(r'^\s*warning:'),
+]
+
+ERRORS = re.compile(r'^([^\s]+\.po):([0-9]+): ')
+
+
+def find_context_start(msgstr_line, content):
+    """
+    Find the line number of the `msgid` corresponding to the given `msgstr`.
+    """
+    start = msgstr_line - 1
+    while not content[start].startswith('msgid '):
+        start -= 1
+    return start
+
+
+def find_context_end(msgstr_line, content):
+    """
+    Find the line number corresponding to the end of the given `msgstr`.
+    """
+    end = msgstr_line
+    while not end == len(content) and content[end] != '\n':
+        end += 1
+    return end
+
+
+def print_error_context(file, msgstr_line):
+    """
+    Print the full msgid and msgstr surrounding the `msgstr_line` in `file`.
+    """
+
+    with open(file) as f:
+        content = f.readlines()
+
+    start = find_context_start(msgstr_line, content)
+    end = find_context_end(msgstr_line, content)
+
+    for line in range(start, end):
+        print(content[line].strip())
+
+
+def delete_msgstr(file, msgstr_line):
+    """
+    Delete the translation starting on `msgstr_line` of the file `file`.
+    """
+
+    with open(file) as f:
+        content = f.readlines()
+
+    end = find_context_end(msgstr_line, content)
+
+    content[msgstr_line-1] = 'msgstr ""\n'
+    content = content[:msgstr_line] + content[end:]
+
+    with open(file, 'w') as f:
+        f.writelines(content)
+
+
+def check_po_msgfmt(sanitize=False):
+    """
+    Run `msgfmt` for all .po files in the current directory and print any
+    errors found. If `sanitize` is `True`, also delete problematic
+    translations from corresponding .po files.
+    """
+
+    errors = False
+
+    for f in glob.glob('**/*.po', recursive=True):
+        proc = subprocess.Popen(['msgfmt', '-c', '-o', '/dev/null', f],
+                                stderr=subprocess.PIPE)
+        for line in proc.stderr:
+            line = line.strip().decode('utf-8')
+
+            # filter out warnings
+            if any(map(lambda m: m.match(line), WARNINGS)):
+                continue
+
+            # filter out non-error messages
+            match = ERRORS.match(line)
+            if not match:
+                continue
+
+            errors = True
+
+            print(line)
+            file, n = match.groups()
+            msgstr_line = int(n)
+            print_error_context(file, msgstr_line)
+            print('')
+
+            if sanitize:
+                delete_msgstr(file, msgstr_line)
+
+    if errors:
+        sys.exit(1)
+
+
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--sanitize', action='store_true',
+                        help='Replace problematic translations with an empty string.')
+    return parser.parse_args()
+
+
+if __name__ == '__main__':
+    args = parse_args()
+    check_po_msgfmt(sanitize=args.sanitize)

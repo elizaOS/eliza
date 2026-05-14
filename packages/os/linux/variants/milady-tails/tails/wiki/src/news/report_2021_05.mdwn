@@ -1,0 +1,74 @@
+[[!meta title="Tails report for May, 2021"]]
+[[!meta date="Thu, 24 Jun 2021 12:34:56 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!toc ]]
+
+Highlights of the month
+=======================
+
+## Improving the experience of connecting to Tor
+
+In May, the coders' main focus were on improving the experience of
+connecting to Tor in Tails, which we first showed off in [[Tails
+4.19~beta1|test_4.19-beta1]] and later with some improvements in
+[[Tails 4.19~rc1|test_4.19-rc1]]. We had initially planned to include
+this new work in 4.19 but we decided at the last minute to postpone
+it: we did not feel confident enough that the whole thing was robust
+enough to unleash it onto our users. Our current plan is to have this
+work released in Tails 4.20 on July 13.
+
+One aspect of this work that may be interesting for some of you is
+that we defined for guidelines for non-user-initiated non-Tor Internet
+activity in Tails. We haven't implemented any such activity yet, but
+we plan to do so in the next few months, in particular to detect
+captive portals and test bridge reachability. If you're curious,
+[[have a look at the changes
+yourself|https://gitlab.tails.boum.org/tails/tails/-/merge_requests/416/diffs]]!
+
+## Prevent future automatic upgrade issues
+
+We grew tired of breaking automatic upgrades every few months due to
+changes in how Let's Encrypt certificates are signed, which we clearly
+are not managing to predict, and adjust to, before it harms our
+users. So for now, [[!tails_ticket desc="we disabled CA pinning for
+Tails Upgrader" 18324]].
+
+Translations
+============
+
+## All the website
+
+  - de: 26% (1844) strings translated, 14% strings fuzzy
+  - es: 52% (3689) strings translated, 4% strings fuzzy
+  - fa: 19% (1374) strings translated, 12% strings fuzzy
+  - fr: 91% (6429) strings translated, 1% strings fuzzy
+  - it: 34% (2428) strings translated, 7% strings fuzzy
+  - pt: 18% (1273) strings translated, 9% strings fuzzy
+
+## [[Core pages of the website|contribute/l10n_tricks/core_po_files.txt]]
+
+  - de: 44% (930) strings translated, 23% strings fuzzy
+  - es: 89% (1895) strings translated, 4% strings fuzzy
+  - fa: 19% (416) strings translated, 15% strings fuzzy
+  - fr: 99% (2092) strings translated, 0% strings fuzzy
+  - it: 67% (1422) strings translated, 15% strings fuzzy
+  - pt: 39% (821) strings translated, 14% strings fuzzy
+
+## Core pages of the website for languages not activated on the website yet
+
+  - ar: 6% (129) strings translated, 7% strings fuzzy
+  - ca: 6% (131) strings translated, 7% strings fuzzy
+  - id: 4% (102) strings translated, 4% strings fuzzy
+  - pl: 6% (140) strings translated, 6% strings fuzzy
+  - ru: 33% (692) strings translated, 4% strings fuzzy
+  - sr_Latn: 3% (72) strings translated, 3% strings fuzzy
+  - tr: 6% (145) strings translated, 6% strings fuzzy
+  - zh: 9% (204) strings translated, 7% strings fuzzy
+  - zh_TW: 20% (432) strings translated, 13% strings fuzzy
+
+Metrics
+=======
+
+Tails has been started more than 637205 times this month. This makes 20555 boots a day on average.
+

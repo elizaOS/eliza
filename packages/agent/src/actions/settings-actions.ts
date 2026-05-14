@@ -548,7 +548,7 @@ export const settingsAction: Action = {
       name: "action",
       description: `Operation discriminator. One of: ${SETTINGS_OPS.join(", ")}.`,
       required: true,
-      schema: { type: "string" as const },
+      schema: { type: "string" as const, enum: [...SETTINGS_OPS] },
     },
     {
       name: "provider",
@@ -574,7 +574,7 @@ export const settingsAction: Action = {
       name: "capability",
       description: `[toggle_capability] Capability key. One of: ${CAPABILITY_KEYS.join(", ")}.`,
       required: false,
-      schema: { type: "string" as const },
+      schema: { type: "string" as const, enum: [...CAPABILITY_KEYS] },
     },
     {
       name: "enabled",

@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=systemd Desktop target
+GenericName=Start the Desktop target in the systemd user session
+Version=1.0
+Exec=/usr/local/lib/start-systemd-desktop-target
+Terminal=false
+Type=Application
+Categories=
