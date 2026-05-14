@@ -226,6 +226,8 @@ tasks/
 !packages/benchmarks/claw-eval/tasks/**
 !packages/benchmarks/skillsbench/tasks/
 !packages/benchmarks/skillsbench/tasks/**
+!packages/benchmarks/terminal-bench/tasks/
+!packages/benchmarks/terminal-bench/tasks/**
 !packages/benchmarks/swe-bench-pro/run_scripts/**
 !packages/benchmarks/nl2repo/test_files/
 !packages/benchmarks/nl2repo/test_files/**

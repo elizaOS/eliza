@@ -609,7 +609,12 @@ Always respond with valid JSON containing your action. You may include a "reason
         return actions_taken
 
     def _heuristic_decision(self, day: int, previous_result: str) -> str:
-        """Simple heuristic-based decision making for testing without LLM."""
+        """Simple heuristic-based decision making for testing without LLM.
+
+        The heuristic deliberately exercises the paper-faithful tools
+        (``SEARCH_WEB``, ``SEND_EMAIL``, ``NOTEPAD_WRITE``) on the first
+        couple of days so harness smoke tests cover the full surface.
+        """
         state = self.env.state
 
         # Track what we've done this turn by parsing previous results
@@ -617,9 +622,25 @@ Always respond with valid JSON containing your action. You may include a "reason
         placed_order = "Order" in previous_result and "placed" in previous_result
         collected_cash = "Collected" in previous_result
 
-        # Day 1: View state first
+        # Day 1: View state, then exercise paper-faithful tools on first turns.
         if day == 1 and not viewed_state:
             return '{"action": "VIEW_BUSINESS_STATE"}'
+
+        # Day 1: one web search + one supplier email + one notepad write so the
+        # smoke harness can assert these tools were invoked.
+        if day == 1 and not state.web_search_log:
+            return '{"action": "SEARCH_WEB", "query": "wholesale vending suppliers"}'
+        if day == 1 and not state.outbox:
+            return (
+                '{"action": "SEND_EMAIL", "to": "orders@beverage-dist.example", '
+                '"subject": "Wholesale inquiry", "body": "Please send your '
+                'current price list for water, soda_cola and energy_drink. Thanks."}'
+            )
+        if day == 1 and not state.notepad:
+            return (
+                '{"action": "NOTEPAD_WRITE", "text": '
+                '"beverage_dist contacted day 1 for water/cola/energy quotes."}'
+            )
 
         # Check for delivered inventory to restock
         if state.delivered_inventory:
@@ -781,22 +802,8 @@ Always respond with valid JSON containing your action. You may include a "reason
         )
 
 
-class MockLLMProvider:
-    """Mock LLM provider for testing."""
-
-    def __init__(self, responses: list[str] | None = None) -> None:
-        self.responses = responses or []
-        self.call_count = 0
-
-    async def generate(
-        self,
-        system_prompt: str,
-        user_prompt: str,
-        temperature: float = 0.0,
-    ) -> tuple[str, int]:
-        """Return mock responses."""
-        if self.responses and self.call_count < len(self.responses):
-            response = self.responses[self.call_count]
-            self.call_count += 1
-            return response, 100  # Mock 100 tokens
-        return '{"action": "ADVANCE_DAY"}', 50
+# NOTE: ``MockLLMProvider`` lives in ``elizaos_vending_bench._testing`` so the
+# public surface only exposes production-grade providers. It is re-exported
+# here for backward compatibility with existing tests, but is intentionally
+# NOT re-exported from the package's top-level ``__init__``.
+from elizaos_vending_bench._testing import MockLLMProvider as MockLLMProvider  # noqa: E402,F401

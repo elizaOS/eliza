@@ -17,6 +17,7 @@ from benchmarks.bfcl.types import (
     BaselineScore,
     CategoryMetrics,
     LEADERBOARD_SCORES,
+    TestStatus,
 )
 
 logger = logging.getLogger(__name__)
@@ -34,17 +35,40 @@ class MetricsCalculator:
     - Baseline comparisons
     """
 
-    # Official BFCL weighting for overall score
+    # BFCL category weighting for the weighted overall score. Mirrors the
+    # upstream leaderboard's broad-bucket weighting (non-live single-turn
+    # carries the largest weight; live and multi-turn carry mid-weight;
+    # agentic categories are lower-weight tail categories).
     CATEGORY_WEIGHTS: dict[BFCLCategory, float] = {
-        BFCLCategory.SIMPLE: 0.15,
-        BFCLCategory.MULTIPLE: 0.15,
-        BFCLCategory.PARALLEL: 0.15,
-        BFCLCategory.PARALLEL_MULTIPLE: 0.15,
-        BFCLCategory.RELEVANCE: 0.10,
-        BFCLCategory.REST_API: 0.10,
-        BFCLCategory.SQL: 0.08,
-        BFCLCategory.JAVA: 0.06,
-        BFCLCategory.JAVASCRIPT: 0.06,
+        # Non-live single-turn
+        BFCLCategory.SIMPLE: 0.10,
+        BFCLCategory.MULTIPLE: 0.10,
+        BFCLCategory.PARALLEL: 0.10,
+        BFCLCategory.PARALLEL_MULTIPLE: 0.10,
+        BFCLCategory.RELEVANCE: 0.05,
+        BFCLCategory.IRRELEVANCE: 0.05,
+        BFCLCategory.REST_API: 0.05,
+        BFCLCategory.SQL: 0.04,
+        BFCLCategory.JAVA: 0.04,
+        BFCLCategory.JAVASCRIPT: 0.04,
+        # Live
+        BFCLCategory.LIVE_SIMPLE: 0.04,
+        BFCLCategory.LIVE_MULTIPLE: 0.04,
+        BFCLCategory.LIVE_PARALLEL: 0.04,
+        BFCLCategory.LIVE_PARALLEL_MULTIPLE: 0.04,
+        BFCLCategory.LIVE_RELEVANCE: 0.02,
+        BFCLCategory.LIVE_IRRELEVANCE: 0.02,
+        # Multi-turn
+        BFCLCategory.MULTI_TURN_BASE: 0.04,
+        BFCLCategory.MULTI_TURN_MISS_FUNC: 0.02,
+        BFCLCategory.MULTI_TURN_MISS_PARAM: 0.02,
+        BFCLCategory.MULTI_TURN_LONG_CONTEXT: 0.02,
+        # Agentic
+        BFCLCategory.WEB_SEARCH_BASE: 0.01,
+        BFCLCategory.WEB_SEARCH_NO_SNIPPET: 0.01,
+        BFCLCategory.MEMORY_KV: 0.01,
+        BFCLCategory.MEMORY_VECTOR: 0.01,
+        BFCLCategory.MEMORY_REC_SUM: 0.01,
     }
 
     def calculate(self, results: list[BFCLResult]) -> BFCLMetrics:
