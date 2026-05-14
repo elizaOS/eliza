@@ -2879,7 +2879,9 @@ export class SlackService extends Service implements ISlackService {
         text: msg,
         mrkdwn: options?.mrkdwn ?? true,
       } as Parameters<typeof client.chat.postMessage>[0];
-      if (options?.threadTs) messageArgs.thread_ts = options.threadTs;
+      if (options?.threadTs !== undefined) {
+        messageArgs.thread_ts = options.threadTs;
+      }
       if (options?.replyBroadcast !== undefined) {
         messageArgs.reply_broadcast = options.replyBroadcast;
       }
@@ -3163,11 +3165,15 @@ export class SlackService extends Service implements ISlackService {
       filename,
       ...(typeof content === "string" ? { content } : { file: content }),
     } as Parameters<typeof client.files.uploadV2>[0];
-    if (options?.title) uploadArgs.title = options.title;
-    if (options?.initialComment) {
+    if (options?.title !== undefined) {
+      uploadArgs.title = options.title;
+    }
+    if (options?.initialComment !== undefined) {
       uploadArgs.initial_comment = options.initialComment;
     }
-    if (options?.threadTs) uploadArgs.thread_ts = options.threadTs;
+    if (options?.threadTs !== undefined) {
+      uploadArgs.thread_ts = options.threadTs;
+    }
 
     const result = await client.files.uploadV2(uploadArgs);
 

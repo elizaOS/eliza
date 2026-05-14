@@ -301,16 +301,16 @@ function resetPlatformState() {
 
 async function openAdvancedRuntimeOptions(): Promise<void> {
   await act(async () => {
-    fireEvent.click(
-      screen.getByRole("button", { name: /i want to run it myself/i }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: /run it myself/i }));
   });
 }
 
 async function startLocalFromWelcome(): Promise<void> {
   await openAdvancedRuntimeOptions();
   await act(async () => {
-    fireEvent.click(screen.getByText(/use local/i));
+    fireEvent.click(
+      screen.getByRole("button", { name: /set up on this machine/i }),
+    );
   });
 }
 

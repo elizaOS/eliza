@@ -1,6 +1,15 @@
 import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
 import { sql } from "drizzle-orm";
-import { check, index, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import {
+  check,
+  index,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { organizations } from "./organizations";
 
 /**
@@ -21,13 +30,7 @@ export const OAUTH_INTENT_PROVIDERS = [
 ] as const;
 export type OAuthIntentProvider = (typeof OAUTH_INTENT_PROVIDERS)[number];
 
-export const OAUTH_INTENT_STATUSES = [
-  "pending",
-  "bound",
-  "denied",
-  "expired",
-  "canceled",
-] as const;
+export const OAUTH_INTENT_STATUSES = ["pending", "bound", "denied", "expired", "canceled"] as const;
 export type OAuthIntentStatus = (typeof OAUTH_INTENT_STATUSES)[number];
 
 export const OAUTH_INTENT_EVENT_NAMES = [
