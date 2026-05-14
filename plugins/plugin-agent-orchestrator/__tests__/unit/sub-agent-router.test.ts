@@ -51,9 +51,16 @@ function makeRuntime(opts: {
     (runtime: unknown, memory: Memory) => Promise<unknown>
   >(async () => ({}));
   const createMemory = vi.fn(async () => undefined);
+  const createEntity = vi.fn(async () => true);
+  const addParticipant = vi.fn(async () => true);
   const emitEvent = vi.fn<
     (name: string, payload: { source: string }) => Promise<void>
   >(async () => undefined);
+  // The router binds two independent event sources: ACP_SUBPROCESS_SERVICE
+  // and PTY_SERVICE. These tests drive the ACP path, so PTY is a no-op stub
+  // that still binds cleanly — both sources bound means no bind-retry timer
+  // is left dangling after the test.
+  const ptyService = { onSessionEvent: vi.fn(() => () => undefined) };
   const runtime = {
     agentId: opts.agentId ?? "00000000-0000-0000-0000-000000000001",
     logger: {
@@ -62,13 +69,24 @@ function makeRuntime(opts: {
       warn: vi.fn(),
       error: vi.fn(),
     },
-    getService: vi.fn(() => opts.acp ?? null),
+    getService: vi.fn((name: string) =>
+      name === "PTY_SERVICE" ? ptyService : (opts.acp ?? null),
+    ),
     getSetting: vi.fn((k: string) => opts.setting?.[k]),
     createMemory,
+    createEntity,
+    addParticipant,
     emitEvent,
     messageService: { handleMessage },
   } as never;
-  return { runtime, handleMessage, createMemory, emitEvent };
+  return {
+    runtime,
+    handleMessage,
+    createMemory,
+    createEntity,
+    addParticipant,
+    emitEvent,
+  };
 }
 
 function makeSession(overrides: Partial<SessionInfo> = {}): SessionInfo {
@@ -104,7 +122,7 @@ describe("SubAgentRouter", () => {
   });
 
   it("posts a synthetic memory back to the origin room on task_complete", async () => {
-    const { runtime, handleMessage, createMemory } = makeRuntime({
+    const { runtime, handleMessage, createMemory, createEntity } = makeRuntime({
       acp: acp.service,
     });
     const router = await SubAgentRouter.start(runtime);
@@ -116,7 +134,12 @@ describe("SubAgentRouter", () => {
     });
     await new Promise((r) => setImmediate(r));
 
-    expect(createMemory).toHaveBeenCalledTimes(1);
+    // The sub-agent entity is created so the memory FK resolves, and the
+    // post is delivered via messageService.handleMessage — which persists
+    // the memory itself, so the router must NOT also call createMemory
+    // (a double-save collides on the primary key).
+    expect(createEntity).toHaveBeenCalledTimes(1);
+    expect(createMemory).not.toHaveBeenCalled();
     expect(handleMessage).toHaveBeenCalledTimes(1);
     const posted = handleMessage.mock.calls[0]?.[1];
     if (!posted) throw new Error("expected handleMessage to receive a memory");
