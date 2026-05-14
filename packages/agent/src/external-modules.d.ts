@@ -154,6 +154,11 @@ declare module "@elizaos/plugin-elizacloud" {
     [key: string]: unknown;
   }
 
+  export interface CloudAuthApiKeyService {
+    isAuthenticated(): boolean;
+    getApiKey?: () => string | undefined;
+  }
+
   export interface CloudWalletDescriptor {
     agentWalletId: string;
     walletAddress: string;
@@ -192,6 +197,12 @@ declare module "@elizaos/plugin-elizacloud" {
   export function normalizeCloudSecret(
     value: string | null | undefined,
   ): string | null;
+  export function normalizeCloudApiKey(
+    value: string | null | undefined,
+  ): string | null;
+  export function isCloudAuthApiKeyService(
+    value: unknown,
+  ): value is CloudAuthApiKeyService;
   export function validateCloudBaseUrl(value: string): string | null;
   export function resolveCloudApiBaseUrl(...args: unknown[]): string;
   export function resolveCloudApiKey(...args: unknown[]): string | null;

@@ -29,7 +29,11 @@ import {
 } from "./context-renderer";
 import { computeCallCostUsd } from "./cost-table";
 import { runEvaluator } from "./evaluator";
-import { parseJsonObject, stringifyForModel } from "./json-output";
+import {
+	extractJsonObjects,
+	parseJsonObject,
+	stringifyForModel,
+} from "./json-output";
 import {
 	assertRepeatedFailureLimit,
 	assertTrajectoryLimit,
@@ -652,12 +656,12 @@ export function parsePlannerOutput(raw: string | GenerateTextResult): {
 	const nativeToolCalls = normalizeToolCalls(raw.toolCalls);
 	const text = getNonEmptyString(raw.text);
 
-	// Tolerant PLAN_ACTIONS-in-text fallback (elizaOS/eliza#7620). When a
-	// hosted model emits the planner envelope as message content instead of
-	// as a native tool call — observed with Cerebras-served `gpt-oss-120b`,
-	// where the character prompt's worked example seeds the bytes — recover
-	// the call here so the planner-loop's downstream resolver still
-	// dispatches the action.
+	// gpt-oss-class models narrate planner calls in the text channel. There
+	// are two observed shapes:
+	//   1. PLAN_ACTIONS({...}) or bare `{action,parameters}` text when native
+	//      extraction returns nothing; recover one planner call from that text.
+	//   2. concatenated `{type,args}` JSON objects where native extraction
+	//      captures only the first call; merge the missing calls back in.
 	let textRecoveredCalls: PlannerToolCall[] = [];
 	let recoverySource: string | undefined;
 	let recoveredThought: string | undefined;
@@ -674,14 +678,27 @@ export function parsePlannerOutput(raw: string | GenerateTextResult): {
 			recoveredThought = extracted.thought;
 		}
 	}
+	const embeddedToolCalls = parseEmbeddedToolCalls(raw.text);
+	const embeddedObjectCount =
+		typeof raw.text === "string" ? extractJsonObjects(raw.text).length : 0;
+	if (
+		embeddedToolCalls.length > 0 &&
+		(nativeToolCalls.length === 0 || embeddedObjectCount > 1)
+	) {
+		textRecoveredCalls = mergeToolCalls(textRecoveredCalls, embeddedToolCalls);
+	}
+	const toolCalls = mergeToolCalls(nativeToolCalls, textRecoveredCalls);
 
 	return {
 		thought: recoveredThought,
-		toolCalls:
-			nativeToolCalls.length > 0 ? nativeToolCalls : textRecoveredCalls,
-		// When we recovered a tool call from the text, blank `messageToUser`:
-		// the text WAS the tool call envelope, not a user-facing message.
-		messageToUser: textRecoveredCalls.length > 0 ? undefined : text,
+		toolCalls,
+		// When `raw.text` was itself tool-call JSON it is not a user-facing
+		// message — take the reply from a REPLY call rather than leaking the
+		// raw JSON blob into the channel.
+		messageToUser:
+			textRecoveredCalls.length > 0
+				? terminalMessageFromToolCalls(toolCalls)
+				: text,
 		raw: {
 			text: raw.text,
 			toolCalls: raw.toolCalls,
@@ -722,9 +739,16 @@ function parseJsonPlannerOutput(raw: string): {
 	const toolCalls = normalizeToolCalls(parsed.toolCalls);
 	const bareActionCalls =
 		toolCalls.length === 0 ? normalizeBarePlannerAction(parsed) : [];
+	let resolvedCalls = toolCalls.length > 0 ? toolCalls : bareActionCalls;
+	// `parseJsonObject` only returns the FIRST top-level object, so a weak
+	// model that concatenated bare `{type, args}` calls would lose every one
+	// after the first. Recover the full set from the raw string.
+	if (resolvedCalls.length === 0) {
+		resolvedCalls = parseEmbeddedToolCalls(trimmed);
+	}
 	return {
 		thought: typeof parsed.thought === "string" ? parsed.thought : undefined,
-		toolCalls: toolCalls.length > 0 ? toolCalls : bareActionCalls,
+		toolCalls: resolvedCalls,
 		messageToUser,
 		raw: parsed as Record<string, unknown>,
 	};
@@ -1681,6 +1705,63 @@ function normalizeToolCalls(value: unknown): PlannerToolCall[] {
 	return calls;
 }
 
+/**
+ * Recover tool calls a weak model narrated as JSON text instead of — or in
+ * addition to — native tool calls. gpt-oss-class models emit one
+ * `{type, args}` object per intended call, concatenated
+ * (`{...REPLY...}{...TASKS_SPAWN_AGENT...}`), and the provider's native
+ * extraction captures only the first. Each top-level object is normalized
+ * through the same `normalizeToolCall` path as native calls, so `{type, args}`,
+ * `{action, parameters}`, and `{name, arguments}` shapes resolve identically.
+ */
+function parseEmbeddedToolCalls(text: string | undefined): PlannerToolCall[] {
+	if (!text) {
+		return [];
+	}
+	const calls: PlannerToolCall[] = [];
+	for (const objectText of extractJsonObjects(text)) {
+		let parsed: unknown;
+		try {
+			parsed = JSON.parse(objectText);
+		} catch {
+			continue;
+		}
+		const call = normalizeToolCall(parsed);
+		if (call) {
+			calls.push(call);
+		}
+	}
+	return calls;
+}
+
+/**
+ * Merge native tool calls with calls recovered from the model's text
+ * narration, deduped by normalized name and parameters. Native calls are
+ * authoritative and keep their order; text-recovered calls only fill in exact
+ * calls the native extraction missed.
+ */
+function mergeToolCalls(
+	native: PlannerToolCall[],
+	fromText: PlannerToolCall[],
+): PlannerToolCall[] {
+	if (fromText.length === 0) {
+		return native;
+	}
+	const callKey = (call: PlannerToolCall) =>
+		`${call.name.toUpperCase()}:${JSON.stringify(call.params ?? {})}`;
+	const seen = new Set(native.map(callKey));
+	const merged = [...native];
+	for (const call of fromText) {
+		const key = callKey(call);
+		if (seen.has(key)) {
+			continue;
+		}
+		seen.add(key);
+		merged.push(call);
+	}
+	return merged;
+}
+
 function normalizeBarePlannerAction(
 	parsed: RawPlannerOutput,
 ): PlannerToolCall[] {
@@ -1736,6 +1817,11 @@ function normalizeToolCall(entry: unknown): PlannerToolCall | null {
 			record.action ??
 			record.actionName ??
 			functionName ??
+			// gpt-oss narrates calls as `{type: "ACTION", args: {...}}`. `type`
+			// is the last-resort name source so the canonical OpenAI/Anthropic
+			// envelope shapes — where `type` is "function"/"tool" — still
+			// resolve through `functionName`/`name` first.
+			record.type ??
 			"",
 	);
 	if (!name) {
@@ -1780,7 +1866,21 @@ function normalizeArgs(value: unknown): Record<string, unknown> | undefined {
 }
 
 function isTerminalToolCall(toolCall: PlannerToolCall): boolean {
-	return ["REPLY", "IGNORE", "STOP"].includes(toolCall.name.toUpperCase());
+	// REPLY / IGNORE / STOP / NONE are the planner's terminal signals —
+	// they mean "I have nothing further to dispatch, end the turn."
+	// `NONE` was missing here, so when the planner emitted it after a
+	// successful tool call the loop tried to EXECUTE NONE as a real
+	// action. NONE's contextGate (`contexts: ["general"]`) commonly
+	// fails when the surface narrowed to a non-general tier-A context,
+	// the call returned "Action NONE is not allowed in the current
+	// context", and the planner retried until hitting the
+	// repeated-tool-failure limit — at which point the runtime
+	// shipped a generic "something flaked" reply even though the
+	// previous action's work had succeeded. Treating NONE as terminal
+	// makes the loop stop cleanly instead.
+	return ["REPLY", "IGNORE", "STOP", "NONE"].includes(
+		toolCall.name.toUpperCase(),
+	);
 }
 
 function getToolDefinitionName(tool: ToolDefinition): string | undefined {
