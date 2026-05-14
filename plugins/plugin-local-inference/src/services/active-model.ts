@@ -20,8 +20,11 @@ import {
 } from "./catalog";
 import { localInferenceEngine } from "./engine";
 import { probeHardware } from "./hardware";
+import type { Eliza1Manifest } from "./manifest";
 import {
 	assessRamFit,
+	defaultManifestLoader,
+	type ManifestLoader,
 	pickFittingContextVariant,
 	type RamFitOptions,
 } from "./ram-budget";
@@ -699,6 +702,98 @@ function hostRamMbFromProbe(probe: HardwareProbe): number {
 	return Math.round(probe.totalRamGb * MB_PER_GB);
 }
 
+/**
+ * Refusal raised when activation is asked for a model whose own
+ * `eliza-1.manifest.json` says its text eval has not passed (`candidate.*` /
+ * `weights-staged.*` tiers). Carries the structured payload the route layer
+ * surfaces verbatim to the API consumer: `manifestVersion` so the UI can
+ * say "this tier isn't ready" with the actual version string, and
+ * `failedEvals` so the user sees which checks are still red.
+ *
+ * Why we gate here, not just at download:
+ * - the bundle may already be on disk (hand-staged, manually copied, or
+ *   downloaded before a fail-state was recorded), so the download gate
+ *   alone leaves a window where a candidate-only bundle can be flipped
+ *   into the active model slot and silently emit `[unused]` tokens.
+ *
+ * See issue #7679 for the original symptom: the runtime activated the
+ * `eliza-1-0_6b` `1.0.0-candidate.1` bundle whose every `evals.*.passed`
+ * was `false`, then served BERT/WordPiece reserved tokens (`[unused0..99]`
+ * / `[PAD]`) as chat output with no actionable error.
+ */
+export class CandidateModelActivationError extends Error {
+	readonly modelId: string;
+	readonly manifestVersion: string;
+	readonly failedEvals: ReadonlyArray<string>;
+
+	constructor(args: {
+		modelId: string;
+		manifestVersion: string;
+		failedEvals: ReadonlyArray<string>;
+	}) {
+		const evalSuffix =
+			args.failedEvals.length > 0
+				? ` Failed evals: ${args.failedEvals.join(", ")}.`
+				: "";
+		super(
+			`Model "${args.modelId}" is candidate-only — its manifest (version ${args.manifestVersion}) reports evals.textEval.passed=false. Refusing to activate.${evalSuffix} Wait for the publisher to flip the manifest off candidate/weights-staged and re-fetch the bundle.`,
+		);
+		this.name = "CandidateModelActivationError";
+		this.modelId = args.modelId;
+		this.manifestVersion = args.manifestVersion;
+		this.failedEvals = args.failedEvals;
+	}
+}
+
+/**
+ * Activation eval gate. Reads the installed bundle's manifest and refuses
+ * activation when `evals.textEval.passed` is not `true`. A bundle with no
+ * `eliza-1.manifest.json` on disk (third-party HF GGUFs, external scans,
+ * pre-bundle installs) is *not* gated — the gate only applies to bundles
+ * that ship a published manifest, which is the source of truth for the
+ * publish state.
+ *
+ * Throws `CandidateModelActivationError` on a failing manifest; returns
+ * silently otherwise.
+ */
+export function assertManifestEvalsPassed(
+	installed: InstalledModel,
+	manifestLoader: ManifestLoader = defaultManifestLoader,
+): void {
+	const manifest = manifestLoader(installed.id, installed);
+	if (!manifest) return;
+	if (manifest.evals.textEval.passed === true) return;
+	throw new CandidateModelActivationError({
+		modelId: installed.id,
+		manifestVersion: manifest.version,
+		failedEvals: collectFailedEvalNames(manifest),
+	});
+}
+
+function collectFailedEvalNames(manifest: Eliza1Manifest): string[] {
+	const failed: string[] = [];
+	const evals = manifest.evals;
+	if (evals.textEval.passed !== true) failed.push("textEval");
+	if (evals.voiceRtf.passed !== true) failed.push("voiceRtf");
+	if (evals.e2eLoopOk !== true) failed.push("e2eLoopOk");
+	if (evals.thirtyTurnOk !== true) failed.push("thirtyTurnOk");
+	if (evals.asrWer && evals.asrWer.passed !== true) failed.push("asrWer");
+	if (evals.embedMteb && evals.embedMteb.passed !== true) {
+		failed.push("embedMteb");
+	}
+	if (evals.vadLatencyMs && evals.vadLatencyMs.passed !== true) {
+		failed.push("vadLatencyMs");
+	}
+	if (evals.expressive && evals.expressive.passed !== true) {
+		failed.push("expressive");
+	}
+	if (evals.dflash && evals.dflash.passed !== true) failed.push("dflash");
+	if (evals.turnDetector && evals.turnDetector.passed !== true) {
+		failed.push("turnDetector");
+	}
+	return failed;
+}
+
 function isLoader(value: unknown): value is LocalInferenceLoader {
 	if (!value || typeof value !== "object") return false;
 	const candidate = value as Partial<LocalInferenceLoader>;
@@ -781,8 +876,17 @@ export class ActiveModelCoordinator {
 		runtime: AgentRuntime | null,
 		installed: InstalledModel,
 		overrides?: LocalInferenceLoadOverrides,
-		opts: { hardware?: HardwareProbe } = {},
+		opts: { hardware?: HardwareProbe; manifestLoader?: ManifestLoader } = {},
 	): Promise<ActiveModelState> {
+		// Activation eval gate (#7679). Refuse to flip a candidate-only /
+		// weights-staged bundle into the active model slot — the manifest
+		// already says its text eval hasn't passed, so the only thing
+		// activation buys is `[unused]`/`[PAD]` tokens in chat output and
+		// a confused user. Runs BEFORE the loading state is emitted so
+		// the UI never shows "loading → error" for a known-bad bundle;
+		// it sees the 422 from the route layer directly.
+		assertManifestEvalsPassed(installed, opts.manifestLoader);
+
 		this.state = {
 			modelId: installed.id,
 			loadedAt: null,
