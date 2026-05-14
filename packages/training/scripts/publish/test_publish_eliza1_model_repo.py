@@ -87,7 +87,7 @@ def _write_bundle(
             "sizeFirstRepoIds": True,
         },
         "hf": {
-            "repoId": "elizaos/eliza-1",
+            "repoId": "elizalabs/eliza-1",
             "pathPrefix": f"bundles/{tier}",
             "status": "upload-ready",
         },

@@ -794,7 +794,13 @@ async function callPlanner(params: {
 	};
 	if (hasTools) {
 		modelParams.tools = params.tools;
-		modelParams.toolChoice = params.toolChoice ?? "auto";
+		// Force a native tool call. With actions exposed directly as tools
+		// (post-PLAN_ACTIONS-wrapper refactor), every viable planner outcome —
+		// invoking an action, calling REPLY for a final message, or terminating
+		// via IGNORE / STOP — corresponds to a tool. There is no "the model
+		// shouldn't tool-call" case left, so `"required"` is the contract.
+		// Models that can't comply fail loudly; we don't degrade to text mode.
+		modelParams.toolChoice = params.toolChoice ?? "required";
 		// Per-turn structure forcing for the PLAN_ACTIONS args: pin `action` to
 		// the exact enum of actions exposed this turn and carry each action's
 		// normalized parameter schema so the local engine (W4) can do the

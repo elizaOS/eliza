@@ -7,13 +7,17 @@
  * GGUF on disk. No Ollama daemon, no HTTP — just libllama.so + a .gguf
  * model file loaded into the agent process.
  *
- * Why this exists separately from `@elizaos/plugin-local-ai`: that plugin
- * pins `@elizaos/core@2.0.0-alpha.3` (vs our alpha.537) and drags in
- * `@huggingface/transformers` (~1.5GB) + `whisper-node` we don't need.
- * We only need text generation, so we wrap `node-llama-cpp` directly.
- * The same Plugin shape — `models: { TEXT_LARGE: handler }` — that
- * plugin-local-ai uses; runtime.useModel() doesn't care which Plugin owns
- * the handler.
+ * Why this exists separately from `@elizaos/plugin-local-inference`: that
+ * plugin is the canonical desktop/mobile local provider — engine + voice
+ * (Kokoro TTS, Whisper ASR via ONNX, VAD, wake-word), full DFlash spec-
+ * decode, model catalog, downloader, GPU profiles, ~210 service files.
+ * On the live USB ISO we boot from squashfs into tmpfs, run a hard-coded
+ * Llama-3.2-1B-Q4_K_M, and never need voice or download paths — so this
+ * 150-line wrapper keeps the ISO ~150MB smaller and skips lazy-init for
+ * subsystems we'd never trigger. Same Plugin shape (`models: { TEXT_*:
+ * handler }`); runtime.useModel() doesn't care which Plugin owns the
+ * handler. See docs/eliza-integration.md for the rationale and the path
+ * to adopting plugin-local-inference once we ship LUKS persistence.
  *
  * Hot-load behavior: the LlamaModel + LlamaContext are constructed lazily
  * on first useModel call (the live ISO boots into chat before any user

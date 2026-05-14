@@ -29,7 +29,7 @@
 
 export type ModelTierId =
     | "tiny-1b"
-    | "drafter-0_6b"
+    | "drafter-0_8b"
     | "mid-7b"
     | "dflash-9b"
     | "heavy-32b";
@@ -111,14 +111,14 @@ export const MODEL_CATALOG: readonly CatalogModel[] = [
         blurb: "Pre-network baseline. Fits a 4 GB laptop, runs at 80–120 t/s on Lunar Lake CPU.",
     },
 
-    // ─── drafter-0_6b — Qwen3 family, pairs with dflash-9b ───────────
+    // ─── drafter-0_8b — Qwen3.5 family, pairs with dflash-9b ─────────
     {
-        id: "drafter-0_6b",
-        displayName: "Qwen3 0.6B (DFlash drafter)",
-        hfRepo: "unsloth/Qwen3-0.6B-GGUF",
-        ggufFile: "Qwen3-0.6B-Q4_K_M.gguf",
-        params: "0.6B",
-        sizeGb: 0.4,
+        id: "drafter-0_8b",
+        displayName: "Qwen3.5 0.8B (DFlash drafter)",
+        hfRepo: "unsloth/Qwen3.5-0.8B-GGUF",
+        ggufFile: "Qwen3.5-0.8B-Q4_K_M.gguf",
+        params: "0.8B",
+        sizeGb: 0.5,
         minRamGb: 2,
         category: "drafter",
         bucket: "small",
@@ -143,8 +143,8 @@ export const MODEL_CATALOG: readonly CatalogModel[] = [
     },
 
     // ─── dflash-9b — recommended tier for Lunar Lake (32 GB) ─────────
-    // Paired with drafter-0_6b for speculative decoding (2-3× speedup).
-    // Both Qwen3 family → tokenizer compatibility guaranteed.
+    // Paired with drafter-0_8b for speculative decoding (2-3x speedup).
+    // Both Qwen3.5 family -> tokenizer compatibility guaranteed.
     {
         id: "dflash-9b",
         displayName: "Qwen3.5 9B DFlash",
@@ -157,8 +157,8 @@ export const MODEL_CATALOG: readonly CatalogModel[] = [
         bucket: "mid",
         tokenizerFamily: "qwen3",
         blurb:
-            "Recommended for laptops with 16 GB+. Uses Qwen3 0.6B as a speculative-decoding drafter — 30–60 t/s on Lunar Lake.",
-        dflashDrafter: "drafter-0_6b",
+            "Recommended for laptops with 16 GB+. Uses Qwen3.5 0.8B as a speculative-decoding drafter — 30–60 t/s on Lunar Lake.",
+        dflashDrafter: "drafter-0_8b",
     },
 
     // ─── heavy-32b — workstation tier ────────────────────────────────

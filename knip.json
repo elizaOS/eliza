@@ -16,10 +16,10 @@
     "packages/benchmarks/OSWorld/**",
     "packages/benchmarks/openclaw-benchmark/**",
     "packages/benchmarks/swe-bench-workspace/**",
-    "packages/inference/llama.cpp/**",
-    "packages/inference/reports/**/*.json",
-    "packages/inference/verify/bench_results/**",
-    "packages/inference/verify/reports/**"
+    "plugins/plugin-local-inference/native/llama.cpp/**",
+    "plugins/plugin-local-inference/native/reports/**/*.json",
+    "plugins/plugin-local-inference/native/verify/bench_results/**",
+    "plugins/plugin-local-inference/native/verify/reports/**"
   ],
   "ignoreBinaries": [
     "biome",
@@ -370,7 +370,7 @@
       ],
       "ignore": ["dist/**", "storybook-static/**"]
     },
-    "packages/inference": {
+    "plugins/plugin-local-inference/native": {
       "entry": [
         "scripts/**/*.{mjs,ts}",
         "verify/**/*.{mjs,ts}",

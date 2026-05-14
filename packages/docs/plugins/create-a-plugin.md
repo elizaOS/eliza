@@ -420,7 +420,7 @@ interface PluginConfigUiHint {
 When Eliza starts, it discovers plugins from multiple sources in this order:
 
 1. **Eliza plugin** — Built-in workspace context and session management
-2. **Core plugins** — Always loaded (`@elizaos/plugin-sql`, `@elizaos/plugin-local-embedding`, etc.)
+2. **Core plugins** — Always loaded (`@elizaos/plugin-sql`, `@elizaos/plugin-local-inference`, etc.)
 3. **Connector plugins** — Auto-enabled when channel config exists (e.g., `telegram` config → `@elizaos/plugin-telegram`)
 4. **Provider plugins** — Auto-enabled when API key env var is set (e.g., `ANTHROPIC_API_KEY` → `@elizaos/plugin-anthropic`)
 5. **Feature plugins** — Enabled via feature flags in `eliza.json` (e.g., `features.browser: true` → `@elizaos/plugin-browser`)
