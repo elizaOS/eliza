@@ -348,7 +348,9 @@ function normalizeNativeTools(
       // User-supplied schemas may still contain empty-properties subobjects
       // even after sanitizeJsonSchema. Apply Cerebras-specific normalization
       // recursively so deep schemas are accepted by the grammar compiler.
-      inputSchema = normalizeSchemaForCerebras(inputSchema) as JSONSchema7;
+      // Pass isRoot: true so the top-level invariant is enforced (must be
+      // type:"object" with no root oneOf/anyOf/enum/not).
+      inputSchema = normalizeSchemaForCerebras(inputSchema, true) as JSONSchema7;
     }
 
     // Cerebras's grammar compiler rejects function names containing characters
@@ -548,6 +550,19 @@ function normalizeToolChoice(toolChoice: unknown): ToolChoice<ToolSet> | undefin
   return toolChoice as ToolChoice<ToolSet>;
 }
 
+function hasIllegalStrictRoot(node: Record<string, unknown>): boolean {
+  // Strict-mode JSON schema validators on OpenAI-compatible providers (Groq,
+  // Cerebras, OpenAI strict tools) reject tool-parameters whose top level is
+  // not `type: "object"` or carries `oneOf`/`anyOf`/`enum`/`not` at the root.
+  // The error wording varies by provider but the constraint is uniform.
+  if (node.type !== "object") return true;
+  if (Array.isArray(node.oneOf) && node.oneOf.length > 0) return true;
+  if (Array.isArray(node.anyOf) && node.anyOf.length > 0) return true;
+  if (Array.isArray(node.enum)) return true;
+  if (node.not !== undefined) return true;
+  return false;
+}
+
 function sanitizeJsonSchema(schema: unknown, isRoot = false): JSONSchema7 {
   if (!schema || typeof schema !== "object" || Array.isArray(schema)) {
     // Permissive fallback: no `properties: {}`/`additionalProperties: false`
@@ -557,13 +572,25 @@ function sanitizeJsonSchema(schema: unknown, isRoot = false): JSONSchema7 {
   }
 
   const record = schema as Record<string, unknown>;
-  const sanitized: Record<string, unknown> = { ...record };
+  let sanitized: Record<string, unknown> = { ...record };
 
   if (typeof sanitized.type !== "string") {
     const inferredType = inferJsonSchemaType(sanitized, isRoot);
     if (inferredType) {
       sanitized.type = inferredType;
     }
+  }
+
+  if (isRoot && hasIllegalStrictRoot(sanitized)) {
+    // Wrap the original schema under properties.value. Strict-tool callers
+    // that unwrap arguments will see `{ value: <original> }`. The recursion
+    // below normalises the wrapped child like any other property.
+    sanitized = {
+      type: "object",
+      properties: { value: { ...record } },
+      required: ["value"],
+      additionalProperties: false,
+    };
   }
 
   if (

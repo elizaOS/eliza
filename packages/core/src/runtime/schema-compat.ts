@@ -2,16 +2,17 @@
  * Schema-compatibility helpers for strict-grammar inference providers.
  *
  * Cerebras (and similar providers that compile JSON-schema constraints into a
- * grammar before sampling) reject object schemas that lack populated
- * `properties`/`anyOf`/`oneOf`. They also reject function names containing
- * characters outside `[a-zA-Z0-9_-]`. The OpenAI ecosystem is permissive about
- * both, so vanilla schemas built for OpenAI break on Cerebras's grammar
- * compiler.
+ * grammar before sampling) impose two constraints OpenAI does not:
+ *   1. Tool-parameter root must be `type: "object"`; root `oneOf`/`anyOf`/
+ *      `enum`/`not` is rejected (error: "schema must have type 'object' and
+ *      not have 'oneOf'/'anyOf'/'enum'/'not' at the top level").
+ *   2. Empty-properties object schemas are rejected by the grammar compiler.
  *
- * `normalizeSchemaForCerebras` rewrites empty-properties object schemas
- * recursively into permissive ones (drops `properties`, `required`, and
- * restrictive `additionalProperties: false`). Tool args without parameters end
- * up as `{ type: "object" }`, which Cerebras accepts.
+ * `normalizeSchemaForCerebras(schema, true)` enforces (1) by wrapping any
+ * illegal-root schema under `properties.value`, and enforces (2) by dropping
+ * `properties`/`required`/`additionalProperties` when properties is empty.
+ * Nested usage of `oneOf`/`anyOf`/`enum`/`not` is fine — only the root is
+ * checked.
  *
  * `sanitizeFunctionNameForCerebras` replaces invalid characters with `_`.
  * Callers should keep a `{ sanitized → original }` map and rewrite tool-call
@@ -24,11 +25,37 @@ export function sanitizeFunctionNameForCerebras(name: string): string {
 	return name.replace(FUNCTION_NAME_PATTERN, "_");
 }
 
-export function normalizeSchemaForCerebras(schema: unknown): unknown {
+function hasIllegalCerebrasRoot(node: Record<string, unknown>): boolean {
+	if (node.type !== "object") return true;
+	if (Array.isArray(node.oneOf) && node.oneOf.length > 0) return true;
+	if (Array.isArray(node.anyOf) && node.anyOf.length > 0) return true;
+	if (Array.isArray(node.enum)) return true;
+	if (node.not !== undefined) return true;
+	return false;
+}
+
+export function normalizeSchemaForCerebras(
+	schema: unknown,
+	isRoot = false,
+): unknown {
 	if (!schema || typeof schema !== "object" || Array.isArray(schema)) {
+		// Non-object root → empty object schema (tool without arguments).
+		if (isRoot) return { type: "object" };
 		return schema;
 	}
-	const node = { ...(schema as Record<string, unknown>) };
+	let node = { ...(schema as Record<string, unknown>) };
+
+	if (isRoot && hasIllegalCerebrasRoot(node)) {
+		// Wrap the original schema under properties.value so the model still
+		// emits a structured payload Cerebras's grammar compiler accepts.
+		// Callers that unwrap tool arguments will see { value: <original> }.
+		node = {
+			type: "object",
+			properties: { value: schema },
+			required: ["value"],
+			additionalProperties: false,
+		};
+	}
 
 	if (node.type === "object") {
 		const props = node.properties;
@@ -50,10 +77,10 @@ export function normalizeSchemaForCerebras(schema: unknown): unknown {
 	}
 
 	if (Array.isArray(node.anyOf)) {
-		node.anyOf = node.anyOf.map(normalizeSchemaForCerebras);
+		node.anyOf = node.anyOf.map((v) => normalizeSchemaForCerebras(v));
 	}
 	if (Array.isArray(node.oneOf)) {
-		node.oneOf = node.oneOf.map(normalizeSchemaForCerebras);
+		node.oneOf = node.oneOf.map((v) => normalizeSchemaForCerebras(v));
 	}
 	if (node.items) {
 		node.items = normalizeSchemaForCerebras(node.items);

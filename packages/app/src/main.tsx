@@ -99,6 +99,7 @@ import {
 } from "./app-config";
 import { APP_ENV_ALIASES, APP_ENV_PREFIX } from "./brand-env";
 import { APP_CHARACTER_CATALOG } from "./character-catalog";
+import { buildAssistantLaunchHashRoute } from "./deep-link-routing";
 import {
   apiBaseToDeviceBridgeUrl,
   type IosRuntimeConfig,
@@ -1420,66 +1421,16 @@ function handleDeepLink(url: string): void {
     return;
   }
 
+  const assistantLaunchHashRoute = buildAssistantLaunchHashRoute(
+    path,
+    parsed.searchParams,
+  );
+  if (assistantLaunchHashRoute) {
+    window.location.hash = assistantLaunchHashRoute;
+    return;
+  }
+
   switch (path) {
-    case "ask":
-    case "assistant":
-    case "chat/ask": {
-      const params = withDefaultSearchParam(
-        parsed.searchParams,
-        "source",
-        "assistant-entry",
-      );
-      params.set("action", params.get("action") ?? "ask");
-      ensureAssistantLaunchId(params);
-      setHashRoute("chat", params);
-      break;
-    }
-    case "chat": {
-      const params = new URLSearchParams(parsed.searchParams);
-      params.set("action", params.get("action") ?? "chat");
-      ensureAssistantLaunchId(params);
-      setHashRoute("chat", params);
-      break;
-    }
-    case "voice":
-    case "chat/voice": {
-      const params = withDefaultSearchParam(
-        parsed.searchParams,
-        "source",
-        "assistant-entry",
-      );
-      ensureAssistantLaunchId(params);
-      params.set("voice", "1");
-      setHashRoute("chat", params);
-      break;
-    }
-    case "daily-brief":
-    case "lifeops/daily-brief": {
-      const params = withDefaultSearchParam(
-        parsed.searchParams,
-        "source",
-        "assistant-entry",
-      );
-      params.set("action", params.get("action") ?? "lifeops.daily-brief");
-      ensureAssistantLaunchId(params);
-      params.set("lifeops.section", "overview");
-      setHashRoute("lifeops", params);
-      break;
-    }
-    case "lifeops/create":
-    case "lifeops/task":
-    case "lifeops/reminder": {
-      const params = withDefaultSearchParam(
-        parsed.searchParams,
-        "source",
-        "assistant-entry",
-      );
-      params.set("action", params.get("action") ?? "lifeops.create");
-      ensureAssistantLaunchId(params);
-      params.set("lifeops.section", "reminders");
-      setHashRoute(hasAssistantLaunchText(params) ? "chat" : "lifeops", params);
-      break;
-    }
     case "phone":
     case "phone/call":
       setHashRoute("phone", parsed.searchParams);
@@ -1592,40 +1543,6 @@ function getDeepLinkPath(parsed: URL): string {
 function setHashRoute(route: string, params: URLSearchParams): void {
   const query = params.toString();
   window.location.hash = query ? `#${route}?${query}` : `#${route}`;
-}
-
-function withDefaultSearchParam(
-  params: URLSearchParams,
-  key: string,
-  value: string,
-): URLSearchParams {
-  const next = new URLSearchParams(params);
-  if (!next.has(key)) {
-    next.set(key, value);
-  }
-  return next;
-}
-
-function ensureAssistantLaunchId(params: URLSearchParams): void {
-  if (params.has("assistant.launchId")) return;
-  const hasAssistantPayload =
-    hasAssistantLaunchText(params) ||
-    params.has("action") ||
-    params.has("source");
-  if (!hasAssistantPayload) return;
-  const randomSuffix =
-    globalThis.crypto?.randomUUID?.() ??
-    `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
-  params.set("assistant.launchId", randomSuffix);
-}
-
-function hasAssistantLaunchText(params: URLSearchParams): boolean {
-  return (
-    params.has("text") ||
-    params.has("q") ||
-    params.has("query") ||
-    params.has("body")
-  );
 }
 
 async function initializeDesktopShell(): Promise<void> {
@@ -2008,11 +1925,21 @@ async function initializeMobileDeviceBridge(): Promise<void> {
         import("@elizaos/capacitor-llama"),
         getOrCreateDeviceBridgeId(),
       ]);
+      const pairingToken =
+        runtimeConfig.deviceBridgeToken?.trim() ||
+        (isAndroid && runtimeConfig.mode === "local"
+          ? await readAndroidLocalAgentToken()
+          : undefined);
+      if (isAndroid && runtimeConfig.mode === "local" && !pairingToken) {
+        window.setTimeout(
+          () => void initializeMobileDeviceBridge(),
+          BACKGROUND_RUNNER_CONFIG_RETRY_MS,
+        );
+        return;
+      }
       mobileDeviceBridgeClient = startDeviceBridgeClient({
         agentUrl,
-        ...(runtimeConfig.deviceBridgeToken
-          ? { pairingToken: runtimeConfig.deviceBridgeToken }
-          : {}),
+        ...(pairingToken ? { pairingToken } : {}),
         deviceId,
         onStateChange: (state, detail) => {
           console.info(

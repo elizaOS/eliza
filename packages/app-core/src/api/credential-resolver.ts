@@ -165,8 +165,8 @@ export function resolveProviderCredential(
  * Multi-account credential resolution. When the install has any
  * `LinkedAccountConfig` records for the requested provider, the pool
  * picks one (priority by default, with health-aware skipping) and we
- * return its access token via WS1's `getAccessToken`. When no accounts
- * are configured, falls back to the legacy single-source resolver.
+ * return its access token via `getAccessToken` from `@elizaos/agent`. When
+ * no accounts are configured, falls back to the env-based single-source resolver.
  *
  * `sessionKey` (optional) keeps repeated calls in the same logical
  * session glued to the same account so token refreshes and rate-limit

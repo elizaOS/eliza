@@ -1739,6 +1739,7 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
         },
         "bfcl": {
             "sample": 2,
+            "seed": 0,
         },
         "context_bench": {
             "quick": True,

@@ -310,7 +310,6 @@ const REVEALABLE_KEY_PREFIXES = [
   "AZURE_",
   "CLOUDFLARE_",
   "ELIZA_",
-  "ELIZA_",
   "PLUGIN_",
   "XAI_",
   "DEEPSEEK_",
@@ -1572,21 +1571,14 @@ export async function handlePluginsCompatRoutes(
       result.payload.unloadedPackages = runtimeApply.unloadedPackages;
       result.payload.reloadedPackages = runtimeApply.reloadedPackages;
 
-      // Write-through mirror to @elizaos/vault. Sensitive fields the
-      // user just saved are copied into the vault (encrypted at rest
-      // via the OS-keychain master key). The legacy `config.env.X` /
-      // `config.env.vars.X` writes still happen above — vault is a
-      // SHADOW of those for now. The runtime continues to read from
-      // process.env via the legacy hydration path; vault becomes the
-      // canonical source in a follow-up PR.
+      // Write-through mirror to @elizaos/vault. Sensitive fields are
+      // copied into the vault (encrypted at rest via the OS-keychain master
+      // key). The config.env writes above also persist — vault mirrors them.
       //
-      // Failure mode: if vault.set throws for some keys (OS keychain
-      // locked, file ENOSPC, missing master key, etc.), the save is
-      // NOT rolled back — legacy storage already succeeded above. We
-      // surface the failed keys back to the UI under
-      // `vaultMirrorFailures` so the user knows the vault mirror
-      // didn't take, instead of silently swallowing the error and
-      // showing a green "Saved" toast over an empty vault.
+      // If vault.set throws (keychain locked, ENOSPC, missing master key,
+      // etc.), the save is NOT rolled back — config storage already
+      // succeeded. Failed keys are surfaced as `vaultMirrorFailures` so
+      // the UI can warn the user rather than silently showing "Saved".
       const mirrorResult = await mirrorPluginSensitiveToVault(plugin, body);
       if (mirrorResult.failures.length > 0) {
         result.payload.vaultMirrorFailures = mirrorResult.failures;
@@ -1683,10 +1675,9 @@ export async function handlePluginsCompatRoutes(
     if (SENSITIVE_KEY_PREFIXES.some((prefix) => upperKey.startsWith(prefix))) {
       if (!ensureCompatSensitiveRouteAuthorized(req, res)) return true;
     }
-    // Prefer the vault: post-write-through wiring means the user's
-    // actual saved value lives there. Fall back to env/config only when
-    // the vault has no entry; vault/keychain failures surface instead
-    // of pretending the legacy value is canonical.
+    // Prefer the vault. Fall back to env/config when the vault has no
+    // entry; vault/keychain failures surface instead of silently falling
+    // back to env.
     try {
       const vaultValue = await sharedVault().reveal(
         key,
@@ -1710,9 +1701,8 @@ export async function handlePluginsCompatRoutes(
       process.env[key] ??
       (config.env as Record<string, string> | undefined)?.[key] ??
       null;
-    // The legacy fallback may itself be a `vault://KEY` sentinel — in that
-    // case the real value is back in the vault. Resolve it once. If the
-    // vault still misses, return null rather than the sentinel string.
+    // The env/config fallback may itself be a `vault://KEY` sentinel. Resolve
+    // it once. If the vault still misses, return null rather than the sentinel.
     if (typeof fallbackValue === "string" && isVaultRef(fallbackValue)) {
       const innerKey = parseVaultRef(fallbackValue);
       if (innerKey) {

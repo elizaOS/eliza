@@ -22,6 +22,19 @@ from openclaw_adapter.client import OpenClawClient
 logger = logging.getLogger(__name__)
 
 _SAFE_TOOL_NAME_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+_DEFAULT_BFCL_TEMPERATURE = 0.0
+_DEFAULT_SYSTEM_PROMPT = (
+    "You are solving a Berkeley Function-Calling Leaderboard task. "
+    "Use native tool calls when one or more listed functions are relevant. "
+    "When the user requests more than one operation, emit one separate native "
+    "tool call for each requested operation, including repeated calls to the "
+    "same function with different arguments. Do not merge separate operations "
+    "into one call unless the function schema explicitly asks for an array. "
+    "Use exactly the function names and parameter names from the provided tool "
+    "schema; preserve case, underscores, camelCase, and declared defaults. "
+    "Do not rename fields or invent aliases. If no listed function is relevant, "
+    "respond without a tool call."
+)
 
 
 def _bfcl_types():
@@ -163,6 +176,10 @@ def _default_model_name(model_name: str | None) -> str:
     )
 
 
+def _tool_choice_for_case(*, is_relevant: bool, tools: list[dict[str, Any]]) -> str:
+    return "required" if is_relevant and bool(tools) else "none"
+
+
 class OpenClawBFCLAgent:
     """BFCLRunner-compatible OpenClaw adapter using native tool calls."""
 
@@ -208,6 +225,10 @@ class OpenClawBFCLAgent:
 
         raw_tools = _bfcl_tools_formatter()(test_case.functions)
         tools, tool_name_map = _provider_safe_tools(raw_tools)
+        tool_choice = _tool_choice_for_case(
+            is_relevant=test_case.is_relevant,
+            tools=tools,
+        )
         start = time.time()
         response = self._client.send_message(
             test_case.question,
@@ -216,14 +237,10 @@ class OpenClawBFCLAgent:
                 "task_id": test_case.id,
                 "category": test_case.category.value,
                 "tools": tools,
-                "tool_choice": "auto",
+                "tool_choice": tool_choice,
+                "temperature": _DEFAULT_BFCL_TEMPERATURE,
                 "is_relevant": test_case.is_relevant,
-                "system_prompt": (
-                    "You are solving a Berkeley Function-Calling Leaderboard "
-                    "task. Use native tool calls when one or more listed "
-                    "functions are relevant. If no listed function is relevant, "
-                    "respond without a tool call."
-                ),
+                "system_prompt": _DEFAULT_SYSTEM_PROMPT,
             },
         )
         latency_ms = (time.time() - start) * 1000
@@ -277,9 +294,12 @@ def build_bfcl_agent_fn(
         prompt: str,
         tools: list[dict[str, Any]],
     ) -> dict[str, Any]:
-        context: dict[str, object] = {"tools": tools or []}
-        if system_prompt:
-            context["system_prompt"] = system_prompt
+        context: dict[str, object] = {
+            "tools": tools or [],
+            "tool_choice": "required" if tools else "none",
+            "temperature": _DEFAULT_BFCL_TEMPERATURE,
+            "system_prompt": system_prompt or _DEFAULT_SYSTEM_PROMPT,
+        }
         try:
             resp = bridge.send_message(prompt, context=context)
         except Exception as exc:

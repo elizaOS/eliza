@@ -6,9 +6,6 @@
 import { logger } from "@/lib/utils/logger";
 import { isValidUUID } from "@/lib/utils/validation";
 
-// Re-export for backward compatibility
-export { isValidUUID } from "@/lib/utils/validation";
-
 /**
  * Structured log marker for orphaned blobs.
  * This constant allows easy searching/filtering in log aggregation systems.

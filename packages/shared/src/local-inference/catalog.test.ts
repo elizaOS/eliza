@@ -6,13 +6,14 @@ import {
   voiceQuantLadderForTier,
 } from "./catalog.js";
 
-const OMNIVOICE_TIERS = [
+const SMALL_TIERS = ["eliza-1-0_8b", "eliza-1-2b", "eliza-1-4b"] as const;
+const LARGE_TIERS = [
   "eliza-1-9b",
   "eliza-1-27b",
   "eliza-1-27b-256k",
   "eliza-1-27b-1m",
 ] as const;
-const KOKORO_ONLY_TIERS = ["eliza-1-0_8b", "eliza-1-2b", "eliza-1-4b"] as const;
+const OMNIVOICE_TIERS = [...SMALL_TIERS, ...LARGE_TIERS] as const;
 
 describe("voiceQuantLadderForTier", () => {
   it("covers every canonical tier id", () => {
@@ -24,12 +25,13 @@ describe("voiceQuantLadderForTier", () => {
     }
   });
 
-  it("returns an empty ladder for Kokoro-only tiers", () => {
-    // Mobile tiers (0_8b / 2b / 4b) ship Kokoro only today, per
-    // ELIZA_1_VOICE_BACKENDS. Publishing OmniVoice GGUFs for them would
-    // waste HF storage on artifacts the runtime never selects.
-    for (const id of KOKORO_ONLY_TIERS) {
-      expect(voiceQuantLadderForTier(id)).toEqual([]);
+  it("returns a narrow OmniVoice ladder for small tiers", () => {
+    for (const id of SMALL_TIERS) {
+      expect(voiceQuantLadderForTier(id)).toEqual([
+        "Q3_K_M",
+        "Q4_K_M",
+        "Q5_K_M",
+      ]);
     }
   });
 
@@ -41,7 +43,7 @@ describe("voiceQuantLadderForTier", () => {
       "Q6_K",
       "Q8_0",
     ];
-    for (const id of OMNIVOICE_TIERS) {
+    for (const id of LARGE_TIERS) {
       expect(voiceQuantLadderForTier(id)).toEqual(expected);
     }
   });
@@ -60,13 +62,13 @@ describe("voiceQuantLadderForTier", () => {
 
 describe("defaultVoiceQuantForTier", () => {
   it("returns Q4_K_M for mobile tiers (matches publish path mobile sweet spot)", () => {
-    for (const id of KOKORO_ONLY_TIERS) {
+    for (const id of SMALL_TIERS) {
       expect(defaultVoiceQuantForTier(id)).toBe("Q4_K_M");
     }
   });
 
   it("returns Q8_0 for large tiers (matches publish path workstation default)", () => {
-    for (const id of OMNIVOICE_TIERS) {
+    for (const id of LARGE_TIERS) {
       expect(defaultVoiceQuantForTier(id)).toBe("Q8_0");
     }
   });

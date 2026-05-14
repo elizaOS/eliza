@@ -36,7 +36,7 @@ publish path and the runtime stay in sync.
 
 | model                                            | polarquant            | turboquant       | qjl              | Q3_K_M | Q4_K_M | Q5_K_M | Q6_K  | Q8_0  | GGUF? | llama.cpp?                  | notes |
 |--------------------------------------------------|-----------------------|------------------|------------------|--------|--------|--------|-------|-------|-------|-----------------------------|-------|
-| eliza-1 LM (Qwen3.5 0.8B/2B/4B/9B + Qwen3.5 27B) | app                   | app              | app              | app    | app    | app    | app   | app   | yes   | yes (LLM_ARCH_QWEN3/QWEN35) | Baseline. PolarQuant + QJL + TurboQuant Q3/Q4 ship today. K-quant ladder Q3..Q8 via sibling `gguf-q{3,4,5,6}_k_m_apply.py` (Q4 default; Q3/Q5/Q6 written by I8). |
+| eliza-1 LM (Qwen3.5 0.8B/2B/4B/9B + Qwen3.6 27B) | app                   | app              | app              | app    | app    | app    | app   | app   | yes   | yes (LLM_ARCH_QWEN3/QWEN35) | Baseline. PolarQuant + QJL + TurboQuant Q3/Q4 ship today. K-quant ladder Q3..Q8 via sibling `gguf-q{3,4,5,6}_k_m_apply.py` (Q4 default; Q3/Q5/Q6 written by I8). |
 | DFlash drafter (companion)                       | app                   | app              | app              | app    | app    | app    | app   | app   | yes   | yes (LLM_ARCH_DFLASH_DRAFT) | Same recipe + arch as the target LM, gated by `target_text_checkpoint_hash`. Inherits the K-quant ladder from the LM siblings. |
 | Qwen3-ASR (0.6B / 1.7B)                          | app-NW                | N/A              | N/A              | app    | app    | app    | app   | app   | yes   | yes (Qwen3 + audio mmproj)  | Text body rides Qwen3 K-quants; audio mmproj projector held at Q8_0 by default (R8 §3.6 — sub-Q8 regresses WER). Wrapper: `gguf_asr_apply.py` (I8). PolarQuant on the text Linear bank is plausible (same arch as eliza-1 LM) but no recipe is wired yet. QJL/TBQ N/A — ASR utterances are short and the KV-compression win is negligible. |
 | Kokoro-82M (TTS)                                 | app-NW (encoder only) | N/A              | N/A              | gated  | gated  | gated  | gated | gated | partial | WIP arch                   | Kokoro is autoregressive AdaIN + iSTFT vocoder. ONNX is canonical today (`tts/kokoro/model_q4.onnx`). K-quant ladder gated on `LLM_ARCH_KOKORO` landing in the fork (R8 §3.1; effort L). PolarQuant on the encoder Linear bank is plausible but not validated against MOS. QJL/TBQ N/A — no LM-style KV decode at long context. |
@@ -79,10 +79,10 @@ Mirrors `VOICE_QUANT_LADDER_BY_TIER` in
 
 | tier        | published OmniVoice ladder                          | runtime default | rationale |
 |-------------|-----------------------------------------------------|-----------------|-----------|
-| 0_8b        | — (Kokoro-only; OmniVoice not bundled)              | Kokoro          | TTFB budget too tight on mobile-class. |
-| 2b          | — (Kokoro-only)                                     | Kokoro          | Same. |
-| 4b          | — (Kokoro-only)                                     | Kokoro          | Same. |
-| 9b          | `Q3_K_M`, `Q4_K_M`, `Q5_K_M`, `Q6_K`, `Q8_0`        | `Q8_0`          | Boundary tier; Kokoro first by default but OmniVoice bundled. |
+| 0_8b        | `Q3_K_M`, `Q4_K_M`, `Q5_K_M`                       | `Q4_K_M`        | OmniVoice first; Kokoro remains the low-latency fallback. |
+| 2b          | `Q3_K_M`, `Q4_K_M`, `Q5_K_M`                       | `Q4_K_M`        | Same. |
+| 4b          | `Q3_K_M`, `Q4_K_M`, `Q5_K_M`                       | `Q4_K_M`        | Same. |
+| 9b          | `Q3_K_M`, `Q4_K_M`, `Q5_K_M`, `Q6_K`, `Q8_0`        | `Q8_0`          | Boundary tier; OmniVoice first with Kokoro fallback. |
 | 27b         | `Q3_K_M`, `Q4_K_M`, `Q5_K_M`, `Q6_K`, `Q8_0`        | `Q8_0`          | RAM permits Q8_0 by default; smaller levels for memory-constrained desktops. |
 | 27b-256k    | `Q3_K_M`, `Q4_K_M`, `Q5_K_M`, `Q6_K`, `Q8_0`        | `Q8_0`          | Same as 27b. |
 | 27b-1m      | `Q3_K_M`, `Q4_K_M`, `Q5_K_M`, `Q6_K`, `Q8_0`        | `Q8_0`          | Workstation tier. |

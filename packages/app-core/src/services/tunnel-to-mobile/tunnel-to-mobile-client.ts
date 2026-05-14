@@ -9,10 +9,7 @@
  * existing `DeviceBridge` machinery treat the phone-hosted agent as if
  * it were any other device on the LAN.
  *
- * Scope
- * -----
- * This is the integration **shell** described in
- * `docs/reverse-direction-tunneling.md` (P0). It:
+ * Responsibilities:
  *   - Opens a WebSocket to the relay with the configured pairing
  *     credentials.
  *   - Forwards frames into a caller-provided handler (typically the
@@ -20,11 +17,6 @@
  *     would hit) so the Mac-side agent runtime treats the bridged
  *     phone as a registered device.
  *   - Reports state transitions for the UI.
- *
- * It does **not** yet implement the multiplexing or auth handshake the
- * cloud relay will eventually speak. That contract is co-designed with
- * the cloud team in P1; this file locks the integration seam so the
- * runtime knows how to call it.
  */
 
 export type TunnelToMobileState =

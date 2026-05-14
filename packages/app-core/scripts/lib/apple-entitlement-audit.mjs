@@ -264,7 +264,7 @@ function validateTargetPolicy(target, { root = appCoreRoot } = {}) {
       }
     }
     if (
-      target.id === "macos-mas-app" &&
+      target.distribution === "mac-app-store" &&
       MAS_RUNTIME_EXCEPTION_ENTITLEMENTS.has(key)
     ) {
       if (!Array.isArray(policy.currentEvidence) || policy.currentEvidence.length === 0) {
@@ -448,7 +448,7 @@ function binaryTextEvidence(filePath) {
   return (
     runText("nm", ["-u", filePath], { maxBuffer: 32 * 1024 * 1024 }) ??
     runText("strings", ["-a", filePath], { maxBuffer: 32 * 1024 * 1024 }) ??
-    ""
+    readFileSync(filePath).toString("latin1")
   );
 }
 

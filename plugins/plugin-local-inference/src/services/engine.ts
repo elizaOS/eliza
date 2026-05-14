@@ -20,6 +20,7 @@ import {
 	type ResponseSkeleton,
 	ResponseSkeletonStreamExtractor,
 } from "@elizaos/core";
+import { resolveKokoroEngineConfig } from "@elizaos/shared/local-inference";
 import type { LocalInferenceLoadArgs } from "./active-model";
 import type {
 	GenerateArgs as BackendGenerateArgs,
@@ -70,7 +71,6 @@ import {
 	type EngineVoiceBridgeOptions,
 	VoiceStartupError,
 } from "./voice/engine-bridge";
-import { resolveKokoroEngineConfig } from "./voice/kokoro/kokoro-engine-discovery";
 import type { VoicePipelineEvents } from "./voice/pipeline";
 import {
 	type DflashTextRunner,

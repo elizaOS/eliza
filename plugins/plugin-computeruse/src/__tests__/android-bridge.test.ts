@@ -7,6 +7,9 @@
  * docs/ANDROID_CONSTRAINTS.md.
  */
 
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
   ANDROID_BRIDGE_JS_NAME,
@@ -35,6 +38,59 @@ describe("Android bridge constants", () => {
 
   it("default FPS is conservative for battery life", () => {
     expect(ANDROID_DEFAULT_FPS).toBe(1);
+  });
+});
+
+// ── Android assistant/App Actions static source checks ───────────────────────
+
+const repoRoot = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "../../../..",
+);
+const readRepoFile = (relativePath: string) =>
+  fs.readFileSync(path.join(repoRoot, relativePath), "utf8");
+
+describe("Android Assistant and App Actions routing source", () => {
+  it("registers shortcuts.xml on the launcher activity", () => {
+    const manifest = readRepoFile(
+      "packages/app-core/platforms/android/app/src/main/AndroidManifest.xml",
+    );
+
+    expect(manifest).toContain('android:name="android.app.shortcuts"');
+    expect(manifest).toContain('android:resource="@xml/shortcuts"');
+  });
+
+  it("keeps default-assistant and voice-command surfaces out of the consumer manifest", () => {
+    const manifest = readRepoFile(
+      "packages/app-core/platforms/android/app/src/main/AndroidManifest.xml",
+    );
+
+    expect(manifest).not.toContain("ElizaAssistActivity");
+    expect(manifest).not.toContain("android.intent.action.ASSIST");
+    expect(manifest).not.toContain("android.intent.action.VOICE_COMMAND");
+    expect(manifest).not.toContain("android.app.role.ASSISTANT");
+    expect(manifest).not.toContain("android.permission.BIND_VOICE_INTERACTION");
+  });
+
+  it("declares Play-compatible App Actions BIIs and static shortcuts", () => {
+    const shortcuts = readRepoFile(
+      "packages/app-core/platforms/android/app/src/main/res/xml/shortcuts.xml",
+    );
+
+    expect(shortcuts).toContain('android:name="actions.intent.OPEN_APP_FEATURE"');
+    expect(shortcuts).toContain('android:name="actions.intent.CREATE_MESSAGE"');
+    expect(shortcuts).toContain('android:name="actions.intent.CREATE_THING"');
+    expect(shortcuts).toContain('android:name="actions.intent.GET_THING"');
+    expect(shortcuts).toContain('android:shortcutId="eliza_app_action_chat"');
+    expect(shortcuts).toContain('android:shortcutId="eliza_app_action_voice"');
+    expect(shortcuts).toContain(
+      'android:shortcutId="eliza_app_action_daily_brief"',
+    );
+    expect(shortcuts).toContain('android:shortcutId="eliza_app_action_tasks"');
+    expect(shortcuts).toContain("source=android-app-actions");
+    expect(shortcuts).toContain("source=android-static-shortcut");
+    expect(shortcuts.toLowerCase()).not.toContain("notification");
+    expect(shortcuts).not.toContain("ScheduledTask");
   });
 });
 

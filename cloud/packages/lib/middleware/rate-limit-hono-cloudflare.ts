@@ -7,6 +7,7 @@
 import type { Context, MiddlewareHandler } from "hono";
 
 import { buildRedisClient, type CompatibleRedis } from "@/lib/cache/redis-factory";
+import { logger } from "@/lib/utils/logger";
 import type { AppContext, AppEnv, Bindings } from "@/types/cloud-worker-env";
 
 export interface RateLimitConfig {
@@ -148,7 +149,7 @@ export function rateLimit(config: RateLimitConfig): MiddlewareHandler<AppEnv> {
       // Rate limiting is protective middleware. If its backing store is down
       // or unreachable in local Worker dev, requests should fall open instead
       // of turning application routes into 500s.
-      console.warn("[RateLimit] Redis unavailable; falling open", {
+      logger.warn("[RateLimit] Redis unavailable; falling open", {
         error: error instanceof Error ? error.message : String(error),
       });
       result = fallOpenResult(config);

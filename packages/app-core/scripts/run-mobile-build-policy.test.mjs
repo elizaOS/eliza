@@ -4,9 +4,18 @@ import path from "node:path";
 import test from "node:test";
 
 import {
+  ANDROID_CLOUD_STRIPPED_COMPONENTS,
+  ANDROID_CLOUD_STRIPPED_NATIVE_PLUGINS,
+  ANDROID_CLOUD_STRIPPED_PERMISSIONS,
+  ANDROID_PERMISSIONS,
   applyAndroidCleartextPolicy,
+  IOS_AGENT_ROOT_EXTENSION_ASSETS,
+  IOS_AGENT_RUNTIME_ASSETS,
   IOS_OFFICIAL_PODS,
+  isIosAppStoreBuild,
+  resolveIosAgentRuntimeAssetPlan,
   resolveIosBuildTarget,
+  resolveIosCustomPods,
   resolveMobileBuildPolicy,
 } from "./run-mobile-build.mjs";
 
@@ -16,6 +25,7 @@ test("resolveMobileBuildPolicy marks Google Play Android as a store-managed clou
     buildVariant: "store",
     androidRuntimeMode: "cloud",
     iosRuntimeMode: null,
+    runtimeExecutionMode: "cloud",
     releaseAuthority: "google-play",
     appControlledOta: false,
   });
@@ -27,6 +37,7 @@ test("resolveMobileBuildPolicy marks sideload Android as direct but installer-co
     buildVariant: "direct",
     androidRuntimeMode: "local",
     iosRuntimeMode: null,
+    runtimeExecutionMode: "local-yolo",
     releaseAuthority: "github-release-android-package-installer",
     appControlledOta: false,
   });
@@ -38,9 +49,64 @@ test("resolveMobileBuildPolicy marks AOSP Android as an OTA-owned system image",
     buildVariant: "direct",
     androidRuntimeMode: "local",
     iosRuntimeMode: null,
+    runtimeExecutionMode: "local-yolo",
     releaseAuthority: "aosp-ota",
     appControlledOta: false,
   });
+});
+
+test("AOSP Android keeps assistant/full-control permissions in the system manifest overlay", () => {
+  for (const permission of [
+    "PACKAGE_USAGE_STATS",
+    "MANAGE_APP_OPS_MODES",
+    "MANAGE_VIRTUAL_MACHINE",
+    "READ_FRAME_BUFFER",
+    "INJECT_EVENTS",
+    "REAL_GET_TASKS",
+    "FOREGROUND_SERVICE_MEDIA_PROJECTION",
+    "FOREGROUND_SERVICE_SPECIAL_USE",
+    "RECEIVE_BOOT_COMPLETED",
+  ]) {
+    assert.ok(
+      ANDROID_PERMISSIONS.includes(permission),
+      `ANDROID_PERMISSIONS should include ${permission}`,
+    );
+  }
+});
+
+test("Google Play Android strips AOSP assistant/full-control components and permissions", () => {
+  for (const component of [
+    "ElizaAssistActivity",
+    "ElizaAgentService",
+    "ElizaBootReceiver",
+  ]) {
+    assert.ok(
+      ANDROID_CLOUD_STRIPPED_COMPONENTS.includes(component),
+      `android-cloud should strip ${component}`,
+    );
+  }
+  for (const permission of [
+    "PACKAGE_USAGE_STATS",
+    "MANAGE_APP_OPS_MODES",
+    "READ_FRAME_BUFFER",
+    "INJECT_EVENTS",
+    "REAL_GET_TASKS",
+    "FOREGROUND_SERVICE_MEDIA_PROJECTION",
+    "FOREGROUND_SERVICE_SPECIAL_USE",
+    "RECEIVE_BOOT_COMPLETED",
+    "REQUEST_IGNORE_BATTERY_OPTIMIZATIONS",
+  ]) {
+    assert.ok(
+      ANDROID_CLOUD_STRIPPED_PERMISSIONS.includes(permission),
+      `android-cloud should strip ${permission}`,
+    );
+  }
+  assert.ok(
+    ANDROID_CLOUD_STRIPPED_NATIVE_PLUGINS.some(
+      ([pkg]) => pkg === "@elizaos/capacitor-screencapture",
+    ),
+    "android-cloud should strip the MediaProjection screen-capture plugin",
+  );
 });
 
 test("Android manifest cleartext policy can be stamped per target", () => {
@@ -71,12 +137,13 @@ test("Android manifest cleartext policy is inserted when absent", () => {
   );
 });
 
-test("resolveMobileBuildPolicy separates App Store iOS from local iOS builds", () => {
+test("resolveMobileBuildPolicy keeps App Store iOS local-runtime capable", () => {
   assert.deepEqual(resolveMobileBuildPolicy("ios"), {
     capacitorTarget: "ios",
     buildVariant: "store",
     androidRuntimeMode: null,
-    iosRuntimeMode: "cloud",
+    iosRuntimeMode: "cloud-hybrid",
+    runtimeExecutionMode: "local-safe",
     releaseAuthority: "apple-app-store",
     appControlledOta: false,
   });
@@ -85,6 +152,7 @@ test("resolveMobileBuildPolicy separates App Store iOS from local iOS builds", (
     buildVariant: "direct",
     androidRuntimeMode: null,
     iosRuntimeMode: "local",
+    runtimeExecutionMode: "local-safe",
     releaseAuthority: "developer-toolchain",
     appControlledOta: false,
   });
@@ -107,6 +175,20 @@ test("resolveIosBuildTarget honors simulator overrides used by local iOS smoke b
   );
 });
 
+test("resolveIosBuildTarget defaults App Store iOS to a device build", () => {
+  assert.deepEqual(
+    resolveIosBuildTarget({
+      env: { ELIZA_RELEASE_AUTHORITY: "apple-app-store" },
+      appDirValue: "/tmp/no-app",
+    }),
+    {
+      destination: "generic/platform=iOS",
+      sdk: "iphoneos",
+      reason: "App Store device build",
+    },
+  );
+});
+
 test("iOS background runner pod resolves through the official package", () => {
   assert.equal(
     IOS_OFFICIAL_PODS.find(
@@ -114,6 +196,60 @@ test("iOS background runner pod resolves through the official package", () => {
     )?.[1],
     "@capacitor/background-runner",
   );
+});
+
+test("iOS App Store pod selection keeps no-JIT Bun local runtime but strips unsafe bridge pods", () => {
+  const pods = resolveIosCustomPods({
+    appStoreBuild: true,
+    includeLlama: false,
+    includeFullBunEngine: true,
+    includeMobileAgentBridge: true,
+  }).map(([name]) => name);
+
+  assert.equal(isIosAppStoreBuild({ ELIZA_BUILD_VARIANT: "store" }), true);
+  assert.equal(pods.includes("LlamaCppCapacitor"), false);
+  assert.equal(pods.includes("ElizaosCapacitorBunRuntime"), true);
+  assert.equal(pods.includes("ElizaosCapacitorMobileAgentBridge"), false);
+  assert.equal(pods.includes("ElizaBunEngine"), true);
+});
+
+test("iOS App Store agent payload is allowed for the bundled no-JIT runtime", () => {
+  assert.deepEqual(
+    resolveIosAgentRuntimeAssetPlan({
+      appStoreBuild: true,
+      includeFullBunEngine: true,
+    }).agentAssets,
+    IOS_AGENT_RUNTIME_ASSETS,
+  );
+  assert.deepEqual(
+    resolveIosAgentRuntimeAssetPlan({ appStoreBuild: false }).agentAssets,
+    IOS_AGENT_RUNTIME_ASSETS,
+  );
+});
+
+test("iOS direct compat pod selection includes JSContext runtime without full Bun", () => {
+  const pods = resolveIosCustomPods({
+    appStoreBuild: false,
+    includeCompatBunRuntime: true,
+    includeFullBunEngine: false,
+  }).map(([name]) => name);
+
+  assert.equal(pods.includes("ElizaosCapacitorBunRuntime"), true);
+  assert.equal(pods.includes("ElizaosCapacitorMobileAgentBridge"), false);
+  assert.equal(pods.includes("ElizaBunEngine"), false);
+});
+
+test("iOS direct full-Bun pod selection includes local execution bridge pods", () => {
+  const pods = resolveIosCustomPods({
+    appStoreBuild: false,
+    includeLlama: true,
+    includeFullBunEngine: true,
+  }).map(([name]) => name);
+
+  assert.equal(pods.includes("LlamaCppCapacitor"), true);
+  assert.equal(pods.includes("ElizaosCapacitorBunRuntime"), true);
+  assert.equal(pods.includes("ElizaosCapacitorMobileAgentBridge"), true);
+  assert.equal(pods.includes("ElizaBunEngine"), true);
 });
 
 test("iOS app entitlements do not request JIT or dynamic code signing", () => {
@@ -129,11 +265,51 @@ test("iOS app entitlements do not request JIT or dynamic code signing", () => {
   const entitlements = fs.readFileSync(entitlementsPath, "utf8");
   assert.equal(entitlements.includes("com.apple.security.cs.allow-jit"), false);
   assert.equal(
-    entitlements.includes("com.apple.security.cs.allow-dyld-environment-variables"),
+    entitlements.includes(
+      "com.apple.security.cs.allow-dyld-environment-variables",
+    ),
     false,
   );
   assert.equal(
     entitlements.includes("com.apple.security.cs.disable-library-validation"),
     false,
   );
+});
+
+test("Mac App Store entitlements scope JIT to Bun and reject broad executable-memory exceptions", () => {
+  const entitlementsRoot = path.join(
+    import.meta.dirname,
+    "..",
+    "platforms",
+    "electrobun",
+    "entitlements",
+  );
+  const parent = fs.readFileSync(
+    path.join(entitlementsRoot, "mas.entitlements"),
+    "utf8",
+  );
+  const child = fs.readFileSync(
+    path.join(entitlementsRoot, "mas-child.entitlements"),
+    "utf8",
+  );
+  const bun = fs.readFileSync(
+    path.join(entitlementsRoot, "mas-bun.entitlements"),
+    "utf8",
+  );
+
+  for (const content of [parent, child, bun]) {
+    assert.equal(
+      content.includes(
+        "com.apple.security.cs.allow-unsigned-executable-memory",
+      ),
+      false,
+    );
+    assert.equal(
+      content.includes("com.apple.security.cs.disable-library-validation"),
+      false,
+    );
+  }
+  assert.equal(parent.includes("com.apple.security.cs.allow-jit"), false);
+  assert.equal(child.includes("com.apple.security.cs.allow-jit"), false);
+  assert.equal(bun.includes("com.apple.security.cs.allow-jit"), true);
 });

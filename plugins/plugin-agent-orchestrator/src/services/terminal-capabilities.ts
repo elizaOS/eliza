@@ -53,10 +53,6 @@ function isIosRuntime(): boolean {
   return process.env.ELIZA_PLATFORM?.trim().toLowerCase() === "ios";
 }
 
-function isMobileRuntime(): boolean {
-  return isAndroidRuntime() || isIosRuntime();
-}
-
 function isTruthyEnv(value: string | undefined): boolean {
   if (!value) return false;
   return ["1", "true", "yes", "on"].includes(value.trim().toLowerCase());
@@ -146,7 +142,7 @@ export function resolveOrchestratorShell(): ResolvedOrchestratorShell {
   }
 
   const candidates = isAndroidRuntime()
-    ? ["/system/bin/sh", "sh", "/bin/sh"]
+    ? ["/system/bin/sh", "sh"]
     : ["/bin/bash", "bash", "/bin/sh", "sh"];
   const shell = firstExecutable(candidates);
   if (shell) {
@@ -164,7 +160,7 @@ export function resolveOrchestratorShell(): ResolvedOrchestratorShell {
     available: false,
     source: "fallback",
     warning: isAndroidRuntime()
-      ? "No executable POSIX shell was detected. AOSP builds must expose /system/bin/sh or set CODING_TOOLS_SHELL to an executable shell."
+      ? "No executable POSIX shell was detected. Android direct/AOSP local-yolo builds must expose /system/bin/sh or set CODING_TOOLS_SHELL to an executable shell."
       : "No executable shell was detected. Set SHELL or CODING_TOOLS_SHELL to an executable shell.",
   };
 }
@@ -203,7 +199,7 @@ export function missingToolMessage(tool: OrchestratorToolName): string {
     );
   }
   const suffix = isAndroidRuntime()
-    ? " On AOSP, stage the binary into the agent image and include its directory in PATH."
+    ? " On Android direct/AOSP builds, stage the binary into the agent image and include its directory in PATH."
     : " Install it or add it to PATH.";
   return `${tool} CLI is not available in PATH.${suffix}`;
 }
@@ -218,21 +214,22 @@ export function detectOrchestratorTerminalSupport(): OrchestratorTerminalSupport
     };
   }
 
-  if (isMobileRuntime()) {
-    if (!isAospTerminalRuntime()) {
-      return {
-        supported: false,
-        reason: "vanilla_mobile",
-        message:
-          "Coding agents are only available on branded AOSP builds. Vanilla mobile and store builds do not expose shell, coding, or orchestrator subprocess capabilities.",
-      };
-    }
+  if (isIosRuntime()) {
+    return {
+      supported: false,
+      reason: "vanilla_mobile",
+      message:
+        "Coding agents are unavailable on iOS because the runtime does not expose shell, coding, or orchestrator subprocess capabilities.",
+    };
+  }
+
+  if (isAndroidRuntime()) {
     if (runtimeMode() !== "local-yolo") {
       return {
         supported: false,
         reason: "not_local_yolo",
         message:
-          "AOSP coding agents require ELIZA_RUNTIME_MODE=local-yolo so subprocesses run in the local agent environment.",
+          "Android direct/AOSP coding agents require ELIZA_RUNTIME_MODE=local-yolo so subprocesses run in the local agent environment.",
       };
     }
     const shell = resolveOrchestratorShell();
@@ -242,7 +239,7 @@ export function detectOrchestratorTerminalSupport(): OrchestratorTerminalSupport
         reason: "missing_shell",
         message:
           shell.warning ??
-          "AOSP coding agents require an executable shell. Set CODING_TOOLS_SHELL or SHELL to a staged shell binary.",
+          "Android direct/AOSP coding agents require an executable shell. Set CODING_TOOLS_SHELL or SHELL to a staged shell binary.",
       };
     }
   }

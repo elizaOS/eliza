@@ -30,6 +30,12 @@ export interface AssistantLaunchPayload {
   text: string;
 }
 
+export interface AssistantLaunchPayloadClaimOptions {
+  allowedRoutes?: readonly string[];
+}
+
+const claimedAssistantLaunchIds = new Set<string>();
+
 function trimParam(params: URLSearchParams, key: string): string {
   return params.get(key)?.trim() ?? "";
 }
@@ -82,6 +88,23 @@ export function buildAssistantLaunchMetadata(
   };
 }
 
+export function claimAssistantLaunchPayloadFromHash(
+  hash: string,
+  options: AssistantLaunchPayloadClaimOptions = {},
+): AssistantLaunchPayload | null {
+  const payload = readAssistantLaunchPayloadFromHash(hash);
+  if (!payload) return null;
+
+  if (options.allowedRoutes && !options.allowedRoutes.includes(payload.route)) {
+    return null;
+  }
+
+  if (claimedAssistantLaunchIds.has(payload.launchId)) return null;
+  claimedAssistantLaunchIds.add(payload.launchId);
+  clearAssistantLaunchPayloadFromHash();
+  return payload;
+}
+
 export function clearAssistantLaunchPayloadFromHash(): void {
   if (typeof window === "undefined") return;
 
@@ -101,4 +124,8 @@ export function clearAssistantLaunchPayloadFromHash(): void {
     "",
     `${window.location.pathname}${window.location.search}${nextHash}`,
   );
+}
+
+export function __resetAssistantLaunchPayloadClaimsForTests(): void {
+  claimedAssistantLaunchIds.clear();
 }

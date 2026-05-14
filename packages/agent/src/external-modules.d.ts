@@ -203,7 +203,7 @@ declare module "@elizaos/plugin-elizacloud" {
   export function isCloudAuthApiKeyService(
     value: Service | null | undefined,
   ): value is Service & CloudAuthApiKeyService;
-  export function validateCloudBaseUrl(value: string): string | null;
+  export function validateCloudBaseUrl(value: string): Promise<string | null>;
   export function resolveCloudApiBaseUrl(...args: unknown[]): string;
   export function resolveCloudApiKey(...args: unknown[]): string | null;
   export function __resetCloudBaseUrlCache(): void;

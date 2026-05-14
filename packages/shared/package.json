@@ -63,6 +63,11 @@
       "default": "./dist/dev-settings-table.js",
       "types": "./dist/dev-settings-table.d.ts"
     },
+    "./local-inference": {
+      "import": "./dist/local-inference/index.js",
+      "default": "./dist/local-inference/index.js",
+      "types": "./dist/local-inference/index.d.ts"
+    },
     "./onboarding-presets": {
       "import": "./dist/onboarding-presets.js",
       "default": "./dist/onboarding-presets.js",

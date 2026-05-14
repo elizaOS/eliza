@@ -113,6 +113,7 @@ export default defineConfig({
       "platforms/electrobun/**",
       "scripts/run-mobile-build-policy.test.mjs",
       "scripts/aosp/compile-libllama-fused.test.mjs",
+      "scripts/mas-smoke.test.mjs",
       // node:sqlite (stable in Node ≥24) is unavailable in Bun. CI runs this
       // separately under Node via vitest.node-sqlite.config.ts with
       // NODE_OPTIONS=--experimental-sqlite (see .github/workflows/test.yml).

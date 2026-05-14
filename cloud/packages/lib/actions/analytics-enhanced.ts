@@ -12,7 +12,7 @@ import {
   getProviderBreakdown,
   getTrendData,
   getUsageByUser,
-  getUsageStatsSafe,
+  getUsageStats,
   getUsageTimeSeries,
   type TimeGranularity,
 } from "@/lib/services/analytics";
@@ -87,7 +87,7 @@ export async function getEnhancedAnalyticsData(
     modelBreakdown,
     trends,
   ] = await Promise.all([
-    getUsageStatsSafe(organizationId, { startDate, endDate }),
+    getUsageStats(organizationId, { startDate, endDate }),
     getUsageTimeSeries(organizationId, { startDate, endDate, granularity }),
     getUsageByUser(organizationId, { startDate, endDate, limit: 10 }),
     getCostTrending(organizationId),

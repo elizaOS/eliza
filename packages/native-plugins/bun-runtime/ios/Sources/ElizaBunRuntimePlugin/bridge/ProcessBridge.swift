@@ -14,7 +14,7 @@ public final class ProcessBridge {
         for (k, v) in initialEnv {
             merged[k] = v
         }
-        self.env = merged
+        self.env = IosRuntimePolicy.sanitizeEnvironment(merged)
         if !initialArgv.isEmpty {
             self.argv = initialArgv
         }

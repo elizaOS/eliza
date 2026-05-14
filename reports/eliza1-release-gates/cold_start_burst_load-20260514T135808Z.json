@@ -1,0 +1,17 @@
+{
+  "gate": "cold_start_burst_load",
+  "status": "pass",
+  "completedAt": "2026-05-14T13:58:08.629Z",
+  "baseUrl": "http://79.116.54.219:53777",
+  "model": "vast/eliza-1-27b-256k",
+  "coldStartMs": 10730,
+  "burstRequests": 12,
+  "burstConcurrency": 4,
+  "burstP50Ms": 1028,
+  "burstP95Ms": 1430,
+  "burstMaxMs": 1430,
+  "durationMs": 3582,
+  "errorRate": 0,
+  "errors": 0,
+  "summary": "12 burst requests at concurrency 4; p95 1430ms; error rate 0"
+}

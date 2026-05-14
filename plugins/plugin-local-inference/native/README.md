@@ -509,9 +509,11 @@ on the @elizaos/native-plugins packages.
 ## The patched llama.cpp fork (submodule)
 
 The DFlash/TBQ/QJL/Polar/Metal fork ships in-tree as a git submodule at
-[`packages/inference/llama.cpp`](llama.cpp) — `elizaOS/llama.cpp @ v1.0.0-eliza`
-(commit `08032d57`). `bun install` runs `git submodule update --init --recursive`,
-so a fresh checkout has it. Both build paths default to this checkout:
+[`plugins/plugin-local-inference/native/llama.cpp`](llama.cpp) —
+`elizaOS/llama.cpp` at the repository gitlink commit (currently
+`33c888a7b`, with `ce85787c8` as the validated DFlash/SWA build base).
+`bun install` runs `git submodule update --init --recursive`, so a fresh
+checkout has it. Both build paths default to this checkout:
 
 - `packages/app-core/scripts/build-llama-cpp-dflash.mjs` — desktop / server /
   Windows / iOS.
@@ -523,13 +525,14 @@ pristine submodule tree each run, then `git checkout -- . && git clean -fdx`
 discards those edits at the start of the next build — the submodule stays pinned
 to its gitlink commit. `ELIZA_DFLASH_LLAMA_CPP_REMOTE` / `ELIZA_DFLASH_LLAMA_CPP_REF`
 (or `--cache-dir` / `--src-dir`) still force a standalone clone for fork bisects.
-(`v1.0.0-eliza` is the same tree as the prior `v0.4.0-eliza` tag, re-tagged on
-the elizaOS rename; a full rebase onto a recent upstream llama.cpp is a follow-up.)
+The DFlash build scripts now reject source checkouts that lack the
+SWA-aware `seq_rm` probe fallback from elizaOS/eliza#7635; otherwise
+SWA-based bodies can silently run target-only after `--spec-type dflash`.
 
 ## How standalone shaders flow into the shipped binary
 
 Source-of-truth: the verified `.metal` and `.comp` files in this
-directory (`packages/inference/{metal,vulkan}/`). The build script
+directory (`plugins/plugin-local-inference/native/{metal,vulkan}/`). The build script
 `packages/app-core/scripts/build-llama-cpp-dflash.mjs` calls into
 `packages/app-core/scripts/kernel-patches/{metal,vulkan}-kernels.mjs`
 during `applyForkPatches()` and the helpers do the actual work:
@@ -607,8 +610,8 @@ before it can satisfy AGENTS.md §3 in this workspace.
 
 | Env var                                  | What it does                                              | Default |
 | ---------------------------------------- | --------------------------------------------------------- | ------- |
-| `ELIZA_DFLASH_LLAMA_CPP_REMOTE`          | Build from a standalone clone of this fork remote instead of the in-repo `packages/inference/llama.cpp` submodule (default `https://github.com/elizaOS/llama.cpp.git`). | unset |
-| `ELIZA_DFLASH_LLAMA_CPP_REF`             | Standalone-clone fork ref (default `v1.0.0-eliza`). Setting either this or `_REMOTE` switches off the submodule build path. | unset |
+| `ELIZA_DFLASH_LLAMA_CPP_REMOTE`          | Build from a standalone clone of this fork remote instead of the in-repo `plugins/plugin-local-inference/native/llama.cpp` submodule (default `https://github.com/elizaOS/llama.cpp.git`). | unset |
+| `ELIZA_DFLASH_LLAMA_CPP_REF`             | Standalone-clone fork ref (default `33c888a7be0b0b8ffb54cd3f0e05b4bed20cc52e`). Setting either this or `_REMOTE` switches off the submodule build path. | unset |
 | `ELIZA_DFLASH_VULKAN_HEADERS_DIR` / `ELIZA_DFLASH_SPIRV_HEADERS_DIR` | Pre-staged Khronos header paths for cross-builds. | unset |
 | `ELIZA_DFLASH_CMAKE_FLAGS`               | Extra cmake flags appended to the per-target list. Wins on conflict (e.g. override `-DCMAKE_CUDA_ARCHITECTURES`). | unset |
 | `MINGW_TOOLCHAIN_FILE`                   | Operator-supplied cmake toolchain file for windows-* targets. Required for `windows-arm64-*` cross builds; optional override for `windows-x64-*` (auto-detected mingw is used otherwise). | unset |

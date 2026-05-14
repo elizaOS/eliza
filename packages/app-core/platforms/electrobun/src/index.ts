@@ -1783,12 +1783,12 @@ async function setupUpdater(): Promise<void> {
  * `urlSchemes`, sourced from `ELIZA_URL_SCHEME`) — this handler does not
  * care which scheme is used; it only routes by host + pathname.
  */
-function handleDeepLink(url: string): void {
+async function handleDeepLink(url: string): Promise<void> {
 	let parsed: URL;
 	try {
 		parsed = new URL(url);
 	} catch {
-		sendToActiveRenderer("shareTargetReceived", { url });
+		await forwardDeepLinkToRenderer(url);
 		return;
 	}
 
@@ -1822,12 +1822,17 @@ function handleDeepLink(url: string): void {
 		}
 	}
 
+	await forwardDeepLinkToRenderer(url);
+}
+
+async function forwardDeepLinkToRenderer(url: string): Promise<void> {
+	await restoreWindow();
 	sendToActiveRenderer("shareTargetReceived", { url });
 }
 
 function setupDeepLinks(): void {
 	Electrobun.events.on("open-url", (url: string) => {
-		handleDeepLink(url);
+		void handleDeepLink(url);
 	});
 }
 

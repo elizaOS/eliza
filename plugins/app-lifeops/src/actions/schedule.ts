@@ -1,10 +1,11 @@
 import type {
   ActionResult,
-  type Content,
+  Content,
   HandlerCallback,
   HandlerOptions,
   IAgentRuntime,
   Memory,
+  State,
 } from "@elizaos/core";
 import { getCircadianInsightContract } from "@elizaos/plugin-health";
 import { hasLifeOpsAccess } from "../lifeops/access.js";
@@ -135,15 +136,13 @@ function scheduleInspectionActionData(
  * Handler function for the passive schedule inference subactions
  * (`summary`, `inspect`).
  *
- * Folded out of the legacy `SCHEDULE` action surface — Audit F. The umbrella
- * in `./owner-surfaces.ts` (OWNER_ROUTINES `schedule_summary` /
- * `schedule_inspect` verbs) is the only caller; no `SCHEDULE`-named action
- * is registered.
+ * Called from `./owner-surfaces.ts` (OWNER_ROUTINES `schedule_summary` /
+ * `schedule_inspect` verbs); no `SCHEDULE`-named action is registered.
  */
 export async function runScheduleHandler(
   runtime: IAgentRuntime,
   message: Memory,
-  _state: unknown,
+  _state: State | undefined,
   options: HandlerOptions | undefined,
   callback?: HandlerCallback,
 ): Promise<ActionResult> {

@@ -199,6 +199,21 @@ def test_client_send_message_raises_on_subprocess_failure(
             client_with_fake_venv.send_message("hi")
 
 
+def test_client_send_message_raises_on_silent_adapter_error(
+    client_with_fake_venv: HermesClient,
+) -> None:
+    payload = {
+        "text": "",
+        "thought": None,
+        "actions": [],
+        "params": {"error": "openai not installed in venv"},
+    }
+    with patch("hermes_adapter.client.subprocess.run") as mock_run:
+        mock_run.return_value = _fake_completed(stdout=json.dumps(payload) + "\n", rc=0)
+        with pytest.raises(RuntimeError, match="adapter error"):
+            client_with_fake_venv.send_message("hi")
+
+
 def test_client_reset_records_state(client_with_fake_venv: HermesClient) -> None:
     out = client_with_fake_venv.reset("task-1", "tblite")
     assert out["task_id"] == "task-1"
@@ -288,6 +303,23 @@ def test_build_openai_messages_does_not_duplicate_identical_system_prompt() -> N
     assert [
         msg for msg in messages if msg.get("role") == "system"
     ] == [{"role": "system", "content": "Benchmark instructions"}]
+
+
+def test_build_openai_messages_replaces_system_prompt_when_context_augmented() -> None:
+    augmented = "Benchmark instructions\n\nBenchmark context:\ncase_id:\n\"mmlu-1\""
+    messages = _build_openai_messages(
+        raw_messages=[
+            {"role": "system", "content": "Benchmark instructions"},
+            {"role": "user", "content": "last turn"},
+        ],
+        system_prompt=augmented,
+        fallback_user_text="fallback",
+    )
+
+    assert [msg for msg in messages if msg.get("role") == "system"] == [
+        {"role": "system", "content": augmented}
+    ]
+    assert messages[1] == {"role": "user", "content": "last turn"}
 
 
 def test_client_is_ready_returns_bool(client_with_fake_venv: HermesClient) -> None:

@@ -109,10 +109,17 @@ export interface HandlerResult {
   totalTimeMs: number;
 }
 
+export interface SetupIncompatibleHandler {
+  handlerName: string;
+  reason: string;
+  traces: string[];
+}
+
 export interface BenchmarkResults {
   timestamp: string;
   totalScenarios: number;
   handlers: HandlerResult[];
+  setupIncompatibleHandlers?: SetupIncompatibleHandler[];
   validationPassed: boolean;
 }
 

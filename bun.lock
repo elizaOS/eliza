@@ -767,7 +767,7 @@
         "@elizaos/plugin-openai": "workspace:*",
       },
       "devDependencies": {
-        "@cloudflare/workers-types": "^4.20241205.0",
+        "@cloudflare/workers-types": "^4.20260429.1",
         "typescript": "^6.0.3",
         "wrangler": "^4.88.0",
       },
@@ -900,7 +900,6 @@
       "name": "@elizaos/example-game-of-life",
       "version": "2.0.0-beta.0",
       "dependencies": {
-        "@clack/prompts": "^0.11.0",
         "@elizaos/core": "workspace:*",
         "@elizaos/plugin-inmemorydb": "workspace:*",
       },
@@ -1540,6 +1539,7 @@
         "@capacitor/android": "^8.0.0",
         "@capacitor/core": "^8.3.1",
         "@capacitor/ios": "^8.0.0",
+        "@elizaos/native-plugin-shared-types": "workspace:*",
         "@rollup/plugin-node-resolve": "^16.0.0",
         "rimraf": "^6.0.0",
         "rollup": "^4.60.2",
@@ -1570,6 +1570,7 @@
         "@capacitor/cli": "^8.0.0",
         "@capacitor/core": "^8.3.1",
         "@capacitor/docgen": "^0.3.0",
+        "@elizaos/native-plugin-shared-types": "workspace:*",
         "rimraf": "^6.0.0",
         "rollup": "^4.60.2",
         "typescript": "^6.0.3",
@@ -1607,7 +1608,7 @@
       },
     },
     "packages/os": {
-      "name": "@elizaos/distro-android-os",
+      "name": "@elizaos/distro-os",
       "version": "2.0.0-beta.2",
     },
     "packages/prompts": {
@@ -2334,6 +2335,19 @@
         "@capacitor/background-runner",
         "@capacitor/core",
       ],
+    },
+    "plugins/plugin-benchmarks": {
+      "name": "@elizaos/plugin-benchmarks",
+      "version": "2.0.0-beta.0",
+      "dependencies": {
+        "@elizaos/core": "workspace:*",
+      },
+      "devDependencies": {
+        "@biomejs/biome": "^2.4.14",
+        "@types/node": "^25.0.3",
+        "typescript": "^6.0.3",
+        "vitest": "^4.0.18",
+      },
     },
     "plugins/plugin-bluebubbles": {
       "name": "@elizaos/plugin-bluebubbles",
@@ -4193,7 +4207,7 @@
 
     "@elizaos/core": ["@elizaos/core@workspace:packages/core"],
 
-    "@elizaos/distro-android-os": ["@elizaos/distro-android-os@workspace:packages/os"],
+    "@elizaos/distro-os": ["@elizaos/distro-os@workspace:packages/os"],
 
     "@elizaos/docs": ["@elizaos/docs@workspace:packages/docs"],
 
@@ -4286,6 +4300,8 @@
     "@elizaos/plugin-app-control": ["@elizaos/plugin-app-control@workspace:plugins/plugin-app-control"],
 
     "@elizaos/plugin-background-runner": ["@elizaos/plugin-background-runner@workspace:plugins/plugin-background-runner"],
+
+    "@elizaos/plugin-benchmarks": ["@elizaos/plugin-benchmarks@workspace:plugins/plugin-benchmarks"],
 
     "@elizaos/plugin-bluebubbles": ["@elizaos/plugin-bluebubbles@workspace:plugins/plugin-bluebubbles"],
 

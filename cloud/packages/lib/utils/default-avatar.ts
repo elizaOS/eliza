@@ -68,12 +68,6 @@ export const CLOUD_AGENT_AVATARS = [
 ];
 
 /**
- * Available character avatars for random selection when creating new characters.
- * Uses the cloud agent sample avatars for visual identity.
- */
-export const CHARACTER_AVATARS = CLOUD_AGENT_AVATARS;
-
-/**
  * The default fallback avatar used when a character has no avatar set.
  * This is the Eliza mascot avatar (still served from the app's own public/).
  */
@@ -83,7 +77,7 @@ export const DEFAULT_AVATAR = "/avatars/eliza.png";
  * All available avatars including special ones (for UI selection purposes)
  */
 export const ALL_AVATARS = [
-  ...CHARACTER_AVATARS,
+  ...CLOUD_AGENT_AVATARS,
   "/avatars/eliza.png",
   "/avatars/amara.png",
   "/avatars/luna.png",
@@ -97,7 +91,7 @@ export type AvatarStyle = "random" | "eliza";
 
 /**
  * Generate a default avatar URL for a new character.
- * Randomly selects from the curated CHARACTER_AVATARS list.
+ * Randomly selects from the curated CLOUD_AGENT_AVATARS list.
  *
  * @param name - The character name (used for deterministic selection if needed)
  * @param options - Optional configuration
@@ -111,13 +105,13 @@ export function generateDefaultAvatarUrl(
   // This ensures the same name always gets the same avatar
   if (name) {
     const hash = simpleHash(name);
-    const index = hash % CHARACTER_AVATARS.length;
-    return CHARACTER_AVATARS[index];
+    const index = hash % CLOUD_AGENT_AVATARS.length;
+    return CLOUD_AGENT_AVATARS[index];
   }
 
   // Truly random selection if no name provided
-  const randomIndex = Math.floor(Math.random() * CHARACTER_AVATARS.length);
-  return CHARACTER_AVATARS[randomIndex];
+  const randomIndex = Math.floor(Math.random() * CLOUD_AGENT_AVATARS.length);
+  return CLOUD_AGENT_AVATARS[randomIndex];
 }
 
 /**

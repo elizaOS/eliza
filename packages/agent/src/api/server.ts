@@ -263,7 +263,6 @@ type PermissionsExtraRouteArg = Parameters<
   typeof handlePermissionsExtraRoutes
 >[0];
 type WorkbenchRouteArg = Parameters<typeof handleWorkbenchRoutes>[0];
-// LifeOpsRouteArg removed — routes extracted to lifeopsPlugin
 type MiscRouteArg = Parameters<typeof handleMiscRoutes>[0];
 
 export {
@@ -272,12 +271,6 @@ export {
   stripAssistantStageDirections,
 } from "./chat-text-helpers.ts";
 
-// Re-export the helpers in server-helpers.ts that have external consumers
-// (apps, plugins, packages outside @elizaos/agent itself). The rest stay
-// internal — agent-side files import them directly from ./server-helpers.ts.
-// External-consumer audit kept this list minimal: drop a name only after
-// `grep -rln <name> packages/ apps/ plugins/ | grep -v "packages/agent/"`
-// returns nothing.
 export {
   cloneWithoutBlockedObjectKeys,
   decodePathComponent,
@@ -286,10 +279,6 @@ export {
   isUuidLike,
   persistConversationRoomTitle,
 } from "./server-helpers.ts";
-
-// NOTE: Internal usage of these functions is handled by individual `import`
-// statements placed where each function was originally defined (see below).
-// The `export { ... } from` above re-exports them for external consumers.
 
 import {
   getInventoryProviderOptions,
@@ -1003,13 +992,8 @@ function writeFavoriteAppsToConfig(
   return sanitized;
 }
 
-// Config redaction, skill validation extracted to server-helpers-config.ts
-// isBlockedObjectKey, redactDeep, redactConfigSecrets, isRedactedSecretValue,
-// stripRedactedPlaceholderValuesDeep imported from server-helpers-config.ts above.
-// isBlockedObjectKey alias for local usage:
 const isBlockedObjectKey = isBlockedObjectKeyFromConfig;
 
-// MCP validation helpers extracted to server-helpers-mcp.ts
 import {
   resolveMcpServersRejection as _resolveMcpServersRejection,
   resolveMcpTerminalAuthorizationRejection as _resolveMcpTerminalAuthorizationRejection,
@@ -1022,10 +1006,6 @@ export {
 } from "./server-helpers-mcp.ts";
 
 const resolveMcpServersRejection = _resolveMcpServersRejection;
-
-// ---------------------------------------------------------------------------
-// Onboarding / config helpers — extracted to server-helpers-config.ts
-// ---------------------------------------------------------------------------
 
 import { pickRandomNames } from "../runtime/onboarding-names.ts";
 import { resolveDefaultAgentWorkspaceDir } from "../shared/workspace-resolution.ts";
@@ -1202,7 +1182,6 @@ function buildPluginEvmDiagnosticEntry(
   };
 }
 
-// Wallet intent/export helpers extracted to server-helpers-wallet.ts
 import { resolveWalletExportRejection as _resolveWalletExportRejection } from "./server-helpers-wallet.ts";
 
 export {
@@ -1214,7 +1193,6 @@ export {
 
 const resolveWalletExportRejection = _resolveWalletExportRejection;
 
-// Plugin config helpers extracted to server-helpers-plugin.ts
 import { resolvePluginConfigMutationRejections as _resolvePluginConfigMutationRejections } from "./server-helpers-plugin.ts";
 
 export {
@@ -1294,11 +1272,9 @@ async function setActiveTrainingServiceIfAvailable(
   }
 }
 
-// mcpServersIncludeStdio, resolveMcpTerminalAuthorizationRejection extracted to server-helpers-mcp.ts
 const resolveMcpTerminalAuthorizationRejection =
   _resolveMcpTerminalAuthorizationRejection;
 
-// Auth, CORS, pairing, terminal, WebSocket auth helpers extracted to server-helpers-auth.ts
 import {
   applyCors as _applyCors,
   clearPairing as _clearPairing,
@@ -1564,11 +1540,6 @@ async function handleRequest(
     if (serveStaticUi(req, res, pathname)) return;
   }
 
-  // Single auth gate. The previous two-block arrangement (a cloud-provisioned
-  // copy followed by an unconditional copy) was redundant: the unconditional
-  // block already applied to cloud-provisioned requests because
-  // `isAuthorized` consults `isCloudProvisionedContainer()` when no token is
-  // configured.
   if (
     method !== "OPTIONS" &&
     isAuthProtectedPath &&
@@ -1631,7 +1602,6 @@ async function handleRequest(
     // Gemini CLI and Aider — no proxy support via ElizaCloud inference
   };
 
-  // ── POST /api/provider/switch (extracted to provider-switch-routes.ts) ──
   if (method === "POST" && pathname === "/api/provider/switch") {
     if (
       await handleProviderSwitchRoutes({
@@ -1709,9 +1679,6 @@ async function handleRequest(
     return;
   }
 
-  // ═══════════════════════════════════════════════════════════════════════
-  // Health / status / runtime routes (extracted to health-routes.ts)
-  // ═══════════════════════════════════════════════════════════════════════
   if (
     await handleHealthRoutes({
       req,
@@ -1732,7 +1699,6 @@ async function handleRequest(
     return;
   }
 
-  // ── Onboarding GET routes (extracted to onboarding-routes.ts) ─────────
   if (
     await handleOnboardingRoutes({
       req,
@@ -1972,11 +1938,6 @@ async function handleRequest(
     return;
   }
 
-  // ── NFA routes (/api/nfa/*) ─────────────────────────────────────────
-  // Extracted — will move to @elizaos/plugin-bnb-identity (Plugin.routes)
-  // when the plugin directory is created. Until then, NFA routes are
-  // served inline from nfa-routes.ts if needed, or disabled.
-
   if (
     await handleRegistryRoutes({
       req,
@@ -1996,9 +1957,6 @@ async function handleRequest(
     return;
   }
 
-  // ═══════════════════════════════════════════════════════════════════════
-  // Plugin routes (extracted to plugin-routes.ts)
-  // ═══════════════════════════════════════════════════════════════════════
   if (
     pathname === "/api/plugins" ||
     pathname.startsWith("/api/plugins/") ||
@@ -2037,11 +1995,8 @@ async function handleRequest(
     }
   }
 
-  // ═══════════════════════════════════════════════════════════════════════
-  // Skills routes (extracted to skills-routes.ts)
-  // Curated-skills routes live at /api/skills/curated/* and must be dispatched
-  // before the generic skills routes (which reject "/" in skill IDs).
-  // ═══════════════════════════════════════════════════════════════════════
+  // Curated-skills routes must be dispatched before generic skills routes
+  // (which reject "/" in skill IDs).
   if (pathname.startsWith("/api/skills/curated")) {
     if (
       await handleCuratedSkillsRoutes({
@@ -2249,7 +2204,6 @@ async function handleRequest(
     return;
   }
 
-  // ── Update routes (extracted to update-routes.ts) ─────────────────────
   if (
     await handleUpdateRoutes({
       req,
@@ -2267,7 +2221,6 @@ async function handleRequest(
     return;
   }
 
-  // ── Connector routes (extracted to connector-routes.ts) ──────────────
   if (
     await handleConnectorRoutes({
       req,
@@ -2317,20 +2270,6 @@ async function handleRequest(
     return;
   }
 
-  // ── iMessage routes (/api/imessage/*) ─────────────────────────────────
-  // Extracted to @elizaos/plugin-imessage setup-routes.ts (Plugin.routes).
-  // The plugin registers rawPath routes that serve the same legacy paths.
-
-  // ── Telegram setup routes (/api/setup/telegram/*) ────────────────────
-  // Extracted to @elizaos/plugin-telegram setup-routes.ts (Plugin.routes).
-
-  // ── Telegram account routes (/api/setup/telegram-account/*) ──────────
-  // Extracted to @elizaos/plugin-telegram account-setup-routes.ts (Plugin.routes).
-
-  // ── Discord Local routes (/api/discord-local/*) — extracted to @elizaos/plugin-discord (setup-routes.ts) ──
-
-  // ── Signal routes (/api/signal/*) — extracted to @elizaos/plugin-signal (setup-routes.ts) ──
-
   // ── Restart ──────────────────────────────────────────────────────────
   if (method === "POST" && pathname === "/api/restart") {
     state.agentState = "restarting";
@@ -2341,7 +2280,6 @@ async function handleRequest(
     return;
   }
 
-  // ── TTS routes (extracted to tts-routes.ts) ──────────────────────────
   if (
     await handleTtsRoutes({
       req,
@@ -2366,7 +2304,6 @@ async function handleRequest(
     return;
   }
 
-  // ── Avatar routes (extracted to avatar-routes.ts) ───────────────────
   if (
     await handleAvatarRoutes({
       req,
@@ -2380,9 +2317,6 @@ async function handleRequest(
     return;
   }
 
-  // ═══════════════════════════════════════════════════════════════════════
-  // Config routes (extracted to config-routes.ts)
-  // ═══════════════════════════════════════════════════════════════════════
   if (
     pathname === "/api/config" ||
     pathname === "/api/config/schema" ||
@@ -2414,7 +2348,6 @@ async function handleRequest(
     }
   }
 
-  // ── Permissions extra routes (extracted to permissions-routes-extra.ts) ──
   if (
     await handlePermissionsExtraRoutes({
       req,
@@ -2658,10 +2591,6 @@ async function handleRequest(
     return;
   }
 
-  // ═══════════════════════════════════════════════════════════════════════
-  // ═══════════════════════════════════════════════════════════════════════
-  // Workbench routes (extracted to workbench-routes.ts)
-  // ═══════════════════════════════════════════════════════════════════════
   if (pathname.startsWith("/api/workbench")) {
     if (
       await handleWorkbenchRoutes({
@@ -2699,9 +2628,6 @@ async function handleRequest(
   // runtime plugin route system. See app-lifeops/src/routes/plugin.ts.
   // ═══════════════════════════════════════════════════════════════════════
 
-  // ═══════════════════════════════════════════════════════════════════════
-  // MCP routes (extracted to mcp-routes.ts)
-  // ═══════════════════════════════════════════════════════════════════════
   if (pathname.startsWith("/api/mcp")) {
     if (
       await handleMcpRoutes({
@@ -2727,9 +2653,6 @@ async function handleRequest(
     }
   }
 
-  // ═══════════════════════════════════════════════════════════════════════
-  // Misc routes (extracted to misc-routes.ts)
-  // ═══════════════════════════════════════════════════════════════════════
   if (
     await handleMiscRoutes({
       req,

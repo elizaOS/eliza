@@ -1,12 +1,9 @@
 /**
- * CREDENTIALS umbrella — Audit B Defer #5.
+ * CREDENTIALS umbrella — folds browser-extension form fill (AUTOFILL) and
+ * password manager CLI clipboard inject (PASSWORD_MANAGER) into a single
+ * umbrella keyed only by action name (the verbs are unique across the union).
  *
- * Folds the previous standalone `AUTOFILL` (browser-extension form fill, 3
- * actions) and `PASSWORD_MANAGER` (1Password / ProtonPass CLI clipboard
- * inject, 4 actions) actions into a single umbrella keyed only by the
- * action name (no `target` field - the verbs are unique across the union).
- *
- * Action enum (union of both legacy surfaces):
+ * Actions:
  *   fill | whitelist_add | whitelist_list -> AUTOFILL backend
  *   search | list | inject_username | inject_password -> PASSWORD_MANAGER backend
  */

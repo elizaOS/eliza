@@ -7,7 +7,7 @@
  * It never treats missing measurements as pass evidence.
  */
 
-import { execSync } from "node:child_process";
+import { execFileSync, execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -48,8 +48,14 @@ function parseArgs(argv) {
       process.env.ELIZA1_SOAK_INTERVAL_MS || "30000",
       10,
     ),
+    soakWarmupRequests: Number.parseInt(
+      process.env.ELIZA1_SOAK_WARMUP_REQUESTS || "0",
+      10,
+    ),
     metricsUrl: process.env.ELIZA1_METRICS_URL?.trim() || "",
     rssCommand: process.env.ELIZA1_RSS_COMMAND?.trim() || "",
+    rssSshTarget: process.env.ELIZA1_RSS_SSH_TARGET?.trim() || "",
+    rssSshPort: process.env.ELIZA1_RSS_SSH_PORT?.trim() || "22",
     failoverFallbackUrl: process.env.ELIZA1_FAILOVER_FALLBACK_URL?.trim() || "",
     failoverKillCommand: process.env.ELIZA1_FAILOVER_KILL_COMMAND?.trim() || "",
     failoverKilledNode: process.env.ELIZA1_FAILOVER_KILLED_NODE?.trim() || "",
@@ -85,8 +91,12 @@ function parseArgs(argv) {
     else if (arg === "--soak-ms") args.soakMs = Number.parseInt(next(), 10);
     else if (arg === "--soak-interval-ms")
       args.soakIntervalMs = Number.parseInt(next(), 10);
+    else if (arg === "--soak-warmup-requests")
+      args.soakWarmupRequests = Number.parseInt(next(), 10);
     else if (arg === "--metrics-url") args.metricsUrl = next();
     else if (arg === "--rss-command") args.rssCommand = next();
+    else if (arg === "--rss-ssh-target") args.rssSshTarget = next();
+    else if (arg === "--rss-ssh-port") args.rssSshPort = next();
     else if (arg === "--failover-fallback-url")
       args.failoverFallbackUrl = next();
     else if (arg === "--failover-kill-command")
@@ -238,11 +248,27 @@ function mergeStreamingToolCall(acc, delta) {
 
 async function chatCompletion(args, body, baseUrl = args.baseUrl) {
   const started = performance.now();
-  const res = await fetch(`${baseUrl}/v1/chat/completions`, {
-    method: "POST",
-    headers: authHeaders(args),
-    body: JSON.stringify(body),
-  });
+  let res;
+  try {
+    res = await fetch(`${baseUrl}/v1/chat/completions`, {
+      method: "POST",
+      headers: authHeaders(args),
+      body: JSON.stringify(body),
+    });
+  } catch (error) {
+    const latencyMs = Math.round(performance.now() - started);
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      ok: false,
+      status: 0,
+      text: message,
+      json: null,
+      latencyMs,
+      content: "",
+      toolCalls: [],
+      usage: null,
+    };
+  }
   const text = await res.text();
   const latencyMs = Math.round(performance.now() - started);
   let json = null;
@@ -580,6 +606,30 @@ async function runBurst(args) {
 }
 
 async function scrapeResidentMemoryBytes(args) {
+  if (args.rssSshTarget) {
+    const output = execFileSync(
+      "ssh",
+      [
+        "-o",
+        "StrictHostKeyChecking=no",
+        "-p",
+        args.rssSshPort,
+        args.rssSshTarget,
+        [
+          "p=$(pgrep -o llama-server)",
+          'test -n "$p"',
+          'while read key value rest; do if [ "$key" = "VmRSS:" ]; then echo $((value * 1024)); exit 0; fi; done < "/proc/$p/status"',
+          "exit 1",
+        ].join("; "),
+      ],
+      {
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "pipe"],
+      },
+    ).trim();
+    const parsed = Number(output.split(/\s+/)[0]);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
   if (args.rssCommand) {
     const output = execSync(args.rssCommand, {
       encoding: "utf8",
@@ -606,6 +656,29 @@ async function scrapeResidentMemoryBytes(args) {
 }
 
 async function runSoak(args) {
+  const warmupResults = [];
+  for (let index = 0; index < args.soakWarmupRequests; index += 1) {
+    const result = await chatCompletion(args, {
+      model: args.model,
+      messages: [
+        {
+          role: "user",
+          content: `Reply with exactly: soak-warmup-${index}`,
+        },
+      ],
+      temperature: 0,
+      max_tokens: 12,
+      stream: false,
+    });
+    const contentOk = result.content
+      .toLowerCase()
+      .includes(`soak-warmup-${index}`);
+    warmupResults.push({
+      ok: result.ok && contentOk,
+      status: result.status,
+      latencyMs: result.latencyMs,
+    });
+  }
   const startRss = await scrapeResidentMemoryBytes(args);
   const startedAt = performance.now();
   const results = [];
@@ -636,7 +709,8 @@ async function runSoak(args) {
   const endRss = await scrapeResidentMemoryBytes(args);
   const durationMs = Math.round(performance.now() - startedAt);
   const errors = results.filter((result) => !result.ok).length;
-  const crashFree = errors === 0;
+  const warmupErrors = warmupResults.filter((result) => !result.ok).length;
+  const crashFree = errors === 0 && warmupErrors === 0;
   const rssDeltaBytes =
     startRss !== null && endRss !== null
       ? Math.max(0, endRss - startRss)
@@ -653,6 +727,8 @@ async function runSoak(args) {
     baseUrl: args.baseUrl,
     model: args.model,
     durationMs,
+    soakWarmupRequests: args.soakWarmupRequests,
+    warmupErrors,
     requests: results.length,
     crashFree,
     rssLeakWithinBudget,

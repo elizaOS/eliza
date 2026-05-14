@@ -24,7 +24,7 @@ type ElizaCloudRoutesModule = {
 async function loadElizaCloudRoutes(): Promise<ElizaCloudRoutesModule> {
   return import(
     "@elizaos/plugin-elizacloud"
-  ) as Promise<ElizaCloudRoutesModule>;
+  ) as unknown as Promise<ElizaCloudRoutesModule>;
 }
 
 export async function handleCloudBillingRoute(

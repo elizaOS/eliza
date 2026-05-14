@@ -187,16 +187,16 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 // inside the elizaOS source checkout it's the elizaOS repo root.
 const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
 
-// elizaOS/llama.cpp @ v1.0.0-eliza (same tree as the prior v0.4.0-eliza tag,
-// commit 08032d57 — re-tagged on the elizaOS rename). Composes TBQ (apothic) +
+// elizaOS/llama.cpp @ 33c888a7b. Composes TBQ (apothic) +
 // QJL (W1-A) + Q4_POLAR (W1-B) + Metal sources (W1-D) + DFlash spec-decode
 // (W2) + W3-B fused CPU kernels + W4-B CUDA QJL/Polar/TBQ3_TCQ kernels onto
-// upstream b8198. See the fork consolidation strategy doc for the full
+// upstream b9213. See docs/porting/unified-fork-strategy.md for the full
 // migration story.
 //
-// The fork ships in-tree as the git submodule at packages/inference/llama.cpp
-// (next to the dflash build at scripts/build-llama-cpp-dflash.mjs — same
-// pinned commit so both build paths land on identical kernels). When that
+// The fork ships in-tree as the git submodule at
+// plugins/plugin-local-inference/native/llama.cpp (next to the DFlash build at
+// scripts/build-llama-cpp-dflash.mjs — same pinned commit so both build paths
+// land on identical kernels). When that
 // submodule is initialized this path defaults to it (no clone needed); pass
 // `--src-dir` to point at another checkout, or `--cache-dir` to force a
 // standalone clone of `${LLAMA_CPP_REMOTE}` at `${LLAMA_CPP_TAG}`.
@@ -208,16 +208,19 @@ const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
 // baked in. apply-patches.mjs is kept around for one release as a
 // rollback path; see scripts/aosp/llama-cpp-patches/README.md.
 export const LLAMA_CPP_TAG = "v1.2.0-eliza";
-export const LLAMA_CPP_COMMIT = "a61c93aa";
+export const LLAMA_CPP_COMMIT = "33c888a7be0b0b8ffb54cd3f0e05b4bed20cc52e";
 export const LLAMA_CPP_REMOTE = "https://github.com/elizaOS/llama.cpp.git";
 export const MIN_ZIG_VERSION = "0.13.0";
+const SWA_SPEC_DECODE_FALLBACK_COMMIT =
+  "2fdfa49b95f1e39f3c208a9d6d5bdfd7d1bf527d";
 
-// The in-repo submodule checkout of the fork (packages/inference/llama.cpp).
+// The in-repo submodule checkout of the fork.
 // `repoRoot` resolves to the repo root that contains a top-level package.json.
 const LLAMA_CPP_SUBMODULE_DIR = path.join(
   repoRoot,
-  "packages",
-  "inference",
+  "plugins",
+  "plugin-local-inference",
+  "native",
   "llama.cpp",
 );
 // True when the submodule is checked out (has a worktree). When so, the AOSP
@@ -389,7 +392,7 @@ export function parseArgs(argv) {
           "  --src-dir <PATH>  Use an existing llama.cpp checkout instead of the\n" +
           "                    in-repo submodule / a fresh clone. The directory's HEAD\n" +
           "                    is used as-is; the pinned LLAMA_CPP_TAG/COMMIT is ignored.\n" +
-          `  Default source:   the git submodule packages/inference/llama.cpp\n` +
+          `  Default source:   the git submodule plugins/plugin-local-inference/native/llama.cpp\n` +
           `                    (elizaOS/llama.cpp @ ${LLAMA_CPP_TAG}) when initialized;\n` +
           `                    otherwise a standalone clone under --cache-dir.\n` +
           "  --cache-dir <PATH>  Force the standalone-clone path even when the submodule\n" +
@@ -518,6 +521,7 @@ export function ensureLlamaCppCheckout({
     log(`[compile-libllama] Reusing cached llama.cpp checkout at ${cacheDir}`);
     patchLlamaCppSourceForMusl({ srcDir: cacheDir, log });
     applyVendoredPatches({ srcDir: cacheDir, log });
+    assertSwaSpecDecodeFallback({ srcDir: cacheDir });
     return cacheDir;
   }
   if (!fs.existsSync(path.join(cacheDir, ".git"))) {
@@ -1674,12 +1678,14 @@ export async function main(argv = process.argv.slice(2)) {
       );
       run("git", ["-C", srcDir, "checkout", "--", "."], {});
       run("git", ["-C", srcDir, "clean", "-fdx"], {});
-      srcDescription = `submodule packages/inference/llama.cpp @ ${headRef.slice(0, 12)}`;
+      assertSwaSpecDecodeFallback({ srcDir });
+      srcDescription = `submodule plugins/plugin-local-inference/native/llama.cpp @ ${headRef.slice(0, 12)}`;
     } else {
       console.log(
         `[compile-libllama] Using --src-dir ${srcDir} (HEAD: ${headRef}); ` +
           `pinned tag ${LLAMA_CPP_TAG} ignored.`,
       );
+      assertSwaSpecDecodeFallback({ srcDir });
       srcDescription = `external src-dir ${srcDir}`;
     }
   } else {
@@ -1773,8 +1779,9 @@ export async function mainTargets(args) {
     const isSubmodule =
       path.resolve(srcDir) === path.resolve(LLAMA_CPP_SUBMODULE_DIR);
     srcDescription = isSubmodule
-      ? `submodule packages/inference/llama.cpp`
+      ? `submodule plugins/plugin-local-inference/native/llama.cpp`
       : `external src-dir ${srcDir}`;
+    if (!args.dryRun) assertSwaSpecDecodeFallback({ srcDir });
   } else if (args.dryRun) {
     // In a dry run with no --src-dir and no submodule, just describe the
     // intended cache path; we never clone in dry-run.

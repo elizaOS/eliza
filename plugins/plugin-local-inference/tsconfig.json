@@ -20,6 +20,9 @@
 			"@elizaos/plugin-local-inference/*": ["./src/*"],
 			"@elizaos/core": ["../../packages/core/src/index.node.ts"],
 			"@elizaos/shared": ["../../packages/shared/src/index.ts"],
+			"@elizaos/shared/local-inference": [
+				"../../packages/shared/src/local-inference/index.ts"
+			],
 			"@elizaos/shared/*": ["../../packages/shared/src/*"],
 			"@elizaos/plugin-capacitor-bridge": [
 				"../plugin-capacitor-bridge/src/index.ts"

@@ -21,8 +21,7 @@ import { useConnectorSendAsAccount } from "../../hooks/useConnectorSendAsAccount
 import { useVoiceChat } from "../../hooks/useVoiceChat";
 import {
   buildAssistantLaunchMetadata,
-  clearAssistantLaunchPayloadFromHash,
-  readAssistantLaunchPayloadFromHash,
+  claimAssistantLaunchPayloadFromHash,
 } from "../../platform/assistant-launch-payload";
 import { useApp } from "../../state";
 import { AccountRequiredCard } from "../chat/AccountRequiredCard";
@@ -180,7 +179,6 @@ export function PageScopedChatPane({
   const scrollRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const conversationAdapterRef = useRef(conversationAdapter);
-  const assistantLaunchHandledRef = useRef<string | null>(null);
 
   const [conversation, setConversation] = useState<Conversation | null>(null);
   const [messages, setMessages] = useState<PageScopedMessage[]>([]);
@@ -675,11 +673,11 @@ export function PageScopedChatPane({
     if (!conversation || sending) return;
 
     const consumeLaunchPayload = () => {
-      const payload = readAssistantLaunchPayloadFromHash(window.location.hash);
-      if (!payload || payload.route !== "lifeops") return;
-      if (assistantLaunchHandledRef.current === payload.launchId) return;
-      assistantLaunchHandledRef.current = payload.launchId;
-      clearAssistantLaunchPayloadFromHash();
+      const payload = claimAssistantLaunchPayloadFromHash(
+        window.location.hash,
+        { allowedRoutes: ["lifeops"] },
+      );
+      if (!payload) return;
       void handleSend({
         metadata: buildAssistantLaunchMetadata(payload),
         text: payload.text,

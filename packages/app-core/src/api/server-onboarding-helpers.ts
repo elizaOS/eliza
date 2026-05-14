@@ -24,17 +24,8 @@ import {
   PREMADE_VOICES,
   type ServiceRoutingConfig,
 } from "@elizaos/shared";
+import { getCompatApiToken } from "./auth";
 import { resolveProviderCredential } from "./credential-resolver";
-
-// ---------------------------------------------------------------------------
-// Internal helpers
-// ---------------------------------------------------------------------------
-
-/** Resolve the API token using app-first priority. */
-function getCompatApiToken(): string | null {
-  const token = process.env.ELIZA_API_TOKEN?.trim();
-  return token ? token : null;
-}
 
 // ---------------------------------------------------------------------------
 // Onboarding API key persistence
@@ -356,15 +347,10 @@ export function deriveCompatOnboardingReplayBody(
 /**
  * Check if this is a cloud-provisioned container.
  *
- * METADATA-ONLY as of P0 of the remote-auth hardening. This function now
- * exists strictly so unrelated routes (e.g. `/api/cloud/status`) can branch
- * on cloud-provisioned shape. It does NOT authorise anything: callers must
- * still pass through `ensureCompatApiAuthorized` (bearer token) or — once
- * the dashboard mints sessions — `ensureAuthSessionOrBootstrap`. The
- * audited bypasses at `auth-pairing-routes.ts:124,140` and the
- * onboarding-skip used to read this; both have been removed.
- *
- * See `docs/security/remote-auth-hardening-plan.md` §3.4.
+ * METADATA-ONLY. This function exists so routes like `/api/cloud/status` can
+ * branch on cloud-provisioned shape. It does NOT authorise anything: callers
+ * must still pass through `ensureCompatApiAuthorized` (bearer token) or
+ * `ensureAuthSessionOrBootstrap`.
  */
 export function isCloudProvisioned(): boolean {
   const hasCloudFlag = process.env.ELIZA_CLOUD_PROVISIONED === "1";

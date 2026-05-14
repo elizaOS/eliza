@@ -775,7 +775,10 @@ def stage_assets(args: argparse.Namespace) -> dict[str, Any]:
     asr_repo = args.asr_repo or ASR_REPO_BY_TIER[tier]
     HfApi, _ = require_hf_hub()
     api = HfApi()
-    revision_repos = [VOICE_REPO, asr_repo, VAD_NATIVE_REPO]
+    voice_backends = VOICE_BACKENDS_BY_TIER[tier]
+    revision_repos = [asr_repo, VAD_NATIVE_REPO]
+    if "omnivoice" in voice_backends:
+        revision_repos.append(VOICE_REPO)
     if args.include_vad_onnx_fallback:
         revision_repos.append(VAD_ONNX_REPO)
     revisions = resolve_revisions(api, tuple(revision_repos))
@@ -795,7 +798,9 @@ def stage_assets(args: argparse.Namespace) -> dict[str, Any]:
     # packages/shared/src/local-inference/catalog.ts:voiceQuantLadderForTier
     # and docs/inference/voice-quant-matrix.md.
     voice_quants: tuple[str, ...]
-    if getattr(args, "include_voice_ladder", False):
+    if "omnivoice" not in voice_backends:
+        voice_quants = ()
+    elif getattr(args, "include_voice_ladder", False):
         ladder = VOICE_QUANT_LADDER_BY_TIER.get(tier, ())
         voice_quants = tuple(ladder) if ladder else ()
     else:
@@ -1147,7 +1152,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         help=(
             "Stage every OmniVoice K-quant level declared in "
             "VOICE_QUANT_LADDER_BY_TIER (Q3_K_M, Q4_K_M, Q5_K_M, Q6_K, Q8_0 "
-            "for 9b+ tiers; nothing for Kokoro-only tiers) under "
+            "for 9b+ tiers) under "
             "tts/omnivoice-base-<level>.gguf and tts/omnivoice-tokenizer-"
             "<level>.gguf. Without this flag only the runtime's preferred "
             "quant (VOICE_QUANT_BY_TIER) is staged. The downloader picks "

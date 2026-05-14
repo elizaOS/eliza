@@ -59,7 +59,6 @@ const CONNECTORS: ConnectorTarget[] = [
     file: "plugins/plugin-discord/setup-routes.ts",
     exportName: "discordSetupRoutes",
     migrated: true,
-    hasDataRoutes: true,
   },
   {
     connector: "telegram",
@@ -78,14 +77,12 @@ const CONNECTORS: ConnectorTarget[] = [
     file: "plugins/plugin-imessage/src/setup-routes.ts",
     exportName: "imessageSetupRoutes",
     migrated: true,
-    hasDataRoutes: true,
   },
   {
     connector: "bluebubbles",
     file: "plugins/plugin-bluebubbles/src/setup-routes.ts",
     exportName: "blueBubblesSetupRoutes",
     migrated: true,
-    hasDataRoutes: true,
   },
 ];
 

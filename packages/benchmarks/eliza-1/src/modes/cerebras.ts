@@ -3,8 +3,10 @@
  *
  * Calls Cerebras's OpenAI-compatible chat completions endpoint
  * (`https://api.cerebras.ai/v1/chat/completions`) with the request's JSON
- * schema threaded as an OpenAI-style `tools` / `tool_choice` argument. The
- * model's tool call is unwrapped to JSON for parity with the eliza-1 modes.
+ * schema threaded as an OpenAI-style `tools` / `tool_choice` argument. If the
+ * tool path returns no text, falls back to JSON-schema response mode and then
+ * prompt-only JSON. The model's structured output is unwrapped to JSON for
+ * parity with the eliza-1 modes.
  *
  * Default model is `llama3.1-8b` — the baseline for eliza-1 tiers 0.8B
  * through 9B. For the 27B tier (which should be benched on an H200), pass
@@ -54,6 +56,16 @@ interface CerebrasRequest {
     type: "function";
     function: { name: string };
   };
+  response_format?:
+    | { type: "json_object" }
+    | {
+        type: "json_schema";
+        json_schema: {
+          name: string;
+          strict: boolean;
+          schema: JsonValue;
+        };
+      };
 }
 
 interface CerebrasResponse {
@@ -82,6 +94,29 @@ export interface CerebrasModeOptions {
   endpoint?: string;
   /** Optional injection point for tests. */
   client?: CerebrasClient;
+}
+
+type CerebrasAttemptKind = "tool-use" | "json-schema" | "prompt-only";
+
+interface CerebrasAttempt {
+  kind: CerebrasAttemptKind;
+  request: CerebrasRequest;
+}
+
+interface ExtractedOutput {
+  rawOutput: string;
+  tokens: number;
+  emptyDiagnostic: string | null;
+}
+
+export class CerebrasAdapterError extends Error {
+  readonly attemptErrors: string[];
+
+  constructor(message: string, attemptErrors: string[]) {
+    super(message);
+    this.name = "CerebrasAdapterError";
+    this.attemptErrors = attemptErrors;
+  }
 }
 
 export class CerebrasMode implements ModeAdapter {
@@ -131,51 +166,127 @@ export class CerebrasMode implements ModeAdapter {
     messages.push({ role: "user", content: req.userPrompt });
 
     const startedAt = Date.now();
-    try {
-      const response = await this.client.chatCompletions({
-        model: this.model,
-        max_tokens: req.maxTokens,
+    const warnings: string[] = [];
+    const transportErrors: string[] = [];
+    const emptyDiagnostics: string[] = [];
+    let lastTokens = 0;
+    const attempts = buildAttempts({
+      model: this.model,
+      maxTokens: req.maxTokens,
+      taskId: req.taskId,
+      toolName,
+      parameters,
+      messages,
+    });
+
+    for (const attempt of attempts) {
+      try {
+        const response = await this.client.chatCompletions(attempt.request);
+        const totalLatencyMs = Date.now() - startedAt;
+        const extracted = extractRawOutput(response, attempt.kind);
+        lastTokens = extracted.tokens;
+        if (extracted.emptyDiagnostic) {
+          emptyDiagnostics.push(extracted.emptyDiagnostic);
+          warnings.push(extracted.emptyDiagnostic);
+          continue;
+        }
+        return {
+          rawOutput: extracted.rawOutput,
+          firstTokenLatencyMs: null,
+          totalLatencyMs,
+          tokensGenerated: extracted.tokens,
+          warnings: warnings.length > 0 ? warnings : undefined,
+        };
+      } catch (err) {
+        const message = `${attempt.kind}: ${formatErrorMessage(err)}`;
+        transportErrors.push(message);
+        warnings.push(message);
+      }
+    }
+
+    const totalLatencyMs = Date.now() - startedAt;
+    if (transportErrors.length > 0) {
+      throw new CerebrasAdapterError(
+        [
+          "cerebras adapter failed before producing a usable benchmark response",
+          ...emptyDiagnostics,
+          ...transportErrors,
+        ].join("; "),
+        transportErrors,
+      );
+    }
+
+    return {
+      rawOutput: "",
+      firstTokenLatencyMs: null,
+      totalLatencyMs,
+      tokensGenerated: lastTokens,
+      warnings,
+      error: [
+        "cerebras returned empty output after tool-use, json-schema, and prompt-only attempts",
+        ...emptyDiagnostics,
+      ].join("; "),
+    };
+  }
+}
+
+function buildAttempts(args: {
+  model: string;
+  maxTokens: number;
+  taskId: string;
+  toolName: string;
+  parameters: JsonValue;
+  messages: CerebrasRequest["messages"];
+}): CerebrasAttempt[] {
+  const jsonMessages = buildJsonMessages(args.messages, args.parameters);
+  return [
+    {
+      kind: "tool-use",
+      request: {
+        model: args.model,
+        max_tokens: args.maxTokens,
         temperature: 0,
-        messages,
+        messages: args.messages,
         tools: [
           {
             type: "function",
             function: {
-              name: toolName,
-              description: `Emit the structured output for task ${req.taskId}.`,
-              parameters,
+              name: args.toolName,
+              description: `Emit the structured output for task ${args.taskId}.`,
+              parameters: args.parameters,
             },
           },
         ],
-        tool_choice: { type: "function", function: { name: toolName } },
-      });
-      const totalLatencyMs = Date.now() - startedAt;
-      const first = response.choices[0];
-      const toolCall = first?.message.tool_calls?.[0];
-      let rawOutput = "";
-      if (toolCall) {
-        rawOutput = toolCall.function.arguments;
-      } else if (first?.message.content) {
-        rawOutput = first.message.content;
-      }
-      const usage = response.usage;
-      const tokens = usage ? usage.completion_tokens : approxTokens(rawOutput);
-      return {
-        rawOutput,
-        firstTokenLatencyMs: null,
-        totalLatencyMs,
-        tokensGenerated: tokens,
-      };
-    } catch (err) {
-      return {
-        rawOutput: "",
-        firstTokenLatencyMs: null,
-        totalLatencyMs: Date.now() - startedAt,
-        tokensGenerated: 0,
-        error: err instanceof Error ? err.message : String(err),
-      };
-    }
-  }
+        tool_choice: { type: "function", function: { name: args.toolName } },
+      },
+    },
+    {
+      kind: "json-schema",
+      request: {
+        model: args.model,
+        max_tokens: args.maxTokens,
+        temperature: 0,
+        messages: jsonMessages,
+        response_format: {
+          type: "json_schema",
+          json_schema: {
+            name: responseFormatName(args.toolName),
+            strict: true,
+            schema: args.parameters,
+          },
+        },
+      },
+    },
+    {
+      kind: "prompt-only",
+      request: {
+        model: args.model,
+        max_tokens: args.maxTokens,
+        temperature: 0,
+        messages: jsonMessages,
+      },
+    },
+  ];
 }
 
 function createFetchClient(endpoint: string, apiKey: string): CerebrasClient {
@@ -196,6 +307,104 @@ function createFetchClient(endpoint: string, apiKey: string): CerebrasClient {
       return (await res.json()) as CerebrasResponse;
     },
   };
+}
+
+function buildJsonMessages(
+  messages: CerebrasRequest["messages"],
+  parameters: JsonValue,
+): CerebrasRequest["messages"] {
+  const out = messages.map((message) => ({ ...message }));
+  const jsonInstruction =
+    "Return only a JSON object that matches the requested schema. Do not include markdown fences, prose, comments, or tool-call wrappers.";
+  if (out[0]?.role === "system") {
+    out[0] = {
+      ...out[0],
+      content: `${out[0].content}\n${jsonInstruction}`,
+    };
+  } else {
+    out.unshift({ role: "system", content: jsonInstruction });
+  }
+  out.push({
+    role: "user",
+    content: [
+      "Use this JSON schema for the response object:",
+      JSON.stringify(parameters),
+    ].join("\n"),
+  });
+  return out;
+}
+
+function responseFormatName(toolName: string): string {
+  const cleaned = toolName.replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 64);
+  return cleaned || "eliza_1_response";
+}
+
+function extractRawOutput(
+  response: CerebrasResponse,
+  attemptKind: CerebrasAttemptKind,
+): ExtractedOutput {
+  const first = response.choices[0];
+  const toolCalls = first?.message.tool_calls ?? [];
+  for (const toolCall of toolCalls) {
+    const args = toolCall.function.arguments;
+    if (typeof args === "string" && args.trim().length > 0) {
+      return {
+        rawOutput: args,
+        tokens: response.usage?.completion_tokens ?? approxTokens(args),
+        emptyDiagnostic: null,
+      };
+    }
+  }
+
+  const content = first?.message.content;
+  if (typeof content === "string" && content.trim().length > 0) {
+    return {
+      rawOutput: content,
+      tokens: response.usage?.completion_tokens ?? approxTokens(content),
+      emptyDiagnostic: null,
+    };
+  }
+
+  const tokens = response.usage?.completion_tokens ?? 0;
+  return {
+    rawOutput: "",
+    tokens,
+    emptyDiagnostic: describeEmptyResponse(response, attemptKind, tokens),
+  };
+}
+
+function describeEmptyResponse(
+  response: CerebrasResponse,
+  attemptKind: CerebrasAttemptKind,
+  completionTokens: number,
+): string {
+  const first = response.choices[0];
+  const content = first?.message.content;
+  const contentChars = typeof content === "string" ? content.length : 0;
+  const contentState =
+    content === null
+      ? "null"
+      : typeof content === "string"
+        ? `${contentChars} chars`
+        : "missing";
+  const details = [
+    `choices=${response.choices.length}`,
+    `finish_reason=${first?.finish_reason ?? "missing"}`,
+    `tool_calls=${first?.message.tool_calls?.length ?? 0}`,
+    `content=${contentState}`,
+    `completion_tokens=${completionTokens}`,
+  ].join(", ");
+  return `cerebras ${attemptKind} returned empty output (${details})`;
+}
+
+function formatErrorMessage(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  if (typeof err === "string") return err;
+  try {
+    return JSON.stringify(err);
+  } catch {
+    return String(err);
+  }
 }
 
 /**

@@ -84,6 +84,20 @@ describe("coding-tools terminal capability detection", () => {
     expect(support.reason).toBe("vanilla_mobile");
   });
 
+  it("rejects Play/store Android even when local-yolo has a staged shell", () => {
+    const shell = executable("sh");
+    process.env.ELIZA_BUILD_VARIANT = "store";
+    process.env.ELIZA_PLATFORM = "android";
+    process.env.ELIZA_RUNTIME_MODE = "local-yolo";
+    process.env.CODING_TOOLS_SHELL = shell;
+    process.env.PATH = tempDir;
+
+    const support = detectTerminalSupport();
+
+    expect(support.supported).toBe(false);
+    expect(support.reason).toBe("store_build");
+  });
+
   it("rejects iOS terminal support", () => {
     process.env.ELIZA_PLATFORM = "ios";
     process.env.ELIZA_RUNTIME_MODE = "local-yolo";

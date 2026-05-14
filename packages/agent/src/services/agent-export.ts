@@ -24,6 +24,7 @@ import { createGunzip, gzipSync } from "node:zlib";
 import type {
   Agent,
   AgentRuntime,
+  Character,
   Component,
   Entity,
   Log,
@@ -85,7 +86,7 @@ export interface AgentExportPayload {
    *  fields not persisted to the DB agent record (style, topics, adjectives,
    *  messageExamples, postExamples, knowledge sources, etc.). On import, this
    *  is merged with the agent record to reconstruct the full character. */
-  characterConfig?: Record<string, unknown>;
+  characterConfig?: Omit<Character, "secrets">;
   entities: Entity[];
   memories: Memory[];
   components: Component[];
@@ -170,7 +171,10 @@ const PayloadSchema = z.object({
       typeof value === "object" && value !== null && !Array.isArray(value),
     { message: "Expected agent object" },
   ),
-  characterConfig: z.record(z.string(), z.unknown()).optional(),
+  characterConfig: z
+    .record(z.string(), z.unknown())
+    .optional()
+    .transform((v) => v as Omit<Character, "secrets"> | undefined),
   entities: z.array(EntitySchema),
   memories: z.array(MemorySchema),
   components: z.array(ComponentSchema),
@@ -559,14 +563,11 @@ async function extractAgentData(
   // 10. Runtime character config — captures fields from buildCharacterFromConfig
   // that may not be persisted in the DB agent record (style, topics, adjectives,
   // messageExamples, postExamples, knowledge sources, etc.)
-  let characterConfig: Record<string, unknown> | undefined;
+  let characterConfig: Omit<Character, "secrets"> | undefined;
   if (runtime.character) {
     // Clone and strip secrets/sensitive fields
-    const { secrets, ...safeChar } = runtime.character;
-    characterConfig = Object.fromEntries(Object.entries(safeChar)) as Record<
-      string,
-      unknown
-    >;
+    const { secrets: _secrets, ...safeChar } = runtime.character;
+    characterConfig = safeChar;
     logger.info(
       `[agent-export] Captured runtime character config (${Object.keys(safeChar).length} fields)`,
     );
@@ -629,11 +630,14 @@ async function restoreAgentData(
   // 1. Create agent — merge characterConfig (if present) as a base so
   //    style/topics/adjectives/messageExamples survive the round-trip even
   //    if the DB agent record didn't persist them.
-  const charBase = payload.characterConfig
-    ? { ...payload.characterConfig }
-    : {};
-  // Remove secrets that may have leaked into characterConfig
-  delete charBase.secrets;
+  // Spread and explicitly exclude secrets. characterConfig is already typed as
+  // Omit<Character, "secrets">, but strip the field defensively for runtime safety.
+  const { secrets: _secrets, ...charBase } = payload.characterConfig
+    ? ({ ...payload.characterConfig } as { secrets?: unknown } & Record<
+        string,
+        unknown
+      >)
+    : ({} as { secrets?: unknown } & Record<string, unknown>);
 
   const agentData = { ...charBase, ...payload.agent } as Partial<Agent>;
   agentData.id = newAgentId;

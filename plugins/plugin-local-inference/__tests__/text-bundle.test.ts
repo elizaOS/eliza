@@ -9,7 +9,7 @@
  *   - the bundle's drafter GGUF path is declared (DFlash speculative
  *     decoding companion),
  *   - the HuggingFace resolve URL for the text and embedding components
- *     resolves to `elizaos/eliza-1` and includes the expected
+ *     resolves to `elizalabs/eliza-1` and includes the expected
  *     per-tier prefix.
  *
  * Why this matters: the publish pipeline stages a bundle per tier; if a
@@ -34,6 +34,7 @@ import {
 
 const TIERS_WITHOUT_DEDICATED_EMBEDDING: ReadonlySet<string> = new Set([
 	"eliza-1-0_8b",
+	"eliza-1-2b",
 ]);
 
 describe("per-tier text + embedding bundle resolution", () => {
@@ -82,7 +83,7 @@ describe("per-tier text + embedding bundle resolution", () => {
 				}
 			});
 
-			it("resolves the text component to a HuggingFace URL on elizaos/eliza-1", () => {
+			it("resolves the text component to a HuggingFace URL on elizalabs/eliza-1", () => {
 				const file = model?.sourceModel?.components.text?.file;
 				expect(file).toBeTruthy();
 				if (!model || !file) return;

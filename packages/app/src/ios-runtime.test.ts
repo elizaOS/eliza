@@ -50,4 +50,16 @@ describe("resolveIosRuntimeConfig", () => {
       apiToken: "android-token",
     });
   });
+
+  it("marks the App Store-safe full Bun runtime as available", () => {
+    const config = resolveIosRuntimeConfig({
+      VITE_ELIZA_IOS_RUNTIME_MODE: "cloud",
+      VITE_ELIZA_IOS_FULL_BUN_AVAILABLE: "1",
+    });
+
+    expect(config).toMatchObject({
+      mode: "cloud",
+      fullBun: true,
+    });
+  });
 });

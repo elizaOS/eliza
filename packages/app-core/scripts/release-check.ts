@@ -8,6 +8,7 @@ import {
   findLocalPackHotspots,
   shouldSkipExactPackDryRun,
 } from "./lib/release-check-pack-dry-run";
+import { assertReviewedAppleStoreEntitlements } from "./lib/apple-entitlement-audit.mjs";
 import { validateStaticAssetManifest } from "./lib/static-asset-manifest.mjs";
 
 type PackFile = { path: string };
@@ -40,14 +41,36 @@ const orchestratorPluginPackageJsonPathCandidates = [
 ] as const;
 const autonomousServerPathCandidates = [
   "node_modules/@elizaos/agent/src/api/server.js",
+  "packages/agent/src/api/server.ts",
   "eliza/packages/agent/src/api/server.ts",
 ] as const;
 const autonomousElizaPathCandidates = [
   "node_modules/@elizaos/agent/src/runtime/eliza.js",
+  "packages/agent/src/runtime/eliza.ts",
   "eliza/packages/agent/src/runtime/eliza.ts",
 ] as const;
 const homepageReleaseDataPathCandidates = [
   "apps/homepage/src/generated/release-data.ts",
+] as const;
+const patchedElectrobunCliHelperPathCandidates = [
+  "packages/app-core/scripts/build-patched-electrobun-cli.mjs",
+  "eliza/packages/app-core/scripts/build-patched-electrobun-cli.mjs",
+] as const;
+const cloudAgentTemplatePackageJsonPathCandidates = [
+  "packages/app-core/deploy/cloud-agent-template/package.json",
+  "eliza/packages/app-core/deploy/cloud-agent-template/package.json",
+] as const;
+const agentPackageJsonPathCandidates = [
+  "packages/agent/package.json",
+  "eliza/packages/agent/package.json",
+] as const;
+const innoBuildScriptPathCandidates = [
+  "packages/app-core/packaging/inno/build-inno.ps1",
+  "eliza/packages/app-core/packaging/inno/build-inno.ps1",
+] as const;
+const innoTemplatePathCandidates = [
+  "packages/app-core/packaging/inno/ElizaOSApp.iss",
+  "eliza/packages/app-core/packaging/inno/ElizaOSApp.iss",
 ] as const;
 
 function resolveExistingPath(candidates: readonly string[]) {
@@ -91,9 +114,9 @@ const requiredWorkflowSnippets = [
   "for attempt in 1 2 3; do",
   `bun install failed on attempt \${attempt}; retrying in 15 seconds`,
   "name: Ensure avatar assets",
-  "node eliza/packages/app-core/scripts/ensure-avatars.mjs",
+  "node packages/app-core/scripts/ensure-avatars.mjs",
   "name: Prepare Whisper model artifact",
-  "bash eliza/packages/app-core/platforms/electrobun/scripts/ensure-whisper-model.sh base.en",
+  "bash packages/app-core/platforms/electrobun/scripts/ensure-whisper-model.sh base.en",
   "name: Upload Whisper model artifact",
   "name: whisper-model-base-en",
   "Install quiet macOS packaging wrappers",
@@ -106,7 +129,7 @@ const requiredWorkflowSnippets = [
   "name: Download Whisper model artifact",
   "name: Seed Whisper model cache",
   "Stage desktop bundle inputs",
-  "node eliza/packages/app-core/scripts/desktop-build.mjs stage --variant=base --build-whisper",
+  "node packages/app-core/scripts/desktop-build.mjs stage --variant=base --build-whisper",
   "Inject version.json into bundle (Windows)",
   "Inject version.json into bundle (macOS / Linux)",
   '"identifier":"ai.elizaos.Eliza"',
@@ -130,7 +153,7 @@ const requiredWorkflowSnippets = [
   "packaging/inno/build-inno.ps1",
   '-BuildDir "C:\\e"',
   "Verify Windows public installer looks complete",
-  'Get-ChildItem -Path "eliza/packages/app-core/platforms/electrobun/artifacts" -File -Filter "ElizaOSApp-Setup-*.exe"',
+  'Get-ChildItem -Path "packages/app-core/platforms/electrobun/artifacts" -File -Filter "ElizaOSApp-Setup-*.exe"',
   "$minimumBytes = 50MB",
   "packages/app-core/platforms/electrobun/artifacts/*.exe",
   "name: Prepare public canary Windows installer artifact",
@@ -144,7 +167,7 @@ const requiredWorkflowSnippets = [
   "Prepared public canary installer artifact:",
   "name: Upload public canary installer artifact",
   "name: electrobun-$" + "{{ matrix.platform.artifact-name }}-public-installer",
-  "path: eliza/packages/app-core/platforms/electrobun/artifacts/public-canary-installer/ElizaOSApp-Setup-*.exe",
+  "path: packages/app-core/platforms/electrobun/artifacts/public-canary-installer/ElizaOSApp-Setup-*.exe",
   "name: Collect public release files",
   '-name "ElizaOSApp-Setup-*.exe" -o \\',
   '-name "ElizaOSApp-Setup-*.exe.zip" -o \\',
@@ -156,7 +179,7 @@ const requiredWorkflowSnippets = [
   "DMG attach attempt $attempt/5 failed",
   "name: Resolve electrobun package dir",
   "id: resolve-electrobun",
-  'const workspacePackageJson = path.resolve("eliza/packages/app-core/platforms/electrobun/package.json");',
+  'const workspacePackageJson = path.resolve("packages/app-core/platforms/electrobun/package.json");',
   'const entryPath = req.resolve("electrobun");',
   "Could not find electrobun package.json starting from",
   "Resolved unexpected package at",
@@ -164,10 +187,10 @@ const requiredWorkflowSnippets = [
   'echo "cache-dir=$package_dir/.cache"',
   "$" + "{{ steps.resolve-electrobun.outputs.cache-dir }}",
   "name: Build patched Electrobun CLI",
-  'node eliza/packages/app-core/scripts/build-patched-electrobun-cli.mjs "$' +
+  'node packages/app-core/scripts/build-patched-electrobun-cli.mjs "$' +
     '{{ steps.resolve-electrobun.outputs.package-dir }}"',
   '"${{ matrix.platform.artifact-name }}"',
-  "node eliza/packages/app-core/scripts/desktop-build.mjs package --env=$" +
+  "node packages/app-core/scripts/desktop-build.mjs package --env=$" +
     "{{ needs.prepare.outputs.env }}",
   "ELIZA_ELECTROBUN_NOTARIZE: 0",
   'ELIZA_DISABLE_LOCAL_EMBEDDINGS: "1"',
@@ -177,7 +200,7 @@ const requiredWorkflowSnippets = [
   "verify-windows-installer-proof.ps1",
   "ELIZA_TEST_WINDOWS_PROOF_INSTALL_DIR: $" + "{{ runner.temp }}\\el-proof",
   "name: Upload Windows installer proof artifact",
-  "path: eliza/packages/app-core/platforms/electrobun/artifacts/windows-installer-proof/**",
+  "path: packages/app-core/platforms/electrobun/artifacts/windows-installer-proof/**",
   "if: always() && matrix.platform.os == 'windows'",
   "ANTHROPIC_API_KEY: $" + "{{ secrets.ANTHROPIC_API_KEY }}",
   "ELIZAOS_CLOUD_API_KEY: $" +
@@ -248,7 +271,7 @@ const requiredElectrobunPrWorkflowSnippets = [
   'BUN_VERSION: "1.3.13"',
   "name: Release Workflow Contract",
   "bun install --ignore-scripts",
-  "bun run postinstall",
+  'run-postinstall: "true"',
   "bun run test:regression-matrix:release-contract",
   "bun run test:release:contract",
 ];
@@ -259,13 +282,36 @@ const forbiddenElectrobunPrWorkflowSnippets = [
   "draft: false",
   "secrets: inherit",
   "packages: write",
+  "not yet ported from eliza; skipping",
+  "test:regression-matrix:release-contract --help",
+  "test:release:contract --help",
 ];
+const requiredRootPackageScriptSnippets: Record<string, readonly string[]> = {
+  "audit:apple-store-sandbox": [
+    "bun run --cwd packages/app-core audit:apple-store-sandbox",
+  ],
+  "test:apple-entitlements": [
+    "bun run --cwd packages/app-core test:apple-entitlements",
+  ],
+  "release:check": ["packages/app-core/scripts/release-check.ts"],
+  "test:release:contract": [
+    "bun run audit:apple-store-sandbox",
+    "bun run test:apple-entitlements",
+    "packages/app-core/scripts/run-release-contract-suite.mjs",
+  ],
+  "test:regression-matrix:release": [
+    "packages/app-core/scripts/validate-regression-matrix.mjs --workflow release",
+  ],
+  "test:regression-matrix:release-contract": [
+    "packages/app-core/scripts/validate-regression-matrix.mjs --workflow release-contract",
+  ],
+};
 const requiredElectrobunConfigSnippets = [
   'postBuild: "scripts/postwrap-sign-runtime-macos.ts"',
   'postWrap: "scripts/postwrap-diagnostics.ts"',
   "process.env.ELIZA_ELECTROBUN_NOTARIZE !==",
-  "[repoPluginsJsonPath]: `${runtimeDistDir}/plugins.json`",
-  "[repoPackageJsonPath]: `${runtimeDistDir}/package.json`",
+  'copy[repoPluginsJsonPath] = `${runtimeDistDir}/plugins.json`',
+  'copy[repoPackageJsonPath] = `${runtimeDistDir}/package.json`',
 ];
 const electrobunDirCandidates = [
   resolve("packages", "app-core", "platforms", "electrobun"),
@@ -775,9 +821,9 @@ function assertOrchestratorVersionPinned() {
 
 function assertCloudAgentTemplateDependenciesUseWorkspace() {
   const cloudAgentPackage = JSON.parse(
-    readFileSync(
-      "eliza/packages/app-core/deploy/cloud-agent-template/package.json",
-      "utf8",
+    readExistingReleaseCheckFile(
+      "cloud agent template package.json",
+      cloudAgentTemplatePackageJsonPathCandidates,
     ),
   ) as RootPackageJson;
   const nonWorkspace = findNonWorkspaceDependencySpecs(
@@ -787,7 +833,7 @@ function assertCloudAgentTemplateDependenciesUseWorkspace() {
 
   if (nonWorkspace.length > 0) {
     console.error(
-      "release-check: eliza/packages/app-core/deploy/cloud-agent-template/package.json must use workspace:* for repo-local elizaOS dependencies. Materialize exact npm versions only at the deploy/publish boundary.",
+      "release-check: packages/app-core/deploy/cloud-agent-template/package.json must use workspace:* for repo-local elizaOS dependencies. Materialize exact npm versions only at the deploy/publish boundary.",
     );
     for (const dependency of nonWorkspace) {
       console.error(`  - ${dependency.name}: ${dependency.specifier}`);
@@ -801,7 +847,10 @@ function assertAgentDependenciesAlignedWithRootPins() {
     readFileSync("package.json", "utf8"),
   ) as RootPackageJson;
   const agentPackage = JSON.parse(
-    readFileSync("eliza/packages/agent/package.json", "utf8"),
+    readExistingReleaseCheckFile(
+      "agent package.json",
+      agentPackageJsonPathCandidates,
+    ),
   ) as RootPackageJson;
   const mismatches = findMismatchedSharedAgentDependencySpecs(
     rootPackage,
@@ -841,9 +890,9 @@ function assertReleaseWorkflowHasNotaryWrapper() {
     process.exit(1);
   }
 
-  const patchedCliHelper = readFileSync(
-    "eliza/packages/app-core/scripts/build-patched-electrobun-cli.mjs",
-    "utf8",
+  const patchedCliHelper = readExistingReleaseCheckFile(
+    "patched Electrobun CLI helper",
+    patchedElectrobunCliHelperPathCandidates,
   );
   const missingPatchedCli =
     findMissingPatchedElectrobunCliSnippets(patchedCliHelper);
@@ -903,6 +952,49 @@ function assertElectrobunPrWorkflowExists() {
     for (const snippet of forbidden) {
       console.error(`  - ${snippet}`);
     }
+    process.exit(1);
+  }
+}
+
+function assertRequiredRootPackageScripts() {
+  const packageJson = JSON.parse(readFileSync("package.json", "utf8"));
+  const scripts = packageJson.scripts ?? {};
+  const missing: string[] = [];
+
+  for (const [scriptName, requiredSnippets] of Object.entries(
+    requiredRootPackageScriptSnippets,
+  )) {
+    const scriptBody = scripts[scriptName];
+    if (typeof scriptBody !== "string") {
+      missing.push(`${scriptName} (missing script)`);
+      continue;
+    }
+    for (const snippet of requiredSnippets) {
+      if (!scriptBody.includes(snippet)) {
+        missing.push(`${scriptName}: ${snippet}`);
+      }
+    }
+  }
+
+  if (missing.length > 0) {
+    console.error(
+      "release-check: package.json is missing required release/audit script wiring:",
+    );
+    for (const entry of missing) {
+      console.error(`  - ${entry}`);
+    }
+    process.exit(1);
+  }
+}
+
+function assertAppleStoreSandboxAuditPasses() {
+  try {
+    execSync("node packages/app-core/scripts/audit-apple-store-sandbox.mjs", {
+      stdio: "inherit",
+      env: process.env,
+    });
+  } catch {
+    console.error("release-check: Apple store sandbox audit failed.");
     process.exit(1);
   }
 }
@@ -1102,9 +1194,9 @@ function assertWindowsInstallerProofScript() {
 }
 
 function assertInnoBuildScriptHasTimeoutAndHeartbeat() {
-  const script = readFileSync(
-    "eliza/packages/app-core/packaging/inno/build-inno.ps1",
-    "utf8",
+  const script = readExistingReleaseCheckFile(
+    "Inno Setup build script",
+    innoBuildScriptPathCandidates,
   );
   const requiredSnippets = [
     "$isccTimeout = [TimeSpan]::FromMinutes(25)",
@@ -1131,9 +1223,9 @@ function assertInnoBuildScriptHasTimeoutAndHeartbeat() {
 }
 
 function assertInnoTemplateTargetsBundledLauncher() {
-  const template = readFileSync(
-    "eliza/packages/app-core/packaging/inno/ElizaOSApp.iss",
-    "utf8",
+  const template = readExistingReleaseCheckFile(
+    "Inno Setup template",
+    innoTemplatePathCandidates,
   );
   const requiredSnippets = [
     '#define MyAppExeName "bin\\launcher.exe"',
@@ -1343,7 +1435,23 @@ function assertHomepageReleaseDataUsesCurrentAssetRoot() {
   }
 }
 
+function assertAppleStoreEntitlementsReviewed() {
+  try {
+    assertReviewedAppleStoreEntitlements();
+  } catch (error) {
+    console.error(
+      `release-check: Apple store entitlement audit failed:\n${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+    process.exit(1);
+  }
+}
+
 function main() {
+  assertRequiredRootPackageScripts();
+  assertAppleStoreSandboxAuditPasses();
+  assertAppleStoreEntitlementsReviewed();
   assertReleaseWorkflowHasNotaryWrapper();
   assertElectrobunPrWorkflowExists();
   assertElectrobunConfigHasPostWrapSigner();

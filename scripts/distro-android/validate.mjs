@@ -165,6 +165,38 @@ function xmlElementBlockByName(xml, tagName, name, label) {
   return match[0];
 }
 
+function readJson(filePath, label) {
+  const raw = read(filePath);
+  try {
+    return JSON.parse(raw);
+  } catch (error) {
+    fail(`${label} is not valid JSON: ${error.message}`);
+  }
+}
+
+function assertJsonStringArrayIncludes(value, expected, label) {
+  if (!Array.isArray(value)) {
+    fail(`${label} must be an array`);
+  }
+  for (const item of expected) {
+    if (!value.includes(item)) {
+      fail(`${label} is missing ${item}`);
+    }
+  }
+}
+
+function assertJsonValue(value, expected, label) {
+  if (value !== expected) {
+    fail(`${label} must be ${expected}; found ${String(value)}`);
+  }
+}
+
+function assertSourceIncludes(source, needle, label) {
+  if (!source.includes(needle)) {
+    fail(`${label} is missing ${needle}`);
+  }
+}
+
 function run(command, args) {
   const result = spawnSync(command, args, {
     encoding: "utf8",
@@ -323,6 +355,16 @@ export function validateProductLayer(vendorDir, brand) {
     brand.initRcName,
     `${brand.commonMakefile} PRODUCT_COPY_FILES`,
   );
+  assertIncludes(
+    common,
+    "aosp-assistant-full-control.json",
+    `${brand.commonMakefile} PRODUCT_COPY_FILES`,
+  );
+  assertIncludes(
+    common,
+    "product/etc/eliza/aosp-assistant-full-control.json",
+    `${brand.commonMakefile} artifact allow list`,
+  );
   assertIncludes(common, "BOARD_VENDOR_SEPOLICY_DIRS", brand.commonMakefile);
   assertIncludes(
     common,
@@ -438,6 +480,197 @@ export function validateProductLayer(vendorDir, brand) {
         `framework-res overlay ${resourceName} must be ${brand.packageName}; found ${value || "<empty>"}`,
       );
     }
+  }
+
+  const capabilityManifest = readJson(
+    path.join(vendorDir, "manifests", "aosp-assistant-full-control.json"),
+    "AOSP assistant/full-control capability manifest",
+  );
+  if (capabilityManifest.packageName !== brand.packageName) {
+    fail(
+      `AOSP capability manifest packageName must be ${brand.packageName}; found ${capabilityManifest.packageName}`,
+    );
+  }
+  if (
+    capabilityManifest.roleDefaults?.["android.app.role.ASSISTANT"] !==
+    brand.packageName
+  ) {
+    fail(
+      `AOSP capability manifest ASSISTANT role default must be ${brand.packageName}`,
+    );
+  }
+  assertJsonStringArrayIncludes(
+    capabilityManifest.assistantEntryPoints,
+    ["android.intent.action.ASSIST", "android.intent.action.VOICE_COMMAND"],
+    "AOSP capability manifest assistantEntryPoints",
+  );
+  assertJsonValue(
+    capabilityManifest.assistantResolution?.role,
+    "android.app.role.ASSISTANT",
+    "AOSP capability manifest assistantResolution.role",
+  );
+  assertJsonValue(
+    capabilityManifest.assistantResolution?.defaultHolderResource,
+    "config_defaultAssistant",
+    "AOSP capability manifest assistantResolution.defaultHolderResource",
+  );
+  assertJsonValue(
+    capabilityManifest.assistantResolution?.defaultHolder,
+    brand.packageName,
+    "AOSP capability manifest assistantResolution.defaultHolder",
+  );
+  assertJsonValue(
+    capabilityManifest.assistantResolution?.activity,
+    `${brand.packageName}.${brand.classPrefix}AssistActivity`,
+    "AOSP capability manifest assistantResolution.activity",
+  );
+  assertJsonStringArrayIncludes(
+    capabilityManifest.assistantResolution?.intentActions,
+    ["android.intent.action.ASSIST", "android.intent.action.VOICE_COMMAND"],
+    "AOSP capability manifest assistantResolution.intentActions",
+  );
+  assertJsonValue(
+    capabilityManifest.directBoot?.receiver,
+    `${brand.classPrefix}BootReceiver`,
+    "AOSP capability manifest directBoot.receiver",
+  );
+  assertJsonValue(
+    capabilityManifest.directBoot?.directBootAware,
+    true,
+    "AOSP capability manifest directBoot.directBootAware",
+  );
+  assertJsonStringArrayIncludes(
+    capabilityManifest.directBoot?.actions,
+    [
+      "android.intent.action.LOCKED_BOOT_COMPLETED",
+      "android.intent.action.BOOT_COMPLETED",
+      "android.intent.action.MY_PACKAGE_REPLACED",
+    ],
+    "AOSP capability manifest directBoot.actions",
+  );
+  for (const service of [
+    ["ElizaAgentService", "specialUse"],
+    ["GatewayConnectionService", "dataSync"],
+    ["ElizaVoiceCaptureService", "microphone"],
+    ["ScreenCapture", "mediaProjection"],
+  ]) {
+    const [component, type] = service;
+    const found = capabilityManifest.foregroundServices?.some(
+      (entry) => entry?.component === component && entry?.type === type,
+    );
+    if (!found) {
+      fail(
+        `AOSP capability manifest foregroundServices is missing ${component}/${type}`,
+      );
+    }
+  }
+  assertJsonStringArrayIncludes(
+    capabilityManifest.privilegedPermissions,
+    privilegedPermissions,
+    "AOSP capability manifest privilegedPermissions",
+  );
+  assertJsonStringArrayIncludes(
+    capabilityManifest.runtimeAndNormalPermissions,
+    [
+      "android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION",
+      "android.permission.FOREGROUND_SERVICE_MICROPHONE",
+      "android.permission.FOREGROUND_SERVICE_SPECIAL_USE",
+      "android.permission.RECEIVE_BOOT_COMPLETED",
+    ],
+    "AOSP capability manifest runtimeAndNormalPermissions",
+  );
+  for (const capability of [
+    "accessibility",
+    "notificationListener",
+    "screenCapture",
+    "inputControl",
+    "appInventory",
+    "voiceCommand",
+  ]) {
+    if (!capabilityManifest.capabilityDeclarations?.[capability]) {
+      fail(`AOSP capability manifest is missing ${capability} declaration`);
+    }
+  }
+  assertJsonValue(
+    capabilityManifest.systemImageRequirements?.installPath,
+    `/system/priv-app/${brand.appName}/${brand.appName}.apk`,
+    "AOSP capability manifest systemImageRequirements.installPath",
+  );
+  assertJsonValue(
+    capabilityManifest.systemImageRequirements?.soong?.privileged,
+    true,
+    "AOSP capability manifest systemImageRequirements.soong.privileged",
+  );
+  assertJsonValue(
+    capabilityManifest.systemImageRequirements?.soong?.certificate,
+    "platform",
+    "AOSP capability manifest systemImageRequirements.soong.certificate",
+  );
+  if (capabilityManifest.playStorePolicy?.stripTarget !== "android-cloud") {
+    fail("AOSP capability manifest must route Play-safe stripping to android-cloud");
+  }
+  if (capabilityManifest.playStorePolicy?.allowed !== false) {
+    fail("AOSP capability manifest playStorePolicy.allowed must be false");
+  }
+  assertJsonStringArrayIncludes(
+    capabilityManifest.playStorePolicy?.mustStripComponents,
+    [
+      "ElizaAgentService",
+      "ElizaAssistActivity",
+      "ElizaBootReceiver",
+      "ElizaVoiceCaptureService",
+    ],
+    "AOSP capability manifest playStorePolicy.mustStripComponents",
+  );
+  assertJsonStringArrayIncludes(
+    capabilityManifest.playStorePolicy?.mustStripPermissions,
+    [
+      "android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION",
+      "android.permission.FOREGROUND_SERVICE_MICROPHONE",
+      "android.permission.FOREGROUND_SERVICE_SPECIAL_USE",
+      "android.permission.PACKAGE_USAGE_STATS",
+      "android.permission.MANAGE_APP_OPS_MODES",
+      "android.permission.MANAGE_VIRTUAL_MACHINE",
+      "android.permission.READ_FRAME_BUFFER",
+      "android.permission.INJECT_EVENTS",
+      "android.permission.REAL_GET_TASKS",
+    ],
+    "AOSP capability manifest playStorePolicy.mustStripPermissions",
+  );
+  assertJsonStringArrayIncludes(
+    capabilityManifest.playStorePolicy?.mustStripPlugins,
+    [
+      "@elizaos/capacitor-agent",
+      "@elizaos/capacitor-bun-runtime",
+      "@elizaos/capacitor-screencapture",
+      "@elizaos/capacitor-system",
+    ],
+    "AOSP capability manifest playStorePolicy.mustStripPlugins",
+  );
+
+  const mobileBuildScript = read(
+    path.join(repoRoot, "packages", "app-core", "scripts", "run-mobile-build.mjs"),
+  );
+  for (const component of capabilityManifest.playStorePolicy.mustStripComponents) {
+    assertSourceIncludes(
+      mobileBuildScript,
+      `"${component}"`,
+      "android-cloud stripped component policy",
+    );
+  }
+  for (const permission of capabilityManifest.playStorePolicy.mustStripPermissions) {
+    assertSourceIncludes(
+      mobileBuildScript,
+      `"${permission.replace("android.permission.", "")}"`,
+      "android-cloud stripped permission policy",
+    );
+  }
+  for (const plugin of capabilityManifest.playStorePolicy.mustStripPlugins) {
+    assertSourceIncludes(
+      mobileBuildScript,
+      `"${plugin}"`,
+      "android-cloud stripped native plugin policy",
+    );
   }
 
   const obsoleteRoleFiles = findFiles(vendorDir, (file) =>
@@ -651,8 +884,51 @@ function validateApkManifest(manifest, brand) {
   );
   assertManifestBlockIncludes(
     assistActivity,
+    "android.intent.action.VOICE_COMMAND",
+    cls("AssistActivity"),
+  );
+  assertManifestBlockIncludes(
+    assistActivity,
     "android.intent.category.DEFAULT",
     cls("AssistActivity"),
+  );
+
+  const agentService = manifestComponentBlock(
+    manifest,
+    "service",
+    fq("AgentService"),
+  );
+  assertManifestBlockIncludes(
+    agentService,
+    "android:foregroundServiceType",
+    cls("AgentService"),
+  );
+  assertManifestBlockIncludes(
+    agentService,
+    "android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE",
+    cls("AgentService"),
+  );
+
+  const gatewayService = manifestComponentBlock(
+    manifest,
+    "service",
+    `${brand.packageName}.GatewayConnectionService`,
+  );
+  assertManifestBlockIncludes(
+    gatewayService,
+    "android:foregroundServiceType",
+    "GatewayConnectionService",
+  );
+
+  const voiceService = manifestComponentBlock(
+    manifest,
+    "service",
+    fq("VoiceCaptureService"),
+  );
+  assertManifestBlockIncludes(
+    voiceService,
+    "android:foregroundServiceType",
+    cls("VoiceCaptureService"),
   );
 
   const inCallService = manifestComponentBlock(
@@ -754,6 +1030,11 @@ function validateApkManifest(manifest, brand) {
     manifest,
     "receiver",
     fq("BootReceiver"),
+  );
+  assertManifestBlockIncludes(
+    bootReceiver,
+    "android:directBootAware",
+    cls("BootReceiver"),
   );
   assertManifestBlockIncludes(
     bootReceiver,

@@ -1,0 +1,24 @@
+{
+  "gate": "smoke_9b",
+  "status": "pass",
+  "completedAt": "2026-05-14T13:57:19.273Z",
+  "tier": "9b",
+  "model": "vast/eliza-1-9b",
+  "baseUrl": "http://79.116.54.219:53777",
+  "instanceId": "36744061",
+  "modelLoaded": true,
+  "modelIds": [
+    "vast/eliza-1-9b"
+  ],
+  "generationOk": true,
+  "latencyMs": 705,
+  "usage": {
+    "completion_tokens": 7,
+    "prompt_tokens": 36,
+    "total_tokens": 43,
+    "prompt_tokens_details": {
+      "cached_tokens": 0
+    }
+  },
+  "summary": "9b smoke passed in 705ms"
+}

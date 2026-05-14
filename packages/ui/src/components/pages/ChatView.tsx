@@ -22,8 +22,7 @@ import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibilit
 import { readPersistedMobileRuntimeMode } from "../../onboarding/mobile-runtime-mode";
 import {
   buildAssistantLaunchMetadata,
-  clearAssistantLaunchPayloadFromHash,
-  readAssistantLaunchPayloadFromHash,
+  claimAssistantLaunchPayloadFromHash,
 } from "../../platform/assistant-launch-payload";
 import {
   CodingAgentControlChip,
@@ -194,7 +193,6 @@ export function ChatView({
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const composerRef = useRef<HTMLDivElement>(null);
-  const assistantLaunchHandledRef = useRef<string | null>(null);
   const [composerHeight, setComposerHeight] = useState(0);
   const [imageDragOver, setImageDragOver] = useState(false);
 
@@ -202,11 +200,11 @@ export function ChatView({
     if (isGameModal || typeof window === "undefined") return;
 
     const consumeLaunchPayload = () => {
-      const payload = readAssistantLaunchPayloadFromHash(window.location.hash);
+      const payload = claimAssistantLaunchPayloadFromHash(
+        window.location.hash,
+        { allowedRoutes: ["chat"] },
+      );
       if (!payload) return;
-      if (assistantLaunchHandledRef.current === payload.launchId) return;
-      assistantLaunchHandledRef.current = payload.launchId;
-      clearAssistantLaunchPayloadFromHash();
       void sendChatText(payload.text, {
         metadata: buildAssistantLaunchMetadata(payload),
       }).catch(() => {

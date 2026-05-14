@@ -24,6 +24,8 @@ import {
 	type AgentRuntime,
 	type GenerateTextParams,
 	type IAgentRuntime,
+	type ImageDescriptionParams,
+	type ImageDescriptionResult,
 	logger,
 	ModelType,
 	renderMessageHandlerStablePrefix,
@@ -84,6 +86,11 @@ type TranscriptionHandler = (
 	params: TranscriptionParams | Buffer | string | LocalTranscriptionParams,
 ) => Promise<string>;
 
+type ImageDescriptionHandler = (
+	runtime: IAgentRuntime,
+	params: ImageDescriptionParams | string,
+) => Promise<ImageDescriptionResult>;
+
 interface LocalTranscriptionParams {
 	pcm?: Float32Array;
 	audio?: Uint8Array | ArrayBuffer | Buffer;
@@ -96,7 +103,8 @@ type LocalModelHandler =
 	| GenerateTextHandler
 	| EmbeddingHandler
 	| TextToSpeechHandler
-	| TranscriptionHandler;
+	| TranscriptionHandler
+	| ImageDescriptionHandler;
 
 type RuntimeWithModelRegistration = AgentRuntime & {
 	getModel: (modelType: string | number) => LocalModelHandler | undefined;
@@ -655,6 +663,109 @@ function makeTranscriptionHandler(): TranscriptionHandler {
 	};
 }
 
+function paramsToVisionRequest(params: ImageDescriptionParams | string): {
+	image: { kind: "dataUrl"; dataUrl: string } | { kind: "url"; url: string };
+	prompt?: string;
+} {
+	const url = typeof params === "string" ? params : params.imageUrl;
+	if (typeof url !== "string" || url.length === 0) {
+		throw new Error(
+			"[local-inference] IMAGE_DESCRIPTION requires a non-empty imageUrl",
+		);
+	}
+	const prompt = typeof params === "object" ? params.prompt : undefined;
+	if (url.startsWith("data:")) {
+		return { image: { kind: "dataUrl", dataUrl: url }, prompt };
+	}
+	return { image: { kind: "url", url }, prompt };
+}
+
+function normalizeImageDescription(
+	result: ImageDescriptionResult | string,
+): ImageDescriptionResult {
+	if (typeof result === "string") {
+		const description = result.trim();
+		if (!description) {
+			throw new Error(
+				"[local-inference] IMAGE_DESCRIPTION backend returned an empty description",
+			);
+		}
+		return {
+			title: description.split(/[.!?]/, 1)[0]?.trim() || "Image",
+			description,
+		};
+	}
+	if (
+		result &&
+		typeof result === "object" &&
+		typeof result.title === "string" &&
+		typeof result.description === "string" &&
+		result.title.trim().length > 0 &&
+		result.description.trim().length > 0
+	) {
+		return {
+			title: result.title.trim(),
+			description: result.description.trim(),
+		};
+	}
+	throw new Error(
+		"[local-inference] IMAGE_DESCRIPTION backend returned an invalid description",
+	);
+}
+
+/**
+ * Runtime setting marker that plugin-vision polls before preferring the
+ * Eliza-1 vision path over its legacy Florence path. We set it only when
+ * the process-wide arbiter advertises the `vision-describe` capability.
+ */
+const ELIZA1_VISION_MARKER = "ELIZA1_VISION_HANDLER_PRESENT";
+
+function markEliza1VisionHandlerPresent(runtime: IAgentRuntime): void {
+	const r = runtime as IAgentRuntime & {
+		setSetting?: (key: string, value: unknown) => void;
+		getSetting?: (key: string) => unknown;
+	};
+	if (typeof r.setSetting !== "function") return;
+	if (typeof r.getSetting === "function") {
+		const existing = r.getSetting(ELIZA1_VISION_MARKER);
+		if (existing === "1" || existing === true) return;
+	}
+	try {
+		r.setSetting(ELIZA1_VISION_MARKER, "1");
+	} catch {
+		// Some test runtimes don't accept setSetting at runtime — non-fatal.
+	}
+}
+
+function makeImageDescriptionHandler(): ImageDescriptionHandler {
+	return async (runtime, params) => {
+		const arbiter = tryGetMemoryArbiter();
+		if (
+			!arbiter?.hasCapability("vision-describe") ||
+			typeof arbiter.requestVisionDescribe !== "function"
+		) {
+			throw new Error(
+				"[local-inference] IMAGE_DESCRIPTION requires an active Eliza-1 vision-capable bundle with the vision-describe capability registered",
+			);
+		}
+		markEliza1VisionHandlerPresent(runtime);
+		const modelKeyCandidate =
+			typeof params === "object"
+				? (params as ImageDescriptionParams & { modelKey?: unknown }).modelKey
+				: undefined;
+		const modelKey =
+			typeof modelKeyCandidate === "string" && modelKeyCandidate
+				? modelKeyCandidate
+				: "qwen3-vl";
+		const request = paramsToVisionRequest(params);
+		const result = await arbiter.requestVisionDescribe<
+			typeof request,
+			ImageDescriptionResult | string
+		>({ modelKey, payload: request });
+		return normalizeImageDescription(result);
+	};
+}
+
 /**
  * Register the device-bridge loader on the runtime. Accepts load/generate
  * calls whether or not a mobile device is currently connected — parked
@@ -1023,12 +1134,18 @@ export async function ensureLocalInferenceHandler(
 			provider,
 			LOCAL_INFERENCE_PRIORITY,
 		);
+		runtimeWithRegistration.registerModel(
+			ModelType.IMAGE_DESCRIPTION,
+			makeImageDescriptionHandler(),
+			provider,
+			LOCAL_INFERENCE_PRIORITY,
+		);
 		logger.info(
-			`[local-inference] Registered ${provider} voice handlers for TEXT_TO_SPEECH / TRANSCRIPTION at priority ${LOCAL_INFERENCE_PRIORITY}`,
+			`[local-inference] Registered ${provider} voice and vision handlers for TEXT_TO_SPEECH / TRANSCRIPTION / IMAGE_DESCRIPTION at priority ${LOCAL_INFERENCE_PRIORITY}`,
 		);
 	} catch (err) {
 		logger.warn(
-			"[local-inference] Could not register local voice handlers",
+			"[local-inference] Could not register local voice/vision handlers",
 			err instanceof Error ? err.message : String(err),
 		);
 	}

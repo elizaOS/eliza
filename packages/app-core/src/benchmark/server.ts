@@ -1044,6 +1044,29 @@ export async function startBenchmarkServer() {
   });
 
   await runtime.initialize();
+  // Wire the local-inference loader subsystem the same way the main app boot
+  // does (eliza/packages/app-core/src/runtime/eliza.ts). Without this, the
+  // bench-server's @elizaos/plugin-local-inference Plugin.init() never
+  // registers a `localInferenceLoader` service, so its TEXT_EMBEDDING handler
+  // falls all the way through to the zero-vector path even when an Eliza-1
+  // bundle is installed locally. Calling it here makes the bench-server use
+  // the eliza-1 embedding model (text/eliza-1-0_8b-32k.gguf) when present,
+  // and harmlessly skips handler upgrades when no backend is available —
+  // matching the main app's behavior so benchmark runs reflect real
+  // retrieval semantics.
+  try {
+    const { ensureLocalInferenceHandler } = await import(
+      "@elizaos/plugin-local-inference/runtime"
+    );
+    await ensureLocalInferenceHandler(runtime);
+    elizaLogger.info(
+      "[bench] Wired @elizaos/plugin-local-inference loader (embedding + voice handlers)",
+    );
+  } catch (err: unknown) {
+    elizaLogger.warn(
+      `[bench] Could not wire @elizaos/plugin-local-inference runtime: ${formatUnknownError(err)}`,
+    );
+  }
   disableManualCompactionAction(runtime);
   const modelHandlers = (runtime as { models?: Map<string, unknown[]> }).models;
   const modelHandlerSummary = Object.fromEntries(
