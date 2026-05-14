@@ -297,7 +297,7 @@ REGISTRY: dict[str, ModelEntry] = {
         infer_kv_layers=6, infer_kv_heads=2, infer_kv_head_dim=256,
         quantization_after=(
             "polarquant",
-            "turboquant",
+            "fused_turboquant",
             "qjl",
             "gguf-q4_k_m",
             "gguf-q6_k",
@@ -330,7 +330,7 @@ REGISTRY: dict[str, ModelEntry] = {
         infer_kv_layers=6, infer_kv_heads=2, infer_kv_head_dim=256,
         quantization_after=(
             "polarquant",
-            "turboquant",
+            "fused_turboquant",
             "qjl",
             "gguf-q4_k_m",
             "gguf-q6_k",
@@ -351,7 +351,7 @@ REGISTRY: dict[str, ModelEntry] = {
         infer_kv_layers=7, infer_kv_heads=2, infer_kv_head_dim=256,
         quantization_after=(
             "polarquant",
-            "turboquant",
+            "fused_turboquant",
             "qjl",
             "gguf-q4_k_m",
             "gguf-q6_k",
@@ -374,7 +374,7 @@ REGISTRY: dict[str, ModelEntry] = {
         infer_kv_layers=8, infer_kv_heads=4, infer_kv_head_dim=256,
         quantization_after=(
             "polarquant",
-            "turboquant",
+            "fused_turboquant",
             "qjl",
             "gguf-q4_k_m",
             "gguf-q6_k",
@@ -385,6 +385,28 @@ REGISTRY: dict[str, ModelEntry] = {
     ),
     "qwen3.5-27b": _entry(
         hf_id="Qwen/Qwen3.5-27B", short_name="qwen3.5-27b",
+        eliza_short_name="", eliza_repo_id="",
+        abliteration_repo_id="",
+        params_billion=27.0, tier=Tier.CLOUD,
+        seq_len=65536, optimizer="apollo_mini", optimizer_rank=512,
+        micro_batch=1, grad_accum=8, train_mem_gb_budget=190.0,
+        train_dtype="bf16",
+        infer_max_in=131072, infer_max_out=16384,
+        infer_kv_layers=16, infer_kv_heads=4, infer_kv_head_dim=256,
+        quantization_after=(
+            "polarquant",
+            "fused_turboquant",
+            "qjl",
+            "gguf-q4_k_m",
+            "gguf-q6_k",
+            "gguf-q8_0",
+        ),
+        notes="Legacy 27B lookup retained for experiments only. The active "
+              "eliza-1 27B release family uses Qwen/Qwen3.6-27B.",
+        extra={"legacy": "true", "replaced_by": "qwen3.6-27b"},
+    ),
+    "qwen3.6-27b": _entry(
+        hf_id="Qwen/Qwen3.6-27B", short_name="qwen3.6-27b",
         eliza_short_name="eliza-1-27b", eliza_repo_id="elizalabs/eliza-1",
         abliteration_repo_id="",
         params_billion=27.0, tier=Tier.CLOUD,
@@ -395,13 +417,13 @@ REGISTRY: dict[str, ModelEntry] = {
         infer_kv_layers=16, infer_kv_heads=4, infer_kv_head_dim=256,
         quantization_after=(
             "polarquant",
-            "turboquant",
+            "fused_turboquant",
             "qjl",
             "gguf-q4_k_m",
             "gguf-q6_k",
             "gguf-q8_0",
         ),
-        notes="Canonical cloud tier for eliza-1-27b on the Qwen3.5 dense "
+        notes="Canonical cloud tier for eliza-1-27b on the Qwen3.6 dense "
               "27B backbone. Use this for the 27B, 27B-256k, and 27B-1m "
               "release families.",
         extra={"vast_gpu_target": "h200-2x", "fsdp_world_size": "2"},
@@ -433,8 +455,12 @@ def get(name: str) -> ModelEntry:
     raise KeyError(f"unknown model {name!r}; known: {sorted(REGISTRY)}")
 
 
-def by_tier(tier: Tier) -> list[ModelEntry]:
-    return [e for e in REGISTRY.values() if e.tier == tier]
+def by_tier(tier: Tier, include_legacy: bool = False) -> list[ModelEntry]:
+    return [
+        e
+        for e in REGISTRY.values()
+        if e.tier == tier and (include_legacy or e.extra.get("legacy") != "true")
+    ]
 
 
 def summary_table() -> str:
@@ -442,6 +468,8 @@ def summary_table() -> str:
             "infer ctx (in+out)", "infer bf16", "infer Q4+TQ", "optimizer")
     rows = [cols]
     for e in REGISTRY.values():
+        if e.extra.get("legacy") == "true":
+            continue
         rows.append((
             e.public_name,
             f"{e.params_billion:.1f}",

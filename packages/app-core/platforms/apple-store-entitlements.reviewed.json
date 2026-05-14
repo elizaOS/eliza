@@ -51,45 +51,6 @@
           "reviewSensitive": true,
           "appReviewJustification": "Required for remaining user-approved Apple Events automation paths such as Messages and Notes. New automation targets need separate review before this justification is reused."
         },
-        "com.apple.security.cs.allow-jit": {
-          "value": true,
-          "reviewSensitive": true,
-          "appReviewJustification": "Required by the bundled Electrobun/Bun JavaScript runtime. Removing it is not currently safe for the MAS runtime, and signed bundle scans must continue to show executable-memory/JIT evidence before release."
-        },
-        "com.apple.security.cs.allow-unsigned-executable-memory": {
-          "value": true,
-          "reviewSensitive": true,
-          "appReviewJustification": "Required only while the bundled Electrobun/Bun runtime shows executable-memory/JIT behavior in the signed MAS bundle. The codesign audit fails if a current built-app scan no longer finds that evidence.",
-          "currentEvidence": [
-            {
-              "path": "platforms/electrobun/package.json",
-              "regex": "\"electrobun\"\\s*:\\s*\"\\^?1\\.18\\.1\"",
-              "summary": "MAS desktop shell currently depends on Electrobun 1.18.1, which bundles the Bun-based native runtime rather than a pure WebKit-only wrapper."
-            },
-            {
-              "path": "platforms/electrobun/entitlements/README.md",
-              "contains": "--app=/path/to/Built.app",
-              "summary": "The MAS signing docs require built-app entitlement and native-symbol verification before release packaging."
-            }
-          ]
-        },
-        "com.apple.security.cs.disable-library-validation": {
-          "value": true,
-          "reviewSensitive": true,
-          "appReviewJustification": "Required only while the MAS bundle contains signed nested runtime/native-plugin libraries that are loaded from the app bundle. The codesign audit fails if a current built-app scan no longer finds native library evidence.",
-          "currentEvidence": [
-            {
-              "path": "platforms/electrobun/scripts/stage-macos-release-artifacts.sh",
-              "regex": "lib(NativeWrapper|webgpu_dawn|asar)\\.dylib",
-              "summary": "The macOS release artifact stager currently expects bundled runtime dylibs inside the app bundle."
-            },
-            {
-              "path": "platforms/electrobun/scripts/postwrap-sign-runtime-macos.ts",
-              "regex": "\\.(bare|dylib|node|so)",
-              "summary": "Post-wrap runtime signing still treats native runtime extensions as signable bundle payloads."
-            }
-          ]
-        },
         "com.apple.developer.push-notifications": {
           "value": true,
           "justification": "Required for APNs registration."
@@ -113,6 +74,27 @@
         "com.apple.security.inherit": {
           "value": true,
           "justification": "Nested MAS binaries inherit the parent app sandbox scope."
+        }
+      }
+    },
+    {
+      "id": "macos-mas-bun",
+      "platform": "macos",
+      "distribution": "mac-app-store",
+      "source": "platforms/electrobun/entitlements/mas-bun.entitlements",
+      "allowedEntitlements": {
+        "com.apple.security.app-sandbox": {
+          "value": true,
+          "justification": "Nested MAS binaries must remain sandboxed."
+        },
+        "com.apple.security.inherit": {
+          "value": true,
+          "justification": "Nested MAS binaries inherit the parent app sandbox scope."
+        },
+        "com.apple.security.cs.allow-jit": {
+          "value": true,
+          "reviewSensitive": true,
+          "appReviewJustification": "Scoped to the bundled Bun helper only. The MAS parent app, child helpers, and nested frameworks must not receive broad unsigned executable memory or library-validation exceptions."
         }
       }
     },

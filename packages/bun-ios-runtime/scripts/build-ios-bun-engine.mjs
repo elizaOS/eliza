@@ -536,6 +536,11 @@ const env = {
   ELIZA_BUN_IOS_SDK: info.sdk,
   ELIZA_BUN_IOS_PLATFORM: info.platform,
   ELIZA_IOS_BUN_ENGINE_XCFRAMEWORK: artifact,
+  ELIZA_IOS_APP_STORE_LOCAL_EXECUTION: "1",
+  ELIZA_IOS_NO_JIT: "1",
+  JSC_useJIT: "0",
+  JSC_jitPolicyScale: "0",
+  BUN_JSC_useJIT: "0",
 };
 
 function selectBackend() {

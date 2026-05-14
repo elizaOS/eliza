@@ -27,12 +27,24 @@ function serializeStepPayload(step: PersistedStep): string {
 }
 
 function resolveStepType(step: PersistedStep): string {
-  if (step.kind === "llm" || step.kind === "action") return step.kind;
+  if (
+    step.kind === "llm" ||
+    step.kind === "action" ||
+    step.kind === "evaluator"
+  ) {
+    return step.kind;
+  }
   // Legacy rows defaulted to "llm" semantics.
   return "llm";
 }
 
 function resolveStepName(step: PersistedStep): string | null {
+  // Evaluator steps carry their evaluator name explicitly so the trajectory
+  // viewer can identify the responsible evaluator without rummaging through
+  // llmCalls. Closes M14.
+  if (step.kind === "evaluator" && step.evaluatorName) {
+    return step.evaluatorName;
+  }
   // Use the first llm-call purpose or provider-access name as a display label.
   const firstCall = step.llmCalls[0];
   if (firstCall?.purpose) return firstCall.purpose;
