@@ -4081,6 +4081,63 @@ function auditAndroidCloudSource(phase) {
   console.log(`[mobile-build] android-cloud ${phase} audit passed.`);
 }
 
+function auditAndroidSystemSource(phase) {
+  const failures = [];
+  const manifestPath = path.join(
+    androidDir,
+    "app",
+    "src",
+    "main",
+    "AndroidManifest.xml",
+  );
+  if (!fs.existsSync(manifestPath)) {
+    failures.push("AndroidManifest.xml is missing");
+  } else {
+    const xml = fs.readFileSync(manifestPath, "utf8");
+    for (const marker of [
+      "ElizaAssistActivity",
+      "android.intent.action.ASSIST",
+      "android.intent.action.VOICE_COMMAND",
+      "ElizaAgentService",
+      "ElizaBootReceiver",
+      "android:directBootAware=\"true\"",
+      "ElizaVoiceCaptureService",
+      "android.permission.PACKAGE_USAGE_STATS",
+      "android.permission.MANAGE_APP_OPS_MODES",
+      "android.permission.MANAGE_VIRTUAL_MACHINE",
+      "android.permission.READ_FRAME_BUFFER",
+      "android.permission.INJECT_EVENTS",
+      "android.permission.REAL_GET_TASKS",
+      "android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION",
+      "android.permission.FOREGROUND_SERVICE_SPECIAL_USE",
+      "android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE",
+    ]) {
+      if (!xml.includes(marker)) {
+        failures.push(`AndroidManifest.xml is missing ${marker}`);
+      }
+    }
+  }
+
+  const capabilityManifestPath = path.join(
+    systemApkStaging.vendorDir,
+    "manifests",
+    "aosp-assistant-full-control.json",
+  );
+  if (!fs.existsSync(capabilityManifestPath)) {
+    failures.push(
+      `${path.relative(repoRoot, capabilityManifestPath)} is missing`,
+    );
+  }
+
+  if (failures.length > 0) {
+    throw new Error(
+      `[mobile-build] android-system ${phase} audit failed:\n` +
+        failures.map((failure) => `  - ${failure}`).join("\n"),
+    );
+  }
+  console.log(`[mobile-build] android-system ${phase} audit passed.`);
+}
+
 /**
  * Strip the Play-Store-noncompliant manifest components, permissions, and
  * Java sources, plus any previously-staged on-device agent runtime
@@ -4222,6 +4279,7 @@ async function buildAndroid() {
   await generateAndroidBrandAssets();
   overlayAndroid();
   sanitizeAndroidManifestWhenPlatformTemplatesMissing();
+  auditAndroidSystemSource("pre-gradle");
   await stageAndroidAgentRuntime({
     androidDir,
     spikeDir: androidAgentSpikeDir,
