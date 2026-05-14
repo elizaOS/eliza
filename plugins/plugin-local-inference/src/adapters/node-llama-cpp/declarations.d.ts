@@ -40,14 +40,10 @@ declare module "@huggingface/transformers" {
   export const AutoTokenizer: any;
   export const AutoProcessor: any;
   export const AutoModelForSequenceClassification: any;
-  export class Florence2ForConditionalGeneration {
-    static from_pretrained(...args: any[]): Promise<any>;
-    [k: string]: any;
-  }
-  export class Florence2Processor {
-    static from_pretrained(...args: any[]): Promise<any>;
-    [k: string]: any;
-  }
+  export type Florence2ForConditionalGeneration = any;
+  export const Florence2ForConditionalGeneration: any;
+  export type Florence2Processor = any;
+  export const Florence2Processor: any;
   export const RawImage: any;
   export const pipeline: any;
   export const env: any;
