@@ -37,7 +37,10 @@ interface DeadUrl {
   via?: string;
 }
 
-function collectVerifiableUrlCandidates(text: string): string[] {
+function collectVerifiableUrlCandidates(
+  text: string,
+  ignoredUrls?: ReadonlySet<string>,
+): string[] {
   const seen = new Set<string>();
   const candidates: string[] = [];
   for (const match of text.matchAll(URL_IN_TEXT_RE)) {
@@ -52,6 +55,7 @@ function collectVerifiableUrlCandidates(text: string): string[] {
     if (suffix.startsWith("<") || suffix.startsWith("&lt;")) continue;
 
     const url = raw.replace(/[.,;:]+$/, "");
+    if (ignoredUrls?.has(url)) continue;
     if (seen.has(url)) continue;
     seen.add(url);
     candidates.push(url);
@@ -63,8 +67,9 @@ function extractVerifiableUrls(
   text: string,
   limit = 5,
   referenceText?: string,
+  ignoredUrls?: ReadonlySet<string>,
 ): string[] {
-  const candidates = collectVerifiableUrlCandidates(text);
+  const candidates = collectVerifiableUrlCandidates(text, ignoredUrls);
   const filtered = candidates.filter((url) => {
     const prefix = url.endsWith("/") ? url : `${url}/`;
     return !candidates.some(
@@ -425,10 +430,12 @@ export class SubAgentRouter {
       const meta = session.metadata as Record<string, unknown> | undefined;
       const verificationReferenceText =
         typeof meta?.initialTask === "string" ? meta.initialTask : undefined;
+      const ignoredVerifyUrls = pickStringSet(meta?.cachedStaleMissUrls);
       const verified = await annotateUnverifiedUrls(
         baseText,
         (m) => this.log("debug", m),
         verificationReferenceText,
+        ignoredVerifyUrls,
       );
       text = verified.text;
       deadUrls = verified.dead;
@@ -614,6 +621,10 @@ export class SubAgentRouter {
     if (!service?.spawnSession) return false;
 
     const nextRetry = priorRetries + 1;
+    const cachedStaleMissUrls = mergeCachedStaleMissUrls(
+      pickStringSet(meta.cachedStaleMissUrls),
+      dead,
+    );
     const deadLines = dead
       .map((d) =>
         d.via
@@ -642,6 +653,9 @@ If a URL reports a cached stale miss, do not keep rewriting the same filename: r
           ...meta,
           buildVerifyRetryCount: nextRetry,
           retryOfSessionId: session.id,
+          ...(cachedStaleMissUrls.size > 0
+            ? { cachedStaleMissUrls: [...cachedStaleMissUrls] }
+            : {}),
         },
       });
       this.log("info", "re-dispatched sub-agent after failed verification", {
@@ -724,6 +738,26 @@ function pickLabel(meta: Record<string, unknown>): string | undefined {
   return undefined;
 }
 
+function pickStringSet(value: unknown): Set<string> {
+  if (!Array.isArray(value)) return new Set();
+  return new Set(
+    value.filter((v): v is string => typeof v === "string" && v.length > 0),
+  );
+}
+
+function mergeCachedStaleMissUrls(
+  prior: Set<string>,
+  dead: DeadUrl[],
+): Set<string> {
+  const merged = new Set(prior);
+  for (const entry of dead) {
+    if (entry.status.includes("cached stale miss")) {
+      merged.add(entry.url);
+    }
+  }
+  return merged;
+}
+
 function pickPayloadString(data: unknown, key: string): string | undefined {
   if (!data || typeof data !== "object") return undefined;
   const v = (data as Record<string, unknown>)[key];
@@ -789,8 +823,9 @@ async function annotateUnverifiedUrls(
   text: string,
   log?: (message: string) => void,
   referenceText?: string,
+  ignoredUrls?: ReadonlySet<string>,
 ): Promise<{ text: string; dead: DeadUrl[] }> {
-  const urls = extractVerifiableUrls(text, 5, referenceText);
+  const urls = extractVerifiableUrls(text, 5, referenceText, ignoredUrls);
   if (urls.length === 0) return { text, dead: [] };
   log?.(
     `[verify] start @ ${new Date().toISOString()} — ${urls.length} url(s): ${urls.join(", ")}`,
