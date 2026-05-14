@@ -1045,6 +1045,7 @@ async function initializePlatform(): Promise<void> {
     initializeMobileRuntimeModeListener();
     void initializeNetworkListener();
     void initializeMobileDeviceBridge();
+    void initializeMobileAgentTunnel();
   }
 
   if (isDesktopPlatform()) {
@@ -1714,6 +1715,83 @@ function stopMobileDeviceBridge(): void {
   mobileDeviceBridgeClient = null;
 }
 
+async function initializeMobileAgentTunnel(): Promise<void> {
+  const runtimeConfig = getCurrentIosRuntimeConfig();
+  if (!isNative || (!isIOS && !isAndroid)) return;
+  if (runtimeConfig.mode !== "tunnel-to-mobile") return;
+  if (mobileAgentTunnelStartPromise) return;
+  if (!runtimeConfig.tunnelRelayUrl) {
+    console.warn(
+      `${APP_LOG_PREFIX} tunnel-to-mobile mode requires VITE_ELIZA_TUNNEL_RELAY_URL`,
+    );
+    return;
+  }
+
+  mobileAgentTunnelStartPromise = (async () => {
+    try {
+      const [{ MobileAgentBridge }, deviceId] = await Promise.all([
+        import("@elizaos/capacitor-mobile-agent-bridge"),
+        getOrCreateDeviceBridgeId(),
+      ]);
+
+      if (!mobileAgentTunnelListener) {
+        mobileAgentTunnelListener = await MobileAgentBridge.addListener(
+          "stateChange",
+          (event) => {
+            console.info(
+              `${APP_LOG_PREFIX} Mobile agent tunnel ${event.state}`,
+              event.reason ?? "",
+            );
+          },
+        );
+      }
+
+      const status = await MobileAgentBridge.startInboundTunnel({
+        relayUrl: runtimeConfig.tunnelRelayUrl,
+        deviceId,
+        ...(runtimeConfig.tunnelPairingToken
+          ? { pairingToken: runtimeConfig.tunnelPairingToken }
+          : {}),
+        ...(isAndroid ? { localAgentApiBase: MOBILE_LOCAL_AGENT_API_BASE } : {}),
+      });
+      console.info(
+        `${APP_LOG_PREFIX} Mobile agent tunnel ${status.state}`,
+        status.lastError ?? "",
+      );
+    } catch (error) {
+      console.warn(
+        `${APP_LOG_PREFIX} Mobile agent tunnel unavailable:`,
+        error instanceof Error ? error.message : error,
+      );
+    } finally {
+      mobileAgentTunnelStartPromise = null;
+    }
+  })();
+
+  await mobileAgentTunnelStartPromise;
+}
+
+async function stopMobileAgentTunnel(): Promise<void> {
+  mobileAgentTunnelStartPromise = null;
+  try {
+    const { MobileAgentBridge } = await import(
+      "@elizaos/capacitor-mobile-agent-bridge"
+    );
+    await MobileAgentBridge.stopInboundTunnel();
+  } catch (error) {
+    console.warn(
+      `${APP_LOG_PREFIX} Mobile agent tunnel stop failed:`,
+      error instanceof Error ? error.message : error,
+    );
+  }
+  try {
+    await mobileAgentTunnelListener?.remove();
+  } catch {
+    // Native tunnel stop above is authoritative.
+  }
+  mobileAgentTunnelListener = null;
+}
+
 function initializeMobileRuntimeModeListener(): void {
   if (!isNative || mobileRuntimeModeListenerInstalled) return;
   mobileRuntimeModeListenerInstalled = true;
@@ -1721,11 +1799,19 @@ function initializeMobileRuntimeModeListener(): void {
     const mode = getCurrentIosRuntimeConfig().mode;
     if (mode === "cloud-hybrid" || mode === "local") {
       stopMobileDeviceBridge();
+      void stopMobileAgentTunnel();
       void initializeMobileDeviceBridge();
       void configureMobileBackgroundRunner();
       return;
     }
+    if (mode === "tunnel-to-mobile") {
+      stopMobileDeviceBridge();
+      void initializeMobileAgentTunnel();
+      void configureMobileBackgroundRunner();
+      return;
+    }
     stopMobileDeviceBridge();
+    void stopMobileAgentTunnel();
     void configureMobileBackgroundRunner();
   });
 }
