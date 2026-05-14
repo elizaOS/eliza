@@ -217,6 +217,21 @@ export interface WindowActionResult extends ComputerUseResult {
   count?: number;
 }
 
+export type ClipboardActionType = "get" | "set";
+
+export interface ClipboardActionParams {
+  action: ClipboardActionType;
+  text?: string;
+  content?: string;
+  value?: string;
+}
+
+export interface ClipboardActionResult extends ComputerUseResult {
+  text?: string;
+  content?: string;
+  value?: string;
+}
+
 export type FileActionType =
   | "read"
   | "write"
@@ -278,9 +293,12 @@ export interface FileActionResult extends ComputerUseResult {
 
 export type TerminalActionType =
   | "connect"
+  | "create"
   | "execute"
   | "read"
   | "type"
+  | "send_input"
+  | "resize"
   | "clear"
   | "close"
   | "execute_command";
@@ -294,6 +312,10 @@ export interface TerminalActionParams {
   sessionId?: string;
   session_id?: string;
   text?: string;
+  input?: string;
+  shell?: string;
+  cols?: number;
+  rows?: number;
 }
 
 export interface TerminalActionResult extends ComputerUseResult {
@@ -303,6 +325,10 @@ export interface TerminalActionResult extends ComputerUseResult {
   output?: string;
   exitCode?: number;
   exit_code?: number;
+  shell?: string;
+  cols?: number;
+  rows?: number;
+  backend?: "pty" | "spawn";
 }
 
 // ── Shared Models ─────────────────────────────────────────────────────────

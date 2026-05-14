@@ -105,6 +105,8 @@ describe("computer-use live parity", () => {
     const filePath = path.join(workspaceDir, "notes.txt");
     const subdir = path.join(workspaceDir, "subdir");
     const nestedFilePath = path.join(subdir, "nested.txt");
+    const cuaDir = path.join(workspaceDir, "cua-dir");
+    const binaryPath = path.join(cuaDir, "bytes.bin");
 
     const writeResult = await service.executeCommand("file_write", {
       filepath: filePath,
@@ -139,6 +141,44 @@ describe("computer-use live parity", () => {
       exists: true,
       isFile: true,
     });
+
+    const createDirResult = await service.executeCommand("create_dir", {
+      path: cuaDir,
+    });
+    expect(createDirResult.success).toBe(true);
+
+    const directoryExistsResult = await service.executeCommand(
+      "directory_exists",
+      {
+        path: cuaDir,
+      },
+    );
+    expect(directoryExistsResult).toMatchObject({
+      success: true,
+      exists: true,
+      isDirectory: true,
+    });
+
+    const writeBytesResult = await service.executeCommand("write_bytes", {
+      path: binaryPath,
+      content_b64: Buffer.from([0, 1, 2, 3, 254, 255]).toString("base64"),
+    });
+    expect(writeBytesResult.success).toBe(true);
+
+    const readBytesResult = await service.executeCommand("read_bytes", {
+      path: binaryPath,
+      offset: 2,
+      length: 3,
+    });
+    expect(readBytesResult).toMatchObject({
+      success: true,
+      content_b64: Buffer.from([2, 3, 254]).toString("base64"),
+    });
+
+    const sizeResult = await service.executeCommand("get_file_size", {
+      path: binaryPath,
+    });
+    expect(sizeResult).toMatchObject({ success: true, size: 6 });
 
     const listResult = await service.executeCommand("directory_list", {
       dirpath: workspaceDir,

@@ -144,14 +144,6 @@ export async function handleWorkbenchVfsRoutes(
     }
 
     if (method === "POST" && section === "compile-plugin") {
-      if (!isLocalCodeExecutionAllowed()) {
-        error(
-          res,
-          buildStoreVariantBlockedMessage("VFS plugin compilation"),
-          403,
-        );
-        return true;
-      }
       const raw = await readJsonBody<Record<string, unknown>>(req, res);
       if (raw === null) return true;
       const parsed = PostWorkbenchVfsCompilePluginRequestSchema.safeParse(raw);
@@ -172,7 +164,14 @@ export async function handleWorkbenchVfsRoutes(
         ...(parsed.data.format
           ? { format: parsed.data.format as PluginCompilerFormat }
           : {}),
+        ...(parsed.data.platform ? { platform: parsed.data.platform } : {}),
         ...(parsed.data.target ? { target: parsed.data.target } : {}),
+        ...(typeof parsed.data.bundle === "boolean"
+          ? { bundle: parsed.data.bundle }
+          : {}),
+        ...(parsed.data.allowedImports
+          ? { allowedBareImports: parsed.data.allowedImports }
+          : {}),
       });
       json(res, { compile: result });
       return true;

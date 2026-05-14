@@ -95,6 +95,26 @@ describe("messageHandlerFromFieldResult — bogus candidate actions", () => {
 		]);
 	});
 
+	it("suppresses refusal-shaped replyText on the field-result planning path", () => {
+		const handler = messageHandlerFromFieldResult(
+			{
+				shouldRespond: "RESPOND",
+				contexts: ["simple"],
+				candidateActionNames: ["TASKS_SPAWN_AGENT"],
+				replyText: "I'm sorry, but I can't help with that request.",
+				intents: [],
+				facts: [],
+				addressedTo: [],
+			},
+			undefined,
+			{ actions: REAL_ACTIONS },
+		);
+
+		expect(handler.plan.simple).toBe(false);
+		expect(handler.plan.requiresTool).toBe(true);
+		expect(handler.plan.reply).toBe("");
+	});
+
 	it("promotes to planning when candidateActions are all real, even with empty contexts", () => {
 		const handler = messageHandlerFromFieldResult(
 			{

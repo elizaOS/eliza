@@ -14,7 +14,9 @@ import {
   IOS_APP_GROUP_ID,
   IOS_APP_INTENT_BUNDLE_IDS,
   IOS_APP_INTENT_REGISTRY,
+  IOS_NATIVE_X_CALLBACK_INTENT_IDS,
   IOS_BRIDGE_JS_NAME,
+  isIosNativeXCallbackIntent,
   listIosAppIntents,
   listOcrProviders,
   REPLAYKIT_FOREGROUND_MAX_BUFFER,
@@ -87,6 +89,11 @@ describe("iOS AppIntent registry", () => {
         }
       }
       expect(["donated", "system"]).toContain(intent.source);
+      expect([
+        "native-x-callback",
+        "shortcut-required",
+        "catalog-only",
+      ]).toContain(intent.invocationMode);
     }
   });
 
@@ -95,11 +102,12 @@ describe("iOS AppIntent registry", () => {
     expect(new Set(ids).size).toBe(ids.length);
   });
 
-  it("findIosAppIntent finds a known system intent", () => {
-    const intent = findIosAppIntent("com.apple.mobilenotes.create-note");
+  it("findIosAppIntent finds a known native x-callback intent", () => {
+    const intent = findIosAppIntent("com.apple.mobilemail.send-email");
     expect(intent).toBeDefined();
-    expect(intent!.bundleId).toBe("com.apple.mobilenotes");
-    expect(intent!.parameters.find((p) => p.name === "body")).toBeDefined();
+    expect(intent!.bundleId).toBe("com.apple.mobilemail");
+    expect(intent!.invocationMode).toBe("native-x-callback");
+    expect(intent!.parameters.find((p) => p.name === "to")).toBeDefined();
   });
 
   it("findIosAppIntent returns undefined for unknown ids", () => {
@@ -118,10 +126,54 @@ describe("iOS AppIntent registry", () => {
   it("Maps directions intent declares the expected transport enum", () => {
     const maps = findIosAppIntent("com.apple.Maps.directions");
     expect(maps).toBeDefined();
+    expect(maps!.invocationMode).toBe("native-x-callback");
     const transport = maps!.parameters.find((p) => p.name === "transport");
     expect(transport?.type).toBe("enum");
     expect(transport?.enumValues).toEqual(
       expect.arrayContaining(["driving", "walking", "transit", "cycling"]),
+    );
+  });
+
+  it("declares exactly the Swift native x-callback invocation map", () => {
+    expect(IOS_NATIVE_X_CALLBACK_INTENT_IDS).toEqual([
+      "com.apple.mobilemail.send-email",
+      "com.apple.MobileSMS.send-message",
+      "com.apple.Maps.directions",
+      "com.apple.mobilesafari.open-url",
+    ]);
+    const nativeIds = listIosAppIntents()
+      .filter((intent) => intent.invocationMode === "native-x-callback")
+      .map((intent) => intent.id);
+    expect(nativeIds).toEqual([...IOS_NATIVE_X_CALLBACK_INTENT_IDS]);
+    for (const id of IOS_NATIVE_X_CALLBACK_INTENT_IDS) {
+      expect(isIosNativeXCallbackIntent(id)).toBe(true);
+    }
+    expect(isIosNativeXCallbackIntent("com.apple.mobilenotes.create-note")).toBe(
+      false,
+    );
+  });
+
+  it("marks catalog entries without Swift mappings as non-native", () => {
+    const nonNativeIds = [
+      "com.apple.mobilenotes.create-note",
+      "com.apple.mobilenotes.append-to-note",
+      "com.apple.mobilenotes.search-notes",
+      "com.apple.reminders.add-reminder",
+      "com.apple.reminders.list-reminders",
+      "com.apple.Music.play",
+      "com.apple.Music.pause",
+      "com.apple.Music.next-track",
+      "com.apple.Maps.search",
+      "com.apple.mobilesafari.add-bookmark",
+    ];
+    for (const id of nonNativeIds) {
+      const intent = findIosAppIntent(id);
+      expect(intent).toBeDefined();
+      expect(intent!.invocationMode).not.toBe("native-x-callback");
+      expect(isIosNativeXCallbackIntent(id)).toBe(false);
+    }
+    expect(findIosAppIntent("com.apple.Maps.search")!.invocationMode).toBe(
+      "catalog-only",
     );
   });
 

@@ -3,6 +3,7 @@ import * as esbuild from "esbuild";
 import type { VirtualFilesystemService } from "./virtual-filesystem.ts";
 
 export type PluginCompilerFormat = "esm" | "cjs";
+export type PluginCompilerPlatform = "browser" | "neutral" | "node";
 
 export interface PluginCompilerOptions {
   vfs: VirtualFilesystemService;
@@ -16,6 +17,7 @@ export interface PluginCompilerOptions {
   /** Virtual output path inside the VFS. Defaults to `dist/<entry-stem>.js`. */
   outFile?: string;
   format?: PluginCompilerFormat;
+  platform?: PluginCompilerPlatform;
   target?: string;
   /**
    * Patterns excluded from bundling. Defaults to ["@elizaos/*"] so the
@@ -23,6 +25,12 @@ export interface PluginCompilerOptions {
    * inlining them.
    */
   external?: string[];
+  /**
+   * Bare module imports allowed in source compiled from VFS. This prevents a
+   * generated plugin/view from reaching into arbitrary installed packages while
+   * still allowing host-provided peers such as React and @elizaos/core.
+   */
+  allowedBareImports?: string[];
   /** When true (default), inline a sourcemap into the output. */
   sourcemap?: boolean;
   /** When true (default), bundle dependencies. */
@@ -40,7 +48,15 @@ export interface PluginCompilerResult {
 }
 
 const DEFAULT_TARGET = "node20";
-const DEFAULT_EXTERNAL = ["@elizaos/*"];
+const DEFAULT_PLATFORM: PluginCompilerPlatform = "neutral";
+const DEFAULT_EXTERNAL = [
+  "@elizaos/*",
+  "react",
+  "react-dom",
+  "react/jsx-runtime",
+  "react/jsx-dev-runtime",
+];
+const DEFAULT_ALLOWED_BARE_IMPORTS = [...DEFAULT_EXTERNAL];
 
 /**
  * Compiles TypeScript plugin source from a project's VFS into JS, also written
@@ -59,8 +75,10 @@ export class PluginCompiler {
       entry,
       outFile,
       format = "esm",
+      platform = DEFAULT_PLATFORM,
       target = DEFAULT_TARGET,
       external = DEFAULT_EXTERNAL,
+      allowedBareImports = DEFAULT_ALLOWED_BARE_IMPORTS,
       sourcemap = true,
       bundle = true,
       minify = false,
@@ -93,8 +111,10 @@ export class PluginCompiler {
         write: false,
         format,
         target,
-        platform: "node",
+        platform,
         external: [...external],
+        plugins: [vfsImportPolicyPlugin(vfs, allowedBareImports)],
+        jsx: "automatic",
         sourcemap: sourcemap ? "inline" : false,
         minify,
         logLevel: "silent",
@@ -134,6 +154,76 @@ export class PluginCompiler {
       durationMs,
     };
   }
+}
+
+function vfsImportPolicyPlugin(
+  vfs: VirtualFilesystemService,
+  allowedBareImports: readonly string[],
+): esbuild.Plugin {
+  const filesRoot = path.resolve(vfs.filesRoot);
+  return {
+    name: "vfs-import-policy",
+    setup(build) {
+      build.onResolve({ filter: /.*/ }, (args) => {
+        const specifier = args.path;
+        if (isBareSpecifier(specifier)) {
+          if (!isAllowedBareImport(specifier, allowedBareImports)) {
+            return {
+              errors: [
+                {
+                  text: `Import "${specifier}" is not available to VFS-compiled code. Use bundled allowlisted modules only.`,
+                },
+              ],
+            };
+          }
+          return { path: specifier, external: true };
+        }
+
+        if (specifier.startsWith(".")) {
+          const resolved = path.resolve(args.resolveDir, specifier);
+          if (!isWithin(filesRoot, resolved)) {
+            return {
+              errors: [
+                {
+                  text: `Relative import escapes the VFS project: ${specifier}`,
+                },
+              ],
+            };
+          }
+        }
+
+        return null;
+      });
+    },
+  };
+}
+
+function isBareSpecifier(specifier: string): boolean {
+  return (
+    !specifier.startsWith(".") &&
+    !specifier.startsWith("/") &&
+    !/^[a-zA-Z]:[\\/]/.test(specifier)
+  );
+}
+
+function isAllowedBareImport(
+  specifier: string,
+  allowedBareImports: readonly string[],
+): boolean {
+  return allowedBareImports.some((allowed) => {
+    if (allowed.endsWith("/*")) {
+      return specifier.startsWith(allowed.slice(0, -1));
+    }
+    return specifier === allowed || specifier.startsWith(`${allowed}/`);
+  });
+}
+
+function isWithin(root: string, candidate: string): boolean {
+  const relative = path.relative(root, path.resolve(candidate));
+  return (
+    relative === "" ||
+    (!relative.startsWith("..") && !path.isAbsolute(relative))
+  );
 }
 
 export function createPluginCompiler(): PluginCompiler {

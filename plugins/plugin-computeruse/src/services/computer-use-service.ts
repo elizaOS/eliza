@@ -37,9 +37,14 @@ import {
   driverClickWithModifiers,
   driverDoubleClick,
   driverDrag,
+  driverKeyDown,
   driverKeyCombo,
   driverKeyPress,
+  driverKeyUp,
+  driverMiddleClick,
+  driverMouseDown,
   driverMouseMove,
+  driverMouseUp,
   driverRightClick,
   driverScroll,
   driverType,
@@ -59,6 +64,7 @@ import {
   writeBytes,
   writeFile,
 } from "../platform/file-ops.js";
+import { getClipboardText, setClipboardText } from "../platform/clipboard.js";
 import { commandExists, currentPlatform } from "../platform/helpers.js";
 import { classifyPermissionDeniedError } from "../platform/permissions.js";
 import {
@@ -68,18 +74,30 @@ import {
   connectTerminal,
   executeTerminal,
   readTerminal,
+  resizeTerminal,
+  sendInputTerminal,
   typeTerminal,
 } from "../platform/terminal.js";
 import {
   arrangeWindows,
   closeWindow,
   focusWindow,
+  getApplicationWindows,
+  getCurrentWindow,
+  getCurrentWindowId,
+  getWindowName,
+  getWindowPosition,
+  getWindowSize,
   getScreenSize,
   listWindows,
+  openWindow,
+  launchApplication,
   maximizeWindow,
   minimizeWindow,
   moveWindow,
   restoreWindow,
+  setWindowPosition,
+  setWindowSize,
   switchWindow,
 } from "../platform/windows-list.js";
 import type {
@@ -89,6 +107,8 @@ import type {
   ApprovalSnapshot,
   BrowserActionParams,
   BrowserActionResult,
+  ClipboardActionParams,
+  ClipboardActionResult,
   ComputerActionResult,
   ComputerUseConfig,
   ComputerUseResult,
@@ -122,9 +142,14 @@ const COORDINATE_BEARING_ACTIONS = new Set<DesktopActionParams["action"]>([
   "click_with_modifiers",
   "double_click",
   "right_click",
+  "middle_click",
+  "mouse_down",
+  "mouse_up",
   "mouse_move",
   "scroll",
   "drag",
+  "left_click_drag",
+  "drag_to",
 ]);
 
 function errorMessage(error: unknown): string {
@@ -245,12 +270,19 @@ export class ComputerUseService extends Service {
       case "click_with_modifiers":
       case "double_click":
       case "right_click":
+      case "middle_click":
+      case "mouse_down":
+      case "mouse_up":
       case "mouse_move":
       case "type":
       case "key_press":
+      case "key_down":
+      case "key_up":
       case "key_combo":
       case "scroll":
       case "drag":
+      case "left_click_drag":
+      case "drag_to":
       case "detect_elements":
       case "ocr":
       case "get_accessibility_tree":
@@ -285,6 +317,20 @@ export class ComputerUseService extends Service {
           action: this.mapBrowserCommandToAction(command),
         });
       case "list_windows":
+      case "open":
+      case "window_open":
+      case "open_window":
+      case "launch":
+      case "window_launch":
+      case "launch_application":
+      case "get_current_window_id":
+      case "get_application_windows":
+      case "get_window_name":
+      case "get_window_size":
+      case "get_window_position":
+      case "set_window_size":
+      case "set_window_position":
+      case "activate_window":
       case "switch_to_window":
       case "arrange_windows":
       case "move_window":
@@ -295,6 +341,19 @@ export class ComputerUseService extends Service {
         return this.executeWindowAction({
           ...commandParameters<WindowActionParams>(parameters),
           action: this.mapWindowCommandToAction(command),
+        });
+      case "clipboard_get":
+      case "get_clipboard":
+        return this.executeClipboardAction({
+          ...commandParameters<ClipboardActionParams>(parameters),
+          action: "get",
+        });
+      case "copy_to_clipboard":
+      case "set_clipboard":
+      case "clipboard_set":
+        return this.executeClipboardAction({
+          ...commandParameters<ClipboardActionParams>(parameters),
+          action: "set",
         });
       case "file_read":
       case "file_write":
@@ -317,9 +376,12 @@ export class ComputerUseService extends Service {
           action: this.mapFileCommandToAction(command),
         });
       case "terminal_connect":
+      case "terminal_create":
       case "terminal_execute":
       case "terminal_read":
       case "terminal_type":
+      case "terminal_send_input":
+      case "terminal_resize":
       case "terminal_clear":
       case "terminal_close":
       case "execute_command":
@@ -386,6 +448,24 @@ export class ComputerUseService extends Service {
           await driverRightClick(g.x, g.y);
           break;
         }
+        case "middle_click": {
+          this.requireCoordinate(params.coordinate, "middle_click");
+          const g = this.toGlobal(params, params.coordinate);
+          await driverMiddleClick(g.x, g.y);
+          break;
+        }
+        case "mouse_down": {
+          this.requireCoordinate(params.coordinate, "mouse_down");
+          const g = this.toGlobal(params, params.coordinate);
+          await driverMouseDown(g.x, g.y, params.button ?? "left");
+          break;
+        }
+        case "mouse_up": {
+          this.requireCoordinate(params.coordinate, "mouse_up");
+          const g = this.toGlobal(params, params.coordinate);
+          await driverMouseUp(g.x, g.y, params.button ?? "left");
+          break;
+        }
         case "mouse_move": {
           this.requireCoordinate(params.coordinate, "mouse_move");
           const g = this.toGlobal(params, params.coordinate);
@@ -399,6 +479,14 @@ export class ComputerUseService extends Service {
         case "key":
           if (!params.key) throw new Error("key is required for key action");
           await driverKeyPress(params.key);
+          break;
+        case "key_down":
+          if (!params.key) throw new Error("key is required for key_down action");
+          await driverKeyDown(params.key);
+          break;
+        case "key_up":
+          if (!params.key) throw new Error("key is required for key_up action");
+          await driverKeyUp(params.key);
           break;
         case "key_combo":
           if (!params.key) {
@@ -828,6 +916,97 @@ export class ComputerUseService extends Service {
             count: windows.length,
           });
         }
+        case "open":
+          return this.succeedEntry(
+            entry,
+            openWindow(this.requireApplicationTarget(params, "open")),
+          );
+        case "launch":
+          return this.succeedEntry(
+            entry,
+            launchApplication(this.requireApplicationTarget(params, "launch")),
+          );
+        case "get_current_window_id": {
+          const window = getCurrentWindow();
+          return this.succeedEntry(entry, {
+            success: true,
+            window,
+            windowId: window.id,
+            window_id: window.id,
+            message: `Current window id: ${window.id}`,
+          });
+        }
+        case "get_application_windows": {
+          const windows = getApplicationWindows(
+            this.requireApplicationTarget(params, "get_application_windows"),
+          );
+          return this.succeedEntry(entry, {
+            success: true,
+            windows,
+            count: windows.length,
+          });
+        }
+        case "get_window_name": {
+          const name = getWindowName(this.requireWindowTarget(params));
+          return this.succeedEntry(entry, {
+            success: true,
+            name,
+            title: name,
+            message: name,
+          });
+        }
+        case "get_window_size": {
+          const size = getWindowSize(this.requireWindowTarget(params));
+          return this.succeedEntry(entry, {
+            success: true,
+            ...size,
+            message: `${size.width}x${size.height}`,
+          });
+        }
+        case "get_window_position": {
+          const position = getWindowPosition(this.requireWindowTarget(params));
+          return this.succeedEntry(entry, {
+            success: true,
+            ...position,
+            message: `(${position.x}, ${position.y})`,
+          });
+        }
+        case "set_window_size":
+          return this.succeedEntry(
+            entry,
+            setWindowSize(
+              this.requireWindowTarget(params),
+              this.requireNumber(
+                params.width,
+                "width is required for set_window_size",
+              ),
+              this.requireNumber(
+                params.height,
+                "height is required for set_window_size",
+              ),
+            ),
+          );
+        case "set_window_position":
+          return this.succeedEntry(
+            entry,
+            setWindowPosition(
+              this.requireWindowTarget(params),
+              this.requireNumber(
+                params.x,
+                "x is required for set_window_position",
+              ),
+              this.requireNumber(
+                params.y,
+                "y is required for set_window_position",
+              ),
+            ),
+          );
+        case "activate_window":
+          focusWindow(this.requireWindowTarget(params));
+          return this.succeedEntry(entry, {
+            success: true,
+            message: "Activated window.",
+          });
         case "focus":
           focusWindow(this.requireWindowTarget(params));
           return this.succeedEntry(entry, {
@@ -1023,9 +1202,15 @@ export class ComputerUseService extends Service {
 
       switch (params.action) {
         case "connect":
+        case "create":
           return this.finishTerminalEntry(
             entry,
-            await connectTerminal(params.cwd),
+            await connectTerminal({
+              cwd: params.cwd,
+              cols: params.cols,
+              rows: params.rows,
+              shell: params.shell,
+            }),
           );
         case "execute":
           return this.finishTerminalEntry(
@@ -1051,11 +1236,34 @@ export class ComputerUseService extends Service {
           return this.finishTerminalEntry(
             entry,
             await typeTerminal(
-              this.requireIdentifier(
-                params.text,
-                "text is required for terminal type",
-              ),
+              {
+                text: this.requireIdentifier(
+                  params.text,
+                  "text is required for terminal type",
+                ),
+                sessionId: params.sessionId,
+              },
             ),
+          );
+        case "send_input":
+          return this.finishTerminalEntry(
+            entry,
+            await sendInputTerminal({
+              text: this.requireIdentifier(
+                params.text ?? params.input,
+                "text or input is required for terminal send_input",
+              ),
+              sessionId: params.sessionId,
+            }),
+          );
+        case "resize":
+          return this.finishTerminalEntry(
+            entry,
+            await resizeTerminal({
+              sessionId: params.sessionId,
+              cols: params.cols,
+              rows: params.rows,
+            }),
           );
         case "clear":
           return this.finishTerminalEntry(
@@ -1185,6 +1393,7 @@ export class ComputerUseService extends Service {
   ): WindowActionParams {
     return {
       ...params,
+      action: this.normalizeWindowAction(params.action),
       windowId: params.windowId ?? params.window ?? params.title,
       windowTitle: params.windowTitle ?? params.window ?? params.title,
     };
@@ -1215,6 +1424,7 @@ export class ComputerUseService extends Service {
       ...params,
       timeout: params.timeout ?? params.timeoutSeconds,
       sessionId: params.sessionId ?? params.session_id,
+      text: params.text ?? params.input,
       action:
         params.action === "execute_command" ? "execute_command" : params.action,
     };
@@ -1230,6 +1440,19 @@ export class ComputerUseService extends Service {
         return "clickables";
       case "get_context":
         return "context";
+      default:
+        return action;
+    }
+  }
+
+  private normalizeWindowAction(
+    action: WindowActionParams["action"],
+  ): WindowActionParams["action"] {
+    switch (action) {
+      case "set_window_position":
+        return "set_window_position";
+      case "activate_window":
+        return "activate_window";
       default:
         return action;
     }
@@ -1296,6 +1519,22 @@ export class ComputerUseService extends Service {
     switch (action) {
       case "list":
         return "list_windows";
+      case "open":
+        return "window_open";
+      case "launch":
+        return "window_launch";
+      case "get_current_window_id":
+      case "get_application_windows":
+      case "get_window_name":
+      case "get_window_size":
+      case "get_window_position":
+        return action;
+      case "set_window_size":
+        return "set_window_size";
+      case "set_window_position":
+        return "set_window_position";
+      case "activate_window":
+        return "activate_window";
       case "focus":
       case "switch":
         return "switch_to_window";
@@ -1358,12 +1597,18 @@ export class ComputerUseService extends Service {
     switch (action) {
       case "connect":
         return "terminal_connect";
+      case "create":
+        return "terminal_create";
       case "execute":
         return "terminal_execute";
       case "read":
         return "terminal_read";
       case "type":
         return "terminal_type";
+      case "send_input":
+        return "terminal_send_input";
+      case "resize":
+        return "terminal_resize";
       case "clear":
         return "terminal_clear";
       case "close":
@@ -1408,6 +1653,30 @@ export class ComputerUseService extends Service {
     switch (command) {
       case "list_windows":
         return "list";
+      case "open":
+      case "window_open":
+      case "open_window":
+        return "open";
+      case "launch":
+      case "window_launch":
+      case "launch_application":
+        return "launch";
+      case "get_current_window_id":
+        return "get_current_window_id";
+      case "get_application_windows":
+        return "get_application_windows";
+      case "get_window_name":
+        return "get_window_name";
+      case "get_window_size":
+        return "get_window_size";
+      case "get_window_position":
+        return "get_window_position";
+      case "set_window_size":
+        return "set_window_size";
+      case "set_window_position":
+        return "set_window_position";
+      case "activate_window":
+        return "activate_window";
       case "switch_to_window":
         return "switch";
       case "arrange_windows":
@@ -1472,12 +1741,18 @@ export class ComputerUseService extends Service {
     switch (command) {
       case "terminal_connect":
         return "connect";
+      case "terminal_create":
+        return "create";
       case "terminal_execute":
         return "execute";
       case "terminal_read":
         return "read";
       case "terminal_type":
         return "type";
+      case "terminal_send_input":
+        return "send_input";
+      case "terminal_resize":
+        return "resize";
       case "terminal_clear":
         return "clear";
       case "terminal_close":
@@ -1769,6 +2044,21 @@ export class ComputerUseService extends Service {
       params.windowId ??
       params.windowTitle ??
       this.requireIdentifier(undefined, "windowId or windowTitle is required")
+    );
+  }
+
+  private requireApplicationTarget(
+    params: WindowActionParams,
+    action: string,
+  ): string {
+    return (
+      params.appName ??
+      params.windowTitle ??
+      params.windowId ??
+      this.requireIdentifier(
+        undefined,
+        `appName or windowTitle is required for window ${action}`,
+      )
     );
   }
 

@@ -67,11 +67,11 @@ def test_context_tier_text_artifacts_do_not_duplicate_context_suffix() -> None:
 def test_voice_artifacts_follow_kokoro_omnivoice_boundary() -> None:
     plan = build_plan()
     assert "tts/kokoro/model_q4.onnx" in plan["0_8b"].required_files
-    assert "tts/omnivoice-base-Q4_K_M.gguf" in plan["0_8b"].required_files
+    assert "tts/omnivoice-base-Q4_K_M.gguf" not in plan["0_8b"].required_files
     assert "tts/kokoro/model_q4.onnx" in plan["2b"].required_files
-    assert "tts/omnivoice-base-Q4_K_M.gguf" in plan["2b"].required_files
+    assert "tts/omnivoice-base-Q4_K_M.gguf" not in plan["2b"].required_files
     assert "tts/kokoro/model_q4.onnx" in plan["4b"].required_files
-    assert "tts/omnivoice-base-Q4_K_M.gguf" in plan["4b"].required_files
+    assert "tts/omnivoice-base-Q4_K_M.gguf" not in plan["4b"].required_files
     assert "tts/kokoro/model_q4.onnx" in plan["9b"].required_files
     assert "tts/omnivoice-base-Q8_0.gguf" in plan["9b"].required_files
     assert "tts/kokoro/model_q4.onnx" not in plan["27b"].required_files

@@ -797,6 +797,19 @@ function looksLikeEmbeddingModelPath(modelPath: string): boolean {
   );
 }
 
+function looksLikeEmbeddingModelId(modelId: string | undefined): boolean {
+  if (!modelId) return false;
+  const lowered = modelId.toLowerCase();
+  return (
+    lowered.includes("nomic-embed") ||
+    lowered.includes("bge") ||
+    lowered.includes("all-minilm") ||
+    lowered.includes("gte") ||
+    lowered.includes("e5-") ||
+    lowered.includes("embedding")
+  );
+}
+
 export function registerCapacitorLlamaLoader(runtime: {
   registerService?: (name: string, impl: unknown) => unknown;
 }): void {
@@ -812,15 +825,16 @@ export function registerCapacitorLlamaLoader(runtime: {
   const chatAdapter = new CapacitorLlamaAdapter();
   const embeddingAdapter = new CapacitorLlamaAdapter();
 
-  function adapterFor(modelPath: string): CapacitorLlamaAdapter {
-    return looksLikeEmbeddingModelPath(modelPath)
+  function adapterFor(args: LoadOptions): CapacitorLlamaAdapter {
+    return looksLikeEmbeddingModelId(args.modelId) ||
+      looksLikeEmbeddingModelPath(args.modelPath)
       ? embeddingAdapter
       : chatAdapter;
   }
 
   runtime.registerService("localInferenceLoader", {
     async loadModel(args: LoadOptions): Promise<void> {
-      await adapterFor(args.modelPath).load(args);
+      await adapterFor(args).load(args);
     },
     async unloadModel(): Promise<void> {
       // No-op: each adapter manages its own context lifecycle inside
@@ -837,6 +851,11 @@ export function registerCapacitorLlamaLoader(runtime: {
       return (
         chatAdapter.currentModelPath() ?? embeddingAdapter.currentModelPath()
       );
+    },
+    currentModelPathForSlot(slot: string): string | null {
+      return slot === "TEXT_EMBEDDING"
+        ? embeddingAdapter.currentModelPath()
+        : chatAdapter.currentModelPath();
     },
     async generate(args: {
       prompt: string;

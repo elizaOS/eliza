@@ -206,7 +206,8 @@ function gbnfJsonStringLiteral(value: string): string {
 
 /** Shared GBNF rule bodies, inlined so the grammar is self-contained. */
 const GBNF_RULE_BODIES: Record<string, string> = {
-	jsonstring: '"\\"" ( [^"\\\\] | "\\\\" . )* "\\""',
+	jsonstring:
+		'"\\"" ( [^"\\\\\\x00-\\x1F] | "\\\\" ( ["\\\\/bfnrt] | "u" [0-9a-fA-F] [0-9a-fA-F] [0-9a-fA-F] [0-9a-fA-F] ) )* "\\""',
 	jsonvalue:
 		'jsonobject | jsonarray | jsonstring | jsonnumber | "true" | "false" | "null"',
 	jsonobject:
@@ -906,11 +907,11 @@ export function buildPlannerActionGrammar(
  * coercion/reroll round in `validate-tool-args.ts`). Matches the intent of
  * P2-4 in `packages/training/benchmarks/INFERENCE_OPTIMIZATION_PLAN.md`.
  *
- * The returned `responseSkeleton` is intentionally minimal — the grammar
- * carries the entire structural contract, so the engine's prefill plan has
- * nothing useful to inject statically. Cloud adapters still ignore the
- * skeleton + grammar per the W3 contract; `tools` carries the equivalent
- * unforced contract for them.
+ * The returned `responseSkeleton` mirrors the broad planner-call envelope so
+ * per-span samplers can still force argmax on the action-name enum. The strict
+ * grammar remains authoritative for the conditional action→parameters shape.
+ * Cloud adapters still ignore the skeleton + grammar per the W3 contract;
+ * `tools` carries the equivalent unforced contract for them.
  *
  * Returns `null` when no actions are exposed.
  */
@@ -978,14 +979,10 @@ export function buildPlannerActionGrammarStrict(
 
 	builder.root([branchRuleNames.join(" | ")]);
 
-	// Minimal skeleton — the grammar carries the entire structural contract.
-	// The engine's prefill plan has nothing useful to inject statically because
-	// every branch starts with the same literal `{"action":"` but diverges on
-	// the first character of the chosen action name.
-	const responseSkeleton: ResponseSkeleton = {
-		spans: [{ kind: "free-json", key: "envelope" }],
-		id: cacheKey,
-	};
+		const responseSkeleton: ResponseSkeleton = buildPlannerActionSamplerSkeleton(
+			names,
+			cacheKey,
+		);
 
 	const result: PlannerActionGrammarResult = {
 		responseSkeleton,
@@ -1029,10 +1026,11 @@ function emitActionParamsRule(
 /**
  * Emit a GBNF rule for an object schema. Walks `properties`, translates each
  * value into a constrained GBNF expression, and assembles a body that
- * sequences required keys in declaration order then permits each optional
- * key zero-or-more times. (GBNF can't express true unordered sets without
- * combinatorial blowup; the single-occurrence invariant of optionals is
- * enforced by the downstream JSON parser rejecting duplicate keys.)
+ * sequences required keys in declaration order then permits each optional key
+ * at most once, also in declaration order. This intentionally gives up
+ * arbitrary JSON property ordering for optional fields because a deterministic
+ * action schema order is much cheaper, more guidable, and prevents duplicate
+ * optional keys at the grammar level.
  *
  * Recursion: object-typed properties whose schema declares its own
  * `properties` emit a nested rule via this function, capped at
@@ -1086,15 +1084,50 @@ function emitObjectRule(
 		}
 	}
 	if (optionalKeys.length > 0) {
-		const optionalAlt = optionalKeys.map((k) => propertyTokens[k]).join(" | ");
-		const leadingComma = requiredKeys.length > 0;
-		const optionalGroup = leadingComma
-			? `( ${gbnfLiteral(",")} ( ${optionalAlt} ) )*`
-			: `( ( ${optionalAlt} ) ( ${gbnfLiteral(",")} ( ${optionalAlt} ) )* )?`;
-		parts.push(optionalGroup);
+		if (requiredKeys.length > 0) {
+			for (const key of optionalKeys) {
+				parts.push(`( ${gbnfLiteral(",")} ${propertyTokens[key]} )?`);
+			}
+		} else {
+			const alternatives = optionalKeys.map((key, index) =>
+				[
+					propertyTokens[key],
+					...optionalKeys
+						.slice(index + 1)
+						.map((nextKey) => `( ${gbnfLiteral(",")} ${propertyTokens[nextKey]} )?`),
+				].join(" "),
+			);
+			parts.push(`( ${alternatives.join(" | ")} )?`);
+		}
 	}
 	parts.push(gbnfLiteral("}"));
 	builder.rule(ruleName, parts.join(" "));
+}
+
+function buildPlannerActionSamplerSkeleton(
+	names: string[],
+	cacheKey: string,
+): ResponseSkeleton {
+	const spans: ResponseSkeletonSpan[] = [
+		{ kind: "literal", value: '{"action":' },
+	];
+	if (names.length === 1) {
+		spans.push({
+			kind: "literal",
+			key: "action",
+			value: JSON.stringify(names[0]),
+		});
+	} else {
+		spans.push({ kind: "enum", key: "action", enumValues: names });
+	}
+	spans.push(
+		{ kind: "literal", value: ',"parameters":' },
+		{ kind: "free-json", key: "parameters" },
+		{ kind: "literal", value: ',"thought":' },
+		{ kind: "free-string", key: "thought" },
+		{ kind: "literal", value: "}" },
+	);
+	return { spans, id: cacheKey };
 }
 
 /**
@@ -1145,13 +1178,13 @@ function buildBoundedNumberRule(
 
 		// For manageable integer ranges, enumerate directly.
 		// This is pragmatic for small ranges like [0, 100].
-		if (Number.isFinite(min) && Number.isFinite(max) && max - min <= 200) {
-			const literals: string[] = [];
-			for (let i = min; i <= max; i++) {
-				literals.push(gbnfJsonStringLiteral(String(i)));
-			}
-			builder.rule(ruleName, literals.join(" | "));
-			return ruleName;
+			if (Number.isFinite(min) && Number.isFinite(max) && max - min <= 200) {
+				const literals: string[] = [];
+				for (let i = min; i <= max; i++) {
+					literals.push(gbnfLiteral(String(i)));
+				}
+				builder.rule(ruleName, literals.join(" | "));
+				return ruleName;
 		}
 
 		// For larger ranges, fall back to unbounded (the grammar won't tightly constrain).
