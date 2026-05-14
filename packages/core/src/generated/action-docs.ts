@@ -3866,6 +3866,29 @@ export const allActionsSpec = {
 					},
 					descriptionCompressed: "Scroll tick count.",
 				},
+				{
+					name: "displayId",
+					description:
+						"Display the coordinate is local to. Required for any coordinate-bearing action on multi-monitor hosts. See the `computerState` provider for the live `displays[]` list.",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed:
+						"Display the coordinate is local to. Required for any coordinate-bearing action on multi-monitor hosts. See the `computerState` provider for the live...",
+				},
+				{
+					name: "coordSource",
+					description:
+						"Coordinate space of the coordinate fields: 'logical' (default; matches display.bounds) or 'backing' (raw retina pixels — macOS only).",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["logical", "backing"],
+					},
+					descriptionCompressed:
+						"Coordinate space of the coordinate fields: 'logical' (default. matches display. bounds) or 'backing' (raw retina pixels - macOS only).",
+				},
 			],
 			descriptionCompressed:
 				"Canonical cross-platform desktop control: screenshot/click/modified click/double/right/move/type/key/key_combo/scroll/drag/detect_elements/ocr.",
@@ -3904,6 +3927,55 @@ export const allActionsSpec = {
 							clicks: 1,
 							scrollDirection: "up",
 							scrollAmount: 3,
+							displayId: 1,
+							coordSource: "logical",
+						},
+					},
+				},
+			],
+		},
+		{
+			name: "COMPUTER_USE_AGENT",
+			description:
+				'computer_use_agent:\n  purpose: High-level autonomous desktop agent — given a goal, run Brain/Cascade/Dispatch loop until the goal is reached or maxSteps is exhausted. Uses the WS6 scene-builder, WS7 Brain+Actor cascade, and WS5 multi-monitor coords.\n  guidance: Prefer COMPUTER_USE for single explicit actions you can already name. Use COMPUTER_USE_AGENT when the user gives a goal ("click the save button", "open VS Code") and you want the system to plan and click for you.',
+			parameters: [
+				{
+					name: "goal",
+					description:
+						"Natural-language goal, e.g. 'click the save button in the dialog'.",
+					required: true,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Natural-language goal, e. g. 'click the save button in the dialog'.",
+				},
+				{
+					name: "maxSteps",
+					description:
+						"Maximum Brain→dispatch cycles before giving up (default 5).",
+					required: false,
+					schema: {
+						type: "number",
+						default: 5,
+						minimum: 1,
+						maximum: 20,
+					},
+					descriptionCompressed:
+						"max Brain→dispatch cycles before giving up (default 5).",
+				},
+			],
+			descriptionCompressed:
+				"Autonomous desktop loop: scene → Brain → cascade → click. Pass {goal, maxSteps?}.",
+			similes: ["AUTOMATE_SCREEN", "RUN_COMPUTER_AGENT", "SCREEN_AGENT"],
+			exampleCalls: [
+				{
+					user: "Use COMPUTER_USE_AGENT with the provided parameters.",
+					actions: ["COMPUTER_USE_AGENT"],
+					params: {
+						COMPUTER_USE_AGENT: {
+							goal: "example",
+							maxSteps: 5,
 						},
 					},
 				},
