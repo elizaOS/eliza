@@ -888,7 +888,9 @@ function getInboundBenchmarkName(message: Memory): string {
 	if (typeof direct === "string" && direct.trim().length > 0) {
 		return direct.trim().toLowerCase();
 	}
-	const messageMetadata = message.metadata as Record<string, unknown> | undefined;
+	const messageMetadata = message.metadata as
+		| Record<string, unknown>
+		| undefined;
 	const context = messageMetadata?.benchmarkContext;
 	if (typeof context === "string" && context.trim().length > 0) {
 		try {

@@ -471,7 +471,9 @@ export class DeviceBridge {
           return;
         }
         if (msg.payload.capabilities.platform === "ios") {
-          logger.warn("[device-bridge] Rejecting iOS registration: use native IPC");
+          logger.warn(
+            "[device-bridge] Rejecting iOS registration: use native IPC",
+          );
           socket.close(4003, "ios-ipc-required");
           return;
         }
