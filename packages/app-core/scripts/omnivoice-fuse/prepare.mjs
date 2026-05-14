@@ -2198,6 +2198,38 @@ export function prepareOmnivoiceFusion({
     ...applyPatches({ patchesDir, llamaCppRoot }),
   ];
 
+  // Stage the Kokoro graft alongside OmniVoice. The Kokoro sources live in
+  // `packages/app-core/scripts/omnivoice-fuse/kokoro-graft/{src,tools}` and
+  // are copied into the same `omnivoice/` directory so they compile into the
+  // same `omnivoice-core` static library + `elizainference` shared library.
+  // See kokoro-llama-cpp-feasibility.md §3.
+  const kokoroStagingDir = new URL("./kokoro-graft/", import.meta.url).pathname;
+  let kokoroSourceCount = 0;
+  if (fs.existsSync(kokoroStagingDir)) {
+    for (const subdir of ["src", "tools"]) {
+      const from = path.join(kokoroStagingDir, subdir);
+      const to = path.join(graftRoot, subdir);
+      if (!fs.existsSync(from)) continue;
+      for (const entry of fs.readdirSync(from, { withFileTypes: true })) {
+        // Only copy kokoro-* and convert_kokoro_* files; never overwrite
+        // OmniVoice's own files in src/ or tools/. The CMake graft block
+        // globs `kokoro-*.cpp` specifically so the two sets stay
+        // distinguishable on the build side.
+        if (
+          !entry.name.startsWith("kokoro") &&
+          !entry.name.startsWith("convert_kokoro")
+        ) {
+          continue;
+        }
+        if (entry.isDirectory()) continue;
+        const srcFile = path.join(from, entry.name);
+        const dstFile = path.join(to, entry.name);
+        fs.copyFileSync(srcFile, dstFile);
+        if (/\.(c|cc|cpp|cxx|h|hpp)$/.test(entry.name)) kokoroSourceCount += 1;
+      }
+    }
+  }
+
   // Count source files actually grafted, for the manifest.
   let sourceCount = 0;
   const stack = [graftRoot];
@@ -2221,5 +2253,6 @@ export function prepareOmnivoiceFusion({
     sourceCount,
     sourceSurface,
     appliedPatches,
+    kokoroSourceCount,
   };
 }
