@@ -1153,6 +1153,24 @@ def test_action_calling_registry_command_forwards_tool_choice(tmp_path: Path) ->
     assert command[command.index("--tool-choice") + 1] == "required"
 
 
+def test_action_calling_cli_accepts_tool_choice_none() -> None:
+    module = importlib.import_module("benchmarks.action-calling.cli")
+    parser = module._build_argparser()
+
+    args = parser.parse_args(
+        [
+            "--model",
+            "gpt-oss-120b",
+            "--out",
+            "/tmp/action-calling",
+            "--tool-choice",
+            "none",
+        ]
+    )
+
+    assert args.tool_choice == "none"
+
+
 def test_action_calling_registry_command_uses_requested_harness_provider(tmp_path: Path) -> None:
     entry = {item.id: item for item in get_benchmark_registry(_workspace_root())}[
         "action-calling"

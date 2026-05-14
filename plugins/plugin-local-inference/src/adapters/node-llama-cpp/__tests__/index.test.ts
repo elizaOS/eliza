@@ -83,9 +83,13 @@ describe("Local AI Plugin", () => {
 			expect(MODEL_SPECS.embedding.name).toBe("text/eliza-1-0_8b-32k.gguf");
 		});
 
-		it("does not default local TTS to a Transformers.js model", () => {
+		it("defaults local TTS to the small-tier Kokoro bundle component", () => {
 			expect(MODEL_SPECS.tts.default.repo).toBe("elizaos/eliza-1");
-			expect(MODEL_SPECS.tts.default.name).toBe("tts/omnivoice-small.gguf");
+			expect(MODEL_SPECS.tts.default.name).toBe("tts/kokoro/model_q4.onnx");
+			expect(MODEL_SPECS.tts.default.tokenizer.name).toBe(
+				"tts/kokoro/tokenizer.json",
+			);
+			expect(MODEL_SPECS.tts.default.tokenizer.type).toBe("kokoro");
 			expect("modelId" in MODEL_SPECS.tts.default).toBe(false);
 			expect("defaultSpeakerEmbeddingUrl" in MODEL_SPECS.tts.default).toBe(
 				false,

@@ -96,10 +96,14 @@ interface LocalInferenceTextToSpeechService {
 
 interface LocalInferenceTranscriptionService {
 	transcribe?: (params: unknown) => Promise<string | { text?: string }>;
-	transcribePcm?: (params: {
-		pcm: Float32Array;
-		sampleRate: number;
-	}) => Promise<string | { text?: string }>;
+	transcribePcm?: (
+		params: {
+			pcm: Float32Array;
+			sampleRate: number;
+			signal?: AbortSignal;
+		},
+		signal?: AbortSignal,
+	) => Promise<string | { text?: string }>;
 }
 
 interface LocalInferenceRuntimeService
