@@ -22,8 +22,8 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
-from benchmarks.mmau.evaluator import extract_letter_from_option
-from benchmarks.mmau.types import (
+from elizaos_mmau_audio.evaluator import extract_letter_from_option
+from elizaos_mmau_audio.types import (
     MMAU_CATEGORIES,
     MMAUCategory,
     MMAUSample,
@@ -32,7 +32,7 @@ from benchmarks.mmau.types import (
 
 logger = logging.getLogger(__name__)
 
-FIXTURE_PATH = Path(__file__).resolve().parent / "fixtures" / "smoke.jsonl"
+FIXTURE_PATH = Path(__file__).resolve().parent.parent / "fixtures" / "smoke.jsonl"
 
 
 class MMAUDataset:
@@ -143,9 +143,7 @@ class MMAUDataset:
             return None
 
         sample_id = str(
-            attrs.get("id")
-            or data.get("id")
-            or f"{category.value}_{len(self.samples)}"
+            attrs.get("id") or data.get("id") or f"{category.value}_{len(self.samples)}"
         )
 
         question = str(data.get("instruction") or data.get("question") or "").strip()

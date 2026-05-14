@@ -329,7 +329,11 @@ export function resolveArbiterFromRuntime(runtime: {
   // service. Two loader names are in use across this repo
   // (`localInferenceLoader` is the runtime-registered one;
   // `localInference` / `LOCAL_INFERENCE` are legacy aliases).
-  const loaderNames = ["localInferenceLoader", "localInference", "LOCAL_INFERENCE"];
+  const loaderNames = [
+    "localInferenceLoader",
+    "localInference",
+    "LOCAL_INFERENCE",
+  ];
   for (const name of loaderNames) {
     const loader = runtime.getService?.(name) as
       | { getMemoryArbiter?: () => unknown }
