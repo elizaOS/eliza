@@ -16,4 +16,3 @@ on-device runtime service, privileged Android permissions, staged runtime
 assets, and native runtime libraries before release. The privileged AOSP system
 APK keeps those pieces because it is distributed with the device image instead
 of a public app store.
-
