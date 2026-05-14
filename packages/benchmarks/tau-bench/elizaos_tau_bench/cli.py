@@ -1,16 +1,17 @@
-#!/usr/bin/env python3
-"""
-Tau-bench Benchmark CLI for ElizaOS.
+"""tau-bench CLI.
 
-Usage:
-    python -m elizaos_tau_bench.cli --all
-    python -m elizaos_tau_bench.cli --domain retail
-    python -m elizaos_tau_bench.cli --domain airline
-    python -m elizaos_tau_bench.cli --trials 8 --output ./results
+Run all 165 official tasks with pass^k=4 by default:
+
+    python -m elizaos_tau_bench --agent-model gpt-4o
+
+Smoke test without an LLM:
+
+    python -m elizaos_tau_bench --mock --use-sample-tasks
 """
+
+from __future__ import annotations
 
 import argparse
-import asyncio
 import json
 import logging
 import os
@@ -18,503 +19,207 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-from elizaos_tau_bench.types import TauBenchConfig, TauDomain, TaskDifficulty
 from elizaos_tau_bench.runner import TauBenchRunner
+from elizaos_tau_bench.types import TauBenchConfig
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    handlers=[logging.StreamHandler(sys.stdout)],
-)
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("elizaos_tau_bench")
+
 
 def _maybe_load_dotenv() -> None:
-    """
-    Best-effort loading of environment variables from .env.
-
-    This is optional (no hard dependency on python-dotenv). When available, we load:
-    - A local file next to this CLI: `.env.tau-bench` (if present)
-    - The nearest `.env` found by searching upwards from CWD
-    """
     try:
-        from dotenv import find_dotenv, load_dotenv  # type: ignore[import-not-found]
+        from dotenv import find_dotenv, load_dotenv  # type: ignore
     except Exception:
         return
-
     try:
-        # Prefer a benchmark-specific env file if present
-        local_env = Path(__file__).resolve().parent.parent / ".env.tau-bench"
-        if local_env.exists():
-            load_dotenv(local_env, override=False)
-
-        # Then load the nearest .env from the current working directory upward
         env_path = find_dotenv(usecwd=True)
         if env_path:
             load_dotenv(env_path, override=False)
+        local = Path(__file__).resolve().parent.parent / ".env.tau-bench"
+        if local.exists():
+            load_dotenv(local, override=False)
     except Exception:
-        # Never fail the CLI because dotenv couldn't load
         return
 
 
-def parse_args() -> argparse.Namespace:
-    """Parse command line arguments."""
-    parser = argparse.ArgumentParser(
-        description="ElizaOS Tau-bench Benchmark CLI",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Examples:
-    # Run all benchmarks (retail + airline)
-    python -m elizaos_tau_bench.cli --all
-
-    # Run only retail domain
-    python -m elizaos_tau_bench.cli --domain retail
-
-    # Run with multiple trials for Pass^k evaluation
-    python -m elizaos_tau_bench.cli --all --trials 8
-
-    # Custom output directory
-    python -m elizaos_tau_bench.cli --all --output ./benchmark_results
-
-    # Verbose mode with max 10 tasks
-    python -m elizaos_tau_bench.cli --all --verbose --max-tasks 10
-
-    # Use sample tasks (no external data required)
-    python -m elizaos_tau_bench.cli --sample
-        """,
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    p = argparse.ArgumentParser(
+        prog="elizaos-tau-bench",
+        description="Run sierra-research/tau-bench against an ElizaOS-friendly harness.",
     )
-
-    parser.add_argument(
-        "--all",
-        action="store_true",
-        help="Run benchmarks for all domains",
-    )
-    parser.add_argument(
+    p.add_argument(
         "--domain",
-        type=str,
-        choices=["retail", "airline"],
-        help="Run benchmark for a specific domain",
+        choices=["retail", "airline", "both"],
+        default="both",
+        help="Domain(s) to run.",
     )
-    parser.add_argument(
-        "--sample",
-        action="store_true",
-        help="Use sample tasks (no external data required)",
+    p.add_argument(
+        "--task-split",
+        choices=["test", "dev", "train"],
+        default="test",
+        help="Upstream task split (retail has test/dev/train; airline has only test).",
     )
-    parser.add_argument(
-        "--data-path",
-        type=str,
-        default="./benchmark-data/tau-bench",
-        help="Path to benchmark data directory",
-    )
-    parser.add_argument(
-        "--output",
-        type=str,
-        default=None,
-        help="Output directory for results",
-    )
-    parser.add_argument(
-        "--trials",
+    p.add_argument(
+        "--task-ids",
         type=int,
-        default=1,
-        help="Number of trials per task (for Pass^k evaluation)",
-    )
-    parser.add_argument(
-        "--max-tasks",
-        type=int,
+        nargs="+",
         default=None,
-        help="Maximum number of tasks per domain",
+        help="Only run these task indices.",
     )
-    parser.add_argument(
-        "--max-turns",
-        type=int,
-        default=15,
-        help="Maximum turns per task",
-    )
-    parser.add_argument(
-        "--timeout",
-        type=int,
-        default=120000,
-        help="Timeout per task in milliseconds",
-    )
-    parser.add_argument(
-        "--difficulty",
-        type=str,
-        choices=["easy", "medium", "hard"],
-        default=None,
-        help="Filter tasks by difficulty",
-    )
-    parser.add_argument(
-        "--verbose",
+    p.add_argument("--start-index", type=int, default=0)
+    p.add_argument("--end-index", type=int, default=-1)
+    p.add_argument("--max-tasks-per-domain", type=int, default=None)
+    p.add_argument(
+        "--use-sample-tasks",
         action="store_true",
-        help="Enable verbose output",
-    )
-    parser.add_argument(
-        "--no-memory",
-        action="store_true",
-        help="Disable memory tracking",
-    )
-    parser.add_argument(
-        "--no-details",
-        action="store_true",
-        help="Don't save detailed logs",
-    )
-    parser.add_argument(
-        "--json",
-        action="store_true",
-        help="Output results as JSON to stdout",
-    )
-    parser.add_argument(
-        "--llm-judge",
-        action="store_true",
-        help="Use LLM to judge response quality",
-    )
-    
-    # Agent integration options
-    parser.add_argument(
-        "--mock",
-        action="store_true",
-        help="Use mock agent instead of real LLM (for testing)",
-    )
-    parser.add_argument(
-        "--real-llm",
-        action="store_true",
-        help="(deprecated, now the default) Use real LLM via the Eliza TypeScript bridge",
-    )
-    parser.add_argument(
-        "--temperature",
-        type=float,
-        default=0.0,
-        help="LLM temperature for generation (default: 0.0)",
-    )
-    parser.add_argument(
-        "--model-provider",
-        type=str,
-        choices=[
-            "openai",
-            "groq",
-            "openrouter",
-            "anthropic",
-            "google",
-            "ollama",
-            "vllm",
-            "cerebras",
-            "eliza",
-        ],
-        default=None,
-        help="Force specific model provider (auto-detected if not set; 'eliza' uses TS agent)",
-    )
-    parser.add_argument(
-        "--model",
-        type=str,
-        default=None,
-        help="Model name to expose to the Eliza TypeScript bridge",
+        help="Run a tiny 4-task smoke subset rather than all 165 tasks.",
     )
 
-    # Trajectory logging (for training/benchmarks)
-    parser.add_argument(
-        "--trajectories",
-        action="store_true",
-        help="Enable trajectory logging + export (requires elizaos-plugin-trajectory-logger)",
+    # Pass^k
+    p.add_argument(
+        "--num-trials",
+        type=int,
+        default=4,
+        help="Trials per task. Defaults to 4 per the tau-bench paper.",
     )
-    parser.add_argument(
-        "--no-trajectories",
-        action="store_true",
-        help="Disable trajectory logging even if available",
+    p.add_argument("--pass-k-values", type=int, nargs="+", default=[1, 2, 4])
+
+    # Agent
+    p.add_argument("--mock", action="store_true", help="Use mock ground-truth-replay agent.")
+    p.add_argument("--agent-model", default="gpt-4o")
+    p.add_argument("--agent-provider", default="openai")
+    p.add_argument("--agent-temperature", type=float, default=0.0)
+    p.add_argument("--agent-max-turns", type=int, default=30)
+
+    # User simulator
+    p.add_argument(
+        "--user-strategy",
+        choices=["llm", "react", "verify", "reflection", "human"],
+        default="llm",
     )
-    parser.add_argument(
-        "--trajectory-format",
-        type=str,
-        choices=["art", "grpo"],
-        default="art",
-        help="Trajectory export format (art jsonl or grpo grouped json)",
-    )
+    p.add_argument("--user-model", default="gpt-4o")
+    p.add_argument("--user-provider", default="openai")
 
-    return parser.parse_args()
+    # Judge
+    p.add_argument("--no-llm-judge", action="store_true", help="Disable LLM judge (use substring).")
+    p.add_argument("--judge-model", default="gpt-4o-mini")
+    p.add_argument("--judge-provider", default="openai")
+
+    # IO
+    p.add_argument("--output-dir", default=None)
+    p.add_argument("--seed", type=int, default=10)
+    p.add_argument("--verbose", action="store_true")
+    return p.parse_args(argv)
 
 
-def create_config(args: argparse.Namespace) -> TauBenchConfig:
-    """Create benchmark configuration from arguments."""
-    # Determine which domains to run
-    if args.domain:
-        domains = [TauDomain(args.domain)]
-    elif args.all:
-        domains = list(TauDomain)
+def build_config(args: argparse.Namespace) -> TauBenchConfig:
+    domains: list[str]
+    if args.domain == "both":
+        domains = ["retail", "airline"]
     else:
-        # Default to all domains
-        domains = list(TauDomain)
+        domains = [args.domain]
 
-    # Parse difficulty
-    difficulty = None
-    if args.difficulty:
-        difficulty = TaskDifficulty(args.difficulty)
-
-    # Generate output directory with timestamp
-    if args.output:
-        output_dir = args.output
-    else:
-        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        output_dir = f"./benchmark_results/tau-bench/{timestamp}"
-
-    # Use sample data path if sample flag is set
-    data_path = args.data_path
-    if args.sample:
-        data_path = "./sample-data"  # Will trigger sample task generation
+    output_dir = args.output_dir
+    if not output_dir:
+        ts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        output_dir = f"./benchmark_results/tau-bench/{ts}"
 
     return TauBenchConfig(
-        data_path=data_path,
+        domains=domains,  # type: ignore[arg-type]
+        task_split=args.task_split,
+        num_trials=args.num_trials,
+        pass_k_values=list(args.pass_k_values),
+        task_ids=args.task_ids,
+        start_index=args.start_index,
+        end_index=args.end_index,
+        max_tasks_per_domain=args.max_tasks_per_domain,
+        use_sample_tasks=args.use_sample_tasks,
+        use_mock=args.mock,
+        agent_model=args.agent_model,
+        agent_provider=args.agent_provider,
+        agent_temperature=args.agent_temperature,
+        agent_max_turns=args.agent_max_turns,
+        user_strategy=args.user_strategy,
+        user_model=args.user_model,
+        user_provider=args.user_provider,
+        use_llm_judge=not args.no_llm_judge,
+        judge_model=args.judge_model,
+        judge_provider=args.judge_provider,
         output_dir=output_dir,
-        domains=domains,
-        max_tasks=args.max_tasks,
-        difficulty=difficulty,
-        num_trials=args.trials,
-        max_turns_per_task=args.max_turns,
-        timeout_ms=args.timeout,
-        save_detailed_logs=not args.no_details,
-        enable_metrics=True,
-        enable_memory_tracking=not args.no_memory,
-        use_llm_judge=args.llm_judge,
+        seed=args.seed,
         verbose=args.verbose,
-        # ElizaOS integration
-        use_mock=bool(args.mock),
-        temperature=args.temperature,
-        model_provider=args.model_provider,
-        enable_trajectory_logging=(args.trajectories or not args.mock) and not args.no_trajectories,
-        trajectory_export_format=args.trajectory_format,
     )
 
 
-def print_banner() -> None:
-    """Print the CLI banner."""
-    print("""
-╔═══════════════════════════════════════════════════════════════════════╗
-║                  ElizaOS Tau-bench Benchmark Runner                   ║
-║           Tool-Agent-User Interaction in Real-World Domains           ║
-╚═══════════════════════════════════════════════════════════════════════╝
-""")
-
-
-def print_config(config: TauBenchConfig) -> None:
-    """Print configuration summary."""
-    print("📋 Configuration:")
-    print(f"   Domains: {', '.join(d.value for d in config.domains)}")
-    print(f"   Data Path: {config.data_path}")
-    print(f"   Output: {config.output_dir}")
-    print(f"   Trials per Task: {config.num_trials}")
-    print(f"   Max Tasks: {config.max_tasks or 'unlimited'}")
-    print(f"   Max Turns: {config.max_turns_per_task}")
-    print(f"   Timeout: {config.timeout_ms}ms")
-    print(f"   Memory Tracking: {'✅' if config.enable_memory_tracking else '❌'}")
-    print(f"   LLM Judge: {'✅' if config.use_llm_judge else '❌'}")
-    print(f"   Mode: {'Eliza TS bridge' if not config.use_mock else 'Mock Mode'}")
-    if not config.use_mock:
-        print(f"   Temperature: {config.temperature}")
-        print(f"   Provider: {config.model_provider or 'auto-detect'}")
-    print(
-        f"   Trajectories: {'✅' if config.enable_trajectory_logging else '❌'} "
-        f"({config.trajectory_export_format})"
-    )
-    print()
-
-
-def print_results_summary(results: dict) -> None:
-    """Print a summary of benchmark results."""
-    summary = results.get("summary", {})
-
-    print("\n" + "=" * 70)
-    print("📊 TAU-BENCH RESULTS SUMMARY")
-    print("=" * 70)
-
-    # Overall metrics
-    print("\n🎯 Overall Performance:")
-    print(f"   Status: {summary.get('status', 'unknown').upper()}")
-    print(f"   Success Rate: {results.get('overall_success_rate', 0) * 100:.1f}%")
-    print(f"   Total Tasks: {results.get('total_tasks', 0)} ({results.get('total_trials', 0)} trials)")
-    print(f"   Passed: {results.get('passed_tasks', 0)}")
-
-    # Pass^k metrics
-    pass_k = results.get("pass_k_metrics", {})
-    if pass_k:
-        print("\n📈 Pass^k Reliability:")
-        for k, metrics in sorted(pass_k.items()):
-            if isinstance(metrics, dict):
-                print(f"   Pass^{k}: {metrics.get('pass_rate', 0) * 100:.1f}%")
-
-    # Performance metrics
-    print("\n⚡ Performance Metrics:")
-    print(f"   Tool Accuracy: {results.get('overall_tool_accuracy', 0) * 100:.1f}%")
-    print(f"   Policy Compliance: {results.get('overall_policy_compliance', 0) * 100:.1f}%")
-    print(f"   Response Quality: {results.get('overall_response_quality', 0) * 100:.1f}%")
-    print(f"   Avg Duration: {results.get('average_duration_ms', 0):.0f}ms")
-
-    # Leaderboard comparison
-    comparison = results.get("comparison_to_leaderboard", {})
-    if comparison.get("best_comparable_model"):
-        print("\n🏆 Leaderboard Comparison:")
-        print(f"   Closest Model: {comparison.get('best_comparable_model', 'N/A')}")
-        diff = comparison.get("difference_from_best", 0)
-        direction = "better" if diff > 0 else "behind"
-        print(f"   Difference: {abs(diff) * 100:.1f}% {direction}")
-
-    # Key findings
-    findings = summary.get("key_findings", [])
-    if findings:
-        print("\n📌 Key Findings:")
-        for finding in findings:
-            print(f"   • {finding}")
-
-    # Strengths
-    strengths = summary.get("strengths", [])
-    if strengths:
-        print("\n💪 Strengths:")
-        for s in strengths[:5]:
-            print(f"   ✅ {s}")
-
-    # Weaknesses
-    weaknesses = summary.get("weaknesses", [])
-    if weaknesses:
-        print("\n⚠️ Areas for Improvement:")
-        for w in weaknesses[:5]:
-            print(f"   • {w}")
-
-    # Recommendations
-    recommendations = summary.get("recommendations", [])
-    if recommendations:
-        print("\n💡 Recommendations:")
-        for r in recommendations[:5]:
-            print(f"   • {r}")
-
-    print("\n" + "=" * 70)
-
-
-async def run_benchmark(config: TauBenchConfig, verbose: bool = False):
-    """Run the benchmark with the given configuration."""
-    if verbose:
-        logging.getLogger().setLevel(logging.DEBUG)
-
-    runner = TauBenchRunner(config)
-    report = await runner.run_benchmark()
-
-    # Convert to dict for output
-    return runner._report_to_dict(report)
-
-
-def main() -> int:
-    """Main entry point for the CLI."""
-    _maybe_load_dotenv()
-    args = parse_args()
-
-    if not args.json:
-        print_banner()
-
-    config = create_config(args)
-    provider = (config.model_provider or os.environ.get("BENCHMARK_MODEL_PROVIDER", "")).strip().lower()
-    if provider in {"eliza", "eliza-bridge", "eliza-ts"}:
-        provider = ""
-    if not provider:
-        if os.environ.get("GROQ_API_KEY"):
-            provider = "groq"
-        elif os.environ.get("OPENROUTER_API_KEY"):
-            provider = "openrouter"
-        elif os.environ.get("CEREBRAS_API_KEY"):
-            provider = "cerebras"
-        elif os.environ.get("OPENAI_API_KEY"):
-            provider = "openai"
-        elif os.environ.get("VLLM_BASE_URL"):
-            provider = "vllm"
-
-    model_name = (args.model or os.environ.get("BENCHMARK_MODEL_NAME", "")).strip()
-    if not model_name:
-        model_name = "openai/gpt-oss-120b"
-
-    if not config.use_mock:
-        if provider:
-            os.environ["BENCHMARK_MODEL_PROVIDER"] = provider
-        os.environ["BENCHMARK_MODEL_NAME"] = model_name
-        os.environ["OPENAI_LARGE_MODEL"] = model_name
-        os.environ["OPENAI_SMALL_MODEL"] = model_name
-        os.environ["GROQ_LARGE_MODEL"] = model_name
-        os.environ["GROQ_SMALL_MODEL"] = model_name
-        os.environ["OPENROUTER_LARGE_MODEL"] = model_name
-        os.environ["OPENROUTER_SMALL_MODEL"] = model_name
-        os.environ["CEREBRAS_MODEL"] = model_name
-        os.environ["CEREBRAS_LARGE_MODEL"] = model_name
-        os.environ["CEREBRAS_SMALL_MODEL"] = model_name
-        if provider == "cerebras":
-            os.environ.setdefault("OPENAI_BASE_URL", "https://api.cerebras.ai/v1")
-            if os.environ.get("CEREBRAS_API_KEY"):
-                os.environ.setdefault("OPENAI_API_KEY", os.environ["CEREBRAS_API_KEY"])
-        elif provider == "vllm":
-            os.environ.setdefault(
-                "OPENAI_BASE_URL",
-                os.environ.get("VLLM_BASE_URL", "http://127.0.0.1:8001/v1"),
-            )
-            os.environ.setdefault("OPENAI_API_KEY", os.environ.get("VLLM_API_KEY", "dummy"))
-
-    if config.use_mock:
-        logger.warning(
-            "WARNING: Running in mock mode. Results are not representative of real agent performance."
-        )
-    else:
+def _check_keys(cfg: TauBenchConfig) -> int:
+    """Return 1 if a required API key is missing for non-mock runs."""
+    if cfg.use_mock:
+        return 0
+    missing: list[str] = []
+    needed_providers = {cfg.agent_provider, cfg.user_provider}
+    if cfg.use_llm_judge:
+        needed_providers.add(cfg.judge_provider)
+    for prov in needed_providers:
         key_var = {
             "openai": "OPENAI_API_KEY",
-            "groq": "GROQ_API_KEY",
-            "openrouter": "OPENROUTER_API_KEY",
             "anthropic": "ANTHROPIC_API_KEY",
             "google": "GOOGLE_API_KEY",
-            "cerebras": "CEREBRAS_API_KEY",
-            "vllm": "OPENAI_API_KEY",
-        }.get(provider, "OPENAI_API_KEY")
-        if not os.environ.get(key_var):
-            logger.error(
-                "ERROR: No API key found for provider '%s'. Set %s or use --mock.",
-                provider or "auto",
-                key_var,
-            )
-            return 1
-
-    if not args.json:
-        print_config(config)
-        print("🚀 Starting Tau-bench evaluation...\n")
-
-    try:
-        results = asyncio.run(run_benchmark(config, args.verbose))
-
-        if args.json:
-            print(json.dumps(results, indent=2, default=str))
-        else:
-            print_results_summary(results)
-
-            # Show output location
-            print(f"\n📁 Full results saved to: {config.output_dir}/")
-            print("   - tau-bench-results.json (main results)")
-            print("   - tau-bench-summary.md (human-readable summary)")
-
-            if config.save_detailed_logs:
-                print("   - tau-bench-detailed.json (per-task details)")
-
-            print("\n✅ Tau-bench evaluation completed successfully!")
-
-        return 0
-
-    except KeyboardInterrupt:
-        if not args.json:
-            print("\n\n⚠️ Benchmark interrupted by user")
-        return 130
-
-    except Exception as e:
-        if args.json:
-            print(json.dumps({"error": str(e)}, indent=2))
-        else:
-            logger.error(f"Benchmark failed: {e}")
-            print(f"\n❌ Benchmark failed: {e}")
-
-            if args.verbose:
-                import traceback
-                traceback.print_exc()
-            else:
-                print("   Run with --verbose for more details")
-
+            "groq": "GROQ_API_KEY",
+            "openrouter": "OPENROUTER_API_KEY",
+        }.get(prov)
+        if key_var and not os.environ.get(key_var):
+            missing.append(f"{prov}->{key_var}")
+    if missing:
+        logger.error(
+            "Missing required API keys for providers: %s. Use --mock for a smoke run.",
+            ", ".join(missing),
+        )
         return 1
+    return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    _maybe_load_dotenv()
+    args = parse_args(argv)
+    logging.basicConfig(
+        level=logging.DEBUG if args.verbose else logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s | %(message)s",
+        stream=sys.stdout,
+    )
+    cfg = build_config(args)
+
+    rc = _check_keys(cfg)
+    if rc != 0:
+        return rc
+
+    print(json.dumps({"event": "config", "config": cfg.to_dict()}, indent=2))
+
+    runner = TauBenchRunner(cfg)
+    try:
+        report = runner.run()
+    except KeyboardInterrupt:
+        logger.warning("Interrupted")
+        return 130
+    except Exception as e:
+        logger.exception("Run failed: %s", e)
+        return 1
+
+    print(
+        json.dumps(
+            {
+                "event": "summary",
+                "num_tasks": report.num_tasks,
+                "num_trials": report.num_trials_per_task,
+                "avg_reward": report.avg_reward,
+                "pass_k": {
+                    k: {"pass_hat_k": v.pass_hat_k, "num_tasks": v.num_tasks}
+                    for k, v in report.pass_k.items()
+                },
+                "output_dir": cfg.output_dir,
+            },
+            indent=2,
+        )
+    )
+    return 0
 
 
 if __name__ == "__main__":

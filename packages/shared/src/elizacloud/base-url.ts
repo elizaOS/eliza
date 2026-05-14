@@ -5,6 +5,7 @@
 const DEFAULT_CLOUD_SITE_URL = "https://www.elizacloud.ai";
 
 const LEGACY_CLOUD_HOST_ALIASES = new Set([
+  "api.elizacloud.ai",
   "elizacloud.ai",
   "www.elizacloud.ai",
 ]);

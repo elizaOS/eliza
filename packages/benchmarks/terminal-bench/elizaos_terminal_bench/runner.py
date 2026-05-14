@@ -16,7 +16,11 @@ from pathlib import Path
 from typing import Optional
 
 from elizaos_terminal_bench.dataset import TerminalBenchDataset
-from elizaos_terminal_bench.environment import LocalTerminalEnvironment, TerminalEnvironment
+from elizaos_terminal_bench.environment import (
+    LocalTerminalEnvironment,
+    TerminalEnvironment,
+    TmuxDockerEnvironment,
+)
 from elizaos_terminal_bench.evaluator import (
     TerminalBenchEvaluator,
     format_report_markdown,
@@ -273,7 +277,17 @@ class TerminalBenchRunner:
         return await self._run_with_bridge(task)
 
     def _create_environment(self, task: TerminalTask) -> TerminalEnvironment | LocalTerminalEnvironment:
-        environment_cls = LocalTerminalEnvironment if self.config.local_sandbox else TerminalEnvironment
+        backend = (self.config.execution_backend or "tmux").lower()
+        if self.config.local_sandbox or backend == "local":
+            environment_cls: type = LocalTerminalEnvironment
+        elif backend == "one_shot" or backend == "one-shot":
+            environment_cls = TerminalEnvironment
+        elif backend == "mock":
+            from elizaos_terminal_bench.environment import MockTerminalEnvironment
+            environment_cls = MockTerminalEnvironment
+        else:
+            # tmux is the default and faithful upstream path.
+            environment_cls = TmuxDockerEnvironment
         return environment_cls(
             image=task.docker_image,
             timeout_seconds=task.timeout_seconds,

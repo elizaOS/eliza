@@ -23,6 +23,8 @@ export interface SerializeOptions {
   ocrTopN?: number;
   axMax?: number;
   appTopWindows?: number;
+  /** Cap total apps emitted. Prefers apps with at least one visible window. */
+  appMax?: number;
 }
 
 export function serializeSceneForPrompt(
@@ -32,6 +34,7 @@ export function serializeSceneForPrompt(
   const ocrTopN = options.ocrTopN ?? 24;
   const axMax = options.axMax ?? 24;
   const appTopWindows = options.appTopWindows ?? 2;
+  const appMax = options.appMax ?? 32;
 
   // OCR: per-display, sorted by descending confidence, capped.
   const ocrByDisplay = new Map<number, typeof scene.ocr>();
@@ -52,7 +55,17 @@ export function serializeSceneForPrompt(
   const remaining = scene.ax.filter((n) => n.displayId !== focusedDisplay);
   const trimmedAx = [...focusedAx, ...remaining].slice(0, axMax);
 
-  const compactApps = scene.apps.map((app) => ({
+  // Prefer apps with visible windows — those are the ones the planner can
+  // act on. Background-only processes get clipped to keep the prompt
+  // tractable on Linux hosts with 500+ processes.
+  const appsByPriority = [...scene.apps].sort((a, b) => {
+    const aw = a.windows.length;
+    const bw = b.windows.length;
+    if (aw !== bw) return bw - aw;
+    return (a.name ?? "").localeCompare(b.name ?? "");
+  });
+  const trimmedApps = appsByPriority.slice(0, appMax);
+  const compactApps = trimmedApps.map((app) => ({
     name: app.name,
     pid: app.pid,
     window_count: app.windows.length,
@@ -96,6 +109,8 @@ export function serializeSceneForPrompt(
       ocr_kept: trimmedOcr.length,
       ax_total: scene.ax.length,
       ax_kept: trimmedAx.length,
+      apps_total: scene.apps.length,
+      apps_kept: trimmedApps.length,
     },
   };
   return ["```json", JSON.stringify(compact, null, 2), "```"].join("\n");

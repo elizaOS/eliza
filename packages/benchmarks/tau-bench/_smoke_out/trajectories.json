@@ -1,0 +1,18 @@
+[
+  {
+    "domain": "retail",
+    "task_id": 0,
+    "trial": 0,
+    "reward": 0.0,
+    "success": false,
+    "messages": []
+  },
+  {
+    "domain": "retail",
+    "task_id": 1,
+    "trial": 0,
+    "reward": 0.0,
+    "success": false,
+    "messages": []
+  }
+]

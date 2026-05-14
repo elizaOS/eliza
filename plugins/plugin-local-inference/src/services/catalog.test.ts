@@ -220,7 +220,7 @@ describe("local inference catalog", () => {
 		]);
 	});
 
-	it("records 27b-1m text source provenance (vision shipped only on 4b/9b/27b/27b-256k)", () => {
+	it("records 27b-1m text source provenance with the long-context vision projector (WS2)", () => {
 		const model = findCatalogModel("eliza-1-27b-1m");
 		expect(model?.sourceModel?.finetuned).toBe(false);
 		const components = model?.sourceModel?.components;
@@ -228,9 +228,16 @@ describe("local inference catalog", () => {
 			repo: "elizaos/eliza-1",
 			file: "bundles/27b-1m/text/eliza-1-27b-1m.gguf",
 		});
-		// Vision is intentionally omitted from the 1m tier because the KV-cache
-		// budget at that window is the constraint.
-		expect(components?.vision).toBeUndefined();
+		// WS2 (vision-describe): vision is enabled on the 1M-context tier
+		// because the bundle plan ships the same Q8_0 mmproj used by 27b /
+		// 27b-256k, and the use case (long-document pipelines where a
+		// screenshot lands inside a million-token context) justifies the
+		// projector cost on server-class hosts. On smaller hosts the
+		// arbiter evicts vision under pressure before the text model.
+		expect(components?.vision).toEqual({
+			repo: "elizaos/eliza-1",
+			file: "bundles/27b-1m/vision/mmproj-27b-1m.gguf",
+		});
 	});
 
 	it("does not leak implementation-family names in visible catalog copy", () => {

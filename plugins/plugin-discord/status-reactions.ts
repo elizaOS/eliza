@@ -12,7 +12,6 @@ export interface StatusReactionController {
 
 const EMOJI_QUEUED = "⏳";
 const EMOJI_THINKING = "🤔";
-const EMOJI_DONE = "✅";
 const EMOJI_ERROR = "❌";
 
 export function shouldShowStatusReaction(
@@ -47,6 +46,21 @@ export function createStatusReactionController(
 	let chain: Promise<void> = Promise.resolve();
 	const botId = message.client?.user?.id;
 
+	const clearCurrentReaction = async () => {
+		if (!currentEmoji || !botId) {
+			return;
+		}
+		try {
+			const reaction = message.reactions.resolve(currentEmoji);
+			if (reaction) {
+				await reaction.users.remove(botId);
+			}
+		} catch {
+			// Ignore missing permissions or already-removed reactions.
+		}
+		currentEmoji = null;
+	};
+
 	const transition = (emoji: string, terminal = false) => {
 		if (finished) {
 			return;
@@ -80,10 +94,20 @@ export function createStatusReactionController(
 		});
 	};
 
+	const finishWithoutSuccessReaction = () => {
+		if (finished) {
+			return;
+		}
+		chain = chain.then(async () => {
+			await clearCurrentReaction();
+			finished = true;
+		});
+	};
+
 	return {
 		setQueued: () => transition(EMOJI_QUEUED),
 		setThinking: () => transition(EMOJI_THINKING),
-		setDone: () => transition(EMOJI_DONE, true),
+		setDone: () => finishWithoutSuccessReaction(),
 		setError: () => transition(EMOJI_ERROR, true),
 	};
 }

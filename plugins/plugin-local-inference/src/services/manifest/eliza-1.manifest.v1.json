@@ -44,7 +44,8 @@
 				"embedding": { "$ref": "#/$defs/lineageEntry" },
 				"vision": { "$ref": "#/$defs/lineageEntry" },
 				"vad": { "$ref": "#/$defs/lineageEntry" },
-				"wakeword": { "$ref": "#/$defs/lineageEntry" }
+				"wakeword": { "$ref": "#/$defs/lineageEntry" },
+				"turn": { "$ref": "#/$defs/lineageEntry" }
 			}
 		},
 		"files": {
@@ -80,6 +81,10 @@
 				},
 				"vad": { "type": "array", "items": { "$ref": "#/$defs/fileEntry" } },
 				"wakeword": {
+					"type": "array",
+					"items": { "$ref": "#/$defs/fileEntry" }
+				},
+				"turn": {
 					"type": "array",
 					"items": { "$ref": "#/$defs/fileEntry" }
 				}
@@ -218,6 +223,23 @@
 							"maximum": 1
 						},
 						"speedup": { "type": ["number", "null"], "minimum": 0 },
+						"passed": { "type": "boolean" }
+					}
+				},
+				"turnDetector": {
+					"type": "object",
+					"additionalProperties": false,
+					"required": ["f1", "meanLatencyMs", "passed"],
+					"properties": {
+						"f1": {
+							"type": "number",
+							"minimum": 0,
+							"maximum": 1
+						},
+						"meanLatencyMs": {
+							"type": "number",
+							"minimum": 0
+						},
 						"passed": { "type": "boolean" }
 					}
 				}

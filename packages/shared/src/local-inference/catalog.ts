@@ -15,7 +15,7 @@ import type {
   LocalRuntimeKernel,
 } from "./types.js";
 
-export const ELIZA_1_HF_REPO = "elizalabs/eliza-1" as const;
+export const ELIZA_1_HF_REPO = "elizaos/eliza-1" as const;
 
 export const ELIZA_1_TIER_IDS = [
   "eliza-1-0_8b",
@@ -161,6 +161,15 @@ interface TierSpec {
   gpuProfile?: CatalogModel["gpuProfile"];
   hasEmbedding?: boolean;
   hasVision?: boolean;
+  /**
+   * WS3: whether this tier ships a default image-gen model in the bundle
+   * extras (`ELIZA_1_BUNDLE_EXTRAS.json#imagegen.perTier`). Mobile-class
+   * tiers (0_8b/2b/4b) default to SD 1.5 Q5_0 (~1.0 GB); desktop-class
+   * tiers (9b/27b/27b-256k/27b-1m) default to Z-Image-Turbo Q4_K_M
+   * (~3.4 GB). The diffusion weights are runtime-downloaded — they are
+   * NOT part of the base-v1 bundle.
+   */
+  hasImageGen?: boolean;
 }
 
 const TIER_SPECS: Readonly<Record<Eliza1TierId, TierSpec>> = {
@@ -182,6 +191,10 @@ const TIER_SPECS: Readonly<Record<Eliza1TierId, TierSpec>> = {
     // Camera + screen analysis remain practical on low-tier phones at this
     // size — the projector cache short-circuits the per-frame cost.
     hasVision: true,
+    // WS3: image-gen via sd-cpp + SD 1.5 Q5_0 (~1.0 GB). Co-evicts
+    // with vision on the WS1 `vision` resident-role slot; only one of
+    // (VL describe, diffusion generate) is held at a time.
+    hasImageGen: true,
   },
   "eliza-1-2b": {
     id: "eliza-1-2b",
@@ -201,6 +214,9 @@ const TIER_SPECS: Readonly<Record<Eliza1TierId, TierSpec>> = {
     // analysis must work here. The mmproj is ~320 MB Q8_0; the arbiter
     // owns the swap with the text weights under pressure.
     hasVision: true,
+    // WS3: image-gen on the standard small-phone default uses SD 1.5
+    // Q5_0 too; tier-up to Z-Image-Turbo at 9B.
+    hasImageGen: true,
   },
   "eliza-1-4b": {
     id: "eliza-1-4b",
@@ -216,6 +232,9 @@ const TIER_SPECS: Readonly<Record<Eliza1TierId, TierSpec>> = {
     drafterMinRamGb: 10,
     hasEmbedding: true,
     hasVision: true,
+    // WS3: 4B is the last tier that defaults to SD 1.5; flagship-phone
+    // optional path can upgrade to SDXL-Turbo Q4_0.
+    hasImageGen: true,
   },
   "eliza-1-9b": {
     id: "eliza-1-9b",
@@ -232,6 +251,10 @@ const TIER_SPECS: Readonly<Record<Eliza1TierId, TierSpec>> = {
     gpuProfile: "rtx-3090",
     hasEmbedding: true,
     hasVision: true,
+    // WS3: 9B is the boundary tier where Z-Image-Turbo Q4_K_M (~3.4 GB)
+    // becomes the default. FLUX.1 schnell remains opt-in for >=24 GB
+    // unified RAM / >=12 GB VRAM.
+    hasImageGen: true,
   },
   "eliza-1-27b": {
     id: "eliza-1-27b",
@@ -248,6 +271,7 @@ const TIER_SPECS: Readonly<Record<Eliza1TierId, TierSpec>> = {
     gpuProfile: "rtx-4090",
     hasEmbedding: true,
     hasVision: true,
+    hasImageGen: true,
   },
   "eliza-1-27b-256k": {
     id: "eliza-1-27b-256k",
@@ -265,6 +289,7 @@ const TIER_SPECS: Readonly<Record<Eliza1TierId, TierSpec>> = {
     gpuProfile: "rtx-5090",
     hasEmbedding: true,
     hasVision: true,
+    hasImageGen: true,
   },
   "eliza-1-27b-1m": {
     id: "eliza-1-27b-1m",
@@ -286,6 +311,7 @@ const TIER_SPECS: Readonly<Record<Eliza1TierId, TierSpec>> = {
     // 100-page PDF page is sandwiched into a million-token context). The
     // mmproj is the same ~720 MB Q8_0 used by the 27b and 27b-256k tiers.
     hasVision: true,
+    hasImageGen: true,
   },
 };
 

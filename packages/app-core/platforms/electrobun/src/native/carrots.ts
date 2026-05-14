@@ -1,3 +1,8 @@
+/**
+ * Electrobun carrot host runtime — manages install, start, stop, and
+ * lifecycle for `mode: "background"` and `mode: "window"` carrots, plus
+ * the host-side dispatcher for `bridge.requestHost(...)` host actions.
+ */
 import * as fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -16,10 +21,12 @@ import type {
 	InstalledCarrotSnapshot,
 	JsonValue,
 	WorkerInitMessage,
+	WorkerResponseMessage,
 } from "@elizaos/electrobun-carrots";
 import {
 	buildCarrotRuntimeContext,
 	ensureCarrotSourceDirectory,
+	hasHostPermission,
 	installPrebuiltCarrot,
 	loadCarrotListEntries,
 	loadCarrotStoreSnapshot,
@@ -211,12 +218,24 @@ function actionLogPayload(message: HostActionMessage): string | null {
 		: text;
 }
 
+interface PendingInvoke {
+	callerId: string;
+	callerHandle: CarrotWorkerHandle;
+	targetId: string;
+	originalRequestId: number;
+	timeout: ReturnType<typeof setTimeout>;
+}
+
+const INVOKE_TIMEOUT_MS = 30_000;
+
 export class CarrotManager {
 	private readonly storeRoot: string;
 	private readonly workerRunner: CarrotWorkerRunner;
 	private readonly now: () => number;
 	private events: CarrotManagerEvents;
 	private readonly workers = new Map<string, CarrotWorkerRecord>();
+	private readonly pendingInvokes = new Map<number, PendingInvoke>();
+	private nextInvokeId = 1;
 
 	constructor(options: CarrotManagerOptions = {}) {
 		this.storeRoot = options.storeRoot ?? resolveCarrotStoreRoot();
@@ -418,6 +437,7 @@ export class CarrotManager {
 			this.emitWorkerChanged(status);
 			return status;
 		}
+		this.rejectPendingInvokesForWorker(id);
 		record.handle?.terminate();
 		if (record.window) {
 			try {
@@ -528,6 +548,11 @@ export class CarrotManager {
 			return;
 		}
 
+		if (message.type === "response") {
+			this.handleWorkerResponse(id, handle, message);
+			return;
+		}
+
 		if (message.type !== "action") return;
 		if (!record.context) return;
 
@@ -575,6 +600,20 @@ export class CarrotManager {
 		handle: CarrotWorkerHandle,
 		request: HostRequestMessage,
 	): void {
+		if (request.method === "invoke-carrot") {
+			try {
+				this.startInvokeCarrot(callerId, handle, request);
+			} catch (error) {
+				this.postHostResponse(handle, {
+					type: "host-response",
+					requestId: request.requestId,
+					success: false,
+					error: error instanceof Error ? error.message : String(error),
+				});
+			}
+			return;
+		}
+
 		void this.dispatchHostRequest(callerId, request.method, request.params)
 			.then((payload) => {
 				this.postHostResponse(handle, {
@@ -594,6 +633,103 @@ export class CarrotManager {
 			});
 	}
 
+	private startInvokeCarrot(
+		callerId: string,
+		callerHandle: CarrotWorkerHandle,
+		request: HostRequestMessage,
+	): void {
+		this.requireManageCarrots(callerId, "invoke-carrot");
+		if (!isRecord(request.params)) {
+			throw new Error("invoke-carrot: missing params object.");
+		}
+		const targetId = request.params.carrotId;
+		const method = request.params.method;
+		if (typeof targetId !== "string" || targetId.length === 0) {
+			throw new Error("invoke-carrot: invalid carrotId.");
+		}
+		if (typeof method !== "string" || method.length === 0) {
+			throw new Error("invoke-carrot: invalid method.");
+		}
+		const target = this.workers.get(targetId);
+		if (!target?.handle || target.status.state !== "running") {
+			throw new Error(`invoke-carrot: target ${targetId} is not running.`);
+		}
+		const targetHandle = target.handle;
+
+		const invokeId = ++this.nextInvokeId;
+		const timeout = setTimeout(() => {
+			const pending = this.pendingInvokes.get(invokeId);
+			if (!pending) return;
+			this.pendingInvokes.delete(invokeId);
+			this.postHostResponse(pending.callerHandle, {
+				type: "host-response",
+				requestId: pending.originalRequestId,
+				success: false,
+				error: `invoke-carrot: target ${targetId} did not respond within ${INVOKE_TIMEOUT_MS}ms`,
+			});
+		}, INVOKE_TIMEOUT_MS);
+
+		this.pendingInvokes.set(invokeId, {
+			callerId,
+			callerHandle,
+			targetId,
+			originalRequestId: request.requestId,
+			timeout,
+		});
+
+		const requestParams = request.params.params;
+		const windowId = request.params.windowId;
+		const targetRequest: CarrotWorkerMessage = {
+			type: "request",
+			requestId: invokeId,
+			method,
+			...(requestParams === undefined ? {} : { params: requestParams as JsonValue }),
+			...(typeof windowId === "string" ? { windowId } : {}),
+		};
+		targetHandle.postMessage(targetRequest);
+	}
+
+	private handleWorkerResponse(
+		id: string,
+		handle: CarrotWorkerHandle,
+		response: WorkerResponseMessage,
+	): void {
+		const record = this.workers.get(id);
+		if (record?.handle !== handle) return;
+		const pending = this.pendingInvokes.get(response.requestId);
+		if (!pending) return;
+		this.pendingInvokes.delete(response.requestId);
+		clearTimeout(pending.timeout);
+		this.postHostResponse(pending.callerHandle, {
+			type: "host-response",
+			requestId: pending.originalRequestId,
+			success: response.success,
+			...(response.success
+				? response.payload === undefined
+					? {}
+					: { payload: response.payload }
+				: { error: response.error ?? "invoke-carrot: target returned failure" }),
+		});
+	}
+
+	private rejectPendingInvokesForWorker(id: string): void {
+		for (const [invokeId, pending] of this.pendingInvokes) {
+			if (pending.targetId === id) {
+				this.pendingInvokes.delete(invokeId);
+				clearTimeout(pending.timeout);
+				this.postHostResponse(pending.callerHandle, {
+					type: "host-response",
+					requestId: pending.originalRequestId,
+					success: false,
+					error: `invoke-carrot: target ${id} stopped before responding`,
+				});
+			} else if (pending.callerId === id) {
+				this.pendingInvokes.delete(invokeId);
+				clearTimeout(pending.timeout);
+			}
+		}
+	}
+
 	private postHostResponse(
 		handle: CarrotWorkerHandle,
 		response: HostResponseMessage,
@@ -601,6 +737,16 @@ export class CarrotManager {
 		const record = [...this.workers.values()].find((r) => r.handle === handle);
 		if (!record) return;
 		handle.postMessage(response);
+	}
+
+	private requireManageCarrots(callerId: string, action: string): void {
+		const record = this.workers.get(callerId);
+		const grant = record?.context?.grantedPermissions ?? null;
+		if (!hasHostPermission(grant, "manage-carrots")) {
+			throw new Error(
+				`${action}: carrot "${callerId}" lacks host:manage-carrots permission`,
+			);
+		}
 	}
 
 	/**
@@ -623,11 +769,13 @@ export class CarrotManager {
 			case "list-carrots":
 				return this.listCarrots() as unknown as JsonValue;
 			case "start-carrot": {
+				this.requireManageCarrots(callerId, "start-carrot");
 				const targetId = hostRequestStringField(params, "id");
 				this.startWorker(targetId);
 				return { ok: true };
 			}
 			case "stop-carrot": {
+				this.requireManageCarrots(callerId, "stop-carrot");
 				const targetId = hostRequestStringField(params, "id");
 				this.stopWorker(targetId);
 				return { ok: true };
@@ -642,6 +790,8 @@ export class CarrotManager {
 				}
 				return { token: record.context.authToken };
 			}
+			case "invoke-carrot":
+				throw new Error("invoke-carrot must be routed through startInvokeCarrot");
 			case "set-auth-token": {
 				const record = this.workers.get(callerId);
 				if (!record?.context) {
@@ -671,6 +821,7 @@ export class CarrotManager {
 	): void {
 		const record = this.workers.get(id);
 		if (record?.handle !== handle) return;
+		this.rejectPendingInvokesForWorker(id);
 		record.status.state = "error";
 		record.status.error = error.message;
 		record.status.stoppedAt = this.now();

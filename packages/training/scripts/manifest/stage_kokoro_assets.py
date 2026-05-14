@@ -41,6 +41,12 @@ KOKORO_MODEL_REMOTE: Final[str] = "onnx/model_q4.onnx"
 KOKORO_TOKENIZER_REMOTE: Final[str] = "tokenizer.json"
 KOKORO_MODEL_BUNDLE_PATH: Final[str] = f"{KOKORO_RELEASE_ROOT}/model_q4.onnx"
 KOKORO_TOKENIZER_BUNDLE_PATH: Final[str] = f"{KOKORO_RELEASE_ROOT}/tokenizer.json"
+# Default voice-remote template: `voices/<voice>.bin` matches the upstream
+# `onnx-community/Kokoro-82M-v1.0-ONNX` layout. Per-voice HF repos (e.g.
+# `elizaos/eliza-1-voice-kokoro-samantha-v01`) ship the file at the repo
+# root as `voice.bin`. The `--voice-remote-template` flag lets the caller
+# override the lookup path while keeping the same `--repo-id` plumbing.
+DEFAULT_VOICE_REMOTE_TEMPLATE: Final[str] = "voices/{voice}.bin"
 DEFAULT_VOICES: Final[tuple[str, ...]] = (
     "af_bella",
     "af_sarah",
@@ -144,16 +150,36 @@ def _write_manifest(bundle_dir: Path, manifest: dict[str, Any]) -> None:
     _manifest_path(bundle_dir).write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
 
 
-def _voice_remote_paths(voices: Sequence[str]) -> list[tuple[str, str, str]]:
-    out = [
-        ("kokoro-onnx", KOKORO_MODEL_REMOTE, KOKORO_MODEL_BUNDLE_PATH),
-        ("kokoro-tokenizer", KOKORO_TOKENIZER_REMOTE, KOKORO_TOKENIZER_BUNDLE_PATH),
-    ]
+def _voice_remote_paths(
+    voices: Sequence[str],
+    *,
+    voice_remote_template: str = DEFAULT_VOICE_REMOTE_TEMPLATE,
+    include_base_assets: bool = True,
+) -> list[tuple[str, str, str]]:
+    """Compute (role, remote_path, bundle_path) tuples for HF downloads.
+
+    `voice_remote_template` accepts `{voice}` as a placeholder so per-voice
+    HF repos (e.g. ones that ship the embedding at the repo root as
+    `voice.bin`) can override the default `voices/<voice>.bin` layout.
+
+    `include_base_assets` controls whether the Kokoro ONNX model and tokenizer
+    are also requested. When pulling additional voices from per-voice HF
+    repos that do NOT carry the base model, set it to False to avoid 404s.
+    """
+    out: list[tuple[str, str, str]] = []
+    if include_base_assets:
+        out.extend(
+            [
+                ("kokoro-onnx", KOKORO_MODEL_REMOTE, KOKORO_MODEL_BUNDLE_PATH),
+                ("kokoro-tokenizer", KOKORO_TOKENIZER_REMOTE, KOKORO_TOKENIZER_BUNDLE_PATH),
+            ]
+        )
     for voice in voices:
+        remote = voice_remote_template.format(voice=voice)
         out.append(
             (
                 "kokoro-voice",
-                f"voices/{voice}.bin",
+                remote,
                 f"{KOKORO_RELEASE_ROOT}/voices/{voice}.bin",
             )
         )
@@ -320,6 +346,8 @@ def stage_kokoro_bundle(
     link_mode: str = "copy",
     dry_run: bool = False,
     kokoro_only: bool = False,
+    voice_remote_template: str = DEFAULT_VOICE_REMOTE_TEMPLATE,
+    include_base_assets: bool = True,
 ) -> dict[str, Any]:
     bundle_dir = bundle_dir.resolve()
     if not bundle_dir.is_dir():
@@ -338,7 +366,11 @@ def stage_kokoro_bundle(
             link_mode=link_mode,
             dry_run=dry_run,
         )
-        for role, remote, rel in _voice_remote_paths(voices)
+        for role, remote, rel in _voice_remote_paths(
+            voices,
+            voice_remote_template=voice_remote_template,
+            include_base_assets=include_base_assets,
+        )
     ]
     report: dict[str, Any] = {
         "schemaVersion": 1,
@@ -400,6 +432,25 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--kokoro-only", action="store_true")
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--report", type=Path)
+    ap.add_argument(
+        "--voice-remote-template",
+        default=DEFAULT_VOICE_REMOTE_TEMPLATE,
+        help=(
+            "Per-voice remote path template. Default `voices/{voice}.bin` matches "
+            "the upstream onnx-community Kokoro repo. Per-voice HF repos that "
+            "ship the embedding at the root (e.g. `elizaos/eliza-1-voice-kokoro-samantha-v01`) "
+            "should pass `voice.bin` (no `{voice}` placeholder needed since the "
+            "repo only carries one voice)."
+        ),
+    )
+    ap.add_argument(
+        "--no-base-assets",
+        action="store_true",
+        help=(
+            "Skip the base Kokoro ONNX + tokenizer download. Use when --repo-id "
+            "points at a per-voice HF repo that does not carry the base model."
+        ),
+    )
     args = ap.parse_args(argv)
 
     bundle_dirs = list(args.bundle_dirs or [])
@@ -416,6 +467,8 @@ def main(argv: list[str] | None = None) -> int:
             link_mode=args.link_mode,
             dry_run=args.dry_run,
             kokoro_only=args.kokoro_only,
+            voice_remote_template=args.voice_remote_template,
+            include_base_assets=not args.no_base_assets,
         )
         for bundle_dir in bundle_dirs
     ]

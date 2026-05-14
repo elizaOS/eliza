@@ -21,6 +21,24 @@ classifiers = [
 
 dependencies = [
   "eliza-adapter",
+  # Upstream Princeton-NLP WebShop requirements (subset; pins relaxed from
+  # upstream's exact pins so we can coexist with modern Python).
+  "beautifulsoup4>=4.11.0",
+  "cleantext>=1.1.4",
+  "Flask>=2.1.0",
+  "gym>=0.21",
+  "numpy>=1.22",
+  "pandas>=1.4",
+  "rank_bm25>=0.2.2",         # BM25 fallback when pyserini is unavailable
+  "rich>=12.0",
+  "scikit-learn>=1.1",
+  "spacy>=3.3",               # required by engine.goal.get_type_reward
+  "thefuzz>=0.19.0",
+  "torch>=1.11",
+  "tqdm>=4.64",
+  "transformers>=4.19",
+  "PyYAML>=6.0",
+  "requests>=2.27",
 ]
 
 [tool.uv.sources]
@@ -31,6 +49,14 @@ dev = [
   "pytest>=7.0.0",
   "pytest-asyncio>=0.23.0",
   "pytest-cov>=4.0.0",
+]
+# Full upstream search engine (requires Java 11+). Optional.
+pyserini = [
+  "pyserini>=0.17.0",
+]
+# Data fetching helper (Google Drive).
+fetch = [
+  "gdown>=4.0",
 ]
 # Optional: load tasks from HuggingFace datasets
 hf = [

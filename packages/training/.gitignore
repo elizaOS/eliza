@@ -1,7 +1,26 @@
 __pycache__/
 *.pyc
 .venv/
-data/
+data/*
+# Smoke corpus: tiny end-to-end-pipeline validator (~400 rows). Kept in
+# git so the e2e SFT pipeline can be smoke-tested from a fresh clone.
+!data/final-eliza1-smoke/
+!data/final-eliza1-smoke/**
+# Voice training data — carve out manifest + docs for voice corpora
+# (e.g. samantha). Raw + normalized audio stays ignored (regenerable from
+# upstream via scripts/voice/build_samantha_manifest.py). Manifests,
+# READMEs, source.json, LJSpeech metadata.csv, and per-corpus .gitignore
+# anchors are tracked so the corpus contract is durable in git.
+!data/voice/
+!data/voice/**
+data/voice/**/audio/
+data/voice/**/raw/
+data/voice/**/ljspeech/wavs/
+data/voice/**/*.wav
+data/voice/**/*.flac
+data/voice/**/*.mp3
+data/voice/**/*.ogg
+data/voice/**/*.opus
 checkpoints/
 # Generated benchmark outputs (parquet datasets, ablation dumps) are
 # ignored, but the checked-in gate definition + engine + tests are tracked —
