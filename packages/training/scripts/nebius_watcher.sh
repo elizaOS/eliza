@@ -23,19 +23,42 @@
 #   $1 = FULL_PID                 (PID of `bash train_nebius.sh full`)
 #   $2 = DEADLINE_HOURS           (optional, default 12 to match the runner cap)
 #   $3 = LOG                      (optional, default /tmp/nebius-watcher-<RUN_NAME>.log)
+#
+# Multi-tier mode (for train_nebius_smoke_all_tiers.sh):
+#   WATCHER_MULTI_TIER_TAG       when set, the watcher polls the orchestrator's
+#                                  own local log for a "MULTI_TIER_DONE" line
+#                                  (emitted by train_nebius_smoke_all_tiers.sh
+#                                  after every tier has been attempted) instead
+#                                  of the per-run remote sentinel. RUN_NAME and
+#                                  the remote-log poll are unused in this mode.
+#                                  The teardown call still goes through
+#                                  train_nebius.sh teardown so VM + boot disk
+#                                  are deleted in the canonical order.
+#   WATCHER_MULTI_TIER_LOG       path to that orchestrator log (default
+#                                  /tmp/smoke-all-${WATCHER_MULTI_TIER_TAG}.log).
 set -uo pipefail
 cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export PATH="$HOME/.nebius/bin:$PATH"
 
 : "${NEBIUS_PROJECT_ID:?must export NEBIUS_PROJECT_ID}"
 : "${NEBIUS_VM_NAME:?must export NEBIUS_VM_NAME}"
-: "${RUN_NAME:?must export RUN_NAME}"
+# In multi-tier mode RUN_NAME is unused (no single-run remote log to poll).
+if [ -z "${WATCHER_MULTI_TIER_TAG:-}" ]; then
+  : "${RUN_NAME:?must export RUN_NAME (or set WATCHER_MULTI_TIER_TAG for multi-tier mode)}"
+fi
 
 FULL_PID="${1:-}"
 DEADLINE_HOURS="${2:-12}"
-LOG="${3:-/tmp/nebius-watcher-${RUN_NAME}.log}"
+if [ -n "${WATCHER_MULTI_TIER_TAG:-}" ]; then
+  LOG="${3:-/tmp/nebius-watcher-multi-${WATCHER_MULTI_TIER_TAG}.log}"
+  MULTI_TIER_LOG="${WATCHER_MULTI_TIER_LOG:-/tmp/smoke-all-${WATCHER_MULTI_TIER_TAG}.log}"
+  REMOTE_LOG=""
+else
+  LOG="${3:-/tmp/nebius-watcher-${RUN_NAME}.log}"
+  MULTI_TIER_LOG=""
+  REMOTE_LOG="/opt/training/run_${RUN_NAME}.log"
+fi
 DEADLINE=$(( $(date +%s) + DEADLINE_HOURS*3600 ))
-REMOTE_LOG="/opt/training/run_${RUN_NAME}.log"
 
 vm_ip() {
   if [ -n "${VM_IP:-}" ]; then echo "$VM_IP"; return 0; fi
@@ -71,13 +94,24 @@ full_alive() {
 }
 sentinel_done() {
   # Line-anchored — substring matches caused the 2026-05-11/12 false positives.
-  timeout 15 ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 -o BatchMode=yes \
-    "ubuntu@$RESOLVED_IP" "grep -qE '^RUN_PIPELINE_EXIT=[0-9]' $REMOTE_LOG 2>/dev/null"
+  if [ -n "$MULTI_TIER_LOG" ]; then
+    # Multi-tier mode: orchestrator emits "MULTI_TIER_DONE" to its own local log
+    # after every tier has been attempted (success or fail). Scan the local log
+    # rather than a single remote per-run log.
+    [ -f "$MULTI_TIER_LOG" ] && grep -qE '^\[smoke-all\] MULTI_TIER_DONE' "$MULTI_TIER_LOG"
+  else
+    timeout 15 ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 -o BatchMode=yes \
+      "ubuntu@$RESOLVED_IP" "grep -qE '^RUN_PIPELINE_EXIT=[0-9]' $REMOTE_LOG 2>/dev/null"
+  fi
 }
 stop_remote_training() {
-  echo "[watcher $(date -u +%FT%TZ)] Ctrl-C the remote tmux session to stop GPU compute" >> "$LOG"
+  echo "[watcher $(date -u +%FT%TZ)] Ctrl-C any remote training tmux sessions to stop GPU compute" >> "$LOG"
+  # Single-run mode uses session 'elizatrain'. Multi-tier mode opens one
+  # session per tier named 'elizasmoke_<tier>'. Send C-c to every matching
+  # session; the unmatched ones just no-op.
   timeout 60 ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 "ubuntu@$RESOLVED_IP" \
-    "tmux send-keys -t elizatrain C-c 2>/dev/null || true" >> "$LOG" 2>&1 || true
+    "for s in \$(tmux ls 2>/dev/null | awk -F: '/^(elizatrain|elizasmoke_)/{print \$1}'); do tmux send-keys -t \"\$s\" C-c 2>/dev/null || true; done" \
+    >> "$LOG" 2>&1 || true
 }
 fetch_and_teardown() {
   bash scripts/train_nebius.sh fetch >> "$LOG" 2>&1 || echo "[watcher] fetch failed (network/ssh)" >> "$LOG"
