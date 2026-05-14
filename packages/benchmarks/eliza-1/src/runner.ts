@@ -125,9 +125,13 @@ async function cleanupModes(modes: ModeAdapter[]): Promise<void> {
     const result = results[i];
     if (result.status === "rejected") {
       const message =
-        result.reason instanceof Error ? result.reason.message : String(result.reason);
+        result.reason instanceof Error
+          ? result.reason.message
+          : String(result.reason);
       // eslint-disable-next-line no-console
-      console.warn(`[bench] cleanup for mode '${modes[i]?.id}' failed: ${message}`);
+      console.warn(
+        `[bench] cleanup for mode '${modes[i]?.id}' failed: ${message}`,
+      );
     }
   }
 }

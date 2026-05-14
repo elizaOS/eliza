@@ -47,6 +47,11 @@
 #   LLAMA_REASONING_FORMAT — optional reasoning parser format, e.g. `none`.
 #   LLAMA_DISABLE_THINKING — when truthy, passes enable_thinking=false.
 #   LLAMA_EXTRA_ARGS    — extra args appended verbatim.
+#   LLAMA_CPP_FORK_IMAGE — optional Docker image override for DFlash/TurboQuant.
+#                         When set, overrides the default upstream llama.cpp image.
+#                         For Eliza-1 workers with DFlash or TurboQuant quantizations,
+#                         set to the elizaOS fork build, e.g.
+#                         LLAMA_CPP_FORK_IMAGE=ghcr.io/elizaos/llama.cpp:server-cuda
 #
 # This script is idempotent: re-runs reuse the cached GGUF and only relaunch
 # `llama-server` if it isn't already up.
@@ -82,6 +87,7 @@ LLAMA_JINJA="${LLAMA_JINJA:-}"
 LLAMA_REASONING_FORMAT="${LLAMA_REASONING_FORMAT:-}"
 LLAMA_DISABLE_THINKING="${LLAMA_DISABLE_THINKING:-}"
 LLAMA_EXTRA_ARGS="${LLAMA_EXTRA_ARGS:-}"
+LLAMA_CPP_IMAGE="${LLAMA_CPP_FORK_IMAGE:-${LLAMA_CPP_IMAGE_OVERRIDE:-ghcr.io/ggml-org/llama.cpp:server-cuda}}"
 
 mkdir -p "$MODEL_DIR" "$PYWORKER_DIR" "$(dirname "$LLAMA_LOG")"
 

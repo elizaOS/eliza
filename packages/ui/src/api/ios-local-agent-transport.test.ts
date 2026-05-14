@@ -6,6 +6,33 @@ const capacitorState = vi.hoisted(() => ({
   pluginAvailable: false,
 }));
 
+const kernelMock = vi.hoisted(() => ({
+  handleIosLocalAgentRequest: vi.fn(async (request: Request) => {
+    const { pathname } = new URL(request.url);
+    if (pathname === "/api/health") {
+      return new Response(
+        JSON.stringify({
+          localAgent: {
+            mode: "ios-local",
+            transport: "ittp",
+          },
+        }),
+        { headers: { "content-type": "application/json; charset=utf-8" } },
+      );
+    }
+    return new Response(
+      JSON.stringify({
+        mode: "ios-local",
+        transport: {
+          foreground: "ittp",
+        },
+      }),
+      { headers: { "content-type": "application/json; charset=utf-8" } },
+    );
+  }),
+  startIosLocalAgentKernel: vi.fn(),
+}));
+
 vi.mock("@capacitor/core", () => ({
   Capacitor: {
     getPlatform: () => capacitorState.platform,
@@ -14,9 +41,13 @@ vi.mock("@capacitor/core", () => ({
   },
 }));
 
+vi.mock("./ios-local-agent-kernel", () => kernelMock);
+
 describe("iOS local agent transport bridge", () => {
   beforeEach(() => {
     vi.resetModules();
+    kernelMock.handleIosLocalAgentRequest.mockClear();
+    kernelMock.startIosLocalAgentKernel.mockClear();
     capacitorState.isNative = true;
     capacitorState.platform = "ios";
     capacitorState.pluginAvailable = false;
@@ -57,7 +88,14 @@ describe("iOS local agent transport bridge", () => {
         foreground: "ittp",
       },
     });
-  }, 120_000);
+    expect(kernelMock.handleIosLocalAgentRequest).toHaveBeenCalledWith(
+      expect.objectContaining({
+        method: "GET",
+        url: "http://127.0.0.1:31337/api/local-agent/capabilities",
+      }),
+      { timeoutMs: 1234 },
+    );
+  });
 
   it("routes loopback local-agent URLs through the ITTP transport", async () => {
     const { iosInProcessAgentTransportForUrl } = await import(
@@ -236,6 +274,7 @@ describe("iOS local agent transport bridge", () => {
 
   it("requires the full Bun bridge during the in-app smoke even if Capacitor platform detection is early", async () => {
     capacitorState.isNative = false;
+    capacitorState.pluginAvailable = true;
     const start = vi.fn(async () => ({ ok: true }));
     const getStatus = vi.fn(async () => ({ ready: true, engine: "bun" }));
     const call = vi.fn(async () => ({

@@ -2,7 +2,7 @@
 
 Mirrors `scripts/push_to_hf.py` (which publishes the *dataset*) but for the
 *model* side: takes a finished APOLLO SFT checkpoint and uploads it to the
-canonical `elizaos/eliza-1` repo declared in `model_registry.py`. Runtime GGUF
+canonical `elizalabs/eliza-1` repo declared in `model_registry.py`. Runtime GGUF
 bundles should normally go through `scripts/publish/publish_eliza1_model_repo.py`
 so they land under `bundles/<tier>/` instead of repo root.
 
@@ -14,13 +14,13 @@ Usage::
         --checkpoint checkpoints/eliza-1-2b-apollo/final \\
         --dry-run
 
-    # Real upload to the default repo (elizaos/eliza-1).
+    # Real upload to the default repo (elizalabs/eliza-1).
     HF_TOKEN=hf_xxx uv run python scripts/push_model_to_hf.py \\
         --registry-key eliza-1-2b \\
         --checkpoint checkpoints/eliza-1-2b-apollo/final
 
     # Upload a quantized sidecar to an explicitly named audit repo. The app
-    # runtime consumes GGUF bundles from elizaos/eliza-1/bundles/<tier>/.
+    # runtime consumes GGUF bundles from elizalabs/eliza-1/bundles/<tier>/.
     HF_TOKEN=hf_xxx uv run python scripts/push_model_to_hf.py \\
         --registry-key eliza-1-2b \\
         --checkpoint checkpoints/eliza-1-2b-apollo/final-polarquant \\
@@ -124,7 +124,7 @@ def resolve_repo_id(
     """Resolve the destination HF repo id.
 
     Override > registry's eliza_repo_id / abliteration_repo_id. Eliza-1 runtime
-    artifacts live in a single model repo (``elizaos/eliza-1``); do not derive
+    artifacts live in a single model repo (``elizalabs/eliza-1``); do not derive
     per-tier or per-quant sibling repos from the registry defaults.
     """
     if override:
@@ -134,7 +134,7 @@ def resolve_repo_id(
     except KeyError as exc:
         raise SystemExit(
             f"--registry-key {registry_key!r} is not in the registry; "
-            "either pass --repo-id explicitly (e.g. for elizaos/* repos) "
+            "either pass --repo-id explicitly (e.g. for elizalabs/* repos) "
             f"or pick one of: {_published_registry_names()}"
         ) from exc
     if variant == "abliterated":
@@ -152,9 +152,9 @@ def resolve_repo_id(
                 f"registry entry {registry_key!r} has no eliza_repo_id set; "
                 "fill it in scripts/training/model_registry.py or pass --repo-id."
             )
-    if quant and base == "elizaos/eliza-1":
+    if quant and base == "elizalabs/eliza-1":
         raise SystemExit(
-            "registry default repo is elizaos/eliza-1; quantized runtime GGUFs "
+            "registry default repo is elizalabs/eliza-1; quantized runtime GGUFs "
             "must be uploaded with scripts/publish/publish_eliza1_model_repo.py "
             "under bundles/<tier>/, or pass --repo-id explicitly for an audit-only "
             "raw checkpoint upload."
@@ -189,7 +189,7 @@ def read_optional_json(path: Path) -> dict[str, Any]:
 # quantization that produces a HF checkpoint. There is nothing to ship.
 #
 # GGUF is split per K-quant level (Q4_K_M / Q5_K_M / Q6_K) for card metadata.
-# Runtime bundles still publish into the single elizaos/eliza-1 model repo.
+# Runtime bundles still publish into the single elizalabs/eliza-1 model repo.
 QUANT_BLURBS: dict[str, dict[str, str]] = {
     "polarquant": {
         "blurb": (
@@ -863,7 +863,7 @@ def main() -> int:
         "--eliza1-manifest", type=Path, default=None,
         help="Path to a eliza1_manifest.json from optimize_for_eliza1.py. "
              "Triggers manifest-driven model card rendering and supersedes "
-             "the per-quant template. Use for elizaos/* repo publishes.",
+             "the per-quant template. Use for elizalabs/* repo publishes.",
     )
     ap.add_argument(
         "--release-state", default=None,

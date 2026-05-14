@@ -859,49 +859,6 @@ export function buildPlannerActionGrammar(
  * Group action names by longest common prefix (≥3 chars, ≥2 names sharing it).
  * Returns a map of prefix → suffixes, plus a list of ungrouped names.
  */
-function groupActionNamesByPrefix(names: string[]): {
-	groups: Map<string, string[]>;
-	ungrouped: string[];
-} {
-	const groups = new Map<string, string[]>();
-	const used = new Set<string>();
-
-	// Find prefixes ending with "_" first (natural word boundaries in SNAKE_CASE).
-	const candidates = new Set<string>();
-	for (const name of names) {
-		// Extract potential prefixes ending with "_"
-		let idx = 0;
-		while ((idx = name.indexOf("_", idx)) !== -1) {
-			const prefix = name.substring(0, idx + 1); // Include the "_"
-			if (prefix.length >= 3) candidates.add(prefix);
-			idx++;
-		}
-	}
-
-	// If no candidates with "_", fall back to all 3+ char prefixes.
-	if (candidates.size === 0) {
-		for (const name of names) {
-			for (let len = 3; len < name.length; len++) {
-				candidates.add(name.substring(0, len));
-			}
-		}
-	}
-
-	// Sort by length (longest first) to prefer longer prefixes.
-	const candidateList = Array.from(candidates).sort((a, b) => b.length - a.length);
-	for (const prefix of candidateList) {
-		const matching = names.filter((n) => n.startsWith(prefix) && !used.has(n));
-		if (matching.length >= 2) {
-			const suffixes = matching.map((n) => n.substring(prefix.length));
-			groups.set(prefix, suffixes);
-			matching.forEach((n) => used.add(n));
-		}
-	}
-
-	const ungrouped = names.filter((n) => !used.has(n));
-	return { groups, ungrouped };
-}
-
 export function buildPlannerActionGrammarStrict(
 	actions: ReadonlyArray<
 		Pick<Action, "name" | "parameters" | "allowAdditionalParameters">
@@ -932,49 +889,18 @@ export function buildPlannerActionGrammarStrict(
 	const sortedDescriptors = descriptors
 		.slice()
 		.sort((a, b) => a.name.localeCompare(b.name));
-	// Group action names by common prefix for factoring.
-	const { groups, ungrouped } = groupActionNamesByPrefix(
-		sortedDescriptors.map((d) => d.name)
-	);
 
-	// Emit grouped actions with shared prefix literals.
-	for (const [prefix, suffixes] of groups) {
-		const prefixSanitized = sanitizeGbnfRuleName(prefix);
-		const suffixRuleName = `suffix_${prefixSanitized}`;
-
-		// Emit a rule for the suffix alternation.
-		const suffixAlts = suffixes
-			.map((suffix) => gbnfJsonStringLiteral(suffix))
-			.join(" | ");
-		builder.rule(suffixRuleName, suffixAlts);
-
-		// For each action in the group, emit a branch that factors the prefix.
-		for (const fullName of sortedDescriptors
-			.filter((d) => d.name.startsWith(prefix))
-			.map((d) => d.name)) {
-			const sanitized = sanitizeGbnfRuleName(fullName);
-			const paramsRuleName = `paramsofaction_${sanitized}`;
-			const descriptor = sortedDescriptors.find((d) => d.name === fullName)!;
-			emitActionParamsRule(builder, paramsRuleName, descriptor.parametersSchema);
-			const branchRuleName = `callofaction_${sanitized}`;
-			const suffix = fullName.substring(prefix.length);
-			const branchBody = [
-				gbnfLiteral(`{"action":"${prefix}`),
-				suffixRuleName,
-				gbnfLiteral('","parameters":'),
-				paramsRuleName,
-				gbnfLiteral(',"thought":'),
-				"jsonstring",
-				gbnfLiteral("}"),
-			].join(" ");
-			builder.rule(branchRuleName, branchBody);
-			branchRuleNames.push(branchRuleName);
-		}
-	}
-
-	// Emit ungrouped actions (no shared prefix).
-	for (const fullName of ungrouped) {
-		const descriptor = sortedDescriptors.find((d) => d.name === fullName)!;
+	// One branch per action. A previous version of this function tried to
+	// factor common UPPER_SNAKE_CASE prefixes (e.g. emit "MESSAGE_" once with a
+	// shared `suffix_MESSAGE_` rule). That optimization was broken on two
+	// fronts: (1) the suffix alternation used JSON-quoted literals so the
+	// concatenation produced malformed JSON like `{"action":"MESSAGE_"READ""…`;
+	// and (2) the shared suffix rule decoupled the action name from the
+	// per-action params rule — the model could legally pair `MESSAGE_READ` with
+	// `paramsofaction_MESSAGE_SEND`. Each branch must encode the full action
+	// name as a literal, then bind to its own params rule.
+	for (const descriptor of sortedDescriptors) {
+		const fullName = descriptor.name;
 		const sanitized = sanitizeGbnfRuleName(fullName);
 		const paramsRuleName = `paramsofaction_${sanitized}`;
 		emitActionParamsRule(builder, paramsRuleName, descriptor.parametersSchema);
