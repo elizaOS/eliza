@@ -4,7 +4,7 @@ sidebarTitle: "内存"
 description: "内存持久化、嵌入生成、向量搜索、内存类型和检索 API。"
 ---
 
-Eliza 的内存系统由 `@elizaos/plugin-sql` 提供持久化支持，由 `@elizaos/plugin-local-embedding` 提供向量嵌入支持。本页从运行时的角度介绍内存基础设施。
+Eliza 的内存系统由 `@elizaos/plugin-sql` 提供持久化支持，由 `@elizaos/plugin-local-inference` 提供向量嵌入支持。本页从运行时的角度介绍内存基础设施。
 
 <div id="memory-architecture">
 
@@ -80,7 +80,7 @@ if (files.length === 0) {
 
 </div>
 
-`@elizaos/plugin-local-embedding` 在 `runtime.initialize()` 之前预注册，以确保其 `TEXT_EMBEDDING` 处理器（优先级 10）优先于任何云提供商的处理器（优先级 0）。
+`@elizaos/plugin-local-inference` 在 `runtime.initialize()` 之前预注册，以确保其 `TEXT_EMBEDDING` 处理器（优先级 10）优先于任何云提供商的处理器（优先级 0）。
 
 <div id="default-model">
 

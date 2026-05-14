@@ -82,7 +82,6 @@ import {
 	type PlannerTrajectory,
 	runPlannerLoop,
 } from "../runtime/planner-loop";
-import { looksLikeRefusal } from "../runtime/refusal-detector";
 import {
 	buildResponseGrammar,
 	withGuidedDecodeProviderOptions,
@@ -2692,19 +2691,9 @@ function messageHandlerFromFieldResult(
 					]),
 				)
 			: routedContexts;
-	// Stage 1 refusal suppression. When the model contradicts its own routing
-	// decision — chose to plan (contexts/candidateActions point at a planning
-	// surface) but wrote a refusal in replyText — drop the refusal so it does
-	// not ship via the early-reply path. The planner stage's reply is then the
-	// only one the user sees. See elizaOS/eliza#7620: Cerebras-hosted
-	// `gpt-oss-120b` / `qwen-3-235b-instruct` emit identical "I'm unable to
-	// spawn a sub-agent in this context" refusals from a turn whose
-	// candidateActionNames already includes TASKS_SPAWN_AGENT.
-	const sanitizedReplyText =
-		shouldPlan && looksLikeRefusal(replyText) ? "" : replyText;
 	const plan: MessageHandlerResult["plan"] = {
 		contexts: finalContexts,
-		reply: sanitizedReplyText,
+		reply: replyText,
 		simple: preemptDirect ? true : !shouldPlan,
 		requiresTool: shouldPlan,
 	};

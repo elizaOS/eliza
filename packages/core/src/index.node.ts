@@ -195,7 +195,6 @@ export {
 	SIMPLE_CONTEXT_ID,
 	type V5MessageHandlerOutput,
 } from "./runtime/message-handler";
-export { looksLikeRefusal } from "./runtime/refusal-detector";
 export * from "./runtime/response-grammar";
 export * from "./runtime/response-handler-evaluators";
 export * from "./runtime/response-handler-field-evaluator";

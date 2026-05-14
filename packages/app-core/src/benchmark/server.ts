@@ -9,6 +9,7 @@ import {
   elizaLogger,
   type Memory,
   type MessageProcessingResult,
+  ModelType,
   type Plugin,
   stringToUuid,
 } from "@elizaos/core";
@@ -87,6 +88,197 @@ autoWireCerebras();
 
 const BENCH_TOKEN = process.env.ELIZA_BENCH_TOKEN?.trim() || null;
 const OPENROUTER_PLUGIN_MODULE: string = "@elizaos/plugin-openrouter";
+
+function isLocaBenchmarkName(benchmark: string): boolean {
+  const normalized = benchmark.trim().toLowerCase();
+  return normalized === "loca_bench" || normalized === "loca-bench";
+}
+
+function normalizeLocaNativeMessages(
+  rawMessages: unknown,
+): Array<Record<string, unknown>> {
+  const input = Array.isArray(rawMessages) ? rawMessages : [];
+  const toolNamesById = new Map<string, string>();
+  const normalized: Array<Record<string, unknown>> = [
+    {
+      role: "system",
+      content:
+        "You are running LOCA-bench through the Eliza benchmark server. " +
+        "Use native tool calls, not progress text. If work remains, call " +
+        "exactly one available filesystem or memory tool. Existing CSV rows " +
+        "may be examples; derive final rows from source_data/local_db and " +
+        "source_data/files, then write the requested CSV files.",
+    },
+  ];
+
+  for (const item of input) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) continue;
+    const message = item as Record<string, unknown>;
+    const role = typeof message.role === "string" ? message.role : "user";
+    if (role === "assistant") {
+      const rawToolCalls = Array.isArray(message.tool_calls)
+        ? message.tool_calls
+        : Array.isArray(message.toolCalls)
+          ? message.toolCalls
+          : [];
+      const toolCalls = rawToolCalls
+        .map((call) => normalizeLocaIncomingToolCall(call))
+        .filter((call): call is Record<string, unknown> => Boolean(call));
+      for (const call of toolCalls) {
+        const id = typeof call.id === "string" ? call.id : "";
+        const fn =
+          call.function && typeof call.function === "object"
+            ? (call.function as Record<string, unknown>)
+            : {};
+        const name = typeof fn.name === "string" ? fn.name : "";
+        if (id && name) toolNamesById.set(id, name);
+      }
+      normalized.push({
+        role: "assistant",
+        content: typeof message.content === "string" ? message.content : "",
+        ...(toolCalls.length > 0 ? { toolCalls } : {}),
+      });
+      continue;
+    }
+
+    if (role === "tool") {
+      const toolCallId =
+        typeof message.tool_call_id === "string"
+          ? message.tool_call_id
+          : typeof message.toolCallId === "string"
+            ? message.toolCallId
+            : typeof message.id === "string"
+              ? message.id
+              : "tool-call";
+      const toolName =
+        typeof message.name === "string"
+          ? message.name
+          : typeof message.toolName === "string"
+            ? message.toolName
+            : toolNamesById.get(toolCallId) || "tool";
+      normalized.push({
+        role: "tool",
+        id: toolCallId,
+        name: toolName,
+        content:
+          typeof message.content === "string"
+            ? message.content
+            : JSON.stringify(message.content ?? ""),
+      });
+      continue;
+    }
+
+    normalized.push({
+      role: role === "system" ? "system" : "user",
+      content:
+        typeof message.content === "string"
+          ? message.content
+          : JSON.stringify(message.content ?? ""),
+    });
+  }
+
+  return normalized;
+}
+
+function normalizeLocaIncomingToolCall(
+  raw: unknown,
+): Record<string, unknown> | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const call = raw as Record<string, unknown>;
+  const fn =
+    call.function && typeof call.function === "object"
+      ? (call.function as Record<string, unknown>)
+      : {};
+  const name =
+    typeof fn.name === "string"
+      ? fn.name
+      : typeof call.name === "string"
+        ? call.name
+        : typeof call.toolName === "string"
+          ? call.toolName
+          : "";
+  if (!name) return null;
+  const args = fn.arguments ?? call.arguments ?? call.input ?? {};
+  return {
+    id:
+      typeof call.id === "string"
+        ? call.id
+        : typeof call.toolCallId === "string"
+          ? call.toolCallId
+          : `call_loca_${Math.random().toString(16).slice(2)}`,
+    type: "function",
+    function: {
+      name,
+      arguments:
+        typeof args === "string" ? args : JSON.stringify(args ?? {}),
+    },
+  };
+}
+
+function normalizeLocaNativeToolCalls(rawToolCalls: unknown): Array<{
+  id: string;
+  type: "function";
+  function: { name: string; arguments: string };
+}> {
+  if (!Array.isArray(rawToolCalls)) return [];
+  const calls: Array<{
+    id: string;
+    type: "function";
+    function: { name: string; arguments: string };
+  }> = [];
+  for (const raw of rawToolCalls) {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
+    const call = raw as Record<string, unknown>;
+    const fn =
+      call.function && typeof call.function === "object"
+        ? (call.function as Record<string, unknown>)
+        : {};
+    const name =
+      typeof call.toolName === "string"
+        ? call.toolName
+        : typeof call.name === "string"
+          ? call.name
+          : typeof fn.name === "string"
+            ? fn.name
+            : "";
+    if (!name) continue;
+    const args = call.input ?? call.args ?? call.arguments ?? fn.arguments ?? {};
+    calls.push({
+      id:
+        typeof call.toolCallId === "string"
+          ? call.toolCallId
+          : typeof call.id === "string"
+            ? call.id
+            : `call_loca_native_${calls.length}`,
+      type: "function",
+      function: {
+        name,
+        arguments:
+          typeof args === "string" ? args : JSON.stringify(args ?? {}),
+      },
+    });
+  }
+  return calls;
+}
+
+function firstLocaBenchmarkActionFromToolCalls(
+  toolCalls: Array<{
+    function: { name: string; arguments: string };
+  }>,
+): Record<string, unknown> | null {
+  const first = toolCalls[0];
+  if (!first) return null;
+  let args: unknown = {};
+  try {
+    args = JSON.parse(first.function.arguments || "{}");
+  } catch {
+    args = { _raw: first.function.arguments };
+  }
+  return {
+    tool_name: first.function.name,
+    arguments: args,
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Security: authentication + CORS
@@ -1538,6 +1730,100 @@ export async function startBenchmarkServer() {
             context: benchmarkContext,
             image: parsed.image,
           });
+
+          if (
+            isLocaBenchmarkName(session.benchmark) &&
+            Array.isArray(benchmarkContext.tools) &&
+            benchmarkContext.tools.length > 0
+          ) {
+            const turnUsageBuffer: BenchmarkLlmCallUsage[] = [];
+            activeUsageBuffer = turnUsageBuffer;
+            let nativeResult: unknown;
+            try {
+              nativeResult = await runtime.useModel(ModelType.TEXT_LARGE, {
+                messages: normalizeLocaNativeMessages(benchmarkContext.messages),
+                tools: benchmarkContext.tools,
+                toolChoice: "required",
+                maxTokens:
+                  typeof benchmarkContext.max_tokens === "number"
+                    ? benchmarkContext.max_tokens
+                    : 2048,
+                temperature:
+                  typeof benchmarkContext.temperature === "number"
+                    ? benchmarkContext.temperature
+                    : 0,
+              });
+            } finally {
+              activeUsageBuffer = null;
+            }
+            const turnUsage = summarizeUsage(turnUsageBuffer);
+            const nativeRecord =
+              nativeResult && typeof nativeResult === "object"
+                ? (nativeResult as Record<string, unknown>)
+                : {};
+            const toolCalls = normalizeLocaNativeToolCalls(
+              nativeRecord.toolCalls,
+            );
+            const responseText =
+              typeof nativeRecord.text === "string"
+                ? nativeRecord.text
+                : typeof nativeResult === "string"
+                  ? nativeResult
+                  : "";
+            const params: Record<string, unknown> = {};
+            const benchmarkAction =
+              firstLocaBenchmarkActionFromToolCalls(toolCalls);
+            if (benchmarkAction) {
+              params.BENCHMARK_ACTION = benchmarkAction;
+              params.tool_calls = toolCalls;
+            }
+            const actions =
+              toolCalls.length > 0
+                ? ["BENCHMARK_ACTION"]
+                : responseText.trim()
+                  ? ["REPLY"]
+                  : [];
+            const finishedAt = Date.now();
+
+            trajectory.push({
+              step: trajectory.length + 1,
+              startedAt,
+              finishedAt,
+              inputText: text,
+              promptText: composedPrompt,
+              context,
+              thought: null,
+              responseText,
+              actions,
+              params,
+              usage: turnUsage,
+            });
+            trajectoriesBySession.set(key, trajectory);
+            const metadata = benchmarkTurnMetadata({
+              session,
+              step: trajectory.length,
+              context: benchmarkContext,
+            });
+
+            res.writeHead(200, { "Content-Type": "application/json" });
+            res.end(
+              JSON.stringify({
+                text: responseText,
+                thought: null,
+                actions,
+                params,
+                captured_actions: [],
+                tool_calls: toolCalls,
+                usage: turnUsage,
+                metadata,
+                benchmark: session.benchmark,
+                task_id: session.taskId,
+                room_id: session.roomId,
+                trajectory_step: trajectory.length,
+              }),
+            );
+            return;
+          }
 
           const incomingMessage: Memory = {
             id: stringToUuid(`benchmark-msg:${Date.now()}:${Math.random()}`),

@@ -142,7 +142,7 @@ Two plugins are pre-registered before `runtime.initialize()` to prevent race con
 
 1. **`@elizaos/plugin-sql`** — Database adapter must be ready before any plugin `init()` runs. On PGLite corruption, the data directory is reset and startup is retried once.
 
-2. **`@elizaos/plugin-local-embedding`** — Must register its `TEXT_EMBEDDING` handler (priority 10) before services start. Without pre-registration, the cloud plugin's handler (priority 0) wins and incurs API costs for local embeddings.
+2. **`@elizaos/plugin-local-inference`** — Must register its `TEXT_EMBEDDING` handler (priority 10) before services start. Without pre-registration, the cloud plugin's handler (priority 0) wins and incurs API costs for local embeddings.
 
 ### Step 11: Runtime Initialization
 
@@ -164,7 +164,7 @@ After initialization:
 ```
 1. elizaPlugin                     (passed first in the plugins array to AgentRuntime constructor)
 2. @elizaos/plugin-sql             (pre-registered via registerSqlPluginWithRecovery() before runtime.initialize())
-3. @elizaos/plugin-local-embedding (pre-registered so TEXT_EMBEDDING handler at priority 10 is available)
+3. @elizaos/plugin-local-inference (pre-registered so TEXT_EMBEDDING handler at priority 10 is available)
 4. All other plugins               (registered during runtime.initialize() in parallel)
 ```
 

@@ -25,7 +25,7 @@ The source of truth for which plugins are always loaded lives in the elizaOS sub
 ```typescript
 export const CORE_PLUGINS: readonly string[] = [
   "@elizaos/plugin-sql",               // database adapter — required
-  "@elizaos/plugin-local-embedding",   // local embeddings — required for memory
+  "@elizaos/plugin-local-inference",   // local embeddings — required for memory
   "@elizaos/app-companion",            // VRM companion emotes
   "@elizaos/plugin-shell",             // shell command execution
   "@elizaos/plugin-coding-tools",      // native Read/Write/Edit/Bash/Grep/Glob (desktop; CODING_TOOLS_DISABLE)

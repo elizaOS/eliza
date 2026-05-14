@@ -99,7 +99,7 @@ const FEATURE_SUBGROUP: Record<string, string> = {
   workflow: "devtools",
   webhooks: "devtools",
   memory: "documents",
-  "local-embedding": "documents",
+  "local-inference": "documents",
   pdf: "documents",
   clipboard: "documents",
   rlm: "documents",

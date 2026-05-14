@@ -4,7 +4,7 @@ sidebarTitle: "内存与状态"
 description: "Eliza 代理的内存类型、状态组合、向量搜索配置和嵌入模型设置。"
 ---
 
-Eliza 使用 elizaOS 内存系统，以 `@elizaos/plugin-sql` 实现持久化，以 `@elizaos/plugin-local-embedding` 实现向量嵌入。内存在每个对话轮次中被组合到代理状态中。
+Eliza 使用 elizaOS 内存系统，以 `@elizaos/plugin-sql` 实现持久化，以 `@elizaos/plugin-local-inference` 实现向量嵌入。内存在每个对话轮次中被组合到代理状态中。
 
 <div id="memory-backend">
 
@@ -82,7 +82,7 @@ Default path: ~/.eliza/workspace/.eliza/.elizadb
 
 </div>
 
-`@elizaos/plugin-local-embedding` 通过 `node-llama-cpp` 使用本地 GGUF 模型提供向量嵌入。它在其他插件之前预注册，以便其 `TEXT_EMBEDDING` 处理程序（优先级 10）在服务启动之前可用。
+`@elizaos/plugin-local-inference` 通过 `node-llama-cpp` 使用本地 GGUF 模型提供向量嵌入。它在其他插件之前预注册，以便其 `TEXT_EMBEDDING` 处理程序（优先级 10）在服务启动之前可用。
 
 <div id="default-model">
 
