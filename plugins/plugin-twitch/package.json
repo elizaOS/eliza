@@ -41,8 +41,7 @@
   },
   "dependencies": {
     "@twurple/auth": "^8.0.0",
-    "@twurple/chat": "^8.0.0",
-    "zod": "^4.4.3"
+    "@twurple/chat": "^8.0.0"
   },
   "peerDependencies": {
     "@elizaos/core": "workspace:*"

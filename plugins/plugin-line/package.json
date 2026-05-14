@@ -32,8 +32,7 @@
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
-    "@line/bot-sdk": "^11.0.0",
-    "zod": "^4.4.3"
+    "@line/bot-sdk": "^11.0.0"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.14",

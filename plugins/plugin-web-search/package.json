@@ -26,7 +26,6 @@
     "dependencies": {
         "@elizaos/core": "workspace:*",
         "@tavily/core": "^0.7.0",
-        "js-tiktoken": "1.0.21",
         "tsup": "^8.5.1"
     },
     "devDependencies": {
