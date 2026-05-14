@@ -37,7 +37,7 @@ interface DeadUrl {
   via?: string;
 }
 
-function extractVerifiableUrls(text: string, limit = 5): string[] {
+function collectVerifiableUrlCandidates(text: string): string[] {
   const seen = new Set<string>();
   const candidates: string[] = [];
   for (const match of text.matchAll(URL_IN_TEXT_RE)) {
@@ -56,14 +56,79 @@ function extractVerifiableUrls(text: string, limit = 5): string[] {
     seen.add(url);
     candidates.push(url);
   }
+  return candidates;
+}
 
+function extractVerifiableUrls(
+  text: string,
+  limit = 5,
+  referenceText?: string,
+): string[] {
+  const candidates = collectVerifiableUrlCandidates(text);
   const filtered = candidates.filter((url) => {
     const prefix = url.endsWith("/") ? url : `${url}/`;
     return !candidates.some(
       (other) => other !== url && other.startsWith(prefix),
     );
   });
-  return filtered.slice(0, limit);
+  const referenceUrls = referenceText
+    ? new Set(collectVerifiableUrlCandidates(referenceText))
+    : undefined;
+  const aliasFiltered = referenceUrls?.size
+    ? filterModelIntroducedUrlAliases(filtered, referenceUrls)
+    : filtered;
+  return aliasFiltered.slice(0, limit);
+}
+
+function filterModelIntroducedUrlAliases(
+  urls: string[],
+  referenceUrls: Set<string>,
+): string[] {
+  const groups = new Map<string, string[]>();
+  for (const url of urls) {
+    const key = comparableUrlTarget(url);
+    if (!key) continue;
+    const group = groups.get(key) ?? [];
+    group.push(url);
+    groups.set(key, group);
+  }
+
+  const targetsWithReferencedUrl = new Set<string>();
+  for (const [target, group] of groups) {
+    if (group.length > 1 && group.some((url) => referenceUrls.has(url))) {
+      targetsWithReferencedUrl.add(target);
+    }
+  }
+  if (targetsWithReferencedUrl.size === 0) return urls;
+
+  return urls.filter((url) => {
+    const target = comparableUrlTarget(url);
+    if (!target || !targetsWithReferencedUrl.has(target)) return true;
+    if (referenceUrls.has(url)) return true;
+    // Keep loopback aliases: local and public checks often share the same
+    // route path, and both are useful evidence. Drop only model-introduced
+    // external aliases such as a misspelled public hostname.
+    return isLoopbackUrl(url);
+  });
+}
+
+function comparableUrlTarget(url: string): string | undefined {
+  try {
+    const parsed = new URL(url);
+    const pathname = parsed.pathname.replace(/\/+$/, "") || "/";
+    return `${pathname}${parsed.search}${parsed.hash}`;
+  } catch {
+    return undefined;
+  }
+}
+
+function isLoopbackUrl(url: string): boolean {
+  try {
+    const host = new URL(url).hostname.toLowerCase();
+    return host === "localhost" || host === "::1" || host.startsWith("127.");
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -357,8 +422,13 @@ export class SubAgentRouter {
     let text = baseText;
     let deadUrls: DeadUrl[] = [];
     if (event === "task_complete") {
-      const verified = await annotateUnverifiedUrls(baseText, (m) =>
-        this.log("debug", m),
+      const meta = session.metadata as Record<string, unknown> | undefined;
+      const verificationReferenceText =
+        typeof meta?.initialTask === "string" ? meta.initialTask : undefined;
+      const verified = await annotateUnverifiedUrls(
+        baseText,
+        (m) => this.log("debug", m),
+        verificationReferenceText,
       );
       text = verified.text;
       deadUrls = verified.dead;
@@ -717,8 +787,9 @@ function composeNarration(
 async function annotateUnverifiedUrls(
   text: string,
   log?: (message: string) => void,
+  referenceText?: string,
 ): Promise<{ text: string; dead: DeadUrl[] }> {
-  const urls = extractVerifiableUrls(text);
+  const urls = extractVerifiableUrls(text, 5, referenceText);
   if (urls.length === 0) return { text, dead: [] };
   log?.(
     `[verify] start @ ${new Date().toISOString()} — ${urls.length} url(s): ${urls.join(", ")}`,
