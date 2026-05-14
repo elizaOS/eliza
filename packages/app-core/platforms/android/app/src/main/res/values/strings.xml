@@ -4,4 +4,7 @@
     <string name="title_activity_main">Eliza</string>
     <string name="package_name">com.elizaai.eliza</string>
     <string name="custom_url_scheme">eliza</string>
+    <string name="shortcut_ask_eliza_short_label">Ask Eliza</string>
+    <string name="shortcut_ask_eliza_long_label">Ask Eliza</string>
+    <string name="shortcut_ask_eliza_disabled">Eliza assistant shortcut is unavailable.</string>
 </resources>

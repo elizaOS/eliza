@@ -5,9 +5,9 @@ Desktop and mobile computer-use plugin for elizaOS agents.
 The canonical local desktop action is `COMPUTER_USE`. It supports:
 
 - `screenshot`
-- `click`, `click_with_modifiers`, `double_click`, `right_click`
-- `mouse_move`, `drag`, `scroll`
-- `type`, `key`, `key_combo`
+- `click`, `click_with_modifiers`, `double_click`, `right_click`, `middle_click`
+- `mouse_move`, `mouse_down`, `mouse_up`, `drag`, `drag_to`, `left_click_drag`, `scroll`
+- `type`, `key`, `key_down`, `key_up`, `key_combo`
 - `ocr`, `detect_elements`, `accessibility_tree`
 
 The plugin also registers:

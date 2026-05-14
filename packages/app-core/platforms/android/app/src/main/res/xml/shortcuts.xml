@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="ask_eliza"
+        android:enabled="true"
+        android:shortcutShortLabel="@string/shortcut_ask_eliza_short_label"
+        android:shortcutLongLabel="@string/shortcut_ask_eliza_long_label"
+        android:shortcutDisabledMessage="@string/shortcut_ask_eliza_disabled">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:data="eliza://chat?source=android-shortcut" />
+        <categories android:name="android.shortcut.conversation" />
+    </shortcut>
+
+    <capability android:name="actions.intent.CREATE_THING">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:data="eliza://chat?source=android-app-action&amp;intent=create-thing" />
+    </capability>
+
+    <capability android:name="actions.intent.GET_THING">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:data="eliza://chat?source=android-app-action&amp;intent=get-thing" />
+    </capability>
+</shortcuts>

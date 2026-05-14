@@ -47,6 +47,7 @@ export type TerminalSession = {
 const sessions = new Map<string, TerminalSession>();
 let sessionCounter = 0;
 let lastOutputBuffer = "";
+let lastSessionId: string | undefined;
 let cachedPtyModule: PtyModule | null | undefined;
 
 function truncateOutput(output: string): string {
@@ -170,6 +171,7 @@ export async function connectTerminal(
       session.closed = true;
     });
     sessions.set(sessionId, session);
+    lastSessionId = sessionId;
     return makeSessionResult(session);
   }
 
@@ -198,6 +200,7 @@ export async function connectTerminal(
     session.closed = true;
   });
   sessions.set(sessionId, session);
+  lastSessionId = sessionId;
   return makeSessionResult(session);
 }
 
@@ -308,7 +311,9 @@ export function readTerminal(
   arg?: string | { session_id?: string; sessionId?: string },
 ): TerminalActionResult {
   const sessionId =
-    typeof arg === "string" ? arg : (arg?.session_id ?? arg?.sessionId);
+    typeof arg === "string"
+      ? arg
+      : (arg?.session_id ?? arg?.sessionId ?? lastSessionId);
   const session = sessionId ? sessions.get(sessionId) : undefined;
   const output = session?.buffer ?? session?.lastOutput ?? lastOutputBuffer;
   if (session) {
@@ -330,7 +335,9 @@ export function typeTerminal(
 ): TerminalActionResult {
   const text = typeof arg === "string" ? arg : arg.text;
   const sessionId =
-    typeof arg === "string" ? undefined : (arg.session_id ?? arg.sessionId);
+    typeof arg === "string"
+      ? lastSessionId
+      : (arg.session_id ?? arg.sessionId ?? lastSessionId);
   const session = sessionId ? sessions.get(sessionId) : undefined;
   if (!session) {
     return {
@@ -369,7 +376,9 @@ export function resizeTerminal(
   arg: string | { session_id?: string; sessionId?: string; cols?: number; rows?: number },
 ): TerminalActionResult {
   const sessionId =
-    typeof arg === "string" ? arg : (arg.session_id ?? arg.sessionId);
+    typeof arg === "string"
+      ? arg
+      : (arg.session_id ?? arg.sessionId ?? lastSessionId);
   const session = sessionId ? sessions.get(sessionId) : undefined;
   if (!session) {
     return {
@@ -408,7 +417,9 @@ export function clearTerminal(
   arg?: string | { session_id?: string; sessionId?: string },
 ): TerminalActionResult {
   const sessionId =
-    typeof arg === "string" ? arg : (arg?.session_id ?? arg?.sessionId);
+    typeof arg === "string"
+      ? arg
+      : (arg?.session_id ?? arg?.sessionId ?? lastSessionId);
   const session = sessionId ? sessions.get(sessionId) : undefined;
   if (session) {
     session.buffer = "";
@@ -439,6 +450,7 @@ export function closeTerminal(
       }
     }
     sessions.delete(sessionId);
+    lastSessionId = sessions.size > 0 ? Array.from(sessions.keys()).at(-1) : undefined;
   } else {
     for (const session of sessions.values()) {
       if (session.backend === "pty") {
@@ -448,6 +460,7 @@ export function closeTerminal(
       }
     }
     sessions.clear();
+    lastSessionId = undefined;
   }
 
   return {

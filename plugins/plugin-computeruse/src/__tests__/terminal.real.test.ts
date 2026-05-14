@@ -10,7 +10,26 @@ import {
   closeTerminal,
   connectTerminal,
   executeTerminal,
+  readTerminal,
+  resizeTerminal,
+  sendInputTerminal,
 } from "../platform/terminal.js";
+
+async function waitForTerminalOutput(
+  sessionId: string,
+  pattern: RegExp,
+): Promise<string> {
+  const deadline = Date.now() + 5000;
+  let output = "";
+  while (Date.now() < deadline) {
+    output += readTerminal(sessionId).output ?? "";
+    if (pattern.test(output)) {
+      return output;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  return output;
+}
 
 describe("terminal execution (real)", () => {
   it("executes a simple command", async () => {
@@ -48,6 +67,39 @@ describe("terminal execution (real)", () => {
     expect(exec.output).toContain("session-test");
 
     const close = await closeTerminal(session.sessionId);
+    expect(close.success).toBe(true);
+  });
+
+  it("supports interactive session input and resize", async () => {
+    const session = await connectTerminal({
+      cwd: "/tmp",
+      cols: 100,
+      rows: 30,
+    });
+    expect(session.success).toBe(true);
+    expect(session.sessionId).toBeDefined();
+    expect(session.cols).toBe(100);
+    expect(session.rows).toBe(30);
+
+    const sessionId = session.sessionId as string;
+    const resize = resizeTerminal({ sessionId, cols: 120, rows: 32 });
+    expect(resize.success).toBe(true);
+    expect(resize.cols).toBe(120);
+    expect(resize.rows).toBe(32);
+
+    const input = sendInputTerminal({
+      sessionId,
+      text: "printf 'interactive-terminal-parity\\n'\n",
+    });
+    expect(input.success).toBe(true);
+
+    const output = await waitForTerminalOutput(
+      sessionId,
+      /interactive-terminal-parity/,
+    );
+    expect(output).toContain("interactive-terminal-parity");
+
+    const close = closeTerminal(sessionId);
     expect(close.success).toBe(true);
   });
 

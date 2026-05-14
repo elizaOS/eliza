@@ -24,15 +24,15 @@ to expose. Cua has two related APIs:
 | `right_click`, `mouse.right_click` | `COMPUTER_USE` `action=right_click` | Supported. |
 | `double_click`, `mouse.double_click` | `COMPUTER_USE` `action=double_click` | Supported. |
 | `move_cursor`, `mouse.move` | `COMPUTER_USE` `action=mouse_move` | Supported. |
-| `drag_to`, `drag`, `mouse.drag` | `COMPUTER_USE` `action=drag`; WS7 `drag`/`dragTo` | Supported for start/end drag. Multi-point path is normalized to start/end in WS7. |
-| `mouse_down`, `mouse_up` | WS7 `ComputerInterface.mouseDown/mouseUp` | Partial: modeled for actor compatibility, but shell/nut drivers expose click/drag rather than raw down/up as public actions. |
-| `middle_click` | none | Gap. Needed for full computer-server parity. |
+| `drag_to`, `drag`, `mouse.drag` | `COMPUTER_USE` `action=drag`/`drag_to`; WS7 `drag`/`dragTo` | Supported for start/end drag. Multi-point path is normalized to start/end in WS7. |
+| `mouse_down`, `mouse_up` | `COMPUTER_USE` `action=mouse_down/mouse_up`; WS7 `ComputerInterface.mouseDown/mouseUp` | Supported. |
+| `middle_click` | `COMPUTER_USE` `action=middle_click` | Supported. |
 | `scroll`, `mouse.scroll` | `COMPUTER_USE` `action=scroll`; WS7 `scroll` | Supported. |
 | `scroll_up`, `scroll_down` | `COMPUTER_USE` `action=scroll` with direction | Supported by normalization. |
 | `type_text`, `keyboard.type` | `COMPUTER_USE` `action=type` | Supported. |
 | `press_key`, `keyboard.keypress` | `COMPUTER_USE` `action=key` | Supported. |
 | `hotkey`, `keyboard.keypress([...])` | `COMPUTER_USE` `action=key_combo`; WS7 `hotkey` | Supported. |
-| `key_down`, `key_up` | WS7 `ComputerInterface.keyDown/keyUp` | Partial: actor-compatible, public action still press-and-release. |
+| `key_down`, `key_up` | `COMPUTER_USE` `action=key_down/key_up`; WS7 `ComputerInterface.keyDown/keyUp` | Supported. |
 | `get_accessibility_tree` | `COMPUTER_USE` `action=accessibility_tree`; `scene` provider | Supported via scene builder. |
 | `find_element` | `COMPUTER_USE` `action=detect_elements` | Supported as scene element extraction from AX + OCR. Exact role/title/value filtering is a follow-up. |
 | `to_screen_coordinates` | WS7 `ComputerInterface.toScreenCoordinates()` | Supported. |
@@ -81,11 +81,9 @@ to expose. Cua has two related APIs:
 
 ## Immediate follow-ups
 
-1. Add public `COMPUTER_USE` verbs for raw `mouse_down`, `mouse_up`,
-   `middle_click`, `key_down`, and `key_up`.
-2. Add clipboard commands with macOS/Linux/Windows backends.
-3. Add Cua file aliases for `directory_exists`, `create_dir`, `read_bytes`,
+1. Add clipboard commands with macOS/Linux/Windows backends.
+2. Add Cua file aliases for `directory_exists`, `create_dir`, `read_bytes`,
    `write_bytes`, and `get_file_size`.
-4. Add window getters/open/launch aliases matching Cua names.
-5. Add direct `find_element` filters over scene AX/OCR fields.
-6. Add PTY-backed terminal sessions with resize.
+3. Add window getters/open/launch aliases matching Cua names.
+4. Add direct `find_element` filters over scene AX/OCR fields.
+5. Add PTY-backed terminal sessions with resize.
