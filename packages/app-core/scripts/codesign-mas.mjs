@@ -151,6 +151,21 @@ function findSigningUnits(appPath) {
   };
 }
 
+function resolveMainExecutablePath(appPath) {
+  const infoPlistPath = path.join(appPath, "Contents", "Info.plist");
+  if (!existsSync(infoPlistPath)) {
+    return null;
+  }
+  const infoPlist = readFileSync(infoPlistPath, "utf8");
+  const match = infoPlist.match(
+    /<key>CFBundleExecutable<\/key>\s*<string>([^<]+)<\/string>/,
+  );
+  if (!match) {
+    return null;
+  }
+  return path.resolve(appPath, "Contents", "MacOS", match[1]);
+}
+
 function runOrPrint(cmd, args, dryRun) {
   const display = `${cmd} ${args.map((a) => (a.includes(" ") ? `"${a}"` : a)).join(" ")}`;
   if (dryRun) {
@@ -325,7 +340,11 @@ function main() {
 
   if (!dryRun) {
     console.log(`\nAuditing signed entitlements:`);
+    const mainExecutablePath = resolveMainExecutablePath(appPath);
     for (const target of machos) {
+      if (mainExecutablePath && path.resolve(target) === mainExecutablePath) {
+        continue;
+      }
       assertSignedEntitlements(
         target,
         "macos-mas-child",

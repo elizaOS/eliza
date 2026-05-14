@@ -6,7 +6,11 @@ import { join } from "node:path";
 import {
   createEngine,
   detectBestEngine,
+  formatSandboxConstraints,
+  GENERAL_SANDBOX_CONSTRAINTS,
+  getUnsupportedSandboxConstraints,
   type ISandboxEngine,
+  type SandboxRunConstraint,
   type SandboxEngineType,
 } from "./sandbox-engine.ts";
 
@@ -112,6 +116,18 @@ function shQuote(token: string): string {
   return `'${token.replace(/'/g, "'\\''")}'`;
 }
 
+function getRequiredPolicyConstraints(
+  mode: SandboxMode,
+): readonly SandboxRunConstraint[] {
+  if (mode === "max") return GENERAL_SANDBOX_CONSTRAINTS;
+  if (mode === "standard") {
+    return GENERAL_SANDBOX_CONSTRAINTS.filter(
+      (constraint) => constraint !== "readOnlyRoot",
+    );
+  }
+  return [];
+}
+
 export interface SandboxEvent {
   timestamp: number;
   type:
@@ -132,12 +148,14 @@ export class SandboxManager {
   private state: SandboxState = "uninitialized";
   private config: SandboxManagerConfig;
   private engine: ISandboxEngine;
+  private readonly requestedEngineType: SandboxEngineType;
   private containerId: string | null = null;
   private browserContainerId: string | null = null;
   private eventLog: SandboxEvent[] = [];
   private lifecycleQueue: Promise<void> = Promise.resolve();
 
   constructor(config: SandboxManagerConfig) {
+    const requiredConstraints = getRequiredPolicyConstraints(config.mode);
     this.config = {
       image: "eliza-sandbox:bookworm-slim",
       containerPrefix: "eliza-sandbox",
@@ -148,11 +166,15 @@ export class SandboxManager {
       memory: "512m",
       cpus: 1,
       pidsLimit: 256,
+      readOnlyRoot: config.mode === "max" ? true : undefined,
       ...config,
+      readOnlyRoot: config.mode === "max" ? true : config.readOnlyRoot,
     };
-    this.engine = config.engineType
-      ? createEngine(config.engineType)
-      : detectBestEngine();
+    this.requestedEngineType = config.engineType ?? "auto";
+    this.engine =
+      this.requestedEngineType === "auto"
+        ? detectBestEngine(requiredConstraints)
+        : createEngine(this.requestedEngineType, requiredConstraints);
   }
 
   getState(): SandboxState {
@@ -212,6 +234,35 @@ export class SandboxManager {
     });
   }
 
+  private validateEnginePolicySupport(): void {
+    const requiredConstraints = getRequiredPolicyConstraints(this.config.mode);
+    if (requiredConstraints.length === 0) return;
+
+    const unsupported = getUnsupportedSandboxConstraints(
+      this.engine,
+      requiredConstraints,
+    );
+    if (unsupported.length === 0) return;
+
+    throw new Error(
+      `Container engine "${this.engine.engineType}" cannot enforce ${this.config.mode} sandbox policy constraints: ${formatSandboxConstraints(
+        unsupported,
+      )}. Use Docker for standard/max sandboxing or lower the sandbox mode.`,
+    );
+  }
+
+  private unavailableEngineMessage(): string {
+    const base = `Container engine "${this.engine.engineType}" is not available. Install Docker.`;
+    if (
+      this.requestedEngineType === "auto" &&
+      this.config.mode !== "off" &&
+      this.config.mode !== "light"
+    ) {
+      return `${base} Apple Container is not selected for ${this.config.mode} mode because this adapter cannot enforce the required sandbox policy constraints.`;
+    }
+    return `${base} Apple Container is not supported for standard/max sandbox policy enforcement.`;
+  }
+
   private async cleanupContainer(containerId: string | null): Promise<void> {
     if (!containerId) return;
     await this.engine.stopContainer(containerId);
@@ -266,11 +317,10 @@ export class SandboxManager {
 
       try {
         const config = this.getMainContainerConfig();
+        this.validateEnginePolicySupport();
 
         if (!this.engine.isAvailable()) {
-          throw new Error(
-            `Container engine "${this.engine.engineType}" is not available. Install Docker or Apple Container.`,
-          );
+          throw new Error(this.unavailableEngineMessage());
         }
 
         if (!this.engine.imageExists(config.image)) {

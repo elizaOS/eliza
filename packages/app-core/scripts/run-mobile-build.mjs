@@ -760,6 +760,7 @@ async function buildWeb(platform) {
     androidRuntimeMode,
     iosRuntimeMode,
     releaseAuthority,
+    iosAppStoreLocalRuntime,
   } = resolveMobileBuildPolicy(platform);
   const env = {
     ...process.env,
@@ -776,6 +777,13 @@ async function buildWeb(platform) {
       ? {
           ELIZA_IOS_RUNTIME_MODE: iosRuntimeMode,
           VITE_ELIZA_IOS_RUNTIME_MODE: iosRuntimeMode,
+        }
+      : {}),
+    ...(iosAppStoreLocalRuntime
+      ? {
+          [IOS_APP_STORE_LOCAL_RUNTIME_ENV]: "1",
+          [IOS_APP_STORE_COMPLIANT_LOCAL_RUNTIME_ENV]: "1",
+          VITE_ELIZA_IOS_APP_STORE_LOCAL_RUNTIME: "1",
         }
       : {}),
     ...(platform === "ios-local" && isFullIosBunEngineRequested(process.env)
@@ -3172,9 +3180,7 @@ export function resolveIosBuildTarget({
     };
   }
 
-  const includeDeviceOnlyLlama =
-    isTruthyEnv(env.ELIZA_IOS_INCLUDE_LLAMA) ||
-    isTruthyEnv(env.ELIZA_IOS_INCLUDE_LLAMA);
+  const includeDeviceOnlyLlama = isIosLlamaRequested(env);
   const llamaCppFramework = firstExisting([
     path.join(
       appDirValue,
@@ -4444,17 +4450,36 @@ function configureIosLocalBuildDefaults() {
   setDefaultProcessEnv("ELIZA_IOS_BUILD_SDK", "iphonesimulator");
 }
 
+function configureIosAppStoreLocalBuildDefaults() {
+  setDefaultProcessEnv("ELIZA_IOS_RUNTIME_MODE", "local");
+  setDefaultProcessEnv("VITE_ELIZA_IOS_RUNTIME_MODE", "local");
+  setDefaultProcessEnv(IOS_APP_STORE_LOCAL_RUNTIME_ENV, "1");
+  setDefaultProcessEnv(IOS_APP_STORE_COMPLIANT_LOCAL_RUNTIME_ENV, "1");
+  setDefaultProcessEnv("VITE_ELIZA_IOS_APP_STORE_LOCAL_RUNTIME", "1");
+}
+
 async function buildIos({ local = false } = {}) {
   if (process.platform !== "darwin")
     throw new Error("iOS builds require macOS and Xcode.");
 
   if (local) {
     configureIosLocalBuildDefaults();
+  } else {
+    configureIosAppStoreLocalBuildDefaults();
   }
 
+  const buildPlatform = local ? "ios-local" : "ios";
+  const appStoreLocalPolicy = assertIosAppStoreLocalRuntimePolicy({
+    platform: buildPlatform,
+  });
+  const shouldStageLocalRuntime = local || appStoreLocalPolicy.enabled;
   const buildTarget = resolveIosBuildTarget();
   if (local) {
     ensureIosFullBunEngineArtifact({ buildTarget });
+  } else if (appStoreLocalPolicy.includeFullBunEngine) {
+    ensureIosFullBunEngineArtifact({ buildTarget, appStoreLocal: true });
+  }
+  if (shouldStageLocalRuntime) {
     await buildMobileAgentBundle({ target: "ios" });
   }
 
@@ -4464,21 +4489,27 @@ async function buildIos({ local = false } = {}) {
     "prepare-ios-cocoapods.sh",
   );
 
-  await buildWeb(local ? "ios-local" : "ios");
+  await buildWeb(buildPlatform);
   await ensurePlatform("ios");
-  if (local) {
+  if (shouldStageLocalRuntime) {
     // Stage once before CocoaPods/Capacitor native dependency work so a
     // missing local toolchain still leaves the iOS app bundle resources in an
     // inspectable state. Capacitor sync may rewrite app resources, so we stage
     // again immediately after sync.
     stageIosAgentRuntime();
+    if (appStoreLocalPolicy.enabled) {
+      validateIosAppStoreLocalRuntimeAssets();
+    }
   }
   if (fs.existsSync(cocoapodsScript)) {
     await run("bash", [cocoapodsScript], { cwd: repoRoot });
   }
   await runCapacitor(["sync", "ios"]);
-  if (local) {
+  if (shouldStageLocalRuntime) {
     stageIosAgentRuntime();
+    if (appStoreLocalPolicy.enabled) {
+      validateIosAppStoreLocalRuntimeAssets();
+    }
   }
 
   console.log(

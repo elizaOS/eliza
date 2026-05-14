@@ -152,6 +152,17 @@ const COORDINATE_BEARING_ACTIONS = new Set<DesktopActionParams["action"]>([
   "drag_to",
 ]);
 
+type SceneElement = {
+  id: string;
+  source: "accessibility" | "ocr";
+  label: string;
+  role: string;
+  bbox: [number, number, number, number];
+  displayId: number;
+  confidence?: number;
+  actions?: string[];
+};
+
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
@@ -284,6 +295,7 @@ export class ComputerUseService extends Service {
       case "left_click_drag":
       case "drag_to":
       case "detect_elements":
+      case "find_element":
       case "ocr":
       case "get_accessibility_tree":
       case "accessibility_tree":
@@ -553,6 +565,23 @@ export class ComputerUseService extends Service {
               focusedWindow: scene.focused_window,
             },
             message: `Detected ${elements.length} scene element${elements.length === 1 ? "" : "s"}.`,
+          });
+        }
+        case "find_element": {
+          const scene = await this.sceneBuilder.onAgentTurn();
+          const elements = this.findSceneElements(
+            scene,
+            params.displayId,
+            params,
+          );
+          return this.succeedEntry(entry, {
+            success: true,
+            data: {
+              element: elements[0] ?? null,
+              elements,
+              count: elements.length,
+            },
+            message: `Found ${elements.length} matching scene element${elements.length === 1 ? "" : "s"}.`,
           });
         }
         case "accessibility_tree": {
@@ -1986,16 +2015,7 @@ export class ComputerUseService extends Service {
   private sceneElements(
     scene: Scene,
     displayId: number | undefined,
-  ): Array<{
-    id: string;
-    source: "accessibility" | "ocr";
-    label: string;
-    role: string;
-    bbox: [number, number, number, number];
-    displayId: number;
-    confidence?: number;
-    actions?: string[];
-  }> {
+  ): SceneElement[] {
     const matchesDisplay = (id: number): boolean =>
       displayId === undefined || id === displayId;
     return [
@@ -2020,11 +2040,73 @@ export class ComputerUseService extends Service {
     ];
   }
 
+  private findSceneElements(
+    scene: Scene,
+    displayId: number | undefined,
+    params: DesktopActionParams,
+  ): SceneElement[] {
+    const elements = this.sceneElements(scene, displayId);
+    const query = this.normalizeElementQuery(params.query ?? params.text);
+    const id = this.normalizeElementQuery(params.id);
+    const role = this.normalizeElementQuery(params.role);
+    const label = this.normalizeElementQuery(
+      params.label ?? params.title ?? params.value ?? params.textFilter,
+    );
+    const minConfidence = params.minConfidence;
+    const limit =
+      typeof params.limit === "number" && Number.isFinite(params.limit)
+        ? Math.max(1, Math.floor(params.limit))
+        : undefined;
+
+    const matches = elements.filter((element) => {
+      if (params.source && element.source !== params.source) return false;
+      if (id && this.normalizeElementQuery(element.id) !== id) return false;
+      if (role && !this.normalizeElementQuery(element.role).includes(role)) {
+        return false;
+      }
+      if (
+        label &&
+        !this.normalizeElementQuery(element.label).includes(label)
+      ) {
+        return false;
+      }
+      if (
+        query &&
+        ![
+          element.id,
+          element.source,
+          element.label,
+          element.role,
+          ...(element.actions ?? []),
+        ]
+          .map((value) => this.normalizeElementQuery(value))
+          .some((value) => value.includes(query))
+      ) {
+        return false;
+      }
+      if (
+        minConfidence !== undefined &&
+        element.confidence !== undefined &&
+        element.confidence < minConfidence
+      ) {
+        return false;
+      }
+      return true;
+    });
+
+    return limit === undefined ? matches : matches.slice(0, limit);
+  }
+
+  private normalizeElementQuery(value: unknown): string {
+    return typeof value === "string" ? value.trim().toLowerCase() : "";
+  }
+
   private shouldCaptureAfterDesktopAction(
     action: DesktopActionParams["action"],
   ): boolean {
     return action !== "screenshot" &&
       action !== "detect_elements" &&
+      action !== "find_element" &&
       action !== "ocr" &&
       action !== "accessibility_tree"
       ? this.cuConfig.screenshotAfterAction

@@ -9,6 +9,7 @@ constructed or used.
 
 from __future__ import annotations
 
+import json
 import logging
 from typing import TYPE_CHECKING
 
@@ -23,6 +24,22 @@ if TYPE_CHECKING:
     )
 
 logger = logging.getLogger(__name__)
+
+
+def _format_candidates(candidates: list[object]) -> str:
+    lines: list[str] = []
+    for idx, elem in enumerate(candidates[:20], start=1):
+        backend_node_id = getattr(elem, "backend_node_id", "")
+        tag = getattr(elem, "tag", "")
+        attrs_raw = getattr(elem, "attributes", {})
+        attrs = attrs_raw if isinstance(attrs_raw, dict) else {}
+        attr_text = " ".join(f'{key}="{value}"' for key, value in list(attrs.items())[:6])
+        text_content = str(getattr(elem, "text_content", "") or "")
+        text = f" text={text_content[:80]!r}" if text_content else ""
+        lines.append(
+            f"{idx}. backend_node_id={backend_node_id} tag={tag} {attr_text}{text}".strip()
+        )
+    return "\n".join(lines) if lines else "No candidate elements are available."
 
 
 class ElizaMind2WebAgent:
@@ -59,21 +76,49 @@ class ElizaMind2WebAgent:
                 break
 
             current_step = task.actions[step_idx]
+            all_candidates = current_step.pos_candidates + current_step.neg_candidates
+            current_repr = (
+                task.action_reprs[step_idx]
+                if task.action_reprs and step_idx < len(task.action_reprs)
+                else ""
+            )
+            previous = "\n".join(
+                f"- {action.operation.value} element_id={action.element_id} value={action.value!r}"
+                for action in executed_actions
+            )
 
             # Build message
-            if step_idx == 0:
-                message_text = (
-                    f"Complete this web task: {task.confirmed_task}\n\n"
-                    "Analyze the available elements and execute the first action."
+            sections = [
+                "You are completing a Mind2Web browser task one step at a time.",
+                f"Instruction: {task.confirmed_task}",
+                f"Website: {task.website}",
+                f"Domain: {task.domain}",
+                f"Current step: {step_idx + 1} of {len(task.actions)}",
+                "Available elements:\n" + _format_candidates(all_candidates),
+            ]
+            if current_repr:
+                sections.append(
+                    "Target micro-action for THIS step (do not skip or merge):\n"
+                    f"- {current_repr}\n\n"
+                    "Pick the operation matching the verb: Click -> CLICK, "
+                    "Type -> TYPE, Select -> SELECT, Hover -> HOVER, Press Enter -> ENTER. "
+                    "For Type/Select, value must be the literal value from the micro-action."
                 )
-            else:
-                message_text = (
-                    f"Step {step_idx + 1}/{len(task.actions)}: Continue with the next action.\n"
-                    "Analyze the available elements and execute the correct action."
+            if task.action_reprs:
+                sections.append(
+                    "Full plan (context only):\n"
+                    + "\n".join(f"- {item}" for item in task.action_reprs[:8])
                 )
+            if previous:
+                sections.append("Previous actions:\n" + previous)
+            sections.append(
+                "Return one JSON object only with keys operation, element_id, value, reasoning. "
+                "operation must be CLICK, TYPE, SELECT, HOVER, or ENTER. element_id must be a "
+                "listed backend_node_id or listed element number."
+            )
+            message_text = "\n\n".join(sections)
 
             # Format element candidates for context
-            all_candidates = current_step.pos_candidates + current_step.neg_candidates
             elements_for_context = [
                 {
                     "backend_node_id": elem.backend_node_id,
@@ -88,9 +133,14 @@ class ElizaMind2WebAgent:
             context: dict[str, object] = {
                 "benchmark": "mind2web",
                 "task_id": task.annotation_id,
+                "system_prompt": (
+                    "Predict exactly one Mind2Web browser action. Respond with strict JSON "
+                    "only; do not use markdown or prose."
+                ),
                 "goal": task.confirmed_task,
                 "html": current_step.cleaned_html[:3000] if current_step.cleaned_html else "",
                 "elements": elements_for_context,
+                "current_micro_action": current_repr,
             }
             if task.website:
                 context["website"] = task.website
@@ -133,6 +183,28 @@ class ElizaMind2WebAgent:
                 element_id = _xtag(response.text, "element_id")
             if not value and response.text:
                 value = _xtag(response.text, "value")
+            if response.text and (not element_id or not operation_str):
+                try:
+                    payload = json.loads(response.text.strip())
+                except json.JSONDecodeError:
+                    payload = None
+                if isinstance(payload, dict):
+                    operation_str = operation_str or str(payload.get("operation", "")).upper()
+                    element_id = element_id or str(payload.get("element_id", ""))
+                    value = value or str(payload.get("value", ""))
+                else:
+                    import re
+
+                    match = re.search(r"\{[\s\S]*\}", response.text)
+                    if match:
+                        try:
+                            payload = json.loads(match.group(0))
+                        except json.JSONDecodeError:
+                            payload = None
+                        if isinstance(payload, dict):
+                            operation_str = operation_str or str(payload.get("operation", "")).upper()
+                            element_id = element_id or str(payload.get("element_id", ""))
+                            value = value or str(payload.get("value", ""))
 
             if not operation_str:
                 operation_str = "CLICK"
@@ -141,6 +213,11 @@ class ElizaMind2WebAgent:
                 operation = Mind2WebOperation(operation_str)
             except ValueError:
                 operation = Mind2WebOperation.CLICK
+
+            if element_id.isdigit():
+                index = int(element_id) - 1
+                if 0 <= index < len(all_candidates):
+                    element_id = all_candidates[index].backend_node_id
 
             if not element_id:
                 logger.warning(

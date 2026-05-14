@@ -159,7 +159,7 @@ function assertRunConstraintsSupported(
   const unsupported = getUnsupportedSandboxConstraints(engine, constraints);
   if (unsupported.length === 0) return;
   throw new Error(
-    `Container engine "${engine.engineType}" cannot enforce requested sandbox constraints: ${formatConstraints(
+    `Container engine "${engine.engineType}" cannot enforce requested sandbox constraints: ${formatSandboxConstraints(
       unsupported,
     )}`,
   );

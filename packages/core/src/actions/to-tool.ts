@@ -106,7 +106,18 @@ const HANDLE_RESPONSE_PLANNING_HINT_PROPERTIES = {
 		description:
 			"True when this turn needs an action/tool/provider/subagent, filesystem/runtime inspection, browser or network lookup, live/current/external data, side effects, long-running work, or verification before the user can be answered. The router upgrades empty or simple-only contexts to planning against `general` and the planner loop will retry if it returns terminal output before any non-terminal tool has run.",
 	} as JSONSchema,
-} as const;
+	} as const;
+
+export const HANDLE_RESPONSE_LEGACY_REQUIRED_FIELDS = [
+	"shouldRespond",
+	"replyText",
+	"contexts",
+] as const;
+
+export const HANDLE_RESPONSE_DIRECT_LEGACY_REQUIRED_FIELDS = [
+	"replyText",
+	"contexts",
+] as const;
 
 /**
  * Schema for the full HANDLE_RESPONSE tool — used outside DM channels where the
@@ -161,7 +172,7 @@ export const HANDLE_RESPONSE_SCHEMA: JSONSchema = {
 		...HANDLE_RESPONSE_PLANNING_HINT_PROPERTIES,
 		extract: HANDLE_RESPONSE_EXTRACT_SCHEMA,
 	},
-	required: ["shouldRespond", "replyText", "contexts"],
+	required: [...HANDLE_RESPONSE_LEGACY_REQUIRED_FIELDS],
 };
 
 /**
@@ -183,7 +194,7 @@ export const HANDLE_RESPONSE_DIRECT_SCHEMA: JSONSchema = {
 		...HANDLE_RESPONSE_PLANNING_HINT_PROPERTIES,
 		extract: HANDLE_RESPONSE_EXTRACT_SCHEMA,
 	},
-	required: ["replyText", "contexts"],
+	required: [...HANDLE_RESPONSE_DIRECT_LEGACY_REQUIRED_FIELDS],
 };
 
 export interface PlannerToolDefinition {
@@ -205,10 +216,10 @@ export function assertNativeToolName(name: string): void {
 }
 
 const HANDLE_RESPONSE_DESCRIPTION =
-	"Stage 1 — pick how to handle this turn. Call exactly once per inbound message before any action tool calls. Set shouldRespond to RESPOND/IGNORE/STOP. Always write replyText (the user-facing reply). List contexts to engage (directly after replyText); set requiresTool=true when tools/actions/providers/subagents, filesystem/runtime inspection, live/current/external data, side effects, long-running work, or verification are needed. For trivial replies set contexts=['simple'] (replyText is the whole answer). Optionally include action-retrieval hints in candidateActions / parentActionHints / contextSlices and populate `extract` with durable facts/relationships from the message.";
+	"Legacy Stage 1 fallback schema — production normally passes the field-registry schema into createHandleResponseTool. Call exactly once per inbound message before any action tool calls. Set shouldRespond to RESPOND/IGNORE/STOP. Always write replyText (the user-facing reply). List contexts to engage (directly after replyText); set requiresTool=true when tools/actions/providers/subagents, filesystem/runtime inspection, live/current/external data, side effects, long-running work, or verification are needed. For trivial replies set contexts=['simple'] (replyText is the whole answer). Optionally include action-retrieval hints in candidateActions / parentActionHints / contextSlices and populate `extract` with durable facts/relationships from the message.";
 
 const HANDLE_RESPONSE_DIRECT_DESCRIPTION =
-	"Stage 1 (direct-message channel) — pick how to handle this turn. Call exactly once per inbound message before any action tool calls. shouldRespond is implicit RESPOND for DMs. Always write replyText (the user-facing reply). List contexts to engage (directly after replyText); set requiresTool=true when tools/actions/providers/subagents, filesystem/runtime inspection, live/current/external data, side effects, long-running work, or verification are needed. For trivial replies set contexts=['simple'] (replyText is the whole answer). Optionally include action-retrieval hints in candidateActions / parentActionHints / contextSlices and populate `extract` with durable facts/relationships from the message.";
+	"Legacy Stage 1 direct-message fallback schema — production normally passes the field-registry schema into createHandleResponseTool. shouldRespond is implicit RESPOND for DMs. Always write replyText (the user-facing reply). List contexts to engage (directly after replyText); set requiresTool=true when tools/actions/providers/subagents, filesystem/runtime inspection, live/current/external data, side effects, long-running work, or verification are needed. For trivial replies set contexts=['simple'] (replyText is the whole answer). Optionally include action-retrieval hints in candidateActions / parentActionHints / contextSlices and populate `extract` with durable facts/relationships from the message.";
 
 /**
  * Build the Stage 1 tool definition. Pass `directMessage: true` for DM /

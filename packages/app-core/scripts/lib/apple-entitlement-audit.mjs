@@ -144,7 +144,14 @@ function validateTargetPolicy(target) {
   }
 
   for (const [key, policy] of Object.entries(target.allowedEntitlements)) {
-    if (typeof policy.justification !== "string" || policy.justification.trim().length < 12) {
+    const reviewedJustification =
+      typeof policy.justification === "string"
+        ? policy.justification
+        : policy.appReviewJustification;
+    if (
+      typeof reviewedJustification !== "string" ||
+      reviewedJustification.trim().length < 12
+    ) {
       errors.push(`${target.id}: ${key} needs a reviewed justification`);
     }
     if (REVIEW_SENSITIVE_ENTITLEMENTS.has(key)) {

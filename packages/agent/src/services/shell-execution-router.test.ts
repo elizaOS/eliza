@@ -1,10 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { runShell } from "./shell-execution-router.ts";
+import { resolveShellExecutionMode, runShell } from "./shell-execution-router.ts";
 
 const MODE_ENV_KEYS = [
   "ELIZA_RUNTIME_MODE",
   "RUNTIME_MODE",
   "LOCAL_RUNTIME_MODE",
+  "ELIZA_DISTRIBUTION_PROFILE",
+  "ELIZA_PLATFORM",
 ] as const;
 
 describe("runShell", () => {
@@ -44,7 +46,7 @@ describe("runShell", () => {
     expect(result.stderr).toBe("");
   });
 
-  it("local-yolo defaults to local-yolo when no mode is set", async () => {
+  it("local-yolo defaults to local-yolo for unrestricted direct desktop when no mode is set", async () => {
     const result = await runShell({
       command: "/bin/sh",
       args: ["-c", "echo hello"],
@@ -53,6 +55,69 @@ describe("runShell", () => {
     });
     expect(result.sandbox).toBe("host");
     expect(result.stdout).toBe("hello\n");
+  });
+
+  it("store builds do not fall back to host local-yolo when no mode is set", async () => {
+    process.env.ELIZA_DISTRIBUTION_PROFILE = "store";
+    expect(resolveShellExecutionMode()).toBe("local-safe");
+    await expect(
+      runShell(
+        {
+          command: "/bin/sh",
+          args: ["-c", "printf should-not-run"],
+          toolName: "test:store-default",
+        },
+        { sandboxManager: null },
+      ),
+    ).rejects.toThrow("local-safe mode requires SandboxManager");
+  });
+
+  it("mobile builds do not fall back to host local-yolo when no mode is set", async () => {
+    process.env.ELIZA_PLATFORM = "ios";
+    expect(resolveShellExecutionMode()).toBe("local-safe");
+    await expect(
+      runShell(
+        {
+          command: "/bin/sh",
+          args: ["-c", "printf should-not-run"],
+          toolName: "test:mobile-default",
+        },
+        { sandboxManager: null },
+      ),
+    ).rejects.toThrow("local-safe mode requires SandboxManager");
+  });
+
+  it("store builds clamp explicit local-yolo before host execution", async () => {
+    process.env.ELIZA_DISTRIBUTION_PROFILE = "store";
+    process.env.ELIZA_RUNTIME_MODE = "local-yolo";
+    expect(resolveShellExecutionMode()).toBe("local-safe");
+    await expect(
+      runShell(
+        {
+          command: "/bin/sh",
+          args: ["-c", "printf should-not-run"],
+          toolName: "test:store-explicit-yolo",
+        },
+        { sandboxManager: null },
+      ),
+    ).rejects.toThrow("local-safe mode requires SandboxManager");
+  });
+
+  it("ctx mode local-yolo is preserved for unrestricted desktop but clamped for mobile", () => {
+    expect(
+      resolveShellExecutionMode({
+        mode: "local-yolo",
+        distributionProfile: "unrestricted",
+        platform: "darwin",
+      }),
+    ).toBe("local-yolo");
+    expect(
+      resolveShellExecutionMode({
+        mode: "local-yolo",
+        distributionProfile: "unrestricted",
+        platform: "android",
+      }),
+    ).toBe("local-safe");
   });
 
   it("cloud rejects local shell execution with the documented error", async () => {

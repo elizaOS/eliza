@@ -143,11 +143,7 @@ export function createRobloxBridgeApp(
   const app = express() as ExpressApp;
   app.use(
     express.json({
-      verify: (
-        req: IncomingMessage,
-        _res: ServerResponse,
-        buf: Buffer,
-      ) => {
+      verify: (req: IncomingMessage, _res: ServerResponse, buf: Buffer) => {
         (req as IncomingMessage & { rawBody?: string }).rawBody =
           buf.toString("utf8");
       },
