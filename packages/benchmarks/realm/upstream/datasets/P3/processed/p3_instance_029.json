@@ -1,0 +1,102 @@
+{
+  "instance_id": "p3_instance_029",
+  "city_map": {
+    "locations": [
+      "suburb",
+      "park",
+      "stadium",
+      "downtown",
+      "airport",
+      "hospital"
+    ],
+    "distances": {
+      "suburb-park": 5,
+      "park-suburb": 5,
+      "suburb-stadium": 16,
+      "stadium-suburb": 16,
+      "suburb-downtown": 37,
+      "downtown-suburb": 37,
+      "suburb-airport": 30,
+      "airport-suburb": 30,
+      "suburb-hospital": 22,
+      "hospital-suburb": 22,
+      "park-stadium": 45,
+      "stadium-park": 45,
+      "park-downtown": 7,
+      "downtown-park": 7,
+      "park-airport": 36,
+      "airport-park": 36,
+      "park-hospital": 20,
+      "hospital-park": 20,
+      "stadium-downtown": 7,
+      "downtown-stadium": 7,
+      "stadium-airport": 30,
+      "airport-stadium": 30,
+      "stadium-hospital": 22,
+      "hospital-stadium": 22,
+      "downtown-airport": 12,
+      "airport-downtown": 12,
+      "downtown-hospital": 40,
+      "hospital-downtown": 40,
+      "airport-hospital": 36,
+      "hospital-airport": 36
+    }
+  },
+  "ride_requests": [
+    {
+      "passenger_id": "p001",
+      "pickup": "stadium",
+      "dropoff": "suburb",
+      "time_window": [
+        10.25,
+        10.9
+      ],
+      "deadline": 59
+    },
+    {
+      "passenger_id": "p002",
+      "pickup": "airport",
+      "dropoff": "stadium",
+      "time_window": [
+        17.75,
+        17.4
+      ],
+      "deadline": 36
+    },
+    {
+      "passenger_id": "p003",
+      "pickup": "park",
+      "dropoff": "suburb",
+      "time_window": [
+        13.75,
+        13.116666666666667
+      ],
+      "deadline": 43
+    },
+    {
+      "passenger_id": "p004",
+      "pickup": "downtown",
+      "dropoff": "airport",
+      "time_window": [
+        14.25,
+        14.766666666666667
+      ],
+      "deadline": 53
+    }
+  ],
+  "vehicles": [
+    {
+      "vehicle_id": "v001",
+      "location": "downtown",
+      "capacity": 5,
+      "fuel": 75
+    },
+    {
+      "vehicle_id": "v002",
+      "location": "stadium",
+      "capacity": 6,
+      "fuel": 51
+    }
+  ],
+  "description": "Urban ride-sharing instance"
+}

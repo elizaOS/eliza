@@ -10,6 +10,7 @@
  */
 
 import { Mic, Radio, Volume2 } from "lucide-react";
+// biome-ignore lint/correctness/noUnusedImports: Required for JSX transform in tests.
 import * as React from "react";
 
 import { cn } from "../../../lib/utils";

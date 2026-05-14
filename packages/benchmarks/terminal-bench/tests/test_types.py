@@ -209,24 +209,17 @@ class TestTerminalBenchConfig:
 
 
 class TestLeaderboardScores:
-    """Test leaderboard data."""
+    """Leaderboard table is intentionally empty; see types.LEADERBOARD_URL."""
 
-    def test_leaderboard_structure(self) -> None:
-        """Test that leaderboard data has expected structure."""
-        assert "Droid (Factory) + GPT-5.2" in LEADERBOARD_SCORES
-        assert "Human Expert" in LEADERBOARD_SCORES
+    def test_leaderboard_is_empty_by_default(self) -> None:
+        """We do not ship hardcoded leaderboard numbers — they go stale fast."""
+        assert LEADERBOARD_SCORES == {}
 
+    def test_leaderboard_entries_have_valid_shape(self) -> None:
+        """If a caller ever populates LEADERBOARD_SCORES, enforce the shape."""
         for name, scores in LEADERBOARD_SCORES.items():
             assert "overall" in scores
-            assert isinstance(scores["overall"], float)
-
-    def test_human_baseline(self) -> None:
-        """Test human expert baseline is highest."""
-        human_score = LEADERBOARD_SCORES["Human Expert"]["overall"]
-
-        for name, scores in LEADERBOARD_SCORES.items():
-            if name != "Human Expert":
-                assert scores["overall"] < human_score
+            assert isinstance(scores["overall"], (int, float))
 
 
 class TestSampleTasks:

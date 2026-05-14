@@ -1,271 +1,297 @@
-"""Tau-bench agent backed by the OpenClaw CLI.
+"""Tau-bench agent backed by the OpenClaw harness.
 
-Drop-in equivalent of :class:`eliza_adapter.tau_bench.ElizaTauAgent` but
-routes per-turn decision-making through :class:`OpenClawClient`. Same
-``process_task(task) -> (tool_calls, final_response, conversation)``
-interface as the eliza adapter.
+Drop-in equivalent of :class:`elizaos_tau_bench.eliza_agent.LiteLLMToolCallingAgent`
+but routes the agent-side completion through :class:`OpenClawClient`. The
+control flow mirrors ``LiteLLMToolCallingAgent.solve`` step-for-step so reward
+computation against the upstream ``Env`` is identical.
 
-OpenClaw runs as a stateless CLI per spawn, so the conversation is
-threaded into the user-side prompt each turn. The audit notes OpenClaw
-does not reliably honor ``tool_choice='required'``; the adapter accepts
-either OpenAI-shape ``params['tool_calls']`` or a JSON-blob ``tool_name``
-/ ``arguments`` field embedded in the response text.
+For benchmark runs we use OpenClaw's ``direct_openai_compatible`` mode (set
+via ``OPENCLAW_DIRECT_OPENAI_COMPAT=1`` or the constructor flag) so the
+adapter hits the Cerebras OpenAI-compatible endpoint directly without
+needing the OpenClaw Node binary at every turn.
 """
 
 from __future__ import annotations
 
 import json
 import logging
-import re
-from typing import TYPE_CHECKING, Any
+import os
+from typing import Any, Final, Optional
 
-from openclaw_adapter.client import OpenClawClient
+from openclaw_adapter.client import MessageResponse, OpenClawClient
 
-if TYPE_CHECKING:
-    from elizaos_tau_bench.executor import ToolExecutor
-    from elizaos_tau_bench.types import (
-        ConversationTurn,
-        TauBenchTask,
-        ToolCall,
-    )
-
-
-def _tau_types():
-    from elizaos_tau_bench.types import (
-        ConversationTurn,
-        TauBenchTask,
-        ToolCall,
-    )
-
-    return ConversationTurn, TauBenchTask, ToolCall
-
+from elizaos_tau_bench.eliza_agent import AgentRunResult, BaseTauAgent
+from elizaos_tau_bench.types import Action, RESPOND_ACTION_NAME
+from elizaos_tau_bench.upstream.envs.base import Env
 
 logger = logging.getLogger(__name__)
 
-_FINAL_TAG_RE = re.compile(r"<final>(.*?)</final>", re.DOTALL | re.IGNORECASE)
-_TOOL_CALL_JSON_RE = re.compile(
-    r"\{\s*\"tool_name\"\s*:\s*\"[^\"]+\"\s*,\s*\"arguments\"\s*:\s*[\[\{].*?\}",
-    re.DOTALL,
-)
+
+_CEREBRAS_PRICING: Final[dict[str, dict[str, float]]] = {
+    "gpt-oss-120b": {"input_per_million_usd": 0.35, "output_per_million_usd": 0.75},
+}
 
 
-def _tool_to_openai_spec(tool: Any) -> dict[str, Any]:
-    return {
-        "type": "function",
-        "function": {
-            "name": getattr(tool, "name", ""),
-            "description": getattr(tool, "description", "") or "",
-            "parameters": getattr(tool, "parameters", {}) or {"type": "object", "properties": {}},
-        },
-    }
+def _compute_cost_usd(
+    model: str | None, prompt_tokens: int, completion_tokens: int
+) -> float:
+    if not model:
+        return 0.0
+    bare = model.rsplit("/", 1)[-1]
+    pricing = _CEREBRAS_PRICING.get(bare)
+    if pricing is None:
+        return 0.0
+    return (
+        (prompt_tokens / 1_000_000.0) * pricing["input_per_million_usd"]
+        + (completion_tokens / 1_000_000.0) * pricing["output_per_million_usd"]
+    )
 
 
-def _parse_arguments(arguments_raw: Any) -> dict[str, Any]:
-    if isinstance(arguments_raw, dict):
-        return dict(arguments_raw)
-    if isinstance(arguments_raw, str):
-        try:
-            parsed = json.loads(arguments_raw)
-            if isinstance(parsed, dict):
-                return parsed
-        except json.JSONDecodeError:
-            return {}
-    return {}
+def _strip_cerebras_quirks(message: dict[str, Any]) -> dict[str, Any]:
+    for key in ("reasoning_content", "provider_specific_fields"):
+        message.pop(key, None)
+    return message
 
 
-def _extract_tool_call_from_text(text: str) -> dict[str, Any] | None:
-    """Last-resort: look for an inline ``{"tool_name": ..., "arguments": ...}``."""
-    if not text:
-        return None
-    match = _TOOL_CALL_JSON_RE.search(text)
-    if not match:
-        return None
-    try:
-        parsed = json.loads(match.group(0))
-    except json.JSONDecodeError:
-        return None
-    if not isinstance(parsed, dict):
-        return None
-    name = parsed.get("tool_name")
-    if not isinstance(name, str) or not name.strip():
-        return None
-    return {
-        "id": "inline_0",
-        "name": name.strip(),
-        "arguments": parsed.get("arguments", {}),
-    }
+def _scrub_history_for_cerebras(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for m in messages:
+        if m.get("role") == "assistant":
+            scrubbed = dict(m)
+            scrubbed.pop("reasoning_content", None)
+            scrubbed.pop("provider_specific_fields", None)
+            out.append(scrubbed)
+        else:
+            out.append(m)
+    return out
 
 
-class OpenClawTauAgent:
-    """Tau-bench agent that delegates to OpenClaw for tool-call decisions.
+def _message_to_action(message: dict[str, Any]) -> Action:
+    tool_calls = message.get("tool_calls")
+    if tool_calls and len(tool_calls) > 0:
+        tc = tool_calls[0]
+        if isinstance(tc, dict):
+            fn = tc.get("function") or {}
+            name = fn.get("name") or ""
+            args_raw = fn.get("arguments")
+        else:
+            fn = getattr(tc, "function", None)
+            name = getattr(fn, "name", "") if fn is not None else ""
+            args_raw = getattr(fn, "arguments", "") if fn is not None else ""
+        if isinstance(args_raw, str):
+            try:
+                kwargs = json.loads(args_raw or "{}")
+            except json.JSONDecodeError:
+                kwargs = {}
+        elif isinstance(args_raw, dict):
+            kwargs = dict(args_raw)
+        else:
+            kwargs = {}
+        if name:
+            return Action(name=str(name), kwargs=kwargs)
+    return Action(
+        name=RESPOND_ACTION_NAME,
+        kwargs={"content": message.get("content") or ""},
+    )
 
-    Drop-in replacement for :class:`eliza_adapter.tau_bench.ElizaTauAgent` —
-    same ``process_task`` interface, same return shape.
+
+def _normalize_tool_calls_for_history(
+    raw_tool_calls: list[Any] | None,
+) -> list[dict[str, Any]]:
+    if not raw_tool_calls:
+        return []
+    out: list[dict[str, Any]] = []
+    for tc in raw_tool_calls:
+        if not isinstance(tc, dict):
+            continue
+        if "function" in tc and isinstance(tc["function"], dict):
+            fn = tc["function"]
+            fn_name = fn.get("name") or ""
+            fn_args = fn.get("arguments")
+        else:
+            fn_name = tc.get("name") or ""
+            fn_args = tc.get("arguments")
+        tc_id = tc.get("id") or f"call_{len(out)}"
+        if not fn_name:
+            continue
+        if isinstance(fn_args, dict):
+            args_str = json.dumps(fn_args)
+        elif isinstance(fn_args, str):
+            args_str = fn_args or "{}"
+        else:
+            args_str = "{}"
+        out.append(
+            {
+                "id": str(tc_id),
+                "type": "function",
+                "function": {"name": fn_name, "arguments": args_str},
+            }
+        )
+    return out
+
+
+def _detect_direct_mode_default() -> bool:
+    return os.environ.get("OPENCLAW_DIRECT_OPENAI_COMPAT", "").strip() == "1"
+
+
+class OpenClawTauAgent(BaseTauAgent):
+    """Tau-bench agent that drives an upstream ``Env`` via the OpenClaw client.
+
+    Identical control flow to :class:`LiteLLMToolCallingAgent` — only the
+    per-turn chat completion is delegated to ``OpenClawClient``.
     """
 
     def __init__(
         self,
-        executor: "ToolExecutor",
-        max_turns: int = 15,
+        model: str = "gpt-oss-120b",
+        provider: str = "cerebras",
+        temperature: float = 0.0,
         client: OpenClawClient | None = None,
-        system_prompt: str | None = None,
+        direct_openai_compatible: Optional[bool] = None,
     ) -> None:
-        self.executor = executor
-        self.max_turns = max_turns
-        self._client = client or OpenClawClient()
-        self._system_prompt = system_prompt
+        self.model = model
+        self.provider = provider
+        self.temperature = temperature
+        if client is not None:
+            self.client = client
+        else:
+            direct = (
+                bool(direct_openai_compatible)
+                if direct_openai_compatible is not None
+                else _detect_direct_mode_default()
+            )
+            self.client = OpenClawClient(
+                provider=provider,
+                model=model,
+                temperature=temperature,
+                direct_openai_compatible=direct,
+            )
 
-    async def initialize(self) -> None:
-        return None
+    def solve(self, env: Env, task_index: int, max_num_steps: int = 30) -> AgentRunResult:
+        reset = env.reset(task_index=task_index)
+        obs = reset.observation
+        info: dict[str, Any] = reset.info.model_dump()
+        reward = 0.0
+        total_cost = 0.0
+        num_tool_calls = 0
+        actions_taken: list[Action] = []
 
-    async def process_task(
-        self,
-        task: "TauBenchTask",
-    ) -> tuple[list["ToolCall"], str, list["ConversationTurn"]]:
-        ConversationTurn, _, ToolCall = _tau_types()
-
-        conversation: list[ConversationTurn] = []
-        tool_calls_made: list[ToolCall] = []
-        final_response = ""
+        messages: list[dict[str, Any]] = [
+            {"role": "system", "content": env.wiki},
+            {"role": "user", "content": obs},
+        ]
+        tools_info = list(env.tools_info)
 
         try:
-            self._client.reset(task_id=task.task_id, benchmark="tau_bench")
-        except Exception as exc:  # noqa: BLE001
-            logger.debug("openclaw reset failed (continuing): %s", exc)
+            for _step_i in range(max_num_steps):
+                response = self._one_turn(messages, tools_info)
+                next_message = self._response_to_assistant_message(response)
+                _strip_cerebras_quirks(next_message)
 
-        tools_spec = [_tool_to_openai_spec(t) for t in task.available_tools]
+                usage = response.params.get("usage") if isinstance(response.params, dict) else None
+                if isinstance(usage, dict):
+                    prompt_tokens = int(usage.get("prompt_tokens") or usage.get("promptTokens") or 0)
+                    completion_tokens = int(
+                        usage.get("completion_tokens") or usage.get("completionTokens") or 0
+                    )
+                    total_cost += _compute_cost_usd(self.model, prompt_tokens, completion_tokens)
 
-        # OpenClaw is stateless — render the transcript into the prompt
-        # explicitly each turn.
-        history_lines: list[str] = []
-        system_chunks: list[str] = []
-        if self._system_prompt:
-            system_chunks.append(self._system_prompt)
-        if task.policy_constraints:
-            policy_dump = json.dumps(
-                [
-                    {"policy_id": p.policy_id, "description": p.description}
-                    for p in task.policy_constraints
-                ],
-                ensure_ascii=True,
-            )
-            system_chunks.append(f"Policies:\n{policy_dump}")
-        if task.user_profile:
-            system_chunks.append(f"User profile:\n{json.dumps(task.user_profile)}")
-        system_chunks.append(
-            "When you need to call a tool, return a JSON object on its own "
-            "line: {\"tool_name\": \"<name>\", \"arguments\": {...}}. When you "
-            "have a final answer, wrap it in <final>...</final>."
-        )
-        system_prompt = "\n\n".join(system_chunks)
+                action = _message_to_action(next_message)
+                actions_taken.append(action)
 
-        for msg in task.conversation_history:
-            history_lines.append(f"[{msg['role'].upper()}]\n{msg['content']}")
-            conversation.append(ConversationTurn(role=msg["role"], content=msg["content"]))
-        history_lines.append(f"[USER]\n{task.user_instruction}")
-        conversation.append(
-            ConversationTurn(role="user", content=task.user_instruction)
-        )
+                env_response = env.step(action)
+                reward = env_response.reward
+                info = {**info, **env_response.info.model_dump()}
 
-        for _turn_idx in range(self.max_turns):
-            prompt = "\n\n".join(history_lines) + "\n\n[ASSISTANT]"
-
-            context: dict[str, object] = {
-                "benchmark": "tau_bench",
-                "task_id": task.task_id,
-                "system_prompt": system_prompt,
-                "tools": tools_spec,
-                "_stateless": True,
-            }
-            if task.user_goal:
-                context["goal"] = task.user_goal
-            if task.success_criteria:
-                context["success_criteria"] = task.success_criteria
-
-            response = self._client.send_message(text=prompt, context=context)
-            text = response.text or ""
-
-            # 1. Prefer structured tool_calls if the CLI surfaced them.
-            raw_calls = (
-                response.params.get("tool_calls") if isinstance(response.params, dict) else None
-            )
-            normalized: list[dict[str, Any]] = []
-            if isinstance(raw_calls, list):
-                for entry in raw_calls:
-                    if not isinstance(entry, dict):
-                        continue
-                    name = str(entry.get("name") or "").strip()
-                    if not name:
-                        continue
-                    normalized.append(
-                        {
-                            "id": str(entry.get("id") or f"call_{len(normalized)}"),
-                            "name": name,
-                            "arguments": entry.get("arguments", {}),
-                        }
+                if action.name != RESPOND_ACTION_NAME:
+                    num_tool_calls += 1
+                    tcs = next_message.get("tool_calls") or []
+                    if tcs:
+                        next_message["tool_calls"] = tcs[:1]
+                        tc = next_message["tool_calls"][0]
+                        messages.extend(
+                            [
+                                next_message,
+                                {
+                                    "role": "tool",
+                                    "tool_call_id": tc["id"],
+                                    "name": tc["function"]["name"],
+                                    "content": env_response.observation,
+                                },
+                            ]
+                        )
+                    else:
+                        messages.append(next_message)
+                        messages.append(
+                            {"role": "user", "content": env_response.observation}
+                        )
+                else:
+                    messages.extend(
+                        [
+                            next_message,
+                            {"role": "user", "content": env_response.observation},
+                        ]
                     )
 
-            # 2. Fallback: inline JSON tool call in the response text.
-            if not normalized:
-                inline = _extract_tool_call_from_text(text)
-                if inline is not None:
-                    normalized.append(inline)
+                if env_response.done:
+                    break
+        except Exception as e:
+            logger.exception("[openclaw-tau] solve loop failed: %s", e)
+            return AgentRunResult(
+                reward=reward,
+                messages=messages,
+                info=info,
+                actions_taken=actions_taken,
+                num_tool_calls=num_tool_calls,
+                num_turns=len(messages),
+                agent_cost=total_cost,
+                error=str(e),
+            )
 
-            if not normalized:
-                # 3. <final>...</final> envelope, else raw text.
-                m = _FINAL_TAG_RE.search(text)
-                final_response = m.group(1).strip() if m else text
-                conversation.append(
-                    ConversationTurn(role="assistant", content=final_response)
-                )
+        return AgentRunResult(
+            reward=reward,
+            messages=messages,
+            info=info,
+            actions_taken=actions_taken,
+            num_tool_calls=num_tool_calls,
+            num_turns=len(messages),
+            agent_cost=total_cost,
+        )
+
+    def _one_turn(
+        self,
+        messages: list[dict[str, Any]],
+        tools_info: list[dict[str, Any]],
+    ) -> MessageResponse:
+        context: dict[str, object] = {
+            "messages": _scrub_history_for_cerebras(messages),
+        }
+        if tools_info:
+            context["tools"] = tools_info
+            context["tool_choice"] = "auto"
+        if self.temperature is not None:
+            context["temperature"] = float(self.temperature)
+        last_user = ""
+        for m in reversed(messages):
+            if m.get("role") == "user":
+                last_user = str(m.get("content") or "")
                 break
+        return self.client.send_message(last_user, context=context)
 
-            history_lines.append(f"[ASSISTANT]\n{text}")
-
-            for nc in normalized:
-                arguments = _parse_arguments(nc["arguments"])
-                tool_call = ToolCall(tool_name=nc["name"], arguments=arguments)
-                executed = await self.executor.execute(tool_call)
-                tool_calls_made.append(executed)
-
-                conversation.append(
-                    ConversationTurn(
-                        role="assistant",
-                        content=f"Executing tool: {nc['name']}",
-                        tool_call=executed,
-                    )
-                )
-                result_str = json.dumps(executed.result, default=str)
-                conversation.append(
-                    ConversationTurn(role="tool", content=result_str)
-                )
-                history_lines.append(
-                    f"[TOOL_RESULT {nc['name']}]\n{result_str[:2000]}"
-                )
-
-        return tool_calls_made, final_response, conversation
-
-    async def close(self) -> None:
-        return None
+    @staticmethod
+    def _response_to_assistant_message(response: MessageResponse) -> dict[str, Any]:
+        tool_calls = _normalize_tool_calls_for_history(
+            response.params.get("tool_calls") if isinstance(response.params, dict) else None
+        )
+        msg: dict[str, Any] = {
+            "role": "assistant",
+            "content": response.text or "",
+        }
+        if tool_calls:
+            msg["tool_calls"] = tool_calls
+            if not msg["content"]:
+                msg["content"] = None
+        return msg
 
 
-def build_tau_bench_agent_fn(
-    *,
-    executor: "ToolExecutor",
-    client: OpenClawClient | None = None,
-    max_turns: int = 15,
-    system_prompt: str | None = None,
-) -> OpenClawTauAgent:
-    """Factory matching the ``build_<bench>_agent_fn`` shape of the BFCL adapter."""
-    return OpenClawTauAgent(
-        executor=executor,
-        max_turns=max_turns,
-        client=client,
-        system_prompt=system_prompt,
-    )
-
-
-__all__ = [
-    "OpenClawTauAgent",
-    "build_tau_bench_agent_fn",
-]
+__all__ = ["OpenClawTauAgent"]

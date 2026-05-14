@@ -40,9 +40,9 @@
 #                                    2b        → qwen3.5-2b
 #                                    4b        → qwen3.5-4b
 #                                    9b        → qwen3.5-9b
-#                                    27b       → qwen3.6-27b
-#                                    27b-256k  → qwen3.6-27b   --max-seq-len 262144
-#                                    27b-1m    → qwen3.6-27b   --max-seq-len 1048576
+#                                    27b       → qwen3.5-27b
+#                                    27b-256k  → qwen3.5-27b   --max-seq-len 262144
+#                                    27b-1m    → qwen3.5-27b   --max-seq-len 1048576
 #                                  Use a smaller list to test a subset:
 #                                    TIERS="0_8b 2b" bash ... smoke-all
 #   SMOKE_MAX_STEPS              hard step cap per tier. Default 50 (smoke).
@@ -114,7 +114,7 @@ export REUSE_EXISTING_VM
 # sync with packages/training/scripts/training/model_registry.py.
 _tier_args() {
   # Per the 2026-05-12 Qwen3.5-only mandate (project memory + registry §4-9):
-  # every eliza-1 tier MUST use a Qwen3.5 base. qwen3.6-27b in the registry is
+  # every eliza-1 tier MUST use a Qwen3.5 base. The qwen3.5-27b entry is
   # marked cloud-tier gpu-h200x2 (8× H200) — does NOT fit a single H200 SFT —
   # so the smoke maps 27b → qwen3.5-27b (single-H200 apollo_mini, see
   # model_registry.py:386-407). The 27b SFT smoke is still memory-tight on a
@@ -169,7 +169,7 @@ _remote() {
 
 _tier_run_name() {
   # Tier-stable, tag-scoped run name. Eliza public name comes from the registry
-  # lookup so 27b/27b-256k/27b-1m don't collide (all map to qwen3.6-27b).
+  # lookup so 27b/27b-256k/27b-1m don't collide (all map to qwen3.5-27b).
   local tier="$1" pub="$2"
   echo "${pub}-${ELIZA_SMOKE_RUN_TAG}-${tier}"
 }
@@ -221,6 +221,13 @@ print(e.public_name)
 
   echo "[smoke-all][$tier] launch: registry=$rk run=$run_name max_steps=${SMOKE_MAX_STEPS:-0} extra='$extra' skip_finetune=${skip_finetune_flag:-no}"
 
+  # H200 has 141 GB VRAM — that fits the 9B SFT (registry budget 80 GB). The
+  # registry tier gate (`can_train_locally` → True only for Tier.LOCAL) refuses
+  # 9B because the tier is WORKSTATION; that gate is the right default for a
+  # 16 GB consumer GPU but wrong for an H200 SXM. ELIZA_FORCE_LOCAL_TRAIN=1
+  # bypasses the gate. Smoke run only — keep the gate honest in production.
+  local force_local_train="${ELIZA_FORCE_LOCAL_TRAIN:-1}"
+
   ssh -o StrictHostKeyChecking=no "$target" "cat > $script_path" <<EOF
 #!/usr/bin/env bash
 set -euo pipefail
@@ -228,6 +235,7 @@ cd /opt/training
 export PATH=\$HOME/.local/bin:\$PATH
 export CUDA_VISIBLE_DEVICES=0
 export ELIZA_NO_DEVICE_MAP=1
+export ELIZA_FORCE_LOCAL_TRAIN=${force_local_train}
 export HF_HOME=/opt/hf-cache
 sudo mkdir -p \$HF_HOME && sudo chown -R \$USER \$HF_HOME || true
 ${hf_tok:+export HUGGING_FACE_HUB_TOKEN='$hf_tok'; export HF_TOKEN='$hf_tok'}
@@ -250,9 +258,16 @@ fi
 torch_swap_cu128
 export UV_NO_SYNC=1 UV_FROZEN=1
 
+# --use-liger auto (not 'on'): on the smoke loop the cu128 torch swap above
+# can leave liger-kernel's compiled extension bound to the pre-swap torch
+# ABI; `auto` falls back to the HF default chunked-CE path with just a
+# warning, while `on` raises SystemExit (train_local.py:468-472) — that was
+# the 2026-05-14 smoke crash mode (4/4 SFT tiers exited 1 in ~8s after the
+# pipeline reached `apply_liger_kernel`). The smoke is for *pipeline*
+# validation; the Liger memory savings only matter at full seq_len.
 uv run --extra train python scripts/run_pipeline.py \\
   --registry-key $rk --run-name $run_name \\
-  --epochs 1 --lr 1e-5 --use-liger on \\
+  --epochs 1 --lr 1e-5 --use-liger auto \\
   $max_steps_flag $extra $skip_finetune_flag \\
   --train-file ${SMOKE_DATA_DIR}/train.jsonl \\
   --val-file ${SMOKE_DATA_DIR}/val.jsonl \\
@@ -278,6 +293,19 @@ EOF
       local rc
       rc="$(_remote "grep -E '^RUN_PIPELINE_EXIT=' $log | tail -1 | sed 's/.*=//'" 2>/dev/null || echo '?')"
       echo "[smoke-all][$tier] pipeline finished (RUN_PIPELINE_EXIT=$rc)"
+      # On failure, dump the last 200 lines of the remote log to the LOCAL
+      # benchmarks dir so it survives auto-teardown. The smoke-all.log on
+      # the operator's box only contains the tail-3 polls; the real Python
+      # traceback / stderr from train_local.py only exists in the per-run
+      # log, which dies with the VM. Without this capture, diagnosing a
+      # crash requires keeping the VM alive — defeats auto-teardown.
+      if [ "$rc" != "0" ]; then
+        local local_log_dir="$ROOT/benchmarks/$run_name"
+        mkdir -p "$local_log_dir"
+        echo "[smoke-all][$tier] CAPTURE: dumping remote log tail → $local_log_dir/run.log.tail"
+        _remote "tail -n 200 $log" > "$local_log_dir/run.log.tail" 2>/dev/null || true
+        rsync -avhz --partial "$target:$log" "$local_log_dir/" 2>/dev/null || true
+      fi
       [ "$rc" = "0" ] || return 1
       return 0
     fi
@@ -309,6 +337,19 @@ print(get('$rk').public_name)
   rsync -avhz --info=progress2 "$target:/opt/training/checkpoints/$run_name/" "$ROOT/checkpoints/$run_name/" || true
   rsync -avhz --info=progress2 "$target:/opt/training/benchmarks/$run_name/" "$ROOT/benchmarks/$run_name/" || true
   rsync -avhz --info=progress2 "$target:/opt/training/reports/" "$ROOT/reports/" || true
+  # Per-run corpus validation reports — these tell us exactly which records
+  # validate_corpus.py rejected and why. Without them, post-mortem diagnosis
+  # of a "corpus_validation: invalid" pipeline-summary is impossible (the
+  # remote dir dies with the VM). Path matches run_pipeline.py:499.
+  mkdir -p "$ROOT/data/synthesized/review"
+  rsync -avhz --info=progress2 \
+    --include "format_validation_${run_name}_*.json" --exclude "*" \
+    "$target:/opt/training/data/synthesized/review/" \
+    "$ROOT/data/synthesized/review/" || true
+  # Per-run remote log too — survives auto-teardown.
+  rsync -avhz --partial \
+    "$target:/opt/training/run_${run_name}.log" \
+    "$ROOT/benchmarks/$run_name/" 2>/dev/null || true
 }
 
 # --- EXIT trap: fetch-then-teardown (unless VM is user-owned) ---------------

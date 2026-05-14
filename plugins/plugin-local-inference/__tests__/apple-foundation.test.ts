@@ -130,4 +130,89 @@ describe("apple-foundation adapter", () => {
     registerAppleFoundationAdapter(adapter);
     expect(getAppleFoundationAdapter()).toBe(adapter);
   });
+
+  // ── Capability-probe contract (WS10 cross-review) ────────────────────────
+
+  it("capability probe — iOS 26+ with foundationModel:true flips available to true", async () => {
+    const adapter = createAppleFoundationAdapter(() =>
+      makeBridge({
+        probe: () =>
+          Promise.resolve({
+            ok: true,
+            data: {
+              platform: "ios",
+              osVersion: "26.2",
+              capabilities: {
+                replayKitForeground: true,
+                broadcastExtension: false,
+                visionOcr: true,
+                appIntents: true,
+                accessibilityRead: true,
+                foundationModel: true,
+              },
+            },
+          }),
+      }),
+    );
+    expect(adapter.available()).toBe(false);
+    // Drive a probe by triggering available()
+    adapter.available();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(adapter.available()).toBe(true);
+  });
+
+  it("capability probe — iOS 17 (no foundationModel capability) keeps available false", async () => {
+    const adapter = createAppleFoundationAdapter(() =>
+      makeBridge({
+        probe: () =>
+          Promise.resolve({
+            ok: true,
+            data: {
+              platform: "ios",
+              osVersion: "17.6",
+              capabilities: {
+                replayKitForeground: true,
+                broadcastExtension: false,
+                visionOcr: true,
+                appIntents: true,
+                accessibilityRead: true,
+                foundationModel: false,
+              },
+            },
+          }),
+      }),
+    );
+    adapter.available();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(adapter.available()).toBe(false);
+  });
+
+  it("capability probe — failure arm (`probe.ok:false`) keeps available false", async () => {
+    const adapter = createAppleFoundationAdapter(() =>
+      makeBridge({
+        probe: () =>
+          Promise.resolve({
+            ok: false,
+            code: "internal_error",
+            message: "could not query Apple Intelligence status",
+          }),
+      }),
+    );
+    adapter.available();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(adapter.available()).toBe(false);
+  });
+
+  it("registered adapter is discoverable from the WS9 cross-review entry point", () => {
+    const adapter = createAppleFoundationAdapter(() => makeBridge());
+    registerAppleFoundationAdapter(adapter);
+    const found = getAppleFoundationAdapter();
+    expect(found).toBe(adapter);
+    expect(found!.name).toBe("apple-foundation");
+    // The runtime side that wires up `registerAppleFoundationAdapter` does
+    // so only when the iOS bridge probe reports `foundationModel:true`. The
+    // adapter exposes a structural `LocalInferenceRuntimeService`-compatible
+    // surface — `generate` is the relevant entry point.
+    expect(typeof found!.generate).toBe("function");
+  });
 });

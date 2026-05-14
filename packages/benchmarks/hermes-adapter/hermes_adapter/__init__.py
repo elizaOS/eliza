@@ -5,44 +5,80 @@ benchmarking harness can swap between elizaOS, OpenClaw, and hermes-agent
 without per-benchmark plumbing.
 """
 
-from hermes_adapter.bfcl import build_bfcl_agent_fn
-from hermes_adapter.clawbench import build_clawbench_agent_fn
 from hermes_adapter.client import HermesClient, MessageResponse
-from hermes_adapter.swe_bench import build_swe_bench_agent_fn
-from hermes_adapter.tau_bench import (
-    HermesTauAgent,
-    build_tau_bench_agent_fn,
-)
-from hermes_adapter.terminal_bench import (
-    HermesTerminalAgent,
-    build_terminal_bench_agent_fn,
-)
-from hermes_adapter.env_runner import (
-    ENV_MODULES,
-    HermesEnvResult,
-    build_evaluate_command,
-    parse_hermes_env_result,
-    run_hermes_env,
-)
 from hermes_adapter.server_manager import HermesAgentManager
 
 __all__ = [
     "HermesClient",
     "MessageResponse",
     "HermesAgentManager",
-    "HermesEnvResult",
-    "ENV_MODULES",
-    "build_evaluate_command",
-    "parse_hermes_env_result",
-    "run_hermes_env",
-    "build_bfcl_agent_fn",
-    "build_clawbench_agent_fn",
-    "build_swe_bench_agent_fn",
-    "build_tau_bench_agent_fn",
-    "build_terminal_bench_agent_fn",
-    "HermesTauAgent",
-    "HermesTerminalAgent",
 ]
+
+# Optional per-benchmark factories — each one may depend on a sibling
+# benchmark package (e.g. ``elizaos_tau_bench``) that isn't always on
+# sys.path. Importing them defensively keeps ``hermes_adapter.<bench>``
+# submodules importable even when an unrelated sibling can't be loaded.
+try:
+    from hermes_adapter.bfcl import build_bfcl_agent_fn  # noqa: F401, E402
+
+    __all__.append("build_bfcl_agent_fn")
+except Exception:  # noqa: BLE001
+    pass
+
+try:
+    from hermes_adapter.clawbench import build_clawbench_agent_fn  # noqa: F401, E402
+
+    __all__.append("build_clawbench_agent_fn")
+except Exception:  # noqa: BLE001
+    pass
+
+try:
+    from hermes_adapter.swe_bench import build_swe_bench_agent_fn  # noqa: F401, E402
+
+    __all__.append("build_swe_bench_agent_fn")
+except Exception:  # noqa: BLE001
+    pass
+
+try:
+    from hermes_adapter.tau_bench import (  # noqa: F401, E402
+        HermesTauAgent,
+        build_tau_bench_agent_fn,
+    )
+
+    __all__.extend(["HermesTauAgent", "build_tau_bench_agent_fn"])
+except Exception:  # noqa: BLE001
+    pass
+
+try:
+    from hermes_adapter.terminal_bench import (  # noqa: F401, E402
+        HermesTerminalAgent,
+        build_terminal_bench_agent_fn,
+    )
+
+    __all__.extend(["HermesTerminalAgent", "build_terminal_bench_agent_fn"])
+except Exception:  # noqa: BLE001
+    pass
+
+try:
+    from hermes_adapter.env_runner import (  # noqa: F401, E402
+        ENV_MODULES,
+        HermesEnvResult,
+        build_evaluate_command,
+        parse_hermes_env_result,
+        run_hermes_env,
+    )
+
+    __all__.extend(
+        [
+            "ENV_MODULES",
+            "HermesEnvResult",
+            "build_evaluate_command",
+            "parse_hermes_env_result",
+            "run_hermes_env",
+        ]
+    )
+except Exception:  # noqa: BLE001
+    pass
 
 # LifeOpsBench bridge — only useful when eliza_lifeops_bench.types is present
 # (lazy import inside the builder), so the import here is best-effort.

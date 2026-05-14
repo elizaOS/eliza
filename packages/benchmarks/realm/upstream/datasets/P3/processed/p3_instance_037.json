@@ -1,0 +1,112 @@
+{
+  "instance_id": "p3_instance_037",
+  "city_map": {
+    "locations": [
+      "university",
+      "suburb",
+      "park",
+      "airport",
+      "downtown",
+      "mall"
+    ],
+    "distances": {
+      "university-suburb": 9,
+      "suburb-university": 9,
+      "university-park": 8,
+      "park-university": 8,
+      "university-airport": 6,
+      "airport-university": 6,
+      "university-downtown": 31,
+      "downtown-university": 31,
+      "university-mall": 16,
+      "mall-university": 16,
+      "suburb-park": 20,
+      "park-suburb": 20,
+      "suburb-airport": 16,
+      "airport-suburb": 16,
+      "suburb-downtown": 9,
+      "downtown-suburb": 9,
+      "suburb-mall": 30,
+      "mall-suburb": 30,
+      "park-airport": 20,
+      "airport-park": 20,
+      "park-downtown": 35,
+      "downtown-park": 35,
+      "park-mall": 45,
+      "mall-park": 45,
+      "airport-downtown": 41,
+      "downtown-airport": 41,
+      "airport-mall": 24,
+      "mall-airport": 24,
+      "downtown-mall": 17,
+      "mall-downtown": 17
+    }
+  },
+  "ride_requests": [
+    {
+      "passenger_id": "p001",
+      "pickup": "downtown",
+      "dropoff": "park",
+      "time_window": [
+        13.25,
+        13.9
+      ],
+      "deadline": 34
+    },
+    {
+      "passenger_id": "p002",
+      "pickup": "park",
+      "dropoff": "suburb",
+      "time_window": [
+        11.75,
+        11.2
+      ],
+      "deadline": 57
+    },
+    {
+      "passenger_id": "p003",
+      "pickup": "suburb",
+      "dropoff": "university",
+      "time_window": [
+        12.25,
+        12.666666666666666
+      ],
+      "deadline": 54
+    },
+    {
+      "passenger_id": "p004",
+      "pickup": "university",
+      "dropoff": "park",
+      "time_window": [
+        16.75,
+        16.283333333333335
+      ],
+      "deadline": 27
+    },
+    {
+      "passenger_id": "p005",
+      "pickup": "mall",
+      "dropoff": "suburb",
+      "time_window": [
+        14.5,
+        14.9
+      ],
+      "deadline": 39
+    }
+  ],
+  "vehicles": [
+    {
+      "vehicle_id": "v001",
+      "location": "downtown",
+      "capacity": 6,
+      "fuel": 70
+    },
+    {
+      "vehicle_id": "v002",
+      "location": "downtown",
+      "capacity": 3,
+      "fuel": 62
+    }
+  ],
+  "description": "Urban ride-sharing instance"
+}

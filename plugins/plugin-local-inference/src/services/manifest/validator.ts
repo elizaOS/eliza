@@ -24,6 +24,9 @@
 
 import {
 	Eliza1ManifestSchema,
+	EMOTION_CLASSIFIER_IEMOCAP_F1_THRESHOLD,
+	EMOTION_CLASSIFIER_MEAN_LATENCY_MS_LIMIT,
+	EMOTION_CLASSIFIER_MELD_F1_THRESHOLD,
 	REQUIRED_KERNELS_BY_TIER,
 	SUPPORTED_BACKENDS_BY_TIER,
 	TURN_DETECTOR_F1_THRESHOLD,
@@ -282,6 +285,7 @@ function collectContractErrors(m: Eliza1Manifest): string[] {
 		"vad",
 		"wakeword",
 		"turn",
+		"emotion",
 	] as const) {
 		const files = m.files[slot] ?? [];
 		const lineage = m.lineage[slot];
@@ -349,6 +353,38 @@ function collectContractErrors(m: Eliza1Manifest): string[] {
 			);
 		} else if (strictRelease && !m.evals.expressive.passed) {
 			errors.push("evals.expressive.passed: false");
+		}
+	}
+
+	// Voice Wave 2 (2026-05-14): acoustic-emotion classifier eval gate. Same
+	// shape as `turnDetector`: a bundle that ships `files.emotion` MUST
+	// declare a precomputed `emotionClassifier` block; a strict release
+	// additionally requires `passed=true` and internal consistency with the
+	// threshold constants. The MELD bar is intentionally low (~0.35) per
+	// R3-emotion §6 — refusing to publish a real improvement is worse than
+	// admitting 7-class conversational SER is hard.
+	if ((m.files.emotion ?? []).length > 0) {
+		const ec = m.evals.emotionClassifier;
+		if (!ec) {
+			errors.push(
+				"evals.emotionClassifier: required when files.emotion is non-empty",
+			);
+		} else {
+			const gateMet =
+				ec.macroF1Meld >= EMOTION_CLASSIFIER_MELD_F1_THRESHOLD &&
+				ec.macroF1Iemocap >= EMOTION_CLASSIFIER_IEMOCAP_F1_THRESHOLD &&
+				ec.meanLatencyMs <= EMOTION_CLASSIFIER_MEAN_LATENCY_MS_LIMIT;
+			if (ec.passed !== gateMet) {
+				errors.push(
+					`evals.emotionClassifier.passed: ${ec.passed} disagrees with measured gate (` +
+						`macroF1Meld=${ec.macroF1Meld} ≥ ${EMOTION_CLASSIFIER_MELD_F1_THRESHOLD} && ` +
+						`macroF1Iemocap=${ec.macroF1Iemocap} ≥ ${EMOTION_CLASSIFIER_IEMOCAP_F1_THRESHOLD} && ` +
+						`meanLatencyMs=${ec.meanLatencyMs} ≤ ${EMOTION_CLASSIFIER_MEAN_LATENCY_MS_LIMIT} → ${gateMet})`,
+				);
+			}
+			if (strictRelease && !ec.passed) {
+				errors.push("evals.emotionClassifier.passed: false");
+			}
 		}
 	}
 

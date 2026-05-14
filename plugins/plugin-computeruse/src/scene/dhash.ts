@@ -339,3 +339,103 @@ export function diffBlocks(
   }
   return dirty;
 }
+
+/**
+ * Coalesce a list of dirty blocks into axis-aligned rectangles using a row-
+ * sweep merge. Adjacent dirty blocks in the same row collapse into a single
+ * horizontal strip, then strips in successive rows that fully overlap collapse
+ * vertically. This keeps the OS region-capture count tiny in the common case
+ * where a single text field or a banner area changes (1 region, not 12).
+ *
+ * Returns the rectangles in display-local pixel space when `imageWidth` /
+ * `imageHeight` are provided; otherwise in `col, row, colspan, rowspan`
+ * units (1,1,1,1 = a single block at grid position 0,0).
+ */
+export function coalesceDirtyBlocks(
+  dirty: DirtyBlock[],
+  grid: BlockGrid,
+  imageWidth?: number,
+  imageHeight?: number,
+): Array<{ bbox: [number, number, number, number] }> {
+  if (dirty.length === 0) return [];
+  // Build a sparse occupied set keyed by `${row}:${col}`.
+  const occupied = new Set<string>();
+  for (const b of dirty) occupied.add(`${b.row}:${b.col}`);
+
+  // Row-sweep: merge horizontal runs first.
+  const strips: Array<{ row: number; col0: number; col1: number }> = [];
+  for (let r = 0; r < grid.rows; r += 1) {
+    let c = 0;
+    while (c < grid.cols) {
+      if (!occupied.has(`${r}:${c}`)) {
+        c += 1;
+        continue;
+      }
+      let c1 = c;
+      while (c1 + 1 < grid.cols && occupied.has(`${r}:${c1 + 1}`)) c1 += 1;
+      strips.push({ row: r, col0: c, col1: c1 });
+      c = c1 + 1;
+    }
+  }
+
+  // Merge strips that share identical col extents in successive rows.
+  const merged: Array<{ row0: number; row1: number; col0: number; col1: number }> = [];
+  for (const strip of strips) {
+    const last = merged[merged.length - 1];
+    if (
+      last &&
+      last.col0 === strip.col0 &&
+      last.col1 === strip.col1 &&
+      last.row1 + 1 === strip.row
+    ) {
+      last.row1 = strip.row;
+      continue;
+    }
+    merged.push({ row0: strip.row, row1: strip.row, col0: strip.col0, col1: strip.col1 });
+  }
+
+  return merged.map(({ row0, row1, col0, col1 }) => {
+    if (imageWidth !== undefined && imageHeight !== undefined) {
+      const x0 = Math.floor((col0 * imageWidth) / grid.cols);
+      const y0 = Math.floor((row0 * imageHeight) / grid.rows);
+      const x1 = Math.floor(((col1 + 1) * imageWidth) / grid.cols);
+      const y1 = Math.floor(((row1 + 1) * imageHeight) / grid.rows);
+      return {
+        bbox: [x0, y0, Math.max(1, x1 - x0), Math.max(1, y1 - y0)] as [
+          number,
+          number,
+          number,
+          number,
+        ],
+      };
+    }
+    return {
+      bbox: [col0, row0, col1 - col0 + 1, row1 - row0 + 1] as [
+        number,
+        number,
+        number,
+        number,
+      ],
+    };
+  });
+}
+
+/**
+ * Read PNG dimensions without inflating IDAT. Cheap — only the IHDR chunk is
+ * touched. Returns null if the buffer isn't a recognizable PNG.
+ */
+export function pngDimensions(png: Buffer): { width: number; height: number } | null {
+  if (png.length < PNG_SIGNATURE.length + 8 + 13) return null;
+  for (let i = 0; i < PNG_SIGNATURE.length; i += 1) {
+    if (png[i] !== PNG_SIGNATURE[i]) return null;
+  }
+  // IHDR follows immediately after the signature: length(4) + "IHDR"(4) + width(4) + height(4) + ...
+  const ihdrStart = PNG_SIGNATURE.length + 4;
+  if (png.subarray(ihdrStart, ihdrStart + 4).toString("ascii") !== "IHDR") return null;
+  const width = png.readUInt32BE(ihdrStart + 4);
+  const height = png.readUInt32BE(ihdrStart + 8);
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+    return null;
+  }
+  return { width, height };
+}

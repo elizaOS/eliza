@@ -6,6 +6,7 @@ import {
   LayoutGrid,
   Lock,
   type LucideIcon,
+  Mic,
   Palette,
   RefreshCw,
   Server,
@@ -31,6 +32,7 @@ import { ProviderSwitcher } from "./ProviderSwitcher";
 import { RuntimeSettingsSection } from "./RuntimeSettingsSection";
 import { SecretsManagerSection } from "./SecretsManagerSection";
 import { SecuritySettingsSection } from "./SecuritySettingsSection";
+import { VoiceSectionMount } from "./VoiceSectionMount";
 import { WalletRpcSection } from "./WalletRpcSection";
 
 export type SettingsSectionTone =
@@ -110,6 +112,19 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
     titleKey: "settings.sections.appearance.label",
     defaultTitle: "Appearance",
     Component: AppearanceSettingsSection,
+  },
+  {
+    id: "voice",
+    label: "settings.sections.voice.label",
+    defaultLabel: "Voice",
+    icon: Mic,
+    tone: "accent",
+    tooltipDescription: "settings.sections.voice.desc",
+    defaultTooltipDescription:
+      "Continuous chat, wake word, profiles, and privacy.",
+    titleKey: "settings.sections.voice.label",
+    defaultTitle: "Voice",
+    Component: VoiceSectionMount,
   },
   {
     id: "capabilities",
