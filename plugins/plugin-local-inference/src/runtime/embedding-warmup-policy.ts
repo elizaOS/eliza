@@ -2,8 +2,8 @@
  * Whether to prefetch the local GGUF embedding model before runtime boot.
  *
  * Chat/inference provider (what you pick in onboarding) is separate from
- * **embeddings** (vector memory / RAG). By default The framework keeps
- * `@elizaos/plugin-local-embedding` loaded because API-based model plugins do
+ * **embeddings** (vector memory / RAG). By default the framework keeps
+ * `@elizaos/plugin-local-inference` loaded because API-based model plugins do
  * not implement TEXT_EMBEDDING — so a local model was historically always
  * warmed up. When Eliza Cloud is connected with **cloud embeddings** enabled,
  * the cloud plugin handles embeddings instead; skipping warmup avoids a large
