@@ -282,7 +282,10 @@ export class VoiceScheduler {
 		await Promise.all(all);
 	}
 
-	async synthesizeText(text: string, signal?: AbortSignal): Promise<AudioChunk> {
+	async synthesizeText(
+		text: string,
+		signal?: AbortSignal,
+	): Promise<AudioChunk> {
 		const phrase: Phrase = {
 			id: this.nextStandalonePhraseId--,
 			text,

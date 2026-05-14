@@ -3140,9 +3140,7 @@ function readTierAParentsFromContext(context: ContextObject): Set<string> {
 	if (!surface || typeof surface !== "object") {
 		return new Set<string>();
 	}
-	const tierAParents = (
-		surface as { tierAParents?: unknown }
-	).tierAParents;
+	const tierAParents = (surface as { tierAParents?: unknown }).tierAParents;
 	if (!Array.isArray(tierAParents)) {
 		return new Set<string>();
 	}
@@ -6445,8 +6443,8 @@ export class DefaultMessageService implements IMessageService {
 				//
 				// The `streamTextFallback` path exists for action handlers or other
 				// call sites that don't provide `accumulated` (raw token streams).
-					let firstSentenceSent = false;
-					let firstSentenceText = "";
+				let firstSentenceSent = false;
+				let firstSentenceText = "";
 				let streamTextFallback = "";
 				const userOnStreamChunk = options?.onStreamChunk;
 				const wrappedOnStreamChunk: StreamChunkCallback | undefined =
@@ -6495,12 +6493,12 @@ export class DefaultMessageService implements IMessageService {
 									accumulated !== undefined &&
 									hasFirstSentence(streamText)
 								) {
-										const { first } = extractFirstSentence(streamText);
-										if (first.length > 5) {
-											firstSentenceSent = true;
-											firstSentenceText = first;
+									const { first } = extractFirstSentence(streamText);
+									if (first.length > 5) {
+										firstSentenceSent = true;
+										firstSentenceText = first;
 
-											(async () => {
+										(async () => {
 											try {
 												const voiceSettings = runtime.character.settings
 													?.voice as
@@ -6741,7 +6739,7 @@ export class DefaultMessageService implements IMessageService {
 										abortSignal: opts.abortSignal,
 									}
 								: undefined;
-						const processingPromise = runtime.turnControllers.runWith(
+					const processingPromise = runtime.turnControllers.runWith(
 						message.roomId,
 						(turnSignal) => {
 							const abortSignal = mergeAbortSignals([
@@ -6807,13 +6805,11 @@ export class DefaultMessageService implements IMessageService {
 									const params: TextToSpeechParams & {
 										model?: string;
 									} = {
-											text: rest,
-											voice: voiceId,
-											model: model,
-											...(opts.abortSignal
-												? { signal: opts.abortSignal }
-												: {}),
-										};
+										text: rest,
+										voice: voiceId,
+										model: model,
+										...(opts.abortSignal ? { signal: opts.abortSignal } : {}),
+									};
 									const result = runtime.getModel(ModelType.TEXT_TO_SPEECH)
 										? await runtime.useModel(ModelType.TEXT_TO_SPEECH, params)
 										: undefined;
