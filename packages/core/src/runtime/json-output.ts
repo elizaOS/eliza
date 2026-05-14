@@ -13,7 +13,7 @@ export function parseJsonObject<T extends object>(raw: string): T | null {
 			return parsed as T;
 		}
 	} catch {
-		const objectText = extractFirstJsonObject(candidate);
+		const objectText = extractJsonObjects(candidate)[0];
 		if (!objectText) return null;
 		try {
 			const parsed = JSON.parse(objectText);
@@ -28,14 +28,20 @@ export function parseJsonObject<T extends object>(raw: string): T | null {
 	return null;
 }
 
-function extractFirstJsonObject(raw: string): string | null {
-	const start = raw.indexOf("{");
-	if (start < 0) return null;
-
+/**
+ * Extract every top-level `{...}` JSON object substring from `raw`, in order.
+ * Brace-depth scan that respects string literals and escapes, so braces inside
+ * string values never confuse the boundaries. Weak models routinely narrate
+ * multiple intents as concatenated objects (`{...}\n{...}`) rather than one
+ * array — callers that took only the first silently dropped the rest.
+ */
+export function extractJsonObjects(raw: string): string[] {
+	const objects: string[] = [];
 	let depth = 0;
+	let start = -1;
 	let inString = false;
 	let escaped = false;
-	for (let index = start; index < raw.length; index++) {
+	for (let index = 0; index < raw.length; index++) {
 		const char = raw[index];
 		if (inString) {
 			if (escaped) {
@@ -52,16 +58,22 @@ function extractFirstJsonObject(raw: string): string | null {
 			continue;
 		}
 		if (char === "{") {
+			if (depth === 0) {
+				start = index;
+			}
 			depth++;
 			continue;
 		}
-		if (char !== "}") continue;
+		if (char !== "}" || depth === 0) {
+			continue;
+		}
 		depth--;
-		if (depth === 0) {
-			return raw.slice(start, index + 1);
+		if (depth === 0 && start >= 0) {
+			objects.push(raw.slice(start, index + 1));
+			start = -1;
 		}
 	}
-	return null;
+	return objects;
 }
 
 export function stringifyForModel(value: unknown): string {

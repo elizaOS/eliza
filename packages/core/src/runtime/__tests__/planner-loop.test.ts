@@ -77,6 +77,61 @@ describe("v5 planner loop skeleton", () => {
 		expect(output.messageToUser).toBe("Done from the model.");
 	});
 
+	it("recovers a non-terminal call the native extraction dropped after REPLY", () => {
+		// gpt-oss narrated two `{type, args}` objects in the text channel, but
+		// the provider's native extraction only surfaced the first — the
+		// terminal REPLY ack — so the real action would otherwise be lost.
+		const output = parsePlannerOutput({
+			text:
+				'{"type":"REPLY","args":{"text":"On it."}}\n' +
+				'{"type":"TASKS_SPAWN_AGENT","args":{"action":"spawn_agent","agentType":"opencode"}}',
+			toolCalls: [
+				{ id: "tc1", name: "REPLY", arguments: { text: "On it." } },
+			],
+		});
+
+		expect(output.toolCalls.map((call) => call.name)).toEqual([
+			"REPLY",
+			"TASKS_SPAWN_AGENT",
+		]);
+		expect(output.toolCalls[1].params).toEqual({
+			action: "spawn_agent",
+			agentType: "opencode",
+		});
+		// The text was tool-call JSON, not prose — the reply comes from the
+		// REPLY call, never the raw JSON blob.
+		expect(output.messageToUser).toBe("On it.");
+	});
+
+	it("does not duplicate a call present in both the native and text channels", () => {
+		const output = parsePlannerOutput({
+			text: '{"type":"TASKS_SPAWN_AGENT","args":{"action":"spawn_agent"}}',
+			toolCalls: [
+				{
+					id: "tc1",
+					name: "TASKS_SPAWN_AGENT",
+					arguments: { action: "spawn_agent" },
+				},
+			],
+		});
+
+		expect(output.toolCalls.map((call) => call.name)).toEqual([
+			"TASKS_SPAWN_AGENT",
+		]);
+	});
+
+	it("recovers concatenated bare-object calls from a JSON string", () => {
+		const output = parsePlannerOutput(
+			'{"type":"REPLY","args":{"text":"On it."}}' +
+				'{"type":"TASKS_SPAWN_AGENT","args":{"action":"spawn_agent"}}',
+		);
+
+		expect(output.toolCalls.map((call) => call.name)).toEqual([
+			"REPLY",
+			"TASKS_SPAWN_AGENT",
+		]);
+	});
+
 	it("instructs planners to use exposed tools for unresolved current work", () => {
 		expect(plannerTemplate).toContain(
 			"task is not complete while the user still needs live/current/external data",

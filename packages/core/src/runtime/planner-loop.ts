@@ -29,7 +29,11 @@ import {
 } from "./context-renderer";
 import { computeCallCostUsd } from "./cost-table";
 import { runEvaluator } from "./evaluator";
-import { parseJsonObject, stringifyForModel } from "./json-output";
+import {
+	extractJsonObjects,
+	parseJsonObject,
+	stringifyForModel,
+} from "./json-output";
 import {
 	assertRepeatedFailureLimit,
 	assertTrajectoryLimit,
@@ -649,10 +653,22 @@ export function parsePlannerOutput(raw: string | GenerateTextResult): {
 	}
 
 	const nativeToolCalls = normalizeToolCalls(raw.toolCalls);
+	// gpt-oss-class models narrate their plan as concatenated JSON objects in
+	// the text channel, and the provider's native extraction often captures
+	// only the first — typically the terminal `REPLY` ack — dropping the real
+	// action. Recover the rest from `raw.text` and merge them in.
+	const textToolCalls = parseEmbeddedToolCalls(raw.text);
+	const toolCalls = mergeToolCalls(nativeToolCalls, textToolCalls);
 	return {
 		thought: undefined,
-		toolCalls: nativeToolCalls,
-		messageToUser: getNonEmptyString(raw.text),
+		toolCalls,
+		// When `raw.text` was itself tool-call JSON it is not a user-facing
+		// message — take the reply from a REPLY call rather than leaking the
+		// raw JSON blob into the channel.
+		messageToUser:
+			textToolCalls.length > 0
+				? terminalMessageFromToolCalls(toolCalls)
+				: getNonEmptyString(raw.text),
 		raw: {
 			text: raw.text,
 			toolCalls: raw.toolCalls,
@@ -679,9 +695,16 @@ function parseJsonPlannerOutput(raw: string): {
 	const toolCalls = normalizeToolCalls(parsed.toolCalls);
 	const bareActionCalls =
 		toolCalls.length === 0 ? normalizeBarePlannerAction(parsed) : [];
+	let resolvedCalls = toolCalls.length > 0 ? toolCalls : bareActionCalls;
+	// `parseJsonObject` only returns the FIRST top-level object, so a weak
+	// model that concatenated bare `{type, args}` calls would lose every one
+	// after the first. Recover the full set from the raw string.
+	if (resolvedCalls.length === 0) {
+		resolvedCalls = parseEmbeddedToolCalls(trimmed);
+	}
 	return {
 		thought: typeof parsed.thought === "string" ? parsed.thought : undefined,
-		toolCalls: toolCalls.length > 0 ? toolCalls : bareActionCalls,
+		toolCalls: resolvedCalls,
 		messageToUser,
 		raw: parsed as Record<string, unknown>,
 	};
@@ -1638,6 +1661,61 @@ function normalizeToolCalls(value: unknown): PlannerToolCall[] {
 	return calls;
 }
 
+/**
+ * Recover tool calls a weak model narrated as JSON text instead of — or in
+ * addition to — native tool calls. gpt-oss-class models emit one
+ * `{type, args}` object per intended call, concatenated
+ * (`{...REPLY...}{...TASKS_SPAWN_AGENT...}`), and the provider's native
+ * extraction captures only the first. Each top-level object is normalized
+ * through the same `normalizeToolCall` path as native calls, so `{type, args}`,
+ * `{action, parameters}`, and `{name, arguments}` shapes resolve identically.
+ */
+function parseEmbeddedToolCalls(text: string | undefined): PlannerToolCall[] {
+	if (!text) {
+		return [];
+	}
+	const calls: PlannerToolCall[] = [];
+	for (const objectText of extractJsonObjects(text)) {
+		let parsed: unknown;
+		try {
+			parsed = JSON.parse(objectText);
+		} catch {
+			continue;
+		}
+		const call = normalizeToolCall(parsed);
+		if (call) {
+			calls.push(call);
+		}
+	}
+	return calls;
+}
+
+/**
+ * Merge native tool calls with calls recovered from the model's text
+ * narration, deduped by normalized name. Native calls are authoritative and
+ * keep their order; text-recovered calls only fill in actions the native
+ * extraction missed.
+ */
+function mergeToolCalls(
+	native: PlannerToolCall[],
+	fromText: PlannerToolCall[],
+): PlannerToolCall[] {
+	if (fromText.length === 0) {
+		return native;
+	}
+	const seen = new Set(native.map((call) => call.name.toUpperCase()));
+	const merged = [...native];
+	for (const call of fromText) {
+		const key = call.name.toUpperCase();
+		if (seen.has(key)) {
+			continue;
+		}
+		seen.add(key);
+		merged.push(call);
+	}
+	return merged;
+}
+
 function normalizeBarePlannerAction(
 	parsed: RawPlannerOutput,
 ): PlannerToolCall[] {
@@ -1693,6 +1771,11 @@ function normalizeToolCall(entry: unknown): PlannerToolCall | null {
 			record.action ??
 			record.actionName ??
 			functionName ??
+			// gpt-oss narrates calls as `{type: "ACTION", args: {...}}`. `type`
+			// is the last-resort name source so the canonical OpenAI/Anthropic
+			// envelope shapes — where `type` is "function"/"tool" — still
+			// resolve through `functionName`/`name` first.
+			record.type ??
 			"",
 	);
 	if (!name) {
