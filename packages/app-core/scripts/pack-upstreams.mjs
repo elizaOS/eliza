@@ -300,6 +300,12 @@ async function packUpstreams() {
     );
   }
 
+  await runCommand(
+    "node",
+    [path.join(ELIZA_ROOT, "scripts", "patch-tsup-dts.mjs")],
+    ELIZA_ROOT,
+  );
+
   if (!existsSync(ARTIFACTS_DIR)) {
     mkdirSync(ARTIFACTS_DIR, { recursive: true });
   }
