@@ -111,7 +111,7 @@ function fallbackPrimary(): DisplayInfo {
 //   0: +*eDP-1 2560/390x1600/240+0+0  eDP-1
 //   1: +HDMI-0 3840/600x2160/340+2560+0  HDMI-0
 
-const XRANDR_LINE = /^\s*(\d+):\s*\+(\*?)\S*\s+(\d+)\/\d+x(\d+)\/\d+\+(-?\d+)\+(-?\d+)\s+(\S+)/;
+const XRANDR_LINE = /^\s*(\d+):\s*\+(\*?)\S*\s+(\d+)\/\d+x(\d+)\/\d+([+-]\d+)([+-]\d+)\s+(\S+)/;
 
 export function parseXrandrMonitors(output: string): DisplayInfo[] {
   const displays: DisplayInfo[] = [];
@@ -122,6 +122,7 @@ export function parseXrandrMonitors(output: string): DisplayInfo[] {
     const primary = m[2] === "*";
     const width = Number.parseInt(m[3]!, 10);
     const height = Number.parseInt(m[4]!, 10);
+    // m[5] / m[6] include the explicit sign (e.g. "-1920" or "+0").
     const x = Number.parseInt(m[5]!, 10);
     const y = Number.parseInt(m[6]!, 10);
     const name = m[7]!;
