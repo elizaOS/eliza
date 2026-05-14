@@ -82,7 +82,7 @@
     "format:check": "turbo run format:check",
     "clean": "turbo run clean --concurrency=100% && rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo bun.lock* .eliza .elizadb && bun install && bun run build --concurrency=100%",
     "clean:cache": "node scripts/clean-cache-recursive.mjs",
-    "build:core": "turbo run build --filter=@elizaos/core --filter=@elizaos/shared --filter=@elizaos/cloud-sdk --filter=@elizaos/cloud-routing --filter=@elizaos/vault --filter=@elizaos/plugin-local-inference --no-cache",
+    "build:core": "turbo run build --filter=@elizaos/core --filter=@elizaos/shared --filter=@elizaos/cloud-sdk --filter=@elizaos/cloud-routing --filter=@elizaos/vault --filter=@elizaos/plugin-local-inference --filter=@elizaos/plugin-ollama --filter=@elizaos/plugin-commands --filter=@elizaos/plugin-shell --filter=@elizaos/plugin-coding-tools --filter=@elizaos/plugin-agent-orchestrator --filter=@elizaos/plugin-video --filter=@elizaos/plugin-background-runner --filter=@elizaos/plugin-mlx --filter=@elizaos/plugin-anthropic --filter=@elizaos/plugin-openai --filter=@elizaos/plugin-elizacloud --no-cache",
     "build:server": "turbo run build --filter=@elizaos/agent --no-cache",
     "lint": "turbo run lint && node scripts/run-examples-benchmarks.mjs lint",
     "lint:check": "turbo run lint:check",

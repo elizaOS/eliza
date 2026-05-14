@@ -10,6 +10,9 @@ export default defineConfig({
 			"@elizaos/plugin-capacitor-bridge": fileURLToPath(
 				new URL("../plugin-capacitor-bridge/src/index.ts", import.meta.url),
 			),
+			"@elizaos/plugin-computeruse": fileURLToPath(
+				new URL("../plugin-computeruse/src/index.ts", import.meta.url),
+			),
 		},
 	},
 	test: {

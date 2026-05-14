@@ -22,6 +22,10 @@ const VISION_OPS = [
   "describe",
   "capture",
   "set_mode",
+  "enable_camera",
+  "disable_camera",
+  "enable_screen",
+  "disable_screen",
   "name_entity",
   "identify_person",
   "track_entity",
@@ -316,6 +320,18 @@ function normalizeOp(value: unknown): VisionOp | null {
     set_vision_mode: "set_mode",
     mode: "set_mode",
     vision_mode: "set_mode",
+    camera_on: "enable_camera",
+    turn_on_camera: "enable_camera",
+    start_camera: "enable_camera",
+    camera_off: "disable_camera",
+    turn_off_camera: "disable_camera",
+    stop_camera: "disable_camera",
+    screen_on: "enable_screen",
+    turn_on_screen: "enable_screen",
+    start_screen: "enable_screen",
+    screen_off: "disable_screen",
+    turn_off_screen: "disable_screen",
+    stop_screen: "disable_screen",
     name: "name_entity",
     identify: "identify_person",
     recognize: "identify_person",
@@ -725,6 +741,59 @@ async function runCapture(
         error: errorMessage,
         errorType: "capture_error",
       },
+    };
+  }
+}
+
+async function runToggleSubMode(
+  runtime: IAgentRuntime,
+  message: Memory,
+  op: "enable_camera" | "disable_camera" | "enable_screen" | "disable_screen",
+  options: Record<string, unknown>,
+  callback?: HandlerCallback,
+): Promise<ActionResult> {
+  const visionService = runtime.getService<VisionService>("VISION");
+  if (!visionService) {
+    const text = "Vision service is not available.";
+    if (callback) await callback({ text, actions: ["VISION"] });
+    return { success: false, text, data: { actionName: "VISION", op } };
+  }
+  try {
+    const before = visionService.getVisionMode();
+    if (op === "enable_camera") {
+      await visionService.enableCamera();
+    } else if (op === "disable_camera") {
+      await visionService.disableCamera();
+    } else if (op === "enable_screen") {
+      const displayIds = Array.isArray(options.displayIds)
+        ? (options.displayIds as unknown[])
+            .map((v) => (typeof v === "number" ? v : Number(v)))
+            .filter((v) => Number.isFinite(v))
+        : undefined;
+      await visionService.enableScreen(displayIds);
+    } else {
+      await visionService.disableScreen();
+    }
+    const after = visionService.getVisionMode();
+    const text = `Vision mode: ${before} -> ${after} (${op})`;
+    if (callback) await callback({ text, actions: ["VISION"] });
+    return {
+      success: true,
+      text,
+      values: { visionMode: after, previousMode: before, op },
+      data: { actionName: "VISION", op, visionMode: after, previousMode: before },
+    };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    logger.error(`[VISION/${op}] error:`, errorMessage);
+    if (callback) {
+      await callback({ text: `Failed to ${op}: ${errorMessage}`, actions: ["VISION"] });
+    }
+    return {
+      success: false,
+      text: `Failed to ${op}`,
+      error: errorMessage,
+      data: { actionName: "VISION", op, error: errorMessage },
     };
   }
 }
@@ -1430,6 +1499,11 @@ export const visionAction: Action = {
         return runCapture(runtime, message, callback);
       case "set_mode":
         return runSetMode(runtime, message, params, callback);
+      case "enable_camera":
+      case "disable_camera":
+      case "enable_screen":
+      case "disable_screen":
+        return runToggleSubMode(runtime, message, inferredOp, params, callback);
       case "name_entity":
         return runNameEntity(runtime, message, params, callback);
       case "identify_person":
