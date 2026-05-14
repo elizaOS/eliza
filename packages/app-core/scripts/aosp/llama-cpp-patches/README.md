@@ -2,9 +2,9 @@
 
 > **Superseded by `elizaOS/llama.cpp @ v0.1.0-eliza`.** These patch
 > series are no longer applied on AOSP builds. `compile-libllama.mjs`
-> now points at the unified Eliza fork, which has TBQ + QJL + Q4_POLAR
+> now points at the combined Eliza fork, which has TBQ + QJL + Q4_POLAR
 > baked in (plus the Metal kernel sources). See
-> `docs/porting/unified-fork-strategy.md` for the migration story.
+> the fork consolidation strategy doc for the migration story.
 
 The directory and `apply-patches.mjs` script are kept in-tree for one
 release as a rollback path. To re-enable the legacy flow:

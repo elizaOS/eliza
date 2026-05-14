@@ -1916,7 +1916,7 @@ export const contactAction: Action = {
     "  activity — paginated activity timeline for the Rolodex.\n" +
     "  followup — schedule a follow-up with a contact (scheduledAt + name/entityId; optional reason/priority/message).",
   descriptionCompressed:
-    "manage Rolodex contacts; action=create|read|search|update|delete|link|merge|activity|followup",
+    "Rolodex contacts create|read|search|update|delete|link|merge|activity|followup",
   parameters: [
     {
       name: "action",

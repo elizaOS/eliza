@@ -1164,6 +1164,7 @@ export class MessageManager {
 			} catch (generationError) {
 				const activeTaskAgentWork =
 					generationTimedOut &&
+					!!messageId &&
 					hasActiveTaskAgentWorkForMessage(this.runtime, messageId);
 				this.runtime.logger.error(
 					{
@@ -1316,7 +1317,11 @@ export class MessageManager {
 						}>;
 				  } & Service)
 				| null;
-			if (videoService?.isVideoUrl(url)) {
+			if (
+				typeof videoService?.isVideoUrl === "function" &&
+				typeof videoService.processVideo === "function" &&
+				videoService.isVideoUrl(url)
+			) {
 				try {
 					const videoInfo = await videoService.processVideo(url, this.runtime);
 
@@ -1375,6 +1380,9 @@ export class MessageManager {
 					this.runtime.logger.debug(
 						`Fetching page content for cleaned URL: "${url}"`,
 					);
+					if (typeof browserService.getPageContent !== "function") {
+						continue;
+					}
 					const { title, description: summary } =
 						await browserService.getPageContent(url, this.runtime);
 

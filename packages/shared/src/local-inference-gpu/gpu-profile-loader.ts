@@ -86,7 +86,7 @@ export function detectGpuFromNvidiaSmi(): string | null {
     return null;
   }
   if (result.status !== 0) return null;
-  return firstLineOrNull(String(result.stdout ?? ""));
+  return firstLineOrNull(String(result.stdout));
 }
 
 /**

@@ -24,14 +24,18 @@ export async function removeScratchDir(
   });
 
   if (!isAllowed) {
-    log(`[CodingWorkspaceService] Refusing to remove dir outside allowed paths: ${resolved}`);
+    log(
+      `[CodingWorkspaceService] Refusing to remove dir outside allowed paths: ${resolved}`,
+    );
     return;
   }
   try {
     await fs.promises.rm(resolved, { recursive: true, force: true });
     log(`Removed scratch dir ${resolved}`);
   } catch (err) {
-    log(`[CodingWorkspaceService] Failed to remove scratch dir ${resolved}: ${err}`);
+    log(
+      `[CodingWorkspaceService] Failed to remove scratch dir ${resolved}: ${err}`,
+    );
   }
 }
 
@@ -62,7 +66,7 @@ export async function gcOrphanedWorkspaces(
   for (const entry of entries) {
     if (!entry.isDirectory()) continue;
 
-      if (trackedWorkspaceIds.has(entry.name)) {
+    if (trackedWorkspaceIds.has(entry.name)) {
       skipped++;
       continue;
     }
@@ -86,6 +90,8 @@ export async function gcOrphanedWorkspaces(
   }
 
   if (removed > 0 || skipped > 0) {
-    log(`Startup GC: removed ${removed} orphaned workspace(s), kept ${skipped}`);
+    log(
+      `Startup GC: removed ${removed} orphaned workspace(s), kept ${skipped}`,
+    );
   }
 }

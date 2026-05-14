@@ -32,7 +32,7 @@ export const sceneProvider: Provider = {
   description:
     "Live desktop scene: displays, focused window, apps, OCR text boxes, accessibility elements, and (when set) VLM annotations. Coordinates are local to displayId.",
   descriptionCompressed:
-    "Displays, focused window, apps, OCR boxes, AX nodes, VLM annotations. Coords local to displayId.",
+    "display, focused window, apps, OCR boxes, AX nodes, VLM annotations; coords local",
   contexts: ["browser", "automation", "admin"],
   contextGate: { anyOf: ["browser", "automation", "admin"] },
   cacheStable: false,

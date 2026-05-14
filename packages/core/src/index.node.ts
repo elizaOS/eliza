@@ -297,7 +297,7 @@ export * from "./types/message-service";
 // Export onboarding types and utilities
 export * from "./types/onboarding";
 export * from "./types/plugin-manifest";
-export type { JsonObject, JsonValue } from "./types/primitives";
+export type { JsonObject, JsonValue, ProcessEnvLike } from "./types/primitives";
 // Export utils first to avoid circular dependency issues
 export * from "./utils";
 /** Single implementation — see `utils/batch-queue/semaphore.ts` (was duplicated on `runtime.ts`). */
@@ -328,13 +328,13 @@ export * from "./utils/read-env";
 export * from "./utils/server-health";
 // Eliza state-dir resolution (ELIZA_STATE_DIR, with the legacy MILADY_STATE_DIR honored → ~/.${ELIZA_NAMESPACE ?? "eliza"})
 export * from "./utils/state-dir";
+// Export streaming utilities
+export * from "./utils/streaming";
+export { ResponseSkeletonStreamExtractor } from "./utils/streaming";
 // User-chosen workspace folder persisted in <stateDir>/workspace-folder.json,
 // shared between the Electrobun renderer (writes via desktop RPC) and the
 // agent runtime (reads at boot to seed ELIZA_WORKSPACE_DIR for store builds).
 export * from "./utils/workspace-folder-config";
-// Export streaming utilities
-export * from "./utils/streaming";
-export { ResponseSkeletonStreamExtractor } from "./utils/streaming";
 // Export validation utilities
 export * from "./validation";
 

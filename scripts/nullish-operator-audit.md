@@ -1,13 +1,13 @@
 # Nullish Operator Audit Report
 
-Generated: 2026-05-14T12:28:35.794Z
+Generated: 2026-05-14T13:13:21.487Z
 
 ## Summary
 
 | Metric | Count |
 | --- | ---: |
-| TypeScript files scanned | 7717 |
-| Operators found | 151122 |
+| TypeScript files scanned | 7733 |
+| Operators found | 151441 |
 | Type-obvious removable | 0 |
 | Applied edits | 0 |
 
@@ -15,21 +15,21 @@ Generated: 2026-05-14T12:28:35.794Z
 
 | Kind | Count |
 | --- | ---: |
-| `binary-??` | 25958 |
-| `binary-&&` | 23629 |
-| `binary-\|\|` | 25445 |
+| `binary-??` | 26007 |
+| `binary-&&` | 23677 |
+| `binary-\|\|` | 25516 |
 | `definite-assignment-assertion` | 53 |
-| `non-null-assertion` | 595 |
-| `optional-chain` | 24354 |
-| `optional-declaration` | 51088 |
+| `non-null-assertion` | 594 |
+| `optional-chain` | 24395 |
+| `optional-declaration` | 51199 |
 
 ## By Classification
 
 | Classification | Count |
 | --- | ---: |
-| `review-required` | 49127 |
-| `syntax-inventory` | 50907 |
-| `upstream-type-review` | 51088 |
+| `review-required` | 49246 |
+| `syntax-inventory` | 50996 |
+| `upstream-type-review` | 51199 |
 
 ## Type-Obvious Removable Examples
 

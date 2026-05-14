@@ -8,6 +8,7 @@
       "DOM"
     ],
     "strict": false,
+    "strictNullChecks": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,

@@ -12,6 +12,7 @@
     "module": "Preserve",
     "moduleResolution": "Bundler",
     "strict": false,
+    "strictNullChecks": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "incremental": true,

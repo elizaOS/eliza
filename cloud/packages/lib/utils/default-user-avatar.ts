@@ -8,11 +8,8 @@ const DEFAULT_CDN_BASE = "https://blob.elizacloud.ai";
 
 function cdnUrl(path: string): string {
   const base =
-    (
-      typeof process !== "undefined"
-        ? process.env.NEXT_PUBLIC_ASSETS_CDN_URL
-        : undefined
-    )?.trim() || DEFAULT_CDN_BASE;
+    (typeof process !== "undefined" ? process.env.NEXT_PUBLIC_ASSETS_CDN_URL : undefined)?.trim() ||
+    DEFAULT_CDN_BASE;
   return `${base.replace(/\/+$/, "")}/${path.replace(/^\/+/, "")}`;
 }
 

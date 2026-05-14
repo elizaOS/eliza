@@ -23,8 +23,7 @@ import { WalletBackendService } from "./services/wallet-backend-service.js";
 
 const coreWalletPlugin: Plugin = {
   name: "wallet-backend",
-  description:
-    "Wallet backend service + wallet provider (Steward / local).",
+  description: "Wallet backend service + wallet provider (Steward / local).",
   services: [WalletBackendService],
   providers: [walletProvider],
   actions: [],

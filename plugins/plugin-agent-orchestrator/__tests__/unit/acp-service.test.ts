@@ -169,6 +169,46 @@ describe("AcpService", () => {
     );
   });
 
+  it("prepares OpenCode ACP environment for Cerebras", async () => {
+    const reg = nextProc();
+    const service = new AcpService(
+      runtime({
+        ELIZA_OPENCODE_BASE_URL: "https://api.cerebras.ai/v1",
+        ELIZA_OPENCODE_API_KEY: "csk_test",
+        ELIZA_OPENCODE_MODEL_POWERFUL: "gpt-oss-120b",
+      }),
+    );
+    await service.start();
+
+    const spawned = service.spawnSession({
+      name: "opencode-cerebras",
+      agentType: "opencode",
+      workdir: "/tmp/acp-test",
+    });
+    await waitForSpawn(reg);
+    closeOk(reg);
+    await spawned;
+
+    const env = spawnMock.mock.calls[0]?.[2]?.env as
+      | Record<string, string>
+      | undefined;
+    const config = JSON.parse(env?.OPENCODE_CONFIG_CONTENT ?? "{}") as {
+      provider?: Record<
+        string,
+        { npm?: string; options?: { baseURL?: string; apiKey?: string } }
+      >;
+      model?: string;
+    };
+    expect(env?.OPENCODE_MODEL).toBe("cerebras/gpt-oss-120b");
+    expect(env?.OPENCODE_DISABLE_AUTOUPDATE).toBe("1");
+    expect(config.model).toBe("cerebras/gpt-oss-120b");
+    expect(config.provider?.cerebras?.options?.baseURL).toBe(
+      "https://api.cerebras.ai/v1",
+    );
+    expect(config.provider?.cerebras?.npm).toBe("@ai-sdk/cerebras");
+    expect(config.provider?.cerebras?.options?.apiKey).toBe("csk_test");
+  });
+
   it("sendPrompt emits message, tool_running, task_complete, stopped and resolves PromptResult", async () => {
     const create = nextProc();
     const service = new AcpService(runtime());

@@ -5,6 +5,7 @@
     "moduleResolution": "bundler",
     "jsx": "react-jsx",
     "strict": false,
+    "strictNullChecks": true,
     "skipLibCheck": true,
     "ignoreDeprecations": "6.0",
     "esModuleInterop": true,

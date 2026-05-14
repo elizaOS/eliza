@@ -81,7 +81,7 @@ export {
 	ConnectorAuthMethod,
 } from "./types";
 export * from "./types/message-service";
-export type { JsonObject, JsonValue } from "./types/primitives";
+export type { JsonObject, JsonValue, ProcessEnvLike } from "./types/primitives";
 // Export utils first to avoid circular dependency issues
 export * from "./utils";
 export { Semaphore } from "./utils/batch-queue/semaphore.js";

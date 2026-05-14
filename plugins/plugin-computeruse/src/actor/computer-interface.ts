@@ -2,7 +2,7 @@
  * WS7 — BaseComputerInterface (TypeScript port).
  *
  * Shape ported from trycua/cua's `BaseComputerInterface` (MIT). The original
- * provides one unified API surface for screenshot + mouse + keyboard + screen
+ * provides one standard API surface for screenshot + mouse + keyboard + screen
  * geometry that the Brain/Actor cascade can call without knowing what OS or
  * driver is underneath.
  *

@@ -3,8 +3,8 @@ import { dbWrite as db } from "@/db/client";
 import {
   type IdentityLinkRow as IdentityLinkDbRow,
   type IdentityLinkSource,
-  type NewIdentityLink as NewIdentityLinkDbRow,
   identityLinks,
+  type NewIdentityLink as NewIdentityLinkDbRow,
 } from "@/db/schemas/identity-links";
 
 export interface IdentityLinkRow {
@@ -57,7 +57,11 @@ export class IdentityLinksRepository {
       .insert(identityLinks)
       .values(toDbInsert(input))
       .onConflictDoUpdate({
-        target: [identityLinks.left_entity_id, identityLinks.right_entity_id, identityLinks.provider],
+        target: [
+          identityLinks.left_entity_id,
+          identityLinks.right_entity_id,
+          identityLinks.provider,
+        ],
         set: { organization_id: input.organizationId },
       })
       .returning();
@@ -113,10 +117,7 @@ export class IdentityLinksRepository {
       .select()
       .from(identityLinks)
       .where(
-        or(
-          eq(identityLinks.left_entity_id, entityId),
-          eq(identityLinks.right_entity_id, entityId),
-        ),
+        or(eq(identityLinks.left_entity_id, entityId), eq(identityLinks.right_entity_id, entityId)),
       );
     return rows.map(toDomain);
   }
@@ -126,10 +127,7 @@ export class IdentityLinksRepository {
       .select()
       .from(identityLinks)
       .where(
-        and(
-          eq(identityLinks.organization_id, organizationId),
-          eq(identityLinks.user_id, userId),
-        ),
+        and(eq(identityLinks.organization_id, organizationId), eq(identityLinks.user_id, userId)),
       );
     return rows.map(toDomain);
   }

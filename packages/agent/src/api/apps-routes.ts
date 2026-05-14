@@ -3,7 +3,11 @@ import { promises as fs } from "node:fs";
 import type http from "node:http";
 import { ServerResponse } from "node:http";
 import path from "node:path";
-import type { IAgentRuntime, RouteRequestMeta } from "@elizaos/core";
+import type {
+  AppPackageRouteContext,
+  IAgentRuntime,
+  RouteRequestMeta,
+} from "@elizaos/core";
 import type { RouteHelpers } from "@elizaos/shared";
 import {
   type AppLaunchResult,
@@ -615,7 +619,7 @@ function buildSyntheticSteeringContext(
   ctx: AppsRouteContext,
   targetPathname: string,
   body: Record<string, unknown> | null,
-): { ctx: AppsRouteContext; captured: CapturedResponse } {
+): { ctx: AppPackageRouteContext; captured: CapturedResponse } {
   const captured = createCapturedResponse();
   const syntheticResponse = Object.assign(
     Object.create(ServerResponse.prototype) as http.ServerResponse,
@@ -623,7 +627,7 @@ function buildSyntheticSteeringContext(
   );
   const syntheticUrl = new URL(ctx.url.toString());
   syntheticUrl.pathname = targetPathname;
-  const syntheticCtx: AppsRouteContext = {
+  const syntheticCtx: AppPackageRouteContext = {
     ...ctx,
     pathname: targetPathname,
     url: syntheticUrl,

@@ -86,12 +86,12 @@ function readPublishStatusOverride(
 ): "published" | "pending" | undefined {
   const raw =
     typeof process !== "undefined"
-      ? process.env?.ELIZA_PUBLISH_STATUS_OVERRIDES
+      ? process.env.ELIZA_PUBLISH_STATUS_OVERRIDES
       : undefined;
   if (!raw) return undefined;
   try {
     const parsed = JSON.parse(raw) as Record<string, unknown>;
-    const value = parsed?.[id];
+    const value = parsed[id];
     if (value === "published" || value === "pending") return value;
   } catch {
     // Malformed override JSON is non-fatal — fall back to the static

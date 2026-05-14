@@ -1979,12 +1979,12 @@ export const tasksAction: Action & { suppressPostActionContinuation: true } = {
     "RESUME_CODING_TASK",
   ],
   description:
-    "Planner surface for orchestrator workspace operations and coding task delegation to dedicated coding sub-agents (claude / codex / opencode / gemini / aider). " +
+    "Planner surface for orchestrator workspace operations and coding task delegation to dedicated ACP coding sub-agents (claude / codex / opencode). " +
     "Available operations (pick via `action`): create or spawn_agent (delegate new coding work), send (forward a message to an existing coding sub-agent), list_agents / history (read state), " +
     "control (pause | resume | continue | archive | reopen a task), share (surface task output), provision_workspace / submit_workspace (workspace setup and PR submission), manage_issues (GitHub issue operations), cancel / stop_agent (end a coding sub-agent run when the user asks to). " +
     "Choose this when the user asks to delegate coding work, use a coding adapter by name, or run multi-step development work — it is the canonical path for coding sub-agents and is preferred over inline FILE / BASH for delegated work.",
   descriptionCompressed:
-    "delegate coding work to a coding sub-agent (claude/codex/opencode/gemini/aider). action=spawn_agent for new work, send to talk to one, control to pause/resume, list_agents/history to read state",
+    "ACP coding sub-agent claude|codex|opencode: spawn|send|control|list|history",
   suppressPostActionContinuation: true,
   parameters: [
     {

@@ -2,14 +2,14 @@ import type http from "node:http";
 import { readRequestBody, sendJson, sendJsonError } from "@elizaos/core";
 import { isMobilePlatform } from "@elizaos/shared";
 
-interface StreamingSettingsModule {
+type StreamingSettingsModule = {
   readStreamSettings: () => Record<string, unknown>;
   validateStreamSettings: (value: unknown) => {
     error?: string;
     settings?: Record<string, unknown>;
   };
   writeStreamSettings: (value: Record<string, unknown>) => void;
-}
+};
 
 let streamingSettingsModulePromise: Promise<StreamingSettingsModule> | null =
   null;

@@ -271,7 +271,7 @@ export const formEvaluator: Evaluator<
 > = {
   name: "form_extractor",
   description:
-    "Extracts form field values and detects form lifecycle/UX intents from the user message",
+    "Extracts form values + lifecycle/UX intent from user message.",
   similes: ["FORM_EXTRACTION", "FORM_HANDLER", "form_evaluator"],
   // Run before reflection/memory so downstream evaluators see updated form state.
   priority: EvaluatorPriority.FORM,

@@ -84,6 +84,15 @@ export interface AppPackageManifest {
   };
 }
 
+function assertPackageJsonObject(
+  value: unknown,
+  appRoot: string,
+): asserts value is AppPackageManifest {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`invalid package.json object at ${appRoot}`);
+  }
+}
+
 /**
  * Read the host app's package.json and extract the `elizaos.app` block.
  * Returns null when no package.json is found at `appRoot` or when the file
@@ -105,8 +114,9 @@ export async function readAppManifest(
     if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
     throw err;
   }
-  const parsed = JSON.parse(raw) as AppPackageManifest;
-  return parsed?.elizaos?.app ?? null;
+  const parsed = JSON.parse(raw) as unknown;
+  assertPackageJsonObject(parsed, appRoot);
+  return parsed.elizaos?.app ?? null;
 }
 
 /**

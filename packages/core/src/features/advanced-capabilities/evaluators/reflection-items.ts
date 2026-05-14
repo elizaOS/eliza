@@ -852,7 +852,7 @@ export const factMemoryEvaluator: Evaluator<
 > = {
 	name: "factMemory",
 	description:
-		"Extracts durable/current fact-store operations from the recent conversation.",
+		"Extracts durable/current fact-store ops from recent conversation.",
 	priority: EvaluatorPriority.REFLECTION_FACTS,
 	schema: factOpsSchema,
 	async shouldRun({ message }) {
@@ -863,20 +863,18 @@ export const factMemoryEvaluator: Evaluator<
 	},
 	prompt({ prepared }) {
 		const { durable, current } = partitionByKind(prepared.knownFacts);
-		return `Evaluate whether the conversation contains stable or current facts about the speaker.
+		return `Find stable/current facts about speaker.
 
 Fact stores:
-- durable: stable identity-level claims that matter in a year. Categories: identity, health, relationship, life_event, business_role, preference, goal.
-- current: time-bound state about right now or the near term. Categories: feeling, physical_state, working_on, going_through, schedule_context.
+- durable: identity-level claims matter in a year. Categories: identity, health, relationship, life_event, business_role, preference, goal.
+- current: now/near-term state. Categories: feeling, physical_state, working_on, going_through, schedule_context.
 
 Rules:
-- If no meaningful new or changed fact exists, return {"ops":[]}.
-- If meaning already exists in known facts, emit strengthen with that factId.
-- If the message contradicts a known fact, emit contradict with that factId and reason.
+- No meaningful new/changed fact -> {"ops":[]}.
+- Existing meaning -> strengthen with factId.
+- Contradiction -> contradict with factId + reason.
 - Use only fact IDs shown below for strengthen, decay, and contradict.
-- For add_durable/add_current, emit keywords: 3-8 lowercase retrieval terms
-  from the claim, category, proper nouns, places, dates, projects, symptoms,
-  and preferences. Omit stopwords and generic words.
+- add_durable/add_current keywords: 3-8 lowercase retrieval terms from claim/category/nouns/places/dates/projects/symptoms/preferences. Omit stopwords/generic.
 
 Recent messages:
 ${formatRecentMessages(prepared.recentMessages)}
@@ -956,8 +954,7 @@ export const relationshipEvaluator: Evaluator<
 	ReflectionPrepared
 > = {
 	name: "relationships",
-	description:
-		"Extracts semantic relationship updates between known room participants.",
+	description: "Extracts relationship updates between known room participants.",
 	priority: EvaluatorPriority.REFLECTION_RELATIONSHIPS,
 	providers: ["CONVERSATION_PROXIMITY"],
 	schema: relationshipSchema,
@@ -968,13 +965,13 @@ export const relationshipEvaluator: Evaluator<
 		return prepareReflectionContext(runtime, message);
 	},
 	prompt({ prepared }) {
-		return `Evaluate semantic relationship changes between participants.
+		return `Find semantic relationship changes between participants.
 
 Rules:
-- Return only relationships that are clearly supported by the conversation.
+- Return only clearly supported relationships.
 - Use exact UUIDs from Entities in Room. Do not use names or placeholders.
-- Relationships are directional; sourceEntityId initiates the interaction, targetEntityId receives it.
-- If nothing changed, return {"relationships":[]}.
+- Directional: sourceEntityId initiates, targetEntityId receives.
+- Nothing changed -> {"relationships":[]}.
 
 Recent messages:
 ${formatRecentMessages(prepared.recentMessages)}
@@ -1013,8 +1010,7 @@ export const identityEvaluator: Evaluator<
 	ReflectionPrepared
 > = {
 	name: "identities",
-	description:
-		"Extracts LLM-resolved platform identities for known room participants.",
+	description: "Extracts platform identities for known room participants.",
 	priority: EvaluatorPriority.REFLECTION_IDENTITY,
 	schema: identitySchema,
 	async shouldRun({ message }) {
@@ -1024,15 +1020,15 @@ export const identityEvaluator: Evaluator<
 		return prepareReflectionContext(runtime, message);
 	},
 	prompt({ prepared }) {
-		return `Evaluate whether any known room participant explicitly claimed or attributed a platform identity.
+		return `Find explicit platform identity claims for known room participants.
 
 Rules:
 - Use exact UUIDs from Entities in Room.
 - Only emit identities explicitly stated in the recent conversation.
 - Do not invent identities or emit ambient public-figure mentions.
 - platform is lowercase, such as twitter, github, telegram, discord, bluesky, farcaster, linkedin.
-- confidence is 0 to 1. Use higher confidence for self-claims, lower for second-hand claims.
-- If nothing was mentioned, return {"identities":[]}.
+- confidence 0-1: higher for self-claims, lower for second-hand.
+- Nothing mentioned -> {"identities":[]}.
 
 Recent messages:
 ${formatRecentMessages(prepared.recentMessages)}
@@ -1066,8 +1062,7 @@ ${formatEntities(prepared.entities)}`;
 
 export const successEvaluator: Evaluator<SuccessOutput, SuccessPrepared> = {
 	name: "success",
-	description:
-		"Evaluates whether the user's task is complete for this turn and stores the assessment.",
+	description: "Evaluates whether user task is complete this turn.",
 	priority: EvaluatorPriority.REFLECTION_SUCCESS,
 	schema: successSchema,
 	async shouldRun({ message }) {
@@ -1086,11 +1081,11 @@ export const successEvaluator: Evaluator<SuccessOutput, SuccessPrepared> = {
 		};
 	},
 	prompt({ prepared, options }) {
-		return `Evaluate whether the current user task is complete after the agent response.
+		return `Evaluate if current user task is complete after agent response.
 
 Rules:
-- completed=true only if the user no longer needs additional action or follow-up in this turn.
-- If the agent asked a clarifying question, an action failed, work is still pending, or the request was only partially handled, completed=false.
+- completed=true only if user needs no more action/follow-up this turn.
+- Clarifying question, failed action, pending work, or partial handling -> completed=false.
 - Ground the reason in the conversation and action results.
 
 Did respond: ${options.didRespond === true ? "true" : "false"}

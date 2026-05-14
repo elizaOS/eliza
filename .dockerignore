@@ -3,6 +3,34 @@
 **/node_modules
 **/.turbo
 **/dist
+# Keep the pre-built dist/ for the workspace packages the Dockerfile.ci
+# pruner relinks at build time. Dockerfile.ci runs
+# `relink-workspace-packages-to-dist.mjs @elizaos/agent` and the
+# follow-up `link-docker-local-app-packages.mjs` against the copied
+# tree; those scripts require the dist/ + dist/package.json artifacts
+# to exist in the build context, which the workflow produces before
+# the docker build runs. Without these un-ignore rules the pruner
+# fails with `Missing compiled package manifest for @elizaos/agent`.
+!packages/agent/dist
+!packages/agent/dist/**
+!packages/core/dist
+!packages/core/dist/**
+!packages/shared/dist
+!packages/shared/dist/**
+!packages/ui/dist
+!packages/ui/dist/**
+!packages/app-core/dist
+!packages/app-core/dist/**
+!packages/cloud-routing/dist
+!packages/cloud-routing/dist/**
+!packages/vault/dist
+!packages/vault/dist/**
+!packages/skills/dist
+!packages/skills/dist/**
+!cloud/packages/sdk/dist
+!cloud/packages/sdk/dist/**
+!plugins/*/dist
+!plugins/*/dist/**
 **/target
 **/venv
 **/.venv

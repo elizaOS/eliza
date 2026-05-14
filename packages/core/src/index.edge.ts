@@ -78,7 +78,7 @@ export * from "./types/agentEvent";
 export * from "./types/message-service";
 export * from "./types/onboarding";
 export * from "./types/plugin-manifest";
-export type { JsonObject, JsonValue } from "./types/primitives";
+export type { JsonObject, JsonValue, ProcessEnvLike } from "./types/primitives";
 export * from "./utils";
 export { Semaphore } from "./utils/batch-queue/semaphore.js";
 export * from "./utils/buffer";

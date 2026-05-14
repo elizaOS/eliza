@@ -26,7 +26,7 @@ export const relevantConversationsProvider: Provider = {
   description:
     "Semantically relevant conversation snippets from across all platforms, re-ranked by similarity to the current message.",
   descriptionCompressed:
-    "semantically relevant conversation snippet across platform, re-rank similarity current message",
+    "relevant conversation snippets across platforms; rerank by current message",
   dynamic: true,
   position: 6,
   relevanceKeywords: getValidationKeywordTerms(

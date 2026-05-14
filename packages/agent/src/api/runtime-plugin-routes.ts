@@ -7,11 +7,8 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import {
   type AgentRuntime,
-  type IAgentRuntime,
   type PaymentEnabledRoute,
   type Route,
-  type RouteRequest,
-  type RouteResponse,
   type RuntimeRouteHostContext,
   setRuntimeRouteHostContext,
 } from "@elizaos/core";
@@ -19,21 +16,19 @@ import { readJsonBody } from "@elizaos/shared";
 
 const EXPRESS_SHIM = Symbol("elizaExpressResponseShim");
 
-type X402RouteHandler = (
-  req: RouteRequest,
-  res: RouteResponse,
-  runtime: IAgentRuntime,
-) => void | Promise<void>;
-
-let x402RoutesModulePromise: Promise<{
-  createPaymentAwareHandler: (route: PaymentEnabledRoute) => X402RouteHandler;
+type X402RoutesModule = {
+  createPaymentAwareHandler: (
+    route: PaymentEnabledRoute,
+  ) => NonNullable<Route["handler"]>;
   isRoutePaymentWrapped: (route: Route) => boolean;
-}> | null = null;
+};
 
-function getX402RoutesModule() {
+let x402RoutesModulePromise: Promise<X402RoutesModule> | null = null;
+
+function getX402RoutesModule(): Promise<X402RoutesModule> {
   x402RoutesModulePromise ??= import(
     "@elizaos/plugin-x402"
-  ) as unknown as typeof x402RoutesModulePromise;
+  ) as unknown as Promise<X402RoutesModule>;
   return x402RoutesModulePromise;
 }
 
@@ -256,9 +251,10 @@ export async function tryHandleRuntimePluginRoute(options: {
       const { createPaymentAwareHandler, isRoutePaymentWrapped } =
         await getX402RoutesModule();
       if (!isRoutePaymentWrapped(route)) {
-        effectiveHandler = createPaymentAwareHandler(
-          route as PaymentEnabledRoute,
-        );
+        const wrapped = createPaymentAwareHandler(route as PaymentEnabledRoute);
+        if (wrapped) {
+          effectiveHandler = wrapped;
+        }
       }
     }
 

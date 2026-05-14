@@ -600,7 +600,7 @@ export class DiscordService extends Service implements IDiscordService {
 				}
 
 				const generalCommands = this.slashCommands.filter(
-					(cmd) => cmd.guildIds.length === 0,
+					(cmd) => (cmd.guildIds?.length ?? 0) === 0,
 				);
 				const globalCommands = generalCommands.filter(
 					(cmd) => !isGuildOnlyCommand(cmd),
@@ -977,7 +977,7 @@ export class DiscordService extends Service implements IDiscordService {
 			get client() {
 				return accountClient();
 			},
-			set client(value: DiscordJsClient | null) {
+			set client(value: DiscordJsClient) {
 				if (state) {
 					state.client = value;
 				}
@@ -1150,6 +1150,11 @@ export class DiscordService extends Service implements IDiscordService {
 		state.messageManager = new MessageManager(facade, this.runtime);
 
 		const client = state.client;
+		if (!client) {
+			throw new Error(
+				`Discord client is not available for account ${state.accountId}`,
+			);
+		}
 		state.clientReadyPromise = new Promise((resolve, reject) => {
 			client.once(Events.ClientReady, async (readyClient) => {
 				try {
@@ -2251,7 +2256,7 @@ export class DiscordService extends Service implements IDiscordService {
 	public async joinConnectorChannel(
 		_runtime: IAgentRuntime,
 		params: ConnectorChannelMutationParams,
-	): Promise<Room | null> {
+	): Promise<Room> {
 		const accountId = this.resolveAccountIdFromTarget(params.target, params);
 		const channel = await this.resolveConnectorTextChannel(
 			params.target,

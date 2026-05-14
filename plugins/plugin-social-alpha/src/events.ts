@@ -2,9 +2,8 @@ import {
 	asUUID,
 	ChannelType,
 	createUniqueUuid,
-	logger,
+	logger as coreLogger,
 	type Memory,
-	type MessageReceivedHandlerParams,
 	ModelType,
 	withStandaloneTrajectory,
 } from "@elizaos/core";
@@ -18,7 +17,25 @@ import {
 	SupportedChain,
 	TRUST_MARKETPLACE_COMPONENT_TYPE,
 	type UserTrustProfile,
+	type MessageReceivedHandlerParams,
 } from "./types";
+
+function logValue(value: unknown): string {
+	if (typeof value === "string") return value;
+	if (value instanceof Error) return value.stack ?? value.message;
+	try {
+		return JSON.stringify(value);
+	} catch {
+		return String(value);
+	}
+}
+
+const logger = {
+	debug: (...args: unknown[]) => coreLogger.debug(args.map(logValue).join(" ")),
+	info: (...args: unknown[]) => coreLogger.info(args.map(logValue).join(" ")),
+	warn: (...args: unknown[]) => coreLogger.warn(args.map(logValue).join(" ")),
+	error: (...args: unknown[]) => coreLogger.error(args.map(logValue).join(" ")),
+};
 
 // Combined relevance + extraction in a single LLM call. An empty
 // `recommendations` array == not relevant. This saves one TEXT_LARGE per
@@ -154,9 +171,9 @@ const messageReceivedHandler = async ({
 	}
 
 	try {
-		// Create a simple roomId for this message context if none provided
-		const messageRoomId =
-			roomId || createUniqueUuid(runtime.agentId, currentMessageSenderId);
+			// Create a simple roomId for this message context if none provided
+			const messageRoomId =
+				roomId || createUniqueUuid(runtime, currentMessageSenderId);
 
 		logger.debug(
 			`[CommunityInvestor] Processing message from user ${currentMessageSenderId} in room ${messageRoomId}`,
@@ -165,12 +182,11 @@ const messageReceivedHandler = async ({
 		// Ensure the agent's world exists before creating components within it
 		try {
 			await runtime.ensureWorldExists({
-				id: componentWorldId, // This is now runtime.agentId
-				name: `Social Alpha World for Agent ${componentWorldId}`,
-				agentId: runtime.agentId, // The agent responsible for this world
-				serverId: "community-investor-plugin", // A unique identifier for this plugin's worlds
-				metadata: {},
-			});
+					id: componentWorldId, // This is now runtime.agentId
+					name: `Social Alpha World for Agent ${componentWorldId}`,
+					agentId: runtime.agentId, // The agent responsible for this world
+					metadata: {},
+				});
 		} catch (error) {
 			logger.debug(
 				`[CommunityInvestor] World ${componentWorldId} already exists or error ensuring world: ${error}`,
@@ -194,9 +210,9 @@ const messageReceivedHandler = async ({
 			);
 			if (
 				agentUserState === "MUTED" &&
-				!content.text
-					?.toLowerCase()
-					.includes(runtime.character.name.toLowerCase())
+					!content.text
+						?.toLowerCase()
+						.includes((runtime.character.name ?? "").toLowerCase())
 			) {
 				logger.debug(
 					"[CommunityInvestor] Agent muted and not mentioned. Ignoring.",

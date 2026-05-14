@@ -29,7 +29,6 @@ import {
   type TextStreamResult,
   type UUID,
 } from "@elizaos/core";
-import sqlPlugin from "@elizaos/plugin-sql";
 
 // ============================================================================
 // TIC-TAC-TOE ENGINE
@@ -382,6 +381,7 @@ interface GameSession {
 }
 
 async function createSession(): Promise<GameSession> {
+  const { default: sqlPlugin } = await import("@elizaos/plugin-sql");
   const task = clack.spinner();
   task.start("Initializing tic-tac-toe agent...");
 

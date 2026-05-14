@@ -12,33 +12,70 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import {
-  assertRequiredVoiceArtifacts,
-  type BargeInInterruptionInput,
-  type FirstResponseLatencyInput,
-  type OptimisticRollbackRestartInput,
-  type PauseContinuationInput,
-  type RequiredVoiceArtifact,
-  scoreBargeInInterruption,
-  scoreFirstResponseLatency,
-  scoreOptimisticRollbackRestart,
-  scorePauseContinuation,
-  scoreTtsAsrRoundTrip,
-  summarizeVoiceE2e,
-  type VoiceE2eCaseResult,
-  VoiceE2eHarnessError,
-} from "../../../plugins/plugin-local-inference/src/services/voice/e2e-harness";
-import {
-  type ElizaInferenceContextHandle,
-  type ElizaInferenceFfi,
-  loadElizaInferenceFfi,
-} from "../../../plugins/plugin-local-inference/src/services/voice/ffi-bindings";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const REPO_ROOT = path.resolve(__dirname, "..", "..", "..");
 const DEFAULT_PHRASE = "Eliza local voice end to end check.";
 const GGUF_MIN_BYTES = 1024 * 1024;
+
+type BargeInInterruptionInput =
+  import("../../../plugins/plugin-local-inference/src/services/voice/e2e-harness").BargeInInterruptionInput;
+type FirstResponseLatencyInput =
+  import("../../../plugins/plugin-local-inference/src/services/voice/e2e-harness").FirstResponseLatencyInput;
+type OptimisticRollbackRestartInput =
+  import("../../../plugins/plugin-local-inference/src/services/voice/e2e-harness").OptimisticRollbackRestartInput;
+type PauseContinuationInput =
+  import("../../../plugins/plugin-local-inference/src/services/voice/e2e-harness").PauseContinuationInput;
+type RequiredVoiceArtifact =
+  import("../../../plugins/plugin-local-inference/src/services/voice/e2e-harness").RequiredVoiceArtifact;
+type VoiceE2eCaseResult =
+  import("../../../plugins/plugin-local-inference/src/services/voice/e2e-harness").VoiceE2eCaseResult;
+type VoiceE2eHarnessModule =
+  typeof import("../../../plugins/plugin-local-inference/src/services/voice/e2e-harness");
+type ElizaInferenceContextHandle =
+  import("../../../plugins/plugin-local-inference/src/services/voice/ffi-bindings").ElizaInferenceContextHandle;
+type ElizaInferenceFfi =
+  import("../../../plugins/plugin-local-inference/src/services/voice/ffi-bindings").ElizaInferenceFfi;
+type ElizaInferenceFfiModule =
+  typeof import("../../../plugins/plugin-local-inference/src/services/voice/ffi-bindings");
+
+let assertRequiredVoiceArtifacts: VoiceE2eHarnessModule["assertRequiredVoiceArtifacts"];
+let scoreBargeInInterruption: VoiceE2eHarnessModule["scoreBargeInInterruption"];
+let scoreFirstResponseLatency: VoiceE2eHarnessModule["scoreFirstResponseLatency"];
+let scoreOptimisticRollbackRestart: VoiceE2eHarnessModule["scoreOptimisticRollbackRestart"];
+let scorePauseContinuation: VoiceE2eHarnessModule["scorePauseContinuation"];
+let scoreTtsAsrRoundTrip: VoiceE2eHarnessModule["scoreTtsAsrRoundTrip"];
+let summarizeVoiceE2e: VoiceE2eHarnessModule["summarizeVoiceE2e"];
+let VoiceE2eHarnessError: VoiceE2eHarnessModule["VoiceE2eHarnessError"];
+let loadElizaInferenceFfi: ElizaInferenceFfiModule["loadElizaInferenceFfi"];
+
+async function loadPluginModules(): Promise<void> {
+  ({
+    assertRequiredVoiceArtifacts,
+    scoreBargeInInterruption,
+    scoreFirstResponseLatency,
+    scoreOptimisticRollbackRestart,
+    scorePauseContinuation,
+    scoreTtsAsrRoundTrip,
+    summarizeVoiceE2e,
+    VoiceE2eHarnessError,
+  } = await import(
+    "../../../plugins/plugin-local-inference/src/services/voice/e2e-harness"
+  ));
+  ({ loadElizaInferenceFfi } = await import(
+    "../../../plugins/plugin-local-inference/src/services/voice/ffi-bindings"
+  ));
+}
+
+function isVoiceE2eHarnessError(
+  err: unknown,
+): err is InstanceType<VoiceE2eHarnessModule["VoiceE2eHarnessError"]> {
+  return (
+    typeof VoiceE2eHarnessError !== "undefined" &&
+    err instanceof VoiceE2eHarnessError
+  );
+}
 
 type CaseName =
   | "roundtrip"
@@ -652,6 +689,7 @@ function round2(value: number): number {
 
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
+  await loadPluginModules();
   const reportPath = args.out ? path.resolve(args.out) : defaultReportPath();
   const events = loadEvents(args.eventsJson);
   const cases: VoiceE2eCaseResult[] = [];
@@ -822,7 +860,7 @@ async function main(): Promise<void> {
 
 main().catch((err) => {
   const message = err instanceof Error ? err.message : String(err);
-  if (err instanceof VoiceE2eHarnessError) {
+  if (isVoiceE2eHarnessError(err)) {
     console.error(`[voice-e2e] ${err.code}: ${message}`);
     process.exit(err.code === "missing-artifact" ? 2 : 3);
   }

@@ -3,14 +3,6 @@ import type { IAgentRuntime } from "@elizaos/core";
 import type { AcpActionService } from "../actions/common.js";
 import type { CodingWorkspaceService } from "../services/workspace-service.js";
 
-export type JsonValue =
-  | string
-  | number
-  | boolean
-  | null
-  | JsonValue[]
-  | { [key: string]: JsonValue };
-
 export interface RouteContext {
   runtime: IAgentRuntime;
   acpService: AcpActionService | null;

@@ -10,14 +10,14 @@ import {
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
-import {
-  elizaClassicPlugin,
-  getElizaGreeting,
-} from "@elizaos/plugin-eliza-classic";
-import localdbPlugin from "@elizaos/plugin-localdb";
 import { v4 as uuidv4 } from "uuid";
 import type { AppConfig, ChatMessage, ProviderMode } from "./types";
 import { getEffectiveMode } from "./types";
+
+const { elizaClassicPlugin, getElizaGreeting } = await import(
+  "@elizaos/plugin-eliza-classic"
+);
+const { default: localdbPlugin } = await import("@elizaos/plugin-localdb");
 
 type RuntimeBundle = {
   runtime: AgentRuntime;

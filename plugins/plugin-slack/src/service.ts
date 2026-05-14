@@ -1100,8 +1100,9 @@ export class SlackService extends Service implements ISlackService {
 
     const existingEntity = await this.runtime.getEntityById(memory.entityId);
     if (!existingEntity) {
-      const user = await this.getUser(message.user, accountId);
-      const displayName = user ? getSlackUserDisplayName(user) : message.user;
+      const userId = message.user ?? "unknown";
+      const user = await this.getUser(userId, accountId);
+      const displayName = user ? getSlackUserDisplayName(user) : userId;
       await this.runtime.createEntity({
         id: memory.entityId,
         names: [displayName],
@@ -2874,14 +2875,14 @@ export class SlackService extends Service implements ISlackService {
       const result = await client.chat.postMessage({
         channel: channelId,
         text: msg,
-        thread_ts: options?.threadTs,
-        reply_broadcast: options?.replyBroadcast,
-        unfurl_links: options?.unfurlLinks,
-        unfurl_media: options?.unfurlMedia,
+        ...(options?.threadTs !== undefined ? { thread_ts: options.threadTs } : {}),
+        ...(options?.replyBroadcast !== undefined ? { reply_broadcast: options.replyBroadcast } : {}),
+        ...(options?.unfurlLinks !== undefined ? { unfurl_links: options.unfurlLinks } : {}),
+        ...(options?.unfurlMedia !== undefined ? { unfurl_media: options.unfurlMedia } : {}),
         mrkdwn: options?.mrkdwn ?? true,
         attachments: options?.attachments as never,
         blocks: options?.blocks as never,
-      });
+      } as Parameters<typeof client.chat.postMessage>[0]);
 
       lastTs = result.ts as string;
     }
@@ -3143,13 +3144,16 @@ export class SlackService extends Service implements ISlackService {
 
     const result = await client.files.uploadV2({
       channel_id: channelId,
-      content: typeof content === "string" ? content : undefined,
-      file: typeof content !== "string" ? content : undefined,
+      ...(typeof content === "string"
+        ? { content }
+        : { file: content }),
       filename,
-      title: options?.title,
-      initial_comment: options?.initialComment,
-      thread_ts: options?.threadTs,
-    });
+      ...(options?.title !== undefined ? { title: options.title } : {}),
+      ...(options?.initialComment !== undefined
+        ? { initial_comment: options.initialComment }
+        : {}),
+      ...(options?.threadTs !== undefined ? { thread_ts: options.threadTs } : {}),
+    } as Parameters<typeof client.files.uploadV2>[0]);
 
     const resultWithFile = result as WebAPICallResult & {
       file?: { id: string; permalink: string };
