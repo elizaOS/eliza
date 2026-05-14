@@ -25,7 +25,6 @@ VERIFIED_KEYS = (
     "qwen3.5-4b",
     "qwen3.5-9b",
     "qwen3.5-27b",
-    "qwen3.6-27b",
 )
 VERIFIED_PUBLIC_NAMES = (
     "eliza-1-0_8b",
@@ -36,15 +35,13 @@ VERIFIED_PUBLIC_NAMES = (
 )
 
 
-# The eliza-1 fused-model line is Qwen3.5/Qwen3.6 only (per the 2026-05
-# operator directive — the Qwen3 dense bases don't work with dflash). The
+# The eliza-1 fused-model line is Qwen3.5 only for active text tiers (per the
+# 2026-05 operator directive — the Qwen3 dense bases don't work with dflash). The
 # smallest tier is qwen3.5-0.8b on Qwen/Qwen3.5-0.8B; 2b/4b are mid-local
-# on Qwen/Qwen3.5-{2B,4B}; 9b stays on Qwen3.5 until an official
-# Qwen/Qwen3.6-9B appears; 27b is the cloud tier on Qwen/Qwen3.6-27B.
-# qwen3.5-27b is retained as a legacy lookup only.
+# on Qwen/Qwen3.5-{2B,4B}; 9b and 27b are the workstation/cloud tiers.
 SMALL_KEYS = ("qwen3.5-0.8b",)
 SMALL_PUBLIC_NAMES = ("eliza-1-0_8b",)
-LARGE_KEYS = ("qwen3.5-2b", "qwen3.5-4b", "qwen3.5-9b", "qwen3.6-27b")
+LARGE_KEYS = ("qwen3.5-2b", "qwen3.5-4b", "qwen3.5-9b", "qwen3.5-27b")
 LARGE_PUBLIC_NAMES = ("eliza-1-2b", "eliza-1-4b", "eliza-1-9b", "eliza-1-27b")
 ALL_KEYS = SMALL_KEYS + LARGE_KEYS
 ALL_PUBLIC_NAMES = SMALL_PUBLIC_NAMES + LARGE_PUBLIC_NAMES
@@ -62,15 +59,13 @@ def test_every_entry_has_publish_metadata() -> None:
         "qwen3.5-2b",
         "qwen3.5-4b",
         "qwen3.5-9b",
-        "qwen3.6-27b",
+        "qwen3.5-27b",
     )
     for key, public in zip(active_public_keys, VERIFIED_PUBLIC_NAMES):
         e = get(key)
         assert e.eliza_short_name == public
         assert e.eliza_repo_id == "elizalabs/eliza-1"
         assert e.abliteration_repo_id == ""
-    assert get("qwen3.5-27b").eliza_short_name == ""
-    assert get("qwen3.5-27b").eliza_repo_id == ""
 
 
 def test_verified_bases_are_not_flagged_unverified() -> None:
@@ -90,7 +85,7 @@ def test_tier_assignments() -> None:
     assert get("qwen3.5-2b").tier == Tier.LOCAL
     assert get("qwen3.5-4b").tier == Tier.LOCAL
     assert get("qwen3.5-9b").tier == Tier.WORKSTATION
-    assert get("qwen3.6-27b").tier == Tier.CLOUD
+    assert get("qwen3.5-27b").tier == Tier.CLOUD
 
 
 def test_by_tier_partitions_the_ladder() -> None:
@@ -98,8 +93,8 @@ def test_by_tier_partitions_the_ladder() -> None:
     assert len(by_tier(Tier.LOCAL)) == 3
     # WORKSTATION: qwen3.5-9b
     assert len(by_tier(Tier.WORKSTATION)) == 1
-    # CLOUD: canonical qwen3.6-27b plus the legacy qwen3.5-27b resolver entry.
-    assert len(by_tier(Tier.CLOUD)) == 2
+    # CLOUD: canonical qwen3.5-27b.
+    assert len(by_tier(Tier.CLOUD)) == 1
 
 
 def test_lookup_by_hf_id_short_name_or_eliza_name() -> None:
@@ -110,12 +105,11 @@ def test_lookup_by_hf_id_short_name_or_eliza_name() -> None:
     assert get("qwen3.5-4b").short_name == "qwen3.5-4b"
     assert get("qwen3.5-9b").short_name == "qwen3.5-9b"
     assert get("qwen3.5-27b").short_name == "qwen3.5-27b"
-    assert get("qwen3.6-27b").short_name == "qwen3.6-27b"
-    assert get("eliza-1-27b").short_name == "qwen3.6-27b"
+    assert get("eliza-1-27b").short_name == "qwen3.5-27b"
 
 
 def test_dflash_drafter_base_is_qwen3_5_for_qwen3_5_targets() -> None:
-    # The Qwen3.5/3.6 target tiers must draft from the Qwen3.5-0.8B-Base
+    # The Qwen3.5 target tiers must draft from the Qwen3.5-0.8B-Base
     # checkpoint — it shares their 248320-token tokenizer (a legacy Qwen3 drafter has the wrong vocab). The shipped drafter GGUF is that base
     # distilled to ~0.6B. Mirrors DEFAULT_STUDENT_BASE in
     # scripts/distill_dflash_drafter.py. Per the 2026-05-12 operator
@@ -151,7 +145,7 @@ def test_inference_budgets_back_filled() -> None:
 
 
 def test_27b_fits_on_48gb_quantized() -> None:
-    assert get("qwen3.6-27b").infer_mem_gb_quantized < 48.0
+    assert get("qwen3.5-27b").infer_mem_gb_quantized < 48.0
 
 
 def test_27b_default_seq_len_leaves_real_headroom() -> None:
@@ -159,9 +153,9 @@ def test_27b_default_seq_len_leaves_real_headroom() -> None:
     (192 GB) cluster and ~6% on 2× H200 — one activation spike OOMed the run.
     Default must stay at or below 64k so the registry default is safe on every
     documented 27B target. Override per run via `--max-seq-len`."""
-    e = get("qwen3.6-27b")
+    e = get("qwen3.5-27b")
     assert e.seq_len <= 65536, (
-        f"qwen3.6-27b seq_len={e.seq_len} > 64k — drift back toward the "
+        f"qwen3.5-27b seq_len={e.seq_len} > 64k — drift back toward the "
         "unsafe 147k default; keep registry default conservative and bump "
         "via `--max-seq-len` per run instead."
     )

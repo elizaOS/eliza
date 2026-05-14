@@ -444,7 +444,14 @@ export type ScheduledTaskLogTransition =
   | "reopened"
   | "expired"
   | "failed"
-  | "rolled_up";
+  | "rolled_up"
+  /**
+   * Emitted when the host can't satisfy the task's `executionProfile` and the
+   * runner downgrades dispatch to `notify-only`. The log row's `detail`
+   * carries `{ originalProfile, substituteProfile: "notify-only", reason }`
+   * so dashboards can show why a heavy task became a notification.
+   */
+  | "substituted";
 
 export interface ScheduledTaskLogEntry {
   logId: string;
