@@ -36,16 +36,16 @@
 import type { DflashGenerateArgs, DflashLlamaServer } from "../dflash-server";
 import { VoiceStartupError } from "./errors";
 import {
-  type DraftProposer,
-  splitTranscriptToTokens,
-  type TargetVerifier,
+	type DraftProposer,
+	splitTranscriptToTokens,
+	type TargetVerifier,
 } from "./pipeline";
 import type {
-  PcmFrame,
-  StreamingTranscriber,
-  TextToken,
-  TranscriptUpdate,
-  VerifierStreamEvent,
+	PcmFrame,
+	StreamingTranscriber,
+	TextToken,
+	TranscriptUpdate,
+	VerifierStreamEvent,
 } from "./types";
 
 /* ------------------------------------------------------------------ */
@@ -62,17 +62,17 @@ import type {
  * actually feeds audio rather than at bridge construction.
  */
 export class MissingAsrTranscriber implements StreamingTranscriber {
-  constructor(private readonly reason: string) {}
-  feed(_frame: PcmFrame): void {
-    throw new VoiceStartupError("missing-fused-build", this.reason);
-  }
-  async flush(): Promise<TranscriptUpdate> {
-    throw new VoiceStartupError("missing-fused-build", this.reason);
-  }
-  on(): () => void {
-    return () => {};
-  }
-  dispose(): void {}
+	constructor(private readonly reason: string) {}
+	feed(_frame: PcmFrame): void {
+		throw new VoiceStartupError("missing-fused-build", this.reason);
+	}
+	async flush(): Promise<TranscriptUpdate> {
+		throw new VoiceStartupError("missing-fused-build", this.reason);
+	}
+	on(): () => void {
+		return () => {};
+	}
+	dispose(): void {}
 }
 
 /* ------------------------------------------------------------------ */
@@ -88,26 +88,26 @@ export class MissingAsrTranscriber implements StreamingTranscriber {
  * fork emits them — `extractVerifierRejectRange`).
  */
 export interface DflashTextRunner {
-  /** True only when a llama-server with a configured `-md` drafter is up. */
-  hasDrafter(): boolean;
-  generateWithVerifierEvents(
-    args: DflashGenerateArgs & {
-      onVerifierEvent: (event: VerifierStreamEvent) => void | Promise<void>;
-    },
-  ): Promise<{ text: string }>;
+	/** True only when a llama-server with a configured `-md` drafter is up. */
+	hasDrafter(): boolean;
+	generateWithVerifierEvents(
+		args: DflashGenerateArgs & {
+			onVerifierEvent: (event: VerifierStreamEvent) => void | Promise<void>;
+		},
+	): Promise<{ text: string }>;
 }
 
 /** Adapt the concrete `DflashLlamaServer` onto `DflashTextRunner`. */
 export function dflashTextRunner(server: DflashLlamaServer): DflashTextRunner {
-  return {
-    hasDrafter() {
-      return server.loadedDrafterModelPath() !== null;
-    },
-    async generateWithVerifierEvents(args) {
-      const { text } = await server.generateWithUsage(args);
-      return { text };
-    },
-  };
+	return {
+		hasDrafter() {
+			return server.loadedDrafterModelPath() !== null;
+		},
+		async generateWithVerifierEvents(args) {
+			const { text } = await server.generateWithUsage(args);
+			return { text };
+		},
+	};
 }
 
 /**
@@ -118,7 +118,7 @@ export function dflashTextRunner(server: DflashLlamaServer): DflashTextRunner {
  * KV between rounds so this is cheap to re-send).
  */
 function prefixToPrompt(prefix: ReadonlyArray<TextToken>): string {
-  return prefix.map((t) => t.text).join("");
+	return prefix.map((t) => t.text).join("");
 }
 
 /**
@@ -137,46 +137,46 @@ function prefixToPrompt(prefix: ReadonlyArray<TextToken>): string {
  * from the same server.
  */
 export class LlamaServerDraftProposer implements DraftProposer {
-  private readonly runner: DflashTextRunner;
+	private readonly runner: DflashTextRunner;
 
-  constructor(runner: DflashTextRunner) {
-    this.runner = runner;
-  }
+	constructor(runner: DflashTextRunner) {
+		this.runner = runner;
+	}
 
-  async propose(args: {
-    prefix: ReadonlyArray<TextToken>;
-    maxDraft: number;
-    cancel: { cancelled: boolean };
-  }): Promise<TextToken[]> {
-    if (args.cancel.cancelled) return [];
-    if (!this.runner.hasDrafter()) {
-      // No drafter wired ⇒ no speculation this round. The verifier still
-      // produces one token per round (plain AR step), so generation
-      // continues; DFlash being mandatory is enforced at server-launch
-      // time, not here.
-      return [];
-    }
-    const accepted: TextToken[] = [];
-    let nextIndex =
-      args.prefix.length > 0
-        ? args.prefix[args.prefix.length - 1].index + 1
-        : 0;
-    await this.runner.generateWithVerifierEvents({
-      prompt: prefixToPrompt(args.prefix),
-      maxTokens: Math.max(1, Math.floor(args.maxDraft)),
-      temperature: 0,
-      signal: cancelToSignal(args.cancel),
-      onVerifierEvent: (event) => {
-        if (event.kind !== "accept") return;
-        for (const tok of event.tokens) {
-          if (accepted.length >= args.maxDraft) break;
-          accepted.push({ index: nextIndex++, text: tok.text });
-        }
-      },
-    });
-    if (args.cancel.cancelled) return [];
-    return accepted.slice(0, Math.max(1, Math.floor(args.maxDraft)));
-  }
+	async propose(args: {
+		prefix: ReadonlyArray<TextToken>;
+		maxDraft: number;
+		cancel: { cancelled: boolean };
+	}): Promise<TextToken[]> {
+		if (args.cancel.cancelled) return [];
+		if (!this.runner.hasDrafter()) {
+			// No drafter wired ⇒ no speculation this round. The verifier still
+			// produces one token per round (plain AR step), so generation
+			// continues; DFlash being mandatory is enforced at server-launch
+			// time, not here.
+			return [];
+		}
+		const accepted: TextToken[] = [];
+		let nextIndex =
+			args.prefix.length > 0
+				? args.prefix[args.prefix.length - 1].index + 1
+				: 0;
+		await this.runner.generateWithVerifierEvents({
+			prompt: prefixToPrompt(args.prefix),
+			maxTokens: Math.max(1, Math.floor(args.maxDraft)),
+			temperature: 0,
+			signal: cancelToSignal(args.cancel),
+			onVerifierEvent: (event) => {
+				if (event.kind !== "accept") return;
+				for (const tok of event.tokens) {
+					if (accepted.length >= args.maxDraft) break;
+					accepted.push({ index: nextIndex++, text: tok.text });
+				}
+			},
+		});
+		if (args.cancel.cancelled) return [];
+		return accepted.slice(0, Math.max(1, Math.floor(args.maxDraft)));
+	}
 }
 
 /**
@@ -193,61 +193,61 @@ export class LlamaServerDraftProposer implements DraftProposer {
  * server's accept/reject split rather than re-deriving it.
  */
 export class LlamaServerTargetVerifier implements TargetVerifier {
-  private readonly runner: DflashTextRunner;
-  private readonly maxStep: number;
+	private readonly runner: DflashTextRunner;
+	private readonly maxStep: number;
 
-  constructor(runner: DflashTextRunner, opts: { maxStep?: number } = {}) {
-    this.runner = runner;
-    this.maxStep = Math.max(1, Math.floor(opts.maxStep ?? 16));
-  }
+	constructor(runner: DflashTextRunner, opts: { maxStep?: number } = {}) {
+		this.runner = runner;
+		this.maxStep = Math.max(1, Math.floor(opts.maxStep ?? 16));
+	}
 
-  async verify(args: {
-    prefix: ReadonlyArray<TextToken>;
-    draft: ReadonlyArray<TextToken>;
-    cancel: { cancelled: boolean };
-  }): Promise<{ accepted: TextToken[]; done: boolean }> {
-    if (args.cancel.cancelled) return { accepted: [], done: false };
-    // Step budget: enough to confirm the whole draft window plus one
-    // correction token (and a little headroom for the model's own bonus
-    // tokens past a fully-accepted draft).
-    const stepTokens = Math.min(
-      this.maxStep,
-      Math.max(1, args.draft.length + 1),
-    );
-    let nextIndex =
-      args.prefix.length > 0
-        ? args.prefix[args.prefix.length - 1].index + 1
-        : 0;
-    const produced: TextToken[] = [];
-    let done = false;
-    const { text } = await this.runner.generateWithVerifierEvents({
-      prompt: prefixToPrompt(args.prefix),
-      maxTokens: stepTokens,
-      temperature: 0,
-      signal: cancelToSignal(args.cancel),
-      onVerifierEvent: (event) => {
-        if (event.kind === "accept") {
-          for (const tok of event.tokens) {
-            produced.push({ index: nextIndex++, text: tok.text });
-          }
-        }
-        // reject events: the server already retracted those positions
-        // from its own stream, so we just don't append them. Nothing else
-        // to do here — the chunker rollback is driven by the pipeline
-        // comparing `accepted` against `draft`.
-      },
-    });
-    if (args.cancel.cancelled) return { accepted: [], done: false };
-    if (produced.length === 0 && text.length > 0) {
-      // Non-streaming server (no per-delta events): fall back to splitting
-      // the returned text into tokens.
-      produced.push(...splitTranscriptToTokens(text, nextIndex));
-    }
-    // The model reached its natural stop when it produced fewer tokens
-    // than the step budget (it hit an EOS / stop sequence before the cap).
-    done = produced.length < stepTokens;
-    return { accepted: produced, done };
-  }
+	async verify(args: {
+		prefix: ReadonlyArray<TextToken>;
+		draft: ReadonlyArray<TextToken>;
+		cancel: { cancelled: boolean };
+	}): Promise<{ accepted: TextToken[]; done: boolean }> {
+		if (args.cancel.cancelled) return { accepted: [], done: false };
+		// Step budget: enough to confirm the whole draft window plus one
+		// correction token (and a little headroom for the model's own bonus
+		// tokens past a fully-accepted draft).
+		const stepTokens = Math.min(
+			this.maxStep,
+			Math.max(1, args.draft.length + 1),
+		);
+		let nextIndex =
+			args.prefix.length > 0
+				? args.prefix[args.prefix.length - 1].index + 1
+				: 0;
+		const produced: TextToken[] = [];
+		let done = false;
+		const { text } = await this.runner.generateWithVerifierEvents({
+			prompt: prefixToPrompt(args.prefix),
+			maxTokens: stepTokens,
+			temperature: 0,
+			signal: cancelToSignal(args.cancel),
+			onVerifierEvent: (event) => {
+				if (event.kind === "accept") {
+					for (const tok of event.tokens) {
+						produced.push({ index: nextIndex++, text: tok.text });
+					}
+				}
+				// reject events: the server already retracted those positions
+				// from its own stream, so we just don't append them. Nothing else
+				// to do here — the chunker rollback is driven by the pipeline
+				// comparing `accepted` against `draft`.
+			},
+		});
+		if (args.cancel.cancelled) return { accepted: [], done: false };
+		if (produced.length === 0 && text.length > 0) {
+			// Non-streaming server (no per-delta events): fall back to splitting
+			// the returned text into tokens.
+			produced.push(...splitTranscriptToTokens(text, nextIndex));
+		}
+		// The model reached its natural stop when it produced fewer tokens
+		// than the step budget (it hit an EOS / stop sequence before the cap).
+		done = produced.length < stepTokens;
+		return { accepted: produced, done };
+	}
 }
 
 /* ------------------------------------------------------------------ */
@@ -268,50 +268,50 @@ export class LlamaServerTargetVerifier implements TargetVerifier {
  * but the hook-driven path is what voice barge-ins use in production.
  */
 export interface CancelTokenWithSignal {
-  cancelled: boolean;
-  /**
-   * Optional hook the token's owner fires synchronously when `cancelled`
-   * flips from false to true. The listener returns nothing; calling it
-   * after `cancelled` has already been set is a harmless no-op.
-   */
-  onCancel?: (listener: () => void) => () => void;
+	cancelled: boolean;
+	/**
+	 * Optional hook the token's owner fires synchronously when `cancelled`
+	 * flips from false to true. The listener returns nothing; calling it
+	 * after `cancelled` has already been set is a harmless no-op.
+	 */
+	onCancel?: (listener: () => void) => () => void;
 }
 
 function cancelToSignal(cancel: CancelTokenWithSignal): AbortSignal {
-  const controller = new AbortController();
-  if (cancel.cancelled) {
-    controller.abort();
-    return controller.signal;
-  }
-  if (typeof cancel.onCancel === "function") {
-    // Event-driven path — no polling. The owner fires the listener
-    // synchronously on barge-in; we abort the HTTP request at that
-    // instant. `once`: AbortController.abort() is idempotent but we
-    // still want to drop the listener to free the closure.
-    const unsubscribe = cancel.onCancel(() => {
-      controller.abort();
-    });
-    controller.signal.addEventListener("abort", () => unsubscribe(), {
-      once: true,
-    });
-    return controller.signal;
-  }
-  // Fallback: polling. Kept for tokens that don't expose the hook (e.g.
-  // tests that pass a plain `{cancelled}` POJO). The interval is short
-  // enough that an aborted-but-unhooked token still lands the abort
-  // before a typical kernel tick completes.
-  const timer = setInterval(() => {
-    if (cancel.cancelled) {
-      controller.abort();
-      clearInterval(timer);
-    }
-  }, 10);
-  // Don't keep the event loop alive purely for this poll.
-  if (typeof timer === "object" && timer && "unref" in timer) {
-    (timer as { unref(): void }).unref();
-  }
-  controller.signal.addEventListener("abort", () => clearInterval(timer), {
-    once: true,
-  });
-  return controller.signal;
+	const controller = new AbortController();
+	if (cancel.cancelled) {
+		controller.abort();
+		return controller.signal;
+	}
+	if (typeof cancel.onCancel === "function") {
+		// Event-driven path — no polling. The owner fires the listener
+		// synchronously on barge-in; we abort the HTTP request at that
+		// instant. `once`: AbortController.abort() is idempotent but we
+		// still want to drop the listener to free the closure.
+		const unsubscribe = cancel.onCancel(() => {
+			controller.abort();
+		});
+		controller.signal.addEventListener("abort", () => unsubscribe(), {
+			once: true,
+		});
+		return controller.signal;
+	}
+	// Fallback: polling. Kept for tokens that don't expose the hook (e.g.
+	// tests that pass a plain `{cancelled}` POJO). The interval is short
+	// enough that an aborted-but-unhooked token still lands the abort
+	// before a typical kernel tick completes.
+	const timer = setInterval(() => {
+		if (cancel.cancelled) {
+			controller.abort();
+			clearInterval(timer);
+		}
+	}, 10);
+	// Don't keep the event loop alive purely for this poll.
+	if (typeof timer === "object" && timer && "unref" in timer) {
+		(timer as { unref(): void }).unref();
+	}
+	controller.signal.addEventListener("abort", () => clearInterval(timer), {
+		once: true,
+	});
+	return controller.signal;
 }

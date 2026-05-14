@@ -85,14 +85,8 @@
     "@elizaos/capacitor-system": "workspace:*",
     "@elizaos/capacitor-talkmode": "workspace:*",
     "@elizaos/capacitor-websiteblocker": "workspace:*",
-    "node-llama-cpp": "3.18.1",
-    "onnxruntime-node": "1.24.3",
     "sharp": "^0.34.5"
   },
-  "trustedDependencies": [
-    "node-llama-cpp",
-    "onnxruntime-node"
-  ],
   "dependencies": {
     "@capacitor-community/sqlite": "^7.0.0",
     "@capacitor/barcode-scanner": "^3.0.0",
@@ -106,11 +100,11 @@
     "@elizaos/capacitor-llama": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-anthropic": "workspace:*",
-    "@elizaos/plugin-aosp-local-inference": "workspace:*",
     "@elizaos/plugin-browser": "workspace:*",
     "@elizaos/plugin-edge-tts": "workspace:*",
     "@elizaos/plugin-elizacloud": "workspace:*",
     "@elizaos/plugin-groq": "workspace:*",
+    "@elizaos/plugin-local-inference": "workspace:*",
     "@elizaos/plugin-openai": "workspace:*",
     "@elizaos/plugin-sql": "workspace:*",
     "@elizaos/plugin-wechat": "workspace:*",
@@ -119,7 +113,6 @@
     "@elizaos/skills": "workspace:*",
     "@elizaos/ui": "workspace:*",
     "@elizaos/vault": "workspace:*",
-    "@huggingface/transformers": "^4.0.0",
     "@node-rs/argon2": "^2.0.2",
     "chalk": "^5.3.0",
     "commander": "^14.0.0",

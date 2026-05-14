@@ -28,8 +28,8 @@
  */
 
 import type {
-  CheckpointHandle,
-  CheckpointManagerLike,
+	CheckpointHandle,
+	CheckpointManagerLike,
 } from "./checkpoint-manager";
 import type { ContextPartial } from "./eager-context-builder";
 
@@ -43,80 +43,80 @@ import type { ContextPartial } from "./eager-context-builder";
  * user has stopped speaking (from VAD hangover progress or the EOT classifier).
  */
 export interface PrefillOptimisticArgs {
-  /** Base URL of the llama-server (`http://host:port`). */
-  baseUrl: string;
-  /** Slot id pinning this conversation. */
-  slotId: string;
-  /** Partial transcript to prefill against.  Non-empty. */
-  partialText: string;
-  /**
-   * Probability the partial is end-of-turn (0..1).  Today recorded as
-   * telemetry only; once `/v1/prefill` lands the server uses it to decide
-   * whether to also kick the drafter inline.
-   */
-  eotProb: number;
-  /**
-   * Deterministic context from `EagerContextBuilder` (C3).  Used to build the
-   * system prompt passed to the prefill `/completion` call so the KV cache
-   * covers both the system prompt and the partial transcript.  Optional — when
-   * absent, only the partial transcript is prefilled.
-   */
-  context?: ContextPartial;
+	/** Base URL of the llama-server (`http://host:port`). */
+	baseUrl: string;
+	/** Slot id pinning this conversation. */
+	slotId: string;
+	/** Partial transcript to prefill against.  Non-empty. */
+	partialText: string;
+	/**
+	 * Probability the partial is end-of-turn (0..1).  Today recorded as
+	 * telemetry only; once `/v1/prefill` lands the server uses it to decide
+	 * whether to also kick the drafter inline.
+	 */
+	eotProb: number;
+	/**
+	 * Deterministic context from `EagerContextBuilder` (C3).  Used to build the
+	 * system prompt passed to the prefill `/completion` call so the KV cache
+	 * covers both the system prompt and the partial transcript.  Optional — when
+	 * absent, only the partial transcript is prefilled.
+	 */
+	context?: ContextPartial;
 }
 
 export interface PrefillOptimisticResult {
-  /**
-   * Handle to the POST-prefill KV snapshot.  Pass to
-   * `CheckpointManager.restoreCheckpoint` on SPEECH_END so the verifier
-   * resumes from the prefilled position.
-   */
-  checkpointHandle: CheckpointHandle;
-  /**
-   * Approximate token count of the prefilled text.  Derived from a rough
-   * whitespace tokenizer since the REST stub doesn't return a token count;
-   * once the upstream endpoint lands, the server returns the real count.
-   */
-  tokenCount: number;
-  /**
-   * Wall-clock milliseconds the prefill round-trip took (phases 1–3).
-   */
-  prefillMs: number;
-  /**
-   * Backend label.  `slot-save-stub` = pre-upstream emulation path;
-   * `prefill-v1` = native `/v1/prefill` endpoint.
-   */
-  backend: "slot-save-stub" | "prefill-v1";
-  /**
-   * End-of-turn probability echoed back from the server.  Today equals the
-   * caller's `eotProb` (the stub has nothing to refine it with); once the
-   * upstream endpoint lands, the server returns its own model estimate.
-   */
-  eotProb: number;
+	/**
+	 * Handle to the POST-prefill KV snapshot.  Pass to
+	 * `CheckpointManager.restoreCheckpoint` on SPEECH_END so the verifier
+	 * resumes from the prefilled position.
+	 */
+	checkpointHandle: CheckpointHandle;
+	/**
+	 * Approximate token count of the prefilled text.  Derived from a rough
+	 * whitespace tokenizer since the REST stub doesn't return a token count;
+	 * once the upstream endpoint lands, the server returns the real count.
+	 */
+	tokenCount: number;
+	/**
+	 * Wall-clock milliseconds the prefill round-trip took (phases 1–3).
+	 */
+	prefillMs: number;
+	/**
+	 * Backend label.  `slot-save-stub` = pre-upstream emulation path;
+	 * `prefill-v1` = native `/v1/prefill` endpoint.
+	 */
+	backend: "slot-save-stub" | "prefill-v1";
+	/**
+	 * End-of-turn probability echoed back from the server.  Today equals the
+	 * caller's `eotProb` (the stub has nothing to refine it with); once the
+	 * upstream endpoint lands, the server returns its own model estimate.
+	 */
+	eotProb: number;
 }
 
 export interface PrefillOptimisticOptions {
-  checkpointManager: CheckpointManagerLike;
-  /**
-   * Name to use for the PRE-prefill snapshot (C1 — used by the rollback path
-   * on SPEECH_ACTIVE_REBOUND).  Defaults to `pre-prefill`.
-   */
-  preCheckpointName?: string;
-  /**
-   * Name to use for the POST-prefill snapshot (the one the verifier starts
-   * from on SPEECH_END).  Defaults to `post-prefill`.
-   */
-  postCheckpointName?: string;
-  /**
-   * Optional fetch implementation for tests.  Defaults to global `fetch`.
-   */
-  fetchImpl?: typeof fetch;
-  /**
-   * Request timeout for the `/completion` prefill call (ms).  Default 5 000 ms.
-   * The call is a no-sample prefill-only pass, so it should complete in
-   * O(transcript_tokens / throughput) — typically well under 1 s for short
-   * partials.
-   */
-  prefillTimeoutMs?: number;
+	checkpointManager: CheckpointManagerLike;
+	/**
+	 * Name to use for the PRE-prefill snapshot (C1 — used by the rollback path
+	 * on SPEECH_ACTIVE_REBOUND).  Defaults to `pre-prefill`.
+	 */
+	preCheckpointName?: string;
+	/**
+	 * Name to use for the POST-prefill snapshot (the one the verifier starts
+	 * from on SPEECH_END).  Defaults to `post-prefill`.
+	 */
+	postCheckpointName?: string;
+	/**
+	 * Optional fetch implementation for tests.  Defaults to global `fetch`.
+	 */
+	fetchImpl?: typeof fetch;
+	/**
+	 * Request timeout for the `/completion` prefill call (ms).  Default 5 000 ms.
+	 * The call is a no-sample prefill-only pass, so it should complete in
+	 * O(transcript_tokens / throughput) — typically well under 1 s for short
+	 * partials.
+	 */
+	prefillTimeoutMs?: number;
 }
 
 const DEFAULT_PRE_CHECKPOINT_NAME = "pre-prefill";
@@ -141,60 +141,60 @@ const DEFAULT_PREFILL_TIMEOUT_MS = 5_000;
  *     prefill RTT.
  */
 export async function prefillOptimistic(
-  args: PrefillOptimisticArgs,
-  opts: PrefillOptimisticOptions,
+	args: PrefillOptimisticArgs,
+	opts: PrefillOptimisticOptions,
 ): Promise<PrefillOptimisticResult> {
-  assertPartialText(args.partialText);
-  assertEotProb(args.eotProb);
-  assertBaseUrl(args.baseUrl);
+	assertPartialText(args.partialText);
+	assertEotProb(args.eotProb);
+	assertBaseUrl(args.baseUrl);
 
-  const startMs = Date.now();
-  const fetchImpl = opts.fetchImpl ?? fetch;
-  const preName = opts.preCheckpointName ?? DEFAULT_PRE_CHECKPOINT_NAME;
-  const postName = opts.postCheckpointName ?? DEFAULT_POST_CHECKPOINT_NAME;
-  const timeoutMs = opts.prefillTimeoutMs ?? DEFAULT_PREFILL_TIMEOUT_MS;
+	const startMs = Date.now();
+	const fetchImpl = opts.fetchImpl ?? fetch;
+	const preName = opts.preCheckpointName ?? DEFAULT_PRE_CHECKPOINT_NAME;
+	const postName = opts.postCheckpointName ?? DEFAULT_POST_CHECKPOINT_NAME;
+	const timeoutMs = opts.prefillTimeoutMs ?? DEFAULT_PREFILL_TIMEOUT_MS;
 
-  // ------------------------------------------------------------------
-  // Phase 1: snapshot pre-user-message KV state (rollback target for
-  //          SPEECH_ACTIVE_REBOUND).
-  // ------------------------------------------------------------------
-  await opts.checkpointManager.saveCheckpoint(args.slotId, preName);
+	// ------------------------------------------------------------------
+	// Phase 1: snapshot pre-user-message KV state (rollback target for
+	//          SPEECH_ACTIVE_REBOUND).
+	// ------------------------------------------------------------------
+	await opts.checkpointManager.saveCheckpoint(args.slotId, preName);
 
-  // ------------------------------------------------------------------
-  // Phase 2: POST to /completion with the partial text to warm the KV
-  //          cache.  We request max_tokens=0 / stream=false so the server
-  //          only runs the prefill pass without sampling any tokens.
-  //
-  //          TODO(upstream-fork-PR-#TBD): replace this with a single
-  //          POST /v1/prefill once the upstream endpoint lands.
-  // ------------------------------------------------------------------
-  await runPrefillCompletion({
-    baseUrl: args.baseUrl,
-    partialText: args.partialText,
-    context: args.context,
-    timeoutMs,
-    fetchImpl,
-  });
+	// ------------------------------------------------------------------
+	// Phase 2: POST to /completion with the partial text to warm the KV
+	//          cache.  We request max_tokens=0 / stream=false so the server
+	//          only runs the prefill pass without sampling any tokens.
+	//
+	//          TODO(upstream-fork-PR-#TBD): replace this with a single
+	//          POST /v1/prefill once the upstream endpoint lands.
+	// ------------------------------------------------------------------
+	await runPrefillCompletion({
+		baseUrl: args.baseUrl,
+		partialText: args.partialText,
+		context: args.context,
+		timeoutMs,
+		fetchImpl,
+	});
 
-  // ------------------------------------------------------------------
-  // Phase 3: snapshot post-prefill KV state (the handle the verifier
-  //          resumes from on SPEECH_END).
-  // ------------------------------------------------------------------
-  const postHandle = await opts.checkpointManager.saveCheckpoint(
-    args.slotId,
-    postName,
-  );
+	// ------------------------------------------------------------------
+	// Phase 3: snapshot post-prefill KV state (the handle the verifier
+	//          resumes from on SPEECH_END).
+	// ------------------------------------------------------------------
+	const postHandle = await opts.checkpointManager.saveCheckpoint(
+		args.slotId,
+		postName,
+	);
 
-  const prefillMs = Date.now() - startMs;
-  const tokenCount = estimateTokenCount(args.partialText);
+	const prefillMs = Date.now() - startMs;
+	const tokenCount = estimateTokenCount(args.partialText);
 
-  return {
-    checkpointHandle: postHandle,
-    tokenCount,
-    prefillMs,
-    backend: "slot-save-stub",
-    eotProb: args.eotProb,
-  };
+	return {
+		checkpointHandle: postHandle,
+		tokenCount,
+		prefillMs,
+		backend: "slot-save-stub",
+		eotProb: args.eotProb,
+	};
 }
 
 // ---------------------------------------------------------------------------
@@ -202,11 +202,11 @@ export async function prefillOptimistic(
 // ---------------------------------------------------------------------------
 
 interface RunPrefillCompletionOpts {
-  baseUrl: string;
-  partialText: string;
-  context?: ContextPartial;
-  timeoutMs: number;
-  fetchImpl: typeof fetch;
+	baseUrl: string;
+	partialText: string;
+	context?: ContextPartial;
+	timeoutMs: number;
+	fetchImpl: typeof fetch;
 }
 
 /**
@@ -219,62 +219,62 @@ interface RunPrefillCompletionOpts {
  * crash.  The checkpoint state is still valid (phase 1 snapshot is intact).
  */
 async function runPrefillCompletion(
-  opts: RunPrefillCompletionOpts,
+	opts: RunPrefillCompletionOpts,
 ): Promise<void> {
-  const { baseUrl, partialText, context, timeoutMs, fetchImpl } = opts;
+	const { baseUrl, partialText, context, timeoutMs, fetchImpl } = opts;
 
-  // Build the prompt: deterministic system blocks (if any) + partial transcript.
-  const systemText = context?.systemBlocks.filter(Boolean).join("\n\n") ?? "";
-  const historyLines = (context?.historyBlocks ?? [])
-    .map((h) => `${h.role === "user" ? "User" : "Assistant"}: ${h.content}`)
-    .join("\n");
+	// Build the prompt: deterministic system blocks (if any) + partial transcript.
+	const systemText = context?.systemBlocks.filter(Boolean).join("\n\n") ?? "";
+	const historyLines = (context?.historyBlocks ?? [])
+		.map((h) => `${h.role === "user" ? "User" : "Assistant"}: ${h.content}`)
+		.join("\n");
 
-  const promptParts: string[] = [];
-  if (systemText) promptParts.push(systemText);
-  if (historyLines) promptParts.push(historyLines);
-  promptParts.push(`User: ${partialText}`);
-  const prompt = promptParts.join("\n\n");
+	const promptParts: string[] = [];
+	if (systemText) promptParts.push(systemText);
+	if (historyLines) promptParts.push(historyLines);
+	promptParts.push(`User: ${partialText}`);
+	const prompt = promptParts.join("\n\n");
 
-  const url = `${baseUrl.replace(/\/$/, "")}/completion`;
-  const body = {
-    prompt,
-    // Zero tokens — prefill only, no decode.
-    n_predict: 0,
-    // Prefill into the cached slot.
-    cache_prompt: true,
-    // No sampling needed.
-    stream: false,
-  };
+	const url = `${baseUrl.replace(/\/$/, "")}/completion`;
+	const body = {
+		prompt,
+		// Zero tokens — prefill only, no decode.
+		n_predict: 0,
+		// Prefill into the cached slot.
+		cache_prompt: true,
+		// No sampling needed.
+		stream: false,
+	};
 
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const resp = await fetchImpl(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-      signal: controller.signal,
-    });
-    if (!resp.ok) {
-      // Non-200 — prefill attempt failed, but we continue (phase 3 still runs).
-      // In the real `/v1/prefill` path the server would surface a clear error;
-      // for the stub we tolerate it.
-      console.warn(
-        `[prefill-client] /completion returned HTTP ${resp.status} — continuing without prefill warm`,
-      );
-    }
-  } catch (err) {
-    // Timeout or network failure — swallow.
-    const reason =
-      err instanceof Error && err.name === "AbortError"
-        ? "timeout"
-        : String(err);
-    console.warn(
-      `[prefill-client] /completion prefill failed (${reason}) — continuing without prefill warm`,
-    );
-  } finally {
-    clearTimeout(timer);
-  }
+	const controller = new AbortController();
+	const timer = setTimeout(() => controller.abort(), timeoutMs);
+	try {
+		const resp = await fetchImpl(url, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify(body),
+			signal: controller.signal,
+		});
+		if (!resp.ok) {
+			// Non-200 — prefill attempt failed, but we continue (phase 3 still runs).
+			// In the real `/v1/prefill` path the server would surface a clear error;
+			// for the stub we tolerate it.
+			console.warn(
+				`[prefill-client] /completion returned HTTP ${resp.status} — continuing without prefill warm`,
+			);
+		}
+	} catch (err) {
+		// Timeout or network failure — swallow.
+		const reason =
+			err instanceof Error && err.name === "AbortError"
+				? "timeout"
+				: String(err);
+		console.warn(
+			`[prefill-client] /completion prefill failed (${reason}) — continuing without prefill warm`,
+		);
+	} finally {
+		clearTimeout(timer);
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -286,29 +286,29 @@ async function runPrefillCompletion(
  * server-reported count once the upstream `/v1/prefill` endpoint lands.
  */
 function estimateTokenCount(text: string): number {
-  return text.trim().split(/\s+/).filter(Boolean).length;
+	return text.trim().split(/\s+/).filter(Boolean).length;
 }
 
 function assertPartialText(s: string): void {
-  if (typeof s !== "string" || s.trim().length === 0) {
-    throw new TypeError(
-      `[prefill-client] partialText must be a non-empty string (got ${JSON.stringify(s)})`,
-    );
-  }
+	if (typeof s !== "string" || s.trim().length === 0) {
+		throw new TypeError(
+			`[prefill-client] partialText must be a non-empty string (got ${JSON.stringify(s)})`,
+		);
+	}
 }
 
 function assertEotProb(p: number): void {
-  if (typeof p !== "number" || !Number.isFinite(p) || p < 0 || p > 1) {
-    throw new TypeError(
-      `[prefill-client] eotProb must be a finite number in [0, 1] (got ${p})`,
-    );
-  }
+	if (typeof p !== "number" || !Number.isFinite(p) || p < 0 || p > 1) {
+		throw new TypeError(
+			`[prefill-client] eotProb must be a finite number in [0, 1] (got ${p})`,
+		);
+	}
 }
 
 function assertBaseUrl(url: string): void {
-  if (typeof url !== "string" || url.trim().length === 0) {
-    throw new TypeError(
-      `[prefill-client] baseUrl must be a non-empty string (got ${JSON.stringify(url)})`,
-    );
-  }
+	if (typeof url !== "string" || url.trim().length === 0) {
+		throw new TypeError(
+			`[prefill-client] baseUrl must be a non-empty string (got ${JSON.stringify(url)})`,
+		);
+	}
 }

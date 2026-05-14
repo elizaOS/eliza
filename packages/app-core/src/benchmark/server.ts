@@ -384,7 +384,7 @@ export async function startBenchmarkServer() {
     "@elizaos/plugin-elizacloud", // Requires elizaOS cloud auth, conflicts with local LLM
   ]);
 
-  // Skip `@elizaos/plugin-local-embedding` by default in benchmark mode:
+  // Skip `@elizaos/plugin-local-inference` by default in benchmark mode:
   // - It downloads a ~500MB GGUF from `huggingface.co/elizaos/eliza-1-0_6b`
   //   on first `TEXT_EMBEDDING` call. The repo is gated/private, so every turn
   //   spams a 401 from HuggingFace.
@@ -395,7 +395,7 @@ export async function startBenchmarkServer() {
   const skipEmbeddingPlugin =
     (process.env.ELIZA_BENCH_SKIP_EMBEDDING ?? "1") !== "0";
   if (skipEmbeddingPlugin) {
-    skipPlugins.add("@elizaos/plugin-local-embedding");
+    skipPlugins.add("@elizaos/plugin-local-inference");
   }
 
   const skipCorePlugins = process.env.ELIZA_BENCH_SKIP_CORE_PLUGINS === "true";
@@ -502,7 +502,7 @@ export async function startBenchmarkServer() {
       name: "@elizaos/bench-stub-embedding",
       description:
         "Benchmark-mode zero-vector TEXT_EMBEDDING handler. Replaces " +
-        "@elizaos/plugin-local-embedding so we never download the gated " +
+        "@elizaos/plugin-local-inference so we never download the gated " +
         "HuggingFace GGUF on every turn.",
       // Higher than local-embedding's `priority: 10` so we win even if a
       // CORE_PLUGINS race were to register a competing handler later.
@@ -515,7 +515,7 @@ export async function startBenchmarkServer() {
     plugins.push(toPlugin(benchEmbeddingPlugin, "bench-stub-embedding"));
     elizaLogger.info(
       `[bench] Registered zero-vector TEXT_EMBEDDING stub (dim=${EMBEDDING_DIMENSIONS}); ` +
-        "set ELIZA_BENCH_SKIP_EMBEDDING=0 to use @elizaos/plugin-local-embedding instead.",
+        "set ELIZA_BENCH_SKIP_EMBEDDING=0 to use @elizaos/plugin-local-inference instead.",
     );
   }
 
@@ -625,7 +625,7 @@ export async function startBenchmarkServer() {
       );
       if (strippedEmbedding) {
         elizaLogger.info(
-          "[bench] Cerebras detected: removed openai plugin's TEXT_EMBEDDING handler so @elizaos/plugin-local-embedding serves embeddings.",
+          "[bench] Cerebras detected: removed openai plugin's TEXT_EMBEDDING handler so @elizaos/plugin-local-inference serves embeddings.",
         );
       }
     } catch (error: unknown) {

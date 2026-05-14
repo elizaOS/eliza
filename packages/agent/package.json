@@ -112,7 +112,6 @@
     "@elizaos/plugin-discord": "workspace:*",
     "@elizaos/plugin-elizacloud": "workspace:*",
     "@elizaos/plugin-imessage": "workspace:*",
-    "@elizaos/plugin-local-embedding": "workspace:*",
     "@elizaos/plugin-local-inference": "workspace:*",
     "@elizaos/plugin-mcp": "workspace:*",
     "@elizaos/plugin-mlx": "workspace:*",

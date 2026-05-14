@@ -31,8 +31,8 @@ import type { HandlerRegistration } from "./handler-registry";
 import { handlerRegistry } from "./handler-registry";
 import { policyEngine } from "./routing-policy";
 import {
-  DEFAULT_ROUTING_POLICY,
-  readRoutingPreferences,
+	DEFAULT_ROUTING_POLICY,
+	readRoutingPreferences,
 } from "./routing-preferences";
 import { AGENT_MODEL_SLOTS, type AgentModelSlot } from "./types";
 
@@ -50,197 +50,197 @@ const ROUTER_PRIORITY = Number.MAX_SAFE_INTEGER;
  * we can call it and await a result.
  */
 type AnyHandler = (
-  runtime: IAgentRuntime,
-  params: Record<string, unknown>,
+	runtime: IAgentRuntime,
+	params: Record<string, unknown>,
 ) => Promise<unknown>;
 
 function slotToModelType(slot: AgentModelSlot): string | undefined {
-  switch (slot) {
-    case "TEXT_SMALL":
-      return ModelType.TEXT_SMALL;
-    case "TEXT_LARGE":
-      return ModelType.TEXT_LARGE;
-    case "TEXT_EMBEDDING":
-      return ModelType.TEXT_EMBEDDING;
-    case "TEXT_TO_SPEECH":
-      return ModelType.TEXT_TO_SPEECH;
-    case "TRANSCRIPTION":
-      return ModelType.TRANSCRIPTION;
-  }
+	switch (slot) {
+		case "TEXT_SMALL":
+			return ModelType.TEXT_SMALL;
+		case "TEXT_LARGE":
+			return ModelType.TEXT_LARGE;
+		case "TEXT_EMBEDDING":
+			return ModelType.TEXT_EMBEDDING;
+		case "TEXT_TO_SPEECH":
+			return ModelType.TEXT_TO_SPEECH;
+		case "TRANSCRIPTION":
+			return ModelType.TRANSCRIPTION;
+	}
 }
 
 function modelTypeToSlot(modelType: string): AgentModelSlot | null {
-  for (const slot of AGENT_MODEL_SLOTS) {
-    if (slotToModelType(slot) === modelType) return slot;
-  }
-  return null;
+	for (const slot of AGENT_MODEL_SLOTS) {
+		if (slotToModelType(slot) === modelType) return slot;
+	}
+	return null;
 }
 
 function shouldForceLocalInference(
-  policy: string,
-  preferredProvider: string | null,
+	policy: string,
+	preferredProvider: string | null,
 ): boolean {
-  return policy === "manual" && preferredProvider === "eliza-local-inference";
+	return policy === "manual" && preferredProvider === "eliza-local-inference";
 }
 
 function getRuntimeModelCandidates(
-  runtime: IAgentRuntime,
-  modelType: string,
+	runtime: IAgentRuntime,
+	modelType: string,
 ): HandlerRegistration[] {
-  const models = (runtime as { models?: unknown }).models;
-  if (!(models instanceof Map)) return [];
-  const registrations = models.get(modelType);
-  if (!Array.isArray(registrations)) return [];
-  return registrations
-    .filter(
-      (
-        entry,
-      ): entry is {
-        provider: string;
-        priority?: number;
-        handler: HandlerRegistration["handler"];
-      } =>
-        entry &&
-        typeof entry === "object" &&
-        typeof (entry as { provider?: unknown }).provider === "string" &&
-        (entry as { provider: string }).provider !== ROUTER_PROVIDER &&
-        typeof (entry as { handler?: unknown }).handler === "function",
-    )
-    .map((entry) => ({
-      modelType,
-      provider: entry.provider,
-      priority: typeof entry.priority === "number" ? entry.priority : 0,
-      registeredAt: "runtime-introspection",
-      handler: entry.handler,
-    }))
-    .sort((a, b) => b.priority - a.priority);
+	const models = (runtime as { models?: unknown }).models;
+	if (!(models instanceof Map)) return [];
+	const registrations = models.get(modelType);
+	if (!Array.isArray(registrations)) return [];
+	return registrations
+		.filter(
+			(
+				entry,
+			): entry is {
+				provider: string;
+				priority?: number;
+				handler: HandlerRegistration["handler"];
+			} =>
+				entry &&
+				typeof entry === "object" &&
+				typeof (entry as { provider?: unknown }).provider === "string" &&
+				(entry as { provider: string }).provider !== ROUTER_PROVIDER &&
+				typeof (entry as { handler?: unknown }).handler === "function",
+		)
+		.map((entry) => ({
+			modelType,
+			provider: entry.provider,
+			priority: typeof entry.priority === "number" ? entry.priority : 0,
+			registeredAt: "runtime-introspection",
+			handler: entry.handler,
+		}))
+		.sort((a, b) => b.priority - a.priority);
 }
 
 export function filterUnavailableLocalInferenceCandidates(
-  candidates: HandlerRegistration[],
-  localInferenceAvailable: boolean,
-  forceLocalInference: boolean,
+	candidates: HandlerRegistration[],
+	localInferenceAvailable: boolean,
+	forceLocalInference: boolean,
 ): HandlerRegistration[] {
-  if (forceLocalInference || localInferenceAvailable) {
-    return candidates;
-  }
+	if (forceLocalInference || localInferenceAvailable) {
+		return candidates;
+	}
 
-  return candidates.filter(
-    (candidate) => candidate.provider !== "eliza-local-inference",
-  );
+	return candidates.filter(
+		(candidate) => candidate.provider !== "eliza-local-inference",
+	);
 }
 
 export async function filterUnavailableLocalInference(
-  slot: AgentModelSlot,
-  policy: string,
-  preferredProvider: string | null,
-  candidates: HandlerRegistration[],
+	slot: AgentModelSlot,
+	policy: string,
+	preferredProvider: string | null,
+	candidates: HandlerRegistration[],
 ): Promise<HandlerRegistration[]> {
-  const hasLocalInference = candidates.some(
-    (candidate) => candidate.provider === "eliza-local-inference",
-  );
-  if (!hasLocalInference) {
-    return candidates;
-  }
+	const hasLocalInference = candidates.some(
+		(candidate) => candidate.provider === "eliza-local-inference",
+	);
+	if (!hasLocalInference) {
+		return candidates;
+	}
 
-  const assignments = await readEffectiveAssignments();
-  return filterUnavailableLocalInferenceCandidates(
-    candidates,
-    Boolean(assignments[slot]) || localInferenceEngine.hasLoadedModel(),
-    shouldForceLocalInference(policy, preferredProvider),
-  );
+	const assignments = await readEffectiveAssignments();
+	return filterUnavailableLocalInferenceCandidates(
+		candidates,
+		Boolean(assignments[slot]) || localInferenceEngine.hasLoadedModel(),
+		shouldForceLocalInference(policy, preferredProvider),
+	);
 }
 
 function makeRouterHandler(slot: AgentModelSlot): AnyHandler {
-  return async (runtime, params) => {
-    const modelType = slotToModelType(slot);
-    if (!modelType) {
-      throw new Error(`[router] Unknown agent slot: ${slot}`);
-    }
+	return async (runtime, params) => {
+		const modelType = slotToModelType(slot);
+		if (!modelType) {
+			throw new Error(`[router] Unknown agent slot: ${slot}`);
+		}
 
-    // Read the user's policy for this slot. Absent = local-first fallback.
-    const prefs = await readRoutingPreferences();
-    const policy = prefs.policy[slot] ?? DEFAULT_ROUTING_POLICY;
-    const preferred = prefs.preferredProvider[slot] ?? null;
+		// Read the user's policy for this slot. Absent = local-first fallback.
+		const prefs = await readRoutingPreferences();
+		const policy = prefs.policy[slot] ?? DEFAULT_ROUTING_POLICY;
+		const preferred = prefs.preferredProvider[slot] ?? null;
 
-    // Ask the policy engine which handler to dispatch to. For automatic
-    // policies, honor the documented fallback behaviour: if the selected
-    // provider throws, try the next eligible provider instead of surfacing a
-    // local/model-specific failure while cloud providers are available.
-    const registeredCandidates = handlerRegistry.getForTypeExcluding(
-      modelType,
-      ROUTER_PROVIDER,
-    );
-    const candidates = await filterUnavailableLocalInference(
-      slot,
-      policy,
-      preferred,
-      registeredCandidates.length > 0
-        ? registeredCandidates
-        : getRuntimeModelCandidates(runtime, modelType),
-    );
-    const failedProviders = new Set<string>();
-    let lastError: unknown = null;
+		// Ask the policy engine which handler to dispatch to. For automatic
+		// policies, honor the documented fallback behaviour: if the selected
+		// provider throws, try the next eligible provider instead of surfacing a
+		// local/model-specific failure while cloud providers are available.
+		const registeredCandidates = handlerRegistry.getForTypeExcluding(
+			modelType,
+			ROUTER_PROVIDER,
+		);
+		const candidates = await filterUnavailableLocalInference(
+			slot,
+			policy,
+			preferred,
+			registeredCandidates.length > 0
+				? registeredCandidates
+				: getRuntimeModelCandidates(runtime, modelType),
+		);
+		const failedProviders = new Set<string>();
+		let lastError: unknown = null;
 
-    while (true) {
-      const remaining = candidates.filter(
-        (candidate) => !failedProviders.has(candidate.provider),
-      );
-      const pick = policyEngine.pickProvider({
-        modelType,
-        policy,
-        preferredProvider: preferred,
-        candidates: remaining,
-        selfProvider: ROUTER_PROVIDER,
-      });
+		while (true) {
+			const remaining = candidates.filter(
+				(candidate) => !failedProviders.has(candidate.provider),
+			);
+			const pick = policyEngine.pickProvider({
+				modelType,
+				policy,
+				preferredProvider: preferred,
+				candidates: remaining,
+				selfProvider: ROUTER_PROVIDER,
+			});
 
-      if (!pick) {
-        if (lastError) {
-          throw lastError;
-        }
-        throw new Error(
-          `[router] No provider registered for ${slot}. Configure a cloud provider, enable local inference, or pair a device.`,
-        );
-      }
+			if (!pick) {
+				if (lastError) {
+					throw lastError;
+				}
+				throw new Error(
+					`[router] No provider registered for ${slot}. Configure a cloud provider, enable local inference, or pair a device.`,
+				);
+			}
 
-      policyEngine.recordPick(pick.provider, modelType);
-      const start = Date.now();
-      try {
-        const result = await pick.handler(runtime, params);
-        policyEngine.recordLatency(
-          pick.provider,
-          modelType,
-          Date.now() - start,
-        );
-        return result;
-      } catch (err) {
-        // Record the timing even on failure so "fastest" doesn't silently
-        // prefer providers that error out fast.
-        policyEngine.recordLatency(
-          pick.provider,
-          modelType,
-          Date.now() - start,
-        );
+			policyEngine.recordPick(pick.provider, modelType);
+			const start = Date.now();
+			try {
+				const result = await pick.handler(runtime, params);
+				policyEngine.recordLatency(
+					pick.provider,
+					modelType,
+					Date.now() - start,
+				);
+				return result;
+			} catch (err) {
+				// Record the timing even on failure so "fastest" doesn't silently
+				// prefer providers that error out fast.
+				policyEngine.recordLatency(
+					pick.provider,
+					modelType,
+					Date.now() - start,
+				);
 
-        const manualPreferred =
-          policy === "manual" &&
-          preferred !== null &&
-          pick.provider === preferred;
-        const hasAlternative = remaining.some(
-          (candidate) => candidate.provider !== pick.provider,
-        );
-        if (manualPreferred || !hasAlternative) {
-          throw err;
-        }
+				const manualPreferred =
+					policy === "manual" &&
+					preferred !== null &&
+					pick.provider === preferred;
+				const hasAlternative = remaining.some(
+					(candidate) => candidate.provider !== pick.provider,
+				);
+				if (manualPreferred || !hasAlternative) {
+					throw err;
+				}
 
-        failedProviders.add(pick.provider);
-        lastError = err;
-        logger.warn(
-          `[router] Provider ${pick.provider} failed for ${slot}; trying fallback provider (${err instanceof Error ? err.message : String(err)})`,
-        );
-      }
-    }
-  };
+				failedProviders.add(pick.provider);
+				lastError = err;
+				logger.warn(
+					`[router] Provider ${pick.provider} failed for ${slot}; trying fallback provider (${err instanceof Error ? err.message : String(err)})`,
+				);
+			}
+		}
+	};
 }
 
 /**
@@ -252,47 +252,47 @@ function makeRouterHandler(slot: AgentModelSlot): AnyHandler {
  * has been installed on the runtime.
  */
 export function installRouterHandler(runtime: AgentRuntime): void {
-  const rt = runtime as AgentRuntime & {
-    registerModel?: (
-      modelType: string,
-      handler: AnyHandler,
-      provider: string,
-      priority?: number,
-    ) => void;
-  };
-  if (typeof rt.registerModel !== "function") return;
+	const rt = runtime as AgentRuntime & {
+		registerModel?: (
+			modelType: string,
+			handler: AnyHandler,
+			provider: string,
+			priority?: number,
+		) => void;
+	};
+	if (typeof rt.registerModel !== "function") return;
 
-  for (const slot of AGENT_MODEL_SLOTS) {
-    const modelType = slotToModelType(slot);
-    if (!modelType) continue;
-    rt.registerModel(
-      modelType,
-      makeRouterHandler(slot),
-      ROUTER_PROVIDER,
-      ROUTER_PRIORITY,
-    );
-  }
+	for (const slot of AGENT_MODEL_SLOTS) {
+		const modelType = slotToModelType(slot);
+		if (!modelType) continue;
+		rt.registerModel(
+			modelType,
+			makeRouterHandler(slot),
+			ROUTER_PROVIDER,
+			ROUTER_PRIORITY,
+		);
+	}
 }
 
 /** Public helper — useful for diagnostics endpoints. */
 export function describeCurrentRouting(): Array<{
-  slot: AgentModelSlot;
-  modelType: string;
-  candidates: Array<{
-    provider: string;
-    priority: number;
-  }>;
+	slot: AgentModelSlot;
+	modelType: string;
+	candidates: Array<{
+		provider: string;
+		priority: number;
+	}>;
 }> {
-  const out: ReturnType<typeof describeCurrentRouting> = [];
-  for (const slot of AGENT_MODEL_SLOTS) {
-    const modelType = slotToModelType(slot);
-    if (!modelType) continue;
-    const candidates = handlerRegistry
-      .getForTypeExcluding(modelType, ROUTER_PROVIDER)
-      .map((c) => ({ provider: c.provider, priority: c.priority }));
-    out.push({ slot, modelType, candidates });
-  }
-  return out;
+	const out: ReturnType<typeof describeCurrentRouting> = [];
+	for (const slot of AGENT_MODEL_SLOTS) {
+		const modelType = slotToModelType(slot);
+		if (!modelType) continue;
+		const candidates = handlerRegistry
+			.getForTypeExcluding(modelType, ROUTER_PROVIDER)
+			.map((c) => ({ provider: c.provider, priority: c.priority }));
+		out.push({ slot, modelType, candidates });
+	}
+	return out;
 }
 
 // Re-export so the handler registry can tell whether it's looking at a

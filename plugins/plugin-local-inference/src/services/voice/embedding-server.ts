@@ -32,10 +32,10 @@ import os from "node:os";
 import { logger } from "@elizaos/core";
 import { resolveDflashBinary } from "../dflash-server";
 import {
-  EMBEDDING_FULL_DIM,
-  isValidEmbeddingDim,
-  type LocalEmbeddingRoute,
-  truncateMatryoshka,
+	EMBEDDING_FULL_DIM,
+	isValidEmbeddingDim,
+	type LocalEmbeddingRoute,
+	truncateMatryoshka,
 } from "./embedding";
 import { VoiceStartupError } from "./errors";
 
@@ -68,56 +68,56 @@ const EMBED_PARALLEL = 16;
 const EMBED_CTX_SIZE = 8192;
 
 interface EmbeddingServerConfig {
-  /** GGUF the sidecar mmaps. For the dedicated-region mode this is the `embedding/` file. */
-  modelPath: string;
-  /** Extra `llama-server` flags — the route's `embeddingServerFlags` (`--embeddings --pooling last`). */
-  serverFlags: ReadonlyArray<string>;
-  /** GPU offload: `"auto"` (= all layers) for CPU/Vulkan/CUDA hosts, `0` to force CPU. */
-  gpuLayers?: number | "auto";
-  /** Thread count for the embedding forward pass. Defaults to the host's logical core count. */
-  threads?: number;
+	/** GGUF the sidecar mmaps. For the dedicated-region mode this is the `embedding/` file. */
+	modelPath: string;
+	/** Extra `llama-server` flags — the route's `embeddingServerFlags` (`--embeddings --pooling last`). */
+	serverFlags: ReadonlyArray<string>;
+	/** GPU offload: `"auto"` (= all layers) for CPU/Vulkan/CUDA hosts, `0` to force CPU. */
+	gpuLayers?: number | "auto";
+	/** Thread count for the embedding forward pass. Defaults to the host's logical core count. */
+	threads?: number;
 }
 
 async function pickPort(): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const server = net.createServer();
-    server.unref();
-    server.on("error", reject);
-    server.listen(0, HOST, () => {
-      const address = server.address();
-      server.close(() => {
-        if (address && typeof address === "object") resolve(address.port);
-        else reject(new Error("could not allocate a loopback port"));
-      });
-    });
-  });
+	return new Promise((resolve, reject) => {
+		const server = net.createServer();
+		server.unref();
+		server.on("error", reject);
+		server.listen(0, HOST, () => {
+			const address = server.address();
+			server.close(() => {
+				if (address && typeof address === "object") resolve(address.port);
+				else reject(new Error("could not allocate a loopback port"));
+			});
+		});
+	});
 }
 
 async function sleep(ms: number): Promise<void> {
-  await new Promise((r) => setTimeout(r, ms));
+	await new Promise((r) => setTimeout(r, ms));
 }
 
 function extractEmbeddingVectors(json: unknown): number[][] {
-  if (!json || typeof json !== "object") {
-    throw new Error("[embedding-server] /v1/embeddings: non-object response");
-  }
-  const data = (json as { data?: unknown }).data;
-  if (!Array.isArray(data)) {
-    throw new Error(
-      "[embedding-server] /v1/embeddings: response.data is not an array",
-    );
-  }
-  const out: number[][] = [];
-  for (const row of data) {
-    const vec = (row as { embedding?: unknown }).embedding;
-    if (!Array.isArray(vec) || vec.some((x) => typeof x !== "number")) {
-      throw new Error(
-        "[embedding-server] /v1/embeddings: a row has no numeric embedding",
-      );
-    }
-    out.push(vec as number[]);
-  }
-  return out;
+	if (!json || typeof json !== "object") {
+		throw new Error("[embedding-server] /v1/embeddings: non-object response");
+	}
+	const data = (json as { data?: unknown }).data;
+	if (!Array.isArray(data)) {
+		throw new Error(
+			"[embedding-server] /v1/embeddings: response.data is not an array",
+		);
+	}
+	const out: number[][] = [];
+	for (const row of data) {
+		const vec = (row as { embedding?: unknown }).embedding;
+		if (!Array.isArray(vec) || vec.some((x) => typeof x !== "number")) {
+			throw new Error(
+				"[embedding-server] /v1/embeddings: a row has no numeric embedding",
+			);
+		}
+		out.push(vec as number[]);
+	}
+	return out;
 }
 
 /**
@@ -126,175 +126,175 @@ function extractEmbeddingVectors(json: unknown): number[][] {
  * process on first call and reuses it after.
  */
 export class EmbeddingServer {
-  private child: ChildProcess | null = null;
-  private baseUrl: string | null = null;
-  private starting: Promise<void> | null = null;
+	private child: ChildProcess | null = null;
+	private baseUrl: string | null = null;
+	private starting: Promise<void> | null = null;
 
-  constructor(private readonly config: EmbeddingServerConfig) {
-    if (!existsSync(config.modelPath)) {
-      throw new VoiceStartupError(
-        "missing-bundle-root",
-        `[embedding-server] embedding GGUF not found at ${config.modelPath}`,
-      );
-    }
-  }
+	constructor(private readonly config: EmbeddingServerConfig) {
+		if (!existsSync(config.modelPath)) {
+			throw new VoiceStartupError(
+				"missing-bundle-root",
+				`[embedding-server] embedding GGUF not found at ${config.modelPath}`,
+			);
+		}
+	}
 
-  isRunning(): boolean {
-    return this.child !== null && this.baseUrl !== null;
-  }
+	isRunning(): boolean {
+		return this.child !== null && this.baseUrl !== null;
+	}
 
-  /**
-   * Embed one or more texts and return Matryoshka-truncated, L2-normalized
-   * vectors. `dim` defaults to 1024 (the full width); pass 64/128/256/512/
-   * 768 for storage savings (quality degrades gracefully — see the report).
-   * Throws on an invalid `dim` or a server error — no zero-vector fallback
-   * (Commandment 8).
-   */
-  async embed(
-    texts: string[],
-    dim: number = EMBEDDING_FULL_DIM,
-  ): Promise<number[][]> {
-    if (!isValidEmbeddingDim(dim)) {
-      throw new Error(
-        `[embedding-server] dim ${dim} is not a valid Matryoshka width`,
-      );
-    }
-    if (texts.length === 0) return [];
-    await this.ensureStarted();
-    const baseUrl = this.baseUrl;
-    if (!baseUrl) {
-      throw new Error("[embedding-server] server is not running after start()");
-    }
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), EMBED_TIMEOUT_MS);
-    try {
-      const res = await fetch(`${baseUrl}/v1/embeddings`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ input: texts }),
-        signal: controller.signal,
-      });
-      if (!res.ok) {
-        const body = await res.text().catch(() => "");
-        throw new Error(
-          `[embedding-server] /v1/embeddings HTTP ${res.status}${body ? `: ${body}` : ""}`,
-        );
-      }
-      const vectors = extractEmbeddingVectors(await res.json());
-      if (vectors.length !== texts.length) {
-        throw new Error(
-          `[embedding-server] /v1/embeddings returned ${vectors.length} vectors for ${texts.length} inputs`,
-        );
-      }
-      return vectors.map((v) => truncateMatryoshka(v, dim));
-    } finally {
-      clearTimeout(timer);
-    }
-  }
+	/**
+	 * Embed one or more texts and return Matryoshka-truncated, L2-normalized
+	 * vectors. `dim` defaults to 1024 (the full width); pass 64/128/256/512/
+	 * 768 for storage savings (quality degrades gracefully — see the report).
+	 * Throws on an invalid `dim` or a server error — no zero-vector fallback
+	 * (Commandment 8).
+	 */
+	async embed(
+		texts: string[],
+		dim: number = EMBEDDING_FULL_DIM,
+	): Promise<number[][]> {
+		if (!isValidEmbeddingDim(dim)) {
+			throw new Error(
+				`[embedding-server] dim ${dim} is not a valid Matryoshka width`,
+			);
+		}
+		if (texts.length === 0) return [];
+		await this.ensureStarted();
+		const baseUrl = this.baseUrl;
+		if (!baseUrl) {
+			throw new Error("[embedding-server] server is not running after start()");
+		}
+		const controller = new AbortController();
+		const timer = setTimeout(() => controller.abort(), EMBED_TIMEOUT_MS);
+		try {
+			const res = await fetch(`${baseUrl}/v1/embeddings`, {
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ input: texts }),
+				signal: controller.signal,
+			});
+			if (!res.ok) {
+				const body = await res.text().catch(() => "");
+				throw new Error(
+					`[embedding-server] /v1/embeddings HTTP ${res.status}${body ? `: ${body}` : ""}`,
+				);
+			}
+			const vectors = extractEmbeddingVectors(await res.json());
+			if (vectors.length !== texts.length) {
+				throw new Error(
+					`[embedding-server] /v1/embeddings returned ${vectors.length} vectors for ${texts.length} inputs`,
+				);
+			}
+			return vectors.map((v) => truncateMatryoshka(v, dim));
+		} finally {
+			clearTimeout(timer);
+		}
+	}
 
-  private async ensureStarted(): Promise<void> {
-    if (this.isRunning()) return;
-    if (this.starting) return this.starting;
-    this.starting = this.start();
-    try {
-      await this.starting;
-    } finally {
-      this.starting = null;
-    }
-  }
+	private async ensureStarted(): Promise<void> {
+		if (this.isRunning()) return;
+		if (this.starting) return this.starting;
+		this.starting = this.start();
+		try {
+			await this.starting;
+		} finally {
+			this.starting = null;
+		}
+	}
 
-  private async start(): Promise<void> {
-    const binary = resolveDflashBinary();
-    if (!binary) {
-      throw new VoiceStartupError(
-        "not-started",
-        "[embedding-server] no llama-server binary available (run packages/app-core/scripts/build-llama-cpp-dflash.mjs)",
-      );
-    }
-    const port = await pickPort();
-    const threads = this.config.threads ?? Math.max(1, os.cpus().length);
-    const gpuLayers = this.config.gpuLayers ?? "auto";
-    const args = [
-      "-m",
-      this.config.modelPath,
-      "--host",
-      HOST,
-      "--port",
-      String(port),
-      "--ctx-size",
-      String(EMBED_CTX_SIZE),
-      "--batch-size",
-      String(EMBED_BATCH_SIZE),
-      "--ubatch-size",
-      String(EMBED_UBATCH_SIZE),
-      "--threads",
-      String(threads),
-      "--n-gpu-layers",
-      gpuLayers === "auto" ? "99" : String(gpuLayers),
-      // Embedding-only server: N parallel slots so a batch of inputs rides
-      // one forward pass; no jinja chat template needed.
-      "--parallel",
-      String(EMBED_PARALLEL),
-      ...this.config.serverFlags,
-    ];
-    logger.info(
-      `[embedding-server] starting ${binary} on ${HOST}:${port} (model=${this.config.modelPath})`,
-    );
-    const child = spawn(binary, args, {
-      env: { ...process.env },
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    this.child = child;
-    this.baseUrl = `http://${HOST}:${port}`;
-    child.stderr?.on("data", () => {});
-    child.stdout?.on("data", () => {});
-    child.on("exit", () => {
-      if (this.child === child) {
-        this.child = null;
-        this.baseUrl = null;
-      }
-    });
-    await this.waitUntilReady(port);
-  }
+	private async start(): Promise<void> {
+		const binary = resolveDflashBinary();
+		if (!binary) {
+			throw new VoiceStartupError(
+				"not-started",
+				"[embedding-server] no llama-server binary available (run packages/app-core/scripts/build-llama-cpp-dflash.mjs)",
+			);
+		}
+		const port = await pickPort();
+		const threads = this.config.threads ?? Math.max(1, os.cpus().length);
+		const gpuLayers = this.config.gpuLayers ?? "auto";
+		const args = [
+			"-m",
+			this.config.modelPath,
+			"--host",
+			HOST,
+			"--port",
+			String(port),
+			"--ctx-size",
+			String(EMBED_CTX_SIZE),
+			"--batch-size",
+			String(EMBED_BATCH_SIZE),
+			"--ubatch-size",
+			String(EMBED_UBATCH_SIZE),
+			"--threads",
+			String(threads),
+			"--n-gpu-layers",
+			gpuLayers === "auto" ? "99" : String(gpuLayers),
+			// Embedding-only server: N parallel slots so a batch of inputs rides
+			// one forward pass; no jinja chat template needed.
+			"--parallel",
+			String(EMBED_PARALLEL),
+			...this.config.serverFlags,
+		];
+		logger.info(
+			`[embedding-server] starting ${binary} on ${HOST}:${port} (model=${this.config.modelPath})`,
+		);
+		const child = spawn(binary, args, {
+			env: { ...process.env },
+			stdio: ["ignore", "pipe", "pipe"],
+		});
+		this.child = child;
+		this.baseUrl = `http://${HOST}:${port}`;
+		child.stderr?.on("data", () => {});
+		child.stdout?.on("data", () => {});
+		child.on("exit", () => {
+			if (this.child === child) {
+				this.child = null;
+				this.baseUrl = null;
+			}
+		});
+		await this.waitUntilReady(port);
+	}
 
-  private async waitUntilReady(port: number): Promise<void> {
-    const deadline = Date.now() + READY_TIMEOUT_MS;
-    const healthUrl = `http://${HOST}:${port}/health`;
-    while (Date.now() < deadline) {
-      if (!this.child) {
-        throw new VoiceStartupError(
-          "not-started",
-          "[embedding-server] llama-server exited before becoming ready",
-        );
-      }
-      try {
-        const res = await fetch(healthUrl);
-        if (res.ok) return;
-      } catch {
-        // not up yet
-      }
-      await sleep(200);
-    }
-    await this.stop();
-    throw new VoiceStartupError(
-      "not-started",
-      `[embedding-server] llama-server did not become healthy within ${READY_TIMEOUT_MS}ms`,
-    );
-  }
+	private async waitUntilReady(port: number): Promise<void> {
+		const deadline = Date.now() + READY_TIMEOUT_MS;
+		const healthUrl = `http://${HOST}:${port}/health`;
+		while (Date.now() < deadline) {
+			if (!this.child) {
+				throw new VoiceStartupError(
+					"not-started",
+					"[embedding-server] llama-server exited before becoming ready",
+				);
+			}
+			try {
+				const res = await fetch(healthUrl);
+				if (res.ok) return;
+			} catch {
+				// not up yet
+			}
+			await sleep(200);
+		}
+		await this.stop();
+		throw new VoiceStartupError(
+			"not-started",
+			`[embedding-server] llama-server did not become healthy within ${READY_TIMEOUT_MS}ms`,
+		);
+	}
 
-  async stop(): Promise<void> {
-    const child = this.child;
-    this.child = null;
-    this.baseUrl = null;
-    if (!child) return;
-    child.kill("SIGTERM");
-    const exited = new Promise<void>((resolve) =>
-      child.once("exit", () => resolve()),
-    );
-    await Promise.race([exited, sleep(2000)]);
-    if (child.exitCode === null && child.signalCode === null)
-      child.kill("SIGKILL");
-  }
+	async stop(): Promise<void> {
+		const child = this.child;
+		this.child = null;
+		this.baseUrl = null;
+		if (!child) return;
+		child.kill("SIGTERM");
+		const exited = new Promise<void>((resolve) =>
+			child.once("exit", () => resolve()),
+		);
+		await Promise.race([exited, sleep(2000)]);
+		if (child.exitCode === null && child.signalCode === null)
+			child.kill("SIGKILL");
+	}
 }
 
 /**
@@ -304,17 +304,17 @@ export class EmbeddingServer {
  * --pooling last` (the route's `embeddingServerFlags`).
  */
 export function embeddingServerForRoute(
-  route: LocalEmbeddingRoute,
-  opts: { gpuLayers?: number | "auto"; threads?: number } = {},
+	route: LocalEmbeddingRoute,
+	opts: { gpuLayers?: number | "auto"; threads?: number } = {},
 ): EmbeddingServer {
-  const modelPath =
-    route.source.kind === "pooled-text"
-      ? route.source.textModelPath
-      : route.source.embeddingModelPath;
-  return new EmbeddingServer({
-    modelPath,
-    serverFlags: route.serverFlags,
-    gpuLayers: opts.gpuLayers,
-    threads: opts.threads,
-  });
+	const modelPath =
+		route.source.kind === "pooled-text"
+			? route.source.textModelPath
+			: route.source.embeddingModelPath;
+	return new EmbeddingServer({
+		modelPath,
+		serverFlags: route.serverFlags,
+		gpuLayers: opts.gpuLayers,
+		threads: opts.threads,
+	});
 }

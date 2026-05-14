@@ -11,7 +11,7 @@
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
-    "@elizaos/plugin-local-embedding": "workspace:*",
+    "@elizaos/plugin-local-inference": "workspace:*",
     "@elizaos/plugin-openai": "workspace:*",
     "@elizaos/plugin-sql": "workspace:*",
     "typescript": "^6.0.3",

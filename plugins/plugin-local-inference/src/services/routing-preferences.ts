@@ -5,11 +5,11 @@
  * read/write the same routing.json with identical semantics.
  */
 export {
-  DEFAULT_ROUTING_POLICY,
-  type RoutingPolicy,
-  type RoutingPreferences,
-  readRoutingPreferences,
-  setPolicy,
-  setPreferredProvider,
-  writeRoutingPreferences,
+	DEFAULT_ROUTING_POLICY,
+	type RoutingPolicy,
+	type RoutingPreferences,
+	readRoutingPreferences,
+	setPolicy,
+	setPreferredProvider,
+	writeRoutingPreferences,
 } from "@elizaos/shared";

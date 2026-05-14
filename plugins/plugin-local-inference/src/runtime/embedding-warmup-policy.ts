@@ -11,30 +11,30 @@
  */
 
 function isTruthyEnv(...names: string[]): boolean {
-  for (const name of names) {
-    const v = process.env[name]?.trim().toLowerCase();
-    if (v === "1" || v === "true" || v === "yes") return true;
-  }
-  return false;
+	for (const name of names) {
+		const v = process.env[name]?.trim().toLowerCase();
+		if (v === "1" || v === "true" || v === "yes") return true;
+	}
+	return false;
 }
 
 export function shouldWarmupLocalEmbeddingModel(): boolean {
-  if (isTruthyEnv("ELIZA_DISABLE_LOCAL_EMBEDDINGS")) {
-    return false;
-  }
+	if (isTruthyEnv("ELIZA_DISABLE_LOCAL_EMBEDDINGS")) {
+		return false;
+	}
 
-  const cloudEmbeddingsRoutedLocally = isTruthyEnv(
-    "ELIZA_CLOUD_EMBEDDINGS_DISABLED",
-  );
+	const cloudEmbeddingsRoutedLocally = isTruthyEnv(
+		"ELIZA_CLOUD_EMBEDDINGS_DISABLED",
+	);
 
-  if (cloudEmbeddingsRoutedLocally) {
-    // User turned off cloud for embeddings — local plugin must serve TEXT_EMBEDDING.
-    return true;
-  }
+	if (cloudEmbeddingsRoutedLocally) {
+		// User turned off cloud for embeddings — local plugin must serve TEXT_EMBEDDING.
+		return true;
+	}
 
-  if (isTruthyEnv("ELIZAOS_CLOUD_USE_EMBEDDINGS")) {
-    return false;
-  }
+	if (isTruthyEnv("ELIZAOS_CLOUD_USE_EMBEDDINGS")) {
+		return false;
+	}
 
-  return true;
+	return true;
 }

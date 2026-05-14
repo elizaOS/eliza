@@ -1,63 +1,63 @@
 export interface TextToken {
-  index: number;
-  text: string;
-  /**
-   * Text-model vocabulary token id, when the producer knows it. ASR
-   * (fused Qwen3-ASR) and the text backbone share the Qwen2 BPE 151 936
-   * vocab + merges (AGENTS.md §1), so an ASR-emitted token id is the same
-   * id the text model would assign — a downstream in-process handoff can
-   * inject `id` directly into the text KV cache without detokenize →
-   * retokenize. Absent for producers that only have surface text (the
-   * whisper.cpp interim adapter — a different tokenizer; the word-chunk
-   * approximation in `splitTranscriptToTokens`).
-   */
-  id?: number;
+	index: number;
+	text: string;
+	/**
+	 * Text-model vocabulary token id, when the producer knows it. ASR
+	 * (fused Qwen3-ASR) and the text backbone share the Qwen2 BPE 151 936
+	 * vocab + merges (AGENTS.md §1), so an ASR-emitted token id is the same
+	 * id the text model would assign — a downstream in-process handoff can
+	 * inject `id` directly into the text KV cache without detokenize →
+	 * retokenize. Absent for producers that only have surface text (the
+	 * whisper.cpp interim adapter — a different tokenizer; the word-chunk
+	 * approximation in `splitTranscriptToTokens`).
+	 */
+	id?: number;
 }
 
 export interface AcceptedToken extends TextToken {
-  acceptedAt: number;
+	acceptedAt: number;
 }
 
 export interface RejectedTokenRange {
-  fromIndex: number;
-  toIndex: number;
+	fromIndex: number;
+	toIndex: number;
 }
 
 export interface Phrase {
-  id: number;
-  text: string;
-  fromIndex: number;
-  toIndex: number;
-  terminator: "punctuation" | "max-cap" | "phoneme-stream";
+	id: number;
+	text: string;
+	fromIndex: number;
+	toIndex: number;
+	terminator: "punctuation" | "max-cap" | "phoneme-stream";
 }
 
 export interface AudioChunk {
-  phraseId: number;
-  fromIndex: number;
-  toIndex: number;
-  pcm: Float32Array;
-  sampleRate: number;
+	phraseId: number;
+	fromIndex: number;
+	toIndex: number;
+	pcm: Float32Array;
+	sampleRate: number;
 }
 
 export interface SpeakerPreset {
-  voiceId: string;
-  embedding: Float32Array;
-  bytes: Uint8Array;
+	voiceId: string;
+	embedding: Float32Array;
+	bytes: Uint8Array;
 }
 
 export interface AudioSink {
-  write(pcm: Float32Array, sampleRate: number): void;
-  drain(): void;
-  bufferedSamples(): number;
+	write(pcm: Float32Array, sampleRate: number): void;
+	drain(): void;
+	bufferedSamples(): number;
 }
 
 export interface OmniVoiceBackend {
-  synthesize(args: {
-    phrase: Phrase;
-    preset: SpeakerPreset;
-    cancelSignal: { cancelled: boolean };
-    onKernelTick?: () => void;
-  }): Promise<AudioChunk>;
+	synthesize(args: {
+		phrase: Phrase;
+		preset: SpeakerPreset;
+		cancelSignal: { cancelled: boolean };
+		onKernelTick?: () => void;
+	}): Promise<AudioChunk>;
 }
 
 /**
@@ -67,19 +67,19 @@ export interface OmniVoiceBackend {
  * seam can additionally surface first-audio before a full phrase finishes.
  */
 export interface TtsPcmChunk {
-  pcm: Float32Array;
-  sampleRate: number;
-  isFinal: boolean;
+	pcm: Float32Array;
+	sampleRate: number;
+	isFinal: boolean;
 }
 
 export interface StreamingTtsBackend {
-  synthesizeStream(args: {
-    phrase: Phrase;
-    preset: SpeakerPreset;
-    cancelSignal: { cancelled: boolean };
-    onChunk: (chunk: TtsPcmChunk) => boolean | undefined;
-    onKernelTick?: () => void;
-  }): Promise<{ cancelled: boolean }>;
+	synthesizeStream(args: {
+		phrase: Phrase;
+		preset: SpeakerPreset;
+		cancelSignal: { cancelled: boolean };
+		onChunk: (chunk: TtsPcmChunk) => boolean | undefined;
+		onKernelTick?: () => void;
+	}): Promise<{ cancelled: boolean }>;
 }
 
 /** Opaque native handle for a streaming ASR session in the v2 ABI shape. */
@@ -92,47 +92,47 @@ export type StreamingAsrHandle = bigint;
  * top of this shape; the scheduler-facing stream semantics stay the same.
  */
 export interface VoiceStreamingAbiV2 {
-  ttsStreamSupported(): boolean;
-  ttsSynthesizeStream(args: {
-    text: string;
-    speakerPresetId: string | null;
-    onChunk: (chunk: {
-      pcm: Float32Array;
-      isFinal: boolean;
-    }) => boolean | undefined;
-  }): { cancelled: boolean };
-  cancelTts(): void;
-  asrStreamSupported(): boolean;
-  asrStreamOpen(args: { sampleRateHz: number }): StreamingAsrHandle;
-  asrStreamFeed(args: { stream: StreamingAsrHandle; pcm: Float32Array }): void;
-  asrStreamPartial(args: {
-    stream: StreamingAsrHandle;
-    maxTextBytes?: number;
-    maxTokens?: number;
-  }): { partial: string; tokens?: number[] };
-  asrStreamFinish(args: {
-    stream: StreamingAsrHandle;
-    maxTextBytes?: number;
-    maxTokens?: number;
-  }): { partial: string; tokens?: number[] };
-  asrStreamClose(stream: StreamingAsrHandle): void;
+	ttsStreamSupported(): boolean;
+	ttsSynthesizeStream(args: {
+		text: string;
+		speakerPresetId: string | null;
+		onChunk: (chunk: {
+			pcm: Float32Array;
+			isFinal: boolean;
+		}) => boolean | undefined;
+	}): { cancelled: boolean };
+	cancelTts(): void;
+	asrStreamSupported(): boolean;
+	asrStreamOpen(args: { sampleRateHz: number }): StreamingAsrHandle;
+	asrStreamFeed(args: { stream: StreamingAsrHandle; pcm: Float32Array }): void;
+	asrStreamPartial(args: {
+		stream: StreamingAsrHandle;
+		maxTextBytes?: number;
+		maxTokens?: number;
+	}): { partial: string; tokens?: number[] };
+	asrStreamFinish(args: {
+		stream: StreamingAsrHandle;
+		maxTextBytes?: number;
+		maxTokens?: number;
+	}): { partial: string; tokens?: number[] };
+	asrStreamClose(stream: StreamingAsrHandle): void;
 }
 
 export interface TranscriptionAudio {
-  pcm: Float32Array;
-  sampleRate: number;
+	pcm: Float32Array;
+	sampleRate: number;
 }
 
 export type VoiceInputKind =
-  | "local_mic"
-  | "discord"
-  | "telegram"
-  | "signal"
-  | "whatsapp"
-  | "phone"
-  | "browser"
-  | "file"
-  | "unknown";
+	| "local_mic"
+	| "discord"
+	| "telegram"
+	| "signal"
+	| "whatsapp"
+	| "phone"
+	| "browser"
+	| "file"
+	| "unknown";
 
 /**
  * Where speech audio entered the voice loop. Keep this structural so local
@@ -140,19 +140,19 @@ export type VoiceInputKind =
  * turn-taking and attribution path without branching on prompt text.
  */
 export interface VoiceInputSource {
-  kind: VoiceInputKind;
-  /** Connector account, device, guild/channel, call, or upload id. */
-  sourceId?: string;
-  roomId?: string;
-  conversationId?: string;
-  messageId?: string;
-  deviceId?: string;
-  connectorAccountId?: string;
-  channelId?: string;
-  guildId?: string;
-  callId?: string;
-  participantId?: string;
-  metadata?: Record<string, unknown>;
+	kind: VoiceInputKind;
+	/** Connector account, device, guild/channel, call, or upload id. */
+	sourceId?: string;
+	roomId?: string;
+	conversationId?: string;
+	messageId?: string;
+	deviceId?: string;
+	connectorAccountId?: string;
+	channelId?: string;
+	guildId?: string;
+	callId?: string;
+	participantId?: string;
+	metadata?: Record<string, unknown>;
 }
 
 /**
@@ -163,49 +163,49 @@ export interface VoiceInputSource {
  * a parallel identity graph or as authorization for voice synthesis.
  */
 export interface VoiceSpeaker {
-  id: string;
-  label?: string;
-  displayName?: string;
-  source?: VoiceInputSource;
-  imprintClusterId?: string;
-  imprintObservationId?: string;
-  entityId?: string;
-  confidence?: number;
-  isLocalUser?: boolean;
-  metadata?: Record<string, unknown>;
+	id: string;
+	label?: string;
+	displayName?: string;
+	source?: VoiceInputSource;
+	imprintClusterId?: string;
+	imprintObservationId?: string;
+	entityId?: string;
+	confidence?: number;
+	isLocalUser?: boolean;
+	metadata?: Record<string, unknown>;
 }
 
 /** One diarized span within a transcript snapshot or finalized voice turn. */
 export interface VoiceSegment {
-  id?: string;
-  text: string;
-  startMs: number;
-  endMs: number;
-  speaker?: VoiceSpeaker;
-  speakerId?: string;
-  source?: VoiceInputSource;
-  confidence?: number;
-  tokens?: number[];
-  metadata?: Record<string, unknown>;
+	id?: string;
+	text: string;
+	startMs: number;
+	endMs: number;
+	speaker?: VoiceSpeaker;
+	speakerId?: string;
+	source?: VoiceInputSource;
+	confidence?: number;
+	tokens?: number[];
+	metadata?: Record<string, unknown>;
 }
 
 export interface VoiceDiarizationMetadata {
-  provider: "local" | "connector" | "cloud" | "unknown";
-  model?: string;
-  version?: string;
-  confidence?: number;
-  metadata?: Record<string, unknown>;
+	provider: "local" | "connector" | "cloud" | "unknown";
+	model?: string;
+	version?: string;
+	confidence?: number;
+	metadata?: Record<string, unknown>;
 }
 
 export interface VoiceTurnMetadata {
-  turnId?: string;
-  source?: VoiceInputSource;
-  primarySpeaker?: VoiceSpeaker;
-  segments?: VoiceSegment[];
-  startedAtMs?: number;
-  endedAtMs?: number;
-  diarization?: VoiceDiarizationMetadata;
-  metadata?: Record<string, unknown>;
+	turnId?: string;
+	source?: VoiceInputSource;
+	primarySpeaker?: VoiceSpeaker;
+	segments?: VoiceSegment[];
+	startedAtMs?: number;
+	endedAtMs?: number;
+	diarization?: VoiceDiarizationMetadata;
+	metadata?: Record<string, unknown>;
 }
 
 /* -------------------------------------------------------------------- *
@@ -227,38 +227,38 @@ export interface VoiceTurnMetadata {
 
 /** A running or final transcript snapshot from a `StreamingTranscriber`. */
 export interface TranscriptUpdate {
-  /** The full running transcript (not a delta) at this point. */
-  partial: string;
-  /** True for the snapshot emitted by `flush()` / on `speech-end`. */
-  isFinal: boolean;
-  /** Channel/device/call metadata for attribution and storage. */
-  source?: VoiceInputSource;
-  /** Best speaker attribution for single-speaker snapshots. */
-  speaker?: VoiceSpeaker;
-  /** Diarized spans for multi-speaker snapshots, when available. */
-  segments?: VoiceSegment[];
-  /** Turn-level metadata carried through to generation and storage. */
-  turn?: VoiceTurnMetadata;
-  /**
-   * Text-model token ids for `partial`, when the backend can supply them
-   * cheaply (fused Qwen3-ASR shares the text vocabulary). Absent for the
-   * whisper.cpp interim adapter (different tokenizer — re-tokenization is
-   * the LLM stage's job there).
-   */
-  tokens?: number[];
+	/** The full running transcript (not a delta) at this point. */
+	partial: string;
+	/** True for the snapshot emitted by `flush()` / on `speech-end`. */
+	isFinal: boolean;
+	/** Channel/device/call metadata for attribution and storage. */
+	source?: VoiceInputSource;
+	/** Best speaker attribution for single-speaker snapshots. */
+	speaker?: VoiceSpeaker;
+	/** Diarized spans for multi-speaker snapshots, when available. */
+	segments?: VoiceSegment[];
+	/** Turn-level metadata carried through to generation and storage. */
+	turn?: VoiceTurnMetadata;
+	/**
+	 * Text-model token ids for `partial`, when the backend can supply them
+	 * cheaply (fused Qwen3-ASR shares the text vocabulary). Absent for the
+	 * whisper.cpp interim adapter (different tokenizer — re-tokenization is
+	 * the LLM stage's job there).
+	 */
+	tokens?: number[];
 }
 
 /** Events a `StreamingTranscriber` emits while consuming PCM frames. */
 export type TranscriberEvent =
-  | { kind: "partial"; update: TranscriptUpdate }
-  | { kind: "final"; update: TranscriptUpdate }
-  /**
-   * Fired the first instant ≥1 real word is recognized in the current
-   * speech segment. Wired to W1's barge-in word-confirm gate
-   * (`onWordsDetected`) so the agent hard-stops TTS + aborts in-flight
-   * LLM/drafter generation only on real speech, not a blip.
-   */
-  | { kind: "words"; words: string[] };
+	| { kind: "partial"; update: TranscriptUpdate }
+	| { kind: "final"; update: TranscriptUpdate }
+	/**
+	 * Fired the first instant ≥1 real word is recognized in the current
+	 * speech segment. Wired to W1's barge-in word-confirm gate
+	 * (`onWordsDetected`) so the agent hard-stops TTS + aborts in-flight
+	 * LLM/drafter generation only on real speech, not a blip.
+	 */
+	| { kind: "words"; words: string[] };
 
 export type TranscriberEventListener = (event: TranscriberEvent) => void;
 
@@ -274,66 +274,66 @@ export type TranscriberEventListener = (event: TranscriberEvent) => void;
  * transcripts.
  */
 export interface StreamingTranscriber {
-  /** Feed one PCM frame. Frames received while VAD is not active are buffered/ignored per the VAD-gating policy. */
-  feed(frame: PcmFrame): void;
-  /**
-   * Force-finalize: drain any buffered audio, run a final decode pass,
-   * emit the `final` event, and resolve with the final transcript. Safe
-   * to call when no audio is buffered (resolves with an empty final).
-   * After `flush()` the transcriber is reset and ready for the next
-   * speech segment.
-   */
-  flush(): Promise<TranscriptUpdate>;
-  /** Subscribe to transcriber events. Returns an unsubscribe fn. */
-  on(listener: TranscriberEventListener): () => void;
-  /** Release any held native resources (FFI stream handle, temp files). Idempotent. */
-  dispose(): void;
+	/** Feed one PCM frame. Frames received while VAD is not active are buffered/ignored per the VAD-gating policy. */
+	feed(frame: PcmFrame): void;
+	/**
+	 * Force-finalize: drain any buffered audio, run a final decode pass,
+	 * emit the `final` event, and resolve with the final transcript. Safe
+	 * to call when no audio is buffered (resolves with an empty final).
+	 * After `flush()` the transcriber is reset and ready for the next
+	 * speech segment.
+	 */
+	flush(): Promise<TranscriptUpdate>;
+	/** Subscribe to transcriber events. Returns an unsubscribe fn. */
+	on(listener: TranscriberEventListener): () => void;
+	/** Release any held native resources (FFI stream handle, temp files). Idempotent. */
+	dispose(): void;
 }
 
 export interface PhraseChunkerConfig {
-  /**
-   * Hard word cap before a phrase is force-flushed even without a
-   * `, . ! ? ; :` boundary. Defaults to 30 (the brief's A6 "first 30 words").
-   */
-  maxTokensPerPhrase?: number;
-  /**
-   * Characters that close a phrase. Default `, . ! ? ; :` — punctuation
-   * boundaries let the first clause reach TTS without waiting for a
-   * sentence-final mark.
-   */
-  sentenceTerminators?: ReadonlySet<string>;
-  /**
-   * Where the chunker emits a phrase boundary.
-   *   'punctuation'    — default. Wait for `, . ! ? ; :` or the max-token cap.
-   *   'phoneme-stream' — additionally emit a sub-phrase chunk every
-   *                      `phonemesPerChunk` phonemes. Cuts first-audio
-   *                      latency by handing partial phrases to TTS at
-   *                      phoneme boundaries.
-   */
-  chunkOn?: "punctuation" | "phoneme-stream";
-  /** Phonemes per chunk in `phoneme-stream` mode. Default 8. */
-  phonemesPerChunk?: number;
-  /**
-   * Maximum milliseconds a phrase may sit in the chunker before the
-   * scheduler force-flushes it even without punctuation / phoneme / cap
-   * boundaries. Default 700 ms. Set to 0 to disable.
-   */
-  maxAccumulationMs?: number;
+	/**
+	 * Hard word cap before a phrase is force-flushed even without a
+	 * `, . ! ? ; :` boundary. Defaults to 30 (the brief's A6 "first 30 words").
+	 */
+	maxTokensPerPhrase?: number;
+	/**
+	 * Characters that close a phrase. Default `, . ! ? ; :` — punctuation
+	 * boundaries let the first clause reach TTS without waiting for a
+	 * sentence-final mark.
+	 */
+	sentenceTerminators?: ReadonlySet<string>;
+	/**
+	 * Where the chunker emits a phrase boundary.
+	 *   'punctuation'    — default. Wait for `, . ! ? ; :` or the max-token cap.
+	 *   'phoneme-stream' — additionally emit a sub-phrase chunk every
+	 *                      `phonemesPerChunk` phonemes. Cuts first-audio
+	 *                      latency by handing partial phrases to TTS at
+	 *                      phoneme boundaries.
+	 */
+	chunkOn?: "punctuation" | "phoneme-stream";
+	/** Phonemes per chunk in `phoneme-stream` mode. Default 8. */
+	phonemesPerChunk?: number;
+	/**
+	 * Maximum milliseconds a phrase may sit in the chunker before the
+	 * scheduler force-flushes it even without punctuation / phoneme / cap
+	 * boundaries. Default 700 ms. Set to 0 to disable.
+	 */
+	maxAccumulationMs?: number;
 }
 
 export interface VerifierStreamEvent {
-  kind: "accept" | "reject";
-  tokens: TextToken[];
-  /**
-   * Optional per-event metadata. Today only the very first `accept` of a
-   * streaming completion carries `firstTokenMs` (L5 — time from the fetch
-   * being issued to the first SSE chunk arriving). Other consumers MAY
-   * ignore this field; producers MUST omit it on non-first events.
-   */
-  meta?: {
-    /** Milliseconds from request issue (`performance.now()`) to first chunk. */
-    firstTokenMs?: number;
-  };
+	kind: "accept" | "reject";
+	tokens: TextToken[];
+	/**
+	 * Optional per-event metadata. Today only the very first `accept` of a
+	 * streaming completion carries `firstTokenMs` (L5 — time from the fetch
+	 * being issued to the first SSE chunk arriving). Other consumers MAY
+	 * ignore this field; producers MUST omit it on non-first events.
+	 */
+	meta?: {
+		/** Milliseconds from request issue (`performance.now()`) to first chunk. */
+		firstTokenMs?: number;
+	};
 }
 
 // ---------------------------------------------------------------------------
@@ -356,13 +356,13 @@ export interface VerifierStreamEvent {
 
 /** A fixed-size block of mono PCM samples in [-1, 1] at a known sample rate. */
 export interface PcmFrame {
-  pcm: Float32Array;
-  sampleRate: number;
-  /**
-   * Monotonic timestamp (ms, `performance.now()` domain) of the *first*
-   * sample in this frame. Used to age VAD events and barge-in latency.
-   */
-  timestampMs: number;
+	pcm: Float32Array;
+	sampleRate: number;
+	/**
+	 * Monotonic timestamp (ms, `performance.now()` domain) of the *first*
+	 * sample in this frame. Used to age VAD events and barge-in latency.
+	 */
+	timestampMs: number;
 }
 
 /**
@@ -384,23 +384,23 @@ export interface PcmFrame {
  *                       controller treats this as "resume TTS".
  */
 export type VadEvent =
-  | { type: "speech-start"; timestampMs: number; probability: number }
-  | {
-      type: "speech-active";
-      timestampMs: number;
-      probability: number;
-      speechDurationMs: number;
-    }
-  | { type: "speech-pause"; timestampMs: number; pauseDurationMs: number }
-  | { type: "speech-end"; timestampMs: number; speechDurationMs: number }
-  | { type: "blip"; timestampMs: number; durationMs: number; peakRms: number };
+	| { type: "speech-start"; timestampMs: number; probability: number }
+	| {
+			type: "speech-active";
+			timestampMs: number;
+			probability: number;
+			speechDurationMs: number;
+	  }
+	| { type: "speech-pause"; timestampMs: number; pauseDurationMs: number }
+	| { type: "speech-end"; timestampMs: number; speechDurationMs: number }
+	| { type: "blip"; timestampMs: number; durationMs: number; peakRms: number };
 
 /** Cheap RMS energy gate event — the fast pre-warm path. Distinct timeline
  *  from `VadEvent`; this fires with sub-frame latency and never blocks on a
  *  model forward pass. */
 export type EnergyGateEvent =
-  | { type: "energy-rise"; timestampMs: number; rms: number }
-  | { type: "energy-fall"; timestampMs: number; quietMs: number };
+	| { type: "energy-rise"; timestampMs: number; rms: number }
+	| { type: "energy-fall"; timestampMs: number; quietMs: number };
 
 export type VadEventListener = (event: VadEvent) => void;
 export type EnergyGateListener = (event: EnergyGateEvent) => void;
@@ -412,7 +412,7 @@ export type EnergyGateListener = (event: EnergyGateEvent) => void;
  * `onnxruntime-node` surface.
  */
 export interface VadEventSource {
-  onVadEvent(listener: VadEventListener): () => void;
+	onVadEvent(listener: VadEventListener): () => void;
 }
 
 /**
@@ -424,22 +424,22 @@ export interface VadEventSource {
  * the ASR reads from, instrumentation taps).
  */
 export interface MicSource {
-  /** Nominal sample rate of every emitted frame (Hz). */
-  readonly sampleRate: number;
-  /** Samples per emitted frame. */
-  readonly frameSamples: number;
-  /** True once `start()` has resolved and frames are flowing. */
-  readonly running: boolean;
-  /** Begin capture. Resolves when the underlying device is producing audio.
-   *  Throws (never silently no-ops) when no mic backend is available. */
-  start(): Promise<void>;
-  /** Stop capture and release the device. Idempotent. */
-  stop(): Promise<void>;
-  /** Subscribe to PCM frames. Returns an unsubscribe function. */
-  onFrame(listener: (frame: PcmFrame) => void): () => void;
-  /** Subscribe to fatal capture errors (device lost, process died). The
-   *  source is no longer `running` after one of these. */
-  onError(listener: (error: Error) => void): () => void;
+	/** Nominal sample rate of every emitted frame (Hz). */
+	readonly sampleRate: number;
+	/** Samples per emitted frame. */
+	readonly frameSamples: number;
+	/** True once `start()` has resolved and frames are flowing. */
+	readonly running: boolean;
+	/** Begin capture. Resolves when the underlying device is producing audio.
+	 *  Throws (never silently no-ops) when no mic backend is available. */
+	start(): Promise<void>;
+	/** Stop capture and release the device. Idempotent. */
+	stop(): Promise<void>;
+	/** Subscribe to PCM frames. Returns an unsubscribe function. */
+	onFrame(listener: (frame: PcmFrame) => void): () => void;
+	/** Subscribe to fatal capture errors (device lost, process died). The
+	 *  source is no longer `running` after one of these. */
+	onError(listener: (error: Error) => void): () => void;
 }
 
 /**
@@ -453,16 +453,16 @@ export interface MicSource {
  * (W1 owns the controller; W9 threads `signal` into `dispatcher.generate`.)
  */
 export interface BargeInCancelToken {
-  cancelled: boolean;
-  reason: "barge-in-words" | "manual" | null;
-  readonly signal: AbortSignal;
+	cancelled: boolean;
+	reason: "barge-in-words" | "manual" | null;
+	readonly signal: AbortSignal;
 }
 
 /** Signal emitted by `BargeInController` to the scheduler / engine. */
 export type BargeInSignal =
-  | { type: "pause-tts"; timestampMs: number }
-  | { type: "resume-tts"; timestampMs: number }
-  | { type: "hard-stop"; timestampMs: number; token: BargeInCancelToken };
+	| { type: "pause-tts"; timestampMs: number }
+	| { type: "resume-tts"; timestampMs: number }
+	| { type: "hard-stop"; timestampMs: number; token: BargeInCancelToken };
 
 export type BargeInSignalListener = (signal: BargeInSignal) => void;
 
@@ -475,141 +475,141 @@ export type BargeInSignalListener = (signal: BargeInSignal) => void;
  * duration heuristic is only a fast provisional guess until ASR confirms.
  */
 export interface WordsDetectedSink {
-  onWordsDetected(args: {
-    /** Number of parsed words observed so far in this barge-in segment. */
-    wordCount: number;
-    /** Best partial transcript so far (may be empty). */
-    partialText: string;
-    timestampMs: number;
-  }): void;
+	onWordsDetected(args: {
+		/** Number of parsed words observed so far in this barge-in segment. */
+		wordCount: number;
+		/** Best partial transcript so far (may be empty). */
+		partialText: string;
+		timestampMs: number;
+	}): void;
 }
 
 export interface SchedulerConfig {
-  chunkerConfig: PhraseChunkerConfig;
-  preset: SpeakerPreset;
-  ringBufferCapacity: number;
-  sampleRate: number;
-  /**
-   * Max concurrent TTS dispatches. When this many phrases are in flight,
-   * `accept()` awaits the oldest before dispatching the next, propagating
-   * backpressure upstream to the verifier loop. Default 4 — small enough
-   * to bound memory under runaway producers without serialising the
-   * common case (text gen leads TTS by a phrase or two).
-   */
-  maxInFlightPhrases?: number;
-  /**
-   * Enable the streaming-TTS path (`synthesizeStream`) for phrase
-   * synthesis. When `true` (default), the scheduler uses the chunk-by-chunk
-   * streaming ABI when the backend supports it, delivering first audio
-   * before the full phrase finishes synthesizing and enabling per-chunk
-   * prefix-preserving barge-in rollback.
-   *
-   * Previously this was implicitly gated by `ttsStreamSupported()` from the
-   * native FFI layer. On macOS, a `ggml_conv_transpose_1d` stall in the
-   * DAC codec region caused the Metal path to hang — that stall is now
-   * fixed in the llama.cpp merge (native Metal kernels for
-   * `ggml_conv_transpose_1d`; the CPU fallback causing the hang is gone).
-   * The flag is therefore `true` by default. Set to `false` only when
-   * testing against a non-streaming build stub or reproducing the pre-fix
-   * behaviour.
-   */
-  streamingTtsActive?: boolean;
+	chunkerConfig: PhraseChunkerConfig;
+	preset: SpeakerPreset;
+	ringBufferCapacity: number;
+	sampleRate: number;
+	/**
+	 * Max concurrent TTS dispatches. When this many phrases are in flight,
+	 * `accept()` awaits the oldest before dispatching the next, propagating
+	 * backpressure upstream to the verifier loop. Default 4 — small enough
+	 * to bound memory under runaway producers without serialising the
+	 * common case (text gen leads TTS by a phrase or two).
+	 */
+	maxInFlightPhrases?: number;
+	/**
+	 * Enable the streaming-TTS path (`synthesizeStream`) for phrase
+	 * synthesis. When `true` (default), the scheduler uses the chunk-by-chunk
+	 * streaming ABI when the backend supports it, delivering first audio
+	 * before the full phrase finishes synthesizing and enabling per-chunk
+	 * prefix-preserving barge-in rollback.
+	 *
+	 * Previously this was implicitly gated by `ttsStreamSupported()` from the
+	 * native FFI layer. On macOS, a `ggml_conv_transpose_1d` stall in the
+	 * DAC codec region caused the Metal path to hang — that stall is now
+	 * fixed in the llama.cpp merge (native Metal kernels for
+	 * `ggml_conv_transpose_1d`; the CPU fallback causing the hang is gone).
+	 * The flag is therefore `true` by default. Set to `false` only when
+	 * testing against a non-streaming build stub or reproducing the pre-fix
+	 * behaviour.
+	 */
+	streamingTtsActive?: boolean;
 }
 
 export interface VoiceSchedulerPhraseTelemetry {
-  id: number;
-  text: string;
-  fromIndex: number;
-  toIndex: number;
-  terminator: Phrase["terminator"];
-  tokenCount: number;
-  textBytes: number;
+	id: number;
+	text: string;
+	fromIndex: number;
+	toIndex: number;
+	terminator: Phrase["terminator"];
+	tokenCount: number;
+	textBytes: number;
 }
 
 export type VoiceAudioSource = "cache" | "synthesis";
 
 export type VoiceTtsCancelReason =
-  | "barge-in"
-  | "rollback"
-  | "pending-tts"
-  | "synthesis-cancelled";
+	| "barge-in"
+	| "rollback"
+	| "pending-tts"
+	| "synthesis-cancelled";
 
 export type VoiceSchedulerTelemetryEvent =
-  | {
-      type: "phrase-dispatch";
-      atMs: number;
-      phrase: VoiceSchedulerPhraseTelemetry;
-      inFlightPhrases: number;
-    }
-  | {
-      type: "phrase-cache-hit" | "phrase-cache-miss";
-      atMs: number;
-      phrase: VoiceSchedulerPhraseTelemetry;
-    }
-  | {
-      type: "tts-start";
-      atMs: number;
-      phrase: VoiceSchedulerPhraseTelemetry;
-      inFlightPhrases: number;
-    }
-  | {
-      type: "tts-first-audio";
-      atMs: number;
-      phrase: VoiceSchedulerPhraseTelemetry;
-      source: VoiceAudioSource;
-      samples: number;
-      sampleRate: number;
-    }
-  | {
-      type: "audio-committed";
-      atMs: number;
-      phrase: VoiceSchedulerPhraseTelemetry;
-      source: VoiceAudioSource;
-      samples: number;
-      sampleRate: number;
-      flushedSamples: number;
-      paused: boolean;
-      ringBufferSamples: number;
-      sinkBufferedSamples: number;
-    }
-  | {
-      type: "tts-cancel";
-      atMs: number;
-      phrase: VoiceSchedulerPhraseTelemetry;
-      reason: VoiceTtsCancelReason;
-    }
-  | {
-      type: "rollback";
-      atMs: number;
-      phraseId: number;
-      range: RejectedTokenRange;
-      reason: "rejected-tokens";
-    }
-  | {
-      type: "barge-in";
-      atMs: number;
-      ringBufferSamplesDrained: number;
-      sinkBufferedSamplesDrained: number;
-      inFlightPhrasesCancelled: number;
-      wasPaused: boolean;
-    }
-  | {
-      /**
-       * Fired when the prefix-preserving rollback queue partitions
-       * in-flight audio chunks on barge-in. `retainedChunks` are replayed
-       * into the sink; `droppedChunks` are discarded. Present only when
-       * `PrefixPreservingQueue` is active (at least one chunk was tagged).
-       */
-      type: "barge-in-prefix-rollback";
-      atMs: number;
-      divergencePoint: number;
-      retainedChunks: number;
-      droppedChunks: number;
-      straddledChunks: number;
-      retainedDurationMs: number;
-      droppedDurationMs: number;
-    };
+	| {
+			type: "phrase-dispatch";
+			atMs: number;
+			phrase: VoiceSchedulerPhraseTelemetry;
+			inFlightPhrases: number;
+	  }
+	| {
+			type: "phrase-cache-hit" | "phrase-cache-miss";
+			atMs: number;
+			phrase: VoiceSchedulerPhraseTelemetry;
+	  }
+	| {
+			type: "tts-start";
+			atMs: number;
+			phrase: VoiceSchedulerPhraseTelemetry;
+			inFlightPhrases: number;
+	  }
+	| {
+			type: "tts-first-audio";
+			atMs: number;
+			phrase: VoiceSchedulerPhraseTelemetry;
+			source: VoiceAudioSource;
+			samples: number;
+			sampleRate: number;
+	  }
+	| {
+			type: "audio-committed";
+			atMs: number;
+			phrase: VoiceSchedulerPhraseTelemetry;
+			source: VoiceAudioSource;
+			samples: number;
+			sampleRate: number;
+			flushedSamples: number;
+			paused: boolean;
+			ringBufferSamples: number;
+			sinkBufferedSamples: number;
+	  }
+	| {
+			type: "tts-cancel";
+			atMs: number;
+			phrase: VoiceSchedulerPhraseTelemetry;
+			reason: VoiceTtsCancelReason;
+	  }
+	| {
+			type: "rollback";
+			atMs: number;
+			phraseId: number;
+			range: RejectedTokenRange;
+			reason: "rejected-tokens";
+	  }
+	| {
+			type: "barge-in";
+			atMs: number;
+			ringBufferSamplesDrained: number;
+			sinkBufferedSamplesDrained: number;
+			inFlightPhrasesCancelled: number;
+			wasPaused: boolean;
+	  }
+	| {
+			/**
+			 * Fired when the prefix-preserving rollback queue partitions
+			 * in-flight audio chunks on barge-in. `retainedChunks` are replayed
+			 * into the sink; `droppedChunks` are discarded. Present only when
+			 * `PrefixPreservingQueue` is active (at least one chunk was tagged).
+			 */
+			type: "barge-in-prefix-rollback";
+			atMs: number;
+			divergencePoint: number;
+			retainedChunks: number;
+			droppedChunks: number;
+			straddledChunks: number;
+			retainedDurationMs: number;
+			droppedDurationMs: number;
+	  };
 
 export type VoiceSchedulerTelemetryListener = (
-  event: VoiceSchedulerTelemetryEvent,
+	event: VoiceSchedulerTelemetryEvent,
 ) => void;

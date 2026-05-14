@@ -359,7 +359,7 @@ declare module "@elizaos/plugin-imessage" {
   const imessagePlugin: unknown;
   export default imessagePlugin;
 }
-declare module "@elizaos/plugin-local-embedding";
+declare module "@elizaos/plugin-local-inference";
 declare module "@elizaos/plugin-ollama";
 declare module "@elizaos/plugin-mlx";
 declare module "@elizaos/plugin-openai";

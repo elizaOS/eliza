@@ -22,8 +22,8 @@
 		"dist"
 	],
 	"scripts": {
-		"build": "tsup src/index.ts --format esm --dts --clean",
-		"dev": "tsup src/index.ts --format esm --dts --watch",
+		"build": "tsup src/index.ts src/runtime/index.ts src/routes/index.ts src/services/index.ts --format esm --dts --clean",
+		"dev": "tsup src/index.ts src/runtime/index.ts src/routes/index.ts src/services/index.ts --format esm --dts --watch",
 		"test": "vitest run",
 		"clean": "rm -rf dist .turbo node_modules",
 		"lint": "bunx @biomejs/biome check --write --unsafe .",
@@ -37,11 +37,35 @@
 		"@elizaos/shared": "workspace:*",
 		"@elizaos/plugin-capacitor-bridge": "workspace:*"
 	},
+	"optionalDependencies": {
+		"node-llama-cpp": "3.18.1",
+		"onnxruntime-node": "1.24.3",
+		"@huggingface/transformers": "^4.0.0",
+		"whisper-node": "^1.1.1"
+	},
 	"peerDependencies": {
 		"@elizaos/core": "workspace:*",
 		"@elizaos/shared": "workspace:*",
 		"@elizaos/plugin-capacitor-bridge": "workspace:*"
 	},
+	"peerDependenciesMeta": {
+		"node-llama-cpp": {
+			"optional": true
+		},
+		"onnxruntime-node": {
+			"optional": true
+		},
+		"@huggingface/transformers": {
+			"optional": true
+		},
+		"whisper-node": {
+			"optional": true
+		}
+	},
+	"trustedDependencies": [
+		"node-llama-cpp",
+		"onnxruntime-node"
+	],
 	"devDependencies": {
 		"@biomejs/biome": "^2.4.14",
 		"@types/node": "24.12.2",

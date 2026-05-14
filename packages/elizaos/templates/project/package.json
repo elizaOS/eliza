@@ -12,12 +12,12 @@
     "apps/*"
   ],
   "overrides": {
-    "@elizaos/plugin-local-embedding": "npm:empty-npm-package@1.0.0",
+    "@elizaos/plugin-local-inference": "npm:empty-npm-package@1.0.0",
     "@whiskeysockets/baileys": "npm:empty-npm-package@1.0.0",
     "node-llama-cpp": "npm:empty-npm-package@1.0.0"
   },
   "resolutions": {
-    "@elizaos/plugin-local-embedding": "npm:empty-npm-package@1.0.0",
+    "@elizaos/plugin-local-inference": "npm:empty-npm-package@1.0.0",
     "@whiskeysockets/baileys": "npm:empty-npm-package@1.0.0",
     "node-llama-cpp": "npm:empty-npm-package@1.0.0"
   },

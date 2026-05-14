@@ -28,58 +28,58 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import {
-  ensureDefaultAssignment,
-  readAssignments,
-  writeAssignments,
+	ensureDefaultAssignment,
+	readAssignments,
+	writeAssignments,
 } from "./assignments";
 import { elizaModelsDir } from "./paths";
 import { upsertElizaModel } from "./registry";
 import type { InstalledModel } from "./types";
 
 interface BundledModelEntry {
-  id: string;
-  displayName: string;
-  hfRepo: string;
-  ggufFile: string;
-  role: "chat" | "embedding";
-  sizeBytes: number;
-  sha256: string | null;
+	id: string;
+	displayName: string;
+	hfRepo: string;
+	ggufFile: string;
+	role: "chat" | "embedding";
+	sizeBytes: number;
+	sha256: string | null;
 }
 
 interface BundledModelManifest {
-  version: 1;
-  models: BundledModelEntry[];
+	version: 1;
+	models: BundledModelEntry[];
 }
 
 function manifestPath(): string {
-  return path.join(elizaModelsDir(), "manifest.json");
+	return path.join(elizaModelsDir(), "manifest.json");
 }
 
 async function readManifest(): Promise<BundledModelManifest | null> {
-  try {
-    const raw = await fs.readFile(manifestPath(), "utf8");
-    const parsed = JSON.parse(raw) as BundledModelManifest;
-    if (parsed?.version !== 1 || !Array.isArray(parsed.models)) {
-      return null;
-    }
-    return parsed;
-  } catch {
-    return null;
-  }
+	try {
+		const raw = await fs.readFile(manifestPath(), "utf8");
+		const parsed = JSON.parse(raw) as BundledModelManifest;
+		if (parsed?.version !== 1 || !Array.isArray(parsed.models)) {
+			return null;
+		}
+		return parsed;
+	} catch {
+		return null;
+	}
 }
 
 async function ensureBundledAssignment(
-  modelId: string,
-  role: BundledModelEntry["role"],
+	modelId: string,
+	role: BundledModelEntry["role"],
 ): Promise<void> {
-  if (role !== "embedding") {
-    await ensureDefaultAssignment(modelId);
-    return;
-  }
+	if (role !== "embedding") {
+		await ensureDefaultAssignment(modelId);
+		return;
+	}
 
-  const current = await readAssignments();
-  if (current.TEXT_EMBEDDING) return;
-  await writeAssignments({ ...current, TEXT_EMBEDDING: modelId });
+	const current = await readAssignments();
+	if (current.TEXT_EMBEDDING) return;
+	await writeAssignments({ ...current, TEXT_EMBEDDING: modelId });
 }
 
 /**
@@ -89,41 +89,41 @@ async function ensureBundledAssignment(
  * non-AOSP installs and returns 0 silently.
  */
 export async function registerBundledModels(): Promise<number> {
-  const manifest = await readManifest();
-  if (!manifest) return 0;
-  const dir = elizaModelsDir();
-  let registered = 0;
-  for (const entry of manifest.models) {
-    const filePath = path.join(dir, entry.ggufFile);
-    let sizeBytes = entry.sizeBytes;
-    try {
-      const stat = await fs.stat(filePath);
-      sizeBytes = stat.size;
-    } catch {
-      // File didn't extract — manifest references something the APK
-      // didn't ship. Skip this entry rather than registering a broken
-      // path. AOSP build's stage-default-models.mjs is the source of
-      // truth; if a file is missing the build is broken upstream.
-      continue;
-    }
-    const installed: InstalledModel = {
-      id: entry.id,
-      displayName: entry.displayName,
-      path: filePath,
-      sizeBytes,
-      hfRepo: entry.hfRepo,
-      installedAt: new Date().toISOString(),
-      lastUsedAt: null,
-      source: "eliza-download",
-      sha256: entry.sha256 ?? undefined,
-    };
-    await upsertElizaModel(installed);
-    // Auto-assign each bundled model to its manifest role if the user
-    // hasn't already assigned that slot. This keeps Eliza-1 chat models
-    // eligible for TEXT_EMBEDDING when the bundle explicitly marks them
-    // as the local embedding bootstrap model.
-    await ensureBundledAssignment(entry.id, entry.role);
-    registered += 1;
-  }
-  return registered;
+	const manifest = await readManifest();
+	if (!manifest) return 0;
+	const dir = elizaModelsDir();
+	let registered = 0;
+	for (const entry of manifest.models) {
+		const filePath = path.join(dir, entry.ggufFile);
+		let sizeBytes = entry.sizeBytes;
+		try {
+			const stat = await fs.stat(filePath);
+			sizeBytes = stat.size;
+		} catch {
+			// File didn't extract — manifest references something the APK
+			// didn't ship. Skip this entry rather than registering a broken
+			// path. AOSP build's stage-default-models.mjs is the source of
+			// truth; if a file is missing the build is broken upstream.
+			continue;
+		}
+		const installed: InstalledModel = {
+			id: entry.id,
+			displayName: entry.displayName,
+			path: filePath,
+			sizeBytes,
+			hfRepo: entry.hfRepo,
+			installedAt: new Date().toISOString(),
+			lastUsedAt: null,
+			source: "eliza-download",
+			sha256: entry.sha256 ?? undefined,
+		};
+		await upsertElizaModel(installed);
+		// Auto-assign each bundled model to its manifest role if the user
+		// hasn't already assigned that slot. This keeps Eliza-1 chat models
+		// eligible for TEXT_EMBEDDING when the bundle explicitly marks them
+		// as the local embedding bootstrap model.
+		await ensureBundledAssignment(entry.id, entry.role);
+		registered += 1;
+	}
+	return registered;
 }

@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 /**
- * Ensure the in-repo llama.cpp fork submodule (packages/inference/llama.cpp,
- * elizaOS/llama.cpp @ v1.0.0-eliza) is checked out.
+ * Ensure the in-repo llama.cpp fork submodule
+ * (plugins/plugin-local-inference/native/llama.cpp, elizaOS/llama.cpp
+ * @ v1.0.0-eliza) is checked out.
  *
  * `build-llama-cpp-dflash.mjs` and `aosp/compile-libllama.mjs` default to
  * building from this submodule; both fall back to a standalone clone when it is
@@ -16,8 +17,15 @@ import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const repoRoot = resolve(fileURLToPath(import.meta.url), "..", "..");
-const submoduleRel = join("packages", "inference", "llama.cpp");
+// This script lives at plugins/plugin-local-inference/scripts/, so the repo
+// root is three levels up.
+const repoRoot = resolve(fileURLToPath(import.meta.url), "..", "..", "..", "..");
+const submoduleRel = join(
+  "plugins",
+  "plugin-local-inference",
+  "native",
+  "llama.cpp",
+);
 const submoduleAbs = join(repoRoot, submoduleRel);
 const gitmodules = join(repoRoot, ".gitmodules");
 

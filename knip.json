@@ -116,7 +116,7 @@
         "@elizaos/app-vincent",
         "@elizaos/plugin-browser",
         "@elizaos/plugin-discord",
-        "@elizaos/plugin-local-embedding",
+        "@elizaos/plugin-local-inference",
         "@elizaos/plugin-telegram",
         "@elizaos/plugin-wallet",
         "@elizaos/plugin-wechat",

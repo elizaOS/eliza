@@ -28,27 +28,27 @@
  */
 
 import type {
-  GenerateTextParams,
-  IAgentRuntime,
-  JsonValue,
-  ModelTypeName,
+	GenerateTextParams,
+	IAgentRuntime,
+	JsonValue,
+	ModelTypeName,
 } from "@elizaos/core";
 
 export type FallbackReason =
-  /** Local backend reported it can't serve this request at all (no model, FFI dlopen failed, etc). */
-  | "local-unavailable"
-  /** Local backend was busy, queued past a deadline, or refused (thermal, low-power). */
-  | "local-overloaded"
-  /** Local backend errored during prefill or decode. */
-  | "local-error"
-  /** Caller cancelled before local could finish; cloud may still serve. */
-  | "local-aborted-pre-completion"
-  /** Local handler isn't registered on this runtime build. */
-  | "local-not-registered";
+	/** Local backend reported it can't serve this request at all (no model, FFI dlopen failed, etc). */
+	| "local-unavailable"
+	/** Local backend was busy, queued past a deadline, or refused (thermal, low-power). */
+	| "local-overloaded"
+	/** Local backend errored during prefill or decode. */
+	| "local-error"
+	/** Caller cancelled before local could finish; cloud may still serve. */
+	| "local-aborted-pre-completion"
+	/** Local handler isn't registered on this runtime build. */
+	| "local-not-registered";
 
 export type LocalGenerateOutcome =
-  | { kind: "ok"; text: string }
-  | { kind: "fallback"; reason: FallbackReason; cause?: Error };
+	| { kind: "ok"; text: string }
+	| { kind: "fallback"; reason: FallbackReason; cause?: Error };
 
 /**
  * Classify a thrown error as a fallback-eligible failure or a hard bug that
@@ -57,49 +57,49 @@ export type LocalGenerateOutcome =
  * real failure instead of a silent rotation to cloud.
  */
 export function classifyLocalError(err: unknown): {
-  fallback: boolean;
-  reason: FallbackReason;
+	fallback: boolean;
+	reason: FallbackReason;
 } {
-  if (err instanceof Error) {
-    const name = err.name;
-    const msg = err.message.toLowerCase();
-    if (name === "AbortError") {
-      return { fallback: false, reason: "local-aborted-pre-completion" };
-    }
-    // KV-cache spill cannot meet the latency budget on this device — this is
-    // a deliberate hard-fail (packages/inference/AGENTS.md §3): the engine
-    // surfaces it to the UI as a structured error. There is no silent
-    // rotation to cloud and no "load anyway, slowly".
-    if (name === "KvSpillUnsupportedError") {
-      return { fallback: false, reason: "local-error" };
-    }
-    if (
-      msg.includes("no bundled") ||
-      msg.includes("not installed in this build") ||
-      msg.includes("node-llama-cpp is not installed") ||
-      msg.includes("no local model is active") ||
-      msg.includes("dlopen") ||
-      msg.includes("missing libllama")
-    ) {
-      return { fallback: true, reason: "local-unavailable" };
-    }
-    if (
-      msg.includes("decode: failed to find a memory slot") ||
-      msg.includes("thermal") ||
-      msg.includes("low-power")
-    ) {
-      return { fallback: true, reason: "local-overloaded" };
-    }
-    if (
-      msg.includes("llama_decode") ||
-      msg.includes("llama_tokenize") ||
-      msg.includes("llama_sampler") ||
-      msg.includes("ggml_assert")
-    ) {
-      return { fallback: true, reason: "local-error" };
-    }
-  }
-  return { fallback: false, reason: "local-error" };
+	if (err instanceof Error) {
+		const name = err.name;
+		const msg = err.message.toLowerCase();
+		if (name === "AbortError") {
+			return { fallback: false, reason: "local-aborted-pre-completion" };
+		}
+		// KV-cache spill cannot meet the latency budget on this device — this is
+		// a deliberate hard-fail (packages/inference/AGENTS.md §3): the engine
+		// surfaces it to the UI as a structured error. There is no silent
+		// rotation to cloud and no "load anyway, slowly".
+		if (name === "KvSpillUnsupportedError") {
+			return { fallback: false, reason: "local-error" };
+		}
+		if (
+			msg.includes("no bundled") ||
+			msg.includes("not installed in this build") ||
+			msg.includes("node-llama-cpp is not installed") ||
+			msg.includes("no local model is active") ||
+			msg.includes("dlopen") ||
+			msg.includes("missing libllama")
+		) {
+			return { fallback: true, reason: "local-unavailable" };
+		}
+		if (
+			msg.includes("decode: failed to find a memory slot") ||
+			msg.includes("thermal") ||
+			msg.includes("low-power")
+		) {
+			return { fallback: true, reason: "local-overloaded" };
+		}
+		if (
+			msg.includes("llama_decode") ||
+			msg.includes("llama_tokenize") ||
+			msg.includes("llama_sampler") ||
+			msg.includes("ggml_assert")
+		) {
+			return { fallback: true, reason: "local-error" };
+		}
+	}
+	return { fallback: false, reason: "local-error" };
 }
 
 /**
@@ -109,65 +109,65 @@ export function classifyLocalError(err: unknown): {
  * delegate to cloud instead of recursing into local.
  */
 export type RuntimeWithModelLookup = IAgentRuntime & {
-  models: Map<
-    string,
-    Array<{
-      provider: string;
-      priority: number;
-      handler: (
-        runtime: IAgentRuntime,
-        params: Record<string, JsonValue | object>,
-      ) => Promise<JsonValue | object>;
-    }>
-  >;
+	models: Map<
+		string,
+		Array<{
+			provider: string;
+			priority: number;
+			handler: (
+				runtime: IAgentRuntime,
+				params: Record<string, JsonValue | object>,
+			) => Promise<JsonValue | object>;
+		}>
+	>;
 };
 
 export interface CloudCandidate {
-  provider: string;
-  priority: number;
-  handler: (
-    runtime: IAgentRuntime,
-    params: Record<string, JsonValue | object>,
-  ) => Promise<JsonValue | object>;
+	provider: string;
+	priority: number;
+	handler: (
+		runtime: IAgentRuntime,
+		params: Record<string, JsonValue | object>,
+	) => Promise<JsonValue | object>;
 }
 
 export function findCloudCandidate(
-  runtime: IAgentRuntime,
-  modelType: ModelTypeName | string,
-  excludeProvider: string,
+	runtime: IAgentRuntime,
+	modelType: ModelTypeName | string,
+	excludeProvider: string,
 ): CloudCandidate | null {
-  const r = runtime as RuntimeWithModelLookup;
-  const entries = r.models?.get(String(modelType));
-  if (!entries || entries.length === 0) return null;
-  // Sorted highest priority first by the runtime's registration. We want
-  // the FIRST non-local provider; that's our cloud candidate.
-  for (const entry of entries) {
-    if (entry.provider !== excludeProvider) {
-      return {
-        provider: entry.provider,
-        priority: entry.priority,
-        handler: entry.handler,
-      };
-    }
-  }
-  return null;
+	const r = runtime as RuntimeWithModelLookup;
+	const entries = r.models?.get(String(modelType));
+	if (!entries || entries.length === 0) return null;
+	// Sorted highest priority first by the runtime's registration. We want
+	// the FIRST non-local provider; that's our cloud candidate.
+	for (const entry of entries) {
+		if (entry.provider !== excludeProvider) {
+			return {
+				provider: entry.provider,
+				priority: entry.priority,
+				handler: entry.handler,
+			};
+		}
+	}
+	return null;
 }
 
 export interface CloudFallbackOptions {
-  /** Provider id of the local handler being wrapped (e.g. "eliza-aosp-llama"). */
-  localProvider: string;
-  /** Model type this wrapper services (TEXT_LARGE, TEXT_SMALL, etc). */
-  modelType: ModelTypeName | string;
-  /**
-   * The local handler we wrap. Returns `{ kind: "ok" }` on success;
-   * `{ kind: "fallback", reason }` to delegate to cloud.
-   */
-  localGenerate: (
-    runtime: IAgentRuntime,
-    params: GenerateTextParams,
-  ) => Promise<LocalGenerateOutcome>;
-  /** Optional logger; defaults to `console`-style no-op so we stay framework-free. */
-  log?: (message: string, detail?: Record<string, unknown>) => void;
+	/** Provider id of the local handler being wrapped (e.g. "eliza-aosp-llama"). */
+	localProvider: string;
+	/** Model type this wrapper services (TEXT_LARGE, TEXT_SMALL, etc). */
+	modelType: ModelTypeName | string;
+	/**
+	 * The local handler we wrap. Returns `{ kind: "ok" }` on success;
+	 * `{ kind: "fallback", reason }` to delegate to cloud.
+	 */
+	localGenerate: (
+		runtime: IAgentRuntime,
+		params: GenerateTextParams,
+	) => Promise<LocalGenerateOutcome>;
+	/** Optional logger; defaults to `console`-style no-op so we stay framework-free. */
+	log?: (message: string, detail?: Record<string, unknown>) => void;
 }
 
 /**
@@ -181,50 +181,50 @@ export interface CloudFallbackOptions {
  * The returned function is suitable for `runtime.registerModel`.
  */
 export function makeCloudFallbackHandler(
-  opts: CloudFallbackOptions,
+	opts: CloudFallbackOptions,
 ): (
-  runtime: IAgentRuntime,
-  params: Record<string, JsonValue | object>,
+	runtime: IAgentRuntime,
+	params: Record<string, JsonValue | object>,
 ) => Promise<string> {
-  const log = opts.log ?? (() => undefined);
-  return async (runtime, params) => {
-    const generateParams = params as unknown as GenerateTextParams;
-    const local = await opts.localGenerate(runtime, generateParams);
-    if (local.kind === "ok") {
-      return local.text;
-    }
-    log(
-      `[cloud-fallback] local handler returned fallback (reason=${local.reason})`,
-      { modelType: String(opts.modelType), reason: local.reason },
-    );
-    const candidate = findCloudCandidate(
-      runtime,
-      opts.modelType,
-      opts.localProvider,
-    );
-    if (!candidate) {
-      const err = new Error(
-        `[cloud-fallback] Local inference reported ${local.reason} and no cloud handler is registered for ${String(opts.modelType)}. Pair Eliza Cloud or install a provider plugin (anthropic/openai) to enable fallback.`,
-      );
-      if (local.cause) {
-        (err as Error & { cause?: unknown }).cause = local.cause;
-      }
-      throw err;
-    }
-    log(
-      `[cloud-fallback] forwarding to ${candidate.provider} @ priority ${candidate.priority}`,
-      {
-        modelType: String(opts.modelType),
-        provider: candidate.provider,
-        reason: local.reason,
-      },
-    );
-    const result = await candidate.handler(runtime, params);
-    if (typeof result !== "string") {
-      throw new Error(
-        `[cloud-fallback] Cloud handler ${candidate.provider} returned non-string result for ${String(opts.modelType)}.`,
-      );
-    }
-    return result;
-  };
+	const log = opts.log ?? (() => undefined);
+	return async (runtime, params) => {
+		const generateParams = params as unknown as GenerateTextParams;
+		const local = await opts.localGenerate(runtime, generateParams);
+		if (local.kind === "ok") {
+			return local.text;
+		}
+		log(
+			`[cloud-fallback] local handler returned fallback (reason=${local.reason})`,
+			{ modelType: String(opts.modelType), reason: local.reason },
+		);
+		const candidate = findCloudCandidate(
+			runtime,
+			opts.modelType,
+			opts.localProvider,
+		);
+		if (!candidate) {
+			const err = new Error(
+				`[cloud-fallback] Local inference reported ${local.reason} and no cloud handler is registered for ${String(opts.modelType)}. Pair Eliza Cloud or install a provider plugin (anthropic/openai) to enable fallback.`,
+			);
+			if (local.cause) {
+				(err as Error & { cause?: unknown }).cause = local.cause;
+			}
+			throw err;
+		}
+		log(
+			`[cloud-fallback] forwarding to ${candidate.provider} @ priority ${candidate.priority}`,
+			{
+				modelType: String(opts.modelType),
+				provider: candidate.provider,
+				reason: local.reason,
+			},
+		);
+		const result = await candidate.handler(runtime, params);
+		if (typeof result !== "string") {
+			throw new Error(
+				`[cloud-fallback] Cloud handler ${candidate.provider} returned non-string result for ${String(opts.modelType)}.`,
+			);
+		}
+		return result;
+	};
 }

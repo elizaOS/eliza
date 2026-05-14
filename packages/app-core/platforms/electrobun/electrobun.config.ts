@@ -327,7 +327,7 @@ export function createElectrobunConfig(): ElectrobunConfig {
 					// Plugins — initialized by the API subprocess, never the bun shell.
 					"@elizaos/plugin-sql",
 					"@elizaos/plugin-local-ai",
-					"@elizaos/plugin-local-embedding",
+					"@elizaos/plugin-local-inference",
 					// Database stack pulled in by plugin-sql.
 					"@electric-sql/pglite",
 					"drizzle-orm",

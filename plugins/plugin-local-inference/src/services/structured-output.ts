@@ -16,17 +16,17 @@
  */
 
 import type {
-  JSONSchema,
-  ResponseSkeleton,
-  ResponseSkeletonSpan,
+	JSONSchema,
+	ResponseSkeleton,
+	ResponseSkeletonSpan,
 } from "@elizaos/core";
 
 export {
-  repairStructuredOutput,
-  type StructuredOutputRepairOptions,
-  type StructuredOutputRepairResult,
-  type StructuredOutputRepairStatus,
-  StructuredOutputRepairStream,
+	repairStructuredOutput,
+	type StructuredOutputRepairOptions,
+	type StructuredOutputRepairResult,
+	type StructuredOutputRepairStatus,
+	StructuredOutputRepairStream,
 } from "./structured-output/deterministic-repair";
 export type { ResponseSkeleton, ResponseSkeletonSpan };
 
@@ -38,12 +38,12 @@ export type { ResponseSkeleton, ResponseSkeletonSpan };
  * once the envelope boundary is reached.
  */
 export interface GbnfGrammar {
-  /** GBNF source. */
-  source: string;
-  /** When true, the server applies the grammar lazily (`grammar_lazy: true`). */
-  lazy?: boolean;
-  /** Trigger words that activate a lazy grammar (`grammar_triggers`). */
-  triggers?: ReadonlyArray<string>;
+	/** GBNF source. */
+	source: string;
+	/** When true, the server applies the grammar lazily (`grammar_lazy: true`). */
+	lazy?: boolean;
+	/** Trigger words that activate a lazy grammar (`grammar_triggers`). */
+	triggers?: ReadonlyArray<string>;
 }
 
 /**
@@ -52,74 +52,74 @@ export interface GbnfGrammar {
  * engine → dflash-server.
  */
 export interface StructuredGenerateParams {
-  /**
-   * Assistant-turn prefill — a partial assistant message the model should
-   * *continue* rather than start fresh. On llama-server this is sent as a
-   * trailing assistant message with `continue_final_message` / the
-   * `assistant` chat-template prefix; the node-llama-cpp path seeds the
-   * prompt text and re-prepends the prefill to the result.
-   */
-  prefill?: string;
-  /**
-   * Forced response skeleton. When set the engine compiles it to a lazy GBNF
-   * (single-value enums → literals) so the model only samples the free
-   * positions of the envelope.
-   */
-  responseSkeleton?: ResponseSkeleton;
-  /** Optional whole-response JSON schema from `GenerateTextParams`. */
-  responseSchema?: JSONSchema;
-  /**
-   * Explicit GBNF grammar string. When both `grammar` and `responseSkeleton`
-   * are present, the explicit `grammar` wins (W3 contract).
-   */
-  grammar?: string;
-  /**
-   * When true, the engine streams per-token chunks back via `onTextChunk`
-   * (and structured-field events) instead of returning the whole string in
-   * one shot.
-   */
-  streamStructured?: boolean;
-  /**
-   * The eliza harness schema for this call — the compact descriptor bundling
-   * the response skeleton, a pre-built grammar (optional), the derived
-   * deterministic-token {@link ElizaPrefillPlan}, and the short/long name maps.
-   * When present, guided structured decode is *on* for this call: the engine
-   * sends the grammar AND the prefill plan, and seeds the leading literal run
-   * as an assistant-turn prefill. Absent → guided decode is off (the engine
-   * may still honour a bare `grammar` / `responseSkeleton`, but never emits a
-   * prefill plan). This is the off-by-default switch for the deterministic
-   * short-circuit.
-   */
-  elizaSchema?: ElizaHarnessSchema;
+	/**
+	 * Assistant-turn prefill — a partial assistant message the model should
+	 * *continue* rather than start fresh. On llama-server this is sent as a
+	 * trailing assistant message with `continue_final_message` / the
+	 * `assistant` chat-template prefix; the node-llama-cpp path seeds the
+	 * prompt text and re-prepends the prefill to the result.
+	 */
+	prefill?: string;
+	/**
+	 * Forced response skeleton. When set the engine compiles it to a lazy GBNF
+	 * (single-value enums → literals) so the model only samples the free
+	 * positions of the envelope.
+	 */
+	responseSkeleton?: ResponseSkeleton;
+	/** Optional whole-response JSON schema from `GenerateTextParams`. */
+	responseSchema?: JSONSchema;
+	/**
+	 * Explicit GBNF grammar string. When both `grammar` and `responseSkeleton`
+	 * are present, the explicit `grammar` wins (W3 contract).
+	 */
+	grammar?: string;
+	/**
+	 * When true, the engine streams per-token chunks back via `onTextChunk`
+	 * (and structured-field events) instead of returning the whole string in
+	 * one shot.
+	 */
+	streamStructured?: boolean;
+	/**
+	 * The eliza harness schema for this call — the compact descriptor bundling
+	 * the response skeleton, a pre-built grammar (optional), the derived
+	 * deterministic-token {@link ElizaPrefillPlan}, and the short/long name maps.
+	 * When present, guided structured decode is *on* for this call: the engine
+	 * sends the grammar AND the prefill plan, and seeds the leading literal run
+	 * as an assistant-turn prefill. Absent → guided decode is off (the engine
+	 * may still honour a bare `grammar` / `responseSkeleton`, but never emits a
+	 * prefill plan). This is the off-by-default switch for the deterministic
+	 * short-circuit.
+	 */
+	elizaSchema?: ElizaHarnessSchema;
 }
 
 /** True when `kind` is a span the model actually samples. */
 function isFreeSpan(span: ResponseSkeletonSpan): boolean {
-  return (
-    span.kind === "free-string" ||
-    span.kind === "free-json" ||
-    (span.kind === "enum" &&
-      Array.isArray(span.enumValues) &&
-      span.enumValues.length > 1)
-  );
+	return (
+		span.kind === "free-string" ||
+		span.kind === "free-json" ||
+		(span.kind === "enum" &&
+			Array.isArray(span.enumValues) &&
+			span.enumValues.length > 1)
+	);
 }
 
 /**
  * Escape a string for use inside a GBNF double-quoted literal (C-style escapes).
  */
 function gbnfEscapeLiteral(text: string): string {
-  let out = "";
-  for (const ch of text) {
-    const code = ch.codePointAt(0) ?? 0;
-    if (ch === "\\") out += "\\\\";
-    else if (ch === '"') out += '\\"';
-    else if (ch === "\n") out += "\\n";
-    else if (ch === "\r") out += "\\r";
-    else if (ch === "\t") out += "\\t";
-    else if (code < 0x20) out += `\\x${code.toString(16).padStart(2, "0")}`;
-    else out += ch;
-  }
-  return out;
+	let out = "";
+	for (const ch of text) {
+		const code = ch.codePointAt(0) ?? 0;
+		if (ch === "\\") out += "\\\\";
+		else if (ch === '"') out += '\\"';
+		else if (ch === "\n") out += "\\n";
+		else if (ch === "\r") out += "\\r";
+		else if (ch === "\t") out += "\\t";
+		else if (code < 0x20) out += `\\x${code.toString(16).padStart(2, "0")}`;
+		else out += ch;
+	}
+	return out;
 }
 
 /**
@@ -128,20 +128,20 @@ function gbnfEscapeLiteral(text: string): string {
  * compiler merges them in the root rule.
  */
 export function collapseSkeleton(skeleton: ResponseSkeleton): ResponseSkeleton {
-  const out: ResponseSkeletonSpan[] = [];
-  for (const span of skeleton.spans) {
-    if (
-      span.kind === "enum" &&
-      Array.isArray(span.enumValues) &&
-      span.enumValues.length <= 1
-    ) {
-      const value = span.enumValues[0] ?? span.value ?? "";
-      out.push({ kind: "literal", key: span.key, value });
-      continue;
-    }
-    out.push(span);
-  }
-  return { spans: out, id: skeleton.id };
+	const out: ResponseSkeletonSpan[] = [];
+	for (const span of skeleton.spans) {
+		if (
+			span.kind === "enum" &&
+			Array.isArray(span.enumValues) &&
+			span.enumValues.length <= 1
+		) {
+			const value = span.enumValues[0] ?? span.value ?? "";
+			out.push({ kind: "literal", key: span.key, value });
+			continue;
+		}
+		out.push(span);
+	}
+	return { spans: out, id: skeleton.id };
 }
 
 /**
@@ -154,12 +154,12 @@ const GBNF_JSON_STRING = '"\\"" ( [^"\\\\] | "\\\\" . )* "\\""';
  * is self-contained without a shared `json` import.
  */
 const GBNF_JSON_VALUE = [
-  'jsonvalue ::= jsonobject | jsonarray | jsonstring | jsonnumber | "true" | "false" | "null"',
-  'jsonobject ::= "{" ws ( jsonstring ws ":" ws jsonvalue ( ws "," ws jsonstring ws ":" ws jsonvalue )* )? ws "}"',
-  'jsonarray ::= "[" ws ( jsonvalue ( ws "," ws jsonvalue )* )? ws "]"',
-  `jsonstring ::= ${GBNF_JSON_STRING}`,
-  'jsonnumber ::= "-"? ( [0-9] | [1-9] [0-9]* ) ( "." [0-9]+ )? ( [eE] [-+]? [0-9]+ )?',
-  "ws ::= [ \\t\\n\\r]*",
+	'jsonvalue ::= jsonobject | jsonarray | jsonstring | jsonnumber | "true" | "false" | "null"',
+	'jsonobject ::= "{" ws ( jsonstring ws ":" ws jsonvalue ( ws "," ws jsonstring ws ":" ws jsonvalue )* )? ws "}"',
+	'jsonarray ::= "[" ws ( jsonvalue ( ws "," ws jsonvalue )* )? ws "]"',
+	`jsonstring ::= ${GBNF_JSON_STRING}`,
+	'jsonnumber ::= "-"? ( [0-9] | [1-9] [0-9]* ) ( "." [0-9]+ )? ( [eE] [-+]? [0-9]+ )?',
+	"ws ::= [ \\t\\n\\r]*",
 ].join("\n");
 
 /**
@@ -179,65 +179,65 @@ const GBNF_JSON_VALUE = [
  * sample — the caller should just emit the literal text and skip generation).
  */
 export function compileSkeletonToGbnf(
-  skeletonInput: ResponseSkeleton,
+	skeletonInput: ResponseSkeleton,
 ): GbnfGrammar | null {
-  const skeleton = collapseSkeleton(skeletonInput);
-  if (!skeleton.spans.some(isFreeSpan)) return null;
+	const skeleton = collapseSkeleton(skeletonInput);
+	if (!skeleton.spans.some(isFreeSpan)) return null;
 
-  const rules = new Map<string, string>();
-  const rootParts: string[] = [];
-  let freeIdx = 0;
-  let needsJsonValue = false;
-  let triggerWord: string | null = null;
+	const rules = new Map<string, string>();
+	const rootParts: string[] = [];
+	let freeIdx = 0;
+	let needsJsonValue = false;
+	let triggerWord: string | null = null;
 
-  for (let i = 0; i < skeleton.spans.length; i += 1) {
-    const span = skeleton.spans[i];
-    if (span.kind === "literal") {
-      const text = span.value ?? "";
-      if (i === 0 && text.length > 0) triggerWord = text;
-      rootParts.push(`"${gbnfEscapeLiteral(text)}"`);
-      continue;
-    }
-    if (span.kind === "enum") {
-      const values =
-        Array.isArray(span.enumValues) && span.enumValues.length > 0
-          ? span.enumValues
-          : [span.value ?? ""];
-      if (values.length === 1) {
-        // collapseSkeleton already lowered single-value enums; this is a
-        // defensive fallback for a producer that didn't.
-        rootParts.push(`"${gbnfEscapeLiteral(`"${values[0]}"`)}"`);
-        continue;
-      }
-      const ruleName = span.rule ?? `enum${freeIdx++}`;
-      const alts = values.map((v) => `"${gbnfEscapeLiteral(`"${v}"`)}"`);
-      rules.set(ruleName, alts.join(" | "));
-      rootParts.push(ruleName);
-      continue;
-    }
-    if (span.kind === "free-string") {
-      const ruleName = span.rule ?? `freestr${freeIdx++}`;
-      if (!rules.has(ruleName)) rules.set(ruleName, GBNF_JSON_STRING);
-      rootParts.push(ruleName);
-      continue;
-    }
-    // free-json
-    const ruleName = span.rule ?? "jsonvalue";
-    needsJsonValue = needsJsonValue || ruleName === "jsonvalue";
-    if (ruleName !== "jsonvalue" && !rules.has(ruleName)) {
-      // A producer-named rule with no inline body falls back to a JSON value.
-      rules.set(ruleName, "jsonvalue");
-      needsJsonValue = true;
-    }
-    rootParts.push(ruleName);
-  }
+	for (let i = 0; i < skeleton.spans.length; i += 1) {
+		const span = skeleton.spans[i];
+		if (span.kind === "literal") {
+			const text = span.value ?? "";
+			if (i === 0 && text.length > 0) triggerWord = text;
+			rootParts.push(`"${gbnfEscapeLiteral(text)}"`);
+			continue;
+		}
+		if (span.kind === "enum") {
+			const values =
+				Array.isArray(span.enumValues) && span.enumValues.length > 0
+					? span.enumValues
+					: [span.value ?? ""];
+			if (values.length === 1) {
+				// collapseSkeleton already lowered single-value enums; this is a
+				// defensive fallback for a producer that didn't.
+				rootParts.push(`"${gbnfEscapeLiteral(`"${values[0]}"`)}"`);
+				continue;
+			}
+			const ruleName = span.rule ?? `enum${freeIdx++}`;
+			const alts = values.map((v) => `"${gbnfEscapeLiteral(`"${v}"`)}"`);
+			rules.set(ruleName, alts.join(" | "));
+			rootParts.push(ruleName);
+			continue;
+		}
+		if (span.kind === "free-string") {
+			const ruleName = span.rule ?? `freestr${freeIdx++}`;
+			if (!rules.has(ruleName)) rules.set(ruleName, GBNF_JSON_STRING);
+			rootParts.push(ruleName);
+			continue;
+		}
+		// free-json
+		const ruleName = span.rule ?? "jsonvalue";
+		needsJsonValue = needsJsonValue || ruleName === "jsonvalue";
+		if (ruleName !== "jsonvalue" && !rules.has(ruleName)) {
+			// A producer-named rule with no inline body falls back to a JSON value.
+			rules.set(ruleName, "jsonvalue");
+			needsJsonValue = true;
+		}
+		rootParts.push(ruleName);
+	}
 
-  const lines = [`root ::= ${rootParts.join(" ")}`];
-  for (const [name, body] of rules) lines.push(`${name} ::= ${body}`);
-  if (needsJsonValue) lines.push(GBNF_JSON_VALUE);
-  const source = lines.join("\n");
-  if (triggerWord) return { source, lazy: true, triggers: [triggerWord] };
-  return { source, lazy: false };
+	const lines = [`root ::= ${rootParts.join(" ")}`];
+	for (const [name, body] of rules) lines.push(`${name} ::= ${body}`);
+	if (needsJsonValue) lines.push(GBNF_JSON_VALUE);
+	const source = lines.join("\n");
+	if (triggerWord) return { source, lazy: true, triggers: [triggerWord] };
+	return { source, lazy: false };
 }
 
 /**
@@ -246,16 +246,16 @@ export function compileSkeletonToGbnf(
  * Returns null when neither is set.
  */
 export function resolveGrammarForParams(
-  params: StructuredGenerateParams | undefined,
+	params: StructuredGenerateParams | undefined,
 ): GbnfGrammar | null {
-  if (!params) return null;
-  if (typeof params.grammar === "string" && params.grammar.trim().length > 0) {
-    return { source: params.grammar, lazy: false };
-  }
-  if (params.responseSkeleton) {
-    return compileSkeletonToGbnf(params.responseSkeleton);
-  }
-  return null;
+	if (!params) return null;
+	if (typeof params.grammar === "string" && params.grammar.trim().length > 0) {
+		return { source: params.grammar, lazy: false };
+	}
+	if (params.responseSkeleton) {
+		return compileSkeletonToGbnf(params.responseSkeleton);
+	}
+	return null;
 }
 
 /**
@@ -265,19 +265,19 @@ export function resolveGrammarForParams(
  * `/completion`.
  */
 export function grammarRequestFields(
-  grammar: GbnfGrammar,
+	grammar: GbnfGrammar,
 ): Record<string, unknown> {
-  const out: Record<string, unknown> = { grammar: grammar.source };
-  if (grammar.lazy) {
-    out.grammar_lazy = true;
-    if (grammar.triggers && grammar.triggers.length > 0) {
-      out.grammar_triggers = grammar.triggers.map((value) => ({
-        type: "word",
-        value,
-      }));
-    }
-  }
-  return out;
+	const out: Record<string, unknown> = { grammar: grammar.source };
+	if (grammar.lazy) {
+		out.grammar_lazy = true;
+		if (grammar.triggers && grammar.triggers.length > 0) {
+			out.grammar_triggers = grammar.triggers.map((value) => ({
+				type: "word",
+				value,
+			}));
+		}
+	}
+	return out;
 }
 
 /**
@@ -287,19 +287,19 @@ export function grammarRequestFields(
  * free span, then loop).
  */
 export function splitSkeletonAtFirstFree(skeleton: ResponseSkeleton): {
-  prefixLiteral: string;
-  rest: ResponseSkeletonSpan[];
+	prefixLiteral: string;
+	rest: ResponseSkeletonSpan[];
 } {
-  let prefixLiteral = "";
-  let idx = 0;
-  while (
-    idx < skeleton.spans.length &&
-    skeleton.spans[idx].kind === "literal"
-  ) {
-    prefixLiteral += skeleton.spans[idx].value ?? "";
-    idx += 1;
-  }
-  return { prefixLiteral, rest: skeleton.spans.slice(idx) };
+	let prefixLiteral = "";
+	let idx = 0;
+	while (
+		idx < skeleton.spans.length &&
+		skeleton.spans[idx].kind === "literal"
+	) {
+		prefixLiteral += skeleton.spans[idx].value ?? "";
+		idx += 1;
+	}
+	return { prefixLiteral, rest: skeleton.spans.slice(idx) };
 }
 
 // ---------------------------------------------------------------------------
@@ -337,14 +337,14 @@ export function splitSkeletonAtFirstFree(skeleton: ResponseSkeleton): {
  * a forward pass and advances the decoder to the next free span.
  */
 export interface PrefillRun {
-  /**
-   * Index of the free span this run *follows*. `-1` = the leading run (the
-   * prefill); `k >= 0` = the run after free span `k`. The last run (`n`) is the
-   * tail scaffold (closing braces) after the final free span.
-   */
-  afterFreeSpan: number;
-  /** The deterministically-forced bytes. */
-  text: string;
+	/**
+	 * Index of the free span this run *follows*. `-1` = the leading run (the
+	 * prefill); `k >= 0` = the run after free span `k`. The last run (`n`) is the
+	 * tail scaffold (closing braces) after the final free span.
+	 */
+	afterFreeSpan: number;
+	/** The deterministically-forced bytes. */
+	text: string;
 }
 
 /**
@@ -358,24 +358,24 @@ export interface PrefillRun {
  * output because the lazy GBNF already forces the same bytes.
  */
 export interface ElizaPrefillPlan {
-  /**
-   * The leading deterministic run — emitted as an assistant-turn prefill so
-   * the model never samples it. Empty when the skeleton opens with a free span.
-   */
-  prefix: string;
-  /**
-   * Deterministic byte runs alternating with the free spans (see
-   * {@link PrefillRun}), in output order, including the prefix run when
-   * non-empty.
-   */
-  runs: PrefillRun[];
-  /** Number of free (sampled) spans in the skeleton. `runs.length` is `freeCount + 1` minus the leading run when the skeleton starts free. */
-  freeCount: number;
-  /**
-   * Opaque cache key (mirrors the skeleton's `id`) so the server can cache the
-   * tokenised form of the runs across turns when the structure is unchanged.
-   */
-  id?: string;
+	/**
+	 * The leading deterministic run — emitted as an assistant-turn prefill so
+	 * the model never samples it. Empty when the skeleton opens with a free span.
+	 */
+	prefix: string;
+	/**
+	 * Deterministic byte runs alternating with the free spans (see
+	 * {@link PrefillRun}), in output order, including the prefix run when
+	 * non-empty.
+	 */
+	runs: PrefillRun[];
+	/** Number of free (sampled) spans in the skeleton. `runs.length` is `freeCount + 1` minus the leading run when the skeleton starts free. */
+	freeCount: number;
+	/**
+	 * Opaque cache key (mirrors the skeleton's `id`) so the server can cache the
+	 * tokenised form of the runs across turns when the structure is unchanged.
+	 */
+	id?: string;
 }
 
 /**
@@ -391,45 +391,45 @@ export interface ElizaPrefillPlan {
  * have produced. The tests assert this.
  */
 export function compilePrefillPlan(
-  skeletonInput: ResponseSkeleton,
+	skeletonInput: ResponseSkeleton,
 ): ElizaPrefillPlan | null {
-  const skeleton = collapseSkeleton(skeletonInput);
-  const runs: PrefillRun[] = [];
-  let freeCount = 0;
-  let pending = "";
+	const skeleton = collapseSkeleton(skeletonInput);
+	const runs: PrefillRun[] = [];
+	let freeCount = 0;
+	let pending = "";
 
-  const flushPending = (afterFreeSpan: number) => {
-    if (pending.length === 0) return;
-    runs.push({ afterFreeSpan, text: pending });
-    pending = "";
-  };
+	const flushPending = (afterFreeSpan: number) => {
+		if (pending.length === 0) return;
+		runs.push({ afterFreeSpan, text: pending });
+		pending = "";
+	};
 
-  for (const span of skeleton.spans) {
-    if (span.kind === "literal") {
-      pending += span.value ?? "";
-      continue;
-    }
-    if (
-      span.kind === "enum" &&
-      Array.isArray(span.enumValues) &&
-      span.enumValues.length === 1
-    ) {
-      // Defensive: a producer that didn't collapse a single-value enum.
-      pending += JSON.stringify(String(span.enumValues[0]));
-      continue;
-    }
-    // A free position (enum ≥2 values, free-string, free-json). The
-    // deterministic run accumulated so far follows free span `freeCount - 1`
-    // (or is the leading prefill run when `freeCount === 0`).
-    flushPending(freeCount - 1);
-    freeCount += 1;
-  }
-  // Tail scaffold after the last free span.
-  flushPending(freeCount - 1);
+	for (const span of skeleton.spans) {
+		if (span.kind === "literal") {
+			pending += span.value ?? "";
+			continue;
+		}
+		if (
+			span.kind === "enum" &&
+			Array.isArray(span.enumValues) &&
+			span.enumValues.length === 1
+		) {
+			// Defensive: a producer that didn't collapse a single-value enum.
+			pending += JSON.stringify(String(span.enumValues[0]));
+			continue;
+		}
+		// A free position (enum ≥2 values, free-string, free-json). The
+		// deterministic run accumulated so far follows free span `freeCount - 1`
+		// (or is the leading prefill run when `freeCount === 0`).
+		flushPending(freeCount - 1);
+		freeCount += 1;
+	}
+	// Tail scaffold after the last free span.
+	flushPending(freeCount - 1);
 
-  if (runs.length === 0) return null;
-  const prefix = runs[0].afterFreeSpan === -1 ? runs[0].text : "";
-  return { prefix, runs, freeCount, id: skeleton.id };
+	if (runs.length === 0) return null;
+	const prefix = runs[0].afterFreeSpan === -1 ? runs[0].text : "";
+	return { prefix, runs, freeCount, id: skeleton.id };
 }
 
 /**
@@ -438,20 +438,20 @@ export function compilePrefillPlan(
  * grammar still forces the same bytes). Returns `{}` when there is no plan.
  */
 export function prefillPlanRequestFields(
-  plan: ElizaPrefillPlan | null,
+	plan: ElizaPrefillPlan | null,
 ): Record<string, unknown> {
-  if (!plan) return {};
-  return {
-    eliza_prefill_plan: {
-      prefix: plan.prefix,
-      runs: plan.runs.map((r) => ({
-        after_free_span: r.afterFreeSpan,
-        text: r.text,
-      })),
-      free_count: plan.freeCount,
-      id: plan.id,
-    },
-  };
+	if (!plan) return {};
+	return {
+		eliza_prefill_plan: {
+			prefix: plan.prefix,
+			runs: plan.runs.map((r) => ({
+				after_free_span: r.afterFreeSpan,
+				text: r.text,
+			})),
+			free_count: plan.freeCount,
+			id: plan.id,
+		},
+	};
 }
 
 // ---------------------------------------------------------------------------
@@ -471,21 +471,21 @@ export function prefillPlanRequestFields(
  * (`dflash-server.ts` / `engine.ts`).
  */
 export interface ElizaHarnessSchema {
-  /** Structure-forcing description; compiles to a lazy GBNF. */
-  skeleton: ResponseSkeleton;
-  /** Pre-built GBNF (wins over compiling the skeleton), when the producer made one. */
-  grammar?: string;
-  /** Deterministic-token short-circuit derived from the skeleton. */
-  prefillPlan: ElizaPrefillPlan | null;
-  /**
-   * Canonical short id → human-facing long name (display label), for any
-   * closed enum the descriptor pins (action ids, known enum values). The wire
-   * form is the short id; callers that want the long name look it up here.
-   * Empty when nothing needs expanding.
-   */
-  longNames: Record<string, string>;
-  /** Cache key (the skeleton's id). */
-  id?: string;
+	/** Structure-forcing description; compiles to a lazy GBNF. */
+	skeleton: ResponseSkeleton;
+	/** Pre-built GBNF (wins over compiling the skeleton), when the producer made one. */
+	grammar?: string;
+	/** Deterministic-token short-circuit derived from the skeleton. */
+	prefillPlan: ElizaPrefillPlan | null;
+	/**
+	 * Canonical short id → human-facing long name (display label), for any
+	 * closed enum the descriptor pins (action ids, known enum values). The wire
+	 * form is the short id; callers that want the long name look it up here.
+	 * Empty when nothing needs expanding.
+	 */
+	longNames: Record<string, string>;
+	/** Cache key (the skeleton's id). */
+	id?: string;
 }
 
 /**
@@ -495,17 +495,17 @@ export interface ElizaHarnessSchema {
  * it.
  */
 export function elizaHarnessSchemaFromSkeleton(input: {
-  skeleton: ResponseSkeleton;
-  grammar?: string;
-  longNames?: Record<string, string>;
+	skeleton: ResponseSkeleton;
+	grammar?: string;
+	longNames?: Record<string, string>;
 }): ElizaHarnessSchema {
-  return {
-    skeleton: input.skeleton,
-    grammar: input.grammar,
-    prefillPlan: compilePrefillPlan(input.skeleton),
-    longNames: input.longNames ?? {},
-    id: input.skeleton.id,
-  };
+	return {
+		skeleton: input.skeleton,
+		grammar: input.grammar,
+		prefillPlan: compilePrefillPlan(input.skeleton),
+		longNames: input.longNames ?? {},
+		id: input.skeleton.id,
+	};
 }
 
 /**
@@ -518,11 +518,11 @@ export function elizaHarnessSchemaFromSkeleton(input: {
  * display label.
  */
 export function expandShortName(
-  schema: ElizaHarnessSchema | undefined,
-  shortId: string,
+	schema: ElizaHarnessSchema | undefined,
+	shortId: string,
 ): string {
-  if (!schema) return shortId;
-  return schema.longNames[shortId] ?? shortId;
+	if (!schema) return shortId;
+	return schema.longNames[shortId] ?? shortId;
 }
 
 /**
@@ -531,15 +531,15 @@ export function expandShortName(
  * the name is already a known short id or no mapping matches.
  */
 export function canonicalizeShortName(
-  schema: ElizaHarnessSchema | undefined,
-  name: string,
+	schema: ElizaHarnessSchema | undefined,
+	name: string,
 ): string {
-  if (!schema) return name;
-  if (Object.hasOwn(schema.longNames, name)) return name; // already a short id
-  for (const [shortId, longName] of Object.entries(schema.longNames)) {
-    if (longName === name) return shortId;
-  }
-  return name;
+	if (!schema) return name;
+	if (Object.hasOwn(schema.longNames, name)) return name; // already a short id
+	for (const [shortId, longName] of Object.entries(schema.longNames)) {
+		if (longName === name) return shortId;
+	}
+	return name;
 }
 
 /**
@@ -550,35 +550,35 @@ export function canonicalizeShortName(
  * is only present when a harness schema is supplied (off by default).
  */
 export function resolveGuidedDecodeForParams(
-  params: StructuredGenerateParams | undefined,
+	params: StructuredGenerateParams | undefined,
 ): {
-  grammar: GbnfGrammar | null;
-  prefillPlan: ElizaPrefillPlan | null;
-  prefill: string | null;
+	grammar: GbnfGrammar | null;
+	prefillPlan: ElizaPrefillPlan | null;
+	prefill: string | null;
 } {
-  if (!params) return { grammar: null, prefillPlan: null, prefill: null };
-  const schema = params.elizaSchema;
-  if (schema) {
-    const grammar: GbnfGrammar | null =
-      typeof schema.grammar === "string" && schema.grammar.trim().length > 0
-        ? { source: schema.grammar, lazy: false }
-        : compileSkeletonToGbnf(schema.skeleton);
-    const plan = schema.prefillPlan ?? compilePrefillPlan(schema.skeleton);
-    // Only use the plan's prefix when the caller didn't already supply one.
-    const prefill =
-      typeof params.prefill === "string" && params.prefill.length > 0
-        ? params.prefill
-        : plan && plan.prefix.length > 0
-          ? plan.prefix
-          : null;
-    return { grammar, prefillPlan: plan, prefill };
-  }
-  return {
-    grammar: resolveGrammarForParams(params),
-    prefillPlan: null,
-    prefill:
-      typeof params.prefill === "string" && params.prefill.length > 0
-        ? params.prefill
-        : null,
-  };
+	if (!params) return { grammar: null, prefillPlan: null, prefill: null };
+	const schema = params.elizaSchema;
+	if (schema) {
+		const grammar: GbnfGrammar | null =
+			typeof schema.grammar === "string" && schema.grammar.trim().length > 0
+				? { source: schema.grammar, lazy: false }
+				: compileSkeletonToGbnf(schema.skeleton);
+		const plan = schema.prefillPlan ?? compilePrefillPlan(schema.skeleton);
+		// Only use the plan's prefix when the caller didn't already supply one.
+		const prefill =
+			typeof params.prefill === "string" && params.prefill.length > 0
+				? params.prefill
+				: plan && plan.prefix.length > 0
+					? plan.prefix
+					: null;
+		return { grammar, prefillPlan: plan, prefill };
+	}
+	return {
+		grammar: resolveGrammarForParams(params),
+		prefillPlan: null,
+		prefill:
+			typeof params.prefill === "string" && params.prefill.length > 0
+				? params.prefill
+				: null,
+	};
 }

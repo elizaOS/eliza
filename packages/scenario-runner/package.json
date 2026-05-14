@@ -56,7 +56,7 @@
     "@elizaos/app-lifeops": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-agent-skills": "workspace:*",
-    "@elizaos/plugin-local-embedding": "workspace:*",
+    "@elizaos/plugin-local-inference": "workspace:*",
     "@elizaos/plugin-sql": "workspace:*",
     "@elizaos/scenario-schema": "workspace:*",
     "@elizaos/shared": "workspace:*"

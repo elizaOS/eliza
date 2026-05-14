@@ -18,9 +18,9 @@
  * full runtime.
  */
 export function shouldEnableMobileLocalInference(
-  env: NodeJS.ProcessEnv = process.env,
+	env: NodeJS.ProcessEnv = process.env,
 ): boolean {
-  const deviceBridge = env.ELIZA_DEVICE_BRIDGE_ENABLED?.trim() === "1";
-  const localLlama = env.ELIZA_LOCAL_LLAMA?.trim() === "1";
-  return deviceBridge || localLlama;
+	const deviceBridge = env.ELIZA_DEVICE_BRIDGE_ENABLED?.trim() === "1";
+	const localLlama = env.ELIZA_LOCAL_LLAMA?.trim() === "1";
+	return deviceBridge || localLlama;
 }

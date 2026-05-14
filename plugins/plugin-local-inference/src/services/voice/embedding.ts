@@ -43,12 +43,12 @@ export const EMBEDDING_FULL_DIM = 1024 as const;
  * not part of the published contract.
  */
 export const EMBEDDING_MATRYOSHKA_DIMS: readonly number[] = [
-  64, 128, 256, 512, 768, 1024,
+	64, 128, 256, 512, 768, 1024,
 ];
 
 /** Type-narrow guard for `EMBEDDING_MATRYOSHKA_DIMS`. */
 export function isValidEmbeddingDim(dim: number): boolean {
-  return EMBEDDING_MATRYOSHKA_DIMS.includes(dim);
+	return EMBEDDING_MATRYOSHKA_DIMS.includes(dim);
 }
 
 /**
@@ -63,69 +63,69 @@ export function isValidEmbeddingDim(dim: number): boolean {
  * or zero-padding (Commandment 8: don't hide a broken pipeline).
  */
 export function truncateMatryoshka(
-  vec: readonly number[],
-  dim: number,
+	vec: readonly number[],
+	dim: number,
 ): number[] {
-  if (!isValidEmbeddingDim(dim)) {
-    throw new Error(
-      `[embedding] dim ${dim} is not a valid Matryoshka width; expected one of ${EMBEDDING_MATRYOSHKA_DIMS.join(", ")}`,
-    );
-  }
-  if (vec.length < dim) {
-    throw new Error(
-      `[embedding] cannot truncate a ${vec.length}-dim vector to ${dim} dims`,
-    );
-  }
-  if (vec.length === dim) {
-    // Already the requested width; still renormalize so a caller passing a
-    // raw last-token state (which may not be unit-norm) gets a clean vec.
-    return l2Normalize(vec.slice());
-  }
-  return l2Normalize(vec.slice(0, dim));
+	if (!isValidEmbeddingDim(dim)) {
+		throw new Error(
+			`[embedding] dim ${dim} is not a valid Matryoshka width; expected one of ${EMBEDDING_MATRYOSHKA_DIMS.join(", ")}`,
+		);
+	}
+	if (vec.length < dim) {
+		throw new Error(
+			`[embedding] cannot truncate a ${vec.length}-dim vector to ${dim} dims`,
+		);
+	}
+	if (vec.length === dim) {
+		// Already the requested width; still renormalize so a caller passing a
+		// raw last-token state (which may not be unit-norm) gets a clean vec.
+		return l2Normalize(vec.slice());
+	}
+	return l2Normalize(vec.slice(0, dim));
 }
 
 /** L2-normalize in place; returns the same array. Zero vectors pass through. */
 function l2Normalize(vec: number[]): number[] {
-  let sumSq = 0;
-  for (const x of vec) sumSq += x * x;
-  if (sumSq === 0) return vec;
-  const inv = 1 / Math.sqrt(sumSq);
-  for (let i = 0; i < vec.length; i += 1) vec[i] *= inv;
-  return vec;
+	let sumSq = 0;
+	for (const x of vec) sumSq += x * x;
+	if (sumSq === 0) return vec;
+	const inv = 1 / Math.sqrt(sumSq);
+	for (let i = 0; i < vec.length; i += 1) vec[i] *= inv;
+	return vec;
 }
 
 export type LocalEmbeddingSource =
-  | {
-      /** `0_8b` / `2b`: reuse the text backbone GGUF; serve with `--pooling last`. */
-      readonly kind: "pooled-text";
-      readonly textModelPath: string;
-      readonly poolingType: "last";
-    }
-  | {
-      /** Larger tiers: a dedicated `embedding/<name>.gguf` region. */
-      readonly kind: "dedicated-region";
-      readonly embeddingModelPath: string;
-      /** 1024-dim Matryoshka (the published Eliza-1 embedding contract). */
-      readonly dimensions: typeof EMBEDDING_FULL_DIM;
-      /**
-       * The dedicated model already ships a contrastive `last`-token
-       * pooling head — `--pooling last` is still passed so llama-server
-       * doesn't fall back to the GGUF's metadata default (which for a raw
-       * Qwen3 base is `mean`). The model's own pooling layer dominates;
-       * this just pins the read.
-       */
-      readonly poolingType: "last";
-    };
+	| {
+			/** `0_8b` / `2b`: reuse the text backbone GGUF; serve with `--pooling last`. */
+			readonly kind: "pooled-text";
+			readonly textModelPath: string;
+			readonly poolingType: "last";
+	  }
+	| {
+			/** Larger tiers: a dedicated `embedding/<name>.gguf` region. */
+			readonly kind: "dedicated-region";
+			readonly embeddingModelPath: string;
+			/** 1024-dim Matryoshka (the published Eliza-1 embedding contract). */
+			readonly dimensions: typeof EMBEDDING_FULL_DIM;
+			/**
+			 * The dedicated model already ships a contrastive `last`-token
+			 * pooling head — `--pooling last` is still passed so llama-server
+			 * doesn't fall back to the GGUF's metadata default (which for a raw
+			 * Qwen3 base is `mean`). The model's own pooling layer dominates;
+			 * this just pins the read.
+			 */
+			readonly poolingType: "last";
+	  };
 
 /** First regular `.gguf` file under `dir`, or null. */
 function firstGguf(dir: string): string | null {
-  if (!existsSync(dir)) return null;
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    if (entry.isFile() && /\.gguf$/i.test(entry.name)) {
-      return path.join(dir, entry.name);
-    }
-  }
-  return null;
+	if (!existsSync(dir)) return null;
+	for (const entry of readdirSync(dir, { withFileTypes: true })) {
+		if (entry.isFile() && /\.gguf$/i.test(entry.name)) {
+			return path.join(dir, entry.name);
+		}
+	}
+	return null;
 }
 
 /**
@@ -134,8 +134,8 @@ function firstGguf(dir: string): string | null {
  * parameters; larger tiers may use a dedicated embedding region.
  */
 export const POOLED_TEXT_EMBEDDING_TIERS: ReadonlySet<Eliza1TierId> = new Set([
-  "eliza-1-0_8b",
-  "eliza-1-2b",
+	"eliza-1-0_8b",
+	"eliza-1-2b",
 ]);
 
 /**
@@ -151,37 +151,37 @@ export const POOLED_TEXT_EMBEDDING_TIERS: ReadonlySet<Eliza1TierId> = new Set([
  * regress dimensions from 1024 to whatever the text model emits.
  */
 export function resolveLocalEmbeddingSource(args: {
-  bundleRoot: string;
-  tierId: Eliza1TierId;
-  textModelPath: string;
+	bundleRoot: string;
+	tierId: Eliza1TierId;
+	textModelPath: string;
 }): LocalEmbeddingSource {
-  if (POOLED_TEXT_EMBEDDING_TIERS.has(args.tierId)) {
-    if (!existsSync(args.textModelPath)) {
-      throw new VoiceStartupError(
-        "missing-bundle-root",
-        `[embedding] ${args.tierId}: text model not found at ${args.textModelPath} — cannot serve pooled-text embeddings.`,
-      );
-    }
-    return {
-      kind: "pooled-text",
-      textModelPath: args.textModelPath,
-      poolingType: "last",
-    };
-  }
-  const dir = path.join(args.bundleRoot, EMBEDDING_DIR_REL_PATH);
-  const gguf = firstGguf(dir);
-  if (!gguf) {
-    throw new VoiceStartupError(
-      "missing-bundle-root",
-      `[embedding] ${args.tierId}: required dedicated embedding region missing under ${dir}. Tiers above 2b ship a separate 1024-dim Matryoshka embedding GGUF (AGENTS.md §1) — do not fall back to pooled text.`,
-    );
-  }
-  return {
-    kind: "dedicated-region",
-    embeddingModelPath: gguf,
-    dimensions: EMBEDDING_FULL_DIM,
-    poolingType: "last",
-  };
+	if (POOLED_TEXT_EMBEDDING_TIERS.has(args.tierId)) {
+		if (!existsSync(args.textModelPath)) {
+			throw new VoiceStartupError(
+				"missing-bundle-root",
+				`[embedding] ${args.tierId}: text model not found at ${args.textModelPath} — cannot serve pooled-text embeddings.`,
+			);
+		}
+		return {
+			kind: "pooled-text",
+			textModelPath: args.textModelPath,
+			poolingType: "last",
+		};
+	}
+	const dir = path.join(args.bundleRoot, EMBEDDING_DIR_REL_PATH);
+	const gguf = firstGguf(dir);
+	if (!gguf) {
+		throw new VoiceStartupError(
+			"missing-bundle-root",
+			`[embedding] ${args.tierId}: required dedicated embedding region missing under ${dir}. Tiers above 2b ship a separate 1024-dim Matryoshka embedding GGUF (AGENTS.md §1) — do not fall back to pooled text.`,
+		);
+	}
+	return {
+		kind: "dedicated-region",
+		embeddingModelPath: gguf,
+		dimensions: EMBEDDING_FULL_DIM,
+		poolingType: "last",
+	};
 }
 
 /**
@@ -192,53 +192,53 @@ export function resolveLocalEmbeddingSource(args: {
  * a server.
  */
 export interface LocalEmbeddingRoute {
-  readonly tierId: Eliza1TierId;
-  readonly source: LocalEmbeddingSource;
-  /** Full output dimensionality the route produces before truncation. 1024 on every tier. */
-  readonly dimensions: typeof EMBEDDING_FULL_DIM;
-  /**
-   * Default Matryoshka width the route returns when a caller does not ask
-   * for a smaller `dim`. Always 1024 (= `dimensions`) — callers/the vector
-   * store opt into a smaller width for storage savings.
-   */
-  readonly defaultDim: number;
-  /** The Matryoshka widths a caller may request. */
-  readonly matryoshkaDims: readonly number[];
-  /**
-   * `llama-server` flags for the embedding server process — always
-   * `--embeddings --pooling last`. The embedding server is a lazily-started
-   * sidecar over the route's GGUF (the text backbone on `0_8b` / `2b`, the
-   * `embedding/` GGUF on larger tiers); see `embedding-server.ts`. The
-   * chat `llama-server` is left untouched (completions-only) — these flags
-   * do NOT go on it.
-   */
-  readonly serverFlags: ReadonlyArray<string>;
+	readonly tierId: Eliza1TierId;
+	readonly source: LocalEmbeddingSource;
+	/** Full output dimensionality the route produces before truncation. 1024 on every tier. */
+	readonly dimensions: typeof EMBEDDING_FULL_DIM;
+	/**
+	 * Default Matryoshka width the route returns when a caller does not ask
+	 * for a smaller `dim`. Always 1024 (= `dimensions`) — callers/the vector
+	 * store opt into a smaller width for storage savings.
+	 */
+	readonly defaultDim: number;
+	/** The Matryoshka widths a caller may request. */
+	readonly matryoshkaDims: readonly number[];
+	/**
+	 * `llama-server` flags for the embedding server process — always
+	 * `--embeddings --pooling last`. The embedding server is a lazily-started
+	 * sidecar over the route's GGUF (the text backbone on `0_8b` / `2b`, the
+	 * `embedding/` GGUF on larger tiers); see `embedding-server.ts`. The
+	 * chat `llama-server` is left untouched (completions-only) — these flags
+	 * do NOT go on it.
+	 */
+	readonly serverFlags: ReadonlyArray<string>;
 }
 
 export function buildLocalEmbeddingRoute(args: {
-  bundleRoot: string;
-  tierId: Eliza1TierId;
-  textModelPath: string;
-  /** Default output width; must be one of `EMBEDDING_MATRYOSHKA_DIMS`. Defaults to 1024. */
-  defaultDim?: number;
+	bundleRoot: string;
+	tierId: Eliza1TierId;
+	textModelPath: string;
+	/** Default output width; must be one of `EMBEDDING_MATRYOSHKA_DIMS`. Defaults to 1024. */
+	defaultDim?: number;
 }): LocalEmbeddingRoute {
-  const source = resolveLocalEmbeddingSource(args);
-  const defaultDim = args.defaultDim ?? EMBEDDING_FULL_DIM;
-  if (!isValidEmbeddingDim(defaultDim)) {
-    throw new Error(
-      `[embedding] defaultDim ${defaultDim} is not a valid Matryoshka width; expected one of ${EMBEDDING_MATRYOSHKA_DIMS.join(", ")}`,
-    );
-  }
-  // Both modes serve through a sidecar `llama-server --embeddings --pooling
-  // last` (over the text GGUF on 0_8b / 2b, over the embedding/ GGUF on
-  // larger tiers). The chat server is never given these flags.
-  const serverFlags = ["--embeddings", "--pooling", source.poolingType];
-  return {
-    tierId: args.tierId,
-    source,
-    dimensions: EMBEDDING_FULL_DIM,
-    defaultDim,
-    matryoshkaDims: EMBEDDING_MATRYOSHKA_DIMS,
-    serverFlags,
-  };
+	const source = resolveLocalEmbeddingSource(args);
+	const defaultDim = args.defaultDim ?? EMBEDDING_FULL_DIM;
+	if (!isValidEmbeddingDim(defaultDim)) {
+		throw new Error(
+			`[embedding] defaultDim ${defaultDim} is not a valid Matryoshka width; expected one of ${EMBEDDING_MATRYOSHKA_DIMS.join(", ")}`,
+		);
+	}
+	// Both modes serve through a sidecar `llama-server --embeddings --pooling
+	// last` (over the text GGUF on 0_8b / 2b, over the embedding/ GGUF on
+	// larger tiers). The chat server is never given these flags.
+	const serverFlags = ["--embeddings", "--pooling", source.poolingType];
+	return {
+		tierId: args.tierId,
+		source,
+		dimensions: EMBEDDING_FULL_DIM,
+		defaultDim,
+		matryoshkaDims: EMBEDDING_MATRYOSHKA_DIMS,
+		serverFlags,
+	};
 }

@@ -19,34 +19,34 @@
  */
 
 export interface OrtTensor {
-  readonly dims: readonly number[];
-  readonly data: Float32Array | BigInt64Array;
+	readonly dims: readonly number[];
+	readonly data: Float32Array | BigInt64Array;
 }
 export type OrtTensorCtor = new (
-  type: "float32" | "int64",
-  data: Float32Array | BigInt64Array,
-  dims: readonly number[],
+	type: "float32" | "int64",
+	data: Float32Array | BigInt64Array,
+	dims: readonly number[],
 ) => OrtTensor;
 export interface OrtInferenceSession {
-  readonly inputNames: readonly string[];
-  readonly outputNames: readonly string[];
-  run(feeds: Record<string, OrtTensor>): Promise<Record<string, OrtTensor>>;
+	readonly inputNames: readonly string[];
+	readonly outputNames: readonly string[];
+	run(feeds: Record<string, OrtTensor>): Promise<Record<string, OrtTensor>>;
 }
 export interface OrtInferenceSessionStatic {
-  create(pathOrBuffer: string | Uint8Array): Promise<OrtInferenceSession>;
+	create(pathOrBuffer: string | Uint8Array): Promise<OrtInferenceSession>;
 }
 export interface OrtModule {
-  InferenceSession: OrtInferenceSessionStatic;
-  Tensor: OrtTensorCtor;
+	InferenceSession: OrtInferenceSessionStatic;
+	Tensor: OrtTensorCtor;
 }
 
 /** Raised by `loadOnnxRuntime()` when `onnxruntime-node` is unavailable.
  *  Callers translate this into their model-specific unavailable error. */
 export class OnnxRuntimeUnavailableError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "OnnxRuntimeUnavailableError";
-  }
+	constructor(message: string) {
+		super(message);
+		this.name = "OnnxRuntimeUnavailableError";
+	}
 }
 
 let ortModulePromise: Promise<OrtModule> | null = null;
@@ -54,25 +54,25 @@ let ortModulePromise: Promise<OrtModule> | null = null;
 /** Load `onnxruntime-node` once. Throws `OnnxRuntimeUnavailableError` if
  *  the optional dependency is not installed or did not export the runtime. */
 export async function loadOnnxRuntime(): Promise<OrtModule> {
-  if (!ortModulePromise) {
-    ortModulePromise = (async () => {
-      try {
-        const spec = "onnxruntime-node";
-        const mod = (await import(spec)) as { default?: OrtModule } & OrtModule;
-        const resolved = (mod.default ?? mod) as OrtModule;
-        if (!resolved?.InferenceSession || !resolved?.Tensor) {
-          throw new Error("module did not export InferenceSession/Tensor");
-        }
-        return resolved;
-      } catch (err) {
-        ortModulePromise = null;
-        throw new OnnxRuntimeUnavailableError(
-          `[voice] on-device ONNX models require the optional 'onnxruntime-node' dependency, which is not installed or failed to load (${
-            err instanceof Error ? err.message : String(err)
-          }).`,
-        );
-      }
-    })();
-  }
-  return ortModulePromise;
+	if (!ortModulePromise) {
+		ortModulePromise = (async () => {
+			try {
+				const spec = "onnxruntime-node";
+				const mod = (await import(spec)) as { default?: OrtModule } & OrtModule;
+				const resolved = (mod.default ?? mod) as OrtModule;
+				if (!resolved?.InferenceSession || !resolved?.Tensor) {
+					throw new Error("module did not export InferenceSession/Tensor");
+				}
+				return resolved;
+			} catch (err) {
+				ortModulePromise = null;
+				throw new OnnxRuntimeUnavailableError(
+					`[voice] on-device ONNX models require the optional 'onnxruntime-node' dependency, which is not installed or failed to load (${
+						err instanceof Error ? err.message : String(err)
+					}).`,
+				);
+			}
+		})();
+	}
+	return ortModulePromise;
 }
