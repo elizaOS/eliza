@@ -76,6 +76,35 @@ export type VoiceSessionMode =
   | "passive";
 export type VoiceCaptureMode = VoiceSessionMode;
 
+/**
+ * Continuous-chat mode (R10 §2.1).
+ *
+ * - `off`: classic push-to-talk only.
+ * - `vad-gated`: mic opens only after VAD start, closes after end-of-turn.
+ *   Default for laptop on battery / mobile on cellular.
+ * - `always-on`: mic stays open continuously; turn-detector segments turns.
+ *   Default for desktop on power / mobile on power.
+ */
+export type VoiceContinuousMode = "off" | "vad-gated" | "always-on";
+
+export const VOICE_CONTINUOUS_MODES: readonly VoiceContinuousMode[] = [
+  "off",
+  "vad-gated",
+  "always-on",
+] as const;
+
+export const DEFAULT_VOICE_CONTINUOUS_MODE: VoiceContinuousMode = "off";
+
+/**
+ * Status surfaced in the chat status bar while continuous chat is active.
+ */
+export type VoiceContinuousStatus =
+  | "idle"
+  | "listening"
+  | "thinking"
+  | "speaking"
+  | "interrupting";
+
 export interface VoiceSpeakerMetadata {
   /** Stable app/runtime entity id for the speaker when a connector can provide one. */
   entityId?: string;

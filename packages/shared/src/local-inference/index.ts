@@ -35,6 +35,25 @@ export {
   reservedHeadroomGb,
 } from "./gpu-profiles.js";
 export {
+  type Ed25519PublicKey,
+  ManifestSignatureError,
+  type SignatureVerifyInput,
+  verifyManifestSignature,
+  verifyManifestSignatureText,
+} from "./manifest-signature.js";
+export {
+  applyNetworkPolicy,
+  classifyNetwork,
+  DEFAULT_NETWORK_POLICY_PREFERENCES,
+  evaluateNetworkPolicy,
+  inQuietHours,
+  type NetworkClass,
+  type NetworkPolicyDecision,
+  type NetworkPolicyPreferences,
+  type NetworkPolicyReason,
+  type RawNetworkState,
+} from "./network-policy.js";
+export {
   downloadsStagingDir,
   elizaModelsDir,
   isWithinElizaRoot,
@@ -93,3 +112,15 @@ export {
   type VerifyState,
   verifyInstalledModel,
 } from "./verify.js";
+export {
+  compareVoiceModelSemver,
+  findVoiceModelVersion,
+  latestVoiceModelVersion,
+  type VoiceModelEvalDeltas,
+  type VoiceModelGgufAsset,
+  type VoiceModelId,
+  type VoiceModelQuant,
+  type VoiceModelVersion,
+  VOICE_MODEL_VERSIONS,
+  versionsFor,
+} from "./voice-models.js";

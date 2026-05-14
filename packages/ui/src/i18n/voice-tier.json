@@ -1,0 +1,59 @@
+{
+	"$schema": "https://json.schemastore.org/i18next.json",
+	"description": "Voice device-tier warning copy. Authored by I9 (.swarm/research/R9-memory.md §7). Surfaced by I10 in onboarding step 2 and the Voice settings tier banner. DO NOT edit the prose without updating R9 §7.",
+	"tier": {
+		"max": {
+			"header": "Your device is in the MAX tier for on-device Eliza.",
+			"body": "Your device can run every local model in parallel: text, voice, ASR, turn detection, speaker recognition, and emotion — all resident at the same time. Expected first-audio latency under 250 ms.",
+			"banner": "All models can be parallelized and held resident."
+		},
+		"good": {
+			"header": "Your device is in the GOOD tier for on-device Eliza.",
+			"body": "Your device can keep every local model loaded but will run them one at a time. Text responses, voice synthesis, and ASR are all local; only one heavy model is active per turn. Expected first-audio latency 300–600 ms.",
+			"banner": "All models stay loaded; responses serialize (one heavy model at a time)."
+		},
+		"okay": {
+			"header": "Your device is in the OKAY tier for on-device Eliza.",
+			"body": "Your device will load and unload local models as they're needed. Caching does not survive a model swap, so the first response after voice + image-gen at once will be slow. Expected first-audio latency 600–1500 ms. Consider cloud voice for faster turnaround.",
+			"banner": "Models load/unload per turn. Caching cannot survive a model swap; expect slower latency under voice + image-gen at once."
+		},
+		"poor": {
+			"header": "This device is in the POOR tier for on-device Eliza.",
+			"body": "This device is below the local-voice memory budget. Local responses will be very slow and may fail to load. We recommend Cloud mode — your turn-detection and VAD still run locally for privacy.",
+			"banner": "This device is below the local-voice budget. Local responses will be very slow. Cloud is recommended."
+		}
+	},
+	"settings": {
+		"backend": {
+			"label": "Backend mode",
+			"options": {
+				"auto": "Auto (recommended)",
+				"forceLocal": "Force local",
+				"forceCloud": "Force cloud"
+			},
+			"tooltip": "Auto consults your device tier to pick the right backend. Force-local overrides the mobile-cloud default. Force-cloud overrides the desktop-local default."
+		},
+		"qualityPreset": {
+			"label": "Model quality",
+			"options": {
+				"max": "Max quality",
+				"balanced": "Balanced (recommended)",
+				"minimal": "Minimal (smallest)"
+			},
+			"tooltip": "Selects which quant variant of the LM + voice models the runtime loads. Max keeps quality high at the cost of more RAM; minimal trades quality for speed and footprint."
+		},
+		"maxRamMb": {
+			"label": "Max RAM cap",
+			"tooltip": "Hard cap on how much RAM the voice + LM stack may use. Leave empty for the tier's natural total."
+		},
+		"allowQuantDowngrade": {
+			"label": "Allow quant downgrade",
+			"tooltip": "When on, Eliza will silently swap to a smaller (less accurate) variant of a model if the bigger one won't fit. When off, Eliza refuses to start a feature that won't fit, with a clear error."
+		},
+		"continuousOnBattery": {
+			"label": "Continuous recording on battery",
+			"tooltip": "Mobile only. When off, continuous mic recording pauses when the device is on battery to save power."
+		},
+		"cellularWarning": "You're on cellular data. The next model update is ~{{sizeMb}} MB. Download now / Wait for Wi-Fi."
+	}
+}
