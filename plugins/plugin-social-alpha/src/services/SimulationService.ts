@@ -25,7 +25,7 @@ import { SimulationRunner } from "./simulationRunner";
 import { TokenSimulationService } from "./tokenSimulationService";
 
 /**
- * Consolidated Simulation Service that combines all simulation functionality
+ * Simulation Service that combines all simulation functionality
  */
 export class SimulationService {
 	private simulationRunner: SimulationRunner;

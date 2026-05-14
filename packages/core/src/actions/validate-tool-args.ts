@@ -1,4 +1,5 @@
 import type { Action } from "../types";
+import { isObjectRecord as isRecord } from "../utils/type-guards";
 import { actionToJsonSchema, type JsonSchema } from "./action-schema";
 
 export type { JsonSchema } from "./action-schema";
@@ -7,10 +8,6 @@ export interface ValidateToolArgsResult {
 	valid: boolean;
 	args: Record<string, unknown> | undefined;
 	errors: string[];
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function describeType(value: unknown): string {

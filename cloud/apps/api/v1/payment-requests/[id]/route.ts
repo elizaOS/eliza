@@ -1,5 +1,5 @@
 /**
- * Unified payment requests — single resource.
+ * Payment requests — single resource.
  *
  * GET   /api/v1/payment-requests/:id            Authed creator view (full row).
  * GET   /api/v1/payment-requests/:id?public=1   Redacted public view (no auth required):

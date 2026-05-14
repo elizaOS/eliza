@@ -1,8 +1,4 @@
 import { Capacitor } from "@capacitor/core";
-import type {
-  BrowserBridgeCompanionPackageStatus,
-  BrowserBridgeCompanionStatus,
-} from "@elizaos/plugin-browser";
 import {
   ExternalLink,
   FolderOpen,
@@ -23,6 +19,8 @@ import {
   useState,
 } from "react";
 import {
+  type BrowserBridgeCompanionPackageStatus,
+  type BrowserBridgeCompanionStatus,
   type BrowserWorkspaceSnapshot,
   type BrowserWorkspaceTab,
   client,

@@ -32,7 +32,6 @@ from elizaos_adhdbench.scenarios import (
     ALL_SCENARIOS,
     L0_SCENARIOS,
     L1_SCENARIOS,
-    L2_SCENARIOS,
     SCENARIO_BY_ID,
     get_scenarios,
 )

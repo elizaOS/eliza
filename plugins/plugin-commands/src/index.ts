@@ -176,7 +176,6 @@ export const commandsPlugin: Plugin = {
 	},
 
 	config: {
-		COMMANDS_ENABLED: "true",
 		COMMANDS_CONFIG_ENABLED: "false",
 		COMMANDS_DEBUG_ENABLED: "false",
 		COMMANDS_BASH_ENABLED: "false",

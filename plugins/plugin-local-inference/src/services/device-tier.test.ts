@@ -335,12 +335,12 @@ describe("DEVICE_TIER_THRESHOLDS", () => {
 		expect(DEVICE_TIER_THRESHOLDS.MAX.effectiveModelMemoryGb).toBe(24);
 		expect(DEVICE_TIER_THRESHOLDS.MAX.freeRamGbAtSession).toBe(16);
 		expect(DEVICE_TIER_THRESHOLDS.MAX.dGpuMinVramGb).toBe(16);
-		expect(DEVICE_TIER_THRESHOLDS.MAX.appleSiliconMinUnifiedGb).toBe(32);
+		expect(DEVICE_TIER_THRESHOLDS.MAX.appleSiliconMinMemoryGb).toBe(32);
 
 		expect(DEVICE_TIER_THRESHOLDS.GOOD.effectiveModelMemoryGb).toBe(12);
 		expect(DEVICE_TIER_THRESHOLDS.GOOD.freeRamGbAtSession).toBe(8);
 		expect(DEVICE_TIER_THRESHOLDS.GOOD.dGpuMinVramGb).toBe(8);
-		expect(DEVICE_TIER_THRESHOLDS.GOOD.appleSiliconMinUnifiedGb).toBe(16);
+		expect(DEVICE_TIER_THRESHOLDS.GOOD.appleSiliconMinMemoryGb).toBe(16);
 
 		expect(DEVICE_TIER_THRESHOLDS.OKAY.effectiveModelMemoryGb).toBe(6);
 		expect(DEVICE_TIER_THRESHOLDS.OKAY.freeRamGbAtSession).toBe(3);

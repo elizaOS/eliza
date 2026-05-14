@@ -136,12 +136,12 @@ export const secretsAction: Action = {
 		"MISSING_SECRET",
 	],
 	description:
-		"Manage secrets — get, set, delete, list, check, mirror to a vault, or request a missing secret.",
+		"Manage secrets: get, set, delete, list, check, mirror to vault, request missing secret.",
 	parameters: [
 		{
 			name: "action",
 			description:
-				"Secret operation: get, set, delete, list, check, mirror, or request.",
+				"Secret operation: get, set, delete, list, check, mirror, request.",
 			required: true,
 			schema: {
 				type: "string" as const,
@@ -150,8 +150,7 @@ export const secretsAction: Action = {
 		},
 		{
 			name: "key",
-			description:
-				"Secret key (string), array of keys (for check), or omitted (for list).",
+			description: "Secret key; key array for check; omit for list.",
 			required: false,
 			schema: { type: "string" as const },
 		},
@@ -172,21 +171,19 @@ export const secretsAction: Action = {
 		},
 		{
 			name: "mask",
-			description:
-				"When true, mask the returned value for display (action=get).",
+			description: "true masks returned value for display. action=get.",
 			required: false,
 			schema: { type: "boolean" as const },
 		},
 		{
 			name: "prefix",
-			description:
-				"Optional key prefix filter for action=list (case-insensitive).",
+			description: "Key prefix filter for action=list, case-insensitive.",
 			required: false,
 			schema: { type: "string" as const },
 		},
 		{
 			name: "description",
-			description: "Optional short description for the secret (action=set).",
+			description: "Short secret description. action=set.",
 			required: false,
 			schema: { type: "string" as const },
 		},
@@ -202,7 +199,7 @@ export const secretsAction: Action = {
 		{
 			name: "secrets",
 			description:
-				"Array of secrets to store (action=set). Each entry has key and value.",
+				"Secrets array for action=set. Each entry has key and value.",
 			required: false,
 			schema: {
 				type: "array" as const,

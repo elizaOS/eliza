@@ -19,7 +19,6 @@
  */
 
 import { Cloud, Database, Mic, Shield, Sliders } from "lucide-react";
-// biome-ignore lint/correctness/noUnusedImports: required for JSX transform.
 import * as React from "react";
 import type { VoiceProfilesClient } from "../../api/client-voice-profiles";
 import { cn } from "../../lib/utils";

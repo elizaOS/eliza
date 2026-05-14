@@ -319,12 +319,12 @@ export const calendlyOpAction: Action = {
     "CANCEL_CALENDLY_EVENT",
   ],
   description:
-    "Calendly slot operations. Set op to 'book' to hand off a third-party Calendly URL or resolve the connected user's booking link, or 'cancel' to cancel a scheduled event after confirmed:true.",
+    "Calendly slot ops. subaction=book hands off URL or resolves connected user's booking link. subaction=cancel cancels scheduled event after confirmed:true.",
   descriptionCompressed: "Calendly slot ops: book, cancel.",
   parameters: [
     {
       name: "subaction",
-      description: "Operation to perform: 'book' or 'cancel'.",
+      description: "Operation: book or cancel.",
       required: true,
       schema: { type: "string" as const, enum: ["book", "cancel"] },
     },
@@ -354,7 +354,7 @@ export const calendlyOpAction: Action = {
     },
     {
       name: "reason",
-      description: "Optional cancellation reason.",
+      description: "Cancellation reason.",
       required: false,
       schema: { type: "string" as const },
     },

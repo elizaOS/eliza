@@ -27,7 +27,7 @@
     "@stwd/react": "^0.7.2",
     "@tsparticles/engine": "^3.9.1",
     "@tsparticles/react": "^3.0.0",
-    "@tsparticles/slim": "^3.9.1",
+    "@tsparticles/basic": "^3.9.1",
     "@xyflow/react": "^12.10.0",
     "ai": "^6.0.48",
     "class-variance-authority": "^0.7.1",

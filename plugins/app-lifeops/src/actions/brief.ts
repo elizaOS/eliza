@@ -342,11 +342,11 @@ export const briefAction: Action & {
     "surface:internal",
   ],
   description:
-    "Compose the owner's morning, evening, or weekly briefing by pulling calendar feed, inbox triage, life-domain due items, and money recurring charges into a single LifeOpsBriefing. Subactions: compose_morning, compose_evening, compose_weekly.",
+    "Compose owner LifeOpsBriefing: morning/evening/weekly; calendar feed, inbox triage, life due, money recurring charges. Subactions: compose_morning, compose_evening, compose_weekly.",
   descriptionCompressed:
-    "briefing: compose_morning|compose_evening|compose_weekly; LifeOpsBriefing shape; LLM narrative pass",
+    "BRIEF compose_morning|compose_evening|compose_weekly; LifeOpsBriefing",
   routingHint:
-    'briefing/digest intent ("give me my morning brief", "evening summary", "what\'s on this week", "compose daily digest") -> BRIEF; for one-domain reads use the underlying umbrella (CALENDAR.feed, MESSAGE.triage, etc.)',
+    'briefing/digest ("morning brief", "evening summary", "this week", "daily digest") -> BRIEF; one-domain read -> CALENDAR.feed, MESSAGE.triage, etc.',
   contexts: ["briefing", "calendar", "inbox", "tasks", "finance"],
   roleGate: { minRole: "OWNER" },
   suppressPostActionContinuation: true,
@@ -355,13 +355,13 @@ export const briefAction: Action & {
     {
       name: "action",
       description:
-        "Canonical brief operation: compose_morning | compose_evening | compose_weekly.",
+        "Brief op: compose_morning | compose_evening | compose_weekly.",
       schema: { type: "string" as const, enum: [...SUBACTIONS] },
     },
     {
       name: "period",
       description:
-        "Time window the brief covers: today | tomorrow | this_week. Defaults to the subaction's natural period.",
+        "Brief window: today | tomorrow | this_week. Default subaction period.",
       schema: {
         type: "string" as const,
         enum: ["today", "tomorrow", "this_week"],
@@ -370,13 +370,13 @@ export const briefAction: Action & {
     {
       name: "include",
       description:
-        "Per-domain include flags; each defaults to true. Shape: { calendar?, inbox?, life?, money? }.",
+        "Include flags, default true: { calendar?, inbox?, life?, money? }.",
       schema: { type: "object" as const, additionalProperties: true },
     },
     {
       name: "format",
       description:
-        "narrative renders the LLM compose pass; json returns only the structured LifeOpsBriefing. Defaults to narrative.",
+        "Format: narrative = LLM compose; json = LifeOpsBriefing only. Default narrative.",
       schema: { type: "string" as const, enum: ["narrative", "json"] },
     },
   ],

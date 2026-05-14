@@ -51,4 +51,3 @@ See the [REST reference](/rest/wallet) for full contracts.
 
 - [Wallet & crypto](/guides/wallet)
 - [Cloud and provider routing](/guides/cloud-provider-routing)
-- [钱包基础（中文）](/zh/guides/wallet-basics)

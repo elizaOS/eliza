@@ -1,7 +1,7 @@
 /**
  * @module features/plugin-manager/actions/plugin-handlers/runtime-state
  *
- * Read and mutate runtime plugin state for the unified MANAGE_PLUGINS action.
+ * Read and mutate runtime plugin state for the MANAGE_PLUGINS action.
  */
 
 import type {

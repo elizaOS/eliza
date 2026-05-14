@@ -101,11 +101,7 @@ type ValidationCacheEntry = {
 
 const validationCache = new Map<string, ValidationCacheEntry>();
 
-function numberSetting(
-  runtime: IAgentRuntime,
-  key: string,
-  fallback: number,
-): number {
+function numberSetting(runtime: IAgentRuntime, key: string, fallback: number): number {
   const env =
     typeof globalThis === "object" && "process" in globalThis
       ? (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env
@@ -224,8 +220,16 @@ export const actionsProvider: Provider = {
 
       if (!cached) {
         const actionValidateTimeoutMs = numberSetting(runtime, "ACTIONS_VALIDATE_TIMEOUT_MS", 250);
-        const providerValidationBudgetMs = numberSetting(runtime, "ACTIONS_PROVIDER_VALIDATION_BUDGET_MS", 1200);
-        const lastGoodCacheTtlMs = numberSetting(runtime, "ACTIONS_LAST_GOOD_CACHE_TTL_MS", 120_000);
+        const providerValidationBudgetMs = numberSetting(
+          runtime,
+          "ACTIONS_PROVIDER_VALIDATION_BUDGET_MS",
+          1200,
+        );
+        const lastGoodCacheTtlMs = numberSetting(
+          runtime,
+          "ACTIONS_LAST_GOOD_CACHE_TTL_MS",
+          120_000,
+        );
         const freshLastGood =
           lastGoodValidation && Date.now() - lastGoodValidation.createdAt < lastGoodCacheTtlMs
             ? lastGoodValidation

@@ -17,11 +17,8 @@
  *   pressKey({key:"back"})     → performGlobalAction("back")
  *   pressKey({key:"home"})     → performGlobalAction("home")
  *   hotkey                     → not supported on Android; throws
- *   typeText                   → AccessibilityNodeInfo.ACTION_SET_TEXT is the
- *                                proper path; the consumer-build bridge does
- *                                not expose it directly today. For v1 we
- *                                throw so callers know to refresh the scene
- *                                and target the editable AX node explicitly.
+ *   typeText                   → setText({text}) against the focused editable
+ *                                AccessibilityNodeInfo.
  *
  * `getScreenSize`, `getCursorPosition`, and the coord-conversion helpers
  * keep their desktop behavior — they're metadata calls, not input.
@@ -182,10 +179,14 @@ export class MobileComputerInterface implements ComputerInterface {
     /* paired with keyDown via globalAction — no-op. */
   }
 
-  async typeText(_args: { text: string }): Promise<void> {
-    throw new Error(
-      "[computeruse/mobile] typeText is not supported in the consumer build; route through the AX node's `type` action via the AOSP-privileged path or AccessibilityNodeInfo.ACTION_SET_TEXT (Kotlin TODO).",
-    );
+  async typeText(args: { text: string }): Promise<void> {
+    const bridge = this.requireBridge();
+    const result = unwrap(await bridge.setText({ text: args.text }), "setText");
+    if (!result.ok) {
+      throw new Error(
+        "[computeruse/mobile] setText failed: no focused editable accessibility node",
+      );
+    }
   }
 
   async pressKey(args: { key: string }): Promise<void> {

@@ -10,7 +10,7 @@
  *   - scroll → swipe with inverted sign convention
  *   - pressKey routes the supported `back`/`home`/`recents`/`notifications`
  *     into performGlobalAction; unsupported keys throw
- *   - hotkey + typeText explicitly throw (no consumer-build path)
+ *   - hotkey throws; typeText routes to Android setText
  *   - screenshot drains captureFrame and decodes JPEG bytes
  *   - bridge ok:false propagates as a thrown Error
  *   - dispatch.ts converts those throws to ActionResult.driver_error
@@ -32,6 +32,7 @@ import type { DisplayDescriptor } from "../types.js";
 interface BridgeCalls {
   gestures: GestureArgs[];
   globalActions: string[];
+  setTexts: string[];
   capturedFrames: number;
 }
 
@@ -54,6 +55,7 @@ function makeFakeBridge(opts: {
   const calls: BridgeCalls = {
     gestures: [],
     globalActions: [],
+    setTexts: [],
     capturedFrames: 0,
   };
   const stub = <T,>(code = "internal_error" as const): Promise<{ ok: false; code: typeof code; message: string } & { data?: T }> =>
@@ -87,6 +89,10 @@ function makeFakeBridge(opts: {
     performGlobalAction: async ({ action }: { action: string }) => {
       calls.globalActions.push(action);
       return { ok: true as const, data: { ok: opts.globalActionOk ?? true } };
+    },
+    setText: async ({ text }: { text: string }) => {
+      calls.setTexts.push(text);
+      return { ok: true as const, data: { ok: true } };
     },
     enumerateApps: () => stub(),
     getMemoryPressureSnapshot: () => stub(),
@@ -245,10 +251,15 @@ describe("MobileComputerInterface — keyboard", () => {
     );
   });
 
-  it("hotkey and typeText throw unconditionally", async () => {
+  it("hotkey throws on Android", async () => {
     const { iface } = makeIface();
     await expect(iface.hotkey({ keys: ["ctrl", "s"] })).rejects.toThrow(/not supported/);
-    await expect(iface.typeText({ text: "hi" })).rejects.toThrow(/not supported/);
+  });
+
+  it("typeText routes to the focused editable AX node", async () => {
+    const { iface, calls } = makeIface();
+    await iface.typeText({ text: "hi" });
+    expect(calls.setTexts).toEqual(["hi"]);
   });
 });
 

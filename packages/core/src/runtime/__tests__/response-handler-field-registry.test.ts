@@ -242,7 +242,7 @@ describe("ResponseHandlerFieldRegistry", () => {
 			expect(result.rendered).toContain("always on slice");
 		});
 
-		it("includes skipped evaluators with the 'Not applicable this turn' prompt", async () => {
+		it("includes skipped evaluators with the N/A prompt", async () => {
 			const reg = new ResponseHandlerFieldRegistry();
 			reg.register(
 				makeEvaluator({
@@ -253,7 +253,7 @@ describe("ResponseHandlerFieldRegistry", () => {
 			);
 			const result = await reg.composePromptSlices(ctx);
 			expect(result.rendered).toContain("### off");
-			expect(result.rendered).toContain("Not applicable this turn");
+			expect(result.rendered).toContain("N/A this turn");
 			expect(result.rendered).not.toContain("off-desc");
 		});
 

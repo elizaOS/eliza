@@ -1,6 +1,6 @@
 import math
 from decimal import Decimal, InvalidOperation, getcontext
-from typing import Dict, List, Optional, Union
+from typing import Dict, List
 
 import mpmath
 

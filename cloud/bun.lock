@@ -85,7 +85,7 @@
         "@tanstack/react-query": "^5.100.6",
         "@tsparticles/engine": "^3.9.1",
         "@tsparticles/react": "^3.0.0",
-        "@tsparticles/slim": "^3.9.1",
+        "@tsparticles/basic": "^3.9.1",
         "@types/nodemailer": "^8.0.0",
         "@types/three": "^0.184.0",
         "@upstash/redis": "^1.37.0",
@@ -445,7 +445,7 @@
         "three": "^0.184.0",
       },
     },
-    "../packages/browser-bridge": {
+    "../packages/browser-bridge-extension": {
       "name": "@elizaos/browser-bridge-extension",
       "version": "2.0.0-beta.2",
       "dependencies": {
@@ -3211,7 +3211,7 @@
         "@stwd/react": "^0.7.2",
         "@tsparticles/engine": "^3.9.1",
         "@tsparticles/react": "^3.0.0",
-        "@tsparticles/slim": "^3.9.1",
+        "@tsparticles/basic": "^3.9.1",
         "@xyflow/react": "^12.10.0",
         "ai": "^6.0.48",
         "class-variance-authority": "^0.7.1",
@@ -3817,7 +3817,7 @@
 
     "@elizaos/billing": ["@elizaos/billing@workspace:packages/billing"],
 
-    "@elizaos/browser-bridge-extension": ["@elizaos/browser-bridge-extension@workspace:../packages/browser-bridge"],
+    "@elizaos/browser-bridge-extension": ["@elizaos/browser-bridge-extension@workspace:../packages/browser-bridge-extension"],
 
     "@elizaos/bun-ios-runtime": ["@elizaos/bun-ios-runtime@workspace:../packages/bun-ios-runtime"],
 
@@ -5999,7 +5999,6 @@
 
     "@tsparticles/move-base": ["@tsparticles/move-base@3.9.1", "", { "dependencies": { "@tsparticles/engine": "3.9.1" } }, "sha512-X4huBS27d8srpxwOxliWPUt+NtCwY+8q/cx1DvQxyqmTA8VFCGpcHNwtqiN+9JicgzOvSuaORVqUgwlsc7h4pQ=="],
 
-    "@tsparticles/move-parallax": ["@tsparticles/move-parallax@3.9.1", "", { "dependencies": { "@tsparticles/engine": "3.9.1" } }, "sha512-whlOR0bVeyh6J/hvxf/QM3DqvNnITMiAQ0kro6saqSDItAVqg4pYxBfEsSOKq7EhjxNvfhhqR+pFMhp06zoCVA=="],
 
     "@tsparticles/plugin-easing-quad": ["@tsparticles/plugin-easing-quad@3.9.1", "", { "dependencies": { "@tsparticles/engine": "3.9.1" } }, "sha512-C2UJOca5MTDXKUTBXj30Kiqr5UyID+xrY/LxicVWWZPczQW2bBxbIbfq9ULvzGDwBTxE2rdvIB8YFKmDYO45qw=="],
 
@@ -6025,7 +6024,6 @@
 
     "@tsparticles/shape-star": ["@tsparticles/shape-star@3.9.1", "", { "dependencies": { "@tsparticles/engine": "3.9.1" } }, "sha512-kdMJpi8cdeb6vGrZVSxTG0JIjCwIenggqk0EYeKAwtOGZFBgL7eHhF2F6uu1oq8cJAbXPujEoabnLsz6mW8XaA=="],
 
-    "@tsparticles/slim": ["@tsparticles/slim@3.9.1", "", { "dependencies": { "@tsparticles/basic": "3.9.1", "@tsparticles/engine": "3.9.1", "@tsparticles/interaction-external-attract": "3.9.1", "@tsparticles/interaction-external-bounce": "3.9.1", "@tsparticles/interaction-external-bubble": "3.9.1", "@tsparticles/interaction-external-connect": "3.9.1", "@tsparticles/interaction-external-grab": "3.9.1", "@tsparticles/interaction-external-pause": "3.9.1", "@tsparticles/interaction-external-push": "3.9.1", "@tsparticles/interaction-external-remove": "3.9.1", "@tsparticles/interaction-external-repulse": "3.9.1", "@tsparticles/interaction-external-slow": "3.9.1", "@tsparticles/interaction-particles-attract": "3.9.1", "@tsparticles/interaction-particles-collisions": "3.9.1", "@tsparticles/interaction-particles-links": "3.9.1", "@tsparticles/move-parallax": "3.9.1", "@tsparticles/plugin-easing-quad": "3.9.1", "@tsparticles/shape-emoji": "3.9.1", "@tsparticles/shape-image": "3.9.1", "@tsparticles/shape-line": "3.9.1", "@tsparticles/shape-polygon": "3.9.1", "@tsparticles/shape-square": "3.9.1", "@tsparticles/shape-star": "3.9.1", "@tsparticles/updater-life": "3.9.1", "@tsparticles/updater-rotate": "3.9.1", "@tsparticles/updater-stroke-color": "3.9.1" } }, "sha512-CL5cDmADU7sDjRli0So+hY61VMbdroqbArmR9Av+c1Fisa5ytr6QD7Jv62iwU2S6rvgicEe9OyRmSy5GIefwZw=="],
 
     "@tsparticles/updater-color": ["@tsparticles/updater-color@3.9.1", "", { "dependencies": { "@tsparticles/engine": "3.9.1" } }, "sha512-XGWdscrgEMA8L5E7exsE0f8/2zHKIqnTrZymcyuFBw2DCB6BIV+5z6qaNStpxrhq3DbIxxhqqcybqeOo7+Alpg=="],
 

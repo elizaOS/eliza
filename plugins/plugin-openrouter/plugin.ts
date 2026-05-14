@@ -6,6 +6,7 @@ import {
   logger,
   ModelType,
   type Plugin,
+  type ProcessEnvLike,
   type TextEmbeddingParams,
 } from "@elizaos/core";
 
@@ -21,8 +22,6 @@ import {
   handleTextNano,
   handleTextSmall,
 } from "./models/text";
-
-type ProcessEnvLike = Record<string, string | undefined>;
 
 function getProcessEnv(): ProcessEnvLike {
   if (typeof process === "undefined" || !process.env) {

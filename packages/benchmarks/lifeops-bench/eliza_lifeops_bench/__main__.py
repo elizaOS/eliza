@@ -387,12 +387,12 @@ def _apply_eliza_one_bundle_override(
     # Spawn the dflash local-llama-cpp server pointing at the bundle weights.
     # We pass the weights path through MODEL_BUNDLE_OVERRIDE so downstream TS
     # readers (live-provider.ts, model-tiers.ts) see the same value, and we
-    # publish PARALLAX_OPENCODE_BASE_URL so the OpenAI-compatible adapter
+    # publish ELIZA_OPENCODE_BASE_URL so the OpenAI-compatible adapter
     # finds the running server.
     os.environ["MODEL_BUNDLE_OVERRIDE"] = manifest.weights_path
     base_url = _spawn_dflash_server_for_bundle(manifest)
     if base_url:
-        os.environ["PARALLAX_OPENCODE_BASE_URL"] = base_url
+        os.environ["ELIZA_OPENCODE_BASE_URL"] = base_url
     rewritten = TierSpec(
         tier=base.tier,
         provider="local-llama-cpp",
@@ -423,14 +423,14 @@ def _spawn_dflash_server_for_bundle(
     """Start a dflash llama-server pointing at the bundle's weights.
 
     Returns the OpenAI-compatible base URL on success, or ``None`` when the
-    operator has already pointed ``PARALLAX_OPENCODE_BASE_URL`` at an
+    operator has already pointed ``ELIZA_OPENCODE_BASE_URL`` at an
     externally-managed server (LM Studio, Ollama, an existing dflash
     instance). The caller is responsible for any teardown; we register an
     atexit hook for the spawned subprocess.
     """
-    if os.environ.get("PARALLAX_OPENCODE_BASE_URL"):
+    if os.environ.get("ELIZA_OPENCODE_BASE_URL"):
         # Operator already pointed us at a running server — don't double-spawn.
-        return os.environ["PARALLAX_OPENCODE_BASE_URL"]
+        return os.environ["ELIZA_OPENCODE_BASE_URL"]
     dflash_root = (
         os.environ.get("ELIZA_DFLASH_LLAMA_DIR")
         or os.path.expanduser("~/.cache/eliza-dflash/eliza-llama-cpp")
@@ -440,7 +440,7 @@ def _spawn_dflash_server_for_bundle(
         raise SystemExit(
             f"ELIZA_1_MODEL_BUNDLE requested but dflash llama-server binary "
             f"is not built at {binary}. Build the fork at {dflash_root} or "
-            f"set PARALLAX_OPENCODE_BASE_URL to point at a running server."
+            f"set ELIZA_OPENCODE_BASE_URL to point at a running server."
         )
     import atexit
     import subprocess

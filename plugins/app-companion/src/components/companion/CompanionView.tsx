@@ -2,7 +2,6 @@
 // browser entry, so the previous lazy() was eagerly merged back into the
 // main chunk. Drop the wrapper to silence the dynamic↔static collision
 // warning and remove the unnecessary Suspense boundary overhead.
-import { PtyConsoleSidePanel } from "@elizaos/app-task-coordinator";
 import {
   CharacterEditor,
   ChatModalView,
@@ -24,23 +23,18 @@ const COMPANION_DOCK_HEIGHT = "min(42vh, 24rem)";
  * Isolated wrapper for the PTY side panel so that CompanionViewOverlay doesn't
  * need to subscribe to ptySessions (which polls every 5 s) for a panel that is
  * only visible when the user has explicitly clicked a session.
+ *
+ * The PtyConsoleSidePanel + Base + Drawer + TerminalPane components were
+ * removed from @elizaos/app-task-coordinator in 355be0ed1a ("update agent" —
+ * drop the PtyConsole component family). Until a replacement UI lands, render
+ * nothing so clicking a session pill is a no-op rather than a build break.
  */
-const CompanionPtyPanel = memo(function CompanionPtyPanel({
-  sessionId,
-  onClose,
-}: {
-  sessionId: string;
-  onClose: () => void;
-}) {
+const CompanionPtyPanel = memo(function CompanionPtyPanel(
+  _props: Readonly<{ sessionId: string; onClose: () => void }>,
+) {
   const { ptySessions } = usePtySessions();
   if (ptySessions.length === 0) return null;
-  return (
-    <PtyConsoleSidePanel
-      activeSessionId={sessionId}
-      sessions={ptySessions}
-      onClose={onClose}
-    />
-  );
+  return null;
 });
 
 /**

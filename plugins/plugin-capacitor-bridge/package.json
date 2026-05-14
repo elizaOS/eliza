@@ -22,7 +22,8 @@
 		"dist"
 	],
 	"scripts": {
-		"build": "tsup src/index.ts --format esm --dts --clean",
+		"build": "bun run check:android-manifest && tsup src/index.ts --format esm --dts --clean",
+		"check:android-manifest": "node scripts/check-android-manifest.mjs",
 		"dev": "tsup src/index.ts --format esm --dts --watch",
 		"clean": "rm -rf dist .turbo node_modules",
 		"lint": "bunx @biomejs/biome check --write --unsafe .",

@@ -339,35 +339,6 @@ function actionBlob(action: ScenarioContext["actionsCalled"][number]): string {
   return parts.join(" ").toLowerCase();
 }
 
-function _actionMatchesChannel(
-  action: ScenarioContext["actionsCalled"][number],
-  channel: string,
-): boolean {
-  const blob = actionBlob(action);
-  if (blob.includes(channel.toLowerCase())) {
-    return true;
-  }
-  switch (channel) {
-    case "gmail":
-      return action.actionName === "MESSAGE";
-    case "discord":
-    case "telegram":
-    case "signal":
-    case "imessage":
-    case "whatsapp":
-    case "sms":
-      return action.actionName === "MESSAGE";
-    case "x-dm":
-      return ["X", "MESSAGE"].includes(action.actionName);
-    case "desktop":
-    case "mobile":
-    case "phone_call":
-      return ["VOICE_CALL"].includes(action.actionName);
-    default:
-      return false;
-  }
-}
-
 // ---------------------------------------------------------------------------
 // Built-in handlers
 // ---------------------------------------------------------------------------

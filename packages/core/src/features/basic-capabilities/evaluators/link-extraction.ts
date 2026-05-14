@@ -290,7 +290,7 @@ export const linkExtractionEvaluator: Evaluator<
 	},
 
 	prompt({ prepared }) {
-		return `${prepared.links.length} inbound http(s) URL(s) were captured and persisted by the runtime. Return {"processed": true} to acknowledge.`;
+		return `Runtime captured/persisted ${prepared.links.length} http(s) URL(s). Return {"processed":true}.`;
 	},
 
 	parse(output) {

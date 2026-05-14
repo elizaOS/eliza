@@ -1245,7 +1245,7 @@ export const coreActionsSpec = {
 		{
 			name: "TRUST",
 			description:
-				"Unified trust system control. action=evaluate reads a trust profile for an entity; record_interaction logs a trust-affecting event; request_elevation requests temporary permissions; update_role assigns OWNER / ADMIN / NONE roles within a world.",
+				"Trust system control. action=evaluate reads a trust profile for an entity; record_interaction logs a trust-affecting event; request_elevation requests temporary permissions; update_role assigns OWNER / ADMIN / NONE roles within a world.",
 			similes: [
 				"TRUST_MANAGEMENT",
 				"TRUST_OPERATION",
@@ -2641,7 +2641,7 @@ export const allActionsSpec = {
 		{
 			name: "TRUST",
 			description:
-				"Unified trust system control. action=evaluate reads a trust profile for an entity; record_interaction logs a trust-affecting event; request_elevation requests temporary permissions; update_role assigns OWNER / ADMIN / NONE roles within a world.",
+				"Trust system control. action=evaluate reads a trust profile for an entity; record_interaction logs a trust-affecting event; request_elevation requests temporary permissions; update_role assigns OWNER / ADMIN / NONE roles within a world.",
 			similes: [
 				"TRUST_MANAGEMENT",
 				"TRUST_OPERATION",
@@ -5047,9 +5047,9 @@ export const allActionsSpec = {
 			],
 		},
 		{
-			name: "INBOX_UNIFIED",
+			name: "INBOX",
 			description:
-				"Cross-platform unified inbox: fan out to Gmail, Slack, Discord, Telegram, Signal, iMessage, and WhatsApp and merge into a single recency-ordered feed. Subactions: list, search, summarize.",
+				"Cross-channel inbox: fan out to Gmail, Slack, Discord, Telegram, Signal, iMessage, and WhatsApp and merge into a single recency-ordered feed. Subactions: list, search, summarize.",
 			parameters: [
 				{
 					name: "action",
@@ -5106,13 +5106,13 @@ export const allActionsSpec = {
 				},
 			],
 			descriptionCompressed:
-				"unified inbox: list|search|summarize across gmail|slack|discord|telegram|signal|imessage|whatsapp; dedupe by id+thread topic",
+				"inbox: list|search|summarize across gmail|slack|discord|telegram|signal|imessage|whatsapp; dedupe by id+thread topic",
 			exampleCalls: [
 				{
-					user: "Use INBOX_UNIFIED with the provided parameters.",
-					actions: ["INBOX_UNIFIED"],
+					user: "Use INBOX with the provided parameters.",
+					actions: ["INBOX"],
 					params: {
-						INBOX_UNIFIED: {
+						INBOX: {
 							action: "list",
 							platforms: "example",
 							since: "example",
@@ -5444,8 +5444,7 @@ export const allActionsSpec = {
 		},
 		{
 			name: "MUSIC",
-			description:
-				"Unified music action. Use verb-shaped action for everything: ",
+			description: "Music action. Use verb-shaped action for everything: ",
 			parameters: [
 				{
 					name: "action",

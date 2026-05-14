@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import type { RouteContext } from "@/lib/api/hono-next-style-params";
 
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -13,10 +14,6 @@ import { discordConnectionsRepository, userCharactersRepository } from "@/db/rep
 import { DiscordConnectionMetadataSchema } from "@/db/schemas/discord-connections";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 import { logger } from "@/lib/utils/logger";
-
-interface RouteContext {
-  params: Promise<{ id: string }>;
-}
 
 const UpdateConnectionSchema = z.object({
   // Character to use for responses
@@ -36,7 +33,10 @@ const UpdateConnectionSchema = z.object({
  * GET /api/v1/discord/connections/[id]
  * Get a single Discord connection by ID.
  */
-async function __hono_GET(request: Request, context: RouteContext): Promise<Response> {
+async function __hono_GET(
+  request: Request,
+  context: RouteContext<{ id: string }>,
+): Promise<Response> {
   const { user } = await requireAuthOrApiKeyWithOrg(request);
   const { id } = await context.params;
 
@@ -77,7 +77,10 @@ async function __hono_GET(request: Request, context: RouteContext): Promise<Resp
  * PATCH /api/v1/discord/connections/[id]
  * Update a Discord connection (character, metadata, active status).
  */
-async function __hono_PATCH(request: Request, context: RouteContext): Promise<Response> {
+async function __hono_PATCH(
+  request: Request,
+  context: RouteContext<{ id: string }>,
+): Promise<Response> {
   const { user } = await requireAuthOrApiKeyWithOrg(request);
   const { id } = await context.params;
 
@@ -196,7 +199,10 @@ async function __hono_PATCH(request: Request, context: RouteContext): Promise<Re
  * DELETE /api/v1/discord/connections/[id]
  * Delete a Discord connection.
  */
-async function __hono_DELETE(request: Request, context: RouteContext): Promise<Response> {
+async function __hono_DELETE(
+  request: Request,
+  context: RouteContext<{ id: string }>,
+): Promise<Response> {
   const { user } = await requireAuthOrApiKeyWithOrg(request);
   const { id } = await context.params;
 

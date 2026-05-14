@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import type { RouteContext } from "@/lib/api/hono-next-style-params";
 
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -22,10 +23,6 @@ import { telegramAppAutomationService } from "@/lib/services/telegram-automation
 import { twitterAppAutomationService } from "@/lib/services/twitter-automation/app-automation";
 import { logger } from "@/lib/utils/logger";
 
-interface RouteParams {
-  params: Promise<{ id: string }>;
-}
-
 const PreviewRequestSchema = z.object({
   platforms: z.array(z.enum(["discord", "telegram", "twitter"])).min(1),
   count: z.number().int().min(1).max(4).default(3),
@@ -39,7 +36,10 @@ interface PostPreview {
   timestamp: string;
 }
 
-async function __hono_POST(request: Request, { params }: RouteParams): Promise<Response> {
+async function __hono_POST(
+  request: Request,
+  { params }: RouteContext<{ id: string }>,
+): Promise<Response> {
   const { user } = await requireAuthOrApiKeyWithOrg(request);
   const { id } = await params;
 

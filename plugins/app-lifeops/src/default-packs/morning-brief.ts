@@ -60,6 +60,7 @@ export const morningBriefPack: DefaultPack = {
   description:
     "Assembled morning briefing on wake — overdue todos, meetings, wins, inbox, calendar, contacts, promises. Delegates assembly to the scheduled briefing service, so a fresh user gets the same content the planner would.",
   defaultEnabled: true,
+  requiredCapabilities: [],
   records: [morningBriefRecord],
   uiHints: {
     summaryOnDayOne:

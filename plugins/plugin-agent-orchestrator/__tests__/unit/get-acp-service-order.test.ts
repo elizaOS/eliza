@@ -3,15 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { getAcpService } from "../../src/actions/common.ts";
 
-/**
- * Pins the resolution order in `getAcpService`. The PTY_SERVICE (the
- * orchestrator path that spawns via `coding-agent-adapters`) must be
- * preferred over any ACP-prefixed service. Before this order swap, ACP
- * services were tried first and silently shadowed the working PTY path
- * whenever `acpx` happened to register cleanly — meaning the same
- * planner-visible action surface produced different spawn pipelines
- * depending on ACP state.
- */
+/** Pins the ACP-only resolution order used by TASKS after the acpx cleanup. */
 describe("getAcpService resolution order", () => {
   function buildRuntime(services: Record<string, unknown>): IAgentRuntime {
     return {
@@ -19,20 +11,10 @@ describe("getAcpService resolution order", () => {
     } as unknown as IAgentRuntime;
   }
 
-  const PTY = { kind: "PTY" } as const;
   const ACP_SUB = { kind: "ACP_SUBPROCESS" } as const;
   const ACP = { kind: "ACP" } as const;
 
-  it("returns PTY_SERVICE first when it's registered alongside ACP services", () => {
-    const runtime = buildRuntime({
-      PTY_SERVICE: PTY,
-      ACP_SERVICE: ACP,
-      ACP_SUBPROCESS_SERVICE: ACP_SUB,
-    });
-    expect(getAcpService(runtime)).toBe(PTY);
-  });
-
-  it("falls back to ACP_SERVICE when PTY_SERVICE is absent", () => {
+  it("returns ACP_SERVICE first when both ACP services are registered", () => {
     const runtime = buildRuntime({
       ACP_SERVICE: ACP,
       ACP_SUBPROCESS_SERVICE: ACP_SUB,
@@ -40,7 +22,7 @@ describe("getAcpService resolution order", () => {
     expect(getAcpService(runtime)).toBe(ACP);
   });
 
-  it("falls back to ACP_SUBPROCESS_SERVICE when only it is present", () => {
+  it("falls back to ACP_SUBPROCESS_SERVICE when ACP_SERVICE is absent", () => {
     const runtime = buildRuntime({
       ACP_SUBPROCESS_SERVICE: ACP_SUB,
     });
@@ -52,16 +34,11 @@ describe("getAcpService resolution order", () => {
     expect(getAcpService(runtime)).toBeUndefined();
   });
 
-  it("PTY wins even when ACP_SUBPROCESS_SERVICE is the only ACP service (acpx env)", () => {
-    // Regression: before the swap, ACP_SUBPROCESS_SERVICE was checked
-    // before PTY_SERVICE. With `acpx` installed and AcpService
-    // registering cleanly, the planner would route to ACP and either
-    // succeed via acpx OR fail with ENOENT — bypassing the orchestrator
-    // path that ALL the per-adapter brief / AGENTS.md write logic lives in.
+  it("ignores removed PTY_SERVICE registrations", () => {
     const runtime = buildRuntime({
-      PTY_SERVICE: PTY,
+      PTY_SERVICE: { kind: "PTY" },
       ACP_SUBPROCESS_SERVICE: ACP_SUB,
     });
-    expect(getAcpService(runtime)).toBe(PTY);
+    expect(getAcpService(runtime)).toBe(ACP_SUB);
   });
 });

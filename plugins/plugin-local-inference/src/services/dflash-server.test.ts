@@ -1465,7 +1465,7 @@ describe("llama-server optimization flags", () => {
 			batchSize: 1024,
 			ubatchSize: 128,
 			contBatching: true,
-			kvUnified: true,
+			kvShared: true,
 			opOffload: false,
 		});
 

@@ -109,9 +109,9 @@ export const useComputerAction: Action = {
     "SEE_SCREEN",
   ],
   description:
-    "computer_use:\n  purpose: Canonical cross-platform computer-use action for real desktop interaction on macOS, Linux, and Windows when direct computer operation is required.\n  guidance: Take a screenshot before acting. After each desktop action, the result includes a screenshot when available. Use this standard plugin action, not a LifeOps wrapper, for Finder/Desktop/native-app/browser/file/terminal workflows on the owner's machine.\n  actions: screenshot/click/click_with_modifiers/double_click/right_click/mouse_move/type/key/key_combo/scroll/drag/detect_elements/ocr.",
+    "computer_use: real desktop control on macOS/Linux/Windows. Screenshot before acting. Results include screenshot when available. Use for Finder/Desktop/native-app/browser/file/terminal on owner's machine. actions: screenshot/click/click_with_modifiers/double_click/right_click/mouse_move/type/key/key_combo/scroll/drag/detect_elements/ocr.",
   descriptionCompressed:
-    "Canonical cross-platform desktop control: screenshot/click/modified click/double/right/move/type/key/key_combo/scroll/drag/detect_elements/ocr.",
+    "Desktop: screenshot|click|double|right|move|type|key|scroll|drag|detect|ocr",
   routingHint:
     "desktop/computer/native-app/Finder/window screenshots or control -> COMPUTER_USE; never invent takeScreenshot",
 
@@ -160,7 +160,7 @@ export const useComputerAction: Action = {
     {
       name: "modifiers",
       description:
-        "Modifier keys to hold during click_with_modifiers, e.g. ['cmd', 'shift'] or ['ctrl'].",
+        "Modifier keys for click_with_modifiers, e.g. ['cmd','shift'] or ['ctrl'].",
       required: false,
       schema: { type: "array", items: { type: "string" } },
     },
@@ -197,14 +197,14 @@ export const useComputerAction: Action = {
     {
       name: "displayId",
       description:
-        "Display the coordinate is local to. Required for any coordinate-bearing action on multi-monitor hosts. See the `computerState` provider for the live `displays[]` list.",
+        "Display for coordinate. Required for coordinate actions on multi-monitor. See computerState displays[].",
       required: false,
       schema: { type: "number" },
     },
     {
       name: "coordSource",
       description:
-        "Coordinate space of the coordinate fields: 'logical' (default; matches display.bounds) or 'backing' (raw retina pixels — macOS only).",
+        "Coordinate space: logical default matches display.bounds; backing raw retina pixels macOS only.",
       required: false,
       schema: { type: "string", enum: ["logical", "backing"] },
     },

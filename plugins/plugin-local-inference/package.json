@@ -1,7 +1,7 @@
 {
 	"name": "@elizaos/plugin-local-inference",
 	"version": "2.0.0-beta.2",
-	"description": "Unified Eliza-1 local provider plus HTTP routes for local model catalog, downloads, hardware detection, and chat commands.",
+	"description": "Eliza-1 local provider plus HTTP routes for local model catalog, downloads, hardware detection, and chat commands.",
 	"type": "module",
 	"main": "dist/index.js",
 	"types": "src/index.ts",

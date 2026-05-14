@@ -7,12 +7,7 @@ import type {
   UUID,
 } from "@elizaos/core";
 import type { AcpService } from "./acp-service.js";
-import type {
-  SessionEventName,
-  SessionInfo,
-  SpawnOptions,
-  SpawnResult,
-} from "./types.js";
+import type { SessionEventName, SessionInfo } from "./types.js";
 
 const ACPX_ROUTER_SOURCE = "sub_agent";
 const SUB_AGENT_ENTITY_NAMESPACE = "acpx:sub-agent";
@@ -209,7 +204,7 @@ function appRoutePathPrefix(url: string): string | undefined {
  */
 export class SubAgentRouter {
   static serviceType = "ACPX_SUB_AGENT_ROUTER";
-  static dependencies = ["ACP_SUBPROCESS_SERVICE", "PTY_SERVICE"];
+  static dependencies = ["ACP_SUBPROCESS_SERVICE"];
 
   capabilityDescription =
     "Routes ACPX sub-agent terminal events back into the runtime as inbound messages so the main agent decides reply-to-user vs reply-to-agent vs both.";
@@ -217,7 +212,6 @@ export class SubAgentRouter {
   private readonly runtime: IAgentRuntime;
   private acp: AcpService | null = null;
   private unsubscribe: (() => void) | undefined;
-  private unsubscribePty: (() => void) | undefined;
   private readonly delivered = new Set<string>();
   private readonly roundTripCounts = new Map<string, number>();
   private readonly capExceededSessions = new Set<string>();
@@ -261,8 +255,7 @@ export class SubAgentRouter {
   private tryBindSources(attempt: number): void {
     if (this.stopped) return;
     const needsAcp = !this.unsubscribe;
-    const needsPty = !this.unsubscribePty;
-    if (!needsAcp && !needsPty) return;
+    if (!needsAcp) return;
 
     if (needsAcp) {
       const acp = this.runtime.getService(
@@ -281,45 +274,14 @@ export class SubAgentRouter {
         });
       }
     }
-    if (needsPty) {
-      // PTY_SERVICE is a separate event channel from AcpService. The
-      // direct PTYService.spawnSession path used by opencode-run / codex-exec
-      // fast-path emits task_complete through PTYService.emitEvent — without
-      // this subscription, those completions never reach the router and the
-      // sub-agent's actual answer is dropped (user sees only the "On it…" ack).
-      const pty = this.runtime.getService("PTY_SERVICE") as {
-        onSessionEvent?: (
-          cb: (sid: string, event: SessionEventName, data: unknown) => void,
-        ) => () => void;
-      } | null;
-      if (pty && typeof pty.onSessionEvent === "function") {
-        this.unsubscribePty = pty.onSessionEvent((sid, event, data) => {
-          this.handleEvent(sid, event, data).catch((err) => {
-            this.log("error", "router event failed (pty)", {
-              sessionId: sid,
-              event,
-              error: err instanceof Error ? err.message : String(err),
-            });
-          });
-        });
-      }
-    }
-
     const acpBound = !!this.unsubscribe;
-    const ptyBound = !!this.unsubscribePty;
-    if (acpBound && ptyBound) {
-      this.log("info", "router bound to AcpService + PTYService");
+    if (acpBound) {
+      this.log("info", "router bound to AcpService");
       return;
     }
     // Give up after ~10s of polling and log what we got.
     if (attempt >= 50) {
-      if (acpBound) {
-        this.log("info", "router bound to AcpService (PTYService unavailable)");
-      } else if (ptyBound) {
-        this.log("info", "router bound to PTYService (AcpService unavailable)");
-      } else {
-        this.log("debug", "no session-event source available; router idle");
-      }
+      this.log("debug", "AcpService unavailable; router idle");
       return;
     }
     this.bindRetryTimer = setTimeout(
@@ -336,8 +298,6 @@ export class SubAgentRouter {
     }
     this.unsubscribe?.();
     this.unsubscribe = undefined;
-    this.unsubscribePty?.();
-    this.unsubscribePty = undefined;
     this.acp = null;
     this.started = false;
     this.delivered.clear();
@@ -352,20 +312,8 @@ export class SubAgentRouter {
   ): Promise<void> {
     if (!shouldInject(event)) return;
     const acp = this.acp;
-    // ACPX-protocol sessions live in AcpService.store; sessions spawned
-    // via PTYService.spawnSession (opencode-run / codex-exec) live in
-    // PTYService instead. Look up both — and don't require ACP to exist,
-    // since the PTY-only path needs to work when ACP isn't loaded.
-    let session: SessionInfo | undefined;
-    if (acp) {
-      session = (await acp.getSession(sessionId)) ?? undefined;
-    }
-    if (!session) {
-      const ptyService = this.runtime.getService("PTY_SERVICE") as {
-        getSession?: (sid: string) => SessionInfo | undefined;
-      } | null;
-      session = ptyService?.getSession?.(sessionId) ?? undefined;
-    }
+    if (!acp) return;
+    const session = (await acp.getSession(sessionId)) ?? undefined;
     if (!session) return;
 
     const dedupKey = computeDedupKey(sessionId, event, session, data);
@@ -404,19 +352,12 @@ export class SubAgentRouter {
         count: nextCount,
         cap: this.roundTripCap,
       });
-      const stopper =
-        acp ??
-        (this.runtime.getService("PTY_SERVICE") as {
-          stopSession?: (sid: string) => Promise<unknown>;
-        } | null);
-      if (stopper && typeof stopper.stopSession === "function") {
-        await stopper.stopSession(sessionId).catch((err) =>
-          this.log("warn", "force-stop after cap failed", {
-            sessionId,
-            error: err instanceof Error ? err.message : String(err),
-          }),
-        );
-      }
+      await acp.stopSession(sessionId).catch((err) =>
+        this.log("warn", "force-stop after cap failed", {
+          sessionId,
+          error: err instanceof Error ? err.message : String(err),
+        }),
+      );
     }
 
     const subAgentEntityId = deriveUuidFromString(
@@ -669,9 +610,9 @@ export class SubAgentRouter {
       typeof meta.initialTask === "string" ? meta.initialTask.trim() : "";
     if (!originalTask) return false;
 
-    const service = this.runtime.getService("PTY_SERVICE") as {
-      spawnSession?: (opts: SpawnOptions) => Promise<SpawnResult>;
-    } | null;
+    const service =
+      this.acp ??
+      (this.runtime.getService("ACP_SUBPROCESS_SERVICE") as AcpService | null);
     if (!service?.spawnSession) return false;
 
     const nextRetry = priorRetries + 1;

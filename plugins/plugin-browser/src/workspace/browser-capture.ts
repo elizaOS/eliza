@@ -21,6 +21,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { logger } from "@elizaos/core";
+import type { Browser } from "puppeteer-core";
 
 const CHROME_PATH =
   process.platform === "darwin"
@@ -29,8 +30,7 @@ const CHROME_PATH =
       ? "C:\\Program Files\\Google Chrome\\Application\\chrome.exe"
       : "/usr/bin/google-chrome-stable";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let activeBrowser: any | null = null;
+let activeBrowser: Browser | null = null;
 let activeCaptureLoop: Promise<void> | null = null;
 let stopSignal = false;
 

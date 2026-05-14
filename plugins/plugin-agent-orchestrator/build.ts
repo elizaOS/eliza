@@ -13,9 +13,6 @@ const externalDeps = [
   "@elizaos/app-task-coordinator",
   "coding-agent-adapters",
   "drizzle-orm",
-  "pty-console",
-  "pty-state-capture",
-  "pty-manager",
   "git-workspace-service",
 ];
 
@@ -42,8 +39,8 @@ async function build() {
     `✅ Node build complete in ${((Date.now() - nodeStart) / 1000).toFixed(2)}s`,
   );
 
-  // No browser build: this plugin includes Node-only services (PTY,
-  // workspace lifecycle, child_process spawn). Browser callers should
+  // No browser build: this plugin includes Node-only services (ACP subprocess
+  // sessions, workspace lifecycle, child_process spawn). Browser callers should
   // only depend on the type definitions; the package's `exports` field
   // points the browser condition at the same node bundle for resolution
   // purposes but the runtime is Node/bun.

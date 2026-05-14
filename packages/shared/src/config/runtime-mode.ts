@@ -132,17 +132,25 @@ const RUNTIME_EXECUTION_MODE_SETTING_KEYS = [
 export function resolveRuntimeExecutionMode(
   source?: RuntimeExecutionModeSource | null,
 ): RuntimeExecutionMode {
+  const clampForPlatform = (
+    mode: RuntimeExecutionMode,
+  ): RuntimeExecutionMode =>
+    process.env.ELIZA_PLATFORM?.trim().toLowerCase() === "ios" &&
+    mode === "local-yolo"
+      ? "local-safe"
+      : mode;
+
   for (const key of RUNTIME_EXECUTION_MODE_SETTING_KEYS) {
     const fromSetting = normalizeRuntimeExecutionMode(
       source?.getSetting?.(key),
     );
-    if (fromSetting) return fromSetting;
+    if (fromSetting) return clampForPlatform(fromSetting);
   }
   for (const key of RUNTIME_EXECUTION_MODE_SETTING_KEYS) {
     const fromEnv = normalizeRuntimeExecutionMode(process.env[key]);
-    if (fromEnv) return fromEnv;
+    if (fromEnv) return clampForPlatform(fromEnv);
   }
-  return "local-yolo";
+  return clampForPlatform("local-yolo");
 }
 
 /** Local-only narrowing of {@link RuntimeExecutionMode} for callers that only

@@ -1,6 +1,6 @@
 import * as os from "node:os";
 import { describe, expect, it } from "vitest";
-import { resolveSpawnWorkdir } from "../../src/actions/coding-task-helpers.js";
+import { resolveSpawnWorkdir } from "../../src/services/task-agent-routing.js";
 
 // `task` / `userRequest` are deliberately chosen so they match no configured
 // `TASK_AGENT_WORKDIR_ROUTES` route — these tests exercise the explicit-workdir

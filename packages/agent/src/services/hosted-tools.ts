@@ -1,8 +1,14 @@
-import type {
-  BrowserWorkspaceCommand,
-  BrowserWorkspaceTab,
-} from "@elizaos/plugin-browser";
-import { resolveCloudApiBaseUrl } from "@elizaos/plugin-elizacloud";
+export interface BrowserWorkspaceTab {
+  id: string;
+  [key: string]: unknown;
+}
+
+export interface BrowserWorkspaceCommand {
+  subaction: string;
+  [key: string]: unknown;
+}
+
+const { resolveCloudApiBaseUrl } = await import("@elizaos/plugin-elizacloud");
 
 export interface HostedSearchResponse {
   answer: string;

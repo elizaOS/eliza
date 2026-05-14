@@ -33,7 +33,7 @@ Per-backend artifacts (each is custom Eliza source, not upstream):
 - CPU SIMD (mirrored into `ggml-cpu/qjl/` at build time): `qjl_quantize_{ref,avx2,neon}.c`, `qjl_score_{ref,i8_ref,avx2,avxvnni,neon,dotprod}.c`, plus dispatcher.
 - Reference: `native/reference/turbo_kernels.{c,h}` and `native/verify/qjl_polar_ref.{c,h}` — bit-exact C references the parity gates compare against.
 
-Legacy (deprecated) patch series at `packages/app-core/scripts/aosp/llama-cpp-patches/{qjl,polarquant}/` (9 .patch files) — the README there marks them superseded by the unified fork on 2026-05-09.
+Legacy (deprecated) patch series at `packages/app-core/scripts/aosp/llama-cpp-patches/{qjl,polarquant}/` (9 .patch files) — the README there marks them superseded by the canonical fork on 2026-05-09.
 
 The canonical contract list (`verify/kernel-contract.json` lines 11–18) is exactly: `dflash, turbo3, turbo4, turbo3_tcq, qjl_full, polarquant`.
 
@@ -43,7 +43,7 @@ Target matrix from `build-llama-cpp-dflash.mjs` `SUPPORTED_TARGETS` (lines 150�
 
 Windows-x64-cpu compile defaults (lines 1465–1486): AVX + AVX2 + FMA + F16C. AVX-512 and AVX-VNNI are explicitly NOT enabled on Windows targets (`hostHasAvxVnni()` gating at line 1407 only fires for native `linux-x64`). The fork supports it (the CPU SIMD staging in `cpu-simd-kernels.mjs` lists `qjl_score_avxvnni.c`), it is just not turned on by the Windows build flags.
 
-The existing built artifact on this machine is at `C:\Users\Administrator\.eliza\local-inference\bin\dflash\windows-x64-cpu\` and its `CAPABILITIES.json` shows it was built from the legacy `spiritbuun/buun-llama-cpp` fork @ `6575873e` on 2026-05-10 with `qjl_full: false`, `turbo3: true, turbo4: true, turbo3_tcq: true, dflash: true`. That is the OLD pre-unification fork; it predates the unified `elizaOS/llama.cpp` migration. The binaries shipped are `llama-cli.exe, llama-server.exe, llama-speculative-simple.exe` plus DLLs `llama.dll, llama-common.dll, ggml.dll, ggml-base.dll, ggml-cpu.dll, mtmd.dll`. `llama-bench.exe` and `llama-completion.exe` (which `windows_runner.ps1` requires at lines 215–218 and 308–311) are **missing**.
+The existing built artifact on this machine is at `C:\Users\Administrator\.eliza\local-inference\bin\dflash\windows-x64-cpu\` and its `CAPABILITIES.json` shows it was built from the legacy `spiritbuun/buun-llama-cpp` fork @ `6575873e` on 2026-05-10 with `qjl_full: false`, `turbo3: true, turbo4: true, turbo3_tcq: true, dflash: true`. That is the OLD pre-migration fork; it predates the `elizaOS/llama.cpp` migration. The binaries shipped are `llama-cli.exe, llama-server.exe, llama-speculative-simple.exe` plus DLLs `llama.dll, llama-common.dll, ggml.dll, ggml-base.dll, ggml-cpu.dll, mtmd.dll`. `llama-bench.exe` and `llama-completion.exe` (which `windows_runner.ps1` requires at lines 215–218 and 308–311) are **missing**.
 
 ## 4. Shipped local models and the smallest sizes
 

@@ -4,17 +4,6 @@ export {
 	VoiceBundleDoesNotFitError,
 } from "./active-model";
 export {
-	classifyDeviceTier,
-	DEVICE_TIER_ORDER,
-	DEVICE_TIER_THRESHOLDS,
-	type DeviceTier,
-	type DeviceTierAssessment,
-	effectiveModelMemoryGb,
-	type RecommendedMode,
-	TIER_WARNING_COPY,
-	totalRamMb,
-} from "./device-tier";
-export {
 	type BackendDecision,
 	BackendDispatcher,
 	type BackendOverride,
@@ -44,6 +33,17 @@ export {
 	makeCloudFallbackHandler,
 } from "./cloud-fallback";
 export { type DeviceBridgeStatus, deviceBridge } from "./device-bridge";
+export {
+	classifyDeviceTier,
+	DEVICE_TIER_ORDER,
+	DEVICE_TIER_THRESHOLDS,
+	type DeviceTier,
+	type DeviceTierAssessment,
+	effectiveModelMemoryGb,
+	type RecommendedMode,
+	TIER_WARNING_COPY,
+	totalRamMb,
+} from "./device-tier";
 export {
 	type DflashDoctorCheck,
 	type DflashDoctorReport,

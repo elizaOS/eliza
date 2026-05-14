@@ -16,7 +16,6 @@ from benchmarks.realm.runner import REALMRunner
 from benchmarks.realm.types import (
     LEADERBOARD_NOTE,
     LEADERBOARD_SCORES,
-    PROBLEM_DESCRIPTIONS,
     ExecutionModel,
     REALMConfig,
     REALMReport,

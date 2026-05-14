@@ -40,8 +40,6 @@
 
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { DEFAULT_PHRASE_CACHE_SEED } from "../../../../plugins/plugin-local-inference/src/services/voice/phrase-cache.ts";
-import { writeVoicePresetFile } from "../../../../plugins/plugin-local-inference/src/services/voice/voice-preset-format.ts";
 
 const PLACEHOLDER_DEFAULT_DIM = 256;
 
@@ -124,6 +122,9 @@ function readFloat32Vector(file) {
  * the placeholder path stays dependency-light.
  */
 async function synthesizeSeedPhrases({ bundleRoot, concurrency }) {
+  const { DEFAULT_PHRASE_CACHE_SEED } = await import(
+    "../../../../plugins/plugin-local-inference/src/services/voice/phrase-cache.ts"
+  );
   const { LocalInferenceEngine } = await import(
     "../../../../plugins/plugin-local-inference/src/services/engine.ts"
   );
@@ -230,6 +231,9 @@ async function main() {
     );
   }
 
+  const { writeVoicePresetFile } = await import(
+    "../../../../plugins/plugin-local-inference/src/services/voice/voice-preset-format.ts"
+  );
   const blob = writeVoicePresetFile({ embedding, phrases });
   const outPath = defaultOutPath(args);
   mkdirSync(path.dirname(outPath), { recursive: true });

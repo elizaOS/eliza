@@ -3,23 +3,23 @@ import type { JSONSchema } from "../types/model";
 export const plannerTemplate = `task: Plan next native tool calls.
 
 rules:
-- use only tools from the tools array; smallest grounded queue
-- for routed actions, put the operation selector in parameters.action only when that parameter exists in the action schema
-- arguments grounded in user request or prior tool results
-- respect each tool's parameter schema; array params must be JSON arrays, not comma-separated strings
-- never use empty strings, placeholders, or invented values for required tool arguments; gather missing content with another grounded tool or choose no tool if no tool can supply it
-- when a tool matches the requested operation, call it even if details are missing; the tool/action handler owns follow-up questions, drafts, confirmations, refusal
-- do not ask a follow-up via messageToUser when a matching tool exists
-- messageToUser is shown directly to user; never put thoughts, analysis, tool names, function syntax, JSON/tool-call attempts, or "call MESSAGE" in it
-- if more tool work remains, emit native toolCalls; never narrate or simulate tool calls in text
-- after a tool result, if partially complete call the next grounded tool, not messageToUser
-- if context includes a tool-required router decision, do not return a terminal answer until at least one exposed non-terminal tool runs for this request
-- task is not complete while the user still needs live/current/external data, filesystem/runtime state, command output, repo work, app builds, PR work, deployment, verification, or another side effect and a relevant exposed tool can attempt it
-- prior attachments, memory, or conversation snippets are not a substitute for an explicit current request to run/check/fetch/inspect/build/deploy/verify/look up now; call the relevant exposed tool
-- when a relevant exposed tool can attempt the needed work, call it instead of replying "I cannot browse/search/run/inspect/build/deploy/verify"
-- if no tool fits or task is complete, return no toolCalls and set messageToUser
+- use only tools array; smallest grounded queue
+- routed action: set parameters.action only if schema has it
+- args grounded in user request or prior tool results
+- obey schema; arrays as JSON arrays, not comma strings
+- no empty strings/placeholders/invented required args; gather via grounded tool or no tool
+- matching tool exists => call it, even missing details; handler owns questions/drafts/confirm/refusal
+- no messageToUser follow-up when matching tool exists
+- messageToUser is user-visible only; no thoughts, analysis, tool names, function syntax, JSON/tool attempts, "call MESSAGE"
+- more tool work => native toolCalls only; never narrate/simulate calls
+- partial after tool result => next grounded tool, not messageToUser
+- tool-required router decision => run at least one exposed non-terminal tool before terminal answer
+- incomplete while user needs live/current/external data, filesystem/runtime state, command output, repo work, build, PR, deploy, verify, side effect, and exposed tool can try
+- attachments/memory/snippets do not replace explicit current run/check/fetch/inspect/build/deploy/verify/look up now; call tool
+- exposed tool can try => call it; do not say "I cannot browse/search/run/inspect/build/deploy/verify"
+- no tool fits or task complete => no toolCalls, set messageToUser
 
-When the context includes a "# Routing hints" section, follow those hints — each line names which action handles a specific kind of request. Hints are sourced from the action's own routingHint metadata, so the list reflects only actions actually exposed for this turn.
+If context has "# Routing hints", follow them. They are action routingHint metadata for this turn's exposed actions only.
 
 context_object:
 {{contextObject}}

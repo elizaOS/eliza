@@ -5,6 +5,7 @@
     "moduleResolution": "bundler",
     "jsx": "react-jsx",
     "strict": false,
+    "strictNullChecks": true,
     "skipLibCheck": true,
     "ignoreDeprecations": "6.0",
     "esModuleInterop": true,
@@ -27,6 +28,7 @@
       ],
       "@elizaos/app-task-coordinator/*": ["./app-task-coordinator/dist/*"],
       "@elizaos/app-core": ["../packages/app-core/dist/index.d.ts"],
+      "@elizaos/app-core/*": ["../packages/app-core/dist/*"],
       "@elizaos/agent": [
         "../packages/agent/dist/packages/agent/src/index.d.ts"
       ],

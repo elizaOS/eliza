@@ -7,14 +7,14 @@ Initializes the Email database with default users and their mailbox structures.
 import json
 import os
 from datetime import datetime, timezone
-from typing import Dict, Any, List
+from typing import Dict, Any
 
 
 def create_default_users() -> Dict[str, Any]:
     """Create default email users with realistic names and addresses"""
     now = datetime.now(timezone.utc).isoformat()
 
-    users = {
+    return {
         # Admin
         "admin@company.com": {
             "email": "admin@company.com",
@@ -67,12 +67,11 @@ def create_default_users() -> Dict[str, Any]:
         }
     }
 
-    return users
 
 
 def create_default_folders() -> Dict[str, Any]:
     """Create default email folders for a user"""
-    folders = {
+    return {
         "INBOX": {
             "name": "INBOX",
             "total": 0,
@@ -104,7 +103,6 @@ def create_default_folders() -> Dict[str, Any]:
             "unread": 0
         }
     }
-    return folders
 
 
 def create_empty_emails() -> Dict[str, Any]:

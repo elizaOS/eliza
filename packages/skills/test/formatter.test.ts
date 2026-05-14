@@ -47,7 +47,7 @@ describe("formatSkillsForPrompt", () => {
     assert.ok(!result.includes("location:"));
   });
 
-  it("preserves non-XML text characters in name and description", () => {
+  it("preserves punctuation in name and description", () => {
     const skills: Skill[] = [
       { name: "test", description: "Uses <tags> & \"quotes\" and 'apos'" },
     ];

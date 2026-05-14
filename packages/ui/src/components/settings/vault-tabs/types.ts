@@ -34,8 +34,6 @@ export type InstallMethod =
   | { kind: "npm"; package: string }
   | { kind: "manual"; instructions: string; url: string };
 
-// ── Vault inventory wire types ────────────────────────────────────
-
 export type VaultEntryCategory =
   | "provider"
   | "plugin"
@@ -62,8 +60,6 @@ export interface VaultEntryMeta {
   lastUsed?: number;
   kind: "secret" | "value" | "reference";
 }
-
-// ── Routing config wire types ─────────────────────────────────────
 
 export type RoutingScopeKind = "agent" | "app" | "skill";
 
@@ -95,11 +91,9 @@ export interface InstalledApp {
   displayName?: string;
 }
 
-// ── Saved logins wire types ───────────────────────────────────────
-
 export type SavedLoginSource = "in-house" | "1password" | "bitwarden";
 
-export interface UnifiedSavedLogin {
+export interface SavedLogin {
   source: SavedLoginSource;
   identifier: string;
   domain: string | null;
@@ -112,8 +106,6 @@ export interface SavedLoginsListFailure {
   source: "1password" | "bitwarden";
   message: string;
 }
-
-// ── Cross-tab navigation contract ─────────────────────────────────
 
 /**
  * Each tab receives a `navigate` callback so it can request a jump to

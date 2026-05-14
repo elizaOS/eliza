@@ -1,5 +1,6 @@
 import type {
   ActionResult,
+  type Content,
   HandlerCallback,
   HandlerOptions,
   IAgentRuntime,
@@ -182,13 +183,14 @@ export async function runScheduleHandler(
       ? { circadianContractView: sleepWindow }
       : { circadianContractView: null }),
   });
+  const callbackData = data as unknown as Content["data"];
   await callback?.({
     text,
-    data: data as any,
+    data: callbackData,
   });
   return {
     text,
     success: true,
-    data: data as any,
+    data,
   };
 }

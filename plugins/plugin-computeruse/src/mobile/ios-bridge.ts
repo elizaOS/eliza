@@ -30,7 +30,7 @@
 // ── Common envelope ──────────────────────────────────────────────────────────
 
 /**
- * Unified result envelope for every bridge call.
+ * Standard result envelope for every bridge call.
  *
  * `ok=true` means the native side completed successfully and `data` is shaped
  * to the per-method type. `ok=false` carries a `code` (machine-readable) and

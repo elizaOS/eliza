@@ -27,13 +27,6 @@ import {
   type UUID,
 } from "@elizaos/core";
 import {
-  cacheDiscordAvatarForRuntime,
-  isCanonicalDiscordSource,
-  resolveDiscordMessageAuthorProfile,
-  resolveDiscordUserProfile,
-  resolveStoredDiscordEntityProfile,
-} from "@elizaos/plugin-discord";
-import {
   PatchConversationRequestSchema,
   PostConversationCleanupEmptyRequestSchema,
   PostConversationRequestSchema,
@@ -72,6 +65,41 @@ import {
   resolveWalletModeGuidanceReply,
 } from "./server-helpers.ts";
 import type { ConversationMeta } from "./server-types.ts";
+
+interface DiscordProfileLike {
+  avatarUrl?: string;
+  displayName?: string;
+  rawUserId?: string;
+  username?: string;
+}
+
+const {
+  cacheDiscordAvatarForRuntime,
+  isCanonicalDiscordSource,
+  resolveDiscordMessageAuthorProfile,
+  resolveDiscordUserProfile,
+  resolveStoredDiscordEntityProfile,
+} = (await import("@elizaos/plugin-discord")) as {
+  cacheDiscordAvatarForRuntime: (
+    runtime: AgentRuntime,
+    avatarUrl: string | undefined,
+    userId?: string,
+  ) => Promise<string | undefined>;
+  isCanonicalDiscordSource: (source: unknown) => boolean;
+  resolveDiscordMessageAuthorProfile: (
+    runtime: AgentRuntime,
+    channelId: string,
+    messageId: string,
+  ) => Promise<DiscordProfileLike | null>;
+  resolveDiscordUserProfile: (
+    runtime: AgentRuntime,
+    userId: string,
+  ) => Promise<DiscordProfileLike | null>;
+  resolveStoredDiscordEntityProfile: (
+    runtime: AgentRuntime,
+    entityId: string | undefined,
+  ) => Promise<DiscordProfileLike | null>;
+};
 
 // ---------------------------------------------------------------------------
 // Deleted-conversations state persistence

@@ -10,11 +10,14 @@ import {
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
-import type { RobloxService } from "@elizaos/plugin-roblox";
 import express from "express";
 import { v4 as uuidv4 } from "uuid";
 
 const ROBLOX_SERVICE_NAME = "roblox";
+
+type RobloxMessageService = Service & {
+  sendMessage: (agentId: UUID, message: string) => Promise<unknown>;
+};
 
 export type RobloxChatRequestBody = {
   playerId: number;
@@ -241,7 +244,8 @@ export function createRobloxBridgeApp(
         // Optional: echo the agent reply back into Roblox via Open Cloud publish
         // (Roblox servers subscribe and display it).
         if (process.env.ROBLOX_ECHO_TO_GAME?.toLowerCase() === "true") {
-          const svc = runtime.getService<RobloxService>(ROBLOX_SERVICE_NAME);
+          const svc =
+            runtime.getService<RobloxMessageService>(ROBLOX_SERVICE_NAME);
           if (svc) {
             await svc.sendMessage(
               runtime.agentId,

@@ -33,7 +33,6 @@ from elizaos_agentbench.types import (
     JSONValue,
     OverallMetricsType,
     SummaryType,
-    TaskDifficulty,
 )
 from elizaos_agentbench.adapters.base import EnvironmentAdapter
 from elizaos_agentbench.adapters.card_game_adapter import CardGameAdapter

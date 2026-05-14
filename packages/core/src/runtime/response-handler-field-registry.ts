@@ -163,7 +163,7 @@ export class ResponseHandlerFieldRegistry {
 				skipped.push(evaluator.name);
 				// Field stays declared in schema; instruct LLM to emit its empty value.
 				sections.push(
-					`### ${evaluator.name}\nNot applicable this turn — emit the field's empty value.`,
+					`### ${evaluator.name}\nN/A this turn; emit empty value.`,
 				);
 			}
 		}

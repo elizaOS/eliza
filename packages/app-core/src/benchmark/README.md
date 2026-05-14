@@ -137,7 +137,7 @@ Response:
 | Environment variable | Default | Description |
 |---|---|---|
 | `ELIZA_BENCH_PORT` | `3939` | Port to listen on |
-| `ELIZA_ENABLE_COMPUTERUSE` | unset | If set, loads local computeruse plugin |
+| `COMPUTER_USE_ENABLED` | unset | Set to `1` to load local computeruse plugin |
 | `ELIZA_ENABLE_CUA` | unset | If set (or CUA env is configured), loads `@elizaos/plugin-cua` |
 | `CUA_HOST` | unset | Local CUA/LUME host (e.g. `localhost:8000`) |
 | `CUA_API_KEY` + `CUA_SANDBOX_NAME` | unset | Cloud CUA mode alternative to `CUA_HOST` |

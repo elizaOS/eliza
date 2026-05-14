@@ -14,7 +14,12 @@
 
 import type http from "node:http";
 import { TLSSocket } from "node:tls";
-import type { AgentRuntime, Plugin, Route } from "@elizaos/core";
+import type {
+  AgentRuntime,
+  LegacyRouteHandler,
+  Plugin,
+  Route,
+} from "@elizaos/core";
 import {
   sendJson as httpSendJson,
   sendJsonError as httpSendJsonError,
@@ -90,9 +95,7 @@ function requestBaseUrl(req: http.IncomingMessage): string {
   return `${protocol}://${host}`;
 }
 
-type PluginRouteHandler = NonNullable<Route["handler"]>;
-
-function trainingRouteHandler(): PluginRouteHandler {
+function trainingRouteHandler(): LegacyRouteHandler {
   return async (
     req: unknown,
     res: unknown,
@@ -147,7 +150,7 @@ function getVastService(): VastTrainingService {
   return cachedVastService;
 }
 
-function vastTrainingRouteHandler(): PluginRouteHandler {
+function vastTrainingRouteHandler(): LegacyRouteHandler {
   return async (req: unknown, res: unknown): Promise<void> => {
     const httpReq = req as http.IncomingMessage;
     const httpRes = res as http.ServerResponse;
@@ -166,7 +169,7 @@ function vastTrainingRouteHandler(): PluginRouteHandler {
   };
 }
 
-function trajectoryRouteHandler(): PluginRouteHandler {
+function trajectoryRouteHandler(): LegacyRouteHandler {
   return async (
     req: unknown,
     res: unknown,
@@ -191,7 +194,7 @@ function trajectoryRouteHandler(): PluginRouteHandler {
   };
 }
 
-function experienceRouteHandler(): PluginRouteHandler {
+function experienceRouteHandler(): LegacyRouteHandler {
   return async (
     req: unknown,
     res: unknown,

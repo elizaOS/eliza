@@ -57,19 +57,16 @@ function looksLikeSkillsDir(dir: string): boolean {
  * @throws Error if skills directory cannot be found
  */
 export function getSkillsDir(): string {
-  // Return cached value if available
   if (cachedSkillsDir !== undefined) {
     return cachedSkillsDir;
   }
 
-  // Check environment variable override
   const override = process.env.ELIZAOS_BUNDLED_SKILLS_DIR?.trim();
   if (override && existsSync(override)) {
     cachedSkillsDir = override;
     return cachedSkillsDir;
   }
 
-  // For compiled binaries: check sibling skills/ next to executable
   const execDir = dirname(process.execPath);
   const siblingSkills = join(execDir, "skills");
   if (looksLikeSkillsDir(siblingSkills)) {
@@ -77,13 +74,10 @@ export function getSkillsDir(): string {
     return cachedSkillsDir;
   }
 
-  // Resolve relative to this module (packages/skills/dist/resolver.js -> packages/skills/skills)
   const __filename = fileURLToPath(import.meta.url);
   const __dirname = dirname(__filename);
 
-  // In development: packages/skills/src/resolver.ts -> packages/skills/skills
-  // In production: packages/skills/dist/resolver.js -> packages/skills/skills
-  const packageRoot = dirname(__dirname); // Go up from src/ or dist/
+  const packageRoot = dirname(__dirname);
   const packageSkills = join(packageRoot, "skills");
 
   if (looksLikeSkillsDir(packageSkills)) {
@@ -91,7 +85,6 @@ export function getSkillsDir(): string {
     return cachedSkillsDir;
   }
 
-  // Also check one more level up in case we're in a nested dist structure
   const parentPackageSkills = join(dirname(packageRoot), "skills");
   if (looksLikeSkillsDir(parentPackageSkills)) {
     cachedSkillsDir = parentPackageSkills;

@@ -413,7 +413,7 @@
         "vite": "^8.0.8",
       },
     },
-    "packages/browser-bridge": {
+    "packages/browser-bridge-extension": {
       "name": "@elizaos/browser-bridge-extension",
       "version": "2.0.0-beta.2",
       "dependencies": {
@@ -2138,8 +2138,6 @@
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "@elizaos/ui": "workspace:*",
-        "@xterm/addon-fit": "^0.11.0",
-        "@xterm/xterm": "^6.0.0",
         "lucide-react": "^1.0.0",
       },
       "devDependencies": {
@@ -2243,8 +2241,6 @@
         "@elizaos/app-task-coordinator": "workspace:*",
         "coding-agent-adapters": "0.16.3",
         "drizzle-orm": "^0.45.1",
-        "pty-console": "0.3.1",
-        "pty-state-capture": "0.2.0",
       },
       "devDependencies": {
         "@biomejs/biome": "^2.4.14",
@@ -2254,14 +2250,12 @@
         "@types/node": "^25.2.3",
         "bun-types": "1.3.14",
         "git-workspace-service": "0.4.5",
-        "pty-manager": "1.11.0",
         "typescript": "^6.0.3",
         "vitest": "^4.0.0",
       },
       "peerDependencies": {
         "@elizaos/core": "workspace:*",
         "git-workspace-service": "0.4.5",
-        "pty-manager": "1.11.0",
       },
     },
     "plugins/plugin-agent-skills": {
@@ -4175,7 +4169,7 @@
 
     "@elizaos/bench-eliza-1": ["@elizaos/bench-eliza-1@workspace:packages/benchmarks/eliza-1"],
 
-    "@elizaos/browser-bridge-extension": ["@elizaos/browser-bridge-extension@workspace:packages/browser-bridge"],
+    "@elizaos/browser-bridge-extension": ["@elizaos/browser-bridge-extension@workspace:packages/browser-bridge-extension"],
 
     "@elizaos/bun-ios-runtime": ["@elizaos/bun-ios-runtime@workspace:packages/bun-ios-runtime"],
 
@@ -6323,10 +6317,6 @@
 
     "@xmldom/xmldom": ["@xmldom/xmldom@0.8.13", "", {}, "sha512-KRYzxepc14G/CEpEGc3Yn+JKaAeT63smlDr+vjB8jRfgTBBI9wRj/nkQEO+ucV8p8I9bfKLWp37uHgFrbntPvw=="],
 
-    "@xterm/addon-fit": ["@xterm/addon-fit@0.11.0", "", {}, "sha512-jYcgT6xtVYhnhgxh3QgYDnnNMYTcf8ElbxxFzX0IZo+vabQqSPAjC3c1wJrKB5E19VwQei89QCiZZP86DCPF7g=="],
-
-    "@xterm/xterm": ["@xterm/xterm@6.0.0", "", {}, "sha512-TQwDdQGtwwDt+2cgKDLn0IRaSxYu1tSUjgKarSDkUM0ZNiSRXFpjxEsvc/Zgc5kq5omJ+V0a8/kIM2WD3sMOYg=="],
-
     "@xyflow/react": ["@xyflow/react@12.10.2", "", { "dependencies": { "@xyflow/system": "0.0.76", "classcat": "^5.0.3", "zustand": "^4.4.0" }, "peerDependencies": { "react": ">=17", "react-dom": ">=17" } }, "sha512-CgIi6HwlcHXwlkTpr0fxLv/0sRVNZ8IdwKLzzeCscaYBwpvfcH1QFOCeaTCuEn1FQEs/B8CjnTSjhs8udgmBgQ=="],
 
     "@xyflow/system": ["@xyflow/system@0.0.76", "", { "dependencies": { "@types/d3-drag": "^3.0.7", "@types/d3-interpolate": "^3.0.4", "@types/d3-selection": "^3.0.10", "@types/d3-transition": "^3.0.8", "@types/d3-zoom": "^3.0.8", "d3-drag": "^3.0.0", "d3-interpolate": "^3.0.1", "d3-selection": "^3.0.0", "d3-zoom": "^3.0.0" } }, "sha512-hvwvnRS1B3REwVDlWexsq7YQaPZeG3/mKo1jv38UmnpWmxihp14bW6VtEOuHEwJX2FvzFw8k77LyKSk/wiZVNA=="],
@@ -8353,11 +8343,7 @@
 
     "proxy-from-env": ["proxy-from-env@1.0.0", "", {}, "sha512-F2JHgJQ1iqwnHDcQjVBsq3n/uoaFL+iPW/eAeL7kVxy/2RrWaN4WroKjjvbsoRtv0ftelNyC01bjRhn/bhcf4A=="],
 
-    "pty-console": ["pty-console@0.3.1", "", { "dependencies": { "pty-manager": "^1.9.0" } }, "sha512-ZiI3Oav83AEq1kWIQWfloMN0gM6RiAh+fCMm+ee+8wduOLqfW5AYZx5BEg3eJblCKKVQW22x2mB9UTUoM/Vpcw=="],
-
     "pty-manager": ["pty-manager@1.11.0", "", { "dependencies": { "adapter-types": "^0.2.0", "node-pty": "^1.0.0" }, "bin": { "pty-worker": "dist/pty-worker.js" } }, "sha512-Ncyh+2lV0cB5cUYcij4fb10ILTamOKeFOGSvq7FaYubnC7pjI4G9nkPOXb6Ac5/YHvh8I/6Ko+JOdILwXbT5vQ=="],
-
-    "pty-state-capture": ["pty-state-capture@0.2.0", "", {}, "sha512-FatJj03jyHZ6S05VBZFXnrTxXaESDnQEuN+8lxlSohymE1O2369kSsM+EkltVRzCKEuA9KmEAUAKmaxp9szFQg=="],
 
     "public-encrypt": ["public-encrypt@4.0.3", "", { "dependencies": { "bn.js": "^4.1.0", "browserify-rsa": "^4.0.0", "create-hash": "^1.1.0", "parse-asn1": "^5.0.0", "randombytes": "^2.0.1", "safe-buffer": "^5.1.2" } }, "sha512-zVpa8oKZSz5bTMTFClc1fQOnyyEzpl5ozpi1B5YcvBrdohMjH2rfsBtyXcuNuwjsDIXmBYlF2N5FlJYhR29t8Q=="],
 

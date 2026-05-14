@@ -15,7 +15,6 @@ the tests are skipped rather than failed so a freshly-cloned repo can still
 from __future__ import annotations
 
 import asyncio
-import os
 import sys
 from pathlib import Path
 

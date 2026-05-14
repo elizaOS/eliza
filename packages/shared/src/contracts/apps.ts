@@ -813,8 +813,7 @@ export function packageNameToAppRouteSlug(packageName: string): string | null {
 export function packageNameToAppDisplayName(packageName: string): string {
   const slug =
     packageNameToAppRouteSlug(packageName) ??
-    packageNameToBasename(packageName) ??
-    packageName.trim();
+    packageNameToBasename(packageName);
 
   return slug
     .split(/[^a-zA-Z0-9]+/)

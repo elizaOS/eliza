@@ -6,8 +6,7 @@
  * want cloud mode to be probeable for local-inference state) and returns
  * `true` so the dispatcher stops walking handlers.
  *
- * No defensive try/catch: a config-load failure is the runtime's problem,
- * not the gate's.
+ * Config-load failures propagate to the runtime error handler.
  */
 
 import type http from "node:http";

@@ -233,18 +233,16 @@ export function resolveStewardContainerUrl(
     return override.replace(/\/$/, "");
   }
 
+  let url: URL;
   try {
-    const url = new URL(stewardHostUrl);
-    if (["localhost", "127.0.0.1", "::1"].includes(url.hostname)) {
-      url.hostname = "host.docker.internal";
-    }
-    return url.toString().replace(/\/$/, "");
+    url = new URL(stewardHostUrl);
   } catch {
-    logger.warn(
-      `[docker-sandbox] Invalid STEWARD host URL ${JSON.stringify(stewardHostUrl)}; falling back to http://host.docker.internal:3200`,
-    );
-    return "http://host.docker.internal:3200";
+    throw new Error(`[docker-sandbox] Invalid STEWARD_API_URL: ${JSON.stringify(stewardHostUrl)}`);
   }
+  if (["localhost", "127.0.0.1", "::1"].includes(url.hostname)) {
+    url.hostname = "host.docker.internal";
+  }
+  return url.toString().replace(/\/$/, "");
 }
 
 /** Linux Docker needs an explicit host-gateway alias for host.docker.internal. */

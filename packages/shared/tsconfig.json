@@ -8,6 +8,7 @@
     "skipLibCheck": true,
     "allowSyntheticDefaultImports": true,
     "strict": false,
+    "strictNullChecks": true,
     "useUnknownInCatchVariables": false,
     "forceConsistentCasingInFileNames": true,
     "module": "ESNext",

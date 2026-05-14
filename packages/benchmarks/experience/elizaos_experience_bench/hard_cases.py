@@ -15,7 +15,7 @@ experience text. Each case documents WHY it's hard.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 
 @dataclass

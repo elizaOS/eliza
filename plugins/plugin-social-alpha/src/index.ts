@@ -1,4 +1,4 @@
-import type { EventHandlerMap, IAgentRuntime, Plugin } from "@elizaos/core";
+import type { IAgentRuntime, Plugin } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { events } from "./events";
 import { socialAlphaProvider } from "./providers/socialAlphaProvider";
@@ -57,7 +57,7 @@ export const socialAlphaPlugin: Plugin = {
 	services: [CommunityInvestorService],
 	providers: [socialAlphaProvider],
 	routes: communityInvestorRoutes,
-	events: events as EventHandlerMap,
+	events: events as unknown as Plugin["events"],
 	tests: testSuites,
 };
 

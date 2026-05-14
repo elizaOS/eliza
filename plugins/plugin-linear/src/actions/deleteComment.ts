@@ -19,7 +19,7 @@ export const deleteCommentAction: Action = {
   contextGate: { anyOf: ["tasks", "connectors", "automation"] },
   roleGate: { minRole: "USER" },
   description:
-    "Delete a specific Linear comment by its comment id. Use when the user asks to remove, retract, or erase a comment they previously left on a Linear issue.",
+    "Delete Linear comment by comment id. Use for remove/retract/erase comment on Linear issue.",
   descriptionCompressed: "delete Linear comment id",
   parameters: [
     {

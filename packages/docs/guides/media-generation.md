@@ -4,13 +4,13 @@ sidebarTitle: Media Generation
 description: Generate images, videos, and audio, or analyze images using AI providers like FAL, OpenAI, Google, xAI, and Eliza Cloud.
 ---
 
-Eliza includes a media generation abstraction layer that provides a unified interface for creating images, videos, and audio, as well as analyzing images with AI vision. Multiple provider backends are supported, with Eliza Cloud as the default (no API key required).
+Eliza includes a media generation abstraction layer that provides a canonical interface for creating images, videos, and audio, as well as analyzing images with AI vision. Multiple provider backends are supported, with Eliza Cloud as the default (no API key required).
 
 ## Architecture Overview
 
 The media system is organized into three components:
 
-1. **Provider abstraction** (`src/providers/media-provider.ts`) -- Defines unified interfaces (`ImageGenerationProvider`, `VideoGenerationProvider`, `AudioGenerationProvider`, `VisionAnalysisProvider`) and concrete implementations for each backend. A factory function for each media type selects the appropriate provider based on your configuration.
+1. **Provider abstraction** (`src/providers/media-provider.ts`) -- Defines canonical interfaces (`ImageGenerationProvider`, `VideoGenerationProvider`, `AudioGenerationProvider`, `VisionAnalysisProvider`) and concrete implementations for each backend. A factory function for each media type selects the appropriate provider based on your configuration.
 2. **Actions** (`src/actions/media.ts`) -- Two built-in agent actions (`GENERATE_MEDIA`, `ANALYZE_IMAGE`) that expose media capabilities to the agent during conversations. `GENERATE_MEDIA` handles image, video, and audio generation; `ANALYZE_IMAGE` handles vision analysis. Each action reads the current `eliza.json` configuration, instantiates the correct provider, and returns results as message attachments.
 3. **Configuration** (`eliza.json`) -- The `media` section controls which provider is used for each media type, whether to use Eliza Cloud or your own API keys, and provider-specific settings like model names and base URLs.
 

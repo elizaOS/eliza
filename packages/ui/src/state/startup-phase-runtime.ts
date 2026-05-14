@@ -84,7 +84,7 @@ export async function runStartingRuntime(
       };
     if (timedOut) {
       const hint =
-        'First-time startup often downloads a local embedding model (GGUF, hundreds of MB). That can take many minutes on a slow network.\n\nIf logs still show a download in progress, wait for it to finish, then tap Retry. On desktop, the app keeps extending the wait while the agent stays in "starting" (up to 15 minutes total).';
+        'First-time startup often downloads a local embedding model (GGUF, hundreds of MB). That can take many minutes on a slow network.\n\nIf logs still show a download in progress, wait for it to finish, then press Retry. On desktop, the app keeps extending the wait while the agent stays in "starting" (up to 15 minutes total).';
       const emb =
         diag?.embeddingDetail ??
         (diag?.embeddingPhase === "downloading"

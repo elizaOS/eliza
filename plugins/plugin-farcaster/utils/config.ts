@@ -1,4 +1,4 @@
-import { type IAgentRuntime, parseBooleanFromText } from "@elizaos/core";
+import { type IAgentRuntime, type ProcessEnvLike, parseBooleanFromText } from "@elizaos/core";
 import { z } from "zod";
 import {
   DEFAULT_CAST_INTERVAL_MAX,
@@ -9,7 +9,6 @@ import {
   FarcasterConfigSchema,
 } from "../types";
 
-type ProcessEnvLike = Record<string, string | undefined>;
 type RawFarcasterAccountConfig = Partial<FarcasterConfig> &
   Record<string, unknown> & {
     accountId?: string;

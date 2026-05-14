@@ -2,22 +2,22 @@
  * Provider that injects active workspace and task-agent context into every prompt.
  *
  * Eliza needs to know what workspaces exist, which agents are running, and
- * their current status. This provider reads from the workspace service, PTY
- * service, and coordinator to build a live context summary that's always
+ * their current status. This provider reads from the workspace service and ACP
+ * service to build a live context summary that's always
  * available in the prompt.
  *
  * @module providers/active-workspace-context
  */
 
 import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
-import { getCoordinator, getPtyService } from "../services/pty-service.js";
-import type { SessionInfo } from "../services/pty-types.js";
+import { getAcpService } from "../actions/common.js";
 import {
   formatTaskAgentStatus,
   getTaskAgentFrameworkState,
   TASK_AGENT_FRAMEWORK_LABELS,
   truncateTaskAgentText,
 } from "../services/task-agent-frameworks.js";
+import type { SessionInfo } from "../services/types.js";
 import type { WorkspaceResult } from "../services/workspace-service.js";
 import { getCodingWorkspaceService } from "../services/workspace-service.js";
 
@@ -67,21 +67,20 @@ export const activeWorkspaceContextProvider: Provider = {
   cacheScope: "turn",
 
   get: async (runtime: IAgentRuntime, _message: Memory, _state: State) => {
-    const ptyService = getPtyService(runtime) ?? undefined;
+    const acpService = getAcpService(runtime);
     const wsService = getCodingWorkspaceService(runtime);
-    const coordinator = getCoordinator(runtime);
     let frameworkState = FALLBACK_FRAMEWORK_STATE;
     try {
-      frameworkState = await getTaskAgentFrameworkState(runtime, ptyService);
+      frameworkState = await getTaskAgentFrameworkState(runtime, acpService);
     } catch {
       frameworkState = FALLBACK_FRAMEWORK_STATE;
     }
 
     let sessions: SessionInfo[] = [];
-    if (ptyService) {
+    if (acpService) {
       try {
         sessions = await Promise.race([
-          ptyService.listSessions(),
+          Promise.resolve(acpService.listSessions()),
           new Promise<SessionInfo[]>((resolve) =>
             setTimeout(() => resolve([]), 2000),
           ),
@@ -97,9 +96,7 @@ export const activeWorkspaceContextProvider: Provider = {
     } catch {
       workspaces = [];
     }
-    const tasks = uniqueTasks(
-      ((coordinator?.getAllTaskContexts?.() ?? []) as TaskLike[]).slice(),
-    );
+    const tasks = uniqueTasks([]);
     const reusableSessions = sessions.filter((session) => {
       const currentTask = tasks.find((task) => task.sessionId === session.id);
       return !currentTask || currentTask.status !== "active";
@@ -185,13 +182,15 @@ export const activeWorkspaceContextProvider: Provider = {
         }
       }
 
-      const pending = coordinator?.getPendingConfirmations?.() ?? [];
+      const pending: Array<{
+        taskContext: { label: string };
+        promptText: string;
+        llmDecision: { action?: string };
+      }> = [];
       if (pending.length > 0) {
         lines.push("pendingConfirmations:");
         lines.push(`  count: ${pending.length}`);
-        lines.push(
-          `  supervision: ${coordinator?.getSupervisionLevel?.() ?? "unknown"}`,
-        );
+        lines.push("  supervision: acp");
         lines.push(
           `pendingItems[${pending.length}]{label,prompt,suggestedAction}:`,
         );

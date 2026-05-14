@@ -5,6 +5,11 @@ export {
 } from "./auth.js";
 export { BackupScheduler } from "./backup.js";
 export {
+  isCloudAuthApiKeyService,
+  normalizeCloudApiKey,
+  type CloudAuthApiKeyService,
+} from "./auth-service-types.js";
+export {
   normalizeCloudSiteUrl,
   resolveCloudApiBaseUrl,
 } from "./base-url.js";

@@ -4,9 +4,29 @@ export type AppBlockerPermissionStatus =
   | "not-determined"
   | "not-applicable";
 
+export type AppBlockerSettingsTarget =
+  | "screenTime"
+  | "usageAccess"
+  | "overlay"
+  | "deviceSettings";
+
+export interface AppBlockerCapabilities {
+  canSelectApps: boolean;
+  canBlockApps: boolean;
+  canScheduleTimedBlocks: boolean;
+  canUnblockEarly: boolean;
+  requiresFamilyControls: boolean;
+  requiresUsageAccess: boolean;
+  requiresOverlay: boolean;
+}
+
 export interface AppBlockerPermissionResult {
   status: AppBlockerPermissionStatus;
   canRequest: boolean;
+  canOpenSettings: boolean;
+  settingsTarget: AppBlockerSettingsTarget | null;
+  engine: AppBlockerStatus["engine"];
+  capabilities: AppBlockerCapabilities;
   reason?: string;
 }
 
@@ -40,14 +60,19 @@ export interface UnblockAppsResult {
 }
 
 export interface AppBlockerStatus {
+  status: "active" | "inactive" | "unavailable";
   available: boolean;
   active: boolean;
   platform: string;
   engine: "family-controls" | "usage-stats-overlay" | "none";
+  capabilities: AppBlockerCapabilities;
   blockedCount: number;
   blockedPackageNames: string[];
   endsAt: string | null;
   permissionStatus: AppBlockerPermissionStatus;
+  canRequest: boolean;
+  canOpenSettings: boolean;
+  settingsTarget: AppBlockerSettingsTarget | null;
   reason?: string;
 }
 

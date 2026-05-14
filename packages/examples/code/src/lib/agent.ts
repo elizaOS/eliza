@@ -1,12 +1,5 @@
 import "dotenv/config";
 import { AgentRuntime, type Character, type Plugin } from "@elizaos/core";
-import anthropicPlugin from "@elizaos/plugin-anthropic";
-import codingToolsPlugin from "@elizaos/plugin-coding-tools";
-import goalsPlugin from "@elizaos/plugin-goals";
-import mcpPlugin from "@elizaos/plugin-mcp";
-import openaiPlugin from "@elizaos/plugin-openai";
-import { shellPlugin } from "@elizaos/plugin-shell";
-import { plugin as sqlPlugin } from "@elizaos/plugin-sql";
 import { resolveModelProvider } from "./model-provider.js";
 import { CODE_ASSISTANT_SYSTEM_PROMPT } from "./prompts.js";
 
@@ -64,8 +57,6 @@ The current working directory is dynamically provided.`,
   },
 };
 
-import { agentOrchestratorPlugin } from "@elizaos/plugin-agent-orchestrator";
-
 /**
  * Initialize the Eliza runtime with coding capabilities
  */
@@ -81,7 +72,9 @@ export async function initializeAgent(): Promise<AgentRuntime> {
   }
 
   const providerPlugin =
-    provider === "anthropic" ? anthropicPlugin : openaiPlugin;
+    provider === "anthropic"
+      ? (await import("@elizaos/plugin-anthropic")).default
+      : (await import("@elizaos/plugin-openai")).default;
 
   if (!process.env.CODING_TOOLS_WORKSPACE_ROOTS) {
     process.env.CODING_TOOLS_WORKSPACE_ROOTS = process.cwd();
@@ -89,6 +82,22 @@ export async function initializeAgent(): Promise<AgentRuntime> {
   if (!process.env.SHELL_ALLOWED_DIRECTORY) {
     process.env.SHELL_ALLOWED_DIRECTORY = process.cwd();
   }
+
+  const [
+    { plugin: sqlPlugin },
+    { default: mcpPlugin },
+    { default: goalsPlugin },
+    { shellPlugin },
+    { default: codingToolsPlugin },
+    { agentOrchestratorPlugin },
+  ] = await Promise.all([
+    import("@elizaos/plugin-sql"),
+    import("@elizaos/plugin-mcp"),
+    import("@elizaos/plugin-goals"),
+    import("@elizaos/plugin-shell"),
+    import("@elizaos/plugin-coding-tools"),
+    import("@elizaos/plugin-agent-orchestrator"),
+  ]);
 
   const plugins: Plugin[] = [
     sqlPlugin,

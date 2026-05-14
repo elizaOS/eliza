@@ -43,12 +43,36 @@ import type {
   UUID,
   World,
 } from "@elizaos/core";
-import { cacheDiscordAvatarUrl } from "@elizaos/plugin-discord";
 import {
   expandConnectorSourceFilter,
   normalizeConnectorSource,
   PostInboxMessageRequestSchema,
 } from "@elizaos/shared";
+
+let discordModulePromise: Promise<{
+  cacheDiscordAvatarUrl: (
+    avatarUrl: string | undefined,
+    options: {
+      fetchImpl: typeof fetch;
+      userId?: string;
+    },
+  ) => Promise<string | undefined>;
+}> | null = null;
+
+function getDiscordModule() {
+  if (!discordModulePromise) {
+    discordModulePromise = import("@elizaos/plugin-discord") as Promise<{
+      cacheDiscordAvatarUrl: (
+        avatarUrl: string | undefined,
+        options: {
+          fetchImpl: typeof fetch;
+          userId?: string;
+        },
+      ) => Promise<string | undefined>;
+    }>;
+  }
+  return discordModulePromise;
+}
 
 /**
  * Source tags we consider "inbox-worthy". Messages whose content.source
@@ -852,6 +876,7 @@ async function cacheInboxDiscordAvatar(
   avatarUrl: string | undefined,
   userId?: string,
 ): Promise<string | undefined> {
+  const { cacheDiscordAvatarUrl } = await getDiscordModule();
   return cacheDiscordAvatarUrl(avatarUrl, {
     fetchImpl: runtime.fetch ?? globalThis.fetch,
     userId,

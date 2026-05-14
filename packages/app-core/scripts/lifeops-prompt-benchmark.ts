@@ -1,19 +1,13 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
-import {
-  buildExecutiveAssistantPromptBenchmarkCases,
-  buildLifeOpsPromptBenchmarkCases,
-  buildSelfCarePromptBenchmarkCases,
-  type PromptBenchmarkCase,
-} from "../../../plugins/app-lifeops/test/helpers/lifeops-prompt-benchmark-cases.ts";
-import {
-  buildAxOptimizationRows,
-  formatPromptBenchmarkReportMarkdown,
-  runLifeOpsPromptBenchmark,
-  serializeAxOptimizationRows,
-} from "../../../plugins/app-lifeops/test/helpers/lifeops-prompt-benchmark-runner.ts";
 import type { LiveProviderName } from "../test/helpers/live-provider.ts";
+
+type PromptBenchmarkCase = Awaited<
+  ReturnType<
+    typeof import("../../../plugins/app-lifeops/test/helpers/lifeops-prompt-benchmark-cases.ts")["buildLifeOpsPromptBenchmarkCases"]
+  >
+>[number];
 
 type CliOptions = {
   axPath?: string;
@@ -104,6 +98,13 @@ function parseArgs(argv: string[]): CliOptions {
 async function loadCases(
   suite: CliOptions["suite"],
 ): Promise<PromptBenchmarkCase[]> {
+  const {
+    buildExecutiveAssistantPromptBenchmarkCases,
+    buildLifeOpsPromptBenchmarkCases,
+    buildSelfCarePromptBenchmarkCases,
+  } = await import(
+    "../../../plugins/app-lifeops/test/helpers/lifeops-prompt-benchmark-cases.ts"
+  );
   if (suite === "self-care") {
     return buildSelfCarePromptBenchmarkCases();
   }
@@ -170,6 +171,14 @@ async function main(): Promise<void> {
     return;
   }
 
+  const {
+    buildAxOptimizationRows,
+    formatPromptBenchmarkReportMarkdown,
+    runLifeOpsPromptBenchmark,
+    serializeAxOptimizationRows,
+  } = await import(
+    "../../../plugins/app-lifeops/test/helpers/lifeops-prompt-benchmark-runner.ts"
+  );
   const report = await runLifeOpsPromptBenchmark({
     cases: allCases,
     isolate: options.isolate,

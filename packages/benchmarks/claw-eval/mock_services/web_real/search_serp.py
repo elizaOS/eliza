@@ -84,7 +84,7 @@ def search_serp(
             for item in data.get("organic_results", [])
         ]
         return {"status": resp.status_code, "output": results}
-    except Exception as e:
+    except Exception:
         return {"status": -1, "output": []}
 
 

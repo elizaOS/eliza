@@ -1,7 +1,7 @@
 /**
  * @module features/plugin-manager/actions/plugin-handlers/list-ejected
  *
- * `list_ejected` sub-mode of the unified PLUGIN action. Lists plugins
+ * `list_ejected` sub-mode of the PLUGIN action. Lists plugins
  * currently ejected to the local managed directory.
  */
 

@@ -14,7 +14,6 @@ from benchmarks.mint.types import (
     LEADERBOARD_SCORES,
     MINTBenchmarkResults,
     MINTSubtask,
-    MINTTaskType,
     PAPER_RESULTS_URL,
 )
 

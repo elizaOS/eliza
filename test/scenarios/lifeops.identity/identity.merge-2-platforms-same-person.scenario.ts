@@ -64,7 +64,7 @@ export default scenario({
       responseJudge: {
         minimumScore: 0.7,
         rubric:
-          "Reply must confirm the merge resulted in one entity carrying both handles (gmail + telegram). Reply that says 'sure' without naming the unified entity fails.",
+          "Reply must confirm the merge resulted in one entity carrying both handles (gmail + telegram). Reply that says 'sure' without naming the entity fails.",
       },
     },
   ],
@@ -99,7 +99,7 @@ export default scenario({
       name: "identity-merge-2platforms-rubric",
       threshold: 0.7,
       description:
-        "Both handles consolidated under one entity (Alice Chen) and stored.",
+        "Both handles merged under one entity (Alice Chen) and stored.",
     }),
   ],
 });

@@ -7,7 +7,6 @@ Defines all data classes and enums used by the Terminal-Bench benchmark implemen
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from pathlib import Path
 from typing import Optional
 
 

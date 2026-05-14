@@ -42,6 +42,7 @@ function fakeBridge(
     getAccessibilityTree: () => stub(),
     dispatchGesture: () => stub(),
     performGlobalAction: () => stub(),
+    setText: () => stub(),
     enumerateApps: () => stub(),
     getMemoryPressureSnapshot: () => stub(),
     dispatchMemoryPressure: () => stub(),

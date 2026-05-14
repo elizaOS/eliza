@@ -37,7 +37,7 @@ type PostOp = (typeof POST_OPS)[number];
 const POST_CONTEXTS = ["social_posting", "connectors"];
 
 const POST_DESCRIPTION =
-	"Primary action for public feed surfaces and timelines. Use action to choose the operation: send publishes a post, read fetches recent feed posts, search searches public posts. Addressed DMs, groups, channels, and rooms belong to MESSAGE.";
+	"Public feed/timeline action. action=send publishes, read fetches feed, search searches posts. DMs/groups/channels/rooms use MESSAGE.";
 const POST_COMPRESSED =
 	"primary post action send read search public feed timeline posts";
 
@@ -572,21 +572,20 @@ function refreshDescriptions(action: Action, runtime: IAgentRuntime): void {
 export const POST_PARAMETERS: ActionParameter[] = [
 	{
 		name: "action",
-		description: "Post action: send, read, or search.",
+		description: "Post action: send, read, search.",
 		required: false,
 		schema: { type: "string", enum: [...POST_OPS] },
 	},
 	{
 		name: "source",
 		description:
-			"Post connector source such as x, bluesky, farcaster, nostr, or instagram.",
+			"Post connector source: x, bluesky, farcaster, nostr, instagram.",
 		required: false,
 		schema: { type: "string" },
 	},
 	{
 		name: "accountId",
-		description:
-			"Optional connector account id for multi-account post connectors.",
+		description: "Connector account id for multi-account posts.",
 		required: false,
 		schema: { type: "string" },
 	},
@@ -599,28 +598,26 @@ export const POST_PARAMETERS: ActionParameter[] = [
 	{
 		name: "target",
 		description:
-			"Loose feed target for action=send/read, such as a user, channel, media id, or connector-specific reference.",
+			"Loose feed target for action=send/read: user, channel, media id, connector ref.",
 		required: false,
 		schema: { type: "string" },
 	},
 	{
 		name: "feed",
 		description:
-			"Feed convention for action=read, such as home, user, hashtag, channel, or connector-specific feed.",
+			"Feed for action=read: home, user, hashtag, channel, connector feed.",
 		required: false,
 		schema: { type: "string" },
 	},
 	{
 		name: "replyTo",
-		description:
-			"Optional post, cast, media, or thread identifier when publishing a reply/comment.",
+		description: "Post/cast/media/thread ID for reply/comment.",
 		required: false,
 		schema: { type: "string" },
 	},
 	{
 		name: "mediaId",
-		description:
-			"Optional media identifier for connectors that publish comments or replies to media.",
+		description: "Media ID for media comments/replies.",
 		required: false,
 		schema: { type: "string" },
 	},
@@ -632,15 +629,14 @@ export const POST_PARAMETERS: ActionParameter[] = [
 	},
 	{
 		name: "attachments",
-		description:
-			"Optional media attachments for connectors that support media posts.",
+		description: "Media attachments for supported connectors.",
 		required: false,
 		schema: { type: "array" },
 	},
 	{
 		name: "persist",
 		description:
-			"Whether to persist a sent post into the target feed memory. Defaults true. action=send only.",
+			"Persist sent post to feed memory. Default true. action=send only.",
 		required: false,
 		schema: { type: "boolean" },
 	},

@@ -90,21 +90,21 @@ export interface ConflictDetectResult {
   readonly checkedEvents: number;
 }
 
-/**
- * Loader hook. Default returns an empty feed so tests can inject scenario data.
- *
- * TODO: expose a freebusy loader for attendee conflict checks — currently
- * `scan_event_proposal` only considers the owner's own feed.
- */
 export interface ConflictDetectLoader {
   loadFeed: (args: {
     runtime: IAgentRuntime;
+    range: ConflictRange;
+  }) => Promise<readonly ConflictDetectEvent[]>;
+  loadFreeBusy: (args: {
+    runtime: IAgentRuntime;
+    proposal: ConflictDetectProposal;
     range: ConflictRange;
   }) => Promise<readonly ConflictDetectEvent[]>;
 }
 
 const defaultLoader: ConflictDetectLoader = {
   loadFeed: async () => [],
+  loadFreeBusy: async () => [],
 };
 
 let activeLoader: ConflictDetectLoader = defaultLoader;
@@ -272,6 +272,7 @@ function detectConflicts(
 function detectProposalConflicts(args: {
   proposal: ConflictDetectProposal;
   feed: readonly ConflictDetectEvent[];
+  freeBusy: readonly ConflictDetectEvent[];
 }): readonly ConflictDetectPair[] {
   const proposalEvent: ConflictDetectEvent = {
     id: "proposal",
@@ -281,7 +282,7 @@ function detectProposalConflicts(args: {
     ...(args.proposal.attendees ? { attendees: args.proposal.attendees } : {}),
   };
   const conflicts: ConflictDetectPair[] = [];
-  for (const candidate of args.feed) {
+  for (const candidate of [...args.feed, ...args.freeBusy]) {
     if (!overlaps(proposalEvent, candidate)) continue;
     const severity = computeSeverity(proposalEvent, candidate);
     conflicts.push({
@@ -348,11 +349,11 @@ export const conflictDetectAction: Action & {
     "surface:internal",
   ],
   description:
-    "Proactively scan the owner's calendar for overlapping events, or evaluate a proposed event window against the owner's feed. Subactions: scan_today, scan_week, scan_event_proposal.",
+    "Scan owner calendar overlaps. Compare proposed window vs owner feed. Subactions: scan_today, scan_week, scan_event_proposal.",
   descriptionCompressed:
-    "calendar conflicts: scan_today|scan_week|scan_event_proposal; severity warning|hard based on attendee overlap",
+    "calendar conflicts: scan_today|scan_week|scan_event_proposal; severity warning|hard",
   routingHint:
-    'calendar conflict-scan intent ("any conflicts today", "does this slot work", "scan my week for overlaps") -> CONFLICT_DETECT; reactive conflict-on-create stays on CALENDAR.create_event',
+    'calendar conflict-scan ("conflicts today", "does this slot work", "scan week overlaps") -> CONFLICT_DETECT; conflict-on-create -> CALENDAR.create_event',
   contexts: ["calendar", "scheduling", "conflicts"],
   roleGate: { minRole: "OWNER" },
   suppressPostActionContinuation: true,
@@ -361,19 +362,19 @@ export const conflictDetectAction: Action & {
     {
       name: "action",
       description:
-        "Canonical conflict scan operation: scan_today | scan_week | scan_event_proposal.",
+        "Conflict op: scan_today | scan_week | scan_event_proposal.",
       schema: { type: "string" as const, enum: [...SUBACTIONS] },
     },
     {
       name: "range",
       description:
-        "Either 'today' | 'week' or an explicit { start, end } ISO window. Defaults to subaction's natural range.",
+        "'today' | 'week' or { start, end } ISO window. Default subaction range.",
       schema: { type: "object" as const, additionalProperties: true },
     },
     {
       name: "proposal",
       description:
-        "scan_event_proposal only: { startISO, endISO, attendees? } describing the candidate event.",
+        "scan_event_proposal candidate: { startISO, endISO, attendees? }.",
       schema: { type: "object" as const, additionalProperties: true },
     },
   ],
@@ -423,11 +424,15 @@ export const conflictDetectAction: Action & {
           data: { subaction, error: "MISSING_PROPOSAL" },
         };
       }
-      const feed = await activeLoader.loadFeed({ runtime, range });
-      const conflicts = detectProposalConflicts({ proposal, feed });
+      const [feed, freeBusy] = await Promise.all([
+        activeLoader.loadFeed({ runtime, range }),
+        activeLoader.loadFreeBusy({ runtime, proposal, range }),
+      ]);
+      const conflicts = detectProposalConflicts({ proposal, feed, freeBusy });
       const summary = summarize(conflicts);
+      const checkedEvents = feed.length + freeBusy.length;
       logger.info(
-        `[CONFLICT_DETECT] ${subaction} feed=${feed.length} conflicts=${conflicts.length}`,
+        `[CONFLICT_DETECT] ${subaction} feed=${feed.length} freeBusy=${freeBusy.length} conflicts=${conflicts.length}`,
       );
       await callback?.({
         text: summary,
@@ -442,7 +447,7 @@ export const conflictDetectAction: Action & {
           range,
           conflicts,
           summary,
-          checkedEvents: feed.length,
+          checkedEvents,
         },
       };
     }

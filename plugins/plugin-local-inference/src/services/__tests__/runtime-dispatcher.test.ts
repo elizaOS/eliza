@@ -217,7 +217,7 @@ describe("dispatchGenerate (http-server)", () => {
 		await expect(run()).rejects.toThrow(/upstream 500/);
 	});
 
-	it("forwards native DFlash reject events into the unified stream", async () => {
+	it("forwards native DFlash reject events into the stream", async () => {
 		const adapter: HttpStreamingAdapter = {
 			async generateWithUsage(args) {
 				await args.onTextChunk?.("ok");

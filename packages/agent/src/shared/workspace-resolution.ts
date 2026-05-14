@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { readWorkspaceFolderConfig } from "@elizaos/core";
 import { resolveStateDir, resolveUserPath } from "../config/paths.ts";
 
 const EXPLICIT_WORKSPACE_DIR_KEYS = ["ELIZA_WORKSPACE_DIR"] as const;
@@ -70,6 +71,20 @@ export function resolveDefaultAgentWorkspaceDir(
   const explicitWorkspaceDir = readWorkspaceDirOverride(env);
   if (explicitWorkspaceDir) {
     return resolveUserPath(explicitWorkspaceDir);
+  }
+
+  // Store-distributed desktop builds write the user-picked workspace folder
+  // to <stateDir>/workspace-folder.json via the Electrobun desktop RPC.
+  // Honor that file as a higher-priority signal than the project-cwd auto-
+  // detect heuristic so the user's explicit choice always wins under the
+  // sandbox. Falls through silently when the file is absent or unreadable.
+  try {
+    const persisted = readWorkspaceFolderConfig(env);
+    if (persisted?.path?.trim()) {
+      return resolveUserPath(persisted.path);
+    }
+  } catch {
+    // Ignore — fall through to cwd / state-dir defaults.
   }
 
   if (!hasExplicitStateDirOverride(env)) {

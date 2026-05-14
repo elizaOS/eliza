@@ -14,7 +14,7 @@ bun run build:android:cloud
 
 A Play-Store-compliant Capacitor APK backed by Eliza Cloud as the only
 hosting target. Produces a debug APK at
-`packages/app/android/app/build/outputs/apk/debug/`.
+`packages/app-core/platforms/android/app/build/outputs/apk/debug/`.
 
 What this target deliberately does **not** ship:
 

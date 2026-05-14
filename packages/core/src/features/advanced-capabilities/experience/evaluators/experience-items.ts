@@ -8,6 +8,7 @@ import type {
 	UUID,
 } from "../../../../types/index.ts";
 import { isSyntheticConversationArtifactMemory } from "../../../../utils/synthetic-conversation-artifact.ts";
+import { isObjectRecord as isRecord } from "../../../../utils/type-guards.ts";
 import type { ExperienceService } from "../service.ts";
 import { type Experience, ExperienceType, OutcomeType } from "../types.ts";
 
@@ -99,10 +100,6 @@ interface ExperiencePrepared {
 		| "sourceTrajectoryStepId"
 		| "associatedEntityIds"
 	>;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function actionResultsFromState(state: unknown): unknown[] {
@@ -358,7 +355,7 @@ export const experiencePatternEvaluator: Evaluator<
 > = {
 	name: "experiencePatterns",
 	description:
-		"Extracts novel agent learning experiences from interesting or validated room conversation events.",
+		"Extracts reusable agent lessons from validated conversation events.",
 	priority: EvaluatorPriority.EXPERIENCE,
 	schema: experienceSchema,
 	async shouldRun({ runtime, message, state, options }) {
@@ -480,19 +477,18 @@ export const experiencePatternEvaluator: Evaluator<
 		};
 	},
 	prompt({ prepared }) {
-		return `Extract novel learning experiences from the recent conversation.
+		return `Extract reusable lessons from recent conversation.
 
-Only emit experiences that describe a reusable lesson for future behavior. The lesson can come from success, failure, correction, discovery, validation, warning, or hypothesis formation.
+Emit only lessons useful for future behavior: success, failure, correction, discovery, validation, warning, hypothesis.
 
 Rules:
-- Return at most three experiences.
-- Do not repeat existing experiences.
-- Extract operational lessons grounded in action/tool outcomes, corrections, failed assumptions, validated discoveries, or explicit requests to remember a lesson.
-- Do not extract ordinary chat, one-off user requests, generic observations, stable user facts, or personal preferences; facts and relationship evaluators handle those.
-- Do not extract from synthetic compaction summaries, benchmark scaffolding, or agent-generated summaries.
-- Do not store secrets, raw credentials, API keys, passwords, tokens, or private keys.
-- The domain should be produced from the conversation itself, not from a fixed list.
-- If nothing qualifies, return {"experiences":[]}.
+- Max 3. Do not duplicate existing.
+- Keep operational lessons grounded in tool outcomes, corrections, failed assumptions, discoveries, or explicit remember-this.
+- Skip ordinary chat, one-off requests, generic observations, stable user facts/preferences; other evaluators handle those.
+- Skip synthetic summaries, benchmark scaffolding, agent-generated summaries.
+- Never store secrets/credentials/API keys/passwords/tokens/private keys.
+- Domain comes from conversation.
+- Nothing qualifies -> {"experiences":[]}.
 
 Detected extraction signal:
 ${prepared.signalSummary}

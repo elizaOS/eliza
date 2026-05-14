@@ -294,7 +294,7 @@ describe("manager — listAllSavedLogins", () => {
     // "alice%40example.com" — still has dots) hit a pre-existing bug in
     // `parseLoginKey` that splits on the last dot. We use a dot-free
     // username here so the assertion isn't tangled with that orthogonal
-    // issue; the unified shape is what's under test.
+    // issue; the shape is what's under test.
     await setSavedLogin(m.vault, {
       domain: "github.com",
       username: "alice",

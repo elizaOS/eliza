@@ -49,7 +49,7 @@ const result = loadSkillsFromDir({
 import { formatSkillsForPrompt } from "@elizaos/skills";
 
 const prompt = formatSkillsForPrompt(skills);
-// Returns XML-formatted skills section for system prompt
+// Returns a compact structured skills section for system prompt
 ```
 
 ### Build Command Specs
