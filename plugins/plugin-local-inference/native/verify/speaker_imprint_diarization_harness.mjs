@@ -3,7 +3,7 @@
  * Generated-voice VAD + attribution-only speaker imprint harness.
  *
  * This records the current local state honestly:
- *   - real app-core VAD is run on a generated voice WAV when one is present,
+ *   - real plugin-local-inference VAD is run on a generated voice WAV when one is present,
  *     or on a deterministic generated-speech fixture unless --require-wav is set;
  *   - speaker attribution is exercised on supplied segment embeddings;
  *   - full local multi-speaker diarization DER is reported as unavailable
@@ -18,7 +18,8 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const REPO_ROOT = path.resolve(__dirname, "..", "..", "..");
+const PLUGIN_ROOT = path.resolve(__dirname, "..", "..");
+const REPO_ROOT = path.resolve(PLUGIN_ROOT, "..", "..");
 const DEFAULT_BUNDLE = path.join(
   os.homedir(),
   ".eliza",
@@ -28,9 +29,8 @@ const DEFAULT_BUNDLE = path.join(
 );
 const DEFAULT_WAV = "/tmp/omnivoice-metal-fused-codec-cpu-fallback.wav";
 const DEFAULT_REPORT = path.join(
-  REPO_ROOT,
-  "packages",
-  "inference",
+  PLUGIN_ROOT,
+  "native",
   "verify",
   "reports",
   `generated-voice-diarization-${timestamp()}.json`,
@@ -98,36 +98,27 @@ function typescriptRunner() {
 function makeRunnerSource(args) {
   const vadUrl = pathToFileURL(
     path.join(
-      REPO_ROOT,
-      "packages",
-      "app-core",
+      PLUGIN_ROOT,
       "src",
       "services",
-      "local-inference",
       "voice",
       "vad.ts",
     ),
   ).href;
   const imprintUrl = pathToFileURL(
     path.join(
-      REPO_ROOT,
-      "packages",
-      "app-core",
+      PLUGIN_ROOT,
       "src",
       "services",
-      "local-inference",
       "voice",
       "speaker-imprint.ts",
     ),
   ).href;
   const fixtureUrl = pathToFileURL(
     path.join(
-      REPO_ROOT,
-      "packages",
-      "app-core",
+      PLUGIN_ROOT,
       "src",
       "services",
-      "local-inference",
       "voice",
       "__test-helpers__",
       "synthetic-speech.ts",
@@ -472,7 +463,7 @@ function main() {
       available: false,
       generatedAt: new Date().toISOString(),
       reason:
-        "bun or node --import tsx is required to import app-core voice modules",
+        "bun or node --import tsx is required to import plugin-local-inference voice modules",
     });
     return;
   }

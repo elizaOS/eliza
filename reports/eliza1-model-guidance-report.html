@@ -71,8 +71,9 @@
       <table>
         <thead><tr><th>Scope</th><th>Command</th><th>Result</th></tr></thead>
         <tbody>
-          <tr><td>Guidance core suite</td><td><code>node ../../scripts/run-vitest.mjs run ...</code> over evaluator, response grammar, JSON repair, planner loop, message-handler output, Stage 1, action schema, enum short-form, schema-validation/reroll, and happy-path tests.</td><td><span class="badge done">Passed</span> Latest pass: 12 files, 176 tests.</td></tr>
+          <tr><td>Guidance core suite</td><td><code>node ../../scripts/run-vitest.mjs run ...</code> over evaluator, response grammar, JSON repair, planner loop, message-handler output, Stage 1, action schema, enum short-form, schema-validation/reroll, and happy-path tests.</td><td><span class="badge done">Passed</span> Latest pass: 12 files, 180 tests.</td></tr>
           <tr><td>Core typecheck</td><td><code>./node_modules/.bin/tsc --noEmit -p ./tsconfig.json</code> in <code>packages/core</code>.</td><td><span class="badge done">Passed</span></td></tr>
+          <tr><td>Local inference contract</td><td><code>node scripts/run-vitest.mjs run plugins/plugin-local-inference/src/services/structured-output.test.ts ...</code> plus <code>../../node_modules/.bin/tsc --noEmit -p ./tsconfig.json</code>.</td><td><span class="badge done">Passed</span> 3 files, 52 tests, and typecheck.</td></tr>
           <tr><td>Eliza Cloud plugin</td><td><code>./node_modules/.bin/vitest run</code> and <code>./node_modules/.bin/tsc --noEmit -p tsconfig.json</code>.</td><td><span class="badge done">Passed</span> 11 files, 83 passed, 1 skipped.</td></tr>
           <tr><td>Native llama adapter</td><td><code>../../../node_modules/.bin/vitest run</code> and <code>../../../node_modules/.bin/tsc --noEmit -p tsconfig.json</code>.</td><td><span class="badge done">Passed</span> 2 files, 16 tests.</td></tr>
           <tr><td>Full core package test pass</td><td><code>node ../../scripts/run-vitest.mjs run</code> in <code>packages/core</code>.</td><td><span class="badge partial">Attempted</span> Exited with code <code>-1</code> before a completion summary; not counted as a verified pass.</td></tr>

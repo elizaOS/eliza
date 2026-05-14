@@ -652,7 +652,7 @@ export function resolveMobileBuildPolicy(platform) {
     platform === "ios-local"
       ? "local"
       : platform === "ios"
-        ? "cloud"
+        ? "cloud-hybrid"
         : platform === "ios-overlay"
           ? "cloud"
           : null;
@@ -661,9 +661,9 @@ export function resolveMobileBuildPolicy(platform) {
       ? "cloud"
       : platform === "android" || platform === "android-system"
         ? "local-yolo"
-        : platform === "ios-local"
+        : platform === "ios" || platform === "ios-local"
           ? "local-safe"
-          : platform === "ios" || platform === "ios-overlay"
+          : platform === "ios-overlay"
             ? "cloud"
             : null;
   const buildVariant =
@@ -728,7 +728,12 @@ async function buildWeb(platform) {
         }
       : {}),
     ...((platform === "ios" || platform === "ios-local") &&
-    isFullIosBunEngineRequested(process.env)
+    shouldIncludeIosFullBunEngine(process.env)
+      ? {
+          VITE_ELIZA_IOS_FULL_BUN_AVAILABLE: "1",
+        }
+      : {}),
+    ...(platform === "ios-local" && isFullIosBunEngineRequested(process.env)
       ? {
           VITE_ELIZA_IOS_FULL_BUN_STRICT: "1",
         }
@@ -2299,8 +2304,8 @@ export function resolveIosCustomPods({
   appStoreBuild = false,
   includeMobileAgentBridge = false,
 } = {}) {
-  const includeCompatRuntime = !appStoreBuild && (includeCompatBunRuntime || includeFullBunEngine);
-  const includeFullBunRuntime = !appStoreBuild && includeFullBunEngine;
+  const includeBunRuntime = includeCompatBunRuntime || includeFullBunEngine;
+  const includeTunnelBridge = !appStoreBuild && includeMobileAgentBridge;
   return [
     ["ElizaosCapacitorAgent", "@elizaos/capacitor-agent"],
     ["ElizaosCapacitorAppblocker", "@elizaos/capacitor-appblocker"],
@@ -2315,12 +2320,12 @@ export function resolveIosCustomPods({
     ["ElizaosCapacitorSwabble", "@elizaos/capacitor-swabble"],
     ["ElizaosCapacitorTalkmode", "@elizaos/capacitor-talkmode"],
     ["ElizaosCapacitorWebsiteblocker", "@elizaos/capacitor-websiteblocker"],
-    ...(includeCompatRuntime
+    ...(includeBunRuntime
       ? [
           ["ElizaosCapacitorBunRuntime", "@elizaos/capacitor-bun-runtime"],
         ]
       : []),
-    ...(includeFullBunRuntime || (!appStoreBuild && includeMobileAgentBridge)
+    ...(includeTunnelBridge
       ? [
           [
             "ElizaosCapacitorMobileAgentBridge",
@@ -2329,7 +2334,7 @@ export function resolveIosCustomPods({
         ]
       : []),
     ...(includeLlama ? [["LlamaCppCapacitor", "llama-cpp-capacitor"]] : []),
-    ...(includeFullBunRuntime
+    ...(includeFullBunEngine
       ? [["ElizaBunEngine", "@elizaos/bun-ios-runtime"]]
       : []),
   ];
