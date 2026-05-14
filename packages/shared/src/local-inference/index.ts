@@ -13,6 +13,7 @@ export {
   buildHuggingFaceResolveUrl,
   buildHuggingFaceResolveUrlForPath,
   DEFAULT_ELIGIBLE_MODEL_IDS,
+  defaultVoiceQuantForTier,
   ELIZA_1_HF_REPO,
   ELIZA_1_PLACEHOLDER_IDS,
   ELIZA_1_RELEASE_TIER_IDS,
@@ -24,6 +25,8 @@ export {
   findCatalogModel,
   isDefaultEligibleId,
   MODEL_CATALOG,
+  type OmniVoiceQuantLevel,
+  voiceQuantLadderForTier,
 } from "./catalog.js";
 export {
   GPU_PROFILE_IDS,
@@ -116,11 +119,11 @@ export {
   compareVoiceModelSemver,
   findVoiceModelVersion,
   latestVoiceModelVersion,
+  VOICE_MODEL_VERSIONS,
   type VoiceModelEvalDeltas,
   type VoiceModelGgufAsset,
   type VoiceModelId,
   type VoiceModelQuant,
   type VoiceModelVersion,
-  VOICE_MODEL_VERSIONS,
   versionsFor,
 } from "./voice-models.js";
