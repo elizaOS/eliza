@@ -18,8 +18,8 @@ import type {
 } from "../../../types/index.ts";
 import {
 	PLUGIN_ACTIVATED_EVENT,
-	type PluginActivatedEventPayload,
 	PLUGIN_CONFIG_CLIENT_SERVICE,
+	type PluginActivatedEventPayload,
 	type PluginConfigClient,
 } from "../types.ts";
 

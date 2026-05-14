@@ -41,8 +41,7 @@ export const pollPluginConfigStatusAction: Action = {
 	similes: ["CHECK_PLUGIN_READY", "PLUGIN_CONFIG_READY"],
 	description:
 		"Reports whether a plugin's required config keys are all satisfied.",
-	descriptionCompressed:
-		"Poll plugin config: ready + missing[].",
+	descriptionCompressed: "Poll plugin config: ready + missing[].",
 	parameters: [
 		{
 			name: "pluginName",

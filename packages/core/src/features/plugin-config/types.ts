@@ -92,9 +92,7 @@ export interface PluginConfigClient {
 	 * subset currently satisfied. `null` if no manifest is registered for the
 	 * given plugin name.
 	 */
-	getRequirements(
-		pluginName: string,
-	): Promise<PluginConfigRequirements | null>;
+	getRequirements(pluginName: string): Promise<PluginConfigRequirements | null>;
 
 	/**
 	 * Build a sensitive-request envelope for a single missing key. The caller
