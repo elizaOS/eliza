@@ -52,6 +52,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 
+# NOTE: elizaos/eliza-1-pipeline does not yet exist on HF. The script's
+# `_ensure_repo()` calls `HfApi.create_repo(repo_id, exist_ok=True)` so the
+# first non-dry-run publish creates it. Wave 3+ tracks whether pipeline
+# mirroring is still desired vs. just relying on the milady/eliza Git repo.
 DEFAULT_REPO_ID = "elizaos/eliza-1-pipeline"
 
 # Things we explicitly do NOT publish. Matched as fnmatch patterns against
