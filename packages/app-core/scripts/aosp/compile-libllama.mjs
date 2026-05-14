@@ -172,6 +172,7 @@ import { fileURLToPath } from "node:url";
 import { resolveRepoRootFromImportMeta } from "../lib/repo-root.mjs";
 import {
   appendCmakeGraft,
+  appendKokoroCmakeGraft,
   fusedCmakeBuildTargets,
   fusedExtraCmakeFlags,
 } from "../omnivoice-fuse/cmake-graft.mjs";
@@ -1435,11 +1436,22 @@ export function applyOmnivoiceGraft({
     llamaCppRoot: srcDir,
   });
   const grafted = appendCmakeGraft({ llamaCppRoot: srcDir });
+  // Append the Kokoro graft block when Kokoro sources have been staged
+  // (kokoro-graft sources are copied by prepare.mjs alongside the
+  // OmniVoice sources; absent if the operator deleted them). The block
+  // hard-fails the CMake configure unless ELIZA_FUSE_OMNIVOICE=ON, so
+  // we only emit the flag when sources exist.
+  let kokoroGrafted = false;
+  if ((omnivoiceInfo.kokoroSourceCount ?? 0) > 0) {
+    kokoroGrafted = appendKokoroCmakeGraft({ llamaCppRoot: srcDir });
+  }
   log(
     `[compile-libllama] omnivoice-fuse: pin=${omnivoiceInfo.commit} ` +
       `ggmlSubmodule=${omnivoiceInfo.ggmlSubmoduleCommit} ` +
       `sources=${omnivoiceInfo.sourceCount} ` +
-      `cmakeGraftAppended=${grafted}`,
+      `cmakeGraftAppended=${grafted} ` +
+      `kokoroSources=${omnivoiceInfo.kokoroSourceCount ?? 0} ` +
+      `kokoroGraftAppended=${kokoroGrafted}`,
   );
   return omnivoiceInfo;
 }

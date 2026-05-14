@@ -12,11 +12,7 @@ const OMNIVOICE_TIERS = [
   "eliza-1-27b-256k",
   "eliza-1-27b-1m",
 ] as const;
-const KOKORO_ONLY_TIERS = [
-  "eliza-1-0_8b",
-  "eliza-1-2b",
-  "eliza-1-4b",
-] as const;
+const KOKORO_ONLY_TIERS = ["eliza-1-0_8b", "eliza-1-2b", "eliza-1-4b"] as const;
 
 describe("voiceQuantLadderForTier", () => {
   it("covers every canonical tier id", () => {
