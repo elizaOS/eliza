@@ -16,7 +16,7 @@ import { readJsonBody } from "@elizaos/shared";
 
 const EXPRESS_SHIM = Symbol("elizaExpressResponseShim");
 
-let x402RoutesModulePromise: Promise<{
+type X402RoutesModule = {
   createPaymentAwareHandler: (
     route: PaymentEnabledRoute,
   ) => NonNullable<Route["handler"]>;
