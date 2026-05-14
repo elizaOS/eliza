@@ -468,6 +468,21 @@ declare module "three/examples/jsm/libs/meshopt_decoder.module.js" {
   };
 }
 
+// `ws` is an optional native dep dynamic-imported by plugin-local-inference's
+// device bridge. Marked `--external` in the tsup build; declare a loose
+// surface so transitive type-checking can resolve it.
+declare module "ws" {
+  const ws: unknown;
+  export = ws;
+}
+
+// `@huggingface/transformers` is an optional dep dynamic-imported by
+// plugin-local-inference's voice classifiers. Same story.
+declare module "@huggingface/transformers" {
+  const transformers: unknown;
+  export = transformers;
+}
+
 declare module "jsdom" {
   export class JSDOM {
     constructor(

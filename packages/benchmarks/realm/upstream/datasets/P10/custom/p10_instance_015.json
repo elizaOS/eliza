@@ -1,0 +1,69 @@
+{
+  "instance_id": "p10_instance_015",
+  "suppliers": [
+    {
+      "supplier_id": "supplier1",
+      "location": "asia",
+      "capacity": 1006,
+      "lead_time": 34,
+      "cost_multiplier": 1.0
+    },
+    {
+      "supplier_id": "supplier2",
+      "location": "europe",
+      "capacity": 709,
+      "lead_time": 43,
+      "cost_multiplier": 1.2
+    }
+  ],
+  "components": [
+    "gpu_chips",
+    "memory",
+    "cooling",
+    "power_supply",
+    "pcb"
+  ],
+  "facilities": [
+    {
+      "facility_id": "assembly",
+      "location": "usa",
+      "capacity": 421,
+      "cost_per_unit": 100
+    },
+    {
+      "facility_id": "testing",
+      "location": "usa",
+      "capacity": 258,
+      "cost_per_unit": 50
+    }
+  ],
+  "budget": 1000000,
+  "delivery_deadlines": {
+    "gpu_chips": 30,
+    "memory": 45,
+    "cooling": 60
+  },
+  "dependencies": [
+    [
+      "power_supply",
+      "assembly"
+    ],
+    [
+      "testing",
+      "packaging"
+    ]
+  ],
+  "disruption_scenarios": [
+    {
+      "type": "resource_shortage",
+      "component": "gpu_chips",
+      "shortage": 0.4
+    },
+    {
+      "type": "machine_breakdown",
+      "facility": "assembly",
+      "duration": 7
+    }
+  ],
+  "description": "Global GPU supply chain planning instance"
+}

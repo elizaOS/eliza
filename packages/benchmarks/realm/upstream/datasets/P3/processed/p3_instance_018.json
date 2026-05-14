@@ -1,0 +1,81 @@
+{
+  "instance_id": "p3_instance_018",
+  "city_map": {
+    "locations": [
+      "downtown",
+      "mall",
+      "hospital",
+      "university",
+      "stadium"
+    ],
+    "distances": {
+      "downtown-mall": 18,
+      "mall-downtown": 18,
+      "downtown-hospital": 27,
+      "hospital-downtown": 27,
+      "downtown-university": 45,
+      "university-downtown": 45,
+      "downtown-stadium": 6,
+      "stadium-downtown": 6,
+      "mall-hospital": 24,
+      "hospital-mall": 24,
+      "mall-university": 13,
+      "university-mall": 13,
+      "mall-stadium": 33,
+      "stadium-mall": 33,
+      "hospital-university": 38,
+      "university-hospital": 38,
+      "hospital-stadium": 22,
+      "stadium-hospital": 22,
+      "university-stadium": 33,
+      "stadium-university": 33
+    }
+  },
+  "ride_requests": [
+    {
+      "passenger_id": "p001",
+      "pickup": "university",
+      "dropoff": "mall",
+      "time_window": [
+        11.5,
+        11.9
+      ],
+      "deadline": 20
+    },
+    {
+      "passenger_id": "p002",
+      "pickup": "university",
+      "dropoff": "downtown",
+      "time_window": [
+        15.5,
+        15.066666666666666
+      ],
+      "deadline": 21
+    },
+    {
+      "passenger_id": "p003",
+      "pickup": "stadium",
+      "dropoff": "mall",
+      "time_window": [
+        8.25,
+        8.683333333333334
+      ],
+      "deadline": 51
+    }
+  ],
+  "vehicles": [
+    {
+      "vehicle_id": "v001",
+      "location": "hospital",
+      "capacity": 6,
+      "fuel": 57
+    },
+    {
+      "vehicle_id": "v002",
+      "location": "mall",
+      "capacity": 4,
+      "fuel": 91
+    }
+  ],
+  "description": "Urban ride-sharing instance"
+}

@@ -1,0 +1,121 @@
+{
+  "instance_id": "p3_instance_036",
+  "city_map": {
+    "locations": [
+      "airport",
+      "mall",
+      "downtown",
+      "park",
+      "university"
+    ],
+    "distances": {
+      "airport-mall": 12,
+      "mall-airport": 12,
+      "airport-downtown": 10,
+      "downtown-airport": 10,
+      "airport-park": 42,
+      "park-airport": 42,
+      "airport-university": 10,
+      "university-airport": 10,
+      "mall-downtown": 44,
+      "downtown-mall": 44,
+      "mall-park": 7,
+      "park-mall": 7,
+      "mall-university": 26,
+      "university-mall": 26,
+      "downtown-park": 23,
+      "park-downtown": 23,
+      "downtown-university": 21,
+      "university-downtown": 21,
+      "park-university": 31,
+      "university-park": 31
+    }
+  },
+  "ride_requests": [
+    {
+      "passenger_id": "p001",
+      "pickup": "park",
+      "dropoff": "mall",
+      "time_window": [
+        12.25,
+        12.666666666666666
+      ],
+      "deadline": 42
+    },
+    {
+      "passenger_id": "p002",
+      "pickup": "mall",
+      "dropoff": "airport",
+      "time_window": [
+        10.25,
+        10.833333333333334
+      ],
+      "deadline": 28
+    },
+    {
+      "passenger_id": "p003",
+      "pickup": "airport",
+      "dropoff": "downtown",
+      "time_window": [
+        8.5,
+        8.766666666666667
+      ],
+      "deadline": 36
+    },
+    {
+      "passenger_id": "p004",
+      "pickup": "university",
+      "dropoff": "park",
+      "time_window": [
+        15.25,
+        15.733333333333333
+      ],
+      "deadline": 41
+    },
+    {
+      "passenger_id": "p005",
+      "pickup": "park",
+      "dropoff": "university",
+      "time_window": [
+        12.0,
+        12.45
+      ],
+      "deadline": 26
+    },
+    {
+      "passenger_id": "p006",
+      "pickup": "mall",
+      "dropoff": "downtown",
+      "time_window": [
+        14.5,
+        14.166666666666666
+      ],
+      "deadline": 47
+    },
+    {
+      "passenger_id": "p007",
+      "pickup": "airport",
+      "dropoff": "downtown",
+      "time_window": [
+        10.25,
+        10.983333333333333
+      ],
+      "deadline": 58
+    }
+  ],
+  "vehicles": [
+    {
+      "vehicle_id": "v001",
+      "location": "mall",
+      "capacity": 6,
+      "fuel": 95
+    },
+    {
+      "vehicle_id": "v002",
+      "location": "park",
+      "capacity": 3,
+      "fuel": 66
+    }
+  ],
+  "description": "Urban ride-sharing instance"
+}
