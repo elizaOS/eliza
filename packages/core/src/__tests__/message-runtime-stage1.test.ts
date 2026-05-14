@@ -195,6 +195,26 @@ describe("runV5MessageRuntimeStage1", () => {
 		}
 	});
 
+	it("keeps quoted prose with braces as a direct reply", async () => {
+		const runtime = makeRuntime([
+			'"Here is an empty object: {} - it has no keys."',
+		]);
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage(),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("direct_reply");
+		if (result.kind === "direct_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				'"Here is an empty object: {} - it has no keys."',
+			);
+		}
+	});
+
 	it("reports a precise Stage 1 error after the empty-completion retry budget is exhausted", async () => {
 		const runtime = makeRuntime(["", "", ""]);
 
@@ -475,7 +495,7 @@ describe("runV5MessageRuntimeStage1", () => {
 			systemContent.indexOf("# About Test Agent"),
 		);
 		expect(systemContent).toContain("message_handler_stage:");
-		expect(systemContent).toContain("available_contexts:");
+		expect(systemContent).toContain("available_contexts");
 		// Stage 1 keeps both provider text and structured prior messages. This
 		// preserves long provider payloads while still giving the model clean
 		// chat-message-shaped prior turns.

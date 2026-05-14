@@ -372,7 +372,13 @@ describe("SubAgentRouter", () => {
     }
 
     it("re-dispatches a sub-agent when a claimed URL is unreachable", async () => {
-      session = sessionWithTask(`build a calculator at ${DEAD_URL}`);
+      session = sessionWithTask(
+        `build a calculator at ${DEAD_URL}`,
+        undefined,
+        {
+          keepAliveAfterComplete: true,
+        },
+      );
       acp = makeAcpService(session);
       const { runtime, handleMessage, spawnSession } = makeRuntime({
         acp: acp.service,
@@ -392,6 +398,7 @@ describe("SubAgentRouter", () => {
       expect(arg?.initialTask).toContain("VERIFICATION FEEDBACK");
       expect(arg?.initialTask).toContain("build a calculator");
       expect(arg?.metadata?.buildVerifyRetryCount).toBe(1);
+      expect(arg?.metadata?.keepAliveAfterComplete).toBe(false);
       // A retry was spawned → the failure is NOT posted to the parent yet;
       // the retry's own task_complete will report the outcome.
       expect(handleMessage).not.toHaveBeenCalled();
