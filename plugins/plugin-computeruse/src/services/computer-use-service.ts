@@ -98,6 +98,11 @@ import type {
   WindowActionParams,
   WindowActionResult,
 } from "../types.js";
+import {
+  SceneBuilder,
+  type SceneUpdateEvent,
+} from "../scene/scene-builder.js";
+import type { Scene } from "../scene/scene-types.js";
 
 const MAX_RECENT_ACTIONS = 10;
 const BROWSER_NOT_OPEN_ERROR = "Browser not open";
@@ -181,6 +186,9 @@ export class ComputerUseService extends Service {
   private screenSize: ScreenSize = { width: 1920, height: 1080 };
   private approvalManager = new ComputerUseApprovalManager();
   private displayIdDeprecationWarned = false;
+  private sceneBuilder: SceneBuilder = new SceneBuilder({
+    log: (msg) => logger.warn(msg),
+  });
   private cuConfig: ComputerUseConfig = {
     screenshotAfterAction: true,
     actionTimeoutMs: 10000,
@@ -1496,6 +1504,34 @@ export class ComputerUseService extends Service {
       primary: d.primary,
       name: d.name,
     }));
+  }
+
+  /**
+   * Return the most recently built Scene (WS6). Returns null before the
+   * first tick. The `scene` provider seeds an initial tick on first read
+   * so this is rarely null in practice.
+   */
+  getCurrentScene(): Scene | null {
+    return this.sceneBuilder.getCurrentScene();
+  }
+
+  /**
+   * Force a fresh Scene build. Used by the `scene` provider on first read
+   * and by WS7's Brain to refresh before a new turn.
+   */
+  async refreshScene(
+    mode: "idle" | "active" | "agent-turn" = "agent-turn",
+  ): Promise<Scene> {
+    return this.sceneBuilder.tick(mode);
+  }
+
+  /**
+   * Subscribe to scene updates. Returns an unsubscribe function. The
+   * SceneBuilder ticks only on explicit `refreshScene` calls — subscribers
+   * are notified whenever a tick completes.
+   */
+  subscribeToSceneUpdates(handler: (event: SceneUpdateEvent) => void): () => void {
+    return this.sceneBuilder.subscribe(handler);
   }
 
   private shouldCaptureAfterDesktopAction(

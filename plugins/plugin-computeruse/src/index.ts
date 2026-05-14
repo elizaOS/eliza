@@ -27,6 +27,7 @@ import { promoteSubactionsToActions } from "@elizaos/core";
 import { useComputerAction } from "./actions/use-computer.js";
 import { windowAction } from "./actions/window.js";
 import { computerStateProvider } from "./providers/computer-state.js";
+import { sceneProvider } from "./providers/scene.js";
 import { computerUseRouteHandler } from "./routes/computer-use-compat-routes.js";
 import { ComputerUseService } from "./services/computer-use-service.js";
 
@@ -80,7 +81,7 @@ export const computerUsePlugin: Plugin = {
     ...promoteSubactionsToActions(windowAction),
   ],
 
-  providers: [computerStateProvider],
+  providers: [computerStateProvider, sceneProvider],
 
   routes: computerUseRoutes,
 
@@ -99,6 +100,53 @@ export { ComputerUseService } from "./services/computer-use-service.js";
 
 // iOS computer-use surface. See `docs/IOS_CONSTRAINTS.md` for the honest scope.
 export * from "./mobile/index.js";
+
+// WS6: scene-builder surface — consumed by WS7 (Brain) and WS10 verifiers.
+export {
+  _resetDefaultSceneBuilderForTests,
+  getDefaultSceneBuilder,
+  SceneBuilder,
+  type SceneBuilderDeps,
+  type SceneUpdateEvent,
+} from "./scene/scene-builder.js";
+export type {
+  Scene,
+  SceneApp,
+  SceneAppWindow,
+  SceneAxNode,
+  SceneFocusedWindow,
+  SceneOcrBox,
+  SceneVlmElement,
+} from "./scene/scene-types.js";
+export { serializeSceneForPrompt } from "./scene/serialize.js";
+export {
+  type BlockGrid,
+  blockGrid,
+  decodePng,
+  diffBlocks,
+  type DirtyBlock,
+  frameDhash,
+  hamming,
+} from "./scene/dhash.js";
+export { enumerateApps, joinAppsAndWindows } from "./scene/apps.js";
+export {
+  type AccessibilityProvider,
+  DarwinAccessibilityProvider,
+  LinuxAccessibilityProvider,
+  NullAccessibilityProvider,
+  parseHyprlandClients,
+  parseSwayTree,
+  resolveAccessibilityProvider,
+  setAccessibilityProvider,
+  WindowsAccessibilityProvider,
+} from "./scene/a11y-provider.js";
+export {
+  listProcesses,
+  parsePsOutput,
+  parseWindowsProcessJson,
+  type ProcessInfo,
+} from "./platform/process-list.js";
+export { sceneProvider } from "./providers/scene.js";
 export type {
   DesktopControlCapabilities,
   DesktopControlCapability,
