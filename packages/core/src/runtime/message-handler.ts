@@ -6,6 +6,7 @@ import type {
 } from "../types/components";
 import type { AgentContext } from "../types/contexts";
 import { parseJsonObject } from "./json-output";
+import { looksLikeRefusal } from "./refusal-detector";
 
 export type V5MessageHandlerOutput = MessageHandlerResult;
 
@@ -54,7 +55,7 @@ export function parseMessageHandlerOutput(
 	const contexts = Array.isArray(parsed.contexts)
 		? parsed.contexts.map((context) => String(context).trim()).filter(Boolean)
 		: [];
-	const reply =
+	const replyRaw =
 		typeof parsed.replyText === "string" ? parsed.replyText : undefined;
 	const requiresTool =
 		typeof parsed.requiresTool === "boolean" ? parsed.requiresTool : undefined;
@@ -63,6 +64,23 @@ export function parseMessageHandlerOutput(
 	const parentActionHints = normalizeStringHints(parsed.parentActionHints, 6);
 
 	const extract = parseExtract(parsed.extract);
+
+	// Refusal suppression for the planning path (elizaOS/eliza#7620).
+	// When the model routes to a non-simple context OR populates candidate
+	// actions, the planner stage will produce the user-facing message and the
+	// Stage-1 `replyText` is intended to be a brief acknowledgement. Some
+	// safety-tuned hosted models (Cerebras-served `gpt-oss-120b`,
+	// `qwen-3-235b-a22b-instruct-2507`) still emit a refusal here even with
+	// anti-refusal language in the system prompt. We blank the reply when it
+	// looks like a refusal AND a planning path is selected — the user sees
+	// the planner's message instead. Refusals on the simple path pass through
+	// unchanged (the model may legitimately decline e.g. unsafe requests).
+	const nonSimpleContexts = contexts.filter(
+		(context) => context !== SIMPLE_CONTEXT_ID,
+	);
+	const planningPath =
+		nonSimpleContexts.length > 0 || candidateActions.length > 0;
+	const reply = planningPath && looksLikeRefusal(replyRaw) ? "" : replyRaw;
 
 	const normalizedPlan: V5MessageHandlerOutput["plan"] = {
 		contexts,
