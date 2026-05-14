@@ -108,8 +108,6 @@ export {
   validateMcpServerConfig,
 };
 
-import { handleLocalInferenceCompatRoutes } from "@elizaos/plugin-local-inference/routes";
-import { deviceBridge } from "@elizaos/plugin-local-inference/services";
 import {
   handleLocalInferenceCompatRoutes,
   handleLocalInferenceTtsRoute,
@@ -886,13 +884,10 @@ export function getSharedCompatRuntimeState(): CompatRuntimeState {
   return sharedCompatRuntimeState;
 }
 
-export function patchHttpCreateServerForCompat(
-  state?: CompatRuntimeState,
-): () => void {
-  // When no state is passed in, fall back to the shared singleton so that
-  // an early-installed patch (before any local state is created) can still
-  // observe the runtime once startApiServer or startEliza assigns it.
-  const effectiveState = state ?? sharedCompatRuntimeState;
+export function patchHttpCreateServerForCompat(): () => void {
+  // Always capture the shared singleton. A caller-local CompatRuntimeState
+  // would split early and late patch sites back into different state objects.
+  const effectiveState = sharedCompatRuntimeState;
   const originalCreateServer = http.createServer.bind(http);
 
   http.createServer = ((...args: Parameters<typeof originalCreateServer>) => {
@@ -1071,7 +1066,7 @@ export async function startApiServer(
     compatState.current = args[0].runtime as AgentRuntime;
     compatState.pendingAgentName = null;
   }
-  const restoreCreateServer = patchHttpCreateServerForCompat(compatState);
+  const restoreCreateServer = patchHttpCreateServerForCompat();
 
   try {
     if (compatState.current) {
