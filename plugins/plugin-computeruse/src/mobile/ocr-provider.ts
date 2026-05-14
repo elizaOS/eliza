@@ -132,8 +132,13 @@ export function createIosVisionOcrProvider(
       };
       const result = await bridge.visionOcr({ imageBase64, options: visionOptions });
       if (!result.ok) {
+        // Narrow to the failure arm explicitly — some consumer tsconfigs
+        // run with `strict: false`, which disables discriminated-union
+        // narrowing on `!result.ok` and surfaces TS2339 on `result.code`
+        // / `result.message`. The runtime invariant is unchanged.
+        const failure = result as Extract<typeof result, { ok: false }>;
         throw new Error(
-          `ios-apple-vision OCR failed: ${result.code} — ${result.message}`,
+          `ios-apple-vision OCR failed: ${failure.code} — ${failure.message}`,
         );
       }
       return mapVisionResult(result.data);
