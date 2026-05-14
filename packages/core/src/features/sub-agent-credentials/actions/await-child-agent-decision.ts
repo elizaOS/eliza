@@ -127,7 +127,14 @@ export const awaitChildAgentDecisionAction: Action = {
 			await callback({
 				text,
 				action: "AWAIT_CHILD_AGENT_DECISION",
-				content: { decision },
+				content: {
+					childSessionId: decision.childSessionId,
+					decidedAt: decision.decidedAt,
+					decision: decision.decision,
+					payload: decision.payload
+						? JSON.stringify(decision.payload)
+						: undefined,
+				},
 			});
 		}
 
