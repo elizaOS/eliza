@@ -67,18 +67,14 @@ async function resolveSafeVenvPath(
     normalized === ".." ||
     normalized.startsWith(`..${path.sep}`)
   ) {
-    throw new Error(
-      "ELIZA_BENCHMARK_PREFLIGHT_VENV must stay within workdir",
-    );
+    throw new Error("ELIZA_BENCHMARK_PREFLIGHT_VENV must stay within workdir");
   }
 
   const workdirResolved = path.resolve(workdir);
   const workdirReal = await realpath(workdirResolved);
   const resolved = path.resolve(workdirReal, normalized);
   if (!isPathInside(workdirReal, resolved)) {
-    throw new Error(
-      "ELIZA_BENCHMARK_PREFLIGHT_VENV resolves outside workdir",
-    );
+    throw new Error("ELIZA_BENCHMARK_PREFLIGHT_VENV resolves outside workdir");
   }
   if (resolved === workdirReal) {
     throw new Error(
