@@ -5,7 +5,7 @@
     "declaration": true,
     "declarationMap": false,
     "emitDeclarationOnly": true,
-    "types": ["node", "bun-types"]
+    "types": ["node", "bun"]
   },
   "include": [
     "index.browser.ts",
