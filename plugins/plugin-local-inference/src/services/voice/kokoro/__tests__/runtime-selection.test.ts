@@ -129,7 +129,7 @@ describe("selectVoiceBackend", () => {
 		).toThrow(/no TTS backend/);
 	});
 
-	it("auto: default (no overrides) picks OmniVoice", () => {
+	it("auto: default (no overrides, no tier policy) picks OmniVoice", () => {
 		const d = selectVoiceBackend({
 			mode: "auto",
 			kokoroAvailable: true,
@@ -137,6 +137,50 @@ describe("selectVoiceBackend", () => {
 		});
 		expect(d.backend).toBe("omnivoice");
 		expect(d.reason).toMatch(/default/);
+	});
+
+	it("auto: tier policy [kokoro] picks Kokoro", () => {
+		const d = selectVoiceBackend({
+			mode: "auto",
+			kokoroAvailable: true,
+			omnivoiceAvailable: true,
+			tierVoiceBackends: ["kokoro"],
+		});
+		expect(d.backend).toBe("kokoro");
+		expect(d.reason).toMatch(/tier default/);
+	});
+
+	it("auto: tier policy [kokoro, omnivoice] picks Kokoro (first wins)", () => {
+		const d = selectVoiceBackend({
+			mode: "auto",
+			kokoroAvailable: true,
+			omnivoiceAvailable: true,
+			tierVoiceBackends: ["kokoro", "omnivoice"],
+		});
+		expect(d.backend).toBe("kokoro");
+	});
+
+	it("auto: tier policy [omnivoice] picks OmniVoice", () => {
+		const d = selectVoiceBackend({
+			mode: "auto",
+			kokoroAvailable: true,
+			omnivoiceAvailable: true,
+			tierVoiceBackends: ["omnivoice"],
+		});
+		expect(d.backend).toBe("omnivoice");
+		expect(d.reason).toMatch(/tier default/);
+	});
+
+	it("auto: tier policy is overridden by requireVoiceCloning", () => {
+		const d = selectVoiceBackend({
+			mode: "auto",
+			kokoroAvailable: true,
+			omnivoiceAvailable: true,
+			tierVoiceBackends: ["kokoro"],
+			requireVoiceCloning: true,
+		});
+		expect(d.backend).toBe("omnivoice");
+		expect(d.reason).toMatch(/cloning/);
 	});
 });
 

@@ -54,7 +54,6 @@ const buildVariant = resolveBuildVariant(
   getArgValue(args, "build-variant") ?? process.env.ELIZA_BUILD_VARIANT,
 );
 const buildEnv = getArgValue(args, "env") ?? process.env.BUILD_ENV ?? "";
-const buildWhisper = getBooleanArg(args, "build-whisper");
 const stageMacosReleaseApp = getBooleanArg(args, "stage-macos-release-app");
 
 function resolveBuildVariant(raw) {
@@ -546,15 +545,6 @@ function stageDesktopBuild() {
     });
   }
 
-  if (
-    buildWhisper &&
-    (process.platform === "darwin" || process.platform === "linux")
-  ) {
-    runBun(["run", "build:whisper"], {
-      cwd: ELECTROBUN_DIR,
-      label: "Building whisper.cpp native binary",
-    });
-  }
 }
 
 function embedWindowsIcons() {
@@ -844,7 +834,6 @@ Options:
                                    and forces Cloud hosting at runtime; "direct"
                                    keeps current unsandboxed behavior.
   --env <channel>                  Electrobun build env (e.g. canary, stable)
-  --build-whisper                  Build whisper.cpp on macOS/Linux during stage
   --stage-macos-release-app        Stage a direct macOS .app + DMG from the Electrobun build output
   --exclude-optional-pack <name>   Exclude a manifest-classified optional capability pack during staging
 
