@@ -1,6 +1,7 @@
 /**
- * Subset of scheduled-task types kept here for the `first-run` module which
- * uses `ScheduledTaskInput` (not exported from the canonical module path).
+ * Scheduled-task types used by the `first-run` module. These predating the
+ * canonical `scheduled-task/types.ts` module and have diverged slightly;
+ * `ScheduledTaskInput` is not exported from the canonical path.
  *
  * Types only — no runtime behaviour.
  */

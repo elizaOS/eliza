@@ -16,8 +16,7 @@
 
 import type { IAgentRuntime } from "@elizaos/core";
 import { asCacheRuntime } from "../runtime-cache.js";
-import type { ScheduledTask } from "../scheduled-task/index.js";
-import type { ScheduledTaskInput } from "../wave1-types.js";
+import type { ScheduledTask, ScheduledTaskInput } from "../wave1-types.js";
 import {
   buildDefaultsPack,
   deriveMorningWindow,
