@@ -355,7 +355,7 @@ async function consumeResponseStream(
           const item = recordProperty(payloadRecord, "item");
           if (item?.type === "function_call") {
             const itemId = stringProperty(item, "id") ?? stringProperty(item, "call_id");
-            const call = activeByItemId.get(itemId);
+            const call = itemId ? activeByItemId.get(itemId) : undefined;
             if (call) {
               const argStr = stringProperty(item, "arguments") ?? call.args;
               let parsed: Record<string, JsonValue> | string = argStr;
