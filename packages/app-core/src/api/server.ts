@@ -108,19 +108,19 @@ export {
   validateMcpServerConfig,
 };
 
-// Lazy reference to @elizaos/plugin-local-inference/routes — avoids a static
+// Lazy reference to @elizaos/plugin-local-inference — avoids a static
 // boundary violation. The module is memoized by the JS engine after the first
 // await so per-request cost is a single Map lookup after warm-up.
-let _localInferenceRoutes:
-  | typeof import("@elizaos/plugin-local-inference/routes")
+let _localInference:
+  | typeof import("@elizaos/plugin-local-inference")
   | undefined;
-async function getLocalInferenceRoutes() {
-  if (!_localInferenceRoutes) {
-    _localInferenceRoutes = await import(
-      "@elizaos/plugin-local-inference/routes"
+async function getLocalInference() {
+  if (!_localInference) {
+    _localInference = await import(
+      "@elizaos/plugin-local-inference"
     );
   }
-  return _localInferenceRoutes;
+  return _localInference;
 }
 
 import {
@@ -675,7 +675,7 @@ async function handleCompatRoute(
   // boundary violation (app-core must not statically import plugin packages).
   {
     const { handleLocalInferenceCompatRoutes, handleLocalInferenceTtsRoute } =
-      await getLocalInferenceRoutes();
+      await getLocalInference();
     if (await handleLocalInferenceCompatRoutes(req, res, state)) return true;
     if (await handleLocalInferenceTtsRoute(req, res, state)) return true;
   }
@@ -1047,7 +1047,7 @@ export function patchHttpCreateServerForCompat(): () => void {
     // HTTP server created through this patched factory. Safe to call on
     // every server — `attachToHttpServer` is idempotent and only installs
     // the upgrade listener once. Imported dynamically to avoid static boundary violation.
-    void import("@elizaos/plugin-local-inference/services")
+    void import("@elizaos/plugin-local-inference")
       .then(({ deviceBridge }) => deviceBridge.attachToHttpServer(created))
       .catch((err: unknown) => {
         logger.warn(
