@@ -1275,3 +1275,135 @@ describe("buildPlannerParamsSkeleton — typed number/boolean span kinds", () =>
 		expect(overriddenKeys).not.toContain("label");
 	});
 });
+
+describe("buildBoundedNumberRule — integer and float range constraints", () => {
+	it("emits a rule with alternation for closed integer range [0, 5]", () => {
+		clearResponseGrammarCache();
+		const action = makeAction("BOUNDED", {
+			parameters: [
+				{
+					name: "count",
+					description: "small count",
+					required: true,
+					schema: { type: "integer", minimum: 0, maximum: 5 },
+				},
+			],
+		});
+		const result = buildPlannerActionGrammarStrict([action]);
+		expect(result).not.toBeNull();
+		if (!result) return;
+		// The grammar should contain alternation with the bounded values.
+		// Check for at least the edge cases.
+		expect(result.grammar).toContain('"0"');
+		expect(result.grammar).toContain('"5"');
+		// The bounded rule should be referenced in the grammar.
+		expect(result.grammar).toContain("_bounded");
+	});
+
+	it("emits a rule with alternation for closed integer range [0, 100]", () => {
+		clearResponseGrammarCache();
+		const action = makeAction("BOUNDED100", {
+			parameters: [
+				{
+					name: "count",
+					description: "count up to 100",
+					required: true,
+					schema: { type: "integer", minimum: 0, maximum: 100 },
+				},
+			],
+		});
+		const result = buildPlannerActionGrammarStrict([action]);
+		expect(result).not.toBeNull();
+		if (!result) return;
+		// For 0-100 (101 values), still under the 200 threshold, so expect direct alternation.
+		expect(result.grammar).toContain("_bounded");
+		// Should have the edge values.
+		expect(result.grammar).toContain('"0"');
+		expect(result.grammar).toContain('"100"');
+		// Spot-check a middle value exists.
+		expect(result.grammar).toContain('"50"');
+	});
+
+	it("handles negative and positive integers in [−10, 10]", () => {
+		clearResponseGrammarCache();
+		const action = makeAction("SIGNEDCOUNT", {
+			parameters: [
+				{
+					name: "delta",
+					description: "signed change",
+					required: true,
+					schema: { type: "integer", minimum: -10, maximum: 10 },
+				},
+			],
+		});
+		const result = buildPlannerActionGrammarStrict([action]);
+		expect(result).not.toBeNull();
+		if (!result) return;
+		// Should contain negative and positive edge values.
+		expect(result.grammar).toContain('"-10"');
+		expect(result.grammar).toContain('"10"');
+		expect(result.grammar).toContain('"0"');
+		expect(result.grammar).toContain('"-1"');
+	});
+
+	it("falls back to jsonnumber for unbounded number (no min/max)", () => {
+		clearResponseGrammarCache();
+		const action = makeAction("UNBOUNDED", {
+			parameters: [
+				{
+					name: "value",
+					description: "any number",
+					required: true,
+					schema: { type: "number" },
+				},
+			],
+		});
+		const result = buildPlannerActionGrammarStrict([action]);
+		expect(result).not.toBeNull();
+		if (!result) return;
+		// Should reference the shared jsonnumber rule, not emit a bounded rule.
+		expect(result.grammar).toContain("jsonnumber");
+		// Should not emit a _bounded rule for this parameter.
+		const lines = result.grammar.split("\n");
+		const boundedLines = lines.filter((l) => l.includes("_bounded"));
+		expect(boundedLines.length).toBe(0);
+	});
+
+	it("falls back to jsonnumber for float type with bounds", () => {
+		clearResponseGrammarCache();
+		const action = makeAction("FLOATRANGE", {
+			parameters: [
+				{
+					name: "ratio",
+					description: "decimal ratio",
+					required: true,
+					schema: { type: "number", minimum: 0, maximum: 1 },
+				},
+			],
+		});
+		const result = buildPlannerActionGrammarStrict([action]);
+		expect(result).not.toBeNull();
+		if (!result) return;
+		// Current implementation falls back to jsonnumber for floats.
+		expect(result.grammar).toContain("jsonnumber");
+	});
+
+	it("falls back to jsonnumber for ranges > ~200 values", () => {
+		clearResponseGrammarCache();
+		const action = makeAction("LARGERANGE", {
+			parameters: [
+				{
+					name: "bigcount",
+					description: "large count",
+					required: true,
+					schema: { type: "integer", minimum: 0, maximum: 300 },
+				},
+			],
+		});
+		const result = buildPlannerActionGrammarStrict([action]);
+		expect(result).not.toBeNull();
+		if (!result) return;
+		// For 301 values (> 200), should fall back to jsonnumber.
+		expect(result.grammar).toContain("jsonnumber");
+	});
+});
