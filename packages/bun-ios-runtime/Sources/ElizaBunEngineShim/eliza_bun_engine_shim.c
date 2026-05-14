@@ -273,7 +273,34 @@ static char *parse_json_string(const char **cursor) {
   return out;
 }
 
-static void apply_env_json(const char *json) {
+static int is_forbidden_env_key(const char *key) {
+  if (!key || key[0] == '\0') return 1;
+  if (strncmp(key, "DYLD_", 5) == 0) return 1;
+  if (strncmp(key, "BUN_JSC_", 8) == 0) return 1;
+  return strcmp(key, "NODE_OPTIONS") == 0 ||
+      strcmp(key, "BUN_OPTIONS") == 0 ||
+      strcmp(key, "BUN_PRELOAD") == 0 ||
+      strcmp(key, "JSC_useJIT") == 0 ||
+      strcmp(key, "JSC_jitPolicyScale") == 0 ||
+      strcmp(key, "MallocStackLogging") == 0 ||
+      strcmp(key, "MallocStackLoggingNoCompact") == 0;
+}
+
+static void apply_app_store_runtime_env(void) {
+  setenv("ELIZA_IOS_APP_STORE_LOCAL_EXECUTION", "1", 1);
+  setenv("ELIZA_IOS_NO_JIT", "1", 1);
+  setenv("JSC_useJIT", "0", 1);
+  setenv("JSC_jitPolicyScale", "0", 1);
+  setenv("BUN_JSC_useJIT", "0", 1);
+  unsetenv("NODE_OPTIONS");
+  unsetenv("BUN_OPTIONS");
+  unsetenv("BUN_PRELOAD");
+  unsetenv("DYLD_INSERT_LIBRARIES");
+  unsetenv("DYLD_LIBRARY_PATH");
+  unsetenv("DYLD_FRAMEWORK_PATH");
+}
+
+static void apply_safe_env_json(const char *json) {
   if (!json) return;
   const char *p = skip_ws(json);
   if (*p != '{') return;
@@ -303,7 +330,9 @@ static void apply_env_json(const char *json) {
         value[len] = '\0';
       }
     }
-    if (value && key[0] != '\0') setenv(key, value, 1);
+    if (value && key[0] != '\0' && !is_forbidden_env_key(key)) {
+      setenv(key, value, 1);
+    }
     free(key);
     free(value);
     p = skip_ws(p);
@@ -387,6 +416,7 @@ static void ensure_default_env(const char *app_support_dir, const char *bundle_p
   setenv("ELIZA_IOS_BRIDGE_TRANSPORT", "bun-host-ipc", 0);
   setenv("LOG_LEVEL", "error", 0);
   setenv("GIGACAGE_ENABLED", "0", 0);
+  apply_app_store_runtime_env();
 }
 
 static int write_all(int fd, const char *data, size_t len) {
@@ -1044,7 +1074,7 @@ int32_t eliza_bun_engine_start(
     return -1;
   }
 
-  apply_env_json(env_json);
+  apply_safe_env_json(env_json);
   ensure_default_env(app_support_dir, bundle_path);
 
   int argc = 0;
