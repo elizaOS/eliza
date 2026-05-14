@@ -989,7 +989,7 @@ describe("ScheduledTaskRunner — executionProfile host-capability substitution"
       }),
     );
     const result = await runner.fire(task.taskId);
-    expect(result.kind).toBe("fired");
+    expect(result.state.status).toBe("fired");
 
     // The dispatcher should have been called with channelKey === "in_app"
     // even though the task asked for "discord".
