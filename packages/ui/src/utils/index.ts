@@ -1,5 +1,17 @@
+export {
+  isSafeExecutableValue,
+  type ParseClampedIntegerOptions,
+  type ParseClampedNumberOptions,
+  type ParsePositiveNumberOptions,
+  parseClampedFloat,
+  parseClampedInteger,
+  parsePositiveFloat,
+  parsePositiveInteger,
+  resolveElizaPackageRoot,
+  resolveElizaPackageRootSync,
+  stripAssistantStageDirections,
+} from "@elizaos/shared";
 export * from "./asset-url";
-export { stripAssistantStageDirections } from "@elizaos/shared";
 export * from "./browser-tab-kit-types";
 export * from "./browser-tabs-renderer-registry";
 export * from "./character-message-examples";
@@ -11,17 +23,14 @@ export * from "./desktop-workspace";
 export * from "./documents-upload-image";
 export * from "./eliza-cloud-model-route";
 export * from "./eliza-globals";
-export { resolveElizaPackageRoot, resolveElizaPackageRootSync } from "@elizaos/shared";
 export * from "./env";
 export * from "./errors";
-export { isSafeExecutableValue } from "@elizaos/shared";
 export * from "./format";
 export * from "./globals";
 export * from "./labels";
 export * from "./log-prefix";
 export * from "./name-tokens";
 export * from "./namespace-defaults";
-export { parsePositiveInteger, parsePositiveFloat, parseClampedFloat, parseClampedInteger, type ParseClampedIntegerOptions, type ParseClampedNumberOptions, type ParsePositiveNumberOptions } from "@elizaos/shared";
 export * from "./openExternalUrl";
 export * from "./owner-name";
 export * from "./rate-limiter";

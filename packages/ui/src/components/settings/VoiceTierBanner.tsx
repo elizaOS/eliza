@@ -12,7 +12,6 @@
  */
 
 import { AlertTriangle, BadgeCheck, Gauge, Sparkles } from "lucide-react";
-// biome-ignore lint/correctness/noUnusedImports: Required for JSX transform.
 import type * as React from "react";
 
 import { cn } from "../../lib/utils";
