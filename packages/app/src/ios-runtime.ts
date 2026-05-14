@@ -115,8 +115,10 @@ export function resolveIosRuntimeConfig(env: RuntimeEnv): IosRuntimeConfig {
   return {
     mode,
     fullBun: readBool(env, [
+      "VITE_ELIZA_IOS_FULL_BUN_AVAILABLE",
       "VITE_ELIZA_IOS_FULL_BUN_STRICT",
       "VITE_ELIZA_IOS_FULL_BUN_SMOKE",
+      "VITE_MILADY_IOS_FULL_BUN_AVAILABLE",
       "VITE_MILADY_IOS_FULL_BUN_STRICT",
       "VITE_MILADY_IOS_FULL_BUN_SMOKE",
     ]),

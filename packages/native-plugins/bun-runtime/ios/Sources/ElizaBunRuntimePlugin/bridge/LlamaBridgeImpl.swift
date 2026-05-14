@@ -223,12 +223,69 @@ private func shim_log_silence()
 @_silgen_name("eliza_llama_has_metal")
 private func shim_has_metal() -> Bool
 
+// KV cache-type setters. `type` is the integer value of llama.cpp's
+// `ggml_type` enum (e.g. 1=f16, 8=q8_0, 2=q4_0). The Swift wrapper
+// maps the string-typed cacheType{K,V} from JS to the enum value
+// via `ggmlTypeFromString` and only invokes these when a mapping
+// exists; otherwise the field keeps its default and llama.cpp uses
+// the build-time default (typically f16).
+@_silgen_name("eliza_llama_context_params_set_type_k")
+private func shim_context_params_set_type_k(_ params: UnsafeMutablePointer<LlamaContextParamsBag>, _ type: Int32)
+
+@_silgen_name("eliza_llama_context_params_set_type_v")
+private func shim_context_params_set_type_v(_ params: UnsafeMutablePointer<LlamaContextParamsBag>, _ type: Int32)
+
+// DFlash speculative-decode bridge. `shim_speculative_supported()`
+// returns true only when the linked slice has the buun fork's
+// libcommon (with `common_speculative_draft_gen`) folded into it.
+// On stock slices the helper is absent and `supported()` is false;
+// the generate loop then falls back to plain decode.
+@_silgen_name("eliza_llama_speculative_supported")
+private func shim_speculative_supported() -> Bool
+
+@_silgen_name("eliza_llama_speculative_draft_gen")
+private func shim_speculative_draft_gen(
+    _ targetCtx: LlamaContextPtr,
+    _ drafterCtx: LlamaContextPtr,
+    _ pastTokens: UnsafePointer<Int32>,
+    _ nPast: Int32,
+    _ draftMin: Int32,
+    _ draftMax: Int32,
+    _ outDrafted: UnsafeMutablePointer<Int32>,
+    _ outCapacity: Int32
+) -> Int32
+
+// Token-tree sampler constructor. Returns NULL when the slice does
+// not link `llama_sampler_init_logit_bias` or when the payload is
+// malformed. The Swift caller checks for NULL before adding the stage
+// to the sampler chain.
+@_silgen_name("eliza_llama_sampler_init_token_tree")
+private func shim_sampler_init_token_tree(
+    _ nVocab: Int32,
+    _ trieBytes: UnsafePointer<UInt8>,
+    _ trieSize: Int
+) -> LlamaSamplerPtr?
+
+// Vocab size lookup used when constructing the token-tree sampler.
+@_silgen_name("llama_vocab_n_tokens")
+private func c_llama_vocab_n_tokens(_ vocab: LlamaVocabPtr) -> Int32
+
 // MARK: - Result types
+
+/// Per-generation speculative-decode toggle. `auto` follows the session
+/// state (drafter loaded + slice supports spec decode); `on` requires it
+/// (falls back with a log line if unsupported); `off` forces plain decode.
+public enum SpecDecodeMode {
+    case auto
+    case on
+    case off
+}
 
 public struct LlamaLoadResult {
     public let contextId: Int64?
     public let error: String?
     public static func success(_ id: Int64) -> LlamaLoadResult { .init(contextId: id, error: nil) }
+    public static func failure(_ id: Int64?, _ msg: String?) -> LlamaLoadResult { .init(contextId: id, error: msg) }
     public static func failure(_ msg: String) -> LlamaLoadResult { .init(contextId: nil, error: msg) }
 }
 
@@ -253,17 +310,27 @@ public struct LlamaHardwareInfo {
     public let cpuCores: Int
     public let isSimulator: Bool
     public let metalSupported: Bool
+    /// True when the linked slice exposes a usable `common_speculative_draft_gen`
+    /// AND the device has enough headroom to run target + drafter side-by-side.
+    public let dflashSupported: Bool
+    /// Optional human-readable reason when `dflashSupported` is false.
+    public let dflashReason: String?
 
     /// Render as the `[String: Any]` shape the bridge contract expects.
     public func asDict() -> [String: Any] {
-        return [
+        var dict: [String: Any] = [
             "backend": backend,
             "total_ram_gb": NSNumber(value: totalRamGB),
             "available_ram_gb": NSNumber(value: availableRamGB),
             "cpu_cores": NSNumber(value: cpuCores),
             "is_simulator": NSNumber(value: isSimulator),
-            "metal_supported": NSNumber(value: metalSupported)
+            "metal_supported": NSNumber(value: metalSupported),
+            "dflash_supported": NSNumber(value: dflashSupported)
         ]
+        if let reason = dflashReason {
+            dict["dflash_reason"] = reason
+        }
+        return dict
     }
 }
 
@@ -278,18 +345,80 @@ private final class LlamaSession {
     let nCtx: UInt32
     var cancelled: Bool = false
 
-    init(id: Int64, model: LlamaModelPtr, ctx: LlamaContextPtr, vocab: LlamaVocabPtr, nCtx: UInt32) {
+    // DFlash drafter state. Non-nil iff the user passed a `draftModelPath`
+    // at load time AND the slice supports speculative decode (the
+    // `eliza_llama_speculative_supported` shim probe returned true).
+    let drafterModel: LlamaModelPtr?
+    let drafterCtx: LlamaContextPtr?
+    let draftMinDefault: Int32
+    let draftMaxDefault: Int32
+
+    init(
+        id: Int64,
+        model: LlamaModelPtr,
+        ctx: LlamaContextPtr,
+        vocab: LlamaVocabPtr,
+        nCtx: UInt32,
+        drafterModel: LlamaModelPtr? = nil,
+        drafterCtx: LlamaContextPtr? = nil,
+        draftMinDefault: Int32 = 1,
+        draftMaxDefault: Int32 = 3
+    ) {
         self.id = id
         self.model = model
         self.ctx = ctx
         self.vocab = vocab
         self.nCtx = nCtx
+        self.drafterModel = drafterModel
+        self.drafterCtx = drafterCtx
+        self.draftMinDefault = draftMinDefault
+        self.draftMaxDefault = draftMaxDefault
         self.workQueue = DispatchQueue(label: "ai.eliza.bun.llama.session.\(id)")
     }
 
     func free() {
+        if let drafterCtx = drafterCtx {
+            c_llama_free(drafterCtx)
+        }
+        if let drafterModel = drafterModel {
+            c_llama_model_free(drafterModel)
+        }
         c_llama_free(ctx)
         c_llama_model_free(model)
+    }
+}
+
+/// Maps a string KV cache type ("f16", "q8_0", "q4_0", "tbq3", ...) to the
+/// integer value of llama.cpp's `ggml_type` enum. Returns nil for unknown
+/// types so the caller can leave the params struct at default. Fork-specific
+/// TBQ / QJL / Q4_POLAR codes mirror the patched ggml_type enum values
+/// introduced by `packages/app-core/scripts/build-llama-cpp-dflash.mjs`;
+/// when the linked slice doesn't have those kernels compiled in, llama.cpp
+/// reports the error at context-init time and we surface it through
+/// `loadModel`'s failure path.
+private func ggmlTypeFromString(_ raw: String?) -> Int32? {
+    guard let raw = raw?.lowercased(), !raw.isEmpty else { return nil }
+    switch raw {
+    case "f32": return 0
+    case "f16": return 1
+    case "q4_0": return 2
+    case "q4_1": return 3
+    case "q5_0": return 6
+    case "q5_1": return 7
+    case "q8_0": return 8
+    case "q8_1": return 9
+    case "q2_k": return 10
+    case "q3_k": return 11
+    case "q4_k": return 12
+    case "q5_k": return 13
+    case "q6_k": return 14
+    case "q8_k": return 15
+    // Buun fork codes. Values mirror the patched enum in build-llama-cpp-dflash.mjs.
+    case "tbq3", "q4_tq3": return 64
+    case "tbq4", "q4_tq4": return 65
+    case "qjl4": return 66
+    case "q4_polar": return 67
+    default: return nil
     }
 }
 
@@ -380,11 +509,24 @@ public final class LlamaBridgeImpl {
     /// Synchronously loads a GGUF and returns either a context_id or an error.
     /// Heavy operation (file I/O + model mmap + Metal init); the caller should
     /// dispatch onto a background queue before invoking.
+    ///
+    /// When `draftModelPath` is set AND the linked slice supports speculative
+    /// decode (`shim_speculative_supported()` is true), a second model +
+    /// context is loaded as the DFlash drafter and stored on the session.
+    /// Drafter load failures are non-fatal: we log and proceed without spec
+    /// decode rather than failing the entire load.
     public func loadModel(
         path: String,
         contextSize: UInt32 = 4096,
         useGPU: Bool = true,
-        threads: Int32? = nil
+        threads: Int32? = nil,
+        draftModelPath: String? = nil,
+        draftContextSize: UInt32 = 4096,
+        draftGpuLayers: Int32? = nil,
+        draftMin: Int32 = 1,
+        draftMax: Int32 = 3,
+        cacheTypeK: String? = nil,
+        cacheTypeV: String? = nil
     ) -> LlamaLoadResult {
         guard FileManager.default.fileExists(atPath: path) else {
             return .failure("llama_load_model: file not found at \(path)")
@@ -414,6 +556,12 @@ public final class LlamaBridgeImpl {
             shim_context_params_set_n_ctx(ptr, contextSize)
             shim_context_params_set_n_threads(ptr, resolvedThreads, resolvedThreads)
             Self.setContextGpuOffload(ptr, enabled: canUseGPU)
+            if let kCode = ggmlTypeFromString(cacheTypeK) {
+                shim_context_params_set_type_k(ptr, kCode)
+            }
+            if let vCode = ggmlTypeFromString(cacheTypeV) {
+                shim_context_params_set_type_v(ptr, vCode)
+            }
         }
 
         guard let llamaCtx = c_llama_init_from_model(modelPtr, ctxParams) else {
@@ -421,15 +569,66 @@ public final class LlamaBridgeImpl {
             return .failure("llama_init_from_model failed")
         }
 
+        // Optional DFlash drafter. Non-fatal: drafter load failures fall back
+        // to plain decode rather than aborting the main model load.
+        var drafterModelPtr: LlamaModelPtr? = nil
+        var drafterCtxPtr: LlamaContextPtr? = nil
+        if let drafterPath = draftModelPath, !drafterPath.isEmpty {
+            if !FileManager.default.fileExists(atPath: drafterPath) {
+                NSLog("[LlamaBridgeImpl] drafter not found at \(drafterPath); spec decode disabled")
+            } else if !shim_speculative_supported() {
+                NSLog("[LlamaBridgeImpl] linked slice has no common_speculative_draft_gen; spec decode disabled")
+            } else {
+                var drafterModelParams = c_llama_model_default_params()
+                let drafterLayers: Int32 = draftGpuLayers ?? (canUseGPU ? 999 : 0)
+                withUnsafeMutablePointer(to: &drafterModelParams) { ptr in
+                    shim_model_params_set_n_gpu_layers(ptr, drafterLayers)
+                    if !canUseGPU { Self.forceModelCpuOnly(ptr) }
+                }
+                let loadedDrafter = drafterPath.withCString { cpath in
+                    c_llama_model_load_from_file(cpath, drafterModelParams)
+                }
+                if let dm = loadedDrafter {
+                    var drafterCtxParams = c_llama_context_default_params()
+                    withUnsafeMutablePointer(to: &drafterCtxParams) { ptr in
+                        shim_context_params_set_n_ctx(ptr, draftContextSize)
+                        shim_context_params_set_n_threads(ptr, resolvedThreads, resolvedThreads)
+                        Self.setContextGpuOffload(ptr, enabled: canUseGPU)
+                        if let kCode = ggmlTypeFromString(cacheTypeK) {
+                            shim_context_params_set_type_k(ptr, kCode)
+                        }
+                        if let vCode = ggmlTypeFromString(cacheTypeV) {
+                            shim_context_params_set_type_v(ptr, vCode)
+                        }
+                    }
+                    if let dctx = c_llama_init_from_model(dm, drafterCtxParams) {
+                        drafterModelPtr = dm
+                        drafterCtxPtr = dctx
+                    } else {
+                        c_llama_model_free(dm)
+                        NSLog("[LlamaBridgeImpl] drafter context init failed; spec decode disabled")
+                    }
+                } else {
+                    NSLog("[LlamaBridgeImpl] drafter model load failed for \(drafterPath); spec decode disabled")
+                }
+            }
+        }
+
         let vocab = c_llama_model_get_vocab(modelPtr)
         let nCtxActual = c_llama_n_ctx(llamaCtx)
         let id = SessionRegistry.shared.allocateId()
+        let resolvedDraftMin = max(1, draftMin)
+        let resolvedDraftMax = max(resolvedDraftMin, draftMax)
         let session = LlamaSession(
             id: id,
             model: modelPtr,
             ctx: llamaCtx,
             vocab: vocab,
-            nCtx: nCtxActual
+            nCtx: nCtxActual,
+            drafterModel: drafterModelPtr,
+            drafterCtx: drafterCtxPtr,
+            draftMinDefault: resolvedDraftMin,
+            draftMaxDefault: resolvedDraftMax
         )
         SessionRegistry.shared.add(session)
         return .success(id)
@@ -440,6 +639,19 @@ public final class LlamaBridgeImpl {
     /// is `true` exactly once, at the end. The caller is responsible for
     /// marshalling `onToken` invocations back to the JS thread (we don't do
     /// that here so this class stays JSC-agnostic).
+    ///
+    /// - `specDecode`:
+    ///     - `.auto` (default): use spec decode iff the session has a drafter
+    ///       AND the slice supports it.
+    ///     - `.on`: prefer spec decode; fall back to plain decode with a
+    ///       log line when unsupported.
+    ///     - `.off`: force plain decode even when a drafter is loaded.
+    /// - `draftMin` / `draftMax` override session defaults per call.
+    /// - `tokenTreeTrie` is the serialized token-tree payload (see
+    ///   `token-tree.ts`); when non-nil and the slice exposes
+    ///   `llama_sampler_init_logit_bias`, the bias stage is inserted
+    ///   into the sampler chain before the temperature/top-k/top-p
+    ///   stages so the trie constraints fire first.
     public func generate(
         contextId: Int64,
         prompt: String,
@@ -448,6 +660,10 @@ public final class LlamaBridgeImpl {
         topP: Float = 0.95,
         topK: Int32 = 40,
         stopSequences: [String] = [],
+        specDecode: SpecDecodeMode = .auto,
+        draftMin: Int32? = nil,
+        draftMax: Int32? = nil,
+        tokenTreeTrie: Data? = nil,
         onToken: ((String, Bool) -> Void)? = nil
     ) -> LlamaGenerateResult {
         guard let session = SessionRegistry.shared.get(contextId) else {
@@ -497,10 +713,55 @@ public final class LlamaBridgeImpl {
             return .failure("llama_sampler_chain_init failed")
         }
         defer { c_llama_sampler_free(chain) }
+
+        // Token-tree logit-bias stage fires first so the trie constrains
+        // the distribution before temperature / top-k / top-p shrink it.
+        // We feature-detect by NULL return: stock builds without
+        // `llama_sampler_init_logit_bias` get a NULL here and we skip.
+        if let trie = tokenTreeTrie, !trie.isEmpty {
+            let nVocab = c_llama_vocab_n_tokens(session.vocab)
+            let trieSampler: LlamaSamplerPtr? = trie.withUnsafeBytes { raw -> LlamaSamplerPtr? in
+                guard let base = raw.baseAddress?.assumingMemoryBound(to: UInt8.self) else { return nil }
+                return shim_sampler_init_token_tree(nVocab, base, trie.count)
+            }
+            if let s = trieSampler {
+                c_llama_sampler_chain_add(chain, s)
+            } else {
+                NSLog("[LlamaBridgeImpl] token-tree sampler unavailable; skipping trie stage")
+            }
+        }
+
         if let s = c_llama_sampler_init_top_k(topK) { c_llama_sampler_chain_add(chain, s) }
         if let s = c_llama_sampler_init_top_p(topP, 1) { c_llama_sampler_chain_add(chain, s) }
         if let s = c_llama_sampler_init_temp(temperature) { c_llama_sampler_chain_add(chain, s) }
         if let s = c_llama_sampler_init_dist(LLAMA_DEFAULT_SEED) { c_llama_sampler_chain_add(chain, s) }
+
+        // Resolve spec-decode mode for this call. The auto path defers
+        // entirely to whether the session has a drafter AND the slice
+        // supports spec decode. `.on` falls back gracefully (logs and
+        // proceeds with plain decode) rather than failing.
+        let wantsSpec: Bool
+        switch specDecode {
+        case .off:
+            wantsSpec = false
+        case .on:
+            wantsSpec = true
+            if session.drafterCtx == nil || !shim_speculative_supported() {
+                NSLog("[LlamaBridgeImpl] spec decode requested but unavailable; falling back to plain decode")
+            }
+        case .auto:
+            wantsSpec = session.drafterCtx != nil && shim_speculative_supported()
+        }
+        let useSpec = wantsSpec && session.drafterCtx != nil && shim_speculative_supported()
+        let effectiveDraftMin = max(1, draftMin ?? session.draftMinDefault)
+        let effectiveDraftMax = max(effectiveDraftMin, draftMax ?? session.draftMaxDefault)
+        // Per-generation past-token buffer used by the spec-decode call.
+        // Allocated up-front (capped at nCtx) so we don't realloc each step.
+        var pastTokenBuffer: [Int32] = useSpec ? promptTokens : []
+        pastTokenBuffer.reserveCapacity(Int(session.nCtx))
+        // Scratch buffer for drafted tokens. Capped at effectiveDraftMax
+        // so we never overrun the libcommon helper's writeable range.
+        var draftScratch = [Int32](repeating: 0, count: Int(effectiveDraftMax))
 
         // 4. Generation loop.
         var generated = ""
@@ -511,6 +772,8 @@ public final class LlamaBridgeImpl {
         while generatedTokens < maxTokens {
             if session.cancelled { break }
 
+            // First, sample one token from the target's current distribution.
+            // This is the verified token that the target accepts unconditionally.
             let newTokenId = c_llama_sampler_sample(chain, session.ctx, -1)
             c_llama_sampler_accept(chain, newTokenId)
 
@@ -523,6 +786,9 @@ public final class LlamaBridgeImpl {
             generatedTokens += 1
 
             onToken?(piece, false)
+            if useSpec {
+                pastTokenBuffer.append(newTokenId)
+            }
 
             if !stopSequences.isEmpty {
                 if let _ = stopSequences.first(where: { !$0.isEmpty && generated.hasSuffix($0) }) {
@@ -531,7 +797,7 @@ public final class LlamaBridgeImpl {
                 }
             }
 
-            // Feed sampled token back to extend KV cache.
+            // Feed sampled token back to extend KV cache on the main context.
             withUnsafeMutablePointer(to: &mutableBatch) { ptr in
                 shim_batch_set_single(ptr, newTokenId, nPast, true)
             }
@@ -541,8 +807,98 @@ public final class LlamaBridgeImpl {
             }
             nPast += 1
 
-            if nPast >= Int32(session.nCtx) {
-                break
+            if nPast >= Int32(session.nCtx) { break }
+            if generatedTokens >= maxTokens { break }
+
+            // Optional speculative-decode burst.
+            //
+            // After every verified token we ask the drafter to propose up to
+            // `effectiveDraftMax` continuation tokens. We then run them
+            // through the target's sampler one at a time and stop on first
+            // disagreement. This is the textbook common_speculative loop:
+            // drafted tokens that match the target's distribution are kept
+            // verbatim, the first mismatch resets us to the standard
+            // per-token sample at the top of the next outer iteration.
+            //
+            // The shim helper guards itself when libcommon isn't linked, so
+            // this branch is cheap and safe in stock builds — it just never
+            // fires there (`useSpec` is false).
+            if useSpec, let drafterCtx = session.drafterCtx {
+                let nDrafted: Int32 = pastTokenBuffer.withUnsafeBufferPointer { pastBuf in
+                    guard let pastBase = pastBuf.baseAddress else { return 0 }
+                    return draftScratch.withUnsafeMutableBufferPointer { draftBuf in
+                        guard let draftBase = draftBuf.baseAddress else { return 0 }
+                        return shim_speculative_draft_gen(
+                            session.ctx,
+                            drafterCtx,
+                            pastBase,
+                            Int32(pastBuf.count),
+                            effectiveDraftMin,
+                            effectiveDraftMax,
+                            draftBase,
+                            Int32(draftBuf.count)
+                        )
+                    }
+                }
+                if nDrafted <= 0 { continue }
+
+                for di in 0..<Int(nDrafted) {
+                    if generatedTokens >= maxTokens { break }
+                    let proposed = draftScratch[di]
+
+                    // Verify proposal: re-sample at the same position and
+                    // compare. If the target's next token equals `proposed`
+                    // we accept; otherwise we discard the rest of the burst.
+                    // We use the same sampler chain so temperature, top-k,
+                    // top-p, and token-tree all apply equally to drafted
+                    // tokens.
+                    withUnsafeMutablePointer(to: &mutableBatch) { ptr in
+                        shim_batch_set_single(ptr, proposed, nPast, true)
+                    }
+                    if c_llama_decode(session.ctx, mutableBatch) != 0 {
+                        // Hard error: bubble up.
+                        onToken?("", true)
+                        return .failure("llama_decode (spec-verify) failed at token \(generatedTokens)")
+                    }
+                    let verified = c_llama_sampler_sample(chain, session.ctx, -1)
+                    if verified != proposed {
+                        // Disagree — accept the verified token, drop rest of burst.
+                        c_llama_sampler_accept(chain, verified)
+                        if c_llama_vocab_is_eog(session.vocab, verified) {
+                            // Surface the verified token, then exit outer loop.
+                            let p = LlamaBridgeImpl.tokenToPiece(vocab: session.vocab, token: verified)
+                            generated.append(p)
+                            generatedTokens += 1
+                            onToken?(p, false)
+                            nPast += 1
+                            break
+                        }
+                        let p = LlamaBridgeImpl.tokenToPiece(vocab: session.vocab, token: verified)
+                        generated.append(p)
+                        generatedTokens += 1
+                        pastTokenBuffer.append(verified)
+                        onToken?(p, false)
+                        nPast += 1
+                        break
+                    }
+                    // Agree — accept the proposal verbatim.
+                    c_llama_sampler_accept(chain, proposed)
+                    let p = LlamaBridgeImpl.tokenToPiece(vocab: session.vocab, token: proposed)
+                    generated.append(p)
+                    generatedTokens += 1
+                    pastTokenBuffer.append(proposed)
+                    onToken?(p, false)
+                    nPast += 1
+                    if c_llama_vocab_is_eog(session.vocab, proposed) { break }
+                    if !stopSequences.isEmpty,
+                       stopSequences.first(where: { !$0.isEmpty && generated.hasSuffix($0) }) != nil {
+                        stoppedByStopSeq = true
+                        break
+                    }
+                    if nPast >= Int32(session.nCtx) { break }
+                }
+                if stoppedByStopSeq { break }
+                if nPast >= Int32(session.nCtx) { break }
             }
         }
 
@@ -588,19 +944,45 @@ public final class LlamaBridgeImpl {
     }
 
     /// Reports runtime capabilities. Synchronous and cheap to call.
+    ///
+    /// `dflashSupported` reflects three conjuncted conditions:
+    ///   1. The linked slice exposes `common_speculative_draft_gen`
+    ///      (probed via `shim_speculative_supported()`).
+    ///   2. Metal is usable (we won't claim dflash on the simulator).
+    ///   3. The device has enough free RAM to plausibly host target +
+    ///      drafter side-by-side. The 3 GB threshold matches the
+    ///      headroom required for an Eliza-1 1B drafter + 7B target
+    ///      with f16 KV cache.
     public func hardwareInfo() -> LlamaHardwareInfo {
         let pi = ProcessInfo.processInfo
         let isSim = Self.isRunningInSimulator
         let totalRAM = Double(pi.physicalMemory) / (1024.0 * 1024.0 * 1024.0)
         let availRAM = LlamaBridgeImpl.availableMemoryGB()
         let metalSupported = shim_has_metal() && !isSim
+        let specSlice = shim_speculative_supported()
+        let memoryHeadroom = availRAM >= 3.0
+        let dflashSupported = specSlice && metalSupported && memoryHeadroom
+        let dflashReason: String?
+        if dflashSupported {
+            dflashReason = nil
+        } else if !specSlice {
+            dflashReason = "linked llama slice has no common_speculative_draft_gen"
+        } else if !metalSupported {
+            dflashReason = isSim ? "simulator: GPU unavailable" : "Metal unsupported"
+        } else if !memoryHeadroom {
+            dflashReason = "insufficient free RAM (need >= 3 GB, got \(String(format: "%.2f", availRAM)))"
+        } else {
+            dflashReason = "unknown"
+        }
         return LlamaHardwareInfo(
             backend: metalSupported ? "metal" : "cpu",
             totalRamGB: totalRAM,
             availableRamGB: availRAM,
             cpuCores: pi.activeProcessorCount,
             isSimulator: isSim,
-            metalSupported: metalSupported
+            metalSupported: metalSupported,
+            dflashSupported: dflashSupported,
+            dflashReason: dflashReason
         )
     }
 

@@ -417,7 +417,6 @@ export const getUsageStats = (
   options?: { startDate?: Date; endDate?: Date },
 ) => analyticsService.getUsageStats(organizationId, options);
 
-export const getUsageStatsSafe = getUsageStats; // Alias for backward compatibility
 
 export const getUsageTimeSeries = (
   organizationId: string,

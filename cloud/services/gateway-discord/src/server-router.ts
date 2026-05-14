@@ -15,13 +15,13 @@ interface ServerRoute {
   serverUrl: string;
 }
 
-export interface ResolvedIdentity {
+interface ResolvedIdentity {
   userId: string;
   organizationId: string;
   agentId: string;
 }
 
-export async function resolveIdentity(
+async function resolveIdentity(
   redis: Redis,
   cloudBaseUrl: string,
   authHeader: Record<string, string>,
@@ -114,7 +114,7 @@ function parseNamespaceFromUrl(serverUrl: string): string | null {
   return match?.[1] ?? null;
 }
 
-export async function wakeServer(serverName: string, serverUrl: string): Promise<void> {
+async function wakeServer(serverName: string, serverUrl: string): Promise<void> {
   const token = getK8sToken();
   if (!token) return;
 

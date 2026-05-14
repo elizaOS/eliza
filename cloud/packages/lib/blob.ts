@@ -1,4 +1,5 @@
 import { getRuntimeR2Bucket, runtimeR2BucketConfigured } from "@/lib/storage/r2-runtime-binding";
+import { logger } from "@/lib/utils/logger";
 
 const DEFAULT_R2_PUBLIC_HOST = "blob.elizacloud.ai";
 
@@ -220,7 +221,7 @@ export async function ensureElizaCloudUrl(
     const result = await uploadFromUrl(sourceUrl, options);
     return result.url;
   } catch (error) {
-    console.error("[ensureElizaCloudUrl] Failed to upload Fal.ai URL to our storage:", error);
+    logger.error("[ensureElizaCloudUrl] Failed to upload Fal.ai URL to our storage:", error);
     throw error;
   }
 }

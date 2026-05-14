@@ -18,7 +18,6 @@ export { McpService } from "./service";
 
 // Re-export tool compatibility
 export {
-  createMcpToolCompatibility,
   createMcpToolCompatibilitySync,
   detectModelProvider,
   McpToolCompatibility,

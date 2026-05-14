@@ -521,6 +521,7 @@ export function ensureLlamaCppCheckout({
     log(`[compile-libllama] Reusing cached llama.cpp checkout at ${cacheDir}`);
     patchLlamaCppSourceForMusl({ srcDir: cacheDir, log });
     applyVendoredPatches({ srcDir: cacheDir, log });
+    assertSwaSpecDecodeFallback({ srcDir: cacheDir });
     return cacheDir;
   }
   if (!fs.existsSync(path.join(cacheDir, ".git"))) {

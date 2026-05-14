@@ -181,18 +181,31 @@ test("iOS background runner pod resolves through the official package", () => {
   );
 });
 
-test("iOS App Store pod selection keeps no-JIT Bun local runtime and leaves llama optional", () => {
+test("iOS App Store pod selection strips local execution bridge pods", () => {
   const pods = resolveIosCustomPods({
     appStoreBuild: true,
-    includeLlama: false,
+    includeLlama: true,
+    includeCompatBunRuntime: true,
     includeFullBunEngine: true,
   }).map(([name]) => name);
 
   assert.equal(isIosAppStoreBuild({ ELIZA_BUILD_VARIANT: "store" }), true);
-  assert.equal(pods.includes("LlamaCppCapacitor"), false);
+  assert.equal(pods.includes("LlamaCppCapacitor"), true);
+  assert.equal(pods.includes("ElizaosCapacitorBunRuntime"), false);
+  assert.equal(pods.includes("ElizaosCapacitorMobileAgentBridge"), false);
+  assert.equal(pods.includes("ElizaBunEngine"), false);
+});
+
+test("iOS direct compat pod selection includes JSContext runtime without full Bun", () => {
+  const pods = resolveIosCustomPods({
+    appStoreBuild: false,
+    includeCompatBunRuntime: true,
+    includeFullBunEngine: false,
+  }).map(([name]) => name);
+
   assert.equal(pods.includes("ElizaosCapacitorBunRuntime"), true);
   assert.equal(pods.includes("ElizaosCapacitorMobileAgentBridge"), false);
-  assert.equal(pods.includes("ElizaBunEngine"), true);
+  assert.equal(pods.includes("ElizaBunEngine"), false);
 });
 
 test("iOS direct full-Bun pod selection includes local execution bridge pods", () => {
