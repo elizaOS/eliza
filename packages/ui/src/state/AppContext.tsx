@@ -179,10 +179,8 @@ export function AppProvider({
   children: ReactNode;
   branding?: Partial<import("../config/branding").BrandingConfig>;
 }) {
-  const onLanguageSyncError = useCallback((lang: UiLanguage) => {
-    // Notification is deferred until AppProviderInner mounts; this is
-    // only called on language *changes*, never on initial mount.
-    console.warn("[eliza] Failed to sync language to server:", lang);
+  const onLanguageSyncError = useCallback((_lang: UiLanguage) => {
+    // Non-fatal: language change will be reflected on next mount.
   }, []);
   return (
     <TranslationProvider

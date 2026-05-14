@@ -1425,71 +1425,29 @@ ElizaClient.prototype.restartAndWait = async function (
   this: ElizaClient,
   maxWaitMs = 30000,
 ) {
-  const t0 = Date.now();
-  console.info("[eliza][reset][client] restartAndWait: begin", {
-    baseUrl: this.getBaseUrl(),
-    maxWaitMs,
-  });
   try {
     await this.restartAgent();
-    console.info("[eliza][reset][client] restartAndWait: restart accepted");
-  } catch (e: unknown) {
-    console.info(
-      "[eliza][reset][client] restartAndWait: initial restart call failed (often 409 while restarting)",
-      e,
-    );
+  } catch {
+    // 409 is expected while already restarting; poll will detect running state
   }
   const start = Date.now();
   const interval = 1000;
-  let pollN = 0;
   while (Date.now() - start < maxWaitMs) {
     await new Promise((r) => setTimeout(r, interval));
-    pollN += 1;
     try {
       const status = await this.getStatus();
       if (status.state === "running") {
-        console.info("[eliza][reset][client] restartAndWait: running", {
-          pollN,
-          waitedMs: Date.now() - t0,
-          port: status.port,
-        });
         return status;
       }
-      if (pollN === 1 || pollN % 5 === 0) {
-        console.debug("[eliza][reset][client] restartAndWait: poll", {
-          pollN,
-          state: status.state,
-          waitedMs: Date.now() - t0,
-        });
-      }
-    } catch (pollErr) {
-      if (pollN === 1 || pollN % 5 === 0) {
-        console.debug(
-          "[eliza][reset][client] restartAndWait: getStatus error while polling",
-          { pollN, waitedMs: Date.now() - t0 },
-          pollErr,
-        );
-      }
+    } catch {
+      // getStatus may fail while agent is restarting; keep polling
     }
   }
-  const final = await this.getStatus();
-  console.warn(
-    "[eliza][reset][client] restartAndWait: timed out — returning last status",
-    {
-      state: final.state,
-      waitedMs: Date.now() - t0,
-      maxWaitMs,
-    },
-  );
-  return final;
+  return this.getStatus();
 };
 
 ElizaClient.prototype.resetAgent = async function (this: ElizaClient) {
-  console.info("[eliza][reset][client] POST /api/agent/reset", {
-    baseUrl: this.getBaseUrl(),
-  });
   await this.fetch("/api/agent/reset", { method: "POST" });
-  console.info("[eliza][reset][client] POST /api/agent/reset OK");
 };
 
 ElizaClient.prototype.restart = async function (this: ElizaClient) {
@@ -3257,11 +3215,7 @@ ElizaClient.prototype.listCodingAgentScratchWorkspaces = async function (
     return await this.fetch<CodingAgentScratchWorkspace[]>(
       "/api/coding-agents/scratch",
     );
-  } catch (err) {
-    console.warn(
-      "[api-client] Failed to list coding agent scratch workspaces:",
-      err,
-    );
+  } catch {
     return [];
   }
 };

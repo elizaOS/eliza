@@ -18,8 +18,7 @@ const ACTIVE_SERVER_KEY = "elizaos:active-server";
 function tryLocalStorage<T>(fn: () => T, fallback: T): T {
   try {
     return fn();
-  } catch (err) {
-    console.warn("[agent-profiles] localStorage operation failed:", err);
+  } catch {
     return fallback;
   }
 }

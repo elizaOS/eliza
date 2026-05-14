@@ -151,15 +151,11 @@ export function handleDeepLink(
             validatedUrl.protocol !== "https:" &&
             validatedUrl.protocol !== "http:"
           ) {
-            console.error(
-              `[${protocol}] Invalid gateway URL protocol:`,
-              validatedUrl.protocol,
-            );
             break;
           }
           handlers.onConnect?.(validatedUrl.href);
         } catch {
-          console.error(`[${protocol}] Invalid gateway URL format`);
+          // invalid gateway URL format — ignore
         }
       }
       break;
@@ -258,14 +254,10 @@ export function injectPopoutApiBase(): void {
         (parsed.protocol === "http:" && allowPrivateHttp)
       ) {
         setBootConfig({ ...getBootConfig(), apiBase });
-      } else {
-        console.warn("[app-core] Rejected non-local apiBase:", host);
       }
     } catch {
       if (apiBase.startsWith("/") && !apiBase.startsWith("//")) {
         setBootConfig({ ...getBootConfig(), apiBase });
-      } else {
-        console.warn("[app-core] Rejected invalid relative apiBase:", apiBase);
       }
     }
   }

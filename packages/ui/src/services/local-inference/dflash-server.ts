@@ -393,8 +393,6 @@ export class DflashLlamaServer {
   private baseUrl: string | null = null;
   private stderrTail: string[] = [];
   private loadedPlan: DflashServerPlan | null = null;
-  /** Last cumulative metrics scraped from `/metrics` for delta-rate logging. */
-  private lastMetrics: DflashMetricsSnapshot | null = null;
 
   hasLoadedModel(): boolean {
     return this.child !== null && this.loadedPlan !== null;
@@ -514,7 +512,6 @@ export class DflashLlamaServer {
     this.child = null;
     this.baseUrl = null;
     this.loadedPlan = null;
-    this.lastMetrics = null;
     if (!child) return;
     child.kill("SIGTERM");
     await Promise.race([
@@ -543,7 +540,6 @@ export class DflashLlamaServer {
       headers: { "content-type": "application/json" },
       body: JSON.stringify(payload),
     })) as Record<string, unknown>;
-    void this.scrapeAndLogAcceptance();
     const choice = Array.isArray(json.choices) ? json.choices[0] : null;
     const message =
       choice && typeof choice === "object"
@@ -572,22 +568,6 @@ export class DflashLlamaServer {
     const text = await fetchText(`${this.baseUrl}/metrics`);
     if (text === null) return null;
     return parseDflashMetrics(text);
-  }
-
-  private async scrapeAndLogAcceptance(): Promise<void> {
-    const snapshot = await this.getMetrics().catch(() => null);
-    if (!snapshot) return;
-    const prev = this.lastMetrics;
-    this.lastMetrics = snapshot;
-    if (!prev) return;
-    const draftedDelta = snapshot.drafted - prev.drafted;
-    const acceptedDelta = snapshot.accepted - prev.accepted;
-    const decodedDelta = snapshot.decoded - prev.decoded;
-    if (draftedDelta <= 0) return;
-    const turnRate = acceptedDelta / draftedDelta;
-    console.info(
-      `[DFlash] acceptance_rate=${turnRate.toFixed(2)} (drafted=${draftedDelta}, accepted=${acceptedDelta}, decoded=${decodedDelta})`,
-    );
   }
 
   private captureLog(chunk: Buffer | string): void {
