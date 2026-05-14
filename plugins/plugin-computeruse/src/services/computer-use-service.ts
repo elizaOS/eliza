@@ -1079,6 +1079,60 @@ export class ComputerUseService extends Service {
     }
   }
 
+  async executeClipboardAction(
+    rawParams: ClipboardActionParams,
+  ): Promise<ClipboardActionResult> {
+    const params = this.normalizeClipboardActionParams(rawParams);
+    const entry = this.createEntry(
+      `clipboard_${params.action}`,
+      this.toParamsRecord(params),
+    );
+
+    try {
+      const approvalError = await this.awaitApproval(
+        this.clipboardApprovalCommand(params.action),
+        this.toParamsRecord(params),
+      );
+      if (approvalError) {
+        return this.failEntry(entry, { success: false, error: approvalError });
+      }
+
+      switch (params.action) {
+        case "get": {
+          const text = await getClipboardText();
+          return this.succeedEntry(entry, {
+            success: true,
+            text,
+            content: text,
+            value: text,
+          });
+        }
+        case "set": {
+          const text =
+            params.text ??
+            params.content ??
+            params.value ??
+            this.requireIdentifier(undefined, "text is required for clipboard set");
+          await setClipboardText(text);
+          return this.succeedEntry(entry, {
+            success: true,
+            message: "Clipboard updated.",
+          });
+        }
+        default:
+          return this.failEntry(entry, {
+            success: false,
+            error: `Unknown clipboard action: ${(params as { action: string }).action}`,
+          });
+      }
+    } catch (error) {
+      return this.failEntry(entry, {
+        success: false,
+        error: errorMessage(error),
+      });
+    }
+  }
+
   async executeFileAction(
     rawParams: FileActionParams,
   ): Promise<FileActionResult> {
@@ -1370,6 +1424,7 @@ export class ComputerUseService extends Service {
 
     return {
       ...params,
+      action: this.normalizeDesktopAction(params.action),
       coordinate: endCoordinate,
       startCoordinate,
       modifiers: params.modifiers ?? params.hold_keys,
@@ -1453,6 +1508,18 @@ export class ComputerUseService extends Service {
         return "set_window_position";
       case "activate_window":
         return "activate_window";
+      default:
+        return action;
+    }
+  }
+
+  private normalizeDesktopAction(
+    action: DesktopActionParams["action"],
+  ): DesktopActionParams["action"] {
+    switch (action) {
+      case "left_click_drag":
+      case "drag_to":
+        return "drag";
       default:
         return action;
     }

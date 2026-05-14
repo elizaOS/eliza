@@ -26,6 +26,13 @@ describeIfDisplay("listWindows (real)", () => {
       expect(typeof win.id).toBe("string");
       expect(typeof win.title).toBe("string");
       expect(typeof win.app).toBe("string");
+      if (win.bounds) {
+        expect(win.bounds).toHaveLength(4);
+        expect(typeof win.x).toBe("number");
+        expect(typeof win.y).toBe("number");
+        expect(typeof win.width).toBe("number");
+        expect(typeof win.height).toBe("number");
+      }
     }
   }, 15000);
 
