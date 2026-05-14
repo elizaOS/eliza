@@ -1,8 +1,8 @@
 """Smoke tests for model_registry. CPU-only.
 
-The registry holds the Eliza-1 size ladder. The canonical bases are published
-Qwen3.5 checkpoints and are all trainable through the APOLLO path;
-local tiers run on one consumer GPU, while 9B/27B go through Vast/FSDP.
+The registry holds the Eliza-1 size ladder. The active bases are Qwen3.5 for
+0.8B/2B/4B/9B and Qwen3.6 for 27B; all train through the APOLLO path. Local
+tiers run on one consumer GPU, while 9B/27B go through Vast/FSDP.
 """
 
 from __future__ import annotations

@@ -1,6 +1,10 @@
 import { CString, dlopen, FFIType, type Pointer, ptr } from "bun:ffi";
 import { join } from "node:path";
+<<<<<<< HEAD
 import { resolveNativeLibraryCandidate } from "@elizaos/app-core/platform/native-library-policy";
+=======
+import { assertDlopenPathAllowed } from "@elizaos/core";
+>>>>>>> 604eeb67f0 (feat(electrobun): assertDlopenPathAllowed before libMacWindowEffects load)
 
 /**
  * Typed interface for the symbols loaded from libMacWindowEffects.dylib.
@@ -30,6 +34,7 @@ const MAC_EFFECTS_DYLIB = "libMacWindowEffects.dylib";
 let _lib: MacEffectsLib | undefined;
 
 function loadLib(): MacEffectsLib {
+<<<<<<< HEAD
 	const defaultDylibPath = join(import.meta.dir, "../", MAC_EFFECTS_DYLIB);
 	const dylibPath = resolveNativeLibraryCandidate(
 		{ label: "bundled Mac window effects library", path: defaultDylibPath },
@@ -40,6 +45,15 @@ function loadLib(): MacEffectsLib {
 		},
 	);
 	if (!dylibPath) {
+=======
+	// `import.meta.dir` resolves to a path inside the built app bundle's
+	// `Contents/Resources` tree at runtime, so the joined dylib path is
+	// always bundle-local. `assertDlopenPathAllowed` enforces this invariant
+	// in store builds — required for the Mac App Store entitlement profile
+	// (library-validation enabled).
+	const dylibPath = join(import.meta.dir, "../libMacWindowEffects.dylib");
+	if (!existsSync(dylibPath)) {
+>>>>>>> 604eeb67f0 (feat(electrobun): assertDlopenPathAllowed before libMacWindowEffects load)
 		console.warn(
 			`[MacEffects] Dylib not found at ${defaultDylibPath}. Run 'bun run build:native-effects'.`,
 		);
@@ -48,6 +62,7 @@ function loadLib(): MacEffectsLib {
 	try {
 		// Cast to MacEffectsLib: bun:ffi does not infer symbol signatures from
 		// FFIType descriptors at the TypeScript level.
+		assertDlopenPathAllowed(dylibPath);
 		return dlopen(dylibPath, {
 			enableWindowVibrancy: { args: [FFIType.ptr], returns: FFIType.bool },
 			ensureWindowShadow: { args: [FFIType.ptr], returns: FFIType.bool },
