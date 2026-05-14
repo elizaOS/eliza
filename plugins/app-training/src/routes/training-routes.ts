@@ -1005,7 +1005,7 @@ export async function handleTrainingRoutes(
     if (!hfConfig) {
       error(
         res,
-        "HuggingFace publishing is not configured. Set ELIZA_TRAJECTORY_HF_REPO and an HF token (HF_TOKEN / HUGGING_FACE_HUB_TOKEN).",
+        "HuggingFace publishing is not configured. Set ELIZA_TRAJECTORY_HF_REPO and an HF token (HF_TOKEN, with HUGGINGFACE_HUB_TOKEN / HUGGING_FACE_HUB_TOKEN accepted as fallbacks).",
         409,
       );
       return true;

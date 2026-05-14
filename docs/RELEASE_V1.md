@@ -44,7 +44,7 @@ gates), `packages/training/AGENTS.md`, `ELIZA_1_GGUF_READINESS.md`,
 | ASR | `ggml-org/Qwen3-ASR-0.6B-GGUF` (0.6B/1.7B/9B) / `ggml-org/Qwen3-ASR-1.7B-GGUF` (27B tiers) | already GGUF | tokenizer fused with the text backbone (zero re-tokenization) | `asr/eliza-1-asr.gguf` + `asr/eliza-1-asr-mmproj.gguf` |
 | VAD | Silero VAD v5.1.2 (MIT) | native GGML `vad/silero-vad-v5.1.2.ggml.bin` (the release path; legacy bundles may also carry the `vad/silero-vad-int8.onnx` ONNX fallback) | none (not a GGUF) | drives barge-in / silence gating |
 | Embedding | `Qwen/Qwen3-Embedding-0.6B-GGUF` (1.7B+ tiers) | already GGUF | none beyond fork conversion | 0.6B tier omits it (pools from the text backbone with `--pooling last`) |
-| Drafter (DFlash) | distilled (KD, NOT fine-tuning of the target) FROM each tier's base text model; published under `elizaos/eliza-1-<tier>` | `distill_dflash_drafter.py` → fork `convert_hf_to_gguf.py` | drafter GGUF stamps `dflash-draft.target_checkpoint_sha256` | `dflash/drafter-<tier>.gguf` + `dflash/target-meta.json` |
+| Drafter (DFlash) | distilled (KD, NOT fine-tuning of the target) FROM each tier's base text model; published under `elizaos/eliza-1/bundles/<tier>/dflash/` | `distill_dflash_drafter.py` → fork `convert_hf_to_gguf.py` | drafter GGUF stamps `dflash-draft.target_checkpoint_sha256` | `dflash/drafter-<tier>.gguf` + `dflash/target-meta.json` |
 | Voice preset cache | placeholder from W13 until a real fused build emits one | n/a | n/a | `cache/voice-preset-default.bin` |
 
 The catalog's per-tier `sourceModel` block
@@ -372,7 +372,7 @@ flags green without the evidence.
 
 ---
 
-## 10. Publish to HuggingFace (`elizaos/eliza-1-<tier>`)
+## 10. Publish to HuggingFace (`elizaos/eliza-1/bundles/<tier>/`)
 
 The publish orchestrator (`packages/training/scripts/publish/orchestrator.py`,
 driven by `packages/training/scripts/publish_all_eliza1.sh`) gates on
@@ -441,7 +441,7 @@ the bench tables + kernel-verify evidence at
 the frozen `1_7b` voice/ASR/VAD bytes at
 [`elizaos/eliza-1-assets`](https://huggingface.co/elizaos/eliza-1-assets). **No
 fork-built `base-v1` weights, and no fine-tuned `recommended`-channel weights,
-have been pushed to any `elizaos/eliza-1-<tier>` main revision** — the
+have been pushed to any `elizaos/eliza-1/bundles/<tier>/` main revision** — the
 orchestrator refuses to do that until the gates below clear.
 
 `bash packages/training/scripts/publish_all_eliza1.sh --bundles-root <dir>
@@ -493,10 +493,11 @@ python -m scripts.publish.orchestrator --tier 9b --bundle-dir <bundle> --base-v1
 # Real upload (needs HF_TOKEN with write access to elizaos/*; not done in CI):
 HF_TOKEN=hf_xxx bash packages/training/scripts/publish_all_eliza1.sh --bundles-root <dir> --base-v1 --public
 
-# Single component checkpoint:
+# Single component checkpoint (targets the consolidated bundle repo,
+# bundle subpath derived from the tier):
 uv run python packages/training/scripts/push_model_to_hf.py \
   --registry-key eliza-1-9b --checkpoint out/eliza-1-9b/text \
-  --release-state base-v1 --repo-id elizaos/eliza-1-9b --dry-run
+  --release-state base-v1 --repo-id elizaos/eliza-1 --dry-run
 ```
 
 Do NOT upload until every eval gate, every supported-backend kernel verify,
@@ -507,9 +508,10 @@ and every platform-dispatch report is green for the exact shipped bytes, and
 
 ### 10a. HF org transfer (`milady-ai/*` → `elizaos/*`)
 
-The code/docs publish to `elizaos/eliza-1-<tier>`, but the *pre-rename
-pipeline's* uploaded repos still live under the old `milady-ai` HF namespace
-(the `-milady-optimized` / `-milady-drafter` per-tier bundles + the
+The current publish path writes to the consolidated `elizaos/eliza-1`
+repo with `bundles/<tier>/...` subpaths. The *pre-rename pipeline's*
+uploaded repos still live under the old `milady-ai` HF namespace (the
+`-milady-optimized` / `-milady-drafter` per-tier bundles + the
 `*-optimized` / `*-drafter` base-model variants; inventory in
 `packages/inference/reports/porting/2026-05-10/eliza-1-repos/`). HF preserves
 git history + download stats across a `repo move`, so move (don't re-upload):
@@ -520,8 +522,9 @@ bash scripts/hf-transfer-eliza1.sh
 # Then, with an HF_TOKEN that has WRITE access to BOTH `milady-ai` and `elizaos`:
 HF_TOKEN=hf_xxx bash scripts/hf-transfer-eliza1.sh --execute
 # → `huggingface-cli repo move milady-ai/<old> elizaos/<new>` per legacy repo
-#   + `huggingface-cli repo create elizaos/eliza-1-<tier> --exist-ok` for the
-#     canonical per-tier bundle repos (created empty; the publish path fills them).
+#   + `huggingface-cli repo create elizaos/eliza-1 --exist-ok` for the
+#     canonical consolidated bundle repo (created empty; the publish path
+#     fills `bundles/<tier>/...`).
 ```
 
 Then refresh the catalog:
