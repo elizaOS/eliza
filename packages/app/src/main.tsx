@@ -589,6 +589,11 @@ async function runIosFullBunSmokeIfRequested(): Promise<boolean> {
   }
   if (!requested) return false;
   iosFullBunSmokeStarted = true;
+  try {
+    window.localStorage.setItem(IOS_FULL_BUN_SMOKE_REQUEST_KEY, "1");
+  } catch {
+    // Preferences can request the smoke before localStorage is hydrated.
+  }
   renderIosFullBunSmokeStatus("Running iOS full Bun backend smoke...");
   window.__ELIZA_IOS_LOCAL_AGENT_DEBUG__ = (event) => {
     void writeIosFullBunSmokeResult({

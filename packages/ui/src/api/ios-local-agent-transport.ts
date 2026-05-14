@@ -413,7 +413,11 @@ function shouldBridgeFetchUrl(url: URL): boolean {
   if (!isNativeIos()) return false;
   if (isMobileLocalAgentUrl(url.toString())) return true;
   if (url.pathname.startsWith("/api/")) {
-    return isIosInProcessLocalAgentBase(getElizaApiBase());
+    return (
+      shouldRequireFullBunRuntime() ||
+      readPersistedRuntimeMode() === "local" ||
+      isIosInProcessLocalAgentBase(getElizaApiBase())
+    );
   }
   return false;
 }
