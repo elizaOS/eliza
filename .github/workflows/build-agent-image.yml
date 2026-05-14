@@ -116,25 +116,20 @@ jobs:
         # plugin-sql, plugin-elizacloud, etc. land in the image with their
         # built artifacts.
         #
-        # PATH prepend: Bun installs tsup / tsdown / tsc / etc. into each
-        # workspace's `node_modules/.bin/`, but with workspace hoisting +
-        # `--frozen-lockfile` quirks the per-plugin `node_modules/.bin/` is
-        # not always populated on Linux runners (the `.bin/tsup` symlink
-        # only lands in the package that DIRECTLY depends on it; other
-        # plugins resolve `tsup` via the hoisted symlink, which doesn't
-        # exist before postinstall finishes). Walk every plugin's
-        # `node_modules/.bin/` onto PATH up front so `tsup --format ...`
-        # resolves regardless of which workspace it actually lives in.
+        # Why we re-install each plugin's deps before the build loop:
+        # Bun's workspace install leaves per-plugin `node_modules/.bin/`
+        # empty for CLI deps that live in DEVDependencies of a workspace
+        # *peer* (tsup is declared in plugin-video's own devDeps but Bun
+        # still routes its bin symlink through the hoisted root rather
+        # than the plugin's local .bin/, and `bun run build` runs the
+        # script under bash which only consults the local .bin/). The
+        # cheapest workaround: run `bun install --no-frozen-lockfile`
+        # inside each plugin dir before the build so the local .bin/ is
+        # actually populated. Idempotent and fast — bun reuses the global
+        # store.
         env:
           NODE_LLAMA_CPP_SKIP_DOWNLOAD: "true"
         run: |
-          # Build PATH augmentation: include every workspace .bin so the
-          # per-plugin build scripts can find their CLI deps.
-          extra_path=""
-          while IFS= read -r bindir; do
-            extra_path="${bindir}:${extra_path}"
-          done < <(find . -maxdepth 4 -type d -path '*/node_modules/.bin' -not -path '*/.bun/*' 2>/dev/null)
-          export PATH="${extra_path}${PATH}"
           for plugin in plugin-sql plugin-video plugin-agent-skills plugin-pdf \
             plugin-browser plugin-capacitor-bridge plugin-coding-tools \
             plugin-computeruse plugin-discord plugin-elizacloud plugin-imessage \
@@ -143,7 +138,13 @@ jobs:
             plugin_dir="plugins/$plugin"
             if [[ -f "$plugin_dir/package.json" ]] && jq -e '.scripts.build' "$plugin_dir/package.json" >/dev/null; then
               echo "::group::Building @elizaos/$plugin"
-              (cd "$plugin_dir" && bun run build)
+              (
+                cd "$plugin_dir"
+                # Ensure local node_modules/.bin/ has the dev CLIs the
+                # build script references (tsup, tsc, tsdown, etc.).
+                bun install --no-frozen-lockfile --ignore-scripts
+                bun run build
+              )
               echo "::endgroup::"
             fi
           done
