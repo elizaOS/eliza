@@ -1,0 +1,25 @@
+[[!meta title="Download and verify (ISO image)"]]
+[[!meta robots="noindex"]]
+[[!meta stylesheet="install/inc/stylesheets/download" rel="stylesheet" title=""]]
+[[!meta stylesheet="doc/about/warnings" rel="stylesheet" title=""]]
+[[!meta stylesheet="install/inc/stylesheets/steps" rel="stylesheet" title=""]]
+[[!meta stylesheet="install/inc/stylesheets/download-only-iso" rel="stylesheet" title=""]]
+[[!meta script="install/inc/js/download"]]
+[[!meta script="install/inc/js/forge.min"]]
+
+[[!inline pages="install/inc/steps/download.inline" raw="yes" sort="age"]]
+
+[[!inline pages="install/inc/steps/verify.inline" raw="yes" sort="age"]]
+
+<h1 class="step">Continue installing or upgrading Tails</h1>
+
+With this ISO image, you can either:
+
+- [[Burn a Tails DVD|dvd]]
+
+- [[Run Tails in a virtual machine|doc/advanced_topics/virtualization]]
+
+To install or upgrade Tails on a USB stick, download our [[USB image|download]]
+instead.
+
+[[!inline pages="install/inc/steps/warnings.inline" raw="yes" sort="age"]]

@@ -1,0 +1,6 @@
+dmidecode
+gir1.2-glib-2.0
+gir1.2-gtk-3.0
+python3-gi
+python3-gnupg
+python3-socks

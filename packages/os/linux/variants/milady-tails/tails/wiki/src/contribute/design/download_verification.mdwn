@@ -1,0 +1,194 @@
+[[!meta title="Download verification"]]
+
+Software verification is a critical step in the use of secure
+applications but it has traditionally been hard to provide, especially
+from a user experience perspective.
+
+Usual solutions are:
+
+- HTTPS
+
+  All our download mirrors use HTTPS, which is a good starting point.
+
+  But HTTPS is not enough because we rely on [[mirrors
+  hosted by third parties|contribute/design/mirrors]]. They could serve
+  malicious downloads to our users.
+
+  HTTPS also doesn't protect from interrupted downloads that can lead to
+  broken Tails installations.
+
+- OpenPGP signatures
+
+  Unless the user knows how to verify the signing key through the
+  OpenPGP Web of Trust, this technique ultimately relies on a correct
+  download of the signing key and signature, and thus on HTTPS.
+
+Tails provides 2 mechanisms for users to verify the image downloaded
+through a third party mirror, while relying on cryptographic information
+fetched from our website through HTTPS.
+
+1. JavaScript verification
+
+   The main verification mechanism relies on JavaScript code on the
+   download page. See below for more details.
+
+1. OpenPGP signature
+
+   We provide an OpenPGP signature of our downloads.
+
+[[!toc levels=2]]
+
+Related documents
+=================
+
+- [[Design document of the installation instructions, including download|installation_instructions]]
+
+OpenPGP verification instructions
+=================================
+
+We removed the instructions to verify downloads with OpenPGP because:
+
+- Without advanced knowledge of OpenPGP, verifying with OpenPGP provides the
+  same level of security as the JavaScript verification on the download page,
+  while being much more complicated and error-prone.
+
+- None of our [[personas|contribute/personas]] would have enough knowledge of
+  OpenPGP to use the OpenPGP Web of Trust with confidence.
+
+- Providing basic (and never exhaustive) instructions has proven to be very
+  time consuming to our help desk and technical writers. See [[!tails_ticket
+  17900]].
+
+We still explain how to verify our signing key using the OpenPGP Web of Trust
+in the [[installation instructions from Debian, Ubuntu, or Mint using the
+command line and GnuPG|install/expert]] because Debian derivatives come
+with trusted OpenPGP keys that can be used to create a path to our signing key.
+
+Scope of the JavaScript verification
+====================================
+
+Goals
+-----
+
+  - Provide a simple, automated, and cross-platform technique to verify
+    an up-to-date USB or ISO image.
+
+  - Allow verifying any up-to-date USB or ISO image, either
+    downloaded from one of our mirrors or copied from a friend.
+
+Non goals
+---------
+
+  - Verify deprecated Tails images.
+
+  - Verify Tails images downloaded from nightly.tails.boum.org.
+
+Threat model
+============
+
+We are considering here an attacker who can:
+
+  - [A] Provide a malicious Tails image to the user for example by
+    operating a rogue Tails mirror.
+
+  - [H] Operate a website that is loaded in a different tab in the same
+    browser. This threat is taken care of by the internals of the
+    browser and the proper coding of the JavaScript.
+
+We are not considering an attacker who can:
+
+  - [B] Do a man-in-the-middle attack by providing a rogue HTTPS certificate
+    for https://tails.net/ signed by a certificate authority
+    trusted by the browser but under the control of the attacker.
+
+    Since the JavaScript verification is targeted at new users, a MitM or exploit on
+    our website could defeat any verification technique by providing
+    simplified instructions or by faking the verification.
+
+<!--
+
+    See sysadmin#17985
+
+    Note that our website is already in the [HSTS preload list of major
+    browsers](https://hstspreload.org/?domain=tails.net), which forces HTTPS connections to our website, even for
+    first time visitors.
+
+-->
+
+  - [C] Insert malicious content on https://tails.net/ through an
+    exploit on our website as this could trick new users to skip the Tails
+    image verification all the way. To prevent this kind of attack we
+    should instead:
+
+    - Monitor externally the most relevant parts of our website.
+    - Work on integrating full upgrades in Tails Upgrader to limit the
+      number of times people have to rely on our website to upgrade. See
+      [[!tails_ticket 7499]].
+
+  - [D] Insert malicious information in our main Git repository as such
+    an attacker could do attack [C] as well.
+
+  - [E] Insert targeted malware in the user's computer or web browser as this could
+    defeat any possible verification mechanism that such JavaScript
+    can do.
+
+    For example, we cannot protect from a malicious extension installed
+    in the web browser.
+
+  - [G] Insert malicious content on https://tails.net/ after taking
+    control of the web server, or entire system, behind it. Such an
+    attacker could do attack [C] as well but in such a way that could be
+    much harder to detect (for example by serving malicious content only to
+    some users).
+
+  - [J] Provide a malicious copy of our website on a similar looking URL
+    that could pretend that verification has succeeded without actually
+    verifying anything.
+
+Functioning
+===========
+
+Image description file
+----------------------
+
+When verifying a Tails image, the JavaScript:
+
+1. Downloads an image description file (IDF) from:
+
+   <https://tails.net/install/v2/Tails/amd64/stable/latest.json>
+
+   The image description file is served with the HTTP headers `Access-Control-Allow-Origin: *` to allow
+   developers to test the verification locally from a `file:///` URL.
+
+1. Verifies that the checksum of the image is present in the image description file.
+
+*Forge* library
+---------------
+
+The JavaScript uses the
+[*Forge*](https://github.com/digitalbazaar/forge/) library to calculate
+the checksum.
+
+We chose *Forge* because it was [the fastest in this benchmark of
+JavaScript checksum
+implementations](https://github.com/brillout/test-javascript-hash-implementations).
+
+We cannot use the native [SubtleCrypto.digest()
+API](https://developer.mozilla.org/en-US/docs/Web/API/SubtleCrypto/digest)
+because it [cannot read files as
+streams](https://github.com/w3c/webcrypto/issues/73) and would require
+loading the entire image in memory before computing its checksum.
+
+We also rely on reading the image as a stream to display the progress
+bar, which is really important since the whole verification takes close
+to 1 minute.
+
+Browser compatibility
+---------------------
+
+- Internet Explorer is not supported because our JavaScript uses the
+  [readAsBinaryString
+  API](https://developer.mozilla.org/en-US/docs/Web/API/FileReader/readAsBinaryString).
+
+- Browsers without JavaScript are instructed to either enable JavaScript
+  or compare the checksum.

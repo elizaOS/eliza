@@ -1,0 +1,85 @@
+--- a/etc/apparmor.d/usr.sbin.cupsd	2023-05-24 09:59:35.799878841 +0000
++++ b/etc/apparmor.d/usr.sbin.cupsd	2023-05-24 10:00:21.084264915 +0000
+@@ -4,6 +4,8 @@
+ 
+ #include <tunables/global>
+ 
++@{etccups}=/{etc/cups,live/persistence/TailsData_unlocked/cups-configuration}
++
+ /usr/sbin/cupsd flags=(attach_disconnected) {
+   #include <abstractions/base>
+   #include <abstractions/bash>
+@@ -63,9 +65,9 @@
+   /dev/bus/usb/ r,
+   /dev/bus/usb/** rw,
+   /dev/parport* rw,
+-  /etc/cups/ rw,
+-  /etc/cups/** rw,
+-  /etc/cups/interfaces/* ixrw,
++  @{etccups}/ rw,
++  @{etccups}/** rw,
++  @{etccups}/interfaces/* ixrw,
+   /etc/foomatic/* r,
+   /etc/gai.conf r,
+   /etc/papersize r,
+@@ -81,10 +83,10 @@
+   @{PROC}/*/auxv r,
+   @{PROC}/sys/crypto/** r,
+   /sys/** r,
+-  /usr/bin/* ixr,
+-  /usr/sbin/* ixr,
+-  /{usr/,}bin/* ixr,
+-  /{usr/,}sbin/* ixr,
++  /usr/bin/{[^hu],h[^p],hp[^i],hpi[^j],hpij[^s],u[^n],un[^i],uni[^x],unix[^_],unix_[^c],unix_c[^h],unix_ch[^k],unix_chk[^p],unix_chkp[^w],unix_chkpw[^d]}* ixr,
++  /usr/sbin/{[^u],u[^n],un[^i],uni[^x],unix[^_],unix_[^c],unix_c[^h],unix_ch[^k],unix_chk[^p],unix_chkp[^w],unix_chkpw[^d]}* ixr,
++  /{usr/,}bin/{[^hu],h[^p],hp[^i],hpi[^j],hpij[^s],u[^n],un[^i],uni[^x],unix[^_],unix_[^c],unix_c[^h],unix_ch[^k],unix_chk[^p],unix_chkp[^w],unix_chkpw[^d]}* ixr,
++  /{usr/,}sbin/{[^u],u[^n],un[^i],uni[^x],unix[^_],unix_[^c],unix_c[^h],unix_ch[^k],unix_chk[^p],unix_chkp[^w],unix_chkpw[^d]}* ixr,
+   /usr/lib/** rm,
+ 
+   # backends which come with CUPS can be confined
+@@ -109,7 +111,16 @@
+ 
+   # third party backends get no restrictions as they often need high
+   # privileges and this is beyond our control
+-  /usr/lib/cups/backend/* Cx -> third_party,
++  # Due to Tails#9963 we hard-code the third-party backends we ship:
++  # /usr/lib/cups/backend/* Cx -> third_party,
++  /usr/lib/cups/backend/beh Cx -> third_party,
++  /usr/lib/cups/backend/cups-brf Cx -> third_party,
++  /usr/lib/cups/backend/driverless Cx -> third_party,
++  /usr/lib/cups/backend/driverless-fax Cx -> third_party,
++  /usr/lib/cups/backend/gutenprint5[0-9]+usb Cx -> third_party,
++  /usr/lib/cups/backend/hp Cx -> third_party,
++  /usr/lib/cups/backend/hpfax Cx -> third_party,
++  /usr/lib/cups/backend/implicitclass Cx -> third_party,
+ 
+   /usr/lib/cups/cgi-bin/* ixr,
+   /usr/lib/cups/daemon/* ixr,
+@@ -134,6 +145,7 @@
+   /var/cache/cups/** rwk,
+   /var/log/cups/ rw,
+   /var/log/cups/* rw,
++  /var/spool/ rwk,
+   /var/spool/cups/ rw,
+   /var/spool/cups/** rw,
+ 
+@@ -148,7 +160,7 @@
+   /etc/krb5.conf r,
+   deny /etc/krb5.conf w,
+   /etc/krb5.keytab rk,
+-  /etc/cups/krb5.keytab rwk,
++  @{etccups}/krb5.keytab rwk,
+   /tmp/krb5cc* k,
+ 
+   # likewise authentication
+@@ -204,8 +216,8 @@
+   /{usr/,}bin/bash ixr,
+   /{usr/,}bin/cp ixr,
+   /etc/papersize r,
+-  /etc/cups/cups-pdf.conf r,
+-  /etc/cups/ppd/*.ppd r,
++  /@{etccups}/cups-pdf.conf r,
++  /@{etccups}/ppd/*.ppd r,
+   /usr/bin/gs ixr,
+   /usr/lib/cups/backend/cups-pdf mr,
+   /usr/lib/ghostscript/** mr,

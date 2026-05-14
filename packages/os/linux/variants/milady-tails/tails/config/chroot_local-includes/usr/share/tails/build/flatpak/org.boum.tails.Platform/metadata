@@ -1,0 +1,13 @@
+[Runtime]
+name = org.boum.tails.Platform
+runtime = org.boum.tails.Platform/x86_64/stable
+
+# Based on https://gitlab.com/freedesktop-sdk/freedesktop-sdk/-/blob/freedesktop-sdk-24.08.18/elements/flatpak-images/platform.bst?ref_type=tags#L19-26
+[Environment]
+GI_TYPELIB_PATH = /app/lib/girepository-1.0
+GST_PLUGIN_SYSTEM_PATH = /app/lib/gstreamer-1.0:/usr/lib/extensions/gstreamer-1.0:/usr/lib/x86_64-linux-gnu/gstreamer-1.0
+XDG_DATA_DIRS = /app/share:/usr/share:/usr/share/runtime/share:/run/host/user-share:/run/host/share
+ALSA_CONFIG_DIR = /usr/share/alsa
+ALSA_CONFIG_PATH = /usr/share/alsa/alsa-flatpak.conf
+__EGL_EXTERNAL_PLATFORM_CONFIG_DIRS = /etc/egl/egl_external_platform.d:/usr/lib/x86_64-linux-gnu/GL/egl/egl_external_platform.d:/usr/share/egl/egl_external_platform.d
+PYTHONUSERBASE = /var/data/python

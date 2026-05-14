@@ -1,0 +1,53 @@
+#!/bin/sh
+
+set -e
+set -u
+set -o pipefail
+
+error() {
+    echo "error: ${*}" >&2
+    exit 1
+}
+
+USAGE="Usage: $(basename "${0}") TOR_BROWSER_GIT_REPO TOR_BROWSER_BASE_REF"
+
+[ ${#} -eq 2 ] || error "${USAGE}"
+
+TOR_BROWSER_GIT_DIR="${1}"/.git
+TOR_BROWSER_BASE_REF="${2}"
+
+if ! git --git-dir="${TOR_BROWSER_GIT_DIR}" status >/dev/null; then
+    error "error: ${1} is no a Git directory"
+fi
+
+if [ -z "${TAILS_GIT_REPO:-}" ]; then
+    TAILS_GIT_REPO=$(git rev-parse --show-toplevel)
+fi
+
+cd "${TOR_BROWSER_GIT_DIR}"
+
+git diff "${TOR_BROWSER_BASE_REF}".. -- '*' ':!toolkit/locales/' |
+    sed 's@^\(---\|+++\) \([^/]\+\)/browser/components/abouttor/content/@\1 \2/chrome/browser/content/browser/abouttor/@' |
+    sed 's@^\(---\|+++\) \([^/]\+\)/browser/components/abouttor/@\1 \2/actors/@' \
+        >"${TAILS_GIT_REPO}"/config/chroot_local-includes/usr/share/tails/build/custom-about-tor/browser-omni.patch
+
+tmp="$(mktemp -d)"
+(
+    for f in $(git diff --name-only "${TOR_BROWSER_BASE_REF}".. -- toolkit/locales); do
+        dirname=$(dirname "${f}" | sed 's@toolkit/locales/@localization/@')
+        filename=$(basename "${f}")
+        cd "${tmp}"
+        mkdir -p a/"${dirname}" b/"${dirname}"
+        git --git-dir="${TOR_BROWSER_GIT_DIR}" show "${TOR_BROWSER_BASE_REF}":"${f}" | sed '/^#/d' \
+            >a/"${dirname}/${filename}"
+        git --git-dir="${TOR_BROWSER_GIT_DIR}" show HEAD:"${f}" | sed '/^#/d' \
+            >b/"${dirname}/${filename}"
+    done
+    diff -Naur a b >"${TAILS_GIT_REPO}"/config/chroot_local-includes/usr/share/tails/build/custom-about-tor/omni.patch || :
+)
+rm -r "${tmp}"
+
+cd "${TAILS_GIT_REPO}"
+git commit -m "Tor Browser: refresh custom about:tor patches onto ${TOR_BROWSER_BASE_REF}" \
+    config/chroot_local-includes/usr/share/tails/build/custom-about-tor &&
+    git show

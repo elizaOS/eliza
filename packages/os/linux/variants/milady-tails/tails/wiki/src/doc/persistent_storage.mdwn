@@ -1,0 +1,65 @@
+[[!meta title="Persistent Storage"]]
+
+Everything you do disappears automatically when you shut down Tails.
+
+But you can save some of your files and configuration in an encrypted
+Persistent Storage on your Tails USB stick, for example:
+
+- Your documents
+
+- Your Wi-Fi passwords
+
+- Your browser bookmarks
+
+- ...
+
+The Persistent Storage is an encrypted partition protected by a passphrase
+that occupies all the free space left on the USB stick.
+
+Everything in the Persistent Storage is encrypted automatically.
+
+You can choose to unlock your Persistent Storage or not each time you
+start Tails.
+
+<div class="caution">
+
+<p>The Persistent Storage is not hidden. An attacker in possession of your USB
+stick can know that there is a Persistent Storage. Take into consideration that
+you could be forced or tricked to give out its passphrase.</p>
+
+</div>
+
+[[!inline pages="doc/persistent_storage.index" raw="yes" sort="age"]]
+
+<h2 id="luks">How strong is the encryption of the Persistent Storage?</h2>
+
+The encryption of the Persistent Storage uses LUKS and DMCrypt.
+
+[LUKS](https://gitlab.com/cryptsetup/cryptsetup/) and
+[DMCrypt](https://gitlab.com/cryptsetup/cryptsetup/-/wikis/DMCrypt) are the
+standard system for disk encryption in Linux. Tails uses their default
+encryption parameters, which are considered highly secure. This is the same
+technique as we recommend for [[creating and using encrypted
+volumes|doc/encryption_and_privacy/encrypted_volumes]] in general.
+
+<div class="attack">
+
+<!-- Consider removing after #18148. -->
+
+<p>The weakest point of such encryption is often the passphrase chosen by
+the user.</p>
+
+   <p>We recommend choosing a long passphrase made of 5 to 7 random words.
+   <a href="https://theintercept.com/2015/03/26/passphrases-can-memorize-attackers-cant-guess/">Learn
+   about the maths behind memorizable and secure passphrases.</a></p>
+
+<!-- Spaces added for translators. -->
+
+</div>
+
+<div class="tip">
+
+<p>To learn more about how the Persistent Storage is implemented, see our
+[[design documentation|contribute/design/persistence]].</p>
+
+</div>

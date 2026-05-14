@@ -1,0 +1,222 @@
+#! /bin/sh
+# automatically run by "lb config"
+
+set -e
+set -u
+set -x
+
+. "$(dirname "$0")/scripts/utils.sh"
+
+. config/variables
+
+if [ -n "${SOURCE_DATE_EPOCH}" ]; then
+    CURRENT_EPOCH="$(date --utc +%s)"
+    if [ "${SOURCE_DATE_EPOCH}" -gt "${CURRENT_EPOCH}" ]; then
+        fatal "SOURCE_DATE_EPOCH is set after the current time. Exiting."
+    fi
+else
+    fatal "SOURCE_DATE_EPOCH is not set. Exiting."
+fi
+
+if [ -n "${FEATURE_BRANCH_GIT_COMMIT:-}" ]; then
+    GIT_SHORT_ID="$(git rev-parse --short=10 "${FEATURE_BRANCH_GIT_COMMIT}")"
+    GIT_COMMIT="${FEATURE_BRANCH_GIT_COMMIT}"
+else
+    GIT_SHORT_ID="$(git_current_commit --short=10)"
+    GIT_COMMIT="$(git_current_commit)"
+fi
+
+# get git branch or tag so we can set the basename appropriately.
+GIT_BRANCH="$(git_current_branch)"
+GIT_BASE_BRANCH_SHORT_ID="$(echo "$BASE_BRANCH_GIT_COMMIT" | head --bytes=10)"
+if [ -n "${GIT_BRANCH}" ]; then
+    CLEAN_GIT_BRANCH=$(echo "$GIT_BRANCH" | sed 's,/,_,g')
+    BASE_BRANCH_PART=''
+    if [ "${GIT_BRANCH}" != "$(base_branch)" ]; then
+        CLEAN_GIT_BASE_BRANCH=$(base_branch | sed 's,/,_,g')
+        BASE_BRANCH_PART="+${CLEAN_GIT_BASE_BRANCH}@${GIT_BASE_BRANCH_SHORT_ID}"
+    fi
+    BUILD_BASENAME="tails-amd64-${CLEAN_GIT_BRANCH}@${GIT_SHORT_ID}${BASE_BRANCH_PART}-${DATETIME_NOW}"
+else
+    if git_on_a_tag; then
+        CLEAN_GIT_TAG=$(git_current_tag | tr '/-' '_~')
+        BUILD_BASENAME="tails-amd64-${CLEAN_GIT_TAG}"
+    else
+        # this shouldn't reasonably happen (e.g. only if you checkout a
+        # tag, remove the tag and then build)
+        fatal "Neither a Git branch nor a tag, exiting."
+    fi
+fi
+
+# save variables that lb build needs
+mkdir -p tmp
+echo "BUILD_BASENAME='${BUILD_BASENAME}'" >tmp/build_environment
+
+# sanity checks
+if grep -qs -E '^Pin:\s+release\s+.*a=' config/chroot_apt/preferences; then
+    fatal "Found unsupported a= syntax in config/chroot_apt/preferences," \
+        "use n= instead. Exiting."
+fi
+if grep -qs -E '^Pin:\s+release\s+.*o=Debian Backports' \
+    config/chroot_apt/preferences; then
+    fatal "Found unsupported 'o=Debian Backports' syntax," \
+        "in config/chroot_apt/preferences. Use o=Debian instead. Exiting."
+fi
+if [ "$(dpkg --print-architecture)" != amd64 ]; then
+    fatal "Only amd64 build systems are supported"
+fi
+
+# space-separated list of additional packages debootstrap installs
+#  - gnupg: needed by apt-key, not installed by default since Buster
+export LB_BOOTSTRAP_INCLUDE="gnupg"
+
+# init variables
+RUN_LB_CONFIG="lb config noauto"
+
+# init config/ with defaults for the target distribution
+$RUN_LB_CONFIG --distribution trixie "${@}"
+
+# set up everything for time-based snapshots:
+if [ -n "${APT_SNAPSHOTS_SERIALS:-}" ]; then
+    echo "I: Fixing 'latest' APT snapshots serials to: '${APT_SNAPSHOTS_SERIALS}'."
+    apt-snapshots-serials prepare-build "${APT_SNAPSHOTS_SERIALS}"
+else
+    apt-snapshots-serials prepare-build
+fi
+# record what APT snapshots this build is going to use, so that one
+# can try to reproduce it more reliably
+JENKINS_ENV_PROPERTIES=tails-build-env.list
+{
+    echo "# This file is in Java property file format"
+    echo "# (https://en.wikipedia.org/wiki/.properties)"
+    echo "APT_SNAPSHOTS_SERIALS = $(apt-snapshots-serials cat-json tmp/APT_snapshots.d)"
+} >>"$JENKINS_ENV_PROPERTIES"
+
+DEBIAN_MIRROR="$(apt-mirror debian)"
+DEBIAN_SECURITY_MIRROR="$(apt-mirror debian-security)"
+TORPROJECT_MIRROR="$(apt-mirror torproject)"
+
+[ -n "$DEBIAN_MIRROR" ] || fatal "\$DEBIAN_MIRROR is empty"
+[ -n "$DEBIAN_SECURITY_MIRROR" ] || fatal "\$DEBIAN_SECURITY_MIRROR is empty"
+[ -n "$TORPROJECT_MIRROR" ] || fatal "\$TORPROJECT_MIRROR is empty"
+
+perl -pi \
+    -E \
+    "s|^(deb(?:-src)?\s+)https?://ftp[.]us[.]debian[.]org/debian/?(\s+)|\$1$DEBIAN_MIRROR\$2| ; \
+        s|^(deb(?:-src)?\s+)https?://security[.]debian[.]org/debian-security/?(\s+)|\$1$DEBIAN_SECURITY_MIRROR\$2| ; \
+        s|^(deb(?:-src)?\s+)https?://deb[.]torproject[.]org/torproject[.]org/?(\s+)|\$1$TORPROJECT_MIRROR\$2|" \
+    config/chroot_sources/*.chroot ||
+    fatal "APT mirror substitution failed with exit code $?"
+
+if [ -n "${KERNEL_VERSION}" ]; then
+    kernel_package="linux-image-${KERNEL_VERSION}"
+else
+    kernel_package=linux-image
+fi
+
+# set general options
+$RUN_LB_CONFIG \
+    --verbose \
+    --apt-recommends false \
+    --architecture amd64 \
+    --backports false \
+    --volatile true \
+    --binary-images iso \
+    --binary-indices false \
+    --cache false \
+    --cache-indices false \
+    --cache-packages false \
+    --cache-stages false \
+    --checksums none \
+    --bootappend-live "${CMDLINE_APPEND}" \
+    --bootstrap debootstrap \
+    --bootstrap-config trixie \
+    --archive-areas "main contrib non-free non-free-firmware" \
+    --includes none \
+    --iso-application="Tails" \
+    --iso-publisher="https://tails.net/" \
+    --iso-volume="TAILS ${TAILS_FULL_VERSION}" \
+    --linux-flavours amd64 \
+    --memtest none \
+    --mirror-binary "$DEBIAN_MIRROR" \
+    --mirror-bootstrap "$DEBIAN_MIRROR" \
+    --mirror-chroot "$DEBIAN_MIRROR" \
+    --mirror-binary-security "$DEBIAN_SECURITY_MIRROR" \
+    --mirror-chroot-security "$DEBIAN_SECURITY_MIRROR" \
+    --mirror-binary-volatile "$DEBIAN_MIRROR" \
+    --mirror-chroot-volatile "$DEBIAN_MIRROR" \
+    --packages-lists none \
+    --tasks none \
+    --linux-packages="$kernel_package" \
+    --syslinux-menu vesamenu \
+    --syslinux-splash data/splash.png \
+    --syslinux-timeout 4 \
+    --initramfs=live-boot \
+    "${@}"
+
+install -d config/chroot_local-includes/etc/amnesia/
+install -d config/chroot_local-includes/etc/tails/
+
+# os-release
+cat >>config/chroot_local-includes/etc/os-release <<EOF
+NAME="Tails"
+ID="tails"
+ID_LIKE="debian"
+PRETTY_NAME="Tails"
+VERSION="$TAILS_VERSION"
+HOME_URL="https://tails.net/"
+SUPPORT_URL="https://tails.net/support/"
+BUG_REPORT_URL="https://tails.net/doc/first_steps/whisperback/"
+TAILS_DISTRIBUTION="$TAILS_DISTRIBUTION"
+TAILS_SOURCE_DATE_EPOCH="$SOURCE_DATE_EPOCH"
+TAILS_GIT_COMMIT="$GIT_COMMIT"
+EOF
+
+if [ -n "${GIT_BRANCH}" ]; then
+    cat >>config/chroot_local-includes/etc/os-release <<EOF
+TAILS_GIT_BRANCH="$GIT_BRANCH"
+EOF
+    if [ "$GIT_BRANCH" != "$(base_branch)" ]; then
+        cat >>config/chroot_local-includes/etc/os-release <<EOF
+TAILS_GIT_BASE_BRANCH="$(base_branch)"
+TAILS_GIT_BASE_COMMIT="$BASE_BRANCH_GIT_COMMIT"
+EOF
+    fi
+else
+    cat >>config/chroot_local-includes/etc/os-release <<EOF
+TAILS_GIT_TAG="$(git_current_tag)"
+EOF
+fi
+
+# If you update the following regexp, also update it in
+# config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/UpgradeDescriptionFile/Generate.pm
+if echo "$TAILS_VERSION" | grep -qs -E '~(alpha|beta|rc)[0-9]*$'; then
+    echo 'TAILS_CHANNEL="alpha"' >>config/chroot_local-includes/etc/os-release
+fi
+
+# changelog
+cp debian/changelog config/chroot_local-includes/usr/share/doc/tails/Changelog
+
+# custom APT sources
+tails-custom-apt-sources >config/chroot_sources/tails.chroot ||
+    fatal "tails-custom-apt-sources failed with exit code $?"
+
+# save the original file, shipped by the debootstrap package,
+# so we can always apply our debian-common.patch to the original
+# version
+if ! [ -e /usr/share/debootstrap/scripts/debian-common.bak ]; then
+    cp -a /usr/share/debootstrap/scripts/debian-common \
+        /usr/share/debootstrap/scripts/debian-common.bak
+fi
+# customize debootstrap with some APT magic to log downloads
+patch \
+    --output=/usr/share/debootstrap/scripts/debian-common \
+    /usr/share/debootstrap/scripts/debian-common.bak \
+    data/debootstrap/scripts/debian-common.patch
+sed -i "s,%%topdir%%,$(pwd)," /usr/share/debootstrap/scripts/debian-common
+
+# Ensure /tmp has correct permissions (in auto/build we will
+# `mkdir -p` some of its subdirectories, so if it does not exist yet
+# by then, it'll be created with the default umask, which will prevent
+# users such as _apt from using it during the build process)
+install -d -m 2777 config/chroot_local-includes/tmp/

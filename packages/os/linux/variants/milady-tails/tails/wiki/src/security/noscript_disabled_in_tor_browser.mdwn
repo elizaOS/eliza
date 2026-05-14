@@ -1,0 +1,49 @@
+[[!meta date="Sat, 04 May 2019 00:00:00 +0000"]]
+[[!meta title="Tor Browser not safe without manual action"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+<div class="caution">Tor Browser in Tails 3.13.1 is not safe to use
+without taking the manual steps listed below each time you start
+Tails!</div>
+
+Starting from Friday May 3, a problem in *Firefox* and *Tor Browser*
+disabled all add-ons, especially *NoScript* which is used to:
+
+- Strengthen *Tor Browser* against some JavaScript attacks that can lead
+  to compromised accounts and credentials on websites.
+
+- Enable or disable JavaScript on some websites using the *NoScript*
+  interface, if you use it.
+
+If *NoScript* is activated, the *NoScript* icon appears in the top-right corner
+and *Tor Browser* is safe:
+
+[[!img news/version_3.13.2/with-noscript.png alt="" link="no"]]
+
+If *NoScript* is deactivated, the *NoScript* icon is absent from the top-right corner and *Tor Browser* is unsafe:
+
+[[!img news/version_3.13.2/without-noscript.png alt="" link="no"]]
+
+## Activate *NoScript* manually
+
+To secure *Tor Browser* in Tails 3.13.1 or earlier, you must activate
+*NoScript* every time you start Tails:
+
+1. Open the address `about:config` in *Tor
+   Browser*.
+
+   [[!img news/version_3.13.2/about-config.png link="no"]]
+
+1. Click the **I accept the risk!** button.
+
+1. At the top of the page, search for
+   `xpinstall.signatures.required`.
+
+1. Double-click on the **xpinstall.signatures.required** line in the
+   results to set its value to **false**.
+
+1. Verify that *NoScript* is activated again.
+
+   [[!img news/version_3.13.2/xpinstall-false.png link="no"]]

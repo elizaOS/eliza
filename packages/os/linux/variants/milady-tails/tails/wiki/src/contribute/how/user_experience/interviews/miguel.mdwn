@@ -1,0 +1,30 @@
+[[!meta title="Miguel, May 2017"]]
+
+Miguel is a 20 years old statistics student in Brazil. He is part of
+a collective that works on online privacy and security.
+
+In 2014 he was trying all the privacy tools he and his friends could
+found, and then he started using Tails. Sometimes he doesn't use Tails
+very often, and only as a way to use other people's computers: he
+keeps his passwords is a KeePassX database, along with some personal
+files and his Thunderbird configuration on the Tails persistent
+volume. And sometimes he uses Tails more intensively, for example
+when dealing with sensitive material. Miguel identifies himself as an
+intermediate level Tails user, although he helps others use Tails and
+does not need other people's help himself.
+
+### What he likes
+
+- the new Installation Assistant
+- the amnesic property, that allows him to use other people's
+  computers
+- the fact that Internet connections are routed through Tor
+- he finds Tails easy to use, e.g. the persistence setup
+- the set of bundled software
+
+### What he does not like
+
+- GNOME is heavy on older computers
+- the website translation workflow is hard
+- he misses the ability to install Tails on the command-line with dd
+  (and was surprised when I told him it still worked)

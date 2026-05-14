@@ -1,0 +1,18 @@
+[[!meta date="Sun, 02 Jul 2017 01:02:03 +0000"]]
+[[!meta title="Numerous security holes in Tails 3.0"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+Several security holes that affect Tails 3.0 are now fixed in Tails 3.0.1.
+
+We **strongly** encourage you to
+[[upgrade to Tails 3.0.1|news/version_3.0.1]] as soon as possible.
+
+- tor:  TROVE-2017-006 (aka. [[!tor_bug 22753]] and [[!cve 2017-0377]])
+- Linux: [[!debsa2017 3886]], including [[!cve 2017-1000364]] aka.
+  *Stack Clash*
+- libc: [[!debsa2017 3887]] (aka. *Stack Clash*)
+- libexpat1: [[!debsa2017 3898]]
+- libgcrypt20: [[!debsa2017 3901]]
+- libgnutls30: [[!debsa2017 3884]]

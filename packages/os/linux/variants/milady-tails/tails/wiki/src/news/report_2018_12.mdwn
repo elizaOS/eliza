@@ -1,0 +1,121 @@
+[[!meta title="Tails report for December, 2018"]]
+[[!meta date="Tue, 28 Jan 2019 01:23:45 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!toc]]
+
+Releases
+========
+
+* [[Tails 3.11 was released on December 11|news/version_3.11]] (bugfix release).
+
+* Tails 3.12 is [[scheduled for January 29|contribute/calendar]].
+
+The following changes were introduced in Tails 3.11:
+
+- Add a confirm dialog between downloading and applying an automatic
+  upgrade to control better when the network is disabled and prevent
+  partially applied upgrades. ([[!tails_ticket 14754]] and
+  [[!tails_ticket 15282]])
+
+- When running from a virtual machine, warn about the trustworthiness of
+  the operating system even when running from a free virtualization
+  software. ([[!tails_ticket 16195]])
+
+- Disable *Autocrypt* in *Thunderbird* to prevent sending unencrypted
+  emails by mistake. ([[!tails_ticket 15923]])
+
+- Fix the opening of *Thunderbird* in non-English languages. ([[!tails_ticket 16113]])
+
+- Reduce the logging level of Tor when using bridges. ([[!tails_ticket 15743]])
+
+Code
+====
+
+- We continued working on releasing Tails using a disk image format.
+  This will make it easier to install Tails on Windows and macOS. Part
+  of this work was to switch our image description file format to JSON and to rewrite and
+  release a new version of the Tails verification
+  extension.
+
+- Updated onionshare, torsocks and tails-installer in Debian.
+
+Hot topics on our help desk
+===========================
+
+1. Black screen after the boot menu with Intel GPU (i915) [[!tails_ticket #16224]]
+
+2. Partially applied incremental upgrades cause all kinds of trouble [[!tails_ticket #14754]]
+
+Infrastructure
+==============
+
+- We planned the final steps to make our web translation platform
+  production-ready.
+
+  hefee, emmapeel and our sysadmins have continued working on integrating the
+  translation platform into our infrastructure. The translation server (not yet
+  in production) now updates its Git repository automatically using scripts.
+  A staging website shows translators how their translation will look like in
+  context, once merged into our master branch. The staging website (not yet in
+  production either) is updated automatically.
+
+- We kept working on our new server backup setup, which now works
+  fine in production.
+
+- Our mailing lists were migrated to new providers (puscii,
+  Autistici/Inventati, and some self-hosted on our own
+  infrastructure). Many thanks to boum.org for the support in the last
+  ten years. Thanks as well to puscii and Austistici/Inventati for
+  stepping up now.
+
+- We started running the authoritative nameserver for a couple of Tails
+  DNS zones.
+
+Funding
+=======
+
+We continued working on our yearly donation campaign:
+
+* We added support for [[4 new cryptocurrencies|news/new_cryptocurrencies]].
+
+* We wrote about [[our plans for 2019|news/plans_for_2019]].
+
+* We closed our donation campaign but we don't have the final
+  numbers yet.
+
+Outreach
+========
+
+Past events
+-----------
+
+- intrigeri attended the [Reproducible Builds 2018
+  summit](https://reproducible-builds.org/events/paris2018/).
+  He greatly enjoyed hacking with the Qubes OS folks there,
+  which led us to fix the last issues we had with building
+  our upcoming USB image reproducibly :)
+
+Upcoming events
+---------------
+
+- emmapeel and sajolida will be at [FOSDEM](https://fosdem.org/) on
+  February 2&ndash;3 in Brussels, Belgium.
+
+Press and testimonials
+======================
+
+* 2018-12-05:
+  [Lebanon, Pennsylvania, libraries face issue of computer filters and offer free Tails drives to library users to browse the internet without fear of being traced](https://www.vnews.com/Editorial-Lebanon-Libraries-Face-Issue-of-Computer-Filters-21985853)
+
+* 2018-12-27: Tails : une cause qui nous touche
+  by Mozinet in Communauté Mozilla francophone.
+
+Metrics
+=======
+
+* Tails has been started more than 723 198 times this month. This makes
+  23 329 boots a day on average.
+* 8 125 downloads of the OpenPGP signature of Tails ISO from our website.
+* 74 bug reports were received through WhisperBack.
+

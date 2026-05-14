@@ -1,0 +1,7 @@
+/* Required, do not remove */
+@namespace url("http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul");
+
+/* Hide "Chat account" on Thunderbird's start-up page */
+#CreateAccountChat
+
+{ display: none; }

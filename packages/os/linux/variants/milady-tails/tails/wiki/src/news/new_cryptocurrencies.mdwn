@@ -1,0 +1,36 @@
+[[!meta date="Wed, 5 Dec 2018 18:00:00 +0000"]]
+[[!meta title="We are accepting donations in 4 new cryptocurrencies"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+
+Users of cryptocurrencies have been huge supporters of Tails in all our
+previous donation campaigns and we are extremely thankful to them!
+
+As part of our on-going [[donation|news/2018-fundraiser]]
+[[campaign|achievements_in_2018]], we are now accepting donations in 4
+new cryptocurrencies, in addition to Bitcoins.
+
+We chose these 4 because they are the most popular and easiest for us to
+receive. We might add more cryptocurrencies in the future as they gain
+momentum.
+
+But as of now, we hope the 5 crypto and 4 legacy currencies you'll find on the
+donation page will provide you with the necessary means to support us!
+
+### Bitcoin Cash
+
+**qrzav77wkhd942nyqvya34mya3fqxzx90ypjge0njh**
+
+### Ethereum
+
+**0xD6A73051933ab97C38cEFf2abB2f9E06F3a3ed78**
+
+### Ethereum Classic
+
+**0x86359F8b44188c105E198DdA3c0421AC60729195**
+
+### Litecoin
+
+**MJ1fqVucBt8YpfPiQTuwBtmLJtzhizx6pz**
+
+[Donate](https://tails.net/donate/)

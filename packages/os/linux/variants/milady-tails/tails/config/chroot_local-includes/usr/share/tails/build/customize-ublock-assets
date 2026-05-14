@@ -1,0 +1,72 @@
+#!/usr/bin/python3 -I
+
+import argparse
+import json
+import sys
+from pathlib import Path
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Customize uBlock blocklists")
+    parser.add_argument(
+        "--input-file",
+        type=str,
+        action="store",
+        required=True,
+        help="Input uBlock assets.json file",
+    )
+    parser.add_argument(
+        "--output-file",
+        type=str,
+        action="store",
+        required=True,
+        help="Output uBlock assets.json file",
+    )
+    args = parser.parse_args()
+
+    with Path(args.input_file).open(encoding="utf-8") as input_fd:
+        orig_assets = json.load(input_fd)
+
+    # Filter out per-region/language additional blocklists (tails#20022),
+    # so that all Tails users share a unique uBlock fingerprint.
+    new_assets = {
+        k: v for (k, v) in orig_assets.items() if v.get("group", "none") != "regions"
+    }
+
+    if len(new_assets) >= len(orig_assets):
+        print("Failed to filter out assets", file=sys.stderr)
+        sys.exit(1)
+
+    # Remove ability to download the list of blocklists, otherwise
+    # clicking "Update now" in the uBlock settings would bring back
+    # the full list of blocklists, including the per-region/language
+    # one that have just filtered out.
+    #
+    # We do this by removing every string that starts with "http" from
+    # "cdnURLs" and "contentURL". The remaining strings look like
+    # local relative paths, which seem innocuous in the context of
+    # tails#20022, so we leave them alone.
+    for blocklist in new_assets:
+        for url_list in {"cdnURLs", "contentURL"}:
+            if url_list not in new_assets[blocklist]:
+                continue
+
+            # contentURL is either a URL (string) or a list of URLs;
+            # let's merge both cases into a single one.
+            # cdnURLs is always a list so far, but let's be ready
+            # in case it can be a string as well.
+            if isinstance(new_assets[blocklist][url_list], str):
+                new_assets[blocklist][url_list] = [new_assets[blocklist][url_list]]
+
+            new_assets[blocklist][url_list] = [
+                url
+                for url in new_assets[blocklist][url_list]
+                if not url.startswith("http")
+            ]
+
+    with Path(args.output_file).open("w", encoding="utf8") as output_fd:
+        json.dump(new_assets, output_fd, indent="\t", ensure_ascii=False)
+
+
+if __name__ == "__main__":
+    main()

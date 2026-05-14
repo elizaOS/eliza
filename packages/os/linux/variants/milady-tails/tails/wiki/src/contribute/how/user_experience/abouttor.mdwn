@@ -1,0 +1,104 @@
+[[!meta title="Customizing `about:tor`"]]
+
+# Development process
+
+Here is how to test changes to `about:tor`, without having to rebuild Tor
+Browser or Tails.
+
+However, please consider
+[Building Tor Browser](https://gitlab.torproject.org/tpo/applications/wiki/-/blob/master/Development-Information/Tor-Browser/dev-Build.md):
+it is actually pretty easy and once done once (for a given version),
+`make && make run` is a quicker & more convenient to way to iterate on
+`about:tor` contents and JS code changes than what's described below.
+
+## Initial setup
+
+What follows assumes:
+
+ - Your current working directory is the checkout of `tor-browser.git`
+   that you are developing your changes in.
+ - `TAILS_GIT_REPO` is set to the path to a checkout of `tails.git`.
+ - `TOR_BROWSER_TARBALL` is set to the path to a Tor Browser tarball
+   that you want to test your changes with.
+ - `sudo apt install 7zip`
+
+## Modify files
+
+These are the relevant files in `tor-browser.git`:
+
+ - Page contents (HTML, JS, CSS, images):
+   - `./browser/components/abouttor/content/`
+   - `./browser/components/abouttor/AboutTorParent.sys.mjs`
+ - User-visible strings
+   - `toolkit/locales/en-US/toolkit/global/tor-browser.ftl`
+
+You can test your changes like this:
+
+    "${TAILS_GIT_REPO:?}"/bin/test-about-tor-customization "${TOR_BROWSER_TARBALL:?}"
+
+## Submit your changes upstream
+
+[Contributing to Tor Browser](https://gitlab.torproject.org/tpo/applications/wiki/-/blob/master/Development-Information/Tor-Browser/Contributing-to-Tor-Browser.md?ref_type=heads):
+explains how to create issues and MRs, how to choose branch names, how to write commit messages, etc.
+
+# Tips and resources
+
+## Localization
+
+See [Localization](https://gitlab.torproject.org/tpo/applications/wiki/-/blob/master/Development-Information/Tor-Browser/Localization.md?ref_type=heads)
+
+
+## Simulate different conditions
+
+### Simulate other time spans
+
+To simulate running the browser during a specific time span, use `potentiallyShow` in `aboutTor.js`.
+Examples:
+ - Outside of a YEC, the code has a simple example for a survey.
+ - [Full blown YEC example](https://gitlab.torproject.org/tpo/applications/tor-browser/-/merge_requests/1689/diffs)
+
+### Not in Tails
+
+If you want to display the about:tor page as it is shown to non-Tails users, apply this:
+
+```
+diff --git a/browser/components/abouttor/AboutTorParent.sys.mjs b/browser/components/abouttor/AboutTorParent.sys.mjs
+index 9d6a97e61b46..b1f0bf553e17 100644
+--- a/browser/components/abouttor/AboutTorParent.sys.mjs
++++ b/browser/components/abouttor/AboutTorParent.sys.mjs
+@@ -70,7 +70,7 @@ export class AboutTorParent extends JSWindowActorParent {
+       ),
+       appLocale,
+       dismissYEC: AboutTorParent.#dismissYEC,
+-      isTails: Services.prefs.getBoolPref(tailsPref, false),
++      isTails: false,
+     };
+   }
+```
+
+### Not Stable
+
+Tor Browser shows a different page for non-stable releases. If you are building the Tor Browser (as opposed to
+using `"${TAILS_GIT_REPO:?}"/bin/test-about-tor-customization`), you'll get a non-stable release.
+If you use `"${TAILS_GIT_REPO:?}"/bin/test-about-tor-customization`, you'll get a stable release.
+Whatever method you are using, you probably want to test what happens in the other case.
+
+In order to display about:tor as if you were using a non-stable release, apply this patch:
+
+```
+diff --git a/browser/components/abouttor/AboutTorParent.sys.mjs b/browser/components/abouttor/AboutTorParent.sys.mjs
+index 9d6a97e61b46..5a3f84812e9e 100644
+--- a/browser/components/abouttor/AboutTorParent.sys.mjs
++++ b/browser/components/abouttor/AboutTorParent.sys.mjs
+@@ -62,7 +62,7 @@ export class AboutTorParent extends JSWindowActorParent {
+     return {
+       torConnectEnabled: lazy.TorConnect.enabled,
+       messageData: lazy.AboutTorMessage.getNext(),
+-      isStable: AppConstants.MOZ_UPDATE_CHANNEL === "release",
++      isStable: false,
+       searchOnionize: Services.prefs.getBoolPref(onionizePref, false),
+       surveyDismissVersion: Services.prefs.getIntPref(
+         surveyDismissVersionPref,
+```
+
+obviously just flip `isStable` to `true` if you want to test the opposite scenario.

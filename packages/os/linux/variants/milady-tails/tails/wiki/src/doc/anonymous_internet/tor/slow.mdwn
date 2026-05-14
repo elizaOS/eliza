@@ -1,0 +1,37 @@
+[[!meta title="Why is Tor slow?"]]
+
+Users often find that the Tor network is slow. This page describes some
+reasons that make Tor slow.
+
+Tor circuits lengthen the connections
+=====================================
+
+Tor provides anonymity by building circuits with 3 relays. So,
+instead of connecting directly to the destination server, a connection
+is made between each relay of the circuit and this takes more time.
+
+Furthermore, Tor tries to build circuits with relays in different
+countries which make connection travel more and appear slower.
+
+[[!img tor/tor.png link="no" class="svg" alt="A Tor connection goes through 3 relays with the last one establishing the actual connection to the final destination"]]
+
+Quality of the relays
+=====================
+
+The Tor relays are run by volunteers in a decentralized way. So all
+relays are not of the same quality. Some are big and fast, while some
+others are smaller and slower. As a whole, the network could be faster
+if it had more capacity. To improve the capacity of the Tor network, you
+can either run a Tor relay yourself or [help existing
+relays](https://torservers.net/members/).
+
+Misuse of the Tor network
+=========================
+
+Some people misuse the Tor network, sometimes on purpose or sometimes by
+lack of knowledge. For instance, Tor is sometimes used to conduct
+[[!wikipedia Ddos#Distributed_attack desc="DDoS attacks"]]. By
+doing this, the Tor relays are the ones who actually suffer from the
+attack, instead of the intended target.  Some people use [[!wikipedia
+Peer_to_peer desc="peer-to-peer software"]] through Tor which
+is bad for the network.

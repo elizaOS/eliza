@@ -1,0 +1,80 @@
+#!/bin/bash
+
+set -e
+
+# Including common functions
+. "${LB_BASE:-/usr/share/live/build}"/scripts/build.sh
+
+# Setting static variables
+# shellcheck disable=SC2034
+{
+    DESCRIPTION="$(Echo 'adding CPU autodetection to the syslinux menu')"
+    HELP=""
+    USAGE="${PROGRAM}"
+}
+
+# Reading configuration files
+Read_conffiles config/all config/bootstrap config/common config/binary
+Set_defaults
+
+# Safeguards
+[ "${LB_BOOTLOADER}" = "syslinux" ] || exit 0
+[ "${LB_ARCHITECTURE}" = "amd64" ] || exit 0
+
+# Seems like we'll have work to do
+Echo_message "adding CPU autodetection to the syslinux menu"
+
+# Setting variables
+SYSLINUX_PATH="binary/isolinux"
+SYSLINUX_CFG="${SYSLINUX_PATH}/isolinux.cfg"
+SYSLINUX_LIVE_CFG="${SYSLINUX_PATH}/live.cfg"
+SYSLINUX_MENU_CFG="${SYSLINUX_PATH}/menu.cfg"
+
+# Checking depends
+Check_package chroot/usr/bin/syslinux syslinux
+
+# Restoring cache
+Restore_cache cache/packages_binary
+
+# Installing depends
+Install_package
+
+# Copy necessary syslinux modules
+for module in cat.c32 ifcpu64.c32; do
+    cp "chroot/usr/lib/syslinux/modules/bios/${module}" "${SYSLINUX_PATH}/"
+done
+
+# Saving cache
+Save_cache cache/packages_binary
+
+# Removing depends
+Remove_package
+
+# Replace syslinux.cfg with autodetection "code"
+cat >"${SYSLINUX_CFG}" <<EOF
+label select_menu
+       com32 ifcpu64.c32
+       append menu_64 -- menu_32 -- menu_32
+label menu_64
+       kernel vesamenu.c32
+       append live64.cfg
+label menu_32
+       com32 cat.c32
+       append sorry32.txt
+default select_menu
+prompt 0
+EOF
+
+# Set a few variables in menu.cfg as loading vesamenu.c32 resets its
+# state to the defaults
+sed -i -e "1i prompt 0\ntimeout 40\n" "${SYSLINUX_MENU_CFG}"
+
+# Generate a live$arch.cfg for each architecture
+(
+    echo "include menu.cfg"
+    sed -n -e '/^label live-amd64.*/ { q } ; p' "${SYSLINUX_LIVE_CFG}"
+) >"${SYSLINUX_PATH}/live64.cfg"
+
+# Don't load live.cfg from menu.cfg:
+# syslinux_cfg automatically loads arch-specific menus
+sed -i -e '/^include live\.cfg/d' "${SYSLINUX_MENU_CFG}"

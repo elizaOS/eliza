@@ -1,0 +1,21 @@
+[[!meta date="Thu, 07 Jan 2016 12:34:56 +0000"]]
+[[!meta title="Numerous security holes in Tails 1.8.1"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+Several security holes that affect Tails 1.8.1 are now fixed in Tails 1.8.2.
+
+We **strongly** encourage you to [[upgrade to Tails 1.8.2|news/version_1.8.2]] as soon as possible.
+
+Details
+=======
+
+* Tor Browser: [[!mfsa 2015-150]], [[!tor_bug 17931]]
+* foomatic-filters: [[!debsa2015 3429]]
+* libxml2: [[!debsa2015 3430]]
+* icedove: [[!debsa2016 3432]]
+* samba: [[!debsa2016 3433]]
+* linux: [[!debsa2016 3434]]
+* git: [[!debsa2016 3435]]
+* openssl: [[!debsa2016 3436]]

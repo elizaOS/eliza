@@ -1,0 +1,98 @@
+#!/bin/sh
+
+PREREQS=""
+
+prereqs() { echo "$PREREQS"; }
+
+case "$1" in
+prereqs)
+    prereqs
+    exit 0
+    ;;
+esac
+
+# Import set_partition_error_reason()
+. /scripts/lib/lib.sh
+
+set -eu
+set -x
+
+if [ -e "${REPARTITIONING_ERROR_FLAG_FILE}" ]; then
+    # We don't want to overwrite partition errors detected even
+    # earlier, e.g. during first_boot_repartition.
+    echo "Skipping verify_partition_table because partition errors " \
+        "were already detected"
+    exit 0
+fi
+
+ORIG_DISK_GUID="17B81DA0-8B1E-4269-9C39-FE5C7B9B58A3"
+
+# The minimum size of the system partition in bytes.
+# We support Tails systems installed back when Tails Installer created
+# 2500 MiB system partitions, minus 4 MiB because sometimes partitioning
+# software has its own opinion on the exact size things should have,
+# e.g. to align on physical sectors.
+MIN_SYSTEM_PARTITION_SIZE=$((2500 * 1024 * 1024 - 4 * 1024 * 1024))
+# The filesystem might not fill the whole partition so here we accept
+# 32 MiB slack.
+MIN_SYSTEM_FS_SIZE=$((MIN_SYSTEM_PARTITION_SIZE - 32 * 1024 * 1024))
+
+PARENT_DEVICE="$1"
+
+# Verify the GPT headers and partition tables. We've seen cases where
+# both the MBR and the GPT backup tables were corrupted, which caused
+# the Persistent Storage partition to fail to be created. It can also
+# break fatresize, leaving the system partition too small for automatic
+# upgrades (and at some point manual upgrades too). Note that as long as
+# either the MBR or the GPT is intact, sgdisk --verify exits with 0 even
+# if it detects corruption, so we parse its output below to check for
+# errors.
+sgdisk --verify "${PARENT_DEVICE}"
+
+# Check if the system partition was resized
+SECTORS=$(sgdisk --info=1 "${PARENT_DEVICE}" |
+    sed -n '/^Partition size:/ s/^Partition size: \([0-9]\+\) sectors.*/\1/p')
+PART_SIZE=$((SECTORS * 512))
+if [ "${PART_SIZE}" -lt "${MIN_SYSTEM_PARTITION_SIZE}" ]; then
+    echo "The system partition was not correctly resized " \
+        "(expected at least ${MIN_SYSTEM_PARTITION_SIZE}, got ${PART_SIZE})."
+    set_partition_error_reason 'system-partition-not-resized'
+    exit 1
+fi
+
+# Check if the disk GUID was randomized
+GUID=$(sgdisk --print "${PARENT_DEVICE}" |
+    sed -n '/^Disk identifier (GUID)/ s/^Disk identifier (GUID): // p')
+if [ "${GUID}" = "${ORIG_DISK_GUID}" ]; then
+    echo "The disk GUID was not randomized."
+    set_partition_error_reason 'guid-not-randomized'
+    exit 1
+fi
+
+# fatresize without `--force` sometimes results in an input prompt to
+# fix various things with the filesystem, but we only want to query it
+# for its size.
+FS_SIZE=$(fatresize --force --info "${PARENT_DEVICE}" | sed -n -E 's/^Cur size: (.*)/\1/p')
+if [ "${FS_SIZE}" -lt "${MIN_SYSTEM_FS_SIZE}" ]; then
+    echo "The system partition's file system was not correctly resized " \
+        "(expected at least ${MIN_SYSTEM_FS_SIZE}, got ${FS_SIZE})."
+    set_partition_error_reason 'fs-not-resized'
+    exit 1
+fi
+
+# Check if sgdisk --verify detects any corruption. This verifies the
+# following:
+# * The protective MBR
+# * The GPT header
+# * The GPT partition table
+# * The GPT backup header
+# * The GPT backup partition table
+# This is checked last because it is considered to be the less serious error:
+# despite this error, the user will be able to create Persistent Storage and
+# apply automatic upgrades
+# See https://gitlab.tails.boum.org/tails/tails/-/issues/20163#note_234914
+if sgdisk --verify "${PARENT_DEVICE}" 2>&1 | grep -q -e corrupt -e ERROR; then
+    echo "Detected partitioning corruption"
+    set_partition_error_reason 'partitioning-corruption'
+    exit 1
+fi

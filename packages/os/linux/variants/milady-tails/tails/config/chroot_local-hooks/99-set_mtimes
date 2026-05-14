@@ -1,0 +1,12 @@
+#!/bin/sh
+
+set -e
+
+# Make IUKs smaller
+echo "Setting mtime on large files whose content generally do not change"
+touch --no-create -t 197001010000 \
+   /usr/lib/locale/locale-archive \
+   /usr/share/ppd/hplip/HP/*.ppd
+
+find /usr/share/doc/tails/website -depth -exec \
+   touch --no-create -t 197001010000 '{}' \;

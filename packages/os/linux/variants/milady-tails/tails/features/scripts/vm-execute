@@ -1,0 +1,79 @@
+#!/usr/bin/env ruby
+
+require 'libvirt'
+require 'optparse'
+require 'rexml/document'
+begin
+  top_level_dir = `git rev-parse --show-toplevel`.chomp
+  require "#{top_level_dir}/features/support/helpers/remote_shell.rb"
+  require "#{top_level_dir}/features/support/helpers/misc_helpers.rb"
+rescue LoadError
+  raise "This script must be run from within Tails' Git directory."
+end
+$config = {}
+
+VIRTIO_REMOTE_SHELL = 'org.tails.remote_shell.0'.freeze
+
+def debug_log(*args); end
+
+# Implements the subset of the VM class that we need here
+class FakeVM
+  def initialize
+    @domain_xml = ''
+    begin
+      virt = Libvirt.open('qemu:///system')
+      domain = virt.lookup_domain_by_name('TailsToaster')
+      @domain_xml = domain.xml_desc
+    rescue StandardError
+      raise 'There was a problem with the TailsToaster VM (is it running?)'
+    ensure
+      virt.close
+    end
+  end
+
+  def virtio_channel_socket_path(channel)
+    rexml = REXML::Document.new(@domain_xml)
+    rexml.elements.each('domain/devices/channel') do |e|
+      target = e.elements['target']
+      if target.attribute('name').to_s == channel
+        return e.elements['source'].attribute('path').to_s
+      end
+    end
+    raise 'The running TailsToaster has no remote shell channel!'
+  end
+end
+
+cmd_opts = {
+  spawn: false,
+  user:  'root',
+}
+
+opt_parser = OptionParser.new do |opts|
+  opts.banner = 'Usage: features/scripts/vm-execute [opts] COMMAND'
+  opts.separator ''
+  opts.separator 'Runs commands in the VM guest being tested. This script ' \
+                    "must be run from within Tails' Git directory."
+  opts.separator ''
+  opts.separator 'Options:'
+
+  opts.on('-h', '--help', 'Show this message') do
+    puts opts
+    exit
+  end
+
+  opts.on('-u', '--user USER', 'Run command as USER') do |user|
+    cmd_opts[:user] = user
+  end
+
+  opts.on('-s', '--spawn',
+          'Run command in non-blocking mode') do
+    cmd_opts[:spawn] = true
+  end
+end
+opt_parser.parse!(ARGV)
+cmd = ARGV.join(' ')
+c = RemoteShell::ShellCommand.new(FakeVM.new, cmd, **cmd_opts)
+puts "Return status: #{c.returncode}"
+puts "STDOUT:\n#{c.stdout}"
+puts "STDERR:\n#{c.stderr}"
+exit c.returncode

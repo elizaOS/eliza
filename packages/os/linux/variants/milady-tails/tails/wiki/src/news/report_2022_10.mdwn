@@ -1,0 +1,80 @@
+[[!meta title="Tails report for September and October 2022"]]
+[[!meta date="Mon, 14 Nov 2022 18:00:24 +0100"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!toc levels=2]]
+
+Highlights
+==========
+
+Here's a glimpse at what happened in Tails in September and October.
+
+Analyzing results of usability tests
+------------------------------------
+
+We analyzed the results of the usability tests we did in São Paulo:
+
+ - [first-time use](https://lists.autistici.org/message/20221012.181235.a673efeb.en.html)
+ - [Tor Connection](https://lists.autistici.org/message/20221012.140611.7e58f067.en.html)
+
+Then we prioritized the issues identified there and planned to fix
+a bunch of them in the next few months.
+
+New features
+------------
+
+Our developers brought 3 major new features to beta quality:
+
+ - New Persistent Storage, completely redesigned and vastly more usable
+
+   [[!img test_5.8-beta1/features.png link="no" alt=""]]
+
+ - Wayland and better Unsafe Browser, for better security in depth and
+   usability
+
+ - QR code scanning for Tor bridges
+
+   [[!img test_5.8-beta1/qr_code.png link="no" alt=""]]
+
+We will only release these features officially in Tails 5.8 (December 2022),
+but you can [[try them already in Tails 5.8~beta1|news/test_5.8-beta1]]!
+
+Donation campaign
+-----------------
+
+We launched our end-of-year donation campaign.
+
+Donations from passionate people like you are our most valuable source of
+funding because they guarantee our independence. We are a very small nonprofit
+and our yearly budget is ridiculously small compared to the value of Tails.
+  
+Donate now to fight surveillance and censorship!
+
+Releases
+========
+
+[[Tails 5.5 was released on October 17|news/version_5.5]], including:
+
+- Update *Thunderbird* to [102.3.0](https://www.thunderbird.net/en-US/thunderbird/102.3.0/releasenotes/).
+
+  *Thunderbird* 102 is a major update with [many changes to the navigation,
+folder icons, and address
+book](https://blog.thunderbird.net/2022/06/thunderbird-102-released-a-serious-upgrade-to-your-communication/).
+
+  *Thunderbird* 102 also includes important usability improvements to the
+  OpenPGP feature. When composing an email, you can now see whether it will be
+  encrypted or not. If encryption is impossible, a key assistant helps you
+  solve key issues.
+
+  [[!img version_5.5/thunderbird_102.png link="no" alt="Thunderbird composer window with encryption turned on and notification about a missing key and how to resolve the issue."]]
+
+- Always ask to configure a screen locking password when pressing Ctrl+L and no
+  administration password was set. ([[!tails_ticket 19090]])
+
+[[Tails 5.6 was released on October 25|news/version_5.6]].
+
+Metrics
+=======
+
+Tails has been started more than 698 160 times in September, and 736 378 times
+in October. This makes 23 517 boots a day on average.

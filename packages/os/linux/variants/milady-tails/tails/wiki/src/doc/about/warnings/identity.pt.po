@@ -1,0 +1,142 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"POT-Creation-Date: 2024-05-27 21:54+0000\n"
+"PO-Revision-Date: 2024-06-26 21:52+0000\n"
+"Last-Translator: drebs <drebs@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: pt\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n > 1;\n"
+"X-Generator: Weblate 5.3\n"
+
+#. type: Content of: <div>
+msgid "[[!meta title=\"Protecting your identity when using Tails\"]]"
+msgstr "[[!meta title=\"Protegendo sua identidade durante o uso do Tails\"]]"
+
+#. type: Content of: <h1>
+msgid "Protecting your identity"
+msgstr "Protegendo sua identidade"
+
+#. type: Content of: <div>
+msgid ""
+"[[!inline pages=\"doc/about/warning/identity.inline\" raw=\"yes\" "
+"sort=\"age\"]] [[!toc levels=2]]"
+msgstr ""
+"[[!inline pages=\"doc/about/warning/identity.inline.pt\" raw=\"yes\" "
+"sort=\"age\"]] [[!toc levels=2]]"
+
+#. type: Content of: <h2>
+msgid "Clean metadata from files before sharing them"
+msgstr "Limpe os metadados de arquivos antes de compartilhá-los"
+
+#. type: Content of: <p>
+msgid "Many files contain hidden data, or metadata:"
+msgstr "Vários arquivos contêm dados escondidos, ou metadados:"
+
+#. type: Content of: <ul><li><p>
+msgid ""
+"JPEG and other image files often contain information about where a picture "
+"was taken and which camera was used."
+msgstr ""
+"JPEG e outros formatos de arquivos de imagens geralmente contêm informações "
+"sobre onde a foto foi tirada e qual câmera foi utilizada."
+
+#. type: Content of: <ul><li><p>
+msgid ""
+"Office documents often contain information about their author, and the date "
+"and time the document was created."
+msgstr ""
+"Documentos de Office geralmente contêm informações sobre o autor, além da "
+"data e hora em que o documento foi criado."
+
+#. type: Content of: <p>
+msgid ""
+"To help you clean metadata, Tails include [[<i>Metadata Cleaner</i>|doc/"
+"sensitive_documents/metadata]], a tool to remove metadata in a wide range of "
+"file formats."
+msgstr ""
+"Para te ajudar a limpar metadados, Tails inclui o [[<i>Matadata Cleaner</i>|"
+"doc/sensitive_documents/metadata]], uma ferramenta que remove metadados de "
+"uma grande quantidade de formatos de arquivos."
+
+#. type: Content of: <div><p>
+msgid ""
+"Metadata has been used in the past to locate people from pictures they took. "
+"For an example, see <a href=\"https://www.npr.org/sections/thetwo-"
+"way/2012/12/04/166487197/betrayed-by-metadata-john-mcafee-admits-hes-really-"
+"in-guatemala\">NPR: Betrayed by metadata, John McAfee admits he's really in "
+"Guatemala</a>."
+msgstr ""
+"Metadados já foram usados no passado para localizar pessoas através fotos "
+"que elas tiraram. Veja, por exemplo <a href=\"https://www.npr.org/sections/"
+"thetwo-way/2012/12/04/166487197/betrayed-by-metadata-john-mcafee-admits-hes-"
+"really-in-guatemala\"> NPR: traído pelos metadados, John McAfee admite que "
+"realmente está na Guatemala</a> (em inglês)."
+
+#. type: Content of: <h2>
+msgid "Use Tails sessions for only one purpose at a time"
+msgstr "Use sessões do Tails para apenas um propósito por vez"
+
+#. type: Content of: <p>
+msgid ""
+"If you use Tails sessions for more than one purpose at a time, an adversary "
+"could link your different activities together."
+msgstr ""
+"Se você usar uma sessão Tails para mais de um propósito por vez, um "
+"adversário poderá conseguir associar suas diferentes atividades uma à outra."
+
+#. type: Content of: <p>
+msgid ""
+"For example, if you log into different accounts on the same website in a "
+"single Tails session, the website could determine that the accounts are used "
+"by the same person. This is because websites can tell when 2 accounts are "
+"using the same Tor circuit."
+msgstr ""
+"Por exemplo, se você logar em contas diferentes em um mesmo site usando a "
+"mesma sessão do Tails, este site poderá identificar que as contas diferentes "
+"estão sendo utilizadas pela mesma pessoa. Isso ocorre porque os sites "
+"conseguem saber quando duas contas diferentes estão usando o mesmo circuito "
+"Tor."
+
+#. type: Content of: <p>
+msgid ""
+"To prevent an adversary from linking your activities together while using "
+"Tails, restart Tails between different activities. For example, restart "
+"Tails between checking your work email and your whistleblowing email."
+msgstr ""
+"Para evitar que um adversário consiga associar suas diferentes atividades "
+"uma com a outra durante o uso do Tails, reinicie o Tails entre as diferentes "
+"atividades. Por exemplo, reinicie o Tails depois de checar sua conta de "
+"email do trabalho e antes de checar sua conta de email utilizada para "
+"denúncias."
+
+#. type: Content of: <div><p>
+msgid ""
+"We are not aware of any such attacks to deanonymize people online who used "
+"Tails for different purposes at a time."
+msgstr ""
+"Nós não temos conhecimento de nenhum ataque que possa desanonimizar pessoas "
+"online que tenham usado Tails para um propósito diferente por vez."
+
+#. type: Content of: <p>
+msgid ""
+"If you worry that the files in your [[Persistent Storage|doc/"
+"persistent_storage]] could be used to link your activities together, "
+"consider using a different Tails USB stick for each activity.  For example, "
+"use one Tails USB stick for your activism work and another one for your "
+"journalism work."
+msgstr ""
+"Se você se preocupa com a possibilidade de que os arquivos no seu "
+"[[Armazenamento Persistente|doc/persistent_storage]] sejam utilizados para "
+"associar suas diferentes atividades, pense na possibilidade de usar um "
+"pendrive USB com Tails para cada atividade diferente. Por exemplo, use um "
+"pendrive USB com Tails para seu trabalho de ativismo e outro para o seu "
+"trabalho de jornalismo."

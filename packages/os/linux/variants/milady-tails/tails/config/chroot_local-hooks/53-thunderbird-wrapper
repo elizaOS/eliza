@@ -1,0 +1,18 @@
+#!/bin/sh
+
+set -e
+
+echo "Installing our Thunderbird wrapper"
+
+# Move /usr/bin/thunderbird out of the way (now and for packages
+# installed or upgraded in the future), so we can steal this path,
+# which is hard-coded in thunderbird.desktop, for our own wrapper.
+dpkg-divert \
+    --add \
+    --rename \
+    --divert /usr/bin/thunderbird.real \
+    /usr/bin/thunderbird
+
+# Install a symbolic link to our wrapper, so the Exec= lines
+# from Debian's desktop file work
+ln -s /usr/local/lib/thunderbird /usr/bin/thunderbird

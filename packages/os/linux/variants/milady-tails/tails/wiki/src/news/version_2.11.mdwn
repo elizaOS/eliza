@@ -1,0 +1,82 @@
+[[!meta date="Tue, 07 Mar 2017 12:34:56 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!meta title="Tails 2.11 is out"]]
+[[!tag announce]]
+
+This release fixes [[many security
+issues|security/Numerous_security_holes_in_2.10]] and users should
+upgrade as soon as possible.
+
+[[!toc levels=1]]
+
+# Changes
+
+We are very sad to announce that Tails 2.11 will be the last version
+to include [I2P](https://geti2p.net/), an alternative anonymizing network.
+
+Maintaining software like I2P well-integrated in Tails takes time and
+effort and our team is too busy with other priorities. Unfortunately, we
+failed to find a developer outside of our team to maintain I2P in Tails.
+As a consequence, the last version of I2P being shipped in Tails is
+*0.9.25*, which is nearly one year old now at this moment.
+
+But we will be happy to
+reintroduce I2P if we find a volunteer to take care of maintaining
+it in Tails. If you are a developer and care about I2P in Tails, that person could
+be you! Come [[talk to us|doc/about/contact#tails-dev]]!
+
+## New features
+
+  - If running on a 32-bit processor, notify the user that it won't
+    be able to start Tails 3.0 anymore. ([[!tails_ticket 12193]])
+
+  - Notify I2P users that I2P will be removed in Tails
+    2.12. ([[!tails_ticket 12271]])
+
+## Upgrades and changes
+
+  - Upgrade Tor Browser to 6.5.1.
+
+  - Fix CVE-2017-6074 (local root privilege escalation) by disabling
+    the `dccp` module. ([[!tails_ticket 12280]]) Also disable kernel
+    modules for some other uncommon network protocols. (Part of
+    [[!tails_ticket 6457]])
+
+## Fixed problems
+
+  - Tor Browser: Don't show offline warning when opening the local
+    documentation of Tails. ([[!tails_ticket 12269]])
+
+  - Fix rare issue causing automatic upgrades to not apply properly
+   ([[!tails_ticket 8449]] and [[!tails_ticket 11839]])
+
+  - Install Linux 4.8.15 to prevent GNOME from freezing with Intel
+    GM965/GL960 Integrated Graphics. ([[!tails_ticket 12217]])
+
+For more details, read our [[!tails_gitweb debian/changelog desc="changelog"]].
+
+# Known issues
+
+None specific to this release.
+
+See the list of [[long-standing issues|support/known_issues]].
+
+# Get Tails 2.11
+
+- To install, follow our [[installation instructions|install]].
+
+- To upgrade, an automatic upgrade is available from 2.10 to 2.11.
+
+  If you cannot do an automatic upgrade or if you fail to start after an
+  automatic upgrade, please try to do a [[manual upgrade|doc/upgrade#manual]].
+
+- [[Download Tails 2.11.|install/download]]
+
+# What's coming up?
+
+Tails 2.12 is [[scheduled|contribute/calendar]] for April 18th.
+
+
+We need your help and there are many ways to [[contribute to
+Tails|contribute]] (<a href="https://tails.net/donate/?r=2.11">donating</a> is only one of
+them). Come [[talk to us|doc/about/contact#tails-dev]]!

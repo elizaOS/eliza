@@ -1,0 +1,76 @@
+[[!meta title="Tails 4.24 is out"]]
+[[!meta date="Fri, 04 Nov 2021 12:34:56 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+
+<h1 id="changes">Changes and updates</h1>
+
+- Update *Tor Browser* to [11.0](https://blog.torproject.org/new-release-tor-browser-11-0).
+
+- Make the confirmation dialog of *Tails Installer* more scary when
+  reinstalling a USB stick that has a Persistent Storage. ([[!tails_ticket 18301]])
+
+## Improvements to the Tor Connection assistant
+
+- Improve the time zone selection interface. ([[!tails_ticket 18514]])
+
+- Improve the explanation when fixing the clock. ([[!tails_ticket 18572]]) 
+
+- Explain better how to type a bridge. ([[!tails_ticket 18597]])
+
+- Remove mention to local networks when opening the *Unsafe Browser*. ([[!tails_ticket 18600]])
+
+<h1 id="fixes">Fixed problems</h1>
+
+- Avoid high CPU usage when getting download progress info in *Tails Upgrader*.
+  ([[!tails_ticket 18632]])
+
+For more details, read our [[!tails_gitweb debian/changelog desc="changelog"]].
+
+<h1 id="issues">Known issues</h1>
+
+- The *Unsafe Browser* has display problems, but still works to sign in to a
+  network using a captive portal.
+
+See the list of [[long-standing issues|support/known_issues]].
+
+<h1 id="get">Get Tails 4.24</h1>
+
+## To upgrade your Tails USB stick and keep your Persistent Storage
+
+- Automatic upgrades are broken from Tails 4.14 and earlier.
+
+  Follow our instructions to do an automatic upgrade from Tails 4.15, Tails
+  4.16, Tails 4.17, or Tails 4.18.
+
+- Automatic upgrades are available from Tails 4.19 or later to 4.24.
+
+  You can [[reduce the size of the download|doc/upgrade#reduce]] of future
+  automatic upgrades by doing a manual upgrade to the latest version.
+
+- If you cannot do an automatic upgrade or if Tails fails to start after an
+  automatic upgrade, please try to do a [[manual upgrade|doc/upgrade/#manual]].
+
+## To install Tails on a new USB stick
+
+Follow our installation instructions:
+
+  - [[Install from Windows|install/windows]]
+  - [[Install from macOS|install/mac]]
+  - [[Install from Linux|install/linux]]
+
+<div class="caution"><p>The Persistent Storage on the USB stick will be lost if
+you install instead of upgrading.</p></div>
+
+## To download only
+
+If you don't need installation or upgrade instructions, you can download
+Tails 4.24 directly:
+
+  - [[For USB sticks (USB image)|install/download]]
+  - [[For DVDs and virtual machines (ISO image)|install/download-iso]]
+
+<h1 id="next">What's coming up?</h1>
+
+Tails 4.25 is [[scheduled|contribute/calendar]] for December 7.
+

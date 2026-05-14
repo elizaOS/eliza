@@ -1,0 +1,4919 @@
+# SOME DESCRIPTIVE TITLE.
+# Copyright (C) YEAR THE PACKAGE'S COPYRIGHT HOLDER
+# This file is distributed under the same license as the PACKAGE package.
+#
+# Translators:
+# A C <ana@shiftout.net>, 2019
+# Adrian Staicu <astaicu@gmail.com>, 2018
+# Alex Alex <alexandruvuia@gmail.com>, 2016
+# Andrei Draga, 2013
+# axel_89, 2015
+# dev0d <ipawnyou@icloud.com>, 2015
+# Di N., 2015
+# Draga Bianca - Madalina <dragabianca@yahoo.com>, 2014
+# eduard pintilie <eduard.pintilie@gmail.com>, 2019-2020
+# Emma Peel, 2018-2019
+# Gabriel Busuioc <microlinkro@gmail.com>, 2022
+# kyx <mihaidiaconu@gmail.com>, 2016
+# Nicola Radu <estonyte@yahoo.com>, 2014
+# Paul Ionut Anton, 2014
+# polearnik <polearnik@mail.ru>, 2019
+# drazvan, 2022
+# Roxana Ardelean (Ene) <roxana.ene@gmail.com>, 2014
+# yryr, 2021
+# titus <titus0818@gmail.com>, 2014-2015
+# tudor isopescu <tudorisop@gmail.com>, 2015
+# Vlad Stoica <vlad@vlads.me>, 2018
+# clopotel <yo_sergiu05@yahoo.com>, 2014
+# yryr, 2021-2022
+# emma peel <emma.peel@riseup.net>, 2026.
+msgid ""
+msgstr ""
+"Project-Id-Version: Tor Project\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-04-22 08:04+0200\n"
+"PO-Revision-Date: 2026-04-03 09:12+0000\n"
+"Last-Translator: Anonymous <noreply@weblate.org>\n"
+"Language-Team: Romanian <https://hosted.weblate.org/projects/tor/tails-gui/"
+"ro/>\n"
+"Language: ro\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=3; plural=n==1 ? 0 : (n==0 || (n%100 > 0 && n%100 < "
+"20)) ? 1 : 2;\n"
+"X-Generator: Weblate 5.17-dev\n"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/additional_software.py:242
+#, python-brace-format
+msgid ""
+"{details} Please check your list of additional software or read the system "
+"log to understand the problem."
+msgstr ""
+"{details} Vă rugăm verificați lista de aplicații adiționale sau citiți "
+"jurnalul sistemului pentru a întelege problema."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/additional_software.py:249
+msgid ""
+"Please check your list of additional software or read the system log to "
+"understand the problem."
+msgstr ""
+"Vă rugăm verificați lista de aplicații adiționale sau citiți jurnalul "
+"sistemului pentru a întelege problema."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/additional_software.py:255
+msgid "Show Log"
+msgstr "Arată jurnalul"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/additional_software.py:255
+msgid "Configure"
+msgstr "Configurare"
+
+#: config/chroot_local-includes/usr/local/lib/change-apps-menu-name:25
+#, fuzzy
+msgid "Password Manager"
+msgstr "Parola"
+
+#: config/chroot_local-includes/usr/local/lib/change-apps-menu-name:26
+#, fuzzy
+msgid "password"
+msgstr "Parola"
+
+#: config/chroot_local-includes/usr/local/lib/change-apps-menu-name:26
+msgid "password-manager"
+msgstr ""
+
+#: config/chroot_local-includes/usr/local/lib/additional-software/asp-handle-package-changes:57
+#: config/chroot_local-includes/usr/local/lib/additional-software/asp-handle-package-changes:95
+#, python-brace-format
+msgid "Add {packages} to your additional software?"
+msgstr "Adăugați {packages} la aplicațiile dumneavoastră adiționale?"
+
+#: config/chroot_local-includes/usr/local/lib/additional-software/asp-handle-package-changes:61
+msgid ""
+"To install it automatically from your persistent storage when starting Tails."
+msgstr "Pentru instalarea automată din stocarea permanentă la pornirea Tails."
+
+#: config/chroot_local-includes/usr/local/lib/additional-software/asp-handle-package-changes:64
+msgid "Install Every Time"
+msgstr "Instalează de fiecare dată"
+
+#: config/chroot_local-includes/usr/local/lib/additional-software/asp-handle-package-changes:65
+#: config/chroot_local-includes/usr/local/lib/additional-software/asp-handle-package-changes:104
+msgid "Install Only Once"
+msgstr "Instalează doar o dată"
+
+#: config/chroot_local-includes/usr/local/lib/additional-software/asp-handle-package-changes:74
+#: config/chroot_local-includes/usr/local/lib/additional-software/asp-handle-package-changes:112
+#: config/chroot_local-includes/usr/local/lib/additional-software/asp-handle-package-changes:206
+msgid "The configuration of your additional software failed."
+msgstr "Configurarea aplicațiilor dumneavoastră adiționale a eșuat."
+
+#: config/chroot_local-includes/usr/local/lib/additional-software/asp-handle-package-changes:99
+msgid ""
+"To install it automatically when starting Tails, you can create a Persistent "
+"Storage and activate the <b>Additional Software</b> feature."
+msgstr ""
+"Pentru instalare automată la pornirea Tails, puteți crea o Stocare "
+"Permanentă și să activați opțiunea <b>Alte Aplicații</b>."
+
+#: config/chroot_local-includes/usr/local/lib/additional-software/asp-handle-package-changes:103
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:312
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:331
+msgid "Create Persistent Storage"
+msgstr "Creaţi Stocare Persistentă"
+
+#: config/chroot_local-includes/usr/local/lib/additional-software/asp-handle-package-changes:113
+msgid "Creating your Persistent Storage failed."
+msgstr "Crearea Stocării Permanente a eșuat."
+
+#: config/chroot_local-includes/usr/local/lib/additional-software/asp-handle-package-changes:124
+#, python-brace-format
+msgid "You could install {packages} automatically when starting Tails"
+msgstr "Puteți instala {packages} automat la pornirea Tails"
+
+#: config/chroot_local-includes/usr/local/lib/additional-software/asp-handle-package-changes:126
+msgid "To do so, you need to run Tails from a USB stick."
+msgstr "Pentru a face acest lucru, trebuie să rulați Tails de pe un stick USB."
+
+#: config/chroot_local-includes/usr/local/lib/additional-software/asp-handle-package-changes:190
+#, python-brace-format
+msgid "Remove {packages} from your additional software?"
+msgstr "Ștergeți {packages} din aplicațiile dumneavoastră adiționale?"
+
+#. Translators: Don't translate {packages}, it's a placeholder
+#. and will be replaced.
+#: config/chroot_local-includes/usr/local/lib/additional-software/asp-handle-package-changes:195
+#, python-brace-format
+msgid "This will stop installing {packages} automatically."
+msgstr "Acest lucru va opri instalarea {packages} în mod automat."
+
+#: config/chroot_local-includes/usr/local/lib/additional-software/asp-handle-package-changes:198
+#: config/chroot_local-includes/usr/local/bin/tails-additional-software-config:188
+msgid "Remove"
+msgstr "Eliminare"
+
+#: config/chroot_local-includes/usr/local/lib/additional-software/asp-handle-package-changes:199
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/add_settings_dialog.py:40
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:185
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:199
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:525
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:945
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:744
+#: config/chroot_local-includes/usr/local/bin/tails-screen-locker:128
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/feature.py:376
+msgid "Cancel"
+msgstr "Anulare"
+
+#. Translators: Don't translate {beginning} or {last}, they are
+#. placeholders and will be replaced.
+#: config/chroot_local-includes/usr/local/lib/additional-software/asp-handle-package-changes:219
+#, python-brace-format
+msgid "{beginning} and {last}"
+msgstr "{beginning} și {last}"
+
+#: config/chroot_local-includes/usr/local/lib/additional-software/asp-handle-package-changes:220
+msgid ", "
+msgstr ", "
+
+#: config/chroot_local-includes/usr/local/lib/additional-software/asp-install:46
+msgid "The check for upgrades of your additional software failed"
+msgstr ""
+"Verificarea pentru actualizări a aplicațiilor dumneavoastră adiționale a "
+"eșuat"
+
+#: config/chroot_local-includes/usr/local/lib/additional-software/asp-install:48
+#: config/chroot_local-includes/usr/local/lib/additional-software/asp-install:60
+msgid ""
+"Please check your network connection, restart Tails, or read the system log "
+"to understand the problem."
+msgstr ""
+"Vă rugăm verificați conexiunea la rețea, reporniți Tails sau citiți jurnalul "
+"sistemului pentru a întelege problema."
+
+#: config/chroot_local-includes/usr/local/lib/additional-software/asp-install:58
+msgid "The upgrade of your additional software failed"
+msgstr "Actualizarea aplicațiilor dumneavoastră adiționale a eșuat"
+
+#: config/chroot_local-includes/usr/local/lib/additional-software/asp-install:128
+msgid "Installing your additional software from persistent storage..."
+msgstr ""
+"Se instalează aplicațiile dumneavoastră adiționale din stocarea "
+"persistentă..."
+
+#: config/chroot_local-includes/usr/local/lib/additional-software/asp-install:129
+msgid "This can take several minutes."
+msgstr "Acest lucru ar putea dura câteva minute."
+
+#: config/chroot_local-includes/usr/local/lib/additional-software/asp-install:147
+msgid "The installation of your additional software failed"
+msgstr "Instalarea aplicațiilor dumneavoastră adiționale a eșuat"
+
+#: config/chroot_local-includes/usr/local/lib/additional-software/asp-install:162
+msgid "Additional software installed successfully"
+msgstr "Aplicațiile adiționale au fost instalate cu succes"
+
+#: config/chroot_local-includes/usr/share/tails/additional-software/configuration-window.ui:8
+#: ../config/chroot_local-includes/usr/share/applications/org.boum.tails.AdditionalSoftware.desktop.in.h:1
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:648
+msgid "Additional Software"
+msgstr "Aplicații adiționale"
+
+#: config/chroot_local-includes/usr/share/tails/additional-software/configuration-window.ui:51
+msgid ""
+"You can install additional software automatically from your persistent "
+"storage when starting Tails."
+msgstr ""
+"Puteți instala aplicații adiționale în mod automat din stocarea persistentă "
+"la pornirea sistemului Tails."
+
+#: config/chroot_local-includes/usr/share/tails/additional-software/configuration-window.ui:77
+msgid ""
+"The following software is installed automatically from your persistent "
+"storage when starting Tails."
+msgstr ""
+"Următoarele aplicații adiționale vor fi instalate automat din stocarea "
+"persistentă la pornirea sistemului Tails."
+
+#: config/chroot_local-includes/usr/share/tails/additional-software/configuration-window.ui:135
+#: config/chroot_local-includes/usr/local/bin/tails-additional-software-config:205
+msgid ""
+"To add more, install some software using <a "
+"href=\"synaptic.desktop\">Synaptic Package Manager</a> or <a "
+"href=\"org.gnome.Terminal.desktop\">APT on the command line</a>."
+msgstr ""
+"Pentru a adăuga mai multe, instalați aplicații folosind <a "
+"href=\"synaptic.desktop\">Synaptic Package Manager</a> sau <a "
+"href=\"org.gnome.Terminal.desktop\">APT în linia de comandă</a>."
+
+#: config/chroot_local-includes/usr/share/tails/additional-software/configuration-window.ui:154
+msgid "_Create persistent storage"
+msgstr "_Creaţi stocare persistentă"
+
+#: config/chroot_local-includes/usr/local/bin/electrum:62
+#, fuzzy
+msgid ""
+"Tails needs donations to keep everybody free and safe online.\n"
+"\n"
+"Every bit helps in our fight against surveillance and censorship!\n"
+"\n"
+msgstr ""
+"Cica Tails are nevoie de donatii pentru a-i tine pe toti in siguranta si "
+"gratuit pe internet.\n"
+"\n"
+"Fiecare bit ajuta in lupta noastra impotriva cenzurii si a supravegherii "
+"adica impotriva totalitarismului!\n"
+"\n"
+"<a href=\"file:///usr/share/doc/tails/website/donate.en.html#expenses\">Cum "
+"ne cheltuim banii.</a>"
+
+#: config/chroot_local-includes/usr/local/bin/electrum:72
+msgid ""
+"Tails protects your wallet.\n"
+"\n"
+"Help us keep your bitcoins safe!\n"
+"\n"
+msgstr ""
+
+#: config/chroot_local-includes/usr/local/bin/electrum:140
+msgid "Donate Now"
+msgstr "Donează Acum"
+
+#: config/chroot_local-includes/usr/local/bin/electrum:142
+msgid "Later"
+msgstr "Mai tarziu"
+
+#: config/chroot_local-includes/usr/local/bin/electrum:156
+msgid "Opening Electrum with our donation address..."
+msgstr "Deschizand Electrum cu adresa noastra de donati..."
+
+#: config/chroot_local-includes/usr/local/bin/electrum:157
+msgid "Thank you for making the Internet a safer place!"
+msgstr "Multimim pentru transformarea internetului intr-un loc mai sigur!"
+
+#: config/chroot_local-includes/usr/local/bin/electrum:191
+msgid "Persistence is disabled for Electrum"
+msgstr "Persistența este dezactivată pentru Electrum"
+
+#: config/chroot_local-includes/usr/local/bin/electrum:193
+msgid ""
+"When you reboot Tails, all of Electrum's data will be lost, including your "
+"Bitcoin wallet.\n"
+"It is strongly recommended to only run Electrum when its persistence feature "
+"is activated."
+msgstr ""
+"Când reporniți Tails, toate datele Electrum vor fi pierdute, inclusiv "
+"portofelul tău Bitcoin.\n"
+"Este recomandat să rulați Electrum doar atunci când este activată funcția de "
+"persistență."
+
+#: config/chroot_local-includes/usr/local/bin/electrum:195
+msgid "Do you want to start Electrum anyway?"
+msgstr "Vrei să inițializezi Electrum oricum?"
+
+#: config/chroot_local-includes/usr/local/bin/electrum:201
+msgid "_Launch"
+msgstr "_Lansare"
+
+#: config/chroot_local-includes/usr/local/bin/electrum:202
+msgid "_Exit"
+msgstr "_Iesire"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/DownloadProgress.pm:59
+msgid "Unknown time"
+msgstr "Timp necunoscut"
+
+#. Translators: Don't translate {count}, it's a place holder and
+#. will be replaced.
+#. y is the short form for years.
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/DownloadProgress.pm:78
+#, perl-brace-format
+msgid "1y"
+msgid_plural "{count}y"
+msgstr[0] "1 an"
+msgstr[1] "{count}ani"
+msgstr[2] "{count}ani"
+
+#. Translators: Don't translate {count}, it's a place holder and
+#. will be replaced.
+#. d is the short form for days.
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/DownloadProgress.pm:82
+#, perl-brace-format
+msgid "1d"
+msgid_plural "{count}d"
+msgstr[0] "1 zi"
+msgstr[1] "{count} zile"
+msgstr[2] "{count} zile"
+
+#. Translators: Don't translate {count}, it's a place holder and
+#. will be replaced.
+#. h is the short form for hours;
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/DownloadProgress.pm:86
+#, perl-brace-format
+msgid "1h"
+msgid_plural "{count}h"
+msgstr[0] "1 ora"
+msgstr[1] "{count} ore"
+msgstr[2] "{count} ore"
+
+#. Translators: Don't translate {count}, it's a place holder and
+#. will be replaced.
+#. m is the short form for minutes;
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/DownloadProgress.pm:90
+#, perl-brace-format
+msgid "1m"
+msgid_plural "{count}m"
+msgstr[0] "1 minut"
+msgstr[1] "{count} minute"
+msgstr[2] "{count} minute"
+
+#. Translators: Don't translate {count}, it's a place holder and
+#. will be replaced.
+#. s is the short form for seconds;
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/DownloadProgress.pm:94
+#, perl-brace-format
+msgid "1s"
+msgid_plural "{count}s"
+msgstr[0] "1 secunda"
+msgstr[1] "{count} secunde"
+msgstr[2] "{count} secunde"
+
+#. Translators: don't translate {time}, {downloaded}, {size}
+#. and {speed}, they are placeholders and will be replaced.
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/DownloadProgress.pm:139
+#, perl-brace-format
+msgid "#{time} left — {downloaded} of {size} ({speed}/sec)\n"
+msgstr "#{time} rămas — {downloaded} din {size} ({speed}/s)\n"
+
+#. Translators: KB is the short form for kilobyte
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Role/FormatByte.pm:32
+msgid "KB"
+msgstr "KB"
+
+#. Translators: MB is the short form for megabyte
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Role/FormatByte.pm:34
+msgid "MB"
+msgstr "MB"
+
+#. Translators: GB is the short form for gigabyte
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Role/FormatByte.pm:36
+msgid "GB"
+msgstr "GB"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Role/FormatByte.pm:42
+msgid "bytes"
+msgstr "octeți"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:295
+#, fuzzy
+msgid ""
+"<b>An error occurred while updating the signing key.</b>\\n\\n<b>This "
+"prevents determining whether an upgrade is available from our website.</"
+"b>\\n\\nCheck your network connection and restart Tails.\\n\\nIf the problem "
+"persists, try doing a manual upgrade."
+msgstr ""
+"<b>A apărut o eroare la actualizarea cheii de semnare.</b>\\n\\n<b>Acest "
+"lucru împiedică să se stabilească dacă este disponibilă o actualizare de pe "
+"site-ul nostru web.</b>\\n\\nVerificați conexiunea la rețea și reporniți "
+"Tails pentru a încerca actualizarea din nou.\\n\\nDacă problema persistă, "
+"accesați fișierul: :///usr/share/doc/tails/website/doc/upgrade/error/"
+"check.en.html"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:309
+msgid "Error while downloading the signing key"
+msgstr "Eroare cât timp se descărca cheia de conectare"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:342
+msgid "Error while checking for upgrades"
+msgstr "Eroare la căutarea actualizărilor"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:344
+#, fuzzy
+msgid ""
+"<b>Could not determine whether an upgrade is available from our website.</"
+"b>\n"
+"\n"
+"Check your network connection and restart Tails.\n"
+"\n"
+"If the problem persists, try doing a manual upgrade."
+msgstr ""
+"<b>Nu s-a putut detecta dacă o actualizare este disponibilă pe website.</b>\n"
+"\n"
+"Verificați conexiunea la rețea, reporniți Tails și reîncercați "
+"actualizarea.\n"
+"\n"
+"Dacă problema persistă, mergeți la file:///usr/share/doc/tails/website/doc/"
+"upgrade/error/check.en.html"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:359
+msgid "no automatic upgrade is available from our website for this version"
+msgstr "pentru această versiune nu există actualizare automată pe website"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:365
+msgid "your device was not created using a USB image or Tails Cloner"
+msgstr ""
+"dispozitivul dvs. nu a fost creat folosind o imagine USB sau Clonatorul Tails"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:370
+msgid "Tails was started from a DVD or a read-only device"
+msgstr "Tails a fost pornit de pe un DVD sau un dispozitiv read-only"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:375
+msgid "there is not enough free space on the Tails system partition"
+msgstr "nu este destul spațiu liber pe partiția de sistem a Tails"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:380
+msgid "not enough memory is available on this system"
+msgstr "memorie insuficientă disponibilă în acest sistem"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:385
+#, perl-brace-format
+msgid "No explanation available for reason '{reason}'."
+msgstr "Nu există nicio explicație disponibilă pentru motivul '{reason}'."
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:408
+msgid "The system is up-to-date"
+msgstr "Sistemul este la zi"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:411
+msgid ""
+"You are currently running the latest version. There is no upgrade "
+"available.\n"
+msgstr ""
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:414
+#, fuzzy
+msgid "Tails is up to date"
+msgstr "Sistemul este la zi"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:420
+msgid "This version of Tails is outdated, and may have security issues."
+msgstr ""
+"Această versiune Tails este învechită și ar putea avea probleme de "
+"securitate."
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:450
+#, perl-brace-format
+msgid ""
+"The available incremental upgrade requires {space_needed} of free space on "
+"Tails system partition,  but only {free_space} is available."
+msgstr ""
+"Actualizarea incrementală disponibilă necesită {space_needed} de spațiu "
+"liber pe partiția de sistem Tails, dar numai {free_space} este disponibil."
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:462
+#, perl-brace-format
+msgid ""
+"The available incremental upgrade requires {memory_needed} of free memory, "
+"but only {free_memory} is available."
+msgstr ""
+"Actualizarea incrementală disponibilă necesită {memory_needed} de memorie "
+"liberă, dar sunt disponibili numai {free_memory}."
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:473
+#, fuzzy
+msgid ""
+"An error occurred while detecting available upgrades.\n"
+"This should not happen. Please report a bug."
+msgstr ""
+"O eroare a apărut cât timp se căuta actualizări.\n"
+"Acest lucru ar trebui sa nu se întample. Vă rog raportați problema."
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:476
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:495
+msgid "Error while detecting available upgrades"
+msgstr "Eroare în timpul căutării actualizarilor disponibile"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:491
+msgid ""
+"An incremental upgrade is available, but no full upgrade is.\n"
+"This should not happen. Please report a bug."
+msgstr ""
+"O actualizare incrementală este disponibilă, dar nu o actualizare completă.\n"
+"Acest lucru nu ar trebui să se întâmple. Raportați un bug."
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:504
+#, perl-brace-format
+msgid ""
+"<b>You should upgrade to {name} {version}.</b>\n"
+"\n"
+"For more information about this new version, go to {details_url}\n"
+"\n"
+"We recommend you close all other applications during the upgrade.\n"
+"Downloading the upgrade might take a long time, from several minutes to a "
+"few hours.\n"
+"\n"
+"Download size: {size}\n"
+"\n"
+"Do you want to upgrade now?"
+msgstr ""
+"<b>Ar trebui să actualizați la {name} {version}.</b>\n"
+"\n"
+"Pentru mai multe detalii despre această nouă versiune, accesați "
+"{details_url}\n"
+"\n"
+"Vă recomandăm să închideți toate celelalte aplicații în timpul "
+"actualizării.\n"
+"Descărcarea actualizării poate dura mult timp, de la câteva minute la câteva "
+"ore.\n"
+"\n"
+"Dimensiunea descărcării: {size}\n"
+"\n"
+"Doriți să faceți upgrade acum?"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:517
+msgid "Upgrade available"
+msgstr "Actualizare disponibilă"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:518
+msgid "Upgrade now"
+msgstr "Actualizați acum"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:519
+msgid "Upgrade later"
+msgstr "Actualizați mai tîrziu"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:527
+#, perl-brace-format
+msgid ""
+"<b>You should do a manual upgrade to the latest version of {name}.</b>\n"
+"\n"
+"For more information about this new version, go to {details_url}\n"
+"\n"
+"It is impossible to do an automatic upgrade of your Tails to this new "
+"version: {explanation}.\n"
+"\n"
+"To learn how to do a manual upgrade, go to {manual_upgrade_url}"
+msgstr ""
+"<b>Ar trebui să efectuați o actualizare manuală la cea mai recentă versiune "
+"a {name}.</b>\n"
+"\n"
+"Pentru mai multe informații despre această nouă versiune, accesați "
+"{details_url}.\n"
+"\n"
+"Este imposibil să efectuați o actualizare automată a Tails la această nouă "
+"versiune: {explanation}.\n"
+"\n"
+"Pentru a învăța cum să efectuați o actualizare manuală, accesați "
+"{manual_upgrade_url}."
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:537
+msgid "New version available"
+msgstr "Versiune nouă disponibilă"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:618
+msgid "Downloading upgrade"
+msgstr "Se descarcă actualizarea"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:620
+#, perl-brace-format
+msgid "Downloading the upgrade to {name} {version}..."
+msgstr "Descărcarea actualizării pentru {name} {version}..."
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:711
+#, fuzzy
+msgid ""
+"<b>The upgrade could not be downloaded.</b>\\n\\nCheck your network "
+"connection, and restart Tails to try upgrading again."
+msgstr ""
+"<b>Actualizarea nu a fost descărcată.</b>\\n\\nVerificați-vă conexiunea la "
+"rețea și reporniți Tails pentru a reîncerca actualizarea.\\n\\nDacă problema "
+"persistă mergeți la file:///usr/share/doc/tails/website/doc/upgrade/error/"
+"download.en.html"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:714
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:729
+msgid "Error while downloading the upgrade"
+msgstr "Eroare la descărcarea actualizării"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:724
+#, perl-brace-format
+msgid ""
+"Output file '{output_file}' does not exist, but tails-iuk-get-target-file "
+"did not complain. Please report a bug."
+msgstr ""
+"Fișierul de iesire '{output_file}' nu există, dar tails-iuk-get-target-file "
+"nu s-a plâns. Vă rugăm să raportați eroarea."
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:740
+msgid "Error while creating temporary downloading directory"
+msgstr "Eroare la crearea directorului temporar pentru descărcare"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:743
+msgid "Failed to create temporary download directory"
+msgstr "Crearea unui director temporar pentru descărcare a eșuat"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:755
+msgid ""
+"The upgrade was successfully downloaded.\n"
+"\n"
+"The network connection will be disabled when applying the upgrade.\n"
+"\n"
+"Please save your work and close all other applications."
+msgstr ""
+"Actualizarea a fost descarcată cu succes.\n"
+"\n"
+"Conexiunea la rețea va fi dezactivată cât timp se aplică actualizarea.\n"
+"\n"
+"Vă rugăm salvați-vă munca și inchideți toate aplicațiile deschise."
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:760
+msgid "Upgrade successfully downloaded"
+msgstr "Actualizare descărcată cu success"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:761
+msgid "Apply upgrade"
+msgstr "Aplicați actualizarea"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:768
+msgid ""
+"<b>Your Tails device was successfully upgraded.</b>\n"
+"\n"
+"Some security features were temporarily disabled.\n"
+"You should restart Tails on the new version as soon as possible.\n"
+"\n"
+"Do you want to restart now?"
+msgstr ""
+"<b>Dispozitivul Tails a fost actualizat cu succes.</b>\n"
+"\n"
+"Anumite funcții de securitate au fost dezactivate temporar.\n"
+"Ar trebui să reporniți Tails cu noua versiune cît mai curînd posibil.\n"
+"\n"
+"Doriți să reporniți acum?"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:773
+msgid "Restart Tails"
+msgstr "Reporniți Tails"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:774
+msgid "Restart now"
+msgstr "Reporniți acum"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:775
+msgid "Restart later"
+msgstr "Reporniți mai tarziu"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:786
+msgid "Error while restarting the system"
+msgstr "Eroare in timpul repornirii sistemului"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:787
+msgid "Failed to restart the system"
+msgstr "Repornirea sistemului a eșuat"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:800
+msgid "Error while shutting down the network"
+msgstr "Eroare la oprirea rețelei"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:801
+msgid "Failed to shutdown network"
+msgstr "Oprirea rețelei a eșuat"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:811
+msgid "Error while cancelling the upgrade download"
+msgstr "Eroare la anularea descărcării actualizării noi"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:812
+msgid "Failed to cancel the upgrade download"
+msgstr "Încercare nereusită de a anula descărcării a actualizării"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:818
+msgid "Upgrading the system"
+msgstr "Se actualizează sistemul"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:820
+msgid ""
+"<b>Your Tails device is being upgraded...</b>\n"
+"\n"
+"For security reasons, the network connection is now disabled."
+msgstr ""
+"<b>Device-ul tău Tails este în proces de actualizare...</b>\n"
+"\n"
+"Din motive de securitate, conexiunea la rețea este acum dezactivată."
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:855
+#, fuzzy
+msgid ""
+"<b>An error occurred while installing the upgrade.</b>\\n\\nYour Tails "
+"device needs to be repaired and might be unable to restart.\\n\\nPlease "
+"follow the instructions at file:///usr/share/doc/tails/website/doc/upgrade/"
+"error/install.en.html"
+msgstr ""
+"<b>A avut loc o eroare la instalarea actualizării.</b>\\n\\nDispozitivul "
+"Tails va trebui reparat și ar putea să nu repornească.\\n\\nUrmați "
+"instrucțiunile de la file:///usr/share/doc/tails/website/doc/upgrade/error/"
+"install.en.html"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:860
+msgid "Error while installing the upgrade"
+msgstr "Eroare la instalarea actualizării"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/add_settings_dialog.py:32
+msgid "Additional Settings"
+msgstr "Setări adiționale"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/add_settings_dialog.py:44
+msgid "Add"
+msgstr "Adaugă"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/add_settings_dialog.py:52
+msgid "Back"
+msgstr "Înapoi"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/additional_settings.py:65
+msgid "_Administration Password"
+msgstr "_Parolă administrare"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/additional_settings.py:196
+msgid "_MAC Address Anonymization"
+msgstr "_Anonimizarea adresei MAC"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/additional_settings.py:267
+msgid "_Offline Mode"
+msgstr "_Modul Offline"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/additional_settings.py:276
+#: ../config/chroot_local-includes/usr/share/tails/greeter/additional_settings.ui.in:399
+msgid "Enable networking (default)"
+msgstr "Activați rețeaua (implicit)"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/additional_settings.py:278
+#: ../config/chroot_local-includes/usr/share/tails/greeter/additional_settings.ui.in:445
+msgid "Disable all networking"
+msgstr "Dezactivați toate rețelele"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/additional_settings.py:339
+msgid "_Unsafe Browser"
+msgstr "_Browser nesigur"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/additional_settings.py:348
+msgid "Enabled (default)"
+msgstr "Activat (implicit)"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/additional_settings.py:350
+msgid "Disabled"
+msgstr "Dezactivat"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/additional_settings.py:419
+msgid "On (default)"
+msgstr "Activat (implicit)"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/additional_settings.py:421
+msgid "On"
+msgstr "Activat"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/additional_settings.py:423
+msgid "Off"
+msgstr "Dezactivat"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/additional_settings.py:425
+msgid "Off (default)"
+msgstr "Dezactivat (implicit)"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:181
+msgid "Persistent Storage Still Locked"
+msgstr "Stocarea Permanenta nedeblocată"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:183
+msgid ""
+"Do you really want to start Tails without unlocking your Persistent Storage?"
+msgstr "\"Chiar doriți să porniți Tails fără a debloca Stocarea Persistentă?\""
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:186
+msgid "Start Without Persistent Storage"
+msgstr "Continuati fara Stocarea Permanenta"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:193
+#, fuzzy
+msgid "Language and Keyboard layout"
+msgstr "_Configurare tastatură"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:195
+msgid ""
+"Your language and keyboard layout will be saved unencrypted on your Tails "
+"USB stick and applied automatically in the future.\n"
+"\n"
+"Someone who finds your Tails USB stick can see your language and keyboard "
+"layout."
+msgstr ""
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:200
+msgid "Save Unencrypted"
+msgstr ""
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:288
+#, fuzzy
+msgid ""
+"Impossible to unlock the Persistent Storage because the USB stick is read-"
+"only."
+msgstr ""
+"Imposibil de a debloca Stocarea Permanenta deoarece stick-ul USB permite "
+"doar citire (nu poate fi si scris)"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:449
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:482
+msgid "Unlocking…"
+msgstr "Se deblochează…"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:490
+#, fuzzy
+msgid "Checking the file system…"
+msgstr "Se pregateste sistemul de fișiere..."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:523
+#, fuzzy
+msgid "Repairing the File System"
+msgstr "Se pregateste sistemul de fișiere..."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:524
+#, fuzzy
+msgid "This might take a long time..."
+msgstr "Ar putea dura...."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:542
+#, fuzzy
+msgid "Failed to repair the file system of your Persistent Storage."
+msgstr "Nu s-a putut configura stocarea persistentă"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:544
+msgid "Start Tails to send an error report and learn how to recover your data."
+msgstr ""
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:559
+msgid "File System Repaired Successfully"
+msgstr ""
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:561
+msgid ""
+"It's possible that some data was lost during the repair. Please check the "
+"contents of your Persistent Storage and restore any lost data from a backup."
+msgstr ""
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:565
+#: config/chroot_local-includes/usr/local/lib/tails-report-disk-partitioning-errors:32
+msgid "Close"
+msgstr "Închide"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:580
+msgid ""
+"You aborted the repair of the file system. You can either start Tails "
+"without Persistent Storage or restart the computer to try repairing the file "
+"system again."
+msgstr ""
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:866
+msgid "Start Tails and open the Persistent Storage settings to find out more."
+msgstr ""
+"Porniti Tails si deschideti Stocarea Permanenta pentru a afla mai multe."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:896
+#, fuzzy
+msgid ""
+"Your Persistent Storage is unlocked. Its content will be available until you "
+"shut down Tails."
+msgstr ""
+"Mediul de stocare persistent este deblocat. Reporniţi Tails pentru a-l bloca "
+"din nou."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:911
+msgid "Incorrect passphrase. Please try again."
+msgstr ""
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:922
+#, fuzzy
+msgid ""
+"Error reading data from your Persistent Storage. The hardware of your USB "
+"stick is probably failing."
+msgstr "Probail cedeaza componenta fizica a stick-ului USB."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:924
+msgid "Start Tails to learn how to recover your data."
+msgstr ""
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:935
+msgid "File System Errors"
+msgstr ""
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:937
+msgid ""
+"Errors were detected in the file system of your Persistent Storage.\n"
+"\n"
+"Tails can try to fix these errors, but this might erase some of your data "
+"and take a long time.\n"
+"\n"
+"If you already have an up-to-date backup of your Persistent Storage, we "
+"recommend that you try to repair.\n"
+"\n"
+"If you don't have a backup, we recommend that you create a partition image "
+"of your Persistent Storage first."
+msgstr ""
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:946
+msgid "Repair File System"
+msgstr ""
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:947
+#, fuzzy
+msgid "Create Partition Image"
+msgstr "Creaţi Stocare Persistentă"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:958
+#, fuzzy
+msgid ""
+"Start Tails to learn how to create a partition image of your Persistent "
+"Storage."
+msgstr "Nu s-a putut crea Stocarea Permanentă"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:967
+#, fuzzy
+msgid "Failed to unlock the Persistent Storage due to file system errors."
+msgstr ""
+"Deblocarea Stocării Persistente a eșuat. Vă rugăm să porniți Tails și să "
+"trimiteți un raport de eroare."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:976
+#, fuzzy
+msgid ""
+"Failed to upgrade the Persistent Storage. Please start Tails and send an "
+"error report."
+msgstr ""
+"Activarea Stocării Persistente a eșuat. Vă rugăm să porniți Tails și să "
+"trimiteți un raport de eroare."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:983
+msgid ""
+"Failed to unlock the Persistent Storage. Please start Tails and send an "
+"error report."
+msgstr ""
+"Deblocarea Stocării Persistente a eșuat. Vă rugăm să porniți Tails și să "
+"trimiteți un raport de eroare."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:991
+msgid ""
+"Failed to activate the Persistent Storage. Please start Tails and send an "
+"error report."
+msgstr ""
+"Activarea Stocării Persistente a eșuat. Vă rugăm să porniți Tails și să "
+"trimiteți un raport de eroare."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:1002
+#, fuzzy
+msgid "Upgrading the Persistent Storage. This might take a while…"
+msgstr "Actualizarea Stocarii Permanente.. Poate dura ceva timp . . ."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/settings/persistence.py:125
+msgid "Error unlocking Persistent Storage: {}"
+msgstr "Eroare la deblocarea Stocării Persistente: {}"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/settings/persistence.py:150
+msgid "Error upgrading Persistent Storage: {}"
+msgstr "Eroare la actualizarea Stocării Permanente: {}"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/settings/persistence.py:176
+#, python-brace-format
+msgid "Failed to activate some features of the Persistent Storage: {features}."
+msgstr "Nu s-au activat unele funcții ale stocării persistente: {features}."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/settings/persistence.py:181
+msgid "Error activating Persistent Storage: {}"
+msgstr "Eroare la activarea Stocării Persistente: {}"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/settings/persistence.py:202
+#, fuzzy
+msgid "Failed to abort when repairing Persistent Storage filesystem: {}"
+msgstr "Nu s-a putut initializa serviciul Stocarii Permanente"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/region_settings.py:191
+msgid "_Language"
+msgstr "_Limba"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/region_settings.py:234
+msgid "_Formats"
+msgstr "_Formaturi"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/region_settings.py:271
+msgid "_Keyboard Layout"
+msgstr "_Configurare tastatură"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:322
+#, python-format
+msgid "Unable to write on %(device)s, skipping."
+msgstr "Nu se poate scrie pe %(device)s, ignor."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:371
+#, python-format
+msgid "Wrote to device at %(speed)d MB/s"
+msgstr "Se scrie pe dispozitiv cu viteza de %(speed)d MB/sec"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:383
+msgid "Extracting live image to the target device..."
+msgstr "Se extrage imaginea live pe dispozitivul țintă..."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:478
+#, python-format
+msgid ""
+"There was a problem executing the following command: `%(command)s`.\n"
+"A more detailed error log has been written to \"%(filename)s\"."
+msgstr ""
+"A fost o problemă executând comanda scrisă: `%(command)s`.\n"
+"Un jurnal detaliat în privința erorii a fost scrisă în \"%(filename)s\"."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:497
+#, python-format
+msgid ""
+"Not enough free space on device.\n"
+"%(iso_size)dMB ISO + %(overlay_size)dMB overlay > %(free_space)dMB free space"
+msgstr ""
+"Spațiu insuficient pe device.\n"
+"%(iso_size)dMB ISO + %(overlay_size)dstrat de MB > %(free_space)d MB spațiu "
+"liber"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:510
+#, python-format
+msgid "Creating %sMB persistent overlay"
+msgstr "Se creează %sMB de overlay persistent"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:576
+#, python-format
+msgid "Unable to copy %(infile)s to %(outfile)s: %(message)s"
+msgstr "Nu se poate copia %(infile)s la %(outfile)s: %(message)s"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:589
+msgid "Removing existing Tails system"
+msgstr "Eliminarea sistemului Tails existent"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:600
+#, python-format
+msgid "Unable to remove file from previous Tails system: %(message)s"
+msgstr ""
+"Imposibil de eliminat fișierul din sistemul Tails anterior: %(message)s"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:610
+#, python-format
+msgid "Unable to chmod %(file)s: %(message)s"
+msgstr "Nu se poate executa chmod %(file)s: %(message)s"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:618
+#, python-format
+msgid "Unable to remove directory from previous Tails system: %(message)s"
+msgstr ""
+"Imposibil de eliminat folder-ul din sistemul Tails anterior: %(message)s"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:669
+#, python-format
+msgid "Cannot find device %s"
+msgstr "Nu se găsește dispozitivul %s"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:705
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:1025
+msgid "Unknown filesystem.  Your device may need to be reformatted."
+msgstr ""
+"Sistem de fișiere necunoscut. Dispozitivul poate avea nevoie de a fi "
+"reformatat."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:708
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:1028
+#, python-format
+msgid "Unsupported filesystem: %s"
+msgstr "Sistem de fișiere nesuportat: %s"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:724
+#, python-format
+msgid "Unknown GLib exception while trying to mount device: %(message)s"
+msgstr ""
+"Excepție GLib necunoscută la încercarea de a monta dispozitivul: %(message)s"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:731
+#, python-format
+msgid "Unable to mount device: %(message)s"
+msgstr "Nu se poate monta dispozitivul: %(message)s"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:736
+msgid "No mount points found"
+msgstr "Nu s-au găsit puncte de montare"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:806
+#, fuzzy
+msgid "Target device has opened files"
+msgstr "Se scrie pe dispozitiv cu viteza de  %(speed)d MB/sec"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:834
+#, python-format
+msgid "Mount %s exists after unmounting"
+msgstr "Montarea %s există după demontare"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:865
+#, python-format
+msgid "Partitioning device %(device)s"
+msgstr "Se partiționeză dispozitivul %(device)s"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:1009
+#, python-format
+msgid "Unsupported device '%(device)s', please report a bug."
+msgstr "Dispozitiv nesuportat '%(device)s', raportați un bug."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:1012
+msgid "Trying to continue anyway."
+msgstr "Se încearcă continuarea oricum."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:1021
+msgid "Verifying filesystem..."
+msgstr "Se verifică sistemul de fișiere..."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:1044
+#, python-format
+msgid "Unable to change volume label: %s"
+msgstr "Nu se poate modifica eticheta volumului: %s"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:1050
+msgid "Installing bootloader..."
+msgstr "Se instalează bootloader-ul..."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:1058
+#, python-format
+msgid "Removing %(file)s"
+msgstr "Se șterge %(file)s"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:1087
+msgid "Cloning Persistent Storage..."
+msgstr "Clonarea Stocarii Permanente."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:1170
+#, python-format
+msgid "%s already bootable"
+msgstr "%s deja bootabil"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:1191
+msgid "Unable to find partition"
+msgstr "Nu se poate găsi partiția"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:1213
+#, python-format
+msgid "Formatting %(device)s as FAT32"
+msgstr "Se formatează %(device)s ca FAT32"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:1290
+#, python-format
+msgid "Reading extracted MBR from %s"
+msgstr "Se citește MBR extras din %s"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:1295
+#, python-format
+msgid "Could not read the extracted MBR from %(path)s"
+msgstr "Nu s-a putut citi MBR extras din %(path)s"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:1309
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:1310
+#, python-format
+msgid "Resetting Master Boot Record of %s"
+msgstr "Se resetează Master Boot Record al %s"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:1314
+#, python-format
+msgid "Writing random seed to LBA 34 of %s"
+msgstr ""
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:1321
+msgid "Drive is a loopback, skipping MBR reset"
+msgstr "Dispozitivul este de tip loopback, se sare peste resetarea MBR"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:1325
+msgid "Synchronizing data on disk..."
+msgstr "Se sincronizează datele pe disc..."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:157
+msgid ""
+"Unable to clone because the target USB stick is being used. Close all open "
+"files on the target USB stick, restart Tails Cloner, and try to clone again."
+msgstr ""
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:189
+msgid ""
+"Error: Cannot set the label or obtain the UUID of your device.  Unable to "
+"continue."
+msgstr ""
+"Eroare: Nu se poate seta eticheta sau obține UUID-ul dispozitivului. Nu se "
+"poate continua."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:234
+#, fuzzy, python-format
+msgid "Cloning complete! (%s)"
+msgstr "Instalare completă! (%s)"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:239
+msgid "Tails installation failed!"
+msgstr "Instalarea Tails a eșuat!"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:341
+#: ../config/chroot_local-includes/usr/share/applications/tails-installer.desktop.in.h:1
+msgid "Tails Cloner"
+msgstr "Programul de clonare Tails"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:393
+#: ../config/chroot_local-includes/usr/share/tails-installer/tails-installer.ui.in:164
+msgid "Clone the current Tails"
+msgstr "Clonează instalația Tails-ul curentă"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:401
+#: ../config/chroot_local-includes/usr/share/tails-installer/tails-installer.ui.in:200
+msgid "Use a downloaded Tails ISO image"
+msgstr "Folosește o imagine Tails descărcată în format ISO"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:453
+msgid "Upgrade"
+msgstr "Actualizare"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:454
+msgid "Manual Upgrade Instructions"
+msgstr "Instrucțiuni de actualizare manuală"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:465
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:730
+#: ../config/chroot_local-includes/usr/share/tails-installer/tails-installer.ui.in:374
+msgid "Install"
+msgstr "Instalează"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:468
+#: ../config/chroot_local-includes/usr/share/tails-installer/tails-installer.ui.in:131
+msgid "Installation Instructions"
+msgstr "Instrucțiuni de instalare"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:471
+msgid "Backup Instructions"
+msgstr "Instrucțiuni de backup manual"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:482
+#, python-format
+msgid "%(size)s %(vendor)s %(model)s device (%(device)s)"
+msgstr "%(size)s %(vendor)s %(model)s dispozitiv (%(device)s)"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:495
+msgid "No ISO image selected"
+msgstr "Nici o imagine ISO selectată"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:495
+msgid "Please select a Tails ISO image."
+msgstr "Vă rugăm să selectați o imagine Tails în format ISO."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:546
+msgid ""
+"Clone the current Persistent Storage\n"
+"Impossible to clone the Persistent Storage because it is locked."
+msgstr ""
+"Clonarea Stocarii Permanente curente\n"
+"Imposibil de a clona Stocarea Permanenta deoarece este blocata."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:550
+#: ../config/chroot_local-includes/usr/share/tails-installer/tails-installer.ui.in:180
+msgid "Clone the current Persistent Storage"
+msgstr "Clonati Stocarea Permanenta actuala"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:553
+msgid ""
+"Clone the current Persistent Storage\n"
+"You can only choose to reinstall when cloning the Persistent Storage."
+msgstr ""
+"Clonare Stocarea Permanenta actuala \n"
+"Poti alege doar sa reinstalezi cand clonezi Stocarea Permanenta."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:591
+#, python-format
+msgid ""
+"The USB stick \"%(pretty_name)s\" is configured as non-removable by its "
+"manufacturer and Tails will fail to start from it. Please try installing on "
+"a different model."
+msgstr ""
+"Stick-ul USB \"%(pretty_name)s\" este configurat ca inamovibil de către "
+"producător iar Tails va eșua să ruleze pe acesta. Vă rugăm să încercați "
+"instalarea pe un dispozitiv diferit."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:600
+#, python-format
+msgid "The device \"%(pretty_name)s\" is read-only."
+msgstr ""
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:608
+#, python-format
+msgid ""
+"The device \"%(pretty_name)s\" is too small to install Tails (at least "
+"%(size)s GB is required)."
+msgstr ""
+"Dispozitivul \"%(pretty_name)s\" are prea puțină memorie liberă pentru a "
+"instala Tails (cel puțin %(size)s GB este necesar)."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:623
+#, python-format
+msgid ""
+"To upgrade device \"%(pretty_name)s\" from this Tails, you need to use a "
+"downloaded Tails ISO image:\n"
+"%(dl_url)s"
+msgstr ""
+"Pentru a actualiza \"%(pretty_name)s\" din acest sistem Tails, trebuie să "
+"utilizați o imagine ISO Tails descărcată de pe această pagină:\n"
+"%(dl_url)s"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:644
+msgid "No device suitable to install Tails could be found"
+msgstr ""
+"Nu a putut fi găsit nici un dispozitiv compatibil pentru a instala Tails"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:647
+#, python-format
+msgid "Plug in a USB stick of at least %0.1f GB."
+msgstr "Vă rugăm introduceți un stick USB sau card SD de cel puțin %0.1f GB."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:660
+msgid "An error happened while installing Tails"
+msgstr "S-a produs o eroare la instalarea Tails"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:717
+msgid "Installation complete!"
+msgstr "Instalare completă!"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:773
+#, python-format
+msgid "%(parent_size)s %(vendor)s %(model)s device (%(device)s)"
+msgstr "%(parent_size)s %(vendor)s %(model)s dispozitiv (%(device)s)"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:786
+msgid ""
+"\n"
+"\n"
+"The Persistent Storage on this USB stick will be lost."
+msgstr ""
+"\n"
+"\n"
+"Stocarea permanentă de pe acest stick USB va fi pierdută."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:788
+msgid "Delete Persistent Storage and Reinstall"
+msgstr "Șterge stocarea persistentă și reinstalează"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:790
+msgid ""
+"\n"
+"\n"
+"All data on this USB stick will be lost."
+msgstr ""
+"\n"
+"\n"
+"Toate datele de pe acest stick vor fi pierdute."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:791
+msgid "Delete All Data and Install"
+msgstr "Șterge toate datele și instalează"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:792
+#, python-format
+msgid "%(description)s%(delete_message)s"
+msgstr "%(description)s%(delete_message)s"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:797
+msgid "Confirm the target USB stick"
+msgstr "Confirmați stick-ul USB de destinație"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:827
+msgid "Unable to mount device"
+msgstr "Nu se poate monta dispozitivul"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:856
+msgid ""
+"The selected file is unreadable. Please fix its permissions or select "
+"another file."
+msgstr "Fișierul ales nu poate fi citit. Corectați accesul sau alegeți altul."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:866
+msgid ""
+"Unable to use the selected file.  You may have better luck if you move your "
+"ISO to the root of your drive (ie: C:\\)"
+msgstr ""
+"Fișierul ales nu poate fi folosit. Poate veți avea mai mult noroc mutînd ISO-"
+"ul în folderul rădăcină (ex. C:\\)"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:875
+#, python-format
+msgid "%(filename)s selected"
+msgstr "%(filename)s selectat"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/source.py:37
+msgid "Unable to find Tails on ISO"
+msgstr "Imposibil de găsit sistemul Tails pe fișierul ISO"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/source.py:44
+#, python-format
+msgid "Could not guess underlying block device: %s"
+msgstr "Nu se pot identifica următorul dispozitiv: %s"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/source.py:61
+#, python-format
+msgid ""
+"There was a problem executing `%(cmd)s`.\n"
+"%(out)s\n"
+"%(err)s"
+msgstr ""
+"A apărut o problemă în executarea `%(cmd)s`.\n"
+"%(out)s\n"
+"%(err)s"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/source.py:70
+#, python-format
+msgid "\"%s\" does not exist"
+msgstr "\"%s\" nu există"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/source.py:72
+#, python-format
+msgid "\"%s\" is not a directory"
+msgstr "\"%s\" nu este un folder"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/source.py:84
+#, python-format
+msgid "Skipping \"%(filename)s\""
+msgstr "Ignor \"%(filename)s\""
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/utils.py:63
+#, python-format
+msgid ""
+"There was a problem executing `%(cmd)s`.%(out)s\n"
+"%(err)s"
+msgstr ""
+"A apărut o problemă la executarea `%(cmd)s`. %(out)s\n"
+"%(err)s"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/utils.py:144
+msgid "Could not open device for writing."
+msgstr "Nu se poate deschide dispozitivul pentru a scrie informația."
+
+#: config/chroot_local-includes/usr/local/bin/secrets:19
+#, fuzzy, sh-format
+msgid ""
+"You have a <i>KeePassXC</i> or <i>Secrets</i> database in your "
+"<i>Persistent</i> folder:\n"
+"\n"
+"<i>${filename}</i>\n"
+"\n"
+"Renaming your database to <i>${default_filename}</i> allows <i>Secrets</i> "
+"to open it automatically in the future."
+msgstr ""
+"<b><big>Doriți să redenumiți baza de date<i> KeePassXC</i>?</big></b>\n"
+"\n"
+"Aveți o bază de date <i>KeePassXC</i> în folderul dumneavoastră "
+"<i>persistent</i>:\n"
+"\n"
+"<i>${filename}</i>\n"
+"\n"
+"Redenumirea bazei de date la <i>${default_filename}</i> ar permite "
+"<i>KeePassXC</i> să o deschidă automat în viitor."
+
+#: config/chroot_local-includes/usr/local/bin/secrets:25
+msgid "Rename"
+msgstr "Redenumire"
+
+#: config/chroot_local-includes/usr/local/bin/secrets:27
+msgid "Keep current name"
+msgstr "Menține numele curent"
+
+#: config/chroot_local-includes/usr/local/bin/secrets:29
+msgid "Rename Password Database?"
+msgstr ""
+
+#: config/chroot_local-includes/usr/local/bin/replace-su-with-sudo:19
+msgid "su is disabled. Please use sudo instead."
+msgstr "su este dezactivat. Vă rugăm ca în locul su să folosiți sudo."
+
+#: config/chroot_local-includes/usr/local/lib/tails-report-disk-ioerrors:3
+msgid "Error Reading Data from Tails USB Stick"
+msgstr "Eroare la citirea datelor din Stick-ul USB Tails"
+
+#: config/chroot_local-includes/usr/local/lib/tails-report-disk-ioerrors:4
+msgid "The hardware of your USB stick is probably failing."
+msgstr "Probail cedeaza componenta fizica a stick-ului USB."
+
+#: config/chroot_local-includes/usr/local/lib/tails-report-disk-ioerrors:5
+msgid "We recommend that you reinstall Tails on a different USB stick."
+msgstr "Recomandam reinstalarea Tails pe alt stick USB."
+
+#: config/chroot_local-includes/usr/local/lib/tails-report-disk-ioerrors:7
+msgid ""
+"We recommend that you reinstall Tails on a different USB stick\n"
+"and recover the data from your Persistent Storage as soon as possible."
+msgstr ""
+"Recomandam reinstalarea Tails pe un alt stick USB precum si\n"
+"recuperarea imediata a datelor din Stocarea Permanenta."
+
+#: config/chroot_local-includes/usr/local/lib/tails-report-disk-ioerrors:10
+msgid "Dismiss"
+msgstr "Respins"
+
+#: config/chroot_local-includes/usr/local/lib/tails-report-disk-ioerrors:11
+#: config/chroot_local-includes/usr/local/lib/tails-additional-software-notify:63
+#: config/chroot_local-includes/usr/local/lib/tails-low-ram-notify-user:44
+#: config/chroot_local-includes/usr/local/lib/tails-uefi-ca-notify-user:52
+#: config/chroot_local-includes/usr/local/lib/tails-virt-notify-user:45
+msgid "Learn More"
+msgstr "Află mai multe"
+
+#: config/chroot_local-includes/usr/local/lib/tails-report-disk-partitioning-errors:18
+#, fuzzy
+msgid "Partitioning Error"
+msgstr "Partiții si Unități de disc"
+
+#: config/chroot_local-includes/usr/local/lib/tails-report-disk-partitioning-errors:19
+msgid "Errors were detected in the partitioning of your Tails USB stick."
+msgstr ""
+
+#: config/chroot_local-includes/usr/local/lib/tails-report-disk-partitioning-errors:26
+#, fuzzy
+msgid ""
+"We recommend that you create a backup of your Tails using <i>Tails Cloner</"
+"i> to migrate to a new USB stick."
+msgstr "Recomandam reinstalarea Tails pe alt stick USB."
+
+#: config/chroot_local-includes/usr/local/lib/tails-report-disk-partitioning-errors:33
+#, fuzzy
+msgid "Open Tails Cloner"
+msgstr "Programul de clonare Tails"
+
+#: config/chroot_local-includes/usr/local/lib/tails-report-disk-partitioning-errors:42
+#, fuzzy
+msgid "Creation of Persistent Storage has been disabled."
+msgstr "Crearea Stocării Permanente a eșuat."
+
+#: config/chroot_local-includes/usr/local/lib/tails-report-disk-partitioning-errors:44
+#, fuzzy
+msgid ""
+"We recommend that you reinstall Tails from scratch. If the error persists, "
+"reinstall on a new USB stick."
+msgstr "Recomandam reinstalarea Tails pe alt stick USB."
+
+#: config/chroot_local-includes/usr/src/perl5lib/lib/Tails/RunningSystem.pm:207
+#: config/chroot_local-includes/usr/local/bin/tails-upgrade-frontend-wrapper:79
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/application.py:79
+#: config/chroot_local-includes/usr/local/sbin/unsafe-browser:37
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:375
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:521
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:654
+msgid "Error"
+msgstr "Eroare"
+
+#: config/chroot_local-includes/usr/src/perl5lib/lib/Tails/RunningSystem.pm:209
+msgid ""
+"The device Tails is running from cannot be found. Maybe you used the 'toram' "
+"option?"
+msgstr ""
+"Dispozitivul pe care rulează Tails nu a putut fi găsit. Ați folosit opțiunea "
+"'toram'?"
+
+#: config/chroot_local-includes/usr/src/perl5lib/lib/Tails/RunningSystem.pm:237
+msgid ""
+"The drive Tails is running from cannot be found. Maybe you used the 'toram' "
+"option?"
+msgstr ""
+"Dispozitivul pe care rulează Tails nu a putut fi găsit. Ați folosit opțiunea "
+"'toram'?"
+
+#: config/chroot_local-includes/usr/share/gnome-shell/extensions/status-menu-helper@tails.boum.org/extension.js:103
+#: config/chroot_local-includes/usr/local/bin/tails-screen-locker:120
+msgid "Lock Screen"
+msgstr "Ecran de blocare"
+
+#: config/chroot_local-includes/usr/share/gnome-shell/extensions/status-menu-helper@tails.boum.org/extension.js:107
+msgid "Suspend"
+msgstr "Suspendă"
+
+#: config/chroot_local-includes/usr/share/gnome-shell/extensions/status-menu-helper@tails.boum.org/extension.js:111
+msgid "Restart"
+msgstr "Repornire"
+
+#: config/chroot_local-includes/usr/share/gnome-shell/extensions/status-menu-helper@tails.boum.org/extension.js:115
+msgid "Power Off"
+msgstr "Oprire"
+
+#: config/chroot_local-includes/usr/local/bin/tails-about:27
+#: ../config/chroot_local-includes/usr/share/desktop-directories/Tails.directory.in.h:1
+msgid "Tails"
+msgstr "Tails"
+
+#: config/chroot_local-includes/usr/local/bin/tails-about:30
+#: ../config/chroot_local-includes/usr/share/applications/tails-about.desktop.in.h:1
+msgid "About Tails"
+msgstr "Despre Tails"
+
+#: config/chroot_local-includes/usr/local/bin/tails-about:34
+#, fuzzy
+msgid "Check for Upgrades"
+msgstr "Eroare la căutarea actualizărilor"
+
+#: config/chroot_local-includes/usr/local/bin/tails-about:57
+msgid "UNRELEASED"
+msgstr "NELANSAT"
+
+#: config/chroot_local-includes/usr/local/bin/tails-about:64
+#, python-format
+msgid "Built from %s"
+msgstr "Cladit de la %s"
+
+#: config/chroot_local-includes/usr/local/bin/tails-additional-software-config:114
+#, python-brace-format
+msgid ""
+"Remove {package} from your additional software? This will stop installing "
+"the package automatically."
+msgstr ""
+"Ștergeți {package} din aplicațiile dumneavoastră adiționale? Acest lucru va "
+"opri instalarea automată a pachetului."
+
+#. Translators: Don't translate {pkg}, it's a placeholder and will be replaced.
+#: config/chroot_local-includes/usr/local/bin/tails-additional-software-config:127
+#, python-brace-format
+msgid "Failed to remove {pkg}"
+msgstr "Nu s-a reușit eliminarea {pkg}"
+
+#: config/chroot_local-includes/usr/local/bin/tails-additional-software-config:155
+msgid "Failed to read additional software configuration"
+msgstr "Nu s-a putut citi configurația aplicațiilor adiționale"
+
+#. Translators: Don't translate {package}, it's a placeholder and will be replaced.
+#: config/chroot_local-includes/usr/local/bin/tails-additional-software-config:184
+#, python-brace-format
+msgid "Stop installing {package} automatically"
+msgstr "Oprește instalarea automată a {package}"
+
+#: config/chroot_local-includes/usr/local/bin/tails-additional-software-config:215
+msgid ""
+"To do so, install some software using <a href=\"synaptic.desktop\">Synaptic "
+"Package Manager</a> or <a href=\"org.gnome.Terminal.desktop\">APT on the "
+"command line</a>."
+msgstr ""
+"Pentru a face acest lucru, instalează câteva aplicații folosind <a "
+"href=\"synaptic.desktop\">Synaptic Package Manager</a> sau <a "
+"href=\"org.gnome.Terminal.desktop\">APT în linia de comandă</a>."
+
+#: config/chroot_local-includes/usr/local/bin/tails-additional-software-config:227
+msgid ""
+"To do so, unlock your Persistent Storage when starting Tails and install "
+"some software using <a href=\"synaptic.desktop\">Synaptic Package Manager</"
+"a> or <a href=\"org.gnome.Terminal.desktop\">APT on the command line</a>."
+msgstr ""
+"Pentru a face acest lucru, deblocați stocarea permanentă la pornirea "
+"sistemului Tails și instalați niște aplicații folosind <a "
+"href=\"synaptic.desktop\">Synaptic Package Manager</a> sau <a "
+"href=\"org.gnome.Terminal.desktop\">APT în linia de comandă</a>."
+
+#: config/chroot_local-includes/usr/local/bin/tails-additional-software-config:240
+msgid ""
+"To do so, create a Persistent Storage and install some software using <a "
+"href=\"synaptic.desktop\">Synaptic Package Manager</a> or <a "
+"href=\"org.gnome.Terminal.desktop\">APT on the command line</a>."
+msgstr ""
+"Pentru a face acest lucru, creați o Stocare Permanentă și instalați niște "
+"aplicații folosind <a href=\"synaptic.desktop\">Synaptic Package Manager</a> "
+"sau <a href=\"org.gnome.Terminal.desktop\">APT în linia de comandă</a>."
+
+#: config/chroot_local-includes/usr/local/bin/tails-additional-software-config:258
+msgid "To do so, install Tails on a USB stick and create a Persistent Storage."
+msgstr ""
+"Pentru a face aceasta, instalați Tails pe un stick USB și creați un spațiu "
+"de Stocare Permanent."
+
+#: config/chroot_local-includes/usr/local/bin/tails-additional-software-config:304
+msgid "[package not available]"
+msgstr "[pachet indisponibil]"
+
+#: config/chroot_local-includes/usr/local/bin/tails-additional-software-config:311
+#, fuzzy
+msgid "[description not available]"
+msgstr "[pachet indisponibil]"
+
+#: config/chroot_local-includes/usr/local/lib/tails-htp-notify-user:68
+msgid "Failed to synchronize the clock!"
+msgstr "Sincronizarea ceasului a eșuat!"
+
+#: config/chroot_local-includes/usr/local/lib/tails-low-ram-notify-user:26
+msgid "Insufficient Memory Detected"
+msgstr ""
+
+#: config/chroot_local-includes/usr/local/lib/tails-low-ram-notify-user:28
+#, python-brace-format
+msgid ""
+"Tails requires {required_ram_gb} GB of RAM, but this computer only has "
+"{installed_ram_gb} GB. You might experience reduced performance, "
+"instability, or crashes."
+msgstr ""
+
+#: config/chroot_local-includes/usr/local/lib/tails-low-ram-notify-user:41
+#: config/chroot_local-includes/usr/local/lib/tails-uefi-ca-notify-user:47
+#: config/chroot_local-includes/usr/local/lib/tails-virt-notify-user:42
+msgid "Don't Show Again"
+msgstr "Nu arătați din nou"
+
+#: config/chroot_local-includes/usr/local/bin/tails-screen-locker:132
+msgid "Screen Locker"
+msgstr "Program de Blocare a Ecranului"
+
+#: config/chroot_local-includes/usr/local/bin/tails-screen-locker:138
+msgid "Set up a password to unlock the screen."
+msgstr "Setați o parolă pentru a debloca ecranul."
+
+#: config/chroot_local-includes/usr/local/bin/tails-screen-locker:147
+#, fuzzy
+msgid "Show Password"
+msgstr "Parola"
+
+#: config/chroot_local-includes/usr/local/bin/tails-screen-locker:151
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:2580
+msgid "Password"
+msgstr "Parola"
+
+#: config/chroot_local-includes/usr/local/bin/tails-screen-locker:152
+#: ../config/chroot_local-includes/usr/share/tails/greeter/additional_settings.ui.in:109
+msgid "Confirm"
+msgstr "Confirmă"
+
+#: config/chroot_local-includes/usr/local/bin/tails-security-check:121
+msgid "This version of Tails has known security issues:"
+msgstr "Această versiune Tails are probleme de securitate cunoscute:"
+
+#: config/chroot_local-includes/usr/local/bin/tails-security-check:131
+msgid "Known security issues"
+msgstr "Probleme de securitate cunoscute"
+
+#: config/chroot_local-includes/usr/local/lib/tails-spoof-mac:60
+#, sh-format
+msgid "Wi-Fi Interface Disabled"
+msgstr ""
+
+#: config/chroot_local-includes/usr/local/lib/tails-spoof-mac:61
+#, sh-format
+msgid ""
+"MAC address anonymization failed for one of your Wi-Fi interfaces, so it is "
+"temporarily disabled."
+msgstr ""
+
+#: config/chroot_local-includes/usr/local/lib/tails-spoof-mac:64
+#, fuzzy, sh-format
+msgid "Wi-Fi Disabled"
+msgstr "Dezactivat"
+
+#: config/chroot_local-includes/usr/local/lib/tails-spoof-mac:65
+#, sh-format
+msgid ""
+"MAC address anonymization failed for your Wi-Fi interface, so it is "
+"temporarily disabled."
+msgstr ""
+
+#: config/chroot_local-includes/usr/local/lib/tails-spoof-mac:67
+#, sh-format
+msgid "Wired Interface Disabled"
+msgstr ""
+
+#: config/chroot_local-includes/usr/local/lib/tails-spoof-mac:68
+#, sh-format
+msgid ""
+"MAC address anonymization failed for one of your wired interfaces, so it is "
+"temporarily disabled."
+msgstr ""
+
+#: config/chroot_local-includes/usr/local/lib/tails-spoof-mac:71
+#, fuzzy, sh-format
+msgid "Wired Network Disabled"
+msgstr "Toate rețelele sunt dezactivate"
+
+#: config/chroot_local-includes/usr/local/lib/tails-spoof-mac:72
+#, sh-format
+msgid ""
+"MAC address anonymization failed for your wired interface, so it is "
+"temporarily disabled."
+msgstr ""
+
+#: config/chroot_local-includes/usr/local/lib/tails-spoof-mac:74
+#, fuzzy, sh-format
+msgid "Network Interface Disabled"
+msgstr "Placa de rețea ${nic} dezactivată"
+
+#: config/chroot_local-includes/usr/local/lib/tails-spoof-mac:75
+#, sh-format
+msgid ""
+"MAC address anonymization failed for one of your network interfaces, so it "
+"is temporarily disabled."
+msgstr ""
+
+#: config/chroot_local-includes/usr/local/lib/tails-spoof-mac:87
+#, fuzzy
+msgid "All Networking Disabled"
+msgstr "Toate rețelele sunt dezactivate"
+
+#: config/chroot_local-includes/usr/local/lib/tails-spoof-mac:89
+#, fuzzy, sh-format
+msgid ""
+"MAC address anonymization failed for one of your network interfaces. The "
+"error recovery also failed, so all networking is disabled."
+msgstr ""
+"Anonimizare adresei MAC a eșuat pentru placa de rețea ${nic_name} (${nic}). "
+"Întoarcerea de la pasul anterior înainte ca eroarea să fi fost apărută a "
+"eșuat de asemenea întrucât toate conexiunile sunt dezactivate.\n"
+"Ați putea alege să reporniți Tails și să dezactivați anonimizare adresei MAC."
+
+#: config/chroot_local-includes/usr/local/lib/tails-spoof-mac:92
+#, fuzzy, sh-format
+msgid ""
+"MAC address anonymization failed for your network interface. The error "
+"recovery also failed, so all networking is disabled."
+msgstr ""
+"Anonimizare adresei MAC a eșuat pentru placa de rețea ${nic_name} (${nic}). "
+"Întoarcerea de la pasul anterior înainte ca eroarea să fi fost apărută a "
+"eșuat de asemenea întrucât toate conexiunile sunt dezactivate.\n"
+"Ați putea alege să reporniți Tails și să dezactivați anonimizare adresei MAC."
+
+#: config/chroot_local-includes/usr/local/lib/tails-uefi-ca-notify-user:28
+msgid "Secure Boot Update Needed"
+msgstr ""
+
+#: config/chroot_local-includes/usr/local/lib/tails-uefi-ca-notify-user:30
+msgid ""
+"Tails will no longer start on this computer at some point in the future. "
+"Apply all available updates from your regular operating system to update to "
+"the latest Secure Boot certificates of Microsoft."
+msgstr ""
+
+#: config/chroot_local-includes/usr/local/bin/tails-upgrade-frontend-wrapper:37
+#, python-brace-format
+msgid ""
+"<b>Not enough memory available to check for upgrades.</b>\n"
+"\n"
+"Make sure this system satisfies the requirements for running Tails.\n"
+"See file:///usr/share/doc/tails/website/doc/about/requirements.en.html\n"
+"\n"
+"Try to restart Tails to check for upgrades again.\n"
+"\n"
+"Or do a manual upgrade.\n"
+"See {manual_upgrade_url}"
+msgstr ""
+"<b>Memorie insuficientă pentru verificarea actualizărilor.</b>\n"
+"\n"
+"Asigurați-vă că sistemul întâlnește cerințele minime pentru a rula Tails.\n"
+"Accesați fișierul file:///usr/share/doc/tails/website/doc/about/"
+"requirements.en.html\n"
+"\n"
+"Puteți încerca să reporniți Tails pentru a verifica din nou actualizările.\n"
+"\n"
+"Puteți de asemenea să actualizați sistemul manual.\n"
+"Aflați cum se procedează acest lucru la {manual_upgrade_url}"
+
+#: config/chroot_local-includes/usr/local/bin/tails-upgrade-frontend-wrapper:78
+#: config/chroot_local-includes/usr/local/sbin/unsafe-browser:36
+msgid "error:"
+msgstr "eroare:"
+
+#: config/chroot_local-includes/usr/local/lib/tails-virt-notify-user:24
+msgid "Warning: virtual machine detected!"
+msgstr "Atenție: s-a detectat o mașină virtuală!"
+
+#: config/chroot_local-includes/usr/local/lib/tails-virt-notify-user:26
+msgid "Warning: non-free virtual machine detected!"
+msgstr "Atenție: o mașina virtuală care non-liberă a fost detectată!"
+
+#: config/chroot_local-includes/usr/local/lib/tails-virt-notify-user:28
+msgid ""
+"Both the host operating system and the virtualization software are able to "
+"monitor what you are doing in Tails. Only free software can be considered "
+"trustworthy, for both the host operating system and the virtualization "
+"software."
+msgstr ""
+"Atât sistemul de operare gazdă cât și software-ul de virtualizare sunt "
+"capabile să monitorizeze ce faceți în Tails. Numai software-ul liber poate "
+"fi considerat demn de încredere, atât pentru sistemul de operare gazdă cât "
+"și pentru software-ul de virtualizare."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/config.py:9
+#: config/chroot_local-includes/usr/local/bin/tca:10
+#: ../config/chroot_local-includes/usr/share/applications/tca.desktop.in.h:1
+msgid "Tor Connection"
+msgstr "Conexiune Tor"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py:283
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py:331
+msgid "Automatic"
+msgstr "Automat"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py:284
+msgid "Frequently selected regions"
+msgstr ""
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py:291
+msgid "Other regions"
+msgstr ""
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py:369
+msgid "_Use a bridge that you already know"
+msgstr "_Folosește un pod pe care îl stiu deja"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py:411
+msgid ""
+"To save your bridge, <a href=\"doc/persistent_storage\">unlock your "
+"Persistent Storage</a>."
+msgstr ""
+"Pentru a salva podul, <a href=\"doc/first_steps/persistence\">deblocați "
+"stocarea persistentă</a>."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py:418
+#, fuzzy
+msgid ""
+"To save your bridge, <a href=\"doc/persistent_storage\">create a Persistent "
+"Storage</a> on your Tails USB stick."
+msgstr ""
+"Pentru a salva cheia bridge, <a href=\"doc/persistent_storage\">creați o "
+"Stocare Permanentă</a>pe stick-ul dvs. USB cu Tails"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py:438
+#, fuzzy, python-brace-format
+msgid "Invalid: {exception}"
+msgstr "Invalid: {exception}"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py:450
+#, fuzzy
+msgid ""
+"You need to configure a WebTunnel or an obfs4 bridge to hide that you are "
+"using Tor"
+msgstr ""
+"Trebuie sa configuri un pod obfs4 pentru a ascunde faptul că folosești Tor"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py:514
+msgid "Failed to configure your Persistent Storage"
+msgstr "Nu s-a putut configura stocarea persistentă"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py:566
+msgid "Failed to detect a webcam. Maybe your webcam is too old."
+msgstr ""
+"Nu s-a putut detecta nici o camera web. Poate camera ta web este prea veche."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py:577
+msgid "Failed to scan QR code. Try with more light or closer to the camera."
+msgstr ""
+"Scanarea codului tau QR nu a reusit. Incearca sa luminezi sau sa te apropi "
+"de camera."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py:588
+msgid "Invalid QR code. Try sending another email and scanning again."
+msgstr ""
+"Cod QR invalid. Incearca sa trimiti inca un mail si scaneaza-l din nou."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py:649
+msgid "Synchronizing the system's clock…"
+msgstr "Se sincronizează ceasul sistemului…"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py:726
+#, fuzzy
+msgid "Asking for a Tor bridge based on your region…"
+msgstr "• Bridge peste email"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py:774
+msgid "Connecting to Tor without bridges…"
+msgstr "Conectarea la Tor fără poduri…"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py:781
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py:813
+msgid "Connecting to Tor with default bridges…"
+msgstr "Conectarea la Tor cu podurile implicite…"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py:789
+#, fuzzy
+msgid "Connecting to Tor with a bridge based on your region…"
+msgstr "Conectarea la Tor cu podurile implicite…"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py:796
+msgid "Connecting to Tor with a custom bridge…"
+msgstr "Conectarea la Tor cu un pod modificat…"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py:914
+msgid "Connected to Tor successfully with bridges"
+msgstr "Conectat cu succes la Tor cu poduri"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py:916
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:2340
+msgid "Connected to Tor successfully"
+msgstr "Conectarea la Tor a reusit"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py:920
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:2365
+msgid "You can now browse the Internet anonymously and uncensored."
+msgstr "Puteti acum sa accesati Internetul anonim si necenzurat."
+
+#. Translators: only translate "Bridge:" and adjust
+#. text-direction
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py:985
+#, python-brace-format
+msgid "Bridge: <b>{bridge}</b>"
+msgstr ""
+
+#. Translators: only translate "Error code:" and adjust
+#. text-direction
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py:997
+#, python-brace-format
+msgid "Error code: {code}"
+msgstr ""
+
+#. Translators: only translate "Proxy:" and adjust
+#. text-direction
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py:1024
+#, python-brace-format
+msgid "Proxy: <b>{proxy}</b>"
+msgstr ""
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py:1323
+#, python-brace-format
+msgid "Scanned {bridge_type} bridge: <b>{bridge_info}</b>."
+msgstr "Scanat {bridge_type} podul: {bridge_info}"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py:1408
+msgid "Are you sure you want to lose progress?"
+msgstr "Sunteți sigur că vreți să pierdeți progres?"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py:1412
+msgid ""
+"Tails will continue connecting to Tor after you close the Tor Connection "
+"assistant.\n"
+"\n"
+"If connecting to Tor fails, you will have to wait again until the end of the "
+"progress bar to be able to troubleshoot your connection."
+msgstr ""
+"Tails va continua să se conecteze la Tor după ce închizi Asistentul de "
+"Conexiune Tor.\n"
+"\n"
+"Dacă conectarea la Tor eșuează, trebuie să aștepți din nou până la sfârsitul "
+"bării de progres pentru a vă putea depana conexiunea."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py:1418
+msgid "Close and Lose Progress"
+msgstr "Inchide si Pierde Progresul"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py:1420
+msgid "Wait"
+msgstr "Asteptati"
+
+#: config/chroot_local-includes/usr/local/lib/launch-tor-browser:38
+msgid "Tor is not ready"
+msgstr "Tor nu este pregatit"
+
+#: config/chroot_local-includes/usr/local/lib/launch-tor-browser:39
+msgid "Tor is not ready. Start Tor Browser anyway?"
+msgstr "Tor nu este pregătit. Se pornește navigatorul Tor Browser oricum?"
+
+#: config/chroot_local-includes/usr/local/lib/launch-tor-browser:40
+msgid "Start Tor Browser Offline"
+msgstr "Porneste browser-ul Tor offline"
+
+#: config/chroot_local-includes/usr/local/lib/launch-tor-browser:41
+msgid "Open Tor Connection"
+msgstr "Deschide conexiunea Tor"
+
+#: config/chroot_local-includes/usr/share/gnome-shell/extensions/torstatus@tails.boum.org/extension.js:38
+msgid "Tor Status"
+msgstr "Stare Tor"
+
+#: config/chroot_local-includes/usr/share/gnome-shell/extensions/torstatus@tails.boum.org/extension.js:47
+#, fuzzy
+msgid "Open Tor Connection Assistant"
+msgstr "Deschide conexiunea Tor"
+
+#: config/chroot_local-includes/usr/share/gnome-shell/extensions/torstatus@tails.boum.org/extension.js:51
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:2406
+msgid "View Tor Circuits"
+msgstr "Vizualizare circuite Tor"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps/device.py:353
+#, python-brace-format
+msgid ""
+"Only {available_memory} KiB of memory is available, need at least "
+"{required_memory} KiB.\n"
+"\n"
+"Try again after closing some applications or rebooting."
+msgstr ""
+"Disponibili doar {available_memory} KiB de memorie, necesari minim "
+"{required_memory} KiB.\n"
+"\n"
+"Reincercati dupa inchiderea unor aplicatii sau reporniti."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps/device.py:367
+msgid "Creating a partition for the Persistent Storage..."
+msgstr "Se creaza o partitie pentru Stocarea Permanentă..."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps/device.py:389
+msgid ""
+"Initializing the LUKS encryption... The computer might stop responding for a "
+"few seconds."
+msgstr ""
+"Initializare criptare LUKS... Calculatoare poate parea blocat pentru cateva "
+"secunde."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps/device.py:420
+msgid "Unlocking the encryption..."
+msgstr "Deblocarea criptarii..."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps/device.py:428
+msgid "Formatting the file system..."
+msgstr "Se pregateste sistemul de fișiere..."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps/device.py:446
+msgid "Activating the Persistent Storage..."
+msgstr "Activarea Stocării Permanente..."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps/device.py:451
+msgid "Finishing setting up the Persistent Storage..."
+msgstr "Incheiem pregatirea Stocarii Permanente..."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps/device.py:704
+msgid ""
+"Can't unmount Persistent Storage, some process is still using it. Please "
+"close all applications that could be accessing it and try again. If that "
+"doesn't work, restart Tails and try deleting the Persistent Storage without "
+"unlocking it."
+msgstr ""
+"Nu se poate demonta Stocarea Permanenta deoaece nste procese inca o "
+"folosesc. Rugam inchideti toate aplicatiile care o pot utiliza si "
+"reincercati. Daca tot nu se poate, reporniti Tails si incercati sa stergeti "
+"Stocarea Permanenta fara a o debloca."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps/device.py:737
+msgid ""
+"Not enough memory to change the passphrase of the Persistent Storage. Try "
+"again after closing some applications or rebooting."
+msgstr ""
+"Memorie insuficienta pentru modificarea parolei Stocarii Permanente. "
+"Reincercati dupa inchiderea unor aplicatii sau reporniti."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps/configuration/binding.py:411
+#, python-brace-format
+msgid ""
+"Can't unmount target {target}, some process is still using it. Please close "
+"all applications that could be accessing the target and try again."
+msgstr ""
+"Nu poate fi demontata {target}, unele procese inca o folosesc. Rugam "
+"inchideti toate aplicatiile care ar putea-o accesa si reincercati."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/application.py:30
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/window.py:49
+#: ../config/chroot_local-includes/usr/share/applications/org.boum.tails.PersistentStorage.desktop.in.h:1
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/window.ui.in:24
+msgid "Persistent Storage"
+msgstr "Stocare Persistentă"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/application.py:56
+msgid "Failed to start the Persistent Storage service"
+msgstr "Nu s-a putut initializa serviciul Stocarii Permanente"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/application.py:80
+msgid "Could not find the WhisperBack application"
+msgstr "Nu s-a putut gasi aplicatia WhisperBack"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/feature.py:94
+msgid "Delete Data…"
+msgstr "Ștergere Date…"
+
+#. Translators: Don't translate {feature}, it's a placeholder
+#. and will be replaced.
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/feature.py:100
+#, python-brace-format
+msgid "Delete {feature} data"
+msgstr "Stergere {feature} data"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/feature.py:122
+msgid "Activation failed"
+msgstr "Activarea a esuat"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/feature.py:178
+msgid "Activation failed. Try again or delete data."
+msgstr "Activarea a esuat. Reincercati sau stergeti datele."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/feature.py:180
+msgid "Activation failed. Try again."
+msgstr "Activarea a esuat. Reincercati."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/feature.py:182
+msgid "The data of this feature is still saved."
+msgstr "Data pentru aceasta optiune tot s-a salvat."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/feature.py:289
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/feature.py:296
+msgid "Error activating feature {}"
+msgstr "Eroare la activarea optiunii: {}"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/feature.py:297
+msgid "An error occurred while activating the feature."
+msgstr "A aparut o eroare in timpul activarii optiunii."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/feature.py:298
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/feature.py:347
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/feature.py:411
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/change_passphrase_dialog.py:115
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/window.py:270
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/window.py:298
+msgid "Details"
+msgstr "Detalii"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/feature.py:338
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/feature.py:345
+msgid "Error deactivating feature {}"
+msgstr "Eroare la dezactivarea optiunii: {}"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/feature.py:346
+msgid "An error occurred while deactivating the feature."
+msgstr "A aparut o eroare in timpul dezactivarii optiunii."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/feature.py:366
+msgid ""
+"Delete all the data of the {} feature that is saved in the Persistent "
+"Storage?\n"
+"\n"
+"If you cancel, the data will be restored when you turn this feature on again."
+msgstr ""
+"Stergeti toate datele optiunii {} care sunt salvate in Stocarea Permanenta?\n"
+"\n"
+"Daca anulati, datele va fi disponibile la reactivarea acestei optiuni."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/feature.py:377
+msgid "_Delete Data"
+msgstr "_Ștergere Date"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/feature.py:407
+msgid "Error deleting data of feature {}"
+msgstr "Eroare la stergerea datelor optiunii {}"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/feature.py:408
+msgid "An error occurred while deleting the data of feature {}."
+msgstr "A aparut o eroare in timpul stergerii datelor optiunii {}."
+
+#. Translators: Don't translate {applications}, it's a placeholder
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/feature.py:515
+#, python-brace-format
+msgid "Close {applications} to continue"
+msgstr "Inchideti {applications} pentru a continua"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/feature.py:516
+msgid " and "
+msgstr " si "
+
+#. Translators: Don't translate {app} and {pid}, they
+#. are placeholders.
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/feature.py:527
+#, python-brace-format
+msgid "{app} (PID: {pid})"
+msgstr "{app} (PID: {pid})"
+
+#. Translators: Don't translate {app} and {pids}, they
+#. are placeholders.
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/feature.py:532
+#, python-brace-format
+msgid "{app} (PIDs: {pids})"
+msgstr "{app} (PIDs: {pids})"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/change_passphrase_dialog.py:37
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/change_passphrase_dialog.ui.in:15
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/window.ui.in:55
+msgid "Change Passphrase"
+msgstr "Schimba fraza de acces"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/change_passphrase_dialog.py:92
+msgid "The current passphrase is incorrect"
+msgstr "Fraza de acces este incorecta"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/change_passphrase_dialog.py:103
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/change_passphrase_dialog.py:113
+msgid "Changing the passphrase failed"
+msgstr "Schimbarea frazei de acces a esuat"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/change_passphrase_dialog.py:114
+msgid "An error occurred while changing the passphrase."
+msgstr "A aparut o eroare in timpul schimbarii frazei de acces."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/passphrase_strength_hint.py:44
+msgid "Weak"
+msgstr "Slaba"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/passphrase_strength_hint.py:47
+msgid "Fair"
+msgstr "Medie"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/passphrase_strength_hint.py:50
+msgid "Good"
+msgstr "Buna"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/passphrase_strength_hint.py:53
+msgid "Strong"
+msgstr "Puternica"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/error_dialog.py:54
+msgid "You can send an error report to help solve the issue."
+msgstr ""
+"Puteti trimite un raport de eroare pentru a ajuta la rezolvarea problemei."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/error_dialog.py:61
+msgid "_Send Error Report"
+msgstr "_Trimiteti raportul de Eroare"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/window.py:153
+msgid ""
+"Impossible to delete the Persistent Storage while it is unlocked.\n"
+"\n"
+"To delete the Persistent Storage, restart Tails without unlocking the "
+"Persistent Storage and open the Persistent Storage settings again."
+msgstr ""
+"Imposibil de a sterge Stocarea Persistenta cat timp este deblocata\n"
+"\n"
+"Pentru stergerea Stocarii Persistente, reporniti Tails fara a debloca "
+"Stocarea Persistenta si redeschideti setarile Stocarii Persistente."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/window.py:167
+msgid ""
+"Impossible to delete the Persistent Storage because the USB stick is read-"
+"only.\n"
+"\n"
+"To delete the Persistent Storage, turn off the read-only protection of the "
+"USB stick, restart Tails without unlocking the Persistent Storage and open "
+"the Persistent Storage settings again."
+msgstr ""
+"Imposibil de sters Stocarea Permanenta deoarece stick-ul USB este protejat "
+"la scriere.\n"
+"\n"
+"Pentru stergerea Stocarii Permanente, Opriti protectia la scriere a stick-"
+"ului USB, reporniti Tails fara a debloca Stocarea Permanenta si redeschideti "
+"setarile Stocarii Permanente."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/window.py:175
+msgid "Impossible to delete the Persistent Storage"
+msgstr "Nu s-a putut sterge Stocarea Permanentă"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/window.py:183
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/window.py:218
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/window.ui.in:35
+msgid "Delete Persistent Storage"
+msgstr "Stergeţi Stocarea Permanentă"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/window.py:187
+msgid ""
+"Are you sure that you want to delete your Persistent Storage? This action "
+"cannot be undone."
+msgstr ""
+"Siguri doriti stergerea Stocarii Permanente? Aceasta actiune nu va mai putea "
+"fi anulata."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/window.py:191
+#: config/chroot_local-includes/usr/local/sbin/unsafe-browser:56
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/change_passphrase_dialog.ui.in:301
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/welcome_view.ui.in:124
+#: ../config/chroot_local-includes/usr/share/tails-installer/passphrase_dialog.ui.in:219
+msgid "_Cancel"
+msgstr "_Anulare"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/window.py:192
+msgid "_Delete Persistent Storage"
+msgstr "_Stergeţi Stocarea Permanentă"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/window.py:202
+msgid "Deleting your Persistent Storage..."
+msgstr "Stergerea Stocarii Permanente..."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/window.py:221
+msgid "_OK"
+msgstr "_OK"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/window.py:230
+msgid ""
+"Sorry, you can't close this app until the ongoing operation has completed."
+msgstr ""
+"Ne pare rau dar nu puteti inchide aceasta aplicatie cat timp operatiile "
+"curente nu-s terminate."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/window.py:233
+msgid "Please wait"
+msgstr "Rugam asteptati"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/window.py:261
+msgid "Not enough memory to create Persistent Storage"
+msgstr "Memorie insuficienta pentru crearea Stocarii Permanente"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/window.py:268
+msgid "Failed to create Persistent Storage"
+msgstr "Nu s-a putut crea Stocarea Permanentă"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/window.py:269
+msgid "An error occurred while creating the Persistent Storage."
+msgstr "A aparut o eroare in crearea Stocării Permanente."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/window.py:289
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/window.py:296
+msgid "Error deleting Persistent Storage"
+msgstr "Eroare la stergerea Stocării Permanente"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/window.py:297
+msgid "An error occurred while deleting the Persistent Storage."
+msgstr "A aparut o eroare in stergerea Stocării Permanente."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/window.py:334
+msgid "Details (command output)"
+msgstr "Detalii (command output)"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/window.py:349
+#, fuzzy
+msgid "Failed to open the documentation"
+msgstr "Documentația Tails"
+
+#. Translators: Don't translate {volume_label} or {volume_size},
+#. they are placeholders and will be replaced. They need
+#. to be present in the translated string.
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/unlock_veracrypt_volumes/volume.py:79
+#, python-brace-format
+msgid "{volume_label} ({volume_size})"
+msgstr "{volume_label} ({volume_size})"
+
+#. Translators: Don't translate {partition_name} or {partition_size},
+#. they are placeholders and will be replaced. They need
+#. to be present in the translated string.
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/unlock_veracrypt_volumes/volume.py:86
+#, python-brace-format
+msgid "{partition_name} ({partition_size})"
+msgstr "{partition_name} ({partition_size})"
+
+#. Translators: Don't translate {volume_size}, it's a placeholder
+#. and will be replaced. It needs to be present in the translated
+#. string.
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/unlock_veracrypt_volumes/volume.py:94
+#, python-brace-format
+msgid "{volume_size} Volume"
+msgstr "{volume_size} Volum"
+
+#. Translators: Don't translate {volume_name}, it's a placeholder and
+#. will be replaced. It needs to be present in the translated string.
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/unlock_veracrypt_volumes/volume.py:140
+#, python-brace-format
+msgid "{volume_name} (Read-Only)"
+msgstr "{volume_name} (Doar pentru citire)"
+
+#. Translators: Don't translate {partition_name} and {container_path}, they
+#. are placeholders and will be replaced. They need to be present
+#. in the translated string.
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/unlock_veracrypt_volumes/volume.py:149
+#, python-brace-format
+msgid "{partition_name} in {container_path}"
+msgstr "{partition_name} în {container_path}"
+
+#. Translators: Don't translate {volume_name} and {path_to_file_container},
+#. they are placeholders and will be replaced. You should only have to translate
+#. this string if it makes sense to reverse the order of the placeholders.
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/unlock_veracrypt_volumes/volume.py:157
+#, python-brace-format
+msgid "{volume_name} – {path_to_file_container}"
+msgstr "{volume_name} – {path_to_file_container}"
+
+#. Translators: Don't translate {partition_name} and {drive_name}, they
+#. are placeholders and will be replaced. They need to be present
+#. in the translated string.
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/unlock_veracrypt_volumes/volume.py:165
+#, python-brace-format
+msgid "{partition_name} on {drive_name}"
+msgstr "{partition_name} pe {drive_name}"
+
+#. Translators: Don't translate {volume_name} and {drive_name},
+#. they are placeholders and will be replaced. You should only have to translate
+#. this string if it makes sense to reverse the order of the placeholders.
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/unlock_veracrypt_volumes/volume.py:173
+#, python-brace-format
+msgid "{volume_name} – {drive_name}"
+msgstr "{volume_name} – {drive_name}"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/unlock_veracrypt_volumes/volume.py:278
+msgid "Wrong passphrase or parameters"
+msgstr "Frază de access sau parametri greșiti"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/unlock_veracrypt_volumes/volume.py:280
+msgid "Error unlocking volume"
+msgstr "Eroare la deblocarea volumului"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/unlock_veracrypt_volumes/volume.py:286
+#, python-brace-format
+msgid ""
+"Couldn't unlock volume {volume_name}:\n"
+"{error_message}"
+msgstr ""
+"Nu s-a putut debloca volumul {volume_name}:\n"
+"{error_message}"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/unlock_veracrypt_volumes/volume.py:403
+msgid "One or more applications are keeping the volume busy."
+msgstr "Una sau mai multe aplicații mențin volumul ocupat."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/unlock_veracrypt_volumes/volume.py:411
+#, python-brace-format
+msgid ""
+"Couldn't lock volume {volume_name}:\n"
+"{error_message}"
+msgstr ""
+"Nu s-a putut bloca volumul {volume_name}:\n"
+"{error_message}"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/unlock_veracrypt_volumes/volume.py:413
+msgid "Locking the volume failed"
+msgstr "Blocarea volumului a eșuat"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/unlock_veracrypt_volumes/volume_list.py:83
+msgid "No file containers added"
+msgstr "Niciun container de fișiere adăugat"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/unlock_veracrypt_volumes/volume_list.py:99
+msgid "No VeraCrypt devices detected"
+msgstr "Niciun dispozitiv VeraCrypt detectat"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/unlock_veracrypt_volumes/volume_manager.py:43
+#: ../config/chroot_local-includes/usr/share/applications/unlock-veracrypt-volumes.desktop.in.h:1
+msgid "Unlock VeraCrypt Volumes"
+msgstr "Deblocare Volum VeraCrypt"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/unlock_veracrypt_volumes/volume_manager.py:120
+msgid "Container already added"
+msgstr "Container deja adăugat"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/unlock_veracrypt_volumes/volume_manager.py:121
+#, python-format
+msgid "The file container %s should already be listed."
+msgstr "Containerul de fișiere %s ar trebui să fie deja afișat."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/unlock_veracrypt_volumes/volume_manager.py:142
+msgid "Container opened read-only"
+msgstr "Containerul este deschis în mod read-only"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/unlock_veracrypt_volumes/volume_manager.py:145
+#, python-brace-format
+msgid ""
+"The file container {path} could not be opened with write access. It was "
+"opened read-only instead. You will not be able to modify the content of the "
+"container.\n"
+"{error_message}"
+msgstr ""
+"Containerul de fișiere {path} nu a putut fi deschis cu permisiune de "
+"scriere. În schimb a fost deschis în mod read-only. Nu veți putea modifica "
+"conținutul containerului.\n"
+"{error_message}"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/unlock_veracrypt_volumes/volume_manager.py:151
+msgid "Error opening file"
+msgstr "Eroare la deschiderea fișierului"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/unlock_veracrypt_volumes/volume_manager.py:178
+msgid "Not a VeraCrypt container"
+msgstr "Nu este un container VeraCrypt"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/unlock_veracrypt_volumes/volume_manager.py:179
+#, python-format
+msgid "The file %s does not seem to be a VeraCrypt container."
+msgstr "Fișierul %s nu pare să fie un container VeraCrypt."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/unlock_veracrypt_volumes/volume_manager.py:183
+msgid "Failed to add container"
+msgstr "Adăugarea containerului a eșuat"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/unlock_veracrypt_volumes/volume_manager.py:185
+#, python-format
+msgid ""
+"Could not add file container %s: Timeout while waiting for loop setup.\n"
+"Please try using the <i>Disks</i> application instead."
+msgstr ""
+"Adăugarea containerului a eșuat%s: setarea inițială a componentei loop "
+"durează prea mult timp.\n"
+"Vă rugăm să reîncercați folosind aplicația <i>Disks</i>."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/unlock_veracrypt_volumes/volume_manager.py:241
+msgid "Choose File Container"
+msgstr "Alegere Container de Fișiere"
+
+#: config/chroot_local-includes/usr/local/sbin/unsafe-browser:47
+msgid "The Unsafe Browser was disabled in the Welcome Screen.\\n\\n"
+msgstr "Browserul nesigur a dezactivat pagina de primire. \\n\\n"
+
+#: config/chroot_local-includes/usr/local/sbin/unsafe-browser:50
+msgid ""
+"To use the Unsafe Browser, restart Tails and make sure that the Unsafe "
+"Browser is enabled in the additional settings of the Welcome Screen."
+msgstr ""
+"Pentru a utiliza Browserul Nesigur, restartati Tails si fiti sigur ca "
+"Browserul Nesigur este activat din setarile aditionale de la Pagina de "
+"Primire."
+
+#: config/chroot_local-includes/usr/local/sbin/unsafe-browser:52
+msgid "To use the Unsafe Browser, restart Tails."
+msgstr "Pentru a utiliza Browserul Nesigur, restartati Tails."
+
+#: config/chroot_local-includes/usr/local/sbin/unsafe-browser:55
+msgid "_Restart"
+msgstr "_Repornire"
+
+#: config/chroot_local-includes/usr/local/sbin/unsafe-browser:57
+msgid ""
+"Do you really want to restart Tails now?\\n\\nAll your current work will be "
+"lost."
+msgstr ""
+"Chiar doriți să reporniți Tails acum?\\n\\nToată munca dumneavoastră curentă "
+"se va pierde."
+
+#: config/chroot_local-includes/usr/local/sbin/unsafe-browser:58
+msgid "Restart Now"
+msgstr "Reporniți acum"
+
+#: config/chroot_local-includes/usr/local/sbin/unsafe-browser:63
+msgid "Failed to restart the system."
+msgstr "Repornirea sistemului a esuat."
+
+#: config/chroot_local-includes/usr/local/sbin/unsafe-browser:71
+msgid "Shutting down the Unsafe Browser..."
+msgstr "Navigatorul neprotejat Unsafe Browser se închide..."
+
+#: config/chroot_local-includes/usr/local/sbin/unsafe-browser:72
+msgid ""
+"This may take a while, and you may not restart the Unsafe Browser until it "
+"is properly shut down."
+msgstr ""
+"Acest lucru poate dura ceva timp, nu reporniți navigatorul neprotejat Unsafe "
+"Browser până ce nu este închis corespunzător."
+
+#: config/chroot_local-includes/usr/local/sbin/unsafe-browser:85
+#: ../config/chroot_local-includes/usr/share/applications/unsafe-browser.desktop.in.h:1
+#: ../config/chroot_local-includes/usr/share/tails/greeter/additional_settings.ui.in:498
+msgid "Unsafe Browser"
+msgstr "Navigatorul neprotejat Unsafe Browser"
+
+#: config/chroot_local-includes/usr/local/sbin/unsafe-browser:100
+msgid ""
+"Another Unsafe Browser is currently running, or being cleaned up. Please "
+"retry in a while."
+msgstr ""
+"Un alt navigator Unsafe Browser este pornit sau în curs de închidere. "
+"Reîncercați în câteva minute."
+
+#: config/chroot_local-includes/usr/local/sbin/unsafe-browser:116
+msgid ""
+"You are not connected to a local network yet.\\n\\nTo be able to start the "
+"Unsafe Browser, you first need to connect to a Wi-Fi, wired, or mobile "
+"network."
+msgstr ""
+"Nu sunteți încă conectat la o rețea locală. \\n\\nPentru a putea porni "
+"Unsafe Browser, mai întâi trebuie să vă conectați la o rețea Wi-Fi, cu fir "
+"sau celular."
+
+#: config/chroot_local-includes/usr/local/sbin/unsafe-browser:146
+msgid "Failed to run browser."
+msgstr "A eșuat rularea navigatorului."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/whisperBack/exceptions.py:45
+#, python-format
+msgid ""
+"The %s variable was not found in the configuration file: /etc/whisperback/"
+"config.py"
+msgstr ""
+"Aceasta %s variabila nu a fost gasita in folderul de configuratie: /etc/"
+"whisperback/config.py"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/whisperBack/gui.py:136
+msgid "Unable to load a valid configuration."
+msgstr "Nu pot încărca o configurație validă."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/whisperBack/gui.py:162
+msgid "Sending mail..."
+msgstr "Se trimite mail-ul..."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/whisperBack/gui.py:163
+msgid "Sending mail"
+msgstr "Se trimite mail-ul"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/whisperBack/gui.py:165
+msgid "This could take a while..."
+msgstr "Ar putea dura...."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/whisperBack/gui.py:199
+msgid "The contact email address doesn't seem valid."
+msgstr "Adresa de email nu pare a fi validă."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/whisperBack/gui.py:220
+msgid "Unable to send the mail: SMTP error."
+msgstr "Nu se poate trimite mail-ul: eroare SMTP."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/whisperBack/gui.py:222
+msgid "Unable to connect to the server."
+msgstr "Nu s-a reușit conectarea la server."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/whisperBack/gui.py:224
+#, fuzzy
+msgid "Tor is not ready yet"
+msgstr "Tor nu este pregatit"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/whisperBack/gui.py:226
+msgid "Unable to create or to send the mail."
+msgstr "Nu s-a reușit crearea sau trimiterea mail-ului."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/whisperBack/gui.py:231
+msgid ""
+"\n"
+"\n"
+"Make sure that you are connected to Tor and click send again."
+msgstr ""
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/whisperBack/gui.py:241
+msgid "Your message has been sent."
+msgstr "Mesajul dumneavoastră a fost trimis."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/whisperBack/gui.py:250
+#, fuzzy
+msgid "An error occurred during encryption."
+msgstr "Eroare în timpul criptării."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/whisperBack/gui.py:319
+msgid "This doesn't seem to be a valid URL or OpenPGP key."
+msgstr "Acesta nu pare a fi un URL valid sau o cheie OpenPGP."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/whisperBack/whisperback.py:57
+#, python-format
+msgid "Invalid contact email: %s"
+msgstr "Email de contact invalid: %s"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/whisperBack/whisperback.py:76
+#, python-format
+msgid "Invalid contact OpenPGP key: %s"
+msgstr "Cheie OpenPGP de contact invalidă: %s"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/whisperBack/whisperback.py:78
+msgid "Invalid contact OpenPGP public key block"
+msgstr "Cheia publică de contact OpenPGP invalidă"
+
+#: config/chroot_local-includes/usr/local/bin/tca:11
+msgid ""
+"You turned on Offline Mode in the Welcome Screen.\n"
+"It is impossible to connect to Tor in Offline Mode.\n"
+"To connect to Tor and the Internet, restart Tails without Offline Mode."
+msgstr ""
+"Ati activat Modul Offline in Ecranul de Bun Venit.\n"
+"Nu va puteti conecta la Tor in ModuI Offline.\n"
+"Pentru a va conecta la Tor si la internet, reporniti Tails fara Modul "
+"Offline activ."
+
+#: config/chroot_local-includes/usr/local/lib/polkit-policy-change-message:65
+msgid ""
+"Authentication is required to run the Synaptic Package Manager. Enter the "
+"administration password that you set up in the Welcome Screen."
+msgstr ""
+
+#: config/chroot_local-includes/usr/local/lib/polkit-policy-change-message:71
+msgid ""
+"For better security, no administration password is set up in Tails by "
+"default. To run the Synaptic Package Manager, restart Tails and set up an "
+"administration password in the Welcome Screen."
+msgstr ""
+
+#: ../config/chroot_local-includes/usr/share/applications/org.boum.tails.PersistentStorage.desktop.in.h:2
+msgid ""
+"Configure which files and application configuration are saved between "
+"working sessions"
+msgstr ""
+"Configurează ce fișiere și configurația aplicației care sunt salvate între "
+"sesiunile de lucru"
+
+#: ../config/chroot_local-includes/usr/share/applications/org.boum.tails.PersistentStorage.desktop.in.h:3
+#, fuzzy
+msgid "configuration;saved"
+msgstr "Configurare imprimante"
+
+#: ../config/chroot_local-includes/usr/share/applications/tails-documentation.desktop.in.h:1
+msgid "Tails Documentation"
+msgstr "Documentația Tails"
+
+#: ../config/chroot_local-includes/usr/share/applications/tails-documentation.desktop.in.h:2
+msgid "Learn how to use Tails"
+msgstr "Învățați cum să utilizați Tails"
+
+#: ../config/chroot_local-includes/usr/share/applications/tails-documentation.desktop.in.h:3
+msgid "learn"
+msgstr ""
+
+#: ../config/chroot_local-includes/usr/share/applications/tails-about.desktop.in.h:2
+msgid "Learn more about Tails"
+msgstr "Învățați mai multe despre Tails"
+
+#: ../config/chroot_local-includes/usr/share/applications/tails-backup.desktop.in.h:1
+msgid "Back Up Persistent Storage"
+msgstr "Copie de siguranta la Stocarea Permanentă"
+
+#: ../config/chroot_local-includes/usr/share/applications/tails-backup.desktop.in.h:2
+#, fuzzy
+msgid ""
+"Make a backup of the Tails Persistent Storage to another Tails USB stick"
+msgstr ""
+"Activați funcțiile Persistent Storage pentru datele pe care doriți să le "
+"salvați pe stick-ul USB Tails."
+
+#: ../config/chroot_local-includes/usr/share/applications/tails-backup.desktop.in.h:3
+msgid "backup"
+msgstr ""
+
+#: ../config/chroot_local-includes/usr/share/applications/tails-installer.desktop.in.h:2
+msgid "Install, clone, upgrade Tails"
+msgstr "Instalare, clonare, actualizare Tails"
+
+#: ../config/chroot_local-includes/usr/share/applications/tails-installer.desktop.in.h:3
+#, fuzzy
+msgid "install;clone;upgrade;manual"
+msgstr "Instalare, clonare, actualizare Tails"
+
+#: ../config/chroot_local-includes/usr/share/applications/tca.desktop.in.h:2
+msgid "Connect Tails to the Tor network"
+msgstr "Conectează Tails la rețeaua Tor"
+
+#: ../config/chroot_local-includes/usr/share/applications/tca.desktop.in.h:3
+#, fuzzy
+msgid "connect;tor;network"
+msgstr "Conectati-va la o retea locala"
+
+#: ../config/chroot_local-includes/usr/share/applications/org.boum.tails.TorBrowser.desktop.in.h:1
+msgid "Tor Browser"
+msgstr "Tor Browser"
+
+#: ../config/chroot_local-includes/usr/share/applications/org.boum.tails.TorBrowser.desktop.in.h:2
+msgid "Anonymous Web Browser"
+msgstr "Navigator Web Anonim"
+
+#: ../config/chroot_local-includes/usr/share/applications/org.boum.tails.TorBrowser.desktop.in.h:3
+#, fuzzy
+msgid "web;tor;browser"
+msgstr "Tor Browser"
+
+#: ../config/chroot_local-includes/usr/share/applications/unsafe-browser.desktop.in.h:2
+msgid "Browse the World Wide Web without anonymity"
+msgstr "Navigați pe Web fără anonimitate"
+
+#: ../config/chroot_local-includes/usr/share/applications/unsafe-browser.desktop.in.h:3
+msgid "Unsafe Web Browser"
+msgstr "Navigator Web Neprotejat"
+
+#: ../config/chroot_local-includes/usr/share/applications/unsafe-browser.desktop.in.h:4
+msgid "web;captive;portal"
+msgstr ""
+
+#: ../config/chroot_local-includes/usr/share/applications/unlock-veracrypt-volumes.desktop.in.h:2
+msgid "Mount VeraCrypt encrypted file containers and devices"
+msgstr "Montare dispozitive și containere de fișiere criptate VeraCrypt"
+
+#: ../config/chroot_local-includes/usr/share/applications/unlock-veracrypt-volumes.desktop.in.h:3
+msgid "mount;encrypted;container;truecrypt"
+msgstr ""
+
+#: ../config/chroot_local-includes/usr/share/applications/org.boum.tails.AdditionalSoftware.desktop.in.h:2
+#, fuzzy
+msgid ""
+"Configure the additional software installed from your Persistent Storage "
+"when starting Tails"
+msgstr ""
+"Configurați aplicațiile adiționale instalate din stocarea persistentă la "
+"pornirea Tails"
+
+#: ../config/chroot_local-includes/usr/share/applications/org.boum.tails.AdditionalSoftware.desktop.in.h:3
+#, fuzzy
+msgid "persistent;storage;package;install"
+msgstr "Șterge stocarea persistentă și reinstalează"
+
+#: ../config/chroot_local-includes/usr/share/applications/whisperback.desktop.in.h:1
+msgid "WhisperBack Error Reporting"
+msgstr "Raport de eroare WhisperBack"
+
+#: ../config/chroot_local-includes/usr/share/applications/whisperback.desktop.in.h:2
+msgid "Send feedback via encrypted e-mail"
+msgstr "Trimiteți feedback prin e-mail criptat"
+
+#: ../config/chroot_local-includes/usr/share/applications/whisperback.desktop.in.h:3
+msgid "feedback;bug;report;tails;error;"
+msgstr "feedback;bug;raport;tails;eroare;"
+
+#: ../config/chroot_local-includes/usr/share/desktop-directories/Tails.directory.in.h:2
+msgid "Tails specific tools"
+msgstr "Unelte specifice Tails"
+
+#: ../config/chroot_local-includes/usr/share/polkit-1/actions/org.boum.tails.AdditionalSoftware.policy.in.h:1
+msgid "Remove an additional software package"
+msgstr "Eliminare aplicație adițională"
+
+#: ../config/chroot_local-includes/usr/share/polkit-1/actions/org.boum.tails.AdditionalSoftware.policy.in.h:2
+msgid ""
+"Authentication is required to remove a package from your additional software "
+"($(command_line))"
+msgstr ""
+"Aveți nevoie de autentificare pentru a elimina un pachet din aplicațiile "
+"adiționale ($(command_line))"
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/additional_settings.ui.in:18
+#: ../config/chroot_local-includes/usr/share/tails/greeter/additional_settings.ui.in:56
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:869
+msgid "Administration Password"
+msgstr "Parolă administrare"
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/additional_settings.ui.in:34
+msgid ""
+"Set up an administration password if you need to perform administrative "
+"tasks. Otherwise, the administration password is disabled for better "
+"security."
+msgstr ""
+"Setaţi o parolă de administrare pentru operațiuni administrative. Altfel, "
+"parola de administrare va fi dezactivată pentru securitate sporită."
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/additional_settings.ui.in:77
+msgid "Enter an administration password"
+msgstr "Introduceţi o parolă de administrare"
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/additional_settings.ui.in:131
+msgid "Confirm your administration password"
+msgstr "Confimaţi parola de administrare"
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/additional_settings.ui.in:156
+msgid "Disable"
+msgstr "Dezactivaţi"
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/additional_settings.ui.in:186
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:873
+msgid "MAC Address Anonymization"
+msgstr "Anonimizare adresei MAC"
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/additional_settings.ui.in:202
+msgid ""
+"MAC address anonymization hides the serial number of your network interface "
+"(Wi-Fi or wired) from the local network. Anonymizing MAC addresses is "
+"generally safer as it helps you hide your geographical location. But it "
+"might also create connectivity problems or look suspicious."
+msgstr ""
+"Anonimizare adresei MAC ascunde numărul serial al interfeței de rețea (Wi-Fi "
+"sau la fir) de la rețeaua locală. Anonimizarea adresei MAC este mai sigur "
+"pentru că vă ajută să ascundeți locația dumneavoastră în timp real. Dar pe "
+"lângă acest lucru, va crea probleme de conexiune sau să arate straniu."
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/additional_settings.ui.in:244
+msgid "Anonymize all MAC addresses (default)"
+msgstr "Anonimizați toate adresele MAC (implicit)"
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/additional_settings.ui.in:290
+msgid "Don't anonymize MAC addresses"
+msgstr "Nu anonimizați adresele MAC"
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/additional_settings.ui.in:343
+msgid "Offline Mode"
+msgstr "Modul Offline"
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/additional_settings.ui.in:359
+#, fuzzy
+msgid ""
+"If you want to work completely offline, you can disable all networking for "
+"increased security."
+msgstr ""
+"Dacă vreți să lucrați complet offline, puteți dezactiva toate conexiunile "
+"pentru securitate crescută"
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/additional_settings.ui.in:514
+#, fuzzy
+msgid ""
+"The Unsafe Browser allows you to sign in to a network using a captive "
+"portal.\n"
+"\n"
+"A captive portal is a web page that is displayed before you can access the "
+"Internet. Captive portals usually require you to log in to the network or "
+"enter information such as an email address.\n"
+"\n"
+"The Unsafe Browser is not anonymous and can deanonymize you. Use it only to "
+"sign in to networks."
+msgstr ""
+"Browserul nesigur îți permite să te conectezi la o rețea folosind un portal "
+"captiv.\n"
+"\n"
+"Un portal captiv este o pagină web afișată înainte de a putea accesa "
+"internetul. Portalurile captive solicită, în general, să te autentifici în "
+"rețea sau să introduci informații precum adresa de e-mail.\n"
+"\n"
+"Browserul nesigur nu este anonim și poate să-ți dezvăluie identitatea. "
+"Folosește-l doar pentru a te autentifica în rețele.\n"
+"\n"
+"Browserul nesigur este activat din nou implicit începând cu versiunea Tails "
+"5.8 (decembrie 2022), după ce am remediat vulnerabilitățile de securitate "
+"care ne-au determinat să-l dezactivăm implicit în versiunea Tails 4.8 (iunie "
+"2020)."
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/additional_settings.ui.in:560
+msgid "Enable the Unsafe Browser (default)"
+msgstr "Activati Browserul Nesigur (implicit)"
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/additional_settings.ui.in:606
+msgid "Disable the Unsafe Browser"
+msgstr "Dezactivati Browserul Nesigur"
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:46
+#, fuzzy
+msgid "Settings were loaded from the Persistent Storage."
+msgstr "Setările au fost încărcate din stocarea persistentă."
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:98
+msgid "Welcome to Tails!"
+msgstr "Bun venit la Tails!"
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:131
+msgid "Language and Formats"
+msgstr ""
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:167
+msgid "Default Settings"
+msgstr "Setări implicite"
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:217
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:238
+msgid "Save"
+msgstr "Salvare"
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:267
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:379
+msgid "_Persistent Storage"
+msgstr "_Stocare Persistentă"
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:287
+#, fuzzy
+msgid ""
+"You can save some of your files and configuration in an encrypted Persistent "
+"Storage on your Tails USB stick: your documents, browser bookmarks, Wi-Fi "
+"passwords, and so on."
+msgstr ""
+"Tu poti sa salvezi ceva din fisierele si configuratia ta cu o criptare "
+"Persistenta in Stocare in stick-ul tau USB cu Taild: documentele tale, "
+"reperele motorului de cautare, parolele tale Wi-Fi si asa mai departe"
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:314
+#, fuzzy
+msgid "Create and configure a Persistent Storage after starting Tails"
+msgstr "O sa creem si configuram Stocarea ta Persistena dupa ce pornim Tails."
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:406
+msgid "Show Passphrase"
+msgstr "Arată parola"
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:463
+#, fuzzy
+msgid "Enter your passphrase"
+msgstr "Verificare parolă:"
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:478
+msgid "Unlock Encryption"
+msgstr "Deblocare Criptare"
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:545
+#, fuzzy
+msgid "Impossible to unlock the Persistent Storage."
+msgstr "Nu s-a putut configura stocarea persistentă"
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:605
+#, fuzzy
+msgid "Partitioning Errors"
+msgstr "Partiții si Unități de disc"
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:641
+msgid ""
+"Errors were detected in the partitioning of your Tails USB stick.\n"
+"\n"
+"Try reinstalling Tails. If the error persists, reinstall on a new USB stick."
+msgstr ""
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:673
+msgid "_Additional Settings"
+msgstr "_Setări Adiționale"
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:756
+msgid "Add an additional setting"
+msgstr "Adaugaţi o setare adițională"
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:803
+msgid "Shutdown"
+msgstr "Inchide"
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:812
+msgid "_Start Tails"
+msgstr "_Pornește Tails"
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:841
+msgid ""
+"The default settings are safe in most situations. To add a custom setting, "
+"press the \"+\" button below."
+msgstr ""
+"Setările implicite sunt sigure în majoritatea cazurilor. Pentru a adăuga o "
+"setare personalizată, apasaţi pe butonul \"+\" de mai jos."
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:877
+msgid "Network Configuration"
+msgstr "Configurare rețea"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/change_passphrase_dialog.ui.in:94
+msgid "Current _Passphrase"
+msgstr "Fraza de acces_Actuala"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/change_passphrase_dialog.ui.in:131
+msgid "_New Passphrase"
+msgstr "_Fraza de acces Noua"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/change_passphrase_dialog.ui.in:179
+msgid "_Confirm New Passphrase"
+msgstr "_Confirma Fraza de acces"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/change_passphrase_dialog.ui.in:219
+msgid "_Show Passphrases"
+msgstr "_Aratati Fraza de acces"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/change_passphrase_dialog.ui.in:253
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/passphrase_view.ui.in:289
+#: ../config/chroot_local-includes/usr/share/tails-installer/passphrase_dialog.ui.in:161
+msgid "The passphrases do not match"
+msgstr "Fraza de acces nu se potrivesc"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/change_passphrase_dialog.ui.in:315
+msgid "Ch_ange"
+msgstr "Sc_imba"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/deleted_view.ui.in:20
+msgid "The Persistent Storage was successfully deleted."
+msgstr "Stocarea Persistenta a fost stearsa cu succes."
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/deleted_view.ui.in:36
+msgid "_Close"
+msgstr "_Inchide"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/fail_view.ui.in:31
+msgid "Oh no! Something has gone wrong."
+msgstr "O nu! Ceva a mers gresit."
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/fail_view.ui.in:45
+msgid ""
+"The Persistent Storage service exited unexpectedly.\n"
+"\n"
+"You can send an error report or check the output of the following commands "
+"to investigate:"
+msgstr ""
+"Serviciul de stocare persistentă s-a oprit în mod neașteptat.\n"
+"\n"
+"Puteți trimite un raport de eroare sau puteți verifica rezultatul "
+"următoarelor comenzi pentru a investiga:"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/fail_view.ui.in:78
+msgid "Send Error Report"
+msgstr "Trimite un raport de Eroare"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:63
+msgid ""
+"Your Persistent Storage is unlocked.\n"
+"\n"
+"Its content is available until you shut down Tails.\n"
+"\n"
+"<a href=\"doc/persistent_storage/backup\">Learn how to make a backup of your "
+"Persistent Storage.</a>"
+msgstr ""
+"Stocarea dvs. persistentă este deblocată.\n"
+"\n"
+"Conținutul său este disponibil până când închideți Tails.\n"
+"\n"
+"<a href=\"doc/persistent_storage/backup\">Aflați cum să faceți o copie de "
+"rezervă a stocării persistente.</a>"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:91
+msgid ""
+"Turn on the features of the Persistent Storage for the data that you want to "
+"save to your Tails USB stick."
+msgstr ""
+"Activați funcțiile Persistent Storage pentru datele pe care doriți să le "
+"salvați pe stick-ul USB Tails."
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:108
+msgid "Personal Documents"
+msgstr "Documente Personale"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:136
+msgid "Persistent Folder"
+msgstr "Volumul Persistent"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:137
+msgid "A folder where you can save your documents."
+msgstr ""
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:162
+msgid "Open Persistent Folder"
+msgstr "Deschide Folumul Persistent"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:175
+msgid "Activate Persistent Folder"
+msgstr "Activarea folderului persistent"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:202
+msgid "System Settings"
+msgstr "Setări implicite"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:230
+msgid "Welcome Screen"
+msgstr "Ecran de întâmpinare"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:246
+#, fuzzy
+msgid "Activate Welcome Screen"
+msgstr "Ecran de întâmpinare"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:259
+msgid "Printers"
+msgstr "Imprimante"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:275
+#, fuzzy
+msgid "Activate Printers"
+msgstr "Imprimante"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:302
+msgid "Network"
+msgstr "Reţea"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:330
+msgid "Network Connections"
+msgstr "Conexiuni Rețea"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:331
+msgid "Save Wi-Fi passwords and mobile broadband configuration."
+msgstr ""
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:347
+#, fuzzy
+msgid "Activate Network Connections"
+msgstr "Conexiuni Rețea"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:360
+msgid "Tor Bridge"
+msgstr "Pod Tor"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:376
+#, fuzzy
+msgid "Activate Tor Bridge"
+msgstr "Pod Tor"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:403
+msgid "Applications"
+msgstr "Aplicații"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:431
+#, fuzzy
+msgid "Tor Browser Bookmarks"
+msgstr "Pagini Salvate in Navigator"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:447
+#, fuzzy
+msgid "Activate Tor Browser Bookmarks"
+msgstr "Pagini Salvate in Navigator"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:460
+#, fuzzy
+msgid "Electrum Bitcoin Wallet"
+msgstr "Portofel bitcoin și configurare Electrum"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:476
+#, fuzzy
+msgid "Activate Electrum Bitcoin Wallet"
+msgstr "Portofel bitcoin și configurare Electrum"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:489
+#, fuzzy
+msgid "Thunderbird Email Client"
+msgstr "Thunderbird"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:505
+msgid "Activate Thunderbird Email Client"
+msgstr ""
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:518
+msgid "GnuPG"
+msgstr "GnuPG"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:519
+#, fuzzy
+msgid "OpenPGP keys outside of Thunderbird, including in Kleopatra."
+msgstr "Chei OpenPGP în GnuPG și Kleopatra"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:535
+msgid "Activate GnuPG"
+msgstr ""
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:548
+msgid "Pidgin Internet Messenger"
+msgstr ""
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:564
+msgid "Activate Pidgin Internet Messenger"
+msgstr ""
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:577
+msgid "SSH Client"
+msgstr "Client SSH"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:593
+#, fuzzy
+msgid "Activate SSH Client"
+msgstr "Client SSH"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:620
+msgid "Advanced Settings"
+msgstr "Setări avansate"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:649
+#, fuzzy
+msgid "Install additional software automatically when starting Tails."
+msgstr ""
+"Puteți instala aplicații adiționale în mod automat din stocarea persistentă "
+"la pornirea sistemului Tails."
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:674
+#, fuzzy
+msgid "Configure Additional Software"
+msgstr "Aplicații adiționale"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:687
+#, fuzzy
+msgid "Activate Additional Software"
+msgstr "Aplicații adiționale"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:700
+msgid "Dotfiles"
+msgstr "Dotfiles"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:701
+#, fuzzy
+msgid "Symlink every file in the Dotfiles folder into the Home folder."
+msgstr "Symlink fiecare fișier din folderul Dotfiles în folderul Acasă"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:734
+#, fuzzy
+msgid "Activate Dotfiles"
+msgstr "Dotfiles"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:766
+msgid "Custom"
+msgstr "Personalizare"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:785
+msgid ""
+"To add or remove custom features, modify /live/persistence/"
+"TailsData_unlocked/persistence.conf."
+msgstr ""
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:827
+#, fuzzy
+msgid ""
+"<a href=\"doc/persistent_storage\">Learn more about the Persistent Storage.</"
+"a>"
+msgstr ""
+"Pentru a salva podul, <a href=\"doc/first_steps/persistence\">deblocați "
+"stocarea dumneavoastră persistentă</a>."
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/locked_view.ui.in:53
+msgid ""
+"<b>Your Persistent Storage is locked.</b>\n"
+"\n"
+"To use or configure your Persistent Storage, unlock it in the Welcome Screen "
+"when starting Tails.\n"
+"\n"
+"To delete your Persistent Storage, click <b>Delete</b> on the right of the "
+"title bar."
+msgstr ""
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/passphrase_view.ui.in:60
+msgid ""
+"Choose the passphrase that you will use to unlock the encryption of your "
+"Persistent Storage and all its data."
+msgstr ""
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/passphrase_view.ui.in:80
+msgid "We recommend a long passphrase of 5 to 7 random words."
+msgstr ""
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/passphrase_view.ui.in:92
+msgid " For example:"
+msgstr ""
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/passphrase_view.ui.in:175
+#: ../config/chroot_local-includes/usr/share/tails-installer/passphrase_dialog.ui.in:46
+msgid "Passphrase:"
+msgstr "Parolă:"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/passphrase_view.ui.in:194
+#: ../config/chroot_local-includes/usr/share/tails-installer/passphrase_dialog.ui.in:65
+#, fuzzy
+msgid "Confirm:"
+msgstr "Confirmă"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/passphrase_view.ui.in:317
+#: ../config/chroot_local-includes/usr/share/tails-installer/passphrase_dialog.ui.in:185
+#, fuzzy
+msgid "_Show Passphrase"
+msgstr "Arată parola"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/passphrase_view.ui.in:361
+#, fuzzy
+msgid "_Back"
+msgstr "Înapoi"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/passphrase_view.ui.in:378
+msgid "_Create Persistent Storage"
+msgstr "_Creaţi Stocare Persistentă"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/welcome_view.ui.in:56
+msgid ""
+"Everything you do disappears automatically when you shut down Tails.\n"
+"\n"
+"But you can save some of your files and configuration in an encrypted "
+"Persistent Storage on your Tails USB stick, for example:\n"
+"\n"
+"• Your documents\n"
+"• Your Wi-Fi passwords\n"
+"• Your browser bookmarks\n"
+"• ...\n"
+"\n"
+"<a href=\"doc/persistent_storage\">Learn more about the Persistent Storage.</"
+"a>"
+msgstr ""
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/welcome_view.ui.in:93
+msgid ""
+"Sorry, it is impossible to create a Persistent Storage on this device.\n"
+"\n"
+"To be able to use Tails with a Persistent Storage, please follow our "
+"instructions on <a href=\"install\">installing Tails on a USB stick</a>."
+msgstr ""
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/welcome_view.ui.in:141
+#: ../config/chroot_local-includes/usr/share/tails-installer/passphrase_dialog.ui.in:232
+msgid "Co_ntinue"
+msgstr ""
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/window.ui.in:29
+#, fuzzy
+msgid "_Delete…"
+msgstr "Ștergere"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/window.ui.in:49
+#, fuzzy
+msgid "_Change Passphrase…"
+msgstr "Schimba fraza de acces"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/window.ui.in:66
+#, fuzzy
+msgid "_Restart Tails"
+msgstr "Reporniți Tails"
+
+#: ../config/chroot_local-includes/usr/share/tails/unlock-veracrypt-volumes/main.ui.in:61
+msgid "File Containers"
+msgstr "Containere de Fișiere"
+
+#: ../config/chroot_local-includes/usr/share/tails/unlock-veracrypt-volumes/main.ui.in:80
+msgid "_Add"
+msgstr "_Adaugă"
+
+#: ../config/chroot_local-includes/usr/share/tails/unlock-veracrypt-volumes/main.ui.in:86
+msgid "Add a file container"
+msgstr "Adăugați un container de fișiere"
+
+#: ../config/chroot_local-includes/usr/share/tails/unlock-veracrypt-volumes/main.ui.in:103
+msgid "Partitions and Drives"
+msgstr "Partiții si Unități de disc"
+
+#: ../config/chroot_local-includes/usr/share/tails/unlock-veracrypt-volumes/main.ui.in:121
+msgid ""
+"This application is not affiliated with or endorsed by the VeraCrypt project "
+"or IDRIX."
+msgstr ""
+"Această aplicație nu este afiliată cu sau susținută de proiectul VeraCrypt "
+"sau IDRIX."
+
+#: ../config/chroot_local-includes/usr/share/tails/unlock-veracrypt-volumes/volume.ui.in:29
+msgid "_Open"
+msgstr "_Open"
+
+#: ../config/chroot_local-includes/usr/share/tails/unlock-veracrypt-volumes/volume.ui.in:38
+msgid "Lock this volume"
+msgstr "Blochează acest volum"
+
+#: ../config/chroot_local-includes/usr/share/tails/unlock-veracrypt-volumes/volume.ui.in:52
+#, fuzzy
+msgid "_Unlock"
+msgstr "_Unlock"
+
+#: ../config/chroot_local-includes/usr/share/tails/unlock-veracrypt-volumes/volume.ui.in:61
+msgid "Detach this volume"
+msgstr "Detașează acest volum"
+
+#: ../config/chroot_local-includes/usr/share/tails-installer/passphrase_dialog.ui.in:8
+#, fuzzy
+msgid "Choose Passphrase"
+msgstr "Schimba fraza de acces"
+
+#: ../config/chroot_local-includes/usr/share/tails-installer/passphrase_dialog.ui.in:30
+#, fuzzy
+msgid "Choose the passphrase for the cloned Persistent Storage."
+msgstr "Alegeți o parolă pentru a proteja volumul persistent"
+
+#: ../config/chroot_local-includes/usr/share/tails-installer/tails-installer.ui.in:281
+msgid "Target USB stick:"
+msgstr "Stick USB de destinație:"
+
+#: ../config/chroot_local-includes/usr/share/tails-installer/tails-installer.ui.in:357
+msgid "Reinstall (delete all data)"
+msgstr "Reinstalează (șterge toate datele)"
+
+#: ../config/chroot_local-includes/usr/share/whisperback/whisperback.ui.in:68
+msgid ""
+"If you want us to encrypt messages when we respond to you, add your key ID, "
+"a link to your key, or the key as a public key block:"
+msgstr ""
+"Dacă vreți să criptăm mesajele cînd vă răspundem, adăugați IDul cheii, un "
+"link către cheia dumneavoastră sau atașați cheia publică:"
+
+#: ../config/chroot_local-includes/usr/share/whisperback/whisperback.ui.in:226
+msgid "WhisperBack"
+msgstr "WhisperBack"
+
+#: ../config/chroot_local-includes/usr/share/whisperback/whisperback.ui.in:255
+msgid "Summary"
+msgstr "Sumar"
+
+#: ../config/chroot_local-includes/usr/share/whisperback/whisperback.ui.in:294
+msgid "What were you trying to achieve?"
+msgstr ""
+
+#: ../config/chroot_local-includes/usr/share/whisperback/whisperback.ui.in:340
+msgid ""
+"<b>What happened instead?</b>\n"
+"Describe the error with as many details as possible."
+msgstr ""
+
+#: ../config/chroot_local-includes/usr/share/whisperback/whisperback.ui.in:385
+msgid ""
+"<b>What did you do that triggered this error?</b>\n"
+"Describe the exact steps that caused the error, so we can try to make it "
+"happen again.\n"
+"Otherwise, we won't be able to troubleshoot and solve it."
+msgstr ""
+
+#: ../config/chroot_local-includes/usr/share/whisperback/whisperback.ui.in:427
+#, fuzzy
+msgid "Error reporting guidelines"
+msgstr "Citiți ghidul nostru de raportare a erorilor."
+
+#: ../config/chroot_local-includes/usr/share/whisperback/whisperback.ui.in:445
+msgid ""
+"<b>Email address</b>\n"
+"So we can answer you or ask for more details."
+msgstr ""
+
+#: ../config/chroot_local-includes/usr/share/whisperback/whisperback.ui.in:480
+#, fuzzy
+msgid "Optional PGP Key…"
+msgstr "cheie PGP opțională"
+
+#: ../config/chroot_local-includes/usr/share/whisperback/whisperback.ui.in:505
+#, fuzzy
+msgid ""
+"Even if we are not able to reply to every report, we analyze all reports to "
+"improve Tails."
+msgstr ""
+"Luați în vedere faptul că nu putem întotdeauna să răspundem la problemele "
+"raport."
+
+#: ../config/chroot_local-includes/usr/share/whisperback/whisperback.ui.in:520
+msgid "Description"
+msgstr "Description"
+
+#: ../config/chroot_local-includes/usr/share/whisperback/whisperback.ui.in:537
+#: ../config/chroot_local-includes/usr/share/whisperback/whisperback.ui.in:694
+msgid "Technical Details"
+msgstr "Detalii tehnice"
+
+#: ../config/chroot_local-includes/usr/share/whisperback/whisperback.ui.in:576
+#, fuzzy
+msgid "Headers"
+msgstr "antete"
+
+#: ../config/chroot_local-includes/usr/share/whisperback/whisperback.ui.in:621
+msgid "information about the error being reported"
+msgstr ""
+
+#: ../config/chroot_local-includes/usr/share/whisperback/whisperback.ui.in:669
+#, fuzzy
+msgid "Debugging Information"
+msgstr "info debugging"
+
+#: ../config/chroot_local-includes/usr/share/whisperback/whisperback.ui.in:730
+msgid "_Send"
+msgstr "_Trimite"
+
+#: ../config/chroot_local-includes/usr/local/share/mime/packages/unlock-veracrypt-volumes.xml.in.h:1
+msgid "TrueCrypt/VeraCrypt container"
+msgstr "Container TrueCrypt/VeraCrypt"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:82
+#, fuzzy
+msgid "Configure a Tor bridge"
+msgstr "Configurati un Tor _bridge"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:106
+#, fuzzy
+msgid ""
+"Bridges are secret Tor relays. Use a bridge as your first Tor relay if "
+"accessing Tor is blocked from where you are.\n"
+"\n"
+"You can use <i>obfs4</i> and <i>WebTunnel</i> bridges in Tails.\n"
+msgstr ""
+"Podurile sunt releele secrete ale lui Tor. Folosiți un pod ca primul relee "
+"Tor dacă accesarea Tor este blocată de unde locuiți."
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:126
+msgid "<a href=\"doc/anonymous_internet/tor\">Learn more about Tor bridges</a>"
+msgstr ""
+"<a href=\"doc/anonymous_internet/tor\">Aflați amănunte despre podurile Tor</"
+"a>"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:161
+msgid "Use a _default bridge"
+msgstr "Folosiți un pod _implicit"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:184
+msgid "obfs4 (recommended)"
+msgstr "obfs4 (recomandat)"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:185
+msgid "WebTunnel"
+msgstr "WebTunnel"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:208
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1821
+msgid "None"
+msgstr "Nimic"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:242
+#, fuzzy
+msgid "Ask for a bridge based on your _region"
+msgstr "• Bridge peste email"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:301
+#, fuzzy
+msgid "_Ask for a bridge by email"
+msgstr "• Bridge peste email"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:320
+#, fuzzy
+msgid ""
+"Send an empty email to <tt>bridges@torproject.org</tt> from a Gmail or "
+"Riseup email address with your phone and scan the QR code that is attached "
+"to the automatic reply."
+msgstr ""
+"Pentru a cere un bridge, puteti trimite un email fara continut la adresa\n"
+"<tt>bridges@torproject.org</tt>de pe un cont Gmail sau Riseup\n"
+"\n"
+"De exemplu, puteti trimite emailul de pe telefon si introduceti bridge-ul in "
+"Tails."
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:333
+msgid "Scan _QR code"
+msgstr ""
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:434
+msgid "_Enter a bridge that you already know"
+msgstr "_Introduceti un bridge pe care il stiti deja"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:460
+msgid "Bridge"
+msgstr "Punte"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:473
+msgid "obfs4 or webtunnel…"
+msgstr ""
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:546
+msgid "Save bridge to _Persistent Storage"
+msgstr "Salveaza bridge-ul in _Memoria Permanenta"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:571
+msgid "Save bridge to Persistent Storage"
+msgstr "Salveaza bridge-ul in Memoria Permanenta"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:711
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1462
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1859
+msgid "_Connect to Tor"
+msgstr "_Conectare la Tor"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:763
+msgid "Error connecting to Tor"
+msgstr "Eroare la conectarea la Tor"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:783
+msgid "This local network seems to be blocking access to Tor."
+msgstr "Se pare ca aceasta retea blocheaza accesul la Tor."
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:811
+#, fuzzy
+msgid "Error connecting to Tor with this bridge"
+msgstr "Conectarea la Tor fără poduri…"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:827
+msgid ""
+"Either this Tor bridge is not working or your network is blocking access to "
+"it."
+msgstr ""
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:856
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:930
+#, fuzzy
+msgid "Try configuring another bridge."
+msgstr "Configurați un pod Tor"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:884
+#, fuzzy
+msgid "Error connecting to Tor with default bridges"
+msgstr "Conectarea la Tor cu podurile implicite…"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:900
+#, fuzzy
+msgid "Your network is blocking access to Tor and the default bridges."
+msgstr "Reteaua locala blocheaza accesul la Tor."
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:916
+#, fuzzy
+msgid "Bridge: <b>default bridges</b>"
+msgstr "Folosiți un pod _implicit"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:958
+#, fuzzy
+msgid "Error connecting to Tor with bridges"
+msgstr "Conectarea la Tor fără poduri…"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:974
+msgid "None of the bridges recommended for this region worked."
+msgstr ""
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:990
+msgid "Try another region or getting a bridge by mail."
+msgstr ""
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1018
+#, fuzzy
+msgid "Error asking for a bridge"
+msgstr "Eroare la căutarea actualizărilor"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1034
+msgid "Tails failed to ask for a bridge based on your region."
+msgstr ""
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1050
+msgid ""
+"Please, <a href=\"support/talk\">report this error</a> and try asking for a "
+"bridge by email."
+msgstr ""
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1087
+#, fuzzy
+msgid "Open _details"
+msgstr "Programul de clonare Tails"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1142
+msgid "• Wrong clock"
+msgstr "• Ceas incorect"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1162
+#, fuzzy
+msgid "Your clock and time zone need to be correct to connect to Tor."
+msgstr ""
+"Ceasul si fusul orar trebuie sa fie corecte pentru a va putea conecta la Tor"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1175
+msgid "Fix _Clock"
+msgstr "Corectati_ceasul"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1213
+msgid "• Public network"
+msgstr "• Rețea publică"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1233
+msgid ""
+"If you are in a shop, hotel, or airport, you might need to sign in to the "
+"local network using the Unsafe Browser."
+msgstr ""
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1246
+msgid "Try _Signing in to the Network"
+msgstr "Incercati _Conectare in retea"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1285
+msgid "• Local proxy"
+msgstr "• Proxy local"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1305
+msgid ""
+"If you are on a corporate or university network, you might need to configure "
+"a local proxy."
+msgstr ""
+"Daca sunteti in reteaua unei companii sau a unei universitati, este posibil "
+"sa trebuiasca sa configurati un proxy local."
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1335
+msgid "Configure a Local _Proxy"
+msgstr "Configurati un Proxy _Local"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1374
+#, fuzzy
+msgid "• Tor bridge"
+msgstr "• Bridge peste email"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1394
+#, fuzzy
+msgid ""
+"Tor bridges are secret Tor relays. Use a bridge as your first Tor relay if "
+"connections to Tor are blocked, for example in some countries, by some "
+"public networks, or by some parental controls."
+msgstr ""
+"Bridge-urile Tor sunt relee Tor secrete. Folositi un bridge ca primul "
+"dumneavoastra releu Tor daca conexiunea la Tor este blocata, de exemplu in "
+"unele tari, de catre unele retele publice, sau de catre controlul parental.\n"
+"\n"
+"Alegeti aceasta optiune daca stiti deja ca aveti nevoie de un bridge. In caz "
+"contrar, Tails va autodetecta daca este nevoie de un bridge pentru a te "
+"conecta la Tor din reteaua locala."
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1410
+#, fuzzy
+msgid "Configure a Tor _Bridge"
+msgstr "Configurați un pod Tor"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1449
+msgid ""
+"<a href=\"doc/anonymous_internet/tor/troubleshoot\">Troubleshooting "
+"connecting to Tor</a>"
+msgstr ""
+"<a href=\"doc/anonymous_internet/tor/troubleshoot\">Depanarea conectarii la "
+"Tor</a>"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1494
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1902
+msgid ""
+"Everything you do on the Internet from Tails goes through the Tor network."
+msgstr "Toata activitatea pe Internet din Tails trece prin reteaua Tor."
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1508
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1917
+msgid ""
+"Tor encrypts and anonymizes your connection by passing it through 3 relays.\n"
+"Tor relays are servers operated by different organizations and volunteers "
+"around the world."
+msgstr ""
+"Tor encripteaza si anonimeaza conexiunea dumneavoastra trecand-o prin 3 "
+"relee.\n"
+"Releele Tor sunt servere deservite de diverse organizatii si voluntari de pe "
+"tot globul."
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1544
+msgid "<b>Connect to Tor _automatically</b>"
+msgstr ""
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1594
+msgid ""
+"We recommend connecting to Tor automatically if you are on a public Wi-Fi "
+"network or if many people in your country use Tor to circumvent censorship."
+msgstr ""
+"Recomandam conectarea automata la Tor daca sunteti intr-o retea publica Wi-"
+"Fi sau daca multi oameni din tara dumneavoastra folosesc Tor pentru e evita "
+"cenzura."
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1612
+#, fuzzy
+msgid ""
+"Tails will try different ways of connecting to Tor until it succeeds.\n"
+"\n"
+"Someone monitoring your Internet connection could identify these attempts as "
+"coming from a Tails user."
+msgstr ""
+"Tails va incerca diferite metode de conectare la Tor pana cand reuseste.\n"
+"Daca cineva monitorizeaza conexiunea dumneavoastra la Internet ar putea "
+"identifica aceste incercari ca provenind de la un utilizator Tails."
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1646
+msgid "Configure a Tor _bridge"
+msgstr "Configurati un Tor _bridge"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1692
+msgid ""
+"Tor bridges are secret Tor relays. Use a bridge as your first Tor relay if "
+"connections to Tor are blocked, for example in some countries, by some "
+"public networks, or by some parental controls.\n"
+"\n"
+"Choose this option if you already know that you need a bridge. Otherwise, "
+"Tails will autodetect whether you need a bridge to connect to Tor from your "
+"local network."
+msgstr ""
+"Bridge-urile Tor sunt relee Tor secrete. Folositi un bridge ca primul "
+"dumneavoastra releu Tor daca conexiunea la Tor este blocata, de exemplu in "
+"unele tari, de catre unele retele publice, sau de catre controlul parental.\n"
+"\n"
+"Alegeti aceasta optiune daca stiti deja ca aveti nevoie de un bridge. In caz "
+"contrar, Tails va autodetecta daca este nevoie de un bridge pentru a te "
+"conecta la Tor din reteaua locala."
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1734
+msgid "<b>_Hide to my local network that I'm connecting to Tor</b>"
+msgstr ""
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1784
+msgid ""
+"You might need to go unnoticed if using Tor could look suspicious to someone "
+"who monitors your Internet connection."
+msgstr ""
+"S-ar putea să trebuiască să treceți neobservat dacă folosirea Tor ar putea "
+"părea suspectă pentru cineva care vă monitorizează conexiunea la internet."
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1802
+#, fuzzy
+msgid ""
+"Tails will only connect to Tor after you configured a Tor bridge. Bridges "
+"are secret Tor relays that hide that you are connecting to Tor.\n"
+"\n"
+"Our team is doing its best to help you connect to Tor using the most "
+"discreet types of Tor bridges.\n"
+"\n"
+"You will have to do extra configuration if you don't know any Tor bridges "
+"yet, if you connect from a public Wi-Fi network, or if you are in the "
+"Eastern Hemisphere."
+msgstr ""
+"Tails se va conecta la Tor numai după ce ați configurat un bridge Tor. "
+"Bridge-urile sunt relee Tor secrete care ascund faptul că vă conectați la "
+"Tor.\n"
+"\n"
+"Echipa noastră face tot posibilul pentru a vă ajuta să vă conectați la Tor "
+"folosind cele mai discrete tipuri de bridge-uri Tor.\n"
+"\n"
+"Va trebui să faceți o configurare suplimentară dacă nu cunoașteți încă "
+"bridge-uri Tor, dacă vă conectați de la o rețea Wi-Fi publică sau dacă vă "
+"aflați în emisfera estică."
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1847
+msgid ""
+"<a href=\"doc/anonymous_internet/tor\">Learn more about how Tails connects "
+"to Tor</a>"
+msgstr ""
+"<a href=\"doc/anonymous_internet/tor\">Afla mai multe despre cum Tails se "
+"conecteaza la Tor</a>"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1937
+msgid "No Wi-Fi hardware detected"
+msgstr ""
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1955
+msgid ""
+"Tails couldn't find any Wi-Fi interface on your computer. If your computer "
+"has a Wi-Fi interface, it might not work on Tails.\n"
+"\n"
+"To connect to the Internet you can try to:\n"
+"\n"
+" • Use an Ethernet cable instead of Wi-Fi. Wired interfaces work much more "
+"reliably than Wi-Fi in Tails.\n"
+" • Use USB tethering to share the Wi-Fi or mobile data connection of your "
+"phone using a cable.\n"
+" • Buy a USB Wi-Fi adapter that works in Tails.\n"
+"                "
+msgstr ""
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1979
+#, fuzzy
+msgid ""
+"\n"
+"<a href=\"doc/anonymous_internet/no-wifi\">\n"
+"Learn more about troubleshooting Wi-Fi not working.\n"
+"</a>\n"
+"                "
+msgstr ""
+"<a href=\"doc/anonymous_internet/tor\">Afla mai multe despre cum Tails se "
+"conecteaza la Tor</a>"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:2007
+msgid "Connect to a local network"
+msgstr "Conectati-va la o retea locala"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:2024
+#, fuzzy
+msgid ""
+"You are not connected to a local network yet. To be able to connect to the "
+"Tor network, you first need to connect to a Wi-Fi, wired, or mobile network."
+msgstr ""
+"Nu sunteti inca conectati la o retea locala. Pentru a va putea conecta la o "
+"retea Tor, trebuie sa va conectati intai la o retea Wi-Fi, cablata sau "
+"mobila."
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:2038
+#, fuzzy
+msgid "Open Wi-Fi Settings"
+msgstr "Deschideti setarile Wi-Fi"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:2087
+msgid "Testing Internet access…"
+msgstr "Testarea accesului la internet…"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:2127
+msgid "You have access to the Internet"
+msgstr "Aveti acces la Internet"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:2161
+msgid "Testing access to Tor…"
+msgstr "Se testează accesul la Tor…"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:2204
+msgid "You can connect to Tor"
+msgstr "Va puteti conecta la Tor"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:2234
+msgid "Failed to connect to Tor without bridges."
+msgstr "Conectare esuata la Tor fara bridge-uri."
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:2250
+#, fuzzy
+msgid "This local network is blocking access to Tor."
+msgstr "Reteaua locala blocheaza accesul la Tor."
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:2282
+msgid "Connecting to Tor…"
+msgstr "Conectare la Tor…"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:2387
+msgid "Start Tor Browser"
+msgstr "Porniți Tor Browser"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:2446
+msgid "Configure a Local Proxy"
+msgstr "Configurati un Proxy Local"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:2472
+msgid "Proxy Type"
+msgstr "Tip proxy"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:2489
+msgid "No proxy"
+msgstr "Niciun proxy"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:2490
+msgid "SOCKS 4"
+msgstr "SOCKS 4"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:2491
+msgid "SOCKS 5"
+msgstr "SOCKS 5"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:2492
+msgid "HTTP / HTTPS"
+msgstr "HTTP / HTTPS"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:2511
+msgid "Address"
+msgstr "Adresă"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:2528
+msgid "Username"
+msgstr "Utilizator"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:2545
+msgid "IP address or hostname"
+msgstr "Adresă IP sau hostname"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:2563
+msgid "Port"
+msgstr "Port"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:2687
+msgid "_Save Proxy Settings"
+msgstr "_Salvare configurare Proxy"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/time-dialog.ui.in:7
+msgid "Tor Connection - Fix Clock"
+msgstr "Conexiune Tor - reglare ceas"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/time-dialog.ui.in:76
+msgid ""
+"Your time zone cannot be used to identify or locate you. Your time zone will "
+"never be sent over the network and will only be used to fix your clock and "
+"connect to Tor."
+msgstr ""
+"Fusul dumneavoastra orar nu poate fi folosit pentru a va identifica sau "
+"localiza. Fusul dumneavoastra orar nu va fi trimis prin retea si va fi "
+"folosit doar pentru a regla ceasul si pentru conectarea la Tor."
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/time-dialog.ui.in:142
+msgid "Time zone"
+msgstr "Fus orar"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/time-dialog.ui.in:186
+msgid "Time"
+msgstr "Ora"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/time-dialog.ui.in:223
+#, fuzzy
+msgid ":"
+msgstr "-"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/time-dialog.ui.in:277
+msgid "Date"
+msgstr "Dată"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/time-dialog.ui.in:311
+msgid "January"
+msgstr "Ianuarie"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/time-dialog.ui.in:312
+msgid "February"
+msgstr "Februarie"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/time-dialog.ui.in:313
+msgid "March"
+msgstr "Martie"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/time-dialog.ui.in:314
+msgid "April"
+msgstr "Aprilie"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/time-dialog.ui.in:315
+msgid "May"
+msgstr "Mai"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/time-dialog.ui.in:316
+msgid "June"
+msgstr "Iunie"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/time-dialog.ui.in:317
+msgid "July"
+msgstr "Iulie"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/time-dialog.ui.in:318
+msgid "August"
+msgstr "August"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/time-dialog.ui.in:319
+msgid "September"
+msgstr "Septembrie"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/time-dialog.ui.in:320
+msgid "October"
+msgstr "Octombrie"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/time-dialog.ui.in:321
+msgid "November"
+msgstr "Noiembrie"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/time-dialog.ui.in:322
+msgid "December"
+msgstr "Decembrie"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/time-dialog.ui.in:368
+msgid "Clock"
+msgstr "Ceas"
+
+#~ msgid "Bridge address malformed"
+#~ msgstr "Adresa podului malformat"
+
+#~ msgid ""
+#~ "Setting a bridge is needed if you want to hide that you are using Tor"
+#~ msgstr ""
+#~ "Configurarea unui pod este necesară dacă vrei să ascunzi faptul că "
+#~ "folosești Tor"
+
+#, fuzzy
+#~ msgid ""
+#~ "To get a bridge, send an empty email to <tt>bridges@torproject.org</tt> "
+#~ "from a Gmail or Riseup email address with your phone and scan the QR code "
+#~ "that is attached to the automatic reply."
+#~ msgstr ""
+#~ "Pentru a cere un bridge, puteti trimite un email fara continut la adresa\n"
+#~ "<tt>bridges@torproject.org</tt>de pe un cont Gmail sau Riseup\n"
+#~ "\n"
+#~ "De exemplu, puteti trimite emailul de pe telefon si introduceti bridge-ul "
+#~ "in Tails.\n"
+
+#~ msgid "Scan QR Code"
+#~ msgstr "Scanare cod QR"
+
+#~ msgid "Documentation"
+#~ msgstr "Documentație"
+
+#, fuzzy
+#~| msgid ""
+#~| "Opens a terminal as the root user, using gksu to ask for the password"
+#~ msgid "Opens a console as the root user"
+#~ msgstr ""
+#~ "Deschide un terminal ca utilizator rădăcină - root user, folosind gksu "
+#~ "pentru a cere parola"
+
+#, fuzzy
+#~| msgid "To start a Root Terminal, you need to authenticate."
+#~ msgid "To start a Root Console, you need to authenticate."
+#~ msgstr "Pentru a porni un terminal ca Root trebuie să vă autentificați."
+
+#~ msgid "_Network Connection"
+#~ msgstr "_Conexiune rețea"
+
+#~ msgid "Obsolete"
+#~ msgstr "Învechit"
+
+#~ msgid "You need to migrate your OpenPGP keys"
+#~ msgstr "Trebuie să migrezi cheile tale OpenPGP"
+
+#~ msgid ""
+#~ "<i>Thunderbird</i> 78 now replaces the <i>Enigmail</i> extension with "
+#~ "built-in support for OpenPGP encryption. To continue using your OpenPGP "
+#~ "keys in <i>Thunderbird</i>, follow our migration instructions."
+#~ msgstr ""
+#~ "<i>Thunderbird</i>78 reînlocuiește acum extensia <i>Enigmail</i> cu "
+#~ "suportul integrat pentru encriptarea OpenPGP. Pentru a continua folosirea "
+#~ "cheilor tale OpenPGP în <i>Thunderbird</i>, urmăriți instrucțiunile de "
+#~ "migrare."
+
+#~ msgid "_Open Migration Instructions"
+#~ msgstr "_Deschideți Instrucțiunile de Migrare"
+
+#~ msgid "_Migrate Later"
+#~ msgstr "_Migrează mai târziu"
+
+#~ msgid ""
+#~ "We replaced this additional setting in Tails 4.19 (June 2021) with a Tor "
+#~ "Connection assistant integrated in the desktop.\n"
+#~ "\n"
+#~ "You will be asked whether you want to use Tor bridges when connecting to "
+#~ "Tor after starting Tails.\n"
+#~ "\n"
+#~ "If you want to work offline, enable the Offline Mode in the additional "
+#~ "settings."
+#~ msgstr ""
+#~ "Am înlocuit această setare suplimentară în Tails 4.19 (Iunie 2021) cu un "
+#~ "asistent de conexiune Tor integrat în desktop.\n"
+#~ "\n"
+#~ "Veți fi întrebat dacă ați vrea să folosiți podurile Tor când vă conectați "
+#~ "la Tor după ce ați pornit Tails.\n"
+#~ "\n"
+#~ "Dacă vreți să lucrați offline, activați modul Offline în setările "
+#~ "suplimentare."
+
+#~ msgid "Technical details to include"
+#~ msgstr "Detalii tehnice incluse"
+
+#~ msgid "Root Terminal"
+#~ msgstr "Root Terminal"
+
+#~ msgid "meek"
+#~ msgstr "meek"
+
+#, fuzzy
+#~ msgid "Open Network Monitor"
+#~ msgstr "Deschide monitorul de retea."
+
+#~ msgid ""
+#~ "For debugging information, execute the following command: sudo tails-"
+#~ "debugging-info"
+#~ msgstr ""
+#~ "Pentru informații de depanare executați următoarea comandă: sudo tails-"
+#~ "debugging-info"
+
+#~ msgid "Open Onion Circuits"
+#~ msgstr "Circuite Onion Deschise"
+
+#, fuzzy
+#~ msgid "Starting the Unsafe Browser..."
+#~ msgstr "Se pornește navigatorul neprotejat Unsafe Browser"
+
+#~ msgid "This may take a while, so please be patient."
+#~ msgstr "Ar putea dura ceva timp, vă rugăm să aveți putină rabdare."
+
+#~ msgid "Reset Tor Connection"
+#~ msgstr "Resetare conxiune Tor"
+
+#~ msgid "Error while updating the signing key"
+#~ msgstr "Eroare la actualizarea cheii de semnare"
+
+#, fuzzy
+#~| msgid ""
+#~| "Something went wrong when starting your Tails USB stick for the first "
+#~| "time."
+#~ msgid ""
+#~ "Something went wrong when starting your Tails USB stick for the first "
+#~ "time: resizing the system partition failed"
+#~ msgstr ""
+#~ "Ceva nu a functionat corect la prima pornire a stick-ului USB Tails."
+
+#~ msgid ""
+#~ "It will be impossible to create a Persistent Storage or apply automatic "
+#~ "upgrades."
+#~ msgstr ""
+#~ "Va fi imposibila crearea Stocarii Permanente sau aplicarea actualizarilor "
+#~ "automatizate."
+
+#~ msgid ""
+#~ "Try to follow our instructions on <a href=\"%INSTALLPAGE%\">installing "
+#~ "Tails on a USB stick</a> again or use a different USB stick."
+#~ msgstr ""
+#~ "Incercati sa urmariti din nou instructiunile noastre de pe <a "
+#~ "href=\"%INSTALLPAGE%\">InstalandTails pe un stick USB</a> sau folositi "
+#~ "alt stick USB."
+
+#~ msgid ""
+#~ "If you have already tried this, please send us an error report to help us "
+#~ "solve this issue."
+#~ msgstr ""
+#~ "DAca deja ai incercat asta, te rugam sa ne trimiti un raport de eroare "
+#~ "pentru a ne ajuta sa rezolvam problema."
+
+#~ msgid ""
+#~ "Tails protects your wallet.\n"
+#~ "\n"
+#~ "Help us keep your bitcoins safe!\n"
+#~ "\n"
+#~ "<a href=\"file:///usr/share/doc/tails/website/"
+#~ "donate.en.html#expenses\">How we spend our money.</a>"
+#~ msgstr ""
+#~ "Tails iti protejeaza portofelul.\n"
+#~ "\n"
+#~ "Ajuta-ne sa-ti pastram monezile bitcoins virtuale in siguranta!\n"
+#~ "\n"
+#~ "<a href=\"file:///usr/share/doc/tails/website/"
+#~ "donate.en.html#expenses\">HCum ne cheltuim banii.</a>"
+
+#, fuzzy
+#~| msgid "Create"
+#~ msgid "Create Backup"
+#~ msgstr "Creare"
+
+#~ msgid ""
+#~ "\n"
+#~ "\n"
+#~ "The bug report could not be sent, likely due to network problems. Please "
+#~ "try to reconnect to the network and click send again.\n"
+#~ "\n"
+#~ "If it does not work, you will be offered to save the bug report."
+#~ msgstr ""
+#~ "\n"
+#~ "\n"
+#~ "Raportul erorii nu a fost trimis, posibil din cauza problemelor cu "
+#~ "rețeaua. Încercați să vă reconectați la rețea și trimiteți din nou.\n"
+#~ "\n"
+#~ "Dacă acest lucru nu funcționează, vi se va oferi posibilitatea să salvați "
+#~ "raportul."
+
+#, python-format
+#~ msgid "Unable to save %s."
+#~ msgstr "Nu s-a reușit salvarea %s."
+
+#, python-format
+#~ msgid ""
+#~ "The bug report could not be sent, likely due to network problems.\n"
+#~ "\n"
+#~ "As a work-around you can save the bug report as a file on a USB drive and "
+#~ "try to send it to us at %s from your email account using another system. "
+#~ "Note that your bug report will not be anonymous when doing so unless you "
+#~ "take further steps yourself (e.g. using Tor with a throw-away email "
+#~ "account).\n"
+#~ "\n"
+#~ "Do you want to save the bug report to a file?"
+#~ msgstr ""
+#~ "Raportul erorii nu a fost trimis, posibil din cauza unei probleme de "
+#~ "rețea.\n"
+#~ "\n"
+#~ "Puteți ocoli problema salvînd raportul ca un fișier pe un USB drive și "
+#~ "trimițîndu-ni-l la %s prin email de pe alt sistem. De remarcat că "
+#~ "raportul nu va mai fi anonim decît dacă urmați pași suplimentari (ex. "
+#~ "folosind Tor cu un cont de email de unică folosință).\n"
+#~ "\n"
+#~ "Doriți să salvați raportul într-un fișier?"
+
+#~ msgid "Cannot unlock encrypted storage with this passphrase."
+#~ msgstr ""
+#~ "Deblocare imposibilă a dispozitivului de stocare criptat cu această "
+#~ "parolă."
+
+#, fuzzy
+#~ msgid "_Passphrase"
+#~ msgstr "Parolă:"
+
+#~ msgid "Resizing System Partition Failed"
+#~ msgstr "Redimensionarea Partitiei System a esuat"
+
+#~ msgid "Failed to setup chroot."
+#~ msgstr "A eșuat configurarea chroot."
+
+#~ msgid "Failed to configure browser."
+#~ msgstr "A eșuat configurarea navigatorului."
+
+#, fuzzy, sh-format
+#~| msgid ""
+#~| "MAC address anonymization failed for network card ${nic_name} (${nic}) "
+#~| "so it is temporarily disabled.\n"
+#~| "You might prefer to restart Tails and disable MAC address anonymization."
+#~ msgid ""
+#~ "MAC address anonymization failed for network card ${nic_name} (${nic}) so "
+#~ "it is temporarily disabled.\n"
+#~ "\n"
+#~ "You might prefer to restart Tails and disable MAC address anonymization."
+#~ msgstr ""
+#~ "Anonimizarea adresei MAC a eșuat pentru placa de rețea ${nic_name} "
+#~ "(${nic}), deci este dezactivat temporar. S-ar putea să preferați să "
+#~ "reporniți Tails și să dezactivați anonimizarea adresei MAC."
+
+#~ msgid "Language & Region"
+#~ msgstr "Limbă și Regiune"
+
+#, python-format
+#~ msgid ""
+#~ "Some partitions of the target device %(device)s are mounted. They will be "
+#~ "unmounted before starting the installation process."
+#~ msgstr ""
+#~ "Anumite partiții ale dispozitivului țintă %(device)s sunt montate. Ele "
+#~ "vor fi demontate înainte de începerea instalării."
+
+#, python-format
+#~ msgid "Entering unmount_device for \"%(device)s\""
+#~ msgstr "Introducerea unmount_device pentru \"%(device)s\""
+
+#, python-format
+#~ msgid "Unmounting mounted filesystems on \"%(device)s\""
+#~ msgstr "Demontarea sistemelor de fișiere montate pe \"%(device)s\""
+
+#, python-format
+#~ msgid "Unmounting \"%(udi)s\" on \"%(device)s\""
+#~ msgstr "Demontarea \"%(udi)s\" pe \"%(device)s\""
+
+#, fuzzy
+#~| msgid "Report an error"
+#~ msgid "Report an Error"
+#~ msgstr "Raportați o eroare"
+
+#~ msgid "You turned on Offline Mode in the Welcome Screen."
+#~ msgstr "Ați activat Modul Offline în ecranul de pornire."
+
+#~ msgid "It is impossible to connect to Tor in Offline Mode."
+#~ msgstr "Este imposibil să te conectezi la Tor în Modul Offline."
+
+#~ msgid ""
+#~ "To connect to Tor and the Internet, restart Tails without Offline Mode."
+#~ msgstr ""
+#~ "Pentru a te conecta la Tor si la Internet, reporniți Tails fără Modul "
+#~ "Offline."
+
+#~ msgid "Lock screen"
+#~ msgstr "Ecran de blocare"
+
+#, python-format
+#~ msgid ""
+#~ "Build information:\n"
+#~ "%s"
+#~ msgstr ""
+#~ "Se acumulează informația:\n"
+#~ "%s"
+
+#~ msgid "not available"
+#~ msgstr "indisponibil"
+
+#~ msgid "Name of the affected software"
+#~ msgstr "Numele programului afectat"
+
+#~ msgid "Exact steps to reproduce the error"
+#~ msgstr "Pași exacți pentru a reproduce eroarea"
+
+#~ msgid "Actual result and description of the error"
+#~ msgstr "Rezultatul și descrierea erorii"
+
+#~ msgid "Desired result"
+#~ msgstr "Rezultatul așteptat"
+
+#~ msgid "Send feedback in an encrypted mail."
+#~ msgstr "Trimiteți feedback într-un email criptat."
+
+#~ msgid "Copyright © 2009-2018 Tails developers (tails@boum.org)"
+#~ msgstr "Copyright © 2009-2018 Dezvoltătorii Tails (tails@boum.org)"
+
+#~ msgid "Tails developers <tails@boum.org>"
+#~ msgstr "Dezvoltătorii Tails <tails@boum.org>"
+
+#~ msgid "translator-credits"
+#~ msgstr "credite-traducători"
+
+#~ msgid "Copyright © 2009-2018 tails@boum.org"
+#~ msgstr "Copyright © 2009-2018 tails@boum.org"
+
+#~ msgid ""
+#~ "WhisperBack - Send feedback in an encrypted mail\n"
+#~ "Copyright (C) 2009-2018 Tails developers <tails@boum.org>\n"
+#~ "\n"
+#~ "This program is  free software; you can redistribute  it and/or modify\n"
+#~ "it under the  terms of the GNU General Public  License as published by\n"
+#~ "the Free Software Foundation; either  version 3 of the License, or (at\n"
+#~ "your option) any later version.\n"
+#~ "\n"
+#~ "This program  is distributed in the  hope that it will  be useful, but\n"
+#~ "WITHOUT   ANY  WARRANTY;   without  even   the  implied   warranty  of\n"
+#~ "MERCHANTABILITY  or FITNESS  FOR A  PARTICULAR PURPOSE.   See  the GNU\n"
+#~ "General Public License for more details.\n"
+#~ "\n"
+#~ "You should have received a copy of the GNU General Public License\n"
+#~ "along with this program.  If not, see <http://www.gnu.org/licenses/>.\n"
+#~ msgstr ""
+#~ "WhisperBack - Trimite feedback într-un email criptat\n"
+#~ "Copyright (C) 2009-2018 dezvoltătorii Tails <tails@boum.org>\n"
+#~ "\n"
+#~ "Acest program este software liber; îl poți redistribui și/sau modifica\n"
+#~ "sub termenii Licenței Generale Publice GNU, în forma sa publicată de\n"
+#~ "către Fundația pentru Software Liber; ori versiunea 3 a Licenței, sau "
+#~ "(la\n"
+#~ "discreția ta) oricare altă versiune ulterioară.\n"
+#~ "\n"
+#~ "Acest  program este distribuit în speranța că va fi util, dar\n"
+#~ "FĂRĂ NICI O GARANȚIE; fără nici măcar garanția implicată de\n"
+#~ "MERCANTABILITATE sau CONFORMITATE UNUI ANUMIT SCOP. Vezi termenii \n"
+#~ "Licenței Generale Publice GNU pentru mai multe detalii.\n"
+#~ "\n"
+#~ "Ar trebui să fi primit deja o copie a Licenței Generale Publice GNU\n"
+#~ "împreună cu acest program. Dacă nu, vezi <http://www.gnu.org/licenses/>.\n"
+
+#~ msgid "Help:"
+#~ msgstr "Ajutor:"
+
+#~ msgid "Email address (if you want an answer from us)"
+#~ msgstr "Adresa de email (dacă doriți să vă raspundem)"
+
+#~ msgid "Unlock"
+#~ msgstr "Deblocaţi"
+
+#~ msgid "Encrypted _Persistent Storage"
+#~ msgstr "_Mediu Stocare Persistentă Criptat"
+
+#~ msgid "Enter your passphrase to unlock the persistent storage"
+#~ msgstr "Introduceţi parola pentru deblocarea stocării persistente"
+
+#, fuzzy
+#~ msgid "_Delete..."
+#~ msgstr "Se șterge..."
+
+#, fuzzy
+#~ msgid "_Change Passphrase..."
+#~ msgstr "Arată parola"
+
+#, python-format
+#~ msgid ""
+#~ "<h1>Help us fix your bug!</h1>\n"
+#~ "<p>Read <a href=\"%s\">our bug reporting instructions</a>.</p>\n"
+#~ "<p><strong>Do not include more personal information than\n"
+#~ "needed!</strong></p>\n"
+#~ "<h2>About giving us an email address</h2>\n"
+#~ "<p>\n"
+#~ "Giving us an email address allows us to contact you to clarify the "
+#~ "problem. This\n"
+#~ "is needed for the vast majority of the reports we receive as most "
+#~ "reports\n"
+#~ "without any contact information are useless. On the other hand it also "
+#~ "provides\n"
+#~ "an opportunity for eavesdroppers, like your email or Internet provider, "
+#~ "to\n"
+#~ "confirm that you are using Tails.\n"
+#~ "</p>\n"
+#~ msgstr ""
+#~ "<h1>Ajutați-ne sa reparăm erorilel!</h1>\n"
+#~ "\n"
+#~ "<p>Citește<a href=\"%s\">instrucțiunile de raportare a erorilor</a>.</p>\n"
+#~ "\n"
+#~ "<p><strong>Nu includeți mai multe informații personale\n"
+#~ "\n"
+#~ "decât sunt necesare!</strong></p>\n"
+#~ "\n"
+#~ "<h2>Despre oferirea unei adrese de email personal</h2>\n"
+#~ "\n"
+#~ "<p>\n"
+#~ "\n"
+#~ "Trimiterea adresei de email ne permite sa vă contactăm pentru a clarifica "
+#~ "problema. Fără\n"
+#~ "date de contact informația pe care o primim e nefolositoare, deci acest "
+#~ "lucru este necesar pentru \n"
+#~ "majoritatea rapoartelor pe care le primim. Pe de altă parte această "
+#~ "informație poate confirma \n"
+#~ "cuiva care vă urmărește, cum ar fi furnizorii dumneavoastră de Internet "
+#~ "și email, \n"
+#~ "că folosiți Tails.\n"
+#~ "</p>\n"
+
+#~ msgid ""
+#~ "<b>Could not choose a download server.</b>\n"
+#~ "\n"
+#~ "This should not happen. Please report a bug."
+#~ msgstr ""
+#~ "<b>Nu s-a putut alege un server pentru descărcare</b>\n"
+#~ "\n"
+#~ "Acest lucru nu ar trebui să se întâmple. Vă rugăm raportaţi eroarea."
+
+#~ msgid "Error while choosing a download server"
+#~ msgstr "Eroare la alegerea unui server de descărcare"
+
+#~ msgid "The Amnesic Incognito Live System"
+#~ msgstr "Sistemul Live Amnesic Incognito"
+
+#~ msgid "Launch the Unsafe Browser?"
+#~ msgstr "Lansați Unsafe Browser?"
+
+#~ msgid "Enabled"
+#~ msgstr "Activat"
+
+#, python-brace-format
+#~ msgid ""
+#~ "live-persist failed with return code {returncode}:\n"
+#~ "{stderr}"
+#~ msgstr ""
+#~ "live-persist a eșuat returnând eroarea {returncode}:\n"
+#~ "{stderr}"
+
+#, python-brace-format
+#~ msgid ""
+#~ "cryptsetup failed with return code {returncode}:\n"
+#~ "{stdout}\n"
+#~ "{stderr}"
+#~ msgstr ""
+#~ "cryptsetup a eșuat returnând eroarea {returncode}:\n"
+#~ "{stdout}\n"
+#~ "{stderr}"
+
+#, python-brace-format
+#~ msgid ""
+#~ "live-persist failed with return code {returncode}:\n"
+#~ "{stdout}\n"
+#~ "{stderr}"
+#~ msgstr ""
+#~ "live-persist a eșuat returnând eroarea {returncode}:\n"
+#~ "{stdout}\n"
+#~ "{stderr}"
+
+#, python-brace-format
+#~ msgid ""
+#~ "umount failed with return code {returncode}:\n"
+#~ "{stdout}\n"
+#~ "{stderr}"
+#~ msgstr ""
+#~ "umount a eșuat returnând eroarea {returncode}:\n"
+#~ "{stdout}\n"
+#~ "{stderr}"
+
+#~ msgid "Persistence wizard - Persistent volume creation"
+#~ msgstr "Asistent persistență - Creare volum persistent"
+
+#, perl-brace-format
+#~ msgid ""
+#~ "A {size} persistent volume will be created on the <b>{vendor} {model}</b> "
+#~ "device. Data on this volume will be stored in an encrypted form protected "
+#~ "by a passphrase."
+#~ msgstr ""
+#~ "Volumul persistent de {size} va fi creat pe dispozitivul {vendor} {model}"
+#~ "</b>. Datele despre acest volum vor fi stocate într-o formă criptată "
+#~ "protejată cu o parolă de acces."
+
+#~ msgid ""
+#~ "<b>Beware!</b> Using persistence has consequences that must be well "
+#~ "understood. Tails can't help you if you use it wrong! See the "
+#~ "<i>Encrypted persistence</i> page of the Tails documentation to learn "
+#~ "more."
+#~ msgstr ""
+#~ "<b>Atenție! </b>Folosirea persistenței atrage consecințe ce trebuie bine "
+#~ "înțelese. Tails nu este responsabil în cazul folosirii sale "
+#~ "necorespunzătoare. Pagina <i>Persistență criptată</i> din documentația "
+#~ "Tails oferă mai multe detalii. "
+
+#~ msgid "Passphrase can't be empty"
+#~ msgstr "Parola nu poate fi absentă"
+
+#~ msgid "Failed"
+#~ msgstr "Acţiunea a eşuat"
+
+#~ msgid "Mounting Tails persistence partition."
+#~ msgstr "Se montează partiția persistentă Tails."
+
+#~ msgid "The Tails persistence partition will be mounted."
+#~ msgstr "Partiția persistentă Tails va fi montată."
+
+#~ msgid "The permissions of the persistent volume will be corrected."
+#~ msgstr "Permisiunile volumului persistent vor fi corectate."
+
+#~ msgid "Creating default persistence configuration."
+#~ msgstr "Se creează configurația implicită pentru persistență."
+
+#~ msgid "The default persistence configuration will be created."
+#~ msgstr ""
+#~ "Persistența va fi creată folosind setările de configurație implicite."
+
+#~ msgid "Creating..."
+#~ msgstr "Se creează..."
+
+#~ msgid "Creating the persistent volume..."
+#~ msgstr "Se creează volumul persistent..."
+
+#~ msgid "Persistence wizard - Persistent volume configuration"
+#~ msgstr "Asistent persistență - Configurare volum persistent"
+
+#~ msgid "Specify the files that will be saved in the persistent volume"
+#~ msgstr "Specificați fișierele care vor fi salvate în volumul persistent"
+
+#, perl-brace-format
+#~ msgid ""
+#~ "The selected files will be stored in the encrypted partition {partition} "
+#~ "({size}), on the <b>{vendor} {model}</b> device."
+#~ msgstr ""
+#~ "Fișierele selectate vor fi stocate pe partiția criptată {partition} "
+#~ "({size}), pe dispozitivul <b>{vendor} {model}</b>."
+
+#~ msgid "Saving..."
+#~ msgstr "Se salvează..."
+
+#~ msgid "Saving persistence configuration..."
+#~ msgstr "Se salvează configurația persistenței..."
+
+#~ msgid "Persistence wizard - Persistent volume deletion"
+#~ msgstr "Asistent persistență - Ștergerea volumului persistent"
+
+#~ msgid "Your persistent data will be deleted."
+#~ msgstr "Datele dumneavoastră persistente vor fi șterse."
+
+#, perl-brace-format
+#~ msgid ""
+#~ "The persistent volume {partition} ({size}), on the <b>{vendor} {model}</"
+#~ "b> device, will be deleted."
+#~ msgstr ""
+#~ "Volumul persistent {partition} ({size}), de pe dispozitivul <b>{vendor} "
+#~ "{model}</b>, va fi șters."
+
+#~ msgid "Deleting the persistent volume..."
+#~ msgstr "Se șterge volumul persistent..."
+
+#~ msgid "Keep files stored in the `Persistent' directory"
+#~ msgstr "Păstrează fișierele stocate in directorul 'Persistent'"
+
+#~ msgid "Language, administration password, and additional settings"
+#~ msgstr "Limbă, parolă de administrare și setări suplimentare"
+
+#~ msgid "Save the last bridge that you used to connect to Tor"
+#~ msgstr ""
+#~ "Salvați ultimul Tor pe care l-ați folosit pentru a vă conecta la Tor"
+
+#~ msgid "Bookmarks saved in the Tor Browser"
+#~ msgstr "Pagini salvate în navigatorul Tor Browser"
+
+#~ msgid "Configuration of network devices and connections"
+#~ msgstr "Configurare plăci și conexiuni de rețea"
+
+#~ msgid "Software installed when starting Tails"
+#~ msgstr "Aplicații instalate la pornirea Tails"
+
+#~ msgid "Thunderbird emails, feeds, and OpenPGP keys"
+#~ msgstr "Emailurile Thunderbird, știri. și chei OpenPGP"
+
+#~ msgid "Bitcoin Client"
+#~ msgstr "Client Bitcoin"
+
+#~ msgid "Pidgin"
+#~ msgstr "Pidgin"
+
+#~ msgid "Pidgin profiles and OTR keyring"
+#~ msgstr "Profiluri Pidgin și chei OTR"
+
+#~ msgid "SSH keys, configuration and known hosts"
+#~ msgstr "Chei SSH, configurație si gazde cunoscute"
+
+#~ msgid "Setup Tails persistent volume"
+#~ msgstr "Configurare volum persistent Tails"
+
+#~ msgid "Device already has a persistent volume."
+#~ msgstr "Dispozitivul are deja un volum persistent."
+
+#~ msgid "Device has not enough unallocated space."
+#~ msgstr "Dispozitivul nu are suficient spațiu nealocat."
+
+#~ msgid "Device has no persistent volume."
+#~ msgstr "Dispozitivul nu are volum persistent."
+
+#~ msgid ""
+#~ "Cannot delete the persistent volume while in use. You should restart "
+#~ "Tails without persistence."
+#~ msgstr ""
+#~ "Nu se poate șterge un volum persistent cât timp este folosit. Va trebui "
+#~ "să reporniți Tails fără persistență."
+
+#~ msgid "Persistence volume is not unlocked."
+#~ msgstr "Volumul persistent nu este deblocat."
+
+#~ msgid "Persistence volume is not mounted."
+#~ msgstr "Volumul persistent nu este montat."
+
+#~ msgid ""
+#~ "Persistence volume is not readable. Permissions or ownership problems?"
+#~ msgstr ""
+#~ "Volumul cu persistență nu se poate citi. Sunt probleme cu permisiunile "
+#~ "sau propietarul?"
+
+#~ msgid "Persistence volume is not writable."
+#~ msgstr "Volumul de persistență nu poate fi scris."
+
+#~ msgid "Tails is running from non-USB / non-SDIO device."
+#~ msgstr "Tails rulează de pe un dispozitiv non-USB / non-SDIO."
+
+#~ msgid "Device is optical."
+#~ msgstr "Dispozitivul este optic."
+
+#~ msgid "Device was not created using a USB image or Tails Installer."
+#~ msgstr ""
+#~ "Dispozitivul nu a fost creat folosind o imagine USB sau Tails Installer."
+
+#~ msgid "Persistence wizard - Finished"
+#~ msgstr "Asistent persistență - Terminat"
+
+#~ msgid ""
+#~ "Any changes you have made will only take effect after restarting Tails."
+#~ msgstr ""
+#~ "Orice schimbare ați efectuate vor fi aplicate după ce reporniți Tails"
+
+#~ msgid "Tails is configuring your Persistent Storage. Please wait..."
+#~ msgstr ""
+#~ "Tails configurează stocarea dumneavoastră persistentă. Vă rog să "
+#~ "așteptați..."
+
+#~ msgid ""
+#~ "\\n\\nTo always enable the Unsafe Browser, turn on the Welcome Screen "
+#~ "feature of the Persistent Storage."
+#~ msgstr ""
+#~ "\\n\\nPentru a activa in permanenta Browserul Nesigur, bifati setarea "
+#~ "Ecran de BineAtiVenit din Persistent Storage."
+
+#~ msgid "Delete the persistent volume and its content"
+#~ msgstr "Șterge volumul persistent și conținutul acestuia"
+
+#~ msgid "Configure persistent volume"
+#~ msgstr "Configurează volumul persistent"
+
+#~ msgid "image"
+#~ msgstr "imagine"
+
+#~ msgid "heading"
+#~ msgstr "Titlu"
+
+#~ msgid "_Request a new bridge"
+#~ msgstr "_Cereți un pod nou"
+
+#~ msgid "toggle-button"
+#~ msgstr "buton de comutare"
+
+#~ msgid ""
+#~ "To request new Tor bridges, you can also:\n"
+#~ "\n"
+#~ "            1. Send an empty email to <tt>bridges@torproject.org</tt> "
+#~ "from a Gmail or Riseup email address.\n"
+#~ "\n"
+#~ "              2. Type below one of the bridges that you received by email."
+#~ msgstr ""
+#~ "Pentru a cere un bridge Tor nou, puteti deasemenea:\n"
+#~ "\n"
+#~ "1. Trimite un email fara continut la <tt>bridges@torproject.org</tt>de pe "
+#~ "un cont Gmail sau Riseup.\n"
+#~ "\n"
+#~ "2. Tastati mai jos unul din bridge-urile primite pe email."

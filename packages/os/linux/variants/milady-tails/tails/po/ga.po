@@ -1,0 +1,4827 @@
+# SOME DESCRIPTIVE TITLE.
+# Copyright (C) YEAR THE PACKAGE'S COPYRIGHT HOLDER
+# This file is distributed under the same license as the PACKAGE package.
+#
+# Translators:
+# Emma Peel, 2018
+# Kevin Scannell <kscanne@gmail.com>, 2017-2020
+# Aindriú Mac Giolla Eoin <aindriu80@gmail.com>, 2025, 2026.
+# emma peel <emma.peel@riseup.net>, 2026.
+msgid ""
+msgstr ""
+"Project-Id-Version: Tor Project\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-04-22 08:04+0200\n"
+"PO-Revision-Date: 2026-04-28 17:09+0000\n"
+"Last-Translator: Aindriú Mac Giolla Eoin <aindriu80@gmail.com>\n"
+"Language-Team: Irish <https://hosted.weblate.org/projects/tor/tails-gui/ga/"
+">\n"
+"Language: ga\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=5; plural=(n==1 ? 0 : n==2 ? 1 : n<7 ? 2 : n<11 ? 3 : "
+"4);\n"
+"X-Generator: Weblate 5.17.1-dev\n"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/additional_software.py:242
+#, python-brace-format
+msgid ""
+"{details} Please check your list of additional software or read the system "
+"log to understand the problem."
+msgstr ""
+"{details} Féach ar liosta na mbogearraí breise nó caith súil ar loganna an "
+"chóras chun tuiscint níos fearr a fháil ar an bhfadhb."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/additional_software.py:249
+msgid ""
+"Please check your list of additional software or read the system log to "
+"understand the problem."
+msgstr ""
+"Féach ar liosta na mbogearraí breise nó caith súil ar loganna an chóras chun "
+"tuiscint níos fearr a fháil ar an bhfadhb."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/additional_software.py:255
+msgid "Show Log"
+msgstr "Taispeáin an Logchomhad"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/additional_software.py:255
+msgid "Configure"
+msgstr "Cumraigh"
+
+#: config/chroot_local-includes/usr/local/lib/change-apps-menu-name:25
+msgid "Password Manager"
+msgstr "Bainisteoir Pasfhocal"
+
+#: config/chroot_local-includes/usr/local/lib/change-apps-menu-name:26
+msgid "password"
+msgstr "pasfhocal"
+
+#: config/chroot_local-includes/usr/local/lib/change-apps-menu-name:26
+msgid "password-manager"
+msgstr "bainisteoir pasfhocal"
+
+#: config/chroot_local-includes/usr/local/lib/additional-software/asp-handle-package-changes:57
+#: config/chroot_local-includes/usr/local/lib/additional-software/asp-handle-package-changes:95
+#, python-brace-format
+msgid "Add {packages} to your additional software?"
+msgstr "An bhfuil fonn ort {packages} a chur le do chuid bogearraí breise?"
+
+#: config/chroot_local-includes/usr/local/lib/additional-software/asp-handle-package-changes:61
+msgid ""
+"To install it automatically from your persistent storage when starting Tails."
+msgstr ""
+"Suiteáil uathoibríoch ó do stóras seasmhach nuair a thosaíonn tú Tails."
+
+#: config/chroot_local-includes/usr/local/lib/additional-software/asp-handle-package-changes:64
+msgid "Install Every Time"
+msgstr "Suiteáil Gach Uair"
+
+#: config/chroot_local-includes/usr/local/lib/additional-software/asp-handle-package-changes:65
+#: config/chroot_local-includes/usr/local/lib/additional-software/asp-handle-package-changes:104
+msgid "Install Only Once"
+msgstr "Suiteáil Uair Amháin"
+
+#: config/chroot_local-includes/usr/local/lib/additional-software/asp-handle-package-changes:74
+#: config/chroot_local-includes/usr/local/lib/additional-software/asp-handle-package-changes:112
+#: config/chroot_local-includes/usr/local/lib/additional-software/asp-handle-package-changes:206
+msgid "The configuration of your additional software failed."
+msgstr "Theip ar chumraíocht na mbogearraí breise."
+
+#: config/chroot_local-includes/usr/local/lib/additional-software/asp-handle-package-changes:99
+msgid ""
+"To install it automatically when starting Tails, you can create a Persistent "
+"Storage and activate the <b>Additional Software</b> feature."
+msgstr ""
+"Chun é a shuiteáil go huathoibríoch agus tú ag tosú Tails, is féidir leat "
+"Stór Marthanach a chruthú agus an ghné <b>Bogearraí Breise</b> a "
+"ghníomhachtú."
+
+#: config/chroot_local-includes/usr/local/lib/additional-software/asp-handle-package-changes:103
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:312
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:331
+msgid "Create Persistent Storage"
+msgstr "Cruthaigh Stóras Seasmhach"
+
+#: config/chroot_local-includes/usr/local/lib/additional-software/asp-handle-package-changes:113
+msgid "Creating your Persistent Storage failed."
+msgstr "Theip ar chruthú do Stór Marthanach."
+
+#: config/chroot_local-includes/usr/local/lib/additional-software/asp-handle-package-changes:124
+#, python-brace-format
+msgid "You could install {packages} automatically when starting Tails"
+msgstr ""
+"Is féidir leat {packages} a shuiteáil go huathoibríoch nuair a thosaíonn "
+"Tails"
+
+#: config/chroot_local-includes/usr/local/lib/additional-software/asp-handle-package-changes:126
+msgid "To do so, you need to run Tails from a USB stick."
+msgstr "Chun é seo a dhéanamh, caithfidh tú Tails a rith ó mhéaróg USB."
+
+#: config/chroot_local-includes/usr/local/lib/additional-software/asp-handle-package-changes:190
+#, python-brace-format
+msgid "Remove {packages} from your additional software?"
+msgstr "An bhfuil fonn ort {packages} a bhaint de na bogearraí breise?"
+
+#. Translators: Don't translate {packages}, it's a placeholder
+#. and will be replaced.
+#: config/chroot_local-includes/usr/local/lib/additional-software/asp-handle-package-changes:195
+#, python-brace-format
+msgid "This will stop installing {packages} automatically."
+msgstr "Ní shuiteálfar {packages} go huathoibríoch a thuilleadh."
+
+#: config/chroot_local-includes/usr/local/lib/additional-software/asp-handle-package-changes:198
+#: config/chroot_local-includes/usr/local/bin/tails-additional-software-config:188
+msgid "Remove"
+msgstr "Bain"
+
+#: config/chroot_local-includes/usr/local/lib/additional-software/asp-handle-package-changes:199
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/add_settings_dialog.py:40
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:185
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:199
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:525
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:945
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:744
+#: config/chroot_local-includes/usr/local/bin/tails-screen-locker:128
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/feature.py:376
+msgid "Cancel"
+msgstr "Cealaigh"
+
+#. Translators: Don't translate {beginning} or {last}, they are
+#. placeholders and will be replaced.
+#: config/chroot_local-includes/usr/local/lib/additional-software/asp-handle-package-changes:219
+#, python-brace-format
+msgid "{beginning} and {last}"
+msgstr "{beginning} agus {last}"
+
+#: config/chroot_local-includes/usr/local/lib/additional-software/asp-handle-package-changes:220
+msgid ", "
+msgstr ", "
+
+#: config/chroot_local-includes/usr/local/lib/additional-software/asp-install:46
+msgid "The check for upgrades of your additional software failed"
+msgstr "Earráid agus nuashonruithe ar bhogearraí breise á lorg"
+
+#: config/chroot_local-includes/usr/local/lib/additional-software/asp-install:48
+#: config/chroot_local-includes/usr/local/lib/additional-software/asp-install:60
+msgid ""
+"Please check your network connection, restart Tails, or read the system log "
+"to understand the problem."
+msgstr ""
+"Deimhnigh go bhfuil tú ceangailte leis an Idirlíon, atosaigh Tails, nó caith "
+"súil ar loganna an chórais chun tuiscint níos fearr a fháil ar an bhfadhb."
+
+#: config/chroot_local-includes/usr/local/lib/additional-software/asp-install:58
+msgid "The upgrade of your additional software failed"
+msgstr "Theip ar nuashonrú na mbogearraí breise"
+
+#: config/chroot_local-includes/usr/local/lib/additional-software/asp-install:128
+msgid "Installing your additional software from persistent storage..."
+msgstr "Bogearraí breise á suiteáil ón stóras seasmhach..."
+
+#: config/chroot_local-includes/usr/local/lib/additional-software/asp-install:129
+msgid "This can take several minutes."
+msgstr "Seans go dtógfaidh seo cúpla nóiméad."
+
+#: config/chroot_local-includes/usr/local/lib/additional-software/asp-install:147
+msgid "The installation of your additional software failed"
+msgstr "Theip ar shuiteáil na mbogearraí breise"
+
+#: config/chroot_local-includes/usr/local/lib/additional-software/asp-install:162
+msgid "Additional software installed successfully"
+msgstr "D'éirigh le suiteáil na mbogearraí breise"
+
+#: config/chroot_local-includes/usr/share/tails/additional-software/configuration-window.ui:8
+#: ../config/chroot_local-includes/usr/share/applications/org.boum.tails.AdditionalSoftware.desktop.in.h:1
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:648
+msgid "Additional Software"
+msgstr "Bogearraí Breise"
+
+#: config/chroot_local-includes/usr/share/tails/additional-software/configuration-window.ui:51
+msgid ""
+"You can install additional software automatically from your persistent "
+"storage when starting Tails."
+msgstr ""
+"Is féidir leat bogearraí breise a shuiteáil go huathoibríoch ó do stóras "
+"seasmhach nuair a thosaíonn Tails."
+
+#: config/chroot_local-includes/usr/share/tails/additional-software/configuration-window.ui:77
+msgid ""
+"The following software is installed automatically from your persistent "
+"storage when starting Tails."
+msgstr ""
+"Suiteálfar na bogearraí seo a leanas go huathoibríoch ó do stóras seasmhach "
+"nuair a thosóidh tú Tails."
+
+#: config/chroot_local-includes/usr/share/tails/additional-software/configuration-window.ui:135
+#: config/chroot_local-includes/usr/local/bin/tails-additional-software-config:205
+msgid ""
+"To add more, install some software using <a "
+"href=\"synaptic.desktop\">Synaptic Package Manager</a> or <a "
+"href=\"org.gnome.Terminal.desktop\">APT on the command line</a>."
+msgstr ""
+"Is féidir leat tuilleadh bogearraí a shuiteáil le <a "
+"href=\"synaptic.desktop\">Bainisteoir Pacáistí Synaptic</a> nó le <a "
+"href=\"org.gnome.Terminal.desktop\">APT ar líne na n-orduithe</a>."
+
+#: config/chroot_local-includes/usr/share/tails/additional-software/configuration-window.ui:154
+msgid "_Create persistent storage"
+msgstr "_Cruthaigh stóras seasmhach"
+
+#: config/chroot_local-includes/usr/local/bin/electrum:62
+msgid ""
+"Tails needs donations to keep everybody free and safe online.\n"
+"\n"
+"Every bit helps in our fight against surveillance and censorship!\n"
+"\n"
+msgstr ""
+"Tá síntiúis ag teastáil ó Tails chun gach duine a choinneáil saor agus "
+"sábháilte ar líne.\n"
+"\n"
+"Cabhraíonn gach rud linn inár gcomhrac i gcoinne faireachais agus "
+"cinsireachta!\n"
+"\n"
+
+#: config/chroot_local-includes/usr/local/bin/electrum:72
+msgid ""
+"Tails protects your wallet.\n"
+"\n"
+"Help us keep your bitcoins safe!\n"
+"\n"
+msgstr ""
+"Cosnaíonn Tails do sparán.\n"
+"\n"
+"Cabhraigh linn do bitcoins a choinneáil slán!\n"
+"\n"
+
+#: config/chroot_local-includes/usr/local/bin/electrum:140
+msgid "Donate Now"
+msgstr "Tabhair síntiús airgid anois"
+
+#: config/chroot_local-includes/usr/local/bin/electrum:142
+msgid "Later"
+msgstr "Níos déanaí"
+
+#: config/chroot_local-includes/usr/local/bin/electrum:156
+msgid "Opening Electrum with our donation address..."
+msgstr "Electrum á oscailt lenár seoladh síntiús..."
+
+#: config/chroot_local-includes/usr/local/bin/electrum:157
+msgid "Thank you for making the Internet a safer place!"
+msgstr "Go raibh maith agat as an Idirlíon a dhéanamh níos sábháilte!"
+
+#: config/chroot_local-includes/usr/local/bin/electrum:191
+msgid "Persistence is disabled for Electrum"
+msgstr "Díchumasaíodh seasmhacht sonraí in Electrum"
+
+#: config/chroot_local-includes/usr/local/bin/electrum:193
+msgid ""
+"When you reboot Tails, all of Electrum's data will be lost, including your "
+"Bitcoin wallet.\n"
+"It is strongly recommended to only run Electrum when its persistence feature "
+"is activated."
+msgstr ""
+"Nuair a atosaíonn tú Tails, cailleann tú na sonraí go léir ó Electrum, do "
+"sparán Bitcoin san áireamh.\n"
+"Molaimid go láidir duit gan Electrum a úsáid gan seasmhacht sonraí a bheith "
+"ar siúl."
+
+#: config/chroot_local-includes/usr/local/bin/electrum:195
+msgid "Do you want to start Electrum anyway?"
+msgstr "An bhfuil fonn ort Electrum a thosú mar sin féin?"
+
+#: config/chroot_local-includes/usr/local/bin/electrum:201
+msgid "_Launch"
+msgstr "_Tosaigh"
+
+#: config/chroot_local-includes/usr/local/bin/electrum:202
+msgid "_Exit"
+msgstr "_Scoir"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/DownloadProgress.pm:59
+msgid "Unknown time"
+msgstr "Am anaithnid"
+
+#. Translators: Don't translate {count}, it's a place holder and
+#. will be replaced.
+#. y is the short form for years.
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/DownloadProgress.pm:78
+#, perl-brace-format
+msgid "1y"
+msgid_plural "{count}y"
+msgstr[0] "1b"
+msgstr[1] "{count}y"
+msgstr[2] "{count}y"
+msgstr[3] "{count}y"
+msgstr[4] "{count}y"
+
+#. Translators: Don't translate {count}, it's a place holder and
+#. will be replaced.
+#. d is the short form for days.
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/DownloadProgress.pm:82
+#, perl-brace-format
+msgid "1d"
+msgid_plural "{count}d"
+msgstr[0] "1l"
+msgstr[1] "{count}l"
+msgstr[2] "{count}l"
+msgstr[3] "{count}l"
+msgstr[4] "{count}l"
+
+#. Translators: Don't translate {count}, it's a place holder and
+#. will be replaced.
+#. h is the short form for hours;
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/DownloadProgress.pm:86
+#, perl-brace-format
+msgid "1h"
+msgid_plural "{count}h"
+msgstr[0] "1u"
+msgstr[1] "{count}u"
+msgstr[2] "{count}u"
+msgstr[3] "{count}u"
+msgstr[4] "{count}u"
+
+#. Translators: Don't translate {count}, it's a place holder and
+#. will be replaced.
+#. m is the short form for minutes;
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/DownloadProgress.pm:90
+#, perl-brace-format
+msgid "1m"
+msgid_plural "{count}m"
+msgstr[0] "1n"
+msgstr[1] "{count}n"
+msgstr[2] "{count}n"
+msgstr[3] "{count}n"
+msgstr[4] "{count}n"
+
+#. Translators: Don't translate {count}, it's a place holder and
+#. will be replaced.
+#. s is the short form for seconds;
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/DownloadProgress.pm:94
+#, perl-brace-format
+msgid "1s"
+msgid_plural "{count}s"
+msgstr[0] "1s"
+msgstr[1] "{count}s"
+msgstr[2] "{count}s"
+msgstr[3] "{count}s"
+msgstr[4] "{count}s"
+
+#. Translators: don't translate {time}, {downloaded}, {size}
+#. and {speed}, they are placeholders and will be replaced.
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/DownloadProgress.pm:139
+#, perl-brace-format
+msgid "#{time} left — {downloaded} of {size} ({speed}/sec)\n"
+msgstr "#{time} fágtha — {downloaded} de {size} ({speed}/soicind)\n"
+
+#. Translators: KB is the short form for kilobyte
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Role/FormatByte.pm:32
+msgid "KB"
+msgstr "KB"
+
+#. Translators: MB is the short form for megabyte
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Role/FormatByte.pm:34
+msgid "MB"
+msgstr "MB"
+
+#. Translators: GB is the short form for gigabyte
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Role/FormatByte.pm:36
+msgid "GB"
+msgstr "GB"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Role/FormatByte.pm:42
+msgid "bytes"
+msgstr "beart"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:295
+msgid ""
+"<b>An error occurred while updating the signing key.</b>\\n\\n<b>This "
+"prevents determining whether an upgrade is available from our website.</"
+"b>\\n\\nCheck your network connection and restart Tails.\\n\\nIf the problem "
+"persists, try doing a manual upgrade."
+msgstr ""
+"<b>Tharla earráid agus an eochair shínithe á nuashonrú.</b>\\n\\n<b>Coscann "
+"sé seo a chinneadh an bhfuil uasghrádú ar fáil ónár suíomh Gréasáin.</"
+"b>\\n\\nSeiceáil do nasc líonra agus atosú Tails.\\n\\nMá leanann an fhadhb, "
+"déan iarracht uasghrádú de láimh a dhéanamh."
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:309
+msgid "Error while downloading the signing key"
+msgstr "Earráid agus an eochair sínithe á híoslódáil"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:342
+msgid "Error while checking for upgrades"
+msgstr "Earráid agus nuashonruithe á lorg"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:344
+msgid ""
+"<b>Could not determine whether an upgrade is available from our website.</"
+"b>\n"
+"\n"
+"Check your network connection and restart Tails.\n"
+"\n"
+"If the problem persists, try doing a manual upgrade."
+msgstr ""
+"<b>Níorbh fhéidir a chinneadh an bhfuil uasghrádú ar fáil ónár suíomh "
+"Gréasáin.</b>\n"
+"\n"
+"Seiceáil do nasc líonra agus atosú Tails.\n"
+"\n"
+"Má leanann an fhadhb, déan iarracht uasghrádú de láimh a dhéanamh."
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:359
+msgid "no automatic upgrade is available from our website for this version"
+msgstr "níl aon nuashonrú uathoibríoch ar an leagan seo ar fáil ónár suíomh"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:365
+msgid "your device was not created using a USB image or Tails Cloner"
+msgstr ""
+"níor cruthaíodh do ghléas ag baint úsáid as íomhá USB nó Clónálaí Tails"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:370
+msgid "Tails was started from a DVD or a read-only device"
+msgstr "Tosaíodh Tails ó DVD nó ó ghléas inléite amháin"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:375
+msgid "there is not enough free space on the Tails system partition"
+msgstr "níl dóthain spáis ar fáil ar dheighilt an chórais Tails"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:380
+msgid "not enough memory is available on this system"
+msgstr "níl dóthain cuimhne ar fáil ar an gcóras seo"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:385
+#, perl-brace-format
+msgid "No explanation available for reason '{reason}'."
+msgstr "Níl aon mhíniú ar fáil ar chúis '{reason}'."
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:408
+msgid "The system is up-to-date"
+msgstr "Tá an córas cothrom le dáta"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:411
+msgid ""
+"You are currently running the latest version. There is no upgrade "
+"available.\n"
+msgstr ""
+"Tá an leagan is déanaí á rith agat faoi láthair. Níl aon uasghrádú ar fáil.\n"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:414
+msgid "Tails is up to date"
+msgstr "Tá Tails cothrom le dáta"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:420
+msgid "This version of Tails is outdated, and may have security issues."
+msgstr ""
+"Tá an leagan seo de Tails as dáta, agus seans go bhfuil fadhbanna slándála "
+"ann."
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:450
+#, perl-brace-format
+msgid ""
+"The available incremental upgrade requires {space_needed} of free space on "
+"Tails system partition,  but only {free_space} is available."
+msgstr ""
+"Teastaíonn {space_needed} de spás saor in aisce ar dheighilt chórais Tails "
+"leis an uasghrádú incriminteach atá ar fáil, ach níl ach {free_space} ar "
+"fáil."
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:462
+#, perl-brace-format
+msgid ""
+"The available incremental upgrade requires {memory_needed} of free memory, "
+"but only {free_memory} is available."
+msgstr ""
+"Teastaíonn {memory_needed} de chuimhne in aisce don uasghrádú incriminteach "
+"atá ar fáil, ach níl ach {free_memory} ar fáil."
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:473
+msgid ""
+"An error occurred while detecting available upgrades.\n"
+"This should not happen. Please report a bug."
+msgstr ""
+"Tharla earráid agus uasghráduithe atá ar fáil á mbraith. \n"
+"Níor cheart go dtarlódh sé seo. Tuairiscigh fabht le do thoil."
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:476
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:495
+msgid "Error while detecting available upgrades"
+msgstr "Earráid agus nuashonruithe á lorg"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:491
+msgid ""
+"An incremental upgrade is available, but no full upgrade is.\n"
+"This should not happen. Please report a bug."
+msgstr ""
+"Tá nuashonrú incriminteach ar fáil, ach níl aon nuashonrú iomlán ar fáil.\n"
+"Tá rud éigin mícheart. Ba chóir duit tuairisc ar an bhfadhb seo a dhéanamh."
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:504
+#, perl-brace-format
+msgid ""
+"<b>You should upgrade to {name} {version}.</b>\n"
+"\n"
+"For more information about this new version, go to {details_url}\n"
+"\n"
+"We recommend you close all other applications during the upgrade.\n"
+"Downloading the upgrade might take a long time, from several minutes to a "
+"few hours.\n"
+"\n"
+"Download size: {size}\n"
+"\n"
+"Do you want to upgrade now?"
+msgstr ""
+"<b>Ba cheart duit {name} {version} a uasghrádú.</b>\n"
+"\n"
+"Le haghaidh tuilleadh eolais faoin leagan nua seo, téigh go dtí "
+"{details_url}\n"
+"\n"
+"Molaimid duit gach feidhmchlár eile a dhúnadh le linn an uasghrádaithe.\n"
+"Seans go dtógfaidh sé tamall fada an t-uasghrádú a íoslódáil, ó roinnt "
+"nóiméad go cúpla uair an chloig.\n"
+"\n"
+"Méid íoslódála: {size}\n"
+"\n"
+"Ar mhaith leat a uasghrádú anois?"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:517
+msgid "Upgrade available"
+msgstr "Nuashonrú ar fáil"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:518
+msgid "Upgrade now"
+msgstr "Nuashonraigh anois"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:519
+msgid "Upgrade later"
+msgstr "Nuashonraigh níos déanaí"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:527
+#, perl-brace-format
+msgid ""
+"<b>You should do a manual upgrade to the latest version of {name}.</b>\n"
+"\n"
+"For more information about this new version, go to {details_url}\n"
+"\n"
+"It is impossible to do an automatic upgrade of your Tails to this new "
+"version: {explanation}.\n"
+"\n"
+"To learn how to do a manual upgrade, go to {manual_upgrade_url}"
+msgstr ""
+"<b>Ba cheart duit uasghrádú láimhe a dhéanamh go dtí an leagan is déanaí de "
+"{name}.</b>\n"
+"\n"
+"Le haghaidh tuilleadh eolais faoin leagan nua seo, téigh go dtí "
+"{details_url}\n"
+"\n"
+"Ní féidir uasghrádú uathoibríoch a dhéanamh ar do Tails chuig an leagan nua "
+"seo: {explanation}.\n"
+"\n"
+"Chun foghlaim conas uasghrádú láimhe a dhéanamh, téigh chuig "
+"{manual_upgrade_url}"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:537
+msgid "New version available"
+msgstr "Tá leagan nua ar fáil"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:618
+msgid "Downloading upgrade"
+msgstr "Nuashonrú á íoslódáil"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:620
+#, perl-brace-format
+msgid "Downloading the upgrade to {name} {version}..."
+msgstr "Íoslódáil an uasghrádú go {name} {version}..."
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:711
+msgid ""
+"<b>The upgrade could not be downloaded.</b>\\n\\nCheck your network "
+"connection, and restart Tails to try upgrading again."
+msgstr ""
+"<b>Níorbh fhéidir an t-uasghrádú a íoslódáil.</b>\\n\\nSeiceáil do nasc "
+"líonra, agus atosú Tails chun iarracht a dhéanamh uasghrádú arís."
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:714
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:729
+msgid "Error while downloading the upgrade"
+msgstr "Earráid agus an nuashonrú á íoslódáil"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:724
+#, perl-brace-format
+msgid ""
+"Output file '{output_file}' does not exist, but tails-iuk-get-target-file "
+"did not complain. Please report a bug."
+msgstr ""
+"Níl an comhad aschuir '{output_file}' ann, ach ní dhearna tails-iuk-get-"
+"target-file gearán. Tuairiscigh fabht."
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:740
+msgid "Error while creating temporary downloading directory"
+msgstr "Earráid agus comhadlann shealadach íoslódála á cruthú"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:743
+msgid "Failed to create temporary download directory"
+msgstr "Níorbh fhéidir comhadlann shealadach íoslódála a chruthú"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:755
+msgid ""
+"The upgrade was successfully downloaded.\n"
+"\n"
+"The network connection will be disabled when applying the upgrade.\n"
+"\n"
+"Please save your work and close all other applications."
+msgstr ""
+"D'éirigh le híoslódáil an uasghrádú.\n"
+"\n"
+"Díchumasófar an nasc líonra agus an t-uasghrádú á chur i bhfeidhm.\n"
+"\n"
+"Sábháil do chuid oibre agus dún gach feidhmchlár eile."
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:760
+msgid "Upgrade successfully downloaded"
+msgstr "Íoslódáladh an nuashonrú"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:761
+msgid "Apply upgrade"
+msgstr "Cuir an nuashonrú i bhfeidhm"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:768
+msgid ""
+"<b>Your Tails device was successfully upgraded.</b>\n"
+"\n"
+"Some security features were temporarily disabled.\n"
+"You should restart Tails on the new version as soon as possible.\n"
+"\n"
+"Do you want to restart now?"
+msgstr ""
+"<b>D'éirigh linn do ghléas Tails a nuashonrú.</b>\n"
+"\n"
+"Díchumasaíodh roinnt gnéithe slándála go sealadach.\n"
+"Ba chóir duit Tails a atosú leis an leagan nua chomh luath agus is féidir.\n"
+"\n"
+"An bhfuil fonn ort atosú anois?"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:773
+msgid "Restart Tails"
+msgstr "Atosaigh Tails"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:774
+msgid "Restart now"
+msgstr "Atosaigh anois"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:775
+msgid "Restart later"
+msgstr "Atosaigh ar ball"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:786
+msgid "Error while restarting the system"
+msgstr "Earráid agus an córas á atosú"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:787
+msgid "Failed to restart the system"
+msgstr "Níorbh fhéidir an córas a atosú"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:800
+msgid "Error while shutting down the network"
+msgstr "Earráid agus an líonra á mhúchadh"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:801
+msgid "Failed to shutdown network"
+msgstr "Theip ar mhúchadh an líonra"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:811
+msgid "Error while cancelling the upgrade download"
+msgstr "Earráid agus an t-uaslódáil á chealú"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:812
+msgid "Failed to cancel the upgrade download"
+msgstr "Theip ar an íosluchtú a chealú"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:818
+msgid "Upgrading the system"
+msgstr "An córas á nuashonrú"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:820
+msgid ""
+"<b>Your Tails device is being upgraded...</b>\n"
+"\n"
+"For security reasons, the network connection is now disabled."
+msgstr ""
+"<b>Tá do ghléas Tails á uasghrádú...</b>\n"
+"\n"
+"Ar chúiseanna slándála, tá an nasc líonra díchumasaithe anois."
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:855
+msgid ""
+"<b>An error occurred while installing the upgrade.</b>\\n\\nYour Tails "
+"device needs to be repaired and might be unable to restart.\\n\\nPlease "
+"follow the instructions at file:///usr/share/doc/tails/website/doc/upgrade/"
+"error/install.en.html"
+msgstr ""
+"<b>Tharla earráid agus an uasghrádú á shuiteáil.</b>\\n\\nNí mór do ghléas "
+"Tails a dheisiú agus b'fhéidir nach féidir é a atosú.\\n\\nLean na treoracha "
+"ag file:///usr/share/doc/tails/website/doc/upgrade/error/install.en.html le "
+"do thoil"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:860
+msgid "Error while installing the upgrade"
+msgstr "Earráid agus an nuashonrú á shuiteáil"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/add_settings_dialog.py:32
+msgid "Additional Settings"
+msgstr "Socruithe Breise"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/add_settings_dialog.py:44
+msgid "Add"
+msgstr "Nua"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/add_settings_dialog.py:52
+msgid "Back"
+msgstr "Siar"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/additional_settings.py:65
+msgid "_Administration Password"
+msgstr "Foc_al Faire Riaracháin"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/additional_settings.py:196
+msgid "_MAC Address Anonymization"
+msgstr "_MAC Seoladh Ainmnithe"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/additional_settings.py:267
+msgid "_Offline Mode"
+msgstr "_Mód As Líne"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/additional_settings.py:276
+#: ../config/chroot_local-includes/usr/share/tails/greeter/additional_settings.ui.in:399
+msgid "Enable networking (default)"
+msgstr "Cumasaigh líonrú (réamhshocraithe)"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/additional_settings.py:278
+#: ../config/chroot_local-includes/usr/share/tails/greeter/additional_settings.ui.in:445
+msgid "Disable all networking"
+msgstr "Díchumasaigh an líonra go hiomlán"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/additional_settings.py:339
+msgid "_Unsafe Browser"
+msgstr "Brabhsálaí _Neamhshlán"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/additional_settings.py:348
+msgid "Enabled (default)"
+msgstr "Cumasaithe (réamhshocraithe)"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/additional_settings.py:350
+msgid "Disabled"
+msgstr "Díchumasaithe"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/additional_settings.py:419
+msgid "On (default)"
+msgstr "Ar siúl (réamhshocrú)"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/additional_settings.py:421
+msgid "On"
+msgstr "Ar siúl"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/additional_settings.py:423
+msgid "Off"
+msgstr "Múchta"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/additional_settings.py:425
+msgid "Off (default)"
+msgstr "Múchta (réamhshocrú)"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:181
+msgid "Persistent Storage Still Locked"
+msgstr "Stóráil Seasmhach Fós Faoi Ghlas"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:183
+msgid ""
+"Do you really want to start Tails without unlocking your Persistent Storage?"
+msgstr ""
+"Ar mhaith leat Tails a thosú i ndáiríre gan do Stóráil Marthanach a "
+"dhíghlasáil?"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:186
+msgid "Start Without Persistent Storage"
+msgstr "Tosaigh Gan Stóráil Marthanach"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:193
+msgid "Language and Keyboard layout"
+msgstr "Teanga agus leagan amach méarchláir"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:195
+msgid ""
+"Your language and keyboard layout will be saved unencrypted on your Tails "
+"USB stick and applied automatically in the future.\n"
+"\n"
+"Someone who finds your Tails USB stick can see your language and keyboard "
+"layout."
+msgstr ""
+"Sábhálfar do theanga agus leagan amach méarchláir gan chriptiú ar do mhaide "
+"USB Tails agus cuirfear i bhfeidhm go huathoibríoch iad amach anseo.\n"
+"\n"
+"Is féidir le duine a aimsíonn do mhaide USB Tails do theanga agus leagan "
+"amach méarchláir a fheiceáil."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:200
+msgid "Save Unencrypted"
+msgstr "Sábháil Gan Chriptiú"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:288
+msgid ""
+"Impossible to unlock the Persistent Storage because the USB stick is read-"
+"only."
+msgstr ""
+"Ní féidir an Stóráil Marthanach a dhíghlasáil toisc go bhfuil an bata USB "
+"inléite amháin."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:449
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:482
+msgid "Unlocking…"
+msgstr "Á dhíghlasáil…"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:490
+msgid "Checking the file system…"
+msgstr "An córas comhaid á sheiceáil…"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:523
+msgid "Repairing the File System"
+msgstr "Deisiúchán an Chórais Comhad"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:524
+msgid "This might take a long time..."
+msgstr "Seans go dtógfaidh sé seo tamall fada..."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:542
+msgid "Failed to repair the file system of your Persistent Storage."
+msgstr "Theip ar dheisiú córas comhaid do Stór Marthanach."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:544
+msgid "Start Tails to send an error report and learn how to recover your data."
+msgstr ""
+"Tosaigh Tails chun tuairisc earráide a sheoladh agus foghlaim conas do "
+"shonraí a aisghabháil."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:559
+msgid "File System Repaired Successfully"
+msgstr "Deisíodh an Córas Comhad go rathúil"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:561
+msgid ""
+"It's possible that some data was lost during the repair. Please check the "
+"contents of your Persistent Storage and restore any lost data from a backup."
+msgstr ""
+"Seans gur cailleadh roinnt sonraí le linn an deisiúcháin. Seiceáil le do "
+"thoil inneachar do Stór Marthanach agus cuir ar ais aon sonraí caillte ó "
+"chúltaca."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:565
+#: config/chroot_local-includes/usr/local/lib/tails-report-disk-partitioning-errors:32
+msgid "Close"
+msgstr "Dún"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:580
+msgid ""
+"You aborted the repair of the file system. You can either start Tails "
+"without Persistent Storage or restart the computer to try repairing the file "
+"system again."
+msgstr ""
+"Chuir tú deireadh le deisiú an chórais comhad. Is féidir leat Tails a thosú "
+"gan Stóráil Marthanach nó an ríomhaire a atosú chun an córas comhad a "
+"dheisiú arís."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:866
+msgid "Start Tails and open the Persistent Storage settings to find out more."
+msgstr ""
+"Tosaigh Tails agus oscail na socruithe Stóráil Seasmhach chun tuilleadh a "
+"fháil amach."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:896
+msgid ""
+"Your Persistent Storage is unlocked. Its content will be available until you "
+"shut down Tails."
+msgstr ""
+"Tá do Stór Marthanach díghlasáilte. Beidh a ábhar ar fáil go dtí go "
+"stopfaidh tú Tails."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:911
+msgid "Incorrect passphrase. Please try again."
+msgstr "Pasfhrása mícheart. Bain triail eile as."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:922
+msgid ""
+"Error reading data from your Persistent Storage. The hardware of your USB "
+"stick is probably failing."
+msgstr ""
+"Earráid agus sonraí á léamh ó do Stór Seasta. Is dócha go dteipeann ar chrua-"
+"earraí do bhata USB."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:924
+msgid "Start Tails to learn how to recover your data."
+msgstr "Tosaigh Tails a fháil amach conas a ghnóthú do shonraí."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:935
+msgid "File System Errors"
+msgstr "Earráidí Córas Comhad"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:937
+msgid ""
+"Errors were detected in the file system of your Persistent Storage.\n"
+"\n"
+"Tails can try to fix these errors, but this might erase some of your data "
+"and take a long time.\n"
+"\n"
+"If you already have an up-to-date backup of your Persistent Storage, we "
+"recommend that you try to repair.\n"
+"\n"
+"If you don't have a backup, we recommend that you create a partition image "
+"of your Persistent Storage first."
+msgstr ""
+"Braitheadh earráidí i gcóras comhad do Stór Seasta.\n"
+"\n"
+"Is féidir le heireabaill iarracht a dhéanamh na hearráidí seo a réiteach, "
+"ach d’fhéadfadh sé seo cuid de do shonraí a scriosadh agus go dtógfaidh sé "
+"go leor ama.\n"
+"\n"
+"Má tá cúltaca cothrom le dáta de do Stór Seasta agat cheana féin, molaimid "
+"duit iarracht a dhéanamh é a dheisiú.\n"
+"\n"
+"Mura bhfuil cúltaca agat, molaimid duit íomhá deighilte de do Stór Seasta a "
+"chruthú ar dtús."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:946
+msgid "Repair File System"
+msgstr "Deisiúchán Córas Comhad"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:947
+msgid "Create Partition Image"
+msgstr "Cruthaigh Íomhá Deighiltí"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:958
+msgid ""
+"Start Tails to learn how to create a partition image of your Persistent "
+"Storage."
+msgstr ""
+"Tosaigh Tails chun foghlaim conas íomhá deighilte de do Stór Seasta a "
+"chruthú."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:967
+msgid "Failed to unlock the Persistent Storage due to file system errors."
+msgstr ""
+"Theip ar dhíghlasáil an Stóráil Marthanach mar gheall ar earráidí sa chóras "
+"comhad."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:976
+msgid ""
+"Failed to upgrade the Persistent Storage. Please start Tails and send an "
+"error report."
+msgstr ""
+"Theip ar an Stóráil Mharthanach a uasghrádú. Cuir tús le Tails agus seol "
+"tuairisc earráide."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:983
+msgid ""
+"Failed to unlock the Persistent Storage. Please start Tails and send an "
+"error report."
+msgstr ""
+"Theip ar dhíghlasáil an Stóráil Marthanach. Cuir tús le Tails agus seol "
+"tuairisc earráide."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:991
+msgid ""
+"Failed to activate the Persistent Storage. Please start Tails and send an "
+"error report."
+msgstr ""
+"Theip ar an Stór Marthanach a ghníomhachtú. Cuir tús le Tails agus seol "
+"tuairisc earráide."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:1002
+msgid "Upgrading the Persistent Storage. This might take a while…"
+msgstr "Uasghrádú ar an Stóráil Seasmhach. Seans go dtógfaidh sé seo tamall…"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/settings/persistence.py:125
+msgid "Error unlocking Persistent Storage: {}"
+msgstr "Earráid agus Stóráil Marthanach á dhíghlasáil: {}"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/settings/persistence.py:150
+msgid "Error upgrading Persistent Storage: {}"
+msgstr "Earráid agus Stór Marthanach á uasghrádú: {}"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/settings/persistence.py:176
+#, python-brace-format
+msgid "Failed to activate some features of the Persistent Storage: {features}."
+msgstr ""
+"Theip ar ghníomhachtú roinnt gnéithe den Stóráil Marthanach: {features}."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/settings/persistence.py:181
+msgid "Error activating Persistent Storage: {}"
+msgstr "Earráid agus Stóráil Marthanach á ghníomhachtú: {}"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/settings/persistence.py:202
+msgid "Failed to abort when repairing Persistent Storage filesystem: {}"
+msgstr "Theip ar scor agus córas comhad Stóráil Seasmhach á dheisiú: {}"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/region_settings.py:191
+msgid "_Language"
+msgstr "_Teanga"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/region_settings.py:234
+msgid "_Formats"
+msgstr "_Formáidí"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/region_settings.py:271
+msgid "_Keyboard Layout"
+msgstr "_Leagan Amach an Mhéarchláir"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:322
+#, python-format
+msgid "Unable to write on %(device)s, skipping."
+msgstr "Níorbh fhéidir scríobh ar %(device)s, ag dul thart."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:371
+#, python-format
+msgid "Wrote to device at %(speed)d MB/s"
+msgstr "Scríobh chuig gléas ag %(speed)d MB/s"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:383
+msgid "Extracting live image to the target device..."
+msgstr "Íomhá bheo á díphacáil ar an spriocghléas..."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:478
+#, python-format
+msgid ""
+"There was a problem executing the following command: `%(command)s`.\n"
+"A more detailed error log has been written to \"%(filename)s\"."
+msgstr ""
+"Bhí fadhb ann agus an t-ordú seo a leanas á rith: `%(command)s`.\n"
+"Scríobhadh loga earráide níos mionsonraithe chuig \"%(filename)s\"."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:497
+#, python-format
+msgid ""
+"Not enough free space on device.\n"
+"%(iso_size)dMB ISO + %(overlay_size)dMB overlay > %(free_space)dMB free space"
+msgstr ""
+"Níl go leor spáis saor in aisce ar an ngléas.\n"
+"%(iso_size)dMB ISO + %(overlay_size)dMB forleagan > %(free_space)dMB spás "
+"saor"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:510
+#, python-format
+msgid "Creating %sMB persistent overlay"
+msgstr "Forleagan seasmhach %s MB á chruthú"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:576
+#, python-format
+msgid "Unable to copy %(infile)s to %(outfile)s: %(message)s"
+msgstr "Níorbh fhéidir %(infile)s a chóipeáil go %(outfile)s: %(message)s"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:589
+msgid "Removing existing Tails system"
+msgstr "Córas Tails atá ann cheana a bhaint"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:600
+#, python-format
+msgid "Unable to remove file from previous Tails system: %(message)s"
+msgstr "Ní féidir an comhad a bhaint den chóras Tails roimhe seo: %(message)s"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:610
+#, python-format
+msgid "Unable to chmod %(file)s: %(message)s"
+msgstr "Níorbh fhéidir chmod a chur i bhfeidhm ar %(file)s: %(message)s"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:618
+#, python-format
+msgid "Unable to remove directory from previous Tails system: %(message)s"
+msgstr ""
+"Níorbh fhéidir comhadlann a bhaint den chóras Tails roimhe seo: %(message)s"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:669
+#, python-format
+msgid "Cannot find device %s"
+msgstr "Ní féidir gléas %s a aimsiú"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:705
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:1025
+msgid "Unknown filesystem.  Your device may need to be reformatted."
+msgstr "Córas comhad anaithnid. Seans gur gá duit an gléas a fhormáidiú."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:708
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:1028
+#, python-format
+msgid "Unsupported filesystem: %s"
+msgstr "Córas comhad nach dtacaítear leis: %s"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:724
+#, python-format
+msgid "Unknown GLib exception while trying to mount device: %(message)s"
+msgstr "Earráid anaithnid GLib agus an gléas á fheistiú: %(message)s"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:731
+#, python-format
+msgid "Unable to mount device: %(message)s"
+msgstr "Níorbh fhéidir an gléas a fheistiú: %(message)s"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:736
+msgid "No mount points found"
+msgstr "Níor aimsíodh aon phointe feistithe"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:806
+msgid "Target device has opened files"
+msgstr "D'oscail an gléas sprice comhaid"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:834
+#, python-format
+msgid "Mount %s exists after unmounting"
+msgstr "Tá %s ann fiú tar éis dífheistithe"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:865
+#, python-format
+msgid "Partitioning device %(device)s"
+msgstr "Gléas %(device)s á dheighilt"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:1009
+#, python-format
+msgid "Unsupported device '%(device)s', please report a bug."
+msgstr ""
+"Ní thacaítear le gléas '%(device)s'; seol tuairisc chugainn faoi seo mar "
+"fhabht."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:1012
+msgid "Trying to continue anyway."
+msgstr "Déan iarracht leanúint ar aghaidh mar sin féin."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:1021
+msgid "Verifying filesystem..."
+msgstr "An córas comhad á dheimhniú..."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:1044
+#, python-format
+msgid "Unable to change volume label: %s"
+msgstr "Ní féidir an lipéad ar an imleabhar a athrú: %s"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:1050
+msgid "Installing bootloader..."
+msgstr "Lódálaí tosaithe á shuiteáil..."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:1058
+#, python-format
+msgid "Removing %(file)s"
+msgstr "%(file)s á bhaint"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:1087
+msgid "Cloning Persistent Storage..."
+msgstr "Stóráil Marthanach Clónáil..."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:1170
+#, python-format
+msgid "%s already bootable"
+msgstr "Tá %s intosaithe cheana"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:1191
+msgid "Unable to find partition"
+msgstr "Ní féidir deighilt a aimsiú"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:1213
+#, python-format
+msgid "Formatting %(device)s as FAT32"
+msgstr "%(device)s á fhormáidiú mar FAT32"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:1290
+#, python-format
+msgid "Reading extracted MBR from %s"
+msgstr "MBR asbhainte á léamh ó %s"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:1295
+#, python-format
+msgid "Could not read the extracted MBR from %(path)s"
+msgstr "Níorbh fhéidir an MBR asbhainte a léamh ó %(path)s"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:1309
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:1310
+#, python-format
+msgid "Resetting Master Boot Record of %s"
+msgstr "Máistirthaifead Tosaithe %s á athshocrú"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:1314
+#, python-format
+msgid "Writing random seed to LBA 34 of %s"
+msgstr "Síol randamach á scríobh chuig LBA 34 de %s"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:1321
+msgid "Drive is a loopback, skipping MBR reset"
+msgstr "Is gléas aislúbtha é an tiomántán; ní athshocrófar an MBR"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:1325
+msgid "Synchronizing data on disk..."
+msgstr "Sonraí á sioncronú ar an diosca..."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:157
+msgid ""
+"Unable to clone because the target USB stick is being used. Close all open "
+"files on the target USB stick, restart Tails Cloner, and try to clone again."
+msgstr ""
+"Ní féidir clónáil a dhéanamh toisc go bhfuil an sprioc-mhaid USB á úsáid. "
+"Dún gach comhad oscailte ar an sprioc bata USB, atosaigh Tails Cloner, agus "
+"déan iarracht clónáil arís."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:189
+msgid ""
+"Error: Cannot set the label or obtain the UUID of your device.  Unable to "
+"continue."
+msgstr ""
+"Earráid: Ní féidir lipéad an ghléis a shocrú, ná UUID an ghléis a fháil. Ní "
+"féidir dul ar aghaidh."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:234
+#, python-format
+msgid "Cloning complete! (%s)"
+msgstr "Clónáil críochnaithe! (%s)"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:239
+msgid "Tails installation failed!"
+msgstr "Theip ar shuiteáil Tails!"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:341
+#: ../config/chroot_local-includes/usr/share/applications/tails-installer.desktop.in.h:1
+msgid "Tails Cloner"
+msgstr "Clóirtheach Tails"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:393
+#: ../config/chroot_local-includes/usr/share/tails-installer/tails-installer.ui.in:164
+msgid "Clone the current Tails"
+msgstr "Cóipeáil an leagan reatha de Tails"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:401
+#: ../config/chroot_local-includes/usr/share/tails-installer/tails-installer.ui.in:200
+msgid "Use a downloaded Tails ISO image"
+msgstr "Úsáid íomhá ISO Tails íoslódáilte"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:453
+msgid "Upgrade"
+msgstr "Nuashonraigh"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:454
+msgid "Manual Upgrade Instructions"
+msgstr "Treoracha le nuashonrú de láimh"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:465
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:730
+#: ../config/chroot_local-includes/usr/share/tails-installer/tails-installer.ui.in:374
+msgid "Install"
+msgstr "Suiteáil"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:468
+#: ../config/chroot_local-includes/usr/share/tails-installer/tails-installer.ui.in:131
+msgid "Installation Instructions"
+msgstr "Treoracha Suiteála"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:471
+msgid "Backup Instructions"
+msgstr "Treoracha Cúltaca"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:482
+#, python-format
+msgid "%(size)s %(vendor)s %(model)s device (%(device)s)"
+msgstr "Gléas %(vendor)s %(model)s %(size)s (%(device)s)"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:495
+msgid "No ISO image selected"
+msgstr "Níl aon íomhá ISO roghnaithe"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:495
+msgid "Please select a Tails ISO image."
+msgstr "Roghnaigh íomhá ISO Tails."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:546
+msgid ""
+"Clone the current Persistent Storage\n"
+"Impossible to clone the Persistent Storage because it is locked."
+msgstr ""
+"Clón an Stóráil Seasmhach reatha\n"
+"Ní féidir an Stóráil Seasmhach a chlónáil toisc go bhfuil sé faoi ghlas."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:550
+#: ../config/chroot_local-includes/usr/share/tails-installer/tails-installer.ui.in:180
+msgid "Clone the current Persistent Storage"
+msgstr "Clón an Stóráil Seasmhach reatha"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:553
+msgid ""
+"Clone the current Persistent Storage\n"
+"You can only choose to reinstall when cloning the Persistent Storage."
+msgstr ""
+"Clón an Stóráil Seasmhach reatha\n"
+"Ní féidir leat athshuiteáil a roghnú ach amháin nuair a chlónálann tú an "
+"Stór Marthanach."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:591
+#, python-format
+msgid ""
+"The USB stick \"%(pretty_name)s\" is configured as non-removable by its "
+"manufacturer and Tails will fail to start from it. Please try installing on "
+"a different model."
+msgstr ""
+"Chumraigh an déantóir an mhéaróg USB \"%(pretty_name)s\" mar ghléas "
+"dobhainte, agus ní thosóidh Tails air. Déan iarracht Tails a shuiteáil ar "
+"mhéaróg eile."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:600
+#, python-format
+msgid "The device \"%(pretty_name)s\" is read-only."
+msgstr "Is gléas inléite amháin é an gléas \"%(pretty_name)s\"."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:608
+#, python-format
+msgid ""
+"The device \"%(pretty_name)s\" is too small to install Tails (at least "
+"%(size)s GB is required)."
+msgstr ""
+"Tá an gléas \"%(pretty_name)s\" róbheag le Tails a shuiteáil (ar a laghad "
+"%(size)s GB de dhíth)."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:623
+#, python-format
+msgid ""
+"To upgrade device \"%(pretty_name)s\" from this Tails, you need to use a "
+"downloaded Tails ISO image:\n"
+"%(dl_url)s"
+msgstr ""
+"Chun gléas \"%(pretty_name)s\" a uasghrádú ón Tails seo, ní mór duit íomhá "
+"ISO Tails íosluchtaithe a úsáid:\n"
+"%(dl_url)s"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:644
+msgid "No device suitable to install Tails could be found"
+msgstr "Níor aimsíodh aon ghléas feiliúnach le Tails a shuiteáil"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:647
+#, python-format
+msgid "Plug in a USB stick of at least %0.1f GB."
+msgstr "Plugáil isteach bata USB de %0.1f GB ar a laghad."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:660
+msgid "An error happened while installing Tails"
+msgstr "Tharla earráid agus Tails á shuiteáil"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:717
+msgid "Installation complete!"
+msgstr "Críochnaíodh an tsuiteáil!"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:773
+#, python-format
+msgid "%(parent_size)s %(vendor)s %(model)s device (%(device)s)"
+msgstr "Gléas %(vendor)s %(model)s %(parent_size)s (%(device)s)"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:786
+msgid ""
+"\n"
+"\n"
+"The Persistent Storage on this USB stick will be lost."
+msgstr ""
+"\n"
+"\n"
+"Caillfear an Stór Marthanach ar an bata USB seo."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:788
+msgid "Delete Persistent Storage and Reinstall"
+msgstr "Scrios Stóráil Marthanach agus Athshuiteáil"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:790
+msgid ""
+"\n"
+"\n"
+"All data on this USB stick will be lost."
+msgstr ""
+"\n"
+"\n"
+"Caillfear na sonraí go léir ar an USB bata seo."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:791
+msgid "Delete All Data and Install"
+msgstr "Scrios Gach Sonraí agus Suiteáil"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:792
+#, python-format
+msgid "%(description)s%(delete_message)s"
+msgstr "%(description)s %(delete_message)s"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:797
+msgid "Confirm the target USB stick"
+msgstr "Deimhnigh an mhéaróg USB mar sprioc"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:827
+msgid "Unable to mount device"
+msgstr "Níorbh fhéidir an gléas a fheistiú"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:856
+msgid ""
+"The selected file is unreadable. Please fix its permissions or select "
+"another file."
+msgstr ""
+"Ní féidir an comhad roghnaithe a léamh. Ceartaigh na ceadanna nó roghnaigh "
+"comhad eile."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:866
+msgid ""
+"Unable to use the selected file.  You may have better luck if you move your "
+"ISO to the root of your drive (ie: C:\\)"
+msgstr ""
+"Níorbh fhéidir an comhad roghnaithe a úsáid. Gheobhaidh tú torthaí níos "
+"fearr má bhogann tú an ISO go dtí fréamhchomhadlann an tiomántáin (.i. C:\\)"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:875
+#, python-format
+msgid "%(filename)s selected"
+msgstr "%(filename)s roghnaithe"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/source.py:37
+msgid "Unable to find Tails on ISO"
+msgstr "Ní féidir Tails a aimsiú ar ISO"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/source.py:44
+#, python-format
+msgid "Could not guess underlying block device: %s"
+msgstr "Níorbh fhéidir an bunghléas bloc a dhéanamh amach: %s"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/source.py:61
+#, python-format
+msgid ""
+"There was a problem executing `%(cmd)s`.\n"
+"%(out)s\n"
+"%(err)s"
+msgstr ""
+"Tharla fadhb agus `%(cmd)s` á rith.\n"
+"%(out)s\n"
+"%(err)s"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/source.py:70
+#, python-format
+msgid "\"%s\" does not exist"
+msgstr "Níl \"%s\" ann"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/source.py:72
+#, python-format
+msgid "\"%s\" is not a directory"
+msgstr "Ní chomhadlann é \"%s\""
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/source.py:84
+#, python-format
+msgid "Skipping \"%(filename)s\""
+msgstr "Ag bacadh \"%(filename)s\""
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/utils.py:63
+#, python-format
+msgid ""
+"There was a problem executing `%(cmd)s`.%(out)s\n"
+"%(err)s"
+msgstr ""
+"Tharla fadhb agus `%(cmd)s` á rith.%(out)s\n"
+"%(err)s"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/utils.py:144
+msgid "Could not open device for writing."
+msgstr "Níorbh fhéidir an gléas a oscailt le scríobh air."
+
+#: config/chroot_local-includes/usr/local/bin/secrets:19
+#, sh-format
+msgid ""
+"You have a <i>KeePassXC</i> or <i>Secrets</i> database in your "
+"<i>Persistent</i> folder:\n"
+"\n"
+"<i>${filename}</i>\n"
+"\n"
+"Renaming your database to <i>${default_filename}</i> allows <i>Secrets</i> "
+"to open it automatically in the future."
+msgstr ""
+"Tá bunachar sonraí <i>KeePassXC</i> nó <i>Secrets</i> agat i do fhillteán "
+"<i>Persistent</i>:\n"
+"\n"
+"<i>${filename}</i>\n"
+"\n"
+"Má athainmníonn tú do bhunachar sonraí go <i>${default_filename}</i>, is "
+"féidir le <i>Secrets</i> é a oscailt go huathoibríoch amach anseo."
+
+#: config/chroot_local-includes/usr/local/bin/secrets:25
+msgid "Rename"
+msgstr "Athainmnigh"
+
+#: config/chroot_local-includes/usr/local/bin/secrets:27
+msgid "Keep current name"
+msgstr "Níl, ná hathraigh an t-ainm"
+
+#: config/chroot_local-includes/usr/local/bin/secrets:29
+msgid "Rename Password Database?"
+msgstr "Athainmnigh Bunachar Sonraí Pasfhocal?"
+
+#: config/chroot_local-includes/usr/local/bin/replace-su-with-sudo:19
+msgid "su is disabled. Please use sudo instead."
+msgstr "Tá su díchumasaithe. Bain úsáid as sudo ina áit."
+
+#: config/chroot_local-includes/usr/local/lib/tails-report-disk-ioerrors:3
+msgid "Error Reading Data from Tails USB Stick"
+msgstr "Earráid agus Sonraí á Léamh ó Bhata USB Tails"
+
+#: config/chroot_local-includes/usr/local/lib/tails-report-disk-ioerrors:4
+msgid "The hardware of your USB stick is probably failing."
+msgstr "Is dócha go dteipeann ar chrua-earraí do bhata USB."
+
+#: config/chroot_local-includes/usr/local/lib/tails-report-disk-ioerrors:5
+msgid "We recommend that you reinstall Tails on a different USB stick."
+msgstr "Molaimid duit Tails a athshuiteáil ar mhaide USB eile."
+
+#: config/chroot_local-includes/usr/local/lib/tails-report-disk-ioerrors:7
+msgid ""
+"We recommend that you reinstall Tails on a different USB stick\n"
+"and recover the data from your Persistent Storage as soon as possible."
+msgstr ""
+"Molaimid duit Tails a athshuiteáil ar mhaide USB eile\n"
+"agus na sonraí a aisghabháil ó do Stóráil Seasmhach a luaithe is féidir."
+
+#: config/chroot_local-includes/usr/local/lib/tails-report-disk-ioerrors:10
+msgid "Dismiss"
+msgstr "Dún"
+
+#: config/chroot_local-includes/usr/local/lib/tails-report-disk-ioerrors:11
+#: config/chroot_local-includes/usr/local/lib/tails-additional-software-notify:63
+#: config/chroot_local-includes/usr/local/lib/tails-low-ram-notify-user:44
+#: config/chroot_local-includes/usr/local/lib/tails-uefi-ca-notify-user:52
+#: config/chroot_local-includes/usr/local/lib/tails-virt-notify-user:45
+msgid "Learn More"
+msgstr "Tuilleadh Eolais"
+
+#: config/chroot_local-includes/usr/local/lib/tails-report-disk-partitioning-errors:18
+msgid "Partitioning Error"
+msgstr "Earráid Deighilte"
+
+#: config/chroot_local-includes/usr/local/lib/tails-report-disk-partitioning-errors:19
+msgid "Errors were detected in the partitioning of your Tails USB stick."
+msgstr "Braitheadh earráidí agus do mhaide USB Tails á roinnt."
+
+#: config/chroot_local-includes/usr/local/lib/tails-report-disk-partitioning-errors:26
+msgid ""
+"We recommend that you create a backup of your Tails using <i>Tails Cloner</"
+"i> to migrate to a new USB stick."
+msgstr ""
+"Molaimid duit cúltaca de do chuid Tails a chruthú trí úsáid a bhaint as "
+"<i>Tails Cloner</i> chun aistriú go dtí bata USB nua."
+
+#: config/chroot_local-includes/usr/local/lib/tails-report-disk-partitioning-errors:33
+msgid "Open Tails Cloner"
+msgstr "Oscailte Tails Cloner"
+
+#: config/chroot_local-includes/usr/local/lib/tails-report-disk-partitioning-errors:42
+msgid "Creation of Persistent Storage has been disabled."
+msgstr "Díchumasaíodh Cruthú Marthanach Stórála."
+
+#: config/chroot_local-includes/usr/local/lib/tails-report-disk-partitioning-errors:44
+msgid ""
+"We recommend that you reinstall Tails from scratch. If the error persists, "
+"reinstall on a new USB stick."
+msgstr ""
+"Molaimid Tails a athshuiteáil ón tús. Má leanann an earráid, athshuiteáil ar "
+"USB bata nua."
+
+#: config/chroot_local-includes/usr/src/perl5lib/lib/Tails/RunningSystem.pm:207
+#: config/chroot_local-includes/usr/local/bin/tails-upgrade-frontend-wrapper:79
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/application.py:79
+#: config/chroot_local-includes/usr/local/sbin/unsafe-browser:37
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:375
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:521
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:654
+msgid "Error"
+msgstr "Earráid"
+
+#: config/chroot_local-includes/usr/src/perl5lib/lib/Tails/RunningSystem.pm:209
+msgid ""
+"The device Tails is running from cannot be found. Maybe you used the 'toram' "
+"option?"
+msgstr ""
+"Ní féidir teacht ar an ngléas óna bhfuil Tails ag rith. B'fhéidir gur úsáid "
+"tú an rogha 'toram'?"
+
+#: config/chroot_local-includes/usr/src/perl5lib/lib/Tails/RunningSystem.pm:237
+msgid ""
+"The drive Tails is running from cannot be found. Maybe you used the 'toram' "
+"option?"
+msgstr ""
+"Ní féidir teacht ar an tiomántán óna bhfuil Tails ag rith. B'fhéidir gur "
+"úsáid tú an rogha 'toram'?"
+
+#: config/chroot_local-includes/usr/share/gnome-shell/extensions/status-menu-helper@tails.boum.org/extension.js:103
+#: config/chroot_local-includes/usr/local/bin/tails-screen-locker:120
+msgid "Lock Screen"
+msgstr "Cuir an scáileán faoi ghlas"
+
+#: config/chroot_local-includes/usr/share/gnome-shell/extensions/status-menu-helper@tails.boum.org/extension.js:107
+msgid "Suspend"
+msgstr "Croch"
+
+#: config/chroot_local-includes/usr/share/gnome-shell/extensions/status-menu-helper@tails.boum.org/extension.js:111
+msgid "Restart"
+msgstr "Atosaigh"
+
+#: config/chroot_local-includes/usr/share/gnome-shell/extensions/status-menu-helper@tails.boum.org/extension.js:115
+msgid "Power Off"
+msgstr "Múch"
+
+#: config/chroot_local-includes/usr/local/bin/tails-about:27
+#: ../config/chroot_local-includes/usr/share/desktop-directories/Tails.directory.in.h:1
+msgid "Tails"
+msgstr "Tails"
+
+#: config/chroot_local-includes/usr/local/bin/tails-about:30
+#: ../config/chroot_local-includes/usr/share/applications/tails-about.desktop.in.h:1
+msgid "About Tails"
+msgstr "Maidir le Tails"
+
+#: config/chroot_local-includes/usr/local/bin/tails-about:34
+msgid "Check for Upgrades"
+msgstr "Seiceáil le haghaidh Uasghráduithe"
+
+#: config/chroot_local-includes/usr/local/bin/tails-about:57
+msgid "UNRELEASED"
+msgstr "NEAMHRÁITE"
+
+#: config/chroot_local-includes/usr/local/bin/tails-about:64
+#, python-format
+msgid "Built from %s"
+msgstr "Tógtha ó %s"
+
+#: config/chroot_local-includes/usr/local/bin/tails-additional-software-config:114
+#, python-brace-format
+msgid ""
+"Remove {package} from your additional software? This will stop installing "
+"the package automatically."
+msgstr ""
+"An bhfuil fonn ort {package} a bhaint de na bogearraí breise? Ní shuiteálfar "
+"an pacáiste go huathoibríoch a thuilleadh."
+
+#. Translators: Don't translate {pkg}, it's a placeholder and will be replaced.
+#: config/chroot_local-includes/usr/local/bin/tails-additional-software-config:127
+#, python-brace-format
+msgid "Failed to remove {pkg}"
+msgstr "Níorbh fhéidir {pkg} a bhaint"
+
+#: config/chroot_local-includes/usr/local/bin/tails-additional-software-config:155
+msgid "Failed to read additional software configuration"
+msgstr "Níorbh fhéidir cumraíocht na mbogearraí breise a léamh"
+
+#. Translators: Don't translate {package}, it's a placeholder and will be replaced.
+#: config/chroot_local-includes/usr/local/bin/tails-additional-software-config:184
+#, python-brace-format
+msgid "Stop installing {package} automatically"
+msgstr "Ná suiteáil {package} go huathoibríoch a thuilleadh"
+
+#: config/chroot_local-includes/usr/local/bin/tails-additional-software-config:215
+msgid ""
+"To do so, install some software using <a href=\"synaptic.desktop\">Synaptic "
+"Package Manager</a> or <a href=\"org.gnome.Terminal.desktop\">APT on the "
+"command line</a>."
+msgstr ""
+"Len é seo a dhéanamh, suiteáil bogearraí trí <a "
+"href=\"synaptic.desktop\">Bhainisteoir Pacáistí Synaptic</a> nó le <a "
+"href=\"org.gnome.Terminal.desktop\">APT ar líne na n-orduithe</a>."
+
+#: config/chroot_local-includes/usr/local/bin/tails-additional-software-config:227
+msgid ""
+"To do so, unlock your Persistent Storage when starting Tails and install "
+"some software using <a href=\"synaptic.desktop\">Synaptic Package Manager</"
+"a> or <a href=\"org.gnome.Terminal.desktop\">APT on the command line</a>."
+msgstr ""
+"Chun é sin a dhéanamh, díghlasáil do Stór Seasta agus tú ag tosú Tails agus "
+"suiteáil roinnt bogearraí ag úsáid <a href=\"synaptic.desktop\">Bainisteoir "
+"Pacáiste Synaptic</a> nó <a href=\"org.gnome.Terminal.desktop\">APT ar an "
+"líne ordaithe</a>."
+
+#: config/chroot_local-includes/usr/local/bin/tails-additional-software-config:240
+msgid ""
+"To do so, create a Persistent Storage and install some software using <a "
+"href=\"synaptic.desktop\">Synaptic Package Manager</a> or <a "
+"href=\"org.gnome.Terminal.desktop\">APT on the command line</a>."
+msgstr ""
+"Chun seo a dhéanamh, cruthaigh Stóráil Bhuan agus suiteáil roinnt bogearraí "
+"ag baint úsáide as <a href=\"synaptic.desktop\">Bainisteoir Pacáistí "
+"Synaptic</a> nó <a href=\"org.gnome.Terminal.desktop\">APT ar an líne "
+"ordaithe</a>."
+
+#: config/chroot_local-includes/usr/local/bin/tails-additional-software-config:258
+msgid "To do so, install Tails on a USB stick and create a Persistent Storage."
+msgstr ""
+"Chun é sin a dhéanamh, suiteáil Tails ar bata USB agus cruthaigh Stór "
+"Marthanach."
+
+#: config/chroot_local-includes/usr/local/bin/tails-additional-software-config:304
+msgid "[package not available]"
+msgstr "[níl an pacáiste ar fáil]"
+
+#: config/chroot_local-includes/usr/local/bin/tails-additional-software-config:311
+msgid "[description not available]"
+msgstr "[Níl an cur síos ar fáil]"
+
+#: config/chroot_local-includes/usr/local/lib/tails-htp-notify-user:68
+msgid "Failed to synchronize the clock!"
+msgstr "Níorbh fhéidir an clog a shioncronú!"
+
+#: config/chroot_local-includes/usr/local/lib/tails-low-ram-notify-user:26
+msgid "Insufficient Memory Detected"
+msgstr "Cuimhne Easpa Braite"
+
+#: config/chroot_local-includes/usr/local/lib/tails-low-ram-notify-user:28
+#, python-brace-format
+msgid ""
+"Tails requires {required_ram_gb} GB of RAM, but this computer only has "
+"{installed_ram_gb} GB. You might experience reduced performance, "
+"instability, or crashes."
+msgstr ""
+"Éilíonn Tails {required_ram_gb} GB RAM, ach níl ach {installed_ram_gb} GB ar "
+"an ríomhaire seo. D’fhéadfadh feidhmíocht laghdaithe, éagobhsaíocht nó "
+"tuairteanna a bheith agat."
+
+#: config/chroot_local-includes/usr/local/lib/tails-low-ram-notify-user:41
+#: config/chroot_local-includes/usr/local/lib/tails-uefi-ca-notify-user:47
+#: config/chroot_local-includes/usr/local/lib/tails-virt-notify-user:42
+msgid "Don't Show Again"
+msgstr "Ná Taispeáin Arís"
+
+#: config/chroot_local-includes/usr/local/bin/tails-screen-locker:132
+msgid "Screen Locker"
+msgstr "Glasálaí an Scáileáin"
+
+#: config/chroot_local-includes/usr/local/bin/tails-screen-locker:138
+msgid "Set up a password to unlock the screen."
+msgstr "Socraigh focal faire chun an scáileán a dhíghlasáil."
+
+#: config/chroot_local-includes/usr/local/bin/tails-screen-locker:147
+msgid "Show Password"
+msgstr "Taispeáin Pasfhocal"
+
+#: config/chroot_local-includes/usr/local/bin/tails-screen-locker:151
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:2580
+msgid "Password"
+msgstr "Focal faire"
+
+#: config/chroot_local-includes/usr/local/bin/tails-screen-locker:152
+#: ../config/chroot_local-includes/usr/share/tails/greeter/additional_settings.ui.in:109
+msgid "Confirm"
+msgstr "Deimhnigh"
+
+#: config/chroot_local-includes/usr/local/bin/tails-security-check:121
+msgid "This version of Tails has known security issues:"
+msgstr "Tá fadhbanna slándála sa leagan seo de Tails:"
+
+#: config/chroot_local-includes/usr/local/bin/tails-security-check:131
+msgid "Known security issues"
+msgstr "Fadhbanna slándála ar eolas"
+
+#: config/chroot_local-includes/usr/local/lib/tails-spoof-mac:60
+#, sh-format
+msgid "Wi-Fi Interface Disabled"
+msgstr "Comhéadan Wi-Fi faoi Mhíchumas"
+
+#: config/chroot_local-includes/usr/local/lib/tails-spoof-mac:61
+#, sh-format
+msgid ""
+"MAC address anonymization failed for one of your Wi-Fi interfaces, so it is "
+"temporarily disabled."
+msgstr ""
+"Theip ar an ainm seoladh MAC do cheann de do chomhéadain Wi-Fi, mar sin tá "
+"sé díchumasaithe go sealadach."
+
+#: config/chroot_local-includes/usr/local/lib/tails-spoof-mac:64
+#, sh-format
+msgid "Wi-Fi Disabled"
+msgstr "Wi-Fi faoi Mhíchumas"
+
+#: config/chroot_local-includes/usr/local/lib/tails-spoof-mac:65
+#, sh-format
+msgid ""
+"MAC address anonymization failed for your Wi-Fi interface, so it is "
+"temporarily disabled."
+msgstr ""
+"Theip ar do chomhéadan Wi-Fi do sheoladh MAC a anaithnidiú, mar sin tá sé "
+"díchumasaithe go sealadach."
+
+#: config/chroot_local-includes/usr/local/lib/tails-spoof-mac:67
+#, sh-format
+msgid "Wired Interface Disabled"
+msgstr "Comhéadan Wired faoi Mhíchumas"
+
+#: config/chroot_local-includes/usr/local/lib/tails-spoof-mac:68
+#, sh-format
+msgid ""
+"MAC address anonymization failed for one of your wired interfaces, so it is "
+"temporarily disabled."
+msgstr ""
+"Theip ar an ainm seoladh MAC do cheann de do chomhéadain sreangaithe, mar "
+"sin tá sé díchumasaithe go sealadach."
+
+#: config/chroot_local-includes/usr/local/lib/tails-spoof-mac:71
+#, sh-format
+msgid "Wired Network Disabled"
+msgstr "Líonra Wired faoi Mhíchumas"
+
+#: config/chroot_local-includes/usr/local/lib/tails-spoof-mac:72
+#, sh-format
+msgid ""
+"MAC address anonymization failed for your wired interface, so it is "
+"temporarily disabled."
+msgstr ""
+"Theip ar do chomhéadan sreangaithe anaithnidiú seoltaí MAC, mar sin tá sé "
+"díchumasaithe go sealadach."
+
+#: config/chroot_local-includes/usr/local/lib/tails-spoof-mac:74
+#, sh-format
+msgid "Network Interface Disabled"
+msgstr "Comhéadan Líonra faoi Mhíchumas"
+
+#: config/chroot_local-includes/usr/local/lib/tails-spoof-mac:75
+#, sh-format
+msgid ""
+"MAC address anonymization failed for one of your network interfaces, so it "
+"is temporarily disabled."
+msgstr ""
+"Theip ar an ainm seoladh MAC do cheann de do chomhéadain líonra, mar sin tá "
+"sé díchumasaithe go sealadach."
+
+#: config/chroot_local-includes/usr/local/lib/tails-spoof-mac:87
+msgid "All Networking Disabled"
+msgstr "Gach Líonrú faoi Mhíchumas"
+
+#: config/chroot_local-includes/usr/local/lib/tails-spoof-mac:89
+#, sh-format
+msgid ""
+"MAC address anonymization failed for one of your network interfaces. The "
+"error recovery also failed, so all networking is disabled."
+msgstr ""
+"Theip ar an ainm seoladh MAC do cheann de do chomhéadain líonra. Theip ar "
+"aisghabháil na hearráide freisin, mar sin tá gach líonrú díchumasaithe."
+
+#: config/chroot_local-includes/usr/local/lib/tails-spoof-mac:92
+#, sh-format
+msgid ""
+"MAC address anonymization failed for your network interface. The error "
+"recovery also failed, so all networking is disabled."
+msgstr ""
+"Theip ar do chomhéadan líonra a bheith anaithnidiú seolta MAC. Theip ar "
+"aisghabháil na hearráide freisin, mar sin tá gach líonrú díchumasaithe."
+
+#: config/chroot_local-includes/usr/local/lib/tails-uefi-ca-notify-user:28
+msgid "Secure Boot Update Needed"
+msgstr "Nuashonrú Tosaithe Slán Riachtanach"
+
+#: config/chroot_local-includes/usr/local/lib/tails-uefi-ca-notify-user:30
+msgid ""
+"Tails will no longer start on this computer at some point in the future. "
+"Apply all available updates from your regular operating system to update to "
+"the latest Secure Boot certificates of Microsoft."
+msgstr ""
+"Ní thosóidh Tails ar an ríomhaire seo a thuilleadh ag pointe éigin sa "
+"todhchaí. Cuir na nuashonruithe uile atá ar fáil i bhfeidhm ó do chóras "
+"oibriúcháin rialta chun na deimhnithe Tosaithe Slán is déanaí ó Microsoft a "
+"nuashonrú."
+
+#: config/chroot_local-includes/usr/local/bin/tails-upgrade-frontend-wrapper:37
+#, python-brace-format
+msgid ""
+"<b>Not enough memory available to check for upgrades.</b>\n"
+"\n"
+"Make sure this system satisfies the requirements for running Tails.\n"
+"See file:///usr/share/doc/tails/website/doc/about/requirements.en.html\n"
+"\n"
+"Try to restart Tails to check for upgrades again.\n"
+"\n"
+"Or do a manual upgrade.\n"
+"See {manual_upgrade_url}"
+msgstr ""
+"<b>Níl go leor cuimhne ar fáil chun uasghráduithe a sheiceáil.</b>\n"
+"\n"
+"Déan cinnte go sásaíonn an córas seo na ceanglais maidir le Tails a rith.\n"
+"Féach an comhad::///usr/share/doc/tails/website/doc/about/"
+"requirements.en.html\n"
+"\n"
+"Déan iarracht Tails a atosú chun seiceáil le haghaidh uasghráduithe arís.\n"
+"\n"
+"Nó déan uasghrádú láimhe.\n"
+"Féach ar {manual_upgrade_url}"
+
+#: config/chroot_local-includes/usr/local/bin/tails-upgrade-frontend-wrapper:78
+#: config/chroot_local-includes/usr/local/sbin/unsafe-browser:36
+msgid "error:"
+msgstr "earráid:"
+
+#: config/chroot_local-includes/usr/local/lib/tails-virt-notify-user:24
+msgid "Warning: virtual machine detected!"
+msgstr "Rabhadh: braitheadh meaisín fíorúil!"
+
+#: config/chroot_local-includes/usr/local/lib/tails-virt-notify-user:26
+msgid "Warning: non-free virtual machine detected!"
+msgstr "Rabhadh: braitheadh meaisín fíorúil neamhshaor!"
+
+#: config/chroot_local-includes/usr/local/lib/tails-virt-notify-user:28
+msgid ""
+"Both the host operating system and the virtualization software are able to "
+"monitor what you are doing in Tails. Only free software can be considered "
+"trustworthy, for both the host operating system and the virtualization "
+"software."
+msgstr ""
+"Tá an córas oibriúcháin ar an óstríomhaire agus an bogearra fíorúlaithe in "
+"ann monatóireacht a dhéanamh ar na rudaí a dhéanann tú in Tails. Ní féidir "
+"muinín a chur i gcóras oibriúcháin ná i mbogearra fíorúlaithe nach bhfuil "
+"saor."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/config.py:9
+#: config/chroot_local-includes/usr/local/bin/tca:10
+#: ../config/chroot_local-includes/usr/share/applications/tca.desktop.in.h:1
+msgid "Tor Connection"
+msgstr "Ceangal Tor"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py:283
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py:331
+msgid "Automatic"
+msgstr "Uathoibríoch"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py:284
+msgid "Frequently selected regions"
+msgstr "Réigiúin a roghnaítear go minic"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py:291
+msgid "Other regions"
+msgstr "Réigiúin eile"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py:369
+msgid "_Use a bridge that you already know"
+msgstr "_Úsáid droichead atá ar eolas agat cheana féin"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py:411
+msgid ""
+"To save your bridge, <a href=\"doc/persistent_storage\">unlock your "
+"Persistent Storage</a>."
+msgstr ""
+"Chun do dhroichead a shábháil, <a href=\"doc/persistent_storage\">díghlasáil "
+"do Stór Marthanach</a>."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py:418
+msgid ""
+"To save your bridge, <a href=\"doc/persistent_storage\">create a Persistent "
+"Storage</a> on your Tails USB stick."
+msgstr ""
+"Chun do dhroichead a shábháil, <a href=\"doc/persistent_storage\">cruthaigh "
+"Stóráil Marthanach</a> ar do mhéaróg USB Tails."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py:438
+#, python-brace-format
+msgid "Invalid: {exception}"
+msgstr "Neamhbhailí: {exception}"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py:450
+msgid ""
+"You need to configure a WebTunnel or an obfs4 bridge to hide that you are "
+"using Tor"
+msgstr ""
+"Ní mór duit WebTunnel nó droichead obfs4 a chumrú chun a cheilt go bhfuil tú "
+"ag úsáid Tor"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py:514
+msgid "Failed to configure your Persistent Storage"
+msgstr "Theip ar do Stór Marthanach a chumrú"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py:566
+msgid "Failed to detect a webcam. Maybe your webcam is too old."
+msgstr ""
+"Theip ar ceamara gréasáin a bhrath. B'fhéidir go bhfuil do ceamara gréasáin "
+"ró-shean."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py:577
+msgid "Failed to scan QR code. Try with more light or closer to the camera."
+msgstr ""
+"Theip ar an gcód QR a scanadh. Bain triail as le níos mó solais nó níos "
+"gaire don cheamara."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py:588
+msgid "Invalid QR code. Try sending another email and scanning again."
+msgstr ""
+"Cód QR neamhbhailí. Bain triail as ríomhphost eile a sheoladh agus scanadh "
+"arís."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py:649
+msgid "Synchronizing the system's clock…"
+msgstr "Ag sioncronú clog an chórais…"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py:726
+msgid "Asking for a Tor bridge based on your region…"
+msgstr "Ag iarraidh droichead Tor bunaithe ar do réigiún…"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py:774
+msgid "Connecting to Tor without bridges…"
+msgstr "Ag nascadh le Tor gan droichid…"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py:781
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py:813
+msgid "Connecting to Tor with default bridges…"
+msgstr "Ag nascadh le Tor le droichid réamhshocraithe…"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py:789
+msgid "Connecting to Tor with a bridge based on your region…"
+msgstr "Ag ceangal le Tor le droichead bunaithe ar do réigiún…"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py:796
+msgid "Connecting to Tor with a custom bridge…"
+msgstr "Ag nascadh le Tor le droichead saincheaptha…"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py:914
+msgid "Connected to Tor successfully with bridges"
+msgstr "Ceangailte go rathúil le Tor le droichid"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py:916
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:2340
+msgid "Connected to Tor successfully"
+msgstr "Ceangailte le Tor go rathúil"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py:920
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:2365
+msgid "You can now browse the Internet anonymously and uncensored."
+msgstr ""
+"Is féidir leat brabhsáil ar an Idirlíon anois gan ainm agus uncensored."
+
+#. Translators: only translate "Bridge:" and adjust
+#. text-direction
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py:985
+#, python-brace-format
+msgid "Bridge: <b>{bridge}</b>"
+msgstr "Droichead: <b>{bridge}</b>"
+
+#. Translators: only translate "Error code:" and adjust
+#. text-direction
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py:997
+#, python-brace-format
+msgid "Error code: {code}"
+msgstr "Cód earráide: {code}"
+
+#. Translators: only translate "Proxy:" and adjust
+#. text-direction
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py:1024
+#, python-brace-format
+msgid "Proxy: <b>{proxy}</b>"
+msgstr "Seachfhreastalaí: <b>{proxy}</b>"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py:1323
+#, python-brace-format
+msgid "Scanned {bridge_type} bridge: <b>{bridge_info}</b>."
+msgstr "Scanadh droichead {bridge_type}: <b>{bridge_info}</b>."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py:1408
+msgid "Are you sure you want to lose progress?"
+msgstr "An bhfuil tú cinnte gur mhaith leat dul chun cinn a chailleadh?"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py:1412
+msgid ""
+"Tails will continue connecting to Tor after you close the Tor Connection "
+"assistant.\n"
+"\n"
+"If connecting to Tor fails, you will have to wait again until the end of the "
+"progress bar to be able to troubleshoot your connection."
+msgstr ""
+"Leanfaidh eireabaill ag nascadh le Tor tar éis duit an cúntóir Tor "
+"Connection a dhúnadh.\n"
+"\n"
+"Má theipeann ar nascadh le Tor, beidh ort fanacht arís go dtí deireadh an "
+"bharra dul chun cinn le bheith in ann do nasc a réiteach."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py:1418
+msgid "Close and Lose Progress"
+msgstr "Dún agus Caill Dul Chun Cinn"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py:1420
+msgid "Wait"
+msgstr "Fan"
+
+#: config/chroot_local-includes/usr/local/lib/launch-tor-browser:38
+msgid "Tor is not ready"
+msgstr "Níl Tor réidh"
+
+#: config/chroot_local-includes/usr/local/lib/launch-tor-browser:39
+msgid "Tor is not ready. Start Tor Browser anyway?"
+msgstr "Níl Tor réidh. An bhfuil fonn ort Brabhsálaí Tor a thosú mar sin féin?"
+
+#: config/chroot_local-includes/usr/local/lib/launch-tor-browser:40
+msgid "Start Tor Browser Offline"
+msgstr "Tosaigh Brabhsálaí Tor As Líne"
+
+#: config/chroot_local-includes/usr/local/lib/launch-tor-browser:41
+msgid "Open Tor Connection"
+msgstr "Oscail Ceangal Tor"
+
+#: config/chroot_local-includes/usr/share/gnome-shell/extensions/torstatus@tails.boum.org/extension.js:38
+msgid "Tor Status"
+msgstr "Stádas Tor"
+
+#: config/chroot_local-includes/usr/share/gnome-shell/extensions/torstatus@tails.boum.org/extension.js:47
+msgid "Open Tor Connection Assistant"
+msgstr "Oscail Cúntóir Ceangal Tor"
+
+#: config/chroot_local-includes/usr/share/gnome-shell/extensions/torstatus@tails.boum.org/extension.js:51
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:2406
+msgid "View Tor Circuits"
+msgstr "Féach ar Chiorcaid Tor"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps/device.py:353
+#, python-brace-format
+msgid ""
+"Only {available_memory} KiB of memory is available, need at least "
+"{required_memory} KiB.\n"
+"\n"
+"Try again after closing some applications or rebooting."
+msgstr ""
+"Níl ach {available_memory} KiB de chuimhne ar fáil, tá {required_memory} KiB "
+"ar a laghad de dhíth.\n"
+"\n"
+"Bain triail eile as tar éis duit roinnt feidhmchlár a dhúnadh nó tar éis "
+"duit a atosú."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps/device.py:367
+msgid "Creating a partition for the Persistent Storage..."
+msgstr "Deighilt a chruthú don Stóráil Seasmhach..."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps/device.py:389
+msgid ""
+"Initializing the LUKS encryption... The computer might stop responding for a "
+"few seconds."
+msgstr ""
+"Criptiú LUKS á thúsú... Seans go stopfaidh an ríomhaire ag freagairt ar "
+"feadh cúpla soicind."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps/device.py:420
+msgid "Unlocking the encryption..."
+msgstr "An criptiúchán á dhíghlasáil..."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps/device.py:428
+msgid "Formatting the file system..."
+msgstr "Formáidiú an chórais comhad..."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps/device.py:446
+msgid "Activating the Persistent Storage..."
+msgstr "Stóráil Marthanach á ghníomhachtú..."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps/device.py:451
+msgid "Finishing setting up the Persistent Storage..."
+msgstr "Críochnú an Stór Marthanach a shocrú..."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps/device.py:704
+msgid ""
+"Can't unmount Persistent Storage, some process is still using it. Please "
+"close all applications that could be accessing it and try again. If that "
+"doesn't work, restart Tails and try deleting the Persistent Storage without "
+"unlocking it."
+msgstr ""
+"Ní féidir Stóráil Marthanach a dhíshuiteáil, tá próiseas éigin fós in úsáid. "
+"Dún gach feidhmchlár a d'fhéadfadh rochtain a fháil air agus bain triail "
+"eile as. Mura n-oibríonn sin, atosaigh Tails agus bain triail as an Stór "
+"Seasmhach a scriosadh gan é a dhíghlasáil."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps/device.py:737
+msgid ""
+"Not enough memory to change the passphrase of the Persistent Storage. Try "
+"again after closing some applications or rebooting."
+msgstr ""
+"Níl go leor cuimhne ann chun pasfhrása an Stórála Seasta a athrú. Bain "
+"triail eile as tar éis duit roinnt feidhmchlár a dhúnadh nó tar éis duit a "
+"atosú."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps/configuration/binding.py:411
+#, python-brace-format
+msgid ""
+"Can't unmount target {target}, some process is still using it. Please close "
+"all applications that could be accessing the target and try again."
+msgstr ""
+"Ní féidir sprioc {target} a dhíshuiteáil, tá próiseas éigin fós in úsáid. "
+"Dún gach feidhmchlár a d'fhéadfadh rochtain a fháil ar an sprioc agus bain "
+"triail eile as."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/application.py:30
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/window.py:49
+#: ../config/chroot_local-includes/usr/share/applications/org.boum.tails.PersistentStorage.desktop.in.h:1
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/window.ui.in:24
+msgid "Persistent Storage"
+msgstr "Stóráil Marthanach"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/application.py:56
+msgid "Failed to start the Persistent Storage service"
+msgstr "Theip ar an tseirbhís Stóráil Seasmhach a thosú"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/application.py:80
+msgid "Could not find the WhisperBack application"
+msgstr "Níorbh fhéidir an feidhmchlár WhisperBack a aimsiú"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/feature.py:94
+msgid "Delete Data…"
+msgstr "Scrios Sonraí…"
+
+#. Translators: Don't translate {feature}, it's a placeholder
+#. and will be replaced.
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/feature.py:100
+#, python-brace-format
+msgid "Delete {feature} data"
+msgstr "Scrios {feature} sonraí"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/feature.py:122
+msgid "Activation failed"
+msgstr "Theip ar ghníomhachtú"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/feature.py:178
+msgid "Activation failed. Try again or delete data."
+msgstr "Theip ar ghníomhachtú. Bain triail eile as nó scrios sonraí."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/feature.py:180
+msgid "Activation failed. Try again."
+msgstr "Theip ar ghníomhachtú. Déan iarracht arís."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/feature.py:182
+msgid "The data of this feature is still saved."
+msgstr "Tá sonraí an ghné seo fós sábháilte."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/feature.py:289
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/feature.py:296
+msgid "Error activating feature {}"
+msgstr "Earráid agus an ghné {} á ghníomhachtú"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/feature.py:297
+msgid "An error occurred while activating the feature."
+msgstr "Tharla earráid agus an ghné á ghníomhachtú."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/feature.py:298
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/feature.py:347
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/feature.py:411
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/change_passphrase_dialog.py:115
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/window.py:270
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/window.py:298
+msgid "Details"
+msgstr "Sonraí"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/feature.py:338
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/feature.py:345
+msgid "Error deactivating feature {}"
+msgstr "Earráid agus gné {} á dhíghníomhachtú"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/feature.py:346
+msgid "An error occurred while deactivating the feature."
+msgstr "Tharla earráid agus an ghné á dhíghníomhachtú."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/feature.py:366
+msgid ""
+"Delete all the data of the {} feature that is saved in the Persistent "
+"Storage?\n"
+"\n"
+"If you cancel, the data will be restored when you turn this feature on again."
+msgstr ""
+"Scrios na sonraí go léir den ghné {} atá sábháilte sa Stóráil Seasmhach?\n"
+"\n"
+"Má chealaíonn tú, déanfar na sonraí a aischur nuair a chuirfidh tú an ghné "
+"seo ar siúl arís."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/feature.py:377
+msgid "_Delete Data"
+msgstr "_Scrios Sonraí"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/feature.py:407
+msgid "Error deleting data of feature {}"
+msgstr "Earráid agus sonraí gné {} á scriosadh"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/feature.py:408
+msgid "An error occurred while deleting the data of feature {}."
+msgstr "Tharla earráid agus sonraí gné {} á scriosadh."
+
+#. Translators: Don't translate {applications}, it's a placeholder
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/feature.py:515
+#, python-brace-format
+msgid "Close {applications} to continue"
+msgstr "Dún {applications} chun leanúint ar aghaidh"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/feature.py:516
+msgid " and "
+msgstr " agus "
+
+#. Translators: Don't translate {app} and {pid}, they
+#. are placeholders.
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/feature.py:527
+#, python-brace-format
+msgid "{app} (PID: {pid})"
+msgstr "{app} (PID: {pid})"
+
+#. Translators: Don't translate {app} and {pids}, they
+#. are placeholders.
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/feature.py:532
+#, python-brace-format
+msgid "{app} (PIDs: {pids})"
+msgstr "{app} (PIDs: {pids})"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/change_passphrase_dialog.py:37
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/change_passphrase_dialog.ui.in:15
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/window.ui.in:55
+msgid "Change Passphrase"
+msgstr "Athraigh Pasfhocal"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/change_passphrase_dialog.py:92
+msgid "The current passphrase is incorrect"
+msgstr "Tá an pasfhocal reatha mícheart"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/change_passphrase_dialog.py:103
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/change_passphrase_dialog.py:113
+msgid "Changing the passphrase failed"
+msgstr "Theip ar athrú an pasfhrása"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/change_passphrase_dialog.py:114
+msgid "An error occurred while changing the passphrase."
+msgstr "Tharla earráid agus an pasfhrása á athrú."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/passphrase_strength_hint.py:44
+msgid "Weak"
+msgstr "Lag"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/passphrase_strength_hint.py:47
+msgid "Fair"
+msgstr "Cothrom"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/passphrase_strength_hint.py:50
+msgid "Good"
+msgstr "Maith"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/passphrase_strength_hint.py:53
+msgid "Strong"
+msgstr "Láidir"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/error_dialog.py:54
+msgid "You can send an error report to help solve the issue."
+msgstr ""
+"Is féidir leat tuairisc earráide a sheoladh chun cabhrú leis an tsaincheist "
+"a réiteach."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/error_dialog.py:61
+msgid "_Send Error Report"
+msgstr "_Seol Tuairisc Earráide"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/window.py:153
+msgid ""
+"Impossible to delete the Persistent Storage while it is unlocked.\n"
+"\n"
+"To delete the Persistent Storage, restart Tails without unlocking the "
+"Persistent Storage and open the Persistent Storage settings again."
+msgstr ""
+"Ní féidir an Stóráil Marthanach a scriosadh agus é díghlasáilte.\n"
+"\n"
+"Chun an Stóráil Marthanach a scriosadh, atosaigh Tails gan an Stóráil "
+"Marthanach a dhíghlasáil agus na socruithe Stórála Marthanacha a oscailt "
+"arís."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/window.py:167
+msgid ""
+"Impossible to delete the Persistent Storage because the USB stick is read-"
+"only.\n"
+"\n"
+"To delete the Persistent Storage, turn off the read-only protection of the "
+"USB stick, restart Tails without unlocking the Persistent Storage and open "
+"the Persistent Storage settings again."
+msgstr ""
+"Ní féidir an Stóráil Marthanach a scriosadh toisc go bhfuil an bata USB "
+"inléite amháin.\n"
+"\n"
+"Chun an Stóráil Marthanach a scriosadh, cosaint inléite amháin an mhaide USB "
+"a mhúchadh, Tails a atosú gan an Stóráil Marthanach a dhíghlasáil agus na "
+"socruithe Stórála Marthanacha a oscailt arís."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/window.py:175
+msgid "Impossible to delete the Persistent Storage"
+msgstr "Ní féidir an Stóráil Seasmhach a scriosadh"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/window.py:183
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/window.py:218
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/window.ui.in:35
+msgid "Delete Persistent Storage"
+msgstr "Scrios Stóráil Marthanach"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/window.py:187
+msgid ""
+"Are you sure that you want to delete your Persistent Storage? This action "
+"cannot be undone."
+msgstr ""
+"An bhfuil tú cinnte gur mian leat do Stór Marthanach a scriosadh? Ní féidir "
+"an gníomh seo a chealú."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/window.py:191
+#: config/chroot_local-includes/usr/local/sbin/unsafe-browser:56
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/change_passphrase_dialog.ui.in:301
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/welcome_view.ui.in:124
+#: ../config/chroot_local-includes/usr/share/tails-installer/passphrase_dialog.ui.in:219
+msgid "_Cancel"
+msgstr "_Cealaigh"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/window.py:192
+msgid "_Delete Persistent Storage"
+msgstr "_Scrios Stóráil Marthanach"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/window.py:202
+msgid "Deleting your Persistent Storage..."
+msgstr "Do Stór Marthanach á scriosadh..."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/window.py:221
+msgid "_OK"
+msgstr "_ceart go leor"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/window.py:230
+msgid ""
+"Sorry, you can't close this app until the ongoing operation has completed."
+msgstr ""
+"Ár leithscéal, ní féidir leat an aip seo a dhúnadh go dtí go mbeidh an "
+"oibríocht leanúnach curtha i gcrích."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/window.py:233
+msgid "Please wait"
+msgstr "Fán le do thoil"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/window.py:261
+msgid "Not enough memory to create Persistent Storage"
+msgstr "Gan cuimhne go leor chun Stóráil Marthanach a chruthú"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/window.py:268
+msgid "Failed to create Persistent Storage"
+msgstr "Theip ar Stóráil Marthanach a chruthú"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/window.py:269
+msgid "An error occurred while creating the Persistent Storage."
+msgstr "Tharla earráid agus an Stór Marthanach á chruthú."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/window.py:289
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/window.py:296
+msgid "Error deleting Persistent Storage"
+msgstr "Earráid agus Stóráil Marthanach á scriosadh"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/window.py:297
+msgid "An error occurred while deleting the Persistent Storage."
+msgstr "Tharla earráid agus an Stór Marthanach á scriosadh."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/window.py:334
+msgid "Details (command output)"
+msgstr "Sonraí (aschur ordaithe)"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/window.py:349
+msgid "Failed to open the documentation"
+msgstr "Theip ar oscailt na doiciméid"
+
+#. Translators: Don't translate {volume_label} or {volume_size},
+#. they are placeholders and will be replaced. They need
+#. to be present in the translated string.
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/unlock_veracrypt_volumes/volume.py:79
+#, python-brace-format
+msgid "{volume_label} ({volume_size})"
+msgstr "{volume_label} ({volume_size})"
+
+#. Translators: Don't translate {partition_name} or {partition_size},
+#. they are placeholders and will be replaced. They need
+#. to be present in the translated string.
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/unlock_veracrypt_volumes/volume.py:86
+#, python-brace-format
+msgid "{partition_name} ({partition_size})"
+msgstr "{partition_name} ({partition_size})"
+
+#. Translators: Don't translate {volume_size}, it's a placeholder
+#. and will be replaced. It needs to be present in the translated
+#. string.
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/unlock_veracrypt_volumes/volume.py:94
+#, python-brace-format
+msgid "{volume_size} Volume"
+msgstr "Imleabhar {volume_size}"
+
+#. Translators: Don't translate {volume_name}, it's a placeholder and
+#. will be replaced. It needs to be present in the translated string.
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/unlock_veracrypt_volumes/volume.py:140
+#, python-brace-format
+msgid "{volume_name} (Read-Only)"
+msgstr "{volume_name} (Inléite Amháin)"
+
+#. Translators: Don't translate {partition_name} and {container_path}, they
+#. are placeholders and will be replaced. They need to be present
+#. in the translated string.
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/unlock_veracrypt_volumes/volume.py:149
+#, python-brace-format
+msgid "{partition_name} in {container_path}"
+msgstr "{partition_name} in {container_path}"
+
+#. Translators: Don't translate {volume_name} and {path_to_file_container},
+#. they are placeholders and will be replaced. You should only have to translate
+#. this string if it makes sense to reverse the order of the placeholders.
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/unlock_veracrypt_volumes/volume.py:157
+#, python-brace-format
+msgid "{volume_name} – {path_to_file_container}"
+msgstr "{volume_name} – {path_to_file_container}"
+
+#. Translators: Don't translate {partition_name} and {drive_name}, they
+#. are placeholders and will be replaced. They need to be present
+#. in the translated string.
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/unlock_veracrypt_volumes/volume.py:165
+#, python-brace-format
+msgid "{partition_name} on {drive_name}"
+msgstr "{partition_name} ar {drive_name}"
+
+#. Translators: Don't translate {volume_name} and {drive_name},
+#. they are placeholders and will be replaced. You should only have to translate
+#. this string if it makes sense to reverse the order of the placeholders.
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/unlock_veracrypt_volumes/volume.py:173
+#, python-brace-format
+msgid "{volume_name} – {drive_name}"
+msgstr "{volume_name} – {drive_name}"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/unlock_veracrypt_volumes/volume.py:278
+msgid "Wrong passphrase or parameters"
+msgstr "Frása faire mícheart nó paraiméadair mhíchearta"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/unlock_veracrypt_volumes/volume.py:280
+msgid "Error unlocking volume"
+msgstr "Earráid agus an t-imleabhar á dhíghlasáil"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/unlock_veracrypt_volumes/volume.py:286
+#, python-brace-format
+msgid ""
+"Couldn't unlock volume {volume_name}:\n"
+"{error_message}"
+msgstr ""
+"Níorbh fhéidir imleabhar {volume_name}: a dhíghlasáil:\n"
+"{error_message}"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/unlock_veracrypt_volumes/volume.py:403
+msgid "One or more applications are keeping the volume busy."
+msgstr "Tá an t-imleabhar in úsáid cheana ag feidhmchlár nó feidhmchláir eile."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/unlock_veracrypt_volumes/volume.py:411
+#, python-brace-format
+msgid ""
+"Couldn't lock volume {volume_name}:\n"
+"{error_message}"
+msgstr ""
+"Níorbh fhéidir imleabhar {volume_name} a ghlasáil:\n"
+"{error_message}"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/unlock_veracrypt_volumes/volume.py:413
+msgid "Locking the volume failed"
+msgstr "Níorbh fhéidir an t-imleabhar a ghlasáil"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/unlock_veracrypt_volumes/volume_list.py:83
+msgid "No file containers added"
+msgstr "Níor cuireadh aon choimeádán leis"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/unlock_veracrypt_volumes/volume_list.py:99
+msgid "No VeraCrypt devices detected"
+msgstr "Níor braitheadh aon ghléas VeraCrypt"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/unlock_veracrypt_volumes/volume_manager.py:43
+#: ../config/chroot_local-includes/usr/share/applications/unlock-veracrypt-volumes.desktop.in.h:1
+msgid "Unlock VeraCrypt Volumes"
+msgstr "Díghlasáil Imleabhair VeraCrypt"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/unlock_veracrypt_volumes/volume_manager.py:120
+msgid "Container already added"
+msgstr "Cuireadh an coimeádán leis cheana"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/unlock_veracrypt_volumes/volume_manager.py:121
+#, python-format
+msgid "The file container %s should already be listed."
+msgstr "Ba chóir do choimeádán %s a bheith ar an liosta cheana."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/unlock_veracrypt_volumes/volume_manager.py:142
+msgid "Container opened read-only"
+msgstr "Osclaíodh an coimeádán sa mód inléite amháin"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/unlock_veracrypt_volumes/volume_manager.py:145
+#, python-brace-format
+msgid ""
+"The file container {path} could not be opened with write access. It was "
+"opened read-only instead. You will not be able to modify the content of the "
+"container.\n"
+"{error_message}"
+msgstr ""
+"Níorbh fhéidir an coimeádán {path} a oscailt sa mód inscríofa. Osclaíodh sa "
+"mód inléite amháin é. Ní bheidh tú in ann an t-ábhar sa gcoimeádán a athrú.\n"
+"{error_message}"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/unlock_veracrypt_volumes/volume_manager.py:151
+msgid "Error opening file"
+msgstr "Earráid agus an comhad á oscailt"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/unlock_veracrypt_volumes/volume_manager.py:178
+msgid "Not a VeraCrypt container"
+msgstr "Ní coimeádán VeraCrypt é seo"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/unlock_veracrypt_volumes/volume_manager.py:179
+#, python-format
+msgid "The file %s does not seem to be a VeraCrypt container."
+msgstr "Ní coimeádán VeraCrypt é an comhad %s, de réir cosúlachta."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/unlock_veracrypt_volumes/volume_manager.py:183
+msgid "Failed to add container"
+msgstr "Níorbh fhéidir an coimeádán a chur leis"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/unlock_veracrypt_volumes/volume_manager.py:185
+#, python-format
+msgid ""
+"Could not add file container %s: Timeout while waiting for loop setup.\n"
+"Please try using the <i>Disks</i> application instead."
+msgstr ""
+"Níorbh fhéidir coimeádán %s a chur leis: Thar am agus ag fanacht le socrú na "
+"lúibe.\n"
+"Bain triail as an bhfeidhmchlár <i>Dioscaí</i> ina áit sin."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/unlock_veracrypt_volumes/volume_manager.py:241
+msgid "Choose File Container"
+msgstr "Roghnaigh Coimeádán"
+
+#: config/chroot_local-includes/usr/local/sbin/unsafe-browser:47
+msgid "The Unsafe Browser was disabled in the Welcome Screen.\\n\\n"
+msgstr "Díchumasaíodh an Brabhsálaí Neamhshábháilte sa Scáileán Fáilte.\\n\\n"
+
+#: config/chroot_local-includes/usr/local/sbin/unsafe-browser:50
+msgid ""
+"To use the Unsafe Browser, restart Tails and make sure that the Unsafe "
+"Browser is enabled in the additional settings of the Welcome Screen."
+msgstr ""
+"Chun an Brabhsálaí Neamhshábháilte a úsáid, atosaigh Tails agus cinntigh go "
+"bhfuil an Brabhsálaí Neamhshábháilte cumasaithe i socruithe breise an "
+"Scáileáin Fáilte."
+
+#: config/chroot_local-includes/usr/local/sbin/unsafe-browser:52
+msgid "To use the Unsafe Browser, restart Tails."
+msgstr "Chun an Brabhsálaí Neamhshábháilte a úsáid, atosaigh Tails."
+
+#: config/chroot_local-includes/usr/local/sbin/unsafe-browser:55
+msgid "_Restart"
+msgstr "_Tosaigh arís"
+
+#: config/chroot_local-includes/usr/local/sbin/unsafe-browser:57
+msgid ""
+"Do you really want to restart Tails now?\\n\\nAll your current work will be "
+"lost."
+msgstr ""
+"Ar mhaith leat Tails a atosú anois?\\n\\nCaillfear do chuid oibre go léir "
+"faoi láthair."
+
+#: config/chroot_local-includes/usr/local/sbin/unsafe-browser:58
+msgid "Restart Now"
+msgstr "Atosú anois"
+
+#: config/chroot_local-includes/usr/local/sbin/unsafe-browser:63
+msgid "Failed to restart the system."
+msgstr "Theip ar an gcóras a atosú."
+
+#: config/chroot_local-includes/usr/local/sbin/unsafe-browser:71
+msgid "Shutting down the Unsafe Browser..."
+msgstr "An brabhsálaí neamhshlán á dhúnadh..."
+
+#: config/chroot_local-includes/usr/local/sbin/unsafe-browser:72
+msgid ""
+"This may take a while, and you may not restart the Unsafe Browser until it "
+"is properly shut down."
+msgstr ""
+"Seans go dtógfaidh sé seo tamall, agus ní bheidh tú in ann an brabhsálaí "
+"neamhshlán a thosú arís go dtí go mbeidh sé dúnta mar is ceart."
+
+#: config/chroot_local-includes/usr/local/sbin/unsafe-browser:85
+#: ../config/chroot_local-includes/usr/share/applications/unsafe-browser.desktop.in.h:1
+#: ../config/chroot_local-includes/usr/share/tails/greeter/additional_settings.ui.in:498
+msgid "Unsafe Browser"
+msgstr "Brabhsálaí Neamhshlán"
+
+#: config/chroot_local-includes/usr/local/sbin/unsafe-browser:100
+msgid ""
+"Another Unsafe Browser is currently running, or being cleaned up. Please "
+"retry in a while."
+msgstr ""
+"Tá brabhsálaí neamhshlán eile ar siúl, nó á dhúnadh, faoi láthair. Déan "
+"iarracht eile ar ball."
+
+#: config/chroot_local-includes/usr/local/sbin/unsafe-browser:116
+msgid ""
+"You are not connected to a local network yet.\\n\\nTo be able to start the "
+"Unsafe Browser, you first need to connect to a Wi-Fi, wired, or mobile "
+"network."
+msgstr ""
+"Níl tú ceangailte le líonra áitiúil go fóill.\\n\\nNá in ann an Brabhsálaí "
+"Neamhshábháilte a thosú, ní mór duit ceangal a dhéanamh le líonra Wi-Fi, "
+"líonra sreangaithe nó soghluaiste ar dtús."
+
+#: config/chroot_local-includes/usr/local/sbin/unsafe-browser:146
+msgid "Failed to run browser."
+msgstr "Níorbh fhéidir an brabhsálaí a thosú."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/whisperBack/exceptions.py:45
+#, python-format
+msgid ""
+"The %s variable was not found in the configuration file: /etc/whisperback/"
+"config.py"
+msgstr ""
+"Níor aimsíodh an athróg %s sa chomhad cumraíochta: /etc/whisperback/config.py"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/whisperBack/gui.py:136
+msgid "Unable to load a valid configuration."
+msgstr "Níorbh fhéidir cumraíocht bhailí a lódáil."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/whisperBack/gui.py:162
+msgid "Sending mail..."
+msgstr "Ríomhphost á sheoladh..."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/whisperBack/gui.py:163
+msgid "Sending mail"
+msgstr "Ríomhphost á sheoladh"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/whisperBack/gui.py:165
+msgid "This could take a while..."
+msgstr "Seans go dtógfaidh seo tamall fada..."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/whisperBack/gui.py:199
+msgid "The contact email address doesn't seem valid."
+msgstr "Dealraíonn sé nach bhfuil an seoladh rphoist seo bailí."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/whisperBack/gui.py:220
+msgid "Unable to send the mail: SMTP error."
+msgstr "Níorbh fhéidir an ríomhphost a sheoladh: earráid SMTP."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/whisperBack/gui.py:222
+msgid "Unable to connect to the server."
+msgstr "Níorbh fhéidir ceangal leis an bhfreastalaí."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/whisperBack/gui.py:224
+msgid "Tor is not ready yet"
+msgstr "Níl Tor réidh fós"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/whisperBack/gui.py:226
+msgid "Unable to create or to send the mail."
+msgstr "Níorbh fhéidir an ríomhphost a chruthú nó a sheoladh."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/whisperBack/gui.py:231
+msgid ""
+"\n"
+"\n"
+"Make sure that you are connected to Tor and click send again."
+msgstr ""
+"\n"
+"\n"
+"Cinntigh go bhfuil tú ceangailte le Tor agus cliceáil Seol arís."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/whisperBack/gui.py:241
+msgid "Your message has been sent."
+msgstr "Seoladh do theachtaireacht."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/whisperBack/gui.py:250
+msgid "An error occurred during encryption."
+msgstr "Tharla earráid le linn criptithe."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/whisperBack/gui.py:319
+msgid "This doesn't seem to be a valid URL or OpenPGP key."
+msgstr "Ní cosúil gur URL bailí nó eochair OpenPGP é seo."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/whisperBack/whisperback.py:57
+#, python-format
+msgid "Invalid contact email: %s"
+msgstr "Seoladh rphoist neamhbhailí: %s"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/whisperBack/whisperback.py:76
+#, python-format
+msgid "Invalid contact OpenPGP key: %s"
+msgstr "Eochair neamhbhailí OpenPGP: %s"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/whisperBack/whisperback.py:78
+msgid "Invalid contact OpenPGP public key block"
+msgstr "Bloc eochrach poiblí OpenPGP neamhbhailí"
+
+#: config/chroot_local-includes/usr/local/bin/tca:11
+msgid ""
+"You turned on Offline Mode in the Welcome Screen.\n"
+"It is impossible to connect to Tor in Offline Mode.\n"
+"To connect to Tor and the Internet, restart Tails without Offline Mode."
+msgstr ""
+"Chuir tú Mód As Líne ar siúl sa Scáileán Fáilte.\n"
+"Ní féidir ceangal le Tor sa Mhód As Líne.\n"
+"Chun nascadh le Tor agus leis an Idirlíon, atosaigh Tails gan Mód As Líne."
+
+#: config/chroot_local-includes/usr/local/lib/polkit-policy-change-message:65
+msgid ""
+"Authentication is required to run the Synaptic Package Manager. Enter the "
+"administration password that you set up in the Welcome Screen."
+msgstr ""
+"Tá fíordheimhniú ag teastáil chun Bainisteoir Pacáistí Synaptic a rith. Cuir "
+"isteach an focal faire riaracháin a shocraigh tú sa Scáileán Fáilte."
+
+#: config/chroot_local-includes/usr/local/lib/polkit-policy-change-message:71
+msgid ""
+"For better security, no administration password is set up in Tails by "
+"default. To run the Synaptic Package Manager, restart Tails and set up an "
+"administration password in the Welcome Screen."
+msgstr ""
+"Chun slándáil níos fearr a fháil, níl aon phasfhocal riaracháin socraithe i "
+"Tails de réir réamhshocraithe. Chun Bainisteoir Pacáistí Synaptic a rith, "
+"atosú Tails agus socraigh pasfhocal riaracháin sa Scáileán Fáilte."
+
+#: ../config/chroot_local-includes/usr/share/applications/org.boum.tails.PersistentStorage.desktop.in.h:2
+msgid ""
+"Configure which files and application configuration are saved between "
+"working sessions"
+msgstr ""
+"Roghnaigh na comhaid agus na cumraíochtai feidhmchláir a shábhálfar ó "
+"sheisiún go seisiún"
+
+#: ../config/chroot_local-includes/usr/share/applications/org.boum.tails.PersistentStorage.desktop.in.h:3
+msgid "configuration;saved"
+msgstr "cumraíocht;sábháilte"
+
+#: ../config/chroot_local-includes/usr/share/applications/tails-documentation.desktop.in.h:1
+msgid "Tails Documentation"
+msgstr "Doiciméadú Tails"
+
+#: ../config/chroot_local-includes/usr/share/applications/tails-documentation.desktop.in.h:2
+msgid "Learn how to use Tails"
+msgstr "Foghlaim conas Tails a úsáid"
+
+#: ../config/chroot_local-includes/usr/share/applications/tails-documentation.desktop.in.h:3
+msgid "learn"
+msgstr "foghlaim"
+
+#: ../config/chroot_local-includes/usr/share/applications/tails-about.desktop.in.h:2
+msgid "Learn more about Tails"
+msgstr "Tuilleadh eolais faoi Tails"
+
+#: ../config/chroot_local-includes/usr/share/applications/tails-backup.desktop.in.h:1
+msgid "Back Up Persistent Storage"
+msgstr "Doiciméadú Tails"
+
+#: ../config/chroot_local-includes/usr/share/applications/tails-backup.desktop.in.h:2
+msgid ""
+"Make a backup of the Tails Persistent Storage to another Tails USB stick"
+msgstr "Déan cúltaca de Stóráil Seasmhach Tails chuig bata USB eile Tails"
+
+#: ../config/chroot_local-includes/usr/share/applications/tails-backup.desktop.in.h:3
+msgid "backup"
+msgstr "cúltaca"
+
+#: ../config/chroot_local-includes/usr/share/applications/tails-installer.desktop.in.h:2
+msgid "Install, clone, upgrade Tails"
+msgstr "Suiteáil, clónáil, uasghrádú Tails"
+
+#: ../config/chroot_local-includes/usr/share/applications/tails-installer.desktop.in.h:3
+msgid "install;clone;upgrade;manual"
+msgstr "suiteáil;clónáil;uasghrádú;lámhleabhar"
+
+#: ../config/chroot_local-includes/usr/share/applications/tca.desktop.in.h:2
+msgid "Connect Tails to the Tor network"
+msgstr "Ceangail Tails le líonra Tor"
+
+#: ../config/chroot_local-includes/usr/share/applications/tca.desktop.in.h:3
+msgid "connect;tor;network"
+msgstr "ceangail;tor;líonra"
+
+#: ../config/chroot_local-includes/usr/share/applications/org.boum.tails.TorBrowser.desktop.in.h:1
+msgid "Tor Browser"
+msgstr "Brabhsálaí Tor"
+
+#: ../config/chroot_local-includes/usr/share/applications/org.boum.tails.TorBrowser.desktop.in.h:2
+msgid "Anonymous Web Browser"
+msgstr "Brabhsálaí Gréasáin a cheileann d'aitheantas"
+
+#: ../config/chroot_local-includes/usr/share/applications/org.boum.tails.TorBrowser.desktop.in.h:3
+msgid "web;tor;browser"
+msgstr "gréasán;tor;brabhsálaí"
+
+#: ../config/chroot_local-includes/usr/share/applications/unsafe-browser.desktop.in.h:2
+msgid "Browse the World Wide Web without anonymity"
+msgstr "Brabhsáil an Gréasán gan d'aitheantas a cheilt"
+
+#: ../config/chroot_local-includes/usr/share/applications/unsafe-browser.desktop.in.h:3
+msgid "Unsafe Web Browser"
+msgstr "Brabhsálaí Gréasáin Neamhshlán"
+
+#: ../config/chroot_local-includes/usr/share/applications/unsafe-browser.desktop.in.h:4
+msgid "web;captive;portal"
+msgstr "gréasán;braighdeach;tairseach"
+
+#: ../config/chroot_local-includes/usr/share/applications/unlock-veracrypt-volumes.desktop.in.h:2
+msgid "Mount VeraCrypt encrypted file containers and devices"
+msgstr "Feistigh coimeádáin agus gléasanna a bhí criptithe ag VeraCrypt"
+
+#: ../config/chroot_local-includes/usr/share/applications/unlock-veracrypt-volumes.desktop.in.h:3
+msgid "mount;encrypted;container;truecrypt"
+msgstr "gléasta;criptithe;coimeádán;truecrypt"
+
+#: ../config/chroot_local-includes/usr/share/applications/org.boum.tails.AdditionalSoftware.desktop.in.h:2
+msgid ""
+"Configure the additional software installed from your Persistent Storage "
+"when starting Tails"
+msgstr ""
+"Cumraigh na bogearraí breise atá suiteáilte ó do Stór Seasmhach agus tú ag "
+"tosú Tails"
+
+#: ../config/chroot_local-includes/usr/share/applications/org.boum.tails.AdditionalSoftware.desktop.in.h:3
+msgid "persistent;storage;package;install"
+msgstr "buan;stóráil;pacáiste;suiteáil"
+
+#: ../config/chroot_local-includes/usr/share/applications/whisperback.desktop.in.h:1
+msgid "WhisperBack Error Reporting"
+msgstr "Tuairisciú Earráidí WhisperBack"
+
+#: ../config/chroot_local-includes/usr/share/applications/whisperback.desktop.in.h:2
+msgid "Send feedback via encrypted e-mail"
+msgstr "Seol aiseolas mar ríomhphost criptithe"
+
+#: ../config/chroot_local-includes/usr/share/applications/whisperback.desktop.in.h:3
+msgid "feedback;bug;report;tails;error;"
+msgstr "aiseolas;fadhb;fabht;tuairisc;tails;earráid;"
+
+#: ../config/chroot_local-includes/usr/share/desktop-directories/Tails.directory.in.h:2
+msgid "Tails specific tools"
+msgstr "Uirlisí sainiúla do Tails"
+
+#: ../config/chroot_local-includes/usr/share/polkit-1/actions/org.boum.tails.AdditionalSoftware.policy.in.h:1
+msgid "Remove an additional software package"
+msgstr "Bain ceann de na bogearraí breise atá agat"
+
+#: ../config/chroot_local-includes/usr/share/polkit-1/actions/org.boum.tails.AdditionalSoftware.policy.in.h:2
+msgid ""
+"Authentication is required to remove a package from your additional software "
+"($(command_line))"
+msgstr ""
+"Caithfidh tú d'fhocal faire a thabhairt chun pacáiste de na bogearraí breise "
+"a bhaint ($(command_line))"
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/additional_settings.ui.in:18
+#: ../config/chroot_local-includes/usr/share/tails/greeter/additional_settings.ui.in:56
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:869
+msgid "Administration Password"
+msgstr "Focal Faire Riaracháin"
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/additional_settings.ui.in:34
+msgid ""
+"Set up an administration password if you need to perform administrative "
+"tasks. Otherwise, the administration password is disabled for better "
+"security."
+msgstr ""
+"Is fiú focal faire riaracháin a shocrú más gá duit tascanna riaracháin a "
+"chur i gcrích. Is é sin, nó beidh an focal faire riaracháin díchumasaithe de "
+"bharr cúrsaí slándála."
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/additional_settings.ui.in:77
+msgid "Enter an administration password"
+msgstr "Cuir isteach focal faire riaracháin"
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/additional_settings.ui.in:131
+msgid "Confirm your administration password"
+msgstr "Deimhnigh an focal faire riaracháin"
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/additional_settings.ui.in:156
+msgid "Disable"
+msgstr "Díchumasaigh"
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/additional_settings.ui.in:186
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:873
+msgid "MAC Address Anonymization"
+msgstr "Ainmniú Seoladh MAC"
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/additional_settings.ui.in:202
+msgid ""
+"MAC address anonymization hides the serial number of your network interface "
+"(Wi-Fi or wired) from the local network. Anonymizing MAC addresses is "
+"generally safer as it helps you hide your geographical location. But it "
+"might also create connectivity problems or look suspicious."
+msgstr ""
+"Folaíonn anaithnidiú seoltaí MAC sraithuimhir do chomhéadain líonra (Wi-Fi "
+"nó sreangaithe) ón líonra áitiúil. Tá sé níos sábháilte go ginearálta "
+"seoltaí MAC gan ainm a dhéanamh mar go gcabhraíonn sé leat do shuíomh "
+"geografach a cheilt. Ach d’fhéadfadh sé fadhbanna nascachta a chruthú nó "
+"cuma amhrasach a bheith air."
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/additional_settings.ui.in:244
+msgid "Anonymize all MAC addresses (default)"
+msgstr "Déan gach seoladh MAC a anaithnid (réamhshocraithe)"
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/additional_settings.ui.in:290
+msgid "Don't anonymize MAC addresses"
+msgstr "Ná ainmnigh seoltaí MAC"
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/additional_settings.ui.in:343
+msgid "Offline Mode"
+msgstr "Mód As Líne"
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/additional_settings.ui.in:359
+msgid ""
+"If you want to work completely offline, you can disable all networking for "
+"increased security."
+msgstr ""
+"Más mian leat oibriú go hiomlán as líne, is féidir leat gach líonrú a "
+"dhíchumasú ar mhaithe le slándáil mhéadaithe."
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/additional_settings.ui.in:514
+msgid ""
+"The Unsafe Browser allows you to sign in to a network using a captive "
+"portal.\n"
+"\n"
+"A captive portal is a web page that is displayed before you can access the "
+"Internet. Captive portals usually require you to log in to the network or "
+"enter information such as an email address.\n"
+"\n"
+"The Unsafe Browser is not anonymous and can deanonymize you. Use it only to "
+"sign in to networks."
+msgstr ""
+"Ligeann an Brabhsálaí Neamhshábháilte duit síniú isteach i líonra ag baint "
+"úsáide as tairseach gafa.\n"
+"\n"
+"Is leathanach gréasáin é tairseach gafa a thaispeántar sula bhféadann tú "
+"rochtain a fháil ar an Idirlíon. De ghnáth, éilíonn tairseacha gafa ort "
+"logáil isteach sa líonra nó faisnéis amhail seoladh ríomhphoist a iontráil.\n"
+"\n"
+"Níl an Brabhsálaí Neamhshábháilte gan ainm agus is féidir leis tú a dhí-"
+"anaithnidiú. Ná húsáid é ach chun síniú isteach i líonraí."
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/additional_settings.ui.in:560
+msgid "Enable the Unsafe Browser (default)"
+msgstr "Cumasaigh an Brabhsálaí Neamhshábháilte (réamhshocraithe)"
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/additional_settings.ui.in:606
+msgid "Disable the Unsafe Browser"
+msgstr "Díchumasaigh an Brabhsálaí Neamhshábháilte"
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:46
+msgid "Settings were loaded from the Persistent Storage."
+msgstr "Lódaíodh na socruithe ón Stór Seasmhach."
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:98
+msgid "Welcome to Tails!"
+msgstr "Fáilte go Tails!"
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:131
+msgid "Language and Formats"
+msgstr "Teanga agus Formáidí"
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:167
+msgid "Default Settings"
+msgstr "Réamhshocruithe"
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:217
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:238
+msgid "Save"
+msgstr "Sábháil"
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:267
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:379
+msgid "_Persistent Storage"
+msgstr "_Stóráil Marthanach"
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:287
+msgid ""
+"You can save some of your files and configuration in an encrypted Persistent "
+"Storage on your Tails USB stick: your documents, browser bookmarks, Wi-Fi "
+"passwords, and so on."
+msgstr ""
+"Is féidir leat cuid de do chuid comhad agus cumraíocht a shábháil i Stóráil "
+"Marthanach criptithe ar do bhata USB Tails: do dhoiciméid, leabharmharcanna "
+"brabhsálaí, pasfhocail Wi-Fi, agus mar sin de."
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:314
+msgid "Create and configure a Persistent Storage after starting Tails"
+msgstr "Cruthaigh agus cumraigh Stóráil Marthanach tar éis tosú Tails"
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:406
+msgid "Show Passphrase"
+msgstr "Taispeáin an Frása Faire"
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:463
+msgid "Enter your passphrase"
+msgstr "Cuir isteach do phasfhocal"
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:478
+msgid "Unlock Encryption"
+msgstr "Díghlasáil Criptiú"
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:545
+msgid "Impossible to unlock the Persistent Storage."
+msgstr "Dodhéanta an Stóráil Seasmhach a dhíghlasáil."
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:605
+msgid "Partitioning Errors"
+msgstr "Earráidí Deighilte"
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:641
+msgid ""
+"Errors were detected in the partitioning of your Tails USB stick.\n"
+"\n"
+"Try reinstalling Tails. If the error persists, reinstall on a new USB stick."
+msgstr ""
+"Braitheadh earráidí agus do mhaide USB Tails á roinnt.\n"
+"\n"
+"Bain triail as Tails a athshuiteáil. Má leanann an earráid, athshuiteáil ar "
+"USB bata nua."
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:673
+msgid "_Additional Settings"
+msgstr "_Socruithe Breise"
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:756
+msgid "Add an additional setting"
+msgstr "Cuir socrú breise leis"
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:803
+msgid "Shutdown"
+msgstr "Múch"
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:812
+msgid "_Start Tails"
+msgstr "To_saigh Tails"
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:841
+msgid ""
+"The default settings are safe in most situations. To add a custom setting, "
+"press the \"+\" button below."
+msgstr ""
+"Tá na réamhshocruithe slán an chuid is mó den am. Brúigh an cnaipe \"+\" "
+"thíos le do shocrú féin a chur leis."
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:877
+msgid "Network Configuration"
+msgstr "Cumraíocht Líonra"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/change_passphrase_dialog.ui.in:94
+msgid "Current _Passphrase"
+msgstr "_Pasfhrása reatha"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/change_passphrase_dialog.ui.in:131
+msgid "_New Passphrase"
+msgstr "_Pasfhocal Nua"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/change_passphrase_dialog.ui.in:179
+msgid "_Confirm New Passphrase"
+msgstr "_Deimhnigh Pasfhocal Nua"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/change_passphrase_dialog.ui.in:219
+msgid "_Show Passphrases"
+msgstr "_Taispeáin na Pasfhocail"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/change_passphrase_dialog.ui.in:253
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/passphrase_view.ui.in:289
+#: ../config/chroot_local-includes/usr/share/tails-installer/passphrase_dialog.ui.in:161
+msgid "The passphrases do not match"
+msgstr "Ní hionann na pasfhocail"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/change_passphrase_dialog.ui.in:315
+msgid "Ch_ange"
+msgstr "Ath_rú"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/deleted_view.ui.in:20
+msgid "The Persistent Storage was successfully deleted."
+msgstr "Scriosadh an Stór Seasmhach go rathúil."
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/deleted_view.ui.in:36
+msgid "_Close"
+msgstr "_Dún"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/fail_view.ui.in:31
+msgid "Oh no! Something has gone wrong."
+msgstr "Ó níl! Tá rud éigin imithe mícheart."
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/fail_view.ui.in:45
+msgid ""
+"The Persistent Storage service exited unexpectedly.\n"
+"\n"
+"You can send an error report or check the output of the following commands "
+"to investigate:"
+msgstr ""
+"D'éirigh an tseirbhís Stóráil Seasmhach amach gan choinne.\n"
+"\n"
+"Is féidir leat tuairisc earráide a sheoladh nó aschur na n-orduithe seo a "
+"leanas a sheiceáil chun imscrúdú a dhéanamh:"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/fail_view.ui.in:78
+msgid "Send Error Report"
+msgstr "Seol Tuairisc Earráide"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:63
+msgid ""
+"Your Persistent Storage is unlocked.\n"
+"\n"
+"Its content is available until you shut down Tails.\n"
+"\n"
+"<a href=\"doc/persistent_storage/backup\">Learn how to make a backup of your "
+"Persistent Storage.</a>"
+msgstr ""
+"Tá do Stór Marthanach díghlasáilte.\n"
+"\n"
+"Tá an t-ábhar ar fáil go dtí go stopann tú Tails.\n"
+"\n"
+"<a href=\"doc/persistent_storage/backup\">Foghlaim conas cúltaca a dhéanamh "
+"de do Stór Marthanach.</a>"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:91
+msgid ""
+"Turn on the features of the Persistent Storage for the data that you want to "
+"save to your Tails USB stick."
+msgstr ""
+"Cas ar ghnéithe an Stóráil Marthanach le haghaidh na sonraí is mian leat a "
+"shábháil ar do bata USB Tails."
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:108
+msgid "Personal Documents"
+msgstr "Doiciméid Phearsanta"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:136
+msgid "Persistent Folder"
+msgstr "Fillteán Marthanach"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:137
+msgid "A folder where you can save your documents."
+msgstr "Fillteán inar féidir leat do dhoiciméid a shábháil."
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:162
+msgid "Open Persistent Folder"
+msgstr "Oscail Fillteán Seasmhach"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:175
+msgid "Activate Persistent Folder"
+msgstr "Gníomhachtaigh Fillteán Marthanach"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:202
+msgid "System Settings"
+msgstr "Socruithe an Chórais"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:230
+msgid "Welcome Screen"
+msgstr "Scáileán Fáilte"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:246
+msgid "Activate Welcome Screen"
+msgstr "Gníomhachtaigh an Scáileán Fáilte"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:259
+msgid "Printers"
+msgstr "Printéirí"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:275
+msgid "Activate Printers"
+msgstr "Printéirí a ghníomhachtú"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:302
+msgid "Network"
+msgstr "Líonra"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:330
+msgid "Network Connections"
+msgstr "Ceangail Líonra"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:331
+msgid "Save Wi-Fi passwords and mobile broadband configuration."
+msgstr "Sábháil pasfhocail Wi-Fi agus cumraíocht leathanbhanda soghluaiste."
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:347
+msgid "Activate Network Connections"
+msgstr "Naisc Líonra a ghníomhachtú"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:360
+msgid "Tor Bridge"
+msgstr "Droichead Thor"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:376
+msgid "Activate Tor Bridge"
+msgstr "Gníomhachtaigh Droichead Tor"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:403
+msgid "Applications"
+msgstr "Feidhmchláir"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:431
+msgid "Tor Browser Bookmarks"
+msgstr "Leabharmharcanna Brabhsálaí Tor"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:447
+msgid "Activate Tor Browser Bookmarks"
+msgstr "Gníomhachtaigh Leabharmharcanna Brabhsálaí Tor"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:460
+msgid "Electrum Bitcoin Wallet"
+msgstr "Sparán Bitcoin Leictreach"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:476
+msgid "Activate Electrum Bitcoin Wallet"
+msgstr "Gníomhachtaigh Electrum Bitcoin Wallet"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:489
+msgid "Thunderbird Email Client"
+msgstr "Cliant Ríomhphoist Thunderbird"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:505
+msgid "Activate Thunderbird Email Client"
+msgstr "Gníomhachtaigh Cliant Ríomhphoist Thunderbird"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:518
+msgid "GnuPG"
+msgstr "GnuPG"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:519
+msgid "OpenPGP keys outside of Thunderbird, including in Kleopatra."
+msgstr ""
+"Eochracha OpenPGP lasmuigh de Thunderbird, lena n-áirítear i Kleopatra."
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:535
+msgid "Activate GnuPG"
+msgstr "Gníomhachtaigh GnuPG"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:548
+msgid "Pidgin Internet Messenger"
+msgstr "Teachtaire Idirlín Pidgin"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:564
+msgid "Activate Pidgin Internet Messenger"
+msgstr "Gníomhachtaigh Pidgin Internet Messenger"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:577
+msgid "SSH Client"
+msgstr "Cliant SSH"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:593
+msgid "Activate SSH Client"
+msgstr "Gníomhachtaigh SSH Cliant"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:620
+msgid "Advanced Settings"
+msgstr "Ardsocruithe"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:649
+msgid "Install additional software automatically when starting Tails."
+msgstr "Suiteáil bogearraí breise go huathoibríoch agus tú ag tosú Tails."
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:674
+msgid "Configure Additional Software"
+msgstr "Cumraigh Bogearraí Breise"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:687
+msgid "Activate Additional Software"
+msgstr "Gníomhachtaigh Bogearraí Breise"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:700
+msgid "Dotfiles"
+msgstr "Ponc-chomhaid"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:701
+msgid "Symlink every file in the Dotfiles folder into the Home folder."
+msgstr ""
+"Symlink gach comhad san fhillteán Dotfiles isteach san fhillteán Baile."
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:734
+msgid "Activate Dotfiles"
+msgstr "Gníomhachtaigh Dotfiles"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:766
+msgid "Custom"
+msgstr "Saincheaptha"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:785
+msgid ""
+"To add or remove custom features, modify /live/persistence/"
+"TailsData_unlocked/persistence.conf."
+msgstr ""
+"Chun gnéithe saincheaptha a chur leis nó a bhaint, modhnaigh /live/"
+"persistence/TailsData_unlocked/persistence.conf."
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:827
+msgid ""
+"<a href=\"doc/persistent_storage\">Learn more about the Persistent Storage.</"
+"a>"
+msgstr ""
+"<a href=\"doc/persistent_storage\">Foghlaim tuilleadh faoin Stór Marthanach."
+"</a>"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/locked_view.ui.in:53
+msgid ""
+"<b>Your Persistent Storage is locked.</b>\n"
+"\n"
+"To use or configure your Persistent Storage, unlock it in the Welcome Screen "
+"when starting Tails.\n"
+"\n"
+"To delete your Persistent Storage, click <b>Delete</b> on the right of the "
+"title bar."
+msgstr ""
+"<b>Tá do Stór Marthanach faoi ghlas.</b>\n"
+"\n"
+"Chun do Stór Marthanach a úsáid nó a chumrú, díghlasáil é sa Scáileán Fáilte "
+"agus tú ag tosú Tails.\n"
+"\n"
+"Chun do Stóráil Marthanach a scriosadh, cliceáil <b>Scrios</b> ar thaobh na "
+"láimhe deise den bharra teidil."
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/passphrase_view.ui.in:60
+msgid ""
+"Choose the passphrase that you will use to unlock the encryption of your "
+"Persistent Storage and all its data."
+msgstr ""
+"Roghnaigh an pasfhrása a úsáidfidh tú chun criptiú do Stór Marthanach agus a "
+"chuid sonraí go léir a dhíghlasáil."
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/passphrase_view.ui.in:80
+msgid "We recommend a long passphrase of 5 to 7 random words."
+msgstr "Molaimid pasfhrása fada idir 5 agus 7 bhfocal randamach."
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/passphrase_view.ui.in:92
+msgid " For example:"
+msgstr " Mar shampla:"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/passphrase_view.ui.in:175
+#: ../config/chroot_local-includes/usr/share/tails-installer/passphrase_dialog.ui.in:46
+msgid "Passphrase:"
+msgstr "Frása faire:"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/passphrase_view.ui.in:194
+#: ../config/chroot_local-includes/usr/share/tails-installer/passphrase_dialog.ui.in:65
+msgid "Confirm:"
+msgstr "Deimhnigh:"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/passphrase_view.ui.in:317
+#: ../config/chroot_local-includes/usr/share/tails-installer/passphrase_dialog.ui.in:185
+msgid "_Show Passphrase"
+msgstr "_Taispeáin Pasfhocal"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/passphrase_view.ui.in:361
+msgid "_Back"
+msgstr "_ Ar ais"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/passphrase_view.ui.in:378
+msgid "_Create Persistent Storage"
+msgstr "_Cruthaigh Stóráil Marthanach"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/welcome_view.ui.in:56
+msgid ""
+"Everything you do disappears automatically when you shut down Tails.\n"
+"\n"
+"But you can save some of your files and configuration in an encrypted "
+"Persistent Storage on your Tails USB stick, for example:\n"
+"\n"
+"• Your documents\n"
+"• Your Wi-Fi passwords\n"
+"• Your browser bookmarks\n"
+"• ...\n"
+"\n"
+"<a href=\"doc/persistent_storage\">Learn more about the Persistent Storage.</"
+"a>"
+msgstr ""
+"Imíonn gach rud a dhéanann tú go huathoibríoch nuair a dhúnann tú Tails.\n"
+"\n"
+"Ach is féidir leat cuid de do chuid comhad agus cumraíocht a shábháil i "
+"Stóráil Marthanach criptithe ar do bata USB Tails, mar shampla:\n"
+"\n"
+"• Do dhoiciméid\n"
+"• Do phasfhocail Wi-Fi\n"
+"• Leabharmharcanna do bhrabhsálaí\n"
+"• ...\n"
+"\n"
+"<a href=\"doc/persistent_storage\">Foghlaim tuilleadh faoin Stór Marthanach."
+"</a>"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/welcome_view.ui.in:93
+msgid ""
+"Sorry, it is impossible to create a Persistent Storage on this device.\n"
+"\n"
+"To be able to use Tails with a Persistent Storage, please follow our "
+"instructions on <a href=\"install\">installing Tails on a USB stick</a>."
+msgstr ""
+"Faraoir, tá sé dodhéanta Stór Marthanach a chruthú ar an ngléas seo.\n"
+"\n"
+"Chun a bheith in ann Tails le Stóráil Seasmhach a úsáid, lean ár dtreoracha "
+"maidir le <a href=\"install\">Tails a shuiteáil ar mhéaróg USB</a>."
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/welcome_view.ui.in:141
+#: ../config/chroot_local-includes/usr/share/tails-installer/passphrase_dialog.ui.in:232
+msgid "Co_ntinue"
+msgstr "Lean_úint ar aghaidh"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/window.ui.in:29
+msgid "_Delete…"
+msgstr "Scrios_Scrios…"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/window.ui.in:49
+msgid "_Change Passphrase…"
+msgstr "_Athraigh an Pasfhocal…"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/window.ui.in:66
+msgid "_Restart Tails"
+msgstr "_Atosaigh Eireabaill"
+
+#: ../config/chroot_local-includes/usr/share/tails/unlock-veracrypt-volumes/main.ui.in:61
+msgid "File Containers"
+msgstr "Coimeádáin"
+
+#: ../config/chroot_local-includes/usr/share/tails/unlock-veracrypt-volumes/main.ui.in:80
+msgid "_Add"
+msgstr "_Cuir Leis"
+
+#: ../config/chroot_local-includes/usr/share/tails/unlock-veracrypt-volumes/main.ui.in:86
+msgid "Add a file container"
+msgstr "Cuir coimeádán nua leis"
+
+#: ../config/chroot_local-includes/usr/share/tails/unlock-veracrypt-volumes/main.ui.in:103
+msgid "Partitions and Drives"
+msgstr "Deighiltí agus Tiomántáin"
+
+#: ../config/chroot_local-includes/usr/share/tails/unlock-veracrypt-volumes/main.ui.in:121
+msgid ""
+"This application is not affiliated with or endorsed by the VeraCrypt project "
+"or IDRIX."
+msgstr ""
+"Níl aon bhaint ar bith ag VeraCrypt ná IDRIX leis an bhfeidhmchlár seo."
+
+#: ../config/chroot_local-includes/usr/share/tails/unlock-veracrypt-volumes/volume.ui.in:29
+msgid "_Open"
+msgstr "_Oscail"
+
+#: ../config/chroot_local-includes/usr/share/tails/unlock-veracrypt-volumes/volume.ui.in:38
+msgid "Lock this volume"
+msgstr "Glasáil an t-imleabhar seo"
+
+#: ../config/chroot_local-includes/usr/share/tails/unlock-veracrypt-volumes/volume.ui.in:52
+msgid "_Unlock"
+msgstr "_Díghlasáil"
+
+#: ../config/chroot_local-includes/usr/share/tails/unlock-veracrypt-volumes/volume.ui.in:61
+msgid "Detach this volume"
+msgstr "Dícheangail an t-imleabhar seo"
+
+#: ../config/chroot_local-includes/usr/share/tails-installer/passphrase_dialog.ui.in:8
+msgid "Choose Passphrase"
+msgstr "Roghnaigh Pasfhocal"
+
+#: ../config/chroot_local-includes/usr/share/tails-installer/passphrase_dialog.ui.in:30
+msgid "Choose the passphrase for the cloned Persistent Storage."
+msgstr "Roghnaigh an pasfhrása don Stór Marthanach clónáilte."
+
+#: ../config/chroot_local-includes/usr/share/tails-installer/tails-installer.ui.in:281
+msgid "Target USB stick:"
+msgstr "Méaróg USB mar sprioc:"
+
+#: ../config/chroot_local-includes/usr/share/tails-installer/tails-installer.ui.in:357
+msgid "Reinstall (delete all data)"
+msgstr "Athshuiteáil (scriosfar na sonraí go léir)"
+
+#: ../config/chroot_local-includes/usr/share/whisperback/whisperback.ui.in:68
+msgid ""
+"If you want us to encrypt messages when we respond to you, add your key ID, "
+"a link to your key, or the key as a public key block:"
+msgstr ""
+"Má tá tú ag súil le freagra criptithe uainn, tabhair aitheantas d'eochrach, "
+"nasc le d'eochair, nó an eochair féin mar bhloc eochrach poiblí:"
+
+#: ../config/chroot_local-includes/usr/share/whisperback/whisperback.ui.in:226
+msgid "WhisperBack"
+msgstr "WhisperBack"
+
+#: ../config/chroot_local-includes/usr/share/whisperback/whisperback.ui.in:255
+msgid "Summary"
+msgstr "Achoimre"
+
+#: ../config/chroot_local-includes/usr/share/whisperback/whisperback.ui.in:294
+msgid "What were you trying to achieve?"
+msgstr "Cad a bhí tú ag iarraidh a bhaint amach?"
+
+#: ../config/chroot_local-includes/usr/share/whisperback/whisperback.ui.in:340
+msgid ""
+"<b>What happened instead?</b>\n"
+"Describe the error with as many details as possible."
+msgstr ""
+"<b>Cad a tharla ina ionad sin?</b>\n"
+"Déan cur síos ar an earráid leis an oiread sonraí agus is féidir."
+
+#: ../config/chroot_local-includes/usr/share/whisperback/whisperback.ui.in:385
+msgid ""
+"<b>What did you do that triggered this error?</b>\n"
+"Describe the exact steps that caused the error, so we can try to make it "
+"happen again.\n"
+"Otherwise, we won't be able to troubleshoot and solve it."
+msgstr ""
+"<b>Cad a rinne tú a spreag an earráid seo?</b>\n"
+"Déan cur síos ar na céimeanna beachta ba chúis leis an earráid, ionas gur "
+"féidir linn iarracht a dhéanamh é a dhéanamh arís.\n"
+"Seachas sin, ní bheidh muid in ann fabhtcheartaithe agus é a réiteach."
+
+#: ../config/chroot_local-includes/usr/share/whisperback/whisperback.ui.in:427
+msgid "Error reporting guidelines"
+msgstr "Treoirlínte tuairiscithe earráide"
+
+#: ../config/chroot_local-includes/usr/share/whisperback/whisperback.ui.in:445
+msgid ""
+"<b>Email address</b>\n"
+"So we can answer you or ask for more details."
+msgstr ""
+"<b>Seoladh ríomhphoist</b>\n"
+"Mar sin is féidir linn tú a fhreagairt nó tuilleadh sonraí a iarraidh."
+
+#: ../config/chroot_local-includes/usr/share/whisperback/whisperback.ui.in:480
+msgid "Optional PGP Key…"
+msgstr "Eochair Roghnach PGP…"
+
+#: ../config/chroot_local-includes/usr/share/whisperback/whisperback.ui.in:505
+msgid ""
+"Even if we are not able to reply to every report, we analyze all reports to "
+"improve Tails."
+msgstr ""
+"Fiú mura bhfuil muid in ann freagra a thabhairt ar gach tuairisc, déanaimid "
+"anailís ar gach tuairisc chun Tails a fheabhsú."
+
+#: ../config/chroot_local-includes/usr/share/whisperback/whisperback.ui.in:520
+msgid "Description"
+msgstr "Cur síos"
+
+#: ../config/chroot_local-includes/usr/share/whisperback/whisperback.ui.in:537
+#: ../config/chroot_local-includes/usr/share/whisperback/whisperback.ui.in:694
+msgid "Technical Details"
+msgstr "Sonraí Teicniúla"
+
+#: ../config/chroot_local-includes/usr/share/whisperback/whisperback.ui.in:576
+msgid "Headers"
+msgstr "Ceanntásca"
+
+#: ../config/chroot_local-includes/usr/share/whisperback/whisperback.ui.in:621
+msgid "information about the error being reported"
+msgstr "faisnéis faoin earráid atá á tuairisciú"
+
+#: ../config/chroot_local-includes/usr/share/whisperback/whisperback.ui.in:669
+msgid "Debugging Information"
+msgstr "Eolas Dífhabhtaithe"
+
+#: ../config/chroot_local-includes/usr/share/whisperback/whisperback.ui.in:730
+msgid "_Send"
+msgstr "_Seol"
+
+#: ../config/chroot_local-includes/usr/local/share/mime/packages/unlock-veracrypt-volumes.xml.in.h:1
+msgid "TrueCrypt/VeraCrypt container"
+msgstr "Coimeádán TrueCrypt/VeraCrypt"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:82
+msgid "Configure a Tor bridge"
+msgstr "Cumraigh droichead Tor"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:106
+msgid ""
+"Bridges are secret Tor relays. Use a bridge as your first Tor relay if "
+"accessing Tor is blocked from where you are.\n"
+"\n"
+"You can use <i>obfs4</i> and <i>WebTunnel</i> bridges in Tails.\n"
+msgstr ""
+"Is athsheachadáin rúnda Tor iad droichid. Bain úsáid as droichead mar do "
+"chéad athsheachadán Tor má tá rochtain ar Tor blocáilte ón áit ina bhfuil "
+"tú.\n"
+"\n"
+"Is féidir leat droichid <i>obfs4</i> agus <i>WebTunnel</i> a úsáid in "
+"Tails.\n"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:126
+msgid "<a href=\"doc/anonymous_internet/tor\">Learn more about Tor bridges</a>"
+msgstr ""
+"<a href=\"doc/anonymous_internet/tor\">Foghlaim tuilleadh faoi dhroichid "
+"Tor</a>"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:161
+msgid "Use a _default bridge"
+msgstr "Ús_áid droichead réamhshocraithe"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:184
+msgid "obfs4 (recommended)"
+msgstr "obfs4 (molta)"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:185
+msgid "WebTunnel"
+msgstr "Tollán Gréasáin"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:208
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1821
+msgid "None"
+msgstr "Dada"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:242
+msgid "Ask for a bridge based on your _region"
+msgstr "Iarr droichead bunaithe ar do _réigiún"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:301
+msgid "_Ask for a bridge by email"
+msgstr "_Iarr droichead trí ríomhphost"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:320
+msgid ""
+"Send an empty email to <tt>bridges@torproject.org</tt> from a Gmail or "
+"Riseup email address with your phone and scan the QR code that is attached "
+"to the automatic reply."
+msgstr ""
+"Seol ríomhphost folamh chuig <tt>bridges@torproject.org</tt> ó sheoladh "
+"ríomhphoist Gmail nó Riseup le do ghuthán agus scanadh an cód QR atá "
+"ceangailte leis an bhfreagra uathoibríoch."
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:333
+msgid "Scan _QR code"
+msgstr "Scan _an cód QR"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:434
+msgid "_Enter a bridge that you already know"
+msgstr "_Cuir isteach droichead atá ar eolas agat cheana féin"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:460
+msgid "Bridge"
+msgstr "Droichead"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:473
+msgid "obfs4 or webtunnel…"
+msgstr "obfs4 nó tollán gréasáin…"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:546
+msgid "Save bridge to _Persistent Storage"
+msgstr "Sábháil droichead chuig Stóráil _Seasmhach"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:571
+msgid "Save bridge to Persistent Storage"
+msgstr "Sábháil droichead chuig Stóráil Seasmhach"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:711
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1462
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1859
+msgid "_Connect to Tor"
+msgstr "_Ceangail le Tor"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:763
+msgid "Error connecting to Tor"
+msgstr "Earráid agus ceangal á dhéanamh le Tor"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:783
+msgid "This local network seems to be blocking access to Tor."
+msgstr ""
+"Is cosúil go bhfuil an líonra áitiúil seo ag cur bac ar rochtain ar Tor."
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:811
+msgid "Error connecting to Tor with this bridge"
+msgstr "Earráid ag ceangal le Tor leis an droichead seo"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:827
+msgid ""
+"Either this Tor bridge is not working or your network is blocking access to "
+"it."
+msgstr ""
+"Níl an droichead Tor seo ag obair nó tá do líonra ag blocáil rochtana air."
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:856
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:930
+msgid "Try configuring another bridge."
+msgstr "Bain triail as droichead eile a chumrú."
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:884
+msgid "Error connecting to Tor with default bridges"
+msgstr "Earráid ag ceangal le Tor le droichid réamhshocraithe"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:900
+msgid "Your network is blocking access to Tor and the default bridges."
+msgstr ""
+"Tá do líonra ag blocáil rochtain ar Tor agus na droichid réamhshocraithe."
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:916
+msgid "Bridge: <b>default bridges</b>"
+msgstr "Droichead: <b>droichid réamhshocraithe</b>"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:958
+msgid "Error connecting to Tor with bridges"
+msgstr "Earráid ag ceangal le Tor le droichid"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:974
+msgid "None of the bridges recommended for this region worked."
+msgstr "Níor oibrigh aon cheann de na droichid a moladh don réigiún seo."
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:990
+msgid "Try another region or getting a bridge by mail."
+msgstr "Bain triail as réigiún eile nó faigh droichead tríd an bpost."
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1018
+msgid "Error asking for a bridge"
+msgstr "Earráid ag iarraidh droichid"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1034
+msgid "Tails failed to ask for a bridge based on your region."
+msgstr "Theip ar Tails droichead a iarraidh bunaithe ar do réigiún."
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1050
+msgid ""
+"Please, <a href=\"support/talk\">report this error</a> and try asking for a "
+"bridge by email."
+msgstr ""
+"Le do thoil, <a href=\"support/talk\">tuairiscigh an earráid seo</a> agus "
+"iarr droichead trí ríomhphost."
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1087
+msgid "Open _details"
+msgstr "Oscail _sonraí"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1142
+msgid "• Wrong clock"
+msgstr "• Clog mícheart"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1162
+msgid "Your clock and time zone need to be correct to connect to Tor."
+msgstr "Ní mór do chlog agus crios ama a bheith ceart chun nascadh le Tor."
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1175
+msgid "Fix _Clock"
+msgstr "Deisigh _Clog"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1213
+msgid "• Public network"
+msgstr "• Líonra poiblí"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1233
+msgid ""
+"If you are in a shop, hotel, or airport, you might need to sign in to the "
+"local network using the Unsafe Browser."
+msgstr ""
+"Má tá tú i siopa, óstán nó aerfort, seans go mbeidh ort síniú isteach ar an "
+"líonra áitiúil ag baint úsáide as an Brabhsálaí Neamhshábháilte."
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1246
+msgid "Try _Signing in to the Network"
+msgstr "Bain triail as _Logáil isteach sa Líonra"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1285
+msgid "• Local proxy"
+msgstr "• Seachfhreastalaí áitiúil"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1305
+msgid ""
+"If you are on a corporate or university network, you might need to configure "
+"a local proxy."
+msgstr ""
+"Má tá tú ar líonra corparáideach nó ollscoile, seans go mbeidh ort "
+"seachfhreastalaí áitiúil a chumrú."
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1335
+msgid "Configure a Local _Proxy"
+msgstr "Cumraigh Seachfhreastalaí _ Logánta"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1374
+msgid "• Tor bridge"
+msgstr "• Droichead Tor"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1394
+msgid ""
+"Tor bridges are secret Tor relays. Use a bridge as your first Tor relay if "
+"connections to Tor are blocked, for example in some countries, by some "
+"public networks, or by some parental controls."
+msgstr ""
+"Is athsheachadáin rúnda Tor iad droichid Tor. Bain úsáid as droichead mar do "
+"chéad athsheoladh Tor má tá naisc le Tor bactha, mar shampla i dtíortha "
+"áirithe, ag líonraí poiblí áirithe, nó ag roinnt rialuithe tuismitheoirí."
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1410
+msgid "Configure a Tor _Bridge"
+msgstr "Cumraigh _Droichead Tor"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1449
+msgid ""
+"<a href=\"doc/anonymous_internet/tor/troubleshoot\">Troubleshooting "
+"connecting to Tor</a>"
+msgstr ""
+"<a href=\"doc/anonymous_internet/tor/troubleshoot\">Fabhtcheartú maidir le "
+"nascadh le Tor</a>"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1494
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1902
+msgid ""
+"Everything you do on the Internet from Tails goes through the Tor network."
+msgstr ""
+"Téann gach rud a dhéanann tú ar an Idirlíon ó Tails tríd an líonra Tor."
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1508
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1917
+msgid ""
+"Tor encrypts and anonymizes your connection by passing it through 3 relays.\n"
+"Tor relays are servers operated by different organizations and volunteers "
+"around the world."
+msgstr ""
+"Criptíonn Tor do nasc agus déanann sé anaithnid air ach é a chur trí 3 "
+"athsheachadán.\n"
+"Is freastalaithe iad athsheachadáin Tor a oibríonn eagraíochtaí agus "
+"oibrithe deonacha éagsúla ar fud an domhain."
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1544
+msgid "<b>Connect to Tor _automatically</b>"
+msgstr "<b>Ceangail le Tor go _uathoibríoch</b>"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1594
+msgid ""
+"We recommend connecting to Tor automatically if you are on a public Wi-Fi "
+"network or if many people in your country use Tor to circumvent censorship."
+msgstr ""
+"Molaimid nascadh le Tor go huathoibríoch má tá tú ar líonra poiblí Wi-Fi nó "
+"má úsáideann go leor daoine i do thír Tor chun dul timpeall ar chinsireacht."
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1612
+msgid ""
+"Tails will try different ways of connecting to Tor until it succeeds.\n"
+"\n"
+"Someone monitoring your Internet connection could identify these attempts as "
+"coming from a Tails user."
+msgstr ""
+"Bainfidh eireabaill triail as bealaí éagsúla chun nascadh le Tor go dtí go n-"
+"éireoidh leis.\n"
+"\n"
+"D'fhéadfadh duine a dhéanann monatóireacht ar do nasc Idirlín na hiarrachtaí "
+"seo a aithint ó úsáideoir Tails."
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1646
+msgid "Configure a Tor _bridge"
+msgstr "Cumraigh _droichead Tor"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1692
+msgid ""
+"Tor bridges are secret Tor relays. Use a bridge as your first Tor relay if "
+"connections to Tor are blocked, for example in some countries, by some "
+"public networks, or by some parental controls.\n"
+"\n"
+"Choose this option if you already know that you need a bridge. Otherwise, "
+"Tails will autodetect whether you need a bridge to connect to Tor from your "
+"local network."
+msgstr ""
+"Is athsheachadáin rúnda Tor iad droichid Tor. Bain úsáid as droichead mar do "
+"chéad athsheoladh Tor má tá naisc le Tor bactha, mar shampla i dtíortha "
+"áirithe, ag líonraí poiblí áirithe, nó ag roinnt rialuithe tuismitheoirí.\n"
+"\n"
+"Roghnaigh an rogha seo má tá a fhios agat cheana féin go dteastaíonn "
+"droichead uait. Seachas sin, aimseoidh Tails go huathoibríoch an bhfuil "
+"droichead uait chun ceangal le Tor ó do líonra áitiúil."
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1734
+msgid "<b>_Hide to my local network that I'm connecting to Tor</b>"
+msgstr "<b>_Folaigh do mo líonra áitiúil go bhfuil mé ag nascadh le Tor</b>"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1784
+msgid ""
+"You might need to go unnoticed if using Tor could look suspicious to someone "
+"who monitors your Internet connection."
+msgstr ""
+"Seans go mbeidh ort dul i ngan fhios dá mbeadh cuma amhrasach ar dhuine a "
+"dhéanann monatóireacht ar do nasc Idirlín in úsáid Tor."
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1802
+msgid ""
+"Tails will only connect to Tor after you configured a Tor bridge. Bridges "
+"are secret Tor relays that hide that you are connecting to Tor.\n"
+"\n"
+"Our team is doing its best to help you connect to Tor using the most "
+"discreet types of Tor bridges.\n"
+"\n"
+"You will have to do extra configuration if you don't know any Tor bridges "
+"yet, if you connect from a public Wi-Fi network, or if you are in the "
+"Eastern Hemisphere."
+msgstr ""
+"Ní nascfaidh eireabaill le Tor ach amháin tar éis duit droichead Tor a "
+"chumrú. Is athsheachadáin rúnda Tor iad droichid a chuireann i bhfolach go "
+"bhfuil tú ag nascadh le Tor.\n"
+"\n"
+"Tá ár bhfoireann ag déanamh a ndícheall chun cabhrú leat nascadh le Tor ag "
+"baint úsáide as na cineálacha droichid Tor is discréideach.\n"
+"\n"
+"Beidh ort cumraíocht bhreise a dhéanamh mura bhfuil aon droichid Tor ar "
+"eolas agat go fóill, má nascann tú ó líonra poiblí Wi-Fi, nó má tá tú sa "
+"Leathsféar Thoir."
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1847
+msgid ""
+"<a href=\"doc/anonymous_internet/tor\">Learn more about how Tails connects "
+"to Tor</a>"
+msgstr ""
+"<a href=\"doc/anonymous_internet/tor\">Foghlaim tuilleadh faoin gcaoi a "
+"nascann Tails le Tor</a>"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1937
+msgid "No Wi-Fi hardware detected"
+msgstr "Níor braitheadh aon chrua-earraí Wi-Fi"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1955
+msgid ""
+"Tails couldn't find any Wi-Fi interface on your computer. If your computer "
+"has a Wi-Fi interface, it might not work on Tails.\n"
+"\n"
+"To connect to the Internet you can try to:\n"
+"\n"
+" • Use an Ethernet cable instead of Wi-Fi. Wired interfaces work much more "
+"reliably than Wi-Fi in Tails.\n"
+" • Use USB tethering to share the Wi-Fi or mobile data connection of your "
+"phone using a cable.\n"
+" • Buy a USB Wi-Fi adapter that works in Tails.\n"
+"                "
+msgstr ""
+"Ní bhfuair Tails aon chomhéadan Wi-Fi ar do ríomhaire. Mura bhfuil comhéadan "
+"Wi-Fi ag do ríomhaire, b'fhéidir nach n-oibreoidh sé ar Tails.\n"
+"\n"
+"Chun ceangal leis an Idirlíon is féidir leat iarracht a dhéanamh:\n"
+"\n"
+"• Cábla Eitirnéid a úsáid in ionad Wi-Fi. Oibríonn comhéadain sreangaithe i "
+"bhfad níos iontaofa ná Wi-Fi i Tails.\n"
+"• Tethering USB a úsáid chun nasc Wi-Fi nó sonraí soghluaiste do ghutháin a "
+"roinnt ag baint úsáide as cábla.\n"
+"• Oiriúntóir USB Wi-Fi a cheannach a oibríonn i Tails.\n"
+"                "
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1979
+msgid ""
+"\n"
+"<a href=\"doc/anonymous_internet/no-wifi\">\n"
+"Learn more about troubleshooting Wi-Fi not working.\n"
+"</a>\n"
+"                "
+msgstr ""
+"\n"
+"<a href=\"doc/anonymous_internet/no-wifi\">\n"
+"Faigh tuilleadh eolais faoi fhadhbhcheartú Wi-Fi nach bhfuil ag obair.\n"
+"</a>\n"
+"                "
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:2007
+msgid "Connect to a local network"
+msgstr "Ceangail le líonra áitiúil"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:2024
+msgid ""
+"You are not connected to a local network yet. To be able to connect to the "
+"Tor network, you first need to connect to a Wi-Fi, wired, or mobile network."
+msgstr ""
+"Níl tú ceangailte le líonra áitiúil fós. Chun go mbeidh tú in ann ceangal "
+"leis an líonra Tor, ní mór duit ceangal le líonra Wi-Fi, sreangaithe nó "
+"soghluaiste ar dtús."
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:2038
+msgid "Open Wi-Fi Settings"
+msgstr "Oscail Socruithe Wi-Fi"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:2087
+msgid "Testing Internet access…"
+msgstr "Rochtain Idirlín á thástáil…"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:2127
+msgid "You have access to the Internet"
+msgstr "Tá rochtain agat ar an Idirlíon"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:2161
+msgid "Testing access to Tor…"
+msgstr "Rochtain ar Tor á thástáil…"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:2204
+msgid "You can connect to Tor"
+msgstr "Is féidir leat ceangal le Tor"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:2234
+msgid "Failed to connect to Tor without bridges."
+msgstr "Theip ar nascadh le Tor gan droichid."
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:2250
+msgid "This local network is blocking access to Tor."
+msgstr "Tá an líonra áitiúil seo ag cur bac ar rochtain ar Tor."
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:2282
+msgid "Connecting to Tor…"
+msgstr "Ag nascadh le Tor…"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:2387
+msgid "Start Tor Browser"
+msgstr "Tosaigh Brabhsálaí Tor"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:2446
+msgid "Configure a Local Proxy"
+msgstr "Cumraigh Seachfhreastalaí Áitiúil"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:2472
+msgid "Proxy Type"
+msgstr "Cineál Seachfhreastalaí"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:2489
+msgid "No proxy"
+msgstr "Gan seachfhreastalaí"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:2490
+msgid "SOCKS 4"
+msgstr "SOCKS 4"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:2491
+msgid "SOCKS 5"
+msgstr "SOCKS 5"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:2492
+msgid "HTTP / HTTPS"
+msgstr "HTTP / HTTPS"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:2511
+msgid "Address"
+msgstr "Seoladh"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:2528
+msgid "Username"
+msgstr "Ainm Úsáideora"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:2545
+msgid "IP address or hostname"
+msgstr "Seoladh IP nó óstainm"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:2563
+msgid "Port"
+msgstr "Port"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:2687
+msgid "_Save Proxy Settings"
+msgstr "_Sábháil Socruithe Seachfhreastalaí"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/time-dialog.ui.in:7
+msgid "Tor Connection - Fix Clock"
+msgstr "Ceangal Tor - Clog Deisigh"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/time-dialog.ui.in:76
+msgid ""
+"Your time zone cannot be used to identify or locate you. Your time zone will "
+"never be sent over the network and will only be used to fix your clock and "
+"connect to Tor."
+msgstr ""
+"Ní féidir do chrios ama a úsáid chun tú a aithint nó a aimsiú. Ní sheolfar "
+"do chrios ama thar an líonra choíche agus ní úsáidfear é ach chun do chlog a "
+"shocrú agus chun nascadh le Tor."
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/time-dialog.ui.in:142
+msgid "Time zone"
+msgstr "Crios ama"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/time-dialog.ui.in:186
+msgid "Time"
+msgstr "Am"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/time-dialog.ui.in:223
+msgid ":"
+msgstr ":"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/time-dialog.ui.in:277
+msgid "Date"
+msgstr "Dáta"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/time-dialog.ui.in:311
+msgid "January"
+msgstr "Eanáir"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/time-dialog.ui.in:312
+msgid "February"
+msgstr "Feabhra"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/time-dialog.ui.in:313
+msgid "March"
+msgstr "Márta"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/time-dialog.ui.in:314
+msgid "April"
+msgstr "Aibreán"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/time-dialog.ui.in:315
+msgid "May"
+msgstr "Bealtaine"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/time-dialog.ui.in:316
+msgid "June"
+msgstr "Meitheamh"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/time-dialog.ui.in:317
+msgid "July"
+msgstr "Lúil"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/time-dialog.ui.in:318
+msgid "August"
+msgstr "Lúnasa"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/time-dialog.ui.in:319
+msgid "September"
+msgstr "Meán Fómhair"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/time-dialog.ui.in:320
+msgid "October"
+msgstr "Deireadh Fómhair"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/time-dialog.ui.in:321
+msgid "November"
+msgstr "Samhain"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/time-dialog.ui.in:322
+msgid "December"
+msgstr "Nollaig"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/time-dialog.ui.in:368
+msgid "Clock"
+msgstr "Clog"
+
+#~ msgid "Bridge address malformed"
+#~ msgstr "Seoladh droichid míchumtha"
+
+#~ msgid ""
+#~ "Setting a bridge is needed if you want to hide that you are using Tor"
+#~ msgstr ""
+#~ "Tá gá le droichead a shocrú más mian leat a cheilt go bhfuil Tor in úsáid "
+#~ "agat"
+
+#~ msgid ""
+#~ "To get a bridge, send an empty email to <tt>bridges@torproject.org</tt> "
+#~ "from a Gmail or Riseup email address with your phone and scan the QR code "
+#~ "that is attached to the automatic reply."
+#~ msgstr ""
+#~ "Chun droichead a fháil, seol ríomhphost folamh chuig "
+#~ "<tt>bridges@torproject.org</tt> ó sheoladh ríomhphoist Gmail nó Riseup le "
+#~ "do ghuthán agus scanadh an cód QR atá ceangailte leis an bhfreagra "
+#~ "uathoibríoch."
+
+#~ msgid "Scan QR Code"
+#~ msgstr "Scan an Cód QR"
+
+#~ msgid "Documentation"
+#~ msgstr "Doiciméadú"
+
+#~ msgid ""
+#~ "Authentication is required to start a Root Console. Enter the "
+#~ "administration password that you set up in the Welcome Screen."
+#~ msgstr ""
+#~ "Tá fíordheimhniú ag teastáil chun Consól Root a thosú. Cuir isteach an "
+#~ "focal faire riaracháin a shocraigh tú sa Scáileán Fáilte."
+
+#~ msgid ""
+#~ "For better security, no administration password is set up in Tails by "
+#~ "default. To start a Root Console, restart Tails and set up an "
+#~ "administration password in the Welcome Screen."
+#~ msgstr ""
+#~ "Chun slándáil níos fearr a fháil, níl aon phasfhocal riaracháin socraithe "
+#~ "i Tails de réir réamhshocraithe. Chun Consól Root a thosú, atosaigh Tails "
+#~ "agus socraigh pasfhocal riaracháin sa Scáileán Fáilte."
+
+#~ msgid "Root Console"
+#~ msgstr "Consól Fréimhe"
+
+#~ msgid "Opens a console as the root user"
+#~ msgstr "Osclaíonn sé consól mar an úsáideoir fréimhe"
+
+#~ msgid "admin"
+#~ msgstr "riarthóir"
+
+#~ msgid "To start a Root Console, you need to authenticate."
+#~ msgstr "Chun Consól Root a thosú, ní mór duit fíordheimhniú."
+
+#~ msgid "_Network Connection"
+#~ msgstr "Cea_ngal Líonra"
+
+#~ msgid "Obsolete"
+#~ msgstr "Imithe i léig"
+
+#~ msgid "You need to migrate your OpenPGP keys"
+#~ msgstr "Ní mór duit do chuid eochracha OpenPGP a aistriú"
+
+#~ msgid ""
+#~ "<i>Thunderbird</i> 78 now replaces the <i>Enigmail</i> extension with "
+#~ "built-in support for OpenPGP encryption. To continue using your OpenPGP "
+#~ "keys in <i>Thunderbird</i>, follow our migration instructions."
+#~ msgstr ""
+#~ "Cuireann <i>Thunderbird</i> 78 tacaíocht ionsuite do chriptiú OpenPGP in "
+#~ "ionad an iarmhír <i>Enigmail</i>. Chun leanúint ar aghaidh ag úsáid "
+#~ "d’eochracha OpenPGP in <i>Thunderbird</i>, lean ár dtreoracha aistrithe."
+
+#~ msgid "_Open Migration Instructions"
+#~ msgstr "_Treoracha Imirce Oscailte"
+
+#~ msgid "_Migrate Later"
+#~ msgstr "_Imirce ar ball"
+
+#~ msgid ""
+#~ "We replaced this additional setting in Tails 4.19 (June 2021) with a Tor "
+#~ "Connection assistant integrated in the desktop.\n"
+#~ "\n"
+#~ "You will be asked whether you want to use Tor bridges when connecting to "
+#~ "Tor after starting Tails.\n"
+#~ "\n"
+#~ "If you want to work offline, enable the Offline Mode in the additional "
+#~ "settings."
+#~ msgstr ""
+#~ "Chuireamar cúntóir Tor Connection atá comhtháite sa deasc in ionad an "
+#~ "tsocraithe breise seo in Tails 4.19 (Meitheamh 2021).\n"
+#~ "\n"
+#~ "Iarrfar ort ar mhaith leat droichid Tor a úsáid agus tú ag nascadh le Tor "
+#~ "tar éis duit Tails a thosú.\n"
+#~ "\n"
+#~ "Más mian leat oibriú as líne, cumasaigh an Mód As Líne sna socruithe "
+#~ "breise."
+
+#~ msgid "Technical details to include"
+#~ msgstr "Sonraí teicniúla le cur san áireamh"
+
+#~ msgid "Root Terminal"
+#~ msgstr "Fréamhtheirminéal"
+
+#~ msgid "meek"
+#~ msgstr "meek"
+
+#~ msgid "obfs4 ..."
+#~ msgstr "obfs4..."
+
+#~ msgid "Open Network Monitor"
+#~ msgstr "Monatóireacht a dhéanamh ar Líonra Oscailte"
+
+#, python-brace-format
+#~ msgid ""
+#~ "<b>Shape the future of Tails, today.</b>\n"
+#~ "\n"
+#~ "Contribute to <a href=\"{url}\">our ongoing fundraiser</a>!"
+#~ msgstr ""
+#~ "<b>Cruthaigh todhchaí Tails, inniu.</b>\n"
+#~ "\n"
+#~ "Cuidigh le <a href=\"{url}\">ár ngnó tiomsaithe airgid leanúnach</a>!"
+
+#, python-brace-format
+#~ msgid ""
+#~ "<b>Your donations help us innovate and stay independent.</b>\n"
+#~ "\n"
+#~ "Support <a href=\"{url}\">our ongoing fundraiser</a>!"
+#~ msgstr ""
+#~ "<b>Cuidíonn do thabhartais linn nuálaíocht a dhéanamh agus fanacht "
+#~ "neamhspleách.</b>\n"
+#~ "\n"
+#~ "Tacaigh le <a href=\"{url}\">ár ngnó tiomsaithe airgid leanúnach</a>!"
+
+#~ msgid ""
+#~ "For debugging information, execute the following command: sudo tails-"
+#~ "debugging-info"
+#~ msgstr ""
+#~ "Bain úsáid as an ordú seo chun faisnéis dífhabhtaithe a fháil: sudo tails-"
+#~ "debugging-info"
+
+#~ msgid "Open Onion Circuits"
+#~ msgstr "Ciorcaid Onion Oscailte"
+
+#~ msgid "Starting the Unsafe Browser..."
+#~ msgstr "An brabhsálaí neamhshlán á thosú..."
+
+#~ msgid "This may take a while, so please be patient."
+#~ msgstr "Seans go dtógfaidh sé seo tamall, fan nóiméad."
+
+#~ msgid "Reset Tor Connection"
+#~ msgstr "Athshocraigh Ceangal Tor"
+
+#~ msgid "Error while updating the signing key"
+#~ msgstr "Earráid agus an eochair shínithe á nuashonrú"
+
+#~ msgid ""
+#~ "Something went wrong when starting your Tails USB stick for the first "
+#~ "time: resizing the system partition failed"
+#~ msgstr ""
+#~ "Tharla earráid agus do mhéaróg USB Tails á thosú den chéad uair: theip ar "
+#~ "dheighilt an chórais a athrú méid"
+
+#~ msgid ""
+#~ "It will be impossible to create a Persistent Storage or apply automatic "
+#~ "upgrades."
+#~ msgstr ""
+#~ "Beidh sé dodhéanta Stór Marthanach a chruthú nó uasghrádú uathoibríoch a "
+#~ "chur i bhfeidhm."
+
+#~ msgid ""
+#~ "Try to follow our instructions on <a href=\"%INSTALLPAGE%\">installing "
+#~ "Tails on a USB stick</a> again or use a different USB stick."
+#~ msgstr ""
+#~ "Déan iarracht ár dtreoracha a leanúint ar <a href=\"%INSTALLPAGE%\">Tails "
+#~ "a shuiteáil ar mhaide USB</a> arís nó úsáid bata USB eile."
+
+#~ msgid ""
+#~ "If you have already tried this, please send us an error report to help us "
+#~ "solve this issue."
+#~ msgstr ""
+#~ "Má tá iarracht déanta agat air seo cheana féin, seol tuairisc earráide "
+#~ "chugainn le do thoil chun cabhrú linn an cheist seo a réiteach."
+
+#~ msgid ""
+#~ "Tails protects your wallet.\n"
+#~ "\n"
+#~ "Help us keep your bitcoins safe!\n"
+#~ "\n"
+#~ "<a href=\"file:///usr/share/doc/tails/website/"
+#~ "donate.en.html#expenses\">How we spend our money.</a>"
+#~ msgstr ""
+#~ "Cosnaíonn eireabaill do sparán.\n"
+#~ "\n"
+#~ "Cabhraigh linn do bitcoins a choinneáil slán!\n"
+#~ "\n"
+#~ "<a href=\"file:///usr/share/doc/tails/website/"
+#~ "donate.en.html#expenses\">Conas a chaithimid ár gcuid airgid.</a>"
+
+#~ msgid "Create Backup"
+#~ msgstr "Cruthaigh Cúltaca"
+
+#, sh-format
+#~ msgid ""
+#~ "You might prefer to restart Tails and disable MAC address anonymization."
+#~ msgstr ""
+#~ "B’fhéidir gurbh fhearr leat Tails a atosú agus anaithnidiú seolta MAC a "
+#~ "dhíchumasú."
+
+#~ msgid ""
+#~ "\n"
+#~ "\n"
+#~ "The bug report could not be sent, likely due to network problems. Please "
+#~ "try to reconnect to the network and click send again.\n"
+#~ "\n"
+#~ "If it does not work, you will be offered to save the bug report."
+#~ msgstr ""
+#~ "\n"
+#~ "\n"
+#~ "Níorbh fhéidir an fabht a thuairisciú, is dócha mar gheall ar fhadhbanna "
+#~ "líonra. Déan iarracht athcheangal leis an líonra agus cliceáil Seol "
+#~ "arís.\n"
+#~ "\n"
+#~ "Mura n-oibríonn sé seo, beidh tú in ann an tuairisc a shábháil go "
+#~ "háitiúil."
+
+#, python-format
+#~ msgid "Unable to save %s."
+#~ msgstr "Níorbh fhéidir %s a shábháil."
+
+#, python-format
+#~ msgid ""
+#~ "The bug report could not be sent, likely due to network problems.\n"
+#~ "\n"
+#~ "As a work-around you can save the bug report as a file on a USB drive and "
+#~ "try to send it to us at %s from your email account using another system. "
+#~ "Note that your bug report will not be anonymous when doing so unless you "
+#~ "take further steps yourself (e.g. using Tor with a throw-away email "
+#~ "account).\n"
+#~ "\n"
+#~ "Do you want to save the bug report to a file?"
+#~ msgstr ""
+#~ "Níorbh fhéidir linn an tuairisc a sheoladh, is dócha mar gheall ar "
+#~ "fhadhbanna líonra.\n"
+#~ "\n"
+#~ "Mar sheift shealadach, is féidir leat an tuairisc a shábháil mar chomhad "
+#~ "ar mhéaróg USB agus í a sheoladh chugainn ag %s ó do chuntas ríomhphoist "
+#~ "ar ríomhaire eile. Tabhair faoi deara go mbeidh do chuid sonraí pearsanta "
+#~ "ceangailte leis an tuairisc mura nglacann tú céimeanna breise (m.sh. Tor "
+#~ "a úsáid le cuntas rphoist indiúscartha).\n"
+#~ "\n"
+#~ "An bhfuil fonn ort an tuairisc a shábháil i gcomhad?"
+
+#~ msgid "Cannot unlock encrypted storage with this passphrase."
+#~ msgstr ""
+#~ "Ní féidir an stóras criptithe a dhíghlasáil leis an bhfrása faire seo."
+
+#~ msgid "_Passphrase"
+#~ msgstr "_Pasfhocal"
+
+#~ msgid "Resizing System Partition Failed"
+#~ msgstr "Theip ar Dheighilt an Chórais a Athrú"
+
+#~ msgid "Failed to setup chroot."
+#~ msgstr "Theip ar shocrú chroot."
+
+#~ msgid "Failed to configure browser."
+#~ msgstr "Níorbh fhéidir an brabhsálaí a chumrú."
+
+#~ msgid "Language & Region"
+#~ msgstr "Teanga agus Réigiún"
+
+#, python-format
+#~ msgid ""
+#~ "Some partitions of the target device %(device)s are mounted. They will be "
+#~ "unmounted before starting the installation process."
+#~ msgstr ""
+#~ "Tá deighiltí áirithe ar an ngléas sprice %(device)s feistithe faoi "
+#~ "láthair. Dífheisteofar iad sula dtosóidh an próiseas suiteála."
+
+#, fuzzy
+#~| msgid "Report an error"
+#~ msgid "Report an Error"
+#~ msgstr "Déan tuairisc ar earráid"
+
+#~ msgid "Lock screen"
+#~ msgstr "Cuir an scáileán faoi ghlas"
+
+#, python-format
+#~ msgid ""
+#~ "Build information:\n"
+#~ "%s"
+#~ msgstr ""
+#~ "Eolas faoin leagan:\n"
+#~ "%s"
+
+#~ msgid "not available"
+#~ msgstr "níl ar fáil"
+
+#~ msgid "Name of the affected software"
+#~ msgstr "Ainm an bhogearra atá buailte"
+
+#~ msgid "Exact steps to reproduce the error"
+#~ msgstr "Céimeanna beachta leis an earráid a atáirgeadh"
+
+#~ msgid "Actual result and description of the error"
+#~ msgstr "An toradh a chonaic tú agus cur síos ar an earráid"
+
+#~ msgid "Desired result"
+#~ msgstr "An toradh a raibh tú ag súil leis"
+
+#~ msgid "Send feedback in an encrypted mail."
+#~ msgstr "Seol aiseolas i dteachtaireacht chriptithe."
+
+#~ msgid "Copyright © 2009-2018 Tails developers (tails@boum.org)"
+#~ msgstr "Cóipcheart © 2009-2018 Forbróirí Tails (tails@boum.org)"
+
+#~ msgid "Tails developers <tails@boum.org>"
+#~ msgstr "Forbróirí Tails <tails@boum.org>"
+
+#~ msgid "translator-credits"
+#~ msgstr "Kevin Scannell <kscanne at gmail>, 2017"
+
+#~ msgid "Copyright © 2009-2018 tails@boum.org"
+#~ msgstr "Cóipcheart © 2009-2018 tails@boum.org"
+
+#~ msgid ""
+#~ "WhisperBack - Send feedback in an encrypted mail\n"
+#~ "Copyright (C) 2009-2018 Tails developers <tails@boum.org>\n"
+#~ "\n"
+#~ "This program is  free software; you can redistribute  it and/or modify\n"
+#~ "it under the  terms of the GNU General Public  License as published by\n"
+#~ "the Free Software Foundation; either  version 3 of the License, or (at\n"
+#~ "your option) any later version.\n"
+#~ "\n"
+#~ "This program  is distributed in the  hope that it will  be useful, but\n"
+#~ "WITHOUT   ANY  WARRANTY;   without  even   the  implied   warranty  of\n"
+#~ "MERCHANTABILITY  or FITNESS  FOR A  PARTICULAR PURPOSE.   See  the GNU\n"
+#~ "General Public License for more details.\n"
+#~ "\n"
+#~ "You should have received a copy of the GNU General Public License\n"
+#~ "along with this program.  If not, see <http://www.gnu.org/licenses/>.\n"
+#~ msgstr ""
+#~ "WhisperBack - Seol aiseolas i dteachtaireacht chriptithe\n"
+#~ "Cóipcheart (C) 2009-2018 Forbróirí Tails <tails@boum.org>\n"
+#~ "\n"
+#~ "Is saorbhogearra é an ríomhchlár seo; tá cead agat é a scaipeadh agus/nó\n"
+#~ "a athrú de réir na gcoinníollacha sa GNU General Public License mar atá "
+#~ "foilsithe\n"
+#~ "ag an Free Software Foundation; faoi leagan 3 den cheadúnas, nó\n"
+#~ "(más mian leat) aon leagan níos déanaí.\n"
+#~ "\n"
+#~ "Scaiptear an ríomhchlár seo le súil go mbeidh sé áisiúil, ach GAN AON "
+#~ "BHARÁNTA; fiú gan baránta intuigthe INDÍOLTACHTA nó FEILIÚNACHTA "
+#~ "D'FHEIDHM AR LEITH.  Féach ar an GNU General Public License chun níos mó "
+#~ "sonraí a fháil.\n"
+#~ "\n"
+#~ "Ba chóir go mbeifeá tar éis cóip den GNU General Public License a fháil "
+#~ "in éineacht leis an ríomhchlár seo; mura bhfuair, féach <http://"
+#~ "www.gnu.org/licenses/>.\n"
+
+#~ msgid "Help:"
+#~ msgstr "Cabhair:"
+
+#~ msgid "Email address (if you want an answer from us)"
+#~ msgstr "Seoladh ríomhphoist (má tá tú ag iarraidh freagra uainn)"
+
+#~ msgid "Unlock"
+#~ msgstr "Díghlasáil"
+
+#~ msgid "Encrypted _Persistent Storage"
+#~ msgstr "Stóras _Seasmhach Criptithe"
+
+#~ msgid "Enter your passphrase to unlock the persistent storage"
+#~ msgstr "Cuir isteach an frása faire chun an stóras seasmhach a dhíghlasáil"
+
+#, fuzzy
+#~ msgid "_Delete..."
+#~ msgstr "Á scriosadh..."
+
+#, fuzzy
+#~ msgid "_Change Passphrase..."
+#~ msgstr "Taispeáin an Frása Faire"
+
+#, python-format
+#~ msgid ""
+#~ "<h1>Help us fix your bug!</h1>\n"
+#~ "<p>Read <a href=\"%s\">our bug reporting instructions</a>.</p>\n"
+#~ "<p><strong>Do not include more personal information than\n"
+#~ "needed!</strong></p>\n"
+#~ "<h2>About giving us an email address</h2>\n"
+#~ "<p>\n"
+#~ "Giving us an email address allows us to contact you to clarify the "
+#~ "problem. This\n"
+#~ "is needed for the vast majority of the reports we receive as most "
+#~ "reports\n"
+#~ "without any contact information are useless. On the other hand it also "
+#~ "provides\n"
+#~ "an opportunity for eavesdroppers, like your email or Internet provider, "
+#~ "to\n"
+#~ "confirm that you are using Tails.\n"
+#~ "</p>\n"
+#~ msgstr ""
+#~ "<h1>Cabhraigh linn an fhadhb a réiteach!</h1>\n"
+#~ "<p>Léigh <a href=\"%s\">conas a chuirtear tuairisc ar fhabht faoinár "
+#~ "mbráid</a>.</p>\n"
+#~ "<p><strong>Ná cuir an iomarca sonraí pearsanta sa tuairisc!</strong></p>\n"
+#~ "<h2>Maidir le seoladh ríomhphoist a sholáthar</h2>\n"
+#~ "<p>\n"
+#~ "Má thugann tú seoladh ríomhphoist dúinn, beimid in ann dul i dteagmháil "
+#~ "leat chun an fhadhb a shoiléiriú. Tá tuilleadh mionsonraí de dhíth i "
+#~ "bhformhór mór na gcásanna agus is minic nach féidir linn aon tairbhe a "
+#~ "bhaint as tuairisc gan sonraí teagmhála. É sin ráite, tugann sé deis do "
+#~ "chúléisteoirí, mar shampla do sholáthraí seirbhíse Idirlín nó do "
+#~ "sholáthraí ríomhphoist, deimhniú go n-úsáideann tú Tails.\n"
+#~ "</p>\n"
+
+#~ msgid ""
+#~ "<b>Could not choose a download server.</b>\n"
+#~ "\n"
+#~ "This should not happen. Please report a bug."
+#~ msgstr ""
+#~ "<b>Níorbh fhéidir freastalaí íoslódála a roghnú.</b>\n"
+#~ "\n"
+#~ "Tá rud éigin mícheart. Ba chóir duit tuairisc a dhéanamh air seo mar "
+#~ "fhabht."
+
+#~ msgid "Error while choosing a download server"
+#~ msgstr "Earráid agus freastalaí íoslódála á roghnú"
+
+#, fuzzy
+#~ msgid "The Amnesic Incognito Live System"
+#~ msgstr "The Amnesic Incognito Live System"
+
+#~ msgid "Launch the Unsafe Browser?"
+#~ msgstr "An bhfuil fonn ort an Brabhsálaí Neamhshlán a thosú?"
+
+#, fuzzy
+#~ msgid ""
+#~ "The Unsafe Browser is not anonymous and the websites that you visit can "
+#~ "see your real IP address.\\n\\nOnly use the Unsafe Browser to sign in to "
+#~ "a network, then close it."
+#~ msgstr ""
+#~ "The Unsafe Browser is not anonymous and the websites that you visit can "
+#~ "see your real IP address.\\n\\nOnly use the Unsafe Browser to sign in to "
+#~ "a network, then close it."
+
+#~ msgid "Enabled"
+#~ msgstr "Cumasaithe"
+
+#, python-brace-format
+#~ msgid ""
+#~ "live-persist failed with return code {returncode}:\n"
+#~ "{stderr}"
+#~ msgstr ""
+#~ "Theip ar live-persist leis an gcód {returncode}:\n"
+#~ "{stderr}"
+
+#, python-brace-format
+#~ msgid ""
+#~ "cryptsetup failed with return code {returncode}:\n"
+#~ "{stdout}\n"
+#~ "{stderr}"
+#~ msgstr ""
+#~ "Theip ar cryptsetup leis an gcód {returncode}:\n"
+#~ "{stdout}\n"
+#~ "{stderr}"
+
+#, python-brace-format
+#~ msgid ""
+#~ "live-persist failed with return code {returncode}:\n"
+#~ "{stdout}\n"
+#~ "{stderr}"
+#~ msgstr ""
+#~ "Theip ar live-persist leis an gcód {returncode}:\n"
+#~ "{stdout}\n"
+#~ "{stderr}"
+
+#, python-brace-format
+#~ msgid ""
+#~ "umount failed with return code {returncode}:\n"
+#~ "{stdout}\n"
+#~ "{stderr}"
+#~ msgstr ""
+#~ "Theip ar umount leis an gcód {returncode}:\n"
+#~ "{stdout}\n"
+#~ "{stderr}"
+
+#~ msgid "Persistence wizard - Persistent volume creation"
+#~ msgstr "Treoraí na seasmhachta - Imleabhar seasmhach a chruthú"
+
+#~ msgid ""
+#~ "<b>Beware!</b> Using persistence has consequences that must be well "
+#~ "understood. Tails can't help you if you use it wrong! See the "
+#~ "<i>Encrypted persistence</i> page of the Tails documentation to learn "
+#~ "more."
+#~ msgstr ""
+#~ "<b>Fainic!</b> Tá sé tábhachtach na torthaí a thagann ar úsáid na "
+#~ "seasmhachta a thuiscint go maith. Ní féidir le Tails cabhrú leat mura n-"
+#~ "úsáideann tú mar is ceart é! Féach an leathanach <i>Seasmhacht "
+#~ "chriptithe</i> sa doiciméadú Tails chun tuilleadh eolais a fháil."
+
+#~ msgid "Passphrase can't be empty"
+#~ msgstr "Ní cheadaítear frása faire folamh"
+
+#~ msgid "Failed"
+#~ msgstr "Teipthe"
+
+#~ msgid "Mounting Tails persistence partition."
+#~ msgstr "An deighilt seasmhachta Tails á feistiú."
+
+#~ msgid "The Tails persistence partition will be mounted."
+#~ msgstr "Feisteofar an deighilt seasmhachta Tails."
+
+#~ msgid "The permissions of the persistent volume will be corrected."
+#~ msgstr "Ceartófar na ceadanna ar an imleabhar seasmhach."
+
+#~ msgid "Creating default persistence configuration."
+#~ msgstr "Cumraíocht réamhshocraithe seasmhachta á chruthú."
+
+#~ msgid "The default persistence configuration will be created."
+#~ msgstr "Cruthófar an chumraíocht réamhshocraithe seasmhachta."
+
+#~ msgid "Creating..."
+#~ msgstr "Á chruthú..."
+
+#~ msgid "Creating the persistent volume..."
+#~ msgstr "An t-imleabhar seasmhach á chruthú..."
+
+#~ msgid "Persistence wizard - Persistent volume configuration"
+#~ msgstr "Treoraí na seasmhachta - Imleabhar seasmhach a chumrú"
+
+#~ msgid "Specify the files that will be saved in the persistent volume"
+#~ msgstr "Roghnaigh na comhaid a shábhálfar san imleabhar seasmhach"
+
+#~ msgid "Saving..."
+#~ msgstr "Á shábháil..."
+
+#~ msgid "Saving persistence configuration..."
+#~ msgstr "Cumraíocht seasmhachta á sábháil..."
+
+#~ msgid "Persistence wizard - Persistent volume deletion"
+#~ msgstr "Treoraí na seasmhachta - Scriosadh an imleabhair sheasmhaigh"
+
+#~ msgid "Deleting the persistent volume..."
+#~ msgstr "An t-imleabhar seasmhach á scriosadh..."
+
+#~ msgid "Keep files stored in the `Persistent' directory"
+#~ msgstr "Coinnigh comhaid stóráilte sa chomhadlann 'Persistent'"
+
+#~ msgid "Language, administration password, and additional settings"
+#~ msgstr "Teanga, focal faire riaracháin, agus socruithe eile"
+
+#~ msgid "Bookmarks saved in the Tor Browser"
+#~ msgstr "Leabharmharcanna sábháilte i mBrabhsálaí Tor"
+
+#~ msgid "Configuration of network devices and connections"
+#~ msgstr "Cumraíocht gléasanna líonra agus ceangal Idirlín"
+
+#~ msgid "Software installed when starting Tails"
+#~ msgstr "Bogearraí a shuiteáiltear nuair a thosaíonn Tails"
+
+#~ msgid "Bitcoin Client"
+#~ msgstr "Cliant Bitcoin"
+
+#~ msgid "Pidgin"
+#~ msgstr "Pidgin"
+
+#~ msgid "Pidgin profiles and OTR keyring"
+#~ msgstr "Próifílí Pidgin agus fáinne eochracha OTR"
+
+#~ msgid "SSH keys, configuration and known hosts"
+#~ msgstr "Eochracha SSH, cumraíocht, agus óstríomhairí aitheanta"
+
+#~ msgid "Setup Tails persistent volume"
+#~ msgstr "Socraigh imleabhar seasmhach Tails"
+
+#~ msgid ""
+#~ "Cannot delete the persistent volume while in use. You should restart "
+#~ "Tails without persistence."
+#~ msgstr ""
+#~ "Ní féidir an t-imleabhar seasmhach a scriosadh má tá sé in úsáid. Ba "
+#~ "chóir duit Tails a atosú gan seasmhacht."
+
+#~ msgid "Persistence volume is not unlocked."
+#~ msgstr "Níl an t-imleabhar seasmhach díghlasáilte."
+
+#~ msgid "Persistence volume is not mounted."
+#~ msgstr "Níl an t-imleabhar seasmhach feistithe."
+
+#~ msgid ""
+#~ "Persistence volume is not readable. Permissions or ownership problems?"
+#~ msgstr ""
+#~ "Ní féidir an t-imleabhar seasmhach a léamh. Fadhb le ceadanna nó le "
+#~ "húinéireacht?"
+
+#~ msgid "Persistence wizard - Finished"
+#~ msgstr "Treoraí na seasmhachta - Críochnaithe"
+
+#~ msgid ""
+#~ "Only use the Unsafe Browser to sign in to a network, then close it."
+#~ "\\n\\nThe Unsafe Browser is disabled by default for security.\\n\\nTo <a "
+#~ "href='file:///usr/share/doc/tails/website/doc/anonymous_internet/"
+#~ "unsafe_browser.en.html#use'>use the Unsafe Browser</a>, restart Tails and "
+#~ "enable the Unsafe Browser in the additional settings of the Welcome "
+#~ "Screen."
+#~ msgstr ""
+#~ "Only use the Unsafe Browser to sign in to a network, then close it."
+#~ "\\n\\nThe Unsafe Browser is disabled by default for security.\\n\\nTo <a "
+#~ "href='file:///usr/share/doc/tails/website/doc/anonymous_internet/"
+#~ "unsafe_browser.en.html#use'>use the Unsafe Browser</a>, restart Tails and "
+#~ "enable the Unsafe Browser in the additional settings of the Welcome "
+#~ "Screen."
+
+#~ msgid "Delete the persistent volume and its content"
+#~ msgstr "Scrios an t-imleabhar seasmhach agus a bhfuil ann"
+
+#~ msgid "Configure persistent volume"
+#~ msgstr "Cumraigh an t-imleabhar seasmhach"

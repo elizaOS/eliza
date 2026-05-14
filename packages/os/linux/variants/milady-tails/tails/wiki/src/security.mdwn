@@ -1,0 +1,50 @@
+[[!meta title="Security audits and advisories"]]
+
+[[!toc levels=3]]
+
+Since Tails is based on Debian, it takes advantage of all the work done by the
+Debian security team. As quoted from <https://www.debian.org/security/>:
+
+> Debian takes security very seriously. We handle all security
+problems brought to our attention and ensure that they are corrected within a
+reasonable timeframe. Many advisories are coordinated with other free software
+vendors and are published the same day a vulnerability is made public and we
+also have a Security Audit team that reviews the archive looking for new or
+unfixed security bugs.
+
+> Experience has shown that "security through obscurity" does
+not work. Public disclosure allows for more rapid and better solutions to
+security problems. In that vein, this page addresses Debian's status with
+respect to various known security vulnerabilities, which could potentially affect
+Debian.
+
+See also our [[security issue response policy|contribute/security_policy]].
+
+<h1 id="audits">Security audits</h1>
+
+[[!inline pages="tagged(security/audit)" actions="no" archive="yes" feeds="no" show=0 sort="-meta(date) age -path"]]
+
+# Current security vulnerabilities
+
+[[!inline pages="page(security/*) and !security/*/*
+and !security/fixed and !security/fixed.* and !security/fixed/*
+and !tagged(security/fixed)"
+actions=no archive=yes feeds=no show=0 sort="-meta(date) age -path"]]
+
+# Fixed security vulnerabilities
+
+[[!inline pages="page(security/*) and !security/*/* and tagged(security/fixed) and !security/Numerous_security_holes_in_* and !security/known_security_vulnerabilities_in_*"
+actions=no archive=yes feeds=no show=10 sort="-meta(date) age -path"]]
+
+## Other vulnerabilities solved in included applications
+
+[[!inline pages="page(security/*) and !security/*/* and tagged(security/fixed) and (security/Numerous_security_holes_in_* or security/known_security_vulnerabilities_in_*)"
+actions=no archive=yes feeds=no show=10 sort="-meta(date) age -path"]]
+
+<!-- Feed buttons used by config/chroot_local-includes/usr/local/bin/tails-security-check
+
+[[!inline pages="page(security/*) and !security/*/*
+and !security/fixed and !security/fixed.* and !security/fixed/*"
+actions=no archive=yes feedonly=yes show=10 sort="-meta(date) age -path"]]
+
+-->

@@ -1,0 +1,255 @@
+[[!meta title="Illustrations on what is Tails and how it works"]]
+
+[[!meta stylesheet="jobs" rel="stylesheet" title=""]]
+[[!tag job/consultancy]]
+[[!meta robots="noindex"]]
+
+**This job opening is closed. Applications received after December 15,
+  2019, will not be considered.**
+
+[[!toc levels=2]]
+
+Summary
+=======
+
+Tails, a portable operating system that protects your privacy and avoids
+censorship, is looking for a design contractor to create illustrations
+explaining Tails.
+
+About Tails
+===========
+
+[[!inline pages="jobs/about_tails" raw="yes" sort="age"]]
+
+Details
+=======
+
+### Scope
+
+This work is part of a larger effort to improve the description and
+explanation of Tails, adjust the voice and tone of the homepage, and
+implement a newly developed brand identity.
+
+The contractor will create illustrations to aid in communicating:
+
+- On the homepage: what is Tails and what are its main benefits
+
+  6 small illustrations or icons, around 200px.
+
+- On the 'How Tails works' page: the main properties and features of
+  Tails
+
+  10 medium-size illustrations, around 400px.
+
+The contractor will work as a team with the Tails UX designer:
+
+- The contractor will be responsible for all the illustration work.
+- The Tails UX designer will be responsible for the structure, text, and
+  integration on the website.
+
+### Target audience
+
+Activists, journalists, people who are being surveilled or censored.
+
+People learning about Tails for the first time.
+
+People who have to explain Tails to others, for example, digital
+security trainers.
+
+Our target audience is exemplified by our [[personas|contribute/personas]].
+
+### Proposed process
+
+1. Mockups
+
+   - The contractor and the UX designer work together to ideate and
+     create initial mockups for each illustration.
+
+1. Usability testing of the content
+
+   - The UX designer integrates the initial mockups into the draft
+     content.
+
+   - The text and illustrations is tested with a few potential users
+     using the [think aloud protocol](https://www.nngroup.com/articles/thinking-aloud-the-1-usability-tool/).
+
+     The contractor is encouraged to participate in the tests if they
+     have experience or interest in usability testing.
+
+   - Mockups might be refined as needed during the tests.
+
+1. Design & illustration
+
+   - Full illustration (16 images)
+
+1. Revisions
+
+   - 1 round of revision, based on feedback from the Tails community.
+
+### Proposed timeline
+
+Final delivery: January 2020 or earlier
+
+- Week 1: In-person or remote sprint
+  - Ideation and initial mockups
+  - Usability testing and refined mockups
+
+- Week 2-3: Full illustration
+
+- Week 4-5: Feedback
+
+- Week 6-7: Final illustrations delivered
+
+### Licensing
+
+All work will be published under the
+<a href="https://creativecommons.org/licenses/by-sa/4.0/">Creative
+Commons Attribution-ShareAlike 4.0 International License</a>.
+
+The contractor may retain copyright and will be credited on our [[license
+page|doc/about/license]].
+
+### Deliverables
+
+Vector graphics are preferred as they will make the work easier to reuse
+and adapt in the future. Raster graphics might be considered if well
+justified.
+
+Source documents compatible with Free Software tools will be provided as
+deliverables:
+
+- [Inkscape](https://inkscape.org/) for vector graphics
+- [GIMP](https://www.gimp.org/) for raster graphics
+
+The contractor may work with non-Free Software tools until delivery.
+Only the source documents in the final delivery must be compatible with
+Free Software tools.
+
+For example, in the case of vector graphics deliverables, the contractor
+may work with Adobe Illustrator but must deliver working documents in
+SVG format with all the objects and features compatible with the open
+SVG standard.
+
+### Budget
+
+Billable hours paid up to 2 500€, including meetings.
+
+Design considerations
+=====================
+
+### Brand guidelines
+
+See the brand attributes in our [[mission and values|contribute/mission]].
+
+### Tone
+
+When using Tails, people trade off bits of convenience for some extra
+security. They might have very little time, be under stress, or physical
+threats.
+
+We take the safety of our users very seriously and we speak to them in a
+confident and reassuring way without being lighthearted or frivolous.
+
+Our style inspires trust but doesn't sound distant. Even though we
+address serious issues, we are always empathetic and encouraging.
+
+To be accessible to our diverse and global audience, we value clarity
+and sincerity above all. We provide state-of-the-art tools without
+over-promising or sounding elitist.
+
+### Visual style
+
+Tails doesn't have a visual style guide yet and the work on this
+contract will be some of the first professional visual design work done for
+Tails.
+
+The contractor will have to propose a visual style that matches our
+brand guidelines and tone without being able to refer to more detailed
+visual guidelines.
+
+The visual style proposed by the contractor must be easily adoptable and
+reusable for future work.
+
+### Color scheme
+
+The illustrations must be compatible with our brand colors:
+
+<style>
+.brand-color {
+  display: inline-block;
+  width: 200px;
+  height: 100px;
+  border-radius: 0.5em;
+  padding: 1em;
+  font-size: 16px;
+  font-weight: bold;
+}
+</style>
+
+<span class="brand-color" style="background-color: #56347c; color: white;">#56347c</span>
+
+<span class="brand-color" style="background-color: #53b351;">#53b351</span>
+
+### Inspiration
+
+- Our personas: how we think our target audience looks like
+- Boot menu animation: other visuals on our website
+- DuckDuckGo [App](https://duckduckgo.com/app) and [About](https://duckduckgo.com/about): outdoors to illustrate privacy and empowerment
+- [TunnelBear](https://www.tunnelbear.com/): explain a product using a nature-related theme
+- [Google Doogle with bears](https://doodles.google/doodle/grandfathers-day-2019-poland/): encouraging
+- [Intercom](https://www.intercom.com/product-tours): sketchy but serious
+
+Design concept
+==============
+
+### Metaphor: Tails as a tent
+
+<table>
+<tr><th>Property of Tails</th><th>Property of tents and hiking in the outdoors</th></tr>
+<tr><td>Portable</td><td>Tents are portable and can be used anywhere.</td></tr>
+<tr><td>Avoid surveillance</td><td>Tents gives you a private space in a public environment.</td></tr>
+<tr><td>Amnesia</td><td>When you set up your tent, it always starts empty, from a clean state. When you tear it down, it is empty.</td></tr>
+<tr><td>Persistence</td><td>You can store your personal stuff in your backpack and unpack it in your tent.</td></tr>
+<tr><td>Anonymity</td><td>Nobody know who you are when you are in your tent. Many tents look alike, making you anonymous.</td></tr>
+<tr><td>Leave no trace</td><td>When you pack up your tent, you leave no trace.</td></tr>
+<tr><td>Toolbox</td><td>You carry all you need in your backpack. Tails is like a Swiss Army knife</td></tr>
+<tr><td>Avoid censorship</td><td>When walking in the outdoors, you can go anywhere, without censorship.</td></tr>
+<tr><td>Avoid tracking</td><td>When walking in the outdoors, you leave no trace.</td></tr>
+<tr><td>No virus</td><td>Tents protect you from nuisances: mosquitoes, rain, wind, etc.</td></tr>
+<tr><td>No ads</td><td>When going in the outdoors, you leave pollution and noise behind.</td></tr>
+</table>
+
+### Images from workshop
+
+These are images that Tails community members drew at a visual identity
+workshop. We've included them here to show how the Tails community
+thinks about the tent metaphor – they’re not meant to be exactly copied.
+
+<a href="https://gitlab.tails.boum.org/tails/ux/-/raw/master/tent/Tails_tent_simple.png"><img src="https://gitlab.tails.boum.org/tails/ux/-/raw/master/tent/Tails_tent_simple.png" width="300"></a>
+<a href="https://gitlab.tails.boum.org/tails/ux/-/raw/master/tent/Tails_tent_roll.png"><img src="https://gitlab.tails.boum.org/tails/ux/-/raw/master/tent/Tails_tent_roll.png" width="300"></a>
+<a href="https://gitlab.tails.boum.org/tails/ux/-/raw/master/tent/Tails_tent_automatic.png"><img src="https://gitlab.tails.boum.org/tails/ux/-/raw/master/tent/Tails_tent_automatic.png" width="300"></a>
+<a href="https://gitlab.tails.boum.org/tails/ux/-/raw/master/tent/Tails_tent_many.png"><img src="https://gitlab.tails.boum.org/tails/ux/-/raw/master/tent/Tails_tent_many.png" width="300"></a>
+
+<a href="https://gitlab.tails.boum.org/tails/ux/-/raw/master/tent/01.jpg"><img src="https://gitlab.tails.boum.org/tails/ux/-/raw/master/tent/01.jpg" width="300"></a>
+<a href="https://gitlab.tails.boum.org/tails/ux/-/raw/master/tent/02.jpg"><img src="https://gitlab.tails.boum.org/tails/ux/-/raw/master/tent/02.jpg" width="300"></a>
+<a href="https://gitlab.tails.boum.org/tails/ux/-/raw/master/tent/03.jpg"><img src="https://gitlab.tails.boum.org/tails/ux/-/raw/master/tent/03.jpg" width="300"></a>
+<a href="https://gitlab.tails.boum.org/tails/ux/-/raw/master/tent/04.jpg"><img src="https://gitlab.tails.boum.org/tails/ux/-/raw/master/tent/04.jpg" width="300"></a>
+<a href="https://gitlab.tails.boum.org/tails/ux/-/raw/master/tent/05.jpg"><img src="https://gitlab.tails.boum.org/tails/ux/-/raw/master/tent/05.jpg" width="300"></a>
+<a href="https://gitlab.tails.boum.org/tails/ux/-/raw/master/tent/06.jpg"><img src="https://gitlab.tails.boum.org/tails/ux/-/raw/master/tent/06.jpg" width="300"></a>
+<a href="https://gitlab.tails.boum.org/tails/ux/-/raw/master/tent/07.jpg"><img src="https://gitlab.tails.boum.org/tails/ux/-/raw/master/tent/07.jpg" width="300"></a>
+<a href="https://gitlab.tails.boum.org/tails/ux/-/raw/master/tent/08.jpg"><img src="https://gitlab.tails.boum.org/tails/ux/-/raw/master/tent/08.jpg" width="300"></a>
+<a href="https://gitlab.tails.boum.org/tails/ux/-/raw/master/tent/09.jpg"><img src="https://gitlab.tails.boum.org/tails/ux/-/raw/master/tent/09.jpg" width="300"></a>
+<a href="https://gitlab.tails.boum.org/tails/ux/-/raw/master/tent/10.jpg"><img src="https://gitlab.tails.boum.org/tails/ux/-/raw/master/tent/10.jpg" width="300"></a>
+<a href="https://gitlab.tails.boum.org/tails/ux/-/raw/master/tent/11.jpg"><img src="https://gitlab.tails.boum.org/tails/ux/-/raw/master/tent/11.jpg" width="300"></a>
+<a href="https://gitlab.tails.boum.org/tails/ux/-/raw/master/tent/12.jpg"><img src="https://gitlab.tails.boum.org/tails/ux/-/raw/master/tent/12.jpg" width="300"></a>
+<a href="https://gitlab.tails.boum.org/tails/ux/-/raw/master/tent/13.jpg"><img src="https://gitlab.tails.boum.org/tails/ux/-/raw/master/tent/13.jpg" width="300"></a>
+<a href="https://gitlab.tails.boum.org/tails/ux/-/raw/master/tent/14.jpg"><img src="https://gitlab.tails.boum.org/tails/ux/-/raw/master/tent/14.jpg" width="300"></a>
+
+How to apply
+============
+
+<style>
+.apply-cv, .apply-cover-letter, .apply-contributions { display: none; }
+</style>
+
+[[!inline pages="jobs/apply" raw="yes" sort="age"]]

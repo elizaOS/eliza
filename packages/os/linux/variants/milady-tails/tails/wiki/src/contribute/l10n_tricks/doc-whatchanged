@@ -1,0 +1,30 @@
+#!/bin/sh
+
+set -e
+set -u
+
+### Global variables
+
+PROG=$(basename "$0")
+USAGE="Usage: $PROG TIME
+Example: $PROG '2 weeks ago'"
+
+### Functions
+
+fatal() {
+   echo "$*" >&2
+   exit 2
+}
+
+display_usage_and_error_out() {
+   fatal "$USAGE"
+}
+
+### Main
+
+[ $# -eq 1 ] || display_usage_and_error_out
+TIME="$1"
+
+git diff "master@{$TIME}..master" --stat=200 -- wiki/src \
+  | grep --color=never -E '\.(mdwn|html)\s+'                         \
+  | grep -E -v '^\s+wiki/src/(blueprint|contribute)/'

@@ -1,0 +1,11 @@
+--- chroot.orig/etc/laptop-mode/conf.d/wireless-power.conf	2011-06-15 19:53:32.842498230 +0200
++++ chroot/etc/laptop-mode/conf.d/wireless-power.conf	2011-06-15 19:53:56.470814445 +0200
+@@ -20,7 +20,7 @@
+ DEBUG=0
+ 
+ # Control generic wireless interface power saving mode?
+-CONTROL_WIRELESS_POWER_SAVING="auto"
++CONTROL_WIRELESS_POWER_SAVING=1
+ 
+ WIRELESS_AC_POWER_SAVING=0
+ WIRELESS_BATT_POWER_SAVING=1

@@ -1,0 +1,8 @@
+[Unit]
+Description=Tor has Bootstrapped
+Documentation=https://tails.net/contribute/design/
+After=tails-wait-until-tor-has-bootstrapped.service
+BindsTo=tails-wait-until-tor-has-bootstrapped.service
+
+[Install]
+WantedBy=tails-wait-until-tor-has-bootstrapped.service

@@ -1,0 +1,85 @@
+@import url("hide.css");
+
+/* Display no JS version by default */
+
+#ie,
+#verify-button,
+#verifying-download,
+#verification-successful,
+#verification-failed,
+#verification-error-file,
+#verification-error-json,
+#verification-error-image,
+#tails-version,
+#download-img,
+#download-iso
+{
+  display: none;
+}
+
+/* Buttons */
+
+#verify-button input {
+  display: none;
+}
+
+#javascript-verification-tip, #verification-failed {
+  position: relative;
+}
+
+.why-failed-link {
+  position: absolute;
+  top: 0;
+  left: 35em;
+  margin: 0;
+}
+
+/* Progress bar */
+
+.progress {
+  max-width: 100%;
+  border-radius: 5px;
+  width: 398px !important; /* Precise width to prevent glitches on stripes */
+  background-image: repeating-linear-gradient(
+    -45deg,
+    white,
+    white 20px,
+    var(--background-gray) 20px,
+    var(--background-gray) 40px
+  ) !important;
+  background-position: -100px;
+  animation: move 10s linear infinite;
+  height: 32px;
+}
+
+@keyframes move {
+  0% { background-position: 0px; }
+  100% { background-position: 398px; }
+}
+
+.progress-bar {
+  background: var(--medium-light-green);
+  border-radius: 5px;
+  height: 100%;
+  box-shadow: inset 1px 1px 1px var(--background-green);
+}
+
+/* Verification results */
+
+img.icon {
+  margin-right: 15px;
+  vertical-align: bottom;
+}
+
+#verification-error-file, #verification-error-json, #verification-error-image {
+  margin-top: 1.5em;
+}
+
+#retry-json, #retry-image {
+  cursor: pointer;
+}
+
+#verify-minor {
+  margin-left: 15px;
+  margin-top: -15px;
+}

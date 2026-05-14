@@ -1,0 +1,66 @@
+[[!meta date="Thu, 24 Jul 2014 21:15:00 +0000"]]
+[[!meta title="Security hole in I2P 0.9.13"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+A security hole affects I2P 0.9.13, that is part of Tails 1.1
+and earlier.
+
+Scope and severity
+==================
+
+If you are using I2P in Tails 1.1 and
+earlier, an attacker can deanonymize you: they can learn the IP
+address that identifies you on the Internet.
+
+To be able to conduct this attack:
+
+1. the attacker must be able to affect the content of a website that
+   you are visiting using the [[Tor
+   Browser|doc/anonymous_internet/Tor_Browser]] in Tails — many people
+   are able to do so;
+
+2. and, the attacker must find out how to exploit this security hole;
+   this information has not been published yet, but they may somehow
+   already have discovered it, or been made aware of it.
+
+<div class="note">
+
+<p><strong>Tails does not start I2P by default.</strong> This design
+decision was made precisely in order to
+protect the Tails users who do not use I2P from security holes in this
+piece of software.</p>
+
+<p>Still, an attacker who would also be able to start I2P on your
+Tails, either by exploiting another undisclosed security hole, or by
+tricking you into starting it yourself, could then use this I2P
+security hole to deanonymize you.</p>
+
+</div>
+
+Temporary solutions
+===================
+
+You can protect yourself from this security hole until it
+is corrected.
+
+Do not start I2P in Tails 1.1 and earlier. You can protect yourself
+further by removing the `i2p` package every time you start Tails:
+
+1. [[Set an administration
+   password|doc/first_steps/welcome_screen/administration_password]].
+1. Run this command in a
+   *Root Terminal*:
+
+       apt-get purge i2p
+
+However, if you really need to use I2P in Tails 1.1: before you start
+I2P, disable JavaScript globally [[with
+NoScript|doc/anonymous_internet/Tor_Browser#noscript]] in the
+Tor Browser.
+
+Credits
+=======
+
+This security hole was reported to us by Exodus Intelligence.

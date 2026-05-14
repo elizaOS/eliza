@@ -1,0 +1,29 @@
+[[!meta date="Mon, 05 Aug 2013 00:00:00 +0000"]]
+[[!meta title="Numerous security holes in Tails 0.19"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+Several security holes affect Tails 0.19.
+
+We **strongly** urge you to [[upgrade to Tails 0.20|news/version_0.20]]
+as soon as possible in case you are still using an older version.
+
+Details
+=======
+
+ - Iceweasel
+   (
+   [MFSA 2013-63](https://www.mozilla.org/security/announce/2013/mfsa2013-63.html),
+   [MFSA 2013-68](https://www.mozilla.org/security/announce/2013/mfsa2013-68.html),
+   [MFSA 2013-69](https://www.mozilla.org/security/announce/2013/mfsa2013-69.html),
+   [MFSA 2013-72](https://www.mozilla.org/security/announce/2013/mfsa2013-72.html),
+   [MFSA 2013-73](https://www.mozilla.org/security/announce/2013/mfsa2013-73.html),
+   [MFSA 2013-75](https://www.mozilla.org/security/announce/2013/mfsa2013-75.html)
+   )
+ - libgcrypt11 ([[!debsa2013 2731]])
+ - gnupg ([[!debsa2013 2730]])
+ - bind9 ([[!debsa2013 2728]])
+ - openjdk-6 ([[!debsa2013 2727]])
+ - poppler ([[!debsa2013 2719]])
+ - curl ([[!debsa2013 2713]])

@@ -1,0 +1,21 @@
+- [[System requirements and recommended USB sticks|about/requirements]]
+
+- [[Warnings: Tails is safe but not magic!|about/warnings]]
+
+  * [[Protecting your identity when using Tails|about/warnings/identity]]
+
+  * [[Limitations of the Tor network|about/warnings/tor]]
+
+  * [[Reducing risks when using untrusted computers|about/warnings/computer]]
+
+- [[Features and included software|about/features]]
+
+- [[How can I trust Tails?|about/trust]]
+
+- [[License and source code distribution|about/license]]
+
+- [[Acknowledgments and similar projects|about/acknowledgments_and_similar_projects]]
+
+- [[Contact|doc/about/contact]]
+
+  * [[OpenPGP keys|about/openpgp_keys]]

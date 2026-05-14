@@ -1,0 +1,40 @@
+[[!meta title="Improve Tails by working on Debian"]]
+
+<div id="intro">
+
+<p>So you want to help Tails by working on Debian.
+Welcome aboard! Please read-on.</p>
+
+[[!toc levels=1]]
+
+</div>
+
+# Foreword
+
+Our [[contribute/relationship_with_upstream]] statement defines our
+relationship with Debian.
+
+# Tasks
+
+* Work on the [[Debian bugs that affect
+  Tails|contribute/relationship_with_upstream#debian-bts]].
+
+* Work on our [[!tails_gitlab groups/tails/-/issues?label_name%5B%5D=T%3ADebian
+  desc="issues about Debian work"]].
+
+* Help maintain backports:
+  - look for "backports" on [[!tails_gitweb config/chroot_apt/preferences]]
+
+* Help maintain packages listed in <https://gitlab.tails.boum.org/tails/team/-/wikis/responsibilities/#maintain-relevant-debian-packages-in-debian>.
+
+* Help with distribution-wide improvements:
+
+  - [AppArmor support](https://wiki.debian.org/AppArmor)
+  - [Hardening](https://wiki.debian.org/HardeningWalkthrough)
+  - [Reproducible builds](https://wiki.debian.org/ReproducibleBuilds)
+  - [Reproducible installs](https://wiki.debian.org/ReproducibleInstalls)
+
+# Talk to us
+
+You can subscribe to [[tails-dev@boum.org|doc/about/contact#tails-dev]],
+our development mailing list.

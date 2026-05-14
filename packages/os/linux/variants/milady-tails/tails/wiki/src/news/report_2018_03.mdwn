@@ -1,0 +1,251 @@
+[[!meta title="Tails report for March, 2018"]]
+[[!meta date="Wed, 11 Apr 2018 01:23:45 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!toc]]
+
+Releases
+========
+
+March was a heavy month regarding Tails releases: shortly after
+putting out the Tails 3.6 major release, we had to publish an
+emergency 3.6.1 release to fix security issues identified at Pwn2Own,
+and finally we had to prepare another emergency release (3.6.2) that
+was released in April. Due to an unfortunate combination of software
+development and release management mistakes, applying these upgrades
+was harder than usual for Tails users; apologies!
+
+* [[Tails 3.6 was released on March 13|news/version_3.6]] (major release).
+
+* Tails 3.7 is [[scheduled for May 8|contribute/calendar]].
+
+The following changes were introduced in Tails 3.6:
+
+- You can now lock your screen by clicking on the
+  *Lock* button in the system menu.
+
+  - If you set up an [[administration password|doc/first_steps/welcome_screen/administration_password]]
+    when starting Tails, you can unlock your screen with your administration
+    password.
+  - Otherwise, you can set up a password to unlock your screen when locking your
+    screen for the first time.
+
+- We improved a lot the backend of the **Additional Software**
+  persistence feature.
+  Your additional software is now:
+
+  - Installed in the background after the session starts instead of
+    blocking the opening of the desktop.
+  - Always installed even if you are offline.
+
+- Install
+  [pdf-redact-tools](https://github.com/firstlookmedia/pdf-redact-tools/blob/master/README.md),
+  a command line tool to clean metadata and redact PDF files by
+  converting them to PNG images.
+
+- An error message indicating the name of the graphics card is now
+  displayed when Tails fails to start GNOME.
+
+- The **Tails documentation** launcher on the desktop now opens the
+  documentation on our website if you are online.
+
+- We activated the *AppArmor* profile for *Thunderbird* from Debian
+  to [[confine *Thunderbird* for security|contribute/design/application_isolation]].
+
+- Rewrite some internal scripts from shell scripting to Python, thanks
+  to [GoodCrypto](https://goodcrypto-private-server.sourceforge.io/).
+
+- Remove the display of debug and error messages when starting.
+
+- Fix the ISO image selection being unavailable in *Tails Installer* in
+  languages other than English. ([[!tails_ticket 15233]])
+
+- Fix *OpenPGP Applet* being unresponsive when decrypting a lot of text.
+  ([[!tails_ticket 6398]])
+
+The following changes were introduced in Tails 3.6.1:
+
+- Update *Tor Browser* to 7.5.2.
+
+  This fixes a [critical issue in
+  Firefox](https://www.mozilla.org/en-US/security/advisories/mfsa2018-08/)
+  announced on March 16.
+
+- This release is [[reproducible|contribute/build/reproducible]], unlike
+  Tails 3.6. ([[!tails_ticket 15400]])
+
+Code
+====
+
+- The homepage for our *OpenPGP Applet*, previously hosted on Alioth has been moved to Alioth's successor, [Salsa](https://salsa.debian.org). The address is now <https://openpgp-applet-team.pages.debian.net> and the project (code repository and issue tracker) is reachable at <https://salsa.debian.org/openpgp-applet-team/openpgp-applet>, continuing the project of upstreaming this code so that you can use it outside of Tails. Also, version 1.1 as been released, fixing some long-standing bugs.
+
+- We released *Tails Verification*
+  1.0
+  with some minor improvements from an expert review, updated jQuery and
+  Forge libraries, and a fixed the download link on retry.
+
+  We also documented the security aspects of *Tails
+  Verification*.
+
+- We have worked on a number of regressions that were introduced in
+  Tails 3.6. Many fixes made their way into Tails 3.6.2
+  ([[!tails_ticket 15434]], [[!tails_ticket 15437]],
+  [[!tails_ticket 15433]], [[!tails_ticket 15400]],
+  [[!tails_ticket 15449]], [[!tails_ticket 15371]]) but a few
+  remaining issues require further investigation or have fixes waiting
+  for review upstream.
+
+- We made great progress on our SponsorW-funded project:
+  - Regarding
+    [[!tails_ticket 14468 desc="adding VeraCrypt support to GNOME"]],
+    the libblockdev bits were merged upstream and the udisks one are
+    in good way to be merged as well, and we made progress on the
+    GNOME Files side.
+  - Regarding
+    [[!tails_ticket 14568 desc="Additional Software Packages"]], the
+    backend and the GUI components are implemented; code review and
+    implementation of automated tests have started.
+
+Documentation and website
+=========================
+
+We documented how to:
+
+- Save the configuration of your
+  displays if you have
+  more than one display (for example, two monitors or a projector).
+
+- [[Reproduce a bug in Debian|doc/first_steps/whisperback#debian]]
+  when reporting an error (for advanced users).
+
+- Use *Tails Installer* to do a manual upgrade from
+  3.5 in languages other than English.
+
+We also made the output of the GnuPG command line to verify an ISO
+image more consistent across different
+versions of GnuPG.
+
+User experience
+===============
+
+- From a session at the Internet Freedom Festival, we took notes on how
+  participants used the metaphor of a tent to describe
+  Tails:
+
+  - It's *portable*: you can store it in your backpack.
+  - It's *amnesic*: it's empty every time you set it up.
+  - It's *incognito*: you can move it around and it looks like other tents.
+
+- We started discussing a collaboration with [Simply
+  Secure](https://simplysecure.org/) to explain better what is Tails.
+  The goals are both to reach a consensus among contributors and to make
+  it easier to explain Tails to the world.
+
+Hot topics on our help desk
+===========================
+
+1. Several users complained about
+   [[!tails_ticket 15432 desc="Tails Installer failing"]].
+
+2. And there seems to be more people complaining about
+   [[!tails_ticket 10976 desc="losing their Persistent Volume"]]
+   than usual.
+
+Infrastructure
+==============
+
+- We've worked on a more detailed scheme to include our web translation
+  platform into our workflow ([[!tails_ticket 10034]]).
+
+- We documented our survey
+  platform.
+
+Funding
+=======
+
+- We submitted again our proposal for the work on distributing USB
+  images to the NLnet call for
+  funding.
+
+- We participated in the [DuckDuckGo Privacy
+  Challenge](https://www.crowdrise.com/duckduckgoprivacychallenge). We
+  raised $4 235 and rank 5th on March 28.
+
+- Our fundraising team got a new member. Welcome aboard!
+
+Outreach
+========
+
+Past events
+-----------
+
+- Emma Peel and sajolida where at the [Internet Freedom
+  Festival](https://internetfreedomfestival.org/) where they
+  participated in several sessions on documentation and user experience
+  and presented Tails in the tools showcase.
+
+- anonym and intrigeri attended the Tor meeting in Rome. We've had
+  lots of interesting discussions there, including heart-warming ones
+  about how Tails could work more closely with the Tor project in
+  the future.
+
+- Tails was presented by jvoisin at the
+  [Journées FedeRez](https://www.federez.net/journees/2018/) in Paris,
+  France.
+
+Upcoming events
+---------------
+
+- Tails contributors will attend [CryptoRave](https://cryptorave.org/)
+  (São Paulo, May 4-5) and will run a number of Tails/Tor-related
+  events there, including a users meetup aimed at gathering feedback
+  and better understanding who our users are, what they do with Tails,
+  what works well and what is problematic. If you're around São Paulo,
+  join us there! :)
+
+Press and testimonials
+======================
+
+* 2018-03-19: Edward Snowden retweeted about our participation to the
+  DuckDuckGo Privacy Challenge [explaining](https://twitter.com/Snowden/status/975827513321623553):
+
+  <blockquote>
+  <p>Because I've used @Tails_live for years. The journalists who broke the
+  mass surveillance revelations of 2013 all relied on it. Free, libre, and
+  open source software projects quietly save the world every day, even
+  when you can't see it, and their success depends on your support.</p>
+  </blockquote>
+
+Translation
+===========
+
+## All the website
+
+  - de: 52% (2820) strings translated, 7% strings fuzzy, 46% words translated
+  - es: 44% (2422) strings translated, 0% strings fuzzy, 34% words translated
+  - fa: 38% (2071) strings translated, 10% strings fuzzy, 40% words translated
+  - fr: 91% (4933) strings translated, 1% strings fuzzy, 89% words translated
+  - it: 35% (1899) strings translated, 5% strings fuzzy, 31% words translated
+  - pt: 23% (1245) strings translated, 9% strings fuzzy, 19% words translated
+
+Total original words: 57706
+
+## [[Core pages of the website|contribute/l10n_tricks/core_po_files.txt]]
+
+  - de: 75% (1433) strings translated, 13% strings fuzzy, 76% words translated
+  - es: 93% (1771) strings translated, 2% strings fuzzy, 89% words translated
+  - fa: 33% (636) strings translated, 11% strings fuzzy, 33% words translated
+  - fr: 98% (1862) strings translated, 1% strings fuzzy, 98% words translated
+  - it: 69% (1322) strings translated, 14% strings fuzzy, 70% words translated
+  - pt: 41% (781) strings translated, 15% strings fuzzy, 41% words translated
+
+Total original words: 17281
+
+Metrics
+=======
+
+* Tails has been started more than 693 060 times this month.
+  This makes 22 357 boots a day on average.
+* 13 315 downloads of the OpenPGP signature of Tails ISO from our website.
+* 139 bug reports were received through WhisperBack.
+

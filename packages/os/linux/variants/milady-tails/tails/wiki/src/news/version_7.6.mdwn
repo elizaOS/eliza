@@ -1,0 +1,127 @@
+[[!meta title="Tails 7.6"]]
+[[!meta date="Thu, 26 Mar 2026 00:00:00 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+
+<h1 id="features">New features</h1>
+
+## Automatic Tor bridges
+
+You can now learn about Tor bridges directly from the *Tor Connection*
+assistant in Tails.
+
+Tor bridges are secret Tor relays that hide that you are connecting to Tor.
+If connecting to Tor is blocked from where you are, you can use a
+bridge as your first Tor relay to circumvent this censorship. 
+
+In Tails 7.6, choose **Connect to Tor automatically** when opening *Tor
+Connection*. If access to the Tor network is blocked, the bridge configuration
+screen offers a new option called **Ask for a Tor bridge based on your
+region**.
+
+[[!img doc/anonymous_internet/tor/bridge.png class="screenshot" alt=""]]
+
+This feature uses the same technology as the connection assistant in *Tor
+Browser* outside of Tails, which was introduced in [[Tor Browser
+11.5|https://blog.torproject.org/new-release-tor-browser-115/]] (July 2022).
+
+Tails downloads information about bridges that are most likely to work in
+your region from the [[Moat
+API|https://gitlab.torproject.org/tpo/anti-censorship/rdsys/-/blob/main/doc/moat.md]]
+of the Tor Project. To circumvent censorship, this connection is disguised as
+a connection to another website using [[!wikipedia domain fronting]].
+
+## GNOME Secrets
+
+In Tails 7.6, the [[*Secrets*|https://gitlab.gnome.org/World/secrets]] password
+manager replaces [[*KeePassXC*|https://keepassxc.org/]].
+
+*Secrets* has a simpler interface and is better integrated in the GNOME
+desktop. For example, accessibility features, such as the screen keyboard and
+cursor size, are working again with *Secrets*.
+
+*Secrets* offers to unlock your previous *KeePassXC* database automatically, 
+because both *Secrets* and *KeePassXC* use the same file format to store
+passwords.
+
+If you miss more advanced features from *KeePassXC*, you can install
+*KeePassXC* as [[additional
+software|doc/persistent_storage/additional_software]].
+
+[[!img secrets.png class="screenshot" alt=""]]
+
+<div class="tip">
+
+  <p>The main keyboard shortcuts of <i>Secrets</i> are similar to the ones of
+  <i>KeePassXC</i>, with <b>Shift</b> in addition to <b>Ctrl</b>:</p>
+
+  <ul>
+    <li><b>Shift+Ctrl+C</b>: copy password</li>
+    <li><b>Shift+Ctrl+V</b>: copy address</li>
+    <li><b>Shift+Ctrl+B</b>: copy username</li>
+    <li><b>Shift+Ctrl+T</b>: copy one-time password</li>
+  </ul>
+
+  <p>To see the full list of keyboard shortcuts of <i>Secrets</i>, press
+  <b>Ctrl+?</b>.</p>
+
+</div>
+
+<h1 id="changes">Changes and updates</h1>
+
+- Update *Electrum* from 4.5.8 to [4.7.0](https://github.com/spesmilo/electrum/blob/master/RELEASE-NOTES).
+
+- Update *Tor Browser* to [15.0.8](https://blog.torproject.org/new-release-tor-browser-1508/).
+
+- Update *Thunderbird* to [140.8.0](https://www.thunderbird.net/en-US/thunderbird/140.8.0esr/releasenotes/).
+
+- Update most firmware packages. This improves support for newer hardware:
+  graphics, Wi-Fi, and so on.
+
+<h1 id="fixes">Fixed problems</h1>
+
+- Translate the confirmation dialog that appears before saving the language and
+  keyboard layout on the USB stick. ([[!tails_ticket 21448]])
+
+  [[!img version_7.6/save.png class="screenshot" alt=""]]
+
+- Fix the **Learn More** button in the *Thunderbird* migration notification. ([[!tails_ticket 21455]])
+
+  [[!img doc/anonymous_internet/thunderbird/additional_software/manual.png class="screenshot" alt=""]]
+
+- Fix automated upgrades in Turkish. ([[!tails_ticket 21466]])
+
+For more details, read our [[!tails_gitweb debian/changelog desc="changelog"]].
+
+<h1 id="get">Get Tails 7.6</h1>
+
+## To upgrade your Tails USB stick and keep your Persistent Storage
+
+- Automatic upgrades are available from Tails 7.0 or later to 7.6.
+
+- If you cannot do an automatic upgrade or if Tails fails to start after an
+  automatic upgrade, please try to do a [[manual upgrade|doc/upgrade/#manual]].
+
+## To install Tails 7.6 on a new USB stick
+
+Follow our installation instructions:
+
+- [[Install from Windows|install/windows]]
+
+- [[Install from macOS|install/mac]]
+
+- [[Install from Linux|install/linux]]
+
+- [[Install from Debian or Ubuntu using the command line and GnuPG|install/expert]]
+
+<div class="caution"><p>The Persistent Storage on the USB stick will be lost if
+you install instead of upgrading.</p></div>
+
+## To download only
+
+If you don't need installation or upgrade instructions, you can download
+Tails 7.6 directly:
+
+- [[For USB sticks (USB image)|install/download]]
+
+- [[For DVDs and virtual machines (ISO image)|install/download-iso]]

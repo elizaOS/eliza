@@ -1,0 +1,78 @@
+[[!meta date="Sat, 18 May 2013 11:23:45 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!meta title="Tails 0.18 is out"]]
+[[!tag announce]]
+
+Tails, The Amnesic Incognito Live System, version 0.18, is out.
+
+All users must upgrade as soon as possible.
+
+[[!toc levels=1]]
+
+# Changes
+
+Notable user-visible changes include:
+
+* New features
+  - Support obfs3 bridges.
+  - Automatically install a custom list of additional packages
+    chosen by the user at the beginning of every working session, and upgrade
+    them once a network connection is established (technology preview).
+
+* Iceweasel
+  - Upgrade to Iceweasel 17.0.6esr-0+tails1~bpo60+1.
+  - Update Torbrowser patches to current maint-2.4 branch (567682b).
+  - Torbutton 1.5.2, and various prefs hacks to fix breakage.
+  - HTTPS Everywhere 3.2
+  - NoScript 2.6.6.1-1
+  - Isolate DOM storage to first party URI, and enable DOM storage.
+  - Isolate the image cache per url bar domain.
+  - Update prefs to match the TBB's, fix bugs, and take advantage of
+    the latest Torbrowser patches.
+  - Make prefs organization closer to the TBB's, and generally clean
+    them up.
+
+* Bugfixes
+  - Linux 3.2.41-2+deb7u2.
+  - All Iceweasel prefs we set are now applied.
+  - Bring back support for proxies of type other than obfsproxy.
+
+* Minor improvements
+  - Set `kernel.dmesg_restrict=1`, and make `/proc/<pid>/` invisible
+    and restricted for other users. It makes it slightly harder for an
+    attacker to gather information that may allow them to
+    escalate privileges.
+  - Install gnome-screenshot.
+  - Add a *About Tails* launcher in the *System* menu.
+  - Install GNOME accessibility themes.
+  - Use *Getting started...* as the homepage for the Tails
+    documentation button.
+  - Disable audio preview in Nautilus.
+
+* Localization: many translation updates all over the place.
+
+See the online
+Changelog
+for technical details.
+
+# Known issue
+
+The web browser default search engine is Google, instead of the
+intended localized Startpage. You may select *Startpage HTTPS* in the
+search engine menu next to the Google icon.
+
+# I want to try it / to upgrade!
+
+See the Getting started page.
+
+As no software is ever perfect, we maintain a list of [[problems
+that affects the last release of Tails|support/known_issues]].
+
+# What's coming up?
+
+The next Tails release is scheduled for June 27.
+
+
+Would you want to help? As explained in our [["how to contribute"
+documentation|contribute]], there are many ways **you** can contribute
+to Tails. If you want to help, come talk to us!

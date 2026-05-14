@@ -1,0 +1,21 @@
+// Allow amnesia to start tails-additional-software-install.service;
+// fall back to implicit authorization otherwise.
+polkit.addRule(function(action, subject) {
+    if (action.id == "org.freedesktop.systemd1.manage-units" &&
+        action.lookup("unit") == "tails-additional-software-install.service" &&
+        action.lookup("verb") == "start" &&
+        subject.user == "amnesia") {
+        return polkit.Result.YES;
+    }
+});
+
+// Allow amnesia to start tails-additional-software-update-config.service;
+// fall back to implicit authorization otherwise.
+polkit.addRule(function(action, subject) {
+    if (action.id == "org.freedesktop.systemd1.manage-units" &&
+        action.lookup("unit") == "tails-additional-software-update-config.service" &&
+        action.lookup("verb") == "start" &&
+        subject.user == "amnesia") {
+        return polkit.Result.YES;
+    }
+});

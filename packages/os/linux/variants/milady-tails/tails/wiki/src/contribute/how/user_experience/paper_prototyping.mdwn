@@ -1,0 +1,42 @@
+[[!meta title="Paper prototyping"]]
+
+Resources on paper prototyping
+==============================
+
+- [Paper Prototyping](http://alistapart.com/article/paperprototyping) by Shawn Medero
+- [Prototyping: A Practitioner's Guide](https://rosenfeldmedia.com/books/prototyping/) by Todd Zaki Warfel
+
+*WireframeSketcher*
+===================
+
+[*WireframeSketcher*](https://wireframesketcher.com/) is a proprietary
+tool to create wireframes. It's super easy to learn, super fast to use
+and works from Tails!
+
+<div class="caution">
+
+<p><i>WireframeSketcher</i> being proprietary
+software, you are not allowed to install it on your Tails if you have to
+comply with most of the security policies of our internal teams. You
+should install it on a dedicated Tails without sensitive
+information.</p>
+
+</div>
+
+To install *WireframeSketcher* in Tails, execute:
+
+    wget https://wireframesketcher.com/downloads/WireframeSketcher-latest_amd64.deb
+    sudo dpkg -i WireframeSketcher-latest_amd64.deb
+    sudo apt-get -f install --yes
+
+Wireframe library for GNOME and Tails
+--------------------------------------
+
+This Git repository contains wireframes from past projects:
+
+<https://gitlab.tails.boum.org/tails/ux>
+
+In the *generic* folder, you can find reusable wireframes and icons for
+GNOME and Tails, like the desktop or *Files*:
+
+<https://gitlab.tails.boum.org/tails/ux/-/tree/master/generic>

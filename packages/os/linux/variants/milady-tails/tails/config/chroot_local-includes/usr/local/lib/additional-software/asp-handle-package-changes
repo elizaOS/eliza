@@ -1,0 +1,294 @@
+#!/usr/bin/python3 -I
+
+"""Command to handle Dpkg::Post-Invoke.
+
+Retrieve the list of packages saved by apt_hook_pre, filter packages not
+interesting and pass the resulting list to the appropriate method.
+"""
+import argparse
+import fcntl
+import gettext
+import logging
+import os
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+import apt.cache
+
+import additional_software
+from additional_software import (
+    add_additional_packages,
+    notify,
+    notify_failure,
+    ASP_STATE_INSTALLER_ASKED,
+    remove_additional_packages,
+    setup_additional_packages,
+)
+from tailslib.locale import apply_selected_locale
+from tailslib.persistence import (
+    has_unlocked_persistence,
+    has_persistence,
+    is_tails_media_writable,
+    spawn_tps_frontend,
+    additional_software_persistence_feature_is_active,
+)
+
+
+apply_selected_locale()
+gettext.textdomain("tails")
+_ = gettext.gettext
+
+LOCK_FILE = "/run/live-additional-software/handle-package-changes-lock"
+
+
+def handle_installed_packages(packages: set[str]):
+    """Configure packages as additional software packages if the user wants to.
+
+    Ask the user if packages should be added to additional software, and
+    actually add them if requested.
+    """
+    logging.info("New packages manually installed: %s" % packages)
+    if has_unlocked_persistence():
+        # Translators: Don't translate {packages}, it's a placeholder and will
+        # be replaced.
+        if notify(
+            _("Add {packages} to your additional software?").format(
+                packages=_format_iterable(packages)
+            ),
+            _(
+                "To install it automatically from your persistent "
+                "storage when starting Tails."
+            ),
+            _("Install Every Time"),
+            _("Install Only Once"),
+            urgent=True,
+        ):
+            try:
+                setup_additional_packages()
+                add_additional_packages(packages)
+            except Exception as e:
+                logging.exception("failed to add additional packages")
+                notify_failure(
+                    _("The configuration of your additional software failed.")
+                )
+                raise e
+    elif has_persistence():
+        # When a package is installed with a persistent storage locked, don't
+        # show any notification.
+        #
+        # People who have a persistent storage but don't unlock it, probably do
+        # this only sometimes and for a reason. They probably otherwise unlock
+        # their persistent storage most of the time.
+        #
+        # If they install packages with their persistent storage locked, they
+        # probably do it with their persistent storage unlock as well and would
+        # learn about this feature when it's most relevant for them.
+        logging.warning(
+            "Warning: persistence storage is locked, can't add additional software."
+        )
+    elif is_tails_media_writable():
+        # Translators: Don't translate {packages}, it's a placeholder and will
+        # be replaced.
+        if notify(
+            _("Add {packages} to your additional software?").format(
+                packages=_format_iterable(packages)
+            ),
+            _(
+                "To install it automatically when starting Tails, you "
+                "can create a Persistent Storage and activate the "
+                "<b>Additional Software</b> feature."
+            ),
+            _("Create Persistent Storage"),
+            _("Install Only Once"),
+            urgent=True,
+        ):
+            try:
+                create_persistence_and_setup_additional_packages(packages)
+            except Exception as e:
+                logging.exception("failed to create Persistent Storage")
+                notify_failure(
+                    _("The configuration of your additional software failed."),
+                    _("Creating your Persistent Storage failed."),
+                )
+                raise e
+    else:  # It's impossible to have a persistent storage
+        logging.warning("Cannot create Persistent Storage on this media.")
+        if not os.path.isfile(ASP_STATE_INSTALLER_ASKED):
+            open(ASP_STATE_INSTALLER_ASKED, "a").close()
+            # Translators: Don't translate {packages}, it's a placeholder and
+            # will be replaced.
+            notify(
+                _(
+                    "You could install {packages} automatically when starting Tails"
+                ).format(packages=_format_iterable(packages)),
+                _("To do so, you need to run Tails from a USB stick."),
+                documentation_target="install/clone",
+                urgent=True,
+            )
+
+
+def create_persistence_and_setup_additional_packages(packages: set[str]):
+    """Create persistence and add packages to its configuration.
+
+    Create a new persistence with additional packages enabled.
+    Then add the packages to additional packages configuration.
+
+    packages should be a list of packages names.
+    """
+    logging.info("Creating new persistent volume")
+    # We start tps-frontend in the background and don't wait for it
+    # to exit, which may or may not ever happen.
+    tps_frontend_service = spawn_tps_frontend()
+    logging.info("Waiting for Persistent Storage to be ready")
+    # This can take a while: tps is copying the APT lists and packages
+    # to the newly created Persistent Storage.
+    while not additional_software_persistence_feature_is_active():
+        # Check if tps-frontend is still running.
+        try:
+            cmd = [
+                "/usr/local/lib/run-with-user-env",
+                "/bin/systemctl",
+                "--user",
+                "is-active",
+                tps_frontend_service,
+            ]
+            subprocess.run(
+                cmd,
+                check=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+        except subprocess.CalledProcessError as e:
+            # Print the stderr from the error for debugging
+            if e.stderr:
+                print(e.stderr, file=sys.stderr)
+
+            # The Persistent Storage is not ready yet, but tps-frontend
+            # is not running anymore, so the user probably closed it
+            # without creating a Persistent Storage.
+            logging.info("Persistent Storage creation was cancelled")
+            return
+        time.sleep(2)
+
+    logging.info("Persistent Storage is ready, setting up additional packages")
+    add_additional_packages(packages)
+
+
+def handle_removed_packages(packages: set[str]):
+    """Removes packages from additional software packages if the user wants to.
+
+    Ask the user if packages should be removed from additional software, and
+    actually remove them if requested.
+    """
+    logging.info("Additional packages removed: %s" % packages)
+    # Translators: Don't translate {packages}, it's a placeholder and will be
+    # replaced.
+    if notify(
+        _("Remove {packages} from your additional software?").format(
+            packages=_format_iterable(packages)
+        ),
+        # Translators: Don't translate {packages}, it's a placeholder
+        # and will be replaced.
+        _("This will stop installing {packages} automatically.").format(
+            packages=_format_iterable(packages)
+        ),
+        _("Remove"),
+        _("Cancel"),
+        urgent=True,
+    ):
+        try:
+            remove_additional_packages(packages)
+        except Exception as e:
+            logging.exception("failed to remove additional packages")
+            notify_failure(_("The configuration of your additional software failed."))
+            raise e
+
+
+def _format_iterable(iterable):
+    """Return a nice formatted string with the elements of iterable."""
+    iterable = sorted(iterable)
+
+    if len(iterable) == 1:
+        return iterable[0]
+    elif len(iterable) > 1:
+        # Translators: Don't translate {beginning} or {last}, they are
+        # placeholders and will be replaced.
+        return _("{beginning} and {last}").format(
+            beginning=_(", ").join(iterable[:-1]), last=iterable[-1]
+        )
+    else:
+        return str(iterable)
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Handle package changes")
+    parser.add_argument(
+        "--installed", help="File containing the list of installed packages"
+    )
+    parser.add_argument(
+        "--removed", help="File containing the list of removed packages"
+    )
+    args = parser.parse_args()
+
+    additional_software.set_up_logging()
+
+    # Acquire a lock to avoid running multiple instances of this script
+    # concurrently, which would lead to race conditions (see #16034) and
+    # incorrect behavior (asking the user twice about the same package).
+    logging.info("Acquiring lock")
+    lock_file = open(LOCK_FILE, "w")
+    fcntl.flock(lock_file, fcntl.LOCK_EX)
+
+    logging.info("Examining package changes")
+
+    installed_packages = list()
+    installed_packages_file = Path(args.installed)
+    if installed_packages_file.exists():
+        installed_packages = installed_packages_file.read_text().splitlines()
+        installed_packages_file.unlink()
+
+    removed_packages = list()
+    removed_packages_file = Path(args.removed)
+    if removed_packages_file.exists():
+        removed_packages = removed_packages_file.read_text().splitlines()
+        removed_packages_file.unlink()
+
+    additional_packages_names = {
+        additional_software.filter_package_details(pkg)
+        for pkg in additional_software.get_additional_packages()
+    }
+
+    apt_cache = apt.cache.Cache()
+    # Filter automatically installed packages and packages already configured
+    # as additional software
+    new_manually_installed_packages = {
+        pkg
+        for pkg in installed_packages
+        if (
+            not apt_cache[pkg].is_auto_installed
+            and pkg not in additional_packages_names
+        )
+    }
+    # The apt cache is huge (about 75MB on Tails 5.21) and handling
+    # the installed/removed packages can depend on user interaction,
+    # so we release the memory used by the apt cache now.
+    del apt_cache
+
+    if new_manually_installed_packages:
+        handle_installed_packages(new_manually_installed_packages)
+
+    # Filter non-additional software packages
+    additional_packages_removed = set(removed_packages).intersection(
+        additional_packages_names
+    )
+    if additional_packages_removed:
+        handle_removed_packages(additional_packages_removed)
+
+    logging.info("Exiting")
+
+
+if __name__ == "__main__":
+    main()

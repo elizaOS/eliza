@@ -1,0 +1,9 @@
+--- a/etc/plymouth/plymouthd.conf	2025-05-21 12:15:51.879535351 +0200
++++ b/etc/plymouth/plymouthd.conf	2025-05-21 12:16:09.083498870 +0200
+@@ -1,4 +1,4 @@
+ # Administrator customizations go in this file
+-#[Daemon]
+-#Theme=ceratopsian
++[Daemon]
++Theme=text
+ #ShowDelay=0

@@ -1,0 +1,34 @@
+[[!meta title="Daan, December 2017"]]
+
+Daan is a 18 years old ICT (information and communications technology)
+student and a security researcher. He lives in the Netherlands and
+cares a lot about privacy.
+
+He learned about Tails on the Tor website after he started using Tor.
+He tried Tails, noticed that everything was routed through Tor by
+default and liked it. He also immediately appreciated that
+cryptography tools, such as OpenPGP encryption, are readily
+accessible. The memory erasure on shutdown feature was another
+key point.
+
+Daan is a power-user who themed his Tails and uses additional software
+packages. He uses Tails only when he feels it's needed and not daily,
+for example when he feels like the government may target him because
+he looks up specific information. He uses Tails for penetration
+testing, sharing files privately with his friends, and occasionally
+for software development.
+
+Things he likes:
+
+1. Memory erasure on shutdown.
+2. Access to encryption tools (OpenPGP, KeePassX).
+3. No data leaves the computer without going through Tor.
+
+Things he dislikes:
+
+1. He finds the applications menu hard to use (but he likes GNOME).
+2. He would like to see tcpcrypt integrated
+   in Tails.
+3. He finds the Tails user interface glossy and thinks it should
+   look fancier.
+4. He wants server functionality in Tails.

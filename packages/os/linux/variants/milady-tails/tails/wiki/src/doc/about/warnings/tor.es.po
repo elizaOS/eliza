@@ -1,0 +1,267 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"POT-Creation-Date: 2025-11-05 08:59+0000\n"
+"PO-Revision-Date: 2024-11-01 12:38+0000\n"
+"Last-Translator: victor dargallo <victordargallo@disroot.org>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: es\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.3\n"
+
+#. type: Content of: <div>
+msgid "[[!meta title=\"Limitations of the Tor network\"]]"
+msgstr "[[!meta title=\"Limitaciones de la red Tor\"]]"
+
+#. type: Content of: <h1>
+msgid "Limitations of Tor"
+msgstr "Limitaciones de Tor"
+
+#. type: Content of: <div>
+msgid ""
+"[[!inline pages=\"doc/about/warning/tor.inline\" raw=\"yes\" sort=\"age\"]] "
+"[[!toc levels=2]]"
+msgstr ""
+"[[!inline pages=\"doc/about/warning/tor.inline.es\" raw=\"yes\" "
+"sort=\"age\"]] [[!toc levels=2]]"
+
+#. type: Content of: <h2>
+msgid "Tails makes it clear that you are using Tor and probably Tails"
+msgstr "Tails no oculta que estás usando Tor y probablemente Tails"
+
+#. type: Content of: <p>
+msgid ""
+"Everything you do on the Internet from Tails goes through the Tor network."
+msgstr "Todo lo que haces en Internet desde Tails pasa por la red Tor."
+
+#. type: Content of: <p>
+#, fuzzy
+#| msgid ""
+#| "Tor and Tails don't protect you by making you look like any random "
+#| "Internet user, but by making all Tor and Tails users look the same. It "
+#| "becomes impossible to know who is who among them."
+msgid ""
+"Tor and Tails don't protect you by making you look like any random Internet "
+"user, but by making all Tor and Tails users look the same. It becomes "
+"impossible to know who is who among all users."
+msgstr ""
+"Tor y Tails no te protegen haciéndote ver como cualquier usuario de Internet "
+"al azar, sino haciendo que todos los usuarios de Tor y Tails se vean "
+"iguales. Se vuelve imposible saber quién es quién entre ellos."
+
+#. type: Content of: <ul><li><p>
+#, fuzzy
+#| msgid ""
+#| "Your Internet service provider (ISP) and local network can see that you "
+#| "connect to the Tor network. They still cannot know what sites you visit.  "
+#| "To hide that you connect to Tor, you can use a [[Tor bridge|doc/"
+#| "anonymous_internet/tor]]."
+msgid ""
+"Your Internet service provider (ISP) and local network can see that you "
+"connect to the Tor network. But, they cannot know which sites you visit.  To "
+"also hide that you connect to Tor, use a [[Tor bridge|doc/anonymous_internet/"
+"tor]]."
+msgstr ""
+"Tu proveedor de servicios de Internet (ISP) y tu red local pueden ver que te "
+"conectas a la red Tor. Pero no pueden saber qué sitios visitas. Para ocultar "
+"que te conectas a Tor, puedes usar un [[puente de Tor|doc/anonymous_internet/"
+"tor]]."
+
+#. type: Content of: <ul><li><p>
+msgid ""
+"The sites that you visit can know that you are using Tor, because the <a "
+"href=\"https://metrics.torproject.org/exonerator.html\">list of exit nodes "
+"of the Tor network</a> is public."
+msgstr ""
+"Los sitios que visitas pueden saber que estás usando Tor, porque la <a "
+"href=\"https://metrics.torproject.org/exonerator.html\">lista de nodos de "
+"salida de la red Tor</a> es pública."
+
+#. type: Content of: <div><p>
+msgid ""
+"Parental controls, Internet service providers, and countries with heavy "
+"censorship can identify and block connections to the Tor network that don't "
+"use Tor bridges."
+msgstr ""
+"Los controles parentales, los proveedores de servicios de Internet y los "
+"países con una fuerte censura pueden identificar y bloquear las conexiones a "
+"la red Tor que no utilizan puentes Tor."
+
+#. type: Content of: <div><p>
+msgid ""
+"Many websites ask you to solve a CAPTCHA or block access from the Tor "
+"network."
+msgstr ""
+"Muchos sitios web te piden que resuelvas un CAPTCHA o bloquean el acceso "
+"desde la red Tor."
+
+#. type: Content of: <h2>
+msgid "Exit nodes can intercept traffic to the destination server"
+msgstr ""
+"Los nodos de salida pueden interceptar el tráfico hacia el servidor de "
+"destino"
+
+#. type: Content of: <p>
+msgid ""
+"Tor hides your location from destination servers, but it does not encrypt "
+"<i>all</i> your communication. The last relay of a Tor circuit, called the "
+"<i>exit node</i>, establishes the actual connection to the destination "
+"server. This last step can be unencrypted, for example, if you connect to a "
+"website using HTTP instead of HTTPS."
+msgstr ""
+"Tor oculta tu ubicación de los servidores de destino, pero no cifra "
+"<i>todas</i> tus comunicaciones. El último repetidor de un circuito Tor, "
+"llamado <i>nodo de salida</i>, establece la conexión real con el servidor de "
+"destino. Este último paso se puede descifrar, por ejemplo, si te conectas a "
+"un sitio web mediante HTTP en lugar de HTTPS."
+
+#. type: Content of: outside any tag (error?)
+msgid ""
+"[[!img doc/anonymous_internet/tor/tor.svg size=\"600x\" link=\"no\" alt=\"A "
+"Tor connection goes through 3 relays with the last one establishing the "
+"actual connection to the final destination\"]]"
+msgstr ""
+
+#. type: Content of: <p>
+msgid "The exit node can:"
+msgstr "El nodo de salida puede:"
+
+#. type: Content of: <ul><li><p>
+msgid ""
+"Observe your traffic. That is why <i>Tor Browser</i> and Tails include tools "
+"to encrypt the connection between the exit node and the destination server, "
+"whenever possible."
+msgstr ""
+"Observar tu tráfico. Es por eso que el <i>Navegador Tor</i> y Tails incluyen "
+"herramientas para cifrar la conexión entre el nodo de salida y el servidor "
+"de destino, siempre que sea posible."
+
+#. type: Content of: <ul><li><p>
+msgid ""
+"Pretend to be the destination server, a technique known as <i>machine-in-the-"
+"middle</i> attack (MitM). That is why you should pay even more attention to "
+"the security warnings in <i>Tor Browser</i>. If you get such a warning, use "
+"the [[New Identity|doc/anonymous_internet/Tor_Browser#new-identity]] feature "
+"of <i>Tor Browser</i> to change exit node."
+msgstr ""
+
+#. type: Content of: <ul>
+#, fuzzy
+#| msgid ""
+#| "[[!img ssl_warning.png link=no alt=\"Warning: Potential Security Risk "
+#| "Ahead\"]]"
+msgid ""
+"[[!img ssl_warning.png link=\"no\" alt=\"Warning: Potential Security Risk "
+"Ahead\"]]"
+msgstr ""
+"[[!img ssl_warning.png link=no alt=\"Aviso: Posible riesgo para la "
+"seguridad\"]]"
+
+#. type: Content of: <p>
+msgid ""
+"To learn more about what information is available to someone observing the "
+"different parts of a Tor circuit, see the interactive graphics at [[Tor "
+"Support: How HTTPS encryption and Tor works in Tor Browser to enhance your "
+"privacy and anonymity|https://support.torproject.org/about-tor/security/"
+"https-encryption-and-tor/]]."
+msgstr ""
+
+#. type: Content of: <div><p>
+msgid ""
+"Tor exit nodes have been used in the past to collect sensitive information "
+"from unencrypted connections. Malicious exit nodes are regularly identified "
+"and removed from the Tor network. For an example, see <a href=\"https://"
+"arstechnica.com/information-technology/2007/09/security-expert-used-tor-to-"
+"collect-government-e-mail-passwords/\">Ars Technica: Security expert used "
+"Tor to collect government e-mail passwords</a>."
+msgstr ""
+
+#. type: Content of: <h2>
+msgid "Adversaries watching both ends of a Tor circuit could identify users"
+msgstr ""
+"Los adversarios que observan ambos extremos de un circuito Tor podrían "
+"identificar a los usuarios"
+
+#. type: Content of: <p>
+msgid ""
+"An adversary, who could control the 3 relays in a circuit, could deanonymize "
+"Tor users."
+msgstr ""
+"Un adversario, que pudiera controlar los 3 repetidores en un circuito, "
+"podría desanonimizar a los usuarios de Tor."
+
+#. type: Content of: <div><p>
+msgid ""
+"Tor chooses 3 relays that belong to 3 different network operators for each "
+"circuit."
+msgstr ""
+"Tor elige 3 repetidores que pertenecen a 3 operadores de red diferentes para "
+"cada circuito."
+
+#. type: Content of: <div><p>
+msgid ""
+"Tails takes extra measures to [[use different circuits for different "
+"applications|contribute/design/stream_isolation]]."
+msgstr ""
+"Tails toma medidas adicionales para [[usar diferentes circuitos para "
+"diferentes aplicaciones|contribute/design/stream_isolation]]."
+
+#. type: Content of: <div><p>
+msgid ""
+"The Tor network has more than 6&#8239;000 relays. Organizations running Tor "
+"relays include universities like the MIT, activist groups like Riseup, "
+"nonprofits like Derechos Digitales, Internet hosting companies like Private "
+"Internet Access, and so on. The huge diversity of people and organizations "
+"running Tor relays makes it more secure and more sustainable."
+msgstr ""
+"La red Tor tiene más de 6&#8239;000 repetidores. Las organizaciones que "
+"ejecutan repetidores de Tor incluyen universidades como el MIT, grupos de "
+"activistas como Riseup, organizaciones sin fines de lucro como Derechos "
+"Digitales, empresas de alojamiento de Internet como Private Internet Access, "
+"entre otras. La enorme diversidad de personas y organizaciones que ejecutan "
+"repetidores de Tor lo hace más seguro y sostenible."
+
+#. type: Content of: <p>
+#, fuzzy
+msgid ""
+"A powerful adversary, who could analyze the timing and shape of the traffic "
+"entering and exiting the Tor network, might be able to deanonymize Tor "
+"users.  These attacks are called <i>end-to-end correlation</i> attacks, "
+"because the attacker has to observe both ends of a Tor circuit at the same "
+"time."
+msgstr ""
+"Un adversario poderoso, que podría analizar el tiempo y la forma del tráfico "
+"que ingresa y sale de la red Tor, podría eliminar el anonimato de los "
+"usuarios de Tor. Estos ataques se denominan ataques de <i>correlación de "
+"extremo a extremo</i>, porque el atacante tiene que observar ambos extremos "
+"de un circuito Tor al mismo tiempo."
+
+#. type: Content of: <p>
+msgid ""
+"No anonymity network used for rapid connections, like browsing the web or "
+"instant messaging, can protect 100% from end-to-end correlation attacks. In "
+"this case, VPNs (Virtual Private Networks) are less secure than Tor, because "
+"they do not use 3 independent relays."
+msgstr ""
+"Ninguna red de anonimato utilizada para conexiones rápidas, como navegar por "
+"la web o mensajería instantánea, puede proteger al 100 % de los ataques de "
+"correlación de extremo a extremo. En este caso, las VPN (redes privadas "
+"virtuales) son menos seguras que Tor, porque no utilizan 3 repetidores "
+"independientes."
+
+#. type: Content of: <div><p>
+msgid ""
+"End-to-end correlation attacks have been studied in research papers, but we "
+"don't know of any actual use to deanonymize Tor users. For an example, see "
+"<a href=\"https://www.freehaven.net/anonbib/cache/murdoch-"
+"pet2007.pdf\">Murdoch and Zieliński: Sampled Traffic Analysis by Internet-"
+"Exchange-Level Adversaries</a>."
+msgstr ""
