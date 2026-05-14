@@ -323,7 +323,11 @@ export class DeviceBridge {
   >();
 
   private readonly expectedPairingToken: string | null =
-    process.env.ELIZA_DEVICE_PAIRING_TOKEN?.trim() || null;
+    process.env.ELIZA_DEVICE_PAIRING_TOKEN?.trim() ||
+    process.env.ELIZA_DEVICE_BRIDGE_TOKEN?.trim() ||
+    null;
+  private readonly requirePairingToken =
+    process.env.ELIZA_DEVICE_BRIDGE_ALLOW_UNPAIRED?.trim() !== "1";
 
   status(): DeviceBridgeStatus {
     const summaries: DeviceSummary[] = [];
@@ -398,6 +402,12 @@ export class DeviceBridge {
 
   async attachToHttpServer(server: HttpServer): Promise<void> {
     if (this.wss) return;
+    if (this.requirePairingToken && !this.expectedPairingToken) {
+      logger.warn(
+        "[device-bridge] Disabled: ELIZA_DEVICE_PAIRING_TOKEN is required when ELIZA_DEVICE_BRIDGE_ENABLED=1",
+      );
+      return;
+    }
     const ws = await importWsModule();
     const wss = new ws.WebSocketServer({
       noServer: true,
@@ -432,7 +442,10 @@ export class DeviceBridge {
     url: URL,
   ): void {
     const queryToken = url.searchParams.get("token")?.trim();
-    if (this.expectedPairingToken && queryToken !== this.expectedPairingToken) {
+    if (
+      this.requirePairingToken &&
+      (!this.expectedPairingToken || queryToken !== this.expectedPairingToken)
+    ) {
       logger.warn("[device-bridge] Rejecting connection: bad query token");
       socket.close(4001, "unauthorized");
       return;
@@ -457,9 +470,15 @@ export class DeviceBridge {
           socket.close(4002, "must-register-first");
           return;
         }
+        if (msg.payload.capabilities.platform === "ios") {
+          logger.warn("[device-bridge] Rejecting iOS registration: use native IPC");
+          socket.close(4003, "ios-ipc-required");
+          return;
+        }
         if (
-          this.expectedPairingToken &&
-          msg.payload.pairingToken !== this.expectedPairingToken
+          this.requirePairingToken &&
+          (!this.expectedPairingToken ||
+            msg.payload.pairingToken !== this.expectedPairingToken)
         ) {
           logger.warn("[device-bridge] Rejecting register: bad pairing token");
           socket.close(4001, "unauthorized");

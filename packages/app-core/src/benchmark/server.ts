@@ -21,6 +21,7 @@ import {
 } from "./lifeops-bench-handler.js";
 import type { LifeOpsFakeBackend } from "./lifeops-fake-backend.js";
 import {
+  type CapturedAction,
   clearCapturedAction,
   createBenchmarkPlugin,
   getCapturedAction,
@@ -342,6 +343,59 @@ function buildLifeOpsBenchmarkContext(
     calendarEvents,
     previousToolResults,
   };
+}
+
+function capturedLifeOpsActionArguments(
+  action: CapturedAction,
+): Record<string, unknown> {
+  if (action.arguments && typeof action.arguments === "object") {
+    return action.arguments;
+  }
+  const params =
+    action.params && typeof action.params === "object" ? action.params : {};
+  const rawArguments = params.arguments;
+  if (typeof rawArguments === "string") {
+    try {
+      const parsed = JSON.parse(rawArguments) as unknown;
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        return parsed as Record<string, unknown>;
+      }
+    } catch {
+      return { _raw: rawArguments };
+    }
+  }
+  if (
+    rawArguments &&
+    typeof rawArguments === "object" &&
+    !Array.isArray(rawArguments)
+  ) {
+    return rawArguments as Record<string, unknown>;
+  }
+  return Object.fromEntries(
+    Object.entries(params).filter(
+      ([key]) =>
+        ![
+          "tool_name",
+          "command",
+          "operation",
+          "arguments",
+          "actionContext",
+        ].includes(key),
+    ),
+  );
+}
+
+function stripRuntimeActionContext(
+  args: Record<string, unknown>,
+): Record<string, unknown> {
+  const { actionContext: _actionContext, ...rest } = args;
+  return rest;
+}
+
+function isMeaningfulLifeOpsCapture(
+  args: Record<string, unknown>,
+): boolean {
+  return Object.keys(stripRuntimeActionContext(args)).length > 0;
 }
 
 function isAllowedOrigin(origin: string | undefined): boolean {
