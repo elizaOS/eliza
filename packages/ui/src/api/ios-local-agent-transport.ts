@@ -112,7 +112,9 @@ function hasIosFullBunSmokeRequest(): boolean {
 
 function readPersistedRuntimeMode(): string | null {
   try {
-    return globalThis.localStorage?.getItem("eliza:mobile-runtime-mode") ?? null;
+    return (
+      globalThis.localStorage?.getItem("eliza:mobile-runtime-mode") ?? null
+    );
   } catch {
     return null;
   }
