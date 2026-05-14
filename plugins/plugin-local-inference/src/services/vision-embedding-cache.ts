@@ -75,10 +75,18 @@ export class VisionEmbeddingCache {
 	private readonly entries = new Map<string, CacheEntry>();
 	private readonly now: () => number;
 
-	constructor(opts: { config?: Partial<VisionEmbeddingCacheConfig>; now?: () => number } = {}) {
+	constructor(
+		opts: {
+			config?: Partial<VisionEmbeddingCacheConfig>;
+			now?: () => number;
+		} = {},
+	) {
 		this.config = {
 			maxEntries: Math.max(1, opts.config?.maxEntries ?? DEFAULTS.maxEntries),
-			defaultTtlMs: Math.max(0, opts.config?.defaultTtlMs ?? DEFAULTS.defaultTtlMs),
+			defaultTtlMs: Math.max(
+				0,
+				opts.config?.defaultTtlMs ?? DEFAULTS.defaultTtlMs,
+			),
 		};
 		this.now = opts.now ?? (() => Date.now());
 	}
@@ -143,7 +151,11 @@ export class VisionEmbeddingCache {
 	}
 
 	/** Diagnostic: snapshot of (hash, byteSize, expiresAtMs) for each entry. */
-	snapshot(): ReadonlyArray<{ hash: string; bytes: number; expiresAtMs: number }> {
+	snapshot(): ReadonlyArray<{
+		hash: string;
+		bytes: number;
+		expiresAtMs: number;
+	}> {
 		const out: { hash: string; bytes: number; expiresAtMs: number }[] = [];
 		for (const [hash, entry] of this.entries) {
 			out.push({

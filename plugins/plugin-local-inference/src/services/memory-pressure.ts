@@ -117,8 +117,14 @@ export function nodeOsPressureSource(
 	sources: NodeOsPressureSources = {},
 ): MemoryPressureSource {
 	const config: NodeOsPressureConfig = {
-		intervalMs: Math.max(500, overrides.intervalMs ?? NODE_OS_DEFAULTS.intervalMs),
-		lowWaterFraction: clampFraction(overrides.lowWaterFraction, NODE_OS_DEFAULTS.lowWaterFraction),
+		intervalMs: Math.max(
+			500,
+			overrides.intervalMs ?? NODE_OS_DEFAULTS.intervalMs,
+		),
+		lowWaterFraction: clampFraction(
+			overrides.lowWaterFraction,
+			NODE_OS_DEFAULTS.lowWaterFraction,
+		),
 		criticalWaterFraction: clampFraction(
 			overrides.criticalWaterFraction,
 			NODE_OS_DEFAULTS.criticalWaterFraction,
@@ -160,7 +166,14 @@ export function nodeOsPressureSource(
 				: freeFraction <= config.lowWaterFraction
 					? "low"
 					: "nominal";
-		return { level, freeMb, totalMb, freeFraction, source: "os-poll", atMs: now() };
+		return {
+			level,
+			freeMb,
+			totalMb,
+			freeFraction,
+			source: "os-poll",
+			atMs: now(),
+		};
 	};
 
 	const tick = (): void => {

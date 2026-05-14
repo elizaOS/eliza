@@ -81,19 +81,22 @@
  * The runtime observability layer subscribes via `onEvent(...)`.
  */
 
-import {
-	type EvictableModelRole,
-	type ResidentModelRole,
-	RESIDENT_ROLE_PRIORITY,
-	type SharedResourceRegistry,
-	createEvictableModelRole,
-} from "./voice/shared-resources";
-import {
-	type MemoryPressureEvent,
-	type MemoryPressureLevel,
-	type MemoryPressureSource,
+import type {
+	MemoryPressureEvent,
+	MemoryPressureLevel,
+	MemoryPressureSource,
 } from "./memory-pressure";
-import { VisionEmbeddingCache, type VisionEmbeddingEntry } from "./vision-embedding-cache";
+import {
+	VisionEmbeddingCache,
+	type VisionEmbeddingEntry,
+} from "./vision-embedding-cache";
+import {
+	createEvictableModelRole,
+	type EvictableModelRole,
+	RESIDENT_ROLE_PRIORITY,
+	type ResidentModelRole,
+	type SharedResourceRegistry,
+} from "./voice/shared-resources";
 
 /**
  * Capability identifiers the arbiter routes between. One per consumer
@@ -113,17 +116,18 @@ export type ArbiterCapability =
  * `SharedResourceRegistry` already tracks. Adding a new capability MUST
  * extend this map so the eviction priority is well-defined.
  */
-const CAPABILITY_ROLE: Readonly<Record<ArbiterCapability, ResidentModelRole>> = {
-	text: "text-target",
-	embedding: "embedding",
-	"vision-describe": "vision",
-	// Image-gen has no slot in `ResidentModelRole` today (it's a future
-	// modality). We park it on `vision` priority so it co-evicts with the
-	// VL model — both are GPU-heavy weights with similar lifecycles.
-	"image-gen": "vision",
-	transcribe: "asr",
-	speak: "tts",
-};
+const CAPABILITY_ROLE: Readonly<Record<ArbiterCapability, ResidentModelRole>> =
+	{
+		text: "text-target",
+		embedding: "embedding",
+		"vision-describe": "vision",
+		// Image-gen has no slot in `ResidentModelRole` today (it's a future
+		// modality). We park it on `vision` priority so it co-evicts with the
+		// VL model — both are GPU-heavy weights with similar lifecycles.
+		"image-gen": "vision",
+		transcribe: "asr",
+		speak: "tts",
+	};
 
 /** The opaque handle returned by `acquire`. Callers MUST `release` it. */
 export interface ArbiterHandle<TBackend = unknown> {
@@ -230,7 +234,11 @@ export interface MemoryArbiterOptions {
 	registry: SharedResourceRegistry;
 	pressureSource?: MemoryPressureSource;
 	visionCache?: VisionEmbeddingCache;
-	logger?: { info?: (m: string) => void; warn?: (m: string) => void; debug?: (m: string) => void };
+	logger?: {
+		info?: (m: string) => void;
+		warn?: (m: string) => void;
+		debug?: (m: string) => void;
+	};
 	now?: () => number;
 }
 
@@ -270,7 +278,10 @@ export class MemoryArbiter {
 	 * allowed to finish, then the swap proceeds. Concurrent runs against the
 	 * same loaded handle pass through directly.
 	 */
-	private readonly queues = new Map<ArbiterCapability, QueueEntry<unknown, unknown>[]>();
+	private readonly queues = new Map<
+		ArbiterCapability,
+		QueueEntry<unknown, unknown>[]
+	>();
 	private readonly running = new Map<ArbiterCapability, boolean>();
 
 	private shuttingDown = false;
@@ -357,7 +368,11 @@ export class MemoryArbiter {
 		}
 		this.capabilities.set(
 			registration.capability,
-			registration as unknown as CapabilityRegistration<unknown, unknown, unknown>,
+			registration as unknown as CapabilityRegistration<
+				unknown,
+				unknown,
+				unknown
+			>,
 		);
 	}
 
@@ -404,10 +419,14 @@ export class MemoryArbiter {
 	): Promise<ArbiterHandle<TBackend>> {
 		const registration = this.capabilities.get(capability);
 		if (!registration) {
-			throw new Error(`[memory-arbiter] no capability registered for "${capability}"`);
+			throw new Error(
+				`[memory-arbiter] no capability registered for "${capability}"`,
+			);
 		}
 		if (this.shuttingDown) {
-			throw new Error(`[memory-arbiter] arbiter is shutting down; cannot acquire ${capability}`);
+			throw new Error(
+				`[memory-arbiter] arbiter is shutting down; cannot acquire ${capability}`,
+			);
 		}
 		if (this.currentPressure === "critical" && capability !== "text") {
 			throw new Error(
@@ -467,8 +486,13 @@ export class MemoryArbiter {
 		// `residentRole` is held by a different modelKey, we evict the
 		// existing one first (one model per role). Different roles can co-
 		// exist; the pressure path is what rebalances them.
-		const role = registration.residentRole ?? CAPABILITY_ROLE[registration.capability];
-		const conflicts = this.findConflictingRole(role, registration.capability, modelKey);
+		const role =
+			registration.residentRole ?? CAPABILITY_ROLE[registration.capability];
+		const conflicts = this.findConflictingRole(
+			role,
+			registration.capability,
+			modelKey,
+		);
 
 		const promise = (async (): Promise<ResidentEntry> => {
 			for (const conflict of conflicts) {
@@ -522,7 +546,8 @@ export class MemoryArbiter {
 		const out: ResidentEntry[] = [];
 		for (const entry of this.resident.values()) {
 			if (entry.residentRole !== role) continue;
-			if (entry.capability === capability && entry.modelKey === modelKey) continue;
+			if (entry.capability === capability && entry.modelKey === modelKey)
+				continue;
 			out.push(entry);
 		}
 		return out;
@@ -553,7 +578,8 @@ export class MemoryArbiter {
 			role: entry.residentRole,
 			evictionPriority: RESIDENT_ROLE_PRIORITY[entry.residentRole],
 			estimatedMb: entry.estimatedMb,
-			isResident: () => this.resident.has(this.residentKey(entry.capability, entry.modelKey)),
+			isResident: () =>
+				this.resident.has(this.residentKey(entry.capability, entry.modelKey)),
 			evict: async () => {
 				// The shared registry's monitor calls this. We must be careful not
 				// to evict a handle that's actively in use; refcount > 0 means
@@ -625,7 +651,9 @@ export class MemoryArbiter {
 		// Cheap reclaim first: drop any expired vision-embedding cache entries.
 		const purged = this.visionCache.purgeExpired(this.now());
 		if (purged > 0) {
-			this.log?.debug?.(`[memory-arbiter] purged ${purged} expired vision-embedding entries on pressure`);
+			this.log?.debug?.(
+				`[memory-arbiter] purged ${purged} expired vision-embedding entries on pressure`,
+			);
 		}
 		// Then ask the SharedResourceRegistry for the cheapest evictable role.
 		// `low`: evict one role per pressure tick (gentle).
@@ -642,7 +670,8 @@ export class MemoryArbiter {
 			.filter((e) => e.residentRole !== "text-target")
 			.sort(
 				(a, b) =>
-					RESIDENT_ROLE_PRIORITY[a.residentRole] - RESIDENT_ROLE_PRIORITY[b.residentRole],
+					RESIDENT_ROLE_PRIORITY[a.residentRole] -
+					RESIDENT_ROLE_PRIORITY[b.residentRole],
 			);
 		for (const entry of entries) {
 			if (entry.refCount > 0) continue;
@@ -657,7 +686,10 @@ export class MemoryArbiter {
 	// directly when they don't need to keep a long-lived handle.
 	// ---------------------------------------------------------------------
 
-	requestText<TRequest, TResult>(req: { modelKey: string; payload: TRequest }): Promise<TResult> {
+	requestText<TRequest, TResult>(req: {
+		modelKey: string;
+		payload: TRequest;
+	}): Promise<TResult> {
 		return this.enqueueRequest("text", req.modelKey, req.payload);
 	}
 
@@ -689,7 +721,10 @@ export class MemoryArbiter {
 		return this.enqueueRequest("transcribe", req.modelKey, req.payload);
 	}
 
-	requestSpeak<TRequest, TResult>(req: { modelKey: string; payload: TRequest }): Promise<TResult> {
+	requestSpeak<TRequest, TResult>(req: {
+		modelKey: string;
+		payload: TRequest;
+	}): Promise<TResult> {
 		return this.enqueueRequest("speak", req.modelKey, req.payload);
 	}
 
@@ -700,7 +735,9 @@ export class MemoryArbiter {
 	): Promise<TResult> {
 		const reg = this.capabilities.get(capability);
 		if (!reg) {
-			throw new Error(`[memory-arbiter] no capability registered for "${capability}"`);
+			throw new Error(
+				`[memory-arbiter] no capability registered for "${capability}"`,
+			);
 		}
 		return new Promise<TResult>((resolve, reject) => {
 			const queue = this.queues.get(capability) ?? [];
@@ -731,7 +768,9 @@ export class MemoryArbiter {
 				const reg = this.capabilities.get(capability);
 				if (!reg) {
 					next.reject(
-						new Error(`[memory-arbiter] capability "${capability}" was deregistered mid-queue`),
+						new Error(
+							`[memory-arbiter] capability "${capability}" was deregistered mid-queue`,
+						),
 					);
 					continue;
 				}
