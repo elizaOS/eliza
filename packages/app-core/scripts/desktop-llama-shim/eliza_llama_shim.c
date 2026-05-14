@@ -8,6 +8,7 @@
 #include "eliza_llama_shim.h"
 #include "llama.h"
 
+#include <math.h>
 #include <stdlib.h>
 #include <string.h>
 

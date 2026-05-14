@@ -3,8 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   buildKokoroOrtSessionOptions,
   DEFAULT_KOKORO_EXECUTION_PROVIDER,
-  type KokoroExecutionProvider,
   KOKORO_EXECUTION_PROVIDER_IDS,
+  type KokoroExecutionProvider,
   parseKokoroExecutionProvider,
 } from "./kokoro-execution-provider.js";
 

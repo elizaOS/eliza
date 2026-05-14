@@ -19,14 +19,14 @@
  */
 
 export const KOKORO_EXECUTION_PROVIDER_IDS = [
-	"cpu",
-	"nnapi",
-	"xnnpack",
-	"coreml",
+  "cpu",
+  "nnapi",
+  "xnnpack",
+  "coreml",
 ] as const;
 
 export type KokoroExecutionProvider =
-	(typeof KOKORO_EXECUTION_PROVIDER_IDS)[number];
+  (typeof KOKORO_EXECUTION_PROVIDER_IDS)[number];
 
 export const DEFAULT_KOKORO_EXECUTION_PROVIDER: KokoroExecutionProvider = "cpu";
 
@@ -36,15 +36,15 @@ export const DEFAULT_KOKORO_EXECUTION_PROVIDER: KokoroExecutionProvider = "cpu";
  * back to the default or fail loudly.
  */
 export function parseKokoroExecutionProvider(
-	value: string | null | undefined,
+  value: string | null | undefined,
 ): KokoroExecutionProvider | null {
-	if (typeof value !== "string") return null;
-	const normalized = value.trim().toLowerCase();
-	return (KOKORO_EXECUTION_PROVIDER_IDS as ReadonlyArray<string>).includes(
-		normalized,
-	)
-		? (normalized as KokoroExecutionProvider)
-		: null;
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().toLowerCase();
+  return (KOKORO_EXECUTION_PROVIDER_IDS as ReadonlyArray<string>).includes(
+    normalized,
+  )
+    ? (normalized as KokoroExecutionProvider)
+    : null;
 }
 
 /**
@@ -59,7 +59,7 @@ export function parseKokoroExecutionProvider(
  * pure spread.
  */
 export interface KokoroOrtSessionOptionsPatch {
-	executionProviders: KokoroExecutionProvider[];
+  executionProviders: KokoroExecutionProvider[];
 }
 
 /**
@@ -78,7 +78,7 @@ export interface KokoroOrtSessionOptionsPatch {
  * build-flag matrix.
  */
 export function buildKokoroOrtSessionOptions(
-	provider: KokoroExecutionProvider = DEFAULT_KOKORO_EXECUTION_PROVIDER,
+  provider: KokoroExecutionProvider = DEFAULT_KOKORO_EXECUTION_PROVIDER,
 ): KokoroOrtSessionOptionsPatch {
-	return { executionProviders: [provider] };
+  return { executionProviders: [provider] };
 }

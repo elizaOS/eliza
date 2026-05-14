@@ -1,6 +1,6 @@
 import type {
   ActionResult,
-  type Content,
+  Content,
   HandlerCallback,
   HandlerOptions,
   IAgentRuntime,
