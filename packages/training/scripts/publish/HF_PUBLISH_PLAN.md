@@ -2,11 +2,11 @@
 
 This is the operator plan for the active Eliza-1 release line.
 
-Canonical model destination: `elizalabs/eliza-1`
+Canonical model destination: `elizaos/eliza-1`
 
 Runtime bundles are uploaded under `bundles/<tier>/` in that single model repo.
 Do not publish current release bundles to per-tier model repos such as
-`elizalabs/eliza-1-0_8b`.
+`elizaos/eliza-1-0_8b`.
 
 ## Current State
 
@@ -27,10 +27,10 @@ Status as of 2026-05-13:
 
 | Repo | Type | Purpose | Publish status |
 | --- | --- | --- | --- |
-| `elizalabs/eliza-1` | model | Single release repo for all active device bundles. Active payloads live at `bundles/0_8b/`, `bundles/2b/`, `bundles/4b/`, `bundles/9b/`, and `bundles/27b*/`. | Target repo only; active bundles are blocked until release evidence is publishable. |
-| `elizalabs/eliza-1-training` | dataset | Canonical SFT corpus refresh when final train/val/test splits and manifest are present. | Publishable independently of model-bundle gates. |
-| `elizalabs/eliza-1-evals` | dataset | Eval, gate, and runtime evidence record. Negative or blocking results are published honestly. | Publishable independently of model-bundle gates. |
-| `elizalabs/eliza-1-assets` | model | Frozen voice/ASR/VAD/cache assets used by bundle staging. | Existing support repo; not the current model-bundle destination. |
+| `elizaos/eliza-1` | model | Single release repo for all active device bundles. Active payloads live at `bundles/0_8b/`, `bundles/2b/`, `bundles/4b/`, `bundles/9b/`, and `bundles/27b*/`. | Target repo only; active bundles are blocked until release evidence is publishable. |
+| `elizaos/eliza-1-training` | dataset | Canonical SFT corpus refresh when final train/val/test splits and manifest are present. | Publishable independently of model-bundle gates. |
+| `elizaos/eliza-1-evals` | dataset | Eval, gate, and runtime evidence record. Negative or blocking results are published honestly. | Publishable independently of model-bundle gates. |
+| `elizaos/eliza-1-assets` | model | Frozen voice/ASR/VAD/cache assets used by bundle staging. | Existing support repo; not the current model-bundle destination. |
 
 Legacy repos such as `elizaos/eliza-1-0_6b`, `elizaos/eliza-1-1_7b`,
 `elizaos/eliza-1-0_6b-sft`, and `elizaos/eliza-1-0_6b-sft-weights` are handled
@@ -57,7 +57,7 @@ rename those upstream assets to imaginary Qwen3.5 ASR or embedding repos.
 Before any model-bundle upload:
 
 - `evidence/release.json.repoId` and `evidence/release.json.hf.repoId` must be
-  `elizalabs/eliza-1`.
+  `elizaos/eliza-1`.
 - `evidence/release.json.hf.pathPrefix` must be `bundles/<tier>`.
 - Pre-upload evidence must be `hf.status: pending-upload` or `upload-ready`;
   it must not claim `uploaded`.
@@ -79,7 +79,7 @@ Dry-run the active single-repo model plan:
 ```bash
 cd packages/training
 python -m scripts.publish.publish_eliza1_model_repo \
-  --repo-id elizalabs/eliza-1 \
+  --repo-id elizaos/eliza-1 \
   --tier 0_8b --tier 2b --tier 4b --tier 9b --tier 27b \
   --dry-run \
   --report ../../packages/inference/reports/local-e2e/2026-05-13/eliza-1-hf-dry-run-report.json

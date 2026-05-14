@@ -53,9 +53,9 @@ Models are cached at `~/.cache/eliza/models/`. A `manifest.json` file tracks all
     "downloadedAt": "2026-01-15T10:00:00.000Z",
     "path": "/Users/name/.cache/eliza/models/Salesforce_blip-image-captioning-base"
   },
-  "elizaos/eliza-1-2b": {
+  "elizaos/eliza-1": {
     "downloadedAt": "2026-01-15T10:00:00.000Z",
-    "path": "/Users/name/.cache/eliza/models/elizalabs_eliza-1-2b/text/eliza-1-2b-32k.gguf"
+    "path": "/Users/name/.cache/eliza/models/elizaos_eliza-1/bundles/2b/text/eliza-1-2b-32k.gguf"
   }
 }
 ```
