@@ -494,11 +494,8 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
         if (status.state === "running" && !greetingFiredRef.current) {
           await fetchGreeting(convId);
         }
-      } catch (err) {
-        console.warn(
-          "[eliza][chat:init] failed to confirm runtime state for greeting",
-          err,
-        );
+      } catch {
+        // best-effort greeting; will be triggered on next connect
       }
     },
     [fetchGreeting],
@@ -554,12 +551,7 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
           if (!isCurrentHydration()) {
             return null;
           }
-          if (!isTransientConversationHydrationFetchFailure(err)) {
-            console.warn(
-              "[eliza][chat:init] failed to load restored conversation messages",
-              err,
-            );
-          }
+          // transient fetch failures are expected on early load; others are silent
           greetingFiredRef.current = false;
           conversationMessagesRef.current = [];
           setConversationMessages([]);
@@ -627,20 +619,13 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
         }
 
         return conversation.id;
-      } catch (err) {
+      } catch {
         if (!isCurrentHydration()) {
           return null;
         }
-        console.warn(
-          "[eliza][chat:init] failed to create initial conversation",
-          err,
-        );
         return null;
       }
-    } catch (err) {
-      if (!isTransientConversationHydrationFetchFailure(err)) {
-        console.warn("[eliza][chat:init] failed to hydrate conversations", err);
-      }
+    } catch {
       return null;
     }
   }, [

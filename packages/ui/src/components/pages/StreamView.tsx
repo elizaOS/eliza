@@ -68,8 +68,7 @@ export function StreamView({ inModal }: { inModal?: boolean } = {}) {
           openStreamPopout(getBootConfig().apiBase);
         }
       }
-    } catch (err) {
-      console.warn("[stream] Failed to toggle stream:", err);
+    } catch {
       try {
         const status = await client.streamStatus();
         setStreamLive(status.running && status.ffmpegAlive);

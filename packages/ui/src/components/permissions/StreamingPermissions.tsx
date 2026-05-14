@@ -95,8 +95,8 @@ async function checkMobilePermissions(): Promise<
     const result = await plugin.checkPermissions();
     states.camera = result.camera as MediaPermissionState;
     states.microphone = result.microphone as MediaPermissionState;
-  } catch (err) {
-    console.error("Failed to check mobile permissions:", err);
+  } catch {
+    // permission check failure leaves states at default "prompt"
   }
 
   return states;
@@ -208,8 +208,7 @@ function useStreamingPermissions(mode: StreamingPermissionMode) {
             camera: result.camera as MediaPermissionState,
             microphone: result.microphone as MediaPermissionState,
           }));
-        } catch (err) {
-          console.error("Failed to request mobile permission:", err);
+        } catch {
           setPermissionErrors((prev) => ({
             ...prev,
             [id]: "Could not request device permissions.",
@@ -260,7 +259,6 @@ function useStreamingPermissions(mode: StreamingPermissionMode) {
           setPermStates((prev) => ({ ...prev, screen: "granted" }));
         }
       } catch (err) {
-        console.error(`Failed to request browser ${id} permission:`, err);
         setPermStates((prev) => ({ ...prev, [id]: "denied" }));
         setPermissionErrors((prev) => ({
           ...prev,

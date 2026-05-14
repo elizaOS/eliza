@@ -46,11 +46,7 @@ function tryLocalStorage<T>(fn: () => T, fallback: T): T {
   if (typeof localStorage === "undefined") return fallback;
   try {
     return fn();
-  } catch (err) {
-    console.warn(
-      "[widget-visibility] localStorage operation failed:",
-      err instanceof Error ? err.message : err,
-    );
+  } catch {
     return fallback;
   }
 }

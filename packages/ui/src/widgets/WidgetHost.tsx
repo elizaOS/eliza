@@ -38,12 +38,8 @@ class WidgetErrorBoundary extends Component<
     return { error };
   }
 
-  componentDidCatch(error: Error, info: ErrorInfo): void {
-    console.error(
-      `[widget:${this.props.widgetId}] render error:`,
-      error,
-      info.componentStack,
-    );
+  componentDidCatch(_error: Error, _info: ErrorInfo): void {
+    // error is captured in state via getDerivedStateFromError; ErrorBoundary shows fallback UI
   }
 
   render() {
