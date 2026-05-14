@@ -14,7 +14,6 @@ import string
 
 from elizaos_mmau_audio.types import MMAUPrediction, MMAUResult, MMAUSample
 
-
 _PARENS_LETTER = re.compile(r"\(\s*([A-Z])\s*\)")
 _LEADING_LETTER = re.compile(r"^\s*([A-Z])\s*[\.\):,\-]")
 _ANSWER_IS_LETTER = re.compile(
@@ -93,9 +92,7 @@ class MMAUEvaluator:
         if not predicted:
             predicted = extract_answer_letter(prediction.raw_answer, valid_letters=valid)
         is_correct = (
-            prediction.error is None
-            and predicted != ""
-            and predicted == sample.answer_letter
+            prediction.error is None and predicted != "" and predicted == sample.answer_letter
         )
         return MMAUResult(
             sample_id=sample.id,
@@ -142,9 +139,7 @@ class MMAUEvaluator:
             "overall_accuracy": correct / total,
             "accuracy_by_category": {k: sum(v) / len(v) for k, v in by_cat.items()},
             "accuracy_by_skill": {k: sum(v) / len(v) for k, v in by_skill.items()},
-            "accuracy_by_information_category": {
-                k: sum(v) / len(v) for k, v in by_info.items()
-            },
+            "accuracy_by_information_category": {k: sum(v) / len(v) for k, v in by_info.items()},
             "accuracy_by_difficulty": {k: sum(v) / len(v) for k, v in by_diff.items()},
             "counts_by_category": {k: len(v) for k, v in by_cat.items()},
             "counts_by_skill": {k: len(v) for k, v in by_skill.items()},

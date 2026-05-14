@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import pytest
 
-from benchmarks.mmau.evaluator import (
+from elizaos_mmau_audio.evaluator import (
     MMAUEvaluator,
     choice_letters,
     extract_answer_letter,
     extract_letter_from_option,
 )
-from benchmarks.mmau.types import MMAUCategory, MMAUPrediction, MMAUSample
+from elizaos_mmau_audio.types import MMAUCategory, MMAUPrediction, MMAUSample
 
 
 @pytest.mark.parametrize(

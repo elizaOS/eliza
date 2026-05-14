@@ -27,7 +27,6 @@ from elizaos_mmau_audio.evaluator import (
 )
 from elizaos_mmau_audio.types import MMAUPrediction, MMAUSample
 
-
 AgentFn = Callable[[str, bytes | None], Awaitable[str]]
 """Text agent callable for the cascaded baseline.
 
@@ -87,10 +86,7 @@ def format_mcq_prompt(sample: MMAUSample, *, transcript: str = "") -> str:
             stripped = choice.strip()
             formatted_choices.append(f"({letter}) {stripped}")
     parts.append("Choices:\n" + "\n".join(formatted_choices))
-    parts.append(
-        "Respond with the single letter of the correct option only "
-        "(for example: 'A')."
-    )
+    parts.append("Respond with the single letter of the correct option only (for example: 'A').")
     return "\n\n".join(parts)
 
 
