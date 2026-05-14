@@ -20,6 +20,10 @@ import {
   sendJsonError,
   type UUID,
 } from "@elizaos/core";
+import type {
+  AgentStartupDiagnostics,
+  ConversationMetadata,
+} from "@elizaos/shared";
 import {
   normalizeCharacterLanguage,
   normalizeOnboardingProviderId,
@@ -28,10 +32,6 @@ import {
   resolveStylePresetByAvatarIndex,
   resolveStylePresetById,
   resolveStylePresetByName,
-} from "@elizaos/shared";
-import type {
-  AgentStartupDiagnostics,
-  ConversationMetadata,
 } from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.ts";
 import { resolveStateDir } from "../config/paths.ts";

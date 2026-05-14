@@ -90,6 +90,26 @@ export {
 export { VoiceStartupError } from "./errors";
 export * from "./ffi-bindings";
 export {
+	_resetSharedFirstLineCacheForTesting,
+	_resetVoiceRevisionMemoForTesting,
+	computeLocalVoiceRevision,
+	FIRST_SENTENCE_MAX_WORDS,
+	FIRST_SENTENCE_SNIP_VERSION,
+	FirstLineCache,
+	type FirstLineCacheEntry,
+	type FirstLineCacheKey,
+	type FirstLineCacheOptions,
+	type FirstLineCacheStats,
+	type FirstSentenceSnipResult,
+	fingerprintVoiceSettings,
+	firstLineCacheBypassFromEnv,
+	firstSentenceSnip,
+	getSharedFirstLineCache,
+	hashCacheKey,
+	type PutInput,
+	wordCount,
+} from "./first-line-cache";
+export {
 	type ArmedResources,
 	type TextResources,
 	VoiceLifecycle,
@@ -117,35 +137,6 @@ export {
 	FIRST_AUDIO_FILLERS,
 	PhraseCache,
 } from "./phrase-cache";
-export {
-	_resetSharedFirstLineCacheForTesting,
-	_resetVoiceRevisionMemoForTesting,
-	computeLocalVoiceRevision,
-	fingerprintVoiceSettings,
-	FIRST_SENTENCE_MAX_WORDS,
-	FIRST_SENTENCE_SNIP_VERSION,
-	firstLineCacheBypassFromEnv,
-	FirstLineCache,
-	type FirstLineCacheEntry,
-	type FirstLineCacheKey,
-	type FirstLineCacheOptions,
-	type FirstLineCacheStats,
-	firstSentenceSnip,
-	type FirstSentenceSnipResult,
-	getSharedFirstLineCache,
-	hashCacheKey,
-	type PutInput,
-	wordCount,
-} from "./first-line-cache";
-export {
-	type TtsBytes,
-	type TtsHandler,
-	type TtsHandlerInput,
-	type TtsHandlerOutput,
-	type TtsResolvedContext,
-	type WrapOptions,
-	wrapWithFirstLineCache,
-} from "./wrap-with-first-line-cache";
 export { chunkTokens, PhraseChunker } from "./phrase-chunker";
 export {
 	type DraftProposer,
@@ -316,6 +307,15 @@ export {
 	type WakeWordModelPaths,
 	WakeWordUnavailableError,
 } from "./wake-word";
+export {
+	type TtsBytes,
+	type TtsHandler,
+	type TtsHandlerInput,
+	type TtsHandlerOutput,
+	type TtsResolvedContext,
+	type WrapOptions,
+	wrapWithFirstLineCache,
+} from "./wrap-with-first-line-cache";
 
 /**
  * Voice on/off invariants (binding for every consumer of this module):

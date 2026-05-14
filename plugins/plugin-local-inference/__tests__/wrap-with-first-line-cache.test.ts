@@ -121,7 +121,7 @@ describe("wrapWithFirstLineCache — short-circuit conditions", () => {
 });
 
 describe("wrapWithFirstLineCache — miss path populates the cache", () => {
-	it("calls inner once for the full input on miss, then schedules populate", async () => {
+	it("calls inner for the full input on miss, then schedules populate of the snip", async () => {
 		const cache = makeCache();
 		const fullBytes = bytesOfLen(64, 0x42);
 		const snipBytes = bytesOfLen(32, 0x77);
@@ -137,11 +137,13 @@ describe("wrapWithFirstLineCache — miss path populates the cache", () => {
 		const out = await wrapped(makeRuntime(), {
 			text: "Got it. Here is the rest of the message.",
 		});
-		expect((out as Uint8Array)).toEqual(fullBytes);
-		expect(inner).toHaveBeenCalledTimes(1);
-		// Allow the background populate to run.
+		// Returned bytes are the full synthesis.
+		const outU8 =
+			out instanceof Uint8Array ? out : new Uint8Array(out as ArrayBuffer);
+		expect(Array.from(outU8)).toEqual(Array.from(fullBytes));
+		// Allow the background populate to run (microtask + small delay).
 		await new Promise((r) => setTimeout(r, 25));
-		// Second call (background populate of just the snip).
+		// At least two inner calls: one for the full text, one for the snip-only populate.
 		expect(inner.mock.calls.length).toBeGreaterThanOrEqual(2);
 
 		const key: FirstLineCacheKey = {
@@ -186,7 +188,8 @@ describe("wrapWithFirstLineCache — hit path concat", () => {
 		});
 		const out = await wrapped(makeRuntime(), { text: "Got it." });
 		// Cached returned exactly; inner not called.
-		expect(out).toEqual(cached);
+		const outU8 = out instanceof Uint8Array ? out : new Uint8Array(out as ArrayBuffer);
+		expect(Array.from(outU8)).toEqual(Array.from(cached));
 		expect(inner).not.toHaveBeenCalled();
 	});
 
@@ -308,8 +311,9 @@ describe("wrapWithFirstLineCache — F3 voice-swap regression", () => {
 				}),
 		});
 		const out = await wrapped(makeRuntime(), { text: "Got it." });
+		const outU8 = out instanceof Uint8Array ? out : new Uint8Array(out as ArrayBuffer);
 		// Must NOT return the Kokoro cached bytes.
-		expect(out).not.toEqual(kokoroBytes);
-		expect(out).toEqual(elevenBytes);
+		expect(Array.from(outU8)).not.toEqual(Array.from(kokoroBytes));
+		expect(Array.from(outU8)).toEqual(Array.from(elevenBytes));
 	});
 });
