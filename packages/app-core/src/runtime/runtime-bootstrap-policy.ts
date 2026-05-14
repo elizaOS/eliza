@@ -1,5 +1,3 @@
-import { getErrorMessage } from "./embedding-manager-support.js";
-
 const FATAL_PGLITE_CODES = new Set([
   "ELIZA_PGLITE_DATA_DIR_IN_USE",
   "ELIZA_PGLITE_CORRUPT_DATA",
@@ -12,6 +10,20 @@ export const RUNTIME_BOOT_ERROR_DURATION_MS = 2 * 60_000;
 export function nextRuntimeBootRetryDelayMs(attempt: number): number {
   const raw = 1000 * 2 ** Math.max(0, Math.min(attempt - 1, 5));
   return Math.min(30_000, raw);
+}
+
+function getRuntimeBootErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (typeof error === "string") return error;
+  if (
+    error !== null &&
+    typeof error === "object" &&
+    "message" in error &&
+    typeof (error as { message?: unknown }).message === "string"
+  ) {
+    return (error as { message: string }).message;
+  }
+  return String(error);
 }
 
 export function resolveRuntimeBootstrapFailure(params: {
@@ -27,7 +39,7 @@ export function resolveRuntimeBootstrapFailure(params: {
   shouldRetry: boolean;
   state: "error" | "starting";
 } {
-  const lastError = getErrorMessage(params.err);
+  const lastError = getRuntimeBootErrorMessage(params.err);
   if (
     typeof params.err === "object" &&
     params.err !== null &&

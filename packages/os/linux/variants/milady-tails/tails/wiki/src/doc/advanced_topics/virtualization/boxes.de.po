@@ -1,0 +1,217 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: \n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2026-03-31 22:07+0000\n"
+"PO-Revision-Date: 2025-09-18 17:20+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: \n"
+"Language: de\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"GNOME Boxes\"]]\n"
+msgstr "[[!meta title=\"GNOME Boxen\"]]\n"
+
+#. type: Plain text
+msgid ""
+"[*GNOME Boxes*](https://apps.gnome.org/Boxes/) aims at providing a simple "
+"interface to create and use virtual machines for Linux with GNOME.  *GNOME "
+"Boxes* does not allow the use of a Persistent Storage."
+msgstr ""
+"[*GNOME Boxes*](https://apps.gnome.org/Boxes/) zielt darauf ab, eine "
+"einfache Schnittstelle zum Erstellen und Verwenden von virtuellen Maschinen "
+"für Linux mit GNOME bereitzustellen. *GNOME Boxes* erlaubt nicht die "
+"Verwendung von persistentem Speicher."
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"doc/advanced_topics/virtualization.caution\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"doc/advanced_topics/virtualization.caution.de\" raw=\"yes\" sort=\"age\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"note\">\n"
+msgstr "<div class=\"note\">\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "<p>The following instructions have been tested on Debian 12 (Bookworm).</p>\n"
+msgid "<p>The following instructions have been tested on Debian 13 (Trixie).</p>\n"
+msgstr "<p>Die nachfolgenden Anweisungen wurden unter Debian 12 (Bookworm) getestet.</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+#. type: Title =
+#, no-wrap
+msgid "Installation"
+msgstr "Installation"
+
+#. type: Plain text
+msgid ""
+"To install *GNOME Boxes* in Debian or Ubuntu, execute the following command:"
+msgstr ""
+"Um *GNOME Boxen* in Debian oder Ubuntu zu installieren, führen Sie folgenden "
+"Befehl aus:"
+
+#. type: Plain text
+#, no-wrap
+msgid "<p class=\"command\">sudo apt install gnome-boxes</p>\n"
+msgstr "<p class=\"command\">sudo apt install gnome-boxes</p>\n"
+
+#. type: Title =
+#, no-wrap
+msgid "Running Tails from an ISO image"
+msgstr "Tails von einem ISO-Image aus benutzen"
+
+#. type: Bullet: '  1. '
+msgid ""
+"[[Download Tails as an ISO image|install/download-iso]], instead of a USB "
+"image."
+msgstr ""
+"[[Laden Sie Tails als ISO-Image herunter|install/download-iso]], anstelle "
+"eines USB-Images."
+
+#. type: Bullet: '  1. '
+msgid "Start *GNOME Boxes*."
+msgstr "Starten Sie *GNOME Boxen*."
+
+#. type: Bullet: '  1. '
+#, fuzzy
+#| msgid ""
+#| "Click on the [[!img lib/list-add.png alt=\"New\" class=\"symbolic\" "
+#| "link=\"no\"]] in the top-left corner."
+msgid ""
+"Select the [[!img lib/list-add.png alt=\"New\" class=\"symbolic\" "
+"link=\"no\"]] button in the top-left corner."
+msgstr ""
+"Klicken Sie auf das [[!img lib/list-add.png alt=“Neu” class=“symbolic” "
+"link=“no”]] in der oberen linken Ecke."
+
+#. type: Bullet: '  1. '
+msgid ""
+"In the menu **Create new virtual machine**, select **Install from File**."
+msgstr ""
+
+#. type: Bullet: '  1. '
+msgid "Choose the ISO image that you want to start from."
+msgstr ""
+
+#. type: Bullet: '  1. '
+msgid "In the **New Virtual Machine** dialog:"
+msgstr ""
+
+#. type: Bullet: '     1. '
+msgid "In the field **Name**, enter a name of your choice."
+msgstr ""
+
+#. type: Bullet: '     1. '
+msgid "In the field **Operating System**, enter **Debian 13**."
+msgstr ""
+
+#. type: Bullet: '     1. '
+msgid "In the field **Memory**, enter at least 3.0 GB."
+msgstr ""
+
+#. type: Bullet: '  1. '
+msgid "Select the **Create** button."
+msgstr ""
+
+#~ msgid ""
+#~ "In the dialog **Create a Virtual Machine**, choose **Create virtual "
+#~ "machine from file** and browse for the ISO image that you want to start "
+#~ "from."
+#~ msgstr ""
+#~ "Wählen Sie im Dialog **Virtuelle Maschine erstellen** die Option "
+#~ "**Virtuelle Maschine aus Datei erstellen** und durchsuchen Sie die ISO-"
+#~ "Datei, von der Sie starten möchten."
+
+#~ msgid ""
+#~ "In the **Preparing** dialog, click **Next** to accept the **Unknown OS** "
+#~ "template."
+#~ msgstr ""
+#~ "Klicken Sie im Dialogfeld **Vorbereitung** auf **Weiter**, um die Vorlage "
+#~ "**Unbekanntes Betriebssystem** zu akzeptieren."
+
+#~ msgid ""
+#~ "In the **Review and Create** dialog, click on the **Create** button on "
+#~ "the top of the window."
+#~ msgstr ""
+#~ "Klicken Sie im Dialogfeld **Überprüfen und Erstellen** auf die "
+#~ "Schaltfläche **Erstellen** oben im Fenster."
+
+#~ msgid "Click on the **New** button on the top of the window."
+#~ msgstr ""
+#~ "Klicken Sie auf die Schaltfläche **Neu** im oberen Teil des Fensters."
+
+#, no-wrap
+#~ msgid "Shared clipboard"
+#~ msgstr "Gemeinsame Zwischenablage"
+
+#, no-wrap
+#~ msgid "<div class=\"caution\">\n"
+#~ msgstr "<div class=\"caution\">\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<p>The shared clipboard of *GNOME Boxes*\n"
+#~ "is enabled by default. This can allow sensitive data to be copied by\n"
+#~ "mistake from the virtual machine onto the host operating system or vice\n"
+#~ "versa.</p>\n"
+#~ msgstr ""
+#~ "<p>Die gemeinsame Zwischenablage von *GNOME Boxen*\n"
+#~ "ist standardmäßig aktiviert. Dies kann ermöglichen, dass sensible Daten\n"
+#~ "aus Versehen von der virtuellen Maschine zum Hostbetriebssystem oder umgekehrt\n"
+#~ "kopiert werden.</p>\n"
+
+#, no-wrap
+#~ msgid "<p>We recommend you to disable the shared clipboard.</p>\n"
+#~ msgstr "<p>Wir empfehlen es Ihnen, die gemeinsame Zwischenablage zu deaktivieren.</p>\n"
+
+#~ msgid "To disable the shared clipboard:"
+#~ msgstr "Um die gemeinsame Zwischenablage zu deaktivieren:"
+
+#~ msgid "Click on the"
+#~ msgstr "Klicken Sie auf die Schaltfläche"
+
+#~ msgid ""
+#~ "     [[!img preferences-system-symbolic.png alt=\"Preferences\" "
+#~ "class=symbolic link=no]]\n"
+#~ msgstr ""
+#~ "     [[!img preferences-system-symbolic.png alt=\"Einstellungen\" "
+#~ "class=symbolic link=no]]\n"
+
+#~ msgid ""
+#~ "     button on the top-right corner of the window.\n"
+#~ "  2. Select the **Display** screen in the left pane.\n"
+#~ "  3. Deactivate **Share clipboard** in the right pane.\n"
+#~ "  4. Click on the\n"
+#~ msgstr ""
+#~ "     im oberen, rechten Fensterbereich.\n"
+#~ "  2. Wählen Sie das Fenster **Ansicht** im linken Fensterbereich aus.\n"
+#~ "  3. Deaktivieren Sie **Zwischenablage freigeben** im rechten "
+#~ "Fensterbereich.\n"
+#~ "  4. Klicken Sie auf die Schaltfläche\n"
+
+#~ msgid ""
+#~ "     [[!img go-previous-symbolic.png alt=\"Previous\" class=symbolic "
+#~ "link=no]]\n"
+#~ msgstr ""
+#~ "     [[!img go-previous-symbolic.png alt=\"Vorherige\" class=symbolic "
+#~ "link=no]]\n"
+
+#~ msgid "     button to go back to the display of the virtual machine.\n"
+#~ msgstr "     um zur Anzeige der virtuellen Maschine zurückzukehren.\n"

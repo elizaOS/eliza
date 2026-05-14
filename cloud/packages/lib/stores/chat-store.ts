@@ -281,20 +281,22 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
         if (res.ok) {
           const rooms = roomsFromResponse(await res.json());
+          const roomItems: RoomItem[] = rooms.slice(0, 20).map((r) => ({
+            id: r.id,
+            characterId: r.characterId,
+            characterName: r.characterName,
+            lastText: r.lastText,
+            lastTime: r.lastTime,
+            title: r.title,
+            isLocked: r.isLocked,
+            isBuildRoom: r.isBuildRoom,
+          }));
+          const currentState = get();
+          const filteredRoomItems = roomItems.filter(
+            (room) => !currentState.recentlyDeletedRoomIds.has(room.id),
+          );
 
           if (rooms.length > 0) {
-            const roomItems: RoomItem[] = rooms.slice(0, 20).map((r) => ({
-              id: r.id,
-              characterId: r.characterId,
-              characterName: r.characterName,
-              lastText: r.lastText,
-              lastTime: r.lastTime,
-              title: r.title,
-              isLocked: r.isLocked,
-              isBuildRoom: r.isBuildRoom,
-            }));
-
-            const currentState = get();
             const existingCharacterIds = new Set(currentState.availableCharacters.map((c) => c.id));
 
             const charactersFromRooms: Character[] = [];
@@ -332,17 +334,14 @@ export const useChatStore = create<ChatState>((set, get) => ({
               mergedCharacters,
             );
 
-            // Filter out any recently deleted rooms to prevent them from reappearing
-            const filteredRoomItems = roomItems.filter(
-              (room) => !currentState.recentlyDeletedRoomIds.has(room.id),
-            );
-
             set({
               rooms: filteredRoomItems,
               availableCharacters: mergedCharacters,
               selectedCharacterId: newSelectedCharacterId,
               viewerState,
             });
+          } else {
+            set({ rooms: filteredRoomItems });
           }
         }
       } catch (error) {

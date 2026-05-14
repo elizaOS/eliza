@@ -12,7 +12,6 @@ import {
   type CodingAgentSession,
   type ConversationChannelType,
   type ConversationMessage,
-  type ConversationMode,
   client,
   type ImageAttachment,
 } from "../api";
@@ -199,7 +198,6 @@ export interface UseChatSendDeps {
   tab: Tab;
 
   // Chat state
-  chatMode: ConversationMode;
   conversations: Conversation[];
   activeConversationId: string | null;
   /** Stable ref whose .current mirrors the latest ptySessions array. */
@@ -266,7 +264,6 @@ export function useChatSend(deps: UseChatSendDeps) {
     t,
     uiLanguage,
     tab,
-    chatMode,
     conversations,
     activeConversationId,
     ptySessionsRef,
@@ -565,10 +562,6 @@ export function useChatSend(deps: UseChatSendDeps) {
       if (!rawText && !hasAttachedImages) return;
 
       const channelType = turn.channelType;
-      const conversationMode: ConversationMode =
-        channelType === "VOICE_DM" || channelType === "VOICE_GROUP"
-          ? "simple"
-          : chatMode;
       const imagesToSend = turn.images;
       let controller: AbortController | null = null;
 
@@ -681,7 +674,6 @@ export function useChatSend(deps: UseChatSendDeps) {
           channelType,
           controller.signal,
           imagesToSend,
-          conversationMode,
           turn.metadata,
         );
 
@@ -788,7 +780,6 @@ export function useChatSend(deps: UseChatSendDeps) {
               text,
               channelType,
               imagesToSend,
-              conversationMode,
               turn.metadata,
             );
             setConversationMessages(
@@ -829,7 +820,6 @@ export function useChatSend(deps: UseChatSendDeps) {
     },
     [
       appendLocalCommandTurn,
-      chatMode,
       loadConversationMessages,
       loadConversations,
       tryHandlePrefixedChatCommand,
@@ -961,7 +951,6 @@ export function useChatSend(deps: UseChatSendDeps) {
       if (chatSendBusyRef.current) return;
       chatSendBusyRef.current = true;
       const sendNonce = ++chatSendNonceRef.current;
-      const conversationMode: ConversationMode = chatMode;
       let controller: AbortController | null = null;
 
       try {
@@ -1052,7 +1041,6 @@ export function useChatSend(deps: UseChatSendDeps) {
             "DM",
             controller.signal,
             undefined,
-            conversationMode,
             buildChatViewMetadata(tab),
           );
 
@@ -1130,7 +1118,6 @@ export function useChatSend(deps: UseChatSendDeps) {
       }
     },
     [
-      chatMode,
       activeConversationId,
       chatSendQueueRef,
       elizaCloudEnabled,

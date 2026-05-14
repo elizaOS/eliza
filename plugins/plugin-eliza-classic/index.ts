@@ -62,7 +62,6 @@ async function handleText(
     actions: ["REPLY"],
     providers: [],
     text: reply,
-    simple: true,
     useKnowledgeProviders: false,
   });
 }

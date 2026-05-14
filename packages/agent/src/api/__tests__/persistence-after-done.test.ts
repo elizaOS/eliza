@@ -44,7 +44,6 @@ vi.mock("../chat-routes.ts", async () => {
       prompt: "hello",
       channelType: ChannelType.DM,
       images: undefined,
-      conversationMode: undefined,
       preferredLanguage: undefined,
       source: "api",
       metadata: undefined,

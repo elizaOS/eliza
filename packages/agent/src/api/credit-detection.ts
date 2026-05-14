@@ -5,6 +5,8 @@
  * and structured error bodies from various AI providers.
  */
 
+import { getErrorMessage } from "./server-helpers.ts";
+
 const INSUFFICIENT_CREDITS_RE =
   /\b(?:insufficient(?:[_\s]+(?:credits?|quota|funds))|insufficient_quota|out of credits|max usage reached|quota(?:\s+exceeded)?|rate_limit_exceeded|billing.*disabled|payment.*required|account.*suspended|spending.*limit|budget.*exceeded|no.*api.*credits|credit.*balance.*zero)\b/i;
 
@@ -43,10 +45,4 @@ export function isInsufficientCreditsError(err: unknown): boolean {
   }
 
   return false;
-}
-
-function getErrorMessage(err: unknown, fallback = "generation failed"): string {
-  if (err instanceof Error) return err.message;
-  if (typeof err === "string") return err;
-  return fallback;
 }

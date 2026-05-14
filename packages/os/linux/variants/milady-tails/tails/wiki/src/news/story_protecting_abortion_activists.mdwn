@@ -1,0 +1,42 @@
+[[!meta title="Protecting abortion activists in Brazil"]]
+[[!meta date="Thu, 15 Dec 2022 12:34:56 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+
+[[!img contribute/how/user_experience/interviews/gabriela.jpg link="no" alt="Afro-Brazilian handmade jewelry that hides a Tails USB stick"]]
+
+In August, we traveled to Brazil to learn how to improve Tails for the many
+people fighting for social change there. We trained 34 people on Tails:
+activists, journalists, feminists, and human rights defenders.
+
+We also met Gabriela, a feminist hacker who has been training low-income women
+from the Bahia region on using Tails.
+
+Gabriela introduced these women to Tails by mixing up local culture and privacy
+technology and presenting Tails as a *patuá*, a type of Brazilian protection
+amulet that hides the USB stick in jewelry.
+
+These women didn't have computers of their own and used the computers at work
+or in university or the computers of their husbands and boyfriends. Tails is
+useful for them to work on reproductive rights but also to protect their
+personal data from intrusive boyfriends.
+
+Women working on reproductive rights understand very easily the importance of
+privacy tools like Tails because a single mistake can compromise an entire
+organization and get them in trouble with the police.
+
+Some of them had their home raided by the police after being denounced for
+their work on abortion. All the information about their patients was not in
+their phones, but in their Tails amulet, and the police couldn't find any
+evidence about their work.
+
+[[Read our full interview with Gabriela.|contribute/how/user_experience/interviews/gabriela]]
+
+As the access to safe abortion continues to be problematic in too many
+countries around the world, we are very interested in getting in touch with
+more reproductive rights activists who are already using Tails or want to learn
+how to use it.
+
+[[Get in touch with us.|doc/about/contact]]
+
+[**Donate now to keep more women safe.**](https://tails.net/donate/)

@@ -19,6 +19,10 @@ from benchmarks.orchestrator.runner import (
     _is_harness_compatible,
     _required_env_for_request,
 )
+from benchmarks.orchestrator.random_baseline_runner import (
+    CALIBRATION_HARNESSES,
+    run_synthetic_baseline,
+)
 from benchmarks.orchestrator.types import ExecutionContext, RunRequest
 from benchmarks.registry import (
     _score_from_bfcl_json,
@@ -56,6 +60,24 @@ def test_discovery_includes_directory_name_mismatches_and_special_tracks() -> No
     assert adapters["voicebench_quality"].directory == "voicebench-quality"
     assert adapters["voiceagentbench"].directory == "voiceagentbench"
     assert "elizaos_mmau" not in discover_adapters(_workspace_root()).all_directories
+
+
+def test_synthetic_calibration_payloads_exercise_all_score_extractors(tmp_path: Path) -> None:
+    adapters = discover_adapters(_workspace_root()).adapters
+    expected = {"perfect_v1": 1.0, "wrong_v1": 0.0, "half_v1": 0.5}
+
+    for benchmark_id, adapter in sorted(adapters.items()):
+        for harness in CALIBRATION_HARNESSES:
+            output_dir = tmp_path / benchmark_id / harness
+            baseline = run_synthetic_baseline(
+                benchmark_id=benchmark_id,
+                output_dir=output_dir,
+                harness=harness,
+            )
+            assert baseline.status == "succeeded"
+            assert baseline.result_path is not None
+            summary = adapter.score_extractor(baseline.result_path)
+            assert summary.score == pytest.approx(expected[harness])
 
 
 def test_audio_benchmark_registry_commands_and_scores(tmp_path: Path) -> None:
@@ -1248,6 +1270,64 @@ def test_loca_score_rejects_task_runs_without_token_usage(tmp_path: Path) -> Non
 
     with pytest.raises(ValueError, match="no API token usage"):
         _score_from_loca_bench(audit)
+
+
+def test_loca_score_treats_all_error_tasks_as_zero(tmp_path: Path) -> None:
+    audit = tmp_path / "eliza_loca_audit.json"
+    audit.write_text(
+        json.dumps(
+            {
+                "summary": {
+                    "avg_accuracy": None,
+                    "issue_count": 0,
+                    "trajectory_count": 1,
+                    "aggregate_trajectory_count": 1,
+                    "metadata_total_tasks": 1,
+                    "failed_trajectory_count": 1,
+                    "total_api_tokens": 120,
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    summary = _score_from_loca_bench(audit)
+
+    assert summary.score == 0.0
+    assert summary.metrics["failed_trajectory_count"] == 1
+
+
+def test_loca_score_accepts_external_telemetry_for_error_tasks(tmp_path: Path) -> None:
+    output_root = tmp_path / "output"
+    loca_output = output_root / "loca-output"
+    loca_output.mkdir(parents=True)
+    (output_root / "telemetry.jsonl").write_text(
+        json.dumps({"total_tokens": 42}) + "\n",
+        encoding="utf-8",
+    )
+    audit = loca_output / "eliza_loca_audit.json"
+    audit.write_text(
+        json.dumps(
+            {
+                "summary": {
+                    "avg_accuracy": None,
+                    "issue_count": 0,
+                    "trajectory_count": 1,
+                    "aggregate_trajectory_count": 1,
+                    "metadata_total_tasks": 1,
+                    "failed_trajectory_count": 1,
+                    "total_api_tokens": 0,
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    summary = _score_from_loca_bench(audit)
+
+    assert summary.score == 0.0
+    assert summary.metrics["total_api_tokens"] == 42
+    assert summary.metrics["external_telemetry_tokens"] == 42
 
 
 def test_loca_score_rejects_empty_runs(tmp_path: Path) -> None:

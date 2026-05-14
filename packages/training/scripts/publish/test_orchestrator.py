@@ -107,6 +107,12 @@ def _build_fixture_bundle(
     _write(
         bundle / "tts" / "omnivoice-tokenizer-Q4_K_M.gguf", b"\x00tts-tok\x00"
     )
+    _write(bundle / "tts" / "kokoro" / "model_q4.onnx", b"\x00kokoro\x00")
+    _write(bundle / "tts" / "kokoro" / "tokenizer.json", b"{}")
+    _write(
+        bundle / "tts" / "kokoro" / "voices" / "af_bella.bin",
+        b"\x00kokoro-voice\x00",
+    )
     _write(bundle / "asr" / "asr.gguf", b"\x00asr\x00")
     _write(bundle / "vad" / "eliza-1-vad.onnx", b"\x00vad\x00")
     _write(bundle / "vision" / f"mmproj-{tier}.gguf", b"\x00mmproj\x00")
@@ -314,7 +320,7 @@ def _source_models() -> dict[str, dict[str, str]]:
         "text": {"repo": "unsloth/Qwen3.5-4B-GGUF", "file": "text.gguf"},
         "voice": {"repo": "Serveurperso/OmniVoice-GGUF"},
         "drafter": {
-            "repo": "elizaos/eliza-1",
+            "repo": "elizalabs/eliza-1",
             "file": "bundles/4b/dflash/drafter-4b.gguf",
         },
         "asr": {"repo": "ggml-org/Qwen3-ASR-0.6B-GGUF"},
@@ -331,12 +337,12 @@ def _write_release_evidence(
 ) -> None:
     def rels(subdir: str) -> list[str]:
         base = bundle / subdir
-        return sorted(str(p.relative_to(bundle)) for p in base.iterdir() if p.is_file())
+        return sorted(str(p.relative_to(bundle)) for p in base.rglob("*") if p.is_file())
 
     evidence: dict[str, Any] = {
         "schemaVersion": 1,
         "tier": tier,
-        "repoId": "elizaos/eliza-1",
+        "repoId": "elizalabs/eliza-1",
         "releaseState": release_state,
         "final": {
             "weights": True,
@@ -390,7 +396,7 @@ def _write_release_evidence(
             "windows-arm64-vulkan": "evidence/platform/windows-arm64-vulkan.json",
         },
         "hf": {
-            "repoId": "elizaos/eliza-1",
+            "repoId": "elizalabs/eliza-1",
             "status": "pending-upload",
         },
     }
@@ -448,7 +454,7 @@ def _ctx(
         bundle_dir=bundle,
         dry_run=dry_run,
         metal_verification=metal,
-        repo_id="elizaos/eliza-1",
+        repo_id="elizalabs/eliza-1",
         public=False,
         training_repo_root=training_root or _TRAINING_ROOT,
         template_path=(
@@ -596,12 +602,12 @@ def test_missing_vad_model_fails(tmp_path: Path) -> None:
     assert rc != EXIT_OK
 
 
-def test_missing_frozen_voice_tokenizer_fails(tmp_path: Path) -> None:
+def test_stale_omnivoice_checksum_fails_release_evidence(tmp_path: Path) -> None:
     bundle = _build_fixture_bundle(tmp_path)
     (bundle / "tts" / "omnivoice-tokenizer-Q4_K_M.gguf").unlink()
     metal = _metal_report(tmp_path)
     rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
-    assert rc == EXIT_MISSING_FILE
+    assert rc == EXIT_RELEASE_EVIDENCE_FAIL
 
 
 def test_missing_release_evidence_fails_in_dry_run(tmp_path: Path) -> None:
@@ -801,10 +807,10 @@ def test_upload_evidence_paths_must_cover_payload_commit(tmp_path: Path) -> None
     release["releaseState"] = "final"
     release["hf"]["status"] = "uploaded"
     release["hf"]["uploadEvidence"] = {
-        "repoId": "elizaos/eliza-1",
+        "repoId": "elizalabs/eliza-1",
         "status": "uploaded",
         "commit": "abc123",
-        "url": "https://huggingface.co/elizaos/eliza-1/commit/abc123",
+        "url": "https://huggingface.co/elizalabs/eliza-1/commit/abc123",
         "uploadedPaths": ["eliza-1.manifest.json", "README.md"],
     }
     release_path.write_text(json.dumps(release, indent=2))
@@ -854,7 +860,7 @@ def test_real_publish_finalizes_and_uploads_hf_evidence(
             "repoId": ctx.repo_id,
             "status": "uploaded",
             "commit": "payload123",
-            "url": "https://huggingface.co/elizaos/eliza-1/commit/payload123",
+            "url": "https://huggingface.co/elizalabs/eliza-1/commit/payload123",
             "uploadedPaths": uploaded_paths,
         }
 
@@ -884,7 +890,7 @@ def test_real_publish_finalizes_and_uploads_hf_evidence(
     assert release["releaseState"] == "final"
     assert release["hf"]["status"] == "uploaded"
     assert release["hf"]["uploadEvidence"]["commit"] == "payload123"
-    assert release["hf"]["uploadEvidence"]["repoId"] == "elizaos/eliza-1"
+    assert release["hf"]["uploadEvidence"]["repoId"] == "elizalabs/eliza-1"
     checksum_lines = (bundle / "checksums" / "SHA256SUMS").read_text().splitlines()
     release_line = next(
         line for line in checksum_lines if "  evidence/release.json" in line
@@ -910,7 +916,7 @@ def test_real_base_v1_publish_preserves_release_state(
             "repoId": ctx.repo_id,
             "status": "uploaded",
             "commit": "basev1",
-            "url": "https://huggingface.co/elizaos/eliza-1/commit/basev1",
+            "url": "https://huggingface.co/elizalabs/eliza-1/commit/basev1",
             "uploadedPaths": [
                 "bundles/4b/eliza-1.manifest.json",
                 "bundles/4b/README.md",
@@ -1003,7 +1009,6 @@ def test_red_gate_prevents_default_eligible(tmp_path: Path) -> None:
     )
     from benchmarks.eliza1_gates import apply_gates  # noqa: PLC0415
     from scripts.manifest.eliza1_manifest import (  # noqa: PLC0415
-        Eliza1ManifestError,
         KernelVerification,
     )
 

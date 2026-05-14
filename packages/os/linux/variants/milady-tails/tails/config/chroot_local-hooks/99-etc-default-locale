@@ -1,0 +1,15 @@
+#!/bin/sh
+
+set -e
+
+echo "Creating /etc/locale.conf"
+
+# Ensure 98-remove_unwanted_packages does not lead to this file
+# disappearing because a package that we purge owns it or deletes it
+# on purge in its postinst script. Various scripts of ours depend on
+# this file to exist and contain a valid $LANG value.
+
+# Tails Greeter's PostLogin script will later change this value according to
+# the user's choice.
+
+echo 'LANG=en_US.UTF-8' >/etc/locale.conf

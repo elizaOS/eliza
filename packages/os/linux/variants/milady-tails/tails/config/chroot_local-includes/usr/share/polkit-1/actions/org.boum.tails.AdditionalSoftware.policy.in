@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC
+ "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+<policyconfig>
+
+  <vendor>Tails</vendor>
+  <vendor_url>http://tails.net/</vendor_url>
+
+  <action id="org.boum.tails.AdditionalSoftware.remove">
+    <_description>Remove an additional software package</_description>
+    <_message>Authentication is required to remove a package from your additional software ($(command_line))</_message>
+    <icon_name>package-x-generic</icon_name>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_self</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/local/lib/additional-software/asp-remove-package</annotate>
+  </action>
+
+</policyconfig>

@@ -23,7 +23,6 @@ import sys
 from pathlib import Path
 from typing import Any
 
-import pytest
 
 HERE = Path(__file__).resolve().parent
 SCRIPTS = HERE.parent

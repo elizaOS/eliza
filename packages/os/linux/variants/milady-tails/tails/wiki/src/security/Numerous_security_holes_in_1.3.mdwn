@@ -1,0 +1,32 @@
+[[!meta date="Sun, 22 Mar 2015 01:02:03 +0000"]]
+[[!meta title="Numerous security holes in Tails 1.3"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+Several security holes that affect Tails 1.3 are now fixed in
+Tails 1.3.1.
+
+We **strongly** encourage you to [[upgrade to
+Tails 1.3.1|news/version_1.3.1]] as soon as possible.
+
+Details
+=======
+
+ - Tor Browser: [[!mfsa 2015-28]], [[!mfsa 2015-29]]
+ - Linux: [[!cve CVE-2015-1465]], [[!cve CVE-2015-1420]] and [[!cve CVE-2015-1593]]
+ - OpenSSL: [[!debsa2015 3197]]
+ - file and libmagic: [[!debsa2015 3196]]
+ - libxfont: [[!debsa2015 3194]]
+ - tcpdump: [[!debsa2015 3193]]
+ - libgnutls26: [[!debsa2015 3191]]
+ - libav: [[!debsa2015 3189]]
+ - FreeType 2: [[!debsa2015 3188]]
+ - ICU: [[!debsa2015 3187]]
+ - NSS: [[!debsa2015 3186]]
+ - libgcrypt11: [[!debsa2015 3185]]
+ - GnuPG: [[!debsa2015 3184]]
+ - libssh2: [[!debsa2015 3182]]
+ - libarchive and bsdtar: [[!debsa2015 3180]]
+ - libgtk2-perl: [[!debsa2015 3173]]
+ - CUPS: [[!debsa2015 3172]]

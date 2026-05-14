@@ -16,6 +16,7 @@ from typing import Final, Mapping, Sequence
 
 try:
     from scripts.manifest.eliza1_manifest import (
+        ELIZA_1_HF_REPO,
         ELIZA_1_PUBLISHABLE_RELEASE_STATES,
         ELIZA_1_TIERS,
         SUPPORTED_BACKENDS_BY_TIER,
@@ -27,6 +28,7 @@ try:
     )
 except ImportError:  # pragma: no cover - script execution path
     from eliza1_manifest import (
+        ELIZA_1_HF_REPO,
         ELIZA_1_PUBLISHABLE_RELEASE_STATES,
         ELIZA_1_TIERS,
         SUPPORTED_BACKENDS_BY_TIER,
@@ -406,10 +408,10 @@ def release_status_blockers(
                 if not isinstance(hf, dict):
                     tier_blockers.append("`evidence/release.json`: hf object missing")
                 else:
-                    if hf.get("repoId") != "elizaos/eliza-1":
+                    if hf.get("repoId") != ELIZA_1_HF_REPO:
                         tier_blockers.append(
                             "`evidence/release.json`: hf.repoId is not "
-                            "`elizaos/eliza-1`"
+                            f"`{ELIZA_1_HF_REPO}`"
                         )
                     if hf.get("status") != "uploaded":
                         tier_blockers.append(
@@ -422,10 +424,10 @@ def release_status_blockers(
                         "final Hugging Face commit/url/uploaded paths are not proven"
                     )
                 else:
-                    if upload.get("repoId") != "elizaos/eliza-1":
+                    if upload.get("repoId") != ELIZA_1_HF_REPO:
                         tier_blockers.append(
                             "`evidence/release.json`: hf.uploadEvidence.repoId is not "
-                            "`elizaos/eliza-1`"
+                            f"`{ELIZA_1_HF_REPO}`"
                         )
                     for key in ("commit", "url"):
                         if not isinstance(upload.get(key), str) or not upload.get(key):
@@ -462,16 +464,19 @@ def render_readiness(
         "Important caveats:",
         "",
         "- Text, ASR, DFlash, and OmniVoice TTS payloads are GGUF artifacts. "
-        "Kokoro TTS for 0.8B/2B/4B is ONNX by design; 9B carries both "
-        "Kokoro and OmniVoice; 27B-class tiers ship OmniVoice GGUF only.",
+        "Kokoro TTS is the default and only required TTS backend for "
+        "0.8B/2B/4B, and is ONNX by design. 9B carries both Kokoro and "
+        "OmniVoice; 27B-class tiers ship OmniVoice GGUF only.",
         "- VAD is a native GGML artifact at "
         "`vad/silero-vad-v5.1.2.ggml.bin`. It is not GGUF. "
         "Legacy bundles may additionally carry the ONNX fallback "
         "`vad/silero-vad-int8.onnx`, but the fallback is not the release "
         "readiness path.",
         "- Canonical active text tiers are Qwen3.5 0.8B (`0_8b`), "
-        "Qwen3.5 2B (`2b`), and Qwen3.5 4B (`4b`). ASR and embedding are "
-        "real Qwen3 upstream exceptions: use the published Qwen3-ASR "
+        "Qwen3.5 2B (`2b`), Qwen3.5 4B (`4b`), Qwen3.5 9B (`9b`) until "
+        "an official Qwen3.6 9B exists, and Qwen3.6 27B (`27b`, "
+        "`27b-256k`, `27b-1m`). ASR and embedding are real Qwen3 upstream "
+        "exceptions: use the published Qwen3-ASR "
         "0.6B / 1.7B GGUF repos and Qwen3-Embedding 0.6B / 4B / 8B GGUF "
         "repos; do not invent Qwen3.5-ASR, Qwen3.5-Embedding, "
         "Qwen3-ASR-0.8B/2B, or Qwen3-Embedding-0.8B/2B repo IDs.",

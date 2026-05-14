@@ -1,0 +1,13 @@
+diff --git a/package.json b/package.json
+index 549b4658b680bb3db081ed92f502382e574bdaa9..233f38d39ffaa1453e8c6959e97d2f0041cbc90f 100644
+--- a/package.json
++++ b/package.json
+@@ -57,7 +57,7 @@
+     "maintained node versions"
+   ],
+   "peerDependencies": {
+-    "typescript": "^5.0.0"
++    "typescript": ">=5.0.0"
+   },
+   "peerDependenciesMeta": {
+     "typescript": {

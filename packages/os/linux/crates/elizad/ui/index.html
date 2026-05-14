@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>Eliza</title>
+        <link rel="stylesheet" href="styles.css" />
+    </head>
+    <body>
+        <main id="chat" aria-live="polite">
+            <div id="transcript"></div>
+            <form id="composer" autocomplete="off">
+                <label for="input" class="sr-only">Message Eliza</label>
+                <input
+                    id="input"
+                    name="message"
+                    type="text"
+                    placeholder="…"
+                    autofocus
+                    spellcheck="false"
+                    inputmode="text"
+                />
+            </form>
+        </main>
+
+        <script src="main.js"></script>
+    </body>
+</html>

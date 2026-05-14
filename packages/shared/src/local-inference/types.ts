@@ -297,7 +297,7 @@ export interface CatalogModel {
   displayName: string;
   /** Hosting backend. Defaults to Hugging Face when omitted. */
   hub?: CatalogHub;
-  /** HuggingFace repo slug, e.g. "elizaos/eliza-1". */
+  /** HuggingFace repo slug, e.g. "elizalabs/eliza-1". */
   hfRepo: string;
   /**
    * Optional path prefix inside `hfRepo`. Eliza-1 publishes every tier under
@@ -323,10 +323,8 @@ export interface CatalogModel {
   params:
     | "360M"
     | "0.5B"
-    | "0.6B"
     | "0.8B"
     | "1B"
-    | "1.7B"
     | "2B"
     | "3B"
     | "4B"
@@ -397,6 +395,25 @@ export interface CatalogModel {
   };
   /** Runtime-specific acceleration metadata. */
   runtime?: LocalRuntimeAcceleration;
+  /**
+   * Whether this tier's bundle (body + drafter + manifest) is published
+   * on Hugging Face yet. Defaults to `"published"` when omitted, which
+   * preserves prior behaviour for any catalog entry that doesn't set it.
+   *
+   *   - `"published"`: HF repo has a real manifest + weights + drafter.
+   *     The recommender may route first-run users here.
+   *   - `"pending"`: catalog points at a tier whose HF repo is not
+   *     usable yet (404, empty manifest, `releaseState=local-standin`,
+   *     or drafter file missing). `recommendForFirstRun` falls through
+   *     to the next ladder candidate. Used to keep the catalog reflecting
+   *     the intended product shape while the publish pipeline catches up.
+   *
+   * See elizaOS/eliza#7629 — published Eliza-1 Qwen3.5/3.6 tiers may
+   * lack a distilled DFlash drafter on HF for some time after their
+   * catalog entries land, so the recommender must not route users to a
+   * tier whose bundle isn't reachable.
+   */
+  publishStatus?: "published" | "pending";
 }
 
 export type HardwareFitLevel = "fits" | "tight" | "wontfit";

@@ -1,0 +1,29 @@
+#!/bin/sh
+
+set -e
+
+# Create the tails-persistent-storage user.
+#
+# We start the tps-frontend program as this user, which allows us to give it
+# the privilege to connect to the tps backend, which we don't want to give to
+# the desktop user.
+#
+# We also create the persistence.conf and live-additional-software.conf files
+# as owned by this user, to stay fully compatible with older Tails versions,
+# which expect those files to be owned by that user.
+#
+# The UID and GID for this user and group need to remain the same (respectively:
+# 115 and 122) across Tails releases. If these UID and GID changed:
+#  - when enabling a persistent volume, persistence configuration files
+#    created with older Tails versions would be treated as unsafe and
+#    thus disabled;
+#  - Older Tails versions would be able to modify the Persistent Storage
+#    configuration
+
+echo "Creating the tails-persistent-storage user"
+
+# If this fails because UID 115 or GID 122 are already in use,
+# move the "stealer" user/group out of the way in 04-change-gids-and-uids.
+
+addgroup --system --gid 122 tails-persistent-storage
+adduser --system --uid 115 --gid 122 --no-create-home tails-persistent-storage

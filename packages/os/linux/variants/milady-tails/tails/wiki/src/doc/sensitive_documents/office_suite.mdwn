@@ -1,0 +1,34 @@
+[[!meta title="Office suite"]]
+
+Tails includes *[LibreOffice](https://www.libreoffice.org/)*,
+a powerful office suite which embeds several tools:
+
+- *Writer*, a word processor
+
+- *Calc*, a spreadsheet application
+
+- *Impress*, a presentation engine
+
+- *Draw*, a drawing and flowcharting
+  application
+
+To open *LibreOffice*, choose **Apps&nbsp;▸ Office&nbsp;▸ LibreOffice**.
+
+The *LibreOffice* website provides complete [user
+guides](https://wiki.documentfoundation.org/Documentation/Publications) for each
+of these tools, translated into several languages.
+
+To use *LibreOffice* in your language, you can
+install the <code>libreoffice-l10n-<span class="command-placeholder">lang</span></code>
+package using the [[Additional Software|persistent_storage/additional_software]]
+feature. Replace <span class="command-placeholder">lang</span> with the code
+for your language. For example, `vi` for Vietnamese.
+
+Tails already includes language packages for Arabic,
+German, Spanish, Farsi, French, Hindi, Bahasa Indonesia, Italian,
+Portuguese, Russian, Turkish, and Simplified Chinese.
+
+[List of available *LibreOffice* language packages](https://packages.debian.org/search?keywords=libreoffice-l10n&searchon=names&suite=stable&section=all)
+
+[[!inline pages="doc/sensitive_documents/persistence" raw="yes" sort="age"]]
+[[!inline pages="doc/sensitive_documents/metadata.inline" raw="yes" sort="age"]]

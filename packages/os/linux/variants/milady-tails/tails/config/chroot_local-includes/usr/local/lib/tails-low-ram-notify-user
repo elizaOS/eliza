@@ -1,0 +1,96 @@
+#!/usr/bin/python3 -I
+
+import gettext
+import psutil
+import subprocess
+import sys
+
+import gi
+
+from gi.repository import GLib
+
+gi.require_version("Notify", "0.7")
+from gi.repository import Notify  # NOQA: E402
+
+DONT_ASK_IDENTIFIER = "low-ram-notify-user"
+
+
+gettext.textdomain("tails")
+_ = gettext.gettext
+
+
+class LowRamNotifier:
+    def __init__(self, required_ram, installed_ram, show_suppress_button=False):
+        installed_ram_gb = round(installed_ram / 2**30, 1)
+        required_ram_gb = round(required_ram / 2**30, 1)
+        self.title = _("Insufficient Memory Detected")
+        self.body = _(
+            "Tails requires {required_ram_gb} GB of RAM, but this computer only "
+            "has {installed_ram_gb} GB. You might experience reduced performance, "
+            "instability, or crashes."
+        ).format(required_ram_gb=required_ram_gb, installed_ram_gb=installed_ram_gb)
+
+        Notify.init("org.boum.tails.low-ram-notify-user")
+        # We need to hold a reference to the notification until the callbacks
+        # are called. That's why we use an instance variable.
+        self.notification = Notify.Notification.new(self.title, self.body)
+        self.notification.set_hint("transient", GLib.Variant("u", 1))
+        self.notification.set_timeout(0)
+        if show_suppress_button:
+            self.notification.add_action(
+                "hide", _("Don't Show Again"), self.cb_notification_clicked
+            )
+        self.notification.add_action(
+            "documentation", _("Learn More"), self.cb_notification_clicked
+        )
+        self.notification.connect("closed", lambda *x: sys.exit(0))
+
+        self.notification.show()
+
+    def cb_notification_clicked(self, notification, action, user_data=None):
+        if action == "hide":
+            subprocess.run(
+                [
+                    "/usr/local/bin/tails-ask-again",
+                    "--dont-ask-again",
+                    DONT_ASK_IDENTIFIER,
+                ],
+                check=False,
+            )
+        elif action == "documentation":
+            subprocess.run(
+                [
+                    "/usr/local/lib/run-with-user-env",
+                    "tails-documentation",
+                    "doc/about/requirements",
+                ],
+                check=False,
+            )
+        sys.exit(0)
+
+
+if __name__ == "__main__":
+    installed_ram = psutil.virtual_memory().total
+    required_ram = 3 * 2**30
+    # Tails requires 3 GB of RAM, however, we allow some slack since
+    # all RAM often isn't fully available (e.g. due to being used as
+    # video memory for integrated graphics).
+    if required_ram - 256 * 2**20 <= installed_ram:
+        sys.exit(0)
+    dont_ask_status = (
+        subprocess.check_output(
+            ["/usr/local/bin/tails-ask-again", "--timeout", "30", DONT_ASK_IDENTIFIER]
+        )
+        .decode()
+        .strip()
+    )
+    if dont_ask_status == "hide":
+        sys.exit(0)
+
+    mainloop = GLib.MainLoop.new(None, False)
+    LowRamNotifier(
+        required_ram,
+        installed_ram,
+        show_suppress_button=(dont_ask_status != "unavailable"),
+    )
+    mainloop.run()

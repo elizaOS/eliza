@@ -1,0 +1,19 @@
+#!/bin/sh
+
+# refs: #17807
+
+set -eu
+
+NOSYMFOLLOW_MOUNTPOINT='/run/nosymfollow'
+KEYRING="${NOSYMFOLLOW_MOUNTPOINT}/home/amnesia/.gnupg/pubring.kbx"
+KEYRING_BAK="${KEYRING}~"
+KEYRING_SIZE="$(stat -c %s ${KEYRING} || echo 0)"
+
+if [ ! -f "${KEYRING}" ] || [ "${KEYRING_SIZE}" -le 32 ]; then
+  echo >&2 "warning: It seems the GnuPG keyring is corrupt"
+  if [ -f "${KEYRING_BAK}" ]; then
+    echo >&2 "warning: Restoring backup of GnuPG keyring"
+    cp "${KEYRING_BAK}" "${KEYRING}"
+    chmod u=rw,go= "${KEYRING}"
+  fi
+fi

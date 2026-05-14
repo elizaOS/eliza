@@ -79,8 +79,16 @@ export type PromptInputController = {
   __registerFileInput: (ref: RefObject<HTMLInputElement | null>, open: () => void) => void;
 };
 
+type PromptInputProviderBridge = {
+  attachments: AttachmentsContext;
+  getTextInputValue: () => string;
+  clearTextInput: () => void;
+  __registerFileInput: PromptInputController["__registerFileInput"];
+};
+
 const PromptInputContext = createContext<PromptInputController | null>(null);
 const ProviderAttachmentsContext = createContext<AttachmentsContext | null>(null);
+const PromptInputProviderBridgeContext = createContext<PromptInputProviderBridge | null>(null);
 
 export const usePromptInputController = () => {
   const ctx = useContext(PromptInputContext);
@@ -95,6 +103,10 @@ export const usePromptInputController = () => {
 // Optional variants (do NOT throw). Useful for dual-mode components.
 const useOptionalPromptInputController = () => {
   return useContext(PromptInputContext);
+};
+
+const useOptionalPromptInputProviderBridge = () => {
+  return useContext(PromptInputProviderBridgeContext);
 };
 
 export const useProviderAttachments = () => {
@@ -126,7 +138,10 @@ export function PromptInputProvider({
   useRenderGuard("PromptInputProvider");
   // ----- textInput state
   const [textInput, setTextInput] = useState(initialTextInput);
+  const textInputRef = useRef(textInput);
+  textInputRef.current = textInput;
   const clearInput = useCallback(() => setTextInput(""), []);
+  const getTextInputValue = useCallback(() => textInputRef.current, []);
 
   // ----- attachments state (global when wrapped)
   const [attachements, setAttachements] = useState<(FileUIPart & { id: string })[]>([]);
@@ -204,6 +219,16 @@ export function PromptInputProvider({
     [],
   );
 
+  const providerBridge = useMemo<PromptInputProviderBridge>(
+    () => ({
+      attachments,
+      getTextInputValue,
+      clearTextInput: clearInput,
+      __registerFileInput,
+    }),
+    [attachments, getTextInputValue, clearInput, __registerFileInput],
+  );
+
   const controller = useMemo<PromptInputController>(
     () => ({
       textInput: {
@@ -218,11 +243,13 @@ export function PromptInputProvider({
   );
 
   return (
-    <PromptInputContext.Provider value={controller}>
-      <ProviderAttachmentsContext.Provider value={attachments}>
-        {children}
-      </ProviderAttachmentsContext.Provider>
-    </PromptInputContext.Provider>
+    <PromptInputProviderBridgeContext.Provider value={providerBridge}>
+      <PromptInputContext.Provider value={controller}>
+        <ProviderAttachmentsContext.Provider value={attachments}>
+          {children}
+        </ProviderAttachmentsContext.Provider>
+      </PromptInputContext.Provider>
+    </PromptInputProviderBridgeContext.Provider>
   );
 }
 
@@ -408,7 +435,7 @@ export type PromptInputProps = Omit<HTMLAttributes<HTMLFormElement>, "onSubmit">
   multiple?: boolean;
   // When true, accepts drops anywhere on document. Default false (opt-in).
   globalDrop?: boolean;
-  // Render a hidden input with given name and keep it in sync for native form posts. Default false.
+  /** @deprecated File inputs cannot be programmatically synced; retained only to clear the input after attachments clear. */
   syncHiddenInput?: boolean;
   // Minimal constraints
   maxFiles?: number;
@@ -434,29 +461,22 @@ export const PromptInput = ({
   ...props
 }: PromptInputProps) => {
   useRenderGuard("PromptInput");
-  // Try to use a provider controller if present
-  const controller = useOptionalPromptInputController();
-  const providerAttachments = controller?.attachments;
-  const providerTextInput = controller?.textInput;
-  const registerProviderFileInput = controller?.__registerFileInput;
-  const usingProvider = !!controller;
+  // Try to use a provider bridge if present. This keeps PromptInput off the
+  // text context so typing only rerenders the controlled textarea.
+  const providerBridge = useOptionalPromptInputProviderBridge();
+  const providerAttachments = providerBridge?.attachments;
+  const registerProviderFileInput = providerBridge?.__registerFileInput;
+  const usingProvider = !!providerBridge;
 
   // Refs
   const inputRef = useRef<HTMLInputElement | null>(null);
-  const anchorRef = useRef<HTMLSpanElement>(null);
   const formRef = useRef<HTMLFormElement | null>(null);
-
-  // Find nearest form to scope drag & drop
-  useEffect(() => {
-    const root = anchorRef.current?.closest("form");
-    if (root instanceof HTMLFormElement) {
-      formRef.current = root;
-    }
-  }, []);
 
   // ----- Local attachments (only used when no provider)
   const [items, setItems] = useState<(FileUIPart & { id: string })[]>([]);
   const itemsRef = useRef(items);
+  const providerAttachmentsRef = useRef(providerAttachments);
+  providerAttachmentsRef.current = providerAttachments;
   const files = providerAttachments ? providerAttachments.files : items;
 
   useEffect(() => {
@@ -539,55 +559,68 @@ export const PromptInput = ({
 
   const addProvider = useCallback(
     (fileList: File[] | FileList) => {
-      if (!providerAttachments) return;
-      const capped = filterFilesForConstraints(fileList, providerAttachments.files.length);
+      const currentAttachments = providerAttachmentsRef.current;
+      if (!currentAttachments) return;
+      const capped = filterFilesForConstraints(fileList, currentAttachments.files.length);
       if (capped.length > 0) {
-        providerAttachments.add(capped);
+        currentAttachments.add(capped);
       }
     },
-    [providerAttachments, filterFilesForConstraints],
+    [filterFilesForConstraints],
   );
 
-  const add = useMemo(
-    () => (usingProvider ? addProvider : addLocal),
+  const add = useCallback(
+    (fileList: File[] | FileList) => {
+      if (usingProvider) {
+        addProvider(fileList);
+        return;
+      }
+      addLocal(fileList);
+    },
     [usingProvider, addProvider, addLocal],
   );
 
-  const remove = useMemo(
-    () =>
-      usingProvider
-        ? (id: string) => providerAttachments?.remove(id)
-        : (id: string) =>
-            setItems((prev) => {
-              const found = prev.find((file) => file.id === id);
-              if (found?.url) {
-                URL.revokeObjectURL(found.url);
-              }
-              return prev.filter((file) => file.id !== id);
-            }),
-    [usingProvider, providerAttachments],
+  const remove = useCallback(
+    (id: string) => {
+      if (usingProvider) {
+        providerAttachmentsRef.current?.remove(id);
+        return;
+      }
+
+      setItems((prev) => {
+        const found = prev.find((file) => file.id === id);
+        if (found?.url) {
+          URL.revokeObjectURL(found.url);
+        }
+        return prev.filter((file) => file.id !== id);
+      });
+    },
+    [usingProvider],
   );
 
-  const clear = useMemo(
-    () =>
-      usingProvider
-        ? () => providerAttachments?.clear()
-        : () =>
-            setItems((prev) => {
-              for (const file of prev) {
-                if (file.url) {
-                  URL.revokeObjectURL(file.url);
-                }
-              }
-              return [];
-            }),
-    [usingProvider, providerAttachments],
-  );
+  const clear = useCallback(() => {
+    if (usingProvider) {
+      providerAttachmentsRef.current?.clear();
+      return;
+    }
 
-  const openFileDialog = useMemo(
-    () => (usingProvider ? () => providerAttachments?.openFileDialog() : openFileDialogLocal),
-    [usingProvider, providerAttachments, openFileDialogLocal],
-  );
+    setItems((prev) => {
+      for (const file of prev) {
+        if (file.url) {
+          URL.revokeObjectURL(file.url);
+        }
+      }
+      return [];
+    });
+  }, [usingProvider]);
+
+  const openFileDialog = useCallback(() => {
+    if (usingProvider) {
+      providerAttachmentsRef.current?.openFileDialog();
+      return;
+    }
+    openFileDialogLocal();
+  }, [usingProvider, openFileDialogLocal]);
 
   // Let provider know about our hidden file input so external menus can call openFileDialog()
   useEffect(() => {
@@ -682,7 +715,7 @@ export const PromptInput = ({
 
   const ctx = useMemo<AttachmentsContext>(
     () => ({
-      files: files.map((item) => ({ ...item, id: item.id })),
+      files,
       add,
       remove,
       clear,
@@ -697,7 +730,7 @@ export const PromptInput = ({
 
     const form = event.currentTarget;
     const text = usingProvider
-      ? (providerTextInput?.value ?? "")
+      ? (providerBridge?.getTextInputValue() ?? "")
       : (() => {
           const formData = new FormData(form);
           return (formData.get("message") as string) || "";
@@ -727,12 +760,12 @@ export const PromptInput = ({
       if (result instanceof Promise) {
         result.then(() => {
           clear();
-          if (usingProvider) providerTextInput?.clear();
+          if (usingProvider) providerBridge?.clearTextInput();
         });
       } else {
         // Sync function completed without throwing, clear attachments
         clear();
-        if (usingProvider) providerTextInput?.clear();
+        if (usingProvider) providerBridge?.clearTextInput();
       }
     });
   };
@@ -740,7 +773,6 @@ export const PromptInput = ({
   // Render with or without local provider
   const inner = (
     <>
-      <span aria-hidden="true" className="hidden" ref={anchorRef} />
       <input
         accept={accept}
         aria-label="Upload files"
@@ -751,7 +783,7 @@ export const PromptInput = ({
         title="Upload files"
         type="file"
       />
-      <form className={cn("w-full", className)} onSubmit={handleSubmit} {...props}>
+      <form className={cn("w-full", className)} onSubmit={handleSubmit} ref={formRef} {...props}>
         <InputGroup>{children}</InputGroup>
       </form>
     </>
@@ -1005,69 +1037,74 @@ export const PromptInputSpeechButton = ({
   ...props
 }: PromptInputSpeechButtonProps) => {
   const [isListening, setIsListening] = useState(false);
-  const [recognition, setRecognition] = useState<SpeechRecognition | null>(null);
+  const [isSupported, setIsSupported] = useState(false);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
+  const textareaRefRef = useRef(textareaRef);
+  const onTranscriptionChangeRef = useRef(onTranscriptionChange);
+
+  textareaRefRef.current = textareaRef;
+  onTranscriptionChangeRef.current = onTranscriptionChange;
 
   useEffect(() => {
-    if (
-      typeof window !== "undefined" &&
-      ("SpeechRecognition" in window || "webkitSpeechRecognition" in window)
-    ) {
-      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-      const speechRecognition = new SpeechRecognition();
-
-      speechRecognition.continuous = true;
-      speechRecognition.interimResults = true;
-      speechRecognition.lang = "en-US";
-
-      speechRecognition.onstart = () => {
-        setIsListening(true);
-      };
-
-      speechRecognition.onend = () => {
-        setIsListening(false);
-      };
-
-      speechRecognition.onresult = (event) => {
-        let finalTranscript = "";
-
-        for (let i = 0; i < event.results.length; i++) {
-          if (event.results[i].isFinal) {
-            finalTranscript += event.results[i][0].transcript;
-          }
-        }
-
-        if (finalTranscript && textareaRef?.current) {
-          const textarea = textareaRef.current;
-          const currentValue = textarea.value;
-          const newValue = currentValue + (currentValue ? " " : "") + finalTranscript;
-
-          textarea.value = newValue;
-          textarea.dispatchEvent(new Event("input", { bubbles: true }));
-          onTranscriptionChange?.(newValue);
-        }
-      };
-
-      speechRecognition.onerror = (event) => {
-        console.error("Speech recognition error:", event.error);
-        setIsListening(false);
-      };
-
-      recognitionRef.current = speechRecognition;
-      // Set recognition state asynchronously to avoid cascading renders
-      Promise.resolve().then(() => {
-        setRecognition(speechRecognition);
-      });
+    if (typeof window === "undefined") {
+      return;
     }
 
-    return () => {
-      if (recognitionRef.current) {
-        recognitionRef.current.stop();
+    const SpeechRecognitionConstructor = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognitionConstructor) {
+      return;
+    }
+
+    setIsSupported(true);
+    const speechRecognition = new SpeechRecognitionConstructor();
+
+    speechRecognition.continuous = true;
+    speechRecognition.interimResults = true;
+    speechRecognition.lang = "en-US";
+
+    speechRecognition.onstart = () => {
+      setIsListening(true);
+    };
+
+    speechRecognition.onend = () => {
+      setIsListening(false);
+    };
+
+    speechRecognition.onresult = (event) => {
+      let finalTranscript = "";
+
+      for (let i = 0; i < event.results.length; i++) {
+        if (event.results[i].isFinal) {
+          finalTranscript += event.results[i][0].transcript;
+        }
+      }
+
+      const textarea = textareaRefRef.current?.current;
+      if (finalTranscript && textarea) {
+        const currentValue = textarea.value;
+        const newValue = currentValue + (currentValue ? " " : "") + finalTranscript;
+
+        textarea.value = newValue;
+        textarea.dispatchEvent(new Event("input", { bubbles: true }));
+        onTranscriptionChangeRef.current?.(newValue);
       }
     };
-  }, [textareaRef, onTranscriptionChange]);
+
+    speechRecognition.onerror = (event) => {
+      console.error("Speech recognition error:", event.error);
+      setIsListening(false);
+    };
+
+    recognitionRef.current = speechRecognition;
+
+    return () => {
+      speechRecognition.stop();
+      recognitionRef.current = null;
+    };
+  }, []);
 
   const toggleListening = useCallback(() => {
+    const recognition = recognitionRef.current;
     if (!recognition) return;
 
     if (isListening) {
@@ -1075,7 +1112,7 @@ export const PromptInputSpeechButton = ({
     } else {
       recognition.start();
     }
-  }, [recognition, isListening]);
+  }, [isListening]);
 
   return (
     <PromptInputButton
@@ -1084,7 +1121,7 @@ export const PromptInputSpeechButton = ({
         isListening && "animate-pulse bg-accent text-accent-foreground",
         className,
       )}
-      disabled={!recognition}
+      disabled={!isSupported}
       onClick={toggleListening}
       {...props}
     >

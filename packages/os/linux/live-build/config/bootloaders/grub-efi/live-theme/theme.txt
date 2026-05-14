@@ -1,0 +1,44 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 NubsCarson and contributors
+#
+# gfxterm theme rendered over splash.png. The title is suppressed
+# (the wordmark is baked into the splash itself) and the progress bar
+# text is empty so the timeout countdown doesn't scroll across the
+# screen. Colors mirror the ElizaOS palette: pure black background,
+# warm orange accent (#FF6B35, the Her/1966-ELIZA-terminal hue) for
+# the active item + progress bar, muted gray for inactive items.
+
+desktop-image: "../splash.png"
+title-text: ""
+title-font: "Unifont Regular 16"
+message-font: "Unifont Regular 16"
+terminal-font: "Unifont Regular 16"
+
++ boot_menu {
+	left = 10%
+	width = 80%
+	top = 70%
+	height = 22%
+	item_color = "#A0A0A0"
+	item_font = "Unifont Regular 16"
+	selected_item_color = "#FF6B35"
+	selected_item_font = "Unifont Bold 16"
+	item_height = 20
+	item_padding = 2
+	item_spacing = 4
+	icon_width = 0
+	icon_height = 0
+	item_icon_space = 0
+}
+
++ progress_bar {
+	id = "__timeout__"
+	left = 30%
+	top = 100%-16
+	width = 40%
+	height = 4
+	text = ""
+	fg_color = "#FF6B35"
+	bg_color = "#1a1a1a"
+	border_color = "#1a1a1a"
+}

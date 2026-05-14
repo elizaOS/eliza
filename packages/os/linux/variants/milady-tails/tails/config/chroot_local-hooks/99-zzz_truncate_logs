@@ -1,0 +1,6 @@
+#!/bin/sh
+
+set -e
+
+echo "Truncating log files"
+find /var/log/ -type f -exec truncate --size=0 '{}' \;

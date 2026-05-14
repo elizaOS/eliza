@@ -92,9 +92,7 @@ export async function ensureStewardTenant(
   if (existingTenantId) {
     return {
       tenantId: existingTenantId,
-      apiKey:
-        normalizeOptionalValue(organization.steward_tenant_api_key) ||
-        getEnvStewardApiKey(),
+      apiKey: normalizeOptionalValue(organization.steward_tenant_api_key) || getEnvStewardApiKey(),
       isNew: false,
     };
   }
@@ -154,18 +152,14 @@ export async function ensureStewardTenant(
     );
   }
 
-  const apiKey = normalizeOptionalValue(
-    stewardData.apiKey ?? stewardData.data?.apiKey,
-  );
+  const apiKey = normalizeOptionalValue(stewardData.apiKey ?? stewardData.data?.apiKey);
 
   await organizationsRepository.update(organizationId, {
     steward_tenant_id: tenantId,
     steward_tenant_api_key: apiKey,
   });
 
-  logger.info(
-    `[steward-tenants] Provisioned tenant ${tenantId} for org ${organizationId}`,
-  );
+  logger.info(`[steward-tenants] Provisioned tenant ${tenantId} for org ${organizationId}`);
 
   return {
     tenantId,

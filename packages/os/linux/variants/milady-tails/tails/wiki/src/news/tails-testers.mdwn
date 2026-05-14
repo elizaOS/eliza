@@ -1,0 +1,6 @@
+[[!meta date="Fri, 07 Mar 2014 01:23:45 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!meta title="Tails testers mailing list"]]
+[[!tag announce]]
+
+[[!inline pages="contribute/how/testing" raw="yes" sort="age"]]

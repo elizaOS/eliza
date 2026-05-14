@@ -1,0 +1,131 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: \n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2026-03-18 09:17+0000\n"
+"PO-Revision-Date: 2026-03-26 01:22+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: \n"
+"Language: de\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Burning Tails on a DVD\"]]\n"
+msgstr "[[!meta title=\"Tails auf eine DVD brennen\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta stylesheet=\"inc/stylesheets/download\" rel=\"stylesheet\" title=\"\"]]\n"
+msgstr "[[!meta stylesheet=\"inc/stylesheets/download\" rel=\"stylesheet\" title=\"\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta stylesheet=\"doc/about/warnings\" rel=\"stylesheet\" title=\"\"]]\n"
+msgstr "[[!meta stylesheet=\"doc/about/warnings\" rel=\"stylesheet\" title=\"\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta stylesheet=\"inc/stylesheets/steps\" rel=\"stylesheet\" title=\"\"]]\n"
+msgstr "[[!meta stylesheet=\"inc/stylesheets/steps\" rel=\"stylesheet\" title=\"\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta stylesheet=\"inc/stylesheets/dvd\" rel=\"stylesheet\" title=\"\"]]\n"
+msgstr "[[!meta stylesheet=\"inc/stylesheets/dvd\" rel=\"stylesheet\" title=\"\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta script=\"install/inc/js/download\"]]\n"
+msgstr "[[!meta script=\"install/inc/js/download\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta script=\"install/inc/js/forge.min\"]]\n"
+msgstr "[[!meta script=\"install/inc/js/forge.min\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"tip\">\n"
+msgstr "<div class=\"tip\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<p>Check our [[system requirements and recommended hardware|doc/about/requirements]].</p>\n"
+msgstr "<p>Überprüfen Sie unsere [[Systemanforderungen und empfohlenen Hardware|doc/about/requirements]].</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"install/inc/steps/download.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"install/inc/steps/download.inline.de\" raw=\"yes\" sort=\"age\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"install/inc/steps/verify.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"install/inc/steps/verify.inline.de\" raw=\"yes\" sort=\"age\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 class=\"step\">Continue installing or upgrading Tails</h1>\n"
+msgstr "<h1 class=\"step\">Mit der Installation oder Aktualisierung von Tails fortfahren</h1>\n"
+
+#. type: Plain text
+msgid "For detailed instructions, refer to the Ubuntu documentation:"
+msgstr ""
+"Schlagen Sie für detailliertere Anweisungen in der Dokumentation von Ubuntu "
+"nach:"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid ""
+#| "- [Burning from Windows](https://help.ubuntu.com/community/"
+#| "BurningIsoHowto#Burning_from_Windows)"
+msgid ""
+"[Burning from Windows](https://help.ubuntu.com/community/"
+"BurningIsoHowto#Burning_from_Windows)"
+msgstr ""
+"- [Brennen unter Windows](https://help.ubuntu.com/community/"
+"BurningIsoHowto#Burning_from_Windows)"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid ""
+#| "- [Burning from Ubuntu](https://help.ubuntu.com/community/"
+#| "BurningIsoHowto#Burning_from_Ubuntu)"
+msgid ""
+"[Burning from Ubuntu](https://help.ubuntu.com/community/"
+"BurningIsoHowto#Burning_from_Ubuntu)"
+msgstr ""
+"- [Von Ubuntu aus brennen (englisch)](https://help.ubuntu.com/community/"
+"BurningIsoHowto#Burning_from_Ubuntu)"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid ""
+#| "- [Burning from macOS](https://help.ubuntu.com/community/"
+#| "BurningIsoHowto#Burning_from_Mac_OS_X)"
+msgid ""
+"[Burning from macOS](https://help.ubuntu.com/community/"
+"BurningIsoHowto#Burning_from_Mac_OS_X)"
+msgstr ""
+"- [Von macOS aus brennen](https://help.ubuntu.com/community/"
+"BurningIsoHowto#Burning_from_Mac_OS_X)"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"install/inc/steps/warnings.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"install/inc/steps/warnings.inline.de\" raw=\"yes\" sort=\"age\"]]\n"

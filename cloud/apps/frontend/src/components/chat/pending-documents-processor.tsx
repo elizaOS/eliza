@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { toast } from "sonner";
 
 interface PendingFile {
@@ -20,15 +20,6 @@ interface PendingDocuments {
     tabId: string;
     claimedAt: number;
   };
-}
-
-interface ProcessingState {
-  status: "idle" | "processing" | "completed" | "error";
-  totalFiles: number;
-  processedFiles: number;
-  successCount: number;
-  failedCount: number;
-  error?: string;
 }
 
 interface PendingDocumentsProcessorProps {
@@ -70,20 +61,9 @@ export function PendingDocumentsProcessor({
   characterId,
   onProcessingComplete,
 }: PendingDocumentsProcessorProps) {
-  // State is used internally for tracking but not rendered (component returns null)
-  const [_state, setState] = useState<ProcessingState>({
-    status: "idle",
-    totalFiles: 0,
-    processedFiles: 0,
-    successCount: 0,
-    failedCount: 0,
-  });
-  const [dismissed, setDismissed] = useState(false);
   // Track which characterId is being processed (null = none)
   // This allows processing different characters if user switches
   const processingCharacterIdRef = useRef<string | null>(null);
-  // Track previous characterId to detect switches
-  const previousCharacterIdRef = useRef<string | null>(characterId);
   // Track current characterId prop for race condition prevention in async callbacks
   const currentCharacterIdRef = useRef<string | null>(characterId);
   // Unique ID for this tab to prevent cross-tab duplicate processing
@@ -94,22 +74,6 @@ export function PendingDocumentsProcessor({
   // Keep ref in sync with prop
   useEffect(() => {
     currentCharacterIdRef.current = characterId;
-  }, [characterId]);
-
-  // Reset dismissed state when characterId changes
-  // This allows processing pending files for a new character after dismissing for another
-  useEffect(() => {
-    if (characterId !== previousCharacterIdRef.current) {
-      setDismissed(false);
-      setState({
-        status: "idle",
-        totalFiles: 0,
-        processedFiles: 0,
-        successCount: 0,
-        failedCount: 0,
-      });
-      previousCharacterIdRef.current = characterId;
-    }
   }, [characterId]);
 
   // Cleanup AbortController on unmount to prevent memory leaks and stale state updates
@@ -139,18 +103,10 @@ export function PendingDocumentsProcessor({
       // Capture the characterId we're processing to check against current prop later
       const processingForCharacterId = pending.characterId;
 
-      // Helper to check if we should update state (prevents race condition when user switches characters)
-      const shouldUpdateState = () =>
+      // Helper to check if we should notify (prevents race condition when user switches characters)
+      const shouldNotify = () =>
         currentCharacterIdRef.current === processingForCharacterId &&
         !abortController.signal.aborted;
-
-      setState({
-        status: "processing",
-        totalFiles: pending.files.length,
-        processedFiles: 0,
-        successCount: 0,
-        failedCount: 0,
-      });
 
       try {
         const response = await fetch("/api/v1/documents/submit", {
@@ -211,15 +167,7 @@ export function PendingDocumentsProcessor({
           }
 
           // Only update UI if user hasn't switched to a different character
-          if (shouldUpdateState()) {
-            setState({
-              status: "completed",
-              totalFiles: pending.files.length,
-              processedFiles: pending.files.length,
-              successCount,
-              failedCount,
-            });
-
+          if (shouldNotify()) {
             if (failedCount > 0) {
               toast.warning("Some files failed to process", {
                 description: `${successCount} succeeded, ${failedCount} failed. You may need to re-upload failed files.`,
@@ -233,19 +181,9 @@ export function PendingDocumentsProcessor({
             onProcessingComplete?.();
           }
         } else {
-          const errorData = await response.json().catch(() => ({}));
           // Keep sessionStorage on error so user can retry
           // Only update UI if user hasn't switched to a different character
-          if (shouldUpdateState()) {
-            setState({
-              status: "error",
-              totalFiles: pending.files.length,
-              processedFiles: 0,
-              successCount: 0,
-              failedCount: pending.files.length,
-              error: errorData.error || "Failed to process files",
-            });
-
+          if (shouldNotify()) {
             toast.error("File processing failed", {
               description: "You can try again from the Files tab",
             });
@@ -259,16 +197,7 @@ export function PendingDocumentsProcessor({
 
         // Keep sessionStorage on network error so user can retry
         // Only update UI if user hasn't switched to a different character
-        if (shouldUpdateState()) {
-          setState({
-            status: "error",
-            totalFiles: pending.files.length,
-            processedFiles: 0,
-            successCount: 0,
-            failedCount: pending.files.length,
-            error: error instanceof Error ? error.message : "Network error",
-          });
-
+        if (shouldNotify()) {
           toast.error("File processing failed", {
             description: "Network error - you can try again from the Files tab",
           });
@@ -281,7 +210,7 @@ export function PendingDocumentsProcessor({
   );
 
   useEffect(() => {
-    if (!characterId || dismissed) return;
+    if (!characterId) return;
 
     const key = `${PENDING_KEY_PREFIX}${characterId}`;
     let stored: string | null = null;
@@ -373,7 +302,7 @@ export function PendingDocumentsProcessor({
 
     // Start processing
     processFiles(pending);
-  }, [characterId, dismissed, processFiles]);
+  }, [characterId, processFiles]);
 
   // This component processes files in the background and shows toast notifications
   // No visible UI - just background processing with toast feedback

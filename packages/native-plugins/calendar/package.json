@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/capacitor-calendar",
-  "version": "2.0.0-beta.1",
+  "version": "2.0.0-beta.2",
   "description": "Reads and writes Apple Calendar events through EventKit.",
   "keywords": [
     "calendar",

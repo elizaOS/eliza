@@ -1,0 +1,30 @@
+[[!meta date="Tue, 13 Mar 2018 12:27:33 +0000"]]
+[[!meta title="Numerous security holes in Tails 3.5"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+Several security holes that affect Tails 3.5 are now fixed in Tails 3.6.
+
+We **strongly** encourage you to
+[[upgrade to Tails 3.6|news/version_3.6]] as soon as possible.
+
+- Tor Browser: [MSFA 2018-07](https://www.mozilla.org/en-US/security/advisories/mfsa2018-07/)
+- linux: [[!cve CVE-2018-5750]], [[!cve CVE-2018-5332]], [[!cve CVE-2018-5333]],
+  [[!cve CVE-2018-5344]], [[!cve CVE-2018-5332]], [[!cve CVE-2018-5333]],
+  [[!cve CVE-2017-5753]], [[!cve CVE-2018-6927]], [[!cve CVE-2018-1000004]],
+  [[!cve CVE-2018-1000028]], [[!cve CVE-2018-5344]], 
+- poppler: [[!debsa2018 4097]]
+- curl: [[!debsa2018 4098]]
+- ffmpeg: [[!debsa2018 4099]]
+- tiff: [[!debsa2018 4100]]
+- thunderbird: [[!debsa2018 4102]]
+- p7zip: [[!debsa2018 4104]]
+- libtasn1: [[!debsa2018 4106]]
+- libreoffice: [[!debsa2018 4111]]
+- libvorbis: [[!debsa2018 4113]]
+- gcc-6: [[!debsa2018 4121]]
+- wavpack: [[!debsa2018 4125]]
+- libvpx: [[!debsa2018 4132]]
+- isc-dhcp: [[!debsa2018 4133]]
+- util-linux: [[!debsa2018 4134]]

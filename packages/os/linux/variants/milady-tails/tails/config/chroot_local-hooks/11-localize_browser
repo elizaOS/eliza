@@ -1,0 +1,87 @@
+#!/bin/sh
+
+set -e
+
+echo "Localize each supported browser locale"
+
+# Import the TBB_INSTALL variable and
+# supported_tor_browser_locales(), locale_is_supported_by_tor_browser(), set_mozilla_pref()
+. /usr/local/lib/tails-shell-library/tor-browser.sh
+
+# Import language_code_from_locale()
+. /usr/local/lib/tails-shell-library/localization.sh
+
+BROWSER_LOCALIZATION_DIR="/usr/share/tails/browser-localization"
+DESCRIPTIONS_FILE="${BROWSER_LOCALIZATION_DIR}/descriptions"
+LOCALE_PROFILES_DIR="/etc/tor-browser/locale-profiles/"
+
+# Sanity check that each supported Tor Browser locale has a
+# description for how to localize it further.
+BROKEN_LOCALES=""
+for LOCALE in $(supported_tor_browser_locales); do
+    if ! grep -q "^${LOCALE}:" "${DESCRIPTIONS_FILE}" 2>/dev/null; then
+        BROKEN_LOCALES="${BROKEN_LOCALES} ${LOCALE}"
+    fi
+done
+if [ -n "${BROKEN_LOCALES}" ]; then
+    echo "The following supported browser locales lack descriptions in ${DESCRIPTIONS_FILE}:${BROKEN_LOCALES}" >&2
+    exit 1
+fi
+
+# This very long while-loop is fed the DESCRIPTIONS_FILE (IO
+# redirection at the bottom), which describes how we will localize
+# each supported Tor Browser locale. The format is:
+#   MOZILLA_LOCALE:LOCATION
+# Note that we're forced to pick some representative location for the
+# language-only locales, like Egypt (EG) for Arabic (ar).
+while IFS=: read -r MOZILLA_LOCALE LOCATION; do
+    if [ -z "${MOZILLA_LOCALE}" ] || [ -z "${LOCATION}" ]; then
+        echo "Something is wrong with ${DESCRIPTIONS_FILE}" >&2
+        echo "Description: ${MOZILLA_LOCALE}:${LOCATION}" >&2
+        exit 1
+    fi
+
+    if ! locale_is_supported_by_tor_browser "$MOZILLA_LOCALE"; then
+        echo "- Skipping localization of ${MOZILLA_LOCALE} for browsers:" \
+            "not supported by Tor Browser"
+        continue
+    fi
+
+    echo "- Localizing ${MOZILLA_LOCALE} for browsers..."
+
+    # In some places we'll need the locale in xx_YY format instead of
+    # Mozilla's xx-YY format. Over all, the greatest difficulty in
+    # this whole script is really to know when to use the correct
+    # locale format, since Firefox isn't very consistent in it.
+    if echo "${MOZILLA_LOCALE}" | grep -q '-'; then
+        NORMAL_LOCALE="$(echo "${MOZILLA_LOCALE}" | tr - _)"
+    else
+        NORMAL_LOCALE="${MOZILLA_LOCALE}_${LOCATION}"
+    fi
+    LANG_CODE="$(language_code_from_locale "${NORMAL_LOCALE}")"
+
+    # Our Tor Browser wrapper script will make use of the following
+    # per-locale profiles to set localized defaults for various prefs.
+    mkdir -p "${LOCALE_PROFILES_DIR}"
+    LOCALE_PROFILE_FILE="${LOCALE_PROFILES_DIR}/${MOZILLA_LOCALE}.js"
+    TBB_DICTIONARIES_DIR="${TBB_INSTALL}/dictionaries"
+    unset SPELLCHECKER_LOCALE
+    for LOCALE in "${NORMAL_LOCALE}" "${LANG_CODE}"; do
+        if [ -e "${TBB_DICTIONARIES_DIR}/${LOCALE}.dic" ]; then
+            SPELLCHECKER_LOCALE="${LOCALE}"
+        fi
+    done
+    if [ -z "${SPELLCHECKER_LOCALE}" ]; then
+        SPELLCHECKER_LOCALE="en_US"
+    fi
+    set_mozilla_pref "${LOCALE_PROFILE_FILE}" \
+        "spellchecker.dictionary" \
+        "\"${SPELLCHECKER_LOCALE}\"" \
+        "user_pref"
+done <"${DESCRIPTIONS_FILE}"
+
+# This directory is not needed after build time.
+rm -r "${BROWSER_LOCALIZATION_DIR}"
+
+# All generated and modified files must remain world-readable.
+chmod -R a+rX "${LOCALE_PROFILES_DIR}"

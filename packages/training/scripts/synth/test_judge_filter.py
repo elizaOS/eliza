@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import json
 import sys
-from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
@@ -26,7 +25,6 @@ if str(ROOT) not in sys.path:
 
 from eliza_reward_fn import RewardComponents  # noqa: E402
 from synth.judge_filter import (  # noqa: E402
-    ExtractedRecord,
     extract_record,
     filter_stream,
     judge_record,

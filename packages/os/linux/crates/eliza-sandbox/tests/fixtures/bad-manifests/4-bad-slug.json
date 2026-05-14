@@ -1,0 +1,12 @@
+{
+    "schema_version": 1,
+    "slug": "../etc/passwd",
+    "title": "Traversal",
+    "intent": "be evil",
+    "runtime": "webview",
+    "entry": "src/index.html",
+    "capabilities": [{ "kind": "time:read" }],
+    "version": 1,
+    "last_built_by": "test",
+    "last_built_at": "2026-05-10T00:00:00Z"
+}

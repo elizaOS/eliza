@@ -1,0 +1,52 @@
+[[!meta date="Sat, 23 Mar 2013 11:23:45 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!meta title="Tails 0.17.1 is out"]]
+[[!tag announce]]
+
+Tails, The Amnesic Incognito Live System, version 0.17.1, is out.
+
+All users must upgrade as soon as possible.
+
+[[!toc levels=1]]
+
+# Changes
+
+Notable user-visible changes include:
+
+* Iceweasel
+  - Upgrade to Iceweasel 17.0.4esr-0+tails1~bpo60+1.
+
+* Hardware support
+  - Update Linux to 3.2.39-2, that 
+    It includes better support for graphics adapter, backported from
+    Linux 3.4.29.
+  - Temporarily drop the Rendition display driver.
+
+* Bugfixes
+  - Remove Indymedia IRC account, until we ship a version of Pidgin
+    with SASL support.
+
+See the online
+Changelog
+for technical details.
+
+# Known issue
+
+The VirtualBox support in Tails 0.17.1 is not as good as it could be.
+
+# I want to try it / to upgrade!
+
+See the Getting started page.
+
+As no software is ever perfect, we maintain a list of [[problems
+that affects the last release of Tails|support/known_issues]].
+
+# What's coming up?
+
+The next Tails release (0.17.2) is scheduled for April 9. It will be
+a minor, bugfix only one.
+
+
+Would you want to help? As explained in our [["how to contribute"
+documentation|contribute]], there are many ways **you** can contribute
+to Tails. If you want to help, come talk to us!

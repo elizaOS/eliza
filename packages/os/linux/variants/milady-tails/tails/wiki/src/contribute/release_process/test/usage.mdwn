@@ -1,0 +1,252 @@
+[[!meta title="Running the automated test suite"]]
+
+[[!toc levels=2]]
+
+Basic usage
+===========
+
+<div class="caution">
+<p>
+Note that all traffic that normally would be sent through the Tor
+network is sent directly from the system running the automated test
+suite to the destinations! In other words, nothing is torified, and
+some tests contact hosts associated with Tails, Tor, Riseup etc. It
+will, for instance, be obvious to your ISP that you are running the
+Tails automated test suite.
+</p>
+</div>
+
+Use the `run_test_suite` script found in the [[Tails source root|contribute/git#main-repo]] to run
+all automated Cucumber test features. See the [[setup
+documentation|test/setup]] in case you don't have a testing
+environment yet. Note that the full Tails source tree must be readable
+by the user running the test suite.
+
+It's important to note that some features only depend on the Tails
+sources, and some on the actual product of the sources, i.e. a Tails
+ISO image. These features are tagged `@source` and `@product`,
+respectively. The arguments passed to `run_test_suite` may only affect
+one of these types of features and not the other.
+
+A typical example run of a few `@product` features could be:
+
+    ./run_test_suite --view --capture \
+        --iso path/to/tails.iso \
+        features/apt.feature features/erase_memory.feature
+
+which will test only the `apt` and `erase_memory` features (if
+no feature paths are given, all features in `features/` will
+be tested) of the given ISO image `tails.iso` while showing each test
+session in a VNC viewer (`--view`) and also capturing it into a video
+(`--capture`). Similarly, to test a `@source`
+feature, we'd simply run something like:
+
+    ./run_test_suite features/build.feature
+
+Actually, `run_test_suite` is just a wrapper around `cucumber`, so any
+`cucumber` option can be passed too, although after an `--` so they
+are not confused with the wrapper's options. For instance:
+
+    ./run_test_suite ... -- --format debug features/apt.feature
+
+will enable the `debug` formatter, which in Tails' Cucumber setup will
+enable debugging information to be printed (which is *very* useful
+when debugging or developing for the test suite) unlike in vanilla
+Cucumber, where it's used for debugging the formatting subsystem.
+
+For full instructions, see its `--help`. In particular, check out
+the `--keep-chutney` and `--keep-snapshots`, that can be big time savers.
+
+Note: since the test suite itself uses `virt-viewer` to interact with
+the Tails guest you cannot use it as that will steal the session from
+the test suite, leaving it with a blank screen.
+
+Configuration
+=============
+
+The test suite can be configured in the following ways:
+
+1. `run_test_suite` parameters, which takes precedence over
+
+2. the local configuration file `features/config/local.yml`, which
+takes precedence over
+
+2. the local configuration files in `features/config/*.d` (with
+   internal precedence according to lexical order), which takes
+   precedence over
+
+4. the default configuration file `features/config/defaults.yml`.
+
+However, some values are treated as secrets and have no
+defaults. These secrets are generally information about online services
+to be used in certain features, like host, port and credentials --
+stuff we don't want to make public. These must be set explicitly in
+order for those features to run.
+
+A Git repository, shared among a bunch of core Tails contributors,
+includes _some_ of the needed secrets (more specifically, those that
+can be use by concurrent test suite runs):
+
+	git clone git@gitlab-ssh.tails.boum.org:tails/test-suite-shared-secrets \
+	   features/config/shared-secrets.d
+
+## Non-secret configuration
+
+Here's a list of all non-secret key-value pairs that can be supported
+by the local configuration file:
+
+* `CAPTURE`: Captures failed scenarios into videos stored in the
+  temporary directory (see `TMPDIR` below) using x264
+  encoding. Defaults to `false`.
+
+* `CAPTURE_ALL`: Keep videos for all scenarios, including those that
+  succeed (implies `CAPTURE`). Defaults to `false`.
+
+* `COLLECT_ALWAYS`: Collect artifacts (journal, network capture, screenshot,
+  etc.) even for passing scenario. Defaults to `false`.
+
+* `ALWAYS_SAVE_JOURNAL`: Boolean value. If set to `true`, the journal
+  of the Tails system under test will be saved for each scenario,
+  regardless of the scenario's outcome. Defaults to `false`.
+
+* `EXTRA_BOOT_OPTIONS`: String value. Specify additional kernel
+  command-line options for the VM, for example `"rootpw=root"`.
+
+* `MAX_NEW_TOR_CIRCUIT_RETRIES`: Integer. Upon failure, some test steps may be
+  run again after requesting that connections are made using new Tor circuits. This
+  configuration variable limits how many times forcing a circuit will be
+  attempted.  Defaults to `10`.
+
+* `INTERACTIVE_DEBUGGING`: Boolean value. If set to `true`, the test
+  suite run is suspended on failure until ENTER is pressed, and an
+  interactive Ruby shell (pry) is available. This is useful for
+  investigating the state of Cucumber's world and the VM guest to see
+  exactly why a test failed. Defaults to `false`.
+
+* `IMAGE_BUMPING_MODE`: Boolean value. If set to `true`, the image
+  matching done through the Screen class will be modified as follows:
+  failures to find a match are intercepted so that you get a second
+  chance to update the image, find it again, and continue running
+  without having to abort. This is extremely useful when lots of
+  images require updating at the same time (e.g. if the font we use
+  changes) since all of them can be updated in a single, interactive
+  run. There's also an automatic mode that tries to update image for
+  you (and display the match in a pop-up, so you can confirm) but
+  YMMV. Defaults to `false`.
+
+* `RESTRICT_CHUTNEY_MEMORY`: Boolean value. If set to `true`, the
+  simulated Tor network (Chutney) will be run in a systemd scope with
+  memory restriction. By default, `MemoryHigh=4G` and `MemoryMax=6G` are
+  used. To use different values, set the `CHUTNEY_MEMORY_HIGH` and
+  `CHUTNEY_MEMORY_MAX` environment variables.
+
+* `TMPDIR`: String value. Directory where various temporary files
+  are written during a test, e.g. VM snapshots and memory dumps,
+  failure screenshots, pcap files and disk images.
+  Default to `"/tmp/TailsToaster"`.
+
+  This directory must have a large amount of available space. We don't know the
+  exact number but to give you an idea, it's bigger than 16 GiB. So, depending
+  on your local configuration, you might need to change the default, for
+  instance if your `/tmp` is a `tmpfs`.
+
+  If you use a `TMPDIR` that's outside of `/tmp`, you probably want to ensure
+  it's regularly cleaned up. For example you can use this configuration:
+
+        TMPFILES_CONF=/etc/tmpfiles.d/TailsToaster.conf
+        TEST_SUITE_TMPDIR=/var/tmp/TailsToaster
+        echo "D ${TEST_SUITE_TMPDIR} 0755 root root -" \
+           | sudo tee "$TMPFILES_CONF"
+        sudo systemd-tmpfiles --remove --create "$TMPFILES_CONF"
+
+* `NOTIFY_USER_COMMAND`: String value. This arbitrary shell command
+  will be executed whenever `pause()` is called, e.g. on test failure
+  when `INTERACTIVE_DEBUGGING` (`--interactive-debugging`) is
+  enabled. This is pretty useful when multitasking with long test
+  suite runs, so you immediately are notified when a test fails (or
+  when you reached a temporary `pause()` breakpoint).
+
+* `VCPUS`: Integer value. Number of vCPUs given to the system under test.
+  Default: see [[!tails_gitweb features/domains/default.xml]].
+
+* `LIBVIRT_CPUMODEL`: String or boolean. This is used to specify the cpu model that libvirt should use. Set it
+  to `false` (the default) to let libvirt figure it out. This is useful in case you have a cpu model which is
+  not well supported by qemu, which has been the case for modern AMD CPUs in the past.
+
+## "Secret" configuration
+
+This section describes the formats for all secret configurations that
+must be configured in the local configuration file for certain
+features or scenarios to work. If any of these are omitted, parts of
+the test suite will fail.
+
+### Pidgin
+
+These secrets are required for some scenarios in
+`pidgin.feature`. Here's an example which explains the format:
+
+    Pidgin:
+      Accounts:
+        XMPP:
+          Tails_account:
+            username: "test"
+            domain: "jabber.org"
+            password: "opensesame"
+          Friend_account:
+            username: "friend"
+            domain: "jabber.org"
+            password: "trustno1"
+
+Note that the fields used in the above example show the *mandatory*
+fields.
+
+The XMPP account described by `Tails_account` (to be used in Tails'
+Pidgin) and `Friend_account` (run via a bot from the tester host) must
+be subscribed to each other but to no other XMPP account.
+
+If a "Connect Server" is needed for any of the accounts, it can be set
+in the *optional* `connect_server` field.
+
+XMPP services known to work well both for `Tails_account` and
+`Friend_account` are:
+
+* jabber.org
+
+* jabber.ccc.de
+
+### SSH
+
+These settings are required for `ssh.feature`.  The format is:
+
+    $TYPE:
+      hostname: 1.2.3.4
+      private_key: |
+        -----BEGIN RSA PRIVATE KEY-----
+        MIIJKAIBAAKCAgEAwJJK8LFxTWVnKUeOBdw+w69fDMmJugJmCx1TF/QS7kPfVPRl
+        lz3hNOpdgZ0BkvC2Fd+mHAUKDWU5SHfCtYl2XyUkJ0p00844rphX+Bl0kVM7ISXt
+        [...]
+        -----END RSA PRIVATE KEY-----
+      public_key: "ssh-rsa AAAAB3NzaC1yc2EA..."
+      port: 22
+      username: "someuser"
+
+where `$TYPE` is `SSH`. Secrets must be specified for `SSH`.
+If `port` is not specified, `22`will be used.
+
+The SSH test expects the remote system to have a default `bash` shell prompt.
+
+### Thunderbird
+
+These settings are required for `thunderbird.feature`.  The format is:
+
+    Thunderbird:
+      address:  user@example.com
+      password: trustno1
+      servers:  null
+
+The email account's inbox must contain at least one email at all times.
+
+The `servers` field is optional. You can set it to a list of hostnames that the test suite is then expected to
+connect to. This is useful when your account is, say, `jane@example.com` but the autoconfiguration points to,
+say, `imap.example.net`: the test suite is smart enough to automatically allow every subdomain of your email
+address, but it wouldn't know what to do in this case.

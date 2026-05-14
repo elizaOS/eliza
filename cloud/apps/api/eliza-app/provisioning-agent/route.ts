@@ -9,12 +9,12 @@
  * Auth: eliza-app session Bearer token (same as /api/eliza-app/user/me).
  */
 
+import type { Context } from "hono";
 import { Hono } from "hono";
-import { z } from "zod";
 import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
+import { elizaAppSessionService } from "@/lib/services/eliza-app";
 import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
 import { provisioningJobService } from "@/lib/services/provisioning-jobs";
-import { elizaAppSessionService } from "@/lib/services/eliza-app";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -23,7 +23,7 @@ const app = new Hono<AppEnv>();
 const DEFAULT_AGENT_NAME = "Eliza";
 const DEFAULT_DOCKER_IMAGE = "elizaos/eliza:latest";
 
-async function resolveSession(c: Parameters<typeof app.get>[1]) {
+async function resolveSession(c: Context<AppEnv>) {
   const authHeader = c.req.header("Authorization");
   if (!authHeader) return null;
   return elizaAppSessionService.validateAuthHeader(authHeader);

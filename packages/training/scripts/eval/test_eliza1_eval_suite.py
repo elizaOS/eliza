@@ -269,7 +269,7 @@ def test_real_text_model_override_produces_real_score(tmp_path: Path, monkeypatc
     except ImportError:
         pytest.skip("llama-cpp-python not installed")
     bundle = _make_standin_bundle(tmp_path)
-    agg = _run(bundle, monkeypatch, text_eval_model=model)
+    _run(bundle, monkeypatch, text_eval_model=model)
     blob = json.loads((bundle / "evals" / "text-eval.json").read_text())
     assert blob["status"] == "ok"
     assert 0.0 <= blob["score"] <= 1.0

@@ -1,0 +1,32 @@
+#!/bin/sh
+
+set -e
+
+echo "Registering and tweaking menus"
+
+# Import ensure_hook_dependency_is_installed()
+. /usr/local/lib/tails-shell-library/build.sh
+
+ensure_hook_dependency_is_installed xdg-utils
+
+for app in org.boum.tails.AdditionalSoftware \
+    org.boum.tails.PersistentStorage \
+    tails-about \
+    tails-documentation \
+    tails-installer; do
+    xdg-desktop-menu install --novendor \
+        /usr/share/desktop-directories/Tails.directory \
+        "/usr/share/applications/${app}.desktop"
+done
+
+rm \
+    /usr/share/applications/gnome-online-accounts-panel.desktop \
+    /usr/share/applications/laptop-mode-tools.desktop \
+    /usr/share/applications/nm-connection-editor.desktop \
+    /usr/share/applications/org.kde.kwatchgnupg.desktop \
+    /usr/share/applications/sniff.desktop
+
+sed -i'' --regexp-extended 's,^Exec=pidgin$,Exec=/usr/local/bin/pidgin,' \
+    /usr/share/applications/pidgin.desktop
+
+xdg-desktop-menu forceupdate

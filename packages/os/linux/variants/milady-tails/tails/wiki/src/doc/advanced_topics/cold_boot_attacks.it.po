@@ -1,0 +1,129 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2024-05-27 21:54+0000\n"
+"PO-Revision-Date: 2025-12-06 23:29+0000\n"
+"Last-Translator: _ignifugo <ignifugo@insicuri.net>\n"
+"Language-Team: ita <transitails@inventati.org>\n"
+"Language: it\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Protection against cold boot attacks\"]]\n"
+msgstr "[[!meta title=\"Protezione contro gli attacchi a freddo all'avvio ('cold boot')\"]]\n"
+
+#. type: Plain text
+msgid ""
+"While using a computer, all the data manipulated is written temporarily in "
+"[[!wikipedia Random-access_memory desc=\"RAM\"]]: texts, saved files, but "
+"also passwords and encryption keys. The more recent the activity, the more "
+"likely it is for the data to still be in RAM."
+msgstr ""
+"Durante l'utilizzo di un computer tutti i dati manipolati vengono scritti "
+"temporaneamente nella [[!wikipedia_it RAM]]: testi, file salvati ma anche "
+"password e chiavi di crittografia. Più recente è l'attività e più è "
+"possibile che i dati siano nella RAM."
+
+#. type: Plain text
+#, fuzzy
+#| msgid ""
+#| "After a computer is powered off, the data in RAM disappears rapidly, but "
+#| "it can remain in RAM up to several minutes after shutdown. An attacker "
+#| "having access to a computer before it disappears completely could recover "
+#| "important data from your session."
+msgid ""
+"After a computer is powered off, the data in RAM disappears rapidly, but it "
+"can remain in RAM up to several minutes after shutdown. An attacker having "
+"access to a computer before the data in RAM disappears completely could "
+"recover important data from your session."
+msgstr ""
+"Dopo lo spegnimento di un computer i dati nella RAM scompaiono rapidamente "
+"tuttavia possono rimanere nella RAM anche alcuni minuti dopo lo spegnimento. "
+"Un attaccante che abbia accesso al computer prima della scomparsa definitiva "
+"dei dati potrebbe recuperare dati importanti dalla vostra sessione."
+
+#. type: Plain text
+msgid ""
+"This can be achieved using a technique called [[!wikipedia cold boot "
+"attack]]. To prevent such attacks, the data in RAM is overwritten by random "
+"data when you shut down Tails."
+msgstr ""
+"Ciò può essere possibile utilizzando una tecnica chiamata "
+"[[!wikipedia Cold_boot_attack]]. Per prevenire questo attacco, i dati nella "
+"RAM sono sovrascritti da dati casuali quando si spegne Tails."
+
+#. type: Plain text
+msgid ""
+"Moreover, an attacker having physical access to the computer *while Tails is "
+"running* can recover data from RAM as well. To avoid that, learn the "
+"different methods to [[shutdown Tails|doc/first_steps/shutdown]] rapidly."
+msgstr ""
+"Inoltre, un utente malitenzionato con accesso fisico al computer *mentre "
+"Tails è in esecuzione* potrebbe recuperare pure i dati dalla RAM. Per "
+"evitare ciò, leggi i differenti metodi per lo [[spegnimento\n"
+"di Tails|doc/first_steps/shutdown]] rapido."
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"attack\">\n"
+msgstr "<div class=\"attack\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>As far as we know, cold boot attacks are not a common procedure for\n"
+"data recovery.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>In a <a\n"
+"href=\"https://www.forensicfocus.com/stable/wp-content/uploads/2011/08/cold_boot_attack_for_forensiscs1.pdf\">research\n"
+"report from 2011</a>, Defense Research and Development Canada concluded that\n"
+"cold boot attacks can be useful in some cases to acquire data in memory but are\n"
+"not a panacea and have many drawbacks dictated by the laws of physics, which\n"
+"cannot be overcome by the technique. The authors recommend to only use cold\n"
+"boot attacks as a last resort when all other avenues have been exhausted.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"next\">\n"
+msgstr "<div class=\"next\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>See how we implement this [[memory\n"
+"erasure|contribute/design/memory_erasure]], for example, if you want to\n"
+"implement this feature outside of Tails.</p>\n"
+msgstr ""
+
+#~ msgid ""
+#~ "As far as we know, cold boot attacks are not a common procedure for data "
+#~ "recovery, but it might still be good to be prepared. If no cold boot "
+#~ "attack happens directly after shutdown, the RAM empties itself in "
+#~ "minutes, and all data disappears."
+#~ msgstr ""
+#~ "Per quanto ne sappiamo, gli attacchi di avvio a freddo ('cold boot') non "
+#~ "sono una procedura comune per il recupero dei dati, ma potrebbe comunque "
+#~ "essere utile essere preparati. Se non avviene nessun attacco di avvio a "
+#~ "freddo immediatamente dopo lo spegnimento, la RAM si svuota da sola in "
+#~ "pochi minuti e tutti i dati scompaiono."

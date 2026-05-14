@@ -1,0 +1,5 @@
+#!/bin/sh
+
+set -eu
+
+po4a --version | head -n1 | perl -pE 's{\Apo4a version ([0-9.]+)[.]$}{$1}'

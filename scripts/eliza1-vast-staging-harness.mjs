@@ -142,7 +142,7 @@ function parseArgs(argv) {
   if (args.coldStartMs !== null && !Number.isFinite(args.coldStartMs)) {
     throw new Error("--cold-start-ms must be an integer when set");
   }
-  if (!["2b", "9b", "27b"].includes(args.smokeTier)) {
+  if (args.runSmoke && !["2b", "9b", "27b"].includes(args.smokeTier)) {
     throw new Error("--smoke-tier must be one of 2b, 9b, or 27b");
   }
   args.baseUrl = args.baseUrl.replace(/\/+$/, "");
@@ -675,9 +675,27 @@ async function runFailover(args) {
     !args.failoverKillCommand ||
     !args.failoverFallbackNode
   ) {
-    throw new Error(
-      "failover requires --failover-fallback-url, --failover-fallback-node, and --failover-kill-command",
-    );
+    const evidence = {
+      gate: "failover_kill",
+      status: "fail",
+      completedAt: new Date().toISOString(),
+      killedNode: args.failoverKilledNode || args.instanceId,
+      fallbackNode: args.failoverFallbackNode || null,
+      primaryBaseUrl: args.baseUrl.replace(/\/+$/, ""),
+      fallbackBaseUrl: args.failoverFallbackUrl
+        ? args.failoverFallbackUrl.replace(/\/+$/, "")
+        : null,
+      distinctFallbackNode: false,
+      readinessFlipped: false,
+      trafficMoved: false,
+      primaryBeforeStatus: null,
+      primaryAfterStatus: null,
+      fallbackAfterStatus: null,
+      summary:
+        "failover requires --failover-fallback-url, --failover-fallback-node, and --failover-kill-command",
+    };
+    writeEvidence(args, evidence.gate, evidence);
+    return evidence;
   }
   const primaryBaseUrl = args.baseUrl.replace(/\/+$/, "");
   const fallbackBaseUrl = args.failoverFallbackUrl.replace(/\/+$/, "");

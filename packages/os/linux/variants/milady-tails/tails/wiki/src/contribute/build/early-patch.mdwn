@@ -1,0 +1,219 @@
+[[!meta title="Early patching an image"]]
+
+<div class="caution">
+Early patching is a <strong>development</strong> feature. Please don't use it for your regular Tails!
+</div>
+
+The goal of this page is to give you hint on how to speed up your development by avoiding to build an image.
+Rebuilding an image is unfortunately very slow and resource-intensive, which makes the Developer Experience
+unpleasant.
+
+The idea of early-patch is very simple: at boot time, if a specific boot option is added, a directory is shared
+between the host and the Tails VM, and mounted at `/mnt/tails.git/`. Since mounting in itself is not very useful,
+you can configure a program to run at initramfs-time.
+
+[[!toc levels=2]]
+
+# Setup
+
+Please add this to your domain definition, inside the `<devices>` tag:
+
+```
+<filesystem type='mount' accessmode='passthrough'>
+  <source dir='/path/to/your/tails/checkout/'/>
+  <target dir='tails.git'/>
+  <readonly/>
+</filesystem>
+```
+
+The word `tails.git` is a magic constant. Do *not* change it.
+
+The `<readonly/>` option must be dropped if you want to use the
+`rw-includes` feature (see `config/patch/rw-includes/README.md`).
+
+## virtiofs
+
+When the `virtiofs` option is used, add
+
+```
+  <driver type="virtiofs"/>
+```
+
+to the above filesystem share configuration.
+
+# Usage
+
+For basic usage, add `early_patch` or just `patch` to the kernel
+cmdline when booting Tails. This will run the `default` hook, whose
+goal (with several limitations) is to apply all differences in Tails
+Git since the commit the running Tails was built, as if the Tails was
+built from the current Git state, among some convenience
+features. This should cover most use cases, but you can also write
+your own custom hooks.
+
+You can also pass it options like `patch=opt1,opt2,...`:
+
+* `virtiofs`: Mount the filesystem using the `virtiofs` instead of the
+  default `9p`. It is much faster, which is nice when e.g. using the
+  `default` hook and there are many changes in Git. Unfortunately
+  simply adding this device makes it impossible to save snapshots,
+  unlike `9p` which does not prevent snapshots as long as the
+  filesystem share is not currently mounted.
+* `umount`: Unmount the filesystem share after the hook has executed,
+  so that VM snapshots are possible. Changes the default hook to the
+  `umount` hook.
+* `<hook_dir>`: Specifies another hook to run than the `default` hook.
+
+# Hooks and scripts
+
+A hook is a directory under `config/patch/hooks` which contains
+scripts that are run in lexicographical order during initramfs
+time. They are run (through `chroot`) in the live filesystem that
+Tails boots into, so they can for instance not affect the initramfs
+environment. Their executable bit must be set.
+
+The `config/patch/lib/lib.sh` shell library has several useful
+functions, but can only be used by bash-scripts:
+
+```
+#!/bin/bash
+
+set -eu -o pipefail
+shopt -s inherit_errexit
+
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+. "${DIR}/lib.sh"
+
+# ... rest of the script ...
+```
+
+## The default hook
+
+This default is intended to cover most developer needs. The main goal
+is to attempt to make the running Tails as close to an image that was
+built from the current Git state as possible by bind-mounting in the
+changed files, which also allows rapid code iteration since any
+changes to these files in your Git checkout are immediately live.
+
+It consists of the following scripts, run in this order:
+
+### 01-install-packages
+
+Installs all `.deb`s from `config/patch/packages/`, see
+[[!tails_gitweb config/patch/packages/README.md]] for details.
+
+Examples of useful packages to drop in here are:
+
+* `d-feet` for debugging DBus stuff
+* `dconf-editor` to explore dconf settings
+
+### 03-bind-new-includes
+
+0. All changed files (compared to the commit the running image was
+   built from) inside `config/chroot_local-includes` are bind-mounted
+   into the Tails filesystem, including uncommitted and untracked
+   changes.
+0. All patches in `config/chroot_local-patches` are reapplied.
+0. It does various clever things in order to make certain changes from
+   bind-mounts have their intended effect:
+   - Re-runs `dconf update` if there are changes to
+     `config/chroot_local-includes/etc/dconf`.
+   - Re-runs `config/chroot_local-hooks/52-update-systemd-units`
+     if it has changed.
+   - Reloads `polkit.service` if there are changes to
+     `config/chroot_local-includes/etc/polkit-1/rules.d`.
+   - Applies changes to `.in` files to the files they are input for
+     (e.g. you can hack on `.ui.in` files and the changes will be
+     applied to the `.ui` file).
+
+#### Limitations
+
+* If you have booted with this hook and modify a new file in Git they
+  are of course not automatically bind-mounted, but you can re-run
+  `/mnt/tails.git/config/patch/lib/bind-new-includes` to make that
+  happen. It is not perfect, and it will not un-bind files that no
+  longer are changed, so the safest is always to reboot with
+  `early_patch` again.
+* There are issues with permissions and ownership that are good to be
+  aware of:
+  - Most bind-mounted files will be owned by root inside Tails, which
+    can cause issues for files that need a specific owner (like
+    `/etc/tor/torrc`). The only exception to this are files under
+    `/home/amnesia` which will be owned by the `amnesia` user.
+  - Writing to the bind-mounted files from inside Tails requires that
+    you grant write permissions to the source file in your Git
+    checkout to the libvirt-qemu user.
+* This hook doesn't import other types of changes, notably:
+  - Changes to the `config/chroot_local-hooks` build hooks, except the
+    bits mentioned above.
+  - Changes to the initramfs.
+  - Changes to `config/chroot_local-packageslists` (but you can
+    manually do it through `01-install-packages`).
+* The special treatment of `.in` files doesn't work for _all_ kinds of
+  `.in` files. As an example `.desktop.in` files do not work properly
+  because the translatable keys are prefixed with an `_`.
+
+### 04-try-generate-sudoers
+
+Run `generate-sudoers` again. This allows the developer to edit files in
+`config/chroot_local-includes/etc/generate-sudoers.d/` and see the result in action.
+
+**Note:** generate-sudoers relies on packages that are not available in Tails runtime.
+For this hook to succeed, you need to have those packages in `config/patch/packages/TAILS-SUITE`
+
+### 05-bind-rw-includes
+
+The files inside `config/patch/rw-includes` are bind-mounted into and
+are writable from the running Tails' filesystem, allowing you to make
+arbitrary files persistent, like your shell history. See
+[[!tails_gitweb config/patch/rw-includes/README.md]] for details.
+
+#### Limitations
+
+* Bind-mounted files cannot be "atomically saved the unix way" since
+  they cannot be renamed/moved, so unfortunately files used by
+  programs that does that will have problems, like the Python
+  interactive shell history (`~/.python_history`).
+
+### 99-rootpw
+
+Sets the root password to "root", in case you forgot (or didn't
+anticipate that you needed) to set an administration password.
+
+### .local scripts
+
+If you want to modify the stock `default` hook (or the `umount` hook,
+see below) you can do so by adding scripts into its hook directory
+with the `.local` suffix in their filenames. They are ignored by Git.
+
+## The umount hook
+
+VM snapshots are not supported while a (`9p`) filesystem share is
+mounted, which is a limitation for the `default` hook. This hook
+attempts to achieve what the `default` hook does but by copying all
+files instead of bind-mounting them, so that the filesystem share can
+be unmounted (through the `umount` option).
+
+(Since the automated test suite uses VM snapshots heavily its
+`--early-patch` option runs this hook.)
+
+## Custom hooks
+
+To create your own hook, simply create a directory `$dir` in
+`config/patch/hooks` and put scripts with the executable bit set in
+it, and they will be run if you add `patch=$dir` to the kernel
+cmdline. These directories are ignored by Git.
+
+There are several useful shell functions you can import from the
+`config/patch/lib/lib.sh` library, like `copy_include()` and
+`bind_include()`. Have a look!
+
+# Known issues
+
+- Changes applied to the root filesystem with `early_patch` are ineffective for
+  the *Unsafe Browser*: [[!tails_ticket 20461]].
+
+# Implementation
+
+- [[!tails_gitweb config/patch]]
+- [[!tails_gitweb config/chroot_local-includes/usr/share/initramfs-tools/scripts/init-bottom/early_patch]]

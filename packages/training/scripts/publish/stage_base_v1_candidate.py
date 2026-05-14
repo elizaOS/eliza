@@ -54,15 +54,15 @@ RAM_BUDGET_MB = {
     "27b-256k": (96000, 128000),
     "27b-1m": (160000, 220000),
 }
-# Per-tier upstream Qwen3.5 base used by lineage and README/provenance prose.
-QWEN35_BASE_BY_TIER = {
+# Per-tier upstream text base used by lineage and README/provenance prose.
+TEXT_BASE_BY_TIER = {
     "0_8b": "Qwen/Qwen3.5-0.8B",
     "2b": "Qwen/Qwen3.5-2B",
     "4b": "Qwen/Qwen3.5-4B",
     "9b": "Qwen/Qwen3.5-9B",
-    "27b": "Qwen/Qwen3.5-27B",
-    "27b-256k": "Qwen/Qwen3.5-27B",
-    "27b-1m": "Qwen/Qwen3.5-27B",
+    "27b": "Qwen/Qwen3.6-27B",
+    "27b-256k": "Qwen/Qwen3.6-27B",
+    "27b-1m": "Qwen/Qwen3.6-27B",
 }
 TEXT_CONTEXT_BY_TIER = {
     tier: PP.CONTEXTS_BY_TIER[tier][0]
@@ -74,8 +74,9 @@ TEXT_CTX_BY_TIER = {
 }
 
 # Frozen eliza-1-assets bytes (tier-agnostic voice/ASR/VAD/cache) from
-# evidence/bundle-assets.json on elizaos/eliza-1-assets.
-ASSETS_REPO = "elizaos/eliza-1-assets"
+# evidence/bundle-assets.json on elizalabs/eliza-1-assets.
+ASSETS_REPO = "elizalabs/eliza-1-assets"
+ASSETS_TIER = "2b"
 
 
 def now_iso() -> str:
@@ -169,7 +170,6 @@ def main(argv: list[str] | None = None) -> int:
         (out / sub).mkdir(parents=True, exist_ok=True)
 
     generated_at = now_iso()
-    git_sha = git_short_sha()
 
     # --- text GGUF (real fine-tune) ---
     text_dest = out / text_rel
@@ -235,20 +235,20 @@ def main(argv: list[str] | None = None) -> int:
     }, indent=2) + "\n")
 
     # --- voice / asr / vad / cache ---
-    # Voice follows the active tier boundary in eliza1_manifest: Kokoro on
-    # small/mobile tiers, both backends at 9B, and OmniVoice Q8_0 on 27B tiers.
+    # Voice follows eliza1_manifest: OmniVoice is the default backend on every
+    # tier; small/workstation tiers also ship Kokoro as a frozen fallback.
     # Native VAD is the release artifact; the ONNX file is a legacy fallback and
     # is intentionally not listed in the manifest.
     asset_map = [
-        (ASSETS_REPO, "1_7b/asr/eliza-1-asr.gguf", out / "asr" / "eliza-1-asr.gguf"),
-        (ASSETS_REPO, "1_7b/asr/eliza-1-asr-mmproj.gguf", out / "asr" / "eliza-1-asr-mmproj.gguf"),
+        (ASSETS_REPO, f"{ASSETS_TIER}/asr/eliza-1-asr.gguf", out / "asr" / "eliza-1-asr.gguf"),
+        (ASSETS_REPO, f"{ASSETS_TIER}/asr/eliza-1-asr-mmproj.gguf", out / "asr" / "eliza-1-asr-mmproj.gguf"),
         (A.VAD_NATIVE_REPO, "ggml-silero-v5.1.2.bin", out / "vad" / "silero-vad-v5.1.2.ggml.bin"),
-        (ASSETS_REPO, "1_7b/cache/voice-preset-default.bin", out / "cache" / "voice-preset-default.bin"),
-        (ASSETS_REPO, "1_7b/licenses/LICENSE.asr", out / "licenses" / "LICENSE.asr"),
-        (ASSETS_REPO, "1_7b/licenses/LICENSE.vad", out / "licenses" / "LICENSE.vad"),
-        (ASSETS_REPO, "1_7b/licenses/LICENSE.voice", out / "licenses" / "LICENSE.voice"),
-        (ASSETS_REPO, "1_7b/lineage.json", out / "evidence" / "assets-lineage.json"),
-        (ASSETS_REPO, "1_7b/evidence/bundle-assets.json", out / "evidence" / "bundle-assets.json"),
+        (ASSETS_REPO, f"{ASSETS_TIER}/cache/voice-preset-default.bin", out / "cache" / "voice-preset-default.bin"),
+        (ASSETS_REPO, f"{ASSETS_TIER}/licenses/LICENSE.asr", out / "licenses" / "LICENSE.asr"),
+        (ASSETS_REPO, f"{ASSETS_TIER}/licenses/LICENSE.vad", out / "licenses" / "LICENSE.vad"),
+        (ASSETS_REPO, f"{ASSETS_TIER}/licenses/LICENSE.voice", out / "licenses" / "LICENSE.voice"),
+        (ASSETS_REPO, f"{ASSETS_TIER}/lineage.json", out / "evidence" / "assets-lineage.json"),
+        (ASSETS_REPO, f"{ASSETS_TIER}/evidence/bundle-assets.json", out / "evidence" / "bundle-assets.json"),
     ]
     for rel in M.required_voice_artifacts_for_tier(tier):
         repo, remote, dest = voice_asset_source(rel)
@@ -286,12 +286,10 @@ def main(argv: list[str] | None = None) -> int:
 
     # --- run eval suite (optional; folds into evals block) ---
     eval_results: dict[str, Any] = {}
-    eval_gate_report: dict[str, Any] | None = None
     eval_aggregate_full: dict[str, Any] | None = None
     if args.evals_aggregate and args.evals_aggregate.is_file():
         eval_aggregate_full = json.loads(args.evals_aggregate.read_text())
         eval_results = eval_aggregate_full.get("results", {})
-        eval_gate_report = eval_aggregate_full.get("gateReport")
         # Carry the sibling per-axis JSON the eval suite wrote alongside it.
         for sib in args.evals_aggregate.parent.glob("*.json"):
             if sib.name == "aggregate.json":
@@ -308,7 +306,6 @@ def main(argv: list[str] | None = None) -> int:
         if agg.is_file():
             eval_aggregate_full = json.loads(agg.read_text())
             eval_results = eval_aggregate_full.get("results", {})
-            eval_gate_report = eval_aggregate_full.get("gateReport")
 
     # --- write evals block for the bundle ---
     # Defaults: not-run / not-passed. Folded from the eval suite where present.
@@ -346,7 +343,7 @@ def main(argv: list[str] | None = None) -> int:
         }, indent=2) + "\n")
 
     # --- lineage ---
-    base_repo = QWEN35_BASE_BY_TIER[tier]
+    base_repo = TEXT_BASE_BY_TIER[tier]
     lineage = {
         "text": M.LineageEntry(
             base=f"{base_repo} (SFT: APOLLO full-parameter)",
@@ -507,7 +504,7 @@ def _render_readme(
     eval_results: dict[str, Any],
     text_rel: str,
 ) -> str:
-    base_repo = QWEN35_BASE_BY_TIER[tier]
+    base_repo = TEXT_BASE_BY_TIER[tier]
     if optimized:
         text_para = (
             f"- **Text GGUF** (`{text_rel}`): a **real fine-tune** "

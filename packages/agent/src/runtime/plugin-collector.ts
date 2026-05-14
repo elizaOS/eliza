@@ -159,7 +159,7 @@ export const PROVIDER_PLUGIN_MAP: Readonly<Record<string, string>> = {
 const LOCAL_MODEL_PROVIDER_PLUGINS = new Set<string>([
   "@elizaos/plugin-ollama",
   "@elizaos/plugin-mlx",
-  "@elizaos/plugin-local-ai",
+  "@elizaos/plugin-local-inference",
 ]);
 
 const REMOTE_MODEL_PROVIDER_PLUGINS = new Set(
@@ -177,7 +177,6 @@ const DIRECT_MODEL_PROVIDER_PLUGINS = new Set(
 );
 
 function removeLocalModelSurfaces(pluginsToLoad: Set<string>): void {
-  pluginsToLoad.delete("@elizaos/plugin-local-embedding");
   for (const pluginName of LOCAL_MODEL_PROVIDER_PLUGINS) {
     pluginsToLoad.delete(pluginName);
   }
@@ -415,7 +414,7 @@ export function collectPluginNames(
     );
   }
   if (localEmbeddingsExplicitlyDisabled) {
-    pluginsToLoad.delete("@elizaos/plugin-local-embedding");
+    pluginsToLoad.delete("@elizaos/plugin-local-inference");
   }
 
   // Allow list is additive — extra plugins on top of auto-detection,

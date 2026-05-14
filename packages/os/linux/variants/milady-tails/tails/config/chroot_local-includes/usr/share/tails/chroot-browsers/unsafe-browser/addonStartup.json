@@ -1,0 +1,21 @@
+{
+    "app-profile": {
+        "addons": {
+            "{91a24c60-0f27-427c-b9a6-96b71f3984a9}": {
+                "enabled": true,
+                "rootURI": "jar:file:///home/amnesia/.unsafe-browser/profile.default/extensions/%7B91a24c60-0f27-427c-b9a6-96b71f3984a9%7D.xpi!/"
+            }
+        },
+        "staged": {},
+        "path": "/home/amnesia/.unsafe-browser/profile.default/extensions"
+    },
+    "app-system-defaults": {
+        "addons": {},
+        "staged": {},
+        "path": "/usr/local/lib/tor-browser/browser/features"
+    },
+    "app-builtin": {
+        "addons": {},
+        "staged": {}
+    }
+}

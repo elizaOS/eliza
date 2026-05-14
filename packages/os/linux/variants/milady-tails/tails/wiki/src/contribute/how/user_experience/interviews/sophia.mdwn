@@ -1,0 +1,28 @@
+[[!meta title="Sophia, May 2017"]]
+
+Sophia is 30 years old, lives in Brazil and has two jobs: she is
+a teacher and a system administrator.
+
+In 2015, she was looking for an operating system that would be safer
+than macOS, and discovered Tails. She had been using Linux for 2 years
+already, but found it vastly easier to use Tails than to configure
+software to use Tor on a regular Linux distribution. Since then, Tails
+is her only OS and she uses it every day; she feels very comfortable
+using it, although she has not tried everything.
+
+### What she likes
+
+- Tails is plug'n'play and it "just works"
+- Tor Browser
+- MAT
+
+### What she dislikes
+
+- having to configure Tor Browser to match her security requirements
+  (security slider set to "High", JavaScript disabled by default)
+  every time she starts Tails; she would like a persistent setting
+  for these settings
+- Totem is buggy with some subtitles (buggy delay after pausing and
+  resuming), so she misses VLC
+- she misses a set of LibreOffice Impress templates/themes that could
+  be installed by default

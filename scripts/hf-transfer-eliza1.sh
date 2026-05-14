@@ -71,8 +71,8 @@ LEGACY_MOVES=(
   "qwen3.5-4b-milady-drafter         qwen3.5-4b-drafter"
   "qwen3.5-9b-milady-optimized       qwen3.5-9b-optimized"
   "qwen3.5-9b-milady-drafter         qwen3.5-9b-drafter"
-  "qwen3.6-27b-milady-optimized      qwen3.6-27b-optimized"
-  "qwen3.6-27b-milady-drafter        qwen3.6-27b-drafter"
+  "qwen3.5-27b-milady-optimized      qwen3.5-27b-optimized"
+  "qwen3.5-27b-milady-drafter        qwen3.5-27b-drafter"
   "bonsai-8b-1bit-milady-optimized   bonsai-8b-1bit-optimized"
   # If the legacy repos were already created without the `-milady-` infix
   # (some pipeline runs did this), the source name == the destination name;
@@ -84,8 +84,8 @@ LEGACY_MOVES=(
   "qwen3.5-4b-drafter                qwen3.5-4b-drafter"
   "qwen3.5-9b-optimized              qwen3.5-9b-optimized"
   "qwen3.5-9b-drafter                qwen3.5-9b-drafter"
-  "qwen3.6-27b-optimized             qwen3.6-27b-optimized"
-  "qwen3.6-27b-drafter               qwen3.6-27b-drafter"
+  "qwen3.5-27b-optimized             qwen3.5-27b-optimized"
+  "qwen3.5-27b-drafter               qwen3.5-27b-drafter"
   "bonsai-8b-1bit-optimized          bonsai-8b-1bit-optimized"
 )
 
@@ -94,8 +94,9 @@ LEGACY_MOVES=(
 # publish_all_eliza1.sh + the 27b-1m tier in the catalog). `repo create` is a
 # no-op if the repo already exists.
 TIER_REPOS=(
-  "eliza-1-0_6b"
-  "eliza-1-1_7b"
+  "eliza-1-0_8b"
+  "eliza-1-2b"
+  "eliza-1-4b"
   "eliza-1-9b"
   "eliza-1-27b"
   "eliza-1-27b-256k"
@@ -176,7 +177,7 @@ echo "  Refresh the catalog from the new namespace:"
 echo "    uv run python packages/training/scripts/sync_catalog_from_hf.py --org ${DST_ORG} \\"
 echo "        --out packages/inference/reports/porting/\$(date -u +%Y-%m-%d)/catalog-diff.json"
 echo "  Phone-equivalent download check:"
-echo "    node scripts/verify-phone-download.mjs --diff-first --model-id eliza-1-1_7b"
+echo "    node scripts/verify-phone-download.mjs --diff-first --model-id eliza-1-2b"
 echo
 if [[ "$EXECUTE" -eq 1 ]]; then
   echo "Done. Verify on https://huggingface.co/${DST_ORG}"

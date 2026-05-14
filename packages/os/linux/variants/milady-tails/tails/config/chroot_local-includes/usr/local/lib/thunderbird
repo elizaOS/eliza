@@ -1,0 +1,71 @@
+#!/bin/sh
+
+set -e
+set -u
+set -x
+
+. gettext.sh
+TEXTDOMAIN="tails"
+export TEXTDOMAIN
+
+# Import set_mozilla_pref()
+. /usr/local/lib/tails-shell-library/tor-browser.sh
+
+THUNDERBIRD_CONFIG_DIR="${HOME}/.thunderbird"
+PROFILE="${THUNDERBIRD_CONFIG_DIR}/profile.default"
+
+# Let users know when we have *automatically* added Thunderbird to
+# Additional Software.
+announce_migration_21375_1() {
+    MIGRATION_IDENTIFIER=21375-thunderbird-iteration-1
+    if python3 /usr/lib/python3/dist-packages/tailslib/migration.py "$MIGRATION_IDENTIFIER" &&
+        [ "$(tails-ask-again "$MIGRATION_IDENTIFIER")" = "show" ]; then
+        dialog_title=$(gettext "Thunderbird Migration")
+        dialog_text=$(gettext "Tails installed <i>Thunderbird</i> as additional software to improve its security.\n\n<i>Thunderbird</i> will no longer be included by default in Tails 7.8 (May 2026) and later.\n\n<a href='https://tails.net/doc/anonymous_internet/thunderbird/additional_software/'>Why is Tails installing <i>Thunderbird</i> as Additional Software?</a>")
+        dialog_ok=$(gettext "Don't Show Again")
+        dialog_cancel=$(gettext "Start Thunderbird")
+        if zenity \
+            --question \
+            --title "$dialog_title" \
+            --text "$dialog_text" \
+            --ok-label "$dialog_ok" \
+            --cancel-label "$dialog_cancel" \
+            --icon thunderbird; then
+            tails-ask-again --dont-ask-again "$MIGRATION_IDENTIFIER"
+        fi
+    fi
+}
+
+configure_locale() {
+    # Thunderbird will set the locale based on the environment when
+    # this pref is empty, but will then save the result to this pref
+    # disabling this "guess" for the next time. We want Thunderbird to
+    # always match the locale of the Tails session.
+    set_mozilla_pref "${PROFILE}/prefs.js" \
+        "intl.locale.requested" \
+        '""' \
+        user_pref
+}
+
+reconfigure_profile() {
+    mkdir -p "${PROFILE}"
+    configure_locale
+}
+
+start_thunderbird() {
+    export GNOME_ACCESSIBILITY=1
+    # Enabling Wayland support to make (among other things) the GNOME
+    # on-screen keyboard work.
+    export MOZ_ENABLE_WAYLAND=1
+    # This is necessary for services.settings.server to be honored,
+    # which we set in aa_tails.js to disable the remote settings and telemetry mechanism
+    export MOZ_REMOTE_SETTINGS_DEVTOOLS=1
+    # Disable connections to the X session manager (gnome-session),
+    # see details in tor-browser.sh.
+    unset SESSION_MANAGER
+    reconfigure_profile
+    exec /usr/bin/thunderbird.real --class "Thunderbird" --profile "${PROFILE}" "${@}"
+}
+
+announce_migration_21375_1
+start_thunderbird "${@}"

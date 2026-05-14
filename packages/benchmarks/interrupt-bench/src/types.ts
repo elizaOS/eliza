@@ -9,16 +9,16 @@
 // Scenario JSON
 // ---------------------------------------------------------------------------
 
-export type InterruptionType = "addition" | "revision" | "retraction";
+type InterruptionType = "addition" | "revision" | "retraction";
 
-export interface ScenarioRoom {
+interface ScenarioRoom {
   id: string;
   kind: "dm" | "group" | "channel";
   owner?: string;
   members?: string[];
 }
 
-export interface ScenarioUser {
+interface ScenarioUser {
   id: string;
   role: "OWNER" | "ADMIN" | "USER" | "GUEST" | "SYSTEM";
 }
@@ -47,7 +47,7 @@ export interface ScenarioPendingPrompt {
   question: string;
 }
 
-export interface ScenarioMemoryItem {
+interface ScenarioMemoryItem {
   id?: string;
   roomId?: string;
   text: string;
@@ -108,7 +108,7 @@ interface ExpectedScheduledTask {
   descriptionExcludes?: string[];
 }
 
-export interface ExpectedFinalState {
+interface ExpectedFinalState {
   threads: ExpectedThread[];
   scheduledTasks: ExpectedScheduledTask[];
   repliesByChannel: Record<string, ExpectedReplies>;
@@ -122,7 +122,7 @@ export interface ExpectedFinalState {
 // Expected trace
 // ---------------------------------------------------------------------------
 
-export interface ExpectedTrace {
+interface ExpectedTrace {
   stage1Calls: CountBounds;
   plannerCalls?: CountBounds;
   boundaryViolations: number;
@@ -137,7 +137,7 @@ export interface ExpectedTrace {
 // Full scenario shape
 // ---------------------------------------------------------------------------
 
-export interface ResponseRubric {
+interface ResponseRubric {
   judgePrompt: string;
   passRequiredForBonus: boolean;
 }

@@ -1,0 +1,176 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+msgid ""
+msgstr ""
+"Project-Id-Version: Tails l10n\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2026-03-31 22:07+0000\n"
+"PO-Revision-Date: 2018-11-05 11:30+0000\n"
+"Last-Translator: Weblate Admin <admin@example.com>\n"
+"Language-Team: Tails Chinese translators <jxt@twngo.xyz>\n"
+"Language: zh_TW\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"X-Generator: Weblate 2.19.1\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"GNOME Boxes\"]]\n"
+msgstr "[[!meta title=\"GNOME Boxes\"]]\n"
+
+#. type: Plain text
+#, fuzzy
+msgid ""
+"[*GNOME Boxes*](https://apps.gnome.org/Boxes/) aims at providing a simple "
+"interface to create and use virtual machines for Linux with GNOME.  *GNOME "
+"Boxes* does not allow the use of a Persistent Storage."
+msgstr ""
+"[*GNOME Boxes*](https://wiki.gnome.org/Boxes) 期能在Linux　的 GNOME環境下\n"
+"提供一個單純的介面環境來建立與使用虛擬器。\n"
+"*GNOME Boxes* 無法使用永久磁區。\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"doc/advanced_topics/virtualization.caution\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"doc/advanced_topics/virtualization.caution.zh_TW\" raw=\"yes\" sort=\"age\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"note\">\n"
+msgstr "<div class=\"note\">\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "<p>The following instructions have been tested on Debian 13 (Trixie).</p>\n"
+msgstr "<p>以下的指引已於 Debian Jessie 環境進行過測試。</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+#. type: Title =
+#, no-wrap
+msgid "Installation"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"To install *GNOME Boxes* in Debian or Ubuntu, execute the following command:"
+msgstr "Debian 或 Ubuntu　環境下欲安裝 *GNOME Boxes*，請執行以下指令："
+
+#. type: Plain text
+#, no-wrap
+msgid "<p class=\"command\">sudo apt install gnome-boxes</p>\n"
+msgstr ""
+
+#. type: Title =
+#, no-wrap
+msgid "Running Tails from an ISO image"
+msgstr ""
+
+#. type: Bullet: '  1. '
+msgid ""
+"[[Download Tails as an ISO image|install/download-iso]], instead of a USB "
+"image."
+msgstr ""
+
+#. type: Bullet: '  1. '
+msgid "Start *GNOME Boxes*."
+msgstr "啟動 *GNOME Boxes*."
+
+#. type: Bullet: '  1. '
+msgid ""
+"Select the [[!img lib/list-add.png alt=\"New\" class=\"symbolic\" "
+"link=\"no\"]] button in the top-left corner."
+msgstr ""
+
+#. type: Bullet: '  1. '
+msgid ""
+"In the menu **Create new virtual machine**, select **Install from File**."
+msgstr ""
+
+#. type: Bullet: '  1. '
+msgid "Choose the ISO image that you want to start from."
+msgstr ""
+
+#. type: Bullet: '  1. '
+msgid "In the **New Virtual Machine** dialog:"
+msgstr ""
+
+#. type: Bullet: '     1. '
+msgid "In the field **Name**, enter a name of your choice."
+msgstr ""
+
+#. type: Bullet: '     1. '
+msgid "In the field **Operating System**, enter **Debian 13**."
+msgstr ""
+
+#. type: Bullet: '     1. '
+msgid "In the field **Memory**, enter at least 3.0 GB."
+msgstr ""
+
+#. type: Bullet: '  1. '
+#, fuzzy
+msgid "Select the **Create** button."
+msgstr "取消**共同剪貼板**選項。"
+
+#, fuzzy
+#~ msgid ""
+#~ "In the dialog **Create a Virtual Machine**, choose **Create virtual "
+#~ "machine from file** and browse for the ISO image that you want to start "
+#~ "from."
+#~ msgstr ""
+#~ "在 **Source Selection** 對話框中，選取**Select a file** 並挑選欲啟動的  "
+#~ "ISO 映像檔。"
+
+#, fuzzy
+#~ msgid ""
+#~ "In the **Review and Create** dialog, click on the **Create** button on "
+#~ "the top of the window."
+#~ msgstr "在 **Review** 對話框中，請點擊視窗上方的**Create** 按鍵。"
+
+#~ msgid "Click on the **New** button on the top of the window."
+#~ msgstr "點擊視窗上方的 **New** 按鍵。"
+
+#, fuzzy, no-wrap
+#~ msgid "Shared clipboard"
+#~ msgstr "共享的剪貼板\n"
+
+#, no-wrap
+#~ msgid "<div class=\"caution\">\n"
+#~ msgstr "<div class=\"caution\">\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<p>The shared clipboard of *GNOME Boxes*\n"
+#~ "is enabled by default. This can allow sensitive data to be copied by\n"
+#~ "mistake from the virtual machine onto the host operating system or vice\n"
+#~ "versa.</p>\n"
+#~ msgstr ""
+#~ "<p>*GNOME Boxes*的共享剪貼板\n"
+#~ "預設為啟用，它會讓敏感的資料可在 \n"
+#~ "虛擬器與原機作業系統之間被複製。</p>\n"
+
+#, no-wrap
+#~ msgid "<p>We recommend you to disable the shared clipboard.</p>\n"
+#~ msgstr "<p>建議取消共享剪貼板功能。</p>\n"
+
+#~ msgid "To disable the shared clipboard:"
+#~ msgstr "要取消共用剪貼板："
+
+#, fuzzy, no-wrap
+#~ msgid ""
+#~ "  1. Choose\n"
+#~ "     <span class=\"menuchoice\">\n"
+#~ "       **[[!img lib/open-menu.png alt=\"Menu\" class=\"symbolic\" link=\"no\"]]**&nbsp;▸\n"
+#~ "       **Properties**</span>.\n"
+#~ msgstr ""
+#~ "  1. 選擇\n"
+#~ "     <span class=\"menuchoice\">\n"
+#~ "       **[[!img lib/open-menu.png alt=\"Menu\" class=\"symbolic\" link=\"no\"]]**&nbsp;▸\n"
+#~ "       **Properties**</span>.\n"

@@ -124,13 +124,6 @@ const CompanionViewOverlay = memo(function CompanionViewOverlay() {
     openEmotePicker();
   }, [closeEmotePicker, emotePickerOpen, openEmotePicker]);
 
-  useEffect(() => {
-    setState(
-      "chatMode",
-      elizaCloudEnabled || elizaCloudConnected ? "power" : "simple",
-    );
-  }, [elizaCloudConnected, elizaCloudEnabled, setState]);
-
   const hasInterruptedAssistant = useMemo(
     () =>
       conversationMessages.some((m) => m.role === "assistant" && m.interrupted),

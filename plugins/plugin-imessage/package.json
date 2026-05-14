@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-imessage",
-  "version": "2.0.0-beta.1",
+  "version": "2.0.0-beta.2",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -40,7 +40,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@elizaos/core": "2.0.0-beta.1",
+    "@elizaos/core": "workspace:*",
     "zod": "^4.4.3"
   },
   "devDependencies": {

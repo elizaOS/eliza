@@ -81,7 +81,7 @@ import {
 } from "./omnivoice-fuse/prepare.mjs";
 import { verifyFusedSymbols } from "./omnivoice-fuse/verify-symbols.mjs";
 
-// elizaOS/llama.cpp @ v1.0.0-eliza (commit 08032d57) — the unified fork that
+// elizaOS/llama.cpp @ bfab6689 — the unified fork that
 // composes TBQ (turbo3/turbo4/turbo3_tcq) + QJL (block_qjl1_256,
 // GGML_OP_ATTN_SCORE_QJL, GGML_OP_FUSED_ATTN_QJL_TBQ) + Q4_POLAR (Q4_POLAR=47)
 // + the eliza Metal/Vulkan/CUDA kernels + DFlash spec-decode (--spec-type
@@ -101,7 +101,8 @@ import { verifyFusedSymbols } from "./omnivoice-fuse/verify-symbols.mjs";
 const REMOTE =
   process.env.ELIZA_DFLASH_LLAMA_CPP_REMOTE ||
   "https://github.com/elizaOS/llama.cpp.git";
-const REF = process.env.ELIZA_DFLASH_LLAMA_CPP_REF || "v1.0.0-eliza";
+const DEFAULT_REF = "bfab6689d7640db682b73f05a6af64b244a69dbd";
+const REF = process.env.ELIZA_DFLASH_LLAMA_CPP_REF || DEFAULT_REF;
 // The in-repo submodule checkout of the fork. When it is initialized this is
 // the default build source (no clone needed); see resolveSourceCheckout().
 const SUBMODULE_DIR = path.resolve(
@@ -151,11 +152,46 @@ const SUPPORTED_TARGETS = [
   "linux-x64-cuda",
   "linux-x64-rocm",
   "linux-x64-vulkan",
-  // Intel oneAPI / Level Zero target for Linux x64 hosts. Intended for
-  // Arc / Xe / Core Ultra iGPU smoke hosts where CUDA/ROCm are unavailable.
+  // Intel oneAPI / SYCL on Linux x64. Targets Intel discrete and
+  // integrated GPUs (Arc, Xe, Lunar Lake / Meteor Lake / Panther Lake
+  // iGPUs) through upstream ggml-sycl. Requires Intel oneAPI Base
+  // Toolkit (icx/icpx + oneMKL) on the build host; `source
+  // /opt/intel/oneapi/setvars.sh` before invoking this script. Optional
+  // `ELIZA_DFLASH_SYCL_TARGET=NVIDIA` / `AMD` overrides the default
+  // `INTEL` cross-architecture target (DPC++ can compile SYCL → PTX or
+  // ROCm via the same toolchain — useful for benchmarking against
+  // CUDA/HIP backends). Custom W4-B kernels (turbo3 / turbo4 /
+  // turbo3_tcq / qjl / polarquant / dflash) do NOT have a SYCL backend
+  // in this fork today (CUDA / Vulkan / Metal / CPU only), so the SYCL
+  // target falls back to upstream-equivalent perf. The kernel-patches
+  // dispatch in this script's `patch*Kernels` hooks correctly no-ops
+  // for `backend === "sycl"` (the per-backend branches around line
+  // 1490 only match cuda/vulkan/metal).
   "linux-x64-sycl",
-  // Intel OpenVINO target for Linux x64 hosts. Requires OpenVINO runtime
-  // development files and OpenVINO_DIR or INTEL_OPENVINO_DIR.
+  // Intel OpenVINO backend on Linux x64 (ggml-org/llama.cpp PR #15307,
+  // merged into upstream master on 2026-04-08; this fork cherry-picks
+  // the ggml-openvino/ directory). Builds a single llama-server binary
+  // that can target the Intel CPU, Intel iGPU/dGPU (Arc / Xe / Lunar
+  // Lake / Meteor Lake / Panther Lake), OR the Intel NPU (Lunar Lake AI
+  // Boost ~48 TOPS, Meteor Lake NCE, Arrow Lake) — the device is
+  // selected at RUNTIME via `GGML_OPENVINO_DEVICE={CPU,GPU,NPU,GPU.0,
+  // GPU.1}`. NPU coverage is the unique value here: SYCL/Vulkan/CUDA do
+  // not cover the NPU, OpenVINO does, and NPU inference draws ~2-3 W
+  // vs ~15-25 W for the iGPU on the same model. Requires the OpenVINO
+  // Runtime (`apt install openvino-2026.x.x` from
+  // https://apt.repos.intel.com/openvino, or extract the tarball under
+  // /opt/intel/openvino_2026/); `source
+  // /opt/intel/openvino_2026/setupvars.sh` exports `OpenVINO_DIR` and
+  // `LD_LIBRARY_PATH` so CMake's `find_package(OpenVINO)` succeeds and
+  // the runtime can dlopen `libopenvino.so` at execution time. The
+  // W4-B custom kernels (turbo3 / turbo4 / turbo3_tcq / qjl /
+  // polarquant / dflash) do NOT have an OpenVINO backend — those are
+  // CUDA / Vulkan / Metal / CPU only — so this target runs plain ggml
+  // ops translated to OpenVINO compute graphs. The kernel-patches
+  // dispatch in patchAllKernels() correctly no-ops for `backend ===
+  // "openvino"` (the per-backend branches around line 1490 only match
+  // cuda/vulkan/metal). Supported quantizations: FP16, Q8_0, Q4_0,
+  // Q4_1, Q4_K, Q4_K_M (with runtime conversion for Q5_K / Q6_K).
   "linux-x64-openvino",
   // Linux aarch64. Required for the `server-h200` tier (GH200 = aarch64
   // host + H100/H200 GPU) and for Ampere Altra / AWS Graviton CPU-only
@@ -913,9 +949,29 @@ function patchDflashSpeculativeDispatch(cacheDir, { dryRun = false } = {}) {
   }
   let content = fs.readFileSync(specPath, "utf8");
   const original = content;
+  const hasDflashDispatch = (source) =>
+    source.includes(
+      "bool has_dflash = (enabled_configs & (1u << COMMON_SPECULATIVE_TYPE_DFLASH));",
+    ) ||
+    source.includes(
+      "bool has_dflash = (params.type == COMMON_SPECULATIVE_TYPE_DFLASH);",
+    );
+  if (
+    hasDflashDispatch(content) &&
+    content.includes(
+      "has_dflash ? COMMON_SPECULATIVE_TYPE_DFLASH : COMMON_SPECULATIVE_TYPE_DRAFT",
+    ) &&
+    content.includes("case COMMON_SPECULATIVE_TYPE_DFLASH")
+  ) {
+    return;
+  }
   content = content.replace(
     "        bool has_draft = (enabled_configs & (1u << COMMON_SPECULATIVE_TYPE_DRAFT));\n",
     "        bool has_dflash = (enabled_configs & (1u << COMMON_SPECULATIVE_TYPE_DFLASH));\n        bool has_draft = (enabled_configs & (1u << COMMON_SPECULATIVE_TYPE_DRAFT)) || has_dflash;\n",
+  );
+  content = content.replace(
+    "        bool has_draft = !params.mparams_dft.path.empty();\n",
+    "        bool has_dflash = (params.type == COMMON_SPECULATIVE_TYPE_DFLASH);\n        bool has_draft = !params.mparams_dft.path.empty();\n",
   );
   content = content.replace(
     "        static_assert(COMMON_SPECULATIVE_TYPE_COUNT == 8);\n",
@@ -926,15 +982,18 @@ function patchDflashSpeculativeDispatch(cacheDir, { dryRun = false } = {}) {
     "            configs.push_back(common_speculative_config(has_dflash ? COMMON_SPECULATIVE_TYPE_DFLASH : COMMON_SPECULATIVE_TYPE_DRAFT, params));\n",
   );
   content = content.replace(
-    "            case COMMON_SPECULATIVE_TYPE_DRAFT: {\n                impls.push_back(std::make_unique<common_speculative_state_draft>(config.params, n_seq));",
-    "            case COMMON_SPECULATIVE_TYPE_DRAFT:\n            case COMMON_SPECULATIVE_TYPE_DFLASH: {\n                impls.push_back(std::make_unique<common_speculative_state_draft>(config.params, n_seq));",
+    "            case COMMON_SPECULATIVE_TYPE_DRAFT: {\n",
+    "            case COMMON_SPECULATIVE_TYPE_DRAFT:\n            case COMMON_SPECULATIVE_TYPE_DFLASH: {\n",
   );
   if (content === original) {
     return;
   }
   if (
-    !content.includes("bool has_dflash =") ||
-    !content.includes("COMMON_SPECULATIVE_TYPE_COUNT == 9")
+    !hasDflashDispatch(content) ||
+    !content.includes(
+      "has_dflash ? COMMON_SPECULATIVE_TYPE_DFLASH : COMMON_SPECULATIVE_TYPE_DRAFT",
+    ) ||
+    !content.includes("case COMMON_SPECULATIVE_TYPE_DFLASH")
   ) {
     throw new Error(
       `[dflash-build] patchDflashSpeculativeDispatch: patch verification failed for ${specPath}`,
@@ -1170,6 +1229,16 @@ function cmakeFlagsForTarget(target, ctx) {
   //     existing `backend === "cpu" && arch === "x64"` / `arm64` blocks
   //     in the `platform === "windows"` section (and a new linux-cpu
   //     block here if a non-native pin is ever needed).
+  //   * SYCL-AGENT TODO: extra flags for `linux-x64-sycl` go in the
+  //     `backend === "sycl"` branch below. Future Eliza-kernel SYCL
+  //     backends (turbo3 / qjl / polarquant) will plug into the same
+  //     branch alongside an entry in patchAllKernels() at the bottom
+  //     of this file.
+  //   * OPENVINO-AGENT TODO: extra flags for `linux-x64-openvino` (and
+  //     future `windows-x64-openvino`) go in the `backend ===
+  //     "openvino"` branch below. Eliza-kernel OpenVINO backends, if
+  //     they're ever written, would plug into the same branch alongside
+  //     an entry in patchAllKernels() at the bottom of this file.
   // ──────────────────────────────────────────────────────────────────
   const { platform, arch, backend, isSimulator } = parseTarget(target);
   const flags = ["-DLLAMA_BUILD_TESTS=OFF", "-DLLAMA_BUILD_EXAMPLES=ON"];
@@ -1233,12 +1302,32 @@ function cmakeFlagsForTarget(target, ctx) {
     // after this list and win on a CMake conflict.
     flags.push(hipArchListFlag());
   } else if (backend === "sycl") {
+    // Intel oneAPI / SYCL backend. Builds plain ggml-sycl from the
+    // upstream tree (no Eliza kernel patches — those branches in
+    // patch*Kernels() only match cuda/vulkan/metal). Operator must
+    // `source /opt/intel/oneapi/setvars.sh` so icx/icpx + MKLROOT are
+    // on PATH before this script runs.
     flags[flags.indexOf("-DGGML_SYCL=OFF")] = "-DGGML_SYCL=ON";
+    // Use Intel's DPC++ compiler. CMake honors CC/CXX, but setting the
+    // compiler vars explicitly catches the common case where setvars.sh
+    // was not sourced (CMake would silently fall back to gcc, which
+    // can't compile SYCL TUs and emits a confusing pragma error 100+
+    // lines deep into a translation unit). FP16 default-on via XMX
+    // matrix engines on Xe2 / Xe-LPG iGPUs and Arc discrete; operators
+    // hitting SYCL_VALIDATION_ERROR on FP16 ops can set
+    // `ELIZA_DFLASH_SYCL_NO_F16=1` to disable.
     flags.push(
       "-DCMAKE_C_COMPILER=icx",
       "-DCMAKE_CXX_COMPILER=icpx",
       `-DGGML_SYCL_F16=${envFlag("ELIZA_DFLASH_SYCL_NO_F16") ? "OFF" : "ON"}`,
     );
+    // SYCL target architecture. DPC++ can compile SYCL → Intel GPU
+    // (default), → NVIDIA PTX (codeplay/oneAPI-for-CUDA plugin), or
+    // → AMD HIP (codeplay/oneAPI-for-HIP plugin). The vast majority
+    // of users hitting this target want INTEL; expose the override
+    // env knob in case someone benchmarks against the same source tree.
+    // Validate against the known set so a typo (`GARBAGE`) fails fast
+    // rather than ~5 minutes deep into CMake with a confusing error.
     const syclTarget = (
       process.env.ELIZA_DFLASH_SYCL_TARGET?.trim() || "INTEL"
     ).toUpperCase();
@@ -1250,7 +1339,21 @@ function cmakeFlagsForTarget(target, ctx) {
     }
     flags.push(`-DGGML_SYCL_TARGET=${syclTarget}`);
   } else if (backend === "openvino") {
+    // Intel OpenVINO backend. Builds plain ggml-openvino from the
+    // cherry-picked upstream tree (no Eliza kernel patches — those
+    // branches in patch*Kernels() only match cuda/vulkan/metal).
+    // Operator must source the OpenVINO setupvars script (e.g.
+    // `source /opt/intel/openvino_2026/setupvars.sh`) so OpenVINO_DIR
+    // / INTEL_OPENVINO_DIR and LD_LIBRARY_PATH are set before this
+    // script runs. CMake then resolves `find_package(OpenVINO)` from
+    // those env vars.
     flags[flags.indexOf("-DGGML_OPENVINO=OFF")] = "-DGGML_OPENVINO=ON";
+    // Pass OpenVINO_DIR explicitly when present — find_package() will
+    // honor it. Some OpenVINO tarballs install to non-standard paths
+    // (/opt/intel/openvino_<ver>/runtime/cmake) which CMake's default
+    // search heuristics miss. Normalize the env value first so a trailing
+    // slash (`/runtime/cmake/`) doesn't make the `.endsWith("/cmake")`
+    // check miss and we double-append `runtime/cmake`.
     const openvinoDir =
       process.env.OpenVINO_DIR?.trim() ||
       process.env.INTEL_OPENVINO_DIR?.trim();
@@ -1394,7 +1497,7 @@ function cmakeFlagsForTarget(target, ctx) {
     // `ggml_backend_cpu_init` (per-backend symbol name), so the loader
     // fails and inference can't run. -DGGML_BACKEND_DL=OFF embeds the
     // backend's init directly into the binary.
-    flags.push("-DGGML_BACKEND_DL=OFF", "-DBUILD_SHARED_LIBS=OFF");
+    flags.push("-DGGML_BACKEND_DL=OFF");
   } else if (platform === "ios") {
     // iOS cross-compile (host must be macOS with Xcode). The Capacitor
     // plugin's xcframework patch consumes the resulting static archive +
@@ -1531,6 +1634,13 @@ function targetCompatibility(target, ctx) {
   if (backend === "vulkan" && !ctx.glslc) {
     return { ok: false, reason: "no glslc (Vulkan shader compiler)" };
   }
+  if (backend === "sycl" && !(has("icpx") && has("icx"))) {
+    return {
+      ok: false,
+      reason:
+        "no icx/icpx (Intel oneAPI Base Toolkit) — source /opt/intel/oneapi/setvars.sh first",
+    };
+  }
   if (backend === "metal" && process.platform !== "darwin") {
     return { ok: false, reason: "metal requires macOS" };
   }
@@ -1598,6 +1708,10 @@ function standaloneCacheDir() {
 function defaultSourceCheckoutDir() {
   if (!USING_FORK_OVERRIDE && submoduleCheckoutPresent()) return SUBMODULE_DIR;
   return standaloneCacheDir();
+}
+
+function isCommitSha(ref) {
+  return /^[0-9a-f]{7,40}$/i.test(ref);
 }
 
 function parseArgs(argv) {
@@ -1722,6 +1836,11 @@ function ensureCheckout(cacheDir, ref) {
     // new artifact.
     run("git", ["reset", "--hard", "FETCH_HEAD"], { cwd: cacheDir });
     run("git", ["clean", "-fd"], { cwd: cacheDir });
+  } else if (isCommitSha(ref)) {
+    fs.mkdirSync(path.dirname(cacheDir), { recursive: true });
+    run("git", ["clone", "--depth=1", "--no-checkout", REMOTE, cacheDir]);
+    run("git", ["fetch", "--depth=1", "origin", ref], { cwd: cacheDir });
+    run("git", ["checkout", "FETCH_HEAD"], { cwd: cacheDir });
   } else {
     fs.mkdirSync(path.dirname(cacheDir), { recursive: true });
     run("git", ["clone", "--depth=1", "--branch", ref, REMOTE, cacheDir]);
@@ -2058,6 +2177,40 @@ function sourceContainsDflashDraft(root) {
     (argSource.includes("common_speculative_types_from_names") ||
       argSource.includes("COMMON_SPECULATIVE_TYPE_DFLASH"))
   );
+}
+
+function sourceContainsCpuTbqKernels(root) {
+  if (!root) return { turbo3: false, turbo4: false, turbo3_tcq: false };
+  const sources = [
+    path.join(root, "ggml", "include", "ggml.h"),
+    path.join(root, "ggml", "src", "ggml.c"),
+    path.join(root, "ggml", "src", "ggml-quants.c"),
+    path.join(root, "ggml", "src", "ggml-cpu", "quants.c"),
+    path.join(root, "ggml", "src", "ggml-cpu", "ggml-cpu.c"),
+  ];
+  if (sources.some((source) => !fs.existsSync(source))) {
+    return { turbo3: false, turbo4: false, turbo3_tcq: false };
+  }
+  const source = sources
+    .map((file) => fs.readFileSync(file, "utf8"))
+    .join("\n");
+  return {
+    turbo3:
+      source.includes("GGML_TYPE_TBQ3_0") &&
+      source.includes("quantize_row_tbq3_0") &&
+      source.includes("dequantize_row_tbq3_0") &&
+      source.includes("ggml_vec_dot_tbq3_0_f32"),
+    turbo4:
+      source.includes("GGML_TYPE_TBQ4_0") &&
+      source.includes("quantize_row_tbq4_0") &&
+      source.includes("dequantize_row_tbq4_0") &&
+      source.includes("ggml_vec_dot_tbq4_0_f32"),
+    turbo3_tcq:
+      source.includes("GGML_TYPE_TBQ3_TCQ") &&
+      source.includes("quantize_row_tbq3_tcq") &&
+      source.includes("dequantize_row_tbq3_tcq") &&
+      source.includes("QK_TBQ3_TCQ"),
+  };
 }
 
 function ensureLegacyDflashDrafterCheckout(sourceDir) {
@@ -2400,14 +2553,21 @@ function probeKernels(target, buildDir, outDir, cacheDir = null) {
     kernels.turbo3_tcq = /turbo3[-_]?tcq|tcq/.test(names);
     kernels.qjl_full = /qjl/.test(names);
     kernels.polarquant = /polar(?:quant)?|q4[-_]?polar/.test(names);
-    // CPU build inlines the turbo quantization paths inside ggml-cpu and
-    // links a single ggml-turbo-quant.c.o into ggml-base. Treat its presence
-    // as evidence both turbo3 and turbo4 paths are compiled in. DFlash is
-    // not inferred from turbo/flash-attention objects: publishable Eliza-1
-    // builds must carry the native dflash-draft speculative state.
-    if (backend === "cpu" && /ggml-turbo-quant\.c\.o/.test(names)) {
-      kernels.turbo3 = true;
-      kernels.turbo4 = true;
+    if (backend === "cpu") {
+      if (/ggml-turbo-quant\.c\.(?:o|obj)/.test(names)) {
+        kernels.turbo3 = true;
+        kernels.turbo4 = true;
+      }
+      const hasCompiledTbqCore =
+        /ggml-quants\.c\.(?:o|obj)/.test(names) &&
+        /ggml-cpu[/\\]quants\.c\.(?:o|obj)/.test(names) &&
+        /ggml-cpu[/\\]ggml-cpu\.c\.(?:o|obj)/.test(names);
+      if (hasCompiledTbqCore) {
+        const sourceKernels = sourceContainsCpuTbqKernels(cacheDir);
+        kernels.turbo3 = kernels.turbo3 || sourceKernels.turbo3;
+        kernels.turbo4 = kernels.turbo4 || sourceKernels.turbo4;
+        kernels.turbo3_tcq = kernels.turbo3_tcq || sourceKernels.turbo3_tcq;
+      }
     }
   }
 
@@ -2982,10 +3142,17 @@ function writeCapabilities({
       : backend === "vulkan"
         ? vulkanRuntimeDispatchStatus(shippedKernels, target)
         : null;
+  const allowSmokeIncompleteBuild =
+    process.env.ELIZA_DFLASH_ALLOW_INCOMPLETE_KERNELS_FOR_SMOKE === "1";
+  const allowReducedKernelBuild =
+    process.env.ELIZA_DFLASH_ALLOW_REDUCED_KERNELS === "1";
   const allowUnverifiedVulkanBuild =
     backend === "vulkan" &&
-    (process.env.ELIZA_DFLASH_ALLOW_UNVERIFIED_VULKAN_BUILD === "1" ||
-      process.env.ELIZA_DFLASH_ALLOW_INCOMPLETE_KERNELS_FOR_SMOKE === "1");
+    process.env.ELIZA_DFLASH_ALLOW_UNVERIFIED_VULKAN_BUILD === "1";
+  const incompleteKernelAllowance =
+    allowSmokeIncompleteBuild ||
+    allowReducedKernelBuild ||
+    allowUnverifiedVulkanBuild;
   const capabilities = {
     target,
     platform,
@@ -3001,7 +3168,9 @@ function writeCapabilities({
     draftArchitectures: supportedArchitectures,
     publishable: missing.length === 0,
     missingRequiredKernels: missing,
-    smokeOnlyIncompleteAllowed:
+    smokeOnlyIncompleteAllowed: missing.length > 0 && allowSmokeIncompleteBuild,
+    reducedOptimizationLocalMode: missing.length > 0 && allowReducedKernelBuild,
+    unverifiedVulkanRuntimeAllowed:
       missing.length > 0 && allowUnverifiedVulkanBuild,
     shippedKernels,
     runtimeDispatch,
@@ -3013,10 +3182,15 @@ function writeCapabilities({
     `${JSON.stringify(capabilities, null, 2)}\n`,
   );
   if (missing.length > 0) {
-    if (allowUnverifiedVulkanBuild) {
+    if (incompleteKernelAllowance) {
+      const allowance = allowReducedKernelBuild
+        ? "reduced-optimization local build"
+        : allowSmokeIncompleteBuild
+          ? "smoke-only incomplete kernel build"
+          : "unverified Vulkan runtime build";
       console.warn(
-        `[dflash-build] target=${target} built with unverified Vulkan runtime kernels: ${missing.join(", ")}. ` +
-          `This is allowed only for the graph-dispatch smoke bootstrap; CAPABILITIES.json is diagnostic, publishable=false, and must not be published until vulkan-runtime-dispatch-evidence.json is generated and the target is rebuilt without the unverified-build env override.`,
+        `[dflash-build] target=${target} built as ${allowance}: ${missing.join(", ")}. ` +
+          `CAPABILITIES.json is diagnostic, publishable=false, and this artifact must not be published until the missing kernel dispatch evidence is present and the target is rebuilt without the incomplete-build override.`,
       );
       return capabilities;
     }

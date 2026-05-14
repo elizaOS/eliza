@@ -26,6 +26,30 @@ import {
 } from "../gpu-profile-schema.js";
 
 const ALL_IDS: GpuYamlId[] = ["rtx-3090", "rtx-4090", "rtx-5090", "h200"];
+const EXPECTED_PROFILE_BUNDLES: Record<GpuYamlId, string[]> = {
+  "rtx-3090": [
+    "eliza-1-0_8b",
+    "eliza-1-2b",
+    "eliza-1-4b",
+    "eliza-1-9b",
+  ],
+  "rtx-4090": [
+    "eliza-1-0_8b",
+    "eliza-1-2b",
+    "eliza-1-4b",
+    "eliza-1-9b",
+    "eliza-1-27b",
+  ],
+  "rtx-5090": [
+    "eliza-1-0_8b",
+    "eliza-1-2b",
+    "eliza-1-4b",
+    "eliza-1-9b",
+    "eliza-1-27b",
+    "eliza-1-27b-256k",
+  ],
+  h200: [...ELIZA_1_TIER_IDS],
+};
 
 describe("gpu-profile YAML files", () => {
   beforeEach(() => {
@@ -100,10 +124,9 @@ describe("gpu-profile YAML files", () => {
   it("profiles include only the active Qwen3.5 release bundles", () => {
     for (const id of ALL_IDS) {
       const profile = loadProfile(id);
-      expect(Object.keys(profile.bundle_recommendations).sort()).toEqual([
-        "eliza-1-0_8b",
-        "eliza-1-2b",
-      ]);
+      expect(Object.keys(profile.bundle_recommendations).sort()).toEqual(
+        EXPECTED_PROFILE_BUNDLES[id].sort(),
+      );
     }
   });
 
@@ -245,6 +268,16 @@ describe("getGpuOverrides", () => {
     expect(result.kind).toBe("applied");
     if (result.kind !== "applied") return;
     expect(result.overrides.draftMin).toBeUndefined();
+  });
+
+  it("attaches DFlash draft flags to larger chat tiers", () => {
+    const profile = loadProfile("rtx-4090");
+    const result = getGpuOverrides({ profile, bundleId: "eliza-1-9b" });
+    expect(result.kind).toBe("applied");
+    if (result.kind !== "applied") return;
+    expect(result.overrides.draftMin).toBe(4);
+    expect(result.overrides.draftMax).toBe(24);
+    expect(result.overrides.draftGpuLayers).toBe(-1);
   });
 
   it("returns 'no-recommendation' when the bundle is missing from the profile", () => {

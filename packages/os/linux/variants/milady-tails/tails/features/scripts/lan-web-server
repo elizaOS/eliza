@@ -1,0 +1,114 @@
+#!/usr/bin/env python3
+
+import argparse
+import os
+import subprocess
+import sys
+import tempfile
+import time
+from functools import partial
+from http.server import SimpleHTTPRequestHandler, HTTPServer
+from pathlib import Path
+
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+CAPTIVE_PORTAL_HTML = "features/webserver/htdocs/captive.html"
+
+
+class RequestHandler(SimpleHTTPRequestHandler):
+    """A HTTPRequestHandler that redirects all requests to / to /portal"""
+
+    def __init__(
+        self, hello_message, headers_dir, login_file, git_dir, *args, **kwargs
+    ):
+        self.hello_message = hello_message
+        self.headers_dir = headers_dir
+        self.login_file = login_file
+        self.git_dir = git_dir
+        super().__init__(*args, **kwargs)
+
+    def do_GET(self):
+        # Save the headers of the request to a file
+        fd, _ = tempfile.mkstemp(dir=self.headers_dir, text=True)
+        with os.fdopen(fd, "w") as f:
+            f.write(str(self.headers))
+
+        if self.path == "/":
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=UTF-8")
+            self.end_headers()
+            body = (
+                f"<head><title>{self.hello_message}</title></head>"
+                f"<h1>{self.hello_message}</h1>"
+            )
+            self.wfile.write(body.encode())
+        elif self.path.startswith("/redirect-to?"):
+            # Get the URL to redirect to from the url query string
+            url = self.path.split("?url=", 1)[1]
+            self.send_response(302)
+            self.send_header("Location", url)
+            self.end_headers()
+        elif self.path == "/captive":
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=UTF-8")
+            self.end_headers()
+            captive_portal_html_file = Path(self.git_dir, CAPTIVE_PORTAL_HTML)
+            self.wfile.write(captive_portal_html_file.read_bytes())
+        elif self.path.startswith("/login"):
+            self.send_response(200)
+            self.end_headers()
+            Path(self.login_file).write_text("OK")
+            self.wfile.write(b"Logged in")
+        elif self.path.startswith("/delay"):
+            # Get the URL to redirect to from the url query string
+            seconds = int(self.path.split("/")[-1])
+            time.sleep(seconds)
+            self.send_response(200)
+            self.end_headers()
+        elif self.path == "/concheck":
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b"OK")
+        else:
+            self.send_response(404)
+            self.end_headers()
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    # --address will actually be overridden
+    parser.add_argument("--address", default="0.0.0.0")  # noqa: S104
+    parser.add_argument("--port", type=int, default=8080)
+    parser.add_argument("--hello-message", default="hello")
+    # --data-dir will actually be overridden by the caller
+    parser.add_argument("--data-dir", default="/tmp/lan-web-server")  # noqa: S108
+    args = parser.parse_args()
+
+    address = args.address
+    port = args.port
+    hello_message = args.hello_message
+    data_dir = args.data_dir
+
+    headers_dir = os.path.join(data_dir, "headers")
+    login_file = os.path.join(data_dir, "logged-in")
+
+    os.makedirs(headers_dir, exist_ok=True)
+
+    git_dir = subprocess.check_output(
+        ["/usr/bin/git", "-C", SCRIPT_DIR, "rev-parse", "--show-toplevel"],
+        text=True,
+    ).strip()
+
+    Handler = partial(RequestHandler, hello_message, headers_dir, login_file, git_dir)
+    print("Initializing", file=sys.stderr)
+    server = HTTPServer((address, port), Handler)
+    print(f"Listening on {address}:{port}", file=sys.stderr)
+
+    try:
+        server.serve_forever()
+    finally:
+        print("Shutting down", file=sys.stderr)
+        server.server_close()
+
+
+if __name__ == "__main__":
+    main()

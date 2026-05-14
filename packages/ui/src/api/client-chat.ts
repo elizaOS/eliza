@@ -17,7 +17,6 @@ import type {
   ConversationGreeting,
   ConversationMessage,
   ConversationMetadata,
-  ConversationMode,
   CreateConversationOptions,
   DatabaseConfigResponse,
   DatabaseStatus,
@@ -116,6 +115,159 @@ type DocumentSearchOptions = {
   tags?: string[];
 };
 
+type InboxMessagesOptions = {
+  limit?: number;
+  sources?: string[];
+  roomId?: string;
+  roomSource?: string;
+};
+
+type InboxChatsOptions = { sources?: string[] };
+
+function setPositiveNumberParam(
+  params: URLSearchParams,
+  key: string,
+  value: number | undefined,
+): void {
+  if (typeof value === "number" && value > 0) params.set(key, String(value));
+}
+
+function setTruthyNumberParam(
+  params: URLSearchParams,
+  key: string,
+  value: number | undefined,
+): void {
+  if (value) params.set(key, String(value));
+}
+
+function setDefinedNumberParam(
+  params: URLSearchParams,
+  key: string,
+  value: number | undefined,
+): void {
+  if (value !== undefined) params.set(key, String(value));
+}
+
+function setNonEmptyStringParam(
+  params: URLSearchParams,
+  key: string,
+  value: string | undefined,
+): void {
+  if (typeof value === "string" && value.length > 0) params.set(key, value);
+}
+
+function setTruthyStringParam(
+  params: URLSearchParams,
+  key: string,
+  value: string | undefined,
+): void {
+  if (value) params.set(key, value);
+}
+
+function appendTagsParam(
+  params: URLSearchParams,
+  tags: string[] | undefined,
+): void {
+  for (const tag of tags ?? []) params.append("tag", tag);
+}
+
+function buildSourcesParams(sources: string[] | undefined): URLSearchParams {
+  const params = new URLSearchParams();
+  if (sources && sources.length > 0) params.set("sources", sources.join(","));
+  return params;
+}
+
+function buildInboxMessagesParams(
+  options: InboxMessagesOptions | undefined,
+): URLSearchParams {
+  const params = buildSourcesParams(options?.sources);
+  setPositiveNumberParam(params, "limit", options?.limit);
+  setNonEmptyStringParam(params, "roomId", options?.roomId);
+  setNonEmptyStringParam(params, "roomSource", options?.roomSource);
+  return params;
+}
+
+function buildInboxMessagesRpcParams(
+  options: InboxMessagesOptions | undefined,
+): InboxMessagesOptions {
+  const params: InboxMessagesOptions = {};
+  if (typeof options?.limit === "number" && options.limit > 0) {
+    params.limit = options.limit;
+  }
+  if (options?.sources && options.sources.length > 0) {
+    params.sources = options.sources;
+  }
+  if (typeof options?.roomId === "string" && options.roomId.length > 0) {
+    params.roomId = options.roomId;
+  }
+  if (
+    typeof options?.roomSource === "string" &&
+    options.roomSource.length > 0
+  ) {
+    params.roomSource = options.roomSource;
+  }
+  return params;
+}
+
+function buildInboxChatsRpcParams(
+  options: InboxChatsOptions | undefined,
+): InboxChatsOptions {
+  return options?.sources && options.sources.length > 0
+    ? { sources: options.sources }
+    : {};
+}
+
+function appendDocumentFilterParams(
+  params: URLSearchParams,
+  options: DocumentListOptions | DocumentSearchOptions | undefined,
+): void {
+  setTruthyStringParam(params, "scope", options?.scope);
+  setTruthyStringParam(params, "scopedToEntityId", options?.scopedToEntityId);
+  setTruthyStringParam(params, "addedBy", options?.addedBy);
+  setTruthyStringParam(params, "timeRangeStart", options?.timeRangeStart);
+  setTruthyStringParam(params, "timeRangeEnd", options?.timeRangeEnd);
+  appendTagsParam(params, options?.tags);
+}
+
+function buildDocumentListParams(
+  options: DocumentListOptions | undefined,
+): URLSearchParams {
+  const params = new URLSearchParams();
+  setTruthyNumberParam(params, "limit", options?.limit);
+  setTruthyNumberParam(params, "offset", options?.offset);
+  if (options?.query) params.set("q", options.query);
+  appendDocumentFilterParams(params, options);
+  return params;
+}
+
+function buildDocumentSearchParams(
+  query: string,
+  options: DocumentSearchOptions | undefined,
+): URLSearchParams {
+  const params = new URLSearchParams({ q: query });
+  setDefinedNumberParam(params, "threshold", options?.threshold);
+  setDefinedNumberParam(params, "limit", options?.limit);
+  setTruthyStringParam(params, "query", options?.query);
+  appendDocumentFilterParams(params, options);
+  return params;
+}
+
+function buildTrajectoryParams(
+  options: TrajectoryListOptions | undefined,
+): URLSearchParams {
+  const params = new URLSearchParams();
+  setTruthyNumberParam(params, "limit", options?.limit);
+  setTruthyNumberParam(params, "offset", options?.offset);
+  setTruthyStringParam(params, "source", options?.source);
+  setTruthyStringParam(params, "scenarioId", options?.scenarioId);
+  setTruthyStringParam(params, "batchId", options?.batchId);
+  setTruthyStringParam(params, "status", options?.status);
+  setTruthyStringParam(params, "startDate", options?.startDate);
+  setTruthyStringParam(params, "endDate", options?.endDate);
+  setTruthyStringParam(params, "search", options?.search);
+  return params;
+}
+
 // ---------------------------------------------------------------------------
 // Declaration merging
 // ---------------------------------------------------------------------------
@@ -125,7 +277,6 @@ declare module "./client-base" {
     sendChatRest(
       text: string,
       channelType?: ConversationChannelType,
-      conversationMode?: ConversationMode,
     ): Promise<{
       text: string;
       agentName: string;
@@ -138,7 +289,6 @@ declare module "./client-base" {
       onToken: (token: string, accumulatedText?: string) => void,
       channelType?: ConversationChannelType,
       signal?: AbortSignal,
-      conversationMode?: ConversationMode,
     ): Promise<{
       text: string;
       agentName: string;
@@ -239,7 +389,6 @@ declare module "./client-base" {
       text: string,
       channelType?: ConversationChannelType,
       images?: ImageAttachment[],
-      conversationMode?: ConversationMode,
       metadata?: Record<string, unknown>,
     ): Promise<{
       text: string;
@@ -263,7 +412,6 @@ declare module "./client-base" {
       channelType?: ConversationChannelType,
       signal?: AbortSignal,
       images?: ImageAttachment[],
-      conversationMode?: ConversationMode,
       metadata?: Record<string, unknown>,
     ): Promise<{
       text: string;
@@ -605,16 +753,9 @@ ElizaClient.prototype.sendChatRest = async function (
   this: ElizaClient,
   text,
   channelType = "DM",
-  conversationMode?,
 ) {
   const sendToConversation = async (conversationId: string) =>
-    this.sendConversationMessage(
-      conversationId,
-      text,
-      channelType,
-      undefined,
-      conversationMode,
-    );
+    this.sendConversationMessage(conversationId, text, channelType, undefined);
 
   const conversationId = await ensureLegacyChatConversationId(this);
   try {
@@ -638,7 +779,6 @@ ElizaClient.prototype.sendChatStream = async function (
   onToken,
   channelType = "DM",
   signal?,
-  conversationMode?,
 ) {
   const streamConversation = async (conversationId: string) =>
     this.sendConversationMessageStream(
@@ -648,7 +788,6 @@ ElizaClient.prototype.sendChatStream = async function (
       channelType,
       signal,
       undefined,
-      conversationMode,
     );
 
   const conversationId = await ensureLegacyChatConversationId(this);
@@ -749,22 +888,7 @@ ElizaClient.prototype.getInboxMessages = async function (
   this: ElizaClient,
   options,
 ) {
-  const params = new URLSearchParams();
-  if (typeof options?.limit === "number" && options.limit > 0) {
-    params.set("limit", String(options.limit));
-  }
-  if (options?.sources && options.sources.length > 0) {
-    params.set("sources", options.sources.join(","));
-  }
-  if (typeof options?.roomId === "string" && options.roomId.length > 0) {
-    params.set("roomId", options.roomId);
-  }
-  if (
-    typeof options?.roomSource === "string" &&
-    options.roomSource.length > 0
-  ) {
-    params.set("roomSource", options.roomSource);
-  }
+  const params = buildInboxMessagesParams(options);
   const query = params.toString();
   const path = query ? `/api/inbox/messages?${query}` : "/api/inbox/messages";
   try {
@@ -774,21 +898,7 @@ ElizaClient.prototype.getInboxMessages = async function (
     }>({
       rpcMethod: "getInboxMessages",
       ipcChannel: "agent",
-      params: {
-        ...(typeof options?.limit === "number" && options.limit > 0
-          ? { limit: options.limit }
-          : {}),
-        ...(options?.sources && options.sources.length > 0
-          ? { sources: options.sources }
-          : {}),
-        ...(typeof options?.roomId === "string" && options.roomId.length > 0
-          ? { roomId: options.roomId }
-          : {}),
-        ...(typeof options?.roomSource === "string" &&
-        options.roomSource.length > 0
-          ? { roomSource: options.roomSource }
-          : {}),
-      },
+      params: buildInboxMessagesRpcParams(options),
     });
     if (viaRpc) return viaRpc;
   } catch {
@@ -817,10 +927,7 @@ ElizaClient.prototype.getInboxChats = async function (
   this: ElizaClient,
   options,
 ) {
-  const params = new URLSearchParams();
-  if (options?.sources && options.sources.length > 0) {
-    params.set("sources", options.sources.join(","));
-  }
+  const params = buildSourcesParams(options?.sources);
   const query = params.toString();
   const path = query ? `/api/inbox/chats?${query}` : "/api/inbox/chats";
   try {
@@ -842,10 +949,7 @@ ElizaClient.prototype.getInboxChats = async function (
     }>({
       rpcMethod: "getInboxChats",
       ipcChannel: "agent",
-      params:
-        options?.sources && options.sources.length > 0
-          ? { sources: options.sources }
-          : {},
+      params: buildInboxChatsRpcParams(options),
     });
     if (viaRpc) return viaRpc;
   } catch {
@@ -908,7 +1012,6 @@ ElizaClient.prototype.sendConversationMessage = async function (
   text,
   channelType = "DM",
   images?,
-  conversationMode?,
   metadata?,
 ) {
   const response = await this.fetch<{
@@ -924,7 +1027,6 @@ ElizaClient.prototype.sendConversationMessage = async function (
       text,
       channelType,
       ...(images?.length ? { images } : {}),
-      ...(conversationMode ? { conversationMode } : {}),
       ...(metadata ? { metadata } : {}),
     }),
   });
@@ -945,7 +1047,6 @@ ElizaClient.prototype.sendConversationMessageStream = async function (
   channelType = "DM",
   signal?,
   images?,
-  conversationMode?,
   metadata?,
 ) {
   return this.streamChatEndpoint(
@@ -955,7 +1056,6 @@ ElizaClient.prototype.sendConversationMessageStream = async function (
     channelType,
     signal,
     images,
-    conversationMode,
     metadata,
   );
 };
@@ -1040,22 +1140,7 @@ ElizaClient.prototype.listDocuments = async function (
   this: ElizaClient,
   options?,
 ) {
-  const params = new URLSearchParams();
-  if (options?.limit) params.set("limit", String(options.limit));
-  if (options?.offset) params.set("offset", String(options.offset));
-  if (options?.scope) params.set("scope", options.scope);
-  if (options?.scopedToEntityId) {
-    params.set("scopedToEntityId", options.scopedToEntityId);
-  }
-  if (options?.addedBy) params.set("addedBy", options.addedBy);
-  if (options?.query) params.set("q", options.query);
-  if (options?.timeRangeStart) {
-    params.set("timeRangeStart", options.timeRangeStart);
-  }
-  if (options?.timeRangeEnd) params.set("timeRangeEnd", options.timeRangeEnd);
-  if (options?.tags) {
-    for (const tag of options.tags) params.append("tag", tag);
-  }
+  const params = buildDocumentListParams(options);
   const query = params.toString();
   return this.fetch(`/api/documents${query ? `?${query}` : ""}`);
 };
@@ -1137,23 +1222,7 @@ ElizaClient.prototype.searchDocuments = async function (
   query,
   options?,
 ) {
-  const params = new URLSearchParams({ q: query });
-  if (options?.threshold !== undefined)
-    params.set("threshold", String(options.threshold));
-  if (options?.limit !== undefined) params.set("limit", String(options.limit));
-  if (options?.scope) params.set("scope", options.scope);
-  if (options?.scopedToEntityId) {
-    params.set("scopedToEntityId", options.scopedToEntityId);
-  }
-  if (options?.addedBy) params.set("addedBy", options.addedBy);
-  if (options?.query) params.set("query", options.query);
-  if (options?.timeRangeStart) {
-    params.set("timeRangeStart", options.timeRangeStart);
-  }
-  if (options?.timeRangeEnd) params.set("timeRangeEnd", options.timeRangeEnd);
-  if (options?.tags) {
-    for (const tag of options.tags) params.append("tag", tag);
-  }
+  const params = buildDocumentSearchParams(query, options);
   return this.fetch(`/api/documents/search?${params}`);
 };
 
@@ -1633,16 +1702,7 @@ ElizaClient.prototype.getTrajectories = async function (
   this: ElizaClient,
   options?,
 ) {
-  const params = new URLSearchParams();
-  if (options?.limit) params.set("limit", String(options.limit));
-  if (options?.offset) params.set("offset", String(options.offset));
-  if (options?.source) params.set("source", options.source);
-  if (options?.scenarioId) params.set("scenarioId", options.scenarioId);
-  if (options?.batchId) params.set("batchId", options.batchId);
-  if (options?.status) params.set("status", options.status);
-  if (options?.startDate) params.set("startDate", options.startDate);
-  if (options?.endDate) params.set("endDate", options.endDate);
-  if (options?.search) params.set("search", options.search);
+  const params = buildTrajectoryParams(options);
   const query = params.toString();
   return this.fetch(`/api/trajectories${query ? `?${query}` : ""}`);
 };

@@ -1,0 +1,18 @@
+#!/bin/sh
+set -e
+set -u
+
+echo 'Configuring xdg-user-dirs-update'
+
+mkdir -p /usr/lib/xdg-user-dirs-update
+dpkg-divert --add --rename --divert /usr/lib/xdg-user-dirs-update/xdg-user-dirs-update /usr/bin/xdg-user-dirs-update
+
+# We want to run xdg-user-dirs-update with English locale, to make sure that
+# the XDG Directories are not localized (see #19255):
+cat > /usr/bin/xdg-user-dirs-update << 'EOF'
+#!/bin/sh
+
+exec env LC_MESSAGES=en_US /usr/lib/xdg-user-dirs-update/xdg-user-dirs-update
+EOF
+
+chmod 755 /usr/bin/xdg-user-dirs-update

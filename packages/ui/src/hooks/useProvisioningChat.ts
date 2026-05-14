@@ -49,10 +49,10 @@ export function useProvisioningChat(
 
   const isContainerReady = containerStatus === "running" && bridgeUrl !== null;
 
-  // Poll provisioning agent status every 5 seconds.
   React.useEffect(() => {
     if (isContainerReady) return;
     if (containerStatus === "error") return;
+
     const sequence = pollSequenceRef.current + 1;
     pollSequenceRef.current = sequence;
     let stopped = false;
@@ -92,9 +92,7 @@ export function useProvisioningChat(
             }
           }
         }
-      } catch {
-        // Best-effort; endpoint may not exist yet.
-      }
+      } catch {}
     };
 
     void poll();
@@ -172,7 +170,7 @@ export function useProvisioningChat(
         setIsLoading(false);
       }
     },
-    [agentId, isLoading, cloudApiBase],
+    [agentId, cloudApiBase, isLoading],
   );
 
   return {

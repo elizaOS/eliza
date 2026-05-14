@@ -1,0 +1,21 @@
+#!/bin/sh
+
+# Tails' directories for source and destination
+SOURCE='/live/persistence/TailsData_unlocked/'
+DEST='/media/amnesia/TailsData/'
+
+if ! mountpoint -q "$SOURCE" || ! mountpoint -q "$DEST"; then
+    echo "error: SOURCE and DEST must be mountpoints" >&2
+    exit 1
+fi
+
+exec /usr/bin/rsync \
+     --progress \
+     --archive \
+     --sparse \
+     --hard-links \
+     --acls \
+     --xattrs \
+     --verbose \
+     --del \
+     "$SOURCE" "$DEST"

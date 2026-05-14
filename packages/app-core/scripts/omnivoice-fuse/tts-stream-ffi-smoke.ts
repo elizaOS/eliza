@@ -2,7 +2,7 @@
 import { spawnSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
-import { loadElizaInferenceFfi } from "../../src/services/local-inference/voice/ffi-bindings";
+import { loadElizaInferenceFfi } from "../../../../plugins/plugin-local-inference/src/services/voice/ffi-bindings";
 
 function arg(name: string, fallback: string): string {
   const idx = process.argv.indexOf(name);
@@ -38,7 +38,7 @@ const dylib = arg(
 );
 const bundle = arg(
   "--bundle",
-  `${process.env.HOME}/.eliza/local-inference/models/eliza-1-0_6b.bundle`,
+  `${process.env.HOME}/.eliza/local-inference/models/eliza-1-0_8b.bundle`,
 );
 const text = arg(
   "--text",
@@ -211,7 +211,9 @@ try {
       samples: warmupSamples,
       audioSeconds: warmupAudioSeconds,
       rtf:
-        warmupAudioSeconds > 0 ? warmupSynthMs / 1000 / warmupAudioSeconds : null,
+        warmupAudioSeconds > 0
+          ? warmupSynthMs / 1000 / warmupAudioSeconds
+          : null,
       cancelled: result.cancelled,
     });
   }

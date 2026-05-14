@@ -721,6 +721,14 @@ export type VoiceProvider =
   | "local-inference";
 export type VoiceMode = "cloud" | "own-key";
 
+/**
+ * Speech-to-text provider. The legacy `whisper.cpp` pipeline has been
+ * retired; on-device transcription now flows through the same local-inference
+ * runtime that hosts the LLM (Qwen3-ASR bundle). Settings UI surfaces an
+ * advanced override so users can switch to Eliza Cloud or OpenAI Whisper.
+ */
+export type AsrProvider = "local-inference" | "eliza-cloud" | "openai";
+
 export interface VoiceConfig {
   provider?: VoiceProvider;
   mode?: VoiceMode;
@@ -738,6 +746,16 @@ export interface VoiceConfig {
     rate?: string;
     pitch?: string;
     volume?: string;
+  };
+  /**
+   * Optional ASR (speech-to-text) configuration. When unset, the runtime
+   * falls back to the device+mode default resolved by
+   * `pickDefaultVoiceProvider`.
+   */
+  asr?: {
+    provider: AsrProvider;
+    /** Optional override model id (e.g. `whisper-1` for OpenAI). */
+    modelId?: string;
   };
 }
 

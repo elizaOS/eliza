@@ -1,0 +1,24 @@
+[package]
+name = "eliza-cap-bus"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Per-app capability-bus: JSON-RPC over `/run/eliza/cap-<slug>.sock`."
+
+[lints]
+workspace = true
+
+[dependencies]
+anyhow.workspace = true
+thiserror.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+eliza-types.workspace = true
+# `network:fetch` shells HTTPS requests through reqwest. Same default features
+# as elizad (json + rustls-tls — no system OpenSSL on the live ISO).
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }

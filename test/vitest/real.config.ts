@@ -313,13 +313,13 @@ const realResolveAlias: ModuleAlias[] = [
       },
     },
     {
-      find: "@elizaos/plugin-local-embedding",
-      packageName: "@elizaos/plugin-local-embedding",
+      find: "@elizaos/plugin-local-inference",
+      packageName: "@elizaos/plugin-local-inference",
       options: {
         fallbackPath: path.join(
           elizaWorkspaceRoot,
           "plugins",
-          "plugin-local-embedding",
+          "plugin-local-inference",
           "src",
           "index",
         ),

@@ -1,0 +1,164 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"POT-Creation-Date: 2024-02-26 12:26+0100\n"
+"PO-Revision-Date: 2025-02-13 19:54+0000\n"
+"Last-Translator: drebs <drebs@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: pt\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n > 1;\n"
+"X-Generator: Weblate 5.3\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Starting Tails on Mac\"]]\n"
+msgstr "[[!meta title=\"Iniciando Tails no Mac\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta stylesheet=\"install/inc/stylesheets/hide\" rel=\"stylesheet\" title=\"\"]]\n"
+msgstr "[[!meta stylesheet=\"install/inc/stylesheets/hide\" rel=\"stylesheet\" title=\"\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta stylesheet=\"install/inc/stylesheets/standalone\" rel=\"stylesheet\" title=\"\"]]\n"
+msgstr "[[!meta stylesheet=\"install/inc/stylesheets/standalone\" rel=\"stylesheet\" title=\"\"]]\n"
+
+#. type: Plain text
+msgid ""
+"This page describes the technique to start Tails from a USB stick on Mac."
+msgstr ""
+"Essa página descreve técnicas de como iniciar o Tails a partir de um "
+"pendrive USB em um Mac."
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!toc levels=2]]\n"
+msgstr "[[!toc levels=2]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"mac-start\">Starting on Mac</h1>\n"
+msgstr "<h1 id=\"mac-start\">Iniciando em um Mac</h1>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"install/inc/steps/mac_startup_disks.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"install/inc/steps/mac_startup_disks.inline.pt\" raw=\"yes\" sort=\"age\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<div class=\"next\">\n"
+"<p>If the Boot Loader appears, you can follow our [[instructions\n"
+"on the Welcome Screen|install/mac#tails]].</p>\n"
+"</div>\n"
+msgstr ""
+"<div class=\"next\">\n"
+"<p>Se o Boot Loader aparecer, você pode seguir nossas [[instruções\n"
+"sobre a Tela de Boas-Vindas|install/mac#tails]].</p>\n"
+"</div>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"not-at-all\">Troubleshooting Tails not starting at all</h1>\n"
+msgstr "<h1 id=\"not-at-all\">Resolvendo problemas  quando o Tails não iniciar de maneira alguma</h1>\n"
+
+#. type: Plain text
+msgid ""
+"Use this section if the computer does not start from the USB stick and the "
+"Boot Loader does not display:"
+msgstr ""
+"Use essa seção se o computador não iniciar a partir do pendrive USB e o Boot "
+"Loader não aparecer:"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"[[!img install/inc/screenshots/grub.png class=\"screenshot\" alt=\"Black screen ('GNU GRUB') with Tails\n"
+"logo and 3 options: 'Tails' and 'Tails (Troubleshooting Mode)' and 'Tails (External Hard Disk)'.\"]]\n"
+msgstr ""
+"[[!img install/inc/screenshots/grub.png class=\"screenshot\" alt=\"Tela "
+"preta ('GNU GRUB') com o logo do\n"
+"Tails e 3 opções: 'Tails', 'Tails (Troubleshooting Mode)' e 'Tails (External "
+"Hard Disk)'.\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"verify\">Verify your Tails USB stick</h2>\n"
+msgstr "<h2 id=\"verify\">Verifique seu pendrive USB com Tails</h2>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"install/inc/steps/basic_troubleshooting.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"install/inc/steps/basic_troubleshooting.inline.pt\" raw=\"yes\" sort=\"age\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"note\">\n"
+msgstr "<div class=\"note\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<p>If you get the following error message in macOS:</p>\n"
+msgstr "<p>Se aparecer as seguintes mensagens de erro no macOS:</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p class=\"code\">There may be a problem with this disk image. Are you sure you\n"
+"want to open it?</p>\n"
+msgstr ""
+"<p class=\"code\">Pode haver um problema com esta imagem de disco. Você tem "
+"certeza de\n"
+"que quer abrí-la?</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<p>Then, you have to [[install Tails using <i>balenaEtcher</i>|install/mac#etcher]].</p>\n"
+msgstr "<p>Então, você precisa [[instalar Tails usando <i>balenaEtcher</i>|install/mac#etcher]].</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"known-issues-not-at-all\">Check our list of known issues</h2>\n"
+msgstr "<h2 id=\"known-issues-not-at-all\">Veja nossa lista de problemas conhecidos</h2>\n"
+
+#. type: Plain text
+msgid ""
+"Similar problems might have been reported already for your Mac model in our "
+"[[list of known issues about Tails not starting at all|support/"
+"known_issues#mac-not-at-all]]."
+msgstr ""
+"problemas parecidos podem já ter sido reportados para o seu modelo do Mac na "
+"nossa [[lista de problemas conhecidos relacionados ao Tails não iniciando de "
+"maneira alguma|support/known_issues#mac-not-at-all]]."
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"not-entirely\">Troubleshooting Tails not starting after the Boot Loader</h1>\n"
+msgstr "<h1 id=\"not-entirely\">Resolução de problemas caso o Tails não inicie após o Boot Loader</h1>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"doc/first_steps/start/not_entirely.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"doc/first_steps/start/not_entirely.inline.pt\" raw=\"yes\" sort=\"age\"]]\n"
+
+#~ msgid ""
+#~ "[[!inline pages=\"doc/first_steps/start/reporting.inline\" raw=\"yes\" "
+#~ "sort=\"age\"]]\n"
+#~ msgstr ""
+#~ "[[!inline pages=\"doc/first_steps/start/reporting.inline.pt\" raw=\"yes\" "
+#~ "sort=\"age\"]]\n"

@@ -1,0 +1,137 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2026-03-27 10:22+0000\n"
+"PO-Revision-Date: 2023-08-13 10:49+0000\n"
+"Last-Translator: drebs <drebs@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: pt\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n > 1;\n"
+"X-Generator: Weblate 4.9.1\n"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid ""
+#| "[[Managing passwords using *KeePassXC*|encryption_and_privacy/"
+#| "manage_passwords]]"
+msgid ""
+"[[Managing passwords using the *Secrets* password manager|"
+"encryption_and_privacy/manage_passwords]]"
+msgstr ""
+"[[Gerenciando senhas com o *KeePassXC*|encryption_and_privacy/"
+"manage_passwords]]"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid ""
+#| "[[Creating and using *LUKS* encrypted volumes|encryption_and_privacy/"
+#| "encrypted_volumes]]"
+msgid ""
+"[[Creating and using *LUKS* encrypted volumes|encryption_and_privacy/"
+"encrypted_volumes]]"
+msgstr ""
+"[[Criando e usando volumes criptografados com *LUKS*|encryption_and_privacy/"
+"encrypted_volumes]]"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid ""
+#| "[[Using *VeraCrypt* encrypted volumes|encryption_and_privacy/veracrypt]]"
+msgid ""
+"[[Using *VeraCrypt* encrypted volumes|encryption_and_privacy/veracrypt]]"
+msgstr ""
+"[[Usando volumes criptografados com *VeraCrypt*|encryption_and_privacy/"
+"veracrypt]]"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid ""
+#| "[[Encrypting text and files using *GnuPG* and *Kleopatra*|"
+#| "encryption_and_privacy/kleopatra]]"
+msgid ""
+"[[Encrypting text and files using *GnuPG* and *Kleopatra*|"
+"encryption_and_privacy/kleopatra]]"
+msgstr ""
+"[[Criptografando texto e arquivos com *GnuPG* e *Kleopatra*|"
+"encryption_and_privacy/kleopatra]]"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid ""
+#| "[[Securely deleting files and clean diskspace|encryption_and_privacy/"
+#| "secure_deletion]]"
+msgid "[[Securely deleting files|encryption_and_privacy/secure_deletion]]"
+msgstr ""
+"[[Apagando arquivos e espaço disponível em disco de forma segura|"
+"encryption_and_privacy/secure_deletion]]"
+
+#, fuzzy
+#~| msgid ""
+#~| "[[Calculating checksums using *GtkHash*|encryption_and_privacy/"
+#~| "checksums]]"
+#~ msgid ""
+#~ "- [[Calculating checksums using *GtkHash*|encryption_and_privacy/"
+#~ "checksums]]"
+#~ msgstr ""
+#~ "[[Calculando somas de verificação com *GtkHash*|encryption_and_privacy/"
+#~ "checksums]]"
+
+#, fuzzy
+#~| msgid ""
+#~| "[[Using the screen keyboard|encryption_and_privacy/virtual_keyboard]]"
+#~ msgid ""
+#~ "- [[Using the screen keyboard|encryption_and_privacy/virtual_keyboard]]"
+#~ msgstr ""
+#~ "[[Usando o teclado de tela|encryption_and_privacy/virtual_keyboard]]"
+
+#, fuzzy, no-wrap
+#~| msgid ""
+#~| "  - Encrypted volumes\n"
+#~| "    - [[!traillink Creating_and_using_<em>LUKS</em>_encrypted_volumes|encryption_and_privacy/encrypted_volumes]]\n"
+#~| "    - [[!traillink Using_<em>VeraCrypt</em>_encrypted_volumes|encryption_and_privacy/veracrypt]]\n"
+#~| "  - [[!traillink Encrypting,_decrypting,_signing,_and_verifying_text_using_OpenPGP_and_<em>OpenPGP_Applet</em>|encryption_and_privacy/gpgapplet]]\n"
+#~| "    - [[!traillink Encrypting_text_with_a_passphrase|encryption_and_privacy/gpgapplet/passphrase_encryption]]\n"
+#~| "    - [[!traillink Encrypting_and_signing_text_using_public-key_cryptography|encryption_and_privacy/gpgapplet/public-key_cryptography]]\n"
+#~| "    - [[!traillink Decrypting_and_verify_text|encryption_and_privacy/gpgapplet/decrypt_verify]]\n"
+#~| "  - [[!traillink Securely_deleting_files_and_clean_diskspace|encryption_and_privacy/secure_deletion]]\n"
+#~| "  - [[!traillink Managing_passwords_using_<em>KeePassXC</em>|encryption_and_privacy/manage_passwords]]\n"
+#~| "  - [[!traillink Calculating_checksums_using_<em>GtkHash</em>|encryption_and_privacy/checksums]]\n"
+#~ msgid ""
+#~ "  - Encrypted volumes\n"
+#~ "    - [[!traillink Creating_and_using_<em>LUKS</em>_encrypted_volumes|encryption_and_privacy/encrypted_volumes]]\n"
+#~ "    - [[!traillink Using_<em>VeraCrypt</em>_encrypted_volumes|encryption_and_privacy/veracrypt]]\n"
+#~ "  - [[!traillink Encrypting,_decrypting,_signing,_and_verifying_text_using_OpenPGP_and_<em>OpenPGP_Applet</em>|encryption_and_privacy/gpgapplet]]\n"
+#~ "    - [[!traillink Encrypting_text_with_a_passphrase|encryption_and_privacy/gpgapplet/passphrase_encryption]]\n"
+#~ "    - [[!traillink Encrypting_and_signing_text_using_public-key_cryptography|encryption_and_privacy/gpgapplet/public-key_cryptography]]\n"
+#~ "    - [[!traillink Decrypting_and_verify_text|encryption_and_privacy/gpgapplet/decrypt_verify]]\n"
+#~ "  - [[!traillink Securely_deleting_files_and_clean_diskspace|encryption_and_privacy/secure_deletion]]\n"
+#~ "  - [[!traillink Calculating_checksums_using_<em>GtkHash</em>|encryption_and_privacy/checksums]]\n"
+#~ "  - [[!traillink Using_the_screen_keyboard|encryption_and_privacy/virtual_keyboard]]\n"
+#~ msgstr ""
+#~ "  - Volumes criptografados\n"
+#~ "    - [[!traillink Criando_e_usando_volumes_criptografados_<em>LUKS</em>|encryption_and_privacy/encrypted_volumes]]\n"
+#~ "    - [[!traillink Usando_volumes_criptografados_<em>VeraCrypt</em>|encryption_and_privacy/veracrypt]]\n"
+#~ "  - [[!traillink Criptografando,_descriptografando,_assinando,_e_verificando_texto_usando_OpenPGP_e_<em>OpenPGP_Applet</em>|encryption_and_privacy/gpgapplet]]\n"
+#~ "    - [[!traillink Criptografando_texto_com_uma_senha|encryption_and_privacy/gpgapplet/passphrase_encryption]]\n"
+#~ "    - [[!traillink Criptografando_e_assinando_texto_usando_uma_chave_pública_de_criptografia|encryption_and_privacy/gpgapplet/public-key_cryptography]]\n"
+#~ "    - [[!traillink Descriptografando_e_verificando_texto|encryption_and_privacy/gpgapplet/decrypt_verify]]\n"
+#~ "  - [[!traillink Deletando_arquivos_e_limpando_espaço_de_disco_de_maneira_segura|encryption_and_privacy/secure_deletion]]\n"
+#~ "  - [[!traillink Administrando_senhas_usando_<em>KeePassXC</em>|encryption_and_privacy/manage_passwords]]\n"
+#~ "  - [[!traillink Calculando_checksums_usando_<em>GtkHash</em>|encryption_and_privacy/checksums]]\n"
+
+#~ msgid ""
+#~ "[[!traillink Your_data_won't_be_saved_unless_explicitly_asked|"
+#~ "encryption_and_privacy/your_data_wont_be_saved_unless_explicitly_asked]]"
+#~ msgstr ""
+#~ "[[!traillink "
+#~ "Seus_dados_não_serão_salvos_a_não_ser_que_você_peça_explicitamente|"
+#~ "encryption_and_privacy/your_data_wont_be_saved_unless_explicitly_asked]]"

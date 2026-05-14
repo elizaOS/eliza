@@ -79,6 +79,14 @@ import { useAvailableModels } from "./hooks/use-available-models";
 import { useModelAvailability } from "./hooks/use-model-availability";
 import { PendingDocumentsProcessor } from "./pending-documents-processor";
 
+const CHAT_INPUT_MIN_HEIGHT = 52;
+const CHAT_INPUT_MAX_HEIGHT = 200;
+
+function resizeChatInput(textarea: HTMLTextAreaElement): void {
+  textarea.style.height = `${CHAT_INPUT_MIN_HEIGHT}px`;
+  textarea.style.height = `${Math.min(textarea.scrollHeight, CHAT_INPUT_MAX_HEIGHT)}px`;
+}
+
 interface Message {
   id: string;
   content: {
@@ -368,7 +376,14 @@ export function ElizaChatInterface({
     };
   }, [clearAllStreaming]);
 
-  const recorder = useAudioRecorder();
+  const {
+    audioBlob,
+    clearRecording,
+    error: recorderError,
+    isRecording,
+    startRecording,
+    stopRecording,
+  } = useAudioRecorder();
   const player = useAudioPlayer();
 
   const {
@@ -1007,15 +1022,18 @@ export function ElizaChatInterface({
   }, [authenticated]);
 
   const handleVoiceInput = useCallback(() => {
-    if (recorder.isRecording) {
-      recorder.stopRecording();
+    if (isRecording) {
+      stopRecording();
     } else {
-      recorder.startRecording();
-      if (recorder.error) {
-        toast.error(recorder.error);
-      }
+      void startRecording();
     }
-  }, [recorder]);
+  }, [isRecording, startRecording, stopRecording]);
+
+  useEffect(() => {
+    if (recorderError) {
+      toast.error(recorderError);
+    }
+  }, [recorderError]);
 
   const handleFileUpload = useCallback(
     async (files: File[]) => {
@@ -1062,18 +1080,18 @@ export function ElizaChatInterface({
   useEffect(() => {
     const processAudioBlob = async () => {
       // Guard: Don't process if no audio blob or already processing
-      if (!recorder.audioBlob || loadingState.isProcessingSTT) return;
+      if (!audioBlob || loadingState.isProcessingSTT) return;
 
       setLoadingState((prev) => ({ ...prev, isProcessingSTT: true }));
 
       try {
         // Ensure the blob is in proper audio format (fix Safari/macOS video/webm issue)
-        const audioBlob = await ensureAudioFormat(recorder.audioBlob);
+        const convertedAudioBlob = await ensureAudioFormat(audioBlob);
 
         // Create FormData with audio file
         const formData = new FormData();
-        const audioFile = new File([audioBlob], "recording.webm", {
-          type: audioBlob.type || "audio/webm",
+        const audioFile = new File([convertedAudioBlob], "recording.webm", {
+          type: convertedAudioBlob.type || "audio/webm",
         });
         formData.append("audio", audioFile);
 
@@ -1106,13 +1124,13 @@ export function ElizaChatInterface({
         toast.error("Failed to process audio. Please try again.");
       } finally {
         // Cleanup: Clear recording and reset processing state
-        recorder.clearRecording();
+        clearRecording();
         setLoadingState((prev) => ({ ...prev, isProcessingSTT: false }));
       }
     };
 
     processAudioBlob();
-  }, [recorder.audioBlob, loadingState.isProcessingSTT, recorder]);
+  }, [audioBlob, clearRecording, loadingState.isProcessingSTT]);
 
   // Auto-generate TTS for new agent messages (only if autoPlayTTS is enabled)
   useEffect(() => {
@@ -1203,12 +1221,12 @@ export function ElizaChatInterface({
   }, [inputText]);
 
   // Auto-resize textarea when inputText changes
+  // biome-ignore lint/correctness/useExhaustiveDependencies: inputText triggers resize for programmatic changes.
   useEffect(() => {
     if (textareaRef.current) {
-      textareaRef.current.style.height = "auto";
-      textareaRef.current.style.height = Math.min(textareaRef.current.scrollHeight, 400) + "px";
+      resizeChatInput(textareaRef.current);
     }
-  }, []);
+  }, [inputText]);
 
   // Auto-scroll to bottom when messages change
   // Uses smooth scrolling during streaming for a polished feel
@@ -1472,26 +1490,27 @@ export function ElizaChatInterface({
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault();
-                    if (!loadingState.isSending && !recorder.isRecording) {
+                    if (!loadingState.isSending && !isRecording) {
                       sendMessage();
                     }
                   }
                 }}
                 onInput={(e) => {
-                  const target = e.target as HTMLTextAreaElement;
-                  target.style.height = "52px";
-                  target.style.height = Math.min(target.scrollHeight, 200) + "px";
+                  resizeChatInput(e.currentTarget);
                 }}
                 placeholder={
                   isMessageLimitReached
                     ? "Sign up to continue chatting..."
-                    : recorder.isRecording
+                    : isRecording
                       ? "Recording... Click stop when done"
                       : "Type your message..."
                 }
-                disabled={recorder.isRecording || isMessageLimitReached}
+                disabled={isRecording || isMessageLimitReached}
                 className="w-full bg-transparent px-4 pt-3 pb-3 text-[15px] text-white placeholder:text-white/40 focus:outline-none disabled:opacity-50 resize-none leading-relaxed"
-                style={{ minHeight: "52px", maxHeight: "200px" }}
+                style={{
+                  minHeight: `${CHAT_INPUT_MIN_HEIGHT}px`,
+                  maxHeight: `${CHAT_INPUT_MAX_HEIGHT}px`,
+                }}
               />
 
               {/* Bottom bar with buttons inside input */}
@@ -1647,12 +1666,10 @@ export function ElizaChatInterface({
                     disabled={loadingState.isSending}
                     onClick={handleVoiceInput}
                     className={`h-8 w-8 rounded-lg transition-colors ${
-                      recorder.isRecording
-                        ? "bg-red-500/10 hover:bg-red-500/20"
-                        : "hover:bg-white/[0.06]"
+                      isRecording ? "bg-red-500/10 hover:bg-red-500/20" : "hover:bg-white/[0.06]"
                     } disabled:opacity-40`}
                   >
-                    {recorder.isRecording ? (
+                    {isRecording ? (
                       <Square className="h-4 w-4 text-red-400" />
                     ) : (
                       <Mic className="h-4 w-4 text-neutral-400" />
@@ -2015,7 +2032,7 @@ export function ElizaChatInterface({
                     disabled={
                       loadingState.isSending ||
                       !inputText.trim() ||
-                      recorder.isRecording ||
+                      isRecording ||
                       isMessageLimitReached
                     }
                     size="icon"

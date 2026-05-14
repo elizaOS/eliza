@@ -2,18 +2,18 @@
 
 End-to-end pipeline that takes a directory containing already-quantized
 weights + sidecars and ships an Eliza-1 bundle to
-``elizaos/eliza-1`` under ``bundles/<tier>/``. This is the single entry
+``elizalabs/eliza-1`` under ``bundles/<tier>/``. This is the single entry
 point referenced by ``packages/training/AGENTS.md`` §6.
 
 Stages, in order, with hard exits on failure:
 
 1. **Layout validation.** Walk the bundle directory and verify it
-   conforms to ``packages/inference/AGENTS.md`` §2 (text/, tts/, asr/,
+   conforms to the local inference bundle contract (text/, tts/, asr/,
    vision/, dflash/, cache/, evals/, licenses/). Missing required files
    or sidecars are publish-blocking. The frozen voice artifacts and
    ``cache/voice-preset-default.bin`` must be present.
 2. **Kernel verification.** Run the
-   ``packages/inference/verify`` harness for the tier's supported
+   ``plugins/plugin-local-inference/native/verify`` harness for the tier's supported
    backends. CPU + Vulkan are runnable in CI; Metal is hardware-only —
    the orchestrator detects Metal as NEEDS-HARDWARE and either consumes
    a previously-recorded ``metal_verify.json`` from a verified host
@@ -35,7 +35,7 @@ Stages, in order, with hard exits on failure:
    manifest as the data context. Same data, no marketing buzzwords, no
    user-visible upstream model-family strings.
 7. **HF push.** Upload weights, manifest, README, licenses, eval blobs
-   to ``elizaos/eliza-1/bundles/<tier>/`` via ``huggingface_hub``. Tag the
+   to ``elizalabs/eliza-1/bundles/<tier>/`` via ``huggingface_hub``. Tag the
    local training repo with ``eliza-1-<tier>-v<version>`` + the
    training commit hash.
 
@@ -107,7 +107,7 @@ EXIT_MANIFEST_INVALID = 14
 EXIT_HF_PUSH_FAIL = 15
 EXIT_RELEASE_EVIDENCE_FAIL = 16
 
-ELIZA_1_HF_ORG = "elizaos"
+ELIZA_1_HF_ORG = "elizalabs"
 
 # ---------------------------------------------------------------------------
 # Constants — bundle layout per inference/AGENTS.md §2
@@ -386,7 +386,7 @@ def validate_bundle_layout(ctx: PublishContext) -> dict[str, list[Path]]:
                 f"bundle layout: missing required subdir {sub}/",
                 EXIT_BUNDLE_LAYOUT_FAIL,
             )
-        out[sub] = sorted(p for p in d.iterdir() if p.is_file())
+        out[sub] = sorted(p for p in d.rglob("*") if p.is_file())
 
     if not out["text"]:
         raise OrchestratorError(
@@ -399,8 +399,8 @@ def validate_bundle_layout(ctx: PublishContext) -> dict[str, list[Path]]:
             EXIT_BUNDLE_LAYOUT_FAIL,
         )
     required_tts = set(required_voice_artifacts_for_tier(ctx.tier))
-    tts_names = {p.name for p in out["tts"]}
-    missing_tts = sorted(required_tts - tts_names)
+    tts_paths = {str(p.relative_to(bundle / "tts")) for p in out["tts"]}
+    missing_tts = sorted(required_tts - tts_paths)
     if missing_tts:
         raise OrchestratorError(
             "bundle layout: missing frozen voice artifact(s) in tts/: "
@@ -538,7 +538,6 @@ def _expected_payload_paths(
     ):
         expected.extend(_relative_file_paths(layout.get(kind_src, []), ctx.bundle_dir))
 
-    licenses_dir = ctx.bundle_dir / "licenses"
     expected.extend(f"licenses/{name}" for name in _license_files_for_layout(layout))
 
     evals_dir = ctx.bundle_dir / "evals"
@@ -1096,7 +1095,11 @@ def validate_release_evidence(
 
 
 def _verify_dir(ctx: PublishContext) -> Path:
-    """Resolve packages/inference/verify relative to the training repo."""
+    """Resolve the native local-inference verify harness."""
+    repo_root = ctx.training_repo_root.parent.parent
+    native = repo_root / "plugins" / "plugin-local-inference" / "native" / "verify"
+    if (native / "Makefile").is_file():
+        return native
     return ctx.training_repo_root.parent / "inference" / "verify"
 
 
@@ -1217,7 +1220,7 @@ def run_kernel_verification(
         if ctx.metal_verification is None:
             raise OrchestratorError(
                 f"tier {ctx.tier} requires Metal verification "
-                "(NEEDS-HARDWARE). Run packages/inference/verify/metal_verify "
+                "(NEEDS-HARDWARE). Run plugins/plugin-local-inference/native/verify/metal_verify "
                 "on a verified host and pass --metal-verification PATH.",
                 EXIT_KERNEL_VERIFY_FAIL,
             )
@@ -2222,7 +2225,7 @@ def _parse_args(argv: Sequence[str] | None = None) -> PublishContext:
         "--repo-id",
         default=None,
         help=(
-            "HF repo id. Must equal elizaos/eliza-1; accepted only "
+            "HF repo id. Must equal elizalabs/eliza-1; accepted only "
             "so wrappers can pass the resolved destination explicitly."
         ),
     )

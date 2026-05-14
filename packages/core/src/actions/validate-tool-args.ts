@@ -1,6 +1,8 @@
 import type { Action } from "../types";
 import { actionToJsonSchema, type JsonSchema } from "./action-schema";
 
+export type { JsonSchema } from "./action-schema";
+
 export interface ValidateToolArgsResult {
 	valid: boolean;
 	args: Record<string, unknown> | undefined;
@@ -140,7 +142,13 @@ function validateObject(
 	return output;
 }
 
-function validateSchema(
+/**
+ * Walk a JSON Schema against `value`, appending human-readable error strings
+ * to `errors`. Exposed for callers that need to verify whole structured
+ * outputs (e.g. remote-model planner JSON before action dispatch), not just
+ * per-action tool arguments — the same logic powers {@link validateToolArgs}.
+ */
+export function validateSchema(
 	schema: JsonSchema,
 	value: unknown,
 	path: string,

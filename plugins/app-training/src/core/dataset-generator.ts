@@ -55,10 +55,9 @@ rules[6]:
 
 message_handler:
 - action: RESPOND, IGNORE, or STOP
-- simple: true only when the reply can be sent directly without planner/tool context
-- contexts: list of available_contexts needed for planner/tool/provider work; [] for direct replies, IGNORE, or STOP
+- contexts: list of available_contexts needed for planner/tool/provider work; ["simple"] for direct replies (the reply is the full answer); [] for IGNORE or STOP
 - thought: short internal routing rationale
-- reply: optional direct user-visible reply when contexts is []
+- reply: required user-visible reply when contexts is ["simple"]
 
 decision_note:
 - respond only when the latest message is talking TO {{agentName}}
@@ -72,10 +71,10 @@ output:
 JSON object only. No prose, markdown, XML, or hidden reasoning.
 
 Example:
-{"messageHandler":{"action":"RESPOND","simple":false,"contexts":["wallet"],"thought":"Direct mention and clear follow-up needs wallet context.","reply":""}}
+{"messageHandler":{"action":"RESPOND","contexts":["wallet"],"thought":"Direct mention and clear follow-up needs wallet context.","reply":""}}
 
 Example:
-{"messageHandler":{"action":"IGNORE","simple":false,"contexts":[],"thought":"The latest message is not addressed to {{agentName}}.","reply":""}}`;
+{"messageHandler":{"action":"IGNORE","contexts":[],"thought":"The latest message is not addressed to {{agentName}}.","reply":""}}`;
 
 // ==================== Types ====================
 
@@ -1129,10 +1128,6 @@ function normalizeMessageHandlerJson(response: string): string | null {
     return JSON.stringify({
       messageHandler: {
         action,
-        simple:
-          typeof candidate.simple === "boolean"
-            ? candidate.simple
-            : action === "RESPOND" && contexts.length === 0,
         contexts,
         thought: typeof candidate.thought === "string" ? candidate.thought : "",
         reply: typeof candidate.reply === "string" ? candidate.reply : "",

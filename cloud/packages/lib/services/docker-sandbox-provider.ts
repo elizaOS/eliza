@@ -88,7 +88,6 @@ const DOCKER_IMAGE_OVERRIDE = containersEnv.defaultAgentImageOverride();
 const DOCKER_NETWORK = containersEnv.dockerNetwork();
 let hasWarnedMissingStewardTenantApiKey = false;
 
-const DEFAULT_LEGACY_PORT = containersEnv.legacyContainerPort();
 const DEFAULT_AGENT_PORT = containersEnv.agentPort();
 const DEFAULT_BRIDGE_PORT = containersEnv.agentBridgePort();
 
@@ -235,7 +234,7 @@ agent_name = ${JSON.stringify(agentName)}
 
 
 def post(path, payload):
-    headers = {"Content-Type": "application/json"}
+    headers = {"Content-Type": "application/json", "User-Agent": "eliza-cloud-provisioner/1.0"}
     if tenant_id:
         headers["X-Steward-Tenant"] = tenant_id
     if api_key:
@@ -368,7 +367,9 @@ export class DockerSandboxProvider implements SandboxProvider {
     // getAvailableNode + incrementAllocated + getUsedDockerHostPorts are three sequential
     // DB round-trips without a transaction boundary; the UNIQUE port index and
     // retry logic provide safety against concurrent capacity changes.
-    let dbNode = await dockerNodeManager.getAvailableNode({ requiredPlatform: imagePlatform });
+    let dbNode = await dockerNodeManager.getAvailableNode({
+      requiredPlatform: imagePlatform,
+    });
     if (!dbNode) {
       dbNode = await this.provisionAutoscaledNodeForAgent({
         image: resolvedImage,
@@ -465,10 +466,10 @@ export class DockerSandboxProvider implements SandboxProvider {
       ELIZA_CLOUD_PROVISIONED: "1",
       STEWARD_API_URL: stewardContainerUrl,
       STEWARD_AGENT_ID: agentId,
-      // The current cloud agent image listens on PORT (default 3000).
-      // Keep ELIZA_PORT for compatibility, but publish/probe the external
-      // host ports against PORT so new containers don't expose a dead 2138.
-      ELIZA_PORT: DEFAULT_LEGACY_PORT,
+      // V2 image binds the eliza-api server to ELIZA_PORT, not PORT. Keep both
+      // aligned to DEFAULT_AGENT_PORT so the daemon's HTTP probe (which hits
+      // the host port mapped to container PORT) reaches the actual listener.
+      ELIZA_PORT: DEFAULT_AGENT_PORT,
       PORT: DEFAULT_AGENT_PORT,
       BRIDGE_PORT: DEFAULT_BRIDGE_PORT,
       // Eliza server requires JWT_SECRET in production mode.
@@ -486,7 +487,7 @@ export class DockerSandboxProvider implements SandboxProvider {
     try {
       // Ensure volume directory exists
       await ssh.exec(
-        `mkdir -p ${shellQuote(volumePath)} ${shellQuote(`${volumePath}/eliza`)} ${shellQuote(`${volumePath}/eliza`)}`,
+        `mkdir -p ${shellQuote(volumePath)} ${shellQuote(`${volumePath}/eliza`)}`,
         DOCKER_CMD_TIMEOUT_MS,
       );
 
@@ -533,6 +534,11 @@ export class DockerSandboxProvider implements SandboxProvider {
         // provisioned containers (no token + cloud flag = 401).
         AGENT_DISABLE_AUTO_API_TOKEN: "1",
         ELIZA_DISABLE_AUTO_API_TOKEN: "1",
+        // V2 image refuses to boot on headless Linux without a passphrase
+        // (no D-Bus keychain). Generate one per container — the vault state
+        // lives only in the per-container PGlite, so a unique per-launch key
+        // is fine.
+        ELIZA_VAULT_PASSPHRASE: environmentVars.ELIZA_VAULT_PASSPHRASE || crypto.randomUUID(),
       };
 
       // Validate env keys/values before they are interpolated into remote shell commands.
@@ -563,7 +569,6 @@ export class DockerSandboxProvider implements SandboxProvider {
         "--health-retries 6",
         ...(headscaleEnabled ? ["--cap-add=NET_ADMIN", "--device /dev/net/tun"] : []),
         `-v ${shellQuote(volumePath)}:/app/data`,
-        `-v ${shellQuote(`${volumePath}/eliza`)}:/root/.eliza`,
         `-v ${shellQuote(`${volumePath}/eliza`)}:/root/.eliza`,
         // The cloud image serves both API and web UI from PORT (default 3000).
         // Publish both externally allocated host ports to that live listener so

@@ -1,0 +1,32 @@
+@namespace url("http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul");
+
+/* Hide features specific to Tor Browser. */
+#new-identity-button,
+#new-circuit-button,
+#appMenuNewIdentity,
+#appMenuNewCircuit,
+#menu_newIdentity,
+#menu_newCircuit,
+
+/* Hide the Tools -> Apps link to the Firefox Marketplace, and
+   Tools -> Add-ons link to the Add-ons manager. We do not want to
+   encourage installing such things as it's not part of the supported
+   use-cases and may have privacy issues. Also they will not persist a
+   restart, which is just confusing. */
+#menu_openApps,
+#menu_openAddons,          /* traditional menu */
+#appMenu-addons-button,    /* new style Firefox menu */
+#wrapper-add-ons-button,   /* Customize toolbar */
+
+/* Hide the "Share this page" button in the Tool bar, which encourages
+   the use of social (= tracking) networks. */
+#social-share-button,
+
+/* Hide the Health Report and its configuration option. It's just a
+   blank page, for some reason. */
+#appmenu_healthReport,
+#dataChoicesTab,
+#healthReport
+
+/* Do the actual hiding. */
+{display: none !important}

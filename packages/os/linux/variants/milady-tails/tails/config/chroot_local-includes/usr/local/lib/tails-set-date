@@ -1,0 +1,38 @@
+#!/bin/sh
+
+set -eu
+
+log() {
+    logger -t tails-set-date "$@"
+}
+
+if [ "$(id -u)" -ne 0 ]; then
+    echo "You can only run $0 if you are root" >&2
+    exit 1
+fi
+
+if [ $# -ne 1 ]; then
+    echo "Invalid usage" >&2
+    echo "Usage: $0 DATESTRING"
+    exit 2
+fi
+
+newDateString="$1"
+
+log "starting..."
+
+# check if the date is valid, with minimalistic privilege dropping
+if ! unshare --net --pid --ipc --uts --cgroup -- \
+    runuser -u nobody -- \
+    date -d "$newDateString" > /dev/null
+then
+    exit 2
+fi
+
+systemctl stop tor@default
+
+oldDate="$(date)"
+newDate="$(date --set="$newDateString")"
+log "Moved from $oldDate to $newDate"
+
+systemctl start tor@default

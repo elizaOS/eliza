@@ -1,0 +1,148 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: Tails\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-06-10 12:51+0200\n"
+"PO-Revision-Date: 2025-06-10 17:57+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: Tails translators <tails@boum.org>\n"
+"Language: fr\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n > 1;\n"
+"X-Generator: Weblate 5.3\n"
+
+#. type: Title ##
+#, no-wrap
+msgid "Connecting to the Internet and Tor"
+msgstr "Se connecter à Internet et à Tor"
+
+#. type: Bullet: '- '
+msgid "[[Connecting to a local network|anonymous_internet/networkmanager]]"
+msgstr "[[Se connecter à un réseau local|anonymous_internet/networkmanager]]"
+
+#. type: Bullet: '  * '
+msgid "[[Troubleshooting Wi-Fi not working|anonymous_internet/no-wifi]]"
+msgstr "[[Résoudre les problèmes de Wi-Fi|anonymous_internet/no-wifi]]"
+
+#. type: Bullet: '  * '
+msgid ""
+"[[Signing in to a network using a captive portal|anonymous_internet/"
+"unsafe_browser]]"
+msgstr ""
+"[[S'identifier auprès d'un portail captif|anonymous_internet/unsafe_browser]]"
+
+#. type: Bullet: '- '
+msgid "[[Connecting to the Tor network|anonymous_internet/tor]]"
+msgstr "[[Se connecter au réseau Tor|anonymous_internet/tor]]"
+
+#. type: Bullet: '  * '
+msgid ""
+"[[Troubleshooting connecting to Tor|anonymous_internet/tor/troubleshoot]]"
+msgstr ""
+"[[Résoudre les problèmes de connexion à Tor|anonymous_internet/tor/"
+"troubleshoot]]"
+
+#. type: Bullet: '  * '
+msgid "[[Why does Tails use Tor?|anonymous_internet/tor/why]]"
+msgstr "[[Pourquoi Tails utilise Tor ?|anonymous_internet/tor/why]]"
+
+#. type: Bullet: '  * '
+msgid "[[Why is Tor slow?|anonymous_internet/tor/slow]]"
+msgstr "[[Pourquoi Tor est-il lent ?|anonymous_internet/tor/slow]]"
+
+#. type: Bullet: '  * '
+msgid "[[Managing the circuits of Tor|anonymous_internet/tor/circuits]]"
+msgstr "[[Gérer les circuits Tor|anonymous_internet/tor/circuits]]"
+
+#. type: Title ##
+#, no-wrap
+msgid "Internet applications"
+msgstr "Applications Internet"
+
+#. type: Bullet: '- '
+msgid "[[Browsing the web with *Tor Browser*|anonymous_internet/tor_browser]]"
+msgstr ""
+"[[Naviguer sur le web avec le *Navigateur Tor*|anonymous_internet/"
+"tor_browser]]"
+
+#. type: Bullet: '- '
+msgid ""
+"[[Sharing files, websites, and chat rooms using *OnionShare*|"
+"anonymous_internet/onionshare]]"
+msgstr ""
+"[[Partager des fichiers, des sites web et des salons de discussion avec "
+"*OnionShare*|anonymous_internet/onionshare]]"
+
+#. type: Bullet: '- '
+msgid ""
+"[[Emailing and reading news with *Thunderbird*|anonymous_internet/"
+"thunderbird]]"
+msgstr ""
+"[[Envoyer des courriers électroniques et lire des actualités avec "
+"*Thunderbird*|anonymous_internet/thunderbird]]"
+
+#. type: Bullet: '- '
+msgid "[[Exchanging bitcoins using *Electrum*|anonymous_internet/electrum]]"
+msgstr "[[Échanger des bitcoins avec *Electrum*|anonymous_internet/electrum]]"
+
+#. type: Bullet: '- '
+msgid "[[Chatting with *Pidgin* and OTR|anonymous_internet/pidgin]]"
+msgstr "[[Discuter avec *Pidgin* et OTR|anonymous_internet/pidgin]]"
+
+#~ msgid ""
+#~ "- [[Browsing the web with *Tor Browser*|anonymous_internet/tor_browser]] "
+#~ "- [[Sharing files with *OnionShare*|anonymous_internet/onionshare]] - "
+#~ "[[Emailing and reading news with *Thunderbird*|anonymous_internet/"
+#~ "thunderbird]] - [[Exchanging bitcoins using *Electrum*|anonymous_internet/"
+#~ "electrum]] - [[Chatting with *Pidgin* and OTR|anonymous_internet/pidgin]]"
+#~ msgstr ""
+#~ "- [[Naviguer sur le web avec le *Navigateur Tor*|anonymous_internet/"
+#~ "tor_browser]]\n"
+#~ "- [[Partager des fichiers avec *OnionShare*|anonymous_internet/"
+#~ "onionshare]]\n"
+#~ "- [[Envoyer des courriels et lire des nouvelles avec *Thunderbird*|"
+#~ "anonymous_internet/thunderbird]]\n"
+#~ "- [[Échanger des bitcoins avec *Electrum*|anonymous_internet/electrum]]\n"
+#~ "- [[Discuter avec *Pidgin* et OTR|anonymous_internet/pidgin]]"
+
+#, no-wrap
+#~ msgid ""
+#~ "- [[!traillink Connecting_to_a_local_network|anonymous_internet/networkmanager]]\n"
+#~ "  - [[!traillink Troubleshooting_Wi-Fi_not_working|anonymous_internet/no-wifi]]\n"
+#~ "  - [[!traillink Signing_in_to_a_network_using_a_captive_portal|anonymous_internet/unsafe_browser]]\n"
+#~ "- [[!traillink Connecting_to_the_Tor_network|anonymous_internet/tor]]\n"
+#~ "  - [[!traillink Troubleshooting_connecting_to_Tor|anonymous_internet/tor/troubleshoot]]\n"
+#~ "  - [[!traillink Why_does_Tails_use_Tor?|anonymous_internet/tor/why]]\n"
+#~ "  - [[!traillink Why_is_Tor_slow?|anonymous_internet/tor/slow]]\n"
+#~ "  - [[!traillink Viewing_the_circuits_of_Tor|anonymous_internet/tor/circuits]]\n"
+#~ msgstr ""
+#~ "- [[!traillink Se_connecter_à_un_réseau_local|anonymous_internet/networkmanager]]\n"
+#~ "  - [[!traillink Résolution_de_problèmes_:_le_Wi-Fi_ne_fonctionne_pas|anonymous_internet/no-wifi]]\n"
+#~ "  - [[!traillink Se_connecter_à_un_réseau_utilisant_un_portail_captif|anonymous_internet/unsafe_browser]]\n"
+#~ "- [[!traillink Se_connecter_au_réseau_Tor|anonymous_internet/tor]]\n"
+#~ "  - [[!traillink Résoudre_les_problèmes_de_connexion_à_Tor|anonymous_internet/tor/troubleshoot]]\n"
+#~ "  - [[!traillink Pourquoi_Tails_utilise-t-il_Tor_?|anonymous_internet/tor/why]]\n"
+#~ "  - [[!traillink Pourquoi_Tor_est-il_lent_?|anonymous_internet/tor/slow]]\n"
+#~ "  - [[!traillink Voir_les_circuits_de_Tor|anonymous_internet/tor/circuits]]\n"
+
+#~ msgid ""
+#~ "[[!traillink Controlling_Tor_using_<span_class=\"application\">Vidalia</"
+#~ "span>|anonymous_internet/vidalia]]"
+#~ msgstr ""
+#~ "[[!traillink Contrôler_Tor_grâce_à_Vidalia|anonymous_internet/vidalia]]"
+
+#~ msgid ""
+#~ "[[!traillink "
+#~ "Reading_and_writing_emails_with_<span_class=\"application\">Claws_Mail</"
+#~ "span>|anonymous_internet/claws_mail]]"
+#~ msgstr ""
+#~ "[[!traillink "
+#~ "Lire_et_écrire_des_emails_avec_<span_class=\"application\">Claws_Mail</"
+#~ "span>|anonymous_internet/claws_mail]]"

@@ -1,0 +1,5 @@
+<disk type='file' device='cdrom'>
+  <driver name='qemu' type='raw'/>
+  <target dev='sdz' bus='sata'/>
+  <readonly/>
+</disk>

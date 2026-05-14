@@ -1,0 +1,12 @@
+# Extra packages that shall be added to the build manifest.
+#
+# Add here any package needed during the build, that is not identified by our
+# debootstrap + apt-get wrapper tricks, when there is no better solution.
+#
+packages:
+  binary:
+  ### Example:
+  # - package: squashfs-tools
+  #   arch: amd64
+  #   version: 1:4.2+20130409-2
+  #   explanation: pulled by lb_binary_rootfs, outside of the reach of our apt-get wrapper

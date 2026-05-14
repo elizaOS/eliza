@@ -1,0 +1,311 @@
+#!/usr/bin/python3
+
+import argparse
+import logging
+import os
+import re
+import subprocess
+import sys
+import urllib.error
+from pathlib import Path
+from urllib.parse import urlparse
+from urllib.request import Request, urlopen
+
+from bs4 import BeautifulSoup
+
+JENKINS_IUKS_BASE_URL = "https://nightly.tails.boum.org/build_IUKs"
+RSYNC_SERVER_HOSTNAME = "rsync.lizard"
+LOG_FORMAT = "%(asctime)-15s %(levelname)s %(message)s"
+log = logging.getLogger()
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Copy IUKs from Jenkins to our rsync server \
+        and verify that they match those built locally"
+    )
+    parser.add_argument("--hashes-file", type=str, action="store", required=True)
+    parser.add_argument(
+        "--jenkins-build-id",
+        type=int,
+        dest="jenkins_build_ids",
+        action="append",
+        required=True,
+    )
+    parser.add_argument("--work-dir", type=str, action="store", default=".")
+    parser.add_argument("-q", "--quiet", action="store_true", help="quiet output")
+    parser.add_argument("--debug", action="store_true", help="debug output")
+    parser.add_argument(
+        "--skip-sending-hashes-file",
+        action="store_true",
+        help="Assume the hashes file was uploaded already",
+    )
+    parser.add_argument(
+        "--skip-downloading-iuks",
+        action="store_true",
+        help="Assume the IUKs were already downloaded",
+    )
+    parser.add_argument(
+        "--source-version-regexp",
+        type=re.compile,
+        default=None,
+        help="Only source versions matching this regexp will be allowed. A full match is done",
+    )
+    parser.add_argument(
+        "--ignore-404",
+        action="store_true",
+        default=False,
+        help=(
+            "If a IUK is not found, ignore this. "
+            "This is useful when we are maintaining Tails "
+            "N.x (N+1).y at the same time"
+        ),
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        default=False,
+        help="Don't change any file on the server; this is mostly for development purposes",
+    )
+    args = parser.parse_args()
+
+    if args.debug:
+        logging.basicConfig(level=logging.DEBUG, format=LOG_FORMAT)
+    elif args.quiet:
+        logging.basicConfig(level=logging.WARN, format=LOG_FORMAT)
+    else:
+        logging.basicConfig(level=logging.INFO, format=LOG_FORMAT)
+
+    if not Path(args.hashes_file).exists():
+        log.error("%s does not exist", args.hashes_file)
+        sys.exit(1)
+
+    command = CopyAndVerify(args)
+
+    if not args.skip_sending_hashes_file:
+        command.send_hashes_file(
+            hashes_file=args.hashes_file,
+            desthost=RSYNC_SERVER_HOSTNAME,
+            destdir=args.work_dir,
+        )
+
+    if not args.skip_downloading_iuks:
+        command.download_iuks_from_jenkins(
+            hashes_file=args.hashes_file,
+            desthost=RSYNC_SERVER_HOSTNAME,
+            destdir=args.work_dir,
+            jenkins_iuks_base_url=JENKINS_IUKS_BASE_URL,
+            jenkins_build_ids=args.jenkins_build_ids,
+            source_version_regexp=args.source_version_regexp,
+        )
+
+    if (
+        command.verify_iuks(
+            desthost=RSYNC_SERVER_HOSTNAME,
+            iuks_dir=args.work_dir,
+            hashes_file=Path(args.work_dir, args.hashes_file).name,
+        )
+        is False
+    ):
+        sys.exit(3)
+
+    if not command.check_success():
+        sys.exit(4)
+    sys.exit(0)
+
+
+class CopyAndVerify:
+    def __init__(self, args):
+        self.dry_run = args.dry_run
+        self.ignore_404 = args.ignore_404
+
+        self.ignored_404 = 0
+
+    def run(self, *args, **kwargs):
+        skip_if_dry_run = kwargs.pop("skip_if_dry_run", False)
+        cmd = str(args[0]) if args else str(args)
+        if skip_if_dry_run and self.dry_run:
+            log.info("Would run %s, but --dry-run prevents this", cmd)
+            return None
+        return subprocess.run(*args, **kwargs, check=True)
+
+    def send_hashes_file(self, hashes_file: str, desthost: str, destdir: str) -> None:
+        log.info(f"Sending {hashes_file} to {destdir} on {desthost}…")
+        self.run(
+            ["scp", hashes_file, f"{desthost}:{destdir}"],
+            skip_if_dry_run=True,
+        )
+
+    def iuks_listed_in(self, hashes_file: str) -> list[str]:
+        with Path(hashes_file).open() as f:
+            lines = f.readlines()
+        return [line.split("  ")[-1].rstrip() for line in lines]
+
+    def get_jenkins_iuks_urls(
+        self,
+        jenkins_iuks_base_url: str,
+        jenkins_build_ids: list[int],
+        source_version_regexp: re.Pattern | None,
+    ) -> list[str]:
+        urls: dict[str, str] = {}  # version: url
+        source_version_index_url = (
+            jenkins_iuks_base_url + "/configurations/axis-SOURCE_VERSION"
+        )
+        for link in BeautifulSoup(
+            urlopen(Request(source_version_index_url)),  # noqa: S310
+            "html.parser",
+        ).find_all(href=re.compile("^[1-9]")):
+            version = link.text.rstrip("/")
+            if (
+                source_version_regexp
+                and source_version_regexp.fullmatch(version) is None
+            ):
+                log.debug("Skipping %s: doesn't match --source-version-regexp", version)
+                continue
+            source_version_url = source_version_index_url + "/" + link.get("href")
+            axis_label_index_url = source_version_url + "axis-label_exp/"
+            # When requesting the URL we want the directory list to be
+            # sorted by modification date (C=M) in descending order (O=D)
+            # so we easily can determine the latest IUK build.
+            sort_query = "?C=M&O=D"
+            request_url = axis_label_index_url + sort_query
+            log.debug("Looking at %s", axis_label_index_url)
+            label_urls = [
+                axis_label_index_url + link.get("href").removesuffix(sort_query)
+                for link in BeautifulSoup(
+                    urlopen(Request(request_url)),  # noqa: S310
+                    "html.parser",
+                ).find_all(href=re.compile("^(%21)?[a-z]"))
+            ]
+            if len(label_urls) == 0:
+                log.debug(
+                    "Found no label URL in %s, ignoring this source version",
+                    axis_label_index_url,
+                )
+                continue
+            # The first element is the latest build given how we sort
+            label_url = label_urls[0]
+
+            for jenkins_build_id in jenkins_build_ids:
+                artifacts_index_url = f"{label_url}/builds/{jenkins_build_id}/archive/"
+                log.debug("Looking at %s", artifacts_index_url)
+                try:
+                    page = BeautifulSoup(
+                        urlopen(Request(artifacts_index_url)),  # noqa: S310
+                        "html.parser",
+                    )
+                except urllib.error.HTTPError as exc:
+                    if self.ignore_404 and exc.code == 404:
+                        log.info(
+                            "Error %d on %s, skipping", exc.code, artifacts_index_url
+                        )
+                        self.ignored_404 += 1
+                        continue
+                    raise
+                iuk_urls = [
+                    artifacts_index_url + link.get("href")
+                    for link in page.find_all(href=re.compile("[.]iuk$"))
+                ]
+                if len(iuk_urls) == 0:
+                    log.debug(
+                        "Found no IUK URL in %s, ignoring this source version",
+                        artifacts_index_url,
+                    )
+                    continue
+                if len(iuk_urls) > 1:
+                    log.error(
+                        "Found too many IUK URLs in %s: %s",
+                        artifacts_index_url,
+                        iuk_urls,
+                    )
+                    sys.exit(1)
+                else:
+                    iuk_url = iuk_urls[0]
+                if version in urls:
+                    log.warning(
+                        "more than one IUK for %s, discarding %s",
+                        version,
+                        urls[version],
+                    )
+                urls[version] = iuk_url
+
+        log.debug("Found IUK URLs: %s", urls)
+        return list(urls.values())
+
+    def download_iuks_from_jenkins(
+        self,
+        hashes_file: str,
+        desthost: str,
+        destdir: str,
+        jenkins_iuks_base_url: str,
+        jenkins_build_ids: list[int],
+        source_version_regexp: re.Pattern | None,
+    ) -> None:
+        log.info("Downloading IUKs from Jenkins to %s…", desthost)
+        expected_iuks = self.iuks_listed_in(hashes_file)
+        log.debug("IUKS: %s", ", ".join(expected_iuks))
+        jenkins_iuks_urls = self.get_jenkins_iuks_urls(
+            jenkins_iuks_base_url,
+            jenkins_build_ids,
+            source_version_regexp,
+        )
+        jenkins_iuks = [
+            os.path.basename(urlparse(url).path) for url in jenkins_iuks_urls
+        ]
+        if set(expected_iuks) != set(jenkins_iuks):
+            log.error(
+                "Jenkins' set of IUKs differs from local one:\n"
+                " - locally: %s\n"
+                " - Jenkins: %s\n",
+                expected_iuks,
+                jenkins_iuks,
+            )
+            sys.exit(1)
+        for iuk_url in jenkins_iuks_urls:
+            log.debug("Downloading %s to %s", iuk_url, destdir)
+            self.run(
+                [
+                    "ssh",
+                    desthost,
+                    "wget",
+                    "--quiet",
+                    "--no-clobber",
+                    "--directory-prefix=%s" % destdir,
+                    iuk_url,
+                ],
+                skip_if_dry_run=True,
+            )
+
+    def verify_iuks(self, desthost: str, iuks_dir: str, hashes_file: str) -> None:
+        log.info("Verifying that IUKs built on Jenkins match those you've built…")
+        try:
+            self.run(
+                [
+                    "ssh",
+                    desthost,
+                    "cd '{d}' && sha256sum --check --strict '{f}'".format(
+                        d=iuks_dir,
+                        f=Path(hashes_file).name,
+                    ),
+                ],
+            )
+        except subprocess.CalledProcessError:
+            log.error("ERROR: IUKs built on Jenkins don't match yours")  # noqa: TRY400
+            return False
+        return True
+
+    def check_success(self):
+        """This always returns True, but leaves us some room to define more validation"""
+        if self.ignored_404 > 0:
+            log.warning(
+                (
+                    "%d 404s have been found while looking for IUKs. "
+                    "Please inspect the log to be sure that this is correct"
+                ),
+                self.ignored_404,
+            )
+        return True
+
+
+if __name__ == "__main__":
+    main()
