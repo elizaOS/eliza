@@ -60,11 +60,6 @@ function makeRuntime(opts: {
   const emitEvent = vi.fn<
     (name: string, payload: { source: string }) => Promise<void>
   >(async () => undefined);
-  // The router binds two independent event sources: ACP_SUBPROCESS_SERVICE
-  // and PTY_SERVICE. These tests drive the ACP path, so PTY is a no-op stub
-  // that still binds cleanly — both sources bound means no bind-retry timer
-  // is left dangling after the test. spawnSession backs the verify-retry
-  // path (router re-dispatches a sub-agent on a failed verification).
   const spawnSession = vi.fn(async (o: { workdir?: string }) => ({
     sessionId: "retry-session-id",
     id: "retry-session-id",
@@ -73,10 +68,10 @@ function makeRuntime(opts: {
     workdir: o.workdir ?? "/tmp/wf",
     status: "ready",
   }));
-  const ptyService = {
-    onSessionEvent: vi.fn(() => () => undefined),
-    spawnSession,
-  };
+  const acpService =
+    opts.acp && typeof opts.acp === "object"
+      ? { ...(opts.acp as object), spawnSession }
+      : opts.acp;
   const runtime = {
     agentId: opts.agentId ?? "00000000-0000-0000-0000-000000000001",
     logger: {
@@ -85,9 +80,7 @@ function makeRuntime(opts: {
       warn: vi.fn(),
       error: vi.fn(),
     },
-    getService: vi.fn((name: string) =>
-      name === "PTY_SERVICE" ? ptyService : (opts.acp ?? null),
-    ),
+    getService: vi.fn(() => acpService ?? null),
     getSetting: vi.fn((k: string) => opts.setting?.[k]),
     createMemory,
     createEntity,

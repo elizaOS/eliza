@@ -137,13 +137,13 @@ export interface SecretsManager {
    */
   listAllSavedLogins(
     opts?: ListAllSavedLoginsOptions,
-  ): Promise<UnifiedLoginListResult>;
+  ): Promise<LoginListResult>;
 
   /** Reveal a single login (full credentials) from the indicated source. */
   revealSavedLogin(
     source: "in-house" | "1password" | "bitwarden",
     identifier: string,
-  ): Promise<UnifiedLoginReveal>;
+  ): Promise<LoginReveal>;
 }
 
 export interface CreateManagerOptions {
@@ -165,7 +165,7 @@ export interface CreateManagerOptions {
  *   - `1password` → the 1Password item id (op_uuid)
  *   - `bitwarden` → the Bitwarden item id (uuid)
  */
-export interface UnifiedLoginListEntry {
+export interface LoginListEntry {
   readonly source: "in-house" | "1password" | "bitwarden";
   readonly identifier: string;
   readonly domain: string | null;
@@ -175,7 +175,7 @@ export interface UnifiedLoginListEntry {
   readonly updatedAt: number;
 }
 
-export interface UnifiedLoginReveal {
+export interface LoginReveal {
   readonly source: "in-house" | "1password" | "bitwarden";
   readonly identifier: string;
   readonly username: string;
@@ -184,8 +184,8 @@ export interface UnifiedLoginReveal {
   readonly domain: string | null;
 }
 
-export interface UnifiedLoginListResult {
-  readonly logins: readonly UnifiedLoginListEntry[];
+export interface LoginListResult {
+  readonly logins: readonly LoginListEntry[];
   /** Per-backend errors. The list still returns whatever succeeded. */
   readonly failures: ReadonlyArray<{
     readonly source: "1password" | "bitwarden";
@@ -294,7 +294,7 @@ class ManagerImpl implements SecretsManager {
 
   async listAllSavedLogins(
     opts: ListAllSavedLoginsOptions = {},
-  ): Promise<UnifiedLoginListResult> {
+  ): Promise<LoginListResult> {
     const requestedDomain = opts.domain
       ? opts.domain.trim().toLowerCase()
       : undefined;
@@ -345,7 +345,7 @@ class ManagerImpl implements SecretsManager {
         )
       : externalEntries;
 
-    const externalUnified: UnifiedLoginListEntry[] = filteredExternal
+    const externalLoginEntries: LoginListEntry[] = filteredExternal
       .map((e) => ({
         source: e.source,
         identifier: e.externalId,
@@ -366,7 +366,7 @@ class ManagerImpl implements SecretsManager {
     });
 
     return {
-      logins: [...sortedInHouse, ...externalUnified],
+      logins: [...sortedInHouse, ...externalLoginEntries],
       failures,
     };
   }
@@ -374,7 +374,7 @@ class ManagerImpl implements SecretsManager {
   async revealSavedLogin(
     source: "in-house" | "1password" | "bitwarden",
     identifier: string,
-  ): Promise<UnifiedLoginReveal> {
+  ): Promise<LoginReveal> {
     if (typeof identifier !== "string" || identifier.length === 0) {
       throw new TypeError("revealSavedLogin: identifier required");
     }
@@ -396,7 +396,7 @@ class ManagerImpl implements SecretsManager {
           `revealSavedLogin: no in-house login for ${domain}:${username}`,
         );
       }
-      const reveal: UnifiedLoginReveal = {
+      const reveal: LoginReveal = {
         source: "in-house",
         identifier,
         username: login.username,
@@ -421,7 +421,7 @@ class ManagerImpl implements SecretsManager {
 
   private async fetchInHouseEntries(
     requestedDomain: string | undefined,
-  ): Promise<readonly UnifiedLoginListEntry[]> {
+  ): Promise<readonly LoginListEntry[]> {
     const summaries: readonly SavedLoginSummary[] = requestedDomain
       ? await listSavedLogins(this.vault, requestedDomain)
       : await listSavedLogins(this.vault);
@@ -689,7 +689,7 @@ async function detectBitwarden(vault: Vault): Promise<BackendStatus> {
   }
 }
 
-function mapExternalReveal(out: ExternalLoginReveal): UnifiedLoginReveal {
+function mapExternalReveal(out: ExternalLoginReveal): LoginReveal {
   return {
     source: out.source,
     identifier: out.externalId,

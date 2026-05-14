@@ -6,6 +6,7 @@ import type {
 	MessageExample,
 	MessageExampleGroup,
 } from "./types";
+import { isObjectRecord as isRecord } from "./utils/type-guards";
 
 type CharacterDocumentItem =
 	| string
@@ -55,9 +56,6 @@ interface NormalizedCharacterInput {
 	advancedPlanning?: boolean;
 	advancedMemory?: boolean;
 }
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-	typeof value === "object" && value !== null;
 
 const isMessageExampleGroup = (
 	value: MessageExampleGroup | MessageExample[],

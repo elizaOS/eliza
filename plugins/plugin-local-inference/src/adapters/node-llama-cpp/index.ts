@@ -344,7 +344,7 @@ async function tryLocalInferenceModel<T>(
 							? error.reason
 							: "unknown",
 				},
-				"[plugin-local-ai] Unified local-inference route unavailable; falling back to legacy compatibility path.",
+				"[plugin-local-ai] Local-inference route unavailable; falling back to legacy compatibility path.",
 			);
 			return { handled: false };
 		}

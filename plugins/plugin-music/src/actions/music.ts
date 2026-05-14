@@ -466,14 +466,14 @@ export const musicAction: Action = {
     "EXTEND_AUDIO",
   ],
   description:
-    "Unified music action. Use verb-shaped action for everything: " +
+    "Music action. Use verb-shaped action for everything: " +
     "playback (play, pause, resume, skip, stop), queue (queue_view, queue_add, queue_clear), " +
     "library (playlist_play, playlist_save, search, play_query, download, play_audio), " +
     "routing/zones (set_routing, set_zone), " +
     "generation (generate, extend, custom_generate — Suno-backed, requires SUNO_API_KEY). " +
     "skip, stop, queue_add, queue_clear, playlist_save, and download require confirmed:true.",
   descriptionCompressed:
-    "Verb-shaped: play/pause/resume/skip/stop, queue_view/queue_add/queue_clear, playlist_play/playlist_save, search/play_query/download/play_audio, set_routing/set_zone, generate/extend/custom_generate.",
+    "Music play|pause|resume|skip|stop; queue|playlist|search|download|audio|routing|generate",
   parameters: [
     {
       name: "action",

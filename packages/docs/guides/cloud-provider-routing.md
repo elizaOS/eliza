@@ -42,4 +42,3 @@ If you intend to use **only** your own keys, turn **off** Cloud inference in set
 
 - [First-day setup and support](/guides/onboarding-and-support)
 - [Eliza Cloud integration](/guides/cloud)
-- [简体中文：Cloud 与提供商路由说明](/zh/guides/cloud-provider-routing)

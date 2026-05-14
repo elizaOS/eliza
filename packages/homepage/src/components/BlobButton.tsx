@@ -14,11 +14,7 @@ import QRCode from "@/components/QRCode";
 interface BlobButtonProps {
   children: ReactNode;
   href?: string;
-  /** Pass your own QR code element (e.g. <img>, <svg>, or any component) */
-  qrCode?: ReactNode;
-  /** Controls the initial appear animation of the glass pill */
   show?: boolean;
-  /** Optional click handler */
   onClick?: (e: React.MouseEvent<HTMLAnchorElement>) => void;
 }
 
@@ -64,7 +60,6 @@ export default function BlobButton({
       onFocus={() => setHovered(true)}
       onBlur={() => setHovered(false)}
     >
-      {/* Single glass shape: starts as the pill, morphs into pill+panel */}
       <AnimatedDiv
         className="absolute top-0 right-0 backdrop-blur-md border border-white/60 overflow-hidden"
         style={{
@@ -82,7 +77,6 @@ export default function BlobButton({
           ),
         }}
       >
-        {/* Panel content — fixed at final size, pinned to right edge, revealed by overflow:hidden */}
         <div
           className="absolute right-0 flex flex-col items-center "
           style={{ top: btnH + GAP, width: PANEL_W }}
@@ -98,7 +92,6 @@ export default function BlobButton({
         </div>
       </AnimatedDiv>
 
-      {/* Button label — no background, sits on top of the glass shape */}
       <a
         ref={btnRef}
         href={href}

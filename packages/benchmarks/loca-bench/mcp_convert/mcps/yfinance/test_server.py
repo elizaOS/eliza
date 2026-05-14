@@ -6,11 +6,8 @@ Tests all tools and database functionality using the common testing framework.
 """
 
 import pytest
-import asyncio
-import json
 import os
 import sys
-from typing import Dict, Any
 
 # Add project root to path
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -20,7 +17,6 @@ from common.testing import BaseMCPTest, BaseDataTest, MCPServerTester
 from common.testing.data_validation import StockDataValidator, PriceDataValidator
 from mcps.yfinance.server import YFinanceMCPServer
 from mcps.yfinance.database_utils import YFinanceDatabase
-import mcp.types as types
 
 
 class TestYFinanceDatabase(BaseDataTest):

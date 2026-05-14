@@ -6,7 +6,7 @@ import type {
 	State,
 } from "@elizaos/core";
 import {
-	logger,
+	logger as coreLogger,
 	validateActionKeywords,
 	validateActionRegex,
 } from "@elizaos/core";
@@ -18,6 +18,21 @@ import {
 	TRUST_MARKETPLACE_COMPONENT_TYPE,
 	type UserTrustProfile,
 } from "../types";
+
+function logValue(value: unknown): string {
+	if (typeof value === "string") return value;
+	if (value instanceof Error) return value.stack ?? value.message;
+	try {
+		return JSON.stringify(value);
+	} catch {
+		return String(value);
+	}
+}
+
+const logger = {
+	debug: (...args: unknown[]) => coreLogger.debug(args.map(logValue).join(" ")),
+	error: (...args: unknown[]) => coreLogger.error(args.map(logValue).join(" ")),
+};
 
 /**
  * Compute summary stats for a set of recommendations.
@@ -146,7 +161,7 @@ export const socialAlphaProvider: Provider = {
 		"Provides trust scores, win rates, and performance rankings for token recommenders (shill/FUD trackers). " +
 		"Shows whether a person's past calls would have made or lost money.",
 	descriptionCompressed:
-		"provide trust score, win rate, performance ranking token recommender (shill/fud tracker) show whether person past call make lost money",
+		"trust score/win rate/rank for token callers; shill/fud tracker PnL",
 
 	dynamic: true,
 	contexts: ["finance", "crypto", "social_posting"],
@@ -194,7 +209,9 @@ export const socialAlphaProvider: Provider = {
 			`\\b(${__providerKeywords.join("|")})\\b`,
 			"i",
 		);
-		const __recentMessages = _state?.recentMessagesData || [];
+		const __recentMessages = Array.isArray(_state?.recentMessagesData)
+			? (_state.recentMessagesData as Memory[])
+			: [];
 		const __isRelevant =
 			validateActionKeywords(message, __recentMessages, __providerKeywords) ||
 			validateActionRegex(message, __recentMessages, __providerRegex);

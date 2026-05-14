@@ -1,63 +1,19 @@
 import * as realPromises from "node:fs/promises";
-import { fileURLToPath } from "node:url";
+import type { AnyFn, FsAccessMode } from "./mobile-fs-sandbox.ts";
+import {
+  wrapMobileFsOpen,
+  wrapMobileFsPath,
+  wrapMobileFsTwoPaths,
+} from "./mobile-fs-sandbox.ts";
 
-type FsAccessMode = "read" | "write";
-type AnyFn = (...args: unknown[]) => unknown;
-type MobileFsGlobals = typeof globalThis & {
-  __ELIZA_MOBILE_FS_RESOLVE__?: (
-    inputPath: string,
-    mode?: FsAccessMode,
-  ) => string;
-};
-
-function requireResolver(): NonNullable<
-  MobileFsGlobals["__ELIZA_MOBILE_FS_RESOLVE__"]
-> {
-  const resolver = (globalThis as MobileFsGlobals).__ELIZA_MOBILE_FS_RESOLVE__;
-  if (!resolver) {
-    throw new Error(
-      "mobile-fs-promises-proxy: filesystem access before installMobileFsShim()",
-    );
-  }
-  return resolver;
-}
-
-function pathLikeToString(raw: unknown): string | null {
-  if (raw instanceof URL) {
-    if (raw.protocol !== "file:") {
-      throw new Error(
-        `mobile-fs-promises-proxy: only file: URLs are accepted (${raw.protocol})`,
-      );
-    }
-    return fileURLToPath(raw);
-  }
-  if (Buffer.isBuffer(raw)) return raw.toString("utf8");
-  return typeof raw === "string" ? raw : null;
-}
-
-function modeForOpenFlags(flags: unknown): FsAccessMode {
-  if (typeof flags !== "string" || flags.length === 0) return "read";
-  return /[wa+]/.test(flags) ? "write" : "read";
-}
+const MODULE_NAME = "mobile-fs-promises-proxy";
 
 function wrapPath<T extends AnyFn>(fn: T | undefined, mode: FsAccessMode): T {
-  return function wrappedFsPath(this: unknown, ...args: unknown[]) {
-    const pathStr = pathLikeToString(args[0]);
-    if (pathStr !== null) {
-      args[0] = requireResolver()(pathStr, mode);
-    }
-    return (fn as T).apply(this, args as Parameters<T>);
-  } as T;
+  return wrapMobileFsPath(MODULE_NAME, fn, mode);
 }
 
 function wrapOpen<T extends AnyFn>(fn: T | undefined): T {
-  return function wrappedFsOpen(this: unknown, ...args: unknown[]) {
-    const pathStr = pathLikeToString(args[0]);
-    if (pathStr !== null) {
-      args[0] = requireResolver()(pathStr, modeForOpenFlags(args[1]));
-    }
-    return (fn as T).apply(this, args as Parameters<T>);
-  } as T;
+  return wrapMobileFsOpen(MODULE_NAME, fn);
 }
 
 function wrapTwoPaths<T extends AnyFn>(
@@ -65,14 +21,7 @@ function wrapTwoPaths<T extends AnyFn>(
   srcMode: FsAccessMode,
   dstMode: FsAccessMode,
 ): T {
-  return function wrappedFsTwoPaths(this: unknown, ...args: unknown[]) {
-    const src = pathLikeToString(args[0]);
-    const dst = pathLikeToString(args[1]);
-    const resolver = requireResolver();
-    if (src !== null) args[0] = resolver(src, srcMode);
-    if (dst !== null) args[1] = resolver(dst, dstMode);
-    return (fn as T).apply(this, args as Parameters<T>);
-  } as T;
+  return wrapMobileFsTwoPaths(MODULE_NAME, fn, srcMode, dstMode);
 }
 
 export const access = wrapPath(realPromises.access, "read");

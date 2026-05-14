@@ -116,7 +116,7 @@ A single-surface app browser with optional full-screen game mode. Browse and lau
 
 ### Settings
 
-Unified scrollable preferences panel implemented in the `SettingsView` component. The view is organized into the following sections:
+Canonical scrollable preferences panel implemented in the `SettingsView` component. The view is organized into the following sections:
 
 #### 1. Appearance
 

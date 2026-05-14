@@ -27,10 +27,7 @@ from typing import TYPE_CHECKING
 from eliza_adapter.client import ElizaClient
 
 if TYPE_CHECKING:
-    from elizaos_experience_bench.types import (
-        BenchmarkConfig,
-        BenchmarkResult,
-    )
+    pass
 
 logger = logging.getLogger(__name__)
 

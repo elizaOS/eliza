@@ -2,7 +2,6 @@
 
 import pytest
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
 
 from elizaos_terminal_bench.runner import (
     TerminalBenchRunner,
@@ -12,7 +11,6 @@ from elizaos_terminal_bench.types import (
     TaskCategory,
     TaskDifficulty,
     TerminalBenchConfig,
-    TerminalBenchResult,
 )
 
 

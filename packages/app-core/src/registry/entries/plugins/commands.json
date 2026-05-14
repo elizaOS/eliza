@@ -7,15 +7,6 @@
   "source": "bundled",
   "tags": ["commands"],
   "config": {
-    "COMMANDS_ENABLED": {
-      "type": "boolean",
-      "required": false,
-      "sensitive": false,
-      "default": "true",
-      "label": "Enabled",
-      "help": "Enable command system",
-      "advanced": false
-    },
     "COMMANDS_CONFIG_ENABLED": {
       "type": "boolean",
       "required": false,

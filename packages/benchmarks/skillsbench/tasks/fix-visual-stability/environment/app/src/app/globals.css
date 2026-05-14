@@ -8,7 +8,7 @@
 
 @font-face {
   font-family: 'CustomFont';
-  src: url('/fonts/custom.woff2') format('woff2');
+  src: url('/fonts/custom.ttf') format('truetype');
 }
 
 @layer base {

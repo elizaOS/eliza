@@ -154,7 +154,7 @@ export function createAppAction(deps: AppActionDeps = {}): Action {
 		description:
 			"Unified app control. action=launch starts a registered app; action=relaunch stops then launches (optionally with verify); action=list shows installed + running apps; action=load_from_directory registers apps from an absolute folder; action=create runs the multi-turn create-or-edit flow that searches existing apps, asks new/edit/cancel, scaffolds from the min-app template, and dispatches a coding agent with AppVerificationService validator.",
 		descriptionCompressed:
-			"Manage apps: launch/relaunch/list/load folder/create; create scaffolds min app, runs coding agent, verifies result.",
+			"apps launch|relaunch|list|load_folder|create; create scaffolds, coding-agent, verify",
 		suppressPostActionContinuation: true,
 
 		parameters: [

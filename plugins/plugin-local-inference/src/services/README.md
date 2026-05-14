@@ -45,7 +45,7 @@ and the local files in this directory are thin re-exports:
 ## What stays a twin (and why)
 
 These files exist in both `packages/app-core` and `packages/ui` and are
-intentionally **not** consolidated:
+intentionally **not bundled:
 
 - `catalog.ts` — server adds `contextLength`, `optimizations.requiresKernel`,
   and DFlash drafter variants that the UI public catalog does not surface.

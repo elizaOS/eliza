@@ -3,6 +3,7 @@ import type {
   IAgentRuntime,
   ImageDescriptionParams,
   Plugin,
+  ProcessEnvLike,
   TestCase,
   TestSuite,
   TextEmbeddingParams,
@@ -61,7 +62,7 @@ const pluginTests = [
           }
           const genAI = new GoogleGenAI({ apiKey });
           const modelList = await genAI.models.list();
-          const models = [];
+          const models: unknown[] = [];
           for await (const model of modelList) {
             models.push(model);
           }
@@ -192,8 +193,6 @@ const pluginTests = [
     ] as TestCase[],
   },
 ] as TestSuite[];
-
-type ProcessEnvLike = Record<string, string | undefined>;
 
 function getProcessEnv(): ProcessEnvLike {
   if (typeof process === "undefined") {

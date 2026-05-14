@@ -1,13 +1,13 @@
 import type { Memory } from "../../../types/memory.ts";
-import type { UUID } from "../../../types/primitives.ts";
+import type {
+	JsonObject,
+	JsonPrimitive,
+	JsonValue,
+	UUID,
+} from "../../../types/primitives.ts";
 import type { ServiceTypeRegistry } from "../../../types/service.ts";
 
-export type JsonPrimitive = string | number | boolean | null;
-export type JsonValue =
-	| JsonPrimitive
-	| JsonValue[]
-	| { [key: string]: JsonValue };
-export type JsonObject = { [key: string]: JsonValue };
+export type { JsonObject, JsonPrimitive, JsonValue };
 
 declare module "../../../types/service.ts" {
 	interface ServiceTypeRegistry {
@@ -76,16 +76,16 @@ export interface ExperienceGraphSnapshot {
 	links: ExperienceGraphLink[];
 }
 
-export interface ExperienceConsolidationGroup {
+export interface ExperienceDedupeGroup {
 	primaryId: UUID;
 	duplicateIds: UUID[];
 	mergedKeywords: string[];
 	reason: string;
 }
 
-export interface ExperienceConsolidationResult {
+export interface ExperienceDedupeResult {
 	inspected: number;
-	groups: ExperienceConsolidationGroup[];
+	groups: ExperienceDedupeGroup[];
 	merged: number;
 	deleted: number;
 }

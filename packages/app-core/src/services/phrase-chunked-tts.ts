@@ -27,21 +27,51 @@
  * we just hand sentence-sized strings to the TTS function in order.
  */
 
-import type {
-  AcceptedToken,
-  Phrase,
-  PhraseChunker,
-  PhraseChunkerConfig,
-} from "@elizaos/plugin-local-inference/services";
+export interface AcceptedToken {
+  index: number;
+  text: string;
+  id?: number;
+  acceptedAt: number;
+}
+
+export interface Phrase {
+  id: number;
+  text: string;
+  fromIndex: number;
+  toIndex: number;
+  terminator: "punctuation" | "max-cap" | "phoneme-stream";
+}
+
+export interface PhraseChunkerConfig {
+  maxTokensPerPhrase?: number;
+  sentenceTerminators?: ReadonlySet<string>;
+  chunkOn?: "punctuation" | "phoneme-stream";
+  phonemesPerChunk?: number;
+  maxAccumulationMs?: number;
+}
+
+interface PhraseChunker {
+  push(token: AcceptedToken): Phrase | null;
+  flushPending(): Phrase | null;
+  reset(): void;
+  msUntilTimeBudget(): number;
+  flushIfTimeBudgetExceeded(): Phrase | null;
+}
+
+type PhraseChunkerConstructor = new (
+  config: PhraseChunkerConfig,
+  tokenizer: unknown,
+  clock: () => number,
+) => PhraseChunker;
 
 // Lazy module reference — avoids a static boundary violation while preserving
 // synchronous construction semantics for callers that supply the PhraseChunker
 // class via `PhraseChunkedTtsOptions.chunkerClass` (used in tests).
-let _PhraseChunkerClass: typeof PhraseChunker | undefined;
+let _PhraseChunkerClass: PhraseChunkerConstructor | undefined;
 let _servicesImport:
-  | Promise<typeof import("@elizaos/plugin-local-inference/services")>
+  | Promise<{ PhraseChunker: PhraseChunkerConstructor }>
   | undefined;
-function requirePhraseChunker(): typeof PhraseChunker {
+function requirePhraseChunker(): PhraseChunkerConstructor {
   if (_PhraseChunkerClass) return _PhraseChunkerClass;
   throw new Error(
     "PhraseChunker not yet loaded — call await PhraseChunkedTts.load() before constructing instances, or provide chunkerClass in options.",
@@ -51,7 +81,11 @@ function requirePhraseChunker(): typeof PhraseChunker {
  *  PhraseChunkedTts is instantiated if the class hasn't been loaded yet. */
 async function ensurePhraseChunkerLoaded(): Promise<void> {
   if (_PhraseChunkerClass) return;
-  _servicesImport ??= import("@elizaos/plugin-local-inference/services");
+  _servicesImport ??= import(
+    "@elizaos/plugin-local-inference/services"
+  ) as unknown as Promise<{
+    PhraseChunker: PhraseChunkerConstructor;
+  }>;
   const mod = await _servicesImport;
   _PhraseChunkerClass = mod.PhraseChunker;
 }

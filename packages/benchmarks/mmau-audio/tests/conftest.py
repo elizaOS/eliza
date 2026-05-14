@@ -1,4 +1,8 @@
-"""Pytest bootstrap for the MMAU test suite."""
+"""Pytest bootstrap for the MMAU test suite.
+
+Adds the package root to ``sys.path`` so ``elizaos_mmau_audio`` is importable
+regardless of where pytest is invoked from.
+"""
 
 from __future__ import annotations
 

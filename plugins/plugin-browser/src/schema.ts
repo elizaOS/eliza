@@ -17,8 +17,8 @@
  * Migrations are applied via elizaOS plugin-sql's `runPluginMigrations`
  * when the plugin's `schema` field is populated and an appropriate
  * migration strategy is selected. Renaming the old `life_browser_*`
- * tables to `browser_bridge_*` is a destructive migration — gate it on
- * `ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS=true`.
+ * tables to `browser_bridge_*` is a destructive migration controlled by
+ * plugin-sql's destructive-migration override.
  */
 
 import {

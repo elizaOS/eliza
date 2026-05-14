@@ -15,6 +15,8 @@
 #      must boot directly to Eliza, not to a Google "Welcome" flow.
 #   5. Brand properties land on /product/ where the product layer owns
 #      them, not on /system.
+#   6. The assistant/full-control capability manifest is baked into
+#      /product/etc/eliza/ for static image validation and field debug.
 
 PRODUCT_BRAND := Eliza
 PRODUCT_MANUFACTURER := Eliza
@@ -55,6 +57,7 @@ PRODUCT_ARTIFACT_PATH_REQUIREMENT_ALLOWED_LIST += \
     system/priv-app/Eliza/% \
     system/etc/default-permissions/default-permissions-ai.elizaos.app.xml \
     system/etc/permissions/privapp-permissions-ai.elizaos.app.xml \
+    product/etc/eliza/aosp-assistant-full-control.json \
     product/etc/init/init.eliza.rc \
     product/media/bootanimation.zip
 
@@ -68,7 +71,8 @@ PRODUCT_PRODUCT_PROPERTIES += \
 # and runs once-per-boot grants for appops the privapp manifest can't
 # express (SYSTEM_ALERT_WINDOW, GET_USAGE_STATS user-visible default).
 PRODUCT_COPY_FILES += \
-    vendor/eliza/init/init.eliza.rc:$(TARGET_COPY_OUT_PRODUCT)/etc/init/init.eliza.rc
+    vendor/eliza/init/init.eliza.rc:$(TARGET_COPY_OUT_PRODUCT)/etc/init/init.eliza.rc \
+    vendor/eliza/manifests/aosp-assistant-full-control.json:$(TARGET_COPY_OUT_PRODUCT)/etc/eliza/aosp-assistant-full-control.json
 
 # Boot animation. Override with a brand-specific zip; falls through to
 # AOSP defaults if the zip is absent (the file is gitignored locally

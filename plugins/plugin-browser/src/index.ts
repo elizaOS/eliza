@@ -74,6 +74,8 @@ const __bundle_safety_PLUGINS_PLUGIN_BROWSER_SRC_INDEX__ = [
   _bs_9_startBrowserCapture,
   _bs_10_stopBrowserCapture,
 ];
-// biome-ignore lint/suspicious/noExplicitAny: bundle-safety sink.
-(globalThis as any).__bundle_safety_PLUGINS_PLUGIN_BROWSER_SRC_INDEX__ =
+const bundleSafetyGlobal = globalThis as typeof globalThis & {
+  __bundle_safety_PLUGINS_PLUGIN_BROWSER_SRC_INDEX__?: typeof __bundle_safety_PLUGINS_PLUGIN_BROWSER_SRC_INDEX__;
+};
+bundleSafetyGlobal.__bundle_safety_PLUGINS_PLUGIN_BROWSER_SRC_INDEX__ =
   __bundle_safety_PLUGINS_PLUGIN_BROWSER_SRC_INDEX__;

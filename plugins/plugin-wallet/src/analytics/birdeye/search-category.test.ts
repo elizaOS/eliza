@@ -42,7 +42,7 @@ function createRuntime() {
 }
 
 describe("Birdeye search categories", () => {
-  it("registers one unified token intel search category", () => {
+  it("registers one token intel search category", () => {
     const { categories, registerSearchCategory, runtime } = createRuntime();
 
     registerBirdeyeSearchCategories(runtime);

@@ -468,11 +468,11 @@ export const entityAction: Action & {
     "SET_IDENTITY",
   ],
   description:
-    "Manage people, organizations, projects, and concepts the owner cares about, plus typed relationships between them. Subactions: create, read, set_identity, set_relationship, log_interaction, merge. For rolodex/contact lifecycle (CRUD on a single contact's profile) use CONTACT; ENTITY is the owner-graph umbrella for identity, relationships, and interaction history. Use SCHEDULED_TASKS for follow-up cadence; use OWNER_REMINDERS for one-off dated reminders to call/text someone.",
+    "Owner graph: people, orgs, projects, concepts, typed relationships. Ops: create|read|set_identity|set_relationship|log_interaction|merge. Contact CRUD -> CONTACT. Identity/relationships/history -> ENTITY. Follow-up cadence -> SCHEDULED_TASKS. One-off dated call/text reminders -> OWNER_REMINDERS.",
   descriptionCompressed:
-    "people+relationships: create|read|set_identity|set_relationship|log_interaction|merge; rolodex CRUD → CONTACT; follow-up cadence → SCHEDULED_TASK",
+    "ENTITY people+relations create|read|set_identity|set_relationship|log_interaction|merge",
   routingHint:
-    'people/contacts/relationships ("add Pat to my contacts", "Pat is my manager") -> ENTITY; follow-up cadence ("follow up with David", "how long since I talked to X", "who is overdue") -> SCHEDULED_TASKS; one-off dated reminders to call/text someone ("remember to call mom Sunday") -> OWNER_REMINDERS',
+    'people/contacts/relationships ("add Pat", "Pat is my manager") -> ENTITY; follow-up cadence ("follow up David", "how long since X", "who overdue") -> SCHEDULED_TASKS; one-off dated call/text reminder ("call mom Sunday") -> OWNER_REMINDERS',
   tags: [
     "domain:contacts",
     "capability:read",
@@ -820,7 +820,7 @@ export const entityAction: Action & {
     {
       name: "action",
       description:
-        "Which ENTITY operation to run: create (new contact), read (load rolodex), log_interaction (record contact event), set_identity (force-merge a platform handle onto an entity), set_relationship (typed edge between entities), merge (collapse duplicate entities). For rolodex/contact lifecycle (read full profile, search, update fields) use CONTACT. Follow-up cadence belongs to SCHEDULED_TASKS.",
+        "ENTITY op: create contact|read rolodex|log_interaction event|set_identity platform handle on Entity|set_relationship typed edge|merge duplicate Entities. Contact CRUD -> CONTACT. Follow-up cadence -> SCHEDULED_TASKS.",
       descriptionCompressed:
         "ENTITY op: create | read | log_interaction | set_identity | set_relationship | merge",
       schema: {
@@ -831,21 +831,21 @@ export const entityAction: Action & {
     },
     {
       name: "intent",
-      description: "Free-form user intent used to infer action when not set.",
+      description: "Free-form intent; infer action if unset.",
       descriptionCompressed: "free-form intent infer action",
       schema: { type: "string" as const },
     },
     {
       name: "name",
       description:
-        "Contact display name. When relationshipId is omitted, the handler resolves an existing contact by this name.",
+        "Contact display name; resolves existing if relationshipId omitted.",
       descriptionCompressed: "contact display name",
       schema: { type: "string" as const },
     },
     {
       name: "channel",
       description:
-        "Primary channel for the contact (email, telegram, discord, signal, sms, twilio_voice, imessage, whatsapp).",
+        "Primary channel: email|telegram|discord|signal|sms|twilio_voice|imessage|whatsapp.",
       descriptionCompressed:
         "primary channel: email|telegram|discord|signal|sms|twilio_voice|imessage|whatsapp",
       schema: {
@@ -856,17 +856,17 @@ export const entityAction: Action & {
     },
     {
       name: "handle",
-      description: "Primary handle/address on the chosen channel.",
+      description: "Primary channel handle/address.",
       schema: { type: "string" as const },
     },
     {
       name: "email",
-      description: "Optional email address for the contact.",
+      description: "Optional contact email.",
       schema: { type: "string" as const },
     },
     {
       name: "phone",
-      description: "Optional phone number for the contact.",
+      description: "Optional contact phone.",
       schema: { type: "string" as const },
     },
     {
@@ -876,7 +876,7 @@ export const entityAction: Action & {
     },
     {
       name: "relationshipId",
-      description: "Target relationship id.",
+      description: "Target Relationship id.",
       schema: { type: "string" as const },
     },
     {
@@ -886,19 +886,19 @@ export const entityAction: Action & {
     },
     {
       name: "confirmed",
-      description: "Optional explicit confirmation flag.",
+      description: "Optional confirmation flag.",
       schema: { type: "boolean" as const },
     },
     {
       name: "entityId",
       description:
-        "Target entity id. Used by set_identity (force a new identity onto a known entity), merge (target id), and any operation that needs a stable EntityStore id.",
+        "Target Entity id: set_identity target, merge target, stable EntityStore id.",
       schema: { type: "string" as const },
     },
     {
       name: "platform",
       description:
-        "Identity platform for set_identity (e.g. telegram, slack, email, twitter). Combine with handle.",
+        "set_identity platform: telegram|slack|email|twitter|phone; pair with handle.",
       descriptionCompressed:
         "set_identity platform e.g. telegram|slack|email|twitter|phone",
       schema: { type: "string" as const },
@@ -906,25 +906,23 @@ export const entityAction: Action & {
     },
     {
       name: "displayName",
-      description:
-        "Display name shown alongside an observed identity (set_identity).",
+      description: "Observed identity displayName for set_identity.",
       schema: { type: "string" as const },
     },
     {
       name: "toEntityId",
-      description: "Target entity id for set_relationship.",
+      description: "Target Entity id for set_relationship.",
       schema: { type: "string" as const },
     },
     {
       name: "fromEntityId",
-      description:
-        "Source entity id for set_relationship. Defaults to 'self' when omitted.",
+      description: "Source Entity id for set_relationship; default 'self'.",
       schema: { type: "string" as const },
     },
     {
       name: "relationshipType",
       description:
-        "Edge type label for set_relationship (e.g. manages, colleague_of, works_at, partner_of, family_of).",
+        "set_relationship edge type: manages|colleague_of|works_at|partner_of|family_of.",
       descriptionCompressed:
         "set_relationship edge type label e.g. manages|colleague_of|works_at|partner_of",
       schema: { type: "string" as const },
@@ -933,7 +931,7 @@ export const entityAction: Action & {
     {
       name: "sourceEntityIds",
       description:
-        "Entity ids being folded into the target entity (merge). Provide as a JSON array of strings.",
+        "merge source Entity ids folded into target; JSON string array.",
       schema: {
         type: "array" as const,
         items: { type: "string" as const },
@@ -942,7 +940,7 @@ export const entityAction: Action & {
     {
       name: "evidence",
       description:
-        "Free-form evidence string captured alongside set_identity / set_relationship observations.",
+        "Evidence string for set_identity/set_relationship observations.",
       schema: { type: "string" as const },
     },
   ],

@@ -1,29 +1,39 @@
 // Signal pairing helpers live in @elizaos/plugin-signal. Re-exported here
 // for backward compatibility with code that imports them from @elizaos/agent.
 
-export { CodingTaskExecutor } from "@elizaos/plugin-coding-tools";
-export {
+const codingToolsModule = await import("@elizaos/plugin-coding-tools");
+const signalModule = await import("@elizaos/plugin-signal");
+const whatsAppModule = await import("@elizaos/plugin-whatsapp");
+
+export const { CodingTaskExecutor } = codingToolsModule;
+export const {
   classifySignalPairingErrorStatus,
   extractSignalCliProvisioningUrl,
   parseSignalCliAccountsOutput,
-  type SignalPairingEvent,
-  type SignalPairingOptions,
   SignalPairingSession,
-  type SignalPairingSnapshot,
-  type SignalPairingStatus,
   sanitizeSignalAccountId,
   signalAuthExists,
   signalLogout,
-} from "@elizaos/plugin-signal";
-export {
+} = signalModule;
+export const {
   sanitizeWhatsAppAccountId,
-  type WhatsAppPairingEvent,
-  type WhatsAppPairingOptions,
   WhatsAppPairingSession,
-  type WhatsAppPairingStatus,
   whatsappAuthExists,
   whatsappLogout,
-} from "@elizaos/plugin-whatsapp";
+} = whatsAppModule;
+
+export type CodingTaskExecutor = InstanceType<typeof CodingTaskExecutor>;
+export type SignalPairingEvent = Record<string, unknown>;
+export type SignalPairingOptions = Record<string, unknown>;
+export type SignalPairingSession = InstanceType<typeof SignalPairingSession>;
+export type SignalPairingSnapshot = Record<string, unknown>;
+export type SignalPairingStatus = string;
+export type WhatsAppPairingEvent = Record<string, unknown>;
+export type WhatsAppPairingOptions = Record<string, unknown>;
+export type WhatsAppPairingSession = InstanceType<
+  typeof WhatsAppPairingSession
+>;
+export type WhatsAppPairingStatus = string;
 export * from "./agent-export.ts";
 export * from "./app-manager.ts";
 export * from "./app-session-gate.ts";

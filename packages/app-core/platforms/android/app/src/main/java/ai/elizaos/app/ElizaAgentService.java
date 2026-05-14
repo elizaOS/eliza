@@ -119,6 +119,8 @@ public class ElizaAgentService extends Service {
     private static final long WATCHDOG_INTERVAL_MS = 600_000L;
     private static final int HEALTH_FAIL_STRIKES = 3;
     private static final long HEALTH_TIMEOUT_MS = 30_000L;
+    private static final long STARTUP_HEALTH_GRACE_MS = 240_000L;
+    private static final long STARTUP_HEALTH_POLL_MS = 5_000L;
     private static final int MAX_RESTART_ATTEMPTS = 5;
     private static final long PROCESS_TERMINATE_GRACE_MS = 5_000L;
 
@@ -129,6 +131,8 @@ public class ElizaAgentService extends Service {
     private WatchdogThread watchdog;
     private Thread startWorker;
     private volatile boolean shuttingDown;
+    private volatile boolean detachedAgentMode;
+    private volatile long detachedLaunchStartedAtMs;
     private int restartAttempts;
     private String currentStatus = "starting";
 
@@ -654,6 +658,11 @@ public class ElizaAgentService extends Service {
             if (!restartFirst && agentProcess != null && agentProcess.isAlive()) {
                 return;
             }
+            if (!restartFirst
+                    && detachedAgentMode
+                    && ("starting".equals(currentStatus) || "running".equals(currentStatus))) {
+                return;
+            }
             if (startWorker != null && startWorker.isAlive()) {
                 return;
             }
@@ -694,6 +703,7 @@ public class ElizaAgentService extends Service {
             File root = agentRoot();
             File abiDir = agentAbiDir(abi);
             File bundle = new File(root, AGENT_BUNDLE_NAME);
+            File launchScript = new File(root, AGENT_LAUNCH_SCRIPT);
             File bun = new File(abiDir, BUN_BINARY);
             String loaderName = findMuslLoader(abiDir);
 
@@ -706,6 +716,12 @@ public class ElizaAgentService extends Service {
             if (!bun.exists()) {
                 Log.e(TAG, "bun binary missing at " + bun);
                 currentStatus = "missing-bun";
+                updateNotification();
+                return;
+            }
+            if (!launchScript.exists()) {
+                Log.e(TAG, "Agent launch script missing at " + launchScript);
+                currentStatus = "missing-launcher";
                 updateNotification();
                 return;
             }
@@ -739,14 +755,16 @@ public class ElizaAgentService extends Service {
                 Log.w(TAG, "Failed to persist local-agent token file: " + error.getMessage());
             }
 
-            // Invocation:
-            //   LD_LIBRARY_PATH=<agent/{abi}>  PORT=31337  ELIZA_*=…
-            //   ELIZA_API_TOKEN=<token>
-            //   agent/{abi}/ld-musl-…so.1  agent/{abi}/bun  agent/agent-bundle.js
+            // Invocation goes through launch.sh instead of keeping bun as a
+            // Java child process. Android has repeatedly killed the direct
+            // child path after ~30-50 s with SIGTRAP-like exit 133 while the
+            // same runtime stays alive when it is session-detached. The
+            // service still owns auth, env, foreground lifetime, and health
+            // supervision; launch.sh only performs the setsid double-fork and
+            // writes raw Bun stdio to agent/agent.log.
             List<String> command = new ArrayList<>();
-            command.add(loader.getAbsolutePath());
-            command.add(bun.getAbsolutePath());
-            command.add(bundle.getAbsolutePath());
+            command.add("/system/bin/sh");
+            command.add(launchScript.getAbsolutePath());
 
             ProcessBuilder pb = new ProcessBuilder(command);
             pb.directory(root);
@@ -756,6 +774,15 @@ public class ElizaAgentService extends Service {
                 "LD_LIBRARY_PATH",
                 nativeLibraryDir().getAbsolutePath() + ":" + abiDir.getAbsolutePath()
             );
+            agentEnv.put("AGENT_ROOT", root.getAbsolutePath());
+            agentEnv.put("RUNTIME_DIR", abiDir.getAbsolutePath());
+            agentEnv.put("DEVICE_DIR", abiDir.getAbsolutePath());
+            agentEnv.put("LD_NAME", loaderName);
+            agentEnv.put("LD_PATH", loader.getAbsolutePath());
+            agentEnv.put("BUN_PATH", bun.getAbsolutePath());
+            agentEnv.put("AGENT_BUNDLE", AGENT_BUNDLE_NAME);
+            agentEnv.put("AGENT_BUNDLE_PATH", bundle.getAbsolutePath());
+            agentEnv.put("LOG_FILE", new File(root, AGENT_LOG_NAME).getAbsolutePath());
             agentEnv.put("PORT", String.valueOf(AGENT_PORT));
             agentEnv.put("ELIZA_API_PORT", String.valueOf(AGENT_PORT));
             // The agent's runtime-env resolver reads ELIZA_PORT / ELIZA_UI_PORT
@@ -1148,15 +1175,18 @@ public class ElizaAgentService extends Service {
             }
 
             agentProcess = started;
+            detachedAgentMode = true;
+            detachedLaunchStartedAtMs = System.currentTimeMillis();
             // stdoutPump/stderrPump no longer needed — bun writes straight
             // to agent.log on disk via the OS-level redirect above.
             stdoutPump = null;
             stderrPump = null;
-            currentStatus = "running";
+            currentStatus = "starting";
             updateNotification();
             final long startedAtMs = System.currentTimeMillis();
+            final long launchStartedAtMs = detachedLaunchStartedAtMs;
             final long pidForLog = safePid(started);
-            Log.i(TAG, "Agent process started (pid=" + pidForLog + ").");
+            Log.i(TAG, "Agent launcher started (pid=" + pidForLog + ").");
             // Immediate-exit watcher: bun on `untrusted_app` has been
             // observed dying within ~50ms with no stderr / no tombstone /
             // no audit hint past the standard musl init probe denials.
@@ -1175,14 +1205,23 @@ public class ElizaAgentService extends Service {
                     return;
                 }
                 long aliveMs = System.currentTimeMillis() - startedAtMs;
-                Log.w(TAG, "Agent process exited early (pid=" + pidForLog
-                        + " code=" + code + " alive=" + aliveMs + "ms).");
+                if (detachedAgentMode && code == 0) {
+                    Log.i(TAG, "Agent launcher exited after detached start (pid="
+                            + pidForLog + " alive=" + aliveMs + "ms).");
+                } else {
+                    Log.w(TAG, "Agent process exited early (pid=" + pidForLog
+                            + " code=" + code + " alive=" + aliveMs + "ms).");
+                }
                 boolean stillThisProcess;
                 synchronized (processLock) {
                     stillThisProcess = (agentProcess == watched);
                     if (stillThisProcess) {
                         agentProcess = null;
                     }
+                }
+                if (stillThisProcess && !shuttingDown && detachedAgentMode && code == 0) {
+                    startDetachedStartupProbe(launchStartedAtMs);
+                    return;
                 }
                 if (stillThisProcess && !shuttingDown) {
                     scheduleRestart();
@@ -1197,6 +1236,7 @@ public class ElizaAgentService extends Service {
         Process toStop;
         Thread outPump;
         Thread errPump;
+        boolean wasDetached;
         synchronized (processLock) {
             toStop = agentProcess;
             outPump = stdoutPump;
@@ -1204,8 +1244,14 @@ public class ElizaAgentService extends Service {
             agentProcess = null;
             stdoutPump = null;
             stderrPump = null;
+            wasDetached = detachedAgentMode;
+            detachedAgentMode = false;
+            detachedLaunchStartedAtMs = 0L;
             currentLocalAgentToken = null;
             currentTerminalRunToken = null;
+        }
+        if (wasDetached) {
+            stopDetachedAgentProcess();
         }
         if (toStop == null) {
             return;
@@ -1227,6 +1273,38 @@ public class ElizaAgentService extends Service {
         }
         if (outPump != null) outPump.interrupt();
         if (errPump != null) errPump.interrupt();
+    }
+
+    private void stopDetachedAgentProcess() {
+        String abi = resolveRuntimeAbi();
+        File abiDir = agentAbiDir(abi);
+        File bun = preferPackagedExecutable(new File(abiDir, BUN_BINARY), "libeliza_bun.so");
+        File bundle = new File(agentRoot(), AGENT_BUNDLE_NAME);
+        String killCommand = "pkill -f " + shellQuote(bun.getAbsolutePath())
+            + " 2>/dev/null || true; pkill -f "
+            + shellQuote(bundle.getAbsolutePath()) + " 2>/dev/null || true";
+        try {
+            Process killer = new ProcessBuilder("/system/bin/sh", "-c", killCommand)
+                .redirectInput(ProcessBuilder.Redirect.from(new File("/dev/null")))
+                .redirectOutput(ProcessBuilder.Redirect.to(new File("/dev/null")))
+                .redirectError(ProcessBuilder.Redirect.to(new File("/dev/null")))
+                .start();
+            long deadline = System.currentTimeMillis() + PROCESS_TERMINATE_GRACE_MS;
+            while (killer.isAlive() && System.currentTimeMillis() < deadline) {
+                Thread.sleep(100);
+            }
+            if (killer.isAlive()) {
+                killer.destroyForcibly();
+            }
+        } catch (IOException error) {
+            Log.w(TAG, "Failed to stop detached agent process: " + error.getMessage());
+        } catch (InterruptedException error) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    private static String shellQuote(String value) {
+        return "'" + value.replace("'", "'\\''") + "'";
     }
 
     private static final java.security.SecureRandom TOKEN_RNG = new java.security.SecureRandom();

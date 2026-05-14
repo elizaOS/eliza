@@ -1,6 +1,6 @@
 import type { JSONSchema } from "../types/model";
 
-export const evaluatorTemplate = `task: Evaluate the just-executed action and route the next planner-loop step.
+export const evaluatorTemplate = `task: Evaluate latest action; route planner-loop next step.
 
 routes:
 - FINISH: the task is complete or should stop
@@ -8,28 +8,24 @@ routes:
 - CONTINUE: call the planner again because the queued plan is missing or stale
 
 rules:
-- evaluate the latest action result against the user's goal
-- success=true requires completed tool results that evidence the outcome; planning, reads, or searches do not satisfy a requested write/send/save/create/update/delete/payment/transfer
-- if the latest action result requires user confirmation, owner approval, missing input, MFA, or human handoff, choose FINISH with success=false; do not continue to a lower-level tool to bypass that gate
-- if a planner terminal message merely narrates remaining work, exposes tool/function syntax, or says it needs to call a tool without an executed tool result, choose CONTINUE and do not reuse that text as messageToUser
-- choose NEXT_RECOMMENDED only when one queued tool is still grounded; otherwise choose CONTINUE
-- you cannot call tools; never emit tool arguments, URL-open JSON, document JSON, or any JSON object except the single evaluator result
-- if the response would need any unexecuted tool/action side effect to be true, choose CONTINUE; do not imagine the missing result
-- messageToUser is optional progress, diagnosis, question, or final output
-- messageToUser is shown directly to the user; never include internal thoughts, tool names, function syntax, JSON/tool-call attempts, or analysis
-- messageToUser must read like a human teammate, not a meta-orchestrator; never expose internal session ids (e.g. "pty-1778500471501-4cf0e3a6"), auto-generated task-agent labels (e.g. "count-py-files-projects-1", "write-arxiv-grab-py-1"), or enumerate sub-agent names — speak as the agent doing the work, not the dispatcher
-- when decision is FINISH after tool use, include messageToUser with the concise user-facing answer or status grounded in the completed tool results
-- do not paste raw tool transcripts, command banners, or internal logs as messageToUser unless the user explicitly asked for raw output
-- copyToClipboard is optional and must include title and content
-- thought is internal and not shown to the user
+- judge latest action result against user goal
+- success=true needs completed tool result evidence; planning/read/search alone do not satisfy write/send/save/create/update/delete/payment/transfer
+- confirmation/owner approval/missing input/MFA/human handoff => FINISH success=false; never bypass with lower-level tool
+- terminal planner text that narrates work, exposes tool/function syntax, or says tool needed without executed result => CONTINUE; do not reuse as messageToUser
+- NEXT_RECOMMENDED only when exactly one queued grounded tool remains; else CONTINUE
+- you cannot call tools; emit no tool args, URL-open JSON, document JSON, or JSON except evaluator result
+- if answer needs unexecuted tool/action side effect to be true => CONTINUE; do not imagine result
+- messageToUser optional progress/diagnosis/question/final
+- messageToUser user-visible; no internal thoughts, tool names, function syntax, JSON/tool attempts, analysis
+- messageToUser human teammate voice; no session ids (pty-*), auto task labels, or sub-agent name lists; speak as agent doing work
+- FINISH after tool use => include concise grounded messageToUser
+- no raw transcripts/banners/logs unless user asked raw output
+- copyToClipboard optional; requires title + content
+- thought internal, not shown
 
 return:
-Exactly one JSON object only. No markdown, no prose, no XML, no legacy formats, no extra JSON objects.
-Required top-level fields:
-- success: boolean
-- decision: one of "FINISH", "NEXT_RECOMMENDED", "CONTINUE"
-- thought: string
-Use decision, not route.
+One JSON object only. No markdown/prose/XML/legacy/extra objects.
+Fields: success boolean; decision "FINISH"|"NEXT_RECOMMENDED"|"CONTINUE"; thought string. Use decision, not route.
 
 context_object:
 {{contextObject}}

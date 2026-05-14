@@ -7,14 +7,14 @@ import {
   getAutofillAllowed,
   getSavedLogin,
   type InstallMethod,
+  type LoginListEntry,
+  type LoginListResult,
+  type LoginReveal,
   type ManagerPreferences,
   resolveRunnableMethods,
   type SecretsManager,
   setAutofillAllowed,
   setSavedLogin,
-  type UnifiedLoginListEntry,
-  type UnifiedLoginListResult,
-  type UnifiedLoginReveal,
 } from "@elizaos/vault";
 import {
   _resetSecretsManagerInstallerForTesting,
@@ -43,7 +43,7 @@ import { sendJson, sendJsonError } from "./response";
  *
  * Saved-login routes (in-app browser autofill):
  *
- *   GET    /api/secrets/logins                 → UnifiedLoginListEntry[] (no passwords)
+ *   GET    /api/secrets/logins                 → LoginListEntry[] (no passwords)
  *                                                Aggregates in-house, 1Password, Bitwarden
  *   GET    /api/secrets/logins?domain=...      → filtered to one domain
  *   GET    /api/secrets/logins/reveal?source=...&identifier=...
@@ -381,20 +381,19 @@ async function handleSavedLoginsRoute(
     // The manager handles in-house vs external. Per-backend errors are
     // collected into `failures` so the UI can render a small warning row
     // without losing the entries that succeeded.
-    const result: UnifiedLoginListResult = await manager.listAllSavedLogins(
+    const result: LoginListResult = await manager.listAllSavedLogins(
       domain ? { domain } : {},
     );
     sendJson(res, 200, {
       ok: true,
-      logins: result.logins as readonly UnifiedLoginListEntry[],
+      logins: result.logins as readonly LoginListEntry[],
       failures: result.failures,
     });
     return true;
   }
 
-  // Unified reveal endpoint. Replaces the legacy
-  // `GET /api/secrets/logins/:domain/:user` which only knew about
-  // in-house entries.
+  // Reveal endpoint for all configured secret-manager sources. Replaces the
+  // legacy in-house-only `GET /api/secrets/logins/:domain/:user` route.
   if (method === "GET" && pathname === "/api/secrets/logins/reveal") {
     const url = new URL(req.url ?? "", "http://localhost");
     const source = url.searchParams.get("source");
@@ -412,7 +411,7 @@ async function handleSavedLoginsRoute(
       return true;
     }
     try {
-      const reveal: UnifiedLoginReveal = await manager.revealSavedLogin(
+      const reveal: LoginReveal = await manager.revealSavedLogin(
         source,
         identifier,
       );

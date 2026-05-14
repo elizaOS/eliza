@@ -1,7 +1,7 @@
 /**
  * @module features/plugin-manager/actions/plugin-handlers/search
  *
- * `search` sub-mode of the unified PLUGIN action. Searches the elizaOS
+ * `search` sub-mode of the PLUGIN action. Searches the elizaOS
  * plugin registry by free-form query.
  */
 

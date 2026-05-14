@@ -730,7 +730,7 @@ export class NodeLlamaCppBackend implements LocalInferenceBackend {
  *
  * Pre-existing API: `load(modelPath)`, `unload()`, `generate(args)`,
  * plus the activity probes used by router/handler/active-model code. The
- * implementation now sits behind the unified backend dispatcher; the
+ * implementation now sits behind the backend dispatcher; the
  * shape is preserved so callers (active-model, router-handler, the agent
  * runtime handler) keep working unchanged.
  *
@@ -1046,7 +1046,7 @@ export class LocalInferenceEngine {
 		// dflash plan and start the server" path. The dispatcher's `load()`
 		// calls `dflashLlamaServer.load(plan)`, which used to take a
 		// `DflashServerPlan` rather than a `BackendPlan`. The llama-server
-		// backend now accepts the unified `BackendPlan`, derives the dflash
+		// backend now accepts the `BackendPlan`, derives the dflash
 		// settings from the catalog entry, and resolves the drafter from the
 		// installed registry — see `dflash-server.ts`.
 		try {
@@ -2199,7 +2199,7 @@ export class LocalInferenceEngine {
 
 	/**
 	 * Internal: build a DFlash server plan from a catalog entry. Exposed so
-	 * the llama-server backend can derive its full launch args from a unified
+	 * the llama-server backend can derive its full launch args from a
 	 * `BackendPlan` without reaching back into the engine.
 	 */
 	static async resolveDflashPlanForPath(

@@ -361,6 +361,10 @@ class MobileSignalsPlugin : Plugin() {
         return JSObject().apply {
             put("status", status)
             put("canRequest", canRequest)
+            put("canOpenSettings", true)
+            put("settingsTarget", if (status == "granted") JSONObject.NULL else "healthConnect")
+            put("engine", "health-connect-usage-stats")
+            put("capabilities", mobileSignalsCapabilities(sdkStatus))
             if (statusReason != null) {
                 put("reason", statusReason)
             }
@@ -370,6 +374,15 @@ class MobileSignalsPlugin : Plugin() {
                 put("sleep", sleepGranted)
                 put("biometrics", biometricsGranted)
             })
+        }
+    }
+
+    private fun mobileSignalsCapabilities(sdkStatus: Int): JSObject {
+        return JSObject().apply {
+            put("health", sdkStatus == HealthConnectClient.SDK_AVAILABLE)
+            put("screenTime", true)
+            put("notifications", true)
+            put("settings", true)
         }
     }
 

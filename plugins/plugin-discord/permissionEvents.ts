@@ -150,10 +150,10 @@ export function diffOverwrites(
 
 	// Updated overwrite - compare old and new
 	const changes: PermissionDiff[] = [];
-	const oldAllow = oldOw?.allow.toArray();
-	const oldDeny = oldOw?.deny.toArray();
-	const newAllow = newOw?.allow.toArray();
-	const newDeny = newOw?.deny.toArray();
+	const oldAllow = oldOw?.allow.toArray() ?? [];
+	const oldDeny = oldOw?.deny.toArray() ?? [];
+	const newAllow = newOw?.allow.toArray() ?? [];
+	const newDeny = newOw?.deny.toArray() ?? [];
 
 	// Get all permissions that exist in either old or new
 	const allPerms = new Set([...oldAllow, ...oldDeny, ...newAllow, ...newDeny]);

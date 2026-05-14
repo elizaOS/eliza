@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import math
 import re
-from collections import defaultdict
 
 from ..protocol import ExtractionResult, SocialAlphaSystem, UserTrustScore
 

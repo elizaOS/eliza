@@ -175,19 +175,6 @@ function normalizeGithubRepo(value) {
   return `${owner}/${repo}`;
 }
 
-function _repositoryFromPackage(pkg) {
-  if (!pkg?.repository) {
-    return null;
-  }
-  if (typeof pkg.repository === "string") {
-    return normalizeGithubRepo(pkg.repository);
-  }
-  if (typeof pkg.repository.url === "string") {
-    return normalizeGithubRepo(pkg.repository.url);
-  }
-  return null;
-}
-
 function getCoreRange(pkg) {
   return (
     pkg.dependencies?.["@elizaos/core"] ||
@@ -248,9 +235,7 @@ function packageDirs() {
         left.localeCompare(right),
       );
     }
-  } catch {
-    // Non-git source trees still work by scanning plugins/ directly.
-  }
+  } catch {}
   return fs
     .readdirSync(PLUGINS_DIR, { withFileTypes: true })
     .filter((entry) => entry.isDirectory())
@@ -680,14 +665,14 @@ function buildOutputs() {
   return { generated, index, summary };
 }
 
-function fileContents(_filePath, data) {
+function fileContents(data) {
   return `${JSON.stringify(data, null, 2)}\n`;
 }
 
 function checkOutputs(outputs) {
   const failures = [];
   for (const [key, filePath] of Object.entries(OUTPUT_FILES)) {
-    const expected = fileContents(filePath, outputs[key]);
+    const expected = fileContents(outputs[key]);
     const actual = fs.existsSync(filePath)
       ? fs.readFileSync(filePath, "utf8")
       : "";

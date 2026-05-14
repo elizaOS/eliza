@@ -82,11 +82,9 @@ export const windowAction: Action = {
     "WINDOW_ACTION",
   ],
   description:
-    "Single WINDOW action — manages local desktop windows through the computer-use service. " +
-    "Supported actions: list, focus, switch, arrange, move, minimize, maximize, restore, close. " +
-    "Pointer and keyboard primitives belong on COMPUTER_USE; file and shell operations belong on FILE and SHELL.",
+    "WINDOW action. Manage local desktop windows via computer-use service. actions: list, focus, switch, arrange, move, minimize, maximize, restore, close. Pointer/keyboard use COMPUTER_USE; file/shell use FILE/SHELL.",
   descriptionCompressed:
-    "Single WINDOW action; action=list|focus|switch|arrange|move|minimize|maximize|restore|close manages local desktop windows.",
+    "WINDOW action=list|focus|switch|arrange|move|minimize|maximize|restore|close",
   parameters: [
     {
       name: "action",
@@ -112,7 +110,7 @@ export const windowAction: Action = {
     {
       name: "arrangement",
       description:
-        "Layout for window arrange: tile, cascade, vertical, or horizontal.",
+        "For arrange: tile, cascade, vertical, horizontal.",
       required: false,
       schema: { type: "string" },
     },

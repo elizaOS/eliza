@@ -28,7 +28,8 @@ describe("carrot-clock example", () => {
       const reloaded = loadInstalledCarrot(storeRoot, "carrot-clock");
       expect(reloaded).not.toBeNull();
       expect(reloaded?.viewUrl).toBe("views://view/index.html");
-      expect(existsSync(reloaded!.viewPath)).toBe(true);
+      if (!reloaded) throw new Error("Expected carrot-clock to reload.");
+      expect(existsSync(reloaded.viewPath)).toBe(true);
     } finally {
       rmSync(storeRoot, { recursive: true, force: true });
     }

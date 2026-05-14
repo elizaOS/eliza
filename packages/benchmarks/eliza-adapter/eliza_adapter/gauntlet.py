@@ -15,8 +15,7 @@ import json
 import logging
 import os
 import re
-import time
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 from eliza_adapter.client import ElizaClient
 

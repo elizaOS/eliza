@@ -61,6 +61,7 @@ export interface TrustScore {
 }
 
 export class PriceEnrichmentService {
+	private runtime: IAgentRuntime;
 	private birdeyeClient: BirdeyeClient;
 	private dexscreenerClient: DexscreenerClient;
 

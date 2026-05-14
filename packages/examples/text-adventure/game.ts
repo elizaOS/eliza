@@ -30,8 +30,6 @@ import {
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
-import { openaiPlugin } from "@elizaos/plugin-openai";
-import sqlPlugin from "@elizaos/plugin-sql";
 import { v4 as uuidv4 } from "uuid";
 
 // ============================================================================
@@ -571,6 +569,10 @@ function createAdventureAgentCharacter(): ReturnType<typeof createCharacter> {
 }
 
 async function initializeGameSession(): Promise<GameSession> {
+  const [{ openaiPlugin }, { default: sqlPlugin }] = await Promise.all([
+    import("@elizaos/plugin-openai"),
+    import("@elizaos/plugin-sql"),
+  ]);
   const task = clack.spinner();
 
   task.start("Initializing adventure...");

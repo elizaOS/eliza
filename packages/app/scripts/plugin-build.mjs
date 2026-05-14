@@ -12,10 +12,7 @@ import {
 
 const scriptFile = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(scriptFile);
-const _appDir = path.resolve(__dirname, "..");
-const verbosePluginBuild =
-  process.env.ELIZA_VERBOSE_PLUGIN_BUILD === "1" ||
-  process.env.ELIZA_VERBOSE_PLUGIN_BUILD === "1";
+const verbosePluginBuild = process.env.ELIZA_VERBOSE_PLUGIN_BUILD === "1";
 
 // Only these values in a plugin's `platforms` array are treated as build-host
 // gates. Anything else (e.g. "node", "browser") is a runtime hint and does

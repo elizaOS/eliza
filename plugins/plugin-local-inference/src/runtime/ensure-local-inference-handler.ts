@@ -48,8 +48,8 @@ import {
 } from "../services/cache-bridge";
 import { deviceBridge } from "../services/device-bridge";
 import { localInferenceEngine } from "../services/engine";
-import { tryGetMemoryArbiter } from "../services/memory-arbiter";
 import { handlerRegistry } from "../services/handler-registry";
+import { tryGetMemoryArbiter } from "../services/memory-arbiter";
 import { listInstalledModels } from "../services/registry";
 import { installRouterHandler } from "../services/router-handler";
 import {
@@ -266,7 +266,7 @@ async function ensureAssignedModelLoaded(
  * constrained decode. Off by default: needs either an explicit
  * `providerOptions.eliza.guidedDecode === true` (the planner / message service
  * sets this when it built a forced skeleton) or the process-wide
- * `MILADY_LOCAL_GUIDED_DECODE=1` (`ELIZA_LOCAL_GUIDED_DECODE=1`) opt-in.
+ * `ELIZA_LOCAL_GUIDED_DECODE=1` opt-in.
  */
 function guidedDecodeRequested(params: GenerateTextParams): boolean {
 	const providerOptions = (params as { providerOptions?: unknown })
@@ -276,9 +276,7 @@ function guidedDecodeRequested(params: GenerateTextParams): boolean {
 			? (providerOptions as { eliza?: { guidedDecode?: unknown } }).eliza
 			: undefined;
 	if (elizaOpts && elizaOpts.guidedDecode === true) return true;
-	const env =
-		process.env.MILADY_LOCAL_GUIDED_DECODE ??
-		process.env.ELIZA_LOCAL_GUIDED_DECODE;
+	const env = process.env.ELIZA_LOCAL_GUIDED_DECODE;
 	return env === "1" || env === "true";
 }
 

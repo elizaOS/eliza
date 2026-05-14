@@ -1,3 +1,24 @@
+declare module "@elizaos/app-companion" {
+  export const CompanionShell: import("react").ComponentType<
+    import("@elizaos/ui").CompanionShellComponentProps
+  >;
+  export const GlobalEmoteOverlay: import("react").ComponentType<
+    Record<string, never>
+  >;
+  export const InferenceCloudAlertButton: import("react").ComponentType<{
+    notice: import("@elizaos/ui").CompanionInferenceNotice;
+    onClick: () => void;
+    onPointerDown?: (...args: unknown[]) => unknown;
+  }>;
+  export const THREE: unknown;
+  export function createVectorBrowserRenderer(): Promise<unknown>;
+  export function registerCompanionApp(): void;
+  export function resolveCompanionInferenceNotice(
+    args: import("@elizaos/ui").ResolveCompanionInferenceNoticeArgs,
+  ): import("@elizaos/ui").CompanionInferenceNotice | null;
+  export function useCompanionSceneStatus(): import("@elizaos/ui").CompanionSceneStatus;
+}
+
 declare module "@elizaos/app-phone" {
   export const PhoneCompanionApp: import("react").ComponentType<
     Record<string, never>

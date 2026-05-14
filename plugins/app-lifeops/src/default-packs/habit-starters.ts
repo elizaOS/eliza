@@ -267,6 +267,7 @@ export const habitStartersPack: DefaultPack = {
   description:
     "Eight starter habits offered at first-run customize: brush teeth, shower, invisalign, drink water, stretch, vitamins, workout, shave. Not auto-seeded — the user picks which to enable.",
   defaultEnabled: false,
+  requiredCapabilities: [],
   records: [...HABIT_STARTER_RECORDS],
   uiHints: {
     summaryOnDayOne:

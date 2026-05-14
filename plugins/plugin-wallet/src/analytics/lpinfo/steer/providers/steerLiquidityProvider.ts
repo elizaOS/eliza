@@ -28,7 +28,7 @@ export const steerLiquidityProvider: Provider = {
   description:
     "Provides information about Steer Finance vaults, staking pools, and token-specific liquidity data across multiple chains",
   descriptionCompressed:
-    "provide information Steer Finance vault, stak pool, token-specific liquidity data across multiple chain",
+    "Steer Finance vault/staking pool/token liquidity across chains",
   dynamic: true,
   contexts: ["finance", "crypto", "wallet"],
   contextGate: { anyOf: ["finance", "crypto", "wallet"] },

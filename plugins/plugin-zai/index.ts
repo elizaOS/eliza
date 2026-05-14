@@ -1,4 +1,11 @@
-import type { GenerateTextParams, IAgentRuntime, Plugin, TestCase, TestSuite } from "@elizaos/core";
+import type {
+  GenerateTextParams,
+  IAgentRuntime,
+  Plugin,
+  ProcessEnvLike,
+  TestCase,
+  TestSuite,
+} from "@elizaos/core";
 import { logger, ModelType } from "@elizaos/core";
 import { initializeZai, type PluginConfig } from "./init";
 import { handleTextLarge, handleTextSmall } from "./models";
@@ -51,8 +58,6 @@ const pluginTests = [
     ] as TestCase[],
   },
 ] as TestSuite[];
-
-type ProcessEnvLike = Record<string, string | undefined>;
 
 function getProcessEnv(): ProcessEnvLike {
   // In browsers, `process` is not defined (and we must not reference it unguarded).

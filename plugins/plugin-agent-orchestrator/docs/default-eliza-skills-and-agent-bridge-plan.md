@@ -7,7 +7,7 @@ Date: 2026-05-10
 Make Eliza's default task workers self-sufficient:
 
 - They should receive editable, repo-owned default skills for Eliza, elizaOS plugin/app development, Eliza Cloud APIs, and monetization.
-- Claude, Codex, OpenCode, Gemini, Aider, and other orchestrated workers should receive those defaults through the agent orchestrator.
+- Claude, Codex, and OpenCode workers should receive those defaults through the ACP agent orchestrator.
 - Applications should be able to override defaults without forking the shipped skill package.
 - Workers should be able to ask the running parent Eliza agent for context or actions that only the parent can perform.
 - Paid, private, or destructive operations should remain mediated by the parent agent and its confirmation flow.
@@ -39,10 +39,9 @@ The task agent infrastructure is in `plugins/plugin-agent-orchestrator`.
 
 Important surfaces:
 
-- `src/services/pty-service.ts` spawns agents, writes adapter memory files, injects parent runtime loopback context, and manages session lifecycle.
-- `src/actions/coding-task-handlers.ts` prepares `SKILLS.md`, recommends skills, spawns task sessions, and registers per-session skill allow-lists.
+- `src/services/acp-service.ts` spawns ACP agents, records session metadata, and manages session lifecycle.
+- `src/actions/tasks.ts` prepares ACP spawn/send/list/control requests through the single task-agent action surface.
 - `src/services/skill-manifest.ts` renders the task-local manifest and virtual broker skills.
-- `src/services/skill-callback-bridge.ts` listens for child output lines matching `USE_SKILL <slug> <json_args>` and routes them back to the parent runtime.
 - `src/services/skill-lifeops-context-broker.ts` already exposes task-scoped LifeOps context.
 
 ### Cloud and monetization
@@ -95,7 +94,7 @@ Sensitive broker access is session allow-listed. The orchestrator includes `pare
 
 ### Worker manifest
 
-`SKILLS.md` now tells workers to emit a standalone `USE_SKILL <slug> <json_args>` line. The orchestrator writes this manifest into the workspace and sets `ELIZA_SKILLS_MANIFEST`, so Codex/Claude/Gemini/Aider-style workers can discover skill protocol without hardcoding.
+`SKILLS.md` now tells workers to emit a standalone `USE_SKILL <slug> <json_args>` line. The orchestrator writes this manifest into the workspace and sets `ELIZA_SKILLS_MANIFEST`, so Codex/Claude/OpenCode workers can discover skill protocol without hardcoding.
 
 The injected parent runtime memory also now explains:
 
@@ -113,9 +112,6 @@ The orchestrator-managed gitignore block now includes common generated agent fil
 - `.claude/`
 - `AGENTS.md`
 - `.codex/`
-- `GEMINI.md`
-- `.gemini/`
-- `.aider*`
 - `.opencode/`
 - `SKILLS.md`
 
@@ -178,11 +174,11 @@ Review focus:
 
 - Type correctness around synthetic `Memory` construction and `messageService.handleMessage`.
 - Session allow-list behavior for virtual brokers.
-- Whether all spawned adapter types can see `SKILLS.md` and parent memory text.
+- Whether all ACP agent types can see `SKILLS.md` and parent memory text.
 - Whether tracked `AGENTS.md` repos need a safer memory-file strategy than writing in the workspace root.
-- Whether OpenCode should become a first-class adapter type instead of shell-compatible spawn.
+- Whether OpenCode's vendored ACP path has enough smoke coverage against Cerebras.
 
-Status: partially implemented. The first three are covered by code/tests; the last two remain follow-up design items.
+Status: partially implemented. The first three are covered by code/tests; live OpenCode/Cerebras validation remains credential-gated.
 
 ### Pass 5: Testing, Verification, Validation
 
@@ -197,8 +193,8 @@ Minimum local tests:
 Live validation:
 
 - Start a parent Eliza runtime with agent skills and orchestrator loaded.
-- Spawn Codex and Claude workers and verify they read `SKILLS.md`.
-- Spawn OpenCode using Eliza Cloud with Cerebras OpenAI `gpt-oss-120b` and verify it can emit `USE_SKILL parent-agent ...`.
+- Spawn Codex, Claude, and OpenCode workers and verify they read `SKILLS.md`.
+- Spawn OpenCode through ACP using the vendored OpenCode shim with Cerebras `gpt-oss-120b` and verify it can emit `USE_SKILL parent-agent ...`.
 - Simulate:
   - action listing
   - parent memory search
@@ -212,8 +208,6 @@ Status: local unit/type/skills tests are implemented and passing. Live OpenCode/
 
 ## Remaining Gaps
 
-- OpenCode is currently treated through shell-compatible spawn paths in parts of the orchestrator. It should become a first-class memory/config adapter if the project wants equivalent behavior to Claude/Codex/Gemini.
-- `ELIZA_DEFAULT_AGENT_TYPE` fixed-default parsing still only accepts `claude`, `gemini`, `codex`, and `aider`. Routing can rank OpenCode, but fixed default should be extended after type/API review.
 - Writing adapter memory files named `AGENTS.md` can collide with repos that already track `AGENTS.md`. A safer strategy is needed for Codex memory injection in tracked-repo workspaces.
 - Live agent benchmarking against OpenCode + Eliza Cloud + Cerebras requires credentials and running infrastructure.
 - The parent-agent broker currently asks through the normal parent message pipeline. Direct action invocation APIs could be added later, but the message path is more flexible and preserves confirmation behavior.

@@ -37,12 +37,6 @@ import os from "node:os";
 import path from "node:path";
 import type { AgentRuntime } from "@elizaos/core";
 import {
-  createDatabaseAdapter,
-  DatabaseMigrationService,
-  type DrizzleDatabase,
-  plugin as sqlPlugin,
-} from "@elizaos/plugin-sql";
-import {
   exportJWK,
   generateKeyPair,
   type JWK,
@@ -50,6 +44,7 @@ import {
   SignJWT,
 } from "jose";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type { DrizzleDatabase } from "../services/auth-store";
 import { _resetSensitiveLimiters } from "./auth/index";
 import { handleAuthBootstrapRoutes } from "./auth-bootstrap-routes";
 import { handleAuthPairingCompatRoutes } from "./auth-pairing-routes";
@@ -60,6 +55,19 @@ interface DbAdapterLike {
   initialize?: () => Promise<void>;
   init?: () => Promise<void>;
   close?: () => Promise<void>;
+}
+
+interface SqlPluginModule {
+  createDatabaseAdapter: (
+    cfg: { dataDir: string },
+    id: `${string}-${string}-${string}-${string}-${string}`,
+  ) => unknown;
+  DatabaseMigrationService: new () => {
+    initializeWithDatabase: (db: unknown) => Promise<void>;
+    discoverAndRegisterPluginSchemas: (plugins: unknown[]) => void;
+    runAllPluginMigrations: () => Promise<void>;
+  };
+  plugin: unknown;
 }
 
 interface Harness {
@@ -156,6 +164,11 @@ async function startApiServer(db: DrizzleDatabase): Promise<{
 }
 
 async function open(): Promise<Harness> {
+  const {
+    createDatabaseAdapter,
+    DatabaseMigrationService,
+    plugin: sqlPlugin,
+  } = (await import("@elizaos/plugin-sql")) as SqlPluginModule;
   _resetSensitiveLimiters();
 
   const containerId = `ci-fixture-${process.env.GITHUB_RUN_ID ?? Date.now()}`;

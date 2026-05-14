@@ -1,4 +1,8 @@
-import { type IAgentRuntime, logger } from "@elizaos/core";
+import {
+  type IAgentRuntime,
+  logger,
+  type AppPackageRouteContext as RouteContext,
+} from "@elizaos/core";
 import type {
   AppLaunchDiagnostic,
   AppLaunchResult,
@@ -99,17 +103,6 @@ type ClawvilleSubroute = "move" | "visit-building" | "chat" | "buy";
 type ClawvilleBuildingId = (typeof BUILDINGS)[number]["id"];
 
 const sessionActivities = new Map<string, AppSessionActivityItem[]>();
-
-interface RouteContext {
-  method: string;
-  pathname: string;
-  url?: URL;
-  runtime: unknown | null;
-  res: unknown;
-  error: (response: unknown, message: string, status?: number) => void;
-  json: (response: unknown, data: unknown, status?: number) => void;
-  readJsonBody: () => Promise<unknown>;
-}
 
 // ---------------------------------------------------------------------------
 // Helpers

@@ -1,4 +1,4 @@
-# Windows Readiness — Consolidated Implementation Plan
+# Windows Readiness — Implementation Plan
 
 **Status:** Research phase complete (2026-05-14). 10 reports in `reports/windows-readiness/01-*` through `10-*`. This document is the parallelized implementation plan derived from those reports.
 

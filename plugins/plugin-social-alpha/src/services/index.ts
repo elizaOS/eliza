@@ -1,4 +1,4 @@
-// Consolidated Services
+// Services
 
 // Original Services (kept for backward compatibility during migration)
 export { BalancedTrustScoreCalculator } from "./balancedTrustScoreCalculator";
@@ -13,7 +13,7 @@ export type {
 } from "./PriceDataService";
 export { PriceDataService } from "./PriceDataService";
 export { PriceEnrichmentService } from "./priceEnrichmentService";
-// Re-export types from consolidated services
+// Re-export types from services
 export type {
 	ActorArchetypeV2,
 	ActorConfig,

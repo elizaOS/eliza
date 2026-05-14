@@ -18,19 +18,25 @@ import {
   resolveStateDir,
   resolveUserPath,
 } from "@elizaos/core";
-import type { PreflightResult } from "coding-agent-adapters";
-import type { AgentMetrics } from "./agent-metrics.js";
-import {
-  readConfigCloudKey,
-  readConfigCodexSubscriptionRestrictedToCodexFramework,
-  readConfigEnvKey,
-} from "./config-env.js";
+import { readConfigCloudKey, readConfigEnvKey } from "./config-env.js";
 
-export type SupportedTaskAgentAdapter = "claude" | "codex" | "gemini" | "aider";
-export type TaskAgentFrameworkId =
-  | SupportedTaskAgentAdapter
-  | "pi"
-  | "opencode";
+type AgentMetricsSummary = {
+  spawned: number;
+  completed: number;
+  stallCount: number;
+  avgCompletionMs: number;
+};
+type TaskAgentPreflightResult = {
+  adapter?: string;
+  agentType?: string;
+  installed?: boolean;
+  installCommand?: string;
+  docsUrl?: string;
+  auth?: { status?: unknown };
+};
+
+export type SupportedTaskAgentAdapter = "claude" | "codex" | "opencode";
+export type TaskAgentFrameworkId = SupportedTaskAgentAdapter;
 
 export interface TaskAgentModelPrefs {
   powerful?: string;
@@ -67,12 +73,9 @@ export interface TaskAgentFrameworkState {
 
 export interface TaskAgentFrameworkProbe {
   checkAvailableAgents?: (
-    types?: SupportedTaskAgentAdapter[],
-  ) => Promise<PreflightResult[]>;
-  getAgentMetrics?: () => Record<
-    string,
-    Omit<AgentMetrics, "totalCompletionMs">
-  >;
+    types?: string[],
+  ) => Promise<TaskAgentPreflightResult[]>;
+  getAgentMetrics?: () => Record<string, AgentMetricsSummary>;
 }
 
 export type TaskAgentTaskKind =
@@ -160,36 +163,6 @@ const FRAMEWORK_CAPABILITY_PROFILES: Record<
     repoWork: 1,
     fastIteration: 0.95,
   },
-  gemini: {
-    implementation: 0.7,
-    research: 1,
-    planning: 0.95,
-    ops: 0.7,
-    verification: 0.6,
-    coordination: 0.7,
-    repoWork: 0.65,
-    fastIteration: 0.7,
-  },
-  aider: {
-    implementation: 0.9,
-    research: 0.45,
-    planning: 0.45,
-    ops: 0.75,
-    verification: 0.85,
-    coordination: 0.35,
-    repoWork: 0.95,
-    fastIteration: 1,
-  },
-  pi: {
-    implementation: 0.55,
-    research: 0.5,
-    planning: 0.55,
-    ops: 0.5,
-    verification: 0.5,
-    coordination: 0.35,
-    repoWork: 0.5,
-    fastIteration: 0.5,
-  },
   opencode: {
     implementation: 0.85,
     research: 0.75,
@@ -205,17 +178,13 @@ const FRAMEWORK_CAPABILITY_PROFILES: Record<
 const FRAMEWORK_LABELS: Record<TaskAgentFrameworkId, string> = {
   claude: "Claude Code",
   codex: "Codex",
-  gemini: "Gemini CLI",
-  aider: "Aider",
-  pi: "Pi",
   opencode: "OpenCode",
 };
 
 const STANDARD_FRAMEWORKS: SupportedTaskAgentAdapter[] = [
   "claude",
   "codex",
-  "gemini",
-  "aider",
+  "opencode",
 ];
 
 const DEFAULT_FRAMEWORK_PREFLIGHT_TIMEOUT_MS = 5_000;
@@ -250,7 +219,7 @@ async function withTimeout<T>(
 }
 
 const TASK_AGENT_MODEL_PREF_SETTING_KEYS: Record<
-  SupportedTaskAgentAdapter | "opencode",
+  SupportedTaskAgentAdapter,
   { powerful: string; fast: string }
 > = {
   claude: {
@@ -261,14 +230,6 @@ const TASK_AGENT_MODEL_PREF_SETTING_KEYS: Record<
     powerful: "ELIZA_CODEX_MODEL_POWERFUL",
     fast: "ELIZA_CODEX_MODEL_FAST",
   },
-  gemini: {
-    powerful: "ELIZA_GEMINI_MODEL_POWERFUL",
-    fast: "ELIZA_GEMINI_MODEL_FAST",
-  },
-  aider: {
-    powerful: "ELIZA_AIDER_MODEL_POWERFUL",
-    fast: "ELIZA_AIDER_MODEL_FAST",
-  },
   opencode: {
     powerful: "ELIZA_OPENCODE_MODEL_POWERFUL",
     fast: "ELIZA_OPENCODE_MODEL_FAST",
@@ -276,13 +237,11 @@ const TASK_AGENT_MODEL_PREF_SETTING_KEYS: Record<
 };
 
 export const TASK_AGENT_DEFAULT_MODEL_PREFS: Record<
-  SupportedTaskAgentAdapter | "opencode",
+  SupportedTaskAgentAdapter,
   TaskAgentModelPrefs
 > = {
   claude: { powerful: "claude-opus-4-7" },
   codex: { powerful: "gpt-5.5", fast: "gpt-5.4-mini" },
-  gemini: {},
-  aider: {},
   opencode: {},
 };
 
@@ -316,11 +275,9 @@ function normalizePreflightAdapterId(
     case "codex":
     case "openai codex":
       return "codex";
-    case "gemini":
-    case "gemini cli":
-      return "gemini";
-    case "aider":
-      return "aider";
+    case "opencode":
+    case "open code":
+      return "opencode";
     default:
       return null;
   }
@@ -390,7 +347,7 @@ export function mergeTaskAgentModelPrefs(
 
 function normalizeTaskAgentAdapterForModelPrefs(
   agentType: string | undefined,
-): SupportedTaskAgentAdapter | "opencode" | undefined {
+): SupportedTaskAgentAdapter | undefined {
   const normalized = agentType?.trim().toLowerCase();
   switch (normalized) {
     case "claude":
@@ -406,13 +363,6 @@ function normalizeTaskAgentAdapterForModelPrefs(
     case "open-code":
     case "open code":
       return "opencode";
-    case "gemini":
-    case "google":
-    case "gemini-cli":
-    case "gemini cli":
-      return "gemini";
-    case "aider":
-      return "aider";
     default:
       return undefined;
   }
@@ -440,10 +390,9 @@ export function getTaskAgentModelPrefs(
 }
 
 function getPreflightAuthStatus(
-  result: PreflightResult | undefined,
+  result: TaskAgentPreflightResult | undefined,
 ): "authenticated" | "unauthenticated" | "unknown" {
-  const auth = (result as PreflightResult & { auth?: { status?: unknown } })
-    ?.auth;
+  const auth = result?.auth;
   const status = typeof auth?.status === "string" ? auth.status : "";
   if (status === "authenticated" || status === "unauthenticated") {
     return status;
@@ -547,15 +496,6 @@ function hasCodexApiKey(runtime?: IAgentRuntime): boolean {
   );
 }
 
-function hasGeminiCredential(runtime?: IAgentRuntime): boolean {
-  return Boolean(
-    process.env.GOOGLE_GENERATIVE_AI_API_KEY?.trim() ||
-      process.env.GOOGLE_API_KEY?.trim() ||
-      safeGetSetting(runtime, "GOOGLE_GENERATIVE_AI_API_KEY") ||
-      safeGetSetting(runtime, "GOOGLE_API_KEY"),
-  );
-}
-
 /**
  * Check whether eliza has a paired Eliza Cloud API key. Used to mark
  * Anthropic/OpenAI-backed task agents as auth-ready when LLM provider is
@@ -563,10 +503,6 @@ function hasGeminiCredential(runtime?: IAgentRuntime): boolean {
  */
 function hasElizaCloudApiKey(): boolean {
   return Boolean(readConfigCloudKey("apiKey"));
-}
-
-function hasPiBinary(): boolean {
-  return hasBinaryOnPath("pi");
 }
 
 function hasOpencodeBinary(): boolean {
@@ -599,10 +535,8 @@ function hasFrameworkBinary(id: SupportedTaskAgentAdapter): boolean {
       return hasBinaryOnPath("claude");
     case "codex":
       return hasBinaryOnPath("codex");
-    case "gemini":
-      return hasBinaryOnPath("gemini");
-    case "aider":
-      return hasBinaryOnPath("aider");
+    case "opencode":
+      return hasOpencodeBinary();
   }
 }
 
@@ -626,7 +560,7 @@ async function computeTaskAgentFrameworkState(
   const configuredSubscriptionProvider = readConfiguredSubscriptionProvider();
   const preflightByAdapter = new Map<
     SupportedTaskAgentAdapter,
-    PreflightResult
+    TaskAgentPreflightResult
   >();
 
   if (probe?.checkAvailableAgents) {
@@ -651,8 +585,8 @@ async function computeTaskAgentFrameworkState(
   }
 
   // When the user has selected Eliza Cloud as the LLM provider and has a
-  // paired cloud.apiKey, treat Claude/Codex/Aider as fully auth-ready —
-  // they'll route through the cloud proxy at spawn time.
+  // paired cloud.apiKey, treat ACP agents as auth-ready through the cloud
+  // proxy where the selected CLI supports it.
   const llmProvider = readConfigEnvKey("ELIZA_LLM_PROVIDER") || "subscription";
   const cloudReady = llmProvider === "cloud" && hasElizaCloudApiKey();
 
@@ -662,20 +596,9 @@ async function computeTaskAgentFrameworkState(
   const codexPreflightAuth = getPreflightAuthStatus(
     preflightByAdapter.get("codex"),
   );
-  const geminiPreflightAuth = getPreflightAuthStatus(
-    preflightByAdapter.get("gemini"),
+  const opencodePreflightAuth = getPreflightAuthStatus(
+    preflightByAdapter.get("opencode"),
   );
-  const aiderPreflightAuth = getPreflightAuthStatus(
-    preflightByAdapter.get("aider"),
-  );
-
-  // When the user opts in to restricting the Codex subscription to the codex
-  // framework only, non-codex frameworks must not treat Codex sub availability
-  // as contributing to `subscriptionReady` or `authReady` (so scoring and
-  // fallback logic skip the Codex-sub path). Claude subscription tokens are
-  // already restricted upstream to the claude CLI, so no gate is needed there.
-  const codexSubRestrictedToCodexFramework =
-    readConfigCodexSubscriptionRestrictedToCodexFramework();
 
   const claudeSubscriptionReady =
     claudePreflightAuth === "authenticated" || hasClaudeSubscriptionAuth();
@@ -685,31 +608,21 @@ async function computeTaskAgentFrameworkState(
     codexPreflightAuth === "authenticated" || hasCodexSubscriptionAuth();
   const codexAuthReady =
     cloudReady || codexSubscriptionReady || hasCodexApiKey(runtime);
-  // When the flag is set, drop Codex sub from aider's fallback chain — aider
-  // must use its own API key (claude/gemini subs are already restricted or
-  // non-existent for aider's path, and the Codex API key path still works).
-  const codexAuthReadyForNonCodex = codexSubRestrictedToCodexFramework
-    ? cloudReady || hasCodexApiKey(runtime)
-    : codexAuthReady;
-  // Eliza Cloud doesn't proxy Gemini, so cloud mode does NOT make Gemini auth-ready
-  const geminiAuthReady =
-    geminiPreflightAuth === "authenticated" || hasGeminiCredential(runtime);
-  const aiderAuthReady =
+  const opencodeLocalMode = isOpencodeLocalMode();
+  const opencodeAuthReady =
+    opencodePreflightAuth === "authenticated" ||
     cloudReady ||
-    aiderPreflightAuth === "authenticated" ||
-    claudeAuthReady ||
-    codexAuthReadyForNonCodex ||
-    geminiAuthReady;
-  const piReady = hasPiBinary();
+    opencodeLocalMode ||
+    Boolean(
+      readConfigEnvKey("ELIZA_OPENCODE_BASE_URL") ||
+        readConfigEnvKey("ELIZA_OPENCODE_API_KEY"),
+    );
 
   const providerPrefersClaude =
     configuredSubscriptionProvider === "anthropic-subscription";
   const providerPrefersCodex =
     configuredSubscriptionProvider === "openai-codex" ||
     configuredSubscriptionProvider === "openai-subscription";
-  const providerPrefersGemini =
-    configuredSubscriptionProvider === "gemini-cli" ||
-    configuredSubscriptionProvider === "gemini-subscription";
   // Prefer opencode when the user has configured an OpenAI-compatible
   // endpoint (cerebras, openrouter, local Ollama, etc.) AND has no
   // first-party subscription paired. This is the "BYO API key" path —
@@ -718,7 +631,6 @@ async function computeTaskAgentFrameworkState(
   const providerPrefersOpencode =
     !providerPrefersClaude &&
     !providerPrefersCodex &&
-    !providerPrefersGemini &&
     Boolean(
       readConfigEnvKey("ELIZA_OPENCODE_BASE_URL") ||
         readConfigEnvKey("ELIZA_OPENCODE_LOCAL") === "1" ||
@@ -736,29 +648,27 @@ async function computeTaskAgentFrameworkState(
           ? claudeSubscriptionReady
           : id === "codex"
             ? codexSubscriptionReady
-            : id === "gemini"
-              ? providerPrefersGemini && geminiPreflightAuth === "authenticated"
-              : false;
+            : false;
       const authReady =
         id === "claude"
           ? claudeAuthReady
           : id === "codex"
             ? codexAuthReady
-            : id === "gemini"
-              ? geminiAuthReady
-              : aiderAuthReady;
+            : opencodeAuthReady;
       const reason =
         id === "claude" && subscriptionReady
           ? "ready to use the user's Claude subscription"
           : id === "codex" && subscriptionReady
             ? "ready to use the user's OpenAI subscription"
-            : id === "gemini" && subscriptionReady
-              ? "ready to use the user's Gemini CLI subscription"
-              : installed
-                ? authReady
-                  ? "installed with credentials available"
-                  : "installed but credentials were not detected"
-                : "CLI not detected";
+            : id === "opencode" && installed && opencodeLocalMode
+              ? "ready to use a local model provider (ELIZA_OPENCODE_LOCAL)"
+              : id === "opencode" && installed && authReady
+                ? "ready to use the configured OpenCode provider"
+                : installed
+                  ? authReady
+                    ? "installed with credentials available"
+                    : "installed but credentials were not detected"
+                  : "CLI not detected";
       return {
         id,
         label: FRAMEWORK_LABELS[id],
@@ -772,68 +682,17 @@ async function computeTaskAgentFrameworkState(
         reason: cooldown
           ? `${reason}; temporarily disabled after a provider failure: ${cooldown.reason}`
           : reason,
-        installCommand: preflight?.installCommand,
-        docsUrl: preflight?.docsUrl,
+        installCommand:
+          preflight?.installCommand ??
+          (id === "opencode"
+            ? "curl -fsSL https://opencode.ai/install | bash"
+            : undefined),
+        docsUrl:
+          preflight?.docsUrl ??
+          (id === "opencode" ? "https://opencode.ai/docs/" : undefined),
       };
     },
   );
-
-  inventory.push({
-    id: "pi",
-    label: FRAMEWORK_LABELS.pi,
-    installed: piReady,
-    authReady: piReady,
-    subscriptionReady: false,
-    temporarilyDisabled: false,
-    recommended: false,
-    reason: piReady ? "CLI detected" : "CLI not detected",
-  });
-
-  const opencodeReady = hasOpencodeBinary();
-  const opencodeLocalMode = isOpencodeLocalMode();
-  // Mirror the auto-detect logic in `buildOpencodeSpawnConfig`: any
-  // recognized provider API key auto-derives a working opencode config.
-  // List must stay in sync with `OPENCODE_PROVIDER_ENV_MAPPINGS` in
-  // `agent-credentials.ts`. The OPENAI_API_KEY case is a fallback —
-  // the spawn config builder uses OPENAI_BASE_URL when set to distinguish
-  // openai-direct vs an openai-compatible third party.
-  const opencodeAutoDetectedProvider = [
-    "OPENROUTER_API_KEY",
-    "CEREBRAS_API_KEY",
-    "GROQ_API_KEY",
-    "TOGETHER_API_KEY",
-    "DEEPSEEK_API_KEY",
-    "OPENAI_API_KEY",
-  ].find((key) => Boolean(readConfigEnvKey(key)?.trim()));
-  const opencodeAuthReady =
-    opencodeReady &&
-    (cloudReady ||
-      opencodeLocalMode ||
-      Boolean(readConfigEnvKey("ELIZA_OPENCODE_BASE_URL")) ||
-      Boolean(opencodeAutoDetectedProvider));
-  const opencodeReason = !opencodeReady
-    ? "CLI not detected"
-    : opencodeAuthReady
-      ? cloudReady
-        ? "ready to use Eliza Cloud as the model provider"
-        : opencodeLocalMode
-          ? "ready to use a local model provider (ELIZA_OPENCODE_LOCAL)"
-          : opencodeAutoDetectedProvider
-            ? `ready to use the auto-detected provider (${opencodeAutoDetectedProvider})`
-            : "ready to use the configured OpenCode provider"
-      : "installed but no model provider is configured (set ELIZA_OPENCODE_LOCAL=1 for local Ollama, pair Eliza Cloud, or set ELIZA_OPENCODE_BASE_URL)";
-  inventory.push({
-    id: "opencode",
-    label: FRAMEWORK_LABELS.opencode,
-    installed: opencodeReady,
-    authReady: opencodeAuthReady,
-    subscriptionReady: false,
-    temporarilyDisabled: false,
-    recommended: false,
-    reason: opencodeReason,
-    installCommand: "curl -fsSL https://opencode.ai/install | bash",
-    docsUrl: "https://opencode.ai/docs/",
-  });
 
   const frameworks = inventory.map((framework) => ({
     ...framework,
@@ -868,15 +727,11 @@ async function computeTaskAgentFrameworkState(
           ? framework.subscriptionReady
             ? 18
             : 6
-          : providerPrefersGemini && framework.id === "gemini"
-            ? framework.subscriptionReady
+          : providerPrefersOpencode && framework.id === "opencode"
+            ? framework.authReady
               ? 18
               : 6
-            : providerPrefersOpencode && framework.id === "opencode"
-              ? framework.authReady
-                ? 18
-                : 6
-              : 0;
+            : 0;
     const availabilityScore =
       (framework.installed ? 40 : -100) +
       (framework.authReady ? 18 : -25) +
@@ -1032,9 +887,6 @@ function computeTaskAgentFrameworkStateFromCachedInventory(
   const providerPrefersCodex =
     configuredSubscriptionProvider === "openai-codex" ||
     configuredSubscriptionProvider === "openai-subscription";
-  const providerPrefersGemini =
-    configuredSubscriptionProvider === "gemini-cli" ||
-    configuredSubscriptionProvider === "gemini-subscription";
   // Prefer opencode when the user has configured an OpenAI-compatible
   // endpoint (cerebras, openrouter, local Ollama, etc.) AND has no
   // first-party subscription paired. This is the "BYO API key" path —
@@ -1043,7 +895,6 @@ function computeTaskAgentFrameworkStateFromCachedInventory(
   const providerPrefersOpencode =
     !providerPrefersClaude &&
     !providerPrefersCodex &&
-    !providerPrefersGemini &&
     Boolean(
       readConfigEnvKey("ELIZA_OPENCODE_BASE_URL") ||
         readConfigEnvKey("ELIZA_OPENCODE_LOCAL") === "1" ||
@@ -1077,15 +928,11 @@ function computeTaskAgentFrameworkStateFromCachedInventory(
           ? framework.subscriptionReady
             ? 18
             : 6
-          : providerPrefersGemini && framework.id === "gemini"
-            ? framework.subscriptionReady
+          : providerPrefersOpencode && framework.id === "opencode"
+            ? framework.authReady
               ? 18
               : 6
-            : providerPrefersOpencode && framework.id === "opencode"
-              ? framework.authReady
-                ? 18
-                : 6
-              : 0;
+            : 0;
     const availabilityScore =
       (framework.installed ? 40 : -100) +
       (framework.authReady ? 18 : -25) +
@@ -1252,7 +1099,7 @@ function computeProfileFitScore(
 }
 
 function computeMetricsScore(
-  metrics: Omit<AgentMetrics, "totalCompletionMs"> | undefined,
+  metrics: AgentMetricsSummary | undefined,
   fastIterationSignal: number,
 ): number {
   if (!metrics || metrics.spawned === 0) {
@@ -1307,14 +1154,6 @@ function buildPreferredReason(
     framework.subscriptionReady
   ) {
     return `best fit for ${dominantSignals.join(" + ")} work while honoring the configured OpenAI subscription`;
-  }
-  if (
-    (configuredSubscriptionProvider === "gemini-cli" ||
-      configuredSubscriptionProvider === "gemini-subscription") &&
-    framework.id === "gemini" &&
-    framework.subscriptionReady
-  ) {
-    return `best fit for ${dominantSignals.join(" + ")} work while honoring the configured Gemini CLI subscription`;
   }
   if (framework.subscriptionReady) {
     return `best overall score for ${dominantSignals.join(" + ")} work with subscription-backed auth already available`;

@@ -2,21 +2,16 @@
  * Bootstrap-token exchange route.
  *
  * The cloud control plane mints a single-use RS256 JWT and injects it as
- * `ELIZA_CLOUD_BOOTSTRAP_TOKEN`. The dashboard pastes the same value into
- * this endpoint exactly once; on success we mint a long-lived browser
- * session row and return its id. The UI uses the id as a bearer until P1
- * lands the cookie + CSRF infrastructure.
- *
- * This is the only place that flips bootstrap → session. The token's `jti`
- * is consumed atomically by the verifier so a replay (even after a crash
- * mid-mint) is rejected.
+ * `ELIZA_CLOUD_BOOTSTRAP_TOKEN`. The dashboard submits it to this endpoint
+ * exactly once; on success a long-lived browser session row is minted and
+ * returned as a cookie pair. The token's `jti` is consumed atomically so
+ * any replay is rejected.
  */
 
 import crypto from "node:crypto";
 import type http from "node:http";
 import { logger as Logger } from "@elizaos/core";
-import type { DrizzleDatabase } from "@elizaos/plugin-sql";
-import { AuthStore } from "../services/auth-store";
+import { AuthStore, type DrizzleDatabase } from "../services/auth-store";
 import {
   appendAuditEvent,
   bootstrapExchangeLimiter,
@@ -73,13 +68,10 @@ function deriveIdentityIdFromCloudUser(cloudUserId: string): string {
  *
  * Body: `{ token: string }`
  *
- * Success: 200 with `{ sessionId, identityId, expiresAt }`. The caller stores
- * the session id and presents it as a bearer (`Authorization: Bearer …`)
- * on subsequent requests until P1 ships cookie auth.
+ * Success: 200 with `{ sessionId, identityId, expiresAt }` plus session/CSRF cookies.
  *
  * Failure: 401 / 403 / 429 with `{ error, reason }`. Reason is one of the
- * `VerifyBootstrapFailureReason` values plus `rate_limited` and
- * `db_unavailable`.
+ * `VerifyBootstrapFailureReason` values plus `rate_limited` and `db_unavailable`.
  */
 export async function handleAuthBootstrapRoutes(
   req: http.IncomingMessage,
@@ -191,9 +183,6 @@ export async function handleAuthBootstrapRoutes(
     scopes: [],
   });
 
-  // P1: bootstrap exchange now also sets the cookie pair. The response body
-  // continues to include `sessionId` for P0 SPA compat (sessionStorage-based
-  // bearer fallback) but the canonical credential is the cookie.
   res.setHeader("set-cookie", [
     serializeSessionCookie(session),
     serializeCsrfCookie(session),

@@ -6,7 +6,7 @@ import {
   resolvePinnedAdapter,
   resolveSpawnWorkdir,
   resolveWorkdirRoute,
-} from "../actions/coding-task-helpers.js";
+} from "../services/task-agent-routing.js";
 
 const ENV_KEY = "TASK_AGENT_WORKDIR_ROUTES";
 

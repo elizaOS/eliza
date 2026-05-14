@@ -16,10 +16,7 @@ from typing import TextIO
 from .types import (
     PAPER_OOLONG_SCORES,
     PAPER_S_NIAH_SCORES,
-    RLMBenchMetrics,
     RLMBenchResults,
-    RLMBenchType,
-    RLMStrategy,
 )
 
 logger = logging.getLogger("elizaos.rlm-bench")

@@ -1,44 +1,14 @@
 #!/usr/bin/env node
 
+// Static import: Bun.build must include the AOSP loader in the mobile bundle.
+// We pin it to globalThis to prevent tree-shaking — the only consumer is a
+// dynamic import in cli/index.ts, which is enough for resolution but not
+// inclusion. Without this guard the symbol silently disappears from the bundle.
 import * as _earlyFs from "node:fs";
-// Static import so `Bun.build` pulls the AOSP llama loader into the mobile
-// bundle. The adapter self-gates on `ELIZA_LOCAL_LLAMA=1` and no-ops on
-// every other platform/runtime, so the import is safe everywhere; we only
-// need it bundled so `ensure-local-inference-handler.ts`'s dynamic import of
-// `@elizaos/plugin-aosp-local-inference` resolves on-device. Registration
-// itself happens through that handler, not from this side-effect import.
-//
-// We capture the named export into `globalThis` to defeat Bun.build's
-// tree-shaking — a bare side-effect import would let the bundler drop
-// `registerAospLlamaLoader` because nothing else in this entry references it,
-// which is exactly what we observed empirically (only the source-map comment
-// survived, the symbol did not). Dropping it would silently break the
-// dynamic import path on AOSP. Keep this guard pinned.
-// Static import so `Bun.build` pulls the AOSP local-inference bootstrap
-// into the mobile bundle. The bootstrap runs `ensureAospLocalInferenceHandlers`
-// after `startEliza()` returns the runtime, registering TEXT_SMALL /
-// TEXT_LARGE / TEXT_EMBEDDING handlers backed by the AOSP llama loader.
-// Without this static import + globalThis pin, Bun.build tree-shakes the
-// symbol out (the only consumer is a dynamic import in `cli/index.ts`,
-// which is enough for resolution but not for inclusion in some Bun.build
-// configurations). Mirror the `__elizaAospLlamaLoader` pattern.
 import { runAutonomousCli } from "./cli/index.ts";
 
-// Pull @elizaos/app-{wifi,contacts,phone}'s runtime plugin adapter into the
-// mobile bundle. The adapter imports each app package's `/plugin` subpath,
-// applies the agent-side hosted-app session gate, and Object.assigns those
-// modules into STATIC_ELIZA_PLUGINS so plugin-resolver.ts picks them up before
-// falling through to a wildcard app plugin import that has no
-// node_modules tree to resolve on-device.
-//
-// Dynamic + try/catch instead of a static `import` so non-mobile builds
-// (the Docker agent server image, desktop CLI on a fresh machine) don't
-// crash at module init when those workspace packages aren't installed.
-// Bun.build still bundles the target because the path is a string
-// literal, so the Android bundle keeps the same behavior.
 // Early diagnostic logger for Android: captures errors before the fs shim runs.
-// Uses the raw node:fs (captured above) so the shim can't interfere.
-// Writes to $ELIZA_STATE_DIR/bin-debug.log — readable via adb run-as.
+// Uses raw node:fs so the shim can't interfere. Writes to $ELIZA_STATE_DIR/bin-debug.log.
 const _binDebugLog =
   process.env.ELIZA_PLATFORM === "android"
     ? (() => {

@@ -1,5 +1,5 @@
 /**
- * Unified payment requests — cancel.
+ * Payment requests — cancel.
  *
  * POST /api/v1/payment-requests/:id/cancel  (authed creator)
  */

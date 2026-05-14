@@ -8,7 +8,7 @@
 
 import type http from "node:http";
 import { TLSSocket } from "node:tls";
-import type { IAgentRuntime, Route } from "@elizaos/core";
+import type { IAgentRuntime, LegacyRouteHandler, Route } from "@elizaos/core";
 import {
   readJsonBody as httpReadJsonBody,
   sendJson as httpSendJson,
@@ -52,9 +52,7 @@ function requestBaseUrl(req: http.IncomingMessage): string {
   return `${protocol}://${host}`;
 }
 
-type PluginRouteHandler = NonNullable<Route["handler"]>;
-
-function browserWorkspaceRouteHandler(): PluginRouteHandler {
+function browserWorkspaceRouteHandler(): LegacyRouteHandler {
   return async (
     req: unknown,
     res: unknown,

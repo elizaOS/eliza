@@ -232,7 +232,7 @@ export async function handleTextToSpeech(
 
   const details: RecordLlmCallDetails = {
     model,
-    systemPrompt: instructions ?? "",
+    systemPrompt: instructions,
     userPrompt: text,
     temperature: 0,
     maxTokens: 0,

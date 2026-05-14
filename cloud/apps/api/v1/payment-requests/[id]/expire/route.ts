@@ -1,5 +1,5 @@
 /**
- * Unified payment requests — expire (authed creator).
+ * Payment requests — expire (authed creator).
  *
  * POST /api/v1/payment-requests/:id/expire
  *

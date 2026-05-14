@@ -132,7 +132,7 @@ export const trustAction: Action = {
 		"SET_PERMISSIONS",
 	],
 	description:
-		"Unified trust system control. action=evaluate reads a trust profile for an entity; record_interaction logs a trust-affecting event; request_elevation requests temporary permissions; update_role assigns OWNER / ADMIN / NONE roles within a world.",
+		"Trust system control. action=evaluate reads a trust profile for an entity; record_interaction logs a trust-affecting event; request_elevation requests temporary permissions; update_role assigns OWNER / ADMIN / NONE roles within a world.",
 
 	parameters: [
 		{

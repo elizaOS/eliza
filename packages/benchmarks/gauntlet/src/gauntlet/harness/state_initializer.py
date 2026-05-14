@@ -256,7 +256,7 @@ class StateInitializer:
         lamports = int(sol_amount * 1_000_000_000)
         try:
             await rpc.request_airdrop(str(pubkey), lamports)
-        except Exception as e:
+        except Exception:
             # Airdrop may fail if account already funded or limit reached
             pass
         

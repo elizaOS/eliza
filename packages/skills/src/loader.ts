@@ -112,22 +112,18 @@ function loadSkillFromFile(
   const skillDir = dirname(filePath);
   const parentDirName = basename(skillDir);
 
-  // Validate description
   const descErrors = validateDescription(frontmatter.description);
   for (const error of descErrors) {
     diagnostics.push({ type: "warning", message: error, path: filePath });
   }
 
-  // Use name from frontmatter, or fall back to parent directory name
   const name = frontmatter.name || parentDirName;
 
-  // Validate name
   const nameErrors = validateName(name, parentDirName);
   for (const error of nameErrors) {
     diagnostics.push({ type: "warning", message: error, path: filePath });
   }
 
-  // Don't load the skill if description is completely missing
   if (!frontmatter.description || frontmatter.description.trim() === "") {
     return { skill: null, diagnostics };
   }
@@ -171,19 +167,16 @@ function loadSkillsFromDirInternal(
   const entries = readdirSync(dir, { withFileTypes: true });
 
   for (const entry of entries) {
-    // Skip hidden files and directories
     if (entry.name.startsWith(".")) {
       continue;
     }
 
-    // Skip node_modules to avoid scanning dependencies
     if (entry.name === "node_modules") {
       continue;
     }
 
     const fullPath = join(dir, entry.name);
 
-    // For symlinks, check if they point to a directory and follow them
     let isDirectory = entry.isDirectory();
     let isFile = entry.isFile();
     if (entry.isSymbolicLink()) {
@@ -318,13 +311,11 @@ export function loadSkills(options: LoadSkillsOptions = {}): LoadSkillsResult {
   function addSkills(result: LoadSkillsResult): void {
     allDiagnostics.push(...result.diagnostics);
     for (const skill of result.skills) {
-      // Skip skills without file paths (inline skills) - they can't be deduplicated
       if (!skill.filePath) {
         skillMap.set(skill.name, skill);
         continue;
       }
 
-      // Resolve symlinks to detect duplicate files
       let realPath: string;
       try {
         realPath = realpathSync(skill.filePath);
@@ -332,7 +323,6 @@ export function loadSkills(options: LoadSkillsOptions = {}): LoadSkillsResult {
         realPath = skill.filePath;
       }
 
-      // Skip silently if we've already loaded this exact file (via symlink)
       if (realPathSet.has(realPath)) {
         continue;
       }
@@ -372,7 +362,6 @@ export function loadSkills(options: LoadSkillsOptions = {}): LoadSkillsResult {
     addSkills(loadSkillsFromDirInternal(projectSkillsDir, "project", true));
   }
 
-  // Determine source for explicit paths
   const getSource = (resolvedPath: string): "user" | "project" | "path" => {
     if (!includeDefaults) {
       if (isUnderPath(resolvedPath, userSkillsDir)) return "user";
@@ -381,7 +370,6 @@ export function loadSkills(options: LoadSkillsOptions = {}): LoadSkillsResult {
     return "path";
   };
 
-  // Load explicit skill paths
   for (const rawPath of skillPaths) {
     const resolvedPath = resolveSkillPath(rawPath, cwd);
     if (!existsSync(resolvedPath)) {
@@ -432,15 +420,12 @@ export function loadSkillEntries(
 
   return skills.map((skill) => {
     let frontmatter: SkillFrontmatter = {};
-    // Only parse frontmatter for file-based skills
     if (skill.filePath) {
       try {
         const raw = readFileSync(skill.filePath, "utf-8");
         const parsed = parseFrontmatter<SkillFrontmatter>(raw);
         frontmatter = parsed.frontmatter;
-      } catch {
-        // Use empty frontmatter if parsing fails
-      }
+      } catch {}
     }
 
     return {

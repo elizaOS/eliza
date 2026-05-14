@@ -5,7 +5,7 @@
 
 import { Hono } from "hono";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { nextStyleParams } from "@/lib/api/hono-next-style-params";
+import { nextStyleParams, type RouteContext } from "@/lib/api/hono-next-style-params";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 import { addCorsHeaders, createPreflightResponse } from "@/lib/middleware/cors-apps";
 import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
@@ -109,10 +109,6 @@ function providerFailureResponse(error: unknown) {
   };
 }
 
-interface RouteContext {
-  params: Promise<{ id: string }>;
-}
-
 /**
  * OPTIONS /api/v1/apps/[id]/chat
  * CORS preflight handler for app chat endpoint.
@@ -135,7 +131,10 @@ async function __next_OPTIONS(request: Request) {
  *
  * @returns Streaming or non-streaming chat completion response.
  */
-async function handlePOST(request: Request, context: RouteContext): Promise<Response> {
+async function handlePOST(
+  request: Request,
+  context: RouteContext<{ id: string }>,
+): Promise<Response> {
   const startTime = Date.now();
   const origin = request.headers.get("origin");
   const routeTimeoutMs = getRouteTimeoutMs(ROUTE_MAX_DURATION);

@@ -9,7 +9,6 @@ import {
 import { AlertTriangle, CheckCircle2 } from "lucide-react";
 import type {
   AgentTab,
-  AiderProvider,
   LlmProvider,
   ModelOption,
 } from "./coding-agent-settings-shared";
@@ -18,7 +17,6 @@ interface ModelConfigSectionProps {
   activeTab: AgentTab;
   llmProvider: LlmProvider;
   isCloud: boolean;
-  aiderProvider: AiderProvider;
   prefix: string;
   powerfulValue: string;
   fastValue: string;
@@ -31,7 +29,6 @@ export function ModelConfigSection({
   activeTab,
   llmProvider,
   isCloud,
-  aiderProvider,
   prefix,
   powerfulValue,
   fastValue,
@@ -42,37 +39,6 @@ export function ModelConfigSection({
   const { t } = useApp();
   return (
     <>
-      {activeTab === "aider" && (
-        <SettingsControls.Field>
-          <SettingsControls.FieldLabel>
-            {t("codingagentsettingssection.Provider")}
-          </SettingsControls.FieldLabel>
-          <Select
-            value={aiderProvider}
-            onValueChange={(value: string) =>
-              setPref("PARALLAX_AIDER_PROVIDER", value)
-            }
-          >
-            <SettingsControls.SelectTrigger variant="compact">
-              <SelectValue />
-            </SettingsControls.SelectTrigger>
-            <SelectContent>
-              <SelectItem value="anthropic">
-                {t("codingagentsettingssection.Anthropic")}
-              </SelectItem>
-              <SelectItem value="openai">
-                {t("codingagentsettingssection.OpenAI")}
-              </SelectItem>
-              {!isCloud && (
-                <SelectItem value="google">
-                  {t("codingagentsettingssection.Google")}
-                </SelectItem>
-              )}
-            </SelectContent>
-          </Select>
-        </SettingsControls.Field>
-      )}
-
       <div className="flex gap-3">
         <SettingsControls.Field className="flex-1">
           <SettingsControls.FieldLabel>
@@ -130,7 +96,7 @@ export function ModelConfigSection({
         </SettingsControls.Field>
       </div>
 
-      {llmProvider === "api_keys" && activeTab !== "aider" && (
+      {llmProvider === "api_keys" && (
         <SettingsControls.MutedText
           className="mt-1.5 inline-flex items-center gap-1.5"
           title={

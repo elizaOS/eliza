@@ -5,7 +5,7 @@ import type {
 	RoleGate,
 } from "./contexts";
 import type { Memory } from "./memory";
-import type { Content, JsonValue } from "./primitives";
+import type { Content, JsonPrimitive, JsonValue } from "./primitives";
 import type { IAgentRuntime } from "./runtime";
 import type { ActionPlan, State } from "./state";
 
@@ -475,11 +475,7 @@ export interface Action {
  */
 export type ActionModelClass = "TEXT_LARGE" | "TEXT_SMALL" | "LOCAL";
 
-/**
- * JSON-serializable primitive values.
- * These are the basic types that can be serialized to JSON.
- */
-export type JsonPrimitive = string | number | boolean | null;
+export type { JsonPrimitive } from "./primitives";
 
 /**
  * Value types allowed in provider results.

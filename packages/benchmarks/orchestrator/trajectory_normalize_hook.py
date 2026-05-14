@@ -31,7 +31,6 @@ import json
 import logging
 import sys
 from pathlib import Path
-from typing import Any
 
 # Add benchmarks/lib to sys.path so the normalizer module imports cleanly
 # regardless of pytest cwd. The orchestrator already keeps the workspace

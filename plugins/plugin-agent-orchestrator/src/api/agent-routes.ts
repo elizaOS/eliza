@@ -1,7 +1,7 @@
 /**
  * Task Agent Route Handlers
  *
- * Handles routes for PTY-based task-agent management:
+ * Handles routes for ACP-based task-agent management:
  * - Preflight checks, metrics, workspace files
  * - Approval presets and config
  * - Agent CRUD: list, spawn, get, send, stop, output
@@ -16,21 +16,9 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import * as os from "node:os";
 import * as path from "node:path";
 import { promisify } from "node:util";
-import { extractEvalRunMetadata } from "../actions/eval-metadata.js";
-import {
-  buildAgentCredentials,
-  isAnthropicOAuthToken,
-  sanitizeCustomCredentials,
-} from "../services/agent-credentials.js";
-import { getCoordinator } from "../services/pty-service.js";
-import {
-  type CodingAgentType,
-  isOpencodeAgentType,
-  isPiAgentType,
-  normalizeAgentType,
-  toPiCommand,
-} from "../services/pty-types.js";
+import { logger } from "@elizaos/core";
 import { getTaskAgentFrameworkState } from "../services/task-agent-frameworks.js";
+import type { AgentType, ApprovalPreset } from "../services/types.js";
 import type { RouteContext } from "./route-utils.js";
 import { parseBody, sendError, sendJson } from "./route-utils.js";
 
@@ -235,13 +223,16 @@ export async function handleAgentRoutes(
   // === Preflight Check ===
   // GET /api/coding-agents/preflight
   if (method === "GET" && pathname === "/api/coding-agents/preflight") {
-    if (!ctx.ptyService) {
-      sendError(res, "PTY Service not available", 503);
+    if (!ctx.acpService) {
+      sendError(res, "ACP service not available", 503);
       return true;
     }
 
     try {
-      const results = await ctx.ptyService.checkAvailableAgents();
+      const results =
+        (await ctx.acpService.checkAvailableAgents?.()) ??
+        (await ctx.acpService.getAvailableAgents?.()) ??
+        [];
       sendJson(res, results);
     } catch (error) {
       sendError(
@@ -256,55 +247,37 @@ export async function handleAgentRoutes(
   // POST /api/coding-agents/auth/:agent — trigger CLI auth flow
   const authMatch = pathname.match(/^\/api\/coding-agents\/auth\/(\w+)$/);
   if (method === "POST" && authMatch) {
-    if (!ctx.ptyService) {
-      sendError(res, "PTY Service not available", 503);
+    if (!ctx.acpService) {
+      sendError(res, "ACP service not available", 503);
       return true;
     }
     const rawAgentType = authMatch[1];
 
-    // Validate agent type before instantiating an adapter.
-    // Must stay in sync with PTYService.checkAvailableAgents() default list.
     const SUPPORTED_AGENTS: ReadonlyArray<string> = [
       "claude",
       "codex",
-      "gemini",
-      "aider",
+      "opencode",
     ];
     if (!SUPPORTED_AGENTS.includes(rawAgentType)) {
       sendError(res, `Unsupported agent type: ${rawAgentType}`, 400);
       return true;
     }
 
-    const agentType =
-      rawAgentType as import("../services/task-agent-frameworks.js").SupportedTaskAgentAdapter;
-    try {
-      const result = await ctx.ptyService.triggerAgentAuth(agentType);
-      if (!result) {
-        sendError(res, `No auth flow available for ${agentType}`, 400);
-      } else {
-        sendJson(res, result);
-      }
-    } catch (error) {
-      const msg =
-        error instanceof Error ? error.message : "Auth trigger failed";
-      // Defensive fallback: primary input validation is handled by
-      // SUPPORTED_AGENTS above, so reaching here means the adapter package's
-      // own validation failed (e.g. internal lookup table mismatch). The regex
-      // is brittle if `coding-agent-adapters` changes its error wording, but
-      // it lets us return 400 instead of 500 for likely client errors.
-      const status = /unknown adapter|unsupported/i.test(msg) ? 400 : 500;
-      sendError(res, msg, status);
-    }
+    sendError(
+      res,
+      `ACP auth is handled by acpx/the selected ${rawAgentType} CLI; no legacy auth flow is available.`,
+      400,
+    );
     return true;
   }
 
   // GET /api/coding-agents/metrics
   if (method === "GET" && pathname === "/api/coding-agents/metrics") {
-    if (!ctx.ptyService) {
-      sendError(res, "PTY Service not available", 503);
+    if (!ctx.acpService) {
+      sendError(res, "ACP service not available", 503);
       return true;
     }
-    sendJson(res, ctx.ptyService.getAgentMetrics());
+    sendJson(res, {});
     return true;
   }
 
@@ -364,8 +337,8 @@ export async function handleAgentRoutes(
   // === Workspace Files ===
   // GET /api/coding-agents/workspace-files?agentType=claude
   if (method === "GET" && pathname === "/api/coding-agents/workspace-files") {
-    if (!ctx.ptyService) {
-      sendError(res, "PTY Service not available", 503);
+    if (!ctx.acpService) {
+      sendError(res, "ACP service not available", 503);
       return true;
     }
 
@@ -375,31 +348,16 @@ export async function handleAgentRoutes(
       if (!agentType) {
         sendError(
           res,
-          "agentType query parameter required (claude, gemini, codex, aider, pi)",
+          "agentType query parameter required (claude, codex, opencode)",
           400,
         );
         return true;
       }
 
-      if (isPiAgentType(agentType)) {
-        sendJson(res, {
-          agentType: "pi",
-          memoryFilePath: ".pi/agent/settings.json",
-          files: [],
-        });
-        return true;
-      }
-
-      const files = ctx.ptyService.getWorkspaceFiles(
-        agentType as import("coding-agent-adapters").AdapterType,
-      );
-      const memoryFilePath = ctx.ptyService.getMemoryFilePath(
-        agentType as import("coding-agent-adapters").AdapterType,
-      );
       sendJson(res, {
         agentType,
-        memoryFilePath,
-        files,
+        memoryFilePath: null,
+        files: [],
       });
     } catch (error) {
       sendError(
@@ -432,18 +390,18 @@ export async function handleAgentRoutes(
 
   // GET /api/coding-agents/settings
   if (method === "GET" && pathname === "/api/coding-agents/settings") {
-    if (!ctx.ptyService) {
-      sendError(res, "PTY Service not available", 503);
+    if (!ctx.acpService) {
+      sendError(res, "ACP service not available", 503);
       return true;
     }
     const frameworkState = await getTaskAgentFrameworkState(
       ctx.runtime,
-      ctx.ptyService,
+      ctx.acpService,
     );
     sendJson(res, {
-      defaultApprovalPreset: ctx.ptyService.defaultApprovalPreset,
-      agentSelectionStrategy: ctx.ptyService.agentSelectionStrategy,
-      defaultAgentType: ctx.ptyService.defaultAgentType,
+      defaultApprovalPreset: ctx.acpService.defaultApprovalPreset,
+      agentSelectionStrategy: ctx.acpService.agentSelectionStrategy,
+      defaultAgentType: await ctx.acpService.resolveAgentType?.({}),
       preferredAgentType: frameworkState.preferred.id,
       preferredAgentReason: frameworkState.preferred.reason,
       configuredSubscriptionProvider:
@@ -455,8 +413,8 @@ export async function handleAgentRoutes(
 
   // GET /api/coding-agents/approval-config?agentType=claude&preset=autonomous
   if (method === "GET" && pathname === "/api/coding-agents/approval-config") {
-    if (!ctx.ptyService) {
-      sendError(res, "PTY Service not available", 503);
+    if (!ctx.acpService) {
+      sendError(res, "ACP service not available", 503);
       return true;
     }
 
@@ -469,11 +427,7 @@ export async function handleAgentRoutes(
     }
 
     try {
-      const config = ctx.ptyService.getApprovalConfig(
-        agentType as import("coding-agent-adapters").AdapterType,
-        preset as import("coding-agent-adapters").ApprovalPreset,
-      );
-      sendJson(res, config);
+      sendJson(res, { agentType, preset, transport: "acp" });
     } catch (error) {
       sendError(
         res,
@@ -487,13 +441,13 @@ export async function handleAgentRoutes(
   // === List Agents ===
   // GET /api/coding-agents
   if (method === "GET" && pathname === "/api/coding-agents") {
-    if (!ctx.ptyService) {
-      sendError(res, "PTY Service not available", 503);
+    if (!ctx.acpService) {
+      sendError(res, "ACP service not available", 503);
       return true;
     }
 
     try {
-      const sessions = await ctx.ptyService.listSessions();
+      const sessions = await ctx.acpService.listSessions();
       sendJson(res, sessions);
     } catch (error) {
       sendError(
@@ -508,8 +462,8 @@ export async function handleAgentRoutes(
   // === Spawn Agent ===
   // POST /api/coding-agents/spawn
   if (method === "POST" && pathname === "/api/coding-agents/spawn") {
-    if (!ctx.ptyService) {
-      sendError(res, "PTY Service not available", 503);
+    if (!ctx.acpService) {
+      sendError(res, "ACP service not available", 503);
       return true;
     }
 
@@ -566,7 +520,7 @@ export async function handleAgentRoutes(
       }
 
       // Check concurrency limit before spawning
-      const activeSessions = await ctx.ptyService.listSessions();
+      const activeSessions = await ctx.acpService.listSessions();
       const maxSessions = 8;
       if (activeSessions.length >= maxSessions) {
         sendError(
@@ -581,120 +535,36 @@ export async function handleAgentRoutes(
         try {
           await runBenchmarkPreflight(workdir);
         } catch (preflightError) {
-          console.warn(
-            `[coding-agent] benchmark preflight failed for ${workdir}:`,
-            preflightError,
+          logger.warn(
+            `[coding-agent] benchmark preflight failed for ${workdir}: ${
+              preflightError instanceof Error
+                ? preflightError.message
+                : String(preflightError)
+            }`,
           );
         }
       }
 
-      // Build credentials from runtime
-      const rawAnthropicKey = ctx.runtime.getSetting("ANTHROPIC_API_KEY") as
-        | string
-        | undefined;
-      let credentials: ReturnType<typeof buildAgentCredentials>;
-      try {
-        credentials = buildAgentCredentials(ctx.runtime);
-      } catch (error) {
-        const message =
-          error instanceof Error
-            ? error.message
-            : "Failed to build credentials";
-        sendError(res, message, 400);
-        return true;
-      }
-
-      // Resolve requested framework; PTYService applies model preferences centrally.
+      // Resolve requested framework through the single ACP path.
       const agentStr = agentType
         ? (agentType as string).toLowerCase()
-        : await ctx.ptyService.resolveAgentType();
-      const piRequested = isPiAgentType(agentStr);
-      const opencodeRequested = isOpencodeAgentType(agentStr);
-      // For pi/opencode we keep the unnormalized type so spawnSession can
-      // detect the request via its own `isOpencodeAgentType` / `isPiAgentType`
-      // check. Normalizing here to "shell" too early skips the per-adapter
-      // brief + AGENTS.md write paths inside spawnSession.
-      const normalizedType: CodingAgentType =
-        piRequested || opencodeRequested
-          ? (agentStr as CodingAgentType)
-          : normalizeAgentType(agentStr);
-      const aiderProvider =
-        agentStr === "aider"
-          ? (ctx.runtime.getSetting("ELIZA_AIDER_PROVIDER") as string | null)
-          : null;
+        : String((await ctx.acpService.resolveAgentType?.({})) ?? "codex");
 
-      // Check if coordinator is active — route blocking prompts through it
-      const coordinator = getCoordinator(ctx.runtime);
-      const requestedThreadId =
-        typeof (metadata as Record<string, unknown>)?.threadId === "string"
-          ? ((metadata as Record<string, unknown>).threadId as string)
-          : null;
-      const evalRunMetadata = extractEvalRunMetadata(
-        metadata as Record<string, unknown>,
-      );
-      const taskThread =
-        coordinator && taskText && !requestedThreadId
-          ? await coordinator.createTaskThread({
-              title:
-                ((metadata as Record<string, unknown>)?.label as
-                  | string
-                  | undefined) ?? `Task ${Date.now()}`,
-              originalRequest: taskText,
-              scenarioId: evalRunMetadata.scenarioId,
-              batchId: evalRunMetadata.batchId,
-              metadata: {
-                workdir: workdir ?? null,
-                source: "api-spawn",
-                ...(evalRunMetadata.scenarioId
-                  ? { scenarioId: evalRunMetadata.scenarioId }
-                  : {}),
-                ...(evalRunMetadata.batchId
-                  ? { batchId: evalRunMetadata.batchId }
-                  : {}),
-              },
-            })
-          : requestedThreadId
-            ? await coordinator?.getTaskThread(requestedThreadId)
-            : null;
-
-      const session = await ctx.ptyService.spawnSession({
+      const session = await ctx.acpService.spawnSession({
         name: `agent-${Date.now()}`,
-        agentType: normalizedType,
+        agentType: agentStr as AgentType,
         workdir: workdir as string,
-        initialTask: piRequested ? toPiCommand(taskText) : taskText,
+        initialTask: taskText,
         memoryContent: memoryContent as string | undefined,
-        credentials,
-        approvalPreset: approvalPreset as
-          | import("coding-agent-adapters").ApprovalPreset
+        approvalPreset: approvalPreset as ApprovalPreset | undefined,
+        customCredentials: customCredentials as
+          | Record<string, string>
           | undefined,
-        customCredentials: sanitizeCustomCredentials(
-          customCredentials as Record<string, string> | undefined,
-          isAnthropicOAuthToken(rawAnthropicKey) ? [rawAnthropicKey] : [],
-        ),
-        // Let adapter auto-response handle known prompts (permissions, trust, etc.)
-        // instantly. The coordinator handles only unrecognized prompts via LLM.
         metadata: {
-          threadId: taskThread?.id ?? requestedThreadId,
           requestedType: agentStr,
           ...(metadata as Record<string, unknown>),
-          ...(aiderProvider ? { provider: aiderProvider } : {}),
         },
       });
-      if (coordinator) {
-        const label = (metadata as Record<string, unknown>)?.label as
-          | string
-          | undefined;
-        const defaultLabelPrefix =
-          normalizedType === "shell" ? "shell" : "agent";
-        await coordinator.registerTask(session.id, {
-          threadId: taskThread?.id ?? requestedThreadId ?? session.id,
-          agentType:
-            agentStr as import("../services/pty-service.js").CodingAgentType,
-          label: label || `${defaultLabelPrefix}-${session.id.slice(-8)}`,
-          originalTask: taskText ?? "",
-          workdir: session.workdir,
-        });
-      }
 
       sendJson(
         res,
@@ -720,13 +590,13 @@ export async function handleAgentRoutes(
   // GET /api/coding-agents/:id
   const agentMatch = pathname.match(/^\/api\/coding-agents\/([^/]+)$/);
   if (method === "GET" && agentMatch) {
-    if (!ctx.ptyService) {
-      sendError(res, "PTY Service not available", 503);
+    if (!ctx.acpService) {
+      sendError(res, "ACP service not available", 503);
       return true;
     }
 
     const sessionId = agentMatch[1];
-    const session = ctx.ptyService.getSession(sessionId);
+    const session = await ctx.acpService.getSession(sessionId);
 
     if (!session) {
       sendError(res, "Agent session not found", 404);
@@ -741,8 +611,8 @@ export async function handleAgentRoutes(
   // POST /api/coding-agents/:id/send
   const sendMatch = pathname.match(/^\/api\/coding-agents\/([^/]+)\/send$/);
   if (method === "POST" && sendMatch) {
-    if (!ctx.ptyService) {
-      sendError(res, "PTY Service not available", 503);
+    if (!ctx.acpService) {
+      sendError(res, "ACP service not available", 503);
       return true;
     }
 
@@ -752,14 +622,10 @@ export async function handleAgentRoutes(
       const { input, keys } = body;
 
       if (keys) {
-        // Send special keys (e.g. "enter", ["down","enter"], "Ctrl-C")
-        await ctx.ptyService.sendKeysToSession(
-          sessionId,
-          keys as string | string[],
-        );
-        sendJson(res, { success: true });
+        sendError(res, "ACP sessions do not support raw key input", 400);
+        return true;
       } else if (input && typeof input === "string") {
-        await ctx.ptyService.sendToSession(sessionId, input);
+        await ctx.acpService.sendToSession(sessionId, input);
         sendJson(res, { success: true });
       } else {
         sendError(
@@ -783,14 +649,14 @@ export async function handleAgentRoutes(
   // POST /api/coding-agents/:id/stop
   const stopMatch = pathname.match(/^\/api\/coding-agents\/([^/]+)\/stop$/);
   if (method === "POST" && stopMatch) {
-    if (!ctx.ptyService) {
-      sendError(res, "PTY Service not available", 503);
+    if (!ctx.acpService) {
+      sendError(res, "ACP service not available", 503);
       return true;
     }
 
     try {
       const sessionId = stopMatch[1];
-      await ctx.ptyService.stopSession(sessionId);
+      await ctx.acpService.stopSession(sessionId);
       sendJson(res, { success: true, sessionId });
     } catch (error) {
       sendError(
@@ -806,8 +672,8 @@ export async function handleAgentRoutes(
   // GET /api/coding-agents/:id/output
   const outputMatch = pathname.match(/^\/api\/coding-agents\/([^/]+)\/output$/);
   if (method === "GET" && outputMatch) {
-    if (!ctx.ptyService) {
-      sendError(res, "PTY Service not available", 503);
+    if (!ctx.acpService) {
+      sendError(res, "ACP service not available", 503);
       return true;
     }
 
@@ -816,7 +682,7 @@ export async function handleAgentRoutes(
       const url = new URL(req.url || "", `http://${req.headers.host}`);
       const lines = parseInt(url.searchParams.get("lines") || "100", 10);
 
-      const output = await ctx.ptyService.getSessionOutput(sessionId, lines);
+      const output = await ctx.acpService.getSessionOutput?.(sessionId, lines);
       sendJson(res, { sessionId, output });
     } catch (error) {
       sendError(
@@ -828,19 +694,19 @@ export async function handleAgentRoutes(
     return true;
   }
 
-  // === Get Buffered Terminal Output (raw ANSI for xterm.js hydration) ===
+  // === Get Buffered Terminal Output ===
   // GET /api/coding-agents/:id/buffered-output
   const bufferedMatch = pathname.match(
     /^\/api\/coding-agents\/([^/]+)\/buffered-output$/,
   );
   if (method === "GET" && bufferedMatch) {
-    if (!ctx.ptyService?.consoleBridge) {
-      sendError(res, "Console bridge not available", 503);
+    if (!ctx.acpService?.getSessionOutput) {
+      sendError(res, "ACP output buffer not available", 503);
       return true;
     }
     try {
       const sessionId = bufferedMatch[1];
-      const output = ctx.ptyService.consoleBridge.getBufferedOutput(sessionId);
+      const output = await ctx.acpService.getSessionOutput(sessionId, 500);
       sendJson(res, { sessionId, output });
     } catch (error) {
       sendError(

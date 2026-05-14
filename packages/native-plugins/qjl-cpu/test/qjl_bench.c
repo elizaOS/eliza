@@ -123,7 +123,6 @@ typedef void (*score_fn)(const float *, const qjl_block_qjl1_256 *,
 
 static int run_quant_parity(const char *name, quant_fn fn, const fixture_t *fx) {
     int sign_match = 0, norm_match = 0;
-    int sign_norm_off1 = 0;  /* tolerance counter (unused — we expect 0) */
     qjl_block_qjl1_256 blk;
     for (int r = 0; r < fx->n; r++) {
         fn(fx->keys + r * QJL_HEAD_DIM, fx->proj, &blk);
@@ -131,7 +130,7 @@ static int run_quant_parity(const char *name, quant_fn fn, const fixture_t *fx) 
         if (memcmp(blk.qs, expected_signs, QJL_PACKED_BYTES) == 0) {
             sign_match++;
         } else {
-            if (sign_match + sign_norm_off1 < 3) {
+            if (sign_match < 3) {
                 int diffs = 0;
                 for (int b = 0; b < QJL_PACKED_BYTES; b++) {
                     if (blk.qs[b] != expected_signs[b]) diffs++;
@@ -341,7 +340,7 @@ static int run_throughput(void) {
     }
 
 #if !(defined(__ARM_NEON) || defined(__ARM_NEON__))
-    printf("  TODO: NEON throughput TBD on cuttlefish/arm64 (see README).\n");
+    printf("  NEON throughput not measured on this target (see README).\n");
 #endif
 
     free(proj); free(keys); free(blocks); free(q_sketch); free(scores);

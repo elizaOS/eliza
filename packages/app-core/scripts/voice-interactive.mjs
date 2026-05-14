@@ -196,7 +196,7 @@ async function inspectActiveOptimizations(args) {
   } else {
     missing.push({
       what: `the ${catalogEntry?.id ?? "eliza-1-2b"} bundle is not installed`,
-      fix: "download it (run the harness without --list-active for the auto-download prompt) or follow RELEASE_V1.md to acquire/convert/quantize the bundle, then place it under <state-dir>/local-inference/models/<id>.bundle/",
+      fix: "download it (run the harness without --list-active for the auto-download prompt) or follow docs/eliza-1-pipeline/06-test-matrix.md to acquire/convert/quantize the bundle, then place it under <state-dir>/local-inference/models/<id>.bundle/",
     });
   }
 
@@ -519,7 +519,7 @@ function printActive(report, _args) {
  *
  * This is the durable description; the `verified` column reflects the
  * current state recorded in `packages/inference/README.md` and
- * `packages/inference/reports/porting/2026-05-11/needs-hardware-ledger.md`.
+ * `docs/eliza-1-pipeline/06-test-matrix.md`.
  */
 const PLATFORM_MATRIX = [
   {
@@ -552,7 +552,7 @@ const PLATFORM_MATRIX = [
         gpu: "rocm",
         runtime: "llama-server (spawn)",
         kernels:
-          "HIP build; custom kernels not yet HIP-ported → reduced-optimization local mode (stock f16 KV; MILADY_LOCAL_ALLOW_STOCK_KV=1)",
+          "HIP build; custom kernels not yet HIP-ported → reduced-optimization local mode (stock f16 KV; ELIZA_LOCAL_ALLOW_STOCK_KV=1)",
         mic: "arecord / parec / sox",
         player: "aplay / paplay / sox / ffplay",
         vad: "onnxruntime-node",
@@ -826,7 +826,7 @@ async function printPlatformReport() {
       "dim",
       "Kernel coverage rule (AGENTS.md §3 vs the works-everywhere directive): the build dispatches\n" +
         "  the kernels on every backend where it can (Metal: all 5; CUDA: fork binary; Vulkan: source-\n" +
-        "  patched; CPU: SIMD TUs); where it can't yet (ROCm/HIP), set MILADY_LOCAL_ALLOW_STOCK_KV=1 to\n" +
+        "  patched; CPU: SIMD TUs); where it can't yet (ROCm/HIP), set ELIZA_LOCAL_ALLOW_STOCK_KV=1 to\n" +
         "  run with stock f16 KV (reduced-optimization local mode — loud warning, NOT publishable, NOT a\n" +
         "  default). defaultEligible bundles still require the verified kernels per backend.",
     ),
@@ -907,7 +907,7 @@ async function tryAutoDownloadBundle(catalogEntry) {
     tag(
       "setup",
       "yellow",
-      `bundle auto-download failed: ${err instanceof Error ? err.message : String(err)} — follow RELEASE_V1.md to acquire it manually`,
+      `bundle auto-download failed: ${err instanceof Error ? err.message : String(err)} — follow docs/eliza-1-pipeline/06-test-matrix.md to acquire it manually`,
     );
     return null;
   }
@@ -961,7 +961,7 @@ async function makeAudioSink(opts) {
  * Ensure the eliza-1-2b bundle on disk is registered in the local-inference
  * registry (so `listInstalledModels()` returns it and the engine can activate
  * it). A bundle downloaded via the dashboard registers itself; a bundle that
- * was staged/copied onto disk (e.g. a manual `RELEASE_V1.md` install) may not
+ * was staged/copied onto disk manually may not
  * be — this re-registers it from the manifest. No-op when already registered
  * or when the bundle isn't on disk. Returns the registered `InstalledModel`
  * (text GGUF) or null.
@@ -1344,7 +1344,7 @@ async function main() {
     log(
       c(
         "dim",
-        "Set ELIZA_AUTO_DOWNLOAD_BUNDLE=1 to auto-download the (large) eliza-1-2b bundle, or follow RELEASE_V1.md.",
+        "Set ELIZA_AUTO_DOWNLOAD_BUNDLE=1 to auto-download the (large) eliza-1-2b bundle, or follow docs/eliza-1-pipeline/06-test-matrix.md.",
       ),
     );
     process.exit(1);

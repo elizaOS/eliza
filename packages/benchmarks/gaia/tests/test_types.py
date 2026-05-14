@@ -1,12 +1,10 @@
 """Tests for GAIA type definitions."""
 
-import pytest
 from elizaos_gaia.types import (
     GAIALevel,
     ToolType,
     GAIAQuestion,
     GAIAResult,
-    GAIAMetrics,
     GAIAConfig,
     LEADERBOARD_SCORES,
 )

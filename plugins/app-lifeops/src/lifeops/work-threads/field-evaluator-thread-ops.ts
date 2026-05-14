@@ -58,21 +58,21 @@ export interface ThreadOp {
 // Description — used verbatim as the LLM's prompt slice
 // ---------------------------------------------------------------------------
 
-const THREAD_OPS_DESCRIPTION = `Thread operations to perform on durable work threads owned by this user.
+const THREAD_OPS_DESCRIPTION = `Thread operations for user's durable work threads.
 
-Use when the user wants to:
-- start a long-running task → { "type": "create", "instruction": "<what to do>" }
-- correct or refocus an ongoing thread → { "type": "steer", "workThreadId": "<id>", "instruction": "<correction>" }
-- cancel / stop / abort what the agent is currently doing → { "type": "abort", "workThreadId": "<id, if known>", "reason": "<short why>" }
-- pause a thread waiting on input → { "type": "mark_waiting", "workThreadId": "<id>" }
-- mark a thread complete → { "type": "mark_completed", "workThreadId": "<id>" }
-- combine two threads → { "type": "merge", "workThreadId": "<TARGET id>", "sourceWorkThreadIds": ["<id1>", "<id2>"] }
-- attach this room as a source of an existing thread → { "type": "attach_source", "workThreadId": "<id>", "sourceRef": { "connector": "...", "roomId": "...", "canMutate": true } }
-- schedule a follow-up → { "type": "schedule_followup", "workThreadId": "<id>", "instruction": "<what to do later>" }
+Use for:
+- long task start -> { "type": "create", "instruction": "<what to do>" }
+- correct/refocus thread -> { "type": "steer", "workThreadId": "<id>", "instruction": "<correction>" }
+- cancel/stop/abort current work -> { "type": "abort", "workThreadId": "<id if known>", "reason": "<short why>" }
+- pause waiting input -> { "type": "mark_waiting", "workThreadId": "<id>" }
+- mark complete -> { "type": "mark_completed", "workThreadId": "<id>" }
+- merge threads -> { "type": "merge", "workThreadId": "<TARGET id>", "sourceWorkThreadIds": ["<id1>", "<id2>"] }
+- attach this room/source -> { "type": "attach_source", "workThreadId": "<id>", "sourceRef": { "connector": "...", "roomId": "...", "canMutate": true } }
+- schedule follow-up -> { "type": "schedule_followup", "workThreadId": "<id>", "instruction": "<what to do later>" }
 
-The abort op preempts the rest of this turn — the agent stops in-flight work and emits a short acknowledgement. Use it when the user clearly retracts the current request ("nvm", "stop", "actually don't", "wait don't do that").
+abort preempts turn: stop in-flight work, emit short ack. Use when user clearly retracts current request ("nvm", "stop", "actually don't", "wait don't do that").
 
-Emit an empty array when the user expresses NO thread intent. Do not invent threads — only reference workThreadId values from the active threads listed elsewhere in this prompt.`;
+Empty array when no thread intent. Do not invent threads; only use active workThreadId values listed elsewhere in prompt.`;
 
 // ---------------------------------------------------------------------------
 // JSON schema slice
@@ -95,7 +95,7 @@ const THREAD_OP_TYPE_ENUM = [
 const THREAD_OPS_SCHEMA: import("@elizaos/core").JSONSchema = {
   type: "array",
   description:
-    "Thread operations for this turn. Empty array when no thread action is needed.",
+    "Thread operations this turn. Empty array when no thread action.",
   items: {
     type: "object",
     additionalProperties: false,
@@ -104,17 +104,17 @@ const THREAD_OPS_SCHEMA: import("@elizaos/core").JSONSchema = {
         type: "string",
         enum: [...THREAD_OP_TYPE_ENUM],
         description:
-          "Operation type. 'abort' preempts the turn; all others stage thread mutations for the lifeops_thread_control action.",
+          "Operation type. 'abort' preempts turn; others stage mutations for lifeops_thread_control.",
       },
       workThreadId: {
         type: ["string", "null"],
         description:
-          "Target thread id. Required for steer/stop/merge/attach_source/schedule_followup/mark_*; optional for abort (defaults to current turn) and create.",
+          "Target thread id. Required for steer/stop/merge/attach_source/schedule_followup/mark_*; optional for abort (current turn) and create.",
       },
       sourceWorkThreadIds: {
         type: "array",
         description:
-          "For merge: thread ids being absorbed into workThreadId. Empty for non-merge ops.",
+          "merge: source thread ids absorbed into workThreadId. Empty otherwise.",
         items: { type: "string" },
       },
       sourceRef: {
@@ -147,7 +147,7 @@ const THREAD_OPS_SCHEMA: import("@elizaos/core").JSONSchema = {
       instruction: {
         type: ["string", "null"],
         description:
-          "What to do (for create/steer/schedule_followup). Brief, action-oriented.",
+          "What to do for create/steer/schedule_followup. Brief, action-oriented.",
       },
       reason: {
         type: ["string", "null"],

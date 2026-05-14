@@ -43,7 +43,8 @@ IGNORED_BENCHMARK_DIRS = {
     ".pytest_cache",
     "benchmark_results",
     "claw-eval",
-    # Distribution-name shim for benchmarks.mmau, not a separate benchmark.
+    # Legacy compatibility shim for benchmarks.mmau, not a separate benchmark.
+    "mmau",
     "elizaos_mmau",
     "eliza-adapter",
     "hermes-adapter",
@@ -62,6 +63,8 @@ IGNORED_BENCHMARK_DIRS = {
     "swe-bench-workspace",
     "tests",
     "viewer",
+    # Standalone package; not yet wired as an orchestrator adapter.
+    "voice-emotion",
 }
 
 
@@ -173,6 +176,8 @@ def _make_registry_adapter(
         adapter_python_paths.append(str(lifeops_bench_path.resolve()))
     if benchmark_id == "gauntlet":
         adapter_python_paths.append(str((benchmarks_root / "gauntlet" / "src").resolve()))
+    if benchmark_id == "mmau":
+        adapter_python_paths.append(str((benchmarks_root / "mmau-audio").resolve()))
 
     def env_builder(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> dict[str, str]:
         existing = ctx.env.get("PYTHONPATH", "")
@@ -892,7 +897,7 @@ def _command_eliza_replay(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> l
     capture_glob = str(
         ctx.request.extra_config.get("capture_glob", "*.replay.json"),
     ).strip()
-    args = [
+    return [
         sys.executable,
         "-m",
         "eliza_adapter.replay_eval",
@@ -903,7 +908,6 @@ def _command_eliza_replay(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> l
         "--output",
         str(ctx.output_root / "eliza-replay-results.json"),
     ]
-    return args
 
 
 def _command_eliza_1(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
@@ -1903,6 +1907,7 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
         "humaneval": "standard",
         "gsm8k": "standard",
         "mt_bench": "standard",
+        "mmau": "mmau-audio",
     }
     hermes_env_benchmark_ids = {
         "hermes_tblite",
@@ -2257,7 +2262,7 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
         _make_extra_adapter(
             adapter_id="eliza_replay",
             directory="eliza-adapter",
-            description="Replay benchmark over normalized Eliza PARALLAX captures",
+            description="Replay benchmark over normalized Eliza ELIZA captures",
             cwd=str((benchmarks_root / "eliza-adapter").resolve()),
             command_builder=_command_eliza_replay,
             result_patterns=["eliza-replay-results.json", "*.json"],

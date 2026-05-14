@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import pytest
 
 from benchmarks.standard._base import MockClient
 from benchmarks.standard._cli import main_entry

@@ -126,7 +126,7 @@ export async function setSecretHandler(
 							{
 								field: "type",
 								description:
-									"Secret type: api_key, secret, credential, url, or config",
+									"Secret type: api_key, secret, credential, url, config",
 								required: false,
 							},
 						],

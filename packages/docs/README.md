@@ -9,7 +9,7 @@ This repository contains the comprehensive documentation for elizaOS, including:
 - **Getting Started** - Quick setup guides and tutorials
 - **Core Concepts** - Understanding agents, plugins, and the architecture
 - **Deep Dive** - Advanced topics like memory systems, services, and event handling
-- **REST Reference** - Complete REST API documentation for all modules
+- **API Reference** - Maintained HTTP and runtime API documentation
 - **Examples** - Real-world implementations and patterns
 
 ## Development
@@ -42,8 +42,7 @@ This starts a local preview (default `http://localhost:3000`). The repository ro
 ```
 packages/docs/
 ├── docs.json              # Mintlify configuration
-├── rest-reference/        # REST API reference (Mintlify pages)
-├── rest/                  # Product REST guides (markdown)
+├── rest/                  # Product REST API reference (markdown)
 ├── guides/, plugins/, …   # Guides and reference content
 ├── images/, logo/
 ├── index.mdx

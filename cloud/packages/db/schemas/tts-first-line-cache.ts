@@ -24,68 +24,51 @@
 
 import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
 import { sql } from "drizzle-orm";
-import {
-	bigint,
-	index,
-	integer,
-	pgTable,
-	text,
-	timestamp,
-	uuid,
-} from "drizzle-orm/pg-core";
+import { bigint, index, integer, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 
 export const ttsFirstLineCache = pgTable(
-	"tts_first_line_cache",
-	{
-		// Identity ----------------------------------------------------------
-		id: uuid("id").defaultRandom().primaryKey(),
-		/** sha256(algoVersion|provider|voiceId|voiceRevision|sampleRate|codec|voiceSettingsFp|normalizedText) */
-		keyHash: text("key_hash").notNull(),
-		/** `"global"` or `"org:<orgId>"`. Lookup must include the scope to
-		 *  avoid cross-org bleed of custom voice clones. */
-		scope: text("scope").notNull(),
+  "tts_first_line_cache",
+  {
+    // Identity ----------------------------------------------------------
+    id: uuid("id").defaultRandom().primaryKey(),
+    /** sha256(algoVersion|provider|voiceId|voiceRevision|sampleRate|codec|voiceSettingsFp|normalizedText) */
+    keyHash: text("key_hash").notNull(),
+    /** `"global"` or `"org:<orgId>"`. Lookup must include the scope to
+     *  avoid cross-org bleed of custom voice clones. */
+    scope: text("scope").notNull(),
 
-		// Cache key fields --------------------------------------------------
-		algoVersion: text("algo_version").notNull(),
-		provider: text("provider").notNull(),
-		voiceId: text("voice_id").notNull(),
-		voiceRevision: text("voice_revision").notNull(),
-		sampleRate: integer("sample_rate").notNull(),
-		codec: text("codec").notNull(),
-		voiceSettingsFp: text("voice_settings_fp").notNull(),
-		normalizedText: text("normalized_text").notNull(),
+    // Cache key fields --------------------------------------------------
+    algoVersion: text("algo_version").notNull(),
+    provider: text("provider").notNull(),
+    voiceId: text("voice_id").notNull(),
+    voiceRevision: text("voice_revision").notNull(),
+    sampleRate: integer("sample_rate").notNull(),
+    codec: text("codec").notNull(),
+    voiceSettingsFp: text("voice_settings_fp").notNull(),
+    normalizedText: text("normalized_text").notNull(),
 
-		// Diagnostics + LRU -------------------------------------------------
-		rawText: text("raw_text").notNull(),
-		contentType: text("content_type").notNull(),
-		durationMs: integer("duration_ms").notNull().default(0),
-		byteSize: bigint("byte_size", { mode: "number" }).notNull(),
-		wordCount: integer("word_count").notNull(),
-		blobKey: text("blob_key").notNull(),
-		hitCount: integer("hit_count").notNull().default(0),
+    // Diagnostics + LRU -------------------------------------------------
+    rawText: text("raw_text").notNull(),
+    contentType: text("content_type").notNull(),
+    durationMs: integer("duration_ms").notNull().default(0),
+    byteSize: bigint("byte_size", { mode: "number" }).notNull(),
+    wordCount: integer("word_count").notNull(),
+    blobKey: text("blob_key").notNull(),
+    hitCount: integer("hit_count").notNull().default(0),
 
-		generatedAt: timestamp("generated_at", { withTimezone: true })
-			.notNull()
-			.defaultNow(),
-		lastAccessedAt: timestamp("last_accessed_at", { withTimezone: true })
-			.notNull()
-			.defaultNow(),
-	},
-	(table) => ({
-		uniqKeyHashScope: index("ix_tts_first_line_key_hash_scope").on(
-			table.keyHash,
-			table.scope,
-		),
-		ixLastAccessed: index("ix_tts_first_line_last_accessed").on(
-			table.lastAccessedAt,
-		),
-		ixProviderVoice: index("ix_tts_first_line_provider_voice").on(
-			table.provider,
-			table.voiceId,
-			table.voiceRevision,
-		),
-		ixScope: index("ix_tts_first_line_scope").on(table.scope),
-	}),
+    generatedAt: timestamp("generated_at", { withTimezone: true }).notNull().defaultNow(),
+    lastAccessedAt: timestamp("last_accessed_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    uniqKeyHashScope: index("ix_tts_first_line_key_hash_scope").on(table.keyHash, table.scope),
+    ixLastAccessed: index("ix_tts_first_line_last_accessed").on(table.lastAccessedAt),
+    ixProviderVoice: index("ix_tts_first_line_provider_voice").on(
+      table.provider,
+      table.voiceId,
+      table.voiceRevision,
+    ),
+    ixScope: index("ix_tts_first_line_scope").on(table.scope),
+  }),
 );
 
 export type TtsFirstLineCacheRow = InferSelectModel<typeof ttsFirstLineCache>;

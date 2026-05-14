@@ -8,7 +8,7 @@ import { Service, type ServiceTypeName } from "../../../types/service.ts";
 import {
 	type Experience,
 	type ExperienceAnalysis,
-	type ExperienceConsolidationResult,
+	type ExperienceDedupeResult,
 	type ExperienceGraphLink,
 	type ExperienceGraphLinkType,
 	type ExperienceGraphSnapshot,
@@ -55,7 +55,7 @@ export class ExperienceService extends Service {
 			void this.persistDirtyExperiences();
 		}, 60_000);
 		this.maintenanceTimer = setInterval(() => {
-			void this.consolidateDuplicateExperiences({ deleteDuplicates: false });
+			void this.dedupeDuplicateExperiences({ deleteDuplicates: false });
 		}, DAILY_EXPERIENCE_MAINTENANCE_MS);
 	}
 
@@ -988,14 +988,14 @@ export class ExperienceService extends Service {
 		return this.buildGraphSnapshot(experiences);
 	}
 
-	async consolidateDuplicateExperiences(
+	async dedupeDuplicateExperiences(
 		options: { deleteDuplicates?: boolean; limit?: number } = {},
-	): Promise<ExperienceConsolidationResult> {
+	): Promise<ExperienceDedupeResult> {
 		const candidates = Array.from(this.experiences.values())
 			.sort((left, right) => right.updatedAt - left.updatedAt)
 			.slice(0, options.limit ?? this.experiences.size);
 		const consumedIds = new Set<UUID>();
-		const groups: ExperienceConsolidationResult["groups"] = [];
+		const groups: ExperienceDedupeResult["groups"] = [];
 		let deleted = 0;
 
 		for (const experience of candidates) {
@@ -1007,7 +1007,7 @@ export class ExperienceService extends Service {
 				(candidate) =>
 					candidate.id !== experience.id &&
 					!consumedIds.has(candidate.id) &&
-					!this.areAlreadyConsolidated(experience, candidate) &&
+					!this.areAlreadyDedupeLinked(experience, candidate) &&
 					isDuplicateLearning(experience.learning, candidate.learning),
 			);
 			if (duplicates.length === 0) {
@@ -1258,7 +1258,7 @@ export class ExperienceService extends Service {
 		})[0] as Experience;
 	}
 
-	private areAlreadyConsolidated(left: Experience, right: Experience): boolean {
+	private areAlreadyDedupeLinked(left: Experience, right: Experience): boolean {
 		return (
 			left.supersedes === right.id ||
 			right.supersedes === left.id ||

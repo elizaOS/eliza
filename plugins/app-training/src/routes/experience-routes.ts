@@ -94,7 +94,7 @@ interface ExperienceService {
   ): Promise<Experience | null>;
   deleteExperience(id: UUID): Promise<boolean>;
   getExperienceGraph(query?: ExperienceQuery): Promise<unknown>;
-  consolidateDuplicateExperiences(options?: {
+  dedupeDuplicateExperiences(options?: {
     deleteDuplicates?: boolean;
     limit?: number;
   }): Promise<unknown>;
@@ -132,7 +132,7 @@ function isExperienceService(service: unknown): service is ExperienceService {
     "updateExperience",
     "deleteExperience",
     "getExperienceGraph",
-    "consolidateDuplicateExperiences",
+    "dedupeDuplicateExperiences",
   ];
   return requiredMethods.every(
     (method) => typeof candidate[method] === "function",
@@ -646,7 +646,7 @@ export async function handleExperienceRoutes(
             Math.min(EXPERIENCE_LIST_MAX_LIMIT, Math.floor(body.limit)),
           )
         : undefined;
-    const result = await experienceService.consolidateDuplicateExperiences({
+    const result = await experienceService.dedupeDuplicateExperiences({
       deleteDuplicates: body.deleteDuplicates === true,
       limit,
     });

@@ -37,7 +37,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  font-family: "Geist Mono", monospace;
+  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
   font-weight: 600;
   font-size: 1.25rem;
   color: white;

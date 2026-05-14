@@ -5,7 +5,6 @@ Tests for WooCommerce MCP Server
 
 import sys
 import os
-import json
 import tempfile
 import shutil
 

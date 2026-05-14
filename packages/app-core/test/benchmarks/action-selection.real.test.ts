@@ -29,9 +29,7 @@ const browserPluginSpecifier: string = "@elizaos/plugin-browser";
 
 const USE_MOCKED_APIS = process.env.ELIZA_BENCHMARK_USE_MOCKS === "1";
 const RUN_ACTION_BENCHMARK =
-  USE_MOCKED_APIS ||
-  process.env.ELIZA_RUN_ACTION_BENCHMARK === "1" ||
-  process.env.ELIZA_RUN_ACTION_BENCHMARK === "1";
+  USE_MOCKED_APIS || process.env.ELIZA_RUN_ACTION_BENCHMARK === "1";
 
 async function createBenchmarkRuntimeFactory(): Promise<{
   createCaseRuntime: () => Promise<{

@@ -22,7 +22,7 @@
     "@elizaos/plugin-openai": "workspace:*"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20241205.0",
+    "@cloudflare/workers-types": "^4.20260429.1",
     "typescript": "^6.0.3",
     "wrangler": "^4.88.0"
   },

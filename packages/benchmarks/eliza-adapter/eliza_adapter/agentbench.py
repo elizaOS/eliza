@@ -5,7 +5,6 @@ from __future__ import annotations
 import logging
 import os
 import time
-from dataclasses import dataclass, field
 
 from eliza_adapter.client import ElizaClient
 
@@ -14,7 +13,6 @@ from elizaos_agentbench.types import (
     AgentBenchEnvironment,
     AgentBenchResult,
     AgentBenchTask,
-    ObservationType,
     StepRecord,
 )
 from elizaos_agentbench.eliza_harness import EnvironmentAdapterProtocol

@@ -2287,7 +2287,7 @@ ${isOutgoing ? "if (teleportNoise >= teleportRatio) discard;" : "if (teleportNoi
 
     // Reset camera to the pristine tracking base before processing this frame's
     // motion and offsets. This ensures OrbitControls and transitions never see
-    // the temporary frame-based dynamic offsets (zoom, yaw, parallax),
+    // the temporary frame-based dynamic offsets (zoom, yaw, depth shift),
     // which prevents them from being doubled or accumulated into the state.
     if (this.baseCameraPosition.lengthSq() > 1e-6) {
       camera.position.copy(this.baseCameraPosition);

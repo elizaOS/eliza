@@ -210,7 +210,7 @@ export const computerUseAgentAction: Action = {
   roleGate: { minRole: "OWNER" },
   similes: ["AUTOMATE_SCREEN", "RUN_COMPUTER_AGENT", "SCREEN_AGENT"],
   description:
-    "computer_use_agent:\n  purpose: High-level autonomous desktop agent — given a goal, run Brain/Cascade/Dispatch loop until the goal is reached or maxSteps is exhausted. Uses the WS6 scene-builder, WS7 Brain+Actor cascade, and WS5 multi-monitor coords.\n  guidance: Prefer COMPUTER_USE for single explicit actions you can already name. Use COMPUTER_USE_AGENT when the user gives a goal (\"click the save button\", \"open VS Code\") and you want the system to plan and click for you.",
+    "computer_use_agent: autonomous desktop loop for a goal until done or maxSteps. Uses WS6 scene-builder, WS7 Brain+Actor cascade, WS5 multi-monitor coords. Prefer COMPUTER_USE for named single steps; use COMPUTER_USE_AGENT for goal-level screen tasks.",
   descriptionCompressed:
     "Autonomous desktop loop: scene → Brain → cascade → click. Pass {goal, maxSteps?}.",
   routingHint:
@@ -219,13 +219,13 @@ export const computerUseAgentAction: Action = {
     {
       name: "goal",
       description:
-        "Natural-language goal, e.g. 'click the save button in the dialog'.",
+        "Natural-language goal, e.g. click save button in dialog.",
       required: true,
       schema: { type: "string" },
     },
     {
       name: "maxSteps",
-      description: "Maximum Brain→dispatch cycles before giving up (default 5).",
+      description: "Max Brain->dispatch cycles before giving up. Default 5.",
       required: false,
       schema: { type: "number", minimum: 1, maximum: 20, default: DEFAULT_MAX_STEPS },
     },

@@ -20,7 +20,6 @@ import {
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
-import { openaiPlugin } from "@elizaos/plugin-openai";
 
 export interface Env {
   OPENAI_API_KEY: string;
@@ -76,6 +75,7 @@ function getCharacter(env: Env): Character {
 
 async function createRuntime(env: Env): Promise<IAgentRuntime> {
   const character = getCharacter(env);
+  const { openaiPlugin } = await import("@elizaos/plugin-openai");
 
   // Create runtime with OpenAI plugin
   // Note: In Cloudflare Workers, we can't use persistent storage like PGLite

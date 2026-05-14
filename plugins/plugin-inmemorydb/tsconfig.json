@@ -12,6 +12,7 @@
     "types": ["node"],
     "skipLibCheck": true,
     "strict": false,
+    "strictNullChecks": true,
     "esModuleInterop": true,
     "allowImportingTsExtensions": true
   },

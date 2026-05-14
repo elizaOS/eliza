@@ -749,6 +749,26 @@ function stageIosAgentRuntime() {
   );
 }
 
+function removeIosLocalExecutionAssets() {
+  const publicDir = path.join(iosDir, "App", "public");
+  const targets = [
+    path.join(publicDir, "agent"),
+    path.join(publicDir, "vector.tar.gz"),
+    path.join(publicDir, "fuzzystrmatch.tar.gz"),
+  ];
+  let removed = 0;
+  for (const target of targets) {
+    if (!fs.existsSync(target)) continue;
+    fs.rmSync(target, { recursive: true, force: true });
+    removed += 1;
+  }
+  if (removed > 0) {
+    console.log(
+      `[mobile-build] Removed ${removed} stale iOS local execution asset path(s) for App Store build.`,
+    );
+  }
+}
+
 // ── Phase 3: Capacitor sync ────────────────────────────────────────────
 
 async function ensurePlatform(platform) {
@@ -768,7 +788,7 @@ async function ensurePlatform(platform) {
 // ── Phase 4: Android native overlay ─────────────────────────────────────
 
 /** Permissions that Capacitor sync doesn't generate (it only adds INTERNET). */
-const ANDROID_PERMISSIONS = [
+export const ANDROID_PERMISSIONS = [
   "READ_CONTACTS",
   "WRITE_CONTACTS",
   "CALL_PHONE",
@@ -789,6 +809,7 @@ const ANDROID_PERMISSIONS = [
   "ACCESS_BACKGROUND_LOCATION",
   "FOREGROUND_SERVICE",
   "FOREGROUND_SERVICE_DATA_SYNC",
+  "FOREGROUND_SERVICE_MEDIA_PROJECTION",
   "FOREGROUND_SERVICE_SPECIAL_USE",
   "POST_NOTIFICATIONS",
   "WAKE_LOCK",
@@ -804,6 +825,9 @@ const ANDROID_PERMISSIONS = [
   "PACKAGE_USAGE_STATS",
   "MANAGE_APP_OPS_MODES",
   "MANAGE_VIRTUAL_MACHINE",
+  "READ_FRAME_BUFFER",
+  "INJECT_EVENTS",
+  "REAL_GET_TASKS",
 ];
 
 function replaceOrInsertGradleString(content, key, value) {
@@ -1336,6 +1360,39 @@ function ensureAndroidMainActivityUrlSchemeFilter(xml) {
   return xml.replace(mainActivityRe, `$1${authFilter}$2`);
 }
 
+export function applyAndroidCleartextPolicy(xml, { allowCleartext }) {
+  const value = allowCleartext ? "true" : "false";
+  if (/android:usesCleartextTraffic="(?:true|false)"/.test(xml)) {
+    return xml.replace(
+      /android:usesCleartextTraffic="(?:true|false)"/g,
+      `android:usesCleartextTraffic="${value}"`,
+    );
+  }
+  return xml.replace(
+    "<application",
+    `<application\n        android:usesCleartextTraffic="${value}"`,
+  );
+}
+
+function writeAndroidCleartextPolicy({ allowCleartext, label }) {
+  const manifestPath = path.join(
+    androidDir,
+    "app",
+    "src",
+    "main",
+    "AndroidManifest.xml",
+  );
+  if (!fs.existsSync(manifestPath)) return;
+  const xml = fs.readFileSync(manifestPath, "utf8");
+  const patched = applyAndroidCleartextPolicy(xml, { allowCleartext });
+  if (patched !== xml) {
+    fs.writeFileSync(manifestPath, patched, "utf8");
+    console.log(
+      `[mobile-build] Android ${label} cleartext policy: ${allowCleartext ? "enabled for local loopback" : "disabled"}.`,
+    );
+  }
+}
+
 function overlayAndroid() {
   const srcJava = path.join(
     platformsDir,
@@ -1461,11 +1518,11 @@ function overlayAndroid() {
     let xml = fs.readFileSync(manifestPath, "utf8");
     let dirty = false;
 
-    if (!xml.includes("usesCleartextTraffic")) {
-      xml = xml.replace(
-        "<application",
-        '<application\n        android:usesCleartextTraffic="true"',
-      );
+    const withLocalCleartext = applyAndroidCleartextPolicy(xml, {
+      allowCleartext: true,
+    });
+    if (withLocalCleartext !== xml) {
+      xml = withLocalCleartext;
       dirty = true;
     }
     if (!xml.includes("<queries>")) {
@@ -1616,6 +1673,10 @@ function overlayAndroid() {
             android:theme="@style/AppTheme.NoActionBar">
             <intent-filter>
                 <action android:name="android.intent.action.ASSIST" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VOICE_COMMAND" />
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>`,
@@ -2105,8 +2166,16 @@ function isFullIosBunEngineRequested(env = process.env) {
   return isTruthyEnv(env.ELIZA_IOS_FULL_BUN_ENGINE);
 }
 
+export function isIosAppStoreBuild(env = process.env) {
+  return (
+    env.ELIZA_RELEASE_AUTHORITY === "apple-app-store" ||
+    env.ELIZA_BUILD_VARIANT?.toLowerCase() === "store" ||
+    env.MILADY_BUILD_VARIANT?.toLowerCase() === "store"
+  );
+}
+
 function resolveIosDeploymentTarget(env = process.env) {
-  return isFullIosBunEngineRequested(env)
+  return !isIosAppStoreBuild(env) && isFullIosBunEngineRequested(env)
     ? IOS_FULL_BUN_DEPLOYMENT_TARGET
     : IOS_DEFAULT_DEPLOYMENT_TARGET;
 }
@@ -2157,26 +2226,33 @@ function generatePodfile() {
   const includeLlama =
     isTruthyEnv(process.env.ELIZA_IOS_INCLUDE_LLAMA) ||
     isTruthyEnv(process.env.ELIZA_IOS_INCLUDE_LLAMA);
-  const includeFullBunEngine = isFullIosBunEngineRequested();
+  const appStoreBuild = isIosAppStoreBuild();
+  const includeFullBunEngine =
+    !appStoreBuild && isFullIosBunEngineRequested();
+  const includeLocalExecutionBridgePods = !appStoreBuild && includeFullBunEngine;
   const customPods = [
     ["ElizaosCapacitorAgent", "@elizaos/capacitor-agent"],
     ["ElizaosCapacitorAppblocker", "@elizaos/capacitor-appblocker"],
-    ["ElizaosCapacitorBunRuntime", "@elizaos/capacitor-bun-runtime"],
     ["ElizaosCapacitorCamera", "@elizaos/capacitor-camera"],
     ["ElizaosCapacitorCalendar", "@elizaos/capacitor-calendar"],
     ["ElizaosCapacitorCanvas", "@elizaos/capacitor-canvas"],
     ["ElizaosCapacitorElizaTasks", "@elizaos/capacitor-eliza-tasks"],
     ["ElizaosCapacitorGateway", "@elizaos/capacitor-gateway"],
     ["ElizaosCapacitorLocation", "@elizaos/capacitor-location"],
-    [
-      "ElizaosCapacitorMobileAgentBridge",
-      "@elizaos/capacitor-mobile-agent-bridge",
-    ],
     ["ElizaosCapacitorMobileSignals", "@elizaos/capacitor-mobile-signals"],
     ["ElizaosCapacitorScreencapture", "@elizaos/capacitor-screencapture"],
     ["ElizaosCapacitorSwabble", "@elizaos/capacitor-swabble"],
     ["ElizaosCapacitorTalkmode", "@elizaos/capacitor-talkmode"],
     ["ElizaosCapacitorWebsiteblocker", "@elizaos/capacitor-websiteblocker"],
+    ...(includeLocalExecutionBridgePods
+      ? [
+          ["ElizaosCapacitorBunRuntime", "@elizaos/capacitor-bun-runtime"],
+          [
+            "ElizaosCapacitorMobileAgentBridge",
+            "@elizaos/capacitor-mobile-agent-bridge",
+          ],
+        ]
+      : []),
     // Full iOS local mode needs the native Bun-runtime host pod. The engine is
     // independent of llama.cpp and must still be embedded for smoke/production
     // full-Bun builds that intentionally omit llama.
@@ -2193,6 +2269,11 @@ function generatePodfile() {
   if (includeFullBunEngine) {
     console.log(
       "[mobile-build] iOS Podfile: requiring full Bun engine pod (ELIZA_IOS_FULL_BUN_ENGINE / ELIZA_IOS_FULL_BUN_ENGINE set)",
+    );
+  }
+  if (appStoreBuild) {
+    console.log(
+      "[mobile-build] iOS Podfile: omitting full Bun/local execution bridge pods for App Store build",
     );
   }
   const deploymentTarget = resolveIosDeploymentTarget();
@@ -3301,7 +3382,7 @@ function ensureIosFullBunEngineArtifact({ buildTarget = null } = {}) {
 // Cloud and must not ship any of those components.
 //
 // Components deleted from the manifest (and from app/src/main/java/...):
-const ANDROID_CLOUD_STRIPPED_COMPONENTS = [
+export const ANDROID_CLOUD_STRIPPED_COMPONENTS = [
   "ElizaAgentService",
   "ElizaDialActivity",
   "ElizaAssistActivity",
@@ -3325,7 +3406,7 @@ const ANDROID_CLOUD_STRIPPED_COMPONENTS = [
 // + FOREGROUND_SERVICE_DATA_SYNC for the Gateway sync service, WAKE_LOCK,
 // scoped storage SDK fallbacks, RECORD_AUDIO/CAMERA/LOCATION needed for
 // Capacitor plugins the cloud renderer still uses — stays in place.
-const ANDROID_CLOUD_STRIPPED_PERMISSIONS = [
+export const ANDROID_CLOUD_STRIPPED_PERMISSIONS = [
   "READ_CONTACTS",
   "WRITE_CONTACTS",
   "CALL_PHONE",
@@ -3340,18 +3421,22 @@ const ANDROID_CLOUD_STRIPPED_PERMISSIONS = [
   "RECEIVE_MMS",
   "RECEIVE_WAP_PUSH",
   "ACCESS_BACKGROUND_LOCATION",
+  "FOREGROUND_SERVICE_MEDIA_PROJECTION",
   "FOREGROUND_SERVICE_SPECIAL_USE",
   "RECEIVE_BOOT_COMPLETED",
   "SYSTEM_ALERT_WINDOW",
   "PACKAGE_USAGE_STATS",
   "MANAGE_APP_OPS_MODES",
   "MANAGE_VIRTUAL_MACHINE",
+  "READ_FRAME_BUFFER",
+  "INJECT_EVENTS",
+  "REAL_GET_TASKS",
   "BIND_DEVICE_ADMIN",
 ];
 
 // Java sources removed from the merged sources tree so they don't
 // reference manifest-stripped classes and break compilation.
-const ANDROID_CLOUD_STRIPPED_JAVA_FILES = [
+export const ANDROID_CLOUD_STRIPPED_JAVA_FILES = [
   "AndroidVirtualizationBridge.java",
   "ElizaAgentService.java",
   "ElizaAssistActivity.java",
@@ -3369,9 +3454,11 @@ const ANDROID_CLOUD_STRIPPED_JAVA_FILES = [
   "ElizaSmsReceiver.java",
 ];
 
-const ANDROID_CLOUD_STRIPPED_ASSET_FILES = new Set(["llama-cpp-kernels.json"]);
+export const ANDROID_CLOUD_STRIPPED_ASSET_FILES = new Set([
+  "llama-cpp-kernels.json",
+]);
 
-const ANDROID_CLOUD_STRIPPED_NATIVE_PLUGINS = [
+export const ANDROID_CLOUD_STRIPPED_NATIVE_PLUGINS = [
   ["@elizaos/capacitor-agent", "elizaos-capacitor-agent"],
   ["@elizaos/capacitor-bun-runtime", "elizaos-capacitor-bun-runtime"],
   ["@elizaos/capacitor-appblocker", "elizaos-capacitor-appblocker"],
@@ -3383,6 +3470,7 @@ const ANDROID_CLOUD_STRIPPED_NATIVE_PLUGINS = [
   ],
   ["@elizaos/capacitor-mobile-signals", "elizaos-capacitor-mobile-signals"],
   ["@elizaos/capacitor-phone", "elizaos-capacitor-phone"],
+  ["@elizaos/capacitor-screencapture", "elizaos-capacitor-screencapture"],
   ["@elizaos/capacitor-system", "elizaos-capacitor-system"],
   ["@elizaos/capacitor-websiteblocker", "elizaos-capacitor-websiteblocker"],
   ["@elizaos/capacitor-wifi", "elizaos-capacitor-wifi"],
@@ -3880,10 +3968,7 @@ function stripAndroidForCloud() {
       );
       xml = xml.replace(re, "\n");
     }
-    xml = xml.replace(
-      /android:usesCleartextTraffic="true"/g,
-      'android:usesCleartextTraffic="false"',
-    );
+    xml = applyAndroidCleartextPolicy(xml, { allowCleartext: false });
 
     if (xml !== original) {
       fs.writeFileSync(manifestPath, xml, "utf8");
@@ -3982,6 +4067,10 @@ async function buildAndroid() {
   await generateAndroidBrandAssets();
   overlayAndroid();
   sanitizeAndroidManifestWhenPlatformTemplatesMissing();
+  writeAndroidCleartextPolicy({
+    allowCleartext: true,
+    label: "sideload",
+  });
   await stageAndroidAgentRuntime({
     androidDir,
     spikeDir: androidAgentSpikeDir,
@@ -4117,6 +4206,10 @@ async function buildAndroidCloud({ debug = false } = {}) {
   await generateAndroidBrandAssets();
   overlayAndroid();
   sanitizeAndroidManifestWhenPlatformTemplatesMissing();
+  writeAndroidCleartextPolicy({
+    allowCleartext: false,
+    label: debug ? "cloud-debug" : "cloud",
+  });
   // The cloud target is a thin Capacitor client backed by Eliza Cloud.
   // It must NOT embed the on-device agent runtime, NOT declare default
   // role activities (dialer, SMS, browser, contacts, camera, calendar,
@@ -4241,6 +4334,10 @@ async function buildAndroidSystem() {
   await generateAndroidBrandAssets();
   overlayAndroid();
   sanitizeAndroidManifestWhenPlatformTemplatesMissing();
+  writeAndroidCleartextPolicy({
+    allowCleartext: true,
+    label: "AOSP",
+  });
   await stageAndroidAgentRuntime({
     androidDir,
     spikeDir: androidAgentSpikeDir,
@@ -4325,12 +4422,21 @@ function configureIosLocalBuildDefaults() {
   setDefaultProcessEnv("ELIZA_IOS_BUILD_SDK", "iphonesimulator");
 }
 
+function configureIosAppStoreBuildDefaults() {
+  setDefaultProcessEnv("ELIZA_BUILD_VARIANT", "store");
+  setDefaultProcessEnv("ELIZA_RELEASE_AUTHORITY", "apple-app-store");
+  setDefaultProcessEnv("ELIZA_IOS_RUNTIME_MODE", "cloud");
+  setDefaultProcessEnv("VITE_ELIZA_IOS_RUNTIME_MODE", "cloud");
+}
+
 async function buildIos({ local = false } = {}) {
   if (process.platform !== "darwin")
     throw new Error("iOS builds require macOS and Xcode.");
 
   if (local) {
     configureIosLocalBuildDefaults();
+  } else {
+    configureIosAppStoreBuildDefaults();
   }
 
   const buildTarget = resolveIosBuildTarget();
@@ -4353,6 +4459,8 @@ async function buildIos({ local = false } = {}) {
     // inspectable state. Capacitor sync may rewrite app resources, so we stage
     // again immediately after sync.
     stageIosAgentRuntime();
+  } else if (isIosAppStoreBuild()) {
+    removeIosLocalExecutionAssets();
   }
   if (fs.existsSync(cocoapodsScript)) {
     await run("bash", [cocoapodsScript], { cwd: repoRoot });
@@ -4360,6 +4468,8 @@ async function buildIos({ local = false } = {}) {
   await runCapacitor(["sync", "ios"]);
   if (local) {
     stageIosAgentRuntime();
+  } else if (isIosAppStoreBuild()) {
+    removeIosLocalExecutionAssets();
   }
 
   console.log(

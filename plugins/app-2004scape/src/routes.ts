@@ -1,6 +1,10 @@
 import { randomInt } from "node:crypto";
 import type http from "node:http";
-import { type IAgentRuntime, logger } from "@elizaos/core";
+import {
+  type IAgentRuntime,
+  logger,
+  type AppPackageRouteContext as RouteContext,
+} from "@elizaos/core";
 import type {
   AppLaunchDiagnostic,
   AppLaunchPreparation,
@@ -10,22 +14,6 @@ import type {
   AppSessionState,
   AppViewerAuthMessage,
 } from "@elizaos/shared";
-
-// ---------------------------------------------------------------------------
-// Inline route-context types (previously from @elizaos/agent route-helpers)
-// ---------------------------------------------------------------------------
-
-interface RouteRequestMeta {
-  req: http.IncomingMessage;
-  res: http.ServerResponse;
-  method: string;
-  pathname: string;
-}
-
-interface RouteHelpers {
-  json: (res: http.ServerResponse, data: object, status?: number) => void;
-  error: (res: http.ServerResponse, message: string, status?: number) => void;
-}
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -159,16 +147,6 @@ interface AppLaunchSessionContext {
 interface AppRunSessionContext extends AppLaunchSessionContext {
   runId: string;
   session: AppSessionState | null;
-}
-
-interface RouteContext
-  extends RouteRequestMeta,
-    Pick<RouteHelpers, "error" | "json"> {
-  url: URL;
-  runtime: unknown | null;
-  req: http.IncomingMessage;
-  res: http.ServerResponse;
-  readJsonBody: () => Promise<unknown>;
 }
 
 // ---------------------------------------------------------------------------

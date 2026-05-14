@@ -1,5 +1,5 @@
 /**
- * Payments capability — consolidated action slice.
+ * Payments capability — action slice.
  *
  * Registers the PAYMENT umbrella action with structural subactions:
  *   create_request, deliver_link, verify_payload, settle, await_callback,

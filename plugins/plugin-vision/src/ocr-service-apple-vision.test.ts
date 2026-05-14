@@ -120,7 +120,7 @@ describe("Apple Vision OCR provider seam", () => {
     expect(receivedLength).toBe(4);
     expect(result.fullText).toBe("Hello\nWorld");
     expect(result.lines).toHaveLength(2);
-    expect(result.lines[0]!.text).toBe("Hello");
-    expect(result.lines[0]!.boundingBox.x).toBe(100);
+    expect(result.lines[0]?.text).toBe("Hello");
+    expect(result.lines[0]?.boundingBox.x).toBe(100);
   });
 });

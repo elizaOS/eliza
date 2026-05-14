@@ -33,8 +33,7 @@ export const uninstallSkillAction = {
 		"DROP_SKILL",
 	],
 	description:
-		"Uninstall a non-bundled skill. Bundled skills cannot be removed. " +
-		'Provide the skill slug, e.g. "uninstall weather".',
+		"Uninstall non-bundled skill. Bundled skills cannot be removed. Provide slug, e.g. uninstall weather.",
 	descriptionCompressed: "Remove non-bundled skill.",
 	parameters: [
 		{

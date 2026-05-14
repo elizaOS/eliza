@@ -8,6 +8,7 @@
       "DOM"
     ],
     "strict": false,
+    "strictNullChecks": true,
     "noEmit": true,
     "skipLibCheck": true,
     "esModuleInterop": true,

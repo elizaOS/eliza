@@ -39,7 +39,7 @@ For per-connector endpoint inventories, base URLs, and env-var overrides see
 ## W2-1 calendar/scheduling/travel-buffer additions (Wave-2)
 
 The 40 new lifeops scenarios authored in Wave-2 all declare `mockoon: ["calendar"]`
-(some additionally reference `gmail`) so the unified `bun run lifeops:full` boot
+(some additionally reference `gmail`) so the `bun run lifeops:full` boot
 will spawn the calendar env automatically. Wave-3 follow-up: enrich the
 calendar Mockoon environment with attendee-side free/busy responses so
 `scheduling.find-mutual-slots-across-attendees` can validate against real
@@ -234,7 +234,7 @@ Lifeops.cross-channel new scenarios (13 — NEW domain):
 - cross-channel.group-chat-handoff-enter
 - cross-channel.group-chat-handoff-resume
 - cross-channel.group-chat-handoff-status
-- cross-channel.unified-search-across-platforms
+- cross-channel.search-across-platforms
 - cross-channel.respond-via-original-channel
 - cross-channel.unanswered-decision-bump
 - cross-channel.identity-rename-survives

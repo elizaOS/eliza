@@ -1,6 +1,6 @@
 name: Docs CI
 
-# Consolidated workflow for documentation quality checks
+# Workflow for documentation quality checks
 # Combines dead link checking and quality improvements
 
 concurrency:

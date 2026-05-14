@@ -4,17 +4,14 @@ Shared prompt templates and action specs for elizaOS.
 
 ## Overview
 
-This package is the single source of truth for prompt templates used by the runtime. Prompts are authored directly as TypeScript modules under `src/` and re-exported from `src/index.ts`.
+This package is the single source of truth for prompt templates used by the runtime. Prompts are authored directly in `src/index.ts`.
 
 ## Structure
 
 ```
 packages/prompts/
-├── src/              # TypeScript prompt template modules (source of truth)
-│   ├── reply.ts
-│   ├── choose_option.ts
-│   ├── image_generation.ts
-│   └── ...
+├── src/
+│   └── index.ts      # TypeScript prompt template exports
 ├── specs/            # Canonical merged action/provider specs (JSON) + generated plugins.generated.json
 └── scripts/          # Spec + docs generators
     ├── generate-action-docs.js
@@ -57,8 +54,8 @@ const prompt = composePrompt({
 
 ## Adding New Prompts
 
-1. Create a new `.ts` file in `src/` exporting a `*_TEMPLATE` constant.
-2. Re-export it from `src/index.ts`.
+1. Add a `camelCaseTemplate` string export in `src/index.ts`.
+2. Add the paired `UPPER_SNAKE_CASE_TEMPLATE` export.
 
 ## Template Guidelines
 
@@ -77,7 +74,7 @@ const prompt = composePrompt({
 ### Secret scan
 
 ```bash
-npm run check:secrets
+bun run check:secrets
 ```
 
 Scans `packages/prompts/src/**/*.ts`, plugin prompt TS modules (paths matching `prompts/**/*.ts`, `workflow-prompts/**/*.ts`, etc.), and a few explicit files — see `scripts/check-secrets.js`.

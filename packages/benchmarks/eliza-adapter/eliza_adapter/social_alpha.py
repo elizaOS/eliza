@@ -27,7 +27,7 @@ from typing import TYPE_CHECKING
 from eliza_adapter.client import ElizaClient
 
 if TYPE_CHECKING:
-    from benchmark.protocol import ExtractionResult, SocialAlphaSystem, UserTrustScore
+    from benchmark.protocol import ExtractionResult, UserTrustScore
 
 logger = logging.getLogger(__name__)
 

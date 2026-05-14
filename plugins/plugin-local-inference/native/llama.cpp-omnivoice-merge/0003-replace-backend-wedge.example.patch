@@ -4,7 +4,7 @@ Date: 2026-05-12
 
 EXAMPLE PATCH — do not apply directly. Replaces omnivoice's
 self-allocated `ggml_backend_t` pair with the shared backend owned by
-the unified llama.cpp build. This is the only invasive code change in
+the canonical llama.cpp build. This is the only invasive code change in
 the merge — every other file is move-only.
 
 Before:

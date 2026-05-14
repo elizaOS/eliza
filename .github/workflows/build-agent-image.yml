@@ -19,6 +19,7 @@ on:
       - "packages/app/**"
       - "packages/app-core/**"
       - ".github/workflows/build-agent-image.yml"
+      - ".dockerignore"
   workflow_dispatch:
 
 env:
@@ -189,6 +190,17 @@ jobs:
           pushd packages/app >/dev/null
           bun run build:web
           popd >/dev/null
+
+      - name: Prepare CI dockerignore
+        # The root .dockerignore is tuned for `bun install` runs (excludes
+        # everything heavy). The Docker build needs a different policy:
+        # keep root node_modules (Dockerfile.ci's pruner relink scripts
+        # consume them) but strip per-package node_modules and the other
+        # bulky CI-only inputs. Use the canonical CI dockerignore from
+        # packages/app-core/deploy/.dockerignore.ci, mirroring what
+        # docker-ci-smoke.sh does before its `docker build`.
+        run: |
+          cp packages/app-core/deploy/.dockerignore.ci .dockerignore
 
       - uses: docker/login-action@v4
         with:

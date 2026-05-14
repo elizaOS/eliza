@@ -72,13 +72,13 @@ export const HANDLE_RESPONSE_EXTRACT_SCHEMA: JSONSchema = {
 const HANDLE_RESPONSE_REPLY_TEXT_PROPERTY: JSONSchema = {
 	type: "string",
 	description:
-		"The user-facing reply text. Required. On the simple/direct path this is the whole answer; on the planning path it is a brief acknowledgement and the planner produces the final message.",
+		"User-facing reply. Required. Simple/direct=whole answer; planning=brief ack, planner final later.",
 };
 
 const HANDLE_RESPONSE_CONTEXTS_PROPERTY: JSONSchema = {
 	type: "array",
 	description:
-		"Context ids to engage, drawn from available_contexts. ['simple'] (or []) = direct reply, no planner. Any other id (or 'general') = planning runs against those contexts. Comes directly after replyText.",
+		"Context ids from available_contexts. ['simple'] or []=direct reply/no planner. Other id/general=planner contexts. Directly after replyText.",
 	items: { type: "string" },
 };
 
@@ -86,25 +86,25 @@ const HANDLE_RESPONSE_PLANNING_HINT_PROPERTIES = {
 	contextSlices: {
 		type: "array",
 		description:
-			"Optional retrieval slice ids that would help answer this turn. Use only ids or short stable handles when visible in context.",
+			"Optional visible retrieval slice ids/stable handles useful this turn.",
 		items: { type: "string" },
 	} as JSONSchema,
 	candidateActions: {
 		type: "array",
 		description:
-			"Optional action-like names or short operation phrases that should be used as retrieval hints for the action catalogue.",
+			"Optional action names/operation phrases for action catalog retrieval.",
 		items: { type: "string" },
 	} as JSONSchema,
 	parentActionHints: {
 		type: "array",
 		description:
-			"Optional explicit parent action names when confident. These are high-precision hints, not guesses.",
+			"Optional parent action names when confident. High-precision hints, not guesses.",
 		items: { type: "string" },
 	} as JSONSchema,
 	requiresTool: {
 		type: "boolean",
 		description:
-			"True when this turn needs an action/tool/provider/subagent, filesystem/runtime inspection, browser or network lookup, live/current/external data, side effects, long-running work, or verification before the user can be answered. The router upgrades empty or simple-only contexts to planning against `general` and the planner loop will retry if it returns terminal output before any non-terminal tool has run.",
+			"True when answer needs action/tool/provider/subagent, filesystem/runtime inspect, browser/network/API, live/current/external data, side effects, long work, or verification. Router upgrades empty/simple to general planning and retries terminal output before non-terminal tool.",
 	} as JSONSchema,
 } as const;
 
@@ -205,10 +205,10 @@ export function assertNativeToolName(name: string): void {
 }
 
 const HANDLE_RESPONSE_DESCRIPTION =
-	"Stage 1 — pick how to handle this turn. Call exactly once per inbound message before any action tool calls. Set shouldRespond to RESPOND/IGNORE/STOP. Always write replyText (the user-facing reply). List contexts to engage (directly after replyText); set requiresTool=true when tools/actions/providers/subagents, filesystem/runtime inspection, live/current/external data, side effects, long-running work, or verification are needed. For trivial replies set contexts=['simple'] (replyText is the whole answer). Optionally include action-retrieval hints in candidateActions / parentActionHints / contextSlices and populate `extract` with durable facts/relationships from the message.";
+	"Stage 1: handle turn. Call exactly once before action tools. Set shouldRespond RESPOND/IGNORE/STOP. Always write replyText. List contexts after replyText. requiresTool=true for tools/actions/providers/subagents, filesystem/runtime inspect, live/current/external data, side effects, long work, verification. Trivial reply: contexts=['simple'], replyText whole answer. Optional candidateActions/parentActionHints/contextSlices retrieval hints; extract durable facts/relationships.";
 
 const HANDLE_RESPONSE_DIRECT_DESCRIPTION =
-	"Stage 1 (direct-message channel) — pick how to handle this turn. Call exactly once per inbound message before any action tool calls. shouldRespond is implicit RESPOND for DMs. Always write replyText (the user-facing reply). List contexts to engage (directly after replyText); set requiresTool=true when tools/actions/providers/subagents, filesystem/runtime inspection, live/current/external data, side effects, long-running work, or verification are needed. For trivial replies set contexts=['simple'] (replyText is the whole answer). Optionally include action-retrieval hints in candidateActions / parentActionHints / contextSlices and populate `extract` with durable facts/relationships from the message.";
+	"Stage 1 direct-message: handle turn. Call exactly once before action tools. shouldRespond implicit RESPOND. Always write replyText. List contexts after replyText. requiresTool=true for tools/actions/providers/subagents, filesystem/runtime inspect, live/current/external data, side effects, long work, verification. Trivial reply: contexts=['simple'], replyText whole answer. Optional candidateActions/parentActionHints/contextSlices retrieval hints; extract durable facts/relationships.";
 
 /**
  * Build the Stage 1 tool definition. Pass `directMessage: true` for DM /

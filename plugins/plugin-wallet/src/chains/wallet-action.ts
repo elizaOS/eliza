@@ -395,7 +395,7 @@ export const walletRouterAction: Action = {
   description:
     "Route wallet operations through registered chain handlers and analytics providers. Use action=transfer|swap|bridge|gov for on-chain ops (params: chain, toChain, fromToken, toToken, amount, recipient, slippageBps, mode, dryRun); action=token_info for token/market data (params: target, query, address, chain); action=search_address for Birdeye wallet/portfolio lookup (param: address).",
   descriptionCompressed:
-    "WALLET umbrella: action=transfer|swap|bridge|gov (chain ops) | token_info (market data) | search_address (Birdeye portfolio).",
+    "WALLET transfer|swap|bridge|gov|token_info|search_address; chain ops + market/portfolio",
   contexts: ["finance", "crypto", "wallet"],
   contextGate: { anyOf: ["finance", "crypto", "wallet"] },
   roleGate: { minRole: "USER" },

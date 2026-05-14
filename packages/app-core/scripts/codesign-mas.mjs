@@ -3,9 +3,11 @@
  * Mac App Store post-package codesign.
  *
  * Walks a built .app bundle bottom-up, signing every Mach-O binary with the
- * child entitlements (mas-child.entitlements: app-sandbox + cs.inherit), then
- * signs the outer .app with the parent entitlements (mas.entitlements). Final
- * step verifies the bundle and (optionally) productbuilds a .pkg installer.
+ * narrowest applicable entitlements. Most nested code gets
+ * mas-child.entitlements (app-sandbox + cs.inherit). The bundled Bun helper,
+ * which imports Apple's JIT write-protection APIs on macOS, gets
+ * mas-bun.entitlements (child entitlements + allow-jit). The outer .app gets
+ * mas.entitlements and does not receive broad code-signing exceptions.
  *
  * Apple TN2206 mandates inside-out signing: deepest binaries first, then
  * frameworks (sealing their resources), then the outer .app. Anything not in
@@ -24,7 +26,7 @@
  *   ELIZA_MAS_INSTALLER_IDENTITY
  *   ELIZA_APPLE_TEAM_ID
  *
- * Exits non-zero on any signing or verification failure. No try/catch sludge.
+ * Exits non-zero on any signing or verification failure.
  */
 
 import { spawnSync } from "node:child_process";
@@ -51,6 +53,7 @@ const CHILD_ENTITLEMENTS = path.join(
   ENTITLEMENTS_DIR,
   "mas-child.entitlements",
 );
+const BUN_ENTITLEMENTS = path.join(ENTITLEMENTS_DIR, "mas-bun.entitlements");
 
 const MACHO_MAGIC = new Set([
   0xfeedface,
@@ -192,6 +195,17 @@ function sign(target, entitlements, identity, dryRun) {
   );
 }
 
+function isBunRuntimeExecutable(target, appPath) {
+  const rel = path.relative(appPath, target).split(path.sep).join("/");
+  return rel === "Contents/MacOS/bun";
+}
+
+function entitlementsForMacho(target, appPath) {
+  return isBunRuntimeExecutable(target, appPath)
+    ? BUN_ENTITLEMENTS
+    : CHILD_ENTITLEMENTS;
+}
+
 function main() {
   const args = parseArgs(process.argv);
 
@@ -231,6 +245,7 @@ function main() {
 
   plistLint(PARENT_ENTITLEMENTS);
   plistLint(CHILD_ENTITLEMENTS);
+  plistLint(BUN_ENTITLEMENTS);
 
   console.log(`MAS codesign for ${appPath}`);
   console.log(`  identity: ${identity}`);
@@ -239,16 +254,18 @@ function main() {
   }
   console.log(`  parent entitlements: ${PARENT_ENTITLEMENTS}`);
   console.log(`  child entitlements:  ${CHILD_ENTITLEMENTS}`);
+  console.log(`  bun entitlements:    ${BUN_ENTITLEMENTS}`);
   if (dryRun) console.log("  mode: DRY RUN — no commands will execute");
 
   const { machos, bundles } = findSigningUnits(appPath);
 
-  // 1. Sign all loose Mach-O binaries with child entitlements (deepest first).
+  // 1. Sign all loose Mach-O binaries with the narrowest matching
+  // entitlements (deepest first).
   console.log(
-    `\nSigning ${machos.length} Mach-O binaries (child entitlements):`,
+    `\nSigning ${machos.length} Mach-O binaries:`,
   );
   for (const target of machos) {
-    sign(target, CHILD_ENTITLEMENTS, identity, dryRun);
+    sign(target, entitlementsForMacho(target, appPath), identity, dryRun);
   }
 
   // 2. Sign nested bundles (frameworks, helper apps, xpc, .bundle) deepest-first.

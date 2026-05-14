@@ -10,12 +10,6 @@ import {
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
-import anthropicPlugin from "@elizaos/plugin-anthropic";
-import googleGenAIPlugin from "@elizaos/plugin-google-genai";
-import groqPlugin from "@elizaos/plugin-groq";
-import openaiPlugin from "@elizaos/plugin-openai";
-import sqlPlugin from "@elizaos/plugin-sql";
-import xaiPlugin from "@elizaos/plugin-xai";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { internalAction } from "./_generated/server";
@@ -23,34 +17,39 @@ import { internalAction } from "./_generated/server";
 interface LLMProvider {
   name: string;
   envKey: string;
-  plugin: Plugin;
+  loadPlugin: () => Promise<Plugin>;
 }
 
 const LLM_PROVIDERS: LLMProvider[] = [
   {
     name: "OpenAI",
     envKey: "OPENAI_API_KEY",
-    plugin: openaiPlugin,
+    loadPlugin: async () =>
+      (await import("@elizaos/plugin-openai")).default as Plugin,
   },
   {
     name: "Anthropic",
     envKey: "ANTHROPIC_API_KEY",
-    plugin: anthropicPlugin,
+    loadPlugin: async () =>
+      (await import("@elizaos/plugin-anthropic")).default as Plugin,
   },
   {
     name: "xAI (Grok)",
     envKey: "XAI_API_KEY",
-    plugin: xaiPlugin,
+    loadPlugin: async () =>
+      (await import("@elizaos/plugin-xai")).default as Plugin,
   },
   {
     name: "Google GenAI (Gemini)",
     envKey: "GOOGLE_GENERATIVE_AI_API_KEY",
-    plugin: googleGenAIPlugin,
+    loadPlugin: async () =>
+      (await import("@elizaos/plugin-google-genai")).default as Plugin,
   },
   {
     name: "Groq",
     envKey: "GROQ_API_KEY",
-    plugin: groqPlugin as unknown as Plugin,
+    loadPlugin: async () =>
+      (await import("@elizaos/plugin-groq")).default as unknown as Plugin,
   },
 ];
 
@@ -59,13 +58,10 @@ function hasValidApiKey(envKey: string): boolean {
   return typeof value === "string" && value.trim().length > 0;
 }
 
-function detectLLMPlugin(): {
-  plugin: Plugin;
-  providerName: string;
-} | null {
+function detectLLMProvider(): LLMProvider | null {
   for (const provider of LLM_PROVIDERS) {
     if (hasValidApiKey(provider.envKey)) {
-      return { plugin: provider.plugin, providerName: provider.name };
+      return provider;
     }
   }
   return null;
@@ -82,8 +78,8 @@ async function getOrCreateRuntime(): Promise<{
     return { runtime: cachedRuntime, providerName: cachedProviderName };
   }
 
-  const llmResult = detectLLMPlugin();
-  if (!llmResult) {
+  const llmProvider = detectLLMProvider();
+  if (!llmProvider) {
     throw new Error(
       "No valid LLM API key found. Set one of: " +
         LLM_PROVIDERS.map((p) => p.envKey).join(", "),
@@ -95,17 +91,20 @@ async function getOrCreateRuntime(): Promise<{
     bio: "A helpful AI assistant powered by elizaOS, running on Convex.",
   });
 
+  const { default: sqlPlugin } = await import("@elizaos/plugin-sql");
+  const llmPlugin = await llmProvider.loadPlugin();
+
   const runtime = new AgentRuntime({
     character,
-    plugins: [sqlPlugin, llmResult.plugin],
+    plugins: [sqlPlugin, llmPlugin],
   });
 
   await runtime.initialize();
 
   cachedRuntime = runtime;
-  cachedProviderName = llmResult.providerName;
+  cachedProviderName = llmProvider.name;
 
-  return { runtime, providerName: llmResult.providerName };
+  return { runtime, providerName: llmProvider.name };
 }
 
 export const chat = internalAction({

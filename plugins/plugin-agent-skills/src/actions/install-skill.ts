@@ -40,8 +40,7 @@ export const installSkillAction = {
 		"FETCH_SKILL",
 	],
 	description:
-		"Install a skill from the ClawHub registry. The skill will be security-scanned before activation. " +
-		'Provide a skill slug or search term, e.g. "install weather" or "add github".',
+		"Install skill from ClawHub registry. Security-scanned before activation. Provide slug/search term, e.g. install weather.",
 	descriptionCompressed:
 		"Install skill from ClawHub registry. Security-scanned before activation.",
 	parameters: [

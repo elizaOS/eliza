@@ -99,7 +99,7 @@ export const defiNewsProvider: Provider = {
   description:
     "Provides DeFi market data, global crypto statistics, token information, and real-world crypto news",
   descriptionCompressed:
-    "provide DeFi market data, global crypto statistic, token information, real-world crypto new",
+    "DeFi market data, crypto stats, token info, crypto news",
   dynamic: true,
   contexts: ["finance", "crypto", "wallet"],
   contextGate: { anyOf: ["finance", "crypto", "wallet"] },

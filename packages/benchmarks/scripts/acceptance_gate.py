@@ -24,7 +24,7 @@ import urllib.request
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 
 _THIS_FILE = Path(__file__).resolve()
@@ -410,7 +410,6 @@ def _make_adapter_client(agent: str):
     sys.path.insert(0, str(PACKAGE_ROOT / "openclaw-adapter"))
     sys.path.insert(0, str(PACKAGE_ROOT / "hermes-adapter"))
     if agent == "eliza":
-        from eliza_adapter.client import ElizaClient
         from eliza_adapter.server_manager import ElizaServerManager
         global _ELIZA_SERVER_MANAGER
         if _ELIZA_SERVER_MANAGER is None:

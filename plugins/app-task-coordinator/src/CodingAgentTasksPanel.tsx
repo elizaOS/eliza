@@ -3,11 +3,7 @@ import {
   Button,
   client,
   EmptyWidgetState,
-  PULSE_STATUSES,
-  STATUS_DOT,
-  TERMINAL_STATUSES,
   useApp,
-  usePtySessions,
   WidgetSection,
 } from "@elizaos/ui";
 import type {
@@ -31,6 +27,17 @@ const ANSI_ESCAPE_PATTERN = new RegExp(
   ].join(""),
   "g",
 );
+const TERMINAL_STATUSES = new Set(["completed", "stopped", "error", "errored"]);
+const PULSE_STATUSES = new Set(["active", "running", "blocked"]);
+const STATUS_DOT: Record<string, string> = {
+  active: "bg-ok",
+  running: "bg-ok",
+  blocked: "bg-warn",
+  completed: "bg-muted",
+  stopped: "bg-muted",
+  error: "bg-danger",
+  errored: "bg-danger",
+};
 
 const fallbackTranslate = (
   key: string,
@@ -648,13 +655,8 @@ export function CodingAgentTasksPanel({
   const uiLanguage =
     typeof app?.uiLanguage === "string" ? app.uiLanguage : undefined;
   const setTab = app?.setTab ?? (() => undefined);
-  const { ptySessions } = usePtySessions();
-  const activeSessions = useMemo(
-    () =>
-      (ptySessions ?? []).filter(
-        (session) => !TERMINAL_STATUSES.has(session.status),
-      ),
-    [ptySessions],
+  const [activeSessions, setActiveSessions] = useState<CodingAgentSession[]>(
+    [],
   );
   const [threads, setThreads] = useState<CodingAgentTaskThread[]>([]);
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
@@ -732,6 +734,25 @@ export function CodingAgentTasksPanel({
       clearInterval(timer);
     };
   }, [deferredSearch, showArchived, t]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const refreshSessions = async () => {
+      const status = await client.getCodingAgentStatus();
+      if (cancelled) return;
+      setActiveSessions(
+        (status?.tasks ?? []).filter(
+          (session) => !TERMINAL_STATUSES.has(session.status),
+        ),
+      );
+    };
+    void refreshSessions();
+    const timer = window.setInterval(() => void refreshSessions(), 5000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;

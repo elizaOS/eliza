@@ -6,7 +6,6 @@
 
 import type http from "node:http";
 import type { AgentRuntime, Media, UUID } from "@elizaos/core";
-import type { CloudRouteState } from "@elizaos/plugin-elizacloud";
 import type {
   AgentAutomationMode,
   AgentStartupDiagnostics,
@@ -15,11 +14,24 @@ import type {
   PluginParamDef,
   SkillEntry,
   StreamEventEnvelope,
+  TradePermissionMode,
 } from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.ts";
 import type { AppManager } from "../services/app-manager.ts";
 import type { SandboxManager } from "../services/sandbox-manager.ts";
 import type { ConnectorHealthMonitor } from "./connector-health.ts";
+
+export type CloudManagerLike = unknown;
+
+export interface StoppablePairingSession {
+  stop: () => void | Promise<void>;
+}
+
+export type PairingSnapshotLike = Record<string, unknown>;
+
+export interface TelegramAccountAuthSessionLike {
+  stop: () => void | Promise<void>;
+}
 
 // PluginEntry and PluginParamDef are defined here to avoid a circular dependency
 // with plugin-discovery-helpers.ts (which imports from server-helpers.ts).
@@ -189,7 +201,7 @@ export interface ServerState {
   /** Tombstones for conversation IDs explicitly deleted by the user. */
   deletedConversationIds: Set<string>;
   /** Cloud manager for Eliza Cloud integration (null when cloud is disabled). */
-  cloudManager: CloudRouteState["cloudManager"];
+  cloudManager: CloudManagerLike;
   sandboxManager: SandboxManager | null;
   /** App manager for launching and managing elizaOS apps. */
   appManager: AppManager;
@@ -224,24 +236,13 @@ export interface ServerState {
   /** Connector health monitor for detecting dead connectors. */
   connectorHealthMonitor: ConnectorHealthMonitor | null;
   /** Active WhatsApp pairing sessions (QR code flow). */
-  whatsappPairingSessions?: Map<
-    string,
-    import("@elizaos/plugin-whatsapp").WhatsAppPairingSession
-  >;
+  whatsappPairingSessions?: Map<string, StoppablePairingSession>;
   /** Active Signal pairing sessions (device linking flow). */
-  signalPairingSessions?: Map<
-    string,
-    import("@elizaos/plugin-signal").SignalPairingSession
-  >;
+  signalPairingSessions?: Map<string, StoppablePairingSession>;
   /** Last known Signal pairing snapshots, including terminal failures. */
-  signalPairingSnapshots?: Map<
-    string,
-    import("@elizaos/plugin-signal").SignalPairingSnapshot
-  >;
+  signalPairingSnapshots?: Map<string, PairingSnapshotLike>;
   /** Active Telegram account auth session (user-account login flow). */
-  telegramAccountAuthSession?:
-    | import("@elizaos/plugin-telegram").TelegramAccountAuthSessionLike
-    | null;
+  telegramAccountAuthSession?: TelegramAccountAuthSessionLike | null;
 }
 
 /**

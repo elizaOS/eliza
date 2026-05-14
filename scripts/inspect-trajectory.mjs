@@ -331,7 +331,7 @@ function fmtTime(ts) {
   }
 }
 
-// Simple line-based diff: emits unified-diff-style markers (no hunk headers).
+// Simple line-based diff: emits diff-style markers (no hunk headers).
 // Sufficient for a human eyeballing what compaction stripped.
 export function lineDiff(a, b) {
   const aLines = a.split("\n");
@@ -673,7 +673,7 @@ Subcommands:
 
   compaction-diff <trajectoryId> [--step N] [--dir <path>]
       Re-run compactModelPrompt on the recorded prompt for the given step
-      and print a unified-style line diff plus token reduction estimate
+      and print a diff-style line diff plus token reduction estimate
       (4-chars-per-token heuristic).
 
   stats <trajectoryId> [--format text|json] [--dir <path>]

@@ -19,13 +19,13 @@ import {
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
-import {
-  elizaClassicPlugin,
-  getElizaGreeting,
-} from "@elizaos/plugin-eliza-classic";
-import sqlPlugin from "@elizaos/plugin-sql";
 import { v4 as uuidv4 } from "uuid";
 import { createBrowserPGlite } from "./pglite-browser";
+
+const { elizaClassicPlugin, getElizaGreeting } = await import(
+  "@elizaos/plugin-eliza-classic"
+);
+const { default: sqlPlugin } = await import("@elizaos/plugin-sql");
 
 // ============================================================================
 // Types

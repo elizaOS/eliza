@@ -23,6 +23,7 @@ import android.accessibilityservice.AccessibilityServiceInfo
 import android.graphics.Path
 import android.graphics.Rect
 import android.os.Build
+import android.os.Bundle
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import org.json.JSONArray
@@ -162,6 +163,43 @@ class MiladyAccessibilityService : AccessibilityService() {
             .setDuration(duration)
             .build()
         return dispatchGesture(gesture, null, null)
+    }
+
+    /**
+     * Set text on the focused editable node using the public Accessibility API.
+     * This is the consumer-build text-input path; it requires the user-enabled
+     * accessibility service but does not need privileged input injection.
+     */
+    fun setFocusedEditableText(text: String): Boolean {
+        val root = rootInActiveWindow ?: return false
+        return try {
+            val focused = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
+            val target =
+                if (focused?.isEditable == true) focused else findFocusedEditable(root)
+                    ?: return false
+            val args = Bundle().apply {
+                putCharSequence(
+                    AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,
+                    text,
+                )
+            }
+            target.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+        } catch (_: Exception) {
+            false
+        } finally {
+            root.recycle()
+        }
+    }
+
+    private fun findFocusedEditable(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+        if (node.isFocused && node.isEditable) return node
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            val match = findFocusedEditable(child)
+            if (match != null) return match
+            child.recycle()
+        }
+        return null
     }
 
     // ── Global actions ────────────────────────────────────────────────────────

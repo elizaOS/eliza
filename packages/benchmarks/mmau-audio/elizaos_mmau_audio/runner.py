@@ -100,7 +100,7 @@ class MMAURunner:
 
     async def _run_sample(self, agent: MMAUAgentProtocol, sample: MMAUSample) -> MMAUResult:
         started = time.time()
-        timeout_s = max(1.0, self.config.timeout_ms / 1000)
+        timeout_s = max(0.001, self.config.timeout_ms / 1000)
         try:
             prediction = await asyncio.wait_for(agent.predict(sample), timeout=timeout_s)
         except TimeoutError:

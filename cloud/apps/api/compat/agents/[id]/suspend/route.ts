@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import type { RouteContext } from "@/lib/api/hono-next-style-params";
 
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -20,9 +21,7 @@ const suspendSchema = z.object({
   reason: z.string().min(1).default("owner requested suspension"),
 });
 
-type RouteParams = { params: Promise<{ id: string }> };
-
-async function __hono_POST(request: Request, { params }: RouteParams) {
+async function __hono_POST(request: Request, { params }: RouteContext<{ id: string }>) {
   try {
     const { user } = await requireCompatAuth(request);
     const { id: agentId } = await params;

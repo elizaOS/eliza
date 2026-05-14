@@ -71,7 +71,7 @@ Responds to `@claude` mentions in issues and PRs.
 
 ### Docs CI (`docs-ci.yml`)
 
-Consolidated documentation quality workflow:
+Documentation quality workflow:
 
 - **Dead Link Checking:** Scans for broken internal/external links
 - **Quality Checks:** Double headers, missing frontmatter, heading hierarchy

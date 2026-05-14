@@ -12,7 +12,6 @@ import hashlib
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import Any
 
 from gauntlet.harness.metrics_collector import RunMetrics
 from gauntlet.scoring.engine import OverallScore
@@ -273,7 +272,6 @@ class Exporter:
         Returns:
             Path to exported JSONL file
         """
-        from dataclasses import asdict
         
         filepath = self.output_dir / f"{run_metrics.run_id}_traces.jsonl"
         with open(filepath, "w") as f:

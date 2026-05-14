@@ -17,11 +17,6 @@ import { logger, ModelType, Service } from "@elizaos/core";
 import { z } from "zod";
 import { StarterPluginTestSuite } from "./e2e/plugin-starter.e2e";
 
-/**
- * Defines the configuration schema for a plugin, including the validation rules for the plugin name.
- *
- * @type {import('zod').ZodObject<{ EXAMPLE_PLUGIN_VARIABLE: import('zod').ZodString }>}
- */
 const configSchema = z.object({
   EXAMPLE_PLUGIN_VARIABLE: z
     .string()
@@ -35,20 +30,6 @@ const configSchema = z.object({
     }),
 });
 
-/**
- * Example HelloWorld action
- * This demonstrates the simplest possible action structure
- */
-/**
- * Action representing a hello world message.
- * @typedef {Object} Action
- * @property {string} name - The name of the action.
- * @property {string[]} similes - An array of related actions.
- * @property {string} description - A brief description of the action.
- * @property {Function} validate - Asynchronous function to validate the action.
- * @property {Function} handler - Asynchronous function to handle the action and generate a response.
- * @property {Object[]} examples - An array of example inputs and expected outputs for the action.
- */
 const helloWorldAction: Action = {
   name: "HELLO_WORLD",
   similes: ["GREET", "SAY_HELLO"],
@@ -59,7 +40,6 @@ const helloWorldAction: Action = {
     _message: Memory,
     _state: State | undefined,
   ): Promise<boolean> => {
-    // Always valid
     return true;
   },
 
@@ -205,7 +185,6 @@ export const starterPlugin: Plugin = {
       path: "/helloworld",
       type: "GET",
       handler: async (_req: RouteRequest, res: RouteResponse) => {
-        // send a response
         res.json({
           message: "Hello World!",
         });
@@ -216,7 +195,6 @@ export const starterPlugin: Plugin = {
       path: "/api/time",
       type: "GET",
       handler: async (_req: RouteRequest, res: RouteResponse) => {
-        // Return current time in various formats
         const now = new Date();
         res.json({
           timestamp: now.toISOString(),
@@ -231,28 +209,24 @@ export const starterPlugin: Plugin = {
     MESSAGE_RECEIVED: [
       async (params) => {
         logger.debug("MESSAGE_RECEIVED event received");
-        // print the keys
         logger.debug({ keys: Object.keys(params) }, "MESSAGE_RECEIVED param keys");
       },
     ],
     VOICE_MESSAGE_RECEIVED: [
       async (params) => {
         logger.debug("VOICE_MESSAGE_RECEIVED event received");
-        // print the keys
         logger.debug({ keys: Object.keys(params) }, "VOICE_MESSAGE_RECEIVED param keys");
       },
     ],
     WORLD_CONNECTED: [
       async (params) => {
         logger.debug("WORLD_CONNECTED event received");
-        // print the keys
         logger.debug({ keys: Object.keys(params) }, "WORLD_CONNECTED param keys");
       },
     ],
     WORLD_JOINED: [
       async (params) => {
         logger.debug("WORLD_JOINED event received");
-        // print the keys
         logger.debug({ keys: Object.keys(params) }, "WORLD_JOINED param keys");
       },
     ],
@@ -261,7 +235,6 @@ export const starterPlugin: Plugin = {
   providers: [helloWorldProvider],
   services: [StarterService],
   tests: [StarterPluginTestSuite],
-  // dependencies: [], <--- plugin dependencies go here (if requires another plugin)
 };
 
 export default starterPlugin;

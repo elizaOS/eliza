@@ -113,6 +113,7 @@ export const followupStarterPack: DefaultPack = {
   description:
     "Daily watcher reads RelationshipStore for overdue cadence edges and emits a follow-up task per overdue edge. Default cadence is 14 days; per-edge overrides via Relationship.metadata.cadenceDays let closer relationships carry tighter cadences. The morning brief folds emissions in. Resolves automatically when any new interaction is observed on the edge.",
   defaultEnabled: true,
+  requiredCapabilities: [],
   records: [watcherRecord],
   uiHints: {
     summaryOnDayOne:

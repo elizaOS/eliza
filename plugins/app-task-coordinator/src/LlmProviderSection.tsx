@@ -70,7 +70,7 @@ export function LlmProviderSection({
                 variant={active ? "default" : "outline"}
                 size="sm"
                 className="h-9 justify-start rounded-lg px-2.5 text-xs font-semibold"
-                onClick={() => setPref("PARALLAX_LLM_PROVIDER", option.value)}
+                onClick={() => setPref("ELIZA_LLM_PROVIDER", option.value)}
                 aria-pressed={active}
               >
                 <Icon className="h-3.5 w-3.5" aria-hidden />
@@ -113,17 +113,30 @@ export function LlmProviderSection({
           </SettingsControls.Field>
           <SettingsControls.Field>
             <SettingsControls.FieldLabel>
-              {t("codingagentsettingssection.GoogleApiKey", {
-                defaultValue: "Google API Key",
+              {t("codingagentsettingssection.OpencodeApiKey", {
+                defaultValue: "OpenCode API Key",
               })}
             </SettingsControls.FieldLabel>
             <SettingsControls.Input
               variant="compact"
               type="password"
-              placeholder="AIza..."
-              value={prefs.GOOGLE_GENERATIVE_AI_API_KEY || ""}
+              placeholder="sk-..."
+              value={prefs.ELIZA_OPENCODE_API_KEY || ""}
+              onChange={(e) => setPref("ELIZA_OPENCODE_API_KEY", e.target.value)}
+            />
+          </SettingsControls.Field>
+          <SettingsControls.Field>
+            <SettingsControls.FieldLabel>
+              {t("codingagentsettingssection.OpencodeBaseUrl", {
+                defaultValue: "OpenCode Base URL",
+              })}
+            </SettingsControls.FieldLabel>
+            <SettingsControls.Input
+              variant="compact"
+              placeholder="https://api.openai.com/v1"
+              value={prefs.ELIZA_OPENCODE_BASE_URL || ""}
               onChange={(e) =>
-                setPref("GOOGLE_GENERATIVE_AI_API_KEY", e.target.value)
+                setPref("ELIZA_OPENCODE_BASE_URL", e.target.value)
               }
             />
           </SettingsControls.Field>

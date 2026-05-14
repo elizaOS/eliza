@@ -919,7 +919,7 @@ async function callPlanner(params: {
 			// Guided structured decode on by default for the planner pass that
 			// carries a forced PLAN_ACTIONS skeleton: the local engine derives the
 			// deterministic-token prefill plan and the fork fast-forwards the forced
-			// scaffold. Opt out with `MILADY_LOCAL_GUIDED_DECODE=0`. Cloud adapters
+			// scaffold. Opt out with `ELIZA_LOCAL_GUIDED_DECODE=0`. Cloud adapters
 			// ignore `providerOptions.eliza.guidedDecode`.
 			withGuidedDecodeProviderOptions(modelParams.providerOptions);
 		}

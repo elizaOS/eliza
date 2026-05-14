@@ -66,7 +66,7 @@ export const respondToMessageAction: Action = {
 	description:
 		"Reply to a message in one step. Use this when the user asks to send/respond/reply now, including natural-language targets like last email from finance; pass messageId when known, otherwise pass sender/content hints. Drafts the reply, then sends or queues it for owner approval per the registered SendPolicy.",
 	descriptionCompressed:
-		"send/respond reply to msg: target by messageId or latest/from sender/content hints; draft policy-gate send",
+		"reply to message by messageId/latest/sender/content; send policy-gated",
 	similes: ["REPLY_TO_MESSAGE", "QUICK_REPLY", "ONE_SHOT_REPLY"],
 	parameters: [
 		{ ...messageIdParameter, required: false },

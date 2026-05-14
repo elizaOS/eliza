@@ -150,7 +150,13 @@ export async function validateCloudBaseUrl(
   }
 
   // Dev-mode bypass: skip IP-range blocking but keep URL format checks above.
-  if (process.env.NODE_ENV === "development" || process.env.ELIZA_DEV) {
+  const elizaDev = process.env.ELIZA_DEV?.trim().toLowerCase();
+  if (
+    process.env.NODE_ENV === "development" ||
+    elizaDev === "1" ||
+    elizaDev === "true" ||
+    elizaDev === "yes"
+  ) {
     return null;
   }
 

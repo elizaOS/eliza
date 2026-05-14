@@ -28,7 +28,6 @@ from __future__ import annotations
 
 import argparse
 import logging
-import os
 import re
 from collections.abc import Iterable, Sequence
 from pathlib import Path

@@ -4,7 +4,6 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { AgentRuntime } from "@elizaos/core";
-import type { SwarmCoordinator } from "@elizaos/plugin-agent-orchestrator";
 import { createTestRuntime } from "../helpers/pglite-runtime.ts";
 
 type CodexEvent =
@@ -148,7 +147,9 @@ async function cleanup(): Promise<void> {
 async function main(): Promise<void> {
 	({ runtime, cleanup: cleanupRuntime } = await createTestRuntime());
 
-	const { SwarmCoordinator } = await import("@elizaos/plugin-agent-orchestrator");
+	const { SwarmCoordinator } = await import(
+		"@elizaos/plugin-agent-orchestrator"
+	);
 	const coordinator = new SwarmCoordinator(runtime);
 	const thread = await coordinator.createTaskThread({
 		title: "Live Codex research report",
