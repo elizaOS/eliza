@@ -208,11 +208,11 @@ def test_push_model_resolves_repo_id_with_quant_suffix():
     from push_model_to_hf import resolve_repo_id
 
     # Source of truth is training/model_registry.py. Runtime GGUF bundles now
-    # live in a single size-first repo (`elizalabs/eliza-1`) under
+    # live in a single size-first repo (`elizaos/eliza-1`) under
     # bundles/<tier>/; raw quantized checkpoint uploads must pass an explicit
     # audit-only repo id instead of deriving sibling repos.
-    assert resolve_repo_id("qwen3.5-4b", None, "default", None) == "elizalabs/eliza-1"
-    assert resolve_repo_id("eliza-1-4b", None, "default", None) == "elizalabs/eliza-1"
+    assert resolve_repo_id("qwen3.5-4b", None, "default", None) == "elizaos/eliza-1"
+    assert resolve_repo_id("eliza-1-4b", None, "default", None) == "elizaos/eliza-1"
     with pytest.raises(SystemExit):
         resolve_repo_id("qwen3.5-4b", "polarquant", "default", None)
     with pytest.raises(SystemExit):
@@ -234,7 +234,7 @@ def test_push_model_card_inference_blocks_reference_real_imports():
         cfg = PushConfig(
             registry_key="qwen3.5-2b",
             checkpoint=Path("/tmp/_unused"),
-            repo_id=f"elizalabs/eliza-1-2b-{quant}",
+            repo_id=f"elizaos/eliza-1-2b-{quant}",
             quant=quant,
             variant="default",
             public=False,
