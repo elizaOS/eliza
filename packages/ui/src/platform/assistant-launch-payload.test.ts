@@ -2,14 +2,17 @@
 
 import { beforeEach, describe, expect, it } from "vitest";
 import {
+  __resetAssistantLaunchPayloadClaimsForTests,
   buildAssistantLaunchMetadata,
+  claimAssistantLaunchPayloadFromHash,
   clearAssistantLaunchPayloadFromHash,
   readAssistantLaunchPayloadFromHash,
 } from "./assistant-launch-payload";
 
 describe("assistant launch payloads", () => {
   beforeEach(() => {
-    window.history.replaceState(null, "", "http://localhost/");
+    __resetAssistantLaunchPayloadClaimsForTests();
+    window.history.replaceState(null, "", "/");
   });
 
   it("reads assistant launch text, source, action, and id from hash routes", () => {
@@ -50,13 +53,64 @@ describe("assistant launch payloads", () => {
     window.history.replaceState(
       null,
       "",
-      "http://localhost/#lifeops?text=Call%20mom&source=assistant-entry&action=lifeops.create&assistant.launchId=launch-2&lifeops.section=reminders",
+      "/#lifeops?text=Call%20mom&source=assistant-entry&action=lifeops.create&assistant.launchId=launch-2&lifeops.section=reminders",
     );
 
     clearAssistantLaunchPayloadFromHash();
 
     expect(window.location.href).toBe(
       "http://localhost/#lifeops?lifeops.section=reminders",
+    );
+  });
+
+  it("claims a trusted launch payload only once and clears the URL", () => {
+    window.history.replaceState(
+      null,
+      "",
+      "/#chat?text=Create%20a%20task&source=assistant-entry&action=lifeops.create&assistant.launchId=launch-3",
+    );
+
+    const claimed = claimAssistantLaunchPayloadFromHash(window.location.hash, {
+      allowedRoutes: ["chat"],
+    });
+
+    expect(claimed).toMatchObject({
+      action: "lifeops.create",
+      launchId: "launch-3",
+      route: "chat",
+      source: "assistant-entry",
+      text: "Create a task",
+    });
+    expect(window.location.href).toBe("http://localhost/#chat");
+
+    window.history.replaceState(
+      null,
+      "",
+      "/#chat?text=Create%20a%20task&source=assistant-entry&action=lifeops.create&assistant.launchId=launch-3",
+    );
+
+    expect(
+      claimAssistantLaunchPayloadFromHash(window.location.hash, {
+        allowedRoutes: ["chat"],
+      }),
+    ).toBeNull();
+    expect(window.location.href).toContain("assistant.launchId=launch-3");
+  });
+
+  it("leaves payload params for a different route consumer", () => {
+    window.history.replaceState(
+      null,
+      "",
+      "/#lifeops?text=Open%20brief&source=assistant-entry&action=lifeops.daily-brief&assistant.launchId=launch-4",
+    );
+
+    expect(
+      claimAssistantLaunchPayloadFromHash(window.location.hash, {
+        allowedRoutes: ["chat"],
+      }),
+    ).toBeNull();
+    expect(window.location.href).toBe(
+      "http://localhost/#lifeops?text=Open%20brief&source=assistant-entry&action=lifeops.daily-brief&assistant.launchId=launch-4",
     );
   });
 });

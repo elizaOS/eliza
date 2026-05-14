@@ -28,13 +28,29 @@ Actions and Android shortcuts only:
 - Static shortcuts use source-tagged deep links and are bound to
   `OPEN_APP_FEATURE` inline inventory.
 
+Mapping by flow:
+
+| Flow | Supported App Actions / shortcut entry |
+|---|---|
+| Ask/chat | `CREATE_MESSAGE`, `GET_THING`, `eliza_app_action_chat` |
+| Voice chat | `OPEN_APP_FEATURE` inline inventory, `eliza_app_action_voice` |
+| LifeOps daily brief | `OPEN_APP_FEATURE` inline inventory, `eliza_app_action_daily_brief` |
+| Create LifeOps task | `CREATE_THING` |
+| View LifeOps tasks | `OPEN_APP_FEATURE` inline inventory, `eliza_app_action_tasks` |
+
+There is no Play-compatible default-assistant handoff for the Pixel build.
+Normal Google Android entry goes through App Actions/static shortcuts/deep
+links. AOSP-only `ROLE_ASSISTANT` and `ACTION_ASSIST` behavior stays out of
+the Play build.
+
 The Play-compatible `android-cloud` build must not request or expose
 default-assistant/system-only powers. Keep `ACTION_ASSIST`,
 `VOICE_COMMAND`, `ROLE_ASSISTANT`, `BIND_VOICE_INTERACTION`,
 usage-stats appop permissions, SMS/call default-role components, boot
-receivers, MediaProjection foreground services, and special-use
-foreground services out of that build. AOSP/default-assistant behavior
-belongs only to `android-system` or sideload-only validation builds.
+receivers, battery-optimization exemption, MediaProjection foreground
+services, and special-use foreground services out of that build.
+AOSP/default-assistant behavior belongs only to `android-system` or
+sideload-only validation builds.
 
 Current Android docs describe App Actions as `shortcuts.xml`
 capabilities registered on the launcher activity; Gemini/Assistant

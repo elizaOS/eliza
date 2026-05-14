@@ -1,5 +1,8 @@
 import Foundation
 import Darwin
+#if ELIZA_IOS_FULL_BUN_ENGINE
+import ElizaBunEngine
+#endif
 
 private let fullBunHostCallCallback: @convention(c) (
     UnsafePointer<CChar>?,
@@ -16,12 +19,12 @@ private let fullBunHostCallCallback: @convention(c) (
     return strdup(response)
 }
 
-/// Dynamic loader for the real Bun iOS engine framework.
+/// Host for the real Bun iOS engine framework.
 ///
-/// This deliberately uses `dlopen`/`dlsym` instead of linking the framework at
-/// compile time. Compatibility builds can keep using the JSContext bridge, while
-/// full-engine builds add `ElizaBunEngine.xcframework` and automatically switch
-/// to this host.
+/// Full-engine/App Store builds link `ElizaBunEngine.xcframework` directly so
+/// the shipped app does not import dynamic loader APIs. Compatibility builds
+/// keep the optional loader path so the JSContext bridge can still run without
+/// embedding the full engine framework.
 ///
 /// IPC security model (full-Bun path):
 /// - Transport: NDJSON over anonymous stdio pipes. No TCP port is opened by the
@@ -73,7 +76,10 @@ final class FullBunEngineHost {
     ) -> UnsafeMutablePointer<CChar>?
     private typealias FreeFn = @convention(c) (UnsafeMutableRawPointer?) -> Void
 
+    private var loaded = false
+#if !ELIZA_IOS_FULL_BUN_ENGINE
     private var handle: UnsafeMutableRawPointer?
+#endif
     private var abiVersionFn: AbiVersionFn?
     private var lastErrorFn: LastErrorFn?
     private var setHostCallbackFn: SetHostCallbackFn?
@@ -191,7 +197,43 @@ final class FullBunEngineHost {
     }
 
     private func load() throws {
-        if handle != nil { return }
+        if loaded { return }
+#if ELIZA_IOS_FULL_BUN_ENGINE
+        let loadedAbiVersionFn: AbiVersionFn = {
+            eliza_bun_engine_abi_version()
+        }
+        let loadedLastErrorFn: LastErrorFn = {
+            eliza_bun_engine_last_error()
+        }
+        let loadedSetHostCallbackFn: SetHostCallbackFn = { callback in
+            eliza_bun_engine_set_host_callback(callback)
+        }
+        let loadedStartFn: StartFn = { bundlePath, argvJson, envJson, appSupportDir in
+            eliza_bun_engine_start(bundlePath, argvJson, envJson, appSupportDir)
+        }
+        let loadedStopFn: StopFn = {
+            eliza_bun_engine_stop()
+        }
+        let loadedIsRunningFn: IsRunningFn = {
+            eliza_bun_engine_is_running()
+        }
+        let loadedCallFn: CallFn = { method, payload in
+            eliza_bun_engine_call(method, payload)
+        }
+        let loadedFreeFn: FreeFn = { ptr in
+            eliza_bun_engine_free(ptr)
+        }
+        try installLoadedEngineSymbols(
+            abiVersionFn: loadedAbiVersionFn,
+            lastErrorFn: loadedLastErrorFn,
+            setHostCallbackFn: loadedSetHostCallbackFn,
+            startFn: loadedStartFn,
+            stopFn: loadedStopFn,
+            isRunningFn: loadedIsRunningFn,
+            callFn: loadedCallFn,
+            freeFn: loadedFreeFn
+        )
+#else
         let binaryPath = try locateFrameworkBinary()
         guard let openedHandle = dlopen(binaryPath, RTLD_NOW | RTLD_LOCAL) else {
             throw makeError(String(cString: dlerror()))
@@ -217,35 +259,60 @@ final class FullBunEngineHost {
             )
             let loadedCallFn: CallFn = try symbol("eliza_bun_engine_call", in: openedHandle)
             let loadedFreeFn: FreeFn = try symbol("eliza_bun_engine_free", in: openedHandle)
-            guard let abiPointer = loadedAbiVersionFn() else {
-                throw makeError("ElizaBunEngine ABI version returned null")
-            }
-            let loadedAbiVersion = String(cString: abiPointer)
-            guard loadedAbiVersion == Self.expectedAbiVersion else {
-                throw makeError(
-                    "ElizaBunEngine ABI mismatch: expected \(Self.expectedAbiVersion), got \(loadedAbiVersion)"
-                )
-            }
-            let callbackCode = loadedSetHostCallbackFn(fullBunHostCallCallback)
-            guard callbackCode == 0 else {
-                throw makeError("ElizaBunEngine failed to install host callback: \(callbackCode)")
-            }
-
+            try installLoadedEngineSymbols(
+                abiVersionFn: loadedAbiVersionFn,
+                lastErrorFn: loadedLastErrorFn,
+                setHostCallbackFn: loadedSetHostCallbackFn,
+                startFn: loadedStartFn,
+                stopFn: loadedStopFn,
+                isRunningFn: loadedIsRunningFn,
+                callFn: loadedCallFn,
+                freeFn: loadedFreeFn
+            )
             self.handle = openedHandle
-            self.abiVersionFn = loadedAbiVersionFn
-            self.lastErrorFn = loadedLastErrorFn
-            self.setHostCallbackFn = loadedSetHostCallbackFn
-            self.startFn = loadedStartFn
-            self.stopFn = loadedStopFn
-            self.isRunningFn = loadedIsRunningFn
-            self.callFn = loadedCallFn
-            self.freeFn = loadedFreeFn
         } catch {
             _ = dlclose(openedHandle)
             throw error
         }
+#endif
     }
 
+    private func installLoadedEngineSymbols(
+        abiVersionFn loadedAbiVersionFn: AbiVersionFn,
+        lastErrorFn loadedLastErrorFn: LastErrorFn,
+        setHostCallbackFn loadedSetHostCallbackFn: SetHostCallbackFn,
+        startFn loadedStartFn: StartFn,
+        stopFn loadedStopFn: StopFn,
+        isRunningFn loadedIsRunningFn: IsRunningFn,
+        callFn loadedCallFn: CallFn,
+        freeFn loadedFreeFn: FreeFn
+    ) throws {
+        guard let abiPointer = loadedAbiVersionFn() else {
+            throw makeError("ElizaBunEngine ABI version returned null")
+        }
+        let loadedAbiVersion = String(cString: abiPointer)
+        guard loadedAbiVersion == Self.expectedAbiVersion else {
+            throw makeError(
+                "ElizaBunEngine ABI mismatch: expected \(Self.expectedAbiVersion), got \(loadedAbiVersion)"
+            )
+        }
+        let callbackCode = loadedSetHostCallbackFn(fullBunHostCallCallback)
+        guard callbackCode == 0 else {
+            throw makeError("ElizaBunEngine failed to install host callback: \(callbackCode)")
+        }
+
+        self.abiVersionFn = loadedAbiVersionFn
+        self.lastErrorFn = loadedLastErrorFn
+        self.setHostCallbackFn = loadedSetHostCallbackFn
+        self.startFn = loadedStartFn
+        self.stopFn = loadedStopFn
+        self.isRunningFn = loadedIsRunningFn
+        self.callFn = loadedCallFn
+        self.freeFn = loadedFreeFn
+        self.loaded = true
+    }
+
+#if !ELIZA_IOS_FULL_BUN_ENGINE
     private func locateFrameworkBinary() throws -> String {
         let relative = "ElizaBunEngine.framework/ElizaBunEngine"
         let candidates = [
@@ -269,6 +336,7 @@ final class FullBunEngineHost {
         }
         return unsafeBitCast(pointer, to: T.self)
     }
+#endif
 
     private func encodeJSON(_ value: Any) throws -> String {
         let data = try JSONSerialization.data(withJSONObject: value)

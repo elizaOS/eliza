@@ -142,7 +142,7 @@ export function resolveOrchestratorShell(): ResolvedOrchestratorShell {
   }
 
   const candidates = isAndroidRuntime()
-    ? ["/system/bin/sh", "sh", "/bin/sh"]
+    ? ["/system/bin/sh", "sh"]
     : ["/bin/bash", "bash", "/bin/sh", "sh"];
   const shell = firstExecutable(candidates);
   if (shell) {

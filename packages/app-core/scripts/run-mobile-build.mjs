@@ -3654,6 +3654,7 @@ export const ANDROID_CLOUD_STRIPPED_PERMISSIONS = [
   "FOREGROUND_SERVICE_MEDIA_PROJECTION",
   "FOREGROUND_SERVICE_SPECIAL_USE",
   "RECEIVE_BOOT_COMPLETED",
+  "REQUEST_IGNORE_BATTERY_OPTIMIZATIONS",
   "SYSTEM_ALERT_WINDOW",
   "PACKAGE_USAGE_STATS",
   "MANAGE_APP_OPS_MODES",
@@ -4123,31 +4124,12 @@ function auditAndroidCloudSource(phase) {
     failures.push("app/src/main/res/xml/shortcuts.xml is missing");
   } else {
     const shortcuts = fs.readFileSync(shortcutsPath, "utf8");
-    for (const capability of [
-      "actions.intent.OPEN_APP_FEATURE",
-      "actions.intent.CREATE_MESSAGE",
-      "actions.intent.CREATE_THING",
-      "actions.intent.GET_THING",
-    ]) {
-      if (!shortcuts.includes(`android:name="${capability}"`)) {
-        failures.push(`shortcuts.xml is missing ${capability}`);
-      }
-    }
-    if (!shortcuts.includes(`android:targetPackage="${APP.appId}"`)) {
-      failures.push(
-        `shortcuts.xml targetPackage was not rewritten to ${APP.appId}`,
-      );
-    }
-    if (!shortcuts.includes(`android:targetClass="${APP.appId}.MainActivity"`)) {
-      failures.push(
-        `shortcuts.xml targetClass was not rewritten to ${APP.appId}.MainActivity`,
-      );
-    }
-    if (!shortcuts.includes(`${APP.urlScheme}://`)) {
-      failures.push(
-        `shortcuts.xml URL templates were not rewritten to ${APP.urlScheme}://`,
-      );
-    }
+    failures.push(
+      ...validateAndroidAppActionsXmlResource(shortcuts, {
+        androidPackage: APP.appId,
+        urlScheme: APP.urlScheme,
+      }),
+    );
   }
 
   const javaRoot = path.join(androidDir, "app", "src", "main", "java");
