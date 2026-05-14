@@ -3736,15 +3736,11 @@ export async function startEliza(
   };
 
   const initializeRuntimeServices = async (): Promise<void> => {
-    if (process.env.ELIZA_LEGACY_STEWARD_EVM_BRIDGE !== "0") {
-      try {
-        const { stewardEvmPreBoot } = await loadStewardEvmBridgeModule();
-        await stewardEvmPreBoot?.(runtime);
-      } catch (err) {
-        logger.debug(
-          `[eliza] Steward EVM pre-boot skipped: ${formatError(err)}`,
-        );
-      }
+    try {
+      const { stewardEvmPreBoot } = await loadStewardEvmBridgeModule();
+      await stewardEvmPreBoot?.(runtime);
+    } catch (err) {
+      logger.debug(`[eliza] Steward EVM pre-boot skipped: ${formatError(err)}`);
     }
 
     // 7f. Pre-register ConnectorSetupService so connector plugins can access
@@ -3813,15 +3809,13 @@ export async function startEliza(
       );
     }
 
-    if (process.env.ELIZA_LEGACY_STEWARD_EVM_BRIDGE !== "0") {
-      try {
-        const { stewardEvmPostBoot } = await loadStewardEvmBridgeModule();
-        await stewardEvmPostBoot?.(runtime);
-      } catch (err) {
-        logger.debug(
-          `[eliza] Steward EVM post-boot skipped: ${formatError(err)}`,
-        );
-      }
+    try {
+      const { stewardEvmPostBoot } = await loadStewardEvmBridgeModule();
+      await stewardEvmPostBoot?.(runtime);
+    } catch (err) {
+      logger.debug(
+        `[eliza] Steward EVM post-boot skipped: ${formatError(err)}`,
+      );
     }
 
     try {

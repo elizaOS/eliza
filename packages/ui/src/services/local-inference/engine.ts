@@ -203,10 +203,7 @@ export class LocalInferenceEngine {
         return;
       } catch (err) {
         if (dflashRequired()) throw err;
-        console.warn(
-          "[local-inference] DFlash llama-server unavailable; falling back to node-llama-cpp:",
-          err instanceof Error ? err.message : String(err),
-        );
+        // DFlash unavailable; falling back to node-llama-cpp
       }
     }
 

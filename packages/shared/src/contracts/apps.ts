@@ -176,14 +176,12 @@ export interface RegistryAppInfo {
   /**
    * If true, the app is a developer-tooling surface and is hidden from the
    * main UI unless Developer Mode is enabled in Settings.
-   * TODO: server-side population pending
    */
   developerOnly?: boolean;
   /**
    * Controls whether the app appears in the user-facing app store/catalog.
    * Defaults to true. Set to false for apps that auto-install or are surfaced
    * only via direct deep-links.
-   * TODO: server-side population pending
    */
   visibleInAppStore?: boolean;
   /**

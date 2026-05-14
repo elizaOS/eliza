@@ -1138,7 +1138,6 @@ export function dflashEnabled(): boolean {
 	// Developer kill-switch wins over everything, including ELIZA_DFLASH_ENABLED.
 	// See dflashDevDisabled() — this is a debug-only hatch, never a product path.
 	if (dflashDevDisabled()) return false;
-	if (readBool("ELIZA_DFLASH_DISABLED")) return false;
 	if (readBool("ELIZA_DFLASH_ENABLED")) return true;
 	// A fused build's `llama-server` (omnivoice-grafted, serves
 	// `/v1/audio/speech` in-process) counts as an installed managed binary.

@@ -328,15 +328,11 @@ const CHAIN_TO_ENV_KEY: Record<WalletChain, string> = {
  * the leak surface is real.
  *
  * Default behavior: bridge is OFF. The wallet UI shows "No address"
- * for the chain unless the user explicitly opts in. Opt-in flag:
+ * for the chain unless the user explicitly opts in via
  * `ELIZA_AGENT_WALLET_AS_USER=1`. The proper fix is for consumer
  * plugins to read from the vault directly via `getAgentWallet(agentId,
  * chain)` instead of `process.env.*_PRIVATE_KEY` — when that
  * migration lands, this whole bridge can be deleted.
- *
- * Legacy env: `ELIZA_DISABLE_AGENT_WALLET_AS_USER=1` (the previous
- * opt-out) is still respected — if set, the bridge is forced off
- * regardless of `ELIZA_AGENT_WALLET_AS_USER`.
  */
 export async function bridgeAgentWalletsToProcessEnv(
   vault: Vault,
@@ -344,8 +340,6 @@ export async function bridgeAgentWalletsToProcessEnv(
   descriptors: readonly AgentWalletDescriptor[],
   caller?: string,
 ): Promise<void> {
-  // Hard opt-out wins over opt-in — preserves the legacy disable flag.
-  if (process.env.ELIZA_DISABLE_AGENT_WALLET_AS_USER === "1") return;
   // Default off. Skipping bridge unless explicitly opted in.
   if (process.env.ELIZA_AGENT_WALLET_AS_USER !== "1") return;
   for (const d of descriptors) {

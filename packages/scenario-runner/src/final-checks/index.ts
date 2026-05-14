@@ -206,13 +206,7 @@ function hasGmailDraftData(
 function hasConfirmedGmailSendAction(
   action: ScenarioContext["actionsCalled"][number],
 ): boolean {
-  const acceptedNames = new Set([
-    "MESSAGE",
-    "MESSAGE",
-    "MESSAGE",
-    "GMAIL_ACTION",
-    "INBOX",
-  ]);
+  const acceptedNames = new Set(["MESSAGE", "GMAIL_ACTION", "INBOX"]);
   if (!acceptedNames.has(action.actionName)) {
     return false;
   }
@@ -355,16 +349,16 @@ function _actionMatchesChannel(
   }
   switch (channel) {
     case "gmail":
-      return ["MESSAGE", "MESSAGE", "MESSAGE"].includes(action.actionName);
+      return action.actionName === "MESSAGE";
     case "discord":
     case "telegram":
     case "signal":
     case "imessage":
     case "whatsapp":
     case "sms":
-      return ["MESSAGE", "MESSAGE", "MESSAGE"].includes(action.actionName);
+      return action.actionName === "MESSAGE";
     case "x-dm":
-      return ["X", "MESSAGE", "MESSAGE"].includes(action.actionName);
+      return ["X", "MESSAGE"].includes(action.actionName);
     case "desktop":
     case "mobile":
     case "phone_call":
@@ -878,14 +872,7 @@ registerFinalCheckHandler("gmailActionArguments", (check, { ctx }) => {
     fields?: Record<string, unknown>;
     minCount?: number;
   };
-  const actionNames = actionName ?? [
-    "MESSAGE",
-    "MESSAGE",
-    "MESSAGE",
-    "MESSAGE",
-    "GMAIL_ACTION",
-    "INBOX",
-  ];
+  const actionNames = actionName ?? ["MESSAGE", "GMAIL_ACTION", "INBOX"];
   const matched = ctx.actionsCalled.filter((action) => {
     if (!matchesActionName(action.actionName, actionNames)) {
       return false;
@@ -1053,8 +1040,6 @@ registerFinalCheckHandler("gmailApproval", async (check, { ctx }) => {
       (ctx.approvalRequests ?? []).some(
         (request) =>
           matchesActionName(request.actionName, [
-            "MESSAGE",
-            "MESSAGE",
             "MESSAGE",
             "GMAIL_ACTION",
             "send_email",

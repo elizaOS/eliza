@@ -169,26 +169,15 @@ export function DesktopTrayRuntime() {
           const itemId =
             (payload as { itemId?: string } | null | undefined)?.itemId ?? "";
           if (itemId === "menu-reset-app-applied") {
-            console.info(
-              "[eliza][reset] menu: main-process reset finished — syncing renderer",
-              { itemId },
-            );
             void handleResetAppliedFromMain(payload);
             return;
           }
           if (itemId !== "menu-reset-app") {
             return;
           }
-          console.info(
-            "[eliza][reset] menu: Reset App clicked (legacy IPC — renderer confirm)",
-            { itemId },
-          );
           void handleReset();
         },
       });
-      console.info(
-        "[eliza][reset] tray: subscribed to desktopTrayMenuClick (menu Reset App path)",
-      );
       return true;
     };
 
@@ -291,9 +280,7 @@ export function DesktopTrayRuntime() {
         }
       };
 
-      void run().catch((error) => {
-        console.warn("[eliza] Desktop tray action failed:", error);
-      });
+      void run().catch(() => {});
     };
 
     document.addEventListener(TRAY_ACTION_EVENT, handleTrayAction);
