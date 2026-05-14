@@ -1,11 +1,13 @@
 /**
  * Eliza-curated local model catalog.
  *
- * Default local inference is restricted to the active Eliza-1 line:
- * Qwen3.5 0.8B/2B/4B, Qwen3.5 9B until an official Qwen3.6 9B
- * exists, and Qwen3.6 27B including long-context 27B variants.
- * External Hub search remains custom/opt-in and never enters first-run or
- * default eligibility.
+ * Default local inference is restricted to the active Eliza-1 line, all on
+ * Qwen3.5 bases: 0.8B, 2B, 4B, 9B, and 27B (including long-context 27B
+ * variants at 256k and 1M). The 2026-05-12 mandate retired the legacy
+ * Qwen3 bases and any Qwen3.6 references; see
+ * packages/training/scripts/training/model_registry.py for the active
+ * registry. External Hub search remains custom/opt-in and never enters
+ * first-run or default eligibility.
  */
 
 import type {

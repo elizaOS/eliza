@@ -1,0 +1,184 @@
+{
+  "$schema": "https://elizaos.dev/schemas/voice-manifest/v1.json",
+  "version": 1,
+  "generatedAt": "2026-05-14T00:00:00Z",
+  "models": [
+    {
+      "id": "speaker-encoder",
+      "displayName": "WeSpeaker ResNet34-LM",
+      "purpose": "voice-embedding (256-dim) for speaker identification",
+      "runtime": "onnxruntime-node",
+      "currentVersion": "0.1.0",
+      "license": "CC-BY-4.0",
+      "attribution": "https://huggingface.co/Wespeaker/wespeaker-voxceleb-resnet34-LM",
+      "introducedIn": "R2/I2",
+      "variants": [
+        {
+          "variantId": "wespeaker-resnet34-lm-int8",
+          "format": "onnx",
+          "precision": "int8",
+          "approxSizeBytes": 7340032,
+          "sha256": "TBD-populated-by-publish-pipeline",
+          "embedding": {
+            "dim": 256,
+            "sampleRate": 16000,
+            "channelCount": 1,
+            "normalize": "l2"
+          },
+          "evalMetrics": {
+            "voxceleb1OEer": 0.0072
+          }
+        },
+        {
+          "variantId": "wespeaker-resnet34-lm-fp32",
+          "format": "onnx",
+          "precision": "fp32",
+          "approxSizeBytes": 26214400,
+          "sha256": "TBD-populated-by-publish-pipeline",
+          "embedding": {
+            "dim": 256,
+            "sampleRate": 16000,
+            "channelCount": 1,
+            "normalize": "l2"
+          },
+          "evalMetrics": {
+            "voxceleb1OEer": 0.0072
+          }
+        }
+      ]
+    },
+    {
+      "id": "voice-emotion",
+      "displayName": "Wav2Small acoustic emotion classifier",
+      "purpose": "continuous V-A-D emotion regression, projected to 7-class ExpressiveEmotion tags",
+      "runtime": "onnxruntime-node",
+      "currentVersion": "0.1.0",
+      "license": "Apache-2.0",
+      "attribution": "Student distilled from audeering/wav2vec2-large-robust-12-ft-emotion-msp-dim (CC-BY-NC-SA-4.0 — teacher only, NEVER bundled). Wav2Small architecture from Wagner et al., arXiv:2408.13920.",
+      "introducedIn": "R3/I3",
+      "variants": [
+        {
+          "variantId": "wav2small-msp-dim-int8",
+          "format": "onnx",
+          "precision": "int8",
+          "approxSizeBytes": 122880,
+          "sha256": "TBD-populated-by-publish-pipeline",
+          "emotion": {
+            "sampleRate": 16000,
+            "channelCount": 1,
+            "minSeconds": 1.0,
+            "maxSeconds": 12.0,
+            "outputDims": 3,
+            "outputLabels": ["valence", "arousal", "dominance"],
+            "paramCount": 72256
+          },
+          "evalMetrics": {
+            "macroF1MeldTest": null,
+            "macroF1IemocapTest": null,
+            "mseMspPodcastVad": null,
+            "meanCpuLatencyMs": null
+          }
+        },
+        {
+          "variantId": "wav2small-msp-dim-fp32",
+          "format": "onnx",
+          "precision": "fp32",
+          "approxSizeBytes": 491520,
+          "sha256": "TBD-populated-by-publish-pipeline",
+          "emotion": {
+            "sampleRate": 16000,
+            "channelCount": 1,
+            "minSeconds": 1.0,
+            "maxSeconds": 12.0,
+            "outputDims": 3,
+            "outputLabels": ["valence", "arousal", "dominance"],
+            "paramCount": 72256
+          },
+          "evalMetrics": {
+            "macroF1MeldTest": null,
+            "macroF1IemocapTest": null,
+            "mseMspPodcastVad": null,
+            "meanCpuLatencyMs": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "voice-emotion-text",
+      "displayName": "Roberta GoEmotions text classifier (optional fallback)",
+      "purpose": "text-only fallback when the Stage-1 LM `emotion` field-evaluator quality regresses; off by default",
+      "runtime": "onnxruntime-node",
+      "currentVersion": "0.1.0",
+      "license": "MIT",
+      "attribution": "https://huggingface.co/SamLowe/roberta-base-go_emotions-onnx",
+      "introducedIn": "R3/I3",
+      "variants": [
+        {
+          "variantId": "roberta-go-emotions-int8",
+          "format": "onnx",
+          "precision": "int8",
+          "approxSizeBytes": 125000000,
+          "sha256": "TBD-populated-by-publish-pipeline",
+          "emotion": {
+            "labelCount": 28,
+            "projectedLabelCount": 7,
+            "maxTokenLength": 512
+          },
+          "evalMetrics": {
+            "macroF1GoemotionsTest": 0.49
+          }
+        }
+      ]
+    },
+    {
+      "id": "diarizer",
+      "displayName": "pyannote-segmentation-3.0",
+      "purpose": "local speaker-activity segmentation (powerset, 3 local speakers, 5s window)",
+      "runtime": "onnxruntime-node",
+      "currentVersion": "0.1.0",
+      "license": "MIT",
+      "attribution": "https://huggingface.co/onnx-community/pyannote-segmentation-3.0",
+      "introducedIn": "R2/I2",
+      "variants": [
+        {
+          "variantId": "pyannote-segmentation-3.0-int8",
+          "format": "onnx",
+          "precision": "int8",
+          "approxSizeBytes": 1614807,
+          "sha256": "TBD-populated-by-publish-pipeline",
+          "diarizer": {
+            "windowSeconds": 5,
+            "framesPerWindow": 293,
+            "classCount": 7,
+            "maxLocalSpeakers": 3,
+            "sampleRate": 16000,
+            "channelCount": 1
+          }
+        },
+        {
+          "variantId": "pyannote-segmentation-3.0-fp32",
+          "format": "onnx",
+          "precision": "fp32",
+          "approxSizeBytes": 6291456,
+          "sha256": "TBD-populated-by-publish-pipeline",
+          "diarizer": {
+            "windowSeconds": 5,
+            "framesPerWindow": 293,
+            "classCount": 7,
+            "maxLocalSpeakers": 3,
+            "sampleRate": 16000,
+            "channelCount": 1
+          }
+        }
+      ]
+    }
+  ],
+  "notes": [
+    "This manifest is the asset-level registry for voice sub-models. Its",
+    "machine-readable twin is packages/shared/src/local-inference/voice-models.ts",
+    "(history + auto-updater metadata). The CHANGELOG.md at",
+    "models/voice/CHANGELOG.md is the human-readable counterpart.",
+    "Add per-variant entries here; do not edit a published variant — bump",
+    "the parent currentVersion and append a new variant row instead."
+  ]
+}

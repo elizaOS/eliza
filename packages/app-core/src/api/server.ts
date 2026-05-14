@@ -172,7 +172,10 @@ import { deleteWalletSecretsFromOsStore } from "../security/wallet-os-store-acti
 // Import from extracted modules for use within this file
 // ---------------------------------------------------------------------------
 
-import { ensureCloudTtsApiKeyAlias, mirrorCompatHeaders } from "@elizaos/shared";
+import {
+  ensureCloudTtsApiKeyAlias,
+  mirrorCompatHeaders,
+} from "@elizaos/shared";
 import { filterConfigEnvForResponse as _filterConfigEnvForResponse } from "./server-config-filter";
 
 // ---------------------------------------------------------------------------
@@ -672,7 +675,9 @@ async function handleCompatRoute(
 
   if (method === "POST" && url.pathname === "/api/tts/cloud") {
     if (!(await ensureRouteAuthorized(req, res, state))) return true;
-    const { handleCloudTtsPreviewRoute } = await import("@elizaos/plugin-elizacloud");
+    const { handleCloudTtsPreviewRoute } = await import(
+      "@elizaos/plugin-elizacloud"
+    );
     return handleCloudTtsPreviewRoute(req, res);
   }
 

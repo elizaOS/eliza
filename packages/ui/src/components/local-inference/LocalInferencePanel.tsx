@@ -21,6 +21,10 @@ import { CustomModelSearch } from "./CustomModelSearch";
 import { DeviceBridgeStatusBar } from "./DeviceBridgeStatus";
 import { DevicesPanel } from "./DevicesPanel";
 import { DownloadQueue } from "./DownloadQueue";
+import {
+  ModelUpdatesPanel,
+  useStaticVoiceUpdatePreferences,
+} from "./ModelUpdatesPanel";
 import { FirstRunOffer } from "./FirstRunOffer";
 import { HardwareBadge } from "./HardwareBadge";
 import { displayModelName } from "./hub-utils";
@@ -370,6 +374,8 @@ export function LocalInferencePanel() {
         />
       )}
 
+      <VoiceModelUpdatesSection />
+
       <AdvancedSettingsDisclosure title="Local model assignments" lazy>
         <div className="flex flex-col gap-3">
           <SlotAssignments
@@ -470,6 +476,53 @@ function appendTokenParam(url: string): string {
   if (!token) return url;
   const hasQuery = url.includes("?");
   return `${url}${hasQuery ? "&" : "?"}token=${encodeURIComponent(token)}`;
+}
+
+/**
+ * Voice sub-model auto-updater UI section (R5-versioning §5).
+ *
+ * The section is currently driven by the in-binary VOICE_MODEL_VERSIONS
+ * catalog only. The live status / pin / update actions hit the
+ * /api/local-inference/voice-models/* routes once those are mounted in
+ * plugin-local-inference's compat-routes layer. Until then the buttons
+ * surface but no-op via the warn-on-failure handlers so the UI is
+ * inspectable in dev and storybooks.
+ */
+function VoiceModelUpdatesSection() {
+  const { preferences, setPreferences } = useStaticVoiceUpdatePreferences();
+  const [lastCheckedAt, setLastCheckedAt] = useState<string | null>(null);
+  const [checking, setChecking] = useState(false);
+
+  const onCheckNow = useCallback(() => {
+    setChecking(true);
+    setLastCheckedAt(new Date().toISOString());
+    // The runtime tick is in plugin-local-inference. When the compat route
+    // /api/local-inference/voice-models/check lands, swap this no-op for
+    // an actual fetch.
+    setTimeout(() => setChecking(false), 250);
+  }, []);
+
+  const onUpdateNow = useCallback(() => {
+    /* mount route once /api/local-inference/voice-models/update lands */
+  }, []);
+
+  const onTogglePin = useCallback(() => {
+    /* mount route once /api/local-inference/voice-models/pin lands */
+  }, []);
+
+  return (
+    <ModelUpdatesPanel
+      installations={[]}
+      preferences={preferences}
+      isOwner={false}
+      lastCheckedAt={lastCheckedAt}
+      checking={checking}
+      onCheckNow={onCheckNow}
+      onUpdateNow={onUpdateNow}
+      onTogglePin={onTogglePin}
+      onSetPreferences={setPreferences}
+    />
+  );
 }
 
 export default LocalInferencePanel;

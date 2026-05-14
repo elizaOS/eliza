@@ -29,9 +29,9 @@ describe("ContinuousChatToggle", () => {
     const onChange = vi.fn();
     render(<ContinuousChatToggle value="off" onChange={onChange} />);
 
-    const alwaysOn = screen.getByRole("radiogroup").querySelector(
-      "button[data-mode='always-on']",
-    ) as HTMLButtonElement;
+    const alwaysOn = screen
+      .getByRole("radiogroup")
+      .querySelector("button[data-mode='always-on']") as HTMLButtonElement;
     fireEvent.click(alwaysOn);
 
     expect(onChange).toHaveBeenCalledTimes(1);
@@ -41,30 +41,26 @@ describe("ContinuousChatToggle", () => {
   it("does not re-emit onChange when the same mode is clicked", () => {
     const onChange = vi.fn();
     render(<ContinuousChatToggle value="off" onChange={onChange} />);
-    const off = screen.getByRole("radiogroup").querySelector(
-      "button[data-mode='off']",
-    ) as HTMLButtonElement;
+    const off = screen
+      .getByRole("radiogroup")
+      .querySelector("button[data-mode='off']") as HTMLButtonElement;
     fireEvent.click(off);
     expect(onChange).not.toHaveBeenCalled();
   });
 
   it("ignores clicks while disabled", () => {
     const onChange = vi.fn();
-    render(
-      <ContinuousChatToggle value="off" onChange={onChange} disabled />,
-    );
-    const alwaysOn = screen.getByRole("radiogroup").querySelector(
-      "button[data-mode='always-on']",
-    ) as HTMLButtonElement;
+    render(<ContinuousChatToggle value="off" onChange={onChange} disabled />);
+    const alwaysOn = screen
+      .getByRole("radiogroup")
+      .querySelector("button[data-mode='always-on']") as HTMLButtonElement;
     fireEvent.click(alwaysOn);
     expect(onChange).not.toHaveBeenCalled();
   });
 
   it("compact variant cycles through modes on click", () => {
     const onChange = vi.fn();
-    render(
-      <ContinuousChatToggle value="off" onChange={onChange} compact />,
-    );
+    render(<ContinuousChatToggle value="off" onChange={onChange} compact />);
 
     const button = screen.getByTestId("continuous-chat-toggle");
     expect(button.getAttribute("data-mode")).toBe("off");

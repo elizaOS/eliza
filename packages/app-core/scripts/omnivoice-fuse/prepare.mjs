@@ -1318,7 +1318,7 @@ int eliza_inference_set_verifier_callback(
 /* ---- OmniVoice reference encode (ABI v4) -------------------------- *
  *
  * Thin wrapper around ov_encode_reference. The TTS region must have
- * been acquired (`mmap_acquire("tts")`) before the call. The library
+ * been acquired (\`mmap_acquire("tts")\`) before the call. The library
  * malloc-allocates the token buffer; callers release it via
  * eliza_inference_free_tokens.
  */

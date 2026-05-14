@@ -10,16 +10,15 @@
  * - latency badge (speechEnd → voiceStart) with traffic-light colouring
  */
 
-// biome-ignore lint/correctness/noUnusedImports: Required for JSX transform in tests.
-import * as React from "react";
 import { Crown } from "lucide-react";
-
+// biome-ignore lint/correctness/noUnusedImports: Required for JSX transform in tests.
+import type * as React from "react";
+import type { ContinuousChatLatency } from "../../../hooks/useContinuousChat";
 import { cn } from "../../../lib/utils";
 import type {
   VoiceContinuousStatus,
   VoiceSpeakerMetadata,
 } from "../../../voice/voice-chat-types";
-import type { ContinuousChatLatency } from "../../../hooks/useContinuousChat";
 
 export interface ChatVoiceStatusBarProps {
   status: VoiceContinuousStatus;
@@ -50,7 +49,9 @@ const STATUS_LABEL: Record<VoiceContinuousStatus, string> = {
   interrupting: "Interrupting",
 };
 
-function latencyTone(ms: number | null | undefined): "ok" | "warn" | "danger" | "muted" {
+function latencyTone(
+  ms: number | null | undefined,
+): "ok" | "warn" | "danger" | "muted" {
   if (ms === null || ms === undefined || !Number.isFinite(ms)) return "muted";
   if (ms <= 500) return "ok";
   if (ms <= 1500) return "warn";
@@ -104,11 +105,17 @@ export function ChatVoiceStatusBar({
       )}
     >
       <span
-        className={cn("inline-block h-2 w-2 rounded-full", STATUS_DOT_CLASS[status])}
+        className={cn(
+          "inline-block h-2 w-2 rounded-full",
+          STATUS_DOT_CLASS[status],
+        )}
         aria-hidden="true"
         data-testid="chat-voice-status-dot"
       />
-      <span className="font-medium text-txt" data-testid="chat-voice-status-label">
+      <span
+        className="font-medium text-txt"
+        data-testid="chat-voice-status-label"
+      >
         {STATUS_LABEL[status]}
       </span>
 
@@ -157,7 +164,9 @@ export function ChatVoiceStatusBar({
         }
       >
         {formatLatency(primaryLatency)}
-        {cached ? <span className="text-[9px] uppercase opacity-70">cached</span> : null}
+        {cached ? (
+          <span className="text-[9px] uppercase opacity-70">cached</span>
+        ) : null}
       </span>
     </div>
   );

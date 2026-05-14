@@ -47,6 +47,7 @@ import {
 } from "../services/cache-bridge";
 import { deviceBridge } from "../services/device-bridge";
 import { localInferenceEngine } from "../services/engine";
+import { tryGetMemoryArbiter } from "../services/memory-arbiter";
 import { handlerRegistry } from "../services/handler-registry";
 import { listInstalledModels } from "../services/registry";
 import { installRouterHandler } from "../services/router-handler";
@@ -653,7 +654,17 @@ function registerDeviceBridgeLoader(runtime: AgentRuntime): void {
 		generate: (args) => deviceBridge.generate(args),
 		embed: (args) => deviceBridge.embed(args),
 	};
-	withRegistration.registerService("localInferenceLoader", loader);
+	// Expose the process-wide MemoryArbiter through the registered
+	// `localInferenceLoader` service so provider.ts can route
+	// IMAGE_DESCRIPTION (WS2) and IMAGE (WS3) requests to the arbiter.
+	// Without this accessor the IMAGE handler unconditionally surfaces
+	// `capability_unavailable` because the registered service has no
+	// arbiter accessor — the singleton `localInferenceService` is not
+	// the same object that gets registered with the runtime.
+	const loaderWithArbiter = Object.assign(loader, {
+		getMemoryArbiter: () => tryGetMemoryArbiter(),
+	});
+	withRegistration.registerService("localInferenceLoader", loaderWithArbiter);
 }
 
 /**

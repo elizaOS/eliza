@@ -239,9 +239,73 @@ export class VisionServiceLifecycleManager {
 }
 
 /**
+ * Minimal projection of the WS1 `MemoryArbiter` shape (from
+ * `@elizaos/plugin-local-inference`) that the bridge below needs. The WS1
+ * arbiter exposes typed events through `onEvent`; vision only cares about
+ * `memory_pressure` events, so we adapt them into the `IModelArbiter.onPressure`
+ * contract here rather than coupling plugin-vision to the full event union.
+ */
+interface WS1ArbiterLike {
+  onEvent(
+    listener: (event: { type: string; level?: string }) => void,
+  ): () => void;
+}
+
+function isWS1ArbiterLike(value: unknown): value is WS1ArbiterLike {
+  return (
+    !!value &&
+    typeof value === "object" &&
+    typeof (value as { onEvent?: unknown }).onEvent === "function"
+  );
+}
+
+/**
+ * Adapt the WS1 `MemoryArbiter` (which manages per-capability model handles
+ * via `acquire(capability, modelKey)` and emits `memory_pressure` events on
+ * `onEvent`) into the per-holder, byte-budget `IModelArbiter` contract that
+ * `VisionServiceLifecycleManager` uses to track sub-services (YOLO, OCR,
+ * Florence2). The WS1 arbiter has no per-holder byte ledger, so the bridge
+ * `acquire`/`release` are no-ops that always succeed — the WS1 side handles
+ * eviction at capability granularity, and the vision lifecycle drives
+ * sub-service release through the pressure callback. This is the seam that
+ * lets a pressure tick on the WS1 arbiter cascade to YOLO + OCR release in
+ * plugin-vision.
+ */
+function adaptWS1ArbiterToIModelArbiter(ws1: WS1ArbiterLike): IModelArbiter {
+  return {
+    acquire(): boolean {
+      return true;
+    },
+    release(): void {
+      // No-op; WS1 manages per-capability lifecycles.
+    },
+    onPressure(cb: (holders: string[]) => void): () => void {
+      return ws1.onEvent((event) => {
+        if (event.type !== "memory_pressure") return;
+        if (event.level === "nominal") return;
+        // Empty holders list → "release whatever is cold." The vision
+        // lifecycle's `handlePressure` walks `subs` and picks coldest-first
+        // when the named set is empty, which is the right cascade for both
+        // `low` (drop one) and `critical` (drop all non-text) WS1 tiers.
+        cb([]);
+      });
+    },
+  };
+}
+
+/**
  * Try to resolve a model arbiter from the runtime, dynamically. This avoids
  * a hard dependency on `@elizaos/plugin-local-inference` (WS1) — vision still
  * works standalone when WS1 isn't installed.
+ *
+ * Two resolution paths:
+ *   1. Direct: a service named `MEMORY_ARBITER` / `memory_arbiter` /
+ *      `memoryArbiter` that already implements the `IModelArbiter` shape.
+ *      Used by tests and any future first-class arbiter service.
+ *   2. WS1 bridge: a `localInferenceLoader` / `localInference` service that
+ *      exposes `getMemoryArbiter()` returning the WS1 `MemoryArbiter`. We
+ *      adapt it to `IModelArbiter` via `adaptWS1ArbiterToIModelArbiter` so
+ *      memory-pressure events cascade into vision sub-service release.
  */
 export function resolveArbiterFromRuntime(runtime: {
   getService?: (name: string) => unknown;
@@ -259,6 +323,22 @@ export function resolveArbiterFromRuntime(runtime: {
       typeof svc.onPressure === "function"
     ) {
       return svc as IModelArbiter;
+    }
+  }
+  // WS1 bridge path: discover the arbiter via the local-inference loader
+  // service. Two loader names are in use across this repo
+  // (`localInferenceLoader` is the runtime-registered one;
+  // `localInference` / `LOCAL_INFERENCE` are legacy aliases).
+  const loaderNames = ["localInferenceLoader", "localInference", "LOCAL_INFERENCE"];
+  for (const name of loaderNames) {
+    const loader = runtime.getService?.(name) as
+      | { getMemoryArbiter?: () => unknown }
+      | null
+      | undefined;
+    if (!loader || typeof loader.getMemoryArbiter !== "function") continue;
+    const ws1 = loader.getMemoryArbiter();
+    if (isWS1ArbiterLike(ws1)) {
+      return adaptWS1ArbiterToIModelArbiter(ws1);
     }
   }
   return null;

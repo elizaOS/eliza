@@ -28,7 +28,7 @@
  */
 
 import crypto from "node:crypto";
-import * as http from "node:http";
+import type * as http from "node:http";
 import path from "node:path";
 import {
 	logger,
@@ -37,6 +37,7 @@ import {
 	sendJson,
 	sendJsonError,
 } from "@elizaos/core";
+import { VoiceProfileStore } from "../services/voice/profile-store";
 import {
 	averageEmbeddings,
 	type SpeakerEncoder,
@@ -47,7 +48,6 @@ import {
 	WESPEAKER_SAMPLE_RATE,
 	WespeakerEncoder,
 } from "../services/voice/speaker/encoder";
-import { VoiceProfileStore } from "../services/voice/profile-store";
 
 /** Verbatim onboarding script (R2-speaker.md §6.2). */
 export interface OnboardingScriptStep {
@@ -282,9 +282,20 @@ export async function handleVoiceOnboardingRoutes(
 	pruneExpiredSessions(Date.now());
 
 	if (method === "POST" && pathname === "/api/voice/onboarding/profile/start") {
-		const body = await readJsonBody<Record<string, unknown>>(req, res, {
-			requireObject: false,
-		});
+		// Empty body is valid here (the consent flags default to a safe
+		// "attribution-yes / synthesis-no" pair). We read the body only when
+		// the caller has actually sent one — otherwise `readJsonBody` would
+		// emit a 400 for the empty string and then we'd double-write below.
+		const hasJsonBody =
+			(req.headers["content-type"] ?? "").includes("application/json") &&
+			req.headers["content-length"] !== "0";
+		const body = hasJsonBody
+			? await readJsonBody<Record<string, unknown>>(req, res, {
+					requireObject: false,
+				})
+			: null;
+		// If the body read failed, `readJsonBody` already sent a 4xx.
+		if (hasJsonBody && body === null) return true;
 		const consent = {
 			attributionAuthorized:
 				typeof body?.attributionAuthorized === "boolean"

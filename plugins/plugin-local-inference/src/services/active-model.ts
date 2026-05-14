@@ -33,6 +33,11 @@ import type {
 	HardwareProbe,
 	InstalledModel,
 } from "./types";
+import {
+	assessVoiceBundleFits,
+	VOICE_ENSEMBLE_BUDGETS,
+	type VoiceTierSlot,
+} from "./voice/voice-budget";
 
 export {
 	ELIZA_1_PLACEHOLDER_IDS,
@@ -585,6 +590,109 @@ export function assertModelFitsHost(
 		hostRamMb,
 		fittingVariantId: fitting?.id ?? null,
 	});
+}
+
+/**
+ * Typed error for refused local-voice sessions. Mirrors
+ * `ModelDoesNotFitError` but at the bundle level — emitted by
+ * `assertVoiceBundleFitsHost` when the whole co-resident voice + text stack
+ * cannot fit a host's RAM (per R9 §2.3 / §3.2).
+ *
+ * Catch this at the runtime's voice-session-start boundary and surface the
+ * tier-warning copy (`TIER_WARNING_COPY[<tier>]`) — DO NOT load weights and
+ * watch `MemoryMonitor` evict mid-session.
+ */
+export class VoiceBundleDoesNotFitError extends Error {
+	readonly tierSlot: string;
+	readonly deviceTier: string;
+	readonly requiredPeakMb: number;
+	readonly requiredSteadyStateMb: number;
+	readonly usableMb: number;
+	readonly hostRamMb: number;
+
+	constructor(args: {
+		tierSlot: string;
+		deviceTier: string;
+		requiredPeakMb: number;
+		requiredSteadyStateMb: number;
+		usableMb: number;
+		hostRamMb: number;
+	}) {
+		super(
+			`[local-inference] The voice bundle for tier "${args.tierSlot}" needs ~${args.requiredSteadyStateMb} MB steady-state (+~${args.requiredPeakMb - args.requiredSteadyStateMb} MB transient TTS peak) but only ~${args.usableMb} MB are usable on this host (${args.hostRamMb} MB total, after the OS/runtime headroom reserve). Refusing to start local voice; the runtime should fall back to cloud TTS+ASR or refuse the user-facing action.`,
+		);
+		this.name = "VoiceBundleDoesNotFitError";
+		this.tierSlot = args.tierSlot;
+		this.deviceTier = args.deviceTier;
+		this.requiredPeakMb = args.requiredPeakMb;
+		this.requiredSteadyStateMb = args.requiredSteadyStateMb;
+		this.usableMb = args.usableMb;
+		this.hostRamMb = args.hostRamMb;
+	}
+}
+
+/**
+ * Cross-model admission gate for the local-voice session. Sums the whole
+ * co-resident bundle (LM + drafter + ASR + TTS + embedding + VAD +
+ * wake-word + turn-detector + emotion + speaker-encoder + transient TTS
+ * peak) and refuses entry when the host can't fit it.
+ *
+ * Returns the decision on `fits`. Throws `VoiceBundleDoesNotFitError` when
+ * `wontfit` (when `strict=true`, the default), or just returns the
+ * `wontfit` decision when `strict=false` (the runtime then logs and
+ * degrades silently). Pair with `TIER_WARNING_COPY[deviceTier]` for
+ * user-facing UX.
+ *
+ * R9 §1.4 + §2.3 + §3.2 spec.
+ */
+export function assertVoiceBundleFitsHost(args: {
+	tierSlot: string;
+	deviceTier: string;
+	hostRamMb: number;
+	reserveMb?: number;
+	strict?: boolean;
+}): {
+	level: "fits" | "tight" | "wontfit";
+	steadyStateMb: number;
+	peakMb: number;
+	usableMb: number;
+	fits: boolean;
+} {
+	if (!(args.tierSlot in VOICE_ENSEMBLE_BUDGETS)) {
+		// Unknown tier slot — be permissive: the runtime hasn't built a
+		// canonical slot for this combination yet, and falling through to
+		// `assertModelFitsHost` (the per-tier check) is the right default.
+		return {
+			level: "fits",
+			steadyStateMb: 0,
+			peakMb: 0,
+			usableMb: Math.max(0, args.hostRamMb - (args.reserveMb ?? 1536)),
+			fits: true,
+		};
+	}
+	const decision = assessVoiceBundleFits({
+		tierSlot: args.tierSlot as VoiceTierSlot,
+		deviceTier: args.deviceTier as "MAX" | "GOOD" | "OKAY" | "POOR",
+		hostRamMb: args.hostRamMb,
+		reserveMb: args.reserveMb,
+	});
+	if (decision.level === "wontfit" && args.strict !== false) {
+		throw new VoiceBundleDoesNotFitError({
+			tierSlot: args.tierSlot,
+			deviceTier: args.deviceTier,
+			requiredPeakMb: Math.round(decision.peakMb),
+			requiredSteadyStateMb: Math.round(decision.steadyStateMb),
+			usableMb: Math.round(decision.usableMb),
+			hostRamMb: args.hostRamMb,
+		});
+	}
+	return {
+		level: decision.level,
+		steadyStateMb: decision.steadyStateMb,
+		peakMb: decision.peakMb,
+		usableMb: decision.usableMb,
+		fits: decision.fits,
+	};
 }
 
 function hostRamMbFromProbe(probe: HardwareProbe): number {

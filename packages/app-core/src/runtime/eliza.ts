@@ -51,16 +51,20 @@ import {
   type AppRoutePluginRegistryEntry,
   listAppRoutePluginLoaders,
 } from "./app-route-plugin-registry.js";
+
 // plugin-local-inference loaded lazily to avoid static plugin boundary violations.
 let _localInferenceRuntime:
   | typeof import("@elizaos/plugin-local-inference/runtime")
   | undefined;
 async function _localInference() {
   if (!_localInferenceRuntime) {
-    _localInferenceRuntime = await import("@elizaos/plugin-local-inference/runtime");
+    _localInferenceRuntime = await import(
+      "@elizaos/plugin-local-inference/runtime"
+    );
   }
   return _localInferenceRuntime;
 }
+
 import {
   ensureTextToSpeechHandler,
   isEdgeTtsDisabled as isTextToSpeechEdgeTtsDisabled,
