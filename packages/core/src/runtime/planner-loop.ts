@@ -12,6 +12,7 @@ import {
 	ModelType,
 	type PromptSegment,
 	type ResponseSkeleton,
+	type SpanSamplerPlan,
 	type TextGenerationModelType,
 	type ToolCall,
 	type ToolChoice,
@@ -60,6 +61,7 @@ import type {
 } from "./planner-types";
 import {
 	buildPlannerActionGrammarStrict,
+	buildSpanSamplerPlan,
 	withGuidedDecodeProviderOptions,
 } from "./response-grammar";
 import type {
@@ -777,6 +779,7 @@ async function callPlanner(params: {
 		toolChoice?: ToolChoice;
 		responseSkeleton?: ResponseSkeleton;
 		grammar?: string;
+		spanSamplerPlan?: SpanSamplerPlan;
 	} = {
 		messages: renderedInput.messages,
 		promptSegments: renderedInput.promptSegments,
@@ -828,6 +831,15 @@ async function callPlanner(params: {
 		if (plannerActionGrammar) {
 			modelParams.responseSkeleton = plannerActionGrammar.responseSkeleton;
 			modelParams.grammar = plannerActionGrammar.grammar;
+			// Per-span argmax sampling for the planner envelope: the `action`
+			// enum span gets temperature=0 / topK=1 so the model never randomly
+			// picks the minority action under non-zero call-level temperature.
+			// `parameters` (free-json) and `thought` (free-string) keep the
+			// call-level sampler. Engines that don't honor per-span sampling
+			// ignore the field (grammar still constrains the same tokens).
+			modelParams.spanSamplerPlan = buildSpanSamplerPlan(
+				plannerActionGrammar.responseSkeleton,
+			);
 			modelParams.providerOptions = {
 				...(modelParams.providerOptions as Record<string, unknown>),
 				eliza: {

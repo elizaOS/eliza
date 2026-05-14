@@ -84,6 +84,7 @@ import {
 } from "../runtime/planner-loop";
 import {
 	buildResponseGrammar,
+	buildSpanSamplerPlan,
 	withGuidedDecodeProviderOptions,
 } from "../runtime/response-grammar";
 import {
@@ -3387,6 +3388,15 @@ export async function runV5MessageRuntimeStage1(args: {
 			},
 		);
 
+		// Per-span argmax sampling for the structured envelope: every enum,
+		// number, and boolean span gets temperature=0 / topK=1 so the model
+		// never randomly tips a decision (shouldRespond, requiresTool, …) that
+		// has a clear argmax winner. Free-string spans (replyText, thought)
+		// keep the call-level temperature. Engines that don't honor per-span
+		// sampling ignore the field (grammar still constrains the tokens).
+		const stage1SpanSamplerPlan = buildSpanSamplerPlan(
+			responseGrammar.responseSkeleton,
+		);
 		const rawMessageHandler = (await args.runtime.useModel(
 			ModelType.RESPONSE_HANDLER,
 			{
@@ -3403,6 +3413,7 @@ export async function runV5MessageRuntimeStage1(args: {
 				streamStructured: true,
 				responseSkeleton: responseGrammar.responseSkeleton,
 				grammar: responseGrammar.grammar,
+				spanSamplerPlan: stage1SpanSamplerPlan,
 				// Guided structured decode on by default for Stage 1 (the call always
 				// carries a forced skeleton): the local engine derives the
 				// deterministic-token prefill plan and the fork fast-forwards the

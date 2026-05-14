@@ -303,6 +303,7 @@ function engineGenerateArgsFromParams(
 	grammar?: string;
 	streamStructured?: boolean;
 	elizaSchema?: ElizaHarnessSchema;
+	spanSamplerPlan?: GenerateTextParams["spanSamplerPlan"];
 	onTextChunk?: (chunk: string) => void | Promise<void>;
 	voiceOutput?: "user-visible" | "internal";
 } {
@@ -364,6 +365,7 @@ function engineGenerateArgsFromParams(
 		grammar: params.grammar,
 		streamStructured: streamStructured || undefined,
 		elizaSchema: elizaHarnessSchemaFromParams(params),
+		spanSamplerPlan: params.spanSamplerPlan,
 		onTextChunk,
 		voiceOutput:
 			params.voiceOutput ??

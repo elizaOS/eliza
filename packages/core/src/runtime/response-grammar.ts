@@ -44,6 +44,8 @@ import type {
 	JSONSchema,
 	ResponseSkeleton,
 	ResponseSkeletonSpan,
+	SpanSamplerOverride,
+	SpanSamplerPlan,
 } from "../types/model.js";
 
 // ---------------------------------------------------------------------------
@@ -329,7 +331,10 @@ function spanKindForKey(key: string): ResponseSkeletonSpan["kind"] {
 
 /**
  * Skeleton span kind for a registered field evaluator's value, derived from its
- * declared JSON schema.
+ * declared JSON schema. Typed primitives (`number` / `integer` / `boolean`) are
+ * tagged with their own span kinds so the per-span sampler plan can force
+ * argmax on them (the model never tips a numerical or boolean decision under
+ * non-zero temperature when there's a clear argmax winner).
  */
 function spanKindForFieldSchema(
 	schema: JSONSchema,
@@ -347,6 +352,8 @@ function spanKindForFieldSchema(
 		}
 		return "free-string";
 	}
+	if (type === "number" || type === "integer") return "number";
+	if (type === "boolean") return "boolean";
 	return "free-json";
 }
 
@@ -406,6 +413,14 @@ function gbnfRefForFieldSchema(
 		}
 		builder.useShared("jsonstring");
 		return "jsonstring";
+	}
+	if (type === "number" || type === "integer") {
+		builder.useShared("jsonnumber");
+		return "jsonnumber";
+	}
+	if (type === "boolean") {
+		builder.useShared("jsonbool");
+		return "jsonbool";
 	}
 	builder.useShared("jsonvalue");
 	return "jsonvalue";
@@ -685,6 +700,50 @@ export function withGuidedDecodeProviderOptions<
 		guidedDecode: true,
 	};
 	return providerOptions;
+}
+
+/**
+ * Derive a {@link SpanSamplerPlan} from a {@link ResponseSkeleton} using the
+ * canonical policy: every `enum` (with ≥2 values), `number`, and `boolean` span
+ * gets `temperature: 0, topK: 1` (argmax). `literal`, `free-string`, and
+ * `free-json` spans get no override — the call-level temperature applies.
+ *
+ * `spanIndex` addresses the position INTO `skeleton.spans` directly, so the
+ * caller (and tests) can stare at `skeleton.spans[overrides[i].spanIndex]` to
+ * verify the policy. Engines that need free-span addressing convert at the
+ * boundary by counting non-literal spans up to `spanIndex`.
+ *
+ * Single-value enums are skipped because they collapse to `literal` upstream;
+ * defensively skipped here too. Returns a plan with `overrides: []` when the
+ * skeleton has no argmax-eligible spans (caller decides whether to send it).
+ *
+ * Hardcoded policy matches the user's request: "for any enum or numerical
+ * temperature, we should turn temperature to 0 and in fact just select the
+ * most likely token." Applies to local inference and Eliza Cloud hosted
+ * `eliza-1` (Wave 3 wires the cloud honor path).
+ */
+export function buildSpanSamplerPlan(
+	skeleton: ResponseSkeleton,
+): SpanSamplerPlan {
+	const overrides: SpanSamplerOverride[] = [];
+	for (let i = 0; i < skeleton.spans.length; i += 1) {
+		const span = skeleton.spans[i];
+		if (span.kind === "literal") continue;
+		if (
+			span.kind === "enum" &&
+			(!Array.isArray(span.enumValues) || span.enumValues.length <= 1)
+		) {
+			continue;
+		}
+		if (
+			span.kind === "enum" ||
+			span.kind === "number" ||
+			span.kind === "boolean"
+		) {
+			overrides.push({ spanIndex: i, temperature: 0, topK: 1 });
+		}
+	}
+	return { overrides };
 }
 
 // ---------------------------------------------------------------------------
@@ -1254,6 +1313,10 @@ export function buildPlannerParamsSkeleton(
 			} else {
 				spans.push({ kind: "free-string", key });
 			}
+		} else if (type === "number" || type === "integer") {
+			spans.push({ kind: "number", key });
+		} else if (type === "boolean") {
+			spans.push({ kind: "boolean", key });
 		} else {
 			spans.push({ kind: "free-json", key });
 		}
