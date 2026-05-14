@@ -12,6 +12,7 @@ export interface IosRuntimeConfig {
   apiBase?: string;
   apiToken?: string;
   cloudApiBase: string;
+  /** Deprecated: iOS local transport is native IPC, not a WebSocket bridge. */
   deviceBridgeUrl?: string;
   deviceBridgeToken?: string;
   /**
