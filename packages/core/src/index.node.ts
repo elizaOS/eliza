@@ -323,6 +323,10 @@ export * from "./utils/plugin-loader";
 export * from "./utils/server-health";
 // Eliza state-dir resolution (ELIZA_STATE_DIR, with the legacy MILADY_STATE_DIR honored → ~/.${ELIZA_NAMESPACE ?? "eliza"})
 export * from "./utils/state-dir";
+// User-chosen workspace folder persisted in <stateDir>/workspace-folder.json,
+// shared between the Electrobun renderer (writes via desktop RPC) and the
+// agent runtime (reads at boot to seed ELIZA_WORKSPACE_DIR for store builds).
+export * from "./utils/workspace-folder-config";
 // Export streaming utilities
 export * from "./utils/streaming";
 export { ResponseSkeletonStreamExtractor } from "./utils/streaming";

@@ -40,6 +40,8 @@ interface ConnectorTarget {
   file: string;
   /** Expected name of the `Route[]` export. */
   exportName: string;
+  /** True once the connector has been migrated to the shared contract. */
+  migrated?: boolean;
 }
 
 const REPO_ROOT = path.resolve(__dirname, "..", "..");
@@ -64,6 +66,7 @@ const CONNECTORS: ConnectorTarget[] = [
     connector: "imessage",
     file: "plugins/plugin-imessage/src/setup-routes.ts",
     exportName: "imessageSetupRoutes",
+    migrated: true,
   },
   {
     connector: "bluebubbles",
@@ -178,6 +181,17 @@ for (const target of CONNECTORS) {
       ).toBeGreaterThan(0);
     });
 
+    // For migrated connectors the contract rules must really PASS; for
+    // unmigrated ones the failures are expected and pinned with `test.fails`
+    // so the suite still produces useful signal.
+    //
+    // NOTE on rule 1: even migrated connectors may coexist with post-setup
+    // data routes under `/api/<connector>/` (see BlueBubbles, iMessage).
+    // The contract pins the *setup* endpoints — rule 1 stays `test.fails`
+    // for now to reflect that coexistence; rules 2-5 are the load-bearing
+    // ones that prove migration.
+    const contractTest = target.migrated ? test : test.fails;
+
     // ── Contract rule 1: path prefix `/api/setup/<connector>/`
     test.fails(`all routes use prefix /api/setup/${target.connector}/`, () => {
       const expectedPrefix = `/api/setup/${target.connector}/`;
@@ -188,7 +202,7 @@ for (const target of CONNECTORS) {
     });
 
     // ── Contract rule 2: GET /api/setup/<connector>/status
-    test.fails(`exposes GET /api/setup/${target.connector}/status`, () => {
+    contractTest(`exposes GET /api/setup/${target.connector}/status`, () => {
       const target_path = `/api/setup/${target.connector}/status`;
       const found = parsed.routes.some(
         (r) => r.type === "GET" && r.path === target_path,
@@ -197,7 +211,7 @@ for (const target of CONNECTORS) {
     });
 
     // ── Contract rule 3: POST /api/setup/<connector>/start
-    test.fails(`exposes POST /api/setup/${target.connector}/start`, () => {
+    contractTest(`exposes POST /api/setup/${target.connector}/start`, () => {
       const target_path = `/api/setup/${target.connector}/start`;
       const found = parsed.routes.some(
         (r) => r.type === "POST" && r.path === target_path,
@@ -206,7 +220,7 @@ for (const target of CONNECTORS) {
     });
 
     // ── Contract rule 4: POST /api/setup/<connector>/cancel
-    test.fails(`exposes POST /api/setup/${target.connector}/cancel`, () => {
+    contractTest(`exposes POST /api/setup/${target.connector}/cancel`, () => {
       const target_path = `/api/setup/${target.connector}/cancel`;
       const found = parsed.routes.some(
         (r) => r.type === "POST" && r.path === target_path,
@@ -215,7 +229,7 @@ for (const target of CONNECTORS) {
     });
 
     // ── Contract rule 5: error responses use { error: { code, message } }
-    test.fails("error responses use structured { error: { code, message } } envelope", () => {
+    contractTest("error responses use structured { error: { code, message } } envelope", () => {
       expect(
         parsed.hasBareErrorString,
         'found bare `error: "string"` in responses',

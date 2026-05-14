@@ -1207,9 +1207,61 @@ function handleDeepLink(url: string): void {
   }
 
   switch (path) {
-    case "chat":
-      window.location.hash = "#chat";
+    case "ask":
+    case "assistant":
+    case "chat/ask": {
+      const params = withDefaultSearchParam(
+        parsed.searchParams,
+        "source",
+        "assistant-entry",
+      );
+      ensureAssistantLaunchId(params);
+      setHashRoute("chat", params);
       break;
+    }
+    case "chat": {
+      const params = new URLSearchParams(parsed.searchParams);
+      ensureAssistantLaunchId(params);
+      setHashRoute("chat", params);
+      break;
+    }
+    case "voice":
+    case "chat/voice": {
+      const params = withDefaultSearchParam(
+        parsed.searchParams,
+        "source",
+        "assistant-entry",
+      );
+      ensureAssistantLaunchId(params);
+      params.set("voice", "1");
+      setHashRoute("chat", params);
+      break;
+    }
+    case "daily-brief":
+    case "lifeops/daily-brief": {
+      const params = withDefaultSearchParam(
+        parsed.searchParams,
+        "source",
+        "assistant-entry",
+      );
+      ensureAssistantLaunchId(params);
+      params.set("lifeops.section", "overview");
+      setHashRoute("lifeops", params);
+      break;
+    }
+    case "lifeops/create":
+    case "lifeops/task":
+    case "lifeops/reminder": {
+      const params = withDefaultSearchParam(
+        parsed.searchParams,
+        "source",
+        "assistant-entry",
+      );
+      ensureAssistantLaunchId(params);
+      params.set("lifeops.section", "reminders");
+      setHashRoute("lifeops", params);
+      break;
+    }
     case "phone":
     case "phone/call":
       setHashRoute("phone", parsed.searchParams);
@@ -1313,12 +1365,43 @@ function handleDeepLink(url: string): void {
 function getDeepLinkPath(parsed: URL): string {
   const host = parsed.host.replace(/^\/+|\/+$/g, "");
   const pathname = parsed.pathname.replace(/^\/+|\/+$/g, "");
+  if (host === APP_CONFIG.appId || host === APP_CONFIG.desktop?.bundleId) {
+    return pathname;
+  }
   return [host, pathname].filter(Boolean).join("/");
 }
 
 function setHashRoute(route: string, params: URLSearchParams): void {
   const query = params.toString();
   window.location.hash = query ? `#${route}?${query}` : `#${route}`;
+}
+
+function withDefaultSearchParam(
+  params: URLSearchParams,
+  key: string,
+  value: string,
+): URLSearchParams {
+  const next = new URLSearchParams(params);
+  if (!next.has(key)) {
+    next.set(key, value);
+  }
+  return next;
+}
+
+function ensureAssistantLaunchId(params: URLSearchParams): void {
+  if (params.has("assistant.launchId")) return;
+  const hasAssistantPayload =
+    params.has("text") ||
+    params.has("q") ||
+    params.has("query") ||
+    params.has("body") ||
+    params.has("action") ||
+    params.has("source");
+  if (!hasAssistantPayload) return;
+  const randomSuffix =
+    globalThis.crypto?.randomUUID?.() ??
+    `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+  params.set("assistant.launchId", randomSuffix);
 }
 
 async function initializeDesktopShell(): Promise<void> {

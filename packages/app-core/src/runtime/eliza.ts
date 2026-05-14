@@ -805,7 +805,14 @@ export async function bootElizaRuntime(
     // Eagerly download the embedding model before the full runtime boot.
     // This way the TUI loading screen (or server logs) can show download
     // progress instead of the app silently stalling on first embedding call.
-    await warmupEmbeddingModel(opts.onEmbeddingProgress);
+    // Fire-and-forget: warmupEmbeddingModelImpl declares "non-fatal: will
+    // retry on first use" semantics, and self-serializes via the module-level
+    // warmupInFlight singleton. Awaiting it here parked bootstrap on sticky
+    // HF 401 → multi-URL fallback chains with no overall deadline; the API
+    // port never bound and dev-ui.mjs's 300s watchdog tore the stack down
+    // (W-016). Voiding lets bootstrap proceed; the renderer's startup overlay
+    // still surfaces progress via updateStartupEmbeddingProgress.
+    void warmupEmbeddingModel(opts.onEmbeddingProgress);
 
     // Cap embedding dimension to 384 — plugin-sql's DIMENSION_MAP only
     // supports up to 3072, and the performance-tier E5-Mistral-7B model
@@ -1120,8 +1127,11 @@ export async function startEliza(
     patchHttpCreateServerForCompat();
     const earlyCompatState = getSharedCompatRuntimeState();
 
-    // Eagerly download the embedding model with progress reporting
-    await warmupEmbeddingModel(options?.onEmbeddingProgress);
+    // Eagerly download the embedding model with progress reporting.
+    // Fire-and-forget — see comment at the matching call in bootElizaRuntime
+    // (W-016): awaiting parks bootstrap; voiding lets the API port bind on
+    // time while the warmup runs alongside.
+    void warmupEmbeddingModel(options?.onEmbeddingProgress);
 
     // Cap embedding dimension to 384 — see comment in bootElizaRuntime.
     if (!process.env.EMBEDDING_DIMENSION) {

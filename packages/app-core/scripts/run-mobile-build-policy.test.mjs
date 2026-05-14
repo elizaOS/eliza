@@ -84,3 +84,25 @@ test("iOS background runner pod resolves through the official package", () => {
     "@capacitor/background-runner",
   );
 });
+
+test("iOS app entitlements do not request JIT or dynamic code signing", () => {
+  const entitlementsPath = path.join(
+    import.meta.dirname,
+    "..",
+    "platforms",
+    "ios",
+    "App",
+    "App",
+    "App.entitlements",
+  );
+  const entitlements = fs.readFileSync(entitlementsPath, "utf8");
+  assert.equal(entitlements.includes("com.apple.security.cs.allow-jit"), false);
+  assert.equal(
+    entitlements.includes("com.apple.security.cs.allow-dyld-environment-variables"),
+    false,
+  );
+  assert.equal(
+    entitlements.includes("com.apple.security.cs.disable-library-validation"),
+    false,
+  );
+});
