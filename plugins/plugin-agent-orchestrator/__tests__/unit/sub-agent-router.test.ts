@@ -623,8 +623,11 @@ describe("SubAgentRouter", () => {
       const fetched = fetchMock.mock.calls.map(([url]) => String(url));
       expect(fetched.some((url) => url.startsWith(`${assetUrl}?`))).toBe(true);
       const retryTask = String(spawnSession.mock.calls[0]?.[0]?.initialTask);
+      expect(retryTask).toMatch(/^--- VERIFICATION FEEDBACK/);
+      expect(retryTask).toContain("overrides conflicting filename");
       expect(retryTask).toContain("cached stale miss");
-      expect(retryTask).toContain("rename that asset to a fresh filename");
+      expect(retryTask).toContain("Their exact filenames are unavailable");
+      expect(retryTask).toContain("Create fresh asset filenames");
       const retryMetadata = spawnSession.mock.calls[0]?.[0]?.metadata as
         | Record<string, unknown>
         | undefined;
@@ -665,8 +668,11 @@ describe("SubAgentRouter", () => {
       expect(fetched).toContain(assetUrl);
       expect(fetched.some((url) => url.startsWith(`${assetUrl}?`))).toBe(true);
       const retryTask = String(spawnSession.mock.calls[0]?.[0]?.initialTask);
+      expect(retryTask).toMatch(/^--- VERIFICATION FEEDBACK/);
+      expect(retryTask).toContain("overrides conflicting filename");
       expect(retryTask).toContain("cached stale miss");
-      expect(retryTask).toContain("rename that asset to a fresh filename");
+      expect(retryTask).toContain("Their exact filenames are unavailable");
+      expect(retryTask).toContain("Create fresh asset filenames");
       const retryMetadata = spawnSession.mock.calls[0]?.[0]?.metadata as
         | Record<string, unknown>
         | undefined;

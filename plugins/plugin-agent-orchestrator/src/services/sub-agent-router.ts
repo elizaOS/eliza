@@ -679,20 +679,34 @@ export class SubAgentRouter {
       pickStringSet(meta.cachedStaleMissUrls),
       dead,
     );
-    const deadLines = dead
-      .map((d) =>
-        d.via
-          ? `  - ${d.url} (referenced by ${d.via}) → ${d.status}`
-          : `  - ${d.url} → ${d.status}`,
-      )
-      .join("\n");
-    const retryTask = `${originalTask}
+    const cachedDead = dead.filter((entry) =>
+      entry.status.includes("cached stale miss"),
+    );
+    const missingDead = dead.filter(
+      (entry) => !entry.status.includes("cached stale miss"),
+    );
+    const formatDeadLines = (entries: DeadUrl[]) =>
+      entries
+        .map((d) =>
+          d.via
+            ? `  - ${d.url} (referenced by ${d.via}) → ${d.status}`
+            : `  - ${d.url} → ${d.status}`,
+        )
+        .join("\n");
+    const cachedFeedback =
+      cachedDead.length > 0
+        ? `\nThese URL(s) are stale cached 404s. Their exact filenames are unavailable for this retry; do not recreate them and do not leave any HTML reference pointing to them. Create fresh asset filenames in the same app directory (for example, add a version suffix), update every HTML reference to the fresh filenames, then verify the fresh public URLs:\n${formatDeadLines(cachedDead)}\n`
+        : "";
+    const missingFeedback =
+      missingDead.length > 0
+        ? `\nThese URL(s) are not reachable, which means the corresponding files are missing, empty, or served from the wrong path. Create or fix every one of these files in the location the task specifies, then verify each file exists and is non-empty:\n${formatDeadLines(missingDead)}\n`
+        : "";
+    const retryTask = `--- VERIFICATION FEEDBACK (retry ${nextRetry}/${maxRetries}) ---
+The previous attempt reported the task complete, but verification failed. This feedback overrides conflicting filename or URL instructions in the original task.${cachedFeedback}${missingFeedback}
+Original task for context:
+${originalTask}
 
---- VERIFICATION FEEDBACK (retry ${nextRetry}/${maxRetries}) ---
-A previous attempt reported the task complete, but these URL(s) are NOT reachable, which means the corresponding files are missing or empty:
-${deadLines}
-Create or fix every one of those files in the location your task specifies, then verify each file exists and is non-empty.
-If a URL reports a cached stale miss, do not keep rewriting the same filename: rename that asset to a fresh filename, update every HTML reference to the new filename, then verify the new public URL. Do not report done until every referenced URL would resolve.`;
+Do not report done until every referenced URL in the final page resolves without verification errors.`;
 
     try {
       const result = await service.spawnSession({
