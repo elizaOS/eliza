@@ -33,6 +33,15 @@ export interface DesktopActionParams {
   action: DesktopActionType;
   coordinate?: [number, number];
   startCoordinate?: [number, number];
+  /**
+   * Display the coordinate is local to. Required for any coordinate-bearing
+   * action (click, mouse_move, drag, scroll, key_combo, click_with_modifiers).
+   * If omitted, the service falls back to the primary display and emits a
+   * deprecation warning. New callers MUST set this.
+   */
+  displayId?: number;
+  /** Coordinate space of `coordinate`/`startCoordinate`: logical (default) or backing-store pixels (macOS retina captures). */
+  coordSource?: "logical" | "backing";
   /** Modifier keys to hold during click_with_modifiers */
   modifiers?: string[];
   /** Text to type (for "type" action) */
@@ -147,6 +156,8 @@ export interface ComputerUseResult {
 export interface ComputerActionResult extends ComputerUseResult {
   /** Base64-encoded PNG screenshot taken after the action */
   screenshot?: string;
+  /** Display the screenshot belongs to (when known). */
+  displayId?: number;
   /** Structured data payload (e.g. OCR/detect results) */
   data?: unknown;
 }
@@ -270,6 +281,21 @@ export interface ScreenRegion {
 export interface ScreenSize {
   width: number;
   height: number;
+}
+
+/**
+ * One physical display attached to the host. Surfaced to the agent via the
+ * `computerState` provider so the planner knows the layout before issuing
+ * coordinate-bearing actions.
+ */
+export interface DisplayDescriptor {
+  id: number;
+  /** [x, y, width, height] in OS-global pixel space. */
+  bounds: [number, number, number, number];
+  /** Backing-store scale factor (1 on Linux/Windows, >1 on HiDPI macOS). */
+  scaleFactor: number;
+  primary: boolean;
+  name: string;
 }
 
 export interface PlatformCapability {

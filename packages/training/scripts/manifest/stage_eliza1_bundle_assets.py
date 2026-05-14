@@ -32,7 +32,7 @@ import time
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Final
+from typing import Any, Final, Mapping, Sequence
 
 try:  # pragma: no cover - import availability is environment-dependent
     from huggingface_hub import HfApi, hf_hub_download
@@ -41,9 +41,9 @@ except ModuleNotFoundError:  # pragma: no cover - env-only path
     hf_hub_download = None  # type: ignore[assignment]
 
 try:
-    from .eliza1_manifest import VOICE_QUANT_BY_TIER
+    from .eliza1_manifest import ELIZA_1_HF_REPO, VOICE_QUANT_BY_TIER, validate_manifest
 except ImportError:  # pragma: no cover - script execution path
-    from eliza1_manifest import VOICE_QUANT_BY_TIER
+    from eliza1_manifest import ELIZA_1_HF_REPO, VOICE_QUANT_BY_TIER, validate_manifest
 
 VOICE_REPO: Final[str] = "Serveurperso/OmniVoice-GGUF"
 VAD_NATIVE_REPO: Final[str] = "ggml-org/whisper-vad"
@@ -134,6 +134,189 @@ def sha256_file(path: Path, chunk: int = 1024 * 1024) -> str:
         for block in iter(lambda: fh.read(chunk), b""):
             h.update(block)
     return h.hexdigest()
+
+
+def bundle_relpath(bundle_dir: Path, path: Path) -> str:
+    root = bundle_dir.resolve()
+    target = path.resolve()
+    try:
+        return target.relative_to(root).as_posix()
+    except ValueError as exc:
+        raise ValueError(f"staged path escapes bundle root: {path}") from exc
+
+
+def _all_checksum_inputs(bundle_dir: Path) -> list[Path]:
+    out: list[Path] = []
+    for path in sorted(bundle_dir.rglob("*")):
+        if not path.is_file():
+            continue
+        rel = path.relative_to(bundle_dir)
+        if rel.as_posix() == "checksums/SHA256SUMS":
+            continue
+        if any(part.startswith(".") for part in rel.parts):
+            continue
+        out.append(path)
+    return out
+
+
+def regenerate_checksums(bundle_dir: Path, *, dry_run: bool) -> dict[str, Any] | None:
+    if dry_run:
+        return None
+    checksum_path = bundle_dir / "checksums" / "SHA256SUMS"
+    checksum_path.parent.mkdir(parents=True, exist_ok=True)
+    lines = [
+        f"{sha256_file(path)}  {path.relative_to(bundle_dir).as_posix()}"
+        for path in _all_checksum_inputs(bundle_dir)
+    ]
+    checksum_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return {
+        "path": str(checksum_path),
+        "entryCount": len(lines),
+        "sha256": sha256_file(checksum_path),
+    }
+
+
+def _slot_for_bundle_path(rel: str) -> str | None:
+    if rel.startswith("tts/"):
+        return "voice"
+    if rel.startswith("asr/"):
+        return "asr"
+    if rel.startswith("vad/"):
+        return "vad"
+    if rel.startswith("wake/"):
+        return "wakeword"
+    if rel == "cache/voice-preset-default.bin":
+        return "cache"
+    return None
+
+
+def merge_manifest_asset_entries(
+    bundle_dir: Path,
+    staged_files: Sequence[Mapping[str, Any]],
+    *,
+    voice_preset: Mapping[str, Any],
+    dry_run: bool,
+) -> dict[str, Any] | None:
+    """Merge newly staged non-text assets into an existing bundle manifest."""
+
+    manifest_path = bundle_dir / "eliza-1.manifest.json"
+    if dry_run or not manifest_path.is_file():
+        return None
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if not isinstance(manifest, dict):
+        raise ValueError(f"{manifest_path} did not contain a JSON object")
+
+    files = manifest.setdefault("files", {})
+    if not isinstance(files, dict):
+        raise ValueError("manifest.files must be an object")
+
+    by_slot: dict[str, dict[str, dict[str, Any]]] = {}
+    for item in staged_files:
+        path_value = item.get("path")
+        if not isinstance(path_value, str):
+            continue
+        destination = Path(path_value)
+        if not destination.is_file():
+            continue
+        rel = bundle_relpath(bundle_dir, destination)
+        slot = _slot_for_bundle_path(rel)
+        if slot is None:
+            continue
+        by_slot.setdefault(slot, {})[rel] = {
+            "path": rel,
+            "sha256": sha256_file(destination),
+        }
+
+    preset_path = voice_preset.get("path")
+    if isinstance(preset_path, str) and (bundle_dir / "cache").is_dir():
+        destination = Path(preset_path)
+        if destination.is_file():
+            rel = bundle_relpath(bundle_dir, destination)
+            by_slot.setdefault("cache", {})[rel] = {
+                "path": rel,
+                "sha256": sha256_file(destination),
+            }
+
+    changed_paths: list[str] = []
+    for slot, replacements in sorted(by_slot.items()):
+        existing = files.setdefault(slot, [])
+        if not isinstance(existing, list):
+            raise ValueError(f"manifest.files.{slot} must be a list")
+        merged: list[Any] = []
+        seen: set[str] = set()
+        for entry in existing:
+            if isinstance(entry, dict) and isinstance(entry.get("path"), str):
+                rel = entry["path"]
+                if rel in replacements:
+                    merged.append(replacements[rel])
+                    seen.add(rel)
+                    changed_paths.append(rel)
+                else:
+                    merged.append(entry)
+            else:
+                merged.append(entry)
+        for rel, entry in sorted(replacements.items()):
+            if rel not in seen:
+                merged.append(entry)
+                changed_paths.append(rel)
+        files[slot] = merged
+
+    errors = validate_manifest(manifest, require_publish_ready=False)
+    if errors:
+        raise ValueError(
+            "manifest validation failed after asset staging: " + "; ".join(errors)
+        )
+    manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+    return {
+        "path": str(manifest_path),
+        "updatedPaths": sorted(set(changed_paths)),
+    }
+
+
+def merge_release_evidence_assets(
+    bundle_dir: Path,
+    staged_files: Sequence[Mapping[str, Any]],
+    *,
+    dry_run: bool,
+) -> dict[str, Any] | None:
+    evidence_path = bundle_dir / "evidence" / "release.json"
+    if dry_run or not evidence_path.is_file():
+        return None
+    evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+    if not isinstance(evidence, dict):
+        raise ValueError(f"{evidence_path} did not contain a JSON object")
+
+    evidence["repoId"] = ELIZA_1_HF_REPO
+    evidence["checksumManifest"] = "checksums/SHA256SUMS"
+    hf = evidence.setdefault("hf", {})
+    if isinstance(hf, dict):
+        hf["repoId"] = ELIZA_1_HF_REPO
+        hf.setdefault("pathPrefix", f"bundles/{evidence.get('tier', '')}")
+
+    shipped: set[str] = set()
+    for subdir in ("text", "tts", "asr", "vad", "vision", "dflash"):
+        root = bundle_dir / subdir
+        if root.is_dir():
+            shipped.update(
+                p.relative_to(bundle_dir).as_posix()
+                for p in root.rglob("*")
+                if p.is_file()
+            )
+    for item in staged_files:
+        path_value = item.get("path")
+        if isinstance(path_value, str):
+            path = Path(path_value)
+            if path.is_file():
+                rel = bundle_relpath(bundle_dir, path)
+                if rel.split("/", 1)[0] in {"tts", "asr", "vad"}:
+                    shipped.add(rel)
+
+    evidence["weights"] = sorted(shipped)
+    evidence_path.write_text(
+        json.dumps(evidence, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    return {"path": str(evidence_path), "weights": evidence["weights"]}
 
 
 def copy_hf_file(
@@ -498,6 +681,18 @@ def stage_assets(args: argparse.Namespace) -> dict[str, Any]:
     )
     merge_lineage(bundle_dir, revisions, asr_repo=asr_repo, dry_run=args.dry_run)
     write_license_notes(bundle_dir, dry_run=args.dry_run)
+    manifest_update = merge_manifest_asset_entries(
+        bundle_dir,
+        staged,
+        voice_preset=preset,
+        dry_run=args.dry_run,
+    )
+    release_evidence_update = merge_release_evidence_assets(
+        bundle_dir,
+        staged,
+        dry_run=args.dry_run,
+    )
+    checksum_manifest = regenerate_checksums(bundle_dir, dry_run=args.dry_run)
 
     report = {
         "schemaVersion": 1,
@@ -529,6 +724,9 @@ def stage_assets(args: argparse.Namespace) -> dict[str, Any]:
         },
         "files": staged,
         "voicePreset": preset,
+        "manifestUpdate": manifest_update,
+        "releaseEvidenceUpdate": release_evidence_update,
+        "checksumManifest": checksum_manifest,
         "dryRun": args.dry_run,
     }
     if not args.dry_run:

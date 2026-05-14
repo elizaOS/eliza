@@ -35,8 +35,9 @@ When the underlying registry / vLLM args drift, regenerate by hand from
 >    `vast_template_env.{MODEL_REPO,MODEL_ALIAS,VLLM_PORT,VLLM_REGISTRY_KEY}`.
 >    Each manifest declares the script via the `onstart_script` field.
 > 2. **GGUF/llama-server (legacy)** — point a Vast template at
->    `MODEL_REPO=elizaos/eliza-1-<size>-gguf-q4_k_m` (or `-gguf-q6_k`)
->    plus the upstream `onstart.sh`. That matches the pyworker
+>    `MODEL_REPO=elizaos/eliza-1` + `MODEL_FILE=bundles/<size>/text/...`
+>    plus the upstream `onstart.sh`. llama.cpp resolves the subpath
+>    inside the consolidated bundle repo. That matches the pyworker
 >    contract without any wrapper, and is what
 >    `eliza/cloud/scripts/vast/upsert-template.ts` does for the 27B
 >    NEO-CODE deploy.

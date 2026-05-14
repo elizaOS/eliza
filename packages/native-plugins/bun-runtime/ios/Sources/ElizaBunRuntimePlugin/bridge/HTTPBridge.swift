@@ -34,6 +34,9 @@ public final class HTTPBridge {
             guard let target = URL(string: url) else {
                 return Self.rejectedPromise(in: ctx, error: "http_fetch: invalid url")
             }
+            if Self.isLocalLoopback(target) {
+                return Self.rejectedPromise(in: ctx, error: "http_fetch: loopback/local-agent URLs must use path-only http_request IPC")
+            }
 
             var request = URLRequest(url: target)
             request.httpMethod = method
@@ -80,6 +83,14 @@ public final class HTTPBridge {
         task.resume()
 
         return promise
+    }
+
+    private static func isLocalLoopback(_ url: URL) -> Bool {
+        guard let host = url.host?.lowercased() else { return false }
+        return host == "localhost" ||
+            host == "127.0.0.1" ||
+            host == "::1" ||
+            host.hasPrefix("127.")
     }
 
     private static func buildResultDict(data: Data?, response: URLResponse?, error: Error?, ctx: JSContext) -> [String: Any] {

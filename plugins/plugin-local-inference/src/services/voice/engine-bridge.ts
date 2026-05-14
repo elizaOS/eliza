@@ -1110,24 +1110,46 @@ export class EngineVoiceBridge {
 	 * `flush()`ing. Throws `AsrUnavailableError` when no ASR backend is
 	 * available — never a silent empty string.
 	 */
-	async transcribePcm(args: TranscriptionAudio): Promise<string> {
+	async transcribePcm(
+		args: TranscriptionAudio,
+		signal?: AbortSignal,
+	): Promise<string> {
 		this.assertVoiceOn("transcribe audio");
+		if (signal?.aborted) {
+			throw signal.reason instanceof Error
+				? signal.reason
+				: new DOMException("Aborted", "AbortError");
+		}
 		const backendBatch = this.backend as OmniVoiceBackend & {
 			transcribe?: (args: TranscriptionAudio) => Promise<string>;
 		};
 		if (typeof backendBatch.transcribe === "function") {
-			return backendBatch.transcribe(args);
+			const transcript = await backendBatch.transcribe(args);
+			if (signal?.aborted) {
+				throw signal.reason instanceof Error
+					? signal.reason
+					: new DOMException("Aborted", "AbortError");
+			}
+			return transcript;
 		}
 		const transcriber = this.createStreamingTranscriber();
+		const abort = () => transcriber.dispose();
 		try {
+			signal?.addEventListener("abort", abort, { once: true });
 			transcriber.feed({
 				pcm: args.pcm,
 				sampleRate: args.sampleRate,
 				timestampMs: 0,
 			});
 			const final = await transcriber.flush();
+			if (signal?.aborted) {
+				throw signal.reason instanceof Error
+					? signal.reason
+					: new DOMException("Aborted", "AbortError");
+			}
 			return final.partial;
 		} finally {
+			signal?.removeEventListener("abort", abort);
 			transcriber.dispose();
 		}
 	}

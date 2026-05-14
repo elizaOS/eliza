@@ -10,6 +10,8 @@
  * preference survives enabling the plugin later.
  */
 
+import { existsSync } from "node:fs";
+import { join as pathJoin } from "node:path";
 import type { AgentRuntime } from "@elizaos/core";
 import {
 	ELIZA_1_PLACEHOLDER_IDS,
@@ -118,6 +120,22 @@ export interface LocalInferenceLoadArgs {
 	flashAttention?: boolean;
 	mmap?: boolean;
 	mlock?: boolean;
+	/**
+	 * Path to the multi-modal projector GGUF (mmproj-<tier>.gguf), when the
+	 * loaded tier supports vision (`catalog.sourceModel.components.vision`
+	 * is present AND the file exists on disk). WS2 (vision-describe)
+	 * resolves this from the installed bundle root in
+	 * `resolveLocalInferenceLoadArgs`. Backends that support vision use the
+	 * path verbatim:
+	 *   - llama-server: `--mmproj <path>` flag on spawn.
+	 *   - node-llama-cpp: `mtmd_init_from_file(<path>)` (planned in fork).
+	 *   - AOSP libllama shim: `eliza_llama_mtmd_init_from_file(<path>)`.
+	 * Undefined when the tier doesn't ship vision or the file isn't on
+	 * disk yet (e.g. downloaded text-only bundle). The text load is NOT
+	 * gated on mmproj presence — text+drafter still load and vision is
+	 * marked unavailable for that session.
+	 */
+	mmprojPath?: string;
 }
 
 /**
@@ -390,6 +408,60 @@ function mergeOverrides(
 		args.maxThreads = overrides.maxThreads;
 }
 
+/**
+ * Resolve the per-tier mmproj GGUF path for a given installed model when
+ * the catalog declares the tier ships a vision projector AND the file is
+ * actually on disk under the bundle root.
+ *
+ * Returns:
+ *   - the absolute path to the mmproj file when the tier has vision and
+ *     the file exists.
+ *   - undefined when the tier has no vision component (text-only bundle)
+ *     or when the file hasn't been downloaded yet. In the latter case
+ *     the coordinator emits a one-shot warning; vision capability is
+ *     unavailable for the session but the text load still succeeds.
+ *
+ * Path layout: the catalog's `sourceModel.components.vision.file` is the
+ * Hugging Face-relative path, e.g. `bundles/2b/vision/mmproj-2b.gguf`.
+ * Locally the bundleRoot already represents the per-tier "bundles/<tier>"
+ * subtree, so we strip the leading `bundles/<tier>/` segment before
+ * joining against the local bundleRoot. When that prefix isn't present
+ * (e.g. a custom bundle layout), we fall through to the original path
+ * unchanged. Manifest-validated bundles (`bundleRoot` set) are the only
+ * path that lands a vision component — external-scan models (LM Studio,
+ * Jan) don't.
+ */
+export function resolveMmprojPath(
+	installed: InstalledModel,
+	catalog: CatalogModel | undefined,
+): string | undefined {
+	if (!catalog) return undefined;
+	const visionComponent = catalog.sourceModel?.components?.vision;
+	if (!visionComponent?.file) return undefined;
+	const bundleRoot = installed.bundleRoot;
+	if (!bundleRoot) return undefined;
+	const local = stripBundlePrefix(visionComponent.file, installed.id);
+	const candidate = pathJoin(bundleRoot, local);
+	if (!existsSync(candidate)) return undefined;
+	return candidate;
+}
+
+/**
+ * Strip the `bundles/<tier-slug>/` prefix the catalog uses for HF
+ * paths so the remaining string is bundle-root-relative. When the
+ * prefix isn't present, return the input unchanged.
+ */
+function stripBundlePrefix(catalogFile: string, modelId: string): string {
+	const slug = modelId.startsWith("eliza-1-")
+		? modelId.slice("eliza-1-".length)
+		: modelId;
+	const prefix = `bundles/${slug}/`;
+	if (catalogFile.startsWith(prefix)) {
+		return catalogFile.slice(prefix.length);
+	}
+	return catalogFile;
+}
+
 export async function resolveLocalInferenceLoadArgs(
 	installed: InstalledModel,
 	overrides?: LocalInferenceLoadOverrides,
@@ -399,6 +471,15 @@ export async function resolveLocalInferenceLoadArgs(
 	const runtime = catalog?.runtime;
 
 	applyCatalogDefaults(args, catalog);
+
+	// WS2: when the tier declares vision and the per-tier mmproj GGUF is
+	// already on disk, plumb the path. The text load is never gated on
+	// mmproj — when the file is missing on a vision-capable tier the
+	// coordinator emits a one-shot warning and continues.
+	const mmprojPath = resolveMmprojPath(installed, catalog);
+	if (mmprojPath) {
+		args.mmprojPath = mmprojPath;
+	}
 
 	const dflash = runtime?.dflash;
 	if (dflash) {
@@ -551,6 +632,32 @@ export class ActiveModelCoordinator {
 		}
 	}
 
+	/**
+	 * WS2: one-shot warning latch per (modelId) — when the tier declares
+	 * vision but no mmproj GGUF was found on disk, log once so the
+	 * operator sees that vision is degraded for this session. The
+	 * arbiter's vision-describe capability stays unregistered for this
+	 * session; plugin-vision falls back to its non-eliza-1 path.
+	 */
+	private readonly warnedDegradedVisionFor = new Set<string>();
+
+	private warnIfVisionDegraded(
+		installed: InstalledModel,
+		resolvedMmprojPath: string | undefined,
+	): void {
+		const catalog = findCatalogModel(installed.id);
+		const tierClaimsVision = Boolean(
+			catalog?.sourceModel?.components?.vision?.file,
+		);
+		if (!tierClaimsVision) return;
+		if (resolvedMmprojPath) return;
+		if (this.warnedDegradedVisionFor.has(installed.id)) return;
+		this.warnedDegradedVisionFor.add(installed.id);
+		console.warn(
+			`[local-inference] vision capability unavailable for tier "${installed.id}" — the bundle declares vision/mmproj but the projector GGUF is not on disk under "${installed.bundleRoot ?? "<no-bundleRoot>"}". Text and voice will continue to load; plugin-vision will fall back to its Florence-2 path. Download the per-tier mmproj-<tier>.gguf to enable native vision-describe.`,
+		);
+	}
+
 	/** Return the loader service from the current runtime, if registered. */
 	private getLoader(runtime: AgentRuntime | null): LocalInferenceLoader | null {
 		if (!runtime) return null;
@@ -600,6 +707,11 @@ export class ActiveModelCoordinator {
 				installed,
 				overrides,
 			);
+			// WS2: warn one-shot when the tier declares vision but the
+			// per-tier mmproj GGUF isn't on disk yet. The text load still
+			// proceeds; vision capability is degraded for this session
+			// (plugin-vision falls back to its Florence-2 path).
+			this.warnIfVisionDegraded(installed, resolved.mmprojPath);
 			if (loader) {
 				await loader.unloadModel();
 				await loader.loadModel(resolved);

@@ -67,7 +67,7 @@
   "capacitor": {
     "ios": {
       "src": "ios",
-      "podName": "ElizaCapacitorMobileAgentBridge"
+      "podName": "ElizaosCapacitorMobileAgentBridge"
     },
     "android": {
       "src": "android"

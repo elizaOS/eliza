@@ -71,7 +71,7 @@ component.
 | ASR | Eliza-1 ASR GGUF staged under the bundle's `asr/` region | `asr/eliza-1-asr.gguf` + `asr/eliza-1-asr-mmproj.gguf` | tokenizer fused with the text backbone (zero re-tokenization) |
 | VAD | Silero VAD v5.1.2 (MIT) | `vad/silero-vad-v5.1.2.ggml.bin` (native GGML; legacy bundles may also carry the `vad/silero-vad-int8.onnx` fallback — not the release path) | none |
 | Embedding | Eliza-1 dedicated embedding GGUF (2B+ tiers) | `embedding/...gguf` | none beyond fork conversion; the `0_8b` tier may omit it (pools from the text backbone with `--pooling last`) |
-| Drafter (DFlash) | distilled (KD, NOT fine-tuning of the target) from each tier's base text model; published under `elizaos/eliza-1-<tier>` | `dflash/drafter-<tier>.gguf` + `dflash/target-meta.json` | drafter GGUF stamps `dflash-draft.target_checkpoint_sha256` |
+| Drafter (DFlash) | distilled (KD, NOT fine-tuning of the target) from each tier's base text model; published under `elizaos/eliza-1/bundles/<tier>/dflash/` | `dflash/drafter-<tier>.gguf` + `dflash/target-meta.json` | drafter GGUF stamps `dflash-draft.target_checkpoint_sha256` |
 | Voice preset cache | placeholder until a real fused build emits one | `cache/voice-preset-default.bin` | n/a |
 
 ---

@@ -147,10 +147,15 @@ entry points for training and publishing:
   dispatchers.
 - `quantization/*_apply.py` — quantization recipes (see §3).
 - `eval_checkpoint.py` / `eval_loop.sh` / `benchmarks/` — eval harness.
-- `push_model_to_hf.py` / `push_pipeline_to_hf.py` /
-  `publish_pipeline_to_hf.py` / `publish_all_eliza1.sh` — HF publishing.
-  These MUST be the *only* paths that push app-facing bundles to
-  `elizaos/eliza-1`.
+- `publish/publish_model.py` / `publish/publish_dataset.py` /
+  `publish/publish_pipeline.py` — three canonical publisher entry points.
+  `publish_model` dispatches to `publish.orchestrator` (full gated bundle
+  publish), `publish_eliza1_model_repo` (per-tier upload), or the legacy
+  `publish_eliza1_model` (fused single-GGUF, used by the nightly CI).
+  `publish_all_eliza1.sh` is the per-tier matrix driver. These MUST be the
+  *only* paths that push app-facing bundles to `elizaos/eliza-1`. The older
+  `push_to_hf.py` / `push_pipeline_to_hf.py` were deleted; `push_model_to_hf.py`
+  is now a deprecation shim that redirects to the new entry points.
 - `inference/serve_local.py` / `inference/serve_vllm.py` — eval-time
   serving harnesses (not production runtime — that is app-core).
 

@@ -182,6 +182,12 @@ export const Eliza1LineageSchema = z.object({
 	vision: lineageEntry.optional(),
 	vad: lineageEntry.optional(),
 	wakeword: lineageEntry.optional(),
+	// Voice Wave 2 (2026-05-14): semantic end-of-turn detector lineage. When
+	// `files.turn` ships the bundled `livekit/turn-detector` ONNX (the
+	// ≤1.7B-tier `v1.2.2-en` SmolLM2 distill or the ≥4B-tier `v0.4.1-intl`
+	// pruned Qwen2.5-0.5B), this records the upstream repo + license. Apache-2.0
+	// fallback path is `latishab/turnsense`.
+	turn: lineageEntry.optional(),
 });
 
 export const Eliza1FileEntrySchema = z.object({
@@ -213,6 +219,16 @@ export const Eliza1FilesSchema = z.object({
 	embedding: z.array(Eliza1FileEntrySchema).optional(),
 	vad: z.array(Eliza1FileEntrySchema).optional(),
 	wakeword: z.array(Eliza1FileEntrySchema).optional(),
+	// Voice Wave 2 (2026-05-14): bundled semantic turn detector. Optional —
+	// when omitted, the runtime falls back to `HeuristicEotClassifier` (the
+	// deterministic punctuation/conjunction baseline). When present, the
+	// runtime loads the ONNX via `LiveKitTurnDetector` (or `TurnsenseEotClassifier`
+	// for the Apache-2.0 fallback) and pre-warms it at voice-session start.
+	// Tier mapping is data-driven (see `stage_turn_detector` in
+	// `packages/training/scripts/manifest/stage_eliza1_bundle_assets.py`):
+	// 0_8b/2b ship the EN-only SmolLM2-135M distill (~66 MB Q8 ONNX);
+	// 4b/9b/27b ship the multilingual pruned Qwen2.5-0.5B (~396 MB Q8 ONNX).
+	turn: z.array(Eliza1FileEntrySchema).optional(),
 });
 
 export const Eliza1KernelEnumSchema = z.enum(ELIZA_1_KERNELS);
@@ -340,7 +356,28 @@ export const Eliza1EvalsSchema = z.object({
 			passed: z.boolean(),
 		})
 		.optional(),
+	// Voice Wave 2 (2026-05-14): semantic end-of-turn detector eval gates.
+	// Required when `files.turn` is non-empty (validator enforces). Thresholds
+	// applied by `eval_turn_detector.py` in `packages/training/scripts/turn_detector/`:
+	//   f1            ≥ TURN_DETECTOR_F1_THRESHOLD           (0.85)
+	//   meanLatencyMs ≤ TURN_DETECTOR_MEAN_LATENCY_MS_LIMIT  (30 ms)
+	// `passed` is precomputed by the eval script per the constants above so
+	// the validator stays a single source of truth; constants are exported
+	// from this module for the script + tests to consume.
+	turnDetector: z
+		.object({
+			f1: z.number().min(0).max(1),
+			meanLatencyMs: z.number().nonnegative(),
+			passed: z.boolean(),
+		})
+		.optional(),
 });
+
+/** Eval-gate threshold: minimum acceptable F1 on the EOU benchmark. */
+export const TURN_DETECTOR_F1_THRESHOLD = 0.85 as const;
+
+/** Eval-gate threshold: maximum acceptable mean inference latency (ms). */
+export const TURN_DETECTOR_MEAN_LATENCY_MS_LIMIT = 30 as const;
 
 export const Eliza1RamBudgetSchema = z
 	.object({

@@ -39,6 +39,39 @@ export interface UpdateWorkThreadInput {
   detail?: Record<string, unknown>;
 }
 
+export interface MergeWorkThreadsInput {
+  /** The thread that will absorb the sources. Must be active and mutable. */
+  targetWorkThreadId: string;
+  /** Threads being merged INTO the target. Must be non-empty, active, mutable. */
+  sourceWorkThreadIds: string[];
+  /**
+   * Idempotency key for this merge attempt. If a merge with the same
+   * `mergeRequestId` has already committed against this target, this call is
+   * a no-op and returns the recorded result.
+   *
+   * Derive from `(targetId, sortedSourceIds, currentTurnId)` so retries within
+   * the same turn deduplicate.
+   */
+  mergeRequestId: string;
+  /** Patch applied to the target (summary, instruction, etc). */
+  patch?: {
+    summary?: string;
+    instruction?: string | null;
+    lastMessageMemoryId?: string | null;
+    participantsToAdd?: string[];
+  };
+  reason?: string | null;
+}
+
+export interface MergeWorkThreadsResult {
+  /** Updated target thread (post-merge). */
+  target: WorkThread;
+  /** Updated source threads (status=stopped, metadata.mergedIntoWorkThreadId). */
+  sources: WorkThread[];
+  /** True when this is the first time this mergeRequestId committed. */
+  freshlyMerged: boolean;
+}
+
 export interface WorkThreadStore {
   create(input: CreateWorkThreadInput): Promise<WorkThread>;
   get(workThreadId: string): Promise<WorkThread | null>;
@@ -52,6 +85,26 @@ export interface WorkThreadStore {
     type: WorkThreadEventType,
     args?: { reason?: string; detail?: Record<string, unknown> },
   ): Promise<void>;
+  /**
+   * Atomic thread merge. All UPDATEs + event INSERTs commit together or none.
+   * Uses optimistic concurrency: every thread's `version` must match the read.
+   * Idempotent on `mergeRequestId`.
+   *
+   * Throws `OptimisticLockError` if any version check fails. Throws standard
+   * errors on validation (`NotFoundError`, `MergeBlockedError`).
+   */
+  merge(input: MergeWorkThreadsInput): Promise<MergeWorkThreadsResult>;
+}
+
+export class MergeBlockedError extends Error {
+  readonly code: string;
+  readonly threadId?: string;
+  constructor(args: { code: string; message: string; threadId?: string }) {
+    super(args.message);
+    this.name = "MergeBlockedError";
+    this.code = args.code;
+    this.threadId = args.threadId;
+  }
 }
 
 function isoNow(): string {
@@ -227,6 +280,130 @@ export function createWorkThreadStore(
         reason: args.reason ?? null,
         detail: args.detail,
       });
+    },
+
+    async merge(input): Promise<MergeWorkThreadsResult> {
+      const sourceIds = [
+        ...new Set(input.sourceWorkThreadIds.filter((id) => id && id !== input.targetWorkThreadId)),
+      ];
+      if (sourceIds.length === 0) {
+        throw new MergeBlockedError({
+          code: "MISSING_SOURCE_WORK_THREAD_IDS",
+          message: "No source work threads provided.",
+        });
+      }
+
+      // Read target + all sources at a consistent snapshot. These reads are
+      // OUTSIDE the transaction — repository.mergeWorkThreadsAtomic will
+      // re-check versions inside the transaction.
+      const target = await this.get(input.targetWorkThreadId);
+      if (!target) {
+        throw new MergeBlockedError({
+          code: "TARGET_NOT_FOUND",
+          message: `Target work thread not found: ${input.targetWorkThreadId}`,
+          threadId: input.targetWorkThreadId,
+        });
+      }
+
+      const sources: WorkThread[] = [];
+      for (const sourceId of sourceIds) {
+        const source = await this.get(sourceId);
+        if (!source) {
+          throw new MergeBlockedError({
+            code: "SOURCE_NOT_FOUND",
+            message: `Source work thread not found: ${sourceId}`,
+            threadId: sourceId,
+          });
+        }
+        sources.push(source);
+      }
+
+      // Build the post-merge target snapshot.
+      const timestamp = isoNow();
+      const summary =
+        typeof input.patch?.summary === "string"
+          ? compactText(input.patch.summary, 500)
+          : target.summary;
+      const currentPlanSummary =
+        typeof input.patch?.instruction === "string" &&
+        input.patch.instruction.trim().length > 0
+          ? input.patch.instruction.trim()
+          : target.currentPlanSummary;
+      const mergedSourceRefs = [
+        ...target.sourceRefs,
+        ...sources.flatMap((source) => source.sourceRefs),
+      ];
+      const mergedParticipantEntityIds = [
+        ...new Set([
+          ...target.participantEntityIds,
+          ...sources.flatMap((source) => source.participantEntityIds),
+          ...(input.patch?.participantsToAdd ?? []),
+        ]),
+      ];
+      const existingMetadata = target.metadata ?? {};
+      const existingMergedFrom = (() => {
+        const raw = existingMetadata.mergedFromWorkThreadIds;
+        return Array.isArray(raw)
+          ? raw.filter((value): value is string => typeof value === "string")
+          : [];
+      })();
+      const nextTarget: WorkThread = {
+        ...target,
+        summary,
+        currentPlanSummary,
+        sourceRefs: mergedSourceRefs,
+        participantEntityIds: mergedParticipantEntityIds,
+        lastMessageMemoryId:
+          input.patch?.lastMessageMemoryId !== undefined
+            ? input.patch.lastMessageMemoryId
+            : target.lastMessageMemoryId,
+        metadata: {
+          ...existingMetadata,
+          mergedFromWorkThreadIds: [
+            ...new Set([...existingMergedFrom, ...sourceIds]),
+          ],
+        },
+        updatedAt: timestamp,
+        lastActivityAt: timestamp,
+      };
+
+      // Atomic write via transaction + optimistic concurrency on every row.
+      const writeResult = await repo.mergeWorkThreadsAtomic({
+        agentId,
+        target,
+        sources,
+        nextTarget,
+        mergeRequestId: input.mergeRequestId,
+        reason: input.reason ?? null,
+        instruction: input.patch?.instruction ?? null,
+      });
+
+      // Re-read everything post-commit. We could be clever and return the
+      // computed snapshots, but a re-read guarantees we surface what's
+      // actually persisted (including the version bumps).
+      const refreshedTarget = await this.get(writeResult.targetWorkThreadId);
+      if (!refreshedTarget) {
+        throw new MergeBlockedError({
+          code: "TARGET_VANISHED",
+          message: "Target thread missing post-merge — concurrent deletion?",
+          threadId: writeResult.targetWorkThreadId,
+        });
+      }
+      const refreshedSources: WorkThread[] = [];
+      for (const sourceId of writeResult.sourceWorkThreadIds) {
+        const source = await this.get(sourceId);
+        if (source) refreshedSources.push(source);
+      }
+
+      // Determine if THIS call was the one that committed (vs idempotent hit).
+      // If the target's version did not move past our read, it was idempotent.
+      const freshlyMerged = refreshedTarget.version > target.version;
+
+      return {
+        target: refreshedTarget,
+        sources: refreshedSources,
+        freshlyMerged,
+      };
     },
   };
 }

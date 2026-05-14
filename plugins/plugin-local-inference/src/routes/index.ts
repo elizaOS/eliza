@@ -7,3 +7,4 @@
  */
 
 export * from "./local-inference-compat-routes.js";
+export * from "./local-inference-tts-route.js";

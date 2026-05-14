@@ -8,7 +8,7 @@ export type ProviderMode =
   | "openrouter"
   | "ollama";
 
-export type ProviderSettings = {
+type ProviderSettings = {
   openaiApiKey: string;
   openaiBaseUrl: string;
   openaiSmallModel: string;

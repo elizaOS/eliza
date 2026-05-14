@@ -176,6 +176,21 @@
       "ignore": ["build/**", "artifacts/**"],
       "ignoreDependencies": ["bonjour-service", "rcedit"]
     },
+    "packages/electrobun-carrots": {
+      "entry": [
+        "src/**/*.ts",
+        "examples/**/*.test.ts",
+        "examples/**/worker.mjs",
+        "examples/**/carrot.json"
+      ],
+      "project": [
+        "src/**/*.ts",
+        "examples/**/*.test.ts",
+        "examples/**/worker.mjs",
+        "examples/**/carrot.json"
+      ],
+      "ignore": ["dist/**"]
+    },
     "packages/browser-bridge": {
       "entry": [
         "entrypoints/**/*.ts",
@@ -221,7 +236,8 @@
         "tailwind.config.js",
         "postcss.config.js"
       ],
-      "ignore": ["dist/**"]
+      "ignore": ["dist/**"],
+      "ignoreDependencies": ["@types/uuid", "uuid"]
     },
     "packages/examples/app/capacitor/frontend": {
       "entry": ["src/**/*.{ts,tsx}", "vite.config.ts", "index.html"],
@@ -241,6 +257,21 @@
     "packages/examples/avatar": {
       "entry": ["src/**/*.{ts,tsx}", "vite.config.ts", "index.html"],
       "project": ["src/**/*.{ts,tsx}", "vite.config.ts"],
+      "ignore": ["dist/**"]
+    },
+    "packages/examples/elizagotchi": {
+      "entry": ["src/**/*.{ts,tsx}", "vite.config.ts", "index.html"],
+      "project": ["src/**/*.{ts,tsx}", "vite.config.ts"],
+      "ignore": ["dist/**"]
+    },
+    "packages/examples/farcaster-miniapp": {
+      "entry": [
+        "src/**/*.{ts,tsx}",
+        "server.js",
+        "vite.config.ts",
+        "index.html"
+      ],
+      "project": ["src/**/*.{ts,tsx}", "server.js", "vite.config.ts"],
       "ignore": ["dist/**"]
     },
     "packages/examples/aws": {

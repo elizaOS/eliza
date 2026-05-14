@@ -40,8 +40,10 @@ import { fileURLToPath } from "node:url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// packages/app-core/scripts/kernel-patches/  →  packages/inference/metal/
-const STANDALONE_METAL_DIR = path.resolve(
+// packages/app-core/scripts/kernel-patches/  →  plugin-local-inference/native/metal/
+// Older workstreams staged these under packages/inference/metal; the current
+// native plugin owns the verified standalone shader sources.
+const LEGACY_STANDALONE_METAL_DIR = path.resolve(
   __dirname,
   "..",
   "..",
@@ -49,6 +51,20 @@ const STANDALONE_METAL_DIR = path.resolve(
   "inference",
   "metal",
 );
+const PLUGIN_STANDALONE_METAL_DIR = path.resolve(
+  __dirname,
+  "..",
+  "..",
+  "..",
+  "..",
+  "plugins",
+  "plugin-local-inference",
+  "native",
+  "metal",
+);
+const STANDALONE_METAL_DIR = fs.existsSync(LEGACY_STANDALONE_METAL_DIR)
+  ? LEGACY_STANDALONE_METAL_DIR
+  : PLUGIN_STANDALONE_METAL_DIR;
 
 // Map: standalone-shader-filename → in-fork relative path (under cacheDir).
 // Each standalone is copied verbatim — its content is not edited. Per agent

@@ -1959,14 +1959,17 @@ async function forwardToAgentCloudChat(
   prompt: string,
   fetchImpl: typeof fetch = fetchIosKernelRoute,
 ): Promise<CloudForwardResult> {
-  const response = await fetchImpl(`${IOS_LOCAL_AGENT_IPC_BASE}/api/cloud/chat`, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      accept: "application/json",
+  const response = await fetchImpl(
+    `${IOS_LOCAL_AGENT_IPC_BASE}/api/cloud/chat`,
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        accept: "application/json",
+      },
+      body: JSON.stringify({ prompt, maxTokens: 256, temperature: 0.7 }),
     },
-    body: JSON.stringify({ prompt, maxTokens: 256, temperature: 0.7 }),
-  });
+  );
   if (!response.ok) {
     throw new Error(
       `[ios-local-agent] Cloud fallback failed: HTTP ${response.status} ${response.statusText}`,

@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Capacitor plugin manifest fragment for plugin-capacitor-bridge (computer-use surface).
+    Capacitor merges this into the host app's AndroidManifest.xml at sync time.
+
+    WS8: AOSP + Android computer-use bridge.
+    See eliza/plugins/plugin-computeruse/docs/ANDROID_CONSTRAINTS.md for full scope.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!--
+        ScreenCaptureService — MediaProjection foreground service.
+        foregroundServiceType must include "mediaProjection" for API 29+ compliance.
+        "dataSync" is included because the service also forwards frame data to JS.
+    -->
+    <application>
+        <service
+            android:name="ai.elizaos.computeruse.ScreenCaptureService"
+            android:exported="false"
+            android:foregroundServiceType="mediaProjection|dataSync" />
+
+        <!--
+            MiladyAccessibilityService — cross-app view tree + gesture dispatch.
+            The user must manually enable this in Settings > Accessibility > Milady.
+            featureAccessibility (not featureGeneric) is required to survive
+            Advanced Protection Mode on Pixel 9+ and some OEM ROMs.
+        -->
+        <service
+            android:name="ai.elizaos.computeruse.MiladyAccessibilityService"
+            android:exported="true"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/accessibility_service_config" />
+        </service>
+    </application>
+
+    <!--
+        FOREGROUND_SERVICE_MEDIA_PROJECTION: required for ScreenCaptureService on API 34+.
+        CAMERA: runtime permission for Camera2Source.
+        FOREGROUND_SERVICE: base permission for foreground services.
+        PACKAGE_USAGE_STATS: special permission for UsageStatsHelper — user must grant
+            manually in Settings > Usage Access; no runtime dialog.
+        POST_NOTIFICATIONS: required on API 33+ for the ScreenCaptureService notification.
+    -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS"
+        tools:ignore="ProtectedPermissions" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+</manifest>

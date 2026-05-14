@@ -246,6 +246,13 @@ tasks/
 !packages/benchmarks/swe-bench-multilingual/tests/test_data/**
 !packages/benchmarks/swe-bench-pro/helper_code/data/
 !packages/benchmarks/swe-bench-pro/helper_code/data/**
+# eliza-1 smoke corpus: ~400-row e2e SFT pipeline validator, kept in
+# git so the pipeline can be smoke-tested from a fresh clone. The
+# `**/data/` rule above swallows the parent dir, so re-include each
+# segment before re-including the smoke corpus contents.
+!packages/training/data/
+!packages/training/data/final-eliza1-smoke/
+!packages/training/data/final-eliza1-smoke/**
 **/.roo/
 **/.roomodes/
 **/.taskmaster/
@@ -542,3 +549,5 @@ packages/training/vendor/
 
 .swarm/
 packages/training/out/
+# Tesseract OCR language data — downloaded at runtime, not vendored
+plugins/plugin-vision/eng.traineddata
