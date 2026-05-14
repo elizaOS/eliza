@@ -540,5 +540,9 @@ packages/app-core/scripts/omnivoice-fuse/libelizainference_stub.so
 packages/app-core/scripts/omnivoice-fuse/libelizainference_stub.dylib
 packages/training/vendor/
 
+# Generated run output — never source data.
+packages/app-core/collision-report.json
+plugins/app-lifeops/docs/audit/cerebras-journey-eval-results.json
+
 .swarm/
 packages/training/out/
