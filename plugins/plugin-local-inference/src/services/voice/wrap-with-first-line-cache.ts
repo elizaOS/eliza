@@ -24,17 +24,17 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import {
-	type FirstLineCache,
-	type FirstLineCacheKey,
-	type FirstLineCacheEntry,
-	type PutInput,
-	getSharedFirstLineCache,
-} from "./first-line-cache";
-import {
 	FIRST_SENTENCE_SNIP_VERSION,
-	firstSentenceSnip,
 	type FirstSentenceSnipResult,
+	firstSentenceSnip,
 } from "@elizaos/shared";
+import {
+	type FirstLineCache,
+	type FirstLineCacheEntry,
+	type FirstLineCacheKey,
+	getSharedFirstLineCache,
+	type PutInput,
+} from "./first-line-cache";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -182,7 +182,7 @@ export function wrapWithFirstLineCache(
 
 		// MISS — synthesize fresh + populate the cache in background.
 		const fullBytes = await inner(runtime, input);
-		const fullU8 = bytesToUint8Array(fullBytes);
+		const _fullU8 = bytesToUint8Array(fullBytes);
 
 		if (options.enableCachePopulation !== false) {
 			schedulePopulate({

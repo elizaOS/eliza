@@ -28,7 +28,7 @@
  */
 
 import crypto from "node:crypto";
-import * as http from "node:http";
+import type * as http from "node:http";
 import path from "node:path";
 import {
 	logger,
@@ -37,6 +37,7 @@ import {
 	sendJson,
 	sendJsonError,
 } from "@elizaos/core";
+import { VoiceProfileStore } from "../services/voice/profile-store";
 import {
 	averageEmbeddings,
 	type SpeakerEncoder,
@@ -47,7 +48,6 @@ import {
 	WESPEAKER_SAMPLE_RATE,
 	WespeakerEncoder,
 } from "../services/voice/speaker/encoder";
-import { VoiceProfileStore } from "../services/voice/profile-store";
 
 /** Verbatim onboarding script (R2-speaker.md §6.2). */
 export interface OnboardingScriptStep {

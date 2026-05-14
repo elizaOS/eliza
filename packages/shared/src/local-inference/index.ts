@@ -116,11 +116,11 @@ export {
   compareVoiceModelSemver,
   findVoiceModelVersion,
   latestVoiceModelVersion,
+  VOICE_MODEL_VERSIONS,
   type VoiceModelEvalDeltas,
   type VoiceModelGgufAsset,
   type VoiceModelId,
   type VoiceModelQuant,
   type VoiceModelVersion,
-  VOICE_MODEL_VERSIONS,
   versionsFor,
 } from "./voice-models.js";

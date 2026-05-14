@@ -29,15 +29,15 @@
  */
 
 import {
+	EXPRESSIVE_EMOTION_TAGS,
+	type ExpressiveEmotion,
+} from "./expressive-tags";
+import {
 	loadOnnxRuntime,
 	OnnxRuntimeUnavailableError,
 	type OrtInferenceSession,
 	type OrtTensorCtor,
 } from "./onnx-runtime";
-import {
-	EXPRESSIVE_EMOTION_TAGS,
-	type ExpressiveEmotion,
-} from "./expressive-tags";
 
 /** Stable identifier for the Wav2Small student head we ship. */
 export const WAV2SMALL_INT8_MODEL_ID = "wav2small-msp-dim-int8" as const;

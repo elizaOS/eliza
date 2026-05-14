@@ -3,7 +3,9 @@ import { dirname } from "node:path";
 
 const bootstrap = globalThis.__bunnyCarrotBootstrap;
 if (!bootstrap) {
-  throw new Error("hello-carrot: __bunnyCarrotBootstrap missing — not running inside Bunny Ears");
+  throw new Error(
+    "hello-carrot: __bunnyCarrotBootstrap missing — not running inside Bunny Ears",
+  );
 }
 
 const { manifest, context } = bootstrap;
@@ -17,12 +19,19 @@ writeFileSync(
   "utf8",
 );
 
-appendFileSync(context.logsPath, `[${bootStamp}] hello-carrot booted (channel=${context.channel})\n`, "utf8");
+appendFileSync(
+  context.logsPath,
+  `[${bootStamp}] hello-carrot booted (channel=${context.channel})\n`,
+  "utf8",
+);
 
 self.postMessage({
   type: "action",
   action: "log",
-  payload: { level: "info", message: `hello-carrot ready, permissions=${context.permissions.join(",")}` },
+  payload: {
+    level: "info",
+    message: `hello-carrot ready, permissions=${context.permissions.join(",")}`,
+  },
 });
 
 // Demonstrate the host-request round-trip end-to-end. Equivalent to upstream's

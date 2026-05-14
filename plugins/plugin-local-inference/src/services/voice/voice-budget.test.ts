@@ -35,7 +35,7 @@ const okayProbe: HardwareProbe = {
 	source: "node-llama-cpp",
 };
 
-const poorProbe: HardwareProbe = {
+const _poorProbe: HardwareProbe = {
 	totalRamGb: 8,
 	freeRamGb: 3,
 	gpu: null,

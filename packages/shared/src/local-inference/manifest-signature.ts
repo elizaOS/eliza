@@ -76,9 +76,7 @@ function decodeBase64(input: string): Uint8Array {
   return out;
 }
 
-async function importRawEd25519PublicKey(
-  raw: Uint8Array,
-): Promise<CryptoKey> {
+async function importRawEd25519PublicKey(raw: Uint8Array): Promise<CryptoKey> {
   if (raw.byteLength !== ED25519_PUBLIC_KEY_BYTES) {
     throw new ManifestSignatureError(
       `Ed25519 public key must be ${ED25519_PUBLIC_KEY_BYTES} bytes, got ${raw.byteLength}`,
