@@ -72,20 +72,27 @@ class _BaseMMAUAgent:
     def _send_prompt(self, sample: MMAUSample, prompt: str) -> str:
         if self._client is None:
             raise RuntimeError("MMAU adapter was not initialized")
-        response = self._client.send_message(
-            prompt,
-            context={
-                "benchmark": self.benchmark_name,
-                "task_id": sample.id,
-                "category": sample.category.value,
-                "model_name": self.config.model or "",
-                "system_prompt": (
-                    "You are answering an audio-understanding multiple-choice "
-                    "benchmark. Return only the option letter."
-                ),
-            },
-        )
-        return str(getattr(response, "text", ""))
+        context = {
+            "benchmark": self.benchmark_name,
+            "task_id": sample.id,
+            "category": sample.category.value,
+            "model_name": self.config.model or "",
+            "system_prompt": (
+                "You are answering an audio-understanding multiple-choice "
+                "benchmark. Return only the option letter."
+            ),
+        }
+        attempts = max(1, int(os.environ.get("MMAU_AGENT_ATTEMPTS", "3")))
+        last_text = ""
+        for attempt in range(attempts):
+            response = self._client.send_message(prompt, context=context)
+            text = str(getattr(response, "text", "")).strip()
+            last_text = text
+            if text and text.lower() != "sorry, something went wrong. please try again.":
+                return text
+            if attempt + 1 < attempts:
+                time.sleep(min(8.0, 1.5 * (attempt + 1)))
+        return last_text
 
     async def _transcribe(self, sample: MMAUSample) -> str:
         if sample.transcript:
