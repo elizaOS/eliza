@@ -232,7 +232,8 @@ export function readRuntimeExecutionModeConfig(
   const explicitMode = normalizeRuntimeExecutionMode(
     runtimeConfig?.executionMode,
   );
-  if (explicitMode) return applyRuntimeExecutionModePolicy(explicitMode, config);
+  if (explicitMode)
+    return applyRuntimeExecutionModePolicy(explicitMode, config);
 
   return runtimeExecutionModeForDeploymentTarget(
     normalizeDeploymentTargetConfig(config?.deploymentTarget),

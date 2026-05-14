@@ -108,10 +108,18 @@ export async function executePlannedToolCall(
 		return emitToolResult(toolCall, failureResult(action.name, gateFailure));
 	}
 
-	const normalizedArgs = expandEnumShortForm(
-		action,
-		normalizeToolArgs(toolCall),
-	);
+	const normalizedArgs = expandEnumShortForm(action, normalizeToolArgs(toolCall), {
+		onExpand: (info) => {
+			runtime.logger?.debug?.(
+				{
+					src: "execute-planned-tool-call",
+					action: action.name,
+					...info,
+				},
+				"expanded enum short-form tool arguments",
+			);
+		},
+	});
 	const validation = validateToolArgs(action, normalizedArgs);
 	if (!validation.valid) {
 		return emitToolResult(
@@ -419,6 +427,13 @@ function getGateFailure(
 export function expandEnumShortForm(
 	action: Action,
 	args: Record<string, unknown>,
+	options: {
+		onExpand?: (info: {
+			parameterName: string;
+			sourceKey: string;
+			value: string | number | boolean;
+		}) => void;
+	} = {},
 ): Record<string, unknown> {
 	if (process.env.ELIZA_SHORT_FORM_ENUMS !== "1") return args;
 	const parameters = action.parameters ?? [];
@@ -465,6 +480,11 @@ export function expandEnumShortForm(
 		validValues.has(String(args.parameters))
 	) {
 		const { parameters: shortFormValue, ...rest } = args;
+		options.onExpand?.({
+			parameterName: param.name,
+			sourceKey: "parameters",
+			value: shortFormValue,
+		});
 		return { ...rest, [param.name]: shortFormValue };
 	}
 

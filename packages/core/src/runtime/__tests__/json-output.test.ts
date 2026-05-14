@@ -17,13 +17,19 @@ describe("parseJsonObject", () => {
 	});
 
 	it("repairs raw newlines, CRLF, CR, tabs, and invalid backslashes inside JSON strings", () => {
-		expect(
-			parseJsonObject(
-				'{"text":"line one\n\nline two\r\nline three\rcell\tvalue","path":"C:\\tmp\\bad\\q"}',
-			),
-		).toEqual({
+		const raw =
+			String.raw`{"text":"line one` +
+			"\n\n" +
+			String.raw`line two` +
+			"\r\n" +
+			String.raw`line three` +
+			"\r" +
+			String.raw`cell` +
+			"\t" +
+			String.raw`value","path":"C:\Users\desk\zip"}`;
+		expect(parseJsonObject(raw)).toEqual({
 			text: "line one\n\nline two\r\nline three\rcell\tvalue",
-			path: "C:\\tmp\\bad\\q",
+			path: String.raw`C:\Users\desk\zip`,
 		});
 	});
 

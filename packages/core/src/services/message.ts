@@ -2826,10 +2826,10 @@ function canonicalizeFieldCandidateActionNames(
 		| {
 				actions: ReadonlyArray<Pick<Action, "name" | "similes">>;
 		  }
-		| undefined,
+	| undefined,
 ): string[] {
 	if (!runtimeContext) {
-		return candidateActions;
+		return [...candidateActions];
 	}
 
 	const actionLookup = new Map<string, string>();

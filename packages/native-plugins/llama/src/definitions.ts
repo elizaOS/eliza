@@ -56,6 +56,61 @@ export interface GenerateOptions {
    * cache support ignore the field; behavior is unchanged.
    */
   cacheKey?: string;
+  /**
+   * Text to seed the assistant turn with. Forked native builds may use this to
+   * continue a partially emitted structured envelope; stock builds ignore it.
+   */
+  prefill?: string;
+  /**
+   * Engine-neutral structured-output skeleton from core. Mobile fork builds can
+   * compile or inspect it; stock llama-cpp-capacitor builds ignore the extension.
+   */
+  responseSkeleton?: ResponseSkeleton;
+  /** Explicit GBNF grammar. When supplied, fork builds should prefer it. */
+  grammar?: string;
+  /** Per-span sampler overrides for enum/number/boolean spans. */
+  spanSamplerPlan?: SpanSamplerPlan;
+  /**
+   * Optional harness bundle used by local inference engines. Forwarded opaquely
+   * so mobile fork builds can honor prefill plans without this adapter knowing
+   * the full core package type graph.
+   */
+  elizaSchema?: ElizaHarnessSchema;
+}
+
+export interface ResponseSkeleton {
+  id?: string;
+  spans: ResponseSkeletonSpan[];
+  metadata?: Record<string, unknown>;
+}
+
+export interface ResponseSkeletonSpan {
+  kind: string;
+  key?: string;
+  text?: string;
+  values?: string[];
+  schema?: unknown;
+  metadata?: Record<string, unknown>;
+}
+
+export interface SpanSamplerPlan {
+  overrides: SpanSamplerOverride[];
+  strict?: boolean;
+}
+
+export interface SpanSamplerOverride {
+  spanIndex: number;
+  temperature: number;
+  topK?: number;
+  topP?: number;
+}
+
+export interface ElizaHarnessSchema {
+  skeleton: ResponseSkeleton;
+  grammar?: string;
+  prefillPlan?: unknown;
+  longNames?: Record<string, string>;
+  id?: string;
 }
 
 export interface GenerateResult {

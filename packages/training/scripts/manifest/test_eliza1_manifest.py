@@ -673,14 +673,13 @@ def test_voice_quant_ladder_covers_every_tier():
     assert set(VOICE_QUANT_LADDER_BY_TIER.keys()) == set(VOICE_QUANT_BY_TIER.keys())
 
 
-def test_voice_quant_ladder_mobile_tiers_has_mobile_kokoro_policy():
-    """Mobile tiers (0_8b / 2b / 4b) keep the mobile OmniVoice quant
-    ladder metadata for compatibility, but Kokoro is the only required voice
-    backend in the release bundle."""
+def test_voice_quant_ladder_mobile_tiers_has_mobile_omnivoice_ladder():
+    """Mobile tiers (0_8b / 2b / 4b) ship OmniVoice first plus Kokoro
+    fallback, so they publish the narrow mobile OmniVoice ladder."""
     expected = ("Q3_K_M", "Q4_K_M", "Q5_K_M")
     for tier in ("0_8b", "2b", "4b"):
         assert VOICE_QUANT_LADDER_BY_TIER[tier] == expected
-        assert VOICE_BACKENDS_BY_TIER[tier] == ("kokoro",)
+        assert VOICE_BACKENDS_BY_TIER[tier][0] == "omnivoice"
         assert "kokoro" in VOICE_BACKENDS_BY_TIER[tier]
 
 

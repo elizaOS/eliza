@@ -34,6 +34,7 @@ export type DesktopActionType =
   | "left_click_drag"
   | "drag_to"
   | "detect_elements"
+  | "find_element"
   | "ocr"
   | "accessibility_tree";
 
@@ -61,6 +62,16 @@ export interface DesktopActionParams {
   scrollDirection?: "up" | "down" | "left" | "right";
   scrollAmount?: number;
   amount?: number;
+  source?: "accessibility" | "ocr";
+  query?: string;
+  id?: string;
+  role?: string;
+  label?: string;
+  title?: string;
+  value?: string;
+  textFilter?: string;
+  minConfidence?: number;
+  limit?: number;
   x?: number;
   y?: number;
   x1?: number;
