@@ -2711,11 +2711,145 @@ function messageHandlerFromFieldResult(
 	};
 }
 
+/**
+ * Probe for an embedded JSON object inside otherwise plain text. Used by the
+ * tolerant simple-reply synthesizer to fall through to the structured-
+ * failure path when a weak planner leaked tool-arg-shaped content into prose
+ * (e.g. `{"path":"...","contents":"..."}`) instead of into the canonical
+ * tool-call envelope. Shipping such a fragment verbatim would surface raw
+ * JSON to the user; routing to the failure path produces a clean apology.
+ */
+function containsEmbeddedJsonObject(text: unknown): boolean {
+	if (typeof text !== "string" || text.length === 0) return false;
+	const withoutThink = text.replace(/<think>[\s\S]*?<\/think>/g, "");
+	let depth = 0;
+	let start = -1;
+	for (let i = 0; i < withoutThink.length; i++) {
+		const ch = withoutThink[i];
+		if (ch === "{") {
+			if (depth === 0) start = i;
+			depth++;
+		} else if (ch === "}") {
+			depth--;
+			if (depth === 0 && start !== -1) {
+				const candidate = withoutThink.slice(start, i + 1);
+				try {
+					const parsed = JSON.parse(candidate);
+					if (parsed && typeof parsed === "object") return true;
+				} catch {
+					// keep scanning
+				}
+				start = -1;
+			}
+			if (depth < 0) {
+				depth = 0;
+				start = -1;
+			}
+		}
+	}
+	return false;
+}
+
+/**
+ * Tolerant fallback for planners that return plain text instead of the
+ * structured Stage 1 envelope. Without this, the runtime throws
+ * `v5 messageHandler returned invalid MessageHandlerResult` whenever the
+ * model — small instruct-tuned weights routinely served via OpenAI-
+ * compatible providers — skips the HANDLE_RESPONSE scaffold and just emits
+ * prose. Treating the prose as a simple reply keeps the turn alive.
+ *
+ * Returns null only when:
+ *  - the text is empty (genuine failure, propagate)
+ *  - the text looks like incomplete structured output (a stray `{` or `[`
+ *    that didn't JSON.parse — model intended tool output and failed
+ *    mid-stream; shipping that fragment surfaces broken JSON to the user)
+ *  - the text contains an embedded JSON object inside prose (the model
+ *    leaked tool-arg shapes into the reply; route to failure path so the
+ *    leak doesn't reach the user channel)
+ */
+function synthesizeSimpleReplyFromPlainText(
+	raw: string | undefined | null,
+): MessageHandlerResult | null {
+	if (typeof raw !== "string") return null;
+	const trimmed = raw.trim();
+	if (!trimmed) return null;
+	const replyText = stripReasoningBlocks(trimmed);
+	if (!replyText) return null;
+	const looksLikeIncompleteStructuredOutput =
+		(replyText.startsWith("{") || replyText.startsWith("[")) &&
+		(() => {
+			try {
+				JSON.parse(replyText);
+				return false;
+			} catch {
+				return true;
+			}
+		})();
+	if (looksLikeIncompleteStructuredOutput) return null;
+	if (containsEmbeddedJsonObject(replyText)) return null;
+	return {
+		processMessage: "RESPOND",
+		thought:
+			"Tolerant fallback: model returned plain text instead of the structured plan; treating as simple reply.",
+		plan: {
+			contexts: [SIMPLE_CONTEXT_ID],
+			reply: replyText,
+			simple: true,
+		},
+	};
+}
+
+/**
+ * Detect a Stage 1 model result with no usable content. Covers an empty
+ * string, and the `GenerateTextResult` object shape where `text` is blank
+ * AND there are no tool calls / content parts to recover from. Used to gate
+ * the one-shot empty-completion retry.
+ */
+function isEmptyStage1Result(raw: string | GenerateTextResult): boolean {
+	if (typeof raw === "string") return raw.trim().length === 0;
+	if (!raw || typeof raw !== "object") return true;
+	const obj = raw as unknown as Record<string, unknown>;
+	const text = typeof obj.text === "string" ? obj.text.trim() : "";
+	if (text.length > 0) return false;
+	const toolCalls = obj.toolCalls;
+	if (Array.isArray(toolCalls) && toolCalls.length > 0) return false;
+	const content = obj.content;
+	if (typeof content === "string" && content.trim().length > 0) return false;
+	if (Array.isArray(content) && content.length > 0) return false;
+	return true;
+}
+
+/**
+ * Stage 1 parse with a tolerant recovery chain. Models reached over OpenAI-
+ * compatible providers do not all honour the native function-call path —
+ * smaller instruct-tuned weights routinely emit the structured
+ * HANDLE_RESPONSE envelope as a plain-text string, or skip structure
+ * entirely and return prose. The chain, in priority order:
+ *
+ *   1. native function-call    — canonical, only valid for the object shape
+ *   2. parseMessageHandlerOutput — the structured envelope emitted as text
+ *      (`{"shouldRespond":...,"replyText":...,"contexts":[...]}`)
+ *   3. synthesizeSimpleReplyFromPlainText — degenerate plain-text reply
+ *
+ * Returning `null` is the failure signal; callers route those to the
+ * structured-failure reply path.
+ */
 function parseMessageHandlerModelOutput(
 	raw: string | GenerateTextResult,
 ): MessageHandlerResult | null {
-	if (typeof raw === "string") return null;
-	return parseMessageHandlerNativeToolCall(raw);
+	if (typeof raw !== "string") {
+		const native = parseMessageHandlerNativeToolCall(raw);
+		if (native) return native;
+		const text = getV5ModelText(raw);
+		return (
+			parseMessageHandlerOutput(text) ??
+			synthesizeSimpleReplyFromPlainText(text)
+		);
+	}
+	return (
+		parseMessageHandlerOutput(raw) ??
+		synthesizeSimpleReplyFromPlainText(raw)
+	);
 }
 
 /**
@@ -3379,32 +3513,53 @@ export async function runV5MessageRuntimeStage1(args: {
 			},
 		);
 
-		const rawMessageHandler = (await args.runtime.useModel(
+		const stage1ModelParams = {
+			messages: messageHandlerInput.messages,
+			promptSegments: messageHandlerInput.promptSegments,
+			tools: messageHandlerTools,
+			toolChoice: "required" as const,
+			maxTokens: 1024,
+			// Streamed structured generation: the local engine (W4) streams the
+			// HANDLE_RESPONSE envelope and parses it incrementally so `shouldRespond`
+			// / `contexts` route the moment they are known and `replyText` flows to
+			// TTS the instant that field opens. Cloud adapters ignore the flag and
+			// return the result whole.
+			streamStructured: true,
+			responseSkeleton: responseGrammar.responseSkeleton,
+			grammar: responseGrammar.grammar,
+			// Guided structured decode on by default for Stage 1 (the call always
+			// carries a forced skeleton): the local engine derives the
+			// deterministic-token prefill plan and the fork fast-forwards the
+			// forced scaffold spans. Opt out with `MILADY_LOCAL_GUIDED_DECODE=0`.
+			// Cloud adapters ignore `providerOptions.eliza.guidedDecode`.
+			providerOptions: withGuidedDecodeProviderOptions(
+				messageHandlerProviderOptions,
+			),
+		};
+		// Empty-completion retry: cloud reasoning models reached over
+		// OpenAI-compatible providers (gpt-oss-120b on Cerebras observed in
+		// the wild) intermittently return a completion with no content at
+		// all — every token went to a dropped reasoning channel, or the
+		// provider hiccuped. An empty Stage 1 result has no recoverable
+		// shape, so the runtime would otherwise throw "invalid
+		// MessageHandlerResult" and surface a hard failure to the user for
+		// what is really a transient provider blip. One synchronous retry
+		// turns that into a normal turn the overwhelming majority of the
+		// time.
+		let rawMessageHandler = (await args.runtime.useModel(
 			ModelType.RESPONSE_HANDLER,
-			{
-				messages: messageHandlerInput.messages,
-				promptSegments: messageHandlerInput.promptSegments,
-				tools: messageHandlerTools,
-				toolChoice: "required",
-				maxTokens: 1024,
-				// Streamed structured generation: the local engine (W4) streams the
-				// HANDLE_RESPONSE envelope and parses it incrementally so `shouldRespond`
-				// / `contexts` route the moment they are known and `replyText` flows to
-				// TTS the instant that field opens. Cloud adapters ignore the flag and
-				// return the result whole.
-				streamStructured: true,
-				responseSkeleton: responseGrammar.responseSkeleton,
-				grammar: responseGrammar.grammar,
-				// Guided structured decode on by default for Stage 1 (the call always
-				// carries a forced skeleton): the local engine derives the
-				// deterministic-token prefill plan and the fork fast-forwards the
-				// forced scaffold spans. Opt out with `MILADY_LOCAL_GUIDED_DECODE=0`.
-				// Cloud adapters ignore `providerOptions.eliza.guidedDecode`.
-				providerOptions: withGuidedDecodeProviderOptions(
-					messageHandlerProviderOptions,
-				),
-			},
+			stage1ModelParams,
 		)) as string | GenerateTextResult;
+		if (isEmptyStage1Result(rawMessageHandler)) {
+			args.runtime.logger?.warn?.(
+				{ src: "service:message" },
+				"[message] Stage 1 returned an empty completion — retrying once",
+			);
+			rawMessageHandler = (await args.runtime.useModel(
+				ModelType.RESPONSE_HANDLER,
+				stage1ModelParams,
+			)) as string | GenerateTextResult;
+		}
 		const messageHandlerEndedAt = Date.now();
 		const rawFieldParsed = extractMessageHandlerRawParsed(rawMessageHandler);
 		let fieldRunResult: ResponseHandlerFieldRunResult | null = null;

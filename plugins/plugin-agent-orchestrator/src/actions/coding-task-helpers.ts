@@ -217,16 +217,58 @@ function routeMatches(route: WorkdirRoute, haystack: string): boolean {
   return true;
 }
 
+function expandHomePath(p: string): string {
+  return p.startsWith("~") ? path.join(os.homedir(), p.slice(1)) : p;
+}
+
 /**
- * Resolve a fallback workdir for a sub-agent spawn from the
+ * Resolve the workdir for a sub-agent spawn, given whatever workdir the
+ * caller passed (`explicitWorkdir`) and the task text.
+ *
+ * Precedence:
+ *  1. `lockWorkdir` + an explicit workdir → that workdir wins, no route
+ *     resolution. This is the opt-out for scaffold-aware callers (e.g.
+ *     APP_CREATE dispatching into a freshly-scaffolded `eliza/apps/<name>`):
+ *     they KNOW the workdir is correct and pass `lockWorkdir: true`.
+ *  2. A matching `TASK_AGENT_WORKDIR_ROUTES` route wins over an unlocked
+ *     explicit workdir. The explicit workdir on a bare planner spawn is
+ *     just whatever path-shaped string the planner LLM guessed from context
+ *     — it is NOT trustworthy even when it happens to exist on disk (the
+ *     planner will cheerfully pick `/home/milady` or the repo root).
+ *     Operator-declared routes are deliberate policy and outrank the guess.
+ *  3. No route → the explicit workdir as-is (caller creates it if missing).
+ *  4. Nothing supplied → `process.cwd()`.
+ *
+ * Returns the resolved workdir plus the matched route (if any) so callers can
+ * surface the route's `instructions` to the sub-agent.
+ */
+export function resolveSpawnWorkdir(
+  runtime: IAgentRuntime | undefined,
+  task: string,
+  userRequest: string,
+  explicitWorkdir: string | undefined,
+  opts: { lockWorkdir?: boolean } = {},
+): { workdir: string; route?: ResolvedWorkdirRoute } {
+  const expandedExplicit = explicitWorkdir
+    ? expandHomePath(explicitWorkdir)
+    : undefined;
+  if (opts.lockWorkdir && expandedExplicit) {
+    return { workdir: expandedExplicit };
+  }
+  const route = resolveWorkdirRoute(runtime, task, userRequest);
+  if (route) return { workdir: route.workdir, route };
+  if (expandedExplicit) return { workdir: expandedExplicit };
+  return { workdir: process.cwd() };
+}
+
+/**
+ * Resolve a workdir route for a sub-agent spawn from the
  * `TASK_AGENT_WORKDIR_ROUTES` config-env entry. Returns the first matching
  * route or `undefined` if none match (or the config is empty/malformed).
  *
- * Callers should only consult this when no upstream workdir was supplied —
- * actions that scaffold their own directories (e.g. APP_CREATE picking
- * `eliza/apps/<name>`) pass `workdir` explicitly and must keep it. The
- * routes mechanism exists for the bare-spawn case where the planner has no
- * good default workdir to suggest.
+ * Prefer `resolveSpawnWorkdir` from call sites — it layers the
+ * explicit-workdir precedence on top. This is exported separately for
+ * targeted tests and callers that only need the route match.
  *
  * The match phrase searches both the user's original request and the specific
  * sub-task text — sub-task splits often drop context words the matcher needs.

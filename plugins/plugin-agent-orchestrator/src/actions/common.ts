@@ -188,6 +188,77 @@ export async function listSessionsWithin(
   ]);
 }
 
+// Terminal session statuses — a session in one of these is done and no
+// longer occupying a provider slot. Defined as the terminal set (not the
+// active set) so any non-terminal status — including transient ones like
+// `starting` that aren't in the documented `SessionStatus` union — counts
+// as active and the gate fails closed. Mirrors the terminal filter in
+// AcpService.enforceSessionLimit.
+const TERMINAL_SESSION_STATUSES = new Set([
+  "completed",
+  "stopped",
+  "errored",
+  "cancelled",
+]);
+
+/**
+ * Block until the number of in-flight sub-agent sessions drops below the
+ * configured ceiling, so concurrent spawns don't stampede the model
+ * provider.
+ *
+ * Why this exists: coding sub-agents (opencode + gpt-oss-class models on
+ * Cerebras / other OpenAI-compatible providers) degrade hard under
+ * concurrent load — the provider rate-limits, and the model responds by
+ * silently skipping its Write/tool calls and "completing" with a text-only
+ * answer. One build at a time succeeds; four at once produces one good
+ * build and three empty workdirs. Serialising spawns past a small ceiling
+ * trades a little latency for builds that actually land.
+ *
+ * Bounded and self-correcting: it polls real session state (no permits to
+ * leak), and gives up waiting after `maxWaitMs` so a wedged session can
+ * never deadlock the queue — the spawn just proceeds.
+ *
+ * Tunable via `PARALLAX_MAX_CONCURRENT_SPAWNS` (default 2). Set to 0 or a
+ * negative value to disable the gate entirely.
+ */
+export async function waitForSpawnSlot(
+  runtime: IAgentRuntime,
+  service: AcpActionService,
+  opts: { maxWaitMs?: number; pollMs?: number } = {},
+): Promise<void> {
+  const limitRaw =
+    (typeof runtime.getSetting === "function"
+      ? (runtime.getSetting("PARALLAX_MAX_CONCURRENT_SPAWNS") as
+          | string
+          | undefined)
+      : undefined) ?? process.env.PARALLAX_MAX_CONCURRENT_SPAWNS;
+  const limit = limitRaw ? Number.parseInt(limitRaw, 10) : 2;
+  if (!Number.isFinite(limit) || limit <= 0) return;
+  const maxWaitMs = opts.maxWaitMs ?? 8 * 60_000;
+  const pollMs = opts.pollMs ?? 3_000;
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < maxWaitMs) {
+    let active = 0;
+    try {
+      const sessions = await listSessionsWithin(service, 2000);
+      active = sessions.filter(
+        (s) => !TERMINAL_SESSION_STATUSES.has(String(s.status)),
+      ).length;
+    } catch {
+      // If we can't read session state, don't block the spawn.
+      return;
+    }
+    if (active < limit) return;
+    logger(runtime).debug?.(
+      `[spawn-gate] ${active} sub-agent session(s) active (limit=${limit}); waiting for a slot`,
+    );
+    await new Promise((resolve) => setTimeout(resolve, pollMs));
+  }
+  logger(runtime).warn?.(
+    `[spawn-gate] still over the concurrency limit after ${Math.round(maxWaitMs / 1000)}s; proceeding anyway`,
+  );
+}
+
 export async function validateHasSessions(
   runtime: IAgentRuntime,
 ): Promise<boolean> {
