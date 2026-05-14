@@ -673,18 +673,18 @@ def test_voice_quant_ladder_covers_every_tier():
     assert set(VOICE_QUANT_LADDER_BY_TIER.keys()) == set(VOICE_QUANT_BY_TIER.keys())
 
 
-def test_voice_quant_ladder_mobile_tiers_empty():
-    """Mobile tiers (0_8b / 2b / 4b) ship Kokoro only today (see
-    VOICE_BACKENDS_BY_TIER), so the OmniVoice ladder must be empty —
-    publishing OmniVoice GGUFs for these tiers would waste HF storage on
-    artifacts the runtime never selects."""
+def test_voice_quant_ladder_mobile_tiers_has_mobile_omnivoice_ladder():
+    """Mobile tiers (0_8b / 2b / 4b) ship OmniVoice first plus Kokoro
+    fallback, so they publish the narrow mobile OmniVoice ladder."""
+    expected = ("Q3_K_M", "Q4_K_M", "Q5_K_M")
     for tier in ("0_8b", "2b", "4b"):
-        assert VOICE_QUANT_LADDER_BY_TIER[tier] == ()
-        assert "omnivoice" not in VOICE_BACKENDS_BY_TIER[tier]
+        assert VOICE_QUANT_LADDER_BY_TIER[tier] == expected
+        assert VOICE_BACKENDS_BY_TIER[tier][0] == "omnivoice"
+        assert "kokoro" in VOICE_BACKENDS_BY_TIER[tier]
 
 
 def test_voice_quant_ladder_large_tiers_have_full_kquant_ladder():
-    """Large tiers (9b / 27b / 27b-256k / 27b-1m) ship OmniVoice and must
+    """9b+ tiers ship OmniVoice and must
     publish the full Q3..Q8 ladder so the downloader can pick the level
     matching the host's RAM/SoC class at install time."""
     expected = ("Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0")

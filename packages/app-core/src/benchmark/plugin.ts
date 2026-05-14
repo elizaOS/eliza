@@ -1374,7 +1374,8 @@ export function createBenchmarkPlugin(): Plugin {
             data: { action: capturedAction },
           };
         },
-        parameters: [],
+        allowAdditionalParameters: true,
+        parameters: lifeOpsBenchmarkToolParametersFor(name),
       })),
       ...LOCA_BENCHMARK_TOOL_ACTION_NAMES.map((name) => ({
         name,
