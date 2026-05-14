@@ -63,11 +63,20 @@ function assertEnumOnJsonSchema(
 		properties?: Record<string, unknown>;
 	};
 	const props = json.properties ?? {};
-	const propPath = ["properties", expectation.param, ...(expectation.path ?? [])];
+	const propPath = [
+		"properties",
+		expectation.param,
+		...(expectation.path ?? []),
+	];
 	const lifted: Record<string, unknown> = { properties: props };
 	const enumValue = readEnum(lifted, propPath);
-	expect(enumValue, `${expectation.param} JSON schema enum missing`).toBeDefined();
-	expect([...(enumValue ?? [])].sort()).toEqual([...expectation.expected].sort());
+	expect(
+		enumValue,
+		`${expectation.param} JSON schema enum missing`,
+	).toBeDefined();
+	expect([...(enumValue ?? [])].sort()).toEqual(
+		[...expectation.expected].sort(),
+	);
 }
 
 describe("action schema enum coverage", () => {
@@ -145,9 +154,7 @@ describe("action schema enum coverage", () => {
 			const itemsEnum = readEnum(param.schema, ["items"]);
 			expect(itemsEnum).toBeDefined();
 			expect((itemsEnum ?? []).length).toBeGreaterThan(0);
-			expect(
-				(itemsEnum ?? []).every((v) => typeof v === "string"),
-			).toBe(true);
+			expect((itemsEnum ?? []).every((v) => typeof v === "string")).toBe(true);
 
 			const json = actionToJsonSchema(characterAction) as {
 				properties?: Record<string, { items?: { enum?: unknown[] } }>;

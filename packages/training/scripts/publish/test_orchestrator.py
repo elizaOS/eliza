@@ -607,7 +607,7 @@ def test_stale_omnivoice_checksum_fails_release_evidence(tmp_path: Path) -> None
     (bundle / "tts" / "omnivoice-tokenizer-Q4_K_M.gguf").unlink()
     metal = _metal_report(tmp_path)
     rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
-    assert rc == EXIT_MISSING_FILE
+    assert rc == EXIT_RELEASE_EVIDENCE_FAIL
 
 
 def test_missing_release_evidence_fails_in_dry_run(tmp_path: Path) -> None:

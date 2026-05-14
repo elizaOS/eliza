@@ -259,6 +259,11 @@
       "project": ["src/**/*.{ts,tsx}", "vite.config.ts"],
       "ignore": ["dist/**"]
     },
+    "packages/examples/elizagotchi": {
+      "entry": ["src/**/*.{ts,tsx}", "vite.config.ts", "index.html"],
+      "project": ["src/**/*.{ts,tsx}", "vite.config.ts"],
+      "ignore": ["dist/**"]
+    },
     "packages/examples/aws": {
       "entry": [
         "handler.ts",

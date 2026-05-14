@@ -5,12 +5,12 @@ This is one of three canonical operator-facing publishers in
 
   - ``publish_model.py``    — this file. Pushes trained weights / GGUF
                               bundles to HuggingFace under the consolidated
-                              ``elizaos/eliza-1`` repo (or, for the legacy
-                              fused-GGUF flow, to ``elizaos/<base>-optimized``).
+                              ``elizalabs/eliza-1`` repo (or, for the legacy
+                              fused-GGUF flow, to ``elizalabs/<base>-optimized``).
   - ``publish_dataset.py``  — pushes the SFT dataset bundles to
-                              ``elizaos/eliza-1-training`` (and siblings).
+                              ``elizalabs/eliza-1-training`` (and siblings).
   - ``publish_pipeline.py`` — pushes the training-pipeline source tree to
-                              ``elizaos/eliza-1-pipeline``.
+                              ``elizalabs/eliza-1-pipeline``.
 
 This script is a thin dispatcher that picks the right concrete uploader for
 the chosen mode:
@@ -18,11 +18,11 @@ the chosen mode:
   - ``--mode bundle``    → ``python -m scripts.publish.orchestrator``
                           (full bundle gate + push, the canonical release path)
   - ``--mode tier``      → ``scripts.publish.publish_eliza1_model_repo``
-                          (per-tier ``elizaos/eliza-1/bundles/<tier>/`` upload
+                          (per-tier ``elizalabs/eliza-1/bundles/<tier>/`` upload
                           when the gate ran elsewhere)
   - ``--mode optimized`` → ``scripts.publish_eliza1_model``
                           (single fused-GGUF publish, legacy nightly path
-                          targeting ``elizaos/<base>-optimized``)
+                          targeting ``elizalabs/<base>-optimized``)
 
 Use ``--mode bundle`` for new work. The other modes exist for back-compat
 with the nightly CI publish (``.github/workflows/local-inference-bench.yml``)

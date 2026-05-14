@@ -1731,6 +1731,10 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             "max_tasks": 1,
             "no_docker": True,
         },
+        "action-calling": {
+            "max_examples": 2,
+            "max_new_tokens": 512,
+        },
         "context_bench": {
             "quick": True,
             "context_lengths": [1024],

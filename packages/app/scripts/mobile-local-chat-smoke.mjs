@@ -32,6 +32,9 @@ const IOS_FULL_BUN_SMOKE_REQUEST_KEY = "eliza:ios-full-bun-smoke:request";
 const IOS_FULL_BUN_SMOKE_RESULT_KEY = "eliza:ios-full-bun-smoke:result";
 const IOS_FULL_BUN_PREWARM_RESULT_KEY = "eliza:ios-full-bun-prewarm:result";
 const IOS_LOCAL_AGENT_IPC_BASE = "eliza-local-agent://ipc";
+const IOS_FULL_BUN_SMOKE_MODEL_ID = "eliza-1-0_8b";
+const IOS_FULL_BUN_SMOKE_MODEL_RELATIVE_PATH =
+  "models/eliza-1-0_8b.bundle/text/eliza-1-0_8b-32k.gguf";
 const IOS_FULL_BUN_SMOKE_ATTEMPTS = 180;
 const IOS_FULL_BUN_SMOKE_DELAY_MS = 2000;
 const IOS_FULL_BUN_SMOKE_PROMPT_ECHO_RE = /in one short sentence/i;
@@ -170,6 +173,7 @@ function launchIosSimulatorApp() {
   }
   if (iosFullBunSmoke) {
     fullBunSmokeRequestedAtMs = Date.now();
+    stageIosFullBunSmokeModel(udid, id);
     preseedIosFullBunSmoke(udid, id);
   }
 
@@ -273,6 +277,102 @@ function flushIosPreferencesCache(udid) {
   tryExec("xcrun", ["simctl", "spawn", udid, "killall", "cfprefsd"], {
     allowFailure: true,
   });
+}
+
+function iosAppDataContainer(udid, id) {
+  return requireExec(
+    "xcrun",
+    ["simctl", "get_app_container", udid, id, "data"],
+    `Failed to resolve iOS data container for ${id}.`,
+  );
+}
+
+function copyFileIfChanged(source, destination) {
+  const sourceStats = fs.statSync(source);
+  try {
+    const destinationStats = fs.statSync(destination);
+    if (
+      destinationStats.isFile() &&
+      destinationStats.size === sourceStats.size &&
+      Math.floor(destinationStats.mtimeMs) >= Math.floor(sourceStats.mtimeMs)
+    ) {
+      return false;
+    }
+  } catch {
+    // Copy below.
+  }
+  fs.mkdirSync(path.dirname(destination), { recursive: true });
+  fs.copyFileSync(source, destination);
+  fs.utimesSync(destination, sourceStats.atime, sourceStats.mtime);
+  return true;
+}
+
+function stageIosFullBunSmokeModel(udid, id) {
+  const source =
+    process.env.ELIZA_IOS_FULL_BUN_SMOKE_MODEL_PATH ??
+    path.join(
+      os.homedir(),
+      ".eliza",
+      "local-inference",
+      IOS_FULL_BUN_SMOKE_MODEL_RELATIVE_PATH,
+    );
+  if (!fs.existsSync(source)) {
+    throw new Error(
+      `iOS full-Bun smoke model is missing: ${source}. Set ELIZA_IOS_FULL_BUN_SMOKE_MODEL_PATH to a Qwen3.5 GGUF file.`,
+    );
+  }
+  const sourceStats = fs.statSync(source);
+  if (!sourceStats.isFile()) {
+    throw new Error(`iOS full-Bun smoke model is not a file: ${source}`);
+  }
+
+  const dataContainer = iosAppDataContainer(udid, id);
+  const localInferenceRoot = path.join(dataContainer, ".eliza", "local-inference");
+  const modelPath = path.join(
+    localInferenceRoot,
+    IOS_FULL_BUN_SMOKE_MODEL_RELATIVE_PATH,
+  );
+  const copied = copyFileIfChanged(source, modelPath);
+  const now = new Date().toISOString();
+  const registry = {
+    models: [
+      {
+        id: IOS_FULL_BUN_SMOKE_MODEL_ID,
+        displayName: "Eliza-1 0.8B Qwen3.5",
+        path: modelPath,
+        sizeBytes: sourceStats.size,
+        installedAt: now,
+        lastUsedAt: now,
+        source: "ios-full-bun-smoke",
+        bundleVerifiedAt: now,
+      },
+    ],
+  };
+  const assignments = {
+    assignments: Object.fromEntries(
+      [
+        "TEXT_NANO",
+        "TEXT_SMALL",
+        "TEXT_MEDIUM",
+        "TEXT_LARGE",
+        "RESPONSE_HANDLER",
+        "ACTION_PLANNER",
+        "TEXT_COMPLETION",
+      ].map((slot) => [slot, IOS_FULL_BUN_SMOKE_MODEL_ID]),
+    ),
+  };
+  fs.mkdirSync(localInferenceRoot, { recursive: true });
+  fs.writeFileSync(
+    path.join(localInferenceRoot, "registry.json"),
+    `${JSON.stringify(registry, null, 2)}\n`,
+  );
+  fs.writeFileSync(
+    path.join(localInferenceRoot, "assignments.json"),
+    `${JSON.stringify(assignments, null, 2)}\n`,
+  );
+  console.log(
+    `[local-chat-smoke] ${copied ? "Staged" : "Reused"} iOS full-Bun smoke model ${IOS_FULL_BUN_SMOKE_MODEL_ID}: ${modelPath}`,
+  );
 }
 
 function preseedIosLocalRuntime(udid, id) {
