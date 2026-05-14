@@ -2216,6 +2216,22 @@ function sourceContainsDflashDraft(root) {
   );
 }
 
+function sourceContainsSwaSpecDecodeFallback(root) {
+  const serverContextPath = path.join(
+    root,
+    "tools",
+    "server",
+    "server-context.cpp",
+  );
+  if (!fs.existsSync(serverContextPath)) return false;
+  const source = fs.readFileSync(serverContextPath, "utf8");
+  return (
+    source.includes("seq_rm probe failed but model declares SWA") &&
+    source.includes("llama_model_n_swa(model_tgt) > 0") &&
+    source.includes("ctx_tgt_seq_rm_type = COMMON_CONTEXT_SEQ_RM_TYPE_FULL")
+  );
+}
+
 function sourceContainsCpuTbqKernels(root) {
   if (!root) return { turbo3: false, turbo4: false, turbo3_tcq: false };
   const sources = [

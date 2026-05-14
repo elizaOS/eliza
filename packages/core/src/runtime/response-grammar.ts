@@ -1594,6 +1594,19 @@ function buildBoundedNumberRule(
 		return "jsonnumber";
 	}
 
+	// Inverted range (min > max) is unsatisfiable — enumerating it would emit an
+	// empty rule body, producing malformed GBNF that llama.cpp rejects at
+	// grammar-load time. Fall back to the shared `jsonnumber` rule; server-side
+	// validation surfaces the bad bound rather than crashing the decoder.
+	if (
+		typeof minimum === "number" &&
+		typeof maximum === "number" &&
+		minimum > maximum
+	) {
+		builder.useShared("jsonnumber");
+		return "jsonnumber";
+	}
+
 	// For integers, emit a rule that matches only in-range values.
 	if (type === "integer") {
 		const min =

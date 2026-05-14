@@ -1647,7 +1647,7 @@ describe("buildBoundedNumberRule — boundary, single-value, and degenerate rang
 		expect(boundedRule).not.toContain(" | ");
 	});
 
-	it("emits an empty-body bounded rule for an inverted integer range [10, 5] (observed impl behavior)", () => {
+	it("falls back to jsonnumber for an inverted integer range [10, 5]", () => {
 		clearResponseGrammarCache();
 		const action = makeAction("INVERTED", {
 			parameters: [
@@ -1662,22 +1662,15 @@ describe("buildBoundedNumberRule — boundary, single-value, and degenerate rang
 		const result = buildPlannerActionGrammarStrict([action]);
 		expect(result).not.toBeNull();
 		if (!result) return;
-		// The impl's loop body never executes when min > max, so it emits a
-		// bounded rule with an empty alternation body rather than falling back
-		// to jsonnumber. We assert the observed behavior — this is a latent
-		// impl gap (the grammar is unparseable) but documenting it locks the
-		// current behavior so any future fix is a visible test change.
-		const boundedRule = result.grammar
-			.split("\n")
-			.find((l) => l.includes("_bad_bounded ::="));
-		expect(boundedRule).toBeDefined();
-		expect(boundedRule).toMatch(/_bad_bounded ::=\s*$/);
-		// No fallback to jsonnumber for this parameter's value position.
+		// Inverted range fix landed: min > max is unsatisfiable, so the impl
+		// falls back to the shared `jsonnumber` rule (same shape as the large-
+		// range and float cases) instead of emitting an empty rule body that
+		// would produce malformed GBNF.
+		expect(result.grammar).not.toContain("_bad_bounded");
 		const paramRule = result.grammar
 			.split("\n")
 			.find((l) => l.includes("_p_bad ::="));
 		expect(paramRule).toBeDefined();
-		expect(paramRule).toContain("_bad_bounded");
-		expect(paramRule).not.toContain("jsonnumber");
+		expect(paramRule).toMatch(/::= "\\"bad\\":" jsonnumber$/);
 	});
 });
