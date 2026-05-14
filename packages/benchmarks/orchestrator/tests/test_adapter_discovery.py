@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib
+import importlib.util
 import json
 from pathlib import Path
 
@@ -1169,6 +1170,35 @@ def test_action_calling_cli_accepts_tool_choice_none() -> None:
     )
 
     assert args.tool_choice == "none"
+
+
+def test_clawbench_runner_extracts_native_tool_call_args() -> None:
+    module_path = _workspace_root() / "packages" / "benchmarks" / "clawbench" / "eliza_adapter.py"
+    spec = importlib.util.spec_from_file_location("clawbench_eliza_adapter_test", module_path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    response = type(
+        "Response",
+        (),
+        {
+            "actions": ["MAIL.send"],
+            "params": {
+                "MAIL.send": {},
+                "tool_calls": [
+                    {
+                        "name": "MAIL.send",
+                        "arguments": {"to_emails": ["x@example.com"]},
+                    }
+                ],
+            },
+        },
+    )()
+
+    assert module._extract_response_tool_calls(response) == [
+        {"tool": "MAIL.send", "args": {"to_emails": ["x@example.com"]}}
+    ]
 
 
 def test_action_calling_registry_command_uses_requested_harness_provider(tmp_path: Path) -> None:

@@ -131,11 +131,11 @@ sudo virt-customize -a "$output_qcow2" \
     --run-command 'plymouth-set-default-theme usbeliza --rebuild-initrd' \
     --run-command 'update-grub || true'
 
-# --- Ollama: install the daemon + pull the bundled model ---
+# --- Ollama: install the daemon; do not pull third-party default models ---
 # Done as a separate virt-customize pass so the install script's stdout is
 # clean from the apt logs above, and so a re-run (cache hit) skips this
 # pass via the shell test inside the run-command.
-echo "==> virt-customize: install Ollama + pull ${OLLAMA_MODELS[*]}"
+echo "==> virt-customize: install Ollama compatibility daemon"
 sudo virt-customize -a "$output_qcow2" \
     --run-command "command -v ollama || curl -fsSL ${OLLAMA_INSTALL_URL} | sh" \
     --run-command "systemctl enable ollama"
@@ -154,7 +154,7 @@ sudo virt-customize -a "$output_qcow2" \
     --run-command 'chmod +x /usr/local/bin/bun /usr/local/bin/bunx 2>/dev/null || true' \
     --run-command 'test -x /usr/local/bin/bun || (echo "ERROR: bun did not install to /usr/local/bin" >&2; exit 1)'
 
-# Pulling the model needs ollama serving; do it in a single transient
+# Pulling any explicitly configured model needs ollama serving; do it in a single transient
 # virt-customize run so the binary is already on disk and the systemd unit
 # is enabled (previous pass), then start it manually inside the appliance,
 # pull, and shut down cleanly.
