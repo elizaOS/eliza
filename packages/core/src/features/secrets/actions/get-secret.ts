@@ -41,8 +41,7 @@ function readParams(
 		params.level === "user"
 			? (params.level as SecretLevel)
 			: undefined;
-	const mask =
-		typeof params.mask === "boolean" ? params.mask : undefined;
+	const mask = typeof params.mask === "boolean" ? params.mask : undefined;
 	return { key, level, mask };
 }
 
