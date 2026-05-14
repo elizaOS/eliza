@@ -1405,7 +1405,42 @@ function getV5ModelText(raw: string | GenerateTextResult): string {
 	if (typeof raw === "string") {
 		return raw;
 	}
+	if (typeof raw.text === "string" && raw.text.trim().length > 0) {
+		return raw.text;
+	}
+	const contentText = extractGenerateTextContentText(raw);
+	if (contentText.trim().length > 0) {
+		return contentText;
+	}
 	return typeof raw.text === "string" ? raw.text : JSON.stringify(raw);
+}
+
+function extractGenerateTextContentText(raw: GenerateTextResult): string {
+	const content = (raw as unknown as Record<string, unknown>).content;
+	if (typeof content === "string") return content;
+	if (!Array.isArray(content)) return "";
+	const parts: string[] = [];
+	for (const part of content) {
+		if (typeof part === "string") {
+			parts.push(part);
+			continue;
+		}
+		if (!part || typeof part !== "object" || Array.isArray(part)) continue;
+		const entry = part as Record<string, unknown>;
+		const type =
+			typeof entry.type === "string" ? entry.type.toLowerCase() : undefined;
+		const text =
+			typeof entry.text === "string"
+				? entry.text
+				: typeof entry.content === "string"
+					? entry.content
+					: "";
+		if (!text) continue;
+		if (!type || type === "text" || type === "output_text") {
+			parts.push(text);
+		}
+	}
+	return parts.join("");
 }
 
 function isVoiceChannelMessage(message: Pick<Memory, "content">): boolean {
@@ -2815,7 +2850,7 @@ function synthesizeSimpleReplyFromPlainText(
  * Detect a Stage 1 model result with no usable content. Covers an empty
  * string, and the `GenerateTextResult` object shape where `text` is blank
  * AND there are no tool calls / content parts to recover from. Used to gate
- * the one-shot empty-completion retry.
+ * bounded empty-completion retries.
  */
 function isEmptyStage1Result(raw: string | GenerateTextResult): boolean {
 	if (typeof raw === "string") return raw.trim().length === 0;
@@ -2825,10 +2860,65 @@ function isEmptyStage1Result(raw: string | GenerateTextResult): boolean {
 	if (text.length > 0) return false;
 	const toolCalls = obj.toolCalls;
 	if (Array.isArray(toolCalls) && toolCalls.length > 0) return false;
-	const content = obj.content;
-	if (typeof content === "string" && content.trim().length > 0) return false;
-	if (Array.isArray(content) && content.length > 0) return false;
+	const contentText = extractGenerateTextContentText(
+		raw as unknown as GenerateTextResult,
+	);
+	if (contentText.trim().length > 0) return false;
 	return true;
+}
+
+function readStage1EmptyRetryLimit(runtime: IAgentRuntime): number {
+	const raw = runtime.getSetting?.("ELIZA_RESPONSE_HANDLER_EMPTY_RETRIES");
+	if (raw === undefined || raw === null || raw === "") return 2;
+	const parsed =
+		typeof raw === "number" ? raw : Number.parseInt(String(raw).trim(), 10);
+	if (!Number.isFinite(parsed)) return 2;
+	return Math.max(0, Math.min(5, Math.trunc(parsed)));
+}
+
+function shouldUseStage1PlannerFallback(
+	runtime: IAgentRuntime,
+	message: Memory,
+): boolean {
+	const content = message.content ?? {};
+	const channelType = String(content.channelType ?? "").toLowerCase();
+	if (
+		channelType === ChannelType.DM.toLowerCase() ||
+		channelType === ChannelType.VOICE_DM.toLowerCase() ||
+		channelType === ChannelType.SELF.toLowerCase() ||
+		channelType === ChannelType.API.toLowerCase()
+	) {
+		return true;
+	}
+	const mentionContext = content.mentionContext as
+		| { isMention?: boolean; isReply?: boolean }
+		| undefined;
+	if (mentionContext?.isMention === true || mentionContext?.isReply === true) {
+		return true;
+	}
+	const source = String(content.source ?? "").toLowerCase();
+	if (source.includes("client_chat")) {
+		return true;
+	}
+	return textContainsAgentName(content.text, [
+		runtime.character.name,
+		runtime.character.username,
+	]);
+}
+
+function synthesizePlannerFallbackFromStage1Failure(
+	reason: string,
+): MessageHandlerResult {
+	return {
+		processMessage: "RESPOND",
+		thought: `Response handler returned ${reason}; falling back to planner because the message is explicitly addressed to the agent.`,
+		plan: {
+			contexts: ["general"],
+			reply: "",
+			simple: false,
+			requiresTool: true,
+		},
+	};
 }
 
 /**
@@ -3555,30 +3645,36 @@ export async function runV5MessageRuntimeStage1(args: {
 			// Guided structured decode on by default for Stage 1 (the call always
 			// carries a forced skeleton): the local engine derives the
 			// deterministic-token prefill plan and the fork fast-forwards the
-				// forced scaffold spans. Opt out with `ELIZA_LOCAL_GUIDED_DECODE=0`.
+			// forced scaffold spans. Opt out with `ELIZA_LOCAL_GUIDED_DECODE=0`.
 			// Cloud adapters ignore `providerOptions.eliza.guidedDecode`.
 			providerOptions: withGuidedDecodeProviderOptions(
 				messageHandlerProviderOptions,
 			),
 		};
 		// Empty-completion retry: cloud reasoning models reached over
-		// OpenAI-compatible providers (gpt-oss-120b on Cerebras observed in
-		// the wild) intermittently return a completion with no content at
-		// all — every token went to a dropped reasoning channel, or the
-		// provider hiccuped. An empty Stage 1 result has no recoverable
-		// shape, so the runtime would otherwise throw "invalid
-		// MessageHandlerResult" and surface a hard failure to the user for
-		// what is really a transient provider blip. One synchronous retry
-		// turns that into a normal turn the overwhelming majority of the
-		// time.
-			let rawMessageHandler = (await args.runtime.useModel(
-				ModelType.RESPONSE_HANDLER,
-				stage1ModelParams,
-			)) as string | GenerateTextResult;
-		if (isEmptyStage1Result(rawMessageHandler)) {
+		// OpenAI-compatible providers intermittently return a completion with no
+		// content at all — every token went to a dropped reasoning channel, or
+		// the provider hiccuped. An empty Stage 1 result has no recoverable
+		// shape, so retry a small bounded number of times before surfacing a
+		// precise provider-shape failure.
+		const emptyRetryLimit = readStage1EmptyRetryLimit(args.runtime);
+		let emptyRetryCount = 0;
+		let rawMessageHandler = (await args.runtime.useModel(
+			ModelType.RESPONSE_HANDLER,
+			stage1ModelParams,
+		)) as string | GenerateTextResult;
+		while (
+			isEmptyStage1Result(rawMessageHandler) &&
+			emptyRetryCount < emptyRetryLimit
+		) {
+			emptyRetryCount += 1;
 			args.runtime.logger?.warn?.(
-				{ src: "service:message" },
-				"[message] Stage 1 returned an empty completion — retrying once",
+				{
+					src: "service:message",
+					attempt: emptyRetryCount + 1,
+					maxAttempts: emptyRetryLimit + 1,
+				},
+				`[message] Stage 1 returned an empty completion — retrying (${emptyRetryCount}/${emptyRetryLimit})`,
 			);
 			rawMessageHandler = (await args.runtime.useModel(
 				ModelType.RESPONSE_HANDLER,
@@ -3609,6 +3705,23 @@ export async function runV5MessageRuntimeStage1(args: {
 		if (!messageHandler) {
 			messageHandler = parseMessageHandlerModelOutput(rawMessageHandler);
 		}
+		if (
+			!messageHandler &&
+			shouldUseStage1PlannerFallback(args.runtime, args.message)
+		) {
+			const stage1FailureReason = isEmptyStage1Result(rawMessageHandler)
+				? `empty output after ${emptyRetryLimit + 1} attempts`
+				: "unparseable output";
+			messageHandler =
+				synthesizePlannerFallbackFromStage1Failure(stage1FailureReason);
+			args.runtime.logger?.warn?.(
+				{
+					src: "service:message",
+					reason: stage1FailureReason,
+				},
+				"[message] Stage 1 did not produce a valid handler result; falling back to planner for explicitly addressed message",
+			);
+		}
 
 		// RESPONSE_HANDLER_AFTER (blocking): hooks fire after Stage 1 returns and the
 		// routing decision is parsed, but before the runtime acts on it.
@@ -3620,6 +3733,11 @@ export async function runV5MessageRuntimeStage1(args: {
 		);
 
 		if (!messageHandler) {
+			if (isEmptyStage1Result(rawMessageHandler)) {
+				throw new Error(
+					`v5 messageHandler returned empty Stage 1 result after ${emptyRetryLimit + 1} attempts`,
+				);
+			}
 			throw new Error(
 				"v5 messageHandler returned invalid MessageHandlerResult",
 			);
