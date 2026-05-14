@@ -5317,6 +5317,18 @@ function _shouldAttemptActionRescue(
 		return false;
 	}
 
+	const draftText = String(responseContent.text ?? "").trim();
+	const source =
+		typeof message.content === "object" && message.content
+			? (message.content as { source?: unknown }).source
+			: undefined;
+	if (source === "discord" && draftText.length > 0) {
+		return false;
+	}
+	if (hasExplicitReplyIntent(responseContent) && draftText.length > 0) {
+		return false;
+	}
+
 	if (looksLikeNonActionableChatter(message)) {
 		return false;
 	}

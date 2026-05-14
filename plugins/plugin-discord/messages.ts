@@ -1064,7 +1064,9 @@ export class MessageManager {
 						await this.runtime.createMemory(m, "messages");
 					}
 
-					responseEmitted = memories.length > 0;
+					if (memories.length > 0) {
+						responseEmitted = true;
+					}
 					typingController.stop();
 					statusReactions?.setDone();
 
