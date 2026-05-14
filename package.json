@@ -178,6 +178,7 @@
     "packages/benchmarks/lib",
     "packages/benchmarks/interrupt-bench",
     "packages/benchmarks/eliza-1",
+    "packages/benchmarks/solana/solana-gym-env/docs/trajectory-viewer",
     "packages/examples/*",
     "packages/examples/*/*",
     "packages/examples/*/*/*",
