@@ -68,6 +68,7 @@ from benchmarks.eliza1_gates import (  # noqa: E402  - sys.path mutated above
     GateReport,
     apply_gates,
     load_gates,
+    regression_gates,
 )
 from scripts.manifest.eliza1_manifest import (  # noqa: E402
     ELIZA_1_BACKENDS,
@@ -239,6 +240,12 @@ class PublishContext:
     training_repo_root: Path
     template_path: Path
     gates_path: Path | None = None
+    # Local path to a previously-published bundle's ``evals/aggregate.json``.
+    # When set, the eval gate runs an extra regression check (no metric may
+    # slip below the prior bundle's value by more than ``regression_tolerance``
+    # — defaults to 5%). Set to ``None`` to skip the check (first-publish path).
+    prior_bundle_aggregate: Path | None = None
+    regression_tolerance: float = 0.05
 
     # Artifacts populated as stages run (kept here so tests can introspect).
     layout_files: dict[str, list[Path]] = field(default_factory=dict)
@@ -1321,6 +1328,21 @@ def run_eval_gates(ctx: PublishContext) -> tuple[GateReport, dict[str, Any]]:
     gates_doc = load_gates(ctx.gates_path) if ctx.gates_path else None
     report = apply_gates(eval_blob, gates_doc)
 
+    # Regression check vs. the previously-published bundle. The audit
+    # (wave1/eval-benchmarks.md §11 H5) flagged that the per-tier threshold
+    # gate accepts any measurement at-or-above the threshold even when the
+    # previous publish scored materially higher. Compare measured vs prior;
+    # publish-block on a regression beyond ``ctx.regression_tolerance``.
+    baseline_results = _read_prior_aggregate(ctx)
+    if isinstance(baseline_results, Mapping):
+        report.gates.extend(
+            regression_gates(
+                eval_blob.get("results") or {},
+                baseline_results,
+                tolerance=ctx.regression_tolerance,
+            )
+        )
+
     if not report.passed:
         details = "\n".join(
             f"  - {g.name}: {g.reason}" for g in report.failed_gates
@@ -1331,6 +1353,34 @@ def run_eval_gates(ctx: PublishContext) -> tuple[GateReport, dict[str, Any]]:
         )
 
     return report, eval_blob
+
+
+def _read_prior_aggregate(ctx: PublishContext) -> Mapping[str, Any] | None:
+    """Return the prior bundle's ``results`` dict, or ``None`` to skip.
+
+    Reads ``ctx.prior_bundle_aggregate``. The shape mirrors the live
+    aggregate blob (``{"tier", "mode", "results"}``); we return the
+    ``results`` sub-dict directly. A missing / unreadable file returns
+    ``None`` (treated as "no baseline → first publish path").
+    """
+    src = ctx.prior_bundle_aggregate
+    if src is None or not src.is_file():
+        return None
+    try:
+        blob = json.loads(src.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise OrchestratorError(
+            f"--prior-bundle-aggregate {src} is not valid JSON: {exc}",
+            EXIT_EVAL_GATE_FAIL,
+        ) from exc
+    if not isinstance(blob, dict):
+        raise OrchestratorError(
+            f"--prior-bundle-aggregate {src} must be a JSON object",
+            EXIT_EVAL_GATE_FAIL,
+        )
+    if isinstance(blob.get("results"), dict):
+        return blob["results"]
+    return blob
 
 
 # ---------------------------------------------------------------------------
@@ -2250,6 +2300,28 @@ def _parse_args(argv: Sequence[str] | None = None) -> PublishContext:
         help="Override path to eliza1_gates.yaml (default: bundled).",
     )
     ap.add_argument(
+        "--prior-bundle-aggregate",
+        type=Path,
+        default=None,
+        help=(
+            "Path to the previously-published bundle's evals/aggregate.json. "
+            "When set, the eval gate runs an extra regression check: no key "
+            "metric (text_eval / voice_rtf / asr_wer) may slip below the "
+            "prior bundle's value by more than --regression-tolerance. "
+            "Omit on first publish."
+        ),
+    )
+    ap.add_argument(
+        "--regression-tolerance",
+        type=float,
+        default=0.05,
+        help=(
+            "Fractional tolerance for the prior-bundle regression gate "
+            "(default 0.05 = 5%%). Ignored when --prior-bundle-aggregate "
+            "is not provided."
+        ),
+    )
+    ap.add_argument(
         "--dry-run",
         action="store_true",
         help="Run every check but do not push to HF or tag git.",
@@ -2275,6 +2347,12 @@ def _parse_args(argv: Sequence[str] | None = None) -> PublishContext:
         training_repo_root=_REPO_ROOT,
         template_path=template_path,
         gates_path=args.gates_path,
+        prior_bundle_aggregate=(
+            args.prior_bundle_aggregate.resolve()
+            if args.prior_bundle_aggregate
+            else None
+        ),
+        regression_tolerance=args.regression_tolerance,
     )
 
 
