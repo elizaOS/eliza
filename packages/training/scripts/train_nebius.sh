@@ -478,37 +478,58 @@ fetch() {
 
 # --- DFlash drafter distillation (distill_dflash_drafter.py) ----------------
 # Env knobs (defaults frugal — a small KD job, not a full pipeline):
-#   DFLASH_TIER            tier the drafter ships for (default 9b — the 0.8B
-#                          Qwen3.5-arch drafter serves the 2b/9b/27b tiers)
-#   DFLASH_TARGET_BASE     HF id of the target text model whose logits we
-#                          distill toward (default Qwen/Qwen3.5-0.8B-Base)
-#   DFLASH_STUDENT_CONFIG  from-scratch ~0.8B student config dir
-#                          (default configs/dflash-drafter-lite-qwen3_5)
-#   DFLASH_STUDENT_BASE    alternative: a published student HF id (overrides
-#                          DFLASH_STUDENT_CONFIG if set)
-#   DFLASH_DATASET         distillation corpus (default $TRAIN_FILE)
+#   DFLASH_TIER              tier the drafter ships for. Active tiers (per
+#                            distill_dflash_drafter.py::ACTIVE_TIERS): 0_8b,
+#                            2b, 4b, 9b, 27b, 27b-256k, 27b-1m. Default: 2b.
+#   DFLASH_TARGET_CHECKPOINT remote path (relative to $REMOTE_TRAIN_DIR) to the
+#                            SFT'd target text HF checkpoint directory. The
+#                            distiller loads the target via
+#                            AutoModelForCausalLM.from_pretrained(<this>).
+#                            Required for a real run.
+#   DFLASH_TARGET_GGUF       (optional) remote path to the final shipped target
+#                            text GGUF; its sha256 is stamped into the drafter
+#                            GGUF metadata (`dflash-draft.target_checkpoint_sha256`).
+#                            Strongly recommended — without it the script falls
+#                            back to hashing model.safetensors[.index.json].
+#   DFLASH_TARGET_MODEL_ID   (optional) canonical Eliza-1 target model id.
+#                            Defaults to the tier's entry in
+#                            distill_dflash_drafter.py::DEFAULT_TARGET_MODEL
+#                            (e.g. elizaos/eliza-1/bundles/2b for tier=2b).
+#   DFLASH_STUDENT_BASE      HF id of the student base. Defaults to
+#                            Qwen/Qwen3.5-0.8B-Base (the Eliza-1 mandated
+#                            student for every active tier — keep this aligned
+#                            with model_registry.py::DFLASH_DRAFTER_BASE).
+#   DFLASH_DATASET           distillation corpus (default $TRAIN_FILE).
 #   DFLASH_EPOCHS / DFLASH_BATCH / DFLASH_GRAD_ACCUM / DFLASH_MAX_SEQ_LEN
-#                          default 1 / 8 / 4 / 2048
-#   DFLASH_MAX_SAMPLES     cap examples (default 0 = all; set e.g. 20000 for a
-#                          short budget-bounded run)
-#   DFLASH_OUT_DIR         remote+local out dir name (default
-#                          out/dflash-drafter-${DFLASH_TIER})
+#                            default 1 / 8 / 4 / 2048.
+#   DFLASH_MAX_SAMPLES       cap examples (default 0 = all; set e.g. 20000 for
+#                            a short budget-bounded run).
+#   DFLASH_OUT_DIR           remote+local out dir name (default
+#                            out/dflash-drafter-${DFLASH_TIER}).
 run_distill_remote() {
   local target; target="$(ssh_target)"
-  local tier="${DFLASH_TIER:-9b}"
-  local target_base="${DFLASH_TARGET_BASE:-Qwen/Qwen3.5-0.8B-Base}"
-  local student_cfg="${DFLASH_STUDENT_CONFIG:-configs/dflash-drafter-lite-qwen3_5}"
-  local student_base="${DFLASH_STUDENT_BASE:-}"
+  local tier="${DFLASH_TIER:-2b}"
+  local target_ckpt="${DFLASH_TARGET_CHECKPOINT:-}"
+  local target_gguf="${DFLASH_TARGET_GGUF:-}"
+  local target_model_id="${DFLASH_TARGET_MODEL_ID:-}"
+  local student_base="${DFLASH_STUDENT_BASE:-Qwen/Qwen3.5-0.8B-Base}"
   local ds="${DFLASH_DATASET:-$TRAIN_FILE}"
   local epochs="${DFLASH_EPOCHS:-1}" batch="${DFLASH_BATCH:-8}" ga="${DFLASH_GRAD_ACCUM:-4}"
   local msl="${DFLASH_MAX_SEQ_LEN:-2048}" maxn="${DFLASH_MAX_SAMPLES:-0}"
   local out_dir="${DFLASH_OUT_DIR:-out/dflash-drafter-${tier}}"
   local hf_tok="${HUGGING_FACE_HUB_TOKEN:-${HF_TOKEN:-}}"
   local log="$REMOTE_TRAIN_DIR/distill_${RUN_NAME}.log"
-  local student_arg
-  if [ -n "$student_base" ]; then student_arg="--student-base $student_base"; else student_arg="--student-config $student_cfg"; fi
 
-  echo "[train_nebius][distill] tier=$tier target=$target_base student=${student_base:-$student_cfg} dataset=$ds epochs=$epochs batch=$batch ga=$ga seq=$msl max_samples=$maxn"
+  if [ -z "$target_ckpt" ]; then
+    echo "[train_nebius][distill] ERROR: DFLASH_TARGET_CHECKPOINT is required (remote path to the SFT'd target text HF checkpoint, e.g. checkpoints/eliza-1-2b-apollo-.../final)" >&2
+    return 2
+  fi
+  local target_gguf_arg=""
+  [ -n "$target_gguf" ] && target_gguf_arg="--target-gguf $target_gguf"
+  local target_model_id_arg=""
+  [ -n "$target_model_id" ] && target_model_id_arg="--target-model-id $target_model_id"
+
+  echo "[train_nebius][distill] tier=$tier target_ckpt=$target_ckpt target_gguf=${target_gguf:-(none)} student_base=$student_base dataset=$ds epochs=$epochs batch=$batch ga=$ga seq=$msl max_samples=$maxn"
   ssh -o StrictHostKeyChecking=no "$target" "cat > $REMOTE_TRAIN_DIR/.run_distill.sh" <<EOF
 #!/usr/bin/env bash
 set -euo pipefail
@@ -535,7 +556,9 @@ uv pip install --python .venv/bin/python -U 'transformers>=4.57.0' 'accelerate>=
 }
 export UV_NO_SYNC=1 UV_FROZEN=1
 .venv/bin/python scripts/distill_dflash_drafter.py \\
-  --tier $tier --target-base $target_base $student_arg \\
+  --tier $tier \\
+  --target-checkpoint $target_ckpt $target_gguf_arg $target_model_id_arg \\
+  --student-base $student_base \\
   --dataset $ds --out-dir $out_dir \\
   --epochs $epochs --batch-size $batch --grad-accum $ga --max-seq-len $msl --max-samples $maxn
 echo DISTILL_DONE_OK
@@ -586,13 +609,31 @@ teardown() {
 }
 
 sync_distill_dataset() {
-  # The distiller needs exactly one corpus file (DFLASH_DATASET / TRAIN_FILE).
+  # The distiller needs (a) the corpus file (DFLASH_DATASET / TRAIN_FILE) and
+  # (b) the SFT'd target HF checkpoint directory (DFLASH_TARGET_CHECKPOINT).
+  # Optionally (c) the final shipped target GGUF (DFLASH_TARGET_GGUF) so the
+  # drafter can stamp the exact checkpoint hash.
   local target; target="$(ssh_target)"
   local ds="${DFLASH_DATASET:-$TRAIN_FILE}"
   local d; d="$(dirname "$ds")"
   ssh -o StrictHostKeyChecking=no "$target" "mkdir -p $REMOTE_TRAIN_DIR/$d"
   echo "[train_nebius][sync] sending distillation corpus $ds"
   rsync -avhz --partial --info=progress2 "$ROOT/$ds" "$target:$REMOTE_TRAIN_DIR/$ds"
+
+  local target_ckpt="${DFLASH_TARGET_CHECKPOINT:-}"
+  if [ -n "$target_ckpt" ]; then
+    local ckpt_dir; ckpt_dir="$(dirname "$target_ckpt")"
+    ssh -o StrictHostKeyChecking=no "$target" "mkdir -p $REMOTE_TRAIN_DIR/$ckpt_dir"
+    echo "[train_nebius][sync] sending target HF checkpoint $target_ckpt (this is the SFT'd text model — multi-GB)"
+    rsync -avhz --partial --info=progress2 "$ROOT/$target_ckpt/" "$target:$REMOTE_TRAIN_DIR/$target_ckpt/"
+  fi
+  local target_gguf="${DFLASH_TARGET_GGUF:-}"
+  if [ -n "$target_gguf" ]; then
+    local gguf_dir; gguf_dir="$(dirname "$target_gguf")"
+    ssh -o StrictHostKeyChecking=no "$target" "mkdir -p $REMOTE_TRAIN_DIR/$gguf_dir"
+    echo "[train_nebius][sync] sending target GGUF $target_gguf"
+    rsync -avhz --partial --info=progress2 "$ROOT/$target_gguf" "$target:$REMOTE_TRAIN_DIR/$target_gguf"
+  fi
 }
 
 case "$cmd" in
