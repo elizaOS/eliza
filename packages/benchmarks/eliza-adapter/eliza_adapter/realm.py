@@ -246,11 +246,19 @@ class ElizaREALMAgent:
                     "task_id": task.id,
                     "task_name": task.name,
                     "task_description": task.description,
-                    "task_category": task.category.value,
+                    # The new taxonomy uses ``problem`` (P1..P11).
+                    # ``task_category`` is kept for back-compat with the
+                    # TS bridge prompt templates.
+                    "task_problem": getattr(task, "problem", task.category).value,
+                    "task_category": getattr(task, "problem", task.category).value,
                     "task_goal": message_text,
                     "available_tools": task.available_tools,
                     "constraints": task.constraints,
                     "requirements": task.requirements,
+                    # New: raw upstream instance so the LLM can reason
+                    # over distances / time windows / job matrices etc.
+                    "instance": getattr(task, "instance", {}),
+                    "num_agents": getattr(task, "num_agents", 1),
                     "max_steps": task.max_steps,
                     "current_plan": plan,
                     "executed_steps": executed_steps,
