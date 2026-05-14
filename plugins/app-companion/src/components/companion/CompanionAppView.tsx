@@ -2,7 +2,6 @@
 // browser entry, so the previous lazy() was eagerly merged back into the
 // main chunk. Drop the wrapper to silence the dynamic↔static collision
 // warning and remove the unnecessary Suspense boundary overhead.
-import { PtyConsoleSidePanel } from "@elizaos/app-task-coordinator";
 import {
   CharacterEditor,
   ChatModalView,
@@ -21,23 +20,23 @@ import { resolveCompanionInferenceNotice } from "./resolve-companion-inference-n
 
 const COMPANION_DOCK_HEIGHT = "min(42vh, 24rem)";
 
-/** Isolated PTY panel — avoids polling ptySessions in the main overlay. */
-const CompanionPtyPanel = memo(function CompanionPtyPanel({
-  sessionId,
-  onClose,
-}: {
-  sessionId: string;
-  onClose: () => void;
-}) {
+/**
+ * Isolated PTY panel — avoids polling ptySessions in the main overlay.
+ * The host-side console UI was removed from @elizaos/app-task-coordinator
+ * in 355be0ed1a ("update agent" — drop the PtyConsole component family).
+ * Keep the hook subscription so the dock pulls in PTY session metadata,
+ * but render nothing until the replacement UI lands. The render-gate
+ * below relies on `ptySidePanelSessionId` so users only hit this path
+ * after clicking a session pill — the no-op simply means clicking the
+ * pill currently does nothing visible, which matches the underlying
+ * "no console UI exists" reality and avoids a build break.
+ */
+const CompanionPtyPanel = memo(function CompanionPtyPanel(
+  _props: Readonly<{ sessionId: string; onClose: () => void }>,
+) {
   const { ptySessions } = usePtySessions();
   if (ptySessions.length === 0) return null;
-  return (
-    <PtyConsoleSidePanel
-      activeSessionId={sessionId}
-      sessions={ptySessions}
-      onClose={onClose}
-    />
-  );
+  return null;
 });
 
 /**
