@@ -1896,11 +1896,9 @@ export async function saveTrajectory(
       await executeRawSql(runtime, compatSql);
       saved = true;
     } catch (compatErr) {
-      coreLogger.error("[trajectory-persistence] saveTrajectory error:", {
-        modern: err instanceof Error ? err.message : String(err),
-        compat:
-          compatErr instanceof Error ? compatErr.message : String(compatErr),
-      });
+      coreLogger.error(
+        `[trajectory-persistence] saveTrajectory error: modern=${err instanceof Error ? err.message : String(err)} compat=${compatErr instanceof Error ? compatErr.message : String(compatErr)}`,
+      );
       return false;
     }
   }
