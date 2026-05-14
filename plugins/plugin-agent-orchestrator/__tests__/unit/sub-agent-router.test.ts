@@ -538,6 +538,50 @@ describe("SubAgentRouter", () => {
       expect(posted?.content?.text).not.toContain("[verification:");
     });
 
+    it("marks cached 404s so retries can switch to fresh asset filenames", async () => {
+      const assetUrl = "https://example.test/apps/counter/style.css";
+      const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.startsWith(`${assetUrl}?__eliza_verify=`)) {
+          return new Response("body { color: red; }", {
+            status: 200,
+            headers: { "content-type": "text/css" },
+          });
+        }
+        if (url === assetUrl) {
+          return new Response("not found", {
+            status: 404,
+            headers: {
+              age: "42",
+              "cf-cache-status": "HIT",
+              "cache-control": "max-age=14400",
+            },
+          });
+        }
+        return new Response("not found", { status: 404 });
+      });
+      vi.stubGlobal("fetch", fetchMock);
+      session = sessionWithTask(`build a counter at ${assetUrl}`);
+      acp = makeAcpService(session);
+      const { runtime, handleMessage, spawnSession } = makeRuntime({
+        acp: acp.service,
+      });
+      await SubAgentRouter.start(runtime);
+
+      acp.emit(SESSION_ID, "task_complete", {
+        response: `Done — live at ${assetUrl}`,
+      });
+      await new Promise((r) => setTimeout(r, 200));
+
+      expect(spawnSession).toHaveBeenCalledTimes(1);
+      const fetched = fetchMock.mock.calls.map(([url]) => String(url));
+      expect(fetched.some((url) => url.startsWith(`${assetUrl}?`))).toBe(true);
+      const retryTask = String(spawnSession.mock.calls[0]?.[0]?.initialTask);
+      expect(retryTask).toContain("cached stale miss");
+      expect(retryTask).toContain("rename that asset to a fresh filename");
+      expect(handleMessage).not.toHaveBeenCalled();
+    });
+
     it("does not retry when ELIZA_BUILD_VERIFY_MAX_RETRIES=0", async () => {
       process.env.ELIZA_BUILD_VERIFY_MAX_RETRIES = "0";
       session = sessionWithTask(`build it at ${DEAD_URL}`);

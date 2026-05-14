@@ -626,7 +626,8 @@ export class SubAgentRouter {
 --- VERIFICATION FEEDBACK (retry ${nextRetry}/${maxRetries}) ---
 A previous attempt reported the task complete, but these URL(s) are NOT reachable, which means the corresponding files are missing or empty:
 ${deadLines}
-Create or fix every one of those files in the location your task specifies, then verify each file exists and is non-empty. Do not report done until every referenced URL would resolve.`;
+Create or fix every one of those files in the location your task specifies, then verify each file exists and is non-empty.
+If a URL reports a cached stale miss, do not keep rewriting the same filename: rename that asset to a fresh filename, update every HTML reference to the new filename, then verify the new public URL. Do not report done until every referenced URL would resolve.`;
 
     try {
       const result = await service.spawnSession({
@@ -822,6 +823,15 @@ async function annotateUnverifiedUrls(
         return { status: null };
       }
       if (res.status < 200 || res.status >= 300) {
+        const cachedMiss = await detectCachedMiss(url, res, controller.signal);
+        if (cachedMiss) {
+          log?.(
+            `[verify] probe ${url} → HTTP ${res.status} (cached stale miss; cache-busting probe returned ${cachedMiss.status}) @ ${new Date().toISOString()}`,
+          );
+          return {
+            status: `HTTP ${res.status} (cached stale miss; cache-busting probe returned ${cachedMiss.status})`,
+          };
+        }
         log?.(
           `[verify] probe ${url} → HTTP ${res.status} @ ${new Date().toISOString()}`,
         );
@@ -901,6 +911,44 @@ async function annotateUnverifiedUrls(
     text: `${text}\n\n[verification: the following URL(s) the sub-agent referenced are NOT reachable — do NOT tell the user the app is live; report the real status and that the build likely did not complete]\n${lines}`,
     dead,
   };
+}
+
+async function detectCachedMiss(
+  url: string,
+  res: Response,
+  signal: AbortSignal,
+): Promise<{ status: number } | null> {
+  if (res.status !== 404 || !looksCached(res.headers)) return null;
+  let busted: URL;
+  try {
+    busted = new URL(url);
+  } catch {
+    return null;
+  }
+  busted.searchParams.set("__eliza_verify", Date.now().toString(36));
+  const bustedRes = await fetch(busted, {
+    method: "GET",
+    redirect: "follow",
+    signal,
+  }).catch(() => null);
+  if (!bustedRes) return null;
+  return bustedRes.status >= 200 && bustedRes.status < 300
+    ? { status: bustedRes.status }
+    : null;
+}
+
+function looksCached(headers: Headers): boolean {
+  const age = headers.get("age");
+  if (age && Number.parseInt(age, 10) > 0) return true;
+  const cacheStatus = [
+    headers.get("cf-cache-status"),
+    headers.get("x-cache"),
+    headers.get("cdn-cache-status"),
+  ]
+    .filter((v): v is string => typeof v === "string")
+    .join(" ")
+    .toLowerCase();
+  return /\b(hit|stale|cached)\b/.test(cacheStatus);
 }
 
 /**
