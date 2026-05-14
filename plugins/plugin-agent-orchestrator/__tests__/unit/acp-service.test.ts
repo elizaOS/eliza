@@ -104,6 +104,24 @@ function closeOk(reg: ProcRegistration | MockProc) {
   setImmediate(() => p.emit("close", 0, null));
 }
 
+async function waitForSessionStatus(
+  service: AcpService,
+  sessionId: string,
+  status: string,
+  timeoutMs = 4000,
+): Promise<void> {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    const session = await service.getSession(sessionId);
+    if (session?.status === status) return;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  const session = await service.getSession(sessionId);
+  throw new Error(
+    `expected session ${sessionId} to reach ${status}, got ${session?.status}`,
+  );
+}
+
 beforeEach(() => {
   spawnMock.mockReset();
 });
@@ -169,6 +187,32 @@ describe("AcpService", () => {
     );
   });
 
+  it("does not emit task_complete from the session creation command", async () => {
+    const reg = nextProc();
+    const service = new AcpService(runtime());
+    const events: string[] = [];
+    service.onSessionEvent((_sid, event) => events.push(event));
+    await service.start();
+
+    const promise = service.spawnSession({
+      name: "create-only",
+      agentType: "codex",
+      workdir: "/tmp/acp-test",
+    });
+    await waitForSpawn(reg);
+    reg.proc.stdout.emit(
+      "data",
+      Buffer.from(
+        '{"jsonrpc":"2.0","id":"create","result":{"stopReason":"end_turn"},"sessionId":"protocol-session"}\n',
+      ),
+    );
+    closeOk(reg);
+    await promise;
+
+    expect(events).toContain("ready");
+    expect(events).not.toContain("task_complete");
+  });
+
   it("prepares OpenCode ACP environment for Cerebras", async () => {
     const reg = nextProc();
     const service = new AcpService(
@@ -189,6 +233,12 @@ describe("AcpService", () => {
     closeOk(reg);
     await spawned;
 
+    const args = spawnMock.mock.calls[0]?.[1] as string[] | undefined;
+    const agentArgIndex = args?.indexOf("--agent") ?? -1;
+    expect(agentArgIndex).toBeGreaterThanOrEqual(0);
+    expect(args?.[agentArgIndex + 1]).toMatch(/bench-shim.*opencode.* acp$/);
+    expect(args).not.toContain("opencode");
+
     const env = spawnMock.mock.calls[0]?.[2]?.env as
       | Record<string, string>
       | undefined;
@@ -207,6 +257,51 @@ describe("AcpService", () => {
     );
     expect(config.provider?.cerebras?.npm).toBe("@ai-sdk/cerebras");
     expect(config.provider?.cerebras?.options?.apiKey).toBe("csk_test");
+  });
+
+  it("uses an explicit OpenCode ACP command override when configured", async () => {
+    const reg = nextProc();
+    const service = new AcpService(
+      runtime({
+        ELIZA_OPENCODE_ACP_COMMAND: "/opt/opencode/bin/opencode acp",
+      }),
+    );
+    await service.start();
+
+    const spawned = service.spawnSession({
+      name: "opencode-command",
+      agentType: "opencode",
+      workdir: "/tmp/acp-test",
+    });
+    await waitForSpawn(reg);
+    closeOk(reg);
+    const { sessionId } = await spawned;
+
+    const args = spawnMock.mock.calls[0]?.[1] as string[] | undefined;
+    const agentArgIndex = args?.indexOf("--agent") ?? -1;
+    expect(agentArgIndex).toBeGreaterThanOrEqual(0);
+    expect(args?.[agentArgIndex + 1]).toBe("/opt/opencode/bin/opencode acp");
+    expect(args).not.toContain("opencode");
+
+    const prompt = nextProc();
+    const sent = service.sendPrompt(sessionId, "write a tiny static page");
+    await waitForSpawn(prompt);
+    prompt.proc.stdout.emit(
+      "data",
+      Buffer.from(
+        '{"jsonrpc":"2.0","id":"prompt","result":{"stopReason":"end_turn"},"sessionId":"protocol-session"}\n',
+      ),
+    );
+    closeOk(prompt);
+    await sent;
+
+    const promptArgs = spawnMock.mock.calls[1]?.[1] as string[] | undefined;
+    const promptAgentArgIndex = promptArgs?.indexOf("--agent") ?? -1;
+    expect(promptAgentArgIndex).toBeGreaterThanOrEqual(0);
+    expect(promptArgs?.[promptAgentArgIndex + 1]).toBe(
+      "/opt/opencode/bin/opencode acp",
+    );
+    expect(promptArgs).not.toContain("opencode");
   });
 
   it("sendPrompt emits message, tool_running, task_complete, stopped and resolves PromptResult", async () => {
@@ -270,6 +365,71 @@ describe("AcpService", () => {
     );
   });
 
+  it("closes one-shot initialTask sessions after completion", async () => {
+    const create = nextProc();
+    const prompt = nextProc();
+    const close = nextProc();
+    const service = new AcpService(runtime());
+    await service.start();
+
+    const spawned = service.spawnSession({
+      name: "one-shot",
+      agentType: "codex",
+      workdir: "/tmp/acp-test",
+      initialTask: "write the app",
+      metadata: { keepAliveAfterComplete: false },
+    });
+    await waitForSpawn(create);
+    closeOk(create);
+    const { sessionId } = await spawned;
+
+    await waitForSpawn(prompt);
+    prompt.proc.stdout.emit(
+      "data",
+      Buffer.from(
+        `{"jsonrpc":"2.0","id":"prompt","result":{"stopReason":"end_turn"},"sessionId":"${sessionId}"}\n`,
+      ),
+    );
+    closeOk(prompt);
+
+    await waitForSpawn(close);
+    closeOk(close);
+
+    await waitForSessionStatus(service, sessionId, "stopped");
+    expect(spawnMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("keeps initialTask sessions open when keepAliveAfterComplete is true", async () => {
+    const create = nextProc();
+    const prompt = nextProc();
+    const service = new AcpService(runtime());
+    await service.start();
+
+    const spawned = service.spawnSession({
+      name: "keep-alive",
+      agentType: "codex",
+      workdir: "/tmp/acp-test",
+      initialTask: "write the app",
+      metadata: { keepAliveAfterComplete: true },
+    });
+    await waitForSpawn(create);
+    closeOk(create);
+    const { sessionId } = await spawned;
+
+    await waitForSpawn(prompt);
+    prompt.proc.stdout.emit(
+      "data",
+      Buffer.from(
+        `{"jsonrpc":"2.0","id":"prompt","result":{"stopReason":"end_turn"},"sessionId":"${sessionId}"}\n`,
+      ),
+    );
+    closeOk(prompt);
+
+    await waitForSessionStatus(service, sessionId, "ready");
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(spawnMock).toHaveBeenCalledTimes(2);
+  });
+
   it("passes route-prefixed prompts after an end-of-options marker", async () => {
     const create = nextProc();
     const service = new AcpService(runtime());
@@ -299,6 +459,83 @@ describe("AcpService", () => {
     );
     closeOk(prompt);
     await sent;
+  });
+
+  it("does not treat unclassified text update echoes as prompt output", async () => {
+    const create = nextProc();
+    const service = new AcpService(runtime());
+    await service.start();
+    const spawned = service.spawnSession({
+      name: "ignore-echo",
+      agentType: "opencode",
+      workdir: "/tmp/acp-test",
+    });
+    await waitForSpawn(create);
+    closeOk(create);
+    const { sessionId } = await spawned;
+
+    const prompt = nextProc();
+    const sent = service.sendPrompt(
+      sessionId,
+      "build https://example.test/app",
+    );
+    await waitForSpawn(prompt);
+    prompt.proc.stdout.emit(
+      "data",
+      Buffer.from(
+        `{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"${sessionId}","content":{"type":"text","text":"build https://example.test/app"}}}\n`,
+      ),
+    );
+    prompt.proc.stdout.emit(
+      "data",
+      Buffer.from(
+        `{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"${sessionId}","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"done"}}}}\n`,
+      ),
+    );
+    prompt.proc.stdout.emit(
+      "data",
+      Buffer.from(
+        `{"jsonrpc":"2.0","id":"req-echo","result":{"stopReason":"end_turn"},"sessionId":"${sessionId}"}\n`,
+      ),
+    );
+    closeOk(prompt);
+
+    const result = await sent;
+    expect(result.response).toBe("done");
+  });
+
+  it("accepts direct assistant text updates when adapters provide a role", async () => {
+    const create = nextProc();
+    const service = new AcpService(runtime());
+    await service.start();
+    const spawned = service.spawnSession({
+      name: "assistant-direct",
+      agentType: "codex",
+      workdir: "/tmp/acp-test",
+    });
+    await waitForSpawn(create);
+    closeOk(create);
+    const { sessionId } = await spawned;
+
+    const prompt = nextProc();
+    const sent = service.sendPrompt(sessionId, "do the thing");
+    await waitForSpawn(prompt);
+    prompt.proc.stdout.emit(
+      "data",
+      Buffer.from(
+        `{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"${sessionId}","role":"assistant","content":{"type":"text","text":"direct done"}}}\n`,
+      ),
+    );
+    prompt.proc.stdout.emit(
+      "data",
+      Buffer.from(
+        `{"jsonrpc":"2.0","id":"req-direct","result":{"stopReason":"end_turn"},"sessionId":"${sessionId}"}\n`,
+      ),
+    );
+    closeOk(prompt);
+
+    const result = await sent;
+    expect(result.response).toBe("direct done");
   });
 
   it("keys service events by local session id when ACP reports a protocol session id", async () => {

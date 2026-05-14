@@ -245,10 +245,9 @@ export class SubAgentRouter {
     const parsed = capRaw ? Number.parseInt(capRaw, 10) : NaN;
     if (Number.isFinite(parsed) && parsed > 0) this.roundTripCap = parsed;
     // Service registration runs in parallel — when router.start() executes,
-    // AcpService and PTYService may not yet be registered with the runtime,
-    // so getService returns null. Static `dependencies` is not enough to
-    // order startup. Retry binding on a short backoff until both event
-    // sources are bound (or we give up after ~10s and stay idle).
+    // AcpService may not yet be registered with the runtime, so getService
+    // returns null. Static `dependencies` is not enough to order startup.
+    // Retry binding on a short backoff (or give up after ~10s and stay idle).
     this.tryBindSources(0);
   }
 

@@ -220,6 +220,17 @@ export function resolveVendoredOpencodeShim(): string | undefined {
   return undefined;
 }
 
+function commandArg(value: string): string {
+  return /^[A-Za-z0-9_/:.=+-]+$/.test(value) ? value : JSON.stringify(value);
+}
+
+export function resolveVendoredOpencodeAcpCommand(): string | undefined {
+  const shimDir = resolveVendoredOpencodeShim();
+  if (!shimDir) return undefined;
+  const executable = process.platform === "win32" ? "opencode.cmd" : "opencode";
+  return `${commandArg(path.join(shimDir, executable))} acp`;
+}
+
 export function prependPathDir(
   currentPath: string | undefined,
   dir: string,
