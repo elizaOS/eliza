@@ -122,25 +122,12 @@ describe("plugin-elizacloud TEXT_TO_SPEECH roundtrip", () => {
       modelId: "eleven_flash_v2_5",
     });
 
-    // Node-side returns a `Readable`; collect bytes off it to assert shape.
-    // `Readable` is async-iterable.
-    const chunks: Uint8Array[] = [];
-    for await (const chunk of out as AsyncIterable<unknown>) {
-      if (chunk instanceof Uint8Array) {
-        chunks.push(chunk);
-      } else if (typeof chunk === "object" && chunk !== null) {
-        // Buffer is Uint8Array under the hood; some node streams hand back
-        // Buffer instances. Coerce defensively.
-        chunks.push(new Uint8Array(chunk as ArrayBufferLike));
-      }
-    }
-    const merged = new Uint8Array(chunks.reduce((acc, c) => acc + c.byteLength, 0));
-    let off = 0;
-    for (const c of chunks) {
-      merged.set(c, off);
-      off += c.byteLength;
-    }
-    expect(Array.from(merged)).toEqual(Array.from(expected));
+    // `handleTextToSpeech` materializes the cloud audio stream into a single
+    // Uint8Array (see ttsStreamToBytes in src/models/speech.ts) so callers
+    // can hand the buffer to a downstream encoder / file write without
+    // managing the stream lifecycle. Assert the bytes round-trip cleanly.
+    expect(out).toBeInstanceOf(Uint8Array);
+    expect(Array.from(out as Uint8Array)).toEqual(Array.from(expected));
   });
 
   it("throws CloudTtsUnavailableError when cloud is NOT connected", async () => {
