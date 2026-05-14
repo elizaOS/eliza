@@ -375,6 +375,13 @@ class REALMConfig:
     model_name: str = "gpt-4"
     temperature: float = 0.3
 
+    # Solver wall-clock budget (seconds) per instance. Applies to the
+    # OR-Tools CP-SAT (JSSP) and RoutingModel (TSP-TW / DARP) calls. A
+    # short timeout still produces a valid bound: CP-SAT returns its
+    # best FEASIBLE schedule, RoutingModel returns the best route found
+    # so far.
+    solver_timeout_s: float = 30.0
+
     # Back-compat aliases
     @property
     def categories(self) -> Optional[list[RealmProblem]]:
