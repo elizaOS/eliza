@@ -272,6 +272,7 @@ export class AcpService {
       "prompt",
       "-s",
       session.name ?? session.id,
+      "--",
       text,
     );
 

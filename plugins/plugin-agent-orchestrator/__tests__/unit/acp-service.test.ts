@@ -270,6 +270,37 @@ describe("AcpService", () => {
     );
   });
 
+  it("passes route-prefixed prompts after an end-of-options marker", async () => {
+    const create = nextProc();
+    const service = new AcpService(runtime());
+    await service.start();
+    const spawned = service.spawnSession({
+      name: "route-prefixed",
+      agentType: "opencode",
+      workdir: "/tmp/acp-test",
+    });
+    await waitForSpawn(create);
+    closeOk(create);
+    const { sessionId } = await spawned;
+
+    const text = "--- Resolved Workspace ---\nDo the task.";
+    const prompt = nextProc();
+    const sent = service.sendPrompt(sessionId, text);
+    await waitForSpawn(prompt);
+
+    const args = spawnMock.mock.calls.at(-1)?.[1] as string[] | undefined;
+    expect(args?.slice(-2)).toEqual(["--", text]);
+
+    prompt.proc.stdout.emit(
+      "data",
+      Buffer.from(
+        `{"jsonrpc":"2.0","id":"req-route","result":{"stopReason":"end_turn"},"sessionId":"${sessionId}"}\n`,
+      ),
+    );
+    closeOk(prompt);
+    await sent;
+  });
+
   it("keys service events by local session id when ACP reports a protocol session id", async () => {
     const create = nextProc();
     const service = new AcpService(runtime());
