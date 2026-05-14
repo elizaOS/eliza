@@ -543,12 +543,12 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args(argv)
 
-    if not torch.cuda.is_available() and args.device == "cuda":
-        raise RuntimeError("CUDA requested but not available")
-
     if args.dry_run:
         print(json.dumps(vars(args), indent=2, default=str))
         return 0
+
+    if not torch.cuda.is_available() and args.device == "cuda":
+        raise RuntimeError("CUDA requested but not available")
 
     dtype = torch.bfloat16 if args.dtype == "bfloat16" else torch.float16
     out_dir = Path(args.output)

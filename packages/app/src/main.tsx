@@ -4,7 +4,7 @@ import "@elizaos/app-core";
 
 import { App as CapacitorApp } from "@capacitor/app";
 import { BackgroundRunner } from "@capacitor/background-runner";
-import { Capacitor } from "@capacitor/core";
+import { Capacitor, type PluginListenerHandle } from "@capacitor/core";
 import { Keyboard, KeyboardResize } from "@capacitor/keyboard";
 import { Preferences } from "@capacitor/preferences";
 import {
@@ -227,6 +227,8 @@ const IOS_FULL_BUN_SMOKE_CHAT_TEXT =
 
 let mobileDeviceBridgeClient: DeviceBridgeClient | null = null;
 let mobileDeviceBridgeStartPromise: Promise<void> | null = null;
+let mobileAgentTunnelListener: PluginListenerHandle | null = null;
+let mobileAgentTunnelStartPromise: Promise<void> | null = null;
 let mobileRuntimeModeListenerInstalled = false;
 let keyboardListenersRegistered = false;
 let lifecycleListenersRegistered = false;
@@ -452,16 +454,6 @@ async function fetchIosFullBunSmokeJson<T>(
 ): Promise<T> {
   const headers = new Headers(init?.headers);
   if (!headers.has("accept")) headers.set("accept", "application/json");
-  const method = (init?.method ?? "GET").toString().trim().toUpperCase();
-  const body =
-    method === "GET" || method === "HEAD"
-      ? null
-      : typeof init?.body === "string"
-        ? init.body
-        : init?.body == null
-          ? null
-          : String(init.body);
-  const nativeRequest = window.__ELIZA_IOS_LOCAL_AGENT_REQUEST__;
   let status: number | undefined;
   let text: string | undefined;
   const timeout = new Promise<never>((_resolve, reject) => {
@@ -471,34 +463,9 @@ async function fetchIosFullBunSmokeJson<T>(
   });
   await Promise.race([
     (async () => {
-      if (typeof nativeRequest === "function") {
-        const nativeResponse = await nativeRequest({
-          method,
-          path,
-          headers: Object.fromEntries(headers.entries()),
-          body,
-          timeoutMs,
-        });
-        status = nativeResponse.status;
-        text = nativeResponse.body;
-      } else {
-        const controller = new AbortController();
-        const timer = window.setTimeout(() => controller.abort(), timeoutMs);
-        try {
-          const response = await fetch(
-            `${MOBILE_LOCAL_AGENT_API_BASE}${path}`,
-            {
-              ...init,
-              headers,
-              signal: init?.signal ?? controller.signal,
-            },
-          );
-          status = response.status;
-          text = await response.text();
-        } finally {
-          window.clearTimeout(timer);
-        }
-      }
+      const response = await fetch(path, { ...init, headers });
+      status = response.status;
+      text = await response.text();
     })(),
     timeout,
   ]);
@@ -526,16 +493,6 @@ async function fetchIosFullBunSmokeText(
   timeoutMs = IOS_FULL_BUN_SMOKE_ROUTE_TIMEOUT_MS,
 ): Promise<string> {
   const headers = new Headers(init?.headers);
-  const method = (init?.method ?? "GET").toString().trim().toUpperCase();
-  const body =
-    method === "GET" || method === "HEAD"
-      ? null
-      : typeof init?.body === "string"
-        ? init.body
-        : init?.body == null
-          ? null
-          : String(init.body);
-  const nativeRequest = window.__ELIZA_IOS_LOCAL_AGENT_REQUEST__;
   let status: number | undefined;
   let text: string | undefined;
   const timeout = new Promise<never>((_resolve, reject) => {
@@ -545,34 +502,9 @@ async function fetchIosFullBunSmokeText(
   });
   await Promise.race([
     (async () => {
-      if (typeof nativeRequest === "function") {
-        const nativeResponse = await nativeRequest({
-          method,
-          path,
-          headers: Object.fromEntries(headers.entries()),
-          body,
-          timeoutMs,
-        });
-        status = nativeResponse.status;
-        text = nativeResponse.body;
-      } else {
-        const controller = new AbortController();
-        const timer = window.setTimeout(() => controller.abort(), timeoutMs);
-        try {
-          const response = await fetch(
-            `${MOBILE_LOCAL_AGENT_API_BASE}${path}`,
-            {
-              ...init,
-              headers,
-              signal: init?.signal ?? controller.signal,
-            },
-          );
-          status = response.status;
-          text = await response.text();
-        } finally {
-          window.clearTimeout(timer);
-        }
-      }
+      const response = await fetch(path, { ...init, headers });
+      status = response.status;
+      text = await response.text();
     })(),
     timeout,
   ]);
@@ -657,6 +589,11 @@ async function runIosFullBunSmokeIfRequested(): Promise<boolean> {
   }
   if (!requested) return false;
   iosFullBunSmokeStarted = true;
+  try {
+    window.localStorage.setItem(IOS_FULL_BUN_SMOKE_REQUEST_KEY, "1");
+  } catch {
+    // Preferences can request the smoke before localStorage is hydrated.
+  }
   renderIosFullBunSmokeStatus("Running iOS full Bun backend smoke...");
   window.__ELIZA_IOS_LOCAL_AGENT_DEBUG__ = (event) => {
     void writeIosFullBunSmokeResult({
@@ -887,6 +824,12 @@ async function runIosFullBunSmokeIfRequested(): Promise<boolean> {
       "local-inference device list",
     );
 
+    if (hubInstalled.length === 0) {
+      throw new Error(
+        "local-inference hub had no installed Qwen3.5 GGUF model; full-Bun smoke requires a staged local model",
+      );
+    }
+
     let activatedModel: Record<string, unknown> | null = null;
     if (hubInstalled.length > 0) {
       const firstInstalled = assertSmokeObject(
@@ -1107,6 +1050,7 @@ async function initializePlatform(): Promise<void> {
     initializeMobileRuntimeModeListener();
     void initializeNetworkListener();
     void initializeMobileDeviceBridge();
+    void initializeMobileAgentTunnel();
   }
 
   if (isDesktopPlatform()) {
@@ -1776,6 +1720,85 @@ function stopMobileDeviceBridge(): void {
   mobileDeviceBridgeClient = null;
 }
 
+async function initializeMobileAgentTunnel(): Promise<void> {
+  const runtimeConfig = getCurrentIosRuntimeConfig();
+  if (!isNative || (!isIOS && !isAndroid)) return;
+  if (runtimeConfig.mode !== "tunnel-to-mobile") return;
+  if (mobileAgentTunnelStartPromise) return;
+  if (!runtimeConfig.tunnelRelayUrl) {
+    console.warn(
+      `${APP_LOG_PREFIX} tunnel-to-mobile mode requires VITE_ELIZA_TUNNEL_RELAY_URL`,
+    );
+    return;
+  }
+
+  mobileAgentTunnelStartPromise = (async () => {
+    try {
+      const [{ MobileAgentBridge }, deviceId] = await Promise.all([
+        import("@elizaos/capacitor-mobile-agent-bridge"),
+        getOrCreateDeviceBridgeId(),
+      ]);
+
+      if (!mobileAgentTunnelListener) {
+        mobileAgentTunnelListener = await MobileAgentBridge.addListener(
+          "stateChange",
+          (event) => {
+            console.info(
+              `${APP_LOG_PREFIX} Mobile agent tunnel ${event.state}`,
+              event.reason ?? "",
+            );
+          },
+        );
+      }
+
+      const status = await MobileAgentBridge.startInboundTunnel({
+        relayUrl: runtimeConfig.tunnelRelayUrl,
+        deviceId,
+        ...(runtimeConfig.tunnelPairingToken
+          ? { pairingToken: runtimeConfig.tunnelPairingToken }
+          : {}),
+        ...(isAndroid
+          ? { localAgentApiBase: MOBILE_LOCAL_AGENT_API_BASE }
+          : {}),
+      });
+      console.info(
+        `${APP_LOG_PREFIX} Mobile agent tunnel ${status.state}`,
+        status.lastError ?? "",
+      );
+    } catch (error) {
+      console.warn(
+        `${APP_LOG_PREFIX} Mobile agent tunnel unavailable:`,
+        error instanceof Error ? error.message : error,
+      );
+    } finally {
+      mobileAgentTunnelStartPromise = null;
+    }
+  })();
+
+  await mobileAgentTunnelStartPromise;
+}
+
+async function stopMobileAgentTunnel(): Promise<void> {
+  mobileAgentTunnelStartPromise = null;
+  try {
+    const { MobileAgentBridge } = await import(
+      "@elizaos/capacitor-mobile-agent-bridge"
+    );
+    await MobileAgentBridge.stopInboundTunnel();
+  } catch (error) {
+    console.warn(
+      `${APP_LOG_PREFIX} Mobile agent tunnel stop failed:`,
+      error instanceof Error ? error.message : error,
+    );
+  }
+  try {
+    await mobileAgentTunnelListener?.remove();
+  } catch {
+    // Native tunnel stop above is authoritative.
+  }
+  mobileAgentTunnelListener = null;
+}
+
 function initializeMobileRuntimeModeListener(): void {
   if (!isNative || mobileRuntimeModeListenerInstalled) return;
   mobileRuntimeModeListenerInstalled = true;
@@ -1783,11 +1806,19 @@ function initializeMobileRuntimeModeListener(): void {
     const mode = getCurrentIosRuntimeConfig().mode;
     if (mode === "cloud-hybrid" || mode === "local") {
       stopMobileDeviceBridge();
+      void stopMobileAgentTunnel();
       void initializeMobileDeviceBridge();
       void configureMobileBackgroundRunner();
       return;
     }
+    if (mode === "tunnel-to-mobile") {
+      stopMobileDeviceBridge();
+      void initializeMobileAgentTunnel();
+      void configureMobileBackgroundRunner();
+      return;
+    }
     stopMobileDeviceBridge();
+    void stopMobileAgentTunnel();
     void configureMobileBackgroundRunner();
   });
 }

@@ -1,5 +1,8 @@
 {
-  "note": "Per-action fixtures. The runner streams context through a single-action grammar/schema; the model emits the action's parameter object only. Free-text fields like REPLY.text use the sentinel '<<any>>' so the matcher only checks the field exists with non-empty string content — the LLM never produces byte-identical prose. Structured fields (recipients, op enums, etc.) require exact match.",
+  "note": "Per-action fixtures. The runner streams context through a single-action grammar/schema; the model emits the action's parameter object only. Starts with REPLY and MESSAGE — add more actions by appending to `cases` with a new `actionName`.",
+  "origin": "manual",
+  "derivedFrom": null,
+  "originNote": "Cases below are hand-authored and tagged as the manual probe set. A dataset-derived sibling at fixtures/action.derived.json is the canonical regression measurement source (produced by scripts/derive-fixtures.mjs from packages/training/datasets/eliza1-sft-0_6b/test.jsonl).",
   "cases": [
     {
       "id": "reply-greeting",
@@ -13,7 +16,7 @@
         }
       ],
       "context": "User just said 'hi'. Produce a brief friendly greeting back.",
-      "expected_params": { "text": "<<any>>" }
+      "expected_params": { "text": "hi" }
     },
     {
       "id": "reply-thanks",
@@ -27,7 +30,7 @@
         }
       ],
       "context": "User said 'thanks for the help'. Produce a brief acknowledgement.",
-      "expected_params": { "text": "<<any>>" }
+      "expected_params": { "text": "you're welcome" }
     },
     {
       "id": "reply-status-update",
@@ -41,7 +44,7 @@
         }
       ],
       "context": "User asked 'are you still working on that?'. The task is complete. Produce a short confirmation.",
-      "expected_params": { "text": "<<any>>" }
+      "expected_params": { "text": "done" }
     },
     {
       "id": "message-recipient-text",
@@ -61,7 +64,7 @@
         }
       ],
       "context": "User said: 'message alice and tell her the report is ready'. Emit parameters for the MESSAGE action.",
-      "expected_params": { "recipient": "alice", "text": "<<any>>" }
+      "expected_params": { "recipient": "alice", "text": "the report is ready" }
     },
     {
       "id": "message-recipient-followup",

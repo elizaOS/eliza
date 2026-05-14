@@ -209,8 +209,7 @@ function normalizeLocaIncomingToolCall(
     type: "function",
     function: {
       name,
-      arguments:
-        typeof args === "string" ? args : JSON.stringify(args ?? {}),
+      arguments: typeof args === "string" ? args : JSON.stringify(args ?? {}),
     },
   };
 }
@@ -242,7 +241,8 @@ function normalizeLocaNativeToolCalls(rawToolCalls: unknown): Array<{
             ? fn.name
             : "";
     if (!name) continue;
-    const args = call.input ?? call.args ?? call.arguments ?? fn.arguments ?? {};
+    const args =
+      call.input ?? call.args ?? call.arguments ?? fn.arguments ?? {};
     calls.push({
       id:
         typeof call.toolCallId === "string"
@@ -253,8 +253,7 @@ function normalizeLocaNativeToolCalls(rawToolCalls: unknown): Array<{
       type: "function",
       function: {
         name,
-        arguments:
-          typeof args === "string" ? args : JSON.stringify(args ?? {}),
+        arguments: typeof args === "string" ? args : JSON.stringify(args ?? {}),
       },
     });
   }
@@ -890,13 +889,18 @@ export async function startBenchmarkServer() {
     }
   }
 
-  // Load mock plugin for testing (file is gitignored for local-only use)
-  if (process.env.ELIZA_BENCH_MOCK === "true") {
+  const mockBenchmarkEnabled = process.env.ELIZA_BENCH_MOCK === "true";
+
+  // Load mock plugin for testing. Mock runs are diagnostic only and must not be
+  // treated as release evidence.
+  if (mockBenchmarkEnabled) {
     try {
       const mockLocation = "./mock-plugin.ts";
       const { mockPlugin } = await import(mockLocation);
       plugins.push(toPlugin(mockPlugin, mockLocation));
-      elizaLogger.info("[bench] Loaded mock benchmark plugin");
+      elizaLogger.warn(
+        "[bench] Loaded mock benchmark plugin (mock=true, standIn=true); this run is not valid release evidence.",
+      );
     } catch (error: unknown) {
       elizaLogger.error(
         `[bench] Failed to load mock benchmark plugin: ${formatUnknownError(error)}`,
@@ -1483,6 +1487,10 @@ export async function startBenchmarkServer() {
           status: "ready",
           agent_name: runtime.character.name ?? "Eliza",
           plugins: plugins.length,
+          standIn: skipEmbeddingPlugin || mockBenchmarkEnabled,
+          mock: mockBenchmarkEnabled,
+          stubEmbedding: skipEmbeddingPlugin,
+          releaseEvidence: !(skipEmbeddingPlugin || mockBenchmarkEnabled),
           active_session: activeSession
             ? {
                 benchmark: activeSession.benchmark,
@@ -1741,7 +1749,9 @@ export async function startBenchmarkServer() {
             let nativeResult: unknown;
             try {
               nativeResult = await runtime.useModel(ModelType.TEXT_LARGE, {
-                messages: normalizeLocaNativeMessages(benchmarkContext.messages),
+                messages: normalizeLocaNativeMessages(
+                  benchmarkContext.messages,
+                ),
                 tools: benchmarkContext.tools,
                 toolChoice: "required",
                 maxTokens:

@@ -103,6 +103,17 @@ function makeVoiceTurnId(speechEndedAtMs: number): string {
     .slice(2, 8)}`;
 }
 
+function voiceTurnSignalFromTranscriptEvent(
+  event?: VoiceTranscriptEvent,
+): Record<string, unknown> | undefined {
+  const value =
+    event?.turn.metadata?.voiceTurnSignal ?? event?.turn.metadata?.turnSignal;
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
+  return value as Record<string, unknown>;
+}
+
 const companionSpeechMemoryByConversation = new Map<
   string,
   CompanionSpeechMemoryEntry
@@ -201,7 +212,21 @@ export function useChatVoiceController(options: {
     null,
   );
   const pendingVoiceTurnRef = useRef<PendingVoiceTurnState | null>(null);
-  const suppressedAssistantSpeechIdRef = useRef<string | null>(null);
+  const suppressedAssistantSpeechRef = useRef<{
+    messageId: string;
+    text: string;
+  } | null>(null);
+  const initialAutoSpeakBaselineRef = useRef<{
+    messageId: string;
+    text: string;
+  } | null>(
+    (() => {
+      const latestAssistant = findLatestAssistantMessage(conversationMessages);
+      return latestAssistant
+        ? { messageId: latestAssistant.id, text: latestAssistant.text }
+        : null;
+    })(),
+  );
   /** Skips duplicate companion auto-speak when only `voiceBootstrapTick` bumps (config/cloud reload) for the same assistant text. */
   const companionBootstrapAutoSpeakRef = useRef<{
     tick: number;
@@ -322,6 +347,7 @@ export function useChatVoiceController(options: {
       if (!composedText) return;
       const speechEndedAtMs = nowMs();
       const voiceTurnId = event?.turn.id ?? makeVoiceTurnId(speechEndedAtMs);
+      const voiceTurnSignal = voiceTurnSignalFromTranscriptEvent(event);
       pendingVoiceTurnRef.current = {
         id: voiceTurnId,
         expiresAtMs: speechEndedAtMs + VOICE_TURN_OUTPUT_WINDOW_MS,
@@ -337,6 +363,7 @@ export function useChatVoiceController(options: {
               voiceTurnId,
               voiceSpeechEndedAtMs: Math.round(speechEndedAtMs),
               voiceSource: event?.turn.source ?? event?.turn.metadata?.source,
+              ...(voiceTurnSignal ? { voiceTurnSignal } : {}),
             },
           }),
         50,
@@ -436,7 +463,7 @@ export function useChatVoiceController(options: {
 
   const voice = useVoiceChat({
     cloudConnected: cloudVoiceAvailable,
-    interruptOnSpeech: isGameModal,
+    interruptOnSpeech: true,
     lang: mapUiLanguageToSpeechLocale(uiLanguage),
     onPlaybackStart: handleVoicePlaybackStart,
     onTranscript: handleVoiceTranscript,
@@ -469,7 +496,9 @@ export function useChatVoiceController(options: {
     (mode: Exclude<VoiceCaptureMode, "idle"> = "compose") => {
       if (isComposerLocked || voice.isListening) return;
       const latestAssistant = findLatestAssistantMessage(conversationMessages);
-      suppressedAssistantSpeechIdRef.current = latestAssistant?.id ?? null;
+      suppressedAssistantSpeechRef.current = latestAssistant
+        ? { messageId: latestAssistant.id, text: latestAssistant.text }
+        : null;
       voiceDraftBaseInputRef.current = chatInput;
       stopSpeaking();
       void startListening(mode);
@@ -495,7 +524,7 @@ export function useChatVoiceController(options: {
   const handleSpeakMessage = useCallback(
     (messageId: string, text: string) => {
       if (!text.trim()) return;
-      suppressedAssistantSpeechIdRef.current = messageId;
+      suppressedAssistantSpeechRef.current = { messageId, text };
       rememberCompanionSpeech(activeConversationId, messageId, text);
       speak(text);
     },
@@ -540,8 +569,7 @@ export function useChatVoiceController(options: {
       pendingVoiceTurn = null;
     }
 
-    const shouldSpeakVisibleOutput = isGameModal || pendingVoiceTurn != null;
-    if (!shouldSpeakVisibleOutput || agentVoiceMuted || voice.isListening) {
+    if (agentVoiceMuted || voice.isListening) {
       return;
     }
     if (isGameModal && !companionSceneAvatarReady) return;
@@ -553,12 +581,36 @@ export function useChatVoiceController(options: {
     }
     const latestAssistant = findLatestAssistantMessage(conversationMessages);
     if (!latestAssistant) return;
-    if (suppressedAssistantSpeechIdRef.current === latestAssistant.id) return;
+    const suppressed = suppressedAssistantSpeechRef.current;
+    if (
+      suppressed &&
+      suppressed.messageId === latestAssistant.id &&
+      suppressed.text === latestAssistant.text
+    ) {
+      return;
+    }
 
     const tick = voiceBootstrapTick;
     const messageId = latestAssistant.id;
     const text = latestAssistant.text;
     const ug = voiceUnlockedGeneration;
+    const initialBaseline = initialAutoSpeakBaselineRef.current;
+    if (
+      !isGameModal &&
+      !pendingVoiceTurn &&
+      !chatSending &&
+      initialBaseline &&
+      initialBaseline.messageId === messageId &&
+      initialBaseline.text === text
+    ) {
+      return;
+    }
+    if (
+      initialBaseline &&
+      (initialBaseline.messageId !== messageId || initialBaseline.text !== text)
+    ) {
+      initialAutoSpeakBaselineRef.current = null;
+    }
     const initialCompletedAssistant =
       initialCompletedAssistantOnGameModalMountRef.current;
     if (
@@ -660,7 +712,7 @@ export function useChatVoiceController(options: {
       telemetry,
     });
     rememberCompanionSpeech(activeConversationId, messageId, text);
-    suppressedAssistantSpeechIdRef.current = null;
+    suppressedAssistantSpeechRef.current = null;
     companionBootstrapAutoSpeakRef.current = {
       tick,
       messageId,

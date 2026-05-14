@@ -20,12 +20,23 @@ type StubFeeds = Record<
 // kokoro-runtime.ts (`OrtModule`).
 function makeStubOrt(args: {
 	inputNames?: ReadonlyArray<string>;
+	inputMetadata?: unknown;
 	waveform?: Float32Array;
-}): { ort: unknown; captured: { feeds: StubFeeds | null } } {
-	const captured: { feeds: StubFeeds | null } = { feeds: null };
+}): {
+	ort: unknown;
+	captured: {
+		feeds: StubFeeds | null;
+		createOptions: Record<string, unknown> | null;
+	};
+} {
+	const captured: {
+		feeds: StubFeeds | null;
+		createOptions: Record<string, unknown> | null;
+	} = { feeds: null, createOptions: null };
 	const waveform = args.waveform ?? new Float32Array([0.1, -0.1, 0.2, -0.2]);
 	const session = {
 		inputNames: args.inputNames,
+		inputMetadata: args.inputMetadata,
 		async run(
 			feeds: Record<
 				string,
@@ -44,7 +55,12 @@ function makeStubOrt(args: {
 		async release() {},
 	};
 	const ort = {
-		InferenceSession: { create: async () => session },
+		InferenceSession: {
+			create: async (_modelPath: string, opts?: Record<string, unknown>) => {
+				captured.createOptions = opts ?? null;
+				return session;
+			},
+		},
 		Tensor: function (
 			this: { type: string; data: unknown; dims: ReadonlyArray<number> },
 			type: string,
@@ -294,5 +310,80 @@ describe("KokoroOnnxRuntime — ONNX input-name detection", () => {
 			onChunk: () => false,
 		});
 		expect(Object.keys(captured.feeds as StubFeeds)).toContain("input_ids");
+	});
+
+	it("uses positional ORT metadata to emit int32 speed tensors when the model requires them", async () => {
+		const fx = stageBundle(4, new Float32Array([1, 1, 1, 1]));
+		cleanups.push(fx.cleanup);
+		const { ort, captured } = makeStubOrt({
+			inputNames: ["input_ids", "style", "speed"],
+			inputMetadata: [
+				{ type: "tensor(int64)" },
+				{ type: "tensor(float)" },
+				{ type: "tensor(int32)" },
+			],
+		});
+		const runtime = new KokoroOnnxRuntime({
+			layout: fx.layout,
+			expectedSha256: null,
+			loadOrt: async () => ort as never,
+		});
+		await runtime.synthesize({
+			phonemes: { ids: Int32Array.from([42, 43]), phonemes: "ab" },
+			voice: fx.voice,
+			cancelSignal: { cancelled: false },
+			onChunk: () => false,
+		});
+		const speedFeed = (captured.feeds as StubFeeds).speed;
+		expect(speedFeed.type).toBe("int32");
+		expect(speedFeed.data).toBeInstanceOf(Int32Array);
+		expect(Array.from(speedFeed.data as Int32Array)).toEqual([1]);
+	});
+
+	it("passes a positive ORT intra-op thread count", async () => {
+		const fx = stageBundle(4, new Float32Array([1, 1, 1, 1]));
+		cleanups.push(fx.cleanup);
+		const { ort, captured } = makeStubOrt({
+			inputNames: ["input_ids", "style", "speed"],
+		});
+		const runtime = new KokoroOnnxRuntime({
+			layout: fx.layout,
+			expectedSha256: null,
+			loadOrt: async () => ort as never,
+		});
+		await runtime.synthesize({
+			phonemes: { ids: Int32Array.from([42, 43]), phonemes: "ab" },
+			voice: fx.voice,
+			cancelSignal: { cancelled: false },
+			onChunk: () => false,
+		});
+		expect(captured.createOptions?.intraOpNumThreads).toBe(
+			Math.max(1, os.cpus().length),
+		);
+		expect(captured.createOptions?.interOpNumThreads).toBe(1);
+	});
+
+	it("rejects phoneme inputs longer than Kokoro's 510-token encoder cap", async () => {
+		const fx = stageBundle(4, new Float32Array([1, 1, 1, 1]));
+		cleanups.push(fx.cleanup);
+		const { ort } = makeStubOrt({
+			inputNames: ["input_ids", "style", "speed"],
+		});
+		const runtime = new KokoroOnnxRuntime({
+			layout: fx.layout,
+			expectedSha256: null,
+			loadOrt: async () => ort as never,
+		});
+		await expect(
+			runtime.synthesize({
+				phonemes: {
+					ids: Int32Array.from(new Array(511).fill(7)),
+					phonemes: "x".repeat(511),
+				},
+				voice: fx.voice,
+				cancelSignal: { cancelled: false },
+				onChunk: () => false,
+			}),
+		).rejects.toThrow("phoneme sequence is too long: 511 > 510");
 	});
 });

@@ -32,6 +32,9 @@ const IOS_FULL_BUN_SMOKE_REQUEST_KEY = "eliza:ios-full-bun-smoke:request";
 const IOS_FULL_BUN_SMOKE_RESULT_KEY = "eliza:ios-full-bun-smoke:result";
 const IOS_FULL_BUN_PREWARM_RESULT_KEY = "eliza:ios-full-bun-prewarm:result";
 const IOS_LOCAL_AGENT_IPC_BASE = "eliza-local-agent://ipc";
+const IOS_FULL_BUN_SMOKE_MODEL_ID = "eliza-1-0_8b";
+const IOS_FULL_BUN_SMOKE_MODEL_RELATIVE_PATH =
+  "models/eliza-1-0_8b.bundle/text/eliza-1-0_8b-32k.gguf";
 const IOS_FULL_BUN_SMOKE_ATTEMPTS = 180;
 const IOS_FULL_BUN_SMOKE_DELAY_MS = 2000;
 const IOS_FULL_BUN_SMOKE_PROMPT_ECHO_RE = /in one short sentence/i;
@@ -170,6 +173,7 @@ function launchIosSimulatorApp() {
   }
   if (iosFullBunSmoke) {
     fullBunSmokeRequestedAtMs = Date.now();
+    stageIosFullBunSmokeModel(udid, id);
     preseedIosFullBunSmoke(udid, id);
   }
 
@@ -273,6 +277,105 @@ function flushIosPreferencesCache(udid) {
   tryExec("xcrun", ["simctl", "spawn", udid, "killall", "cfprefsd"], {
     allowFailure: true,
   });
+}
+
+function iosAppDataContainer(udid, id) {
+  return requireExec(
+    "xcrun",
+    ["simctl", "get_app_container", udid, id, "data"],
+    `Failed to resolve iOS data container for ${id}.`,
+  );
+}
+
+function iosAppSupportContainer(udid, id) {
+  return path.join(iosAppDataContainer(udid, id), "Library", "Application Support", "Eliza");
+}
+
+function copyFileIfChanged(source, destination) {
+  const sourceStats = fs.statSync(source);
+  try {
+    const destinationStats = fs.statSync(destination);
+    if (
+      destinationStats.isFile() &&
+      destinationStats.size === sourceStats.size &&
+      Math.floor(destinationStats.mtimeMs) >= Math.floor(sourceStats.mtimeMs)
+    ) {
+      return false;
+    }
+  } catch {
+    // Copy below.
+  }
+  fs.mkdirSync(path.dirname(destination), { recursive: true });
+  fs.copyFileSync(source, destination);
+  fs.utimesSync(destination, sourceStats.atime, sourceStats.mtime);
+  return true;
+}
+
+function stageIosFullBunSmokeModel(udid, id) {
+  const source =
+    process.env.ELIZA_IOS_FULL_BUN_SMOKE_MODEL_PATH ??
+    path.join(
+      os.homedir(),
+      ".eliza",
+      "local-inference",
+      IOS_FULL_BUN_SMOKE_MODEL_RELATIVE_PATH,
+    );
+  if (!fs.existsSync(source)) {
+    throw new Error(
+      `iOS full-Bun smoke model is missing: ${source}. Set ELIZA_IOS_FULL_BUN_SMOKE_MODEL_PATH to a Qwen3.5 GGUF file.`,
+    );
+  }
+  const sourceStats = fs.statSync(source);
+  if (!sourceStats.isFile()) {
+    throw new Error(`iOS full-Bun smoke model is not a file: ${source}`);
+  }
+
+  const localInferenceRoot = path.join(iosAppSupportContainer(udid, id), "local-inference");
+  const modelPath = path.join(
+    localInferenceRoot,
+    IOS_FULL_BUN_SMOKE_MODEL_RELATIVE_PATH,
+  );
+  const copied = copyFileIfChanged(source, modelPath);
+  const now = new Date().toISOString();
+  const registry = {
+    models: [
+      {
+        id: IOS_FULL_BUN_SMOKE_MODEL_ID,
+        displayName: "Eliza-1 0.8B Qwen3.5",
+        path: modelPath,
+        sizeBytes: sourceStats.size,
+        installedAt: now,
+        lastUsedAt: now,
+        source: "ios-full-bun-smoke",
+        bundleVerifiedAt: now,
+      },
+    ],
+  };
+  const assignments = {
+    assignments: Object.fromEntries(
+      [
+        "TEXT_NANO",
+        "TEXT_SMALL",
+        "TEXT_MEDIUM",
+        "TEXT_LARGE",
+        "RESPONSE_HANDLER",
+        "ACTION_PLANNER",
+        "TEXT_COMPLETION",
+      ].map((slot) => [slot, IOS_FULL_BUN_SMOKE_MODEL_ID]),
+    ),
+  };
+  fs.mkdirSync(localInferenceRoot, { recursive: true });
+  fs.writeFileSync(
+    path.join(localInferenceRoot, "registry.json"),
+    `${JSON.stringify(registry, null, 2)}\n`,
+  );
+  fs.writeFileSync(
+    path.join(localInferenceRoot, "assignments.json"),
+    `${JSON.stringify(assignments, null, 2)}\n`,
+  );
+  console.log(
+    `[local-chat-smoke] ${copied ? "Staged" : "Reused"} iOS full-Bun smoke model ${IOS_FULL_BUN_SMOKE_MODEL_ID}: ${modelPath}`,
+  );
 }
 
 function preseedIosLocalRuntime(udid, id) {
@@ -1111,14 +1214,14 @@ async function verifyAndroidBackgroundApi(context, baseUrl, authToken) {
  * iOS BGTaskScheduler harness for an already-booted simulator.
  *
  * Drives Apple's private LLDB-only `_simulateLaunchForTaskWithIdentifier:`
- * against the running app process, then polls `/api/health` until
- * `lastWakeFiredAt` advances past the pre-fire baseline. Returns a result
- * object so callers can assert duration / advancement.
+ * against the running app process, then polls an explicitly supplied agent
+ * route surface until `lastWakeFiredAt` advances past the pre-fire baseline.
+ * iOS full-Bun/local mode must use the in-app IPC bridge; this harness no
+ * longer fabricates a loopback default.
  *
  * Notes:
- *   - The wake field lands in Wave 3D. Until then, this returns
- *     `{ ok: true, reason: "wake-field-not-implemented" }` rather than
- *     failing — so the harness ships now and lights up the moment 3D merges.
+ *   - The wake field is required for this check. Missing or unreachable route
+ *     data fails the run instead of silently passing.
  *   - The LLDB invocation is the documented Apple test path for BG task
  *     simulation. See "Simulating Background Fetch and Refresh Behavior"
  *     in Apple's docs and `BGTaskSchedulerPermittedIdentifiers` in Info.plist.
@@ -1128,7 +1231,13 @@ async function verifyIosBackgroundApi(udid, opts = {}) {
     return { ok: false, reason: "no-simulator" };
   }
   const taskIdentifier = opts.taskIdentifier ?? "ai.eliza.tasks.refresh";
-  const baseUrl = opts.baseUrl ?? "http://127.0.0.1:31337";
+  const baseUrl = opts.baseUrl;
+  if (!baseUrl) {
+    throw new Error(
+      "iOS background verification requires an explicit agent route surface. " +
+        "The loopback default is disabled for iOS local/full-Bun builds; use the WebView IPC smoke instead.",
+    );
+  }
   const authToken = opts.authToken;
 
   const id = appId();
@@ -1146,9 +1255,7 @@ async function verifyIosBackgroundApi(udid, opts = {}) {
   tryExec("xcrun", ["simctl", "openurl", udid, "elizaos://chat"]);
   await sleep(1000);
 
-  // Capture the pre-fire wake baseline. If /api/health is unreachable (no
-  // forwarded port on iOS sim) the harness short-circuits — Wave 3D wires
-  // the agent loopback. Treat unreachable as "wake-field-not-implemented".
+  // Capture the pre-fire wake baseline from the caller-supplied route surface.
   let baselineWakeMs = null;
   let fieldImplemented = false;
   try {
@@ -1163,8 +1270,8 @@ async function verifyIosBackgroundApi(udid, opts = {}) {
     fieldImplemented = baselineWakeMs !== null;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    console.warn(
-      `[local-chat-smoke] iOS /api/health not reachable yet: ${message}`,
+    throw new Error(
+      `[local-chat-smoke] iOS /api/health is not reachable: ${message}`,
     );
   }
 
@@ -1243,24 +1350,15 @@ async function verifyIosBackgroundApi(udid, opts = {}) {
   }
 
   if (!advanced) {
-    if (fieldImplemented) {
+    if (!fieldImplemented) {
       throw new Error(
-        `iOS wake did not advance after BGTaskScheduler simulate for ${taskIdentifier}. ` +
-          `baseline=${baselineWakeMs}`,
+        "iOS /api/health.lastWakeFiredAt is missing; background wake verification cannot pass without it.",
       );
     }
-    console.warn(
-      "[local-chat-smoke] /api/health.lastWakeFiredAt not present yet (Wave 3D pending); " +
-        "skipping iOS wake-advance assertion.",
+    throw new Error(
+      `iOS wake did not advance after BGTaskScheduler simulate for ${taskIdentifier}. ` +
+        `baseline=${baselineWakeMs}`,
     );
-    return {
-      ok: true,
-      reason: "wake-field-not-implemented",
-      taskIdentifier,
-      beforeAt: baselineWakeMs,
-      afterAt: null,
-      durationMs: null,
-    };
   }
 
   console.log(
@@ -1450,7 +1548,7 @@ async function main() {
       } else {
         const result = await verifyIosBackgroundApi(iosContext.udid, {
           taskIdentifier: iosBackgroundTaskId,
-          baseUrl: apiBase ?? "http://127.0.0.1:31337",
+          baseUrl: apiBase,
           authToken: authTokenArg,
         });
         console.log(

@@ -601,6 +601,7 @@ export function nativeModuleStubPlugin(
           "export const shouldWarmupLocalEmbeddingModel = () => false;",
           // Server-only routes used by app-core/api/server.ts
           "export const handleLocalInferenceCompatRoutes = async () => false;",
+          "export const handleLocalInferenceTtsRoute = async () => false;",
           // Server-only services used by app-core/api/dev-compat-routes.ts +
           // phrase-chunked-tts.ts (a phrase chunker that runs in node but is
           // imported as a type/class). Provide minimal class stubs.

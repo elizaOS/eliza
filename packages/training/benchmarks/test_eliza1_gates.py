@@ -16,6 +16,7 @@ from benchmarks.eliza1_gates import (
     apply_gates,
     load_gates,
     normalize_tier,
+    regression_gates,
 )
 
 
@@ -155,3 +156,77 @@ def test_different_tiers_have_different_thresholds() -> None:
     res = _full_results(text_eval=0.57)
     assert apply_gates({"tier": "0_8b", "mode": "full", "results": res}).passed is True
     assert apply_gates({"tier": "2b", "mode": "full", "results": res}).passed is False
+
+
+# ---------------------------------------------------------------------------
+# regression_gates — prior-bundle regression check
+# ---------------------------------------------------------------------------
+
+
+def test_regression_gates_passes_without_baseline() -> None:
+    """First publish: no prior bundle to compare against → skip (pass)."""
+    rows = regression_gates({"text_eval": 0.7, "voice_rtf": 0.4, "asr_wer": 0.05}, None)
+    assert len(rows) == 3
+    assert all(r.skipped and r.passed for r in rows)
+
+
+def test_regression_gates_passes_when_metric_matches_baseline() -> None:
+    """Identical measurements clear the regression gate."""
+    prior = {"text_eval": 0.71, "voice_rtf": 0.40, "asr_wer": 0.06}
+    rows = regression_gates(prior, prior)
+    assert all(r.passed and not r.skipped for r in rows)
+
+
+def test_regression_gates_passes_within_tolerance_higher_is_better() -> None:
+    """A 2% drop on text_eval is within the default 5% tolerance."""
+    prior = {"text_eval": 0.71}
+    current = {"text_eval": 0.71 * 0.98}
+    rows = regression_gates(current, prior, metrics=("text_eval",))
+    row = next(r for r in rows if r.name == "text_eval_no_regression")
+    assert row.passed is True
+
+
+def test_regression_gates_fails_beyond_tolerance_higher_is_better() -> None:
+    """A 7% drop on text_eval exceeds the default 5% tolerance."""
+    prior = {"text_eval": 0.71}
+    current = {"text_eval": 0.71 * 0.93}
+    rows = regression_gates(current, prior, metrics=("text_eval",))
+    row = next(r for r in rows if r.name == "text_eval_no_regression")
+    assert row.passed is False
+    assert row.required is True
+
+
+def test_regression_gates_lower_is_better_for_voice_rtf() -> None:
+    """voice_rtf is lower-is-better — an INCREASE is a regression."""
+    prior = {"voice_rtf": 0.40}
+    current = {"voice_rtf": 0.50}  # 25% worse
+    rows = regression_gates(current, prior, metrics=("voice_rtf",))
+    row = next(r for r in rows if r.name == "voice_rtf_no_regression")
+    assert row.passed is False
+
+
+def test_regression_gates_skips_missing_current_metric() -> None:
+    """If the new bundle doesn't measure a metric, skip the regression check
+    (the per-tier required-metric gate handles missing values)."""
+    rows = regression_gates({}, {"text_eval": 0.7}, metrics=("text_eval",))
+    row = next(r for r in rows if r.name == "text_eval_no_regression")
+    assert row.skipped is True
+    assert row.passed is True
+
+
+def test_regression_gates_skips_missing_baseline_metric() -> None:
+    """If the baseline doesn't include the metric, skip (no comparison
+    available — same shape as a first publish for that metric)."""
+    rows = regression_gates({"text_eval": 0.7}, {}, metrics=("text_eval",))
+    row = next(r for r in rows if r.name == "text_eval_no_regression")
+    assert row.skipped is True
+    assert row.passed is True
+
+
+def test_regression_gates_honours_custom_tolerance() -> None:
+    """A 1% tolerance trips on a 2% drop that the default 5% accepts."""
+    prior = {"text_eval": 0.71}
+    current = {"text_eval": 0.71 * 0.98}
+    strict = regression_gates(current, prior, metrics=("text_eval",), tolerance=0.01)
+    row = next(r for r in strict if r.name == "text_eval_no_regression")
+    assert row.passed is False

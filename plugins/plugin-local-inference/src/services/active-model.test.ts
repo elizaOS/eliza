@@ -267,7 +267,6 @@ describe("assertModelFitsHost (RAM-budget admission control)", () => {
 				},
 				ramBudgetMb: { min: 60000, recommended: 60000 },
 				defaultEligible: true,
-				// biome-ignore lint/suspicious/noExplicitAny: synthetic manifest for the test
 			}) as any;
 		expect(() =>
 			assertModelFitsHost(m, 16 * 1024, { manifestLoader: bigManifestLoader }),

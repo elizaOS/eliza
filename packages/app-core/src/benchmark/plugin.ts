@@ -930,7 +930,7 @@ function formatContextAsText(ctx: BenchmarkContext): string {
       `Progress replies are invalid in LOCA-bench. If the task is not complete, call exactly one tool. Only use REPLY after the requested files have been written or claim_done has been called.`,
     );
     sections.push(
-      `Existing workspace files may contain examples or placeholders. Use current CSV rows for schema and formatting only; derive final answers from the available tools, local_db files, workspace files, and memory records. If Canvas-specific tools are unavailable, inspect source_data/local_db and source_data/files with filesystem tools. Overwrite or edit every requested CSV before replying.`,
+      `Existing workspace files may contain examples or placeholders. Use current CSV rows for schema and formatting only; derive final answers from the available tools, local_db files, workspace files, and memory records. If Canvas-specific tools are unavailable, inspect source_data/local_db and source_data/files with filesystem tools. source_data is read-only input data; write/edit the requested output CSV files at the workspace root, for example assignment_info.csv and quiz_info.csv. Overwrite or edit every requested CSV before replying.`,
     );
     sections.push(
       `Never invent aggregate helper tools. In particular, do not call process_assignments_and_quizzes or any tool name not listed under Available Tools.`,

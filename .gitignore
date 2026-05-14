@@ -546,3 +546,5 @@ plugins/app-lifeops/docs/audit/cerebras-journey-eval-results.json
 
 .swarm/
 packages/training/out/
+# Tesseract OCR language data — downloaded at runtime, not vendored
+plugins/plugin-vision/eng.traineddata

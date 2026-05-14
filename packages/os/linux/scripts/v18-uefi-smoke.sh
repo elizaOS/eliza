@@ -150,7 +150,7 @@ seed_calibration() {
     # on Linux). The bundled GGUF in /usr/share/usbeliza/models/ is lowercase
     # for convenience, but the action's existsSync compares against the
     # catalog's PascalCase filename.
-    ssh_cmd 'mkdir -p ~/.eliza/models && touch ~/.eliza/models/Llama-3.2-1B-Instruct-Q4_K_M.gguf'
+    ssh_cmd 'mkdir -p ~/.eliza/models && touch ~/.eliza/models/Eliza-1 0.8B-Instruct-Q4_K_M.gguf'
     ssh_cmd 'cat > ~/.eliza/calibration.toml <<TOML
 schema_version = 1
 created_at = "2026-05-12T00:00:00Z"

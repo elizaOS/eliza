@@ -7,7 +7,7 @@
  *
  * Locked decision: setup is a chat. No wizards, no popups, no separate
  * UI. Eliza herself conducts the conversation from the very first turn,
- * running on the bundled Llama-3.2-1B baseline — no network, no cloud,
+ * running on the bundled Eliza-1 0.8B baseline — no network, no cloud,
  * no Claude/Codex needed to get started. Everything that *would* be a
  * settings panel in another OS is instead a topic Eliza can talk about
  * and act on through the existing intent system (`network`, persistence,

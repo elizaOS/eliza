@@ -10,6 +10,10 @@
  * under names like `eliza-1-27b`, while older llama.cpp endpoints may use the
  * catalog id directly. The resolved endpoint config decides what model id to
  * send upstream.
+ *
+ * Eliza structure-forcing fields (prefillPlan, guidedDecode, plannerActionSchemas)
+ * are forwarded from providerOptions.eliza as top-level eliza_* keys so the
+ * worker's dflash-enabled llama-server can apply them without code changes.
  */
 
 import { getVastApiModelId, VAST_NATIVE_MODELS } from "@/lib/models";
@@ -31,6 +35,43 @@ const VAST_LABEL: ProviderLabel = {
 
 function trimTrailingSlash(url: string): string {
   return url.endsWith("/") ? url.slice(0, -1) : url;
+}
+
+/**
+ * Convert camelCase key to snake_case.
+ * Example: prefillPlan -> prefill_plan
+ */
+function toSnakeCase(str: string): string {
+  return str.replace(/([A-Z])/g, "_$1").toLowerCase();
+}
+
+/**
+ * Forward eliza-specific providerOptions fields as top-level keys.
+ * Known fields: prefillPlan, guidedDecode, plannerActionSchemas.
+ * The dflash-enabled llama-server on Vast workers expects these as top-level
+ * eliza_* fields in the request body.
+ */
+function extractElizaFields(
+  providerOptions: Record<string, unknown> | undefined,
+): Record<string, unknown> {
+  if (!providerOptions?.eliza || typeof providerOptions.eliza !== "object") {
+    return {};
+  }
+
+  const elizaOptions = providerOptions.eliza as Record<string, unknown>;
+  const result: Record<string, unknown> = {};
+
+  // Known eliza fields that should be forwarded to the worker
+  const knownFields = ["prefillPlan", "guidedDecode", "plannerActionSchemas"];
+
+  for (const key of knownFields) {
+    if (key in elizaOptions && elizaOptions[key] !== undefined) {
+      const snakeKey = `eliza_${toSnakeCase(key)}`;
+      result[snakeKey] = elizaOptions[key];
+    }
+  }
+
+  return result;
 }
 
 export class VastProvider implements AIProvider {
@@ -71,8 +112,13 @@ export class VastProvider implements AIProvider {
     request: OpenAIChatRequest,
     options?: ProviderRequestOptions,
   ): Promise<Response> {
-    const { providerOptions: _providerOptions, ...rest } = request;
-    const body = { ...rest, model: this.apiModelId ?? getVastApiModelId(rest.model) };
+    const { providerOptions, ...rest } = request;
+    const body = {
+      ...rest,
+      model: this.apiModelId ?? getVastApiModelId(rest.model),
+      // Forward eliza fields from providerOptions as top-level keys
+      ...extractElizaFields(providerOptions),
+    };
 
     logger.debug("[Vast] Forwarding chat completion request", {
       model: body.model,

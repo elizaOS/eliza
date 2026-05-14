@@ -104,14 +104,34 @@ export const ELIZA_1_PLACEHOLDER_IDS: ReadonlySet<string> = new Set(
 
 export type VoiceBackendId = "kokoro" | "omnivoice";
 
+/**
+ * Per-tier voice backend policy. The FIRST entry is the default backend
+ * for that tier — `runtime-selection.ts` picks it when both backends are
+ * available and no override applies (voice cloning, TTFA target, RTF).
+ * Entries beyond the first are also bundled; tiers that ship only one
+ * backend have a single-element array.
+ *
+ * Policy (Wave-2):
+ *   - Small tiers (0_8b / 2b / 4b) → Kokoro only. Kokoro is ~310 MB
+ *     fp32 / ~80 MB int8 and hits ~97ms CPU TTFB, which dominates the
+ *     time budget on small/mobile devices. OmniVoice is not shipped in
+ *     these bundles — callers that need voice cloning must use a larger
+ *     tier or the standalone (legacy) plugin-omnivoice.
+ *   - 9b → both supported, Kokoro first. 9b is the boundary tier where
+ *     either makes sense depending on the workload (Kokoro for low TTFB,
+ *     OmniVoice for higher quality / cloning).
+ *   - Large tiers (27b / 27b-256k / 27b-1m) → OmniVoice only. The RAM
+ *     and compute budget is large enough that the OmniVoice quality win
+ *     dominates; Kokoro is not shipped in these bundles.
+ */
 export const ELIZA_1_VOICE_BACKENDS: Record<
   Eliza1TierId,
   ReadonlyArray<VoiceBackendId>
 > = {
-  "eliza-1-0_8b": ["omnivoice", "kokoro"],
-  "eliza-1-2b": ["omnivoice", "kokoro"],
-  "eliza-1-4b": ["omnivoice", "kokoro"],
-  "eliza-1-9b": ["omnivoice", "kokoro"],
+  "eliza-1-0_8b": ["kokoro"],
+  "eliza-1-2b": ["kokoro"],
+  "eliza-1-4b": ["kokoro"],
+  "eliza-1-9b": ["kokoro", "omnivoice"],
   "eliza-1-27b": ["omnivoice"],
   "eliza-1-27b-256k": ["omnivoice"],
   "eliza-1-27b-1m": ["omnivoice"],
@@ -156,6 +176,12 @@ const TIER_SPECS: Readonly<Record<Eliza1TierId, TierSpec>> = {
     drafterParams: "0.5B",
     drafterSizeGb: 0.4,
     drafterMinRamGb: 2,
+    // WS2: vision is enabled on the smallest viable tier. The Q4_K_M
+    // mmproj for 0.8B is ~220 MB (see ELIZA_1_BUNDLE_EXTRAS.json), which
+    // fits even on 2 GB-floor devices when the text model is resident.
+    // Camera + screen analysis remain practical on low-tier phones at this
+    // size — the projector cache short-circuits the per-frame cost.
+    hasVision: true,
   },
   "eliza-1-2b": {
     id: "eliza-1-2b",
@@ -170,6 +196,11 @@ const TIER_SPECS: Readonly<Record<Eliza1TierId, TierSpec>> = {
     drafterSizeGb: 0.5,
     drafterMinRamGb: 4,
     hasEmbedding: true,
+    // WS2: vision enabled — the 2B tier is the standard "small-phone"
+    // default for first-run users, so camera-to-reaction and screen
+    // analysis must work here. The mmproj is ~320 MB Q8_0; the arbiter
+    // owns the swap with the text weights under pressure.
+    hasVision: true,
   },
   "eliza-1-4b": {
     id: "eliza-1-4b",
@@ -250,6 +281,11 @@ const TIER_SPECS: Readonly<Record<Eliza1TierId, TierSpec>> = {
     drafterMinRamGb: 160,
     gpuProfile: "h200",
     hasEmbedding: true,
+    // WS2: vision on the 1M-context tier is for server / workstation use
+    // (multi-GPU, document-pipeline scenarios where a screenshot of a
+    // 100-page PDF page is sandwiched into a million-token context). The
+    // mmproj is the same ~720 MB Q8_0 used by the 27b and 27b-256k tiers.
+    hasVision: true,
   },
 };
 

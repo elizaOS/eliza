@@ -1,41 +1,12 @@
-/* Font imports. CSS custom properties (--font-dm-mono, --font-inter, --font-sf-pro)
+/* Font imports. CSS custom properties (--font-dm-mono, --font-inter, --font-open-sans)
  * match what we apply on the `<body>` via RootLayout className.
  */
-@import url("https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Inter:wght@400;500;600;700;800&display=swap");
-
-@font-face {
-  font-family: "SF Pro Display";
-  src: url("/fonts/sf-pro/SF-Pro-Display-Regular.otf") format("opentype");
-  font-weight: 400;
-  font-style: normal;
-  font-display: swap;
-}
-@font-face {
-  font-family: "SF Pro Display";
-  src: url("/fonts/sf-pro/SF-Pro-Display-Medium.otf") format("opentype");
-  font-weight: 500;
-  font-style: normal;
-  font-display: swap;
-}
-@font-face {
-  font-family: "SF Pro Display";
-  src: url("/fonts/sf-pro/SF-Pro-Display-Semibold.otf") format("opentype");
-  font-weight: 600;
-  font-style: normal;
-  font-display: swap;
-}
-@font-face {
-  font-family: "SF Pro Display";
-  src: url("/fonts/sf-pro/SF-Pro-Display-Bold.otf") format("opentype");
-  font-weight: 700;
-  font-style: normal;
-  font-display: swap;
-}
+@import url("https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Inter:wght@400;500;600;700;800&family=Open+Sans:ital,wght@0,300..800;1,300..800&display=swap");
 
 :root {
   --font-dm-mono: "DM Mono", ui-monospace, monospace;
   --font-inter: "Inter", system-ui, sans-serif;
-  --font-sf-pro: "SF Pro Display", system-ui, sans-serif;
+  --font-open-sans: "Open Sans", system-ui, sans-serif;
 }
 
 @import "tailwindcss";

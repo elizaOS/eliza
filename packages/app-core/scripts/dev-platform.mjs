@@ -262,11 +262,6 @@ const desktopUnsafeDevtoolsEnv = (() => {
 
   return "1";
 })();
-const desktopWhisperOptOut = (() => {
-  const v = process.env.ELIZA_DESKTOP_ENSURE_WHISPER?.trim().toLowerCase();
-  return v === "0" || v === "false" || v === "no" || v === "off";
-})();
-
 function ensureBunRootPackageLink(packageName) {
   const rootNodeModules = path.join(bundleRoot, "node_modules");
   const packageLink = path.join(rootNodeModules, packageName);
@@ -303,49 +298,6 @@ function ensureBunRootPackageLink(packageName) {
     }
     console.warn(
       `[eliza] Warning: failed to restore node_modules/${packageName}: ${error instanceof Error ? error.message : String(error)}`,
-    );
-  }
-}
-
-function desktopWhisperAssetsMissing() {
-  if (process.platform === "win32") {
-    return false;
-  }
-  const whisperCppDir = path.join(
-    bundleRoot,
-    "node_modules",
-    "whisper-node",
-    "lib",
-    "whisper.cpp",
-  );
-  const whisperBin = path.join(whisperCppDir, "main");
-  const whisperModel = path.join(whisperCppDir, "models", "ggml-base.en.bin");
-  return !existsSync(whisperBin) || !existsSync(whisperModel);
-}
-
-function ensureDesktopWhisperAssets() {
-  if (desktopWhisperOptOut || process.platform === "win32") {
-    return;
-  }
-  if (!desktopWhisperAssetsMissing()) {
-    return;
-  }
-
-  console.log(
-    "\n[eliza] Desktop voice input needs whisper.cpp assets — building them once for Electrobun dev…\n",
-  );
-  try {
-    execSync("bun run build:whisper", {
-      cwd: electrobunDir,
-      stdio: "inherit",
-    });
-  } catch (_error) {
-    console.warn(
-      "[eliza] Warning: failed to build whisper.cpp for desktop voice input. " +
-        "Electrobun mic/STT may stay unavailable until this succeeds.",
-    );
-    console.warn(
-      "[eliza] Retry manually with: (cd <renderer-app>/electrobun && bun run build:whisper)",
     );
   }
 }
@@ -393,7 +345,6 @@ export * from ${JSON.stringify(entryTs)};
 }
 
 ensureBunRootPackageLink("jsdom");
-ensureDesktopWhisperAssets();
 
 async function allocateDistinctLoopbackPort(preferredPort, reservedPorts) {
   let candidate = preferredPort;

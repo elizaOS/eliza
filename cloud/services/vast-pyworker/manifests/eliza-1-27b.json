@@ -42,5 +42,5 @@
     "VLLM_REGISTRY_KEY": "eliza-1-27b"
   },
   "onstart_script": "onstart-vllm.sh",
-  "notes": "FP8 vLLM path for the 27B Eliza line. TurboQuant uses turboquant_k8v4 by default for quality; set VLLM_TURBOQUANT_PRESET=4bit or KV_CACHE_DTYPE=turboquant_4bit_nc only after a regression run. QJL is intentionally absent from defaults."
+  "notes": "FP8 vLLM path for the 27B Eliza line. TurboQuant uses turboquant_k8v4 by default for quality; set VLLM_TURBOQUANT_PRESET=4bit or KV_CACHE_DTYPE=turboquant_4bit_nc only after a regression run. QJL is intentionally absent from defaults. TODO: elizaos/eliza-1-27b-fp8 does not yet exist on HF (404). The consolidated bundle repo elizaos/eliza-1 carries GGUFs at bundles/27b/text/, not safetensors+fp8 for vLLM. Either publish the per-quant repo or migrate this manifest to llama.cpp / vLLM-GGUF before deployment."
 }

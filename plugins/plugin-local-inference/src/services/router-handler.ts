@@ -12,6 +12,9 @@
  *   3. Invoke that provider's original handler directly — bypassing
  *      `runtime.useModel` which would recurse into us.
  *   4. Record the observed latency so future "fastest" picks have data.
+ *   5. On handler failure: retry the next eligible provider in priority
+ *      order until exhausted (except in `manual` mode with an explicit
+ *      preferred provider — that throws verbatim).
  *
  * If no other handler exists we throw a clear error rather than return
  * garbage — the caller is meant to see "no provider configured" so they
@@ -21,6 +24,41 @@
  * preference is always authoritative regardless of what plugins register
  * at lower priorities. This is the mechanism that unifies cloud + local
  * + device-bridge routing from one settings panel.
+ *
+ * ## TTS routing precedence (`TEXT_TO_SPEECH` slot)
+ *
+ * The default per-slot policy is `prefer-local` (see
+ * `DEFAULT_ROUTING_POLICY` in `routing-preferences.ts`), which the
+ * policyEngine implements by short-circuiting to whichever candidate
+ * has provider `eliza-local-inference` / `capacitor-llama` /
+ * `eliza-device-bridge`. So even though `plugin-elizacloud` registers
+ * its TTS handler at plugin priority 50 (higher than the default 0 of
+ * direct providers like ElevenLabs / OpenAI / Groq / Edge-TTS), the
+ * router prefers local first when local is registered AND
+ * `local-inference` has a TTS-capable handler.
+ *
+ * Documented routing precedence for `TEXT_TO_SPEECH`:
+ *
+ *   1. **Local (`eliza-local-inference`)** — Kokoro on small tiers,
+ *      OmniVoice on large tiers, per `ELIZA_1_VOICE_BACKENDS` in
+ *      `@elizaos/shared/local-inference/catalog`. Selection is
+ *      tier-aware via `services/voice/kokoro/runtime-selection.ts`.
+ *      Always preferred when available.
+ *   2. **Eliza Cloud (`elizacloud`)** — managed cloud proxy. Picked when
+ *      local is unavailable. Throws `CloudTtsUnavailableError` when
+ *      cloud isn't connected, which the loop above catches and falls
+ *      through to step 3.
+ *   3. **ElevenLabs (`elevenlabs`)** — direct API key path.
+ *   4. **OpenAI (`openai`)** — direct API key path.
+ *   5. **Groq (`groq`)** — direct API key path.
+ *   6. **Edge-TTS (`edge-tts`)** — free Microsoft Edge endpoint, no key.
+ *
+ * Same precedence applies to `TRANSCRIPTION`, with the local side using
+ * Qwen3-ASR via the fused libelizainference (no whisper.cpp; see
+ * `plugin-local-inference/native/AGENTS.md` §1).
+ *
+ * Users can override this per slot via the routing-preferences settings
+ * panel (`prefer-local` ↔ `manual` + explicit `preferredProvider`).
  */
 
 import type { AgentRuntime, IAgentRuntime } from "@elizaos/core";

@@ -1,5 +1,8 @@
 {
   "note": "Ground-truth set for the response-handler shouldRespond field. Hand-authored against the canonical evaluator description in packages/core/src/runtime/builtin-field-evaluators.ts: RESPOND when addressed directly or continuing a conversation, IGNORE when small-talk between others, STOP only on explicit termination requests. The agent name used below is 'Eliza' — fixtures phrase mentions accordingly.",
+  "origin": "manual",
+  "derivedFrom": null,
+  "originNote": "Cases below are hand-authored and tagged as the manual probe set. A dataset-derived sibling at fixtures/should-respond.derived.json is the canonical regression measurement source (produced by scripts/derive-fixtures.mjs from packages/training/datasets/eliza1-sft-0_6b/test.jsonl).",
   "cases": [
     {
       "id": "dm-direct-question",

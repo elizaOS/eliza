@@ -735,9 +735,3 @@ export function getHelp(): string {
     `Keep your pet fed, happy, and clean to help them evolve!`
   );
 }
-
-// ============================================================================
-// EXPORT CONFIGURATION
-// ============================================================================
-
-export const CONFIG = DEFAULT_CONFIG;

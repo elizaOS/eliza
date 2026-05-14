@@ -89,11 +89,13 @@ function isTruthyBuildFlag(value: string | boolean | undefined): boolean {
 function shouldRequireFullBunRuntime(): boolean {
   const env = viteEnv();
   const iosRuntimeMode = env.VITE_ELIZA_IOS_RUNTIME_MODE;
+  const persistedRuntimeMode = readPersistedRuntimeMode();
   return (
     isTruthyBuildFlag(env.VITE_ELIZA_IOS_FULL_BUN_STRICT) ||
     isTruthyBuildFlag(env.VITE_ELIZA_IOS_FULL_BUN_SMOKE) ||
     hasIosFullBunSmokeRequest() ||
-    (isTruthyBuildFlag(env.PROD) && iosRuntimeMode === "local")
+    (isTruthyBuildFlag(env.PROD) && iosRuntimeMode === "local") ||
+    (isNativeIos() && persistedRuntimeMode === "local")
   );
 }
 
@@ -105,6 +107,16 @@ function hasIosFullBunSmokeRequest(): boolean {
     );
   } catch {
     return false;
+  }
+}
+
+function readPersistedRuntimeMode(): string | null {
+  try {
+    return (
+      globalThis.localStorage?.getItem("eliza:mobile-runtime-mode") ?? null
+    );
+  } catch {
+    return null;
   }
 }
 
@@ -211,7 +223,7 @@ function normalizeNativeResult(
 async function getFullBunRuntime(): Promise<FullBunRuntimePlugin | null> {
   const strict = shouldRequireFullBunRuntime();
   if (!isNativeIos() && !strict) return null;
-  if (!isFullBunRuntimePluginAvailable() && !strict) {
+  if (!isFullBunRuntimePluginAvailable()) {
     if (strict) {
       throw fullBunStartupError("the ElizaBunRuntime plugin is unavailable");
     }
@@ -401,7 +413,11 @@ function shouldBridgeFetchUrl(url: URL): boolean {
   if (!isNativeIos()) return false;
   if (isMobileLocalAgentUrl(url.toString())) return true;
   if (url.pathname.startsWith("/api/")) {
-    return isIosInProcessLocalAgentBase(getElizaApiBase());
+    return (
+      shouldRequireFullBunRuntime() ||
+      readPersistedRuntimeMode() === "local" ||
+      isIosInProcessLocalAgentBase(getElizaApiBase())
+    );
   }
   return false;
 }

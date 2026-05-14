@@ -169,7 +169,7 @@ function savePetState(runtime: IAgentRuntime, petState: PetState): void {
   runtime.setSetting(PET_STATE_SETTING_KEY, JSON.stringify(petState));
 }
 
-export function buildSaveData(petState: PetState): SaveData {
+function buildSaveData(petState: PetState): SaveData {
   const now = Date.now();
   return {
     version: SAVE_VERSION,

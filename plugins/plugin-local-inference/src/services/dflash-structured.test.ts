@@ -159,6 +159,63 @@ describe("buildChatCompletionBody", () => {
 		expect(body.eliza_prefill_plan).toBeUndefined();
 		expect(body.messages).toEqual([{ role: "user", content: "say hello" }]);
 	});
+
+	it("attaches eliza_span_samplers when a spanSamplerPlan is supplied", () => {
+		const body = buildChatCompletionBody(
+			makeArgs({
+				responseSkeleton: {
+					spans: [
+						{ kind: "literal", value: '{"action":"' },
+						{ kind: "enum", key: "action", enumValues: ["A", "B"] },
+						{ kind: "literal", value: '"}' },
+					],
+				},
+				spanSamplerPlan: {
+					overrides: [{ spanIndex: 1, temperature: 0, topK: 1 }],
+				},
+			}),
+			0,
+			false,
+		);
+		expect(body.eliza_span_samplers).toEqual({
+			overrides: [{ span_index: 1, temperature: 0, top_k: 1 }],
+		});
+	});
+
+	it("emits strict on the wire when the plan opts in", () => {
+		const body = buildChatCompletionBody(
+			makeArgs({
+				responseSkeleton: {
+					spans: [
+						{ kind: "literal", value: '{"x":' },
+						{ kind: "number", key: "x" },
+						{ kind: "literal", value: "}" },
+					],
+				},
+				spanSamplerPlan: {
+					overrides: [{ spanIndex: 1, temperature: 0, topK: 1, topP: 0.95 }],
+					strict: true,
+				},
+			}),
+			0,
+			false,
+		);
+		expect(body.eliza_span_samplers).toEqual({
+			overrides: [{ span_index: 1, temperature: 0, top_k: 1, top_p: 0.95 }],
+			strict: true,
+		});
+	});
+
+	it("omits eliza_span_samplers when the plan has no overrides", () => {
+		const body = buildChatCompletionBody(
+			makeArgs({
+				spanSamplerPlan: { overrides: [] },
+			}),
+			0,
+			false,
+		);
+		expect(body.eliza_span_samplers).toBeUndefined();
+	});
 });
 
 const PLANNER_SKELETON: ResponseSkeleton = {

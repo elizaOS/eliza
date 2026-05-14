@@ -23,7 +23,14 @@
  *   2. If `targetTtfaMs` is set and < 200 → Kokoro.
  *   3. If a Kokoro RTF measurement is available and OmniVoice RTF is not,
  *      or Kokoro RTF beats OmniVoice by ≥ 10% → Kokoro.
- *   4. Else → OmniVoice (the default for the existing fused build).
+ *   4. Else → first entry of `tierVoiceBackends` if provided (the
+ *      catalog's declared per-tier default). Falls back to OmniVoice
+ *      only when no tier policy is supplied.
+ *
+ * Tier policy comes from `ELIZA_1_VOICE_BACKENDS` in
+ * `packages/shared/src/local-inference/catalog.ts`. Callers should pass
+ * the active bundle's `voiceBackends` array so the selection is
+ * data-driven (small tiers → Kokoro default; large tiers → OmniVoice).
  *
  * The decision returns a tagged discriminated union, not a backend
  * instance, so the engine layer can instantiate the chosen backend with
@@ -52,6 +59,18 @@ export interface VoiceBackendInputs {
 	kokoroAvailable: boolean;
 	/** Whether the OmniVoice FFI library is present on disk. */
 	omnivoiceAvailable: boolean;
+	/**
+	 * The active bundle's per-tier voice backend policy, as declared in
+	 * `ELIZA_1_VOICE_BACKENDS`. First entry is the catalog default for
+	 * the tier; later entries are also bundled. The selector reads this
+	 * to make the `auto` default tier-aware rather than hard-coding a
+	 * single backend.
+	 *
+	 * Omit when called outside the Eliza-1 catalog context (e.g. ad-hoc
+	 * smoke benches) — the selector falls back to OmniVoice as the
+	 * historical default in that case.
+	 */
+	tierVoiceBackends?: ReadonlyArray<VoiceBackendChoice>;
 }
 
 export interface VoiceBackendDecision {
@@ -167,8 +186,24 @@ export function selectVoiceBackend(
 			"[voice] no TTS backend available (neither Kokoro model nor OmniVoice FFI library on disk)",
 		);
 	}
+	// Both backends available, no override. Honor the tier's declared
+	// default if the caller supplied one (catalog-driven), else fall back
+	// to OmniVoice to preserve historical behavior for non-Eliza-1 contexts.
+	const tierDefault = inputs.tierVoiceBackends?.[0];
+	if (tierDefault === "kokoro") {
+		return {
+			backend: "kokoro",
+			reason: "tier default — kokoro per ELIZA_1_VOICE_BACKENDS",
+		};
+	}
+	if (tierDefault === "omnivoice") {
+		return {
+			backend: "omnivoice",
+			reason: "tier default — omnivoice per ELIZA_1_VOICE_BACKENDS",
+		};
+	}
 	return {
 		backend: "omnivoice",
-		reason: "default — OmniVoice on the fused build",
+		reason: "default — OmniVoice on the fused build (no tier policy supplied)",
 	};
 }
