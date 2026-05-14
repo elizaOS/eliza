@@ -4,6 +4,7 @@ import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   resolvePinnedAdapter,
+  resolveSpawnWorkdir,
   resolveWorkdirRoute,
 } from "../actions/coding-task-helpers.js";
 
@@ -152,6 +153,89 @@ describe("resolveWorkdirRoute", () => {
     );
 
     expect(result?.id).toBe("static-apps");
+  });
+});
+
+describe("resolveSpawnWorkdir", () => {
+  it("a matching route OUTRANKS a planner-guessed explicit workdir", () => {
+    process.env[ENV_KEY] = JSON.stringify([
+      { id: "static-apps", workdir: appsDir, matchAny: ["build"] },
+    ]);
+    // planner guessed a real-but-wrong path (e.g. the home dir)
+    const guessed = tmpRoot;
+
+    const result = resolveSpawnWorkdir(
+      undefined,
+      "build me an app",
+      "build me an app",
+      guessed,
+    );
+
+    // route wins even though `guessed` exists on disk
+    expect(result.workdir).toBe(appsDir);
+    expect(result.route?.id).toBe("static-apps");
+  });
+
+  it("lockWorkdir makes the explicit workdir win, skipping route resolution", () => {
+    process.env[ENV_KEY] = JSON.stringify([
+      { id: "static-apps", workdir: appsDir, matchAny: ["build"] },
+    ]);
+    const scaffold = path.join(tmpRoot, "eliza-apps", "my-app");
+    fs.mkdirSync(scaffold, { recursive: true });
+
+    const result = resolveSpawnWorkdir(
+      undefined,
+      "build me an app",
+      "build me an app",
+      scaffold,
+      { lockWorkdir: true },
+    );
+
+    expect(result.workdir).toBe(scaffold);
+    expect(result.route).toBeUndefined();
+  });
+
+  it("keeps the explicit workdir when no route matches", () => {
+    delete process.env[ENV_KEY];
+    const fresh = path.join(tmpRoot, "fresh-scratch");
+
+    const result = resolveSpawnWorkdir(
+      undefined,
+      "do a thing",
+      "do a thing",
+      fresh,
+    );
+
+    expect(result.workdir).toBe(fresh);
+    expect(result.route).toBeUndefined();
+  });
+
+  it("uses route when no explicit workdir is supplied", () => {
+    process.env[ENV_KEY] = JSON.stringify([
+      { id: "static-apps", workdir: appsDir, matchAny: ["build"] },
+    ]);
+
+    const result = resolveSpawnWorkdir(
+      undefined,
+      "build me an app",
+      "build me an app",
+      undefined,
+    );
+
+    expect(result.workdir).toBe(appsDir);
+    expect(result.route?.id).toBe("static-apps");
+  });
+
+  it("falls back to process.cwd() when nothing else resolves", () => {
+    delete process.env[ENV_KEY];
+    const result = resolveSpawnWorkdir(
+      undefined,
+      "just chatting",
+      "just chatting",
+      undefined,
+    );
+    expect(result.workdir).toBe(process.cwd());
+    expect(result.route).toBeUndefined();
   });
 });
 

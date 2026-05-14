@@ -71,10 +71,11 @@ import {
   setCurrentSession,
   setCurrentSessions,
   shortId,
+  waitForSpawnSlot,
 } from "./common.js";
 import {
   resolvePinnedAdapter,
-  resolveWorkdirRoute,
+  resolveSpawnWorkdir,
 } from "./coding-task-helpers.js";
 import { resolveTaskThreadTarget } from "./task-thread-target.js";
 
@@ -269,13 +270,15 @@ async function runCreate(
       const task = parsed.task;
       const agentType = parsed.agentType as AgentType;
       const label = baseLabel ?? labelFrom(task, index);
-      // Routes are a fallback only — see runSpawnAgent. If an explicit
-      // workdir was supplied by the caller, skip route resolution entirely
-      // so scaffold-aware actions (APP_CREATE etc.) keep their dir.
-      const route = explicitWorkdir
-        ? undefined
-        : resolveWorkdirRoute(runtime, task, text);
-      const sessionWorkdir = route?.workdir ?? fallbackWorkdir;
+      // A matching workdir route outranks a planner-guessed workdir; a
+      // scaffold-aware caller opts out with lockWorkdir — see runSpawnAgent.
+      const { workdir: sessionWorkdir, route } = resolveSpawnWorkdir(
+        runtime,
+        task,
+        text,
+        explicitWorkdir,
+        { lockWorkdir: pickBoolean(params, content, "lockWorkdir") === true },
+      );
       const taskWithRouteHints = route?.instructions
         ? `${task}\n\n--- Workspace Routing Note ---\n${route.instructions}\n--- End Workspace Routing Note ---`
         : task;
@@ -403,17 +406,19 @@ async function runSpawnAgent(
         workdir: pickString(params, content, "workdir"),
       })) ??
       "codex") as AgentType;
-    // Workdir routes are a FALLBACK only: when no upstream caller supplied
-    // a workdir param, consult `TASK_AGENT_WORKDIR_ROUTES` to pick one based
-    // on the task text. Actions that compose this one (e.g. APP_CREATE
-    // dispatching into a scaffolded `eliza/apps/<name>` directory) pass an
-    // explicit `workdir` and keep it — operator-declared routes never
-    // override deliberate scaffold paths.
-    const explicitWorkdir = pickString(params, content, "workdir");
-    const route = explicitWorkdir
-      ? undefined
-      : resolveWorkdirRoute(runtime, task, text);
-    const workdir = explicitWorkdir ?? route?.workdir ?? process.cwd();
+    // Resolve the spawn workdir. A matching `TASK_AGENT_WORKDIR_ROUTES`
+    // route outranks the planner-supplied workdir — the planner just
+    // guesses a path-shaped string from context, while a route is
+    // deliberate operator policy. A scaffold-aware caller that KNOWS its
+    // workdir is correct (e.g. APP_CREATE) passes `lockWorkdir: true` to
+    // skip route resolution entirely.
+    const { workdir, route } = resolveSpawnWorkdir(
+      runtime,
+      task,
+      text,
+      pickString(params, content, "workdir"),
+      { lockWorkdir: pickBoolean(params, content, "lockWorkdir") === true },
+    );
     const taskWithRouteHints = route?.instructions
       ? `${task}\n\n--- Workspace Routing Note ---\n${route.instructions}\n--- End Workspace Routing Note ---`
       : task;
@@ -449,6 +454,11 @@ async function runSpawnAgent(
       content.source === "sub_agent" && inboundOriginSource
         ? inboundOriginSource
         : content.source;
+
+    // Concurrency gate: serialise spawns past a small ceiling so parallel
+    // coding sub-agents don't stampede the model provider into rate-limited,
+    // tool-call-skipping degradation. See waitForSpawnSlot.
+    await waitForSpawnSlot(runtime, service);
 
     const session = await service.spawnSession({
       agentType,
@@ -2320,6 +2330,17 @@ export const tasksAction: Action & {
       description: "Working directory for action=create / action=spawn_agent.",
       required: false,
       schema: { type: "string" as const },
+    },
+    {
+      name: "lockWorkdir",
+      description:
+        "When true, the supplied `workdir` is used verbatim and operator " +
+        "workdir routes (TASK_AGENT_WORKDIR_ROUTES) are NOT consulted. Set " +
+        "this only from scaffold-aware callers that have already created " +
+        "the exact target directory (e.g. APP_CREATE). Leave unset for " +
+        "normal planner spawns so routes can correct guessed paths.",
+      required: false,
+      schema: { type: "boolean" as const },
     },
     {
       name: "memoryContent",

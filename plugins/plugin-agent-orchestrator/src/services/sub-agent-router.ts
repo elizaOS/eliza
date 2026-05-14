@@ -285,9 +285,20 @@ export class SubAgentRouter {
           error: err instanceof Error ? err.message : String(err),
         });
       });
-    const text = capExceeded
+    const baseText = capExceeded
       ? `[sub-agent: ${origin.label} (${session.agentType}) — round-trip cap exceeded]\nThis session reached ${nextCount} round-trips (cap=${this.roundTripCap}) and was force-stopped to prevent a runaway loop. Decide whether to spawn a fresh session, escalate to the user, or drop the task.`
       : composeNarration(event, origin.label, session, data);
+    // Fact-check any URLs the sub-agent claimed. Weak coding models
+    // (gpt-oss-class served over OpenAI-compatible providers) routinely
+    // report "the app is live at <url>" without ever writing the files or
+    // running the verification step their task brief asked for. The parent
+    // agent would then relay that false claim verbatim. Independently HEAD-
+    // checking each claimed URL and annotating dead ones turns the parent's
+    // reply from a hallucinated success into an accurate status report.
+    const text =
+      event === "task_complete"
+        ? await annotateUnverifiedUrls(baseText)
+        : baseText;
     const memory: Memory = {
       id: randomUUID() as UUID,
       entityId: subAgentEntityId,
@@ -501,6 +512,80 @@ function composeNarration(
     pickPayloadString(data, "finalText") ??
     "sub-agent reports task complete (no captured output).";
   return `${header}\n${response}`;
+}
+
+/**
+ * HEAD-check every http(s) URL a sub-agent claimed in its completion text
+ * and append a correction block listing any that did not return a 2xx
+ * status. The sub-agent's claim ("the app is live at X") is treated as a
+ * hypothesis, not a fact — the parent agent should see ground truth.
+ *
+ * Conservative by design:
+ *  - only runs on `task_complete` text (not errors/blocked)
+ *  - caps at the first 5 distinct URLs
+ *  - 4s per-request timeout, failures (DNS, timeout, refused) count as
+ *    unverified rather than throwing
+ *  - never strips the original text — it only appends an annotation, so a
+ *    transient network blip on the checker side degrades to "couldn't
+ *    verify" rather than hiding a real success
+ */
+async function annotateUnverifiedUrls(text: string): Promise<string> {
+  const urlMatches = text.match(/https?:\/\/[^\s<>"'`)\]]+/g);
+  if (!urlMatches || urlMatches.length === 0) return text;
+  const seen = new Set<string>();
+  const urls: string[] = [];
+  for (const raw of urlMatches) {
+    const url = raw.replace(/[.,;:]+$/, "");
+    if (seen.has(url)) continue;
+    seen.add(url);
+    urls.push(url);
+    if (urls.length >= 5) break;
+  }
+  // Single HEAD probe (with a GET fallback for hosts that reject HEAD).
+  // Returns null on success, or a status string on failure.
+  const probeOnce = async (url: string): Promise<string | null> => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 4000);
+    try {
+      let res = await fetch(url, {
+        method: "HEAD",
+        redirect: "follow",
+        signal: controller.signal,
+      });
+      if (res.status === 405 || res.status === 501) {
+        res = await fetch(url, {
+          method: "GET",
+          redirect: "follow",
+          signal: controller.signal,
+        });
+      }
+      return res.status >= 200 && res.status < 300
+        ? null
+        : `HTTP ${res.status}`;
+    } catch (err) {
+      return err instanceof Error ? err.name : "unreachable";
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+  const dead: Array<{ url: string; status: string }> = [];
+  await Promise.all(
+    urls.map(async (url) => {
+      // Settle-retry: a freshly-written static app can be on disk but not
+      // yet served (the host's file cache hasn't picked it up). Re-probe
+      // once after a short delay before declaring a URL dead, so the
+      // annotation reflects steady state rather than the write→serve race.
+      let status = await probeOnce(url);
+      if (status !== null) {
+        await new Promise((resolve) => setTimeout(resolve, 2500));
+        status = await probeOnce(url);
+      }
+      if (status !== null) dead.push({ url, status });
+    }),
+  );
+  if (dead.length === 0) return text;
+  const lines = dead.map((d) => `  - ${d.url} → ${d.status}`).join("\n");
+  return `${text}\n\n[verification: the following URL(s) the sub-agent referenced are NOT reachable — do NOT tell the user the app is live; report the real status and that the build likely did not complete]\n${lines}`;
 }
 
 function computeDedupKey(
