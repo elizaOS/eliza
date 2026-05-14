@@ -2,9 +2,9 @@
 
 Invocation::
 
-    python -m elizaos_mmau --agent {mock,eliza,hermes,openclaw} \
+    python -m elizaos_mmau_audio --agent {mock,eliza,hermes,openclaw} \
         --split test --limit 100 --output ./results
-    python -m elizaos_mmau --mock --limit 2     # smoke run
+    python -m elizaos_mmau_audio --mock --limit 2     # smoke run
 """
 
 from __future__ import annotations
@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        prog="elizaos_mmau",
+        prog="elizaos_mmau_audio",
         description="MMAU (Massive Multi-task Audio Understanding) benchmark for elizaOS",
     )
     parser.add_argument(

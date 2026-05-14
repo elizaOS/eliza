@@ -23,6 +23,8 @@ class PatchStatus(Enum):
     TESTS_PASSED = "tests_passed"
     TESTS_FAILED = "tests_failed"
     APPLY_FAILED = "apply_failed"
+    PARSE_FAILED = "parse_failed"
+    PASS = "pass"  # smoke-grade only: basic validator accepted the patch shape
 
 
 @dataclass
@@ -180,6 +182,10 @@ class SWEBenchConfig:
     swebench_max_workers: int = 1
     swebench_instance_image_tag: str = "latest"
     swebench_env_image_tag: str = "latest"
+    # Which adapter harness to drive: "eliza" (default, current behavior),
+    # "hermes" (HermesClient, in-process Cerebras chat), or "openclaw"
+    # (OpenClawClient, direct OpenAI-compat or CLI).
+    harness: str = "eliza"
 
     def __post_init__(self) -> None:
         """Validate config fields."""
@@ -191,6 +197,10 @@ class SWEBenchConfig:
             raise ValueError("timeout_seconds must be >= 1")
         if self.swebench_max_workers < 1:
             raise ValueError("swebench_max_workers must be >= 1")
+        if self.harness not in {"eliza", "hermes", "openclaw"}:
+            raise ValueError(
+                f"harness must be one of eliza/hermes/openclaw, got {self.harness!r}"
+            )
 
 
 # Leaderboard data for comparison (as of late 2024/early 2025)

@@ -79,13 +79,36 @@ export function buildRecommendedAssignments(
 			model.bundleVerifiedAt.length > 0,
 	);
 	const best = pickLargestInstalledModel(ownDownloads);
-	if (!best) return {};
+	if (best) {
+		return {
+			TEXT_SMALL: best.id,
+			TEXT_LARGE: best.id,
+			TEXT_TO_SPEECH: best.id,
+			TRANSCRIPTION: best.id,
+		};
+	}
+
+	// Fallback: no curated Eliza-1 default is installed, but the user may
+	// have hand-installed a generic text-gen GGUF (e.g. a Llama / Qwen /
+	// Mistral instruct quant). Auto-assign the largest non-embedding model
+	// to TEXT_SMALL / TEXT_LARGE so the slot isn't left empty — empty slots
+	// cause `ensureAssignedModelLoaded()` to fall through and chat
+	// completions silently run against whichever model is currently loaded
+	// (typically the embedding model on Android, producing `[unused{N}]`
+	// garbage). The strict "recommended for the UI" filter still excludes
+	// non-eliza-1 models from the curated download surface; this only
+	// guarantees `TEXT_SMALL` / `TEXT_LARGE` resolve to something usable.
+	const generativeFallbacks = installed.filter(
+		(model) =>
+			typeof model.id === "string" &&
+			model.id.length > 0 &&
+			!isEmbeddingModelId(model.id),
+	);
+	const fallbackBest = pickLargestInstalledModel(generativeFallbacks);
+	if (!fallbackBest) return {};
 	return {
-		TEXT_SMALL: best.id,
-		TEXT_LARGE: best.id,
-		TEXT_TO_SPEECH: best.id,
-		TRANSCRIPTION: best.id,
-		IMAGE_DESCRIPTION: best.id,
+		TEXT_SMALL: fallbackBest.id,
+		TEXT_LARGE: fallbackBest.id,
 	};
 }
 
@@ -137,7 +160,7 @@ export async function setAssignment(
  * embedding-family marker (`nomic-embed`, `bge`, `all-minilm`, `gte`,
  * `e5-`). External GGUFs without a catalog entry default to generative.
  */
-function isEmbeddingModelId(modelId: string): boolean {
+export function isEmbeddingModelId(modelId: string): boolean {
 	const catalog = findCatalogModel(modelId);
 	if (catalog) {
 		if ((catalog.category as string) === "embedding") return true;
@@ -182,7 +205,6 @@ export async function ensureDefaultAssignment(
 		if (!next.TEXT_LARGE) next.TEXT_LARGE = modelId;
 		if (!next.TEXT_TO_SPEECH) next.TEXT_TO_SPEECH = modelId;
 		if (!next.TRANSCRIPTION) next.TRANSCRIPTION = modelId;
-		if (!next.IMAGE_DESCRIPTION) next.IMAGE_DESCRIPTION = modelId;
 	}
 
 	// Cheap shortcut: skip the rewrite when nothing changed.
@@ -191,8 +213,7 @@ export async function ensureDefaultAssignment(
 		next.TEXT_LARGE === current.TEXT_LARGE &&
 		next.TEXT_EMBEDDING === current.TEXT_EMBEDDING &&
 		next.TEXT_TO_SPEECH === current.TEXT_TO_SPEECH &&
-		next.TRANSCRIPTION === current.TRANSCRIPTION &&
-		next.IMAGE_DESCRIPTION === current.IMAGE_DESCRIPTION
+		next.TRANSCRIPTION === current.TRANSCRIPTION
 	) {
 		return current;
 	}

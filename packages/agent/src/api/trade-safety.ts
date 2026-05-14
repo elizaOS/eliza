@@ -3,6 +3,10 @@
  * Extracted so they can be unit-tested without pulling in the full server.
  */
 
+export type { TradePermissionMode } from "@elizaos/shared";
+
+import type { TradePermissionMode } from "@elizaos/shared";
+
 /** Maximum number of autonomous agent trades allowed per calendar day. */
 export const AGENT_AUTO_MAX_DAILY_TRADES = 25;
 
@@ -38,12 +42,6 @@ export function recordAgentAutoTrade(log?: (msg: string) => void): boolean {
   );
   return true;
 }
-
-export type TradePermissionMode =
-  | "user-sign-only"
-  | "agent-auto"
-  | "manual-local-key"
-  | "disabled";
 
 type LocalTradeExecutionOptions = {
   consumeAgentQuota?: boolean;

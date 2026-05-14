@@ -246,8 +246,7 @@ const APP_OWNER_NAME_MAX_LENGTH = 60;
 
 /** Resolve the app owner's display name from config, or fall back to "User". */
 export function resolveAppUserName(config: ElizaConfig): string {
-  const ownerName = (config.ui as Record<string, unknown> | undefined)
-    ?.ownerName as string | undefined;
+  const ownerName = config.ui?.ownerName;
   const normalized = ownerName?.trim().slice(0, APP_OWNER_NAME_MAX_LENGTH);
   return normalized || "User";
 }

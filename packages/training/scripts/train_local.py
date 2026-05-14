@@ -201,8 +201,43 @@ def build_dataset(
             text = tokenizer.apply_chat_template(**kwargs)
         return {"text": text}
 
-    ds = Dataset.from_list(formatted)
-    ds = ds.map(render, remove_columns=list(ds.column_names))
+    # pyarrow requires homogeneous column types across all rows. The smoke
+    # corpus mixes records with nested message shapes (Vercel-AI-SDK tool-call
+    # blocks vs OpenAI/ChatML tool_calls vs plain string content) which trips
+    # "cannot mix list and non-list, non-null values" in Dataset.from_list.
+    # Surfaced 2026-05-14 in the smoke v2 H200 run — 4/4 SFT tiers crashed
+    # immediately after `formatted train 314/314 records` with this error.
+    # Fix: pre-render to {"text": str} so the only column is a string column;
+    # arrow has no trouble with that. The render() call also surfaces rows
+    # whose content shape Qwen's chat template can't apply (e.g. assistant
+    # content as a list of tool-call blocks instead of string + tool_calls
+    # field) — we log + skip those rather than fail the whole split, since
+    # format_record's translation layer is the real long-term fix.
+    pre_rendered: list[dict[str, str]] = []
+    template_skipped: dict[str, int] = {}
+    for row in formatted:
+        try:
+            pre_rendered.append(render(row))
+        except Exception as e:  # noqa: BLE001
+            key = type(e).__name__
+            template_skipped[key] = template_skipped.get(key, 0) + 1
+    if template_skipped:
+        log.warning(
+            "render-time skips on %s split: %d row(s) dropped (%s); accepted=%d/%d",
+            split_name,
+            sum(template_skipped.values()),
+            ", ".join(f"{k}={v}" for k, v in sorted(template_skipped.items())),
+            len(pre_rendered),
+            len(formatted),
+        )
+    if not pre_rendered:
+        raise ValueError(
+            f"{split_name} split had {len(formatted)} format_record-valid rows "
+            "but every row failed apply_chat_template — the corpus uses a "
+            "content shape the active chat template can't render. Inspect "
+            "format_for_training.format_record translation of tool_call blocks."
+        )
+    ds = Dataset.from_list(pre_rendered)
     if max_chars:
         before = len(ds)
         ds = ds.filter(lambda ex: len(ex["text"]) <= max_chars)

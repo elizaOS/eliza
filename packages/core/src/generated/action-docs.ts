@@ -3866,6 +3866,29 @@ export const allActionsSpec = {
 					},
 					descriptionCompressed: "Scroll tick count.",
 				},
+				{
+					name: "displayId",
+					description:
+						"Display the coordinate is local to. Required for any coordinate-bearing action on multi-monitor hosts. See the `computerState` provider for the live `displays[]` list.",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed:
+						"Display the coordinate is local to. Required for any coordinate-bearing action on multi-monitor hosts. See the `computerState` provider for the live...",
+				},
+				{
+					name: "coordSource",
+					description:
+						"Coordinate space of the coordinate fields: 'logical' (default; matches display.bounds) or 'backing' (raw retina pixels — macOS only).",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["logical", "backing"],
+					},
+					descriptionCompressed:
+						"Coordinate space of the coordinate fields: 'logical' (default. matches display. bounds) or 'backing' (raw retina pixels - macOS only).",
+				},
 			],
 			descriptionCompressed:
 				"Canonical cross-platform desktop control: screenshot/click/modified click/double/right/move/type/key/key_combo/scroll/drag/detect_elements/ocr.",
@@ -3904,6 +3927,55 @@ export const allActionsSpec = {
 							clicks: 1,
 							scrollDirection: "up",
 							scrollAmount: 3,
+							displayId: 1,
+							coordSource: "logical",
+						},
+					},
+				},
+			],
+		},
+		{
+			name: "COMPUTER_USE_AGENT",
+			description:
+				'computer_use_agent:\n  purpose: High-level autonomous desktop agent — given a goal, run Brain/Cascade/Dispatch loop until the goal is reached or maxSteps is exhausted. Uses the WS6 scene-builder, WS7 Brain+Actor cascade, and WS5 multi-monitor coords.\n  guidance: Prefer COMPUTER_USE for single explicit actions you can already name. Use COMPUTER_USE_AGENT when the user gives a goal ("click the save button", "open VS Code") and you want the system to plan and click for you.',
+			parameters: [
+				{
+					name: "goal",
+					description:
+						"Natural-language goal, e.g. 'click the save button in the dialog'.",
+					required: true,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Natural-language goal, e. g. 'click the save button in the dialog'.",
+				},
+				{
+					name: "maxSteps",
+					description:
+						"Maximum Brain→dispatch cycles before giving up (default 5).",
+					required: false,
+					schema: {
+						type: "number",
+						default: 5,
+						minimum: 1,
+						maximum: 20,
+					},
+					descriptionCompressed:
+						"max Brain→dispatch cycles before giving up (default 5).",
+				},
+			],
+			descriptionCompressed:
+				"Autonomous desktop loop: scene → Brain → cascade → click. Pass {goal, maxSteps?}.",
+			similes: ["AUTOMATE_SCREEN", "RUN_COMPUTER_AGENT", "SCREEN_AGENT"],
+			exampleCalls: [
+				{
+					user: "Use COMPUTER_USE_AGENT with the provided parameters.",
+					actions: ["COMPUTER_USE_AGENT"],
+					params: {
+						COMPUTER_USE_AGENT: {
+							goal: "example",
+							maxSteps: 5,
 						},
 					},
 				},
@@ -5705,6 +5777,125 @@ export const allActionsSpec = {
 							action: "start",
 							question: "example",
 							context: "example",
+						},
+					},
+				},
+			],
+		},
+		{
+			name: "OSWORLD",
+			description:
+				"OSWorld desktop-control router. Bridges OSWorld pyautogui semantics (click, type, key, scroll, drag, screenshot, wait, done, fail) into a structured eliza action.",
+			parameters: [
+				{
+					name: "action",
+					description: "OSWorld desktop operation to execute.",
+					required: true,
+					schema: {
+						type: "string",
+						enum: [
+							"click",
+							"double_click",
+							"right_click",
+							"type",
+							"key",
+							"scroll",
+							"drag",
+							"screenshot",
+							"wait",
+							"done",
+							"fail",
+						],
+					},
+					descriptionCompressed: "OSWorld desktop operation to execute.",
+				},
+				{
+					name: "x",
+					description: "Pointer x coordinate in screen pixels.",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed: "Pointer x coordinate in screen pixels.",
+				},
+				{
+					name: "y",
+					description: "Pointer y coordinate in screen pixels.",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed: "Pointer y coordinate in screen pixels.",
+				},
+				{
+					name: "text",
+					description:
+						"For type — the literal text to type into the focused element.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"For type - the literal text to type into the focused element.",
+				},
+				{
+					name: "key",
+					description:
+						"For key — the key or chord to press (e.g. 'enter', 'ctrl+s').",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"For key - the key or chord to press (e. g. 'enter', 'ctrl+s').",
+				},
+				{
+					name: "direction",
+					description: "For scroll/drag — direction of motion.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["up", "down", "left", "right"],
+					},
+					descriptionCompressed: "For scroll/drag - direction of motion.",
+				},
+				{
+					name: "amount",
+					description:
+						"For scroll/drag — magnitude of motion in steps or pixels.",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed:
+						"For scroll/drag - magnitude of motion in steps or pixels.",
+				},
+			],
+			descriptionCompressed:
+				"OSWorld ops: click, double_click, right_click, type, key, scroll, drag, screenshot, wait, done, fail.",
+			similes: [
+				"OSWORLD_CLICK",
+				"OSWORLD_TYPE",
+				"OSWORLD_PRESS",
+				"OSWORLD_SCREENSHOT",
+				"COMPUTER_USE",
+				"COMPUTER_USE_CLICK",
+				"COMPUTER_USE_TYPE",
+				"PYAUTOGUI",
+			],
+			exampleCalls: [
+				{
+					user: "Use OSWORLD with the provided parameters.",
+					actions: ["OSWORLD"],
+					params: {
+						OSWORLD: {
+							action: "click",
+							x: 1,
+							y: 1,
+							text: "example",
+							key: "example",
+							direction: "up",
+							amount: 1,
 						},
 					},
 				},
@@ -8046,6 +8237,62 @@ export const allActionsSpec = {
 			],
 		},
 		{
+			name: "TAU_BENCH_TOOL",
+			description:
+				"tau-bench pass-through tool router. Tools are dynamic per task (retail/airline domains); set tool_name to the desired tool and arguments to its JSON payload.",
+			parameters: [
+				{
+					name: "tool_name",
+					description:
+						"Name of the tau-bench tool to invoke (e.g. get_order_details, search_flights, cancel_order).",
+					required: true,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Name of the tau-bench tool to invoke (e. g. get_order_details, search_flights, cancel_order).",
+				},
+				{
+					name: "arguments",
+					description: "JSON object with the tool's argument payload.",
+					required: false,
+					schema: {
+						type: "object",
+					},
+					descriptionCompressed:
+						"JSON object with the tool's argument payload.",
+				},
+			],
+			descriptionCompressed:
+				"tau-bench dynamic tool call: { tool_name, arguments } passed straight to the bench harness.",
+			similes: [
+				"TAU_BENCH",
+				"TAU_RETAIL",
+				"TAU_AIRLINE",
+				"GET_ORDER_DETAILS",
+				"GET_ORDER_STATUS",
+				"SEARCH_FLIGHTS",
+				"BOOK_FLIGHT",
+				"GET_USER_DETAILS",
+				"UPDATE_ORDER_ADDRESS",
+				"CANCEL_ORDER",
+				"RETURN_ITEMS",
+				"EXCHANGE_ITEMS",
+			],
+			exampleCalls: [
+				{
+					user: "Use TAU_BENCH_TOOL with the provided parameters.",
+					actions: ["TAU_BENCH_TOOL"],
+					params: {
+						TAU_BENCH_TOOL: {
+							tool_name: "example",
+							arguments: "example",
+						},
+					},
+				},
+			],
+		},
+		{
 			name: "TODO",
 			description:
 				"Manage the user's todo list. Actions: write (replace the list with `todos:[{id?, content, status, activeForm?}]`), create (add one), update (change by id), complete, cancel, delete, list, clear. Todos are user-scoped (entityId), persistent, and shared across rooms for the same user.",
@@ -8336,6 +8583,206 @@ export const allActionsSpec = {
 			],
 		},
 		{
+			name: "VENDING_MACHINE",
+			description:
+				"Vending-bench tool router. action selects the operation against the vending environment.",
+			parameters: [
+				{
+					name: "action",
+					description: "Vending-bench operation to execute.",
+					required: true,
+					schema: {
+						type: "string",
+						enum: [
+							"view_state",
+							"view_suppliers",
+							"place_order",
+							"restock_slot",
+							"set_price",
+							"collect_cash",
+							"update_notes",
+							"check_deliveries",
+							"advance_day",
+						],
+					},
+					descriptionCompressed: "Vending-bench operation to execute.",
+				},
+				{
+					name: "slot_id",
+					description: "Slot identifier within the vending machine grid.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Slot id within the vending machine grid.",
+				},
+				{
+					name: "product_id",
+					description: "Catalogue product identifier (SKU).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Catalogue product id (SKU).",
+				},
+				{
+					name: "supplier_id",
+					description:
+						"Identifier for the supplier when placing or inspecting orders.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"id for the supplier when placing or inspecting orders.",
+				},
+				{
+					name: "price",
+					description: "Unit price (in machine-local currency units).",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed:
+						"Unit price (in machine-local currency units).",
+				},
+				{
+					name: "quantity",
+					description: "Quantity to order, restock, or collect.",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed: "Quantity to order, restock, or collect.",
+				},
+				{
+					name: "notes",
+					description: "Free-form note text attached to the operation.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Free-form note text attached to the operation.",
+				},
+			],
+			descriptionCompressed:
+				"Vending-machine ops: view_state, place_order, restock, set_price, collect_cash, …",
+			similes: [
+				"VENDING_MACHINE_VIEW_BUSINESS_STATE",
+				"VIEW_BUSINESS_STATE",
+				"VIEW_STATE",
+				"VIEW_SUPPLIERS",
+				"PLACE_ORDER",
+				"RESTOCK_SLOT",
+				"SET_PRICE",
+				"COLLECT_CASH",
+				"UPDATE_NOTES",
+				"CHECK_DELIVERIES",
+				"ADVANCE_DAY",
+			],
+			exampleCalls: [
+				{
+					user: "Use VENDING_MACHINE with the provided parameters.",
+					actions: ["VENDING_MACHINE"],
+					params: {
+						VENDING_MACHINE: {
+							action: "view_state",
+							slot_id: "example",
+							product_id: "example",
+							supplier_id: "example",
+							price: 1,
+							quantity: 1,
+							notes: "example",
+						},
+					},
+				},
+			],
+		},
+		{
+			name: "VISUALWEBBENCH_TASK",
+			description:
+				"VisualWebBench task router. action selects the sub-task (web_caption, webqa, heading_ocr, element_ocr, element_ground, action_prediction, action_ground).",
+			parameters: [
+				{
+					name: "action",
+					description: "VisualWebBench sub-task to execute.",
+					required: true,
+					schema: {
+						type: "string",
+						enum: [
+							"web_caption",
+							"webqa",
+							"heading_ocr",
+							"element_ocr",
+							"element_ground",
+							"action_prediction",
+							"action_ground",
+						],
+					},
+					descriptionCompressed: "VisualWebBench sub-task to execute.",
+				},
+				{
+					name: "answer_text",
+					description: "Free-text answer for caption / QA / OCR tasks.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Free-text answer for caption/QA/OCR tasks.",
+				},
+				{
+					name: "choice_index",
+					description:
+						"Selected choice index (0-based) for multiple-choice tasks.",
+					required: false,
+					schema: {
+						type: "integer",
+					},
+					descriptionCompressed:
+						"Selected choice index (0-based) for multiple-choice tasks.",
+				},
+				{
+					name: "bbox",
+					description:
+						"Bounding box [x1, y1, x2, y2] in pixels for grounding tasks.",
+					required: false,
+					schema: {
+						type: "array",
+						items: {
+							type: "number",
+						},
+					},
+					descriptionCompressed:
+						"Bounding box [x1, y1, x2, y2] in pixels for grounding tasks.",
+				},
+			],
+			descriptionCompressed:
+				"VisualWebBench tasks: web_caption, webqa, heading/element_ocr, element_ground, action_prediction, action_ground.",
+			similes: [
+				"VISUALWEBBENCH",
+				"WEB_CAPTION",
+				"WEBQA",
+				"ELEMENT_GROUND",
+				"ACTION_PREDICTION",
+				"ACTION_GROUND",
+			],
+			exampleCalls: [
+				{
+					user: "Use VISUALWEBBENCH_TASK with the provided parameters.",
+					actions: ["VISUALWEBBENCH_TASK"],
+					params: {
+						VISUALWEBBENCH_TASK: {
+							action: "web_caption",
+							answer_text: "example",
+							choice_index: "example",
+							bbox: "example",
+						},
+					},
+				},
+			],
+		},
+		{
 			name: "VOICE_CALL",
 			description:
 				"Owner-only. Place an outbound voice call via a registered provider. Action: `dial` with recipientKind=owner|external|e164. Current dispatch provider is Twilio; Android/app-phone is implementation-only until wired as a VOICE_CALL provider. Owner uses the env-configured owner number + standing escalation policy; external resolves a contact name via relationships then checks the allow-list; e164 dials a raw phone number. All paths draft first, require confirmed:true to dispatch, and use the approval queue.",
@@ -8439,6 +8886,94 @@ export const allActionsSpec = {
 							bodyText: "example",
 							confirmed: false,
 							reason: "example",
+						},
+					},
+				},
+			],
+		},
+		{
+			name: "WEBSHOP",
+			description:
+				"WebShop benchmark router. Mirrors the WebShop environment shape: search[query], click[ID], select_option[name,value], back, and buy.",
+			parameters: [
+				{
+					name: "action",
+					description: "WebShop operation to execute.",
+					required: true,
+					schema: {
+						type: "string",
+						enum: ["search", "click", "select_option", "back", "buy"],
+					},
+					descriptionCompressed: "WebShop operation to execute.",
+				},
+				{
+					name: "query",
+					description:
+						"For search — the free-text query string used as search[query].",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"For search - the free-text query string used as search[query].",
+				},
+				{
+					name: "product_id",
+					description:
+						"For click — the product or element identifier used as click[ID].",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"For click - the product or element id used as click[ID].",
+				},
+				{
+					name: "option_name",
+					description:
+						"For select_option — the option name used as select_option[name,value].",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"For select_option - the option name used as select_option[name, value].",
+				},
+				{
+					name: "option_value",
+					description:
+						"For select_option — the option value used as select_option[name,value].",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"For select_option - the option value used as select_option[name, value].",
+				},
+			],
+			descriptionCompressed:
+				"WebShop ops: search, click, select_option, back, buy.",
+			similes: [
+				"WEBSHOP_SEARCH",
+				"WEBSHOP_CLICK",
+				"WEBSHOP_SELECT_OPTION",
+				"WEBSHOP_BACK",
+				"WEBSHOP_BUY",
+				"SHOP",
+				"SHOPPING",
+				"NAVIGATE_SHOP",
+			],
+			exampleCalls: [
+				{
+					user: "Use WEBSHOP with the provided parameters.",
+					actions: ["WEBSHOP"],
+					params: {
+						WEBSHOP: {
+							action: "search",
+							query: "example",
+							product_id: "example",
+							option_name: "example",
+							option_value: "example",
 						},
 					},
 				},

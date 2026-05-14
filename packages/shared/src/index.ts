@@ -11,6 +11,7 @@ export * from "./api/route-helpers.js";
 export * from "./app-hero-art.js";
 // Awareness + themes barrels
 export * from "./awareness/index.js";
+export * from "./cli/parse-duration.js";
 // Re-export moved app-core modules so consumers can import the package barrel.
 export * from "./config/allowed-hosts.js";
 export * from "./config/api-key-prefix-hints.js";

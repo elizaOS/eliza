@@ -134,13 +134,13 @@ function scheduleCloudApiKeyResave(apiKey: string): void {
 function resolveCloudApiKeyForOnboarding(
   config: Record<string, unknown>,
 ): string | undefined {
-  if (!config.cloud) {
+  if (!config.cloud || typeof config.cloud !== "object") {
     config.cloud = {};
   }
   const cloudSlot = config.cloud as Record<string, unknown>;
 
-  const fromConfig = cloudSlot.apiKey as string | undefined;
-  if (fromConfig) return fromConfig;
+  const fromConfig = cloudSlot.apiKey;
+  if (fromConfig) return String(fromConfig);
 
   const fromSealedSecret = getCloudSecret("ELIZAOS_CLOUD_API_KEY") ?? undefined;
   if (fromSealedSecret) {

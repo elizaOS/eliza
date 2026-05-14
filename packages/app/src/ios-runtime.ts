@@ -13,6 +13,7 @@ export interface IosRuntimeConfig {
   apiBase?: string;
   apiToken?: string;
   cloudApiBase: string;
+  /** Android-only WebSocket bridge URL. iOS bootstrap ignores this value. */
   deviceBridgeUrl?: string;
   deviceBridgeToken?: string;
   tunnelRelayUrl?: string;

@@ -11,8 +11,14 @@
  *   - When a producer stalls past the time budget without punctuation, the
  *     in-flight phrase is force-flushed by the watchdog timer.
  */
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import { PhraseChunkedTts, speakStreamingText } from "./phrase-chunked-tts";
+
+// PhraseChunker is loaded lazily from @elizaos/plugin-local-inference/services
+// to avoid a static boundary violation. Pre-warm it before the first test.
+beforeAll(async () => {
+  await PhraseChunkedTts.load();
+});
 
 interface TtsCall {
   text: string;

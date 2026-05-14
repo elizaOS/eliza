@@ -108,10 +108,21 @@ export {
   validateMcpServerConfig,
 };
 
-import {
-  handleLocalInferenceCompatRoutes,
-  handleLocalInferenceTtsRoute,
-} from "@elizaos/plugin-local-inference";
+// Lazy reference to @elizaos/plugin-local-inference/routes — avoids a static
+// boundary violation. The module is memoized by the JS engine after the first
+// await so per-request cost is a single Map lookup after warm-up.
+let _localInferenceRoutes:
+  | typeof import("@elizaos/plugin-local-inference/routes")
+  | undefined;
+async function getLocalInferenceRoutes() {
+  if (!_localInferenceRoutes) {
+    _localInferenceRoutes = await import(
+      "@elizaos/plugin-local-inference/routes"
+    );
+  }
+  return _localInferenceRoutes;
+}
+
 import {
   ensureRuntimeSqlCompatibility,
   executeRawSql,
@@ -153,6 +164,13 @@ const lazyEnsureTTS = () =>
   import("../runtime/ensure-text-to-speech-handler.js").then(
     (m) => m.ensureTextToSpeechHandler,
   );
+
+const _LOCAL_TTS_PROVIDER_IDS = [
+  "eliza-local-inference",
+  "capacitor-llama",
+  "eliza-device-bridge",
+  "eliza-aosp-llama",
+] as const;
 
 import { clearCloudSecrets, getCloudSecret } from "@elizaos/shared";
 import { getStartupEmbeddingAugmentation } from "../runtime/startup-overlay.js";
@@ -653,9 +671,14 @@ async function handleCompatRoute(
   // iOS/Android. Bearer-authed via the device secret; not part of the
   // cookie session pipeline.
   if (await handleInternalWakeRoute(req, res, state)) return true;
-  // Computer-use compat routes — extracted to plugin-computeruse via Plugin.routes (rawPath).
-  if (await handleLocalInferenceCompatRoutes(req, res, state)) return true;
-  if (await handleLocalInferenceTtsRoute(req, res, state)) return true;
+  // Local-inference compat routes — loaded via lazy getter to avoid a static
+  // boundary violation (app-core must not statically import plugin packages).
+  {
+    const { handleLocalInferenceCompatRoutes, handleLocalInferenceTtsRoute } =
+      await getLocalInferenceRoutes();
+    if (await handleLocalInferenceCompatRoutes(req, res, state)) return true;
+    if (await handleLocalInferenceTtsRoute(req, res, state)) return true;
+  }
   if (await handleAutomationsCompatRoutes(req, res, state)) return true;
 
   // workflow routes — extracted to plugins/plugin-workflow/src/plugin-routes.ts.
@@ -1024,7 +1047,7 @@ export function patchHttpCreateServerForCompat(): () => void {
     // HTTP server created through this patched factory. Safe to call on
     // every server — `attachToHttpServer` is idempotent and only installs
     // the upgrade listener once. Imported dynamically to avoid static boundary violation.
-    void import("@elizaos/plugin-local-inference")
+    void import("@elizaos/plugin-local-inference/services")
       .then(({ deviceBridge }) => deviceBridge.attachToHttpServer(created))
       .catch((err: unknown) => {
         logger.warn(

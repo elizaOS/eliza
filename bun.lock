@@ -30,6 +30,7 @@
         "class-variance-authority": "^0.7.1",
         "clsx": "^2.1.1",
         "elysia": "^1.4.21",
+        "hono": "^4.12.18",
         "node-edge-tts": "^1.2.9",
         "tailwind-merge": "^3.0.0",
         "zod": "^4.4.3",
@@ -894,22 +895,6 @@
     "packages/examples/form": {
       "name": "@elizaos/example-form",
       "version": "2.0.0-beta.0",
-      "dependencies": {
-        "@elizaos/core": "workspace:*",
-        "@elizaos/plugin-anthropic": "workspace:*",
-        "@elizaos/plugin-google-genai": "workspace:*",
-        "@elizaos/plugin-groq": "workspace:*",
-        "@elizaos/plugin-openai": "workspace:*",
-        "@elizaos/plugin-sql": "workspace:*",
-        "@elizaos/plugin-xai": "workspace:*",
-        "dotenv": "^17.0.0",
-        "uuid": "^14.0.0",
-      },
-      "devDependencies": {
-        "@types/node": "^25.0.3",
-        "@types/uuid": "^11.0.0",
-        "typescript": "^6.0.3",
-      },
     },
     "packages/examples/game-of-life": {
       "name": "@elizaos/example-game-of-life",
@@ -1216,6 +1201,8 @@
       "name": "eliza-app",
       "version": "2.0.0-beta.2",
       "dependencies": {
+        "@fontsource-variable/geist": "^5.2.8",
+        "@fontsource-variable/geist-mono": "^5.2.7",
         "@radix-ui/react-dropdown-menu": "^2.1.16",
         "@radix-ui/react-slot": "^1.2.4",
         "@react-spring/three": "^10.0.3",
@@ -1722,7 +1709,6 @@
         "@capacitor/haptics": "8.0.2",
         "@capacitor/keyboard": "8.0.3",
         "@capacitor/preferences": "^8.0.1",
-        "@storybook/react": "^10.3.5",
         "@testing-library/dom": "^10.4.0",
         "@testing-library/react": "^16.3.2",
         "@types/react": "^19.0.0",
@@ -1730,7 +1716,6 @@
         "@types/three": "^0.184.0",
         "@types/ws": "^8.18.1",
         "jsdom": "^29.0.0",
-        "storybook": "^10.3.5",
         "typescript": "^6.0.3",
         "vite": "^8.0.8",
         "vitest": "^4.0.18",
@@ -3781,6 +3766,7 @@
     "@elizaos/agent": "workspace:*",
     "@elizaos/app-core": "workspace:*",
     "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-solana": "2.0.0-alpha.3",
     "@elizaos/shared": "workspace:*",
     "@elizaos/ui": "workspace:*",
     "@farcaster/quick-auth": "0.0.8",
@@ -4610,6 +4596,10 @@
     "@floating-ui/react-dom": ["@floating-ui/react-dom@2.1.8", "", { "dependencies": { "@floating-ui/dom": "^1.7.6" }, "peerDependencies": { "react": ">=16.8.0", "react-dom": ">=16.8.0" } }, "sha512-cC52bHwM/n/CxS87FH0yWdngEZrjdtLW/qVruo68qg+prK7ZQ4YGdut2GyDVpoGeAYe/h899rVeOVm6Oi40k2A=="],
 
     "@floating-ui/utils": ["@floating-ui/utils@0.2.11", "", {}, "sha512-RiB/yIh78pcIxl6lLMG0CgBXAZ2Y0eVHqMPYugu+9U0AeT6YBeiJpf7lbdJNIugFP5SIjwNRgo4DhR1Qxi26Gg=="],
+
+    "@fontsource-variable/geist": ["@fontsource-variable/geist@5.2.8", "", {}, "sha512-cJ6m9e+8MQ5dCYJsLylfZrgBh6KkG4bOLckB35Tr9J/EqdkEM6QllH5PxqP1dhTvFup+HtMRPuz9xOjxXJggxw=="],
+
+    "@fontsource-variable/geist-mono": ["@fontsource-variable/geist-mono@5.2.7", "", {}, "sha512-ZKlZ5sjtalb2TwXKs400mAGDlt/+2ENLNySPx0wTz3bP3mWARCsUW+rpxzZc7e05d2qGch70pItt3K4qttbIYA=="],
 
     "@gar/promise-retry": ["@gar/promise-retry@1.0.3", "", {}, "sha512-GmzA9ckNokPypTg10pgpeHNQe7ph+iIKKmhKu3Ob9ANkswreCx7R3cKmY781K8QK3AqVL3xVh9A42JvIAbkkSA=="],
 
