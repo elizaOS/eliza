@@ -174,10 +174,8 @@ export function renderNumberField(props: FieldRenderProps) {
 }
 
 function NumberFieldInner({ fp: props }: { fp: FieldRenderProps }) {
-  const minVal =
-    props.schema.minimum ?? props.hint.min;
-  const maxVal =
-    props.schema.maximum ?? props.hint.max;
+  const minVal = props.schema.minimum ?? props.hint.min;
+  const maxVal = props.schema.maximum ?? props.hint.max;
   const stepVal = props.hint.step ?? 1;
   const unit = props.hint.unit;
   const placeholder =
@@ -632,8 +630,7 @@ export function renderTextareaField(props: FieldRenderProps) {
 
 function TextareaFieldInner({ fp: props }: { fp: FieldRenderProps }) {
   const value = props.isSet ? String(props.value ?? "") : "";
-  const placeholder =
-    props.hint.placeholder ?? "Enter text...";
+  const placeholder = props.hint.placeholder ?? "Enter text...";
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const autoResize = useCallback(() => {
@@ -672,8 +669,7 @@ function TextareaFieldInner({ fp: props }: { fp: FieldRenderProps }) {
 /** Email input with type="email" browser validation. */
 export function renderEmailField(props: FieldRenderProps) {
   const value = props.isSet ? String(props.value ?? "") : "";
-  const placeholder =
-    props.hint.placeholder ?? "user@example.com";
+  const placeholder = props.hint.placeholder ?? "user@example.com";
 
   return (
     <input
@@ -1005,8 +1001,7 @@ function JsonFieldInner({ fp: props }: { fp: FieldRenderProps }) {
 /** Monospaced code editor textarea for templates and snippets. */
 export function renderCodeField(props: FieldRenderProps) {
   const value = props.isSet ? String(props.value ?? "") : "";
-  const placeholder =
-    props.hint.placeholder ?? "Enter code...";
+  const placeholder = props.hint.placeholder ?? "Enter code...";
 
   return (
     <textarea
@@ -1332,8 +1327,7 @@ export function renderDatetimeField(props: FieldRenderProps) {
 export function RenderFileField(props: FieldRenderProps) {
   const { t } = useApp();
   const value = props.isSet ? String(props.value ?? "") : "";
-  const placeholder =
-    props.hint.placeholder ?? "/path/to/file";
+  const placeholder = props.hint.placeholder ?? "/path/to/file";
 
   return (
     <div>

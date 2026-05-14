@@ -5,7 +5,6 @@ import type {
   ProviderResult,
   Room,
   State,
-  UUID,
 } from "@elizaos/core";
 import { logger, ModelType } from "@elizaos/core";
 import { getValidationKeywordTerms } from "@elizaos/shared";

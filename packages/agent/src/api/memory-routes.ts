@@ -14,8 +14,8 @@ import type { RouteRequestContext } from "@elizaos/shared";
 import {
   PatchMemoryRequestSchema,
   PostMemoryRememberRequestSchema,
+  parsePositiveInteger,
 } from "@elizaos/shared";
-import { parsePositiveInteger } from "@elizaos/shared";
 import {
   type DocumentsServiceResult,
   getDocumentsService,

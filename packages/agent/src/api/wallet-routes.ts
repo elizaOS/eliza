@@ -19,7 +19,6 @@ import type {
   WalletExportRejection as WalletExportRejectionLike,
   WalletExportRequestBody,
   WalletPrimaryMap,
-  WalletProviderKind,
   WalletSource,
 } from "@elizaos/shared";
 import {

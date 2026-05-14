@@ -10,7 +10,6 @@ import type { CloudRouteState } from "@elizaos/plugin-elizacloud";
 import type {
   AgentAutomationMode,
   AgentStartupDiagnostics,
-  ChatImageAttachment,
   ConversationMetadata,
   LogEntry,
   PluginParamDef,
@@ -86,8 +85,7 @@ export type ConnectorRouteHandler = (
   method: string,
 ) => Promise<boolean>;
 
-export type TradePermissionMode =
-  import("./trade-safety.ts").TradePermissionMode;
+export type { TradePermissionMode } from "@elizaos/shared";
 
 // ---------------------------------------------------------------------------
 // Plugin entry types (canonical definitions — re-exported by plugin-discovery-helpers)
