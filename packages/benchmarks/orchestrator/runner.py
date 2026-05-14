@@ -778,6 +778,95 @@ def _write_latest_result_snapshot(
     return snapshot_path
 
 
+def _build_latest_matrix_contract(
+    *,
+    latest_by_key: dict[tuple[str, str], dict[str, Any]],
+    quarantine_by_key: dict[tuple[str, str], dict[str, Any]],
+    adapters: dict[str, BenchmarkAdapter] | None,
+) -> dict[str, Any]:
+    if adapters is None:
+        return {
+            "status": "unknown",
+            "reason": "adapter discovery unavailable",
+            "harnesses": list(CANONICAL_REAL_HARNESSES),
+            "benchmarks": {},
+            "summary": {},
+        }
+
+    summary: dict[str, int] = {
+        "benchmarks": len(adapters),
+        "required_real_cells": 0,
+        "succeeded_required_real_cells": 0,
+        "missing_required_real_cells": 0,
+        "failed_required_real_cells": 0,
+        "unsupported_real_cells": 0,
+        "complete_benchmarks": 0,
+        "incomplete_benchmarks": 0,
+        "no_required_real_harness_benchmarks": 0,
+    }
+    benchmarks: dict[str, Any] = {}
+    for benchmark_id, adapter in sorted(adapters.items()):
+        supported = set(adapter.agent_compatibility)
+        required_count = 0
+        complete = True
+        cells: dict[str, dict[str, Any]] = {}
+        for harness in CANONICAL_REAL_HARNESSES:
+            if harness not in supported:
+                summary["unsupported_real_cells"] += 1
+                cells[harness] = {
+                    "required": False,
+                    "state": "unsupported",
+                    "status": "unsupported",
+                    "score": None,
+                    "run_id": None,
+                }
+                continue
+
+            required_count += 1
+            summary["required_real_cells"] += 1
+            row = latest_by_key.get((benchmark_id, harness))
+            quarantine_row = quarantine_by_key.get((benchmark_id, harness))
+            source = row or quarantine_row
+            if row and row.get("status") == "succeeded" and isinstance(row.get("score"), (int, float)):
+                state = "succeeded"
+                summary["succeeded_required_real_cells"] += 1
+            elif source is None:
+                state = "missing"
+                complete = False
+                summary["missing_required_real_cells"] += 1
+            else:
+                state = str(source.get("status") or "failed")
+                complete = False
+                summary["failed_required_real_cells"] += 1
+            cells[harness] = {
+                "required": True,
+                "state": state,
+                "status": source.get("status") if source else "missing",
+                "score": source.get("score") if source else None,
+                "run_id": source.get("run_id") if source else None,
+            }
+
+        if required_count == 0:
+            summary["no_required_real_harness_benchmarks"] += 1
+        if complete:
+            summary["complete_benchmarks"] += 1
+        else:
+            summary["incomplete_benchmarks"] += 1
+        benchmarks[benchmark_id] = {
+            "compatible_harnesses": list(adapter.agent_compatibility),
+            "complete": complete,
+            "cells": cells,
+        }
+
+    status = "complete" if summary["incomplete_benchmarks"] == 0 else "incomplete"
+    return {
+        "status": status,
+        "harnesses": list(CANONICAL_REAL_HARNESSES),
+        "summary": summary,
+        "benchmarks": benchmarks,
+    }
+
+
 def _rebuild_latest_result_snapshots(
     conn,
     output_root: Path,
@@ -826,7 +915,7 @@ def _rebuild_latest_result_snapshots(
     latest_by_comparison_signature: dict[tuple[str, str, str], tuple[dict[str, Any], str]] = {}
     quarantine_by_key: dict[tuple[str, str], dict[str, Any]] = {}
     valid_benchmark_ids = set(adapters) if adapters is not None else None
-    for row in list_runs(conn, limit=100000):
+    for row in list_runs(conn, limit=None):
         benchmark_id = str(row.get("benchmark_id") or "")
         agent = str(row.get("agent") or "")
         if row.get("status") in {"queued", "running", "skipped"}:
@@ -872,11 +961,17 @@ def _rebuild_latest_result_snapshots(
         quarantine_dir: set(),
         baselines_dir: set(),
     }
+    matrix_contract = _build_latest_matrix_contract(
+        latest_by_key=latest_by_key,
+        quarantine_by_key=quarantine_by_key,
+        adapters=adapters,
+    )
     index: dict[str, Any] = {
         "updated_at": _utc_now(),
         "latest": {},
         "latest_by_signature": {},
         "latest_by_comparison_signature": {},
+        "matrix_contract": matrix_contract,
     }
     for (benchmark_id, agent), row in sorted(latest_by_key.items()):
         metrics = row.get("metrics") or {}
@@ -1085,7 +1180,7 @@ def _repair_current_compatibility_statuses(
     """Mark stale succeeded rows incompatible when rules now exclude a harness."""
 
     repaired = 0
-    for row in list_runs(conn, limit=100000):
+    for row in list_runs(conn, limit=None):
         if row.get("status") == "skipped":
             continue
         benchmark_id = str(row.get("benchmark_id") or "")

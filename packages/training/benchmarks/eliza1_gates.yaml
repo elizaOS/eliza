@@ -19,7 +19,7 @@
 #
 # As of 2026-05-13 (wave2 T5 cleanup):
 #   - text_eval is flipped non-provisional for every tier. The eval suite reads
-#     a real held-out corpus from packages/training/datasets/eliza1-sft-0_6b/
+#     a real held-out corpus from packages/training/datasets/eliza1-sft-0_8b/
 #     test.jsonl (59 records, 8k chars); per-tier thresholds (0.55 → 0.66) are
 #     conservative against the existing decay calibration, and the orchestrator's
 #     new prior-bundle regression gate (5% tolerance by default) catches
@@ -176,7 +176,7 @@ dflash:
 # ---------------------------------------------------------------------------
 tiers:
   0_8b:
-    text_eval: { threshold: 0.55, required: true, provisional: false, calibration: "Calibrated against the dataset-derived held-out corpus (packages/training/datasets/eliza1-sft-0_6b/test.jsonl; 59 records, ~8k chars) read by eliza1_eval_suite.DEFAULT_TEXT_EVAL_CORPUS. The orchestrator's regression-vs-prior-bundle gate enforces the additional rule that this metric may not drop by more than --regression-tolerance below the previously published bundle." }
+    text_eval: { threshold: 0.55, required: true, provisional: false, calibration: "Calibrated against the dataset-derived held-out corpus (packages/training/datasets/eliza1-sft-0_8b/test.jsonl; 59 records, ~8k chars) read by eliza1_eval_suite.DEFAULT_TEXT_EVAL_CORPUS. The orchestrator's regression-vs-prior-bundle gate enforces the additional rule that this metric may not drop by more than --regression-tolerance below the previously published bundle." }
     voice_rtf: { threshold: 0.5, required: true, provisional: true }
     asr_wer: { threshold: 0.10, required: true, provisional: true }
     vad_latency_ms: { threshold: 20, required: true, provisional: false }
