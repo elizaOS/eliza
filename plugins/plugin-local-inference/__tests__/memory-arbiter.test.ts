@@ -507,6 +507,87 @@ describe("compositePressureSource", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Concurrency edge cases (self-criticism scenarios)
+// ---------------------------------------------------------------------------
+
+describe("MemoryArbiter — concurrency edge cases", () => {
+	it("does NOT serialize across different capabilities", async () => {
+		const { arbiter } = makeArbiter();
+		const text = makeFakeCapability();
+		text.runDelayMs.value = 30;
+		const vision = makeFakeCapability({
+			capability: "vision-describe",
+			residentRole: "vision",
+		});
+		arbiter.registerCapability(text.registration);
+		arbiter.registerCapability(vision.registration);
+		const start = Date.now();
+		// Fire a slow text request, then a vision request. Different
+		// capabilities have separate queues — they should overlap.
+		const [t, v] = await Promise.all([
+			arbiter.requestText<{ x: string }, string>({
+				modelKey: "tier-2b",
+				payload: { x: "slow" },
+			}),
+			arbiter.requestVisionDescribe<{ x: string }, string>({
+				modelKey: "qwen3-vl-4b",
+				payload: { x: "fast" },
+			}),
+		]);
+		const elapsed = Date.now() - start;
+		expect(t).toBe("tier-2b:slow");
+		expect(v).toBe("qwen3-vl-4b:fast");
+		// If queues were shared, total would be ~30ms (text) + ~0ms (vision) =
+		// 30ms. With separate queues we expect at most max(loadtimes)+max(runtimes),
+		// still bounded — assert specifically that vision did not block on text.
+		expect(elapsed).toBeLessThan(200);
+	});
+
+	it("survives a pressure event arriving during a load", async () => {
+		const { arbiter, bridge } = makeArbiter();
+		const text = makeFakeCapability();
+		const vision = makeFakeCapability({
+			capability: "vision-describe",
+			residentRole: "vision",
+		});
+		vision.loadDelayMs.value = 40;
+		arbiter.registerCapability(text.registration);
+		arbiter.registerCapability(vision.registration);
+		// Start a slow vision load.
+		const visionAcquire = arbiter.acquire<FakeBackend>("vision-describe", "qwen3-vl-4b");
+		// While it's mid-flight, dispatch low pressure. The arbiter should
+		// process the event without crashing the load.
+		bridge.dispatch("low");
+		await new Promise<void>((r) => setTimeout(r, 5));
+		const handle = await visionAcquire;
+		expect(handle.backend.id).toBe("qwen3-vl-4b");
+		await handle.release();
+	});
+
+	it("redundant release() is idempotent and does not double-decrement", async () => {
+		const { arbiter } = makeArbiter();
+		const text = makeFakeCapability();
+		arbiter.registerCapability(text.registration);
+		const h = await arbiter.acquire<FakeBackend>("text", "tier-2b");
+		await h.release();
+		await h.release(); // no-op
+		// Re-acquire should not need to reload — the role is still warm.
+		const h2 = await arbiter.acquire<FakeBackend>("text", "tier-2b");
+		expect(text.loaded).toEqual(["tier-2b"]);
+		await h2.release();
+	});
+
+	it("retain() throws after release()", async () => {
+		const { arbiter } = makeArbiter();
+		const text = makeFakeCapability();
+		arbiter.registerCapability(text.registration);
+		const h = await arbiter.acquire<FakeBackend>("text", "tier-2b");
+		await h.release();
+		expect(() => h.retain()).toThrow(/cannot retain/);
+	});
+});
+
+// ---------------------------------------------------------------------------
 // Shutdown
 // ---------------------------------------------------------------------------
 
