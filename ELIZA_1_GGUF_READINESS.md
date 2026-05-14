@@ -7,7 +7,7 @@ Important caveats:
 
 - Text, ASR, DFlash, and OmniVoice TTS payloads are GGUF artifacts. Kokoro TTS is the default and only required TTS backend for 0.8B/2B/4B, and is ONNX by design. 9B carries both Kokoro and OmniVoice; 27B-class tiers ship OmniVoice GGUF only.
 - VAD is a native GGML artifact at `vad/silero-vad-v5.1.2.ggml.bin`. It is not GGUF. Legacy bundles may additionally carry the ONNX fallback `vad/silero-vad-int8.onnx`, but the fallback is not the release readiness path.
-- Canonical active text tiers are Qwen3.5 0.8B (`0_8b`), Qwen3.5 2B (`2b`), Qwen3.5 4B (`4b`), Qwen3.5 9B (`9b`), and Qwen3.5 27B (`27b`, `27b-256k`, `27b-1m`). ASR and embedding are real Qwen3 upstream exceptions: use the published Qwen3-ASR 0.6B / 1.7B GGUF repos and Qwen3-Embedding 0.6B / 4B / 8B GGUF repos; do not invent Qwen3.5-ASR, Qwen3.5-Embedding, Qwen3-ASR-0.8B/2B, or Qwen3-Embedding-0.8B/2B repo IDs.
+- Canonical active text tiers are Qwen3.5 0.8B (`0_8b`), Qwen3.5 2B (`2b`), Qwen3.5 4B (`4b`), Qwen3.5 9B (`9b`), and Qwen3.6 27B-class (`27b`, `27b-256k`, `27b-1m`). ASR and embedding are real Qwen3 upstream exceptions: use the published Qwen3-ASR 0.6B / 1.7B GGUF repos and Qwen3-Embedding 0.6B / 4B / 8B GGUF repos; do not invent Qwen3.5-ASR, Qwen3.5-Embedding, Qwen3-ASR-0.8B/2B, or Qwen3-Embedding-0.8B/2B repo IDs.
 - v1 release shape (`releaseState=base-v1`): the upstream BASE models — GGUF-converted via the elizaOS/llama.cpp fork and fully Eliza-optimized (every quant/kernel trick in `packages/inference/AGENTS.md` §3) — but NOT fine-tuned. `evidence/release.json` records `finetuned=false` and a `sourceModels` map (which upstream HF repo each component comes from). For `base-v1`, `final.weights` need not be `true` (the bytes are the upstream base GGUFs by design) — but `final.{hashes,evals,licenses,kernelDispatchReports,platformEvidence,sizeFirstRepoIds}` must all be `true`, and the runnable-on-base evals (text perplexity vs the upstream GGUF, voice RTF, ASR WER, VAD latency/boundary/endpoint/false-barge-in, dflash acceptance, e2e loop, 30-turn) must pass — but NOT a fine-tuned-text-quality eval. Fine-tuning ships in v2 (`releaseState=finetuned-v2`).
 - Release evidence must use real final hashes, evals, licenses, platform reports, and Hugging Face upload records — and real GGUF/quant-sidecar bytes from a real fork build. Fabricated hashes / not-yet-built tiers are blockers.
 - No-larp release readiness requires canonical local bundle names, real `checksums/SHA256SUMS`, real license evidence, and `hf.status=uploaded` with `hf.uploadEvidence` commit/url/uploaded paths. `pending-upload` or blocked local evidence is not release-ready.
@@ -62,6 +62,7 @@ Publish-blocking status:
 - `evidence/release.json`: final.kernelDispatchReports is not true
 - `evidence/release.json`: final.platformEvidence is not true
 - `evidence/release.json`: final.sizeFirstRepoIds is not true
+- `evidence/release.json`: hf.repoId is not `elizaos/eliza-1`
 - `evidence/release.json`: hf.status is not `uploaded`; final Hugging Face payload upload is not proven
 - `evidence/release.json`: hf.uploadEvidence missing; final Hugging Face commit/url/uploaded paths are not proven
 - `evidence/release.json`: publishEligible is not true

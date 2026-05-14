@@ -939,6 +939,10 @@ function hasInboundBenchmarkSignal(message: Memory): boolean {
 function isBenchmarkForcingToolCall(message: Memory): boolean {
 	if (process.env.ELIZA_BENCH_FORCE_TOOL_CALL !== "1") return false;
 	if (!hasInboundBenchmarkSignal(message)) return false;
+	const contentMetadata = message.content?.metadata as
+		| Record<string, unknown>
+		| undefined;
+	if (contentMetadata?.forceBenchmarkToolCall === false) return false;
 	const benchmark = getInboundBenchmarkName(message);
 	return benchmark.length > 0 && ACTION_SCORED_BENCHMARKS.has(benchmark);
 }

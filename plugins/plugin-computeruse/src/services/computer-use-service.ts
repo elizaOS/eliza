@@ -1593,7 +1593,7 @@ export class ComputerUseService extends Service {
       ...scene.ax.filter((node) => matchesDisplay(node.displayId)).map((node) => ({
         id: node.id,
         source: "accessibility" as const,
-        label: node.label,
+        label: node.label ?? "",
         role: node.role,
         bbox: node.bbox,
         displayId: node.displayId,
