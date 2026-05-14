@@ -63,7 +63,7 @@ describe("collectPluginNames runtime mode provider policy", () => {
     expect(names.has("@elizaos/plugin-local-inference")).toBe(false);
     expect(names.has("@elizaos/plugin-openai")).toBe(false);
     expect(names.has("@elizaos/plugin-ollama")).toBe(false);
-    expect(names.has("@elizaos/plugin-local-ai")).toBe(false);
+    expect(names.has("@elizaos/plugin-local-inference")).toBe(false);
   });
 
   it("remote mode never falls back to cloud or local model providers", () => {
@@ -99,7 +99,7 @@ describe("collectPluginNames runtime mode provider policy", () => {
     expect(names.has("@elizaos/plugin-local-inference")).toBe(false);
     expect(names.has("@elizaos/plugin-openai")).toBe(false);
     expect(names.has("@elizaos/plugin-ollama")).toBe(false);
-    expect(names.has("@elizaos/plugin-local-ai")).toBe(false);
+    expect(names.has("@elizaos/plugin-local-inference")).toBe(false);
   });
 
   it("local-only mode keeps local providers and hides cloud providers", () => {
