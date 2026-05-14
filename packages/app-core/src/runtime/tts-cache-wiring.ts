@@ -34,10 +34,7 @@ function readEdgeTtsSetting(
   key: string,
   fallback?: string,
 ): string | undefined {
-  const envValue =
-    typeof process !== "undefined" && process?.env
-      ? process.env[key]
-      : undefined;
+  const envValue = process?.env ? process.env[key] : undefined;
   const getSetting =
     typeof (runtime as { getSetting?: (k: string) => unknown }).getSetting ===
     "function"

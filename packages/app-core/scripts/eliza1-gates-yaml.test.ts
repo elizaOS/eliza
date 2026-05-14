@@ -1,9 +1,8 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import { parse } from "yaml";
-import { ELIZA_1_TIERS } from "@elizaos/plugin-local-inference/services";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const GATES_YAML = path.resolve(
@@ -16,6 +15,13 @@ describe("eliza1_gates.yaml", () => {
     string,
     unknown
   >;
+
+  // Loaded lazily to avoid a static boundary violation from scripts/ into plugin packages.
+  let ELIZA_1_TIERS: readonly string[];
+  beforeAll(async () => {
+    const mod = await import("@elizaos/plugin-local-inference/services");
+    ELIZA_1_TIERS = mod.ELIZA_1_TIERS;
+  });
 
   it("parses and has a version + gates + tiers + dflash section", () => {
     expect(typeof doc.version).toBe("number");

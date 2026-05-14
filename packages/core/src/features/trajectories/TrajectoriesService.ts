@@ -246,7 +246,7 @@ function sanitizeTrajectoryJsonValue(
 	if (typeof value === "number") return Number.isFinite(value) ? value : null;
 	if (typeof value === "boolean") return value;
 	if (typeof value === "bigint") return value.toString();
-	if (typeof value === "undefined") return undefined;
+	if (value === undefined) return undefined;
 	if (typeof value === "function") {
 		const fnName = (value as { name?: string }).name;
 		return `[Function ${typeof fnName === "string" && fnName ? fnName : "anonymous"}]`;

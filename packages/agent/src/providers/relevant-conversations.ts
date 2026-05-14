@@ -5,7 +5,6 @@ import type {
   ProviderResult,
   Room,
   State,
-  UUID,
 } from "@elizaos/core";
 import { logger, ModelType } from "@elizaos/core";
 import { getValidationKeywordTerms } from "@elizaos/shared";
@@ -99,10 +98,10 @@ export const relevantConversationsProvider: Provider = {
       // Resolve room details
       const roomCache = new Map<string, Room | null>();
       for (const mem of filtered) {
-        const rid = mem.roomId as string;
+        const rid = mem.roomId;
         if (rid && !roomCache.has(rid)) {
           try {
-            roomCache.set(rid, await runtime.getRoom(rid as UUID));
+            roomCache.set(rid, await runtime.getRoom(rid));
           } catch {
             roomCache.set(rid, null);
           }
@@ -111,7 +110,7 @@ export const relevantConversationsProvider: Provider = {
 
       const lines: string[] = ["Relevant past conversations:"];
       for (const mem of filtered) {
-        const room = roomCache.get(mem.roomId as string) ?? null;
+        const room = roomCache.get(mem.roomId) ?? null;
         const tag = roomSourceTag(room);
         const ts = formatRelativeTimestamp(mem.createdAt);
         const speaker = formatSpeakerLabel(runtime, mem);

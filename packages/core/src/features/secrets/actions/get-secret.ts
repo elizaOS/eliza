@@ -42,7 +42,7 @@ function readParams(
 			? (params.level as SecretLevel)
 			: undefined;
 	const mask =
-		typeof params.mask === "boolean" ? (params.mask as boolean) : undefined;
+		typeof params.mask === "boolean" ? params.mask : undefined;
 	return { key, level, mask };
 }
 
@@ -77,9 +77,9 @@ export async function getSecretHandler(
 	const context: SecretContext = {
 		level,
 		agentId: runtime.agentId,
-		worldId: level === "world" ? (message.roomId as string) : undefined,
-		userId: level === "user" ? (message.entityId as string) : undefined,
-		requesterId: message.entityId as string,
+		worldId: level === "world" ? message.roomId : undefined,
+		userId: level === "user" ? message.entityId : undefined,
+		requesterId: message.entityId,
 	};
 
 	const value = await secretsService.get(key, context);

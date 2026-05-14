@@ -13,6 +13,7 @@ import {
   PostSkillCreateRequestSchema,
   PutMarketplaceConfigRequestSchema,
   PutSkillSourceRequestSchema,
+  parseClampedInteger,
 } from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.ts";
 import {
@@ -23,7 +24,6 @@ import {
 } from "../services/skill-marketplace.ts";
 import { resolveDefaultAgentWorkspaceDir } from "../shared/workspace-resolution.ts";
 import { skillScaffoldMarkdown } from "../templates/skill-scaffold.ts";
-import { parseClampedInteger } from "../utils/number-parsing.ts";
 
 // ---------------------------------------------------------------------------
 // Types shared with server.ts (kept lean to avoid circular deps)
