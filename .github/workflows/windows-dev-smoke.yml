@@ -58,11 +58,34 @@ jobs:
             /bunfig.toml
             /tsconfig.json
             /.github/actions/setup-bun-workspace/**
-            packages/
+            /packages/agent/**
+            /packages/app/**
+            /packages/app-core/**
+            /packages/benchmarks/**
+            /packages/browser-bridge/**
+            /packages/bun-ios-runtime/**
+            /packages/cloud-routing/**
+            /packages/core/**
+            /packages/docs/**
+            /packages/electrobun-carrots/**
+            /packages/elizaos/**
+            /packages/examples/**
+            /packages/homepage/**
+            /packages/ios-native-deps/**
+            /packages/native-plugins/**
+            /packages/prompts/**
+            /packages/registry/**
+            /packages/scenario-runner/**
+            /packages/scenario-schema/**
+            /packages/shared/**
+            /packages/skills/**
+            /packages/training/**
+            /packages/ui/**
+            /packages/vault/**
+            /packages/workflows/**
             patches/
             scripts/
             plugins/
-            !packages/os/linux/variants/**
           sparse-checkout-cone-mode: false
 
       - name: Setup Node.js
