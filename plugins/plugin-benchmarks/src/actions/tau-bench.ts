@@ -45,8 +45,7 @@ export const tauBenchToolAction: Action = {
   ],
   description:
     "tau-bench pass-through tool router. Tools are dynamic per task (retail/airline domains); set tool_name to the desired tool and arguments to its JSON payload.",
-  descriptionCompressed:
-    "tau-bench dynamic tool call {tool_name,arguments} passthrough",
+  descriptionCompressed: "tau-bench dynamic tool call {tool_name,arguments} passthrough",
 
   parameters: [
     {

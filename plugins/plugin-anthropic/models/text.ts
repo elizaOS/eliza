@@ -130,11 +130,11 @@ interface NativeGenerateTextResult {
   providerMetadata?: Record<string, unknown>;
 }
 
-const TEXT_NANO_MODEL_TYPE = (ModelType.TEXT_NANO) as ModelTypeName;
-const TEXT_MEDIUM_MODEL_TYPE = (ModelType.TEXT_MEDIUM) as ModelTypeName;
-const TEXT_MEGA_MODEL_TYPE = (ModelType.TEXT_MEGA) as ModelTypeName;
-const RESPONSE_HANDLER_MODEL_TYPE = (ModelType.RESPONSE_HANDLER) as ModelTypeName;
-const ACTION_PLANNER_MODEL_TYPE = (ModelType.ACTION_PLANNER) as ModelTypeName;
+const TEXT_NANO_MODEL_TYPE = ModelType.TEXT_NANO as ModelTypeName;
+const TEXT_MEDIUM_MODEL_TYPE = ModelType.TEXT_MEDIUM as ModelTypeName;
+const TEXT_MEGA_MODEL_TYPE = ModelType.TEXT_MEGA as ModelTypeName;
+const RESPONSE_HANDLER_MODEL_TYPE = ModelType.RESPONSE_HANDLER as ModelTypeName;
+const ACTION_PLANNER_MODEL_TYPE = ModelType.ACTION_PLANNER as ModelTypeName;
 type TextModelType =
   | typeof TEXT_NANO_MODEL_TYPE
   | typeof ModelType.TEXT_SMALL
@@ -1086,8 +1086,8 @@ export async function handleActionPlanner(
   );
 }
 
-const TEXT_REASONING_SMALL_MODEL_TYPE = (ModelType.TEXT_REASONING_SMALL) as ModelTypeName;
-const TEXT_REASONING_LARGE_MODEL_TYPE = (ModelType.TEXT_REASONING_LARGE) as ModelTypeName;
+const TEXT_REASONING_SMALL_MODEL_TYPE = ModelType.TEXT_REASONING_SMALL as ModelTypeName;
+const TEXT_REASONING_LARGE_MODEL_TYPE = ModelType.TEXT_REASONING_LARGE as ModelTypeName;
 
 export async function handleReasoningSmall(
   runtime: IAgentRuntime,

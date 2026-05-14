@@ -599,9 +599,9 @@ export class DiscordService extends Service implements IDiscordService {
 					}
 				}
 
-					const generalCommands = this.slashCommands.filter(
-						(cmd) => (cmd.guildIds?.length ?? 0) === 0,
-					);
+				const generalCommands = this.slashCommands.filter(
+					(cmd) => (cmd.guildIds?.length ?? 0) === 0,
+				);
 				const globalCommands = generalCommands.filter(
 					(cmd) => !isGuildOnlyCommand(cmd),
 				);
@@ -974,13 +974,13 @@ export class DiscordService extends Service implements IDiscordService {
 			get accountId() {
 				return accountId();
 			},
-				get client() {
-					return accountClient();
-				},
-				set client(value: DiscordJsClient) {
-					if (state) {
-						state.client = value;
-					}
+			get client() {
+				return accountClient();
+			},
+			set client(value: DiscordJsClient) {
+				if (state) {
+					state.client = value;
+				}
 				if (!state || state.accountId === parent.defaultAccountId) {
 					parent.client = value;
 				}
@@ -1149,11 +1149,13 @@ export class DiscordService extends Service implements IDiscordService {
 		state.voiceManager = new VoiceManager(facade, this.runtime);
 		state.messageManager = new MessageManager(facade, this.runtime);
 
-			const client = state.client;
-			if (!client) {
-				throw new Error(`Discord client is not available for account ${state.accountId}`);
-			}
-			state.clientReadyPromise = new Promise((resolve, reject) => {
+		const client = state.client;
+		if (!client) {
+			throw new Error(
+				`Discord client is not available for account ${state.accountId}`,
+			);
+		}
+		state.clientReadyPromise = new Promise((resolve, reject) => {
 			client.once(Events.ClientReady, async (readyClient) => {
 				try {
 					await this.onReadyForAccount(state.accountId, readyClient);
@@ -2537,11 +2539,11 @@ export class DiscordService extends Service implements IDiscordService {
 								runtime,
 								scopedFetchParams(params),
 							),
-							joinHandler: (runtime, params) =>
-								serviceInstance.joinConnectorChannel(
-									runtime,
-									scopedFetchParams(params),
-								),
+						joinHandler: (runtime, params) =>
+							serviceInstance.joinConnectorChannel(
+								runtime,
+								scopedFetchParams(params),
+							),
 						leaveHandler: (runtime, params) =>
 							serviceInstance.leaveConnectorChannel(
 								runtime,

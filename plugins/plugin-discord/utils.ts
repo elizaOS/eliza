@@ -595,8 +595,7 @@ export async function sendMessageInChunks(
 													component,
 												): component is
 													| ButtonBuilder
-													| StringSelectMenuBuilder =>
-													component !== null,
+													| StringSelectMenuBuilder => component !== null,
 											);
 
 										if (validComponents.length > 0) {
