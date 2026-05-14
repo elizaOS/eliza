@@ -3092,9 +3092,21 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 			);
 		}
 		const drafter = installed.find((m) => m.id === dflash.drafterModelId);
-		if (!drafter) {
-			throw new Error(
-				`[dflash] ${target.displayName} requires companion drafter ${dflash.drafterModelId}; install it first.`,
+		// DFlash is normally always-on (AGENTS.md §4), but staged bundles
+		// ("weights-staged.*") ship a drafter that is a byte-copy of the target
+		// — not a usable draft model — and some bundles ship no drafter at all.
+		// Rather than hard-fail and leave the tier unusable, fall back to the
+		// already-wired drafter-less path (the same `disableDrafter` mode
+		// `restartWithoutDrafter()` uses for memory eviction): the server runs
+		// target-only, no `-md`. Loud warning because this departs from the
+		// always-on DFlash contract.
+		const drafterUnavailable = !drafter;
+		if (drafterUnavailable) {
+			console.warn(
+				`[dflash] ⚠️  ${target.displayName}: companion drafter ` +
+					`'${dflash.drafterModelId}' is not installed — loading target-only ` +
+					`(speculative decoding OFF). Install a valid drafter to restore the ` +
+					`always-on DFlash path.`,
 			);
 		}
 
@@ -3117,12 +3129,23 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 		// `assertCacheTypeSupportedOnBackend` on whichever value it ends up with,
 		// and the `ELIZA_DFLASH_CACHE_TYPE_K/_V` env vars override even that.
 		const kvCache = catalog?.runtime?.kvCache;
-		const cacheTypeK =
-			typeof overrides?.cacheTypeK === "string"
+		// `ELIZA_LOCAL_ALLOW_STOCK_KV=1` (reduced-optimization local mode) means
+		// the binary may not advertise the custom KV-cache kernels (qjl1_256 /
+		// q4_polar). The backend coordinator strips per-load cacheType *overrides*,
+		// but the catalog's `runtime.kvCache.typeK/V` would still leak through here
+		// and trip `assertCacheTypeSupportedOnBackend` in start(). Drop the catalog
+		// custom KV types too so the server falls back to stock f16 KV.
+		const allowStockKv =
+			readBool("ELIZA_LOCAL_ALLOW_STOCK_KV") ||
+			readBool("MILADY_LOCAL_ALLOW_STOCK_KV");
+		const cacheTypeK = allowStockKv
+			? undefined
+			: typeof overrides?.cacheTypeK === "string"
 				? overrides.cacheTypeK
 				: kvCache?.typeK;
-		const cacheTypeV =
-			typeof overrides?.cacheTypeV === "string"
+		const cacheTypeV = allowStockKv
+			? undefined
+			: typeof overrides?.cacheTypeV === "string"
 				? overrides.cacheTypeV
 				: kvCache?.typeV;
 
@@ -3150,7 +3173,13 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 		await this.start(
 			{
 				targetModelPath: target.path,
-				drafterModelPath: drafter.path,
+				// Carried even when disabled so a later re-arm can restore it; not
+				// passed to llama-server (`-md`) while `disableDrafter` is true.
+				drafterModelPath: drafter?.path ?? target.path,
+				disableDrafter: drafterUnavailable,
+				disabledDrafterReason: drafterUnavailable
+					? `companion drafter '${dflash.drafterModelId}' is not installed`
+					: undefined,
 				contextSize,
 				draftContextSize: dflash.draftContextSize,
 				draftMin: dflash.draftMin,
