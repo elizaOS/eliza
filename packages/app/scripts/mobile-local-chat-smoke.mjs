@@ -327,7 +327,11 @@ function stageIosFullBunSmokeModel(udid, id) {
   }
 
   const dataContainer = iosAppDataContainer(udid, id);
-  const localInferenceRoot = path.join(dataContainer, ".eliza", "local-inference");
+  const localInferenceRoot = path.join(
+    dataContainer,
+    ".eliza",
+    "local-inference",
+  );
   const modelPath = path.join(
     localInferenceRoot,
     IOS_FULL_BUN_SMOKE_MODEL_RELATIVE_PATH,

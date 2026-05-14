@@ -201,9 +201,7 @@ describe("buildChatCompletionBody", () => {
 			false,
 		);
 		expect(body.eliza_span_samplers).toEqual({
-			overrides: [
-				{ span_index: 1, temperature: 0, top_k: 1, top_p: 0.95 },
-			],
+			overrides: [{ span_index: 1, temperature: 0, top_k: 1, top_p: 0.95 }],
 			strict: true,
 		});
 	});

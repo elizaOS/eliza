@@ -1,5 +1,5 @@
 import type http from "node:http";
-import { ModelType, type AgentRuntime } from "@elizaos/core";
+import { type AgentRuntime, ModelType } from "@elizaos/core";
 import {
 	type CompatRuntimeState,
 	ensureRouteAuthorized,

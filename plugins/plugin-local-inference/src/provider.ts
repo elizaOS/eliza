@@ -512,7 +512,10 @@ function createTranscriptionHandler() {
 		}
 		if (typeof service.transcribePcm === "function") {
 			const transcript = normalizeTranscript(
-				await service.transcribePcm(extractPcmTranscriptionParams(params), signal),
+				await service.transcribePcm(
+					extractPcmTranscriptionParams(params),
+					signal,
+				),
 			);
 			throwIfAborted(signal);
 			return transcript;

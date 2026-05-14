@@ -67,9 +67,9 @@ import {
 	prefillPlanRequestFields,
 	repairStructuredOutput,
 	resolveGuidedDecodeForParams,
-	spanSamplerPlanRequestFields,
 	type StructuredGenerateParams,
 	StructuredOutputRepairStream,
+	spanSamplerPlanRequestFields,
 } from "./structured-output";
 import type {
 	CatalogModel,
