@@ -96,6 +96,9 @@ export default computerUsePlugin;
 export { handleComputerUseRoutes } from "./routes/computer-use-routes.js";
 export { handleSandboxRoute } from "./routes/sandbox-routes.js";
 export { ComputerUseService } from "./services/computer-use-service.js";
+
+// iOS computer-use surface. See `docs/IOS_CONSTRAINTS.md` for the honest scope.
+export * from "./mobile/index.js";
 export type {
   DesktopControlCapabilities,
   DesktopControlCapability,

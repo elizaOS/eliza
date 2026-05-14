@@ -287,6 +287,10 @@ function iosAppDataContainer(udid, id) {
   );
 }
 
+function iosAppSupportContainer(udid, id) {
+  return path.join(iosAppDataContainer(udid, id), "Library", "Application Support", "Eliza");
+}
+
 function copyFileIfChanged(source, destination) {
   const sourceStats = fs.statSync(source);
   try {
@@ -326,12 +330,7 @@ function stageIosFullBunSmokeModel(udid, id) {
     throw new Error(`iOS full-Bun smoke model is not a file: ${source}`);
   }
 
-  const dataContainer = iosAppDataContainer(udid, id);
-  const localInferenceRoot = path.join(
-    dataContainer,
-    ".eliza",
-    "local-inference",
-  );
+  const localInferenceRoot = path.join(iosAppSupportContainer(udid, id), "local-inference");
   const modelPath = path.join(
     localInferenceRoot,
     IOS_FULL_BUN_SMOKE_MODEL_RELATIVE_PATH,

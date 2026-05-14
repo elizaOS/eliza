@@ -28,6 +28,9 @@ import {
   waitBrowser,
 } from "../platform/browser.js";
 import { detectPlatformCapabilities } from "../platform/capabilities.js";
+import { capturePrimaryDisplay, captureDisplay } from "../platform/capture.js";
+import { localToGlobalDefault } from "../platform/coords.js";
+import { getPrimaryDisplay, listDisplays } from "../platform/displays.js";
 import {
   driverCaptureScreenshot,
   driverClick,
@@ -85,6 +88,7 @@ import type {
   ComputerUseConfig,
   ComputerUseResult,
   DesktopActionParams,
+  DisplayDescriptor,
   FileActionParams,
   FileActionResult,
   PlatformCapabilities,
@@ -101,6 +105,15 @@ const BROWSER_LIFECYCLE_ACTIONS = new Set<BrowserActionParams["action"]>([
   "open",
   "connect",
   "close",
+]);
+const COORDINATE_BEARING_ACTIONS = new Set<DesktopActionParams["action"]>([
+  "click",
+  "click_with_modifiers",
+  "double_click",
+  "right_click",
+  "mouse_move",
+  "scroll",
+  "drag",
 ]);
 
 function errorMessage(error: unknown): string {
@@ -167,6 +180,7 @@ export class ComputerUseService extends Service {
   private recentActions: ActionHistoryEntry[] = [];
   private screenSize: ScreenSize = { width: 1920, height: 1080 };
   private approvalManager = new ComputerUseApprovalManager();
+  private displayIdDeprecationWarned = false;
   private cuConfig: ComputerUseConfig = {
     screenshotAfterAction: true,
     actionTimeoutMs: 10000,
@@ -330,36 +344,48 @@ export class ComputerUseService extends Service {
         });
       }
 
+      const targetDisplayId = this.resolveDisplayIdForAction(params);
       switch (params.action) {
-        case "screenshot":
+        case "screenshot": {
+          const captured = await this.captureScreenshotForDisplay(
+            params.displayId ?? targetDisplayId,
+          );
           return this.succeedEntry(entry, {
             success: true,
-            screenshot: await this.captureScreenshotBase64(),
+            screenshot: captured.base64,
+            displayId: captured.displayId,
           });
-        case "click":
+        }
+        case "click": {
           this.requireCoordinate(params.coordinate, "click");
-          await driverClick(params.coordinate[0], params.coordinate[1]);
+          const g = this.toGlobal(params, params.coordinate);
+          await driverClick(g.x, g.y);
           break;
-        case "click_with_modifiers":
+        }
+        case "click_with_modifiers": {
           this.requireCoordinate(params.coordinate, "click_with_modifiers");
-          await driverClickWithModifiers(
-            params.coordinate[0],
-            params.coordinate[1],
-            params.modifiers ?? [],
-          );
+          const g = this.toGlobal(params, params.coordinate);
+          await driverClickWithModifiers(g.x, g.y, params.modifiers ?? []);
           break;
-        case "double_click":
+        }
+        case "double_click": {
           this.requireCoordinate(params.coordinate, "double_click");
-          await driverDoubleClick(params.coordinate[0], params.coordinate[1]);
+          const g = this.toGlobal(params, params.coordinate);
+          await driverDoubleClick(g.x, g.y);
           break;
-        case "right_click":
+        }
+        case "right_click": {
           this.requireCoordinate(params.coordinate, "right_click");
-          await driverRightClick(params.coordinate[0], params.coordinate[1]);
+          const g = this.toGlobal(params, params.coordinate);
+          await driverRightClick(g.x, g.y);
           break;
-        case "mouse_move":
+        }
+        case "mouse_move": {
           this.requireCoordinate(params.coordinate, "mouse_move");
-          await driverMouseMove(params.coordinate[0], params.coordinate[1]);
+          const g = this.toGlobal(params, params.coordinate);
+          await driverMouseMove(g.x, g.y);
           break;
+        }
         case "type":
           if (!params.text) throw new Error("text is required for type action");
           await driverType(params.text);
@@ -374,29 +400,29 @@ export class ComputerUseService extends Service {
           }
           await driverKeyCombo(params.key);
           break;
-        case "scroll":
+        case "scroll": {
           this.requireCoordinate(params.coordinate, "scroll");
+          const g = this.toGlobal(params, params.coordinate);
           await driverScroll(
-            params.coordinate[0],
-            params.coordinate[1],
+            g.x,
+            g.y,
             params.scrollDirection ?? "down",
             params.scrollAmount ?? 3,
           );
           break;
-        case "drag":
+        }
+        case "drag": {
           this.requireCoordinate(
             params.startCoordinate,
             "drag",
             "startCoordinate",
           );
           this.requireCoordinate(params.coordinate, "drag");
-          await driverDrag(
-            params.startCoordinate[0],
-            params.startCoordinate[1],
-            params.coordinate[0],
-            params.coordinate[1],
-          );
+          const start = this.toGlobal(params, params.startCoordinate);
+          const end = this.toGlobal(params, params.coordinate);
+          await driverDrag(start.x, start.y, end.x, end.y);
           break;
+        }
         default:
           return this.failEntry(entry, {
             success: false,
@@ -407,7 +433,11 @@ export class ComputerUseService extends Service {
       const result: ComputerActionResult = { success: true };
       if (this.shouldCaptureAfterDesktopAction(params.action)) {
         try {
-          result.screenshot = await this.captureScreenshotBase64();
+          const captured = await this.captureScreenshotForDisplay(
+            params.displayId ?? targetDisplayId,
+          );
+          result.screenshot = captured.base64;
+          result.displayId = captured.displayId;
         } catch (error) {
           logger.warn(
             `[computeruse] Post-action screenshot failed: ${errorMessage(error)}`,
@@ -1388,6 +1418,84 @@ export class ComputerUseService extends Service {
   private async captureScreenshotBase64(): Promise<string> {
     const buf = await driverCaptureScreenshot();
     return buf.toString("base64");
+  }
+
+  /**
+   * Capture a specific display's frame as base64 PNG. Falls back to the
+   * legacy single-display path if the per-display capture throws.
+   */
+  private async captureScreenshotForDisplay(
+    displayId: number | undefined,
+  ): Promise<{ base64: string; displayId: number }> {
+    try {
+      const result =
+        displayId === undefined
+          ? await capturePrimaryDisplay()
+          : await captureDisplay(displayId);
+      return {
+        base64: result.frame.toString("base64"),
+        displayId: result.display.id,
+      };
+    } catch (error) {
+      logger.debug(
+        `[computeruse] per-display capture failed (${errorMessage(error)}); falling back to driver capture`,
+      );
+      const buf = await driverCaptureScreenshot();
+      return {
+        base64: buf.toString("base64"),
+        displayId: displayId ?? getPrimaryDisplay().id,
+      };
+    }
+  }
+
+  /**
+   * Resolve which display a coordinate-bearing action targets.
+   * Emits a deprecation warning when displayId is omitted on multi-monitor
+   * setups; defaults to the primary display.
+   */
+  private resolveDisplayIdForAction(params: DesktopActionParams): number {
+    const needsCoord = COORDINATE_BEARING_ACTIONS.has(params.action);
+    if (params.displayId !== undefined) return params.displayId;
+    if (!needsCoord) return getPrimaryDisplay().id;
+    if (!this.displayIdDeprecationWarned) {
+      this.displayIdDeprecationWarned = true;
+      const displays = listDisplays();
+      if (displays.length > 1) {
+        logger.warn(
+          `[computeruse] DEPRECATED: action "${params.action}" was called without displayId on a ${displays.length}-display host. Defaulting to primary display ${getPrimaryDisplay().id}. Set displayId explicitly; this fallback will be removed.`,
+        );
+      } else {
+        logger.debug(
+          `[computeruse] action "${params.action}" omitted displayId; defaulting to primary on single-display host.`,
+        );
+      }
+    }
+    return getPrimaryDisplay().id;
+  }
+
+  private toGlobal(
+    params: DesktopActionParams,
+    coordinate: [number, number],
+  ): { x: number; y: number } {
+    return localToGlobalDefault(
+      {
+        displayId: params.displayId,
+        x: coordinate[0],
+        y: coordinate[1],
+      },
+      params.coordSource ?? "logical",
+    );
+  }
+
+  /** Surface the live display layout for the agent state provider. */
+  getDisplays(): DisplayDescriptor[] {
+    return listDisplays().map((d) => ({
+      id: d.id,
+      bounds: d.bounds,
+      scaleFactor: d.scaleFactor,
+      primary: d.primary,
+      name: d.name,
+    }));
   }
 
   private shouldCaptureAfterDesktopAction(

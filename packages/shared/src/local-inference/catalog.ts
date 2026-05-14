@@ -176,6 +176,12 @@ const TIER_SPECS: Readonly<Record<Eliza1TierId, TierSpec>> = {
     drafterParams: "0.5B",
     drafterSizeGb: 0.4,
     drafterMinRamGb: 2,
+    // WS2: vision is enabled on the smallest viable tier. The Q4_K_M
+    // mmproj for 0.8B is ~220 MB (see ELIZA_1_BUNDLE_EXTRAS.json), which
+    // fits even on 2 GB-floor devices when the text model is resident.
+    // Camera + screen analysis remain practical on low-tier phones at this
+    // size — the projector cache short-circuits the per-frame cost.
+    hasVision: true,
   },
   "eliza-1-2b": {
     id: "eliza-1-2b",
@@ -190,6 +196,11 @@ const TIER_SPECS: Readonly<Record<Eliza1TierId, TierSpec>> = {
     drafterSizeGb: 0.5,
     drafterMinRamGb: 4,
     hasEmbedding: true,
+    // WS2: vision enabled — the 2B tier is the standard "small-phone"
+    // default for first-run users, so camera-to-reaction and screen
+    // analysis must work here. The mmproj is ~320 MB Q8_0; the arbiter
+    // owns the swap with the text weights under pressure.
+    hasVision: true,
   },
   "eliza-1-4b": {
     id: "eliza-1-4b",
@@ -270,6 +281,11 @@ const TIER_SPECS: Readonly<Record<Eliza1TierId, TierSpec>> = {
     drafterMinRamGb: 160,
     gpuProfile: "h200",
     hasEmbedding: true,
+    // WS2: vision on the 1M-context tier is for server / workstation use
+    // (multi-GPU, document-pipeline scenarios where a screenshot of a
+    // 100-page PDF page is sandwiched into a million-token context). The
+    // mmproj is the same ~720 MB Q8_0 used by the 27b and 27b-256k tiers.
+    hasVision: true,
   },
 };
 
