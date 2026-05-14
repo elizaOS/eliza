@@ -46,6 +46,50 @@ objects, and make decisions based on visual input.
 - 🔄 Emotion detection
 - 🔄 Advanced scene understanding and spatial relationships
 
+### WS4 — Native ONNX backends + lifecycle (Implemented)
+
+- ✅ **RapidOCR / PP-OCRv5** via `onnxruntime-node` — replaces Tesseract.js
+  as the default OCR backend. ~80 MB total, sub-second on CPU, multi-language.
+  Models fetched on first use to `$ELIZA_STATE_DIR/models/rapidocr/`.
+  Fallback chain: RapidOCR → Apple Vision (iOS/macOS, owned by plugin-ios)
+  → Tesseract.js (last-resort).
+- ✅ **YOLOv8n / YOLOv11n** via `onnxruntime-node` — replaces COCO-SSD.
+  Class-filterable: a dedicated `PersonDetector` uses the same model with a
+  `person`-only filter.
+- ✅ **MediaPipe BlazeFace** (preview) — alternative face detector. Kept
+  behind a manual flag until validated on each platform; `face-api.js`
+  remains the default.
+- ✅ **Dynamic load/unload** — `VisionServiceLifecycleManager` ties each
+  sub-service (YOLO / OCR / face / pose / Florence2) to the WS1 memory
+  arbiter (when registered) via the `IModelArbiter` contract. Idle watchdog
+  releases sub-services after `idleUnloadMs` (default 60s). On
+  memory-pressure events the coldest holders are released first.
+- ✅ **Eliza-1 vision bridge** — when the runtime exposes an eliza-1
+  `IMAGE_DESCRIPTION` handler (signalled by `ELIZA1_VISION_HANDLER_PRESENT`
+  or an `eliza1-vision` service), `VisionService` routes scene description
+  there first. Local Florence-2 stays as the fallback.
+- ✅ **Camera/screen toggle API** — `enableCamera()`, `disableCamera()`,
+  `enableScreen(displayIds?)`, `disableScreen()` on the service +
+  matching `enable_camera` / `disable_camera` / `enable_screen` /
+  `disable_screen` ops on the action surface.
+- ✅ **MobileCameraSource contract** — JS surface for native Capacitor /
+  AOSP camera bridges (`src/mobile/capacitor-camera.ts`). plugin-aosp (WS8)
+  and plugin-ios (WS9) wire native sides on top of this.
+
+#### Per-platform notes
+
+- **Linux x64 / arm64** — onnxruntime-node ships prebuilt CPU wheels.
+  All ONNX backends run on CPU EP.
+- **macOS arm64** — onnxruntime-node CPU wheel available. Pass
+  `executionProviders: ['coreml','cpu']` to opt into CoreML acceleration.
+  Apple Vision is the preferred OCR backend on darwin once WS9 lands.
+- **Windows x64** — onnxruntime-node CPU wheel available. DirectML EP can
+  be enabled via `executionProviders: ['dml','cpu']`.
+- **iOS / Android** — `onnxruntime-node` is **not** the right backend on
+  mobile. plugin-ios (WS9) bridges to CoreML / Apple Vision via Swift;
+  plugin-aosp (WS8) bridges to NNAPI / ML Kit via JNI. Both register a
+  `MobileCameraSource` so the runtime API stays platform-agnostic.
+
 ## Installation
 
 ### TypeScript (Primary)
