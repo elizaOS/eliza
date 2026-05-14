@@ -58,6 +58,10 @@ class SmartMockRuntime:
         if "shopping assistant" in pl and "available actions" in pl:
             return MockGenerateTextResult(text=self._handle_webshop(p, pl))
 
+        # Web browsing / Mind2Web prompt-choice smoke
+        if "reply with only the letter" in pl and "checkout button" in pl:
+            return MockGenerateTextResult(text="A")
+
         # Lateral thinking puzzles
         if "lateral thinking puzzle" in pl and "scenario" in pl:
             return MockGenerateTextResult(text=self._handle_lateral(pl))
@@ -151,4 +155,3 @@ class SmartMockRuntime:
             return "think"
 
         return "think"
-

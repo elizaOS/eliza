@@ -255,8 +255,9 @@ export function wireBrowserWorkspaceCaller(
  * Schema `response: undefined` means "no payload", which we model as
  * `void` at the handler boundary so Promise<void> native calls are accepted.
  */
+type IfAny<T, Y, N> = 0 extends 1 & T ? Y : N;
 // biome-ignore lint/suspicious/noConfusingVoidType: no-payload async RPC handlers naturally return Promise<void>.
-type RpcMethodReturn<R> = [R] extends [undefined] ? void : R;
+type RpcMethodReturn<R> = IfAny<R, R, [R] extends [undefined] ? void : R>;
 
 type BunRpcHandlers = {
 	[K in keyof ElizaDesktopRPCSchema["bun"]["requests"]]: (

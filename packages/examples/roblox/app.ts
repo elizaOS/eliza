@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import type { IncomingMessage, ServerResponse } from "node:http";
 import {
   ChannelType,
   type Content,
@@ -16,7 +17,7 @@ import { v4 as uuidv4 } from "uuid";
 
 const ROBLOX_SERVICE_NAME = "roblox";
 
-export type RobloxChatRequestBody = {
+type RobloxChatRequestBody = {
   playerId: number;
   playerName: string;
   text: string;
@@ -24,18 +25,18 @@ export type RobloxChatRequestBody = {
   jobId?: string;
 };
 
-export type RobloxChatResponseBody = {
+type RobloxChatResponseBody = {
   reply: string;
   agentName: string;
 };
 
-export type Request<_Params = object, _ResBody = object, ReqBody = unknown> = {
+type Request<_Params = object, _ResBody = object, ReqBody = unknown> = {
   body: ReqBody;
   ip?: string;
   socket: { remoteAddress?: string };
   header: (name: string) => string | undefined;
 };
-export type Response = {
+type Response = {
   status: (code: number) => Response;
   json: (body: unknown) => Response;
 };
@@ -54,8 +55,8 @@ export type ExpressApp = {
   ) => void;
   listen: (port: number, callback?: () => void) => unknown;
 };
-export type RequestWithRawBody = Request & { rawBody?: string };
-export type HeaderReader = {
+type RequestWithRawBody = Request & { rawBody?: string };
+type HeaderReader = {
   header: (name: string) => string | undefined;
   rawBody?: string;
 };
@@ -89,10 +90,7 @@ function timingSafeEqual(a: string, b: string): boolean {
   return crypto.timingSafeEqual(aBuf, bBuf);
 }
 
-export function verifySharedSecret(
-  req: HeaderReader,
-  sharedSecret: string,
-): boolean {
+function verifySharedSecret(req: HeaderReader, sharedSecret: string): boolean {
   if (!sharedSecret) return true;
 
   const headerSecret = req.header("x-eliza-secret") ?? "";
@@ -109,7 +107,7 @@ export function verifySharedSecret(
   return timingSafeEqual(sig, expected);
 }
 
-export function assertValidChatBody(body: RobloxChatRequestBody): void {
+function assertValidChatBody(body: RobloxChatRequestBody): void {
   if (!Number.isFinite(body.playerId))
     throw new Error("playerId must be a number");
   if (!body.playerName || typeof body.playerName !== "string")
@@ -145,8 +143,13 @@ export function createRobloxBridgeApp(
   const app = express() as ExpressApp;
   app.use(
     express.json({
-      verify: (req: RequestWithRawBody, _res: Response, buf: Buffer) => {
-        req.rawBody = buf.toString("utf8");
+      verify: (
+        req: IncomingMessage,
+        _res: ServerResponse,
+        buf: Buffer,
+      ) => {
+        (req as IncomingMessage & { rawBody?: string }).rawBody =
+          buf.toString("utf8");
       },
     }),
   );

@@ -104,7 +104,7 @@ class WebBrowsingAdapter(EnvironmentAdapter):
             self._gold_letter = self._extract_gold_letter(pair["assistant"])
         else:
             self._last_prompt = task.description
-            self._gold_letter = ""
+            self._gold_letter = str(task.ground_truth or "").strip().upper()
         self._submitted_letter = ""
         return {
             "prompt": self._last_prompt,

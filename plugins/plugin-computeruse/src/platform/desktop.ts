@@ -86,6 +86,103 @@ function _toAppleScriptKeyCode(key: string): number | null {
   return keyCodes[canonical] ?? null;
 }
 
+function _toDarwinKeyboardKeyCode(key: string): number {
+  const named = _toAppleScriptKeyCode(key);
+  if (named !== null) return named;
+  const normalized = key.trim().toLowerCase();
+  const keyCodes: Record<string, number> = {
+    a: 0,
+    s: 1,
+    d: 2,
+    f: 3,
+    h: 4,
+    g: 5,
+    z: 6,
+    x: 7,
+    c: 8,
+    v: 9,
+    b: 11,
+    q: 12,
+    w: 13,
+    e: 14,
+    r: 15,
+    y: 16,
+    t: 17,
+    "1": 18,
+    "2": 19,
+    "3": 20,
+    "4": 21,
+    "6": 22,
+    "5": 23,
+    "=": 24,
+    "9": 25,
+    "7": 26,
+    "-": 27,
+    "8": 28,
+    "0": 29,
+    "]": 30,
+    o: 31,
+    u: 32,
+    "[": 33,
+    i: 34,
+    p: 35,
+    l: 37,
+    j: 38,
+    "'": 39,
+    k: 40,
+    ";": 41,
+    "\\": 42,
+    ",": 43,
+    "/": 44,
+    n: 45,
+    m: 46,
+    ".": 47,
+    "`": 50,
+  };
+  const code = keyCodes[normalized];
+  if (code === undefined) {
+    throw new Error(`Unsupported key for key_down/key_up on macOS: "${key}"`);
+  }
+  return code;
+}
+
+function _toWindowsVirtualKeyCode(key: string): number {
+  const canonical = canonicalKeyName(key);
+  const named: Record<string, number> = {
+    enter: 0x0d,
+    tab: 0x09,
+    space: 0x20,
+    escape: 0x1b,
+    delete: 0x2e,
+    backspace: 0x08,
+    left: 0x25,
+    up: 0x26,
+    right: 0x27,
+    down: 0x28,
+    home: 0x24,
+    end: 0x23,
+    pageup: 0x21,
+    pagedown: 0x22,
+    shift: 0x10,
+    ctrl: 0x11,
+    control: 0x11,
+    alt: 0x12,
+    option: 0x12,
+    cmd: 0x5b,
+    command: 0x5b,
+    meta: 0x5b,
+    super: 0x5b,
+  };
+  if (/^f\d{1,2}$/.test(canonical)) {
+    const fn = Number(canonical.slice(1));
+    if (fn >= 1 && fn <= 24) return 0x70 + fn - 1;
+  }
+  const code = named[canonical];
+  if (code !== undefined) return code;
+  if (/^[a-z0-9]$/i.test(key)) return key.toUpperCase().charCodeAt(0);
+  throw new Error(`Unsupported key for key_down/key_up on Windows: "${key}"`);
+}
+
 function runDarwinJxa(script: string, timeoutMs = 5000): void {
   runCommand("osascript", ["-l", "JavaScript", "-e", script], timeoutMs);
 }
@@ -109,15 +206,27 @@ $.CGEventPost($.kCGHIDEventTap, event);
 function _clickDarwinWithCoreGraphics(
   x: number,
   y: number,
-  button: "left" | "right",
+  button: "left" | "middle" | "right",
   clickCount = 1,
 ): void {
   const downEvent =
-    button === "right" ? "$.kCGEventRightMouseDown" : "$.kCGEventLeftMouseDown";
+    button === "right"
+      ? "$.kCGEventRightMouseDown"
+      : button === "middle"
+        ? "$.kCGEventOtherMouseDown"
+        : "$.kCGEventLeftMouseDown";
   const upEvent =
-    button === "right" ? "$.kCGEventRightMouseUp" : "$.kCGEventLeftMouseUp";
+    button === "right"
+      ? "$.kCGEventRightMouseUp"
+      : button === "middle"
+        ? "$.kCGEventOtherMouseUp"
+        : "$.kCGEventLeftMouseUp";
   const mouseButton =
-    button === "right" ? "$.kCGMouseButtonRight" : "$.kCGMouseButtonLeft";
+    button === "right"
+      ? "$.kCGMouseButtonRight"
+      : button === "middle"
+        ? "$.kCGMouseButtonCenter"
+        : "$.kCGMouseButtonLeft";
   runDarwinJxa(
     `
 ObjC.import("ApplicationServices");
@@ -130,6 +239,62 @@ for (let clickIndex = 1; clickIndex <= ${clickCount}; clickIndex += 1) {
   $.CGEventSetIntegerValueField(up, $.kCGMouseEventClickState, clickIndex);
   $.CGEventPost($.kCGHIDEventTap, up);
 }
+`,
+  );
+}
+
+function _mouseButtonArgs(button: "left" | "middle" | "right"): {
+  xdotoolButton: string;
+  winDownFlag: string;
+  winUpFlag: string;
+  cgButton: string;
+  cgDownEvent: string;
+  cgUpEvent: string;
+} {
+  if (button === "right") {
+    return {
+      xdotoolButton: "3",
+      winDownFlag: "0x0008",
+      winUpFlag: "0x0010",
+      cgButton: "$.kCGMouseButtonRight",
+      cgDownEvent: "$.kCGEventRightMouseDown",
+      cgUpEvent: "$.kCGEventRightMouseUp",
+    };
+  }
+  if (button === "middle") {
+    return {
+      xdotoolButton: "2",
+      winDownFlag: "0x0020",
+      winUpFlag: "0x0040",
+      cgButton: "$.kCGMouseButtonCenter",
+      cgDownEvent: "$.kCGEventOtherMouseDown",
+      cgUpEvent: "$.kCGEventOtherMouseUp",
+    };
+  }
+  return {
+    xdotoolButton: "1",
+    winDownFlag: "0x0002",
+    winUpFlag: "0x0004",
+    cgButton: "$.kCGMouseButtonLeft",
+    cgDownEvent: "$.kCGEventLeftMouseDown",
+    cgUpEvent: "$.kCGEventLeftMouseUp",
+  };
+}
+
+function _mouseButtonEventDarwin(
+  x: number,
+  y: number,
+  button: "left" | "middle" | "right",
+  direction: "down" | "up",
+): void {
+  const args = _mouseButtonArgs(button);
+  const event = direction === "down" ? args.cgDownEvent : args.cgUpEvent;
+  runDarwinJxa(
+    `
+ObjC.import("ApplicationServices");
+const point = $.CGPointMake(${x}, ${y});
+const event = $.CGEventCreateMouseEvent(null, ${event}, point, ${args.cgButton});
+$.CGEventPost($.kCGHIDEventTap, event);
 `,
   );
 }

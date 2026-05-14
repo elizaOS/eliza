@@ -245,7 +245,8 @@ async function ensureAssignedModelLoaded(
 
 	// Via loader: compare reported path against assignment.
 	if (loader) {
-		const currentPath = loader.currentModelPath();
+		const currentPath =
+			loader.currentModelPathForSlot?.(slot) ?? loader.currentModelPath();
 		if (currentPath) {
 			const installed = await listInstalledModels();
 			const current = installed.find((m) => m.path === currentPath);
