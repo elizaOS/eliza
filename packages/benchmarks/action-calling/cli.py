@@ -246,7 +246,7 @@ def _build_argparser() -> argparse.ArgumentParser:
     p.add_argument("--max-examples", type=int, default=100)
     p.add_argument("--max-new-tokens", type=int, default=512)
     p.add_argument("--temperature", type=float, default=0.0)
-    p.add_argument("--tool-choice", choices=("auto", "required"), default="auto")
+    p.add_argument("--tool-choice", choices=("auto", "required", "none"), default="auto")
     p.add_argument("--out", required=True)
     return p
 
