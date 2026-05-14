@@ -2186,7 +2186,7 @@ async function fetchStreamingChatCompletion(
 			if (rejectRange) {
 				const [from, to] = rejectRange;
 				if (callbacks.onVerifierEvent) {
-					const tokens = [];
+					const tokens: VerifierStreamEvent["tokens"] = [];
 					for (let i = from; i <= to; i += 1)
 						tokens.push({ index: i, text: "" });
 					await callbacks.onVerifierEvent({ kind: "reject", tokens });
@@ -2480,7 +2480,7 @@ export function appendOptimizationFlags(
 		args,
 		"--kv-unified",
 		"--no-kv-unified",
-		readBoolFlag("ELIZA_LOCAL_KV_UNIFIED") ?? optimizations?.kvShared,
+		readBoolFlag("ELIZA_LOCAL_KV_UNIFIED") ?? optimizations?.kvUnified,
 	);
 	appendBooleanFlag(
 		args,

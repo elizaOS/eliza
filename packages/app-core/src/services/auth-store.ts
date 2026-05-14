@@ -33,7 +33,8 @@ interface AuthSqlOrderedSelectBuilder {
 }
 
 interface AuthSqlWhereSelectBuilder
-  extends AuthSqlLimitedSelectBuilder,
+  extends PromiseLike<AuthSqlRow[]>,
+    AuthSqlLimitedSelectBuilder,
     AuthSqlOrderedSelectBuilder {}
 
 interface AuthSqlFromSelectBuilder {

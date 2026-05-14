@@ -14,7 +14,6 @@ import type {
   PluginParamDef,
   SkillEntry,
   StreamEventEnvelope,
-  TradePermissionMode,
 } from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.ts";
 import type { AppManager } from "../services/app-manager.ts";
