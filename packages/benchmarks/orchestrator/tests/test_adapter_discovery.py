@@ -15,6 +15,7 @@ from benchmarks.orchestrator.adapters import (
     discover_adapters,
 )
 from benchmarks.orchestrator.runner import (
+    _default_env,
     _effective_request,
     _is_harness_compatible,
     _required_env_for_request,
@@ -78,6 +79,42 @@ def test_synthetic_calibration_payloads_exercise_all_score_extractors(tmp_path: 
             assert baseline.result_path is not None
             summary = adapter.score_extractor(baseline.result_path)
             assert summary.score == pytest.approx(expected[harness])
+
+
+def test_default_env_enables_benchmark_stub_embedding(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("ELIZA_BENCH_ALLOW_STUB_EMBEDDING", raising=False)
+
+    env = _default_env(
+        _workspace_root(),
+        RunRequest(
+            benchmarks=("action-calling",),
+            agent="eliza",
+            provider="cerebras",
+            model="gpt-oss-120b",
+            extra_config={},
+        ),
+    )
+
+    assert env["ELIZA_BENCH_ALLOW_STUB_EMBEDDING"] == "1"
+
+
+def test_default_env_respects_disabled_benchmark_stub_embedding(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ELIZA_BENCH_ALLOW_STUB_EMBEDDING", "0")
+
+    env = _default_env(
+        _workspace_root(),
+        RunRequest(
+            benchmarks=("action-calling",),
+            agent="eliza",
+            provider="cerebras",
+            model="gpt-oss-120b",
+            extra_config={},
+        ),
+    )
+
+    assert env["ELIZA_BENCH_ALLOW_STUB_EMBEDDING"] == "0"
 
 
 def test_audio_benchmark_registry_commands_and_scores(tmp_path: Path) -> None:

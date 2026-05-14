@@ -7,20 +7,33 @@
 
 import type { AgentRuntime, EventPayload, Service } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import type { GuildMember, Interaction, Message } from "discord.js";
+
+interface ChatInputInteraction {
+  commandName: string;
+  isChatInputCommand(): boolean;
+  reply(options: { content: string; ephemeral?: boolean }): Promise<void>;
+}
+
+interface DiscordMessageLike {
+  id?: string;
+}
+
+interface DiscordGuildMemberLike {
+  user: { username: string };
+}
 
 // Type definitions for Discord events
 interface DiscordSlashCommandPayload extends EventPayload {
-  interaction: Interaction;
+  interaction: ChatInputInteraction;
 }
 
 interface DiscordReactionPayload extends EventPayload {
-  reaction: { emoji: { name: string }; message: Message };
+  reaction: { emoji: { name: string }; message: DiscordMessageLike };
   user: { id: string; username: string };
 }
 
 interface DiscordMemberPayload extends EventPayload {
-  member: GuildMember;
+  member: DiscordGuildMemberLike;
 }
 
 interface DiscordSlashCommand {
@@ -137,5 +150,3 @@ export async function registerSlashCommands(
   await runtime.emitEvent("DISCORD_REGISTER_COMMANDS", { commands });
   logger.info(`Registered ${commands.length} slash commands`);
 }
-
-export default { registerDiscordHandlers, registerSlashCommands };

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, mock, test } from "bun:test";
-import type { OpenAIChatRequest } from "../types";
-import { VastProvider } from "../vast";
+import type { OpenAIChatRequest } from "./types";
+import { VastProvider } from "./vast";
 
 const ORIGINAL_FETCH = globalThis.fetch;
 

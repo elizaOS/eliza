@@ -562,11 +562,13 @@ export default function GetStartedPage() {
   /**
    * Redirect to Discord OAuth2 authorization page
    */
-  const handleDiscordOAuthRedirect = useCallback(() => {
+  const handleDiscordOAuthRedirect = useCallback((): boolean => {
     const clientId = getDiscordClientId();
     if (!clientId) {
       setDiscordError("Discord not configured");
-      return;
+      setIsRedirectingToOAuth(false);
+      setStep("SELECT_METHOD");
+      return false;
     }
 
     // Generate and store a cryptographic random state for CSRF protection
@@ -590,6 +592,7 @@ export default function GetStartedPage() {
     });
 
     window.location.href = `https://discord.com/oauth2/authorize?${params.toString()}`;
+    return true;
   }, [isLinkMode]);
 
   // Redirect if already authenticated (unless suppressed for setup guide, link mode,
@@ -729,7 +732,9 @@ export default function GetStartedPage() {
       setStep("TELEGRAM_OAUTH");
     } else if (method === "discord") {
       setIsRedirectingToOAuth(true);
-      handleDiscordOAuthRedirect();
+      if (!handleDiscordOAuthRedirect()) {
+        setSelectedMethod(null);
+      }
     } else if (method === "whatsapp") {
       setStep("WHATSAPP_DIRECT");
     } else {
