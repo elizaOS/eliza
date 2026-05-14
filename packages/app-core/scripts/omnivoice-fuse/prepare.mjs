@@ -1315,6 +1315,68 @@ int eliza_inference_set_verifier_callback(
     return ELIZA_ERR_NOT_IMPLEMENTED;
 }
 
+/* ---- OmniVoice reference encode (ABI v4) -------------------------- *
+ *
+ * Thin wrapper around ov_encode_reference. The TTS region must have
+ * been acquired (`mmap_acquire("tts")`) before the call. The library
+ * malloc-allocates the token buffer; callers release it via
+ * eliza_inference_free_tokens.
+ */
+int eliza_inference_encode_reference(
+    EliInferenceContext * ctx,
+    const float * pcm,
+    size_t n_samples,
+    int sample_rate_hz,
+    int * out_K,
+    int * out_ref_T,
+    int ** out_tokens,
+    char ** out_error) {
+    if (!ctx || !pcm || !out_K || !out_ref_T || !out_tokens) {
+        eliza_set_error(out_error, "[libelizainference] encode_reference: invalid arguments");
+        return ELIZA_ERR_INVALID_ARG;
+    }
+    if (n_samples == 0) {
+        eliza_set_error(out_error, "[libelizainference] encode_reference: n_samples must be > 0");
+        return ELIZA_ERR_INVALID_ARG;
+    }
+    if (sample_rate_hz != 24000) {
+        eliza_set_error(out_error,
+            "[libelizainference] encode_reference: sample_rate_hz must be 24000 (got %d); "
+            "caller is responsible for upstream resample",
+            sample_rate_hz);
+        return ELIZA_ERR_INVALID_ARG;
+    }
+
+    std::lock_guard<std::mutex> lock(ctx->tts_mutex);
+    if (!ctx->ov) {
+        eliza_set_error(out_error,
+            "[libelizainference] encode_reference: TTS region is not acquired; "
+            "call mmap_acquire(\\"tts\\") after arming voice");
+        return ELIZA_ERR_INVALID_ARG;
+    }
+
+    int32_t * tokens = nullptr;
+    int K = 0;
+    int ref_T = 0;
+    ov_status rc = ov_encode_reference(ctx->ov, pcm, (int) n_samples,
+                                       &tokens, &K, &ref_T);
+    if (rc != OV_STATUS_OK) {
+        std::string msg = "[libelizainference] ov_encode_reference failed: ";
+        msg += ov_last_error();
+        eliza_set_error(out_error, msg);
+        if (tokens) std::free(tokens);
+        return eliza_map_ov_status(rc);
+    }
+    *out_tokens = tokens;
+    *out_K = K;
+    *out_ref_T = ref_T;
+    return ELIZA_OK;
+}
+
+void eliza_inference_free_tokens(int * tokens) {
+    if (tokens) std::free(tokens);
+}
+
 /* ---- Native VAD (ABI v3) ------------------------------------------- *
  *
  * The JS runtime can use the ONNX Silero path today. Native VAD is an
