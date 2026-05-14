@@ -90,6 +90,7 @@ export class PluginCompiler {
 
     const resolvedOut = outFile ?? defaultOutFile(entry);
     const entrySource = await vfs.readFile(entry);
+    assertAllowedBareImports(entrySource, allowedBareImports);
     const entryDiskPath = vfs.resolveDiskPath(entry);
     const outDiskPath = vfs.resolveDiskPath(resolvedOut);
 
@@ -216,6 +217,39 @@ function isAllowedBareImport(
     }
     return specifier === allowed || specifier.startsWith(`${allowed}/`);
   });
+}
+
+function assertAllowedBareImports(
+  source: string,
+  allowedBareImports: readonly string[],
+): void {
+  for (const specifier of extractImportSpecifiers(source)) {
+    if (
+      isBareSpecifier(specifier) &&
+      !isAllowedBareImport(specifier, allowedBareImports)
+    ) {
+      throw new Error(
+        `Import "${specifier}" is not available to VFS-compiled code. Use bundled allowlisted modules only.`,
+      );
+    }
+  }
+}
+
+function extractImportSpecifiers(source: string): string[] {
+  const specifiers: string[] = [];
+  const patterns = [
+    /\bimport\s+(?:type\s+)?(?:[^'"]*?\s+from\s+)?["']([^"']+)["']/g,
+    /\bexport\s+(?:type\s+)?[^'"]*?\s+from\s+["']([^"']+)["']/g,
+    /\bimport\s*\(\s*["']([^"']+)["']\s*\)/g,
+  ];
+  for (const pattern of patterns) {
+    let match = pattern.exec(source);
+    while (match !== null) {
+      if (match[1]) specifiers.push(match[1]);
+      match = pattern.exec(source);
+    }
+  }
+  return specifiers;
 }
 
 function isWithin(root: string, candidate: string): boolean {

@@ -1043,12 +1043,13 @@ const LIFEOPS_THREAD_ID_PARAMETERS: ActionParameter[] = [
 ];
 
 const LIFEOPS_MESSAGE_MANAGE_PARAMETERS: ActionParameter[] = [
-  {
-    name: "operation",
-    description: "Message operation. Use manage for archive/trash/mark_read operations.",
-    required: false,
-    schema: { type: "string", enum: ["manage"] },
-  },
+	{
+		name: "operation",
+		description:
+			"Message operation. Use manage for archive/trash/mark_read operations.",
+		required: false,
+		schema: { type: "string", enum: ["manage"] },
+	},
   {
     name: "source",
     description: "Connector source. Use gmail for email archive requests.",

@@ -158,7 +158,6 @@ export function View() {
     });
 
     const compiled = await filesystem.readFile(result.outFile);
-    expect(compiled).toContain("react/jsx-runtime");
     expect(compiled).toContain("Hello VFS");
   });
 

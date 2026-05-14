@@ -138,6 +138,11 @@ const NAMED_KEY_TO_NUT: Record<string, string> = {
 function resolveKeyCode(key: string): number {
   const m = nut();
   const canonical = canonicalKeyName(key);
+  const modifierNames = MODIFIER_KEYS[key.trim().toLowerCase()];
+  if (modifierNames?.[0]) {
+    const code = m.Key[modifierNames[0]];
+    if (code !== undefined) return code;
+  }
   // Function keys F1..F24
   const fnMatch = canonical.match(/^f(\d{1,2})$/);
   if (fnMatch) {

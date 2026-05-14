@@ -65,14 +65,23 @@ async function runBuiltin(
     case "ls":
       return await list(vfs, resolveVfsPath(cwd, args[0] ?? "."));
     case "cat":
-      return await read(vfs, resolveVfsPath(cwd, required(args[0], "cat path")));
+      return await read(
+        vfs,
+        resolveVfsPath(cwd, required(args[0], "cat path")),
+      );
     case "mkdir":
       await vfs.writeFile(
-        joinVfsPath(resolveVfsPath(cwd, required(args[0], "mkdir path")), ".keep"),
+        joinVfsPath(
+          resolveVfsPath(cwd, required(args[0], "mkdir path")),
+          ".keep",
+        ),
         "",
       );
       await vfs.delete(
-        joinVfsPath(resolveVfsPath(cwd, required(args[0], "mkdir path")), ".keep"),
+        joinVfsPath(
+          resolveVfsPath(cwd, required(args[0], "mkdir path")),
+          ".keep",
+        ),
       );
       return "";
     case "rm":
@@ -135,7 +144,10 @@ function parseVfsUri(uri: string): ParsedVfsUri {
   };
 }
 
-function normalizeInvocation(command: string, args: readonly string[]): string[] {
+function normalizeInvocation(
+  command: string,
+  args: readonly string[],
+): string[] {
   if (isShellCommand(command)) {
     const inline = commandLineFromShellArgs(args);
     if (!inline) {

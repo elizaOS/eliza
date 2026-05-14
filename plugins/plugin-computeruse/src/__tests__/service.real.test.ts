@@ -334,6 +334,41 @@ describeIfDesktop("ComputerUseService desktop actions (real)", () => {
     expect(result.error).toContain("key is required");
   });
 
+  it("returns error for missing coordinate on raw mouse actions", async () => {
+    const downResult = await service.executeDesktopAction({
+      action: "mouse_down",
+    });
+    const middleResult = await service.executeDesktopAction({
+      action: "middle_click",
+    });
+
+    expect(downResult.success).toBe(false);
+    expect(downResult.error).toContain("coordinate");
+    expect(middleResult.success).toBe(false);
+    expect(middleResult.error).toContain("coordinate");
+  });
+
+  it("returns error for missing key on raw key actions", async () => {
+    const downResult = await service.executeDesktopAction({
+      action: "key_down",
+    });
+    const upResult = await service.executeDesktopAction({ action: "key_up" });
+
+    expect(downResult.success).toBe(false);
+    expect(downResult.error).toContain("key is required");
+    expect(upResult.success).toBe(false);
+    expect(upResult.error).toContain("key is required");
+  });
+
+  it("normalizes drag aliases without changing drag requirements", async () => {
+    const result = await service.executeCommand("drag_to", {
+      coordinate: [100, 100],
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("startCoordinate");
+  });
+
   it("returns error for unknown action", async () => {
     const result = await executeRawDesktopAction(service, {
       action: "nonexistent",

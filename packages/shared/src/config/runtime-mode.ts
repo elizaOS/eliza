@@ -1,6 +1,10 @@
 import type { DeploymentTargetConfig } from "../contracts/service-routing.js";
 import { normalizeDeploymentTargetConfig } from "../contracts/service-routing.js";
 import { isPlainObject } from "../type-guards.js";
+import {
+  type DistributionProfile,
+  isDistributionProfile,
+} from "./distribution-profile.js";
 
 export const RUNTIME_EXECUTION_MODES = [
   "cloud",
@@ -17,6 +21,8 @@ export interface RuntimeModeConfig {
 export interface RuntimeExecutionModeConfigSource {
   runtime?: RuntimeModeConfig | Record<string, unknown> | null;
   deploymentTarget?: DeploymentTargetConfig | null;
+  distributionProfile?: DistributionProfile | string | null;
+  platform?: string | null;
 }
 
 export interface RuntimeExecutionModeDefinition {
@@ -87,6 +93,130 @@ export function runtimeExecutionModeForDeploymentTarget(
   return deploymentTarget?.runtime === "cloud" ? "cloud" : "local-safe";
 }
 
+export interface RuntimeExecutionModePolicyContext {
+  deploymentTarget?: DeploymentTargetConfig | Record<string, unknown> | null;
+  distributionProfile?: DistributionProfile | string | null;
+  platform?: string | null;
+  env?: Record<string, string | undefined> | null;
+}
+
+const RUNTIME_DISTRIBUTION_PROFILE_SETTING_KEYS = [
+  "ELIZA_DISTRIBUTION_PROFILE",
+] as const;
+
+const RUNTIME_PLATFORM_SETTING_KEYS = ["ELIZA_PLATFORM"] as const;
+
+function normalizeDistributionProfile(
+  value: unknown,
+): DistributionProfile | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().toLowerCase();
+  return isDistributionProfile(normalized) ? normalized : null;
+}
+
+function readSetting(
+  source: RuntimeExecutionModeSource | null | undefined,
+  keys: readonly string[],
+): unknown {
+  for (const key of keys) {
+    const value = source?.getSetting?.(key);
+    if (value !== undefined && value !== null && value !== "") return value;
+  }
+  return undefined;
+}
+
+function readEnv(
+  env: Record<string, string | undefined> | null | undefined,
+  keys: readonly string[],
+): string | undefined {
+  for (const key of keys) {
+    const value = env?.[key];
+    if (value !== undefined && value !== "") return value;
+  }
+  return undefined;
+}
+
+function resolvePolicyDistributionProfile(
+  context?: RuntimeExecutionModePolicyContext | null,
+  source?: RuntimeExecutionModeSource | null,
+): DistributionProfile {
+  return (
+    normalizeDistributionProfile(context?.distributionProfile) ??
+    normalizeDistributionProfile(
+      readSetting(source, RUNTIME_DISTRIBUTION_PROFILE_SETTING_KEYS),
+    ) ??
+    normalizeDistributionProfile(
+      readEnv(context?.env ?? process.env, RUNTIME_DISTRIBUTION_PROFILE_SETTING_KEYS),
+    ) ??
+    "unrestricted"
+  );
+}
+
+function resolvePolicyPlatform(
+  context?: RuntimeExecutionModePolicyContext | null,
+  source?: RuntimeExecutionModeSource | null,
+): string | null {
+  const value =
+    context?.platform ??
+    readSetting(source, RUNTIME_PLATFORM_SETTING_KEYS) ??
+    readEnv(context?.env ?? process.env, RUNTIME_PLATFORM_SETTING_KEYS);
+  return typeof value === "string" ? value.trim().toLowerCase() : null;
+}
+
+function isMobileRuntimePlatform(platform: string | null): boolean {
+  return platform === "android" || platform === "ios";
+}
+
+export function canUseHostYoloRuntime(
+  context?: RuntimeExecutionModePolicyContext | null,
+  source?: RuntimeExecutionModeSource | null,
+): boolean {
+  const deploymentTarget = normalizeDeploymentTargetConfig(
+    context?.deploymentTarget,
+  );
+  if (
+    deploymentTarget?.runtime === "cloud" ||
+    deploymentTarget?.runtime === "remote"
+  ) {
+    return false;
+  }
+  if (resolvePolicyDistributionProfile(context, source) === "store") {
+    return false;
+  }
+  return !isMobileRuntimePlatform(resolvePolicyPlatform(context, source));
+}
+
+export function runtimeExecutionModeForPolicyContext(
+  context?: RuntimeExecutionModePolicyContext | null,
+  source?: RuntimeExecutionModeSource | null,
+): RuntimeExecutionMode {
+  const deploymentTarget = normalizeDeploymentTargetConfig(
+    context?.deploymentTarget,
+  );
+  if (deploymentTarget) {
+    return runtimeExecutionModeForDeploymentTarget(deploymentTarget);
+  }
+  return canUseHostYoloRuntime(context, source) ? "local-yolo" : "local-safe";
+}
+
+export function applyRuntimeExecutionModePolicy(
+  requestedMode: RuntimeExecutionMode | null | undefined,
+  context?: RuntimeExecutionModePolicyContext | null,
+  source?: RuntimeExecutionModeSource | null,
+): RuntimeExecutionMode {
+  const deploymentTarget = normalizeDeploymentTargetConfig(
+    context?.deploymentTarget,
+  );
+  if (deploymentTarget?.runtime === "cloud") return "cloud";
+  if (!requestedMode) {
+    return runtimeExecutionModeForPolicyContext(context, source);
+  }
+  if (requestedMode === "local-yolo" && !canUseHostYoloRuntime(context, source)) {
+    return "local-safe";
+  }
+  return requestedMode;
+}
+
 export function readRuntimeExecutionModeConfig(
   config: RuntimeExecutionModeConfigSource | null | undefined,
 ): RuntimeExecutionMode {
@@ -96,7 +226,7 @@ export function readRuntimeExecutionModeConfig(
   const explicitMode = normalizeRuntimeExecutionMode(
     runtimeConfig?.executionMode,
   );
-  if (explicitMode) return explicitMode;
+  if (explicitMode) return applyRuntimeExecutionModePolicy(explicitMode, config);
 
   return runtimeExecutionModeForDeploymentTarget(
     normalizeDeploymentTargetConfig(config?.deploymentTarget),
@@ -111,6 +241,9 @@ export function readRuntimeExecutionModeConfig(
  */
 export interface RuntimeExecutionModeSource {
   getSetting?: (key: string) => unknown;
+  deploymentTarget?: DeploymentTargetConfig | Record<string, unknown> | null;
+  distributionProfile?: DistributionProfile | string | null;
+  platform?: string | null;
 }
 
 const RUNTIME_EXECUTION_MODE_SETTING_KEYS = [
@@ -131,18 +264,33 @@ const RUNTIME_EXECUTION_MODE_SETTING_KEYS = [
  */
 export function resolveRuntimeExecutionMode(
   source?: RuntimeExecutionModeSource | null,
+  context?: RuntimeExecutionModePolicyContext | null,
 ): RuntimeExecutionMode {
   for (const key of RUNTIME_EXECUTION_MODE_SETTING_KEYS) {
     const fromSetting = normalizeRuntimeExecutionMode(
       source?.getSetting?.(key),
     );
-    if (fromSetting) return fromSetting;
+    if (fromSetting) {
+      return applyRuntimeExecutionModePolicy(
+        fromSetting,
+        context ?? source ?? null,
+        source,
+      );
+    }
   }
   for (const key of RUNTIME_EXECUTION_MODE_SETTING_KEYS) {
-    const fromEnv = normalizeRuntimeExecutionMode(process.env[key]);
-    if (fromEnv) return fromEnv;
+    const fromEnv = normalizeRuntimeExecutionMode(
+      (context?.env ?? process.env)[key],
+    );
+    if (fromEnv) {
+      return applyRuntimeExecutionModePolicy(
+        fromEnv,
+        context ?? source ?? null,
+        source,
+      );
+    }
   }
-  return "local-yolo";
+  return runtimeExecutionModeForPolicyContext(context ?? source ?? null, source);
 }
 
 /** Local-only narrowing of {@link RuntimeExecutionMode} for callers that only

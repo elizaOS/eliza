@@ -1,8 +1,38 @@
 import { describe, expect, it, vi } from "vitest";
 import { ModelType } from "../../types/model";
 import { parseEvaluatorOutput, runEvaluator } from "../evaluator";
+import { buildEvaluatorGuidance } from "../evaluator-guidance";
 
 describe("v5 evaluator skeleton", () => {
+	it("builds evaluator guidance with deterministic success and decision spans", () => {
+		const guidance = buildEvaluatorGuidance();
+		const successIndex = guidance.responseSkeleton.spans.findIndex(
+			(span) => span.key === "success",
+		);
+		const decisionIndex = guidance.responseSkeleton.spans.findIndex(
+			(span) => span.key === "decision",
+		);
+
+		expect(guidance.responseSkeleton.id).toBe("evaluator-v1");
+		expect(guidance.responseSkeleton.spans[successIndex]).toMatchObject({
+			kind: "boolean",
+			rule: "jsonbool",
+		});
+		expect(guidance.responseSkeleton.spans[decisionIndex]).toMatchObject({
+			kind: "enum",
+			enumValues: ["FINISH", "NEXT_RECOMMENDED", "CONTINUE"],
+			rule: "decision",
+		});
+		expect(guidance.spanSamplerPlan.overrides).toEqual([
+			{ spanIndex: successIndex, temperature: 0, topK: 1 },
+			{ spanIndex: decisionIndex, temperature: 0, topK: 1 },
+		]);
+		expect(guidance.grammar).toContain('"FINISH"');
+		expect(guidance.grammar).toContain('"NEXT_RECOMMENDED"');
+		expect(guidance.grammar).toContain('"CONTINUE"');
+		expect(guidance.grammar).toContain('["\\\\/bfnrt]');
+	});
+
 	it("normalizes evaluator routes and next tool recommendations", () => {
 		const output = parseEvaluatorOutput(`{
   "success": true,
@@ -139,6 +169,13 @@ describe("v5 evaluator skeleton", () => {
 			reserveTokens: 10_000,
 			shouldCompact: false,
 		});
+		expect(evaluatorParams.providerOptions.eliza.guidedDecode).toBe(true);
+		expect(evaluatorParams.responseSkeleton?.id).toBe("evaluator-v1");
+		expect(evaluatorParams.grammar).toContain("decision ::=");
+		expect(evaluatorParams.spanSamplerPlan?.overrides).toEqual([
+			{ spanIndex: 1, temperature: 0, topK: 1 },
+			{ spanIndex: 3, temperature: 0, topK: 1 },
+		]);
 		expect(result.decision).toBe("FINISH");
 		expect(copyToClipboard).toHaveBeenCalledWith({
 			title: "Artifact",
@@ -300,5 +337,103 @@ describe("v5 evaluator skeleton", () => {
 		expect(result.messageToUser).toBe(
 			"190G free on / (387G total, 198G used, 52% used).",
 		);
+	});
+
+	it("rerolls remote evaluator output that fails the evaluator schema", async () => {
+		const runtime = {
+			models: new Map([
+				[
+					ModelType.RESPONSE_HANDLER,
+					[
+						{
+							provider: "anthropic",
+							priority: 0,
+							registrationOrder: 0,
+							handler: vi.fn(),
+						},
+					],
+				],
+			]),
+			useModel: vi
+				.fn()
+				.mockResolvedValueOnce(`{
+  "success": true,
+  "decision": "DONE",
+  "thought": "Invalid enum."
+}`)
+				.mockResolvedValueOnce(`{
+  "success": false,
+  "decision": "CONTINUE",
+  "thought": "Need one more grounded tool result."
+}`),
+		};
+
+		const result = await runEvaluator({
+			runtime,
+			context: {
+				id: "ctx",
+				staticPrefix: {
+					characterPrompt: { content: "agent_name: Eliza", stable: true },
+				},
+				events: [],
+			},
+			trajectory: {
+				context: { id: "ctx" },
+				steps: [],
+				archivedSteps: [],
+				plannedQueue: [],
+				evaluatorOutputs: [],
+			},
+		});
+
+		expect(runtime.useModel).toHaveBeenCalledTimes(2);
+		expect(result.decision).toBe("CONTINUE");
+		expect(result.thought).toBe("Need one more grounded tool result.");
+	});
+
+	it("does not reroll a guided local evaluator response", async () => {
+		const runtime = {
+			models: new Map([
+				[
+					ModelType.RESPONSE_HANDLER,
+					[
+						{
+							provider: "eliza-local-inference",
+							priority: 0,
+							registrationOrder: 0,
+							handler: vi.fn(),
+						},
+					],
+				],
+			]),
+			useModel: vi.fn(
+				async () => `{
+  "success": true,
+  "decision": "DONE",
+  "thought": "Local parser normalization handles this."
+}`,
+			),
+		};
+
+		const result = await runEvaluator({
+			runtime,
+			context: {
+				id: "ctx",
+				staticPrefix: {
+					characterPrompt: { content: "agent_name: Eliza", stable: true },
+				},
+				events: [],
+			},
+			trajectory: {
+				context: { id: "ctx" },
+				steps: [],
+				archivedSteps: [],
+				plannedQueue: [],
+				evaluatorOutputs: [],
+			},
+		});
+
+		expect(runtime.useModel).toHaveBeenCalledTimes(1);
+		expect(result.decision).toBe("CONTINUE");
 	});
 });

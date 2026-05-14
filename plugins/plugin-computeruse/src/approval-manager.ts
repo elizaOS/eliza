@@ -27,6 +27,8 @@ const SAFE_COMMANDS = new Set<string>([
   "browser_get_context",
   "browser_list_tabs",
   "browser_wait",
+  "clipboard_get",
+  "get_clipboard",
   "file_read",
   "file_exists",
   "directory_list",

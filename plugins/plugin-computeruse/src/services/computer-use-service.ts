@@ -1454,6 +1454,15 @@ export class ComputerUseService extends Service {
     };
   }
 
+  private normalizeClipboardActionParams(
+    params: ClipboardActionParams,
+  ): ClipboardActionParams {
+    return {
+      ...params,
+      text: params.text ?? params.content ?? params.value,
+    };
+  }
+
   private normalizeFileActionParams(
     params: FileActionParams,
   ): FileActionParams {
@@ -1618,6 +1627,12 @@ export class ComputerUseService extends Service {
       case "close":
         return "close_window";
     }
+  }
+
+  private clipboardApprovalCommand(
+    action: ClipboardActionParams["action"],
+  ): string {
+    return action === "get" ? "clipboard_get" : "clipboard_set";
   }
 
   private fileApprovalCommand(action: FileActionParams["action"]): string {

@@ -290,6 +290,17 @@ _TOOL_DESCRIPTIONS: dict[str, str] = {
         "draft_reply, manage, triage, search_inbox, list_channels, read_channel, or "
         "read_with_contact. Use source=gmail for email."
     ),
+    "ARCHIVE_EMAIL_THREAD": (
+        "Archive one Gmail email thread. Required: threadId as a TOP-LEVEL flat "
+        "field, copied exactly from the user's request when an explicit thread_* id "
+        "is present. Example: {\"threadId\":\"thread_01464\"}."
+    ),
+    "MESSAGE_MANAGE": (
+        "Manage Gmail/email message state. For archive requests use source='gmail', "
+        "manageOperation='archive', and either threadId or messageId as TOP-LEVEL "
+        "flat fields. Example: {\"source\":\"gmail\",\"manageOperation\":\"archive\","
+        "\"threadId\":\"thread_01464\"}."
+    ),
     "ENTITY": (
         "Manage people and identity records. Use subaction=add, set_identity, "
         "log_interaction, or list."
@@ -647,6 +658,45 @@ def _tool_parameters_for_action(action_name: str) -> dict[str, Any]:
                 "required": ["name", "seat_class"],
             },
         }
+    elif action_name == "ARCHIVE_EMAIL_THREAD":
+        schema["properties"]["threadId"] = {
+            "type": "string",
+            "pattern": "^thread_[A-Za-z0-9_:-]+$",
+            "description": (
+                "TOP-LEVEL flat field — Gmail thread id to archive. If the user "
+                "provided a thread_* id, copy it exactly here."
+            ),
+        }
+        schema["required"] = sorted({*schema.get("required", []), "threadId"})
+    elif action_name == "MESSAGE_MANAGE":
+        schema["properties"].update(
+            {
+                "source": {
+                    "type": "string",
+                    "enum": ["gmail"],
+                    "description": "Use gmail for email archive/manage operations.",
+                },
+                "manageOperation": {
+                    "type": "string",
+                    "enum": ["archive", "trash", "star", "mark_read"],
+                    "description": "Management operation to apply.",
+                },
+                "threadId": {
+                    "type": "string",
+                    "description": (
+                        "TOP-LEVEL flat field — Gmail thread id. Prefer this for "
+                        "thread-level archive requests."
+                    ),
+                },
+                "messageId": {
+                    "type": "string",
+                    "description": "TOP-LEVEL flat field — Gmail message id.",
+                },
+            }
+        )
+        schema["required"] = sorted(
+            {*schema.get("required", []), "manageOperation"}
+        )
 
     return schema
 
