@@ -89,6 +89,186 @@ export function createScratchDir(
 }
 
 /**
+ * Adapter names recognised by the canonical `coding-agent-adapters` package.
+ * Operators that pin one of these via `PARALLAX_DEFAULT_AGENT_TYPE` express a
+ * deployment-level policy: "use this adapter for sub-agent spawns regardless
+ * of what the planner LLM decided." When the strategy is `fixed` (the
+ * default) the pin overrides planner-supplied `agentType`.
+ */
+const KNOWN_ADAPTER_TYPES = new Set([
+  "claude",
+  "codex",
+  "opencode",
+  "gemini",
+  "aider",
+  "hermes",
+]);
+
+/**
+ * Resolve the operator-pinned coding adapter from configuration. Returns the
+ * pinned adapter name when both `PARALLAX_DEFAULT_AGENT_TYPE` is set to a
+ * recognised value AND `PARALLAX_AGENT_SELECTION_STRATEGY` is `fixed` (or
+ * unset, which defaults to `fixed`). Otherwise returns `undefined` and the
+ * caller falls back to the planner's choice or dynamic resolution.
+ */
+export function resolvePinnedAdapter(
+  runtime: IAgentRuntime | undefined,
+): string | undefined {
+  const getSetting = (key: string): string | undefined => {
+    const fromRuntime =
+      typeof runtime?.getSetting === "function"
+        ? (runtime.getSetting(key) as string | undefined)
+        : undefined;
+    return (
+      fromRuntime ?? readConfigEnvKey(key) ?? process.env[key] ?? undefined
+    );
+  };
+  const strategy = (getSetting("PARALLAX_AGENT_SELECTION_STRATEGY") ?? "fixed")
+    .toLowerCase()
+    .trim();
+  if (strategy !== "fixed") return undefined;
+  const raw = getSetting("PARALLAX_DEFAULT_AGENT_TYPE")?.trim().toLowerCase();
+  if (!raw) return undefined;
+  return KNOWN_ADAPTER_TYPES.has(raw) ? raw : undefined;
+}
+
+/**
+ * A single entry in `TASK_AGENT_WORKDIR_ROUTES`. The config value is a JSON
+ * array of these. Each route declares a target workdir for sub-agent spawns
+ * whose task text matches the gate (matchAll AND matchAny AND NOT excludeAny).
+ */
+export interface WorkdirRoute {
+  id: string;
+  workdir: string;
+  matchAll?: string[];
+  matchAny?: string[];
+  excludeAny?: string[];
+  instructions?: string;
+}
+
+export interface ResolvedWorkdirRoute {
+  id: string;
+  workdir: string;
+  instructions?: string;
+}
+
+function parseWorkdirRoutes(raw: string | undefined): WorkdirRoute[] {
+  if (!raw?.trim()) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (entry): entry is WorkdirRoute =>
+        entry &&
+        typeof entry === "object" &&
+        typeof entry.id === "string" &&
+        typeof entry.workdir === "string",
+    );
+  } catch (err) {
+    logger.warn(
+      `[workdir-routes] Failed to parse TASK_AGENT_WORKDIR_ROUTES: ${(err as Error).message}`,
+    );
+    return [];
+  }
+}
+
+function escapeForRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * Match against word boundaries, not raw substrings: otherwise short tokens
+ * cause false positives ("pr" matches inside "preview", "ai" inside "plain",
+ * "site" inside "website" if site was in excludeAny). The phrase can be
+ * multi-word; boundaries are checked only against the first/last token edges.
+ */
+function containsPhrase(haystack: string, phrase: string): boolean {
+  if (!phrase) return false;
+  const trimmed = phrase.toLowerCase().trim();
+  if (!trimmed) return false;
+  // Punctuation-only or hyphenated tokens skip word-boundary anchors when
+  // they would never match (e.g. \b doesn't anchor between two hyphens).
+  const startBoundary = /^[a-z0-9]/.test(trimmed) ? "\\b" : "";
+  const endBoundary = /[a-z0-9]$/.test(trimmed) ? "\\b" : "";
+  const pattern = new RegExp(
+    `${startBoundary}${escapeForRegex(trimmed)}${endBoundary}`,
+    "i",
+  );
+  return pattern.test(haystack);
+}
+
+function routeMatches(route: WorkdirRoute, haystack: string): boolean {
+  if (route.matchAll?.length) {
+    for (const term of route.matchAll) {
+      if (!containsPhrase(haystack, term.toLowerCase())) return false;
+    }
+  }
+  if (route.matchAny?.length) {
+    const any = route.matchAny.some((term) =>
+      containsPhrase(haystack, term.toLowerCase()),
+    );
+    if (!any) return false;
+  }
+  if (route.excludeAny?.length) {
+    for (const term of route.excludeAny) {
+      if (containsPhrase(haystack, term.toLowerCase())) return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * Resolve a fallback workdir for a sub-agent spawn from the
+ * `TASK_AGENT_WORKDIR_ROUTES` config-env entry. Returns the first matching
+ * route or `undefined` if none match (or the config is empty/malformed).
+ *
+ * Callers should only consult this when no upstream workdir was supplied —
+ * actions that scaffold their own directories (e.g. APP_CREATE picking
+ * `eliza/apps/<name>`) pass `workdir` explicitly and must keep it. The
+ * routes mechanism exists for the bare-spawn case where the planner has no
+ * good default workdir to suggest.
+ *
+ * The match phrase searches both the user's original request and the specific
+ * sub-task text — sub-task splits often drop context words the matcher needs.
+ * The target workdir must already exist on disk; routes pointing at missing
+ * directories are skipped with a warning so callers fall back to scratch.
+ */
+export function resolveWorkdirRoute(
+  runtime: IAgentRuntime | undefined,
+  task: string,
+  userRequest: string,
+): ResolvedWorkdirRoute | undefined {
+  const runtimeSetting =
+    typeof runtime?.getSetting === "function"
+      ? (runtime.getSetting("TASK_AGENT_WORKDIR_ROUTES") as string | undefined)
+      : undefined;
+  const raw =
+    runtimeSetting ??
+    readConfigEnvKey("TASK_AGENT_WORKDIR_ROUTES") ??
+    process.env.TASK_AGENT_WORKDIR_ROUTES;
+  const routes = parseWorkdirRoutes(raw);
+  if (routes.length === 0) return undefined;
+  const haystack = `${userRequest}\n${task}`.toLowerCase();
+  for (const route of routes) {
+    if (!routeMatches(route, haystack)) continue;
+    const expanded = route.workdir.startsWith("~")
+      ? path.join(os.homedir(), route.workdir.slice(1))
+      : route.workdir;
+    if (!fs.existsSync(expanded)) {
+      logger.warn(
+        `[workdir-routes] Route "${route.id}" matched but workdir does not exist: ${expanded}`,
+      );
+      continue;
+    }
+    logger.info(
+      `[workdir-routes] Matched route "${route.id}" → workdir=${expanded}`,
+    );
+    return { id: route.id, workdir: expanded, instructions: route.instructions };
+  }
+  return undefined;
+}
+
+/**
  * Generate a short semantic label from repo URL and/or task description.
  * e.g. "git-workspace-service-testbed/hello-mima" or "scratch/react-research"
  */
