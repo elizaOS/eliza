@@ -279,6 +279,16 @@
       "project": ["index.html"],
       "ignoreBinaries": ["python3"]
     },
+    "packages/examples/react": {
+      "entry": [
+        "src/**/*.{ts,tsx}",
+        "scripts/**/*.mjs",
+        "vite.config.ts",
+        "index.html"
+      ],
+      "project": ["src/**/*.{ts,tsx}", "scripts/**/*.mjs", "vite.config.ts"],
+      "ignore": ["dist/**"]
+    },
     "packages/examples/aws": {
       "entry": [
         "handler.ts",
