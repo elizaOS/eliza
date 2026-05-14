@@ -1,0 +1,70 @@
+[[!meta date="Wed, 14 Jan 2015 12:34:56 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!meta title="Tails 1.2.3 is out"]]
+[[!tag announce]]
+
+Tails, The Amnesic Incognito Live System, version 1.2.3, is out.
+
+This release fixes [[numerous security
+issues|security/Numerous_security_holes_in_1.2.2]] and all users must
+[[upgrade|doc/upgrade]] as soon as possible.
+
+On January 3rd, the SSL certificate of our website hosting provider,
+boum.org, expired. This means that if you still are running Tails
+1.2.1 or older, you will not get any update notification. Please
+help spreading the word!
+
+[[!toc levels=1]]
+
+# Changes
+
+  * Security fixes
+    - Upgrade to Linux 3.16.7-ckt2-1.
+    - Upgrade to Tor Browser 4.0.3 (based on Firefox 31.4.0esr)
+      ([[!tails_ticket 8700]]).
+    - Improve MAC spoofing fail-safe mechanisms, which includes preventing one
+      more way the MAC address could be leaked. ([[!tails_ticket 8571]]).
+    - Disable upgrade checking in the Unsafe Browser. Until now the
+      Unsafe Browser has checked for upgrades of the Tor Browser in
+      the clear ([[!tails_ticket 8694]]).
+
+  * Bugfixes
+    - Fix startup of the Unsafe Browser in some locales
+      ([[!tails_ticket 8693]]).
+    - Repair the desktop screenshot feature ([[!tails_ticket 8087]]).
+    - Do not suspend to RAM when closing the lid on battery power
+      ([[!tails_ticket 8071]]).
+    - Properly update the Tails Installer's status when plugging in a
+      USB drive after it has started ([[!tails_ticket 8353]]).
+
+See the online
+Changelog
+for technical details.
+
+# Known issues
+
+* It is [[hard to exchange files with the I2P Browser|support/known_issues#i2p_browser]].
+
+* Tails' MAC spoofing feature [[disables
+  Broadcom BCM43224 wireless adapters|support/known_issues#bcm43224]].
+  This network adapter can be found in the MacBook Air 4,1, 4,2, 5,1
+  and 5,2.
+
+* [[Longstanding|support/known_issues]] known issues.
+
+# I want to try it or to upgrade!
+
+Go to the [[install]] page.
+
+As no software is ever perfect, we maintain a list of [[problems
+that affects the last release of Tails|support/known_issues]].
+
+# What's coming up?
+
+The next Tails release is [[scheduled|contribute/calendar]] for
+February 24.
+
+
+Do you want to help? There are many ways [[**you** can
+contribute to Tails|contribute]]. If you want to help, come talk
+to us!

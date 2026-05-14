@@ -1,0 +1,285 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-11-05 08:59+0000\n"
+"PO-Revision-Date: 2025-12-06 23:29+0000\n"
+"Last-Translator: _ignifugo <ignifugo@insicuri.net>\n"
+"Language-Team: ita <transitails@inventati.org>\n"
+"Language: it\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Managing the circuits of Tor\"]]\n"
+msgstr "[[!meta title=\"Gestire i circuiti diTor\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"*Onion Circuits* displays information about\n"
+"the current Tor circuits and connections.\n"
+msgstr ""
+"*Circuiti Onion* visualizza informazioni sullo\n"
+"stato dei circuiti e delle connessioni di Tor.\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid ""
+#| "To open **Onion Circuits**, click on the\n"
+#| "Tor status icon ([[!img lib/symbolic/tor-disconnected.png alt=\"Tor status menu\" link=\"no\" class=\"symbolic\"]]\n"
+#| "or [[!img lib/symbolic/tor-connected.png alt=\"Tor status menu\" link=\"no\"\n"
+#| "class=\"symbolic\"]]) in the top-right corner and choose **Open Onion\n"
+#| "Circuits**.\n"
+msgid ""
+"To open **Onion Circuits**, click on the\n"
+"Tor status icon ([[!img lib/symbolic/tor-disconnected.png alt=\"Tor status menu\" link=\"no\" class=\"symbolic\"]]\n"
+"or [[!img lib/symbolic/tor-connected.png alt=\"Tor status menu\" link=\"no\"\n"
+"class=\"symbolic\"]]) in the top-right corner and choose **View Tor Circuits**.\n"
+msgstr ""
+"Per aprire **Circuiti Tor**, clicca\n"
+"sull'icona dello stato di Tor ([[!img lib/symbolic/tor-disconnected.png alt=\"Menù di stato di Tor\" link=\"no\" class=\"symbolic\"]]\n"
+"oppure [[!img lib/symbolic/tor-connected.png alt=\"Menù di stato di Tor\" link=\"no\"\n"
+"class=\"symbolic\"]]) nell'angolo in alto a destra e scegli **Apri circuiti Tor**.\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"view\">Understanding Tor circuits</h1>\n"
+msgstr "<h1 id=\"view\">Capire i circuiti Tor</h1>\n"
+
+#. type: Plain text
+msgid ""
+"If Tails is already [[connected to the Tor network|doc/anonymous_internet/"
+"tor]], a list of Tor circuits appears in the left pane of *Onion Circuits*."
+msgstr ""
+"Se Tails è già [[connesso alla rete Tor|doc/anonymous_internet/tor]], un "
+"elenco di circuiti Tor compare nel riquadro a sinistra dei *Circuiti Onion*."
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<!-- Note for translators: the entry guards in use when you take the screenshot\n"
+"onion-circuits.png is in a position to identify you. You might prefer to leave it\n"
+"untranslated. -->\n"
+msgstr ""
+"<!-- Note for translators: the entry guards in use when you take the screenshot\n"
+"onion-circuits.png is in a position to identify you. You might prefer to leave it\n"
+"untranslated. -->\n"
+
+#. type: Plain text
+msgid ""
+"When you connect to a destination server, for example, when visiting a "
+"website, the connection appears in the list below the circuit it uses."
+msgstr ""
+"Quando ti connetti a un server di destinazione, ad esempio visitando un sito "
+"web, la connessione appare nella lista sotto il circuito da essa utilizzato."
+
+#. type: Plain text
+msgid ""
+"Click on a circuit to display the technical details about each relay in the "
+"right pane."
+msgstr ""
+"Clicca su un circuito per visualizzare i dettagli tecnici di ciascun relè "
+"nel riquadro di destra."
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!img onion-circuits.png class=\"screenshot\" alt=\"\"]]\n"
+msgstr "[[!img onion-circuits.png class=\"screenshot\" alt=\"\"]]\n"
+
+#. type: Plain text
+msgid ""
+"Each Tor circuit is made of 3 Tor relays. In the example above, the "
+"connection to **tails.net** goes through the 3 relays **drk**, **kicka**, "
+"and **Quetzalcoatl**."
+msgstr ""
+"Ogni circuito Tor è composto da 3 relè Tor. Nell'esempio precedente, la "
+"connessione a **tails.net** passa attraverso i 3 relè **drk**, **kicka** e "
+"**Quetzalcoatl**."
+
+#. type: Bullet: '1. '
+msgid "The first relay, here **drk**, is called the *entry guard*."
+msgstr "Il primo relè, qui **drk**, è chiamato *nodo d'ingresso*."
+
+#. type: Plain text
+#, no-wrap
+msgid "   If you use a Tor bridge:\n"
+msgstr ""
+
+#. type: Bullet: '   - '
+msgid "Tor uses the bridge as your entry guard."
+msgstr ""
+"Se hai configurato un Tor bridge (ponte Tor), il tuo ponte è il tuo  nodo "
+"d'ingresso."
+
+#. type: Plain text
+#, no-wrap
+msgid "   If you don't use a Tor bridge:\n"
+msgstr ""
+
+#. type: Bullet: '   - '
+msgid ""
+"Tor uses only 2 different relays as your entry guards, as a way of "
+"[protecting against *end-to-end correlation* attacks](https://"
+"support.torproject.org/about-tor/how-tor-works/entry-guards/)."
+msgstr ""
+
+#. type: Bullet: '   - '
+msgid "Your entry guards change every time you restart Tails."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"     To keep the same entry guard across different Tails sessions, use a\n"
+"     Tor bridge instead.\n"
+msgstr ""
+
+#. type: Bullet: '2. '
+msgid "The second relay, here **kicka**, is called the *middle relay*."
+msgstr "Il secondo relè  qui **kicka**, qui e detto*relè centrale*."
+
+#. type: Bullet: '3. '
+msgid "The third relay, here **Quetzalcoatl**, is called the *exit node*."
+msgstr "Il terzo relè, qui **Quetzalcoatl**, è detto*nodo di uscita*."
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "[[!img doc/anonymous_internet/tor/tor.svg link=\"no\" alt=\"Schematics of a connection to Tor with the client, the 3 relays, and the destination server.\"]]\n"
+msgid "[[!img doc/anonymous_internet/tor/tor.png link=\"no\" class=\"svg\" alt=\"Schematics of a connection to Tor with the client, the 3 relays, and the destination server.\"]]\n"
+msgstr "[[!img doc/anonymous_internet/tor/tor.svg link=\"no\" alt=\"Schema di una connessione a Tor con il client, i 3 relays, e il server di destinazione.\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"change\">Closing and replacing a Tor circuit</h1>\n"
+msgstr "<h1 id=\"change\">Chiudere e sostituire un circuito Tor</h1>\n"
+
+#. type: Plain text
+msgid ""
+"You can close a given Tor circuit to help replace a particularly slow Tor "
+"circuit or troubleshoot issues on the Tor network. To do so:"
+msgstr ""
+"Puoi chiudere un determinato circuito Tor per sostituire un circuito Tor "
+"particolarmente lento o per risolvere problemi sulla rete Tor. Per farlo:"
+
+#. type: Bullet: '1. '
+msgid ""
+"Right-click (on Mac, click with two fingers) on the circuit that you want to "
+"close."
+msgstr ""
+"Clicca con il tasto destro del mouse (su Mac, clicca con due dita) sul "
+"circuito che desideri chiudere."
+
+#. type: Bullet: '1. '
+msgid "Choose **Close this circuit** in the shortcut menu."
+msgstr "Scegli **Chiudi questo circuito** nel menu di scelta rapida."
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   When you close a circuit that is being used by an application, your\n"
+"   application gets disconnected from this destination service.\n"
+msgstr ""
+"   Quando chiudi un circuito utilizzato da un'applicazione.la tua\n"
+"      applicazione viene scollegata da questo servizio di destinazione.\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   For example, when you close a circuit while <i>Tor Browser</i> is\n"
+"   downloading a file, the download fails.\n"
+msgstr ""
+"   Ad esempio, se chiudi un circuito mentre <i>Tor Browser</i> sta \n"
+"      scaricando un file, il download non riesce.\n"
+
+#. type: Bullet: '1. '
+msgid ""
+"If you connect to the same destination server again, Tor uses a different "
+"circuit to replace the circuit that you closed."
+msgstr ""
+"Se ti connetti allo stesso server di destinazione, Tor utilizza un circuito "
+"diverso per sostituire\n"
+"il circuito che hai chiuso."
+
+#. type: Plain text
+#, no-wrap
+msgid "   For example, if you download the same file again, Tor uses a new circuit.\n"
+msgstr ""
+"   Ad esempio, se scarichi lo stesso file di nuovo, Tor utilizza un nuovo "
+"circuito.\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "<h1 id=\"view\">Understanding Tor circuits</h1>\n"
+msgid "<h1 id=\"restart\">Closing and replacing all Tor circuits</h1>\n"
+msgstr "<h1 id=\"view\">Capire i circuiti Tor</h1>\n"
+
+#. type: Plain text
+msgid ""
+"Tails restarts Tor and all circuits are replaced if you disconnect and "
+"reconnect from your local network, for example, by turning the Wi-Fi off and "
+"on again."
+msgstr ""
+
+#, no-wrap
+#~ msgid ""
+#~ "To open *Onion Circuits*, click on the\n"
+#~ "Tor status icon in the top-right corner and choose <span class=\"guimenuitem\">Open Onion\n"
+#~ "Circuits</span>.\n"
+#~ msgstr ""
+#~ "Per aprire *Onion Circuits*, clicca sull'icona\n"
+#~ "Tor status nell'angolo in alto a destra e scegli <span class=\"guimenuitem\">Open Onion\n"
+#~ "Circuits</span>.\n"
+
+#~ msgid ""
+#~ "The circuits established by Tor are listed in the left pane. A Tor "
+#~ "circuit is made of three relays:"
+#~ msgstr ""
+#~ "I circuiti stabiliti da Tor sono elencati nel pannello di sinistra. Un "
+#~ "circuito Tor è costituito di tre relay:"
+
+#~ msgid "The exit node."
+#~ msgstr "L'exit node o nodo d'uscita."
+
+#, no-wrap
+#~ msgid ""
+#~ "In the example above, the connection to\n"
+#~ "<span class=\"code\">check.torproject.org</span> goes through the relays\n"
+#~ "**tor7kryptonit**,\n"
+#~ "**Casper03**, and the exit node\n"
+#~ "**blackfish**.\n"
+#~ msgstr ""
+#~ "Nell'esempio sopra, la connessione a\n"
+#~ "<span class=\"code\">check.torproject.org</span> attraversa i relay\n"
+#~ "**tor7kryptonit**,\n"
+#~ "**Casper03**, e il nodo d'uscita\n"
+#~ "**blackfish**.\n"
+
+#, no-wrap
+#~ msgid "[[!toc levels=1]]\n"
+#~ msgstr "[[!toc levels=1]]\n"
+
+#, no-wrap
+#~ msgid "[[!img doc/first_steps/desktop/tor-status.png link=\"no\"]]\n"
+#~ msgstr "[[!img doc/first_steps/desktop/tor-status.png link=\"no\"]]\n"
+
+#, no-wrap
+#~ msgid "<div class=\"tip\">\n"
+#~ msgstr "<div class=\"tip\">\n"
+
+#, no-wrap
+#~ msgid "</div>\n"
+#~ msgstr "</div>\n"
+
+#, no-wrap
+#~ msgid "<a id=\"circuits\"></a>\n"
+#~ msgstr "<a id=\"circuits\"></a>\n"

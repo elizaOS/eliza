@@ -1,0 +1,6298 @@
+---
+origin_references:
+  debian:
+    reference: '2026040102'
+  debian-security:
+    reference: '2026050101'
+  torproject:
+    reference: '2026033002'
+packages:
+  binary:
+  - arch: amd64
+    package: 7zip
+    version: 25.01+dfsg-1~deb13u1
+  - arch: amd64
+    package: accountsservice
+    version: 23.13.9-7
+  - arch: amd64
+    package: acl
+    version: 2.3.2-2+b1
+  - arch: all
+    package: adduser
+    version: '3.152'
+  - arch: all
+    package: adwaita-icon-theme
+    version: 48.1-1
+  - arch: amd64
+    package: adwaita-qt6
+    version: 1.4.2-3+b4
+  - arch: all
+    package: akonadi-mime-data
+    version: 4:24.12.3-1
+  - arch: all
+    package: alsa-topology-conf
+    version: 1.2.5.1-3
+  - arch: amd64
+    package: alsa-utils
+    version: 1.2.14-1
+  - arch: amd64
+    package: amd64-microcode
+    version: 3.20250311.1
+  - arch: all
+    package: apparmor-profiles-extra
+    version: '1.35'
+  - arch: all
+    package: apparmor-profiles
+    version: 4.1.0-1tails2
+  - arch: amd64
+    package: apparmor
+    version: 4.1.0-1tails2
+  - arch: amd64
+    package: appstream-compose
+    version: 1.0.5-1
+  - arch: amd64
+    package: appstream
+    version: 1.0.5-1
+  - arch: all
+    package: apt-transport-tor
+    version: '0.5'
+  - arch: amd64
+    package: apt-utils
+    version: 3.0.3
+  - arch: amd64
+    package: apt
+    version: 3.0.3
+  - arch: all
+    package: at-spi2-common
+    version: 2.56.2-1+deb13u1
+  - arch: amd64
+    package: at-spi2-core
+    version: 2.56.2-1+deb13u1
+  - arch: all
+    package: audacity-data
+    version: 3.7.3+dfsg-1
+  - arch: amd64
+    package: audacity
+    version: 3.7.3+dfsg-1
+  - arch: all
+    package: autoconf
+    version: 2.72-3.1
+  - arch: all
+    package: automake
+    version: 1:1.17-4
+  - arch: all
+    package: autopoint
+    version: 0.23.1-2
+  - arch: all
+    package: autotools-dev
+    version: '20240727.1'
+  - arch: amd64
+    package: avahi-daemon
+    version: 0.8-16
+  - arch: amd64
+    package: b43-fwcutter
+    version: 1:019-14
+  - arch: amd64
+    package: base-files
+    version: 13.8+deb13u4
+  - arch: amd64
+    package: base-passwd
+    version: 3.6.7
+  - arch: all
+    package: bash-completion
+    version: 1:2.16.0-7
+  - arch: amd64
+    package: bash
+    version: 5.2.37-2+b8
+  - arch: amd64
+    package: bc
+    version: 1.07.1-4
+  - arch: all
+    package: bilibop-common
+    version: 0.6.5
+  - arch: all
+    package: bilibop-udev
+    version: 0.6.5
+  - arch: amd64
+    package: bind9-dnsutils
+    version: 1:9.20.21-1~deb13u1
+  - arch: amd64
+    package: bind9-host
+    version: 1:9.20.21-1~deb13u1
+  - arch: amd64
+    package: bind9-libs
+    version: 1:9.20.21-1~deb13u1
+  - arch: amd64
+    package: bindfs
+    version: 1.14.7-1.1+b1
+  - arch: amd64
+    package: binutils-common
+    version: 2.44-3
+  - arch: amd64
+    package: binutils-x86-64-linux-gnu
+    version: 2.44-3
+  - arch: amd64
+    package: binutils
+    version: 2.44-3
+  - arch: amd64
+    package: bolt
+    version: 0.9.8-1
+  - arch: all
+    package: bookletimposer
+    version: 0.3.1-5
+  - arch: all
+    package: brasero-common
+    version: 3.12.3-4
+  - arch: amd64
+    package: brasero
+    version: 3.12.3-4
+  - arch: amd64
+    package: bsdextrautils
+    version: 2.41-5
+  - arch: amd64
+    package: bsdutils
+    version: 1:2.41-5
+  - arch: amd64
+    package: bubblewrap
+    version: 0.11.0-2
+  - arch: amd64
+    package: build-essential
+    version: '12.12'
+  - arch: amd64
+    package: busybox
+    version: 1:1.37.0-6+b7
+  - arch: amd64
+    package: bzip2
+    version: 1.0.8-6
+  - arch: all
+    package: ca-certificates
+    version: '20250419'
+  - arch: amd64
+    package: cdrdao
+    version: 1:1.2.5-2
+  - arch: amd64
+    package: coinor-libcbc3.1
+    version: 2.10.12+ds-1
+  - arch: amd64
+    package: coinor-libcgl1
+    version: 0.60.9+ds-1
+  - arch: amd64
+    package: coinor-libclp1
+    version: 1.17.10+ds-1
+  - arch: amd64
+    package: coinor-libcoinmp0
+    version: 1.8.4+dfsg-2
+  - arch: amd64
+    package: coinor-libcoinutils3v5
+    version: 2.11.11+ds-5
+  - arch: amd64
+    package: coinor-libosi1v5
+    version: 0.108.10+ds-2
+  - arch: all
+    package: colord-data
+    version: 1.4.7-3
+  - arch: amd64
+    package: colord
+    version: 1.4.7-3
+  - arch: all
+    package: console-data
+    version: 2:1.12-9
+  - arch: all
+    package: console-setup-linux
+    version: 1.242~deb13u1
+  - arch: all
+    package: console-setup
+    version: 1.242~deb13u1
+  - arch: amd64
+    package: coreutils
+    version: 9.7-3
+  - arch: all
+    package: cpanminus
+    version: 1.7048-1
+  - arch: amd64
+    package: cpio
+    version: 2.15+dfsg-2
+  - arch: amd64
+    package: cpp-14-x86-64-linux-gnu
+    version: 14.2.0-19
+  - arch: amd64
+    package: cpp-14
+    version: 14.2.0-19
+  - arch: amd64
+    package: cpp-x86-64-linux-gnu
+    version: 4:14.2.0-1
+  - arch: amd64
+    package: cpp
+    version: 4:14.2.0-1
+  - arch: amd64
+    package: cracklib-runtime
+    version: 2.9.6-5.2+b1
+  - arch: all
+    package: cron-daemon-common
+    version: 3.0pl1-197
+  - arch: amd64
+    package: cron
+    version: 3.0pl1-197
+  - arch: amd64
+    package: cryptsetup-bin
+    version: 2:2.7.5-2
+  - arch: amd64
+    package: cups-client
+    version: 2.4.10-3+deb13u2
+  - arch: all
+    package: cups-common
+    version: 2.4.10-3+deb13u2
+  - arch: amd64
+    package: cups-core-drivers
+    version: 2.4.10-3+deb13u2
+  - arch: amd64
+    package: cups-daemon
+    version: 2.4.10-3+deb13u2
+  - arch: amd64
+    package: cups-filters-core-drivers
+    version: 1.28.17-6+deb13u1
+  - arch: amd64
+    package: cups-filters
+    version: 1.28.17-6+deb13u1
+  - arch: amd64
+    package: cups-ipp-utils
+    version: 2.4.10-3+deb13u2
+  - arch: amd64
+    package: cups-pk-helper
+    version: 0.2.6-2.1
+  - arch: amd64
+    package: cups-ppdc
+    version: 2.4.10-3+deb13u2
+  - arch: all
+    package: cups-server-common
+    version: 2.4.10-3+deb13u2
+  - arch: amd64
+    package: cups
+    version: 2.4.10-3+deb13u2
+  - arch: amd64
+    package: curl
+    version: 8.14.1-2+deb13u2
+  - arch: amd64
+    package: dash
+    version: 0.5.12-12
+  - arch: amd64
+    package: dbus-bin
+    version: 1.16.2-2
+  - arch: amd64
+    package: dbus-daemon
+    version: 1.16.2-2
+  - arch: all
+    package: dbus-session-bus-common
+    version: 1.16.2-2
+  - arch: all
+    package: dbus-system-bus-common
+    version: 1.16.2-2
+  - arch: amd64
+    package: dbus-user-session
+    version: 1.16.2-2
+  - arch: amd64
+    package: dbus-x11
+    version: 1.16.2-2
+  - arch: amd64
+    package: dbus
+    version: 1.16.2-2
+  - arch: amd64
+    package: dc
+    version: 1.07.1-4
+  - arch: amd64
+    package: dconf-cli
+    version: 0.40.0-5
+  - arch: amd64
+    package: dconf-gsettings-backend
+    version: 0.40.0-5
+  - arch: amd64
+    package: dconf-service
+    version: 0.40.0-5
+  - arch: all
+    package: debconf-i18n
+    version: 1.5.91
+  - arch: all
+    package: debconf
+    version: 1.5.91
+  - arch: all
+    package: debhelper
+    version: 13.24.2
+  - arch: all
+    package: debian-archive-keyring
+    version: '2025.1'
+  - arch: amd64
+    package: debianutils
+    version: 5.23.2
+  - arch: all
+    package: debootstrap
+    version: 1.0.141
+  - arch: amd64
+    package: debugedit
+    version: 1:5.1-2
+  - arch: all
+    package: desktop-base
+    version: 13.0.4
+  - arch: amd64
+    package: desktop-file-utils
+    version: 0.28-1
+  - arch: all
+    package: dh-autoreconf
+    version: '20'
+  - arch: all
+    package: dh-strip-nondeterminism
+    version: 1.14.1-2
+  - arch: amd64
+    package: dhcpcd-base
+    version: 1:10.1.0-11+deb13u2
+  - arch: all
+    package: diceware
+    version: 1.0.1-1
+  - arch: all
+    package: dictionaries-common
+    version: 1.30.10
+  - arch: amd64
+    package: diffutils
+    version: 1:3.10-4
+  - arch: amd64
+    package: dirmngr
+    version: 2.4.7-21+deb13u1+b2
+  - arch: all
+    package: distro-info-data
+    version: 0.66+deb13u1
+  - arch: amd64
+    package: distro-info
+    version: '1.13'
+  - arch: all
+    package: dkms
+    version: 3.2.2-1~deb13u1
+  - arch: amd64
+    package: dmeventd
+    version: 2:1.02.205-2
+  - arch: amd64
+    package: dmidecode
+    version: 3.6-2
+  - arch: amd64
+    package: dmsetup
+    version: 2:1.02.205-2
+  - arch: all
+    package: dmz-cursor-theme
+    version: 0.4.5.2
+  - arch: amd64
+    package: dosfstools
+    version: 4.2-1.2
+  - arch: all
+    package: dpkg-dev
+    version: 1.22.22
+  - arch: amd64
+    package: dpkg
+    version: 1.22.22
+  - arch: amd64
+    package: dracut-install
+    version: 106-6
+  - arch: amd64
+    package: dwz
+    version: 0.15-1+b1
+  - arch: amd64
+    package: e2fsprogs
+    version: 1.47.2-3+b10
+  - arch: amd64
+    package: eject
+    version: 2.41-5
+  - arch: all
+    package: electrum
+    version: 4.7.0+dfsg-1~bpo13+1
+  - arch: all
+    package: emacsen-common
+    version: 3.0.8
+  - arch: all
+    package: equivs
+    version: 2.3.2
+  - arch: amd64
+    package: espeak-ng-data
+    version: 1.52.0+dfsg-5
+  - arch: amd64
+    package: ethtool
+    version: 1:6.14.2-1
+  - arch: all
+    package: evince-common
+    version: 48.1-3
+  - arch: amd64
+    package: evince
+    version: 48.1-3
+  - arch: all
+    package: evolution-data-server-common
+    version: 3.56.2-0+deb13u1
+  - arch: amd64
+    package: exfatprogs
+    version: 1.2.9-1+deb13u1
+  - arch: amd64
+    package: exiv2
+    version: 0.28.5+dfsg-1
+  - arch: amd64
+    package: f3
+    version: 9.0-1
+  - arch: amd64
+    package: fatresize
+    version: 1.1.0-3
+  - arch: amd64
+    package: fdisk
+    version: 2.41-5
+  - arch: all
+    package: ferm
+    version: 2.5.1-4
+  - arch: amd64
+    package: ffmpeg
+    version: 7:7.1.3-0+deb13u1
+  - arch: amd64
+    package: file-roller
+    version: 44.5-1
+  - arch: amd64
+    package: file
+    version: 1:5.46-5
+  - arch: amd64
+    package: findutils
+    version: 4.10.0-3
+  - arch: all
+    package: firmware-amd-graphics
+    version: 20260309-1
+  - arch: all
+    package: firmware-ath9k-htc
+    version: 1.4.0-110-ge888634+dfsg1-0.3
+  - arch: all
+    package: firmware-atheros
+    version: 20260309-1
+  - arch: all
+    package: firmware-brcm80211
+    version: 20260309-1
+  - arch: all
+    package: firmware-carl9170
+    version: 1.9.9-690-gc6e7ab0-0.1
+  - arch: all
+    package: firmware-intel-graphics
+    version: 20260309-1
+  - arch: all
+    package: firmware-intel-misc
+    version: 20260309-1
+  - arch: all
+    package: firmware-intel-sound
+    version: 20260309-1
+  - arch: all
+    package: firmware-ipw2x00
+    version: 20260309-1
+  - arch: all
+    package: firmware-iwlwifi
+    version: 20260309-1
+  - arch: all
+    package: firmware-libertas
+    version: 20260309-1
+  - arch: all
+    package: firmware-linux-free
+    version: 20241210-3
+  - arch: all
+    package: firmware-linux-nonfree
+    version: 20260309-1
+  - arch: all
+    package: firmware-linux
+    version: 20260309-1
+  - arch: all
+    package: firmware-mediatek
+    version: 20260309-1
+  - arch: all
+    package: firmware-misc-nonfree
+    version: 20260309-1
+  - arch: all
+    package: firmware-nvidia-graphics
+    version: 20260309-1
+  - arch: all
+    package: firmware-realtek
+    version: 20260309-1
+  - arch: all
+    package: firmware-sof-signed
+    version: 2025.05.1-1
+  - arch: all
+    package: firmware-ti-connectivity
+    version: 20260309-1
+  - arch: all
+    package: firmware-zd1211
+    version: 1:1.5-13
+  - arch: amd64
+    package: flatpak-builder
+    version: 1.4.4-2
+  - arch: amd64
+    package: flatpak
+    version: 1.16.6-1~deb13u1tails1
+  - arch: amd64
+    package: fontconfig-config
+    version: 2.15.0-2.3
+  - arch: amd64
+    package: fontconfig
+    version: 2.15.0-2.3
+  - arch: all
+    package: fonts-cantarell
+    version: 0.303.1-4
+  - arch: all
+    package: fonts-culmus
+    version: 0.140-3
+  - arch: all
+    package: fonts-dejavu-core
+    version: 2.37-8
+  - arch: all
+    package: fonts-dejavu-extra
+    version: 2.37-8
+  - arch: all
+    package: fonts-dejavu-mono
+    version: 2.37-8
+  - arch: all
+    package: fonts-dejavu
+    version: 2.37-8
+  - arch: all
+    package: fonts-liberation
+    version: 1:2.1.5-3
+  - arch: all
+    package: fonts-linuxlibertine
+    version: 5.3.0-6
+  - arch: all
+    package: fonts-noto-cjk
+    version: 1:20240730+repack1-1
+  - arch: all
+    package: fonts-noto-core
+    version: 20201225-2
+  - arch: all
+    package: fonts-noto-mono
+    version: 20201225-2
+  - arch: all
+    package: fonts-noto-ui-core
+    version: 20201225-2
+  - arch: all
+    package: fonts-noto-unhinted
+    version: 20201225-2
+  - arch: all
+    package: fonts-opensymbol
+    version: 4:102.12+LibO25.2.3-2+deb13u3
+  - arch: all
+    package: fonts-quicksand
+    version: 0.2016-2.1
+  - arch: all
+    package: fonts-urw-base35
+    version: 20200910-8
+  - arch: amd64
+    package: foomatic-db-engine
+    version: 4.0.13-6
+  - arch: all
+    package: foomatic-db
+    version: 20230202-1
+  - arch: amd64
+    package: fuse3
+    version: 3.17.2-3
+  - arch: all
+    package: fuse
+    version: 3.17.2-3
+  - arch: amd64
+    package: g++-14-x86-64-linux-gnu
+    version: 14.2.0-19
+  - arch: amd64
+    package: g++-14
+    version: 14.2.0-19
+  - arch: amd64
+    package: g++-x86-64-linux-gnu
+    version: 4:14.2.0-1
+  - arch: amd64
+    package: g++
+    version: 4:14.2.0-1
+  - arch: amd64
+    package: gcc-14-base
+    version: 14.2.0-19
+  - arch: amd64
+    package: gcc-14-x86-64-linux-gnu
+    version: 14.2.0-19
+  - arch: amd64
+    package: gcc-14
+    version: 14.2.0-19
+  - arch: amd64
+    package: gcc-x86-64-linux-gnu
+    version: 4:14.2.0-1
+  - arch: amd64
+    package: gcc
+    version: 4:14.2.0-1
+  - arch: amd64
+    package: gcr4
+    version: 4.4.0.1-3
+  - arch: amd64
+    package: gcr
+    version: 3.41.2-3
+  - arch: amd64
+    package: gddrescue
+    version: 1.29-1
+  - arch: amd64
+    package: gdisk
+    version: 1.0.10-2
+  - arch: amd64
+    package: gdm3
+    version: 48.0-2
+  - arch: amd64
+    package: genisoimage
+    version: 9:1.1.11-4
+  - arch: all
+    package: geocode-glib-common
+    version: 3.26.4-1
+  - arch: amd64
+    package: gettext-base
+    version: 0.23.1-2
+  - arch: amd64
+    package: gettext
+    version: 0.23.1-2
+  - arch: amd64
+    package: ghostscript
+    version: 10.05.1~dfsg-1+deb13u1
+  - arch: all
+    package: gimp-data
+    version: 3.0.4-3+deb13u8
+  - arch: amd64
+    package: gimp
+    version: 3.0.4-3+deb13u8
+  - arch: amd64
+    package: gir1.2-accountsservice-1.0
+    version: 23.13.9-7
+  - arch: amd64
+    package: gir1.2-adw-1
+    version: 1.7.6-1~deb13u1
+  - arch: amd64
+    package: gir1.2-atk-1.0
+    version: 2.56.2-1+deb13u1
+  - arch: amd64
+    package: gir1.2-atspi-2.0
+    version: 2.56.2-1+deb13u1
+  - arch: amd64
+    package: gir1.2-babl-0.1
+    version: 1:0.1.114-2
+  - arch: amd64
+    package: gir1.2-flatpak-1.0
+    version: 1.16.6-1~deb13u1tails1
+  - arch: amd64
+    package: gir1.2-freedesktop
+    version: 1.84.0-1
+  - arch: amd64
+    package: gir1.2-gck-2
+    version: 4.4.0.1-3
+  - arch: amd64
+    package: gir1.2-gcr-4
+    version: 4.4.0.1-3
+  - arch: amd64
+    package: gir1.2-gdesktopenums-3.0
+    version: 48.0-1
+  - arch: amd64
+    package: gir1.2-gdkpixbuf-2.0
+    version: 2.42.12+dfsg-4+deb13u1
+  - arch: amd64
+    package: gir1.2-gdm-1.0
+    version: 48.0-2
+  - arch: amd64
+    package: gir1.2-gegl-0.4
+    version: 1:0.4.62-2+deb13u2
+  - arch: amd64
+    package: gir1.2-geoclue-2.0
+    version: 2.7.2-2
+  - arch: amd64
+    package: gir1.2-gimp-3.0
+    version: 3.0.4-3+deb13u8
+  - arch: amd64
+    package: gir1.2-girepository-2.0
+    version: 1.84.0-1
+  - arch: amd64
+    package: gir1.2-glib-2.0
+    version: 2.84.4-3~deb13u2
+  - arch: amd64
+    package: gir1.2-gmenu-3.0
+    version: 3.36.0-3
+  - arch: amd64
+    package: gir1.2-gnomebg-4.0
+    version: 44.3-3
+  - arch: amd64
+    package: gir1.2-gnomebluetooth-3.0
+    version: 47.1-1
+  - arch: amd64
+    package: gir1.2-gnomedesktop-3.0
+    version: 44.3-3
+  - arch: amd64
+    package: gir1.2-gnomedesktop-4.0
+    version: 44.3-3
+  - arch: amd64
+    package: gir1.2-graphene-1.0
+    version: 1.10.8-5
+  - arch: amd64
+    package: gir1.2-gst-plugins-bad-1.0
+    version: 1.26.2-3+deb13u1
+  - arch: amd64
+    package: gir1.2-gst-plugins-base-1.0
+    version: 1.26.2-1+deb13u1
+  - arch: amd64
+    package: gir1.2-gstreamer-1.0
+    version: 1.26.2-2
+  - arch: amd64
+    package: gir1.2-gtk-3.0
+    version: 3.24.49-3
+  - arch: amd64
+    package: gir1.2-gtk-4.0
+    version: 4.18.6+ds-2
+  - arch: amd64
+    package: gir1.2-gtksource-5
+    version: 5.16.0-1
+  - arch: amd64
+    package: gir1.2-gudev-1.0
+    version: 238-6
+  - arch: amd64
+    package: gir1.2-gweather-4.0
+    version: 4.4.4-1
+  - arch: amd64
+    package: gir1.2-handy-1
+    version: 1.8.3-2
+  - arch: amd64
+    package: gir1.2-harfbuzz-0.0
+    version: 10.2.0-1+b1
+  - arch: amd64
+    package: gir1.2-ibus-1.0
+    version: 1.5.32-2
+  - arch: amd64
+    package: gir1.2-javascriptcoregtk-4.1
+    version: 2.52.3-2~deb13u1
+  - arch: amd64
+    package: gir1.2-mutter-16
+    version: 48.7-0+deb13u1
+  - arch: amd64
+    package: gir1.2-nm-1.0
+    version: 1.52.1-1
+  - arch: amd64
+    package: gir1.2-nma4-1.0
+    version: 1.10.6-5
+  - arch: amd64
+    package: gir1.2-notify-0.7
+    version: 0.8.6-1
+  - arch: amd64
+    package: gir1.2-pango-1.0
+    version: 1.56.3-1
+  - arch: amd64
+    package: gir1.2-peas-1.0
+    version: 1.36.0-3+b4
+  - arch: amd64
+    package: gir1.2-polkit-1.0
+    version: 126-2
+  - arch: amd64
+    package: gir1.2-poppler-0.18
+    version: 25.03.0-5+deb13u2
+  - arch: amd64
+    package: gir1.2-rsvg-2.0
+    version: 2.60.0+dfsg-1
+  - arch: amd64
+    package: gir1.2-soup-3.0
+    version: 3.6.5-3
+  - arch: amd64
+    package: gir1.2-totem-1.0
+    version: 43.2-3
+  - arch: amd64
+    package: gir1.2-totemplparser-1.0
+    version: 3.26.6-2
+  - arch: amd64
+    package: gir1.2-udisks-2.0
+    version: 2.10.1-12.1+deb13u1
+  - arch: amd64
+    package: gir1.2-upowerglib-1.0
+    version: 1.90.9-1
+  - arch: amd64
+    package: gir1.2-webkit2-4.1
+    version: 2.52.3-2~deb13u1
+  - arch: amd64
+    package: gir1.2-wnck-3.0
+    version: 43.2-1
+  - arch: all
+    package: git-man
+    version: 1:2.47.3-0+deb13u1
+  - arch: amd64
+    package: git
+    version: 1:2.47.3-0+deb13u1
+  - arch: amd64
+    package: gjs
+    version: 1.82.3-1
+  - arch: amd64
+    package: gkbd-capplet
+    version: 3.28.1-2
+  - arch: all
+    package: glib-networking-common
+    version: 2.80.1-1
+  - arch: amd64
+    package: glib-networking-services
+    version: 2.80.1-1
+  - arch: amd64
+    package: glib-networking
+    version: 2.80.1-1
+  - arch: amd64
+    package: glycin-loaders
+    version: 1.2.1+ds-2
+  - arch: all
+    package: gnome-accessibility-themes
+    version: 3.28-4
+  - arch: all
+    package: gnome-bluetooth-3-common
+    version: 47.1-1
+  - arch: amd64
+    package: gnome-calculator
+    version: 1:48.1-2+b1
+  - arch: amd64
+    package: gnome-console
+    version: 48.0.1-2+b1
+  - arch: all
+    package: gnome-control-center-data
+    version: 1:48.4-1~deb13u1
+  - arch: amd64
+    package: gnome-control-center
+    version: 1:48.4-1~deb13u1
+  - arch: all
+    package: gnome-desktop3-data
+    version: 44.3-3
+  - arch: amd64
+    package: gnome-disk-utility
+    version: 46.1-2+b1
+  - arch: all
+    package: gnome-icon-theme
+    version: 3.12.0-6
+  - arch: amd64
+    package: gnome-keyring
+    version: 48.0-1
+  - arch: amd64
+    package: gnome-menus
+    version: 3.36.0-3
+  - arch: amd64
+    package: gnome-online-accounts
+    version: 3.54.5-1~deb13u1
+  - arch: amd64
+    package: gnome-ponytail-daemon
+    version: 0.0.11-1+b1
+  - arch: amd64
+    package: gnome-session-bin
+    version: 48.0-1+deb13u1
+  - arch: all
+    package: gnome-session-common
+    version: 48.0-1+deb13u1
+  - arch: all
+    package: gnome-session
+    version: 48.0-1+deb13u1
+  - arch: all
+    package: gnome-settings-daemon-common
+    version: 48.1-1
+  - arch: amd64
+    package: gnome-settings-daemon
+    version: 48.1-1
+  - arch: all
+    package: gnome-shell-common
+    version: 48.7-0+deb13u2
+  - arch: all
+    package: gnome-shell-extension-apps-menu
+    version: 48.2-1
+  - arch: all
+    package: gnome-shell-extension-window-list
+    version: 48.2-1
+  - arch: all
+    package: gnome-shell-extensions-common
+    version: 48.2-1
+  - arch: amd64
+    package: gnome-shell
+    version: 48.7-0+deb13u2
+  - arch: all
+    package: gnome-sound-recorder
+    version: 43~beta-4
+  - arch: amd64
+    package: gnome-system-monitor
+    version: 48.1-2
+  - arch: amd64
+    package: gnome-text-editor
+    version: 48.3-3
+  - arch: all
+    package: gnome-themes-extra-data
+    version: 3.28-4
+  - arch: amd64
+    package: gnome-themes-extra
+    version: 3.28-4
+  - arch: all
+    package: gnome-user-docs
+    version: 48.2-1
+  - arch: all
+    package: gnupg-agent
+    version: 2.4.7-21+deb13u1
+  - arch: all
+    package: gnupg-l10n
+    version: 2.4.7-21+deb13u1
+  - arch: all
+    package: gnupg2
+    version: 2.4.7-21+deb13u1
+  - arch: all
+    package: gnupg
+    version: 2.4.7-21+deb13u1
+  - arch: amd64
+    package: gobi-loader
+    version: 0.6-2
+  - arch: amd64
+    package: golang-1.24-go
+    version: 1.24.4-1
+  - arch: all
+    package: golang-1.24-src
+    version: 1.24.4-1
+  - arch: amd64
+    package: golang-go
+    version: 2:1.24~2
+  - arch: all
+    package: golang-src
+    version: 2:1.24~2
+  - arch: amd64
+    package: gpg-agent
+    version: 2.4.7-21+deb13u1+b2
+  - arch: amd64
+    package: gpg
+    version: 2.4.7-21+deb13u1+b2
+  - arch: amd64
+    package: gpgconf
+    version: 2.4.7-21+deb13u1+b2
+  - arch: amd64
+    package: gpgsm
+    version: 2.4.7-21+deb13u1+b2
+  - arch: amd64
+    package: graphviz
+    version: 2.42.4-3
+  - arch: amd64
+    package: grep
+    version: 3.11-4
+  - arch: amd64
+    package: grilo-plugins-0.3
+    version: 0.3.16-5
+  - arch: amd64
+    package: groff-base
+    version: 1.23.0-9
+  - arch: amd64
+    package: grub-common
+    version: 2.12-9+deb13u1
+  - arch: amd64
+    package: grub-efi-amd64-bin
+    version: 2.12-9+deb13u1
+  - arch: amd64
+    package: grub-efi-amd64-signed
+    version: 1+2.12+9+deb13u1
+  - arch: amd64
+    package: grub-efi-amd64-unsigned
+    version: 2.12-9+deb13u1
+  - arch: amd64
+    package: grub-efi-ia32-bin
+    version: 2.12-9+deb13u1
+  - arch: amd64
+    package: grub-efi-ia32-unsigned
+    version: 2.12-9+deb13u1
+  - arch: amd64
+    package: grub-efi-ia32
+    version: 2.12-9+deb13u1
+  - arch: amd64
+    package: grub2-common
+    version: 2.12-9+deb13u1
+  - arch: all
+    package: gsettings-desktop-schemas
+    version: 48.0-1
+  - arch: amd64
+    package: gstreamer1.0-gl
+    version: 1.26.2-1+deb13u1
+  - arch: amd64
+    package: gstreamer1.0-gtk3
+    version: 1.26.2-1
+  - arch: amd64
+    package: gstreamer1.0-libav
+    version: 1.26.2-1
+  - arch: amd64
+    package: gstreamer1.0-pipewire
+    version: 1.4.2-1
+  - arch: amd64
+    package: gstreamer1.0-plugins-bad
+    version: 1.26.2-3+deb13u1
+  - arch: amd64
+    package: gstreamer1.0-plugins-base
+    version: 1.26.2-1+deb13u1
+  - arch: amd64
+    package: gstreamer1.0-plugins-good
+    version: 1.26.2-1
+  - arch: amd64
+    package: gstreamer1.0-plugins-ugly
+    version: 1.26.3-4+deb13u1
+  - arch: amd64
+    package: gstreamer1.0-x
+    version: 1.26.2-1+deb13u1
+  - arch: amd64
+    package: gtk-update-icon-cache
+    version: 4.18.6+ds-2
+  - arch: amd64
+    package: gtk2-engines-pixbuf
+    version: 2.24.33-7
+  - arch: amd64
+    package: gvfs-backends
+    version: 1.57.2-2
+  - arch: all
+    package: gvfs-common
+    version: 1.57.2-2
+  - arch: amd64
+    package: gvfs-daemons
+    version: 1.57.2-2
+  - arch: amd64
+    package: gvfs-fuse
+    version: 1.57.2-2
+  - arch: amd64
+    package: gvfs-libs
+    version: 1.57.2-2
+  - arch: amd64
+    package: gvfs
+    version: 1.57.2-2
+  - arch: amd64
+    package: gzip
+    version: 1.13-1
+  - arch: amd64
+    package: haveged
+    version: 1.9.19-12
+  - arch: amd64
+    package: hdparm
+    version: 9.65+ds-1.1
+  - arch: amd64
+    package: heif-gdk-pixbuf
+    version: 1.19.8-1
+  - arch: amd64
+    package: heif-thumbnailer
+    version: 1.19.8-1
+  - arch: all
+    package: hicolor-icon-theme
+    version: 0.18-2
+  - arch: amd64
+    package: hostname
+    version: '3.25'
+  - arch: all
+    package: hplip-data
+    version: 3.22.10+dfsg0-8.1
+  - arch: amd64
+    package: hplip
+    version: 3.22.10+dfsg0-8.1
+  - arch: all
+    package: hunspell-ar
+    version: 3.5.2014-11-08-5
+  - arch: all
+    package: hunspell-de-de
+    version: 20161207-15
+  - arch: all
+    package: hunspell-en-us
+    version: 1:2020.12.07-4
+  - arch: all
+    package: hunspell-es
+    version: 1:25.2.3-1
+  - arch: all
+    package: hunspell-fr-classical
+    version: 1:7.0-3
+  - arch: all
+    package: hunspell-fr
+    version: 1:7.0-3
+  - arch: all
+    package: hunspell-hi
+    version: 1:25.2.3-1
+  - arch: all
+    package: hunspell-id
+    version: 1:25.2.3-1
+  - arch: all
+    package: hunspell-it
+    version: 1:25.2.3-1
+  - arch: all
+    package: hunspell-pt-br
+    version: 1:25.2.3-1
+  - arch: all
+    package: hunspell-ru
+    version: 1:25.2.3-1
+  - arch: all
+    package: hunspell-tr
+    version: 1:25.2.3-1
+  - arch: amd64
+    package: ibus-chewing
+    version: 2.1.4-1
+  - arch: all
+    package: ibus-data
+    version: 1.5.32-2
+  - arch: amd64
+    package: ibus-gtk3
+    version: 1.5.32-2
+  - arch: amd64
+    package: ibus-gtk
+    version: 1.5.32-2
+  - arch: amd64
+    package: ibus-hangul
+    version: 1.5.5-2+b1
+  - arch: amd64
+    package: ibus-libpinyin
+    version: 1.15.8-2
+  - arch: amd64
+    package: ibus-mozc
+    version: 2.29.5160.102+dfsg-1.4
+  - arch: amd64
+    package: ibus-unikey
+    version: 0.7.0~beta1-2
+  - arch: amd64
+    package: ibus
+    version: 1.5.32-2
+  - arch: amd64
+    package: ifupdown
+    version: 0.8.44+deb13u1
+  - arch: all
+    package: imagemagick-7-common
+    version: 8:7.1.1.43+dfsg1-1+deb13u7
+  - arch: all
+    package: init-system-helpers
+    version: 1.69~deb13u1
+  - arch: amd64
+    package: init
+    version: 1.69~deb13u1
+  - arch: amd64
+    package: initramfs-tools-bin
+    version: 0.148.3
+  - arch: all
+    package: initramfs-tools-core
+    version: 0.148.3
+  - arch: all
+    package: initramfs-tools
+    version: 0.148.3
+  - arch: amd64
+    package: inkscape
+    version: 1.4-6
+  - arch: amd64
+    package: intel-microcode
+    version: 3.20251111.1~deb13u1
+  - arch: all
+    package: intltool-debian
+    version: 0.35.0+20060710.6
+  - arch: amd64
+    package: ipheth-utils
+    version: 1.0-5.2
+  - arch: amd64
+    package: ipp-usb
+    version: 0.9.23-2+b7
+  - arch: amd64
+    package: iproute2
+    version: 6.15.0-1
+  - arch: amd64
+    package: iptables
+    version: 1.8.11-2
+  - arch: amd64
+    package: iputils-ping
+    version: 3:20240905-3
+  - arch: all
+    package: iso-codes
+    version: 4.18.0-1
+  - arch: all
+    package: isolinux
+    version: 3:6.04~git20190206.bf6db5b4+dfsg1-3.1
+  - arch: amd64
+    package: iucode-tool
+    version: 2.3.1-3
+  - arch: amd64
+    package: iw
+    version: 6.9-1
+  - arch: amd64
+    package: jq
+    version: 1.7.1-6+deb13u1
+  - arch: amd64
+    package: kbd
+    version: 2.7.1-2
+  - arch: amd64
+    package: kded6
+    version: 6.13.0-1
+  - arch: all
+    package: keyboard-configuration
+    version: 1.242~deb13u1
+  - arch: amd64
+    package: kio6
+    version: 6.13.0-6
+  - arch: amd64
+    package: kleopatra
+    version: 4:24.12.3-1+deb13u1
+  - arch: amd64
+    package: klibc-utils
+    version: 2.0.14-1
+  - arch: amd64
+    package: kmod
+    version: 34.2-2
+  - arch: amd64
+    package: kwallet6
+    version: 6.13.0-1
+  - arch: all
+    package: laptop-mode-tools
+    version: 1.74-1.4
+  - arch: amd64
+    package: less
+    version: 668-1
+  - arch: amd64
+    package: lib2geom1.4.0
+    version: 1.4-4
+  - arch: amd64
+    package: liba52-0.7.4
+    version: 0.7.4-20+b3
+  - arch: amd64
+    package: libaa1
+    version: 1.4p5-51.1+b1
+  - arch: amd64
+    package: libabsl20240722
+    version: 20240722.0-4
+  - arch: amd64
+    package: libabw-0.1-1
+    version: 0.1.3-1+b2
+  - arch: amd64
+    package: libaccountsservice0
+    version: 23.13.9-7
+  - arch: amd64
+    package: libacl1
+    version: 2.3.2-2+b1
+  - arch: amd64
+    package: libadwaita-1-0
+    version: 1.7.6-1~deb13u1
+  - arch: amd64
+    package: libadwaitaqt6-1
+    version: 1.4.2-3+b4
+  - arch: amd64
+    package: libadwaitaqt6priv1
+    version: 1.4.2-3+b4
+  - arch: amd64
+    package: libaio1t64
+    version: 0.3.113-8+b1
+  - arch: all
+    package: libakonadi-data
+    version: 4:24.12.3-2~deb13u1
+  - arch: all
+    package: libalgorithm-c3-perl
+    version: 0.11-2
+  - arch: all
+    package: libaliased-perl
+    version: 0.34-3
+  - arch: amd64
+    package: libamd3
+    version: 1:7.10.1+dfsg-1
+  - arch: amd64
+    package: libann0
+    version: 1.1.2+doc-9+b1
+  - arch: all
+    package: libao-common
+    version: 1.2.2+20180113-1.2
+  - arch: amd64
+    package: libao4
+    version: 1.2.2+20180113-1.2
+  - arch: amd64
+    package: libaom3
+    version: 3.12.1-1
+  - arch: all
+    package: libapp-cmd-perl
+    version: 0.337-2
+  - arch: amd64
+    package: libapparmor1
+    version: 4.1.0-1
+  - arch: amd64
+    package: libapparmor1
+    version: 4.1.0-1tails2
+  - arch: amd64
+    package: libappstream-compose0
+    version: 1.0.5-1
+  - arch: amd64
+    package: libappstream-glib8
+    version: 0.8.3-1
+  - arch: amd64
+    package: libappstream5
+    version: 1.0.5-1
+  - arch: amd64
+    package: libapt-pkg7.0
+    version: 3.0.3
+  - arch: all
+    package: libarchive-zip-perl
+    version: 1.68-1
+  - arch: amd64
+    package: libarchive13t64
+    version: 3.7.4-4
+  - arch: amd64
+    package: libargon2-1
+    version: 0~20190702+dfsg-4+b2
+  - arch: amd64
+    package: libasan8
+    version: 14.2.0-19
+  - arch: all
+    package: libasound2-data
+    version: 1.2.14-1
+  - arch: amd64
+    package: libasound2t64
+    version: 1.2.14-1
+  - arch: amd64
+    package: libaspell15
+    version: 0.60.8.1-4
+  - arch: amd64
+    package: libass9
+    version: 1:0.17.3-1+b1
+  - arch: amd64
+    package: libassuan9
+    version: 3.0.2-2
+  - arch: amd64
+    package: libasyncns0
+    version: 0.8-6+b5
+  - arch: amd64
+    package: libatasmart4
+    version: 0.19-5+b2
+  - arch: amd64
+    package: libatk-adaptor
+    version: 2.56.2-1+deb13u1
+  - arch: amd64
+    package: libatk-bridge2.0-0t64
+    version: 2.56.2-1+deb13u1
+  - arch: amd64
+    package: libatk1.0-0t64
+    version: 2.56.2-1+deb13u1
+  - arch: amd64
+    package: libatkmm-1.6-1v5
+    version: 2.28.4-1+b2
+  - arch: amd64
+    package: libatomic1
+    version: 14.2.0-19
+  - arch: amd64
+    package: libatopology2t64
+    version: 1.2.14-1
+  - arch: amd64
+    package: libatspi2.0-0t64
+    version: 2.56.2-1+deb13u1
+  - arch: amd64
+    package: libattr1
+    version: 1:2.5.2-3
+  - arch: amd64
+    package: libaudio2
+    version: 1.9.4-9
+  - arch: all
+    package: libaudit-common
+    version: 1:4.0.2-2
+  - arch: amd64
+    package: libaudit1
+    version: 1:4.0.2-2+b2
+  - arch: amd64
+    package: libautobox-perl
+    version: 3.0.2-1+b1
+  - arch: amd64
+    package: libavahi-client3
+    version: 0.8-16
+  - arch: amd64
+    package: libavahi-common-data
+    version: 0.8-16
+  - arch: amd64
+    package: libavahi-common3
+    version: 0.8-16
+  - arch: amd64
+    package: libavahi-core7
+    version: 0.8-16
+  - arch: amd64
+    package: libavahi-glib1
+    version: 0.8-16
+  - arch: amd64
+    package: libavc1394-0
+    version: 0.5.4-5+b2
+  - arch: amd64
+    package: libavcodec61
+    version: 7:7.1.3-0+deb13u1
+  - arch: amd64
+    package: libavdevice61
+    version: 7:7.1.3-0+deb13u1
+  - arch: amd64
+    package: libavfilter10
+    version: 7:7.1.3-0+deb13u1
+  - arch: amd64
+    package: libavformat61
+    version: 7:7.1.3-0+deb13u1
+  - arch: amd64
+    package: libavif16
+    version: 1.2.1-1.2
+  - arch: amd64
+    package: libavtp0
+    version: 0.2.0-2
+  - arch: amd64
+    package: libavutil59
+    version: 7:7.1.3-0+deb13u1
+  - arch: all
+    package: libb-hooks-endofscope-perl
+    version: 0.28-2
+  - arch: amd64
+    package: libb-hooks-op-check-perl
+    version: 0.22-3+b2
+  - arch: amd64
+    package: libb2-1
+    version: 0.98.1-1.1+b2
+  - arch: amd64
+    package: libbabl-0.1-0
+    version: 1:0.1.114-2
+  - arch: amd64
+    package: libbinutils
+    version: 2.44-3
+  - arch: amd64
+    package: libblas3
+    version: 3.12.1-6
+  - arch: amd64
+    package: libblkid1
+    version: 2.41-5
+  - arch: amd64
+    package: libblockdev-crypto3
+    version: 3.3.0-2.1
+  - arch: amd64
+    package: libblockdev-fs3
+    version: 3.3.0-2.1
+  - arch: amd64
+    package: libblockdev-loop3
+    version: 3.3.0-2.1
+  - arch: amd64
+    package: libblockdev-mdraid3
+    version: 3.3.0-2.1
+  - arch: amd64
+    package: libblockdev-nvme3
+    version: 3.3.0-2.1
+  - arch: amd64
+    package: libblockdev-part3
+    version: 3.3.0-2.1
+  - arch: amd64
+    package: libblockdev-swap3
+    version: 3.3.0-2.1
+  - arch: amd64
+    package: libblockdev-utils3
+    version: 3.3.0-2.1
+  - arch: amd64
+    package: libblockdev3
+    version: 3.3.0-2.1
+  - arch: amd64
+    package: libbluetooth3
+    version: 5.82-1.1
+  - arch: amd64
+    package: libbluray2
+    version: 1:1.3.4-1+b2
+  - arch: amd64
+    package: libboost-filesystem1.83.0
+    version: 1.83.0-4.2
+  - arch: amd64
+    package: libboost-iostreams1.83.0
+    version: 1.83.0-4.2
+  - arch: amd64
+    package: libboost-locale1.83.0
+    version: 1.83.0-4.2
+  - arch: amd64
+    package: libboost-thread1.83.0
+    version: 1.83.0-4.2
+  - arch: amd64
+    package: libbotan-2-19
+    version: 2.19.5+dfsg-4
+  - arch: amd64
+    package: libbox2d2
+    version: 2.4.1-3+b3
+  - arch: amd64
+    package: libbpf1
+    version: 1:1.5.0-3
+  - arch: amd64
+    package: libbrasero-media3-1
+    version: 3.12.3-4
+  - arch: amd64
+    package: libbrlapi0.8
+    version: 6.7-3.1+deb13u3
+  - arch: amd64
+    package: libbrotli1
+    version: 1.1.0-2+b7
+  - arch: amd64
+    package: libbs2b0
+    version: 3.1.0+dfsg-8+b1
+  - arch: amd64
+    package: libbsd0
+    version: 0.12.2-2
+  - arch: amd64
+    package: libburn4t64
+    version: 1.5.6-1.1+b1
+  - arch: all
+    package: libbytesize-common
+    version: 2.11-2
+  - arch: amd64
+    package: libbytesize1
+    version: 2.11-2
+  - arch: amd64
+    package: libbz2-1.0
+    version: 1.0.8-6
+  - arch: amd64
+    package: libc-bin
+    version: 2.41-12+deb13u2
+  - arch: amd64
+    package: libc-dev-bin
+    version: 2.41-12+deb13u2
+  - arch: all
+    package: libc-l10n
+    version: 2.41-12+deb13u2
+  - arch: amd64
+    package: libc6-dev
+    version: 2.41-12+deb13u2
+  - arch: amd64
+    package: libc6
+    version: 2.41-12+deb13u2
+  - arch: amd64
+    package: libcaca0
+    version: 0.99.beta20-5
+  - arch: amd64
+    package: libcairo-gobject-perl
+    version: 1.005-4+b4
+  - arch: amd64
+    package: libcairo-gobject2
+    version: 1.18.4-1+b1
+  - arch: amd64
+    package: libcairo-perl
+    version: 1.109-5+b1
+  - arch: amd64
+    package: libcairo-script-interpreter2
+    version: 1.18.4-1+b1
+  - arch: amd64
+    package: libcairo2
+    version: 1.18.4-1+b1
+  - arch: amd64
+    package: libcairomm-1.0-1v5
+    version: 1.14.5-2+b1
+  - arch: amd64
+    package: libcairomm-1.16-1
+    version: 1.18.0-2
+  - arch: amd64
+    package: libcamd3
+    version: 1:7.10.1+dfsg-1
+  - arch: amd64
+    package: libcamel-1.2-64t64
+    version: 3.56.2-0+deb13u1
+  - arch: amd64
+    package: libcanberra-gtk3-0
+    version: 0.30-18
+  - arch: amd64
+    package: libcanberra-pulse
+    version: 0.30-18
+  - arch: amd64
+    package: libcanberra0
+    version: 0.30-18
+  - arch: amd64
+    package: libcap-dev
+    version: 1:2.75-10+b8
+  - arch: amd64
+    package: libcap-ng0
+    version: 0.8.5-4+b1
+  - arch: amd64
+    package: libcap2-bin
+    version: 1:2.75-10+b8
+  - arch: amd64
+    package: libcap2
+    version: 1:2.75-10+b8
+  - arch: all
+    package: libcapture-tiny-perl
+    version: 0.50-1
+  - arch: amd64
+    package: libcares2
+    version: 1.34.5-1+deb13u1
+  - arch: all
+    package: libcarp-assert-more-perl
+    version: 2.9.0-1
+  - arch: all
+    package: libcarp-assert-perl
+    version: 0.22-1
+  - arch: all
+    package: libcarp-clan-perl
+    version: 6.08-2
+  - arch: amd64
+    package: libcbor0.10
+    version: 0.10.2-2
+  - arch: amd64
+    package: libcc1-0
+    version: 14.2.0-19
+  - arch: amd64
+    package: libccid
+    version: 1.6.2-1
+  - arch: amd64
+    package: libccolamd3
+    version: 1:7.10.1+dfsg-1
+  - arch: amd64
+    package: libcdio-cdda2t64
+    version: 10.2+2.0.2-1+b1
+  - arch: amd64
+    package: libcdio-paranoia2t64
+    version: 10.2+2.0.2-1+b1
+  - arch: amd64
+    package: libcdio19t64
+    version: 2.2.0-4
+  - arch: amd64
+    package: libcdparanoia0
+    version: 3.10.2+debian-14+b1
+  - arch: amd64
+    package: libcdr-0.1-1
+    version: 0.1.7-1+b3
+  - arch: amd64
+    package: libcdt5
+    version: 2.42.4-3
+  - arch: amd64
+    package: libcfitsio10t64
+    version: 4.6.2-2
+  - arch: all
+    package: libcgi-pm-perl
+    version: 4.68-1
+  - arch: amd64
+    package: libcgraph6
+    version: 2.42.4-3
+  - arch: all
+    package: libchewing3-data
+    version: 0.9.1-1
+  - arch: amd64
+    package: libchewing3
+    version: 0.9.1-1
+  - arch: amd64
+    package: libcholmod5
+    version: 1:7.10.1+dfsg-1
+  - arch: amd64
+    package: libchromaprint1
+    version: 1.5.1-7
+  - arch: amd64
+    package: libcjson1
+    version: 1.7.18-3.1+deb13u1
+  - arch: amd64
+    package: libclang1-19
+    version: 1:19.1.7-3+b1
+  - arch: all
+    package: libclass-accessor-perl
+    version: 0.51-2
+  - arch: all
+    package: libclass-c3-perl
+    version: 0.35-2
+  - arch: all
+    package: libclass-data-inheritable-perl
+    version: 0.10-1
+  - arch: all
+    package: libclass-inspector-perl
+    version: 1.36-3
+  - arch: all
+    package: libclass-load-perl
+    version: 0.25-2
+  - arch: amd64
+    package: libclass-load-xs-perl
+    version: 0.10-2+b4
+  - arch: all
+    package: libclass-method-modifiers-perl
+    version: 2.15-1
+  - arch: all
+    package: libclass-singleton-perl
+    version: 1.6-2
+  - arch: amd64
+    package: libclass-xsaccessor-perl
+    version: 1.19-4+b5
+  - arch: amd64
+    package: libclone-perl
+    version: 0.47-1+b1
+  - arch: amd64
+    package: libcloudproviders0
+    version: 0.3.6-2
+  - arch: amd64
+    package: libclucene-contribs1t64
+    version: 2.3.3.4+dfsg-1.2+b1
+  - arch: amd64
+    package: libclucene-core1t64
+    version: 2.3.3.4+dfsg-1.2+b1
+  - arch: amd64
+    package: libcmis-0.6-6t64
+    version: 0.6.2-2.1+b1
+  - arch: amd64
+    package: libcodec2-1.2
+    version: 1.2.0-3
+  - arch: amd64
+    package: libcolamd3
+    version: 1:7.10.1+dfsg-1
+  - arch: amd64
+    package: libcolord-gtk4-1t64
+    version: 0.3.1-1+b1
+  - arch: amd64
+    package: libcolord2
+    version: 1.4.7-3
+  - arch: amd64
+    package: libcolorhug2
+    version: 1.4.7-3
+  - arch: amd64
+    package: libcom-err2
+    version: 1.47.2-3+b10
+  - arch: amd64
+    package: libconfig++11
+    version: 1.7.3-2
+  - arch: all
+    package: libconfig-ini-perl
+    version: 1:0.029-1
+  - arch: all
+    package: libconfig-mvp-perl
+    version: 2.200013-1
+  - arch: all
+    package: libconfig-mvp-reader-ini-perl
+    version: 2.101465-1
+  - arch: all
+    package: libcpan-distnameinfo-perl
+    version: 0.12-3
+  - arch: all
+    package: libcpan-meta-check-perl
+    version: 0.018-1
+  - arch: all
+    package: libcpan-uploader-perl
+    version: 0.103018-1
+  - arch: amd64
+    package: libcpanel-json-xs-perl
+    version: 4.39-2~deb13u1
+  - arch: amd64
+    package: libcpuinfo0
+    version: 0.0~git20250327.39ea79a-1
+  - arch: amd64
+    package: libcrack2
+    version: 2.9.6-5.2+b1
+  - arch: amd64
+    package: libcrypt-dev
+    version: 1:4.4.38-1
+  - arch: amd64
+    package: libcrypt1
+    version: 1:4.4.38-1
+  - arch: amd64
+    package: libcryptsetup12
+    version: 2:2.7.5-2
+  - arch: amd64
+    package: libctf-nobfd0
+    version: 2.44-3
+  - arch: amd64
+    package: libctf0
+    version: 2.44-3
+  - arch: amd64
+    package: libcue2
+    version: 2.2.1-4.1+b2
+  - arch: amd64
+    package: libcups2t64
+    version: 2.4.10-3+deb13u2
+  - arch: amd64
+    package: libcupsfilters1t64
+    version: 1.28.17-6+deb13u1
+  - arch: amd64
+    package: libcupsimage2t64
+    version: 2.4.10-3+deb13u2
+  - arch: amd64
+    package: libcurl3t64-gnutls
+    version: 8.14.1-2+deb13u2
+  - arch: amd64
+    package: libcurl4t64
+    version: 8.14.1-2+deb13u2
+  - arch: amd64
+    package: libdaemon0
+    version: 0.14-7.1+b3
+  - arch: all
+    package: libdata-optlist-perl
+    version: 0.114-1
+  - arch: all
+    package: libdata-perl-perl
+    version: 0.002011-2
+  - arch: all
+    package: libdata-record-perl
+    version: 0.02-6
+  - arch: all
+    package: libdata-section-perl
+    version: 0.200008-1
+  - arch: all
+    package: libdatetime-format-dateparse-perl
+    version: 0.05-3
+  - arch: all
+    package: libdatetime-locale-perl
+    version: 1:1.41-1
+  - arch: amd64
+    package: libdatetime-perl
+    version: 2:1.65-1+b2
+  - arch: all
+    package: libdatetime-timezone-perl
+    version: 1:2.65-1+2025b
+  - arch: amd64
+    package: libdatrie1
+    version: 0.2.13-3+b1
+  - arch: amd64
+    package: libdav1d7
+    version: 1.5.1-1
+  - arch: amd64
+    package: libdb5.3t64
+    version: 5.3.28+dfsg2-9
+  - arch: amd64
+    package: libdbus-1-3
+    version: 1.16.2-2
+  - arch: amd64
+    package: libdbus-glib-1-2
+    version: 0.114-1
+  - arch: amd64
+    package: libdbusmenu-glib4
+    version: 18.10.20180917~bzr492+repack1-4
+  - arch: amd64
+    package: libdbusmenu-gtk3-4
+    version: 18.10.20180917~bzr492+repack1-4
+  - arch: amd64
+    package: libdc1394-25
+    version: 2.2.6-5
+  - arch: amd64
+    package: libdca0
+    version: 0.0.7-2+b2
+  - arch: amd64
+    package: libdconf1
+    version: 0.40.0-5
+  - arch: amd64
+    package: libde265-0
+    version: 1.0.15-1+b3
+  - arch: amd64
+    package: libdebconfclient0
+    version: '0.280'
+  - arch: all
+    package: libdebhelper-perl
+    version: 13.24.2
+  - arch: amd64
+    package: libdecor-0-0
+    version: 0.2.2-2
+  - arch: amd64
+    package: libdeflate0
+    version: 1.23-2
+  - arch: all
+    package: libdesktop-notify-perl
+    version: 0.05-2
+  - arch: amd64
+    package: libdevel-callchecker-perl
+    version: 0.009-2
+  - arch: all
+    package: libdevel-globaldestruction-perl
+    version: 0.14-4
+  - arch: all
+    package: libdevel-overloadinfo-perl
+    version: 0.007-1
+  - arch: all
+    package: libdevel-stacktrace-perl
+    version: 2.0500-1
+  - arch: amd64
+    package: libdevmapper-event1.02.1
+    version: 2:1.02.205-2
+  - arch: amd64
+    package: libdevmapper1.02.1
+    version: 2:1.02.205-2
+  - arch: amd64
+    package: libdiscid0
+    version: 0.6.4-2+b2
+  - arch: amd64
+    package: libdisplay-info2
+    version: 0.2.0-2
+  - arch: all
+    package: libdist-checkconflicts-perl
+    version: 0.11-2
+  - arch: all
+    package: libdist-zilla-perl
+    version: 6.032-1
+  - arch: all
+    package: libdist-zilla-plugin-test-notabs-perl
+    version: 0.15-4
+  - arch: all
+    package: libdist-zilla-plugin-test-perl-critic-perl
+    version: 3.004-1
+  - arch: all
+    package: libdjvulibre-text
+    version: 3.5.28-2.2
+  - arch: amd64
+    package: libdjvulibre21
+    version: 3.5.28-2.2
+  - arch: amd64
+    package: libdmapsharing-4.0-3t64
+    version: 3.9.13-4
+  - arch: amd64
+    package: libdnnl3.6
+    version: 3.7.2+ds-2
+  - arch: amd64
+    package: libdotconf0
+    version: 1.4.1-1
+  - arch: amd64
+    package: libdouble-conversion3
+    version: 3.3.1-1
+  - arch: all
+    package: libdpkg-perl
+    version: 1.22.22
+  - arch: amd64
+    package: libdrm-amdgpu1
+    version: 2.4.124-2
+  - arch: all
+    package: libdrm-common
+    version: 2.4.124-2
+  - arch: amd64
+    package: libdrm-intel1
+    version: 2.4.124-2
+  - arch: amd64
+    package: libdrm-nouveau2
+    version: 2.4.124-2
+  - arch: amd64
+    package: libdrm-radeon1
+    version: 2.4.124-2
+  - arch: amd64
+    package: libdrm2
+    version: 2.4.124-2
+  - arch: amd64
+    package: libduktape207
+    version: 2.7.0-2+b2
+  - arch: amd64
+    package: libdv4t64
+    version: 1.0.0-17.1+b1
+  - arch: amd64
+    package: libdvdnav4
+    version: 6.1.1-3+b1
+  - arch: amd64
+    package: libdvdread8t64
+    version: 6.1.3-2
+  - arch: amd64
+    package: libdw1t64
+    version: 0.192-4
+  - arch: all
+    package: libdynaloader-functions-perl
+    version: 0.004-2
+  - arch: amd64
+    package: libe-book-0.1-1
+    version: 0.1.3-2+b4
+  - arch: amd64
+    package: libebur128-1
+    version: 1.2.6-1+b2
+  - arch: amd64
+    package: libecal-2.0-3
+    version: 3.56.2-0+deb13u1
+  - arch: amd64
+    package: libedataserver-1.2-27t64
+    version: 3.56.2-0+deb13u1
+  - arch: amd64
+    package: libedit2
+    version: 3.1-20250104-1
+  - arch: amd64
+    package: libeditorconfig0
+    version: 0.12.9+~0.17.1-1
+  - arch: amd64
+    package: libefiboot1t64
+    version: 38-3.1+b1
+  - arch: amd64
+    package: libefivar1t64
+    version: 38-3.1+b1
+  - arch: amd64
+    package: libegl-mesa0
+    version: 25.0.7-2
+  - arch: amd64
+    package: libegl1
+    version: 1.7.0-1+b2
+  - arch: amd64
+    package: libei1
+    version: 1.3.901-1
+  - arch: amd64
+    package: libeis1
+    version: 1.3.901-1
+  - arch: amd64
+    package: libelf1t64
+    version: 0.192-4
+  - arch: amd64
+    package: libenchant-2-2
+    version: 2.8.2+dfsg1-3
+  - arch: all
+    package: libencode-locale-perl
+    version: 1.05-3
+  - arch: amd64
+    package: libeot0
+    version: 0.01-5+b2
+  - arch: amd64
+    package: libepoxy0
+    version: 1.5.10-2
+  - arch: amd64
+    package: libepubgen-0.1-1
+    version: 0.1.1-1+b2
+  - arch: all
+    package: liberror-perl
+    version: 0.17030-1
+  - arch: amd64
+    package: libespeak-ng1
+    version: 1.52.0+dfsg-5
+  - arch: amd64
+    package: libetonyek-0.1-1
+    version: 0.1.12-1
+  - arch: amd64
+    package: libev4t64
+    version: 1:4.33-2.1+b1
+  - arch: all
+    package: libeval-closure-perl
+    version: 0.14-3
+  - arch: amd64
+    package: libevdev2
+    version: 1.13.4+dfsg-1
+  - arch: amd64
+    package: libevdocument3-4t64
+    version: 48.1-3
+  - arch: amd64
+    package: libevent-2.1-7t64
+    version: 2.1.12-stable-10+b1
+  - arch: amd64
+    package: libevview3-3t64
+    version: 48.1-3
+  - arch: all
+    package: libexception-class-perl
+    version: 1.45-1
+  - arch: amd64
+    package: libexempi8
+    version: 2.6.6-2
+  - arch: amd64
+    package: libexif12
+    version: 0.6.25-1
+  - arch: amd64
+    package: libexiv2-28
+    version: 0.28.5+dfsg-1
+  - arch: all
+    package: libexiv2-data
+    version: 0.28.5+dfsg-1
+  - arch: amd64
+    package: libexpat1
+    version: 2.7.1-2
+  - arch: all
+    package: libexporter-tiny-perl
+    version: 1.006002-1
+  - arch: amd64
+    package: libext2fs2t64
+    version: 1.47.2-3+b10
+  - arch: amd64
+    package: libexttextcat-2.0-0
+    version: 3.4.7-1+b1
+  - arch: all
+    package: libexttextcat-data
+    version: 3.4.7-1
+  - arch: all
+    package: libextutils-depends-perl
+    version: 0.8002-1
+  - arch: amd64
+    package: libfaad2
+    version: 2.11.2-1
+  - arch: amd64
+    package: libfarstream-0.2-5
+    version: 0.2.9-2+b3
+  - arch: amd64
+    package: libfdisk1
+    version: 2.41-5
+  - arch: amd64
+    package: libffado2
+    version: 2.4.9-2
+  - arch: amd64
+    package: libffi8
+    version: 3.4.8-2
+  - arch: amd64
+    package: libfftw3-double3
+    version: 3.3.10-2+b1
+  - arch: amd64
+    package: libfftw3-single3
+    version: 3.3.10-2+b1
+  - arch: amd64
+    package: libfido2-1
+    version: 1.15.0-1+b1
+  - arch: all
+    package: libfile-copy-recursive-perl
+    version: 0.45-4
+  - arch: all
+    package: libfile-find-rule-perl
+    version: 0.34-4
+  - arch: all
+    package: libfile-listing-perl
+    version: 6.16-1
+  - arch: all
+    package: libfile-pushd-perl
+    version: 1.016-2
+  - arch: all
+    package: libfile-sharedir-install-perl
+    version: 0.14-2
+  - arch: all
+    package: libfile-sharedir-perl
+    version: 1.118-3
+  - arch: all
+    package: libfile-stripnondeterminism-perl
+    version: 1.14.1-2
+  - arch: all
+    package: libfile-which-perl
+    version: 1.27-2
+  - arch: amd64
+    package: libfilesys-df-perl
+    version: 0.92-7+b4
+  - arch: amd64
+    package: libflac++11
+    version: 1.5.0+ds-2
+  - arch: amd64
+    package: libflac14
+    version: 1.5.0+ds-2
+  - arch: amd64
+    package: libflatpak0
+    version: 1.16.6-1~deb13u1tails1
+  - arch: amd64
+    package: libflite1
+    version: 2.2-7
+  - arch: amd64
+    package: libfluidsynth3
+    version: 2.4.4+dfsg-1+deb13u2
+  - arch: amd64
+    package: libfontconfig1
+    version: 2.15.0-2.3
+  - arch: amd64
+    package: libfontembed1t64
+    version: 1.28.17-6+deb13u1
+  - arch: amd64
+    package: libfontenc1
+    version: 1:1.1.8-1+b2
+  - arch: amd64
+    package: libfreeaptx0
+    version: 0.2.2-1
+  - arch: amd64
+    package: libfreehand-0.1-1
+    version: 0.1.2-3
+  - arch: amd64
+    package: libfreetype6
+    version: 2.13.3+dfsg-1+deb13u1
+  - arch: amd64
+    package: libfribidi0
+    version: 1.0.16-1
+  - arch: amd64
+    package: libfstrm0
+    version: 0.6.1-1+b3
+  - arch: amd64
+    package: libfunction-parameters-perl
+    version: 2.002005-1
+  - arch: amd64
+    package: libfuse2t64
+    version: 2.9.9-9
+  - arch: amd64
+    package: libfuse3-4
+    version: 3.17.2-3
+  - arch: amd64
+    package: libgadu3t64
+    version: 1:1.12.2-6.1+b2
+  - arch: amd64
+    package: libgail-common
+    version: 2.24.33-7
+  - arch: amd64
+    package: libgail18t64
+    version: 2.24.33-7
+  - arch: amd64
+    package: libgav1-1
+    version: 0.19.0-3+b1
+  - arch: amd64
+    package: libgbm1
+    version: 25.0.7-2
+  - arch: amd64
+    package: libgc1
+    version: 1:8.2.8-1
+  - arch: amd64
+    package: libgcc-14-dev
+    version: 14.2.0-19
+  - arch: amd64
+    package: libgcc-s1
+    version: 14.2.0-19
+  - arch: amd64
+    package: libgck-1-0
+    version: 3.41.2-3
+  - arch: amd64
+    package: libgck-2-2
+    version: 4.4.0.1-3
+  - arch: amd64
+    package: libgcr-4-4
+    version: 4.4.0.1-3
+  - arch: amd64
+    package: libgcr-base-3-1
+    version: 3.41.2-3
+  - arch: amd64
+    package: libgcr-ui-3-1
+    version: 3.41.2-3
+  - arch: amd64
+    package: libgcrypt20
+    version: 1.11.0-7
+  - arch: amd64
+    package: libgd3
+    version: 2.3.3-13
+  - arch: all
+    package: libgdata-common
+    version: 0.18.1-9
+  - arch: amd64
+    package: libgdata22
+    version: 0.18.1-9
+  - arch: amd64
+    package: libgdbm-compat4t64
+    version: 1.24-2
+  - arch: amd64
+    package: libgdbm6t64
+    version: 1.24-2
+  - arch: amd64
+    package: libgdk-pixbuf-2.0-0
+    version: 2.42.12+dfsg-4+deb13u1
+  - arch: amd64
+    package: libgdk-pixbuf2.0-bin
+    version: 2.42.12+dfsg-4+deb13u1
+  - arch: all
+    package: libgdk-pixbuf2.0-common
+    version: 2.42.12+dfsg-4+deb13u1
+  - arch: amd64
+    package: libgdm1
+    version: 48.0-2
+  - arch: amd64
+    package: libgegl-0.4-0t64
+    version: 1:0.4.62-2+deb13u2
+  - arch: all
+    package: libgegl-common
+    version: 1:0.4.62-2+deb13u2
+  - arch: amd64
+    package: libgeoclue-2-0
+    version: 2.7.2-2
+  - arch: amd64
+    package: libgeocode-glib-2-0
+    version: 3.26.4-1
+  - arch: all
+    package: libgetopt-long-descriptive-perl
+    version: 0.116-2
+  - arch: amd64
+    package: libgexiv2-2
+    version: 0.14.3-1+b1
+  - arch: amd64
+    package: libgfortran5
+    version: 14.2.0-19
+  - arch: amd64
+    package: libgif7
+    version: 5.2.2-1+b1
+  - arch: amd64
+    package: libgimp-3.0-0
+    version: 3.0.4-3+deb13u8
+  - arch: amd64
+    package: libgirepository-1.0-1
+    version: 1.84.0-1
+  - arch: amd64
+    package: libgjs0g
+    version: 1.82.3-1
+  - arch: amd64
+    package: libgl1-mesa-dri
+    version: 25.0.7-2
+  - arch: amd64
+    package: libgl1
+    version: 1.7.0-1+b2
+  - arch: amd64
+    package: libgles2
+    version: 1.7.0-1+b2
+  - arch: amd64
+    package: libglib-object-introspection-perl
+    version: 0.051-2+b1
+  - arch: amd64
+    package: libglib-perl
+    version: 3:1.329.3-3+b3
+  - arch: amd64
+    package: libglib2.0-0t64
+    version: 2.84.4-3~deb13u2
+  - arch: amd64
+    package: libglib2.0-bin
+    version: 2.84.4-3~deb13u2
+  - arch: all
+    package: libglib2.0-data
+    version: 2.84.4-3~deb13u2
+  - arch: amd64
+    package: libglibmm-2.4-1t64
+    version: 2.66.8-1
+  - arch: amd64
+    package: libglibmm-2.68-1t64
+    version: 2.84.0-1
+  - arch: amd64
+    package: libglvnd0
+    version: 1.7.0-1+b2
+  - arch: amd64
+    package: libglx-mesa0
+    version: 25.0.7-2
+  - arch: amd64
+    package: libglx0
+    version: 1.7.0-1+b2
+  - arch: amd64
+    package: libgme0
+    version: 0.6.3-7+b2
+  - arch: amd64
+    package: libgmp10
+    version: 2:6.3.0+dfsg-3
+  - arch: amd64
+    package: libgnome-autoar-0-0
+    version: 0.4.5-2
+  - arch: amd64
+    package: libgnome-bg-4-2t64
+    version: 44.3-3
+  - arch: amd64
+    package: libgnome-bluetooth-3.0-13
+    version: 47.1-1
+  - arch: amd64
+    package: libgnome-bluetooth-ui-3.0-13
+    version: 47.1-1
+  - arch: amd64
+    package: libgnome-desktop-3-20t64
+    version: 44.3-3
+  - arch: amd64
+    package: libgnome-desktop-4-2t64
+    version: 44.3-3
+  - arch: amd64
+    package: libgnome-menu-3-0
+    version: 3.36.0-3
+  - arch: amd64
+    package: libgnome-rr-4-2t64
+    version: 44.3-3
+  - arch: all
+    package: libgnomekbd-common
+    version: 3.28.1-2
+  - arch: amd64
+    package: libgnomekbd8
+    version: 3.28.1-2
+  - arch: amd64
+    package: libgnutls30t64
+    version: 3.8.9-3+deb13u2
+  - arch: amd64
+    package: libgoa-1.0-0b
+    version: 3.54.5-1~deb13u1
+  - arch: all
+    package: libgoa-1.0-common
+    version: 3.54.5-1~deb13u1
+  - arch: amd64
+    package: libgoa-backend-1.0-2
+    version: 3.54.5-1~deb13u1
+  - arch: amd64
+    package: libgom-1.0-0t64
+    version: 0.5.3-1
+  - arch: amd64
+    package: libgomp1
+    version: 14.2.0-19
+  - arch: amd64
+    package: libgpg-error0
+    version: 1.51-4
+  - arch: amd64
+    package: libgpgme11t64
+    version: 1.24.2-3
+  - arch: amd64
+    package: libgpgmepp6t64
+    version: 1.24.2-3
+  - arch: amd64
+    package: libgphoto2-6t64
+    version: 2.5.31-4
+  - arch: amd64
+    package: libgphoto2-port12t64
+    version: 2.5.31-4
+  - arch: amd64
+    package: libgpm2
+    version: 1.20.7-11+b2
+  - arch: amd64
+    package: libgprofng0
+    version: 2.44-3
+  - arch: amd64
+    package: libgraphene-1.0-0
+    version: 1.10.8-5
+  - arch: amd64
+    package: libgraphite2-3
+    version: 1.3.14-2+b1
+  - arch: amd64
+    package: libgrilo-0.3-0
+    version: 0.3.16-2
+  - arch: all
+    package: libgs-common
+    version: 10.05.1~dfsg-1+deb13u1
+  - arch: all
+    package: libgs10-common
+    version: 10.05.1~dfsg-1+deb13u1
+  - arch: amd64
+    package: libgs10
+    version: 10.05.1~dfsg-1+deb13u1
+  - arch: amd64
+    package: libgsf-1-114
+    version: 1.14.53-1
+  - arch: all
+    package: libgsf-1-common
+    version: 1.14.53-1
+  - arch: amd64
+    package: libgsl28
+    version: 2.8+dfsg-5
+  - arch: amd64
+    package: libgslcblas0
+    version: 2.8+dfsg-5
+  - arch: amd64
+    package: libgsm1
+    version: 1.0.22-1+b2
+  - arch: amd64
+    package: libgsound0t64
+    version: 1.0.3-3.2+b4
+  - arch: amd64
+    package: libgspell-1-3
+    version: 1.14.0-2+b1
+  - arch: all
+    package: libgspell-1-common
+    version: 1.14.0-2
+  - arch: amd64
+    package: libgssapi-krb5-2
+    version: 1.21.3-5
+  - arch: amd64
+    package: libgssdp-1.6-0
+    version: 1.6.4-1~deb13u1
+  - arch: amd64
+    package: libgstreamer-gl1.0-0
+    version: 1.26.2-1+deb13u1
+  - arch: amd64
+    package: libgstreamer-plugins-bad1.0-0
+    version: 1.26.2-3+deb13u1
+  - arch: amd64
+    package: libgstreamer-plugins-base1.0-0
+    version: 1.26.2-1+deb13u1
+  - arch: amd64
+    package: libgstreamer1.0-0
+    version: 1.26.2-2
+  - arch: amd64
+    package: libgtk-3-0t64
+    version: 3.24.49-3
+  - arch: all
+    package: libgtk-3-common
+    version: 3.24.49-3
+  - arch: amd64
+    package: libgtk-4-1
+    version: 4.18.6+ds-2
+  - arch: all
+    package: libgtk-4-common
+    version: 4.18.6+ds-2
+  - arch: amd64
+    package: libgtk-4-media-gstreamer
+    version: 4.18.6+ds-2
+  - arch: amd64
+    package: libgtk2.0-0t64
+    version: 2.24.33-7
+  - arch: all
+    package: libgtk2.0-common
+    version: 2.24.33-7
+  - arch: all
+    package: libgtk3-perl
+    version: 0.038-3
+  - arch: amd64
+    package: libgtkmm-3.0-1t64
+    version: 3.24.10-1
+  - arch: amd64
+    package: libgtkmm-4.0-0
+    version: 4.18.0-1
+  - arch: amd64
+    package: libgtksourceview-4-0
+    version: 4.8.4-6
+  - arch: all
+    package: libgtksourceview-4-common
+    version: 4.8.4-6
+  - arch: amd64
+    package: libgtksourceview-5-0
+    version: 5.16.0-1
+  - arch: all
+    package: libgtksourceview-5-common
+    version: 5.16.0-1
+  - arch: amd64
+    package: libgtkspell0
+    version: 2.0.16-1.3+b3
+  - arch: amd64
+    package: libgtop-2.0-11
+    version: 2.41.3-1+b2
+  - arch: all
+    package: libgtop2-common
+    version: 2.41.3-1
+  - arch: amd64
+    package: libgts-0.7-5t64
+    version: 0.7.6+darcs121130-5.2+b1
+  - arch: amd64
+    package: libgudev-1.0-0
+    version: 238-6
+  - arch: amd64
+    package: libgupnp-1.6-0
+    version: 1.6.8-2
+  - arch: amd64
+    package: libgupnp-igd-1.6-0
+    version: 1.6.0-4+b1
+  - arch: amd64
+    package: libgusb2
+    version: 0.4.9-1+b1
+  - arch: all
+    package: libgutenprint-common
+    version: 5.3.4.20220624T01008808d602-4
+  - arch: amd64
+    package: libgutenprint9
+    version: 5.3.4.20220624T01008808d602-4
+  - arch: amd64
+    package: libgvc6
+    version: 2.42.4-3
+  - arch: amd64
+    package: libgvpr2
+    version: 2.42.4-3
+  - arch: amd64
+    package: libgweather-4-0t64
+    version: 4.4.4-1
+  - arch: all
+    package: libgweather-4-common
+    version: 4.4.4-1
+  - arch: amd64
+    package: libgxps2t64
+    version: 0.3.2-4+b2
+  - arch: amd64
+    package: libhandy-1-0
+    version: 1.8.3-2
+  - arch: all
+    package: libhangul-data
+    version: 0.2.0-1
+  - arch: amd64
+    package: libhangul1
+    version: 0.2.0-1
+  - arch: amd64
+    package: libharfbuzz-gobject0
+    version: 10.2.0-1+b1
+  - arch: amd64
+    package: libharfbuzz-icu0
+    version: 10.2.0-1+b1
+  - arch: amd64
+    package: libharfbuzz-subset0
+    version: 10.2.0-1+b1
+  - arch: amd64
+    package: libharfbuzz0b
+    version: 10.2.0-1+b1
+  - arch: all
+    package: libhash-merge-simple-perl
+    version: 0.052-1
+  - arch: amd64
+    package: libhavege2
+    version: 1.9.19-12
+  - arch: amd64
+    package: libheif-plugin-dav1d
+    version: 1.19.8-1
+  - arch: amd64
+    package: libheif-plugin-libde265
+    version: 1.19.8-1
+  - arch: amd64
+    package: libheif1
+    version: 1.19.8-1
+  - arch: amd64
+    package: libhidapi-hidraw0
+    version: 0.14.0-1+b2
+  - arch: amd64
+    package: libhogweed6t64
+    version: 3.10.1-1
+  - arch: amd64
+    package: libhpmud0
+    version: 3.22.10+dfsg0-8.1
+  - arch: amd64
+    package: libhtml-parser-perl
+    version: 3.83-1+b2
+  - arch: all
+    package: libhtml-tagset-perl
+    version: 3.24-1
+  - arch: all
+    package: libhtml-tree-perl
+    version: 5.07-3
+  - arch: all
+    package: libhttp-cookies-perl
+    version: 6.11-1
+  - arch: all
+    package: libhttp-date-perl
+    version: 6.06-1
+  - arch: all
+    package: libhttp-message-perl
+    version: 7.00-2
+  - arch: all
+    package: libhttp-negotiate-perl
+    version: 6.01-2
+  - arch: amd64
+    package: libhttp-parser2.9
+    version: 2.9.4-6+b2
+  - arch: amd64
+    package: libhunspell-1.7-0
+    version: 1.7.2+really1.7.2-10+b4
+  - arch: amd64
+    package: libhwasan0
+    version: 14.2.0-19
+  - arch: amd64
+    package: libhwy1t64
+    version: 1.2.0-2+b2
+  - arch: amd64
+    package: libhyphen0
+    version: 2.8.8-7+b2
+  - arch: amd64
+    package: libibus-1.0-5
+    version: 1.5.32-2
+  - arch: amd64
+    package: libical3t64
+    version: 3.0.20-1+b1
+  - arch: amd64
+    package: libice6
+    version: 2:1.1.1-1
+  - arch: amd64
+    package: libicu76
+    version: 76.1-4
+  - arch: amd64
+    package: libid3tag0
+    version: 0.16.3-1
+  - arch: amd64
+    package: libidn12
+    version: 1.43-1
+  - arch: amd64
+    package: libidn2-0
+    version: 2.3.8-2
+  - arch: amd64
+    package: libiec61883-0
+    version: 1.2.0-7
+  - arch: amd64
+    package: libieee1284-3t64
+    version: 0.2.11-14.1+b1
+  - arch: amd64
+    package: libijs-0.35
+    version: 0.35-15.2
+  - arch: all
+    package: libimage-exiftool-perl
+    version: 13.25+dfsg-1
+  - arch: amd64
+    package: libimagequant0
+    version: 2.18.0-1+b2
+  - arch: amd64
+    package: libimath-3-1-29t64
+    version: 3.1.12-1+b3
+  - arch: amd64
+    package: libimobiledevice-1.0-6
+    version: 1.3.0+git20250228-2
+  - arch: amd64
+    package: libimobiledevice-glue-1.0-0
+    version: 1.3.1-1
+  - arch: amd64
+    package: libimobiledevice-utils
+    version: 1.3.0+git20250228-2
+  - arch: all
+    package: libimport-into-perl
+    version: 1.002005-2
+  - arch: amd64
+    package: libinih1
+    version: 59-1
+  - arch: amd64
+    package: libinireader0
+    version: 59-1
+  - arch: amd64
+    package: libinput-bin
+    version: 1.28.1-1
+  - arch: amd64
+    package: libinput10
+    version: 1.28.1-1
+  - arch: amd64
+    package: libinstpatch-1.0-2
+    version: 1.1.6-1+b2
+  - arch: all
+    package: libintl-perl
+    version: 1.35-1
+  - arch: amd64
+    package: libintl-xs-perl
+    version: 1.35-1
+  - arch: all
+    package: libio-html-perl
+    version: 1.004-3
+  - arch: amd64
+    package: libio-pty-perl
+    version: 1:1.20-1+b3
+  - arch: all
+    package: libio-socket-socks-perl
+    version: 0.74-3
+  - arch: all
+    package: libio-socket-ssl-perl
+    version: 2.089-1
+  - arch: all
+    package: libio-stringy-perl
+    version: 2.113-2
+  - arch: all
+    package: libio-tiecombine-perl
+    version: 1.005-3
+  - arch: amd64
+    package: libip4tc2
+    version: 1.8.11-2
+  - arch: amd64
+    package: libip6tc2
+    version: 1.8.11-2
+  - arch: all
+    package: libipc-run-perl
+    version: 20231003.0-2
+  - arch: all
+    package: libipc-system-simple-perl
+    version: 1.30-2
+  - arch: amd64
+    package: libiptcdata0
+    version: 1.0.5-2.4
+  - arch: amd64
+    package: libisl23
+    version: 0.27-1
+  - arch: amd64
+    package: libisoburn1t64
+    version: 1.5.6-1.2+b1
+  - arch: amd64
+    package: libisofs6t64
+    version: 1.5.6.pl01-1.1+b1
+  - arch: amd64
+    package: libitm1
+    version: 14.2.0-19
+  - arch: amd64
+    package: libiw30t64
+    version: 30~pre9-18+b1
+  - arch: amd64
+    package: libjack-jackd2-0
+    version: 1.9.22~dfsg-4
+  - arch: amd64
+    package: libjansson4
+    version: 2.14-2+b3
+  - arch: amd64
+    package: libjavascriptcoregtk-4.1-0
+    version: 2.52.3-2~deb13u1
+  - arch: amd64
+    package: libjbig0
+    version: 2.1-6.1+b2
+  - arch: amd64
+    package: libjbig2dec0
+    version: 0.20-1+b3
+  - arch: amd64
+    package: libjemalloc2
+    version: 5.3.0-3
+  - arch: amd64
+    package: libjim0.83
+    version: 0.83-2
+  - arch: amd64
+    package: libjpeg62-turbo
+    version: 1:2.1.5-4
+  - arch: amd64
+    package: libjq1
+    version: 1.7.1-6+deb13u1
+  - arch: all
+    package: libjs-jquery
+    version: 3.6.1+dfsg+~3.5.14-1
+  - arch: all
+    package: libjs-sphinxdoc
+    version: 8.1.3-5
+  - arch: all
+    package: libjs-underscore
+    version: 1.13.4~dfsg+~1.11.4-3
+  - arch: amd64
+    package: libjson-c5
+    version: 0.18+ds-1
+  - arch: amd64
+    package: libjson-glib-1.0-0
+    version: 1.10.6+ds-2
+  - arch: all
+    package: libjson-glib-1.0-common
+    version: 1.10.6+ds-2
+  - arch: all
+    package: libjson-maybexs-perl
+    version: 1.004008-1
+  - arch: all
+    package: libjson-perl
+    version: 4.10000-1
+  - arch: amd64
+    package: libjte2
+    version: 1.22-4+b2
+  - arch: amd64
+    package: libjxl-gdk-pixbuf
+    version: 0.11.1-4
+  - arch: amd64
+    package: libjxl0.11
+    version: 0.11.1-4
+  - arch: amd64
+    package: libk5crypto3
+    version: 1.21.3-5
+  - arch: amd64
+    package: libkeyutils1
+    version: 1.6.3-6
+  - arch: all
+    package: libkf6archive-data
+    version: 6.13.0-2
+  - arch: amd64
+    package: libkf6archive6
+    version: 6.13.0-2
+  - arch: all
+    package: libkf6auth-data
+    version: 6.13.0-1
+  - arch: amd64
+    package: libkf6authcore6
+    version: 6.13.0-1
+  - arch: amd64
+    package: libkf6breezeicons6
+    version: 6.13.0-3
+  - arch: amd64
+    package: libkf6calendarcore6
+    version: 6.13.0-1
+  - arch: all
+    package: libkf6codecs-data
+    version: 6.13.0-1
+  - arch: amd64
+    package: libkf6codecs6
+    version: 6.13.0-1
+  - arch: all
+    package: libkf6colorscheme-data
+    version: 6.13.0-1
+  - arch: amd64
+    package: libkf6colorscheme6
+    version: 6.13.0-1
+  - arch: all
+    package: libkf6completion-data
+    version: 6.13.0-1
+  - arch: amd64
+    package: libkf6completion6
+    version: 6.13.0-1
+  - arch: all
+    package: libkf6config-data
+    version: 6.13.0-2
+  - arch: amd64
+    package: libkf6configcore6
+    version: 6.13.0-2
+  - arch: amd64
+    package: libkf6configgui6
+    version: 6.13.0-2
+  - arch: all
+    package: libkf6configwidgets-data
+    version: 6.13.0-1
+  - arch: amd64
+    package: libkf6configwidgets6
+    version: 6.13.0-1
+  - arch: all
+    package: libkf6coreaddons-data
+    version: 6.13.0-1
+  - arch: amd64
+    package: libkf6coreaddons6
+    version: 6.13.0-1
+  - arch: amd64
+    package: libkf6crash6
+    version: 6.13.0-1
+  - arch: all
+    package: libkf6dbusaddons-data
+    version: 6.13.0-1
+  - arch: amd64
+    package: libkf6dbusaddons6
+    version: 6.13.0-1
+  - arch: amd64
+    package: libkf6doctools6
+    version: 6.13.0-1
+  - arch: all
+    package: libkf6globalaccel-data
+    version: 6.13.0-1
+  - arch: amd64
+    package: libkf6globalaccel6
+    version: 6.13.0-1
+  - arch: all
+    package: libkf6guiaddons-data
+    version: 6.13.0-1
+  - arch: amd64
+    package: libkf6guiaddons6
+    version: 6.13.0-1
+  - arch: all
+    package: libkf6i18n-data
+    version: 6.13.0-1
+  - arch: amd64
+    package: libkf6i18n6
+    version: 6.13.0-1
+  - arch: all
+    package: libkf6iconthemes-data
+    version: 6.13.0-2
+  - arch: amd64
+    package: libkf6iconthemes6
+    version: 6.13.0-2
+  - arch: amd64
+    package: libkf6iconwidgets6
+    version: 6.13.0-2
+  - arch: amd64
+    package: libkf6itemmodels6
+    version: 6.13.0-1
+  - arch: all
+    package: libkf6itemviews-data
+    version: 6.13.0-1
+  - arch: amd64
+    package: libkf6itemviews6
+    version: 6.13.0-1
+  - arch: amd64
+    package: libkf6kiocore6
+    version: 6.13.0-6
+  - arch: amd64
+    package: libkf6kiogui6
+    version: 6.13.0-6
+  - arch: all
+    package: libkf6notifications-data
+    version: 6.13.0-1
+  - arch: amd64
+    package: libkf6notifications6
+    version: 6.13.0-1
+  - arch: amd64
+    package: libkf6service-bin
+    version: 6.13.0-1
+  - arch: all
+    package: libkf6service-data
+    version: 6.13.0-1
+  - arch: amd64
+    package: libkf6service6
+    version: 6.13.0-1
+  - arch: all
+    package: libkf6solid-data
+    version: 6.13.0-1
+  - arch: amd64
+    package: libkf6solid6
+    version: 6.13.0-1
+  - arch: all
+    package: libkf6statusnotifieritem-data
+    version: 6.13.0-1
+  - arch: amd64
+    package: libkf6statusnotifieritem6
+    version: 6.13.0-1
+  - arch: all
+    package: libkf6wallet-data
+    version: 6.13.0-1
+  - arch: amd64
+    package: libkf6wallet6
+    version: 6.13.0-1
+  - arch: amd64
+    package: libkf6walletbackend6
+    version: 6.13.0-1
+  - arch: all
+    package: libkf6widgetsaddons-data
+    version: 6.13.0-1
+  - arch: amd64
+    package: libkf6widgetsaddons6
+    version: 6.13.0-1
+  - arch: all
+    package: libkf6windowsystem-data
+    version: 6.13.0-2
+  - arch: amd64
+    package: libkf6windowsystem6
+    version: 6.13.0-2
+  - arch: all
+    package: libkf6xmlgui-data
+    version: 6.13.0-1
+  - arch: amd64
+    package: libkf6xmlgui6
+    version: 6.13.0-1
+  - arch: all
+    package: libkleo-data
+    version: 4:24.12.3-3
+  - arch: amd64
+    package: libklibc
+    version: 2.0.14-1
+  - arch: all
+    package: libkmailtransport-data
+    version: 24.12.3-1
+  - arch: all
+    package: libkmime-data
+    version: 24.12.3-1
+  - arch: amd64
+    package: libkmod2
+    version: 34.2-2
+  - arch: amd64
+    package: libkpathsea6
+    version: 2024.20240313.70630+ds-6
+  - arch: amd64
+    package: libkpim6akonadicore6
+    version: 4:24.12.3-2~deb13u1
+  - arch: amd64
+    package: libkpim6akonadimime6
+    version: 4:24.12.3-1
+  - arch: amd64
+    package: libkpim6akonadiprivate6
+    version: 4:24.12.3-2~deb13u1
+  - arch: amd64
+    package: libkpim6akonadiwidgets6
+    version: 4:24.12.3-2~deb13u1
+  - arch: amd64
+    package: libkpim6identitymanagementcore6
+    version: 24.12.3-1
+  - arch: amd64
+    package: libkpim6libkleo6
+    version: 4:24.12.3-3
+  - arch: amd64
+    package: libkpim6mailtransport6
+    version: 24.12.3-1
+  - arch: amd64
+    package: libkpim6mbox6
+    version: 24.12.3-1
+  - arch: amd64
+    package: libkpim6mime6
+    version: 24.12.3-1
+  - arch: amd64
+    package: libkpim6mimetreeparsercore6
+    version: 24.12.3-1
+  - arch: amd64
+    package: libkpim6mimetreeparserwidgets6
+    version: 24.12.3-1
+  - arch: amd64
+    package: libkrb5-3
+    version: 1.21.3-5
+  - arch: amd64
+    package: libkrb5support0
+    version: 1.21.3-5
+  - arch: amd64
+    package: libksba8
+    version: 1.6.7-2+b1
+  - arch: amd64
+    package: liblab-gamut1
+    version: 2.42.4-3
+  - arch: all
+    package: liblangtag-common
+    version: 0.6.7-1
+  - arch: amd64
+    package: liblangtag1
+    version: 0.6.7-1+b2
+  - arch: amd64
+    package: liblapack3
+    version: 3.12.1-6
+  - arch: amd64
+    package: liblastlog2-2
+    version: 2.41-5
+  - arch: amd64
+    package: liblc3-1
+    version: 1.1.3+dfsg-1
+  - arch: amd64
+    package: liblcms2-2
+    version: 2.16-2
+  - arch: amd64
+    package: liblcms2-utils
+    version: 2.16-2
+  - arch: amd64
+    package: libldacbt-abr2
+    version: 2.0.2.3+git20200429+ed310a0-5
+  - arch: amd64
+    package: libldacbt-enc2
+    version: 2.0.2.3+git20200429+ed310a0-5
+  - arch: amd64
+    package: libldap2
+    version: 2.6.10+dfsg-1
+  - arch: amd64
+    package: libldb2
+    version: 2:2.11.0+samba4.22.8+dfsg-0+deb13u1
+  - arch: amd64
+    package: libleptonica6
+    version: 1.84.1-4
+  - arch: amd64
+    package: liblerc4
+    version: 4.0.0+ds-5
+  - arch: amd64
+    package: liblilv-0-0
+    version: 0.24.26-1
+  - arch: all
+    package: liblist-moreutils-perl
+    version: 0.430-2
+  - arch: amd64
+    package: liblist-moreutils-xs-perl
+    version: 0.430-4+b2
+  - arch: amd64
+    package: libllvm19
+    version: 1:19.1.7-3+b1
+  - arch: amd64
+    package: liblmdb0
+    version: 0.9.31-1+b2
+  - arch: all
+    package: liblocal-lib-perl
+    version: 2.000029-1
+  - arch: amd64
+    package: liblocale-gettext-perl
+    version: 1.07-7+b1
+  - arch: amd64
+    package: liblockfile-bin
+    version: 1.17-2
+  - arch: all
+    package: liblog-dispatch-array-perl
+    version: 1.005-1
+  - arch: all
+    package: liblog-dispatch-perl
+    version: 2.71-1
+  - arch: all
+    package: liblog-dispatchouli-perl
+    version: 3.009-1
+  - arch: all
+    package: liblouis-data
+    version: 3.33.0-1
+  - arch: amd64
+    package: liblouis20
+    version: 3.33.0-1
+  - arch: amd64
+    package: liblqr-1-0
+    version: 0.4.2-2.1+b2
+  - arch: amd64
+    package: liblrdf0
+    version: 0.6.1-4+b2
+  - arch: amd64
+    package: liblsan0
+    version: 14.2.0-19
+  - arch: amd64
+    package: liblsof0
+    version: 4.99.4+dfsg-2
+  - arch: amd64
+    package: libltc11
+    version: 1.3.2-1+b2
+  - arch: amd64
+    package: libltdl7
+    version: 2.5.4-4
+  - arch: amd64
+    package: liblua5.4-0
+    version: 5.4.7-1+b2
+  - arch: amd64
+    package: liblvm2cmd2.03
+    version: 2.03.31-2
+  - arch: all
+    package: liblwp-authen-wsse-perl
+    version: 0.05-6
+  - arch: all
+    package: liblwp-mediatypes-perl
+    version: 6.04-2
+  - arch: all
+    package: liblwp-protocol-https-perl
+    version: 6.14-1
+  - arch: all
+    package: liblwp-protocol-socks-perl
+    version: 1.7-2
+  - arch: amd64
+    package: liblz4-1
+    version: 1.10.0-4
+  - arch: amd64
+    package: liblzma5
+    version: 5.8.1-1
+  - arch: amd64
+    package: liblzo2-2
+    version: 2.10-3+b1
+  - arch: amd64
+    package: libmagic-mgc
+    version: 1:5.46-5
+  - arch: amd64
+    package: libmagic1t64
+    version: 1:5.46-5
+  - arch: amd64
+    package: libmagickcore-7.q16-10
+    version: 8:7.1.1.43+dfsg1-1+deb13u7
+  - arch: amd64
+    package: libmagickwand-7.q16-10
+    version: 8:7.1.1.43+dfsg1-1+deb13u7
+  - arch: amd64
+    package: libmalcontent-0-0
+    version: 0.13.0-2+deb13u1
+  - arch: amd64
+    package: libmanette-0.2-0
+    version: 0.2.12-1
+  - arch: amd64
+    package: libmarisa0
+    version: 0.2.6-19
+  - arch: amd64
+    package: libmaxminddb0
+    version: 1.12.2-1
+  - arch: amd64
+    package: libmbedcrypto16
+    version: 3.6.5-0.1~deb13u1
+  - arch: amd64
+    package: libmbim-glib4
+    version: 1.32.0-1
+  - arch: amd64
+    package: libmbim-proxy
+    version: 1.32.0-1
+  - arch: amd64
+    package: libmd0
+    version: 1.1.0-2+b1
+  - arch: amd64
+    package: libmd4c0
+    version: 0.5.2-2+b1
+  - arch: amd64
+    package: libmeanwhile1
+    version: 1.1.1-2+b3
+  - arch: amd64
+    package: libmediaart-2.0-0
+    version: 1.9.7-1
+  - arch: amd64
+    package: libmhash2
+    version: 0.9.9.9-10
+  - arch: all
+    package: libmime-charset-perl
+    version: 1.013.1-2
+  - arch: all
+    package: libmimetreeparser-data
+    version: 24.12.3-1
+  - arch: all
+    package: libmixin-linewise-perl
+    version: 0.111-1
+  - arch: amd64
+    package: libmjpegutils-2.1-0t64
+    version: 1:2.1.0+debian-8.1+b1
+  - arch: amd64
+    package: libmm-glib0
+    version: 1.24.0-1+deb13u1
+  - arch: amd64
+    package: libmnl0
+    version: 1.0.5-3
+  - arch: amd64
+    package: libmodplug1
+    version: 1:0.8.9.0-3+b2
+  - arch: all
+    package: libmodule-build-perl
+    version: 0.423400-3
+  - arch: all
+    package: libmodule-cpanfile-perl
+    version: 1.1004-2
+  - arch: all
+    package: libmodule-implementation-perl
+    version: 0.09-2
+  - arch: all
+    package: libmodule-path-perl
+    version: 0.19-3
+  - arch: all
+    package: libmodule-pluggable-perl
+    version: 5.2-5
+  - arch: all
+    package: libmodule-runtime-conflicts-perl
+    version: 0.003-2
+  - arch: all
+    package: libmodule-runtime-perl
+    version: 0.018-1
+  - arch: all
+    package: libmoo-perl
+    version: 2.005005-1
+  - arch: all
+    package: libmoose-autobox-perl
+    version: 0.16-2
+  - arch: amd64
+    package: libmoose-perl
+    version: 2.2207-1+b3
+  - arch: all
+    package: libmoosex-lazyrequire-perl
+    version: 0.11-2
+  - arch: all
+    package: libmoosex-oneargnew-perl
+    version: 0.007-1
+  - arch: all
+    package: libmoosex-role-parameterized-perl
+    version: 1.11-2
+  - arch: all
+    package: libmoosex-setonce-perl
+    version: 0.200002-2
+  - arch: all
+    package: libmoosex-types-perl-perl
+    version: 0.101344-1
+  - arch: all
+    package: libmoosex-types-perl
+    version: 0.51-4
+  - arch: all
+    package: libmoox-handlesvia-perl
+    version: 0.001009-2
+  - arch: all
+    package: libmoox-locale-passthrough-perl
+    version: 0.001-2
+  - arch: all
+    package: libmoox-options-perl
+    version: 4.103-5
+  - arch: amd64
+    package: libmount1
+    version: 2.41-5
+  - arch: amd64
+    package: libmozjs-128-0
+    version: 128.14.0-1~deb13u1
+  - arch: amd64
+    package: libmp3lame0
+    version: 3.100-6+b3
+  - arch: amd64
+    package: libmpc3
+    version: 1.3.1-1+b3
+  - arch: amd64
+    package: libmpcdec6
+    version: 2:0.1~r495-3
+  - arch: amd64
+    package: libmpeg2-4
+    version: 0.5.1-9+b3
+  - arch: amd64
+    package: libmpeg2encpp-2.1-0t64
+    version: 1:2.1.0+debian-8.1+b1
+  - arch: amd64
+    package: libmpfr6
+    version: 4.2.2-1
+  - arch: amd64
+    package: libmpg123-0t64
+    version: 1.32.10-1+deb13u1
+  - arch: amd64
+    package: libmplex2-2.1-0t64
+    version: 1:2.1.0+debian-8.1+b1
+  - arch: all
+    package: libmro-compat-perl
+    version: 0.15-2
+  - arch: amd64
+    package: libmsgraph-1-1
+    version: 0.3.3-3
+  - arch: amd64
+    package: libmspack0t64
+    version: 0.11-1.1+b1
+  - arch: amd64
+    package: libmspub-0.1-1
+    version: 0.1.4-3+b5
+  - arch: amd64
+    package: libmtdev1t64
+    version: 1.1.7-1
+  - arch: all
+    package: libmtp-common
+    version: 1.1.22-1
+  - arch: amd64
+    package: libmtp9t64
+    version: 1.1.22-1
+  - arch: amd64
+    package: libmusicbrainz5-2
+    version: 5.1.0+git20150707-11+b1
+  - arch: amd64
+    package: libmusicbrainz5cc2v5
+    version: 5.1.0+git20150707-11+b1
+  - arch: amd64
+    package: libmutter-16-0
+    version: 48.7-0+deb13u1
+  - arch: amd64
+    package: libmwaw-0.3-3
+    version: 0.3.22-1+b2
+  - arch: amd64
+    package: libmypaint-1.5-1
+    version: 1.6.0-4
+  - arch: all
+    package: libmypaint-common
+    version: 1.6.0-4
+  - arch: amd64
+    package: libmysofa1
+    version: 1.3.3+dfsg-1
+  - arch: amd64
+    package: libmythes-1.2-0
+    version: 2:1.2.5-1+b2
+  - arch: all
+    package: libnamespace-autoclean-perl
+    version: 0.31-1
+  - arch: all
+    package: libnamespace-clean-perl
+    version: 0.27-2
+  - arch: amd64
+    package: libnautilus-extension4
+    version: 48.3-2
+  - arch: amd64
+    package: libncurses6
+    version: 6.5+20250216-2
+  - arch: amd64
+    package: libncursesw6
+    version: 6.5+20250216-2
+  - arch: amd64
+    package: libndp0
+    version: 1.9-1+b1
+  - arch: amd64
+    package: libneon27t64-gnutls
+    version: 0.34.2-1
+  - arch: amd64
+    package: libneon27t64
+    version: 0.34.2-1
+  - arch: amd64
+    package: libnet-dbus-glib-perl
+    version: 0.33.0-4+b4
+  - arch: amd64
+    package: libnet-dbus-perl
+    version: 1.2.0-2+b3
+  - arch: all
+    package: libnet-http-perl
+    version: 6.23-1
+  - arch: amd64
+    package: libnet-ssleay-perl
+    version: 1.94-3
+  - arch: amd64
+    package: libnetfilter-conntrack3
+    version: 1.1.0-1
+  - arch: amd64
+    package: libnettle8t64
+    version: 3.10.1-1
+  - arch: amd64
+    package: libnewt0.52
+    version: 0.52.25-1
+  - arch: amd64
+    package: libnfnetlink0
+    version: 1.0.2-3
+  - arch: amd64
+    package: libnfs14
+    version: 5.0.2-1+b2
+  - arch: amd64
+    package: libnftables1
+    version: 1.1.3-1
+  - arch: amd64
+    package: libnftnl11
+    version: 1.2.9-1
+  - arch: amd64
+    package: libnghttp2-14
+    version: 1.64.0-1.1
+  - arch: amd64
+    package: libnghttp3-9
+    version: 1.8.0-1
+  - arch: amd64
+    package: libngtcp2-16
+    version: 1.11.0-1+deb13u1
+  - arch: amd64
+    package: libngtcp2-crypto-gnutls8
+    version: 1.11.0-1+deb13u1
+  - arch: amd64
+    package: libnice10
+    version: 0.1.22-1
+  - arch: amd64
+    package: libnl-3-200
+    version: 3.7.0-2
+  - arch: amd64
+    package: libnl-genl-3-200
+    version: 3.7.0-2
+  - arch: amd64
+    package: libnl-route-3-200
+    version: 3.7.0-2
+  - arch: amd64
+    package: libnm0
+    version: 1.52.1-1
+  - arch: all
+    package: libnma-common
+    version: 1.10.6-5
+  - arch: amd64
+    package: libnma-gtk4-0
+    version: 1.10.6-5
+  - arch: amd64
+    package: libnma0
+    version: 1.10.6-5
+  - arch: amd64
+    package: libnorm1t64
+    version: 1.5.9+dfsg-3.1+b2
+  - arch: amd64
+    package: libnotify-bin
+    version: 0.8.6-1
+  - arch: amd64
+    package: libnotify4
+    version: 0.8.6-1
+  - arch: amd64
+    package: libnpth0t64
+    version: 1.8-3
+  - arch: amd64
+    package: libnspr4
+    version: 2:4.36-1
+  - arch: amd64
+    package: libnss-systemd
+    version: 257.9-1~deb13u1
+  - arch: amd64
+    package: libnss3
+    version: 2:3.110-1+deb13u1
+  - arch: amd64
+    package: libntfs-3g89t64
+    version: 1:2022.10.3-5+deb13u1
+  - arch: amd64
+    package: libnuma1
+    version: 2.0.19-1
+  - arch: all
+    package: libnumber-compare-perl
+    version: 0.03-3
+  - arch: all
+    package: libnumber-format-perl
+    version: 1.76-1
+  - arch: amd64
+    package: libnumbertext-1.0-0
+    version: 1.0.11-4+b2
+  - arch: all
+    package: libnumbertext-data
+    version: 1.0.11-4
+  - arch: amd64
+    package: libnvme1t64
+    version: 1.13-2
+  - arch: amd64
+    package: liboauth0
+    version: 1.0.3-5+b2
+  - arch: amd64
+    package: libodfgen-0.1-1
+    version: 0.1.8-2+b2
+  - arch: amd64
+    package: libogg0
+    version: 1.3.5-3+b2
+  - arch: amd64
+    package: libonig5
+    version: 6.9.9-1+b1
+  - arch: amd64
+    package: libonnx1t64
+    version: 1.17.0-3+b1
+  - arch: amd64
+    package: libonnxruntime1.21
+    version: 1.21.0+dfsg-1
+  - arch: all
+    package: libopenal-data
+    version: 1:1.24.2-1
+  - arch: amd64
+    package: libopenal1
+    version: 1:1.24.2-1
+  - arch: all
+    package: libopencc-data
+    version: 1.1.9+ds1-1
+  - arch: amd64
+    package: libopencc1.1
+    version: 1.1.9+ds1-1+b1
+  - arch: amd64
+    package: libopencore-amrnb0
+    version: 0.1.6-1+b2
+  - arch: amd64
+    package: libopencore-amrwb0
+    version: 0.1.6-1+b2
+  - arch: amd64
+    package: libopenexr-3-1-30
+    version: 3.1.13-2
+  - arch: amd64
+    package: libopenfec1
+    version: 1.4.2.11+dfsg-1
+  - arch: amd64
+    package: libopengl0
+    version: 1.7.0-1+b2
+  - arch: amd64
+    package: libopenh264-8
+    version: 2.6.0+dfsg-2
+  - arch: amd64
+    package: libopenjp2-7
+    version: 2.5.3-2.1~deb13u1
+  - arch: amd64
+    package: libopenmpt0t64
+    version: 0.7.13-1+b1
+  - arch: amd64
+    package: libopenni2-0
+    version: 2.2.0.33+dfsg-18+b2
+  - arch: amd64
+    package: libopus0
+    version: 1.5.2-2
+  - arch: amd64
+    package: libopusfile0
+    version: 0.12-4+b3
+  - arch: amd64
+    package: liborc-0.4-0t64
+    version: 1:0.4.41-1
+  - arch: amd64
+    package: liborcus-0.18-0
+    version: 0.19.2-6+b1
+  - arch: amd64
+    package: liborcus-parser-0.18-0
+    version: 0.19.2-6+b1
+  - arch: amd64
+    package: libosinfo-1.0-0
+    version: 1.12.0-2
+  - arch: all
+    package: libosinfo-l10n
+    version: 1.12.0-2
+  - arch: amd64
+    package: libostree-1-1
+    version: 2025.2-1
+  - arch: amd64
+    package: libotr5t64
+    version: 4.1.1-6
+  - arch: amd64
+    package: libp11-kit0
+    version: 0.25.5-3
+  - arch: all
+    package: libpackage-deprecationmanager-perl
+    version: 0.18-1
+  - arch: all
+    package: libpackage-stash-perl
+    version: 0.40-1
+  - arch: amd64
+    package: libpackage-stash-xs-perl
+    version: 0.30-1+b4
+  - arch: amd64
+    package: libpackagekit-glib2-18
+    version: 1.3.1-1+deb13u1
+  - arch: amd64
+    package: libpagemaker-0.0-0
+    version: 0.0.4-1+b2
+  - arch: amd64
+    package: libpam-modules-bin
+    version: 1.7.0-5
+  - arch: amd64
+    package: libpam-modules
+    version: 1.7.0-5
+  - arch: all
+    package: libpam-runtime
+    version: 1.7.0-5
+  - arch: amd64
+    package: libpam-systemd
+    version: 257.9-1~deb13u1
+  - arch: amd64
+    package: libpam0g
+    version: 1.7.0-5
+  - arch: amd64
+    package: libpango-1.0-0
+    version: 1.56.3-1
+  - arch: amd64
+    package: libpangocairo-1.0-0
+    version: 1.56.3-1
+  - arch: amd64
+    package: libpangoft2-1.0-0
+    version: 1.56.3-1
+  - arch: amd64
+    package: libpangomm-1.4-1v5
+    version: 2.46.4-1+b2
+  - arch: amd64
+    package: libpangomm-2.48-1t64
+    version: 2.56.1-1
+  - arch: amd64
+    package: libpangoxft-1.0-0
+    version: 1.56.3-1
+  - arch: amd64
+    package: libpaper2
+    version: 2.2.5-0.3+b2
+  - arch: amd64
+    package: libparams-classify-perl
+    version: 0.015-2+b4
+  - arch: amd64
+    package: libparams-util-perl
+    version: 1.102-3+b1
+  - arch: amd64
+    package: libparams-validate-perl
+    version: 1.31-2+b3
+  - arch: all
+    package: libparams-validationcompiler-perl
+    version: 0.31-1
+  - arch: all
+    package: libparse-pmfile-perl
+    version: 0.47-1
+  - arch: amd64
+    package: libparted-fs-resize0t64
+    version: 3.6-5
+  - arch: amd64
+    package: libparted2t64
+    version: 3.6-5
+  - arch: all
+    package: libpath-class-perl
+    version: 0.37-4
+  - arch: all
+    package: libpath-tiny-perl
+    version: 0.148-1
+  - arch: amd64
+    package: libpathplan4
+    version: 2.42.4-3
+  - arch: amd64
+    package: libpcap0.8t64
+    version: 1.10.5-2
+  - arch: amd64
+    package: libpcaudio0
+    version: 1.3-1
+  - arch: amd64
+    package: libpci3
+    version: 1:3.13.0-2
+  - arch: amd64
+    package: libpciaccess0
+    version: 0.17-3+b3
+  - arch: amd64
+    package: libpcre2-16-0
+    version: 10.46-1~deb13u1
+  - arch: amd64
+    package: libpcre2-32-0
+    version: 10.46-1~deb13u1
+  - arch: amd64
+    package: libpcre2-8-0
+    version: 10.46-1~deb13u1
+  - arch: amd64
+    package: libpcsclite1
+    version: 2.3.3-1
+  - arch: amd64
+    package: libpeas-1.0-0
+    version: 1.36.0-3+b4
+  - arch: all
+    package: libpeas-common
+    version: 1.36.0-3
+  - arch: all
+    package: libperl-prereqscanner-perl
+    version: 1.100-1
+  - arch: all
+    package: libperl-version-perl
+    version: 1.018-1
+  - arch: amd64
+    package: libperl5.40
+    version: 5.40.1-6
+  - arch: amd64
+    package: libperlio-utf8-strict-perl
+    version: 0.010-1+b3
+  - arch: amd64
+    package: libpgm-5.3-0t64
+    version: 5.3.128~dfsg-2.1+b1
+  - arch: amd64
+    package: libpinyin-data
+    version: 2.8.1-1+b2
+  - arch: amd64
+    package: libpinyin15
+    version: 2.8.1-1+b2
+  - arch: amd64
+    package: libpipeline1
+    version: 1.5.8-1
+  - arch: amd64
+    package: libpipewire-0.3-0t64
+    version: 1.4.2-1
+  - arch: amd64
+    package: libpipewire-0.3-modules
+    version: 1.4.2-1
+  - arch: amd64
+    package: libpixman-1-0
+    version: 0.44.0-3
+  - arch: amd64
+    package: libplacebo349
+    version: 7.349.0-3
+  - arch: amd64
+    package: libplist-2.0-4
+    version: 2.6.0-2+b1
+  - arch: amd64
+    package: libplymouth5
+    version: 24.004.60-5
+  - arch: amd64
+    package: libpng16-16t64
+    version: 1.6.48-1+deb13u4
+  - arch: amd64
+    package: libpocketsphinx3
+    version: 0.8+5prealpha+1-15+b4
+  - arch: amd64
+    package: libpolkit-agent-1-0
+    version: 126-2
+  - arch: amd64
+    package: libpolkit-gobject-1-0
+    version: 126-2
+  - arch: amd64
+    package: libpolkit-qt6-1-1
+    version: 0.200.0-4+b1
+  - arch: amd64
+    package: libpoppler-cpp2
+    version: 25.03.0-5+deb13u2
+  - arch: amd64
+    package: libpoppler-glib8t64
+    version: 25.03.0-5+deb13u2
+  - arch: amd64
+    package: libpoppler147
+    version: 25.03.0-5+deb13u2
+  - arch: amd64
+    package: libpopt0
+    version: 1.19+dfsg-2
+  - arch: amd64
+    package: libportal-gtk3-1
+    version: 0.9.1-1
+  - arch: amd64
+    package: libportal-gtk4-1
+    version: 0.9.1-1
+  - arch: amd64
+    package: libportal1
+    version: 0.9.1-1
+  - arch: amd64
+    package: libportaudio2
+    version: 19.6.0-1.2+b3
+  - arch: amd64
+    package: libportmidi0
+    version: 1:217-6.1+b4
+  - arch: amd64
+    package: libportsmf0t64
+    version: 0.1~svn20101010-7+b1
+  - arch: amd64
+    package: libpostproc58
+    version: 7:7.1.3-0+deb13u1
+  - arch: amd64
+    package: libpotrace0
+    version: 1.16-2+b2
+  - arch: all
+    package: libppi-perl
+    version: 1.281-1
+  - arch: amd64
+    package: libproc2-0
+    version: 2:4.0.4-9
+  - arch: amd64
+    package: libprotobuf-c1
+    version: 1.5.1-1
+  - arch: amd64
+    package: libprotobuf32t64
+    version: 3.21.12-11
+  - arch: amd64
+    package: libproxy1v5
+    version: 0.5.9-1
+  - arch: amd64
+    package: libpsl5t64
+    version: 0.21.2-1.1+b1
+  - arch: amd64
+    package: libpthreadpool0
+    version: 0.0~git20240616.560c60d-1
+  - arch: amd64
+    package: libpulse-mainloop-glib0
+    version: 17.0+dfsg1-2+b1
+  - arch: amd64
+    package: libpulse0
+    version: 17.0+dfsg1-2+b1
+  - arch: amd64
+    package: libpurple0t64
+    version: 2.14.14-1
+  - arch: all
+    package: libpwquality-common
+    version: 1.4.5-5
+  - arch: amd64
+    package: libpwquality-tools
+    version: 1.4.5-5
+  - arch: amd64
+    package: libpwquality1
+    version: 1.4.5-5
+  - arch: amd64
+    package: libpyside6-py3-6.8
+    version: 6.8.2.1-4
+  - arch: amd64
+    package: libpython3-stdlib
+    version: 3.13.5-1
+  - arch: amd64
+    package: libpython3.13-minimal
+    version: 3.13.5-2
+  - arch: amd64
+    package: libpython3.13-stdlib
+    version: 3.13.5-2
+  - arch: amd64
+    package: libpython3.13
+    version: 3.13.5-2
+  - arch: amd64
+    package: libqb100
+    version: 2.0.8-2+b1
+  - arch: amd64
+    package: libqca-qt6-2
+    version: 2.3.10-1
+  - arch: amd64
+    package: libqgpgmeqt6-15
+    version: 1.24.2-3
+  - arch: amd64
+    package: libqmi-glib5
+    version: 1.36.0-1
+  - arch: amd64
+    package: libqmi-proxy
+    version: 1.36.0-1
+  - arch: amd64
+    package: libqpdf30
+    version: 12.2.0-1
+  - arch: amd64
+    package: libqrencode4
+    version: 4.1.1-2
+  - arch: amd64
+    package: libqrtr-glib0
+    version: 1.2.2-1+b2
+  - arch: amd64
+    package: libqt6core5compat6
+    version: 6.8.2-3+b1
+  - arch: amd64
+    package: libqt6core6t64
+    version: 6.8.2+dfsg-9+deb13u1
+  - arch: amd64
+    package: libqt6dbus6
+    version: 6.8.2+dfsg-9+deb13u1
+  - arch: amd64
+    package: libqt6gui6
+    version: 6.8.2+dfsg-9+deb13u1
+  - arch: amd64
+    package: libqt6keychain1
+    version: 0.15.0-1
+  - arch: amd64
+    package: libqt6network6
+    version: 6.8.2+dfsg-9+deb13u1
+  - arch: amd64
+    package: libqt6opengl6
+    version: 6.8.2+dfsg-9+deb13u1
+  - arch: amd64
+    package: libqt6openglwidgets6
+    version: 6.8.2+dfsg-9+deb13u1
+  - arch: amd64
+    package: libqt6printsupport6
+    version: 6.8.2+dfsg-9+deb13u1
+  - arch: amd64
+    package: libqt6qml6
+    version: 6.8.2+dfsg-7
+  - arch: amd64
+    package: libqt6qmlmeta6
+    version: 6.8.2+dfsg-7
+  - arch: amd64
+    package: libqt6qmlmodels6
+    version: 6.8.2+dfsg-7
+  - arch: amd64
+    package: libqt6qmlworkerscript6
+    version: 6.8.2+dfsg-7
+  - arch: amd64
+    package: libqt6quick6
+    version: 6.8.2+dfsg-7
+  - arch: amd64
+    package: libqt6quickcontrols2-6
+    version: 6.8.2+dfsg-7
+  - arch: amd64
+    package: libqt6quicktemplates2-6
+    version: 6.8.2+dfsg-7
+  - arch: amd64
+    package: libqt6quickwidgets6
+    version: 6.8.2+dfsg-7
+  - arch: amd64
+    package: libqt6sql6
+    version: 6.8.2+dfsg-9+deb13u1
+  - arch: amd64
+    package: libqt6svg6
+    version: 6.8.2-3
+  - arch: amd64
+    package: libqt6test6
+    version: 6.8.2+dfsg-9+deb13u1
+  - arch: amd64
+    package: libqt6waylandclient6
+    version: 6.8.2-4
+  - arch: amd64
+    package: libqt6waylandcompositor6
+    version: 6.8.2-4
+  - arch: amd64
+    package: libqt6widgets6
+    version: 6.8.2+dfsg-9+deb13u1
+  - arch: amd64
+    package: libqt6wlshellintegration6
+    version: 6.8.2-4
+  - arch: amd64
+    package: libqt6xml6
+    version: 6.8.2+dfsg-9+deb13u1
+  - arch: amd64
+    package: libquadmath0
+    version: 14.2.0-19
+  - arch: amd64
+    package: libqxp-0.0-0
+    version: 0.0.2-1+b4
+  - arch: amd64
+    package: librabbitmq4
+    version: 0.15.0-1
+  - arch: amd64
+    package: libraptor2-0
+    version: 2.0.16-6
+  - arch: amd64
+    package: libraqm0
+    version: 0.10.2-1
+  - arch: amd64
+    package: librasqal3t64
+    version: 0.9.33-2.1+b2
+  - arch: amd64
+    package: librav1e0.7
+    version: 0.7.1-9+b2
+  - arch: amd64
+    package: libraw1394-11
+    version: 2.1.2-2+b2
+  - arch: amd64
+    package: libraw23t64
+    version: 0.21.4-2
+  - arch: amd64
+    package: librdf0t64
+    version: 1.0.17-4+b1
+  - arch: amd64
+    package: libre2-11
+    version: 20240702-3+b1
+  - arch: amd64
+    package: libreadline8t64
+    version: 8.2-6
+  - arch: all
+    package: libregexp-common-perl
+    version: 2024080801-1
+  - arch: amd64
+    package: libreoffice-base-core
+    version: 4:25.2.3-2+deb13u3
+  - arch: amd64
+    package: libreoffice-calc
+    version: 4:25.2.3-2+deb13u3
+  - arch: all
+    package: libreoffice-common
+    version: 4:25.2.3-2+deb13u3
+  - arch: amd64
+    package: libreoffice-core
+    version: 4:25.2.3-2+deb13u3
+  - arch: amd64
+    package: libreoffice-draw
+    version: 4:25.2.3-2+deb13u3
+  - arch: amd64
+    package: libreoffice-gnome
+    version: 4:25.2.3-2+deb13u3
+  - arch: amd64
+    package: libreoffice-gtk3
+    version: 4:25.2.3-2+deb13u3
+  - arch: amd64
+    package: libreoffice-impress
+    version: 4:25.2.3-2+deb13u3
+  - arch: all
+    package: libreoffice-l10n-ar
+    version: 4:25.2.3-2+deb13u3
+  - arch: all
+    package: libreoffice-l10n-de
+    version: 4:25.2.3-2+deb13u3
+  - arch: all
+    package: libreoffice-l10n-es
+    version: 4:25.2.3-2+deb13u3
+  - arch: all
+    package: libreoffice-l10n-fa
+    version: 4:25.2.3-2+deb13u3
+  - arch: all
+    package: libreoffice-l10n-fr
+    version: 4:25.2.3-2+deb13u3
+  - arch: all
+    package: libreoffice-l10n-hi
+    version: 4:25.2.3-2+deb13u3
+  - arch: all
+    package: libreoffice-l10n-id
+    version: 4:25.2.3-2+deb13u3
+  - arch: all
+    package: libreoffice-l10n-it
+    version: 4:25.2.3-2+deb13u3
+  - arch: all
+    package: libreoffice-l10n-pt
+    version: 4:25.2.3-2+deb13u3
+  - arch: all
+    package: libreoffice-l10n-ru
+    version: 4:25.2.3-2+deb13u3
+  - arch: all
+    package: libreoffice-l10n-tr
+    version: 4:25.2.3-2+deb13u3
+  - arch: all
+    package: libreoffice-l10n-zh-cn
+    version: 4:25.2.3-2+deb13u3
+  - arch: all
+    package: libreoffice-style-colibre
+    version: 4:25.2.3-2+deb13u3
+  - arch: all
+    package: libreoffice-uiconfig-calc
+    version: 4:25.2.3-2+deb13u3
+  - arch: all
+    package: libreoffice-uiconfig-common
+    version: 4:25.2.3-2+deb13u3
+  - arch: all
+    package: libreoffice-uiconfig-draw
+    version: 4:25.2.3-2+deb13u3
+  - arch: all
+    package: libreoffice-uiconfig-impress
+    version: 4:25.2.3-2+deb13u3
+  - arch: all
+    package: libreoffice-uiconfig-writer
+    version: 4:25.2.3-2+deb13u3
+  - arch: amd64
+    package: libreoffice-writer
+    version: 4:25.2.3-2+deb13u3
+  - arch: amd64
+    package: librest-1.0-0
+    version: 0.9.1-6+b2
+  - arch: amd64
+    package: librevenge-0.0-0
+    version: 0.0.5-3+b2
+  - arch: amd64
+    package: librist4
+    version: 0.2.11+dfsg-1
+  - arch: amd64
+    package: librnp0
+    version: 0.17.1-1+b1
+  - arch: amd64
+    package: libroc0.4
+    version: 0.4.0+dfsg-5
+  - arch: all
+    package: librole-hasmessage-perl
+    version: 0.007-1
+  - arch: all
+    package: librole-identifiable-perl
+    version: 0.009-1
+  - arch: all
+    package: librole-tiny-perl
+    version: 2.002004-1
+  - arch: amd64
+    package: librsvg2-2
+    version: 2.60.0+dfsg-1
+  - arch: amd64
+    package: librsvg2-common
+    version: 2.60.0+dfsg-1
+  - arch: amd64
+    package: librtmp1
+    version: 2.4+20151223.gitfa8646d.1-2+b5
+  - arch: amd64
+    package: librubberband2
+    version: 3.3.0+dfsg-2+b3
+  - arch: all
+    package: libsafe-isa-perl
+    version: 1.000010-1
+  - arch: amd64
+    package: libsamplerate0
+    version: 0.2.2-4+b2
+  - arch: all
+    package: libsane-common
+    version: 1.3.1-3
+  - arch: amd64
+    package: libsane-hpaio
+    version: 3.22.10+dfsg0-8.1
+  - arch: amd64
+    package: libsane1
+    version: 1.3.1-3+b1
+  - arch: amd64
+    package: libsasl2-2
+    version: 2.1.28+dfsg1-9
+  - arch: amd64
+    package: libsasl2-modules-db
+    version: 2.1.28+dfsg1-9
+  - arch: amd64
+    package: libsasl2-modules
+    version: 2.1.28+dfsg1-9
+  - arch: amd64
+    package: libsass1
+    version: 3.6.5+20231221-3+b1
+  - arch: amd64
+    package: libsbc1
+    version: 2.1-1
+  - arch: amd64
+    package: libsbsms10
+    version: 2.3.0-1+b2
+  - arch: all
+    package: libscope-guard-perl
+    version: 0.21-2
+  - arch: amd64
+    package: libsdl2-2.0-0
+    version: 2.32.4+dfsg-1
+  - arch: amd64
+    package: libseccomp2
+    version: 2.6.0-2
+  - arch: amd64
+    package: libsecp256k1-6
+    version: 0.7.1-2~bpo13+1
+  - arch: amd64
+    package: libsecret-1-0
+    version: 0.21.7-1
+  - arch: all
+    package: libsecret-common
+    version: 0.21.7-1
+  - arch: amd64
+    package: libselinux1
+    version: 3.8.1-1
+  - arch: all
+    package: libsemanage-common
+    version: 3.8.1-1
+  - arch: amd64
+    package: libsemanage2
+    version: 3.8.1-1
+  - arch: all
+    package: libsensors-config
+    version: 1:3.6.2-2
+  - arch: amd64
+    package: libsensors5
+    version: 1:3.6.2-2
+  - arch: amd64
+    package: libsepol2
+    version: 3.8.1-1
+  - arch: amd64
+    package: libserd-0-0
+    version: 0.32.4-1
+  - arch: amd64
+    package: libsexpp0
+    version: 0.8.7-4+b1
+  - arch: amd64
+    package: libsframe1
+    version: 2.44-3
+  - arch: amd64
+    package: libsharpyuv0
+    version: 1.5.0-0.1
+  - arch: amd64
+    package: libshiboken6-py3-6.8
+    version: 6.8.2.1-4
+  - arch: amd64
+    package: libshine3
+    version: 3.1.1-2+b2
+  - arch: amd64
+    package: libshout3
+    version: 2.4.6-1+b3
+  - arch: amd64
+    package: libsidplay1v5
+    version: 1.36.60-1+b2
+  - arch: amd64
+    package: libsigc++-2.0-0v5
+    version: 2.12.1-3
+  - arch: amd64
+    package: libsigc++-3.0-0
+    version: 3.6.0-2+b1
+  - arch: amd64
+    package: libslang2
+    version: 2.3.3-5+b2
+  - arch: amd64
+    package: libsm6
+    version: 2:1.2.6-1
+  - arch: amd64
+    package: libsmartcols1
+    version: 2.41-5
+  - arch: amd64
+    package: libsmbclient0
+    version: 2:4.22.8+dfsg-0+deb13u1
+  - arch: amd64
+    package: libsnappy1v5
+    version: 1.2.2-1
+  - arch: amd64
+    package: libsndfile1
+    version: 1.2.2-2+deb13u1
+  - arch: all
+    package: libsnmp-base
+    version: 5.9.4+dfsg-2+deb13u1
+  - arch: amd64
+    package: libsnmp40t64
+    version: 5.9.4+dfsg-2+deb13u1
+  - arch: amd64
+    package: libsodium23
+    version: 1.0.18-1+deb13u1
+  - arch: all
+    package: libsoftware-license-perl
+    version: 0.104006-1
+  - arch: amd64
+    package: libsombok3
+    version: 2.4.0-2+b2
+  - arch: amd64
+    package: libsonic0
+    version: 0.2.0-13+b1
+  - arch: amd64
+    package: libsord-0-0
+    version: 0.16.18-1
+  - arch: amd64
+    package: libsoundtouch1
+    version: 2.4.0+ds-1
+  - arch: amd64
+    package: libsoup-2.4-1
+    version: 2.74.3-10.1
+  - arch: amd64
+    package: libsoup-3.0-0
+    version: 3.6.5-3
+  - arch: all
+    package: libsoup-3.0-common
+    version: 3.6.5-3
+  - arch: all
+    package: libsoup2.4-common
+    version: 2.74.3-10.1
+  - arch: amd64
+    package: libsoxr0
+    version: 0.1.3-4+b2
+  - arch: amd64
+    package: libspa-0.2-bluetooth
+    version: 1.4.2-1
+  - arch: amd64
+    package: libspa-0.2-modules
+    version: 1.4.2-1
+  - arch: amd64
+    package: libspandsp2t64
+    version: 0.0.6+dfsg-2.2
+  - arch: all
+    package: libspecio-perl
+    version: 0.50-1
+  - arch: amd64
+    package: libspectre1
+    version: 0.2.12-1+b2
+  - arch: amd64
+    package: libspeechd-module0
+    version: 0.12.0-5
+  - arch: amd64
+    package: libspeechd2
+    version: 0.12.0-5
+  - arch: amd64
+    package: libspeex1
+    version: 1.2.1-3
+  - arch: amd64
+    package: libspeexdsp1
+    version: 1.2.1-3
+  - arch: amd64
+    package: libspelling-1-2
+    version: 0.4.8-1
+  - arch: all
+    package: libspelling-common
+    version: 0.4.8-1
+  - arch: amd64
+    package: libsphinxbase3t64
+    version: 0.8+5prealpha+1-21+b1
+  - arch: amd64
+    package: libsqlite3-0
+    version: 3.46.1-7+deb13u1
+  - arch: amd64
+    package: libsratom-0-0
+    version: 0.6.18-1
+  - arch: amd64
+    package: libsrt1.5-gnutls
+    version: 1.5.4-1
+  - arch: amd64
+    package: libsrtp2-1
+    version: 2.7.0-3
+  - arch: amd64
+    package: libss2
+    version: 1.47.2-3+b10
+  - arch: amd64
+    package: libssh-4
+    version: 0.11.2-1+deb13u1
+  - arch: amd64
+    package: libssh2-1t64
+    version: 1.11.1-1
+  - arch: amd64
+    package: libssl3t64
+    version: 3.5.5-1~deb13u1
+  - arch: amd64
+    package: libssl3t64
+    version: 3.5.5-1~deb13u2
+  - arch: amd64
+    package: libstaroffice-0.0-0
+    version: 0.0.7-1+b2
+  - arch: amd64
+    package: libstartup-notification0
+    version: 0.12-8
+  - arch: amd64
+    package: libstdc++-14-dev
+    version: 14.2.0-19
+  - arch: amd64
+    package: libstdc++6
+    version: 14.2.0-19
+  - arch: amd64
+    package: libstemmer0d
+    version: 2.2.0-4+b2
+  - arch: all
+    package: libstrictures-perl
+    version: 2.000006-1
+  - arch: all
+    package: libstring-errf-perl
+    version: 0.009-1
+  - arch: all
+    package: libstring-flogger-perl
+    version: 1.101246-1
+  - arch: all
+    package: libstring-formatter-perl
+    version: 1.235-1
+  - arch: all
+    package: libstring-rewriteprefix-perl
+    version: 0.009-1
+  - arch: all
+    package: libstring-shellquote-perl
+    version: 1.04-3
+  - arch: all
+    package: libsub-exporter-formethods-perl
+    version: 0.100055-1
+  - arch: all
+    package: libsub-exporter-globexporter-perl
+    version: 0.006-1
+  - arch: all
+    package: libsub-exporter-perl
+    version: 0.990-1
+  - arch: all
+    package: libsub-exporter-progressive-perl
+    version: 0.001013-3
+  - arch: amd64
+    package: libsub-identify-perl
+    version: 0.14-3+b3
+  - arch: all
+    package: libsub-install-perl
+    version: 0.929-1
+  - arch: amd64
+    package: libsub-name-perl
+    version: 0.28-1
+  - arch: all
+    package: libsub-quote-perl
+    version: 2.006008-1
+  - arch: all
+    package: libsub-uplevel-perl
+    version: 0.2800-3
+  - arch: amd64
+    package: libsuil-0-0
+    version: 0.10.22-1
+  - arch: amd64
+    package: libsuitesparseconfig7
+    version: 1:7.10.1+dfsg-1
+  - arch: amd64
+    package: libsvtav1enc2
+    version: 2.3.0+dfsg-1
+  - arch: amd64
+    package: libswresample5
+    version: 7:7.1.3-0+deb13u1
+  - arch: amd64
+    package: libswscale8
+    version: 7:7.1.3-0+deb13u1
+  - arch: amd64
+    package: libsynctex2
+    version: 2024.20240313.70630+ds-6
+  - arch: all
+    package: libsyntax-keyword-junction-perl
+    version: 0.003009-1
+  - arch: all
+    package: libsys-statistics-linux-perl
+    version: 0.66-5
+  - arch: amd64
+    package: libsystemd-shared
+    version: 257.9-1~deb13u1
+  - arch: amd64
+    package: libsystemd0
+    version: 257.9-1~deb13u1
+  - arch: amd64
+    package: libtag2
+    version: 2.0.2-2
+  - arch: amd64
+    package: libtalloc2
+    version: 2:2.4.3+samba4.22.8+dfsg-0+deb13u1
+  - arch: all
+    package: libtask-weaken-perl
+    version: 1.06-2
+  - arch: amd64
+    package: libtasn1-6
+    version: 4.20.0-2
+  - arch: amd64
+    package: libtatsu0
+    version: 1.0.3-1+b1
+  - arch: amd64
+    package: libtdb1
+    version: 2:1.4.13+samba4.22.8+dfsg-0+deb13u1
+  - arch: amd64
+    package: libteamdctl0
+    version: 1.31-1+b2
+  - arch: all
+    package: libterm-encoding-perl
+    version: 0.03-2
+  - arch: amd64
+    package: libterm-readkey-perl
+    version: 2.38-2+b4
+  - arch: amd64
+    package: libtesseract5
+    version: 5.5.0-1+b1
+  - arch: all
+    package: libtest-deep-perl
+    version: 1.205-1
+  - arch: all
+    package: libtest-exception-perl
+    version: 0.43-3
+  - arch: amd64
+    package: libtevent0t64
+    version: 2:0.16.2+samba4.22.8+dfsg-0+deb13u1
+  - arch: amd64
+    package: libtext-charwidth-perl
+    version: 0.04-11+b4
+  - arch: all
+    package: libtext-glob-perl
+    version: 0.11-3
+  - arch: amd64
+    package: libtext-iconv-perl
+    version: 1.7-8+b4
+  - arch: all
+    package: libtext-template-perl
+    version: 1.61-1
+  - arch: all
+    package: libtext-wrapi18n-perl
+    version: 0.06-10
+  - arch: all
+    package: libthai-data
+    version: 0.1.29-2
+  - arch: amd64
+    package: libthai0
+    version: 0.1.29-2+b1
+  - arch: amd64
+    package: libtheora0
+    version: 1.2.0~alpha1+dfsg-6
+  - arch: amd64
+    package: libtheoradec1
+    version: 1.2.0~alpha1+dfsg-6
+  - arch: amd64
+    package: libtheoraenc1
+    version: 1.2.0~alpha1+dfsg-6
+  - arch: all
+    package: libthrowable-perl
+    version: 1.001-2
+  - arch: all
+    package: libtie-ixhash-perl
+    version: 1.23-4
+  - arch: amd64
+    package: libtiff6
+    version: 4.7.0-3+deb13u2
+  - arch: all
+    package: libtime-duration-perl
+    version: 1.21-2
+  - arch: all
+    package: libtimedate-perl
+    version: 2.3300-2
+  - arch: amd64
+    package: libtinfo6
+    version: 6.5+20250216-2
+  - arch: amd64
+    package: libtinysparql-3.0-0
+    version: 3.8.2-7
+  - arch: all
+    package: libtirpc-common
+    version: 1.3.6+ds-1
+  - arch: amd64
+    package: libtirpc3t64
+    version: 1.3.6+ds-1
+  - arch: all
+    package: libtool
+    version: 2.5.4-4
+  - arch: amd64
+    package: libtorsocks
+    version: 2.5.0-1+deb13u1
+  - arch: all
+    package: libtotem-plparser-common
+    version: 3.26.6-2
+  - arch: amd64
+    package: libtotem-plparser18
+    version: 3.26.6-2
+  - arch: amd64
+    package: libtotem0
+    version: 43.2-3
+  - arch: all
+    package: libtry-tiny-perl
+    version: 0.32-1
+  - arch: amd64
+    package: libts0t64
+    version: 1.22-1.1+b1
+  - arch: amd64
+    package: libtsan2
+    version: 14.2.0-19
+  - arch: amd64
+    package: libtspi1
+    version: 0.3.15-0.4
+  - arch: amd64
+    package: libtwolame0
+    version: 0.4.0-2+b2
+  - arch: all
+    package: libtype-tiny-perl
+    version: 2.004000-2
+  - arch: amd64
+    package: libtype-tiny-xs-perl
+    version: 0.025-2+b1
+  - arch: all
+    package: libtypes-path-tiny-perl
+    version: 0.006-2
+  - arch: all
+    package: libu2f-udev
+    version: 1.1.10-3.2
+  - arch: amd64
+    package: libubsan1
+    version: 14.2.0-19
+  - arch: amd64
+    package: libuchardet0
+    version: 0.0.8-1+b2
+  - arch: amd64
+    package: libudev-dev
+    version: 257.9-1~deb13u1
+  - arch: amd64
+    package: libudev1
+    version: 257.9-1~deb13u1
+  - arch: amd64
+    package: libudfread0
+    version: 1.1.2-1+b2
+  - arch: amd64
+    package: libudisks2-0
+    version: 2.10.1-12.1+deb13u1
+  - arch: amd64
+    package: libumfpack6
+    version: 1:7.10.1+dfsg-1
+  - arch: amd64
+    package: libumockdev0
+    version: 0.19.1-3
+  - arch: amd64
+    package: libunibreak6
+    version: 6.1-3
+  - arch: amd64
+    package: libunicode-linebreak-perl
+    version: 0.0.20190101-1+b9
+  - arch: amd64
+    package: libunistring5
+    version: 1.3-2
+  - arch: all
+    package: libuniversal-require-perl
+    version: 0.19-3
+  - arch: amd64
+    package: libunix-mknod-perl
+    version: 0.05-1+b3
+  - arch: amd64
+    package: libuno-cppu3t64
+    version: 4:25.2.3-2+deb13u3
+  - arch: amd64
+    package: libuno-cppuhelpergcc3-3t64
+    version: 4:25.2.3-2+deb13u3
+  - arch: amd64
+    package: libuno-purpenvhelpergcc3-3t64
+    version: 4:25.2.3-2+deb13u3
+  - arch: amd64
+    package: libuno-sal3t64
+    version: 4:25.2.3-2+deb13u3
+  - arch: amd64
+    package: libuno-salhelpergcc3-3t64
+    version: 4:25.2.3-2+deb13u3
+  - arch: amd64
+    package: libunwind8
+    version: 1.8.1-0.1
+  - arch: amd64
+    package: libupower-glib3
+    version: 1.90.9-1
+  - arch: amd64
+    package: liburcu8t64
+    version: 0.15.2-2
+  - arch: all
+    package: liburi-perl
+    version: 5.30-1
+  - arch: amd64
+    package: libusb-1.0-0
+    version: 2:1.0.28-1
+  - arch: amd64
+    package: libusbguard1
+    version: 1.1.3+ds-3
+  - arch: amd64
+    package: libusbmuxd-2.0-7
+    version: 2.1.0-1+b1
+  - arch: amd64
+    package: libuuid1
+    version: 2.41-5
+  - arch: amd64
+    package: libuv1t64
+    version: 1.50.0-2
+  - arch: amd64
+    package: libv4l-0t64
+    version: 1.30.1-1
+  - arch: amd64
+    package: libv4lconvert0t64
+    version: 1.30.1-1
+  - arch: amd64
+    package: libva-drm2
+    version: 2.22.0-3
+  - arch: amd64
+    package: libva-x11-2
+    version: 2.22.0-3
+  - arch: amd64
+    package: libva2
+    version: 2.22.0-3
+  - arch: amd64
+    package: libvamp-hostsdk3t64
+    version: 2.10.0-5
+  - arch: amd64
+    package: libvariable-magic-perl
+    version: 0.64-1+b1
+  - arch: amd64
+    package: libvdpau1
+    version: 1.5-3+b1
+  - arch: amd64
+    package: libvidstab1.1
+    version: 1.1.0-2+b2
+  - arch: amd64
+    package: libvisio-0.1-1
+    version: 0.1.7-1+b5
+  - arch: amd64
+    package: libvisual-0.4-0
+    version: 0.4.2-2+b2
+  - arch: amd64
+    package: libvo-aacenc0
+    version: 0.1.3-3
+  - arch: amd64
+    package: libvo-amrwbenc0
+    version: 0.1.3-2+b2
+  - arch: amd64
+    package: libvolume-key1
+    version: 0.3.12-9
+  - arch: amd64
+    package: libvorbis0a
+    version: 1.3.7-3
+  - arch: amd64
+    package: libvorbisenc2
+    version: 1.3.7-3
+  - arch: amd64
+    package: libvorbisfile3
+    version: 1.3.7-3
+  - arch: amd64
+    package: libvpl2
+    version: 1:2.14.0-1+b1
+  - arch: amd64
+    package: libvpx9
+    version: 1.15.0-2.1+deb13u1
+  - arch: amd64
+    package: libvte-2.91-0
+    version: 0.80.1-1
+  - arch: amd64
+    package: libvte-2.91-common
+    version: 0.80.1-1
+  - arch: amd64
+    package: libvte-2.91-gtk4-0
+    version: 0.80.1-1
+  - arch: amd64
+    package: libvulkan1
+    version: 1.4.309.0-1
+  - arch: all
+    package: libwacom-common
+    version: 2.14.0-1
+  - arch: amd64
+    package: libwacom9
+    version: 2.14.0-1
+  - arch: amd64
+    package: libwavpack1
+    version: 5.8.1-1
+  - arch: amd64
+    package: libwayland-client0
+    version: 1.23.1-3
+  - arch: amd64
+    package: libwayland-cursor0
+    version: 1.23.1-3
+  - arch: amd64
+    package: libwayland-egl1
+    version: 1.23.1-3
+  - arch: amd64
+    package: libwayland-server0
+    version: 1.23.1-3
+  - arch: amd64
+    package: libwbclient0
+    version: 2:4.22.8+dfsg-0+deb13u1
+  - arch: amd64
+    package: libwebkit2gtk-4.1-0
+    version: 2.52.3-2~deb13u1
+  - arch: amd64
+    package: libwebp7
+    version: 1.5.0-0.1
+  - arch: amd64
+    package: libwebpdemux2
+    version: 1.5.0-0.1
+  - arch: amd64
+    package: libwebpmux3
+    version: 1.5.0-0.1
+  - arch: amd64
+    package: libwebrtc-audio-processing-1-3
+    version: 1.3-3+b1
+  - arch: amd64
+    package: libwildmidi2
+    version: 0.4.3-1+b3
+  - arch: amd64
+    package: libwireplumber-0.5-0
+    version: 0.5.8-2
+  - arch: amd64
+    package: libwmf-0.2-7
+    version: 0.2.13-1.1+b3
+  - arch: amd64
+    package: libwmflite-0.2-7
+    version: 0.2.13-1.1+b3
+  - arch: amd64
+    package: libwnck-3-0
+    version: 43.2-1
+  - arch: all
+    package: libwnck-3-common
+    version: 43.2-1
+  - arch: amd64
+    package: libwpd-0.10-10
+    version: 0.10.3-2+b2
+  - arch: amd64
+    package: libwpg-0.3-3
+    version: 0.3.4-3+b2
+  - arch: amd64
+    package: libwps-0.4-4
+    version: 0.4.14-2+b2
+  - arch: amd64
+    package: libwrap0
+    version: 7.6.q-36
+  - arch: amd64
+    package: libwww-curl-perl
+    version: 4.17-12
+  - arch: all
+    package: libwww-perl
+    version: 6.78-1
+  - arch: all
+    package: libwww-robotrules-perl
+    version: 6.02-1
+  - arch: amd64
+    package: libwxbase3.2-1t64
+    version: 3.2.8+dfsg-2
+  - arch: amd64
+    package: libwxgtk3.2-1t64
+    version: 3.2.8+dfsg-2
+  - arch: amd64
+    package: libx11-6
+    version: 2:1.8.12-1
+  - arch: all
+    package: libx11-data
+    version: 2:1.8.12-1
+  - arch: amd64
+    package: libx11-xcb1
+    version: 2:1.8.12-1
+  - arch: amd64
+    package: libx264-164
+    version: 2:0.164.3108+git31e19f9-2+b1
+  - arch: amd64
+    package: libx265-215
+    version: 4.1-2
+  - arch: amd64
+    package: libxau6
+    version: 1:1.0.11-1
+  - arch: amd64
+    package: libxaw7
+    version: 2:1.0.16-1
+  - arch: amd64
+    package: libxcb-cursor0
+    version: 0.1.5-1
+  - arch: amd64
+    package: libxcb-dri3-0
+    version: 1.17.0-2+b1
+  - arch: amd64
+    package: libxcb-glx0
+    version: 1.17.0-2+b1
+  - arch: amd64
+    package: libxcb-icccm4
+    version: 0.4.2-1
+  - arch: amd64
+    package: libxcb-image0
+    version: 0.4.0-2+b2
+  - arch: amd64
+    package: libxcb-keysyms1
+    version: 0.4.1-1
+  - arch: amd64
+    package: libxcb-present0
+    version: 1.17.0-2+b1
+  - arch: amd64
+    package: libxcb-randr0
+    version: 1.17.0-2+b1
+  - arch: amd64
+    package: libxcb-render-util0
+    version: 0.3.10-1
+  - arch: amd64
+    package: libxcb-render0
+    version: 1.17.0-2+b1
+  - arch: amd64
+    package: libxcb-res0
+    version: 1.17.0-2+b1
+  - arch: amd64
+    package: libxcb-shape0
+    version: 1.17.0-2+b1
+  - arch: amd64
+    package: libxcb-shm0
+    version: 1.17.0-2+b1
+  - arch: amd64
+    package: libxcb-sync1
+    version: 1.17.0-2+b1
+  - arch: amd64
+    package: libxcb-util1
+    version: 0.4.1-1
+  - arch: amd64
+    package: libxcb-xfixes0
+    version: 1.17.0-2+b1
+  - arch: amd64
+    package: libxcb-xinput0
+    version: 1.17.0-2+b1
+  - arch: amd64
+    package: libxcb-xkb1
+    version: 1.17.0-2+b1
+  - arch: amd64
+    package: libxcb1
+    version: 1.17.0-2+b1
+  - arch: amd64
+    package: libxcomposite1
+    version: 1:0.4.6-1
+  - arch: amd64
+    package: libxcursor1
+    version: 1:1.2.3-1
+  - arch: amd64
+    package: libxcvt0
+    version: 0.1.3-1
+  - arch: amd64
+    package: libxdamage1
+    version: 1:1.1.6-1+b2
+  - arch: amd64
+    package: libxdmcp6
+    version: 1:1.1.5-1
+  - arch: amd64
+    package: libxdo3
+    version: 1:3.20160805.1-5.1
+  - arch: amd64
+    package: libxext6
+    version: 2:1.3.4-1+b3
+  - arch: amd64
+    package: libxfixes3
+    version: 1:6.0.0-2+b4
+  - arch: amd64
+    package: libxfont2
+    version: 1:2.0.6-1+b3
+  - arch: amd64
+    package: libxft2
+    version: 2.3.6-1+b4
+  - arch: amd64
+    package: libxi6
+    version: 2:1.8.2-1
+  - arch: amd64
+    package: libxinerama1
+    version: 2:1.1.4-3+b4
+  - arch: amd64
+    package: libxkbcommon-x11-0
+    version: 1.7.0-2
+  - arch: amd64
+    package: libxkbcommon0
+    version: 1.7.0-2
+  - arch: amd64
+    package: libxkbfile1
+    version: 1:1.1.0-1+b4
+  - arch: amd64
+    package: libxkbregistry0
+    version: 1.7.0-2
+  - arch: amd64
+    package: libxklavier16
+    version: 5.4-5+b2
+  - arch: amd64
+    package: libxml++2.6-2v5
+    version: 2.42.3-2
+  - arch: all
+    package: libxml-atom-perl
+    version: 0.43-1
+  - arch: amd64
+    package: libxml-libxml-perl
+    version: 2.0207+dfsg+really+2.0134-5+b2
+  - arch: amd64
+    package: libxml-libxslt-perl
+    version: 2.003000-2+b1
+  - arch: all
+    package: libxml-namespacesupport-perl
+    version: 1.12-2
+  - arch: amd64
+    package: libxml-parser-perl
+    version: 2.47-2~deb13u1
+  - arch: all
+    package: libxml-sax-base-perl
+    version: 1.09-3
+  - arch: all
+    package: libxml-sax-perl
+    version: 1.02+dfsg-4
+  - arch: all
+    package: libxml-twig-perl
+    version: 1:3.52-3
+  - arch: all
+    package: libxml-xpath-perl
+    version: 1.48-1
+  - arch: amd64
+    package: libxml2
+    version: 2.12.7+dfsg+really2.9.14-2.1+deb13u2
+  - arch: amd64
+    package: libxmlb2
+    version: 0.3.22-1
+  - arch: amd64
+    package: libxmlsec1t64-nss
+    version: 1.2.41-1+b1
+  - arch: amd64
+    package: libxmlsec1t64-openssl
+    version: 1.2.41-1+b1
+  - arch: amd64
+    package: libxmlsec1t64
+    version: 1.2.41-1+b1
+  - arch: amd64
+    package: libxmu6
+    version: 2:1.1.3-3+b4
+  - arch: amd64
+    package: libxmuu1
+    version: 2:1.1.3-3+b4
+  - arch: amd64
+    package: libxnnpack0.20241108
+    version: 0.0~git20241108.4ea82e5-2
+  - arch: amd64
+    package: libxpm4
+    version: 1:3.5.17-1+b3
+  - arch: amd64
+    package: libxrandr2
+    version: 2:1.5.4-1+b3
+  - arch: amd64
+    package: libxrender1
+    version: 1:0.9.12-1
+  - arch: amd64
+    package: libxres1
+    version: 2:1.2.1-1+b2
+  - arch: amd64
+    package: libxshmfence1
+    version: 1.3.3-1
+  - arch: amd64
+    package: libxslt1.1
+    version: 1.1.35-1.2+deb13u2
+  - arch: amd64
+    package: libxss1
+    version: 1:1.2.3-1+b3
+  - arch: amd64
+    package: libxstring-perl
+    version: 0.005-2+b4
+  - arch: amd64
+    package: libxt6t64
+    version: 1:1.2.1-1.2+b2
+  - arch: amd64
+    package: libxtables12
+    version: 1.8.11-2
+  - arch: amd64
+    package: libxtst6
+    version: 2:1.2.5-1
+  - arch: amd64
+    package: libxv1
+    version: 2:1.0.11-1.1+b3
+  - arch: amd64
+    package: libxvidcore4
+    version: 2:1.3.7-1+b2
+  - arch: amd64
+    package: libxxf86vm1
+    version: 1:1.1.4-1+b4
+  - arch: amd64
+    package: libxxhash0
+    version: 0.8.3-2
+  - arch: amd64
+    package: libyajl2
+    version: 2.1.0-5+b2
+  - arch: amd64
+    package: libyaml-0-2
+    version: 0.2.5-2
+  - arch: amd64
+    package: libyaml-libyaml-perl
+    version: 0.903.0+ds-1
+  - arch: all
+    package: libyaml-perl
+    version: 1.31-1
+  - arch: all
+    package: libyaml-pp-perl
+    version: 0.39.0-1
+  - arch: all
+    package: libyaml-tiny-perl
+    version: 1.76-1
+  - arch: amd64
+    package: libyelp0
+    version: 42.2-4
+  - arch: amd64
+    package: libyuv0
+    version: 0.0.1904.20250204-1
+  - arch: amd64
+    package: libz3-4
+    version: 4.13.3-1
+  - arch: amd64
+    package: libzbar0t64
+    version: 0.23.93-8
+  - arch: amd64
+    package: libzephyr4
+    version: 3.1.2-1.1+b2
+  - arch: amd64
+    package: libzimg2
+    version: 3.0.5+ds1-1+b2
+  - arch: amd64
+    package: libzix-0-0
+    version: 0.6.2-1
+  - arch: amd64
+    package: libzmf-0.0-0
+    version: 0.0.2-1+b9
+  - arch: amd64
+    package: libzmq5
+    version: 4.3.5-1+b3
+  - arch: amd64
+    package: libzstd1
+    version: 1.5.7+dfsg-1
+  - arch: all
+    package: libzvbi-common
+    version: 0.2.44-1
+  - arch: amd64
+    package: libzvbi0t64
+    version: 0.2.44-1
+  - arch: amd64
+    package: libzxcvbn0
+    version: 2.5+dfsg-2+b2
+  - arch: amd64
+    package: libzxing3
+    version: 2.3.0-4
+  - arch: all
+    package: linux-base
+    version: 4.12.1
+  - arch: amd64
+    package: linux-headers-6.12.85+deb13-amd64
+    version: 6.12.85-1
+  - arch: all
+    package: linux-headers-6.12.85+deb13-common
+    version: 6.12.85-1
+  - arch: amd64
+    package: linux-headers-amd64
+    version: 6.12.85-1
+  - arch: amd64
+    package: linux-image-6.12.85+deb13-amd64
+    version: 6.12.85-1
+  - arch: amd64
+    package: linux-image-amd64
+    version: 6.12.85-1
+  - arch: amd64
+    package: linux-kbuild-6.12.85+deb13
+    version: 6.12.85-1
+  - arch: all
+    package: linux-libc-dev
+    version: 6.12.85-1
+  - arch: all
+    package: linux-sysctl-defaults
+    version: 4.12.1
+  - arch: all
+    package: live-boot-initramfs-tools
+    version: 1:20170112
+  - arch: all
+    package: live-boot
+    version: 1:20170112
+  - arch: all
+    package: live-build
+    version: 1:20250505+deb13u1
+  - arch: all
+    package: live-config-systemd
+    version: 11.0.5
+  - arch: all
+    package: live-config
+    version: 11.0.5
+  - arch: all
+    package: live-tools
+    version: 1:20240525
+  - arch: all
+    package: localepurge
+    version: 0.7.3.11
+  - arch: all
+    package: locales
+    version: 2.41-12+deb13u2
+  - arch: all
+    package: login.defs
+    version: 1:4.17.4-2
+  - arch: amd64
+    package: login
+    version: 1:4.16.0-2+really2.41-5
+  - arch: amd64
+    package: logrotate
+    version: 3.22.0-1
+  - arch: amd64
+    package: logsave
+    version: 1.47.2-3+b10
+  - arch: amd64
+    package: loupe
+    version: 48.1-3
+  - arch: all
+    package: lsb-release
+    version: 12.1-1
+  - arch: amd64
+    package: lsof
+    version: 4.99.4+dfsg-2
+  - arch: amd64
+    package: lvm2
+    version: 2.03.31-2
+  - arch: amd64
+    package: m4
+    version: 1.4.19-8
+  - arch: amd64
+    package: macchanger
+    version: 1.7.0-6
+  - arch: amd64
+    package: make
+    version: 4.4.1-2
+  - arch: amd64
+    package: man-db
+    version: 2.13.1-1
+  - arch: all
+    package: manpages
+    version: 6.9.1-1
+  - arch: all
+    package: mat2
+    version: 0.13.5-1.2
+  - arch: amd64
+    package: mawk
+    version: 1.3.4.20250131-1
+  - arch: all
+    package: media-types
+    version: 13.0.0
+  - arch: amd64
+    package: memlockd
+    version: 1.3.1-2
+  - arch: amd64
+    package: mesa-libgallium
+    version: 25.0.7-2
+  - arch: amd64
+    package: mesa-utils-bin
+    version: 9.0.0-2+b2
+  - arch: amd64
+    package: mesa-utils
+    version: 9.0.0-2+b2
+  - arch: amd64
+    package: mesa-vulkan-drivers
+    version: 25.0.7-2
+  - arch: amd64
+    package: metadata-cleaner
+    version: 2.5.2+ds-1
+  - arch: all
+    package: mobile-broadband-provider-info
+    version: 20250613-2
+  - arch: amd64
+    package: modemmanager
+    version: 1.24.0-1+deb13u1
+  - arch: amd64
+    package: mokutil
+    version: 0.7.2-1
+  - arch: amd64
+    package: mount
+    version: 2.41-5
+  - arch: all
+    package: mozc-data
+    version: 2.29.5160.102+dfsg-1.4
+  - arch: amd64
+    package: mozc-server
+    version: 2.29.5160.102+dfsg-1.4
+  - arch: amd64
+    package: mtools
+    version: 4.0.48-1
+  - arch: amd64
+    package: mutter-common-bin
+    version: 48.7-0+deb13u1
+  - arch: all
+    package: mutter-common
+    version: 48.7-0+deb13u1
+  - arch: all
+    package: myspell-fa
+    version: 0.20070816-3.2
+  - arch: amd64
+    package: nano
+    version: 8.4-1
+  - arch: all
+    package: nautilus-data
+    version: 48.3-2
+  - arch: amd64
+    package: nautilus
+    version: 48.3-2
+  - arch: all
+    package: ncurses-base
+    version: 6.5+20250216-2
+  - arch: amd64
+    package: ncurses-bin
+    version: 6.5+20250216-2
+  - arch: all
+    package: netbase
+    version: '6.5'
+  - arch: amd64
+    package: netcat-openbsd
+    version: 1.229-1
+  - arch: amd64
+    package: netcat-traditional
+    version: 1.10-50
+  - arch: amd64
+    package: network-manager
+    version: 1.52.1-1
+  - arch: amd64
+    package: nftables
+    version: 1.1.3-1
+  - arch: amd64
+    package: nm-connection-editor
+    version: 1.36.0-3+b1
+  - arch: amd64
+    package: nocache
+    version: 1.2-0.1
+  - arch: amd64
+    package: ntfs-3g
+    version: 1:2022.10.3-5+deb13u1
+  - arch: amd64
+    package: ocl-icd-libopencl1
+    version: 2.3.3-1
+  - arch: all
+    package: onioncircuits
+    version: 0.8.2-1
+  - arch: all
+    package: onionshare-cli
+    version: 2.6.3-1
+  - arch: all
+    package: onionshare
+    version: 2.6.3-1
+  - arch: amd64
+    package: open-vm-tools
+    version: 2:12.5.0-2+deb13u1
+  - arch: amd64
+    package: openssh-client
+    version: 1:10.0p1-7+deb13u2
+  - arch: amd64
+    package: openssl-provider-legacy
+    version: 3.5.5-1~deb13u1
+  - arch: amd64
+    package: openssl-provider-legacy
+    version: 3.5.5-1~deb13u2
+  - arch: amd64
+    package: openssl
+    version: 3.5.5-1~deb13u2
+  - arch: all
+    package: orca
+    version: 48.1-1+deb13u1
+  - arch: all
+    package: osinfo-db
+    version: 0.20250606-1
+  - arch: amd64
+    package: ostree
+    version: 2025.2-1
+  - arch: amd64
+    package: p11-kit-modules
+    version: 0.25.5-3
+  - arch: amd64
+    package: p11-kit
+    version: 0.25.5-3
+  - arch: all
+    package: p7zip-full
+    version: 16.02+transitional.1
+  - arch: amd64
+    package: pahole
+    version: 1.30-1
+  - arch: amd64
+    package: paperkey
+    version: 1.6-1
+  - arch: amd64
+    package: parted
+    version: 3.6-5
+  - arch: amd64
+    package: passwd
+    version: 1:4.17.4-2
+  - arch: amd64
+    package: patch
+    version: 2.8-2
+  - arch: all
+    package: pci.ids
+    version: 0.0~2025.06.09-1
+  - arch: amd64
+    package: pciutils
+    version: 1:3.13.0-2
+  - arch: amd64
+    package: pcscd
+    version: 2.3.3-1
+  - arch: amd64
+    package: perl-base
+    version: 5.40.1-6
+  - arch: all
+    package: perl-modules-5.40
+    version: 5.40.1-6
+  - arch: amd64
+    package: perl-openssl-defaults
+    version: 7+b2
+  - arch: amd64
+    package: perl
+    version: 5.40.1-6
+  - arch: all
+    package: pidgin-data
+    version: 2.14.14-1
+  - arch: amd64
+    package: pidgin-guifications
+    version: 2.16-3
+  - arch: amd64
+    package: pidgin-otr
+    version: 4.0.2-6
+  - arch: amd64
+    package: pidgin
+    version: 2.14.14-1
+  - arch: amd64
+    package: pinentry-curses
+    version: 1.3.1-2
+  - arch: amd64
+    package: pinentry-gnome3
+    version: 1.3.1-2
+  - arch: amd64
+    package: pinentry-gtk2
+    version: 1.3.1-2
+  - arch: amd64
+    package: pipewire-alsa
+    version: 1.4.2-1
+  - arch: all
+    package: pipewire-audio
+    version: 1.4.2-1
+  - arch: amd64
+    package: pipewire-bin
+    version: 1.4.2-1
+  - arch: amd64
+    package: pipewire-pulse
+    version: 1.4.2-1
+  - arch: amd64
+    package: pipewire
+    version: 1.4.2-1
+  - arch: amd64
+    package: pkexec
+    version: 126-2
+  - arch: amd64
+    package: plymouth-label
+    version: 24.004.60-5
+  - arch: amd64
+    package: plymouth-themes
+    version: 24.004.60-5
+  - arch: amd64
+    package: plymouth
+    version: 24.004.60-5
+  - arch: all
+    package: po-debconf
+    version: 1.0.21+nmu1
+  - arch: amd64
+    package: polkitd
+    version: 126-2
+  - arch: all
+    package: poppler-data
+    version: 0.4.12-1
+  - arch: amd64
+    package: poppler-utils
+    version: 25.03.0-5+deb13u2
+  - arch: all
+    package: powermgmt-base
+    version: '1.38'
+  - arch: amd64
+    package: ppp
+    version: 2.5.2-1+1
+  - arch: amd64
+    package: pppoe
+    version: 4.0-1
+  - arch: all
+    package: printer-driver-all-enforce
+    version: '0.20210903'
+  - arch: amd64
+    package: printer-driver-brlaser
+    version: 6.2.7-1
+  - arch: amd64
+    package: printer-driver-c2050
+    version: 0.3b-10+b1
+  - arch: amd64
+    package: printer-driver-c2esp
+    version: 27-11+b3
+  - arch: amd64
+    package: printer-driver-cjet
+    version: 0.8.9-11
+  - arch: amd64
+    package: printer-driver-dymo
+    version: 1.4.0-12+b1
+  - arch: amd64
+    package: printer-driver-escpr
+    version: 1.7.17-4
+  - arch: all
+    package: printer-driver-foo2zjs-common
+    version: 20200505dfsg0-3
+  - arch: amd64
+    package: printer-driver-foo2zjs
+    version: 20200505dfsg0-3
+  - arch: amd64
+    package: printer-driver-fujixerox
+    version: 1.1.0+ds-4+b2
+  - arch: amd64
+    package: printer-driver-gutenprint
+    version: 5.3.4.20220624T01008808d602-4
+  - arch: amd64
+    package: printer-driver-hpcups
+    version: 3.22.10+dfsg0-8.1
+  - arch: amd64
+    package: printer-driver-indexbraille
+    version: 1.2.3-5
+  - arch: amd64
+    package: printer-driver-m2300w
+    version: 0.51-15
+  - arch: amd64
+    package: printer-driver-min12xxw
+    version: 0.0.9-11
+  - arch: all
+    package: printer-driver-oki
+    version: 1.0.2-1
+  - arch: amd64
+    package: printer-driver-pnm2ppa
+    version: 1.13-13+b1
+  - arch: amd64
+    package: printer-driver-postscript-hp
+    version: 3.22.10+dfsg0-8.1
+  - arch: amd64
+    package: printer-driver-ptouch
+    version: 1.7.1-1
+  - arch: amd64
+    package: printer-driver-pxljr
+    version: 1.4+repack0-6
+  - arch: all
+    package: printer-driver-sag-gdi
+    version: 0.1-8
+  - arch: amd64
+    package: printer-driver-splix
+    version: 2.0.1-1
+  - arch: amd64
+    package: procps
+    version: 2:4.0.4-9
+  - arch: amd64
+    package: psmisc
+    version: 23.7-2
+  - arch: all
+    package: python-apt-common
+    version: 3.0.0
+  - arch: all
+    package: python3-aiohappyeyeballs
+    version: 2.6.1-1
+  - arch: all
+    package: python3-aiohttp-socks
+    version: 0.10.1-1
+  - arch: amd64
+    package: python3-aiohttp
+    version: 3.11.16-1
+  - arch: all
+    package: python3-aiorpcx
+    version: 0.25.0-1~bpo13+1
+  - arch: all
+    package: python3-aiosignal
+    version: 1.3.2-1
+  - arch: all
+    package: python3-annotated-types
+    version: 0.7.0-1
+  - arch: amd64
+    package: python3-apt
+    version: 3.0.0
+  - arch: amd64
+    package: python3-argon2
+    version: 21.1.0-3
+  - arch: all
+    package: python3-async-timeout
+    version: 5.0.1-1
+  - arch: all
+    package: python3-atomicwrites
+    version: 1.4.1-1
+  - arch: all
+    package: python3-attr
+    version: 25.3.0-1
+  - arch: all
+    package: python3-autocommand
+    version: 2.2.2-3
+  - arch: amd64
+    package: python3-bcrypt
+    version: 4.2.0-2.1+b1
+  - arch: all
+    package: python3-bidict
+    version: 0.23.1-2
+  - arch: all
+    package: python3-blinker
+    version: 1.9.0-1
+  - arch: amd64
+    package: python3-brlapi
+    version: 6.7-3.1+deb13u3
+  - arch: all
+    package: python3-btchip
+    version: 0.1.32-4
+  - arch: amd64
+    package: python3-cairo
+    version: 1.27.0-2
+  - arch: amd64
+    package: python3-cbor
+    version: 1.0.0-1.2+b5
+  - arch: all
+    package: python3-certifi
+    version: 2025.1.31+ds-1
+  - arch: amd64
+    package: python3-cffi-backend
+    version: 1.17.1-3
+  - arch: all
+    package: python3-cffi
+    version: 1.17.1-3
+  - arch: all
+    package: python3-chardet
+    version: 5.2.0+dfsg-2
+  - arch: amd64
+    package: python3-charset-normalizer
+    version: 3.4.2-1
+  - arch: all
+    package: python3-click
+    version: 8.2.0+0.really.8.1.8-1
+  - arch: all
+    package: python3-colorama
+    version: 0.4.6-4
+  - arch: all
+    package: python3-construct
+    version: 2.10.68+dfsg1-2
+  - arch: amd64
+    package: python3-cryptography
+    version: 43.0.0-3+deb13u1
+  - arch: amd64
+    package: python3-cups
+    version: 2.0.4-2+b2
+  - arch: all
+    package: python3-cupshelpers
+    version: 1.5.18-4
+  - arch: amd64
+    package: python3-dbus
+    version: 1.4.0-1
+  - arch: all
+    package: python3-decorator
+    version: 5.2.1-2
+  - arch: all
+    package: python3-distro
+    version: 1.9.0-1
+  - arch: all
+    package: python3-dnspython
+    version: 2.7.0-1
+  - arch: all
+    package: python3-dogtail
+    version: 1.0.0-6
+  - arch: all
+    package: python3-ecdsa
+    version: 0.19.1-1
+  - arch: all
+    package: python3-electrum-aionostr
+    version: 0.1.0-1~bpo13+1
+  - arch: all
+    package: python3-electrum-ecc
+    version: 0.0.7+ds-2~bpo13+1
+  - arch: all
+    package: python3-electrum
+    version: 4.7.0+dfsg-1~bpo13+1
+  - arch: all
+    package: python3-email-validator
+    version: 2.2.0-1
+  - arch: all
+    package: python3-engineio
+    version: 4.11.2-1
+  - arch: all
+    package: python3-eventlet
+    version: 0.39.1-2+deb13u1
+  - arch: all
+    package: python3-flask-compress
+    version: 1.4.0-5
+  - arch: all
+    package: python3-flask-socketio
+    version: 5.5.1-1
+  - arch: all
+    package: python3-flask
+    version: 3.1.1-1
+  - arch: all
+    package: python3-freetype
+    version: 2.5.1-1
+  - arch: amd64
+    package: python3-frozenlist
+    version: 1.6.0-1
+  - arch: all
+    package: python3-gevent-websocket
+    version: 0.10.1-5
+  - arch: amd64
+    package: python3-gevent
+    version: 24.11.1-1+b1
+  - arch: amd64
+    package: python3-gi-cairo
+    version: 3.50.0-4+b1
+  - arch: amd64
+    package: python3-gi
+    version: 3.50.0-4+b1
+  - arch: all
+    package: python3-gnupg
+    version: 0.5.4-1
+  - arch: amd64
+    package: python3-greenlet
+    version: 3.1.0-1+b2
+  - arch: all
+    package: python3-h11
+    version: 0.14.0-1.1
+  - arch: amd64
+    package: python3-hid
+    version: 0.14.0.post4-1
+  - arch: all
+    package: python3-ibus-1.0
+    version: 1.5.32-2
+  - arch: all
+    package: python3-idna
+    version: 3.10-1
+  - arch: all
+    package: python3-inflect
+    version: 7.3.1-2
+  - arch: all
+    package: python3-itsdangerous
+    version: 2.2.0-2
+  - arch: all
+    package: python3-jaraco.context
+    version: 6.0.1-1+deb13u1
+  - arch: all
+    package: python3-jaraco.functools
+    version: 4.1.0-1
+  - arch: all
+    package: python3-jinja2
+    version: 3.1.6-1
+  - arch: all
+    package: python3-json-pointer
+    version: 2.4-3
+  - arch: all
+    package: python3-jsonpatch
+    version: 1.32-5
+  - arch: amd64
+    package: python3-libsass
+    version: 0.23.0-0.1
+  - arch: all
+    package: python3-louis
+    version: 3.33.0-1
+  - arch: amd64
+    package: python3-lxml
+    version: 5.4.0-1
+  - arch: amd64
+    package: python3-lz4
+    version: 4.4.0+dfsg-2
+  - arch: amd64
+    package: python3-markupsafe
+    version: 2.1.5-1+b3
+  - arch: amd64
+    package: python3-minimal
+    version: 3.13.5-1
+  - arch: all
+    package: python3-mnemonic
+    version: 0.21-2
+  - arch: all
+    package: python3-more-itertools
+    version: 10.7.0-1
+  - arch: amd64
+    package: python3-multidict
+    version: 6.4.3-1
+  - arch: all
+    package: python3-mutagen
+    version: 1.47.0-1
+  - arch: amd64
+    package: python3-nacl
+    version: 1.5.0-7
+  - arch: all
+    package: python3-packaging
+    version: 25.0-1
+  - arch: all
+    package: python3-pampy
+    version: 2.0.2-3
+  - arch: all
+    package: python3-pexpect
+    version: 4.9-3
+  - arch: amd64
+    package: python3-pil
+    version: 11.1.0-5+deb13u2
+  - arch: all
+    package: python3-pkg-resources
+    version: 78.1.1-0.1
+  - arch: all
+    package: python3-ply
+    version: 3.11-9
+  - arch: amd64
+    package: python3-prctl
+    version: 1.8.1-1+b6
+  - arch: amd64
+    package: python3-propcache
+    version: 0.3.1-1
+  - arch: amd64
+    package: python3-protobuf
+    version: 3.21.12-11
+  - arch: amd64
+    package: python3-psutil
+    version: 7.0.0-2
+  - arch: all
+    package: python3-ptyprocess
+    version: 0.7.0-6
+  - arch: all
+    package: python3-pyasyncore
+    version: 1.0.2-3
+  - arch: all
+    package: python3-pyatspi
+    version: 2.46.1-1
+  - arch: all
+    package: python3-pycountry
+    version: 24.6.1+ds1-1
+  - arch: all
+    package: python3-pycparser
+    version: 2.22-2
+  - arch: amd64
+    package: python3-pycryptodome
+    version: 3.20.0+dfsg-3
+  - arch: amd64
+    package: python3-pycurl
+    version: 7.45.6-1
+  - arch: amd64
+    package: python3-pydantic-core
+    version: 2.27.2-3+b1
+  - arch: amd64
+    package: python3-pydantic
+    version: 2.10.6-2
+  - arch: all
+    package: python3-pydbus
+    version: 0.6.0-6
+  - arch: all
+    package: python3-pyinotify
+    version: 0.9.6-5
+  - arch: amd64
+    package: python3-pykcs11
+    version: 1.5.17-1+b2
+  - arch: all
+    package: python3-pykeepass
+    version: 4.1.1.post1-1
+  - arch: all
+    package: python3-pyotp
+    version: 2.9.0-2
+  - arch: all
+    package: python3-pypdf
+    version: 5.4.0-1
+  - arch: amd64
+    package: python3-pyqt6.qtqml
+    version: 6.9.0-2
+  - arch: amd64
+    package: python3-pyqt6.qtquick
+    version: 6.9.0-2
+  - arch: amd64
+    package: python3-pyqt6.sip
+    version: 13.10.0-1+b1
+  - arch: amd64
+    package: python3-pyqt6
+    version: 6.9.0-2
+  - arch: amd64
+    package: python3-pyside6.qtcore
+    version: 6.8.2.1-4
+  - arch: amd64
+    package: python3-pyside6.qtgui
+    version: 6.8.2.1-4
+  - arch: amd64
+    package: python3-pyside6.qtwidgets
+    version: 6.8.2.1-4
+  - arch: all
+    package: python3-python-socks
+    version: 2.7.1-1
+  - arch: amd64
+    package: python3-python-zxcvbn-rs-py
+    version: 0.2.0-1+b1
+  - arch: all
+    package: python3-pytz
+    version: 2025.2-3
+  - arch: all
+    package: python3-qdarkstyle
+    version: 3.2.3+ds1-3
+  - arch: all
+    package: python3-qrcode
+    version: 8.2-1
+  - arch: all
+    package: python3-qtpy
+    version: 2.4.3-1
+  - arch: all
+    package: python3-qtsass
+    version: 0.4.0-1
+  - arch: all
+    package: python3-reportlab
+    version: 4.3.1-1
+  - arch: all
+    package: python3-requests
+    version: 2.32.3+dfsg-5+deb13u1
+  - arch: all
+    package: python3-rlpycairo
+    version: 0.3.0-3
+  - arch: all
+    package: python3-serial
+    version: 3.5-2
+  - arch: amd64
+    package: python3-setproctitle
+    version: 1.3.6-2
+  - arch: all
+    package: python3-sh
+    version: 2.2.1-1
+  - arch: all
+    package: python3-simple-websocket
+    version: 1.1.0-5
+  - arch: all
+    package: python3-socketio
+    version: 5.12.1-1
+  - arch: all
+    package: python3-socks
+    version: 1.7.1+dfsg-1
+  - arch: all
+    package: python3-speechd
+    version: 0.12.0-5
+  - arch: all
+    package: python3-stem
+    version: 1.8.2-1.1
+  - arch: amd64
+    package: python3-systemd
+    version: 235-1+b6
+  - arch: all
+    package: python3-typeguard
+    version: 4.4.2-1
+  - arch: all
+    package: python3-typing-extensions
+    version: 4.13.2-1
+  - arch: all
+    package: python3-tz
+    version: 2025.2-3
+  - arch: all
+    package: python3-unidecode
+    version: 1.4.0-1
+  - arch: all
+    package: python3-urllib3
+    version: 2.3.0-3+deb13u1
+  - arch: all
+    package: python3-usb
+    version: 1.2.1-2
+  - arch: all
+    package: python3-validators
+    version: 0.20.0-2
+  - arch: all
+    package: python3-waitress
+    version: 3.0.2-1
+  - arch: all
+    package: python3-watchdog
+    version: 6.0.0-1
+  - arch: all
+    package: python3-werkzeug
+    version: 3.1.3-2
+  - arch: all
+    package: python3-wheel
+    version: 0.46.1-2
+  - arch: all
+    package: python3-wsproto
+    version: 1.2.0-1
+  - arch: all
+    package: python3-xdg
+    version: 0.28-2
+  - arch: all
+    package: python3-xlib
+    version: 0.33-3
+  - arch: amd64
+    package: python3-yaml
+    version: 6.0.2-1+b2
+  - arch: amd64
+    package: python3-yarl
+    version: 1.19.0-1
+  - arch: all
+    package: python3-yubico
+    version: 1.3.3-3
+  - arch: all
+    package: python3-zope.event
+    version: 5.0-0.1
+  - arch: amd64
+    package: python3-zope.interface
+    version: 7.2-1+b1
+  - arch: amd64
+    package: python3.13-minimal
+    version: 3.13.5-2
+  - arch: amd64
+    package: python3.13
+    version: 3.13.5-2
+  - arch: amd64
+    package: python3
+    version: 3.13.5-1
+  - arch: amd64
+    package: qgnomeplatform-qt6
+    version: 0.9.2-4+b3
+  - arch: all
+    package: qt6-translations-l10n
+    version: 6.8.2-2
+  - arch: amd64
+    package: qt6-wayland
+    version: 6.8.2-4
+  - arch: all
+    package: readline-common
+    version: 8.2-6
+  - arch: amd64
+    package: rfkill
+    version: 2.41-5
+  - arch: amd64
+    package: rng-tools-debian
+    version: '2.6'
+  - arch: amd64
+    package: rpcsvc-proto
+    version: 1.4.3-1
+  - arch: amd64
+    package: rsync
+    version: 3.4.1+ds1-5+deb13u1
+  - arch: amd64
+    package: rtkit
+    version: 0.13-5.1
+  - arch: all
+    package: runit-helper
+    version: 2.16.4
+  - arch: amd64
+    package: samba-libs
+    version: 2:4.22.8+dfsg-0+deb13u1
+  - arch: amd64
+    package: sane-airscan
+    version: 0.99.35-1
+  - arch: amd64
+    package: sane-utils
+    version: 1.3.1-3+b1
+  - arch: amd64
+    package: scdaemon
+    version: 2.4.7-21+deb13u1+b2
+  - arch: amd64
+    package: secrets
+    version: 11.0-2
+  - arch: amd64
+    package: secure-delete
+    version: 3.1-12
+  - arch: amd64
+    package: sed
+    version: 4.9-2
+  - arch: all
+    package: sensible-utils
+    version: 0.0.25
+  - arch: all
+    package: sgml-base
+    version: 1.31+nmu1
+  - arch: amd64
+    package: shared-mime-info
+    version: 2.4-5+b2
+  - arch: amd64
+    package: shim-helpers-amd64-signed
+    version: 1+15.8+1
+  - arch: all
+    package: shim-signed-common
+    version: 1.47+15.8-1
+  - arch: amd64
+    package: shim-signed
+    version: 1.47+15.8-1
+  - arch: amd64
+    package: shim-unsigned
+    version: 15.8-1
+  - arch: amd64
+    package: simple-scan
+    version: 46.0-2
+  - arch: amd64
+    package: sound-juicer
+    version: 3.40.0-3
+  - arch: all
+    package: sound-theme-freedesktop
+    version: 0.8-6~deb13u1
+  - arch: amd64
+    package: speech-dispatcher-audio-plugins
+    version: 0.12.0-5
+  - arch: amd64
+    package: speech-dispatcher-espeak-ng
+    version: 0.12.0-5
+  - arch: amd64
+    package: speech-dispatcher
+    version: 0.12.0-5
+  - arch: amd64
+    package: spice-vdagent
+    version: 0.22.1-4.1
+  - arch: amd64
+    package: sqopv
+    version: 0.37.2-1+b3
+  - arch: amd64
+    package: squashfs-tools
+    version: 1:4.6.1-1
+  - arch: amd64
+    package: sqv
+    version: 1.3.0-3+b2
+  - arch: all
+    package: ssl-cert
+    version: 1.1.3
+  - arch: amd64
+    package: strace
+    version: 6.13+ds-1
+  - arch: all
+    package: strip-nondeterminism
+    version: 1.14.1-2
+  - arch: amd64
+    package: sudo
+    version: 1.9.16p2-3+deb13u1
+  - arch: amd64
+    package: synaptic
+    version: 0.91.7
+  - arch: all
+    package: syslinux-common
+    version: 3:6.04~git20190206.bf6db5b4+dfsg1-3.1
+  - arch: amd64
+    package: syslinux
+    version: 3:6.04~git20190206.bf6db5b4+dfsg1-3.1
+  - arch: all
+    package: system-config-printer-common
+    version: 1.5.18-4
+  - arch: amd64
+    package: systemd-oomd
+    version: 257.9-1~deb13u1
+  - arch: amd64
+    package: systemd-sysv
+    version: 257.9-1~deb13u1
+  - arch: amd64
+    package: systemd-timesyncd
+    version: 257.9-1~deb13u1
+  - arch: amd64
+    package: systemd
+    version: 257.9-1~deb13u1
+  - arch: amd64
+    package: sysvinit-utils
+    version: 3.14-4
+  - arch: amd64
+    package: tar
+    version: 1.35+dfsg-3.1
+  - arch: amd64
+    package: tcpdump
+    version: 4.99.5-2
+  - arch: amd64
+    package: tcpflow
+    version: 1.6.1-3+b1
+  - arch: amd64
+    package: tecla
+    version: 48.0.2-1
+  - arch: all
+    package: tesseract-ocr-eng
+    version: 1:4.1.0-2
+  - arch: all
+    package: tesseract-ocr-osd
+    version: 1:4.1.0-2
+  - arch: amd64
+    package: tesseract-ocr
+    version: 5.5.0-1+b1
+  - arch: all
+    package: thunderbird-l10n-ar
+    version: 1:140.10.0esr-1~deb13u1
+  - arch: all
+    package: thunderbird-l10n-de
+    version: 1:140.10.0esr-1~deb13u1
+  - arch: all
+    package: thunderbird-l10n-es-es
+    version: 1:140.10.0esr-1~deb13u1
+  - arch: all
+    package: thunderbird-l10n-es-mx
+    version: 1:140.10.0esr-1~deb13u1
+  - arch: all
+    package: thunderbird-l10n-fr
+    version: 1:140.10.0esr-1~deb13u1
+  - arch: all
+    package: thunderbird-l10n-id
+    version: 1:140.10.0esr-1~deb13u1
+  - arch: all
+    package: thunderbird-l10n-it
+    version: 1:140.10.0esr-1~deb13u1
+  - arch: all
+    package: thunderbird-l10n-pt-br
+    version: 1:140.10.0esr-1~deb13u1
+  - arch: all
+    package: thunderbird-l10n-ru
+    version: 1:140.10.0esr-1~deb13u1
+  - arch: all
+    package: thunderbird-l10n-tr
+    version: 1:140.10.0esr-1~deb13u1
+  - arch: all
+    package: thunderbird-l10n-zh-cn
+    version: 1:140.10.0esr-1~deb13u1
+  - arch: amd64
+    package: thunderbird
+    version: 1:140.10.0esr-1~deb13u1
+  - arch: all
+    package: timgm6mb-soundfont
+    version: 1.3-5
+  - arch: amd64
+    package: tinysparql
+    version: 3.8.2-7
+  - arch: all
+    package: tor-geoipdb
+    version: 0.4.9.6-1~d13.trixie+1
+  - arch: amd64
+    package: tor
+    version: 0.4.9.6-1~d13.trixie+1
+  - arch: all
+    package: torsocks
+    version: 2.5.0-1+deb13u1
+  - arch: all
+    package: totem-common
+    version: 43.2-3
+  - arch: amd64
+    package: totem-plugins
+    version: 43.2-3
+  - arch: amd64
+    package: totem
+    version: 43.2-3
+  - arch: amd64
+    package: traceroute
+    version: 1:2.1.6-1
+  - arch: amd64
+    package: tracker-extract
+    version: 3.8.2-4+b1
+  - arch: all
+    package: tzdata
+    version: 2026a-0+deb13u1
+  - arch: all
+    package: ucf
+    version: '3.0052'
+  - arch: amd64
+    package: udev
+    version: 257.9-1~deb13u1
+  - arch: amd64
+    package: udisks2
+    version: 2.10.1-12.1+deb13u1
+  - arch: amd64
+    package: uno-libs-private
+    version: 4:25.2.3-2+deb13u3
+  - arch: all
+    package: update-inetd
+    version: '4.53'
+  - arch: amd64
+    package: upower
+    version: 1.90.9-1
+  - arch: amd64
+    package: ure
+    version: 4:25.2.3-2+deb13u3
+  - arch: all
+    package: usb-modeswitch-data
+    version: 20191128-7
+  - arch: amd64
+    package: usb-modeswitch
+    version: 2.6.1-4+b2
+  - arch: all
+    package: usb.ids
+    version: 2025.07.26-1
+  - arch: amd64
+    package: usbguard
+    version: 1.1.3+ds-3
+  - arch: amd64
+    package: usbmuxd
+    version: 1.1.1-6+deb13u1
+  - arch: amd64
+    package: usbutils
+    version: 1:018-2
+  - arch: all
+    package: user-setup
+    version: '1.107'
+  - arch: amd64
+    package: util-linux-extra
+    version: 2.41-5
+  - arch: amd64
+    package: util-linux
+    version: 2.41-5
+  - arch: all
+    package: v4l2loopback-dkms
+    version: 0.15.0-2
+  - arch: all
+    package: vim-common
+    version: 2:9.1.1230-2
+  - arch: amd64
+    package: vim-tiny
+    version: 2:9.1.1230-2
+  - arch: all
+    package: webext-ublock-origin-firefox
+    version: 1.67.0+dfsg-1
+  - arch: amd64
+    package: webp-pixbuf-loader
+    version: 0.2.7-1+b1
+  - arch: amd64
+    package: wget
+    version: 1.25.0-2
+  - arch: amd64
+    package: whiptail
+    version: 0.52.25-1
+  - arch: amd64
+    package: whois
+    version: 5.6.3
+  - arch: all
+    package: wireless-regdb
+    version: 2026.02.04-1~deb13u1
+  - arch: amd64
+    package: wireless-tools
+    version: 30~pre9-18+b1
+  - arch: amd64
+    package: wireplumber
+    version: 0.5.8-2
+  - arch: amd64
+    package: wpasupplicant
+    version: 2:2.10-24
+  - arch: all
+    package: x11-common
+    version: 1:7.7+24+deb13u1
+  - arch: amd64
+    package: x11-xkb-utils
+    version: 7.7+9
+  - arch: amd64
+    package: x11-xserver-utils
+    version: 7.7+11
+  - arch: amd64
+    package: xdg-dbus-proxy
+    version: 0.1.6-1+deb13u1
+  - arch: amd64
+    package: xdg-desktop-portal-gnome
+    version: 48.0-2
+  - arch: amd64
+    package: xdg-desktop-portal-gtk
+    version: 1.15.3-1
+  - arch: amd64
+    package: xdg-desktop-portal
+    version: 1.20.3+ds-1
+  - arch: amd64
+    package: xdg-user-dirs-gtk
+    version: 0.14-1
+  - arch: amd64
+    package: xdg-user-dirs
+    version: 0.18-2
+  - arch: all
+    package: xdg-utils
+    version: 1.2.1-2
+  - arch: amd64
+    package: xdotool
+    version: 1:3.20160805.1-5.1
+  - arch: all
+    package: xfonts-encodings
+    version: 1:1.0.4-2.2
+  - arch: amd64
+    package: xfonts-utils
+    version: 1:7.7+7
+  - arch: all
+    package: xkb-data
+    version: 2.42-1
+  - arch: amd64
+    package: xkbset
+    version: 0.8-1
+  - arch: all
+    package: xml-core
+    version: '0.19'
+  - arch: amd64
+    package: xorriso
+    version: 1.5.6-1.2+b1
+  - arch: amd64
+    package: xsel
+    version: 1.2.1-1
+  - arch: all
+    package: xserver-common
+    version: 2:21.1.16-1.3+deb13u1
+  - arch: amd64
+    package: xwayland
+    version: 2:24.1.6-1
+  - arch: amd64
+    package: xxd
+    version: 2:9.1.1230-2
+  - arch: amd64
+    package: xz-utils
+    version: 5.8.1-1
+  - arch: all
+    package: yelp-xsl
+    version: 42.1-4
+  - arch: amd64
+    package: yelp
+    version: 42.2-4
+  - arch: amd64
+    package: zbar-tools
+    version: 0.23.93-8
+  - arch: all
+    package: zenity-common
+    version: 4.1.90-1
+  - arch: amd64
+    package: zenity
+    version: 4.1.90-1
+  - arch: amd64
+    package: zlib1g
+    version: 1:1.3.dfsg+really1.3.1-1+b1
+  - arch: all
+    package: zram-tools
+    version: 0.3.7-1

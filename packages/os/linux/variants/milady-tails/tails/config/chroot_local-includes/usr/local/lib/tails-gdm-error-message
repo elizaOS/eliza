@@ -1,0 +1,175 @@
+#!/usr/bin/python3 -I
+
+import re
+import os.path
+import pathlib
+from argparse import ArgumentParser
+from subprocess import check_call, check_output
+
+MAX_LENGTH = 254  # this depends on a limit of plymouth
+DISK_IOERRORS = pathlib.Path("/var/lib/live/tails.disk.ioerrors")
+
+
+def run_lspci(lspci_args: list) -> str:
+    """
+    get lspci output
+    """
+    return check_output(["/usr/bin/lspci", "-vmm", *lspci_args], encoding="utf8")
+
+
+def parse_lspci(text: str) -> list:
+    """
+    parse lspci output
+    """
+    ret = []
+    blocks = text.split("\n\n")
+    for block in blocks:
+        parsed_block = parse_block(block)
+        if parsed_block:
+            ret.append(parsed_block)
+    return ret
+
+
+DEVCODE_RE = re.compile(r"""(.*)\[([0-9a-f]{4})\]([^[]*)$""")
+
+
+def parse_block(text: str) -> dict:
+    """
+    sub-parser for parse_lspci. Don't use it standalone
+
+
+    >>> parse_block("")
+    {}
+    >>> parse_block("foo:bar")
+    {'foo': 'bar'}
+    >>> parse_block("foo:bar:zap")
+    {'foo': 'bar:zap'}
+    >>> parse_block("foo:bar\\nasd:xyz")
+    {'foo': 'bar', 'asd': 'xyz'}
+
+    Device codes are understood
+
+    >>> parse_block("Device:bar")
+    {'Device-code': 'NO', 'Device': 'bar'}
+    >>> parse_block("Device:bar [123a]")
+    {'Device-code': '123a', 'Device': 'bar'}
+
+    If anything follows the device codes, the parsing is still valid
+    >>> parse_block("Device:bar [123a] (rev v2)")
+    {'Device-code': '123a', 'Device': 'bar (rev v2)'}
+
+    And the last square parenthesis is taken]
+    >>> parse_block("Device:bar [1234] [123a] (rev v2)")
+    {'Device-code': '123a', 'Device': 'bar [1234] (rev v2)'}
+    """
+    text = text.strip()
+    ret = {}
+    for line in text.split("\n"):
+        if ":" not in line:
+            continue
+        key, value = line.strip().split(":", 1)
+        key = key.strip()
+        value = value.strip()
+        if key in ("Vendor", "Device"):
+            m = DEVCODE_RE.match(value)
+            if m is not None:
+                value = m.group(1).strip()
+                if m.group(2).strip():
+                    value += " " + m.group(3).strip()
+                ret[key + "-code"] = m.group(2)
+            else:
+                ret[key + "-code"] = "NO"
+
+        ret[key] = value.strip()
+    return ret
+
+
+def sort_gpus(gpus: list) -> list:
+    """
+    Sort GPUs putting the most probable at top.
+    Specifically, this means putting Intel last.
+
+    >>> gpus = [{"Vendor-code": "8086"}, {"Vendor-code": "1234"}]
+    >>> sort_gpus(gpus)[0]["Vendor-code"]
+    '1234'
+    >>> gpus.reverse()
+    >>> sort_gpus(gpus)[0]["Vendor-code"]
+    '1234'
+    """
+    return sorted(gpus, key=lambda g: g["Vendor-code"] == "8086")
+
+
+def format_gpus(gpus: list) -> str:
+    """
+    >>> 'No GPU' in format_gpus([])
+    True
+    >>> gpu = {"Vendor": "X",  "Device": "Y", 'Vendor-code': 'NO','Device-code': 'NO'}
+    >>> len(format_gpus([gpu]))
+    139
+
+    The output is cropped to 254 chars
+    >>> len(format_gpus([gpu] * 100))
+    254
+
+    Pluralization
+    >>> 'your 100 graphics card' in format_gpus([gpu] * 100)
+    True
+    """
+    if gpus:
+        msg = "\n".join(
+            "{Vendor} [{Vendor-code}:{Device-code}] {Device}".format(**dev)
+            for dev in gpus
+        )
+    else:
+        msg = "No GPUs detected"
+
+    if len(gpus) <= 1:
+        header = "Error starting GDM with your graphics card:\n"
+    else:
+        header = "Error starting GDM with your %d graphics cards:\n" % len(gpus)
+    footer = "\nPlease take note of this error and visit https://tails.net/gdm for troubleshooting."
+    msg = msg[: MAX_LENGTH - len(header) - len(footer)]
+    msg = header + msg + footer
+    return msg
+
+
+def main():
+    p = ArgumentParser()
+    p.add_argument(
+        "--dry-run",
+        help="Don't actually run plymouth, just show the command",
+        action="store_true",
+        default=False,
+    )
+    args = p.parse_args()
+
+    if DISK_IOERRORS.exists():
+        msg = "Error reading data from your Tails USB stick.\nPlease visit https://tails.net/ioerror for troubleshooting."
+    else:
+        output = run_lspci(["-d::0300", "-nn"])
+        gpus = parse_lspci(output)
+        gpus = sort_gpus(gpus)
+        msg = format_gpus(gpus)
+
+    cmd = ["/bin/plymouth", "display-message", "--text", msg]
+    if not args.dry_run:
+        check_call(cmd)
+    else:
+        print("would run `%s`, but --dry-run is selected" % " ".join(cmd))
+
+
+if __name__ == "__main__":
+    import sys
+
+    if len(sys.argv) > 1 and sys.argv[1] == "doctest":
+        p = ArgumentParser(sys.argv[0].split(os.path.sep)[-1] + " doctest")
+        p.add_argument("--verbose", action="store_true", default=False)
+        args = p.parse_args(sys.argv[2:])
+        import doctest
+
+        results = doctest.testmod(verbose=args.verbose)
+        if results.failed > 0:
+            sys.exit(1)
+        else:
+            sys.exit(0)
+    main()

@@ -1,0 +1,692 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-10-02 09:33+0000\n"
+"PO-Revision-Date: 2024-05-20 17:54+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: Persian <http://weblate.451f.org:8889/projects/tails/"
+"encrypted_volumes/fa/>\n"
+"Language: fa\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"X-Generator: Weblate 5.3\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "[[!meta title=\"Creating and using LUKS encrypted volumes\"]]\n"
+msgstr "[[!meta title=\"ایجاد درایوهای رمزگذاری‌شده و استفاده از آن‌ها\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!toc levels=2]]\n"
+msgstr "[[!toc levels=2]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"luks\">Introduction to <i>LUKS</i></h1>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"tip\">\n"
+msgstr "<div class=\"tip\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>The simplest way to carry around the documents that you want to use\n"
+"with Tails encrypted is to use the [[Persistent\n"
+"Storage|persistent_storage]].</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+#. type: Plain text
+msgid ""
+"You can create other encrypted volumes using *LUKS* to encrypt, for example, "
+"another USB stick or an external hard disk.  *LUKS* is the standard for disk "
+"encryption in Linux."
+msgstr ""
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid "The *Disks* utility allows you to create encrypted volumes."
+msgstr "دسکتاپ گنوم به شما اجازه می‌دهد درایوهای رمزگذاری‌شده را باز کنید."
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid "The GNOME desktop allows you to open encrypted volumes."
+msgstr "دسکتاپ گنوم به شما اجازه می‌دهد درایوهای رمزگذاری‌شده را باز کنید."
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "<div class=\"attack\">\n"
+msgstr "<div class=\"tip\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<p>Such encrypted volumes, like the Persistent Storage, are not hidden.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid ""
+"<p>An attacker in possession of the device can know that there is an encrypted\n"
+"volume on it. Take into consideration that you can be forced or tricked to give\n"
+"out its passphrase.</p>\n"
+msgstr "این درایوهای رمزگذاری‌شده مخفی نیستند. یک مهاجم که دستگاه را در اختیار دارد می‌تواند متوجه وجود یک پارتیشن رمزگذاری‌شده روی آن بشود. در نظر داشته باشید ممکن است در مواجهه با زور یا فریب گذرواژه را لو دهید."
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"comparison\">Comparison between <i>LUKS</i> and <i>VeraCrypt</i></h2>\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"You can also open *VeraCrypt* encrypted volumes in Tails. *VeraCrypt* is a "
+"disk encryption tool for Windows, macOS, and Linux. [[See our documentation "
+"about *VeraCrypt*.|veracrypt]]"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"doc/encryption_and_privacy/luks_vs_veracrypt.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"doc/encryption_and_privacy/luks_vs_veracrypt.inline.fa\" raw=\"yes\" sort=\"age\"]]\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "<h1 id=\"creating\">Creating an encrypted partition</h1>\n"
+msgstr "<h2 class=\"bullet-number-three\">ایجاد یک پارتیشن جدید رمزگذاری‌شده</h2>\n"
+
+#. type: Bullet: '1. '
+msgid ""
+"Choose **Apps&nbsp;▸ Utilities&nbsp;▸ Disks** to open the *Disks* utility."
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "<h2 id=\"identifying\">Identifying your external storage device</h2>\n"
+msgstr "دستگاه ذخیرهٔ خارجی خود را مشخص کنید"
+
+#. type: Plain text
+#, fuzzy
+msgid ""
+"The *Disks* utility lists all the current storage devices on the left side "
+"of the screen."
+msgstr ""
+"*ابزار دیسک* تمام دستگاه‌های ذخیرهٔ\n"
+"را سمت راست صفحه فهرست می‌کند.\n"
+
+#. type: Bullet: '  1. '
+msgid "Plug in the external storage device that you want to use."
+msgstr "دستگاه ذخیرهٔ خارجی که قصد استفاده از آن را دارید وصل کنید."
+
+#. type: Bullet: '  1. '
+#, fuzzy
+msgid "A new device appears in the list of storage devices. Click on it."
+msgstr "دستگاهی جدید در فهرست دستگاه‌های ذخیره ظاهر می‌شود. روی آن کلیک کنید:"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "     [[!img storage_devices_after.png class=\"screenshot\" alt=\"\"]]\n"
+msgstr "     [[!img storage_devices_after.png link=no alt=\"\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"  1. Check that the description of the device on the right side of the screen\n"
+"  corresponds to your device: its brand, its size, etc.\n"
+msgstr ""
+"  ۱. توضیحات دستگاه را سمت چپ صفحه ببینید،\n"
+"  از جمله مارک، گنجایش آن و غیره.\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "<h2 id=\"formatting\">Formatting the device</h2>\n"
+msgstr "<h2 class=\"bullet-number-two\">دستگاه را فرمت کنید</h2>\n"
+
+#. type: Bullet: '  1. '
+msgid ""
+"Click on the [[!img lib/view-more.png alt=\"Drive Options\" "
+"class=\"symbolic\" link=\"no\"]] button in the title bar and choose **Format "
+"Disk** to erase all the existing partitions on the device."
+msgstr ""
+
+#. type: Bullet: '  1. '
+#, fuzzy
+msgid "In the **Format Disk** dialog:"
+msgstr "روی **ایجاد پارتیشن** کلیک کنید."
+
+#. type: Bullet: '     - '
+msgid ""
+"If you want to overwrite all data on the device, choose **Overwrite existing "
+"data with zeroes** in the **Erase** menu."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"         <div class=\"caution\">\n"
+"         <p>Overwriting existing data does not erase all data on flash\n"
+"         memories, such as USB sticks and SSDs (Solid-State Drives).</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "         <p>See the [[limitations of file deletion|doc/encryption_and_privacy/secure_deletion#spare]].</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "         </div>\n"
+msgstr "         </div>\n"
+
+#. type: Bullet: '     - '
+msgid ""
+"Choose **Compatible with all systems and devices (MBR/DOS)** in the "
+"**Partitioning** menu."
+msgstr ""
+
+#. type: Bullet: '  1. '
+msgid "Click **Format**."
+msgstr ""
+
+#. type: Bullet: '  1. '
+msgid "In the confirmation dialog, make sure that the device is correct."
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "<h2 id=\"partition\">Creating a new encrypted partition</h2>\n"
+msgstr "<h2 class=\"bullet-number-three\">ایجاد یک پارتیشن جدید رمزگذاری‌شده</h2>\n"
+
+#. type: Plain text
+#, fuzzy
+msgid ""
+"Now the schema of the partitions in the middle of the screen shows an empty "
+"device:"
+msgstr "حالا رابط پارتیشن در وسط صفحه یک دستگاه خالی نشان می‌دهد."
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "[[!img empty_device.png class=\"screenshot\" alt=\"Free Space 123 GB\"]]\n"
+msgstr "[[!img empty_device.png link=no alt=\"Free Space 8.1 GB\"]]\n"
+
+#. type: Bullet: '  1. '
+msgid ""
+"Click on the **[[!img lib/list-add.png alt=\"Create partition\" "
+"class=\"symbolic\" link=\"no\"]]** button to create a new partition on the "
+"device."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"  1. Configure the various settings of your new partition in the\n"
+"  partition creation assistant:\n"
+msgstr ""
+
+#. type: Bullet: '     - '
+#, fuzzy
+msgid "In the **Create Partition** screen:"
+msgstr "روی **ایجاد پارتیشن** کلیک کنید."
+
+#. type: Bullet: '       - '
+#, fuzzy
+msgid ""
+"**Partition Size**: you can create a partition on the whole device or only "
+"on part of it."
+msgstr ""
+"**گنجایش**. می‌توانید تصمیم بگیرید که روی کل دستگاه یک پارتیشن بسازید یا تنها "
+"روی بخشی از آن. در این مثال یک پارتیشن ۲گیگابایتی روی یک دستگاه ۳٫۹گیگابایتی "
+"ایجاد می‌کنیم."
+
+#. type: Plain text
+#, no-wrap
+msgid "         In the example below, we are creating a partition of 4.0 GB on a device of 8.1 GB.\n"
+msgstr ""
+
+#. type: Bullet: '     - '
+msgid "In the **Format Volume** dialog:"
+msgstr ""
+
+#. type: Bullet: '       - '
+msgid "**Volume Name**"
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid ""
+"         You can give a name to the partition.\n"
+"         This name remains invisible until the partition is open but can help\n"
+"         you to identify it during use.\n"
+msgstr "**نام**. می‌توانید برای این پارتیشن نام انتخاب کنید.  این نام تا وقتی که پارتیشن باز است مخفی باقی می‌ماند، اما هنگام استفاده از آن می‌توانید آن را شناسایی کنید."
+
+#. type: Bullet: '       - '
+msgid "**Erase**"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "         You can choose to overwrite existing data on the partition.\n"
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "         <div class=\"caution\">\n"
+msgstr "<div class=\"tip\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"         <p>Overwriting existing data does not erase all data on flash\n"
+"         memories, such as USB sticks and SSDs (Solid-State Drives).</p>\n"
+msgstr ""
+
+#. type: Bullet: '       - '
+msgid "**Type**"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"         Choose **Internal disk for use with Linux systems\n"
+"         only (Ext4)** and **Password protect volume (LUKS)**.\n"
+msgstr ""
+
+#. type: Bullet: '     - '
+#, fuzzy
+msgid "In the **Set Password** screen:"
+msgstr "روی **ایجاد پارتیشن** کلیک کنید."
+
+#. type: Bullet: '       - '
+#, fuzzy
+msgid ""
+"**Password**: type a passphrase for the encrypted partition and repeat it to "
+"confirm."
+msgstr "**رمزگذاری دستگاه**. از این گزینه برای رمزگذاری پارتیشن استفاده کنید."
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "         <div class=\"tip\">\n"
+msgstr "<div class=\"tip\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"         <p>We recommend choosing a long passphrase made of 5 to 7 random words.\n"
+"         <a href=\"https://theintercept.com/2015/03/26/passphrases-can-memorize-attackers-cant-guess/\">Learn\n"
+"         about the maths behind memorizable and secure passphrases.</a></p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"         <div class=\"caution\">\n"
+"         <p>It is impossible to recover your passphrase if you forget it!</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"         <p>To help you remember your passphrase, you can write it on a piece of\n"
+"         paper, store it in your wallet for a few days, and destroy it once\n"
+"         you know it well.</p>\n"
+"         </div>\n"
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "       Then click **Create**.\n"
+msgstr "    سپس روی دکمهٔ **ایجاد** کلیک کنید.\n"
+
+#. type: Bullet: '  1. '
+#, fuzzy
+msgid ""
+"Creating the partition takes from a few seconds to a few minutes. After "
+"that, the new encrypted partition appears in the volumes on the device:"
+msgstr ""
+"ایجاد پارتیشن ممکن است چند ثانیه تا چند دقیقه طول بکشد. پس از آن پارتیشن "
+"جدید رمزگذاری‌شده در قسمت درایوهای دستگاه دیده می‌شود:"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "     [[!img encrypted_partition.png class=\"screenshot\" alt=\"Partition 1 4.0 GB LUKS / Filesystem 4.0 GB Ext4\"]]\n"
+msgstr "     [[!img encrypted_partition.png link=\"no\" alt=\"Partition 1 4.0 GB LUKS / secret 4.0 GB Ext4\"]]\n"
+
+#. type: Bullet: '  1. '
+#, fuzzy
+msgid ""
+"If you want to create another partition in the free space on the device, "
+"click on the free space and then click on the **[[!img lib/list-add.png "
+"alt=\"Create partition\" class=\"symbolic\" link=\"no\"]]** button again."
+msgstr ""
+"در این مرحله می‌توانید در صورت تمایل در فضای خالی دستگاه پارتیشن‌های جدیدی "
+"ایجاد کنید. این کار را با کلیک کردن دوباره روی <span "
+"class=\"guilabel\">ایجاد پارتیشن</span> انجام دهید."
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "<h2 id=\"using\">Using the new partition</h2>\n"
+msgstr "<h2 class=\"bullet-number-four\">استفاده از پارتیشن جدید</h2>\n"
+
+#. type: Plain text
+#, fuzzy
+msgid ""
+"You can open this new partition from the sidebar of the *Files* browser with "
+"the name you gave it."
+msgstr ""
+"حالا می‌توانید از فهرست **Places** با همان نامی که به آن درایو داده بودید\n"
+"به آن دسترسی پیدا کنید.\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "<h1 id=\"opening\">Opening an existing encrypted partition</h1>\n"
+msgstr "باز کردن یک درایو رمزگذاری‌شدهٔ موجود\n"
+
+#. type: Plain text
+msgid ""
+"When you plug in a device that has an encrypted partition, Tails offers to "
+"unlock the encryption automatically."
+msgstr ""
+
+#. type: Bullet: '1. '
+#, fuzzy
+msgid "Plug in the external storage device that has the encrypted partition."
+msgstr "دستگاه ذخیرهٔ خارجی که قصد استفاده از آن را دارید وصل کنید."
+
+#. type: Bullet: '1. '
+msgid "A dialog appears, asking for the passphrase to unlock the partition."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   [[!img unlock.png class=\"screenshot\" alt=\"Authentication Required\"]]\n"
+msgstr ""
+
+#. type: Bullet: '1. '
+#, fuzzy
+msgid ""
+"Enter the passphrase of the partition in the password prompt and click "
+"**Unlock**."
+msgstr ""
+"در پنجرهٔ **وارد کردن گذرواژه** برای پارتیشن جدید یک گذرواژهٔ جدید انتخاب "
+"کنید. سپس روی دکمهٔ **ایجاد** کلیک کنید."
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   If you turn on the option **Remember Password**, Tails remembers the\n"
+"   passphrase of this partition only until you shut down. The passphrase is not\n"
+"   stored in your Persistent Storage.\n"
+msgstr ""
+
+#. type: Bullet: '1. '
+#, fuzzy
+msgid ""
+"After unlocking, you can access the content of the partition from the "
+"sidebar of the *Files* browser."
+msgstr ""
+"حالا می‌توانید از فهرست **Places** با همان نامی که به آن درایو داده بودید\n"
+"به آن دسترسی پیدا کنید.\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"After you finished using the partition, click on the [[!img lib/media-eject.png\n"
+"alt=\"Eject\" class=\"symbolic\" link=\"no\"]] button next to the partition in the\n"
+"sidebar of the *Files* browser to eject the partition safety and lock again the\n"
+"encryption.\n"
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "<h1 id=\"os\">Opening encrypted volumes from other operating systems</h1>\n"
+msgstr "باز کردن درایوهای رمزگذاری‌شده از سیستم‌عامل‌های دیگر\n"
+
+#. type: Plain text
+#, fuzzy
+msgid ""
+"It is possible to open such encrypted volumes from other operating systems. "
+"But, doing so might compromise the security provided by Tails."
+msgstr ""
+"می‌توان چنین درایوهای رمزگذاری‌شده‌ای را از سیستم‌عامل‌های دیگر باز کرد، اما این "
+"کار ممکن است باعث به مخاطره افتادن امنیت شما شود. احتمالاً نباید به "
+"سیستم‌عامل‌های دیگر برای استفاده از اطلاعات مهم شما یا باقی نگذاشتن ردپا "
+"اعتماد کرد."
+
+#. type: Plain text
+msgid ""
+"For example, image thumbnails might be created and saved by the other "
+"operating system. Or, the contents of files might be indexed by the other "
+"operating system."
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "<h1 id=\"changing\">Changing the passphrase of an existing encrypted partition</h1>\n"
+msgstr "باز کردن یک درایو رمزگذاری‌شدهٔ موجود\n"
+
+#. type: Bullet: '1. '
+#, fuzzy
+msgid ""
+"Plug in the external storage device that contains the encrypted partition "
+"for which you want to change the passphrase."
+msgstr "دستگاه ذخیرهٔ خارجی که قصد استفاده از آن را دارید وصل کنید."
+
+#. type: Bullet: '1. '
+#, fuzzy
+msgid "The device appears in the list of storage devices. Click on it."
+msgstr "دستگاهی جدید در فهرست دستگاه‌های ذخیره ظاهر می‌شود. روی آن کلیک کنید:"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "   [[!img storage_devices_after.png class=\"screenshot\" alt=\"\"]]\n"
+msgstr "   [[!img storage_devices_after.png link=no alt=\"\"]]\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid ""
+"1. Check that the description of the device on the right side of the screen\n"
+"corresponds to your device: its brand, its size, etc.\n"
+msgstr ""
+"  ۱. توضیحات دستگاه را سمت چپ صفحه ببینید،\n"
+"  از جمله مارک، گنجایش آن و غیره.\n"
+
+#. type: Bullet: '1. '
+msgid ""
+"Click on the partition displaying a [[!img lib/network-wireless-"
+"encrypted.png alt=\"Partition LUKS\" class=\"symbolic\" link=\"no\"]] in the "
+"bottom-right corner."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"Click on the [[!img lib/system-run.png alt=\"Additional partition options\" "
+"class=\"symbolic\" link=\"no\"]] button and choose **Change Passphrase** in "
+"the shortcut menu."
+msgstr ""
+
+#, fuzzy, no-wrap
+#~ msgid "<h1 id=\"storing\">Storing sensitive documents</h1>\n"
+#~ msgstr "نگهداری سندهای مهم\n"
+
+#, no-wrap
+#~ msgid "       </div>\n"
+#~ msgstr "       </div>\n"
+
+#, fuzzy
+#~ msgid "*GNOME Disks* allows you to create encrypted volumes."
+#~ msgstr ""
+#~ "*ابزار دیسک* گنوم به شما اجازه می‌دهد درایوهای رمزگذاری‌شده ایجاد کنید."
+
+#, fuzzy, no-wrap
+#~ msgid "     Then click **Format…**.\n"
+#~ msgstr "    سپس روی دکمهٔ **ایجاد** کلیک کنید.\n"
+
+#, fuzzy
+#~ msgid "In the **Format Volume** screen:"
+#~ msgstr "روی **ایجاد پارتیشن** کلیک کنید."
+
+#, fuzzy
+#~ msgid ""
+#~ "**Erase**: you can choose to securely erase all data on the partition."
+#~ msgstr ""
+#~ "**رمزگذاری دستگاه**. از این گزینه برای رمزگذاری پارتیشن استفاده کنید."
+
+#, fuzzy, no-wrap
+#~ msgid ""
+#~ "1. Choose\n"
+#~ "   <span class=\"menuchoice\">\n"
+#~ "     **Places**&nbsp;▸\n"
+#~ "     **Computer**</span>\n"
+#~ "   to open the file browser.\n"
+#~ msgstr ""
+#~ "برای بستن پارتیشن رمزگذاری‌شده پس از تمام شدن کارتان ابتدا از این مسیر بروید:\n"
+#~ "<span class=\"menuchoice\">\n"
+#~ "  **Places**&nbsp;◀\n"
+#~ "  **رایانه**</span>\n"
+#~ "و سپس روی دستگاه راست‌کلیک کرده و **جدا کردن امن دستگاه**\n"
+#~ "را انتخاب کنید.\n"
+
+#, fuzzy, no-wrap
+#~ msgid "   [[!img nautilus_encrypted.png link=\"no\" alt=\"File browser with '4.0 GB Encrypted' entry in the sidebar\"]]\n"
+#~ msgstr "[[!img places_encrypted.png link=no alt=\"Places&nbsp;▸ 2.0 GB Encrypted\"]]\n"
+
+#, fuzzy, no-wrap
+#~ msgid ""
+#~ "To open *GNOME Disks* choose\n"
+#~ "<span class=\"menuchoice\">\n"
+#~ "  **Applications**&nbsp;▸\n"
+#~ "  **Utilities**&nbsp;▸\n"
+#~ "  **Disks**</span>.\n"
+#~ msgstr ""
+#~ "برای باز کردن *ابزار دیسک* گنوم از این مسیر بروید:\n"
+#~ "<span class=\"menuchoice\">\n"
+#~ "  **ابزارها**&nbsp;◀\n"
+#~ "  **ابزارهای کمکی**&nbsp;◀\n"
+#~ "  **ابزارهای دیسک**</span>.\n"
+
+#, fuzzy, no-wrap
+#~ msgid "Create an encrypted partition"
+#~ msgstr "ایجاد یک درایو مانا\n"
+
+#, fuzzy, no-wrap
+#~ msgid "Create a new encrypted partition"
+#~ msgstr "ایجاد یک درایو مانا\n"
+
+#, fuzzy, no-wrap
+#~ msgid "Use the new partition"
+#~ msgstr "پارتیشن جدید را پیکربندی کنید:"
+
+#, fuzzy
+#~| msgid ""
+#~| "The simplest way to carry around the documents you want to use with "
+#~| "Tails and make sure that they haven't been accessed nor modified is to "
+#~| "store them in an encrypted volume: a dedicated partition on a USB stick "
+#~| "or an external hard-disk."
+#~ msgid ""
+#~ "The simplest way to carry around the documents you want to use with Tails "
+#~ "and make sure that they haven't been accessed or modified is to store "
+#~ "them in an encrypted volume: a dedicated partition on a USB stick or "
+#~ "external hard-disk."
+#~ msgstr ""
+#~ "ساده‌ترین راه برای حمل اسنادی که می‌خواهید با تیلز از آن‌ها استفاده کنید و "
+#~ "نمی‌خواهید کسی به آن‌ها دسترسی داشته باشد و آن‌ها را تغییر دهد، ذخیره کردن "
+#~ "آن‌ها در یک درایو رمزگذاری‌شده است: یک پارتیشن مخصوص این کار روی یک درایو "
+#~ "یواس‌بی یا یک سخت‌دیسک خارجی."
+
+#~ msgid ""
+#~ "Tails comes with utilities for LUKS, a standard for disk-encryption under "
+#~ "Linux."
+#~ msgstr ""
+#~ "تیلز ابزارهای خاص بسیاری برای LUKS، یک استاندارد رمزگذاری دیسک تحت لینوکس "
+#~ "دارد."
+
+#, fuzzy
+#~| msgid ""
+#~| "<p>To store encrypted files on a Tails device, it is recommended to "
+#~| "create a\n"
+#~| "[[persistent volume|first_steps/persistence]] instead.</p>\n"
+#~ msgid ""
+#~ "<p>To store encrypted files on a Tails USB stick, it is recommended to "
+#~ "create a\n"
+#~ "[[persistent volume|first_steps/persistence]] instead.</p>\n"
+#~ msgstr ""
+#~ "<p>برای ذخیره کردن فایل‌های رمزگذاری‌شده روی یک دستگاه تیلز، توصیه می‌شود "
+#~ "یک\n"
+#~ "[[درایو مانا|first_steps/persistence]] ایجاد کنید.</p>\n"
+
+#~ msgid ""
+#~ "  1. Click on **Format Drive** to erase all the\n"
+#~ "  existing partitions on the device.\n"
+#~ msgstr ""
+#~ "  ۱. روی **Format Drive** کلیک کنید\n"
+#~ "   تا تمام پارتیشن‌های موجود روی دستگاه پاک شوند.\n"
+
+#~ msgid ""
+#~ "  1. In the dialog box to select the <span class=\"guilabel\">Scheme</"
+#~ "span>, if\n"
+#~ "  you are unsure, leave the default option <span "
+#~ "class=\"guilabel\">Master Boot\n"
+#~ "  Record</span> selected.\n"
+#~ msgstr ""
+#~ "  ۱. در پنجرهٔ گفتگو **Scheme** را انتخاب کنید.\n"
+#~ "  اگر مطمئن نیستید گزینهٔ پیش‌فرض <span class=\"guilabel\">Master Boot\n"
+#~ "  Record</span> را دست‌نخورده باقی بگذارید.\n"
+
+#~ msgid ""
+#~ "     [[!img create_partition.png link=no alt=\"Create partition on…\"]]\n"
+#~ msgstr ""
+#~ "     [[!img create_partition.png link=no alt=\"Create partition on…\"]]\n"
+
+#~ msgid ""
+#~ "**Type**. You can change the file system type of the partition. If you "
+#~ "are not sure you can leave the default value: **Ext4**."
+#~ msgstr ""
+#~ "**نوع**. می‌توانید نوع سیستم فایل پارتیشن را تغییر دهید. اگر از انتخاب خود "
+#~ "مطمئن نیستید می‌توانید میزان پیش‌فرض <span class=\"guilabel\">Ext4</span> "
+#~ "را دست‌نخورده باقی بگذارید."
+
+#~ msgid "[[!img places_secret.png link=no alt=\"Places&nbsp;▸ secret\"]]\n"
+#~ msgstr "[[!img places_secret.png link=no alt=\"Places&nbsp;▸ secret\"]]\n"
+
+#, fuzzy
+#~| msgid ""
+#~| "When plugging a device containing an encrypted partition, Tails does not "
+#~| "mount it\n"
+#~| "automatically but it appears in the <span class=\"guimenu\">Places</"
+#~| "span>\n"
+#~| "menu. If several partitions appear as <span class=\"guimenu\">Encrypted</"
+#~| "span>,\n"
+#~| "like in the example, you can use its size to guess which one is the one "
+#~| "you want\n"
+#~| "to open.\n"
+#~ msgid ""
+#~ "When plugging in a device containing an encrypted partition, Tails does "
+#~ "not mount it\n"
+#~ "automatically but it appears in the <span class=\"guimenu\">Places</"
+#~ "span>\n"
+#~ "menu. If several partitions appear as <span class=\"guimenu\">Encrypted</"
+#~ "span>,\n"
+#~ "like in the example, you can use their sizes to guess which one is the "
+#~ "one you want\n"
+#~ "to open.\n"
+#~ msgstr ""
+#~ "هنگام وصل کردن یک دستگاه دارای پارتیشن رمزگذاری‌شده،  تیلز آن را خودکار "
+#~ "راه‌اندازی نمی‌کند\n"
+#~ "اما این پارتیشن در فهرست **Places** دیده می‌شود.\n"
+#~ "اگر مانند مثال چندین پارتیشن **رمزگذاری‌شده** دیده می‌شوند،\n"
+#~ "می‌توانید از گنجایش آن حدس بزنید که پارتیشن مورد نظر شما\n"
+#~ "کدام است.\n"

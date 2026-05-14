@@ -1,0 +1,115 @@
+[[!meta title="Who are you helping when donating to Tails?"]]
+[[!meta date="Thu, 24 Dec 2014 12:34:56 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+
+Tails is being distributed free of charge because we strongly believe that
+[[free software is more secure by design|doc/about/trust#free_software]]. But
+also because we think that **nobody should have to pay to be safe while using
+computers**. Unfortunately, Tails cannot stay alive without money as developing
+Tails and maintaining our infrastructure has a cost.
+
+We rely solely on donations from individuals and supporting
+organizations to keep Tails updated and getting always better.
+**That's why we need your help!**
+
+If you find Tails useful, please consider donating
+money or [[contributing some of your time and
+skills|contribute]] to the project.
+Donations to Tails are tax-deductible both in the US and in Europe.
+
+In October 2014, Tails was being used by more than 11 500 people
+daily. The profile of Tor and Tails
+users is very diverse. This diversity increases the anonymity provided by
+those tools for everyone by making it harder to target and to
+identify a specific type of user. From the various contacts that we have
+with organizations working on the ground, we know that Tails has been
+used by:
+
+<a id="journalists"></a>
+
+  - **Journalists wanting to protect themselves or their sources.**
+
+    - [Reporters Without Borders](https://rsf.org/) is an organization that promotes
+      and defends freedom of information, freedom of the press, and has
+      consultant status at the United Nations. RWB [advertises the use of
+      Tails](https://rsf.org/sites/default/files/guide_journaliste_rsf_2015_en_0.pdf)
+      for journalists to fight censorship and protect their sources.
+      RWB uses Tails in their training sessions world-wide.
+
+    - [According to Laura Poitras, Glenn Greenwald, and Barton Gellman](https://pressfreedomfoundation.org/blog/2014/04/help-support-little-known-privacy-tool-has-been-critical-journalists-reporting-nsa),
+      Tails has been an essential tool to work on the Snowden documents and
+      report on the NSA spying. In a recent [article for The Intercept](https://theintercept.com/2014/10/28/smuggling-snowden-secrets/),
+      Micah Lee gives many details on how Tails helped them starting to work together.
+
+    - [Fahad Desmukh](http://desmukh.com/), a freelance journalist based
+      in Pakistan who is also working for Bytes for All always has a Tails USB handy: "I can use it whenever I
+      may need to and I especially make sure to keep it with me when
+      travelling. Pakistan really isn't the safest place for journalists
+      so thanks to the Tails team for an amazing tool."
+
+    - [Jean-Marc Manach](http://jean-marc.manach.net/), a journalist
+      based in France and specialized in online privacy said that "war
+      reporters have to buy helmets, bullet-proof vests and rent armored
+      cars; journalists using the Internet for their investigations are
+      much luckier: to be as secured as war reporters, they only have to
+      download Tails, burn it on a CD, install it on a SD card, and
+      learn the basics of information and communication security, and
+      it's free!"
+
+  - **Human-right defenders organizing in repressive contexts.**
+
+    - Tails has been used in combination with [Martus](https://www.martus.org/), an information
+      system used to report on human rights abuses, to allow Tibetan
+      communities in exile to protect themselves from targeted malware attacks.
+
+  - **Democracy defenders facing dictatorships.**
+
+    - The [National Democratic Institute](https://www.ndi.org/), a Washington-based
+      democracy support organization that works in more than 70
+      countries around the world, has used Tails to [help human rights
+      defenders to communicate
+      securely](https://www.coe.int/en/web/world-forum-democracy/2013-forum).
+      For instance, NDI used Tails to created a [data collection system in Belarus](http://cryptome.org/2014/07/tails-belarus-elections.pdf)
+      to help opposition forces to collect, store and manage voter information.
+
+  - **Citizens facing national emergencies.**
+
+    During the last years, we noticed that the use of Tor and Tails
+    systematically peaks when countries face national emergencies. Even
+    if Tails represents a small amount of the global Tor usage, it is
+    advertised by the Tor Project as the safest platform to protect from
+    strong adversaries.
+
+    - In Starting a revolution with
+      technology,
+      Slim Amamou, Tunisian blogger and former Secretary of State for Sport
+      and Youth, explains that Tor "was vital to get information and share it"
+      during the Tunisian revolution of 2011, because social media pages sharing
+      information about the protests were "systematically censored so you could
+      not access them without censorship circumvention tools".
+
+    - Between January 25, the day the Egyptian Revolution of 2011 began,
+      and January 27 2011, the number of [Tor users in
+      Egypt](https://blog.torproject.org/blog/recent-events-egypt) was
+      multiplied at least by 4. On January 27, the Egyptian government
+      decided to halt Internet access across the country.
+
+    - Between March 19 and March 31, the number of Tor users in
+      Turkey
+      was multiplied by 3
+      as a direct response to the growing Internet censorship in the
+      country: on 20 March 2014, access to Twitter was blocked in
+      Turkey, and on 27 March 2014 access to YouTube was blocked.
+
+  - **Domestic violence survivors escaping from their abusers.**
+
+    - The Tor Project has been working with organizations fighting
+      against domestic violence such as [NNEDV](http://nnedv.org/), [Transition House](http://www.transitionhouse.org/), and
+      [Emerge](http://www.emergedv.com/) to help survivors escape digital surveillance from their
+      abuser and report on their situation. As [domestic abuse goes
+      digital](http://betaboston.com/news/2014/05/07/as-domestic-abuse-goes-digital-shelters-turn-to-counter-surveillance-with-tor/), circumvention tools like Tor and Tails end up as one of
+      the only options.
+
+If you know of other great stories of Tails users, please [[share them
+with us|mailto:tails@boum.org]]!

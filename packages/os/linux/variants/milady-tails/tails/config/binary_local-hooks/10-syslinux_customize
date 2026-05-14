@@ -1,0 +1,63 @@
+#!/bin/bash
+
+set -e
+
+# Including common functions
+. "${LB_BASE:-/usr/share/live/build}"/scripts/build.sh
+
+# Setting static variables
+# shellcheck disable=SC2034
+{
+    DESCRIPTION="$(Echo 'removing buggy syslinux help')"
+    HELP=""
+    USAGE="${PROGRAM}"
+}
+
+# Reading configuration files
+Read_conffiles config/all config/common config/binary
+# Import TAILS_VERSION
+Read_conffiles config/variables
+Set_defaults
+
+if [ "${LB_BOOTLOADER}" != "syslinux" ]; then
+    exit 0
+fi
+
+# Setting boot method specific variables
+SYSLINUX_PATH="binary/isolinux"
+
+Echo_message "customize buggy syslinux help"
+
+# Remove help menu entry from menu.cfg (and every line after)
+CFG_FILE="${SYSLINUX_PATH}/menu.cfg"
+perl -pni -E 'exit if m{^label[[:blank:]]+help$}' "${CFG_FILE}"
+
+Echo_message "customize syslinux menu"
+
+sed -i -e "s/Boot menu/SYSLINUX/" "${CFG_FILE}"
+sed -i -e "s/menu label Live/menu label Tails ${TAILS_VERSION}/" "${SYSLINUX_PATH}"/live*.cfg
+# Inserting the Tails version on this entry cuts part of the text
+sed -i -r -e 's/(menu label Tails )(.*)\(failsafe\)/\1(Troubleshooting Mode)/' \
+    "${SYSLINUX_PATH}"/live*.cfg
+sed -i -r -e 's/(append .*)/\1\n\tsysappend 0x40000/g' "${SYSLINUX_PATH}"/live*.cfg
+
+cat >"${SYSLINUX_PATH}/tails.cfg" <<EOF
+menu color sel      *           #ffffffff   #55555555   *
+menu color hotsel   1;7;37;40   #ffffffff   #22222222   *
+
+menu width 53
+menu vshift 12
+menu rows 7
+menu helpmsgrow 15
+menu cmdlinerow 13
+menu timeoutrow 16
+menu tabmsgrow 18
+EOF
+
+sed -i -e '/^include stdmenu\.cfg/a include tails.cfg' "${CFG_FILE}"
+
+# no need to use absolute paths to find splash images
+sed -e 's,/isolinux/,,' -i "${SYSLINUX_PATH}/stdmenu.cfg"
+
+# remove useless files that break incremental upgrades
+rm "${SYSLINUX_PATH}"/{exithelp,prompt}.cfg

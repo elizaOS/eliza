@@ -1,0 +1,20 @@
+[[!meta date="Sun, 15 Dec 2013 14:00:00 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!meta title="Crowd-funding campaign for Tails"]]
+[[!tag announce]]
+
+The Freedom of the Press Foundation launched a [campaign to support encryption
+tools for journalists](https://pressfreedomfoundation.org/) that is going to
+last for two months. The campaign is gathering funds for Tails,
+[Tor](https://torproject.org/), the encrypted mobile communication tools
+[RedPhone and TextSecure](https://whispersystems.org/), and the encrypted email
+platform [LEAP](https://leap.se/).
+
+<https://pressfreedomfoundation.org/>
+
+Spread the word and help make the campaign a success. This is an easy way to
+donate to support open-source encryption tools that can better protect the
+communications of journalists and sources. Your donation will be
+tax-deductible. You
+can also donate by
+check.

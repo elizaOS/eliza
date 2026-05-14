@@ -1,0 +1,25 @@
+- [[Introduction to the Persistent Storage|persistent_storage]]
+
+  * [[Creating the Persistent Storage|persistent_storage/create]]
+
+  * [[Configuring the Persistent Storage|persistent_storage/configure]]
+
+  * [[Unlocking and using the Persistent Storage|persistent_storage/use]]
+
+  * [[Making a backup of your Persistent Storage|persistent_storage/backup]]
+
+  * [[Deleting the Persistent Storage|persistent_storage/delete]]
+
+- [[Installing additional software|persistent_storage/additional_software]]
+
+  * [[Converting dangerous documents to safe PDFs using *Dangerzone*|persistent_storage/additional_software/dangerzone]]
+
+- [[Installing additional fonts|persistent_storage/additional_fonts]]
+
+- [[Changing the passphrase of the Persistent Storage|persistent_storage/passphrase]]
+
+- [[Opening your Persistent Storage from another operating system|persistent_storage/open]]
+
+- [[Recovering data from the Persistent Storage when Tails doesn't start|persistent_storage/recover]]
+
+- [[Recovering data from the Persistent Storage when it has file system errors|persistent_storage/fsck]]

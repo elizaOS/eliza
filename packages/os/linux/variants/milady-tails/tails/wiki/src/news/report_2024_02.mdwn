@@ -1,0 +1,57 @@
+[[!meta title="Tails report for February 2024"]]
+[[!meta date="Tue, 19 Mar 2024 11:46:47 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!toc]]
+
+Highlights
+==========
+
+Despite the bonus day this year, February flew by pretty quickly! Here's what
+we were up to:
+
+- We ended February more resilient and collaborative than when we started. We
+  have new tooling to make it easier to work on shared documents, and use XMPP
+  more effectively. We also worked to strengthen our front-end services and set
+  up the back-end infrastructre to build redundancies into our services.
+
+- In 2021 and 2022, our [[usability tests with human rights defenders in Mexico
+  and Brazil|news/improving_in_latam]] prompted several
+  improvements in the installation instructions for Tails. Fixing 16 of the
+  identified usability issues were remaining, and we fixed them all this month.
+  These tests, experiences, and improvements will greatly shape our future
+  trainings.
+
+- We finished updating our website for Tails 6.0. Check out the rewritten
+  [[recommendation on secure
+  deletion|doc/encryption_and_privacy/secure_deletion]]. 
+
+Releases
+========
+
+📢 [[Tails 6.0 is out|news/version_6.0]]! 
+
+Tails 6.0 is the first version of Tails based on Debian 12 ("bookworm"), and is
+the sexiest, slickest, and sleekest Tails yet. It brings:
+
+- several important security updates: more robust error detection for the
+  Persistent Storage, protections against malicious USB devices, and Diceware
+  word lists in Catalan, German, Italian, Portuguese, and Spanish
+
+- some more usability features: new light modes—dark, night, and a
+  combination of both; easier screenshoting and screencasting; and easier Gmail
+  configuration in Thunderbird
+
+- and, updated version of most of the applications in Tails
+
+To know more, check out the Tails 6.0 [[release notes|news/version_6.0]] and
+the
+[changelog](https://gitlab.tails.boum.org/tails/tails/-/blob/master/debian/changelog).
+Thank you to everyone who helped us out by testing the [[release
+candidate|news/test_6.0-rc1/]].
+
+Metrics
+=======
+
+Tails was started more than 806,714 times this month. That's a daily average of
+over 27,817 boots.

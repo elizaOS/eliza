@@ -1,0 +1,459 @@
+#!/bin/sh
+
+set -e
+set -u
+
+echo "Install the Tor Browser"
+
+# Import the TBB_INSTALL, TBB_PROFILE, and TBB_EXT variables,
+# which contains the paths we will
+# split TBB's actual browser (binaries etc), user data and extension
+# into. While this differs from how the TBB organizes the files, the
+# end result will be the same, and it's practical since when creating
+# a new browser profile we can simply copy the profile directory
+# without duplicating all extensions.
+. /usr/local/lib/tails-shell-library/tor-browser.sh
+# Import ensure_hook_dependency_is_installed,
+# install_fake_package,
+# strip_nondeterminism_wrapper
+. /usr/local/lib/tails-shell-library/build.sh
+# Import JENKINS_URL and TAILS_PROXY_TYPE
+. /usr/share/tails/build/variables
+
+download_and_verify_files() {
+    local base_url target_files destination apt_proxy
+    base_url="${1}"
+    target_files="${2}"
+    destination="${3}"
+
+    # Use the builder's caching APT proxy, if any
+    apt_proxy="$(apt-config --format '%v' dump Acquire::http::Proxy)"
+    if [ -n "${apt_proxy}" ]; then
+        if [ "${TAILS_PROXY_TYPE}" = 'vmproxy' ] || [ -n "${JENKINS_URL:-}" ]; then
+            # When using the vmproxy or building on Jenkins, we know
+            # that apt-cacher-ng is used, so we fetch and cache over
+            # https using the HTTPS/// trick
+            # (https://www.unix-ag.uni-kl.de/~bloch/acng/html/howtos.html#ssluse)
+            base_url="$(echo "$base_url" | sed "s@^https://@${apt_proxy}/HTTPS///@")"
+            unset HTTP_PROXY http_proxy HTTPS_PROXY https_proxy
+        else
+            # Otherwise it's the user's responsibility to configure their proxy
+            # to support the (possibly HTTPS) URL we want to download.
+            export HTTP_PROXY="${apt_proxy}"
+            export http_proxy="${apt_proxy}"
+            export HTTPS_PROXY="${apt_proxy}"
+            export https_proxy="${apt_proxy}"
+        fi
+    fi
+
+    echo "${target_files}" | while read -r expected_sha256 tarball; do
+        (
+            cd "${destination}"
+            echo "Fetching ${base_url}/${tarball} ..."
+            # Bypass the /usr/local/bin/curl wrapper
+            /usr/bin/curl --retry 20 --remote-name "${base_url}/${tarball}"
+        )
+        actual_sha256="$(sha256sum "${destination}/${tarball}" | cut -d' ' -f1)"
+        if [ "${actual_sha256}" != "${expected_sha256}" ]; then
+            echo "SHA256 mismatch for ${tarball}" >&2
+            exit 1
+        fi
+    done
+}
+
+install_tor_browser() {
+    local bundle destination tmp prep
+    bundle="${1}"
+    destination="${2}"
+
+    tmp="$(mktemp -d)"
+    tar -xf "${bundle}" -C "${tmp}" --strip-components=1
+    prep="${tmp}"/Browser
+    if ! [ -d "$prep" ]; then
+        echo "The main bundle's top level directory is wrong" >&2
+        exit 1
+    fi
+
+    # Enable our myspell/hunspell dictionaries. TBB only provides the
+    # one for en-US, but Debian's seems more comprehensive, so we'll
+    # only use Debian's dictionaries.
+    mkdir "${prep}"/dictionaries
+    for f in /usr/share/hunspell/*.aff /usr/share/hunspell/*.dic; do
+        ln -s "${f}" "${prep}"/dictionaries/
+    done
+
+    # Let's use the libstdc++ that the Tor Browser is intended to be used with,
+    # instead of the system one, whenever ours is too old.
+    # For details see
+    # https://gitlab.torproject.org/tpo/applications/tor-browser-build/-/blob/main/projects/firefox/abicheck.cc
+    # cp "${prep}"/TorBrowser/Tor/libstdc++/libstdc++.so.6 "${prep}"
+
+    mv "${prep}" "${destination}"
+    rm -r "${tmp}"
+}
+
+install_pluggable_transports() {
+    local bundle destination
+    bundle="${1}"
+    destination="${2}"
+
+    tmp="$(mktemp -d)"
+    tar -xf "${bundle}" -C "${tmp}" --strip-components=1
+
+    for pt in "${tmp}"/Browser/TorBrowser/Tor/PluggableTransports/*; do
+        echo "I: installing $(basename "$pt") pluggable transport"
+        install --owner=root --group=root --mode=755 \
+            --target-directory="$destination" "$pt"
+    done
+
+    # In Tor Browser 12.5 obfs4proxy was renamed into lyrebird, but we
+    # keep the old name until tor's apparmor rules catches up to this
+    # name change.
+    if [ -e /usr/bin/lyrebird ]; then
+        mv /usr/bin/lyrebird /usr/bin/obfs4proxy
+    fi
+
+    rm -r "${tmp}"
+}
+
+embed_extensions_in_omni_ja() {
+    local tbb_install tbb_timestamp tmp
+    tbb_install="${1}"
+    tbb_timestamp="${2}"
+
+    tmp="$(mktemp -d)"
+    (
+        cd "${tmp}"
+        7z x -tzip "${tbb_install}/omni.ja"
+        mkdir -p chrome/tails/content/extensions
+        echo "resource tails tails/" >>chrome/chrome.manifest
+        cp -a --target-directory=chrome/tails/content/extensions \
+            '/usr/share/mozilla/extensions/{ec8030f7-c20a-464f-9b0e-13a3a9e97384}/uBlock0@raymondhill.net'
+        find chrome/tails/content/extensions/ -exec touch --date="@${tbb_timestamp}" '{}' \;
+        rm "${tbb_install}/omni.ja"
+        7z a -mtc=off -tzip -- "${tbb_install}/omni.ja" *
+    )
+    rm -r "${tmp}"
+    tmp="$(mktemp -d)"
+    (
+        cd "${tmp}"
+        7z x -tzip "${tbb_install}/browser/omni.ja"
+        # Patch Tor Browser to skip the mandatory signature check for
+        # uBlock Origin, which is necessary because we get it from the
+        # webext-ublock-origin-firefox .deb which is not
+        # signed. Context:
+        # https://gitlab.tails.boum.org/tails/tails/-/issues/11419
+        # Once Tor Browser ships an adblocker we can drop this
+        # (https://gitlab.torproject.org/tpo/applications/tor-browser/-/issues/17569).
+        # Any $ in the below in-line patch must be escaped!
+        patch --no-backup-if-mismatch -p1 <<'EOF'
+--- browser-omni.orig/modules/BrowserGlue.sys.mjs	2025-07-24 20:16:00.000000000 +0200
++++ browser-omni/modules/BrowserGlue.sys.mjs	2025-07-31 12:42:13.271851005 +0200
+@@ -33,6 +33,7 @@
+     "resource:///modules/DownloadsViewableInternally.sys.mjs",
+   DragDropFilter: "resource://gre/modules/DragDropFilter.sys.mjs",
+   ExtensionsUI: "resource:///modules/ExtensionsUI.sys.mjs",
++  ExtensionData: "resource://gre/modules/Extension.sys.mjs",
+   // FilePickerCrashed is used by the `listeners` object below.
+   // eslint-disable-next-line mozilla/valid-lazy
+   FilePickerCrashed: "resource:///modules/FilePickerCrashed.sys.mjs",
+@@ -90,6 +91,7 @@
+ XPCOMUtils.defineLazyServiceGetters(lazy, {
+   BrowserHandler: ["@mozilla.org/browser/clh;1", "nsIBrowserHandler"],
+   PushService: ["@mozilla.org/push/Service;1", "nsIPushService"],
++  resProto: ["@mozilla.org/network/protocol;1?name=resource", "nsISubstitutingProtocolHandler"],
+ });
+ 
+ if (AppConstants.ENABLE_WEBDRIVER) {
+@@ -628,6 +630,29 @@
+ 
+     listeners.init();
+ 
++    (async () => {
++      const UBLOCK_ORIGIN_ID = "uBlock0@raymondhill.net";
++      const UBLOCK_ORIGIN_BUILTIN_URL =
++        "resource://tails/content/extensions/uBlock0@raymondhill.net/";
++      try {
++        const resolvedURI = Services.io.newURI(
++          lazy.resProto.resolveURI(Services.io.newURI(UBLOCK_ORIGIN_BUILTIN_URL))
++        );
++        const extensionData = new lazy.ExtensionData(resolvedURI);
++        const manifest = await extensionData.loadManifest();
++
++        await lazy.AddonManager.maybeInstallBuiltinAddon(
++          UBLOCK_ORIGIN_ID,
++          manifest.version,
++          UBLOCK_ORIGIN_BUILTIN_URL
++        );
++      } catch (e) {
++        const log = lazy.Log.repository.getLogger("uBlockOriginBuiltinLoader");
++        log.addAppender(new lazy.Log.ConsoleAppender(new lazy.Log.BasicFormatter()));
++        log.error("Could not install uBlock Origin extension", e);
++      }
++    })();
++
+     lazy.BrowserUtils.callModulesFromCategory({
+       categoryName: "browser-before-ui-startup",
+     });
+EOF
+        touch --date="@${tbb_timestamp}" modules/BrowserGlue.sys.mjs
+        rm "${tbb_install}/browser/omni.ja"
+        7z a -mtc=off -tzip -- "${tbb_install}/browser/omni.ja" *
+    )
+    rm -r "${tmp}"
+}
+
+apply_prefs_hacks() {
+    local tbb_install tmp tbb_timestamp
+    tbb_install="${1}"
+    tbb_timestamp="${2}"
+
+    tmp="$(mktemp -d)"
+    (
+        cd "${tmp}"
+        7z x -tzip "${tbb_install}/browser/omni.ja"
+        # Remove TBB's Tor Launcher settings since we don't enable it in
+        # our Tor Browser.
+        sed -i '/extensions\.torlauncher\./d' defaults/preferences/000-tor-browser.js
+        # Display the Stop/Reload button: our test suite currently depends on it
+        perl -pi -E \
+            's/^(pref\("browser\.uiCustomization\.state",.*\\"loop-button\\")/$1,\\"stop-reload-button\\"/' \
+            defaults/preferences/000-tor-browser.js
+
+        # Append our custom prefs
+        cat /usr/share/tails/tor-browser-prefs.js \
+            >>defaults/preferences/000-tor-browser.js
+        touch --date="@${tbb_timestamp}" defaults/preferences/000-tor-browser.js
+        rm "${tbb_install}/browser/omni.ja"
+        7z a -mtc=off -tzip -- "${tbb_install}/browser/omni.ja" *
+    )
+    rm -r "${tmp}"
+}
+
+# We are not using Tor Launcher, but our own Tor Connection
+# Assistant, and we want it to use the same default bridges.
+extract_default_bridges() {
+    local tbb_install tmp pt_config_path
+    tbb_install="${1}"
+
+    pt_config_path=chrome/toolkit/content/global/pt_config.json
+    tmp="$(mktemp -d)"
+    (
+        cd "${tmp}"
+        7z x -tzip "${tbb_install}/omni.ja" "$pt_config_path"
+
+        echo "Input configuration file:" >&2
+        cat "$pt_config_path" >&2
+
+        ensure_hook_dependency_is_installed jq
+        jq --raw-output '.bridges | .[] | join("\n")' \
+            "$pt_config_path" \
+            >/usr/share/tails/tca/default_bridges.txt
+
+        if [ "$(wc -l </usr/share/tails/tca/default_bridges.txt)" -lt 4 ]; then
+            echo "Extracted fewer default bridges than expected" >&2
+            cat /usr/share/tails/tca/default_bridges.txt >&2
+            exit 1
+        fi
+
+        # We currently only support obfs4 or webtunnel default bridges
+        # so let's ensure we have enough of those.
+        if [ "$(grep --extended-regexp --count '^(obfs4|webtunnel)\s+' /usr/share/tails/tca/default_bridges.txt)" -lt 4 ]; then
+            echo "Extracted fewer obfs4 bridges than expected:" >&2
+            cat /usr/share/tails/tca/default_bridges.txt >&2
+            exit 1
+        fi
+    )
+    rm -r "${tmp}"
+}
+
+extract_moat_countries() {
+    local tbb_install tmp moat_countries_path
+    tbb_install="${1}"
+
+    moat_countries_path=chrome/toolkit/content/global/moat_countries.json
+    tmp="$(mktemp -d)"
+    (
+        cd "${tmp}"
+        7z x -tzip "${tbb_install}/omni.ja" "${moat_countries_path}"
+        mv "${moat_countries_path}" /usr/share/tails/tca/moat_countries.json
+        chmod a+r /usr/share/tails/tca/moat_countries.json
+    )
+    rm -r "${tmp}"
+}
+
+hide_tor_donation_campaign() {
+    local tbb_install tmp tbb_timestamp
+    tbb_install="${1}"
+    tbb_timestamp="${2}"
+
+    tmp="$(mktemp -d)"
+    (
+        cd "${tmp}"
+        7z x -tzip "${tbb_install}/browser/omni.ja"
+        sed -i '/YecWidget\.init();/d' ./chrome/browser/content/browser/abouttor/aboutTor.js
+        touch --date="@${tbb_timestamp}" ./chrome/browser/content/browser/abouttor/aboutTor.js
+        rm "${tbb_install}/browser/omni.ja"
+        7z a -mtc=off -tzip -- "${tbb_install}/browser/omni.ja" *
+    )
+    rm -r "${tmp}"
+}
+
+disable_update_checks() {
+    local tbb_install
+    tbb_install="${1}"
+    mkdir -p "${tbb_install}/distribution"
+    cat >"${tbb_install}/distribution/policies.json" <<EOF
+{
+  "policies": {
+    "DisableAppUpdate": true
+  }
+}
+EOF
+}
+
+strip_nondeterminism() {
+    local tbb_install tbb_timestamp
+    tbb_install="${1}"
+    tbb_timestamp="${2}"
+
+    for archive in "${tbb_install}/omni.ja" "${tbb_install}/browser/omni.ja"; do
+        strip_nondeterminism_wrapper --type zip --timestamp "${tbb_timestamp}" \
+            "${archive}" 2>/dev/null
+    done
+}
+
+get_firefox_version() {
+    # The application.ini file
+    local appini
+    appini="${1}"
+    sed -n 's/^Version=\(.*\)$/\1/p' "${appini}"
+}
+
+customize_ublock_assets() {
+    local ublock_assets_dir ublock_assets
+    ublock_assets_dir="$1"
+
+    # In dev builds, such as release candidates which are sometimes packaged in Debian,
+    # the file is called assets.dev.json. Otherwise it's assets.json.
+    ublock_assets=
+    for candidate in assets.json assets.dev.json; do
+        if [ -e "${ublock_assets_dir}"/"${candidate}" ]; then
+            ublock_assets="${ublock_assets_dir}"/"${candidate}"
+            break
+        fi
+    done
+    if [ -z "$ublock_assets" ]; then
+        echo "Failed to locate the assets JSON file" >&2
+        exit 1
+    fi
+
+    /usr/share/tails/build/customize-ublock-assets \
+        --input-file "$ublock_assets" \
+        --output-file "$ublock_assets".new
+    mv "$ublock_assets".new "$ublock_assets"
+}
+
+install_debian_extensions() {
+    local destination timestamp fake_firefox_version firefox_version
+    destination="${1}"
+    timestamp="${2}"
+
+    # Install a fake firefox equivs package to satisfy the
+    # dependencies for the extensions we are about to install.
+    firefox_version=$(get_firefox_version "${destination}"/application.ini)
+    fake_firefox_version=${firefox_version}+fake1
+    install_fake_package firefox "${fake_firefox_version}" web
+
+    apt-get install --yes webext-ublock-origin-firefox
+    patch -p1 </usr/share/tails/uBlock-disable-autoUpdate.diff
+    customize_ublock_assets \
+        '/usr/share/mozilla/extensions/{ec8030f7-c20a-464f-9b0e-13a3a9e97384}/uBlock0@raymondhill.net/assets'
+
+    # Apply the same hack for our extension as the Tor Browser used to
+    # for HTTPS-Everywhere in order to bypass the mandatory extension
+    # signature check, which we lack since we install our extensions
+    # from Debian ...
+    embed_extensions_in_omni_ja "${destination}" "${timestamp}"
+    # ... and then remove the packages we just installed, since we
+    # don't need them outside of omni.ja.
+    apt purge --yes firefox webext-ublock-origin-firefox
+}
+
+create_default_profile() {
+    local tbb_extensions_dir destination
+    tbb_extensions_dir="${1}"
+    destination="${2}"
+
+    mkdir -p "${destination}"/extensions
+    for ext in "${tbb_extensions_dir}"/*; do
+        ln -s "${ext}" "${destination}"/extensions/
+    done
+}
+
+# For consistency we'll set timestamps of files we modify to the
+# same one used by the Tor Browser instead of SOURCE_DATE_EPOCH.
+TBB_TIMESTAMP="$(date --date='2000-01-01 00:00:00' +%s)"
+
+TBB_SHA256SUMS_FILE=/usr/share/tails/tbb-sha256sums.txt
+TBB_DIST_URL_FILE=/usr/share/tails/tbb-dist-url.txt
+TBB_TARBALLS_BASE_URL="$(cat "${TBB_DIST_URL_FILE}")"
+TBB_TARBALLS="$(grep "\<tor-browser-linux-x86_64-.*\.tar\.xz$" "${TBB_SHA256SUMS_FILE}")"
+
+MAIN_TARBALL="$(echo "${TBB_TARBALLS}" | grep -o "tor-browser-linux-x86_64-.*\.tar\.xz")"
+
+TMP="$(mktemp -d)"
+download_and_verify_files "${TBB_TARBALLS_BASE_URL}" "${TBB_TARBALLS}" "${TMP}"
+
+# shellcheck disable=SC2153
+install_tor_browser "${TMP}/${MAIN_TARBALL}" "${TBB_INSTALL}"
+
+# sometime (?) this get added to a tor browser tarball; let's clean that
+rm -f /usr/local/lib/tor-browser/start-browser.orig
+rm -f /usr/local/lib/tor-browser/start-tor-browser.orig
+
+apply_prefs_hacks "${TBB_INSTALL}" "${TBB_TIMESTAMP}"
+hide_tor_donation_campaign "${TBB_INSTALL}" "${TBB_TIMESTAMP}"
+extract_default_bridges "${TBB_INSTALL}"
+extract_moat_countries "${TBB_INSTALL}"
+install_debian_extensions "${TBB_INSTALL}" "${TBB_TIMESTAMP}"
+disable_update_checks "${TBB_INSTALL}"
+strip_nondeterminism "${TBB_INSTALL}" "${TBB_TIMESTAMP}"
+
+install_pluggable_transports "${TMP}/${MAIN_TARBALL}" /usr/bin
+
+rm -r "${TMP}"
+
+# Let's put all the extensions from TBB in the global extensions
+# directory...
+mkdir -p "${TBB_EXT}"
+mv "${TBB_INSTALL}"/TorBrowser/Data/Browser/profile.default/extensions/* "${TBB_EXT}"
+rmdir "${TBB_INSTALL}"/TorBrowser/Data/Browser/profile.default/extensions
+mv "${TBB_INSTALL}"/distribution/extensions/* "${TBB_EXT}"
+rmdir "${TBB_INSTALL}"/distribution/extensions
+
+create_default_profile "${TBB_EXT}" "${TBB_PROFILE}"
+
+# Let's just sanity check that we haven't forgotten anything in the
+# default profile.
+rmdir "${TBB_INSTALL}"/TorBrowser/Data/Browser/profile.default
+# Let's remove files no longer needed
+rm -r "${TBB_INSTALL}"/TorBrowser
+# The Tor Browser will fail, complaining about an incomplete profile,
+# unless there's a readable TorBrowser/Data/Browser/Caches in the
+# directory where the firefox executable is located.
+mkdir -p "${TBB_INSTALL}"/TorBrowser/Data/Browser/Caches
+# Similarly, without this the "General" section in the preferences is
+# not displayed.
+install -d -m 0755 "${TBB_INSTALL}"/TorBrowser/UpdateInfo
+
+chown -R root:root "${TBB_INSTALL}" "${TBB_PROFILE}" "${TBB_EXT}"
+chmod -R a+rX "${TBB_INSTALL}" "${TBB_PROFILE}" "${TBB_EXT}"
+
+# Make the Tor Browser into the system's default web browser
+update-alternatives --install /usr/bin/x-www-browser x-www-browser /usr/local/bin/tor-browser 99
+update-alternatives --install /usr/bin/gnome-www-browser gnome-www-browser /usr/local/bin/tor-browser 99
+sed 's/\<firefox-esr\.desktop\>/org.boum.tails.TorBrowser.desktop/' \
+    /usr/share/applications/gnome-mimeapps.list \
+    >/etc/xdg/gnome-mimeapps.list
+chmod 644 /etc/xdg/gnome-mimeapps.list

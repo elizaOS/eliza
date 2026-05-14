@@ -1,0 +1,42 @@
+{# Jinja2 template used by bin/generate-call-for-manual-testers -#}
+To: rm@tails.net, sajolida@pimienta.org
+Subject: Testing Tails {{version}}
+
+Hi,
+
+Please get ready for the manual testing of Tails {{version}}.
+
+I've just started preparing the images. I will let you know
+on this thread once they're available for download.
+
+Here's the pad for testing coordination:
+
+    {{pad}}
+
+Please "tag" tests that you are doing so we don't duplicate work.
+
+Please test by {{end}}.
+
+I expect feedback on the pad but if you have questions, I'll try to be on Matrix.
+
+Meanwhile, you can get an idea of what will be in Tails {{version}} in:
+
+{% if dist == 'stable' %}
+    https://nightly.tails.boum.org/build_Tails_ISO_{{release_branch}}/
+{% elif dist == 'alpha' %}
+**FIXME**:
+
+  - for the first release candidate, use devel (you just created the testing
+    branch and there's no build of testing yet):
+
+    https://nightly.tails.boum.org/build_Tails_ISO_devel/
+
+  - for subsequent release candidates, use testing:
+
+    https://nightly.tails.boum.org/build_Tails_ISO_testing/
+{% else %}
+    **ERROR**: unsupported dist variable: {{dist}}
+{% endif %}
+
+Thanks a lot in advance,
+cheers!

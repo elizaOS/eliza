@@ -1,0 +1,182 @@
+#! /usr/bin/python3
+
+# Documentation: https://tails.net/contribute/working_together/GitLab/#api
+
+import datetime
+import email.utils
+import functools
+import gitlab
+import jinja2
+import logging
+import os
+import pprint
+import re
+
+from pathlib import Path
+
+PYTHON_GITLAB_CONFIG_FILE = os.getenv(
+    "PYTHON_GITLAB_CONFIG_FILE", default=str(Path.home() / ".python-gitlab.cfg")
+)
+
+PYTHON_GITLAB_NAME = os.getenv("GITLAB_NAME", default="Tails")
+
+GROUP_NAME = "tails"
+
+# Only changes in these projects are considered
+PROJECTS = [
+    GROUP_NAME + "/" + project
+    for project in [
+        "chutney",
+        "tails",
+        "workarounds",
+        "tails-private",
+    ]
+]
+
+# Merge requests that modify only files whose path match one of IGNORED_PATHS
+# are ignored.
+# Patterns will be passed to re.fullmatch().
+IGNORED_PATHS = [
+    r"po/.*",
+    r"wiki/.*",
+]
+
+LOG_FORMAT = "%(asctime)-15s %(levelname)s %(message)s"
+log = logging.getLogger()
+
+
+class GitLabWrapper(gitlab.Gitlab):
+    @functools.cache  # noqa:B019
+    def project(self, project_id):
+        return self.projects.get(project_id)
+
+    @functools.cache  # noqa:B019
+    def project_path_with_namespace(self, project_id):
+        return self.project(project_id).path_with_namespace
+
+
+class ChangelogGenerator:
+    def __init__(self, gl, group, version: str):
+        self.gl = gl
+        self.group = group
+        self.version = version
+
+    def merge_requests(self, milestone) -> list:
+        mrs = []
+
+        gl_mrs = [
+            mr
+            for mr in milestone.merge_requests(all=True)
+            if mr.state == "merged"
+            and self.gl.project_path_with_namespace(mr.target_project_id) in PROJECTS
+        ]
+
+        for gl_mr in gl_mrs:
+            project = self.gl.project(gl_mr.target_project_id)
+            mr = project.mergerequests.get(gl_mr.iid)
+            if ignore_merge_request(mr):
+                continue
+            mrs.append(
+                {
+                    "ref": mr.references["full"],
+                    "title": mr.title,
+                    "web_url": mr.web_url,
+                    "closes_issues": [
+                        {
+                            "ref": project.issues.get(issue.iid).references["full"],
+                            "title": issue.title,
+                        }
+                        for issue in mr.closes_issues()
+                    ],
+                    "commit_messages": [
+                        commit.title
+                        for commit in mr.commits()
+                        # Ignore merge commits
+                        if len(project.commits.get(commit.id).parent_ids) == 1
+                    ],
+                }
+            )
+
+        return mrs
+
+    def changes(self) -> dict:
+        milestone_title = "Tails_" + self.version
+        milestones = [
+            m
+            for m in self.group.milestones.list(search=milestone_title)
+            # Disambiguate between milestones whose names share a common prefix
+            if m.title == milestone_title
+        ]
+        if len(milestones) != 1:
+            raise ValueError(f"Need exactly 1 milestone called '{milestone_title}'")
+        milestone = milestones[0]
+        assert isinstance(milestone, gitlab.v4.objects.GroupMilestone)
+
+        return {
+            "merge_requests": self.merge_requests(milestone),
+            "issues": {},  # Let's see if we really need this; probably not.
+        }
+
+
+def ignore_merge_request(mr) -> bool:
+    for change in mr.changes()["changes"]:
+        for path in [change["old_path"], change["new_path"]]:
+            if all(
+                [
+                    re.fullmatch(ignored_path, path) is None
+                    for ignored_path in IGNORED_PATHS
+                ]
+            ):
+                log.debug("Returning false")
+                return False
+    log.debug("Returning true")
+    return True
+
+
+def changelog_entry(version: str, date: datetime, changes: dict):
+    jinja2_env = jinja2.Environment(  # noqa:S701
+        loader=jinja2.FileSystemLoader("config/release_management/templates"),
+        trim_blocks=True,
+        lstrip_blocks=True,
+    )
+
+    return jinja2_env.get_template("changelog.jinja2").render(
+        merge_requests=changes["merge_requests"],
+        issues=changes["issues"],
+        date=email.utils.format_datetime(date),
+        version=version,
+    )
+
+
+if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--version", required=True)
+    parser.add_argument("--debug", action="store_true", help="debug output")
+    args = parser.parse_args()
+
+    if args.debug:
+        logging.basicConfig(level=logging.DEBUG, format=LOG_FORMAT)
+    else:
+        logging.basicConfig(level=logging.INFO, format=LOG_FORMAT)
+
+    gl = GitLabWrapper.from_config(
+        PYTHON_GITLAB_NAME, config_files=[PYTHON_GITLAB_CONFIG_FILE]
+    )
+    gl.auth()
+
+    group = gl.groups.list(search=GROUP_NAME)[0]
+    assert isinstance(group, gitlab.v4.objects.Group)
+
+    changes = ChangelogGenerator(gl, group, args.version).changes()
+
+    log.debug(pprint.PrettyPrinter().pformat(changes))
+
+    print(
+        changelog_entry(
+            version=args.version,
+            date=datetime.datetime.now(datetime.UTC),
+            changes=changes,
+        )
+    )

@@ -1,0 +1,56 @@
+#!/usr/bin/python3 -I
+
+import os
+import sys
+from argparse import ArgumentParser
+
+from tailslib.cleartext_storage import CleartextStorage
+from tailslib.persistence import is_tails_media_writable
+
+
+def get_parser():
+    p = ArgumentParser()
+    p.set_defaults(mode=None)
+    sub = p.add_subparsers()
+
+    load = sub.add_parser("load")
+    load.add_argument("key")
+    load.set_defaults(mode="load")
+
+    delete = sub.add_parser("delete")
+    delete.add_argument("key")
+    delete.set_defaults(mode="delete")
+
+    save = sub.add_parser("save")
+    save.add_argument("key")
+    save.set_defaults(mode="save")
+
+    return p
+
+
+def main():
+    args = get_parser().parse_args()
+    if not args.mode:
+        args.print_help()
+        return
+
+    cs = CleartextStorage()
+    if args.mode == "load":
+        try:
+            content = cs.load(args.key)
+        except FileNotFoundError:
+            print("File not found", file=sys.stderr)
+            sys.exit(1)
+        sys.stdout.write(content)
+    if args.mode == "delete":
+        cs.delete(args.key)
+    if args.mode == "save":
+        content = sys.stdin.read()
+        cs.save(args.key, content)
+
+
+if __name__ == "__main__":
+    if os.getuid() != 0:
+        print("This program needs to run as root", file=sys.stderr)
+        sys.exit(1)
+    main()

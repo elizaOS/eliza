@@ -1,0 +1,9 @@
+[[!meta date="Sat, 20 Feb 2021 11:52:29 -0000"]]
+[[!meta title="Known security vulnerabilities in Tails 4.15.1"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+[[Tails 4.16|news/version_4.16]] fixes many security vulnerabilities that affect
+Tails 4.15.1. You should [[upgrade to Tails 4.16|news/version_4.16]] as
+soon as possible.

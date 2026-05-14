@@ -1,0 +1,139 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2026-03-31 22:08+0000\n"
+"PO-Revision-Date: 2026-03-15 09:42+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: ru\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=3; plural=n%10==1 && n%100!=11 ? 0 : n%10>=2 && "
+"n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Printing and scanning\"]]\n"
+msgstr "[[!meta title=\"Печать и сканирование\"]]\n"
+
+#. type: Title =
+#, no-wrap
+msgid "Printing"
+msgstr "Печать"
+
+#. type: Plain text
+msgid ""
+"To configure a printer or manage your printing jobs, choose **Apps&nbsp;▸ "
+"System Tools&nbsp;▸ Settings&nbsp;▸ Printers**."
+msgstr ""
+"Для настройки принтера и управления заданиями на печать выберите "
+"**Приложения&nbsp;▸ Системные&nbsp;▸ Настройки&nbsp;▸ Принтеры**."
+
+#. type: Plain text
+#, fuzzy
+#| msgid ""
+#| "To check the compatibility of your printer with Linux and Tails, consult "
+#| "the [OpenPrinting database](https://www.openprinting.org/printers) of the "
+#| "Linux Foundation."
+msgid ""
+"To check the compatibility of your printer with Linux and Tails, consult the "
+"[OpenPrinting database](https://openprinting.github.io/printers/) of the "
+"Linux Foundation."
+msgstr ""
+"Чтобы проверить совместимость вашего принтера с Linux и Tails, обратитесь к "
+"[базе данных OpenPrinting](https://www.openprinting.org/printers) от Linux "
+"Foundation."
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid ""
+#| "<div class=\"tip\">\n"
+#| "<p>To reuse the configuration of your printers across different working\n"
+#| "sessions, turn on the [[Printers|doc/first_steps/persistence#printers]]\n"
+#| "feature of the Persistent Storage.</p>\n"
+#| "</div>\n"
+msgid ""
+"<div class=\"tip\">\n"
+"<p>To reuse the configuration of your printers across different working\n"
+"sessions, turn on the [[Printers|persistent_storage/configure#printers]]\n"
+"feature of the Persistent Storage.</p>\n"
+"</div>\n"
+msgstr ""
+"<div class=\"tip\">\n"
+"<p>Чтобы настройки принтеров сохранялись между сессиями Tails, включите опцию [[Printers|doc/first_steps/persistence#printers]]\n"
+"в настройках Постоянного хранилища.</p>\n"
+"</div>\n"
+
+#. type: Plain text
+#, fuzzy
+#| msgid "Printing"
+msgid "Printing PDFs"
+msgstr "Печать"
+
+#. type: Plain text
+msgid ""
+"Before printing PDFs, you can use [*BookletImposer*](https://"
+"kjo.herbesfolles.org/bookletimposer/) to:"
+msgstr ""
+
+#. type: Bullet: '* '
+msgid ""
+"Reduce the number of pages in a PDF by putting several pages on every sheet."
+msgstr ""
+
+#. type: Bullet: '* '
+msgid "Produce a PDF booklet that can be folded after printing."
+msgstr ""
+
+#. type: Title =
+#, no-wrap
+msgid "Scanning"
+msgstr "Сканирование"
+
+#. type: Plain text
+#, fuzzy
+#| msgid ""
+#| "Tails includes <span class=\"application\">[Simple\n"
+#| "Scan](https://launchpad.net/simple-scan)</span>, a tool to scan both\n"
+#| "documents and photos.\n"
+msgid ""
+"Tails includes the [*Document Scanner*](https://apps.gnome.org//"
+"SimpleScan/)  utility to scan documents and photos."
+msgstr ""
+"В Tails есть приложение <span class=\"application\">[Простое сканирование]"
+"(https://launchpad.net/simple-scan)</span>, которое позволяет сканировать "
+"документы и фотографии.\n"
+
+#. type: Plain text
+msgid ""
+"To open *Document Scanner*, choose **Apps&nbsp;▸ Utilities&nbsp;▸ Document "
+"Scanner**."
+msgstr ""
+
+#, fuzzy, no-wrap
+#~| msgid ""
+#~| "To start *Simple Scan* choose\n"
+#~| "<span class=\"menuchoice\">\n"
+#~| "  **Applications**&nbsp;▸\n"
+#~| "  **Graphics**&nbsp;▸\n"
+#~| "  **Simple Scan**</span>.\n"
+#~ msgid ""
+#~ "To start *Simple Scan* choose\n"
+#~ "<span class=\"menuchoice\">\n"
+#~ "  **Applications**&nbsp;▸\n"
+#~ "  **Graphics**&nbsp;▸\n"
+#~ "  **Simple Scan**</span>.\n"
+#~ msgstr ""
+#~ "Для запуска *Простое сканирование* выберите\n"
+#~ "<span class=\"menuchoice\">\n"
+#~ "  **Приложения**&nbsp;▸\n"
+#~ "  **Графика**&nbsp;▸\n"
+#~ "  **Простое сканирование/span>**.\n"

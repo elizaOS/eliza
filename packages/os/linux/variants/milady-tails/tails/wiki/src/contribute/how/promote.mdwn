@@ -1,0 +1,35 @@
+[[!meta title="Promote Tails"]]
+
+[[!toc levels=1]]
+
+# Outreach material
+
+ * [[Logo|promote/logo]]
+ * [[Leaflets|promote/leaflets]]
+ * [[Stickers|promote/stickers]]
+ * [Signal sticker pack](https://signalstickers.org/pack/d9ccac26c7c4b0f99cb8502aea2f5d36)
+ * [[Slides|promote/slides]]
+ * [[Business cards|promote/business_cards]]
+
+This material lives in
+a [[dedicated Git repository|contribute/git#promotion-material]].
+
+# Talk at events
+
+You can talk about Tails at various events, e.g. a local Linux User
+Group, a group of domestic violence survivors, a security conference.
+It all depends on who you happen to meet, what they are interested in,
+and what you feel comfortable talking about. Do not hesitate asking
+for advice or review of your material.
+
+# Specific tasks
+
+See the [[!tails_gitlab
+groups/tails/-/issues?label_name%5B%5D=T%3APromote
+desc="tasks about promoting Tails"]]
+on GitLab.
+
+# Talk to us
+
+You can subscribe to [[tails-dev@boum.org|doc/about/contact#tails-dev]],
+our community mailing list.

@@ -1,0 +1,30 @@
+[[!meta date="Sun, 05 Jun 2016 01:02:03 +0000"]]
+[[!meta title="Numerous security holes in Tails 2.3"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+Several security holes that affect Tails 2.3 are now fixed in Tails 2.4.
+
+We **strongly** encourage you to [[upgrade to Tails 2.4|news/version_2.4]] as soon as possible.
+
+Details
+=======
+
+* Tor Browser: [[!mfsa 2016-49]], [[!mfsa 2016-50]], [[!mfsa 2016-51]],
+               [[!mfsa 2016-52]], [[!mfsa 2016-53]], [[!mfsa 2016-55]],
+               [[!mfsa 2016-56]], [[!mfsa 2016-58]]
+* libarchive: [[!debsa2016 3574]]
+* icedove: [[!debsa2016 3576]]
+* imagemagick: [[!debsa2016 3580]], [[!debsa2016 3591]]
+* expat: [[!debsa2016 3582]]
+* libgd3: [[!debsa2016 3556]], [[!debsa2016 3587]]
+* gdk-pixbuf: [[!debsa2016 3589]]
+* libidn: [[!debsa2016 3578]]
+* libndp: [[!debsa2016 3582]]
+* poppler: [[!debsa2016 3563]]
+* librsvg: [[!debsa2016 3584]]
+* openssl: [[!debsa2016 3566]]
+* libtasn1-6: [[!debsa2016 3568]]
+* libxml2: [[!debsa2016 3593]]
+* openjdk-7-jre: [[!debsa2016 3558]]

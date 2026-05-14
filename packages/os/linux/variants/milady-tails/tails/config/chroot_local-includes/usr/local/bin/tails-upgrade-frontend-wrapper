@@ -1,0 +1,117 @@
+#!/usr/bin/python3 -I
+"""
+Tails upgrade frontend wrapper.
+
+Test with "python3 tails-upgrade-frontend-wrapper.py doctest".
+The tests will start the upgrade process which could pop up a dialog box
+so you probably want to use a tester that handles user interaction or
+run the tests from the command line and answer prompts as needed.
+
+goodcrypto.com converted from bash to python and added basic tests.
+
+>>> # run this script (without waiting 30 seconds)
+>>> sh.Command(sys.argv[0])("--no-wait")
+<BLANKLINE>
+"""
+
+import gettext
+import os
+import sys
+import time
+import psutil
+import sh
+
+os.environ["PATH"] = "/usr/local/bin:/usr/bin:/bin"
+
+translation = gettext.translation("tails", "/usr/share/locale", fallback=True)
+_ = translation.gettext
+
+CMD = os.path.basename(sys.argv[0])
+# While running iuk.git:features/frontend:
+#  - tails-upgrade-frontend never uses more than 100 * 10^6 bytes
+#  - tails-iuk-get-upgrade-description never uses more than 95 * 10^6 bytes
+MIN_AVAILABLE_MEMORY = 200 * 1024 * 1024  # In Bytes
+RUN_AS_USER = "tails-upgrade-frontend"
+
+ERROR_MESSAGE = _(
+    """<b>Not enough memory available to check for upgrades.</b>
+
+Make sure this system satisfies the requirements for running Tails.
+See file:///usr/share/doc/tails/website/doc/about/requirements.en.html
+
+Try to restart Tails to check for upgrades again.
+
+Or do a manual upgrade.
+See {manual_upgrade_url}"""
+).format(
+    manual_upgrade_url="https://tails.net/doc/upgrade#manual",
+)
+
+
+def main(*args):
+    if "--no-wait" in args:
+        args = (arg for arg in args if arg != "--no-wait")
+    else:
+        time.sleep(30)
+
+    check_free_memory(MIN_AVAILABLE_MEMORY)
+
+    # Go to a place where everyone, especially Archive::Tar::Wrapper called by
+    # tails-install-iuk, can chdir back after it has chdir'd elsewhere to do
+    # its job.
+    os.chdir("/")
+
+    os.execv(
+        "/bin/sh",
+        (
+            "/bin/sh",
+            "-c",
+            "xhost +si:localuser:{user};"
+            "sudo -u {user} /usr/local/bin/tails-upgrade-frontend {args};"
+            "xhost -si:localuser:{user}".format(user=RUN_AS_USER, args=" ".join(args)),
+        ),
+    )
+
+
+def error(msg):
+    """Show error and exit."""
+    cli_text = "{}: {} {}".format(CMD, _("error:"), msg)
+    dialog_text = """<b><big>{}</big></b>\n\n{}""".format(_("Error"), msg)
+    print(cli_text, file=sys.stderr)
+
+    sh.zenity("--error", "--title", "", "--text", dialog_text, _ok_code=[0, 1, 5])
+    sys.exit(1)
+
+
+def check_free_memory(min_available_memory):
+    """Check for enough free memory.
+
+    # 1 KiB should be available when running the doctest
+    >>> check_free_memory(1024)
+    # 1 TiB should not be available, an error prompt should be displayed
+    >>> try:
+    ...     check_free_memory(1024*1024*1024*1024)
+    ...     fail()
+    ... except SystemExit:
+    ...     pass
+    """
+
+    available_memory = psutil.virtual_memory().available
+
+    if available_memory < min_available_memory:
+        print(
+            "Only {} Bytes memory available, while {} is needed".format(
+                available_memory, min_available_memory
+            ),
+            file=sys.stderr,
+        )
+        error(ERROR_MESSAGE)
+
+
+if __name__ == "__main__":
+    if len(sys.argv) > 1 and sys.argv[1] == "doctest":
+        import doctest
+
+        doctest.testmod()
+    else:
+        main(*sys.argv[1:])

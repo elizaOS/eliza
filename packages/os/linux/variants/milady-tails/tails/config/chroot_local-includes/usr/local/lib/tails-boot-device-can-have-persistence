@@ -1,0 +1,29 @@
+#!/usr/bin/perl
+
+=head1 NAME
+
+tails-boot-device-can-have-persistence - test if the boot device is supported for persistence
+
+=cut
+
+use strictures 2;
+use 5.10.1;
+
+use FindBin;
+use lib "$FindBin::Bin/../lib";
+
+use Tails::RunningSystem;
+
+my $running_system = Tails::RunningSystem->new;
+
+if (! $running_system->started_from_writable_device) {
+    say STDERR "Tails was started from a DVD or a read-only device";
+    exit 16;
+}
+
+if (! $running_system->started_from_device_installed_with_tails_installer) {
+    say STDERR "The boot device was not created using a USB image or Tails Cloner";
+    exit 32;
+}
+
+exit 0;

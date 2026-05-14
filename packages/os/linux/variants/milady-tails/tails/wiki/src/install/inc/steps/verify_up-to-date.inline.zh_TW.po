@@ -1,0 +1,105 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+msgid ""
+msgstr ""
+"Project-Id-Version: Tails l10n\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-09-17 11:40+0200\n"
+"PO-Revision-Date: 2021-10-30 11:04+0000\n"
+"Last-Translator: Weblate Admin <tails-weblate@boum.org>\n"
+"Language-Team: Tails Chinese translators <jxt@twngo.xyz>\n"
+"Language: zh_TW\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"X-Generator: Weblate 3.11.3\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta robots=\"noindex\"]]\n"
+msgstr "[[!meta robots=\"noindex\"]]\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "<h1 id=\"verify-other\" class=\"step\">Verify that the other Tails is up-to-date</h1>\n"
+msgstr "<h1 id=\"verify-other\">查核另一個 Tails 是否為最新版</h1>\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid ""
+"To prevent\n"
+"<span class=\"pc-clone mac-clone\">installing</span>\n"
+"<span class=\"upgrade-clone\">upgrading to</span>\n"
+"an outdated version of Tails with known security issues, make sure that the Tails you are\n"
+"<span class=\"pc-clone mac-clone\">installing</span>\n"
+"<span class=\"upgrade-clone\">upgrading</span>\n"
+"from is up-to-date:\n"
+msgstr ""
+"為防止\n"
+"<span class=\"install-clone mac-clone\">安裝</span>\n"
+"<span class=\"upgrade-clone\">昇級</span>\n"
+"了有安全問題的舊版 Tails，確認目前 Tails \n"
+"<span class=\"install-clone mac-clone\">的安裝</span>\n"
+"<span class=\"upgrade-clone\">和更新</span>\n"
+"為最新版本：\n"
+
+#. type: Bullet: '1. '
+msgid "Choose **Apps&nbsp;▸ Tails&nbsp;▸ About Tails**."
+msgstr ""
+
+#. type: Bullet: '1. '
+#, fuzzy
+msgid ""
+"Verify that you are running **Tails [[!inline pages=\"inc/"
+"stable_amd64_version\" raw=\"yes\" sort=\"age\"]]** released on [[!inline "
+"pages=\"inc/stable_amd64_date\" raw=\"yes\" sort=\"age\"]]:"
+msgstr ""
+"核實執行的是<span class=\"guilabel\">Tails [[!inline pages=\"inc/"
+"stable_amd64_version\" raw=\"yes\" sort=\"age\"]]</span>其發佈時間為 [[!"
+"inline pages=\"inc/stable_amd64_date\" raw=\"yes\" sort=\"age\"]]:"
+
+#. type: Bullet: '   - '
+#, fuzzy
+msgid ""
+"If you are running Tails [[!inline pages=\"inc/stable_amd64_version\" "
+"raw=\"yes\" sort=\"age\"]], continue with the next step."
+msgstr ""
+"   a. 運行[[!inline pages=\"inc/stable_amd64_version\" raw=\"yes\" "
+"sort=\"age\"]] 的話，則可以繼續下一步驟。\n"
+
+#. type: Bullet: '   - '
+#, fuzzy
+msgid ""
+"If you are not running Tails [[!inline pages=\"inc/stable_amd64_version\" "
+"raw=\"yes\" sort=\"age\"]], click **Check for Upgrades**."
+msgstr ""
+"   a. 運行[[!inline pages=\"inc/stable_amd64_version\" raw=\"yes\" "
+"sort=\"age\"]] 的話，則可以繼續下一步驟。\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "     Apply all upgrades as requested.\n"
+msgstr ""
+
+#, fuzzy
+#~ msgid ""
+#~ "Choose <span class=\"menuchoice\"> <span class=\"guimenu\">Applications</"
+#~ "span>&nbsp;▸ **Tails**&nbsp;▸ <span class=\"guimenuitem\">About Tails</"
+#~ "span></span>."
+#~ msgstr ""
+#~ "選取 <span class=\"menuchoice\"> <span class=\"guimenu\">Applications</"
+#~ "span>&nbsp;▸ **Tails**&nbsp;▸ <span class=\"guimenuitem\">About Tails</"
+#~ "span></span>."
+
+#, fuzzy, no-wrap
+#~ msgid ""
+#~ "   b. If you are not running [[!inline pages=\"inc/stable_amd64_version\" raw=\"yes\" sort=\"age\"]] then connect to the Internet\n"
+#~ "   and to Tor. After a minute or two, *Tails Upgrader*\n"
+#~ "   appears with instructions on how to upgrade. Apply all upgrades as requested.\n"
+#~ msgstr ""
+#~ "   b. 如果不是運行 [[!inline pages=\"inc/stable_amd64_version\" raw=\"yes\" sort=\"age\"]] ，那麼請連上網際網路\n"
+#~ "   並啟用 Tor。一兩分鐘後， *Tails Upgrader*\n"
+#~ "   訊息會出現並指示如何進行昇級。依請求淮許所有的昇級。\n"

@@ -1,0 +1,30 @@
+[[!meta date="Sat, 23 Sep 2017 12:34:56 +0000"]]
+[[!meta title="Numerous security holes in Tails 3.1"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+Several security holes that affect Tails 3.1 are now fixed in Tails 3.2.
+
+We **strongly** encourage you to
+[[upgrade to Tails 3.2|news/version_3.2]] as soon as possible.
+
+- Linux: [[!debsa2017 3945]], and *partially* fixes
+  [[!debsa2017 3981]] (*not* fixed: [[!cve CVE-2017-7558]],
+  [[!cve CVE-2017-12153]], [[!cve CVE-2017-12154]],
+  [[!cve CVE-2017-14051]], [[!cve CVE-2017-14340]],
+  [[!cve CVE-2017-14489]], [[!cve CVE-2017-14497]],
+  [[!cve CVE-2017-1000251]], [[!cve CVE-2017-1000252]])
+- Tor Browser:
+  [MSFA 2017-22](https://www.mozilla.org/en-US/security/advisories/mfsa2017-22/)
+- libsoup2.4: [[!debsa2017 3929]]
+- git: [[!debsa2017 3934]]
+- libgd2: [[!debsa2017 3938]], [[!debsa2017 3961]]
+- libmspack: [[!debsa2017 3946]]
+- libraw: [[!debsa2017 3950]]
+- libxml2: [[!debsa2017 3952]]
+- thunderbird (icedove): [[!debsa2017 3968]]
+- tcpdump: [[!debsa2017 3971]]
+- bluez: [[!debsa2017 3972]]
+- perl: [[!debsa2017 3982]]
+- samba: [[!debsa2017 3983]]

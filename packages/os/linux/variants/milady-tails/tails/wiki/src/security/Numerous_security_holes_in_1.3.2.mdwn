@@ -1,0 +1,32 @@
+[[!meta date="Sun, 10 May 2015 01:02:03 +0000"]]
+[[!meta title="Numerous security holes in Tails 1.3.2"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+Several security holes that affect Tails 1.3.2 are now fixed in
+Tails 1.4
+
+We **strongly** encourage you to [[upgrade to
+Tails 1.4|news/version_1.4]] as soon as possible.
+
+Details
+=======
+
+ - Tor Browser: [[!mfsa 2015-46]], [[!mfsa 2015-47]], [[!mfsa 2015-48]],
+   [[!mfsa 2015-51]], [[!mfsa 2015-54]], [[!mfsa 2015-57]]
+ - Linux: [[!debsa2015 3237]]
+ - curl:[[!debsa2015 3232]], [[!debsa2015 3240]]
+ - dpkg: [[!debsa2015 3217]]
+ - gstreamer0.10-plugins-bad: [[!debsa2015 3225]]
+ - libgd2-xpm: [[!debsa2015 3215]]
+ - openldap: [[!debsa2015 3209]]
+ - LibreOffice: [[!debsa2015 3236]]
+ - libruby1.9.1: [[!debsa2015 3246]]
+ - libtasn1-3: [[!debsa2015 3220]]
+ - libx11: [[!debsa2015 3224]]
+ - libxml-libxml-perl: [[!debsa2015 3243]]
+ - libxml2: Fixup on [[!cve CVE-2014-3660]] for [[!debsa2014 3057]]
+ - OpenJDK 7: [[!debsa2015 3235]]
+ - ppp: [[!debsa2015 3228]]
+ - tor: [[!debsa2015 3216]]

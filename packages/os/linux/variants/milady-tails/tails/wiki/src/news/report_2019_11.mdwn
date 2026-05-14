@@ -1,0 +1,136 @@
+[[!meta title="Tails report for November, 2019"]]
+[[!meta date="Tue, 14 Dec 2019 12:34:56 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!toc]]
+
+Documentation and website
+=========================
+
+- We improved our explanation of the [[enhanced
+  privacy|doc/anonymous_internet/thunderbird#torbirdy]] of *Thunderbird* in
+  Tails. ([[!tails_ticket 17270]])
+
+- We instructed people facing recurring errors when
+  upgrading to do a manual upgrade.
+  ([[!tails_ticket 12492]])
+
+- We improved the layout of the [[manual upgrade
+  documentation|doc/upgrade/#manual]]. ([[!tails_ticket 12492]])
+
+User experience
+===============
+
+- We finished processing the feedback on our [[mission and
+  values|contribute/mission]]. ([[!tails_ticket 16540]])
+
+  Our work on this document was explained in Open source & branding – a
+  contradiction?, by Simply
+  Secure.
+
+- Update *Etcher* to 1.5.61 to fix installing from macOS Catalina. ([[!tails_ticket 17185]])
+
+Hot topics on our help desk
+===========================
+
+1. Multiple users reported having trouble [[!tails_ticket 17183 desc="importing keys in Seahorse"]].
+
+1. We also had some reports about [[!tails_ticket 17184 desc="issues
+   with Nvidia"]] [[!tails_ticket 17155 desc="graphics cards"]].
+
+1. macOS users were affected by a [[!tails_ticket 17185 desc="bug in
+   Etcher"]].
+
+Infrastructure
+==============
+
+- We finished updating the list of members in our [[signing key
+  revocation mechanism|doc/about/openpgp_keys/signing_key_revocation]]. ([[!tails_ticket 16665]])
+
+  We lost 5 members and added 8 new members. So the resiliency of the
+  scheme was increased overall. Thanks again to all the new members :)
+
+Funding
+=======
+
+- Received a very generous donation of 6 bitcoins from
+  PrivCoin.
+
+- We blogged about [[our plans for 2020|news/plans_for_2020]].
+
+- Our fundraising campaign is doing pretty well.
+
+  Compared to the same period in 2017 and 2018 (first 41 days):
+
+  <pre>
+                 2016       2017        2018       2019
+                 ----       ----        ----       ----
+  Amount         54 925 €   54 873 €    28 854 €   48 710 €    69%
+  Count            1124        717        1182       1084     -16%
+  
+  Final amount   76 055 €   101 644 €   74 480 €
+  </pre>
+
+  We are doing pretty good in terms of both amount and number of donations
+  thought we're not set any record in either metrics.
+
+  This is not due to the lack of counter this year because the first 2 weeks of
+  this year were much worse than last year (when they was no counter yet) and
+  weeks 3-5 were better (when we had a counter already).
+
+  We cannot really explain these 16% less donations but it's not a big deal
+  either.
+
+Outreach
+========
+
+Past events
+-----------
+
+- [Damaris Mendoza](https://twitter.com/damriv) presented Tails to 20
+  digital security trainers at the Encuentro Centroamericano de
+  Seguridad Digital in Guatemala City.
+
+On-going discussions
+====================
+
+- Technical writers sent a proposal to improve and simplify the terminology
+  around "Persistence":
+
+  <https://lists.autistici.org/message/20191108.153500.fbbf3592.en.html>
+
+- We are discussing what kind of password strength meter we should have in the
+  Persistence creation assistant. ([[!tails_ticket 7002]])
+
+- We started discussion whether we should say "*freedom fighters*" or "*human-rights
+  defenders*" in our mission and values:
+
+  <https://lists.autistici.org/message/20191126.113700.b936d424.en.html>
+
+Translations
+============
+
+## All the website
+
+  - fr: 89% (5302) strings translated, 2% strings fuzzy
+  - es: 52% (3120) strings translated, 4% strings fuzzy
+  - de: 36% (2139) strings translated, 11% strings fuzzy
+  - it: 31% (1854) strings translated, 8% strings fuzzy
+  - fa: 28% (1690) strings translated, 11% strings fuzzy
+  - pt: 22% (1361) strings translated, 9% strings fuzzy
+
+## [[Core pages of the website|contribute/l10n_tricks/core_po_files.txt]]
+
+  - fr: 93% (1697) strings translated, 4% strings fuzzy
+  - es: 89% (1619) strings translated, 3% strings fuzzy
+  - de: 64% (1169) strings translated, 16% strings fuzzy
+  - it: 60% (1095) strings translated, 18% strings fuzzy
+  - pt: 43% (792) strings translated, 14% strings fuzzy
+  - fa: 32% (596) strings translated, 14% strings fuzzy
+
+Metrics
+=======
+
+* Tails has been started more than 767&#8239;400 times this month. This makes
+  25&#8239;580 boots a day on average.
+

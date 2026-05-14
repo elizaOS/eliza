@@ -1,0 +1,169 @@
+#!/usr/bin/python3
+#
+# Given the names of a project and source/target branches, this script creates
+# a Merge Request from source to target, unless the source branch is already
+# merged into the target branch or another Merge Request from the same
+# source to the same target already exists.
+#
+# It expects a GitLab Access Token in the GITLAB_PRIVATE_TOKEN environment
+# variable.
+#
+# Run with `--help` for options.
+#
+# Setting up a Scheduled Pipeline
+# ===============================
+#
+# You will need enough privileges to create/run CI/CD pipelines and merge the
+# expected branches.
+#
+# What follows assumes a GITLAB_PRIVATE_TOKEN CI/CD variable is passed
+# to all CI pipelines, and the value of that variable is a Project
+# Access Token with scope `api`.
+#
+# For the tails/tails project, we currently use the `role-branch-merger` user
+# for that, please adapt the following steps to your use case:
+#
+# 1. Login as `role-branch-merger` in GitLab
+#
+# 2. Go to the [Pipeline Schedules
+#    page](https://gitlab.tails.boum.org/tails/tails/-/pipeline_schedules)
+#    of the tails/tails project
+#
+# 3. Create a new schedule with:
+#    - Description:  Run with `role-branch-merger` permissions
+#    - Custom interval pattern: `20 19 * * *`
+#    - Cron timezone: `[UTC 0] UTC`
+#    - Select target branch or tag: `master`
+#    - Activated: selected
+
+import argparse
+import os
+import time
+
+import gitlab
+
+
+class StubMR:
+    def __init__(self, title, web_url=""):
+        self.title = title
+        self.web_url = web_url
+
+
+def get_project(server_url, private_token, project):
+    gl = gitlab.Gitlab(url=server_url, private_token=private_token)
+    return gl.projects.get(project)
+
+
+def create_mr(project, source, target, dry_run):
+    title = f"Merge branch '{source}' into '{target}'"
+
+    if dry_run:
+        return StubMR(title)
+
+    params = {
+        "source_branch": source,
+        "target_branch": target,
+        "title": title,
+        "labels": ["Tails Team"],
+    }
+    return project.mergerequests.create(params)
+
+
+def has_pipeline(mr):
+    pipelines = mr.pipelines.list()
+    relevant = filter(
+        lambda p: p.source == "merge_request_event"
+        and p.status in ["pending", "running"],
+        pipelines,
+    )
+    return len(list(relevant))
+
+
+def merge_mr_when_pipeline_succeeds(mr, pipeline_timeout):
+    start_time = time.monotonic()
+    while not has_pipeline(mr):
+        if (time.monotonic() - start_time) > pipeline_timeout:
+            note_body = (
+                "The process that created this MR timed out after waiting "
+                f"for {pipeline_timeout} seconds for a pipeline and, "
+                "because of that, this MR was not marked to be "
+                "automatically merged when the pipeline succeeds. This "
+                "is not expected, so please report this issue to a Sysadmin."
+            )
+            if "CI_JOB_URL" in os.environ:
+                note_body += (
+                    ' Please make sure to include the link for the '
+                    f'corresponding CI job: {os.environ["CI_JOB_URL"]}.'
+                )
+            mr.notes.create({"body": note_body})
+            raise Exception(f"Timed out waiting for pipeline at {mr.web_url}")
+        time.sleep(5)
+    mr.merge(merge_when_pipeline_succeeds=True)
+
+
+def ensure_mr(project, source, target, pipeline_timeout, dry_run):
+    refs = project.commits.get(project.branches.get(source).commit["id"]).refs()
+    if any(filter(lambda r: r["type"] == "branch" and r["name"] == target, refs)):
+        mr = StubMR(f"Branch '{source}' already merged into '{target}'", "")
+        return [mr], "Already merged"
+    params = {
+        "source_project_id": project.id,
+        "state": "opened",
+        "source_branch": source,
+        "target_branch": target,
+        "wip": "no",
+        "iterator": True,
+    }
+    mrs = project.mergerequests.list(**params)
+    if mrs:
+        return mrs, "Exists"
+    mr = create_mr(project, source, target, dry_run)
+    if not dry_run:
+        merge_mr_when_pipeline_succeeds(mr, pipeline_timeout)
+    return [mr], "Created" if not dry_run else "Would create"
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description="Create a Merge Request if a similar one doesn't exist.",
+        epilog="Pass the GitLab private token via the GITLAB_PRIVATE_TOKEN environment variable.",
+    )
+    parser.add_argument(
+        "--project",
+        help="Project in which to create the MR",
+        required=True,
+    )
+    parser.add_argument("--source", help="Source branch of the MR", required=True)
+    parser.add_argument("--target", help="Target branch of the MR", required=True)
+    parser.add_argument(
+        "--pipeline-timeout",
+        type=int,
+        help="Number of seconds to wait for a pipeline before timing out",
+        default=60,
+    )
+    parser.add_argument("--dry-run", help="Dry run", action="store_true")
+    return parser.parse_args()
+
+
+def main(server_url, private_token):
+    args = parse_args()
+    project = get_project(server_url, private_token, args.project)
+    return ensure_mr(
+        project,
+        args.source,
+        args.target,
+        args.pipeline_timeout,
+        args.dry_run,
+    )
+
+
+def output(mrs, status):
+    print(f"{status}:")
+    for mr in mrs:
+        print(f"  - {mr.title}", f"- {mr.web_url}" if mr.web_url else "")
+
+
+if __name__ == "__main__":
+    server_url = "https://gitlab.tails.boum.org"
+    private_token = os.getenv("GITLAB_PRIVATE_TOKEN")
+    output(*main(server_url, private_token))

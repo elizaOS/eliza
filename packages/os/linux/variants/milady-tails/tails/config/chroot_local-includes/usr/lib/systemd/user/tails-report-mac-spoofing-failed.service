@@ -1,0 +1,12 @@
+[Unit]
+Description=Report MAC address spoofing failure
+Documentation=https://tails.net/contribute/design/MAC_address/
+ConditionUser=1000
+ConditionPathExists=/var/lib/live/config/tails.mac-spoofing-failed
+
+[Service]
+ExecStart=/usr/local/lib/tails-report-mac-spoofing-failed
+RemainAfterExit=yes
+
+[Install]
+WantedBy=desktop.target

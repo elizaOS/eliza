@@ -1,0 +1,75 @@
+[[!meta date="Mon, 18 Sep 2012 01:23:45 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!meta title="Tails 0.13 is out"]]
+[[!tag announce]]
+
+Tails, The Amnesic Incognito Live System, version 0.13, is out.
+
+All users must upgrade as soon as possible.
+
+[[!toc levels=1]]
+
+# Changes
+
+Notable user-visible changes include:
+
+* Use white-list/principle of least privilege approach for local services.
+  Only users that need a certain local (i.e. hosted on loopback) service
+  (according to our use cases) are granted access to it by our firewall;
+  all other users are denied access.
+
+* Allow to modify language and layout in the "Advanced options" screen
+  of the greeter.
+
+* Enable four workspaces in the Windows XP camouflage. This allows
+  users to quickly switch to a more innocent looking workspace in case
+  they are working on sensitive data and attract unwanted attention.
+  The workspace switcher applet isn't there, though, since there's no
+  such thing in Windows XP, so switching is only possible via keyboard
+  shortcuts.
+
+* Claws Mail now saves local/POP emails in its dot-directory by default
+  instead of the non-persistent `~/Mail` directory. *Users who are already
+  using persistence for Claws will have to perform this change manually.*
+
+* Add support for wireless regulation.
+
+* Hide the *TailsData* partition in desktop applications.
+
+* Tor
+  - Upgrade to 0.2.2.39.
+
+* Iceweasel
+  - Upgrade iceweasel to 10.0.7esr-2 (Extended Support Release).
+
+* Hardware support
+  - Upgrade Linux to 3.2.23-1.
+
+* Software
+  - Upgrade I2P to version 0.9.1.
+  - Install GNOME System Monitor.
+  - Upgrade WhisperBack to 1.6, with many UI improvements and new translations.
+
+* Ship a first version of the incremental update system. Updates are not
+  currently triggered automatically, but this will allow tests to be done
+  on larger scales.
+
+Plus the usual bunch of minor bug reports and improvements.
+
+See the online
+Changelog
+for technical details.
+
+# I want to try it / to upgrade!
+
+See the Getting started page.
+
+As no software is ever perfect, we maintain a list of [[problems
+that affects the last release of Tails|support/known_issues]].
+
+# What's coming up?
+
+
+Would you want to help? As explained in our [["how to contribute"
+documentation|contribute]], here are many ways **you** can contribute
+to Tails. If you want to help, come talk to us!

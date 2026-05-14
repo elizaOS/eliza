@@ -1,0 +1,60 @@
+#!/usr/bin/python3 -I
+import glob
+import os
+import sys
+import logging
+
+from tailslib.userenv import ENV_VARS_TO_DUMP, user_env_file
+
+# This script is invoked before starting gnome-shell. It dumps its own
+# environment for usage by other processes which need some environment
+# variables set to work correctly, for example processes started via
+# systemd system units don't have DBUS_SESSION_BUS_ADDRESS set.
+#
+# This process is run as amnesia and the environment file is writable
+# by amnesia, so to avoid privilege escalation, it's important that the
+# environment file is never exported in a process with more privileges
+# than amnesia.
+
+
+def main():
+    env = dict()
+    for e in ENV_VARS_TO_DUMP:
+        if e in os.environ:
+            env[e] = os.environ[e]
+
+    # Set some environment variables which are not set by systemd but which
+    # we still need in some processes which export the environment file.
+    if not env["DISPLAY"]:
+        env["DISPLAY"] = ":0"
+
+    if not env["XAUTHORITY"]:
+        pattern = f"/run/user/{os.geteuid()}/.mutter-Xwaylandauth.*"
+        matches = glob.glob(pattern)
+        if not matches:
+            logging.error(f"Failed to set XAUTHORITY: No file matching {pattern}")
+            sys.exit(1)
+        env["XAUTHORITY"] = matches[0]
+
+    if not env["WAYLAND_DISPLAY"]:
+        pattern = f"/run/user/{os.geteuid()}/wayland-*"
+        matches = glob.glob(pattern)
+        if not matches:
+            logging.error(f"Failed to set WAYLAND_DISPLAY: No file matching {pattern}")
+            sys.exit(1)
+        env["WAYLAND_DISPLAY"] = matches[0]
+
+    # Check that we have all the environment variables we need
+    for e in ENV_VARS_TO_DUMP:
+        if e not in env:
+            logging.error(f"Environment variable {e} is not set")
+            sys.exit(1)
+
+    # To avoid issues with environment variables that contain newlines, we
+    # dump the environment null-terminated
+    with open(user_env_file(os.geteuid()), "w") as f:
+        f.write("\0".join(f"{key}={value}" for key, value in env.items()))
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,28 @@
+[[!meta title="About Javascript on our website"]]
+
+We use JavaScript to the minimum while always ensuring graceful
+degradation.
+
+Arguments against using JavaScript:
+
+  - JavaScript can be dangerous for security and privacy. Tor Browser is
+    supposed to block all JavaScript that might harm anonymity.
+    But some of the JavaScript allowed by Tor Browser can still be dangerous.
+
+  - An important part of our audience wants to be careful about
+    JavaScript, for the reason mentioned above, and might disable it
+    fully. To support this use case, we include the NoScript extension.
+    So, to be coherent with this, every part of our website must be
+    functional without JavaScript. This also ensures compatibility with
+    all the levels of the security slider of Tor Browser ([[!tor_bug
+    9387]]).
+
+Arguments in favor of using JavaScript:
+
+  - We already use JavaScript on our website, like for the [[JavaScript
+    download verification|contribute/design/download_verification]].
+
+  - JavaScript might allow us to present better our information to some
+    users and improve the experience of navigating on our website.
+    But using it to save us a bit of work or look cool might
+    not be a good enough reason.

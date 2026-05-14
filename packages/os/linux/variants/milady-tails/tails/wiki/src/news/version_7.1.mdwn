@@ -1,0 +1,69 @@
+[[!meta title="Tails 7.1"]]
+[[!meta date="Tue, 14 Oct 2025 00:00:00 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+
+<h1 id="changes">Changes and updates</h1>
+
+- Change the home page of *Tor Browser* in Tails to an *offline* page, very
+  similar to the home page of *Tor Browser* outside of Tails, instead of an
+  [*online* page from our website](https://tails.net/home/).
+
+  [[!img about_tor.png class="screenshot" alt=""]]
+
+- Improve the message when an [[administration
+  password|doc/first_steps/welcome_screen/administration_password]] is required
+  to open an application but no administration password was set in the Welcome
+  Screen.
+
+  [[!img authentication_required.png class="screenshot" alt=""]]
+
+- Update *Tor Browser* to [14.5.8](https://blog.torproject.org/new-release-tor-browser-1458).
+
+- Update the *Tor* client to 0.4.8.19.
+
+- Update *Thunderbird* to [140.3.0](https://www.thunderbird.net/en-US/thunderbird/140.3.0esr/releasenotes/).
+
+- Remove the package `ifupdown`.
+
+<h1 id="fixes">Fixed problems</h1>
+
+- Hide the message "*Your connection to Tor is not being managed by Tor
+  Browser*" in new tabs of *Tor Browser*. ([[!tails_ticket 21215]])
+
+  [[!img not_managed.png class="screenshot" alt=""]]
+
+For more details, read our [[!tails_gitweb debian/changelog desc="changelog"]].
+
+<h1 id="get">Get Tails 7.1</h1>
+
+## To upgrade your Tails USB stick and keep your Persistent Storage
+
+- Automatic upgrades are available from Tails 7.0 or later to 7.1.
+
+- If you cannot do an automatic upgrade or if Tails fails to start after an
+  automatic upgrade, please try to do a [[manual upgrade|doc/upgrade/#manual]].
+
+## To install Tails 7.1 on a new USB stick
+
+Follow our installation instructions:
+
+- [[Install from Windows|install/windows]]
+
+- [[Install from macOS|install/mac]]
+
+- [[Install from Linux|install/linux]]
+
+- [[Install from Debian or Ubuntu using the command line and GnuPG|install/expert]]
+
+<div class="caution"><p>The Persistent Storage on the USB stick will be lost if
+you install instead of upgrading.</p></div>
+
+## To download only
+
+If you don't need installation or upgrade instructions, you can download
+Tails 7.1 directly:
+
+- [[For USB sticks (USB image)|install/download]]
+
+- [[For DVDs and virtual machines (ISO image)|install/download-iso]]

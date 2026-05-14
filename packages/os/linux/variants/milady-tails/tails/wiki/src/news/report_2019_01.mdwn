@@ -1,0 +1,159 @@
+[[!meta title="Tails report for January, 2019"]]
+[[!meta date="Thu, 14 Feb 2019 08:34:14 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!toc ]]
+
+Releases
+========
+
+* [[Tails 3.12 was released on January 29|news/version_3.12]] (major release).
+
+* Tails 3.13 is [[scheduled for March 19|contribute/calendar]].
+
+The following changes were introduced in Tails 3.12:
+
+* New installation methods
+  * For macOS, the new method is much simpler as it uses a graphical tool [[(Etcher)|https://www.balena.io/etcher/]] instead of the command line.
+  * For Windows, the new method is much faster as it doesn't require 2 USB sticks and an intermediary Tails anymore. The resulting USB stick also works better on newer computers with UEFI.
+  * For Debian and Ubuntu, the new method uses a native application (GNOME Disks) and you don't have to install Tails Installer anymore.
+  * For other Linux distributions, the new method is faster as it doesn't require 2 USB sticks and an intermediary Tails anymore.
+* Starting Tails should be a bit faster on most machines. ([[#15915|https://redmine.tails.boum.org/code/issues/15915]])
+* Tell users to use `sudo` when they try to use `su` on the command line.
+* Fix the black screen when starting Tails with some Intel graphics cards. ([[#16224|https://redmine.tails.boum.org/code/issues/16224]])
+
+Code
+====
+
+- A bunch of Foundations Team members had a sprint focused on porting
+  Tails to Debian 10 (Buster). For details, see the
+  [full report](https://lists.autistici.org/message/20190112.093556.b591a963.en.html).
+
+Documentation and website
+=========================
+
+- We wrote brand new installation instructions using:
+
+  - *Etcher* for Windows
+  - *Etcher* for macOS
+  - *GNOME Disks* for Linux
+
+- We wrote how to [[troubleshoot Wi-Fi not
+  working|doc/anonymous_internet/networkmanager]] and which USB Wi-Fi adapters
+  work in Tails.
+
+- We documented how to [[disable the automatic screen
+  locker|doc/first_steps/desktop#screen-locker]]
+  if you configure an administration password.
+
+- We added several entries to our writing style guide:
+
+  - [[*vulnerability*|contribute/how/documentation/style_guide#vulnerability]]
+  - [[*HTML anchors*|contribute/how/documentation/style_guide#anchors]]
+  - [[*update* vs *upgrade*|contribute/how/documentation/style_guide#update]]
+  - [[*boot* vs *start*|contribute/how/documentation/style_guide#boot]]
+  - [[*network interface*|contribute/how/documentation/style_guide#network-interface]]
+  - [[*media*|contribute/how/documentation/style_guide#media]]
+  - [[*administration password*|contribute/how/documentation/style_guide#administration-password]]
+  - [[*future tense*|contribute/how/documentation/style_guide#future-tense]]
+  - [[*earlier* and *later*|contribute/how/documentation/style_guide#earlier]]
+
+User experience
+===============
+
+- We published an interview with Bea who is
+  spreading the use of Tails in a grassroots political organization in Latin
+  America.
+
+- We added visual feedback upstream when opening
+  [KeePassXC](https://github.com/keepassxreboot/keepassxc/pull/2593),
+  [Electrum](https://github.com/spesmilo/electrum/pull/4997), and
+  [OnionShare](https://github.com/micahflee/onionshare/pull/867).
+
+- We [evaluated the cost/benefit of solving many small UX
+  improvements](https://redmine.tails.boum.org/code/issues/14544#note-75).
+
+Hot topics on our help desk
+===========================
+
+The month started with this questions:
+
+1. [[!tails_ticket 16224 desc="Black screen after the boot menu with Intel GPU (i915)"]]
+1. [[!tails_ticket 14754 desc="Partially applied incremental upgrades cause all kinds of trouble"]]
+
+But after the release of Tails 3.12, the hottest topics were:
+
+1. [[!tails_ticket 16447 desc="Regression on some Intel GPU (Braswell, Kaby Lake)"]]
+1. [[!tails_ticket 16421 desc="Electrum Phishing Attack - Upstream Fix Committed
+"]]
+
+Infrastructure
+==============
+
+- Our infrastructure was targeted by a [[!wikipedia Denial-of-service_attack
+  desc="distributed denial-of-service (DDoS)"]] attack that caused a
+  couple of temporary outages. We're discussing ways to protect ourselves
+  in the future.
+
+- We kept polishing the automated test suite for Additional Software
+  and hope it will be merged in time for the next Tails release.
+
+- We kept investigating options to make our CI faster, shorten the
+  development feedback loop, and thus make our developers' work more
+  efficient and pleasurable. We will soon be able to benchmark our
+  currently preferred option.
+
+- We dealt with the fallout of the big infrastructure changes done in
+  December. A few issues remain but things are starting to run more
+  smoothly again :)
+
+Funding
+=======
+
+- We close our end-of-year donation campaign. We don't have the final numbers
+  yet.
+
+- We submitted 2 applications to the NLnet [NGI Zero
+  PET](https://nlnet.nl/PET/) project.
+
+Outreach
+========
+
+Press and testimonials
+======================
+
+* 2019-01-21: Tails 3.12 fait évoluer sa méthode d'installation : quels changements concrets by David Legrand in
+  Next INpact.
+* 2019-01-30: [[Want a bit of privacy? Got a USB stick? Welcome to TAILS 3.12|https://www.theregister.co.uk/2019/01/30/tails_3_12/]] by Richard Speed in The Register
+
+Translations
+============
+
+# All the website
+
+  - de: 46% (2832) strings translated, 7% strings fuzzy, 41% words translated
+  - es: 51% (3137) strings translated, 4% strings fuzzy, 42% words translated
+  - fa: 32% (1982) strings translated, 10% strings fuzzy, 33% words translated
+  - fr: 88% (5418) strings translated, 1% strings fuzzy, 86% words translated
+  - it: 32% (1969) strings translated, 5% strings fuzzy, 28% words translated
+  - pt: 25% (1553) strings translated, 7% strings fuzzy, 21% words translated
+
+Total original words: 65286
+
+## [[Core pages of the website|contribute/l10n_tricks/core_po_files.txt]]
+
+  - de: 71% (1252) strings translated, 12% strings fuzzy, 74% words translated
+  - es: 80% (1417) strings translated, 9% strings fuzzy, 82% words translated
+  - fa: 34% (615) strings translated, 13% strings fuzzy, 33% words translated
+  - fr: 96% (1705) strings translated, 1% strings fuzzy, 96% words translated
+  - it: 63% (1112) strings translated, 17% strings fuzzy, 65% words translated
+  - pt: 45% (798) strings translated, 13% strings fuzzy, 48% words translated
+
+
+Metrics
+=======
+
+* Tails has been started more than 749 304 times this month. This makes 24 171 boots a day on average.
+* 7 403 downloads of the OpenPGP signature of Tails ISO from our website.
+* 88 bug reports were received through WhisperBack.
+

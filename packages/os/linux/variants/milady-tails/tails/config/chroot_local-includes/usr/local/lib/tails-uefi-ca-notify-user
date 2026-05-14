@@ -1,0 +1,97 @@
+#!/usr/bin/python3 -I
+
+import gettext
+import json
+import logging
+import subprocess
+import sys
+
+import gi
+
+from tailslib.uefi_ca import Detection
+
+gi.require_version("GLib", "2.0")
+gi.require_version("Notify", "0.7")
+from gi.repository import (  # NOQA: E402
+    GLib,
+    Notify,
+)
+
+DONT_ASK_IDENTIFIER = "uefi-ca-notify-user"
+log = logging.getLogger("tails-uefi-ca-notify-user")
+gettext.textdomain("tails")
+_ = gettext.gettext
+
+
+class UefiCaNotifier:
+    def __init__(self, status: Detection, show_suppress_button=False):
+        self.title = _("Secure Boot Update Needed")
+        self.body = _(
+            "Tails will no longer start on this computer at some point in "
+            "the future. Apply all available updates from your regular "
+            "operating system to update to the latest Secure Boot certificates "
+            "of Microsoft.",
+        )
+
+        Notify.init("org.boum.tails.uefi-ca-notify-user")
+        # We need to hold a reference to the notification until the callbacks
+        # are called. That's why we use an instance variable.
+        self.notification = Notify.Notification.new(self.title, self.body)
+        self.notification.set_urgency(Notify.Urgency.CRITICAL)
+
+        self.notification.set_hint("transient", GLib.Variant("u", 1))
+        self.notification.set_timeout(0)
+        if show_suppress_button:
+            self.notification.add_action(
+                "hide",
+                _("Don't Show Again"),
+                self.cb_notification_clicked,
+            )
+        self.notification.add_action(
+            "documentation",
+            _("Learn More"),
+            self.cb_notification_clicked,
+        )
+        self.notification.connect("closed", lambda *x: sys.exit(0))
+
+        self.notification.show()
+
+    def cb_notification_clicked(self, notification, action, user_data=None):
+        if action == "hide":
+            subprocess.run(
+                [
+                    "/usr/local/bin/tails-ask-again",
+                    "--dont-ask-again",
+                    DONT_ASK_IDENTIFIER,
+                ],
+                check=False,
+            )
+        elif action == "documentation":
+            subprocess.run(
+                [
+                    "/usr/local/bin/tails-documentation",
+                    "https://tails.net/support/known_issues/secure_boot_certificates/",
+                ],
+                check=False,
+            )
+        sys.exit(0)
+
+
+def main():
+    try:
+        output = subprocess.check_output(
+            ["/usr/bin/sudo", "-n", "/usr/local/lib/tails-uefi-ca-detect"],
+        )
+    except subprocess.CalledProcessError:
+        log.exception("Error detecting UEFI CA status")
+        return
+    status = Detection.fromdict(json.loads(output))
+    if not status.action_needed:
+        return
+    mainloop = GLib.MainLoop.new(None, False)
+    UefiCaNotifier(status=status)
+    mainloop.run()
+
+
+if __name__ == "__main__":
+    main()

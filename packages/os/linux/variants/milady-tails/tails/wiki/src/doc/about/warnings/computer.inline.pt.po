@@ -1,0 +1,36 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"POT-Creation-Date: 2021-06-11 14:19-0500\n"
+"PO-Revision-Date: 2022-02-19 12:24+0000\n"
+"Last-Translator: drebs <drebs@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: pt\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n > 1;\n"
+"X-Generator: Weblate 4.9.1\n"
+
+#. type: Content of: <p>
+msgid "Tails can safely run on a computer that has a virus."
+msgstr ""
+"Tails pode ser executado com segurança em um computador que esteja com vírus."
+
+#. type: Content of: <p>
+msgid "But Tails cannot always protect you when:"
+msgstr "Mas Tails pode acabar não te protegendo se:"
+
+#. type: Content of: <ul><li>
+msgid "Installing from an infected computer"
+msgstr "For instalado a partir de um computador infectado"
+
+#. type: Content of: <ul><li>
+msgid "Running Tails on a computer with a compromised BIOS, firmware, or hardware"
+msgstr ""
+"For executado em um computador com BIOS, firmware ou hardware comprometidos"

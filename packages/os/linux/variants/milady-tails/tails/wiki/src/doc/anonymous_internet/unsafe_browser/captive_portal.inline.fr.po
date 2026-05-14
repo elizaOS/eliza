@@ -1,0 +1,100 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"POT-Creation-Date: 2024-04-11 14:09+0000\n"
+"PO-Revision-Date: 2024-09-30 11:01+0000\n"
+"Last-Translator: Chre <tor@renaudineau.org>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: fr\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n > 1;\n"
+"X-Generator: Weblate 5.3\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta robots=\"noindex\"]]\n"
+msgstr "[[!meta robots=\"noindex\"]]\n"
+
+#. type: Plain text
+msgid ""
+"A captive portal is a web page that is often displayed before you can access "
+"the Internet on public networks in airports, hotels, libraries, and other "
+"places."
+msgstr ""
+"Un portail captif est une page web qui est généralement affichée avant que "
+"vous puissiez accéder à Internet sur les réseaux publics dans les aéroports, "
+"les hôtels, les bibliothèques ou d'autres endroits."
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!img captive_portal.png link=\"no\" class=\"svg\" alt=\"Train station Wi-Fi. Click here for 60 minutes of free Wi-Fi\" title=\"Example of a captive portal\"]]\n"
+msgstr ""
+"[[!img captive_portal.png link=\"no\" class=\"svg\" alt=\"Wi-Fi de la gare. "
+"Cliquez ici pour 60 minutes de Wi-Fi gratuit\" title=\"Exemple de portail "
+"captif\"]]\n"
+
+#. type: Plain text
+msgid ""
+"Tails cannot connect to the Tor network when the Internet connection is "
+"initially blocked by a captive portal."
+msgstr ""
+"Tails ne peut pas se connecter au réseau Tor quand la connexion Internet est "
+"bloquée par le portail captif."
+
+#~ msgid ""
+#~ "Many publicly accessible Internet connections (usually available through "
+#~ "a wireless network connection) require users to sign in to the network "
+#~ "using a *captive portal* in order to access the Internet."
+#~ msgstr ""
+#~ "De nombreuses connexions à Internet accessibles publiquement "
+#~ "(généralement disponibles via une connexion réseau sans fil) nécessitent "
+#~ "de se connecter à un réseau en utilisant un *portail captif* pour pouvoir "
+#~ "accéder à Internet."
+
+#, fuzzy
+#~| msgid ""
+#~| "A captive portal is a web page that is displayed to the user before the "
+#~| "user can access the Internet. Captive portals usually require the user "
+#~| "to log in to the network or enter information such as an email address. "
+#~| "Captive portals are commonly encountered at Internet cafés, libraries, "
+#~| "airports, hotels, and universities."
+#~ msgid ""
+#~ "A captive portal is a web page that is displayed to the user before the "
+#~ "user can access the Internet. Captive portals usually require the user to "
+#~ "log in to the network or enter information such as an email address. "
+#~ "Captive portals are commonly encountered at Internet cafés, libraries, "
+#~ "airports, hotels, and universities."
+#~ msgstr ""
+#~ "Un portail captif est une page web qui est affichée avant d'accéder à "
+#~ "Internet. Les portails captifs nécessitent généralement de s'identifier "
+#~ "ou d'entrer des informations comme une adresse de courrier électronique. "
+#~ "Les portails captifs sont souvent rencontrés dans des cafés Internet, des "
+#~ "bibliothèques, des aéroports, des hôtels et des universités."
+
+#~ msgid ""
+#~ "This is an example of a captive portal (by [AlexEng](https://commons."
+#~ "wikimedia.org/wiki/File:Captive_Portal.png)):"
+#~ msgstr ""
+#~ "Voici un exemple de portail captif (par [AlexEng](https://commons."
+#~ "wikimedia.org/wiki/File:Captive_Portal.png)) :"
+
+#, no-wrap
+#~ msgid "[[!img captive-portal.png link=\"no\" alt=\"Welcome! Please enter your credentials to connect.\"]]\n"
+#~ msgstr "[[!img captive-portal.png link=\"no\" alt=\"Bienvenue ! Merci de saisir vos identifiants pour vous connecter.\"]]\n"
+
+#~ msgid ""
+#~ "Tor cannot start when the Internet connection is initially blocked by a "
+#~ "captive portal. That is why Tails includes an *Unsafe Browser* to sign in "
+#~ "to a network using a captive portal before starting Tor."
+#~ msgstr ""
+#~ "Tor ne peut pas démarrer lorsque la connexion est initialement bloquée "
+#~ "par un portail captif. C'est pourquoi Tails inclut un *Navigateur non "
+#~ "sécurisé* pour se connecter à un réseau utilisant un portail captif avant "
+#~ "le démarrage de Tor."

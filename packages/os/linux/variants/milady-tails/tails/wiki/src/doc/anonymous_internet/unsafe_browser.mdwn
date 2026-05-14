@@ -1,0 +1,30 @@
+[[!meta title="Signing in to a network using a captive portal"]]
+
+[[!toc levels=2]]
+
+What captive portals are
+========================
+
+[[!inline pages="doc/anonymous_internet/unsafe_browser/captive_portal.inline" raw="yes" sort="age"]]
+
+<h1 id="security">The <i>Unsafe Browser</i> is not anonymous</h1>
+
+[[!inline pages="doc/anonymous_internet/unsafe_browser/security_implications.inline" raw="yes" sort="age"]]
+
+<div class="tip">
+
+<p>To learn how Tails implements the <i>Unsafe Browser</i> and its security, see our
+[[design documentation about the <i>Unsafe Browser</i>|contribute/design/Unsafe_Browser]].</p>
+
+</div>
+
+<h1 id="use">Starting the <i>Unsafe Browser</i></h1>
+
+To start the *Unsafe Browser*:
+
+1. Choose **Apps&nbsp;▸ Internet&nbsp;▸ Unsafe Browser**.
+
+Signing in to a network using a captive portal
+==============================================
+
+[[!inline pages="doc/anonymous_internet/unsafe_browser/signing_in.inline" raw="yes" sort="age"]]

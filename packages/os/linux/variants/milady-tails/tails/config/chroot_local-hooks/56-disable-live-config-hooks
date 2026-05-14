@@ -1,0 +1,14 @@
+#! /bin/sh
+
+set -e
+
+echo "Disabling some live-config hooks"
+
+# workaround live-config bug (LIVE_NOCONFIGS is not taken into account)
+touch /var/lib/live/config/policykit
+touch /var/lib/live/config/sudo
+
+# Disable the hook which tries to configure gnome-power-manager to not
+# allow hibernation. This is not needed, hibernation is not allowed anyway,
+# and it causes an error message to be printed to the journal.
+touch /var/lib/live/config/gnome-power-manager

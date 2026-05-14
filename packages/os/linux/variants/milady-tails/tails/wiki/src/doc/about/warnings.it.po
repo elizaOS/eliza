@@ -1,0 +1,159 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"POT-Creation-Date: 2025-09-17 11:40+0200\n"
+"PO-Revision-Date: 2025-09-18 16:00+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: it\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Content of: <div>
+msgid "[[!meta title=\"Warnings: Tails is safe but not magic!\"]]"
+msgstr "[[!meta title=\"Avvertenze: Tails è sicuro ma non magico!\"]]"
+
+#. type: Content of: outside any tag (error?)
+msgid ""
+"[[!meta stylesheet=\"doc/about/warnings\" rel=\"stylesheet\" title=\"\"]]"
+msgstr ""
+"[[!meta stylesheet=\"doc/about/warnings\" rel=\"stylesheet\" title=\"\"]]"
+
+#. type: Content of: <div><p>
+msgid ""
+"Tails is safer than any regular operating system. But Tails, or any software "
+"or operating system, cannot protect you from everything—even if they pretend "
+"to."
+msgstr ""
+"Tails è più sicuro di qualsiasi sistema operativo standard. Ma Tails, o "
+"qualsiasi software o sistema operativo, non può proteggerti da tutto—anche "
+"se sembra che lo faccia."
+
+#. type: Content of: <div><p>
+msgid ""
+"The recommendations below will keep you even safer, especially if you are at "
+"high risk."
+msgstr ""
+"Le raccomandazioni che seguono ti terranno ancora più al sicuro, "
+"specialmente se sei ad alto rischio."
+
+#. type: Content of: <div><div><div><h3>
+msgid "Protecting your identity when using Tails"
+msgstr "Proteggere la tua identità quando usi Tails"
+
+#. type: Content of: <div><div><div>
+msgid ""
+"[[!img identity.png link=\"no\" class=\"svg\" alt=\"\"]] [[!inline "
+"pages=\"doc/about/warnings/identity.inline\" raw=\"yes\" sort=\"age\"]]"
+msgstr ""
+"[[!img identity.png link=\"no\" class=\"svg\" alt=\"\"]] [[!inline pages="
+"\"doc/about/warnings/identity.inline.it\" raw=\"yes\" sort=\"age\"]]"
+
+#. type: Content of: <div><div><div>
+msgid "<button id=\"toggle-identity\">Protecting your identity</button>"
+msgstr "<button id=\"toggle-identity\">Proteggere la tua identità</button>"
+
+#. type: Content of: <div><div><div><h3>
+msgid "Limitations of the Tor network"
+msgstr "Limiti della rete Tor"
+
+#. type: Content of: <div><div><div>
+msgid ""
+"[[!img tor.png link=\"no\" class=\"svg\" alt=\"\"]] [[!inline pages=\"doc/"
+"about/warnings/tor.inline\" raw=\"yes\" sort=\"age\"]]"
+msgstr ""
+"[[!img tor.png link=\"no\" class=\"svg\" alt=\"\"]] [[!inline pages="
+"\"doc/about/warnings/tor.inline.it\" raw=\"yes\" sort=\"age\"]]"
+
+#. type: Content of: <div><div><div>
+msgid "<button id=\"toggle-tor\">Limitations of Tor</button>"
+msgstr "<button id=\"toggle-tor\">Limiti di Tor</button>"
+
+#. type: Content of: <div><div><div><h3>
+msgid "Reducing risks when using untrusted computers"
+msgstr "Riduzione dei rischi durante l'utilizzo di computer non fidati"
+
+#. type: Content of: <div><div><div>
+msgid ""
+"[[!img computer.png link=\"no\" class=\"svg\" alt=\"\"]] [[!inline "
+"pages=\"doc/about/warnings/computer.inline\" raw=\"yes\" sort=\"age\"]]"
+msgstr ""
+"[[!img computer.png link=\"no\" class=\"svg\" alt=\"\"]] [[!inline pages="
+"\"doc/about/warnings/computer.inline.it\" raw=\"yes\" sort=\"age\"]]"
+
+#. type: Content of: <div><div><div>
+msgid "<button id=\"toggle-computer\">Using untrusted computers</button>"
+msgstr "<button id=\"toggle-computer\">Usando computer non fidati</button>"
+
+#. type: Content of: <div>
+msgid ""
+"<span id=\"hide-identity\" class=\"hide-button\"></span> [[!inline "
+"pages=\"doc/about/warnings/identity\" raw=\"yes\" sort=\"age\"]]"
+msgstr ""
+"<span id=\"hide-identity\" class=\"hide-button\"></span> [[!inline "
+"pages=\"doc/about/warnings/identity.it\" raw=\"yes\" sort=\"age\"]]"
+
+#. type: Content of: <div>
+msgid ""
+"<span id=\"hide-tor\" class=\"hide-button\"></span> [[!inline pages=\"doc/"
+"about/warnings/tor\" raw=\"yes\" sort=\"age\"]]"
+msgstr ""
+"<span id=\"hide-tor\" class=\"hide-button\"></span> [[!inline pages=\"doc/"
+"about/warnings/tor.it\" raw=\"yes\" sort=\"age\"]]"
+
+#. type: Content of: <div>
+msgid ""
+"<span id=\"hide-computer\" class=\"hide-button\"></span> [[!inline "
+"pages=\"doc/about/warnings/computer\" raw=\"yes\" sort=\"age\"]]"
+msgstr ""
+"<span id=\"hide-computer\" class=\"hide-button\"></span> [[!inline "
+"pages=\"doc/about/warnings/computer.it\" raw=\"yes\" sort=\"age\"]]"
+
+#. type: Content of: <div><p>
+msgid ""
+"Because you always have to adapt your digital security practices to your "
+"specific needs and threats, we encourage you to learn more by reading the "
+"following guides:"
+msgstr ""
+"Poiché devi sempre adattare le tue pratiche di sicurezza digitale alle tue "
+"specfiche esigenze e minacce, ti esortiamo a saperne di più leggendo le "
+"seguenti guide:"
+
+#. type: Content of: <div><ul><li>
+msgid "<a href=\"https://ssd.eff.org/\">EFF: Surveillance Self-Defense</a>"
+msgstr "<a href=\"https://ssd.eff.org/\">EFF: Surveillance Self-Defense</a>"
+
+#. type: Content of: <div><ul><li>
+msgid ""
+"<a href=\"https://securityinabox.org/\">Front Line Defenders: Security-in-a-"
+"Box</a>"
+msgstr ""
+"<a href=\"https://securityinabox.org/\">Front Line Defenders: Security-in-a-"
+"Box</a>"
+
+#~ msgid ""
+#~ "[[!toggleable id=\"identity\" text=\"\"\" <span class=\"hide\">[[!toggle "
+#~ "id=\"identity\" text=\"\"]]</span> [[!inline pages=\"doc/about/warnings/"
+#~ "identity\" raw=\"yes\" sort=\"age\"]] \"\"\"]] [[!toggleable id=\"tor\" "
+#~ "text=\"\"\" <span class=\"hide\">[[!toggle id=\"tor\" text=\"\"]]</span> "
+#~ "[[!inline pages=\"doc/about/warnings/tor\" raw=\"yes\" sort=\"age\"]] "
+#~ "\"\"\"]] [[!toggleable id=\"computer\" text=\"\"\" <span "
+#~ "class=\"hide\">[[!toggle id=\"computer\" text=\"\"]]</span> [[!inline "
+#~ "pages=\"doc/about/warnings/computer\" raw=\"yes\" sort=\"age\"]] \"\"\"]]"
+#~ msgstr ""
+#~ "[[!toggleable id=\"identità\" text=\"\" <span class=\"hide\">[[!toggle "
+#~ "id=\"identity\" text=\"\"]]</span> [[!inline pages=\"doc/about/warnings/"
+#~ "identity\" raw=\"yes\" sort=\"age\"] \"\"\"]] [[!toggleable id=\"tor\" "
+#~ "text=\"\" <span class=\"hide\">[[!toggle id=\"tor\" text=\"\"]]</span> [[!"
+#~ "inline pages=\"doc/about/warnings/tor\" raw=\"yes\" sort=\"age\"]] "
+#~ "\"\"\"]] [[!toggleable id=\"computer\" text=\"\" <span class=\"hide\">[[!"
+#~ "toggle id=\"computer\" text=\"\"]]</span> [[!inline pages=\"doc/about/"
+#~ "warnings/computer\" raw=\"yes\" sort=\"age\"]] \"\"\"]]"

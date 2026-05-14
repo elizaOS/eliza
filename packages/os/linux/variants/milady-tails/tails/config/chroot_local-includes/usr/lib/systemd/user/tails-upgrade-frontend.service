@@ -1,0 +1,11 @@
+[Unit]
+Description=Check available Tails upgrades
+Documentation=https://tails.net/contribute/design/upgrades/
+After=tails-wait-until-tor-has-bootstrapped.service
+
+[Service]
+ExecStart=/usr/local/bin/tails-upgrade-frontend-wrapper
+RemainAfterExit=yes
+
+[Install]
+WantedBy=desktop.target

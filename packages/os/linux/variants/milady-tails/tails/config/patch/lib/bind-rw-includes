@@ -1,0 +1,113 @@
+#!/bin/bash
+
+# This script binds files from the rw-includes directory to the root
+# filesystem. It is intended to be run by the early_patch hook.
+
+set -eu -o pipefail
+shopt -s inherit_errexit
+
+# Enable xtrace with timestamp
+export PS4='+ $(date "+%H:%M:%S.%3N") '
+set -x
+
+if [ "${EUID}" -ne 0 ]; then
+  echo >&2 "This script must be run as root"
+  exit 1
+fi
+
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# shellcheck source=lib.sh
+. "${DIR}/lib.sh"
+
+if [ -n "${1:-}" ]; then
+  INCLUDES_DIR=$(realpath "$1")
+else
+  INCLUDES_DIR=$(realpath "${DIR}/../rw-includes")
+fi
+
+# Load the fuse module which is required by bindfs
+modprobe -vvv fuse
+
+# The includes are owned by the libvirt-qemu user. We map that to 0
+# to have the includes mounted as root.
+OWNER_UID=$(stat -c %u "${INCLUDES_DIR}")
+OWNER_GID=$(stat -c %g "${INCLUDES_DIR}")
+bindfs --map="${OWNER_UID}/0:@${OWNER_GID}/@0" \
+  "${INCLUDES_DIR}" "${INCLUDES_DIR}"
+# But for /home/amnesia we map to the amnesia user/group instead.
+if [ -d "${INCLUDES_DIR}/home/amnesia" ]; then
+  bindfs --map="${OWNER_UID}/1000:@${OWNER_GID}/@1000" \
+    "${INCLUDES_DIR}/home/amnesia" "${INCLUDES_DIR}/home/amnesia"
+fi
+# If you have anything under config/patch/rw-includes/home/amnesia we
+# will create /home/amnesia during initramfs time, which is before
+# live-config calling `adduser` for the amnesia user, which leads to
+# the complaint: "The home directory `/home/amnesia' already exists.
+# Not touching this directory". So we have to initialize it as if done
+# by `adduser` with `--home /home/amnesia`.
+initialize_amnesia_home
+
+# Bind the files from the includes directory to the root filesystem
+find -L "${INCLUDES_DIR}" -type f | sort | \
+  while IFS= read -r file; do
+    # Ignore empty lines and the .gitignore and README.md files
+    if [ -z "${file}" ] || \
+       [ "${file}" = "${INCLUDES_DIR}/.gitignore" ] || \
+       [ "${file}" = "${INCLUDES_DIR}/README.md" ]; then
+      continue
+    fi
+
+    src="${file}"
+    dest="${file#"${INCLUDES_DIR}"}"
+
+    # Abort if the source file is not writable, to avoid that we bind
+    # files which cause unexpected behavior (e.g. binding a non-writable
+    # .bash_history which breaks bash history)
+    if ! true >> "${src}"; then
+      echo >&2 "Error: ${src} is not writable.
+  Make sure that you run the config/patch/set-rw-includes-permissions.sh
+  script after adding new files to the rw-includes directory."
+      exit 1
+    fi
+
+    # Delete symlinks in the destination which would get dereferenced by
+    # the findmnt below
+    if [ -L "${dest}" ]; then
+      rm "${dest}"
+    fi
+
+    # Check if something is already mounted on the destination
+    mount_src=$(findmnt --output=FSROOT --noheadings --notruncate --canonicalize --first --mountpoint "${dest}" || true)
+    if [ "${INCLUDES_DIR}${mount_src}" = "${src}" ]; then
+      # The source is already mounted
+      continue
+    fi
+    if [ -n "${mount_src}" ]; then
+      # Something else is mounted on the destination
+      umount "${dest}" || continue
+    fi
+
+    # Handle symlink
+    if [ -L "${src}" ]; then
+      # Ensure there is nothing in our way
+      rm -rf "${dest}"
+      # Ensure that the parent directory exists
+      mkdir -p "$(dirname "${dest}")"
+      # Copy symlink
+      cp --no-dereference "${src}" "${dest}"
+      continue
+    fi
+
+    # Create the destination if it doesn't exist
+    if ! [ -e "${dest}" ]; then
+      if [ -d "${src}" ]; then
+        mkdir -p "${dest}"
+      else
+        mkdir -p "$(dirname "${dest}")"
+        touch "${dest}"
+      fi
+    fi
+
+    mount --bind "${src}" "${dest}"
+  done

@@ -1,0 +1,444 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"POT-Creation-Date: 2026-03-26 08:18+0100\n"
+"PO-Revision-Date: 2024-11-02 13:28+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: tr\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.3\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Connecting to the Tor network\"]]\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!toc startlevel=2]]\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Everything you do on the Internet from Tails goes through the Tor network."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Tor encrypts and anonymizes your connection by passing it through 3 relays. "
+"Tor relays are servers operated by different people and organizations around "
+"the world."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!img tor.png link=\"no\" class=\"svg\" alt=\"A Tor connection goes through 3 relays with the last one establishing the actual connection to the final destination\"]]\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<!--\n"
+msgstr "<!--\n"
+
+#. type: Plain text
+msgid ""
+"To, hopefully, ease translations, this SVG embeds the font used in the "
+"labels \"Tor hides ...\":"
+msgstr ""
+
+#. type: Plain text
+msgid "To update it:"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Convert the TTF file SourceSansPro-Semibold.ttf to Base64 using:"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   https://hellogreg.github.io/woff2base/\n"
+msgstr ""
+
+#. type: Bullet: '2. '
+msgid "Copy it to a <style> tag in the <defs> tag of the SVG."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "-->\n"
+msgstr "-->\n"
+
+#. type: Plain text
+msgid ""
+"You cannot access the Internet from Tails until you are connected to Tor. "
+"For example, *Tor Browser* displays the error message `The proxy server is "
+"refusing connections` until you are connected to Tor."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"note\">\n"
+msgstr "<div class=\"note\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>Because Tor routes your Internet traffic through 3 relays\n"
+"before reaching its destination, the\n"
+"connection is slower than when you are not using Tor.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>See our documentation on\n"
+"[[why Tor is slow|doc/anonymous_internet/tor/slow]].</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+#. type: Plain text
+msgid "To connect to the Tor network:"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "[[Connect to a local network|networkmanager]], wired, Wi-Fi, or mobile."
+msgstr ""
+
+#. type: Bullet: '2. '
+msgid ""
+"The *Tor Connection* assistant appears to help you connect to the Tor "
+"network."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   [[!img tor-connection.png class=\"screenshot\" alt=\"\"]]\n"
+msgstr ""
+
+#. type: Bullet: '3. '
+msgid "Choose whether you want to:"
+msgstr ""
+
+#. type: Bullet: '   - '
+msgid "Connect to Tor automatically"
+msgstr ""
+
+#. type: Bullet: '   - '
+msgid "Hide to your local network that you are connecting to Tor"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   The implications of both methods are detailed below.\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"bridges\">Tor relays and bridges</h2>\n"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "**Public Tor relays**"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"  Most of the time, your local network does not block access to the Tor network\n"
+"  and you can use a public relay as your first Tor relay.\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"  Using a public Tor relay as your first Tor relay makes it clear to your local\n"
+"  network that you are connecting to Tor, while still keeping your online\n"
+"  activity secure and anonymous.\n"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "**Tor bridges**"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "  Tor bridges are secret Tor relays that hide that you are connecting to Tor.\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"  Use a bridge as your first Tor relay if connecting to Tor is blocked or if\n"
+"  using Tor could look suspicious to someone who monitors your Internet\n"
+"  connection.\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"  The technology used by Tor bridges is designed to circumvent censorship\n"
+"  where connections to Tor are blocked, for example in some countries with heavy censorship,\n"
+"  by some public networks, or by some parental controls.\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"  It does so by camouflaging your connection so it cannot be recognized as a\n"
+"  connection to Tor. As a consequence, the same technology can be used to hide\n"
+"  that you are using Tor if it could look suspicious to someone who monitors\n"
+"  your Internet connection.\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "  Tor bridges are often less reliable and slower than public Tor relays.\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"automatic\">Connecting to Tor automatically</h2>\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"We recommend connecting to Tor automatically if you are on a public Wi-Fi "
+"network or if many people in your country use Tor to circumvent censorship."
+msgstr ""
+
+#. type: Plain text
+msgid "When you choose this option:"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"First, Tails synchronizes the clock of the computer automatically, because a "
+"correct time is needed to be able to connect to the Tor network."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   Tails learns the current time by connecting to the captive portal detection\n"
+"   service of [Fedora](http://fedoraproject.org/static/hotspot.txt), which is used by most Linux\n"
+"   distributions. This connection does not go through the Tor network and is an\n"
+"   exception to our policy of only making Internet connections through the Tor\n"
+"   network.\n"
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "   <div class=\"next\">\n"
+msgstr "<div class=\"next\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   <p>You can learn more about our security assessment of this time\n"
+"   synchronization in our [[design documentation about non-Tor\n"
+"   traffic|contribute/design/Tor_enforcement#non-tor-traffic]].</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   </div>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   If you choose instead to [[hide that you are connecting to Tor|tor#hiding]],\n"
+"   you might have to fix the computer clock manually.\n"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"If Tails fails to synchronize the clock because you have to sign in to the "
+"network using a captive portal, an error screen is displayed that helps you "
+"do so."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   For detailed instructions, see how to [[sign in to the network using a\n"
+"   captive portal|unsafe_browser]].\n"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"Then, Tails tries different ways of connecting to Tor until it succeeds:"
+msgstr ""
+
+#. type: Bullet: '   1. '
+msgid ""
+"Tails tries to connect to Tor directly using **public relays**, without "
+"using a bridge."
+msgstr ""
+
+#. type: Bullet: '   1. '
+msgid ""
+"Tails tries to connect to Tor using one of the **default bridges**, already "
+"included in Tails, if connecting using public relays fails."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "      <div class=\"note\">\n"
+msgstr "      <div class=\"note\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"      <p>Tails uses the [[default <i>obfs4</i> bridges from <i>Tor\n"
+"      Browser</i>|https://gitlab.torproject.org/tpo/applications/tor-browser-build/-/blob/main/projects/tor-expert-bundle/pt_config.json?ref_type=heads]].</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "      </div>\n"
+msgstr ""
+
+#. type: Bullet: '   1. '
+msgid ""
+"If public relays and default bridges don't work, Tails asks you to configure "
+"a **custom bridge**."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "      See [[configuring a Tor bridge|tor#bridge]] below.\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Someone monitoring your Internet connection could identify these attempts as "
+"coming from a Tails user."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"hiding\">Hiding to your local network that you are connecting to Tor</h2>\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"You might need to go unnoticed if using Tor could look suspicious to someone "
+"who monitors your Internet connection."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"When you choose this option, Tails will only connect to Tor after you "
+"configure a custom Tor bridge. Bridges are secret Tor relays that hide that "
+"you are connecting to Tor."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>It is impossible to hide to the websites that you visit that you are using\n"
+"Tor, because the <a href=\"https://metrics.torproject.org/exonerator.html\">list\n"
+"of exit nodes of the Tor network</a> is public.</p>\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Our team is doing its best to help you connect to Tor using the most "
+"discreet types of Tor bridges. That is why, when you decide to hide that you "
+"are connecting to Tor:"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"Tails does not automatically detect whether you have to [[sign in to the "
+"network using a captive portal|unsafe_browser]]."
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "Default bridges are not available."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"bridge\">Configuring a Tor bridge</h2>\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"When *Tor Connection* fails to connect to Tor using public relays and "
+"default bridges, select **Configure a Tor Bridge** from the error screen."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!img bridge.png class=\"screenshot\" alt=\"Tor Connection: Configure a Tor bridge\"]]\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"doc/anonymous_internet/tor/bridge.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"To save the last Tor bridge that connected to Tor successfully, turn on the "
+"[[Tor Bridge|persistent_storage/configure#bridge]] feature of the Persistent "
+"Storage."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"troubleshoot-tor\">Troubleshooting connecting to Tor</h2>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"next\">\n"
+msgstr "<div class=\"next\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<p>See our documentation on [[troubleshooting connecting to Tor|tor/troubleshoot]].</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"status\">Viewing the status of Tor</h2>\n"
+msgstr ""
+
+#. type: Plain text
+msgid "The status of Tor appears as an onion icon in the notification area:"
+msgstr ""
+
+#. type: Bullet: '  - '
+msgid ""
+"[[!img lib/symbolic/tor-connected.png alt=\"Onion icon\" link=\"no\" "
+"class=\"symbolic\"]] You are connected to Tor."
+msgstr ""
+
+#. type: Bullet: '  - '
+msgid ""
+"[[!img lib/symbolic/tor-disconnected.png alt=\"Onion icon that is crossed "
+"out\" link=\"no\" class=\"symbolic\"]] You are not connected to Tor."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"To view the list of Tor circuits that are used by your different "
+"applications, click on the Tor status icon and choose **View Tor Circuits**. "
+"Learn more about [[managing Tor circuits|circuits]]."
+msgstr ""

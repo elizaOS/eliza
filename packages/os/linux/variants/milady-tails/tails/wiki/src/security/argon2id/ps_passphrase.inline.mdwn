@@ -1,0 +1,15 @@
+[[!tag security/fixed]]
+
+   1. Choose **Apps&nbsp;▸ Tails&nbsp;▸ Persistent Storage**.
+
+   1. Click on the **Change Passphrase** button on the left of the title bar.
+
+   1. Enter the current passphrase in the **Current Passphrase** text box.
+
+   1. Enter your new passphrase in the **New Passphrase** text box.
+
+   1. Enter your new passphrase again in the **Confirm New Passphrase** text box.
+
+   1. Click **Change**.
+
+   1. Close the **Persistent Storage** settings.

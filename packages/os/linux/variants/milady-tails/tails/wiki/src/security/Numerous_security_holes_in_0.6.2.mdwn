@@ -1,0 +1,45 @@
+[[!meta date="Mon, 04 Apr 2011 11:12:13 +0000"]]
+[[!meta title="Numerous security holes in Tails 0.6.2"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+The following security holes affect Tails 0.6.2.
+
+We **strongly** urge you to [[upgrade to Tails 0.7|news/version_0.7]]
+in case you are still using an older version.
+
+[[!toc levels=1]]
+
+# Incomplete "erase memory on shutdown" feature
+
+As an [external audit
+demonstrated](https://www.blackhat.com/html/bh-dc-11/bh-dc-11-archives.html#Case), the
+"erase memory on shutdown" feature, as implemented in Tails 0.6.2 and
+older, does not erase as much memory as it could. More specifically:
+
+1. Parts of the memory that are still allocated at shutdown time are
+   not erased and can be recovered after shutdown; this includes the
+   entire in-memory filesystem (associated meta-data, content of files
+   created or modified since boot).
+2. Partial recovery of deleted file names and their meta-data is also
+   possible.
+
+This discovery lead to a brand new implementation of the memory
+erasure feature that is shipped in Tails 0.7. As a bonus, the memory
+is now also erased when the boot media is physically removed.
+
+# Other security holes
+
+These are Debian security announces; details can be found on the
+[Debian security page](http://security.debian.org/):
+
+  - Linux kernel (DSA-2153-1)
+  - Iceweasel (DSA-2186, DSA-2200)
+  - NSS (DSA-2203)
+  - tiff (DSA-2210)
+  - CUPS (DSA-2176)
+  - Avahi (DSA-2174)
+  - freetype (DSA-2155-1)
+  - OpenOffice.org (DSA-2151-1)
+  - D-bus (DSA-2149-1)

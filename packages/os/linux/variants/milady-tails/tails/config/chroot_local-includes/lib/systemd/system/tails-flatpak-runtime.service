@@ -1,0 +1,12 @@
+[Unit]
+Description=Prepare our pseudo flatpak runtime
+Documentation=https://tails.net/contribute/design#tor-browser
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/lib/tails-flatpak-runtime --create
+ExecStop=/usr/local/lib/tails-flatpak-runtime --destroy
+
+[Install]
+WantedBy=multi-user.target
