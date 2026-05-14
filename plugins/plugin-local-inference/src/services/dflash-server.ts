@@ -67,6 +67,7 @@ import {
 	prefillPlanRequestFields,
 	repairStructuredOutput,
 	resolveGuidedDecodeForParams,
+	spanSamplerPlanRequestFields,
 	type StructuredGenerateParams,
 	StructuredOutputRepairStream,
 } from "./structured-output";
@@ -4161,6 +4162,13 @@ export function buildChatCompletionBody(
 	}
 	if (guided.prefillPlan) {
 		Object.assign(payload, prefillPlanRequestFields(guided.prefillPlan));
+	}
+	// Per-span sampler overrides (fork-only): stock llama-server ignores
+	// `eliza_span_samplers`. The grammar still constrains the same tokens — we
+	// just lose the per-span argmax determinism guarantee until the C-side
+	// honor path lands in Wave 3.
+	if (args.spanSamplerPlan && args.spanSamplerPlan.overrides.length > 0) {
+		Object.assign(payload, spanSamplerPlanRequestFields(args.spanSamplerPlan));
 	}
 	return payload;
 }

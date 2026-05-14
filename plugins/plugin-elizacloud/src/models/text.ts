@@ -144,6 +144,56 @@ function buildUserContent(params: GenerateTextParamsWithAttachments) {
   return content;
 }
 
+/**
+ * Eliza-Cloud-hosted `eliza-1` model ids that run a fork of llama-server (or
+ * vLLM with the eliza1 parsers) capable of honoring the `x-eliza-span-samplers`
+ * header. Other upstreams (OpenAI / Anthropic / generic OpenRouter) strip
+ * unknown headers safely, but to keep the wire surface narrow we only attach
+ * the per-span sampler plan when the resolved model is one we know honors it.
+ *
+ * The "we know" bound is conservative — extend the prefix list when a new
+ * fork-built deployment lands. The fallback is "do not send the header" which
+ * preserves today's behavior on every other provider.
+ */
+const SPAN_SAMPLER_HONORING_MODEL_PREFIXES = [
+  "vast/eliza-1-",
+  "elizaos/eliza-1-",
+  "eliza-1-",
+] as const;
+
+function isSpanSamplerHonoringModel(modelName: string): boolean {
+  const lower = modelName.toLowerCase();
+  return SPAN_SAMPLER_HONORING_MODEL_PREFIXES.some((prefix) =>
+    lower.startsWith(prefix),
+  );
+}
+
+/**
+ * Build the `x-eliza-span-samplers` HTTP header value from a {@link SpanSamplerPlan}.
+ * Returns `undefined` when there is no plan or no overrides — narrow the wire
+ * surface so non-eliza providers never see a stray fork-extension header.
+ *
+ * Wire schema (snake_case):
+ *   { overrides: [{ span_index, temperature, top_k?, top_p? }, ...], strict?: boolean }
+ */
+function buildSpanSamplerHeader(
+  plan: GenerateTextParams["spanSamplerPlan"],
+): string | undefined {
+  if (!plan || plan.overrides.length === 0) return undefined;
+  const overrides = plan.overrides.map((o) => {
+    const wire: Record<string, unknown> = {
+      span_index: o.spanIndex,
+      temperature: o.temperature,
+    };
+    if (typeof o.topK === "number") wire.top_k = o.topK;
+    if (typeof o.topP === "number") wire.top_p = o.topP;
+    return wire;
+  });
+  const body: Record<string, unknown> = { overrides };
+  if (plan.strict === true) body.strict = true;
+  return JSON.stringify(body);
+}
+
 function isReasoningModel(modelName: string): boolean {
   const lower = modelName.toLowerCase();
   return REASONING_MODEL_PATTERNS.some((pattern) => lower.includes(pattern));
@@ -718,11 +768,18 @@ async function generateTextWithModel(
     requestBody.temperature = params.temperature;
   }
 
+  const responsesHeaders: Record<string, string> = {
+    "X-Eliza-Llm-Purpose": getPurposeForModelType(modelType),
+    "X-Eliza-Model-Type": modelType,
+  };
+  if (isSpanSamplerHonoringModel(modelName)) {
+    const samplerHeader = buildSpanSamplerHeader(params.spanSamplerPlan);
+    if (samplerHeader) {
+      responsesHeaders["x-eliza-span-samplers"] = samplerHeader;
+    }
+  }
   const response = await createCloudApiClient(runtime).requestRaw("POST", "/responses", {
-    headers: {
-      "X-Eliza-Llm-Purpose": getPurposeForModelType(modelType),
-      "X-Eliza-Model-Type": modelType,
-    },
+    headers: responsesHeaders,
     json: requestBody,
   });
   const responseText = await response.text();
@@ -788,11 +845,23 @@ async function generateNativeChatCompletion(
     context.prompt,
     context.systemPrompt
   );
+  const headers: Record<string, string> = {
+    "X-Eliza-Llm-Purpose": getPurposeForModelType(modelType),
+    "X-Eliza-Model-Type": modelType,
+  };
+  // Per-span sampler overrides only ride along when the resolved model is a
+  // fork-built eliza-1 deployment that knows how to honor the header. Other
+  // upstreams (OpenAI / Anthropic / generic OpenRouter) strip unknown headers
+  // safely, but we keep the wire surface narrow until the cloud honor path
+  // lands in Wave 3.
+  if (isSpanSamplerHonoringModel(context.modelName)) {
+    const samplerHeader = buildSpanSamplerHeader(params.spanSamplerPlan);
+    if (samplerHeader) {
+      headers["x-eliza-span-samplers"] = samplerHeader;
+    }
+  }
   const response = await createCloudApiClient(runtime).requestRaw("POST", "/chat/completions", {
-    headers: {
-      "X-Eliza-Llm-Purpose": getPurposeForModelType(modelType),
-      "X-Eliza-Model-Type": modelType,
-    },
+    headers,
     json: requestBody,
   });
   const responseText = await response.text();

@@ -19,6 +19,7 @@ import type {
 	JSONSchema,
 	ResponseSkeleton,
 	ResponseSkeletonSpan,
+	SpanSamplerPlan,
 } from "@elizaos/core";
 
 export {
@@ -28,7 +29,7 @@ export {
 	type StructuredOutputRepairStatus,
 	StructuredOutputRepairStream,
 } from "./structured-output/deterministic-repair";
-export type { ResponseSkeleton, ResponseSkeletonSpan };
+export type { ResponseSkeleton, ResponseSkeletonSpan, SpanSamplerPlan };
 
 /**
  * GBNF grammar fragment ready for a llama-server request body. `lazy` grammars
@@ -91,6 +92,17 @@ export interface StructuredGenerateParams {
 	 * short-circuit.
 	 */
 	elizaSchema?: ElizaHarnessSchema;
+	/**
+	 * Per-span sampler overrides for the {@link responseSkeleton}. When set,
+	 * the engine emits `eliza_span_samplers` on the llama-server request body so
+	 * the fork-side server swaps to argmax (`llama_sampler_init_greedy()`) at
+	 * the indicated enum / number / boolean positions. Stock llama-server
+	 * ignores the field — the grammar still constrains the same tokens, we
+	 * just lose the argmax determinism guarantee on that path.
+	 *
+	 * Producer: `@elizaos/core` `buildSpanSamplerPlan(skeleton)`.
+	 */
+	spanSamplerPlan?: SpanSamplerPlan;
 }
 
 /** True when `kind` is a span the model actually samples. */
@@ -452,6 +464,41 @@ export function prefillPlanRequestFields(
 			id: plan.id,
 		},
 	};
+}
+
+/**
+ * Build the request-body fragment carrying per-span sampler overrides. The
+ * fork-side llama-server reads `eliza_span_samplers` (a tolerant extension —
+ * old binaries ignore it; the grammar still constrains the same tokens, we
+ * just lose the per-span argmax determinism guarantee on the legacy path).
+ *
+ * Wire schema (snake_case for OpenAI body conventions):
+ *   {
+ *     overrides: [
+ *       { span_index: number, temperature: number, top_k?: number, top_p?: number }
+ *     ],
+ *     strict?: boolean
+ *   }
+ *
+ * Returns `{}` when there is no plan or no overrides — keep the wire surface
+ * narrow so a stock server never has to skip past empty fork extensions.
+ */
+export function spanSamplerPlanRequestFields(
+	plan: SpanSamplerPlan | undefined | null,
+): Record<string, unknown> {
+	if (!plan || plan.overrides.length === 0) return {};
+	const overrides = plan.overrides.map((o) => {
+		const wire: Record<string, unknown> = {
+			span_index: o.spanIndex,
+			temperature: o.temperature,
+		};
+		if (typeof o.topK === "number") wire.top_k = o.topK;
+		if (typeof o.topP === "number") wire.top_p = o.topP;
+		return wire;
+	});
+	const body: Record<string, unknown> = { overrides };
+	if (plan.strict === true) body.strict = true;
+	return { eliza_span_samplers: body };
 }
 
 // ---------------------------------------------------------------------------
