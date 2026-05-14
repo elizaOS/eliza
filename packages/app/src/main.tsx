@@ -859,6 +859,12 @@ async function runIosFullBunSmokeIfRequested(): Promise<boolean> {
       "local-inference device list",
     );
 
+    if (hubInstalled.length === 0) {
+      throw new Error(
+        "local-inference hub had no installed Qwen3.5 GGUF model; full-Bun smoke requires a staged local model",
+      );
+    }
+
     let activatedModel: Record<string, unknown> | null = null;
     if (hubInstalled.length > 0) {
       const firstInstalled = assertSmokeObject(

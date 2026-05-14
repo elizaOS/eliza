@@ -49,9 +49,7 @@ interface RecordedCall {
   acceptHeader: string | undefined;
 }
 
-function makeFakeClient(
-  bodyBytes: Uint8Array,
-): { client: CloudTtsClient; calls: RecordedCall[] } {
+function makeFakeClient(bodyBytes: Uint8Array): { client: CloudTtsClient; calls: RecordedCall[] } {
   const calls: RecordedCall[] = [];
   const client: CloudTtsClient = {
     routes: {
@@ -136,9 +134,7 @@ describe("plugin-elizacloud TEXT_TO_SPEECH roundtrip", () => {
         chunks.push(new Uint8Array(chunk as ArrayBufferLike));
       }
     }
-    const merged = new Uint8Array(
-      chunks.reduce((acc, c) => acc + c.byteLength, 0),
-    );
+    const merged = new Uint8Array(chunks.reduce((acc, c) => acc + c.byteLength, 0));
     let off = 0;
     for (const c of chunks) {
       merged.set(c, off);
@@ -156,7 +152,7 @@ describe("plugin-elizacloud TEXT_TO_SPEECH roundtrip", () => {
         text: "hello",
         voiceId: "EXAVITQu4vr4xnSDxMaL",
         modelId: "eleven_flash_v2_5",
-      }),
+      })
     ).rejects.toBeInstanceOf(CloudTtsUnavailableError);
     // The gate runs before the HTTP fetch, so the SDK was never called.
     expect(calls).toHaveLength(0);

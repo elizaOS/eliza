@@ -187,65 +187,19 @@ def test_common_load_calibration_prompts_raises_on_empty(tmp_path):
         load_calibration_prompts(p, n=1)
 
 
-def test_push_model_quant_choices_match_real_recipes():
-    """The published `--quant` choices must match recipes that actually
-    produce a HF-loadable checkpoint. QJL is intentionally absent — it is
-    a runtime-only KV projection. Abliteration is its own `--variant`,
-    not a `--quant`."""
+def test_legacy_push_model_to_hf_redirects_to_canonical_publishers():
+    """The old single-file publisher is deliberately not a live upload path.
+
+    The current Eliza-1 release flow routes through
+    scripts.publish.orchestrator / scripts.publish.publish_model so bundle
+    gates, manifests, checksums, and Hugging Face evidence stay together.
+    """
     sys.path.insert(0, str(_HERE.parent))
-    from push_model_to_hf import QUANT_BLURBS
+    import push_model_to_hf
 
-    expected = {"polarquant", "turboquant", "fp8", "gguf-q4_k_m", "gguf-q5_k_m", "gguf-q6_k"}
-    assert set(QUANT_BLURBS) == expected
-    # Every blurb must reference an arXiv id, GitHub PR, or vendor primer.
-    for key, meta in QUANT_BLURBS.items():
-        assert "paper" in meta and meta["paper"], f"{key} missing paper link"
-        assert "blurb" in meta and meta["blurb"], f"{key} missing blurb"
-
-
-def test_push_model_resolves_repo_id_with_quant_suffix():
-    sys.path.insert(0, str(_HERE.parent))
-    from push_model_to_hf import resolve_repo_id
-
-    # Source of truth is training/model_registry.py. Runtime GGUF bundles now
-    # live in a single size-first repo (`elizaos/eliza-1`) under
-    # bundles/<tier>/; raw quantized checkpoint uploads must pass an explicit
-    # audit-only repo id instead of deriving sibling repos.
-    assert resolve_repo_id("qwen3.5-4b", None, "default", None) == "elizaos/eliza-1"
-    assert resolve_repo_id("eliza-1-4b", None, "default", None) == "elizaos/eliza-1"
-    with pytest.raises(SystemExit):
-        resolve_repo_id("qwen3.5-4b", "polarquant", "default", None)
-    with pytest.raises(SystemExit):
-        resolve_repo_id("qwen3.5-4b", "gguf-q4_k_m", "default", None)
-    with pytest.raises(SystemExit):
-        resolve_repo_id("qwen3.5-4b", None, "abliterated", None)
-    assert resolve_repo_id("qwen3.5-4b", "polarquant", "default", "custom/foo") == "custom/foo"
-
-
-def test_push_model_card_inference_blocks_reference_real_imports():
-    """Regression guard: the inference snippets we put in model cards must
-    only reference symbols that actually exist in the repo. Two earlier
-    versions of the script referenced `load_polarquant` and
-    `wrap_with_turboquant` — neither was ever defined."""
-    sys.path.insert(0, str(_HERE.parent))
-    from push_model_to_hf import PushConfig, _quant_inference_block
-
-    for quant in ("polarquant", "turboquant", "fp8", "gguf-q4_k_m"):
-        cfg = PushConfig(
-            registry_key="qwen3.5-2b",
-            checkpoint=Path("/tmp/_unused"),
-            repo_id=f"elizaos/eliza-1-2b-{quant}",
-            quant=quant,
-            variant="default",
-            public=False,
-            readme_only=False,
-            dry_run=True,
-        )
-        block = _quant_inference_block(cfg)
-        assert "load_polarquant" not in block, f"{quant} card references nonexistent load_polarquant"
-        assert "wrap_with_turboquant" not in block, (
-            f"{quant} card references nonexistent wrap_with_turboquant"
-        )
+    assert push_model_to_hf.main() == 2
+    assert not hasattr(push_model_to_hf, "resolve_repo_id")
+    assert not hasattr(push_model_to_hf, "QUANT_BLURBS")
 
 
 # ---------------------------------------------------------------------------

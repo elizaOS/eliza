@@ -55,10 +55,7 @@ import {
 	elizaHarnessSchemaFromSkeleton,
 } from "../services/structured-output";
 import type { AgentModelSlot } from "../services/types";
-import {
-	decodeMonoPcm16Wav,
-	type TranscriptionAudio,
-} from "../services/voice";
+import { decodeMonoPcm16Wav, type TranscriptionAudio } from "../services/voice";
 
 type GenerateTextHandler = (
 	runtime: IAgentRuntime,
@@ -140,7 +137,8 @@ export function shouldRegisterLocalInferenceHandlers(mode: string): boolean {
 function normalizeRuntimeMode(value: unknown): string | null {
 	if (typeof value !== "string") return null;
 	const normalized = value.trim().toLowerCase();
-	if (normalized === "local-safe" || normalized === "local-yolo") return "local";
+	if (normalized === "local-safe" || normalized === "local-yolo")
+		return "local";
 	if (
 		normalized === "local" ||
 		normalized === "local-only" ||

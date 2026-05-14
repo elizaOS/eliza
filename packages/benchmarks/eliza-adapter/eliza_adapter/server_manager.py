@@ -69,7 +69,7 @@ class ElizaServerManager:
 
     def __init__(
         self,
-        port: int = 3939,
+        port: int | None = None,
         timeout: float = 240.0,
         repo_root: Path | None = None,
     ) -> None:
@@ -92,6 +92,8 @@ class ElizaServerManager:
                     port = parsed_port
             except ValueError:
                 logger.warning("Ignoring invalid ELIZA_BENCH_PORT=%r", env_port)
+        if port is None or port <= 0:
+            port = _find_free_port()
         if not _is_port_available(port):
             replacement = _find_free_port()
             logger.warning(

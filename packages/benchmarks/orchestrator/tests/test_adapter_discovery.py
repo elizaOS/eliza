@@ -1288,6 +1288,35 @@ def test_abliteration_orchestrator_default_is_bounded_smoke(tmp_path: Path) -> N
     assert command[command.index("--tool-choice") + 1] == "none"
 
 
+def test_action_calling_orchestrator_default_is_bounded_smoke(tmp_path: Path) -> None:
+    adapter = discover_adapters(_workspace_root()).adapters["action-calling"]
+    effective = _effective_request(
+        adapter,
+        RunRequest(
+            benchmarks=("action-calling",),
+            agent="eliza",
+            provider="cerebras",
+            model="gpt-oss-120b",
+            extra_config={},
+        ),
+    )
+    ctx = ExecutionContext(
+        workspace_root=_workspace_root(),
+        benchmarks_root=_workspace_root() / "packages" / "benchmarks",
+        output_root=tmp_path / "out",
+        run_root=tmp_path,
+        request=effective,
+        run_group_id="test",
+        env={},
+        repo_meta={},
+    )
+
+    command = adapter.command_builder(ctx, adapter)
+
+    assert command[command.index("--max-examples") + 1] == "2"
+    assert command[command.index("--max-new-tokens") + 1] == "512"
+
+
 def test_loca_score_rejects_task_runs_without_token_usage(tmp_path: Path) -> None:
     audit = tmp_path / "eliza_loca_audit.json"
     audit.write_text(

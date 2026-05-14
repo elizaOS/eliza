@@ -1,9 +1,9 @@
-"""Qwen3.5 / Qwen3.6 model registry for the eliza training pipeline.
+"""Qwen3.5 model registry for the eliza training pipeline.
 
 Single source of truth for which Qwen variant trains where, with what
 optimizer + quantization combination, and what its memory budget looks like.
 
-The eliza-1 line trains exclusively against the Qwen3.5 / Qwen3.6 family.
+The eliza-1 line trains exclusively against the Qwen3.5 family.
 The legacy Qwen3 base models (``Qwen/Qwen3-0.6B`` / ``Qwen/Qwen3-1.7B`` /
 ``Qwen/Qwen3-4B``) were dropped on 2026-05-12 per operator directive — the
 Qwen3 dense bases do not work with the eliza-1 dflash spec-decode path
@@ -21,12 +21,11 @@ by the runtime model catalog (``packages/shared/src/local-inference/catalog.ts``
   - ``qwen3.5-0.8b`` → ``Qwen/Qwen3.5-0.8B-Base`` → ``eliza-1-0_8b``  (local tier; new "smallest" tier; full-param SFT on one consumer GPU; trains from the Base pretrain checkpoint, not the instruct release)
   - ``qwen3.5-2b``   → ``Qwen/Qwen3.5-2B-Base``   → ``eliza-1-2b``    (mid local tier; full-param SFT on a 16-24 GB GPU)
   - ``qwen3.5-4b``   → ``Qwen/Qwen3.5-4B-Base``   → ``eliza-1-4b``    (local/workstation tier; full-param SFT on a 24-28 GB GPU)
-  - ``qwen3.5-9b``   → ``Qwen/Qwen3.5-9B``        → ``eliza-1-9b``    (workstation tier; 80 GB-class GPU; keep on Qwen3.5 until an official Qwen3.6 9B exists)
-  - ``qwen3.6-27b``  → ``Qwen/Qwen3.6-27B``       → ``eliza-1-27b``   (cloud tier; dense 27B; gpu-h200x2)
-  - ``qwen3.5-27b``  → ``Qwen/Qwen3.5-27B``       → legacy lookup only; do not publish new Eliza-1 27B artifacts from it
+  - ``qwen3.5-9b``   → ``Qwen/Qwen3.5-9B``        → ``eliza-1-9b``    (workstation tier; 80 GB-class GPU)
+  - ``qwen3.5-27b``  → ``Qwen/Qwen3.5-27B``       → ``eliza-1-27b``   (cloud tier; dense 27B; gpu-h200x2)
 
 All bases are published on the Hub. The 9b/27b tiers need workstation /
-cloud-class GPUs (or FSDP). Every Qwen3.5/3.6 target's DFlash
+cloud-class GPUs (or FSDP). Every Qwen3.5 target's DFlash
 speculative-decode drafter is distilled from ``Qwen/Qwen3.5-0.8B-Base``
 (the Qwen3.5 tokenizer — vocab 248320 — must match the target). See
 ``DFLASH_DRAFTER_BASE`` below and ``scripts/distill_dflash_drafter.py``.
@@ -69,7 +68,7 @@ class ModelEntry:
     is intentionally conservative (64k) so the registry's memory budget
     leaves real headroom on a 2× H200 / 2× B200 cluster; bump it via
     ``--max-seq-len`` for long-context runs when you've validated capacity
-    with ``scripts/training/memory_calc.py --shape qwen3.6-27b``."""
+    with ``scripts/training/memory_calc.py --shape qwen3.5-27b``."""
 
     optimizer: str
     """One of: apollo, apollo_mini."""
@@ -381,36 +380,10 @@ REGISTRY: dict[str, ModelEntry] = {
             "gguf-q8_0",
         ),
         notes="Workstation/cloud tier. Full-param APOLLO SFT uses Vast/FSDP "
-              "and the 9B Qwen3.5 checkpoint. Keep this tier on Qwen3.5 "
-              "until an official Qwen/Qwen3.6-9B checkpoint exists.",
+              "and the 9B Qwen3.5 checkpoint.",
     ),
     "qwen3.5-27b": _entry(
         hf_id="Qwen/Qwen3.5-27B", short_name="qwen3.5-27b",
-        eliza_short_name="", eliza_repo_id="",
-        abliteration_repo_id="",
-        params_billion=27.0, tier=Tier.CLOUD,
-        seq_len=32768, optimizer="apollo_mini", optimizer_rank=1,
-        micro_batch=1, grad_accum=16, train_mem_gb_budget=130.0,
-        train_dtype="bf16",
-        infer_max_in=131072, infer_max_out=16384,
-        infer_kv_layers=16, infer_kv_heads=4, infer_kv_head_dim=256,
-        quantization_after=(
-            "polarquant",
-            "turboquant",
-            "qjl",
-            "gguf-q4_k_m",
-            "gguf-q6_k",
-            "gguf-q8_0",
-        ),
-        notes="LEGACY 27B lookup retained for older jobs that explicitly "
-              "name Qwen/Qwen3.5-27B. Do not publish new Eliza-1 27B "
-              "artifacts from this entry; canonical 27B is qwen3.6-27b.",
-        extra={"nebius_machine": "H200-1x", "fsdp_world_size": "1"},
-    ),
-    # Canonical dense 27B Eliza-1 entry. Qwen3.6-9B is not published, so 9B
-    # stays on Qwen3.5; 27B moves to Qwen3.6.
-    "qwen3.6-27b": _entry(
-        hf_id="Qwen/Qwen3.6-27B", short_name="qwen3.6-27b",
         eliza_short_name="eliza-1-27b", eliza_repo_id="elizaos/eliza-1",
         abliteration_repo_id="",
         params_billion=27.0, tier=Tier.CLOUD,
@@ -427,7 +400,7 @@ REGISTRY: dict[str, ModelEntry] = {
             "gguf-q6_k",
             "gguf-q8_0",
         ),
-        notes="Canonical cloud tier for eliza-1-27b on the Qwen3.6 dense "
+        notes="Canonical cloud tier for eliza-1-27b on the Qwen3.5 dense "
               "27B backbone. Use this for the 27B, 27B-256k, and 27B-1m "
               "release families.",
         extra={"vast_gpu_target": "h200-2x", "fsdp_world_size": "2"},

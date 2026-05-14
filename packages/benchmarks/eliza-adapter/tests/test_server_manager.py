@@ -36,6 +36,31 @@ def test_server_manager_defaults_stub_embedding_env(monkeypatch, tmp_path: Path)
     assert captured["kwargs"]["env"]["ELIZA_BENCH_ALLOW_STUB_EMBEDDING"] == "1"
 
 
+def test_server_manager_uses_ephemeral_port_by_default(monkeypatch, tmp_path: Path) -> None:
+    server = tmp_path / "packages" / "app-core" / "src" / "benchmark" / "server.ts"
+    server.parent.mkdir(parents=True)
+    server.write_text("console.log('fake benchmark server')\n", encoding="utf-8")
+    captured = {}
+
+    def fake_popen(*args, **kwargs):
+        captured["kwargs"] = kwargs
+        return _FakeProcess()
+
+    monkeypatch.setattr("eliza_adapter.server_manager._find_free_port", lambda: 45678)
+    monkeypatch.delenv("ELIZA_BENCH_PORT", raising=False)
+    manager = ElizaServerManager(repo_root=tmp_path)
+    monkeypatch.setattr(manager.client, "is_ready", lambda: True)
+    monkeypatch.setattr(manager.client, "health", lambda: {"status": "ready"})
+    monkeypatch.setattr(manager.client, "reset", lambda *args, **kwargs: None)
+    monkeypatch.setattr("eliza_adapter.server_manager.subprocess.Popen", fake_popen)
+
+    manager.start()
+    manager._proc = None
+
+    assert manager.port == 45678
+    assert captured["kwargs"]["env"]["ELIZA_BENCH_PORT"] == "45678"
+
+
 def test_server_manager_respects_explicit_stub_embedding_override(
     monkeypatch,
     tmp_path: Path,
