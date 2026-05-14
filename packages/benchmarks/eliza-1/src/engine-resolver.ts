@@ -103,11 +103,11 @@ async function tryImport<T>(spec: string): Promise<T | null> {
   }
 }
 
-function pluginLocalInferenceServicesUrl(): string {
-  return new URL(
-    "../../../../plugins/plugin-local-inference/src/services/index.ts",
-    import.meta.url,
-  ).href;
+function pluginLocalInferenceUrl(): string {
+	return new URL(
+		"../../../../plugins/plugin-local-inference/src/index.ts",
+		import.meta.url,
+	).href;
 }
 
 /**
@@ -168,18 +168,18 @@ export async function resolveElizaEngine(
       reason: `eliza-1 GGUF not found locally for tier ${tierId}`,
     };
   }
-  const engineMod =
-    (await tryImport<AppCoreEngineLike>(
-      "@elizaos/plugin-local-inference/services",
-    )) ??
-    (await tryImport<AppCoreEngineLike>(pluginLocalInferenceServicesUrl()));
-  if (!engineMod) {
-    return {
-      kind: "skip",
-      reason:
-        "failed to import local-inference engine from @elizaos/plugin-local-inference/services or plugin source",
-    };
-  }
+	const engineMod =
+		(await tryImport<AppCoreEngineLike>(
+			"@elizaos/plugin-local-inference",
+		)) ??
+		(await tryImport<AppCoreEngineLike>(pluginLocalInferenceUrl()));
+	if (!engineMod) {
+		return {
+			kind: "skip",
+			reason:
+				"failed to import local-inference engine from @elizaos/plugin-local-inference or plugin source",
+		};
+	}
   let engine: EngineLike;
   try {
     engine = new engineMod.LocalInferenceEngine();

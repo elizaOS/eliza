@@ -30,7 +30,7 @@ import { ModelType } from "../../core/src/types";
 import {
 	type AcceptedToken,
 	PhraseChunker,
-} from "@elizaos/plugin-local-inference/services";
+} from "@elizaos/plugin-local-inference";
 import { PhraseChunkedTts } from "../src/services/phrase-chunked-tts";
 
 // ---------------------------------------------------------------------------

@@ -58,10 +58,12 @@ def test_discovery_includes_directory_name_mismatches_and_special_tracks() -> No
     assert adapters["gaia_orchestrated"].directory == "gaia"
     assert adapters["rlm_bench"].directory == "rlm-bench"
     assert adapters["osworld"].directory == "OSWorld"
-    assert adapters["mmau"].directory == "mmau"
+    assert adapters["mmau"].directory == "mmau-audio"
     assert adapters["voicebench_quality"].directory == "voicebench-quality"
+    assert adapters["voice_emotion"].directory == "voice-emotion"
     assert adapters["voiceagentbench"].directory == "voiceagentbench"
     assert "elizaos_mmau" not in discover_adapters(_workspace_root()).all_directories
+    assert "mmau" not in discover_adapters(_workspace_root()).all_directories
 
 
 def test_synthetic_calibration_payloads_exercise_all_score_extractors(tmp_path: Path) -> None:
@@ -129,7 +131,7 @@ def test_audio_benchmark_registry_commands_and_scores(tmp_path: Path) -> None:
         ModelSpec(provider="cerebras", model="gpt-oss-120b"),
         {"agent": "hermes", "limit": 2, "no_traces": True},
     )
-    assert mmau_command[:3] == [mmau_command[0], "-m", "benchmarks.mmau"]
+    assert mmau_command[:3] == [mmau_command[0], "-m", "elizaos_mmau_audio"]
     assert mmau_command[mmau_command.index("--agent") + 1] == "hermes"
     assert mmau_command[mmau_command.index("--limit") + 1] == "2"
     assert "--mock" not in mmau_command
@@ -166,6 +168,17 @@ def test_audio_benchmark_registry_commands_and_scores(tmp_path: Path) -> None:
         {"pass_at_1": 1.0, "tasks": [{"task_id": "t1"}]}
     ).score == 1.0
 
+    voice_emotion = registry["voice_emotion"]
+    ve_command = voice_emotion.build_command(
+        tmp_path / "ve",
+        ModelSpec(provider="cerebras", model="gpt-oss-120b"),
+        {"suite": "fixture", "emotion_model": "fixture"},
+    )
+    assert ve_command[:3] == [ve_command[0], "-m", "elizaos_voice_emotion"]
+    assert ve_command[3] == "intrinsic"
+    assert ve_command[ve_command.index("--suite") + 1] == "fixture"
+    assert voice_emotion.extract_score({"macroF1": 1.0, "n": 14}).score == 1.0
+
 
 def test_hermes_native_envs_are_hermes_only() -> None:
     adapters = discover_adapters(_workspace_root()).adapters
@@ -198,7 +211,7 @@ def test_direct_provider_benchmarks_are_not_published_as_harness_rows() -> None:
 def test_eliza_only_registry_bridges_are_not_published_as_cross_harness_rows() -> None:
     adapters = discover_adapters(_workspace_root()).adapters
 
-    for benchmark_id in ("mint", "realm"):
+    for benchmark_id in ("mint", "realm", "voice_emotion"):
         adapter = adapters[benchmark_id]
         assert adapter.agent_compatibility == ("eliza",)
         assert _is_harness_compatible(adapter, "eliza") is True

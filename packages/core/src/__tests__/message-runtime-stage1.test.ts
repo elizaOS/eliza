@@ -648,6 +648,103 @@ describe("runV5MessageRuntimeStage1", () => {
 		}
 	});
 
+	it("routes action-scored benchmark turns to BENCHMARK_ACTION even when Stage 1 tries a simple reply", async () => {
+		const previous = process.env.ELIZA_BENCH_FORCE_TOOL_CALL;
+		process.env.ELIZA_BENCH_FORCE_TOOL_CALL = "1";
+		try {
+			const runtime = makeRuntime([
+				stage1Response({
+					thought: "The model thinks it cannot access tools.",
+					contexts: ["simple"],
+					replyText: "I don't have access to your calendar.",
+				}),
+				{
+					text: "",
+					toolCalls: [
+						{
+							id: "call-1",
+							name: "BENCHMARK_ACTION",
+							arguments: {
+								tool_name: "CALENDAR",
+								arguments: {
+									subaction: "check_availability",
+									startAt: "2026-05-14T09:00:00Z",
+									endAt: "2026-05-14T10:00:00Z",
+								},
+							},
+						},
+					],
+				},
+				JSON.stringify({
+					success: true,
+					decision: "FINISH",
+					thought: "Captured benchmark action.",
+					messageToUser: "You are free Thursday 09:00-10:00 UTC.",
+				}),
+			]);
+			const handler = vi.fn(async () => ({
+				success: true,
+				text: "captured",
+				data: { action: "CALENDAR" },
+			}));
+			runtime.actions = [
+				{
+					name: "BENCHMARK_ACTION",
+					description: "Capture a benchmark action.",
+					contexts: ["general"],
+					allowAdditionalParameters: true,
+					handler,
+				},
+			] as IAgentRuntime["actions"];
+			const message = {
+				...makeMessage(),
+				content: {
+					...makeMessage().content,
+					source: "benchmark",
+					metadata: {
+						benchmark: "lifeops_bench",
+						taskId: "calendar.check_availability_thursday_morning",
+					},
+				},
+			};
+
+			const result = await runV5MessageRuntimeStage1({
+				runtime,
+				message,
+				state: makeState(),
+				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			});
+
+			expect(result.kind).toBe("planned_reply");
+			expect(runtime.useModel).toHaveBeenCalledTimes(3);
+			const plannerParams = useModelCalls(runtime)[1]?.[1] as {
+				tools?: Array<{ name?: string }>;
+				messages?: Array<{ role?: string; content?: string | null }>;
+			};
+			expect(plannerParams.tools?.map((tool) => tool.name)).toContain(
+				"BENCHMARK_ACTION",
+			);
+			const plannerPrompt = JSON.stringify(plannerParams.messages);
+			expect(plannerPrompt).toContain("Benchmark harness mode");
+			expect(plannerPrompt).toContain("BENCHMARK_ACTION");
+			expect(plannerPrompt).not.toContain(
+				"I don't have access to your calendar.",
+			);
+			expect(handler).toHaveBeenCalledTimes(1);
+			if (result.kind === "planned_reply") {
+				expect(result.result.responseContent?.text).toBe(
+					"You are free Thursday 09:00-10:00 UTC.",
+				);
+			}
+		} finally {
+			if (previous === undefined) {
+				delete process.env.ELIZA_BENCH_FORCE_TOOL_CALL;
+			} else {
+				process.env.ELIZA_BENCH_FORCE_TOOL_CALL = previous;
+			}
+		}
+	});
+
 	it("routes to the planner when field registry emits candidate actions without contexts", async () => {
 		const runtime = makeRuntime([
 			stage1Response({

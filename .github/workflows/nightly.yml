@@ -118,7 +118,9 @@ jobs:
           echo "Nightly version: $NIGHTLY_VERSION"
 
       - name: Build
-        run: bun run build
+        run: |
+          bunx turbo run build --concurrency=1 --filter='!@elizaos/ios-native-deps'
+          node scripts/run-examples-benchmarks.mjs build
 
       - name: Run tests
         run: bun run test
@@ -177,7 +179,14 @@ jobs:
         run: bun install --ignore-scripts --no-frozen-lockfile
 
       - name: Build
-        run: bun run build
+        shell: bash
+        run: |
+          if [ "${{ runner.os }}" = "macOS" ]; then
+            bun run build
+          else
+            bunx turbo run build --concurrency=1 --filter='!@elizaos/ios-native-deps'
+            node scripts/run-examples-benchmarks.mjs build
+          fi
 
       - name: Build desktop bundle
         working-directory: packages/app
@@ -209,7 +218,9 @@ jobs:
           install-command: bun install --ignore-scripts --no-frozen-lockfile
 
       - name: Build
-        run: bun run build
+        run: |
+          bunx turbo run build --concurrency=1 --filter='!@elizaos/ios-native-deps'
+          node scripts/run-examples-benchmarks.mjs build
 
       - name: Configure git for lerna
         run: |

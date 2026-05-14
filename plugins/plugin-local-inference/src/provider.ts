@@ -913,7 +913,7 @@ export function createLocalInferenceModelHandlers(): NonNullable<
 export const localInferencePlugin: Plugin = {
 	name: LOCAL_INFERENCE_PROVIDER_ID,
 	description:
-		"Unified Eliza-1 local provider for text, embeddings, text-to-speech, and transcription.",
+		"Unified Eliza-1 local provider for text, embeddings, text-to-speech, transcription, and image description.",
 	priority: LOCAL_INFERENCE_PRIORITY,
 	models: createLocalInferenceModelHandlers(),
 	async init(_config: unknown, runtime: IAgentRuntime) {

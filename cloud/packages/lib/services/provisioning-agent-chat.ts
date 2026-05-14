@@ -15,11 +15,13 @@ import {
 } from "@/db/repositories/agent-sandboxes";
 import { cache } from "@/lib/cache/client";
 import { getCloudAwareEnv } from "@/lib/runtime/cloud-bindings";
+import { launchManagedElizaAgent } from "@/lib/services/eliza-managed-launch";
 import { logger } from "@/lib/utils/logger";
 
 const HISTORY_CACHE_KEY = (userId: string) => `prov-chat:${userId}`;
+const HANDOFF_CACHE_KEY = (userId: string, agentId: string) => `prov-chat:handoff:${userId}:${agentId}`;
 const HISTORY_TTL_SECONDS = 604800; // 7 days
-const MAX_HISTORY_MESSAGES = 20; // 10 turns (user + assistant)
+const MAX_HISTORY_MESSAGES = 200;
 
 const CEREBRAS_BASE_URL = "https://api.cerebras.ai/v1";
 const CEREBRAS_MODEL = "gpt-oss-120b";
@@ -94,6 +96,63 @@ async function saveHistory(userId: string, history: ChatMessage[]): Promise<void
   await cache.set(HISTORY_CACHE_KEY(userId), capped, HISTORY_TTL_SECONDS);
 }
 
+function historyToTranscript(history: ChatMessage[]): string {
+  return [
+    "Provisioning chat transcript copied from Eliza Cloud.",
+    "",
+    ...history.map((message) => {
+      const speaker = message.role === "user" ? "User" : "Eliza provisioning";
+      return `${speaker}: ${message.content}`;
+    }),
+  ].join("\n");
+}
+
+async function copyHistoryToManagedAgent(params: {
+  userId: string;
+  organizationId: string;
+  agentId: string;
+  history: ChatMessage[];
+}): Promise<void> {
+  const copiedKey = HANDOFF_CACHE_KEY(params.userId, params.agentId);
+  if (await cache.get<{ copiedAt: string }>(copiedKey)) {
+    return;
+  }
+
+  try {
+    const launch = await launchManagedElizaAgent({
+      agentId: params.agentId,
+      organizationId: params.organizationId,
+      userId: params.userId,
+    });
+
+    const response = await fetch(
+      `${launch.connection.apiBase.replace(/\/+$/, "")}/api/memory/remember`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${launch.connection.token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ text: historyToTranscript(params.history) }),
+        signal: AbortSignal.timeout(20_000),
+      },
+    );
+
+    if (!response.ok) {
+      const body = await response.text().catch(() => "");
+      throw new Error(`memory copy failed (${response.status}) ${body.slice(0, 200)}`);
+    }
+
+    await cache.set(copiedKey, { copiedAt: new Date().toISOString() }, HISTORY_TTL_SECONDS);
+  } catch (error) {
+    logger.warn("[ProvisioningAgentChat] Failed to copy history into managed agent", {
+      userId: params.userId,
+      agentId: params.agentId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
 export async function provisioningAgentChat(
   userId: string,
   organizationId: string,
@@ -157,6 +216,15 @@ export async function provisioningAgentChat(
   // Persist updated history with assistant reply
   const finalHistory: ChatMessage[] = [...updatedHistory, { role: "assistant", content: reply }];
   await saveHistory(userId, finalHistory);
+
+  if (containerStatus === "running" && resolvedAgentId) {
+    await copyHistoryToManagedAgent({
+      userId,
+      organizationId,
+      agentId: resolvedAgentId,
+      history: finalHistory,
+    });
+  }
 
   return {
     reply,

@@ -133,7 +133,7 @@ beforeEach(() => {
 });
 
 describe("ensureLocalInferenceHandler", () => {
-	it("registers Eliza-1 text, embedding, voice, and transcription handlers in local mode", async () => {
+	it("registers Eliza-1 text, embedding, voice, transcription, and vision handlers in local mode", async () => {
 		const { registrations, runtime } = makeRuntime();
 
 		await ensureLocalInferenceHandler(runtime);
@@ -165,7 +165,19 @@ describe("ensureLocalInferenceHandler", () => {
 					provider: "eliza-local-inference",
 					priority: 0,
 				}),
+				expect.objectContaining({
+					modelType: ModelType.IMAGE_DESCRIPTION,
+					provider: "eliza-local-inference",
+					priority: 0,
+				}),
 			]),
+		);
+		expect(runtime.registerService).toHaveBeenCalledWith(
+			"eliza1-vision",
+			expect.objectContaining({
+				provider: "eliza-local-inference",
+				modelType: ModelType.IMAGE_DESCRIPTION,
+			}),
 		);
 	});
 

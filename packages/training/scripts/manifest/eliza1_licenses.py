@@ -113,7 +113,7 @@ _CC_BY_NC_SA = "CC-BY-NC-SA-4.0.txt"
 
 # Each entry's upstream is the *v1 source repo* recorded in
 # ELIZA_1_RELEASE_ASSET_STATUS.md ("v1 source repos per tier /
-    # component"). Text tiers use Qwen3.5 0.8B / 2B / 4B / 9B / 27B.
+# component"). Text tiers use Qwen3.5 0.8B / 2B / 4B / 9B and Qwen3.6 27B-class.
 # ASR and embedding are deliberate upstream exceptions: they remain published
 # Qwen3-ASR / Qwen3-Embedding artifacts rather than being rewritten as Qwen3.5.
 ATTESTATIONS: Final[tuple[LicenseAttestation, ...]] = (
@@ -124,13 +124,13 @@ ATTESTATIONS: Final[tuple[LicenseAttestation, ...]] = (
         text_file=_APACHE,
         upstream_repo=(
             "Qwen/Qwen3.5-0.8B / Qwen/Qwen3.5-2B / Qwen/Qwen3.5-4B / "
-            "Qwen/Qwen3.5-9B / Qwen/Qwen3.5-27B (lineage recorded per tier "
+            "Qwen/Qwen3.5-9B / Qwen/Qwen3.6-27B (lineage recorded per tier "
             "in the manifest)"
         ),
         upstream_url="https://huggingface.co/Qwen/Qwen3.5-2B",
         copyright_holder="Alibaba Cloud (Qwen team) and contributors",
         note=(
-            "The text weights in this bundle are derived from the Qwen3.5 family "
+            "The text weights in this bundle are derived from the Qwen3.5/Qwen3.6 family "
             "(GGUF-converted via the elizaOS/llama.cpp fork and Eliza-quantized), "
             "rebranded \"Eliza-1\" in user-facing strings per the project's "
             "branding policy. The upstream lineage and Apache-2.0 terms are "
@@ -196,7 +196,7 @@ ATTESTATIONS: Final[tuple[LicenseAttestation, ...]] = (
         spdx="Apache-2.0",
         text_file=_APACHE,
         upstream_repo="elizalabs/eliza-1/bundles/<tier> (distilled from the text backbone)",
-        upstream_url="https://huggingface.co/elizalabs",
+        upstream_url="https://huggingface.co/elizalabs/eliza-1",
         copyright_holder="elizaOS / Eliza Labs (drafter); Alibaba Cloud (Qwen team) (text lineage)",
         note=(
             "The DFlash drafter is a small student model aligned to the Eliza-1 "
@@ -269,7 +269,7 @@ ATTESTATIONS: Final[tuple[LicenseAttestation, ...]] = (
         spdx="CC-BY-NC-SA-4.0",
         text_file=_CC_BY_NC_SA,
         upstream_repo="elizalabs/eliza-1/bundles/<tier>",
-        upstream_url="https://huggingface.co/elizalabs",
+        upstream_url="https://huggingface.co/elizalabs/eliza-1",
         copyright_holder="elizaOS / Eliza Labs and the upstream component authors (see per-component LICENSE.* files)",
         note=(
             "Eliza-1 is a non-commercial open-source on-device model line. This "

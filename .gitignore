@@ -247,6 +247,9 @@ tasks/
 !plugins/plugin-mysticism/src/engines/*/data/
 !plugins/plugin-mysticism/src/engines/*/data/**
 # Benchmark fixture data is vendored, not generated.
+!packages/benchmarks/lifeops-bench/data/
+!packages/benchmarks/lifeops-bench/data/snapshots/
+!packages/benchmarks/lifeops-bench/data/snapshots/**
 !packages/benchmarks/qwen-claw-bench/data/
 !packages/benchmarks/qwen-claw-bench/data/**
 !packages/benchmarks/swe-bench-multilingual/tests/test_data/
