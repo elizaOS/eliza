@@ -17,7 +17,7 @@ import type {
   LocalRuntimeKernel,
 } from "./types.js";
 
-export const ELIZA_1_HF_REPO = "elizalabs/eliza-1" as const;
+export const ELIZA_1_HF_REPO = "elizaos/eliza-1" as const;
 
 export const ELIZA_1_TIER_IDS = [
   "eliza-1-0_8b",
@@ -114,11 +114,10 @@ export type VoiceBackendId = "kokoro" | "omnivoice";
  * backend have a single-element array.
  *
  * Policy:
- *   - Small tiers (0_8b / 2b / 4b) → OmniVoice first, Kokoro fallback.
- *     This keeps the fused voice-profile path active on the smallest bundles
- *     while preserving Kokoro as the low-latency escape hatch on constrained
- *     devices.
- *   - 9b → both supported, OmniVoice first. 9b is the boundary tier where
+ *   - Small tiers (0_8b / 2b / 4b) → Kokoro only. This keeps the smallest
+ *     bundles on the low-latency voice backend and avoids shipping redundant
+ *     OmniVoice payloads on constrained devices.
+ *   - 9b → both supported, Kokoro first. 9b is the boundary tier where
  *     either makes sense depending on workload and thermal headroom.
  *   - Large tiers (27b / 27b-256k / 27b-1m) → OmniVoice only. The RAM
  *     and compute budget is large enough that the OmniVoice quality win

@@ -1344,6 +1344,19 @@ def _u_calendar(world: LifeWorld, kw: dict[str, Any], name: str) -> dict[str, An
             or details.get("timeMax")
         )
         if not isinstance(start, str) or not isinstance(end, str):
+            inferred = _parse_calendar_time_range_hint(
+                kw.get("intent")
+                or details.get("intent")
+                or kw.get("query")
+                or details.get("query")
+                or kw.get("when")
+                or details.get("when"),
+                world.now_iso,
+            )
+            if inferred is not None:
+                start, end = inferred
+                kw = {**kw, "start": start, "end": end}
+        if not isinstance(start, str) or not isinstance(end, str):
             raise KeyError(
                 f"{name}/{sub} requires startAt/endAt or start/end in kwargs={sorted(kw)}"
             )
