@@ -77,6 +77,32 @@ const FORBIDDEN_MAS_CODE_SIGNING_EXCEPTIONS = [
   "com.apple.security.cs.allow-dyld-environment-variables",
 ];
 
+/**
+ * Mach-O basenames that get the Bun-specific MAS entitlements
+ * (`mas-bun.entitlements`: app-sandbox + cs.inherit + allow-jit).
+ *
+ * Kept as a Set keyed by basename so the smoke harness and the signer agree
+ * on which binaries are "the Bun helper". Today there is exactly one entry
+ * because we ship one Bun runtime; if a fat-bundle ever ships a renamed Bun
+ * helper, add the basename here.
+ */
+export const BUN_HELPER_BINARY_NAMES = new Set(["bun"]);
+
+/**
+ * True when `target` is the Bun runtime helper inside `appPath` — the only
+ * Mach-O that should receive `mas-bun.entitlements`.
+ *
+ * Anchors on the relative location `Contents/MacOS/<basename>` so a stray
+ * `bun`-named binary buried deeper in the bundle does not silently pick up
+ * the JIT entitlement.
+ */
+export function isBunHelperBinary(target, appPath) {
+  const rel = path.relative(appPath, target).split(path.sep).join("/");
+  const basename = path.basename(rel);
+  if (!BUN_HELPER_BINARY_NAMES.has(basename)) return false;
+  return rel === `Contents/MacOS/${basename}`;
+}
+
 function parseArgs(argv) {
   const out = {};
   for (const arg of argv.slice(2)) {
@@ -271,13 +297,8 @@ function sign(target, entitlements, identity, dryRun) {
   );
 }
 
-function isBunRuntimeExecutable(target, appPath) {
-  const rel = path.relative(appPath, target).split(path.sep).join("/");
-  return rel === "Contents/MacOS/bun";
-}
-
 function entitlementsForMacho(target, appPath) {
-  return isBunRuntimeExecutable(target, appPath)
+  return isBunHelperBinary(target, appPath)
     ? BUN_ENTITLEMENTS
     : CHILD_ENTITLEMENTS;
 }
@@ -348,9 +369,7 @@ function main() {
 
   // 1. Sign all loose Mach-O binaries with the narrowest matching
   // entitlements (deepest first).
-  console.log(
-    `\nSigning ${machos.length} Mach-O binaries:`,
-  );
+  console.log(`\nSigning ${machos.length} Mach-O binaries:`);
   for (const target of machos) {
     sign(target, entitlementsForMacho(target, appPath), identity, dryRun);
   }
@@ -440,4 +459,8 @@ function main() {
   console.log(`\n${dryRun ? "[dry-run] " : ""}Done.`);
 }
 
-main();
+// Run only when invoked as a script; the smoke harness imports
+// `BUN_HELPER_BINARY_NAMES` / `isBunHelperBinary` from this module.
+if (process.argv[1] && path.resolve(process.argv[1]) === __filename) {
+  main();
+}
