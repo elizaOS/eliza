@@ -78,7 +78,7 @@ const factOpsSchema: JSONSchema = {
 					},
 					claim: { type: "string" },
 					category: { type: "string" },
-					structured_fields: { type: "object" },
+					structured_fields: { type: "object", additionalProperties: true },
 					keywords: {
 						type: "array",
 						items: { type: "string" },

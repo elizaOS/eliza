@@ -91,7 +91,7 @@ export class ContainersService {
 // Export singleton instance
 export const containersService = new ContainersService();
 
-// Export individual functions for backward compatibility with existing API routes
+// Convenience wrappers used by API routes
 export const listContainers = (organizationId: string) =>
   containersService.listByOrganization(organizationId);
 

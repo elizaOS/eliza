@@ -9,8 +9,10 @@ import {
   ANDROID_CLOUD_STRIPPED_PERMISSIONS,
   ANDROID_PERMISSIONS,
   applyAndroidCleartextPolicy,
+  IOS_AGENT_RUNTIME_ASSETS,
   IOS_OFFICIAL_PODS,
   isIosAppStoreBuild,
+  resolveIosAgentRuntimeAssetPlan,
   resolveIosBuildTarget,
   resolveIosCustomPods,
   resolveMobileBuildPolicy,
@@ -172,6 +174,20 @@ test("resolveIosBuildTarget honors simulator overrides used by local iOS smoke b
   );
 });
 
+test("resolveIosBuildTarget defaults App Store iOS to a device build", () => {
+  assert.deepEqual(
+    resolveIosBuildTarget({
+      env: { ELIZA_RELEASE_AUTHORITY: "apple-app-store" },
+      appDirValue: "/tmp/no-app",
+    }),
+    {
+      destination: "generic/platform=iOS",
+      sdk: "iphoneos",
+      reason: "App Store device build",
+    },
+  );
+});
+
 test("iOS background runner pod resolves through the official package", () => {
   assert.equal(
     IOS_OFFICIAL_PODS.find(
@@ -184,8 +200,9 @@ test("iOS background runner pod resolves through the official package", () => {
 test("iOS App Store pod selection keeps no-JIT Bun runtime and gates tunnel bridge", () => {
   const pods = resolveIosCustomPods({
     appStoreBuild: true,
-    includeLlama: false,
+    includeLlama: true,
     includeFullBunEngine: true,
+    includeMobileAgentBridge: true,
   }).map(([name]) => name);
 
   assert.equal(isIosAppStoreBuild({ ELIZA_BUILD_VARIANT: "store" }), true);
@@ -193,6 +210,17 @@ test("iOS App Store pod selection keeps no-JIT Bun runtime and gates tunnel brid
   assert.equal(pods.includes("ElizaosCapacitorBunRuntime"), true);
   assert.equal(pods.includes("ElizaosCapacitorMobileAgentBridge"), false);
   assert.equal(pods.includes("ElizaBunEngine"), true);
+});
+
+test("iOS App Store agent payload is copied by explicit runtime asset allowlist", () => {
+  assert.deepEqual(resolveIosAgentRuntimeAssetPlan({ appStoreBuild: true }), {
+    agentAssets: IOS_AGENT_RUNTIME_ASSETS,
+    rootAssets: ["vector.tar.gz", "fuzzystrmatch.tar.gz"],
+  });
+  assert.equal(
+    resolveIosAgentRuntimeAssetPlan({ appStoreBuild: false }).agentAssets,
+    null,
+  );
 });
 
 test("iOS direct compat pod selection includes JSContext runtime without full Bun", () => {

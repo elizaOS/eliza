@@ -7,9 +7,11 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import {
   type AgentRuntime,
-  type LegacyRouteHandler,
+  type IAgentRuntime,
   type PaymentEnabledRoute,
   type Route,
+  type RouteRequest,
+  type RouteResponse,
   type RuntimeRouteHostContext,
   setRuntimeRouteHostContext,
 } from "@elizaos/core";
@@ -17,10 +19,14 @@ import { readJsonBody } from "@elizaos/shared";
 
 const EXPRESS_SHIM = Symbol("elizaExpressResponseShim");
 
+type X402RouteHandler = (
+  req: RouteRequest,
+  res: RouteResponse,
+  runtime: IAgentRuntime,
+) => void | Promise<void>;
+
 let x402RoutesModulePromise: Promise<{
-  createPaymentAwareHandler: (
-    route: PaymentEnabledRoute,
-  ) => LegacyRouteHandler;
+  createPaymentAwareHandler: (route: PaymentEnabledRoute) => X402RouteHandler;
   isRoutePaymentWrapped: (route: Route) => boolean;
 }> | null = null;
 
@@ -243,7 +249,7 @@ export async function tryHandleRuntimePluginRoute(options: {
       return true;
     }
 
-    let effectiveHandler = handler as NonNullable<Route["handler"]>;
+    let effectiveHandler: X402RouteHandler = handler as X402RouteHandler;
     if (route.x402 != null) {
       const { createPaymentAwareHandler, isRoutePaymentWrapped } =
         await getX402RoutesModule();
