@@ -8,7 +8,7 @@ import {
   isWalletOsStoreReadEnabled,
 } from "./platform-secure-store-node";
 
-const WALLET_VAULT_KEYS: ReadonlyArray<keyof NodeJS.ProcessEnv> = [
+const WALLET_VAULT_KEYS: ReadonlyArray<string> = [
   "EVM_PRIVATE_KEY",
   "SOLANA_PRIVATE_KEY",
 ];
@@ -19,7 +19,7 @@ const WALLET_VAULT_KEYS: ReadonlyArray<keyof NodeJS.ProcessEnv> = [
  * own auth model — leave them on the keystore-only path.
  */
 const STEWARD_OS_PAIRS: ReadonlyArray<
-  readonly [keyof NodeJS.ProcessEnv, SecureStoreSecretKind]
+  readonly [string, SecureStoreSecretKind]
 > = [
   ["STEWARD_API_URL", "steward.api_url"],
   ["STEWARD_AGENT_ID", "steward.agent_id"],
@@ -32,7 +32,7 @@ const STEWARD_OS_PAIRS: ReadonlyArray<
  * surface a migration banner.
  */
 async function migrateOsStoreWalletKeysIntoVault(
-  envKeys: ReadonlyArray<keyof NodeJS.ProcessEnv>,
+  envKeys: ReadonlyArray<string>,
 ): Promise<string[]> {
   if (envKeys.length === 0) return [];
   if (!isWalletOsStoreReadEnabled()) return [];
@@ -80,7 +80,7 @@ async function migrateOsStoreWalletKeysIntoVault(
 export async function hydrateWalletKeysFromNodePlatformSecureStore(): Promise<void> {
   // ── 1. Vault read for wallet keys ────────────────────────────────
   const vault = sharedVault();
-  const missingWalletKeys: Array<keyof NodeJS.ProcessEnv> = [];
+  const missingWalletKeys: Array<string> = [];
   for (const envKey of WALLET_VAULT_KEYS) {
     const cur = process.env[envKey];
     if (typeof cur === "string" && cur.trim()) continue;
