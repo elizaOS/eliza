@@ -13,12 +13,16 @@
   },
   "scripts": {
     "start": "bun run src/index.ts",
+    "fixtures:derive": "node scripts/derive-fixtures.mjs",
+    "fixtures:derive:dry-run": "node scripts/derive-fixtures.mjs --dry-run",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "bunx @biomejs/biome check .",
     "typecheck": "tsc --noEmit"
   },
-  "dependencies": {},
+  "dependencies": {
+    "@elizaos/core": "workspace:*"
+  },
   "devDependencies": {
     "@types/node": "^25.0.3",
     "typescript": "^6.0.3",

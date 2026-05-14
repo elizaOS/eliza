@@ -48,7 +48,6 @@ import { type EmbeddingModelSpec, MODEL_SPECS, type ModelSpec } from "./types";
 import { DownloadManager } from "./utils/downloadManager";
 import { getPlatformManager } from "./utils/platform";
 import { TokenizerManager } from "./utils/tokenizerManager";
-import { TranscribeManager } from "./utils/transcribeManager";
 import { TTSManager } from "./utils/ttsManager";
 import { VisionManager } from "./utils/visionManager";
 
@@ -147,15 +146,6 @@ function extractImageUrl(params: ImageDescriptionParams | string): string {
 		return params.imageUrl;
 	}
 	throw new Error("IMAGE_DESCRIPTION requires an image URL");
-}
-
-function extractTranscriptionBuffer(
-	params: TranscriptionParams | Buffer | string,
-): Buffer {
-	if (Buffer.isBuffer(params)) {
-		return params;
-	}
-	throw new Error("TRANSCRIPTION requires an audio Buffer for local-ai");
 }
 
 function extractSpeechText(params: TextToSpeechParams | string): string {
@@ -323,12 +313,6 @@ function shouldFallbackFromLocalInference(error: unknown): boolean {
 	);
 }
 
-function legacyWhisperEnabled(): boolean {
-	const value =
-		process.env.LOCAL_AI_ENABLE_LEGACY_WHISPER?.trim().toLowerCase();
-	return value === "1" || value === "true" || value === "yes";
-}
-
 function legacyVisionEnabled(): boolean {
 	const value = process.env.LOCAL_AI_ENABLE_LEGACY_VISION?.trim().toLowerCase();
 	return value === "1" || value === "true" || value === "yes";
@@ -443,7 +427,6 @@ class LocalAIManager {
 	private visionManager!: VisionManager;
 	private activeModelConfig: ModelSpec;
 	private embeddingModelConfig: EmbeddingModelSpec;
-	private transcribeManager!: TranscribeManager;
 	private ttsManager!: TTSManager;
 	private config: Config | null = null;
 
@@ -451,7 +434,6 @@ class LocalAIManager {
 	private mediumModelInitialized = false;
 	private embeddingInitialized = false;
 	private visionInitialized = false;
-	private transcriptionInitialized = false;
 	private ttsInitialized = false;
 	private environmentInitialized = false;
 
@@ -459,7 +441,6 @@ class LocalAIManager {
 	private mediumModelInitializingPromise: Promise<void> | null = null;
 	private embeddingInitializingPromise: Promise<void> | null = null;
 	private visionInitializingPromise: Promise<void> | null = null;
-	private transcriptionInitializingPromise: Promise<void> | null = null;
 	private ttsInitializingPromise: Promise<void> | null = null;
 	private environmentInitializingPromise: Promise<void> | null = null;
 
@@ -486,7 +467,6 @@ class LocalAIManager {
 			this.modelsDir,
 		);
 		this.visionManager = VisionManager.getInstance(this.cacheDir);
-		this.transcribeManager = TranscribeManager.getInstance(this.cacheDir);
 		this.ttsManager = TTSManager.getInstance(this.cacheDir);
 	}
 
@@ -990,11 +970,12 @@ class LocalAIManager {
 		return await this.visionManager.processImage(dataUrl);
 	}
 
-	public async transcribeAudio(audioBuffer: Buffer): Promise<string> {
-		await this.lazyInitTranscription();
-
-		const result = await this.transcribeManager.transcribe(audioBuffer);
-		return result.text;
+	public async transcribeAudio(_audioBuffer: Buffer): Promise<string> {
+		throw new Error(
+			"plugin-local-ai whisper.cpp transcription has been removed. Use " +
+				"@elizaos/plugin-local-inference with an Eliza-1 bundle " +
+				"(Qwen3-ASR via libelizainference) for canonical local ASR.",
+		);
 	}
 
 	public async generateSpeech(text: string): Promise<Readable> {
@@ -1096,50 +1077,6 @@ class LocalAIManager {
 		}
 
 		await this.visionInitializingPromise;
-	}
-
-	private async lazyInitTranscription(): Promise<void> {
-		if (this.transcriptionInitialized) return;
-
-		if (!this.transcriptionInitializingPromise) {
-			this.transcriptionInitializingPromise = (async () => {
-				try {
-					await this.initializeEnvironment();
-
-					if (!this.transcribeManager) {
-						this.transcribeManager = TranscribeManager.getInstance(
-							this.cacheDir,
-						);
-					}
-
-					// Ensure FFmpeg is available
-					const ffmpegReady = await this.transcribeManager.ensureFFmpeg();
-					if (!ffmpegReady) {
-						logger.error(
-							"FFmpeg is not available or not configured correctly. Cannot proceed with transcription.",
-						);
-						throw new Error(
-							"FFmpeg is required for transcription but is not available. Please see server logs for installation instructions.",
-						);
-					}
-
-					this.transcriptionInitialized = true;
-					logger.info(
-						"Transcription prerequisites (FFmpeg) checked and ready.",
-					);
-					logger.info("Transcription model initialized successfully");
-				} catch (error) {
-					logger.error(
-						error instanceof Error ? error : String(error),
-						"Failed to initialize transcription model:",
-					);
-					this.transcriptionInitializingPromise = null;
-					throw error;
-				}
-			})();
-		}
-
-		await this.transcriptionInitializingPromise;
 	}
 
 	private async lazyInitTTS(): Promise<void> {
@@ -1424,19 +1361,14 @@ export const localAiPlugin: Plugin = {
 			);
 			if (routed.handled) return routed.value;
 
-			if (!legacyWhisperEnabled()) {
-				throw new Error(
-					"plugin-local-ai transcription is a legacy Whisper compatibility path. Use @elizaos/plugin-local-inference with an Eliza-1 bundle for canonical local ASR, or set LOCAL_AI_ENABLE_LEGACY_WHISPER=1 to opt in to the legacy path.",
-				);
-			}
-
-			const audioBuffer = extractTranscriptionBuffer(params);
-			logger.info(
-				{ bufferSize: audioBuffer.length },
-				"Processing audio transcription:",
+			// Legacy whisper.cpp transcription has been removed. Local ASR
+			// must go through @elizaos/plugin-local-inference (Qwen3-ASR via
+			// libelizainference) per plugin-local-inference/native/AGENTS.md.
+			throw new Error(
+				"plugin-local-ai whisper.cpp transcription has been removed. " +
+					"Use @elizaos/plugin-local-inference with an Eliza-1 bundle " +
+					"(Qwen3-ASR via libelizainference) for canonical local ASR.",
 			);
-
-			return await localAIManager.transcribeAudio(audioBuffer);
 		},
 
 		[ModelType.TEXT_TO_SPEECH]: async (

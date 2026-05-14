@@ -887,5 +887,3 @@ export const PetSprite: React.FC<PetSpriteProps> = ({
     </svg>
   );
 };
-
-export default PetSprite;

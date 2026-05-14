@@ -81,7 +81,11 @@ export class ElizaUnguidedMode implements ModeAdapter {
         const message = err instanceof Error ? err.message : String(err);
         // The SharedResourceRegistry can evict the model under RAM pressure
         // between bench tasks. Reload once and retry.
-        if (!reloadedOnce && /no backend loaded/i.test(message) && this.modelPath) {
+        if (
+          !reloadedOnce &&
+          /no backend loaded/i.test(message) &&
+          this.modelPath
+        ) {
           reloadedOnce = true;
           try {
             await this.engine.load(this.modelPath);
@@ -101,6 +105,15 @@ export class ElizaUnguidedMode implements ModeAdapter {
         };
       }
     }
+  }
+
+  async cleanup(): Promise<void> {
+    const engine = this.engine;
+    this.engine = null;
+    this.modelPath = null;
+    this.resolved = false;
+    this.skipReason = null;
+    if (engine) await engine.unload();
   }
 }
 

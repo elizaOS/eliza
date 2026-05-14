@@ -39,6 +39,7 @@
 
 import { createHash } from "node:crypto";
 import { createReadStream, existsSync, statSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import {
 	type KokoroModelLayout,
@@ -109,17 +110,32 @@ export interface KokoroRuntime {
  * type-checks. Each implementation only honours its known shapes; runtime
  * surface drift surfaces as a thrown error, not a silent no-op.
  */
+type OrtInputMetadata = Readonly<{ name?: string; type?: string }>;
+
 interface OrtSession {
 	run(feeds: Record<string, OrtTensor>): Promise<Record<string, OrtTensor>>;
 	release(): Promise<void>;
 	/**
 	 * Optional — present on real onnxruntime-node sessions, absent on test
 	 * stubs. When present we use it to detect whether the loaded export
-	 * expects `input_ids` (newer) or `tokens` (older `kokoro-onnx`) and
-	 * whether `speed` is float or int. Mirrors the runtime detection that
-	 * `kokoro-onnx` does in `_create_audio`.
+	 * expects `input_ids` (newer) or `tokens` (older `kokoro-onnx`).
 	 */
 	readonly inputNames?: ReadonlyArray<string>;
+	/**
+	 * Optional per-input metadata (dtype + shape). Real ORT sessions can expose
+	 * this as a positional array aligned with `inputNames`; some test stubs use
+	 * a name-keyed record.
+	 * We use it to pick the speed-tensor dtype from the actual model rather
+	 * than guessing from the token-input name — Kokoro v1.0 ONNX exports
+	 * pair `input_ids` with `speed: float`, `input_ids` with `speed: int32`,
+	 * `tokens` with `speed: float`, and `tokens` with `speed: int32` across
+	 * different community re-exports, so a single name-based heuristic
+	 * always misfires on some variant. Reading the actual dtype is the
+	 * only correct probe.
+	 */
+	readonly inputMetadata?:
+		| ReadonlyArray<OrtInputMetadata>
+		| Readonly<Record<string, OrtInputMetadata>>;
 }
 
 interface OrtTensor {
@@ -140,6 +156,29 @@ interface OrtModule {
 		data: Float32Array | Int32Array | BigInt64Array,
 		dims: ReadonlyArray<number>,
 	) => OrtTensor;
+}
+
+function getInputMetadataType(
+	session: OrtSession,
+	inputName: string,
+): string | undefined {
+	const metadata = session.inputMetadata;
+	if (!metadata) return undefined;
+
+	if (Array.isArray(metadata)) {
+		const namedEntry = metadata.find((entry) => entry.name === inputName);
+		if (namedEntry?.type) return namedEntry.type;
+
+		const index = session.inputNames?.indexOf(inputName) ?? -1;
+		return index >= 0 ? metadata[index]?.type : undefined;
+	}
+
+	const metadataByName = metadata as Readonly<Record<string, OrtInputMetadata>>;
+	return metadataByName[inputName]?.type;
+}
+
+function isInt32TensorType(type: string | undefined): boolean {
+	return typeof type === "string" && /\bint32\b/i.test(type);
 }
 
 export interface KokoroOnnxRuntimeOptions {
@@ -190,14 +229,39 @@ export class KokoroOnnxRuntime implements KokoroRuntime {
 		}
 		const load = this.opts.loadOrt ?? defaultOrtLoader;
 		this.ort = await load();
+		// `onnxruntime-node` defaults `intraOpNumThreads` to 1 — every operator
+		// runs single-threaded. On an 8-core CPU this leaves Kokoro above real
+		// time for medium prompts; using the available core count gives a measured
+		// wall-clock improvement without changing inference semantics.
+		// `interOpNumThreads` stays at 1 because Kokoro's graph is mostly a
+		// single sequential chain (BERT encoder → flow → vocoder) — there are
+		// very few independent ops to parallelise across.
+		const cpuCores = Math.max(1, os.cpus().length);
 		this.session = await this.ort.InferenceSession.create(modelPath, {
 			executionProviders: ["cpu"],
 			graphOptimizationLevel: "all",
+			intraOpNumThreads: cpuCores,
+			interOpNumThreads: 1,
+			enableCpuMemArena: true,
+			enableMemPattern: true,
 		});
 		return { ort: this.ort, session: this.session };
 	}
 
 	async synthesize(args: KokoroRuntimeInputs): Promise<{ cancelled: boolean }> {
+		// Kokoro's BERT encoder is exported with a fixed max sequence length of
+		// 510 phoneme tokens (matches `kokoro-onnx` upstream
+		// `kokoro_onnx/__init__.py:MAX_PHONEME_LENGTH`). Anything longer trips
+		// an unhelpful "invalid expand shape" failure deep inside ORT's
+		// `/encoder/bert/Expand` node and surfaces to callers as an opaque 502.
+		// Reject early with a clear message so the API layer can map it to a
+		// 4xx and so the user sees what to do about it (split into chunks).
+		if (args.phonemes.ids.length > 510) {
+			throw new Error(
+				`[kokoro] phoneme sequence is too long: ${args.phonemes.ids.length} > 510. ` +
+					`The Kokoro ONNX export caps the BERT encoder at 510 tokens; split the input into shorter chunks before synthesizing.`,
+			);
+		}
 		const { ort, session } = await this.ensureSession();
 		const fullStyle = await this.loadVoiceStyle(args.voice);
 		const inputIds = new BigInt64Array(args.phonemes.ids.length);
@@ -218,17 +282,28 @@ export class KokoroOnnxRuntime implements KokoroRuntime {
 						(Math.min(inputIds.length, numPositions - 1) + 1) * args.voice.dim,
 					)
 				: fullStyle;
-		// Speed-tensor dtype mirrors `kokoro-onnx` upstream
-		// (`kokoro_onnx/__init__.py:_create_audio`): the legacy `tokens`
-		// export wants `speed: float32 [1]` and the newer `input_ids` export
-		// wants `speed: int32 [1]`. ORT raises `Unexpected input data type`
-		// when either dtype is swapped, so this polarity is load-bearing.
+		// Probe the loaded ONNX session for the actual `speed` input dtype
+		// and pick the matching JS typed-array. Different Kokoro v1.0 ONNX
+		// re-exports pair `input_ids`/`tokens` with `speed: float` or
+		// `speed: int32` in inconsistent combinations (the community
+		// onnx-community/Kokoro-82M-v1.0-ONNX/onnx/model_quantized.onnx ships
+		// `input_ids` + `speed: float`; older kokoro-onnx exports ship
+		// `tokens` + `speed: int32`), so naming-based heuristics misfire on
+		// at least one variant. Reading the dtype from session metadata is
+		// the only correct probe. When metadata is missing (test stubs / old
+		// ORT builds) we fall back to the float32 default since that's the
+		// shape every v1.0 ONNX export with `input_ids` we've seen uses.
 		const inputNames = session.inputNames ?? ["input_ids", "style", "speed"];
-		const useLegacyInputs = !inputNames.includes("input_ids");
-		const tokensInputName = useLegacyInputs ? "tokens" : "input_ids";
-		const speedTensor = useLegacyInputs
-			? new ort.Tensor("float32", new Float32Array([1.0]), [1])
-			: new ort.Tensor("int32", new Int32Array([1]), [1]);
+		const tokensInputName = inputNames.includes("input_ids")
+			? "input_ids"
+			: "tokens";
+		const speedDtype = isInt32TensorType(getInputMetadataType(session, "speed"))
+			? "int32"
+			: "float32";
+		const speedTensor =
+			speedDtype === "int32"
+				? new ort.Tensor("int32", new Int32Array([1]), [1])
+				: new ort.Tensor("float32", new Float32Array([1.0]), [1]);
 		const feeds: Record<string, OrtTensor> = {
 			[tokensInputName]: new ort.Tensor("int64", inputIds, [
 				1,

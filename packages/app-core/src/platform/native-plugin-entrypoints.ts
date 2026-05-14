@@ -13,6 +13,7 @@ import "@elizaos/capacitor-contacts";
 import "@elizaos/capacitor-gateway";
 import "@elizaos/capacitor-location";
 import "@elizaos/capacitor-messages";
+import "@elizaos/capacitor-mobile-agent-bridge";
 import "@elizaos/capacitor-mobile-signals";
 import "@elizaos/capacitor-appblocker";
 import "@elizaos/capacitor-bun-runtime";

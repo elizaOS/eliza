@@ -299,12 +299,46 @@ def _build_agent_fn(name: str, *, model_override: str | None = None, base_url_ov
         return build_eliza_agent(model_name=model_override)
     if name == "openclaw":
         try:
-            from .agents import build_openclaw_agent  # type: ignore[attr-defined]
+            from .agents import DEFAULT_NOW_ISO, _resolve_default_snapshot_path
+            from .agents.adapter_paths import ensure_benchmark_adapter_importable
+
+            ensure_benchmark_adapter_importable("openclaw")
+            from openclaw_adapter.client import OpenClawClient  # type: ignore[import-not-found]
+            from openclaw_adapter.lifeops_bench import (  # type: ignore[import-not-found]
+                build_lifeops_bench_agent_fn,
+            )
         except ImportError as exc:
             raise SystemExit(
                 f"OpenClaw adapter unavailable: {exc}"
             ) from exc
-        return build_openclaw_agent(model=model_override, base_url=base_url_override)
+        provider = (
+            os.environ.get("BENCHMARK_MODEL_PROVIDER")
+            or os.environ.get("ELIZA_PROVIDER")
+            or "cerebras"
+        ).strip().lower()
+        model = (
+            model_override
+            or os.environ.get("BENCHMARK_MODEL_NAME")
+            or os.environ.get("MODEL_NAME")
+            or "gpt-oss-120b"
+        )
+        client = OpenClawClient(
+            provider=provider,
+            model=model,
+            base_url=base_url_override,
+        )
+        client.wait_until_ready(timeout=120)
+        return build_lifeops_bench_agent_fn(
+            client=client,
+            world_snapshot_path=_resolve_default_snapshot_path(),
+            now_iso=DEFAULT_NOW_ISO,
+            model_name=model,
+            system_prompt=(
+                "You are running LifeOpsBench through the OpenClaw source "
+                "harness. Use the supplied tools exactly and emit structured "
+                "tool calls whenever an operation is needed."
+            ),
+        )
     if name == "hermes":
         try:
             from .agents import build_hermes_agent  # type: ignore[attr-defined]

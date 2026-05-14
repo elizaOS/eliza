@@ -13,6 +13,12 @@
     "noEmit": true,
     "jsx": "react-jsx",
     "strict": true,
+    "paths": {
+      "@elizaos/plugin-inmemorydb": [
+        "../../../plugins/plugin-inmemorydb/index.ts"
+      ],
+      "@elizaos/plugin-localdb": ["../../../plugins/plugin-localdb/index.ts"]
+    },
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true

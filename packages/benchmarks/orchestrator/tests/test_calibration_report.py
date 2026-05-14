@@ -180,3 +180,50 @@ def test_calibration_report_labels_scorer_payload_calibration_as_valid(tmp_path:
     report = build_calibration_report(workspace_root=tmp_path, benchmark_ids={"mmau"})
 
     assert report["rows"][0]["calibration_status"] == "valid"
+
+
+def test_calibration_report_treats_static_incompatibility_as_unsupported(
+    tmp_path: Path,
+) -> None:
+    conn = connect_database(tmp_path / "benchmarks" / "benchmark_results" / "orchestrator.sqlite")
+    initialize_database(conn)
+    create_run_group(
+        conn,
+        run_group_id="rg_test",
+        created_at="2026-05-12T00:00:00+00:00",
+        request={},
+        benchmarks=["loca_bench"],
+        repo_meta={},
+    )
+    _seed_run(
+        conn,
+        benchmark_id="loca_bench",
+        agent="eliza",
+        run_id="run_eliza",
+        started_at="2026-05-12T00:00:00+00:00",
+        score=0.75,
+    )
+    _seed_run(
+        conn,
+        benchmark_id="loca_bench",
+        agent="hermes",
+        run_id="run_hermes",
+        started_at="2026-05-12T00:01:00+00:00",
+        score=0.75,
+    )
+    conn.close()
+
+    report = build_calibration_report(
+        workspace_root=tmp_path,
+        benchmark_ids={"loca_bench"},
+        agent_compatibility={"loca_bench": ("eliza", "hermes")},
+    )
+    row = report["rows"][0]
+
+    assert row["real_statuses"]["openclaw"] == "unsupported"
+    assert row["missing_required_real_harnesses"] == []
+    assert row["failed_required_real_harnesses"] == []
+    assert row["real_pattern"] == "all_real_equal"
+    assert report["matrix_summary"]["required_real_cells"] == 2
+    assert report["matrix_summary"]["unsupported_real_cells"] == 1
+    assert report["matrix_summary"]["complete_benchmarks"] == 1

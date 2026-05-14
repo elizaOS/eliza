@@ -936,6 +936,33 @@ export class VisionService extends Service {
     }
   }
 
+  /**
+   * Normalize the various shapes that `useModel(IMAGE_DESCRIPTION, …)` may
+   * return into a non-empty string. Returns `null` when the result is the
+   * "I'm unable to analyze images" sentinel or empty.
+   */
+  private extractDescriptionFromUseModel(result: unknown): string | null {
+    if (!result) return null;
+    let description = "";
+    if (typeof result === "string") description = result;
+    else if (
+      typeof result === "object" &&
+      result !== null &&
+      "description" in result
+    ) {
+      const d = (result as { description?: unknown }).description;
+      if (typeof d === "string") description = d;
+    }
+    if (!description) return null;
+    if (
+      description.includes("I'm unable to analyze images") ||
+      description.includes("I can't analyze images")
+    ) {
+      return null;
+    }
+    return description;
+  }
+
   private async describeSceneWithVLM(imageUrl: string): Promise<string> {
     return withStandaloneTrajectory(
       this.runtime,
@@ -947,10 +974,51 @@ export class VisionService extends Service {
     );
   }
 
+  /**
+   * Detect whether the runtime exposes an eliza-1 native IMAGE_DESCRIPTION
+   * handler (post-WS2). When present we route to it FIRST, before falling
+   * through to local Florence-2 and other fallbacks. The marker we look for
+   * is a runtime setting `ELIZA1_VISION_HANDLER_PRESENT` (set by the WS2
+   * wire) or a service named `eliza1-vision`.
+   */
+  private hasEliza1VisionHandler(): boolean {
+    try {
+      const setting = this.runtime.getSetting?.(
+        "ELIZA1_VISION_HANDLER_PRESENT",
+      );
+      if (setting === true || setting === "true" || setting === "1")
+        return true;
+      const svc = this.runtime.getService?.("eliza1-vision" as ServiceTypeName);
+      return Boolean(svc);
+    } catch {
+      return false;
+    }
+  }
+
   private async describeSceneWithVLMInTrajectory(
     imageUrl: string,
   ): Promise<string> {
     try {
+      // Preferred path: eliza-1 IMAGE_DESCRIPTION when WS2 has wired it.
+      if (this.hasEliza1VisionHandler()) {
+        try {
+          const result = await this.runtime.useModel(
+            ModelType.IMAGE_DESCRIPTION,
+            { imageUrl, prompt: SCENE_DESCRIPTION_PROMPT },
+          );
+          const description = this.extractDescriptionFromUseModel(result);
+          if (description) {
+            logger.debug("[VisionService] eliza-1 IMAGE_DESCRIPTION result");
+            return description;
+          }
+        } catch (error) {
+          logger.warn(
+            "[VisionService] eliza-1 IMAGE_DESCRIPTION failed, falling back:",
+            error,
+          );
+        }
+      }
+
       // Convert base64 image URL to buffer for Florence-2
       if (imageUrl.startsWith("data:image/")) {
         const base64Data = imageUrl.split(",")[1];
@@ -1447,6 +1515,61 @@ export class VisionService extends Service {
 
   public getVisionMode(): VisionMode {
     return this.visionConfig.visionMode || VisionMode.CAMERA;
+  }
+
+  /**
+   * Enable the camera input. If screen is already active, switches to BOTH;
+   * otherwise to CAMERA.
+   */
+  public async enableCamera(): Promise<void> {
+    const current = this.getVisionMode();
+    const next =
+      current === VisionMode.SCREEN || current === VisionMode.BOTH
+        ? VisionMode.BOTH
+        : VisionMode.CAMERA;
+    await this.setVisionMode(next);
+  }
+
+  /**
+   * Disable the camera input. Keeps screen capture if active; otherwise OFF.
+   */
+  public async disableCamera(): Promise<void> {
+    const current = this.getVisionMode();
+    const next =
+      current === VisionMode.BOTH || current === VisionMode.SCREEN
+        ? VisionMode.SCREEN
+        : VisionMode.OFF;
+    await this.setVisionMode(next);
+  }
+
+  /**
+   * Enable screen capture. If displayIds are passed, the first id wins as
+   * the `displayIndex` (multi-display capture is still single-display
+   * upstream).
+   */
+  public async enableScreen(displayIds?: number[]): Promise<void> {
+    if (displayIds && displayIds.length > 0) {
+      this.visionConfig.displayIndex = displayIds[0];
+      this.visionConfig.captureAllDisplays = displayIds.length > 1;
+    }
+    const current = this.getVisionMode();
+    const next =
+      current === VisionMode.CAMERA || current === VisionMode.BOTH
+        ? VisionMode.BOTH
+        : VisionMode.SCREEN;
+    await this.setVisionMode(next);
+  }
+
+  /**
+   * Disable screen capture. Keeps camera if active; otherwise OFF.
+   */
+  public async disableScreen(): Promise<void> {
+    const current = this.getVisionMode();
+    const next =
+      current === VisionMode.BOTH || current === VisionMode.CAMERA
+        ? VisionMode.CAMERA
+        : VisionMode.OFF;
+    await this.setVisionMode(next);
   }
 
   public async setVisionMode(mode: VisionMode): Promise<void> {

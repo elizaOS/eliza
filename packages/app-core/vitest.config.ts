@@ -287,6 +287,18 @@ export default defineConfig({
         replacement: path.join(pluginLocalInferenceSrc, "index.ts"),
       },
       {
+        find: /^@elizaos\/plugin-local-inference\/runtime$/,
+        replacement: path.join(pluginLocalInferenceSrc, "runtime", "index.ts"),
+      },
+      {
+        find: /^@elizaos\/plugin-local-inference\/routes$/,
+        replacement: path.join(pluginLocalInferenceSrc, "routes", "index.ts"),
+      },
+      {
+        find: /^@elizaos\/plugin-local-inference\/services$/,
+        replacement: path.join(pluginLocalInferenceSrc, "services", "index.ts"),
+      },
+      {
         find: /^@elizaos\/plugin-local-embedding$/,
         replacement: path.join(pluginLocalEmbeddingSrc, "index.ts"),
       },

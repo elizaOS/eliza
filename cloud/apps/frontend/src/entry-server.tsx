@@ -57,7 +57,7 @@ const TOASTER_PROPS = {
       backdropFilter: "blur(12px)",
       borderRadius: "0px",
     },
-    className: "font-sf-pro",
+    className: "font-open-sans",
   },
 };
 

@@ -16,7 +16,7 @@ Usage::
 
     # Dry-run on the smallest Eliza-1 tier.
     uv run python scripts/optimize_for_eliza1.py \\
-        --base-model elizaos/eliza-1-0_8b \\
+        --base-model Qwen/Qwen3.5-0.8B-Base \\
         --output-dir checkpoints/eliza-1-0_8b \\
         --apply polarquant qjl turboquant \\
         --gguf-target packages/inference \\
@@ -25,12 +25,13 @@ Usage::
 
     # Real run (needs the elizaOS/llama.cpp v1.0.0-eliza checkout
     # at $LLAMA_CPP_DIR for the convert step + a real HF token).
+    # Published artifacts land at elizaos/eliza-1/bundles/0_8b/.
     HF_TOKEN=hf_xxx LLAMA_CPP_DIR=$HOME/src/eliza-llama.cpp \\
         uv run python scripts/optimize_for_eliza1.py \\
-            --base-model elizaos/eliza-1-0_8b \\
+            --base-model Qwen/Qwen3.5-0.8B-Base \\
             --output-dir checkpoints/eliza-1-0_8b \\
             --apply polarquant qjl turboquant \\
-            --hf-repo elizaos/eliza-1-0_8b
+            --hf-repo elizaos/eliza-1
 
 The downstream ``llama-server`` invocation that the published manifest
 documents looks like::
@@ -651,7 +652,9 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--base-model",
         required=True,
-        help="HF repo id or local path to the base model (e.g. elizaos/eliza-1-0_8b).",
+        help="HF repo id or local path to the base model "
+             "(e.g. Qwen/Qwen3.5-0.8B-Base for the 0_8b tier upstream base, "
+             "or a local trained checkpoint path).",
     )
     p.add_argument(
         "--output-dir",
@@ -695,7 +698,8 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--hf-repo",
         default=None,
-        help="HuggingFace repo to publish to (e.g. elizaos/eliza-1-0_8b). "
+        help="HuggingFace repo to publish to (canonical: elizaos/eliza-1; "
+             "tier and bundle path are derived from --tier). "
              "When omitted the pipeline stops after manifest emission.",
     )
     p.add_argument(

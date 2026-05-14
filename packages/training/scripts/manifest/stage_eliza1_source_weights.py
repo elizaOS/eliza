@@ -112,7 +112,7 @@ TEXT_SOURCES: Final[dict[str, SourceArtifact]] = {
         status="source-only",
         notes=(
             "Final Eliza-1 9B still needs training plus Q4_K_M quantization.",
-            "Keep 9B on Qwen3.5 until an official Qwen3.6 9B exists.",
+            "Qwen3.5 is the active Eliza-1 backbone family.",
         ),
     ),
     "27b": SourceArtifact(

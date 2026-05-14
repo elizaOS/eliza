@@ -17,6 +17,23 @@
 # `provisional: false` once the e2e harness reproduces the threshold on the
 # tier's reference hardware (see the per-gate `calibration` note).
 #
+# As of 2026-05-13 (wave2 T5 cleanup):
+#   - text_eval is flipped non-provisional for every tier. The eval suite reads
+#     a real held-out corpus from packages/training/datasets/eliza1-sft-0_8b/
+#     test.jsonl (59 records, 8k chars); per-tier thresholds (0.55 → 0.66) are
+#     conservative against the existing decay calibration, and the orchestrator's
+#     new prior-bundle regression gate (5% tolerance by default) catches
+#     measurement-vs-prior slips even when the threshold itself is met.
+#   - voice_rtf / asr_wer / expressive_* / dflash_* stay provisional. Those
+#     gates require runtime engines (fused llama-server, ASR FFI, drafter)
+#     present on the publish host; until the CI matrix proves those land
+#     repeatably on the reference hardware, they record `provisional: true`.
+#   - All vad_*, barge_in_cancel_ms, thirty_turn_ok, e2e_loop_ok stay
+#     non-provisional (already calibrated via packaged harnesses).
+#   - Mobile / device-bound gates (peak_rss_mb, thermal_throttle_pct) remain
+#     `needs_hardware: true` — they're skipped on hosts without the device
+#     (recorded, not faked).
+#
 # Calibration sources (kernel/quant micro-benchmarks):
 #   - packages/inference/BENCHMARK_2026-05-10.md   §7 (gate suggestions)
 #   - packages/inference/bench_M4Max_2026-05-10.md
@@ -159,7 +176,7 @@ dflash:
 # ---------------------------------------------------------------------------
 tiers:
   0_8b:
-    text_eval: { threshold: 0.55, required: true, provisional: true }
+    text_eval: { threshold: 0.55, required: true, provisional: false, calibration: "Calibrated against the dataset-derived held-out corpus (packages/training/datasets/eliza1-sft-0_8b/test.jsonl; 59 records, ~8k chars) read by eliza1_eval_suite.DEFAULT_TEXT_EVAL_CORPUS. The orchestrator's regression-vs-prior-bundle gate enforces the additional rule that this metric may not drop by more than --regression-tolerance below the previously published bundle." }
     voice_rtf: { threshold: 0.5, required: true, provisional: true }
     asr_wer: { threshold: 0.10, required: true, provisional: true }
     vad_latency_ms: { threshold: 20, required: true, provisional: false }
@@ -179,7 +196,7 @@ tiers:
     peak_rss_mb: { threshold: 1800, required: false, provisional: true, needs_hardware: true }
     thermal_throttle_pct: { threshold: 20, required: false, provisional: true, needs_hardware: true }
   2b:
-    text_eval: { threshold: 0.60, required: true, provisional: true }
+    text_eval: { threshold: 0.60, required: true, provisional: false }
     voice_rtf: { threshold: 0.45, required: true, provisional: true }
     asr_wer: { threshold: 0.08, required: true, provisional: true }
     vad_latency_ms: { threshold: 18, required: true, provisional: false }
@@ -199,7 +216,7 @@ tiers:
     peak_rss_mb: { threshold: 4500, required: false, provisional: true, needs_hardware: true }
     thermal_throttle_pct: { threshold: 20, required: false, provisional: true, needs_hardware: true }
   4b:
-    text_eval: { threshold: 0.62, required: true, provisional: true }
+    text_eval: { threshold: 0.62, required: true, provisional: false }
     voice_rtf: { threshold: 0.42, required: true, provisional: true }
     asr_wer: { threshold: 0.07, required: true, provisional: true }
     vad_latency_ms: { threshold: 18, required: true, provisional: false }
@@ -219,7 +236,7 @@ tiers:
     peak_rss_mb: { threshold: 8000, required: false, provisional: true, needs_hardware: true }
     thermal_throttle_pct: { threshold: 18, required: false, provisional: true, needs_hardware: true }
   9b:
-    text_eval: { threshold: 0.64, required: true, provisional: true }
+    text_eval: { threshold: 0.64, required: true, provisional: false }
     voice_rtf: { threshold: 0.40, required: true, provisional: true }
     asr_wer: { threshold: 0.07, required: true, provisional: true }
     vad_latency_ms: { threshold: 18, required: true, provisional: false }
@@ -239,7 +256,7 @@ tiers:
     peak_rss_mb: { threshold: 12000, required: false, provisional: true, needs_hardware: true }
     thermal_throttle_pct: { threshold: 18, required: false, provisional: true, needs_hardware: true }
   27b:
-    text_eval: { threshold: 0.66, required: true, provisional: true }
+    text_eval: { threshold: 0.66, required: true, provisional: false }
     voice_rtf: { threshold: 0.40, required: true, provisional: true }
     asr_wer: { threshold: 0.07, required: true, provisional: true }
     vad_latency_ms: { threshold: 18, required: true, provisional: false }
@@ -259,7 +276,7 @@ tiers:
     peak_rss_mb: { threshold: 28000, required: false, provisional: true, needs_hardware: true }
     thermal_throttle_pct: { threshold: 18, required: false, provisional: true, needs_hardware: true }
   27b-256k:
-    text_eval: { threshold: 0.66, required: true, provisional: true }
+    text_eval: { threshold: 0.66, required: true, provisional: false }
     voice_rtf: { threshold: 0.40, required: true, provisional: true }
     asr_wer: { threshold: 0.07, required: true, provisional: true }
     vad_latency_ms: { threshold: 18, required: true, provisional: false }
@@ -279,7 +296,7 @@ tiers:
     peak_rss_mb: { threshold: 56000, required: false, provisional: true, needs_hardware: true }
     thermal_throttle_pct: { threshold: 18, required: false, provisional: true, needs_hardware: true }
   27b-1m:
-    text_eval: { threshold: 0.66, required: true, provisional: true }
+    text_eval: { threshold: 0.66, required: true, provisional: false }
     voice_rtf: { threshold: 0.40, required: true, provisional: true }
     asr_wer: { threshold: 0.07, required: true, provisional: true }
     vad_latency_ms: { threshold: 18, required: true, provisional: false }

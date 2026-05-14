@@ -25,6 +25,17 @@
 
 set -euo pipefail
 
+# iOS cross-builds require a macOS host with Xcode (xcodebuild + xcrun).
+# When invoked on a non-Darwin host (Linux CI, Linux dev box) this build is
+# physically impossible — there's no iOS SDK to link against. Skip cleanly
+# so workspace-wide 'bun run build' / turbo build pipelines aren't blocked
+# by an unbuildable target on the wrong host. The package.json declares
+# `"os": ["darwin"]` but bun/turbo don't enforce that yet.
+if [[ "$(uname -s)" != "Darwin" ]]; then
+  printf '\033[33m[build-ios]\033[0m skipping iOS xcframework build: requires macOS host (uname=%s); workspace targets that need LlamaCpp.xcframework will lack it.\n' "$(uname -s)"
+  exit 0
+fi
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$SCRIPT_DIR"
 SRC_DIR="$ROOT_DIR/src"

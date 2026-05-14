@@ -152,6 +152,7 @@ describe("runV5MessageRuntimeStage1", () => {
 			toolChoice?: string;
 			responseSchema?: unknown;
 			responseFormat?: unknown;
+			signal?: AbortSignal;
 		};
 		expect(params.tools?.[0]?.name).toBe("HANDLE_RESPONSE");
 		expect(params.tools?.[0]?.parameters?.required).toContain(
@@ -159,11 +160,82 @@ describe("runV5MessageRuntimeStage1", () => {
 		);
 		expect(params.tools?.[0]?.parameters?.required).toContain("facts");
 		expect(params.toolChoice).toBe("required");
+		expect(params.signal).toBeInstanceOf(AbortSignal);
 		expect(params.responseSchema).toBeUndefined();
 		expect(params.responseFormat).toBeUndefined();
 		if (result.kind === "direct_reply") {
 			expect(result.result.responseContent?.text).toBe("Hello.");
 		}
+	});
+
+	it("derives a span sampler plan that forces T=0/topK=1 on the shouldRespond enum (and other argmax-eligible spans)", async () => {
+		const runtime = makeRuntime([
+			{
+				text: "",
+				toolCalls: [
+					{
+						id: "mh-1",
+						name: "HANDLE_RESPONSE",
+						arguments: {
+							shouldRespond: "RESPOND",
+							thought: "Direct answer.",
+							replyText: "Hello.",
+							contexts: ["simple"],
+							intents: [],
+							candidateActionNames: [],
+							facts: [],
+							relationships: [],
+							addressedTo: [],
+						},
+					},
+				],
+				finishReason: "tool_calls",
+			},
+		]);
+
+		await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage(),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		const firstCall = useModelCalls(runtime)[0];
+		const params = firstCall?.[1] as {
+			responseSkeleton?: {
+				spans: Array<{ kind: string; key?: string; enumValues?: string[] }>;
+			};
+			spanSamplerPlan?: {
+				overrides: Array<{
+					spanIndex: number;
+					temperature: number;
+					topK?: number;
+				}>;
+			};
+		};
+		// Skeleton is present and contains the canonical shouldRespond enum.
+		expect(params.responseSkeleton?.spans).toBeDefined();
+		const shouldRespondSpan = params.responseSkeleton?.spans.find(
+			(s) => s.key === "shouldRespond",
+		);
+		expect(shouldRespondSpan?.kind).toBe("enum");
+		// The span-sampler plan was derived and contains an override for shouldRespond.
+		expect(params.spanSamplerPlan).toBeDefined();
+		expect(params.spanSamplerPlan?.overrides.length).toBeGreaterThan(0);
+		const overrides = params.spanSamplerPlan?.overrides ?? [];
+		const overriddenKeys = overrides.map(
+			(o) => params.responseSkeleton?.spans[o.spanIndex].key,
+		);
+		expect(overriddenKeys).toContain("shouldRespond");
+		// Every override is T=0/topK=1 (the canonical argmax policy).
+		for (const o of overrides) {
+			expect(o.temperature).toBe(0);
+			expect(o.topK).toBe(1);
+		}
+		// Free-string spans like replyText / thought are NOT in the plan —
+		// the user's free prose keeps the call-level temperature.
+		expect(overriddenKeys).not.toContain("replyText");
+		expect(overriddenKeys).not.toContain("thought");
 	});
 
 	it("packages Stage 1 as stable system plus dynamic user context without provider internals", async () => {

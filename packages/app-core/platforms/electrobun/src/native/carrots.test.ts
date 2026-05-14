@@ -224,7 +224,11 @@ describe("CarrotManager", () => {
 			manager.installFromDirectory({ sourceDir: writePayload(dir) });
 			manager.startWorker("bunny.search");
 
-			worker.emit({ type: "host-request", requestId: 1, method: "list-carrots" });
+			worker.emit({
+				type: "host-request",
+				requestId: 1,
+				method: "list-carrots",
+			});
 
 			return new Promise<void>((resolve, reject) => {
 				setTimeout(() => {
@@ -350,9 +354,9 @@ describe("CarrotManager", () => {
 							requestId: 42,
 							success: false,
 						});
-						expect(
-							(response as { error?: string }).error,
-						).toContain("totally-made-up");
+						expect((response as { error?: string }).error).toContain(
+							"totally-made-up",
+						);
 						resolve();
 					} catch (error) {
 						reject(error);
@@ -398,7 +402,10 @@ describe("CarrotManager", () => {
 				}),
 				"utf8",
 			);
-			writeFileSync(join(secondDir, "worker.ts"), "postMessage({type:'ready'});");
+			writeFileSync(
+				join(secondDir, "worker.ts"),
+				"postMessage({type:'ready'});",
+			);
 			writeFileSync(join(secondDir, "views", "index.html"), "<div>Timer</div>");
 			nextWorker = workerB;
 			manager.installFromDirectory({ sourceDir: secondDir });

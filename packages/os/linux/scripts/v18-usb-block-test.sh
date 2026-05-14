@@ -371,7 +371,7 @@ run_file_check() {
 # Re-seed calibration.toml after the onboarding probes — same shape as v11-e2e.sh.
 seed_calibration() {
     ssh_cmd 'rm -f ~/.eliza/flow.toml ~/.eliza/onboarding.toml'
-    ssh_cmd 'mkdir -p ~/.eliza/models && touch ~/.eliza/models/Llama-3.2-1B-Instruct-Q4_K_M.gguf'
+    ssh_cmd 'mkdir -p ~/.eliza/models && touch ~/.eliza/models/Eliza-1 0.8B-Instruct-Q4_K_M.gguf'
     ssh_cmd 'cat > ~/.eliza/calibration.toml <<TOML
 schema_version = 1
 created_at = "2026-05-12T00:00:00Z"
