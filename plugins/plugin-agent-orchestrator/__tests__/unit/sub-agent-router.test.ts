@@ -1,6 +1,9 @@
 import type { Memory } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { SubAgentRouter } from "../../src/services/sub-agent-router.js";
+import {
+  extractSubResources,
+  SubAgentRouter,
+} from "../../src/services/sub-agent-router.js";
 import type { SessionInfo } from "../../src/services/types.js";
 
 const ROOM = "11111111-2222-3333-4444-555555555555";
@@ -314,5 +317,46 @@ describe("SubAgentRouter", () => {
     // first delivers, second triggers cap-exceeded notice (and stop), third is suppressed.
     expect(handleMessage).toHaveBeenCalledTimes(2);
     expect(stopSession).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("extractSubResources", () => {
+  const PAGE = "https://nubilio.org/apps/bmi/index.html";
+
+  it("extracts <link href> and <script src>, resolved absolute", () => {
+    const html = `<!doctype html><html><head>
+      <link rel="stylesheet" href="style.css" />
+      </head><body><script src="app.js"></script></body></html>`;
+    expect(extractSubResources(html, PAGE).sort()).toEqual([
+      "https://nubilio.org/apps/bmi/app.js",
+      "https://nubilio.org/apps/bmi/style.css",
+    ]);
+  });
+
+  it("resolves absolute and root-relative refs", () => {
+    const html = `<link href="/global.css"><script src="https://cdn.example.com/lib.js"></script>`;
+    expect(extractSubResources(html, PAGE).sort()).toEqual([
+      "https://cdn.example.com/lib.js",
+      "https://nubilio.org/global.css",
+    ]);
+  });
+
+  it("skips in-page anchors and data:/mailto: refs", () => {
+    const html = `<link href="#top"><script src="data:text/javascript,1"></script><a href="mailto:x@y.z">m</a>`;
+    expect(extractSubResources(html, PAGE)).toEqual([]);
+  });
+
+  it("returns [] for HTML with no sub-resources", () => {
+    expect(extractSubResources("<html><body>hi</body></html>", PAGE)).toEqual(
+      [],
+    );
+  });
+
+  it("caps the result so a pathological page can't fan out unbounded", () => {
+    const many = Array.from(
+      { length: 50 },
+      (_, i) => `<script src="s${i}.js"></script>`,
+    ).join("");
+    expect(extractSubResources(many, PAGE).length).toBe(10);
   });
 });

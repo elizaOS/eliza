@@ -515,16 +515,24 @@ function composeNarration(
 }
 
 /**
- * HEAD-check every http(s) URL a sub-agent claimed in its completion text
- * and append a correction block listing any that did not return a 2xx
- * status. The sub-agent's claim ("the app is live at X") is treated as a
+ * GET-check every http(s) URL a sub-agent claimed in its completion text —
+ * and, for any that return HTML, follow the page's own declared
+ * sub-resources (`<link href>` / `<script src>`) and check those too.
+ * The sub-agent's claim ("the app is live at X") is treated as a
  * hypothesis, not a fact — the parent agent should see ground truth.
+ *
+ * Why follow sub-resources: a weak coding model routinely writes the
+ * entry `index.html` but drops the `style.css` / `app.js` it references.
+ * The index URL then returns 200 while the app is visibly broken — only
+ * probing the mentioned URL would pass it as "live". Following the page's
+ * declared dependencies catches the partial build.
  *
  * Conservative by design:
  *  - only runs on `task_complete` text (not errors/blocked)
- *  - caps at the first 5 distinct URLs
+ *  - caps at the first 5 distinct mentioned URLs + their sub-resources
  *  - 4s per-request timeout, failures (DNS, timeout, refused) count as
  *    unverified rather than throwing
+ *  - one settle-retry before declaring a URL dead (write→serve race)
  *  - never strips the original text — it only appends an annotation, so a
  *    transient network blip on the checker side degrades to "couldn't
  *    verify" rather than hiding a real success
@@ -541,51 +549,116 @@ async function annotateUnverifiedUrls(text: string): Promise<string> {
     urls.push(url);
     if (urls.length >= 5) break;
   }
-  // Single HEAD probe (with a GET fallback for hosts that reject HEAD).
-  // Returns null on success, or a status string on failure.
-  const probeOnce = async (url: string): Promise<string | null> => {
+  // GET-probe a URL with a 4s timeout. On a 2xx HTML response also returns
+  // the body so the caller can follow the page's sub-resources. (GET, not
+  // HEAD: we need the body for HTML, and many static hosts reject HEAD.)
+  const probeOnce = async (
+    url: string,
+  ): Promise<{ status: string | null; html?: string }> => {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 4000);
     try {
-      let res = await fetch(url, {
-        method: "HEAD",
+      const res = await fetch(url, {
+        method: "GET",
         redirect: "follow",
         signal: controller.signal,
       });
-      if (res.status === 405 || res.status === 501) {
-        res = await fetch(url, {
-          method: "GET",
-          redirect: "follow",
-          signal: controller.signal,
-        });
+      if (res.status < 200 || res.status >= 300) {
+        return { status: `HTTP ${res.status}` };
       }
-      return res.status >= 200 && res.status < 300
-        ? null
-        : `HTTP ${res.status}`;
+      const contentType = res.headers.get("content-type") ?? "";
+      if (contentType.includes("text/html")) {
+        return { status: null, html: await res.text() };
+      }
+      return { status: null };
     } catch (err) {
-      return err instanceof Error ? err.name : "unreachable";
+      return { status: err instanceof Error ? err.name : "unreachable" };
     } finally {
       clearTimeout(timer);
     }
   };
-  const dead: Array<{ url: string; status: string }> = [];
+  // Settle-retry: a freshly-written static file can be on disk but not yet
+  // served (the host's file cache hasn't picked it up). Re-probe once after
+  // a short delay before declaring a URL dead, so the annotation reflects
+  // steady state rather than the write→serve race.
+  const probe = async (
+    url: string,
+  ): Promise<{ status: string | null; html?: string }> => {
+    let result = await probeOnce(url);
+    if (result.status !== null) {
+      await new Promise((resolve) => setTimeout(resolve, 2500));
+      result = await probeOnce(url);
+    }
+    return result;
+  };
+  const dead: Array<{ url: string; status: string; via?: string }> = [];
   await Promise.all(
     urls.map(async (url) => {
-      // Settle-retry: a freshly-written static app can be on disk but not
-      // yet served (the host's file cache hasn't picked it up). Re-probe
-      // once after a short delay before declaring a URL dead, so the
-      // annotation reflects steady state rather than the write→serve race.
-      let status = await probeOnce(url);
-      if (status !== null) {
-        await new Promise((resolve) => setTimeout(resolve, 2500));
-        status = await probeOnce(url);
+      const result = await probe(url);
+      if (result.status !== null) {
+        dead.push({ url, status: result.status });
+        return;
       }
-      if (status !== null) dead.push({ url, status });
+      // Follow the page's own declared dependencies — a 200 index.html
+      // that <link>s a missing style.css is still a broken app.
+      if (result.html) {
+        const subResources = extractSubResources(result.html, url);
+        await Promise.all(
+          subResources.map(async (subUrl) => {
+            const subResult = await probe(subUrl);
+            if (subResult.status !== null) {
+              dead.push({ url: subUrl, status: subResult.status, via: url });
+            }
+          }),
+        );
+      }
     }),
   );
   if (dead.length === 0) return text;
-  const lines = dead.map((d) => `  - ${d.url} → ${d.status}`).join("\n");
+  const lines = dead
+    .map((d) =>
+      d.via
+        ? `  - ${d.url} → ${d.status} (referenced by ${d.via})`
+        : `  - ${d.url} → ${d.status}`,
+    )
+    .join("\n");
   return `${text}\n\n[verification: the following URL(s) the sub-agent referenced are NOT reachable — do NOT tell the user the app is live; report the real status and that the build likely did not complete]\n${lines}`;
+}
+
+/**
+ * Extract the sub-resource URLs an HTML document declares via
+ * `<link href>` and `<script src>`, resolved absolute against the page
+ * URL. Mechanical extraction from a structured document — not intent
+ * classification. Skips in-page anchors and data:/mailto: refs, and caps
+ * the result so a pathological page can't fan out unbounded probes.
+ */
+export function extractSubResources(html: string, pageUrl: string): string[] {
+  const refs = new Set<string>();
+  const attrRe =
+    /<(?:link|script)\b[^>]*?\b(?:href|src)\s*=\s*["']([^"']+)["']/gi;
+  let match: RegExpExecArray | null;
+  // biome-ignore lint/suspicious/noAssignInExpressions: standard regex-exec loop
+  while ((match = attrRe.exec(html)) !== null) {
+    const ref = match[1]?.trim();
+    if (
+      !ref ||
+      ref.startsWith("#") ||
+      ref.startsWith("data:") ||
+      ref.startsWith("mailto:")
+    ) {
+      continue;
+    }
+    try {
+      const resolved = new URL(ref, pageUrl);
+      if (resolved.protocol === "http:" || resolved.protocol === "https:") {
+        refs.add(resolved.toString());
+      }
+    } catch {
+      // unparseable ref — skip
+    }
+    if (refs.size >= 10) break;
+  }
+  return [...refs];
 }
 
 function computeDedupKey(
