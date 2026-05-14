@@ -359,6 +359,7 @@ describe("SubAgentRouter", () => {
     function sessionWithTask(
       initialTask: string,
       retryCount?: number,
+      extraMetadata: Record<string, unknown> = {},
     ): SessionInfo {
       return makeSession({
         metadata: {
@@ -372,6 +373,7 @@ describe("SubAgentRouter", () => {
           ...(retryCount !== undefined
             ? { buildVerifyRetryCount: retryCount }
             : {}),
+          ...extraMetadata,
         },
       });
     }
@@ -579,7 +581,47 @@ describe("SubAgentRouter", () => {
       const retryTask = String(spawnSession.mock.calls[0]?.[0]?.initialTask);
       expect(retryTask).toContain("cached stale miss");
       expect(retryTask).toContain("rename that asset to a fresh filename");
+      const retryMetadata = spawnSession.mock.calls[0]?.[0]?.metadata as
+        | Record<string, unknown>
+        | undefined;
+      expect(retryMetadata?.cachedStaleMissUrls).toEqual([assetUrl]);
       expect(handleMessage).not.toHaveBeenCalled();
+    });
+
+    it("does not re-check stale cached URLs after a retry switches to fresh filenames", async () => {
+      const staleUrl = "https://example.test/apps/counter/style.css";
+      const freshUrl = "https://example.test/apps/counter/style-v2.css";
+      const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url === freshUrl) {
+          return new Response("body { color: green; }", {
+            status: 200,
+            headers: { "content-type": "text/css" },
+          });
+        }
+        return new Response("not found", { status: 404 });
+      });
+      vi.stubGlobal("fetch", fetchMock);
+      session = sessionWithTask(`build a counter at ${staleUrl}`, 1, {
+        cachedStaleMissUrls: [staleUrl],
+      });
+      acp = makeAcpService(session);
+      const { runtime, handleMessage, spawnSession } = makeRuntime({
+        acp: acp.service,
+      });
+      await SubAgentRouter.start(runtime);
+
+      acp.emit(SESSION_ID, "task_complete", {
+        response: `The cached URL ${staleUrl} is stale; the app now uses ${freshUrl}`,
+      });
+      await new Promise((r) => setTimeout(r, 200));
+
+      const fetched = fetchMock.mock.calls.map(([url]) => String(url));
+      expect(fetched).toEqual([freshUrl]);
+      expect(spawnSession).not.toHaveBeenCalled();
+      expect(handleMessage).toHaveBeenCalledTimes(1);
+      const posted = handleMessage.mock.calls[0]?.[1];
+      expect(posted?.content?.text).not.toContain("[verification:");
     });
 
     it("does not retry when ELIZA_BUILD_VERIFY_MAX_RETRIES=0", async () => {
