@@ -5,6 +5,10 @@ import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { retargetMixamoFbxToVrm } from "./retargetMixamoFbxToVrm";
 import { retargetMixamoGltfToVrm } from "./retargetMixamoGltfToVrm";
 
+type GltfAnimationSource = Parameters<typeof retargetMixamoGltfToVrm>[0];
+type FbxSourceScene = Parameters<typeof retargetMixamoFbxToVrm>[0];
+type FbxSourceClip = Parameters<typeof retargetMixamoFbxToVrm>[1];
+
 /**
  * Context needed by the animation loader to check whether the owning engine
  * is still alive / relevant for the load request.
@@ -80,7 +84,11 @@ export async function loadIdleClip(
   gltf.scene.updateMatrixWorld(true);
   vrm.scene.updateMatrixWorld(true);
   const clip = retargetMixamoGltfToVrm(
-    { scene: gltf.scene, animations: gltf.animations },
+    {
+      scene: gltf.scene as unknown as GltfAnimationSource["scene"],
+      animations:
+        gltf.animations as unknown as GltfAnimationSource["animations"],
+    },
     vrm,
   );
 
@@ -123,7 +131,11 @@ export async function loadEmoteClip(
         console.warn(`[VrmEngine] FBX has no animations: ${path}`);
         return null;
       }
-      const retargeted = retargetMixamoFbxToVrm(fbx, sourceClip, vrm);
+      const retargeted = retargetMixamoFbxToVrm(
+        fbx as unknown as FbxSourceScene,
+        sourceClip as unknown as FbxSourceClip,
+        vrm,
+      );
       return retargeted;
     }
 
@@ -137,7 +149,11 @@ export async function loadEmoteClip(
     gltf.scene.updateMatrixWorld(true);
     vrm.scene.updateMatrixWorld(true);
     return retargetMixamoGltfToVrm(
-      { scene: gltf.scene, animations: gltf.animations },
+      {
+        scene: gltf.scene as unknown as GltfAnimationSource["scene"],
+        animations:
+          gltf.animations as unknown as GltfAnimationSource["animations"],
+      },
       vrm,
     );
   } catch (err) {

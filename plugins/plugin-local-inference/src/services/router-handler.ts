@@ -82,11 +82,8 @@ export const ROUTER_PROVIDER = "eliza-router";
  * they can register with Infinity — unlikely in practice.
  */
 const ROUTER_PRIORITY = Number.MAX_SAFE_INTEGER;
-type LocalRoutableSlot = AgentModelSlot | "IMAGE_DESCRIPTION";
-const LOCAL_ROUTABLE_SLOTS: readonly LocalRoutableSlot[] = [
-	...AGENT_MODEL_SLOTS,
-	"IMAGE_DESCRIPTION",
-];
+type LocalRoutableSlot = AgentModelSlot;
+const LOCAL_ROUTABLE_SLOTS: readonly LocalRoutableSlot[] = AGENT_MODEL_SLOTS;
 
 /**
  * Runtime's registerModel type, narrowed for our use. The core signature

@@ -1,6 +1,7 @@
 # Cua action parity
 
 Audited against `trycua/cua` commit `c173173` from 2026-05-13.
+Last local verification: 2026-05-14 on macOS.
 
 This document tracks the action surface we expect `@elizaos/plugin-computeruse`
 to expose. Cua has two related APIs:

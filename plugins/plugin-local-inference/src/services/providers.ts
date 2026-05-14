@@ -69,10 +69,8 @@ const LOCAL_PROVIDER: ProviderDefinition = {
 		"TEXT_EMBEDDING",
 		"TEXT_TO_SPEECH",
 		"TRANSCRIPTION",
-		// The shared AgentModelSlot type has not caught up with the runtime
-		// IMAGE_DESCRIPTION surface yet; keep the catalog JSON truthful locally.
 		"IMAGE_DESCRIPTION",
-	] as unknown as ProviderMeta["supportedSlots"],
+	],
 	async getEnableState(): Promise<ProviderEnableState> {
 		// Enabled when at least one model file lives under our root and the
 		// binding is loadable. We don't force-load node-llama-cpp here — that

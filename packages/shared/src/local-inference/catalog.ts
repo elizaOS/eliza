@@ -113,12 +113,11 @@ export type VoiceBackendId = "kokoro" | "omnivoice";
  * Entries beyond the first are also bundled; tiers that ship only one
  * backend have a single-element array.
  *
- * Policy (Wave-2):
- *   - Small tiers (0_8b / 2b / 4b) → OmniVoice first, Kokoro fallback.
- *     This keeps the fused voice path active on the smallest bundles while
- *     preserving Kokoro as the low-latency escape hatch on constrained
- *     devices.
- *   - 9b → both supported, OmniVoice first. 9b is the boundary tier where
+ * Policy:
+ *   - Small tiers (0_8b / 2b / 4b) → Kokoro only. This keeps the smallest
+ *     bundles on the low-latency voice backend and avoids shipping redundant
+ *     OmniVoice payloads on constrained devices.
+ *   - 9b → both supported, Kokoro first. 9b is the boundary tier where
  *     either makes sense depending on workload and thermal headroom.
  *   - Large tiers (27b / 27b-256k / 27b-1m) → OmniVoice only. The RAM
  *     and compute budget is large enough that the OmniVoice quality win
@@ -128,10 +127,10 @@ export const ELIZA_1_VOICE_BACKENDS: Record<
   Eliza1TierId,
   ReadonlyArray<VoiceBackendId>
 > = {
-  "eliza-1-0_8b": ["omnivoice", "kokoro"],
-  "eliza-1-2b": ["omnivoice", "kokoro"],
-  "eliza-1-4b": ["omnivoice", "kokoro"],
-  "eliza-1-9b": ["omnivoice", "kokoro"],
+  "eliza-1-0_8b": ["kokoro"],
+  "eliza-1-2b": ["kokoro"],
+  "eliza-1-4b": ["kokoro"],
+  "eliza-1-9b": ["kokoro", "omnivoice"],
   "eliza-1-27b": ["omnivoice"],
   "eliza-1-27b-256k": ["omnivoice"],
   "eliza-1-27b-1m": ["omnivoice"],

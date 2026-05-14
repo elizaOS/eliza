@@ -14,6 +14,9 @@ export {
 	type LocalInferenceChatResult,
 	type LocalInferenceCommandIntent,
 } from "./local-inference-routes.js";
+export * from "./routes/index.js";
+export * from "./runtime/index.js";
+export * from "./services/index.js";
 export {
 	createLocalInferenceModelHandlers,
 	isLocalInferenceUnavailableError,
@@ -26,8 +29,6 @@ export {
 	localInferencePlugin,
 	localInferencePlugin as default,
 } from "./provider.js";
-export * from "./routes/index.js";
-export * from "./runtime/index.js";
 export { deviceBridge } from "./services/device-bridge.js";
 export { runDflashDoctor } from "./services/dflash-doctor.js";
 export { LocalInferenceEngine } from "./services/engine.js";

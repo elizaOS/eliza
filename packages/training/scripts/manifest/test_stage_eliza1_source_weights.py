@@ -7,6 +7,8 @@ import sys
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 _TRAINING_ROOT = Path(__file__).resolve().parents[2]
 if str(_TRAINING_ROOT) not in sys.path:
     sys.path.insert(0, str(_TRAINING_ROOT))
@@ -68,12 +70,14 @@ def test_4b_tier_records_text_and_vision_sources_with_dflash_missing(
     assert all("final Eliza-1" not in f["destination"] for f in report["files"])
 
 
+@pytest.mark.parametrize("tier", ["27b", "27b-256k", "27b-1m"])
 def test_stage_sources_accepts_large_active_tier(
     tmp_path: Path,
     monkeypatch,
+    tier: str,
 ) -> None:
     monkeypatch.setattr(stage, "HfApi", FakeHfApi)
 
-    report = stage.stage_sources(_args(tmp_path, "27b"))
+    report = stage.stage_sources(_args(tmp_path, tier))
 
     assert "unsloth/Qwen3.6-27B-GGUF" in report["sources"]

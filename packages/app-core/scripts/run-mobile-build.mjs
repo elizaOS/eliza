@@ -199,6 +199,10 @@ function run(command, args, { cwd, env = process.env } = {}) {
 }
 
 function runCapacitor(args) {
+  const targetPlatform = args.find((arg) => arg === "ios" || arg === "android");
+  const env = targetPlatform
+    ? { ...process.env, ELIZA_CAPACITOR_BUILD_TARGET: targetPlatform }
+    : process.env;
   return run(
     process.execPath,
     [
@@ -212,7 +216,7 @@ function runCapacitor(args) {
       ),
       ...args,
     ],
-    { cwd: appDir },
+    { cwd: appDir, env },
   );
 }
 

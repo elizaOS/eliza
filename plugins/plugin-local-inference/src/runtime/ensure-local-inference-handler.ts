@@ -58,7 +58,8 @@ import {
 	elizaHarnessSchemaFromSkeleton,
 } from "../services/structured-output";
 import type { AgentModelSlot } from "../services/types";
-import { decodeMonoPcm16Wav, type TranscriptionAudio } from "../services/voice";
+import { decodeMonoPcm16Wav } from "../services/voice/engine-bridge";
+import type { TranscriptionAudio } from "../services/voice/types";
 
 type GenerateTextHandler = (
 	runtime: IAgentRuntime,

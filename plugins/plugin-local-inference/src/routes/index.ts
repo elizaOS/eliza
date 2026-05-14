@@ -1,8 +1,8 @@
 /**
  * Route-side exports for plugin-local-inference.
  *
- * The package root re-exports these handlers so app consumers can use the
- * public `@elizaos/plugin-local-inference` barrel instead of a route subpath.
+ * The package root re-exports these handlers so app consumers use the public
+ * `@elizaos/plugin-local-inference` barrel instead of a route subpath.
  */
 
 export * from "./local-inference-compat-routes.js";

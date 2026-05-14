@@ -1,17 +1,18 @@
 /**
  * Device-side half of the agent↔device inference bridge.
  *
- * Runs inside the mobile app (Capacitor iOS / Android) and dials out to
- * the agent container over WebSocket. Receives `generate` requests,
- * forwards to `capacitorLlama`, returns results. Auto-reconnects with
- * exponential backoff when the link drops.
+ * Runs inside the Android mobile app and dials out to the agent container
+ * over WebSocket. Receives `generate` requests, forwards to
+ * `capacitorLlama`, returns results. Auto-reconnects with exponential
+ * backoff when the link drops. iOS local mode uses the Capacitor/Bun IPC
+ * bridge instead of a loopback/WebSocket device bridge.
  *
  * Mirrors the message envelope defined in
  * `@elizaos/app-core/src/services/local-inference/device-bridge.ts`.
  * Keep the two in sync by hand — the message shape is the bridge
  * contract.
  *
- * Hardware probe (iOS):
+ * Hardware probe (legacy iOS bridge payloads):
  *   `llama-cpp-capacitor` does not implement `getHardwareInfo` on iOS,
  *   so the underlying adapter would return a fallback with
  *   `deviceModel="ios"`, `totalRamGb=0`, no GPU. That breaks
@@ -594,7 +595,17 @@ export class DeviceBridgeClient {
 export function startDeviceBridgeClient(
   config: DeviceBridgeClientConfig,
 ): DeviceBridgeClient {
-  const client = new DeviceBridgeClient(config);
+  const platform = getCapacitorBridge()?.getPlatform?.();
+  if (platform === "ios") {
+    throw new Error(
+      "Device bridge WebSocket is disabled on iOS; use the native Bun IPC bridge.",
+    );
+  }
+  const pairingToken = config.pairingToken?.trim();
+  if (!pairingToken) {
+    throw new Error("Device bridge pairing token is required");
+  }
+  const client = new DeviceBridgeClient({ ...config, pairingToken });
   client.start();
   return client;
 }

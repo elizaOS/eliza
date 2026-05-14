@@ -468,7 +468,8 @@ function runDesktopPreflight() {
  */
 function preflightStoreVariantSigning() {
   if (buildVariant !== "store") return;
-  if (process.env.CI === "true" || process.env.ELECTROBUN_SKIP_CODESIGN === "1") return;
+  if (process.env.CI === "true" || process.env.ELECTROBUN_SKIP_CODESIGN === "1")
+    return;
 
   const missing = [];
   if (process.platform === "darwin") {
@@ -582,7 +583,9 @@ function stageVendoredOpencode() {
     `${JSON.stringify(
       {
         source: path.relative(ROOT, sourceBinary).replaceAll("\\", "/"),
-        executable: path.relative(ROOT, STAGED_OPENCODE_BIN).replaceAll("\\", "/"),
+        executable: path
+          .relative(ROOT, STAGED_OPENCODE_BIN)
+          .replaceAll("\\", "/"),
         platform: process.platform,
         arch: process.arch,
       },
@@ -597,7 +600,8 @@ function stageVendoredOpencode() {
 }
 
 function resolveVendoredOpencodeBuildOutput() {
-  const platformName = process.platform === "win32" ? "windows" : process.platform;
+  const platformName =
+    process.platform === "win32" ? "windows" : process.platform;
   const arch = process.arch === "arm64" ? "arm64" : "x64";
   const binDir = path.join(
     VENDORED_OPENCODE_PACKAGE_DIR,
@@ -693,7 +697,6 @@ function stageDesktopBuild() {
       label: "Building native macOS effects dylib",
     });
   }
-
 }
 
 function embedWindowsIcons() {

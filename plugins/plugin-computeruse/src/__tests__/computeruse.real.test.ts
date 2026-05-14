@@ -328,12 +328,24 @@ describe("computer-use live parity", () => {
     const detectResult = await service.executeDesktopAction({
       action: "detect_elements",
     });
-    expect(detectResult.success).toBe(false);
-    expect(detectResult.error).toContain("not available");
+    if (detectResult.success) {
+      expect(detectResult.data).toMatchObject({
+        elements: expect.any(Array),
+      });
+    } else {
+      expect(detectResult.permissionDenied).toBe(true);
+      expect(detectResult.permissionType).toBe("screen_recording");
+    }
 
     const ocrResult = await service.executeDesktopAction({ action: "ocr" });
-    expect(ocrResult.success).toBe(false);
-    expect(ocrResult.error).toContain("not available");
+    if (ocrResult.success) {
+      expect(ocrResult.data).toMatchObject({
+        boxes: expect.any(Array),
+      });
+    } else {
+      expect(ocrResult.permissionDenied).toBe(true);
+      expect(ocrResult.permissionType).toBe("screen_recording");
+    }
 
     const computerUseCapability = service.getCapabilities().computerUse;
     if (!computerUseCapability.available) {

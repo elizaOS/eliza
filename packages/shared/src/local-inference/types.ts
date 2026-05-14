@@ -17,7 +17,8 @@ export type AgentModelSlot =
   | "TEXT_LARGE"
   | "TEXT_EMBEDDING"
   | "TEXT_TO_SPEECH"
-  | "TRANSCRIPTION";
+  | "TRANSCRIPTION"
+  | "IMAGE_DESCRIPTION";
 
 /** Subset of `AgentModelSlot` that participates in text generation. */
 export type TextGenerationSlot = Extract<
@@ -31,6 +32,7 @@ export const AGENT_MODEL_SLOTS: AgentModelSlot[] = [
   "TEXT_EMBEDDING",
   "TEXT_TO_SPEECH",
   "TRANSCRIPTION",
+  "IMAGE_DESCRIPTION",
 ];
 
 export const TEXT_GENERATION_SLOTS: TextGenerationSlot[] = [

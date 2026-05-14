@@ -623,7 +623,8 @@ function normalizeVirtualPath(input: string): string {
 
 function isPortableUnsafePathSegment(segment: string): boolean {
   if (
-    /[<>:"|?*\x00-\x1f]/.test(segment) ||
+    /[<>:"|?*]/.test(segment) ||
+    hasControlCharacter(segment) ||
     segment.endsWith(" ") ||
     segment.endsWith(".")
   ) {
@@ -632,6 +633,10 @@ function isPortableUnsafePathSegment(segment: string): boolean {
 
   const stem = segment.split(".")[0]?.toUpperCase();
   return /^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])$/.test(stem ?? "");
+}
+
+function hasControlCharacter(value: string): boolean {
+  return [...value].some((char) => (char.codePointAt(0) ?? 0) < 32);
 }
 
 function normalizeSnapshotId(id: string): string {
