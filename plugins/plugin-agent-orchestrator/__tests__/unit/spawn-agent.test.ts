@@ -40,7 +40,11 @@ describe("TASKS:spawn_agent", () => {
       cb,
     );
     expect(result?.success).toBe(true);
-    expect(result?.text).toBe("");
+    // Spawn is fire-and-forget: the handler returns a brief ack so the
+    // planner loop ships *something* to the user instead of silent success.
+    expect(result?.text).toBe(
+      "On it — spawning codex sub-agent to handle your request.",
+    );
     expect(result?.data).toMatchObject({
       sessionId: "abcdef123456",
       agentType: "codex",
