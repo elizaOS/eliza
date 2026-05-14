@@ -1,6 +1,10 @@
 import type { GenerateTextParams, IAgentRuntime, Plugin, TextStreamResult } from "@elizaos/core";
 import { logger, ModelType } from "@elizaos/core";
-import { CodexBackend, type CodexGenerateResult } from "./src/codex-backend";
+import {
+  CodexBackend,
+  type CodexGenerateParams,
+  type CodexGenerateResult,
+} from "./src/codex-backend";
 
 const TEXT_NANO_MODEL_TYPE = (ModelType.TEXT_NANO ?? "TEXT_NANO") as string;
 const TEXT_MEDIUM_MODEL_TYPE = (ModelType.TEXT_MEDIUM ?? "TEXT_MEDIUM") as string;
@@ -75,7 +79,10 @@ function toTextReturn(
   return result.text;
 }
 
-function buildCodexGenerateParams(runtime: IAgentRuntime, params: GenerateTextParams) {
+function buildCodexGenerateParams(
+  runtime: IAgentRuntime,
+  params: GenerateTextParams
+): CodexGenerateParams {
   // Honor `responseSchema` natively. OpenAI-compatible Codex models accept
   // `response_format: { type: "json_schema", schema }` for guaranteed JSON
   // output; if the caller already passed a custom `responseFormat`, leave it

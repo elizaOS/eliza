@@ -770,13 +770,13 @@ describe("message-history compaction hook", () => {
     });
 
     expect(result.telemetry?.didCompact).toBe(true);
-    const capturedRoom = updatedRoom as {
+    const persistedRoom = updatedRoom as {
       metadata?: Record<string, unknown>;
     } | null;
-    expect(capturedRoom?.metadata?.lastCompactionAt).toBe(
+    expect(persistedRoom?.metadata?.lastCompactionAt).toBe(
       (memories[11]?.createdAt ?? 0) + 1,
     );
-    expect(capturedRoom?.metadata?.lastCompactionAt).toBeLessThan(
+    expect(persistedRoom?.metadata?.lastCompactionAt).toBeLessThan(
       memories[12]?.createdAt ?? 0,
     );
   });

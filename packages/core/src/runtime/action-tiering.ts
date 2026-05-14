@@ -1,4 +1,8 @@
-import type { ActionCatalog, ActionCatalogParent } from "./action-catalog";
+import {
+	type ActionCatalog,
+	type ActionCatalogParent,
+	normalizeActionName,
+} from "./action-catalog";
 import type { ActionRetrievalResult } from "./action-retrieval";
 
 export const TIER0_PROTOCOL_ACTIONS = [
@@ -103,18 +107,58 @@ export function tierActionResults(
 	// tier-A. By narrowing first we collapse tier-A to only the candidates,
 	// and the cap then applies to that smaller set.
 	const narrowSet = normalizeCandidateSet(input.narrowToCandidateActions);
-	if (narrowSet.size > 0 && tierAParents.length > 0) {
+	if (narrowSet.size > 0) {
+		// A parent matches a candidate when the candidate names the parent,
+		// one of its children, or any simile of either — so Stage-1 routing
+		// to a virtual sub-action (`TASKS_SPAWN_AGENT`) or a simile of one
+		// (`SPAWN_AGENT`) still resolves back to the `TASKS` parent. Reads
+		// the catalog parent (`result.parent`), not the tiered entry —
+		// tier-B / tier-C entries are stored parent-only so their
+		// `childNormalizedNames` are empty.
 		const matchesCandidate = (parent: TieredParentAction): boolean => {
-			if (narrowSet.has(parent.normalizedName)) {
+			const catalogParent = parent.result.parent;
+			if (narrowSet.has(catalogParent.normalizedName)) {
 				return true;
 			}
-			for (const child of parent.childNormalizedNames) {
+			for (const child of catalogParent.childNormalizedNames ?? []) {
 				if (narrowSet.has(child)) {
 					return true;
 				}
 			}
+			for (const simile of catalogParent.similes ?? []) {
+				if (narrowSet.has(normalizeActionName(simile))) {
+					return true;
+				}
+			}
+			for (const child of catalogParent.children ?? []) {
+				for (const simile of child.similes ?? []) {
+					if (narrowSet.has(normalizeActionName(simile))) {
+						return true;
+					}
+				}
+			}
 			return false;
 		};
+
+		// Promote candidate-matching parents up into tier-A from tier-B /
+		// tier-C. Stage-1's candidate selection is an explicit, high-confidence
+		// routing decision — it must guarantee the action reaches the planner's
+		// surface even when the fuzzy retrieval scored the parent below the
+		// tier-A threshold. Without this, a build request whose `TASKS` parent
+		// ranked into tier-C is omitted entirely and the planner physically
+		// cannot pick `TASKS_SPAWN_AGENT`. Children are restored on promotion
+		// (tier-B / tier-C entries are stored parent-only).
+		for (const lowerTier of [tierBParents, tierCParents]) {
+			for (let index = lowerTier.length - 1; index >= 0; index -= 1) {
+					const parent = lowerTier[index];
+					if (parent && matchesCandidate(parent)) {
+						lowerTier.splice(index, 1);
+						tierAParents.push(tieredParent(parent.result.parent, parent.result));
+					}
+				}
+			}
+		tierAParents.sort(compareTieredParents);
+
 		const kept: TieredParentAction[] = [];
 		const demotedFromTierA: TieredParentAction[] = [];
 		for (const parent of tierAParents) {
@@ -124,6 +168,9 @@ export function tierActionResults(
 				demotedFromTierA.push(parent);
 			}
 		}
+		// No-op safety: when nothing in the catalog matches any candidate
+		// (Stage-1 named an action that does not exist), leave the surface
+		// untouched rather than collapsing it to empty.
 		if (kept.length > 0) {
 			tierAParents.length = 0;
 			tierAParents.push(...kept);
@@ -277,10 +324,9 @@ function sortedUnique(values: readonly string[]): string[] {
 function normalizeCandidateSet(
 	values: readonly string[] | undefined,
 ): Set<string> {
-	// Must match action-catalog's normalizeActionName (UPPER_SNAKE_CASE) so
-	// the candidate names line up with TieredParentAction.normalizedName /
-	// childNormalizedNames produced by the catalog. Lowercasing here would
-	// silently miss every match and the narrow becomes a no-op.
+	// normalizeActionName produces the same UPPER_SNAKE_CASE form the catalog
+	// uses for normalizedName / childNormalizedNames, so candidate names line
+	// up exactly. Reusing it (vs. an inline copy) keeps the two in lockstep.
 	const set = new Set<string>();
 	if (!values) {
 		return set;
@@ -289,13 +335,7 @@ function normalizeCandidateSet(
 		if (typeof value !== "string") {
 			continue;
 		}
-		const normalized = String(value)
-			.trim()
-			.replace(/([a-z0-9])([A-Z])/g, "$1_$2")
-			.replace(/[^A-Za-z0-9]+/g, "_")
-			.replace(/^_+|_+$/g, "")
-			.replace(/_+/g, "_")
-			.toUpperCase();
+		const normalized = normalizeActionName(value);
 		if (normalized) {
 			set.add(normalized);
 		}

@@ -88,6 +88,12 @@ function isCerebrasBaseUrl(value: string | undefined): boolean {
   return Boolean(value && /(^|[/.])cerebras\.ai(?:\/|$)/i.test(value));
 }
 
+function usableApiKey(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  if (value.startsWith("vault://")) return undefined;
+  return value;
+}
+
 export function buildOpencodeSpawnConfig(
   runtime: RuntimeLike | undefined,
   env: NodeJS.ProcessEnv | Record<string, string | undefined> = process.env,
@@ -121,14 +127,19 @@ export function buildOpencodeSpawnConfig(
     );
   }
 
-  const opencodeApiKey = setting(runtime, env, "ELIZA_OPENCODE_API_KEY");
+  const opencodeApiKey = usableApiKey(
+    setting(runtime, env, "ELIZA_OPENCODE_API_KEY"),
+  );
   const cerebrasApiKey =
-    setting(runtime, env, "CEREBRAS_API_KEY") ||
-    setting(runtime, env, "ELIZA_E2E_CEREBRAS_API_KEY");
+    usableApiKey(setting(runtime, env, "CEREBRAS_API_KEY")) ||
+    usableApiKey(setting(runtime, env, "ELIZA_E2E_CEREBRAS_API_KEY"));
   const wantsCerebras =
     isCerebrasBaseUrl(customBaseUrl) ||
-    isCerebrasBaseUrl(cerebrasBaseUrl) ||
-    Boolean(cerebrasApiKey);
+    Boolean(cerebrasApiKey) ||
+    (!customBaseUrl &&
+      !localOptIn &&
+      Boolean(opencodeApiKey) &&
+      isCerebrasBaseUrl(cerebrasBaseUrl));
   if (wantsCerebras && (opencodeApiKey || cerebrasApiKey || customBaseUrl)) {
     return providerConfig(
       "cerebras",
@@ -207,6 +218,17 @@ export function resolveVendoredOpencodeShim(): string | undefined {
     }
   }
   return undefined;
+}
+
+function commandArg(value: string): string {
+  return /^[A-Za-z0-9_/:.=+-]+$/.test(value) ? value : JSON.stringify(value);
+}
+
+export function resolveVendoredOpencodeAcpCommand(): string | undefined {
+  const shimDir = resolveVendoredOpencodeShim();
+  if (!shimDir) return undefined;
+  const executable = process.platform === "win32" ? "opencode.cmd" : "opencode";
+  return `${commandArg(path.join(shimDir, executable))} acp`;
 }
 
 export function prependPathDir(
