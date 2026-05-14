@@ -19,6 +19,17 @@ import { MODEL_CATALOG } from "./catalog";
 import { dflashLlamaServer, getDflashRuntimeStatus } from "./dflash-server";
 import { Downloader } from "./downloader";
 import { localInferenceEngine } from "./engine";
+import {
+	MemoryArbiter,
+	setMemoryArbiter,
+	tryGetMemoryArbiter,
+} from "./memory-arbiter";
+import {
+	type MemoryPressureSource,
+	capacitorPressureSource,
+	compositePressureSource,
+	nodeOsPressureSource,
+} from "./memory-pressure";
 import { probeHardware } from "./hardware";
 import { searchHuggingFaceGguf, searchModelHubGguf } from "./hf-search";
 import { buildTextGenerationReadiness } from "./readiness";
@@ -58,6 +69,20 @@ export class LocalInferenceService {
 	});
 	private readonly activeModel = new ActiveModelCoordinator();
 	private bundledBootstrap: Promise<void> | null = null;
+	/**
+	 * Memory Arbiter (WS1). Lazily created on first access so the heavy
+	 * pressure-source machinery doesn't run for processes that never load
+	 * a local model (CI, dev shells, etc.). Once created, the arbiter is
+	 * also published via `setMemoryArbiter` so cross-plugin consumers
+	 * (plugin-vision, plugin-image-gen) can use `getMemoryArbiter()`.
+	 */
+	private memoryArbiter: MemoryArbiter | null = null;
+	/**
+	 * Mobile pressure bridge — populated by the Capacitor host (iOS / Android
+	 * onTrimMemory) so a native pressure callback can reach the arbiter.
+	 * Stays null on desktop until WS2/WS8 wire the native side.
+	 */
+	private mobilePressureBridge: ReturnType<typeof capacitorPressureSource> | null = null;
 
 	getCatalog() {
 		return MODEL_CATALOG.filter((model) => !model.hiddenFromCatalog);
@@ -308,6 +333,51 @@ export class LocalInferenceService {
 			dflash: await dflashLlamaServer.describeCache(),
 			engine: localInferenceEngine.describeSessionPool(),
 		};
+	}
+
+	/**
+	 * Memory Arbiter (WS1). Returns the process-wide arbiter, creating it on
+	 * first call. The arbiter is constructed against the engine's existing
+	 * `SharedResourceRegistry` so eviction policy is consistent across the
+	 * voice/text paths and the cross-plugin handles.
+	 *
+	 * The pressure source is a composite of:
+	 *   - `nodeOsPressureSource()` — desktop polling at 5 s.
+	 *   - A `capacitorPressureSource()` bridge — populated by the Capacitor
+	 *     host on iOS/Android. The native side calls `dispatchMobilePressure`
+	 *     when the OS hands it a memory-warning callback.
+	 */
+	getMemoryArbiter(): MemoryArbiter {
+		if (this.memoryArbiter) return this.memoryArbiter;
+		const existing = tryGetMemoryArbiter();
+		if (existing) {
+			this.memoryArbiter = existing;
+			return existing;
+		}
+		this.mobilePressureBridge = capacitorPressureSource();
+		const desktopSource = nodeOsPressureSource();
+		const composite: MemoryPressureSource = compositePressureSource([
+			desktopSource,
+			this.mobilePressureBridge,
+		]);
+		const arbiter = new MemoryArbiter({
+			registry: localInferenceEngine.getSharedResources(),
+			pressureSource: composite,
+		});
+		arbiter.start();
+		setMemoryArbiter(arbiter);
+		this.memoryArbiter = arbiter;
+		return arbiter;
+	}
+
+	/**
+	 * Capacitor bridge entrypoint. The mobile host (iOS / Android) calls
+	 * this from the native pressure callback. Safe to call before the
+	 * arbiter has been created — we create it on demand.
+	 */
+	dispatchMobilePressure(level: "nominal" | "low" | "critical", freeMb?: number): void {
+		this.getMemoryArbiter();
+		this.mobilePressureBridge?.dispatch(level, freeMb);
 	}
 
 	async uninstall(
