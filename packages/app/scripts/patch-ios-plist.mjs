@@ -26,8 +26,7 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-const MIC_PURPOSE =
-  "Eliza listens when you talk to your agent.";
+const MIC_PURPOSE = "Eliza listens when you talk to your agent.";
 const SPEECH_PURPOSE =
   "Eliza transcribes your speech so you can talk to the agent.";
 
@@ -37,14 +36,7 @@ const KEYS = /** @type {Array<{ key: string; value: string | string[] }>} */ ([
   { key: "NSSpeechRecognitionUsageDescription", value: SPEECH_PURPOSE },
 ]);
 
-const TARGET_PATH = resolve(
-  __dirname,
-  "..",
-  "ios",
-  "App",
-  "App",
-  "Info.plist",
-);
+const TARGET_PATH = resolve(__dirname, "..", "ios", "App", "App", "Info.plist");
 
 function findInsertionPoint(xml) {
   // Insert before the closing `</dict>` of the top-level `<plist>`. The
@@ -67,7 +59,9 @@ function escapeKey(key) {
 
 function renderEntry({ key, value }) {
   if (Array.isArray(value)) {
-    const items = value.map((v) => `\t\t<string>${escapeXml(v)}</string>`).join("\n");
+    const items = value
+      .map((v) => `\t\t<string>${escapeXml(v)}</string>`)
+      .join("\n");
     return `\t<key>${key}</key>\n\t<array>\n${items}\n\t</array>\n`;
   }
   return `\t<key>${key}</key>\n\t<string>${escapeXml(value)}</string>\n`;
@@ -100,7 +94,9 @@ function main() {
     // workspaces that haven't generated the iOS platform yet (CI Linux
     // workers, fresh checkouts that only target web/desktop), there's
     // nothing to patch and we exit cleanly.
-    console.log(`[patch-ios-plist] no Info.plist found at ${TARGET_PATH} — skipping.`);
+    console.log(
+      `[patch-ios-plist] no Info.plist found at ${TARGET_PATH} — skipping.`,
+    );
     return;
   }
   const original = readFileSync(TARGET_PATH, "utf8");
