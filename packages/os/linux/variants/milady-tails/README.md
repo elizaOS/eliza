@@ -88,14 +88,34 @@ the in-app About page.
 
 ## Status
 
-**Phase 0** — scaffold complete. Tails source imported. PLAN
-documents the work order. No ISO builds yet.
+**Phase 1 — in progress.** The containerized build pipeline is complete
+(`just build` produces an ISO on any host with Docker — no Vagrant, no
+host setup). The base ISO is mid-build; not yet verified-booting.
 
-See [`PLAN.md`](./PLAN.md) for the 11 phases.
+Phases 2–9 are **fully spec'd** ([`docs/specs/`](./docs/specs/));
+implementation hasn't started. See [`PLAN.md`](./PLAN.md) for the phase
+map and [`ROADMAP.md`](./ROADMAP.md) for the honest road to a real,
+fully-working demo.
+
+## Build it
+
+Only requirement is Docker. From this directory:
+
+```
+just config    # ~1 min go/no-go
+just build     # full clean ISO → out/
+just boot      # boot the latest ISO in QEMU
+```
 
 ## Docs
 
-- [`PLAN.md`](./PLAN.md) — phased work order with success criteria
+- [`PLAN.md`](./PLAN.md) — phase map with success criteria and status
+- [`ROADMAP.md`](./ROADMAP.md) — the honest road from here to a real demo
+  and to v1.0
+- [`docs/build-infrastructure.md`](./docs/build-infrastructure.md) — the
+  containerized build, why it exists, how it works
+- [`docs/specs/`](./docs/specs/) — file-level implementation specs for
+  every phase (2–9) + the agent-tree portability audit
 - [`docs/user-experience.md`](./docs/user-experience.md) — what users
   actually see at boot, plain language
 - [`docs/mode-parity.md`](./docs/mode-parity.md) — feature behavior

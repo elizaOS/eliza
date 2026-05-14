@@ -1,58 +1,101 @@
 # milady-tails — Justfile recipes
 #
-# Mirrors usbeliza's Justfile shape so the dev workflow is identical:
-#   just iso-stage    — preflight + stage the chroot tree
-#   just iso-build    — full ISO build via live-build
-#   just iso-debug    — boot the squashfs in systemd-nspawn (no QEMU)
-#   just iso-boot     — boot the latest ISO in QEMU
-#   just dev-watch    — rsync agent source to running VM + restart service
+# The ISO build is containerized: any host with Docker (Linux / macOS /
+# Windows WSL2 / CI) builds an identical ISO with no VM, no Vagrant, no
+# host-specific setup. See build.sh / Dockerfile / build-iso.sh.
 #
-# These recipes are stubs while Phase 1 is in progress. When the
-# Tails-derived live-build config lands, they'll become real.
+# The dev loop has three speeds — pick the slowest one your change needs:
+#
+#   1. App work (the Milady desktop)   → develop the app on your host,
+#      normal hot-reload. Never touches the ISO. ~90% of dev time.
+#   2. OS-level config (branding,      → `just nspawn` — boots the built
+#      systemd units, hooks, files)      chroot/ in seconds for non-GUI
+#                                        sanity checks. No ISO build.
+#   3. Full integration test           → `just binary` — incremental
+#                                        ISO rebuild (~10 min), or
+#                                        `just build` for a clean one.
+#
+# A cold `just build` is a once-in-a-while thing, not the dev loop.
 
 default:
     @just --list
 
-# --- Phase-0 / Phase-1 stubs ------------------------------------------------
+# --- Preflight --------------------------------------------------------------
 
-# Initial setup: ensure live-build + debootstrap are installed on the host.
+# The only host requirement is Docker — the container is the build env.
 setup:
-    @command -v lb >/dev/null 2>&1 || { echo "Install live-build first: sudo apt install live-build"; exit 1; }
-    @command -v debootstrap >/dev/null 2>&1 || { echo "Install debootstrap first: sudo apt install debootstrap"; exit 1; }
-    @echo "Phase 0: scaffold only. No live-build config yet — see PLAN.md."
+    @command -v docker >/dev/null 2>&1 || { echo "Install Docker first — it is the only host requirement."; exit 1; }
+    @docker info >/dev/null 2>&1 || { echo "Docker is installed but not running / not accessible to this user."; exit 1; }
+    @echo "Docker OK — run 'just config' for a go/no-go, or 'just build' for a full ISO."
 
-# Stage the chroot tree. Will populate when Phase 1 lands.
-iso-stage:
-    @echo "[milady-tails] iso-stage — not yet implemented"
-    @echo "Phase 1 work: derive Tails' config/ skeleton from /home/nubs/Git/tails"
-    @echo "See PLAN.md § Phase 1 for the checklist."
-    @exit 1
+# --- Build ------------------------------------------------------------------
 
-# Full ISO build. Depends on iso-stage.
-iso-build: iso-stage
-    @echo "[milady-tails] iso-build — not yet implemented"
-    @exit 1
+# Full clean ISO build → out/. ~1.5h cold, much faster once the
+# apt-cacher-ng volume is warm. This is the release-quality build.
+build:
+    ./build.sh build
 
-# Quick test in systemd-nspawn — no QEMU, ~30s feedback for non-GUI agent edits.
-iso-debug:
-    @echo "[milady-tails] iso-debug — not yet implemented"
-    @exit 1
+# Like 'build' but with low-compression squashfs — faster mksquashfs,
+# larger ISO. For dev iteration when you just need a bootable image.
+build-fast:
+    MT_FAST=1 ./build.sh build
 
-# Boot the latest ISO in QEMU.
-iso-boot:
-    @echo "[milady-tails] iso-boot — not yet implemented (no ISO output yet)"
-    @exit 1
+# Go/no-go: run only `lb config` in the container. Fast (~1 min) sanity
+# check that the Tails config tree still processes cleanly.
+config:
+    ./build.sh config
 
-# --- Shared ----------------------------------------------------------------
+# Incremental rebuild: reuse the chroot/ from the last full build and
+# re-run only the squashfs + ISO assembly (~10 min). Use after editing
+# overlay files. Run a full `just build` first to create the chroot/.
+binary:
+    ./build.sh binary
 
-# Lint / typecheck — runs against the agent which is shared with usbeliza.
+# --- Test -------------------------------------------------------------------
+
+# Boot the built chroot/ in systemd-nspawn — seconds, no QEMU. For
+# non-GUI sanity (do my systemd units parse? did my file land where I
+# expect? does a service start?). --volatile=overlay keeps the chroot
+# read-only; all writes go to a discarded tmpfs. NOT for GUI testing —
+# use `just boot` for that.
+nspawn:
+    @test -d tails/chroot || { echo "no tails/chroot/ — run 'just build' first"; exit 1; }
+    sudo systemd-nspawn --boot --directory=tails/chroot \
+        --volatile=overlay --machine=milady-tails-dev
+
+# Boot the latest built ISO in QEMU. Presents the ISO as a USB stick so
+# Tails' `live-media=removable` cmdline is satisfied. Needs KVM.
+boot:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    iso="$(ls -t out/*.iso 2>/dev/null | head -1 || true)"
+    [ -n "${iso}" ] || { echo "no ISO in out/ — run 'just build' first"; exit 1; }
+    echo "booting ${iso}"
+    qemu-system-x86_64 -enable-kvm -m 4096 -smp 2 \
+        -drive file="${iso}",format=raw,if=none,id=isostick \
+        -device qemu-xhci -device usb-storage,drive=isostick,bootindex=1 \
+        -vga virtio -display gtk
+
+# Lint / typecheck — runs against the agent, shared with usbeliza.
 lint:
     cd ../../agent && bun run typecheck
 
 test:
     cd ../../agent && bun test
 
-# Clean Phase-1 outputs (when they start landing).
+# --- Clean ------------------------------------------------------------------
+
+# Remove build artifacts (out/ + the chroot/binary/cache trees inside
+# tails/). These are root-owned (built in-container as root), so this
+# needs sudo. The apt-cacher-ng volume is left alone — see cache-clean.
 clean:
-    rm -rf out/ live-build/cache/ live-build/chroot/ live-build/binary/
-    @echo "Phase 1+ build artifacts cleared. Run `just iso-stage` to start fresh."
+    sudo rm -rf out tails/chroot tails/binary tails/cache tails/.build \
+        tails/tmp tails/chroot.files tails/*.buildlog tails/*.iso tails/*.img
+    @echo "Build artifacts cleared. The apt-cacher-ng cache volume is kept (run 'just cache-clean' to drop it)."
+
+# Drop the persistent apt-cacher-ng package cache. Next build re-downloads
+# everything from the network — only do this to reclaim disk or force a
+# fully cold rebuild.
+cache-clean:
+    docker volume rm milady-tails-acng 2>/dev/null || true
+    @echo "apt-cacher-ng cache volume removed."

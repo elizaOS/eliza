@@ -5,8 +5,40 @@ into a working Linux + Milady desktop on real USB hardware, with optional
 Tor privacy mode and optional encrypted persistent storage."
 
 This is a multi-week project. Each phase has a clear success criterion;
-don't jump phases — live-build's feedback loop is 15-30 min per attempt
-and several phases need iteration.
+don't jump phases. With the containerized build (see Phase 1) a full ISO
+is ~1–1.5 h cold, and incremental rebuilds (`just binary`) are ~10 min —
+several phases still need iteration.
+
+**Detailed, file-level implementation specs for each phase live in
+[`docs/specs/`](./docs/specs/).** This PLAN is the map; the specs are the
+turn-by-turn directions.
+
+---
+
+## Current status (2026-05-14)
+
+| | |
+|---|---|
+| **Phase 0 — Scaffold** | ✅ Done |
+| **Phase 1 — Base ISO builds + boots** | 🔨 In progress — containerized build pipeline complete, build running, not yet verified-booting |
+| **Phases 2–9** | 📋 Fully spec'd ([`docs/specs/`](./docs/specs/)), implementation not started |
+| **Phases 10–11** | ⏳ Not started |
+
+What exists right now:
+- A **containerized build pipeline** (`Dockerfile`, `build.sh`, `build-iso.sh`,
+  `acng.conf`, `Justfile`) that builds the ISO on any host with Docker — no
+  Vagrant, no libvirt, no host-specific setup. See
+  [`docs/build-infrastructure.md`](./docs/build-infrastructure.md).
+- **6 genuine Tails Trixie-compat fixes** found while getting the build to
+  run (5 builder-box fixes + 1 package-list fix — `gdisk`/`mtools` for the
+  partitioning initramfs hook). All upstream-worthy.
+- **Complete file-level specs** for every implementation phase (2–9) plus a
+  full **agent-tree portability audit** for Phase 6.
+- The **Milady Electrobun Linux app** builds (verified — see
+  [`docs/specs/phase-4-bake-milady-app.md`](./docs/specs/phase-4-bake-milady-app.md)).
+
+See [`ROADMAP.md`](./ROADMAP.md) for the honest road from here to a real,
+fully-working demo.
 
 ---
 
@@ -21,8 +53,8 @@ and several phases need iteration.
    shutdown. Required for "borrowed laptop / hotel / zero footprint".
    Tails' default behavior, kept identical.
 2. **Persistent USB (opt-in)** — LUKS-encrypted partition on the USB
-   stick. Reuses Tails' `tails-persistence-setup` tool unchanged.
-   Selected dirs bind-mount from the LUKS partition.
+   stick. Reuses Tails' native **Persistent Storage** (`tps`) tool
+   unchanged. Selected dirs bind-mount from the LUKS partition.
 
 ### Privacy mode (independent of storage mode)
 
@@ -42,15 +74,15 @@ Both axes combine freely: 4 valid configurations.
 - Speed (Tor is slower than direct internet)
 - Trace footprint (amnesia leaves nothing, persistent leaves encrypted data on USB)
 
-See `docs/mode-parity.md` for the exhaustive feature matrix and what's
-verified to work in each combo. Anything that doesn't work in one mode
-gets a documented "known gap" entry — no silent feature loss.
+See `docs/mode-parity.md` for the exhaustive feature matrix. Anything that
+doesn't work in one mode gets a documented "known gap" entry — no silent
+feature loss. Phase 8 builds the harness that proves this.
 
 The one **known v1.0 gap**: Electrobun's CEF Chromium WebView doesn't
 auto-inherit the SOCKS proxy. In Privacy Mode, Milady's agent (Bun
 fetch) routes through Tor correctly, but Chromium *windows* may
 leak. Documented in `docs/privacy-mode-v1-gap.md`. Closing this is
-v1.1 work (patch Electrobun to inject `--proxy-server` flag).
+v1.1 work (patch Electrobun to inject `--proxy-server`).
 
 ---
 
@@ -58,14 +90,23 @@ v1.1 work (patch Electrobun to inject `--proxy-server` flag).
 
 ### Architecture: full-fork of Tails, additive modifications
 
-- Tails source lives in `tails/` at this directory's root (6077
-  tracked files, copied from `/home/nubs/Git/tails` minus `.git`).
+- Tails source lives in `tails/` at this directory's root (~6000
+  tracked files, copied from a Tails `stable` clone).
 - We **never delete** Tails code. All Milady additions are overlays,
   hooks, package-list additions, and replacement files inside Tails'
-  tree. Tor, AppArmor, MAC spoofing, persistence-setup, Plymouth — all
+  tree. Tor, AppArmor, MAC spoofing, Persistent Storage, Plymouth — all
   stay intact.
 - Matches `packages/os/android/vendor/eliza/` precedent in this
   monorepo (brand vendor tree inside system structure).
+
+### Build system: containerized (Phase 1 — done)
+
+Tails' upstream build drives a Vagrant + libvirt VM. We **replaced that
+with a plain container** — the container *is* the build environment.
+Any dev on Linux/macOS/Windows/CI runs `just build` and gets the same
+ISO. The earlier Vagrant attempt is documented (and buried) in
+[`docs/build-infrastructure.md`](./docs/build-infrastructure.md); don't
+resurrect it.
 
 ### First-boot UX: Tails greeter rebranded + Milady chat for personal choices
 
@@ -73,7 +114,7 @@ Tails uses a GTK greeter (`tails-greeter`) at first boot. We **keep
 this UX** — it's battle-tested for live-USB scenarios — and rebrand it.
 
 Boot sequence:
-1. **isolinux boot menu** — pick "Milady" or "Milady — Privacy Mode"
+1. **boot menu** — pick "Milady" or "Milady — Privacy Mode"
 2. **Plymouth splash** (Milady wordmark)
 3. **Milady greeter** (rebranded `tails-greeter`):
    - Language / keyboard / formats
@@ -85,8 +126,8 @@ Boot sequence:
    onboarding for personal choices (name, what to build first, claude
    signin)
 
-System-level choices go through the GTK greeter (it's good for these).
-Personal/AI choices go through Milady chat (matches v36 pattern).
+System-level choices go through the GTK greeter. Personal/AI choices
+go through Milady chat (matches the v36 onboarding pattern).
 
 ### Branding
 
@@ -129,238 +170,230 @@ USB boot. Local LLM gets full GPU acceleration on user's hardware.
 
 ---
 
-## Phase 0 — Scaffold (DONE this commit)
+## Phase 0 — Scaffold ✅ DONE
 
 - [x] Directory `packages/os/linux/variants/milady-tails/`
-- [x] README + this PLAN + docs/relationship-to-usbeliza.md
+- [x] README + PLAN + docs/
 - [x] Tails source copied to `tails/`
-- [x] Justfile recipe stubs
-
-**Success**: PR opened, scaffold in monorepo, branch
-`nubs/os-linux-milady-tails-scaffold` pushed.
+- [x] Justfile
 
 ---
 
-## Phase 1 — First boot as Tails (no Milady yet, validates the import)
+## Phase 1 — Base ISO builds + boots 🔨 IN PROGRESS
 
-Goal: prove the live-build pipeline runs against our copied Tails tree
-and produces a bootable ISO identical to upstream Tails.
+Goal: the build pipeline runs against our Tails tree and produces a
+bootable ISO indistinguishable from upstream Tails.
 
-- [ ] Write `Justfile` recipes invoking Tails' own `auto/build`
-- [ ] First build attempt: `just iso-build`
-- [ ] Debug failures (APT snapshot pins, build-host deps)
-- [ ] Boot in QEMU, confirm Tails greeter appears, Tor connects, Tor
-  Browser opens
+**Spec:** [`docs/build-infrastructure.md`](./docs/build-infrastructure.md)
+
+- [x] Containerized build pipeline — `Dockerfile`, `build.sh`,
+  `build-iso.sh`, `acng.conf`, `Justfile` (recipes `build` / `build-fast` /
+  `config` / `binary` / `nspawn` / `boot` / `clean` / `cache-clean`)
+- [x] `apt-cacher-ng` wired in — required (Tails' chroot has Tor-only DNS
+  that's dead at build time; apt reaches packages via the proxy by IP) and
+  it caches downloads so rebuilds are fast
+- [x] 6 Tails Trixie-compat fixes (builder-box interface naming, `ifupdown`,
+  `isc-dhcp-client`, `qemu-guest-agent`, vagrant agent channel, and
+  `gdisk`/`mtools` for the partitioning initramfs hook)
+- [x] `lb config` go/no-go passes in the container
+- [ ] Full `lb build` runs clean to a finished `.iso` (in progress —
+  each run so far surfaced a real latent bug; all fixed, build re-running)
+- [ ] Boot the ISO in QEMU (`just boot`); confirm Tails greeter, Tor
+  connects, Tor Browser opens
 - [ ] **Success**: indistinguishable from upstream Tails
 
-**Effort**: 1-3 days of build-debug iteration. Tails' build has APT
-snapshot date pins, requires specific keyring versions, may need
-updated host packages.
-
 ---
 
-## Phase 2 — Rebrand the greeter to Milady (system-level UI)
+## Phase 2 — Rebrand the greeter to Milady (system-level UI) 📋 SPEC'D
 
 Goal: Tails greeter still does its job, but visually it's Milady.
 
-- [ ] Replace greeter window title, logo, color scheme to Milady
-- [ ] Boot menu title "Tails" → "Milady"
-- [ ] Plymouth theme → Milady wordmark
-- [ ] GNOME default GTK theme → dark Milady
-- [ ] Default wallpaper → Milady
-- [ ] `/etc/os-release` → milady-tails identifier
-- [ ] `/etc/issue` MOTD → Milady
-- [ ] Apt source comments + `/usr/share/doc/` paths preserved (don't
-  break Tails' update path)
-- [ ] **Tails credit** added to greeter footer + About + CREDITS file
-- [ ] Boot ISO in QEMU, confirm Milady-branded everywhere, Tails credit
-  visible
+**Spec:** [`docs/specs/phase-2-rebrand.md`](./docs/specs/phase-2-rebrand.md)
+— enumerates every file (greeter title/logo/CSS, boot menu, Plymouth,
+GNOME theme, wallpaper, `os-release`, `issue`), the real Milady asset
+sources, and the hard "do not rename" list (apt sources, `/usr/share/doc/tails`,
+`TAILS_*` keys, session-wired filenames).
 
-**Effort**: 3-5 days. Lots of small files to touch — Tails' branding
-is distributed across hundreds of files.
+- [ ] Greeter: window title → "Welcome to Milady!", header logo, dark CSS
+- [ ] Boot menu title "Tails" → "Milady" (GRUB + syslinux)
+- [ ] Plymouth theme → Milady wordmark
+- [ ] GNOME default → dark Milady theme
+- [ ] Default wallpaper + screensaver background → Milady
+- [ ] `/etc/os-release` → `milady-tails` identity (keep all `TAILS_*` keys)
+- [ ] `/etc/issue` MOTD → Milady
+- [ ] **Tails credit**: greeter footer, `tails-about` "Based on Tails" line,
+  `/usr/share/doc/milady-tails/CREDITS`
+- [ ] Boot ISO in QEMU, confirm branded everywhere + Tails credit visible
+
+Brand assets are pre-rendered (greeter logo, about logo, Plymouth wordmark,
+wallpaper, screensaver bg) from real Milady sources.
 
 ---
 
-## Phase 3 — Privacy-mode toggle (Path A: boot-menu pick)
+## Phase 3 — Privacy-mode toggle (boot-menu pick) 📋 SPEC'D
 
-Goal: Two boot menu entries flip Tor routing on/off. Both produce
+Goal: Two boot menu entries flip Tor routing on/off. Both produce an
 identical Milady experience minus speed.
 
-- [ ] Add second boot menu entry "Milady — Privacy Mode" — same
-  kernel + initramfs, different cmdline (`milady.privacy=on|off`)
-- [ ] Add `/etc/milady/privacy-mode` flag file populated from cmdline
-  by initramfs script
-- [ ] Modify `dispatcher.d/00-firewall.sh` to check the flag:
-  - `privacy=on` → apply Tails' current ferm.conf (Tor-only)
-  - `privacy=off` → permissive ferm.conf variant (direct internet)
-- [ ] Modify `dispatcher.d/10-tor.sh`:
-  - `privacy=on` → start tor@default.service, wait for bootstrap
-  - `privacy=off` → tor.service stays masked
-- [ ] Modify `/etc/resolv.conf` handling:
-  - `privacy=on` → static `nameserver 127.0.0.1` (Tor DNSPort)
-  - `privacy=off` → NetworkManager-managed
-- [ ] Add Milady chat action "show me my network status" reporting
-  current mode + trade-offs
-- [ ] Update `docs/privacy-mode-v1-gap.md` with implementation evidence
-  for the Chromium WebView leak
+**Spec:** [`docs/specs/phase-3-privacy-mode.md`](./docs/specs/phase-3-privacy-mode.md)
+
+- [ ] `lib/live/config/0001-milady-privacy-mode` — reads `milady.privacy=on`
+  from the kernel cmdline → writes `/etc/milady/privacy-mode` (fail-closed
+  default `on`)
+- [ ] `etc/ferm/ferm-direct.conf` — permissive firewall (Tor NAT-redirects
+  dropped), the `privacy=off` counterpart to Tails' Tor-only `ferm.conf`
+- [ ] `dispatcher.d/00-firewall.sh` + `10-tor.sh` branch on the flag
+- [ ] Boot entries: GRUB (`grub.cfg` edit) + syslinux (new `11-` binary hook)
+- [ ] resolv.conf handled per-mode
 - [ ] Test both boot entries in QEMU; confirm direct + Tor traffic
 
-**Effort**: 5-7 days. Firewall rule ordering is subtle — wrong move
-either breaks all networking or leaks past Tor.
+---
+
+## Phase 4 — Bake the Milady Electrobun app into the ISO 📋 SPEC'D
+
+Goal: `/opt/milady/` exists in the chroot, contains a runnable binary.
+
+**Spec:** [`docs/specs/phase-4-bake-milady-app.md`](./docs/specs/phase-4-bake-milady-app.md)
+— the real (fragile) build sequence, the `9100-install-milady` hook
+design, and the `ldd`-derived `milady-runtime.list`.
+
+- [ ] `just milady-app` recipe — builds the Milady Linux app on the host
+  (the build needs the `eliza`-first install + `setup-upstreams.mjs` +
+  `MILADY_ELIZA_SOURCE=local` dance — a naive `bun run build:desktop` fails)
+- [ ] Stage the app tree into `tails/config/chroot_local-includes/usr/share/milady-tails/milady-app/`
+  (`.gitignore`'d — it is ~2.5–2.9 GB uncompressed, far too large to commit)
+- [ ] `tails/config/chroot_local-hooks/9100-install-milady` — installs to
+  `/opt/milady/`, guards `version.json`, fixes perms incl. `chrome-sandbox`
+  setuid, then `rm -rf`'s the staging copy (critical for ISO size)
+- [ ] `tails/config/chroot_local-packageslists/milady-runtime.list` — the
+  CEF/Electrobun runtime libs (NOT `libwebkit2gtk-4.1` — Electrobun bundles
+  its own CEF)
+- [ ] Static `usr/share/applications/milady.desktop`
+- [ ] Build ISO, boot, launch Milady, confirm chat UI renders
+
+⚠ **Top risk**: the app tree is ~2.9 GB uncompressed (`eliza-dist/` alone is
+2.2 GB) — much larger than first estimated. The resulting ISO could be
+3–4 GB. And `chrome-sandbox` under Tails' AppArmor + read-only squashfs is
+the most likely "boots but won't render" failure (`--no-sandbox` fallback
+documented). See the spec + ROADMAP risk section.
 
 ---
 
-## Phase 4 — Bake the Milady Electrobun app into the ISO
+## Phase 5 — Auto-launch Milady on greeter exit 📋 SPEC'D
 
-Goal: `/opt/milady/` exists in chroot, contains a runnable binary.
+Goal: after the greeter exits, GNOME comes up with Milady as the first
+window.
 
-- [ ] Build Milady for Linux:
-  `cd /home/nubs/Git/iqlabs/eliza-labs/milady && bun run build:desktop`
-  (already a first-class target — `electrobun.config.ts:426-443`,
-  CI workflow `release-electrobun.yml`)
-- [ ] Verify output: `~300-400 MB .tar.zst` in milady's `build/` dir
-- [ ] Add chroot hook `9100-install-milady.hook.chroot` to:
-  1. Read milady tarball from bind-mount or pre-baked path
-  2. Extract to `/opt/milady/`
-  3. Create `/usr/share/applications/milady.desktop` entry
-- [ ] Add `package-lists/milady-runtime.list` — CEF runtime deps:
-  libnss3, libgbm, libwebkit2gtk-4.1, libx11, libxdamage, libxrandr,
-  libxcomposite, libdrm2, libvulkan1, mesa-vulkan-drivers
-- [ ] Test: build ISO, boot, click Milady from apps menu, chat renders
+**Spec:** [`docs/specs/phase-5-6-autolaunch-and-agent.md`](./docs/specs/phase-5-6-autolaunch-and-agent.md)
+— mostly config, not code: Tails honors `/etc/xdg/autostart/`.
 
-**Effort**: 2-3 days. Biggest risk: undeclared Chromium runtime deps.
-
----
-
-## Phase 5 — Auto-launch Milady on greeter exit
-
-Goal: After greeter exits, GNOME comes up with Milady fullscreen as
-the first window.
-
-- [ ] Add `/etc/xdg/autostart/milady.desktop` for amnesia user
-- [ ] Configure GNOME shell defaults:
-  - Hide activities overview initially
-  - Disable first-run intro
-  - Dark Milady theme
+- [ ] `etc/xdg/autostart/milady.desktop` (autostart entry, pins
+  `ELIZA_STATE_DIR=/home/amnesia/.eliza` in the launch env)
+- [ ] `etc/dconf/db/local.d/00_Milady_defaults` — dark theme, wallpaper,
+  disable GNOME welcome dialog (don't clobber Tails' `enabled-extensions`)
+- [ ] chroot hook runs `dconf update`
 - [ ] Verify in QEMU: boot → greeter → Start → GNOME → Milady
-  fullscreen
-
-**Effort**: 2-3 days. GNOME defaults need testing across Tails' tweaks.
 
 ---
 
-## Phase 6 — Wire Milady's onboarding + agent on milady-tails
+## Phase 6 — Wire Milady's onboarding + agent on milady-tails 📋 SPEC'D
 
-Goal: Same Milady that runs on macOS desktop runs on this live USB.
-"build me a calculator" → real Chromium app window appears.
+Goal: the same Milady that runs on macOS desktop runs on this live USB.
 
-- [ ] Verify Milady's `~/.eliza/` works in amnesia mode (tmpfs)
-- [ ] Verify `~/.eliza/` works in persistent mode (LUKS bind-mount)
-- [ ] Verify BUILD_APP:
-  - Stub backend (no claude): placeholder HTML works
-  - Claude backend (signed in): v36 multi-turn paste-code OAuth flow
-- [ ] Verify OPEN_APP launches Chromium app-mode window
-- [ ] Verify local LLM uses GPU (test virtio-gpu in QEMU + bare-metal
-  NVIDIA / AMD)
-- [ ] Verify v36 3-question onboarding runs in chat after greeter
+**Spec:** [`docs/specs/phase-5-6-autolaunch-and-agent.md`](./docs/specs/phase-5-6-autolaunch-and-agent.md)
++ **the full porting checklist** in
+[`docs/specs/agent-portability-audit.md`](./docs/specs/agent-portability-audit.md).
 
-**Effort**: 1 week. Mostly verification — code exists upstream.
+This is **not "one code delta" — it is a real refactor of the shared
+agent tree.** The portability audit found 6 categories of usbeliza-specific
+assumptions: sway IPC / `swaymsg` in ~11 files, a `USBELIZA_*`→`MILADY_*`
+env-var rename across ~25 files, `~/.eliza` / `/home/eliza` hardcoding,
+the persistence-script swap, and the "agent runs detached under systemd"
+premise (false on milady-tails — the agent is an in-session Electrobun
+child, which is what makes most of the sway code *simplify* rather than
+need GNOME reimplementation).
+
+- [ ] Apply the portability audit's must-fix categories (A–E)
+- [ ] Decide the canonical state dir (`~/.eliza`) + env prefix
+- [ ] `~/.eliza` works in amnesia (tmpfs) and persistent (LUKS bind-mount)
+- [ ] Verify BUILD_APP (stub + Claude backends), OPEN_APP, local LLM on GPU,
+  the v36 3-question onboarding running in chat
 
 ---
 
-## Phase 7 — Persistent USB integration (Tails-native)
+## Phase 7 — Persistent USB integration (Tails-native) 📋 SPEC'D
 
-Goal: User opts into LUKS persistence via the greeter; Milady's data
+Goal: user opts into LUKS persistence via the greeter; Milady's data
 survives reboots; **no Tails persistence code is modified, only added
 configuration**.
 
-- [ ] Add `tails-persistence-setup` config that knows about our dirs:
-  - `~/.eliza/` (chat history, calibration, app builds, model cache)
-  - `~/.milady/` (alternative state dir if any plugin uses it)
-  - `/etc/NetworkManager/system-connections/` (Wi-Fi passwords —
-    already in Tails' default persistent list)
-  - `~/.config/milady/` (custom themes, dotfile customizations)
-- [ ] Add Milady chat action "save my work to encrypted USB partition"
-  that:
-  - Detects no LUKS partition exists → prompts user to set one up
-  - Launches Tails' persistence-setup GUI
-  - On completion, marks the persistence-config done
-- [ ] Add chat action "what's on my persistent storage?" — lists dirs
-  + sizes
-- [ ] Verify in QEMU with a multi-partition virtual USB:
-  - First boot: amnesia, set up persistence via Milady chat
-  - Reboot: greeter detects LUKS, asks for passphrase
-  - Unlock → Milady boots with old chat history intact
+**Spec:** [`docs/specs/phase-7-persistence.md`](./docs/specs/phase-7-persistence.md)
+— note: this Tails release uses the modern **Persistent Storage (`tps`)**
+stack, not the legacy `tails-persistence-setup`. Footprint is tiny.
 
-**Effort**: 4-5 days. Most of this is integration — Tails' persistence
-tooling does the heavy lifting; we just configure which dirs we want
-and add chat-driven prompts.
+- [ ] One `MiladyData` `Feature` subclass in `tps/configuration/features.py`
+  (bindings for `~/.eliza`, `~/.milady`, `~/.config/milady`,
+  `enabled_by_default=True`)
+- [ ] One UI row in `features_view.ui.in` (required or the frontend crashes)
+- [ ] One on-activated hook (wipe stale `sockets/`, normalize ownership)
+- [ ] 2 thin agent chat actions ("save my work…", "what's on my storage?")
+  that shell Tails' GUI — do NOT reimplement LUKS
+- [ ] Verify in QEMU with a multi-partition virtual USB
 
 ---
 
-## Phase 8 — Mode-parity validation
+## Phase 8 — Mode-parity validation 📋 SPEC'D
 
-Goal: All 4 combos work the same. Anything that doesn't = documented
-gap, not silent failure.
+Goal: all 4 combos work the same. Anything that doesn't = documented gap.
 
-- [ ] Finalize `docs/mode-parity.md` with verified mode coverage
-- [ ] Build mode-parity test harness: for each of 4 combos
-  (normal+amnesia, normal+persist, privacy+amnesia, privacy+persist):
-  - Boot ISO with that config
-  - Drive Milady through full feature set via QMP keyboard injection
-    (same pattern we used for usbeliza)
-  - Screenshot each feature
-  - Compare against expected
-- [ ] Any gap found → document or fix
-- [ ] **No silent feature loss** — every working feature works in all 4
-  modes, every gap is in the doc
+**Spec:** [`docs/specs/phase-8-mode-parity-harness.md`](./docs/specs/phase-8-mode-parity-harness.md)
+— a `mode-parity.sh` orchestrator that reuses usbeliza's existing QEMU
+harnesses (`v9-smoke.sh`, `v11-e2e.sh`, `v18-usb-block-test.sh`).
 
-**Effort**: 1 week. Tedious but essential.
+- [ ] `scripts/mode-parity.sh` + `scripts/mode-parity-checklist.sh`
+- [ ] Boots all 4 `{amnesia,persistent}×{normal,privacy}` combos through
+  one shared checklist, diffs them, emits `parity-report.md`
+- [ ] `just mode-parity` recipe
+- [ ] Fold findings into `docs/mode-parity.md`
 
 ---
 
-## Phase 9 — Rice / customization actions
+## Phase 9 — Rice / customization actions 📋 SPEC'D
 
-Goal: "Install i3", "switch tiling", "swipe-down-for-notis" — all
-through chat with Milady orchestrating Linux underneath.
+Goal: "Install i3", "switch tiling", "swipe-down-for-notis" — all through
+chat with Milady orchestrating Linux underneath.
 
-- [ ] SHELL action with polkit gating (Milady can `apt install`
-  without password prompts, configured at build time)
-- [ ] SET_DESKTOP action — writes session config so next login uses
-  chosen WM (i3, sway, awesome, KDE, …)
-- [ ] THEME action — orchestrates GTK theme / dotfiles
-- [ ] NOTIFICATIONS action — installs/configures swaync or GNOME
-  shell extensions for Android-style swipe-down UX
-- [ ] `docs/customization-vocabulary.md` — full chat command set
-- [ ] **Persistence-aware**: customizations only stick in persistent
-  mode. Amnesia mode resets to defaults each boot.
+**Spec:** [`docs/specs/phase-9-customization-actions.md`](./docs/specs/phase-9-customization-actions.md)
+— most substrate already exists (`INSTALL_PACKAGE` + its confirmation
+flow, `OPEN_TERMINAL`, `SET_WALLPAPER`).
 
-**Effort**: 1-2 weeks. Each customization needs a tested chain.
+- [ ] `SHELL` action — a thin gating layer over the existing apt infra +
+  build-time polkit `.rules` / sudoers `.toml` overlays for passwordless
+  privileged ops
+- [ ] `SET_DESKTOP`, `THEME`, `NOTIFICATIONS` actions (compose the existing
+  install flow)
+- [ ] Shared `customization.ts` persistence-awareness helper
+- [ ] `docs/customization-vocabulary.md`
 
 ---
 
-## Phase 10 — Bare-metal USB validation
+## Phase 10 — Bare-metal USB validation ⏳ NOT STARTED
 
 - [ ] Write ISO to real USB via `dd`
-- [ ] Boot on real hardware (2-3 machines: Intel, AMD, NVIDIA GPU)
-- [ ] Verify all Phase 1-9 features work bare-metal
-- [ ] Verify persistence flow on real USB stick (create, reboot,
-  unlock, data persists)
+- [ ] Boot on real hardware (2–3 machines: Intel, AMD, NVIDIA GPU)
+- [ ] Verify all Phase 1–9 features work bare-metal
+- [ ] Verify persistence flow on a real USB stick
 - [ ] Verify GPU acceleration on real graphics cards
-
-**Effort**: 3-5 days. Same risks as usbeliza Phase 0 — BIOS quirks,
-GPU drivers, Wi-Fi firmware not in chroot.
 
 ---
 
-## Phase 11 — Release v1.0
+## Phase 11 — Release v1.0 ⏳ NOT STARTED
 
-- [ ] Doc polish, CREDITS, NOTICE
+- [ ] Doc polish, CREDITS, NOTICE, `LICENSES/`
 - [ ] License audit (every file: authored vs. Tails-derived)
 - [ ] Build reproducibility check
-- [ ] Cut release tag, attach ISO to GitHub Release
-- [ ] Open Discussions thread for v1.1 priorities (Chromium proxy
-  patches, runtime privacy toggle, install-to-disk RFC)
+- [ ] Cut release tag, attach ISO to a GitHub Release
+- [ ] Open a Discussions thread for v1.1 priorities
 
 ---
 
@@ -391,97 +424,89 @@ without thought betrays that choice.
 users want "AI Linux as my daily driver" without needing
 amnesia-on-laptop. For them, install-to-disk would be a real product.
 
-Before we add it, we need a real design RFC that thinks through:
-
-1. **Threat model when installed**: does milady-tails-installed offer
-   any of the forensic protections amnesia mode does? (Probably no —
-   it's just normal Linux at that point.) Be honest about what users
-   trade for installing.
-2. **Default FDE**: Should installed milady-tails REQUIRE LUKS
-   full-disk encryption? Tails users would expect yes.
-3. **Dual-boot story**: Wipe-only, or can users dual-boot with an
-   existing Windows/macOS? Wipe-only is simpler but commits users.
-4. **Install UX**: Calamares wizard (familiar to Linux users), or
-   Milady-chat-driven ("install me on /dev/nvme0n1, type yes")?
-   Probably chat for consistency with our paradigm.
-5. **Tails community pulse**: would the Tails project see this as a
-   fair derivative, or would they ask us to rename? (Likely fine
-   since we're already forking + rebranding, but worth asking.)
-
-**Planned target**: v2.0, after v1.0 amnesia + persistent USB ships and
-real users tell us what they want.
-
-**For now**: don't add it. The v1.0 ISO is intentionally USB-only.
-Users who want a disk install can build their own from this base or
-wait for v2.0.
+Before we add it, we need a real design RFC covering: the threat model
+when installed, default full-disk encryption, the dual-boot story, the
+install UX (Calamares vs. Milady-chat-driven), and the Tails community
+pulse on the derivative. **Planned target: v2.0**, after v1.0 ships and
+real users tell us what they want. **For now: don't add it.**
 
 ### Chromium WebView proxy patches (v1.1)
 
 Closes the Privacy-Mode-Chromium-leak gap. Patch Electrobun to inject
 `--proxy-server=socks5://127.0.0.1:9050` into Chromium launch flags
-when `milady.privacy=on`. Likely upstream PR to Electrobun.
+when `milady.privacy=on`. Likely an upstream PR to Electrobun.
 
 ### Runtime privacy toggle (v1.2 or later)
 
-Switch privacy modes mid-session without reboot. iptables atomic swap
-+ tor.service start/stop + Chromium re-proxy. New systemd daemon
-`milady-network-mode.service` listening on D-Bus.
+Switch privacy modes mid-session without reboot. iptables atomic swap +
+tor.service start/stop + Chromium re-proxy.
 
 ### Cross-distro install medium (post-v2.0)
 
-`.deb`, `.AppImage`, `.snap`, Flatpak packaging for distros that don't
-want the full live-USB. Lower priority — the live-USB IS the product.
+`.deb`, `.AppImage`, Flatpak packaging. Lower priority — the live-USB IS
+the product.
 
 ---
 
 ## Risk inventory
 
-1. **Tails build system complexity** — hundreds of config files,
-   APT snapshot pins, build-host package requirements. Phase 1 will
-   probably fail several times before clean.
-2. **Large monorepo bloat** — PR maintainers may push back on
-   committing all of Tails. Fallback: submodule pattern. Pivot-friendly
-   mid-PR.
-3. **GPL-3 inheritance** — anything derived from Tails is GPL-3.
-   Documented in NOTICE; same posture as usbeliza.
-4. **Tor blocking cloud APIs** — Anthropic and OpenAI often refuse Tor
-   exit IPs. In Privacy Mode, cloud chat may fail entirely; local LLM
-   still works. Document in `docs/privacy-mode-v1-gap.md`.
-5. **Cold-boot RAM attacks** — theoretical threat against amnesia.
-   Tails has `memlockd` for RAM-zeroing on shutdown; we keep it.
-6. **Chromium proxy gap (v1.0)** — WebView windows leak in Privacy
-   Mode. Real security gap, fixed in v1.1.
-7. **Milady-electrobun-linux maturity** — target exists but isn't
-   shipped as a release product yet. First builds may surface
-   platform issues.
-8. **USB persistence wear** — heavy writes to LUKS partition wear USB
-   flash faster than SSDs. Document the trade-off; recommend
-   high-endurance USB sticks for daily-driver persistent use.
+1. **Tails build latent bugs** — every build run so far surfaced a real
+   Trixie-compat bug. 6 found + fixed; more may surface in the chroot
+   hooks / binary stage. The containerized loop + `apt-cacher-ng` cache
+   makes each iteration fast.
+2. **ISO size** — the Milady app tree is ~2.9 GB uncompressed. On top of
+   Tails (~1.3 GB squashfs) the ISO could be 3–4 GB. Mitigations: the
+   `9100` hook must `rm -rf` the staging copy; consider a slimmer build
+   profile; re-measure and budget. See Phase 4 spec.
+3. **`chrome-sandbox` under AppArmor + squashfs** — the likely "boots but
+   Milady won't render" failure. `--no-sandbox` is the documented fallback.
+4. **Phase 6 is a real refactor** — not a quick edit. ~11 sway files + a
+   ~25-file env rename + path hardcoding. Tractable (mostly mechanical, and
+   the in-session model *simplifies* the sway code) but it is hours, not
+   minutes.
+5. **Milady build fragility** — the desktop build needs a specific
+   `eliza`-first + `setup-upstreams.mjs` + `MILADY_ELIZA_SOURCE=local`
+   sequence; a naive `bun run build:desktop` fails. Encoded in `just milady-app`.
+6. **Large monorepo bloat** — the vendored `tails/` tree is ~6000 files.
+   PR maintainers may push back; submodule pattern is the fallback.
+7. **Tor blocking cloud APIs** — Anthropic/OpenAI often refuse Tor exit
+   IPs. In Privacy Mode cloud chat may fail; local LLM still works.
+8. **Chromium proxy gap (v1.0)** — WebView windows leak in Privacy Mode.
+   Real security gap, fixed in v1.1.
+9. **Cold-boot RAM attacks** — theoretical threat against amnesia. Tails'
+   `memlockd` zeros RAM on shutdown; we keep it.
 
 ---
 
 ## Open questions
 
-- **Which Tails release tag to track?** They cut stable monthly. Pin
-  in `tails/debian/changelog`, document upgrade cadence in CONTRIBUTING.
-- **Where does the Milady Electrobun build artifact come from?**
-  (a) bind-mount pre-built tarball, (b) build inside chroot (slow),
-  (c) download from milady GitHub release URL. Probably (a) for v1.0,
-  (c) for v1.1 reproducibility.
-- **Default browser in Normal Mode**: Tor Browser doesn't make sense
-  for direct internet. Firefox? Chromium? Or no browser — Milady
-  opens links in app-mode windows.
-- **Minimum persistence dir set**: `~/.eliza/` + Tails defaults (Wi-Fi).
-  Possibly add `~/.config/`, `~/Documents/`. Needs UX design.
+- **Which Tails release tag to track?** Currently a Tails `stable` clone.
+  Pin in `tails/debian/changelog`; document upgrade cadence.
+- **Vendored `tails/` git strategy** — the vendored copy ships without
+  `.git`; `build-iso.sh` `git init`s a throwaway repo at build time so
+  the build works either way. Long-term: keep as committed files, or
+  convert to a submodule of a milady-tails Tails fork. Decide before v1.0.
+- **Default browser in Normal Mode** — Tor Browser doesn't fit direct
+  internet. Or: no browser, Milady opens links in app-mode windows.
+- **Canonical state dir + env prefix** — the agent tree uses `USBELIZA_*`
+  / `~/.eliza`; milady uses `MILADY_*` / `~/.milady`. Phase 6 reconciles
+  this; the spec recommends standardizing on `~/.eliza`.
 
 ---
 
 ## How to contribute
 
-Pick a phase, open PR to `nubs/os-linux-milady-tails-*` branch family
-on elizaOS/eliza. Don't merge straight to develop — exploratory until
-Phase 10 ships and a real v1.0 ISO boots on bare metal.
+The build needs only Docker. From this directory:
 
-Test in QEMU first via `just iso-debug` (systemd-nspawn ~30s) or
-`just iso-boot` (full QEMU). Add screenshots to PR for any phase
-touching user-visible UX.
+```
+just config        # ~1 min go/no-go — does the Tails config tree process?
+just build         # full clean ISO → out/  (~1–1.5 h cold, faster cached)
+just binary        # ~10 min incremental rebuild after editing overlay files
+just nspawn        # seconds — boot the built chroot for non-GUI sanity
+just boot          # boot the latest ISO in QEMU
+```
+
+Pick a phase, read its spec in `docs/specs/`, implement against the
+vendored `tails/` tree, validate with `just binary` + `just boot`.
+Exploratory work until Phase 10 ships a real v1.0 ISO that boots on bare
+metal.
