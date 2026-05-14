@@ -4,6 +4,7 @@
  * Public surface: barrel exports for the shared workspace contract.
  */
 
+export * from "./api/agent-api-types.js";
 export * from "./api/http-helpers.js";
 export * from "./api/route-helpers.js";
 // Leaf modules (no internal collisions)
