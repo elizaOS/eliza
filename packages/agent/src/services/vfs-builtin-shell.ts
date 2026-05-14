@@ -1,13 +1,14 @@
+import path from "node:path";
 import { createVirtualFilesystemService } from "./virtual-filesystem.ts";
 
-export interface VfsBuiltinShellRequest {
-  cwdUri: string;
+interface VfsBuiltinShellRequest {
+  cwdUri?: string;
   command: string;
-  args?: readonly string[];
+  args: readonly string[];
   timeoutMs?: number;
 }
 
-export interface VfsBuiltinShellResult {
+interface VfsBuiltinShellResult {
   exitCode: number;
   stdout: string;
   stderr: string;
@@ -17,325 +18,178 @@ export interface VfsBuiltinShellResult {
 
 interface ParsedVfsUri {
   projectId: string;
-  path: string;
+  virtualPath: string;
 }
 
-interface SearchRequest {
-  pattern: string | null;
-  paths: string[];
-  ignoreCase: boolean;
-  lineNumbers: boolean;
-  filesWithMatches: boolean;
-  listFiles: boolean;
-}
-
-export function isVfsUri(value: string | undefined): value is string {
+export function isVfsUri(value: unknown): value is string {
   return typeof value === "string" && value.startsWith("vfs://");
 }
 
 export async function runVfsBuiltinShell(
-  req: VfsBuiltinShellRequest,
+  request: VfsBuiltinShellRequest,
 ): Promise<VfsBuiltinShellResult> {
-  const start = Date.now();
-  try {
-    const cwd = parseVfsUri(req.cwdUri);
-    const invocation = normalizeInvocation(req.command, req.args ?? []);
-    const vfs = createVirtualFilesystemService({ projectId: cwd.projectId });
-    await vfs.initialize();
+  const startedAt = Date.now();
+  const cwd = parseVfsUri(request.cwdUri);
+  const vfs = createVirtualFilesystemService({ projectId: cwd.projectId });
+  await vfs.initialize();
 
-    const stdout = await runBuiltin(vfs, cwd.path, invocation);
+  try {
+    const result =
+      isShellCommand(request.command) && request.args[0] === "-c"
+        ? await runScript(vfs, cwd.virtualPath, request.args.slice(1).join(" "))
+        : await runCommand(vfs, cwd.virtualPath, request.command, [
+            ...request.args,
+          ]);
     return {
-      exitCode: 0,
-      stdout,
-      stderr: "",
-      durationMs: Date.now() - start,
+      ...result,
+      durationMs: Date.now() - startedAt,
       sandbox: "vfs",
     };
   } catch (error) {
     return {
       exitCode: 1,
       stdout: "",
-      stderr: error instanceof Error ? error.message : String(error),
-      durationMs: Date.now() - start,
+      stderr: error instanceof Error ? `${error.message}\n` : String(error),
+      durationMs: Date.now() - startedAt,
       sandbox: "vfs",
     };
   }
 }
 
-async function runBuiltin(
-  vfs: ReturnType<typeof createVirtualFilesystemService>,
-  cwd: string,
-  argv: string[],
-): Promise<string> {
-  const [command, ...args] = argv;
-  switch (command) {
-    case "pwd":
-      return `${toDisplayPath(cwd)}\n`;
-    case "ls":
-      return await list(vfs, resolveVfsPath(cwd, args[0] ?? "."));
-    case "cat":
-      return await vfs.readFile(resolveVfsPath(cwd, required(args[0], "cat path")));
-    case "mkdir":
-      await vfs.writeFile(
-        joinVfsPath(resolveVfsPath(cwd, required(args[0], "mkdir path")), ".keep"),
-        "",
-      );
-      await vfs.delete(
-        joinVfsPath(resolveVfsPath(cwd, required(args[0], "mkdir path")), ".keep"),
-      );
-      return "";
-    case "rm":
-      await vfs.delete(resolveVfsPath(cwd, required(args[0], "rm path")));
-      return "";
-    case "echo":
-      return await echo(vfs, cwd, args);
-    case "grep":
-      return await grep(vfs, cwd, parseSearchArgs(args, "grep"));
-    case "rg":
-      return await grep(vfs, cwd, parseSearchArgs(args, "rg"));
-    default:
-      throw new Error(
-        `VFS shell supports pwd, ls, cat, mkdir, rm, grep, rg, and echo > file; got ${command ?? "(empty)"}`,
-      );
+function parseVfsUri(uri: string | undefined): ParsedVfsUri {
+  if (!isVfsUri(uri)) {
+    throw new Error("[vfs-shell] cwd must be a vfs:// URI");
   }
-}
-
-async function list(
-  vfs: ReturnType<typeof createVirtualFilesystemService>,
-  virtualPath: string,
-): Promise<string> {
-  const entries = await vfs.list(virtualPath, { recursive: false });
-  return entries
-    .map((entry) =>
-      entry.type === "directory"
-        ? `${entry.path.replace(/^\//, "")}/`
-        : entry.path.replace(/^\//, ""),
-    )
-    .join("\n")
-    .concat(entries.length > 0 ? "\n" : "");
-}
-
-async function echo(
-  vfs: ReturnType<typeof createVirtualFilesystemService>,
-  cwd: string,
-  args: string[],
-): Promise<string> {
-  const redirect = args.indexOf(">");
-  if (redirect === -1) {
-    return `${args.join(" ")}\n`;
-  }
-  const target = required(args[redirect + 1], "echo redirect path");
-  const content = args.slice(0, redirect).join(" ");
-  await vfs.writeFile(resolveVfsPath(cwd, target), `${content}\n`);
-  return "";
-}
-
-async function grep(
-  vfs: ReturnType<typeof createVirtualFilesystemService>,
-  cwd: string,
-  req: SearchRequest,
-): Promise<string> {
-  const files = await vfs.exportFiles();
-  const roots = req.paths.length > 0 ? req.paths : ["."];
-  const scopedFiles = files.filter(
-    (file) =>
-      !file.path.startsWith("/.vfs-git/") &&
-      roots.some((root) => isPathInScope(file.path, resolveVfsPath(cwd, root))),
-  );
-
-  if (req.listFiles) {
-    return scopedFiles
-      .map((file) => file.path.replace(/^\//, ""))
-      .join("\n")
-      .concat(scopedFiles.length > 0 ? "\n" : "");
-  }
-
-  if (!req.pattern) {
-    throw new Error("Missing grep/rg pattern");
-  }
-
-  const regex = compileSearchPattern(req.pattern, req.ignoreCase);
-  const output: string[] = [];
-  for (const file of scopedFiles) {
-    const text = Buffer.from(file.bytes).toString("utf-8");
-    const lines = text.split(/\r?\n/);
-    let matchedFile = false;
-    for (let index = 0; index < lines.length; index += 1) {
-      regex.lastIndex = 0;
-      if (!regex.test(lines[index] ?? "")) continue;
-      matchedFile = true;
-      if (req.filesWithMatches) break;
-      const name = file.path.replace(/^\//, "");
-      const line = req.lineNumbers ? `${index + 1}:` : "";
-      output.push(`${name}:${line}${lines[index] ?? ""}`);
-    }
-    if (req.filesWithMatches && matchedFile) {
-      output.push(file.path.replace(/^\//, ""));
-    }
-  }
-  return output.join("\n").concat(output.length > 0 ? "\n" : "");
-}
-
-function parseSearchArgs(
-  args: string[],
-  command: "grep" | "rg",
-): SearchRequest {
-  const request: SearchRequest = {
-    pattern: null,
-    paths: [],
-    ignoreCase: false,
-    lineNumbers: command === "rg",
-    filesWithMatches: false,
-    listFiles: false,
-  };
-
-  for (const arg of args) {
-    if (arg === "--files" && command === "rg") {
-      request.listFiles = true;
-      continue;
-    }
-    if (arg === "-n" || arg === "--line-number") {
-      request.lineNumbers = true;
-      continue;
-    }
-    if (arg === "-i" || arg === "--ignore-case") {
-      request.ignoreCase = true;
-      continue;
-    }
-    if (arg === "-l" || arg === "--files-with-matches") {
-      request.filesWithMatches = true;
-      continue;
-    }
-    if (arg === "-r" || arg === "-R" || arg === "--recursive") {
-      continue;
-    }
-    if (arg.startsWith("-")) {
-      throw new Error(`Unsupported VFS ${command} flag: ${arg}`);
-    }
-    if (!request.pattern && !request.listFiles) {
-      request.pattern = arg;
-      continue;
-    }
-    request.paths.push(arg);
-  }
-
-  return request;
-}
-
-function compileSearchPattern(pattern: string, ignoreCase: boolean): RegExp {
-  try {
-    return new RegExp(pattern, ignoreCase ? "gi" : "g");
-  } catch {
-    return new RegExp(escapeRegExp(pattern), ignoreCase ? "gi" : "g");
-  }
-}
-
-function isPathInScope(filePath: string, root: string): boolean {
-  const normalizedFile = normalizeVirtualScope(filePath);
-  const normalizedRoot = normalizeVirtualScope(root);
-  return (
-    normalizedRoot === "" ||
-    normalizedFile === normalizedRoot ||
-    normalizedFile.startsWith(`${normalizedRoot}/`)
-  );
-}
-
-function normalizeVirtualScope(value: string): string {
-  return value
-    .replace(/\\/g, "/")
-    .split("/")
-    .reduce<string[]>((segments, segment) => {
-      if (!segment || segment === ".") return segments;
-      if (segment === "..") {
-        segments.pop();
-        return segments;
-      }
-      segments.push(segment);
-      return segments;
-    }, [])
-    .join("/");
-}
-
-function parseVfsUri(uri: string): ParsedVfsUri {
   const parsed = new URL(uri);
-  if (parsed.protocol !== "vfs:" || !parsed.hostname) {
-    throw new Error(`Invalid VFS uri: ${uri}`);
+  const projectId = parsed.hostname.trim();
+  if (!projectId) {
+    throw new Error("[vfs-shell] vfs:// URI is missing a project id");
   }
   return {
-    projectId: parsed.hostname,
-    path: decodeURIComponent(parsed.pathname || "/"),
+    projectId,
+    virtualPath: decodeURIComponent(parsed.pathname || "/"),
   };
-}
-
-function normalizeInvocation(command: string, args: readonly string[]): string[] {
-  if (isShellCommand(command)) {
-    const inline = commandLineFromShellArgs(args);
-    if (!inline) {
-      throw new Error("VFS shell requires a command after -c");
-    }
-    return splitCommandLine(inline);
-  }
-  return [command, ...args];
 }
 
 function isShellCommand(command: string): boolean {
-  return /(?:^|[/\\])(?:sh|bash|zsh|cmd|powershell|pwsh)(?:\.exe)?$/i.test(
-    command,
-  );
+  const base = command.split("/").pop();
+  return base === "sh" || base === "bash";
 }
 
-function commandLineFromShellArgs(args: readonly string[]): string | null {
-  const index = args.findIndex((arg) => arg === "-c" || arg === "/c");
-  return index >= 0 ? (args[index + 1] ?? null) : null;
-}
-
-function splitCommandLine(input: string): string[] {
-  const result: string[] = [];
-  let current = "";
-  let quote: "'" | '"' | null = null;
-  for (let index = 0; index < input.length; index += 1) {
-    const char = input[index];
-    if (quote) {
-      if (char === quote) quote = null;
-      else current += char;
-      continue;
+async function runScript(
+  vfs: ReturnType<typeof createVirtualFilesystemService>,
+  cwd: string,
+  script: string,
+): Promise<Omit<VfsBuiltinShellResult, "durationMs" | "sandbox">> {
+  const segments = script
+    .split(/&&|;/)
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+  let stdout = "";
+  let stderr = "";
+  for (const segment of segments) {
+    const result = await runScriptSegment(vfs, cwd, segment);
+    stdout += result.stdout;
+    stderr += result.stderr;
+    if (result.exitCode !== 0) {
+      return { exitCode: result.exitCode, stdout, stderr };
     }
-    if (char === "'" || char === '"') {
-      quote = char;
-      continue;
-    }
-    if (/\s/.test(char)) {
-      if (current) {
-        result.push(current);
-        current = "";
-      }
-      continue;
-    }
-    current += char;
   }
-  if (current) result.push(current);
-  return result;
+  return { exitCode: 0, stdout, stderr };
 }
 
-function resolveVfsPath(cwd: string, value: string): string {
-  if (!value || value === ".") return cwd || "/";
-  if (value.startsWith("/")) return value;
-  return joinVfsPath(cwd, value);
+async function runScriptSegment(
+  vfs: ReturnType<typeof createVirtualFilesystemService>,
+  cwd: string,
+  segment: string,
+): Promise<Omit<VfsBuiltinShellResult, "durationMs" | "sandbox">> {
+  const redirect = segment.match(/^(.*?)(>>|>)\s*([^\s]+)\s*$/);
+  if (redirect) {
+    const [, before, op, target] = redirect;
+    const result = await runCommandLine(vfs, cwd, before.trim());
+    if (result.exitCode !== 0) return result;
+    const targetPath = resolveVirtualPath(cwd, stripQuotes(target));
+    const existing =
+      op === ">>" ? await vfs.readFile(targetPath).catch(() => "") : "";
+    await vfs.writeFile(targetPath, existing + result.stdout);
+    return { exitCode: 0, stdout: "", stderr: result.stderr };
+  }
+  return runCommandLine(vfs, cwd, segment);
 }
 
-function joinVfsPath(left: string, right: string): string {
-  return `${left.replace(/\/+$/, "")}/${right.replace(/^\/+/, "")}`;
+async function runCommandLine(
+  vfs: ReturnType<typeof createVirtualFilesystemService>,
+  cwd: string,
+  line: string,
+): Promise<Omit<VfsBuiltinShellResult, "durationMs" | "sandbox">> {
+  const [command, ...args] = tokenize(line);
+  return runCommand(vfs, cwd, command, args);
 }
 
-function toDisplayPath(value: string): string {
-  return value || "/";
+async function runCommand(
+  vfs: ReturnType<typeof createVirtualFilesystemService>,
+  cwd: string,
+  command: string,
+  args: string[],
+): Promise<Omit<VfsBuiltinShellResult, "durationMs" | "sandbox">> {
+  const name = command.split("/").pop() ?? command;
+  if (name === "echo") {
+    return { exitCode: 0, stdout: `${args.join(" ")}\n`, stderr: "" };
+  }
+  if (name === "printf") {
+    return { exitCode: 0, stdout: args.join(" "), stderr: "" };
+  }
+  if (name === "pwd") {
+    return { exitCode: 0, stdout: `${cwd || "/"}\n`, stderr: "" };
+  }
+  if (name === "cat") {
+    let stdout = "";
+    for (const arg of args) {
+      stdout += await vfs.readFile(resolveVirtualPath(cwd, arg));
+    }
+    return { exitCode: 0, stdout, stderr: "" };
+  }
+  if (name === "ls") {
+    const target = args.find((arg) => !arg.startsWith("-")) ?? ".";
+    const entries = await vfs.list(resolveVirtualPath(cwd, target));
+    return {
+      exitCode: 0,
+      stdout: entries.map((entry) => path.posix.basename(entry.path)).join("\n")
+        + (entries.length ? "\n" : ""),
+      stderr: "",
+    };
+  }
+  return {
+    exitCode: 127,
+    stdout: "",
+    stderr: `[vfs-shell] unsupported command: ${command}\n`,
+  };
 }
 
-function required(value: string | undefined, label: string): string {
-  if (!value) throw new Error(`Missing ${label}`);
+function resolveVirtualPath(cwd: string, input: string): string {
+  const cleanInput = stripQuotes(input);
+  if (!cleanInput || cleanInput === ".") return cwd || "/";
+  if (cleanInput.startsWith("/")) return cleanInput;
+  return path.posix.normalize(path.posix.join(cwd || "/", cleanInput));
+}
+
+function tokenize(input: string): string[] {
+  const tokens: string[] = [];
+  const re = /"([^"]*)"|'([^']*)'|(\S+)/g;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(input))) {
+    tokens.push(match[1] ?? match[2] ?? match[3] ?? "");
+  }
+  return tokens;
+}
+
+function stripQuotes(input: string | undefined): string {
+  const value = input ?? "";
+  if (
+    (value.startsWith('"') && value.endsWith('"')) ||
+    (value.startsWith("'") && value.endsWith("'"))
+  ) {
+    return value.slice(1, -1);
+  }
   return value;
-}
-
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }

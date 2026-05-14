@@ -256,13 +256,15 @@ describe("LifeOpsRepository.mergeWorkThreadsAtomic", () => {
     expect(updates.length).toBe(2);
     expect(inserts.length).toBe(2);
 
-    // UPDATE clauses must include "version = " for optimistic concurrency
+    // UPDATE clauses must include `VERSION =` for optimistic concurrency.
+    // (We uppercase the captured SQL in the mock for stable matching.)
     for (const upd of updates) {
-      expect(upd.sql).toContain("version = ");
+      expect(upd.sql).toMatch(/VERSION\s*=/);
+      expect(upd.sql).toContain("VERSION = VERSION + 1");
     }
-    // INSERT detail_json must include the mergeRequestId
+    // INSERT detail_json must include the mergeRequestId (case-insensitive).
     for (const ins of inserts) {
-      expect(ins.sql).toContain("request-1");
+      expect(ins.sql.toLowerCase()).toContain("request-1");
     }
   });
 
