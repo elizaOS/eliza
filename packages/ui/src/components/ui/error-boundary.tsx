@@ -28,8 +28,8 @@ export class ErrorBoundary extends React.Component<
     return { error };
   }
 
-  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    console.error("[ErrorBoundary]", error, errorInfo);
+  componentDidCatch(_error: Error, _errorInfo: React.ErrorInfo) {
+    // error captured in state via getDerivedStateFromError; fallback UI is rendered
   }
 
   resetErrorBoundary = () => {

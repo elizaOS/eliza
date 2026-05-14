@@ -425,9 +425,7 @@ export function AppsView() {
 
   const loadApps = useCallback(async () => {
     setError(null);
-    void refreshRuns().catch((err: unknown) => {
-      console.warn("[AppsView] Failed to list app runs:", err);
-    });
+    void refreshRuns().catch(() => {});
     try {
       const list = await loadAppsCatalog();
       setApps(list);
@@ -449,15 +447,11 @@ export function AppsView() {
   }, [loadApps]);
 
   useEffect(() => {
-    let cancelled = false;
-
     const refresh = async () => {
       try {
         await refreshRuns();
-      } catch (err) {
-        if (!cancelled) {
-          console.warn("[AppsView] Failed to refresh app runs:", err);
-        }
+      } catch {
+        // non-fatal: poll will retry on next interval
       }
     };
 
@@ -466,7 +460,6 @@ export function AppsView() {
     }, 5_000);
 
     return () => {
-      cancelled = true;
       clearInterval(timer);
     };
   }, [refreshRuns]);

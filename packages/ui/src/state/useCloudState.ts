@@ -560,7 +560,6 @@ export function useCloudState({
               );
             }
           } catch (pollErr) {
-            console.error("Eliza Cloud login poll error:", pollErr);
             if (!elizaCloudLoginPollTimer.current) return;
 
             consecutivePollErrors += 1;

@@ -541,8 +541,8 @@ export function CharacterEditor({
             setSelectedVoicePresetId(preset?.id ?? null);
           }
         }
-      } catch (err) {
-        console.warn("[CharacterEditor] Failed to load voice config:", err);
+      } catch {
+        // non-fatal: voice config load failure leaves voice section empty
       }
       setVoiceLoading(false);
     })();

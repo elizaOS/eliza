@@ -458,9 +458,7 @@ export function ChatView({
             return combined.slice(0, 4);
           });
         })
-        .catch((err) => {
-          console.warn("Failed to load image attachments:", err);
-        });
+        .catch(() => {});
     },
     [setChatPendingImages],
   );

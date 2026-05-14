@@ -20,8 +20,8 @@ export class NavigationEventHub {
     for (const listener of slice) {
       try {
         listener(detail);
-      } catch (err) {
-        console.warn("[eliza][navigation] tabCommitted listener failed", err);
+      } catch {
+        // listener errors must not prevent remaining listeners from running
       }
     }
   }

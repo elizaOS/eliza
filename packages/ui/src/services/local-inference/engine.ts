@@ -203,10 +203,7 @@ export class LocalInferenceEngine {
         return;
       } catch (err) {
         if (dflashRequired()) throw err;
-        console.warn(
-          "[local-inference] DFlash llama-server unavailable; falling back to node-llama-cpp:",
-          err instanceof Error ? err.message : String(err),
-        );
+        // DFlash unavailable; falling back to node-llama-cpp
       }
     }
 
@@ -327,7 +324,6 @@ export class LocalInferenceEngine {
     if (!drafter) {
       const message = `[dflash] ${catalog.displayName} requires companion drafter ${dflash.drafterModelId}. Download the model again or start a download for the companion id.`;
       if (status.required) throw new Error(message);
-      console.warn(`${message} Falling back to node-llama-cpp.`);
       return null;
     }
 
