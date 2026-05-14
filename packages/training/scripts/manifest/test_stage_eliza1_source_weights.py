@@ -76,4 +76,4 @@ def test_stage_sources_accepts_large_active_tier(
 
     report = stage.stage_sources(_args(tmp_path, "27b"))
 
-    assert "unsloth/Qwen3.5-27B-GGUF" in report["sources"]
+    assert "unsloth/Qwen3.6-27B-GGUF" in report["sources"]

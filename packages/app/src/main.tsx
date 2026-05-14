@@ -4,7 +4,7 @@ import "@elizaos/app-core";
 
 import { App as CapacitorApp } from "@capacitor/app";
 import { BackgroundRunner } from "@capacitor/background-runner";
-import { Capacitor } from "@capacitor/core";
+import { Capacitor, type PluginListenerHandle } from "@capacitor/core";
 import { Keyboard, KeyboardResize } from "@capacitor/keyboard";
 import { Preferences } from "@capacitor/preferences";
 import {
@@ -227,6 +227,8 @@ const IOS_FULL_BUN_SMOKE_CHAT_TEXT =
 
 let mobileDeviceBridgeClient: DeviceBridgeClient | null = null;
 let mobileDeviceBridgeStartPromise: Promise<void> | null = null;
+let mobileAgentTunnelListener: PluginListenerHandle | null = null;
+let mobileAgentTunnelStartPromise: Promise<void> | null = null;
 let mobileRuntimeModeListenerInstalled = false;
 let keyboardListenersRegistered = false;
 let lifecycleListenersRegistered = false;
@@ -452,16 +454,6 @@ async function fetchIosFullBunSmokeJson<T>(
 ): Promise<T> {
   const headers = new Headers(init?.headers);
   if (!headers.has("accept")) headers.set("accept", "application/json");
-  const method = (init?.method ?? "GET").toString().trim().toUpperCase();
-  const body =
-    method === "GET" || method === "HEAD"
-      ? null
-      : typeof init?.body === "string"
-        ? init.body
-        : init?.body == null
-          ? null
-          : String(init.body);
-  const nativeRequest = window.__ELIZA_IOS_LOCAL_AGENT_REQUEST__;
   let status: number | undefined;
   let text: string | undefined;
   const timeout = new Promise<never>((_resolve, reject) => {
@@ -471,20 +463,9 @@ async function fetchIosFullBunSmokeJson<T>(
   });
   await Promise.race([
     (async () => {
-      if (typeof nativeRequest !== "function") {
-        throw new Error(
-          `${label} requires the iOS native IPC bridge; no loopback fetch fallback is allowed in full-Bun mode`,
-        );
-      }
-      const nativeResponse = await nativeRequest({
-        method,
-        path,
-        headers: Object.fromEntries(headers.entries()),
-        body,
-        timeoutMs,
-      });
-      status = nativeResponse.status;
-      text = nativeResponse.body;
+      const response = await fetch(path, { ...init, headers });
+      status = response.status;
+      text = await response.text();
     })(),
     timeout,
   ]);
@@ -512,16 +493,6 @@ async function fetchIosFullBunSmokeText(
   timeoutMs = IOS_FULL_BUN_SMOKE_ROUTE_TIMEOUT_MS,
 ): Promise<string> {
   const headers = new Headers(init?.headers);
-  const method = (init?.method ?? "GET").toString().trim().toUpperCase();
-  const body =
-    method === "GET" || method === "HEAD"
-      ? null
-      : typeof init?.body === "string"
-        ? init.body
-        : init?.body == null
-          ? null
-          : String(init.body);
-  const nativeRequest = window.__ELIZA_IOS_LOCAL_AGENT_REQUEST__;
   let status: number | undefined;
   let text: string | undefined;
   const timeout = new Promise<never>((_resolve, reject) => {
@@ -531,20 +502,9 @@ async function fetchIosFullBunSmokeText(
   });
   await Promise.race([
     (async () => {
-      if (typeof nativeRequest !== "function") {
-        throw new Error(
-          `${label} requires the iOS native IPC bridge; no loopback fetch fallback is allowed in full-Bun mode`,
-        );
-      }
-      const nativeResponse = await nativeRequest({
-        method,
-        path,
-        headers: Object.fromEntries(headers.entries()),
-        body,
-        timeoutMs,
-      });
-      status = nativeResponse.status;
-      text = nativeResponse.body;
+      const response = await fetch(path, { ...init, headers });
+      status = response.status;
+      text = await response.text();
     })(),
     timeout,
   ]);

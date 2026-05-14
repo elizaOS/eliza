@@ -1566,11 +1566,9 @@ def _env_loca_bench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> dict[st
         or ctx.request.extra_config.get("harness")
         or ctx.request.agent
     ).strip().lower()
-    if harness == "eliza":
-        # LOCA runs through native tool calls and does not use Eliza retrieval,
-        # but the benchmark server still initializes the runtime and probes
-        # TEXT_EMBEDDING. Local Eliza-1 inference is not guaranteed in bench
-        # worktrees, so skip plugin-local-inference for this LOCA bridge.
+    if harness == "eliza" and ctx.request.extra_config.get("allow_stub_embedding") is True:
+        # Diagnostic-only opt-in. Release-evidence runs must use a real
+        # embedding handler from plugin-local-inference.
         env["ELIZA_BENCH_ALLOW_STUB_EMBEDDING"] = "1"
     if harness == "openclaw":
         openclaw_thinking = ctx.request.extra_config.get("openclaw_thinking")

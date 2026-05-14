@@ -108,6 +108,8 @@ export {
   validateMcpServerConfig,
 };
 
+import { handleLocalInferenceCompatRoutes } from "@elizaos/plugin-local-inference/routes";
+import { deviceBridge } from "@elizaos/plugin-local-inference/services";
 import {
   handleLocalInferenceCompatRoutes,
   handleLocalInferenceTtsRoute,

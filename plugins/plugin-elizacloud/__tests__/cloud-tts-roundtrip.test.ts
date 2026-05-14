@@ -16,8 +16,8 @@ import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
-  CloudTtsUnavailableError,
   type CloudTtsClient,
+  CloudTtsUnavailableError,
   handleTextToSpeech,
   setCloudTtsClientFactoryForTesting,
 } from "../src/models/speech";

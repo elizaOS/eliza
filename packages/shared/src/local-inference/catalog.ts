@@ -305,9 +305,7 @@ function bundleComponent(
 }
 
 function voiceQuantForTier(id: Eliza1TierId): "Q4_K_M" | "Q8_0" {
-  return id === "eliza-1-0_8b" ||
-    id === "eliza-1-2b" ||
-    id === "eliza-1-4b"
+  return id === "eliza-1-0_8b" || id === "eliza-1-2b" || id === "eliza-1-4b"
     ? "Q4_K_M"
     : "Q8_0";
 }

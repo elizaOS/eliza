@@ -1,11 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { actionToJsonSchema } from "../../actions/action-schema";
-import type { Action, ActionParameter } from "../../types/components";
-import { characterAction } from "../../features/advanced-capabilities/personality/actions/character";
 import {
 	MESSAGE_PARAMETERS,
 	messageAction,
 } from "../../features/advanced-capabilities/actions/message";
+import { characterAction } from "../../features/advanced-capabilities/personality/actions/character";
 import { manageMessageAction } from "../../features/messaging/triage/actions/manageMessage";
 import { MANAGE_OPERATION_KINDS } from "../../features/messaging/triage/types";
 import { paymentAction } from "../../features/payments/actions/payment";
@@ -13,6 +12,7 @@ import {
 	PAYMENT_CONTEXT_KINDS,
 	PAYMENT_CONTEXT_SCOPES,
 } from "../../features/payments/types";
+import type { Action, ActionParameter } from "../../types/components";
 import { CANONICAL_MESSAGE_TARGET_KINDS } from "../../types/runtime";
 
 type EnumExpectation = {
