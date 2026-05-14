@@ -380,6 +380,8 @@ gir1.2-gudev-1.0
 
 # For partitioning script in initramfs
 fatresize
+gdisk
+mtools
 
 # For Thunderbolt
 bolt
