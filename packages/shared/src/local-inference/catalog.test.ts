@@ -6,15 +6,6 @@ import {
   voiceQuantLadderForTier,
 } from "./catalog.js";
 
-const OMNIVOICE_TIERS = [
-  "eliza-1-0_8b",
-  "eliza-1-2b",
-  "eliza-1-4b",
-  "eliza-1-9b",
-  "eliza-1-27b",
-  "eliza-1-27b-256k",
-  "eliza-1-27b-1m",
-] as const;
 const SMALL_TIERS = ["eliza-1-0_8b", "eliza-1-2b", "eliza-1-4b"] as const;
 const LARGE_TIERS = [
   "eliza-1-9b",
@@ -33,13 +24,9 @@ describe("voiceQuantLadderForTier", () => {
     }
   });
 
-  it("returns a narrow OmniVoice ladder for small tiers", () => {
+  it("returns no OmniVoice ladder for Kokoro-only small tiers", () => {
     for (const id of SMALL_TIERS) {
-      expect(voiceQuantLadderForTier(id)).toEqual([
-        "Q3_K_M",
-        "Q4_K_M",
-        "Q5_K_M",
-      ]);
+      expect(voiceQuantLadderForTier(id)).toEqual([]);
     }
   });
 
@@ -60,7 +47,7 @@ describe("voiceQuantLadderForTier", () => {
     // The runtime selects via defaultVoiceQuantForTier; if the default isn't
     // in the ladder the runtime would request a file that the publish path
     // never staged.
-    for (const id of OMNIVOICE_TIERS) {
+    for (const id of LARGE_TIERS) {
       const ladder = voiceQuantLadderForTier(id);
       const def = defaultVoiceQuantForTier(id);
       expect(ladder).toContain(def);
