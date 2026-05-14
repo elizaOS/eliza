@@ -66,7 +66,8 @@ function readVoiceEmotion(
 	const confidence =
 		typeof emotion.confidence === "number" ? emotion.confidence : 0;
 	if (!(confidence > CONFIDENCE_THRESHOLD)) return null;
-	const method = typeof emotion.method === "string" ? emotion.method : undefined;
+	const method =
+		typeof emotion.method === "string" ? emotion.method : undefined;
 	return { label: emotion.label, confidence, method };
 }
 
