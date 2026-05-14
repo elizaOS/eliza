@@ -191,10 +191,10 @@ VOICE_QUANT_LADDER_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
 }
 
 VOICE_BACKENDS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
-    "0_8b": ("kokoro",),
-    "2b": ("kokoro",),
-    "4b": ("kokoro",),
-    "9b": ("kokoro", "omnivoice"),
+    "0_8b": ("omnivoice", "kokoro"),
+    "2b": ("omnivoice", "kokoro"),
+    "4b": ("omnivoice", "kokoro"),
+    "9b": ("omnivoice", "kokoro"),
     "27b": ("omnivoice",),
     "27b-256k": ("omnivoice",),
     "27b-1m": ("omnivoice",),
@@ -211,9 +211,8 @@ def required_voice_artifacts_for_tier(tier: str) -> tuple[str, ...]:
     """Return the frozen TTS artifacts required for ``tier``.
 
     Paths are relative to the bundle's ``tts/`` directory. The active Eliza-1
-    release line uses Kokoro as the required/default backend for 0.8B, 2B,
-    and 4B. 9B ships Kokoro plus OmniVoice. 27B-class tiers ship OmniVoice
-    only.
+    release line uses OmniVoice as the required/default backend for every
+    active tier. Small tiers and 9B also require Kokoro fallback artifacts.
     """
 
     out: list[str] = []
