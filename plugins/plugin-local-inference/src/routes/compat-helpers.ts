@@ -1,8 +1,8 @@
 import crypto from "node:crypto";
 import type http from "node:http";
 import { isIP } from "node:net";
-import { isLoopbackBindHost, resolveApiToken } from "@elizaos/shared";
 import type { AgentRuntime } from "@elizaos/core";
+import { isLoopbackBindHost, resolveApiToken } from "@elizaos/shared";
 
 const MAX_BODY_BYTES = 1_048_576;
 

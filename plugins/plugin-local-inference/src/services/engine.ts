@@ -1763,10 +1763,9 @@ export class LocalInferenceEngine {
 				? signal.reason
 				: new DOMException("Aborted", "AbortError");
 		}
-		const transcript = await this.requireVoiceBridge("transcribe audio").transcribePcm(
-			args,
-			signal,
-		);
+		const transcript = await this.requireVoiceBridge(
+			"transcribe audio",
+		).transcribePcm(args, signal);
 		if (signal?.aborted) {
 			throw signal.reason instanceof Error
 				? signal.reason

@@ -40,7 +40,10 @@ function fakeRes(): {
 	let body = Buffer.alloc(0);
 	let status = 200;
 	const headers = new Map<string, string>();
-	res.setHeader = ((name: string, value: number | string | readonly string[]) => {
+	res.setHeader = ((
+		name: string,
+		value: number | string | readonly string[],
+	) => {
 		headers.set(String(name).toLowerCase(), String(value));
 		return res;
 	}) as typeof res.setHeader;
