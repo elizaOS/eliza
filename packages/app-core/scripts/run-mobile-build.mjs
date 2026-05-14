@@ -33,8 +33,9 @@
  *   6. Native build         — gradlew / xcodebuild
  *
  * iOS targets:
- *   - ios         Cloud/client-oriented iOS build. Local inference is omitted
- *                 unless ELIZA_IOS_INCLUDE_LLAMA / ELIZA_IOS_INCLUDE_LLAMA is set.
+ *   - ios         App Store iOS build. Ships the bundled no-JIT iOS Bun
+ *                 runtime and local agent payload; llama.cpp remains omitted
+ *                 unless ELIZA_IOS_INCLUDE_LLAMA is set.
  *   - ios-local   Dev/sideload iOS build. Bakes runtimeMode=local, builds and
  *                 stages the Bun-targeted agent payload, includes the native
  *                 llama bridge, and defaults to simulator validation.
@@ -641,9 +642,11 @@ export function resolveMobileBuildPolicy(platform) {
   const iosRuntimeMode =
     platform === "ios-local"
       ? "local"
-      : platform === "ios" || platform === "ios-overlay"
-        ? "cloud"
-        : null;
+      : platform === "ios"
+        ? "cloud-hybrid"
+        : platform === "ios-overlay"
+          ? "cloud"
+          : null;
   const buildVariant =
     platform === "android-cloud" || platform === "ios" ? "store" : "direct";
   const releaseAuthority =
@@ -695,7 +698,8 @@ async function buildWeb(platform) {
           VITE_ELIZA_IOS_RUNTIME_MODE: iosRuntimeMode,
         }
       : {}),
-    ...(platform === "ios-local" && isFullIosBunEngineRequested(process.env)
+    ...((platform === "ios" || platform === "ios-local") &&
+    isFullIosBunEngineRequested(process.env)
       ? {
           VITE_ELIZA_IOS_FULL_BUN_STRICT: "1",
         }
@@ -2179,10 +2183,9 @@ export function resolveIosCustomPods({
   includeLlama = false,
   includeFullBunEngine = false,
   appStoreBuild = false,
+  includeMobileAgentBridge = false,
 } = {}) {
-  const includeStoreSafeFullBun = !appStoreBuild && includeFullBunEngine;
-  const includeLocalExecutionBridgePods =
-    !appStoreBuild && includeStoreSafeFullBun;
+  const includeStoreSafeFullBun = includeFullBunEngine;
   return [
     ["ElizaosCapacitorAgent", "@elizaos/capacitor-agent"],
     ["ElizaosCapacitorAppblocker", "@elizaos/capacitor-appblocker"],
@@ -2197,9 +2200,13 @@ export function resolveIosCustomPods({
     ["ElizaosCapacitorSwabble", "@elizaos/capacitor-swabble"],
     ["ElizaosCapacitorTalkmode", "@elizaos/capacitor-talkmode"],
     ["ElizaosCapacitorWebsiteblocker", "@elizaos/capacitor-websiteblocker"],
-    ...(includeLocalExecutionBridgePods
+    ...(includeStoreSafeFullBun
       ? [
           ["ElizaosCapacitorBunRuntime", "@elizaos/capacitor-bun-runtime"],
+        ]
+      : []),
+    ...(includeStoreSafeFullBun && (!appStoreBuild || includeMobileAgentBridge)
+      ? [
           [
             "ElizaosCapacitorMobileAgentBridge",
             "@elizaos/capacitor-mobile-agent-bridge",
@@ -2322,6 +2329,19 @@ function isFullIosBunEngineRequested(env = process.env) {
   return isTruthyEnv(env.ELIZA_IOS_FULL_BUN_ENGINE);
 }
 
+function isIosAppStoreLocalRuntimeEnabled(env = process.env) {
+  return !/^(0|false|no|off)$/i.test(
+    String(env.ELIZA_IOS_APP_STORE_LOCAL_RUNTIME ?? "1").trim(),
+  );
+}
+
+function shouldIncludeIosFullBunEngine(env = process.env) {
+  return (
+    isFullIosBunEngineRequested(env) ||
+    (isIosAppStoreBuild(env) && isIosAppStoreLocalRuntimeEnabled(env))
+  );
+}
+
 export function isIosAppStoreBuild(env = process.env) {
   return (
     env.ELIZA_RELEASE_AUTHORITY === "apple-app-store" ||
@@ -2331,7 +2351,7 @@ export function isIosAppStoreBuild(env = process.env) {
 }
 
 function resolveIosDeploymentTarget(env = process.env) {
-  return !isIosAppStoreBuild(env) && isFullIosBunEngineRequested(env)
+  return shouldIncludeIosFullBunEngine(env)
     ? IOS_FULL_BUN_DEPLOYMENT_TARGET
     : IOS_DEFAULT_DEPLOYMENT_TARGET;
 }
@@ -2372,23 +2392,22 @@ function generatePodfile() {
     return;
   }
 
-  // LlamaCppCapacitor ships an on-device llama.cpp xcframework. It is only
-  // needed when the iOS build includes on-device inference. The default
-  // App Store target is the `cloud` runtime mode, which is a thin HTTP
-  // client and must NOT bundle the llama.cpp binary. Gate the pod on
-  // ELIZA_IOS_INCLUDE_LLAMA / ELIZA_IOS_INCLUDE_LLAMA — kept in sync with
-  // `resolveIosBuildTarget()` so the pod, the xcframework path, and the
-  // build destination all agree on a single inclusion decision.
+  // LlamaCppCapacitor ships an on-device llama.cpp xcframework. The App Store
+  // target ships the no-JIT Bun runtime by default, but still omits llama.cpp
+  // unless explicitly requested because it is a separate native model backend.
   const includeLlama =
     isTruthyEnv(process.env.ELIZA_IOS_INCLUDE_LLAMA) ||
     isTruthyEnv(process.env.ELIZA_IOS_INCLUDE_LLAMA);
   const appStoreBuild = isIosAppStoreBuild();
-  const includeFullBunEngine =
-    !appStoreBuild && isFullIosBunEngineRequested();
+  const includeFullBunEngine = shouldIncludeIosFullBunEngine();
+  const includeMobileAgentBridge = isTruthyEnv(
+    process.env.ELIZA_IOS_INCLUDE_MOBILE_AGENT_BRIDGE,
+  );
   const customPods = resolveIosCustomPods({
     includeLlama,
     includeFullBunEngine,
     appStoreBuild,
+    includeMobileAgentBridge,
   });
   if (!includeLlama) {
     console.log(
@@ -2397,12 +2416,12 @@ function generatePodfile() {
   }
   if (includeFullBunEngine) {
     console.log(
-      "[mobile-build] iOS Podfile: requiring full Bun engine pod (ELIZA_IOS_FULL_BUN_ENGINE / ELIZA_IOS_FULL_BUN_ENGINE set)",
+      "[mobile-build] iOS Podfile: requiring no-JIT Bun engine pod",
     );
   }
   if (appStoreBuild) {
     console.log(
-      "[mobile-build] iOS Podfile: omitting full Bun/local execution bridge pods for App Store build",
+      "[mobile-build] iOS Podfile: App Store build keeps local Bun runtime and omits mobile-agent tunnel bridge unless ELIZA_IOS_INCLUDE_MOBILE_AGENT_BRIDGE=1",
     );
   }
   const deploymentTarget = resolveIosDeploymentTarget();
@@ -3476,7 +3495,7 @@ function stageIosFullBunEngineForPodspec(framework) {
 }
 
 function ensureIosFullBunEngineArtifact({ buildTarget = null } = {}) {
-  if (!isFullIosBunEngineRequested()) return null;
+  if (!shouldIncludeIosFullBunEngine()) return null;
   const framework = resolveIosFullBunEngineXcframework({ buildTarget });
   if (!framework) {
     const target = isIosSimulatorBuildTarget(buildTarget)
@@ -4668,8 +4687,14 @@ function configureIosLocalBuildDefaults() {
 function configureIosAppStoreBuildDefaults() {
   setDefaultProcessEnv("ELIZA_BUILD_VARIANT", "store");
   setDefaultProcessEnv("ELIZA_RELEASE_AUTHORITY", "apple-app-store");
-  setDefaultProcessEnv("ELIZA_IOS_RUNTIME_MODE", "cloud");
-  setDefaultProcessEnv("VITE_ELIZA_IOS_RUNTIME_MODE", "cloud");
+  if (isIosAppStoreLocalRuntimeEnabled()) {
+    setDefaultProcessEnv("ELIZA_IOS_RUNTIME_MODE", "cloud-hybrid");
+    setDefaultProcessEnv("VITE_ELIZA_IOS_RUNTIME_MODE", "cloud-hybrid");
+    setDefaultProcessEnv("ELIZA_IOS_FULL_BUN_ENGINE", "1");
+  } else {
+    setDefaultProcessEnv("ELIZA_IOS_RUNTIME_MODE", "cloud");
+    setDefaultProcessEnv("VITE_ELIZA_IOS_RUNTIME_MODE", "cloud");
+  }
 }
 
 async function buildIos({ local = false } = {}) {
@@ -4683,7 +4708,8 @@ async function buildIos({ local = false } = {}) {
   }
 
   const buildTarget = resolveIosBuildTarget();
-  if (local) {
+  const includesFullBunRuntime = local || shouldIncludeIosFullBunEngine();
+  if (includesFullBunRuntime) {
     ensureIosFullBunEngineArtifact({ buildTarget });
     await buildMobileAgentBundle({ target: "ios" });
   }
@@ -4696,7 +4722,7 @@ async function buildIos({ local = false } = {}) {
 
   await buildWeb(local ? "ios-local" : "ios");
   await ensurePlatform("ios");
-  if (local) {
+  if (includesFullBunRuntime) {
     // Stage once before CocoaPods/Capacitor native dependency work so a
     // missing local toolchain still leaves the iOS app bundle resources in an
     // inspectable state. Capacitor sync may rewrite app resources, so we stage
@@ -4709,7 +4735,7 @@ async function buildIos({ local = false } = {}) {
     await run("bash", [cocoapodsScript], { cwd: repoRoot });
   }
   await runCapacitor(["sync", "ios"]);
-  if (local) {
+  if (includesFullBunRuntime) {
     stageIosAgentRuntime();
   } else if (isIosAppStoreBuild()) {
     removeIosLocalExecutionAssets();

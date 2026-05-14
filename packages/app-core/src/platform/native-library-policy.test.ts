@@ -1,4 +1,4 @@
-import { mkdirSync, realpathSync, writeFileSync } from "node:fs";
+import { mkdirSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -96,6 +96,63 @@ describe("resolveNativeLibraryCandidate", () => {
     expect(
       resolveNativeLibraryCandidate(
         { path: dylib },
+        {
+          env: { ELIZA_BUILD_VARIANT: "store" },
+          execPath,
+          expectedBasename: "libMacWindowEffects.dylib",
+          moduleDir: path.join(appRoot, "Contents", "Resources", "bun"),
+        },
+      ),
+    ).toBeNull();
+  });
+
+  it("rejects expected-name symlinks that resolve outside the app bundle in store builds", () => {
+    const root = tempRoot();
+    const appRoot = path.join(root, "Eliza.app");
+    const execPath = touch(path.join(appRoot, "Contents", "MacOS", "Eliza"));
+    const outsideDylib = touch(
+      path.join(root, "Library", "Caches", "plugins", "plugin.dylib"),
+    );
+    const symlinkPath = path.join(
+      appRoot,
+      "Contents",
+      "Resources",
+      "libMacWindowEffects.dylib",
+    );
+    mkdirSync(path.dirname(symlinkPath), { recursive: true });
+    symlinkSync(outsideDylib, symlinkPath);
+
+    expect(
+      resolveNativeLibraryCandidate(
+        { path: symlinkPath },
+        {
+          env: { ELIZA_BUILD_VARIANT: "store" },
+          execPath,
+          expectedBasename: "libMacWindowEffects.dylib",
+          moduleDir: path.join(appRoot, "Contents", "Resources", "bun"),
+        },
+      ),
+    ).toBeNull();
+  });
+
+  it("rejects expected-name symlinks whose realpath basename is unexpected", () => {
+    const root = tempRoot();
+    const appRoot = path.join(root, "Eliza.app");
+    const execPath = touch(path.join(appRoot, "Contents", "MacOS", "Eliza"));
+    const targetDylib = touch(
+      path.join(appRoot, "Contents", "Resources", "plugin.dylib"),
+    );
+    const symlinkPath = path.join(
+      appRoot,
+      "Contents",
+      "Resources",
+      "libMacWindowEffects.dylib",
+    );
+    symlinkSync(targetDylib, symlinkPath);
+
+    expect(
+      resolveNativeLibraryCandidate(
+        { path: symlinkPath },
         {
           env: { ELIZA_BUILD_VARIANT: "store" },
           execPath,

@@ -2,7 +2,10 @@ import fsp from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { runShell } from "./shell-execution-router.ts";
+import {
+  __resetShellRouterBrokerForTests,
+  runShell,
+} from "./shell-execution-router.ts";
 import { createVirtualFilesystemService } from "./virtual-filesystem.ts";
 
 const MODE_ENV_KEYS = [
@@ -28,6 +31,7 @@ describe("runShell", () => {
       saved[key] = process.env[key];
       delete process.env[key];
     }
+    __resetShellRouterBrokerForTests();
   });
 
   afterEach(async () => {
@@ -44,6 +48,7 @@ describe("runShell", () => {
     } else {
       process.env.ELIZA_STATE_DIR = oldStateDir;
     }
+    __resetShellRouterBrokerForTests();
     await fsp.rm(tmpDir, { recursive: true, force: true });
   });
 

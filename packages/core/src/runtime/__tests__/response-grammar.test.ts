@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { normalizeActionJsonSchema } from "../../actions/action-schema";
 import type { Action } from "../../types";
 import type { ResponseSkeleton } from "../../types/model";
@@ -30,6 +30,31 @@ const field = (
 	description: "a field",
 	schema: { type: "array", items: { type: "string" } },
 	...overrides,
+});
+
+const RESPONSE_GRAMMAR_ENV_KEYS = ["ELIZA_LOCAL_GUIDED_DECODE"] as const;
+const responseGrammarEnvSnapshot: Record<string, string | undefined> = {};
+for (const key of RESPONSE_GRAMMAR_ENV_KEYS) {
+	responseGrammarEnvSnapshot[key] = process.env[key];
+}
+
+function restoreResponseGrammarTestState(): void {
+	clearResponseGrammarCache();
+	for (const key of RESPONSE_GRAMMAR_ENV_KEYS) {
+		if (responseGrammarEnvSnapshot[key] === undefined) {
+			delete process.env[key];
+		} else {
+			process.env[key] = responseGrammarEnvSnapshot[key];
+		}
+	}
+}
+
+beforeEach(() => {
+	restoreResponseGrammarTestState();
+});
+
+afterEach(() => {
+	restoreResponseGrammarTestState();
 });
 
 describe("buildResponseGrammar — Stage-1 envelope", () => {
@@ -597,6 +622,69 @@ describe("buildPlannerActionGrammarStrict — single-call per-action union gramm
 			/paramsofaction_REPLY_p_text ::= "\\"text\\":" jsonstring/,
 		);
 		expect(r.grammar).toMatch(/^jsonstring ::= /m);
+	});
+
+	it("compiles a simple anchored regex pattern into the parameter grammar", () => {
+		clearResponseGrammarCache();
+		const r = buildPlannerActionGrammarStrict([
+			makeAction("TASK", {
+				parameters: [
+					{
+						name: "id",
+						description: "task id",
+						required: true,
+						schema: { type: "string", pattern: "^task-[0-9]+$" },
+					},
+				],
+			}),
+		]);
+		if (r === null) throw new Error("expected grammar");
+		expect(r.grammar).toMatch(
+			/paramsofaction_TASK_p_id ::= "\\"id\\":" "task-" \[0-9\]\+/,
+		);
+		expect(r.grammar).not.toMatch(
+			/paramsofaction_TASK_p_id ::= "\\"id\\":" jsonstring/,
+		);
+	});
+
+	it("expands bounded repeat counts in anchored regex patterns", () => {
+		clearResponseGrammarCache();
+		const r = buildPlannerActionGrammarStrict([
+			makeAction("CODE", {
+				parameters: [
+					{
+						name: "code",
+						description: "code",
+						required: true,
+						schema: { type: "string", pattern: "^[A-Z]{2}[0-9]{4}$" },
+					},
+				],
+			}),
+		]);
+		if (r === null) throw new Error("expected grammar");
+		expect(r.grammar).toMatch(
+			/paramsofaction_CODE_p_code ::= "\\"code\\":" \[A-Z\] \[A-Z\] \[0-9\] \[0-9\] \[0-9\] \[0-9\]/,
+		);
+	});
+
+	it("falls back to validation-backed string grammar for unsupported regex features", () => {
+		clearResponseGrammarCache();
+		const r = buildPlannerActionGrammarStrict([
+			makeAction("WILDCARD", {
+				parameters: [
+					{
+						name: "id",
+						description: "task id",
+						required: true,
+						schema: { type: "string", pattern: "^task-.*$" },
+					},
+				],
+			}),
+		]);
+		if (r === null) throw new Error("expected grammar");
+		expect(r.grammar).toMatch(
+			/paramsofaction_WILDCARD_p_id ::= "\\"id\\":" jsonstring/,
+		);
 	});
 
 	it("recurses into object-typed properties with declared sub-properties", () => {

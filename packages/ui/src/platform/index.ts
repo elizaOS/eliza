@@ -17,9 +17,11 @@ export {
   ASSISTANT_LAUNCH_PARAM_KEYS,
   ASSISTANT_LAUNCH_SOURCES,
   ASSISTANT_LAUNCH_TEXT_KEYS,
+  claimAssistantLaunchPayloadFromHash,
   buildAssistantLaunchMetadata,
   clearAssistantLaunchPayloadFromHash,
   readAssistantLaunchPayloadFromHash,
+  type AssistantLaunchPayloadClaimOptions,
   type AssistantLaunchPayload,
 } from "./assistant-launch-payload";
 export {
