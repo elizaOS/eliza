@@ -30,10 +30,7 @@ import {
 	setPreferredProvider,
 } from "../services/routing-preferences";
 import { localInferenceService } from "../services/service";
-import type {
-	AgentModelSlot,
-	CatalogModel,
-} from "../services/types";
+import type { AgentModelSlot, CatalogModel } from "../services/types";
 import { AGENT_MODEL_SLOTS } from "../services/types";
 import {
 	type CompatRuntimeState,

@@ -520,8 +520,7 @@ export function buildPlannerToolsFromTieredActions(
 		tools.push(actionToPlannerTool(action));
 	};
 
-	const onUnresolved =
-		options.onUnresolvedSubAction ?? ((): void => undefined);
+	const onUnresolved = options.onUnresolvedSubAction ?? ((): void => undefined);
 
 	for (const action of actions) {
 		emit(action);
@@ -556,8 +555,7 @@ export function buildPlannerToolsFromTieredActions(
 				// umbrella surfaced an invalid sub-action name. assertNativeToolName
 				// throws synchronously inside actionToPlannerTool when a name
 				// fails NATIVE_TOOL_NAME_PATTERN.
-				const message =
-					error instanceof Error ? error.message : String(error);
+				const message = error instanceof Error ? error.message : String(error);
 				throw new Error(
 					`Failed to expand sub-action '${subActionName}' of '${action.name}': ${message}`,
 				);
