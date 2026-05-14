@@ -465,3 +465,30 @@ without source changes to those packages).
 - **Discrete-Vulkan / additional CUDA SM classes**: per
   CUDA-FINISH-4 still-owed list.
 
+
+## Item 4 (Tests CI) — actively driving green
+
+Discovered that Tests has been failing in CI for 24+ hours independent
+of cancel-storms, with two root causes:
+
+1. **plugin-ollama dist not built in CI** → vitest fails to resolve the
+   bare specifier in `packages/agent/src/runtime/eliza.ts`'s dynamic
+   `import("@elizaos/plugin-ollama")` at transform time. Cascades
+   through every test file in the same vitest project run. **Fixed**
+   in commit 99c0bf8952 by adding `--filter=@elizaos/plugin-ollama` to
+   `build:core` (the script CI runs before `test:server` /
+   `test:client`).
+
+2. **plugin-elizacloud cloud-tts-roundtrip test stale** → the test was
+   iterating `handleTextToSpeech`'s return value as if it were still a
+   Readable / async iterable from an earlier refactor; the function now
+   materializes the cloud audio stream into a single Uint8Array via
+   `ttsStreamToBytes`. Iterating a Uint8Array yields Numbers; the
+   `chunk instanceof Uint8Array` filter dropped every byte → merged
+   buffer empty → `[]` vs `[255,251,0,0,16,32]` assertion failure.
+   **Fixed** in commit e42a613ae7 by switching to a direct
+   `toBeInstanceOf(Uint8Array)` + byte-equality check matching the
+   real consumer contract.
+
+Watching the e42a613ae7 push's Tests run for the terminal verdict.
+
