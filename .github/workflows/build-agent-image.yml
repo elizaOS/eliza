@@ -90,6 +90,20 @@ jobs:
           fi
           rm -f "$install_log"
 
+      - name: Materialize @types packages
+        # `bun install --ignore-scripts` skips the repo postinstall, so the
+        # `@types/*` packages aren't repaired in `node_modules/@types`. The
+        # per-plugin `tsc` declaration step in `bun run build` then trips
+        # `TS2688: Cannot find type definition file for 'bun-types' / 'node'`
+        # (root cause: Bun's virtual store entries get pruned by patch-deps
+        # at postinstall time; without that pass the resolver can't see the
+        # types). Run the two scripts the postinstall would have run.
+        env:
+          NODE_LLAMA_CPP_SKIP_DOWNLOAD: "true"
+        run: |
+          node packages/app-core/scripts/patch-deps.mjs || true
+          node packages/app-core/scripts/ensure-type-package-aliases.mjs
+
       - name: Build workspace plugins
         # Dockerfile.ci copies the repo and relies on pre-built dist/ in each
         # workspace plugin. The docker-ci-smoke script (used by the smoke
