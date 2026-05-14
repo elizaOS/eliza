@@ -11,6 +11,7 @@ from elizaos_gaia import orchestrated
 from elizaos_gaia.orchestrated import (
     _capability_report,
     _effective_provider_labels,
+    _model_provider_for_config,
     _parse_required_capabilities,
     _run_provider,
 )
@@ -54,6 +55,17 @@ def test_legacy_default_providers_collapse_to_inherited_harness(
     providers = _effective_provider_labels(["claude-code", "swe-agent", "codex"])
 
     assert providers == ["hermes"]
+
+
+def test_model_provider_default_preserves_delegate_defaults(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("BENCHMARK_MODEL_PROVIDER", raising=False)
+    monkeypatch.delenv("ELIZA_PROVIDER", raising=False)
+
+    assert _model_provider_for_config("eliza") == "eliza"
+    assert _model_provider_for_config("hermes") == "cerebras"
+    assert _model_provider_for_config("openclaw") == "cerebras"
 
 
 @pytest.mark.asyncio
