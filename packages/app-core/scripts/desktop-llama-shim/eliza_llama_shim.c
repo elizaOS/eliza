@@ -187,19 +187,422 @@ void eliza_llama_dflash_stats(void* ctx, int32_t* out) {
     out[0] = 0; out[1] = 0; out[2] = 0; out[3] = 0;
 }
 
-// ─── token-tree / prefill-plan samplers (STUB) ───────────────────────────────
-// Both samplers require implementing a custom llama_sampler vtable; the
-// `llama_sampler_init` constructor is not in the public API headers
-// (it's added via `llama_sampler_i` + `llama_sampler_init(...)` private
-// glue). Phase B will land the vtable + serialization parser. For now:
-// declared exports that return NULL so the dlopen surface is stable.
+// ─── token-tree sampler ──────────────────────────────────────────────────────
+//
+// Wire format (mirrors packages/native-plugins/llama/src/token-tree-codec.ts):
+//   u32  magic       = 0x544B5452 ("RTKT", little-endian)
+//   u32  version     = 1
+//   u32  path_len    (utf-8 byte count; not consumed by the sampler itself,
+//                     the descriptor `path` is debug/routing metadata only)
+//   ...  path        (utf-8 bytes, no trailing NUL)
+//   u32  total_nodes
+//   per node (DFS pre-order; node 0 is the synthetic root, token_id = -1):
+//     i32  token_id
+//     u8   terminal
+//     u32  num_children
+//     u32  child_ptrs[num_children]   (indices into the same node array;
+//                                       invariant: ptr > self_index)
+//
+// Semantics: at each `apply`, restrict the logits to the set of valid next
+// tokens reachable from the current trie position. On `accept`, descend to
+// the child whose token_id matches the chosen token. When the descent hits
+// a node with no further children (a "terminal leaf" — either flagged
+// `terminal=1` or simply childless), reset to the root so the next
+// generation step is unconstrained.
 
-void* eliza_llama_sampler_init_token_tree(const uint8_t* trie_bytes, size_t trie_size) {
-    (void)trie_bytes; (void)trie_size;
-    return NULL;
+typedef struct trie_node {
+    int32_t  token_id;
+    uint8_t  terminal;
+    uint32_t num_children;
+    uint32_t * child_indices;
+} trie_node_t;
+
+typedef struct token_tree {
+    trie_node_t * nodes;
+    uint32_t      node_count;
+    int32_t       current_index;  // 0 = root; -1 = sentinel "no constraint"
+} token_tree_t;
+
+static void token_tree_free_data(token_tree_t * tree) {
+    if (!tree) return;
+    if (tree->nodes) {
+        for (uint32_t i = 0; i < tree->node_count; i++) {
+            free(tree->nodes[i].child_indices);
+        }
+        free(tree->nodes);
+    }
+    free(tree);
 }
 
+// Parse the flat wire format into an allocated `token_tree_t`. Returns NULL
+// on any parse error (bad magic, unsupported version, truncated buffer, or
+// child pointer violating the forward-only invariant).
+static token_tree_t * parse_token_tree(const uint8_t * bytes, size_t size) {
+    if (!bytes || size < 16) return NULL;
+    size_t off = 0;
+
+    uint32_t magic;
+    memcpy(&magic, bytes + off, 4); off += 4;
+    if (magic != 0x544B5452u) return NULL;
+
+    uint32_t version;
+    memcpy(&version, bytes + off, 4); off += 4;
+    if (version != 1u) return NULL;
+
+    uint32_t path_len;
+    memcpy(&path_len, bytes + off, 4); off += 4;
+    if (off + path_len + 4 > size) return NULL;
+    off += path_len;  // path bytes are not used by the sampler
+
+    uint32_t node_count;
+    memcpy(&node_count, bytes + off, 4); off += 4;
+    if (node_count == 0) return NULL;
+
+    token_tree_t * tree = (token_tree_t *)calloc(1, sizeof(*tree));
+    if (!tree) return NULL;
+    tree->node_count = node_count;
+    tree->current_index = 0;
+    tree->nodes = (trie_node_t *)calloc(node_count, sizeof(*tree->nodes));
+    if (!tree->nodes) { free(tree); return NULL; }
+
+    for (uint32_t i = 0; i < node_count; i++) {
+        if (off + 9 > size) { token_tree_free_data(tree); return NULL; }
+        int32_t token_id;
+        memcpy(&token_id, bytes + off, 4); off += 4;
+        uint8_t terminal = bytes[off]; off += 1;
+        uint32_t num_children;
+        memcpy(&num_children, bytes + off, 4); off += 4;
+        if (off + (size_t)num_children * 4 > size) {
+            token_tree_free_data(tree); return NULL;
+        }
+        tree->nodes[i].token_id = token_id;
+        tree->nodes[i].terminal = terminal;
+        tree->nodes[i].num_children = num_children;
+        if (num_children > 0) {
+            tree->nodes[i].child_indices =
+                (uint32_t *)malloc(sizeof(uint32_t) * num_children);
+            if (!tree->nodes[i].child_indices) {
+                token_tree_free_data(tree); return NULL;
+            }
+            for (uint32_t c = 0; c < num_children; c++) {
+                uint32_t ptr;
+                memcpy(&ptr, bytes + off, 4); off += 4;
+                if (ptr <= i || ptr >= node_count) {
+                    token_tree_free_data(tree); return NULL;
+                }
+                tree->nodes[i].child_indices[c] = ptr;
+            }
+        } else {
+            tree->nodes[i].child_indices = NULL;
+        }
+    }
+
+    // Node 0 must be the synthetic root with sentinel token_id -1.
+    if (tree->nodes[0].token_id != -1) {
+        token_tree_free_data(tree); return NULL;
+    }
+
+    return tree;
+}
+
+typedef struct token_tree_sampler_ctx {
+    token_tree_t * tree;
+    // Snapshot of the magic+version+payload bytes so `.clone` can reparse.
+    uint8_t * raw_bytes;
+    size_t    raw_size;
+} token_tree_sampler_ctx_t;
+
+static const char * token_tree_sampler_name(const struct llama_sampler * smpl) {
+    (void)smpl;
+    return "eliza-token-tree";
+}
+
+// Returns 1 if `child_index` is a child of the node at `current_index`,
+// 0 otherwise. The synthetic root (index 0, token_id -1) is the implicit
+// starting position.
+static int trie_child_for_token(
+    const token_tree_t * tree, int32_t current_index, llama_token tok,
+    uint32_t * out_child_index)
+{
+    if (current_index < 0 || (uint32_t)current_index >= tree->node_count) return 0;
+    const trie_node_t * node = &tree->nodes[current_index];
+    for (uint32_t i = 0; i < node->num_children; i++) {
+        uint32_t ci = node->child_indices[i];
+        if (ci >= tree->node_count) continue;
+        if (tree->nodes[ci].token_id == tok) {
+            if (out_child_index) *out_child_index = ci;
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static void token_tree_sampler_apply(
+    struct llama_sampler * smpl, llama_token_data_array * cur_p)
+{
+    token_tree_sampler_ctx_t * ctx = (token_tree_sampler_ctx_t *)smpl->ctx;
+    if (!ctx || !ctx->tree || !cur_p || !cur_p->data) return;
+    token_tree_t * tree = ctx->tree;
+    // current_index = -1 means "no constraint" (we already ran past a leaf).
+    if (tree->current_index < 0) return;
+    if ((uint32_t)tree->current_index >= tree->node_count) return;
+    const trie_node_t * node = &tree->nodes[tree->current_index];
+    if (node->num_children == 0) {
+        // No further constraint to apply; let downstream samplers decide.
+        return;
+    }
+
+    // Build a small set of allowed token ids. node->num_children is typically
+    // small (a handful of action names), so a linear scan per logit is fine.
+    // For very large fan-outs callers should split into multiple stages.
+    for (size_t i = 0; i < cur_p->size; i++) {
+        llama_token tid = cur_p->data[i].id;
+        int allowed = 0;
+        for (uint32_t c = 0; c < node->num_children; c++) {
+            uint32_t ci = node->child_indices[c];
+            if (ci < tree->node_count && tree->nodes[ci].token_id == tid) {
+                allowed = 1;
+                break;
+            }
+        }
+        if (!allowed) {
+            cur_p->data[i].logit = -INFINITY;
+        }
+    }
+    // Mark unsorted — we mutated logits, downstream must re-sort if needed.
+    cur_p->sorted = false;
+}
+
+static void token_tree_sampler_accept(
+    struct llama_sampler * smpl, llama_token token)
+{
+    token_tree_sampler_ctx_t * ctx = (token_tree_sampler_ctx_t *)smpl->ctx;
+    if (!ctx || !ctx->tree) return;
+    token_tree_t * tree = ctx->tree;
+    if (tree->current_index < 0) return;
+    uint32_t next;
+    if (trie_child_for_token(tree, tree->current_index, token, &next)) {
+        const trie_node_t * child = &tree->nodes[next];
+        if (child->num_children == 0) {
+            // Reached a leaf — release the constraint. Callers wanting a
+            // hard stop should also attach a stop-token sampler.
+            tree->current_index = -1;
+        } else {
+            tree->current_index = (int32_t)next;
+        }
+    } else {
+        // Token did not match any valid child — apply() should have prevented
+        // this, but be defensive: release the constraint rather than wedge.
+        tree->current_index = -1;
+    }
+}
+
+static void token_tree_sampler_reset(struct llama_sampler * smpl) {
+    token_tree_sampler_ctx_t * ctx = (token_tree_sampler_ctx_t *)smpl->ctx;
+    if (!ctx || !ctx->tree) return;
+    ctx->tree->current_index = 0;
+}
+
+static struct llama_sampler * token_tree_sampler_clone(
+    const struct llama_sampler * smpl)
+{
+    const token_tree_sampler_ctx_t * src =
+        (const token_tree_sampler_ctx_t *)smpl->ctx;
+    if (!src || !src->raw_bytes) return NULL;
+    return (struct llama_sampler *)eliza_llama_sampler_init_token_tree(
+        src->raw_bytes, src->raw_size);
+}
+
+static void token_tree_sampler_free(struct llama_sampler * smpl) {
+    if (!smpl) return;
+    token_tree_sampler_ctx_t * ctx = (token_tree_sampler_ctx_t *)smpl->ctx;
+    if (ctx) {
+        token_tree_free_data(ctx->tree);
+        free(ctx->raw_bytes);
+        free(ctx);
+    }
+    // The `llama_sampler` shell itself is freed by llama.cpp's
+    // llama_sampler_free dispatcher (it was allocated by llama_sampler_init).
+}
+
+static struct llama_sampler_i token_tree_sampler_i = {
+    /* .name              = */ token_tree_sampler_name,
+    /* .accept            = */ token_tree_sampler_accept,
+    /* .apply             = */ token_tree_sampler_apply,
+    /* .reset             = */ token_tree_sampler_reset,
+    /* .clone             = */ token_tree_sampler_clone,
+    /* .free              = */ token_tree_sampler_free,
+    /* .backend_init      = */ NULL,
+    /* .backend_accept    = */ NULL,
+    /* .backend_apply     = */ NULL,
+    /* .backend_set_input = */ NULL,
+};
+
+void* eliza_llama_sampler_init_token_tree(const uint8_t* trie_bytes, size_t trie_size) {
+    if (!trie_bytes || trie_size == 0) return NULL;
+    token_tree_t * tree = parse_token_tree(trie_bytes, trie_size);
+    if (!tree) return NULL;
+
+    token_tree_sampler_ctx_t * ctx =
+        (token_tree_sampler_ctx_t *)calloc(1, sizeof(*ctx));
+    if (!ctx) { token_tree_free_data(tree); return NULL; }
+    ctx->tree = tree;
+    ctx->raw_size = trie_size;
+    ctx->raw_bytes = (uint8_t *)malloc(trie_size);
+    if (!ctx->raw_bytes) {
+        token_tree_free_data(tree); free(ctx); return NULL;
+    }
+    memcpy(ctx->raw_bytes, trie_bytes, trie_size);
+
+    return llama_sampler_init(&token_tree_sampler_i, ctx);
+}
+
+// ─── prefill-plan sampler ────────────────────────────────────────────────────
+//
+// The TS-side `PrefillPlan { prefix, runs }` shape is text-based and depends
+// on the model's tokenizer. Tokenization is the caller's responsibility;
+// the C side consumes a pre-tokenized, position-keyed plan.
+//
+// Wire format:
+//   u32  magic     = 0x50465054 ("PFPT", little-endian)
+//   u32  version   = 1
+//   u32  entry_count
+//   per entry:
+//     u8   is_free      (0 = forced literal, 1 = free sample)
+//     i32  token_id     (only meaningful when is_free == 0; ignored otherwise)
+//
+// Semantics: the sampler tracks an integer cursor `pos`. On each `apply`,
+// if `entries[pos].is_free == 1` (or `pos >= entry_count`), the sampler is
+// a no-op. Otherwise it sets every logit other than `entries[pos].token_id`
+// to -INFINITY and the chosen one to +INFINITY (this beats any downstream
+// temperature/top-k stage). `accept` advances the cursor by one.
+
+typedef struct prefill_entry {
+    uint8_t  is_free;
+    int32_t  token_id;
+} prefill_entry_t;
+
+typedef struct prefill_plan_state {
+    prefill_entry_t * entries;
+    uint32_t          entry_count;
+    uint32_t          cursor;
+    uint8_t *         raw_bytes;
+    size_t            raw_size;
+} prefill_plan_state_t;
+
+static void prefill_plan_free_state(prefill_plan_state_t * s) {
+    if (!s) return;
+    free(s->entries);
+    free(s->raw_bytes);
+    free(s);
+}
+
+static prefill_plan_state_t * parse_prefill_plan(const uint8_t * bytes, size_t size) {
+    if (!bytes || size < 12) return NULL;
+    size_t off = 0;
+    uint32_t magic;
+    memcpy(&magic, bytes + off, 4); off += 4;
+    if (magic != 0x50465054u) return NULL;
+    uint32_t version;
+    memcpy(&version, bytes + off, 4); off += 4;
+    if (version != 1u) return NULL;
+    uint32_t count;
+    memcpy(&count, bytes + off, 4); off += 4;
+    // Each entry is 5 bytes (u8 + i32).
+    if (off + (size_t)count * 5 > size) return NULL;
+
+    prefill_plan_state_t * s =
+        (prefill_plan_state_t *)calloc(1, sizeof(*s));
+    if (!s) return NULL;
+    s->entry_count = count;
+    s->cursor = 0;
+    if (count > 0) {
+        s->entries = (prefill_entry_t *)calloc(count, sizeof(*s->entries));
+        if (!s->entries) { free(s); return NULL; }
+        for (uint32_t i = 0; i < count; i++) {
+            s->entries[i].is_free = bytes[off]; off += 1;
+            int32_t tid;
+            memcpy(&tid, bytes + off, 4); off += 4;
+            s->entries[i].token_id = tid;
+        }
+    }
+    return s;
+}
+
+static const char * prefill_plan_sampler_name(const struct llama_sampler * smpl) {
+    (void)smpl;
+    return "eliza-prefill-plan";
+}
+
+static void prefill_plan_sampler_apply(
+    struct llama_sampler * smpl, llama_token_data_array * cur_p)
+{
+    prefill_plan_state_t * s = (prefill_plan_state_t *)smpl->ctx;
+    if (!s || !cur_p || !cur_p->data) return;
+    if (s->cursor >= s->entry_count) return;
+    const prefill_entry_t * e = &s->entries[s->cursor];
+    if (e->is_free) return;
+    int32_t forced = e->token_id;
+    for (size_t i = 0; i < cur_p->size; i++) {
+        if (cur_p->data[i].id == forced) {
+            cur_p->data[i].logit = INFINITY;
+        } else {
+            cur_p->data[i].logit = -INFINITY;
+        }
+    }
+    cur_p->sorted = false;
+}
+
+static void prefill_plan_sampler_accept(
+    struct llama_sampler * smpl, llama_token token)
+{
+    (void)token;
+    prefill_plan_state_t * s = (prefill_plan_state_t *)smpl->ctx;
+    if (!s) return;
+    if (s->cursor < s->entry_count) s->cursor++;
+}
+
+static void prefill_plan_sampler_reset(struct llama_sampler * smpl) {
+    prefill_plan_state_t * s = (prefill_plan_state_t *)smpl->ctx;
+    if (!s) return;
+    s->cursor = 0;
+}
+
+static struct llama_sampler * prefill_plan_sampler_clone(
+    const struct llama_sampler * smpl)
+{
+    const prefill_plan_state_t * src = (const prefill_plan_state_t *)smpl->ctx;
+    if (!src || !src->raw_bytes) return NULL;
+    return (struct llama_sampler *)eliza_llama_sampler_init_prefill_plan(
+        src->raw_bytes, src->raw_size);
+}
+
+static void prefill_plan_sampler_free(struct llama_sampler * smpl) {
+    if (!smpl) return;
+    prefill_plan_state_t * s = (prefill_plan_state_t *)smpl->ctx;
+    prefill_plan_free_state(s);
+}
+
+static struct llama_sampler_i prefill_plan_sampler_i = {
+    /* .name              = */ prefill_plan_sampler_name,
+    /* .accept            = */ prefill_plan_sampler_accept,
+    /* .apply             = */ prefill_plan_sampler_apply,
+    /* .reset             = */ prefill_plan_sampler_reset,
+    /* .clone             = */ prefill_plan_sampler_clone,
+    /* .free              = */ prefill_plan_sampler_free,
+    /* .backend_init      = */ NULL,
+    /* .backend_accept    = */ NULL,
+    /* .backend_apply     = */ NULL,
+    /* .backend_set_input = */ NULL,
+};
+
 void* eliza_llama_sampler_init_prefill_plan(const uint8_t* plan_bytes, size_t plan_size) {
-    (void)plan_bytes; (void)plan_size;
-    return NULL;
+    if (!plan_bytes || plan_size == 0) return NULL;
+    prefill_plan_state_t * s = parse_prefill_plan(plan_bytes, plan_size);
+    if (!s) return NULL;
+    s->raw_size = plan_size;
+    s->raw_bytes = (uint8_t *)malloc(plan_size);
+    if (!s->raw_bytes) { prefill_plan_free_state(s); return NULL; }
+    memcpy(s->raw_bytes, plan_bytes, plan_size);
+    return llama_sampler_init(&prefill_plan_sampler_i, s);
 }
