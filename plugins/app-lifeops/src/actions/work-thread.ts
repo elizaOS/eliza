@@ -6,15 +6,34 @@ import type {
   Memory,
 } from "@elizaos/core";
 import { Semaphore } from "@elizaos/core";
+import crypto from "node:crypto";
 import { hasLifeOpsAccess } from "../lifeops/access.js";
 import { getScheduledTaskRunner } from "../lifeops/scheduled-task/service.js";
 import type { ScheduledTaskTrigger } from "../lifeops/scheduled-task/types.js";
+import {
+  OptimisticLockError,
+  withOptimisticRetry,
+} from "../lifeops/sql.js";
 import {
   createWorkThreadStore,
   type ThreadSourceRef,
   type WorkThread,
   type WorkThreadStatus,
 } from "../lifeops/work-threads/index.js";
+
+/**
+ * Build a stable idempotency key for a merge attempt. Same (turn, target,
+ * sorted sources) → same key, so retries during one turn deduplicate.
+ */
+function buildMergeRequestId(args: {
+  turnId: string;
+  targetId: string;
+  sourceIds: string[];
+}): string {
+  const sorted = [...args.sourceIds].sort();
+  const seed = `${args.turnId}|${args.targetId}|${sorted.join(",")}`;
+  return crypto.createHash("sha1").update(seed).digest("hex").slice(0, 24);
+}
 
 type ThreadOperationType =
   | "create"
@@ -512,6 +531,9 @@ export const workThreadAction: Action & {
                 continue;
               }
 
+              // Pre-validate (mutability + terminal status) against the snapshot
+              // we just read. Atomic write happens in store.merge() — if a
+              // version mismatch occurs there, we retry under withOptimisticRetry.
               const sourceThreads: WorkThread[] = [];
               let blocked = false;
               for (const sourceWorkThreadId of sourceWorkThreadIds) {
@@ -556,55 +578,60 @@ export const workThreadAction: Action & {
                 continue;
               }
 
-              const mergedSourceRefs = [
-                ...current.sourceRefs,
-                ...sourceThreads.flatMap(
-                  (sourceThread) => sourceThread.sourceRefs,
-                ),
-              ];
-              const mergedParticipantEntityIds = [
-                ...current.participantEntityIds,
-                ...sourceThreads.flatMap(
-                  (sourceThread) => sourceThread.participantEntityIds,
-                ),
-                ...(typeof message.entityId === "string"
-                  ? [message.entityId]
-                  : []),
-              ];
-
-              await store.update(workThreadId, {
-                summary: operation.summary ?? current.summary,
-                currentPlanSummary:
-                  operation.instruction?.trim() || current.currentPlanSummary,
-                sourceRefs: mergedSourceRefs,
-                participantEntityIds: mergedParticipantEntityIds,
-                lastMessageMemoryId:
-                  typeof message.id === "string" ? message.id : null,
-                metadata: mergedMetadata(current, sourceWorkThreadIds),
-                eventType: "merged",
-                reason: operation.reason,
-                detail: {
-                  sourceWorkThreadIds,
-                  instruction: operation.instruction,
-                },
+              // Derive an idempotency key so re-execution of the same merge
+              // (e.g., retry after transient error) is a no-op.
+              const mergeRequestId = buildMergeRequestId({
+                turnId:
+                  typeof message.id === "string" ? message.id : "unknown",
+                targetId: workThreadId,
+                sourceIds: sourceWorkThreadIds,
               });
 
-              for (const sourceThread of sourceThreads) {
-                await store.update(sourceThread.id, {
-                  status: "stopped",
-                  metadata: { mergedIntoWorkThreadId: workThreadId },
-                  eventType: "merged_into",
-                  reason: operation.reason,
-                  detail: { targetWorkThreadId: workThreadId },
+              try {
+                const result = await withOptimisticRetry(() =>
+                  store.merge({
+                    targetWorkThreadId: workThreadId,
+                    sourceWorkThreadIds,
+                    mergeRequestId,
+                    patch: {
+                      summary: operation.summary ?? current.summary,
+                      instruction: operation.instruction ?? null,
+                      lastMessageMemoryId:
+                        typeof message.id === "string" ? message.id : null,
+                      participantsToAdd:
+                        typeof message.entityId === "string"
+                          ? [message.entityId]
+                          : [],
+                    },
+                    reason: operation.reason,
+                  }),
+                );
+
+                results.push({
+                  success: true,
+                  type,
+                  workThreadId,
+                  sourceWorkThreadIds: result.sources.map((s) => s.id),
+                  freshlyMerged: result.freshlyMerged,
+                });
+              } catch (err) {
+                const errorCode =
+                  err instanceof OptimisticLockError
+                    ? "MERGE_CONFLICT"
+                    : err instanceof Error && (err as { code?: unknown }).code
+                      ? String((err as { code?: unknown }).code)
+                      : "MERGE_FAILED";
+                const errorMessage =
+                  err instanceof Error ? err.message : String(err);
+                results.push({
+                  success: false,
+                  type,
+                  workThreadId,
+                  sourceWorkThreadIds,
+                  error: errorCode,
+                  message: errorMessage,
                 });
               }
-
-              results.push({
-                success: true,
-                type,
-                workThreadId,
-                sourceWorkThreadIds,
-              });
               continue;
             }
 
