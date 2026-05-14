@@ -45,9 +45,7 @@ describe("assistant launch deep-link routing", () => {
     );
 
     expect(hashRoute?.startsWith("#chat?")).toBe(true);
-    expect(params(hashRoute ?? "").get("text")).toBe(
-      "Water plants tomorrow",
-    );
+    expect(params(hashRoute ?? "").get("text")).toBe("Water plants tomorrow");
     expect(params(hashRoute ?? "").get("source")).toBe("assistant-entry");
     expect(params(hashRoute ?? "").get("action")).toBe("lifeops.create");
     expect(params(hashRoute ?? "").get("lifeops.section")).toBe("reminders");

@@ -47,6 +47,24 @@ test("AOSP capability manifest records the full assistant/control path", () => {
     "android.intent.action.ASSIST",
     "android.intent.action.VOICE_COMMAND",
   ]);
+  assert.equal(manifest.assistantResolution.role, "android.app.role.ASSISTANT");
+  assert.equal(
+    manifest.assistantResolution.defaultHolderResource,
+    "config_defaultAssistant",
+  );
+  assert.equal(manifest.assistantResolution.defaultHolder, packageName);
+  assert.equal(
+    manifest.assistantResolution.activity,
+    `${packageName}.ElizaAssistActivity`,
+  );
+  assert.equal(manifest.directBoot.receiver, "ElizaBootReceiver");
+  assert.equal(manifest.directBoot.directBootAware, true);
+  assert.ok(
+    manifest.directBoot.actions.includes("android.intent.action.LOCKED_BOOT_COMPLETED"),
+  );
+  assert.ok(
+    manifest.directBoot.actions.includes("android.intent.action.MY_PACKAGE_REPLACED"),
+  );
 
   for (const permission of [
     "android.permission.PACKAGE_USAGE_STATS",
@@ -68,14 +86,55 @@ test("AOSP capability manifest records the full assistant/control path", () => {
     "screenCapture",
     "inputControl",
     "appInventory",
+    "voiceCommand",
   ]) {
     assert.ok(
       manifest.capabilityDeclarations[capability],
       `capability manifest should declare ${capability}`,
     );
   }
+  for (const [component, type] of [
+    ["ElizaAgentService", "specialUse"],
+    ["GatewayConnectionService", "dataSync"],
+    ["ElizaVoiceCaptureService", "microphone"],
+    ["ScreenCapture", "mediaProjection"],
+  ]) {
+    assert.ok(
+      manifest.foregroundServices.some(
+        (service) => service.component === component && service.type === type,
+      ),
+      `capability manifest should declare foreground service ${component}/${type}`,
+    );
+  }
+  assert.equal(
+    manifest.systemImageRequirements.installPath,
+    "/system/priv-app/Eliza/Eliza.apk",
+  );
+  assert.equal(manifest.systemImageRequirements.soong.privileged, true);
+  assert.equal(manifest.systemImageRequirements.soong.certificate, "platform");
   assert.equal(manifest.playStorePolicy.stripTarget, "android-cloud");
   assert.equal(manifest.playStorePolicy.allowed, false);
+  for (const component of [
+    "ElizaAgentService",
+    "ElizaAssistActivity",
+    "ElizaBootReceiver",
+    "ElizaVoiceCaptureService",
+  ]) {
+    assert.ok(manifest.playStorePolicy.mustStripComponents.includes(component));
+  }
+  for (const permission of [
+    "android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION",
+    "android.permission.FOREGROUND_SERVICE_MICROPHONE",
+    "android.permission.FOREGROUND_SERVICE_SPECIAL_USE",
+    "android.permission.PACKAGE_USAGE_STATS",
+    "android.permission.MANAGE_APP_OPS_MODES",
+    "android.permission.MANAGE_VIRTUAL_MACHINE",
+    "android.permission.READ_FRAME_BUFFER",
+    "android.permission.INJECT_EVENTS",
+    "android.permission.REAL_GET_TASKS",
+  ]) {
+    assert.ok(manifest.playStorePolicy.mustStripPermissions.includes(permission));
+  }
 });
 
 test("AOSP privapp whitelist covers privileged control permissions", () => {
@@ -97,13 +156,50 @@ test("AOSP privapp whitelist covers privileged control permissions", () => {
 
 test("AOSP/mobile build script routes ASSIST and VOICE_COMMAND but strips them from Play", () => {
   const buildScript = read("packages/app-core/scripts/run-mobile-build.mjs");
-  assert.match(buildScript, /android\.intent\.action\.ASSIST/);
-  assert.match(buildScript, /android\.intent\.action\.VOICE_COMMAND/);
-  assert.match(buildScript, /"ElizaAssistActivity"/);
-  assert.match(buildScript, /"READ_FRAME_BUFFER"/);
-  assert.match(buildScript, /"INJECT_EVENTS"/);
-  assert.match(buildScript, /"REAL_GET_TASKS"/);
-  assert.match(buildScript, /"@elizaos\/capacitor-screencapture"/);
+  for (const marker of [
+    "android.intent.action.ASSIST",
+    "android.intent.action.VOICE_COMMAND",
+    "\"ElizaAssistActivity\"",
+    "\"ElizaVoiceCaptureService\"",
+    "\"FOREGROUND_SERVICE_MEDIA_PROJECTION\"",
+    "\"FOREGROUND_SERVICE_MICROPHONE\"",
+    "\"FOREGROUND_SERVICE_SPECIAL_USE\"",
+    "\"READ_FRAME_BUFFER\"",
+    "\"INJECT_EVENTS\"",
+    "\"REAL_GET_TASKS\"",
+    "\"@elizaos/capacitor-screencapture\"",
+    "auditAndroidCloudSource",
+    "auditAndroidSystemSource",
+  ]) {
+    assert.match(buildScript, new RegExp(marker.replaceAll("/", "\\/")));
+  }
+});
+
+test("distro validators check assistant intent and capability policy", () => {
+  const staticValidator = read("scripts/distro-android/validate.mjs");
+  for (const marker of [
+    "assistantResolution",
+    "directBootAware",
+    "mustStripComponents",
+    "mustStripPermissions",
+    "mustStripPlugins",
+    "ElizaVoiceCaptureService",
+    "android-cloud stripped permission policy",
+  ]) {
+    assert.match(staticValidator, new RegExp(marker));
+  }
+
+  const bootValidator = read("scripts/distro-android/boot-validate.mjs");
+  for (const marker of [
+    "validateAssistantResolutions",
+    "android.intent.action.ASSIST",
+    "android.intent.action.VOICE_COMMAND",
+    "REQUIRED_PRIVILEGED_PERMISSIONS",
+    "validateCapabilityManifest",
+    "/product/etc/eliza/aosp-assistant-full-control.json",
+  ]) {
+    assert.match(bootValidator, new RegExp(marker.replaceAll("/", "\\/")));
+  }
 });
 
 test("AOSP vendor tree root exists for validator defaults", () => {

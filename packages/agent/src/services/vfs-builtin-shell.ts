@@ -179,8 +179,9 @@ async function runCommand(
     const entries = await vfs.list(resolveVirtualPath(cwd, target));
     return {
       exitCode: 0,
-      stdout: entries.map((entry) => path.posix.basename(entry.path)).join("\n")
-        + (entries.length ? "\n" : ""),
+      stdout:
+        entries.map((entry) => path.posix.basename(entry.path)).join("\n") +
+        (entries.length ? "\n" : ""),
       stderr: "",
     };
   }
@@ -287,7 +288,8 @@ async function rg(
     );
     return {
       exitCode: 0,
-      stdout: targets.map((target) => target.path).join("\n") +
+      stdout:
+        targets.map((target) => target.path).join("\n") +
         (targets.length ? "\n" : ""),
       stderr: "",
     };
@@ -405,13 +407,15 @@ async function collectSearchTargets(
   const files = await vfs.exportFiles();
   const targetPaths = rawTargets.length > 0 ? rawTargets : ["."];
   const resolvedTargets = targetPaths.map((target) =>
-    resolveVirtualPath(cwd, target)
+    resolveVirtualPath(cwd, target),
   );
   const targets: SearchTarget[] = [];
 
   for (const file of files) {
     if (
-      !resolvedTargets.some((target) => virtualPathMatchesTarget(file.path, target))
+      !resolvedTargets.some((target) =>
+        virtualPathMatchesTarget(file.path, target),
+      )
     ) {
       continue;
     }
@@ -427,8 +431,10 @@ async function collectSearchTargets(
 function virtualPathMatchesTarget(filePath: string, target: string): boolean {
   const normalizedFile = normalizeAbsoluteVirtualPath(filePath);
   const normalizedTarget = normalizeAbsoluteVirtualPath(target);
-  return normalizedFile === normalizedTarget ||
-    normalizedFile.startsWith(`${normalizedTarget.replace(/\/$/, "")}/`);
+  return (
+    normalizedFile === normalizedTarget ||
+    normalizedFile.startsWith(`${normalizedTarget.replace(/\/$/, "")}/`)
+  );
 }
 
 function displayVirtualPath(virtualPath: string): string {
@@ -477,16 +483,19 @@ function resolveVirtualPath(cwd: string, input: string): string {
 }
 
 function normalizeAbsoluteVirtualPath(input: string): string {
-  const normalized = path.posix.normalize(input.startsWith("/") ? input : `/${input}`);
+  const normalized = path.posix.normalize(
+    input.startsWith("/") ? input : `/${input}`,
+  );
   return normalized === "/" ? "/" : normalized.replace(/\/$/, "");
 }
 
 function tokenize(input: string): string[] {
   const tokens: string[] = [];
   const re = /"([^"]*)"|'([^']*)'|(\S+)/g;
-  let match: RegExpExecArray | null;
-  while ((match = re.exec(input))) {
+  let match = re.exec(input);
+  while (match) {
     tokens.push(match[1] ?? match[2] ?? match[3] ?? "");
+    match = re.exec(input);
   }
   return tokens;
 }

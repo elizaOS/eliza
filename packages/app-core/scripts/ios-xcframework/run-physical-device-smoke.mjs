@@ -728,6 +728,37 @@ function captureDeviceDiagnostics(deviceId) {
   };
 }
 
+function captureUnavailableDeviceDiagnostics(devices) {
+  const offline = Array.isArray(devices?.offline) ? devices.offline : [];
+  return {
+    capturedAt: new Date().toISOString(),
+    unavailablePhysicalDevices: offline.slice(0, 5).map((device) => {
+      const details = devicectlInfoMetadata(
+        ["devicectl", "device", "info", "details", "--device", device.id],
+        parseDevicectlDetails,
+      );
+      const detailSummary = details.summary;
+      const lockStateDeviceId =
+        detailSummary?.udid || detailSummary?.identifier || device.id;
+      return {
+        device,
+        details,
+        lockState: devicectlInfoMetadata(
+          [
+            "devicectl",
+            "device",
+            "info",
+            "lockState",
+            "--device",
+            lockStateDeviceId,
+          ],
+          parseDevicectlLockState,
+        ),
+      };
+    }),
+  };
+}
+
 function mergeDeviceLists(primary, secondary) {
   const byId = new Map();
   for (const record of [...primary, ...secondary]) {
@@ -989,6 +1020,8 @@ function classifyXcodebuildFailure(result) {
 
 function blockerNextAction(category, deviceName = "the iPhone/iPad") {
   switch (category) {
+    case "no-connected-physical-device":
+      return `Connect ${deviceName} by USB, unlock it, accept any Trust This Computer prompt, keep it awake, and rerun the smoke. If it still appears as unavailable, open Xcode Devices and Simulators once to refresh CoreDevice pairing.`;
     case "device-locked":
       return `Unlock ${deviceName}, keep it awake on the Home screen, then rerun the smoke.`;
     case "device-not-trusted":
@@ -1751,6 +1784,7 @@ async function main() {
         timeout: 30_000,
       }),
     };
+    report.toolchain = toolchain;
 
     const { device, devices } = resolveDevice(args.deviceId);
     const deviceDiagnostics = captureDeviceDiagnostics(device.id);
@@ -1883,6 +1917,11 @@ async function main() {
     if (err?.devices) {
       report.connectedPhysicalDevices = err.devices.connected;
       report.offlinePhysicalDevices = err.devices.offline;
+      if (err?.exitCode === EXIT.noDevice) {
+        report.deviceDiagnostics = captureUnavailableDeviceDiagnostics(
+          err.devices,
+        );
+      }
     }
     if (err?.xcframeworkInfo) {
       report.xcframeworkInfo = err.xcframeworkInfo;

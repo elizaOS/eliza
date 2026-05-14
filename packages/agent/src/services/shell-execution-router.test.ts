@@ -146,7 +146,9 @@ describe("runShell", () => {
 
   it("local-safe rejects vfs:// cwd when no real SandboxManager is available on desktop", async () => {
     process.env.ELIZA_RUNTIME_MODE = "local-safe";
-    const vfs = createVirtualFilesystemService({ projectId: "safe-no-manager" });
+    const vfs = createVirtualFilesystemService({
+      projectId: "safe-no-manager",
+    });
     await vfs.initialize();
 
     await expect(

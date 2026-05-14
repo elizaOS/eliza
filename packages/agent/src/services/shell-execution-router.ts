@@ -457,7 +457,9 @@ export async function runShell(
 
 function isInsideOrEqual(root: string, target: string): boolean {
   const relative = path.relative(path.resolve(root), path.resolve(target));
-  return !relative || (!relative.startsWith("..") && !path.isAbsolute(relative));
+  return (
+    !relative || (!relative.startsWith("..") && !path.isAbsolute(relative))
+  );
 }
 
 function isIosPlatform(): boolean {
