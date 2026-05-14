@@ -50,6 +50,10 @@ const autonomousElizaPathCandidates = [
 const homepageReleaseDataPathCandidates = [
   "apps/homepage/src/generated/release-data.ts",
 ] as const;
+const patchedElectrobunCliHelperPathCandidates = [
+  "packages/app-core/scripts/build-patched-electrobun-cli.mjs",
+  "eliza/packages/app-core/scripts/build-patched-electrobun-cli.mjs",
+] as const;
 
 function resolveExistingPath(candidates: readonly string[]) {
   return candidates.find((candidate) => existsSync(candidate)) ?? null;
@@ -249,7 +253,7 @@ const requiredElectrobunPrWorkflowSnippets = [
   'BUN_VERSION: "1.3.13"',
   "name: Release Workflow Contract",
   "bun install --ignore-scripts",
-  "bun run postinstall",
+  'run-postinstall: "true"',
   "bun run test:regression-matrix:release-contract",
   "bun run test:release:contract",
 ];
@@ -865,9 +869,9 @@ function assertReleaseWorkflowHasNotaryWrapper() {
     process.exit(1);
   }
 
-  const patchedCliHelper = readFileSync(
-    "eliza/packages/app-core/scripts/build-patched-electrobun-cli.mjs",
-    "utf8",
+  const patchedCliHelper = readExistingReleaseCheckFile(
+    "patched Electrobun CLI helper",
+    patchedElectrobunCliHelperPathCandidates,
   );
   const missingPatchedCli =
     findMissingPatchedElectrobunCliSnippets(patchedCliHelper);

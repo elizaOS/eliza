@@ -96,6 +96,37 @@ to the corresponding role intents.
 | `lint-init-rc.mjs`        | Brand-agnostic Android init.rc syntax checker |
 | `compile-libllama.mjs`    | Cross-compile musl-linked libllama.so per ABI for the bundled bun runtime |
 
+## Assistant/full-control validation
+
+`validate.mjs` statically enforces the AOSP assistant contract before an image
+build:
+
+- The framework overlay sets `config_defaultAssistant` to the brand package.
+- The capability manifest declares `ROLE_ASSISTANT`, `ACTION_ASSIST`,
+  `VOICE_COMMAND`, direct boot, usage stats, MediaProjection/screen capture,
+  accessibility, notification-listener availability, foreground services, and
+  privileged/system-app requirements.
+- `privapp-permissions-<package>.xml` whitelists the privileged permissions
+  the APK requests: `PACKAGE_USAGE_STATS`, `MANAGE_APP_OPS_MODES`,
+  `MANAGE_VIRTUAL_MACHINE`, `READ_FRAME_BUFFER`, `INJECT_EVENTS`, and
+  `REAL_GET_TASKS`.
+- The Android cloud/Play build policy strips AOSP-only components,
+  foreground-service permissions, privileged permissions, and native control
+  plugins such as `@elizaos/capacitor-screencapture`.
+
+`boot-validate.mjs` checks the live image after Cuttlefish or a Pixel target
+boots:
+
+- `cmd role get-role-holders android.app.role.ASSISTANT` contains the brand
+  package.
+- `cmd package resolve-activity` for `android.intent.action.ASSIST` and
+  `android.intent.action.VOICE_COMMAND` resolves to the brand package.
+- The package is installed from `/system/priv-app/<AppName>/`, has SYSTEM and
+  PRIVILEGED flags, and has the default plus privileged permissions granted.
+- `/product/etc/eliza/aosp-assistant-full-control.json` is present on-device
+  with the AOSP-only control path and `android-cloud` strip policy.
+- `GET_USAGE_STATS` appop is `allow`.
+
 ### Pending ports (developer tooling, eliza-only for now)
 
 - `e2e-validate.mjs` — full e2e boot + interaction smoke
