@@ -1,7 +1,4 @@
-import type {
-  OAuthIntentRow,
-  OAuthIntentsRepository,
-} from "@/db/repositories/oauth-intents";
+import type { OAuthIntentRow, OAuthIntentsRepository } from "@/db/repositories/oauth-intents";
 import { logger } from "@/lib/utils/logger";
 
 export type { OAuthIntentRow } from "@/db/repositories/oauth-intents";
@@ -262,11 +259,7 @@ class OAuthIntentsServiceImpl implements OAuthIntentsService {
     return updated;
   }
 
-  async cancel(
-    id: string,
-    organizationId: string,
-    reason?: string,
-  ): Promise<OAuthIntentRow> {
+  async cancel(id: string, organizationId: string, reason?: string): Promise<OAuthIntentRow> {
     const existing = requireRow(await this.repository.getOAuthIntent(id), id, "cancel lookup");
     if (existing.organizationId !== organizationId) {
       throw new Error(`OAuth intent ${id} does not belong to organization ${organizationId}`);
