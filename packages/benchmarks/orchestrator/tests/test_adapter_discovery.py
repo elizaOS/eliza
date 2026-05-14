@@ -1173,7 +1173,7 @@ def test_action_calling_cli_accepts_tool_choice_none() -> None:
 
 
 def test_clawbench_runner_extracts_native_tool_call_args() -> None:
-    module_path = _workspace_root() / "packages" / "benchmarks" / "clawbench" / "eliza_adapter.py"
+    module_path = _workspace_root() / "benchmarks" / "clawbench" / "eliza_adapter.py"
     spec = importlib.util.spec_from_file_location("clawbench_eliza_adapter_test", module_path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
