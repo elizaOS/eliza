@@ -13,7 +13,8 @@
       ],
       "@elizaos/cloud-routing": ["./packages/cloud-routing/dist/index.d.ts"],
       "@elizaos/agent": ["./packages/agent/dist/index.d.ts"],
-      "@elizaos/shared": ["./packages/shared/dist/index.d.ts"],
+      "@elizaos/shared": ["./packages/shared/src/index.ts"],
+      "@elizaos/shared/*": ["./packages/shared/src/*"],
       "@elizaos/capacitor-wifi": [
         "./packages/native-plugins/wifi/dist/index.d.ts"
       ],
@@ -201,7 +202,7 @@
       "@elizaos/plugin-coding-tools": [
         "./plugins/plugin-coding-tools/dist/index.d.ts"
       ],
-      "@elizaos/plugin-browser": ["./plugins/plugin-browser/dist/index.d.ts"],
+      "@elizaos/plugin-browser": ["./plugins/plugin-browser/src/index.ts"],
       "@elizaos/plugin-vision": ["./plugins/plugin-vision/dist/index.d.ts"],
       "@elizaos/plugin-suno": ["./plugins/plugin-suno/dist/index.d.ts"],
       "@elizaos/plugin-sql": ["./plugins/plugin-sql/src/dist/index.d.ts"],

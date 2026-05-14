@@ -155,7 +155,7 @@ IMAGE="nvidia/cuda:12.8.0-devel-ubuntu24.04"
 DISK_GB=80
 
 # The remote bootstrap. Heredoc'd onto the instance and run there.
-REMOTE_SCRIPT="$(cat <<REMOTE
+read -r -d '' REMOTE_SCRIPT <<REMOTE || true
 set -euxo pipefail
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -q && apt-get install -y -q git curl ca-certificates build-essential cmake unzip
@@ -170,12 +170,11 @@ bun install --frozen-lockfile || bun install
 ELIZA_DFLASH_SKIP_SERVER_STRUCTURED_OUTPUT=1 node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target linux-x64-cuda
 make -C packages/inference/verify kernel-contract reference-test
 REMOTE
-)"
 
 case "$TASK" in
   kernel-verify)
     OUT="$RESULTS_DIR/cuda-linux-${GPU}-${DATE_TAG}.json"
-    REMOTE_TASK="$(cat <<REMOTE
+    read -r -d '' REMOTE_TASK <<REMOTE || true
 make -C packages/inference/verify cuda-verify
 make -C packages/inference/verify cuda-verify-fused
 ${SMOKE_MODEL:+export ELIZA_DFLASH_SMOKE_MODEL=/workspace/smoke.gguf}
@@ -188,14 +187,13 @@ ${SMOKE_MODEL:+:} || cat > /workspace/cuda-report.json <<JSON
  "exitCode":0,"note":"cuda-verify + cuda-verify-fused fixture parity only; no ELIZA_DFLASH_SMOKE_MODEL → graph smoke skipped, so this is NOT a runtime-ready record. Pass --smoke-model to upgrade."}
 JSON
 REMOTE
-)"
     PULL_REMOTE="/workspace/eliza/cuda-report.json:$OUT /workspace/cuda-report.json:$OUT"
     mkdir -p "$RESULTS_DIR"
     ;;
   bench)
     REG_KEY="$(tier_to_registry_key "$TIER")"
     OUT="$BENCH_DIR/cuda_${GPU}_${TIER}_${DATE_TAG}.json"
-    REMOTE_TASK="$(cat <<REMOTE
+    read -r -d '' REMOTE_TASK <<REMOTE || true
 # e2e CUDA bench harness. The repo's bench entrypoint reads the bench_results
 # dir; we point it at /workspace and copy out.
 ELIZA1_BENCH_TIER=$TIER ELIZA1_BENCH_REGISTRY_KEY=$REG_KEY \
@@ -204,7 +202,6 @@ ELIZA1_BENCH_TIER=$TIER ELIZA1_BENCH_REGISTRY_KEY=$REG_KEY \
     printf "{\"schemaVersion\":1,\"backend\":\"cuda\",\"gpu\":\"%s\",\"tier\":\"%s\",\"status\":\"toolchain-only\",\"note\":\"eliza1 bench harness not on this commit\"}\\n" "$GPU" "$TIER" > /workspace/bench.json; }
 cp /workspace/bench.json /workspace/eliza/bench.json 2>/dev/null || true
 REMOTE
-)"
     PULL_REMOTE="/workspace/bench.json:$OUT /workspace/eliza/bench.json:$OUT"
     mkdir -p "$BENCH_DIR"
     ;;

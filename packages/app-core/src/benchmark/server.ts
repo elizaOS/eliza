@@ -396,6 +396,27 @@ function isMeaningfulLifeOpsCapture(args: Record<string, unknown>): boolean {
   return Object.keys(stripRuntimeActionContext(args)).length > 0;
 }
 
+function lifeOpsCandidateActionsForText(userText: string): string[] {
+  const text = userText.toLowerCase();
+  const candidates = new Set<string>(["BENCHMARK_ACTION"]);
+  if (
+    /\barchive\b/.test(text) &&
+    (/\bthread_[a-z0-9_]+\b/.test(text) || /\bthread\b/.test(text))
+  ) {
+    candidates.add("ARCHIVE_EMAIL_THREAD");
+    candidates.add("MESSAGE_MANAGE");
+    candidates.add("MESSAGE");
+  }
+  if (
+    /\b(free|available|availability)\b/.test(text) ||
+    /\b\d{1,2}(?::\d{2})?\s*(?:am|pm)?\s*(?:-|to)\s*\d{1,2}/.test(text)
+  ) {
+    candidates.add("CALENDAR_CHECK_AVAILABILITY");
+    candidates.add("CALENDAR");
+  }
+  return [...candidates];
+}
+
 function isAllowedOrigin(origin: string | undefined): boolean {
   if (!origin) return false;
   try {
