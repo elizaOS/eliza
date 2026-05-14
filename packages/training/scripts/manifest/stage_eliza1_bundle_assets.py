@@ -108,19 +108,30 @@ VAD_ONNX_FALLBACK_FILES: Final[tuple[tuple[str, str], ...]] = (
     ("onnx/model_int8.onnx", "vad/silero-vad-int8.onnx"),
 )
 
-# openWakeWord ships its ONNX graphs as GitHub release assets, not on the
-# Hub. The melspectrogram + embedding front-ends are model-agnostic; the
-# wake-word head is the wake phrase. We stage the upstream "hey jarvis"
-# head as the Eliza-1 default ("hey-eliza.onnx") — replace it with a head
-# trained on the approved wake phrase before a real release.
+# openWakeWord ships its model-agnostic front-end graphs (melspectrogram +
+# embedding model) as GitHub release assets — they ship verbatim per bundle
+# and are not retrained. The wake-word head is the wake-phrase-specific
+# part; it is trained by
+# `packages/training/scripts/wakeword/train_eliza1_wakeword_head.py` and
+# either staged from a local trained-head path (via --wakeword-head-path)
+# or, when no path is supplied, falls back to the upstream "hey jarvis"
+# placeholder — which the runtime flags as a placeholder via
+# `OPENWAKEWORD_PLACEHOLDER_HEADS` in voice/wake-word.ts. The 2026-05-14
+# training run (FA=10%/TA=90% on a 20+20 synthetic held-out) produces the
+# first real "hey eliza" head; the public registry will publish it once a
+# proper noise-corpus eval lands.
 WAKEWORD_RELEASE: Final[str] = (
     "https://github.com/dscripka/openWakeWord/releases/download/v0.5.1"
 )
-WAKEWORD_FILES: Final[tuple[tuple[str, str], ...]] = (
+WAKEWORD_FRONT_END_FILES: Final[tuple[tuple[str, str], ...]] = (
     ("melspectrogram.onnx", "wake/melspectrogram.onnx"),
     ("embedding_model.onnx", "wake/embedding_model.onnx"),
-    ("hey_jarvis_v0.1.onnx", "wake/hey-eliza.onnx"),
 )
+# Placeholder source used when the operator does not pass
+# --wakeword-head-path; matches the historical behavior + the
+# `hey_jarvis` placeholder flag in voice/wake-word.ts.
+WAKEWORD_HEAD_PLACEHOLDER_REMOTE: Final[str] = "hey_jarvis_v0.1.onnx"
+WAKEWORD_HEAD_DESTINATION: Final[str] = "wake/hey-eliza.onnx"
 WAKEWORD_MIN_BYTES: Final[int] = 100_000
 
 VOICE_PRESET_MAGIC: Final[int] = 0x315A4C45  # 'ELZ1'
@@ -852,11 +863,60 @@ def stage_assets(args: argparse.Namespace) -> dict[str, Any]:
                 )
             )
     if not args.skip_wakeword:
-        for remote, rel in WAKEWORD_FILES:
+        for remote, rel in WAKEWORD_FRONT_END_FILES:
             staged.append(
                 download_url_file(
                     url=f"{WAKEWORD_RELEASE}/{remote}",
                     destination=bundle_dir / rel,
+                    min_bytes=WAKEWORD_MIN_BYTES,
+                    dry_run=args.dry_run,
+                )
+            )
+        head_dest = bundle_dir / WAKEWORD_HEAD_DESTINATION
+        head_src = getattr(args, "wakeword_head_path", None)
+        if head_src:
+            head_src_path = Path(head_src)
+            if not head_src_path.is_file():
+                raise SystemExit(
+                    f"--wakeword-head-path {head_src!r} does not exist; "
+                    "train one via packages/training/scripts/wakeword/"
+                    "train_eliza1_wakeword_head.py first"
+                )
+            if head_src_path.stat().st_size < WAKEWORD_MIN_BYTES:
+                raise SystemExit(
+                    f"--wakeword-head-path {head_src!r} is only "
+                    f"{head_src_path.stat().st_size} bytes (< {WAKEWORD_MIN_BYTES}); "
+                    "looks truncated or wrong file"
+                )
+            if not args.dry_run:
+                head_dest.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(head_src_path, head_dest)
+            staged.append(
+                {
+                    "source": str(head_src_path),
+                    "path": str(head_dest),
+                    "sizeBytes": (
+                        head_dest.stat().st_size
+                        if head_dest.is_file()
+                        else head_src_path.stat().st_size
+                    ),
+                    "sha256": (
+                        sha256_file(head_dest)
+                        if head_dest.is_file()
+                        else sha256_file(head_src_path)
+                    ),
+                    "wakePhrase": "hey eliza",
+                    "trainedHead": True,
+                }
+            )
+        else:
+            # Fall back to the openWakeWord placeholder; the runtime keeps
+            # this listed in OPENWAKEWORD_PLACEHOLDER_HEADS so the engine
+            # warns on activation.
+            staged.append(
+                download_url_file(
+                    url=f"{WAKEWORD_RELEASE}/{WAKEWORD_HEAD_PLACEHOLDER_REMOTE}",
+                    destination=head_dest,
                     min_bytes=WAKEWORD_MIN_BYTES,
                     dry_run=args.dry_run,
                 )
@@ -1039,6 +1099,18 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             "Skip staging the optional openWakeWord graphs. Wake word is "
             "opt-in (hide-not-disable); a bundle without it still has a "
             "working voice pipeline (push-to-talk / VAD-gated)."
+        ),
+    )
+    ap.add_argument(
+        "--wakeword-head-path",
+        default=None,
+        help=(
+            "Path to a locally-trained wake-word head ONNX (output of "
+            "packages/training/scripts/wakeword/train_eliza1_wakeword_head.py). "
+            "When supplied, this head is staged as wake/hey-eliza.onnx in "
+            "every bundle instead of the upstream `hey_jarvis` placeholder. "
+            "Omitting the flag preserves the legacy placeholder behavior "
+            "(runtime warns via OPENWAKEWORD_PLACEHOLDER_HEADS)."
         ),
     )
     ap.add_argument(
