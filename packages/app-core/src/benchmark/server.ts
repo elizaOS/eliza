@@ -1285,6 +1285,9 @@ export async function startBenchmarkServer() {
       const session = resolveSession(taskId, "lifeops_bench", true);
       if (!session) throw new Error("Failed to resolve lifeops_bench session");
       await ensureBenchmarkSessionContext(runtime, session);
+      const hasSuccessfulLifeOpsToolResult = previousTurns.some((turn) =>
+        turn.toolCalls.some((call) => call.ok === true),
+      );
 
       const benchmarkContext = normalizeBenchmarkContext(session, {
         benchmark: "lifeops_bench",
@@ -1309,6 +1312,7 @@ export async function startBenchmarkServer() {
           metadata: {
             benchmark: "lifeops_bench",
             taskId,
+            forceBenchmarkToolCall: !hasSuccessfulLifeOpsToolResult,
           },
         },
         entityId: session.userEntityId,

@@ -4,7 +4,7 @@ This creates an HF *model* repo (HF has no separate "pipeline" repo type)
 that bundles the training scripts so a fresh Vast.ai box can:
 
     git clone <nothing — straight HF download>
-    hf download elizalabs/eliza-1-pipeline --local-dir /workspace/training
+    hf download elizaos/eliza-1-pipeline --local-dir /workspace/training
     cd /workspace/training && uv sync --extra train
     bash scripts/train_vast.sh ...
 
@@ -17,10 +17,10 @@ and ``scripts/publish/publish_model.py``. Those wrappers forward here.
 Usage::
 
     uv run python scripts/publish_pipeline_to_hf.py \\
-        --repo-id elizalabs/eliza-1-pipeline --dry-run
+        --repo-id elizaos/eliza-1-pipeline --dry-run
 
     HF_TOKEN=hf_xxx uv run python scripts/publish_pipeline_to_hf.py \\
-        --repo-id elizalabs/eliza-1-pipeline
+        --repo-id elizaos/eliza-1-pipeline
 """
 
 from __future__ import annotations
@@ -152,9 +152,9 @@ def build_pipeline_card(repo_id: str) -> str:
         "\n"
         "Companion repos:\n"
         "\n"
-        "- `elizalabs/eliza-1-training` — SFT data: top-level `train/val/test.jsonl + manifest.json`, "
+        "- `elizaos/eliza-1-training` — SFT data: top-level `train/val/test.jsonl + manifest.json`, "
         "adversarial scam set under `scambench/`, and small Claude-teacher synthesis sets under `synthesized/`.\n"
-        "- `elizalabs/eliza-1` — single app-facing model repo; GGUF bundles live under `bundles/<tier>/`.\n"
+        "- `elizaos/eliza-1` — single app-facing model repo; GGUF bundles live under `bundles/<tier>/`.\n"
         "\n"
         "## Vast.ai bootstrap\n"
         "\n"
@@ -164,7 +164,7 @@ def build_pipeline_card(repo_id: str) -> str:
         "\n"
         "```bash\n"
         f"hf download {repo_id} --local-dir /workspace/training\n"
-        "hf download elizalabs/eliza-1-training --repo-type dataset \\\n"
+        "hf download elizaos/eliza-1-training --repo-type dataset \\\n"
         "    --local-dir /workspace/training/data/final\n"
         "cd /workspace/training\n"
         "uv sync --extra train\n"
@@ -325,7 +325,7 @@ def main() -> int:
     ap.add_argument(
         "--repo-id",
         required=True,
-        help="Destination HF model repo id (e.g. elizalabs/eliza-1-pipeline).",
+        help="Destination HF model repo id (e.g. elizaos/eliza-1-pipeline).",
     )
     ap.add_argument(
         "--private",
