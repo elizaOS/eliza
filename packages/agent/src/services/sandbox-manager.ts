@@ -10,8 +10,8 @@ import {
   GENERAL_SANDBOX_CONSTRAINTS,
   getUnsupportedSandboxConstraints,
   type ISandboxEngine,
-  type SandboxRunConstraint,
   type SandboxEngineType,
+  type SandboxRunConstraint,
 } from "./sandbox-engine.ts";
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -166,7 +166,6 @@ export class SandboxManager {
       memory: "512m",
       cpus: 1,
       pidsLimit: 256,
-      readOnlyRoot: config.mode === "max" ? true : undefined,
       ...config,
       readOnlyRoot: config.mode === "max" ? true : config.readOnlyRoot,
     };

@@ -56,12 +56,24 @@ describe("Wave 2-D enum short-form completion", () => {
 
 	it("expands { parameters: '<enum>' } into the canonical shape", () => {
 		const action = makeAction({});
-		const expanded = expandEnumShortForm(action, {
-			parameters: "accept",
-		});
+		const onExpand = vi.fn();
+		const expanded = expandEnumShortForm(
+			action,
+			{
+				parameters: "accept",
+			},
+			{
+				onExpand,
+			},
+		);
 		// The legacy `parameters` key is dropped after expansion so strict
 		// validation doesn't reject it as an unknown field.
 		expect(expanded).toEqual({ mode: "accept" });
+		expect(onExpand).toHaveBeenCalledWith({
+			parameterName: "mode",
+			sourceKey: "parameters",
+			value: "accept",
+		});
 	});
 
 	it("leaves canonical shape untouched", () => {
@@ -126,6 +138,16 @@ describe("Wave 2-D enum short-form completion", () => {
 			| { parameters?: Record<string, unknown> }
 			| undefined;
 		expect(handlerOptions?.parameters?.mode).toBe("snooze");
+		expect(runtime.logger.debug).toHaveBeenCalledWith(
+			expect.objectContaining({
+				src: "execute-planned-tool-call",
+				action: "TEST_ENUM_ACTION",
+				parameterName: "mode",
+				sourceKey: "parameters",
+				value: "snooze",
+			}),
+			"expanded enum short-form tool arguments",
+		);
 	});
 
 	it("strict validation still rejects non-enum values after expansion", async () => {

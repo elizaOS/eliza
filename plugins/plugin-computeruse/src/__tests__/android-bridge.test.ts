@@ -80,6 +80,15 @@ describe("Android assistant and App Actions routing source", () => {
     expect(shortcuts.toLowerCase()).not.toContain("notification");
     expect(shortcuts).not.toContain("ScheduledTask");
   });
+
+  it("routes assistant-role launches through the same app deep link scheme", () => {
+    const source = readRepoFile(
+      "packages/app-core/platforms/android/app/src/main/java/ai/elizaos/app/ElizaAssistActivity.java",
+    );
+
+    expect(source).toContain("eliza://chat?source=android-assist");
+    expect(source).not.toContain("ai.elizaos.app://chat");
+  });
 });
 
 // ── AndroidBridgeResult discriminated union ───────────────────────────────────
