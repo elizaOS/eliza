@@ -114,11 +114,12 @@ export const useComputerAction: Action = {
     "CAPTURE_SCREEN",
     "SEE_SCREEN",
     "GET_ACCESSIBILITY_TREE",
+    "FIND_ELEMENT",
   ],
   description:
-    "computer_use:\n  purpose: Canonical cross-platform computer-use action for real desktop interaction on macOS, Linux, and Windows when direct computer operation is required.\n  guidance: Take a screenshot before acting. After each desktop action, the result includes a screenshot when available. Use this standard plugin action, not a LifeOps wrapper, for Finder/Desktop/native-app/browser/file/terminal workflows on the owner's machine.\n  actions: screenshot/click/click_with_modifiers/double_click/right_click/middle_click/mouse_down/mouse_up/mouse_move/type/key/key_down/key_up/key_combo/scroll/drag/drag_to/left_click_drag/detect_elements/ocr/accessibility_tree.",
+    "computer_use:\n  purpose: Canonical cross-platform computer-use action for real desktop interaction on macOS, Linux, and Windows when direct computer operation is required.\n  guidance: Take a screenshot before acting. After each desktop action, the result includes a screenshot when available. Use this standard plugin action, not a LifeOps wrapper, for Finder/Desktop/native-app/browser/file/terminal workflows on the owner's machine.\n  actions: screenshot/click/click_with_modifiers/double_click/right_click/middle_click/mouse_down/mouse_up/mouse_move/type/key/key_down/key_up/key_combo/scroll/drag/drag_to/left_click_drag/detect_elements/find_element/ocr/accessibility_tree.",
   descriptionCompressed:
-    "Canonical cross-platform desktop control: screenshot/click/modified click/double/right/middle/down/up/move/type/key/key_down/key_up/key_combo/scroll/drag/detect_elements/ocr/accessibility_tree.",
+    "Canonical cross-platform desktop control: screenshot/click/modified click/double/right/middle/down/up/move/type/key/key_down/key_up/key_combo/scroll/drag/detect_elements/find_element/ocr/accessibility_tree.",
   routingHint:
     "desktop/computer/native-app/Finder/window screenshots or control -> COMPUTER_USE; never invent takeScreenshot",
 
@@ -149,6 +150,7 @@ export const useComputerAction: Action = {
           "left_click_drag",
           "drag_to",
           "detect_elements",
+          "find_element",
           "ocr",
           "accessibility_tree",
         ],
@@ -178,6 +180,13 @@ export const useComputerAction: Action = {
         "Modifier keys to hold during click_with_modifiers, e.g. ['cmd', 'shift'] or ['ctrl'].",
       required: false,
       schema: { type: "array", items: { type: "string" } },
+    },
+    {
+      name: "query",
+      description:
+        "Text query for find_element against AX/OCR id, label, role, source, or actions.",
+      required: false,
+      schema: { type: "string" },
     },
     {
       name: "key",

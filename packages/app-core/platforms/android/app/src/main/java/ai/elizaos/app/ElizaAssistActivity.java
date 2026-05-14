@@ -13,7 +13,7 @@ public class ElizaAssistActivity extends Activity {
 
         Intent launch = new Intent(this, MainActivity.class);
         launch.setAction(Intent.ACTION_VIEW);
-        launch.setData(Uri.parse("ai.elizaos.app://chat?source=android-assist"));
+        launch.setData(Uri.parse("eliza://chat?source=android-assist"));
         launch.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
         startActivity(launch);
         finish();

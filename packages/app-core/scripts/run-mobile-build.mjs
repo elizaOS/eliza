@@ -3404,9 +3404,33 @@ function validateIosBunEngineSymbols(binary) {
   }
 }
 
+function validateIosBunEngineAppStoreCompliance(binary) {
+  const result = runCaptureSync("nm", ["-u", binary], {
+    maxBuffer: 256 * 1024 * 1024,
+  });
+  if (result.status !== 0) {
+    const reason =
+      result.stderr?.trim() ||
+      result.error?.message ||
+      `exit status ${String(result.status)}`;
+    throw new Error(
+      `[mobile-build] failed to inspect ${binary} for App Store policy with nm: ${reason}`,
+    );
+  }
+  const output = `${result.stdout}\n${result.stderr}`;
+  const forbidden = IOS_BUN_ENGINE_APP_STORE_FORBIDDEN_SYMBOLS.filter(
+    (symbol) => output.includes(symbol),
+  );
+  if (forbidden.length > 0) {
+    throw new Error(
+      `[mobile-build] ${binary} imports App-Store-incompatible runtime symbols: ${forbidden.join(", ")}`,
+    );
+  }
+}
+
 function validateIosFullBunEngineXcframework(
   xcframework,
-  { buildTarget = null } = {},
+  { buildTarget = null, appStoreLocal = false } = {},
 ) {
   const { binary, frameworkDir, libraryIdentifier } =
     resolveIosBunEngineLibrary(xcframework, { buildTarget });
@@ -3428,6 +3452,9 @@ function validateIosFullBunEngineXcframework(
     );
   }
   validateIosBunEngineSymbols(binary);
+  if (appStoreLocal) {
+    validateIosBunEngineAppStoreCompliance(binary);
+  }
   console.log(
     `[mobile-build] iOS full Bun engine validated ${libraryIdentifier}: ${binary}`,
   );
@@ -3462,7 +3489,10 @@ function stageIosFullBunEngineForPodspec(framework) {
   return defaultIosBunEngineXcframework;
 }
 
-function ensureIosFullBunEngineArtifact({ buildTarget = null } = {}) {
+function ensureIosFullBunEngineArtifact({
+  buildTarget = null,
+  appStoreLocal = false,
+} = {}) {
   if (!isFullIosBunEngineRequested()) return null;
   const framework = resolveIosFullBunEngineXcframework({ buildTarget });
   if (!framework) {
@@ -3479,10 +3509,16 @@ function ensureIosFullBunEngineArtifact({ buildTarget = null } = {}) {
       ].join("\n"),
     );
   }
-  validateIosFullBunEngineXcframework(framework, { buildTarget });
+  validateIosFullBunEngineXcframework(framework, {
+    buildTarget,
+    appStoreLocal,
+  });
   const stagedFramework = stageIosFullBunEngineForPodspec(framework);
   if (stagedFramework !== framework) {
-    validateIosFullBunEngineXcframework(stagedFramework, { buildTarget });
+    validateIosFullBunEngineXcframework(stagedFramework, {
+      buildTarget,
+      appStoreLocal,
+    });
   }
   process.env.ELIZA_IOS_BUN_ENGINE_XCFRAMEWORK = stagedFramework;
   console.log(`[mobile-build] iOS full Bun engine: ${stagedFramework}`);
