@@ -1,7 +1,11 @@
 __pycache__/
 *.pyc
 .venv/
-data/
+data/*
+# Smoke corpus: tiny end-to-end-pipeline validator (~400 rows). Kept in
+# git so the e2e SFT pipeline can be smoke-tested from a fresh clone.
+!data/final-eliza1-smoke/
+!data/final-eliza1-smoke/**
 checkpoints/
 # Generated benchmark outputs (parquet datasets, ablation dumps) are
 # ignored, but the checked-in gate definition + engine + tests are tracked —
