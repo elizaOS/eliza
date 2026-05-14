@@ -40,7 +40,15 @@ logger = logging.getLogger(__name__)
 
 
 class REALMEvaluator:
-    """Per-problem extrinsic evaluator."""
+    """Per-problem extrinsic evaluator.
+
+    ``solver_timeout_s`` caps the wall-clock budget of the OR-Tools
+    oracles (JSSP CP-SAT, TSP-TW / DARP RoutingModel). Wired in by
+    the runner from :class:`REALMConfig.solver_timeout_s`.
+    """
+
+    def __init__(self, *, solver_timeout_s: float = solvers.DEFAULT_SOLVER_TIMEOUT_S) -> None:
+        self.solver_timeout_s = float(solver_timeout_s)
 
     def evaluate_trajectory(
         self,
@@ -50,7 +58,7 @@ class REALMEvaluator:
     ) -> REALMResult:
         family = PROBLEM_TO_FAMILY[task.problem]
         scorer = _SCORERS[family]
-        metrics = scorer(task, trajectory)
+        metrics = scorer(task, trajectory, solver_timeout_s=self.solver_timeout_s)
 
         # Resource metrics come straight from measured wall times on the
         # trajectory.
@@ -107,7 +115,12 @@ class REALMEvaluator:
 # ---------------------------------------------------------------------------
 
 
-def _score_tsp_tw(task: REALMTask, trajectory: PlanningTrajectory) -> REALMResultMetrics:
+def _score_tsp_tw(
+    task: REALMTask,
+    trajectory: PlanningTrajectory,
+    *,
+    solver_timeout_s: float = solvers.DEFAULT_SOLVER_TIMEOUT_S,
+) -> REALMResultMetrics:
     """P1: single-agent TSP with time windows."""
     inst = task.instance
     route = _read_route(trajectory)
@@ -136,6 +149,7 @@ def _score_tsp_tw(task: REALMTask, trajectory: PlanningTrajectory) -> REALMResul
         start_location=start,
         end_location=end,
         max_duration=max_duration,
+        timeout_s=solver_timeout_s,
     )
 
     expected_locs = set(time_windows.keys())
@@ -169,7 +183,12 @@ def _score_tsp_tw(task: REALMTask, trajectory: PlanningTrajectory) -> REALMResul
     )
 
 
-def _score_vrp_tw(task: REALMTask, trajectory: PlanningTrajectory) -> REALMResultMetrics:
+def _score_vrp_tw(
+    task: REALMTask,
+    trajectory: PlanningTrajectory,
+    *,
+    solver_timeout_s: float = solvers.DEFAULT_SOLVER_TIMEOUT_S,
+) -> REALMResultMetrics:
     """P2: multi-group campus tours. We score whether all groups are
     assigned to a guide within that guide's availability and the per-guide
     capacity is respected, and report total wait time as the cost.
@@ -228,7 +247,12 @@ def _score_vrp_tw(task: REALMTask, trajectory: PlanningTrajectory) -> REALMResul
     )
 
 
-def _score_darp(task: REALMTask, trajectory: PlanningTrajectory) -> REALMResultMetrics:
+def _score_darp(
+    task: REALMTask,
+    trajectory: PlanningTrajectory,
+    *,
+    solver_timeout_s: float = solvers.DEFAULT_SOLVER_TIMEOUT_S,
+) -> REALMResultMetrics:
     """P3 / P4: ride-sharing."""
     inst = task.instance
     distances = inst.get("city_map", {}).get("distances") or inst.get("distances") or {}
@@ -265,7 +289,9 @@ def _score_darp(task: REALMTask, trajectory: PlanningTrajectory) -> REALMResultM
                 veh_cur_loc[vid] = p["dropoff"]
                 served.add(pid)
 
-    oracle_cost, _ = solvers.darp_oracle_distance(vehicles, passengers, distances)
+    oracle_cost, _ = solvers.darp_oracle_distance(
+        vehicles, passengers, distances, timeout_s=solver_timeout_s
+    )
 
     planning_quality = (
         len(served) / max(1, len(passengers)) if passengers else 1.0
@@ -285,7 +311,12 @@ def _score_darp(task: REALMTask, trajectory: PlanningTrajectory) -> REALMResultM
     )
 
 
-def _score_event_coord(task: REALMTask, trajectory: PlanningTrajectory) -> REALMResultMetrics:
+def _score_event_coord(
+    task: REALMTask,
+    trajectory: PlanningTrajectory,
+    *,
+    solver_timeout_s: float = solvers.DEFAULT_SOLVER_TIMEOUT_S,
+) -> REALMResultMetrics:
     """P5/P6/P8/P9: event coordination scenarios.
 
     We grade on:
@@ -357,7 +388,12 @@ def _score_event_coord(task: REALMTask, trajectory: PlanningTrajectory) -> REALM
     )
 
 
-def _score_disaster(task: REALMTask, trajectory: PlanningTrajectory) -> REALMResultMetrics:
+def _score_disaster(
+    task: REALMTask,
+    trajectory: PlanningTrajectory,
+    *,
+    solver_timeout_s: float = solvers.DEFAULT_SOLVER_TIMEOUT_S,
+) -> REALMResultMetrics:
     inst = task.instance
     allocations = trajectory.solution.get("allocations", {}) or {}
     score, oracle, details = solvers.disaster_max_coverage_score(
@@ -379,7 +415,12 @@ def _score_disaster(task: REALMTask, trajectory: PlanningTrajectory) -> REALMRes
     )
 
 
-def _score_supply_chain(task: REALMTask, trajectory: PlanningTrajectory) -> REALMResultMetrics:
+def _score_supply_chain(
+    task: REALMTask,
+    trajectory: PlanningTrajectory,
+    *,
+    solver_timeout_s: float = solvers.DEFAULT_SOLVER_TIMEOUT_S,
+) -> REALMResultMetrics:
     inst = task.instance
     sol = trajectory.solution or {}
     orders = sol.get("orders", []) or []
@@ -406,14 +447,17 @@ def _score_supply_chain(task: REALMTask, trajectory: PlanningTrajectory) -> REAL
     )
 
 
-def _score_jssp(task: REALMTask, trajectory: PlanningTrajectory) -> REALMResultMetrics:
+def _score_jssp(
+    task: REALMTask,
+    trajectory: PlanningTrajectory,
+    *,
+    solver_timeout_s: float = solvers.DEFAULT_SOLVER_TIMEOUT_S,
+) -> REALMResultMetrics:
     """P11: Job-shop scheduling."""
     inst = task.instance
     jobs = inst.get("jobs") or []
     sol = trajectory.solution or {}
 
-    # The agent's solution should be ``{"sequence": [[job_idx, ...], ...]}``,
-    # one permutation per machine. Fall back to FIFO if missing.
     sequence = sol.get("sequence")
     if not isinstance(sequence, list) or not sequence:
         sequence = _jssp_fifo_sequence(jobs)
@@ -421,11 +465,18 @@ def _score_jssp(task: REALMTask, trajectory: PlanningTrajectory) -> REALMResultM
     makespan = solvers.jssp_compute_makespan(jobs, sequence)
     feasible = makespan is not None
 
-    oracle = (
+    # Always compute CP-SAT optimum; if upstream provided a UB take
+    # the tighter of the two.
+    cp_optimum = solvers.jssp_oracle_makespan(jobs, timeout_s=solver_timeout_s)
+    upstream_ub = (
         task.oracle.get("makespan")
         if task.oracle and "makespan" in task.oracle
-        else solvers.jssp_oracle_makespan(jobs)
+        else None
     )
+    if isinstance(upstream_ub, (int, float)) and upstream_ub > 0:
+        oracle: Any = int(min(cp_optimum, int(upstream_ub)))
+    else:
+        oracle = int(cp_optimum)
 
     optimality = 0.0
     if feasible and makespan and oracle:

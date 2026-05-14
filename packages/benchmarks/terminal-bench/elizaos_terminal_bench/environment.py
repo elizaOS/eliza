@@ -435,12 +435,49 @@ class MockTerminalEnvironment(TerminalEnvironment):
         return True, "Mock test passed", 0
 
 
+def _resolve_local_bash() -> str:
+    """Locate a POSIX bash for the LocalTerminalEnvironment.
+
+    On Windows the LocalTerminalEnvironment must shell out to a real POSIX
+    bash so that the sample-task and upstream test scripts (heredocs, ``set -e``,
+    ``[[ ]]``, ``$(...)`` etc.) actually run. Git Bash ships at a couple of
+    standard locations; we honor an explicit override via ``TBENCH_LOCAL_BASH``.
+
+    On non-Windows we just trust ``bash`` on PATH.
+    """
+    override = os.environ.get("TBENCH_LOCAL_BASH", "").strip()
+    if override and Path(override).exists():
+        return override
+    if os.name == "nt":
+        candidates = [
+            r"C:\Program Files\Git\bin\bash.exe",
+            r"C:\Program Files\Git\usr\bin\bash.exe",
+            r"C:\Program Files (x86)\Git\bin\bash.exe",
+        ]
+        for cand in candidates:
+            if Path(cand).exists():
+                return cand
+        found = shutil.which("bash")
+        if found:
+            return found
+        raise TerminalEnvironmentError(
+            "LocalTerminalEnvironment requires a POSIX bash on Windows. "
+            "Install Git for Windows (provides Git Bash) or set "
+            "TBENCH_LOCAL_BASH to a bash.exe path."
+        )
+    return shutil.which("bash") or "bash"
+
+
 class LocalTerminalEnvironment:
     """Run Terminal-Bench smoke tasks in an isolated local temp workspace.
 
     This is a real shell execution path for environments where Docker is not
     available. It rewrites `/workspace` references into the temp directory so
     the bundled sample tasks can run without creating root-level paths.
+
+    On Windows the environment shells out to Git Bash (or whatever
+    ``TBENCH_LOCAL_BASH`` points at) so that POSIX-shaped test scripts and
+    heredocs run as expected.
     """
 
     def __init__(
@@ -458,6 +495,7 @@ class LocalTerminalEnvironment:
         self._started = False
         self._root: Path | None = None
         self._workspace: Path | None = None
+        self._bash = _resolve_local_bash()
 
     @property
     def is_started(self) -> bool:
@@ -489,7 +527,13 @@ class LocalTerminalEnvironment:
         return self._workspace
 
     def _rewrite(self, value: str) -> str:
-        return value.replace("/workspace", str(self._workspace_path()))
+        ws = str(self._workspace_path())
+        # Git Bash accepts forward-slash Windows paths (e.g.
+        # ``C:/Users/foo``); normalize so backslashes don't end up inside
+        # heredocs where bash would treat them as escapes.
+        if os.name == "nt":
+            ws = ws.replace("\\", "/")
+        return value.replace("/workspace", ws)
 
     async def execute(
         self,
@@ -511,7 +555,7 @@ class LocalTerminalEnvironment:
         try:
             result = await asyncio.to_thread(
                 subprocess.run,
-                ["bash", "-lc", rewritten_command],
+                [self._bash, "-lc", rewritten_command],
                 cwd=str(cwd),
                 capture_output=True,
                 text=True,
@@ -546,9 +590,17 @@ class LocalTerminalEnvironment:
 
     async def run_test(self, test_script: str) -> tuple[bool, str, int]:
         script_path = self._workspace_path() / ".terminal_bench_test.sh"
-        script_path.write_text(self._rewrite(test_script), encoding="utf-8")
-        script_path.chmod(0o700)
-        result = await self.execute("bash .terminal_bench_test.sh", timeout=self.timeout_seconds)
+        # Strip CRLF — Windows file writes can otherwise emit \r\n which
+        # confuses bash heredoc terminators.
+        rewritten = self._rewrite(test_script).replace("\r\n", "\n")
+        script_path.write_text(rewritten, encoding="utf-8", newline="\n")
+        try:
+            script_path.chmod(0o700)
+        except (OSError, NotImplementedError):
+            pass
+        result = await self.execute(
+            "bash .terminal_bench_test.sh", timeout=self.timeout_seconds
+        )
         output = result.stdout + result.stderr
         return result.exit_code == 0, output, result.exit_code
 

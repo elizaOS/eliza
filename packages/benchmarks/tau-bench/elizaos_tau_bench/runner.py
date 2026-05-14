@@ -81,10 +81,40 @@ class TauBenchRunner:
     def _make_agent(self) -> BaseTauAgent:
         if self.config.use_mock:
             return MockTauAgent()
-        return LiteLLMToolCallingAgent(
-            model=self.config.agent_model,
-            provider=self.config.agent_provider,
-            temperature=self.config.agent_temperature,
+        harness = (self.config.agent_harness or "litellm").strip().lower()
+        if harness in {"", "litellm"}:
+            return LiteLLMToolCallingAgent(
+                model=self.config.agent_model,
+                provider=self.config.agent_provider,
+                temperature=self.config.agent_temperature,
+            )
+        if harness == "hermes":
+            from hermes_adapter.tau_bench import HermesTauAgent  # noqa: WPS433
+
+            return HermesTauAgent(
+                model=self.config.agent_model,
+                provider=self.config.agent_provider,
+                temperature=self.config.agent_temperature,
+            )
+        if harness == "openclaw":
+            from openclaw_adapter.tau_bench import OpenClawTauAgent  # noqa: WPS433
+
+            return OpenClawTauAgent(
+                model=self.config.agent_model,
+                provider=self.config.agent_provider,
+                temperature=self.config.agent_temperature,
+            )
+        if harness == "eliza":
+            from eliza_adapter.tau_bench import ElizaTauAgent  # noqa: WPS433
+
+            return ElizaTauAgent(
+                model=self.config.agent_model,
+                provider=self.config.agent_provider,
+                temperature=self.config.agent_temperature,
+            )
+        raise ValueError(
+            f"Unknown --agent-harness {harness!r}; "
+            "expected one of: litellm, hermes, openclaw, eliza"
         )
 
     # --- Per-trial -------------------------------------------------------

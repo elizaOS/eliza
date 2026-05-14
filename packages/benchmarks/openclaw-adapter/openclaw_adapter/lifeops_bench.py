@@ -20,11 +20,45 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Any, Awaitable, Callable
+from typing import Any, Awaitable, Callable, Final
 
 from openclaw_adapter.client import OpenClawClient
 
 logger = logging.getLogger(__name__)
+
+
+# Per-million-token USD pricing for Cerebras gpt-oss-120b. Matches
+# ``hermes_adapter.lifeops_bench._CEREBRAS_PRICING`` and
+# ``eliza_lifeops_bench.clients.cerebras.CEREBRAS_PRICING`` so that
+# the runner's total_cost_usd matches the cerebras-direct upper bound
+# when both adapters hit the same provider.
+_CEREBRAS_PRICING: Final[dict[str, dict[str, float]]] = {
+    "gpt-oss-120b": {"input_per_million_usd": 0.35, "output_per_million_usd": 0.75},
+}
+
+
+def _compute_cost_usd(
+    model: str | None, prompt_tokens: int, completion_tokens: int
+) -> float | None:
+    """Return USD cost for a Cerebras completion.
+
+    Returns :data:`None` when ``model`` is missing or unpriced — per
+    AGENTS.md Cmd #8, "unpriced" is distinct from "free" and a silent
+    ``0.0`` would conflate the two. The runner sums only non-None
+    per-turn costs into ``total_cost_usd``.
+    """
+    if not model:
+        return None
+    # Accept both bare ("gpt-oss-120b") and namespaced ("cerebras/gpt-oss-120b")
+    # model identifiers so callers can pass either form.
+    key = model.rsplit("/", 1)[-1]
+    pricing = _CEREBRAS_PRICING.get(key)
+    if pricing is None:
+        return None
+    return (
+        (prompt_tokens / 1_000_000.0) * pricing["input_per_million_usd"]
+        + (completion_tokens / 1_000_000.0) * pricing["output_per_million_usd"]
+    )
 
 
 DEFAULT_LIFEOPS_PREAMBLE = (
@@ -155,6 +189,21 @@ def build_lifeops_bench_agent_fn(
             usage = usage_meta.get("usage") if isinstance(usage_meta, dict) else None
         if isinstance(usage, dict):
             attach_usage_cache_fields(turn, usage)
+        # Bug B mirror: the runner reads ``cost_usd`` directly off the
+        # MessageTurn. Without this, every openclaw turn reports $0.00
+        # despite real Cerebras spend. Mirror the hermes-adapter and
+        # cerebras-direct pricing tables so totals line up across agents.
+        #
+        # Per AGENTS.md Cmd #8, ``cost_usd`` stays :data:`None` for
+        # unpriced models rather than silently masquerading as a free
+        # ``0.0`` call.
+        in_tok_raw = getattr(turn, "input_tokens", None)
+        out_tok_raw = getattr(turn, "output_tokens", None)
+        in_tok = int(in_tok_raw) if isinstance(in_tok_raw, (int, float)) else 0
+        out_tok = int(out_tok_raw) if isinstance(out_tok_raw, (int, float)) else 0
+        pricing_model = model_name or getattr(bridge, "model", None)
+        cost = _compute_cost_usd(pricing_model, in_tok, out_tok)
+        setattr(turn, "cost_usd", float(cost) if cost is not None else None)
         return turn
 
     return _agent_fn
