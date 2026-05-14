@@ -20,9 +20,14 @@ function withTempDir<T>(fn: (dir: string) => T): T {
 	}
 }
 
-function writePayload(root: string): string {
+function writePayload(
+	root: string,
+	options: { manageCarrots?: boolean } = {},
+): string {
 	const payloadDir = join(root, "payload");
 	mkdirSync(join(payloadDir, "views"), { recursive: true });
+	const grant: Record<string, boolean> = { notifications: true };
+	if (options.manageCarrots !== false) grant["manage-carrots"] = true;
 	writeFileSync(
 		join(payloadDir, "carrot.json"),
 		JSON.stringify({
@@ -32,7 +37,7 @@ function writePayload(root: string): string {
 			description: "Search helper",
 			mode: "window",
 			permissions: {
-				host: { notifications: true },
+				host: grant,
 				bun: { read: true },
 			},
 			view: {
@@ -112,6 +117,7 @@ describe("CarrotManager", () => {
 					mode: "window",
 					permissions: [
 						"host:notifications",
+						"host:manage-carrots",
 						"bun:read",
 						"isolation:shared-worker",
 					],
@@ -154,6 +160,7 @@ describe("CarrotManager", () => {
 				context: {
 					permissions: [
 						"host:notifications",
+						"host:manage-carrots",
 						"bun:read",
 						"isolation:shared-worker",
 					],
@@ -353,6 +360,48 @@ describe("CarrotManager", () => {
 						expect(
 							(response as { error?: string }).error,
 						).toContain("totally-made-up");
+						resolve();
+					} catch (error) {
+						reject(error);
+					}
+				}, 10);
+			});
+		}));
+
+	it("denies start-carrot when caller lacks host:manage-carrots", () =>
+		withTempDir((dir) => {
+			const worker = new FakeWorkerHandle();
+			const manager = new CarrotManager({
+				storeRoot: join(dir, "store"),
+				workerRunner: { start: () => worker },
+				now: () => 1700000000000,
+			});
+			manager.installFromDirectory({
+				sourceDir: writePayload(dir, { manageCarrots: false }),
+			});
+			manager.startWorker("bunny.search");
+
+			worker.emit({
+				type: "host-request",
+				requestId: 50,
+				method: "start-carrot",
+				params: { id: "bunny.search" },
+			});
+
+			return new Promise<void>((resolve, reject) => {
+				setTimeout(() => {
+					try {
+						const response = worker.messages.find(
+							(m) => m.type === "host-response" && m.requestId === 50,
+						);
+						expect(response).toMatchObject({
+							type: "host-response",
+							requestId: 50,
+							success: false,
+						});
+						expect((response as { error?: string }).error).toContain(
+							"manage-carrots",
+						);
 						resolve();
 					} catch (error) {
 						reject(error);

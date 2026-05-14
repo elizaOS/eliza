@@ -26,6 +26,7 @@ import type {
 import {
 	buildCarrotRuntimeContext,
 	ensureCarrotSourceDirectory,
+	hasHostPermission,
 	installPrebuiltCarrot,
 	loadCarrotListEntries,
 	loadCarrotStoreSnapshot,
@@ -648,6 +649,7 @@ export class CarrotManager {
 		callerHandle: CarrotWorkerHandle,
 		request: HostRequestMessage,
 	): void {
+		this.requireManageCarrots(callerId, "invoke-carrot");
 		if (!isRecord(request.params)) {
 			throw new Error("invoke-carrot: missing params object.");
 		}
@@ -754,6 +756,23 @@ export class CarrotManager {
 	}
 
 	/**
+	 * Gate an imperative cross-carrot host-request on the calling worker's
+	 * granted `host:manage-carrots` permission. Throws a deny-by-default
+	 * error when the caller didn't declare the permission in its manifest
+	 * (and didn't get it granted at install). Information-only verbs
+	 * (`list-carrots`) and eventing (`emit-carrot-event`) stay ungated.
+	 */
+	private requireManageCarrots(callerId: string, action: string): void {
+		const record = this.workers.get(callerId);
+		const grant = record?.context?.grantedPermissions ?? null;
+		if (!hasHostPermission(grant, "manage-carrots")) {
+			throw new Error(
+				`${action}: carrot "${callerId}" lacks host:manage-carrots permission`,
+			);
+		}
+	}
+
+	/**
 	 * Auth-token model (MVP): each carrot worker has its own
 	 * `context.authToken` stored in-process on the host. `get-auth-token` is
 	 * lazy — the first call seeds the slot from `resolveApiToken()` so a
@@ -773,11 +792,13 @@ export class CarrotManager {
 			case "list-carrots":
 				return this.listCarrots() as unknown as JsonValue;
 			case "start-carrot": {
+				this.requireManageCarrots(callerId, "start-carrot");
 				const targetId = hostRequestStringField(params, "id");
 				this.startWorker(targetId);
 				return { ok: true };
 			}
 			case "stop-carrot": {
+				this.requireManageCarrots(callerId, "stop-carrot");
 				const targetId = hostRequestStringField(params, "id");
 				this.stopWorker(targetId);
 				return { ok: true };
