@@ -473,8 +473,8 @@ def render_readiness(
         "`vad/silero-vad-int8.onnx`, but the fallback is not the release "
         "readiness path.",
         "- Canonical active text tiers are Qwen3.5 0.8B (`0_8b`), "
-        "Qwen3.5 2B (`2b`), Qwen3.5 4B (`4b`), Qwen3.5 9B (`9b`) until "
-        "an official Qwen3.6 9B exists, and Qwen3.6 27B (`27b`, "
+        "Qwen3.5 2B (`2b`), Qwen3.5 4B (`4b`), Qwen3.5 9B (`9b`), "
+        "and Qwen3.5 27B (`27b`, "
         "`27b-256k`, `27b-1m`). ASR and embedding are real Qwen3 upstream "
         "exceptions: use the published Qwen3-ASR "
         "0.6B / 1.7B GGUF repos and Qwen3-Embedding 0.6B / 4B / 8B GGUF "

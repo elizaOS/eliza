@@ -325,7 +325,11 @@ class ElizaHyperliquidAgent:
         scenario: "TradingScenario",
         plan_dict: dict[str, Any],
     ):
-        from benchmarks.HyperliquidBench.eliza_agent import _binary_or_cargo, _read_json
+        from benchmarks.HyperliquidBench.eliza_agent import (
+            HyperliquidCommandError,
+            _binary_or_cargo,
+            _read_json,
+        )
         from benchmarks.HyperliquidBench.types import (
             BenchmarkResult,
             EvaluatorResult,
@@ -344,8 +348,29 @@ class ElizaHyperliquidAgent:
         plan_path = out_dir / "plan_input.json"
         plan_path.write_text(json.dumps(plan_dict, indent=2), encoding="utf-8")
 
+        try:
+            runner_binary = _binary_or_cargo(bench_root, "hl-runner")
+        except (FileNotFoundError, HyperliquidCommandError) as exc:
+            message = str(exc)
+            runner = RunnerResult(
+                success=False,
+                out_dir=str(out_dir),
+                run_meta_path=str(out_dir / "run_meta.json"),
+                per_action_path=str(out_dir / "per_action.jsonl"),
+                stdout=getattr(exc, "stdout", ""),
+                stderr=getattr(exc, "stderr", "") or message,
+                exit_code=getattr(exc, "exit_code", -1),
+            )
+            return BenchmarkResult(
+                scenario.scenario_id,
+                Plan(steps=[]),
+                runner,
+                None,
+                message,
+            )
+
         runner_cmd = [
-            *_binary_or_cargo(bench_root, "hl-runner"),
+            *runner_binary,
             "--plan",
             str(plan_path),
             "--out",
@@ -408,8 +433,32 @@ class ElizaHyperliquidAgent:
                 runner.stderr or runner.stdout,
             )
 
+        try:
+            evaluator_binary = _binary_or_cargo(bench_root, "hl-evaluator")
+        except (FileNotFoundError, HyperliquidCommandError) as exc:
+            message = str(exc)
+            evaluator = EvaluatorResult(
+                success=False,
+                final_score=0.0,
+                base=0.0,
+                bonus=0.0,
+                penalty=0.0,
+                unique_signatures=[],
+                eval_score_path=str(out_dir / "eval_score.json"),
+                stdout=getattr(exc, "stdout", ""),
+                stderr=getattr(exc, "stderr", "") or message,
+                exit_code=getattr(exc, "exit_code", -1),
+            )
+            return BenchmarkResult(
+                scenario.scenario_id,
+                Plan(steps=[]),
+                runner,
+                evaluator,
+                message,
+            )
+
         evaluator_cmd = [
-            *_binary_or_cargo(bench_root, "hl-evaluator"),
+            *evaluator_binary,
             "--input",
             str(out_dir / "per_action.jsonl"),
             "--domains",
