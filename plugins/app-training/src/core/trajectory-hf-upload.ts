@@ -4,7 +4,9 @@
  * Uploads the *sanitized* JSONL produced by `buildTrajectoryExportBundle` (or
  * the nightly export cron) to a HuggingFace dataset repo. The upload is
  * opt-in: it only runs when `ELIZA_TRAJECTORY_HF_REPO` is set AND an HF token
- * is available (`HF_TOKEN` / `HUGGING_FACE_HUB_TOKEN`).
+ * is available. Token env vars (in priority order): `HF_TOKEN` (canonical),
+ * `HUGGINGFACE_HUB_TOKEN` (Python convention), `HUGGING_FACE_HUB_TOKEN`
+ * (legacy TS alias).
  *
  * The privacy filter MUST have run before this — callers pass the already
  * sanitized file path. This module never reads raw trajectory data.
@@ -19,7 +21,15 @@ import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 
 const HF_REPO_ENV = "ELIZA_TRAJECTORY_HF_REPO";
-const HF_TOKEN_ENVS = ["HF_TOKEN", "HUGGING_FACE_HUB_TOKEN"] as const;
+// Canonical: HF_TOKEN. HUGGINGFACE_HUB_TOKEN is the Python convention
+// (matches huggingface_hub) and stays accepted as a fallback. The variant
+// with underscore between HUGGING and FACE (HUGGING_FACE_HUB_TOKEN) is the
+// legacy TS-side name and is also accepted for backward compatibility.
+const HF_TOKEN_ENVS = [
+  "HF_TOKEN",
+  "HUGGINGFACE_HUB_TOKEN",
+  "HUGGING_FACE_HUB_TOKEN",
+] as const;
 
 export interface HfUploadConfig {
   /** `org/dataset` repo id. */
@@ -80,7 +90,14 @@ async function runHfCli(
       missing: boolean;
     }>((resolve) => {
       const child = spawn(bin, args, {
-        env: { ...process.env, HF_TOKEN: token, HUGGING_FACE_HUB_TOKEN: token },
+        env: {
+          ...process.env,
+          // Inject the token under every accepted name so whichever variant
+          // the HF CLI checks first picks it up.
+          HF_TOKEN: token,
+          HUGGINGFACE_HUB_TOKEN: token,
+          HUGGING_FACE_HUB_TOKEN: token,
+        },
         stdio: ["ignore", "ignore", "pipe"],
       });
       let stderr = "";

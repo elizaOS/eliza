@@ -145,7 +145,7 @@ The release gateboard requires fresh `status: "pass"` artifacts for:
 ## Live Validation Notes, 2026-05-12
 
 - Running Vast instance: 1x RTX 3090, instance `36201983`, external OpenAI-compatible URL `http://ssh3.vast.ai:11983`.
-- Final Eliza artifact access is blocked without Hugging Face credentials: unauthenticated dry-run downloads for `elizaos/eliza-1`, `elizaos/eliza-1-2b`, and `elizaos/eliza-1-9b-polarquant` return 401. This blocks final 2B/9B/27B release smoke and quality/perf evals.
+- Final Eliza artifact access is blocked without Hugging Face credentials: unauthenticated dry-run downloads for `elizaos/eliza-1` (consolidated bundle repo) return 401 on the gated paths. The legacy per-tier placeholders `elizaos/eliza-1-2b` (empty shell) and `elizaos/eliza-1-9b-polarquant` (404 — never published) are not currently usable. This blocks final 2B/9B/27B release smoke and quality/perf evals.
 - Infrastructure staging uses `unsloth/Qwen3.6-27B-GGUF` file `Qwen3.6-27B-UD-Q3_K_XL.gguf` as a public stand-in. Evidence from this lane proves serving infrastructure only, not Eliza-1 model quality.
 - The prebuilt CUDA llama-cpp-python server loads the 27B stand-in at 262144 context with q4_0 K/V cache and returns `/v1/models` plus non-stream chat.
 - Live streaming tool-call shape parity passes, but streaming usage parity fails because the llama-cpp-python server does not emit usage in streaming chunks even when requested. This remains a release blocker.

@@ -3,9 +3,9 @@
 # Build:
 #   ollama create eliza-1-27b -f Modelfile.eliza-1-27b-q4_k_m
 #
-# Pulls from the published HF sibling. push_model_to_hf.py uploads each
-# K-quant level to its own repo (`-gguf-q4_k_m`, `-gguf-q5_k_m`,
-# `-gguf-q6_k`).
+# Pulls from the consolidated `elizaos/eliza-1` bundle repo at
+# `bundles/27b/text/`. Per-quant variants (Q4_K_M / Q6_K / Q8_0) live as
+# sibling files inside that tier directory.
 #
 # Sized for 32+ GB consumer/server cards (RTX 5090 32 GB,
 # RTX Pro 5000 Blackwell 48 GB, datacenter Hopper):
@@ -14,13 +14,13 @@
 #   - resident: ~22 GB at --parallel 2 on 32 GB cards
 #
 # For the absolute best quality on the 27B at consumer-GPU sizes, the
-# Q6_K sibling is also published (~22 GB on disk). Build with:
-#   FROM hf.co/elizaos/eliza-1-27b-gguf-q6_k
+# Q6_K sibling is published next to this file. Build with:
+#   FROM hf.co/elizaos/eliza-1:bundles/27b/text/eliza-1-27b-32k.Q6_K.gguf
 #
-# Availability: requires `scripts/publish_all_eliza1.sh --filter-size 27b
-# --filter-quant gguf-q4_k_m` to have completed against a trained eliza-1
-# checkpoint. The HF repo does not exist before that runs.
-FROM hf.co/elizaos/eliza-1-27b-gguf-q4_k_m
+# Availability: requires the publish orchestrator to have completed against
+# a trained Eliza-1 27B checkpoint and uploaded the bundle into
+# `elizaos/eliza-1/bundles/27b/text/`.
+FROM hf.co/elizaos/eliza-1:bundles/27b/text/eliza-1-27b-32k.gguf
 
 SYSTEM """You are Eliza, an autonomous AI agent powered by elizaOS. You are helpful, concise, and grounded in the user's task. Use tools when they make the task tractable; otherwise answer directly."""
 

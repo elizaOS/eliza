@@ -41,5 +41,5 @@
     "VLLM_REGISTRY_KEY": "eliza-1-9b"
   },
   "onstart_script": "onstart-vllm.sh",
-  "notes": "PolarQuant/AWQ-Marlin vLLM path for the 9B Eliza line. TurboQuant uses turboquant_k8v4 by default for quality; set VLLM_TURBOQUANT_PRESET=4bit or KV_CACHE_DTYPE=turboquant_4bit_nc only after a regression run."
+  "notes": "PolarQuant/AWQ-Marlin vLLM path for the 9B Eliza line. TurboQuant uses turboquant_k8v4 by default for quality; set VLLM_TURBOQUANT_PRESET=4bit or KV_CACHE_DTYPE=turboquant_4bit_nc only after a regression run. TODO: elizaos/eliza-1-9b-polarquant does not yet exist on HF (404). The consolidated bundle repo elizaos/eliza-1 carries GGUFs at bundles/9b/, not the AWQ-Marlin+PolarQuant safetensors vLLM needs. Either publish the per-quant repo or migrate this manifest before deployment."
 }

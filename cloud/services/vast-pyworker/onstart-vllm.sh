@@ -13,7 +13,10 @@
 # isn't packaged in the cloud submodule).
 #
 # Required template env vars:
-#   MODEL_REPO              — HuggingFace repo id (e.g. elizaos/eliza-1-27b-fp8).
+#   MODEL_REPO              — HuggingFace repo id (e.g. elizaos/eliza-1-27b-fp8;
+#                             TODO: that per-quant repo does not yet exist on
+#                             HF — Wave 3+ will publish it or migrate this
+#                             vLLM path to a GGUF-served lane).
 #                             OR set ELIZA_VAST_MANIFEST=eliza-1-{2b,9b,27b}.json
 #                             and the script extracts MODEL_REPO + all flags
 #                             from the manifest.

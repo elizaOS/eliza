@@ -103,6 +103,17 @@ developing ──auto(eval pass)──▶ candidate ──human|CI──▶ stab
 
 ## 3. HuggingFace branches
 
+> **Stale section — to be rewritten.** The current release layout is a
+> single consolidated bundle repo `elizaos/eliza-1` with per-tier
+> subdirectories under `bundles/<tier>/...` and a single `main` branch.
+> The per-tier-repo + three-branch pattern described below was the
+> pre-rename plan; the active publish path (see
+> `packages/training/scripts/publish/orchestrator.py`) ships into a
+> single repo and lifecycle is tracked via the per-bundle
+> `evidence/release.json` `releaseState` field instead of separate HF
+> branches. Wave 3+ will rewrite this contracts doc against the actual
+> bundle layout.
+
 Each model family on HF (e.g., `elizaos/eliza-1-2b`) uses three named branches.
 These branches are the *external* surface of the lifecycle in §2.
 
