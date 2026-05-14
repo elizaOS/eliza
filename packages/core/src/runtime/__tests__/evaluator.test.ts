@@ -27,9 +27,9 @@ describe("v5 evaluator skeleton", () => {
 			{ spanIndex: successIndex, temperature: 0, topK: 1 },
 			{ spanIndex: decisionIndex, temperature: 0, topK: 1 },
 		]);
-		expect(guidance.grammar).toContain('"FINISH"');
-		expect(guidance.grammar).toContain('"NEXT_RECOMMENDED"');
-		expect(guidance.grammar).toContain('"CONTINUE"');
+		expect(guidance.grammar).toContain('\\"FINISH\\"');
+		expect(guidance.grammar).toContain('\\"NEXT_RECOMMENDED\\"');
+		expect(guidance.grammar).toContain('\\"CONTINUE\\"');
 		expect(guidance.grammar).toContain('["\\\\/bfnrt]');
 	});
 

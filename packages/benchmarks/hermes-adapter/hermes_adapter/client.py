@@ -478,9 +478,16 @@ class HermesClient:
         if not self.venv_python.exists():
             return {"status": "error", "error": f"venv python not found at {self.venv_python}"}
         try:
+            probe_timeout = float(os.environ.get("HERMES_HEALTH_PROBE_TIMEOUT_S", "120"))
+        except ValueError:
+            probe_timeout = 120.0
+        try:
             result = self._run_python_subprocess(
-                ["-c", "import openai; print('ok')"],
-                timeout_s=30.0,
+                [
+                    "-c",
+                    "import importlib.util; print('ok' if importlib.util.find_spec('openai') else 'missing')",
+                ],
+                timeout_s=probe_timeout,
                 cwd=str(self.repo_path),
             )
         except subprocess.TimeoutExpired as exc:
@@ -491,7 +498,14 @@ class HermesClient:
                 "error": f"health probe exited {result.returncode}",
                 "stderr": (result.stderr or "")[-2000:],
             }
-        return {"status": "ready", "stdout": (result.stdout or "").strip()}
+        stdout = (result.stdout or "").strip()
+        if stdout != "ok":
+            return {
+                "status": "error",
+                "error": "openai not importable in hermes-agent venv",
+                "stdout": stdout,
+            }
+        return {"status": "ready", "stdout": stdout}
 
     def is_ready(self) -> bool:
         """Cheap synchronous readiness check."""
@@ -499,7 +513,12 @@ class HermesClient:
 
     def wait_until_ready(self, timeout: float = 60.0, poll: float = 1.0) -> None:
         """Block until ``health()`` reports ready or ``timeout`` elapses."""
-        deadline = time.monotonic() + float(timeout)
+        try:
+            configured_timeout = float(os.environ.get("HERMES_READY_TIMEOUT_S", "0"))
+        except ValueError:
+            configured_timeout = 0.0
+        effective_timeout = max(float(timeout), configured_timeout)
+        deadline = time.monotonic() + effective_timeout
         last_err: object = "no probe attempted"
         while time.monotonic() < deadline:
             probe = self.health()
@@ -512,7 +531,7 @@ class HermesClient:
             last_err = probe.get("error") or probe
             time.sleep(poll)
         raise TimeoutError(
-            f"hermes-agent venv not ready after {timeout}s: {last_err}"
+            f"hermes-agent venv not ready after {effective_timeout}s: {last_err}"
         )
 
     def reset(

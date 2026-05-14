@@ -72,11 +72,15 @@ describe("Android assistant and App Actions routing source", () => {
       "packages/app-core/platforms/android/app/src/main/res/xml/shortcuts.xml",
     );
 
-    expect(shortcuts).toContain('android:shortcutId="ask_eliza"');
-    expect(shortcuts).toContain("eliza://chat?source=android-shortcut");
+    expect(shortcuts).toContain('android:shortcutId="eliza_app_action_chat"');
+    expect(shortcuts).toContain(
+      'android:shortcutId="eliza_app_action_lifeops_task"',
+    );
+    expect(shortcuts).toContain("source=android-app-actions");
     expect(shortcuts).toContain('android:name="actions.intent.CREATE_THING"');
-    expect(shortcuts).toContain('android:name="actions.intent.GET_THING"');
-    expect(shortcuts).toContain("eliza://chat?source=android-app-action");
+    expect(shortcuts).toContain('android:name="actions.intent.OPEN_APP_FEATURE"');
+    expect(shortcuts).toContain("lifeops/reminder");
+    expect(shortcuts).toContain("ai.elizaos.app.MainActivity");
     expect(shortcuts.toLowerCase()).not.toContain("notification");
     expect(shortcuts).not.toContain("ScheduledTask");
   });
@@ -86,8 +90,8 @@ describe("Android assistant and App Actions routing source", () => {
       "packages/app-core/platforms/android/app/src/main/java/ai/elizaos/app/ElizaAssistActivity.java",
     );
 
-    expect(source).toContain("eliza://chat?source=android-assist");
-    expect(source).not.toContain("ai.elizaos.app://chat");
+    expect(source).toContain("ai.elizaos.app://chat?source=android-assist");
+    expect(source).not.toContain("eliza://chat");
   });
 });
 

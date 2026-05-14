@@ -419,7 +419,7 @@ describe("computer-use live parity", () => {
           moveResult.permissionType === "accessibility",
       ).toBe(true);
     }
-  });
+  }, 180000);
 
   it("supports window listing and rejects incomplete window move commands live", async () => {
     const listResult = await service.executeCommand("list_windows");

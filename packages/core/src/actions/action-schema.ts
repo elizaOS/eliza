@@ -98,12 +98,27 @@ function readEnumValues(
 				(entry): entry is string | number | boolean => entry !== undefined,
 			);
 
-		if (values.length > 0) {
-			return values;
+		const deduped = dedupeEnumValues(values);
+		if (deduped.length > 0) {
+			return deduped;
 		}
 	}
 
 	return undefined;
+}
+
+function dedupeEnumValues(
+	values: Array<string | number | boolean>,
+): Array<string | number | boolean> {
+	const seen = new Set<string>();
+	const deduped: Array<string | number | boolean> = [];
+	for (const value of values) {
+		const key = `${typeof value}:${String(value)}`;
+		if (seen.has(key)) continue;
+		seen.add(key);
+		deduped.push(value);
+	}
+	return deduped;
 }
 
 function readRequiredPropertyNames(schema: ActionParameterSchema): Set<string> {

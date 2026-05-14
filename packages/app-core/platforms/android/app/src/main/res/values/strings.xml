@@ -10,10 +10,10 @@
     <string name="android_app_action_voice_short_label">Voice mode</string>
     <string name="android_app_action_voice_long_label">Start voice mode</string>
     <string name="android_app_action_voice_disabled">Eliza voice mode is unavailable.</string>
-    <string name="android_app_action_lifeops_task_short_label">LifeOps task</string>
+    <string name="android_app_action_lifeops_task_short_label">Task</string>
     <string name="android_app_action_lifeops_task_long_label">Create LifeOps task</string>
     <string name="android_app_action_lifeops_task_disabled">LifeOps tasks are unavailable.</string>
-    <string name="android_app_action_daily_brief_short_label">Daily brief</string>
+    <string name="android_app_action_daily_brief_short_label">Brief</string>
     <string name="android_app_action_daily_brief_long_label">Open daily brief</string>
     <string name="android_app_action_daily_brief_disabled">The daily brief is unavailable.</string>
 

@@ -11,18 +11,19 @@ export interface EvaluatorGuidance {
 }
 
 const EVALUATOR_RESPONSE_SKELETON: ResponseSkeleton = {
-	id: "evaluator#v1#success-decision-thought",
+	id: "evaluator-v1",
 	spans: [
 		{ kind: "literal", value: '{"success":' },
-		{ kind: "boolean", key: "success" },
+		{ kind: "boolean", key: "success", rule: "jsonbool" },
 		{ kind: "literal", value: ',"decision":' },
 		{
 			kind: "enum",
 			key: "decision",
 			enumValues: ["FINISH", "NEXT_RECOMMENDED", "CONTINUE"],
+			rule: "decision",
 		},
 		{ kind: "literal", value: ',"thought":' },
-		{ kind: "free-string", key: "thought" },
+		{ kind: "free-string", key: "thought", rule: "jsonstring" },
 		{ kind: "literal", value: "}" },
 	],
 };

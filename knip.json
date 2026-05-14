@@ -289,6 +289,11 @@
       "project": ["src/**/*.{ts,tsx}", "scripts/**/*.mjs", "vite.config.ts"],
       "ignore": ["dist/**"]
     },
+    "packages/examples/trader": {
+      "entry": ["src/**/*.{ts,tsx}", "vite.config.ts", "index.html"],
+      "project": ["src/**/*.{ts,tsx}", "vite.config.ts"],
+      "ignore": ["dist/**"]
+    },
     "packages/examples/aws": {
       "entry": [
         "handler.ts",

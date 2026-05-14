@@ -96,6 +96,31 @@ describe("actionToTool", () => {
 		});
 	});
 
+	it("deduplicates enum values before exposing action parameter schemas", () => {
+		const action = makeAction({
+			name: "DEDUP_ENUM",
+			description: "Check enum output",
+			parameters: [
+				{
+					name: "mode",
+					description: "Execution mode",
+					required: true,
+					schema: {
+						type: "string",
+						enumValues: ["fast", "fast", "careful", "careful"],
+					},
+				},
+			],
+		});
+
+		const tool = actionToTool(action);
+
+		expect(tool.function.parameters.properties.mode.enum).toEqual([
+			"fast",
+			"careful",
+		]);
+	});
+
 	it("converts nested objects and arrays recursively", () => {
 		const action = makeAction({
 			name: "CREATE_TASK",

@@ -643,7 +643,7 @@ export function applyIosAppIdentity({
 
 // ── Phase 2: Build web bundle ───────────────────────────────────────────
 
-export function resolveMobileBuildPolicy(platform) {
+export function resolveMobileBuildPolicy(platform, { env = process.env } = {}) {
   const capacitorTarget =
     platform === "android-system" ||
     platform === "android-cloud" ||
@@ -663,7 +663,7 @@ export function resolveMobileBuildPolicy(platform) {
       : platform === "android" || platform === "android-system"
         ? "local"
         : null;
-  const iosRuntimeMode = resolveIosRuntimeMode(platform);
+  const iosRuntimeMode = resolveIosRuntimeMode(platform, env);
   const buildVariant =
     platform === "android-cloud" || platform === "ios" ? "store" : "direct";
   const releaseAuthority =
@@ -908,7 +908,7 @@ export function findIosAppStoreForbiddenLocalAssets(
       });
     }
   });
-  return findings;
+  return findings.sort((a, b) => a.path.localeCompare(b.path));
 }
 
 function validateIosAppStoreLocalRuntimeAssets() {
@@ -1558,6 +1558,24 @@ export function patchAndroidAppActionsXmlResource(
     );
 }
 
+export function mergeAndroidAppActionsStringsResource(current, template) {
+  if (!current.includes("</resources>")) return current;
+  const missingEntries = [];
+  const resourceEntryRe =
+    /<(string|string-array)\b[^>]*\bname="(android_app_action_[^"]+)"[\s\S]*?<\/\1>/g;
+  for (const match of template.matchAll(resourceEntryRe)) {
+    const [, , name] = match;
+    if (!name) continue;
+    if (current.includes(`name="${name}"`)) continue;
+    missingEntries.push(match[0]);
+  }
+  if (missingEntries.length === 0) return current;
+  return current.replace(
+    /\s*<\/resources>/,
+    `\n    ${missingEntries.join("\n    ")}\n</resources>`,
+  );
+}
+
 function ensureAndroidAppActionsResources() {
   const templateResRoot = path.join(
     platformsDir,
@@ -1568,16 +1586,28 @@ function ensureAndroidAppActionsResources() {
     "res",
   );
   const appResRoot = path.join(androidDir, "app", "src", "main", "res");
-  for (const relPath of [
-    path.join("xml", "shortcuts.xml"),
-    path.join("values", "strings.xml"),
-  ]) {
+  const copyIfMissing = (relPath) => {
     const dst = path.join(appResRoot, relPath);
-    if (fs.existsSync(dst)) continue;
     const src = path.join(templateResRoot, relPath);
-    if (!fs.existsSync(src)) continue;
+    if (fs.existsSync(dst) || !fs.existsSync(src)) return;
     fs.mkdirSync(path.dirname(dst), { recursive: true });
     fs.copyFileSync(src, dst);
+    console.log(`[mobile-build] Copied Android App Actions ${relPath}.`);
+  };
+
+  copyIfMissing(path.join("xml", "shortcuts.xml"));
+  copyIfMissing(path.join("values", "strings.xml"));
+
+  const stringsPath = path.join(appResRoot, "values", "strings.xml");
+  const templateStringsPath = path.join(templateResRoot, "values", "strings.xml");
+  if (fs.existsSync(stringsPath) && fs.existsSync(templateStringsPath)) {
+    const current = fs.readFileSync(stringsPath, "utf8");
+    const template = fs.readFileSync(templateStringsPath, "utf8");
+    const patched = mergeAndroidAppActionsStringsResource(current, template);
+    if (patched !== current) {
+      fs.writeFileSync(stringsPath, patched, "utf8");
+      console.log("[mobile-build] Merged Android App Actions strings.");
+    }
   }
 
   const shortcutsPath = path.join(appResRoot, "xml", "shortcuts.xml");
@@ -2194,6 +2224,8 @@ function overlayAndroid() {
       console.log("[mobile-build] Enabled release minification.");
     }
   }
+
+  ensureAndroidAppActionsResources();
 }
 
 // ── Phase 4: iOS native overlay ─────────────────────────────────────────
@@ -4124,6 +4156,32 @@ function auditAndroidCloudSource(phase) {
     }
   });
 
+  const shortcutsPath = path.join(
+    androidDir,
+    "app",
+    "src",
+    "main",
+    "res",
+    "xml",
+    "shortcuts.xml",
+  );
+  if (fs.existsSync(shortcutsPath)) {
+    const shortcuts = fs.readFileSync(shortcutsPath, "utf8");
+    for (const component of ANDROID_CLOUD_STRIPPED_COMPONENTS) {
+      if (shortcuts.includes(component)) {
+        failures.push(`shortcuts.xml still references ${component}`);
+      }
+    }
+    if (!shortcuts.includes("actions.intent.OPEN_APP_FEATURE")) {
+      failures.push("shortcuts.xml is missing OPEN_APP_FEATURE");
+    }
+    if (!shortcuts.includes("actions.intent.CREATE_THING")) {
+      failures.push("shortcuts.xml is missing CREATE_THING");
+    }
+  } else {
+    failures.push("app/src/main/res/xml/shortcuts.xml is missing");
+  }
+
   const jniRoot = path.join(androidDir, "app", "src", "main", "jniLibs");
   walkFiles(jniRoot, (filePath) => {
     if (isCloudBannedNativeLibrary(path.basename(filePath))) {
@@ -4653,7 +4711,7 @@ async function buildIos({ local = false } = {}) {
 
   if (local) {
     configureIosLocalBuildDefaults();
-  } else {
+  } else if (resolveIosRuntimeMode("ios") === "local") {
     configureIosAppStoreLocalBuildDefaults();
   }
 

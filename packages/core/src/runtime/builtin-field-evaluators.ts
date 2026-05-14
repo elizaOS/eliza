@@ -180,7 +180,7 @@ export const candidateActionNamesFieldEvaluator: ResponseHandlerFieldEvaluator<
 > = {
 	name: "candidateActionNames",
 	description:
-		"Action names you would likely use this turn. Match values to the available_actions list earlier in this prompt — but it is fine to emit a name you are confident about even if it is not listed (the planner will resolve via similes). Use UPPER_SNAKE_CASE for canonical action names. Empty array when no actions are likely needed (e.g. simple chitchat).",
+		"Known action names you would likely use this turn. Prefer exact values from the available_actions list earlier in this prompt and use UPPER_SNAKE_CASE canonical names. Do not invent refusal, safety, or capability-denial action names. Empty array when no actions are likely needed (e.g. simple chitchat).",
 	priority: 50,
 	schema: {
 		type: "array",
@@ -199,7 +199,7 @@ export const candidateActionNamesFieldEvaluator: ResponseHandlerFieldEvaluator<
 			seen.add(normalized);
 			result.push(normalized);
 		}
-		return result;
+		return result.slice(0, 12);
 	},
 };
 

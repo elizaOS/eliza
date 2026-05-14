@@ -123,7 +123,7 @@ describe("messageHandlerFromFieldResult — bogus candidate actions", () => {
 				shouldRespond: "RESPOND",
 				contexts: ["simple"],
 				candidateActionNames: ["TASKS_SPAWN_AGENT"],
-				replyText: "I'm sorry, but I can't help with that request.",
+				replyText: "I can't help with that request.",
 				intents: [],
 				facts: [],
 				addressedTo: [],

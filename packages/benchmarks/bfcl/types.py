@@ -318,6 +318,7 @@ class BFCLConfig:
     use_huggingface: bool = True
     huggingface_dataset: str = "gorilla-llm/Berkeley-Function-Calling-Leaderboard"
     version: str = "v3"  # BFCL version ("v3" or "v4")
+    sample_seed: int = 0
 
     # Reporting
     save_detailed_logs: bool = True

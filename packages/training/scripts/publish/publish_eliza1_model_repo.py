@@ -1,6 +1,6 @@
 """Publish staged Eliza-1 runtime bundles into one Hugging Face model repo.
 
-The app catalog points every Eliza-1 tier at ``elizalabs/eliza-1`` and resolves
+The app catalog points every Eliza-1 tier at ``elizaos/eliza-1`` and resolves
 files under ``bundles/<tier>/``. This publisher is the operator-side mirror of
 that contract: it validates local ``eliza-1-<tier>.bundle`` directories, writes
 the repo README, and uploads each bundle into the single model repo.
@@ -46,6 +46,9 @@ REQUIRED_FINAL_FLAGS = (
     "kernelDispatchReports",
     "platformEvidence",
     "sizeFirstRepoIds",
+)
+REQUIRED_FINAL_FLAGS_BASE_V1 = tuple(
+    flag for flag in REQUIRED_FINAL_FLAGS if flag != "weights"
 )
 
 
@@ -151,9 +154,27 @@ def _voice_policy_warnings(tier: str, manifest: dict[str, Any]) -> list[str]:
         f"tts/{rel}".lower()
         for rel in M.required_voice_artifacts_for_tier(tier)
     }
+    backends = M.VOICE_BACKENDS_BY_TIER[tier]
     warnings: list[str] = []
     for expected_path in sorted(expected_paths - voice_paths):
         warnings.append(f"{tier}: expected voice artifact {expected_path}")
+    unexpected_paths = sorted(
+        path
+        for path in voice_paths
+        if (
+            ("kokoro" not in backends and path.startswith("tts/kokoro/"))
+            or (
+                "omnivoice" not in backends
+                and path.startswith("tts/omnivoice")
+            )
+        )
+    )
+    for unexpected_path in unexpected_paths:
+        warnings.append(
+            f"{tier}: non-policy voice artifact {unexpected_path}; "
+            "0.8B/2B/4B are Kokoro-only, 9B is Kokoro+OmniVoice, "
+            "27B-class is OmniVoice-only"
+        )
     return warnings
 
 
@@ -182,7 +203,12 @@ def _release_evidence_errors(bundle_dir: Path, tier: str) -> list[str]:
     if not isinstance(final, dict):
         errors.append("evidence/release.json final block is missing or not an object")
     else:
-        for flag in REQUIRED_FINAL_FLAGS:
+        required_final_flags = (
+            REQUIRED_FINAL_FLAGS_BASE_V1
+            if release_state == "base-v1"
+            else REQUIRED_FINAL_FLAGS
+        )
+        for flag in required_final_flags:
             if final.get(flag) is not True:
                 errors.append(f"evidence/release.json final.{flag} is not true")
 

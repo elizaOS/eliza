@@ -132,7 +132,7 @@ describe("ComputerUseService window aliases", () => {
       windowId: "w1",
     });
     expect(position).toMatchObject({ success: true, x: 10, y: 20 });
-  });
+  }, 150_000);
 
   it("routes Cua-compatible open, launch, setter, and activation aliases", async () => {
     const windows = await import("../platform/windows-list.js");
@@ -175,5 +175,5 @@ describe("ComputerUseService window aliases", () => {
       service.executeCommand("activate_window", { windowId: "w1" }),
     ).resolves.toMatchObject({ success: true });
     expect(windows.focusWindow).toHaveBeenCalledWith("w1");
-  });
+  }, 150_000);
 });

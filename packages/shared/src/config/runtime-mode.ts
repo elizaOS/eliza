@@ -142,6 +142,7 @@ function resolvePolicyDistributionProfile(
 ): DistributionProfile {
   return (
     normalizeDistributionProfile(context?.distributionProfile) ??
+    normalizeDistributionProfile(source?.distributionProfile) ??
     normalizeDistributionProfile(
       readSetting(source, RUNTIME_DISTRIBUTION_PROFILE_SETTING_KEYS),
     ) ??
@@ -161,6 +162,7 @@ function resolvePolicyPlatform(
 ): string | null {
   const value =
     context?.platform ??
+    source?.platform ??
     readSetting(source, RUNTIME_PLATFORM_SETTING_KEYS) ??
     readEnv(context?.env ?? process.env, RUNTIME_PLATFORM_SETTING_KEYS);
   return typeof value === "string" ? value.trim().toLowerCase() : null;
@@ -175,7 +177,7 @@ export function canUseHostYoloRuntime(
   source?: RuntimeExecutionModeSource | null,
 ): boolean {
   const deploymentTarget = normalizeDeploymentTargetConfig(
-    context?.deploymentTarget,
+    context?.deploymentTarget ?? source?.deploymentTarget,
   );
   if (
     deploymentTarget?.runtime === "cloud" ||
@@ -194,7 +196,7 @@ export function runtimeExecutionModeForPolicyContext(
   source?: RuntimeExecutionModeSource | null,
 ): RuntimeExecutionMode {
   const deploymentTarget = normalizeDeploymentTargetConfig(
-    context?.deploymentTarget,
+    context?.deploymentTarget ?? source?.deploymentTarget,
   );
   if (deploymentTarget) {
     return runtimeExecutionModeForDeploymentTarget(deploymentTarget);
@@ -208,7 +210,7 @@ export function applyRuntimeExecutionModePolicy(
   source?: RuntimeExecutionModeSource | null,
 ): RuntimeExecutionMode {
   const deploymentTarget = normalizeDeploymentTargetConfig(
-    context?.deploymentTarget,
+    context?.deploymentTarget ?? source?.deploymentTarget,
   );
   if (deploymentTarget?.runtime === "cloud") return "cloud";
   if (!requestedMode) {

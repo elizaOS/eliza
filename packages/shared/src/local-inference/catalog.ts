@@ -17,7 +17,7 @@ import type {
   LocalRuntimeKernel,
 } from "./types.js";
 
-export const ELIZA_1_HF_REPO = "elizalabs/eliza-1" as const;
+export const ELIZA_1_HF_REPO = "elizaos/eliza-1" as const;
 
 export const ELIZA_1_TIER_IDS = [
   "eliza-1-0_8b",
@@ -114,11 +114,9 @@ export type VoiceBackendId = "kokoro" | "omnivoice";
  * backend have a single-element array.
  *
  * Policy:
- *   - Small tiers (0_8b / 2b / 4b) → Kokoro only. This keeps the smallest
- *     bundles on the low-latency voice backend and avoids shipping redundant
- *     OmniVoice payloads on constrained devices.
- *   - 9b → both supported, Kokoro first. 9b is the boundary tier where
- *     either makes sense depending on workload and thermal headroom.
+ *   - Small tiers (0_8b / 2b / 4b) → Kokoro only. These tiers are
+ *     phone-first and must keep TTFA/RSS predictable.
+ *   - 9b → Kokoro first with OmniVoice bundled for expressive desktop voice.
  *   - Large tiers (27b / 27b-256k / 27b-1m) → OmniVoice only. The RAM
  *     and compute budget is large enough that the OmniVoice quality win
  *     dominates; Kokoro is not shipped in these bundles.
@@ -394,9 +392,10 @@ function voiceQuantForTier(id: Eliza1TierId): OmniVoiceQuantLevel {
  * full Q3..Q8 ladder so a `--memory-budget okay` host can step down to
  * Q3_K_M and a `--memory-budget good` host can take Q6_K.
  *
- * Every active tier publishes an OmniVoice ladder. Small tiers keep the
- * ladder narrow so the installer can stay inside mobile RAM budgets while
- * still defaulting to the fused OmniVoice path.
+ * Small tiers keep the mobile ladder metadata for compatibility with
+ * quantization/release tooling, but Kokoro is the only required voice backend
+ * for 0_8b/2b/4b. 9B+ publishes the full OmniVoice ladder where OmniVoice is
+ * an active backend.
  */
 const OMNIVOICE_QUANT_LADDER_BY_TIER: Readonly<
   Record<Eliza1TierId, ReadonlyArray<OmniVoiceQuantLevel>>

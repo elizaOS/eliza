@@ -192,7 +192,10 @@ async function grep(
   return output.join("\n").concat(output.length > 0 ? "\n" : "");
 }
 
-function parseSearchArgs(args: string[], command: "grep" | "rg"): SearchRequest {
+function parseSearchArgs(
+  args: string[],
+  command: "grep" | "rg",
+): SearchRequest {
   const request: SearchRequest = {
     pattern: null,
     paths: [],
@@ -244,14 +247,30 @@ function compileSearchPattern(pattern: string, ignoreCase: boolean): RegExp {
 }
 
 function isPathInScope(filePath: string, root: string): boolean {
-  const normalizedFile = filePath.replace(/^\/+/, "");
-  const normalizedRoot = root.replace(/^\/+/, "").replace(/\/+$/, "");
+  const normalizedFile = normalizeVirtualScope(filePath);
+  const normalizedRoot = normalizeVirtualScope(root);
   return (
-    normalizedRoot === "." ||
     normalizedRoot === "" ||
     normalizedFile === normalizedRoot ||
     normalizedFile.startsWith(`${normalizedRoot}/`)
   );
+}
+
+function normalizeVirtualScope(value: string): string {
+  const normalized = value
+    .replace(/\\/g, "/")
+    .split("/")
+    .reduce<string[]>((segments, segment) => {
+      if (!segment || segment === ".") return segments;
+      if (segment === "..") {
+        segments.pop();
+        return segments;
+      }
+      segments.push(segment);
+      return segments;
+    }, [])
+    .join("/");
+  return normalized;
 }
 
 function escapeRegExp(value: string): string {
@@ -323,6 +342,7 @@ function splitCommandLine(input: string): string[] {
 }
 
 function resolveVfsPath(cwd: string, value: string): string {
+  if (!value || value === ".") return cwd || "/";
   if (value.startsWith("/")) return value;
   return joinVfsPath(cwd, value);
 }
