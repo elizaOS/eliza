@@ -115,11 +115,23 @@ interface OrtSession {
 	/**
 	 * Optional — present on real onnxruntime-node sessions, absent on test
 	 * stubs. When present we use it to detect whether the loaded export
-	 * expects `input_ids` (newer) or `tokens` (older `kokoro-onnx`) and
-	 * whether `speed` is float or int. Mirrors the runtime detection that
-	 * `kokoro-onnx` does in `_create_audio`.
+	 * expects `input_ids` (newer) or `tokens` (older `kokoro-onnx`).
 	 */
 	readonly inputNames?: ReadonlyArray<string>;
+	/**
+	 * Optional per-input metadata (dtype + shape). Real `onnxruntime-node`
+	 * sessions expose this as `{[name]: { type: "tensor(float)" | "tensor(int32)" | ... }}`.
+	 * We use it to pick the speed-tensor dtype from the actual model rather
+	 * than guessing from the token-input name — Kokoro v1.0 ONNX exports
+	 * pair `input_ids` with `speed: float`, `input_ids` with `speed: int32`,
+	 * `tokens` with `speed: float`, and `tokens` with `speed: int32` across
+	 * different community re-exports, so a single name-based heuristic
+	 * always misfires on some variant. Reading the actual dtype is the
+	 * only correct probe.
+	 */
+	readonly inputMetadata?: Readonly<
+		Record<string, Readonly<{ type?: string }>>
+	>;
 }
 
 interface OrtTensor {
@@ -218,17 +230,29 @@ export class KokoroOnnxRuntime implements KokoroRuntime {
 						(Math.min(inputIds.length, numPositions - 1) + 1) * args.voice.dim,
 					)
 				: fullStyle;
-		// Speed-tensor dtype mirrors `kokoro-onnx` upstream
-		// (`kokoro_onnx/__init__.py:_create_audio`): the legacy `tokens`
-		// export wants `speed: float32 [1]` and the newer `input_ids` export
-		// wants `speed: int32 [1]`. ORT raises `Unexpected input data type`
-		// when either dtype is swapped, so this polarity is load-bearing.
+		// Probe the loaded ONNX session for the actual `speed` input dtype
+		// and pick the matching JS typed-array. Different Kokoro v1.0 ONNX
+		// re-exports pair `input_ids`/`tokens` with `speed: float` or
+		// `speed: int32` in inconsistent combinations (the community
+		// onnx-community/Kokoro-82M-v1.0-ONNX/onnx/model_quantized.onnx ships
+		// `input_ids` + `speed: float`; older kokoro-onnx exports ship
+		// `tokens` + `speed: int32`), so naming-based heuristics misfire on
+		// at least one variant. Reading the dtype from session metadata is
+		// the only correct probe. When metadata is missing (test stubs / old
+		// ORT builds) we fall back to the float32 default since that's the
+		// shape every v1.0 ONNX export with `input_ids` we've seen uses.
 		const inputNames = session.inputNames ?? ["input_ids", "style", "speed"];
-		const useLegacyInputs = !inputNames.includes("input_ids");
-		const tokensInputName = useLegacyInputs ? "tokens" : "input_ids";
-		const speedTensor = useLegacyInputs
-			? new ort.Tensor("float32", new Float32Array([1.0]), [1])
-			: new ort.Tensor("int32", new Int32Array([1]), [1]);
+		const tokensInputName = inputNames.includes("input_ids")
+			? "input_ids"
+			: "tokens";
+		const speedDtype =
+			session.inputMetadata?.speed?.type === "tensor(int32)"
+				? "int32"
+				: "float32";
+		const speedTensor =
+			speedDtype === "int32"
+				? new ort.Tensor("int32", new Int32Array([1]), [1])
+				: new ort.Tensor("float32", new Float32Array([1.0]), [1]);
 		const feeds: Record<string, OrtTensor> = {
 			[tokensInputName]: new ort.Tensor("int64", inputIds, [
 				1,
