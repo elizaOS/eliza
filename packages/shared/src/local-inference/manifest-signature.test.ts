@@ -17,13 +17,15 @@ async function generateKeyPair(): Promise<KeyPair> {
     true,
     ["sign", "verify"],
   )) as CryptoKeyPair;
-  const raw = new Uint8Array(await webcrypto.subtle.exportKey("raw", publicKey));
+  const raw = new Uint8Array(
+    await webcrypto.subtle.exportKey("raw", publicKey),
+  );
   return { publicRaw: raw, privateKey };
 }
 
 async function signBody(
   privateKey: CryptoKey,
-  body: Uint8Array,
+  body: Uint8Array<ArrayBuffer>,
 ): Promise<string> {
   const sig = new Uint8Array(
     await webcrypto.subtle.sign({ name: "Ed25519" }, privateKey, body),
@@ -135,10 +137,7 @@ describe("verifyManifestSignatureText", () => {
   it("round-trips a JSON-looking body", async () => {
     const kp = await generateKeyPair();
     const body = '{"models":[{"id":"kokoro","version":"0.1.0"}]}';
-    const sig = await signBody(
-      kp.privateKey,
-      new TextEncoder().encode(body),
-    );
+    const sig = await signBody(kp.privateKey, new TextEncoder().encode(body));
     const idx = await verifyManifestSignatureText(body, sig, [kp.publicRaw]);
     expect(idx).toBe(0);
   });

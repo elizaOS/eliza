@@ -10,12 +10,19 @@ All runs are routed through the elizaOS TypeScript benchmark bridge
 ``AgentRuntime`` path has been removed.
 """
 
-from elizaos_terminal_bench.dataset import TerminalBenchDataset
-from elizaos_terminal_bench.environment import TerminalEnvironment
+from elizaos_terminal_bench.dataset import (
+    TerminalBenchDataset,
+    TerminalBenchDatasetMissingError,
+)
+from elizaos_terminal_bench.environment import (
+    TerminalEnvironment,
+    TmuxDockerEnvironment,
+)
 from elizaos_terminal_bench.evaluator import TerminalBenchEvaluator
 from elizaos_terminal_bench.runner import TerminalBenchRunner, run_terminal_bench
 from elizaos_terminal_bench.types import (
     LEADERBOARD_SCORES,
+    LEADERBOARD_URL,
     TaskCategory,
     TaskDifficulty,
     TerminalBenchConfig,
@@ -39,9 +46,12 @@ __all__ = [
     "TerminalBenchReport",
     "TerminalBenchConfig",
     "LEADERBOARD_SCORES",
+    "LEADERBOARD_URL",
     # Core classes
     "TerminalBenchDataset",
+    "TerminalBenchDatasetMissingError",
     "TerminalEnvironment",
+    "TmuxDockerEnvironment",
     "TerminalBenchEvaluator",
     "TerminalBenchRunner",
     # Convenience

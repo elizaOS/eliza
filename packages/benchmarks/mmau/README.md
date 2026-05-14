@@ -1,6 +1,13 @@
-# MMAU — Massive Multi-task Audio Understanding
+# Audio MMAU — Massive Multi-task Audio Understanding
 
-Vendored Python implementation of MMAU (ICLR 2025) for the elizaOS
+> **Disambiguation:** This is the *audio* MMAU benchmark (Sakshi et al.,
+> ICLR 2025, gamma-lab-umd/MMAU-test-mini). It is **not** related to
+> Salesforce's MMAU agent-capability benchmark (Yin et al.,
+> arXiv:2407.18961). The PyPI distribution is published as
+> `elizaos-mmau-audio` to reflect this. The legacy distribution name
+> `elizaos-mmau` and CLI entry `mmau` are kept temporarily as aliases.
+
+Vendored Python implementation of Audio MMAU (ICLR 2025) for the elizaOS
 benchmark suite.
 
 - Source: https://mmaubench.github.io/

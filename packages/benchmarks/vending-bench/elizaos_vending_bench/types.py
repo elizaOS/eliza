@@ -2,7 +2,8 @@
 Vending-Bench Type Definitions
 
 Defines all data classes and enums used by the Vending-Bench benchmark implementation.
-Based on the AISI inspect-ai framework patterns.
+The tool surface mirrors Andon Labs' Vending-Bench paper (arXiv 2502.15840) — see
+``RESEARCH.md`` for a side-by-side mapping between paper tools and ``ActionType``.
 """
 
 from dataclasses import dataclass, field
@@ -49,21 +50,52 @@ class Season(str, Enum):
 
 
 class ActionType(str, Enum):
-    """Types of agent actions."""
+    """Types of agent actions.
 
-    VIEW_STATE = "VIEW_BUSINESS_STATE"
+    The structured-action interface mirrors the tool surface of the Vending-Bench
+    paper (Andon Labs, arXiv 2502.15840). Each ActionType corresponds 1:1 to a
+    paper tool, with three "eliza convenience actions" (``VIEW_STATE``,
+    ``VIEW_SUPPLIERS``, ``UPDATE_NOTES``) kept for backward compatibility with
+    the harness bridge.
+    """
+
+    # --- Paper-faithful tool surface ----------------------------------------
+    # Email channel — primary supplier communication.
+    SEND_EMAIL = "SEND_EMAIL"
+    READ_EMAIL = "READ_EMAIL"
+    # Free-text scratchpad (paper: ``scratchpad``).
+    NOTEPAD_READ = "NOTEPAD_READ"
+    NOTEPAD_WRITE = "NOTEPAD_WRITE"
+    # Web research — calls a simulated search engine (paper: ``research_products``).
+    SEARCH_WEB = "SEARCH_WEB"
+    # Sub-agent delegation (paper: ``run_sub_agent`` / ``chat_with_sub_agent``).
+    DELEGATE_EMAIL = "DELEGATE_EMAIL"
+    DELEGATE_RESEARCH = "DELEGATE_RESEARCH"
+    # Physical / on-site operations (paper sub-agent tools).
     SET_PRICE = "SET_PRICE"
     PLACE_ORDER = "PLACE_ORDER"
     RESTOCK_SLOT = "RESTOCK_SLOT"
     COLLECT_CASH = "COLLECT_CASH"
-    UPDATE_NOTES = "UPDATE_NOTES"
-    VIEW_SUPPLIERS = "VIEW_SUPPLIERS"
-    ADVANCE_DAY = "ADVANCE_DAY"
     CHECK_DELIVERIES = "CHECK_DELIVERIES"
+    # Time control (paper: ``wait_for_next_day``).
+    ADVANCE_DAY = "ADVANCE_DAY"
+
+    # --- eliza convenience actions ------------------------------------------
+    # Structured shortcuts not present in the paper. They are kept so that the
+    # heuristic agent and the eliza bridge stay usable, but a paper-faithful run
+    # should rely on the email/web/notepad tools above.
+    VIEW_STATE = "VIEW_BUSINESS_STATE"
+    VIEW_SUPPLIERS = "VIEW_SUPPLIERS"
+    UPDATE_NOTES = "UPDATE_NOTES"
 
 
 class CoherenceErrorType(str, Enum):
-    """Types of coherence errors the agent can make."""
+    """Types of coherence errors the agent can make.
+
+    Covers the failure modes catalogued in Section 4 of the Vending-Bench paper
+    (Andon Labs, arXiv 2502.15840), plus structural errors detectable from the
+    action trace alone.
+    """
 
     DUPLICATE_ORDER = "duplicate_order"  # Ordering products already in pending delivery
     FORGOTTEN_ORDER = "forgotten_order"  # Not restocking delivered items
@@ -72,6 +104,15 @@ class CoherenceErrorType(str, Enum):
     SCHEDULE_CONFUSION = "schedule_confusion"  # Misremembering delivery dates
     LOOP_BEHAVIOR = "loop_behavior"  # Repeating same ineffective actions
     CASH_FLOW_ERROR = "cash_flow_error"  # Not collecting cash when low on funds
+
+    # Paper-catalogued failure modes (Section 4 "Failure Modes").
+    HALLUCINATED_DELIVERY = "hallucinated_delivery"  # Assumed an order arrived before it actually did
+    HALLUCINATED_SUPPLIER = "hallucinated_supplier"  # Emailed / referenced a supplier that doesn't exist
+    CASH_MISREMEMBERED = "cash_misremembered"  # Agent's notes/reasoning disagree with actual cash
+    PHANTOM_INVENTORY = "phantom_inventory"  # Acted as if a product is in stock when it isn't
+    TOOL_FORMAT_DEGRADATION = "tool_format_degradation"  # Failed to use the structured tool call format
+    TANGENTIAL_MELTDOWN = "tangential_meltdown"  # Repeated off-task escalations (e.g. "contact FBI")
+    TASK_ABANDONMENT = "task_abandonment"  # Agent stops producing useful actions / refuses
 
 
 # Agent action parameter typing
@@ -149,6 +190,9 @@ class Supplier:
     bulk_discount_threshold: int
     bulk_discount_percent: float
     reliability: float = 1.0  # 0-1, chance of on-time delivery
+    # Paper-faithful comms: each supplier has a simulated email address.
+    email: str = ""
+    response_lag_days: int = 1  # Email reply lag in sim-days
 
 
 @dataclass
@@ -208,6 +252,38 @@ class DailySummary:
 
 
 @dataclass
+class EmailMessage:
+    """A single email message — inbox or outbox.
+
+    Paper analogue: the agent's primary supplier-communication channel uses
+    free-form email (``send_email`` / ``read_emails``), with simulated
+    wholesaler replies arriving on the next sim-day.
+    """
+
+    message_id: str
+    direction: str  # "in" or "out"
+    sender: str  # email address or supplier_id
+    recipient: str
+    subject: str
+    body: str
+    sent_day: int
+    sent_date: date
+    delivery_day: int | None = None  # Day the message becomes visible to the recipient
+    read: bool = False
+    in_reply_to: str | None = None
+    metadata: dict[str, str] = field(default_factory=dict)
+
+
+@dataclass
+class WebSearchResult:
+    """A single canned web-search snippet returned by the WebSimulator."""
+
+    title: str
+    url: str
+    snippet: str
+
+
+@dataclass
 class AgentState:
     """Complete state of the vending business."""
 
@@ -219,8 +295,14 @@ class AgentState:
     order_history: list[Order] = field(default_factory=list)
     delivered_inventory: list[DeliveredInventory] = field(default_factory=list)
     daily_history: list[DailySummary] = field(default_factory=list)
-    notes: dict[str, str] = field(default_factory=dict)  # Agent notes
+    notes: dict[str, str] = field(default_factory=dict)  # Agent notes (key/value)
     kv_store: dict[str, str] = field(default_factory=dict)  # Structured memory
+    # Paper-faithful long-term memory and comms surface.
+    notepad: list[str] = field(default_factory=list)  # Append-only free-text scratchpad
+    inbox: list[EmailMessage] = field(default_factory=list)  # Received emails
+    outbox: list[EmailMessage] = field(default_factory=list)  # Sent emails
+    web_search_log: list[dict[str, str]] = field(default_factory=list)  # {query, day, top_url}
+    consecutive_unpaid_fee_days: int = 0  # For paper-faithful bankruptcy detection
 
 
 @dataclass
@@ -271,6 +353,12 @@ class VendingBenchResult:
     error: str | None = None
     starter_baseline_revenue: Decimal = Decimal("0")
     incremental_revenue: Decimal = Decimal("0")
+    # Paper-faithful auxiliary metrics.
+    emails_sent: int = 0
+    emails_received: int = 0
+    web_searches: int = 0
+    notepad_writes: int = 0
+    sub_agent_calls: int = 0
 
 
 @dataclass
@@ -338,27 +426,38 @@ class LeaderboardComparison:
 
 @dataclass
 class VendingBenchConfig:
-    """Configuration for Vending-Bench runner."""
+    """Configuration for Vending-Bench runner.
+
+    Defaults align with the paper (Andon Labs, arXiv 2502.15840 Section 3):
+    starting cash $500, daily fee $2, 30k-token context window, 4x3 machine.
+    The paper runs indefinitely until bankruptcy or a 2000-message limit; we
+    default to 90 sim-days as a tractable middle-ground — increase
+    ``max_days_per_run`` and ``max_messages_per_run`` to approach the paper's
+    long-horizon regime (~25M tokens of context across a run).
+    """
 
     # Simulation settings
     num_runs: int = 5
-    max_days_per_run: int = 30
-    initial_cash: Decimal = Decimal("500.00")
+    max_days_per_run: int = 90  # Paper: unbounded until bankruptcy / message cap
+    initial_cash: Decimal = Decimal("500.00")  # Paper: $500
     random_seed: int | None = None
     starter_inventory: bool = False
 
     # Environment settings
-    daily_base_fee: Decimal = Decimal("5.00")
-    slot_fee: Decimal = Decimal("0.50")
+    daily_base_fee: Decimal = Decimal("2.00")  # Paper: $2/day daily fee
+    slot_fee: Decimal = Decimal("0.00")  # Paper folds slot fees into the flat $2 fee
     machine_rows: int = 4
     machine_columns: int = 3
     location: str = "Office Building Lobby"
+    bankruptcy_grace_days: int = 10  # Paper: bankrupt after 10 consecutive unpaid-fee days
 
     # Agent settings
-    max_actions_per_day: int = 10
-    context_window_tokens: int = 30000
+    max_actions_per_day: int = 25
+    max_messages_per_run: int = 2000  # Paper: hard cap on agent messages per run
+    context_window_tokens: int = 30000  # Paper: primary experiments use 30k
     temperature: float = 0.0
     model_name: str = "gpt-4"
+    enable_sub_agents: bool = True  # Spawn email/research sub-agents on DELEGATE_* actions
 
     # Output settings
     output_dir: str = "./benchmark_results/vending-bench"

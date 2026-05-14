@@ -1,20 +1,36 @@
-"""Scoring stubs for VisualWebBench."""
+"""Per-subtask metrics for VisualWebBench.
+
+Implements the seven scorers from ``VisualWebBench/utils/eval_utils.py``:
+
+    web_caption    -> ROUGE-1/2/L (F1), headline = rouge_l / 100
+    heading_ocr    -> ROUGE-1/2/L, headline = rouge_l / 100
+    element_ocr    -> ROUGE-1/2/L, headline = rouge_l / 100
+    webqa          -> per-sample max ROUGE-1 F1 over reference list (upstream
+                      uses ROUGE-1 F1 with ``Rouge`` and calls it "F1")
+    element_ground -> MCQ accuracy (letter parse)
+    action_pred    -> MCQ accuracy
+    action_ground  -> MCQ accuracy
+
+All numeric outputs are 0-100 (upstream scale) in ``result.metrics``; the
+``result.score`` field carries the 0-1 normalised headline used for the
+overall accuracy aggregate.
+"""
 
 from __future__ import annotations
 
 import re
-import string
+from typing import Sequence
 
 from benchmarks.visualwebbench.types import (
-    BBox,
     VisualWebBenchPrediction,
     VisualWebBenchResult,
     VisualWebBenchTask,
+    VisualWebBenchTaskType,
 )
 
 
 class VisualWebBenchEvaluator:
-    """Evaluate exact, choice, and bbox-style VisualWebBench predictions."""
+    """Score VisualWebBench predictions with upstream-equivalent metrics."""
 
     def __init__(self, *, bbox_iou_threshold: float = 0.5) -> None:
         self.bbox_iou_threshold = bbox_iou_threshold
@@ -24,7 +40,7 @@ class VisualWebBenchEvaluator:
         task: VisualWebBenchTask,
         prediction: VisualWebBenchPrediction,
     ) -> VisualWebBenchResult:
-        """Score one prediction."""
+        """Score one prediction with its subtask-specific metric."""
         if prediction.error:
             return VisualWebBenchResult(
                 task_id=task.id,
@@ -35,32 +51,18 @@ class VisualWebBenchEvaluator:
                 success=False,
                 expected=task.answer,
                 prediction=prediction,
-                exact_match=False,
-                choice_match=False,
-                bbox_iou=None,
+                metrics={},
                 latency_ms=prediction.latency_ms,
                 error=prediction.error,
             )
 
-        exact_match = False
-        choice_match = False
-        bbox_iou: float | None = None
-        score = 0.0
-
-        if task.score_kind == "exact":
-            exact_match = self._score_exact(task.answer, prediction.answer_text)
-            score = 1.0 if exact_match else 0.0
-        elif task.score_kind == "choice":
-            choice_match = self._score_choice(task, prediction)
-            score = 1.0 if choice_match else 0.0
+        score, metrics = _score_for_task(task, prediction)
+        # Headline success threshold: choice tasks succeed on a correct letter;
+        # generative tasks succeed when the headline F1 / ROUGE-L >= 0.5.
+        if task.score_kind == "choice":
+            success = score >= 1.0
         else:
-            choice_match = self._score_choice(task, prediction)
-            expected_bbox = self._expected_bbox(task)
-            if expected_bbox is not None and prediction.bbox is not None:
-                bbox_iou = _bbox_iou(expected_bbox, prediction.bbox)
-            elif choice_match:
-                bbox_iou = 1.0
-            score = 1.0 if choice_match or (bbox_iou or 0.0) >= self.bbox_iou_threshold else 0.0
+            success = score >= 0.5
 
         return VisualWebBenchResult(
             task_id=task.id,
@@ -68,133 +70,236 @@ class VisualWebBenchEvaluator:
             website=task.website,
             score_kind=task.score_kind,
             score=score,
-            success=score >= 1.0,
+            success=success,
             expected=task.answer,
             prediction=prediction,
-            exact_match=exact_match,
-            choice_match=choice_match,
-            bbox_iou=bbox_iou,
+            metrics=metrics,
             latency_ms=prediction.latency_ms,
             error=prediction.error,
         )
 
-    def aggregate(self, results: list[VisualWebBenchResult]) -> dict[str, float]:
-        """Compute headline aggregate metrics."""
+    def aggregate(
+        self,
+        results: Sequence[VisualWebBenchResult],
+    ) -> dict[str, float]:
+        """Headline aggregate: overall plus per-metric-family means.
+
+        Means are computed on the 0-1 ``score`` field so they sit on a single
+        scale. Per-subtask metric breakdowns (rouge_1/rouge_2/rouge_l/f1/
+        accuracy) are surfaced separately in the report's ``by_task_type``.
+        """
         if not results:
             return {
                 "overall_accuracy": 0.0,
-                "exact_accuracy": 0.0,
+                "rouge_score": 0.0,
+                "f1_score": 0.0,
                 "choice_accuracy": 0.0,
-                "bbox_accuracy": 0.0,
                 "average_latency_ms": 0.0,
             }
         return {
             "overall_accuracy": sum(r.score for r in results) / len(results),
-            "exact_accuracy": _mean(r.score for r in results if r.score_kind == "exact"),
-            "choice_accuracy": _mean(r.score for r in results if r.score_kind == "choice"),
-            "bbox_accuracy": _mean(r.score for r in results if r.score_kind == "bbox"),
+            "rouge_score": _mean([r.score for r in results if r.score_kind == "rouge"]),
+            "f1_score": _mean([r.score for r in results if r.score_kind == "f1"]),
+            "choice_accuracy": _mean(
+                [r.score for r in results if r.score_kind == "choice"]
+            ),
             "average_latency_ms": sum(r.latency_ms for r in results) / len(results),
         }
 
-    def _score_exact(self, expected: str | int | list[str] | BBox, predicted: str) -> bool:
-        refs = expected if isinstance(expected, list) else [expected]
-        pred_norm = _normalize_text(predicted)
-        for ref in refs:
-            ref_norm = _normalize_text(str(ref))
-            if not ref_norm:
-                continue
-            if pred_norm == ref_norm:
-                return True
-            if len(ref_norm) >= 2 and ref_norm in pred_norm:
-                return True
-        return False
 
-    def _score_choice(
-        self,
-        task: VisualWebBenchTask,
-        prediction: VisualWebBenchPrediction,
-    ) -> bool:
-        if not isinstance(task.answer, int):
-            return False
-        if prediction.choice_index is not None:
-            return prediction.choice_index == task.answer
-        if not prediction.answer_text or not isinstance(task.options, list):
-            return False
-        options = task.options
-        if task.answer < 0 or task.answer >= len(options):
-            return False
-        parsed_choice = _parse_choice_index(prediction.answer_text, len(options))
-        if parsed_choice is not None:
-            return parsed_choice == task.answer
-        expected_option = options[task.answer]
-        if not isinstance(expected_option, str):
-            return False
-        return _normalize_text(prediction.answer_text) == _normalize_text(expected_option)
-
-    def _expected_bbox(self, task: VisualWebBenchTask) -> BBox | None:
-        if isinstance(task.answer, tuple):
-            return task.answer
-        if isinstance(task.answer, int) and task.options:
-            if 0 <= task.answer < len(task.options):
-                selected = task.options[task.answer]
-                if isinstance(selected, tuple):
-                    return selected
-        return task.bbox
+# --------------------------------------------------------------------------- #
+# Per-task scorers
+# --------------------------------------------------------------------------- #
 
 
-def _normalize_text(value: str) -> str:
-    value = value.strip().lower()
-    value = value.translate(str.maketrans("", "", string.punctuation))
-    value = re.sub(r"\s+", " ", value)
-    return value
+def _score_for_task(
+    task: VisualWebBenchTask,
+    prediction: VisualWebBenchPrediction,
+) -> tuple[float, dict[str, float]]:
+    """Dispatch to the right subtask scorer; return (headline_0_1, metrics)."""
+    pred = (prediction.answer_text or "").strip()
+    tt = task.task_type
+    if tt in {
+        VisualWebBenchTaskType.WEB_CAPTION,
+        VisualWebBenchTaskType.HEADING_OCR,
+        VisualWebBenchTaskType.ELEMENT_OCR,
+    }:
+        gold = str(task.answer) if not isinstance(task.answer, list) else (
+            str(task.answer[0]) if task.answer else ""
+        )
+        metrics = _rouge_scores(pred or " ", gold or " ")
+        return metrics["rouge_l"] / 100.0, metrics
+
+    if tt is VisualWebBenchTaskType.WEBQA:
+        if isinstance(task.answer, list):
+            golds = [str(x) for x in task.answer]
+        else:
+            golds = [str(task.answer)]
+        f1 = _webqa_f1(pred or " ", golds)
+        return f1 / 100.0, {"f1": f1}
+
+    # MCQ subtasks
+    expected_index = task.answer if isinstance(task.answer, int) else -1
+    chosen = _parse_choice_index(prediction, len(task.options) or 8)
+    correct = chosen is not None and chosen == expected_index
+    return (1.0 if correct else 0.0), {"accuracy": 100.0 if correct else 0.0}
 
 
-def _bbox_iou(a: BBox, b: BBox) -> float:
-    ax1, ay1, ax2, ay2 = a
-    bx1, by1, bx2, by2 = b
-    inter_x1 = max(ax1, bx1)
-    inter_y1 = max(ay1, by1)
-    inter_x2 = min(ax2, bx2)
-    inter_y2 = min(ay2, by2)
-    inter_w = max(0.0, inter_x2 - inter_x1)
-    inter_h = max(0.0, inter_y2 - inter_y1)
-    intersection = inter_w * inter_h
-    area_a = max(0.0, ax2 - ax1) * max(0.0, ay2 - ay1)
-    area_b = max(0.0, bx2 - bx1) * max(0.0, by2 - by1)
-    union = area_a + area_b - intersection
-    return intersection / union if union > 0 else 0.0
+# --------------------------------------------------------------------------- #
+# ROUGE scorer — implemented locally to avoid pulling the heavy `rouge` PyPI
+# package; uses the same lcs-F1 / ngram-F1 maths as `pyrouge`/upstream.
+# --------------------------------------------------------------------------- #
 
 
-def _parse_choice_index(text: str, option_count: int) -> int | None:
-    """Parse common model choice formats into a zero-based index."""
-    normalized = text.strip()
-    if not normalized:
+def _rouge_scores(pred: str, gold: str) -> dict[str, float]:
+    """Return ROUGE-1, ROUGE-2, ROUGE-L F1s on a 0-100 scale."""
+    pred_tokens = _tokenize(pred)
+    gold_tokens = _tokenize(gold)
+    return {
+        "rouge_1": _rouge_n_f1(pred_tokens, gold_tokens, n=1) * 100.0,
+        "rouge_2": _rouge_n_f1(pred_tokens, gold_tokens, n=2) * 100.0,
+        "rouge_l": _rouge_l_f1(pred_tokens, gold_tokens) * 100.0,
+    }
+
+
+def _tokenize(text: str) -> list[str]:
+    # Match the upstream `Rouge` tokenizer behaviour: lowercase + word-ish
+    # tokens (strip punctuation, split on whitespace).
+    lowered = text.lower()
+    return re.findall(r"[a-z0-9]+", lowered)
+
+
+def _rouge_n_f1(pred: list[str], gold: list[str], *, n: int) -> float:
+    if len(pred) < n or len(gold) < n:
+        return 0.0
+    pred_ngrams = _ngram_counts(pred, n)
+    gold_ngrams = _ngram_counts(gold, n)
+    overlap = 0
+    for ngram, count in pred_ngrams.items():
+        overlap += min(count, gold_ngrams.get(ngram, 0))
+    pred_total = sum(pred_ngrams.values())
+    gold_total = sum(gold_ngrams.values())
+    if pred_total == 0 or gold_total == 0:
+        return 0.0
+    precision = overlap / pred_total
+    recall = overlap / gold_total
+    if precision + recall == 0:
+        return 0.0
+    return 2 * precision * recall / (precision + recall)
+
+
+def _ngram_counts(tokens: list[str], n: int) -> dict[tuple[str, ...], int]:
+    counts: dict[tuple[str, ...], int] = {}
+    for i in range(len(tokens) - n + 1):
+        gram = tuple(tokens[i : i + n])
+        counts[gram] = counts.get(gram, 0) + 1
+    return counts
+
+
+def _rouge_l_f1(pred: list[str], gold: list[str]) -> float:
+    if not pred or not gold:
+        return 0.0
+    lcs = _lcs_length(pred, gold)
+    if lcs == 0:
+        return 0.0
+    precision = lcs / len(pred)
+    recall = lcs / len(gold)
+    return 2 * precision * recall / (precision + recall)
+
+
+def _lcs_length(a: list[str], b: list[str]) -> int:
+    m, n = len(a), len(b)
+    # 1D DP — O(m*n) time, O(min(m,n)) space.
+    if m < n:
+        a, b = b, a
+        m, n = n, m
+    prev = [0] * (n + 1)
+    for i in range(1, m + 1):
+        curr = [0] * (n + 1)
+        for j in range(1, n + 1):
+            if a[i - 1] == b[j - 1]:
+                curr[j] = prev[j - 1] + 1
+            else:
+                curr[j] = max(prev[j], curr[j - 1])
+        prev = curr
+    return prev[n]
+
+
+# --------------------------------------------------------------------------- #
+# WebQA F1 — upstream uses Rouge-1 F1 across each reference and takes the max.
+# --------------------------------------------------------------------------- #
+
+
+def _webqa_f1(pred: str, gold_list: list[str]) -> float:
+    best = 0.0
+    for gold in gold_list:
+        score = _rouge_n_f1(_tokenize(pred), _tokenize(gold), n=1) * 100.0
+        if score > best:
+            best = score
+    return best
+
+
+# --------------------------------------------------------------------------- #
+# Multiple choice parsing — adapted from upstream `parse_multi_choice_response`.
+# Returns a 0-based index (A=0, B=1, ...).
+# --------------------------------------------------------------------------- #
+
+
+def _parse_choice_index(
+    prediction: VisualWebBenchPrediction,
+    option_count: int,
+) -> int | None:
+    # Prefer an explicit structured choice_index if the agent supplied one.
+    if prediction.choice_index is not None:
+        idx = prediction.choice_index
+        if 0 <= idx < max(option_count, 1):
+            return idx
         return None
 
-    letter_pattern = re.compile(
-        r"(?:^|[^A-Za-z0-9])(?:option|choice|answer)?\s*(?:is\s*)?[\(\[]?([A-Z])[\)\].:]?(?=$|[^A-Za-z0-9])",
-        flags=re.IGNORECASE,
-    )
-    for letter_match in letter_pattern.finditer(normalized):
-        index = ord(letter_match.group(1).upper()) - ord("A")
-        if 0 <= index < option_count:
-            return index
+    response = (prediction.answer_text or "").strip()
+    if not response:
+        return None
+    if len(response) == 1 and response.upper().isalpha():
+        letter = response.upper()
+        index = ord(letter) - ord("A")
+        return index if 0 <= index < max(option_count, 1) else None
+    match = re.match(r"^([A-Za-z])[\.\):]", response)
+    if match:
+        index = ord(match.group(1).upper()) - ord("A")
+        return index if 0 <= index < max(option_count, 1) else None
 
-    number_pattern = re.compile(
-        r"(?:^|[^A-Za-z0-9])(?:option|choice|answer|index)?\s*(?:is\s*)?[\(\[]?(\d+)[\)\].:]?(?=$|[^A-Za-z0-9])",
-        flags=re.IGNORECASE,
-    )
-    for number_match in number_pattern.finditer(normalized):
-        value = int(number_match.group(1))
-        if value == 0:
-            return 0 if option_count > 0 else None
-        index = value - 1
-        if 0 <= index < option_count:
-            return index
+    cleaned = response
+    for char in [",", ".", "!", "?", ";", ":", "'", '"']:
+        cleaned = cleaned.replace(char, "")
+    cleaned = " " + cleaned + " "
+    all_choices = [chr(ord("A") + i) for i in range(max(option_count, 1))]
 
-    return None
+    candidates: list[str] = []
+    ans_with_brack = False
+    for choice in all_choices:
+        if f"({choice})" in cleaned:
+            candidates.append(choice)
+            ans_with_brack = True
+    if not candidates:
+        for choice in all_choices:
+            if f" {choice} " in cleaned:
+                candidates.append(choice)
+    if not candidates:
+        return None
+    if len(candidates) == 1:
+        return ord(candidates[0]) - ord("A")
+
+    # Multiple matches — take the one that appears last in the response, which
+    # is upstream's tie-break heuristic.
+    indices: list[int] = []
+    for can in candidates:
+        token = f"({can})" if ans_with_brack else f" {can} "
+        indices.append(cleaned.rfind(token))
+    best = candidates[max(range(len(candidates)), key=lambda i: indices[i])]
+    return ord(best) - ord("A")
 
 
-def _mean(values: object) -> float:
-    vals = list(values)  # type: ignore[arg-type]
-    return sum(vals) / len(vals) if vals else 0.0
+def _mean(values: Sequence[float]) -> float:
+    if not values:
+        return 0.0
+    return sum(values) / len(values)
