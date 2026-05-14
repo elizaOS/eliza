@@ -12,7 +12,7 @@
  * Reference: https://huggingface.co/hexgrad/Kokoro-82M
  */
 
-import type { KokoroVoicePack } from "./types";
+import type { KokoroVoicePack } from "./types.js";
 
 export const KOKORO_VOICE_PACKS: ReadonlyArray<KokoroVoicePack> = [
 	// American English — female

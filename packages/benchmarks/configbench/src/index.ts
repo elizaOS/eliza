@@ -15,6 +15,7 @@ import {
   header,
   printComparison,
   printHandlerResult,
+  printSetupIncompatibleHandlers,
   R,
   writeJsonResults,
   writeMarkdownReport,
@@ -85,6 +86,7 @@ async function main(): Promise<void> {
   }
 
   printComparison(results.handlers);
+  printSetupIncompatibleHandlers(results);
 
   header("VALIDATION");
   if (results.validationPassed) {

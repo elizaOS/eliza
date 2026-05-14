@@ -55,6 +55,7 @@
  */
 
 import { ImageGenBackendUnavailableError } from "./errors";
+import { resolveSeed } from "./sd-cpp";
 import type {
 	ImageGenBackend,
 	ImageGenLoadArgs,
@@ -150,10 +151,7 @@ export async function loadAospImageGenBackend(
 					"[imagegen/aosp] prompt is empty",
 				);
 			}
-			const seed =
-				typeof req.seed === "number" && req.seed >= 0
-					? req.seed
-					: Math.floor(Math.random() * 0x7fffffff);
+			const seed = resolveSeed(req.seed);
 			const width = req.width ?? 1024;
 			const height = req.height ?? 1024;
 			const steps = req.steps ?? 4;

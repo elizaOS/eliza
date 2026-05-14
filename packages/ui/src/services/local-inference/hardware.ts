@@ -11,7 +11,13 @@
  */
 
 import os from "node:os";
-import type { HardwareProbe, ModelBucket } from "./types";
+import fs from "node:fs";
+import type {
+  HardwareProbe,
+  ModelBucket,
+  OpenVinoDeviceKind,
+  OpenVinoHardwareProbe,
+} from "./types";
 
 const BYTES_PER_GB = 1024 ** 3;
 const NODE_LLAMA_CPP_MODULE_ID = "node-llama-cpp";
@@ -77,6 +83,126 @@ async function loadLlamaBinding(): Promise<LlamaBindingModule | null> {
   }
 }
 
+const OPENVINO_LINUX_GPU_PACKAGES = [
+  "intel-opencl-icd",
+  "libigc2",
+  "libigdfcl2",
+] as const;
+
+interface OpenVinoDetectionHost {
+  platform?: NodeJS.Platform;
+  env?: NodeJS.ProcessEnv;
+  existsSync?: (path: string) => boolean;
+  readdirSync?: (path: string) => string[];
+}
+
+function readableEntries(
+  dir: string,
+  host: Required<Pick<OpenVinoDetectionHost, "existsSync" | "readdirSync">>,
+  prefix: string,
+): string[] {
+  if (!host.existsSync(dir)) return [];
+  try {
+    return host
+      .readdirSync(dir)
+      .filter((entry) => entry.startsWith(prefix))
+      .map((entry) => `${dir}/${entry}`);
+  } catch {
+    return [];
+  }
+}
+
+function hasAny(
+  paths: string[],
+  existsSync: Required<OpenVinoDetectionHost>["existsSync"],
+): boolean {
+  return paths.some((candidate) => existsSync(candidate));
+}
+
+export function detectOpenVinoDevices(
+  host: OpenVinoDetectionHost = {},
+): OpenVinoHardwareProbe {
+  const platform = host.platform ?? process.platform;
+  const env = host.env ?? process.env;
+  const existsSync = host.existsSync ?? fs.existsSync;
+  const readdirSync =
+    host.readdirSync ??
+    ((dir: string) => fs.readdirSync(dir, { encoding: "utf8" }) as string[]);
+  const io = { existsSync, readdirSync };
+
+  const runtimeAvailable =
+    Boolean(env.OpenVINO_DIR || env.INTEL_OPENVINO_DIR) ||
+    hasAny(
+      [
+        "/opt/intel/openvino/setupvars.sh",
+        "/opt/intel/openvino_2026/setupvars.sh",
+        "/usr/lib/x86_64-linux-gnu/libopenvino.so",
+        "/usr/lib/x86_64-linux-gnu/libopenvino.so.0",
+        "/usr/lib/aarch64-linux-gnu/libopenvino.so",
+        "/usr/lib/aarch64-linux-gnu/libopenvino.so.0",
+      ],
+      existsSync,
+    );
+
+  const renderNodes =
+    platform === "linux" ? readableEntries("/dev/dri", io, "renderD") : [];
+  const accelNodes =
+    platform === "linux" ? readableEntries("/dev/accel", io, "accel") : [];
+  const intelComputeRuntimeReady =
+    platform === "linux" &&
+    hasAny(
+      [
+        "/usr/lib/x86_64-linux-gnu/intel-opencl/libigdrcl.so",
+        "/usr/lib/x86_64-linux-gnu/libigc.so.1",
+        "/usr/lib/x86_64-linux-gnu/libigdfcl.so.1",
+        "/usr/lib/aarch64-linux-gnu/intel-opencl/libigdrcl.so",
+        "/usr/lib/aarch64-linux-gnu/libigc.so.1",
+        "/usr/lib/aarch64-linux-gnu/libigdfcl.so.1",
+      ],
+      existsSync,
+    );
+  const devices: OpenVinoDeviceKind[] = [];
+  if (runtimeAvailable) devices.push("CPU");
+  if (runtimeAvailable && renderNodes.length > 0 && intelComputeRuntimeReady) {
+    devices.push("GPU");
+  }
+  if (runtimeAvailable && accelNodes.length > 0) devices.push("NPU");
+
+  const warnings: string[] = [];
+  if (renderNodes.length > 0 && !intelComputeRuntimeReady) {
+    warnings.push(
+      `OpenVINO GPU needs Intel Compute Runtime packages: ${OPENVINO_LINUX_GPU_PACKAGES.join(", ")}`,
+    );
+  }
+  if ((renderNodes.length > 0 || accelNodes.length > 0) && !runtimeAvailable) {
+    warnings.push(
+      "Intel accelerator nodes are present, but OpenVINO Runtime was not found; source setupvars.sh or set OpenVINO_DIR.",
+    );
+  }
+
+  return {
+    runtimeAvailable,
+    devices,
+    gpu: {
+      renderNodes,
+      computeRuntimeReady: intelComputeRuntimeReady,
+      missingLinuxPackages:
+        renderNodes.length > 0 && !intelComputeRuntimeReady
+          ? [...OPENVINO_LINUX_GPU_PACKAGES]
+          : [],
+    },
+    npu: { accelNodes },
+    recommendedAsrDevice: devices.includes("NPU")
+      ? "NPU"
+      : devices.includes("GPU")
+        ? "GPU"
+        : devices.includes("CPU")
+          ? "CPU"
+          : null,
+    warnings,
+  };
+}
+
 /**
  * Read current system + GPU state. Cheap enough to call per-request; no
  * internal caching so the UI always reflects live VRAM usage.
@@ -88,6 +214,7 @@ export async function probeHardware(): Promise<HardwareProbe> {
   const platform = process.platform;
   const arch = process.arch;
   const appleSilicon = platform === "darwin" && arch === "arm64";
+  const openvino = detectOpenVinoDevices();
 
   const binding = await loadLlamaBinding();
 
@@ -106,6 +233,7 @@ export async function probeHardware(): Promise<HardwareProbe> {
       appleSilicon,
       recommendedBucket: recommendBucket(totalRamGb, 0, appleSilicon),
       source: "os-fallback",
+      openvino,
     };
   }
 
@@ -124,6 +252,7 @@ export async function probeHardware(): Promise<HardwareProbe> {
       appleSilicon,
       recommendedBucket: recommendBucket(totalRamGb, 0, appleSilicon),
       source: "node-llama-cpp",
+      openvino,
     };
   }
 
@@ -145,6 +274,7 @@ export async function probeHardware(): Promise<HardwareProbe> {
     appleSilicon,
     recommendedBucket: recommendBucket(totalRamGb, totalVramGb, appleSilicon),
     source: "node-llama-cpp",
+    openvino,
   };
 }
 

@@ -40,8 +40,7 @@ export const searchIssuesAction: Action = {
   parameters: [
     {
       name: "filters",
-      description:
-        "Linear issue filters: query, state, assignee, priority, team, label, limit.",
+      description: "Linear issue filters: query, state, assignee, priority, team, label, limit.",
       required: false,
       schema: { type: "object" as const },
     },

@@ -33,19 +33,21 @@
  * and the selector falls through to sd-cpp.
  */
 
-import { spawn } from "node:child_process";
 import { existsSync, promises as fs, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ImageGenBackendUnavailableError } from "./errors";
-import type { SdCppSpawnLike } from "./sd-cpp";
+import {
+	assertPngOutput,
+	defaultSpawn,
+	resolveSeed,
+	type SdCppSpawnLike,
+} from "./sd-cpp";
 import type {
 	ImageGenBackend,
 	ImageGenLoadArgs,
 	ImageGenResult,
 } from "./types";
-
-const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a] as const;
 
 export interface TensorRtBackendOptions {
 	loadArgs: ImageGenLoadArgs;
@@ -116,10 +118,7 @@ export async function loadTensorRtImageGenBackend(
 					"[imagegen/tensorrt] prompt is empty",
 				);
 			}
-			const seed =
-				typeof req.seed === "number" && req.seed >= 0
-					? req.seed
-					: Math.floor(Math.random() * 0x7fffffff);
+			const seed = resolveSeed(req.seed);
 			const width = req.width ?? 1024;
 			const height = req.height ?? 1024;
 			const steps = req.steps ?? 25;
@@ -174,7 +173,7 @@ export async function loadTensorRtImageGenBackend(
 			});
 
 			const bytes = new Uint8Array(await fs.readFile(outputPath));
-			assertPng(bytes);
+			assertPngOutput(bytes, "tensorrt", "subprocess_failed");
 			const elapsed = Math.max(1, now() - startMs);
 			return {
 				image: bytes,
@@ -210,9 +209,7 @@ async function assertBinaryAvailable(
 ): Promise<void> {
 	try {
 		const code = await new Promise<number | null>((resolve, reject) => {
-			const proc = (spawnImpl ?? (spawn as unknown as SdCppSpawnLike))(binary, [
-				"--version",
-			]);
+			const proc = defaultSpawn(spawnImpl)(binary, ["--version"]);
 			proc.on("error", (err: Error) => reject(err));
 			proc.on("exit", (c: number | null) => resolve(c));
 		});
@@ -241,11 +238,9 @@ async function runTensorRt(
 	opts: { signal?: AbortSignal; spawnImpl?: SdCppSpawnLike },
 ): Promise<void> {
 	await new Promise<void>((resolve, reject) => {
-		const proc = (opts.spawnImpl ?? (spawn as unknown as SdCppSpawnLike))(
-			binary,
-			args,
-			{ signal: opts.signal },
-		);
+		const proc = defaultSpawn(opts.spawnImpl)(binary, args, {
+			signal: opts.signal,
+		});
 		proc.on("error", (err: Error) => reject(err));
 		proc.on("exit", (code: number | null) => {
 			if (code === 0) {
@@ -263,21 +258,3 @@ async function runTensorRt(
 	});
 }
 
-function assertPng(bytes: Uint8Array): void {
-	if (bytes.length < PNG_SIGNATURE.length) {
-		throw new ImageGenBackendUnavailableError(
-			"tensorrt",
-			"subprocess_failed",
-			`[imagegen/tensorrt] output too short (${bytes.length} bytes); not a PNG`,
-		);
-	}
-	for (let i = 0; i < PNG_SIGNATURE.length; i += 1) {
-		if (bytes[i] !== PNG_SIGNATURE[i]) {
-			throw new ImageGenBackendUnavailableError(
-				"tensorrt",
-				"subprocess_failed",
-				"[imagegen/tensorrt] output missing PNG signature",
-			);
-		}
-	}
-}

@@ -324,7 +324,10 @@ function parseSimpleRegexAtom(
 
 	if (ch === "(") {
 		state.index += 1;
-		if (state.source[state.index] === "?" && state.source[state.index + 1] === ":") {
+		if (
+			state.source[state.index] === "?" &&
+			state.source[state.index + 1] === ":"
+		) {
 			state.index += 2;
 		} else if (state.source[state.index] === "?") {
 			return null;
@@ -343,8 +346,19 @@ function parseSimpleRegexAtom(
 		return parseSimpleRegexEscape(state);
 	}
 
-	if (ch === "." || ch === "^" || ch === "$" || ch === "|" || ch === ")" || ch === "{" || ch === "}" || ch === "?"
-		|| ch === "*" || ch === "+" || ch === "]") {
+	if (
+		ch === "." ||
+		ch === "^" ||
+		ch === "$" ||
+		ch === "|" ||
+		ch === ")" ||
+		ch === "{" ||
+		ch === "}" ||
+		ch === "?" ||
+		ch === "*" ||
+		ch === "+" ||
+		ch === "]"
+	) {
 		return null;
 	}
 
@@ -378,7 +392,9 @@ function parseSimpleRegexAtom(
 	return { kind: "literal", value: state.source.slice(start, state.index) };
 }
 
-function parseSimpleRegexEscape(state: SimpleRegexParserState): SimpleRegexAtom | null {
+function parseSimpleRegexEscape(
+	state: SimpleRegexParserState,
+): SimpleRegexAtom | null {
 	state.index += 1;
 	const escaped = state.source[state.index];
 	if (escaped === undefined || state.index >= state.end) return null;
@@ -604,7 +620,9 @@ function parseSimpleRegexDecimal(state: SimpleRegexParserState): number | null {
 
 function compileSimpleRegexNode(node: SimpleRegexNode): string {
 	if (node.kind === "alternation") {
-		const branches = node.branches.map((branch) => compileSimpleRegexNode(branch));
+		const branches = node.branches.map((branch) =>
+			compileSimpleRegexNode(branch),
+		);
 		return branches.length === 1 ? branches[0] : `( ${branches.join(" | ")} )`;
 	}
 
@@ -624,7 +642,11 @@ function compileSimpleRegexTerm(term: SimpleRegexTerm): string {
 		case "oneOrMore":
 			return `${atom}+`;
 		case "repeat":
-			return compileSimpleRegexRepeat(atom, term.quantifier.min, term.quantifier.max);
+			return compileSimpleRegexRepeat(
+				atom,
+				term.quantifier.min,
+				term.quantifier.max,
+			);
 	}
 }
 

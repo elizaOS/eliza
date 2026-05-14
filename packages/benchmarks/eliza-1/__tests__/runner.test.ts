@@ -482,7 +482,9 @@ describe("cerebras mode with mock client", () => {
     const result = await mode.generate(shouldRespondRequest());
 
     expect(JSON.parse(result.rawOutput)).toEqual({ shouldRespond: "STOP" });
-    expect(result.warnings?.join("\n")).toContain("unsupported response_format");
+    expect(result.warnings?.join("\n")).toContain(
+      "unsupported response_format",
+    );
     expect(requests).toHaveLength(3);
     expect((requests[2] as { response_format?: unknown }).response_format).toBe(
       undefined,

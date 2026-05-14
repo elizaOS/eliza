@@ -4,6 +4,7 @@ import {
   resolveNativeLibraryCandidate,
 } from "@elizaos/app-core/platform/native-library-policy";
 import type { IAgentRuntime } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 import type { FeatureResult, IPermissionsRegistry } from "@elizaos/shared";
 
 export const NATIVE_APPLE_REMINDER_METADATA_KEY = "nativeAppleReminder";
@@ -170,7 +171,7 @@ async function loadNativeReminderBridge(): Promise<NativeReminderBridge | null> 
     const dylibPath = resolveNativeLibraryCandidate(candidate, {
       expectedBasename: NATIVE_DYLIB_BASENAME,
       moduleDir: import.meta.dir,
-      warn: (message) => console.warn(`[AppleReminders] ${message}`),
+      warn: (message) => logger.warn(`[AppleReminders] ${message}`),
     });
     if (!dylibPath) continue;
     try {

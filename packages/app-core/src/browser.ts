@@ -54,11 +54,8 @@ export * from "./index.ts";
 // `@elizaos/ui`.
 export { type ConfigField, getPlugins } from "./index.ts";
 
-// ELIZA local-mode stubs for symbols removed during the P1A refactor.
-// The mobile/web renderer doesn't actually mount these (the desktop
-// shell is opt-in via the runtime mode), so noop React components are
-// safe. Restore real implementations if/when upstream restores them
-// or move eliza's main.tsx off these imports entirely.
+// Noop stubs for desktop-only symbols. The mobile/web renderer does not
+// mount these; they exist so eliza's main.tsx can import them unconditionally.
 export const DESKTOP_TRAY_MENU_ITEMS: ReadonlyArray<{
   id: string;
   label: string;

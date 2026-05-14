@@ -245,6 +245,11 @@ async function verifyDashboardRender(dashboardUrl?: string) {
     }
     const page = await context.newPage();
     await page.goto(dashboardUrl, { waitUntil: "networkidle", timeout: 60_000 });
+    await page
+      .locator('button[value="projections"], [role="tab"]:has-text("Projections")')
+      .first()
+      .click({ timeout: 30_000 })
+      .catch(() => {});
     await page.locator('[data-alert-severity="critical"]').first().waitFor({ timeout: 30_000 }).catch(() => {});
     await page.locator('[data-alert-severity="warning"]').first().waitFor({ timeout: 30_000 }).catch(() => {});
     const redStateRendered = (await page.locator('[data-alert-severity="critical"]').count()) > 0;

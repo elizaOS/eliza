@@ -63,6 +63,85 @@ export interface GenerateResult {
   durationMs: number;
 }
 
+/**
+ * Local re-declaration of the token-tree wire format used by sampler stages.
+ * Structurally identical to `TokenTreeDescriptor` in
+ * `packages/ui/src/services/local-inference/token-tree.ts` so payloads built
+ * by the harness flow through this package without any conversion. Kept
+ * local so `@elizaos/capacitor-llama` doesn't take a dep on `@elizaos/ui`.
+ */
+export interface TokenSequence {
+  name: string;
+  tokens: number[];
+}
+
+export interface TokenTreeDescriptor {
+  path: string;
+  leaves: TokenSequence[];
+}
+
+/**
+ * Prefill plan for the speculative-decode "warm prefix" sampler stage.
+ * `prefix` is the deterministic head; `runs` describe deterministic
+ * continuations gated by an upstream free-form span of `afterFreeSpan`
+ * tokens.
+ */
+export interface PrefillPlan {
+  prefix: string;
+  runs: Array<{ afterFreeSpan: number; text: string }>;
+}
+
+/**
+ * Per-generation sampler-stage injection. Each variant carries the payload
+ * one fork-side sampler hook understands. New variants must be additive — old
+ * native bridges feature-detect `kind` and warn-and-no-op on unknowns.
+ */
+export type SamplerStage =
+  | { kind: "token_tree"; descriptor: TokenTreeDescriptor }
+  | { kind: "prefill_plan"; plan: PrefillPlan }
+  | { kind: "logit_bias"; bias: Record<number, number> }
+  | { kind: "json_schema"; schema: unknown };
+
+/**
+ * Speculative-decode acceptance telemetry surfaced once per `done` event
+ * (or interleaved during generation when the fork supports streaming
+ * telemetry). `acceptanceRate` is `accepted / drafted` when `drafted > 0`.
+ */
+export interface SpecDecodeTelemetry {
+  drafted: number;
+  accepted: number;
+  acceptanceRate: number;
+}
+
+/**
+ * Streaming event emitted by `generateStream`. The stream always ends with
+ * exactly one `done` event (or one `error` event with `recoverable: false`).
+ * Order of non-terminal events is delivery-order from the native bridge.
+ */
+export type GenerationEvent =
+  | { kind: "token"; text: string; tokenId?: number; index: number }
+  | { kind: "tool_call"; name: string; arguments: object; raw: string }
+  | { kind: "decision"; key: string; value: unknown }
+  | { kind: "telemetry"; tokensPerSec: number; spec?: SpecDecodeTelemetry }
+  | { kind: "error"; message: string; recoverable: boolean }
+  | { kind: "done"; finishReason: "stop" | "length" | "tool" | "cancel" | "error" };
+
+export interface GenerateStreamOptions extends GenerateOptions {
+  /**
+   * Toggle speculative decoding for this single generation. "auto" leaves
+   * the decision to the loaded model's configuration (the default). `true`
+   * forces spec-decode on builds that support it; `false` disables it even
+   * when a drafter is loaded.
+   */
+  specDecode?: boolean | "auto";
+  /**
+   * Sampler-stage pipeline applied to this generation only. The native
+   * bridge feature-detects each kind; unrecognised stages are warned and
+   * skipped rather than failing the call.
+   */
+  samplerStages?: SamplerStage[];
+}
+
 export interface HardwareInfo {
   platform: "ios" | "android" | "web";
   /** Human-readable device model when the OS exposes one. */
@@ -142,9 +221,35 @@ export interface LlamaAdapter {
   load(options: LoadOptions): Promise<void>;
   unload(): Promise<void>;
   generate(options: GenerateOptions): Promise<GenerateResult>;
+  /**
+   * Streaming generation surface. Emits typed events (token, tool_call,
+   * decision, telemetry, error, done) instead of bare strings. The legacy
+   * `generate(...)` is now a wrapper that drains the stream into a single
+   * `GenerateResult` for callers that don't care about per-event detail.
+   *
+   * The stream is single-use and must terminate with exactly one `done`
+   * event (or one terminal `error` with `recoverable: false`). Callers
+   * that abandon the iterator before `done` should call `cancelGenerate()`
+   * to release the native bridge.
+   */
+  generateStream(
+    options: GenerateStreamOptions,
+  ): AsyncIterable<GenerationEvent>;
   cancelGenerate(): Promise<void>;
   /** Fires when `generate({ stream: true })` emits a new token. */
   onToken(listener: (token: string, index: number) => void): () => void;
+  /**
+   * Swap the speculative-decode drafter without tearing down the main
+   * context. Passing `null` clears the active drafter. Stock builds that
+   * have no drafter bridge warn-and-no-op.
+   */
+  setDrafter?(drafterPath: string | null): Promise<void>;
+  /**
+   * Memory-pressure hook surfaced by the host OS. `minor` is the OS hint
+   * ("trim if convenient"); `major` is the imminent-kill warning. Adapters
+   * should drop caches / shrink KV reservations and may unload the drafter.
+   */
+  trimMemory?(level: "minor" | "major"): Promise<void>;
   /**
    * Compute a single sentence embedding. Returns the raw float vector and
    * (when known) the input token count. Throws when the underlying plugin

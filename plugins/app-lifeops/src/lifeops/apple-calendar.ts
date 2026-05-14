@@ -4,6 +4,7 @@ import {
   resolveNativeLibraryCandidate,
 } from "@elizaos/app-core/platform/native-library-policy";
 import type { IAgentRuntime } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 import type { FeatureResult, IPermissionsRegistry } from "@elizaos/shared";
 import type {
   CreateLifeOpsCalendarEventAttendee,
@@ -169,7 +170,7 @@ async function loadMacCalendarBridge(): Promise<MacCalendarBridge | null> {
     const dylibPath = resolveNativeLibraryCandidate(candidate, {
       expectedBasename: NATIVE_DYLIB_BASENAME,
       moduleDir: import.meta.dir,
-      warn: (message) => console.warn(`[AppleCalendar] ${message}`),
+      warn: (message) => logger.warn(`[AppleCalendar] ${message}`),
     });
     if (!dylibPath) continue;
 
@@ -241,7 +242,7 @@ async function loadMacCalendarBridge(): Promise<MacCalendarBridge | null> {
       };
       return macCalendarBridge;
     } catch (err) {
-      console.warn("[AppleCalendar] Failed to load native bridge:", err);
+      logger.warn({ err }, "[AppleCalendar] Failed to load native bridge");
     }
   }
   return null;

@@ -46,7 +46,7 @@ import {
 	KokoroModelMissingError,
 	type KokoroPhonemeSequence,
 	type KokoroVoicePack,
-} from "./types";
+} from "./types.js";
 
 /** Pinned model URL — referenced by docs and the download script. The
  *  runtime itself never fetches; it only verifies on-disk state. */

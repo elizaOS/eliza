@@ -26,10 +26,8 @@
  * remains testable.
  */
 
-import type {
-  ScheduledTaskInput,
-  ScheduledTaskTrigger,
-} from "../wave1-types.js";
+import type { ScheduledTaskTrigger } from "../scheduled-task/index.js";
+import type { ScheduledTaskInput } from "../wave1-types.js";
 import type { OwnerFactWindow } from "./state.js";
 
 const TIME_OF_DAY_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;

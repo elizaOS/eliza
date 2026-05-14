@@ -6,7 +6,9 @@ import {
 } from "../types";
 import { createOAuthIntentAction } from "./create-oauth-intent";
 
-function envelope(overrides: Partial<OAuthIntentEnvelope> = {}): OAuthIntentEnvelope {
+function envelope(
+	overrides: Partial<OAuthIntentEnvelope> = {},
+): OAuthIntentEnvelope {
 	return {
 		oauthIntentId: "oauth_1",
 		provider: "google",

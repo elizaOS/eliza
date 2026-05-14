@@ -2523,16 +2523,20 @@ function generatePodfile() {
   }
 
   // LlamaCppCapacitor ships an on-device llama.cpp xcframework. The App Store
-  // target ships the no-JIT Bun runtime by default, but still omits llama.cpp
-  // unless explicitly requested because it is a separate native model backend.
+  // target is cloud/client-oriented by default and omits native local runtime
+  // pods unless an explicitly non-store build requests them.
   const includeLlama = shouldIncludeIosLlama();
   const appStoreBuild = isIosAppStoreBuild();
   const includeFullBunEngine = shouldIncludeIosFullBunEngine();
+  const includeCompatBunRuntime =
+    !appStoreBuild &&
+    (includeFullBunEngine || process.env.ELIZA_IOS_RUNTIME_MODE === "local");
   const includeMobileAgentBridge =
     !appStoreBuild &&
     isTruthyEnv(process.env.ELIZA_IOS_INCLUDE_MOBILE_AGENT_BRIDGE);
   const customPods = resolveIosCustomPods({
     includeLlama,
+    includeCompatBunRuntime,
     includeFullBunEngine,
     appStoreBuild,
     includeMobileAgentBridge,
@@ -2542,14 +2546,18 @@ function generatePodfile() {
       "[mobile-build] iOS Podfile: omitting llama.cpp pod (ELIZA_IOS_INCLUDE_LLAMA / ELIZA_IOS_INCLUDE_LLAMA not set)",
     );
   }
-  if (includeFullBunEngine) {
+  if (includeCompatBunRuntime && !includeFullBunEngine) {
     console.log(
-      "[mobile-build] iOS Podfile: requiring no-JIT Bun engine pod",
+      "[mobile-build] iOS Podfile: including JSContext compatibility runtime pod",
+    );
+  } else if (includeFullBunEngine) {
+    console.log(
+      "[mobile-build] iOS Podfile: requiring full Bun engine pod (explicit non-store build request)",
     );
   }
   if (appStoreBuild) {
     console.log(
-      "[mobile-build] iOS Podfile: App Store build keeps local Bun runtime and omits mobile-agent tunnel bridge",
+      "[mobile-build] iOS Podfile: omitting full Bun/local execution bridge pods for App Store build",
     );
   }
   const deploymentTarget = resolveIosDeploymentTarget();
@@ -3411,9 +3419,15 @@ export function resolveIosBuildTarget({
     };
   }
 
-  const includeDeviceOnlyLlama =
-    isTruthyEnv(env.ELIZA_IOS_INCLUDE_LLAMA) ||
-    isTruthyEnv(env.ELIZA_IOS_INCLUDE_LLAMA);
+  if (isIosAppStoreBuild(env)) {
+    return {
+      destination: "generic/platform=iOS",
+      sdk: "iphoneos",
+      reason: "App Store device build",
+    };
+  }
+
+  const includeDeviceOnlyLlama = shouldIncludeIosLlama(env);
   const llamaCppFramework = firstExisting([
     path.join(
       appDirValue,
@@ -3610,6 +3624,52 @@ function validateIosBunEngineSymbols(binary) {
   }
 }
 
+function validateIosBunEngineNoJitDynamicCode(binary) {
+  const imports = runCaptureSync("nm", ["-u", binary], {
+    maxBuffer: 256 * 1024 * 1024,
+  });
+  if (imports.status !== 0) {
+    const reason =
+      imports.stderr?.trim() ||
+      imports.error?.message ||
+      `exit status ${String(imports.status)}`;
+    throw new Error(
+      `[mobile-build] failed to inspect ${binary} imports with nm: ${reason}`,
+    );
+  }
+  const importedSymbols = `${imports.stdout}\n${imports.stderr}`;
+  const forbiddenImports = IOS_BUN_ENGINE_FORBIDDEN_IMPORTS.filter((symbol) =>
+    importedSymbols.includes(symbol),
+  );
+  if (forbiddenImports.length > 0) {
+    throw new Error(
+      `[mobile-build] ${binary} imports App-Store-unsafe dynamic-code/JIT symbol(s) for ${IOS_BUN_ENGINE_EXECUTION_PROFILE}: ${forbiddenImports.join(", ")}`,
+    );
+  }
+
+  const strings = runCaptureSync("strings", ["-a", binary], {
+    maxBuffer: 256 * 1024 * 1024,
+  });
+  if (strings.status !== 0) {
+    const reason =
+      strings.stderr?.trim() ||
+      strings.error?.message ||
+      `exit status ${String(strings.status)}`;
+    throw new Error(
+      `[mobile-build] failed to inspect ${binary} strings: ${reason}`,
+    );
+  }
+  const binaryStrings = `${strings.stdout}\n${strings.stderr}`;
+  const forbiddenStrings = IOS_BUN_ENGINE_FORBIDDEN_STRINGS.filter((pattern) =>
+    pattern.test(binaryStrings),
+  ).map((pattern) => String(pattern));
+  if (forbiddenStrings.length > 0) {
+    throw new Error(
+      `[mobile-build] ${binary} contains App-Store-unsafe dynamic-code/JIT marker(s) for ${IOS_BUN_ENGINE_EXECUTION_PROFILE}: ${forbiddenStrings.join(", ")}`,
+    );
+  }
+}
+
 function validateIosFullBunEngineXcframework(
   xcframework,
   { buildTarget = null } = {},
@@ -3647,6 +3707,7 @@ function validateIosFullBunEngineXcframework(
     );
   }
   validateIosBunEngineSymbols(binary);
+  validateIosBunEngineNoJitDynamicCode(binary);
   console.log(
     `[mobile-build] iOS full Bun engine validated ${libraryIdentifier}: ${binary}`,
   );
@@ -4852,6 +4913,7 @@ function configureIosLocalBuildDefaults() {
   setDefaultProcessEnv("LOCAL_RUNTIME_MODE", "local-safe");
   setDefaultProcessEnv("VITE_ELIZA_RUNTIME_MODE", "local-safe");
   setDefaultProcessEnv("ELIZA_IOS_INCLUDE_LLAMA", "1");
+  setDefaultProcessEnv("ELIZA_IOS_FULL_BUN_ENGINE", "1");
   setDefaultProcessEnv(
     "ELIZA_IOS_BUILD_DESTINATION",
     "generic/platform=iOS Simulator",
@@ -4868,6 +4930,9 @@ function configureIosAppStoreBuildDefaults() {
   setDefaultProcessEnv("RUNTIME_MODE", "cloud");
   setDefaultProcessEnv("LOCAL_RUNTIME_MODE", "cloud");
   setDefaultProcessEnv("VITE_ELIZA_RUNTIME_MODE", "cloud");
+  if (isIosAppStoreLocalRuntimeEnabled()) {
+    setDefaultProcessEnv("ELIZA_IOS_FULL_BUN_ENGINE", "1");
+  }
 }
 
 async function buildIos({ local = false } = {}) {
@@ -4903,7 +4968,7 @@ async function buildIos({ local = false } = {}) {
     // missing local toolchain still leaves the iOS app bundle resources in an
     // inspectable state. Capacitor sync may rewrite app resources, so we stage
     // again immediately after sync.
-    stageIosAgentRuntime();
+    stageIosAgentRuntime({ appStoreBuild: isIosAppStoreBuild() && !local });
   } else if (isIosAppStoreBuild()) {
     removeIosLocalExecutionAssets();
   }
@@ -4912,7 +4977,7 @@ async function buildIos({ local = false } = {}) {
   }
   await runCapacitor(["sync", "ios"]);
   if (includesLocalAgentPayload) {
-    stageIosAgentRuntime();
+    stageIosAgentRuntime({ appStoreBuild: isIosAppStoreBuild() && !local });
   } else if (isIosAppStoreBuild()) {
     removeIosLocalExecutionAssets();
   }

@@ -122,16 +122,23 @@ def _provider_harness(provider_label: str) -> str:
     return _normalize_harness_label(provider_label) or _current_harness() or "eliza"
 
 
-def _model_provider_for_config() -> str:
-    return (
+def _model_provider_for_config(harness: str | None = None) -> str:
+    configured = (
         os.environ.get("BENCHMARK_MODEL_PROVIDER")
         or os.environ.get("ELIZA_PROVIDER")
-        or "eliza"
+        or ""
     ).strip().lower()
+    if configured:
+        return configured
+    return "eliza" if harness == "eliza" else "cerebras"
 
 
-def _model_env_updates(model_name: str, harness: str, telemetry_path: Path) -> dict[str, str]:
-    model_provider = _model_provider_for_config()
+def _model_env_updates(
+    model_name: str,
+    harness: str,
+    telemetry_path: Path,
+    model_provider: str,
+) -> dict[str, str]:
     return {
         "BENCHMARK_HARNESS": harness,
         "ELIZA_BENCH_HARNESS": harness,
@@ -307,13 +314,14 @@ async def _run_provider(args: argparse.Namespace, provider_label: str) -> dict[s
         dataset_path=args.dataset_path,
         max_questions=args.max_questions,
         model_name=args.model,
-        provider=_model_provider_for_config(),
+        provider=_model_provider_for_config(harness),
         temperature=args.temperature,
         compare_leaderboard=False,
         include_model_in_output=True,
     )
-    with _patched_env(_model_env_updates(args.model, harness, telemetry_path)):
-        config.provider = _model_provider_for_config()
+    model_provider = _model_provider_for_config(harness)
+    with _patched_env(_model_env_updates(args.model, harness, telemetry_path, model_provider)):
+        config.provider = model_provider
         results = await run_quick_test(
             config,
             num_questions=args.max_questions,
@@ -329,7 +337,7 @@ async def _run_provider(args: argparse.Namespace, provider_label: str) -> dict[s
             **dict(results.metadata),
             "provider_label": provider_label,
             "benchmark_harness": harness,
-            "model_provider": _model_provider_for_config(),
+            "model_provider": model_provider,
         },
         "metrics": {
             "overall_accuracy": metrics.overall_accuracy,

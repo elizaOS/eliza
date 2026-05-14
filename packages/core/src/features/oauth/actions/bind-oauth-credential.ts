@@ -104,7 +104,9 @@ export const bindOAuthCredentialAction: Action = {
 		const oauthIntentId =
 			typeof params.oauthIntentId === "string" ? params.oauthIntentId : "";
 		const connectorIdentityId =
-			typeof params.connectorIdentityId === "string" ? params.connectorIdentityId : "";
+			typeof params.connectorIdentityId === "string"
+				? params.connectorIdentityId
+				: "";
 		if (!oauthIntentId || !connectorIdentityId) {
 			return {
 				success: false,
@@ -119,7 +121,11 @@ export const bindOAuthCredentialAction: Action = {
 				)
 			: undefined;
 
-		const bind = await client.bind({ oauthIntentId, connectorIdentityId, scopesGranted });
+		const bind = await client.bind({
+			oauthIntentId,
+			connectorIdentityId,
+			scopesGranted,
+		});
 
 		logger.info(
 			`[BIND_OAUTH_CREDENTIAL] oauthIntentId=${oauthIntentId} connectorIdentityId=${connectorIdentityId}`,

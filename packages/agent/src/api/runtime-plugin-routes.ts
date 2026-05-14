@@ -7,6 +7,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import {
   type AgentRuntime,
+  type LegacyRouteHandler,
   type PaymentEnabledRoute,
   type Route,
   type RuntimeRouteHostContext,
@@ -17,7 +18,9 @@ import { readJsonBody } from "@elizaos/shared";
 const EXPRESS_SHIM = Symbol("elizaExpressResponseShim");
 
 let x402RoutesModulePromise: Promise<{
-  createPaymentAwareHandler: (route: PaymentEnabledRoute) => Route["handler"];
+  createPaymentAwareHandler: (
+    route: PaymentEnabledRoute,
+  ) => LegacyRouteHandler;
   isRoutePaymentWrapped: (route: Route) => boolean;
 }> | null = null;
 

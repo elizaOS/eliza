@@ -21,8 +21,8 @@ export type {
 	OAuthCallbackBusClient,
 	OAuthCallbackResult,
 	OAuthIntentEnvelope,
-	OAuthIntentsClient,
 	OAuthIntentStatus,
+	OAuthIntentsClient,
 	OAuthProvider,
 	OAuthRevokeResult,
 } from "./types.ts";

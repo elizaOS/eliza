@@ -5444,8 +5444,7 @@ export const allActionsSpec = {
 		},
 		{
 			name: "MUSIC",
-			description:
-				"Music action. Use verb-shaped action for everything: ",
+			description: "Music action. Use verb-shaped action for everything: ",
 			parameters: [
 				{
 					name: "action",

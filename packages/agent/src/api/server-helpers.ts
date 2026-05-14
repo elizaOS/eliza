@@ -43,6 +43,7 @@ import {
   type PluginManagerLike,
 } from "../services/plugin-manager-types.ts";
 import { extractCompatTextContent } from "./compat-utils.ts";
+import { isBlockedObjectKey } from "./server-helpers-config.ts";
 import type {
   ChatAttachmentWithData,
   ChatImageAttachment,
@@ -398,15 +399,6 @@ export function decodePathComponent(
 // ---------------------------------------------------------------------------
 // Blocked-key helpers
 // ---------------------------------------------------------------------------
-
-function isBlockedObjectKey(key: string): boolean {
-  return (
-    key === "__proto__" ||
-    key === "constructor" ||
-    key === "prototype" ||
-    key === "$include"
-  );
-}
 
 export function hasBlockedObjectKeyDeep(value: unknown): boolean {
   if (value === null || value === undefined) return false;

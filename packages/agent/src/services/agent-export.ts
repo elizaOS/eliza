@@ -630,11 +630,14 @@ async function restoreAgentData(
   // 1. Create agent — merge characterConfig (if present) as a base so
   //    style/topics/adjectives/messageExamples survive the round-trip even
   //    if the DB agent record didn't persist them.
-  const charBase = payload.characterConfig
-    ? { ...payload.characterConfig }
-    : {};
-  // Remove secrets that may have leaked into characterConfig
-  delete charBase.secrets;
+  // Spread and explicitly exclude secrets. characterConfig is already typed as
+  // Omit<Character, "secrets">, but strip the field defensively for runtime safety.
+  const { secrets: _secrets, ...charBase } = payload.characterConfig
+    ? ({ ...payload.characterConfig } as { secrets?: unknown } & Record<
+        string,
+        unknown
+      >)
+    : ({} as { secrets?: unknown } & Record<string, unknown>);
 
   const agentData = { ...charBase, ...payload.agent } as Partial<Agent>;
   agentData.id = newAgentId;

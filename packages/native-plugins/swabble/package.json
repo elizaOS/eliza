@@ -48,6 +48,7 @@
     "@capacitor/android": "^8.0.0",
     "@capacitor/core": "^8.3.1",
     "@capacitor/ios": "^8.0.0",
+    "@elizaos/native-plugin-shared-types": "workspace:*",
     "@rollup/plugin-node-resolve": "^16.0.0",
     "rimraf": "^6.0.0",
     "rollup": "^4.60.2",

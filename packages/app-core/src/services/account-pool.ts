@@ -8,16 +8,13 @@
  * The pool never reads OAuth credentials directly — callers resolve them
  * via `getAccessToken(providerId, accountId)` from `@elizaos/agent` once
  * the pool returns an account. Health, priority, and usage live in this
- * layer; the OAuth blob lives under `~/.eliza/auth/` (see WS1's
- * `account-storage.ts`).
+ * layer; the OAuth blob lives under `~/.eliza/auth/` (see `account-storage.ts`
+ * in `@elizaos/agent`).
  *
  * Persistence: the pool layers rich metadata (priority, enabled, health,
- * usage) on top of WS1's credential records. The metadata is written to
- * `<ELIZA_HOME>/auth/_pool-metadata.json` atomically so it survives
- * process restarts and is independent of WS3's eventual `eliza.json`
- * field — when WS3 lands its CRUD API on top of `LinkedAccountsConfig`
- * we can swap `createDefaultAccountPool()`'s deps without touching the
- * pool itself.
+ * usage) on top of the credential records from `@elizaos/agent`. The
+ * metadata is written to `<ELIZA_HOME>/auth/_pool-metadata.json` atomically
+ * so it survives process restarts.
  */
 
 import {
@@ -748,12 +745,10 @@ export function configureDefaultAccountPoolSelection(
 }
 
 /**
- * Module-level singleton for the default pool wired against WS1's
- * `account-storage` and the pool-owned metadata file. Plugins / runtime
- * resolvers should import `getDefaultAccountPool()` rather than building
- * a new pool. WS3 may later swap the default deps to read/write the
- * `LinkedAccountsConfig` field directly out of `eliza.json`; consumers
- * keep the same accessor.
+ * Module-level singleton for the default pool wired against `@elizaos/agent`'s
+ * account-storage and the pool-owned metadata file. Plugins and runtime
+ * resolvers should import `getDefaultAccountPool()` rather than constructing
+ * a new pool directly.
  */
 export function getDefaultAccountPool(): AccountPool {
   if (!cachedDefaultPool) {

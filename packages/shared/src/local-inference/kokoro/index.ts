@@ -6,8 +6,8 @@
  * internal layout may change; this surface is stable.
  */
 
-export type { KokoroTtsBackendDeps } from "./kokoro-backend";
-export { KokoroTtsBackend } from "./kokoro-backend";
+export type { KokoroTtsBackendDeps } from "./kokoro-backend.js";
+export { KokoroTtsBackend } from "./kokoro-backend.js";
 export type {
 	KokoroGgufRuntimeOptions,
 	KokoroMockRuntimeOptions,
@@ -16,7 +16,7 @@ export type {
 	KokoroRuntime,
 	KokoroRuntimeChunk,
 	KokoroRuntimeInputs,
-} from "./kokoro-runtime";
+} from "./kokoro-runtime.js";
 export {
 	KOKORO_GGUF_REL_PATH,
 	KOKORO_ONNX_MODEL_URL,
@@ -25,32 +25,40 @@ export {
 	KokoroMockRuntime,
 	KokoroOnnxRuntime,
 	KokoroPythonRuntime,
-} from "./kokoro-runtime";
+} from "./kokoro-runtime.js";
 export type {
 	PhonemeStreamWindow,
 	StreamPhonemesOptions,
-} from "./phoneme-stream";
+} from "./phoneme-stream.js";
+export type {
+	AudioChunk,
+	OmniVoiceBackend,
+	Phrase,
+	SpeakerPreset,
+	StreamingTtsBackend,
+	TtsPcmChunk,
+} from "./voice-types.js";
 
 export {
 	phonemizePhrase,
 	streamPhonemes,
-} from "./phoneme-stream";
+} from "./phoneme-stream.js";
 export {
 	FallbackG2PPhonemizer,
 	KOKORO_PAD_ID,
 	NpmPhonemizePhonemizer,
 	resolvePhonemizer,
-} from "./phonemizer";
+} from "./phonemizer.js";
 export type {
 	VoiceBackendChoice,
 	VoiceBackendDecision,
 	VoiceBackendInputs,
 	VoiceBackendMode,
-} from "./runtime-selection";
+} from "./runtime-selection.js";
 export {
 	readVoiceBackendModeFromEnv,
 	selectVoiceBackend,
-} from "./runtime-selection";
+} from "./runtime-selection.js";
 export type {
 	KokoroBackendOptions,
 	KokoroModelLayout,
@@ -58,11 +66,11 @@ export type {
 	KokoroPhonemizer,
 	KokoroVoiceId,
 	KokoroVoicePack,
-} from "./types";
+} from "./types.js";
 export {
 	KokoroModelMissingError,
 	KokoroPhonemizerError,
-} from "./types";
+} from "./types.js";
 export {
 	findKokoroVoice,
 	KOKORO_DEFAULT_VOICE_ID,
@@ -71,4 +79,4 @@ export {
 	listKokoroVoicesByLang,
 	listKokoroVoicesByTag,
 	resolveKokoroVoiceOrDefault,
-} from "./voices";
+} from "./voices.js";
