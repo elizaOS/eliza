@@ -32,6 +32,18 @@ declare module "ws" {
   export default ws;
 }
 
+// `@elizaos/plugin-computeruse`'s dist `.d.ts` is currently incomplete (it
+// re-exports modules whose sub-files were not generated). Declare a loose
+// surface for the few iOS-bridge types this plugin imports so callers can
+// type-check without depending on the full dist of plugin-computeruse.
+declare module "@elizaos/plugin-computeruse" {
+  // biome-ignore-start lint/suspicious/noExplicitAny: loose ambient stubs for an optional dep
+  export type FoundationModelOptions = any;
+  export type FoundationModelResult = any;
+  export type IosComputerUseBridge = any;
+  // biome-ignore-end lint/suspicious/noExplicitAny: loose ambient stubs for an optional dep
+}
+
 // `@huggingface/transformers` is an optional dependency. Same story. The
 // upstream package's `types/transformers.d.ts` is missing from the published
 // tarball, so this ambient module fills in the slot.
