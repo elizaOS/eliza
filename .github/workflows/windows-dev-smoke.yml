@@ -62,6 +62,7 @@ jobs:
             patches/
             scripts/
             plugins/
+            !packages/os/linux/variants/**
           sparse-checkout-cone-mode: false
 
       - name: Setup Node.js
