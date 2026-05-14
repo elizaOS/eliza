@@ -156,7 +156,7 @@ export class SandboxManager {
 
   constructor(config: SandboxManagerConfig) {
     const requiredConstraints = getRequiredPolicyConstraints(config.mode);
-    this.config = {
+    const mergedConfig: SandboxManagerConfig = {
       image: "eliza-sandbox:bookworm-slim",
       containerPrefix: "eliza-sandbox",
       workdir: "/workspace",
@@ -167,8 +167,11 @@ export class SandboxManager {
       cpus: 1,
       pidsLimit: 256,
       ...config,
-      readOnlyRoot: config.mode === "max" ? true : config.readOnlyRoot,
     };
+    if (config.mode === "max") {
+      mergedConfig.readOnlyRoot = true;
+    }
+    this.config = mergedConfig;
     this.requestedEngineType = config.engineType ?? "auto";
     this.engine =
       this.requestedEngineType === "auto"

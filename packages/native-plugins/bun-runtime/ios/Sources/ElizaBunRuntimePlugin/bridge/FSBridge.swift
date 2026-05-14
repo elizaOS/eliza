@@ -8,11 +8,9 @@ import JavaScriptCore
 public final class FSBridge {
     private weak var context: JSContext?
     private var lastError: String?
-    private let paths: SandboxPaths
     private let policy: RuntimePolicy
 
     public init(paths: SandboxPaths, policy: RuntimePolicy) {
-        self.paths = paths
         self.policy = policy
     }
 

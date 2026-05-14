@@ -61,7 +61,7 @@ public enum BridgeInstaller {
         let httpServer = HTTPServerBridge()
         httpServer.install(into: ctx)
 
-        let llama = LlamaBridge()
+        let llama = LlamaBridge(policy: policy)
         llama.install(into: ctx)
 
         let log = LogBridge()

@@ -131,6 +131,30 @@ export type {
 } from "./scene/scene-types.js";
 export { serializeSceneForPrompt } from "./scene/serialize.js";
 export {
+  fromOSWorldAction,
+  fromPyAutoGUI,
+  toOSWorldAction,
+} from "./osworld/action-converter.js";
+export { OSWorldAdapter } from "./osworld/adapter.js";
+export type {
+  OSWorldAction,
+  OSWorldActionType,
+  OSWorldAgentConfig,
+  OSWorldObservation,
+  OSWorldObservationType,
+  OSWorldStepResult,
+  OSWorldTaskConfig,
+} from "./osworld/types.js";
+export {
+  fromCuaBenchAction,
+  parseCuaBenchActionString,
+} from "./benchmarks/cuabench-action-converter.js";
+export type {
+  CuaBenchActionInput,
+  CuaBenchControlAction,
+  CuaBenchConvertedAction,
+} from "./benchmarks/cuabench-action-converter.js";
+export {
   type BlockGrid,
   blockGrid,
   decodePng,

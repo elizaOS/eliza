@@ -98,9 +98,9 @@ describe("Eliza Cloud guidance plumbing (unit)", () => {
           {
             status: 200,
             headers: { "Content-Type": "application/json" },
-          },
+          }
         );
-      },
+      }
     );
   });
 
@@ -148,7 +148,7 @@ describe("Eliza Cloud guidance plumbing (unit)", () => {
           overrides: [{ spanIndex: 1, temperature: 0, topK: 1 }],
           strict: true,
         },
-      } as never,
+      } as never
     );
 
     const chatCall = captured.find((c) => c.url.includes("/chat/completions"));
@@ -165,7 +165,7 @@ describe("Eliza Cloud guidance plumbing (unit)", () => {
       JSON.stringify({
         overrides: [{ span_index: 1, temperature: 0, top_k: 1 }],
         strict: true,
-      }),
+      })
     );
   });
 
@@ -194,7 +194,7 @@ describe("Eliza Cloud guidance plumbing (unit)", () => {
         spanSamplerPlan: {
           overrides: [{ spanIndex: 0, temperature: 0, topK: 1 }],
         },
-      } as never,
+      } as never
     );
 
     const chatCall = captured.find((c) => c.url.includes("/chat/completions"));

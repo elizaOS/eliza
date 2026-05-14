@@ -1518,6 +1518,79 @@ function ensureAndroidMainActivityUrlSchemeFilter(xml) {
   return xml.replace(mainActivityRe, `$1${authFilter}$2`);
 }
 
+export function ensureAndroidMainActivityShortcutsMetadata(xml) {
+  const mainActivityRe =
+    /(<activity\b(?=[\s\S]*?android:name="\.?MainActivity")[\s\S]*?)(\n\s*<\/activity>)/m;
+  const match = xml.match(mainActivityRe);
+  if (!match) return xml;
+
+  const mainActivity = `${match[1]}${match[2]}`;
+  if (
+    mainActivity.includes('android:name="android.app.shortcuts"') &&
+    mainActivity.includes('android:resource="@xml/shortcuts"')
+  ) {
+    return xml;
+  }
+
+  const shortcutsMetadata = `
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
+`;
+  return xml.replace(mainActivityRe, `$1${shortcutsMetadata}$2`);
+}
+
+export function patchAndroidAppActionsXmlResource(
+  xml,
+  { appId = APP.appId, urlScheme = APP.urlScheme } = {},
+) {
+  const androidPackage = escapeXmlText(appId);
+  const scheme = escapeXmlText(urlScheme);
+  return xml
+    .replaceAll("ai.elizaos.app://", `${scheme}://`)
+    .replaceAll(
+      'android:targetPackage="ai.elizaos.app"',
+      `android:targetPackage="${androidPackage}"`,
+    )
+    .replaceAll(
+      'android:targetClass="ai.elizaos.app.MainActivity"',
+      `android:targetClass="${androidPackage}.MainActivity"`,
+    );
+}
+
+function ensureAndroidAppActionsResources() {
+  const templateResRoot = path.join(
+    platformsDir,
+    "android",
+    "app",
+    "src",
+    "main",
+    "res",
+  );
+  const appResRoot = path.join(androidDir, "app", "src", "main", "res");
+  for (const relPath of [
+    path.join("xml", "shortcuts.xml"),
+    path.join("values", "strings.xml"),
+  ]) {
+    const dst = path.join(appResRoot, relPath);
+    if (fs.existsSync(dst)) continue;
+    const src = path.join(templateResRoot, relPath);
+    if (!fs.existsSync(src)) continue;
+    fs.mkdirSync(path.dirname(dst), { recursive: true });
+    fs.copyFileSync(src, dst);
+  }
+
+  const shortcutsPath = path.join(appResRoot, "xml", "shortcuts.xml");
+  if (fs.existsSync(shortcutsPath)) {
+    const current = fs.readFileSync(shortcutsPath, "utf8");
+    const patched = patchAndroidAppActionsXmlResource(current);
+    if (patched !== current) {
+      fs.writeFileSync(shortcutsPath, patched, "utf8");
+      console.log("[mobile-build] Applied Android App Actions resource identity.");
+    }
+  }
+}
+
 function overlayAndroid() {
   const srcJava = path.join(
     platformsDir,
@@ -1670,6 +1743,11 @@ function overlayAndroid() {
     const withUrlSchemeFilter = ensureAndroidMainActivityUrlSchemeFilter(xml);
     if (withUrlSchemeFilter !== xml) {
       xml = withUrlSchemeFilter;
+      dirty = true;
+    }
+    const withShortcutsMetadata = ensureAndroidMainActivityShortcutsMetadata(xml);
+    if (withShortcutsMetadata !== xml) {
+      xml = withShortcutsMetadata;
       dirty = true;
     }
     const gatewayServiceName = `${androidPackage}.GatewayConnectionService`;
@@ -2695,6 +2773,8 @@ function patchAndroidGradle() {
       );
     }
   }
+
+  ensureAndroidAppActionsResources();
 }
 
 function sanitizeAndroidManifestWhenPlatformTemplatesMissing() {

@@ -323,6 +323,13 @@ final class FullBunEngineHost {
               !path.isEmpty else {
             return encodeHostEnvelope(ok: false, error: "llama_load_model requires path")
         }
+        let policy = RuntimePolicy(paths: SandboxPaths())
+        guard policy.allowsFilesystemPath(path, operation: .read) else {
+            return encodeHostEnvelope(
+                ok: false,
+                error: "llama_load_model path is outside the iOS app container policy"
+            )
+        }
         let contextSize = uint32Value(payload, "context_size")
             ?? uint32Value(payload, "contextSize")
             ?? 4096
