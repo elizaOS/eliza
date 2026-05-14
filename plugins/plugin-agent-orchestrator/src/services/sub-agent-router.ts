@@ -13,6 +13,16 @@ const ACPX_ROUTER_SOURCE = "sub_agent";
 const SUB_AGENT_ENTITY_NAMESPACE = "acpx:sub-agent";
 const DEFAULT_ROUND_TRIP_CAP = 32;
 
+// Matches an http(s) URL embedded in free text. Excludes whitespace,
+// quotes, brackets, parens, backticks AND `*` — so a markdown-bolded link
+// (`**https://...**`) doesn't capture the trailing `**` into the URL.
+const URL_IN_TEXT_RE = /https?:\/\/[^\s<>"'`)\]*]+/g;
+
+// Unicode dash code points weak models substitute for an ASCII hyphen:
+// hyphen U+2010, non-breaking hyphen U+2011, figure dash U+2012, en dash
+// U+2013, em dash U+2014, horizontal bar U+2015, minus sign U+2212.
+const UNICODE_DASHES_RE = /[\u2010-\u2015\u2212]/g;
+
 /**
  * SubAgentRouter takes terminal-significant ACPX session events
  * (`task_complete`, `error`, `blocked`) and posts them as synthetic inbound
@@ -285,19 +295,27 @@ export class SubAgentRouter {
           error: err instanceof Error ? err.message : String(err),
         });
       });
-    const baseText = capExceeded
-      ? `[sub-agent: ${origin.label} (${session.agentType}) — round-trip cap exceeded]\nThis session reached ${nextCount} round-trips (cap=${this.roundTripCap}) and was force-stopped to prevent a runaway loop. Decide whether to spawn a fresh session, escalate to the user, or drop the task.`
-      : composeNarration(event, origin.label, session, data);
+    // Normalize URLs in the sub-agent's narration before anything else
+    // reads it. Weak coding models (gpt-oss-class) emit Unicode look-alike
+    // dashes (non-breaking hyphen U+2011, en/em dashes) inside URLs, so the
+    // link 404s even though the directory exists under the ASCII-hyphen
+    // name — breaking it for both the verification probe AND the user.
+    const baseText = normalizeUrlsInText(
+      capExceeded
+        ? `[sub-agent: ${origin.label} (${session.agentType}) — round-trip cap exceeded]\nThis session reached ${nextCount} round-trips (cap=${this.roundTripCap}) and was force-stopped to prevent a runaway loop. Decide whether to spawn a fresh session, escalate to the user, or drop the task.`
+        : composeNarration(event, origin.label, session, data),
+    );
     // Fact-check any URLs the sub-agent claimed. Weak coding models
-    // (gpt-oss-class served over OpenAI-compatible providers) routinely
-    // report "the app is live at <url>" without ever writing the files or
-    // running the verification step their task brief asked for. The parent
-    // agent would then relay that false claim verbatim. Independently HEAD-
-    // checking each claimed URL and annotating dead ones turns the parent's
-    // reply from a hallucinated success into an accurate status report.
+    // routinely report "the app is live at <url>" without writing the
+    // files (or the deps the page references). Independently probing each
+    // claimed URL — and following an HTML page's own sub-resources —
+    // turns the parent's reply from a hallucinated success into an
+    // accurate status report.
     const text =
       event === "task_complete"
-        ? await annotateUnverifiedUrls(baseText)
+        ? await annotateUnverifiedUrls(baseText, (m) =>
+            this.log("debug", m),
+          )
         : baseText;
     const memory: Memory = {
       id: randomUUID() as UUID,
@@ -532,13 +550,21 @@ function composeNarration(
  *  - caps at the first 5 distinct mentioned URLs + their sub-resources
  *  - 4s per-request timeout, failures (DNS, timeout, refused) count as
  *    unverified rather than throwing
- *  - one settle-retry before declaring a URL dead (write→serve race)
+ *  - one short settle-retry before declaring a URL dead, covering a
+ *    transient network blip on the checker side
  *  - never strips the original text — it only appends an annotation, so a
  *    transient network blip on the checker side degrades to "couldn't
  *    verify" rather than hiding a real success
+ *
+ * Callers should pass text that has already been through
+ * {@link normalizeUrlsInText} so Unicode-dash-corrupted URLs are probed in
+ * their intended form.
  */
-async function annotateUnverifiedUrls(text: string): Promise<string> {
-  const urlMatches = text.match(/https?:\/\/[^\s<>"'`)\]]+/g);
+async function annotateUnverifiedUrls(
+  text: string,
+  log?: (message: string) => void,
+): Promise<string> {
+  const urlMatches = text.match(URL_IN_TEXT_RE);
   if (!urlMatches || urlMatches.length === 0) return text;
   const seen = new Set<string>();
   const urls: string[] = [];
@@ -549,6 +575,9 @@ async function annotateUnverifiedUrls(text: string): Promise<string> {
     urls.push(url);
     if (urls.length >= 5) break;
   }
+  log?.(
+    `[verify] start @ ${new Date().toISOString()} — ${urls.length} url(s): ${urls.join(", ")}`,
+  );
   // GET-probe a URL with a 4s timeout. On a 2xx HTML response also returns
   // the body so the caller can follow the page's sub-resources. (GET, not
   // HEAD: we need the body for HTML, and many static hosts reject HEAD.)
@@ -564,23 +593,34 @@ async function annotateUnverifiedUrls(text: string): Promise<string> {
         signal: controller.signal,
       });
       if (res.status < 200 || res.status >= 300) {
+        log?.(
+          `[verify] probe ${url} → HTTP ${res.status} @ ${new Date().toISOString()}`,
+        );
         return { status: `HTTP ${res.status}` };
       }
       const contentType = res.headers.get("content-type") ?? "";
+      log?.(
+        `[verify] probe ${url} → ${res.status} (${contentType.split(";")[0] || "?"}) @ ${new Date().toISOString()}`,
+      );
       if (contentType.includes("text/html")) {
         return { status: null, html: await res.text() };
       }
       return { status: null };
     } catch (err) {
-      return { status: err instanceof Error ? err.name : "unreachable" };
+      const reason = err instanceof Error ? err.name : "unreachable";
+      log?.(
+        `[verify] probe ${url} → ${reason} @ ${new Date().toISOString()}`,
+      );
+      return { status: reason };
     } finally {
       clearTimeout(timer);
     }
   };
-  // Settle-retry: a freshly-written static file can be on disk but not yet
-  // served (the host's file cache hasn't picked it up). Re-probe once after
-  // a short delay before declaring a URL dead, so the annotation reflects
-  // steady state rather than the write→serve race.
+  // One short settle-retry. `task_complete` fires after the sub-agent's
+  // file writes have landed (verified against real timelines), and the
+  // static host serves from disk with no cache lag — so a single retry is
+  // only there to ride out a transient network blip on the checker side,
+  // not a write→serve race.
   const probe = async (
     url: string,
   ): Promise<{ status: string | null; html?: string }> => {
@@ -613,6 +653,9 @@ async function annotateUnverifiedUrls(text: string): Promise<string> {
         );
       }
     }),
+  );
+  log?.(
+    `[verify] done @ ${new Date().toISOString()} — ${dead.length} dead of ${urls.length} mentioned`,
   );
   if (dead.length === 0) return text;
   const lines = dead
@@ -659,6 +702,21 @@ export function extractSubResources(html: string, pageUrl: string): string[] {
     if (refs.size >= 10) break;
   }
   return [...refs];
+}
+
+/**
+ * Normalize http(s) URLs embedded in free text: replace Unicode look-alike
+ * dashes (non-breaking hyphen, en/em dash, …) with an ASCII hyphen. Weak
+ * coding models emit these inside URLs, which makes the link 404 even
+ * though the target exists under the ASCII-hyphen name — broken for both
+ * the verification probe and the user clicking it. Only dash characters
+ * inside a URL are touched; surrounding prose (where an em dash is
+ * legitimate punctuation) is left untouched.
+ */
+export function normalizeUrlsInText(text: string): string {
+  return text.replace(URL_IN_TEXT_RE, (url) =>
+    url.replace(UNICODE_DASHES_RE, "-"),
+  );
 }
 
 function computeDedupKey(
