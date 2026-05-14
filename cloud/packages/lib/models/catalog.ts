@@ -397,7 +397,7 @@ export const VAST_NATIVE_MODELS: CatalogModel[] = [
     owned_by: "vast",
     name: "Eliza-1 2B",
     description:
-      "Eliza's smallest fine-tune (Q4_K_M GGUF, llama-server). Single GPU debug / latency-tolerant agent loops. HF: elizaos/eliza-1-2b-gguf-q4_k_m",
+      "Eliza's smallest fine-tune (Q4_K_M GGUF, llama-server). Single GPU debug / latency-tolerant agent loops. HF: elizaos/eliza-1 (bundles/2b/text/)",
     type: "language",
     context_window: 32768,
     tags: ["self-hosted", "llama.cpp", "gguf", "eliza-eliza-1"],
@@ -409,7 +409,7 @@ export const VAST_NATIVE_MODELS: CatalogModel[] = [
     owned_by: "vast",
     name: "Eliza-1 9B",
     description:
-      "Workstation-tier Eliza fine-tune. Served via vLLM with PolarQuant + AWQ-Marlin and TurboQuant quality KV on 2× RTX PRO 6000 Blackwell. HF: elizaos/eliza-1-9b-polarquant",
+      "Workstation-tier Eliza fine-tune. Served via vLLM with PolarQuant + AWQ-Marlin and TurboQuant quality KV on 2× RTX PRO 6000 Blackwell. HF: elizaos/eliza-1 (bundles/9b/)",
     type: "language",
     context_window: 131072,
     tags: ["self-hosted", "vllm", "polarquant", "awq-marlin", "turboquant", "eliza-eliza-1"],
@@ -421,7 +421,7 @@ export const VAST_NATIVE_MODELS: CatalogModel[] = [
     owned_by: "vast",
     name: "Eliza-1 27B",
     description:
-      "Cloud-tier Eliza flagship. Served via vLLM with FP8 weights + TurboQuant quality KV on 2× H200 SXM. 4-bit KV is available as an explicit benchmark-gated runtime preset. HF: elizaos/eliza-1-27b-fp8",
+      "Cloud-tier Eliza flagship. Served via vLLM with FP8 weights + TurboQuant quality KV on 2× H200 SXM. 4-bit KV is available as an explicit benchmark-gated runtime preset. HF: elizaos/eliza-1 (bundles/27b/)",
     type: "language",
     context_window: 131072,
     tags: ["self-hosted", "vllm", "fp8", "turboquant", "eliza-eliza-1"],
@@ -433,7 +433,7 @@ export const VAST_NATIVE_MODELS: CatalogModel[] = [
     owned_by: "vast",
     name: "Eliza-1 27B 256K",
     description:
-      "Single RTX 3090 long-context lane. Served via llama.cpp/GGUF with q4_0 KV cache, flash attention, one decode slot, and 262K context. DFlash remains benchmark-gated for this lane. HF: elizaos/eliza-1",
+      "Single RTX 3090 long-context lane. Served via llama.cpp/GGUF with q4_0 KV cache, flash attention, one decode slot, and 262K context. DFlash remains benchmark-gated for this lane. HF: elizaos/eliza-1 (bundles/27b-256k/)",
     type: "language",
     context_window: 262144,
     tags: ["self-hosted", "llama.cpp", "gguf", "q4-kv", "rtx-3090", "eliza-eliza-1"],
