@@ -230,7 +230,10 @@ export async function runSubPlanner(
 		evaluatorEffects: params.evaluatorEffects,
 		provider: params.provider,
 		tools,
-		toolChoice: "auto",
+		// Force a native tool call. Sub-planners expose the same shape as the
+		// parent planner (per-action tools + REPLY/IGNORE/STOP terminals), so
+		// every viable outcome corresponds to a tool. No text-mode fall-through.
+		toolChoice: "required",
 		recorder: params.recorder,
 		trajectoryId: params.trajectoryId,
 		parentStageId: subPlannerStageId ?? params.parentStageId,

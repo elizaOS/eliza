@@ -84,6 +84,12 @@
 #                                Each name resolves to
 #                                scripts/quantization/${name}_apply.py.
 #   BENCHMARK_AFTER            # 1 = run native function-calling benchmark (default 1)
+#   PUSH_AFTER                 # 1 = run scripts.publish.publish_model --mode bundle on
+#                                the remote after train+quantize+bench. Mirrors
+#                                train_nebius.sh's PUSH_AFTER. Default 0 (operator
+#                                fetches + publishes locally).
+#   ELIZA_PUBLISH_BUNDLE_DIR   # bundle dir for --publish (default checkpoints/$RUN_NAME/final)
+#   ELIZA_PUBLISH_TIER         # publish tier (default: parsed from REGISTRY_KEY)
 #   BENCH_MAX_PER_BUCKET       # default: 200 (auto-lowered to 100 for 27B)
 #   FSDP_WORLD_SIZE            # default: matches num_gpus of selected
 #                                VAST_GPU_TARGET (1 for *-1x, 2 for *-2x)
@@ -224,7 +230,7 @@ if [ -n "$_seen_registry_key" ]; then
 fi
 unset _seen_pipeline _seen_registry_key
 
-REGISTRY_KEY="${REGISTRY_KEY:-qwen3.6-27b}"
+REGISTRY_KEY="${REGISTRY_KEY:-qwen3.5-27b}"
 # PIPELINE selects which training stage the launcher drives end-to-end on the
 # remote box. Default = SFT (the historical behaviour); --pipeline dpo|grpo
 # overrides via the CLI pre-scan above or via the PIPELINE env var.
@@ -249,14 +255,6 @@ case "$PIPELINE" in
         DEFAULT_FSDP_WORLD_SIZE=1
         ;;
       qwen3.5-27b)
-        # Registry budget: 130 GB working set on a single 141 GB H200 or 183
-        # GB B200 (apollo_mini rank-1, grad ckpt, Liger CE, micro_batch=1
-        # seq=32k). B200-1x is the cheapest single-GPU fit (≈$3.8/hr × ~50h
-        # ≈ $190) and FSDP_WORLD_SIZE=1 matches the registry's extras block.
-        DEFAULT_GPU_TARGET="b200-1x"
-        DEFAULT_FSDP_WORLD_SIZE=1
-        ;;
-      qwen3.6-27b)
         DEFAULT_GPU_TARGET="b200-2x"
         DEFAULT_FSDP_WORLD_SIZE=2
         ;;
@@ -639,7 +637,7 @@ run_remote() {
   # ~25 GB on this hardware tier. Refuse the combo and point operators at
   # b200-2x or h200-2x (default) or blackwell6000-4x (192 GB/rank under
   # FSDP-4 leaves real headroom).
-  if [ "$REGISTRY_KEY" = "qwen3.6-27b" ] \
+  if [ "$REGISTRY_KEY" = "qwen3.5-27b" ] \
      && [ "$VAST_GPU_TARGET" = "blackwell6000-2x" ] \
      && [ "${ELIZA_FORCE_27B_BLACKWELL2X:-0}" != "1" ]; then
     log_err "27B on blackwell6000-2x has been empirically shown to OOM"
@@ -822,6 +820,38 @@ bench_remote() {
       fi
     '" || true
   done
+}
+
+publish_remote() {
+  # Mirrors train_nebius.sh's PUSH_AFTER=1 path. When the operator has
+  # PUSH_AFTER=1 in the environment AND a finished checkpoint exists under
+  # checkpoints/$RUN_NAME, kick the publish orchestrator on the remote box.
+  # The orchestrator is the canonical publish-gate entry point; it refuses
+  # to push on a red eval gate (no --skip-eval, no --publish-anyway).
+  #
+  # This is the audit-driven parity fix: Nebius (deprecated) forwarded
+  # --publish to run_pipeline.py; Vast (canonical) did not. With this hook
+  # the canonical cloud target gets the same post-train publish hook.
+  require_instance_id
+  if [ "${PUSH_AFTER:-0}" != "1" ]; then
+    echo "[train_vast] [publish] PUSH_AFTER=0 — skipping publish"
+    return 0
+  fi
+  local bundle_dir="${ELIZA_PUBLISH_BUNDLE_DIR:-checkpoints/$RUN_NAME/final}"
+  local tier="${ELIZA_PUBLISH_TIER:-${REGISTRY_KEY##*-}}"
+  echo "[train_vast] [publish] PUSH_AFTER=1 — running publish orchestrator (bundle=$bundle_dir tier=$tier)"
+  ssh_run "bash -lc '
+    set -euo pipefail
+    cd $REMOTE_TRAIN_DIR
+    export PATH=\$HOME/.local/bin:\$PATH
+    if [ -n \"\${HUGGING_FACE_HUB_TOKEN:-}\" ]; then
+      uv run hf auth login --token \"\$HUGGING_FACE_HUB_TOKEN\" --add-to-git-credential
+    fi
+    uv run --extra train python -m scripts.publish.publish_model \\
+      --mode bundle \\
+      --bundle-dir $bundle_dir \\
+      --tier $tier
+  '"
 }
 
 fetch() {
@@ -1233,9 +1263,12 @@ Subcommands:
                                                  grpo    → bash train_grpo_verl.sh
   quantize                                     Apply QUANTIZE_AFTER list (remote, SFT only)
   bench                                        Run native function-calling benchmark on base + finetuned
+  publish                                      Remote: run scripts.publish.publish_model --mode bundle
+                                               on the checkpoint (gated by PUSH_AFTER=1; mirrors
+                                               train_nebius.sh's --publish forwarding).
   fetch                                        rsync checkpoints + benchmarks back
   full                                         provision -> sync -> run [-> quantize -> bench
-                                               only for SFT] -> fetch
+                                               only for SFT] -> publish (if PUSH_AFTER=1) -> fetch
 
   provision-and-train --registry-key K --epochs N [--bootstrap rsync|hf] [--pipeline P] [--dry-run]
                                                Provision + sync (or HF download) + run in one shot
@@ -1276,6 +1309,7 @@ case "$cmd" in
   run) run_for_pipeline ;;
   quantize) quantize_remote ;;
   bench) bench_remote ;;
+  publish) publish_remote ;;
   fetch) fetch ;;
   teardown) teardown "${SUBCMD_ARGS[@]+"${SUBCMD_ARGS[@]}"}" ;;
   provision-and-train) provision_and_train "${SUBCMD_ARGS[@]+"${SUBCMD_ARGS[@]}"}" ;;
@@ -1298,6 +1332,7 @@ case "$cmd" in
     else
       log "[full] PIPELINE=$PIPELINE — skipping quantize + bench (SFT-only)"
     fi
+    publish_remote
     fetch
     ;;
   help|--help|-h) print_help ;;

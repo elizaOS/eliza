@@ -120,9 +120,12 @@ When you're ready to submit the store variant to Flathub:
    ```
    Add the generated `npm-sources.json` to the `elizaos-app` module's
    `sources:` list and remove the `--share=network` build-arg.
-2. **Add screenshots** to `ai.elizaos.App.metainfo.xml`. The placeholder
-   block is currently commented out; Flathub validation requires at
-   least one `<screenshot>` entry.
+2. **Replace screenshot URLs** in `ai.elizaos.App.metainfo.xml`. Three
+   placeholder `<screenshot>` entries currently point at
+   `https://app.elizaos.ai/screenshots/{dashboard,onboarding,plugins}.png`
+   — host the real 1280×720 PNGs at those paths (or update the URLs to
+   wherever they're served from) before submitting. Flathub fetches the
+   URLs at review time.
 3. **Verify the manifest** with `appstream-util validate` and
    `flatpak-builder --show-manifest --show-deps`.
 4. **Open a submission issue at https://github.com/flathub/flathub/issues/new**

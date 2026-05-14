@@ -84,6 +84,7 @@ import {
 } from "../runtime/planner-loop";
 import {
 	buildResponseGrammar,
+	buildSpanSamplerPlan,
 	withGuidedDecodeProviderOptions,
 } from "../runtime/response-grammar";
 import {
@@ -514,11 +515,7 @@ export function resolvePlannerActionName(
 ): string[] {
 	const lookup =
 		actionLookup ?? buildRuntimeActionLookup(runtime as IAgentRuntime);
-	const resolved = resolvePlannerActionNameFromLookup(
-		runtime,
-		lookup,
-		actionName,
-	);
+	const resolved = resolvePlannerActionNameFromLookup(lookup, actionName);
 	if (resolved.length > 0) {
 		return resolved;
 	}
@@ -527,7 +524,6 @@ export function resolvePlannerActionName(
 	// like WRITE -> FILE would defeat a candidateActions narrow.
 	if (actionLookup && !options?.strict) {
 		const runtimeResolved = resolvePlannerActionNameFromLookup(
-			runtime,
 			buildRuntimeActionLookup(runtime as IAgentRuntime),
 			actionName,
 		);
@@ -547,7 +543,6 @@ export function resolvePlannerActionName(
 }
 
 function resolvePlannerActionNameFromLookup(
-	runtime: Pick<IAgentRuntime, "actions" | "logger">,
 	lookup: Map<string, Action>,
 	actionName: string,
 ): string[] {
@@ -3000,16 +2995,6 @@ async function runDeterministicPlannerFallback(args: {
 	};
 }
 
-const OWNER_SURFACE_ACTIONS = new Set(
-	[
-		"OWNER_TODOS",
-		"OWNER_REMINDERS",
-		"OWNER_ALARMS",
-		"OWNER_ROUTINES",
-		"OWNER_GOALS",
-	].map(normalizeActionIdentifier),
-);
-
 async function executeV5PlannedToolCall(
 	args: ExecuteV5PlannedToolCallParams,
 ): Promise<PlannerToolResult> {
@@ -3034,6 +3019,14 @@ async function executeV5PlannedToolCall(
 	const resolvedName = resolvedNames[0] ?? args.toolCall.name;
 	const toolCall: PlannerToolCall = { ...args.toolCall, name: resolvedName };
 
+	// Per-turn `actions` is the narrowed action surface — the executable subset
+	// the model was given as tools. It does NOT include the CORE_PLANNER_TERMINALS
+	// (REPLY / IGNORE / STOP) which are surfaced as tools but live in the global
+	// runtime registry. When the model calls a terminal (or, under
+	// strictResolve, an action not in the narrow), pull it from the global
+	// registry by exact name. With `toolChoice: "required"` + tools-array
+	// enforcement the model can only call names that are in our exposed set, so
+	// this can't be an off-surface escape — it's the terminal/registry bridge.
 	const executionActions = actions.some(
 		(candidate) => candidate.name === toolCall.name,
 	)
@@ -3377,6 +3370,15 @@ export async function runV5MessageRuntimeStage1(args: {
 			},
 		);
 
+		// Per-span argmax sampling for the structured envelope: every enum,
+		// number, and boolean span gets temperature=0 / topK=1 so the model
+		// never randomly tips a decision (shouldRespond, requiresTool, …) that
+		// has a clear argmax winner. Free-string spans (replyText, thought)
+		// keep the call-level temperature. Engines that don't honor per-span
+		// sampling ignore the field (grammar still constrains the tokens).
+		const stage1SpanSamplerPlan = buildSpanSamplerPlan(
+			responseGrammar.responseSkeleton,
+		);
 		const rawMessageHandler = (await args.runtime.useModel(
 			ModelType.RESPONSE_HANDLER,
 			{
@@ -3393,6 +3395,8 @@ export async function runV5MessageRuntimeStage1(args: {
 				streamStructured: true,
 				responseSkeleton: responseGrammar.responseSkeleton,
 				grammar: responseGrammar.grammar,
+				spanSamplerPlan: stage1SpanSamplerPlan,
+				signal: stage1TurnSignal,
 				// Guided structured decode on by default for Stage 1 (the call always
 				// carries a forced skeleton): the local engine derives the
 				// deterministic-token prefill plan and the fork fast-forwards the
@@ -7121,6 +7125,25 @@ export class DefaultMessageService implements IMessageService {
 			? async (event: ResponseHandlerEarlyReplyEvent): Promise<void> => {
 					const text = event.text.trim();
 					if (!text || !message.id) return;
+					const currentResponseId = latestResponseIds
+						.get(runtime.agentId)
+						?.get(message.roomId);
+					if (currentResponseId !== responseId && !opts.keepExistingResponses) {
+						runtime.logger.info(
+							{
+								src: "service:message",
+								agentId: runtime.agentId,
+								roomId: message.roomId,
+								responseId,
+								currentResponseId,
+							},
+							"Response-handler early voice reply discarded - newer message being processed",
+						);
+						return;
+					}
+					if (getStreamingContext()?.abortSignal?.aborted) {
+						return;
+					}
 					const earlyResponseId = asUUID(v4());
 					const earlyContent: Content = {
 						thought: event.messageHandler.thought,

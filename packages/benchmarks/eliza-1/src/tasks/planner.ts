@@ -9,6 +9,8 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import type { Action } from "@elizaos/core";
+import { buildPlannerActionGrammarStrict } from "@elizaos/core";
 import {
   buildMetric,
   checkParamsMatch,
@@ -131,6 +133,28 @@ function buildUserPrompt(fixture: PlannerFixture): string {
   ].join("\n");
 }
 
+/**
+ * Map PlannerActionDescriptors to the minimal Action shape needed by
+ * buildPlannerActionGrammarStrict.
+ */
+function descriptorsToActions(
+  descriptors: PlannerActionDescriptor[],
+): Pick<Action, "name" | "parameters" | "allowAdditionalParameters">[] {
+  return descriptors.map((desc) => ({
+    name: desc.name,
+    parameters: desc.parameters.map((p) => ({
+      name: p.name,
+      description: p.description,
+      required: p.required ?? false,
+      schema: {
+        type: p.type,
+        ...(p.enum && { enum: p.enum }),
+      },
+    })),
+    allowAdditionalParameters: true,
+  }));
+}
+
 export async function runPlannerTask(args: {
   mode: ModeAdapter;
   n: number;
@@ -141,6 +165,15 @@ export async function runPlannerTask(args: {
     const skeletonHint = buildSkeletonHint(fixture.availableActions);
     const jsonSchema = buildJsonSchema(fixture.availableActions);
     const userPrompt = buildUserPrompt(fixture);
+
+    // For strict-guided mode, build the strict grammar
+    let grammarForMode: string | undefined;
+    if (args.mode.id === "strict-guided") {
+      const actions = descriptorsToActions(fixture.availableActions);
+      const grammarResult = buildPlannerActionGrammarStrict(actions);
+      grammarForMode = grammarResult?.grammar;
+    }
+
     for (let i = 0; i < args.n; i += 1) {
       const request: ModeRequest = {
         taskId: "planner",
@@ -150,6 +183,7 @@ export async function runPlannerTask(args: {
         jsonSchema,
         skeletonHint,
         maxTokens: 256,
+        grammar: grammarForMode,
       };
       const result = await args.mode.generate(request);
       const parsed = tryParseJson(result.rawOutput);

@@ -96,10 +96,14 @@ interface LocalInferenceTextToSpeechService {
 
 interface LocalInferenceTranscriptionService {
 	transcribe?: (params: unknown) => Promise<string | { text?: string }>;
-	transcribePcm?: (params: {
-		pcm: Float32Array;
-		sampleRate: number;
-	}) => Promise<string | { text?: string }>;
+	transcribePcm?: (
+		params: {
+			pcm: Float32Array;
+			sampleRate: number;
+			signal?: AbortSignal;
+		},
+		signal?: AbortSignal,
+	) => Promise<string | { text?: string }>;
 }
 
 /**
@@ -353,7 +357,7 @@ function normalizeAudioBytes(
 
 function extractPcmTranscriptionParams(
 	params: TranscriptionParams | Buffer | string | unknown,
-): { pcm: Float32Array; sampleRate: number } {
+): { pcm: Float32Array; sampleRate: number; signal?: AbortSignal } {
 	if (!params || typeof params !== "object" || params instanceof Uint8Array) {
 		throw unavailable(
 			ModelType.TRANSCRIPTION,
@@ -365,6 +369,7 @@ function extractPcmTranscriptionParams(
 		pcm?: unknown;
 		sampleRateHz?: unknown;
 		sampleRate?: unknown;
+		signal?: AbortSignal;
 	};
 	if (!(record.pcm instanceof Float32Array)) {
 		throw unavailable(
@@ -386,7 +391,20 @@ function extractPcmTranscriptionParams(
 			"[local-inference] TRANSCRIPTION { pcm } requires a positive sampleRateHz",
 		);
 	}
-	return { pcm: record.pcm, sampleRate };
+	return { pcm: record.pcm, sampleRate, signal: record.signal };
+}
+
+function extractTranscriptionSignal(params: unknown): AbortSignal | undefined {
+	return typeof params === "object" && params !== null
+		? (params as { signal?: AbortSignal }).signal
+		: undefined;
+}
+
+function throwIfAborted(signal: AbortSignal | undefined): void {
+	if (!signal?.aborted) return;
+	throw signal.reason instanceof Error
+		? signal.reason
+		: new DOMException("Aborted", "AbortError");
 }
 
 function normalizeTranscript(result: string | { text?: string }): string {
@@ -503,13 +521,22 @@ function createTranscriptionHandler() {
 		params: TranscriptionParams | Buffer | string | unknown,
 	): Promise<string> => {
 		const service = requireService(runtime, ModelType.TRANSCRIPTION);
+		const signal = extractTranscriptionSignal(params);
+		throwIfAborted(signal);
 		if (typeof service.transcribe === "function") {
-			return normalizeTranscript(await service.transcribe(params));
+			const transcript = normalizeTranscript(await service.transcribe(params));
+			throwIfAborted(signal);
+			return transcript;
 		}
 		if (typeof service.transcribePcm === "function") {
-			return normalizeTranscript(
-				await service.transcribePcm(extractPcmTranscriptionParams(params)),
+			const transcript = normalizeTranscript(
+				await service.transcribePcm(
+					extractPcmTranscriptionParams(params),
+					signal,
+				),
 			);
+			throwIfAborted(signal);
+			return transcript;
 		}
 		throw unavailable(
 			ModelType.TRANSCRIPTION,

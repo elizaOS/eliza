@@ -889,13 +889,18 @@ export async function startBenchmarkServer() {
     }
   }
 
-  // Load mock plugin for testing (file is gitignored for local-only use)
-  if (process.env.ELIZA_BENCH_MOCK === "true") {
+  const mockBenchmarkEnabled = process.env.ELIZA_BENCH_MOCK === "true";
+
+  // Load mock plugin for testing. Mock runs are diagnostic only and must not be
+  // treated as release evidence.
+  if (mockBenchmarkEnabled) {
     try {
       const mockLocation = "./mock-plugin.ts";
       const { mockPlugin } = await import(mockLocation);
       plugins.push(toPlugin(mockPlugin, mockLocation));
-      elizaLogger.info("[bench] Loaded mock benchmark plugin");
+      elizaLogger.warn(
+        "[bench] Loaded mock benchmark plugin (mock=true, standIn=true); this run is not valid release evidence.",
+      );
     } catch (error: unknown) {
       elizaLogger.error(
         `[bench] Failed to load mock benchmark plugin: ${formatUnknownError(error)}`,
@@ -1482,6 +1487,10 @@ export async function startBenchmarkServer() {
           status: "ready",
           agent_name: runtime.character.name ?? "Eliza",
           plugins: plugins.length,
+          standIn: skipEmbeddingPlugin || mockBenchmarkEnabled,
+          mock: mockBenchmarkEnabled,
+          stubEmbedding: skipEmbeddingPlugin,
+          releaseEvidence: !(skipEmbeddingPlugin || mockBenchmarkEnabled),
           active_session: activeSession
             ? {
                 benchmark: activeSession.benchmark,

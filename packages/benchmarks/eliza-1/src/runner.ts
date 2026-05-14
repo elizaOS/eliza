@@ -80,37 +80,60 @@ export async function runBench(options: RunBenchOptions): Promise<BenchReport> {
   const tasks = expandTaskSelection(options.tasks);
   const skipped: BenchReport["skipped"] = [];
   const activeModes: ModeAdapter[] = [];
-  for (const mode of options.modes) {
-    const reason = await mode.available();
-    if (reason) {
-      skipped.push({ modeId: mode.id, reason });
+  try {
+    for (const mode of options.modes) {
+      const reason = await mode.available();
+      if (reason) {
+        skipped.push({ modeId: mode.id, reason });
+        // eslint-disable-next-line no-console
+        console.log(`[bench] skipping mode '${mode.id}': ${reason}`);
+        continue;
+      }
+      activeModes.push(mode);
+    }
+    const cases: CaseMetric[] = [];
+    for (const task of tasks) {
+      for (const mode of activeModes) {
+        const taskMetrics = await runOneTask({ task, mode, n: options.n });
+        cases.push(...taskMetrics);
+        options.onProgress?.({
+          taskId: task,
+          modeId: mode.id,
+          cases: taskMetrics.length,
+        });
+      }
+    }
+    return {
+      schemaVersion: "eliza-1-bench-v1",
+      generatedAt: new Date().toISOString(),
+      tasks,
+      modes: activeModes.map((m) => m.id),
+      skipped,
+      cases,
+      summaries: summarize(cases),
+    };
+  } finally {
+    await cleanupModes(activeModes);
+  }
+}
+
+async function cleanupModes(modes: ModeAdapter[]): Promise<void> {
+  const results = await Promise.allSettled(
+    modes.map((mode) => mode.cleanup?.()),
+  );
+  for (let i = 0; i < results.length; i += 1) {
+    const result = results[i];
+    if (result.status === "rejected") {
+      const message =
+        result.reason instanceof Error
+          ? result.reason.message
+          : String(result.reason);
       // eslint-disable-next-line no-console
-      console.log(`[bench] skipping mode '${mode.id}': ${reason}`);
-      continue;
-    }
-    activeModes.push(mode);
-  }
-  const cases: CaseMetric[] = [];
-  for (const task of tasks) {
-    for (const mode of activeModes) {
-      const taskMetrics = await runOneTask({ task, mode, n: options.n });
-      cases.push(...taskMetrics);
-      options.onProgress?.({
-        taskId: task,
-        modeId: mode.id,
-        cases: taskMetrics.length,
-      });
+      console.warn(
+        `[bench] cleanup for mode '${modes[i]?.id}' failed: ${message}`,
+      );
     }
   }
-  return {
-    schemaVersion: "eliza-1-bench-v1",
-    generatedAt: new Date().toISOString(),
-    tasks,
-    modes: activeModes.map((m) => m.id),
-    skipped,
-    cases,
-    summaries: summarize(cases),
-  };
 }
 
 async function runOneTask(args: {

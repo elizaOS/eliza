@@ -267,7 +267,7 @@ export interface AssistantSpeechState {
 
 export const DEFAULT_ELEVEN_MODEL = "eleven_flash_v2_5";
 export const DEFAULT_ELEVEN_VOICE = "EXAVITQu4vr4xnSDxMaL";
-export const MAX_SPOKEN_CHARS = 360;
+export const MAX_SPOKEN_CHARS = 4000;
 export const MAX_CACHED_SEGMENTS = 128;
 /** Cache only short generated clips aggressively; common acknowledgements stay hot. */
 export const SHORT_AUDIO_CACHE_MAX_TOKENS = 10;

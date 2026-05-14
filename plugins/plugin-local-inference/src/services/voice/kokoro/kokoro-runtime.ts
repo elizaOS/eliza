@@ -110,6 +110,8 @@ export interface KokoroRuntime {
  * type-checks. Each implementation only honours its known shapes; runtime
  * surface drift surfaces as a thrown error, not a silent no-op.
  */
+type OrtInputMetadata = Readonly<{ name?: string; type?: string }>;
+
 interface OrtSession {
 	run(feeds: Record<string, OrtTensor>): Promise<Record<string, OrtTensor>>;
 	release(): Promise<void>;
@@ -120,8 +122,9 @@ interface OrtSession {
 	 */
 	readonly inputNames?: ReadonlyArray<string>;
 	/**
-	 * Optional per-input metadata (dtype + shape). Real `onnxruntime-node`
-	 * sessions expose this as `{[name]: { type: "tensor(float)" | "tensor(int32)" | ... }}`.
+	 * Optional per-input metadata (dtype + shape). Real ORT sessions can expose
+	 * this as a positional array aligned with `inputNames`; some test stubs use
+	 * a name-keyed record.
 	 * We use it to pick the speed-tensor dtype from the actual model rather
 	 * than guessing from the token-input name — Kokoro v1.0 ONNX exports
 	 * pair `input_ids` with `speed: float`, `input_ids` with `speed: int32`,
@@ -130,9 +133,9 @@ interface OrtSession {
 	 * always misfires on some variant. Reading the actual dtype is the
 	 * only correct probe.
 	 */
-	readonly inputMetadata?: Readonly<
-		Record<string, Readonly<{ type?: string }>>
-	>;
+	readonly inputMetadata?:
+		| ReadonlyArray<OrtInputMetadata>
+		| Readonly<Record<string, OrtInputMetadata>>;
 }
 
 interface OrtTensor {
@@ -153,6 +156,29 @@ interface OrtModule {
 		data: Float32Array | Int32Array | BigInt64Array,
 		dims: ReadonlyArray<number>,
 	) => OrtTensor;
+}
+
+function getInputMetadataType(
+	session: OrtSession,
+	inputName: string,
+): string | undefined {
+	const metadata = session.inputMetadata;
+	if (!metadata) return undefined;
+
+	if (Array.isArray(metadata)) {
+		const namedEntry = metadata.find((entry) => entry.name === inputName);
+		if (namedEntry?.type) return namedEntry.type;
+
+		const index = session.inputNames?.indexOf(inputName) ?? -1;
+		return index >= 0 ? metadata[index]?.type : undefined;
+	}
+
+	const metadataByName = metadata as Readonly<Record<string, OrtInputMetadata>>;
+	return metadataByName[inputName]?.type;
+}
+
+function isInt32TensorType(type: string | undefined): boolean {
+	return typeof type === "string" && /\bint32\b/i.test(type);
 }
 
 export interface KokoroOnnxRuntimeOptions {
@@ -204,13 +230,13 @@ export class KokoroOnnxRuntime implements KokoroRuntime {
 		const load = this.opts.loadOrt ?? defaultOrtLoader;
 		this.ort = await load();
 		// `onnxruntime-node` defaults `intraOpNumThreads` to 1 — every operator
-		// runs single-threaded. On an 8-core CPU this leaves Kokoro at a real-
-		// time-factor of ~1.8, which is unusable for live voice. Setting it to
-		// the available core count brings Kokoro under RTF 0.3 on the same box.
+		// runs single-threaded. On an 8-core CPU this leaves Kokoro above real
+		// time for medium prompts; using the available core count gives a measured
+		// wall-clock improvement without changing inference semantics.
 		// `interOpNumThreads` stays at 1 because Kokoro's graph is mostly a
 		// single sequential chain (BERT encoder → flow → vocoder) — there are
 		// very few independent ops to parallelise across.
-		const cpuCores = os.cpus().length;
+		const cpuCores = Math.max(1, os.cpus().length);
 		this.session = await this.ort.InferenceSession.create(modelPath, {
 			executionProviders: ["cpu"],
 			graphOptimizationLevel: "all",
@@ -271,10 +297,9 @@ export class KokoroOnnxRuntime implements KokoroRuntime {
 		const tokensInputName = inputNames.includes("input_ids")
 			? "input_ids"
 			: "tokens";
-		const speedDtype =
-			session.inputMetadata?.speed?.type === "tensor(int32)"
-				? "int32"
-				: "float32";
+		const speedDtype = isInt32TensorType(getInputMetadataType(session, "speed"))
+			? "int32"
+			: "float32";
 		const speedTensor =
 			speedDtype === "int32"
 				? new ort.Tensor("int32", new Int32Array([1]), [1])

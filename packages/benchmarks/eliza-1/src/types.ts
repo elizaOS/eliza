@@ -8,7 +8,7 @@
  */
 export type TaskName = "should_respond" | "planner" | `action:${string}`;
 
-export type ModeName = "unguided" | "guided" | "cerebras";
+export type ModeName = "unguided" | "guided" | "strict-guided" | "cerebras";
 
 /** JSON value type — minimal local definition to avoid pulling @elizaos/core. */
 export type JsonValue =
@@ -92,6 +92,8 @@ export interface CaseMetric {
   tokens_generated: number;
   /** Output tokens / second (computed from tokens_generated and total_latency_ms). */
   tokens_per_second: number;
+  /** Ratio of prefix (literal) bytes to total output bytes (for local guided modes). */
+  skip_ratio?: number;
   /** Raw text the mode returned, for debugging. */
   raw_output?: string;
   /** Error message when the mode threw / produced no output. */
@@ -111,6 +113,8 @@ export interface ModeSummary {
   total_latency_p50_ms: number;
   total_latency_p95_ms: number;
   mean_tokens_per_second: number;
+  /** Mean skip_ratio for this mode+task (when applicable). */
+  mean_skip_ratio?: number;
 }
 
 /** Top-level bench report. */
@@ -138,6 +142,8 @@ export interface ModeAdapter {
   available(): Promise<string | null>;
   /** Run one generation. Returns the timing + raw output (no scoring yet). */
   generate(req: ModeRequest): Promise<ModeResult>;
+  /** Tear down any loaded model/server resources after the run completes. */
+  cleanup?(): Promise<void>;
 }
 
 /** A single generation request shared across all modes. */
@@ -159,6 +165,10 @@ export interface ModeRequest {
   skeletonHint: SkeletonHint;
   /** Max output tokens for this call. */
   maxTokens: number;
+  /** Optional GBNF grammar string (used by strict-guided mode for planner). */
+  grammar?: string;
+  /** Optional skeleton for prefill plan (carries literal bytes). */
+  responseSkeleton?: unknown;
 }
 
 /**
@@ -195,4 +205,6 @@ export interface ModeResult {
   totalLatencyMs: number;
   tokensGenerated: number;
   error?: string;
+  /** Optional: skeleton used (for skip_ratio computation). */
+  _skeleton?: unknown;
 }

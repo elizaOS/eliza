@@ -106,6 +106,15 @@ export class ElizaUnguidedMode implements ModeAdapter {
       }
     }
   }
+
+  async cleanup(): Promise<void> {
+    const engine = this.engine;
+    this.engine = null;
+    this.modelPath = null;
+    this.resolved = false;
+    this.skipReason = null;
+    if (engine) await engine.unload();
+  }
 }
 
 function renderPrompt(req: ModeRequest): string {

@@ -1,7 +1,7 @@
 """Smoke tests for model_registry. CPU-only.
 
 The registry holds the Eliza-1 size ladder. The canonical bases are published
-Qwen3.5 / Qwen3.6 checkpoints and are all trainable through the APOLLO path;
+Qwen3.5 checkpoints and are all trainable through the APOLLO path;
 local tiers run on one consumer GPU, while 9B/27B go through Vast/FSDP.
 """
 
@@ -40,7 +40,7 @@ VERIFIED_PUBLIC_NAMES = (
 # operator directive — the Qwen3 dense bases don't work with dflash). The
 # smallest tier is qwen3.5-0.8b on Qwen/Qwen3.5-0.8B; 2b/4b are mid-local
 # on Qwen/Qwen3.5-{2B,4B}; 9b stays on Qwen3.5 until an official
-# Qwen/Qwen3.6-9B exists; 27b is the cloud tier on Qwen/Qwen3.6-27B.
+# Qwen/Qwen3.6-9B appears; 27b is the cloud tier on Qwen/Qwen3.6-27B.
 # qwen3.5-27b is retained as a legacy lookup only.
 SMALL_KEYS = ("qwen3.5-0.8b",)
 SMALL_PUBLIC_NAMES = ("eliza-1-0_8b",)
@@ -109,14 +109,14 @@ def test_lookup_by_hf_id_short_name_or_eliza_name() -> None:
     assert get("qwen3.5-2b").short_name == "qwen3.5-2b"
     assert get("qwen3.5-4b").short_name == "qwen3.5-4b"
     assert get("qwen3.5-9b").short_name == "qwen3.5-9b"
+    assert get("qwen3.5-27b").short_name == "qwen3.5-27b"
     assert get("qwen3.6-27b").short_name == "qwen3.6-27b"
     assert get("eliza-1-27b").short_name == "qwen3.6-27b"
 
 
 def test_dflash_drafter_base_is_qwen3_5_for_qwen3_5_targets() -> None:
     # The Qwen3.5/3.6 target tiers must draft from the Qwen3.5-0.8B-Base
-    # checkpoint — it shares their 248320-token tokenizer (a Qwen3-0.6B
-    # drafter has the wrong vocab). The shipped drafter GGUF is that base
+    # checkpoint — it shares their 248320-token tokenizer (a legacy Qwen3 drafter has the wrong vocab). The shipped drafter GGUF is that base
     # distilled to ~0.6B. Mirrors DEFAULT_STUDENT_BASE in
     # scripts/distill_dflash_drafter.py. Per the 2026-05-12 operator
     # directive (Qwen3.5/Qwen3.6 fused-model line), the legacy Qwen3 tier

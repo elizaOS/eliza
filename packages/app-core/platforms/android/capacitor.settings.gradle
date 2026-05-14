@@ -17,6 +17,9 @@ project(':llama-cpp-capacitor').projectDir = new File('../../../app/node_modules
 include ':elizaos-capacitor-agent'
 project(':elizaos-capacitor-agent').projectDir = new File('../../../native-plugins/agent/android')
 
+include ':elizaos-capacitor-bun-runtime'
+project(':elizaos-capacitor-bun-runtime').projectDir = new File('../../../native-plugins/bun-runtime/android')
+
 include ':elizaos-capacitor-camera'
 project(':elizaos-capacitor-camera').projectDir = new File('../../../native-plugins/camera/android')
 
@@ -28,6 +31,9 @@ project(':elizaos-capacitor-gateway').projectDir = new File('../../../native-plu
 
 include ':elizaos-capacitor-location'
 project(':elizaos-capacitor-location').projectDir = new File('../../../native-plugins/location/android')
+
+include ':elizaos-capacitor-mobile-agent-bridge'
+project(':elizaos-capacitor-mobile-agent-bridge').projectDir = new File('../../../native-plugins/mobile-agent-bridge/android')
 
 include ':elizaos-capacitor-mobile-signals'
 project(':elizaos-capacitor-mobile-signals').projectDir = new File('../../../native-plugins/mobile-signals/android')

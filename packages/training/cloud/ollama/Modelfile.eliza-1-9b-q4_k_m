@@ -3,9 +3,9 @@
 # Build:
 #   ollama create eliza-1-9b -f Modelfile.eliza-1-9b-q4_k_m
 #
-# Pulls from the published HF sibling. push_model_to_hf.py uploads each
-# K-quant level to its own repo (`-gguf-q4_k_m`, `-gguf-q5_k_m`,
-# `-gguf-q6_k`).
+# Pulls from the consolidated `elizaos/eliza-1` bundle repo at
+# `bundles/9b/text/`. Per-quant variants (Q4_K_M / Q6_K / Q8_0) live as
+# sibling files inside that tier directory.
 #
 # Sized for 24 GB workstation cards (RTX 4090 / 5080 16-24 GB):
 #   - weights:  ~5.5 GB on disk
@@ -15,10 +15,10 @@
 # Q4_K_M also runs (slowly) on 16 GB consumer GPUs with --parallel 1 and
 # 16k context.
 #
-# Availability: requires `scripts/publish_all_eliza1.sh --filter-size 9b
-# --filter-quant gguf-q4_k_m` to have completed against a trained eliza-1
-# checkpoint. The HF repo does not exist before that runs.
-FROM hf.co/elizaos/eliza-1-9b-gguf-q4_k_m
+# Availability: requires the publish orchestrator to have completed against
+# a trained Eliza-1 9B checkpoint and uploaded the bundle into
+# `elizaos/eliza-1/bundles/9b/text/`.
+FROM hf.co/elizaos/eliza-1:bundles/9b/text/eliza-1-9b-32k.gguf
 
 SYSTEM """You are Eliza, an autonomous AI agent powered by elizaOS. You are helpful, concise, and grounded in the user's task. Use tools when they make the task tractable; otherwise answer directly."""
 

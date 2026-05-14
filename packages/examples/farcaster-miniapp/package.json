@@ -8,11 +8,6 @@
     "build": "tsc && bun --bun vite build",
     "preview": "bun --bun vite preview",
     "start": "node server.js",
-    "test": "vitest run --passWithNoTests",
-    "test:real": "USE_REAL_API=true vitest",
-    "test:ui": "vitest --ui",
-    "test:coverage": "vitest run --coverage",
-    "test:e2e": "vitest run __tests__/integration",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "typecheck": "tsc --noEmit"
   },
@@ -24,19 +19,12 @@
     "react-dom": "^19.2.3"
   },
   "devDependencies": {
-    "@testing-library/jest-dom": "^6.1.5",
-    "@testing-library/react": "^16.3.0",
-    "@testing-library/user-event": "^14.5.1",
     "@types/cors": "^2.8.17",
     "@types/express": "^5.0.6",
     "@types/react": "^19.2.3",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.0",
-    "@vitest/coverage-v8": "^4.0.17",
-    "@vitest/ui": "^4.0.17",
-    "jsdom": "^29.0.0",
     "typescript": "^6.0.3",
-    "vite": "^8.0.8",
-    "vitest": "^4.0.17"
+    "vite": "^8.0.8"
   }
 }

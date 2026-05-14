@@ -56,22 +56,21 @@ def build_lifeops_bench_agent_fn(
         if not last_user_text:
             return MessageTurn(role="assistant", content="", tool_calls=None)
 
-        prompt_chunks: list[str] = []
-        if system_prompt:
-            prompt_chunks.append(system_prompt.strip())
-        prompt_chunks.append(f"NOW: {now_iso}")
-        prompt_chunks.append(
-            "WORLD_SNAPSHOT:\n" + json.dumps(snapshot, ensure_ascii=True, indent=2)
+        messages = _conversation_messages(
+            conversation_history,
+            system_prompt=system_prompt,
+            now_iso=now_iso,
+            snapshot=snapshot,
         )
-        prompt_chunks.append(last_user_text.strip())
-        message = "\n\n".join(chunk for chunk in prompt_chunks if chunk)
+        message = last_user_text.strip()
 
-        context: dict[str, object] = {}
+        context: dict[str, object] = {"messages": messages}
         if tools:
             context["tools"] = tools
+            context["tool_choice"] = "auto"
 
         try:
-            resp = bridge.send_message(message, context=context or None)
+            resp = bridge.send_message(message, context=context)
         except Exception as exc:
             logger.exception("[openclaw-lifeops] send_message failed")
             raise RuntimeError("OpenClaw LifeOps send_message failed") from exc
@@ -131,6 +130,71 @@ def _last_user_text(conversation_history: list[Any]) -> str:
         if role == "user":
             return str(content or "")
     return ""
+
+
+def _conversation_messages(
+    conversation_history: list[Any],
+    *,
+    system_prompt: str | None,
+    now_iso: str,
+    snapshot: dict[str, Any],
+) -> list[dict[str, Any]]:
+    messages: list[dict[str, Any]] = [
+        {
+            "role": "system",
+            "content": "\n\n".join(
+                chunk
+                for chunk in (
+                    system_prompt,
+                    f"NOW: {now_iso}",
+                    "WORLD_SNAPSHOT:\n"
+                    + json.dumps(snapshot, ensure_ascii=True, indent=2),
+                )
+                if isinstance(chunk, str) and chunk.strip()
+            ),
+        }
+    ]
+    for turn in conversation_history:
+        role = (
+            getattr(turn, "role", None)
+            or (turn.get("role") if isinstance(turn, dict) else None)
+        )
+        if role not in {"user", "assistant", "system", "tool"}:
+            continue
+        content = (
+            getattr(turn, "content", None)
+            if not isinstance(turn, dict)
+            else turn.get("content")
+        )
+        msg: dict[str, Any] = {
+            "role": role,
+            "content": str(content or ""),
+        }
+        name = (
+            getattr(turn, "name", None)
+            if not isinstance(turn, dict)
+            else turn.get("name")
+        )
+        if isinstance(name, str) and name:
+            msg["name"] = name
+        tool_call_id = (
+            getattr(turn, "tool_call_id", None)
+            if not isinstance(turn, dict)
+            else turn.get("tool_call_id") or turn.get("toolCallId")
+        )
+        if isinstance(tool_call_id, str) and tool_call_id:
+            msg["tool_call_id"] = tool_call_id
+        tool_calls = (
+            getattr(turn, "tool_calls", None)
+            if not isinstance(turn, dict)
+            else turn.get("tool_calls") or turn.get("toolCalls")
+        )
+        if isinstance(tool_calls, list) and tool_calls:
+            msg["tool_calls"] = tool_calls
+            if role == "assistant" and not msg["content"]:
+                msg["content"] = None
+        messages.append(msg)
+    return messages
 
 
 def _load_snapshot(world_snapshot_path: str) -> dict[str, Any]:

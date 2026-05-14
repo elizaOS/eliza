@@ -803,7 +803,7 @@ def main() -> int:
         log.info("stage 7: publish channel=%s", channel)
         rc = run(cmd, cwd=ROOT)
         summary["stages"]["publish"] = {"exit": rc, "channel": channel}
-        repo_id = getattr(entry, "eliza_repo_id", None) or f"elizaos/eliza-1-{tier_id}"
+        repo_id = getattr(entry, "eliza_repo_id", None) or "elizaos/eliza-1"
         if rc == 0:
             log.info("published: https://huggingface.co/%s (channel=%s)", repo_id, channel)
         else:

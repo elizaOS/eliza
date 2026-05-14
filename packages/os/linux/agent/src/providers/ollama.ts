@@ -4,8 +4,8 @@
 /**
  * Ollama provider for chat completion.
  *
- * Per locked decision #21, the local Llama-3.2-1B handles every conversation
- * before any cloud auth. We talk to it via Ollama's HTTP API at
+ * Per the current Eliza-1 local inference policy, the local Eliza-1 baseline
+ * handles every conversation before any cloud auth. We talk to it via Ollama's HTTP API at
  * 127.0.0.1:11434 — Ollama runs as a systemd service in the qcow2 / live
  * ISO (vm/disk-base/overlay/etc/systemd/system/ollama.service.d/override.conf).
  *
@@ -38,7 +38,7 @@ export interface OllamaChatResponse {
 export interface OllamaProviderOptions {
     /** HTTP base URL for Ollama. Defaults to env or 127.0.0.1:11434. */
     baseUrl?: string;
-    /** Model identifier. Defaults to env or `llama3.2:1b`. */
+    /** Model identifier. Defaults to env or the local `eliza-1-0_8b` alias. */
     model?: string;
     /** Per-request timeout (ms). Default: 60s. Local 1B replies in ~500-2000ms. */
     timeoutMs?: number;
@@ -67,7 +67,7 @@ function resolveBaseUrl(): string {
 }
 
 function resolveModel(): string {
-    return Bun.env.USBELIZA_OLLAMA_MODEL ?? "llama3.2:1b";
+    return Bun.env.USBELIZA_OLLAMA_MODEL ?? "eliza-1-0_8b";
 }
 
 const DEFAULT_TIMEOUT_MS = 60_000;

@@ -78,6 +78,7 @@
     "@elizaos/capacitor-gateway": "workspace:*",
     "@elizaos/capacitor-location": "workspace:*",
     "@elizaos/capacitor-messages": "workspace:*",
+    "@elizaos/capacitor-mobile-agent-bridge": "workspace:*",
     "@elizaos/capacitor-mobile-signals": "workspace:*",
     "@elizaos/capacitor-phone": "workspace:*",
     "@elizaos/capacitor-screencapture": "workspace:*",
