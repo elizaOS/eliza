@@ -151,6 +151,13 @@ class MMAUDataset:
             return None
 
         context = str(data.get("context") or "").strip()
+        transcript = str(
+            data.get("transcript")
+            or data.get("audio_transcript")
+            or attrs.get("transcript")
+            or attrs.get("audio_transcript")
+            or ""
+        ).strip()
 
         audio_bytes: bytes | None = None
         audio_path: Path | None = None
@@ -178,6 +185,7 @@ class MMAUDataset:
             dataset=str(attrs.get("dataset") or "unknown"),
             audio_path=audio_path,
             audio_bytes=audio_bytes,
+            transcript=transcript,
             context=context,
             metadata={k: v for k, v in attrs.items() if _json_safe(v)},
         )

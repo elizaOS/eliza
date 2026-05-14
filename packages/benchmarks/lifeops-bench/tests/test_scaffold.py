@@ -724,6 +724,27 @@ def test_calendar_thursday_smoke_date_is_explicitly_anchored() -> None:
         assert "bare 'Thursday' resolves to 2026-05-14" in start_at["description"]
 
 
+def test_check_availability_accepts_compact_intent_time_range() -> None:
+    from eliza_lifeops_bench.__main__ import _build_world_factory
+    from eliza_lifeops_bench.runner import _execute_action
+    from eliza_lifeops_bench.types import Action
+
+    world = _build_world_factory()(2026, "2026-05-10T12:00:00Z")
+
+    result = _execute_action(
+        Action(
+            name="CALENDAR_CHECK_AVAILABILITY",
+            kwargs={
+                "action": "check_availability",
+                "intent": "Thursday 9-10am UTC",
+            },
+        ),
+        world,
+    )
+
+    assert result == {"subaction": "check_availability", "ok": True, "events": []}
+
+
 def test_archive_email_thread_alias_matches_message_manage_archive() -> None:
     from eliza_lifeops_bench.__main__ import _build_world_factory
     from eliza_lifeops_bench.runner import _execute_action, supported_actions

@@ -315,11 +315,11 @@ export * from "./utils/description-compressed-lint";
 // Export browser-compatible utilities
 export * from "./utils/environment";
 export { formatError } from "./utils/format-error";
+// Export Node-specific utilities
+export * from "./utils/plugin-loader";
 export * from "./utils/prompt-compression";
 // Canonical env-var reader with legacy-alias back-compat (ELIZA_* preferred, MILADY_* honored)
 export * from "./utils/read-env";
-// Export Node-specific utilities
-export * from "./utils/plugin-loader";
 export * from "./utils/server-health";
 // Eliza state-dir resolution (ELIZA_STATE_DIR, with the legacy MILADY_STATE_DIR honored → ~/.${ELIZA_NAMESPACE ?? "eliza"})
 export * from "./utils/state-dir";

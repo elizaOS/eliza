@@ -85,12 +85,12 @@ export function buildRecommendedAssignments(
 			TEXT_LARGE: best.id,
 			TEXT_TO_SPEECH: best.id,
 			TRANSCRIPTION: best.id,
+			IMAGE_DESCRIPTION: best.id,
 		};
 	}
 
 	// Fallback: no curated Eliza-1 default is installed, but the user may
-	// have hand-installed a generic text-gen GGUF (e.g. a Llama / Qwen /
-	// Mistral instruct quant). Auto-assign the largest non-embedding model
+	// have hand-installed a generic text-gen GGUF. Auto-assign the largest non-embedding model
 	// to TEXT_SMALL / TEXT_LARGE so the slot isn't left empty — empty slots
 	// cause `ensureAssignedModelLoaded()` to fall through and chat
 	// completions silently run against whichever model is currently loaded
@@ -205,6 +205,7 @@ export async function ensureDefaultAssignment(
 		if (!next.TEXT_LARGE) next.TEXT_LARGE = modelId;
 		if (!next.TEXT_TO_SPEECH) next.TEXT_TO_SPEECH = modelId;
 		if (!next.TRANSCRIPTION) next.TRANSCRIPTION = modelId;
+		if (!next.IMAGE_DESCRIPTION) next.IMAGE_DESCRIPTION = modelId;
 	}
 
 	// Cheap shortcut: skip the rewrite when nothing changed.
@@ -213,7 +214,8 @@ export async function ensureDefaultAssignment(
 		next.TEXT_LARGE === current.TEXT_LARGE &&
 		next.TEXT_EMBEDDING === current.TEXT_EMBEDDING &&
 		next.TEXT_TO_SPEECH === current.TEXT_TO_SPEECH &&
-		next.TRANSCRIPTION === current.TRANSCRIPTION
+		next.TRANSCRIPTION === current.TRANSCRIPTION &&
+		next.IMAGE_DESCRIPTION === current.IMAGE_DESCRIPTION
 	) {
 		return current;
 	}

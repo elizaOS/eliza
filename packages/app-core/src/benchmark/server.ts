@@ -392,9 +392,7 @@ function stripRuntimeActionContext(
   return rest;
 }
 
-function isMeaningfulLifeOpsCapture(
-  args: Record<string, unknown>,
-): boolean {
+function isMeaningfulLifeOpsCapture(args: Record<string, unknown>): boolean {
   return Object.keys(stripRuntimeActionContext(args)).length > 0;
 }
 

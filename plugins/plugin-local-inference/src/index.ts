@@ -20,8 +20,6 @@ export {
 	type LocalInferenceChatResult,
 	type LocalInferenceCommandIntent,
 } from "./local-inference-routes.js";
-export * from "./routes/index.js";
-export * from "./runtime/index.js";
 export {
 	createLocalInferenceModelHandlers,
 	isLocalInferenceUnavailableError,
@@ -34,11 +32,14 @@ export {
 	localInferencePlugin,
 	localInferencePlugin as default,
 } from "./provider.js";
+export * from "./routes/index.js";
+export * from "./runtime/index.js";
 export { deviceBridge } from "./services/device-bridge.js";
 export { runDflashDoctor } from "./services/dflash-doctor.js";
 export { LocalInferenceEngine } from "./services/engine.js";
 export {
 	buildVoiceLatencyDevPayload,
+	EndToEndLatencyTracer,
 	voiceLatencyTracer,
 } from "./services/latency-trace.js";
 export { ELIZA_1_TIERS } from "./services/manifest/schema.js";
@@ -104,13 +105,12 @@ export function wrapWithFirstLineCache(
 
 	return async function cachedTtsHandler(runtime, input) {
 		if (!wrapped) {
-			pending ??= import(
-				"./services/voice/wrap-with-first-line-cache.js"
-			).then((module) =>
-				module.wrapWithFirstLineCache(
-					inner as Parameters<typeof module.wrapWithFirstLineCache>[0],
-					options as Parameters<typeof module.wrapWithFirstLineCache>[1],
-				),
+			pending ??= import("./services/voice/wrap-with-first-line-cache.js").then(
+				(module) =>
+					module.wrapWithFirstLineCache(
+						inner as Parameters<typeof module.wrapWithFirstLineCache>[0],
+						options as Parameters<typeof module.wrapWithFirstLineCache>[1],
+					),
 			);
 			wrapped = await pending;
 		}
