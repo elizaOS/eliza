@@ -243,7 +243,7 @@ test("iOS direct full-Bun pod selection includes local execution bridge pods", (
     includeFullBunEngine: true,
   }).map(([name]) => name);
 
-  assert.equal(pods.includes("LlamaCppCapacitor"), true);
+  assert.equal(pods.includes("LlamaCppCapacitor"), false);
   assert.equal(pods.includes("ElizaosCapacitorBunRuntime"), true);
   assert.equal(pods.includes("ElizaosCapacitorMobileAgentBridge"), true);
   assert.equal(pods.includes("ElizaBunEngine"), true);
