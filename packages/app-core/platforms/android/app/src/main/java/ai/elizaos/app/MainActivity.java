@@ -5,6 +5,7 @@ import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.Bundle;
 import android.util.Log;
+import android.view.WindowManager;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 
@@ -71,6 +72,16 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(AgentPlugin.class);
         registerPlugin(BatteryOptimizationPlugin.class);
         super.onCreate(savedInstanceState);
+
+        // Keep the screen on while the agent app is in the foreground.
+        // Voice turns (ASR → LLM → TTS) on local-runtime builds regularly
+        // take 1-5 seconds; screen-off mid-turn breaks the "is the agent
+        // still working?" feedback and confuses the user. The flag is
+        // window-scoped — Android releases it automatically when the window
+        // is no longer visible (app moved to background or fully covered),
+        // so background instances don't drain battery. Same flag set by
+        // every video / voice-calling app (Snapchat, YouTube, Zoom, Meet).
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
         // The Capacitor WebView serves the renderer at https://localhost
         // (its default secure-context origin); the on-device Eliza agent
