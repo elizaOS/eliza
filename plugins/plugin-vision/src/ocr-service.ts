@@ -1,9 +1,6 @@
 import { logger } from "@elizaos/core";
+import { RapidOCRService, shouldPreferAppleVision } from "./ocr-service-rapid";
 import { RealOCRService } from "./ocr-service-real";
-import {
-  RapidOCRService,
-  shouldPreferAppleVision,
-} from "./ocr-service-rapid";
 import type { BoundingBox, OCRResult, ScreenTile } from "./types";
 
 export type OCRBackendName = "rapid" | "apple-vision" | "tesseract";
@@ -154,7 +151,10 @@ export class OCRService {
     // the next loaded backend instead of returning an empty result. This is
     // intentionally narrow: a failure in the active backend is logged and
     // counted, but the call still produces text where possible.
-    const ordered = [this.chosen, ...this.backends.filter((b) => b !== this.chosen)];
+    const ordered = [
+      this.chosen,
+      ...this.backends.filter((b) => b !== this.chosen),
+    ];
     let lastError: unknown = null;
     for (const backend of ordered) {
       try {
@@ -202,11 +202,13 @@ export class OCRService {
     // Only Tesseract has structured-data support today; if our chosen
     // backend doesn't implement it, fall through to the Tesseract backend
     // when present.
-    const fallback = this.backends.find((b): b is TesseractBackend => b.name === "tesseract");
+    const fallback = this.backends.find(
+      (b): b is TesseractBackend => b.name === "tesseract",
+    );
     const target =
       this.chosen && this.chosen.extractStructuredData
         ? this.chosen
-        : fallback ?? null;
+        : (fallback ?? null);
     if (!target?.extractStructuredData) {
       return { tables: [], forms: [], lists: [] };
     }

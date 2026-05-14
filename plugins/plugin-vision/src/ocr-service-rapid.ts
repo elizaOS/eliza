@@ -88,7 +88,9 @@ export interface RapidOCRConfig {
 
 function getModelDir(custom?: string): string {
   if (custom) return custom;
-  const stateDir = process.env.ELIZA_STATE_DIR ?? path.join(process.env.HOME ?? "/tmp", ".milady");
+  const stateDir =
+    process.env.ELIZA_STATE_DIR ??
+    path.join(process.env.HOME ?? "/tmp", ".milady");
   return path.join(stateDir, "models", "rapidocr");
 }
 
@@ -157,7 +159,9 @@ async function loadOnnxRuntime(): Promise<OnnxRuntime | null> {
   if (!onnxModulePromise) {
     onnxModulePromise = (async (): Promise<OnnxRuntime | null> => {
       try {
-        const mod = (await import("onnxruntime-node")) as unknown as OnnxRuntime;
+        const mod = (await import(
+          "onnxruntime-node"
+        )) as unknown as OnnxRuntime;
         if (!mod?.InferenceSession?.create || !mod?.Tensor) return null;
         return mod;
       } catch (error) {
@@ -180,7 +184,10 @@ async function loadOnnxRuntime(): Promise<OnnxRuntime | null> {
  * higher-priority backend wins.
  */
 export function shouldPreferAppleVision(): boolean {
-  return process.platform === "darwin" && process.env.ELIZA_DISABLE_APPLE_VISION !== "1";
+  return (
+    process.platform === "darwin" &&
+    process.env.ELIZA_DISABLE_APPLE_VISION !== "1"
+  );
 }
 
 export class RapidOCRService {
@@ -334,7 +341,12 @@ export class RapidOCRService {
       float[i + 2 * resizedW * resizedH] = (b - mean[2]) / std[2];
     }
 
-    const tensor = new this.onnx.Tensor("float32", float, [1, 3, resizedH, resizedW]);
+    const tensor = new this.onnx.Tensor("float32", float, [
+      1,
+      3,
+      resizedH,
+      resizedW,
+    ]);
     const feeds = await this.buildFeeds(this.detectionSession, tensor);
     const output = await this.detectionSession.run(feeds);
     const firstKey = Object.keys(output)[0];
@@ -391,7 +403,10 @@ export class RapidOCRService {
         if (visited[idx]) continue;
         if (get(x, y) < threshold) continue;
         // BFS for connected pixels above threshold.
-        let minX = x, maxX = x, minY = y, maxY = y;
+        let minX = x,
+          maxX = x,
+          minY = y,
+          maxY = y;
         let probSum = 0;
         let count = 0;
         const stack: Array<[number, number]> = [[x, y]];
@@ -456,7 +471,7 @@ export class RapidOCRService {
     if (safeW <= 0 || safeH <= 0) return "";
 
     const aspect = safeW / safeH;
-    const targetW = Math.max(16, Math.round(targetH * aspect / 16) * 16);
+    const targetW = Math.max(16, Math.round((targetH * aspect) / 16) * 16);
 
     const { data: rgb } = await sharp(imageBuffer)
       .extract({
@@ -481,7 +496,12 @@ export class RapidOCRService {
       float[i + 2 * targetW * targetH] = (b - 0.5) / 0.5;
     }
 
-    const tensor = new this.onnx.Tensor("float32", float, [1, 3, targetH, targetW]);
+    const tensor = new this.onnx.Tensor("float32", float, [
+      1,
+      3,
+      targetH,
+      targetW,
+    ]);
     const feeds = await this.buildFeeds(this.recognitionSession, tensor);
     const output = await this.recognitionSession.run(feeds);
     const firstKey = Object.keys(output)[0];
@@ -529,7 +549,8 @@ export class RapidOCRService {
 
   async dispose(): Promise<void> {
     if (this.detectionSession?.release) await this.detectionSession.release();
-    if (this.recognitionSession?.release) await this.recognitionSession.release();
+    if (this.recognitionSession?.release)
+      await this.recognitionSession.release();
     this.detectionSession = null;
     this.recognitionSession = null;
     this.charset = [];

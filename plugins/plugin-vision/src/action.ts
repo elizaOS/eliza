@@ -781,13 +781,21 @@ async function runToggleSubMode(
       success: true,
       text,
       values: { visionMode: after, previousMode: before, op },
-      data: { actionName: "VISION", op, visionMode: after, previousMode: before },
+      data: {
+        actionName: "VISION",
+        op,
+        visionMode: after,
+        previousMode: before,
+      },
     };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     logger.error(`[VISION/${op}] error:`, errorMessage);
     if (callback) {
-      await callback({ text: `Failed to ${op}: ${errorMessage}`, actions: ["VISION"] });
+      await callback({
+        text: `Failed to ${op}: ${errorMessage}`,
+        actions: ["VISION"],
+      });
     }
     return {
       success: false,

@@ -59,9 +59,16 @@ interface OnnxSession {
 }
 interface OnnxRuntime {
   InferenceSession: {
-    create(modelPath: string, opts?: Record<string, unknown>): Promise<OnnxSession>;
+    create(
+      modelPath: string,
+      opts?: Record<string, unknown>,
+    ): Promise<OnnxSession>;
   };
-  Tensor: new (type: string, data: ArrayLike<number>, dims: number[]) => unknown;
+  Tensor: new (
+    type: string,
+    data: ArrayLike<number>,
+    dims: number[],
+  ) => unknown;
 }
 
 let onnxPromise: Promise<OnnxRuntime | null> | null = null;
@@ -69,7 +76,9 @@ async function loadOnnx(): Promise<OnnxRuntime | null> {
   if (!onnxPromise) {
     onnxPromise = (async (): Promise<OnnxRuntime | null> => {
       try {
-        const mod = (await import("onnxruntime-node")) as unknown as OnnxRuntime;
+        const mod = (await import(
+          "onnxruntime-node"
+        )) as unknown as OnnxRuntime;
         if (!mod?.InferenceSession?.create || !mod?.Tensor) return null;
         return mod;
       } catch (error) {
@@ -87,7 +96,8 @@ async function loadOnnx(): Promise<OnnxRuntime | null> {
 function getModelDir(custom?: string): string {
   if (custom) return custom;
   const stateDir =
-    process.env.ELIZA_STATE_DIR ?? path.join(process.env.HOME ?? "/tmp", ".milady");
+    process.env.ELIZA_STATE_DIR ??
+    path.join(process.env.HOME ?? "/tmp", ".milady");
   return path.join(stateDir, "models", "mediapipe-face");
 }
 
@@ -166,16 +176,21 @@ export class MediaPipeFaceDetector {
   private async _initialize(): Promise<void> {
     this.onnx = await loadOnnx();
     if (!this.onnx) {
-      throw new Error("onnxruntime-node not installed — MediaPipeFaceDetector requires it.");
+      throw new Error(
+        "onnxruntime-node not installed — MediaPipeFaceDetector requires it.",
+      );
     }
-    const trusted = this.cfg.trusted ?? process.env.ELIZA_MEDIAPIPE_FACE_TRUSTED === "1";
+    const trusted =
+      this.cfg.trusted ?? process.env.ELIZA_MEDIAPIPE_FACE_TRUSTED === "1";
     const modelPath = path.join(this.cfg.modelDir, "blazeface.onnx");
     const url = this.cfg.modelUrl ?? DEFAULT_URL;
     const sha = this.cfg.modelSha256 ?? DEFAULT_SHA256;
     await ensureModel(url, sha, modelPath, trusted);
     this.session = await this.onnx.InferenceSession.create(
       modelPath,
-      this.cfg.executionProviders ? { executionProviders: this.cfg.executionProviders } : undefined,
+      this.cfg.executionProviders
+        ? { executionProviders: this.cfg.executionProviders }
+        : undefined,
     );
     this.initialized = true;
     logger.info(`[MediaPipeFace] initialized (model=${modelPath})`);
@@ -210,7 +225,12 @@ export class MediaPipeFaceDetector {
       float[i + inSize * inSize] = rgb[i * 3 + 1] / 127.5 - 1;
       float[i + 2 * inSize * inSize] = rgb[i * 3 + 2] / 127.5 - 1;
     }
-    const tensor = new this.onnx.Tensor("float32", float, [1, 3, inSize, inSize]);
+    const tensor = new this.onnx.Tensor("float32", float, [
+      1,
+      3,
+      inSize,
+      inSize,
+    ]);
 
     const output = await this.session.run({ input: tensor, images: tensor });
     // BlazeFace canonical export emits two outputs: regressors + scores. We

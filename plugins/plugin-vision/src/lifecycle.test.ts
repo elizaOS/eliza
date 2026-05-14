@@ -91,7 +91,12 @@ describe("VisionServiceLifecycleManager", () => {
     const mgr = new VisionServiceLifecycleManager();
     const acquire = vi.fn();
     const unload = vi.fn();
-    mgr.register({ id: "vision:face", memoryBytes: 20_000_000, acquire, unload });
+    mgr.register({
+      id: "vision:face",
+      memoryBytes: 20_000_000,
+      acquire,
+      unload,
+    });
     await mgr.release("vision:face");
     expect(unload).toHaveBeenCalledTimes(1);
     const reloaded = await mgr.touch("vision:face");
@@ -102,7 +107,10 @@ describe("VisionServiceLifecycleManager", () => {
 
   it("resolves an arbiter from the runtime if one is registered", () => {
     const arbiter = makeArbiter();
-    const runtime = { getService: (name: string) => (name === "MEMORY_ARBITER" ? arbiter : null) };
+    const runtime = {
+      getService: (name: string) =>
+        name === "MEMORY_ARBITER" ? arbiter : null,
+    };
     expect(resolveArbiterFromRuntime(runtime)).toBe(arbiter);
   });
 

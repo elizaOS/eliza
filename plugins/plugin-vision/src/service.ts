@@ -945,7 +945,11 @@ export class VisionService extends Service {
     if (!result) return null;
     let description = "";
     if (typeof result === "string") description = result;
-    else if (typeof result === "object" && result !== null && "description" in result) {
+    else if (
+      typeof result === "object" &&
+      result !== null &&
+      "description" in result
+    ) {
       const d = (result as { description?: unknown }).description;
       if (typeof d === "string") description = d;
     }
@@ -979,8 +983,11 @@ export class VisionService extends Service {
    */
   private hasEliza1VisionHandler(): boolean {
     try {
-      const setting = this.runtime.getSetting?.("ELIZA1_VISION_HANDLER_PRESENT");
-      if (setting === true || setting === "true" || setting === "1") return true;
+      const setting = this.runtime.getSetting?.(
+        "ELIZA1_VISION_HANDLER_PRESENT",
+      );
+      if (setting === true || setting === "true" || setting === "1")
+        return true;
       const svc = this.runtime.getService?.("eliza1-vision" as ServiceTypeName);
       return Boolean(svc);
     } catch {

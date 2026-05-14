@@ -21,7 +21,9 @@ function createRuntime(opts: {
   if (opts.eliza1HandlerPresent) {
     settings.set("ELIZA1_VISION_HANDLER_PRESENT", "1");
   }
-  const useModel = vi.fn(async (_t: string, _args: unknown) => opts.imageDescriptionResult);
+  const useModel = vi.fn(
+    async (_t: string, _args: unknown) => opts.imageDescriptionResult,
+  );
   const runtime = Object.assign(Object.create(null) as IAgentRuntime, {
     agentId: "agent-vision",
     character: {},
@@ -61,9 +63,13 @@ describe("VisionService eliza-1 IMAGE_DESCRIPTION bridge", () => {
   });
 
   it("falls back to Florence-2 when eliza-1 handler is absent", async () => {
-    const { runtime, useModel } = createRuntime({ eliza1HandlerPresent: false });
+    const { runtime, useModel } = createRuntime({
+      eliza1HandlerPresent: false,
+    });
     const service = new VisionService(runtime);
-    const florenceAnalyze = vi.fn(async () => ({ caption: "Florence2 caption" }));
+    const florenceAnalyze = vi.fn(async () => ({
+      caption: "Florence2 caption",
+    }));
     Object.defineProperty(service, "florence2", {
       configurable: true,
       value: { isInitialized: () => true, analyzeImage: florenceAnalyze },
