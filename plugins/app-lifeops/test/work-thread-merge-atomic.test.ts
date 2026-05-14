@@ -31,10 +31,9 @@ interface MockExecuteCapture {
 
 function buildMockRuntime(capture: MockExecuteCapture[]): unknown {
   const db = {
-    execute: async (raw: { sql: string }) => {
-      capture.push({ sql: raw.sql });
-      // Return rows shaped like what the SQL would return.
-      const sqlText = raw.sql.trim().toUpperCase();
+    execute: async (raw: { queryChunks?: Array<{ value?: unknown }> }) => {
+      const sqlText = extractSqlText(raw).trim().toUpperCase();
+      capture.push({ sql: sqlText });
       if (sqlText.startsWith("UPDATE")) {
         // Successful UPDATE returning 1 row.
         return [{ id: "stub-id" }];
@@ -48,9 +47,9 @@ function buildMockRuntime(capture: MockExecuteCapture[]): unknown {
     },
     transaction: async (fn: (tx: unknown) => Promise<unknown>) => {
       return fn({
-        execute: async (raw: { sql: string }) => {
-          capture.push({ sql: raw.sql });
-          const sqlText = raw.sql.trim().toUpperCase();
+        execute: async (raw: { queryChunks?: Array<{ value?: unknown }> }) => {
+          const sqlText = extractSqlText(raw).trim().toUpperCase();
+          capture.push({ sql: sqlText });
           if (sqlText.startsWith("UPDATE")) {
             return [{ id: "stub-id" }];
           }
@@ -72,6 +71,19 @@ function buildMockRuntime(capture: MockExecuteCapture[]): unknown {
     },
     adapter: { db },
   };
+}
+
+/**
+ * drizzle's `sql.raw(text)` returns `{ queryChunks: [{ value: text }, ...] }`.
+ * Reconstruct the textual SQL from the chunks so our mock can branch on it.
+ */
+function extractSqlText(
+  raw: { queryChunks?: Array<{ value?: unknown }> } | undefined,
+): string {
+  if (!raw || !Array.isArray(raw.queryChunks)) return "";
+  return raw.queryChunks
+    .map((chunk) => (chunk && "value" in chunk ? String(chunk.value ?? "") : ""))
+    .join("");
 }
 
 interface MockRuntimeOpts {
@@ -97,9 +109,9 @@ function buildAdvancedMockRuntime(
 ): unknown {
   let updateCount = 0;
   const db = {
-    execute: async (raw: { sql: string }) => {
-      capture.push({ sql: raw.sql });
-      const sqlText = raw.sql.trim().toUpperCase();
+    execute: async (raw: { queryChunks?: Array<{ value?: unknown }> }) => {
+      const sqlText = extractSqlText(raw).trim().toUpperCase();
+      capture.push({ sql: sqlText });
       if (sqlText.startsWith("SELECT") && sqlText.includes("LIFE_WORK_THREADS")) {
         // store.get() lookups - return a thread with version 1.
         return [];
@@ -111,9 +123,9 @@ function buildAdvancedMockRuntime(
     },
     transaction: async (fn: (tx: unknown) => Promise<unknown>) => {
       return fn({
-        execute: async (raw: { sql: string }) => {
-          capture.push({ sql: raw.sql });
-          const sqlText = raw.sql.trim().toUpperCase();
+        execute: async (raw: { queryChunks?: Array<{ value?: unknown }> }) => {
+          const sqlText = extractSqlText(raw).trim().toUpperCase();
+          capture.push({ sql: sqlText });
           if (sqlText.startsWith("SELECT") && sqlText.includes("LIFE_WORK_THREAD_EVENTS")) {
             if (opts.idempotencyHit) {
               return [

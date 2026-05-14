@@ -10,6 +10,39 @@
 | Camera2 — JPEG/RGBA frames | `CAMERA` (runtime permission) | Service-friendly; no Activity or SurfaceView needed |
 | onTrimMemory → MemoryArbiter pressure | None (ComponentCallbacks2) | Fires at TRIM_MEMORY_RUNNING_LOW and TRIM_MEMORY_RUNNING_CRITICAL |
 
+## Pixel/Google Android assistant entry points
+
+For normal Google Android and Play distribution, Eliza uses Google App
+Actions and Android shortcuts only:
+
+- `packages/app-core/platforms/android/app/src/main/res/xml/shortcuts.xml`
+  declares `actions.intent.OPEN_APP_FEATURE`, `CREATE_MESSAGE`,
+  `CREATE_THING`, and `GET_THING`.
+- `OPEN_APP_FEATURE` is the static feature surface for chat/ask, voice,
+  LifeOps daily brief, and LifeOps tasks.
+- `CREATE_MESSAGE` and `GET_THING` route free-form ask/chat text to the
+  app's chat deep link.
+- `CREATE_THING` routes task creation to a LifeOps task deep link. The
+  app must still confirm or edit before mutating user state; the BII only
+  opens the task flow.
+- Static shortcuts use source-tagged deep links and are bound to
+  `OPEN_APP_FEATURE` inline inventory.
+
+The Play-compatible `android-cloud` build must not request or expose
+default-assistant/system-only powers. Keep `ACTION_ASSIST`,
+`VOICE_COMMAND`, `ROLE_ASSISTANT`, `BIND_VOICE_INTERACTION`,
+usage-stats appop permissions, SMS/call default-role components, boot
+receivers, MediaProjection foreground services, and special-use
+foreground services out of that build. AOSP/default-assistant behavior
+belongs only to `android-system` or sideload-only validation builds.
+
+Current Android docs describe App Actions as `shortcuts.xml`
+capabilities registered on the launcher activity; Gemini/Assistant
+interoperability for general apps is through those App Actions and
+shortcuts. The navigation-app Gemini/Assistant intent formats are
+navigation-specific and are not a general personal-assistant integration
+surface for this app.
+
 ## What requires a system-app build (AOSP flavor)
 
 | Capability | Mechanism | Permission |
@@ -143,3 +176,19 @@ Expected: the JS console (or logcat for bridge events) shows:
 followed by MemoryArbiter eviction log entries.
 
 Verify via `GET /api/training/auto/config` that arbiter pressure state transitions to `critical`.
+
+### 9. App Actions / static shortcuts
+
+Use a Play/Assistant-capable Pixel or Google Android device signed into
+the same account used by the App Actions test tool.
+
+- [ ] Confirm the launcher activity registers `@xml/shortcuts`:
+  `aapt dump xmltree app-release.aab base/manifest/AndroidManifest.xml`.
+- [ ] Confirm `shortcuts.xml` contains `OPEN_APP_FEATURE`,
+  `CREATE_MESSAGE`, `CREATE_THING`, and `GET_THING`.
+- [ ] Confirm generated shortcuts use the app package and URL scheme for
+  the current brand; no `ai.elizaos.app`, `app.eliza`, or stale `eliza://`
+  value should remain after rewriting.
+- [ ] Trigger chat/ask, voice, daily brief, and tasks from the Assistant
+  preview. Expected: Eliza opens via a source-tagged deep link and any
+  LifeOps mutation goes through the app/runtime `ScheduledTask` path.

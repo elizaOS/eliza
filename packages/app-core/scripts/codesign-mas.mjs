@@ -41,6 +41,13 @@ import {
 } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  assertMasEntitlementRuntimeEvidence,
+  assertReviewedEntitlementsFile,
+  assertReviewedEntitlementsText,
+  loadEntitlementReviewManifest,
+  scanAppleAppBundleForNativeRuntimeSignals,
+} from "./lib/apple-entitlement-audit.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -170,6 +177,21 @@ function runOrPrint(cmd, args, dryRun) {
   return result;
 }
 
+function runCapture(cmd, args) {
+  const display = `${cmd} ${args.map((a) => (a.includes(" ") ? `"${a}"` : a)).join(" ")}`;
+  const result = spawnSync(cmd, args, {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  if (result.status !== 0) {
+    process.stderr.write(result.stderr ?? "");
+    process.stdout.write(result.stdout ?? "");
+    process.exitCode = result.status ?? 1;
+    throw new Error(`Command failed (${result.status}): ${display}`);
+  }
+  return result.stdout;
+}
+
 function plistLint(filePath) {
   if (!existsSync(filePath)) {
     throw new Error(`Entitlements file missing: ${filePath}`);
@@ -183,6 +205,27 @@ function plistLint(filePath) {
   }
 }
 
+function assertSourceEntitlementsReviewed(manifest) {
+  assertReviewedEntitlementsFile({
+    filePath: PARENT_ENTITLEMENTS,
+    targetId: "macos-mas-app",
+    manifest,
+    label: "macOS MAS parent entitlements",
+  });
+  assertReviewedEntitlementsFile({
+    filePath: CHILD_ENTITLEMENTS,
+    targetId: "macos-mas-child",
+    manifest,
+    label: "macOS MAS child entitlements",
+  });
+  assertReviewedEntitlementsFile({
+    filePath: BUN_ENTITLEMENTS,
+    targetId: "macos-mas-bun",
+    manifest,
+    label: "macOS MAS Bun helper entitlements",
+  });
+}
+
 function assertNoForbiddenMasExceptions(filePath) {
   const content = readFileSync(filePath, "utf8");
   const forbidden = FORBIDDEN_MAS_CODE_SIGNING_EXCEPTIONS.filter((key) =>
@@ -193,6 +236,21 @@ function assertNoForbiddenMasExceptions(filePath) {
     `MAS entitlements file contains forbidden code-signing exception(s): ${filePath}\n` +
       forbidden.map((key) => `  - ${key}`).join("\n"),
   );
+}
+
+function assertSignedEntitlements(target, targetId, label, manifest) {
+  const entitlementsXml = runCapture("codesign", [
+    "-d",
+    "--entitlements",
+    ":-",
+    target,
+  ]);
+  return assertReviewedEntitlementsText({
+    plistXml: entitlementsXml,
+    targetId,
+    manifest,
+    label,
+  });
 }
 
 function sign(target, entitlements, identity, dryRun) {
@@ -222,6 +280,12 @@ function entitlementsForMacho(target, appPath) {
   return isBunRuntimeExecutable(target, appPath)
     ? BUN_ENTITLEMENTS
     : CHILD_ENTITLEMENTS;
+}
+
+function entitlementTargetIdForMacho(target, appPath) {
+  return isBunRuntimeExecutable(target, appPath)
+    ? "macos-mas-bun"
+    : "macos-mas-child";
 }
 
 function main() {
@@ -267,6 +331,8 @@ function main() {
   assertNoForbiddenMasExceptions(PARENT_ENTITLEMENTS);
   assertNoForbiddenMasExceptions(CHILD_ENTITLEMENTS);
   assertNoForbiddenMasExceptions(BUN_ENTITLEMENTS);
+  const entitlementManifest = loadEntitlementReviewManifest();
+  assertSourceEntitlementsReviewed(entitlementManifest);
 
   console.log(`MAS codesign for ${appPath}`);
   console.log(`  identity: ${identity}`);
@@ -308,6 +374,48 @@ function main() {
     ["--verify", "--deep", "--strict", "--verbose=2", appPath],
     dryRun,
   );
+
+  if (!dryRun) {
+    console.log(`\nAuditing signed entitlements:`);
+    const nativeScan = scanAppleAppBundleForNativeRuntimeSignals(appPath);
+    for (const target of machos) {
+      const targetId = entitlementTargetIdForMacho(target, appPath);
+      const entitlements = assertSignedEntitlements(
+        target,
+        targetId,
+        `signed Mach-O ${path.relative(appPath, target)}`,
+        entitlementManifest,
+      );
+      assertMasEntitlementRuntimeEvidence({
+        entitlements,
+        scan: nativeScan,
+        label: `signed Mach-O ${path.relative(appPath, target)}`,
+      });
+    }
+    for (const target of bundles) {
+      assertSignedEntitlements(
+        target,
+        "macos-mas-child",
+        `signed nested bundle ${path.relative(appPath, target)}`,
+        entitlementManifest,
+      );
+    }
+    assertSignedEntitlements(
+      appPath,
+      "macos-mas-app",
+      `signed parent app ${path.basename(appPath)}`,
+      entitlementManifest,
+    );
+
+    console.log(`\nNative runtime evidence scan:`);
+    console.log(`  Mach-O files: ${nativeScan.machOCount}`);
+    console.log(
+      `  JIT/executable-memory findings: ${nativeScan.jitExecutableMemory.length}`,
+    );
+    console.log(
+      `  native library findings: ${nativeScan.dynamicLibraryLoading.length}`,
+    );
+  }
 
   // 5. Optional productbuild for MAS submission.
   if (installerIdentity) {
