@@ -38,7 +38,9 @@ import type {
 // synchronous construction semantics for callers that supply the PhraseChunker
 // class via `PhraseChunkedTtsOptions.chunkerClass` (used in tests).
 let _PhraseChunkerClass: typeof PhraseChunker | undefined;
-let _servicesImport: Promise<typeof import("@elizaos/plugin-local-inference/services")> | undefined;
+let _servicesImport:
+  | Promise<typeof import("@elizaos/plugin-local-inference/services")>
+  | undefined;
 function requirePhraseChunker(): typeof PhraseChunker {
   if (_PhraseChunkerClass) return _PhraseChunkerClass;
   throw new Error(
@@ -110,11 +112,22 @@ export class PhraseChunkedTts {
     this.opts = opts;
     this.clock =
       opts.clock ?? (() => globalThis.performance?.now?.() ?? Date.now());
-    this.chunker = new PhraseChunker(
+    const Chunker = requirePhraseChunker();
+    this.chunker = new Chunker(
       opts.chunker ?? { chunkOn: "punctuation" },
       null,
       this.clock,
     );
+  }
+
+  /**
+   * Pre-load the PhraseChunker class from plugin-local-inference. Must be
+   * called (and awaited) before the first `new PhraseChunkedTts()` when the
+   * module has not been statically imported. Idempotent — safe to call
+   * multiple times concurrently.
+   */
+  static async load(): Promise<void> {
+    await ensurePhraseChunkerLoaded();
   }
 
   /**
@@ -233,6 +246,7 @@ export async function speakStreamingText(
   tts: TtsHandler,
   opts: PhraseChunkedTtsOptions = {},
 ): Promise<void> {
+  await ensurePhraseChunkerLoaded();
   const pipe = new PhraseChunkedTts(tts, opts);
   try {
     for await (const chunk of source) pipe.push(chunk);
