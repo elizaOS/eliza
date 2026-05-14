@@ -540,6 +540,50 @@ describe("SubAgentRouter", () => {
       expect(posted?.content?.text).not.toContain("[verification:");
     });
 
+    it("focuses verification on the referenced app route instead of header telemetry", async () => {
+      const appBase = "https://nubilio.org/apps/cache-safe/";
+      const styleUrl = `${appBase}style-v2.css`;
+      const scriptUrl = `${appBase}app-v2.js`;
+      const telemetryUrl =
+        "https://a.nel.cloudflare.com/report/v4?s=header-noise";
+      const unrelatedUrl = "https://nubilio.org/apps/recipe-4/style.css";
+      const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url === styleUrl) {
+          return new Response("body { color: green; }", {
+            status: 200,
+            headers: { "content-type": "text/css" },
+          });
+        }
+        if (url === scriptUrl) {
+          return new Response("console.log('ok');", {
+            status: 200,
+            headers: { "content-type": "application/javascript" },
+          });
+        }
+        return new Response("not found", { status: 404 });
+      });
+      vi.stubGlobal("fetch", fetchMock);
+      session = sessionWithTask(`build and verify ${appBase}`);
+      acp = makeAcpService(session);
+      const { runtime, handleMessage, spawnSession } = makeRuntime({
+        acp: acp.service,
+      });
+      await SubAgentRouter.start(runtime);
+
+      acp.emit(SESSION_ID, "task_complete", {
+        response: `Header noise ${telemetryUrl}; stale context ${unrelatedUrl}; fixed assets ${styleUrl} ${scriptUrl}`,
+      });
+      await new Promise((r) => setTimeout(r, 200));
+
+      const fetched = fetchMock.mock.calls.map(([url]) => String(url));
+      expect(fetched).toEqual([styleUrl, scriptUrl]);
+      expect(spawnSession).not.toHaveBeenCalled();
+      expect(handleMessage).toHaveBeenCalledTimes(1);
+      const posted = handleMessage.mock.calls[0]?.[1];
+      expect(posted?.content?.text).not.toContain("[verification:");
+    });
+
     it("marks cached 404s so retries can switch to fresh asset filenames", async () => {
       const assetUrl = "https://example.test/apps/counter/style.css";
       const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
