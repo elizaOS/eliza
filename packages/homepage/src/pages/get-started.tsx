@@ -290,11 +290,15 @@ function ProvisioningChatStep({
     inputRef.current?.focus();
   }, [input, isLoading, sendMessage]);
 
-  const statusLabel = isReady
-    ? "Ready! Connecting..."
-    : containerStatus === "error"
-      ? "Setup failed — please refresh."
-      : "Setting up your AI space...";
+  const statusLabel = handoffComplete
+    ? "Container running"
+    : isReady
+      ? "Ready! Connecting..."
+      : containerStatus === "error"
+        ? "Setup failed — please refresh."
+        : containerStatus === "none"
+          ? "Onboarding chat"
+          : "Setting up your AI space...";
 
   const statusColor = isReady
     ? "#4ade80"
@@ -320,7 +324,7 @@ function ProvisioningChatStep({
         <span className="text-xs text-neutral-500 uppercase tracking-widest">
           {statusLabel}
         </span>
-        {!isReady && (
+        {!isReady && containerStatus !== "none" && (
           <button
             type="button"
             onClick={onContinue}

@@ -11,10 +11,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from benchmarks.mmau.agent import MMAUAgentProtocol, OracleMMAUAgent
-from benchmarks.mmau.dataset import MMAUDataset
-from benchmarks.mmau.evaluator import MMAUEvaluator
-from benchmarks.mmau.types import (
+from elizaos_mmau_audio.agent import MMAUAgentProtocol, OracleMMAUAgent
+from elizaos_mmau_audio.dataset import MMAUDataset
+from elizaos_mmau_audio.evaluator import MMAUEvaluator
+from elizaos_mmau_audio.types import (
     MMAUConfig,
     MMAUPrediction,
     MMAUReport,

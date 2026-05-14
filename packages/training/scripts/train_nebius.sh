@@ -29,7 +29,7 @@
 #   REGISTRY_KEY=qwen3.5-2b   → eliza-1-2b     (single H200 — fits seq 8k)
 #   REGISTRY_KEY=qwen3.5-4b   → eliza-1-4b     (single H200)
 #   REGISTRY_KEY=qwen3.5-9b   → eliza-1-9b     (single H200, ~80 GB peak)
-#   REGISTRY_KEY=qwen3.6-27b  → eliza-1-27b    (single H200 — apollo_mini fits 141 GB)
+#   REGISTRY_KEY=qwen3.6-27b  → eliza-1-27b    (prefer 2× B200/H200 for SFT)
 #   (legacy Qwen3/Qwen3.5-27B entries are kept addressable for experiments, but
 #   the active eliza-1 fused-kernel stack validates Qwen3.5 0.8B/2B/4B/9B and
 #   Qwen3.6 27B-class tiers.)

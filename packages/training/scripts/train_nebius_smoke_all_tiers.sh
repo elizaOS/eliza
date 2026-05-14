@@ -271,7 +271,9 @@ uv run --extra train python scripts/run_pipeline.py \\
   --val-file ${SMOKE_DATA_DIR}/val.jsonl \\
   --test-file ${SMOKE_DATA_DIR}/test.jsonl \\
   --eval-mode smoke --bench-per-bucket 50 --skip-throughput-bench \\
-  --quantizers polarquant --skip-base-bench --skip-publish --allow-unvalidated-corpus
+  --quantizers polarquant,fused_turboquant,qjl \\
+  --eliza1-bundle \\
+  --skip-base-bench --skip-publish --allow-unvalidated-corpus
 echo RUN_PIPELINE_DONE_OK
 EOF
 
