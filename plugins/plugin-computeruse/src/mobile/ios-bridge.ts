@@ -380,8 +380,9 @@ export interface MemoryPressureSample extends IPressureSignal {
 
 // ── Default IDs (kept in sync with Swift) ────────────────────────────────────
 
-/** App Group identifier — must match `App.entitlements`. */
-export const IOS_APP_GROUP_ID = "group.com.miladyai.milady" as const;
+/** App Group identifier — must match the canonical
+ *  `eliza/packages/app-core/platforms/ios/App/App/App.entitlements`. */
+export const IOS_APP_GROUP_ID = "group.ai.elizaos.app" as const;
 
 /** Capacitor plugin jsName (Capacitor injects `Capacitor.Plugins.ComputerUse`). */
 export const IOS_BRIDGE_JS_NAME = "ComputerUse" as const;
