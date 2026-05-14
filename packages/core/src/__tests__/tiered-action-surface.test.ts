@@ -492,9 +492,7 @@ describe("v5 tiered action surface", () => {
 			(call) => call.modelType === ModelType.ACTION_PLANNER,
 		);
 		const tools = (
-			plannerCall?.params as
-				| { tools?: Array<{ name?: string }> }
-				| undefined
+			plannerCall?.params as { tools?: Array<{ name?: string }> } | undefined
 		)?.tools;
 		const toolNames = tools?.map((tool) => tool.name).filter(Boolean) ?? [];
 		expect(toolNames).toContain("MUSIC");

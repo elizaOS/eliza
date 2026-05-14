@@ -324,7 +324,6 @@ export class LocalInferenceEngine {
     if (!drafter) {
       const message = `[dflash] ${catalog.displayName} requires companion drafter ${dflash.drafterModelId}. Download the model again or start a download for the companion id.`;
       if (status.required) throw new Error(message);
-      console.warn(`${message} Falling back to node-llama-cpp.`);
       return null;
     }
 

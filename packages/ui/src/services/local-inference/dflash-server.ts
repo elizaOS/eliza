@@ -175,9 +175,9 @@ function assertCacheTypeSupportedOnBackend(name: string, value: string): void {
 }
 
 export function dflashEnabled(): boolean {
-  // Developer-only kill-switch (canonical `MILADY_DFLASH_DISABLE`, with
-  // `ELIZA_DFLASH_DISABLE` as a back-compat alias). Wins over everything.
-  if (readBool("MILADY_DFLASH_DISABLE") || readBool("ELIZA_DFLASH_DISABLE")) {
+  // Developer-only kill-switch. `ELIZA_DFLASH_DISABLE` is canonical;
+  // `MILADY_DFLASH_DISABLE` is the back-compat alias. Wins over everything.
+  if (readBool("ELIZA_DFLASH_DISABLE") || readBool("MILADY_DFLASH_DISABLE")) {
     return false;
   }
   if (readBool("ELIZA_DFLASH_ENABLED")) return true;

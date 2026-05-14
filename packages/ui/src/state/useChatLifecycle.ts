@@ -5,6 +5,7 @@
  * desktop notifications, and full-reset flows.
  */
 
+import { logger } from "@elizaos/core";
 import { getDefaultStylePreset } from "@elizaos/shared";
 import { type MutableRefObject, useCallback, useEffect, useRef } from "react";
 import type {
@@ -47,23 +48,15 @@ function logResetDebug(
   message: string,
   detail?: Record<string, unknown>,
 ): void {
-  if (detail !== undefined && Object.keys(detail).length > 0) {
-    console.debug(`${RESET_LOG_PREFIX} ${message}`, detail);
-  } else {
-    console.debug(`${RESET_LOG_PREFIX} ${message}`);
-  }
+  logger.debug(detail ?? {}, `${RESET_LOG_PREFIX} ${message}`);
 }
 
 function logResetInfo(message: string, detail?: Record<string, unknown>): void {
-  if (detail !== undefined && Object.keys(detail).length > 0) {
-    console.info(`${RESET_LOG_PREFIX} ${message}`, detail);
-  } else {
-    console.info(`${RESET_LOG_PREFIX} ${message}`);
-  }
+  logger.info(detail ?? {}, `${RESET_LOG_PREFIX} ${message}`);
 }
 
 function logResetWarn(message: string, detail?: unknown): void {
-  console.warn(`${RESET_LOG_PREFIX} ${message}`, detail);
+  logger.warn(detail ?? {}, `${RESET_LOG_PREFIX} ${message}`);
 }
 
 async function waitForLifecycleIdle(
