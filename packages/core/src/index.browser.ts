@@ -90,6 +90,15 @@ export { formatError } from "./utils/format-error";
 export * from "./utils/read-env";
 export * from "./utils/streaming";
 export { ResponseSkeletonStreamExtractor } from "./utils/streaming";
+// Validation helpers (validateActionKeywords / validateActionRegex /
+// secret-format validators) are pure functions with no Node-only deps,
+// so they're safe in the browser bundle. Several plugin browser dists
+// (e.g. @elizaos/plugin-wallet) statically import these names — without
+// this re-export Rolldown reports MISSING_EXPORT at consumer build time.
+export * from "./validation";
+// `boot-env` is pure (no node deps — operates on `globalThis`); needed by
+// plugin browser dists that call syncAppEnvToEliza / syncElizaEnvAliases.
+export * from "./boot-env";
 
 function readBrowserEnv(
 	env: Record<string, string | undefined> | undefined,
