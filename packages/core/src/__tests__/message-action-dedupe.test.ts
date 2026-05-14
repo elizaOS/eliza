@@ -15,9 +15,7 @@ function subResult(
 		status: "finished",
 		finalMessage,
 		trajectory: {
-			steps: lastStepResult
-				? [{ iteration: 1, result: lastStepResult }]
-				: [],
+			steps: lastStepResult ? [{ iteration: 1, result: lastStepResult }] : [],
 		},
 	} as unknown as SubResult;
 }

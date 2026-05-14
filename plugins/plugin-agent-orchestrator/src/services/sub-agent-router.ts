@@ -737,9 +737,7 @@ async function annotateUnverifiedUrls(
       return { status: null };
     } catch (err) {
       const reason = err instanceof Error ? err.name : "unreachable";
-      log?.(
-        `[verify] probe ${url} → ${reason} @ ${new Date().toISOString()}`,
-      );
+      log?.(`[verify] probe ${url} → ${reason} @ ${new Date().toISOString()}`);
       return { status: reason };
     } finally {
       clearTimeout(timer);

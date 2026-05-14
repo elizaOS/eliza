@@ -2842,8 +2842,7 @@ function parseMessageHandlerModelOutput(
 		);
 	}
 	return (
-		parseMessageHandlerOutput(raw) ??
-		synthesizeSimpleReplyFromPlainText(raw)
+		parseMessageHandlerOutput(raw) ?? synthesizeSimpleReplyFromPlainText(raw)
 	);
 }
 
