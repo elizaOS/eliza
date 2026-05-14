@@ -26,7 +26,7 @@
  *   - The DFlash real distillation run (GPU)
  *   - The base-v1 evals: text perplexity vs upstream GGUF, voice RTF, ASR WER, VAD latency, dflash acceptance, e2e loop, 30-turn, mobile RSS/thermal (GPU + reference devices)
  *   - Acquiring the base weights + staging a full bundle (network host; stage_eliza1_bundle_assets.py / stage_eliza1_source_weights.py)
- *   - publish_all_eliza1.sh real upload (HF_TOKEN with write to elizalabs/*)
+ *   - publish_all_eliza1.sh real upload (HF_TOKEN with write to elizaos/*)
  *   - scripts/hf-transfer-eliza1.sh --execute (HF_TOKEN with write to milady-ai + elizaos)
  *
  * Usage:
@@ -351,13 +351,13 @@ const REMAINING_HW = [
     "node plugins/plugin-local-inference/native/verify/dflash_drafter_runtime_smoke.mjs --bench; bun run voice:interactive; node plugins/plugin-local-inference/native/verify/{thirty_turn_endurance,mobile_peak_rss,bargein_latency}_harness.mjs; uv run python -m packages.training.benchmarks.eliza1_gates <aggregate.json>",
   ],
   [
-    "Publish to HuggingFace under elizalabs/eliza-1 bundles/<tier>/",
-    "HF_TOKEN with write access to elizalabs/*",
+    "Publish to HuggingFace under elizaos/eliza-1 bundles/<tier>/",
+    "HF_TOKEN with write access to elizaos/*",
     "bash packages/training/scripts/publish_all_eliza1.sh --bundles-root <dir> --dry-run  (then drop --dry-run)",
   ],
   [
     "Move legacy HF repos out of milady-ai into elizaos + create the per-tier bundle repos",
-    "HF_TOKEN with write access to BOTH milady-ai and elizalabs",
+    "HF_TOKEN with write access to BOTH milady-ai and elizaos",
     "bash scripts/hf-transfer-eliza1.sh           (dry-run; then --execute)",
   ],
 ];

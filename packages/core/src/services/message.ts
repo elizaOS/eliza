@@ -3412,6 +3412,7 @@ export async function runV5MessageRuntimeStage1(args: {
 				responseSkeleton: responseGrammar.responseSkeleton,
 				grammar: responseGrammar.grammar,
 				spanSamplerPlan: stage1SpanSamplerPlan,
+				signal: stage1TurnSignal,
 				// Guided structured decode on by default for Stage 1 (the call always
 				// carries a forced skeleton): the local engine derives the
 				// deterministic-token prefill plan and the fork fast-forwards the

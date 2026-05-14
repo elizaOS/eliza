@@ -156,7 +156,7 @@ export function splitFirstSentence(text: string): {
 
   const { text: sheltered, restore } = shelterUrls(value);
 
-  const boundary = /([.!?]+(?:["')\]]+)?)(?:\s|$)/g;
+  const boundary = /([.!?;:,]+(?:["')\]]+)?)(?:\s|$)/g;
   let match: RegExpExecArray | null = null;
   while (true) {
     match = boundary.exec(sheltered);
