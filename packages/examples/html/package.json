@@ -3,11 +3,7 @@
   "version": "2.0.0-beta.0",
   "description": "elizaOS browser demo using AgentRuntime with plugin-localdb and plugin-eliza-classic",
   "scripts": {
-<<<<<<< HEAD
-    "start": "python3 -m http.server 3000 --directory ../../..",
-=======
     "start": "serve ../../..",
->>>>>>> 7883acf251 (chore: checkpoint app core dirty state)
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "typecheck": "echo 'No TypeScript config; skipping typecheck'",
     "build": "echo 'No build step configured; skipping build'"

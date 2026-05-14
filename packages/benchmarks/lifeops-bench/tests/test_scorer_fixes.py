@@ -216,6 +216,33 @@ def test_compare_actions_accepts_field_registry_action_discriminator_aliases() -
     )
 
 
+def test_archive_email_thread_alias_scores_like_message_manage_archive() -> None:
+    """Executor alias ARCHIVE_EMAIL_THREAD must compare to canonical MESSAGE/manage GT."""
+    predicted = [
+        Action(
+            name="ARCHIVE_EMAIL_THREAD",
+            kwargs={"threadId": "thread_01464"},
+        )
+    ]
+    gt = [
+        Action(
+            name="MESSAGE",
+            kwargs={
+                "operation": "manage",
+                "source": "gmail",
+                "manageOperation": "archive",
+                "threadId": "thread_01464",
+            },
+        )
+    ]
+
+    canon = _canonicalize_action(predicted[0])
+    assert canon.name == "MESSAGE"
+    assert canon.kwargs["operation"] == "manage"
+    assert canon.kwargs["manageOperation"] == "archive"
+    assert compare_actions(predicted, gt) == 1.0
+
+
 # ---------------------------------------------------------------------------
 # Bug 2: `intent` is a soft kwarg
 # ---------------------------------------------------------------------------

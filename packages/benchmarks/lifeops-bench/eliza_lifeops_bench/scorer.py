@@ -615,6 +615,21 @@ def _canonicalize_action(action: Action) -> Action:
     if name == "PERSONAL_ASSISTANT_BOOK_TRAVEL":
         return Action(name="BOOK_TRAVEL", kwargs=dict(action.kwargs))
 
+    # Legacy/adapter convenience action. The executor accepts
+    # ARCHIVE_EMAIL_THREAD(threadId=...) as a direct alias for the canonical
+    # MESSAGE/manage/archive operation, so the scorer must fold it the same way
+    # or correct Eliza trajectories get zeroed by the triviality guard.
+    if name == "ARCHIVE_EMAIL_THREAD":
+        new_kwargs = {
+            "operation": "manage",
+            "source": "gmail",
+            "manageOperation": "archive",
+        }
+        thread_id = action.kwargs.get("threadId", action.kwargs.get("thread_id"))
+        if thread_id is not None:
+            new_kwargs["threadId"] = thread_id
+        return Action(name="MESSAGE", kwargs=new_kwargs)
+
     # Owner-surface aliases: `OWNER_<AREA>_<SUB>` → `<UMBRELLA>(subaction=<sub>)`.
     # Check before the generic umbrella loop so e.g. `OWNER_HEALTH_TODAY` is
     # not accidentally read as an unknown `OWNER` prefix.

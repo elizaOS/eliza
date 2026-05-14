@@ -745,6 +745,51 @@ describe("runV5MessageRuntimeStage1", () => {
 		}
 	});
 
+	it("lets action-scored benchmark turns finish after the harness disables per-turn forcing", async () => {
+		const previous = process.env.ELIZA_BENCH_FORCE_TOOL_CALL;
+		process.env.ELIZA_BENCH_FORCE_TOOL_CALL = "1";
+		try {
+			const runtime = makeRuntime([
+				stage1Response({
+					thought: "The previous tool result completed the request.",
+					contexts: ["simple"],
+					replyText: "Archived.",
+				}),
+			]);
+			const message = {
+				...makeMessage(),
+				content: {
+					...makeMessage().content,
+					source: "benchmark",
+					metadata: {
+						benchmark: "lifeops_bench",
+						taskId: "mail.archive_specific_newsletter_thread",
+						forceBenchmarkToolCall: false,
+					},
+				},
+			};
+
+			const result = await runV5MessageRuntimeStage1({
+				runtime,
+				message,
+				state: makeState(),
+				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			});
+
+			expect(result.kind).toBe("direct_reply");
+			expect(runtime.useModel).toHaveBeenCalledTimes(1);
+			if (result.kind === "direct_reply") {
+				expect(result.result.responseContent?.text).toBe("Archived.");
+			}
+		} finally {
+			if (previous === undefined) {
+				delete process.env.ELIZA_BENCH_FORCE_TOOL_CALL;
+			} else {
+				process.env.ELIZA_BENCH_FORCE_TOOL_CALL = previous;
+			}
+		}
+	});
+
 	it("routes to the planner when field registry emits candidate actions without contexts", async () => {
 		const runtime = makeRuntime([
 			stage1Response({

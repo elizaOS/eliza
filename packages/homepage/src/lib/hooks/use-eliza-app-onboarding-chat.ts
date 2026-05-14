@@ -50,6 +50,8 @@ function uid(): string {
 
 function getStoredSessionId(): string | null {
   if (typeof window === "undefined") return null;
+  const fromUrl = new URLSearchParams(window.location.search).get("onboardingSession");
+  if (fromUrl) return fromUrl;
   return localStorage.getItem(SESSION_KEY);
 }
 

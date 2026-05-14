@@ -41,11 +41,7 @@ cd /path/to/eliza
 bun run --cwd packages/examples/html start
 ```
 
-<<<<<<< HEAD
 Then open: **http://localhost:3000/packages/examples/html/**
-=======
-Then open the URL printed by `serve` and navigate to `/packages/examples/html/`.
->>>>>>> 7883acf251 (chore: checkpoint app core dirty state)
 
 ## How It Works
 

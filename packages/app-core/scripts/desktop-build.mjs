@@ -27,6 +27,21 @@ const STAGE_MACOS_RELEASE_SCRIPT = path.join(
   "scripts",
   "stage-macos-release-artifacts.sh",
 );
+const VENDORED_OPENCODE_ROOT = path.join(ROOT, "vendor", "opencode");
+const VENDORED_OPENCODE_PACKAGE_DIR = path.join(
+  VENDORED_OPENCODE_ROOT,
+  "packages",
+  "opencode",
+);
+const OPENCODE_EXECUTABLE =
+  process.platform === "win32" ? "opencode.exe" : "opencode";
+const STAGED_OPENCODE_BIN = path.join(
+  ROOT,
+  "dist",
+  "opencode",
+  "bin",
+  OPENCODE_EXECUTABLE,
+);
 const PROFILE_EXCLUDED_OPTIONAL_PACKS = {
   full: [],
   "no-streaming": ["streaming"],
@@ -515,6 +530,92 @@ function findLatestMacAppBundle() {
   return candidates[0].appBundlePath;
 }
 
+function stageVendoredOpencode() {
+  if (buildVariant === "store") {
+    console.log(
+      "[desktop-build] Skipping vendored OpenCode for store build variant",
+    );
+    return;
+  }
+
+  if (process.env.ELIZA_SKIP_VENDORED_OPENCODE === "1") {
+    console.log("[desktop-build] Skipping vendored OpenCode by env override");
+    return;
+  }
+
+  const packageJson = path.join(VENDORED_OPENCODE_PACKAGE_DIR, "package.json");
+  if (!fs.existsSync(packageJson)) {
+    runNode(["scripts/ensure-opencode-submodule.mjs"], {
+      cwd: ROOT,
+      label: "Initializing vendored OpenCode submodule",
+    });
+  }
+
+  if (!fs.existsSync(packageJson)) {
+    fail(
+      `Vendored OpenCode package not found at ${packageJson}. Run git submodule update --init --recursive vendor/opencode.`,
+    );
+  }
+
+  runBun(["install", "--frozen-lockfile"], {
+    cwd: VENDORED_OPENCODE_ROOT,
+    label: "Installing vendored OpenCode dependencies",
+  });
+
+  runBun(["script/build.ts", "--single", "--skip-embed-web-ui"], {
+    cwd: VENDORED_OPENCODE_PACKAGE_DIR,
+    label: "Building vendored OpenCode binary",
+  });
+
+  const sourceBinary = resolveVendoredOpencodeBuildOutput();
+  if (!fs.existsSync(sourceBinary)) {
+    fail(`Vendored OpenCode build did not produce ${sourceBinary}`);
+  }
+
+  fs.mkdirSync(path.dirname(STAGED_OPENCODE_BIN), { recursive: true });
+  fs.copyFileSync(sourceBinary, STAGED_OPENCODE_BIN);
+  if (process.platform !== "win32") {
+    fs.chmodSync(STAGED_OPENCODE_BIN, 0o755);
+  }
+  fs.writeFileSync(
+    path.join(ROOT, "dist", "opencode", "manifest.json"),
+    `${JSON.stringify(
+      {
+        source: path.relative(ROOT, sourceBinary).replaceAll("\\", "/"),
+        executable: path.relative(ROOT, STAGED_OPENCODE_BIN).replaceAll("\\", "/"),
+        platform: process.platform,
+        arch: process.arch,
+      },
+      null,
+      2,
+    )}\n`,
+  );
+  process.env.ELIZA_OPENCODE_BIN = STAGED_OPENCODE_BIN;
+  console.log(
+    `[desktop-build] Staged vendored OpenCode at ${path.relative(ROOT, STAGED_OPENCODE_BIN)}`,
+  );
+}
+
+function resolveVendoredOpencodeBuildOutput() {
+  const platformName = process.platform === "win32" ? "windows" : process.platform;
+  const arch = process.arch === "arm64" ? "arm64" : "x64";
+  const binDir = path.join(
+    VENDORED_OPENCODE_PACKAGE_DIR,
+    "dist",
+    `opencode-${platformName}-${arch}`,
+    "bin",
+  );
+  const names =
+    process.platform === "win32" ? ["opencode.exe", "opencode"] : ["opencode"];
+  for (const name of names) {
+    const candidate = path.join(binDir, name);
+    if (fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+  return path.join(binDir, names[0]);
+}
+
 function stageDesktopBuild() {
   ensureAppDirs();
 
@@ -527,6 +628,8 @@ function stageDesktopBuild() {
     cwd: ROOT,
     label: "Writing build metadata",
   });
+
+  stageVendoredOpencode();
 
   runNode(
     [

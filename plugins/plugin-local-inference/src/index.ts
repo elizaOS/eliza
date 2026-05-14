@@ -1,8 +1,5 @@
 import crypto from "node:crypto";
-import type {
-	TtsHandler,
-	WrapOptions,
-} from "./services/voice/wrap-with-first-line-cache.js";
+import type { IAgentRuntime } from "@elizaos/core";
 
 // Plugin entry point — public barrel for handler dispatch, routes, runtime
 // wiring, selected service helpers, error types, and plugin definition.
@@ -45,13 +42,35 @@ export type {
 	Phrase,
 	PhraseChunkerConfig,
 } from "./services/voice/types.js";
-export type {
-	TtsHandler,
-	TtsHandlerInput,
-	TtsHandlerOutput,
-	TtsResolvedContext,
-	WrapOptions,
-} from "./services/voice/wrap-with-first-line-cache.js";
+
+export type TtsBytes = Uint8Array | ArrayBuffer | Buffer;
+export type TtsHandlerInput = string | { text: string; [key: string]: unknown };
+export type TtsHandlerOutput = TtsBytes;
+export type TtsHandler = (
+	runtime: IAgentRuntime,
+	input: TtsHandlerInput,
+) => Promise<TtsHandlerOutput>;
+
+export interface TtsResolvedContext {
+	provider: string;
+	voiceId: string;
+	voiceRevision: string;
+	codec: "opus" | "mp3" | "wav" | "pcm_f32" | "ogg" | "flac";
+	contentType: string;
+	sampleRate: number;
+	voiceSettingsFingerprint: string;
+	bypass?: boolean;
+}
+
+export interface WrapOptions {
+	cache?: unknown;
+	resolveContext: (
+		runtime: IAgentRuntime,
+		input: TtsHandlerInput,
+	) => Promise<TtsResolvedContext | null> | TtsResolvedContext | null;
+	concatRemainder?: boolean;
+	enableCachePopulation?: boolean;
+}
 
 export function fingerprintVoiceSettings(
 	settings: Record<string, unknown> | null | undefined,
@@ -81,7 +100,12 @@ export function wrapWithFirstLineCache(
 		if (!wrapped) {
 			pending ??= import(
 				"./services/voice/wrap-with-first-line-cache.js"
-			).then((module) => module.wrapWithFirstLineCache(inner, options));
+			).then((module) =>
+				module.wrapWithFirstLineCache(
+					inner as Parameters<typeof module.wrapWithFirstLineCache>[0],
+					options as Parameters<typeof module.wrapWithFirstLineCache>[1],
+				),
+			);
 			wrapped = await pending;
 		}
 		return wrapped(runtime, input);

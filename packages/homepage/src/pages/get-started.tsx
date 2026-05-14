@@ -36,7 +36,7 @@ import {
   type TelegramAuthData,
   useAuth,
 } from "@/lib/context/auth-context";
-import { useElizaAppProvisioningChat } from "@/lib/hooks/use-eliza-app-provisioning-chat";
+import { useElizaAppOnboardingChat } from "@/lib/hooks/use-eliza-app-onboarding-chat";
 
 type TelegramLoginApi = {
   Login?: {
@@ -256,9 +256,24 @@ function SuccessRedirect({
 
 const MONO = "'Courier New', 'Courier', 'Monaco', monospace";
 
-function ProvisioningChatStep({ onContinue }: { onContinue: () => void }) {
-  const { messages, sendMessage, containerStatus, isLoading, isReady } =
-    useElizaAppProvisioningChat(true);
+function ProvisioningChatStep({
+  onContinue,
+  onSelectMethod,
+  showPlatformShortcuts = false,
+}: {
+  onContinue: () => void;
+  onSelectMethod?: (method: OnboardingMethod) => void;
+  showPlatformShortcuts?: boolean;
+}) {
+  const {
+    messages,
+    actions,
+    sendMessage,
+    containerStatus,
+    isLoading,
+    isReady,
+    handoffComplete,
+  } = useElizaAppOnboardingChat(true);
   const [input, setInput] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -1171,6 +1186,17 @@ export default function GetStartedPage() {
       {/* Content */}
       <div className="relative z-10 flex-1 flex flex-col items-center justify-center px-4 pb-20">
         <div className="w-full max-w-[400px] flex flex-col items-center">
+          {/* ============================================================ */}
+          {/* STEP: CHAT_ONBOARDING */}
+          {/* ============================================================ */}
+          {step === "CHAT_ONBOARDING" && (
+            <ProvisioningChatStep
+              onContinue={handleContinueToConnected}
+              onSelectMethod={handleMethodSelect}
+              showPlatformShortcuts
+            />
+          )}
+
           {/* ============================================================ */}
           {/* STEP: SELECT_METHOD */}
           {/* ============================================================ */}
