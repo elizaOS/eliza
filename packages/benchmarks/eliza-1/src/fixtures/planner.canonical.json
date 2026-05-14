@@ -408,21 +408,13 @@
               "name": "detailLevel",
               "type": "string",
               "description": "For action=describe: 'summary' to omit object/person breakdowns, 'detailed' for the full breakdown.",
-              "enum": [
-                "summary",
-                "detailed"
-              ]
+              "enum": ["summary", "detailed"]
             },
             {
               "name": "mode",
               "type": "string",
               "description": "For action=set_mode: vision mode to set: off, camera, screen, or both.",
-              "enum": [
-                "off",
-                "camera",
-                "screen",
-                "both"
-              ]
+              "enum": ["off", "camera", "screen", "both"]
             },
             {
               "name": "name",
@@ -492,21 +484,13 @@
               "name": "state",
               "type": "string",
               "description": "PR state for pr_list: open, closed, or all.",
-              "enum": [
-                "open",
-                "closed",
-                "all"
-              ]
+              "enum": ["open", "closed", "all"]
             },
             {
               "name": "review_action",
               "type": "string",
               "description": "For action=pr_review: approve, request-changes, or comment.",
-              "enum": [
-                "approve",
-                "request-changes",
-                "comment"
-              ]
+              "enum": ["approve", "request-changes", "comment"]
             },
             {
               "name": "title",
@@ -522,10 +506,7 @@
               "name": "as",
               "type": "string",
               "description": "Identity to use: agent or user.",
-              "enum": [
-                "agent",
-                "user"
-              ]
+              "enum": ["agent", "user"]
             },
             {
               "name": "confirmed",
@@ -595,21 +576,13 @@
               "name": "state",
               "type": "string",
               "description": "PR state for pr_list: open, closed, or all.",
-              "enum": [
-                "open",
-                "closed",
-                "all"
-              ]
+              "enum": ["open", "closed", "all"]
             },
             {
               "name": "review_action",
               "type": "string",
               "description": "For action=pr_review: approve, request-changes, or comment.",
-              "enum": [
-                "approve",
-                "request-changes",
-                "comment"
-              ]
+              "enum": ["approve", "request-changes", "comment"]
             },
             {
               "name": "title",
@@ -625,10 +598,7 @@
               "name": "as",
               "type": "string",
               "description": "Identity to use: agent or user.",
-              "enum": [
-                "agent",
-                "user"
-              ]
+              "enum": ["agent", "user"]
             },
             {
               "name": "confirmed",
@@ -666,24 +636,14 @@
               "name": "action",
               "type": "string",
               "description": "File operation to run.",
-              "enum": [
-                "read",
-                "write",
-                "edit",
-                "grep",
-                "glob",
-                "ls"
-              ],
+              "enum": ["read", "write", "edit", "grep", "glob", "ls"],
               "required": true
             },
             {
               "name": "target",
               "type": "string",
               "description": "Optional target filesystem. Use device for relative paths under the device filesystem bridge; omit for workspace files.",
-              "enum": [
-                "workspace",
-                "device"
-              ]
+              "enum": ["workspace", "device"]
             },
             {
               "name": "file_path",
@@ -730,11 +690,7 @@
               "name": "action",
               "type": "string",
               "description": "Shell operation: run | clear_history | view_history.",
-              "enum": [
-                "run",
-                "clear_history",
-                "view_history"
-              ]
+              "enum": ["run", "clear_history", "view_history"]
             },
             {
               "name": "command",
@@ -794,24 +750,14 @@
               "name": "action",
               "type": "string",
               "description": "File operation to run.",
-              "enum": [
-                "read",
-                "write",
-                "edit",
-                "grep",
-                "glob",
-                "ls"
-              ],
+              "enum": ["read", "write", "edit", "grep", "glob", "ls"],
               "required": true
             },
             {
               "name": "target",
               "type": "string",
               "description": "Optional target filesystem. Use device for relative paths under the device filesystem bridge; omit for workspace files.",
-              "enum": [
-                "workspace",
-                "device"
-              ]
+              "enum": ["workspace", "device"]
             },
             {
               "name": "file_path",
@@ -858,11 +804,7 @@
               "name": "action",
               "type": "string",
               "description": "Shell operation: run | clear_history | view_history.",
-              "enum": [
-                "run",
-                "clear_history",
-                "view_history"
-              ]
+              "enum": ["run", "clear_history", "view_history"]
             },
             {
               "name": "command",
@@ -923,9 +865,7 @@
               "name": "action",
               "type": "string",
               "description": "Form verb: restore. Defaults to restore when omitted.",
-              "enum": [
-                "restore"
-              ]
+              "enum": ["restore"]
             },
             {
               "name": "sessionId",
@@ -985,12 +925,7 @@
               "name": "status",
               "type": "string",
               "description": "pending | in_progress | completed | cancelled.",
-              "enum": [
-                "pending",
-                "in_progress",
-                "completed",
-                "cancelled"
-              ]
+              "enum": ["pending", "in_progress", "completed", "cancelled"]
             },
             {
               "name": "parentTodoId",
@@ -1055,21 +990,13 @@
               "name": "state",
               "type": "string",
               "description": "PR state for pr_list: open, closed, or all.",
-              "enum": [
-                "open",
-                "closed",
-                "all"
-              ]
+              "enum": ["open", "closed", "all"]
             },
             {
               "name": "review_action",
               "type": "string",
               "description": "For action=pr_review: approve, request-changes, or comment.",
-              "enum": [
-                "approve",
-                "request-changes",
-                "comment"
-              ]
+              "enum": ["approve", "request-changes", "comment"]
             },
             {
               "name": "title",
@@ -1085,10 +1012,7 @@
               "name": "as",
               "type": "string",
               "description": "Identity to use: agent or user.",
-              "enum": [
-                "agent",
-                "user"
-              ]
+              "enum": ["agent", "user"]
             },
             {
               "name": "confirmed",
@@ -1161,21 +1085,13 @@
               "name": "state",
               "type": "string",
               "description": "PR state for pr_list: open, closed, or all.",
-              "enum": [
-                "open",
-                "closed",
-                "all"
-              ]
+              "enum": ["open", "closed", "all"]
             },
             {
               "name": "review_action",
               "type": "string",
               "description": "For action=pr_review: approve, request-changes, or comment.",
-              "enum": [
-                "approve",
-                "request-changes",
-                "comment"
-              ]
+              "enum": ["approve", "request-changes", "comment"]
             },
             {
               "name": "title",
@@ -1191,10 +1107,7 @@
               "name": "as",
               "type": "string",
               "description": "Identity to use: agent or user.",
-              "enum": [
-                "agent",
-                "user"
-              ]
+              "enum": ["agent", "user"]
             },
             {
               "name": "confirmed",
@@ -1315,21 +1228,13 @@
               "name": "state",
               "type": "string",
               "description": "PR state for pr_list: open, closed, or all.",
-              "enum": [
-                "open",
-                "closed",
-                "all"
-              ]
+              "enum": ["open", "closed", "all"]
             },
             {
               "name": "review_action",
               "type": "string",
               "description": "For action=pr_review: approve, request-changes, or comment.",
-              "enum": [
-                "approve",
-                "request-changes",
-                "comment"
-              ]
+              "enum": ["approve", "request-changes", "comment"]
             },
             {
               "name": "title",
@@ -1345,10 +1250,7 @@
               "name": "as",
               "type": "string",
               "description": "Identity to use: agent or user.",
-              "enum": [
-                "agent",
-                "user"
-              ]
+              "enum": ["agent", "user"]
             },
             {
               "name": "confirmed",
@@ -1534,21 +1436,13 @@
               "name": "state",
               "type": "string",
               "description": "PR state for pr_list: open, closed, or all.",
-              "enum": [
-                "open",
-                "closed",
-                "all"
-              ]
+              "enum": ["open", "closed", "all"]
             },
             {
               "name": "review_action",
               "type": "string",
               "description": "For action=pr_review: approve, request-changes, or comment.",
-              "enum": [
-                "approve",
-                "request-changes",
-                "comment"
-              ]
+              "enum": ["approve", "request-changes", "comment"]
             },
             {
               "name": "title",
@@ -1564,10 +1458,7 @@
               "name": "as",
               "type": "string",
               "description": "Identity to use: agent or user.",
-              "enum": [
-                "agent",
-                "user"
-              ]
+              "enum": ["agent", "user"]
             },
             {
               "name": "confirmed",
@@ -1686,21 +1577,13 @@
               "name": "state",
               "type": "string",
               "description": "PR state for pr_list: open, closed, or all.",
-              "enum": [
-                "open",
-                "closed",
-                "all"
-              ]
+              "enum": ["open", "closed", "all"]
             },
             {
               "name": "review_action",
               "type": "string",
               "description": "For action=pr_review: approve, request-changes, or comment.",
-              "enum": [
-                "approve",
-                "request-changes",
-                "comment"
-              ]
+              "enum": ["approve", "request-changes", "comment"]
             },
             {
               "name": "title",
@@ -1716,10 +1599,7 @@
               "name": "as",
               "type": "string",
               "description": "Identity to use: agent or user.",
-              "enum": [
-                "agent",
-                "user"
-              ]
+              "enum": ["agent", "user"]
             },
             {
               "name": "confirmed",
@@ -1839,21 +1719,13 @@
               "name": "detailLevel",
               "type": "string",
               "description": "For action=describe: 'summary' to omit object/person breakdowns, 'detailed' for the full breakdown.",
-              "enum": [
-                "summary",
-                "detailed"
-              ]
+              "enum": ["summary", "detailed"]
             },
             {
               "name": "mode",
               "type": "string",
               "description": "For action=set_mode: vision mode to set: off, camera, screen, or both.",
-              "enum": [
-                "off",
-                "camera",
-                "screen",
-                "both"
-              ]
+              "enum": ["off", "camera", "screen", "both"]
             },
             {
               "name": "name",
@@ -1982,21 +1854,13 @@
               "name": "detailLevel",
               "type": "string",
               "description": "For action=describe: 'summary' to omit object/person breakdowns, 'detailed' for the full breakdown.",
-              "enum": [
-                "summary",
-                "detailed"
-              ]
+              "enum": ["summary", "detailed"]
             },
             {
               "name": "mode",
               "type": "string",
               "description": "For action=set_mode: vision mode to set: off, camera, screen, or both.",
-              "enum": [
-                "off",
-                "camera",
-                "screen",
-                "both"
-              ]
+              "enum": ["off", "camera", "screen", "both"]
             },
             {
               "name": "name",
@@ -2108,24 +1972,14 @@
               "name": "action",
               "type": "string",
               "description": "File operation to run.",
-              "enum": [
-                "read",
-                "write",
-                "edit",
-                "grep",
-                "glob",
-                "ls"
-              ],
+              "enum": ["read", "write", "edit", "grep", "glob", "ls"],
               "required": true
             },
             {
               "name": "target",
               "type": "string",
               "description": "Optional target filesystem. Use device for relative paths under the device filesystem bridge; omit for workspace files.",
-              "enum": [
-                "workspace",
-                "device"
-              ]
+              "enum": ["workspace", "device"]
             },
             {
               "name": "file_path",
@@ -2183,10 +2037,7 @@
               "name": "action",
               "type": "string",
               "description": "Operation: check or request.",
-              "enum": [
-                "check",
-                "request"
-              ],
+              "enum": ["check", "request"],
               "required": true
             },
             {
@@ -2275,10 +2126,7 @@
               "name": "mode",
               "type": "string",
               "description": "Prepare without submitting, or execute the operation.",
-              "enum": [
-                "prepare",
-                "execute"
-              ]
+              "enum": ["prepare", "execute"]
             },
             {
               "name": "dryRun",
@@ -2306,10 +2154,7 @@
               "name": "action",
               "type": "string",
               "description": "Operation: check or request.",
-              "enum": [
-                "check",
-                "request"
-              ],
+              "enum": ["check", "request"],
               "required": true
             },
             {
@@ -2398,10 +2243,7 @@
               "name": "mode",
               "type": "string",
               "description": "Prepare without submitting, or execute the operation.",
-              "enum": [
-                "prepare",
-                "execute"
-              ]
+              "enum": ["prepare", "execute"]
             },
             {
               "name": "dryRun",
@@ -2430,11 +2272,7 @@
               "name": "action",
               "type": "string",
               "description": "Shell operation: run | clear_history | view_history.",
-              "enum": [
-                "run",
-                "clear_history",
-                "view_history"
-              ]
+              "enum": ["run", "clear_history", "view_history"]
             },
             {
               "name": "command",
@@ -2471,24 +2309,14 @@
               "name": "action",
               "type": "string",
               "description": "File operation to run.",
-              "enum": [
-                "read",
-                "write",
-                "edit",
-                "grep",
-                "glob",
-                "ls"
-              ],
+              "enum": ["read", "write", "edit", "grep", "glob", "ls"],
               "required": true
             },
             {
               "name": "target",
               "type": "string",
               "description": "Optional target filesystem. Use device for relative paths under the device filesystem bridge; omit for workspace files.",
-              "enum": [
-                "workspace",
-                "device"
-              ]
+              "enum": ["workspace", "device"]
             },
             {
               "name": "file_path",
@@ -2558,11 +2386,7 @@
               "name": "action",
               "type": "string",
               "description": "Shell operation: run | clear_history | view_history.",
-              "enum": [
-                "run",
-                "clear_history",
-                "view_history"
-              ]
+              "enum": ["run", "clear_history", "view_history"]
             },
             {
               "name": "command",
@@ -2599,24 +2423,14 @@
               "name": "action",
               "type": "string",
               "description": "File operation to run.",
-              "enum": [
-                "read",
-                "write",
-                "edit",
-                "grep",
-                "glob",
-                "ls"
-              ],
+              "enum": ["read", "write", "edit", "grep", "glob", "ls"],
               "required": true
             },
             {
               "name": "target",
               "type": "string",
               "description": "Optional target filesystem. Use device for relative paths under the device filesystem bridge; omit for workspace files.",
-              "enum": [
-                "workspace",
-                "device"
-              ]
+              "enum": ["workspace", "device"]
             },
             {
               "name": "file_path",
@@ -2717,12 +2531,7 @@
               "name": "status",
               "type": "string",
               "description": "pending | in_progress | completed | cancelled.",
-              "enum": [
-                "pending",
-                "in_progress",
-                "completed",
-                "cancelled"
-              ]
+              "enum": ["pending", "in_progress", "completed", "cancelled"]
             },
             {
               "name": "parentTodoId",
@@ -2804,12 +2613,7 @@
               "name": "status",
               "type": "string",
               "description": "pending | in_progress | completed | cancelled.",
-              "enum": [
-                "pending",
-                "in_progress",
-                "completed",
-                "cancelled"
-              ]
+              "enum": ["pending", "in_progress", "completed", "cancelled"]
             },
             {
               "name": "parentTodoId",
@@ -2848,9 +2652,7 @@
               "name": "action",
               "type": "string",
               "description": "Form verb: restore. Defaults to restore when omitted.",
-              "enum": [
-                "restore"
-              ]
+              "enum": ["restore"]
             },
             {
               "name": "sessionId",
@@ -2909,12 +2711,7 @@
               "name": "status",
               "type": "string",
               "description": "pending | in_progress | completed | cancelled.",
-              "enum": [
-                "pending",
-                "in_progress",
-                "completed",
-                "cancelled"
-              ]
+              "enum": ["pending", "in_progress", "completed", "cancelled"]
             },
             {
               "name": "parentTodoId",
@@ -2953,9 +2750,7 @@
               "name": "action",
               "type": "string",
               "description": "Form verb: restore. Defaults to restore when omitted.",
-              "enum": [
-                "restore"
-              ]
+              "enum": ["restore"]
             },
             {
               "name": "sessionId",
@@ -3000,21 +2795,13 @@
               "name": "detailLevel",
               "type": "string",
               "description": "For action=describe: 'summary' to omit object/person breakdowns, 'detailed' for the full breakdown.",
-              "enum": [
-                "summary",
-                "detailed"
-              ]
+              "enum": ["summary", "detailed"]
             },
             {
               "name": "mode",
               "type": "string",
               "description": "For action=set_mode: vision mode to set: off, camera, screen, or both.",
-              "enum": [
-                "off",
-                "camera",
-                "screen",
-                "both"
-              ]
+              "enum": ["off", "camera", "screen", "both"]
             },
             {
               "name": "name",
@@ -3147,21 +2934,13 @@
               "name": "detailLevel",
               "type": "string",
               "description": "For action=describe: 'summary' to omit object/person breakdowns, 'detailed' for the full breakdown.",
-              "enum": [
-                "summary",
-                "detailed"
-              ]
+              "enum": ["summary", "detailed"]
             },
             {
               "name": "mode",
               "type": "string",
               "description": "For action=set_mode: vision mode to set: off, camera, screen, or both.",
-              "enum": [
-                "off",
-                "camera",
-                "screen",
-                "both"
-              ]
+              "enum": ["off", "camera", "screen", "both"]
             },
             {
               "name": "name",
@@ -3295,21 +3074,13 @@
               "name": "detailLevel",
               "type": "string",
               "description": "For action=describe: 'summary' to omit object/person breakdowns, 'detailed' for the full breakdown.",
-              "enum": [
-                "summary",
-                "detailed"
-              ]
+              "enum": ["summary", "detailed"]
             },
             {
               "name": "mode",
               "type": "string",
               "description": "For action=set_mode: vision mode to set: off, camera, screen, or both.",
-              "enum": [
-                "off",
-                "camera",
-                "screen",
-                "both"
-              ]
+              "enum": ["off", "camera", "screen", "both"]
             },
             {
               "name": "name",
@@ -3475,10 +3246,7 @@
               "name": "mode",
               "type": "string",
               "description": "Prepare without submitting, or execute the operation.",
-              "enum": [
-                "prepare",
-                "execute"
-              ]
+              "enum": ["prepare", "execute"]
             },
             {
               "name": "dryRun",
@@ -3507,10 +3275,7 @@
               "name": "action",
               "type": "string",
               "description": "Operation: check or request.",
-              "enum": [
-                "check",
-                "request"
-              ],
+              "enum": ["check", "request"],
               "required": true
             },
             {
@@ -3603,10 +3368,7 @@
               "name": "mode",
               "type": "string",
               "description": "Prepare without submitting, or execute the operation.",
-              "enum": [
-                "prepare",
-                "execute"
-              ]
+              "enum": ["prepare", "execute"]
             },
             {
               "name": "dryRun",
@@ -3635,10 +3397,7 @@
               "name": "action",
               "type": "string",
               "description": "Operation: check or request.",
-              "enum": [
-                "check",
-                "request"
-              ],
+              "enum": ["check", "request"],
               "required": true
             },
             {
@@ -3727,10 +3486,7 @@
               "name": "mode",
               "type": "string",
               "description": "Prepare without submitting, or execute the operation.",
-              "enum": [
-                "prepare",
-                "execute"
-              ]
+              "enum": ["prepare", "execute"]
             },
             {
               "name": "dryRun",
@@ -3759,10 +3515,7 @@
               "name": "action",
               "type": "string",
               "description": "Operation: check or request.",
-              "enum": [
-                "check",
-                "request"
-              ],
+              "enum": ["check", "request"],
               "required": true
             },
             {
