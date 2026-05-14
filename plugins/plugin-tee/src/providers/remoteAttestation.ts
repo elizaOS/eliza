@@ -70,7 +70,6 @@ export const phalaRemoteAttestationProvider: Provider = {
     const teeModeRaw = runtime.getSetting("TEE_MODE");
     if (!teeModeRaw) {
       return {
-        data: null,
         values: {},
         text: "TEE_MODE is not configured",
       };
