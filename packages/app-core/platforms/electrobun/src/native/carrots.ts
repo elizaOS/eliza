@@ -683,7 +683,9 @@ export class CarrotManager {
 			type: "request",
 			requestId: invokeId,
 			method,
-			...(requestParams === undefined ? {} : { params: requestParams as JsonValue }),
+			...(requestParams === undefined
+				? {}
+				: { params: requestParams as JsonValue }),
 			...(typeof windowId === "string" ? { windowId } : {}),
 		};
 		targetHandle.postMessage(targetRequest);
@@ -708,7 +710,9 @@ export class CarrotManager {
 				? response.payload === undefined
 					? {}
 					: { payload: response.payload }
-				: { error: response.error ?? "invoke-carrot: target returned failure" }),
+				: {
+						error: response.error ?? "invoke-carrot: target returned failure",
+					}),
 		});
 	}
 
@@ -791,7 +795,9 @@ export class CarrotManager {
 				return { token: record.context.authToken };
 			}
 			case "invoke-carrot":
-				throw new Error("invoke-carrot must be routed through startInvokeCarrot");
+				throw new Error(
+					"invoke-carrot must be routed through startInvokeCarrot",
+				);
 			case "set-auth-token": {
 				const record = this.workers.get(callerId);
 				if (!record?.context) {
