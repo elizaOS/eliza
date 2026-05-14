@@ -66,6 +66,11 @@ characters/**/private/
 
 cache/*
 models/*
+# Track the voice sub-model changelog (R5-versioning §2.1) alongside the
+# weights staging dir — the file is the human-readable twin of
+# packages/shared/src/local-inference/voice-models.ts.
+!models/voice/
+!models/voice/CHANGELOG.md
 
 tsup.config.bundled_*.mjs
 
