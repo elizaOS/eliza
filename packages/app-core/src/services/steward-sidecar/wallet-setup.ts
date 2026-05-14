@@ -57,15 +57,22 @@ async function verifyExistingWallet(
         data?: { walletAddress?: string };
       };
       if (result.ok && result.data?.walletAddress) {
-        logger.info(`[StewardSidecar] Wallet verified: ${result.data.walletAddress}`);
+        logger.info(
+          `[StewardSidecar] Wallet verified: ${result.data.walletAddress}`,
+        );
         updateStatus({ walletAddress: result.data.walletAddress });
         return;
       }
     }
 
-    logger.warn("[StewardSidecar] Wallet verification returned unexpected result, continuing");
+    logger.warn(
+      "[StewardSidecar] Wallet verification returned unexpected result, continuing",
+    );
   } catch (err) {
-    logger.warn("[StewardSidecar] Wallet verification failed", err instanceof Error ? err.message : String(err));
+    logger.warn(
+      "[StewardSidecar] Wallet verification failed",
+      err instanceof Error ? err.message : String(err),
+    );
   }
 }
 

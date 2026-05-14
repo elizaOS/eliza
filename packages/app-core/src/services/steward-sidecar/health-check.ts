@@ -29,7 +29,9 @@ export async function waitForHealthy(
       if (response.ok) {
         const body = (await response.json()) as { status?: string };
         if (body.status === "ok") {
-          logger.info(`[StewardSidecar] Healthy after ${Date.now() - startTime}ms`);
+          logger.info(
+            `[StewardSidecar] Healthy after ${Date.now() - startTime}ms`,
+          );
           return;
         }
       }

@@ -287,7 +287,9 @@ export class StewardSidecar {
       fs.existsSync(legacyDataDir) &&
       !targetHasData
     ) {
-      logger.info(`[StewardSidecar] Migrating legacy steward data from ${legacyDataDir} to ${targetDataDir}`);
+      logger.info(
+        `[StewardSidecar] Migrating legacy steward data from ${legacyDataDir} to ${targetDataDir}`,
+      );
       fs.cpSync(legacyDataDir, targetDataDir, {
         recursive: true,
         force: false,
@@ -314,7 +316,9 @@ export class StewardSidecar {
         });
         return;
       } catch {
-        logger.warn("[StewardSidecar] Failed to parse credentials, will recreate");
+        logger.warn(
+          "[StewardSidecar] Failed to parse credentials, will recreate",
+        );
       }
     }
 
@@ -336,7 +340,9 @@ export class StewardSidecar {
     const preferredPort = this.config.port;
     const allocatedPort = await allocateFirstFreeLoopbackPort(preferredPort);
     if (allocatedPort !== preferredPort) {
-      logger.warn(`[StewardSidecar] Port ${preferredPort} is busy; using ${allocatedPort} instead`);
+      logger.warn(
+        `[StewardSidecar] Port ${preferredPort} is busy; using ${allocatedPort} instead`,
+      );
       this.config.port = allocatedPort;
     }
 
@@ -366,7 +372,9 @@ export class StewardSidecar {
     env.STEWARD_PGLITE_PATH = env.STEWARD_DATA_DIR;
     env.STEWARD_REDIS_DISABLED = "true";
 
-    logger.info(`[StewardSidecar] Spawning steward on port ${this.config.port} (entryPoint=${entryPoint}, dataDir=${this.config.dataDir})`);
+    logger.info(
+      `[StewardSidecar] Spawning steward on port ${this.config.port} (entryPoint=${entryPoint}, dataDir=${this.config.dataDir})`,
+    );
 
     const bun = getBunRuntime();
     if (bun) {
@@ -385,7 +393,9 @@ export class StewardSidecar {
 
       proc.exited.then((code: number) => {
         if (!this.stopping) {
-          logger.warn(`[StewardSidecar] Process exited unexpectedly (code ${code})`);
+          logger.warn(
+            `[StewardSidecar] Process exited unexpectedly (code ${code})`,
+          );
           void this.handleCrash(code);
         }
       });
@@ -431,7 +441,9 @@ export class StewardSidecar {
 
       exitPromise.then((code) => {
         if (!this.stopping) {
-          logger.warn(`[StewardSidecar] Process exited unexpectedly (code ${code})`);
+          logger.warn(
+            `[StewardSidecar] Process exited unexpectedly (code ${code})`,
+          );
           void this.handleCrash(code);
         }
       });
@@ -457,7 +469,9 @@ export class StewardSidecar {
       MAX_BACKOFF_MS,
     );
 
-    logger.info(`[StewardSidecar] Restarting in ${backoff}ms (attempt ${this.status.restartCount}/${this.config.maxRestarts})`);
+    logger.info(
+      `[StewardSidecar] Restarting in ${backoff}ms (attempt ${this.status.restartCount}/${this.config.maxRestarts})`,
+    );
 
     this.updateStatus({ state: "restarting", pid: null });
 
