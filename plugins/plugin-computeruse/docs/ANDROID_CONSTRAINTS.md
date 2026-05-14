@@ -41,6 +41,19 @@ Two mitigations are active:
    the pressure signal and proactively unloads lower-priority model handles
    (transcribe, vision-describe) before the OOM killer fires.
 
+## Assistant/App Actions → LifeOps routing
+
+Android shortcuts, App Actions, `ACTION_ASSIST`, and AOSP
+`ROLE_ASSISTANT` are entry surfaces. They wake or open Eliza and hand the
+request to the app/runtime; they do not create a parallel reminder engine.
+
+For LifeOps requests, reminders/check-ins/follow-ups/watchers/recaps and
+approvals must become `ScheduledTask` records. Native Android code may post a
+notification for an existing task or wake the runtime, but it must not schedule
+native-only reminders that bypass the LifeOps runner. See
+[`MOBILE_ASSISTANT_ROUTING.md`](MOBILE_ASSISTANT_ROUTING.md) for the shared
+Mac/iOS/Android checklist.
+
 ## Manual on-device validation checklist
 
 Run this against a physical Android device (API 24+ for gesture dispatch; API 29+ for
@@ -56,6 +69,10 @@ smoke-testing, but the x86_64 JNI patch must be present (see WS4 llama-cpp-capac
   `adb shell dumpsys accessibility | grep -i milady`
 - [ ] Navigate to Settings > Digital Wellbeing (or Settings > Security > Usage Access)
   > Milady > enable Usage Access.
+- [ ] Long-press the launcher icon and verify the Ask Eliza static shortcut is
+  present.
+- [ ] If validating App Actions, confirm the assistant routes the action into
+  `eliza://chat?source=android-app-action`.
 
 ### 2. AccessibilityService — view tree
 
@@ -143,3 +160,16 @@ Expected: the JS console (or logcat for bridge events) shows:
 followed by MemoryArbiter eviction log entries.
 
 Verify via `GET /api/training/auto/config` that arbiter pressure state transitions to `critical`.
+
+### 9. Assistant/App Actions → LifeOps routing
+
+```
+adb shell am start -a android.intent.action.VIEW \
+  -d 'eliza://chat?source=android-shortcut'
+adb shell am start -a android.intent.action.ASSIST ai.elizaos.app/.ElizaAssistActivity
+```
+
+Expected: Eliza opens the app/runtime chat surface. Ask for a one-off reminder,
+a recurring check-in, and a follow-up. Verify each creates or updates a LifeOps
+`ScheduledTask` record; there must be no Java/Kotlin-only reminder table or
+notification-only schedule.

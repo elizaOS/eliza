@@ -146,7 +146,10 @@ function resolvePolicyDistributionProfile(
       readSetting(source, RUNTIME_DISTRIBUTION_PROFILE_SETTING_KEYS),
     ) ??
     normalizeDistributionProfile(
-      readEnv(context?.env ?? process.env, RUNTIME_DISTRIBUTION_PROFILE_SETTING_KEYS),
+      readEnv(
+        context?.env ?? process.env,
+        RUNTIME_DISTRIBUTION_PROFILE_SETTING_KEYS,
+      ),
     ) ??
     "unrestricted"
   );
@@ -211,7 +214,10 @@ export function applyRuntimeExecutionModePolicy(
   if (!requestedMode) {
     return runtimeExecutionModeForPolicyContext(context, source);
   }
-  if (requestedMode === "local-yolo" && !canUseHostYoloRuntime(context, source)) {
+  if (
+    requestedMode === "local-yolo" &&
+    !canUseHostYoloRuntime(context, source)
+  ) {
     return "local-safe";
   }
   return requestedMode;
@@ -255,8 +261,10 @@ const RUNTIME_EXECUTION_MODE_SETTING_KEYS = [
 /**
  * Canonical resolver for the active runtime execution mode at the
  * agent/plugin boundary. Reads an explicit setting from the runtime first,
- * then falls back to the same env vars, defaulting to `local-yolo` when
- * nothing is set.
+ * then falls back to the same env vars. Missing mode defaults are policy-aware:
+ * cloud targets use `cloud`, known local/remote/store/mobile targets use
+ * `local-safe`, and unrestricted desktop/direct runtimes keep the historical
+ * `local-yolo` default when no target is known.
  *
  * This is the one source of truth for `cloud | local-safe | local-yolo`
  * routing; both the agent package and the shell/coding-tools plugins import
@@ -290,21 +298,24 @@ export function resolveRuntimeExecutionMode(
       );
     }
   }
-  return runtimeExecutionModeForPolicyContext(context ?? source ?? null, source);
+  return runtimeExecutionModeForPolicyContext(
+    context ?? source ?? null,
+    source,
+  );
 }
 
 /** Local-only narrowing of {@link RuntimeExecutionMode} for callers that only
- * distinguish local-safe vs local-yolo. Cloud collapses to `local-yolo` here
- * because legacy callers used this helper to pick a host-side execution path
- * and only flipped to safe-mode when the sandbox was required. */
+ * distinguish local-safe vs local-yolo. Non-host-yolo modes collapse to
+ * `local-safe` so cloud/store/mobile contexts cannot fall into direct host
+ * execution through this legacy helper. */
 export type LocalExecutionMode = "local-safe" | "local-yolo";
 
 export function resolveLocalExecutionMode(
   source?: RuntimeExecutionModeSource | null,
 ): LocalExecutionMode {
-  return resolveRuntimeExecutionMode(source) === "local-safe"
-    ? "local-safe"
-    : "local-yolo";
+  return resolveRuntimeExecutionMode(source) === "local-yolo"
+    ? "local-yolo"
+    : "local-safe";
 }
 
 export function shouldUseSandboxExecution(

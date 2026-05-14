@@ -7,6 +7,8 @@
  * docs/ANDROID_CONSTRAINTS.md.
  */
 
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   ANDROID_BRIDGE_JS_NAME,
@@ -25,6 +27,12 @@ import {
   type TapGestureArgs,
 } from "../mobile/android-bridge.js";
 
+const REPO_ROOT = path.resolve(import.meta.dirname, "..", "..", "..", "..");
+
+function readRepoFile(...segments: string[]): string {
+  return readFileSync(path.join(REPO_ROOT, ...segments), "utf8");
+}
+
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 describe("Android bridge constants", () => {
@@ -34,6 +42,43 @@ describe("Android bridge constants", () => {
 
   it("default FPS is conservative for battery life", () => {
     expect(ANDROID_DEFAULT_FPS).toBe(1);
+  });
+});
+
+// ── Android assistant/App Actions static source checks ───────────────────────
+
+describe("Android assistant and App Actions routing source", () => {
+  it("registers shortcuts.xml on the launcher activity", () => {
+    const manifest = readRepoFile(
+      "packages/app-core/platforms/android/app/src/main/AndroidManifest.xml",
+    );
+
+    expect(manifest).toContain('android:name="android.app.shortcuts"');
+    expect(manifest).toContain('android:resource="@xml/shortcuts"');
+  });
+
+  it("declares an assistant entry activity for consumer and AOSP assistant-role builds", () => {
+    const manifest = readRepoFile(
+      "packages/app-core/platforms/android/app/src/main/AndroidManifest.xml",
+    );
+
+    expect(manifest).toContain('android:name=".ElizaAssistActivity"');
+    expect(manifest).toContain('android.intent.action.ASSIST');
+    expect(manifest).toContain('android.intent.action.VOICE_COMMAND');
+  });
+
+  it("routes static shortcuts and App Actions into the app, not native notification creation", () => {
+    const shortcuts = readRepoFile(
+      "packages/app-core/platforms/android/app/src/main/res/xml/shortcuts.xml",
+    );
+
+    expect(shortcuts).toContain('android:shortcutId="ask_eliza"');
+    expect(shortcuts).toContain("eliza://chat?source=android-shortcut");
+    expect(shortcuts).toContain('android:name="actions.intent.CREATE_THING"');
+    expect(shortcuts).toContain('android:name="actions.intent.GET_THING"');
+    expect(shortcuts).toContain("eliza://chat?source=android-app-action");
+    expect(shortcuts.toLowerCase()).not.toContain("notification");
+    expect(shortcuts).not.toContain("ScheduledTask");
   });
 });
 

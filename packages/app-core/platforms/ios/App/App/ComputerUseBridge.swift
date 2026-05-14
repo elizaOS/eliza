@@ -337,7 +337,7 @@ public class ComputerUseBridge: CAPPlugin, CAPBridgedPlugin {
         // expose a public API to enumerate every intent on the device. We
         // return whatever this app has registered locally via
         // `AppShortcutsProvider`. The TS-side static registry covers known
-        // system intents the planner can target without enumeration.
+        // system intents/actions plus their native vs Shortcut-only modes.
         let intents: [[String: Any]] = []
         call.resolve([
             "ok": true,

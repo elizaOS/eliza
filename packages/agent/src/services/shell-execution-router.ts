@@ -1,13 +1,17 @@
 /**
  * Single chokepoint for shell execution.
  *
- * The runtime has a 3-mode switch via `ELIZA_RUNTIME_MODE`:
+ * The runtime has a policy-aware 3-mode switch via `ELIZA_RUNTIME_MODE`:
  *  - `cloud`        — agent code runs in the hosted backend; local exec is
  *                     refused with a clear error.
  *  - `local-safe`   — every shell exec is routed through `SandboxManager`
  *                     (Docker / Apple Container) so the host filesystem is
  *                     not directly touched.
  *  - `local-yolo`   — direct host exec (the historical default).
+ *
+ * `local-yolo` is only honored for unrestricted desktop/direct contexts. Store,
+ * mobile, remote, and cloud contexts clamp to `local-safe` or `cloud` before
+ * dispatch so a missing or stale setting cannot silently reach the host.
  *
  * Plugins, services, and CLI helpers that previously called `child_process.spawn`
  * for one-shot command execution should call `runShell()` instead. This keeps
@@ -18,6 +22,9 @@
 import { spawn } from "node:child_process";
 import process from "node:process";
 import {
+  applyRuntimeExecutionModePolicy,
+  type DeploymentTargetConfig,
+  type DistributionProfile,
   type RuntimeExecutionMode,
   resolveRuntimeExecutionMode,
 } from "@elizaos/shared";
@@ -57,10 +64,19 @@ export interface ShellResult {
 }
 
 export interface ShellRouterContext {
-  /** Explicit override for the active mode. When unset, env vars are read. */
+  /**
+   * Explicit requested mode. The shared runtime policy still clamps host-yolo
+   * when the deployment/profile/platform cannot use direct host execution.
+   */
   mode?: ShellExecutionMode;
   /** Runtime-style settings source consulted before falling back to env. */
   runtime?: { getSetting?: (key: string) => unknown } | null;
+  /** Deployment target from onboarding/config when the caller has it. */
+  deploymentTarget?: DeploymentTargetConfig | Record<string, unknown> | null;
+  /** Store/direct profile override; otherwise ELIZA_DISTRIBUTION_PROFILE is read. */
+  distributionProfile?: DistributionProfile | string | null;
+  /** Platform override; otherwise ELIZA_PLATFORM is read. */
+  platform?: string | null;
   /** Optional pre-resolved sandbox manager (used by tests + agent code paths). */
   sandboxManager?: SandboxManager | null;
   /**
@@ -71,10 +87,15 @@ export interface ShellRouterContext {
 }
 
 export function resolveShellExecutionMode(
-  ctx?: Pick<ShellRouterContext, "mode" | "runtime"> | null,
+  ctx?: Pick<
+    ShellRouterContext,
+    "deploymentTarget" | "distributionProfile" | "mode" | "platform" | "runtime"
+  > | null,
 ): ShellExecutionMode {
-  if (ctx?.mode) return ctx.mode;
-  return resolveRuntimeExecutionMode(ctx?.runtime ?? null);
+  if (ctx?.mode) {
+    return applyRuntimeExecutionModePolicy(ctx.mode, ctx, ctx.runtime ?? null);
+  }
+  return resolveRuntimeExecutionMode(ctx?.runtime ?? null, ctx ?? null);
 }
 
 function backendForSandboxManager(

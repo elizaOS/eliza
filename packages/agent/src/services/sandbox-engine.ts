@@ -38,12 +38,132 @@ export interface ContainerExecResult {
   durationMs: number;
 }
 
+export type SandboxRunConstraint =
+  | "network"
+  | "user"
+  | "capDrop"
+  | "memory"
+  | "cpus"
+  | "pidsLimit"
+  | "readOnlyRoot"
+  | "readonlyMounts"
+  | "ports"
+  | "dns";
+
+export interface SandboxEngineCapabilities {
+  readonly supportedRunConstraints: ReadonlySet<SandboxRunConstraint>;
+  readonly warnings: readonly string[];
+}
+
+export const GENERAL_SANDBOX_CONSTRAINTS: readonly SandboxRunConstraint[] = [
+  "network",
+  "user",
+  "capDrop",
+  "memory",
+  "cpus",
+  "pidsLimit",
+  "readOnlyRoot",
+];
+
+const DOCKER_CAPABILITIES: SandboxEngineCapabilities = {
+  supportedRunConstraints: new Set<SandboxRunConstraint>([
+    "network",
+    "user",
+    "capDrop",
+    "memory",
+    "cpus",
+    "pidsLimit",
+    "readOnlyRoot",
+    "readonlyMounts",
+    "ports",
+    "dns",
+  ]),
+  warnings: [],
+};
+
+const APPLE_CONTAINER_CAPABILITIES: SandboxEngineCapabilities = {
+  supportedRunConstraints: new Set<SandboxRunConstraint>(),
+  warnings: [
+    "Apple Container is not used for standard/max sandbox policies because this engine adapter does not enforce Docker-equivalent network, user, resource, read-only-root, or capability constraints.",
+  ],
+};
+
 type ExecCommandResult = {
   binary: string;
   args: string[];
   timeoutMs?: number;
   stdin?: string;
 };
+
+function constraintLabel(constraint: SandboxRunConstraint): string {
+  switch (constraint) {
+    case "capDrop":
+      return "capability drop";
+    case "cpus":
+      return "CPU limit";
+    case "pidsLimit":
+      return "PID limit";
+    case "readOnlyRoot":
+      return "read-only root filesystem";
+    case "readonlyMounts":
+      return "read-only bind mounts";
+    default:
+      return constraint;
+  }
+}
+
+export function formatSandboxConstraints(
+  constraints: readonly SandboxRunConstraint[],
+): string {
+  return constraints.map(constraintLabel).join(", ");
+}
+
+export function getUnsupportedSandboxConstraints(
+  engine: Pick<ISandboxEngine, "getCapabilities">,
+  constraints: readonly SandboxRunConstraint[],
+): SandboxRunConstraint[] {
+  const supported = engine.getCapabilities().supportedRunConstraints;
+  return constraints.filter((constraint) => !supported.has(constraint));
+}
+
+export function engineSupportsSandboxConstraints(
+  engine: Pick<ISandboxEngine, "getCapabilities">,
+  constraints: readonly SandboxRunConstraint[],
+): boolean {
+  return getUnsupportedSandboxConstraints(engine, constraints).length === 0;
+}
+
+function requestedRunConstraints(
+  opts: ContainerRunOptions,
+): SandboxRunConstraint[] {
+  const requested: SandboxRunConstraint[] = [];
+  if (opts.network) requested.push("network");
+  if (opts.user) requested.push("user");
+  if (opts.capDrop.length > 0) requested.push("capDrop");
+  if (opts.memory) requested.push("memory");
+  if (opts.cpus !== undefined) requested.push("cpus");
+  if (opts.pidsLimit !== undefined) requested.push("pidsLimit");
+  if (opts.readOnlyRoot) requested.push("readOnlyRoot");
+  if (opts.mounts.some((mount) => mount.readonly)) {
+    requested.push("readonlyMounts");
+  }
+  if (opts.ports && opts.ports.length > 0) requested.push("ports");
+  if (opts.dns && opts.dns.length > 0) requested.push("dns");
+  return requested;
+}
+
+function assertRunConstraintsSupported(
+  engine: ISandboxEngine,
+  constraints: readonly SandboxRunConstraint[],
+): void {
+  const unsupported = getUnsupportedSandboxConstraints(engine, constraints);
+  if (unsupported.length === 0) return;
+  throw new Error(
+    `Container engine "${engine.engineType}" cannot enforce requested sandbox constraints: ${formatConstraints(
+      unsupported,
+    )}`,
+  );
+}
 
 function appendMountArgs(
   args: string[],
@@ -315,6 +435,7 @@ export interface EngineInfo {
 
 export interface ISandboxEngine {
   readonly engineType: SandboxEngineType;
+  getCapabilities(): SandboxEngineCapabilities;
   isAvailable(): boolean;
   getInfo(): EngineInfo;
   runContainer(opts: ContainerRunOptions): Promise<string>; // returns container ID
@@ -330,6 +451,10 @@ export interface ISandboxEngine {
 
 export class DockerEngine implements ISandboxEngine {
   readonly engineType: SandboxEngineType = "docker";
+
+  getCapabilities(): SandboxEngineCapabilities {
+    return DOCKER_CAPABILITIES;
+  }
 
   isAvailable(): boolean {
     try {
@@ -362,6 +487,8 @@ export class DockerEngine implements ISandboxEngine {
   }
 
   async runContainer(opts: ContainerRunOptions): Promise<string> {
+    assertRunConstraintsSupported(this, requestedRunConstraints(opts));
+
     const args = ["run"];
     if (opts.detach) args.push("-d");
     args.push("--name", opts.name);
@@ -499,6 +626,10 @@ export class DockerEngine implements ISandboxEngine {
 export class AppleContainerEngine implements ISandboxEngine {
   readonly engineType: SandboxEngineType = "apple-container";
 
+  getCapabilities(): SandboxEngineCapabilities {
+    return APPLE_CONTAINER_CAPABILITIES;
+  }
+
   isAvailable(): boolean {
     try {
       execFileSync("container", ["--version"], {
@@ -544,6 +675,8 @@ export class AppleContainerEngine implements ISandboxEngine {
   }
 
   async runContainer(opts: ContainerRunOptions): Promise<string> {
+    assertRunConstraintsSupported(this, requestedRunConstraints(opts));
+
     // Apple Container uses `container run` with different syntax than Docker.
     // It doesn't have a `-d` detach flag — instead, we spawn it as a background
     // process with stdin piped so it doesn't block.
@@ -674,9 +807,21 @@ export class AppleContainerEngine implements ISandboxEngine {
   }
 }
 
-/** Auto-detect: prefer Apple Container on ARM Mac, else Docker. */
-export function detectBestEngine(): ISandboxEngine {
+/**
+ * Auto-detect a container engine.
+ *
+ * When callers require Docker-equivalent sandbox constraints, Apple Container is
+ * intentionally skipped until this adapter can enforce those constraints.
+ */
+export function detectBestEngine(
+  requiredConstraints: readonly SandboxRunConstraint[] = [],
+): ISandboxEngine {
   const os = platform();
+  const docker = new DockerEngine();
+
+  if (requiredConstraints.length > 0) {
+    return docker;
+  }
 
   if (os === "darwin" && arch() === "arm64") {
     const apple = new AppleContainerEngine();
@@ -685,18 +830,20 @@ export function detectBestEngine(): ISandboxEngine {
     }
   }
 
-  const docker = new DockerEngine();
   return docker; // Falls through to Docker (fails at runtime if not available)
 }
 
-export function createEngine(type: SandboxEngineType): ISandboxEngine {
+export function createEngine(
+  type: SandboxEngineType,
+  requiredConstraints: readonly SandboxRunConstraint[] = [],
+): ISandboxEngine {
   switch (type) {
     case "apple-container":
       return new AppleContainerEngine();
     case "docker":
       return new DockerEngine();
     case "auto":
-      return detectBestEngine();
+      return detectBestEngine(requiredConstraints);
     default:
       return new DockerEngine();
   }
@@ -719,9 +866,8 @@ export function getPlatformSetupNotes(): string {
       if (a === "arm64") {
         return [
           "macOS Apple Silicon detected.",
-          "Preferred: Apple Container (install via: brew install apple/apple/container-tools)",
-          "Fallback: Docker Desktop for Mac",
-          "Apple Container provides per-container VM isolation (strongest).",
+          "Preferred for standard/max sandbox modes: Docker Desktop for Mac",
+          "Apple Container is available only for modes that do not require Docker-equivalent network, user, resource, read-only-root, or capability constraints.",
         ].join("\n");
       }
       return [

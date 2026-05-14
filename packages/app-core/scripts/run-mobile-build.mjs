@@ -59,6 +59,10 @@ import {
   syncPlatformTemplateFiles as syncPlatformTemplateFilesImpl,
 } from "./lib/capacitor-platform-templates.mjs";
 import { resolveRepoRootFromImportMeta } from "./lib/repo-root.mjs";
+import {
+  assertReviewedEntitlementsFile,
+  loadEntitlementReviewManifest,
+} from "./lib/apple-entitlement-audit.mjs";
 import { stageAndroidAgentRuntime } from "./lib/stage-android-agent.mjs";
 
 // ── Paths ───────────────────────────────────────────────────────────────
@@ -2107,6 +2111,7 @@ const IOS_BONJOUR_SERVICES = [
 
 function overlayIos() {
   const targetAppDir = path.join(appDir, "ios", "App", "App");
+  const entitlementManifest = loadEntitlementReviewManifest();
 
   // Merge Info.plist permission strings
   const plistPath = path.join(targetAppDir, "Info.plist");
@@ -2192,6 +2197,22 @@ function overlayIos() {
   // Generate Podfile
   generatePodfile();
   applyIosAppIdentity();
+  assertReviewedEntitlementsFile({
+    filePath: path.join(targetAppDir, "App.entitlements"),
+    targetId: "ios-app",
+    manifest: entitlementManifest,
+    label: "generated iOS app entitlements",
+  });
+  assertReviewedEntitlementsFile({
+    filePath: path.join(
+      targetAppDir,
+      "WebsiteBlockerContentExtension",
+      "WebsiteBlockerContentExtension.entitlements",
+    ),
+    targetId: "ios-website-blocker-extension",
+    manifest: entitlementManifest,
+    label: "generated iOS WebsiteBlocker extension entitlements",
+  });
 }
 
 function isTruthyEnv(value) {
@@ -2226,9 +2247,7 @@ export function prepareIosOverlay({ buildTarget = null } = {}) {
   const syncedFiles = syncPlatformTemplateFiles("ios");
   overlayIos();
   stripSpmIncompatiblePlugins();
-  const includeLlama =
-    isTruthyEnv(process.env.ELIZA_IOS_INCLUDE_LLAMA) ||
-    isTruthyEnv(process.env.ELIZA_IOS_INCLUDE_LLAMA);
+  const includeLlama = isIosLlamaRequested();
   if (isIosSimulatorBuildTarget(buildTarget) || !includeLlama) {
     // Strip the SPM LlamaCppCapacitor entry whenever we're not bundling the
     // pod — either because the simulator build replaces it with a CocoaPod
@@ -2252,15 +2271,13 @@ function generatePodfile() {
   }
 
   // LlamaCppCapacitor ships an on-device llama.cpp xcframework. It is only
-  // needed when the iOS build includes on-device inference. The default
-  // App Store target is the `cloud` runtime mode, which is a thin HTTP
-  // client and must NOT bundle the llama.cpp binary. Gate the pod on
-  // ELIZA_IOS_INCLUDE_LLAMA / ELIZA_IOS_INCLUDE_LLAMA — kept in sync with
+  // needed when a local runtime build explicitly enables native llama.
+  // App Store local builds fail closed unless
+  // ELIZA_IOS_LLAMA_APP_STORE_COMPLIANT=1 is also present. Gate the pod on
+  // ELIZA_IOS_INCLUDE_LLAMA / ELIZA_IOS_INCLUDE_LOCAL_LLAMA — kept in sync with
   // `resolveIosBuildTarget()` so the pod, the xcframework path, and the
   // build destination all agree on a single inclusion decision.
-  const includeLlama =
-    isTruthyEnv(process.env.ELIZA_IOS_INCLUDE_LLAMA) ||
-    isTruthyEnv(process.env.ELIZA_IOS_INCLUDE_LLAMA);
+  const includeLlama = isIosLlamaRequested();
   const includeFullBunEngine = isFullIosBunEngineRequested();
   const customPods = [
     ["ElizaosCapacitorAgent", "@elizaos/capacitor-agent"],
@@ -2291,7 +2308,7 @@ function generatePodfile() {
   ];
   if (!includeLlama) {
     console.log(
-      "[mobile-build] iOS Podfile: omitting llama.cpp pod (ELIZA_IOS_INCLUDE_LLAMA / ELIZA_IOS_INCLUDE_LLAMA not set)",
+      "[mobile-build] iOS Podfile: omitting llama.cpp pod (ELIZA_IOS_INCLUDE_LLAMA / ELIZA_IOS_INCLUDE_LOCAL_LLAMA not set)",
     );
   }
   if (includeFullBunEngine) {
@@ -3057,15 +3074,13 @@ async function ensureIosLlamaCppVendoredFramework({
   // client), the pod is not generated and the vendored framework is not
   // referenced. Skipping here avoids spinning up xcodebuild for an
   // xcframework that nothing consumes.
-  const includeLlama =
-    isTruthyEnv(process.env.ELIZA_IOS_INCLUDE_LLAMA) ||
-    isTruthyEnv(process.env.ELIZA_IOS_INCLUDE_LLAMA);
+  const includeLlama = isIosLlamaRequested();
   if (!includeLlama) return;
 
   if (process.platform !== "darwin") {
     throw new Error(
       "[mobile-build] iOS llama.cpp xcframework build requires a macOS host with Xcode. " +
-        "Either run on macOS or unset ELIZA_IOS_INCLUDE_LLAMA / ELIZA_IOS_INCLUDE_LLAMA.",
+        "Either run on macOS or unset ELIZA_IOS_INCLUDE_LLAMA / ELIZA_IOS_INCLUDE_LOCAL_LLAMA.",
     );
   }
 
@@ -3073,7 +3088,7 @@ async function ensureIosLlamaCppVendoredFramework({
   if (!packageDir) {
     throw new Error(
       "[mobile-build] llama-cpp-capacitor package not found in node_modules; " +
-        "either install it or unset ELIZA_IOS_INCLUDE_LLAMA / ELIZA_IOS_INCLUDE_LLAMA.",
+        "either install it or unset ELIZA_IOS_INCLUDE_LLAMA / ELIZA_IOS_INCLUDE_LOCAL_LLAMA.",
     );
   }
 

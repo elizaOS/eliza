@@ -11,6 +11,22 @@ The direct (non-store) build variant uses neither — it ships with inline
 hardened-runtime entitlements only (no App Sandbox), defined in
 [`electrobun.config.ts`](../electrobun.config.ts).
 
+## Review allowlist
+
+Store-facing Apple entitlement files are checked against
+[`../apple-store-entitlements.reviewed.json`](../apple-store-entitlements.reviewed.json).
+`bun run release:check` fails when a MAS or iOS source entitlement adds a key
+that is not in that manifest. `codesign-mas.mjs` also audits the signed MAS
+bundle entitlements after signing, and the iOS mobile overlay audits the
+generated entitlements after app-group substitution.
+
+Review-sensitive entitlements must be marked `reviewSensitive` with an
+`appReviewJustification` in the manifest. This currently covers Apple Events,
+`network.server`, Downloads read-write access, JIT/unsigned executable
+memory/library-validation exceptions, Family Controls, HealthKit,
+increased-memory-limit, and extended-virtual-addressing. Do not add or broaden
+those entries without reviewer sign-off and an updated justification.
+
 ## Signing order
 
 Apple TN2206 mandates inside-out signing: deepest binaries first, then

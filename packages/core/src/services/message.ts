@@ -2711,31 +2711,23 @@ function normalizeRawParsedForFieldRegistry(
 export function messageHandlerFromFieldResult(
 	result: ResponseHandlerResult,
 	fieldRun?: ResponseHandlerFieldRunResult,
-	runtimeContext?: { actions: ReadonlyArray<Pick<Action, "name">> },
+	runtimeContext?: {
+		actions: ReadonlyArray<Pick<Action, "name" | "similes">>;
+	},
 ): MessageHandlerResult {
 	const contexts = Array.isArray(result.contexts)
 		? result.contexts.map((context) => String(context).trim()).filter(Boolean)
 		: [];
-	const candidateActions = Array.isArray(result.candidateActionNames)
+	const rawCandidateActions = Array.isArray(result.candidateActionNames)
 		? result.candidateActionNames
 				.map((action) => String(action).trim())
 				.filter(Boolean)
 		: [];
-	// When the caller passes the runtime's `actions`, narrow the candidate set
-	// to those that are (a) registered actions OR (b) canonical control names
-	// (REPLY / IGNORE / STOP). All-bogus candidate lists collapse to length 0,
-	// which lets the routing logic below fall back to simple-reply when the
-	// only context is "simple". When no `runtimeContext` is provided, behaviour
-	// is unchanged (back-compat).
-	const validCandidateCount = runtimeContext
-		? candidateActions.filter((name) => {
-				const normalized = normalizeActionIdentifier(name);
-				if (canonicalPlannerControlActionName(normalized) !== null) return true;
-				return runtimeContext.actions.some(
-					(action) => normalizeActionIdentifier(action.name) === normalized,
-				);
-			}).length
-		: candidateActions.length;
+	const candidateActions = canonicalizeFieldCandidateActionNames(
+		rawCandidateActions,
+		runtimeContext,
+	);
+	const validCandidateCount = candidateActions.length;
 	const facts = Array.isArray(result.facts)
 		? result.facts.map((fact) => String(fact).trim()).filter(Boolean)
 		: [];
@@ -2826,6 +2818,43 @@ export function messageHandlerFromFieldResult(
 		plan,
 		...(extract ? { extract } : {}),
 	};
+}
+
+function canonicalizeFieldCandidateActionNames(
+	candidateActions: readonly string[],
+	runtimeContext:
+		| {
+				actions: ReadonlyArray<Pick<Action, "name" | "similes">>;
+		  }
+		| undefined,
+): string[] {
+	if (!runtimeContext) {
+		return candidateActions;
+	}
+
+	const actionLookup = new Map<string, string>();
+	for (const action of runtimeContext.actions) {
+		const identifiers = [action.name, ...(action.similes ?? [])];
+		for (const identifier of identifiers) {
+			const normalized = normalizeActionIdentifier(identifier);
+			if (!normalized || actionLookup.has(normalized)) continue;
+			actionLookup.set(normalized, action.name);
+		}
+	}
+
+	const seen = new Set<string>();
+	const canonical: string[] = [];
+	for (const candidate of candidateActions) {
+		const controlActionName = canonicalPlannerControlActionName(candidate);
+		const resolved =
+			controlActionName ??
+			actionLookup.get(normalizeActionIdentifier(candidate)) ??
+			null;
+		if (!resolved || seen.has(resolved)) continue;
+		seen.add(resolved);
+		canonical.push(resolved);
+	}
+	return canonical;
 }
 
 function parseMessageHandlerModelOutput(
