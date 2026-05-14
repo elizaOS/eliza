@@ -4022,7 +4022,7 @@
     },
     {
       "name": "TASKS",
-      "description": "Orchestrator surface for delegating coding work to dedicated sub-agents (claude / codex / opencode / gemini / aider). ",
+      "description": "Planner surface for orchestrator workspace operations and coding task delegation to dedicated coding sub-agents (claude / codex / opencode / gemini / aider). ",
       "parameters": [
         {
           "name": "action",
@@ -4086,6 +4086,14 @@
           "required": false,
           "schema": {
             "type": "string"
+          }
+        },
+        {
+          "name": "lockWorkdir",
+          "description": "When true, the supplied `workdir` is used verbatim and operator ",
+          "required": false,
+          "schema": {
+            "type": "boolean"
           }
         },
         {
@@ -4415,7 +4423,7 @@
           }
         }
       ],
-      "descriptionCompressed": "delegate coding work to a sub-agent (claude/codex/opencode/gemini/aider). action=spawn_agent for new work, send to talk to one, control to pause/resume, list_agents/history to read state",
+      "descriptionCompressed": "delegate coding work to a coding sub-agent (claude/codex/opencode/gemini/aider). action=spawn_agent for new work, send to talk to one, control to pause/resume, list_agents/history to read state",
       "similes": [
         "CREATE_AGENT_TASK",
         "CREATE_TASK",
@@ -4523,6 +4531,7 @@
               "agents": "example",
               "repo": "example",
               "workdir": "example",
+              "lockWorkdir": false,
               "memoryContent": "example",
               "label": "example",
               "approvalPreset": "readonly",
