@@ -1,6 +1,7 @@
 {
   "name": "@elizaos/ios-native-deps",
   "version": "0.1.0",
+  "private": true,
   "description": "iOS cross-build harness for native dependencies used by on-device runtimes: llama.cpp (LlamaCpp.xcframework via elizaOS/llama.cpp fork) and sqlite-vec.",
   "keywords": [
     "ios",
