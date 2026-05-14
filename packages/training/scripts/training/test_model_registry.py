@@ -64,7 +64,7 @@ def test_every_entry_has_publish_metadata() -> None:
     for key, public in zip(active_public_keys, VERIFIED_PUBLIC_NAMES):
         e = get(key)
         assert e.eliza_short_name == public
-        assert e.eliza_repo_id == "elizalabs/eliza-1"
+        assert e.eliza_repo_id == "elizaos/eliza-1"
         assert e.abliteration_repo_id == ""
 
 
@@ -126,6 +126,8 @@ def test_dflash_drafter_base_is_qwen3_5_for_qwen3_5_targets() -> None:
         "eliza-1-4b",
         "eliza-1-9b",
         "eliza-1-27b",
+        "eliza-1-27b-256k",
+        "eliza-1-27b-1m",
     ):
         assert DFLASH_DRAFTER_BASE[tier] == "Qwen/Qwen3.5-0.8B-Base"
     # Deprecated Qwen3 tiers have no drafter entries.

@@ -39,11 +39,11 @@
  *
  * Documented routing precedence for `TEXT_TO_SPEECH`:
  *
- *   1. **Local (`eliza-local-inference`)** — Kokoro on small tiers,
- *      OmniVoice on large tiers, per `ELIZA_1_VOICE_BACKENDS` in
- *      `@elizaos/shared/local-inference/catalog`. Selection is
- *      tier-aware via `services/voice/kokoro/runtime-selection.ts`.
- *      Always preferred when available.
+ *   1. **Local (`eliza-local-inference`)** — tier-aware Eliza-1 voice,
+ *      using the ordered `ELIZA_1_VOICE_BACKENDS` policy in
+ *      `@elizaos/shared/local-inference/catalog` (OmniVoice first where
+ *      bundled, Kokoro fallback where bundled). Always preferred when
+ *      available.
  *   2. **Eliza Cloud (`elizacloud`)** — managed cloud proxy. Picked when
  *      local is unavailable. Throws `CloudTtsUnavailableError` when
  *      cloud isn't connected, which the loop above catches and falls

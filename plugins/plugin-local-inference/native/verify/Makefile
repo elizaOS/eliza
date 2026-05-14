@@ -750,6 +750,15 @@ ELIZA_DFLASH_VULKAN_BIN_DIR := $(ELIZA_DFLASH_VULKAN_BUILD_BIN_DIR)
 endif
 endif
 
+DISPATCH_SMOKE_GGML_HEADERS := $(wildcard \
+    $(ELIZA_DFLASH_LLAMA_DIR)/ggml/include/ggml.h \
+    $(ELIZA_DFLASH_LLAMA_DIR)/ggml/include/ggml-alloc.h \
+    $(ELIZA_DFLASH_LLAMA_DIR)/ggml/include/ggml-backend.h \
+    $(ELIZA_DFLASH_LLAMA_DIR)/ggml/include/ggml-metal.h \
+    $(ELIZA_DFLASH_LLAMA_DIR)/ggml/include/ggml-vulkan.h \
+    $(ELIZA_DFLASH_LLAMA_DIR)/ggml/src/ggml-common.h)
+DISPATCH_SMOKE_REF_HEADERS := ../reference/turbo_kernels.h qjl_polar_ref.h
+
 dispatch-smoke: dispatch_smoke
 	@echo "[dispatch-smoke] running against $(ELIZA_DFLASH_METAL_BIN_DIR)"
 	GGML_METAL_PATH_RESOURCES=$(ELIZA_DFLASH_METAL_BIN_DIR) \
@@ -775,7 +784,7 @@ metal-upscale-probe-require: metal_upscale_probe
 	  DYLD_LIBRARY_PATH=$(ELIZA_DFLASH_METAL_BIN_DIR):$$DYLD_LIBRARY_PATH \
 	  ./metal_upscale_probe --require-metal-support
 
-dispatch_smoke: dispatch_smoke.mm $(REF_OBJ) $(QJL_POLAR_OBJ)
+dispatch_smoke: dispatch_smoke.mm $(REF_OBJ) $(QJL_POLAR_OBJ) $(DISPATCH_SMOKE_GGML_HEADERS) $(DISPATCH_SMOKE_REF_HEADERS)
 	@which xcrun >/dev/null 2>&1 || { echo "xcrun not found — Metal dispatch-smoke needs macOS Xcode tools."; exit 1; }
 	@if [ ! -f "$(ELIZA_DFLASH_METAL_BIN_DIR)/libggml-metal.dylib" ]; then \
 	    echo "[dispatch-smoke] missing $(ELIZA_DFLASH_METAL_BIN_DIR)/libggml-metal.dylib"; \

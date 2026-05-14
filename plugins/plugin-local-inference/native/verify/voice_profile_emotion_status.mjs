@@ -6,10 +6,29 @@ import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-const repoRoot = resolve(__dirname, "..", "..", "..");
+const pluginRoot = resolve(__dirname, "..", "..");
+const repoRoot = resolve(pluginRoot, "..", "..");
 
 function rel(path) {
-  return resolve(repoRoot, path);
+  const primary = resolve(repoRoot, path);
+  if (existsSync(primary)) return primary;
+  if (path.startsWith("packages/inference/reports/")) {
+    return resolve(
+      pluginRoot,
+      "native",
+      "reports",
+      path.slice("packages/inference/reports/".length),
+    );
+  }
+  if (path.startsWith("packages/inference/verify/")) {
+    return resolve(
+      pluginRoot,
+      "native",
+      "verify",
+      path.slice("packages/inference/verify/".length),
+    );
+  }
+  return primary;
 }
 
 function loadJson(path) {

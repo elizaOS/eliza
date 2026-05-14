@@ -10,15 +10,14 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-from collections.abc import Iterator, Mapping
-from contextlib import contextmanager
 import json
 import os
+from collections.abc import Iterator, Mapping
+from contextlib import contextmanager
 from pathlib import Path
 
 from elizaos_gaia.runner import run_quick_test
 from elizaos_gaia.types import GAIAConfig
-
 
 _RESEARCH_CAPABILITIES = {
     "research.web_search",

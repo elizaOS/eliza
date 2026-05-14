@@ -41,10 +41,12 @@ const orchestratorPluginPackageJsonPathCandidates = [
 ] as const;
 const autonomousServerPathCandidates = [
   "node_modules/@elizaos/agent/src/api/server.js",
+  "packages/agent/src/api/server.ts",
   "eliza/packages/agent/src/api/server.ts",
 ] as const;
 const autonomousElizaPathCandidates = [
   "node_modules/@elizaos/agent/src/runtime/eliza.js",
+  "packages/agent/src/runtime/eliza.ts",
   "eliza/packages/agent/src/runtime/eliza.ts",
 ] as const;
 const homepageReleaseDataPathCandidates = [
@@ -819,9 +821,9 @@ function assertOrchestratorVersionPinned() {
 
 function assertCloudAgentTemplateDependenciesUseWorkspace() {
   const cloudAgentPackage = JSON.parse(
-    readFileSync(
-      "eliza/packages/app-core/deploy/cloud-agent-template/package.json",
-      "utf8",
+    readExistingReleaseCheckFile(
+      "cloud agent template package.json",
+      cloudAgentTemplatePackageJsonPathCandidates,
     ),
   ) as RootPackageJson;
   const nonWorkspace = findNonWorkspaceDependencySpecs(
@@ -831,7 +833,7 @@ function assertCloudAgentTemplateDependenciesUseWorkspace() {
 
   if (nonWorkspace.length > 0) {
     console.error(
-      "release-check: eliza/packages/app-core/deploy/cloud-agent-template/package.json must use workspace:* for repo-local elizaOS dependencies. Materialize exact npm versions only at the deploy/publish boundary.",
+      "release-check: packages/app-core/deploy/cloud-agent-template/package.json must use workspace:* for repo-local elizaOS dependencies. Materialize exact npm versions only at the deploy/publish boundary.",
     );
     for (const dependency of nonWorkspace) {
       console.error(`  - ${dependency.name}: ${dependency.specifier}`);
@@ -845,7 +847,10 @@ function assertAgentDependenciesAlignedWithRootPins() {
     readFileSync("package.json", "utf8"),
   ) as RootPackageJson;
   const agentPackage = JSON.parse(
-    readFileSync("eliza/packages/agent/package.json", "utf8"),
+    readExistingReleaseCheckFile(
+      "agent package.json",
+      agentPackageJsonPathCandidates,
+    ),
   ) as RootPackageJson;
   const mismatches = findMismatchedSharedAgentDependencySpecs(
     rootPackage,
@@ -1189,9 +1194,9 @@ function assertWindowsInstallerProofScript() {
 }
 
 function assertInnoBuildScriptHasTimeoutAndHeartbeat() {
-  const script = readFileSync(
-    "eliza/packages/app-core/packaging/inno/build-inno.ps1",
-    "utf8",
+  const script = readExistingReleaseCheckFile(
+    "Inno Setup build script",
+    innoBuildScriptPathCandidates,
   );
   const requiredSnippets = [
     "$isccTimeout = [TimeSpan]::FromMinutes(25)",
@@ -1218,9 +1223,9 @@ function assertInnoBuildScriptHasTimeoutAndHeartbeat() {
 }
 
 function assertInnoTemplateTargetsBundledLauncher() {
-  const template = readFileSync(
-    "eliza/packages/app-core/packaging/inno/ElizaOSApp.iss",
-    "utf8",
+  const template = readExistingReleaseCheckFile(
+    "Inno Setup template",
+    innoTemplatePathCandidates,
   );
   const requiredSnippets = [
     '#define MyAppExeName "bin\\launcher.exe"',

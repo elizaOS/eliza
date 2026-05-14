@@ -82,18 +82,19 @@ import {
 } from "./omnivoice-fuse/prepare.mjs";
 import { verifyFusedSymbols } from "./omnivoice-fuse/verify-symbols.mjs";
 
-// elizaOS/llama.cpp @ bfab6689 — the unified fork that
+// elizaOS/llama.cpp @ 33c888a7b — the unified fork that
 // composes TBQ (turbo3/turbo4/turbo3_tcq) + QJL (block_qjl1_256,
 // GGML_OP_ATTN_SCORE_QJL, GGML_OP_FUSED_ATTN_QJL_TBQ) + Q4_POLAR (Q4_POLAR=47)
 // + the eliza Metal/Vulkan/CUDA kernels + DFlash spec-decode (--spec-type
 // dflash, the dflash-draft GGUF arch) + the post-refactor llama-server
 // (server-task.cpp / server-common.cpp with grammar_lazy / json_schema /
-// response_format / prefill_assistant) onto upstream b8198. Same repo + commit
+// response_format / prefill_assistant) onto upstream b9213. Same repo + commit
 // lineage as compile-libllama.mjs (AOSP cross-compile path) so both build
 // paths land on identical kernels.
 //
-// The fork ships in-tree as a git submodule at packages/inference/llama.cpp
-// (next to the kernel sources under packages/inference/{metal,vulkan,cuda}).
+// The fork ships in-tree as a git submodule at
+// plugins/plugin-local-inference/native/llama.cpp (next to the kernel sources
+// under plugins/plugin-local-inference/native/{metal,vulkan,cuda}).
 // `bun install` runs `git submodule update --init --recursive` so a fresh
 // checkout has it. The build defaults to that submodule checkout; set
 // ELIZA_DFLASH_LLAMA_CPP_REMOTE / _REF (or pass --cache-dir / --ref) to build
@@ -102,7 +103,7 @@ import { verifyFusedSymbols } from "./omnivoice-fuse/verify-symbols.mjs";
 const REMOTE =
   process.env.ELIZA_DFLASH_LLAMA_CPP_REMOTE ||
   "https://github.com/elizaOS/llama.cpp.git";
-const DEFAULT_REF = "bfab6689d7640db682b73f05a6af64b244a69dbd";
+const DEFAULT_REF = "33c888a7be0b0b8ffb54cd3f0e05b4bed20cc52e";
 const REF = process.env.ELIZA_DFLASH_LLAMA_CPP_REF || DEFAULT_REF;
 // The in-repo submodule checkout of the fork. When it is initialized this is
 // the default build source (no clone needed); see resolveSourceCheckout().
@@ -110,7 +111,10 @@ const SUBMODULE_DIR = path.resolve(
   __dirname,
   "..",
   "..",
-  "inference",
+  "..",
+  "plugins",
+  "plugin-local-inference",
+  "native",
   "llama.cpp",
 );
 // The fork is wired as a submodule unless the operator forces a standalone
@@ -131,6 +135,11 @@ const LEGACY_DFLASH_DRAFTER_REF =
 // CUDA kernel additions). The submodule checkout always satisfies this; the
 // check only matters for a standalone clone pinned at an older ref.
 const MIN_COMMIT = "7c7818aafc7599996268226e2e56099f4f38e972";
+// Minimum source fix for elizaOS/eliza#7635. Without this server-context
+// fallback, SWA-based target bodies whose seq-rm probe returns NO silently
+// disable `--spec-type dflash` at load time.
+const SWA_SPEC_DECODE_FALLBACK_COMMIT =
+  "2fdfa49b95f1e39f3c208a9d6d5bdfd7d1bf527d";
 const METAL_RUNTIME_DISPATCH_EVIDENCE = path.resolve(
   __dirname,
   "..",
@@ -1666,7 +1675,7 @@ function _defaultTarget() {
 }
 
 // True when `dir` is a git checkout we are not allowed to detach/reset/clone
-// over — i.e. the in-repo submodule at packages/inference/llama.cpp. (A
+// over — i.e. the in-repo llama.cpp submodule. (A
 // submodule's `.git` is a *file* containing `gitdir: ...`; a standalone clone's
 // `.git` is a directory.)
 function isSubmoduleCheckout(dir) {
@@ -1770,7 +1779,7 @@ function parseArgs(argv) {
           `Reconciled-out omnivoice ggml submodule: ${OMNIVOICE_GGML_REF}`,
           "See packages/app-core/scripts/omnivoice-fuse/README.md.",
           "",
-          "Source: by default the in-repo submodule packages/inference/llama.cpp",
+          "Source: by default the in-repo submodule plugins/plugin-local-inference/native/llama.cpp",
           `(elizaOS/llama.cpp @ ${REF}). Pass --ref / --cache-dir or set`,
           "ELIZA_DFLASH_LLAMA_CPP_REMOTE / _REF to build from a standalone clone",
           "(~/.cache/eliza-dflash/eliza-llama-cpp) instead.",
@@ -1853,7 +1862,7 @@ function ensureCheckout(cacheDir, ref) {
   console.log(
     `[dflash-build] checkout ${head}${
       isSubmoduleCheckout(cacheDir)
-        ? " (submodule packages/inference/llama.cpp)"
+        ? " (submodule plugins/plugin-local-inference/native/llama.cpp)"
         : ""
     }`,
   );
@@ -1879,6 +1888,33 @@ function ensureCheckout(cacheDir, ref) {
         `[dflash-build] warning: HEAD does not contain minimum known-good DFlash/SWA commit ${MIN_COMMIT}`,
       );
     }
+  }
+  const swaFallback = spawnSync(
+    "git",
+    ["merge-base", "--is-ancestor", SWA_SPEC_DECODE_FALLBACK_COMMIT, "HEAD"],
+    {
+      cwd: cacheDir,
+      stdio: "ignore",
+    },
+  );
+  if (swaFallback.status !== 0) {
+    const shallow = run("git", ["rev-parse", "--is-shallow-repository"], {
+      cwd: cacheDir,
+      capture: true,
+    });
+    if (shallow !== "true") {
+      console.warn(
+        `[dflash-build] warning: HEAD does not contain SWA spec-decode fallback commit ${SWA_SPEC_DECODE_FALLBACK_COMMIT}`,
+      );
+    }
+  }
+  if (!sourceContainsSwaSpecDecodeFallback(cacheDir)) {
+    throw new Error(
+      `[dflash-build] checkout ${head} lacks the SWA-aware seq_rm fallback ` +
+        `required for --spec-type dflash on SWA target bodies (elizaOS/eliza#7635). ` +
+        `Use plugins/plugin-local-inference/native/llama.cpp at ${DEFAULT_REF}, ` +
+        `or set ELIZA_DFLASH_LLAMA_CPP_REF to a commit containing ${SWA_SPEC_DECODE_FALLBACK_COMMIT}.`,
+    );
   }
   return head;
 }

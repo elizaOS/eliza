@@ -16,8 +16,8 @@ from elizaos_gaia.orchestrated import (
 )
 from elizaos_gaia.types import (
     GAIABenchmarkResults,
-    GAIAMetrics,
     GAIALevel,
+    GAIAMetrics,
     GAIAResult,
 )
 

@@ -26,6 +26,7 @@ import type {
 	StreamingTtsBackend,
 	TtsPcmChunk,
 } from "../types";
+} from "./voice-types";
 import type { KokoroRuntime } from "./kokoro-runtime";
 import { resolvePhonemizer } from "./phonemizer";
 import type {
