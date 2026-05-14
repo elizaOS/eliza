@@ -583,3 +583,61 @@ bun-install symlink/hoist behavior in CI (`bun install
 - `packages/app-core/vitest.config.ts` (subpath aliases)
 - `plugins/plugin-vision/src/*` (biome format pass on 11 files)
 
+---
+
+# AUTO-TEARDOWN-WIRER — landed 2026-05-13
+
+Delivered the "fine tune → fetch resources → shut down server" auto-loop for
+the eliza-1 multi-tier smoke. Files (already in HEAD as of 77662153f7, which
+swept them in alongside the WS6 scene-builder edits):
+
+- `packages/training/scripts/train_nebius_smoke_all_tiers.sh` — new multi-tier
+  driver. Provisions (or reuses) one Nebius H200 VM, syncs the slim training
+  tree + `data/final-eliza1-smoke/` once, then loops over
+  `TIERS="0_8b 2b 4b 9b 27b 27b-256k 27b-1m"` running `run_pipeline.py
+  --max-steps=$SMOKE_MAX_STEPS` (default 50) per tier. Per-tier failure does
+  NOT abort the loop by default (`ELIZA_SMOKE_CONTINUE_ON_FAIL=1`). EXIT trap
+  fetches any straggler tiers then runs `train_nebius.sh teardown` unless
+  `REUSE_EXISTING_VM=1` (auto-detected when a VM with the chosen name already
+  exists, e.g. `eliza-train-h200-main`).
+- `packages/training/scripts/nebius_watcher.sh` — extended with a
+  `WATCHER_MULTI_TIER_TAG` env flag. When set, polls a local
+  `MULTI_TIER_DONE` sentinel in `/tmp/smoke-all-${TAG}.log` instead of the
+  remote per-run log; `stop_remote_training` now C-c's both `elizatrain` and
+  `elizasmoke_*` tmux sessions. Single-run mode unchanged.
+- `packages/training/scripts/train_local.py` — APOLLO weights_only resume fix.
+  When `--resume-from-checkpoint` is set, registers
+  `apollo_torch.random_projector.GradientProjector` via
+  `torch.serialization.add_safe_globals` so the Trainer's optimizer-state
+  pickle load succeeds under PyTorch 2.6+ `weights_only=True`. Unblocks the
+  v5 resume path that crashed mid-load on 2026-05-12.
+- `packages/training/scripts/test_train_nebius_smoke_all_tiers.py` — 9 unit
+  tests: argparse for `--max-steps` + `--resume-from-checkpoint` in
+  train_local.py; presence of the safe-globals registration in source;
+  run_pipeline.py source-level argparse contract; `train_nebius.sh teardown`
+  invokes both `instance delete` and `disk delete` (in that order) against a
+  mocked `nebius` binary on PATH; `bash -n` on all three shell scripts; help
+  output of the multi-tier driver mentions every tier token. All 9 pass on
+  the local box (10.5s).
+
+## EXIT-trap control flow (5 lines)
+
+  1) arm trap before any provision/sync/loop work begins
+  2) on exit: iterate $TIERS, best-effort fetch any tier not already fetched
+  3) if REUSE_EXISTING_VM=1: log + skip teardown (VM is user-owned)
+  4) else: call `train_nebius.sh teardown` (delegates to nebius CLI deletes)
+  5) teardown errors are logged but do not block the second resource delete
+     (matches train_nebius.sh:615 `fetch || true; teardown || true`)
+
+## Still owed / out-of-scope
+
+- The smoke corpus at `packages/training/data/final-eliza1-smoke/` is the
+  SMOKE-CORPUS-BUILDER's deliverable — `train_nebius_smoke_all_tiers.sh`
+  fatal-errors if it's not populated.
+- No real H200 run has been exercised end-to-end yet; verification is
+  argparse + bash -n + mock-nebius teardown only.
+- The `--max-seq-len 1048576` for 27b-1m on a single H200 will OOM unless
+  the registry's quantization-after entry handles it; this is a smoke check
+  of the pipeline plumbing, not a viable training config — operators
+  validating real long-context runs must use the cloud 8×H200 preset.
+
