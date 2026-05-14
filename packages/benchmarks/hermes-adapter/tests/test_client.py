@@ -354,19 +354,19 @@ def test_client_health_reports_missing_openai(
     assert "openai not importable" in str(result["error"])
 
 
-def test_client_wait_until_ready_honors_env_timeout(
+def test_client_health_honors_probe_timeout_env(
     client_with_fake_venv: HermesClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     observed: list[float] = []
 
-    def _fake_health() -> dict[str, object]:
-        observed.append(1.0)
-        raise TimeoutError("stop")
+    def _fake_run(cmd: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        observed.append(float(kwargs["timeout"]))
+        raise subprocess.TimeoutExpired(cmd=cmd, timeout=float(kwargs["timeout"]))
 
-    monkeypatch.setenv("HERMES_READY_TIMEOUT_S", "5")
-    with patch.object(client_with_fake_venv, "health", side_effect=_fake_health):
-        with pytest.raises(TimeoutError, match="stop"):
-            client_with_fake_venv.wait_until_ready(timeout=0.05, poll=0.01)
+    monkeypatch.setenv("HERMES_HEALTH_PROBE_TIMEOUT_S", "9")
+    with patch("hermes_adapter.client.subprocess.run", side_effect=_fake_run):
+        result = client_with_fake_venv.health()
 
-    assert observed
+    assert result["status"] == "error"
+    assert observed == [9.0]

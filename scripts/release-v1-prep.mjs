@@ -27,7 +27,7 @@
  *   - The base-v1 evals: text perplexity vs upstream GGUF, voice RTF, ASR WER, VAD latency, dflash acceptance, e2e loop, 30-turn, mobile RSS/thermal (GPU + reference devices)
  *   - Acquiring the base weights + staging a full bundle (network host; stage_eliza1_bundle_assets.py / stage_eliza1_source_weights.py)
  *   - publish_all_eliza1.sh real upload (HF_TOKEN with write to elizalabs/*)
- *   - scripts/hf-transfer-eliza1.sh --execute (HF_TOKEN with write to milady-ai + elizaos)
+ *   - scripts/hf-transfer-eliza1.sh --execute (HF_TOKEN with write to milady-ai + elizalabs)
  *
  * Usage:
  *   bun run release:v1:prep            # run the no-HW steps, print the checklist
@@ -383,7 +383,7 @@ const REMAINING_HW = [
     "bash packages/training/scripts/publish_all_eliza1.sh --bundles-root <dir> --dry-run  (then drop --dry-run)",
   ],
   [
-    "Move legacy HF repos out of milady-ai into elizaos + create the per-tier bundle repos",
+    "Move legacy HF repos out of milady-ai into elizalabs + create the per-tier bundle repos",
     "HF_TOKEN with write access to BOTH milady-ai and elizalabs",
     "bash scripts/hf-transfer-eliza1.sh           (dry-run; then --execute)",
   ],
