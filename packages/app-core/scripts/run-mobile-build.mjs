@@ -33,13 +33,12 @@
  *   6. Native build         — gradlew / xcodebuild
  *
  * iOS targets:
- *   - ios         App Store iOS build. Ships the bundled no-JIT iOS Bun
- *                 runtime and local agent payload; llama.cpp remains omitted
- *                 unless ELIZA_IOS_INCLUDE_LLAMA is set.
+ *   - ios         App Store iOS cloud/client build. No local-yolo execution,
+ *                 no local agent payload, and no full Bun engine.
  *   - ios-local   Dev/sideload iOS build. Bakes runtimeMode=local with
  *                 ELIZA_RUNTIME_MODE=local-safe, stages the agent payload,
- *                 includes the full no-JIT Bun runtime, and defaults to
- *                 simulator validation.
+ *                 and defaults to JSContext/compat unless full Bun is
+ *                 explicitly requested.
  */
 import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
@@ -653,7 +652,7 @@ export function resolveMobileBuildPolicy(platform) {
     platform === "ios-local"
       ? "local"
       : platform === "ios"
-        ? "cloud-hybrid"
+        ? "cloud"
         : platform === "ios-overlay"
           ? "cloud"
           : null;
@@ -662,9 +661,9 @@ export function resolveMobileBuildPolicy(platform) {
       ? "cloud"
       : platform === "android" || platform === "android-system"
         ? "local-yolo"
-        : platform === "ios" || platform === "ios-local"
+        : platform === "ios-local"
           ? "local-safe"
-          : platform === "ios-overlay"
+          : platform === "ios" || platform === "ios-overlay"
             ? "cloud"
             : null;
   const buildVariant =
@@ -767,10 +766,9 @@ async function buildMobileAgentBundle({ target = "android" } = {}) {
 export function resolveIosAgentRuntimeAssetPlan({
   appStoreBuild = false,
 } = {}) {
-  void appStoreBuild;
   return {
-    agentAssets: IOS_AGENT_RUNTIME_ASSETS,
-    rootAssets: IOS_AGENT_ROOT_EXTENSION_ASSETS,
+    agentAssets: appStoreBuild ? null : IOS_AGENT_RUNTIME_ASSETS,
+    rootAssets: appStoreBuild ? [] : IOS_AGENT_ROOT_EXTENSION_ASSETS,
   };
 }
 
@@ -2466,7 +2464,10 @@ function shouldIncludeIosLlama(env = process.env) {
 }
 
 function shouldIncludeIosFullBunEngine(env = process.env) {
-  return !isIosAppStoreBuild(env) && isFullIosBunEngineRequested(env);
+  return (
+    isFullIosBunEngineRequested(env) ||
+    (isIosAppStoreBuild(env) && isIosAppStoreLocalRuntimeEnabled(env))
+  );
 }
 
 export function isIosAppStoreBuild(env = process.env) {
