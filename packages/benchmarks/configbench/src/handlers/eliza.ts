@@ -334,7 +334,7 @@ async function tryImportDeps(): Promise<boolean> {
  * model provider plugin the runtime cannot generate responses and the
  * sendMessage callback never fires.
  */
-async function loadModelProviderPlugin(): Promise<Plugin | null> {
+export async function loadModelProviderPlugin(): Promise<Plugin | null> {
   const explicit = (process.env.CONFIGBENCH_AGENT_PROVIDER ?? "")
     .trim()
     .toLowerCase();
@@ -399,31 +399,6 @@ async function loadModelProviderPlugin(): Promise<Plugin | null> {
           mod.default ??
           null) as Plugin | null;
         if (plugin) {
-          // Cerebras (api.cerebras.ai) has no /v1/embeddings endpoint.
-          // The openai plugin's TEXT_EMBEDDING handler 404s and blocks
-          // memory writes. Strip TEXT_EMBEDDING when the base URL points
-          // at cerebras so the local-embedding fallback can take over.
-          const baseUrl = process.env.OPENAI_BASE_URL?.trim() ?? "";
-          const isCerebras = /(^|\.)cerebras\.ai(\/|$)/i.test(baseUrl);
-          if (
-            isCerebras &&
-            plugin.models &&
-            "TEXT_EMBEDDING" in plugin.models
-          ) {
-            const filteredModels = { ...plugin.models } as Record<
-              string,
-              unknown
-            >;
-            delete filteredModels.TEXT_EMBEDDING;
-            const filteredPlugin: Plugin = {
-              ...plugin,
-              models: filteredModels as typeof plugin.models,
-            };
-            console.log(
-              "[ElizaHandler] Loaded model provider plugin: openai (TEXT_EMBEDDING stripped — cerebras base URL detected)",
-            );
-            return filteredPlugin;
-          }
           console.log("[ElizaHandler] Loaded model provider plugin: openai");
           return plugin;
         }
