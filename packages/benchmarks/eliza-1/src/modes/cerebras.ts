@@ -243,7 +243,7 @@ function buildAttempts(args: {
     {
       kind: "tool-use",
       request: {
-        model: this.model,
+        model: args.model,
         max_tokens: args.maxTokens,
         temperature: 0,
         messages: args.messages,
