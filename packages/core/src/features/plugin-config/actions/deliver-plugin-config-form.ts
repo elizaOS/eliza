@@ -94,7 +94,8 @@ export const deliverPluginConfigFormAction: Action = {
 		},
 		{
 			name: "reason",
-			description: "Optional human-readable rationale embedded in each request.",
+			description:
+				"Optional human-readable rationale embedded in each request.",
 			required: false,
 			schema: { type: "string" as const },
 		},

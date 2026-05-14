@@ -37,8 +37,7 @@ export const channelPrivacyClassProvider: Provider = {
 	): Promise<ProviderResult> => {
 		const channelType = message.content.channelType;
 		const channelPrivacy = classifySensitiveRequestSource({
-			channelType:
-				typeof channelType === "string" ? channelType : undefined,
+			channelType: typeof channelType === "string" ? channelType : undefined,
 		});
 		const channelId =
 			typeof message.roomId === "string" ? message.roomId : undefined;
