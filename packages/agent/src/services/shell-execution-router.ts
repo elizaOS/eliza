@@ -16,6 +16,9 @@
  */
 
 import { spawn } from "node:child_process";
+import type { Dirent } from "node:fs";
+import fsp from "node:fs/promises";
+import path from "node:path";
 import process from "node:process";
 import {
   type RuntimeExecutionMode,
@@ -23,6 +26,8 @@ import {
 } from "@elizaos/shared";
 import { CapabilityBroker } from "./capability-broker.ts";
 import type { SandboxManager } from "./sandbox-manager.ts";
+import { isVfsUri, runVfsBuiltinShell } from "./vfs-builtin-shell.ts";
+import { createVirtualFilesystemService } from "./virtual-filesystem.ts";
 
 export type ShellExecutionMode = RuntimeExecutionMode;
 
@@ -32,6 +37,7 @@ export type ShellSandboxBackend =
   | "apple-container"
   | "wsl2"
   | "appcontainer"
+  | "vfs"
   | "none";
 
 export interface ShellRequest {
@@ -66,6 +72,16 @@ export interface ShellRouterContext {
    * so callers in local-yolo mode never pay for sandbox-engine imports.
    */
   resolveSandboxManager?: () => Promise<SandboxManager | null>;
+}
+
+interface ParsedVfsShellCwd {
+  projectId: string;
+  virtualPath: string;
+}
+
+interface VfsAwareSandboxManager extends SandboxManager {
+  getWorkspaceRoot?: () => string;
+  getContainerWorkspacePath?: (hostPath: string) => string | null;
 }
 
 export function resolveShellExecutionMode(
@@ -217,6 +233,124 @@ async function runInSandbox(
     stderr: result.stderr,
     durationMs: result.durationMs,
     sandbox: backendForSandboxManager(manager),
+  };
+}
+
+async function runVfsInSandbox(
+  req: ShellRequest,
+  cwd: ParsedVfsShellCwd,
+  manager: SandboxManager,
+): Promise<ShellResult> {
+  const vfsManager = manager as VfsAwareSandboxManager;
+  const workspaceRoot = vfsManager.getWorkspaceRoot?.();
+  if (!workspaceRoot) {
+    throw new Error(
+      "[shell-router] VFS sandbox execution requires SandboxManager.getWorkspaceRoot()",
+    );
+  }
+
+  const vfs = createVirtualFilesystemService({ projectId: cwd.projectId });
+  await vfs.initialize();
+  const materializedRoot = path.join(
+    workspaceRoot,
+    "vfs-projects",
+    cwd.projectId,
+    "files",
+  );
+  await fsp.rm(materializedRoot, { recursive: true, force: true });
+  await fsp.mkdir(materializedRoot, { recursive: true, mode: 0o700 });
+  await copyDirectoryContents(vfs.filesRoot, materializedRoot);
+
+  const hostCwd = path.resolve(
+    materializedRoot,
+    cwd.virtualPath.replace(/^\/+/, ""),
+  );
+  await fsp.mkdir(hostCwd, { recursive: true, mode: 0o700 });
+  const sandboxCwd =
+    vfsManager.getContainerWorkspacePath?.(hostCwd) ??
+    `/workspace/${path
+      .relative(workspaceRoot, hostCwd)
+      .replace(/\\/g, "/")
+      .replace(/^\/+/, "")}`;
+
+  const result = await runInSandbox(
+    {
+      ...req,
+      cwd: sandboxCwd,
+    },
+    manager,
+  );
+  await importMaterializedTree(vfs, materializedRoot);
+  return result;
+}
+
+async function copyDirectoryContents(from: string, to: string): Promise<void> {
+  try {
+    await fsp.cp(from, to, {
+      recursive: true,
+      force: true,
+      errorOnExist: false,
+      dereference: false,
+    });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
+}
+
+async function importMaterializedTree(
+  vfs: ReturnType<typeof createVirtualFilesystemService>,
+  root: string,
+): Promise<void> {
+  const nextFiles = new Map<string, Buffer>();
+  await walkMaterialized(root, root, nextFiles);
+
+  const currentFiles = await vfs.exportFiles();
+  for (const file of currentFiles) {
+    const normalized = file.path.replace(/^\/+/, "");
+    if (!nextFiles.has(normalized)) {
+      await vfs.delete(normalized);
+    }
+  }
+  for (const [virtualPath, bytes] of nextFiles) {
+    await vfs.writeFile(virtualPath, bytes);
+  }
+}
+
+async function walkMaterialized(
+  root: string,
+  dir: string,
+  files: Map<string, Buffer>,
+): Promise<void> {
+  let entries: Dirent[];
+  try {
+    entries = await fsp.readdir(dir, { withFileTypes: true });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+    throw error;
+  }
+  for (const entry of entries) {
+    const absolute = path.join(dir, entry.name);
+    if (entry.isSymbolicLink()) {
+      throw new Error(`VFS sandbox import rejects symlink: ${absolute}`);
+    }
+    if (entry.isDirectory()) {
+      await walkMaterialized(root, absolute, files);
+      continue;
+    }
+    if (!entry.isFile()) continue;
+    const virtualPath = path.relative(root, absolute).replace(/\\/g, "/");
+    files.set(virtualPath, await fsp.readFile(absolute));
+  }
+}
+
+function parseVfsShellCwd(value: string): ParsedVfsShellCwd {
+  const parsed = new URL(value);
+  if (parsed.protocol !== "vfs:" || !parsed.hostname) {
+    throw new Error(`Invalid VFS uri: ${value}`);
+  }
+  return {
+    projectId: parsed.hostname,
+    virtualPath: decodeURIComponent(parsed.pathname || "/"),
   };
 }
 
