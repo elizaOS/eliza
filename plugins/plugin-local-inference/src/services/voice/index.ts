@@ -83,6 +83,7 @@ export {
 	TURNSENSE_HF_REPO,
 	TurnsenseEotClassifier,
 	type TurnsenseEotClassifierOptions,
+	turnDetectorRevisionForTier,
 	turnSignalFromProbability,
 	type VoiceNextSpeaker,
 	type VoiceTurnSignal,
@@ -183,6 +184,54 @@ export {
 	type SharedTokenizer,
 } from "./shared-resources";
 export {
+	isOutlier,
+	VOICE_PROFILE_RECORD_SCHEMA_VERSION,
+	VoiceProfileStore,
+	type VoiceImprintMatchHandle,
+	type VoiceProfileAudioRef,
+	type VoiceProfileConsentState,
+	type VoiceProfileObservation,
+	type VoiceProfileRecord,
+	type VoiceProfileStoreOptions,
+	welfordUpdate,
+	welfordVariance,
+} from "./profile-store";
+export {
+	classifyFramesToSegments,
+	type Diarizer,
+	type DiarizerOutput,
+	DiarizerUnavailableError,
+	type LocalSpeakerSegment,
+	PYANNOTE_CLASS_COUNT,
+	PYANNOTE_CLASS_TO_SPEAKERS,
+	PYANNOTE_FRAME_STRIDE_MS,
+	PYANNOTE_FRAMES_PER_WINDOW,
+	PYANNOTE_SAMPLE_RATE,
+	PYANNOTE_SEGMENTATION_3_FP32_MODEL_ID,
+	PYANNOTE_SEGMENTATION_3_INT8_MODEL_ID,
+	PYANNOTE_WINDOW_SECONDS,
+	type PyannoteDiarizerModelId,
+	PyannoteDiarizer,
+} from "./speaker/diarizer";
+export {
+	averageEmbeddings,
+	type SpeakerEncoder,
+	SpeakerEncoderUnavailableError,
+	WESPEAKER_EMBEDDING_DIM,
+	WESPEAKER_MIN_SAMPLES,
+	WESPEAKER_RESNET34_LM_FP32_MODEL_ID,
+	WESPEAKER_RESNET34_LM_INT8_MODEL_ID,
+	WESPEAKER_SAMPLE_RATE,
+	WespeakerEncoder,
+	type WespeakerModelId,
+} from "./speaker/encoder";
+export {
+	VoiceAttributionPipeline,
+	type VoiceAttributionOutput,
+	type VoiceAttributionPipelineDeps,
+	type VoiceAttributionRequest,
+} from "./speaker/attribution-pipeline";
+export {
 	type AttributedVoiceObservation,
 	attributeVoiceImprintObservations,
 	cosineSimilarity,
@@ -255,6 +304,25 @@ export {
 	vadProviderOrder,
 } from "./vad";
 export {
+	type AllocationPriority,
+	assessVoiceBundleFits,
+	BudgetExhaustedError,
+	type BudgetReservation,
+	createVoiceBudget,
+	createVoiceBudgetForTest,
+	DEFAULT_VOICE_BUNDLE_RESERVE_MB,
+	pickVoiceTierSlot,
+	priorityClassForRole,
+	type ReservationSnapshot,
+	VOICE_ENSEMBLE_BUDGETS,
+	type VoiceBudget,
+	type VoiceBundleFitDecision,
+	type VoiceEnsembleBudget,
+	type VoiceTierSlot,
+	voiceEnsemblePeakMb,
+	voiceEnsembleSteadyStateMb,
+} from "./voice-budget";
+export {
 	readVoicePresetFile,
 	VOICE_PRESET_HEADER_BYTES,
 	VOICE_PRESET_MAGIC,
@@ -281,6 +349,15 @@ export {
 	verifyVoiceProfileArtifact,
 } from "./voice-profile-artifact";
 export {
+	DEFAULT_VOICE_SETTINGS,
+	effectiveBackendMode,
+	qualityPresetQuantizationRanking,
+	resolveVoiceSettings,
+	type VoiceBackendMode,
+	type VoiceModelQualityPreset,
+	type VoiceSettings,
+} from "./voice-settings";
+export {
 	type DrafterAbortReason,
 	type DrafterHandle,
 	type StartDrafterFn,
@@ -290,34 +367,6 @@ export {
 	type VoiceStateMachineEvents,
 	type VoiceStateMachineOptions,
 } from "./voice-state-machine";
-export {
-	type AllocationPriority,
-	assessVoiceBundleFits,
-	BudgetExhaustedError,
-	type BudgetReservation,
-	createVoiceBudget,
-	createVoiceBudgetForTest,
-	DEFAULT_VOICE_BUNDLE_RESERVE_MB,
-	pickVoiceTierSlot,
-	priorityClassForRole,
-	type ReservationSnapshot,
-	VOICE_ENSEMBLE_BUDGETS,
-	type VoiceBudget,
-	type VoiceBundleFitDecision,
-	type VoiceEnsembleBudget,
-	voiceEnsemblePeakMb,
-	voiceEnsembleSteadyStateMb,
-	type VoiceTierSlot,
-} from "./voice-budget";
-export {
-	DEFAULT_VOICE_SETTINGS,
-	effectiveBackendMode,
-	qualityPresetQuantizationRanking,
-	resolveVoiceSettings,
-	type VoiceBackendMode,
-	type VoiceModelQualityPreset,
-	type VoiceSettings,
-} from "./voice-settings";
 export {
 	isPlaceholderWakeWordHead,
 	loadBundledWakeWordModel,
