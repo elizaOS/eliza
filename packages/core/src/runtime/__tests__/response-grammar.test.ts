@@ -1276,6 +1276,7 @@ describe("buildPlannerParamsSkeleton — typed number/boolean span kinds", () =>
 	});
 });
 
+
 describe("buildBoundedNumberRule — integer and float range constraints", () => {
 	it("emits a rule with alternation for closed integer range [0, 5]", () => {
 		clearResponseGrammarCache();
@@ -1293,11 +1294,10 @@ describe("buildBoundedNumberRule — integer and float range constraints", () =>
 		expect(result).not.toBeNull();
 		if (!result) return;
 		// The grammar should contain alternation with the bounded values.
-		// Check for at least the edge cases.
-		expect(result.grammar).toContain('"0"');
-		expect(result.grammar).toContain('"5"');
-		// The bounded rule should be referenced in the grammar.
-		expect(result.grammar).toContain("_bounded");
+		// Check that the bounded rule is present and references both 0 and 5.
+		expect(result.grammar).toContain("_count_bounded");
+		expect(result.grammar).toContain('"\\\"0\\\""');
+		expect(result.grammar).toContain('"\\\"5\\\""');
 	});
 
 	it("emits a rule with alternation for closed integer range [0, 100]", () => {
@@ -1316,12 +1316,12 @@ describe("buildBoundedNumberRule — integer and float range constraints", () =>
 		expect(result).not.toBeNull();
 		if (!result) return;
 		// For 0-100 (101 values), still under the 200 threshold, so expect direct alternation.
-		expect(result.grammar).toContain("_bounded");
-		// Should have the edge values.
-		expect(result.grammar).toContain('"0"');
-		expect(result.grammar).toContain('"100"');
+		expect(result.grammar).toContain("_count_bounded");
+		// Should have the edge values in JSON-encoded GBNF format.
+		expect(result.grammar).toContain('"\\\"0\\\""');
+		expect(result.grammar).toContain('"\\\"100\\\""');
 		// Spot-check a middle value exists.
-		expect(result.grammar).toContain('"50"');
+		expect(result.grammar).toContain('"\\\"50\\\""');
 	});
 
 	it("handles negative and positive integers in [−10, 10]", () => {
@@ -1340,10 +1340,10 @@ describe("buildBoundedNumberRule — integer and float range constraints", () =>
 		expect(result).not.toBeNull();
 		if (!result) return;
 		// Should contain negative and positive edge values.
-		expect(result.grammar).toContain('"-10"');
-		expect(result.grammar).toContain('"10"');
-		expect(result.grammar).toContain('"0"');
-		expect(result.grammar).toContain('"-1"');
+		expect(result.grammar).toContain('"\\"-10\\\""');
+		expect(result.grammar).toContain('"\\\"10\\\""');
+		expect(result.grammar).toContain('"\\\"0\\\""');
+		expect(result.grammar).toContain('"\\"-1\\\""');
 	});
 
 	it("falls back to jsonnumber for unbounded number (no min/max)", () => {
@@ -1365,7 +1365,7 @@ describe("buildBoundedNumberRule — integer and float range constraints", () =>
 		expect(result.grammar).toContain("jsonnumber");
 		// Should not emit a _bounded rule for this parameter.
 		const lines = result.grammar.split("\n");
-		const boundedLines = lines.filter((l) => l.includes("_bounded"));
+		const boundedLines = lines.filter((l) => l.includes("_value_bounded"));
 		expect(boundedLines.length).toBe(0);
 	});
 
