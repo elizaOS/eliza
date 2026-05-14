@@ -115,9 +115,12 @@ let _localInferenceRoutes:
   | typeof import("@elizaos/plugin-local-inference/routes")
   | undefined;
 async function getLocalInferenceRoutes() {
-  return (_localInferenceRoutes ??= await import(
-    "@elizaos/plugin-local-inference/routes"
-  ));
+  if (!_localInferenceRoutes) {
+    _localInferenceRoutes = await import(
+      "@elizaos/plugin-local-inference/routes"
+    );
+  }
+  return _localInferenceRoutes;
 }
 
 import {
@@ -162,7 +165,7 @@ const lazyEnsureTTS = () =>
     (m) => m.ensureTextToSpeechHandler,
   );
 
-const LOCAL_TTS_PROVIDER_IDS = [
+const _LOCAL_TTS_PROVIDER_IDS = [
   "eliza-local-inference",
   "capacitor-llama",
   "eliza-device-bridge",
@@ -671,10 +674,8 @@ async function handleCompatRoute(
   // Local-inference compat routes — loaded via lazy getter to avoid a static
   // boundary violation (app-core must not statically import plugin packages).
   {
-    const {
-      handleLocalInferenceCompatRoutes,
-      handleLocalInferenceTtsRoute,
-    } = await getLocalInferenceRoutes();
+    const { handleLocalInferenceCompatRoutes, handleLocalInferenceTtsRoute } =
+      await getLocalInferenceRoutes();
     if (await handleLocalInferenceCompatRoutes(req, res, state)) return true;
     if (await handleLocalInferenceTtsRoute(req, res, state)) return true;
   }

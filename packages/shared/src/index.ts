@@ -9,6 +9,7 @@ export * from "./api/http-helpers.js";
 export * from "./api/route-helpers.js";
 // Leaf modules (no internal collisions)
 export * from "./app-hero-art.js";
+export * from "./cli/parse-duration.js";
 // Awareness + themes barrels
 export * from "./awareness/index.js";
 // Re-export moved app-core modules so consumers can import the package barrel.
