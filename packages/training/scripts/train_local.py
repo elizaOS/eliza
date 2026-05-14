@@ -224,6 +224,22 @@ def main() -> int:
     ap.add_argument("--run-name", default="qwen35-eliza-native")
     ap.add_argument("--max-samples", type=int, default=0)
     ap.add_argument("--epochs", type=float, default=3.0)
+    ap.add_argument(
+        "--max-steps", type=int, default=0,
+        help="Hard cap on training steps. 0 = use --epochs. Use this to "
+             "budget-bound a run when wall-clock matters more than completing "
+             "an epoch (e.g. 1500 steps fits a 12h H200 budget at ~25 s/iter "
+             "with eval passes; see 2026-05-13 v4 incident in .swarm/STATUS.md).",
+    )
+    ap.add_argument(
+        "--resume-from-checkpoint", default=None,
+        help="Resume SFT from an existing checkpoint dir (e.g. "
+             "checkpoints/eliza-1-0_8b-apollo-fullcorpus-h200-1778619044/"
+             "checkpoint-1000). The Trainer restores model + optimizer + LR "
+             "scheduler + global_step from the checkpoint; combine with "
+             "--max-steps to extend training past the original cap. Path "
+             "forwarded to Trainer.train(resume_from_checkpoint=...).",
+    )
     ap.add_argument("--batch-size", type=int, default=4)
     ap.add_argument("--grad-accum", type=int, default=8)
     ap.add_argument("--lr", type=float, default=2e-4)
@@ -508,6 +524,7 @@ def main() -> int:
     sft_cfg = SFTConfig(
         output_dir=str(out_dir),
         num_train_epochs=args.epochs,
+        max_steps=args.max_steps if args.max_steps > 0 else -1,
         per_device_train_batch_size=args.batch_size,
         per_device_eval_batch_size=max(1, args.batch_size // 2),
         gradient_accumulation_steps=args.grad_accum,
@@ -680,7 +697,11 @@ def main() -> int:
         )))
         log.info("instrumentation enabled, budget=%.0fGB", args.memory_budget_gb)
 
-    trainer.train()
+    trainer.train(
+        resume_from_checkpoint=args.resume_from_checkpoint
+        if args.resume_from_checkpoint
+        else None,
+    )
     trainer.save_model(str(out_dir / "final"))
     tokenizer.save_pretrained(str(out_dir / "final"))
     log.info("done. full-parameter APOLLO checkpoint at %s", out_dir / "final")

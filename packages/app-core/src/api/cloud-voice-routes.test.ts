@@ -232,7 +232,9 @@ describe("GET /api/cloud/voices", () => {
     );
     expect(handled).toBe(true);
     expect(captured.status).toBe(401);
-    expect(JSON.parse(captured.body ?? "{}")).toEqual({ error: "Unauthorized" });
+    expect(JSON.parse(captured.body ?? "{}")).toEqual({
+      error: "Unauthorized",
+    });
     expect(counts.fetchCatalog).toBe(0);
   });
 });

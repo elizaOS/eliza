@@ -348,7 +348,8 @@ def print_calibration_report(report: dict[str, Any]) -> None:
         if row.get("calibration_status") not in {"valid"}
         or row.get("missing_required_real_harnesses")
         or row.get("failed_required_real_harnesses")
-        or row.get("real_pattern") in {"all_real_zero", "all_real_one", "all_real_equal"}
+        or row.get("real_pattern")
+        in {"all_real_zero", "all_real_one", "all_real_equal", "single_real_zero", "single_real_one"}
         or str(row.get("real_pattern") or "").endswith("_mixed_config")
         or row.get("non_leaderboard_db_labels")
     ]

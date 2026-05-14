@@ -166,12 +166,8 @@ class ElizaServerManager:
             "ELIZA_BENCH_PORT": str(self.port),
             "ELIZA_BENCH_TOKEN": self._token,
         }
-        # Benchmark adapters exercise planning/tool behavior, not retrieval.
-        # Most developer machines and CI runners do not have an active Eliza-1
-        # local inference backend, but runtime initialization still requests a
-        # TEXT_EMBEDDING handler. Default to the benchmark server's explicit
-        # zero-vector stand-in unless a caller opts out by overriding the env.
-        env.setdefault("ELIZA_BENCH_ALLOW_STUB_EMBEDDING", "1")
+        # Do not default ELIZA_BENCH_ALLOW_STUB_EMBEDDING here. Stub embeddings
+        # are diagnostic-only and must be explicitly set by the caller.
         if env.get("ELIZA_BENCH_MOCK") == "true":
             for key in (
                 "GROQ_API_KEY",

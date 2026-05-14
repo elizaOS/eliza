@@ -116,6 +116,7 @@ export function AdvancedToggle(props: AdvancedToggleProps) {
   );
 
   return (
+    // biome-ignore lint/a11y/noLabelWithoutControl: Switch (RadixUI) is a button control with role=switch; the wrapping label propagates clicks and the aria-label binds it
     <label
       className={
         className ??

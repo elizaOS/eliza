@@ -280,17 +280,9 @@ def _default_env(workspace_root: Path, request: RunRequest) -> dict[str, str]:
     env.setdefault("ELIZA_CONVERSATION_COMPACTOR", "structured-state")
     env.setdefault("MAX_CONVERSATION_TOKENS", "120000")
     env.setdefault("BENCHMARK_CAPTURE_TRAJECTORIES", "1")
-    # The TS benchmark bridge probes TEXT_EMBEDDING during runtime startup.
-    # Most Cerebras matrix machines do not have a local Eliza-1 embedding
-    # backend active, so make the benchmark-mode zero-vector stand-in explicit
-    # for orchestrated runs. Operators can still force real local inference by
-    # exporting ELIZA_BENCH_ALLOW_STUB_EMBEDDING=0.
-    if env.get("ELIZA_BENCH_ALLOW_STUB_EMBEDDING", "").strip().lower() not in {
-        "0",
-        "false",
-        "no",
-    }:
-        env["ELIZA_BENCH_ALLOW_STUB_EMBEDDING"] = "1"
+    # Do not default ELIZA_BENCH_ALLOW_STUB_EMBEDDING here. Stub embeddings are
+    # useful for smoke diagnostics, but any run using them is not release
+    # evidence; callers must opt in explicitly.
     if provider in PROVIDER_DUMMY_KEY:
         provider_key = PROVIDER_KEY_ENV.get(provider)
         if provider_key and not env.get(provider_key):

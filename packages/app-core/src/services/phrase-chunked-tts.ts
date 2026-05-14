@@ -28,9 +28,9 @@
  */
 
 import type {
-	AcceptedToken,
-	Phrase,
-	PhraseChunkerConfig,
+  AcceptedToken,
+  Phrase,
+  PhraseChunkerConfig,
 } from "@elizaos/plugin-local-inference/services";
 import { PhraseChunker } from "@elizaos/plugin-local-inference/services";
 

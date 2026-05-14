@@ -303,7 +303,7 @@
       "@elizaos/plugin-github": ["./plugins/plugin-github/dist/index.d.ts"],
       "@elizaos/plugin-wechat": ["./plugins/plugin-wechat/dist/index.d.ts"],
       "@elizaos/plugin-local-inference": [
-        "./plugins/plugin-local-inference/dist/index.d.ts"
+        "./plugins/plugin-local-inference/src/index.ts"
       ],
       "@elizaos/app-task-coordinator": [
         "./plugins/app-task-coordinator/dist/index.d.ts"

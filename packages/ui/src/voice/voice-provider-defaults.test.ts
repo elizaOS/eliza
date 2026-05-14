@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
-  pickDefaultVoiceProvider,
   type PresetPlatform,
   type PresetRuntimeMode,
+  pickDefaultVoiceProvider,
 } from "./voice-provider-defaults";
 
 describe("pickDefaultVoiceProvider", () => {
