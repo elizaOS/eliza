@@ -394,7 +394,9 @@ function extractPcmTranscriptionParams(
 			"[local-inference] TRANSCRIPTION { pcm } requires a positive sampleRateHz",
 		);
 	}
-	return { pcm: record.pcm, sampleRate, signal: record.signal };
+	return record.signal
+		? { pcm: record.pcm, sampleRate, signal: record.signal }
+		: { pcm: record.pcm, sampleRate };
 }
 
 function extractTranscriptionSignal(params: unknown): AbortSignal | undefined {
@@ -532,11 +534,11 @@ function createTranscriptionHandler() {
 			return transcript;
 		}
 		if (typeof service.transcribePcm === "function") {
+			const pcmParams = extractPcmTranscriptionParams(params);
 			const transcript = normalizeTranscript(
-				await service.transcribePcm(
-					extractPcmTranscriptionParams(params),
-					signal,
-				),
+				await (signal
+					? service.transcribePcm(pcmParams, signal)
+					: service.transcribePcm(pcmParams)),
 			);
 			throwIfAborted(signal);
 			return transcript;
@@ -608,12 +610,8 @@ function tryGetImageGenArbiter(
 	return null;
 }
 
-function paramsToVisionRequest(
-	params: ImageDescriptionParams | string,
-): {
-	image:
-		| { kind: "dataUrl"; dataUrl: string }
-		| { kind: "url"; url: string };
+function paramsToVisionRequest(params: ImageDescriptionParams | string): {
+	image: { kind: "dataUrl"; dataUrl: string } | { kind: "url"; url: string };
 	prompt?: string;
 } {
 	const url = typeof params === "string" ? params : params.imageUrl;
@@ -748,7 +746,10 @@ function paramsToImageGenRequest(
 	}
 	const out: ProviderImageGenRequest = { prompt: params.prompt };
 	if (typeof params.size === "string" && /^\d+x\d+$/i.test(params.size)) {
-		const [w, h] = params.size.toLowerCase().split("x").map((n) => Number(n));
+		const [w, h] = params.size
+			.toLowerCase()
+			.split("x")
+			.map((n) => Number(n));
 		if (Number.isFinite(w) && w > 0) out.width = w;
 		if (Number.isFinite(h) && h > 0) out.height = h;
 	}
@@ -770,7 +771,10 @@ function paramsToImageGenRequest(
 	if (typeof extended.steps === "number" && extended.steps > 0) {
 		out.steps = Math.floor(extended.steps);
 	}
-	if (typeof extended.guidanceScale === "number" && extended.guidanceScale >= 0) {
+	if (
+		typeof extended.guidanceScale === "number" &&
+		extended.guidanceScale >= 0
+	) {
 		out.guidanceScale = extended.guidanceScale;
 	}
 	if (typeof extended.seed === "number" && Number.isFinite(extended.seed)) {
@@ -827,8 +831,9 @@ function createImageGenerationHandler() {
 		// `LOCAL_INFERENCE_ACTIVE_TIER` setting; otherwise the safe
 		// small-tier default. Callers that want to pin a specific
 		// diffusion model pass `modelKey` through the params extension.
-		const modelKeyCandidate =
-			(params as ImageGenerationParams & { modelKey?: unknown }).modelKey;
+		const modelKeyCandidate = (
+			params as ImageGenerationParams & { modelKey?: unknown }
+		).modelKey;
 		const modelKey =
 			typeof modelKeyCandidate === "string" && modelKeyCandidate
 				? modelKeyCandidate

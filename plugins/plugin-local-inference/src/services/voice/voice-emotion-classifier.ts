@@ -143,11 +143,15 @@ export function projectVadToExpressiveEmotion(vad: VoiceEmotionVad): {
 	};
 
 	// happy   — high V, mid-high A, mid D.
-	scores.happy = clamp01(0.5 + vC * 1.4 + Math.max(0, aC) * 0.8 - Math.abs(dC) * 0.4);
+	scores.happy = clamp01(
+		0.5 + vC * 1.4 + Math.max(0, aC) * 0.8 - Math.abs(dC) * 0.4,
+	);
 	// excited — high V, very high A.
 	scores.excited = clamp01(0.4 + vC * 0.9 + aC * 1.8);
 	// calm    — high-mid V, low A, mid D.
-	scores.calm = clamp01(0.5 + Math.max(0, vC) * 0.8 - aC * 1.6 - Math.abs(dC) * 0.4);
+	scores.calm = clamp01(
+		0.5 + Math.max(0, vC) * 0.8 - aC * 1.6 - Math.abs(dC) * 0.4,
+	);
 	// sad     — low V, low A, low D.
 	scores.sad = clamp01(0.5 - vC * 1.6 - aC * 0.8 - dC * 0.6);
 	// angry   — low V, high A, high D.
@@ -185,7 +189,10 @@ export class VoiceEmotionClassifier {
 	private inputName: string | null = null;
 
 	constructor(options: VoiceEmotionClassifierOptions) {
-		if (typeof options.modelPath !== "string" || options.modelPath.length === 0) {
+		if (
+			typeof options.modelPath !== "string" ||
+			options.modelPath.length === 0
+		) {
 			throw new VoiceEmotionClassifierError(
 				"[voice-emotion] modelPath is required",
 			);

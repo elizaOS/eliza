@@ -2,6 +2,8 @@ import Foundation
 import JavaScriptCore
 import Darwin.Mach
 
+#if ELIZA_IOS_INCLUDE_LLAMA
+
 // MARK: - LlamaBridgeImpl
 //
 // Real llama.cpp-backed implementation. Pure Swift API surface — does NOT
@@ -680,3 +682,106 @@ public final class LlamaBridgeImpl {
         return String(decoding: bytes, as: UTF8.self)
     }
 }
+
+#else
+
+public struct LlamaLoadResult {
+    public let contextId: Int64?
+    public let error: String?
+    public static func success(_ id: Int64) -> LlamaLoadResult { .init(contextId: id, error: nil) }
+    public static func failure(_ msg: String) -> LlamaLoadResult { .init(contextId: nil, error: msg) }
+}
+
+public struct LlamaGenerateResult {
+    public let text: String
+    public let promptTokens: Int
+    public let outputTokens: Int
+    public let durationMs: Double
+    public let error: String?
+    public static func success(text: String, promptTokens: Int, outputTokens: Int, durationMs: Double) -> LlamaGenerateResult {
+        .init(text: text, promptTokens: promptTokens, outputTokens: outputTokens, durationMs: durationMs, error: nil)
+    }
+    public static func failure(_ msg: String) -> LlamaGenerateResult {
+        .init(text: "", promptTokens: 0, outputTokens: 0, durationMs: 0, error: msg)
+    }
+}
+
+public struct LlamaHardwareInfo {
+    public let backend: String
+    public let totalRamGB: Double
+    public let availableRamGB: Double
+    public let cpuCores: Int
+    public let isSimulator: Bool
+    public let metalSupported: Bool
+
+    public func asDict() -> [String: Any] {
+        return [
+            "backend": backend,
+            "total_ram_gb": NSNumber(value: totalRamGB),
+            "available_ram_gb": NSNumber(value: availableRamGB),
+            "cpu_cores": NSNumber(value: cpuCores),
+            "is_simulator": NSNumber(value: isSimulator),
+            "metal_supported": NSNumber(value: metalSupported)
+        ]
+    }
+}
+
+public final class LlamaBridgeImpl {
+    public static let shared = LlamaBridgeImpl()
+
+    private init() {}
+
+    private static var isRunningInSimulator: Bool {
+#if targetEnvironment(simulator)
+        return true
+#else
+        return false
+#endif
+    }
+
+    public func loadModel(
+        path: String,
+        contextSize: UInt32 = 4096,
+        useGPU: Bool = true,
+        threads: Int32? = nil
+    ) -> LlamaLoadResult {
+        return .failure("llama.cpp is not bundled in this iOS build")
+    }
+
+    public func generate(
+        contextId: Int64,
+        prompt: String,
+        maxTokens: Int32 = 256,
+        temperature: Float = 0.7,
+        topP: Float = 0.95,
+        topK: Int32 = 40,
+        stopSequences: [String] = [],
+        onToken: ((String, Bool) -> Void)? = nil
+    ) -> LlamaGenerateResult {
+        onToken?("", true)
+        return .failure("llama.cpp is not bundled in this iOS build")
+    }
+
+    public func cancel(contextId: Int64) {}
+
+    public func free(contextId: Int64) {}
+
+    public func workQueue(for contextId: Int64) -> DispatchQueue? {
+        return nil
+    }
+
+    public func hardwareInfo() -> LlamaHardwareInfo {
+        let pi = ProcessInfo.processInfo
+        let totalRAM = Double(pi.physicalMemory) / (1024.0 * 1024.0 * 1024.0)
+        return LlamaHardwareInfo(
+            backend: "unavailable",
+            totalRamGB: totalRAM,
+            availableRamGB: totalRAM,
+            cpuCores: pi.activeProcessorCount,
+            isSimulator: Self.isRunningInSimulator,
+            metalSupported: false
+        )
+    }
+}
+
+#endif

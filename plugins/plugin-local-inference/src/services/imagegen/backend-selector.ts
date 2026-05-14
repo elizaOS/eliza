@@ -74,7 +74,14 @@ export type ImageGenBackendId = ImageGenBackend["id"];
  */
 export interface ImageGenBackendChoice {
 	backendId: ImageGenBackendId;
-	accelerator?: "auto" | "cpu" | "cuda" | "vulkan" | "metal" | "coreml" | "tensorrt";
+	accelerator?:
+		| "auto"
+		| "cpu"
+		| "cuda"
+		| "vulkan"
+		| "metal"
+		| "coreml"
+		| "tensorrt";
 }
 
 export function selectImageGenBackends(

@@ -102,9 +102,10 @@ export async function loadMfluxImageGenBackend(
 					"[imagegen/mflux] prompt is empty",
 				);
 			}
-			const seed = typeof req.seed === "number" && req.seed >= 0
-				? req.seed
-				: Math.floor(Math.random() * 0x7fffffff);
+			const seed =
+				typeof req.seed === "number" && req.seed >= 0
+					? req.seed
+					: Math.floor(Math.random() * 0x7fffffff);
 			const width = req.width ?? 1024;
 			const height = req.height ?? 1024;
 			// FLUX schnell / Z-Image-Turbo are 4-step turbo models; default
@@ -119,7 +120,8 @@ export async function loadMfluxImageGenBackend(
 			if (opts.fakeImageBytes) {
 				await fs.writeFile(outputPath, opts.fakeImageBytes);
 				const elapsed = Math.max(1, now() - startMs);
-				if (req.onProgressChunk) req.onProgressChunk({ step: steps, total: steps });
+				if (req.onProgressChunk)
+					req.onProgressChunk({ step: steps, total: steps });
 				return {
 					image: opts.fakeImageBytes,
 					mime: "image/png",
@@ -143,13 +145,20 @@ export async function loadMfluxImageGenBackend(
 			}
 
 			const args: string[] = [
-				"--model", opts.loadArgs.modelPath,
-				"--prompt", req.prompt,
-				"--width", String(width),
-				"--height", String(height),
-				"--steps", String(steps),
-				"--seed", String(seed),
-				"--output", outputPath,
+				"--model",
+				opts.loadArgs.modelPath,
+				"--prompt",
+				req.prompt,
+				"--width",
+				String(width),
+				"--height",
+				String(height),
+				"--steps",
+				String(steps),
+				"--seed",
+				String(seed),
+				"--output",
+				outputPath,
 			];
 			if (req.guidanceScale !== undefined) {
 				args.push("--guidance", String(req.guidanceScale));
@@ -199,10 +208,9 @@ async function assertBinaryAvailable(
 ): Promise<void> {
 	try {
 		const code = await new Promise<number | null>((resolve, reject) => {
-			const proc = (spawnImpl ?? (spawn as unknown as SdCppSpawnLike))(
-				binary,
-				["--help"],
-			);
+			const proc = (spawnImpl ?? (spawn as unknown as SdCppSpawnLike))(binary, [
+				"--help",
+			]);
 			proc.on("error", (err: Error) => reject(err));
 			proc.on("exit", (c: number | null) => resolve(c));
 		});
@@ -244,10 +252,16 @@ async function runMflux(
 			{ signal: opts.signal },
 		);
 		const stderr = proc.stderr;
-		if (opts.onProgressChunk && stderr && typeof (stderr as NodeJS.ReadableStream).on === "function") {
+		if (
+			opts.onProgressChunk &&
+			stderr &&
+			typeof (stderr as NodeJS.ReadableStream).on === "function"
+		) {
 			let leftover = "";
 			(stderr as NodeJS.ReadableStream).on("data", (chunk: Buffer | string) => {
-				const text = leftover + (typeof chunk === "string" ? chunk : chunk.toString("utf8"));
+				const text =
+					leftover +
+					(typeof chunk === "string" ? chunk : chunk.toString("utf8"));
 				const lines = text.split(/\r?\n/);
 				leftover = lines.pop() ?? "";
 				for (const line of lines) {

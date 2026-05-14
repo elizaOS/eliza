@@ -55,10 +55,7 @@ export const WESPEAKER_MIN_SAMPLES = 16_000;
 /** Thrown when the encoder cannot be constructed (missing ORT, bad graph). */
 export class SpeakerEncoderUnavailableError extends Error {
 	readonly code: "ort-missing" | "model-load-failed" | "invalid-input";
-	constructor(
-		code: SpeakerEncoderUnavailableError["code"],
-		message: string,
-	) {
+	constructor(code: SpeakerEncoderUnavailableError["code"], message: string) {
 		super(message);
 		this.name = "SpeakerEncoderUnavailableError";
 		this.code = code;

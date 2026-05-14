@@ -150,9 +150,10 @@ export async function loadAospImageGenBackend(
 					"[imagegen/aosp] prompt is empty",
 				);
 			}
-			const seed = typeof req.seed === "number" && req.seed >= 0
-				? req.seed
-				: Math.floor(Math.random() * 0x7fffffff);
+			const seed =
+				typeof req.seed === "number" && req.seed >= 0
+					? req.seed
+					: Math.floor(Math.random() * 0x7fffffff);
 			const width = req.width ?? 1024;
 			const height = req.height ?? 1024;
 			const steps = req.steps ?? 4;
@@ -173,7 +174,8 @@ export async function loadAospImageGenBackend(
 				typeof out.inferenceMs === "number" && out.inferenceMs > 0
 					? out.inferenceMs
 					: Math.max(1, now() - startMs);
-			if (req.onProgressChunk) req.onProgressChunk({ step: steps, total: steps });
+			if (req.onProgressChunk)
+				req.onProgressChunk({ step: steps, total: steps });
 			return {
 				image: out.png,
 				mime: "image/png",
