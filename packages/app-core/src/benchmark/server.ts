@@ -209,8 +209,7 @@ function normalizeLocaIncomingToolCall(
     type: "function",
     function: {
       name,
-      arguments:
-        typeof args === "string" ? args : JSON.stringify(args ?? {}),
+      arguments: typeof args === "string" ? args : JSON.stringify(args ?? {}),
     },
   };
 }
@@ -242,7 +241,8 @@ function normalizeLocaNativeToolCalls(rawToolCalls: unknown): Array<{
             ? fn.name
             : "";
     if (!name) continue;
-    const args = call.input ?? call.args ?? call.arguments ?? fn.arguments ?? {};
+    const args =
+      call.input ?? call.args ?? call.arguments ?? fn.arguments ?? {};
     calls.push({
       id:
         typeof call.toolCallId === "string"
@@ -253,8 +253,7 @@ function normalizeLocaNativeToolCalls(rawToolCalls: unknown): Array<{
       type: "function",
       function: {
         name,
-        arguments:
-          typeof args === "string" ? args : JSON.stringify(args ?? {}),
+        arguments: typeof args === "string" ? args : JSON.stringify(args ?? {}),
       },
     });
   }
@@ -1741,7 +1740,9 @@ export async function startBenchmarkServer() {
             let nativeResult: unknown;
             try {
               nativeResult = await runtime.useModel(ModelType.TEXT_LARGE, {
-                messages: normalizeLocaNativeMessages(benchmarkContext.messages),
+                messages: normalizeLocaNativeMessages(
+                  benchmarkContext.messages,
+                ),
                 tools: benchmarkContext.tools,
                 toolChoice: "required",
                 maxTokens:

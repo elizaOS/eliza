@@ -305,7 +305,8 @@ describe("end-to-end: TokenizerClient → buildTokenTrie", () => {
       ["REPLY", "STOP"],
       tokens1,
     );
-    const trie1 = buildTokenTrie(desc1?.leaves);
+    if (!desc1) throw new Error("desc1 unexpectedly undefined");
+    const trie1 = buildTokenTrie(desc1.leaves);
     expect(countTerminals(trie1)).toBe(2);
     // OWNER_REMINDERS was NOT exposed this turn -> not reachable.
     expect(trie1.children.has(3)).toBe(false);
@@ -322,7 +323,8 @@ describe("end-to-end: TokenizerClient → buildTokenTrie", () => {
       ["REPLY", "STOP", "OWNER_REMINDERS", "OWNER_ACTIONS"],
       tokens2,
     );
-    const trie2 = buildTokenTrie(desc2?.leaves);
+    if (!desc2) throw new Error("desc2 unexpectedly undefined");
+    const trie2 = buildTokenTrie(desc2.leaves);
     expect(countTerminals(trie2)).toBe(4);
     // Prefix sharing on OWNER_*: [3, 4] is shared.
     const ownerPrefix = step(step(trie2, 3)!, 4)!;

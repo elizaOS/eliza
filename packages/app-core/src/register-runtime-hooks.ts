@@ -1,5 +1,5 @@
-import { registerAppCoreRuntimeHooks } from "./runtime/app-core-runtime-hooks";
 import { ensureLocalInferenceHandler } from "@elizaos/plugin-local-inference/runtime";
+import { registerAppCoreRuntimeHooks } from "./runtime/app-core-runtime-hooks";
 import { hydrateWalletKeysFromNodePlatformSecureStore } from "./security/hydrate-wallet-keys-from-platform-store";
 import {
   applyAccountPoolApiCredentials,

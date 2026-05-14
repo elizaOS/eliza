@@ -35,6 +35,18 @@ import {
   type Plugin,
   stringToUuid,
 } from "@elizaos/core";
+import type { EmbeddingProgressCallback } from "@elizaos/plugin-local-inference/runtime";
+import {
+  DEFAULT_MODELS_DIR,
+  detectEmbeddingPreset,
+  embeddingGgufFilePresent,
+  ensureLocalInferenceHandler,
+  ensureModel,
+  findExistingEmbeddingModelForWarmupReuse,
+  isEmbeddingWarmupReuseDisabled,
+  shouldEnableMobileLocalInference,
+  shouldWarmupLocalEmbeddingModel,
+} from "@elizaos/plugin-local-inference/runtime";
 import {
   ensureRuntimeSqlCompatibility,
   isMobilePlatform,
@@ -50,18 +62,6 @@ import {
   type AppRoutePluginRegistryEntry,
   listAppRoutePluginLoaders,
 } from "./app-route-plugin-registry.js";
-import type { EmbeddingProgressCallback } from "@elizaos/plugin-local-inference/runtime";
-import {
-  DEFAULT_MODELS_DIR,
-  detectEmbeddingPreset,
-  embeddingGgufFilePresent,
-  ensureLocalInferenceHandler,
-  ensureModel,
-  findExistingEmbeddingModelForWarmupReuse,
-  isEmbeddingWarmupReuseDisabled,
-  shouldEnableMobileLocalInference,
-  shouldWarmupLocalEmbeddingModel,
-} from "@elizaos/plugin-local-inference/runtime";
 import {
   ensureTextToSpeechHandler,
   isEdgeTtsDisabled as isTextToSpeechEdgeTtsDisabled,

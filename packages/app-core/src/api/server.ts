@@ -114,6 +114,8 @@ export {
   validateMcpServerConfig,
 };
 
+import { handleLocalInferenceCompatRoutes } from "@elizaos/plugin-local-inference/routes";
+import { deviceBridge } from "@elizaos/plugin-local-inference/services";
 import {
   ensureRuntimeSqlCompatibility,
   executeRawSql,
@@ -122,8 +124,6 @@ import {
   settingsDebugCloudSummary,
   sqlLiteral,
 } from "@elizaos/shared";
-import { deviceBridge } from "@elizaos/plugin-local-inference/services";
-import { handleLocalInferenceCompatRoutes } from "@elizaos/plugin-local-inference/routes";
 import { buildCharacterFromConfig } from "../runtime/build-character-from-config";
 import { handleAuthBootstrapRoutes } from "./auth-bootstrap-routes";
 import { handleAuthPairingCompatRoutes } from "./auth-pairing-routes";

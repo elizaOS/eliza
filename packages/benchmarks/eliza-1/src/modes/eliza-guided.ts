@@ -104,7 +104,11 @@ export class ElizaGuidedMode implements ModeAdapter {
         // The SharedResourceRegistry can evict the model under RAM pressure
         // between bench tasks. Reload once and retry; if it still fails, give
         // up and report the error.
-        if (!reloadedOnce && /no backend loaded/i.test(message) && this.modelPath) {
+        if (
+          !reloadedOnce &&
+          /no backend loaded/i.test(message) &&
+          this.modelPath
+        ) {
           reloadedOnce = true;
           try {
             await this.engine.load(this.modelPath);
