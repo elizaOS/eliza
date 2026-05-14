@@ -151,8 +151,14 @@ jobs:
                 # Ensure local node_modules/.bin/ has the dev CLIs the
                 # build script references (tsup, tsc, tsdown, etc.).
                 bun install --no-frozen-lockfile --ignore-scripts
-                bun run build
               )
+              # Re-apply patch-tsup-dts AFTER the per-plugin install —
+              # `bun install` re-extracts virtual-store entries from the
+              # global cache, wiping the earlier patch. Without this,
+              # tsup's worker thread loads an un-patched rollup.js with
+              # `await` at module-top-level → SyntaxError.
+              bun scripts/patch-tsup-dts.mjs >/dev/null || true
+              (cd "$plugin_dir" && bun run build)
               echo "::endgroup::"
             fi
           done
