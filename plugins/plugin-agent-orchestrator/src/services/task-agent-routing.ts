@@ -163,5 +163,7 @@ function escapeForRegex(value: string): string {
 }
 
 function expandHomePath(value: string): string {
-  return value.startsWith("~") ? path.join(os.homedir(), value.slice(1)) : value;
+  return value.startsWith("~")
+    ? path.join(os.homedir(), value.slice(1))
+    : value;
 }
