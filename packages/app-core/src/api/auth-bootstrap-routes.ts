@@ -14,6 +14,7 @@
 
 import crypto from "node:crypto";
 import type http from "node:http";
+import { logger as Logger } from "@elizaos/core";
 import type { DrizzleDatabase } from "@elizaos/plugin-sql";
 import { AuthStore } from "../services/auth-store";
 import {
@@ -26,7 +27,6 @@ import {
 import { extractHeaderValue } from "./auth.ts";
 import {
   type CompatRuntimeState,
-  isLoopbackRemoteAddress,
   readCompatJsonBody,
 } from "./compat-route-shared";
 import {
@@ -140,8 +140,7 @@ export async function handleAuthBootstrapRoutes(
       { store },
     ).catch((err: unknown) => {
       // Audit failure must not change auth outcome — but it must surface.
-      // Log to stderr; the route still returns the original auth failure.
-      console.error("[auth] audit append failed:", err);
+      Logger.error("[AuthBootstrapRoutes] audit append failed", { err });
     });
     const status =
       result.reason === "missing_token"
@@ -208,7 +207,7 @@ export async function handleAuthBootstrapRoutes(
     },
     { store },
   ).catch((err: unknown) => {
-    console.error("[auth] audit append failed:", err);
+    Logger.error("[AuthBootstrapRoutes] audit append failed", { err });
   });
 
   sendJsonResponse(res, 200, {
@@ -216,8 +215,5 @@ export async function handleAuthBootstrapRoutes(
     identityId,
     expiresAt,
   });
-  // We deliberately mark loopback so dev runs over `localhost` don't miss
-  // the response (no functional effect — just documents intent).
-  void isLoopbackRemoteAddress(ip);
   return true;
 }
