@@ -151,7 +151,7 @@ export function resolveHostShell(): ResolvedShell {
   }
 
   const candidates = isAndroidRuntime()
-    ? ["/system/bin/sh", "sh", "/bin/sh"]
+    ? ["/system/bin/sh", "sh"]
     : ["/bin/bash", "bash", "/bin/sh", "sh"];
   const resolved = firstExecutable(candidates);
   if (resolved) {

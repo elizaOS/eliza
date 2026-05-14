@@ -123,6 +123,12 @@ Environment Variables:
         help="Run a sample of N tests (default: run all)",
     )
     run_parser.add_argument(
+        "--seed",
+        type=int,
+        default=0,
+        help="Deterministic sample seed (default: 0)",
+    )
+    run_parser.add_argument(
         "--full",
         action="store_true",
         help="Run full benchmark (all tests)",
@@ -229,6 +235,7 @@ async def run_benchmark(args: argparse.Namespace) -> int:
         run_exec_eval=not args.no_exec,
         generate_report=not args.no_report,
         enable_network=getattr(args, "enable_network", False),
+        sample_seed=getattr(args, "seed", 0),
     )
 
     # Set categories if specified
@@ -293,6 +300,7 @@ async def run_benchmark(args: argparse.Namespace) -> int:
             results = await runner.run_sample(
                 n=args.sample,
                 categories=config.categories,
+                seed=config.sample_seed,
             )
         else:
             # Run full benchmark

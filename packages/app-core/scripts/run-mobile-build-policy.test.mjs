@@ -60,6 +60,7 @@ test("AOSP Android keeps assistant/full-control permissions in the system manife
     "FOREGROUND_SERVICE_MEDIA_PROJECTION",
     "FOREGROUND_SERVICE_SPECIAL_USE",
     "RECEIVE_BOOT_COMPLETED",
+    "REQUEST_IGNORE_BATTERY_OPTIMIZATIONS",
   ]) {
     assert.ok(
       ANDROID_PERMISSIONS.includes(permission),
@@ -130,12 +131,12 @@ test("Android manifest cleartext policy is inserted when absent", () => {
   );
 });
 
-test("resolveMobileBuildPolicy separates App Store iOS from local iOS builds", () => {
+test("resolveMobileBuildPolicy keeps App Store iOS local-runtime capable", () => {
   assert.deepEqual(resolveMobileBuildPolicy("ios"), {
     capacitorTarget: "ios",
     buildVariant: "store",
     androidRuntimeMode: null,
-    iosRuntimeMode: "cloud",
+    iosRuntimeMode: "cloud-hybrid",
     releaseAuthority: "apple-app-store",
     appControlledOta: false,
   });
@@ -175,18 +176,18 @@ test("iOS background runner pod resolves through the official package", () => {
   );
 });
 
-test("iOS App Store pod selection keeps llama optional but strips full Bun bridges", () => {
+test("iOS App Store pod selection keeps no-JIT Bun local runtime and leaves llama optional", () => {
   const pods = resolveIosCustomPods({
     appStoreBuild: true,
-    includeLlama: true,
+    includeLlama: false,
     includeFullBunEngine: true,
   }).map(([name]) => name);
 
   assert.equal(isIosAppStoreBuild({ ELIZA_BUILD_VARIANT: "store" }), true);
-  assert.equal(pods.includes("LlamaCppCapacitor"), true);
-  assert.equal(pods.includes("ElizaosCapacitorBunRuntime"), false);
+  assert.equal(pods.includes("LlamaCppCapacitor"), false);
+  assert.equal(pods.includes("ElizaosCapacitorBunRuntime"), true);
   assert.equal(pods.includes("ElizaosCapacitorMobileAgentBridge"), false);
-  assert.equal(pods.includes("ElizaBunEngine"), false);
+  assert.equal(pods.includes("ElizaBunEngine"), true);
 });
 
 test("iOS direct full-Bun pod selection includes local execution bridge pods", () => {

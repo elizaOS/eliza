@@ -37,8 +37,8 @@ What this target deliberately does **not** ship:
   `ANSWER_PHONE_CALLS` / `MANAGE_OWN_CALLS` / `READ_CALL_LOG` /
   `WRITE_CALL_LOG`, `READ_CONTACTS` / `WRITE_CONTACTS`,
   `ACCESS_BACKGROUND_LOCATION`, `RECEIVE_BOOT_COMPLETED`,
-  `SYSTEM_ALERT_WINDOW`, `FOREGROUND_SERVICE_MEDIA_PROJECTION`,
-  `FOREGROUND_SERVICE_SPECIAL_USE`.
+  `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`, `SYSTEM_ALERT_WINDOW`,
+  `FOREGROUND_SERVICE_MEDIA_PROJECTION`, `FOREGROUND_SERVICE_SPECIAL_USE`.
 
 What this target still ships for Pixel/Google Android entry points:
 
@@ -50,6 +50,22 @@ What this target still ships for Pixel/Google Android entry points:
   the app.
 - Static launcher/Assistant shortcuts for chat, voice, daily brief, and
   tasks.
+
+Entry-point mapping:
+
+| User flow | Android surface | Fulfillment |
+|---|---|---|
+| Ask or chat with Eliza | `CREATE_MESSAGE` for message text, `GET_THING` for search-style ask text, plus the chat static shortcut | `eliza://chat?...` source-tagged deep links |
+| Start voice chat | `OPEN_APP_FEATURE` inline inventory plus the voice static shortcut | `eliza://voice?source=android-static-shortcut` |
+| Open LifeOps daily brief | `OPEN_APP_FEATURE` inline inventory plus the daily-brief static shortcut | `eliza://lifeops/daily-brief?source=android-static-shortcut` |
+| Create a LifeOps task | `CREATE_THING` for task title/description | `eliza://lifeops/task/new?...` deep link, then runtime confirmation/planning |
+| View LifeOps tasks | `OPEN_APP_FEATURE` inline inventory plus the tasks static shortcut | `eliza://lifeops/tasks?source=android-static-shortcut` |
+
+There is no general third-party "be Gemini/default assistant" API for the
+Play build. Current Android docs route normal app voice entry through
+App Actions capabilities in `shortcuts.xml` and Android shortcuts; custom
+Gemini/Assistant intent formats documented for navigation apps are
+navigation-specific, not a general assistant surface for this app.
 
 The Play build intentionally does not request default-assistant or
 system-only powers. It has no `ACTION_ASSIST`, `VOICE_COMMAND`,

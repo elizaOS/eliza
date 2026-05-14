@@ -260,7 +260,30 @@ const forbiddenElectrobunPrWorkflowSnippets = [
   "draft: false",
   "secrets: inherit",
   "packages: write",
+  "not yet ported from eliza; skipping",
+  "test:regression-matrix:release-contract --help",
+  "test:release:contract --help",
 ];
+const requiredRootPackageScriptSnippets: Record<string, readonly string[]> = {
+  "audit:apple-store-sandbox": [
+    "bun run --cwd packages/app-core audit:apple-store-sandbox",
+  ],
+  "test:apple-entitlements": [
+    "bun run --cwd packages/app-core test:apple-entitlements",
+  ],
+  "release:check": ["packages/app-core/scripts/release-check.ts"],
+  "test:release:contract": [
+    "bun run audit:apple-store-sandbox",
+    "bun run test:apple-entitlements",
+    "packages/app-core/scripts/run-release-contract-suite.mjs",
+  ],
+  "test:regression-matrix:release": [
+    "packages/app-core/scripts/validate-regression-matrix.mjs --workflow release",
+  ],
+  "test:regression-matrix:release-contract": [
+    "packages/app-core/scripts/validate-regression-matrix.mjs --workflow release-contract",
+  ],
+};
 const requiredElectrobunConfigSnippets = [
   'postBuild: "scripts/postwrap-sign-runtime-macos.ts"',
   'postWrap: "scripts/postwrap-diagnostics.ts"',
@@ -908,6 +931,49 @@ function assertElectrobunPrWorkflowExists() {
   }
 }
 
+function assertRequiredRootPackageScripts() {
+  const packageJson = JSON.parse(readFileSync("package.json", "utf8"));
+  const scripts = packageJson.scripts ?? {};
+  const missing: string[] = [];
+
+  for (const [scriptName, requiredSnippets] of Object.entries(
+    requiredRootPackageScriptSnippets,
+  )) {
+    const scriptBody = scripts[scriptName];
+    if (typeof scriptBody !== "string") {
+      missing.push(`${scriptName} (missing script)`);
+      continue;
+    }
+    for (const snippet of requiredSnippets) {
+      if (!scriptBody.includes(snippet)) {
+        missing.push(`${scriptName}: ${snippet}`);
+      }
+    }
+  }
+
+  if (missing.length > 0) {
+    console.error(
+      "release-check: package.json is missing required release/audit script wiring:",
+    );
+    for (const entry of missing) {
+      console.error(`  - ${entry}`);
+    }
+    process.exit(1);
+  }
+}
+
+function assertAppleStoreSandboxAuditPasses() {
+  try {
+    execSync("node packages/app-core/scripts/audit-apple-store-sandbox.mjs", {
+      stdio: "inherit",
+      env: process.env,
+    });
+  } catch {
+    console.error("release-check: Apple store sandbox audit failed.");
+    process.exit(1);
+  }
+}
+
 function assertElectrobunConfigHasPostWrapSigner() {
   const config = readElectrobunFile("electrobun.config.ts");
   const missing = requiredElectrobunConfigSnippets.filter(
@@ -1358,6 +1424,8 @@ function assertAppleStoreEntitlementsReviewed() {
 }
 
 function main() {
+  assertRequiredRootPackageScripts();
+  assertAppleStoreSandboxAuditPasses();
   assertAppleStoreEntitlementsReviewed();
   assertReleaseWorkflowHasNotaryWrapper();
   assertElectrobunPrWorkflowExists();

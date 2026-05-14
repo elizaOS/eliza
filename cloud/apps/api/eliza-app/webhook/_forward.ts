@@ -1,7 +1,7 @@
 import { logger } from "@/lib/utils/logger";
 import type { AppContext } from "@/types/cloud-worker-env";
 
-type GatewayPlatform = "telegram" | "blooio" | "whatsapp";
+type GatewayPlatform = "telegram" | "blooio" | "twilio" | "whatsapp";
 
 const WEBHOOK_GATEWAY_ENV_KEYS = [
   "ELIZA_APP_WEBHOOK_GATEWAY_URL",

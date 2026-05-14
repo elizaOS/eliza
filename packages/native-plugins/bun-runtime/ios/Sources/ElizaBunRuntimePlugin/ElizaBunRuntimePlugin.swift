@@ -186,6 +186,9 @@ public class ElizaBunRuntimePlugin: CAPPlugin, CAPBridgedPlugin {
         var env: [String: String] = [
             "ELIZA_PLATFORM": "ios",
             "ELIZA_MOBILE_PLATFORM": "ios",
+            "ELIZA_RUNTIME_MODE": IosRuntimePolicy.safeLocalExecutionMode,
+            "RUNTIME_MODE": IosRuntimePolicy.safeLocalExecutionMode,
+            "LOCAL_RUNTIME_MODE": IosRuntimePolicy.safeLocalExecutionMode,
             "ELIZA_IOS_LOCAL_BACKEND": "1",
             "ELIZA_IOS_BUN_STARTUP_TIMEOUT_MS": "300000",
             "ELIZA_PGLITE_DISABLE_EXTENSIONS": "0",
@@ -199,7 +202,7 @@ public class ElizaBunRuntimePlugin: CAPPlugin, CAPBridgedPlugin {
         if isSmoke {
             env["ELIZA_IOS_FULL_BUN_SMOKE"] = "1"
         }
-        return env
+        return IosRuntimePolicy.sanitizeEnvironment(env)
     }
 
     private func prewarmFullBunRuntimeIfRequested() {

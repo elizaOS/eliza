@@ -85,6 +85,21 @@ afterEach(() => {
   setPlatform(ORIGINAL_PLATFORM);
 });
 
+describe("native Apple Reminders bridge dylib candidates", () => {
+  it("keeps packaged and local bridge candidates available", () => {
+    const candidatePaths = __testing
+      .nativeDylibCandidates()
+      .map((candidate) => candidate.path);
+
+    expect(candidatePaths).toContain(
+      "../../../../../../../libMacWindowEffects.dylib",
+    );
+    expect(candidatePaths).toContain(
+      "../../../../packages/app-core/platforms/electrobun/src/libMacWindowEffects.dylib",
+    );
+  });
+});
+
 describe("createNativeAppleReminderLikeItem", () => {
   it("returns not_supported off macOS", async () => {
     setPlatform("linux");

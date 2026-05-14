@@ -51,6 +51,21 @@ afterEach(() => {
   __testing.setNativeCalendarBridgeForTest(undefined as never);
 });
 
+describe("native Apple Calendar bridge dylib candidates", () => {
+  it("keeps packaged and local bridge candidates available", () => {
+    const candidatePaths = __testing
+      .nativeDylibCandidates()
+      .map((candidate) => candidate.path);
+
+    expect(candidatePaths).toContain(
+      "../../../../../../../libMacWindowEffects.dylib",
+    );
+    expect(candidatePaths).toContain(
+      "../../../../packages/app-core/platforms/electrobun/src/libMacWindowEffects.dylib",
+    );
+  });
+});
+
 describe("listNativeAppleCalendars", () => {
   it("maps native calendars into LifeOps Apple Calendar summaries", async () => {
     __testing.setNativeCalendarBridgeForTest(

@@ -295,7 +295,7 @@ async function materializeVfsTree(
   root: string,
 ): Promise<void> {
   for (const file of await vfs.exportFiles()) {
-    const target = path.resolve(root, file.path);
+    const target = path.resolve(root, file.path.replace(/^\/+/, ""));
     if (!isInsideOrEqual(root, target)) {
       throw new Error(
         `[shell-router] VFS export path escapes materialized root: ${file.path}`,

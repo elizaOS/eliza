@@ -828,39 +828,56 @@ class BFCLDataset:
         n: int,
         categories: Optional[list[BFCLCategory]] = None,
         require_ground_truth: bool = True,
+        seed: int | None = 0,
     ) -> list[BFCLTestCase]:
         """Get a stratified sample of test cases."""
         import random
 
+        rng = random.Random(seed)
         if categories is None:
             categories = self.get_categories()
         if not categories:
             return []
 
-        samples_per_category = max(1, n // len(categories))
+        ordered_categories = sorted(categories, key=lambda c: c.value)
+        if n < len(ordered_categories):
+            ordered_categories = sorted(
+                rng.sample(ordered_categories, n),
+                key=lambda c: c.value,
+            )
+
+        samples_per_category = max(1, n // len(ordered_categories))
         samples: list[BFCLTestCase] = []
 
-        for category in categories:
-            category_cases = [
-                tc
-                for tc in self.get_by_category(category)
-                if not require_ground_truth or tc.has_ground_truth
-            ]
+        for category in ordered_categories:
+            category_cases = sorted(
+                [
+                    tc
+                    for tc in self.get_by_category(category)
+                    if not require_ground_truth or tc.has_ground_truth
+                ],
+                key=lambda tc: tc.id,
+            )
             if category_cases:
                 sample_size = min(samples_per_category, len(category_cases))
-                samples.extend(random.sample(category_cases, sample_size))
+                samples.extend(rng.sample(category_cases, sample_size))
 
         # If we need more samples, add randomly
         remaining = n - len(samples)
         if remaining > 0:
-            remaining_cases = [
-                tc
-                for tc in self._test_cases
-                if tc not in samples and (not require_ground_truth or tc.has_ground_truth)
-            ]
+            sample_ids = {tc.id for tc in samples}
+            remaining_cases = sorted(
+                [
+                    tc
+                    for tc in self._test_cases
+                    if tc.id not in sample_ids
+                    and (not require_ground_truth or tc.has_ground_truth)
+                ],
+                key=lambda tc: (tc.category.value, tc.id),
+            )
             if remaining_cases:
                 samples.extend(
-                    random.sample(remaining_cases, min(remaining, len(remaining_cases)))
+                    rng.sample(remaining_cases, min(remaining, len(remaining_cases)))
                 )
 
         return samples[:n]
