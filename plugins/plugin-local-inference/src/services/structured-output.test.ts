@@ -255,3 +255,77 @@ describe("short ↔ long name round-trip", () => {
 		expect(canonicalizeShortName(undefined, "X")).toBe("X");
 	});
 });
+
+describe("compilePrefillPlan + prefillPlanRequestFields — tokenization", () => {
+	const stubTokenize = (text: string): number[] => {
+		// Simple tokenizer: return charCodes for determinism
+		return Array.from(text).map((c) => c.charCodeAt(0));
+	};
+
+	it("compilePrefillPlan(skeleton) without tokenize → runs have no tokenIds", () => {
+		const plan = compilePrefillPlan(envelopeSkeleton);
+		expect(plan).not.toBeNull();
+		if (!plan) return;
+		for (const run of plan.runs) {
+			expect(run.tokenIds).toBeUndefined();
+		}
+	});
+
+	it("compilePrefillPlan(skeleton, { tokenize }) → each run's tokenIds matches tokenize(run.text)", () => {
+		const plan = compilePrefillPlan(envelopeSkeleton, stubTokenize);
+		expect(plan).not.toBeNull();
+		if (!plan) return;
+		for (const run of plan.runs) {
+			expect(run.tokenIds).toBeDefined();
+			// Verify that tokenIds match the tokenized form of the text
+			expect(run.tokenIds).toEqual(stubTokenize(run.text));
+		}
+	});
+
+	it("prefillPlanRequestFields includes token_ids per run when present", () => {
+		const plan = compilePrefillPlan(envelopeSkeleton, stubTokenize);
+		const fields = prefillPlanRequestFields(plan);
+		expect(fields.eliza_prefill_plan).toBeDefined();
+		const planObj = fields.eliza_prefill_plan as Record<string, unknown>;
+		const runs = planObj.runs as Array<Record<string, unknown>>;
+		for (const run of runs) {
+			expect(run.token_ids).toBeDefined();
+			expect(Array.isArray(run.token_ids)).toBe(true);
+		}
+	});
+
+	it("prefillPlanRequestFields excludes token_ids field when runs have no tokenIds", () => {
+		const plan = compilePrefillPlan(envelopeSkeleton); // no tokenize callback
+		const fields = prefillPlanRequestFields(plan);
+		expect(fields.eliza_prefill_plan).toBeDefined();
+		const planObj = fields.eliza_prefill_plan as Record<string, unknown>;
+		const runs = planObj.runs as Array<Record<string, unknown>>;
+		for (const run of runs) {
+			expect(run.token_ids).toBeUndefined();
+		}
+	});
+
+	it("plan id remains stable regardless of tokenization", () => {
+		const planWithout = compilePrefillPlan(envelopeSkeleton);
+		const planWith = compilePrefillPlan(envelopeSkeleton, stubTokenize);
+		expect(planWithout?.id).toBe(planWith?.id);
+	});
+
+	it("tokenized plan has same structure as non-tokenized (runs, freeCount, prefix all match)", () => {
+		const planWithout = compilePrefillPlan(envelopeSkeleton);
+		const planWith = compilePrefillPlan(envelopeSkeleton, stubTokenize);
+		expect(planWithout).not.toBeNull();
+		expect(planWith).not.toBeNull();
+		if (!planWithout || !planWith) return;
+		expect(planWith.runs.length).toBe(planWithout.runs.length);
+		expect(planWith.freeCount).toBe(planWithout.freeCount);
+		expect(planWith.prefix).toBe(planWithout.prefix);
+		// Verify each run's text is identical
+		for (let i = 0; i < planWithout.runs.length; i++) {
+			expect(planWith.runs[i].text).toBe(planWithout.runs[i].text);
+			expect(planWith.runs[i].afterFreeSpan).toBe(
+				planWithout.runs[i].afterFreeSpan,
+			);
+		}
+	});
+});

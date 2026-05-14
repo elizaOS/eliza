@@ -1,6 +1,6 @@
 # AI QA Master Plan — Comprehensive Page/Connection/App Review
 
-Status: 2026-05-11 (initial draft; living doc)
+Status: 2026-05-11 (Wave-2; living doc)
 Author: AI QA orchestrator (Claude Opus 4.7 + parallel sub-agents)
 Scope: Web + Mobile + Desktop. Every page, every button, every LifeOps connection, every utility app.
 
@@ -275,3 +275,79 @@ The user explicitly asked us to "verify that what you are testing is actually re
 - Backend perf / load testing
 
 These remain on the existing launchdocs roadmap and are not blocked by this plan.
+
+---
+
+## Part 7 — Wave-2 update (2026-05-11 late)
+
+### 7.1 What landed in Wave-1
+
+- **Workstreams 1, 2, 3, 6** (page / lifeops / utility-apps / a11y+dark) — all completed and merged. See `25-ai-qa-results-2026-05-11.md` for the synthesis.
+- **Workstream 4** (desktop static QA) — completed; appended to `09-desktop-qa.md`. Found 4 P0, 8 P1, 11 P2, 9 P3. Top P0s: Cmd+K renderer listener is dead code; `SHARE_TARGET_EVENT` has no consumer; two competing tray menu definitions exist; renderer tray switch missing `quit` case.
+- **Workstream 5** (mobile static QA) — completed; appended to `06-ios-qa.md` and `07-android-qa.md`. iOS: 0 P0, 1 P1, 4 P2, 4 P3. Android: 0 P0, 2 P1, 6 P2, 3 P3. Confirmed the prior `01-onboarding-setup-qa.md` `preSeedAndroidLocalRuntimeIfFresh()` P1 is **resolved** (now wired at `packages/app/src/main.tsx:255-257`).
+- **Workstream 7-1 (UI fixes)** — 3 commits landed: `prefers-color-scheme` first-launch fix in `packages/ui/src/state/persistence.ts` (with `persistence-ui-theme.test.ts` 6/6 pass), trajectory "skipped" contrast bump, RuntimeGate hex literals → `--brand-gold` tokens (`packages/ui/src/styles/brand-gold.css`).
+- **Workstream 7-3 (secrets refactor unblock)** — **secrets refactor was already self-consistent**. Real blocker was `packages/app-core/dist/api/server.js` re-exporting from `@elizaos/plugin-elizacloud`'s minimal browser facade. Fixed via vite alias to `empty-node-module.ts`, exported `cloud-routing` from `packages/core/src/index.browser.ts`, and added `@node-rs/argon2` stub to `packages/app/vite/native-module-stub-plugin.ts`. `bun run --cwd packages/app build:web` now exits 0; live stack reports `live UI ready` past `ensureUiDistReady`.
+- **Harness improvements** — `static-stack.mjs` no longer crashes on `ERR_HTTP_HEADERS_SENT` (defensive `sendError`, `clientError`/`error`/`uncaughtException` handlers). `analyze.mjs` is now multi-provider (Anthropic > OpenAI > Groq based on key presence and prefix; supports `AI_QA_PROVIDER` override). `run.sh` has `--static` (default) and `--live` modes.
+
+### 7.2 What's still blocked / pending
+
+- **Workstream 7-2 (LifeOps fixes)** — rate-limited mid-execution (limit reset 6am PT). Worktree exists at `worktree-agent-a8bcb83f31da91f0b` but the agent didn't reach commit. **Reissuing in Wave-2.**
+- **WS7-1 #3 (RuntimeGate token swap)** initially conflicted with parallel work on `packages/ui/src/components/shell/RuntimeGate.tsx` (`APP_RESUME_EVENT` re-probe path). Manual merge landed it.
+- **AI vision capture+analyze pass** — ran on `broad-002` (11 captures, 10 analyzed via Groq llama-4-scout-17b-16e-instruct). The remaining wallet+settings captures failed to PNG due to the now-fixed static-stack bug. Full re-capture needed.
+- **Vision provider abstraction** — the harness currently calls Anthropic/OpenAI/Groq endpoints directly. **User constraint (Wave-2): vision must NOT require an Anthropic key.** We need to route through the existing model-service abstraction so the same provider config that handles text inference handles vision. See `Workstream VS-1` below.
+
+### 7.3 New Wave-2 workstreams
+
+#### Workstream VS-1 — Vision capability as a first-class model service
+
+User constraint: *"vision should NOT require an anthropic api key. we should have a vision service, we should have a vision plugin selector in our model setup with a default, we should have a cheap default in eliza cloud and through whatever service the user is using, i.e. openai, anthropic etc etc"*
+
+**Deliverables:**
+
+1. Add `ModelType.VISION_LANGUAGE` (or extend the existing `useModel` registry — find the canonical `ModelType` enum in `packages/core/src/types/`) so plugins can register a vision handler the same way they register text-generation, embedding, ASR/TTS handlers.
+2. Implement provider adapters:
+   - **Anthropic** plugin (`plugins/plugin-anthropic` or `eliza/plugins/...`) registers vision via Claude (Opus/Sonnet — pick a cheap default like haiku-with-vision if it exists, else Sonnet).
+   - **OpenAI** plugin registers vision via `gpt-5.5` / `gpt-5.5-mini` (mini is the cheap default).
+   - **Groq** plugin registers vision via `meta-llama/llama-4-scout-17b-16e-instruct` (cheap, fast).
+   - **Eliza Cloud** plugin registers vision via Cloud's hosted route (cheap default; user-routed). Trace through `eliza/packages/cloud-routing` for the existing markup model.
+   - **Local** (`plugin-local-inference`) registers vision when a vision-capable local model is loaded (Qwen3-VL via VS-2 below; otherwise unregistered).
+3. **Settings UI** — extend `packages/ui/src/components/settings/ProviderSwitcher.tsx` (or whichever AI-Model section is canonical) with a "Vision" row alongside Text and Voice. Default = `eliza-cloud` if user is paired, else the user's currently-selected text provider if it has vision, else `groq` if user has a Groq key, else "Not configured" with a one-tap "Use Eliza Cloud" prompt.
+4. **Service routing** — plumb vision through the same `serviceRouting` mechanism used for text. The runtime config in `eliza/packages/ui/src/onboarding-config.ts` (or equivalent) gets a new `vision` slot.
+5. **Update `scripts/ai-qa/analyze.mjs`** — when running inside the elizaOS workspace, prefer calling the local runtime's vision service over direct API calls. Keep direct-API fallback for standalone use (e.g. CI without a running stack).
+6. **Cost guard** — emit a per-image cost estimate before kicking off a batch analysis. Cloud markup info should flow through the existing usage tracking.
+
+**Done when:** a single env-clean user with only `ELIZAOS_CLOUD_API_KEY` set can run `bash scripts/ai-qa/run.sh --static` and have findings generated via the Cloud vision route, paying through their Cloud account markup, with no Anthropic/OpenAI key required. A user with `OPENAI_API_KEY=sk-…` set instead routes through OpenAI. A user with neither but a Groq key uses Groq.
+
+#### Workstream VS-2 — Qwen3-VL in Eliza-1
+
+User constraint: *"we are using qwen3.5 for text and stuff, and qwen3 for asr and stt. i think we should also issue sub agent to add qwen3 VL to eliza-1, fully integrate with our optimization pipeline and delivery to huggingface and everything"*
+
+**Deliverables:**
+
+1. **Model selection** — pick the Qwen3-VL variant. Candidates: Qwen3-VL-2B (mobile), Qwen3-VL-7B (default desktop), Qwen3-VL-30B (server). Confirm what's currently public on HuggingFace via `huggingface_hub`. Pick the same parameter-count target as the rest of Eliza-1 (qwen3.5 text — likely 4-8B range).
+2. **GGUF conversion + llama.cpp wiring** — extend the existing `packages/inference/verify/` graph-dispatch fork to handle the VL projector. Look at how Eliza-1 currently handles ASR (Whisper) and the projector kernels — VL is similar (image encoder → projector → LLM tokens). Confirm whether `llama.cpp` mainline already supports Qwen3-VL or whether we need to upstream a patch.
+3. **`plugin-local-inference` integration** — register the vision capability when a Qwen3-VL GGUF is loaded. Wire to VS-1's `ModelType.VISION_LANGUAGE`.
+4. **APOLLO optimizer** — extend the training pipeline (`packages/training/`) to fine-tune Qwen3-VL on Eliza-1 datasets. APOLLO is the canonical training optimizer (see `CLAUDE.md` — "Training always uses APOLLO optimizer"). Add the VL training adapter alongside the existing text adapter.
+5. **DSPy prompt optimization** — extend `packages/app-core/src/services/optimized-prompt-service.ts` so VL-bound tasks get optimized prompts compiled into `~/.milady/optimized-prompts/vision/<task>/`. The existing service auto-loads at boot; just need a VL training task class.
+6. **HuggingFace delivery** — extend `scripts/release-v1-prep.mjs` and the Eliza-1 bundle manifest to include the VL weights + projector + tokenizer + license manifest. Upload target: the `elizaos` org on HF, same pattern as existing Eliza-1 artifacts.
+7. **Eval gates** — extend `packages/training/scripts/manifest/test_stage_eliza1_bundle_assets.py` (and the wave-2 manifest test that just landed) to validate the VL bundle: SHA-256 of weights, projector hash, license file present, smoke eval pass.
+
+**Done when:** `bun run --cwd packages/training release:vl --variant=7B` produces a complete bundle (weights + projector + tokenizer + license + eval evidence) that uploads cleanly to `elizaos/eliza-1-vl-7b` on HuggingFace, and `plugin-local-inference` can load it and answer a vision prompt via the VS-1 service abstraction.
+
+#### Workstream WS7-4 — Desktop P0 fixes (from WS4 findings)
+
+Three P0 fixes scoped to `packages/app/src/main.tsx`, `packages/ui/src/desktop-runtime/`, and the Electrobun host:
+
+1. Wire the renderer listener for `desktopShortcutPressed` (Cmd+K outside the renderer is currently dead). Either:
+   - Have `CommandPalette.tsx` subscribe via `Desktop.addListener("shortcutPressed", ...)` and bridge into its event bus, OR
+   - Wire `main.tsx:608-612` to dispatch into the command palette directly.
+2. Wire a `SHARE_TARGET_EVENT` consumer. The event is dispatched at `packages/app/src/main.tsx:337` and queued on `window.__ELIZA_APP_SHARE_QUEUE__:336`. Add a subscriber that drops shared content into the current conversation (or surfaces a "Share to…" prompt if no conversation is open).
+3. Resolve the dual tray menu. Either decide the renderer-side wins (`DesktopTrayRuntime.tsx`) and delete the host-side definition in `packages/app-core/platforms/electrobun/src/index.ts:2196-2226`, or vice-versa. Add the `quit` case to whichever path wins.
+
+#### Workstream WS7-5 — Mobile P1 fixes (from WS5 findings)
+
+Three P1 fixes:
+
+1. **Android**: add `android:windowSoftInputMode="adjustResize"` to MainActivity in `packages/app-core/platforms/android/app/src/main/AndroidManifest.xml:16-22` so the keyboard config in `packages/app/capacitor.config.ts:26-29` actually behaves on Samsung One UI / MIUI.
+2. **iOS**: align `BGTaskScheduler` identifier between `packages/app/scripts/mobile-local-chat-smoke.mjs:28,728,793` (`ai.eliza.tasks.refresh`) and `packages/app-core/platforms/ios/App/App/Info.plist:94-97` (`eliza-tasks`). Pick one canonical id, update the other.
+3. **Vanilla Android**: gate Phone/Messages/Contacts tabs by `isElizaOS()` in `packages/ui/src/navigation/index.ts:115-129` (not just `isNative && platform === "android"`), OR render a clean "Eliza-only feature" panel in `ElizaOsAppsView.tsx:297,1180` when the plugin is unavailable. Currently throws.

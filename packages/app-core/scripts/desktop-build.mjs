@@ -435,6 +435,52 @@ function runDesktopPreflight() {
     bunVersion,
     errorCode: "OK",
   });
+
+  preflightStoreVariantSigning();
+}
+
+/**
+ * Store-variant signing preflight.
+ *
+ * When building the store flavor of a desktop variant outside CI (no
+ * ELECTROBUN_SKIP_CODESIGN=1, no CI=true), fail loudly if the required
+ * signing-identity env vars aren't set. Without this, the build runs all
+ * the way through staging + packaging only to die in codesign-mas.mjs
+ * or build-msix.ps1 — wasting minutes of clock per attempt.
+ *
+ * CI builds skip this preflight because the secrets are provisioned at
+ * job-step level, after this script's preflight runs.
+ */
+function preflightStoreVariantSigning() {
+  if (buildVariant !== "store") return;
+  if (process.env.CI === "true" || process.env.ELECTROBUN_SKIP_CODESIGN === "1") return;
+
+  const missing = [];
+  if (process.platform === "darwin") {
+    if (!process.env.ELIZA_MAS_SIGNING_IDENTITY?.trim()) {
+      missing.push("ELIZA_MAS_SIGNING_IDENTITY");
+    }
+  } else if (process.platform === "win32") {
+    if (!process.env.ELIZA_MSIX_STORE_CERT_PATH?.trim()) {
+      missing.push("ELIZA_MSIX_STORE_CERT_PATH");
+    }
+  } else if (process.platform === "linux") {
+    // Flatpak builds use `flatpak-builder`; no signing env vars are required
+    // (Flathub signs the repo server-side).
+  }
+
+  if (missing.length === 0) return;
+
+  failPreflight(
+    "Store-variant build requires signing env vars (or set ELECTROBUN_SKIP_CODESIGN=1 for unsigned local builds).",
+    {
+      step: "store-signing",
+      platform: process.platform,
+      buildVariant,
+      missing,
+    },
+    missing.map((name) => `  set ${name}=... before running`),
+  );
 }
 
 function findLatestMacAppBundle() {
