@@ -717,6 +717,19 @@ async function annotateUnverifiedUrls(
         redirect: "follow",
         signal: controller.signal,
       });
+      // 405/501 mean the server IS reachable — it just won't serve a GET.
+      // Sub-agents routinely dump raw HTTP headers into their narration
+      // (a `curl -i`), and those headers carry incidental URLs — CDN
+      // telemetry endpoints (`report-to`/NEL), POST-only APIs — that 405 a
+      // GET. For a liveness check that URL exists, so it is NOT dead;
+      // flagging it would trigger a pointless retry of a build that
+      // actually succeeded.
+      if (res.status === 405 || res.status === 501) {
+        log?.(
+          `[verify] probe ${url} → HTTP ${res.status} (reachable; GET not allowed) @ ${new Date().toISOString()}`,
+        );
+        return { status: null };
+      }
       if (res.status < 200 || res.status >= 300) {
         log?.(
           `[verify] probe ${url} → HTTP ${res.status} @ ${new Date().toISOString()}`,
