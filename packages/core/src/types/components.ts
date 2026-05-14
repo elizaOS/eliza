@@ -317,6 +317,19 @@ export interface Action {
 	suppressPostActionContinuation?: boolean;
 
 	/**
+	 * When true, the message service suppresses the response-handler's draft
+	 * reply text (the "early reply" emitted before the planner runs) on turns
+	 * where this action is a candidate. Pair with an in-handler `callback`
+	 * that emits the canonical ack/answer.
+	 *
+	 * Use this for delegation actions where the model's speculative draft is
+	 * premature — e.g. TASKS_SPAWN_AGENT, where the real answer arrives
+	 * asynchronously from the sub-agent via the router, and the action's own
+	 * "On it — spawning…" ack supersedes whatever the model guessed up front.
+	 */
+	suppressEarlyReply?: boolean;
+
+	/**
 	 * When true, runtime-level action result finalizers must not store this
 	 * action's visible result text in task clipboard state.
 	 */

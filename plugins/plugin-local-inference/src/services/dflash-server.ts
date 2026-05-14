@@ -2186,7 +2186,7 @@ async function fetchStreamingChatCompletion(
 			if (rejectRange) {
 				const [from, to] = rejectRange;
 				if (callbacks.onVerifierEvent) {
-					const tokens = [];
+					const tokens: VerifierStreamEvent["tokens"] = [];
 					for (let i = from; i <= to; i += 1)
 						tokens.push({ index: i, text: "" });
 					await callbacks.onVerifierEvent({ kind: "reject", tokens });

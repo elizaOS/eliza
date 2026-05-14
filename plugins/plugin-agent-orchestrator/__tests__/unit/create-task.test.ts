@@ -1,3 +1,4 @@
+import * as os from "node:os";
 import { describe, expect, it, vi } from "vitest";
 // Post-consolidation: CREATE_AGENT_TASK is `TASKS { action: "create" }` (default action).
 import { createTaskAction } from "../../src/actions/tasks.js";
@@ -28,6 +29,9 @@ describe("TASKS:create", () => {
   });
   it("supports nyx options.parameters and returns data.agents[].sessionId plus id", async () => {
     const svc = serviceMock();
+    // Must be a real directory: resolveSpawnWorkdir drops an explicit workdir
+    // that does not exist on disk (the planner routinely typos the path).
+    const workdir = os.tmpdir();
     const result = await createTaskAction.handler(
       runtimeWith(svc),
       memory({}),
@@ -37,7 +41,7 @@ describe("TASKS:create", () => {
           action: "create",
           task: "fix bug",
           agentType: "codex",
-          workdir: "/tmp/nyx",
+          workdir,
           model: "gpt-5.5",
           approvalPreset: "readonly",
           timeout_ms: 1000,
@@ -53,7 +57,7 @@ describe("TASKS:create", () => {
         sessionId: "abcdef123456",
         agentType: "codex",
         name: "agent-one",
-        workdir: "/tmp/nyx",
+        workdir,
         label: "fix bug",
         status: "completed",
       },
