@@ -4,8 +4,8 @@ import {
   type NewOAuthIntent as NewOAuthIntentDbRow,
   type NewOAuthIntentEvent as NewOAuthIntentEventDbRow,
   type OAuthIntentRow as OAuthIntentDbRow,
-  type OAuthIntentEventName,
   type OAuthIntentEventRow as OAuthIntentEventDbRow,
+  type OAuthIntentEventName,
   type OAuthIntentProvider,
   type OAuthIntentStatus,
   oauthIntentEvents,
@@ -133,11 +133,7 @@ export class OAuthIntentsRepository {
   }
 
   async getOAuthIntent(id: string): Promise<OAuthIntentRow | null> {
-    const [row] = await db
-      .select()
-      .from(oauthIntents)
-      .where(eq(oauthIntents.id, id))
-      .limit(1);
+    const [row] = await db.select().from(oauthIntents).where(eq(oauthIntents.id, id)).limit(1);
     return row ? toDomain(row) : null;
   }
 
