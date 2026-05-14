@@ -16,7 +16,7 @@ import {
   type UUID,
 } from "@elizaos/core";
 import inmemorydbPlugin from "@elizaos/plugin-inmemorydb";
-import localAiPlugin from "@elizaos/plugin-local-ai";
+import localInferencePlugin from "@elizaos/plugin-local-inference";
 import { type ShellService, shellPlugin } from "@elizaos/plugin-shell";
 import { v4 as uuidv4 } from "uuid";
 
@@ -250,7 +250,7 @@ async function main(): Promise<void> {
 
   const runtime = new AgentRuntime({
     character,
-    plugins: [inmemorydbPlugin, shellPlugin, localAiPlugin] as Plugin[],
+    plugins: [inmemorydbPlugin, shellPlugin, localInferencePlugin] as Plugin[],
     logLevel: "info",
   });
   await runtime.initialize();
