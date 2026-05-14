@@ -24,6 +24,8 @@ import {
 	type AgentRuntime,
 	type GenerateTextParams,
 	type IAgentRuntime,
+	type ImageDescriptionParams,
+	type ImageDescriptionResult,
 	logger,
 	ModelType,
 	renderMessageHandlerStablePrefix,
@@ -83,6 +85,11 @@ type TranscriptionHandler = (
 	params: TranscriptionParams | Buffer | string | LocalTranscriptionParams,
 ) => Promise<string>;
 
+type ImageDescriptionHandler = (
+	runtime: IAgentRuntime,
+	params: ImageDescriptionParams | string,
+) => Promise<ImageDescriptionResult>;
+
 interface LocalTranscriptionParams {
 	pcm?: Float32Array;
 	audio?: Uint8Array | ArrayBuffer | Buffer;
@@ -95,7 +102,8 @@ type LocalModelHandler =
 	| GenerateTextHandler
 	| EmbeddingHandler
 	| TextToSpeechHandler
-	| TranscriptionHandler;
+	| TranscriptionHandler
+	| ImageDescriptionHandler;
 
 type RuntimeWithModelRegistration = AgentRuntime & {
 	getModel: (modelType: string | number) => LocalModelHandler | undefined;
@@ -635,6 +643,109 @@ function makeTranscriptionHandler(): TranscriptionHandler {
 	};
 }
 
+function paramsToVisionRequest(params: ImageDescriptionParams | string): {
+	image: { kind: "dataUrl"; dataUrl: string } | { kind: "url"; url: string };
+	prompt?: string;
+} {
+	const url = typeof params === "string" ? params : params.imageUrl;
+	if (typeof url !== "string" || url.length === 0) {
+		throw new Error(
+			"[local-inference] IMAGE_DESCRIPTION requires a non-empty imageUrl",
+		);
+	}
+	const prompt = typeof params === "object" ? params.prompt : undefined;
+	return url.startsWith("data:")
+		? { image: { kind: "dataUrl", dataUrl: url }, prompt }
+		: { image: { kind: "url", url }, prompt };
+}
+
+function normalizeImageDescription(
+	result: ImageDescriptionResult | string,
+): ImageDescriptionResult {
+	if (typeof result === "string") {
+		const description = result.trim();
+		if (!description) {
+			throw new Error(
+				"[local-inference] IMAGE_DESCRIPTION backend returned an empty description",
+			);
+		}
+		return {
+			title: description.split(/[.!?]/, 1)[0]?.trim() || "Image",
+			description,
+		};
+	}
+	if (
+		result &&
+		typeof result === "object" &&
+		typeof result.title === "string" &&
+		typeof result.description === "string" &&
+		result.title.trim() &&
+		result.description.trim()
+	) {
+		return {
+			title: result.title.trim(),
+			description: result.description.trim(),
+		};
+	}
+	throw new Error(
+		"[local-inference] IMAGE_DESCRIPTION backend returned an invalid description",
+	);
+}
+
+const ELIZA1_VISION_MARKER = "ELIZA1_VISION_HANDLER_PRESENT";
+
+function markEliza1VisionHandlerPresent(runtime: IAgentRuntime): void {
+	const r = runtime as IAgentRuntime & {
+		setSetting?: (key: string, value: unknown) => void;
+		getSetting?: (key: string) => unknown;
+		registerService?: (name: string, impl: unknown) => unknown;
+	};
+	try {
+		if (
+			typeof r.getSetting !== "function" ||
+			!r.getSetting(ELIZA1_VISION_MARKER)
+		) {
+			r.setSetting?.(ELIZA1_VISION_MARKER, "1");
+		}
+		r.registerService?.("eliza1-vision", {
+			provider: LOCAL_INFERENCE_PROVIDER,
+			modelType: ModelType.IMAGE_DESCRIPTION,
+		});
+	} catch {
+		// Marker wiring is advisory; the model handler remains the source of truth.
+	}
+}
+
+function makeImageDescriptionHandler(): ImageDescriptionHandler {
+	return async (runtime, params) => {
+		const arbiter = tryGetMemoryArbiter();
+		if (
+			!arbiter ||
+			!arbiter.hasCapability("vision-describe") ||
+			typeof arbiter.requestVisionDescribe !== "function"
+		) {
+			throw new Error(
+				"[local-inference] IMAGE_DESCRIPTION requires an active Eliza-1 vision-capable bundle with the vision-describe capability registered",
+			);
+		}
+		markEliza1VisionHandlerPresent(runtime);
+		const modelKeyCandidate =
+			typeof params === "object"
+				? (params as unknown as { modelKey?: unknown }).modelKey
+				: undefined;
+		const modelKey =
+			typeof modelKeyCandidate === "string" && modelKeyCandidate
+				? modelKeyCandidate
+				: "qwen3-vl";
+		const request = paramsToVisionRequest(params);
+		const result = await arbiter.requestVisionDescribe<
+			typeof request,
+			ImageDescriptionResult | string
+		>({ modelKey, payload: request });
+		return normalizeImageDescription(result);
+	};
+}
+
 /**
  * Register the device-bridge loader on the runtime. Accepts load/generate
  * calls whether or not a mobile device is currently connected — parked
@@ -1003,12 +1114,19 @@ export async function ensureLocalInferenceHandler(
 			provider,
 			LOCAL_INFERENCE_PRIORITY,
 		);
+		runtimeWithRegistration.registerModel(
+			ModelType.IMAGE_DESCRIPTION,
+			makeImageDescriptionHandler(),
+			provider,
+			LOCAL_INFERENCE_PRIORITY,
+		);
+		markEliza1VisionHandlerPresent(runtime);
 		logger.info(
-			`[local-inference] Registered ${provider} voice handlers for TEXT_TO_SPEECH / TRANSCRIPTION at priority ${LOCAL_INFERENCE_PRIORITY}`,
+			`[local-inference] Registered ${provider} voice and vision handlers for TEXT_TO_SPEECH / TRANSCRIPTION / IMAGE_DESCRIPTION at priority ${LOCAL_INFERENCE_PRIORITY}`,
 		);
 	} catch (err) {
 		logger.warn(
-			"[local-inference] Could not register local voice handlers",
+			"[local-inference] Could not register local voice/vision handlers",
 			err instanceof Error ? err.message : String(err),
 		);
 	}

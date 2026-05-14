@@ -21,6 +21,9 @@ concurrency:
   group: test-packaging-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  NODE_VERSION: "22.20.0"
+
 jobs:
   validate:
     name: Validate Packaging Configs
@@ -39,7 +42,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: "24"
+          node-version: ${{ env.NODE_VERSION }}
           check-latest: false
 
       - name: Install validation dependencies
@@ -77,7 +80,7 @@ jobs:
         if: steps.pypi_check.outputs.present == 'true'
         uses: actions/setup-node@v6
         with:
-          node-version: "24"
+          node-version: ${{ env.NODE_VERSION }}
           check-latest: false
 
       - name: Build
@@ -181,7 +184,7 @@ jobs:
         if: steps.pypi_check.outputs.present == 'true'
         uses: actions/setup-node@v6
         with:
-          node-version: "24"
+          node-version: ${{ env.NODE_VERSION }}
           check-latest: false
 
       - name: Build and test
@@ -205,7 +208,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: "24"
+          node-version: ${{ env.NODE_VERSION }}
           check-latest: false
 
       - name: Setup Bun

@@ -103,6 +103,7 @@ import {
   type SceneUpdateEvent,
 } from "../scene/scene-builder.js";
 import type { Scene } from "../scene/scene-types.js";
+import { registerVisionOcrProvider } from "../scene/vision-ocr-provider.js";
 
 const MAX_RECENT_ACTIONS = 10;
 const BROWSER_NOT_OPEN_ERROR = "Browser not open";
@@ -201,6 +202,7 @@ export class ComputerUseService extends Service {
     const instance = new ComputerUseService(runtime);
     instance.loadConfig(runtime);
     instance.capabilities = instance.detectCapabilities();
+    registerVisionOcrProvider(runtime);
 
     try {
       instance.screenSize = getScreenSize();
@@ -246,6 +248,8 @@ export class ComputerUseService extends Service {
       case "drag":
       case "detect_elements":
       case "ocr":
+      case "get_accessibility_tree":
+      case "accessibility_tree":
         return this.executeDesktopAction({
           ...commandParameters<DesktopActionParams>(parameters),
           action: this.mapDesktopCommandToAction(command),
@@ -336,22 +340,6 @@ export class ComputerUseService extends Service {
         return this.failEntry(entry, { success: false, error: approvalError });
       }
 
-      if (params.action === "detect_elements") {
-        return this.failEntry(entry, {
-          success: false,
-          error:
-            "Element detection is not available on local machines. Use a screenshot plus model reasoning instead.",
-        });
-      }
-
-      if (params.action === "ocr") {
-        return this.failEntry(entry, {
-          success: false,
-          error:
-            "OCR is not available on local machines. Use a screenshot plus model reasoning instead.",
-        });
-      }
-
       const targetDisplayId = this.resolveDisplayIdForAction(params);
       switch (params.action) {
         case "screenshot": {
@@ -430,6 +418,56 @@ export class ComputerUseService extends Service {
           const end = this.toGlobal(params, params.coordinate);
           await driverDrag(start.x, start.y, end.x, end.y);
           break;
+        }
+        case "ocr": {
+          const scene = await this.sceneBuilder.onAgentTurn();
+          const ocr = scene.ocr.filter(
+            (box) =>
+              params.displayId === undefined || box.displayId === params.displayId,
+          );
+          return this.succeedEntry(entry, {
+            success: true,
+            data: {
+              fullText: ocr.map((box) => box.text).join("\n"),
+              boxes: ocr,
+            },
+            message: `Detected ${ocr.length} OCR text box${ocr.length === 1 ? "" : "es"}.`,
+          });
+        }
+        case "detect_elements": {
+          const scene = await this.sceneBuilder.onAgentTurn();
+          const elements = this.sceneElements(scene, params.displayId);
+          return this.succeedEntry(entry, {
+            success: true,
+            data: {
+              elements,
+              ax: scene.ax.filter(
+                (node) =>
+                  params.displayId === undefined ||
+                  node.displayId === params.displayId,
+              ),
+              ocr: scene.ocr.filter(
+                (box) =>
+                  params.displayId === undefined ||
+                  box.displayId === params.displayId,
+              ),
+              displays: scene.displays,
+              focusedWindow: scene.focused_window,
+            },
+            message: `Detected ${elements.length} scene element${elements.length === 1 ? "" : "s"}.`,
+          });
+        }
+        case "accessibility_tree": {
+          const scene = await this.sceneBuilder.onAgentTurn();
+          const ax = scene.ax.filter(
+            (node) =>
+              params.displayId === undefined || node.displayId === params.displayId,
+          );
+          return this.succeedEntry(entry, {
+            success: true,
+            data: { ax },
+            message: `Fetched ${ax.length} accessibility node${ax.length === 1 ? "" : "s"}.`,
+          });
         }
         default:
           return this.failEntry(entry, {
@@ -1298,6 +1336,8 @@ export class ComputerUseService extends Service {
     switch (command) {
       case "key_press":
         return "key";
+      case "get_accessibility_tree":
+        return "accessibility_tree";
       default:
         return command as DesktopActionParams["action"];
     }
@@ -1534,12 +1574,50 @@ export class ComputerUseService extends Service {
     return this.sceneBuilder.subscribe(handler);
   }
 
+  private sceneElements(
+    scene: Scene,
+    displayId: number | undefined,
+  ): Array<{
+    id: string;
+    source: "accessibility" | "ocr";
+    label: string;
+    role: string;
+    bbox: [number, number, number, number];
+    displayId: number;
+    confidence?: number;
+    actions?: string[];
+  }> {
+    const matchesDisplay = (id: number): boolean =>
+      displayId === undefined || id === displayId;
+    return [
+      ...scene.ax.filter((node) => matchesDisplay(node.displayId)).map((node) => ({
+        id: node.id,
+        source: "accessibility" as const,
+        label: node.label,
+        role: node.role,
+        bbox: node.bbox,
+        displayId: node.displayId,
+        actions: node.actions,
+      })),
+      ...scene.ocr.filter((box) => matchesDisplay(box.displayId)).map((box) => ({
+        id: box.id,
+        source: "ocr" as const,
+        label: box.text,
+        role: "text",
+        bbox: box.bbox,
+        displayId: box.displayId,
+        confidence: box.conf,
+      })),
+    ];
+  }
+
   private shouldCaptureAfterDesktopAction(
     action: DesktopActionParams["action"],
   ): boolean {
     return action !== "screenshot" &&
       action !== "detect_elements" &&
-      action !== "ocr"
+      action !== "ocr" &&
+      action !== "accessibility_tree"
       ? this.cuConfig.screenshotAfterAction
       : false;
   }

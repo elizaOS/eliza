@@ -274,6 +274,11 @@
       "project": ["src/**/*.{ts,tsx}", "server.js", "vite.config.ts"],
       "ignore": ["dist/**"]
     },
+    "packages/examples/html": {
+      "entry": ["index.html"],
+      "project": ["index.html"],
+      "ignoreBinaries": ["python3"]
+    },
     "packages/examples/aws": {
       "entry": [
         "handler.ts",

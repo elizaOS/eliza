@@ -70,6 +70,7 @@ import { handlerRegistry } from "./handler-registry";
 import { policyEngine } from "./routing-policy";
 import {
 	DEFAULT_ROUTING_POLICY,
+	type RoutingPolicy,
 	readRoutingPreferences,
 } from "./routing-preferences";
 import { AGENT_MODEL_SLOTS, type AgentModelSlot } from "./types";
@@ -81,6 +82,11 @@ export const ROUTER_PROVIDER = "eliza-router";
  * they can register with Infinity — unlikely in practice.
  */
 const ROUTER_PRIORITY = Number.MAX_SAFE_INTEGER;
+type LocalRoutableSlot = AgentModelSlot | "IMAGE_DESCRIPTION";
+const LOCAL_ROUTABLE_SLOTS: readonly LocalRoutableSlot[] = [
+	...AGENT_MODEL_SLOTS,
+	"IMAGE_DESCRIPTION",
+];
 
 /**
  * Runtime's registerModel type, narrowed for our use. The core signature
@@ -92,7 +98,7 @@ type AnyHandler = (
 	params: Record<string, unknown>,
 ) => Promise<unknown>;
 
-function slotToModelType(slot: AgentModelSlot): string | undefined {
+function slotToModelType(slot: LocalRoutableSlot): string | undefined {
 	switch (slot) {
 		case "TEXT_SMALL":
 			return ModelType.TEXT_SMALL;
@@ -104,11 +110,13 @@ function slotToModelType(slot: AgentModelSlot): string | undefined {
 			return ModelType.TEXT_TO_SPEECH;
 		case "TRANSCRIPTION":
 			return ModelType.TRANSCRIPTION;
+		case "IMAGE_DESCRIPTION":
+			return ModelType.IMAGE_DESCRIPTION;
 	}
 }
 
-function modelTypeToSlot(modelType: string): AgentModelSlot | null {
-	for (const slot of AGENT_MODEL_SLOTS) {
+function modelTypeToSlot(modelType: string): LocalRoutableSlot | null {
+	for (const slot of LOCAL_ROUTABLE_SLOTS) {
 		if (slotToModelType(slot) === modelType) return slot;
 	}
 	return null;
@@ -169,7 +177,7 @@ export function filterUnavailableLocalInferenceCandidates(
 }
 
 export async function filterUnavailableLocalInference(
-	slot: AgentModelSlot,
+	slot: LocalRoutableSlot,
 	policy: string,
 	preferredProvider: string | null,
 	candidates: HandlerRegistration[],
@@ -182,14 +190,16 @@ export async function filterUnavailableLocalInference(
 	}
 
 	const assignments = await readEffectiveAssignments();
+	const assigned =
+		slot === "IMAGE_DESCRIPTION" ? null : assignments[slot as AgentModelSlot];
 	return filterUnavailableLocalInferenceCandidates(
 		candidates,
-		Boolean(assignments[slot]) || localInferenceEngine.hasLoadedModel(),
+		Boolean(assigned) || localInferenceEngine.hasLoadedModel(),
 		shouldForceLocalInference(policy, preferredProvider),
 	);
 }
 
-function makeRouterHandler(slot: AgentModelSlot): AnyHandler {
+function makeRouterHandler(slot: LocalRoutableSlot): AnyHandler {
 	return async (runtime, params) => {
 		const modelType = slotToModelType(slot);
 		if (!modelType) {
@@ -198,8 +208,14 @@ function makeRouterHandler(slot: AgentModelSlot): AnyHandler {
 
 		// Read the user's policy for this slot. Absent = local-first fallback.
 		const prefs = await readRoutingPreferences();
-		const policy = prefs.policy[slot] ?? DEFAULT_ROUTING_POLICY;
-		const preferred = prefs.preferredProvider[slot] ?? null;
+		const policy =
+			(prefs.policy as Partial<Record<LocalRoutableSlot, RoutingPolicy>>)[
+				slot
+			] ?? DEFAULT_ROUTING_POLICY;
+		const preferred =
+			(prefs.preferredProvider as Partial<Record<LocalRoutableSlot, string>>)[
+				slot
+			] ?? null;
 
 		// Ask the policy engine which handler to dispatch to. For automatic
 		// policies, honor the documented fallback behaviour: if the selected
@@ -300,7 +316,7 @@ export function installRouterHandler(runtime: AgentRuntime): void {
 	};
 	if (typeof rt.registerModel !== "function") return;
 
-	for (const slot of AGENT_MODEL_SLOTS) {
+	for (const slot of LOCAL_ROUTABLE_SLOTS) {
 		const modelType = slotToModelType(slot);
 		if (!modelType) continue;
 		rt.registerModel(
@@ -314,7 +330,7 @@ export function installRouterHandler(runtime: AgentRuntime): void {
 
 /** Public helper — useful for diagnostics endpoints. */
 export function describeCurrentRouting(): Array<{
-	slot: AgentModelSlot;
+	slot: LocalRoutableSlot;
 	modelType: string;
 	candidates: Array<{
 		provider: string;
@@ -322,7 +338,7 @@ export function describeCurrentRouting(): Array<{
 	}>;
 }> {
 	const out: ReturnType<typeof describeCurrentRouting> = [];
-	for (const slot of AGENT_MODEL_SLOTS) {
+	for (const slot of LOCAL_ROUTABLE_SLOTS) {
 		const modelType = slotToModelType(slot);
 		if (!modelType) continue;
 		const candidates = handlerRegistry

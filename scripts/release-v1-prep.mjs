@@ -143,6 +143,7 @@ function resolvePython() {
   const candidates = [
     process.env.PYTHON,
     process.env.PYTHON3,
+    "/opt/miniconda3/bin/python3",
     "python3.13",
     "python3.12",
     "python3.11",
@@ -154,7 +155,7 @@ function resolvePython() {
       candidate,
       [
         "-c",
-        "import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)",
+        "import sys; import torch; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)",
       ],
       { stdio: "ignore" },
     );

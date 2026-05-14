@@ -62,14 +62,17 @@ const LOCAL_PROVIDER: ProviderDefinition = {
 	label: "Eliza-1 local runtime",
 	kind: "local",
 	description:
-		"On-device Eliza-1 inference with the optimized local runtime when the managed binary and companion files are installed. The bundle serves text, embeddings, TTS, and transcription from one local provider.",
+		"On-device Eliza-1 inference with the optimized local runtime when the managed binary and companion files are installed. The bundle serves text, embeddings, TTS, transcription, and image description from one local provider.",
 	supportedSlots: [
 		"TEXT_SMALL",
 		"TEXT_LARGE",
 		"TEXT_EMBEDDING",
 		"TEXT_TO_SPEECH",
 		"TRANSCRIPTION",
-	],
+		// The shared AgentModelSlot type has not caught up with the runtime
+		// IMAGE_DESCRIPTION surface yet; keep the catalog JSON truthful locally.
+		"IMAGE_DESCRIPTION",
+	] as unknown as ProviderMeta["supportedSlots"],
 	async getEnableState(): Promise<ProviderEnableState> {
 		// Enabled when at least one model file lives under our root and the
 		// binding is loadable. We don't force-load node-llama-cpp here — that

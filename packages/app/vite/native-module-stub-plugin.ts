@@ -572,17 +572,13 @@ export function nativeModuleStubPlugin(
         ].join("\n");
       }
 
-      // @elizaos/plugin-local-inference and server-only sub-paths used by app-core sources.
+      // @elizaos/plugin-local-inference is server-only for app-core sources.
       // The plugin is server-only (Node llama.cpp bindings, fs paths, etc.) but
       // app-core's `api/server.ts` and `runtime/eliza.ts` import named symbols
-      // from the package root, `/runtime`, and `/services` at module top level. The
+      // from the package root at module top level. The
       // dist barrel pulls those imports into the renderer graph where Rollup
       // needs a static export shape to satisfy the named-import scan.
-      if (
-        strippedId === "@elizaos/plugin-local-inference" ||
-        strippedId === "@elizaos/plugin-local-inference/runtime" ||
-        strippedId === "@elizaos/plugin-local-inference/services"
-      ) {
+      if (strippedId === "@elizaos/plugin-local-inference") {
         return [
           "const noop = () => undefined;",
           "const asyncNoop = async () => undefined;",

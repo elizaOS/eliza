@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Provision a Vast.ai GPU instance, sync the training tree, and run a
 # full-parameter SFT (APOLLO), DPO warmup, or GRPO RL pipeline on a
-# Qwen3.5 model.
+# Qwen3.5/Qwen3.6 model.
 #
 # Pipeline selection (--pipeline sft|dpo|grpo, default sft):
 #   sft   — run train_local.py with APOLLO + Liger + FSDP (the historical
@@ -21,7 +21,7 @@
 # VAST_GPU_TARGET):
 #   qwen3.5-2b  → blackwell6000-1x   (96 GB; 15.5 GB budget = 16% util)
 #   qwen3.5-9b  → blackwell6000-1x   (96 GB; 80 GB budget   = 83% util)
-#   qwen3.5-27b → b200-2x            (~366 GB; 190 GB budget = 52% util)
+#   qwen3.6-27b → b200-2x            (~366 GB; 190 GB budget = 52% util)
 #
 # Other targets (use VAST_GPU_TARGET=...):
 #   blackwell6000-2x — 2× RTX PRO 6000 Blackwell, 192 GB total. Safe for
@@ -46,7 +46,7 @@
 #     1× H100 SXM      (80 GB)   ~51 h  ~$121    nearly 3× faster; 80 GB tight
 #     1× H200 SXM     (141 GB)   ~51 h  ~$162    same wall, more headroom
 #     2× B200          (366 GB)  ~11 h   ~$84    fastest, also cheapish
-#   qwen3.5-27b:
+#   qwen3.6-27b:
 #     2× B200          (366 GB)  ~33 h  ~$253    DEFAULT (fast + safe)
 #     2× H200 SXM     (282 GB)   ~76 h  ~$485    2× as slow, 2× as expensive
 #     2× Blackwell 6000 (192 GB) ~208 h ~$558    cheapest $/hr, slowest;
@@ -62,7 +62,7 @@
 #   HUGGING_FACE_HUB_TOKEN     # for gated Qwen access
 #
 # Optional env:
-#   REGISTRY_KEY               # default: qwen3.5-27b
+#   REGISTRY_KEY               # default: qwen3.6-27b
 #   RUN_NAME                   # default: <registry-key>-apollo
 #   VAST_GPU_TARGET            # default: auto-picked from REGISTRY_KEY
 #   VAST_INSTANCE_LABEL        # default: eliza-train-vast-${REGISTRY_KEY//./-}
@@ -80,7 +80,7 @@
 #   VAST_OFFER_ID              # skip search and use this offer id directly
 #   QUANTIZE_AFTER             # default: read from REGISTRY_KEY's
 #                                quantization_after tuple via model_registry.py
-#                                (e.g. polarquant,turboquant,qjl,fp8,gguf-q4_k_m).
+#                                (e.g. polarquant,fused_turboquant,qjl,gguf-q4_k_m).
 #                                Each name resolves to
 #                                scripts/quantization/${name}_apply.py.
 #   BENCHMARK_AFTER            # 1 = run native function-calling benchmark (default 1)
@@ -230,7 +230,7 @@ if [ -n "$_seen_registry_key" ]; then
 fi
 unset _seen_pipeline _seen_registry_key
 
-REGISTRY_KEY="${REGISTRY_KEY:-qwen3.5-27b}"
+REGISTRY_KEY="${REGISTRY_KEY:-qwen3.6-27b}"
 # PIPELINE selects which training stage the launcher drives end-to-end on the
 # remote box. Default = SFT (the historical behaviour); --pipeline dpo|grpo
 # overrides via the CLI pre-scan above or via the PIPELINE env var.
@@ -254,7 +254,7 @@ case "$PIPELINE" in
         DEFAULT_GPU_TARGET="blackwell6000-1x"
         DEFAULT_FSDP_WORLD_SIZE=1
         ;;
-      qwen3.5-27b)
+      qwen3.6-27b|qwen3.5-27b)
         DEFAULT_GPU_TARGET="b200-2x"
         DEFAULT_FSDP_WORLD_SIZE=2
         ;;
@@ -274,7 +274,7 @@ case "$PIPELINE" in
         DEFAULT_GPU_TARGET="h200-4x"
         DEFAULT_FSDP_WORLD_SIZE=4
         ;;
-      qwen3.5-27b)
+      qwen3.6-27b|qwen3.5-27b)
         DEFAULT_GPU_TARGET="h200-8x"
         DEFAULT_FSDP_WORLD_SIZE=8
         ;;
@@ -322,7 +322,7 @@ VAST_DISK_GB="${VAST_DISK_GB:-2048}"
 # Fallback is the original literal default if the registry import fails (e.g.
 # when running this script outside `uv run`); the literal still references
 # only quants whose apply.py exists.
-DEFAULT_QUANTIZE_AFTER="$(cd "$ROOT" && uv run python -c "from scripts.training.model_registry import get; print(','.join(get('${REGISTRY_KEY}').quantization_after))" 2>/dev/null || echo "polarquant,turboquant,qjl,fp8,gguf-q4_k_m")"
+DEFAULT_QUANTIZE_AFTER="$(cd "$ROOT" && uv run python -c "from scripts.training.model_registry import get; print(','.join(get('${REGISTRY_KEY}').quantization_after))" 2>/dev/null || echo "polarquant,fused_turboquant,qjl,gguf-q4_k_m,gguf-q6_k,gguf-q8_0")"
 QUANTIZE_AFTER="${QUANTIZE_AFTER:-${DEFAULT_QUANTIZE_AFTER}}"
 BENCHMARK_AFTER="${BENCHMARK_AFTER:-1}"
 
@@ -332,7 +332,7 @@ BENCHMARK_AFTER="${BENCHMARK_AFTER:-1}"
 # 100/bucket for 27B unless caller overrides.
 if [ -z "${BENCH_MAX_PER_BUCKET:-}" ]; then
   case "$REGISTRY_KEY" in
-    qwen3.5-27b) BENCH_MAX_PER_BUCKET=100 ;;
+    qwen3.6-27b|qwen3.5-27b) BENCH_MAX_PER_BUCKET=100 ;;
     *)           BENCH_MAX_PER_BUCKET=200 ;;
   esac
 fi
@@ -637,7 +637,7 @@ run_remote() {
   # ~25 GB on this hardware tier. Refuse the combo and point operators at
   # b200-2x or h200-2x (default) or blackwell6000-4x (192 GB/rank under
   # FSDP-4 leaves real headroom).
-  if [ "$REGISTRY_KEY" = "qwen3.5-27b" ] \
+  if [[ "$REGISTRY_KEY" == "qwen3.6-27b" || "$REGISTRY_KEY" == "qwen3.5-27b" ]] \
      && [ "$VAST_GPU_TARGET" = "blackwell6000-2x" ] \
      && [ "${ELIZA_FORCE_27B_BLACKWELL2X:-0}" != "1" ]; then
     log_err "27B on blackwell6000-2x has been empirically shown to OOM"
@@ -963,7 +963,7 @@ provision_and_train() {
         local _sft_default
         case "$REGISTRY_KEY" in
           qwen3.5-2b|qwen3.5-9b) _sft_default="blackwell6000-1x" ;;
-          qwen3.5-27b)           _sft_default="b200-2x" ;;
+          qwen3.6-27b|qwen3.5-27b) _sft_default="b200-2x" ;;
           *)                     _sft_default="blackwell6000-2x" ;;
         esac
         log "  3. run_grpo_remote (bash scripts/train_grpo_verl.sh \\"

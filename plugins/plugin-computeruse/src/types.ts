@@ -27,7 +27,8 @@ export type DesktopActionType =
   | "scroll"
   | "drag"
   | "detect_elements"
-  | "ocr";
+  | "ocr"
+  | "accessibility_tree";
 
 export interface DesktopActionParams {
   action: DesktopActionType;

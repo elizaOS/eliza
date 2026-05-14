@@ -11,31 +11,21 @@
 
 import type { Context } from "hono";
 import { Hono } from "hono";
-import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
 import { elizaAppSessionService } from "@/lib/services/eliza-app";
-import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
-import { provisioningJobService } from "@/lib/services/provisioning-jobs";
+import {
+  ensureElizaAppProvisioning,
+  getElizaAppProvisioningStatus,
+  publicElizaAppProvisioningPayload,
+} from "@/lib/services/eliza-app/provisioning";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
 
-const DEFAULT_AGENT_NAME = "Eliza";
-const DEFAULT_DOCKER_IMAGE = "elizaos/eliza:latest";
-
 async function resolveSession(c: Context<AppEnv>) {
   const authHeader = c.req.header("Authorization");
   if (!authHeader) return null;
   return elizaAppSessionService.validateAuthHeader(authHeader);
-}
-
-function sandboxPayload(sandbox: { id: string; status: string; bridge_url: string | null }) {
-  const bridgeUrl = sandbox.status === "running" ? (sandbox.bridge_url ?? null) : null;
-  return {
-    status: sandbox.status,
-    agentId: sandbox.id,
-    ...(bridgeUrl ? { bridgeUrl } : {}),
-  };
 }
 
 /** GET — status only, no side effects. */
@@ -46,12 +36,8 @@ app.get("/", async (c) => {
   }
 
   try {
-    const sandboxes = await agentSandboxesRepository.listByOrganization(session.organizationId);
-    const sandbox = sandboxes[0];
-    if (!sandbox) {
-      return c.json({ success: true, data: { status: "none" } });
-    }
-    return c.json({ success: true, data: sandboxPayload(sandbox) });
+    const status = await getElizaAppProvisioningStatus(session.organizationId);
+    return c.json({ success: true, data: publicElizaAppProvisioningPayload(status) });
   } catch (err) {
     logger.error("[eliza-app provisioning-agent] GET error", { error: err });
     return c.json({ success: false, error: "Failed to fetch status" }, 500);
@@ -66,36 +52,19 @@ app.post("/", async (c) => {
   }
 
   try {
-    const sandboxes = await agentSandboxesRepository.listByOrganization(session.organizationId);
-    const existing = sandboxes[0];
-
-    if (existing) {
-      return c.json({ success: true, data: sandboxPayload(existing) });
-    }
-
-    // No sandbox yet — create one and enqueue provisioning.
-    const sandbox = await elizaSandboxService.createAgent({
+    const status = await ensureElizaAppProvisioning({
       organizationId: session.organizationId,
       userId: session.userId,
-      agentName: DEFAULT_AGENT_NAME,
-      dockerImage: DEFAULT_DOCKER_IMAGE,
     });
 
-    await provisioningJobService.enqueueAgentProvision({
-      agentId: sandbox.id,
-      organizationId: session.organizationId,
-      userId: session.userId,
-      agentName: DEFAULT_AGENT_NAME,
-    });
-
-    logger.info("[eliza-app provisioning-agent] Provisioning kicked off", {
-      agentId: sandbox.id,
+    logger.info("[eliza-app provisioning-agent] Provisioning status resolved", {
+      agentId: status.agentId,
       orgId: session.organizationId,
     });
 
     return c.json({
       success: true,
-      data: { status: sandbox.status, agentId: sandbox.id },
+      data: publicElizaAppProvisioningPayload(status),
     });
   } catch (err) {
     logger.error("[eliza-app provisioning-agent] POST provision error", { error: err });

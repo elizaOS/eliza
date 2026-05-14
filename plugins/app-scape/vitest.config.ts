@@ -7,10 +7,9 @@ const repoRoot = path.resolve(here, "../..");
 
 // Alias all @elizaos/plugin-* packages that agent/src imports to their source
 // so vitest can resolve them without a pre-built dist. Anchors the find
-// pattern to the exact module so subpath imports like
-// `@elizaos/plugin-local-inference/runtime` resolve via the package's exports
-// map (or the explicit subpath aliases below) instead of being rewritten to
-// `<src>/runtime`, which yields ENOTDIR when <src> points to a single file.
+// pattern to the exact module so package imports resolve through the intended
+// entrypoint instead of being rewritten under `<src>`, which yields ENOTDIR
+// when <src> points to a single file.
 function pluginAlias(name: string, srcPath?: string) {
   const src = srcPath ?? path.join(repoRoot, `plugins/${name}/src/index.ts`);
   return { find: new RegExp(`^@elizaos/${name}$`), replacement: src };

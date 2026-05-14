@@ -1,10 +1,10 @@
 /**
  * Base client for elizacloud API.
- * Default: https://www.elizacloud.ai — override via VITE_ELIZACLOUD_API_URL.
+ * Default: https://api.elizacloud.ai — override via VITE_ELIZACLOUD_API_URL.
  * Calls the backend directly; no local proxy.
  */
 
-const ELIZACLOUD_DEFAULT_URL = "https://www.elizacloud.ai";
+const ELIZACLOUD_DEFAULT_URL = "https://api.elizacloud.ai";
 
 function getBaseUrl(): string {
   return (

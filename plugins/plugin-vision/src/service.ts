@@ -218,6 +218,14 @@ export class VisionService extends Service {
     return service;
   }
 
+  async recognizeImageText(imageBuffer: Buffer): Promise<OCRResult> {
+    return this.ocrService.extractText(imageBuffer);
+  }
+
+  async analyzeImageContent(imageBuffer: Buffer): Promise<Florence2Result> {
+    return this.florence2.analyzeImage(imageBuffer);
+  }
+
   private async checkCameraTools(): Promise<{
     available: boolean;
     tool: string;

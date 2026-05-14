@@ -146,6 +146,15 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: Prepare dev agent build
+        env:
+          NODE_ENV: "test"
+          ELIZA_DISABLE_TRAJECTORY_LOGGING: "1"
+        run: |
+          set -euo pipefail
+          bun run dev:prepare
+          bun run --cwd packages/app plugin:build
+
       - name: Boot dev agent
         env:
           ELIZA_API_PORT: "31337"
@@ -158,10 +167,11 @@ jobs:
           # Run the dev server in the background. The orchestrator
           # already auto-shifts ports if the defaults are busy and writes
           # a `.eliza/desktop-dev-console.log` we can tail if needed.
-          bun run dev > .ci-logs/dev.log 2>&1 &
+          node packages/app-core/scripts/rt.mjs packages/app-core/scripts/dev-ui.mjs --name=eliza --app=app > .ci-logs/dev.log 2>&1 &
           echo $! > /tmp/dev.pid
-          # Health probe — give the agent up to 120s to come up.
-          for _ in $(seq 1 60); do
+          # Health probe — dev preparation is separated above, but first
+          # boot can still spend several minutes initializing caches.
+          for _ in $(seq 1 150); do
             if curl --silent --fail "http://127.0.0.1:31337/api/health" >/dev/null 2>&1; then
               echo "agent ready"
               break
