@@ -69,7 +69,7 @@ SCHEMA_VERSION = 1
 # Held-out text-eval corpus.
 #
 # Source of truth: the eliza-1 training dataset's held-out test split at
-# ``packages/training/datasets/eliza1-sft-0_6b/test.jsonl`` (also published as
+# ``packages/training/datasets/eliza1-sft-0_8b/test.jsonl`` (also published as
 # ``elizaos/eliza-1-training/test.jsonl``). The eval suite reads it at boot,
 # extracts the assistant-turn text from each ``{"messages":[...]}`` row, and
 # uses that concatenation as the perplexity corpus.
@@ -80,7 +80,7 @@ SCHEMA_VERSION = 1
 # (which run without the dataset on disk) working without silently degrading
 # the real publish-time eval.
 
-_DATASET_TEST_RELATIVE: Path = Path("datasets/eliza1-sft-0_6b/test.jsonl")
+_DATASET_TEST_RELATIVE: Path = Path("datasets/eliza1-sft-0_8b/test.jsonl")
 
 _TEXT_CORPUS_MIN_CHARS: int = 32
 _TEXT_CORPUS_MAX_RECORDS: int = 200
@@ -165,7 +165,7 @@ def _dataset_test_jsonl() -> Path | None:
 
     Search order:
       1. ``ELIZA_EVAL_TEXT_CORPUS`` env var (explicit operator override).
-      2. ``packages/training/datasets/eliza1-sft-0_6b/test.jsonl`` next to
+      2. ``packages/training/datasets/eliza1-sft-0_8b/test.jsonl`` next to
          the training package (this is the in-repo source-of-truth split).
     """
     override = os.environ.get("ELIZA_EVAL_TEXT_CORPUS")

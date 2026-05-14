@@ -152,6 +152,7 @@ describe("runV5MessageRuntimeStage1", () => {
 			toolChoice?: string;
 			responseSchema?: unknown;
 			responseFormat?: unknown;
+			signal?: AbortSignal;
 		};
 		expect(params.tools?.[0]?.name).toBe("HANDLE_RESPONSE");
 		expect(params.tools?.[0]?.parameters?.required).toContain(
@@ -159,6 +160,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		);
 		expect(params.tools?.[0]?.parameters?.required).toContain("facts");
 		expect(params.toolChoice).toBe("required");
+		expect(params.signal).toBeInstanceOf(AbortSignal);
 		expect(params.responseSchema).toBeUndefined();
 		expect(params.responseFormat).toBeUndefined();
 		if (result.kind === "direct_reply") {

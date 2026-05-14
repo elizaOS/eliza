@@ -1,7 +1,7 @@
 """Smoke tests for model_registry. CPU-only.
 
 The registry holds the Eliza-1 size ladder. The canonical bases are published
-Qwen3.5 / Qwen3.6 checkpoints and are all trainable through the APOLLO path;
+Qwen3.5 checkpoints and are all trainable through the APOLLO path;
 local tiers run on one consumer GPU, while 9B/27B go through Vast/FSDP.
 """
 
@@ -25,7 +25,6 @@ VERIFIED_KEYS = (
     "qwen3.5-4b",
     "qwen3.5-9b",
     "qwen3.5-27b",
-    "qwen3.6-27b",
 )
 VERIFIED_PUBLIC_NAMES = (
     "eliza-1-0_8b",
@@ -36,15 +35,13 @@ VERIFIED_PUBLIC_NAMES = (
 )
 
 
-# The eliza-1 fused-model line is Qwen3.5/Qwen3.6 only (per the 2026-05
+# The eliza-1 fused-model line is Qwen3.5 only (per the 2026-05
 # operator directive — the Qwen3 dense bases don't work with dflash). The
 # smallest tier is qwen3.5-0.8b on Qwen/Qwen3.5-0.8B; 2b/4b are mid-local
-# on Qwen/Qwen3.5-{2B,4B}; 9b stays on Qwen3.5 until an official
-# Qwen/Qwen3.6-9B exists; 27b is the cloud tier on Qwen/Qwen3.6-27B.
-# qwen3.5-27b is retained as a legacy lookup only.
+# on Qwen/Qwen3.5-{2B,4B}; 9b/27b are workstation/cloud tiers on Qwen3.5.
 SMALL_KEYS = ("qwen3.5-0.8b",)
 SMALL_PUBLIC_NAMES = ("eliza-1-0_8b",)
-LARGE_KEYS = ("qwen3.5-2b", "qwen3.5-4b", "qwen3.5-9b", "qwen3.6-27b")
+LARGE_KEYS = ("qwen3.5-2b", "qwen3.5-4b", "qwen3.5-9b", "qwen3.5-27b")
 LARGE_PUBLIC_NAMES = ("eliza-1-2b", "eliza-1-4b", "eliza-1-9b", "eliza-1-27b")
 ALL_KEYS = SMALL_KEYS + LARGE_KEYS
 ALL_PUBLIC_NAMES = SMALL_PUBLIC_NAMES + LARGE_PUBLIC_NAMES
@@ -62,15 +59,13 @@ def test_every_entry_has_publish_metadata() -> None:
         "qwen3.5-2b",
         "qwen3.5-4b",
         "qwen3.5-9b",
-        "qwen3.6-27b",
+        "qwen3.5-27b",
     )
     for key, public in zip(active_public_keys, VERIFIED_PUBLIC_NAMES):
         e = get(key)
         assert e.eliza_short_name == public
         assert e.eliza_repo_id == "elizaos/eliza-1"
         assert e.abliteration_repo_id == ""
-    assert get("qwen3.5-27b").eliza_short_name == ""
-    assert get("qwen3.5-27b").eliza_repo_id == ""
 
 
 def test_verified_bases_are_not_flagged_unverified() -> None:
@@ -90,7 +85,7 @@ def test_tier_assignments() -> None:
     assert get("qwen3.5-2b").tier == Tier.LOCAL
     assert get("qwen3.5-4b").tier == Tier.LOCAL
     assert get("qwen3.5-9b").tier == Tier.WORKSTATION
-    assert get("qwen3.6-27b").tier == Tier.CLOUD
+    assert get("qwen3.5-27b").tier == Tier.CLOUD
 
 
 def test_by_tier_partitions_the_ladder() -> None:
@@ -98,8 +93,8 @@ def test_by_tier_partitions_the_ladder() -> None:
     assert len(by_tier(Tier.LOCAL)) == 3
     # WORKSTATION: qwen3.5-9b
     assert len(by_tier(Tier.WORKSTATION)) == 1
-    # CLOUD: canonical qwen3.6-27b plus the legacy qwen3.5-27b resolver entry.
-    assert len(by_tier(Tier.CLOUD)) == 2
+    # CLOUD: canonical qwen3.5-27b.
+    assert len(by_tier(Tier.CLOUD)) == 1
 
 
 def test_lookup_by_hf_id_short_name_or_eliza_name() -> None:
@@ -109,17 +104,17 @@ def test_lookup_by_hf_id_short_name_or_eliza_name() -> None:
     assert get("qwen3.5-2b").short_name == "qwen3.5-2b"
     assert get("qwen3.5-4b").short_name == "qwen3.5-4b"
     assert get("qwen3.5-9b").short_name == "qwen3.5-9b"
-    assert get("qwen3.6-27b").short_name == "qwen3.6-27b"
-    assert get("eliza-1-27b").short_name == "qwen3.6-27b"
+    assert get("qwen3.5-27b").short_name == "qwen3.5-27b"
+    assert get("eliza-1-27b").short_name == "qwen3.5-27b"
 
 
 def test_dflash_drafter_base_is_qwen3_5_for_qwen3_5_targets() -> None:
-    # The Qwen3.5/3.6 target tiers must draft from the Qwen3.5-0.8B-Base
+    # The Qwen3.5 target tiers must draft from the Qwen3.5-0.8B-Base
     # checkpoint — it shares their 248320-token tokenizer (a Qwen3-0.6B
     # drafter has the wrong vocab). The shipped drafter GGUF is that base
     # distilled to ~0.6B. Mirrors DEFAULT_STUDENT_BASE in
     # scripts/distill_dflash_drafter.py. Per the 2026-05-12 operator
-    # directive (Qwen3.5/Qwen3.6 fused-model line), the legacy Qwen3 tier
+    # directive (Qwen3.5 fused-model line), the legacy Qwen3 tier
     # legacy drafter entries are dropped — the
     # corresponding tiers are deprecated.
     for tier in (
