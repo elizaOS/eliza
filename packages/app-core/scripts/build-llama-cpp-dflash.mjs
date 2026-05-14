@@ -3182,7 +3182,8 @@ function writeCapabilities({
   const supportedArchitectures = supportsDflashDraftArchitecture
     ? ["dflash-draft"]
     : [];
-  const missing = requiredKernelsMissing(target, kernels);
+  const missing =
+    backend === "openvino" ? [] : requiredKernelsMissing(target, kernels);
   const shippedKernels =
     backend === "metal"
       ? probeMetalShippedKernelSymbols(buildDir, outDir)
@@ -3219,7 +3220,8 @@ function writeCapabilities({
     dflashDraftArchitecture: supportsDflashDraftArchitecture,
     supportedArchitectures,
     draftArchitectures: supportedArchitectures,
-    publishable: missing.length === 0,
+    publishable: missing.length === 0 && backend !== "openvino",
+    eliza1DefaultEligible: missing.length === 0 && backend !== "openvino",
     missingRequiredKernels: missing,
     smokeOnlyIncompleteAllowed: missing.length > 0 && allowSmokeIncompleteBuild,
     reducedOptimizationLocalMode: missing.length > 0 && allowReducedKernelBuild,

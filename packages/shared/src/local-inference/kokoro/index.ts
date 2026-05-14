@@ -26,6 +26,13 @@ export {
 	KokoroOnnxRuntime,
 	KokoroPythonRuntime,
 } from "./kokoro-runtime.js";
+export type { KokoroEngineDiscoveryResult } from "./kokoro-engine-discovery.js";
+export {
+	isKokoroGgufFile,
+	kokoroEngineModelDir,
+	KOKORO_DEFAULT_SAMPLE_RATE,
+	resolveKokoroEngineConfig,
+} from "./kokoro-engine-discovery.js";
 export type {
 	PhonemeStreamWindow,
 	StreamPhonemesOptions,

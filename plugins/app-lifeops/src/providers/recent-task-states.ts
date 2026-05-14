@@ -4,15 +4,10 @@
  * watcher" reads this), and (b) answer "did I check in yesterday?" without
  * scanning rows.
  *
- * Frozen contract (`wave1-interfaces.md` §4.4 + `GAP_ASSESSMENT.md` §3.12):
+ * Contract: summarize(opts?): Promise<{ summary, streaks, notable }>
  *
- *   summarize(opts?): Promise<{ summary, streaks, notable }>
- *
- * **Wave-1 data source.** The W1-A `scheduled_task_log` is the canonical
- * source. Until W1-A's spine is wired in, this provider reads the
- * fallback in-memory ledger (`scheduled_task_log` shim) the W1-C runner
- * stub keeps. Both shapes are read through `readScheduledTaskLog`, so the
- * W1-A swap is a single import line.
+ * Reads the cache-backed task log maintained by the scheduled-task runner
+ * via `readScheduledTaskLog`.
  */
 
 import { hasOwnerAccess } from "@elizaos/agent";
@@ -83,8 +78,7 @@ export async function readScheduledTaskLog(
 }
 
 /**
- * Test/integration helper — append an entry to the log. The W1-A runner
- * will own the canonical write path.
+ * Test/integration helper — append an entry to the log.
  */
 export async function appendScheduledTaskLogEntry(
   runtime: IAgentRuntime,

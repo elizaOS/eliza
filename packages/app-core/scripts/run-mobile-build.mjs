@@ -33,12 +33,13 @@
  *   6. Native build         — gradlew / xcodebuild
  *
  * iOS targets:
- *   - ios         App Store iOS build. Cloud/client-oriented by default;
- *                 llama.cpp remains omitted unless ELIZA_IOS_INCLUDE_LLAMA is set.
+ *   - ios         App Store iOS build. Ships the bundled no-JIT iOS Bun
+ *                 runtime and local agent payload; llama.cpp remains omitted
+ *                 unless ELIZA_IOS_INCLUDE_LLAMA is set.
  *   - ios-local   Dev/sideload iOS build. Bakes runtimeMode=local with
  *                 ELIZA_RUNTIME_MODE=local-safe, stages the agent payload,
- *                 includes the JSContext compatibility runtime by default,
- *                 and defaults to simulator validation. Full Bun is explicit.
+ *                 includes the full no-JIT Bun runtime, and defaults to
+ *                 simulator validation.
  */
 import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
@@ -2523,14 +2524,13 @@ function generatePodfile() {
   }
 
   // LlamaCppCapacitor ships an on-device llama.cpp xcframework. The App Store
-  // target is cloud/client-oriented by default and omits native local runtime
-  // pods unless an explicitly non-store build requests them.
+  // target ships the no-JIT Bun runtime by default, but still omits llama.cpp
+  // unless explicitly requested because it is a separate native model backend.
   const includeLlama = shouldIncludeIosLlama();
   const appStoreBuild = isIosAppStoreBuild();
   const includeFullBunEngine = shouldIncludeIosFullBunEngine();
   const includeCompatBunRuntime =
-    !appStoreBuild &&
-    (includeFullBunEngine || process.env.ELIZA_IOS_RUNTIME_MODE === "local");
+    !includeFullBunEngine && process.env.ELIZA_IOS_RUNTIME_MODE === "local";
   const includeMobileAgentBridge =
     !appStoreBuild &&
     isTruthyEnv(process.env.ELIZA_IOS_INCLUDE_MOBILE_AGENT_BRIDGE);
@@ -2552,12 +2552,12 @@ function generatePodfile() {
     );
   } else if (includeFullBunEngine) {
     console.log(
-      "[mobile-build] iOS Podfile: requiring full Bun engine pod (explicit non-store build request)",
+      "[mobile-build] iOS Podfile: requiring no-JIT Bun engine pod",
     );
   }
   if (appStoreBuild) {
     console.log(
-      "[mobile-build] iOS Podfile: omitting full Bun/local execution bridge pods for App Store build",
+      "[mobile-build] iOS Podfile: App Store build keeps local Bun runtime and omits mobile-agent tunnel bridge",
     );
   }
   const deploymentTarget = resolveIosDeploymentTarget();
@@ -4924,14 +4924,21 @@ function configureIosLocalBuildDefaults() {
 function configureIosAppStoreBuildDefaults() {
   setDefaultProcessEnv("ELIZA_BUILD_VARIANT", "store");
   setDefaultProcessEnv("ELIZA_RELEASE_AUTHORITY", "apple-app-store");
-  setDefaultProcessEnv("ELIZA_IOS_RUNTIME_MODE", "cloud");
-  setDefaultProcessEnv("VITE_ELIZA_IOS_RUNTIME_MODE", "cloud");
-  setDefaultProcessEnv("ELIZA_RUNTIME_MODE", "cloud");
-  setDefaultProcessEnv("RUNTIME_MODE", "cloud");
-  setDefaultProcessEnv("LOCAL_RUNTIME_MODE", "cloud");
-  setDefaultProcessEnv("VITE_ELIZA_RUNTIME_MODE", "cloud");
   if (isIosAppStoreLocalRuntimeEnabled()) {
+    setDefaultProcessEnv("ELIZA_IOS_RUNTIME_MODE", "cloud-hybrid");
+    setDefaultProcessEnv("VITE_ELIZA_IOS_RUNTIME_MODE", "cloud-hybrid");
+    setDefaultProcessEnv("ELIZA_RUNTIME_MODE", "local-safe");
+    setDefaultProcessEnv("RUNTIME_MODE", "local-safe");
+    setDefaultProcessEnv("LOCAL_RUNTIME_MODE", "local-safe");
+    setDefaultProcessEnv("VITE_ELIZA_RUNTIME_MODE", "local-safe");
     setDefaultProcessEnv("ELIZA_IOS_FULL_BUN_ENGINE", "1");
+  } else {
+    setDefaultProcessEnv("ELIZA_IOS_RUNTIME_MODE", "cloud");
+    setDefaultProcessEnv("VITE_ELIZA_IOS_RUNTIME_MODE", "cloud");
+    setDefaultProcessEnv("ELIZA_RUNTIME_MODE", "cloud");
+    setDefaultProcessEnv("RUNTIME_MODE", "cloud");
+    setDefaultProcessEnv("LOCAL_RUNTIME_MODE", "cloud");
+    setDefaultProcessEnv("VITE_ELIZA_RUNTIME_MODE", "cloud");
   }
 }
 
