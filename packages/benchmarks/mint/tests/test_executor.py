@@ -126,11 +126,12 @@ class TestMockExecutor:
         assert result.output == "hello"
 
     @pytest.mark.asyncio
-    async def test_mock_default_response(self) -> None:
-        """Test mock executor default response."""
+    async def test_mock_default_response_is_failure(self) -> None:
+        """The default-"42" fallback is gone; unmatched code returns failure."""
         mock = MockExecutor()
         result = await mock.execute("complex_code_without_print()")
-        assert result.success is True
+        assert result.success is False
+        assert "MockExecutor has no matching response" in (result.error or "")
 
 
 class TestExecutionResult:

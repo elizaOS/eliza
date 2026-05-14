@@ -280,6 +280,12 @@ Always respond with valid JSON containing your action. You may include a "reason
     def _result_success(result: str) -> tuple[str, bool]:
         return result, not result.lstrip().startswith("Error:")
 
+    @staticmethod
+    def _format_subagent_result(report: SubAgentReport) -> str:
+        head = f"[{report.name}] tools={report.tool_calls}"
+        body = report.error or report.result
+        return f"{head}\n{body}"
+
     def _execute_action(
         self,
         action_type: ActionType,
@@ -365,6 +371,52 @@ Always respond with valid JSON containing your action. You may include a "reason
 
             elif action_type == ActionType.ADVANCE_DAY:
                 return self.env.action_advance_day(), True
+
+            elif action_type == ActionType.SEND_EMAIL:
+                self._emails_sent += 1
+                return self._result_success(
+                    self.env.action_send_email(
+                        to=str(params.get("to", "")),
+                        subject=str(params.get("subject", "")),
+                        body=str(params.get("body", "")),
+                    )
+                )
+
+            elif action_type == ActionType.READ_EMAIL:
+                only_unread = bool(params.get("only_unread", False))
+                return self.env.action_read_email(only_unread=only_unread), True
+
+            elif action_type == ActionType.SEARCH_WEB:
+                self._web_searches += 1
+                query = str(params.get("query") or params.get("q") or "")
+                return self._result_success(self.env.action_search_web(query))
+
+            elif action_type == ActionType.NOTEPAD_WRITE:
+                self._notepad_writes += 1
+                text = str(params.get("text") or params.get("content") or "")
+                return self._result_success(self.env.action_notepad_write(text))
+
+            elif action_type == ActionType.NOTEPAD_READ:
+                return self.env.action_notepad_read(), True
+
+            elif action_type == ActionType.DELEGATE_EMAIL:
+                # Synchronous heuristic path. The async LLM path is handled in run_day.
+                self._sub_agent_calls += 1
+                task = str(params.get("task") or params.get("instructions") or "")
+                report = self.email_sub_agent._run_heuristic(  # type: ignore[attr-defined]
+                    task,
+                    SubAgentReport(name="email_sub_agent", task=task, result=""),
+                )
+                return self._format_subagent_result(report), True
+
+            elif action_type == ActionType.DELEGATE_RESEARCH:
+                self._sub_agent_calls += 1
+                task = str(params.get("task") or params.get("instructions") or "")
+                report = self.research_sub_agent._run_heuristic(  # type: ignore[attr-defined]
+                    task,
+                    SubAgentReport(name="research_sub_agent", task=task, result=""),
+                )
+                return self._format_subagent_result(report), True
 
             else:
                 return "Unknown action", False
@@ -460,8 +512,26 @@ Always respond with valid JSON containing your action. You may include a "reason
                 previous_action_type = None
                 continue
 
-            # Execute the action
-            result, success = self._execute_action(action_type, params)
+            # Execute the action. Sub-agent delegation needs the async LLM path
+            # when an LLM provider is available so each sub-agent uses its own
+            # context window.
+            if action_type in (
+                ActionType.DELEGATE_EMAIL,
+                ActionType.DELEGATE_RESEARCH,
+            ) and self.llm is not None:
+                self._sub_agent_calls += 1
+                task = str(params.get("task") or params.get("instructions") or "")
+                sub = (
+                    self.email_sub_agent
+                    if action_type == ActionType.DELEGATE_EMAIL
+                    else self.research_sub_agent
+                )
+                report = await sub.run(task)
+                self.total_tokens += report.tokens_used
+                result = self._format_subagent_result(report)
+                success = report.error is None
+            else:
+                result, success = self._execute_action(action_type, params)
 
             action = AgentAction(
                 action_type=action_type,
@@ -703,6 +773,11 @@ Always respond with valid JSON containing your action. You may include a "reason
             actions=all_actions,
             total_tokens=self.total_tokens,
             total_latency_ms=total_latency,
+            emails_sent=self._emails_sent,
+            emails_received=sum(1 for m in state.inbox if m.direction == "in"),
+            web_searches=self._web_searches,
+            notepad_writes=self._notepad_writes,
+            sub_agent_calls=self._sub_agent_calls,
         )
 
 
