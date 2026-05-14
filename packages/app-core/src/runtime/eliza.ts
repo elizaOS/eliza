@@ -769,7 +769,10 @@ async function warmupEmbeddingModelImpl(
   );
 
   const progressCb: EmbeddingProgressCallback = (phase, detail) => {
-    updateStartupEmbeddingProgress(phase, detail);
+    updateStartupEmbeddingProgress(
+      phase as Parameters<typeof updateStartupEmbeddingProgress>[0],
+      typeof detail === "string" ? detail : undefined,
+    );
     // Always log to stdout for server/container monitoring
     if (phase === "downloading") {
       logger.info(`[eliza] Embedding model: ${detail ?? "downloading..."}`);
