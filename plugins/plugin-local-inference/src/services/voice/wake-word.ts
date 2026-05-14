@@ -69,17 +69,28 @@ export const OPENWAKEWORD_DEFAULT_HEAD_REL_PATH = path.join(
  * Heads that are placeholders, not a head trained on the Eliza-1 wake
  * phrase.
  *
- * The `hey-eliza.onnx` currently shipped in bundles is the upstream
- * openWakeWord `hey_jarvis` head renamed — it fires on "hey jarvis", NOT
- * "hey eliza". Wake word is opt-in and off by default, so this is an
- * experimental surface until a real head is trained on "hey eliza" via
- * `packages/training/scripts/wakeword/train_eliza1_wakeword_head.py` and
- * staged into the tier bundles (see
- * `packages/inference/reports/porting/2026-05-11/wakeword-head-plan.md`).
- * Once that real head ships, remove `hey-eliza` from this set — `hey_jarvis`
- * stays (it is, by definition, the wrong phrase). The engine emits a
- * one-time warning whenever a session enables a placeholder head so nobody
- * mistakes it for a finished feature.
+ * Bundle assets at `wake/hey-eliza.onnx` may come from one of two sources
+ * (see `stage_eliza1_bundle_assets.py`):
+ *
+ *   1. **Trained head** (`--wakeword-head-path` passed to staging): the
+ *      ONNX exported by
+ *      `packages/training/scripts/wakeword/train_eliza1_wakeword_head.py`
+ *      against the "hey eliza" phrase. The first such head (2026-05-14,
+ *      TA=90% / FA=10% on a tiny 20+20 synthetic held-out) is staged into
+ *      the two local Eliza-1 tier bundles; the per-bundle manifest carries
+ *      `files.wake[*].releaseState = "weights-staged"` and `headMetrics`
+ *      so consumers can audit the provenance.
+ *   2. **Upstream placeholder** (no `--wakeword-head-path`): the staging
+ *      script falls back to `hey_jarvis_v0.1.onnx` renamed — that fires on
+ *      "hey jarvis", NOT "hey eliza".
+ *
+ * `hey-eliza` stays in this set for now because the runtime cannot
+ * distinguish case 1 from case 2 by inspecting the head ONNX alone, and
+ * not all bundles will be re-staged with the trained head immediately.
+ * A future pass should teach the engine to consult the manifest's
+ * `releaseState` (so trained heads suppress the placeholder warning) and
+ * then remove `hey-eliza` from this set. `hey_jarvis` stays by definition
+ * — it is the wrong phrase.
  */
 export const OPENWAKEWORD_PLACEHOLDER_HEADS: ReadonlySet<string> = new Set([
 	"hey-eliza",
