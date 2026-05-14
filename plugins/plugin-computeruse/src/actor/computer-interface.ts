@@ -29,7 +29,6 @@
  */
 
 import { logger } from "@elizaos/core";
-import { localToGlobal } from "../platform/coords.js";
 import { captureDisplay, type DisplayCapture } from "../platform/capture.js";
 import {
   findDisplay,
@@ -434,15 +433,19 @@ export class DefaultComputerInterface implements ComputerInterface {
   }
 
   private toGlobalChecked(point: DisplayPoint): { x: number; y: number } {
-    this.requireDisplay(point.displayId);
+    const display = this.requireDisplay(point.displayId);
     if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) {
       throw new Error(
         `[computeruse/actor] non-finite coords (${point.x}, ${point.y})`,
       );
     }
-    // Resolve via the central coords module so the same translation rules
-    // (DPI/backing-store, retina divide-by-scale) apply everywhere.
-    return localToGlobal({ displayId: point.displayId, x: point.x, y: point.y });
+    // Translate using the injected display list so tests with fake displays
+    // work correctly. `localToGlobal` from platform/coords uses the real OS
+    // display list and would break test isolation.
+    return {
+      x: Math.round(display.bounds[0] + point.x),
+      y: Math.round(display.bounds[1] + point.y),
+    };
   }
 }
 
