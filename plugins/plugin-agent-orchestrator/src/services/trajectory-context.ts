@@ -3,7 +3,7 @@
  *
  * Sets a lightweight context object on the runtime before `useModel()` calls
  * so the trajectory logger can identify orchestrator-specific LLM invocations
- * (coordination decisions, stall classification, idle checks, etc.) and tag
+ * (skill recommendations, launch-failure summaries, etc.) and tag
  * them with meaningful metadata instead of the generic "action" / "runtime.useModel".
  *
  * The eliza trajectory-persistence layer reads `runtime.__orchestratorTrajectoryCtx`
@@ -23,28 +23,16 @@ type RuntimeLike = object;
  * Orchestrator decision types that map to specific LLM call sites.
  */
 export type OrchestratorDecisionType =
-  | "coordination"
-  | "turn-complete"
-  | "idle-check"
-  | "stall-classification"
-  | "stall-classify-decide"
-  | "swarm-context-generation"
-  | "event-triage"
-  | "launch-failure-message"
-  | "task-validation"
-  | "acceptance-verifier";
+  | "skill-context-generation"
+  | "launch-failure-message";
 
 export interface OrchestratorTrajectoryContext {
   /** Source identifier — always "orchestrator" */
   source: "orchestrator";
   /** Which decision type triggered this LLM call */
   decisionType: OrchestratorDecisionType;
-  /** PTY session ID of the agent being evaluated */
+  /** ACP session ID of the agent being evaluated */
   sessionId?: string;
-  /** Durable task thread identifier */
-  threadId?: string;
-  /** Acceptance verifier job identifier */
-  verifierJobId?: string;
   /** Human-readable task label */
   taskLabel?: string;
   /** Repository URL or identifier (for trajectory feedback filtering) */
@@ -99,7 +87,7 @@ export function readTrajectoryContext(
  * ```ts
  * const result = await withTrajectoryContext(
  *   ctx.runtime,
- *   { source: "orchestrator", decisionType: "coordination", sessionId },
+ *   { source: "orchestrator", decisionType: "skill-context-generation", sessionId },
  *   () => ctx.runtime.useModel(ModelType.TEXT_SMALL, { prompt }),
  * );
  * ```

@@ -101,7 +101,7 @@ function PasswordFieldInner({ fp: props }: { fp: FieldRenderProps }) {
   const maskedValue = props.isSet ? String(props.value ?? "") : "";
   const placeholder = props.isSet
     ? `Current: ${maskedValue || "********"}  (leave blank to keep)`
-    : ((props.hint.placeholder as string | undefined) ?? "Enter value...");
+    : (props.hint.placeholder ?? "Enter value...");
 
   const [visible, setVisible] = useState(false);
   const [busy, setBusy] = useState(false);

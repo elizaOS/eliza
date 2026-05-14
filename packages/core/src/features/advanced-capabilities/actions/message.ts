@@ -42,6 +42,7 @@ import {
 } from "../../../types/index.ts";
 import { hasActionContext } from "../../../utils/action-validation.ts";
 import { getActiveRoutingContextsForTurn } from "../../../utils/context-routing.ts";
+import { isObjectRecord as isRecord } from "../../../utils/type-guards.ts";
 import { stringToUuid } from "../../../utils.ts";
 import { draftFollowupAction } from "../../messaging/triage/actions/draftFollowup.ts";
 import { draftReplyAction } from "../../messaging/triage/actions/draftReply.ts";
@@ -90,7 +91,7 @@ export type MessageOperation = (typeof MESSAGE_OPS)[number];
 const MESSAGE_CONTEXTS = ["messaging", "email", "contacts", "connectors"];
 
 const MESSAGE_DESCRIPTION =
-	"Primary action for addressed messaging surfaces: DMs, group chats, channels, rooms, threads, servers, users, inboxes, drafts, and owner message workflows. Use action to choose the operation. Public feed publishing belongs to POST.";
+	"Addressed messaging action: DMs, groups, channels, rooms, threads, servers, users, inboxes, drafts. Use action. Public feed publishing uses POST.";
 const MESSAGE_COMPRESSED =
 	"primary message action send read_channel read_with_contact search list_channels list_servers join leave react edit delete pin get_user triage list_inbox search_inbox draft_reply draft_followup respond send_draft schedule_draft_send manage dm group channel room thread user server inbox draft";
 
@@ -944,10 +945,6 @@ function inferTargetFromRecentConversation(
 	if (!recent) return undefined;
 	const matches = Array.from(recent.matchAll(/[@#][\w.-]{2,}/g));
 	return matches.at(-1)?.[0]?.trim();
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function normalizeAttachments(value: unknown): Media[] | undefined {
@@ -3164,42 +3161,42 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
 	{
 		name: "source",
 		description:
-			"Connector source such as discord, slack, signal, whatsapp, telegram, x, imessage, matrix, line, google-chat, feishu, instagram, wechat, gmail.",
+			"Connector source: discord, slack, signal, whatsapp, telegram, x, imessage, matrix, line, google-chat, feishu, instagram, wechat, gmail.",
 		required: false,
 		schema: { type: "string" },
 	},
 	{
 		name: "accountId",
 		description:
-			"Optional connector account id for multi-account message connectors.",
+			"Connector account id for multi-account messages.",
 		required: false,
 		schema: { type: "string" },
 	},
 	{
 		name: "sources",
 		description:
-			"Optional inbox sources for op=triage, list_inbox, or search_inbox.",
+			"Inbox sources for triage, list_inbox, search_inbox.",
 		required: false,
 		schema: { type: "array", items: { type: "string" } },
 	},
 	{
 		name: "folder",
 		description:
-			"Optional inbox folder hint for triage, list_inbox, search_inbox, draft, or respond operations.",
+			"Inbox folder hint for triage/list/search/draft/respond.",
 		required: false,
 		schema: { type: "string" },
 	},
 	{
 		name: "target",
 		description:
-			"Loose target reference: user, handle, channel, room, group, server, contact, phone, email, or platform-specific ID.",
+			"Loose target: user, handle, channel, room, group, server, contact, phone, email, platform ID.",
 		required: false,
 		schema: { type: "string" },
 	},
 	{
 		name: "targetKind",
 		description:
-			"Target kind for op=send: user, contact, channel, room, thread, group, server, email, or phone.",
+			"Target kind for op=send: user, contact, channel, room, thread, group, server, email, phone.",
 		required: false,
 		schema: {
 			type: "string",
@@ -3209,7 +3206,7 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
 	{
 		name: "channel",
 		description:
-			"Channel/room/group reference for read_channel, list_channels, join, leave.",
+			"Channel/room/group for read_channel, list_channels, join, leave.",
 		required: false,
 		schema: { type: "string" },
 	},
@@ -3227,13 +3224,13 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
 	},
 	{
 		name: "server",
-		description: "Loose server, guild, workspace, or team name/reference.",
+		description: "Loose server/guild/workspace/team name/ref.",
 		required: false,
 		schema: { type: "string" },
 	},
 	{
 		name: "serverId",
-		description: "Platform server, guild, workspace, or team ID.",
+		description: "Platform server/guild/workspace/team ID.",
 		required: false,
 		schema: { type: "string" },
 	},
@@ -3257,32 +3254,32 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
 	},
 	{
 		name: "contact",
-		description: "Person name (relationships graph) for op=read_with_contact.",
+		description: "Person name for op=read_with_contact.",
 		required: false,
 		schema: { type: "string" },
 	},
 	{
 		name: "entityId",
 		description:
-			"Person/entity ID for read_with_contact, get_user, or scoped search.",
+			"Person/entity ID for read_with_contact, get_user, scoped search.",
 		required: false,
 		schema: { type: "string" },
 	},
 	{
 		name: "platform",
-		description: "Optional platform filter for read_with_contact or search.",
+		description: "Platform filter for read_with_contact/search.",
 		required: false,
 		schema: { type: "string" },
 	},
 	{
 		name: "threadId",
-		description: "Thread identifier for threaded operations.",
+		description: "Thread ID for threaded ops.",
 		required: false,
 		schema: { type: "string" },
 	},
 	{
 		name: "thread",
-		description: "Optional thread parent reference for op=send.",
+		description: "Thread parent ref for op=send.",
 		required: false,
 		schema: { type: "string" },
 	},
@@ -3300,7 +3297,7 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
 	},
 	{
 		name: "message",
-		description: "Message text for op=send or replacement text for op=edit.",
+		description: "Message text for op=send; replacement for op=edit.",
 		required: false,
 		schema: { type: "string" },
 	},
@@ -3319,7 +3316,7 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
 	{
 		name: "content",
 		description:
-			"Inbox search text or message lookup hint for triage/draft/respond.",
+			"Inbox search text or lookup hint for triage/draft/respond.",
 		required: false,
 		schema: { type: "string" },
 	},
@@ -3332,25 +3329,25 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
 	{
 		name: "body",
 		description:
-			"Draft or response body for draft_reply, draft_followup, respond.",
+			"Draft/response body for draft_reply, draft_followup, respond.",
 		required: false,
 		schema: { type: "string" },
 	},
 	{
 		name: "reply",
-		description: "Alias for body when drafting or responding to a message.",
+		description: "Alias for body for draft/respond.",
 		required: false,
 		schema: { type: "string" },
 	},
 	{
 		name: "replyText",
-		description: "Alias for body when drafting or responding to a message.",
+		description: "Alias for body for draft/respond.",
 		required: false,
 		schema: { type: "string" },
 	},
 	{
 		name: "messageBody",
-		description: "Alias for body when drafting or responding to a message.",
+		description: "Alias for body for draft/respond.",
 		required: false,
 		schema: { type: "string" },
 	},
@@ -3369,14 +3366,14 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
 	{
 		name: "draftId",
 		description:
-			"Draft identifier for op=send_draft or op=schedule_draft_send.",
+			"Draft ID for send_draft or schedule_draft_send.",
 		required: false,
 		schema: { type: "string" },
 	},
 	{
 		name: "confirmed",
 		description:
-			"Whether the user explicitly confirmed sending for op=send_draft.",
+			"Explicit send confirmation for op=send_draft.",
 		required: false,
 		schema: { type: "boolean" },
 	},
@@ -3396,13 +3393,13 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
 	{
 		name: "inReplyToId",
 		description:
-			"Alias for messageId when drafting or responding to a message.",
+			"Alias for messageId for draft/respond.",
 		required: false,
 		schema: { type: "string" },
 	},
 	{
 		name: "id",
-		description: "Alias for messageId, accepted for planner compatibility.",
+		description: "Alias for messageId.",
 		required: false,
 		schema: { type: "string" },
 	},
@@ -3421,25 +3418,25 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
 	{
 		name: "manageOperation",
 		description:
-			"Management operation for op=manage: archive, trash, spam, mark_read, label_add, label_remove, tag_add, tag_remove, mute_thread, unsubscribe.",
+			"op=manage operation: archive, trash, spam, mark_read, label_add, label_remove, tag_add, tag_remove, mute_thread, unsubscribe.",
 		required: false,
 		schema: { type: "string", enum: [...MANAGE_OPERATION_KINDS] },
 	},
 	{
 		name: "label",
-		description: "Label for op=manage when adding/removing labels.",
+		description: "Label for op=manage label_add/label_remove.",
 		required: false,
 		schema: { type: "string" },
 	},
 	{
 		name: "tag",
-		description: "Tag for op=manage when adding/removing tags.",
+		description: "Tag for op=manage tag_add/tag_remove.",
 		required: false,
 		schema: { type: "string" },
 	},
 	{
 		name: "attachments",
-		description: "Optional attachments for op=send.",
+		description: "Attachments for op=send.",
 		required: false,
 		schema: {
 			type: "array",
@@ -3465,13 +3462,13 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
 	{
 		name: "persist",
 		description:
-			"Whether op=send persists outbound content to target room memory. Defaults true.",
+			"op=send persists outbound content to room memory. Default true.",
 		required: false,
 		schema: { type: "boolean" },
 	},
 	{
 		name: "limit",
-		description: "Maximum number of items to return.",
+		description: "Max items.",
 		required: false,
 		schema: { type: "number" },
 	},
@@ -3489,13 +3486,13 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
 	},
 	{
 		name: "worldIds",
-		description: "Optional account/server scopes for inbox operations.",
+		description: "Account/server scopes for inbox ops.",
 		required: false,
 		schema: { type: "array", items: { type: "string" } },
 	},
 	{
 		name: "channelIds",
-		description: "Optional channel/conversation scopes for inbox operations.",
+		description: "Channel/conversation scopes for inbox ops.",
 		required: false,
 		schema: { type: "array", items: { type: "string" } },
 	},
@@ -3514,7 +3511,7 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
 	{
 		name: "until",
 		description:
-			"End date/timestamp for op=read_channel range=dates or op=search_inbox.",
+			"End date/timestamp for read_channel range=dates or search_inbox.",
 		required: false,
 		schema: { type: "string" },
 	},

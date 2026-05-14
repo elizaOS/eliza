@@ -1,5 +1,6 @@
 import type { Action, ActionParameter, ActionParameterSchema } from "../types";
 import type { JSONSchema } from "../types/model";
+import { isObjectRecord as isRecord } from "../utils/type-guards";
 
 export type JsonSchemaPrimitiveType =
 	| "string"
@@ -40,10 +41,6 @@ const SUPPORTED_SCHEMA_TYPES = new Set<string>([
 	"object",
 	"array",
 ]);
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 type LegacyActionParameterSchema = Omit<
 	ActionParameterSchema,

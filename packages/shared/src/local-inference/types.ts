@@ -1,10 +1,8 @@
 /**
  * Local inference shared types.
  *
- * Canonical source of truth for every type that the server-side service
- * in `@elizaos/app-core` and the UI client in `@elizaos/ui` reference.
- * Both packages re-export from here through one-line shims so existing
- * import paths keep working.
+ * Shared contracts referenced by the server-side service in
+ * `@elizaos/app-core` and the UI client in `@elizaos/ui`.
  *
  * Server-only logic (KV cache management, llama-server lifecycle,
  * conversation registry, metrics scraping) stays in `app-core`; only
@@ -46,8 +44,7 @@ export const TEXT_GENERATION_SLOTS: TextGenerationSlot[] = [
 export type ModelAssignments = Partial<Record<AgentModelSlot, string>>;
 
 /**
- * Installed-model registry entry. The on-disk format is JSON; this is the
- * canonical TypeScript shape both packages parse against.
+ * Installed-model registry entry. The on-disk format is JSON.
  */
 export interface InstalledModel {
   /** Matches CatalogModel.id when installed from the curated catalog. */
@@ -180,8 +177,8 @@ export interface LocalRuntimeOptimizations {
   ubatchSize?: number;
   /** Continuous batching toggle (`--cont-batching` / `--no-cont-batching`). */
   contBatching?: boolean;
-  /** Unified KV cache toggle (`--kv-unified` / `--no-kv-unified`). */
-  kvUnified?: boolean;
+  /** KV cache toggle (`--kv-unified` / `--no-kv-unified`). */
+  kvShared?: boolean;
   /**
    * Number of runtime context checkpoints the cache bridge should keep for
    * interruption/resume. Maps to the fused llama-server checkpoint support.

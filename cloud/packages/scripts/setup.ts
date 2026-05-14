@@ -79,7 +79,7 @@ async function checkConfiguration(env: Record<string, string>): Promise<ConfigSt
   }
 
   // x402
-  if (env.ENABLE_X402_PAYMENTS === "true" && env.X402_RECIPIENT_ADDRESS) {
+  if (env.X402_RECIPIENT_ADDRESS) {
     status.payments.x402 = true;
   }
 
@@ -155,7 +155,6 @@ async function setupDefaults(env: Record<string, string>): Promise<void> {
     X402_NETWORK: "base-sepolia",
     CACHE_ENABLED: "true",
     CACHE_BACKEND: "wadis",
-    NEXT_PUBLIC_CREDITS_SSE_ENABLED: "true",
   };
 
   for (const [key, value] of Object.entries(defaults)) {

@@ -184,7 +184,7 @@ Summary: Build, deploy, and scale intelligent AI agents with elizaOS Cloud.
     </div>
     <div className="text-white/50 text-sm leading-relaxed">
       Access configured text, image, video, and embedding providers through a
-      unified API interface.
+      canonical API interface.
     </div>
   </div>
   <div className="docs-feature-card">
@@ -5702,7 +5702,7 @@ Eliza Cloud is a low-code platform for building and deploying AI agents. You foc
 
 - **Visual agent builder**: Define your agent's personality, capabilities, and behavior through an intuitive interface. No need to manually configure every detail; common patterns work out of the box.
 - **Pre-built integrations**: Connect to Discord, Telegram, Twitter, web chat, and more with a few clicks. Your agent works across platforms without custom integration code.
-- **Unified AI access**: One account gives you access to text, image, video, and voice AI capabilities. No juggling provider accounts. No managing multiple API keys. Credits work across everything.
+- **Canonical AI access**: One account gives you access to text, image, video, and voice AI capabilities. No juggling provider accounts. No managing multiple API keys. Credits work across everything.
 - **Built-in memory and state**: Conversations, context, and knowledge are handled automatically. Your agent remembers. It learns. It maintains state, all without you configuring databases or vector stores.
 - **Plugin ecosystem**: Extend your agent with on-chain capabilities, knowledge bases, tools, and more. The open-source elizaOS plugin ecosystem works seamlessly.
 

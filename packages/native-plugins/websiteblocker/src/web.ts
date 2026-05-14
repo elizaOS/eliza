@@ -3,6 +3,7 @@ import type {
   StartWebsiteBlockOptions,
   StartWebsiteBlockResult,
   StopWebsiteBlockResult,
+  WebsiteBlockerOpenSettingsResult,
   WebsiteBlockerPermissionResult,
   WebsiteBlockerStatus,
 } from "./definitions";
@@ -109,11 +110,17 @@ export class WebsiteBlockerWeb extends WebPlugin {
     const permission = await this.requestJson<{
       status: WebsiteBlockerPermissionResult["status"];
       canRequest: boolean;
+      canOpenSettings?: boolean;
+      settingsTarget?: WebsiteBlockerPermissionResult["settingsTarget"];
+      engine?: WebsiteBlockerPermissionResult["engine"];
       reason?: string;
     }>("/api/permissions/website-blocking");
     return {
       status: permission.status,
       canRequest: permission.canRequest,
+      canOpenSettings: permission.canOpenSettings ?? true,
+      settingsTarget: permission.settingsTarget ?? "runtime",
+      engine: permission.engine ?? "hosts-file",
       reason: permission.reason,
     };
   }
@@ -122,6 +129,9 @@ export class WebsiteBlockerWeb extends WebPlugin {
     const permission = await this.requestJson<{
       status: WebsiteBlockerPermissionResult["status"];
       canRequest: boolean;
+      canOpenSettings?: boolean;
+      settingsTarget?: WebsiteBlockerPermissionResult["settingsTarget"];
+      engine?: WebsiteBlockerPermissionResult["engine"];
       reason?: string;
     }>("/api/permissions/website-blocking/request", {
       method: "POST",
@@ -129,19 +139,33 @@ export class WebsiteBlockerWeb extends WebPlugin {
     return {
       status: permission.status,
       canRequest: permission.canRequest,
+      canOpenSettings: permission.canOpenSettings ?? true,
+      settingsTarget: permission.settingsTarget ?? "runtime",
+      engine: permission.engine ?? "hosts-file",
       reason: permission.reason,
     };
   }
 
-  async openSettings(): Promise<{ opened: boolean }> {
+  async openSettings(): Promise<WebsiteBlockerOpenSettingsResult> {
     if (!this.canReachApi()) {
-      return { opened: false };
+      return {
+        opened: false,
+        target: "runtime",
+        actualTarget: "runtime",
+        reason: "Eliza API not available.",
+      };
     }
-    return await this.requestJson<{ opened: boolean }>(
+    const result = await this.requestJson<Partial<WebsiteBlockerOpenSettingsResult>>(
       "/api/permissions/website-blocking/open-settings",
       {
         method: "POST",
       },
     );
+    return {
+      opened: result.opened ?? false,
+      target: result.target ?? "runtime",
+      actualTarget: result.actualTarget ?? result.target ?? "runtime",
+      reason: result.reason ?? null,
+    };
   }
 }

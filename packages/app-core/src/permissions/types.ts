@@ -2,7 +2,7 @@
  * Shared system permission contracts.
  *
  * This module remains the stable import path for permissions types while
- * delegating declarations to src/contracts.
+ * delegating declarations to @elizaos/shared.
  */
 
 export type {

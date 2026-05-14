@@ -1,6 +1,8 @@
 import { randomBytes } from "node:crypto";
+import fs from "node:fs";
 import type http from "node:http";
-import { type Service, ServiceType } from "@elizaos/core";
+import path from "node:path";
+import { type Service, ServiceType, resolveStateDir } from "@elizaos/core";
 import type { CompatRuntimeState } from "./compat-route-shared";
 import { readCompatJsonBody } from "./compat-route-shared";
 import { sendJson } from "./response";
@@ -14,11 +16,10 @@ import { sendJson } from "./response";
  * with the secret as one of its event args at build/launch time, so the
  * secret travels in-process and is not user input.
  *
- * TODO(device-secret): the persistent on-disk store does not exist yet. For
- * now we generate an in-memory secret at boot and surface it through
- * `getDeviceSecret()` so Wave 3A/3B can seed the runner. When the secret
- * store lands, swap `getDeviceSecret` for the persistent variant and remove
- * the in-memory fallback.
+ * The bearer secret is persisted under the Eliza state dir so background
+ * runners rebuilt independently of the host process can be seeded with a
+ * stable value across restarts. `ELIZA_DEVICE_SECRET` still wins when present
+ * and sufficiently long, which keeps managed deployments deterministic.
  */
 
 /**
@@ -76,14 +77,44 @@ export function __resetWakeTelemetryForTests(): void {
 }
 
 let cachedDeviceSecret: string | null = null;
+let deviceSecretPathOverrideForTests: string | null = null;
+
+function getDeviceSecretPath(): string {
+  return (
+    deviceSecretPathOverrideForTests ??
+    path.join(resolveStateDir(), "internal", "device-secret")
+  );
+}
+
+function readPersistedDeviceSecret(filePath: string): string | null {
+  try {
+    const secret = fs.readFileSync(filePath, "utf8").trim();
+    return secret.length >= 32 ? secret : null;
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
+    return null;
+  }
+}
+
+function writePersistedDeviceSecret(filePath: string, secret: string): void {
+  const dir = path.dirname(filePath);
+  fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+  const tmp = path.join(
+    dir,
+    `.device-secret-${process.pid}-${Date.now()}-${randomBytes(4).toString("hex")}.tmp`,
+  );
+  fs.writeFileSync(tmp, `${secret}\n`, { encoding: "utf8", mode: 0o600 });
+  fs.renameSync(tmp, filePath);
+  try {
+    fs.chmodSync(filePath, 0o600);
+  } catch {
+    // Best-effort on platforms/filesystems that do not support POSIX modes.
+  }
+}
 
 /**
  * Returns the bearer secret that wake POSTs must present. Generates one on
  * first call and reuses it for the process lifetime.
- *
- * TODO(device-secret): persist this to the state dir so the runner JS,
- * which is rebuilt independently of the host process, can be seeded with a
- * stable value. Today every process restart rotates the secret.
  */
 export function getDeviceSecret(): string {
   if (cachedDeviceSecret === null) {
@@ -91,7 +122,12 @@ export function getDeviceSecret(): string {
     if (typeof fromEnv === "string" && fromEnv.length >= 16) {
       cachedDeviceSecret = fromEnv;
     } else {
-      cachedDeviceSecret = randomBytes(32).toString("hex");
+      const secretPath = getDeviceSecretPath();
+      cachedDeviceSecret = readPersistedDeviceSecret(secretPath);
+      if (cachedDeviceSecret === null) {
+        cachedDeviceSecret = randomBytes(32).toString("hex");
+        writePersistedDeviceSecret(secretPath, cachedDeviceSecret);
+      }
     }
   }
   return cachedDeviceSecret;
@@ -99,6 +135,11 @@ export function getDeviceSecret(): string {
 
 export function __setDeviceSecretForTests(secret: string | null): void {
   cachedDeviceSecret = secret;
+}
+
+export function __setDeviceSecretPathForTests(filePath: string | null): void {
+  deviceSecretPathOverrideForTests = filePath;
+  cachedDeviceSecret = null;
 }
 
 function readBearer(req: http.IncomingMessage): string | null {

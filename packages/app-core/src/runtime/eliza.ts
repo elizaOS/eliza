@@ -35,7 +35,6 @@ import {
   type Plugin,
   stringToUuid,
 } from "@elizaos/core";
-import type { EmbeddingProgressCallback } from "@elizaos/plugin-local-inference/runtime";
 import {
   ensureRuntimeSqlCompatibility,
   isMobilePlatform,
@@ -51,6 +50,8 @@ import {
   type AppRoutePluginRegistryEntry,
   listAppRoutePluginLoaders,
 } from "./app-route-plugin-registry.js";
+
+type EmbeddingProgressCallback = (phase: string, detail?: unknown) => void;
 
 // plugin-local-inference loaded lazily to avoid static plugin boundary violations.
 let _localInferenceRuntime:

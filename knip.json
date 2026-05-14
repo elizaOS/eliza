@@ -191,7 +191,7 @@
       ],
       "ignore": ["dist/**"]
     },
-    "packages/browser-bridge": {
+    "packages/browser-bridge-extension": {
       "entry": [
         "entrypoints/**/*.ts",
         "src/**/*.ts",

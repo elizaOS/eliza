@@ -14,6 +14,16 @@ export const IOS_SCREEN_TIME_REQUIREMENTS = Object.freeze({
     familyControls: "com.apple.developer.family-controls",
   }),
   frameworks: Object.freeze(["FamilyControls", "DeviceActivity"]),
+  extensionPoints: Object.freeze({
+    deviceActivityMonitor:
+      "com.apple.deviceactivity.monitor-extension",
+    deviceActivityReport:
+      "com.apple.deviceactivityui.report-extension",
+  }),
+  extensionTargets: Object.freeze({
+    deviceActivityMonitor: "DeviceActivityMonitorExtension",
+    deviceActivityReport: "DeviceActivityReportExtension",
+  }),
   appEntitlementsRelativePath: path.join("App", "App.entitlements"),
 });
 
@@ -40,6 +50,15 @@ export function defaultIosScreenTimeValidationPaths({
       "App",
       "App.xcodeproj",
       "project.pbxproj",
+    ),
+    appRootPath: path.join(
+      repoRootValue,
+      "packages",
+      "app-core",
+      "platforms",
+      "ios",
+      "App",
+      "App",
     ),
     podspecPath: path.join(
       repoRootValue,
@@ -95,6 +114,19 @@ function extractDictAfterKey(plist, key) {
   return extractNextDict(plist, keyEnd);
 }
 
+function plistStringValue(plist, key, { enclosingKey } = {}) {
+  const source = enclosingKey
+    ? extractDictAfterKey(plist, enclosingKey)
+    : plist;
+  if (!source) return null;
+  const pattern = new RegExp(
+    `<key>\\s*${escapeRegExp(key)}\\s*</key>\\s*<string>\\s*([^<]+?)\\s*</string>`,
+    "m",
+  );
+  const match = pattern.exec(source);
+  return match ? match[1].trim() : null;
+}
+
 function plistBooleanIsTrue(plist, key, { enclosingKey } = {}) {
   const source = enclosingKey
     ? extractDictAfterKey(plist, enclosingKey)
@@ -138,11 +170,60 @@ function decodeProvisioningProfile(profilePath) {
   return result.stdout;
 }
 
+function walkFiles(rootPath) {
+  if (!rootPath || !fs.existsSync(rootPath)) return [];
+  const entries = fs.readdirSync(rootPath, { withFileTypes: true });
+  const files = [];
+  for (const entry of entries) {
+    const entryPath = path.join(rootPath, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...walkFiles(entryPath));
+    } else if (entry.isFile()) {
+      files.push(entryPath);
+    }
+  }
+  return files;
+}
+
+function findDeviceActivityExtensionInfoPlists(appRootPath) {
+  const expectedPoints = IOS_SCREEN_TIME_REQUIREMENTS.extensionPoints;
+  const matches = {
+    deviceActivityMonitor: [],
+    deviceActivityReport: [],
+  };
+
+  for (const filePath of walkFiles(appRootPath)) {
+    if (path.basename(filePath) !== "Info.plist") continue;
+    const plist = fs.readFileSync(filePath, "utf8");
+    const extensionPoint = plistStringValue(plist, "NSExtensionPointIdentifier", {
+      enclosingKey: "NSExtension",
+    });
+    for (const [key, expected] of Object.entries(expectedPoints)) {
+      if (extensionPoint === expected) {
+        matches[key].push(filePath);
+      }
+    }
+  }
+
+  return matches;
+}
+
+function missingDeviceActivityExtensions(matches) {
+  return Object.keys(IOS_SCREEN_TIME_REQUIREMENTS.extensionPoints).filter(
+    (key) => !matches[key]?.length,
+  );
+}
+
+function relativeList(filePaths, basePath) {
+  return filePaths.map((filePath) => path.relative(basePath, filePath));
+}
+
 export function validateIosScreenTimeBuildWiring(options = {}) {
   const defaults = defaultIosScreenTimeValidationPaths(options);
   const entitlementsPath =
     options.entitlementsPath ?? defaults.entitlementsPath;
   const projectPath = options.projectPath ?? defaults.projectPath;
+  const appRootPath = options.appRootPath ?? defaults.appRootPath;
   const podspecPath = options.podspecPath ?? defaults.podspecPath;
   const provisioningProfilePath =
     options.provisioningProfilePath ??
@@ -184,6 +265,78 @@ export function validateIosScreenTimeBuildWiring(options = {}) {
     );
   } catch (error) {
     addCheck(checks, "xcode-entitlements-build-setting", false, error.message);
+  }
+
+  try {
+    const extensionPlists = findDeviceActivityExtensionInfoPlists(appRootPath);
+    const missing = missingDeviceActivityExtensions(extensionPlists);
+    const found = Object.values(extensionPlists).flat();
+    addCheck(
+      checks,
+      "deviceactivity-extension-info-plists",
+      missing.length === 0,
+      missing.length === 0
+        ? `DeviceActivity extension Info.plists found: ${relativeList(
+            found,
+            appRootPath,
+          ).join(", ")}.`
+        : `Missing DeviceActivity extension Info.plists for: ${missing.join(
+            ", ",
+          )}. Expected NSExtensionPointIdentifier values ${Object.values(
+            IOS_SCREEN_TIME_REQUIREMENTS.extensionPoints,
+          ).join(", ")} under ${appRootPath}.`,
+    );
+  } catch (error) {
+    addCheck(
+      checks,
+      "deviceactivity-extension-info-plists",
+      false,
+      error.message,
+    );
+  }
+
+  try {
+    const project = readRequiredText(projectPath, "Xcode project");
+    const missingTargets = Object.values(
+      IOS_SCREEN_TIME_REQUIREMENTS.extensionTargets,
+    ).filter((targetName) => !project.includes(`/* ${targetName} */`));
+    addCheck(
+      checks,
+      "xcode-deviceactivity-extension-targets",
+      missingTargets.length === 0,
+      missingTargets.length === 0
+        ? "Xcode project includes DeviceActivity monitor and report extension targets."
+        : `Xcode project is missing DeviceActivity extension targets: ${missingTargets.join(
+            ", ",
+          )}.`,
+    );
+
+    const missingEmbeddedProducts = Object.values(
+      IOS_SCREEN_TIME_REQUIREMENTS.extensionTargets,
+    ).filter((targetName) => !project.includes(`${targetName}.appex`));
+    addCheck(
+      checks,
+      "xcode-deviceactivity-embedded-products",
+      missingEmbeddedProducts.length === 0,
+      missingEmbeddedProducts.length === 0
+        ? "Xcode project declares DeviceActivity extension products for app embedding."
+        : `Xcode project is missing embedded DeviceActivity .appex products: ${missingEmbeddedProducts
+            .map((targetName) => `${targetName}.appex`)
+            .join(", ")}.`,
+    );
+  } catch (error) {
+    addCheck(
+      checks,
+      "xcode-deviceactivity-extension-targets",
+      false,
+      error.message,
+    );
+    addCheck(
+      checks,
+      "xcode-deviceactivity-embedded-products",
+      false,
+      error.message,
+    );
   }
 
   try {
@@ -281,6 +434,8 @@ function parseArgs(argv) {
       options.entitlementsPath = path.resolve(next());
     } else if (arg === "--project") {
       options.projectPath = path.resolve(next());
+    } else if (arg === "--app-root") {
+      options.appRootPath = path.resolve(next());
     } else if (arg === "--podspec") {
       options.podspecPath = path.resolve(next());
     } else if (arg === "--provisioning-profile") {

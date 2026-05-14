@@ -27,7 +27,10 @@ import type { AppEnv } from "@/types/cloud-worker-env";
  */
 
 import { z } from "zod";
-import { firstSentenceSnip, FIRST_SENTENCE_SNIP_VERSION } from "@elizaos/shared";
+import {
+  firstSentenceSnip,
+  FIRST_SENTENCE_SNIP_VERSION,
+} from "@elizaos/shared/voice/first-sentence-snip";
 import { userVoicesRepository } from "@/db/repositories/user-voices";
 import { ApiError } from "@/lib/api/cloud-worker-errors";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";

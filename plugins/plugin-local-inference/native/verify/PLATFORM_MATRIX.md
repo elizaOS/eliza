@@ -4,12 +4,12 @@
 > (`packages/app-core/scripts/build-llama-cpp-dflash.mjs`). For each target:
 > the one-command build, the one-command kernel verify, the one-command
 > bench, the current status, and the exact prerequisite if it is not done
-> here. The narrower "what hardware does someone need to plug in" view is
-> [`../reports/porting/2026-05-11/needs-hardware-ledger.md`](../reports/porting/2026-05-11/needs-hardware-ledger.md);
+> here. The tracked hardware/readiness view is
+> [`../../../../docs/eliza-1-pipeline/06-test-matrix.md`](../../../../docs/eliza-1-pipeline/06-test-matrix.md);
 > the enforceable contract is [`kernel-contract.json`](kernel-contract.json)
 > (checked by `make -C packages/inference/verify kernel-contract`); the
-> publish-blocker ledger is
-> [`../reports/porting/2026-05-11/remaining-work-ledger.md`](../reports/porting/2026-05-11/remaining-work-ledger.md).
+> bundle plan is
+> [`../../../../docs/ELIZA_1_GGUF_PLATFORM_PLAN.json`](../../../../docs/ELIZA_1_GGUF_PLATFORM_PLAN.json).
 
 ## Verify status as of 2026-05-12 (post multi-agent wave)
 

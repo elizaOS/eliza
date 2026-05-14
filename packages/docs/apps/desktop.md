@@ -48,7 +48,7 @@ In development mode, the Electrobun app resolves the Eliza distribution from the
 
 On **macOS**, the main window uses **`hiddenInset`** (no classic title bar; traffic lights inset). The WKWebView fills the client area, so **window move** and **inner-edge resize** are implemented with **native `NSView` overlays** above the web view — not with CSS resize cursors alone. **Why:** WebKit owns the pointer over page pixels; tracking areas on the `contentView` underneath led to unreliable cursors and flicker when AppKit and WebKit both tried to set `NSCursor`.
 
-Strip **thickness** can track the current **`NSScreen`** when the host passes `height: 0` into native layout (see main-process `applyMacOSWindowEffects` and FFI `setNativeDragRegion`). Full architecture, z-order, and file map: [Electrobun macOS window chrome](/guides/electrobun-mac-window-chrome).
+Strip **thickness** can track the current **`NSScreen`** when the host passes `height: 0` into native layout (see main-process `applyMacOSWindowEffects` and FFI `setNativeDragRegion`). Full architecture, z-order, and file map: [Electrobun macOS window chrome](/apps/desktop-local-development).
 
 ### WebGPU log line vs macOS version (Tahoe+)
 

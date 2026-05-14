@@ -1019,7 +1019,7 @@ function resolveSubActionRefs(actions: ScannedAction[]): void {
       const parsed = parseSubActionRaw(raw);
       const imported =
         parsed.kind === "ref"
-          ? actionImports(actions, action.file, parsed.name)
+          ? actionImports(action.file, parsed.name)
           : undefined;
       const importedTarget = imported
         ? byFileAndDecl.get(`${imported.file}:${imported.imported}`)
@@ -1055,16 +1055,12 @@ function resolveSubActionRefs(actions: ScannedAction[]): void {
 }
 
 function actionImports(
-  actions: ScannedAction[],
   file: string,
   localName: string,
 ): ImportedBinding | undefined {
   const importer = importBindingIndex.get(file);
   if (importer) return importer.get(localName);
 
-  // This branch is only a defensive fallback. The index is filled during the
-  // second parse pass in scanRepoActions.
-  void actions;
   return undefined;
 }
 

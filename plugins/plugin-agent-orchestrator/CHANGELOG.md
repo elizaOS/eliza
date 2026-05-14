@@ -2,9 +2,9 @@
 
 ## 0.2.0 (unreleased)
 
-Consolidated ACP-based spawn, PTY sessions, and workspace services into
+ACP-based spawn, PTY sessions, and workspace services into
 a single package at `plugins/plugin-agent-orchestrator`. Internal
-`@elizaos/plugin-acpx` callers were rewritten to the consolidated package.
+`@elizaos/plugin-acpx` callers were rewritten to the package.
 
 ### Added
 
@@ -33,7 +33,7 @@ a single package at `plugins/plugin-agent-orchestrator`. Internal
   instead of importing `createUniqueUuid` from `@elizaos/core`. This keeps
   the router's import surface type-only.
 - Browser build dropped: this package owns Node-only services
-  (`PTYService`, `CodingWorkspaceService`, child_process spawn).
+  (`AcpService`, `CodingWorkspaceService`, child_process spawn).
 
 ### Fixed
 
@@ -46,12 +46,10 @@ a single package at `plugins/plugin-agent-orchestrator`. Internal
   `listSessions`/`getSession` for FileSessionStore + RuntimeDbSessionStore,
   `enforceSessionLimit` excluding both `"error"` and `"errored"`.
 
-### Deprecated
+### Removed
 
-- `swarm-coordinator.ts` and the entire `swarm-*` / `pty-*` family are
-  retained for callers that still depend on `PTYService`, but are
-  dormant for ACP-spawned sessions. Retiring them is a follow-up
-  cleanup; new work should use `AcpService` + `SubAgentRouter`.
+- Removed the legacy `swarm-*` / `pty-*` implementation family. The plugin now
+  has one task-agent transport: `AcpService` + `SubAgentRouter`.
 
 ## 0.1.0
 

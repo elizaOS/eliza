@@ -12,9 +12,9 @@ import { Button } from "../../ui/button";
 import { Input } from "../../ui/input";
 import { Label } from "../../ui/label";
 import type {
+  SavedLogin,
   SavedLoginSource,
   SavedLoginsListFailure,
-  UnifiedSavedLogin,
 } from "./types";
 
 const SOURCE_LABEL: Record<SavedLoginSource, string> = {
@@ -46,7 +46,7 @@ function relativeAge(ms: number): string {
 }
 
 export function LoginsTab() {
-  const [logins, setLogins] = useState<UnifiedSavedLogin[] | null>(null);
+  const [logins, setLogins] = useState<SavedLogin[] | null>(null);
   const [failures, setFailures] = useState<SavedLoginsListFailure[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [showAdd, setShowAdd] = useState(false);
@@ -97,7 +97,7 @@ export function LoginsTab() {
       const res = await fetch("/api/secrets/logins");
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = (await res.json()) as {
-        logins: UnifiedSavedLogin[];
+        logins: SavedLogin[];
         failures?: SavedLoginsListFailure[];
       };
       setLogins(json.logins);
@@ -175,7 +175,7 @@ export function LoginsTab() {
   );
 
   const onDelete = useCallback(
-    async (login: UnifiedSavedLogin) => {
+    async (login: SavedLogin) => {
       if (login.source !== "in-house") return;
       const ok = window.confirm(
         `Delete saved login for ${login.domain ?? "—"} (${login.username})?`,
@@ -446,7 +446,7 @@ function AgentAutoallowToggle({
   );
 }
 
-function ExternalRowAction({ login }: { login: UnifiedSavedLogin }) {
+function ExternalRowAction({ login }: { login: SavedLogin }) {
   const href =
     login.source === "1password"
       ? `https://my.1password.com/vaults/all/allitems/${encodeURIComponent(login.identifier)}`

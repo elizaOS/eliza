@@ -1516,7 +1516,7 @@ def build_context(args: argparse.Namespace) -> EvalContext:
         vad_model=_bundle_file(bundle_dir, "vad"),
         drafter_model=_bundle_file(bundle_dir, "dflash", ".gguf"),
         text_eval_corpus=_default_text_corpus(args.text_corpus),
-        asr_corpus=_resolve_asr_corpus(args.asr_corpus),
+        asr_corpus=_resolve_asr_corpus(getattr(args, "asr_corpus", None)),
         threads=args.threads,
         timeout_s=args.timeout,
     )

@@ -10,7 +10,6 @@ Schema per implementation plan:
 
 import json
 import sqlite3
-from dataclasses import asdict
 from pathlib import Path
 from typing import Optional
 

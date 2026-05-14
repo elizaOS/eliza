@@ -129,11 +129,9 @@ ssh_cmd() {
 }
 
 # Pre-seed `~/.eliza/calibration.toml` so /api/chat probes hit the action
-# surface directly instead of going through the onboarding state machine
-# (which only fires when `USBELIZA_SERVER_ONBOARDING=1`, off by default
-# on the live ISO where elizad's Tauri UI owns onboarding). This makes
-# the smoke probes test the same chat surface a real user sees AFTER
-# they finish onboarding through the UI.
+# surface directly instead of going through the onboarding state machine.
+# This makes the smoke probes test the same chat surface a real user sees
+# AFTER they finish onboarding through the UI.
 echo "==> Pre-seeding ~/.eliza/calibration.toml on guest"
 # Always clear any leftover flow state — a previous run that exited
 # mid-flow would otherwise capture every probe's reply with the flow's

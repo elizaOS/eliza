@@ -1473,6 +1473,39 @@ function syncAndroidAppActionsResources() {
   }
 }
 
+export function applyAndroidCleartextPolicy(xml, { allowCleartext }) {
+  const value = allowCleartext ? "true" : "false";
+  if (/android:usesCleartextTraffic="(?:true|false)"/.test(xml)) {
+    return xml.replace(
+      /android:usesCleartextTraffic="(?:true|false)"/g,
+      `android:usesCleartextTraffic="${value}"`,
+    );
+  }
+  return xml.replace(
+    "<application",
+    `<application\n        android:usesCleartextTraffic="${value}"`,
+  );
+}
+
+function writeAndroidCleartextPolicy({ allowCleartext, label }) {
+  const manifestPath = path.join(
+    androidDir,
+    "app",
+    "src",
+    "main",
+    "AndroidManifest.xml",
+  );
+  if (!fs.existsSync(manifestPath)) return;
+  const xml = fs.readFileSync(manifestPath, "utf8");
+  const patched = applyAndroidCleartextPolicy(xml, { allowCleartext });
+  if (patched !== xml) {
+    fs.writeFileSync(manifestPath, patched, "utf8");
+    console.log(
+      `[mobile-build] Android ${label} cleartext policy: ${allowCleartext ? "enabled for local loopback" : "disabled"}.`,
+    );
+  }
+}
+
 function overlayAndroid() {
   const srcJava = path.join(
     platformsDir,
@@ -1598,11 +1631,11 @@ function overlayAndroid() {
     let xml = fs.readFileSync(manifestPath, "utf8");
     let dirty = false;
 
-    if (!xml.includes("usesCleartextTraffic")) {
-      xml = xml.replace(
-        "<application",
-        '<application\n        android:usesCleartextTraffic="true"',
-      );
+    const withLocalCleartext = applyAndroidCleartextPolicy(xml, {
+      allowCleartext: true,
+    });
+    if (withLocalCleartext !== xml) {
+      xml = withLocalCleartext;
       dirty = true;
     }
     if (!xml.includes("<queries>")) {
@@ -4177,10 +4210,7 @@ function stripAndroidForCloud() {
       );
       xml = xml.replace(re, "\n");
     }
-    xml = xml.replace(
-      /android:usesCleartextTraffic="true"/g,
-      'android:usesCleartextTraffic="false"',
-    );
+    xml = applyAndroidCleartextPolicy(xml, { allowCleartext: false });
 
     if (xml !== original) {
       fs.writeFileSync(manifestPath, xml, "utf8");
@@ -4280,6 +4310,10 @@ async function buildAndroid() {
   overlayAndroid();
   sanitizeAndroidManifestWhenPlatformTemplatesMissing();
   auditAndroidSystemSource("pre-gradle");
+  writeAndroidCleartextPolicy({
+    allowCleartext: true,
+    label: "sideload",
+  });
   await stageAndroidAgentRuntime({
     androidDir,
     spikeDir: androidAgentSpikeDir,
@@ -4415,6 +4449,10 @@ async function buildAndroidCloud({ debug = false } = {}) {
   await generateAndroidBrandAssets();
   overlayAndroid();
   sanitizeAndroidManifestWhenPlatformTemplatesMissing();
+  writeAndroidCleartextPolicy({
+    allowCleartext: false,
+    label: debug ? "cloud-debug" : "cloud",
+  });
   // The cloud target is a thin Capacitor client backed by Eliza Cloud.
   // It must NOT embed the on-device agent runtime, NOT declare default
   // role activities (dialer, SMS, browser, contacts, camera, calendar,
@@ -4539,6 +4577,10 @@ async function buildAndroidSystem() {
   await generateAndroidBrandAssets();
   overlayAndroid();
   sanitizeAndroidManifestWhenPlatformTemplatesMissing();
+  writeAndroidCleartextPolicy({
+    allowCleartext: true,
+    label: "AOSP",
+  });
   await stageAndroidAgentRuntime({
     androidDir,
     spikeDir: androidAgentSpikeDir,

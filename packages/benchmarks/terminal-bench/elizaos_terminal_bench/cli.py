@@ -9,10 +9,9 @@ import asyncio
 import logging
 import os
 import sys
-from pathlib import Path
 from typing import Optional
 
-from elizaos_terminal_bench.runner import TerminalBenchRunner, run_terminal_bench
+from elizaos_terminal_bench.runner import TerminalBenchRunner
 from elizaos_terminal_bench.types import (
     TaskCategory,
     TaskDifficulty,

@@ -566,9 +566,9 @@ export const manageBrowserBridgeAction: Action = {
     "BROWSER_BRIDGE_REFRESH",
   ],
   description:
-    "Owner-only management of the Agent Browser Bridge companion extension that connects Eliza to the user's Chrome and Safari browsers. Actions: refresh (show settings/status/connection state), install (build and reveal the extension for setup), reveal_folder (open the built extension folder), open_manager (open chrome://extensions only when the owner explicitly asks). The action parameter is inferred from message text when omitted; show/settings/status maps to refresh and 'open chrome extensions' maps to open_manager. Prefer the browser-bridge provider for passive companion status and use this action's refresh child action only for an explicit live refresh.",
+    "Owner-only Agent Browser Bridge management for Chrome/Safari. Actions: refresh status/settings/connection, install build+reveal setup, reveal_folder open build folder, open_manager chrome://extensions only on explicit ask. Infer action if omitted.",
   descriptionCompressed:
-    "Manage LifeOps Browser Bridge: refresh shows settings/status; install setup; reveal_folder build folder; open_manager chrome://extensions.",
+    "Browser Bridge: refresh|install|reveal_folder|open_manager chrome://extensions",
   validate: async (
     _runtime: IAgentRuntime,
     message: Memory,
@@ -630,7 +630,7 @@ export const manageBrowserBridgeAction: Action = {
     {
       name: "action",
       description:
-        "Bridge management action. Use refresh for show/settings/status/connection-state requests. Use open_manager only for explicit chrome://extensions or extension-manager requests. install builds/reveals/opens setup; reveal_folder opens the build folder. Inferred from message text if omitted.",
+        "Bridge action. refresh=status/settings; open_manager only explicit chrome://extensions; install setup; reveal_folder build folder. Infer if omitted.",
       required: false,
       schema: {
         type: "string" as const,

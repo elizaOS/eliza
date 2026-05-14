@@ -1450,15 +1450,13 @@ export const connectorAction: Action & {
     "surface:internal",
   ],
   description:
-    "Manage **account** state for installed connectors: connect (log in), " +
-    "disconnect (log out), verify, status, list active accounts. " +
+    "Installed connector account state: connect, disconnect, verify, status, list. " +
     `Actions: ${VALID_SUBACTIONS.join(", ")}. ` +
-    "Targets external service accounts (Google, Telegram, Discord, Slack, etc.). " +
-    "Connector kinds resolve through the runtime ConnectorRegistry; verify runs " +
-    "an active probe against the upstream API. " +
-    "For **plugin** install/uninstall/configure, use the `PLUGIN` action instead.",
+    "External accounts: Google, Telegram, Discord, Slack, etc. " +
+    "Connector kinds from runtime ConnectorRegistry; verify active upstream API probe. " +
+    "Plugin install/uninstall/configure -> use PLUGIN.",
   descriptionCompressed:
-    "account-level connector lifecycle: connect(log in)|disconnect(log out)|verify|status|list; registry-driven kinds; for plugin install/uninstall use PLUGIN",
+    "CONNECTOR accounts: connect|disconnect|verify|status|list; plugin install/config -> PLUGIN",
   contexts: [
     "connectors",
     "settings",
@@ -1587,14 +1585,14 @@ export const connectorAction: Action & {
     {
       name: "connector",
       description:
-        "Which connector to manage (kind from ConnectorRegistry, e.g. google, x, telegram, signal, discord, imessage, whatsapp, twilio, calendly, duffel, health, browser_bridge). Optional when subaction=list.",
+        "ConnectorRegistry kind: google, x, telegram, signal, discord, imessage, whatsapp, twilio, calendly, duffel, health, browser_bridge. Optional action=list.",
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "action",
       description:
-        "Lifecycle operation. connect (start auth/pairing); disconnect (revoke + clear grant); verify (active read/send probe where available). status/list are read-only diagnostics for explicit troubleshooting; prefer provider/core registry context when available. Strongly preferred - when omitted, the handler runs an LLM extraction over the conversation to recover it.",
+        "connect auth/pairing; disconnect revoke+clear grant; verify active read/send probe; status/list read-only diagnostics. Omit ok: handler LLM-extracts.",
       required: false,
       schema: { type: "string" as const, enum: [...VALID_SUBACTIONS] },
     },
@@ -1607,7 +1605,7 @@ export const connectorAction: Action & {
     {
       name: "mode",
       description:
-        "Connection mode: local | cloud_managed | remote. Defaults vary by connector.",
+        "local | cloud_managed | remote. Default connector-specific.",
       required: false,
       schema: {
         type: "string" as const,
@@ -1616,34 +1614,33 @@ export const connectorAction: Action & {
     },
     {
       name: "recentLimit",
-      description:
-        "verify only — how many recent messages/dialogs to read where the connector supports passive reads.",
+      description: "verify only: recent messages/dialogs read limit.",
       required: false,
       schema: { type: "number" as const },
     },
     {
       name: "query",
       description:
-        "Discord verify only — optional search text to prove browser-message reads.",
+        "Discord verify only: search text for browser-message reads.",
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "sendTarget",
       description:
-        "verify only — destination chat/recipient/channel for the self-test send.",
+        "verify only: destination chat/recipient/channel for self-test send.",
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "sendMessage",
-      description: "verify only — text body for the self-test send.",
+      description: "verify only: self-test send body.",
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "browser",
-      description: "browser_bridge connect only — chrome | safari.",
+      description: "browser_bridge connect only: chrome | safari.",
       required: false,
       schema: {
         type: "string" as const,
@@ -1652,22 +1649,19 @@ export const connectorAction: Action & {
     },
     {
       name: "profileId",
-      description:
-        "browser_bridge connect only — profile identifier within the browser.",
+      description: "browser_bridge connect only: profile id.",
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "profileLabel",
-      description:
-        "browser_bridge connect only — human-readable profile label.",
+      description: "browser_bridge connect only: profile label.",
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "redirectUrl",
-      description:
-        "google/x connect only — optional OAuth redirect URL override.",
+      description: "google/x connect only: OAuth redirect URL override.",
       required: false,
       schema: { type: "string" as const },
     },

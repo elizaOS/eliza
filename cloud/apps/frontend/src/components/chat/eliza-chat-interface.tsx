@@ -275,7 +275,7 @@ export function ElizaChatInterface({
     ],
   );
 
-  // Consolidated loading states
+  // Loading states
   const [loadingState, setLoadingState] = useState({
     isSending: false,
     isLoadingMessages: false,

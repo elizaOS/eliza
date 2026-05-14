@@ -13,7 +13,7 @@ import { useCallback, useEffect, useState } from "react";
  * Persists a single per-user token to `<state-dir>/credentials/github.json`
  * via `/api/github/token`. The same token is exposed to spawned coding
  * sub-agents (orchestrator's existing `runtime.getSetting("GITHUB_TOKEN")`
- * resolution + `process.env.GITHUB_TOKEN` inheritance into PTY sessions),
+ * resolution + `process.env.GITHUB_TOKEN` inheritance into ACP sessions),
  * so once it's set here `git clone` of private repos / `gh auth status`
  * / push + PR flows all work without the user having to wire env vars.
  *

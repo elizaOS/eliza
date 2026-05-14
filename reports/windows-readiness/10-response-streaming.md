@@ -2,7 +2,7 @@
 
 ## Overview
 
-The repo has a **single unified streaming path** for both local llama.cpp and cloud providers: tokens flow through `runtime.useModel()` → `onStreamChunk` callbacks → server-side SSE (`text/event-stream`) → browser `ReadableStream` reader → `applyStreamingTextModification` → React state. There is **no debounce / throttle / batching layer** anywhere; each emitted token causes a setState. Token-by-token streaming is wired end-to-end on desktop; the iOS XCFramework path is a documented stub.
+The repo has a **single streaming path** for both local llama.cpp and cloud providers: tokens flow through `runtime.useModel()` → `onStreamChunk` callbacks → server-side SSE (`text/event-stream`) → browser `ReadableStream` reader → `applyStreamingTextModification` → React state. There is **no debounce / throttle / batching layer** anywhere; each emitted token causes a setState. Token-by-token streaming is wired end-to-end on desktop; the iOS XCFramework path is a documented stub.
 
 ## Sequence diagram (ascii)
 

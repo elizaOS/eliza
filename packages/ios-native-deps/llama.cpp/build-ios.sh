@@ -162,7 +162,7 @@ build_slice() {
   local archives=()
   while IFS= read -r -d '' a; do
     archives+=("$a")
-  done < <(find "$search_root" -name "libllama.a" -o -name "libggml*.a" -o -name "libcommon.a" -print0)
+  done < <(find "$search_root" \( -name "libllama.a" -o -name "libggml*.a" -o -name "libcommon.a" \) -print0)
 
   if [[ ${#archives[@]} -eq 0 ]]; then
     die "no .a files produced in $build_dir — build likely failed"

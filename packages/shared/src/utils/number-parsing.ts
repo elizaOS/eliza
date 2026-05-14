@@ -38,12 +38,14 @@ export function parsePositiveInteger(
   const raw = sanitizeNumericText(value);
   if (!raw) return normalizeFallback(fallback);
 
-  const parsed = Number(raw);
-  if (!Number.isFinite(parsed) || parsed <= 0) {
+  if (!/^\d+$/.test(raw)) {
     return normalizeFallback(fallback);
   }
 
-  return Math.max(1, Math.floor(parsed));
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isSafeInteger(parsed) && parsed > 0
+    ? parsed
+    : normalizeFallback(fallback);
 }
 
 export function parsePositiveFloat(

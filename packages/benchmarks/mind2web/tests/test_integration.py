@@ -312,7 +312,7 @@ async def test_action_handler() -> bool:
         get_mind2web_context,
         set_mind2web_context,
     )
-    from benchmarks.mind2web.types import Mind2WebOperation, Mind2WebSplit
+    from benchmarks.mind2web.types import Mind2WebSplit
 
     # Load a sample task
     dataset = Mind2WebDataset(split=Mind2WebSplit.TEST_TASK)

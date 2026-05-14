@@ -59,7 +59,7 @@ export const worktreeAction: Action = {
   roleGate: { minRole: "ADMIN" },
   similes: ["GIT_WORKTREE"],
   description:
-    "Manage the current git worktree stack. Choose action=enter to create and switch into an isolated worktree, or action=exit to leave the current worktree and optionally remove it.",
+    "Manage current git worktree stack. action=enter creates/switches isolated worktree; action=exit leaves and optionally removes it.",
   descriptionCompressed: "Git worktree umbrella: action=enter/exit.",
   parameters: [
     {
@@ -71,14 +71,14 @@ export const worktreeAction: Action = {
     {
       name: "name",
       description:
-        "For action=enter, optional worktree branch/dir name. Defaults to auto-*.",
+        "For action=enter: worktree branch/dir name. Default auto-*.",
       required: false,
       schema: { type: "string" },
     },
     {
       name: "path",
       description:
-        "For action=enter, optional absolute worktree directory within sandbox roots.",
+        "For action=enter: absolute worktree dir within sandbox roots.",
       required: false,
       schema: { type: "string" },
     },
@@ -91,7 +91,7 @@ export const worktreeAction: Action = {
     {
       name: "cleanup",
       description:
-        "For action=exit, remove the popped worktree directory with git worktree remove --force.",
+        "For action=exit: remove popped worktree dir with git worktree remove --force.",
       required: false,
       schema: { type: "boolean" },
     },

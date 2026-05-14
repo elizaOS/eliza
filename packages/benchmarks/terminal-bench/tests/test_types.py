@@ -1,6 +1,5 @@
 """Tests for Terminal-Bench type definitions."""
 
-import pytest
 from datetime import datetime
 
 from elizaos_terminal_bench.types import (
@@ -11,7 +10,6 @@ from elizaos_terminal_bench.types import (
     TerminalCommand,
     TerminalSession,
     TerminalBenchResult,
-    TerminalBenchReport,
     TerminalBenchConfig,
     CategoryMetrics,
     DifficultyMetrics,

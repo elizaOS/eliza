@@ -84,12 +84,7 @@ async function promptTemplateId(initial?: string): Promise<string> {
     })),
   });
 
-  if (clack.isCancel(choice)) {
-    clack.cancel("Operation cancelled.");
-    process.exit(0);
-  }
-
-  return choice as string;
+  return unwrapPromptResult(choice) as string;
 }
 
 async function promptLanguage(
@@ -111,12 +106,7 @@ async function promptLanguage(
     })),
   });
 
-  if (clack.isCancel(choice)) {
-    clack.cancel("Operation cancelled.");
-    process.exit(0);
-  }
-
-  return choice as string;
+  return unwrapPromptResult(choice) as string;
 }
 
 async function promptProjectName(
@@ -133,12 +123,7 @@ async function promptProjectName(
     validate: validateProjectDirectory,
   });
 
-  if (clack.isCancel(input)) {
-    clack.cancel("Operation cancelled.");
-    process.exit(0);
-  }
-
-  return normalizeProjectName(input as string);
+  return normalizeProjectName(unwrapPromptResult(input) as string);
 }
 
 async function promptPluginValues(

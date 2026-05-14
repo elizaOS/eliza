@@ -171,9 +171,9 @@ function hasLinearAccess(runtime: IAgentRuntime): boolean {
 export const linearAction: Action = {
   name: "LINEAR",
   description:
-    "Manage Linear issues, comments, and activity. Operations: create_issue, get_issue, update_issue, delete_issue, create_comment, update_comment, delete_comment, list_comments, get_activity, clear_activity, search_issues. The op is inferred from the message text when not explicitly provided.",
+    "Manage Linear issues/comments/activity. Ops: create_issue, get_issue, update_issue, delete_issue, create_comment, update_comment, delete_comment, list_comments, get_activity, clear_activity, search_issues. Infer op if omitted.",
   descriptionCompressed:
-    "Linear: create/get/update/delete issue, create/update/delete/list comment, search issues, get/clear activity.",
+    "Linear: issue CRUD, comment CRUD/list, search issues, get/clear activity",
   similes: [
     // Group/router-style names
     "LINEAR_ISSUE",
@@ -209,7 +209,7 @@ export const linearAction: Action = {
     {
       name: "action",
       description:
-        "Operation to perform. One of: create_issue, get_issue, update_issue, delete_issue, create_comment, update_comment, delete_comment, list_comments, get_activity, clear_activity, search_issues. Inferred from message text when omitted.",
+        "Operation: create_issue, get_issue, update_issue, delete_issue, create_comment, update_comment, delete_comment, list_comments, get_activity, clear_activity, search_issues. Infer if omitted.",
       required: false,
       schema: { type: "string", enum: [...ALL_OPS] },
     },

@@ -51,10 +51,9 @@ Environment=NO_AT_BRIDGE=1
 Environment=XDG_RUNTIME_DIR=/run/user/1000
 Environment=WAYLAND_DISPLAY=wayland-1
 Environment=DISPLAY=:0
-# Onboarding rephrase: default OFF for snappy first-boot (preset questions
-# match the smoke harness regex). User flips it on with:
+# Onboarding rephrase defaults ON. Disable it for deterministic smoke runs with:
 #   sudo mkdir -p /etc/systemd/system/eliza-agent.service.d
-#   echo -e "[Service]\nEnvironment=USBELIZA_LLM_ONBOARDING=1" | \
+#   echo -e "[Service]\nEnvironment=USBELIZA_LLM_ONBOARDING=0" | \
 #     sudo tee /etc/systemd/system/eliza-agent.service.d/onboarding-llm.conf
 #   sudo systemctl daemon-reload && sudo systemctl restart eliza-agent
 # Action replies (post-onboarding) follow llmRepliesEnabled() — auto-on

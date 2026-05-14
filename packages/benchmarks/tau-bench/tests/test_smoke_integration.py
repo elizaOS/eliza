@@ -18,7 +18,6 @@ import json
 from typing import Any
 from unittest.mock import patch
 
-import pytest
 
 from elizaos_tau_bench.runner import TauBenchRunner
 from elizaos_tau_bench.types import TauBenchConfig

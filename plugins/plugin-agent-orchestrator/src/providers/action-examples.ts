@@ -10,7 +10,7 @@
  */
 
 import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
-import { getPtyService } from "../services/pty-service.js";
+import { getAcpService } from "../actions/common.js";
 import {
   formatTaskAgentFrameworkLine,
   getTaskAgentFrameworkState,
@@ -39,10 +39,10 @@ export const codingAgentExamplesProvider: Provider = {
         (typeof message.content === "string"
           ? message.content
           : message.content?.text) ?? "";
-      const ptyService = getPtyService(runtime) ?? undefined;
+      const acpService = getAcpService(runtime);
       const frameworkState = await getTaskAgentFrameworkState(
         runtime,
-        ptyService,
+        acpService,
       );
       const frameworks = frameworkState.frameworks.slice(0, MAX_FRAMEWORK_DATA);
       const frameworkLines = frameworks

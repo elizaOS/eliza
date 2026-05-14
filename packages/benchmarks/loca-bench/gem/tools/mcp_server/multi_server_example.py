@@ -110,7 +110,7 @@ tool.close()
     
     print("\n✓ Advantages:")
     print("  - Single tool to manage")
-    print("  - Unified configuration")
+    print("  - Configuration")
     print("  - Clear server origin (prefixed names)")
     print("\n⚠ Note:")
     print("  - Tool names are prefixed (canvas_*, memory_*)")

@@ -60,7 +60,7 @@ export function GlobalPrefsSection({
         <Select
           value={selectionStrategy}
           onValueChange={(value: string) =>
-            setPref("PARALLAX_AGENT_SELECTION_STRATEGY", value)
+            setPref("ELIZA_AGENT_SELECTION_STRATEGY", value)
           }
         >
           <SettingsControls.SelectTrigger variant="compact">
@@ -89,7 +89,7 @@ export function GlobalPrefsSection({
         <Select
           value={approvalPreset}
           onValueChange={(value: string) =>
-            setPref("PARALLAX_DEFAULT_APPROVAL_PRESET", value)
+            setPref("ELIZA_DEFAULT_APPROVAL_PRESET", value)
           }
         >
           <SettingsControls.SelectTrigger variant="compact">
@@ -123,14 +123,14 @@ export function GlobalPrefsSection({
           })}
         </SettingsControls.FieldLabel>
         <Select
-          value={prefs.PARALLAX_SCRATCH_RETENTION || "pending_decision"}
+          value={prefs.ELIZA_SCRATCH_RETENTION || "pending_decision"}
           onValueChange={(value: string) => {
             if (
-              !prefs.PARALLAX_SCRATCH_RETENTION &&
+              !prefs.ELIZA_SCRATCH_RETENTION &&
               value === "pending_decision"
             )
               return;
-            setPref("PARALLAX_SCRATCH_RETENTION", value);
+            setPref("ELIZA_SCRATCH_RETENTION", value);
           }}
         >
           <SettingsControls.SelectTrigger variant="compact">
@@ -169,8 +169,8 @@ export function GlobalPrefsSection({
           })}
         </SettingsControls.FieldLabel>
         <CodingDirInput
-          initial={prefs.PARALLAX_CODING_DIRECTORY || ""}
-          onCommit={(val) => setPref("PARALLAX_CODING_DIRECTORY", val)}
+          initial={prefs.ELIZA_CODING_DIRECTORY || ""}
+          onCommit={(val) => setPref("ELIZA_CODING_DIRECTORY", val)}
         />
         <SettingsControls.FieldDescription>
           {t("codingagentsettingssection.CodingDirectoryDesc", {

@@ -1,5 +1,5 @@
 /**
- * PAYMENT — consolidated payment action.
+ * PAYMENT — payment action.
  *
  * Routes all payment operations through a single structural discriminator:
  * `action=create_request|deliver_link|verify_payload|settle|await_callback|cancel_request`.
@@ -668,14 +668,14 @@ export const paymentAction: Action = {
 		"ABORT_PAYMENT_REQUEST",
 	],
 	description:
-		"Payment operations. Set action to create_request, deliver_link, verify_payload, settle, await_callback, or cancel_request.",
+		"Payment ops. action=create_request, deliver_link, verify_payload, settle, await_callback, cancel_request.",
 	descriptionCompressed:
 		"Payment ops: create_request, deliver_link, verify_payload, settle, await_callback, cancel_request.",
 	parameters: [
 		{
 			name: "action",
 			description:
-				"Payment operation to run: create_request, deliver_link, verify_payload, settle, await_callback, or cancel_request.",
+				"Payment op: create_request, deliver_link, verify_payload, settle, await_callback, cancel_request.",
 			required: true,
 			schema: {
 				type: "string" as const,
@@ -692,7 +692,7 @@ export const paymentAction: Action = {
 		{
 			name: "provider",
 			description:
-				"For create_request: payment provider key (stripe | oxapay | x402 | wallet_native).",
+				"For create_request: provider key stripe | oxapay | x402 | wallet_native.",
 			required: false,
 			schema: {
 				type: "string" as const,
@@ -701,20 +701,20 @@ export const paymentAction: Action = {
 		},
 		{
 			name: "amountCents",
-			description: "For create_request: amount in minor currency units.",
+			description: "For create_request: amount, minor units.",
 			required: false,
 			schema: { type: "number" as const },
 		},
 		{
 			name: "currency",
-			description: "For create_request: ISO 4217 currency code.",
+			description: "For create_request: ISO 4217 currency.",
 			required: false,
 			schema: { type: "string" as const },
 		},
 		{
 			name: "paymentContext",
 			description:
-				"For create_request: payer constraint object with kind any_payer, verified_payer, or specific_payer.",
+				"For create_request: payer constraint kind any_payer, verified_payer, specific_payer.",
 			required: false,
 			schema: {
 				type: "object" as const,
@@ -735,26 +735,26 @@ export const paymentAction: Action = {
 		{
 			name: "reason",
 			description:
-				"For create_request or cancel_request: human-readable payment or cancellation reason.",
+				"For create_request/cancel_request: payment or cancellation reason.",
 			required: false,
 			schema: { type: "string" as const },
 		},
 		{
 			name: "expiresInMs",
-			description: "For create_request: optional TTL override in milliseconds.",
+			description: "For create_request: TTL override ms.",
 			required: false,
 			schema: { type: "number" as const },
 		},
 		{
 			name: "paymentRequestId",
 			description:
-				"For deliver_link, verify_payload, settle, await_callback, or cancel_request: payment request ID.",
+				"For deliver_link/verify_payload/settle/await_callback/cancel_request: payment request ID.",
 			required: false,
 			schema: { type: "string" as const },
 		},
 		{
 			name: "target",
-			description: "For deliver_link: delivery channel to use.",
+			description: "For deliver_link: delivery channel.",
 			required: false,
 			schema: {
 				type: "string" as const,
@@ -771,27 +771,27 @@ export const paymentAction: Action = {
 		{
 			name: "targetChannelId",
 			description:
-				"For deliver_link: override channel id passed to the delivery adapter.",
+				"For deliver_link: override delivery channel id.",
 			required: false,
 			schema: { type: "string" as const },
 		},
 		{
 			name: "proof",
 			description:
-				"For verify_payload or settle: provider-specific proof payload.",
+				"For verify_payload/settle: provider proof payload.",
 			required: false,
 			schema: { type: "object" as const },
 		},
 		{
 			name: "strategy",
-			description: "For settle: optional settler strategy hint.",
+			description: "For settle: settler strategy hint.",
 			required: false,
 			schema: { type: "string" as const },
 		},
 		{
 			name: "timeoutMs",
 			description:
-				"For await_callback: wait timeout in milliseconds. Defaults to 600000.",
+				"For await_callback: wait timeout ms. Default 600000.",
 			required: false,
 			schema: { type: "number" as const },
 		},

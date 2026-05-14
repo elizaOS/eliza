@@ -398,9 +398,8 @@ function getGateFailure(
 }
 
 /**
- * Wave 2-D: short-form enum completion. When `ELIZA_SHORT_FORM_ENUMS=1` is
- * set AND the action has a single closed-enum parameter, accept three input
- * shapes from the planner:
+ * Short-form enum completion. When the action has a single closed-enum
+ * parameter, accept three input shapes from the planner:
  *
  *   1. canonical:        `{ <paramName>: "<enum_value>" }`
  *   2. bare-string:      `"<enum_value>"`  (the entire args is the string)
@@ -412,15 +411,13 @@ function getGateFailure(
  * match an enum value, which are then caught by `validateToolArgs` and
  * surfaced as a normal failure.
  *
- * No-op when the flag is unset, when the action doesn't fit the
- * single-enum-parameter pattern, or when the input doesn't look like a
- * short-form emission.
+ * No-op when the action doesn't fit the single-enum-parameter pattern or when
+ * the input doesn't look like a short-form emission.
  */
 export function expandEnumShortForm(
 	action: Action,
 	args: Record<string, unknown>,
 ): Record<string, unknown> {
-	if (process.env.ELIZA_SHORT_FORM_ENUMS !== "1") return args;
 	const parameters = action.parameters ?? [];
 	if (parameters.length !== 1) return args;
 	const param = parameters[0];

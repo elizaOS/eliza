@@ -1,6 +1,5 @@
 """Tests for SWE-bench character."""
 
-import pytest
 
 from benchmarks.swe_bench.character import (
     SWE_BENCH_MESSAGE_HANDLER_TEMPLATE,

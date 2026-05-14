@@ -29,7 +29,7 @@ export const searchIssuesAction: Action = {
   contexts: ["tasks", "connectors", "knowledge"],
   contextGate: { anyOf: ["tasks", "connectors", "knowledge"] },
   roleGate: { minRole: "USER" },
-  description: "Search for issues in Linear with various filters",
+  description: "Search Linear issues with filters.",
   descriptionCompressed: "search issue Linear w/ various filter",
   similes: [
     "search-linear-issues",
@@ -41,13 +41,13 @@ export const searchIssuesAction: Action = {
     {
       name: "filters",
       description:
-        "Structured Linear issue filters: query, state, assignee, priority, team, label, and limit.",
+        "Linear issue filters: query, state, assignee, priority, team, label, limit.",
       required: false,
       schema: { type: "object" as const },
     },
     {
       name: "limit",
-      description: "Maximum number of issues to return.",
+      description: "Max issues.",
       required: false,
       schema: { type: "number" as const },
     },

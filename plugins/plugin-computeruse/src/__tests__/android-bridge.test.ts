@@ -16,6 +16,7 @@ import {
   ANDROID_DEFAULT_FPS,
   type AndroidAxNode,
   type AndroidBridgeErrorCode,
+  type AndroidBridgeProbe,
   type AndroidBridgeResult,
   type AndroidComputerUseBridge,
   type AndroidMemoryPressureSnapshot,
@@ -249,6 +250,44 @@ describe("AndroidMemoryPressureSnapshot", () => {
   });
 });
 
+// ── AndroidBridgeProbe ───────────────────────────────────────────────────────
+
+describe("AndroidBridgeProbe", () => {
+  it("reports Android platform metadata and capability booleans", async () => {
+    const fakeBridge = buildFakeAndroidBridge({
+      probe: async () => ({
+        ok: true,
+        data: {
+          platform: "android",
+          osVersion: "14",
+          sdkInt: 34,
+          capabilities: {
+            mediaProjection: true,
+            accessibilityService: false,
+            usageStats: true,
+            camera: false,
+            aospPrivileged: false,
+          },
+        },
+      }),
+    });
+
+    const result = await fakeBridge.probe();
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("expected probe success");
+
+    const probe: AndroidBridgeProbe = result.data;
+    expect(probe.platform).toBe("android");
+    expect(probe.osVersion).toBe("14");
+    expect(probe.sdkInt).toBe(34);
+    expect(typeof probe.capabilities.mediaProjection).toBe("boolean");
+    expect(typeof probe.capabilities.accessibilityService).toBe("boolean");
+    expect(typeof probe.capabilities.usageStats).toBe("boolean");
+    expect(typeof probe.capabilities.camera).toBe("boolean");
+    expect(typeof probe.capabilities.aospPrivileged).toBe("boolean");
+  });
+});
+
 // ── AppUsageEntry (enumerateApps) ─────────────────────────────────────────────
 
 describe("AppUsageEntry", () => {
@@ -329,12 +368,14 @@ function buildFakeAndroidBridge(
     Promise.resolve({ ok: false, code, message: "stub" });
 
   return {
+    probe: () => stub("internal_error"),
     startMediaProjection: () => stub("internal_error"),
     stopMediaProjection: () => stub("internal_error"),
     captureFrame: () => stub("capture_unavailable"),
     getAccessibilityTree: () => stub("accessibility_unavailable"),
     dispatchGesture: () => stub("accessibility_unavailable"),
     performGlobalAction: () => stub("accessibility_unavailable"),
+    setText: () => stub("accessibility_unavailable"),
     enumerateApps: () => stub("permission_denied"),
     getMemoryPressureSnapshot: () => stub("internal_error"),
     dispatchMemoryPressure: () => stub("internal_error"),

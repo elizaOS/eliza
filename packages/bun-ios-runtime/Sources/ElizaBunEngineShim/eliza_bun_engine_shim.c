@@ -45,6 +45,7 @@ static char g_last_error[ELIZA_LAST_ERROR_BYTES] = {0};
 
 static void close_fd(int *fd);
 static void set_last_error(const char *fmt, ...);
+static const char *find_json_field_value(const char *json, const char *field);
 
 static void mark_engine_stopped(void) {
   pthread_mutex_lock(&g_state_mutex);
@@ -521,25 +522,12 @@ static int64_t extract_line_id(const char *line) {
 }
 
 static char *extract_json_string_field(const char *json, const char *field) {
-  if (!json || !field) return NULL;
-  size_t field_len = strlen(field);
-  size_t pattern_len = field_len + 3;
-  char *pattern = (char *)malloc(pattern_len + 1);
-  if (!pattern) return NULL;
-  snprintf(pattern, pattern_len + 1, "\"%s\"", field);
-  const char *p = strstr(json, pattern);
-  free(pattern);
-  if (!p) return NULL;
-  p += field_len + 2;
-  p = strchr(p, ':');
-  if (!p) return NULL;
-  p++;
-  p = skip_ws(p);
-  if (*p != '"') return NULL;
+  const char *p = find_json_field_value(json, field);
+  if (!p || *p != '"') return NULL;
   return parse_json_string(&p);
 }
 
-static char *extract_json_value_field(const char *json, const char *field) {
+static const char *find_json_field_value(const char *json, const char *field) {
   if (!json || !field) return NULL;
   size_t field_len = strlen(field);
   size_t pattern_len = field_len + 3;
@@ -554,6 +542,12 @@ static char *extract_json_value_field(const char *json, const char *field) {
   if (!p) return NULL;
   p++;
   p = skip_ws(p);
+  return p;
+}
+
+static char *extract_json_value_field(const char *json, const char *field) {
+  const char *p = find_json_field_value(json, field);
+  if (!p) return NULL;
   const char *start = p;
   int depth = 0;
   int in_string = 0;

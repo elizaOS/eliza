@@ -15,6 +15,7 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 import {
   type CreateIssueOptions,
   CredentialService,
@@ -248,11 +249,11 @@ export class CodingWorkspaceService {
       logger: this.serviceConfig.debug
         ? {
             info: (data: unknown, msg?: string) =>
-              console.log(`[WorkspaceService] ${msg ?? ""}`, data),
+              logger.info(`[WorkspaceService] ${msg ?? ""} ${String(data ?? "")}`),
             warn: (data: unknown, msg?: string) =>
-              console.warn(`[WorkspaceService] ${msg ?? ""}`, data),
+              logger.warn(`[WorkspaceService] ${msg ?? ""} ${String(data ?? "")}`),
             error: (data: unknown, msg?: string) =>
-              console.error(`[WorkspaceService] ${msg ?? ""}`, data),
+              logger.error(`[WorkspaceService] ${msg ?? ""} ${String(data ?? "")}`),
             debug: (_data: unknown, msg?: string) => this.log(`${msg ?? ""}`),
           }
         : undefined,
@@ -280,7 +281,11 @@ export class CodingWorkspaceService {
 
     // Run startup GC in background (non-blocking)
     this.gcOrphanedWorkspaces().catch((err) => {
-      console.warn("[CodingWorkspaceService] Startup GC failed:", err);
+      logger.warn(
+        `[CodingWorkspaceService] Startup GC failed: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
     });
   }
 
@@ -661,9 +666,7 @@ export class CodingWorkspaceService {
       if (this.scratchDecisionCallback) {
         this.log(`Firing scratch decision prompt for "${label}" at ${dirPath}`);
         this.scratchDecisionCallback(record).catch((err) => {
-          console.warn(
-            `[workspace] Failed to send scratch decision prompt: ${err}`,
-          );
+          logger.warn(`[CodingWorkspaceService] Failed to send scratch decision prompt: ${err}`);
         });
       } else {
         this.log(
@@ -742,7 +745,7 @@ export class CodingWorkspaceService {
 
   private log(message: string): void {
     if (this.serviceConfig.debug) {
-      console.log(`[CodingWorkspaceService] ${message}`);
+      logger.debug(`[CodingWorkspaceService] ${message}`);
     }
   }
 
@@ -807,9 +810,7 @@ export class CodingWorkspaceService {
         if (!record || record.status !== "pending_decision") return;
         await this.removeScratchDir(record.path);
       } catch (error) {
-        console.warn(
-          `[CodingWorkspaceService] scratch cleanup failed for ${sessionId}: ${String(error)}`,
-        );
+        logger.warn(`[CodingWorkspaceService] scratch cleanup failed for ${sessionId}: ${String(error)}`);
       } finally {
         this.scratchBySession.delete(sessionId);
         this.scratchCleanupTimers.delete(sessionId);

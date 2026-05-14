@@ -22,7 +22,7 @@ export function getLinearAccountId(
 export const linearAccountIdParameter = {
   name: "accountId",
   description:
-    "Optional Linear account id from LINEAR_ACCOUNTS. Defaults to LINEAR_DEFAULT_ACCOUNT_ID or the legacy single API key.",
+    "Linear account id from LINEAR_ACCOUNTS. Default LINEAR_DEFAULT_ACCOUNT_ID or legacy single API key.",
   required: false,
   schema: { type: "string" as const },
 };

@@ -10,10 +10,7 @@ import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { logger, type UUID } from "@elizaos/core";
-import { applySignalQrOverride } from "@elizaos/plugin-signal";
-import { applyWhatsAppQrOverride } from "@elizaos/plugin-whatsapp";
-import type { LogEntry, SkillEntry } from "@elizaos/shared";
+import { logger } from "@elizaos/core";
 import type { ElizaConfig } from "../config/config.ts";
 import { resolveDefaultAgentWorkspaceDir } from "../providers/workspace.ts";
 import { getBundledRuntimePluginIds } from "../runtime/release-plugin-policy.ts";
@@ -24,6 +21,15 @@ import {
 import { findOwnPackageRoot } from "./server-helpers.ts";
 
 const require = createRequire(import.meta.url);
+const { applySignalQrOverride } = await import("@elizaos/plugin-signal");
+const { applyWhatsAppQrOverride } = (await import(
+  "@elizaos/plugin-whatsapp"
+)) as {
+  applyWhatsAppQrOverride: (
+    entries: PluginEntry[],
+    workspaceDir: string,
+  ) => void;
+};
 
 function findPluginsManifestRoot(startDir: string): string {
   // Mobile bundles are single-file — no workspace tree to walk.

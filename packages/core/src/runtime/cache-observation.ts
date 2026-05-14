@@ -1,3 +1,5 @@
+import { isObjectRecord as isRecord } from "../utils/type-guards";
+
 export interface CacheUsageObservation {
 	provider?: string;
 	model?: string;
@@ -25,10 +27,6 @@ export interface CacheUsageSummary {
 	cacheCreationInputTokens: number;
 	cachedInputTokens: number;
 	cacheHitRate: number;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function recordAt(

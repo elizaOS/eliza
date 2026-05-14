@@ -13,7 +13,6 @@ from typing import Protocol
 
 from elizaos_agentbench.types import (
     AgentBenchEnvironment,
-    AgentBenchResult,
     AgentBenchTask,
     ObservationType,
 )

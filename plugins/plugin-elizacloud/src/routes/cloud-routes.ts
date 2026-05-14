@@ -11,7 +11,7 @@ import { type AgentRuntime, logger } from "@elizaos/core";
 import { handleCloudCodingContainerRoute } from "./cloud-coding-container-routes";
 import {
   clearCloudAuthService,
-  disconnectUnifiedCloudConnection,
+  disconnectCloudConnection,
   getCloudAuth,
   type RuntimeCloudLike,
 } from "../lib/cloud-connection";
@@ -390,7 +390,7 @@ export async function handleCloudRoute(
     // Invalidate any in-flight login poll (see persistCloudLoginStatus).
     cloudDisconnectEpoch++;
     try {
-      await disconnectUnifiedCloudConnection({
+      await disconnectCloudConnection({
         cloudManager: state.cloudManager,
         config: state.config,
         runtime: state.runtime,

@@ -3,7 +3,9 @@ import {
 	HANDLE_RESPONSE_DIRECT_SCHEMA,
 	HANDLE_RESPONSE_SCHEMA,
 } from "../../actions/to-tool";
+import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../builtin-field-evaluators";
 import { parseMessageHandlerOutput } from "../message-handler";
+import { ResponseHandlerFieldRegistry } from "../response-handler-field-registry";
 
 describe("message handler retrieval hint output", () => {
 	it("parses, trims, dedupes, and caps retrieval hint arrays", () => {
@@ -158,5 +160,46 @@ describe("message handler retrieval hint output", () => {
 		expect(
 			HANDLE_RESPONSE_DIRECT_SCHEMA.properties?.shouldRespond,
 		).toBeUndefined();
+	});
+
+	it("keeps the production field-registry schema distinct from the legacy flat envelope", () => {
+		const registry = new ResponseHandlerFieldRegistry();
+		for (const evaluator of BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS) {
+			registry.register(evaluator);
+		}
+
+		const composedSchema = registry.composeSchema();
+
+		expect(Object.keys(composedSchema.properties ?? {})).toEqual([
+			"shouldRespond",
+			"contexts",
+			"intents",
+			"replyText",
+			"candidateActionNames",
+			"facts",
+			"relationships",
+			"addressedTo",
+			"emotion",
+		]);
+		expect(composedSchema.properties).toMatchObject({
+			shouldRespond: { type: "string", enum: ["RESPOND", "IGNORE", "STOP"] },
+			contexts: { type: "array" },
+			intents: { type: "array" },
+			replyText: { type: "string" },
+			candidateActionNames: { type: "array" },
+			facts: { type: "array" },
+			relationships: { type: "array" },
+			addressedTo: { type: "array" },
+			emotion: { type: "string" },
+		});
+		expect(composedSchema.properties?.thought).toBeUndefined();
+		expect(composedSchema.properties?.contextSlices).toBeUndefined();
+		expect(composedSchema.properties?.candidateActions).toBeUndefined();
+		expect(composedSchema.properties?.parentActionHints).toBeUndefined();
+		expect(composedSchema.properties?.requiresTool).toBeUndefined();
+		expect(composedSchema.properties?.extract).toBeUndefined();
+		expect(JSON.stringify(composedSchema)).not.toBe(
+			JSON.stringify(HANDLE_RESPONSE_SCHEMA),
+		);
 	});
 });

@@ -2,6 +2,10 @@ import type http from "node:http";
 import type { AgentRuntime, Service } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { normalizeCloudSiteUrl } from "../cloud/base-url.js";
+import {
+  type CloudAuthApiKeyService,
+  normalizeCloudApiKey,
+} from "../cloud/auth-service-types";
 import { resolveCloudApiKey } from "../cloud/cloud-api-key.js";
 import { validateCloudBaseUrl } from "../cloud/validate-url.js";
 import type { CloudProxyConfigLike } from "../lib/config-like";
@@ -16,22 +20,8 @@ const PROXY_TIMEOUT_MS = 15_000;
 const MAX_BODY_BYTES = 1_048_576;
 const JSON_CONTENT_TYPE_RE = /\b(?:application\/json|[^;\s]+\+json)\b/i;
 
-interface CloudAuthApiKeyService {
-  isAuthenticated: () => boolean;
-  getApiKey?: () => string | undefined;
-}
-
 export function resolveCloudBaseUrl(config: CloudProxyConfigLike): string {
   return normalizeCloudSiteUrl(config.cloud?.baseUrl);
-}
-
-function normalizeCloudApiKey(value: string | null | undefined): string | null {
-  if (typeof value !== "string") return null;
-  const trimmed = value.trim();
-  if (!trimmed || trimmed.toUpperCase() === "[REDACTED]") {
-    return null;
-  }
-  return trimmed;
 }
 
 function resolveProxyApiKey(state: CloudCompatRouteState): string | null {

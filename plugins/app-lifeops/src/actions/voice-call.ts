@@ -53,7 +53,7 @@ interface VoiceCallParams {
 const SUBACTIONS: SubactionsMap<VoiceCallSubaction> = {
   dial: {
     description:
-      "Place an outbound Twilio voice call. Pass `recipientKind` to route: `owner` (escalation; uses owner number env + standing-policy acknowledgement), `external` (third party; recipient name resolved via relationships, then allow-list checked), or `e164` (raw phone number with `phoneNumber`). All paths draft first; require confirmed:true to dispatch.",
+      "Outbound Twilio voice call. recipientKind: owner escalation env owner number + standing-policy ack; external third party RelationshipStore + allow-list; e164 raw phoneNumber. Draft first; confirmed:true dispatch.",
     descriptionCompressed:
       "Twilio voice dial: recipientKind=owner|external|e164; draft-confirm; approval-queue",
     required: ["recipientKind"],
@@ -844,7 +844,10 @@ export const voiceCallAction: Action & {
     "risk:user-visible",
   ],
   description:
-    "Owner-only. Place an outbound voice call via a registered provider. Action: `dial` with recipientKind=owner|external|e164. Current dispatch provider is Twilio; Android/app-phone is implementation-only until wired as a VOICE_CALL provider. Owner uses the env-configured owner number + standing escalation policy; external resolves a contact name via relationships then checks the allow-list; e164 dials a raw phone number. All paths draft first, require confirmed:true to dispatch, and use the approval queue.",
+    "Owner-only outbound voice call via registered provider. Action dial; recipientKind=owner|external|e164. " +
+    "Provider Twilio; Android/app-phone implementation-only until VOICE_CALL provider wired. " +
+    "owner env owner number + standing escalation policy; external RelationshipStore contact + allow-list; e164 raw phoneNumber. " +
+    "All paths draft first; confirmed:true required; approval queue.",
   descriptionCompressed:
     "Twilio voice dial: recipientKind=owner|external|e164; draft-confirm; approval-queue",
   contexts: ["contacts", "messaging", "phone", "tasks", "automation"],
@@ -855,14 +858,14 @@ export const voiceCallAction: Action & {
   parameters: [
     {
       name: "action",
-      description: "Single canonical verb: `dial`.",
+      description: "dial.",
       required: false,
       schema: { type: "string" as const, enum: ["dial"] },
     },
     {
       name: "recipientKind",
       description:
-        "Recipient discriminator: `owner` (escalation; uses owner number env), `external` (third party; recipient name resolved via relationships, allow-list checked), or `e164` (raw E.164 phone in `phoneNumber`).",
+        "owner escalation env number | external RelationshipStore lookup + allow-list | e164 raw E.164 phoneNumber.",
       required: true,
       schema: {
         type: "string" as const,
@@ -871,35 +874,33 @@ export const voiceCallAction: Action & {
     },
     {
       name: "phoneNumber",
-      description:
-        "For recipientKind=e164: destination phone number in E.164 format (e.g. +15551234567).",
+      description: "recipientKind=e164: destination E.164 phoneNumber.",
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "recipient",
       description:
-        "For recipientKind=external: contact name or E.164 phone number. Names resolve via the relationships store.",
+        "recipientKind=external: contact name or E.164; names via RelationshipStore.",
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "bodyText",
-      description: "Optional spoken message played when the call connects.",
+      description: "Optional spoken message on connect.",
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "confirmed",
       description:
-        "Must be true to actually place the call. Without it the action returns a draft / approval-queue entry.",
+        "true required to place call. Without: draft/approval-queue.",
       required: false,
       schema: { type: "boolean" as const },
     },
     {
       name: "reason",
-      description:
-        "Optional reason describing why the call is being placed (recorded with the approval task).",
+      description: "Optional call reason; approval task audit.",
       required: false,
       schema: { type: "string" as const },
     },

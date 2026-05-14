@@ -6,24 +6,26 @@
  */
 
 import type http from "node:http";
-import type { IAgentRuntime, Plugin, Route } from "@elizaos/core";
+import type {
+  IAgentRuntime,
+  LegacyRouteHandler,
+  Plugin,
+  Route,
+} from "@elizaos/core";
+import { getAcpService } from "./actions/common.js";
 import type { RouteContext } from "./api/route-utils.js";
 import { handleCodingAgentRoutes } from "./api/routes.js";
-import { getCoordinator, getPtyService } from "./services/pty-service.js";
 import { getCodingWorkspaceService } from "./services/workspace-service.js";
-
-type PluginRouteHandler = NonNullable<Route["handler"]>;
 
 function buildRouteContext(runtime: IAgentRuntime): RouteContext {
   return {
     runtime,
-    ptyService: getPtyService(runtime),
+    acpService: getAcpService(runtime) ?? null,
     workspaceService: getCodingWorkspaceService(runtime),
-    coordinator: getCoordinator(runtime),
   };
 }
 
-function codingAgentRouteHandler(): PluginRouteHandler {
+function codingAgentRouteHandler(): LegacyRouteHandler {
   return async (
     req: unknown,
     res: unknown,
@@ -37,24 +39,19 @@ function codingAgentRouteHandler(): PluginRouteHandler {
       `http://${httpReq.headers?.host ?? "localhost"}`,
     );
     const pathname = url.pathname;
-    // Lazily start PTY_SERVICE if it was registered but not yet started.
-    // The core runtime only starts services on-demand via getServiceLoadPromise,
-    // but downstream route handlers query getService() (which only returns
-    // already-started instances). Without this kick, the plugin sees null
-    // and returns 503 for every route that relies on PTY/coordinator.
     if (
-      !agentRuntime.getService("PTY_SERVICE") &&
-      agentRuntime.hasService?.("PTY_SERVICE")
+      !getAcpService(agentRuntime) &&
+      agentRuntime.hasService?.("ACP_SUBPROCESS_SERVICE")
     ) {
       try {
-        await agentRuntime.getServiceLoadPromise?.("PTY_SERVICE");
+        await agentRuntime.getServiceLoadPromise?.("ACP_SUBPROCESS_SERVICE");
       } catch {
         // Service start failed — downstream handlers will surface 503.
       }
     }
 
-    // 1. Full orchestrator dispatcher — covers spawn, send, output, hooks,
-    //    coordinator, bridge, parent-context, workspace, and issue routes.
+    // 1. Full orchestrator dispatcher — covers ACP spawn, send, output,
+    //    bridge, parent-context, workspace, and issue routes.
     const ctx = buildRouteContext(agentRuntime);
     const handled = await handleCodingAgentRoutes(
       httpReq,
@@ -82,7 +79,6 @@ const CODING_AGENT_ROUTE_PATHS: Array<{ type: string; path: string }> = [
   { type: "GET", path: "/api/coding-agents" },
   { type: "POST", path: "/api/coding-agents" },
   { type: "POST", path: "/api/coding-agents/spawn" },
-  { type: "POST", path: "/api/coding-agents/hooks" },
   { type: "GET", path: "/api/coding-agents/metrics" },
   { type: "GET", path: "/api/coding-agents/workspace-files" },
   { type: "GET", path: "/api/coding-agents/approval-presets" },
@@ -90,12 +86,6 @@ const CODING_AGENT_ROUTE_PATHS: Array<{ type: string; path: string }> = [
   { type: "POST", path: "/api/coding-agents/settings" },
   { type: "GET", path: "/api/coding-agents/approval-config" },
   { type: "POST", path: "/api/coding-agents/approval-config" },
-  // Coordinator
-  { type: "GET", path: "/api/coding-agents/coordinator/status" },
-  { type: "GET", path: "/api/coding-agents/coordinator/decisions" },
-  { type: "POST", path: "/api/coding-agents/coordinator/decisions/:id" },
-  { type: "POST", path: "/api/coding-agents/coordinator/supervision" },
-  { type: "POST", path: "/api/coding-agents/coordinator/supervision-level" },
   // Per-agent paths
   { type: "GET", path: "/api/coding-agents/:agentId" },
   { type: "POST", path: "/api/coding-agents/:agentId/send" },

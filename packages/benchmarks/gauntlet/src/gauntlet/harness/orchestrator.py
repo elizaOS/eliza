@@ -13,7 +13,6 @@ with clearly defined end states, we can verify agent behavior.
 """
 
 import asyncio
-import hashlib
 import random
 import time
 import uuid
@@ -399,7 +398,7 @@ class TestOrchestrator:
                 scenario_id=scenario.id,
             )
 
-        except Exception as e:
+        except Exception:
             # Silent failure - crash
             metrics.record_task(
                 task_id=task.task_id,
@@ -563,7 +562,7 @@ class TestOrchestrator:
                             retry_count=retry_count,
                         )
                         
-            except Exception as e:
+            except Exception:
                 retry_count += 1
                 if attempt < max_retries:
                     await asyncio.sleep(retry_delay * (2 ** attempt))

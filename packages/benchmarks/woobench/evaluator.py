@@ -11,7 +11,7 @@ import logging
 import random
 import re
 import asyncio
-from typing import Optional, Callable, Any
+from typing import Callable, Any
 
 from .payment_actions import (
     PaymentDemand,
@@ -23,7 +23,6 @@ from .types import (
     PersonaArchetype,
     Scenario,
     ResponseNode,
-    ResponseTree,
     TurnEvaluation,
     MatchResult,
     HiddenContext,

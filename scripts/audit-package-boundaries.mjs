@@ -201,7 +201,7 @@ function literalText(node) {
     : null;
 }
 
-function getImportSpecifiers(file, source) {
+function getImportReferences(file, source) {
   const sourceFile = ts.createSourceFile(
     file,
     source,
@@ -209,26 +209,47 @@ function getImportSpecifiers(file, source) {
     true,
     scriptKindForFile(file),
   );
-  const specifiers = [];
+  const references = [];
 
   function visit(node) {
-    if (
-      (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) &&
-      node.moduleSpecifier
-    ) {
+    if (ts.isImportDeclaration(node) && node.moduleSpecifier) {
       const specifier = literalText(node.moduleSpecifier);
-      if (specifier) specifiers.push(specifier);
+      if (specifier) {
+        references.push({
+          kind: "static-import",
+          specifier,
+          isTypeOnly: node.importClause?.isTypeOnly === true,
+        });
+      }
+    } else if (ts.isExportDeclaration(node) && node.moduleSpecifier) {
+      const specifier = literalText(node.moduleSpecifier);
+      if (specifier) {
+        references.push({
+          kind: "static-export",
+          specifier,
+          isTypeOnly: node.isTypeOnly === true,
+        });
+      }
     } else if (ts.isCallExpression(node)) {
       if (node.arguments.length === 1) {
         const firstArg = node.arguments[0];
         const specifier = literalText(firstArg);
-        if (
+        if (specifier && node.expression.kind === ts.SyntaxKind.ImportKeyword) {
+          references.push({
+            kind: "dynamic-import",
+            specifier,
+            isTypeOnly: false,
+          });
+        } else if (
           specifier &&
-          (node.expression.kind === ts.SyntaxKind.ImportKeyword ||
-            (ts.isIdentifier(node.expression) &&
-              node.expression.text === "require"))
+          ts.isIdentifier(node.expression) &&
+          node.expression.text === "require"
         ) {
-          specifiers.push(specifier);
+          references.push({
+            kind: "require",
+            specifier,
+            isTypeOnly: false,
+          });
         }
       }
     }
@@ -236,20 +257,50 @@ function getImportSpecifiers(file, source) {
   }
 
   visit(sourceFile);
-  return specifiers;
+  return references;
 }
 
 const relativeCrossPackageImports = [];
 const relativeOutsidePackageImports = [];
 const undeclaredWorkspaceImports = [];
+const pluginStaticImportViolations = [];
 const pluginDependencyViolations = [];
+
+function isPluginPackageSpecifier(specifier) {
+  return (
+    specifier.startsWith("@elizaos/plugin-") ||
+    specifier.startsWith("@elizaos/app-") ||
+    /(^|\/)plugins\/(?:app|plugin)-[^/]+/.test(specifier)
+  );
+}
+
+function isPackageSourceOwner(owner) {
+  return owner.dir.startsWith("packages/");
+}
 
 for (const file of sourceFiles) {
   const owner = packageOwnerForPath(file, packages);
   if (!owner) continue;
   const source = fs.readFileSync(file, "utf8");
-  for (const specifier of getImportSpecifiers(file, source)) {
+  for (const reference of getImportReferences(file, source)) {
+    const { kind, specifier } = reference;
     if (!specifier) continue;
+
+    if (
+      isPackageSourceOwner(owner) &&
+      isPluginPackageSpecifier(specifier) &&
+      kind !== "dynamic-import"
+    ) {
+      pluginStaticImportViolations.push({
+        file: relative(file),
+        importKind: kind,
+        isTestLike: isTestLikeFile(relative(file)),
+        isTypeOnly: reference.isTypeOnly,
+        owner: owner.name,
+        ownerDir: owner.dir,
+        specifier,
+      });
+    }
 
     if (specifier.startsWith(".")) {
       const resolved = path.resolve(path.dirname(file), specifier);
@@ -330,11 +381,13 @@ const report = {
   relativeCrossPackageImports,
   relativeOutsidePackageImports,
   undeclaredWorkspaceImports,
+  pluginStaticImportViolations,
   pluginDependencyViolations,
   counts: {
     relativeCrossPackageImports: relativeCrossPackageImports.length,
     relativeOutsidePackageImports: relativeOutsidePackageImports.length,
     undeclaredWorkspaceImports: undeclaredWorkspaceImports.length,
+    pluginStaticImportViolations: pluginStaticImportViolations.length,
     pluginDependencyViolations: pluginDependencyViolations.length,
   },
   byOwner: {
@@ -347,6 +400,10 @@ const report = {
       "owner",
     ),
     undeclaredWorkspaceImports: groupCount(undeclaredWorkspaceImports, "owner"),
+    pluginStaticImportViolations: groupCount(
+      pluginStaticImportViolations,
+      "owner",
+    ),
     pluginDependencyViolations: groupCount(
       pluginDependencyViolations,
       "packageName",
@@ -369,6 +426,9 @@ if (asJson) {
     `Undeclared workspace package imports: ${report.counts.undeclaredWorkspaceImports}`,
   );
   console.log(
+    `Static plugin imports from packages: ${report.counts.pluginStaticImportViolations}`,
+  );
+  console.log(
     `Plugin dependency violations: ${report.counts.pluginDependencyViolations}`,
   );
 
@@ -376,12 +436,18 @@ if (asJson) {
     ["Relative cross-package imports", relativeCrossPackageImports],
     ["Relative imports outside package roots", relativeOutsidePackageImports],
     ["Undeclared workspace package imports", undeclaredWorkspaceImports],
+    ["Static plugin imports from packages", pluginStaticImportViolations],
     ["Plugin dependency violations", pluginDependencyViolations],
   ]) {
     if (records.length === 0) continue;
     console.log(`\n${label}:`);
     for (const record of records) {
-      if ("specifier" in record) {
+      if ("importKind" in record) {
+        console.log(
+          `- ${record.file}: ${record.owner} ${record.importKind} ${record.specifier}` +
+            (record.isTypeOnly ? " (type-only)" : ""),
+        );
+      } else if ("specifier" in record) {
         console.log(
           `- ${record.file}: ${record.owner} imports ${record.specifier}` +
             (record.target ? ` (${record.target})` : ""),
@@ -399,6 +465,7 @@ const failed =
   relativeCrossPackageImports.length > 0 ||
   relativeOutsidePackageImports.length > 0 ||
   undeclaredWorkspaceImports.length > 0 ||
+  pluginStaticImportViolations.length > 0 ||
   pluginDependencyViolations.length > 0;
 
 if (check && failed) {

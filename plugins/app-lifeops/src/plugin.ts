@@ -21,7 +21,7 @@ import { connectorAction } from "./actions/connector.js";
 import { credentialsAction } from "./actions/credentials.js";
 import { ownerDocumentsAction } from "./actions/document.js";
 import { entityAction } from "./actions/entity.js";
-import { inboxUnifiedAction } from "./actions/inbox-unified.js";
+import { inboxAction } from "./actions/inbox.js";
 import {
   ownerAlarmsAction,
   ownerFinancesAction,
@@ -469,7 +469,7 @@ async function ensureTaskWithRetries(args: {
   }
 }
 
-function isDisabledByEnv(disableKey: string, enableKey?: string): boolean {
+function isDisabledByEnv(disableKey: string): boolean {
   const disableValue = (process.env[disableKey] ?? "").trim().toLowerCase();
   if (
     disableValue === "1" ||
@@ -479,12 +479,7 @@ function isDisabledByEnv(disableKey: string, enableKey?: string): boolean {
     return true;
   }
 
-  if (!enableKey) {
-    return false;
-  }
-
-  const enableValue = (process.env[enableKey] ?? "").trim().toLowerCase();
-  return enableValue === "0" || enableValue === "false";
+  return false;
 }
 
 function isGoogleConnectorPlugin(plugin: Plugin): boolean {
@@ -641,7 +636,7 @@ const rawAppLifeOpsPlugin: Plugin = {
     ...promoteSubactionsToActions(briefAction),
     ...promoteSubactionsToActions(prioritizeAction),
     ...promoteSubactionsToActions(conflictDetectAction),
-    ...promoteSubactionsToActions(inboxUnifiedAction),
+    ...promoteSubactionsToActions(inboxAction),
     ...promoteSubactionsToActions(voiceCallAction),
     remoteDesktopAction,
     workThreadAction,
@@ -815,7 +810,6 @@ const rawAppLifeOpsPlugin: Plugin = {
     // Register the proactive activity-profile task worker.
     const proactiveAgentDisabled = isDisabledByEnv(
       "ELIZA_DISABLE_PROACTIVE_AGENT",
-      "ENABLE_PROACTIVE_AGENT",
     );
     if (!proactiveAgentDisabled) {
       registerProactiveTaskWorker(runtime);
@@ -857,7 +851,6 @@ const rawAppLifeOpsPlugin: Plugin = {
 
     const lifeOpsSchedulerDisabled = isDisabledByEnv(
       "ELIZA_DISABLE_LIFEOPS_SCHEDULER",
-      "ENABLE_LIFEOPS_SCHEDULER",
     );
     if (!lifeOpsSchedulerDisabled) {
       registerLifeOpsTaskWorker(runtime);

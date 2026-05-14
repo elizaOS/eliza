@@ -38,11 +38,10 @@ To disable:
 
 ## Architecture (High Level)
 
-The orchestration stack has four main pieces:
+The orchestration stack has three main pieces:
 
 - `CODE_TASK` compatibility service: task metadata/query surface exported by `@elizaos/plugin-agent-orchestrator`.
-- `PTYService`: launches/manages local coding-agent terminal sessions.
-- `SwarmCoordinator`: handles multi-agent supervision, turn triage, and completion.
+- `AcpService`: launches/manages ACP coding-agent sessions for Claude, Codex, and OpenCode.
 - `CodingWorkspaceService`: provisions per-task Git workspaces.
 
 In short: Eliza receives a coding request, provisions workspace(s), spawns one or more coding-agent sessions, coordinates progress, and reports back in chat/API.
@@ -140,12 +139,12 @@ If no `GITHUB_TOKEN` is set and `GITHUB_OAUTH_CLIENT_ID` is present, Eliza can r
 Enable:
 
 ```bash
-PARALLAX_DEBUG_CAPTURE=1
+ELIZA_DEBUG_CAPTURE=1
 ```
 
 Capture files are written under:
 
-- `.parallax/pty-captures/`
+- `.eliza/pty-captures/`
 
 Important:
 
@@ -157,15 +156,15 @@ Important:
 
 For replay benchmark workflows, keep captures and normalized artifacts separate:
 
-- raw captures: `.parallax/pty-captures/` (or exported into `captures/`)
+- raw captures: `.eliza/pty-captures/` (or exported into `captures/`)
 - normalized replay artifacts: `replays/`
 
 Reference: the solo-vs-swarm replay benchmark runbook is maintained in the repository for benchmark workflows.
 
 Useful benchmark env vars:
 
-- `PARALLAX_BENCHMARK_PREFLIGHT_AUTO=1`
-- `PARALLAX_BENCHMARK_PREFLIGHT_MODE=cold|warm`
-- `PARALLAX_BENCHMARK_PREFLIGHT_VENV=.benchmark-venv`
+- `ELIZA_BENCHMARK_PREFLIGHT_AUTO=1`
+- `ELIZA_BENCHMARK_PREFLIGHT_MODE=cold|warm`
+- `ELIZA_BENCHMARK_PREFLIGHT_VENV=.benchmark-venv`
 
 `cold` recreates venv/deps for clean comparisons. `warm` reuses existing venv when valid.

@@ -1,5 +1,5 @@
 /**
- * Hosted public page for a unified payment request.
+ * Hosted public page for a payment request.
  *
  * Reads the redacted public view from /api/v1/payment-requests/:id?public=1
  * and presents a single "Pay" button that delegates to the provider's

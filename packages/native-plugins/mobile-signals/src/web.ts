@@ -208,6 +208,15 @@ export class MobileSignalsWeb extends WebPlugin implements MobileSignalsPlugin {
     return {
       status: "not-applicable",
       canRequest: false,
+      canOpenSettings: false,
+      settingsTarget: null,
+      engine: "web-fallback",
+      capabilities: {
+        health: false,
+        screenTime: false,
+        notifications: false,
+        settings: false,
+      },
       screenTime: buildScreenTimeStatus(
         "Web fallback has no Family Controls or DeviceActivity access.",
       ),

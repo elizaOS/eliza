@@ -21,6 +21,7 @@ import type {
   GenerateTextParams,
   IAgentRuntime,
   Plugin,
+  ProcessEnvLike,
   TextEmbeddingParams,
   TextStreamResult,
 } from "@elizaos/core";
@@ -37,8 +38,6 @@ import {
 } from "./models/text";
 import { getApiKey, getBaseURL, isAppleSiliconHost, shouldAutoDetect } from "./utils/config";
 import { detectMlx } from "./utils/detect";
-
-type ProcessEnvLike = Record<string, string | undefined>;
 
 function getProcessEnv(): ProcessEnvLike {
   if (typeof process === "undefined" || !process.env) {

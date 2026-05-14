@@ -1,28 +1,33 @@
 import { ErrorBoundary } from "@elizaos/ui";
 import "@elizaos/ui/styles";
-import "@elizaos/app-core";
 
 import { App as CapacitorApp } from "@capacitor/app";
 import { BackgroundRunner } from "@capacitor/background-runner";
 import { Capacitor, type PluginListenerHandle } from "@capacitor/core";
 import { Keyboard, KeyboardResize } from "@capacitor/keyboard";
 import { Preferences } from "@capacitor/preferences";
-import {
-  CompanionShell,
-  createVectorBrowserRenderer,
-  GlobalEmoteOverlay,
-  InferenceCloudAlertButton,
-  registerCompanionApp,
-  resolveCompanionInferenceNotice,
-  THREE,
-  useCompanionSceneStatus,
-} from "@elizaos/app-companion";
-import { PhoneCompanionApp } from "@elizaos/app-phone";
 import { Agent } from "@elizaos/capacitor-agent";
 import { Desktop } from "@elizaos/capacitor-desktop";
 import type { DeviceBridgeClient } from "@elizaos/capacitor-llama";
+import type {
+  AppBlockerSettingsCardProps,
+  WebsiteBlockerSettingsCardProps,
+} from "@elizaos/shared";
 import { ELIZA_DEFAULT_THEME } from "@elizaos/shared";
-import type { BrandingConfig } from "@elizaos/ui";
+import type {
+  BrandingConfig,
+  CodingAgentTasksPanelProps,
+  CompanionInferenceNotice,
+  CompanionSceneStatus,
+  CompanionShellComponentProps,
+  FineTuningViewProps,
+  ResolveCompanionInferenceNoticeArgs,
+  StewardApprovalQueueProps,
+  StewardLogoProps,
+  StewardTransactionHistoryProps,
+  VincentStateHookArgs,
+  VincentStateHookResult,
+} from "@elizaos/ui";
 import {
   AGENT_READY_EVENT,
   APP_PAUSE_EVENT,
@@ -69,71 +74,11 @@ import {
   type ShareTargetPayload,
   setBootConfig,
   shouldInstallMainWindowOnboardingPatches,
+  shouldUseCloudOnlyBranding,
   subscribeDesktopBridgeEvent,
   syncDetachedShellLocation,
   TRAY_ACTION_EVENT,
 } from "@elizaos/ui";
-import { StrictMode } from "react";
-import { createRoot } from "react-dom/client";
-// Side-effect: register LifeOps sidebar widgets + client methods on ElizaClient.
-import "@elizaos/app-lifeops";
-// Side-effect: register coding-agent (task-coordinator) slots so app-core
-// slot wrappers (CodingAgentControlChip, PtyConsoleBase, etc.) render the
-// real components instead of nulls.
-import "@elizaos/app-task-coordinator";
-// Side-effect: register game operator surfaces + detail extensions.
-import "@elizaos/app-babylon";
-import "@elizaos/app-scape";
-import "@elizaos/app-hyperscape";
-import "@elizaos/app-2004scape";
-import "@elizaos/app-defense-of-the-agents";
-import "@elizaos/app-clawville";
-import {
-  AppBlockerSettingsCard,
-  LifeOpsBrowserSetupPanel as BrowserBridgeSetupPanel,
-  dispatchQueuedLifeOpsGithubCallbackFromUrl as dispatchQueuedLifeOpsGithubCallback,
-  LifeOpsActivitySignalsEffect,
-  LifeOpsPageView,
-  WebsiteBlockerSettingsCard,
-} from "@elizaos/app-lifeops";
-import {
-  ApprovalQueue,
-  StewardLogo,
-  TransactionHistory,
-} from "@elizaos/app-steward";
-import {
-  CodingAgentControlChip,
-  CodingAgentSettingsSection,
-  CodingAgentTasksPanel,
-  PtyConsoleDrawer,
-} from "@elizaos/app-task-coordinator";
-import { FineTuningView } from "@elizaos/app-training";
-import "@elizaos/app-trajectory-logger";
-import "@elizaos/app-shopify";
-import "@elizaos/app-vincent";
-import { useVincentState } from "@elizaos/app-vincent";
-import "@elizaos/app-hyperliquid";
-import "@elizaos/app-polymarket";
-// Side-effect: register the wallet UI plugin (route loader, /inventory shell
-// page, and chat sidebar wallet-status widget) with the app shell registries.
-// Must precede the first shell render.
-import "@elizaos/app-wallet";
-// Side-effect: register the AOSP-only Phone / Contacts / Messages / Device
-// Settings / WiFi overlay apps.
-// Each `register` module gates itself on `isElizaOS()` so stock Android, iOS,
-// desktop, and web bundles bring the modules in without registering anything.
-// On Eliza-derived AOSP images (ElizaOS or a white-label fork) the corresponding
-// overlay app shows up in the apps catalog and is launchable as a system
-// surface. `@elizaos/app-phone` already side-effect-registers via the
-// `PhoneCompanionApp` named import above, but the explicit imports here keep
-// these apps symmetric and survive a future barrel cleanup that drops
-// `register.js` from the package index.
-import "@elizaos/app-contacts/register";
-import "@elizaos/app-device-settings/register";
-import "@elizaos/app-messages/register";
-import "@elizaos/app-phone/register";
-import "@elizaos/app-wifi/register";
-import { shouldUseCloudOnlyBranding } from "@elizaos/ui";
 import type {
   IosLocalAgentNativeRequestOptions,
   IosLocalAgentNativeRequestResult,
@@ -143,6 +88,8 @@ import {
   installIosLocalAgentNativeRequestBridge,
   primeIosFullBunRuntime,
 } from "@elizaos/ui/api/ios-local-agent-transport";
+import { type ComponentType, lazy, StrictMode, Suspense } from "react";
+import { createRoot } from "react-dom/client";
 import {
   APP_BRANDING_BASE,
   APP_CONFIG,
@@ -168,6 +115,164 @@ declare global {
     ) => Promise<IosLocalAgentNativeRequestResult>;
     __ELIZA_IOS_LOCAL_AGENT_DEBUG__?: (event: Record<string, unknown>) => void;
   }
+}
+
+const appModuleCache = new Map<string, Promise<unknown>>();
+
+function cachedDynamicImport<T>(
+  key: string,
+  loader: () => Promise<T>,
+): Promise<T> {
+  const existing = appModuleCache.get(key) as Promise<T> | undefined;
+  if (existing) return existing;
+  const promise = loader();
+  appModuleCache.set(key, promise);
+  return promise;
+}
+
+function importAppCore() {
+  return cachedDynamicImport(
+    "@elizaos/app-core",
+    () => import("@elizaos/app-core"),
+  );
+}
+
+function importAppCompanion() {
+  return cachedDynamicImport(
+    "@elizaos/app-companion",
+    () => import("@elizaos/app-companion"),
+  );
+}
+
+function importAppLifeOps() {
+  return cachedDynamicImport(
+    "@elizaos/app-lifeops",
+    () => import("@elizaos/app-lifeops"),
+  );
+}
+
+function importAppPhone() {
+  return cachedDynamicImport(
+    "@elizaos/app-phone",
+    () => import("@elizaos/app-phone"),
+  );
+}
+
+function importAppSteward() {
+  return cachedDynamicImport(
+    "@elizaos/app-steward",
+    () => import("@elizaos/app-steward"),
+  );
+}
+
+function importAppTaskCoordinator() {
+  return cachedDynamicImport(
+    "@elizaos/app-task-coordinator",
+    () => import("@elizaos/app-task-coordinator"),
+  );
+}
+
+function importAppTraining() {
+  return cachedDynamicImport(
+    "@elizaos/app-training",
+    () => import("@elizaos/app-training"),
+  );
+}
+
+function importAppVincent() {
+  return cachedDynamicImport(
+    "@elizaos/app-vincent",
+    () => import("@elizaos/app-vincent"),
+  );
+}
+
+function lazyNamedComponent<TProps>(
+  load: () => Promise<ComponentType<TProps>>,
+): ComponentType<TProps> {
+  return lazy(async () => ({ default: await load() })) as ComponentType<TProps>;
+}
+
+const CompanionShell = lazyNamedComponent<CompanionShellComponentProps>(
+  async () => (await importAppCompanion()).CompanionShell,
+);
+const GlobalEmoteOverlay = lazyNamedComponent<Record<string, never>>(
+  async () => (await importAppCompanion()).GlobalEmoteOverlay,
+);
+const InferenceCloudAlertButton = lazyNamedComponent<{
+  notice: CompanionInferenceNotice;
+  onClick: () => void;
+  onPointerDown?: (...args: unknown[]) => unknown;
+}>(async () => (await importAppCompanion()).InferenceCloudAlertButton);
+const PhoneCompanionApp = lazyNamedComponent<Record<string, never>>(
+  async () => (await importAppPhone()).PhoneCompanionApp,
+);
+const LifeOpsPageView = lazyNamedComponent<Record<string, never>>(
+  async () => (await importAppLifeOps()).LifeOpsPageView,
+);
+const BrowserBridgeSetupPanel = lazyNamedComponent<Record<string, never>>(
+  async () => (await importAppLifeOps()).LifeOpsBrowserSetupPanel,
+);
+const LifeOpsActivitySignalsEffect = lazyNamedComponent<Record<string, never>>(
+  async () => (await importAppLifeOps()).LifeOpsActivitySignalsEffect,
+);
+const AppBlockerSettingsCard = lazyNamedComponent<AppBlockerSettingsCardProps>(
+  async () => (await importAppLifeOps()).AppBlockerSettingsCard,
+);
+const WebsiteBlockerSettingsCard =
+  lazyNamedComponent<WebsiteBlockerSettingsCardProps>(
+    async () => (await importAppLifeOps()).WebsiteBlockerSettingsCard,
+  );
+const StewardLogo = lazyNamedComponent<StewardLogoProps>(
+  async () => (await importAppSteward()).StewardLogo,
+);
+const ApprovalQueue = lazyNamedComponent<StewardApprovalQueueProps>(
+  async () => (await importAppSteward()).ApprovalQueue,
+);
+const TransactionHistory = lazyNamedComponent<StewardTransactionHistoryProps>(
+  async () => (await importAppSteward()).TransactionHistory,
+);
+const CodingAgentControlChip = lazyNamedComponent<Record<string, never>>(
+  async () => (await importAppTaskCoordinator()).CodingAgentControlChip,
+);
+const CodingAgentSettingsSection = lazyNamedComponent<Record<string, never>>(
+  async () => (await importAppTaskCoordinator()).CodingAgentSettingsSection,
+);
+const CodingAgentTasksPanel = lazyNamedComponent<CodingAgentTasksPanelProps>(
+  async () => (await importAppTaskCoordinator()).CodingAgentTasksPanel,
+);
+const FineTuningView = lazyNamedComponent<FineTuningViewProps>(
+  async () => (await importAppTraining()).FineTuningView,
+);
+
+const DEFAULT_LAZY_VINCENT_STATE: VincentStateHookResult = {
+  vincentConnected: false,
+  vincentLoginBusy: false,
+  vincentLoginError: null,
+  vincentConnectedAt: null,
+  handleVincentLogin: async () => {},
+  handleVincentDisconnect: async () => {},
+  pollVincentStatus: async () => false,
+};
+
+let loadedCompanionSceneStatusHook: (() => CompanionSceneStatus) | null = null;
+let loadedVincentStateHook:
+  | ((args: VincentStateHookArgs) => VincentStateHookResult)
+  | null = null;
+let dispatchQueuedLifeOpsGithubCallback: ((url: string) => void) | null = null;
+
+function useLoadedCompanionSceneStatus(): CompanionSceneStatus {
+  return (
+    loadedCompanionSceneStatusHook?.() ?? {
+      avatarReady: false,
+      teleportKey: "",
+    }
+  );
+}
+
+function useLoadedVincentState(
+  args: VincentStateHookArgs,
+): VincentStateHookResult {
+  return loadedVincentStateHook?.(args) ?? DEFAULT_LAZY_VINCENT_STATE;
 }
 
 const BRANDED_WINDOW_KEYS = {
@@ -204,8 +309,6 @@ const APP_BRANDING: Partial<BrandingConfig> = {
     isNativePlatform: Capacitor.isNativePlatform(),
   }),
 };
-
-registerCompanionApp();
 
 /**
  * Platform detection utilities
@@ -304,49 +407,162 @@ const APP_VRM_ASSETS = APP_STYLE_PRESETS.slice()
   // branded shell; keep the boot roster aligned with files in dist/vrms.
   .map((p) => ({ title: p.name, slug: `eliza-${p.avatarIndex}` }));
 
-const appBootConfig: AppBootConfig = {
-  branding: APP_BRANDING,
-  defaultApps: APP_CONFIG.defaultApps,
-  assetBaseUrl:
-    (import.meta.env.VITE_ASSET_BASE_URL as string | undefined)?.trim() ||
-    undefined,
-  cloudApiBase: IOS_RUNTIME_ENV_CONFIG.cloudApiBase,
-  vrmAssets: APP_VRM_ASSETS,
-  onboardingStyles: APP_STYLE_PRESETS,
-  characterEditor: CharacterEditor,
-  companionShell: CompanionShell,
-  resolveCompanionInferenceNotice,
-  companionInferenceAlertButton: InferenceCloudAlertButton,
-  companionGlobalOverlay: GlobalEmoteOverlay,
-  useCompanionSceneStatus,
-  companionVectorBrowser: {
-    THREE,
-    createVectorBrowserRenderer,
-  },
-  codingAgentTasksPanel: CodingAgentTasksPanel,
-  codingAgentSettingsSection: CodingAgentSettingsSection,
-  codingAgentControlChip: CodingAgentControlChip,
-  ptyConsoleDrawer: PtyConsoleDrawer,
-  fineTuningView: FineTuningView,
-  useVincentState,
-  stewardLogo: StewardLogo,
-  stewardApprovalQueue: ApprovalQueue,
-  stewardTransactionHistory: TransactionHistory,
-  characterCatalog: APP_CHARACTER_CATALOG,
-  envAliases: APP_ENV_ALIASES,
-  lifeOpsPageView: LifeOpsPageView,
-  lifeOpsBrowserSetupPanel: BrowserBridgeSetupPanel,
-  appBlockerSettingsCard: AppBlockerSettingsCard,
-  websiteBlockerSettingsCard: WebsiteBlockerSettingsCard,
-  clientMiddleware: {
-    forceFreshOnboarding:
-      shouldInstallMainWindowOnboardingPatches(windowShellRoute),
-    preferLocalProvider: true,
-    desktopPermissions: isDesktopPlatform(),
-  },
-};
+let appModulesInitialized: Promise<void> | null = null;
 
-setBootConfig(appBootConfig);
+function importSideEffectAppModule(
+  key: string,
+  loader: () => Promise<unknown>,
+) {
+  return cachedDynamicImport(key, loader);
+}
+
+function buildAppBootConfig({
+  companionVectorRuntime,
+  resolveCompanionInferenceNotice,
+}: {
+  companionVectorRuntime: AppBootConfig["companionVectorBrowser"];
+  resolveCompanionInferenceNotice: (
+    args: ResolveCompanionInferenceNoticeArgs,
+  ) => CompanionInferenceNotice | null;
+}): AppBootConfig {
+  return {
+    branding: APP_BRANDING,
+    defaultApps: APP_CONFIG.defaultApps,
+    assetBaseUrl:
+      (import.meta.env.VITE_ASSET_BASE_URL as string | undefined)?.trim() ||
+      undefined,
+    cloudApiBase: IOS_RUNTIME_ENV_CONFIG.cloudApiBase,
+    vrmAssets: APP_VRM_ASSETS,
+    onboardingStyles: APP_STYLE_PRESETS,
+    characterEditor: CharacterEditor,
+    companionShell: CompanionShell,
+    resolveCompanionInferenceNotice,
+    companionInferenceAlertButton: InferenceCloudAlertButton,
+    companionGlobalOverlay: GlobalEmoteOverlay,
+    useCompanionSceneStatus: useLoadedCompanionSceneStatus,
+    companionVectorBrowser: companionVectorRuntime,
+    codingAgentTasksPanel: CodingAgentTasksPanel,
+    codingAgentSettingsSection: CodingAgentSettingsSection,
+    codingAgentControlChip: CodingAgentControlChip,
+    fineTuningView: FineTuningView,
+    useVincentState: useLoadedVincentState,
+    stewardLogo: StewardLogo,
+    stewardApprovalQueue: ApprovalQueue,
+    stewardTransactionHistory: TransactionHistory,
+    characterCatalog: APP_CHARACTER_CATALOG,
+    envAliases: APP_ENV_ALIASES,
+    lifeOpsPageView: LifeOpsPageView,
+    lifeOpsBrowserSetupPanel: BrowserBridgeSetupPanel,
+    appBlockerSettingsCard: AppBlockerSettingsCard,
+    websiteBlockerSettingsCard: WebsiteBlockerSettingsCard,
+    clientMiddleware: {
+      forceFreshOnboarding:
+        shouldInstallMainWindowOnboardingPatches(windowShellRoute),
+      preferLocalProvider: true,
+      desktopPermissions: isDesktopPlatform(),
+    },
+  };
+}
+
+function initializeAppModules(): Promise<void> {
+  appModulesInitialized ??= (async () => {
+    await importAppCore();
+
+    const [companionModule, lifeOpsModule, vincentModule] = await Promise.all([
+      importAppCompanion(),
+      importAppLifeOps(),
+      importAppVincent(),
+      importAppTaskCoordinator(),
+      importAppPhone(),
+      importAppSteward(),
+      importAppTraining(),
+      importSideEffectAppModule(
+        "@elizaos/app-babylon",
+        () => import("@elizaos/app-babylon"),
+      ),
+      importSideEffectAppModule(
+        "@elizaos/app-scape",
+        () => import("@elizaos/app-scape"),
+      ),
+      importSideEffectAppModule(
+        "@elizaos/app-hyperscape",
+        () => import("@elizaos/app-hyperscape"),
+      ),
+      importSideEffectAppModule(
+        "@elizaos/app-2004scape",
+        () => import("@elizaos/app-2004scape"),
+      ),
+      importSideEffectAppModule(
+        "@elizaos/app-defense-of-the-agents",
+        () => import("@elizaos/app-defense-of-the-agents"),
+      ),
+      importSideEffectAppModule(
+        "@elizaos/app-clawville",
+        () => import("@elizaos/app-clawville"),
+      ),
+      importSideEffectAppModule(
+        "@elizaos/app-trajectory-logger",
+        () => import("@elizaos/app-trajectory-logger"),
+      ),
+      importSideEffectAppModule(
+        "@elizaos/app-shopify",
+        () => import("@elizaos/app-shopify"),
+      ),
+      importSideEffectAppModule(
+        "@elizaos/app-hyperliquid",
+        () => import("@elizaos/app-hyperliquid"),
+      ),
+      importSideEffectAppModule(
+        "@elizaos/app-polymarket",
+        () => import("@elizaos/app-polymarket"),
+      ),
+      importSideEffectAppModule(
+        "@elizaos/app-wallet",
+        () => import("@elizaos/app-wallet"),
+      ),
+      importSideEffectAppModule(
+        "@elizaos/app-contacts/register",
+        () => import("@elizaos/app-contacts/register"),
+      ),
+      importSideEffectAppModule(
+        "@elizaos/app-device-settings/register",
+        () => import("@elizaos/app-device-settings/register"),
+      ),
+      importSideEffectAppModule(
+        "@elizaos/app-messages/register",
+        () => import("@elizaos/app-messages/register"),
+      ),
+      importSideEffectAppModule(
+        "@elizaos/app-phone/register",
+        () => import("@elizaos/app-phone/register"),
+      ),
+      importSideEffectAppModule(
+        "@elizaos/app-wifi/register",
+        () => import("@elizaos/app-wifi/register"),
+      ),
+    ]);
+
+    companionModule.registerCompanionApp();
+    loadedCompanionSceneStatusHook = companionModule.useCompanionSceneStatus;
+    loadedVincentStateHook = vincentModule.useVincentState;
+    dispatchQueuedLifeOpsGithubCallback =
+      lifeOpsModule.dispatchQueuedLifeOpsGithubCallbackFromUrl;
+
+    setBootConfig(
+      buildAppBootConfig({
+        companionVectorRuntime: {
+          THREE: companionModule.THREE,
+          createVectorBrowserRenderer:
+            companionModule.createVectorBrowserRenderer,
+        },
+        resolveCompanionInferenceNotice:
+          companionModule.resolveCompanionInferenceNotice,
+      }),
+    );
+  })();
+
+  return appModulesInitialized;
+}
 
 function getShareQueue(): ShareTargetPayload[] {
   const brandedQueue: unknown = Reflect.get(
@@ -830,37 +1046,36 @@ async function runIosFullBunSmokeIfRequested(): Promise<boolean> {
       );
     }
 
-    let activatedModel: Record<string, unknown> | null = null;
-    if (hubInstalled.length > 0) {
-      const firstInstalled = assertSmokeObject(
-        hubInstalled[0],
-        "local-inference installed model",
-      );
-      if (typeof firstInstalled.id !== "string" || !firstInstalled.id) {
-        throw new Error("local-inference installed model was missing id");
-      }
-      activatedModel = await fetchIosFullBunSmokeJson<Record<string, unknown>>(
-        "WebView fetch bridge POST /api/local-inference/active",
-        "/api/local-inference/active",
-        {
-          method: "POST",
-          headers: {
-            accept: "application/json",
-            "content-type": "application/json",
-          },
-          body: JSON.stringify({ modelId: firstInstalled.id }),
+    const firstInstalled = assertSmokeObject(
+      hubInstalled[0],
+      "local-inference installed model",
+    );
+    if (typeof firstInstalled.id !== "string" || !firstInstalled.id) {
+      throw new Error("local-inference installed model was missing id");
+    }
+    const activatedModel = await fetchIosFullBunSmokeJson<
+      Record<string, unknown>
+    >(
+      "WebView fetch bridge POST /api/local-inference/active",
+      "/api/local-inference/active",
+      {
+        method: "POST",
+        headers: {
+          accept: "application/json",
+          "content-type": "application/json",
         },
-        IOS_FULL_BUN_SMOKE_ROUTE_TIMEOUT_MS,
+        body: JSON.stringify({ modelId: firstInstalled.id }),
+      },
+      IOS_FULL_BUN_SMOKE_ROUTE_TIMEOUT_MS,
+    );
+    if (
+      activatedModel.status !== "ready" ||
+      typeof activatedModel.modelPath !== "string" ||
+      !activatedModel.modelPath
+    ) {
+      throw new Error(
+        `local-inference active model did not become ready: ${JSON.stringify(activatedModel)}`,
       );
-      if (
-        activatedModel.status !== "ready" ||
-        typeof activatedModel.modelPath !== "string" ||
-        !activatedModel.modelPath
-      ) {
-        throw new Error(
-          `local-inference active model did not become ready: ${JSON.stringify(activatedModel)}`,
-        );
-      }
     }
 
     const [
@@ -1200,8 +1415,7 @@ function handleDeepLink(url: string): void {
   // eliza://settings/connectors/<provider> — open Settings → Connectors.
   // The new Connectors section renders one inline expansion per connector;
   // we no longer scroll/highlight a specific provider panel.
-  const connectorMatch = path.match(/^settings\/connectors\/([a-z0-9-]+)$/i);
-  if (connectorMatch) {
+  if (/^settings\/connectors\/[a-z0-9-]+$/i.test(path)) {
     window.location.hash = "#connectors";
     return;
   }
@@ -1286,11 +1500,11 @@ function handleDeepLink(url: string): void {
       break;
     case "lifeops":
       window.location.hash = "#lifeops";
-      dispatchQueuedLifeOpsGithubCallback(url);
+      dispatchQueuedLifeOpsGithubCallback?.(url);
       break;
     case "settings":
       window.location.hash = "#settings";
-      dispatchQueuedLifeOpsGithubCallback(url);
+      dispatchQueuedLifeOpsGithubCallback?.(url);
       break;
     case "connect": {
       const gatewayUrl = parsed.searchParams.get("url");
@@ -1520,26 +1734,28 @@ function mountReactApp(): void {
   createRoot(rootEl).render(
     <ErrorBoundary>
       <StrictMode>
-        <AppProvider branding={APP_BRANDING}>
-          {phoneCompanion ? (
-            <PhoneCompanionApp />
-          ) : detachedShell ? (
-            <div className="flex h-[100dvh] min-h-0 w-full max-w-full flex-col overflow-hidden">
-              <DetachedShellRoot route={windowShellRoute} />
-            </div>
-          ) : appWindowSlug ? (
-            <div className="flex h-[100dvh] min-h-0 w-full max-w-full flex-col overflow-hidden">
-              <AppWindowRenderer slug={appWindowSlug} />
-            </div>
-          ) : (
-            <>
-              <DesktopSurfaceNavigationRuntime />
-              <DesktopTrayRuntime />
-              <LifeOpsActivitySignalsEffect />
-              <App />
-            </>
-          )}
-        </AppProvider>
+        <Suspense fallback={null}>
+          <AppProvider branding={APP_BRANDING}>
+            {phoneCompanion ? (
+              <PhoneCompanionApp />
+            ) : detachedShell ? (
+              <div className="flex h-[100dvh] min-h-0 w-full max-w-full flex-col overflow-hidden">
+                <DetachedShellRoot route={windowShellRoute} />
+              </div>
+            ) : appWindowSlug ? (
+              <div className="flex h-[100dvh] min-h-0 w-full max-w-full flex-col overflow-hidden">
+                <AppWindowRenderer slug={appWindowSlug} />
+              </div>
+            ) : (
+              <>
+                <DesktopSurfaceNavigationRuntime />
+                <DesktopTrayRuntime />
+                <LifeOpsActivitySignalsEffect />
+                <App />
+              </>
+            )}
+          </AppProvider>
+        </Suspense>
       </StrictMode>
     </ErrorBoundary>,
   );
@@ -1942,6 +2158,7 @@ function applyStoredDetachedShellTheme(): void {
 }
 
 async function main(): Promise<void> {
+  await initializeAppModules();
   setupPlatformStyles();
   applyBuildTimeIosConnection();
 

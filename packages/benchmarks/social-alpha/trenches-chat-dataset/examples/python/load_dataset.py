@@ -6,7 +6,6 @@ Load and explore the Trenches Discord chat dataset
 
 import json
 import pandas as pd
-from datetime import datetime
 import matplotlib.pyplot as plt
 import seaborn as sns
 from pathlib import Path
@@ -103,7 +102,7 @@ class TrenchesDataset:
         self.tokens = pd.DataFrame(tokens_data)
         
         # Filter out native token
-        original_count = len(self.tokens)
+        len(self.tokens)
         self.tokens = self.tokens[self.tokens['symbol'].str.upper() != NATIVE_TOKEN]
         
         print(f"Loaded {len(self.tokens)} unique tokens (excluding {NATIVE_TOKEN})")

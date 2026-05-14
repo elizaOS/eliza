@@ -966,7 +966,7 @@ def _write_release_evidence(
     # NON-PUBLISHABLE bundle (stand-in bytes, no eval/kernel evidence), so
     # `publishEligible` and all the `final.*` (except `hashes`) stay false and
     # the `publishBlockingReasons` are kept. A real `base-v1` publish requires
-    # the runbook in RELEASE_V1.md (real fork-built GGUFs, real quant sidecars,
+    # the runbook in docs/eliza-1-pipeline/06-test-matrix.md (real fork-built GGUFs, real quant sidecars,
     # real evals, real platform evidence) — only then do the `final.*` flags
     # flip true and `evidence/release.json` becomes `publishEligible: true`.
     release_state = "local-standin"
@@ -1040,7 +1040,7 @@ def _write_release_evidence(
             f"release shape `{release_state}` requested, but this is a local "
             "staging bundle: bytes are stand-ins, not fork-built GGUFs / real "
             "quant sidecars; eval and platform evidence are missing. Run the "
-            "RELEASE_V1.md runbook to produce a publishable bundle.",
+            "docs/eliza-1-pipeline/06-test-matrix.md runbook to produce a publishable bundle.",
             *reasons,
         ]
     _json_write(bundle_dir / "evidence" / "release.json", evidence)
@@ -1380,7 +1380,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             "Requires --source-models so per-component provenance can be "
             "recorded. NOTE: this staging helper still produces a "
             "NON-PUBLISHABLE bundle (stand-in bytes, no eval/kernel evidence) "
-            "— see RELEASE_V1.md for the real publish path."
+            "-- see docs/eliza-1-pipeline/06-test-matrix.md for the real publish path."
         ),
     )
     ap.add_argument(

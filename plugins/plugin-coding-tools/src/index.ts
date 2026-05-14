@@ -27,10 +27,7 @@ function terminalSupportedByEnv(
   )
     .trim()
     .toLowerCase();
-  const aosp = ["1", "true", "yes", "on"].includes(
-    (env.ELIZA_AOSP_BUILD ?? "").trim().toLowerCase(),
-  );
-  return platform === "android" && aosp && mode === "local-yolo";
+  return platform === "android" && mode === "local-yolo";
 }
 
 export const codingToolsPlugin: Plugin = {

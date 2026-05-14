@@ -56,13 +56,17 @@ Two equivalent invocations work — pick whichever fits the calling
 context. Run from this package root or with it on `PYTHONPATH`:
 
 ```bash
-# canonical module path
+# canonical module path (preferred from scripts / the registry)
 python -m elizaos_mmau_audio --mock --limit 2
 python -m elizaos_mmau_audio --mock --output ./results --json
 
-# installed console scripts
+# installed console scripts (preferred when installed)
 mmau-audio --mock --limit 2
 elizaos-mmau-audio --mock --output ./results --json
+
+# legacy aliases kept temporarily for downstream compatibility
+mmau --mock --limit 2
+elizaos-mmau --mock --output ./results --json
 ```
 
 Run through the elizaOS bridge (cascaded STT -> text agent baseline):

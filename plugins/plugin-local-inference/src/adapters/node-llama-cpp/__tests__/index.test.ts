@@ -98,11 +98,11 @@ describe("Local AI Plugin", () => {
 	});
 
 	describe("local-inference compatibility routing", () => {
-		it("routes plain text generation to an active unified local-inference backend", async () => {
+		it("routes plain text generation to an active local-inference backend", async () => {
 			const runtime = {
 				getService: () => ({
 					generate: async ({ prompt }: { prompt: string }) =>
-						`unified:${prompt}`,
+						`backend:${prompt}`,
 				}),
 			};
 
@@ -113,10 +113,10 @@ describe("Local AI Plugin", () => {
 				},
 			);
 
-			expect(result).toBe("unified:hello");
+			expect(result).toBe("backend:hello");
 		});
 
-		it("routes TTS to an active unified local-inference backend", async () => {
+		it("routes TTS to an active local-inference backend", async () => {
 			const audio = new Uint8Array([1, 2, 3]);
 			const runtime = {
 				getService: () => ({
@@ -132,7 +132,7 @@ describe("Local AI Plugin", () => {
 			expect(result).toEqual(audio);
 		});
 
-		it("routes image description to an active unified local-inference backend", async () => {
+		it("routes image description to an active local-inference backend", async () => {
 			const runtime = {
 				getService: () => ({
 					describeImage: async () => ({

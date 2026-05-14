@@ -1,10 +1,7 @@
 export type AgentType =
   | "claude"
   | "codex"
-  | "gemini"
-  | "aider"
-  | "pi"
-  | "shell"
+  | "opencode"
   | string;
 
 export type ApprovalPreset =

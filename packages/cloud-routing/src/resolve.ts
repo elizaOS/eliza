@@ -11,12 +11,6 @@ import type { CloudRoute, FeatureCloudRoute, RouteSpec } from "./types.ts";
 
 const CLOUD_BASE_FALLBACK = "https://www.elizacloud.ai/api/v1";
 
-/**
- * Structural subset of `IAgentRuntime` we actually need. Avoids a hard
- * dep on `@elizaos/core` (which would force a single nominal version on
- * every consumer) — any runtime whose `getSetting(key)` returns a
- * primitive scalar is accepted.
- */
 export interface RuntimeSettings {
   getSetting(key: string): string | boolean | number | null | undefined;
 }
@@ -26,9 +20,7 @@ export interface RuntimeSettings {
  * {@link RuntimeSettings} without depending on `@elizaos/core`.
  */
 export function toRuntimeSettings(runtime: {
-  getSetting(
-    key: string,
-  ): string | boolean | number | bigint | null | undefined;
+  getSetting(key: string): unknown;
 }): RuntimeSettings {
   return {
     getSetting(key: string): string | boolean | number | null | undefined {
@@ -47,10 +39,6 @@ export function toRuntimeSettings(runtime: {
   };
 }
 
-/**
- * When Eliza Cloud is connected, returns `{ baseUrl, headers }` for
- * `GET ${baseUrl}/{path}` against `/apis/{service}` with Bearer cloud auth.
- */
 export function cloudServiceApisBaseUrl(
   runtime: RuntimeSettings,
   service: string,
@@ -76,9 +64,8 @@ function buildCloudProxyRoute(
   runtime: RuntimeSettings,
   service: string,
 ): { baseUrl: string; headers: Record<string, string> } | null {
-  if (!isCloudConnected(runtime)) return null;
   const cloudApiKey = getSettingAsString(runtime, "ELIZAOS_CLOUD_API_KEY");
-  if (cloudApiKey === null) return null;
+  if (cloudApiKey === null || !isCloudRoutingEnabled(runtime)) return null;
   const cloudBaseRaw =
     getSettingAsString(runtime, "ELIZAOS_CLOUD_BASE_URL") ??
     CLOUD_BASE_FALLBACK;
@@ -90,14 +77,14 @@ function buildCloudProxyRoute(
   };
 }
 
-/**
- * Returns true iff ELIZAOS_CLOUD_API_KEY is non-empty AND
- * ELIZAOS_CLOUD_ENABLED is truthy ("true", "1", or boolean true).
- */
 export function isCloudConnected(runtime: RuntimeSettings): boolean {
-  const apiKey = getSettingAsString(runtime, "ELIZAOS_CLOUD_API_KEY");
-  if (apiKey === null) return false;
+  return (
+    getSettingAsString(runtime, "ELIZAOS_CLOUD_API_KEY") !== null &&
+    isCloudRoutingEnabled(runtime)
+  );
+}
 
+function isCloudRoutingEnabled(runtime: RuntimeSettings): boolean {
   const enabled = runtime.getSetting("ELIZAOS_CLOUD_ENABLED");
   if (enabled === true) return true;
   if (typeof enabled === "string") {
@@ -107,15 +94,6 @@ export function isCloudConnected(runtime: RuntimeSettings): boolean {
   return false;
 }
 
-/**
- * Resolve the cloud route for a service. Three mutually exclusive branches:
- *
- * 1. **local-key** — the user set a local API key in runtime settings.
- * 2. **cloud-proxy** — no local key, but Eliza Cloud is connected.
- * 3. **disabled** — neither is available.
- *
- * Local key always wins when both are set.
- */
 export function resolveCloudRoute(
   runtime: RuntimeSettings,
   spec: RouteSpec,
@@ -162,20 +140,6 @@ function buildLocalKeyHeaders(
   }
 }
 
-/**
- * Read the per-feature routing policy from runtime settings.
- *
- * Resolution rules (no string-switch on `feature` — the registry owns
- * the lookup):
- *
- * 1. If `feature` is unknown, return `DEFAULT_FEATURE_POLICY` ("auto").
- * 2. If the persisted value isn't a valid `FeaturePolicy`, return
- *    `DEFAULT_FEATURE_POLICY`.
- * 3. Otherwise return the persisted policy.
- *
- * The setting key for each feature is owned by the registry
- * (`features.ts`).
- */
 export function getFeaturePolicy(
   runtime: RuntimeSettings,
   feature: string,
@@ -190,11 +154,6 @@ export function getFeaturePolicy(
   return DEFAULT_FEATURE_POLICY;
 }
 
-/**
- * Read every registered feature's policy from runtime settings in one
- * call. Always returns a complete `FeaturePolicyMap` with every
- * feature populated (defaults applied where unset).
- */
 export function getFeaturePolicyMap(
   runtime: RuntimeSettings,
 ): FeaturePolicyMap {
@@ -205,32 +164,6 @@ export function getFeaturePolicyMap(
   return Object.fromEntries(entries) as FeaturePolicyMap;
 }
 
-/**
- * Resolve a cloud route for a specific feature, honoring its
- * per-feature policy.
- *
- * Policy semantics:
- *
- *   - `local`  — only `local-key` is acceptable. If no local key is set
- *                the route is `disabled` (the cloud is **not** consulted
- *                even if connected). This is the "stay off cloud for
- *                this feature" mode users explicitly opt into.
- *   - `cloud`  — only `cloud-proxy` is acceptable. Local keys are
- *                ignored; if the cloud isn't connected the route is
- *                `disabled`. This pins the feature to the cloud even
- *                when a local key exists.
- *   - `auto`   — defer to the canonical `resolveCloudRoute` precedence
- *                (local-key wins, cloud-proxy fills in, disabled
- *                otherwise).
- *
- * Unknown feature ids fall back to `auto` (same as
- * `resolveCloudRoute`), so plugins migrating to per-feature routing
- * don't break when a feature id isn't yet in the registry.
- *
- * `policyOverride` skips the runtime setting lookup and is intended
- * for tests + admin tooling that knows the policy without reading the
- * settings store.
- */
 export function resolveFeatureCloudRoute(
   runtime: RuntimeSettings,
   feature: string,

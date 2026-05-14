@@ -4,7 +4,7 @@ sidebarTitle: "Automations"
 description: "REST API endpoints for listing automation items and browsing the node catalog."
 ---
 
-The Automations API provides a unified view of all automation sources (triggers, workflows, cron jobs, workbench tasks) and a catalog of available automation nodes. These endpoints power the Automations tab in the dashboard.
+The Automations API provides a canonical view of all automation sources (triggers, workflows, cron jobs, workbench tasks) and a catalog of available automation nodes. These endpoints power the Automations tab in the dashboard.
 
 ## Endpoints
 
@@ -17,7 +17,7 @@ The Automations API provides a unified view of all automation sources (triggers,
 
 ### GET /api/automations
 
-Returns a unified list of all automation items across sources (triggers, workflows, cron jobs, workbench tasks).
+Returns a canonical list of all automation items across sources (triggers, workflows, cron jobs, workbench tasks).
 
 **Response**
 

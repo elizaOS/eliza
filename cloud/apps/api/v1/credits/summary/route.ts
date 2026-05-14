@@ -144,7 +144,7 @@ app.get("/", async (c) => {
       pricing: {
         creditsPerDollar: 100,
         minimumTopUp: 5.0,
-        x402Enabled: c.env.ENABLE_X402_PAYMENTS === "true",
+        x402Enabled: true,
       },
     };
 

@@ -36,8 +36,6 @@ import {
     loadState,
     saveState,
 } from "./state.ts";
-import { suggestTimezoneFromIp } from "./apply-system.ts";
-import { isNmcliAvailable, networkStatus } from "../network.ts";
 import type { CalibrationBlock } from "../persona.ts";
 import { llmRepliesEnabled } from "../runtime/dispatch-llm.ts";
 
@@ -106,10 +104,9 @@ export async function handleOnboarding(
 
     const trimmed = message.trim();
     if (trimmed === "") {
-        const preset = await promptFor(q);
         return {
             reply: await rephraseOnboardingTurn(
-                preset,
+                q.prompt,
                 String(q.id),
                 state,
                 "",
@@ -209,32 +206,6 @@ export async function handleOnboarding(
     };
 }
 
-/**
- * Build the prompt for a question. For most questions this is just the
- * static `q.prompt` string; the timezone question gets a one-time
- * suggestion appended when we're online and the free geo-IP API
- * returns a sensible answer ("Looks like Pacific — sound right?").
- *
- * Soft-fails on every error so a flaky network never blocks onboarding.
- * The auto-detect is gated on `USBELIZA_DISABLE_GEOIP=1` so the test
- * suite (which has no network) doesn't sit through a 2-second timeout
- * on every timezone question.
- */
-async function promptFor(q: OnboardingQuestion): Promise<string> {
-    if (q.id !== "timezone") return q.prompt;
-    if (process.env.USBELIZA_DISABLE_GEOIP === "1") return q.prompt;
-    try {
-        if (!(await isNmcliAvailable())) return q.prompt;
-        const status = await networkStatus();
-        if (!status.online) return q.prompt;
-        const suggested = await suggestTimezoneFromIp();
-        if (suggested === null) return q.prompt;
-        return `What timezone are you in? Looks like ${suggested} — sound right?`;
-    } catch {
-        return q.prompt;
-    }
-}
-
 function advance(
     state: OnboardingState,
     q: OnboardingQuestion,
@@ -269,10 +240,9 @@ async function emitNext(
     }
     const nextQ = QUESTIONS[state.nextQuestionIndex];
     if (nextQ === undefined) return { reply: "", completed: false };
-    const preset = await promptFor(nextQ);
     return {
         reply: await rephraseOnboardingTurn(
-            preset,
+            nextQ.prompt,
             String(nextQ.id),
             state,
             lastUserInput,
@@ -350,22 +320,6 @@ function defaultForSkip(id: keyof CalibrationBlock): CalibrationBlock[Onboarding
     switch (id) {
         case "name":
             return "friend";
-        case "workFocus":
-            return "general";
-        case "multitasking":
-            return "single-task";
-        case "chronotype":
-            return "flexible";
-        case "errorCommunication":
-            return "transparent";
-        case "keyboardLayout":
-            return "us";
-        case "language":
-            return "en_US.UTF-8";
-        case "timezone":
-            return "UTC";
-        case "wifiOfferAccepted":
-            return false;
         case "claudeOfferAccepted":
             return false;
         case "buildIntent":
@@ -377,16 +331,6 @@ function defaultForSkip(id: keyof CalibrationBlock): CalibrationBlock[Onboarding
             throw new Error(`defaultForSkip: unknown question id ${String(id)}`);
     }
 }
-
-/**
- * Fire the multi-turn wifi flow when the user says yes to question 2.
- * Soft-fails — if NetworkManager isn't available (test env / no nmcli),
- * we just continue onboarding and let the user pick this up later.
- */
-// v35's `maybeBeginWifiFlow` + `maybeFireClaudeLogin` were removed in
-// v36: wifi is no longer an onboarding question (chat-driven "connect
-// to wifi" handles it), and claude OAuth runs as the multi-turn
-// claude-flow inline in handleOnboarding above.
 
 /**
  * Fire BUILD_APP for the user's onboarding answer to "what do you want
@@ -428,18 +372,7 @@ function freeformAccept(
     id: keyof CalibrationBlock,
     raw: string,
 ): CalibrationBlock[OnboardingQuestion["id"]] {
-    // For free-text fields (name, workFocus) and the system fields
-    // (keyboardLayout / language / timezone — where unrecognized input
-    // can still be valid to `localectl`), accept whatever the user
-    // typed. For enum fields, fall through to the skip default — that's
-    // what they'd get anyway by not answering clearly.
-    if (
-        id === "name" ||
-        id === "workFocus" ||
-        id === "keyboardLayout" ||
-        id === "language" ||
-        id === "timezone"
-    ) {
+    if (id === "name" || id === "buildIntent") {
         return raw.slice(0, 256);
     }
     return defaultForSkip(id);

@@ -1,7 +1,7 @@
 {
   "id": "music",
   "name": "Music",
-  "description": "Unified music plugin: library & playlists, metadata APIs, playback engine, queue, HTTP streaming routes, and optional Discord voice.",
+  "description": "Music plugin: library & playlists, metadata APIs, playback engine, queue, HTTP streaming routes, and optional Discord voice.",
   "npmName": "@elizaos/plugin-music",
   "version": "1.0.0",
   "source": "bundled",

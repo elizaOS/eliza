@@ -14,7 +14,6 @@ from elizaos_agentbench import upstream_loader as L
 from elizaos_agentbench.adapters.db_adapter import DatabaseEnvironmentAdapter
 from elizaos_agentbench.adapters.kg_adapter import KnowledgeGraphAdapter
 from elizaos_agentbench.adapters.lateral_thinking_adapter import LateralThinkingAdapter
-from elizaos_agentbench.types import AgentBenchEnvironment as E
 
 
 class TestDBOnUpstream:

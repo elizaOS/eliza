@@ -1,11 +1,11 @@
 /**
- * Unified payment requests — collection routes.
+ * Payment requests — collection routes.
  *
  * POST  /api/v1/payment-requests        Create a new payment request (authed creator).
  * GET   /api/v1/payment-requests        List payment requests for the caller's org.
  *
- * The unified read surface fronts payment_requests rows across providers.
- * Creation is Stripe-only until the non-Stripe unified adapters are real; use
+ * The read surface fronts payment_requests rows across providers.
+ * Creation is Stripe-only until the non-Stripe adapters are real; use
  * the app-charge and x402 routes for OxaPay, wallet-native, and x402 flows.
  */
 

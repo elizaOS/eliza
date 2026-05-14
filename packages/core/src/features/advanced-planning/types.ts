@@ -2,16 +2,14 @@ import type {
 	ActionParameters,
 	ActionResult,
 	HandlerCallback,
+	JsonPrimitive,
+	JsonValue,
 	Memory,
 	State,
 	UUID,
 } from "../../types/index.ts";
 
-export type JsonPrimitive = string | number | boolean | null;
-export type JsonValue =
-	| JsonPrimitive
-	| JsonValue[]
-	| { [key: string]: JsonValue };
+export type { JsonPrimitive, JsonValue };
 
 export type ExecutionModel = "sequential" | "parallel" | "dag";
 

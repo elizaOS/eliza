@@ -91,7 +91,3 @@ Paste errors or attach screenshots.
 
 - In-app reporting where offered for Cloud or onboarding errors.
 - GitHub: <https://github.com/eliza-ai/eliza/issues>
-
-## Related (Chinese)
-
-- [中文入门：安装、引导与支持](/zh/guides/onboarding-and-support)

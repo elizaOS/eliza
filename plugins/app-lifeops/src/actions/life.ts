@@ -123,7 +123,7 @@ const SUBACTIONS = {
     description:
       "Create a life-item: kind=definition (habit/routine/reminder/alarm/todo) or kind=goal (long-term aspiration).",
     descriptionCompressed:
-      "create life-item: kind=definition(habit/routine/reminder/alarm/todo) or goal; cadence/title/details from intent",
+      "create life-item definition(habit|routine|reminder|alarm|todo)|goal; infer cadence/title",
     required: ["kind", "title"],
     optional: ["intent", "details"],
   },

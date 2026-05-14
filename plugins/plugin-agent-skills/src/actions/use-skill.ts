@@ -54,14 +54,14 @@ const USE_SKILL_PARAMETERS: ActionParameter[] = [
 	{
 		name: "slug",
 		description:
-			"Slug (canonical name) of an enabled skill to invoke. Must match a skill returned by the enabled_skills provider.",
+			"Enabled skill slug. Must match enabled_skills provider.",
 		required: true,
 		schema: { type: "string" },
 	},
 	{
 		name: "mode",
 		description:
-			"How to invoke the skill: 'script' to run the bundled executable, 'guidance' to load the SKILL.md instructions, or 'auto' to pick automatically based on whether the skill ships scripts.",
+			"Invoke mode: script runs executable, guidance loads SKILL.md, auto picks by scripts.",
 		required: false,
 		schema: {
 			type: "string",
@@ -72,14 +72,14 @@ const USE_SKILL_PARAMETERS: ActionParameter[] = [
 	{
 		name: "script",
 		description:
-			"Optional script filename to run (used with mode='script' or mode='auto' when the skill has multiple scripts). Defaults to the first script in the skill.",
+			"Script filename for mode=script/auto when multiple scripts. Default first script.",
 		required: false,
 		schema: { type: "string" },
 	},
 	{
 		name: "args",
 		description:
-			"Optional arguments to pass to the skill's script. Either an array of strings or a JSON object whose values become positional arguments.",
+			"Script args: string array or JSON object values as positional args.",
 		required: false,
 		schema: { type: "object" },
 	},

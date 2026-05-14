@@ -370,7 +370,7 @@ export function getLinearRouteForTest(
  */
 export const linearIssueRouterAction: RouterAction = {
   name: "LINEAR_ISSUE",
-  description: "Route Linear issue operations: create, get, update, or delete issues.",
+  description: "Route Linear issue ops: create, get, update, delete.",
   descriptionCompressed: "route Linear issue create get update delete",
   similes: [],
   contexts: ["general", "automation", "knowledge", LINEAR_ISSUE_CONTEXT],
@@ -422,7 +422,7 @@ export const linearIssueRouterAction: RouterAction = {
  */
 export const linearCommentRouterAction: RouterAction = {
   name: "LINEAR_COMMENT",
-  description: "Route Linear comment operations for issues.",
+  description: "Route Linear issue comment ops.",
   descriptionCompressed: "route Linear issue comment create reply note",
   similes: [],
   contexts: ["general", "automation", LINEAR_COMMENT_CONTEXT],
@@ -474,7 +474,7 @@ export const linearCommentRouterAction: RouterAction = {
  */
 export const linearWorkflowRouterAction: RouterAction = {
   name: "LINEAR_WORKFLOW",
-  description: "Route Linear workflow, activity, and issue search operations.",
+  description: "Route Linear workflow/activity/search ops.",
   descriptionCompressed: "route Linear workflow activity search issue category",
   similes: [],
   contexts: ["general", "automation", "knowledge", LINEAR_WORKFLOW_CONTEXT],

@@ -82,9 +82,9 @@ export function VoiceCloneForm({
   onSuccess,
   onCreditBalanceChange,
 }: VoiceCloneFormProps) {
-  // Form data consolidated
+  // Form data
   const [formData, setFormData] = useState<FormData>(DEFAULT_FORM_DATA);
-  // Advanced settings consolidated
+  // Advanced settings
   const [settings, setSettings] = useState<VoiceSettings>(DEFAULT_SETTINGS);
   // File state
   const [files, setFiles] = useState<UploadedFile[]>([]);

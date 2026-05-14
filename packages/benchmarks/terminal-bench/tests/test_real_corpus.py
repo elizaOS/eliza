@@ -9,8 +9,6 @@ skipped when no daemon is reachable.
 
 from __future__ import annotations
 
-import asyncio
-import os
 import pytest
 
 from elizaos_terminal_bench.dataset import (

@@ -40,3 +40,15 @@ function readBoolFlag(name: string, fallback = false): boolean {
 export function isCloudWalletEnabled(): boolean {
   return readBoolFlag("ENABLE_CLOUD_WALLET");
 }
+
+/**
+ * Opt-in for older external workspaces that still store app plugins under
+ * `apps/app-*` rather than the current `plugins/app-*` layout.
+ *
+ * Default off. The Eliza repo itself no longer scans top-level `apps/` by
+ * default. Set `ELIZA_ENABLE_LEGACY_APPS_WORKSPACE_DISCOVERY=1` to re-enable
+ * the old scan path when working with a workspace that has not migrated yet.
+ */
+export function isLegacyAppsWorkspaceDiscoveryEnabled(): boolean {
+  return readBoolFlag("ELIZA_ENABLE_LEGACY_APPS_WORKSPACE_DISCOVERY");
+}

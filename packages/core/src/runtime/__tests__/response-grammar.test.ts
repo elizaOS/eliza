@@ -1012,10 +1012,7 @@ describe("buildPlannerActionGrammarStrict — realistic action set (P2-4 product
 });
 
 describe("withGuidedDecodeProviderOptions", () => {
-	const ENV_KEYS = [
-		"MILADY_LOCAL_GUIDED_DECODE",
-		"ELIZA_LOCAL_GUIDED_DECODE",
-	] as const;
+	const ENV_KEYS = ["ELIZA_LOCAL_GUIDED_DECODE"] as const;
 	const saved: Record<string, string | undefined> = {};
 	for (const k of ENV_KEYS) saved[k] = process.env[k];
 	afterEach(() => {
@@ -1046,12 +1043,6 @@ describe("withGuidedDecodeProviderOptions", () => {
 		expect((opts as { eliza?: { guidedDecode?: unknown } }).eliza).toEqual({
 			guidedDecode: true,
 		});
-	});
-
-	it("is a no-op when the operator opts out via MILADY_LOCAL_GUIDED_DECODE=0", () => {
-		process.env.MILADY_LOCAL_GUIDED_DECODE = "0";
-		const opts = withGuidedDecodeProviderOptions({} as Record<string, unknown>);
-		expect((opts as { eliza?: unknown }).eliza).toBeUndefined();
 	});
 
 	it("is a no-op when ELIZA_LOCAL_GUIDED_DECODE=false", () => {
