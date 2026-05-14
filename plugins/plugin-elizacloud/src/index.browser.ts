@@ -29,6 +29,11 @@ export const scrubCloudSecretsFromEnv = _noop;
 export const __resetCloudBaseUrlCache = _noop;
 export const resolveCloudTtsBaseUrl = _noop;
 export const resolveElevenLabsApiKeyForCloudMode = _noop;
+// `resolveCloudApiBaseUrl` is referenced statically by plugin-wallet's
+// browser bundle (the cloud-routing fallback path). The renderer doesn't
+// run the Node-side resolver; the consumer just needs the name to bind
+// so Rolldown's MISSING_EXPORT check passes.
+export const resolveCloudApiBaseUrl = (): undefined => undefined;
 
 export * from "./types";
 export default elizaOSCloudPlugin;
