@@ -32,9 +32,10 @@ describe("TASKS:spawn_agent", () => {
   it("spawns a session with compatible data shape", async () => {
     const svc = serviceMock();
     const cb = callback();
+    const workdir = process.cwd();
     const result = await spawnAgentAction.handler(
       runtimeWith(svc),
-      memory({ task: "fix bug", agentType: "codex", workdir: "/tmp/x" }),
+      memory({ task: "fix bug", agentType: "codex", workdir }),
       state,
       spawnOptions,
       cb,
@@ -48,9 +49,53 @@ describe("TASKS:spawn_agent", () => {
     expect(result?.data).toMatchObject({
       sessionId: "abcdef123456",
       agentType: "codex",
-      workdir: "/tmp/x",
+      workdir,
       status: "ready",
     });
+  });
+
+  it("puts resolved route constraints before planner-authored task text", async () => {
+    const oldRoutes = process.env.TASK_AGENT_WORKDIR_ROUTES;
+    process.env.TASK_AGENT_WORKDIR_ROUTES = JSON.stringify([
+      {
+        id: "agent-home",
+        workdir: process.cwd(),
+        matchAny: ["counter"],
+        instructions: "Create app files under data/apps/<slug>/.",
+      },
+    ]);
+    try {
+      const svc = serviceMock();
+      const result = await spawnAgentAction.handler(
+        runtimeWith(svc),
+        memory({
+          task: "Create a counter at /home/milady/data/apps/opencode-check.",
+          agentType: "opencode",
+        }),
+        state,
+        spawnOptions,
+        callback(),
+      );
+      expect(result?.success).toBe(true);
+      const call = svc.spawnSession.mock.calls[0]?.[0] as {
+        initialTask?: string;
+        workdir?: string;
+      };
+      expect(call.workdir).toBe(process.cwd());
+      const initialTask = call.initialTask ?? "";
+      expect(initialTask).toContain("--- Resolved Workspace ---");
+      expect(initialTask).toContain(`workdir: ${process.cwd()}`);
+      expect(initialTask).toContain("absolute path outside this workdir");
+      expect(initialTask).toContain(
+        "Create app files under data/apps/<slug>/.",
+      );
+      expect(initialTask.indexOf("--- Resolved Workspace ---")).toBeLessThan(
+        initialTask.indexOf("--- User Task ---"),
+      );
+    } finally {
+      if (oldRoutes === undefined) delete process.env.TASK_AGENT_WORKDIR_ROUTES;
+      else process.env.TASK_AGENT_WORKDIR_ROUTES = oldRoutes;
+    }
   });
 
   it("handles missing service and auth failures", async () => {
