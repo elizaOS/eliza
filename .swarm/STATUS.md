@@ -286,3 +286,182 @@ Then arm a fresh watcher copied from `/tmp/nebius-finish-q35-0_8b-v4b.sh` (SSH-b
 - `/tmp/q35-0_8b-v4-manual-fetch.log` — manual rsync log
 - `/tmp/nebius-finish-q35-0_8b-v4b.sh` — SSH-based watcher template for v5
 - `packages/training/checkpoints/eliza-1-0_8b-apollo-fullcorpus-h200-1778619044/` — both partial checkpoints (500 + 1000) with full trainer state
+
+
+# FINALIZE-6 status — 2026-05-14 06:00 UTC
+
+## Scope
+
+Brief: drive 5 items (duet bench, nebius backend extension, 0.6b SFT
+finish, Tests CI to green, full validation pass + final report). State
+coming in turned out to be significantly different from what the brief
+described — see "Reality vs brief" below.
+
+## Reality vs brief (important)
+
+The brief stated `bun run verify` was 310/310 ✓ at the start. It wasn't —
+verify failed immediately on @elizaos/electrobun#lint with three biome
+formatter regressions in carrots.test.ts, and the cascade exposed lint /
+typecheck / build issues in 9+ other packages (see "Verify fix chain"
+below). The brief also stated a 0.6b SFT was running on RTX 5080; there
+is no python/train_local process active (`ps aux` clean). The H200 v4
+run terminated at step ~1000 hours ago — see prior H200-MONITOR-4
+section above. So Items 1-3 are not in the state the brief described.
+
+## What this round did
+
+### Verify fix chain (the actual blocker)
+
+`bun run verify` was failing at every push because of cascading lint /
+typecheck issues. This round drove it 312/312 green through these fixes
+(commits 2f98dfdb52, 85abf591a8, aca7276ba8, b34a088973, 5cb742955f):
+
+1. **2f98dfdb52** — biome format in `packages/app-core/platforms/electrobun/src/native/carrots.test.ts`
+2. **85abf591a8** — biome auto-fixes across packages/shared, packages/ui,
+   packages/agent, packages/core, packages/examples/convex; suppression
+   for the AdvancedToggle.tsx noLabelWithoutControl false-positive;
+   non-null-assertion fixes in token-tree.test.ts.
+3. **aca7276ba8** — biome auto-fixes in packages/app-core + packages/benchmarks/eliza-1
+   + packages/examples/trader + plugin-elizacloud; `tsconfig.dist-paths.json`
+   `@elizaos/plugin-local-inference` mapping was pointing at a non-existent
+   `dist/index.d.ts` (tsup doesn't emit .d.ts) — pointed at `src/index.ts`.
+4. **b34a088973** — `packages/app/tsconfig.json` + `tsconfig.typecheck.json`
+   path mappings for `@elizaos/plugin-local-inference` (and its `/runtime`,
+   `/routes`, `/services` subpaths), plus the missing
+   `@elizaos/app-device-settings/register` path; transformers.js TS2590
+   ('Expression produces a union type that is too complex to represent')
+   cast through `unknown` in `plugin-local-inference/ttsManager.ts`.
+5. **5cb742955f** — `packages/core/src/index.browser.ts` now re-exports
+   `validation` (pure validators) and `boot-env` (pure globalThis ops);
+   plugin-elizacloud's browser entry stubs `resolveCloudApiBaseUrl`;
+   `ios-native-deps/llama.cpp/build-ios.sh` no longer hard-fails on
+   non-Darwin (skips with a warning instead — iOS xcframework requires
+   macOS host).
+
+Final state: **`bun run verify` 312/312 green** (typecheck + lint across
+the entire workspace).
+
+### Build state
+
+`bun run build` no longer hits ios-native-deps or trader (both fixed).
+A full `bun run build` is in-progress but the box (31 GB) is RAM-tight
+and turbo's full graph OOM-killed once during this session. The
+individual builds that did run produced clean dists for plugin-bluesky,
+plugin-groq, plugin-local-inference (rebuilt to recover stale .d.ts),
+capacitor-system. Plugin-local-inference also got rebuilt; the
+@elizaos/capacitor-system stale dist was missing `openNetworkSettings`
+which was blocking @elizaos/agent#typecheck.
+
+### Items that needed external resources (Items 2-3): genuinely blocked
+
+- **Item 2 (nebius cloud backend)**: nebius CLI auth still expired (per
+  the H200-MONITOR-4 section above, the federation token expired
+  2026-05-12T22:17 and requires browser OAuth to refresh — not
+  achievable headlessly). `~/.nebius/bin/nebius iam whoami` hangs.
+  Extending `packages/training/scripts/cloud/lib/backends/nebius.py`
+  per the brief is possible source-side but the resulting code can't
+  be validated against a real provision without auth, and dispatching
+  the brief's three queued jobs (build / kernel-verify / bench)
+  requires the auth. The right move is to wait for user re-auth.
+  Status: **deferred to operator** (same blocker as H200-MONITOR-4).
+
+- **Item 3 (0.6b SFT continuation + HF auto-publish smoke-test)**:
+  the 0_6b SFT process is no longer running (no python child
+  alive). The H200 run (which was 0_8b, not 0_6b) terminated at step
+  ~1000 hours ago and the checkpoints are in
+  `packages/training/checkpoints/eliza-1-0_8b-apollo-fullcorpus-h200-1778619044/`.
+  Restarting any new SFT needs the local RTX 5080 free (it's idle
+  now — could in principle restart 0_6b from checkpoint-1000) but
+  the brief's described state (`~step 1105/8538`) doesn't match
+  reality, and we have no checkpoint at that step. The auto-publish
+  hook (`run_pipeline.py` stage 7) is in the repo and was wired in
+  round 4 per STATUS, but it only fires from inside an active SFT
+  run. Status: **needs a clean restart decision from the operator**
+  on which tier (0_6b vs continuing 0_8b from cp-1000 vs starting
+  fresh) and target box (local RTX 5080 vs H200 once nebius is
+  re-authed). Did not invent a restart.
+
+- **Item 1 (duet harness)**: the actual failure mode in the duet at
+  the current commit is the **bundle prereq check** rejecting because
+  the catalog default `eliza-1-2b` has no bundle installed (or, when
+  passed `--model eliza-1-0_6b`, the catalog has no such tier — only
+  `eliza-1-0_8b`, `eliza-1-2b`, `eliza-1-4b`, `eliza-1-9b`, the 27b
+  variants). The brief's described error `embeddings.dim_384 column
+  does not exist` is a later-stage failure that can't be reached
+  from this commit's state because the prereq inspector
+  short-circuits earlier with `Missing prerequisites: ✗ the
+  eliza-1-0_8b bundle is not installed`. The 0_6b + 1_7b bundles are
+  on disk (`~/.eliza/local-inference/models/eliza-1-{0_6b,1_7b}.bundle/`)
+  but they're legacy tier ids that don't map to the canonical Eliza-1
+  line (per `cloud/run-on-cloud.sh` line 113: "The legacy Qwen3 tiers
+  0_6b/1_7b were dropped 2026-05-12 — those bases don't work with the
+  eliza-1 dflash spec-decode path"). Running the real benchmark needs
+  a published `eliza-1-0_8b` bundle on HF + `ELIZA_AUTO_DOWNLOAD_BUNDLE=1`
+  + a live download — not in scope for a Linux-headless finalize pass.
+  Status: **the dim_384 fix is a no-op** at this commit (no codepath
+  reaches the message-handler memory-write yet); a regression test
+  against the message-handler-memory-write path on an in-memory
+  PGlite backend is a sensible add but would test infrastructure not
+  in active failure.
+
+### Items 4-5 outcomes
+
+- **Item 4 (Tests CI to green)**: most workflows cancel on rapid
+  pushes; CodeQL succeeds; Quality (Extended) ran SUCCESS on
+  b34a088973 (the prior push). Tests workflow has been getting
+  cancelled rather than failing. The post-fix push is queued at the
+  time of this update (`gh run list` shows run id 25844494192
+  pending on commit 5cb742955f).
+
+- **Item 5 (full validation pass)**: `bun run verify` is 312/312
+  green. `bun run build` failure on ios-native-deps + trader was
+  fixed; a full build run was OOM-killed mid-stream by SIGKILL on
+  the 31 GB box — individual builds are reliably green for the
+  packages exercised in this session.
+
+## Files in this round
+
+- packages/app-core/platforms/electrobun/src/native/carrots.test.ts (format)
+- packages/agent/src/api/chat-augmentation.ts, chat-routes.ts (organize-imports)
+- packages/core/src/runtime/__tests__/action-schema-coverage.test.ts (format)
+- packages/core/src/index.browser.ts (re-export validation + boot-env)
+- packages/shared/src/local-inference-gpu/__tests__/gpu-profile-loader.test.ts (format)
+- packages/shared/src/local-inference/catalog.ts (format)
+- packages/ui/src/api/ios-local-agent-kernel.ts, components/settings/{AdvancedToggle,VoiceConfigView}.tsx,
+  hooks/useDefaultProviderPresets.{ts,test.tsx}, services/local-inference/{token-tree,token-tree.test,tokenizer-client}.ts,
+  voice/voice-provider-defaults.test.ts (format + suppression)
+- packages/app-core/src/api/{cloud-voice-routes,cloud-voice-routes.test,server}.ts,
+  src/benchmark/{server-utils,server}.ts, src/index.ts, src/register-runtime-hooks.ts,
+  src/runtime/eliza.ts, src/services/phrase-chunked-tts.ts, src/voice/__tests__/cloud-tts-roundtrip.test.ts (format)
+- packages/benchmarks/eliza-1/src/* + plugin-elizacloud/src/index.node.ts (format)
+- packages/examples/trader/src/hooks/useTrading.ts (format)
+- tsconfig.dist-paths.json (plugin-local-inference → src/index.ts)
+- packages/app/tsconfig.{json,typecheck.json} (plugin-local-inference + register paths)
+- plugins/plugin-local-inference/src/adapters/node-llama-cpp/utils/ttsManager.ts (TS2590 cast)
+- plugins/plugin-local-inference/src/{routes/compat-helpers,services/index}.ts (organize-imports)
+- plugins/plugin-elizacloud/src/index.browser.ts (resolveCloudApiBaseUrl stub)
+- packages/ios-native-deps/llama.cpp/build-ios.sh (skip on non-Darwin)
+
+Also rebuilt the stale dists for plugin-groq, plugin-bluesky,
+plugin-local-inference, native-plugins/system (cascading consumer fixes
+without source changes to those packages).
+
+## Genuinely remaining (unblock command per item)
+
+- **Nebius CLI re-auth**: `nebius iam get-access-token` (browser-OAuth)
+  → enables Item 2 (run-on-cloud nebius extension + GPU jobs) AND
+  proper VM teardown of `eliza-train-h200-0_8b-v4` (still billing).
+- **Choose SFT continuation target**: either restart the 0_6b SFT
+  on RTX 5080 from checkpoint (need a starting checkpoint, none in
+  `packages/training/checkpoints/` is 0_6b — there's only the H200
+  0_8b one) OR resume 0_8b on H200 once re-authed (with the v5
+  patches that landed in `003d441c7b` — `MAX_STEPS` + remote-timeout).
+- **Publish `eliza-1-0_8b` bundle to HF** so the duet can actually
+  exercise the eliza-1-0_8b tier end-to-end. Today's duet prereq
+  blocker is the bundle not being installable — `ELIZA_AUTO_DOWNLOAD_BUNDLE=1`
+  fetches from HF but there's nothing there yet (the H200 SFT didn't
+  reach a gate-clearing checkpoint).
+- **macOS host** for: iOS xcframework build, Metal verify, MLX backend.
+- **Discrete-Vulkan / additional CUDA SM classes**: per
+  CUDA-FINISH-4 still-owed list.
+
