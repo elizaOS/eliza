@@ -12,6 +12,7 @@
  * - "own-key" mode uses the user's own API keys
  */
 
+import { logger } from "@elizaos/core";
 import type {
   AudioGenConfig,
   AudioGenProvider,
@@ -1179,7 +1180,7 @@ class OllamaVisionProvider implements VisionAnalysisProvider {
       );
 
       if (!hasModel && this.autoDownload) {
-        console.log(
+        logger.info(
           `[ollama-vision] Model ${this.model} not found, downloading...`,
         );
         await this.downloadModel();
@@ -1221,7 +1222,7 @@ class OllamaVisionProvider implements VisionAnalysisProvider {
 
     // Wait for download to complete (non-streaming mode)
     await response.json();
-    console.log(`[ollama-vision] Model ${this.model} downloaded successfully`);
+    logger.info(`[ollama-vision] Model ${this.model} downloaded successfully`);
   }
 
   async analyze(
