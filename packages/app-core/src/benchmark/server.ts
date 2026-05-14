@@ -1386,6 +1386,7 @@ export async function startBenchmarkServer() {
             benchmark: "lifeops_bench",
             taskId,
             forceBenchmarkToolCall: !hasSuccessfulLifeOpsToolResult,
+            benchmarkCandidateActions: lifeOpsCandidateActionsForText(userText),
           },
         },
         entityId: session.userEntityId,
