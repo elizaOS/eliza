@@ -55,6 +55,10 @@ function collectVerifiableUrlCandidates(
     if (suffix.startsWith("<") || suffix.startsWith("&lt;")) continue;
 
     const url = raw.replace(/[.,;:]+$/, "");
+    // Raw `curl -i` output includes CDN reporting endpoints in `report-to`
+    // headers. They are not part of the built app, and letting them into the
+    // bounded verifier list crowds out real page/assets.
+    if (isTelemetryReportUrl(url)) continue;
     if (ignoredUrls?.has(url)) continue;
     if (seen.has(url)) continue;
     seen.add(url);
@@ -79,9 +83,12 @@ function extractVerifiableUrls(
   const referenceUrls = referenceText
     ? new Set(collectVerifiableUrlCandidates(referenceText))
     : undefined;
-  const aliasFiltered = referenceUrls?.size
-    ? filterModelIntroducedUrlAliases(filtered, referenceUrls)
+  const routeFocused = referenceUrls?.size
+    ? filterToReferencedAppRoute(filtered, referenceUrls)
     : filtered;
+  const aliasFiltered = referenceUrls?.size
+    ? filterModelIntroducedUrlAliases(routeFocused, referenceUrls)
+    : routeFocused;
   return aliasFiltered.slice(0, limit);
 }
 
@@ -133,6 +140,53 @@ function isLoopbackUrl(url: string): boolean {
     return host === "localhost" || host === "::1" || host.startsWith("127.");
   } catch {
     return false;
+  }
+}
+
+function isTelemetryReportUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname.toLowerCase();
+    return (
+      (host === "a.nel.cloudflare.com" ||
+        host.endsWith(".nel.cloudflare.com")) &&
+      parsed.pathname.startsWith("/report/")
+    );
+  } catch {
+    return false;
+  }
+}
+
+function filterToReferencedAppRoute(
+  urls: string[],
+  referenceUrls: Set<string>,
+): string[] {
+  const routePrefixes = new Set<string>();
+  for (const url of referenceUrls) {
+    const prefix = appRoutePathPrefix(url);
+    if (prefix) routePrefixes.add(prefix);
+  }
+  if (routePrefixes.size === 0) return urls;
+
+  const routeUrls = urls.filter((url) => {
+    try {
+      const pathname = new URL(url).pathname;
+      return [...routePrefixes].some((prefix) => pathname.startsWith(prefix));
+    } catch {
+      return false;
+    }
+  });
+  return routeUrls.length > 0 ? routeUrls : urls;
+}
+
+function appRoutePathPrefix(url: string): string | undefined {
+  try {
+    const pathname = new URL(url).pathname;
+    const match = pathname.match(/^\/apps\/[^/]+(?:\/|$)/);
+    if (!match) return undefined;
+    return match[0].endsWith("/") ? match[0] : `${match[0]}/`;
+  } catch {
+    return undefined;
   }
 }
 
