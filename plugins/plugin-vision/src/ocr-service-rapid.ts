@@ -32,9 +32,15 @@ import { logger } from "@elizaos/core";
 import sharp from "sharp";
 import type { BoundingBox, OCRResult } from "./types";
 
-const DEFAULT_MODEL_BASE_URL =
-  process.env.ELIZA_RAPIDOCR_MODEL_BASE_URL ??
-  "https://github.com/RapidAI/RapidOCR/releases/download/v3.4.0";
+const DEFAULT_DET_URL =
+  process.env.ELIZA_RAPIDOCR_DET_URL ??
+  "https://huggingface.co/ilaylow/PP_OCRv5_mobile_onnx/resolve/main/ppocrv5_det.onnx";
+const DEFAULT_REC_URL =
+  process.env.ELIZA_RAPIDOCR_REC_URL ??
+  "https://huggingface.co/ilaylow/PP_OCRv5_mobile_onnx/resolve/main/ppocrv5_rec.onnx";
+const DEFAULT_DICT_URL =
+  process.env.ELIZA_RAPIDOCR_DICT_URL ??
+  "https://raw.githubusercontent.com/PaddlePaddle/PaddleOCR/main/ppocr/utils/dict/ppocrv5_dict.txt";
 
 /**
  * Download URLs / sha256 fingerprints for the PP-OCRv5 ONNX bundle. These
@@ -62,18 +68,9 @@ interface ModelBundle {
 }
 
 const DEFAULT_MODEL_BUNDLE: ModelBundle = {
-  detection: {
-    url: `${DEFAULT_MODEL_BASE_URL}/PP-OCRv5_mobile_det.onnx`,
-    sha256: null,
-  },
-  recognition: {
-    url: `${DEFAULT_MODEL_BASE_URL}/PP-OCRv5_mobile_rec.onnx`,
-    sha256: null,
-  },
-  charset: {
-    url: `${DEFAULT_MODEL_BASE_URL}/ppocrv5_dict.txt`,
-    sha256: null,
-  },
+  detection: { url: DEFAULT_DET_URL, sha256: null },
+  recognition: { url: DEFAULT_REC_URL, sha256: null },
+  charset: { url: DEFAULT_DICT_URL, sha256: null },
 };
 
 export interface RapidOCRConfig {
@@ -416,12 +413,21 @@ export class RapidOCRService {
         }
         // Filter tiny noise.
         if (count < 8) continue;
+        // DB unclip approximation: pad each box by ~10% of its smaller
+        // dimension on each side. Improves recognition of characters that
+        // sit near the detection threshold edge (typical of small UI text).
+        const padX = Math.max(2, Math.round((maxX - minX) * 0.15));
+        const padY = Math.max(2, Math.round((maxY - minY) * 0.25));
+        const px = Math.max(0, minX - padX);
+        const py = Math.max(0, minY - padY);
+        const pxw = Math.min(w - 1, maxX + padX);
+        const pyh = Math.min(h - 1, maxY + padY);
         boxes.push({
           bbox: {
-            x: Math.round(minX * xScale),
-            y: Math.round(minY * yScale),
-            width: Math.round((maxX - minX + 1) * xScale),
-            height: Math.round((maxY - minY + 1) * yScale),
+            x: Math.round(px * xScale),
+            y: Math.round(py * yScale),
+            width: Math.round((pxw - px + 1) * xScale),
+            height: Math.round((pyh - py + 1) * yScale),
           },
           confidence: probSum / count,
         });
