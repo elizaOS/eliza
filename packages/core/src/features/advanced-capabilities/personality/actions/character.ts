@@ -1040,7 +1040,7 @@ Example:
 			temperature: 0.2,
 			maxTokens: 150,
 		});
-		const raw = parseStructuredRecord(response as string);
+		const raw = parseStructuredRecord(response);
 		if (!raw) return heuristic.intent;
 
 		const confidence = normalizeNumber(raw.confidence) ?? 0;
@@ -1180,7 +1180,7 @@ style_post: array of post style items`;
 			temperature: 0.2,
 			maxTokens: 500,
 		});
-		const raw = parseStructuredRecord(response as string);
+		const raw = parseStructuredRecord(response);
 		if (!raw || normalizeBoolean(raw.apply) === false) return null;
 
 		const parsed = buildModificationFromStructuredRecord(raw);
@@ -1245,7 +1245,7 @@ acceptable_style_post: array of post style items`;
 			temperature: 0.2,
 			maxTokens: 800,
 		});
-		const raw = parseStructuredRecord(response as string);
+		const raw = parseStructuredRecord(response);
 		if (!raw) {
 			throw new Error("Model did not return a structured JSON object");
 		}
@@ -1382,7 +1382,7 @@ Set action: none only if the request truly does not specify any interaction pref
 			temperature: 0.2,
 			maxTokens: 200,
 		});
-		const raw = parseStructuredRecord(response as string);
+		const raw = parseStructuredRecord(response);
 		if (!raw) return null;
 
 		if (

@@ -53,7 +53,7 @@ export async function handleInboxAndCloudRelayRouteGroup({
   readJsonBody,
 }: DispatchRouteContext): Promise<boolean> {
   if (pathname.startsWith("/api/inbox")) {
-    return await handleInboxRoute(
+    return handleInboxRoute(
       req,
       res,
       pathname,
@@ -67,7 +67,7 @@ export async function handleInboxAndCloudRelayRouteGroup({
     return false;
   }
 
-  return await handleCloudRelayRoute(
+  return handleCloudRelayRoute(
     req,
     res,
     pathname,
@@ -142,7 +142,7 @@ export async function handleCloudAndCoreRouteGroup({
     createTelemetrySpan: createIntegrationTelemetrySpan,
     restartRuntime,
   };
-  return await handleCloudRoute(req, res, pathname, method, cloudState);
+  return handleCloudRoute(req, res, pathname, method, cloudState);
 }
 
 export async function handleSandboxRouteGroup({
@@ -159,7 +159,7 @@ export async function handleSandboxRouteGroup({
     return false;
   }
 
-  return await handleSandboxRoute(req, res, pathname, method, {
+  return handleSandboxRoute(req, res, pathname, method, {
     sandboxManager: state.sandboxManager,
   });
 }
@@ -177,7 +177,7 @@ export async function handleDatabaseRouteGroup({
     return false;
   }
 
-  return await handleDatabaseRoute(req, res, state.runtime, pathname);
+  return handleDatabaseRoute(req, res, state.runtime, pathname);
 }
 
 export async function handleConversationRouteGroup({
@@ -191,7 +191,7 @@ export async function handleConversationRouteGroup({
   readJsonBody,
 }: DispatchRouteContext): Promise<boolean> {
   if (pathname.startsWith("/api/conversations")) {
-    return await handleConversationRoutes({
+    return handleConversationRoutes({
       req,
       res,
       method,
@@ -207,7 +207,7 @@ export async function handleConversationRouteGroup({
     return false;
   }
 
-  return await handleChatRoutes({
+  return handleChatRoutes({
     req,
     res,
     method,
@@ -237,7 +237,7 @@ export async function handleLifeOpsRuntimePluginRoute({
   | "state"
   | "isAuthorizedRequest"
 >): Promise<boolean> {
-  return await tryHandleRuntimePluginRoute({
+  return tryHandleRuntimePluginRoute({
     req,
     res,
     method,

@@ -65,11 +65,11 @@ export function getAcpService(
   return (runtime.getService?.("ACP_SERVICE") ??
     runtime.getService?.("ACP_SUBPROCESS_SERVICE") ??
     runtime.getService?.("PTY_SERVICE") ??
-    undefined) as AcpActionService | undefined;
+    undefined) as unknown as AcpActionService | undefined;
 }
 
-export function logger(runtime: IAgentRuntime) {
-  return runtime.logger ?? {};
+export function logger(runtime: IAgentRuntime): IAgentRuntime["logger"] {
+  return runtime.logger;
 }
 
 export function contentRecord(message: Memory): Record<string, unknown> {

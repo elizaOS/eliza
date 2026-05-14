@@ -91,9 +91,9 @@ export async function deleteSecretHandler(
 	const context: SecretContext = {
 		level,
 		agentId: runtime.agentId,
-		worldId: level === "world" ? (message.roomId as string) : undefined,
-		userId: level === "user" ? (message.entityId as string) : undefined,
-		requesterId: message.entityId as string,
+		worldId: level === "world" ? message.roomId : undefined,
+		userId: level === "user" ? message.entityId : undefined,
+		requesterId: message.entityId,
 	};
 
 	const deleted = await secretsService.delete(key, context);

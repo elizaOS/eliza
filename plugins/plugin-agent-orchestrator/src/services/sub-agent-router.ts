@@ -66,7 +66,7 @@ export class SubAgentRouter {
     if (Number.isFinite(parsed) && parsed > 0) this.roundTripCap = parsed;
     const acp = this.runtime.getService(
       "ACP_SUBPROCESS_SERVICE",
-    ) as AcpService | null;
+    ) as unknown as AcpService | null;
     if (!acp || typeof acp.onSessionEvent !== "function") {
       this.log("debug", "AcpService unavailable; router idle");
       return;

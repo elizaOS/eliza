@@ -241,7 +241,7 @@ export function parseStructuredProofDirective(
   }
   const parsedTests = parseStructuredProofTests(obj.tests);
   if (!parsedTests.ok) {
-    return parsedTests;
+    return { ok: false, reason: (parsedTests as { reason: string }).reason };
   }
   if (obj.lint !== "ok") {
     return { ok: false, reason: "'lint' must be \"ok\"" };
@@ -388,7 +388,7 @@ export function installStructuredProofBridge(deps: BridgeDeps): () => void {
     if (!parseResult) return;
     if (!parseResult.ok) {
       log.warn?.(
-        `${LOG_PREFIX} session ${sessionId} emitted malformed structured proof: ${parseResult.reason}`,
+        `${LOG_PREFIX} session ${sessionId} emitted malformed structured proof: ${(parseResult as { reason: string }).reason}`,
       );
       return;
     }

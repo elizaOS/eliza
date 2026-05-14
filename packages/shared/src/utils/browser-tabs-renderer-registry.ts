@@ -388,7 +388,7 @@ export const BROWSER_TAB_PRELOAD_SCRIPT = `
 
       const chars = Array.from(text);
       let index = 0;
-      const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+      const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
       const stepOne = () => {
         if (index >= chars.length) return Promise.resolve();

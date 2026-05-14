@@ -196,7 +196,9 @@ export async function handleDevCompatRoutes(
     }
     const limitRaw = url.searchParams.get("limit");
     const limit = limitRaw ? Number(limitRaw) : undefined;
-    const { buildVoiceLatencyDevPayload } = await import("@elizaos/plugin-local-inference/services");
+    const { buildVoiceLatencyDevPayload } = await import(
+      "@elizaos/plugin-local-inference/services"
+    );
     const payload = buildVoiceLatencyDevPayload(
       undefined,
       Number.isFinite(limit) && (limit as number) > 0

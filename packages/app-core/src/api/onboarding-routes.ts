@@ -5,8 +5,8 @@ import {
   saveElizaConfig,
 } from "@elizaos/agent";
 import { logger } from "@elizaos/core";
-import { getCloudSecret } from "@elizaos/shared";
 import {
+  getCloudSecret,
   migrateLegacyRuntimeConfig,
   normalizeDeploymentTargetConfig,
   normalizeLinkedAccountFlagsConfig,
@@ -137,9 +137,9 @@ function resolveCloudApiKeyForOnboarding(
   if (!config.cloud) {
     config.cloud = {};
   }
-  const cloudSlot = config.cloud as Record<string, unknown>;
+  const cloudSlot = config.cloud;
 
-  const fromConfig = cloudSlot.apiKey as string | undefined;
+  const fromConfig = cloudSlot.apiKey;
   if (fromConfig) return fromConfig;
 
   const fromSealedSecret = getCloudSecret("ELIZAOS_CLOUD_API_KEY") ?? undefined;
