@@ -47,6 +47,7 @@ import {
 	type ModelInputBudget,
 	withModelInputBudgetProviderOptions,
 } from "./model-input-budget";
+import { extractPlanActionsFromContent } from "./plan-actions-extractor";
 import {
 	cacheProviderOptions,
 	toolMessageContent,
@@ -653,25 +654,55 @@ export function parsePlannerOutput(raw: string | GenerateTextResult): {
 	}
 
 	const nativeToolCalls = normalizeToolCalls(raw.toolCalls);
-	// gpt-oss-class models narrate their plan as concatenated JSON objects in
-	// the text channel, and the provider's native extraction often captures
-	// only the first — typically the terminal `REPLY` ack — dropping the real
-	// action. Recover the rest from `raw.text` and merge them in.
-	const textToolCalls = parseEmbeddedToolCalls(raw.text);
-	const toolCalls = mergeToolCalls(nativeToolCalls, textToolCalls);
+	const text = getNonEmptyString(raw.text);
+
+	// gpt-oss-class models narrate planner calls in the text channel. There
+	// are two observed shapes:
+	//   1. PLAN_ACTIONS({...}) or bare `{action,parameters}` text when native
+	//      extraction returns nothing; recover one planner call from that text.
+	//   2. concatenated `{type,args}` JSON objects where native extraction
+	//      captures only the first call; merge the missing calls back in.
+	let textRecoveredCalls: PlannerToolCall[] = [];
+	let recoverySource: string | undefined;
+	let recoveredThought: string | undefined;
+	if (nativeToolCalls.length === 0 && typeof text === "string") {
+		const extracted = extractPlanActionsFromContent(text);
+		if (extracted) {
+			textRecoveredCalls = [
+				{
+					name: extracted.action,
+					params: extracted.parameters,
+				},
+			];
+			recoverySource = extracted.recoverySource;
+			recoveredThought = extracted.thought;
+		}
+	}
+	const embeddedToolCalls = parseEmbeddedToolCalls(raw.text);
+	const embeddedObjectCount =
+		typeof raw.text === "string" ? extractJsonObjects(raw.text).length : 0;
+	if (
+		embeddedToolCalls.length > 0 &&
+		(nativeToolCalls.length === 0 || embeddedObjectCount > 1)
+	) {
+		textRecoveredCalls = mergeToolCalls(textRecoveredCalls, embeddedToolCalls);
+	}
+	const toolCalls = mergeToolCalls(nativeToolCalls, textRecoveredCalls);
+
 	return {
-		thought: undefined,
+		thought: recoveredThought,
 		toolCalls,
 		// When `raw.text` was itself tool-call JSON it is not a user-facing
 		// message — take the reply from a REPLY call rather than leaking the
 		// raw JSON blob into the channel.
 		messageToUser:
-			textToolCalls.length > 0
+			textRecoveredCalls.length > 0
 				? terminalMessageFromToolCalls(toolCalls)
-				: getNonEmptyString(raw.text),
+				: text,
 		raw: {
 			text: raw.text,
 			toolCalls: raw.toolCalls,
+			...(recoverySource ? { textRecoverySource: recoverySource } : {}),
 		} as Record<string, unknown>,
 	};
 }
@@ -685,6 +716,19 @@ function parseJsonPlannerOutput(raw: string): {
 	const trimmed = raw.trim();
 	const parsed = parseJsonObject<RawPlannerOutput>(trimmed);
 	if (!parsed) {
+		// Tolerant in-text fallback (elizaOS/eliza#7620): the raw output isn't
+		// JSON, but it might contain a `PLAN_ACTIONS({...})` envelope as text.
+		const extracted = extractPlanActionsFromContent(trimmed);
+		if (extracted) {
+			return {
+				thought: extracted.thought,
+				toolCalls: [{ name: extracted.action, params: extracted.parameters }],
+				raw: {
+					text: trimmed,
+					textRecoverySource: extracted.recoverySource,
+				},
+			};
+		}
 		return {
 			toolCalls: [],
 			messageToUser: getNonEmptyString(trimmed),
