@@ -1,8 +1,9 @@
 /**
  * Eliza-curated local model catalog.
  *
- * Default local inference is restricted to the active Qwen3.5-backed Eliza-1
- * release line: 0_8b, 2b, 4b, and the modeled future 9b/27b tiers.
+ * Default local inference is restricted to the active Eliza-1 line:
+ * Qwen3.5 0.8B/2B/4B, Qwen3.5 9B until an official Qwen3.6 9B
+ * exists, and Qwen3.6 27B including long-context 27B variants.
  * External Hub search remains custom/opt-in and never enters first-run or
  * default eligibility.
  */
@@ -14,7 +15,7 @@ import type {
   LocalRuntimeKernel,
 } from "./types.js";
 
-export const ELIZA_1_HF_REPO = "elizaos/eliza-1" as const;
+export const ELIZA_1_HF_REPO = "elizalabs/eliza-1" as const;
 
 export const ELIZA_1_TIER_IDS = [
   "eliza-1-0_8b",
@@ -41,6 +42,62 @@ export function isDefaultEligibleId(id: string): boolean {
   return DEFAULT_ELIGIBLE_MODEL_IDS.has(id);
 }
 
+/**
+ * Per-tier publish-state hint. Keys are tier ids that are known to have
+ * an incomplete Hugging Face bundle at the time the catalog snapshot was
+ * cut. Tiers not listed here default to `"published"`. The recommender
+ * consults this map (or a `publishStatus` field on a synthetic
+ * `CatalogModel`) before recommending a first-run default — see
+ * `recommendForFirstRun` and elizaOS/eliza#7629.
+ *
+ * Set the override env var `ELIZA_PUBLISH_STATUS_OVERRIDES` to a JSON
+ * object like `{"eliza-1-2b":"published","eliza-1-9b":"pending"}` to
+ * override at runtime without changing the static map (useful for QA
+ * and for installs that depend on a private HF mirror).
+ *
+ * Today's snapshot (2026-05-13) is empty: every published tier id in the
+ * catalog is assumed to point at a real HF bundle. The maintainer should
+ * flip a tier to `"pending"` here when they know the HF publish hasn't
+ * landed yet (e.g. a tier whose `eliza-1.manifest.json` is missing or
+ * whose `releaseState` is `"local-standin"` / `"skeleton"`).
+ */
+export const ELIZA_1_TIER_PUBLISH_STATUS: Readonly<
+  Partial<Record<Eliza1TierId, "published" | "pending">>
+> = {};
+
+export function eliza1TierPublishStatus(
+  id: Eliza1TierId | string,
+): "published" | "pending" {
+  const override = readPublishStatusOverride(id);
+  if (override) return override;
+  const hint = (
+    ELIZA_1_TIER_PUBLISH_STATUS as Record<
+      string,
+      "published" | "pending" | undefined
+    >
+  )[id];
+  return hint ?? "published";
+}
+
+function readPublishStatusOverride(
+  id: string,
+): "published" | "pending" | undefined {
+  const raw =
+    typeof process !== "undefined"
+      ? process.env?.ELIZA_PUBLISH_STATUS_OVERRIDES
+      : undefined;
+  if (!raw) return undefined;
+  try {
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    const value = parsed?.[id];
+    if (value === "published" || value === "pending") return value;
+  } catch {
+    // Malformed override JSON is non-fatal — fall back to the static
+    // publish-status hint and the catalog's own `publishStatus` field.
+  }
+  return undefined;
+}
+
 export const ELIZA_1_PLACEHOLDER_IDS: ReadonlySet<string> = new Set(
   ELIZA_1_TIER_IDS,
 );
@@ -51,10 +108,10 @@ export const ELIZA_1_VOICE_BACKENDS: Record<
   Eliza1TierId,
   ReadonlyArray<VoiceBackendId>
 > = {
-  "eliza-1-0_8b": ["kokoro"],
-  "eliza-1-2b": ["kokoro"],
-  "eliza-1-4b": ["kokoro"],
-  "eliza-1-9b": ["kokoro", "omnivoice"],
+  "eliza-1-0_8b": ["omnivoice", "kokoro"],
+  "eliza-1-2b": ["omnivoice", "kokoro"],
+  "eliza-1-4b": ["omnivoice", "kokoro"],
+  "eliza-1-9b": ["omnivoice", "kokoro"],
   "eliza-1-27b": ["omnivoice"],
   "eliza-1-27b-256k": ["omnivoice"],
   "eliza-1-27b-1m": ["omnivoice"],
@@ -227,12 +284,20 @@ function bundleComponent(
   return { repo: ELIZA_1_HF_REPO, file: bundleRemotePath(id, file) };
 }
 
+function voiceQuantForTier(id: Eliza1TierId): "Q4_K_M" | "Q8_0" {
+  return id === "eliza-1-0_8b" ||
+    id === "eliza-1-2b" ||
+    id === "eliza-1-4b"
+    ? "Q4_K_M"
+    : "Q8_0";
+}
+
 function primaryVoiceFileForTier(id: Eliza1TierId): string {
-  const backends = ELIZA_1_VOICE_BACKENDS[id];
-  if (backends.includes("kokoro")) {
-    return "tts/kokoro/model_q4.onnx";
+  const defaultBackend = ELIZA_1_VOICE_BACKENDS[id][0];
+  if (defaultBackend === "omnivoice") {
+    return `tts/omnivoice-base-${voiceQuantForTier(id)}.gguf`;
   }
-  return "tts/omnivoice-base-Q8_0.gguf";
+  return "tts/kokoro/model_q4.onnx";
 }
 
 function sourceModelForTier(id: Eliza1TierId): CatalogModel["sourceModel"] {
@@ -386,6 +451,7 @@ function chatTier(id: Eliza1TierId): CatalogModel {
       q4MinRamGb: spec.q4MinRamGb,
     }),
     blurb: blurbForTier(id),
+    publishStatus: eliza1TierPublishStatus(id),
   };
 }
 

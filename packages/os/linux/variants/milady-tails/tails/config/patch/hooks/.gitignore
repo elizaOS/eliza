@@ -1,0 +1,7 @@
+# Ignore hooks which end with .local
+*.local
+
+# Ignore all subdirectories which are not "default" and "umount"
+/*/
+!/default/
+!/umount/

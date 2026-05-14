@@ -1,0 +1,37 @@
+[[!meta date="Sat, 12 Apr 2014 20:23:45 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!meta title="And the winner is..."]]
+[[!tag announce]]
+
+Our [[logo contest|logo_contest]] ended up a few days
+ago.
+Since then, 11 regular Tails contributors voted on the
+[[!tails_blueprint logo desc="36 proposals"]].
+
+Winner
+======
+
+The winning proposal is the one by [[!tails_blueprint logo#tchou desc="Tchou"]].
+
+We commented on the initial version and we already came up with an improved
+version: [[!tails_blueprint logo/tchou-improved.png]]
+
+Congratulations!
+
+In the coming days we will keep on fine-tuning it and integrating it in time for
+Tails 1.0. So don't hesitate to comment on it.
+
+Top 7
+=====
+
+Six other great proposals made it to the top 7:
+
+  - 2nd: tie between [[!tails_blueprint logo#andrew desc="Andrew"]] and [[!tails_blueprint logo#joe desc="Joe"]]
+  - 4th: tie between [[!tails_blueprint logo#jared desc="Jared"]] and [[!tails_blueprint logo#renato desc="Renato"]]
+  - 6th: tie between [[!tails_blueprint logo#mewchan desc="MewChan, hiding cat"]] and [[!tails_blueprint logo#christopher desc="Christopher"]]
+
+This [[!tails_blueprint logo/top7.pdf desc="PDF"]] shows a graph of how many voters
+preferred a given proposal to another one.
+
+We reiterate our thanks to the 31 designers who worked for this contest to be
+such a success.

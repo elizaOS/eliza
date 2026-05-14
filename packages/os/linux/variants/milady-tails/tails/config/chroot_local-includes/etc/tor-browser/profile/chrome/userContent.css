@@ -1,0 +1,5 @@
+@namespace url("http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul");
+
+/* We are hiding the "Remember this key" option so this section of the
+   settings is irrelevant. */
+#torOnionServiceKeys {display: none !important}

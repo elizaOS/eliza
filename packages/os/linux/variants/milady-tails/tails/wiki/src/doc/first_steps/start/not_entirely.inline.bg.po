@@ -1,0 +1,81 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: \n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2022-02-25 15:41-0600\n"
+"PO-Revision-Date: 2024-10-02 23:09+0000\n"
+"Last-Translator: Benjamin Held <Benjamin.Held@protonmail.com>\n"
+"Language-Team: \n"
+"Language: bg\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.3\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta robots=\"noindex\"]]\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Use this section if the Boot Loader appears but not the Welcome Screen when "
+"you start Tails."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2>Verify your Tails USB stick</h2>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"install/inc/steps/basic_troubleshooting.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"troubleshooting-mode\">Try the Troubleshooting Mode entry</h2>\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"In the Boot Loader, choose the **Troubleshooting Mode** entry, which works "
+"better on some computers."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"external-hard-disk\">Try the External Hard Disk entry</h2>\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"In the Boot Loader, choose the **External Hard Disk** entry, if it is "
+"available. Some USB sticks need this entry in order to start Tails."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"known-issues-not-entirely\">Check our list of known issues</h2>\n"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"If the computer displays the error message **Error starting GDM with your "
+"graphics card**, refer to our [[list of known issues with graphics cards|"
+"support/known_issues/graphics]]."
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"Otherwise, refer to our [[list of known issues about Tails not starting "
+"entirely|support/known_issues#not-entirely]]. It might contain workarounds "
+"for your computer model."
+msgstr ""

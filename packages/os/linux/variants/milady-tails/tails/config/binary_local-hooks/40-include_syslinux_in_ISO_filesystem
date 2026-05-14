@@ -1,0 +1,44 @@
+#!/bin/bash
+
+set -e
+
+# Including common functions
+. "${LB_BASE:-/usr/share/live/build}"/scripts/build.sh
+
+# Setting static variables
+# shellcheck disable=SC2034
+{
+   DESCRIPTION="$(Echo 'including syslinux in the ISO filesystem')"
+   HELP=""
+   USAGE="${PROGRAM}"
+}
+
+# Reading configuration files
+Read_conffiles config/all config/bootstrap config/common config/binary
+Set_defaults
+
+# Safeguards
+[ "${LB_BOOTLOADER}"   = "syslinux" ] || exit 0
+[ "${LB_ARCHITECTURE}" = "amd64"    ] || exit 0
+
+# Seems like we'll have work to do
+Echo_message 'including syslinux in the ISO filesystem'
+
+### Functions
+
+syslinux_deb_version_in_chroot () {
+   # shellcheck disable=SC2016
+   chroot chroot dpkg-query -W -f='${Version}\n' syslinux
+}
+
+### Variables
+LINUX_BINARY_UTILS_DIR='binary/utils/linux'
+WIN32_BINARY_UTILS_DIR='binary/utils/win32'
+BINARY_MBR_DIR='binary/utils/mbr'
+CHROOT_SYSLINUX_BIN='chroot/usr/bin/syslinux'
+CHROOT_SYSLINUX_MBR='chroot/usr/lib/SYSLINUX/gptmbr.bin'
+
+### Main
+mkdir -p "$LINUX_BINARY_UTILS_DIR" "$WIN32_BINARY_UTILS_DIR" "$BINARY_MBR_DIR"
+cp "$CHROOT_SYSLINUX_BIN" "$LINUX_BINARY_UTILS_DIR/"
+cp "$CHROOT_SYSLINUX_MBR" "$BINARY_MBR_DIR/mbr.bin"

@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-linear",
-  "version": "2.0.0-beta.1",
+  "version": "2.0.0-beta.2",
   "description": "Linear integration plugin for ElizaOS (TypeScript)",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -59,7 +59,7 @@
   },
   "homepage": "https://github.com/elizaos/eliza#readme",
   "dependencies": {
-    "@elizaos/core": "2.0.0-beta.1",
+    "@elizaos/core": "workspace:*",
     "@linear/sdk": "^83.0.0"
   },
   "devDependencies": {

@@ -1,0 +1,148 @@
+[[!meta title="Our achievements in 2019"]]
+[[!meta date="Thu, 31 Oct 2019 12:34:56 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+
+On October 7, we started our [[yearly donation
+campaign|news/2019-fundraiser]]. Today, we summarize what we achieved
+with your help in 2019.
+
+If you liked our work in 2019, please take a minute to
+donate and make Tails thrive in 2020!
+
+
+Easier adoption by new users
+============================
+
+In 2019, we focused on fewer but critical features to make Tails easier to discover
+and adopt for first time users.
+
+- In January, we completely changed the Tails installation procedure.
+  Tails is now downloaded as a *USB image*: an exact copy of the data
+  as it is written to the USB stick.
+
+  This made the installation experience better for all operating
+  systems and particularly easier and much faster for less
+  tech-savvy users of Windows and
+  macOS.
+
+- Then, we improved our documentation to help first time users with
+  their Tails installation:
+
+  - We explained better how to troubleshoot failing Wi-Fi,
+    an issue unfortunately quite common, especially on Mac, and documented which Wi-Fi
+    USB adapters work well in Tails.
+
+  - We created a [[boot menu animation|install/windows#animation]] to visualize
+    how to start Tails on PC and clarified related troubleshooting
+    instructions.
+
+As a consequence, more people than ever are using Tails:
+
+- Tails is used nearly 25 000 times every day worldwide. That's 15% more than in August 2018.
+
+- The percentage of people using Tails on Mac more than doubled
+  since January 2019.
+
+To continue making Tails more accessible to users globally,
+we built a [[translation platform|https://translate.tails.net/]] for our website.
+Since then, people started translations in Arabic, Catalan,
+Traditional and Simplified Chinese, Polish, Russian, Serbian, and Turkish.
+
+We also improved a lot the usability of the Welcome Screen for non-English
+users in [[Tails 4.0|version_4.0#greeter]].
+
+
+Maintenance work
+================
+
+2019 was also a year of heavy maintenance work, as always. Keeping alive a
+tool like Tails consists mostly of many tasks that are not very exciting:
+publishing new releases every 6 weeks, updating Tails and our infrastructure
+to new versions of Debian and other software that we use, fixing small issues as
+they are reported to us, and implementing the many small improvements that make Tails easier to
+use.
+
+- In October, we released [[Tails 4.0|version_4.0]], which is the first version
+  of Tails based on Debian 10 (Buster).
+
+  Tails 4.0 was our most important release in years. Tails 4.0 adds
+  KeePassXC, OnionShare 1.3.2, fixes Electrum, updates to Debian 10 and
+  GNOME 3.30, starts faster and uses less memory.
+
+- We released 13 new versions of Tails to deliver improvements and
+  security fixes as soon as possible.
+
+- We published more emergency releases than ever before:
+  5 emergency releases to fix 5 critical security vulnerabilities in
+  Firefox and Tor Browser and always keep Tails as secure as possible.
+
+- We removed less popular software and localization packages, which you
+  can now install yourself using the Additional
+  Software feature. Optimizations
+  like these made the USB image of Tails 4.0 47 MB smaller than Tails 3.6, which
+  was the bigger release ever.
+
+- Tails depends on a wider ecosystem of Free Software and privacy
+  tools. We continuously contribute improvements to other projects which are either
+  included in Tails or used on our infrastructure. Some of these projects, that we call
+  "upstream", are:
+
+  - [Thunderbird](https://bugzilla.mozilla.org/show_bug.cgi?id=971347)
+  - [GNOME](https://gitlab.gnome.org/GNOME/gtk/merge_requests/263)
+  - [Debian](https://tracker.debian.org/news/1062740/accepted-apparmor-2133-5-source-into-unstable/)
+  - [OnionShare](https://tracker.debian.org/news/1036041/accepted-onionshare-20-1-source-all-into-unstable/)
+  - [KeePassXC](https://github.com/keepassxreboot/keepassxc/pull/2593)
+  - [torsocks](https://tracker.debian.org/news/1037418/accepted-torsocks-230-2-source-amd64-into-unstable/)
+  - [ikiwiki](https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=911356)
+
+- We had to temper several [[!wikipedia Denial-of-service_attack
+  desc="distributed denial-of-service (DDoS)"]] attacks targeting our
+  infrastructure.
+
+- For 9 years, we have been relying on the hosting services provided by the fine people of
+  boum.org. Thank you! As they were reducing their activities, we had to migrate our services. Our
+  website is now self-hosted and our mailing-lists are taken care of
+  by 2 experienced and trusted autonomous server projects:
+  [autistici.org](https://autistici.org) and
+  [puscii.nl](https://puscii.nl).
+
+
+
+Community
+=========
+
+Over the years, Tails has been able to gather a lively community which is
+growing, evolving, and deserves care.
+
+- We published a statement of our [[mission and
+  values|contribute/mission]] to help us clarify who we are, what we
+  stand for, and what we want to do for our users.
+
+- We agreed on [[user personas|contribute/personas]], fictitious but
+  concrete representations of the people using Tails. We use these
+  personas to keep in mind who we are working for, what are their needs,
+  and what Tails should do for them.
+
+- We attended 9 conferences and connected to Free Software and Internet
+  freedom communities in 9 different countries, including FOSDEM
+  (Belgium), Internet Freedom Festival (Spain), Tor Meeting (Sweden),
+  OTF Summit (Taiwan), DebConf (Brazil), and MozFest (UK).
+
+- The wider Tails community organized 10 workshops to present Tails to
+  new users in North and South America, Europe, and East and South-East
+  Asia.
+
+- We answered 883 bug reports through our help desk and helped all these
+  people to be safer online.
+
+- 2 new workers joined our help desk and sysadmin teams.
+
+All of this is made possible by donations from people like you. And because
+these help us to plan our work, we particularly appreciate monthly and yearly donations,
+even the smallest ones.
+
+If you liked our work in 2019, please take a minute to donate and
+make us thrive in 2020!
+
+[Donate](https://tails.net/donate/)

@@ -1,0 +1,6 @@
+[[commands]]
+executable = "/bin/umount"
+allowed_user = "Debian-gdm"
+[commands.arbitrary_arguments]
+value = true
+reason = "FIXME: next time you have the problem space in mind, e.g. if you edit this file, explain why this is needed *and* safe. For details, see tails/tails#20863."

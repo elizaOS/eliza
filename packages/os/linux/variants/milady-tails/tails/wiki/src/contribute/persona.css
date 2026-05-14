@@ -1,0 +1,27 @@
+#summary, #details {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 30px;
+  align-items: center;
+}
+
+#image, #side, #details div {
+  flex-basis: calc(50% - 15px);
+}
+
+blockquote {
+  margin: 30px 0;
+  font-style: italic;
+}
+
+blockquote:before {
+  content: '« ';
+}
+
+blockquote:after {
+  content: ' »';
+}
+
+#bio, #primary {
+  font-weight: 600;
+}

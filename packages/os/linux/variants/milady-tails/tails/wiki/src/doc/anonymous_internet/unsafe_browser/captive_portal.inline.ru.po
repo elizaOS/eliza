@@ -1,0 +1,90 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"POT-Creation-Date: 2024-04-11 14:09+0000\n"
+"PO-Revision-Date: 2021-07-20 01:05+0000\n"
+"Last-Translator: Ed Medvedev <edward.medvedev@gmail.com>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: ru\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=3; plural=n%10==1 && n%100!=11 ? 0 : n%10>=2 && "
+"n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2;\n"
+"X-Generator: Weblate 3.11.3\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta robots=\"noindex\"]]\n"
+msgstr "[[!meta robots=\"noindex\"]]\n"
+
+#. type: Plain text
+msgid ""
+"A captive portal is a web page that is often displayed before you can access "
+"the Internet on public networks in airports, hotels, libraries, and other "
+"places."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!img captive_portal.png link=\"no\" class=\"svg\" alt=\"Train station Wi-Fi. Click here for 60 minutes of free Wi-Fi\" title=\"Example of a captive portal\"]]\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Tails cannot connect to the Tor network when the Internet connection is "
+"initially blocked by a captive portal."
+msgstr ""
+
+#~ msgid ""
+#~ "Many publicly accessible Internet connections (usually available through "
+#~ "a wireless network connection) require users to sign in to the network "
+#~ "using a *captive portal* in order to access the Internet."
+#~ msgstr ""
+#~ "Часто бывает, что для доступа к публичной сети (обычно по wi-fi) "
+#~ "пользователю предлагается сначала авторизоваться на отдельном сайте."
+
+#, fuzzy
+#~| msgid ""
+#~| "A captive portal is a web page that is displayed to the user before the "
+#~| "user can access the Internet. Captive portals usually require the user "
+#~| "to log in to the network or enter information such as an email address. "
+#~| "Captive portals are commonly encountered at Internet cafés, libraries, "
+#~| "airports, hotels, and universities."
+#~ msgid ""
+#~ "A captive portal is a web page that is displayed to the user before the "
+#~ "user can access the Internet. Captive portals usually require the user to "
+#~ "log in to the network or enter information such as an email address. "
+#~ "Captive portals are commonly encountered at Internet cafés, libraries, "
+#~ "airports, hotels, and universities."
+#~ msgstr ""
+#~ "Сайт авторизации — страница, которую пользователь видит перед тем, как "
+#~ "получить доступ к Интернету. Обычно сайты авторизации предлагают "
+#~ "пользователю залогиниться или ввести адрес email. Сайты авторизации "
+#~ "типичны для интернет-кафе, библиотек, аэропортов, гостиниц, университетов."
+
+#~ msgid ""
+#~ "This is an example of a captive portal (by [AlexEng](https://commons."
+#~ "wikimedia.org/wiki/File:Captive_Portal.png)):"
+#~ msgstr ""
+#~ "Вот пример сайта авторизации от [AlexEng](https://commons.wikimedia.org/"
+#~ "wiki/File:Captive_Portal.png):"
+
+#, no-wrap
+#~ msgid "[[!img captive-portal.png link=\"no\" alt=\"Welcome! Please enter your credentials to connect.\"]]\n"
+#~ msgstr "[[!img captive-portal.png link=\"no\" alt=\"Здравствуйте! Пожалуйста, для продолжения введите свои данные.\"]]\n"
+
+#~ msgid ""
+#~ "Tor cannot start when the Internet connection is initially blocked by a "
+#~ "captive portal. That is why Tails includes an *Unsafe Browser* to sign in "
+#~ "to a network using a captive portal before starting Tor."
+#~ msgstr ""
+#~ "Нельзя запустить Tor, если Интернет-соединение блокируется сайтом "
+#~ "авторизации. Вот почему в Tails включён *небезопасный браузер*. С его "
+#~ "помощью можно войти в сеть через сайт авторизации и уже потом "
+#~ "подключаться к Tor."

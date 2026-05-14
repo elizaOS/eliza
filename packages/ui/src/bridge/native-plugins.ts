@@ -594,7 +594,7 @@ export interface TalkModePluginLike extends NativePlugin {
   start(options?: {
     config?: {
       stt?: {
-        engine?: "whisper" | "web";
+        engine?: "web";
         modelSize?: "tiny" | "base" | "small" | "medium" | "large";
         language?: string;
         sampleRate?: number;

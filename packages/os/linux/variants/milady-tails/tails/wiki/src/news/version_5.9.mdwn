@@ -1,0 +1,137 @@
+[[!meta title="Tails 5.9 is out"]]
+[[!meta date="Tue, 23 Jan 2023 12:34:56 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+
+We are sorry that Tails 5.8 affected many of you so badly.
+
+Thanks to your patience and feedback, we were able to solve most of these new
+issues.
+
+<h1 id="changes">Changes and updates</h1>
+
+- Update *Tor Browser* to [12.0.2](https://blog.torproject.org/new-release-tor-browser-1202).
+
+- Update the *Tor* client to 0.4.7.13.
+
+- Simplify the error screen of the *Tor Connection* assistant when connecting
+  automatically.
+
+- Improve the wording of the backup utility for the Persistent Storage.
+
+- Remove the confirmation dialog when starting the *Unsafe Browser*.
+
+<h1 id="fixes">Fixed problems</h1>
+
+- Fix support for some graphics cards:
+
+  * Update the *Linux* kernel to 6.0.12. This improves the support for newer
+    hardware in general: graphics, Wi-Fi, and so on. ([[!tails_ticket 18467]])
+
+  * Remove from the Troubleshooting Mode 2 boot options that break support for
+    some graphics cards: `nomodeset` and `vga=normal`. ([[!tails_ticket 19321]])
+
+  Please let us know if the support for your graphics cards has been fixed or
+  is still broken.
+
+- Fix starting AppImages that use the Qt toolkit like *Feather* and
+  *Bitcoin-Qt*. ([[!tails_ticket 19326]])
+
+- Fix clipboard encryption and decryption in *Kleopatra*. ([[!tails_ticket 19329]])
+
+- Fix at least 2 cases of Persistent Storage not activating:
+
+  * When activation takes longer ([[!tails_ticket 19347]])
+
+  * When the Dotfiles feature includes symbolic links ([[!tails_ticket 19346]])
+
+  Please keep reporting issues with the new Persistent Storage. We give them
+  top priority!
+
+- Fix 3 clipboard operations with *KeePassXC*:
+
+  * Copying a passphrase to unlock a database ([[!tails_ticket 19237]])
+
+  * Using the auto-type feature ([[!tails_ticket 19339]])
+
+  * Clearing passwords automatically from the clipboard after 10 seconds
+
+- Fix the display of the applications menu that was broken in some GTK3
+  applications installed as Additional Software. ([[!tails_ticket 19371]])
+
+- Localize the homepage of *Tor Browser* when started from the *Tor Connection*
+  assistant. ([[!tails_ticket 19369]])
+
+For more details, read our [[!tails_gitweb debian/changelog desc="changelog"]].
+
+<h1 id="issues">Known issues</h1>
+
+Please keep reporting issues with the new Persistent Storage and when starting
+on graphics cards that used to work with Tails.
+
+## *Tor Browser* has no minimize and maximize buttons ([[!tails_ticket 19328]])
+
+To work around this:
+
+1. Right-click on the *Tor Browser* tab in the window list at the bottom of the screen.
+
+1. Choose **Minimize** or **Maximize**.
+
+## Welcome Screen and Tor Connection don't fit on 800×600 ([[!tails_ticket 19324]])
+
+The top of the Welcome Screen and some button of the Tor Connection assistant
+are cut out on small displays (800×600), like virtual machines.
+
+You can press **Alt+S** to start Tails.
+
+## Progress bar of *Tor Connection* gets stuck around 50% ([[!tails_ticket 19173]])
+
+When using a custom Tor `obfs4` bridge, the progress bar of *Tor Connection*
+sometimes gets stuck halfway through and becomes extremely slow.
+
+To fix this, you can either:
+
+* Close and reopen *Tor Connection* to speed up the initial connection.
+
+* Try a different `obfs4` bridge.
+
+  This issue only affects outdated obfs4 bridges and does not happen with
+  obfs4 bridges that run version 0.0.12 or later.
+
+See the list of [[long-standing issues|support/known_issues]].
+
+<h1 id="get">Get Tails 5.9</h1>
+
+## To upgrade your Tails USB stick and keep your Persistent Storage
+
+- Automatic upgrades are available from Tails 5.0 or later to 5.9.
+
+  You can [[reduce the size of the download|doc/upgrade#reduce]] of future
+  automatic upgrades by doing a manual upgrade to the latest version.
+
+- If you cannot do an automatic upgrade or if Tails fails to start after an
+  automatic upgrade, please try to do a [[manual upgrade|doc/upgrade/#manual]].
+
+## To install Tails on a new USB stick
+
+Follow our installation instructions:
+
+  - [[Install from Windows|install/windows]]
+  - [[Install from macOS|install/mac]]
+  - [[Install from Linux|install/linux]]
+  - [[Install from Debian or Ubuntu using the command line and GnuPG|install/expert]]
+
+<div class="caution"><p>The Persistent Storage on the USB stick will be lost if
+you install instead of upgrading.</p></div>
+
+## To download only
+
+If you don't need installation or upgrade instructions, you can download
+Tails 5.9 directly:
+
+  - [[For USB sticks (USB image)|install/download]]
+  - [[For DVDs and virtual machines (ISO image)|install/download-iso]]
+
+<h1 id="next">What's coming up?</h1>
+
+Tails 5.10 is [[scheduled|contribute/calendar]] for February 21.

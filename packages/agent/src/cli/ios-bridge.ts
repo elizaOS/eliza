@@ -6,12 +6,10 @@ import process from "node:process";
 import { Readable } from "node:stream";
 import {
   ChannelType,
-  composePrompt,
   createMessageMemory,
   type GenerateTextParams,
   type IAgentRuntime,
   ModelType,
-  mobileDirectReplyTemplate,
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
@@ -800,91 +798,6 @@ function parseRequestBody(
   return typeof raw === "object" && !Array.isArray(raw)
     ? (raw as Record<string, unknown>)
     : {};
-}
-
-function sanitizeIosLocalSimpleReply(text: string): string {
-  const withoutReasoning = stripReasoningBlocks(text);
-  if (!withoutReasoning) return "";
-  const withoutRole = withoutReasoning
-    .replace(/^assistant\s*:\s*/i, "")
-    .replace(/^eliza\s*:\s*/i, "")
-    .trim();
-  const firstLine = withoutRole.split(/\r?\n/).find((line) => line.trim());
-  return (firstLine ?? withoutRole).trim();
-}
-
-function extractExactWordsReplyRequest(userText: string): string | null {
-  const exactWords = /\bexact words?\s*:\s*["']?(.+?)["']?\s*$/i.exec(userText);
-  if (exactWords?.[1]?.trim()) return exactWords[1].trim();
-  const replyWith = /\breply\s+(?:briefly\s+)?with\s*["']([^"']+)["']/i.exec(
-    userText,
-  );
-  return replyWith?.[1]?.trim() ? replyWith[1].trim() : null;
-}
-
-function isSimpleConversationInput(input: Record<string, unknown>): boolean {
-  if (input.conversationMode === "simple") return true;
-  const metadata = input.metadata;
-  return Boolean(
-    metadata &&
-      typeof metadata === "object" &&
-      !Array.isArray(metadata) &&
-      (metadata as Record<string, unknown>).conversationMode === "simple",
-  );
-}
-
-async function generateIosLocalSimpleReply(
-  backend: IosBridgeBackend,
-  userText: string,
-): Promise<Record<string, unknown> | null> {
-  const messageText = userText.trim();
-  if (!messageText) return null;
-  const exactReply = extractExactWordsReplyRequest(messageText);
-  const agentName = runtimeAgentName(backend.runtime);
-  if (exactReply) {
-    return {
-      text: exactReply,
-      reply: exactReply,
-      agentName,
-      responseContent: {
-        text: exactReply,
-        simple: true,
-        actions: ["REPLY"],
-      },
-      responseMessages: [],
-    };
-  }
-  const runtime = backend.runtime as IAgentRuntime & {
-    character?: { system?: unknown };
-  };
-  const system =
-    typeof runtime.character?.system === "string" &&
-    runtime.character.system.trim().length > 0
-      ? runtime.character.system.trim()
-      : `You are ${agentName}. Reply briefly and directly.`;
-  const prompt = composePrompt({
-    state: { system, userText: messageText, agentName },
-    template: mobileDirectReplyTemplate,
-  });
-  const raw = await runtime.useModel(ModelType.TEXT_SMALL, {
-    prompt,
-    maxTokens: 64,
-    temperature: 0.3,
-    stopSequences: ["<|im_end|>", "<|endoftext|>"],
-  });
-  const text = sanitizeIosLocalSimpleReply(String(raw ?? ""));
-  if (!text) return null;
-  return {
-    text,
-    reply: text,
-    agentName,
-    responseContent: {
-      text,
-      simple: true,
-      actions: ["REPLY"],
-    },
-    responseMessages: [],
-  };
 }
 
 function createIosConversation(
@@ -1749,8 +1662,6 @@ async function handleDirectConversationMessage(
     !Array.isArray(input.metadata)
       ? (input.metadata as Record<string, unknown>)
       : undefined;
-  const conversationMode =
-    typeof input.conversationMode === "string" ? input.conversationMode : null;
   const message = createMessageMemory({
     id: crypto.randomUUID() as UUID,
     entityId: userId,
@@ -1759,7 +1670,6 @@ async function handleDirectConversationMessage(
       text: prompt,
       source: "ios-local",
       channelType,
-      ...(conversationMode ? { conversationMode } : {}),
       ...(metadata ? { metadata: metadata as never } : {}),
     },
   });
@@ -1768,24 +1678,6 @@ async function handleDirectConversationMessage(
     await runtime.createMemory?.(message, "messages");
   } catch {
     // Best effort. Some adapters persist inside messageService.
-  }
-
-  if (isSimpleConversationInput(input)) {
-    const simpleResult = await generateIosLocalSimpleReply(backend, prompt);
-    if (simpleResult) {
-      conversation.updatedAt = new Date().toISOString();
-      conversation.lastUserText = prompt.trim();
-      conversation.lastAssistantText =
-        typeof simpleResult.text === "string" ? simpleResult.text : "";
-      conversation.lastAgentName =
-        typeof simpleResult.agentName === "string"
-          ? simpleResult.agentName
-          : runtimeAgentName(backend.runtime);
-      return {
-        ...simpleResult,
-        conversationId: conversation.id,
-      };
-    }
   }
 
   if (!runtime.messageService?.handleMessage) {

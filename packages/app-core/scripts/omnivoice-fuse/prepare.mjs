@@ -1621,7 +1621,10 @@ function applyElizaQwen3AsrMtmdSupport({ llamaCppRoot }) {
   const firstQwen3aDispatch = clip.indexOf(qwen3aDispatchBlock);
   const secondQwen3aDispatch =
     firstQwen3aDispatch >= 0
-      ? clip.indexOf(qwen3aDispatchBlock, firstQwen3aDispatch + qwen3aDispatchBlock.length)
+      ? clip.indexOf(
+          qwen3aDispatchBlock,
+          firstQwen3aDispatch + qwen3aDispatchBlock.length,
+        )
       : -1;
   if (secondQwen3aDispatch >= 0) {
     clip =

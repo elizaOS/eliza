@@ -42,6 +42,42 @@ bundle_recommendations:
     estimated_decode_tps: 310
     estimated_prefill_tps: 11000
     notes: "First-run active Qwen3.5 tier."
+  eliza-1-4b:
+    n_gpu_layers: -1
+    ctx_size: 65536
+    parallel: 8
+    batch_size: 2048
+    ubatch_size: 512
+    kv_cache_k: qjl1_256
+    kv_cache_v: q4_polar
+    flash_attention: true
+    estimated_decode_tps: 175
+    estimated_prefill_tps: 6800
+    notes: "Balanced Qwen3.5 tier with Ada tensor-core KV path."
+  eliza-1-9b:
+    n_gpu_layers: -1
+    ctx_size: 65536
+    parallel: 4
+    batch_size: 2048
+    ubatch_size: 512
+    kv_cache_k: qjl1_256
+    kv_cache_v: q4_polar
+    flash_attention: true
+    estimated_decode_tps: 110
+    estimated_prefill_tps: 4600
+    notes: "High-quality Qwen3.5 tier that leaves comfortable 24 GiB headroom."
+  eliza-1-27b:
+    n_gpu_layers: -1
+    ctx_size: 131072
+    parallel: 2
+    batch_size: 2048
+    ubatch_size: 512
+    kv_cache_k: qjl1_256
+    kv_cache_v: q4_polar
+    flash_attention: true
+    estimated_decode_tps: 60
+    estimated_prefill_tps: 2500
+    notes: "Maximum 4090 tier; use one or two parallel slots depending on live KV pressure."
 
 dflash:
   enabled: true
@@ -65,5 +101,5 @@ verify_recipe:
     - polarquant
     - dflash
   unavailable_kernels: []
-  smoke_bundle: eliza-1-2b
+  smoke_bundle: eliza-1-27b
   tolerance_pct: 10

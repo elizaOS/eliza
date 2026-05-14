@@ -1,0 +1,19 @@
+#!/bin/bash
+
+# Install packages from the config/patch/packages directory.
+# See config/patch/packages/README.md for more information.
+
+set -eu -o pipefail
+shopt -s inherit_errexit
+
+# Enable xtrace with timestamp
+export PS4='+ $(date "+%H:%M:%S.%3N") '
+set -x
+
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# shellcheck source=../../lib/lib.sh
+. "${DIR}/../../lib/lib.sh"
+
+SCRIPT="${LIB_DIR}/install-packages"
+run_with_plymouth_msg "patch: Installing packages" "${SCRIPT}"

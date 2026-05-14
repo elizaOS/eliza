@@ -1,0 +1,33 @@
+[[!meta title="Sign in to the network"]]
+[[!meta stylesheet="unsafe_browser_warning" rel="stylesheet"]]
+[[!meta robots="noindex"]]
+
+<style>
+/* Display "this browser" instead of "*Unsafe Browser*" in /misc/captive_portal_warning */
+.doc {
+  display: none !important;
+}
+.warning {
+  display: inline-block !important;
+}
+</style>
+
+You might have to sign in to this network before you can connect to the
+Tor network.
+
+<div id="unsafe">
+
+<p class="big">This browser is not anonymous.</p>
+
+<p class="small">Only use this browser to sign in to the network, then close it.</p>
+
+</div>
+
+<div id="eyes">[[!img unsafe.jpg link="no" alt=""]]</div>
+
+Signing in to a network using a captive portal
+==============================================
+
+[[!inline pages="doc/anonymous_internet/unsafe_browser/captive_portal.inline" raw="yes" sort="age"]]
+
+[[!inline pages="doc/anonymous_internet/unsafe_browser/signing_in.inline" raw="yes" sort="age"]]

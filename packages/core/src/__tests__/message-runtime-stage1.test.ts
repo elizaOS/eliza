@@ -38,6 +38,41 @@ function makeState(): State {
 	};
 }
 
+function stage1Response(fields: {
+	shouldRespond?: "RESPOND" | "IGNORE" | "STOP";
+	thought?: string;
+	contexts?: string[];
+	intents?: string[];
+	candidateActionNames?: string[];
+	replyText?: string;
+	facts?: string[];
+	relationships?: unknown[];
+	addressedTo?: string[];
+	extra?: Record<string, unknown>;
+}) {
+	return {
+		text: "",
+		toolCalls: [
+			{
+				id: "handle-response-1",
+				name: "HANDLE_RESPONSE",
+				arguments: {
+					shouldRespond: fields.shouldRespond ?? "RESPOND",
+					thought: fields.thought ?? "",
+					contexts: fields.contexts ?? [],
+					intents: fields.intents ?? [],
+					candidateActionNames: fields.candidateActionNames ?? [],
+					replyText: fields.replyText ?? "",
+					facts: fields.facts ?? [],
+					relationships: fields.relationships ?? [],
+					addressedTo: fields.addressedTo ?? [],
+					...(fields.extra ?? {}),
+				},
+			},
+		],
+	};
+}
+
 function makeRuntime(responses: unknown[]): IAgentRuntime {
 	const queue = [...responses];
 	const responseHandlerFieldRegistry = new ResponseHandlerFieldRegistry();
@@ -87,11 +122,15 @@ describe("runV5MessageRuntimeStage1", () => {
 						id: "mh-1",
 						name: "HANDLE_RESPONSE",
 						arguments: {
-							plan: {
-								contexts: ["simple"],
-								reply: "Hello.",
-							},
+							shouldRespond: "RESPOND",
 							thought: "Direct answer.",
+							replyText: "Hello.",
+							contexts: ["simple"],
+							intents: [],
+							candidateActionNames: [],
+							facts: [],
+							relationships: [],
+							addressedTo: [],
 						},
 					},
 				],
@@ -127,40 +166,6 @@ describe("runV5MessageRuntimeStage1", () => {
 		}
 	});
 
-	it("falls back to message-handler text when the provider emits an empty native tool call", async () => {
-		const runtime = makeRuntime([
-			{
-				text: JSON.stringify({
-					processMessage: "RESPOND",
-					thought: "Calendar context is needed.",
-					plan: { contexts: ["calendar"], requiresTool: true },
-				}),
-				toolCalls: [
-					{
-						id: "mh-empty",
-						name: "HANDLE_RESPONSE",
-						input: {},
-					},
-				],
-			},
-			JSON.stringify({
-				thought: "No tool needed in this fixture.",
-				toolCalls: [],
-				messageToUser: "I can help schedule that.",
-			}),
-		]);
-
-		const result = await runV5MessageRuntimeStage1({
-			runtime,
-			message: makeMessage(),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
-		});
-
-		expect(result.kind).toBe("planned_reply");
-		expect(runtime.useModel).toHaveBeenCalledTimes(2);
-		expect(useModelCalls(runtime)[1]?.[0]).toBe(ModelType.ACTION_PLANNER);
-	});
 
 	it("packages Stage 1 as stable system plus dynamic user context without provider internals", async () => {
 		const runtime = makeRuntime([
@@ -171,11 +176,15 @@ describe("runV5MessageRuntimeStage1", () => {
 						id: "mh-1",
 						toolName: "HANDLE_RESPONSE",
 						input: {
-							plan: {
-								contexts: ["simple"],
-								reply: "Hello.",
-							},
+							shouldRespond: "RESPOND",
 							thought: "Direct answer.",
+							replyText: "Hello.",
+							contexts: ["simple"],
+							intents: [],
+							candidateActionNames: [],
+							facts: [],
+							relationships: [],
+							addressedTo: [],
 						},
 					},
 				],
@@ -284,9 +293,7 @@ describe("runV5MessageRuntimeStage1", () => {
 
 	it("recomposes planner state with selected context providers but excludes catalogs", async () => {
 		const runtime = makeRuntime([
-			JSON.stringify({
-				action: "RESPOND",
-				simple: false,
+			stage1Response({
 				contexts: ["documents"],
 				thought: "Documents context is needed.",
 			}),
@@ -340,15 +347,11 @@ describe("runV5MessageRuntimeStage1", () => {
 	it("emits a response-handler reply before planner recomposition when provided", async () => {
 		const order: string[] = [];
 		const runtime = makeRuntime([
-			JSON.stringify({
-				processMessage: "RESPOND",
+			stage1Response({
 				thought: "Acknowledge first, then inspect.",
-				plan: {
-					contexts: ["general"],
-					requiresTool: true,
-					simple: false,
-					reply: "I'll check that now.",
-				},
+				contexts: ["general"],
+				replyText: "I'll check that now.",
+				extra: { requiresTool: true },
 			}),
 			JSON.stringify({
 				thought: "Finished the follow-up.",
@@ -388,16 +391,10 @@ describe("runV5MessageRuntimeStage1", () => {
 
 	it("voice turn signal can force IGNORE before early reply/planning", async () => {
 		const runtime = makeRuntime([
-			JSON.stringify({
-				shouldRespond: "RESPOND",
+			stage1Response({
 				thought: "The model would otherwise answer.",
 				contexts: ["general"],
-				intents: [],
-				candidateActionNames: [],
 				replyText: "I'll jump in.",
-				facts: [],
-				relationships: [],
-				addressedTo: [],
 			}),
 		]);
 		const earlyReply = vi.fn(async () => undefined);
@@ -430,14 +427,10 @@ describe("runV5MessageRuntimeStage1", () => {
 
 	it("preserves the parsed response-handler reply for early delivery even when a repair clears plan.reply", async () => {
 		const runtime = makeRuntime([
-			JSON.stringify({
-				processMessage: "RESPOND",
+			stage1Response({
 				thought: "Acknowledge first.",
-				plan: {
-					contexts: ["simple"],
-					requiresTool: false,
-					reply: "I'll start on that.",
-				},
+				contexts: ["simple"],
+				replyText: "I'll start on that.",
 			}),
 			JSON.stringify({
 				thought: "Planner should not repeat the acknowledgement.",
@@ -452,7 +445,6 @@ describe("runV5MessageRuntimeStage1", () => {
 				shouldRun: () => true,
 				evaluate: () => ({
 					requiresTool: true,
-					simple: false,
 					clearReply: true,
 					addContexts: ["general"],
 				}),
@@ -475,16 +467,13 @@ describe("runV5MessageRuntimeStage1", () => {
 		);
 	});
 
-	it("exposes only validated actions and enforces tool-required routing through PLAN_ACTIONS", async () => {
+	it("exposes only validated actions as native tools and enforces tool-required routing", async () => {
 		const runtime = makeRuntime([
-			JSON.stringify({
-				processMessage: "RESPOND",
+			stage1Response({
 				thought: "The current request needs runtime inspection.",
-				plan: {
-					contexts: ["general"],
-					requiresTool: true,
-					candidateActions: ["CHECK_RUNTIME"],
-				},
+				contexts: ["general"],
+				candidateActionNames: ["CHECK_RUNTIME"],
+				extra: { requiresTool: true },
 			}),
 			JSON.stringify({
 				thought: "I can answer directly.",
@@ -496,11 +485,8 @@ describe("runV5MessageRuntimeStage1", () => {
 				toolCalls: [
 					{
 						id: "call-1",
-						name: "PLAN_ACTIONS",
-						arguments: {
-							action: "CHECK_RUNTIME",
-							parameters: {},
-						},
+						name: "CHECK_RUNTIME",
+						arguments: {},
 					},
 				],
 			},
@@ -544,12 +530,12 @@ describe("runV5MessageRuntimeStage1", () => {
 			tools?: Array<{ name?: string }>;
 			messages?: Array<{ role?: string; content?: string | null }>;
 		};
-		expect(firstPlannerParams.tools?.map((tool) => tool.name)).toEqual([
-			"PLAN_ACTIONS",
-		]);
+		const firstPlannerToolNames =
+			firstPlannerParams.tools?.map((tool) => tool.name) ?? [];
+		expect(firstPlannerToolNames).toContain("CHECK_RUNTIME");
+		expect(firstPlannerToolNames).not.toContain("SKIP_RUNTIME");
+		expect(firstPlannerToolNames).toContain("REPLY");
 		const firstPlannerPrompt = JSON.stringify(firstPlannerParams.messages);
-		expect(firstPlannerPrompt).toContain("CHECK_RUNTIME");
-		expect(firstPlannerPrompt).not.toContain("SKIP_RUNTIME");
 		expect(firstPlannerPrompt).toContain(
 			"Stage 1 router marked this current turn as requiring a tool",
 		);
@@ -568,12 +554,10 @@ describe("runV5MessageRuntimeStage1", () => {
 
 	it("returns a simple no-context reply without calling the planner", async () => {
 		const runtime = makeRuntime([
-			JSON.stringify({
-				action: "RESPOND",
-				simple: true,
-				contexts: [],
+			stage1Response({
 				thought: "Direct answer.",
-				reply: "Hello.",
+				contexts: ["simple"],
+				replyText: "Hello.",
 			}),
 		]);
 
@@ -595,26 +579,16 @@ describe("runV5MessageRuntimeStage1", () => {
 
 	it("routes to the planner when field registry emits candidate actions without contexts", async () => {
 		const runtime = makeRuntime([
-			JSON.stringify({
-				shouldRespond: "RESPOND",
-				contexts: [],
-				intents: [],
-				replyText: "",
+			stage1Response({
 				candidateActionNames: ["CHECK_RUNTIME"],
-				facts: [],
-				relationships: [],
-				addressedTo: [],
 			}),
 			{
 				text: "",
 				toolCalls: [
 					{
 						id: "call-1",
-						name: "PLAN_ACTIONS",
-						arguments: {
-							action: "CHECK_RUNTIME",
-							parameters: {},
-						},
+						name: "CHECK_RUNTIME",
+						arguments: {},
 					},
 				],
 			},
@@ -655,23 +629,18 @@ describe("runV5MessageRuntimeStage1", () => {
 
 	it("lets a registered response-handler evaluator force planner routing without another Stage 1 call", async () => {
 		const runtime = makeRuntime([
-			JSON.stringify({
-				action: "RESPOND",
-				simple: true,
-				contexts: [],
+			stage1Response({
 				thought: "Direct answer before patching.",
-				reply: "Inline answer.",
+				contexts: ["simple"],
+				replyText: "Inline answer.",
 			}),
 			{
 				text: "",
 				toolCalls: [
 					{
 						id: "call-1",
-						name: "PLAN_ACTIONS",
-						arguments: {
-							action: "CHECK_RUNTIME",
-							parameters: {},
-						},
+						name: "CHECK_RUNTIME",
+						arguments: {},
 					},
 				],
 			},
@@ -738,16 +707,11 @@ describe("runV5MessageRuntimeStage1", () => {
 
 	it("dispatches response-handler field preemption before planner routing", async () => {
 		const runtime = makeRuntime([
-			JSON.stringify({
-				shouldRespond: "RESPOND",
+			stage1Response({
 				contexts: ["general"],
 				intents: ["stop work"],
-				replyText: "",
 				candidateActionNames: ["CHECK_RUNTIME"],
-				facts: [],
-				relationships: [],
-				addressedTo: [],
-				abortTest: true,
+				extra: { abortTest: true },
 			}),
 		]);
 		const handle = vi.fn(async () => ({
@@ -797,12 +761,10 @@ describe("runV5MessageRuntimeStage1", () => {
 
 	it("runs planning when contexts are selected even when simple is true", async () => {
 		const runtime = makeRuntime([
-			JSON.stringify({
-				action: "RESPOND",
-				simple: true,
-				contexts: ["calendar"],
+			stage1Response({
 				thought: "Calendar context is needed.",
-				reply: "I can check.",
+				contexts: ["simple", "calendar"],
+				replyText: "I can check.",
 			}),
 			JSON.stringify({
 				thought: "No tool needed in this fixture.",
@@ -835,10 +797,8 @@ describe("runV5MessageRuntimeStage1", () => {
 		"STOP",
 	] as const)("stops immediately for %s", async (action) => {
 		const runtime = makeRuntime([
-			JSON.stringify({
-				action,
-				simple: false,
-				contexts: [],
+			stage1Response({
+				shouldRespond: action,
 				thought: "Terminal decision.",
 			}),
 		]);

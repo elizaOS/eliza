@@ -9,6 +9,7 @@ import {
   elizaLogger,
   type Memory,
   type MessageProcessingResult,
+  ModelType,
   type Plugin,
   stringToUuid,
 } from "@elizaos/core";
@@ -87,6 +88,197 @@ autoWireCerebras();
 
 const BENCH_TOKEN = process.env.ELIZA_BENCH_TOKEN?.trim() || null;
 const OPENROUTER_PLUGIN_MODULE: string = "@elizaos/plugin-openrouter";
+
+function isLocaBenchmarkName(benchmark: string): boolean {
+  const normalized = benchmark.trim().toLowerCase();
+  return normalized === "loca_bench" || normalized === "loca-bench";
+}
+
+function normalizeLocaNativeMessages(
+  rawMessages: unknown,
+): Array<Record<string, unknown>> {
+  const input = Array.isArray(rawMessages) ? rawMessages : [];
+  const toolNamesById = new Map<string, string>();
+  const normalized: Array<Record<string, unknown>> = [
+    {
+      role: "system",
+      content:
+        "You are running LOCA-bench through the Eliza benchmark server. " +
+        "Use native tool calls, not progress text. If work remains, call " +
+        "exactly one available filesystem or memory tool. Existing CSV rows " +
+        "may be examples; derive final rows from source_data/local_db and " +
+        "source_data/files, then write the requested CSV files.",
+    },
+  ];
+
+  for (const item of input) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) continue;
+    const message = item as Record<string, unknown>;
+    const role = typeof message.role === "string" ? message.role : "user";
+    if (role === "assistant") {
+      const rawToolCalls = Array.isArray(message.tool_calls)
+        ? message.tool_calls
+        : Array.isArray(message.toolCalls)
+          ? message.toolCalls
+          : [];
+      const toolCalls = rawToolCalls
+        .map((call) => normalizeLocaIncomingToolCall(call))
+        .filter((call): call is Record<string, unknown> => Boolean(call));
+      for (const call of toolCalls) {
+        const id = typeof call.id === "string" ? call.id : "";
+        const fn =
+          call.function && typeof call.function === "object"
+            ? (call.function as Record<string, unknown>)
+            : {};
+        const name = typeof fn.name === "string" ? fn.name : "";
+        if (id && name) toolNamesById.set(id, name);
+      }
+      normalized.push({
+        role: "assistant",
+        content: typeof message.content === "string" ? message.content : "",
+        ...(toolCalls.length > 0 ? { toolCalls } : {}),
+      });
+      continue;
+    }
+
+    if (role === "tool") {
+      const toolCallId =
+        typeof message.tool_call_id === "string"
+          ? message.tool_call_id
+          : typeof message.toolCallId === "string"
+            ? message.toolCallId
+            : typeof message.id === "string"
+              ? message.id
+              : "tool-call";
+      const toolName =
+        typeof message.name === "string"
+          ? message.name
+          : typeof message.toolName === "string"
+            ? message.toolName
+            : toolNamesById.get(toolCallId) || "tool";
+      normalized.push({
+        role: "tool",
+        id: toolCallId,
+        name: toolName,
+        content:
+          typeof message.content === "string"
+            ? message.content
+            : JSON.stringify(message.content ?? ""),
+      });
+      continue;
+    }
+
+    normalized.push({
+      role: role === "system" ? "system" : "user",
+      content:
+        typeof message.content === "string"
+          ? message.content
+          : JSON.stringify(message.content ?? ""),
+    });
+  }
+
+  return normalized;
+}
+
+function normalizeLocaIncomingToolCall(
+  raw: unknown,
+): Record<string, unknown> | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const call = raw as Record<string, unknown>;
+  const fn =
+    call.function && typeof call.function === "object"
+      ? (call.function as Record<string, unknown>)
+      : {};
+  const name =
+    typeof fn.name === "string"
+      ? fn.name
+      : typeof call.name === "string"
+        ? call.name
+        : typeof call.toolName === "string"
+          ? call.toolName
+          : "";
+  if (!name) return null;
+  const args = fn.arguments ?? call.arguments ?? call.input ?? {};
+  return {
+    id:
+      typeof call.id === "string"
+        ? call.id
+        : typeof call.toolCallId === "string"
+          ? call.toolCallId
+          : `call_loca_${Math.random().toString(16).slice(2)}`,
+    type: "function",
+    function: {
+      name,
+      arguments:
+        typeof args === "string" ? args : JSON.stringify(args ?? {}),
+    },
+  };
+}
+
+function normalizeLocaNativeToolCalls(rawToolCalls: unknown): Array<{
+  id: string;
+  type: "function";
+  function: { name: string; arguments: string };
+}> {
+  if (!Array.isArray(rawToolCalls)) return [];
+  const calls: Array<{
+    id: string;
+    type: "function";
+    function: { name: string; arguments: string };
+  }> = [];
+  for (const raw of rawToolCalls) {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
+    const call = raw as Record<string, unknown>;
+    const fn =
+      call.function && typeof call.function === "object"
+        ? (call.function as Record<string, unknown>)
+        : {};
+    const name =
+      typeof call.toolName === "string"
+        ? call.toolName
+        : typeof call.name === "string"
+          ? call.name
+          : typeof fn.name === "string"
+            ? fn.name
+            : "";
+    if (!name) continue;
+    const args = call.input ?? call.args ?? call.arguments ?? fn.arguments ?? {};
+    calls.push({
+      id:
+        typeof call.toolCallId === "string"
+          ? call.toolCallId
+          : typeof call.id === "string"
+            ? call.id
+            : `call_loca_native_${calls.length}`,
+      type: "function",
+      function: {
+        name,
+        arguments:
+          typeof args === "string" ? args : JSON.stringify(args ?? {}),
+      },
+    });
+  }
+  return calls;
+}
+
+function firstLocaBenchmarkActionFromToolCalls(
+  toolCalls: Array<{
+    function: { name: string; arguments: string };
+  }>,
+): Record<string, unknown> | null {
+  const first = toolCalls[0];
+  if (!first) return null;
+  let args: unknown = {};
+  try {
+    args = JSON.parse(first.function.arguments || "{}");
+  } catch {
+    args = { _raw: first.function.arguments };
+  }
+  return {
+    tool_name: first.function.name,
+    arguments: args,
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Security: authentication + CORS
@@ -384,18 +576,15 @@ export async function startBenchmarkServer() {
     "@elizaos/plugin-elizacloud", // Requires elizaOS cloud auth, conflicts with local LLM
   ]);
 
-  // Skip `@elizaos/plugin-local-embedding` by default in benchmark mode:
-  // - It downloads a ~500MB GGUF from `huggingface.co/elizaos/eliza-1-0_6b`
-  //   on first `TEXT_EMBEDDING` call. The repo is gated/private, so every turn
-  //   spams a 401 from HuggingFace.
-  // - Benchmarks don't score on semantic retrieval, so a deterministic
-  //   zero-vector handler is a fine stand-in.
-  // - Opt-out by setting `ELIZA_BENCH_SKIP_EMBEDDING=0` (e.g. for a benchmark
-  //   that genuinely depends on real embeddings).
+  // Local-inference stays enabled by default in benchmark mode so embedding,
+  // memory, and retrieval behavior remain representative of the Eliza-1 stack.
+  // A zero-vector stand-in is allowed only as an explicit diagnostic escape
+  // hatch, and logs loudly because those runs are not release evidence.
   const skipEmbeddingPlugin =
-    (process.env.ELIZA_BENCH_SKIP_EMBEDDING ?? "1") !== "0";
+    process.env.ELIZA_BENCH_ALLOW_STUB_EMBEDDING === "1" ||
+    process.env.ELIZA_BENCH_SKIP_EMBEDDING === "1";
   if (skipEmbeddingPlugin) {
-    skipPlugins.add("@elizaos/plugin-local-embedding");
+    skipPlugins.add("@elizaos/plugin-local-inference");
   }
 
   const skipCorePlugins = process.env.ELIZA_BENCH_SKIP_CORE_PLUGINS === "true";
@@ -489,21 +678,19 @@ export async function startBenchmarkServer() {
     );
   }
 
-  // Register a zero-vector TEXT_EMBEDDING stand-in when local-embedding is
-  // skipped. The runtime calls `useModel(TEXT_EMBEDDING, ...)` for every
+  // Register a zero-vector TEXT_EMBEDDING stand-in only when explicitly
+  // requested. The runtime calls `useModel(TEXT_EMBEDDING, ...)` for every
   // persisted memory; without ANY handler, those calls throw and abort the
-  // turn. The benchmarks don't score retrieval, so a deterministic
-  // 1024-dim zero vector is the right stub. Dimensions match the local-
-  // embedding default (eliza-1-0_6b → 1024) so downstream code that
-  // assumes that shape (vector columns sized at boot) still works.
+  // turn. This path is diagnostic-only because it does not measure real
+  // Eliza-1 retrieval behavior.
   if (skipEmbeddingPlugin) {
     const EMBEDDING_DIMENSIONS = 1024;
     const benchEmbeddingPlugin: Plugin = {
       name: "@elizaos/bench-stub-embedding",
       description:
         "Benchmark-mode zero-vector TEXT_EMBEDDING handler. Replaces " +
-        "@elizaos/plugin-local-embedding so we never download the gated " +
-        "HuggingFace GGUF on every turn.",
+        "@elizaos/plugin-local-inference only when " +
+        "ELIZA_BENCH_ALLOW_STUB_EMBEDDING=1 is set.",
       // Higher than local-embedding's `priority: 10` so we win even if a
       // CORE_PLUGINS race were to register a competing handler later.
       priority: 100,
@@ -513,9 +700,9 @@ export async function startBenchmarkServer() {
       },
     };
     plugins.push(toPlugin(benchEmbeddingPlugin, "bench-stub-embedding"));
-    elizaLogger.info(
-      `[bench] Registered zero-vector TEXT_EMBEDDING stub (dim=${EMBEDDING_DIMENSIONS}); ` +
-        "set ELIZA_BENCH_SKIP_EMBEDDING=0 to use @elizaos/plugin-local-embedding instead.",
+    elizaLogger.warn(
+      `[bench] Registered zero-vector TEXT_EMBEDDING stand-in (dim=${EMBEDDING_DIMENSIONS}, standIn=true); ` +
+        "this run is not valid release evidence. Unset ELIZA_BENCH_ALLOW_STUB_EMBEDDING and ELIZA_BENCH_SKIP_EMBEDDING to use @elizaos/plugin-local-inference.",
     );
   }
 
@@ -625,7 +812,7 @@ export async function startBenchmarkServer() {
       );
       if (strippedEmbedding) {
         elizaLogger.info(
-          "[bench] Cerebras detected: removed openai plugin's TEXT_EMBEDDING handler so @elizaos/plugin-local-embedding serves embeddings.",
+          "[bench] Cerebras detected: removed openai plugin's TEXT_EMBEDDING handler so @elizaos/plugin-local-inference serves embeddings.",
         );
       }
     } catch (error: unknown) {
@@ -1543,6 +1730,100 @@ export async function startBenchmarkServer() {
             context: benchmarkContext,
             image: parsed.image,
           });
+
+          if (
+            isLocaBenchmarkName(session.benchmark) &&
+            Array.isArray(benchmarkContext.tools) &&
+            benchmarkContext.tools.length > 0
+          ) {
+            const turnUsageBuffer: BenchmarkLlmCallUsage[] = [];
+            activeUsageBuffer = turnUsageBuffer;
+            let nativeResult: unknown;
+            try {
+              nativeResult = await runtime.useModel(ModelType.TEXT_LARGE, {
+                messages: normalizeLocaNativeMessages(benchmarkContext.messages),
+                tools: benchmarkContext.tools,
+                toolChoice: "required",
+                maxTokens:
+                  typeof benchmarkContext.max_tokens === "number"
+                    ? benchmarkContext.max_tokens
+                    : 2048,
+                temperature:
+                  typeof benchmarkContext.temperature === "number"
+                    ? benchmarkContext.temperature
+                    : 0,
+              });
+            } finally {
+              activeUsageBuffer = null;
+            }
+            const turnUsage = summarizeUsage(turnUsageBuffer);
+            const nativeRecord =
+              nativeResult && typeof nativeResult === "object"
+                ? (nativeResult as Record<string, unknown>)
+                : {};
+            const toolCalls = normalizeLocaNativeToolCalls(
+              nativeRecord.toolCalls,
+            );
+            const responseText =
+              typeof nativeRecord.text === "string"
+                ? nativeRecord.text
+                : typeof nativeResult === "string"
+                  ? nativeResult
+                  : "";
+            const params: Record<string, unknown> = {};
+            const benchmarkAction =
+              firstLocaBenchmarkActionFromToolCalls(toolCalls);
+            if (benchmarkAction) {
+              params.BENCHMARK_ACTION = benchmarkAction;
+              params.tool_calls = toolCalls;
+            }
+            const actions =
+              toolCalls.length > 0
+                ? ["BENCHMARK_ACTION"]
+                : responseText.trim()
+                  ? ["REPLY"]
+                  : [];
+            const finishedAt = Date.now();
+
+            trajectory.push({
+              step: trajectory.length + 1,
+              startedAt,
+              finishedAt,
+              inputText: text,
+              promptText: composedPrompt,
+              context,
+              thought: null,
+              responseText,
+              actions,
+              params,
+              usage: turnUsage,
+            });
+            trajectoriesBySession.set(key, trajectory);
+            const metadata = benchmarkTurnMetadata({
+              session,
+              step: trajectory.length,
+              context: benchmarkContext,
+            });
+
+            res.writeHead(200, { "Content-Type": "application/json" });
+            res.end(
+              JSON.stringify({
+                text: responseText,
+                thought: null,
+                actions,
+                params,
+                captured_actions: [],
+                tool_calls: toolCalls,
+                usage: turnUsage,
+                metadata,
+                benchmark: session.benchmark,
+                task_id: session.taskId,
+                room_id: session.roomId,
+                trajectory_step: trajectory.length,
+              }),
+            );
+            return;
+          }
 
           const incomingMessage: Memory = {
             id: stringToUuid(`benchmark-msg:${Date.now()}:${Math.random()}`),

@@ -87,6 +87,7 @@ def test_loca_harness_accepts_nested_or_legacy_function_tools() -> None:
     assert "filesystem_list_directory" in prompt
     assert "process_assignments_and_quizzes" in prompt
     assert "examples or placeholders" in prompt
+    assert "source_data/local_db" in prompt
     assert "overwrite or edit every requested CSV file" in prompt
 
 

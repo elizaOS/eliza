@@ -1,0 +1,22 @@
+[[!meta date="Tue, 08 Jan 2013 00:00:00 +0000"]]
+[[!meta title="Numerous security holes in Tails 0.15"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+Several security holes affect Tails 0.15.
+
+We **strongly** urge you to [[upgrade to Tails 0.16|news/version_0.16]]
+as soon as possible in case you are still using an older version.
+
+Details
+=======
+
+ - iceweasel ([MFSA 2012-91](https://www.mozilla.org/security/announce/2012/mfsa2012-98.html), [MFSA 2013-01](https://www.mozilla.org/security/announce/2013/mfsa2013-01.html), [MFSA 2013-02](https://www.mozilla.org/security/announce/2013/mfsa2013-02.html), [MFSA 2013-04](https://www.mozilla.org/security/announce/2013/mfsa2013-04.html), [MFSA 2013-05](https://www.mozilla.org/security/announce/2013/mfsa2013-05.html), [MFSA 2013-09](https://www.mozilla.org/security/announce/2013/mfsa2013-09.html), [MFSA 2013-11](https://www.mozilla.org/security/announce/2013/mfsa2013-11.html), [MFSA 2013-12](https://www.mozilla.org/security/announce/2013/mfsa2013-12.html), [MFSA 2013-15](https://www.mozilla.org/security/announce/2013/mfsa2013-15.html), [MFSA 2013-16](https://www.mozilla.org/security/announce/2013/mfsa2013-16.html), [MFSA 2013-17](https://www.mozilla.org/security/announce/2013/mfsa2013-17.html), [MFSA 2013-20](https://www.mozilla.org/security/announce/2013/mfsa2013-20.html))
+ - perl ([[!debsa2012 2586]])
+ - tiff ([[!debsa2012 2589]])
+ - ghostscript ([[!debsa2012 2595]])
+ - nss ([[!debsa2013 2599]])
+ - cups ([[!debsa2013 2600]])
+ - gnupg ([[!debsa2013 2601]])
+ - libxml2 ([[!debsa2012 2580]])

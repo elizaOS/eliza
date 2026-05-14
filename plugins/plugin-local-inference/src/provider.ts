@@ -86,9 +86,11 @@ interface LocalInferenceEmbedResult {
 interface LocalInferenceTextToSpeechService {
 	synthesizeSpeech?: (
 		text: string,
+		signal?: AbortSignal,
 	) => Promise<Uint8Array | ArrayBuffer | Buffer>;
 	textToSpeech?: (args: {
 		text: string;
+		signal?: AbortSignal;
 	}) => Promise<Uint8Array | ArrayBuffer | Buffer>;
 }
 
@@ -278,6 +280,14 @@ function extractSpeechText(params: TextToSpeechParams | string): string {
 	);
 }
 
+function extractSpeechSignal(
+	params: TextToSpeechParams | string,
+): AbortSignal | undefined {
+	return typeof params === "object" && params !== null
+		? params.signal
+		: undefined;
+}
+
 function ensureNonEmptyText(modelType: string, text: string): string {
 	const trimmed = text.trim();
 	if (!trimmed) {
@@ -452,11 +462,14 @@ function createTextToSpeechHandler() {
 			ModelType.TEXT_TO_SPEECH,
 			extractSpeechText(params),
 		);
+		const signal = extractSpeechSignal(params);
 		if (typeof service.synthesizeSpeech === "function") {
-			return normalizeAudioBytes(await service.synthesizeSpeech(text));
+			return normalizeAudioBytes(await service.synthesizeSpeech(text, signal));
 		}
 		if (typeof service.textToSpeech === "function") {
-			return normalizeAudioBytes(await service.textToSpeech({ text }));
+			return normalizeAudioBytes(
+				await service.textToSpeech({ text, ...(signal ? { signal } : {}) }),
+			);
 		}
 		throw unavailable(
 			ModelType.TEXT_TO_SPEECH,

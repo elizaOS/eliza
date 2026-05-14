@@ -1,0 +1,341 @@
+#!/bin/bash
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 NubsCarson and contributors
+#
+# First-run helper that creates an encrypted persistence partition on
+# the USB stick the user booted from. Mirrors the Tails persistence
+# model — LUKS-encrypted partition labeled "persistence" containing a
+# `persistence.conf` that declares which directories survive reboots.
+#
+# Flow:
+#   1. Detect the boot USB (the medium live-boot mounted).
+#   2. Confirm the USB has unallocated space (or an existing sdX3).
+#   3. Prompt for a passphrase (via systemd-ask-password — Plymouth UI).
+#   4. cryptsetup luksFormat the partition.
+#   5. mkfs.ext4 inside the unlocked container.
+#   6. Write the bundled persistence.conf to the new filesystem.
+#   7. Tell the user to reboot — live-boot will prompt for the
+#      passphrase on next boot and bind-mount the listed directories.
+#
+# Idempotent: re-running detects existing LUKS partitions and only
+# changes things if explicitly told to.
+#
+# Inspired by Tails' `tails-persistence-setup` (GPL-3.0-or-later) but
+# rewritten from scratch in shell (no python/GTK) to keep the surface
+# small and consistent with the chat-box UX. The shape of persistence.
+# conf and the choice to use LUKS over the live-boot probe mechanism
+# matches Tails by design — same kernel machinery, same UX promise.
+
+set -euo pipefail
+
+LOG_TAG="usbeliza-persistence-setup"
+log()   { printf '[%s] %s\n' "$LOG_TAG" "$*" >&2; }
+fatal() { log "ERROR: $*"; exit 1; }
+
+# --- 1. Detect the boot device ---
+# live-boot mounts the medium at /run/live/medium (Debian live-build's
+# modern path). The Tails-derived comment in this script's history said
+# /lib/live/mount/medium — that was an older convention and is wrong
+# on Trixie. We probe /run/live/medium first, /lib/live/mount/medium
+# as fallback for forward-compat with future live-boot rearranges.
+for medium in /run/live/medium /lib/live/mount/medium; do
+    [ -d "$medium" ] && break
+done
+[ -d "$medium" ] || fatal "not booted via live-boot (no medium mount point found) — this tool only runs on the live image"
+
+boot_partition="$(findmnt -no SOURCE "$medium" 2>/dev/null)"
+[ -n "$boot_partition" ] || fatal "could not determine boot partition (findmnt failed)"
+
+# Resolve to a parent disk. On hybrid ISOs written to a USB stick the
+# entire device (e.g. /dev/sda or /dev/vda) is the medium — `lsblk
+# PKNAME` on a whole-disk device returns empty. Fall back to treating
+# the medium itself as the disk in that case.
+parent="$(lsblk -no PKNAME "$boot_partition" 2>/dev/null | head -n1 || true)"
+if [ -n "$parent" ]; then
+    boot_disk="/dev/$parent"
+else
+    boot_disk="$boot_partition"
+fi
+
+log "boot partition: $boot_partition"
+log "boot disk:      $boot_disk"
+
+# --- 2. Decide where to put the persistence partition ---
+# Strategy: look for an existing unencrypted partition labeled
+# "persistence" first (re-running this tool after a previous setup).
+# If none, take the first unused partition on the disk, or grow the
+# partition table by one slot if the disk has unallocated space.
+
+# Two cases we treat as "already set up":
+#   1) cleartext ext4 with LABEL=persistence visible — happens AFTER
+#      live-boot has unlocked the persistence container this boot
+#   2) LUKS partition with LABEL=USBELIZA-PERSIST — happens BEFORE the
+#      user has entered the passphrase (sealed state). The script
+#      itself runs as a re-set-up if the previous attempt landed but
+#      the user didn't reboot yet, so we have to catch this case too.
+existing="$(blkid -t LABEL=persistence -o device 2>/dev/null | head -n1 || true)"
+if [ -z "$existing" ]; then
+    existing="$(blkid -t LABEL=USBELIZA-PERSIST -o device 2>/dev/null | head -n1 || true)"
+fi
+if [ -n "$existing" ]; then
+    log "found existing persistence partition at $existing"
+    if [ "${1:-}" != "--reformat" ]; then
+        log "found existing persistence — keeping existing partition intact."
+        log "if you want to wipe and start over, run: $0 --reformat"
+        # Exit 2 = "already set up" sentinel for the agent runner so the
+        # user gets a clearer message than "Done". 0 would be misleading
+        # because we didn't do anything; ≥1 with the substring above
+        # also works because the runner ORs stdout-match against exit.
+        exit 2
+    fi
+    target="$existing"
+else
+    # Pick the persistence partition slot. We MUST NOT pick the
+    # squashfs's own slot — writing LUKS headers there would brick
+    # the stick.
+    #
+    # Identify the squashfs slot first:
+    if echo "$boot_partition" | grep -qE '[0-9]+$'; then
+        squashfs_slot="$(echo "$boot_partition" | grep -oE '[0-9]+$' | tail -n1)"
+    else
+        # Whole-disk medium (hybrid ISO). live-boot mounted /dev/vda
+        # directly as iso9660 because the ISO's master record reads
+        # from offset 0. To find which GPT slot holds the squashfs
+        # payload: hybrid ISOs name that slot "Gap1" by convention.
+        # Fall back to the largest partition if naming differs.
+        squashfs_slot=""
+        if command -v sgdisk >/dev/null 2>&1; then
+            squashfs_slot="$(sudo sgdisk --print "$boot_disk" 2>/dev/null \
+                | awk '$NF == "Gap1" { print $1; exit }')"
+        fi
+        if [ -z "$squashfs_slot" ]; then
+            disk_name="$(basename "$boot_disk")"
+            largest_size=0
+            for part in $(lsblk -lno NAME "$boot_disk" 2>/dev/null | grep -E "^${disk_name}p?[0-9]+$"); do
+                slot_num="$(echo "$part" | grep -oE '[0-9]+$')"
+                size_bytes="$(lsblk -bno SIZE "/dev/$part" 2>/dev/null | head -n1 || echo 0)"
+                if [ "$size_bytes" -gt "$largest_size" ] 2>/dev/null; then
+                    largest_size="$size_bytes"
+                    squashfs_slot="$slot_num"
+                fi
+            done
+        fi
+        [ -n "$squashfs_slot" ] || squashfs_slot=0
+    fi
+    log "squashfs lives in slot ${squashfs_slot:-?}"
+
+    # Strategy: prefer a pre-existing unencrypted partition ABOVE the
+    # squashfs (this happens both when the user pre-partitioned their
+    # stick and when our test harness lays one down). Fall back to
+    # creating a new one if no candidate exists.
+    persist_part_num=""
+    target=""
+    disk_name="$(basename "$boot_disk")"
+    for part in $(lsblk -lno NAME "$boot_disk" 2>/dev/null | grep -E "^${disk_name}p?[0-9]+$"); do
+        slot_num="$(echo "$part" | grep -oE '[0-9]+$')"
+        # Skip slots at or below the squashfs
+        [ "$slot_num" -le "$squashfs_slot" ] && continue
+        # Skip already-encrypted partitions (someone else owns them)
+        fstype="$(blkid -o value -s TYPE "/dev/$part" 2>/dev/null || true)"
+        case "$fstype" in
+            crypto_LUKS|"")
+                # crypto_LUKS = already provisioned; empty = unformatted,
+                # claim it for persistence either way (LUKS-format will
+                # overwrite empty; LUKS-already errors via reformat gate)
+                persist_part_num="$slot_num"
+                target="/dev/$part"
+                break
+                ;;
+            iso9660|squashfs)
+                # The medium itself — never touch
+                continue
+                ;;
+            *)
+                # Some other formatted partition (user data). Skip it
+                # and keep looking. If we find nothing else we'll
+                # create a new partition.
+                continue
+                ;;
+        esac
+    done
+    if [ -z "$target" ]; then
+        # No existing candidate — we'll create a new partition. Find the
+        # first FREE slot (one past the highest existing partition) so
+        # we don't accidentally target an EFI/Gap slot that wasn't
+        # claimed by the loop above.
+        max_existing=0
+        for part in $(lsblk -lno NAME "$boot_disk" 2>/dev/null | grep -E "^${disk_name}p?[0-9]+$"); do
+            slot_num="$(echo "$part" | grep -oE '[0-9]+$')"
+            [ "$slot_num" -gt "$max_existing" ] && max_existing="$slot_num"
+        done
+        persist_part_num="$((max_existing + 1))"
+        case "$boot_disk" in
+            */nvme*|*/mmcblk*|*/loop*)
+                target="${boot_disk}p${persist_part_num}"
+                ;;
+            *)
+                target="${boot_disk}${persist_part_num}"
+                ;;
+        esac
+        log "no unencrypted partition above squashfs — will create $target (slot $persist_part_num)"
+    else
+        log "using existing slot $persist_part_num at $target for persistence"
+    fi
+
+    if [ -b "$target" ]; then
+        log "target partition $target is present; reusing it for persistence."
+    else
+        log "creating new partition $target via sfdisk on $boot_disk"
+        # `parted` and a stock `sfdisk --append` both fail here because
+        # /dev/sda is mounted whole-disk as iso9660 — their default
+        # BLKRRPART after writing the table errors with EBUSY and they
+        # treat that as a hard failure. `sfdisk --no-reread --force`
+        # writes the partition table anyway (the failure to reread is
+        # expected; we'll register the new entry ourselves via
+        # `partx -a`). Empty start/size fields → take next free LBA and
+        # grow to end-of-disk; type 83 = Linux filesystem.
+        if ! echo ', , 83' | sudo sfdisk --append --no-reread --force "$boot_disk" 2>&1 \
+                | sed 's/^/    sfdisk: /'; then
+            fatal "sfdisk failed to write partition entry on $boot_disk"
+        fi
+        # partx -a tells the kernel about the new partition without a
+        # full rescan (which would fail with EBUSY anyway). It complains
+        # about partitions 1-N already existing — that's fine, only the
+        # new slot needs to be added.
+        sudo partx -a "$boot_disk" 2>&1 | sed 's/^/    partx: /' || true
+        sudo udevadm settle 2>/dev/null || true
+        for i in 1 2 3 4 5; do
+            [ -b "$target" ] && break
+            sleep 1
+        done
+        [ -b "$target" ] || fatal "expected $target after sfdisk + partx; not present"
+        log "created $target"
+    fi
+fi
+
+# Sanity: LUKS2 with argon2id reserves ~16 MiB for the header + keyslots.
+# A partition smaller than ~32 MiB will luksFormat OK but luksOpen will
+# fail with "Requested offset is beyond real size of device". Catch that
+# now with a clearer error than the cryptsetup gibberish.
+size_bytes="$(sudo blockdev --getsize64 "$target" 2>/dev/null || echo 0)"
+if [ "$size_bytes" -lt $((32 * 1024 * 1024)) ]; then
+    fatal "target partition $target is only $size_bytes bytes — too small for LUKS persistence (need ≥32 MiB)"
+fi
+
+[ -b "$target" ] || fatal "target partition $target is not a block device after creation"
+log "target partition: $target"
+
+# --- 3. Read passphrase ---
+# Two callers: the chat-driven persistence flow (agent runner) pipes
+# the passphrase via stdin, one line, no trailing newline check needed
+# — that's the production path the user actually hits.
+#
+# For the rare power-user case where someone runs this script directly
+# on a TTY (no stdin redirect), we fall back to systemd-ask-password
+# so the prompt integrates with Plymouth on the splash.
+#
+# Confirmation is done in chat before we get here, so we don't re-ask.
+if [ -t 0 ] || [ ! -p /dev/stdin ]; then
+    # Heuristic: if stdin is a TTY OR not a pipe, assume interactive
+    # caller and use systemd-ask-password.
+    if [ -t 0 ]; then
+        passphrase="$(systemd-ask-password --no-tty "Choose a passphrase for your encrypted persistence on $target")"
+        confirm="$(systemd-ask-password --no-tty "Confirm the passphrase")"
+        [ "$confirm" = "$passphrase" ] || fatal "passphrases don't match — aborting"
+    else
+        # stdin isn't a tty and isn't a pipe either — read it anyway
+        IFS= read -r passphrase || true
+    fi
+else
+    # stdin is a pipe → agent-driven path. Read one line.
+    IFS= read -r passphrase || true
+fi
+[ -n "$passphrase" ] || fatal "empty passphrase — aborting"
+
+# --- 4. cryptsetup luksFormat ---
+# The kernel mounts the boot disk whole (as iso9660) at /run/live/medium,
+# which makes O_EXCL opens of /dev/sdaN fail with EBUSY — even though
+# the partition has no holders of its own. cryptsetup uses O_EXCL on
+# its target and bails with "Cannot use device /dev/sdaN which is in
+# use (already mapped or mounted)".
+#
+# Workaround: wrap the target in a loop device. losetup opens the
+# backing block device without O_EXCL, then exposes /dev/loopN as an
+# independent block device that cryptsetup can claim exclusively.
+# Writes to /dev/loopN propagate to the underlying partition sectors,
+# so the LUKS header lands on /dev/sdaN exactly as if we'd written
+# directly — and next boot's live-boot probe sees /dev/sdaN as
+# crypto_LUKS.
+log "wrapping $target in a loop device (kernel whole-disk lock workaround)"
+loopdev="$(sudo losetup -f --show "$target")" \
+    || fatal "losetup failed to attach $target"
+[ -b "$loopdev" ] || fatal "losetup returned non-block-device: $loopdev"
+log "loop device: $loopdev"
+
+mapname="usbeliza-persist-setup"
+cleanup_crypto() {
+    sudo cryptsetup luksClose "$mapname" 2>/dev/null || true
+    sudo losetup -d "$loopdev" 2>/dev/null || true
+}
+trap cleanup_crypto EXIT
+
+log "formatting LUKS container on $loopdev (THIS DESTROYS DATA ON $target)"
+# Pipe passphrase via stdin to luksFormat. The `-q` suppresses the "are
+# you sure?" prompt — we got the user's intent via the passphrase
+# confirm step above.
+printf '%s' "$passphrase" | sudo cryptsetup luksFormat \
+    --type luks2 \
+    --pbkdf argon2id \
+    --label "USBELIZA-PERSIST" \
+    --key-file=- \
+    -q "$loopdev" \
+    || fatal "luksFormat failed"
+
+# --- 5. Open it and create the filesystem ---
+printf '%s' "$passphrase" | sudo cryptsetup luksOpen \
+    --key-file=- \
+    "$loopdev" "$mapname" \
+    || fatal "luksOpen failed"
+
+log "creating ext4 filesystem inside the LUKS container"
+sudo mkfs.ext4 -L persistence -q "/dev/mapper/$mapname" \
+    || fatal "mkfs.ext4 failed"
+
+# --- 6. Write persistence.conf ---
+mountdir="$(mktemp -d)"
+sudo mount "/dev/mapper/$mapname" "$mountdir"
+log "writing persistence.conf"
+sudo tee "$mountdir/persistence.conf" >/dev/null <<'PCONF'
+# usbeliza persistence configuration
+#
+# Each line is "DIR [OPTIONS...]"  — live-boot will bind-mount the
+# named directory from the LUKS-decrypted volume into the live
+# filesystem on boot, after the passphrase prompt.
+#
+# Format reference: persistence.conf(5)
+
+# Generated apps + their state (the heart of usbeliza)
+/home/eliza/.eliza  union,source=eliza-home
+
+# Ollama models — keep them across reboots so we don't redownload.
+/home/eliza/.ollama  union,source=ollama-home
+
+# Local apt overlay for `connect to wifi` then `install foo` flows.
+/var/cache/apt/archives  union,source=apt-cache
+
+# NetworkManager known networks survive (no re-typing wifi passwords).
+/etc/NetworkManager/system-connections  union,source=nm-connections
+
+# SSH host keys — without persistence, the host fingerprint changes
+# every boot and downstream `ssh` clients trip the strict-host-key check.
+/etc/ssh  union,source=ssh-host
+PCONF
+
+sudo umount "$mountdir"
+rmdir "$mountdir"
+sudo cryptsetup luksClose "$mapname"
+sudo losetup -d "$loopdev"
+trap - EXIT
+
+log "✓ persistence partition ready at $target"
+log "✓ reboot to activate. live-boot will prompt for the passphrase on the splash."

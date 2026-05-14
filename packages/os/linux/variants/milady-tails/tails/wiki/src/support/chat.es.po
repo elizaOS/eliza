@@ -1,0 +1,79 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+msgid ""
+msgstr ""
+"Project-Id-Version: Tails\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2026-02-04 23:28+0000\n"
+"PO-Revision-Date: 2024-11-04 17:09+0000\n"
+"Last-Translator: victor dargallo <victordargallo@disroot.org>\n"
+"Language-Team: Spanish <http://translate.tails.net/projects/tails/chat/es/>\n"
+"Language: es\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.3\n"
+
+#. type: Content of: outside any tag (error?)
+#, fuzzy
+#| msgid "[[!meta title=\"Chat\"]]\n"
+msgid "[[!meta title=\"Tor users chat room\"]]"
+msgstr "[[!meta title=\"Chat\"]]\n"
+
+#. type: Content of: <p>
+msgid ""
+"Join the [[Tor users chat room on IRC|https://support.torproject.org/get-in-"
+"touch/chat-with-us/]] to ask questions about Tails."
+msgstr ""
+
+#~ msgid "Join our XMPP chat room to ask questions about Tails."
+#~ msgstr "Únete a nuestro chat XMPP para preguntar sobre Tails."
+
+#~ msgid ""
+#~ "To do so, you need an XMPP account. You can sign up for an XMPP account "
+#~ "at [Disroot](https://disroot.org/services/xmpp)  or any other XMPP "
+#~ "account provider."
+#~ msgstr ""
+#~ "Para ello, necesitas una cuenta de XMPP. Puedes registrarte para obtener "
+#~ "una cuenta de XMPP en [Disroot](https://disroot.org/services/xmpp) o en "
+#~ "cualquier otro proveedor de cuentas XMPP."
+
+#~ msgid ""
+#~ "Then configure your preferred instant messaging client, for example "
+#~ "[[Pidgin|http://www.pidgin.im/]], which runs on Windows, GNU/Linux, and "
+#~ "macOS, to connect to:"
+#~ msgstr ""
+#~ "Entonces, configura tu cliente de mensajería instantánea preferido, por "
+#~ "ejemplo [[Pidgin|http://www.pidgin.im/]], que funciona en Windows, GNU/"
+#~ "Linux, y macOS, para conectarte a:"
+
+#, no-wrap
+#~ msgid ""
+#~ "<ul>\n"
+#~ "  <li>Room: <code>tails</code></li>\n"
+#~ "  <li>Server: <code>chat.disroot.org</code></li>\n"
+#~ "</ul>\n"
+#~ msgstr ""
+#~ "<ul>\n"
+#~ "  <li>Sala: <code>tails</code></li>\n"
+#~ "  <li>Servidor: <code>chat.disroot.org</code></li>\n"
+#~ "</ul>\n"
+
+#, fuzzy
+#~| msgid "room: `tails`"
+#~ msgid "Room: `tails`"
+#~ msgstr "room: `tails`"
+
+#, fuzzy
+#~| msgid "server: `chat.disroot.org`"
+#~ msgid "Server: `chat.disroot.org`"
+#~ msgstr "servidor: `chat.disroot.org`"
+
+#~ msgid "Use TLS/SSL to connect!"
+#~ msgstr "¡Usa TLS/SSL para conectarte!"
+
+#~ msgid "server: `conference.riseup.net`"
+#~ msgstr "server: `conference.riseup.net`"

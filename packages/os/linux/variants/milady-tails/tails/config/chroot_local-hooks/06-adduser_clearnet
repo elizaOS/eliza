@@ -1,0 +1,13 @@
+#!/bin/sh
+
+set -e
+
+# Create the clear user.
+#
+# We run unsafe-browser under this user, so that we can allowlist its
+# non-Torified outgoing packets.
+
+echo "Creating the clearnet user"
+
+addgroup --system --quiet --gid 123 clearnet
+adduser --system --quiet --uid 114 --gid 123 clearnet

@@ -11,7 +11,6 @@ _TRAINING_ROOT = Path(__file__).resolve().parents[2]
 if str(_TRAINING_ROOT) not in sys.path:
     sys.path.insert(0, str(_TRAINING_ROOT))
 
-import pytest
 
 from scripts.manifest import stage_real_eliza1_bundle as stage  # noqa: E402
 

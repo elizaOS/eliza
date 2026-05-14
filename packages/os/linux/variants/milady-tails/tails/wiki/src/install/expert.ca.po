@@ -1,0 +1,622 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2026-04-01 00:15+0000\n"
+"PO-Revision-Date: 2026-04-06 12:18+0000\n"
+"Last-Translator: victor dargallo <victordargallo@disroot.org>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: ca\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Install Tails from Debian or Ubuntu using the command line and GnuPG\"]]\n"
+msgstr "[[!meta title=\"Instal·lar Tails des de Debian o Ubuntu mitjançant la línia d'ordres i GnuPG\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta stylesheet=\"inc/stylesheets/overview\" rel=\"stylesheet\" title=\"\"]]\n"
+msgstr "[[!meta stylesheet=\"inc/stylesheets/overview\" rel=\"stylesheet\" title=\"\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta stylesheet=\"inc/stylesheets/download\" rel=\"stylesheet\" title=\"\"]]\n"
+msgstr "[[!meta stylesheet=\"inc/stylesheets/download\" rel=\"stylesheet\" title=\"\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta stylesheet=\"doc/about/warnings\" rel=\"stylesheet\" title=\"\"]]\n"
+msgstr "[[!meta stylesheet=\"doc/about/warnings\" rel=\"stylesheet\" title=\"\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta stylesheet=\"inc/stylesheets/steps\" rel=\"stylesheet\" title=\"\"]]\n"
+msgstr "[[!meta stylesheet=\"inc/stylesheets/steps\" rel=\"stylesheet\" title=\"\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta stylesheet=\"inc/stylesheets/expert\" rel=\"stylesheet\" title=\"\"]]\n"
+msgstr "[[!meta stylesheet=\"inc/stylesheets/expert\" rel=\"stylesheet\" title=\"\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"install/inc/overview\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"install/inc/overview.ca\" raw=\"yes\" sort=\"age\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"install/inc/steps/warnings.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"install/inc/steps/warnings.inline.ca\" raw=\"yes\" sort=\"age\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"verify-key\" class=\"step\">Verify the Tails signing key</h1>\n"
+msgstr "<h1 id=\"verify-key\" class=\"step\">Verifiqueu la clau de signatura de Tails</h1>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"tip\">\n"
+msgstr "<div class=\"tip\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>If you already certified the Tails signing key with your own key, you\n"
+"can skip this step and start [[downloading and verifying the USB\n"
+"image|expert#download]].</p>\n"
+msgstr ""
+"<p>Si ja heu certificat la clau de signatura de Tails amb la vostra pròpia clau,\n"
+"podeu saltar aquest pas i començar a [[baixar i verificar la imatge\n"
+"USB|expert#download]].</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+#. type: Plain text
+msgid ""
+"In this step, you will download and verify the *Tails signing key* which is "
+"the OpenPGP key that is used to cryptographically sign the Tails USB image."
+msgstr ""
+"En aquest pas, baixareu i verificareu la *clau de signatura de Tails*, que "
+"és la clau OpenPGP que s'utilitza per signar criptogràficament la imatge USB "
+"de Tails."
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"note\">\n"
+msgstr "<div class=\"note\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>To follow these instructions you need to have your own OpenPGP\n"
+"key.</p>\n"
+msgstr "<p>Per seguir aquestes instruccions, heu de tenir la vostra pròpia clau OpenPGP.</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>To learn how to create yourself an OpenPGP key, see\n"
+"<a href=\"https://riseup.net/en/security/message-security/openpgp/gpg-keys\">Managing\n"
+"OpenPGP Keys</a> by <em>Riseup</em>.</p>\n"
+msgstr ""
+"OpenPGPOpenPGP<p>Per aprendre a crear una clau OpenPGP, vegeu la\n"
+"<a href=\"https://riseup.net/en/security/message-security/openpgp/gpg-keys\">Gestió\n"
+"de claus OpenPGP</a> de <em>Riseup</em>.</p>\n"
+
+#. type: Plain text
+msgid ""
+"This verification technique uses the OpenPGP Web of Trust and the "
+"certification made by official Debian developers on the Tails signing key."
+msgstr ""
+"Aquesta tècnica de verificació utilitza la xarxa de confiança d'OpenPGP i la "
+"certificació feta pels desenvolupadors oficials de Debian a la clau de "
+"signatura de Tails."
+
+#. type: Bullet: '1. '
+#, fuzzy
+#| msgid "Certify the Tails signing key with your own key:"
+msgid "Import the Tails signing key in your *GnuPG* keyring:"
+msgstr "Certifiqueu la clau de signatura de Tails amb la vostra pròpia clau:"
+
+#. type: Plain text
+#, no-wrap
+msgid "   <p class=\"command\">wget https://tails.net/tails-signing.key</p>\n"
+msgstr "   <p class=\"command\">wget https://tails.net/tails-signing.key</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "   <p class=\"command\">gpg --import < tails-signing.key</p>\n"
+msgstr "   <p class=\"command\">gpg --import < tails-signing.key</p>\n"
+
+#. type: Bullet: '1. '
+msgid ""
+"Install the Debian keyring. It contains the OpenPGP keys of all Debian "
+"developers:"
+msgstr ""
+"Instal·leu l'anell de claus de Debian. Conté les claus OpenPGP de tots els "
+"desenvolupadors de Debian:"
+
+#. type: Plain text
+#, no-wrap
+msgid "   <p class=\"command\">sudo apt update && sudo apt install debian-keyring</p>\n"
+msgstr "   <p class=\"command\">sudo apt update && sudo apt install debian-keyring</p>\n"
+
+#. type: Bullet: '1. '
+msgid ""
+"Import the OpenPGP key of [[!wikipedia Chris_Lamb_(software_developer) "
+"desc=\"Chris Lamb\"]], a former Debian Project Leader, from the Debian "
+"keyring into your keyring:"
+msgstr ""
+"Importeu la clau OpenPGP de [[!wikipedia Chris_Lamb_(software_developer) "
+"desc=\"Chris Lamb\"]], un antic líder del projecte Debian, des de l'anell de "
+"claus de Debian al vostre anell de claus:"
+
+#. type: Plain text
+#, no-wrap
+msgid "   <p class=\"command\">gpg --keyring=/usr/share/keyrings/debian-keyring.gpg --export chris@chris-lamb.co.uk | gpg --import</p>\n"
+msgstr "   <p class=\"command\">gpg --keyring=/usr/share/keyrings/debian-keyring.gpg --export chris@chris-lamb.co.uk | gpg --import</p>\n"
+
+#. type: Bullet: '1. '
+msgid "Verify the certifications made on the Tails signing key:"
+msgstr "Verifiqueu les certificacions fetes a la clau de signatura de Tails:"
+
+#. type: Plain text
+#, no-wrap
+msgid "   <p class=\"command\">gpg --keyid-format 0xlong --check-sigs A490D0F4D311A4153E2BB7CADBB802B258ACD84F</p>\n"
+msgstr "   <p class=\"command\">gpg --keyid-format 0xlong --check-sigs A490D0F4D311A4153E2BB7CADBB802B258ACD84F</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "   In the output of this command, look for the following line:\n"
+msgstr "   Al resultat d'aquesta ordre, cerqueu la línia següent:\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "       sig!2        0x1E953E27D4311E58 2020-03-19  Chris Lamb <chris@chris-lamb.co.uk>\n"
+msgstr "       sig!2        0x1E953E27D4311E58 2020-03-19  Chris Lamb <chris@chris-lamb.co.uk>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   Here, `sig!2` means that Chris\n"
+"   Lamb verified and certified the Tails signing key with his key and a level 2 check.\n"
+msgstr ""
+"   Aquí, `sig!2` significa que Chris\n"
+"   Lamb va verificar i certificar la clau de signatura de Tails amb la seva clau i un control de nivell 2.\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   It is also possible to verify the certifications made by other\n"
+"   people. Their name and email address appear in the list of\n"
+"   certification if you have their key in your keyring.\n"
+msgstr ""
+"   També és possible verificar les certificacions realitzades per altres\n"
+"   persones. El seu nom i adreça electrònica apareixen a la llista de\n"
+"   certificació si teniu la seva clau al vostre clauer.\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   <div class=\"caution\">\n"
+"   <p>If the verification of the certification failed, then you might\n"
+"   have downloaded a malicious version of the Tails signing key or our\n"
+"   instructions might be outdated.\n"
+"   Please [[get in touch with us|support/talk]].</p>\n"
+"   </div>\n"
+msgstr ""
+"   <div class=\"caution\">\n"
+"   <p>Si la verificació de la certificació ha fallat, és possible que\n"
+"   hagueu descarregat una versió maliciosa de la clau de signatura de Tails o\n"
+"   les nostres instruccions poden estar obsoletes.\n"
+"   Si us plau, [[contacteu amb nosaltres|support/talk]].</p>\n"
+"   </div>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   <div class=\"tip\">\n"
+"   <p>The line <code>175 signatures not checked due to missing keys</code> or similar\n"
+"   refers to the certifications (also called <i>signatures</i>) made by other public\n"
+"   keys that are not in your keyring. This is not a problem.</p>\n"
+"   </div>\n"
+msgstr ""
+"   <div class=\"tip\">\n"
+"   <p>La línia <code>175 signatures no comprovades perquè falten claus</code> o similar\n"
+"   fa referència a les certificacions (també anomenades <i>signatures</i>) fetes per altres claus\n"
+"   públiques que no són al vostre anell de claus. Això no és un problema.</p>\n"
+"   </div>\n"
+
+#. type: Bullet: '1. '
+msgid "Certify the Tails signing key with your own key:"
+msgstr "Certifiqueu la clau de signatura de Tails amb la vostra pròpia clau:"
+
+#. type: Plain text
+#, no-wrap
+msgid "   <p class=\"command\">gpg --lsign-key A490D0F4D311A4153E2BB7CADBB802B258ACD84F</p>\n"
+msgstr "   <p class=\"command\">gpg --lsign-key A490D0F4D311A4153E2BB7CADBB802B258ACD84F</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"download\" class=\"step\">Download Tails</h1>\n"
+msgstr "<h1 id=\"download\" class=\"step\">Baixar Tails</h1>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"step-image\">[[!img inc/infography/download.png link=\"no\" alt=\"\"]]</div>\n"
+msgstr "<div class=\"step-image\">[[!img inc/infography/download.png link=\"no\" alt=\"\"]]</div>\n"
+
+#. type: Bullet: '1. '
+msgid "Download the USB image:"
+msgstr "Baixeu la imatge USB:"
+
+#. type: Plain text
+#, no-wrap
+msgid "   <p class=\"command\">wget --continue [[!inline pages=\"inc/stable_amd64_img_url\" raw=\"yes\" sort=\"age\"]]</p>\n"
+msgstr "   <p class=\"command\">wget --continue [[!inline pages=\"inc/stable_amd64_img_url\" raw=\"yes\" sort=\"age\"]]</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"verify\" class=\"step\">Verify your download</h1>\n"
+msgstr "<h1 id=\"verify\" class=\"step\">Verifiqueu la vostra baixada</h1>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"step-image\">[[!img inc/infography/verify.png link=\"no\" alt=\"\"]]</div>\n"
+msgstr "<div class=\"step-image\">[[!img inc/infography/verify.png link=\"no\" alt=\"\"]]</div>\n"
+
+#
+#. type: Plain text
+msgid ""
+"In this step, you will verify your download using the Tails signing key."
+msgstr ""
+"En aquest pas, verificareu la vostra baixada mitjançant la clau de signatura "
+"de Tails."
+
+#. type: Bullet: '1. '
+msgid "Download the signature of the USB image:"
+msgstr "Baixeu la signatura de la imatge USB:"
+
+#. type: Plain text
+#, no-wrap
+msgid "   <p class=\"command\">wget [[!inline pages=\"inc/stable_amd64_img_sig_url\" raw=\"yes\" sort=\"age\"]]</p>\n"
+msgstr "   <p class=\"command\">wget [[!inline pages=\"inc/stable_amd64_img_sig_url\" raw=\"yes\" sort=\"age\"]]</p>\n"
+
+#. type: Bullet: '1. '
+msgid "Verify that the USB image is signed by the Tails signing key:"
+msgstr ""
+"Comproveu que la imatge USB estigui signada amb la clau de signatura de "
+"Tails:"
+
+#. type: Plain text
+#, no-wrap
+msgid "   <p class=\"command\">[[!inline pages=\"inc/stable_amd64_img_gpg_verify\" raw=\"yes\" sort=\"age\"]]</p>\n"
+msgstr "   <p class=\"command\">[[!inline pages=\"inc/stable_amd64_img_gpg_verify\" raw=\"yes\" sort=\"age\"]]</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "   The output of this command should be the following:\n"
+msgstr "   La sortida d'aquesta ordre hauria de ser la següent:\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "   <p class=\"code\">[[!inline pages=\"inc/stable_amd64_img_gpg_signature_output\" raw=\"yes\" sort=\"age\"]]</p>\n"
+msgstr "   <p class=\"code\">[[!inline pages=\"inc/stable_amd64_img_gpg_signature_output\" raw=\"yes\" sort=\"age\"]]</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "   Verify in this output that:\n"
+msgstr "   Comproveu en aquesta sortida que:\n"
+
+#. type: Bullet: '   - '
+msgid "The date of the signature is the same."
+msgstr "La data de la signatura és la mateixa."
+
+#. type: Bullet: '   - '
+msgid ""
+"The signature is marked as `Good signature` since you certified the Tails "
+"signing key with your own key."
+msgstr ""
+"La signatura està marcada com a `Bona signatura`ja que heu certificat la "
+"clau de signatura de Tails amb la vostra pròpia clau."
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"install\" class=\"step\">Install Tails using <code>dd</code></h1>\n"
+msgstr "<h1 id=\"install\" class=\"step\">Instal·lar Tails mitjançant <code>dd</code></h1>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"step-image\">[[!img inc/infography/install-tails.png link=\"no\" alt=\"\"]]</div>\n"
+msgstr "<div class=\"step-image\">[[!img inc/infography/install-tails.png link=\"no\" alt=\"\"]]</div>\n"
+
+#. type: Bullet: '1. '
+msgid ""
+"Make sure that the USB stick on which you want to install Tails is unplugged."
+msgstr ""
+"Assegureu-vos que el llapis USB on voleu instal·lar Tails estigui "
+"desconnectat."
+
+#. type: Bullet: '1. '
+msgid "Execute the following command:"
+msgstr "Executeu l'ordre següent:"
+
+#. type: Plain text
+#, no-wrap
+msgid "   <p class=\"command\">ls -1 /dev/sd?</p>\n"
+msgstr "   <p class=\"command\">ls -1 /dev/sd?</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "   It returns a list of the storage devices on the system. For example:\n"
+msgstr "   Retorna una llista dels dispositius d'emmagatzematge del sistema. Per exemple:\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "       dev/sda\n"
+msgstr "       dev/sda\n"
+
+#. type: Bullet: '1. '
+msgid "Plug in the USB stick on which you want to install Tails."
+msgstr "Connecteu el llapis USB on voleu instal·lar Tails."
+
+#. type: Plain text
+#, no-wrap
+msgid "   <div class=\"caution\">\n"
+msgstr "   <div class=\"caution\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "   <p>All the data on this USB stick will be lost.</p>\n"
+msgstr "   <p>Totes les dades d'aquest llapis USB es perdran.</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "   <p>Some data might still be recovered using advanced forensics tools.</p>\n"
+msgstr "   <p>Algunes dades encara es podrien recuperar mitjançant eines forenses avançades.</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "   </div>\n"
+msgstr "   </div>\n"
+
+#. type: Bullet: '1. '
+msgid "Execute again the same command:"
+msgstr "Torneu a executar la mateixa ordre:"
+
+#. type: Plain text
+#, no-wrap
+msgid "   Your USB stick appears as a new device in the list.\n"
+msgstr "   El vostre llapis USB apareix com a dispositiu nou a la llista.\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"       /dev/sda\n"
+"       /dev/sdb\n"
+msgstr ""
+"       /dev/sda\n"
+"       /dev/sdb\n"
+
+#. type: Bullet: '1. '
+msgid "Take note of the *device name* of your USB stick."
+msgstr "Preneu nota del *nom del dispositiu* del vostre llapis USB."
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   In this example, the device name of the USB stick is\n"
+"   `/dev/sdb`. Yours might be different.\n"
+msgstr ""
+"   En aquest exemple, el nom del dispositiu del llapis USB és\n"
+"   `/dev/sdb`. El vostre pot ser diferent.\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "   <p>You might overwrite any hard disk on the computer.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   <p>If you are not sure about the device, stop proceeding.</p>\n"
+msgstr ""
+
+#. type: Bullet: '1. '
+#, fuzzy
+#| msgid ""
+#| "Execute the following commands to copy the USB image that you downloaded "
+#| "earlier to the USB stick."
+msgid ""
+"Execute the following commands to copy the USB image that you downloaded "
+"earlier to the USB stick. Replace:"
+msgstr ""
+"Executeu les ordres següents per copiar la imatge USB que heu baixat "
+"anteriorment al llapis USB."
+
+#. type: Bullet: '   - '
+msgid ""
+"<span class=\"command-placeholder\">tails.img</span> with the path to the "
+"USB image"
+msgstr ""
+"<span class=\"command-placeholder\">tails.img</span> amb el camí a la imatge "
+"USB"
+
+#. type: Bullet: '   - '
+msgid ""
+"<span class=\"command-placeholder\">device</span> with the device name found "
+"in step 5"
+msgstr ""
+"<span class=\"command-placeholder\">dispositiu</span> amb el nom del "
+"dispositiu que es troba al pas 5"
+
+#. type: Plain text
+#, no-wrap
+msgid "   <p class=\"command-template\">dd if=<span class=\"command-placeholder\">tails.img</span> of=<span class=\"command-placeholder\">device</span> bs=16M oflag=direct status=progress</p>\n"
+msgstr "   <p class=\"command-template\">dd if=<span class=\"command-placeholder\">tails.img</span> of=<span class=\"command-placeholder\">dispositiu</span> bs=16M oflag=direct status=progress</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "   You should get something like this:\n"
+msgstr "   Hauríeu d'obtenir alguna cosa com això:\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "   <p class=\"command-template\">dd if=/home/user/tails-amd64-3.12.img of=/dev/sdb bs=16M oflag=direct status=progress</p>\n"
+msgstr "   <p class=\"command-template\">dd if=/home/user/tails-amd64-3.12.img of=/dev/sdb bs=16M oflag=direct status=progress</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   If no error message is returned, Tails is being copied on the USB\n"
+"   stick. The copy takes some time, generally a few minutes.\n"
+msgstr ""
+"   Si no es retorna cap missatge d'error, Tails s'està copiant al llapis\n"
+"   USB. La còpia triga un temps, generalment uns minuts.\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "   <div class=\"note\">\n"
+msgstr "   <div class=\"note\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   <p>If you get a <code>Permission denied</code> error, try\n"
+"   adding <code>sudo</code> at the beginning of the command:</p>\n"
+msgstr ""
+"   <p>Si obteniu un error de <code>Permís denegat</code>, proveu\n"
+"   d'afegir <code>sudo</code> al principi de l'ordre:</p>\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "   <p class=\"command-example\">sudo dd if=<span class=\"command-placeholder\">tails.img</span> of=<span class=\"command-placeholder\">device</span> bs=16M oflag=direct status=progress</p>\n"
+msgid "   <p class=\"command-template\">sudo dd if=<span class=\"command-placeholder\">tails.img</span> of=<span class=\"command-placeholder\">device</span> bs=16M oflag=direct status=progress</p>\n"
+msgstr "   <p class=\"command-example\">dd if=<span class=\"command-placeholder\">tails.img</span> of=<span class=\"command-placeholder\">dispositiu</span> bs=16M oflag=direct status=progress</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "   The installation is complete after the command prompt reappears.\n"
+msgstr "   La instal·lació s'haurà completat un cop torni a aparèixer l'indicador d'ordres.\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"install/inc/steps/restart_first_time.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"install/inc/steps/restart_first_time.inline.ca\" raw=\"yes\" sort=\"age\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"install/inc/steps/welcome.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"install/inc/steps/welcome.inline.ca\" raw=\"yes\" sort=\"age\"]]\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "   <div class=\"caution\">\n"
+#~ "   <p>If you are unsure about the device name, you should stop proceeding or\n"
+#~ "   <strong>you risk overwriting any hard disk on the system</strong>.</p>\n"
+#~ "   </div>\n"
+#~ msgstr ""
+#~ "   <div class=\"caution\">\n"
+#~ "   <p>Si no esteu segur del nom del dispositiu, millor no continueu o\n"
+#~ "   <strong>correu el risc de sobreescriure qualsevol disc dur del sistema</strong>.</p>\n"
+#~ "   </div>\n"
+
+#, no-wrap
+#~ msgid "   Replace:\n"
+#~ msgstr "   Substituïu:\n"
+
+#~ msgid ""
+#~ "Import the Tails signing key in your <span class=\"application\">GnuPG</"
+#~ "span> keyring:"
+#~ msgstr ""
+#~ "Importeu la clau de signatura de Tails al vostre anell de claus <span "
+#~ "class=\"application\">GnuPG</span>:"
+
+#, no-wrap
+#~ msgid ""
+#~ "       wget https://tails.net/tails-signing.key\n"
+#~ "       gpg --import < tails-signing.key\n"
+#~ msgstr ""
+#~ "       wget https://tails.net/tails-signing.key\n"
+#~ "       gpg --import < tails-signing.key\n"
+
+#, no-wrap
+#~ msgid "   <p class=\"pre command-output\">/dev/sda</p>\n"
+#~ msgstr "   <p class=\"pre command-output\">/dev/sda</p>\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "   <p class=\"pre command-output\">/dev/sda\n"
+#~ "   /dev/sdb</p>\n"
+#~ msgstr ""
+#~ "   <p class=\"pre command-output\">/dev/sda\n"
+#~ "   /dev/sdb</p>\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "   <p class=\"pre command\">sudo dd if=<span class=\"command-placeholder\">tails.img</span> of=<span class=\"command-placeholder\">device</span> bs=16M oflag=direct status=progress</p>\n"
+#~ "   </div>\n"
+#~ msgstr ""
+#~ "   <p class=\"pre command\">sudo dd if=<span class=\"command-placeholder\">tails.img</span> of=<span class=\"command-placeholder\">dispositiu</span> bs=16M oflag=direct status=progress</p>\n"
+#~ "   </div>\n"
+
+#, no-wrap
+#~ msgid "[[!inline pages=\"install/inc/steps/create_persistence.inline\" raw=\"yes\" sort=\"age\"]]\n"
+#~ msgstr "[[!inline pages=\"install/inc/steps/create_persistence.inline.ca\" raw=\"yes\" sort=\"age\"]]\n"
+
+#, no-wrap
+#~ msgid "[[!meta robots=\"noindex\"]]\n"
+#~ msgstr "[[!meta robots=\"noindex\"]]\n"
+
+#~ msgid ""
+#~ "   a. To make a non-exportable certification that will never be shared\n"
+#~ "      with others:\n"
+#~ msgstr ""
+#~ "   a. Um eine nicht-exportierbare Zertifizierung zu erstellen, die "
+#~ "niemals mit\n"
+#~ "      anderen geteilt wird:\n"
+
+#~ msgid ""
+#~ "   b. To make an exportable certification of the Tails signing\n"
+#~ "      key and publish it on the public key servers:\n"
+#~ msgstr ""
+#~ "   b. Um eine exportierbare Zertifizierung des Signaturschlüssels von "
+#~ "Tails\n"
+#~ "      zu erstellen und diese auf den öffentlichen Schlüsselservern zu "
+#~ "veröffentlichen:\n"
+
+#~ msgid ""
+#~ "          gpg --sign-key A490D0F4D311A4153E2BB7CADBB802B258ACD84F\n"
+#~ "          gpg --send-keys A490D0F4D311A4153E2BB7CADBB802B258ACD84F\n"
+#~ msgstr ""
+#~ "          gpg --sign-key A490D0F4D311A4153E2BB7CADBB802B258ACD84F\n"
+#~ "          gpg --send-keys A490D0F4D311A4153E2BB7CADBB802B258ACD84F\n"
+
+#~ msgid ""
+#~ "      Doing so allows people who verified\n"
+#~ "      your key to verify your certification and, as a consequence, build\n"
+#~ "      more trust in the Tails signing key.\n"
+#~ msgstr ""
+#~ "      Dies erlaubt es Personen, die Ihren Schlüssel verifiziert\n"
+#~ "      haben, Ihre Zertifizierung zu verifizieren und als Konsequenz "
+#~ "daraus\n"
+#~ "      mehr Vertrauen in den Signaturschlüssel von Tails aufzubauen.\n"
+
+#~ msgid ""
+#~ "       sig! 0x9C31503C6D866396 2015-02-03  Stefano Zacchiroli "
+#~ "<zack@upsilon.cc>\n"
+#~ msgstr ""
+#~ "       sig! 0x9C31503C6D866396 2015-02-03  Stefano Zacchiroli "
+#~ "<zack@upsilon.cc>\n"

@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-coding-tools",
-  "version": "2.0.0-beta.1",
+  "version": "2.0.0-beta.2",
   "description": "Native Claude-Code-style coding tools (Read, Write, Edit, Bash, Grep, Glob, etc.) for the Eliza agent.",
   "type": "module",
   "main": "dist/index.js",
@@ -48,8 +48,8 @@
   "author": "elizaOS",
   "license": "MIT",
   "dependencies": {
-    "@elizaos/core": "2.0.0-beta.1",
-    "@elizaos/shared": "2.0.0-beta.1",
+    "@elizaos/core": "workspace:*",
+    "@elizaos/shared": "workspace:*",
     "@vscode/ripgrep": "^1.15.9",
     "zod": "^4.4.3"
   },

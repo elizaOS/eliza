@@ -6,7 +6,9 @@ small Eliza-1 tiers can add Kokoro to already-built raw/base bundles without
 re-running text quantization or DFlash staging. The script downloads the
 canonical Kokoro ONNX export and bundled voice packs, adds them to
 ``files.voice`` in ``eliza-1.manifest.json``, writes provenance evidence, and
-regenerates ``checksums/SHA256SUMS``.
+regenerates ``checksums/SHA256SUMS``. For small-tier releases, pass
+``--kokoro-only`` to remove OmniVoice TTS payloads from the manifest and
+bundle so Kokoro is the only shipped/default TTS backend.
 """
 
 from __future__ import annotations
@@ -16,7 +18,6 @@ import hashlib
 import json
 import os
 import shutil
-import sys
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -220,6 +221,7 @@ def _merge_manifest_voice_entries(
     *,
     repo_id: str,
     revision: str | None,
+    kokoro_only: bool,
 ) -> None:
     files = manifest.setdefault("files", {})
     if not isinstance(files, dict):
@@ -227,15 +229,18 @@ def _merge_manifest_voice_entries(
     voice = files.setdefault("voice", [])
     if not isinstance(voice, list):
         raise ValueError("manifest.files.voice must be a list")
-    keep = [
-        entry
-        for entry in voice
-        if not (
-            isinstance(entry, dict)
-            and isinstance(entry.get("path"), str)
-            and entry["path"].startswith(f"{KOKORO_RELEASE_ROOT}/")
-        )
-    ]
+    keep = []
+    for entry in voice:
+        if not isinstance(entry, dict) or not isinstance(entry.get("path"), str):
+            if not kokoro_only:
+                keep.append(entry)
+            continue
+        path = entry["path"]
+        if path.startswith(f"{KOKORO_RELEASE_ROOT}/"):
+            continue
+        if kokoro_only:
+            continue
+        keep.append(entry)
     for item in staged:
         if item.dry_run:
             continue
@@ -249,9 +254,26 @@ def _merge_manifest_voice_entries(
         if isinstance(voice_lineage, dict):
             marker = f"{repo_id}@{revision or 'main'}"
             base = str(voice_lineage.get("base") or "")
-            if marker not in base:
+            if kokoro_only:
+                voice_lineage["base"] = marker
+            elif marker not in base:
                 voice_lineage["base"] = f"{base}; {marker}" if base else marker
             voice_lineage.setdefault("license", "apache-2.0")
+
+
+def _prune_non_kokoro_tts_files(bundle_dir: Path) -> list[str]:
+    """Remove OmniVoice TTS payloads from a Kokoro-only small-tier bundle."""
+
+    removed: list[str] = []
+    tts_dir = bundle_dir / "tts"
+    if not tts_dir.is_dir():
+        return removed
+    for path in sorted(tts_dir.glob("omnivoice-*.gguf")):
+        if path.is_file():
+            rel = path.relative_to(bundle_dir).as_posix()
+            path.unlink()
+            removed.append(rel)
+    return removed
 
 
 def _merge_lineage_json(bundle_dir: Path, *, repo_id: str, revision: str | None) -> None:
@@ -297,6 +319,7 @@ def stage_kokoro_bundle(
     voices: Sequence[str] = DEFAULT_VOICES,
     link_mode: str = "copy",
     dry_run: bool = False,
+    kokoro_only: bool = False,
 ) -> dict[str, Any]:
     bundle_dir = bundle_dir.resolve()
     if not bundle_dir.is_dir():
@@ -324,6 +347,7 @@ def stage_kokoro_bundle(
         "repo": repo_id,
         "revision": revision,
         "voices": list(voices),
+        "kokoroOnly": kokoro_only,
         "files": [asdict(item) for item in staged],
         "dryRun": dry_run,
     }
@@ -337,7 +361,10 @@ def stage_kokoro_bundle(
         staged,
         repo_id=repo_id,
         revision=revision,
+        kokoro_only=kokoro_only,
     )
+    if kokoro_only:
+        report["removed"] = _prune_non_kokoro_tts_files(bundle_dir)
     _write_manifest(bundle_dir, manifest)
     _merge_lineage_json(bundle_dir, repo_id=repo_id, revision=revision)
     _write_license(bundle_dir)
@@ -370,6 +397,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--repo-id", default=KOKORO_REPO)
     ap.add_argument("--voice", action="append", dest="voices")
     ap.add_argument("--link-mode", choices=("copy", "hardlink"), default="copy")
+    ap.add_argument("--kokoro-only", action="store_true")
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--report", type=Path)
     args = ap.parse_args(argv)
@@ -387,6 +415,7 @@ def main(argv: list[str] | None = None) -> int:
             voices=voices,
             link_mode=args.link_mode,
             dry_run=args.dry_run,
+            kokoro_only=args.kokoro_only,
         )
         for bundle_dir in bundle_dirs
     ]

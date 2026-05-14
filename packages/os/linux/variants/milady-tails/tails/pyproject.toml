@@ -1,0 +1,150 @@
+[tool.codespell]
+ignore-words-list = 'aNULL,bootup,debbug,discreet,FileTest,fpr,GIR,isnt,Musil,nd,NotIn,parm,otherways,Shotcut,Thi,TorK,trough'
+uri-ignore-words-list = 'bund,ned'
+skip = 'Changelog,changelog,./po/*,forge.js,./config/binary_rootfs/squashfs.sort,./config/chroot_local-includes/etc/apparmor.d/disable/usr.bin.man,./submodules/*,./tmp/*,./wiki/src/torrents/files/*,wordlist_*.txt,*.key,*.gpg,*.pgp,*.po,*.pot,*.svg'
+exclude-file = 'config/ci/codespell/exclude-lines'
+
+[tool.mypy]
+exclude = [
+    # symlink
+    "^lib/python3/",
+    # built website
+    "^config/chroot_local-includes/usr/share/doc/tails/website/",
+    # submodules that we don't maintain
+    "^submodules/(chutney|live-build|torbrowser-launcher)",
+]
+mypy_path = "config/chroot_local-includes/usr/lib/python3/dist-packages"
+warn_no_return = true
+warn_return_any = true
+warn_unused_configs = true
+
+[[tool.mypy.overrides]]
+module = [
+    "gi",
+    "gi.repository",
+]
+ignore_missing_imports = true
+
+# https://github.com/astral-sh/ruff
+[tool.ruff]
+# This configuration is applied to the ruff editor by default, *except* in the context of CI,
+# where bin/test-utils/ruff.toml is applied.
+# Please keep them meaningfully synchronized: this file is for SHOULDs, the other file is for MUSTs.
+#
+# If you want to override it, you can do so by creating `ruff.toml`. If you think that your reasons for
+# overriding could better be made "global" please say so by creating an issue and proposing to change our
+# Python style guidelines.
+
+target-version = "py312"
+extend-exclude = [
+    "submodules/chutney",
+    "submodules/live-build",
+    "submodules/torbrowser-launcher",
+    "tmp",
+    "wiki/src",
+]
+extend-select = [
+    # Derived from the flake8-builtins linter
+    "A",
+    # Derived from the flake8-async linter
+    "ASYNC",
+    # Derived from the flake8-bugbear linter
+    "B",
+    # Derived from the flake8-blind-except linter
+    "BLE",
+    # Derived from the flake8-comprehensions linter
+    "C4",
+    # Derived from the mccabe linter
+    "C9",
+    # Derived from the flake8-commas linter
+    "COM",
+    # Derived from the pycodestyle linter
+    "E1",
+    # Derived from the eradicate linter (commented-out-code)
+    "ERA",
+    # Derived from the flake8-executable linter
+    "EXE",
+    # Derived from the flynt linter,
+    "FLY",
+    # Derived from the flake8-logging-format linter
+    "G",
+    # Derived from the isort linter
+    "I",
+    # Derived from the flake8-import-conventions linter
+    "ICN",
+    # Derived from the flake8-gettext linter
+    "INT",
+    # Derived from the flake8-implicit-str-concat linter
+    "ISC",
+    # Derived from the flake8-pie linter
+    "PIE",
+    # Derived from the pygrep-hooks linter
+    "PGH",
+    # Derived from the Pylint linter
+    "PLC",
+    "PLE",
+    "PLR",
+    "PLW",
+    # Derived from the flake8-pytest-style linter
+    "PT",
+    # Derived from the flake8-pyi linter
+    "PYI",
+    # Derived from the flake8-return linter
+    "RET",
+    # Derived from the flake8-raise linter
+    "RSE",
+    # Derived from the Ruff-specific rules linter
+    "RUF",
+    # Derived from the flake8-bandit linter (security)
+    "S",
+    # Derived from the flake8-self linter
+    "SLF",
+    # Derived from the flake8-simplify linter
+    "SIM",
+    # Derived from the flake8-slots linter
+    "SLOT",
+    # Derived from the flake8-debugger linter
+    "T100",
+    # Derived from the flake8-type-checking linter
+    "TCH",
+    # Derived from the flake8-tidy-imports linter
+    "TID",
+    # Derived from the flake8-todos linter
+    "TD",
+    # Derived from the tryceratops linter
+    "TRY",
+    # Derived from the pyupgrade linter
+    "UP",
+    # Derived from the pycodestyle linter
+    "W",
+    # Derived from the flake8-2020 linter
+    "YTT",
+]
+extend-ignore = [
+    # Accept shared, mostly innocuous habit
+    "RET505",
+    # Error-prone
+    "RSE102",
+    # Allow noqa directives that may be useful with other linters
+    "RUF100",
+    # We don't compile Python code so our `assert`s won't be optimized out
+    "S101",
+    # Prone to false positives (see https://github.com/astral-sh/ruff/issues/4045)
+    "S603",
+    # We don't record the author of a TODO, for better or worse
+    "TD002",
+    # Accept commonly used "TODO:Trixie"
+    "TD007",
+]
+
+[tool.ruff.isort]
+known-first-party = [
+    "tailsgreeter",
+    "tailslib",
+    "tca",
+    "tps",
+    "tps_frontend",
+    "tails_installer",
+    "unlock_veracrypt_volumes",
+    "whisperBack",
+]

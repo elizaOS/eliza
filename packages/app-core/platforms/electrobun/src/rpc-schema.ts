@@ -411,7 +411,7 @@ export type TalkModeState =
 	| "error";
 
 export interface TalkModeConfig {
-	engine?: "whisper" | "web";
+	engine?: "web";
 	modelSize?: string;
 	language?: string;
 	voiceId?: string;
@@ -1733,10 +1733,6 @@ export type ElizaDesktopRPCSchema = {
 				params: Record<string, unknown>;
 				response: undefined;
 			};
-			swabbleIsWhisperAvailable: {
-				params: undefined;
-				response: { available: boolean };
-			};
 			swabbleAudioChunk: { params: { data: string }; response: undefined };
 
 			// ---- TalkMode ----
@@ -1758,14 +1754,6 @@ export type ElizaDesktopRPCSchema = {
 			talkmodeIsSpeaking: {
 				params: undefined;
 				response: { speaking: boolean };
-			};
-			talkmodeGetWhisperInfo: {
-				params: undefined;
-				response: { available: boolean; modelSize?: string };
-			};
-			talkmodeIsWhisperAvailable: {
-				params: undefined;
-				response: { available: boolean };
 			};
 			talkmodeUpdateConfig: { params: TalkModeConfig; response: undefined };
 			talkmodeAudioChunk: { params: { data: string }; response: undefined };
@@ -2070,7 +2058,7 @@ export type ElizaDesktopRPCSchema = {
 				message: string;
 				recoverable: boolean;
 			};
-			// Swabble: audio chunk fallback (whisper.cpp binary missing)
+			// Swabble: audio chunk fallback (native ASR unavailable)
 			swabbleAudioChunkPush: { data: string };
 
 			// Context menu push events (Bun pushes to renderer after processing)
@@ -2350,7 +2338,6 @@ export const CHANNEL_TO_RPC_METHOD: Record<string, string> = {
 	"swabble:isListening": "swabbleIsListening",
 	"swabble:getConfig": "swabbleGetConfig",
 	"swabble:updateConfig": "swabbleUpdateConfig",
-	"swabble:isWhisperAvailable": "swabbleIsWhisperAvailable",
 	"swabble:audioChunk": "swabbleAudioChunk",
 
 	// TalkMode
@@ -2361,8 +2348,6 @@ export const CHANNEL_TO_RPC_METHOD: Record<string, string> = {
 	"talkmode:getState": "talkmodeGetState",
 	"talkmode:isEnabled": "talkmodeIsEnabled",
 	"talkmode:isSpeaking": "talkmodeIsSpeaking",
-	"talkmode:getWhisperInfo": "talkmodeGetWhisperInfo",
-	"talkmode:isWhisperAvailable": "talkmodeIsWhisperAvailable",
 	"talkmode:updateConfig": "talkmodeUpdateConfig",
 	"talkmode:audioChunk": "talkmodeAudioChunk",
 

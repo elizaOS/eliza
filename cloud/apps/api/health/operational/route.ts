@@ -45,9 +45,7 @@ app.get("/", (c) => {
     };
 
     const evmConfigured = Boolean(
-      env.EVM_PAYOUT_PRIVATE_KEY ||
-        env.EVM_PRIVATE_KEY ||
-        env.EVM_PAYOUT_WALLET_ADDRESS,
+      env.EVM_PAYOUT_PRIVATE_KEY || env.EVM_PRIVATE_KEY || env.EVM_PAYOUT_WALLET_ADDRESS,
     );
     const solanaConfigured = Boolean(env.SOLANA_PAYOUT_PRIVATE_KEY);
     const payouts: PayoutCheckResult = {

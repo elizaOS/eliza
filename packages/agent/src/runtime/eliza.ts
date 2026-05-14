@@ -323,15 +323,15 @@ async function getPluginSql(): Promise<typeof import("@elizaos/plugin-sql")> {
 }
 
 let _pluginLocalEmbeddingPromise: Promise<
-  typeof import("@elizaos/plugin-local-embedding") | null
+  typeof import("@elizaos/plugin-local-inference") | null
 > | null = null;
 async function getPluginLocalEmbedding(): Promise<
-  typeof import("@elizaos/plugin-local-embedding") | null
+  typeof import("@elizaos/plugin-local-inference") | null
 > {
   if (!_pluginLocalEmbeddingPromise) {
     _pluginLocalEmbeddingPromise = (async () => {
       try {
-        return await import("@elizaos/plugin-local-embedding");
+        return await import("@elizaos/plugin-local-inference");
       } catch {
         return null;
       }
@@ -406,7 +406,7 @@ export async function ensureCoreStaticPluginsRegistered(): Promise<void> {
     Object.assign(STATIC_ELIZA_PLUGINS, {
       "@elizaos/plugin-sql": pluginSql,
       ...(pluginLocalEmbedding
-        ? { "@elizaos/plugin-local-embedding": pluginLocalEmbedding }
+        ? { "@elizaos/plugin-local-inference": pluginLocalEmbedding }
         : {}),
       // secrets (SECRETS service): now built-in core capability (ENABLE_SECRETS_MANAGER)
       ...(pluginAgentOrchestrator
@@ -3260,7 +3260,7 @@ export async function startEliza(
     (p) => p.name === "@elizaos/plugin-sql",
   );
   const localEmbeddingPlugin = resolvedPlugins.find(
-    (p) => p.name === "@elizaos/plugin-local-embedding",
+    (p) => p.name === "@elizaos/plugin-local-inference",
   );
   const otherPlugins = resolvedPlugins.filter(
     (p) => !PREREGISTER_PLUGINS.has(p.name),
@@ -3605,7 +3605,7 @@ export async function startEliza(
     );
   } else {
     logger.warn(
-      "[eliza] @elizaos/plugin-local-embedding not found — embeddings " +
+      "[eliza] @elizaos/plugin-local-inference not found — embeddings " +
         "will fall back to whatever TEXT_EMBEDDING handler is registered by " +
         "other plugins (may incur cloud API costs)",
     );
@@ -3627,7 +3627,7 @@ export async function startEliza(
 
     const alreadyPreRegistered = new Set([
       "@elizaos/plugin-sql",
-      "@elizaos/plugin-local-embedding",
+      "@elizaos/plugin-local-inference",
     ]);
     for (const name of CORE_PLUGINS) {
       if (alreadyPreRegistered.has(name)) continue;
@@ -4144,7 +4144,7 @@ export async function startEliza(
             (p) => p.name === "@elizaos/plugin-sql",
           );
           const freshLocalEmbeddingPlugin = resolvedPlugins.find(
-            (p) => p.name === "@elizaos/plugin-local-embedding",
+            (p) => p.name === "@elizaos/plugin-local-inference",
           );
           if (freshSqlPlugin) {
             await registerSqlPluginWithRecovery(
@@ -4173,7 +4173,7 @@ export async function startEliza(
 
             const alreadyPreRegistered = new Set([
               "@elizaos/plugin-sql",
-              "@elizaos/plugin-local-embedding",
+              "@elizaos/plugin-local-inference",
             ]);
             for (const name of CORE_PLUGINS) {
               if (alreadyPreRegistered.has(name)) continue;

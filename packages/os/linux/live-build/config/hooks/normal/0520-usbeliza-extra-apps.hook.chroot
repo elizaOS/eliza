@@ -1,0 +1,21 @@
+#!/bin/sh
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 NubsCarson and contributors
+#
+# Belt-and-suspenders install of the apps the chat actions need:
+#   - alacritty   (OPEN_TERMINAL primary; foot is the fallback)
+#   - thunar      (OPEN_FILES — no alternative installed by default)
+#
+# Why this lives in a hook instead of the package list: lb's chroot
+# cache freezes package-list edits. If `usbeliza.list.chroot` gets
+# updated after the first build, `lb chroot_install-packages` is
+# marked done and the new packages never get pulled. Running
+# `apt-get install` from a hook re-fetches every build because
+# chroot_hooks isn't skip-cached the same way.
+
+set -e
+
+echo "==> 0520 extra-apps hook: ensure alacritty + thunar installed"
+apt-get update -qq
+apt-get install -y --no-install-recommends alacritty thunar 2>&1 | tail -5
+echo "==> 0520 extra-apps hook: done"

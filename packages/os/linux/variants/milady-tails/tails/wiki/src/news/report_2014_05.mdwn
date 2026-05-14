@@ -1,0 +1,207 @@
+[[!meta title="Tails report for May, 2014"]]
+[[!meta date="Fri, 13 Jun 2014 15:32:24 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+Releases
+========
+
+Late May we decided to postpone the release of Tails
+1.1, based
+on Debian Wheezy, to the next release cycle. And instead have Tails 1.0.1
+released on June 10.
+
+Tails 1.1~beta1, the first beta version of Tails based on Debian Wheezy, was released
+on May 30.
+
+Metrics
+=======
+
+- Tails has been started more than 344 328 times this month.
+  This make 11 107 boots a day in average.
+- 31 698 downloads of the OpenPGP signature of Tails ISO.
+- 64 bug reports were received through WhisperBack.
+
+FAQ
+===
+
+- The development of TrueCrypt [was
+  discontinued](http://truecrypt.sourceforge.net/) but our position regarding
+  TrueCrypt has remained the same for years: Tails includes TrueCrypt only for
+  backward compatibility and we are working on choosing a free software as
+  replacement to open TrueCrypt volumes. We hope
+  that this recent announcement encourages users to migrate to other
+  encrypted storage formats such as [[LUKS|support/faq#luks]], and
+  developers to better [[!tails_ticket 6337 desc="support the TrueCrypt
+  on-disk format"]]  in Free Software tools.
+
+Code
+====
+
+Still, a lot of work has been done to prepare Tails 1.1:
+
+  - The Windows Camouflage has been upgraded to Windows 8 ([[!tails_ticket
+    6342]]). It mostly works but some visual improvements would make it nicer
+    ([[!tails_ticket 7377]]).
+  - Fixed the build of VirtualBox guest modules ([[!tails_ticket 5972]]).
+  - Fixed the starting of ORCA screen reader ([[!tails_ticket 7251]]).
+  - Fixed the keymap selection from Tails Greeter ([[!tails_ticket 7065]]).
+  - Set the background of Tails Greeter to our usual blue color ([[!tails_ticket
+    7126]]).
+  - Fixed OpenPGP signature verification in Nautilus ([[!tails_ticket 6608]]).
+    That implied installing a backport of shared-mime-info 1.2+ ([[!tails_ticket
+    7058]]).
+  - Worked on
+    upgrading liferea
+    ([[!tails_ticket 7154]]) and
+    adding a persistence
+    feature ([[!tails_ticket 5711]]), but we discovered that Liferea > 1.10.3
+    includes a general-purpose web browser with JavaScript, and we don't want
+    that. We are now considering to wait for Icedove, which also has a feed
+    reader, before we add a persistent feeds feature.
+  - Fixed the display of non-Latin script in Florence ([[!tails_ticket 7279]]).
+  - Used a solid blue background color to workaround a display bug in GNOME
+    Fallback ([[!tails_ticket 7248]]).
+  - Adapted the test suite to Wheezy was completed
+    ([[!tails_ticket 6559]]).
+  - Used the regular GnuPG agent instead of the one from GNOME Keyring
+    ([[!tails_ticket 7330]]).
+  - Fixed emergency shutdown before login ([[!tails_ticket 7333]]).
+  - Prevented `iproute2` from being installed from wheezy-backports
+    ([[!tails_ticket 7337]]).
+  - Purged `dselect` ([[!tails_ticket 7336]]).
+  - Worked on fixing the migration of NetworkManager persistence settings
+    ([[!tails_ticket 7338]]).
+  - Tails devices are now converted to UEFI on full upgrade ([[!tails_ticket
+    6577]]).
+  - Imported I2P 0.9.13 packages for Wheezy ([[!tails_ticket 6731]]).
+
+Apart from all the work directly related to the migration to Wheezy, we also:
+
+  - Backported python-stem ([[!tails_ticket 7318]]).
+  - Installed Linux 3.14 ([[!tails_ticket 7150]]).
+  - Decreased the memory requirements while checking for upgrades
+    ([[!tails_ticket 7235]]).
+  - Disabled the update check mechanism of Torbutton ([[!tails_ticket 7097]]).
+  - Installed Tor 0.2.4.22 ([[!tails_ticket 7342]]).
+  - Included GtkHash to allow checksum computation from Nautilus
+    ([[!tails_ticket 6763]]).
+  - Updated Tor
+    launcher to 0.2.5.4.
+  - Worked on using static UID for `tails-persistence-setup` ([[!tails_ticket
+    7343]]).
+  - Started evaluating [[!debpkg xserver-xorg-video-modesetting]], for
+    [[!tails_ticket 7394 desc="KMS support"]] with the Cirrus (used
+    e.g. in QEMU), MGA, and maybe other video adapters.
+
+Documentation and website
+=========================
+
+  - Many parts of our documentation were adapted to Tails Wheezy.
+  - Parts of our download page were reworked and simplified ([[!tails_ticket
+    7163]]).
+  - Removed the "Why do you need anonymity?" page, which was outside of the scope
+    of our documentation.
+  - Explain that NoScript is disabled by default.
+  - Put it more clearly that most bug reports without an email address are
+    useless.
+  - Documented that OTR is not activated by default ([[!tails_ticket 7355]]).
+
+Infrastructure
+==============
+
+- As our mirror pool grew, we finally hit a [[!tor_bug 11741 desc="bug in the Tor
+  DNS resolver"]] that
+  prevents us from adding more than about 25 servers in our DNS pool. Thanks to
+  foob we put up a blueprint to fix that issue on
+  the long-run. See [[!tails_ticket 7161]] and Some research about mirror
+  infrastructure.
+
+- Contributors were encouraged to migrate their custom build systems to Wheezy,
+  as was done for our Jenkins
+  autobuilder already, and to [[!tails_ticket 7218 desc="update our
+  Vagrant basebox to Wheezy"]].
+
+On-going discussions
+====================
+
+- Create a donation form to receive fiat currencies
+
+- Sharing wiperam package between Freepto and Tails?
+
+- Reworking the I2P documentation
+
+- Signing of the ISO and key material
+
+Funding
+=======
+
+- Special thanks to all the people who donated
+  bitcoins. We received more than [60 bitcoins in
+  May](https://blockchain.info/address/1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN2)!
+
+- Received a grant from Debian to fund our yearly summit.
+
+- Received a grant from Mozilla to pay some travel expenses for our yearly
+  summit.
+
+- Received a first batch of money from the FPF crowd-funding campaign.
+
+- Added a donate button in our sidebar, and point it to the FPF crowd-funding
+  campaign which is still running.
+
+- Finally signed a contract for the OpenITP grant that we were awarded at the
+  end of 2013.
+
+- We are still in the process of getting the contract signed for the Access
+  Innovation Prize.
+
+- Were contacted for partnership by the User Verifiable Social Telematics R&D
+  Project.
+
+Outreach
+========
+
+- Passed a [[call for help on
+  sysadmin|news/improve_the_infrastructure_behind_Tails]].
+
+- Organized a first usability testing session in
+  Paris.
+
+- Organized a [Tails 1.0 Launch
+  Party](https://www.youtube.com/watch?v=hz1rAHzo9eM) in Washington DC.
+
+- Organizing the upcoming Tails
+  HackFest and yearly summit: agenda,
+  accommodation, traveling sponsorship, venue, food, etc.
+
+Press and testimonials
+======================
+
+In late April and early May, many press articles covered the Tails 1.0 release,
+including:
+
+  - [Tails 1.0 – La distrib sécurisée sort enfin en version
+    stable](https://korben.info/tails-1-0.html) (in French).
+  - Anonymisierungs-OS Tails wird
+    erwachsen
+    in heise Security (in German).
+  - [Secure OS Tails Emerges From
+    Beta](http://www.pcmag.com/article2/0,2817,2457452,00.asp) by
+    David Murphy in PCMAG.
+  - Edward Snowden's OS of choice, the Linux-based Tails,
+    is now out of
+    beta
+    by Steve Dent in Engadget.
+  - [Tails 1.0: Sicherheit und
+    Anonymität](http://www.pro-linux.de/news/1/21038/tails-10-sicherheit-und-anonymitaet.html)
+    by Ferdinand Thommes in PRO-LINUX.DE (in German).
+  - [Tails, l'OS dédié à la confidentialité, passe en
+    version
+    1.0](http://www.numerama.com/magazine/29251-tails-l-os-dedie-a-la-confidentialite-passe-en-version-10.html)
+    by Julien L. in Numerama (in French).
+  - Anonymous Linux Distribution TAILS Reaches Release Version
+    1.0
+    by Max Smolaks in TechWeek Europe.
+  - Snowden's Beloved Tails OS Reaches v1.0
+    Milestone
+    by Richard Adhikari in LinuxInsider.

@@ -29,6 +29,7 @@ if str(_TRAINING_ROOT) not in sys.path:
 try:
     from .eliza1_manifest import (
         ELIZA_1_BACKENDS,
+        ELIZA_1_HF_REPO,
         ELIZA_1_VOICE_MANIFEST_VERSION,
         REQUIRED_KERNELS_BY_TIER,
         SUPPORTED_BACKENDS_BY_TIER,
@@ -45,6 +46,7 @@ try:
 except ImportError:  # pragma: no cover - direct script execution path
     from eliza1_manifest import (
         ELIZA_1_BACKENDS,
+        ELIZA_1_HF_REPO,
         ELIZA_1_VOICE_MANIFEST_VERSION,
         REQUIRED_KERNELS_BY_TIER,
         SUPPORTED_BACKENDS_BY_TIER,
@@ -59,8 +61,8 @@ except ImportError:  # pragma: no cover - direct script execution path
     )
     from eliza1_platform_plan import CONTEXTS_BY_TIER, text_artifact_name
 
-from benchmarks.eliza1_gates import apply_gates
-from scripts.quantization._kernel_manifest import kernel_manifest_fragment
+from benchmarks.eliza1_gates import apply_gates  # noqa: E402
+from scripts.quantization._kernel_manifest import kernel_manifest_fragment  # noqa: E402
 
 LOCAL_MODEL_ROOT: Final[Path] = (
     Path.home() / ".eliza" / "local-inference" / "models"
@@ -982,7 +984,7 @@ def _write_release_evidence(
         "schemaVersion": 1,
         "generatedAt": generated_at,
         "tier": tier,
-        "repoId": "elizaos/eliza-1",
+        "repoId": ELIZA_1_HF_REPO,
         "repoPath": f"bundles/{tier}",
         "releaseState": release_state,
         "publishEligible": False,
@@ -1021,7 +1023,7 @@ def _write_release_evidence(
             "darwin-arm64-metal": "evidence/platform/darwin-arm64-metal.json"
         },
         "hf": {
-            "repoId": "elizaos/eliza-1",
+            "repoId": ELIZA_1_HF_REPO,
             "pathPrefix": f"bundles/{tier}",
             "status": "blocked-local-standin",
         },

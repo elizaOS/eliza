@@ -293,7 +293,7 @@ jobs:
 
       - name: Restore dflash llama-cpp fork cache
         id: dflash-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.cache/eliza-dflash/eliza-llama-cpp/build/bin/llama-server
           key: dflash-llama-cpp-${{ runner.os }}-v1
@@ -349,14 +349,14 @@ jobs:
     steps:
       - name: Download large-tier artifact
         if: needs.smoke-large.result == 'success'
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v8
         with:
           name: lifeops-multi-tier-large-${{ github.run_id }}
           path: artifacts/large
 
       - name: Download frontier-tier artifact
         if: needs.smoke-frontier.result == 'success'
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v8
         with:
           name: lifeops-multi-tier-frontier-${{ github.run_id }}
           path: artifacts/frontier

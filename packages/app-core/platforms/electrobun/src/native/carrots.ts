@@ -10,8 +10,11 @@ import type {
 	CarrotStoreSnapshot,
 	CarrotWorkerMessage,
 	HostActionMessage,
+	HostRequestMessage,
+	HostResponseMessage,
 	InstalledCarrot,
 	InstalledCarrotSnapshot,
+	JsonValue,
 	WorkerInitMessage,
 } from "@elizaos/electrobun-carrots";
 import {
@@ -25,8 +28,12 @@ import {
 	toInstalledCarrotSnapshot,
 	uninstallInstalledCarrot,
 } from "@elizaos/electrobun-carrots";
-import { Utils } from "electrobun/bun";
+import { resolveApiToken } from "@elizaos/shared";
+import { BrowserView, BrowserWindow, Utils } from "electrobun/bun";
+import { logger } from "../logger.js";
 import type { SendToWebview } from "../types.js";
+
+type CarrotWindowInstance = InstanceType<typeof BrowserWindow>;
 
 export type CarrotWorkerState = "stopped" | "starting" | "running" | "error";
 
@@ -71,6 +78,7 @@ interface CarrotWorkerRecord {
 	status: CarrotWorkerStatus;
 	handle: CarrotWorkerHandle | null;
 	context: CarrotRuntimeContext | null;
+	window: CarrotWindowInstance | null;
 }
 
 interface CarrotManagerEvents {
@@ -179,6 +187,20 @@ function buildWorkerInitMessage(
 	};
 }
 
+function hostRequestStringField(
+	params: JsonValue | undefined,
+	key: string,
+): string {
+	if (!isRecord(params)) {
+		throw new Error(`Host request missing params object (expected ${key})`);
+	}
+	const value = params[key];
+	if (typeof value !== "string" || value.length === 0) {
+		throw new Error(`Host request missing or invalid ${key}`);
+	}
+	return value;
+}
+
 function actionLogPayload(message: HostActionMessage): string | null {
 	if (message.action !== "log" || !isRecord(message.payload)) return null;
 	const level = message.payload.level;
@@ -263,6 +285,11 @@ export class CarrotManager {
 		}
 
 		fs.mkdirSync(carrot.stateDir, { recursive: true });
+		if (carrot.install.permissionsGranted.isolation === "isolated-process") {
+			logger.warn(
+				`[carrots] ${id}: manifest requests isolation:isolated-process but the host runs all carrots as shared-worker today; falling back. Process isolation lands when a Bun.spawn-based runner is wired.`,
+			);
+		}
 		const context = buildCarrotRuntimeContext(
 			carrot.currentDir,
 			carrot.stateDir,
@@ -276,16 +303,26 @@ export class CarrotManager {
 			stoppedAt: null,
 			error: null,
 		};
-		const record: CarrotWorkerRecord = { status, handle: null, context };
+		const record: CarrotWorkerRecord = {
+			status,
+			handle: null,
+			context,
+			window: null,
+		};
 		this.workers.set(id, record);
 		this.emitWorkerChanged(status);
 
 		try {
 			const handle = this.workerRunner.start(carrot);
 			record.handle = handle;
-			handle.onMessage((message) => this.handleWorkerMessage(id, message));
-			handle.onError((error) => this.markWorkerError(id, error));
+			handle.onMessage((message) =>
+				this.handleWorkerMessage(id, handle, message),
+			);
+			handle.onError((error) => this.markWorkerError(id, handle, error));
 			handle.postMessage(buildWorkerInitMessage(carrot, context));
+			if (carrot.manifest.mode === "window") {
+				record.window = this.openCarrotWindow(carrot);
+			}
 			status.state = "running";
 			this.emitWorkerChanged(status);
 			return status;
@@ -298,6 +335,82 @@ export class CarrotManager {
 		}
 	}
 
+	/**
+	 * Open the carrot's view window. Used for `mode: "window"` carrots; the
+	 * carrot's `view/index.html` (and friends) is served via Electrobun's
+	 * `views://` scheme rooted at `carrot.currentDir`. Background carrots
+	 * never call this.
+	 *
+	 * Guarded against test stubs: vitest replaces `electrobun/bun` with a
+	 * non-constructor stub, so `BrowserWindow` won't be callable in the
+	 * test environment. We typeof-check before constructing and log a
+	 * warning if the runtime can't open windows (which is harmless in
+	 * tests and informative in dev where the host hasn't initialized FFI).
+	 */
+	private openCarrotWindow(
+		carrot: InstalledCarrot,
+	): CarrotWindowInstance | null {
+		if (
+			typeof BrowserWindow !== "function" ||
+			typeof BrowserView !== "function"
+		) {
+			logger.warn(
+				`[carrots] ${carrot.manifest.id}: skipping window-mode open — Electrobun BrowserWindow not available in this runtime (typeof=${typeof BrowserWindow}).`,
+			);
+			return null;
+		}
+
+		const { width, height, title, titleBarStyle, transparent } =
+			carrot.manifest.view;
+		try {
+			const win = new BrowserWindow({
+				title,
+				url: null,
+				preload: null,
+				frame: { x: 120, y: 120, width, height },
+				...(titleBarStyle === undefined ? {} : { titleBarStyle }),
+				...(transparent === undefined ? {} : { transparent }),
+			});
+			try {
+				win.webview.remove();
+			} catch {
+				// Some Electrobun builds expose webview lazily; safe to ignore.
+			}
+			new BrowserView({
+				url: carrot.viewUrl,
+				viewsRoot: carrot.currentDir,
+				renderer: "cef",
+				frame: { x: 0, y: 0, width, height },
+				windowId: win.id,
+			});
+			win.on("close", () => {
+				this.handleCarrotWindowClosed(carrot.manifest.id);
+			});
+			return win;
+		} catch (error) {
+			logger.warn(
+				`[carrots] ${carrot.manifest.id}: failed to open window — ${
+					error instanceof Error ? error.message : String(error)
+				}`,
+			);
+			return null;
+		}
+	}
+
+	private handleCarrotWindowClosed(id: string): void {
+		const record = this.workers.get(id);
+		if (!record) return;
+		record.window = null;
+		// Closing the window stops the underlying worker — `mode: "window"`
+		// carrots have no UI-less lifetime.
+		if (
+			record.status.state === "running" ||
+			record.status.state === "starting"
+		) {
+			this.stopWorker(id);
+		}
+	}
+
 	stopWorker(id: string): CarrotWorkerStatus {
 		const record = this.workers.get(id);
 		if (!record) {
@@ -306,6 +419,13 @@ export class CarrotManager {
 			return status;
 		}
 		record.handle?.terminate();
+		if (record.window) {
+			try {
+				record.window.close();
+			} catch {
+				// BrowserWindow.close() may throw if already destroyed.
+			}
+		}
 		const status: CarrotWorkerStatus = {
 			id,
 			state: "stopped",
@@ -313,7 +433,12 @@ export class CarrotManager {
 			stoppedAt: this.now(),
 			error: null,
 		};
-		this.workers.set(id, { status, handle: null, context: record.context });
+		this.workers.set(id, {
+			status,
+			handle: null,
+			context: record.context,
+			window: null,
+		});
 		this.emitWorkerChanged(status);
 		return status;
 	}
@@ -383,19 +508,28 @@ export class CarrotManager {
 		this.events = {};
 	}
 
-	private handleWorkerMessage(id: string, message: CarrotWorkerMessage): void {
+	private handleWorkerMessage(
+		id: string,
+		handle: CarrotWorkerHandle,
+		message: CarrotWorkerMessage,
+	): void {
+		const record = this.workers.get(id);
+		if (record?.handle !== handle) return;
+
 		if (message.type === "ready") {
-			const record = this.workers.get(id);
-			if (!record) return;
 			record.status.state = "running";
 			record.status.error = null;
 			this.emitWorkerChanged(record.status);
 			return;
 		}
 
+		if (message.type === "host-request") {
+			this.handleHostRequest(id, handle, message);
+			return;
+		}
+
 		if (message.type !== "action") return;
-		const record = this.workers.get(id);
-		if (!record?.context) return;
+		if (!record.context) return;
 
 		const logLine = actionLogPayload(message);
 		if (logLine) {
@@ -406,15 +540,150 @@ export class CarrotManager {
 
 		if (message.action === "stop-carrot") {
 			this.stopWorker(id);
+			return;
+		}
+
+		if (message.action === "emit-carrot-event") {
+			this.dispatchEmitCarrotEvent(id, message.payload);
 		}
 	}
 
-	private markWorkerError(id: string, error: Error): void {
-		const record = this.workers.get(id);
+	private dispatchEmitCarrotEvent(
+		callerId: string,
+		payload: JsonValue | undefined,
+	): void {
+		if (!isRecord(payload)) return;
+		const targetId = payload.carrotId;
+		const name = payload.name;
+		if (typeof targetId !== "string" || typeof name !== "string") return;
+		const target = this.workers.get(targetId);
+		if (!target?.handle || target.status.state !== "running") {
+			logger.warn(
+				`[carrots] ${callerId} → emit-carrot-event dropped: target ${targetId} is not running.`,
+			);
+			return;
+		}
+		target.handle.postMessage({
+			type: "event",
+			name,
+			...(payload.payload === undefined ? {} : { payload: payload.payload }),
+		});
+	}
+
+	private handleHostRequest(
+		callerId: string,
+		handle: CarrotWorkerHandle,
+		request: HostRequestMessage,
+	): void {
+		void this.dispatchHostRequest(callerId, request.method, request.params)
+			.then((payload) => {
+				this.postHostResponse(handle, {
+					type: "host-response",
+					requestId: request.requestId,
+					success: true,
+					payload,
+				});
+			})
+			.catch((error: unknown) => {
+				this.postHostResponse(handle, {
+					type: "host-response",
+					requestId: request.requestId,
+					success: false,
+					error: error instanceof Error ? error.message : String(error),
+				});
+			});
+	}
+
+	private postHostResponse(
+		handle: CarrotWorkerHandle,
+		response: HostResponseMessage,
+	): void {
+		const record = [...this.workers.values()].find((r) => r.handle === handle);
 		if (!record) return;
+		handle.postMessage(response);
+	}
+
+	/**
+	 * Auth-token model (MVP): each carrot worker has its own
+	 * `context.authToken` stored in-process on the host. `get-auth-token` is
+	 * lazy — the first call seeds the slot from `resolveApiToken()` so a
+	 * carrot can call Milady's HTTP API as the user without seeing the
+	 * underlying env var. `set-auth-token` lets a carrot REPLACE ITS OWN
+	 * token (Farm-login style flows); cross-carrot exfiltration is prevented
+	 * by keying read/write off the calling worker's id. The MVP forwards the
+	 * host token verbatim; the production hook is a per-carrot scoped JWT
+	 * issued by the auth pairing layer — schema unchanged.
+	 */
+	private async dispatchHostRequest(
+		callerId: string,
+		method: string,
+		params: JsonValue | undefined,
+	): Promise<JsonValue> {
+		switch (method) {
+			case "list-carrots":
+				return this.listCarrots() as unknown as JsonValue;
+			case "start-carrot": {
+				const targetId = hostRequestStringField(params, "id");
+				this.startWorker(targetId);
+				return { ok: true };
+			}
+			case "stop-carrot": {
+				const targetId = hostRequestStringField(params, "id");
+				this.stopWorker(targetId);
+				return { ok: true };
+			}
+			case "get-auth-token": {
+				const record = this.workers.get(callerId);
+				if (!record?.context) {
+					throw new Error(`Carrot ${callerId} has no runtime context.`);
+				}
+				if (record.context.authToken === null) {
+					record.context.authToken = resolveApiToken();
+				}
+				return { token: record.context.authToken };
+			}
+			case "set-auth-token": {
+				const record = this.workers.get(callerId);
+				if (!record?.context) {
+					throw new Error(`Carrot ${callerId} has no runtime context.`);
+				}
+				if (!isRecord(params)) {
+					throw new Error("set-auth-token: missing params object.");
+				}
+				const token = params.token;
+				if (token !== null && typeof token !== "string") {
+					throw new Error("set-auth-token: token must be a string or null.");
+				}
+				record.context.authToken = token;
+				return { ok: true };
+			}
+			default:
+				throw new Error(
+					`Host request method not implemented: ${method} (caller=${callerId})`,
+				);
+		}
+	}
+
+	private markWorkerError(
+		id: string,
+		handle: CarrotWorkerHandle,
+		error: Error,
+	): void {
+		const record = this.workers.get(id);
+		if (record?.handle !== handle) return;
 		record.status.state = "error";
 		record.status.error = error.message;
 		record.status.stoppedAt = this.now();
+		// Don't leave an orphaned window for a dead worker — close it and
+		// let the next start cycle reopen one cleanly.
+		if (record.window) {
+			try {
+				record.window.close();
+			} catch {
+				// already destroyed
+			}
+			record.window = null;
+		}
 		this.emitWorkerChanged(record.status);
 	}
 

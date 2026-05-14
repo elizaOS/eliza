@@ -1,0 +1,126 @@
+[[!meta date="Wed, 15 Nov 2017 10:00:00 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!meta title="Have your cake and eat it, too!"]]
+[[!tag announce]]
+
+Reproducible Tails builds
+=========================
+
+We have received the Mozilla Open Source Support award in order to make Tails
+ISO images build reproducibly. This project was on our roadmap for 2017 and
+with the release of Tails 3.3 we are proud to present one of the world's first
+reproducible ISO images of a Linux operating system.
+
+From source code to binary code
+===============================
+
+When we write software, we do this using programming languages which a
+human can read and understand. This is called the _source code_. One can
+imagine source code much like a very precise recipe. Such a recipe
+describes an exact procedure: which ingredients and which amount of
+ingredients do you need? How should they be mixed together at which
+temperature should they be cooked or baked? The recipe will even
+describe the expected outcome: how the meal should look and taste like.
+
+When we generate a Tails ISO image, our source code and the Debian
+packages we include are assembled into a binary ISO image,
+much like when the ingredients of the recipe are mixed together,
+one obtains the meal. The amounts and ingredients of this meal cannot be
+easily reverse engineered. The result of *our* cooking process is a Tails ISO
+image which users download and install onto a USB stick.
+
+We, chefs and aides in the kitchen (Tails developers and contributors),
+provide you, our users, with several means to verify that this ISO image
+is indeed the one we want you to download, either using our
+Firefox add-on which does this verification
+automatically for you or by using our OpenPGP signature. Both of these
+verification methods simply tell you that the ISO image is the image
+which we want you to download: That the meal you get is indeed the meal
+that you've ordered, and not a meal which has been poisoned or exchanged
+by an evil waiter (such as a download mirror).
+
+However, even with such sophisticated verification methods, it is still
+impossible to trace back the meal to the recipe: Does the meal contain
+only the ingredients it is supposed to contain? Or could unauthorized
+personnel have broken into the kitchen at night, and then poisoned the
+ingredients and made the oven cook at 50 degrees higher than displayed?
+In other words, could a malicious entity have compromised our build
+machines? That's what reproducible builds help verify and protect
+against.
+
+What's a reproducible build?
+============================
+
+> Reproducible builds are a set of software development practices that create
+> a verifiable path from human readable source code to the binary code used
+> by computers. *(quoted from https://reproducible-builds.org/)*
+
+In other words, with reproducible builds, each cooking process of the same
+recipe is exactly repeatable.
+
+At Tails, we have worked during a year to implement such a set of
+practices. This makes it now possible to compare ISO images built by
+multiple parties from the same source code and Debian packages,
+and to ensure that they all result in exactly the same ISO image.
+
+Or again, using our cooking metaphor: Several of us will cook the meal, compare
+that we all cooked the same meal and only once we're sure about that, we will
+deliver it to you.
+
+We all can thus gain confidence that no broken oven has introduced
+malicious code or failures: or we would notice it before delivering the
+meal.
+
+What does this mean for you as a user?
+======================================
+
+This does not change anything in the way you download and install Tails,
+and you don't have to make additional verifications. It simply helps
+trust that the Tails ISO image that we distribute is indeed coming from
+the source code and Debian packages it is meant to be made of.  With reproducible Tails, it
+only takes one knowledgeable person to build Tails and compare with the
+ISO image the Tails project distributes to uncover some kinds of
+backdoors.
+
+And by the way, not only our ISO images are now reproducible, but so are
+our incremental upgrades. And you are benefiting from this improvement
+without even noticing :)
+
+Thank you
+=========
+
+Besides Mozilla's Open Source Support and the Reproducible Builds
+community that provided critical help where we strongly needed it, we'd
+also like to thank all members of our community who helped us test this
+process. You giving us a hand is much appreciated!
+
+Technical implementation
+========================
+
+If you are interested in the technical details of our implementation, we
+invite you to read our [report to the Reproducible Builds
+community](https://lists.reproducible-builds.org/pipermail/rb-general/2017-October/000656.html)
+about how we did it.
+
+We've also published technical [[instructions to
+verify|/contribute/build/reproducible/#verify-iso]] one's own
+[[build|/contribute/build/]].
+
+Help us make Tails even better
+==============================
+
+Tails is a self organized free software project. We depend on
+partnerships, grants and most importantly on donations by individuals
+like you.
+
+Care to give us a hand to make Tails bake even better cakes in the
+future? Donate today!
+
+Known issues
+============
+
+Any reproducible build process is reproducible… until proven
+otherwise. In our case last-minute issues were discovered and should
+be fixed in the next Tails release:
+
+ - [[!tails_ticket 14933]]

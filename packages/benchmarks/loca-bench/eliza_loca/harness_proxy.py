@@ -418,6 +418,8 @@ def _eliza_prompt_from_payload(payload: Mapping[str, Any]) -> str:
             "LOCA completion protocol: existing workspace files may contain examples or placeholders. "
             "Use them for schema and formatting only; do not treat existing rows as proof that the task is complete. "
             "Derive the required final state from the provided tools, local_db files, workspace files, and memory records. "
+            "If Canvas-specific tools are unavailable, inspect source_data/local_db and source_data/files with filesystem tools. "
+            "source_data is read-only input data; write/edit the requested output CSV files at the workspace root, for example assignment_info.csv and quiz_info.csv. "
             "For CSV-output tasks, overwrite or edit every requested CSV file with the derived final rows before any final reply or claim_done call.",
             "Available LOCA function tools:\n" + "\n".join(f"- {name}" for name in tool_names),
         ]

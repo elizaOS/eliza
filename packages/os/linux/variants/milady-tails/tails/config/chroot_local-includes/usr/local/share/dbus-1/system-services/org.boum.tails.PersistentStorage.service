@@ -1,0 +1,4 @@
+[D-BUS Service]
+Name=org.boum.tails.PersistentStorage
+Exec=/usr/local/lib/tpsd
+SystemdService=tails-persistent-storage.service

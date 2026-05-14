@@ -1,0 +1,52 @@
+[[!meta title="Logo"]]
+
+The Tails logo is released under the GNU General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+[[!toc levels=2]]
+
+<style>
+#logo {
+  border: 1px solid red;
+}
+#logo img.img {
+  margin: 2em;
+  border: 1px solid red;
+}
+</style>
+
+SVG format
+==========
+
+Source
+------
+
+[[!map pages="contribute/how/promote/logo/*.svg"]]
+
+Square
+------
+
+[[!img tails-logo-square.svg class="margin" link="no"]]
+[[!img tails-logo-square-inverted.svg class="margin" link="no"]]
+
+### Without tagline
+
+[[!img tails-logo-square-notagline.svg class="margin" link="no"]]
+[[!img tails-logo-square-inverted-notagline.svg class="margin" link="no"]]
+
+Flat
+----
+
+[[!img tails-logo-flat.svg class="margin" link="no"]]
+[[!img tails-logo-flat-inverted.svg class="margin" link="no"]]
+
+### Without tagline
+
+[[!img tails-logo-flat-notagline.svg class="margin" link="no"]]
+[[!img tails-logo-flat-inverted-notagline.svg class="margin" link="no"]]
+
+Drawing only
+------------
+
+[[!img tails-logo-drawing.svg class="margin" link="no"]]

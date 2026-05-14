@@ -1,0 +1,108 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2026-03-27 10:22+0000\n"
+"PO-Revision-Date: 2015-10-25 17:58+0000\n"
+"Last-Translator: sprint5 <translation5@451f.org>\n"
+"Language-Team: Persian <http://weblate.451f.org:8889/projects/tails/"
+"encryption_and_privacyindex/fa/>\n"
+"Language: fa\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"X-Generator: Weblate 2.4-dev\n"
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid ""
+"[[Managing passwords using the *Secrets* password manager|"
+"encryption_and_privacy/manage_passwords]]"
+msgstr ""
+"[[!traillink استفاده_از_صفحه‌کلید_مجازی|encryption_and_privacy/"
+"virtual_keyboard]]"
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid ""
+"[[Creating and using *LUKS* encrypted volumes|encryption_and_privacy/"
+"encrypted_volumes]]"
+msgstr ""
+"[[!traillink ایجاد_درایوهای_رمزگذاری‌شده_و_استفاده_از_آن‌ها|"
+"encryption_and_privacy/encrypted_volumes]]"
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid ""
+"[[Using *VeraCrypt* encrypted volumes|encryption_and_privacy/veracrypt]]"
+msgstr ""
+"[[!traillink ایجاد_درایوهای_رمزگذاری‌شده_و_استفاده_از_آن‌ها|"
+"encryption_and_privacy/encrypted_volumes]]"
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid ""
+"[[Encrypting text and files using *GnuPG* and *Kleopatra*|"
+"encryption_and_privacy/kleopatra]]"
+msgstr ""
+"[[!traillink استفاده_از_صفحه‌کلید_مجازی|encryption_and_privacy/"
+"virtual_keyboard]]"
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid "[[Securely deleting files|encryption_and_privacy/secure_deletion]]"
+msgstr ""
+"[[!traillink ایجاد_درایوهای_رمزگذاری‌شده_و_استفاده_از_آن‌ها|"
+"encryption_and_privacy/encrypted_volumes]]"
+
+#, fuzzy
+#~ msgid ""
+#~ "- [[Calculating checksums using *GtkHash*|encryption_and_privacy/"
+#~ "checksums]]"
+#~ msgstr ""
+#~ "[[!traillink استفاده_از_صفحه‌کلید_مجازی|encryption_and_privacy/"
+#~ "virtual_keyboard]]"
+
+#, fuzzy
+#~ msgid ""
+#~ "- [[Using the screen keyboard|encryption_and_privacy/virtual_keyboard]]"
+#~ msgstr ""
+#~ "[[!traillink ایجاد_درایوهای_رمزگذاری‌شده_و_استفاده_از_آن‌ها|"
+#~ "encryption_and_privacy/encrypted_volumes]]"
+
+#, fuzzy, no-wrap
+#~ msgid ""
+#~ "  - Encrypted volumes\n"
+#~ "    - [[!traillink Creating_and_using_<em>LUKS</em>_encrypted_volumes|encryption_and_privacy/encrypted_volumes]]\n"
+#~ "    - [[!traillink Using_<em>VeraCrypt</em>_encrypted_volumes|encryption_and_privacy/veracrypt]]\n"
+#~ "  - [[!traillink Encrypting,_decrypting,_signing,_and_verifying_text_using_OpenPGP_and_<em>OpenPGP_Applet</em>|encryption_and_privacy/gpgapplet]]\n"
+#~ "    - [[!traillink Encrypting_text_with_a_passphrase|encryption_and_privacy/gpgapplet/passphrase_encryption]]\n"
+#~ "    - [[!traillink Encrypting_and_signing_text_using_public-key_cryptography|encryption_and_privacy/gpgapplet/public-key_cryptography]]\n"
+#~ "    - [[!traillink Decrypting_and_verify_text|encryption_and_privacy/gpgapplet/decrypt_verify]]\n"
+#~ "  - [[!traillink Securely_deleting_files_and_clean_diskspace|encryption_and_privacy/secure_deletion]]\n"
+#~ "  - [[!traillink Calculating_checksums_using_<em>GtkHash</em>|encryption_and_privacy/checksums]]\n"
+#~ "  - [[!traillink Using_the_screen_keyboard|encryption_and_privacy/virtual_keyboard]]\n"
+#~ msgstr ""
+#~ "  - [[!traillink\n"
+#~ "    باز_کردن_درایوهای_<span_class=\"application\">تروکریپت</span>_استفاده_از_<span_class=\"code\">cryptsetup</span>|encryption_and_privacy/truecrypt]]\n"
+#~ "  - [[!traillink رمزگذاری،_رمزگشایی،_امضاء_و_تأیید_متن_با_استفاده_از_اُپن‌پی‌جی‌پی_و_<span_class=\"application\">برنامک_اُپن‌پی‌جی‌پی_تیلز</span>|encryption_and_privacy/gpgapplet]]\n"
+#~ "    - [[!traillink رمزگذاری_متن_با_یک_گذرواژه|encryption_and_privacy/gpgapplet/passphrase_encryption]]\n"
+#~ "    - [[!traillink رمزگذاری_و_امضای_با_استفاده_از_رمزنگاری_کلید_عمومی|encryption_and_privacy/gpgapplet/public-key_cryptography]]\n"
+#~ "    - [[!traillink رمزگشایی_و_تأیید_متن|encryption_and_privacy/gpgapplet/decrypt_verify]]\n"
+#~ "  - [[!traillink پاک_کردن_امن_فایل‌ها_و_خالی_کردن_فضای_دیسک_با_Nautilus_Wipe|encryption_and_privacy/secure_deletion]]\n"
+#~ "  - [[!traillink مدیریت_گذرواژه‌ها_با_<span_class=\"application\">KeePassX</span>|encryption_and_privacy/manage_passwords]]\n"
+#~ "  - [[!traillink محاسبهٔ_چک‌سام‌ها_با_<span_class=\"application\">GtkHash</span>|encryption_and_privacy/checksums]]\n"
+#~ "  - [[!traillink اشتراک‌گذاری_رازهای_رمزگذاری‌شده_با_<span_class=\"application\">keyringer</span>|encryption_and_privacy/keyringer]]\n"
+
+#~ msgid ""
+#~ "[[!traillink Your_data_won't_be_saved_unless_explicitly_asked|"
+#~ "encryption_and_privacy/your_data_wont_be_saved_unless_explicitly_asked]]"
+#~ msgstr ""
+#~ "[[!traillink داده‌هایتان_ذخیره_نمی‌شوند_مگر_خودتان_به_صراحت_بخواهید|"
+#~ "encryption_and_privacy/your_data_wont_be_saved_unless_explicitly_asked]]"

@@ -1,0 +1,194 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-09-17 11:40+0200\n"
+"PO-Revision-Date: 2024-05-12 14:26+0000\n"
+"Last-Translator: victor dargallo <victordargallo@disroot.org>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: sr_Latn\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=3; plural=n%10==1 && n%100!=11 ? 0 : n%10>=2 && "
+"n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2;\n"
+"X-Generator: Weblate 5.3\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Signing in to a network using a captive portal\"]]\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!toc levels=2]]\n"
+msgstr "[[!toc levels=2]]\n"
+
+#. type: Title =
+#, no-wrap
+msgid "What captive portals are"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"doc/anonymous_internet/unsafe_browser/captive_portal.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"doc/anonymous_internet/unsafe_browser/captive_portal.inline.sr_Latn\" raw=\"yes\" sort=\"age\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"security\">The <i>Unsafe Browser</i> is not anonymous</h1>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"doc/anonymous_internet/unsafe_browser/security_implications.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"doc/anonymous_internet/unsafe_browser/security_implications.inline.sr_Latn\" raw=\"yes\" sort=\"age\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"tip\">\n"
+msgstr "<div class=\"tip\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>To learn how Tails implements the <i>Unsafe Browser</i> and its security, see our\n"
+"[[design documentation about the <i>Unsafe Browser</i>|contribute/design/Unsafe_Browser]].</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"use\">Starting the <i>Unsafe Browser</i></h1>\n"
+msgstr ""
+
+#. type: Plain text
+msgid "To start the *Unsafe Browser*:"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Choose **Apps&nbsp;▸ Internet&nbsp;▸ Unsafe Browser**."
+msgstr ""
+
+#. type: Title =
+#, no-wrap
+msgid "Signing in to a network using a captive portal"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"doc/anonymous_internet/unsafe_browser/signing_in.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"doc/anonymous_internet/unsafe_browser/signing_in.inline.sr_Latn\" raw=\"yes\" sort=\"age\"]]\n"
+
+#, no-wrap
+#~ msgid "<div class=\"note\">\n"
+#~ msgstr "<div class=\"note\">\n"
+
+#, fuzzy
+#~| msgid ""
+#~| "Tails includes an *Unsafe Browser* for this\n"
+#~| "purpose, and it can be started via the menu\n"
+#~| "<span class=\"menuchoice\">\n"
+#~| "  **Applications**&nbsp;▸\n"
+#~| "  **Internet**&nbsp;▸\n"
+#~| "  **Unsafe Web Browser**</span>.\n"
+#~ msgid ""
+#~ "To start the *Unsafe Browser*, choose\n"
+#~ "<span class=\"menuchoice\">\n"
+#~ "  **Applications**&nbsp;▸\n"
+#~ "  **Internet**&nbsp;▸\n"
+#~ "  **Unsafe Web Browser**</span>.\n"
+#~ msgstr ""
+#~ "Tails enthält einen *Unsicheren Browser* für diesen\n"
+#~ "Zweck, dieser kann über das Menü\n"
+#~ "<span class=\"menuchoice\">\n"
+#~ "  **Anwendungen**&nbsp;▸\n"
+#~ "  **Internet**&nbsp;▸\n"
+#~ "  **Unsicherer Web Browser**</span> \n"
+#~ "gestartet werden.\n"
+
+#, fuzzy
+#~| msgid ""
+#~| "The *Unsafe Browser* has a red and yellow theme\n"
+#~| "to differentiate it from [[<span class=\"application\">Tor Browser</"
+#~| "span>|Tor_Browser]].\n"
+#~ msgid ""
+#~ "The *Unsafe Browser* has a red theme to\n"
+#~ "differentiate it from [[*Tor Browser*|Tor_Browser]].\n"
+#~ msgstr ""
+#~ "Der *Unsichere Browser* hat ein rotes und gelbes Farbschema\n"
+#~ "um vom [[*Tor Browser*|Tor_Browser]] zu unterscheiden.\n"
+
+#~ msgid ""
+#~ "<p><strong>The *Unsafe Browser* is not\n"
+#~ "anonymous</strong>. Use it only to log in to captive portals or to\n"
+#~ "[[browse web pages on the local network|advanced_topics/lan#browser]].</"
+#~ "p>\n"
+#~ msgstr ""
+#~ "<p><strong>Der *Unsichere Browser* ist nicht\n"
+#~ "anonym</strong>. Nutzen Sie ihn nur, um sich in Captive Portals "
+#~ "einzuloggen oder um\n"
+#~ "[[Webseiten im lokalen Netzwerk anzusehen|advanced_topics/lan#browser]].</"
+#~ "p>\n"
+
+#~ msgid "Security recommendations:"
+#~ msgstr "Sicherheitsempfehlungen:"
+
+#~ msgid ""
+#~ "Do not run this browser at the same time as the anonymous [[<span "
+#~ "class=\"application\">Tor Browser</span>|Tor_Browser]]. This makes it "
+#~ "easy to not mistake one browser for the other, which could have "
+#~ "catastrophic consequences."
+#~ msgstr ""
+#~ "Führen Sie diesen Browser nicht zur zeitgleich mit dem [[<span "
+#~ "class=\"application\">Tor Browser</span>|Tor_Browser]] aus. Dies macht es "
+#~ "einfach, einen Browser nicht mit dem anderen zu verwechseln, was "
+#~ "verheerende Folgen haben könnte."
+
+#~ msgid "<div class=\"caution\">\n"
+#~ msgstr "<div class=\"caution\">\n"
+
+#~ msgid ""
+#~ "Many publicly accessible Internet connections (usually available through "
+#~ "a wireless network connection) require its users to register and login in "
+#~ "order to get access to the Internet. This include both free and paid for "
+#~ "services that may be found at Internet cafés, libraries, airports, "
+#~ "hotels, universities etc. Normally in these situations, a so called "
+#~ "*captive portal* intercepts any website request made and redirects the "
+#~ "web browser to a login page. None of that works when Tor is used, so a "
+#~ "browser with unrestricted network access is necessary."
+#~ msgstr ""
+#~ "Viele öffentlich zugängliche Internetverbindungen (auf die üblicherweise "
+#~ "über eine drahtlose Netzwerkverbindung zugegriffen werden kann) verlangen "
+#~ "von ihren Nutzenden, sich zu registrieren und anzumelden, um "
+#~ "Internetzugriff zu erhalten. Dies umfasst sowohl kostenlose als auch "
+#~ "kostenpflichtige Dienste, die z. B. in Internetcafé's, Bibliotheken, "
+#~ "Flughäfen, Hotels, Universtitäten usw. aufgefunden werden können. "
+#~ "Normalerweise werden in solchen Situationen *Captive Portals* jegliche "
+#~ "Anfragen zu Websites abfangen und den Webbrowser zu einer Loginseite "
+#~ "weiterleiten. Nichts davon funktioniert, wenn Tor benutzt wird, somit ist "
+#~ "ein Browser mit uneingeschränktem Internetzugriff nötig."
+
+#~ msgid ""
+#~ "When using [[doc/first_steps/welcome_screen/windows_camouflage]] the red "
+#~ "theme is disabled in order to raise less suspicion. It is still possible "
+#~ "to quietly identify the *Unsafe Browser* since it has English Wikipedia "
+#~ "as its default (and only) search engine in the navigation toolbar. The "
+#~ "lack of the onion icon is another such visual reminder."
+#~ msgstr ""
+#~ "Wenn [[Windows Camouflage|doc/first_steps/welcome_screen/"
+#~ "windows_camouflage]] benutzt wird, ist das rote Farbschema deaktiviert, "
+#~ "um weniger Aufmerksamkeit zu erregen. Es ist dennoch möglich, den <span "
+#~ "class=\"application\">Unsicheren Browser</span> in Ruhe zu erkennen, da "
+#~ "er die englische Wikipedia als voreingestellte (und einzige) Suchmaschine "
+#~ "in der Adresszeile besitzt. Das Fehlen des Zwiebellogos ist ein weitere "
+#~ "optische Erinnerung."

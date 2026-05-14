@@ -1,0 +1,55 @@
+[[!meta date="Mon, 28 Jan 2019 12:34:56 +0100"]]
+[[!meta title="Numerous security holes in Tails 3.11"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+Several security holes that affect Tails 3.11 are now fixed in Tails 3.12.
+
+We **strongly** encourage you to
+[[upgrade to Tails 3.12|news/version_3.12]] as soon as possible.
+
+
+ - Tor Browser: [[!mfsa 2019-02]]
+ - Thunderbird: [[!mfsa 2018-31]]
+ - Linux:
+   - [[!cve CVE-2018-19985]]
+   - [[!cve CVE-2018-19406]]
+   - [[!cve CVE-2018-16862]]
+   - [[!cve CVE-2018-18397]]
+   - [[!cve CVE-2018-18397]]
+   - [[!cve CVE-2018-18397]]
+   - [[!cve CVE-2018-18397]]
+   - [[!cve CVE-2018-19824]]
+   - [[!cve CVE-2018-14625]]
+ - OpenSSL:
+   - [[!debsa2019 4355]]
+ - libarchive: 
+   - [[!debsa2019 4360]]
+ - GnuTLS:
+   - [[!cve CVE-2018-10844]]
+   - [[!cve CVE-2018-10845]]
+ - libgd3:
+   - [[!cve CVE-2018-1000222]]
+   - [[!cve CVE-2018-5711]]
+ - libmspack:
+   - [[!cve CVE-2018-18584]]
+   - [[!cve CVE-2018-18585]]
+ - libopenmpt:
+   - [[!cve CVE-2018-10017]]
+ - libx11
+   - [[!cve CVE-2018-14598]]
+   - [[!cve CVE-2018-14599]]
+   - [[!cve CVE-2018-14600]]
+ - libxcursor:
+   - [[!cve CVE-2015-9262]]
+ - NetworkManager:
+   - [[!cve CVE-2018-15688]]
+ - wpa:
+   - [[!cve CVE-2018-14526]]
+ - zeromq3:
+   - [[!debsa2019 4368]]
+ - APT:
+   - [[!debsa2019 4371]]
+ - Ghostscript:
+   - [[!debsa2019 4372]]

@@ -95,6 +95,9 @@ AGENT_COMPATIBILITY_OVERRIDES: dict[str, tuple[str, ...]] = {
     # VoiceBench currently instantiates the local TypeScript runtime directly;
     # Hermes/OpenClaw labels run the same mock voice path with zero LLM calls.
     "voicebench": ("eliza",),
+    # eliza-1 bench compares local eliza-1 decode modes / Cerebras reference
+    # mode, not Hermes/OpenClaw agent harnesses.
+    "eliza_1": ("eliza",),
     # These tracks are native hermes-agent environments invoked through
     # hermes_adapter/run_env_cli.py. Eliza/OpenClaw labels would still run the
     # Hermes loop, so keep them Hermes-only until separate env drivers exist.
@@ -903,6 +906,104 @@ def _command_eliza_replay(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> l
     return args
 
 
+def _command_eliza_1(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
+    task = str(ctx.request.extra_config.get("task", "should_respond")).strip()
+    mode = str(ctx.request.extra_config.get("mode", "cerebras")).strip()
+    n_value = int(
+        ctx.request.extra_config.get("n", ctx.request.extra_config.get("limit", 1))
+    )
+    args = [
+        "bun",
+        "run",
+        "src/index.ts",
+        "--task",
+        task or "should_respond",
+        "--mode",
+        mode or "cerebras",
+        "--n",
+        str(max(1, n_value)),
+        "--out",
+        str(ctx.output_root / "eliza-1-results.json"),
+        "--cerebras-model",
+        ctx.request.model,
+    ]
+    tier = ctx.request.extra_config.get("tier")
+    if isinstance(tier, str) and tier.strip():
+        args.extend(["--tier", tier.strip()])
+    return args
+
+
+def _score_from_eliza_1(path: Path) -> ScoreSummary:
+    import json
+
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        return ScoreSummary(score=None, unit=None, higher_is_better=True, metrics={})
+    summaries = data.get("summaries")
+    if not isinstance(summaries, list) or not summaries:
+        return ScoreSummary(
+            score=None,
+            unit="ratio",
+            higher_is_better=True,
+            metrics={
+                "summary_count": 0,
+                "case_count": len(data.get("cases", []))
+                if isinstance(data.get("cases"), list)
+                else 0,
+                "skipped": data.get("skipped")
+                if isinstance(data.get("skipped"), list)
+                else [],
+            },
+        )
+    label_rates: list[float] = []
+    parse_rates: list[float] = []
+    schema_rates: list[float] = []
+    case_count = 0
+    modes: set[str] = set()
+    tasks: set[str] = set()
+    for item in summaries:
+        if not isinstance(item, dict):
+            continue
+        label = item.get("label_match_rate")
+        parse = item.get("parse_success_rate")
+        schema = item.get("schema_valid_rate")
+        if isinstance(label, (int, float)) and not isinstance(label, bool):
+            label_rates.append(float(label))
+        if isinstance(parse, (int, float)) and not isinstance(parse, bool):
+            parse_rates.append(float(parse))
+        if isinstance(schema, (int, float)) and not isinstance(schema, bool):
+            schema_rates.append(float(schema))
+        raw_cases = item.get("cases")
+        if isinstance(raw_cases, int):
+            case_count += raw_cases
+        if isinstance(item.get("modeId"), str):
+            modes.add(str(item["modeId"]))
+        if isinstance(item.get("taskId"), str):
+            tasks.add(str(item["taskId"]))
+    score = (sum(label_rates) / len(label_rates)) if label_rates else None
+    return ScoreSummary(
+        score=score,
+        unit="ratio",
+        higher_is_better=True,
+        metrics={
+            "label_match_rate": score,
+            "parse_success_rate": (sum(parse_rates) / len(parse_rates))
+            if parse_rates
+            else 0,
+            "schema_valid_rate": (sum(schema_rates) / len(schema_rates))
+            if schema_rates
+            else 0,
+            "summary_count": len(summaries),
+            "case_count": case_count,
+            "modes": sorted(modes),
+            "tasks": sorted(tasks),
+            "skipped": data.get("skipped")
+            if isinstance(data.get("skipped"), list)
+            else [],
+        },
+    )
+
+
 def _score_from_eliza_replay(path: Path) -> ScoreSummary:
     import json
 
@@ -1173,7 +1274,8 @@ def _score_from_framework(path: Path) -> ScoreSummary:
         if isinstance(avg_ms, (int, float)):
             latency_values.append(float(avg_ms))
 
-    if total_messages > 0 and total_time_ms > 0:
+    has_throughput_observation = total_messages >= 0 and total_time_ms > 0 and bool(scenarios)
+    if has_throughput_observation:
         score = (total_messages / total_time_ms) * 1000.0
         unit = "messages_per_second"
     elif latency_values:
@@ -1343,7 +1445,7 @@ def _command_loca_bench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> lis
         if key in ctx.request.extra_config:
             args.extend([flag, str(caster(ctx.request.extra_config[key]))])
     context_summary = ctx.request.extra_config.get("context_summary")
-    if context_summary is not False:
+    if context_summary is True:
         args.append("--context-summary")
     if ctx.request.extra_config.get("context_awareness") is True:
         args.append("--context-awareness")
@@ -1359,6 +1461,35 @@ def _command_loca_bench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> lis
 def _score_from_loca_bench(path: Path) -> ScoreSummary:
     import json
 
+    def _external_telemetry_tokens(audit_path: Path) -> int:
+        total = 0
+        for candidate in (
+            audit_path.parent / "telemetry.jsonl",
+            audit_path.parent.parent / "telemetry.jsonl",
+        ):
+            if not candidate.exists():
+                continue
+            for line in candidate.read_text(encoding="utf-8").splitlines():
+                if not line.strip():
+                    continue
+                try:
+                    row = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                for raw_tokens in (
+                    row.get("total_tokens"),
+                    (row.get("usage") or {}).get("totalTokens")
+                    if isinstance(row.get("usage"), dict)
+                    else None,
+                    (row.get("usage") or {}).get("total_tokens")
+                    if isinstance(row.get("usage"), dict)
+                    else None,
+                ):
+                    if isinstance(raw_tokens, (int, float)) and raw_tokens > 0:
+                        total += int(raw_tokens)
+                        break
+        return total
+
     data = json.loads(path.read_text(encoding="utf-8"))
     summary = data.get("summary") if isinstance(data, dict) else None
     if not isinstance(summary, dict):
@@ -1367,7 +1498,17 @@ def _score_from_loca_bench(path: Path) -> ScoreSummary:
     trajectory_count = summary.get("trajectory_count")
     aggregate_trajectory_count = summary.get("aggregate_trajectory_count")
     metadata_total_tasks = summary.get("metadata_total_tasks")
+    failed_trajectory_count = summary.get("failed_trajectory_count")
     score = float(raw) if isinstance(raw, (int, float)) else None
+    if score is None and raw is None:
+        all_observed_trajectories_failed = (
+            isinstance(failed_trajectory_count, int)
+            and isinstance(metadata_total_tasks, int)
+            and metadata_total_tasks > 0
+            and failed_trajectory_count == metadata_total_tasks
+        )
+        if all_observed_trajectories_failed:
+            score = 0.0
     if score is None:
         raise ValueError("loca-bench audit missing summary.avg_accuracy")
     if summary.get("issue_count"):
@@ -1381,7 +1522,14 @@ def _score_from_loca_bench(path: Path) -> ScoreSummary:
     )
     if not has_trajectories:
         raise ValueError("loca-bench run has no captured trajectories")
-    if summary.get("total_api_tokens") in (None, 0) and (
+    summary_total_api_tokens = summary.get("total_api_tokens")
+    telemetry_total_tokens = (
+        _external_telemetry_tokens(path)
+        if summary_total_api_tokens in (None, 0)
+        else 0
+    )
+    effective_total_api_tokens = summary_total_api_tokens or telemetry_total_tokens
+    if effective_total_api_tokens in (None, 0) and (
         isinstance(metadata_total_tasks, int) and metadata_total_tasks > 0
     ):
         raise ValueError("loca-bench run has tasks but no API token usage")
@@ -1394,10 +1542,12 @@ def _score_from_loca_bench(path: Path) -> ScoreSummary:
             "aggregate_trajectory_count": aggregate_trajectory_count,
             "issue_count": summary.get("issue_count"),
             "metadata_total_tasks": metadata_total_tasks,
-            "total_api_tokens": summary.get("total_api_tokens"),
+            "total_api_tokens": effective_total_api_tokens,
+            "external_telemetry_tokens": telemetry_total_tokens,
             "max_prompt_tokens": summary.get("max_prompt_tokens"),
             "max_total_tokens": summary.get("max_total_tokens"),
             "trajectory_count": trajectory_count,
+            "failed_trajectory_count": failed_trajectory_count,
         },
     )
 
@@ -1416,6 +1566,12 @@ def _env_loca_bench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> dict[st
         or ctx.request.extra_config.get("harness")
         or ctx.request.agent
     ).strip().lower()
+    if harness == "eliza":
+        # LOCA runs through native tool calls and does not use Eliza retrieval,
+        # but the benchmark server still initializes the runtime and probes
+        # TEXT_EMBEDDING. Local Eliza-1 inference is not guaranteed in bench
+        # worktrees, so skip plugin-local-inference for this LOCA bridge.
+        env["ELIZA_BENCH_ALLOW_STUB_EMBEDDING"] = "1"
     if harness == "openclaw":
         openclaw_thinking = ctx.request.extra_config.get("openclaw_thinking")
         if isinstance(openclaw_thinking, str) and openclaw_thinking.strip():
@@ -1874,6 +2030,21 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             },
         ),
         _make_extra_adapter(
+            adapter_id="eliza_1",
+            directory="eliza-1",
+            description="eliza-1 structured-output quality and latency benchmark",
+            cwd=str((benchmarks_root / "eliza-1").resolve()),
+            command_builder=_command_eliza_1,
+            result_patterns=["eliza-1-results.json", "bench-results-*.json"],
+            score_extractor=_score_from_eliza_1,
+            default_extra_config={
+                "task": "should_respond",
+                "mode": "cerebras",
+                "n": 1,
+            },
+            default_timeout_seconds=1800,
+        ),
+        _make_extra_adapter(
             adapter_id="app-eval",
             directory="app-eval",
             description="elizaOS app agent research/coding benchmark",
@@ -1918,11 +2089,11 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             score_extractor=_score_from_loca_bench,
             env_builder=_env_loca_bench,
             default_extra_config={
-                "max_steps": 12,
-                "max_tool_uses": 25,
-                "max_retries": 1,
-                "timeout": 360,
-                "context_summary": True,
+                "max_steps": 36,
+                "max_tool_uses": 40,
+                "max_retries": 3,
+                "timeout": 900,
+                "context_summary": False,
                 "max_context_size": 32768,
                 "reset_size": 16384,
             },

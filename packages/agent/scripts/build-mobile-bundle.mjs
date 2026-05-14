@@ -33,7 +33,7 @@
 //   files at parent-of-bundle on the device.
 
 import { spawnSync } from "node:child_process";
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync, readdirSync, realpathSync } from "node:fs";
 import {
   copyFile,
   mkdir,
@@ -514,6 +514,7 @@ const corePackages = [
   "@elizaos/core",
   "@elizaos/shared",
   "@elizaos/plugin-sql",
+  "@elizaos/plugin-ollama",
 ];
 
 // Inside the eliza repo the source trees live directly under the repo
@@ -550,6 +551,12 @@ const dedupeTargets = {
     "plugins",
     "plugin-sql",
     "src",
+    "index.node.ts",
+  ),
+  "@elizaos/plugin-ollama": path.resolve(
+    repoRoot,
+    "plugins",
+    "plugin-ollama",
     "index.node.ts",
   ),
 };
@@ -671,7 +678,8 @@ function findEthersCommonJsIndex() {
     }
   }
 
-  return candidates.find((candidate) => existsSync(candidate)) ?? null;
+  const found = candidates.find((candidate) => existsSync(candidate));
+  return found ? realpathSync(found) : null;
 }
 
 const ethersCommonJsIndex = findEthersCommonJsIndex();

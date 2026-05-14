@@ -1,0 +1,17 @@
+@import url("clone.css");
+
+span.pc-clone, a.pc-clone {
+  display: inline;
+}
+
+div.pc-clone, img.pc-clone, p.pc-clone, h1.pc-clone, h2.pc-clone {
+  display: block;
+}
+
+li.pc-clone {
+  display: list-item;
+}
+
+h1.step:before, span.next-counter:before {
+  content: counter(step)'/6';
+}

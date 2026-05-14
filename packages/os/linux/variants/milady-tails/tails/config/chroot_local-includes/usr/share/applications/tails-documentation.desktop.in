@@ -1,0 +1,12 @@
+[Desktop Entry]
+Version=1.0
+Encoding=UTF-8
+_Name=Tails Documentation
+_Comment=Learn how to use Tails
+_Keywords=learn
+Categories=Documentation;Tails;
+Type=Application
+Terminal=false
+Exec=/usr/local/bin/tails-documentation doc
+Icon=org.gnome.Yelp
+StartupNotify=true

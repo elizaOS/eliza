@@ -1,6 +1,6 @@
 {
     "name": "@elizaos/plugin-web-search",
-    "version": "2.0.0-beta.1",
+    "version": "2.0.0-beta.2",
     "type": "module",
     "main": "dist/index.js",
     "module": "dist/index.js",
@@ -24,13 +24,13 @@
         "dist"
     ],
     "dependencies": {
-        "@elizaos/core": "2.0.0-beta.1",
+        "@elizaos/core": "workspace:*",
         "@tavily/core": "^0.7.0",
         "js-tiktoken": "1.0.21",
         "tsup": "^8.5.1"
     },
     "devDependencies": {
-        "@biomejs/biome": "2.4.14"
+        "@biomejs/biome": "2.4.15"
     },
     "scripts": {
         "build": "tsup --format esm --dts",

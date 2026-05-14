@@ -1,0 +1,25 @@
+[[!meta title="Translate Tails into Spanish"]]
+
+[[!toc levels=2]]
+
+# How to join the Spanish translation team?
+
+We have one main communication channel: the **[mailing
+list](https://www.autistici.org/mailman/listinfo/tails-l10n-spanish)**.
+Is important to join the list so we can organize together.
+This list has a low volume of messages and is the place to solve your doubts or
+share your ideas with other translators. Please introduce yourself to the list
+when joining.
+
+You can also join the [localization mailing list for all languages](https://www.autistici.org/mailman/listinfo/tails-l10n)
+
+# How to translate
+
+* We try to translate using Tails itself so we get familiarised with the
+  software we are translating.
+* We use the [weblate translation platform](https://translate.tails.net/)
+  to translate the website. **Please read this [[introduction
+  |with_Translation_platform]] before translating**.
+* We have a wiki for the Spanish team, **please read it before translating**:
+  [[!tails_blueprint l10n_Spanish]] to prevent the most common translation
+  errors.

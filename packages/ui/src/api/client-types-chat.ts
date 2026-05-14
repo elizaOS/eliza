@@ -223,8 +223,6 @@ export interface ChatTokenUsage {
   model?: string;
 }
 
-export type ConversationMode = "simple" | "power";
-
 // Document / Character Knowledge types
 export interface DocumentStats {
   documentCount: number;

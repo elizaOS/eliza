@@ -8,7 +8,7 @@
 import type { ComponentProps } from "react";
 import { cn } from "../../lib/utils";
 import { Button } from "../button";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../tooltip";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../tooltip";
 
 export type ActionsProps = ComponentProps<"div">;
 
@@ -47,14 +47,12 @@ export const Action = ({
 
   if (tooltip) {
     return (
-      <TooltipProvider>
-        <Tooltip>
-          <TooltipTrigger asChild>{button}</TooltipTrigger>
-          <TooltipContent>
-            <p>{tooltip}</p>
-          </TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>{button}</TooltipTrigger>
+        <TooltipContent>
+          <p>{tooltip}</p>
+        </TooltipContent>
+      </Tooltip>
     );
   }
 

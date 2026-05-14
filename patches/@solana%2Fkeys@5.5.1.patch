@@ -1,0 +1,13 @@
+diff --git a/package.json b/package.json
+index 7fa784512d703c0e49f91a82e5484066a78568d3..e4638b584f5adc37bb8b99c2bfcfc57314b64d72 100644
+--- a/package.json
++++ b/package.json
+@@ -62,7 +62,7 @@
+     "@solana/nominal-types": "5.5.1"
+   },
+   "peerDependencies": {
+-    "typescript": "^5.0.0"
++    "typescript": ">=5.0.0"
+   },
+   "peerDependenciesMeta": {
+     "typescript": {

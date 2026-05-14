@@ -1,0 +1,78 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<!-- Created with Cambalache 0.99.8 -->
+<!-- Generated with glade 3.38.2 -->
+<interface>
+  <!-- interface-name window.ui.in -->
+  <requires lib="gtk+" version="3.24"/>
+  <template class="Window" parent="GtkApplicationWindow">
+    <property name="default-height">640</property>
+    <!-- Same width request as gnome-control-center's cc-window.ui minus the width of the sidebar (200) -->
+    <property name="default-width">780</property>
+    <property name="icon-name">tails-persistent-storage</property>
+    <property name="window-position">center</property>
+    <signal name="delete-event" handler="on_close"/>
+    <child>
+      <object class="GtkBox" id="view_box">
+        <property name="orientation">vertical</property>
+        <property name="visible">True</property>
+      </object>
+    </child>
+    <child type="titlebar">
+      <object class="GtkHeaderBar" id="headerbar">
+        <property name="hexpand">True</property>
+        <property name="show-close-button">True</property>
+        <property name="title" translatable="yes">Persistent Storage</property>
+        <property name="visible">True</property>
+        <child>
+          <object class="GtkButton" id="delete_button">
+            <property name="can-focus">True</property>
+            <property name="label" translatable="yes">_Delete…</property>
+            <property name="receives-default">False</property>
+            <property name="use-underline">True</property>
+            <signal name="clicked" handler="on_delete_button_clicked"/>
+            <child internal-child="accessible">
+              <object class="AtkObject">
+                <property name="accessible-name" translatable="yes">Delete Persistent Storage</property>
+              </object>
+            </child>
+            <style>
+              <class name="destructive-action"/>
+            </style>
+          </object>
+          <packing>
+            <property name="pack-type">end</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkButton" id="change_passphrase_button">
+            <property name="can-focus">True</property>
+            <property name="label" translatable="yes">_Change Passphrase…</property>
+            <property name="receives-default">True</property>
+            <property name="use-underline">True</property>
+            <signal name="clicked" handler="on_change_passphrase_button_clicked"/>
+            <child internal-child="accessible">
+              <object class="AtkObject">
+                <property name="accessible-name" translatable="yes">Change Passphrase</property>
+              </object>
+            </child>
+          </object>
+          <packing>
+            <property name="position">1</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkButton" id="restart_button">
+            <property name="can-focus">True</property>
+            <property name="label" translatable="yes">_Restart Tails</property>
+            <property name="receives-default">True</property>
+            <property name="use-underline">True</property>
+            <signal name="clicked" handler="on_restart_button_clicked"/>
+          </object>
+          <packing>
+            <property name="position">2</property>
+          </packing>
+        </child>
+      </object>
+    </child>
+  </template>
+</interface>

@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
-import { loadElizaInferenceFfi } from "../../src/services/local-inference/voice/ffi-bindings";
+import { loadElizaInferenceFfi } from "../../../../plugins/plugin-local-inference/src/services/voice/ffi-bindings";
 
 function arg(name: string, fallback: string): string {
   const idx = process.argv.indexOf(name);
@@ -74,7 +74,7 @@ const dylib = arg(
 );
 const bundle = arg(
   "--bundle",
-  `${process.env.HOME}/.eliza/local-inference/models/eliza-1-0_6b.bundle`,
+  `${process.env.HOME}/.eliza/local-inference/models/eliza-1-0_8b.bundle`,
 );
 const wav = arg("--wav", "/tmp/eliza-asr-hello.wav");
 const out = process.argv.includes("--out") ? arg("--out", "") : "";

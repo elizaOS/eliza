@@ -11,7 +11,6 @@
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
-    "@elizaos/plugin-auto-trader": "2.0.0-alpha.6",
     "@elizaos/plugin-wallet": "workspace:*",
     "@elizaos/plugin-anthropic": "workspace:*",
     "@elizaos/plugin-openai": "workspace:*",

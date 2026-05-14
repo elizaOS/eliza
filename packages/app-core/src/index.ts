@@ -33,7 +33,13 @@ export * from "./runtime/build-character-from-config";
 export * from "./runtime/build-variant";
 export * from "./runtime/channel-plugin-map";
 export * from "./runtime/eliza";
-export * from "./runtime/ensure-local-inference-handler";
+// Local inference handler registration moved to @elizaos/plugin-local-inference.
+// Re-export the public symbols so existing `import { ensureLocalInferenceHandler }
+// from "@elizaos/app-core"` callers keep resolving without code changes.
+export {
+	ensureLocalInferenceHandler,
+	shouldEnableMobileLocalInference,
+} from "@elizaos/plugin-local-inference/runtime";
 export * from "./runtime/mobile-safe-runtime";
 export * from "./runtime/mode/runtime-mode";
 export * from "./security/agent-vault-id";

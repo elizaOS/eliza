@@ -1,0 +1,39 @@
+This page documents a bit how to [[contribute/build]] a custom system
+based on Tails.
+
+<div class="caution">
+
+<p>The resulting system will effectively be a fork of
+Tails, that only you can support: do not expect any help from us about
+it.</p>
+
+<p>Please consider [[having your changes merged|contribute/how/code]]
+into Tails instead.</p>
+
+</div>
+
+[[!toc levels=2]]
+
+# Settings specific to Tails
+
+The settings that can be customized can be found in `config/variables`.
+
+# Debian Live settings
+
+Tails is based on Debian Live.
+Nearly everything can thus be customized. To learn how to do so, refer
+to the Debian Live [manual](https://live-team.pages.debian.net/live-manual/)
+and
+[wiki](https://wiki.debian.org/DebianLive/).
+
+# $HOME
+
+Tails default user's `$HOME` directory is created at runtime from
+`/etc/skel/`. One may want to build an image including a modified
+version of it. There are multiple ways to do so:
+
+1. edit the content of `config/chroot_local-includes/etc/skel/`
+2. dropping shell scripts in `config/chroot_local-hooks/` or
+   `config/chroot_local-includes/lib/live/config/`
+   to modify `/home/amnesia` in a program-driven way
+   (`gconftool`, etc.)

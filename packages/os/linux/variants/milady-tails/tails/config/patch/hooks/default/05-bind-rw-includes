@@ -1,0 +1,24 @@
+#!/bin/bash
+
+set -eu -o pipefail
+shopt -s inherit_errexit
+
+# Enable xtrace with timestamp
+export PS4='+ $(date "+%H:%M:%S.%3N") '
+set -x
+
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# shellcheck source=../../lib/lib.sh
+. "${DIR}/../../lib/lib.sh"
+
+SCRIPT="${LIB_DIR}/bind-rw-includes"
+INCLUDES_DIR=$(realpath "${LIB_DIR}/../rw-includes")
+
+# Exit if the includes directory is empty except for the README.md file.
+if [ "$(find "${INCLUDES_DIR}" -type f | wc -l)" -le 1 ]; then
+  exit 0
+fi
+
+run_with_plymouth_msg "patch: Bind mounting files from ${INCLUDES_DIR}" \
+  "${SCRIPT}" "${INCLUDES_DIR}"

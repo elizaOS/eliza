@@ -188,6 +188,11 @@ export async function sendStreamingMessage({
   let buffer = "";
 
   let completeCalled = false;
+  const markComplete = () => {
+    if (completeCalled) return;
+    completeCalled = true;
+    onComplete?.();
+  };
 
   try {
     while (true) {
@@ -197,19 +202,21 @@ export async function sendStreamingMessage({
         // Process any remaining data in buffer
         if (buffer.trim()) {
           try {
-            processSSEMessage(buffer.trim(), onMessage, onChunk, onReasoning, onError, () => {
-              completeCalled = true;
-              onComplete?.();
-            });
+            processSSEMessage(
+              buffer.trim(),
+              onMessage,
+              onChunk,
+              onReasoning,
+              onError,
+              markComplete,
+            );
           } catch (err) {
             console.error("[Stream] Error processing final buffer:", err);
             onError?.("Stream ended unexpectedly");
           }
         }
         // Always call onComplete when stream ends, if not already called
-        if (!completeCalled) {
-          onComplete?.();
-        }
+        markComplete();
         break;
       }
 
@@ -228,7 +235,7 @@ export async function sendStreamingMessage({
         if (!message.trim()) continue;
 
         try {
-          processSSEMessage(message.trim(), onMessage, onChunk, onReasoning, onError, onComplete);
+          processSSEMessage(message.trim(), onMessage, onChunk, onReasoning, onError, markComplete);
         } catch (err) {
           console.error("[Stream] Error parsing SSE message:", err, message);
           // Continue processing other messages even if one fails

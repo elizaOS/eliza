@@ -1,0 +1,60 @@
+[[!meta title="Tails report for December, 2012"]]
+[[!meta date="Wed, 09 Jan 2013 16:00:00 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!toc levels=1]]
+
+Releases
+========
+
+Tails 0.16~rc1 [[was released on December 14th|news/test_0.16-rc1]].
+
+The Tails 0.16 release is scheduled for the first half of January.
+
+People
+======
+
+We received 66 reports through Whisperback.
+
+The forum activity has been steadily high:
+1128 messages, 177 signed by Tails.
+
+Some of us went to [29c3](https://events.ccc.de/congress/2012/).
+
+Code
+====
+
+Many dictionaries for supported languages were installed.
+
+A bug concerning memlockd was fixed.
+
+The regular GnuPG agent was added.
+
+The automatic update feature of Iceweasel extensions was disabled.
+
+The move to using `live-boot` version 3 was worked on.
+
+The [Minitube](http://flavio.tordini.org/minitube) Youtube client was installed.
+
+The Iceweasel Add-on bar was hidden.
+
+The work on a better power-off button was completed and merged.
+
+A bug concerning the `--media` option of live-persist was fixed.
+
+The `~/Persistent` directory was added to the *Places* menu of *GNOME* and *GtkFileChooser*.
+
+The `xul-ext-monkeysphere` extension was removed.
+
+The *News* section of the website was configured as the homepage of Iceweasel.
+
+The Entropy Key daemon `ekeyd` was installed.
+
+A new version of the [MAT](https://mat.boum.org/) was announced.
+
+Documentation and website
+=========================
+
+[[Guidelines for writing documentation|contribute/how/documentation/style_guide]] for Tails were written.
+
+The documentation of our release process was improved.

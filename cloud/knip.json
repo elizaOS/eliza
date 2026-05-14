@@ -145,7 +145,7 @@
         "src/live.e2e.test.ts",
         "build.ts",
         "scripts/**/*.{mjs,ts}",
-        "vitest.config.ts"
+        "vitest.live.config.ts"
       ],
       "project": ["src/**/*.ts", "scripts/**/*.{mjs,ts}"],
       "ignore": ["dist/**"]

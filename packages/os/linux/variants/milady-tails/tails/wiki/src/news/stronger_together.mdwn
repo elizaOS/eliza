@@ -1,0 +1,125 @@
+[[!meta title="Stronger together: What we've accomplished since the Tails-Tor merger"]]
+[[!meta date="Wed, 28 May 2025 00:00:00 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+
+Nine months ago Tails and Tor set out to [[unite forces for Internet
+Freedom|tails_tor]]. The goal was to integrate Tails into the organizational
+structure of the Tor Project to pool resources instead of duplicating them, and
+deliver a more robust shield against censorship and surveillance. Today we're
+happy to report that we're already seeing the transformative impact of our
+united efforts.
+
+# Delivering on our promises
+
+The integration of two organizations requires careful planning and
+collaboration. When we first began our discussions, we made it a point to focus
+on better serving the shared communities that depend on Tor and Tails. The
+merger has already delivered on our core commitments in concrete ways:
+
+## Countering censorship and surveillance more effectively
+
+Our combined anti-censorship expertise is yielding immediate results. Whenever
+a new or previously unknown censorship event occurs, we can figure out how best
+to tackle the issues. China is one such example in action: When *obfs4* bridges
+increasingly became the target of censors, our teams were able to jointly
+coordinate a strategic response, determining whether to address the issue
+through improved bridge distribution mechanisms or by adding support for newer
+pluggable transports in Tails itself. This kind of coordinated response to
+censorship events was more challenging and time-consuming when we operated
+separately.
+
+## More robust treatment of overlapping threat models
+
+We've ensured that Tails' specific needs are now directly integrated into Arti
+development, creating a more comprehensive solution for users who need both
+network and system-level security in high-risk environments. Having both Tor
+Browser and Tails developers collaborate more closely means that Tails users
+benefit from smoother, earlier releases that provide user protections faster.
+
+## Expanded training and outreach opportunities
+
+Empowering our users through access and digital rights education has been a top
+priority for both Tails and Tor. Earlier this year, we successfully ran a Tails
+training in partnership with the Open Culture Foundation the day before
+RightsCon 2025, reaching activists and journalists who urgently need these
+tools. By tapping into Tor's Privacy Resilience Grants, we're now supporting
+more groups in the Global South to run Tails trainings directly in their
+communities, expanding Tails' reach to new territories and user groups.
+
+# Operational resilience to advance our shared mission
+
+The benefits extend far beyond individual projects. Our unified sysadmin team
+has created a comprehensive [5-year roadmap for merging our digital
+infrastructures](https://gitlab.torproject.org/tpo/tpa/team/-/wikis/policy/tpa-rfc-73-tails-infra-merge-roadmap#2026),
+eliminating redundancies while strengthening both organizations' technological
+foundations. We've already merged critical services including calendars, GitLab
+projects, password stores, and documentation systems, with security policies,
+monitoring systems, and authentication mechanisms currently in progress.
+
+The merger has also clarified roles and responsibilities across teams while
+providing Tails teams with access to the Tor Project's mature organizational
+structure and improving system monitoring and management. Our expanded
+fundraising capacity means we can pursue larger grants and coordinate funding
+requests that support both tools simultaneously. It allows us to stay resilient
+in a dynamic fundraising landscape, and maximize the impact of every dollar.
+
+This is a meaningful achievement for every supporter: Your donations now go
+further toward creating real-world impact rather than duplicating
+administrative overhead. Our resources are now fully directed toward developing
+stronger privacy tools and reaching more people who need protection from
+surveillance and censorship.
+
+# Upcoming changes for PayPal donors
+
+Tails, just like Tor, has always been powered by your donations. As part of our
+organizational merge, we are taking the opportunity to upgrade the way we
+manage donations, donor records, and communication with you about your
+donations.
+
+If you have made a donation to Tails through PayPal, your information will be
+imported into Tor's [CiviCRM](https://civicrm.org/) Customer Relationship
+Management (CRM) database, which collects only the minimal amount of
+information and hosts all donor data on Tor infrastructure. Rest assured that
+Tor will never sell or share your data. Ever. You can read the Tor Project's
+[privacy policy here](https://donate.torproject.org/privacy-policy/).
+
+The following information will be imported:
+
+- Name
+- Email
+- Address, if given
+- Past donation history
+
+All of this data will be **merged by June 30, 2025**. Once the data is
+completely merged, all PayPal monthly donations will be terminated. If you have
+an active monthly donation to Tails through PayPal, please watch out for a
+message from us about migrating your donation.
+
+# What you can do today
+
+Thank you for being defenders of online privacy, anonymity, and censorship
+circumvention tools. We invite all our supporters to [join
+us](https://torproject.org/donate/donate-ts-sc2025) as part of the unified Tor
+community, working together to safeguard the digital human rights of
+individuals worldwide. Please consider renewing your donation today for the Tor
+Project and help [make privacy possible](https://blog.torproject.org/sc25/). 
+
+<br>
+
+<div class="cta">
+
+<a href="https://torproject.org/donate/donate-ts-sc2025">Donate</a>
+
+</div>
+
+<br>
+
+The Tor Project is a 501(c)(3) nonprofit committed to transparency. The Tor
+Project has a [Four-Star
+Charity](https://www.charitynavigator.org/ein/208096820) rating from Charity
+Navigator, and has been awarded [Candid's Platinum Seal of
+Transparency](https://www.guidestar.org/profile/shared/7d68a7b7-2a9f-4613-a985-1638da87abdf).
+This demonstrates the Tor Project's commitment to openness and honesty in how
+the organization manages its finances and uses your investment for a greater
+impact. Your donation is in good hands and goes a long way. 

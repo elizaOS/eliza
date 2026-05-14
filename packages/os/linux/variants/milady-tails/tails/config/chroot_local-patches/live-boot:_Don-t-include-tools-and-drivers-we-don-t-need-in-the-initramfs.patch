@@ -1,0 +1,162 @@
+From 754d415cc4b076be3da8e6f5ebca3696d2a22d07 Mon Sep 17 00:00:00 2001
+From: intrigeri <intrigeri@torproject.org>
+Date: Thu, 31 Jul 2025 08:38:47 +0000
+Subject: [PATCH] Don't include tools and drivers we don't need in the initrd
+
+refs tails/tails#21098, tails/tails#21006
+---
+ backend/initramfs-tools/live.hook | 95 +------------------------------
+ 1 file changed, 2 insertions(+), 93 deletions(-)
+
+diff --git a/backend/initramfs-tools/live.hook b/backend/initramfs-tools/live.hook
+index 54a566fa..c2cc4ca6 100755
+--- a/usr/share/initramfs-tools/hooks/live
++++ b/usr/share/initramfs-tools/hooks/live
+@@ -82,32 +82,9 @@ then
+ 	uuidgen -r > "${DESTDIR}/conf/uuid.conf"
+ fi
+ 
+-# Filesystem: btrfs
+-manual_add_modules btrfs
+-
+-# Filesystem: cifs
+-if [ -x /sbin/mount.cifs ]
+-then
+-	copy_exec /sbin/mount.cifs
+-        manual_add_modules cifs
+-fi
+-
+-# Filesystem: ext3/ext4
+-manual_add_modules ext3
++# Filesystem: ext4
+ manual_add_modules ext4
+ 
+-# Filesystem: hfs/hfsplus
+-manual_add_modules hfs
+-manual_add_modules hfsplus
+-
+-# Filesystem: jffs2
+-manual_add_modules jffs2
+-
+-if [ -x /usr/bin/rsync ]
+-then
+-	copy_exec /usr/bin/rsync /bin
+-fi
+-
+ # Filesystem: squashfs
+ copy_exec /sbin/losetup
+ manual_add_modules loop
+@@ -115,8 +92,7 @@ manual_add_modules squashfs
+ manual_add_modules sqlzma
+ manual_add_modules unlzma
+ 
+-# Filesystem: aufs/overlay
+-manual_add_modules aufs
++# Filesystem: overlay
+ manual_add_modules overlay
+ 
+ # Filesystem: vfat
+@@ -126,9 +102,6 @@ manual_add_modules nls_utf8
+ manual_add_modules nls_ascii
+ manual_add_modules vfat
+ 
+-# Filesystem: ntfs
+-manual_add_modules ntfs
+-
+ [ "${QUIET}" ] || echo -n " devices"
+ # Hardware: cdrom
+ manual_add_modules ide-cd
+@@ -140,38 +113,12 @@ manual_add_modules sr_mod
+ # Hardware: usb
+ manual_add_modules sd_mod
+ 
+-# Hardware: network
+-auto_add_modules net
+-
+-# Program: eject
+-if [ -x /usr/bin/eject ]
+-then
+-	copy_exec /usr/bin/eject /bin
+-fi
+-
+ # Program: mount
+ # fuse does not work with klibc mount
+ copy_exec /bin/mount /bin/mount.util-linux
+ 
+ [ "${QUIET}" ] || echo -n " utils"
+ 
+-# Feature: Verify Checksums
+-if [ -e /etc/progress-linux_version ]
+-then
+-	copy_exec /usr/bin/sha256sum /bin
+-else
+-	copy_exec /usr/bin/md5sum /bin
+-fi
+-
+-# Program: memdisk
+-if [ -x /usr/bin/memdiskfind ]
+-then
+-[ "${QUIET}" ] || echo -n " memdisk"
+-	copy_exec /usr/bin/memdiskfind
+-	manual_add_modules phram
+-	manual_add_modules mtdblock
+-fi
+-
+ # Program: udev
+ if [ -x /sbin/udevadm ]
+ then
+@@ -179,13 +126,6 @@ then
+ 	copy_exec /sbin/udevadm
+ fi
+ 
+-# Program: wget
+-if [ -x /usr/bin/wget ]
+-then
+-	[ "${QUIET}" ] || echo -n " wget"
+-	copy_exec /usr/bin/wget /bin
+-fi
+-
+ # Program: blockdev
+ if [ -x /sbin/blockdev ]
+ then
+@@ -193,37 +133,6 @@ then
+ 	copy_exec /sbin/blockdev
+ fi
+ 
+-# FUSE kernel module
+-manual_add_modules fuse
+-
+-# FUSE filesystem: httpfs2
+-if [ -x /usr/bin/httpfs2_ssl ]
+-then
+-	[ "${QUIET}" ] || echo -n " httpfs:ssl"
+-	copy_exec /usr/bin/httpfs2_ssl /bin/httpfs
+-elif [ -x /usr/bin/httpfs2 ]
+-then
+-	[ "${QUIET}" ] || echo -n " httpfs"
+-	copy_exec /usr/bin/httpfs2 /bin/httpfs
+-fi
+-
+-# FUSE filesystem: curlftpfs
+-if [ -x /usr/bin/curlftpfs ]
+-then
+-	[ "${QUIET}" ] || echo -n " ftpfs"
+-	copy_exec /usr/bin/curlftpfs /bin
+-fi
+-
+-# iSCSI
+-if [ -x /usr/sbin/iscsistart ]
+-then
+-	[ "${QUIET}" ] || echo -n " iscsi"
+-	copy_exec /usr/sbin/iscsistart /bin
+-	#manual_add_modules ib_iser
+-	manual_add_modules iscsi_tcp
+-	manual_add_modules crc32c
+-fi
+-
+ # Some experimental stuff
+ 
+ [ "${QUIET}" ] || echo -n " dns"
+-- 
+2.50.1
+

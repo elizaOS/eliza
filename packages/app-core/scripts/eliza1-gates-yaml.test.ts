@@ -3,7 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
-import { ELIZA_1_TIERS } from "../src/services/local-inference/manifest/schema";
+import { ELIZA_1_TIERS } from "@elizaos/plugin-local-inference/services";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const GATES_YAML = path.resolve(

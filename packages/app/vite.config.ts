@@ -1240,7 +1240,7 @@ export default defineConfig({
       "puppeteer-core",
       "@puppeteer/browsers",
       // Native LLM embedding — uses node-llama-cpp, never runs in browser
-      "@elizaos/plugin-local-embedding",
+      "@elizaos/plugin-local-inference",
       // Node-only connector; LifeOps server services may dynamically import it,
       // but the renderer must not parse its Baileys/qrcode-terminal graph.
       "@elizaos/plugin-whatsapp",

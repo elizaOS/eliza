@@ -9,7 +9,7 @@ import { type LucideIcon, XIcon } from "lucide-react";
 import type { ComponentProps, HTMLAttributes } from "react";
 import { cn } from "../../lib/utils";
 import { Button } from "../button";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../tooltip";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../tooltip";
 
 export type ArtifactProps = HTMLAttributes<HTMLDivElement>;
 
@@ -102,14 +102,12 @@ export const ArtifactAction = ({
 
   if (tooltip) {
     return (
-      <TooltipProvider>
-        <Tooltip>
-          <TooltipTrigger asChild>{button}</TooltipTrigger>
-          <TooltipContent>
-            <p>{tooltip}</p>
-          </TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>{button}</TooltipTrigger>
+        <TooltipContent>
+          <p>{tooltip}</p>
+        </TooltipContent>
+      </Tooltip>
     );
   }
 

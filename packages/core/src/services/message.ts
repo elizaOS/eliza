@@ -3,11 +3,10 @@ import z from "zod";
 import { formatActionNames, formatActions } from "../actions";
 import {
 	actionToTool,
+	buildPlannerToolsFromTieredActions,
+	CORE_PLANNER_TERMINALS,
 	createHandleResponseTool,
 	HANDLE_RESPONSE_TOOL_NAME,
-	PLAN_ACTIONS_TOOL,
-	PLAN_ACTIONS_TOOL_NAME,
-	STABLE_PLANNER_TOOLS,
 } from "../actions/to-tool";
 import { evaluateConnectorAccountPolicies } from "../connectors/account-manager";
 import { createUniqueUuid } from "../entities";
@@ -61,7 +60,6 @@ import {
 	type FactsAndRelationshipsRunResult,
 	runFactsAndRelationshipsStage,
 } from "../runtime/facts-and-relationships";
-import { parseJsonObject } from "../runtime/json-output";
 import { getLocalizedExamplesProvider } from "../runtime/localized-examples-provider";
 import {
 	getMessageHandlerReply,
@@ -73,7 +71,6 @@ import {
 	buildModelInputBudget,
 	withModelInputBudgetProviderOptions,
 } from "../runtime/model-input-budget";
-import { extractPlanActionsFromContent } from "../runtime/plan-actions-extractor";
 import {
 	actionResultToPlannerToolResult,
 	cacheProviderOptions,
@@ -91,7 +88,6 @@ import {
 } from "../runtime/response-grammar";
 import {
 	type ResponseHandlerEvaluator,
-	type ResponseHandlerPatch,
 	runResponseHandlerEvaluators,
 } from "../runtime/response-handler-evaluators";
 import type {
@@ -145,7 +141,6 @@ import type {
 	GenerateTextAttachment,
 	GenerateTextParams,
 	GenerateTextResult,
-	JSONSchema,
 	PromptSegment,
 	TextToSpeechParams,
 	ToolDefinition,
@@ -414,25 +409,6 @@ function extractInlinePlannerActionParams(value: string): {
 	return { name: unwrapPlannerIdentifier(value) };
 }
 
-function splitPlannerCompoundActionName(
-	actionName: string,
-): { actionName: string; subaction: string } | null {
-	const parts = unwrapPlannerIdentifier(actionName)
-		.split(".")
-		.map((part) => part.trim())
-		.filter(Boolean);
-	if (parts[0]?.toLowerCase() === "functions") {
-		parts.shift();
-	}
-	if (parts.length !== 2) {
-		return null;
-	}
-	return {
-		actionName: parts[0],
-		subaction: parts[1],
-	};
-}
-
 export function extractPlannerActionNames(
 	parsedPlanner: Record<string, unknown>,
 ): string[] {
@@ -498,36 +474,6 @@ function _normalizePlannerActions(
 		const resolvedAction = resolveRuntimeAction(actionLookup, actionName);
 		if (resolvedAction) {
 			return [resolvedAction.name];
-		}
-
-		const compoundAction = splitPlannerCompoundActionName(actionName);
-		if (compoundAction) {
-			const resolvedCompoundAction = resolveRuntimeAction(
-				actionLookup,
-				compoundAction.actionName,
-			);
-			if (resolvedCompoundAction) {
-				return [resolvedCompoundAction.name];
-			}
-		}
-
-		const aliasedActionName = PLANNER_ACTION_ALIASES.get(normalized);
-		if (aliasedActionName) {
-			const resolvedAlias = resolveRuntimeAction(
-				actionLookup,
-				aliasedActionName,
-			);
-			if (resolvedAlias) {
-				runtime.logger.info(
-					{
-						src: "service:message",
-						actionName,
-						aliasedActionName: resolvedAlias.name,
-					},
-					"Repaired planner action alias",
-				);
-				return [resolvedAlias.name];
-			}
 		}
 
 		runtime.logger.warn(
@@ -618,33 +564,6 @@ function resolvePlannerActionNameFromLookup(
 	const resolvedAction = resolveRuntimeAction(lookup, actionName);
 	if (resolvedAction) {
 		return [resolvedAction.name];
-	}
-
-	const compoundAction = splitPlannerCompoundActionName(actionName);
-	if (compoundAction) {
-		const resolvedCompoundAction = resolveRuntimeAction(
-			lookup,
-			compoundAction.actionName,
-		);
-		if (resolvedCompoundAction) {
-			return [resolvedCompoundAction.name];
-		}
-	}
-
-	const aliasedActionName = PLANNER_ACTION_ALIASES.get(normalized);
-	if (aliasedActionName) {
-		const resolvedAlias = resolveRuntimeAction(lookup, aliasedActionName);
-		if (resolvedAlias) {
-			runtime.logger.info(
-				{
-					src: "service:message",
-					actionName,
-					aliasedActionName: resolvedAlias.name,
-				},
-				"Repaired planner action alias",
-			);
-			return [resolvedAlias.name];
-		}
 	}
 
 	return [];
@@ -1629,18 +1548,6 @@ function appendPriorDialogueEvents(
 	if (!Array.isArray(recentMessages)) {
 		return;
 	}
-	// Hard cap on prior-dialogue events: the RECENT_MESSAGES provider
-	// already renders the most recent N as a formatted text block, and
-	// the runtime's stored `conversationLength` setting controls the DB
-	// fetch limit. Without this cap each prior dialogue turn ALSO becomes
-	// an individual `message:user` / `message:assistant` prompt segment,
-	// duplicating the same content with extra formatting overhead. On a
-	// busy room (3-day Discord channel) this dropped a single
-	// HANDLE_RESPONSE call to 140K input tokens — past the gpt-oss-120b
-	// context window and well past Cerebras's TPM ceiling. Last-N cap
-	// makes the duplicate prompt segments O(1) per turn regardless of
-	// how big the room's history is.
-	const PRIOR_DIALOGUE_EVENT_CAP = 10;
 	const dialogue = recentMessages
 		.filter((memory): memory is Memory => {
 			if (!memory || typeof memory !== "object") return false;
@@ -1655,8 +1562,7 @@ function appendPriorDialogueEvents(
 				typeof m.content?.text === "string" ? m.content.text.trim() : "";
 			return text.length > 0;
 		})
-		.sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0))
-		.slice(-PRIOR_DIALOGUE_EVENT_CAP);
+		.sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
 	for (const memory of dialogue) {
 		const isAgent = memory.entityId === runtime.agentId;
 		events.push({
@@ -2040,11 +1946,6 @@ function buildV5PlannerActionSurface(params: {
 	const tieredSurface = tierActionResults({
 		catalog,
 		results: retrieval.results,
-		// When the upstream messageHandler decided this turn maps to a
-		// specific parent (e.g. `TASKS_SPAWN_AGENT`), narrow tier-A to
-		// that parent so the planner can't pick a competing tier-A action
-		// (e.g. inline `FILE.write`) on weaker LLMs. Non-matching parents
-		// go to tier-C; no-op when nothing matches the candidate set.
 		narrowToCandidateActions: candidateActions,
 	});
 	const toolSearchEndedAt = Date.now();
@@ -2228,10 +2129,10 @@ async function createV5MessageContextObject(args: {
 		character: args.runtime.character,
 		userRole: args.userRoles?.[0],
 	});
-	// Stage 2 sees one stable wrapper tool: PLAN_ACTIONS. Per-action specs live in
-	// `events[type=tool]` and are rendered into the conversation's
-	// available-actions block by the available_actions provider; the LLM picks
-	// one by name and passes it back via `PLAN_ACTIONS({ action, ... })`.
+	// Stage 2 exposes each Action as its own native tool. Per-action specs live
+	// in `events[type=tool]`; the LLM calls each action directly by name. We
+	// also expose the universal terminal-sentinel tools (REPLY / IGNORE / STOP)
+	// so the planner has a stable way to end the turn regardless of narrowing.
 	// Empty when no actions are gated so the planner can short-circuit.
 	const hasAnyAction = events.some(
 		(event) =>
@@ -2242,7 +2143,7 @@ async function createV5MessageContextObject(args: {
 			),
 	);
 	const expandedTools: ToolDefinition[] = hasAnyAction
-		? [PLAN_ACTIONS_TOOL]
+		? [...CORE_PLANNER_TERMINALS]
 		: [];
 	return createContextObject({
 		id: String(args.message.id ?? v4()),
@@ -2309,548 +2210,6 @@ function filterSelectedContextsForRole(
 	return selected;
 }
 
-function contextAvailableForRepair(
-	context: AgentContext,
-	availableContexts: readonly ContextDefinition[] | undefined,
-): boolean {
-	return (
-		!availableContexts ||
-		availableContexts.length === 0 ||
-		availableContexts.some((definition) => definition.id === context)
-	);
-}
-
-/**
- * Resolve a Stage 1 repair's `parentActionHints` to the first umbrella from
- * `preferred` that is present in `availableActionNames`. When none of the
- * preferred umbrellas are present, fall back to `fallback` so legacy callers
- * (and runtimes that don't expose the umbrella action) still receive a usable
- * hint.
- *
- * Names are compared case-insensitively after the same identifier normalization
- * the planner alias map uses (`A_B` and `AB` both match the `AB` umbrella).
- */
-function resolveActionAwareParentHint(
-	preferred: readonly string[],
-	fallback: string,
-	availableActionNames: readonly string[] | undefined,
-): string {
-	const available = new Set(
-		(availableActionNames ?? []).map((name) => normalizeActionIdentifier(name)),
-	);
-	for (const candidate of preferred) {
-		if (available.has(normalizeActionIdentifier(candidate))) {
-			return candidate;
-		}
-	}
-	return fallback;
-}
-
-function addRepairPlanToPatch(
-	patch: {
-		setContexts?: AgentContext[];
-		addContexts: AgentContext[];
-		addCandidateActions: string[];
-		addParentActionHints: string[];
-	},
-	repair: {
-		contexts: AgentContext[];
-		candidateActions: string[];
-		parentActionHints: string[];
-	},
-	mode: "replace-contexts" | "add-contexts",
-): void {
-	if (mode === "replace-contexts") {
-		patch.setContexts = mergeAgentContexts([], repair.contexts);
-	} else {
-		patch.addContexts = mergeAgentContexts(patch.addContexts, repair.contexts);
-	}
-	patch.addCandidateActions = [
-		...new Set([...patch.addCandidateActions, ...repair.candidateActions]),
-	];
-	patch.addParentActionHints = [
-		...new Set([...patch.addParentActionHints, ...repair.parentActionHints]),
-	];
-}
-
-function getStage1OwnerPreferenceRepairPlan(args: {
-	message: Memory;
-	availableContexts: readonly ContextDefinition[];
-}): {
-	contexts: AgentContext[];
-	candidateActions: string[];
-	parentActionHints: string[];
-} | null {
-	const text = (getUserMessageText(args.message) ?? "").trim();
-	if (!text) {
-		return null;
-	}
-	const lower = text.toLowerCase();
-	const explicitDocumentArtifactIntent =
-		/\b(?:document|doc|file|markdown|pdf|spreadsheet|sheet|notes?\s+(?:file|document|page)|save\s+(?:this|that|it)\s+as)\b/.test(
-			lower,
-		);
-	const stablePreferenceIntent =
-		/\b(?:remember|save|store|record|keep|note)\b[\s\S]{0,120}\b(?:i|me|my)\b[\s\S]{0,80}\b(?:prefer|preference|preferences|prefs?|like|usually|always)\b/.test(
-			lower,
-		) ||
-		/\b(?:travel|booking|flight|hotel)\s+(?:preference|preferences|prefs?)\b/.test(
-			lower,
-		);
-	if (!stablePreferenceIntent || explicitDocumentArtifactIntent) {
-		return null;
-	}
-	const travelPreferenceIntent =
-		/\b(?:travel|booking|flight|flights?|seat|seats?|aisle|window|carry-?on|checked bags?|luggage|hotel|hotels?|venue|venues?)\b/.test(
-			lower,
-		);
-	const contexts = (
-		["memory", "settings", "calendar"] as AgentContext[]
-	).filter((context) =>
-		contextAvailableForRepair(context, args.availableContexts),
-	);
-	return {
-		contexts: contexts.length > 0 ? contexts : ["general"],
-		candidateActions: travelPreferenceIntent
-			? [
-					"save_travel_preferences",
-					"store_travel_preferences",
-					"store_preference",
-				]
-			: ["store_preference", "save_owner_profile"],
-		parentActionHints: ["REPLY", "DOCUMENT"],
-	};
-}
-
-function getStage1ApprovalResolutionRepairPlan(args: {
-	message: Memory;
-	availableContexts: readonly ContextDefinition[];
-}): {
-	contexts: AgentContext[];
-	candidateActions: string[];
-	parentActionHints: string[];
-} | null {
-	const text = (getUserMessageText(args.message) ?? "").trim();
-	if (!text) {
-		return null;
-	}
-	const lower = text.toLowerCase();
-	const resolutionIntent =
-		/\b(?:approve|accept|confirm|reject|deny|decline)\b[\s\S]{0,120}\b(?:pending\s+)?(?:approval|request)\b/.test(
-			lower,
-		) ||
-		/\b(?:pending\s+)?(?:approval|request)\b[\s\S]{0,120}\b(?:approve|accept|confirm|reject|deny|decline)\b/.test(
-			lower,
-		);
-	if (!resolutionIntent) {
-		return null;
-	}
-	const rejectIntent = /\b(?:reject|deny|decline)\b/.test(lower);
-	const contexts = (
-		["tasks", "automation", "admin", "general"] as AgentContext[]
-	).filter((context) =>
-		contextAvailableForRepair(context, args.availableContexts),
-	);
-	return {
-		contexts: contexts.length > 0 ? contexts : ["general"],
-		candidateActions: rejectIntent
-			? ["resolve_pending_approval", "reject_approval", "deny_approval"]
-			: ["resolve_pending_approval", "approve_approval", "approve_request"],
-		parentActionHints: ["RESOLVE_REQUEST"],
-	};
-}
-
-function getStage1PasswordManagerRepairPlan(args: {
-	message: Memory;
-	availableContexts: readonly ContextDefinition[];
-}): {
-	contexts: AgentContext[];
-	candidateActions: string[];
-	parentActionHints: string[];
-} | null {
-	const text = (getUserMessageText(args.message) ?? "").trim();
-	if (!text) {
-		return null;
-	}
-	const lower = text.toLowerCase();
-	const lookupVerb =
-		/\b(?:look\s*up|find|search|show|list|copy|retrieve|get)\b/.test(lower);
-	const credentialNoun =
-		/\b(?:passwords?|saved\s+logins?|logins?|credentials?|1password|onepassword|protonpass|passkey|passkeys)\b/.test(
-			lower,
-		);
-	const explicitFillIntent =
-		/\b(?:fill|autofill|type|enter)\b[\s\S]{0,80}\b(?:password|login|field|form)\b/.test(
-			lower,
-		);
-	if (!lookupVerb || !credentialNoun || explicitFillIntent) {
-		return null;
-	}
-	const contexts = (
-		["secrets", "settings", "browser", "automation"] as AgentContext[]
-	).filter((context) =>
-		contextAvailableForRepair(context, args.availableContexts),
-	);
-	return {
-		contexts: contexts.length > 0 ? contexts : ["secrets"],
-		candidateActions: [
-			"password_manager_search",
-			"saved_login_lookup",
-			"credential_lookup",
-			"search_password_manager",
-		],
-		parentActionHints: ["CREDENTIALS"],
-	};
-}
-
-function getStage1CheckinRepairPlan(args: {
-	message: Memory;
-	availableContexts: readonly ContextDefinition[];
-	availableActionNames?: readonly string[];
-}): {
-	contexts: AgentContext[];
-	candidateActions: string[];
-	parentActionHints: string[];
-} | null {
-	const text = (getUserMessageText(args.message) ?? "").trim();
-	if (!text) {
-		return null;
-	}
-	const lower = text.toLowerCase();
-	const checkinIntent =
-		/\b(?:run|give|start|do|show|open)\b[\s\S]{0,80}\b(?:morning|night|daily|evening|bedtime)\s+check-?in\b/.test(
-			lower,
-		) ||
-		/\b(?:morning|night|daily|evening|bedtime)\s+check-?in\b[\s\S]{0,80}\b(?:now|today|tonight|please|for me)?\b/.test(
-			lower,
-		);
-	if (!checkinIntent) {
-		return null;
-	}
-	const nightIntent = /\b(?:night|evening|bedtime|tonight)\b/.test(lower);
-	const morningIntent = /\bmorning\b/.test(lower);
-	const contexts = (
-		["tasks", "health", "automation", "calendar", "email"] as AgentContext[]
-	).filter((context) =>
-		contextAvailableForRepair(context, args.availableContexts),
-	);
-	// Action-aware umbrella: prefer the dedicated `CHECKIN` action when the
-	// runtime exposes it (LifeOps deployments), otherwise fall back to the
-	// generic `SCHEDULED_TASKS` umbrella that hosts check-in subactions in
-	// vanilla runtimes.
-	const parentActionHint = resolveActionAwareParentHint(
-		["CHECKIN"],
-		"SCHEDULED_TASKS",
-		args.availableActionNames,
-	);
-	return {
-		contexts: contexts.length > 0 ? contexts : ["tasks"],
-		candidateActions: nightIntent
-			? ["night_checkin", "run_night_checkin", "lifeops_night_checkin"]
-			: morningIntent
-				? ["morning_checkin", "run_morning_checkin", "lifeops_morning_checkin"]
-				: ["run_checkin", "daily_checkin", "lifeops_checkin"],
-		parentActionHints: [parentActionHint],
-	};
-}
-
-function getStage1CalendlyRepairPlan(args: {
-	message: Memory;
-	availableContexts: readonly ContextDefinition[];
-}): {
-	contexts: AgentContext[];
-	candidateActions: string[];
-	parentActionHints: string[];
-} | null {
-	const text = (getUserMessageText(args.message) ?? "").trim();
-	if (!text) {
-		return null;
-	}
-	const lower = text.toLowerCase();
-	const calendlyIntent = /\bcalendly\b|api\.calendly\.com/u.test(lower);
-	if (!calendlyIntent) {
-		return null;
-	}
-	const availabilityIntent =
-		/\b(?:availability|available|open|slots?|times?)\b/u.test(lower);
-	const singleUseLinkIntent =
-		/\b(?:single[\s-]?use|one[\s-]?time|booking\s+link|book(?:ing)?\s+link|link)\b/u.test(
-			lower,
-		) && /\b(?:create|make|generate|get|give|send)\b/u.test(lower);
-	if (!availabilityIntent && !singleUseLinkIntent) {
-		return null;
-	}
-	const contexts = (
-		["calendar", "connectors", "tasks"] as AgentContext[]
-	).filter((context) =>
-		contextAvailableForRepair(context, args.availableContexts),
-	);
-	return {
-		contexts: contexts.length > 0 ? contexts : ["calendar"],
-		candidateActions: singleUseLinkIntent
-			? [
-					"calendly_single_use_link",
-					"calendly_create_single_use_link",
-					"calendar_calendly_single_use_link",
-				]
-			: [
-					"calendly_availability",
-					"calendar_check_calendly_availability",
-					"check_calendly_availability",
-				],
-		parentActionHints: ["CALENDAR"],
-	};
-}
-
-function looksLikeCalendarTravelFeasibilityRequest(text: string): boolean {
-	const lower = text.toLowerCase();
-	const hasTravelSignal =
-		/\b(?:flight|flights?|airport|arriv(?:e|es|al|ing)|land(?:s|ed|ing)?|depart(?:s|ed|ure)?|itinerary|travel|jfk|sfo|lax|ord|ewr|lga)\b/u.test(
-			lower,
-		);
-	const hasCalendarSignal =
-		/\b(?:meeting|board|calendar|schedule|appointment|event|conflict|make\s+(?:my|the|it))\b/u.test(
-			lower,
-		);
-	const hasFeasibilitySignal =
-		/\b(?:can|could|will|would|make|given|tight|conflict|overlap|rebook|move|reschedule|enough time)\b/u.test(
-			lower,
-		);
-	return hasTravelSignal && hasCalendarSignal && hasFeasibilitySignal;
-}
-
-function getStage1CalendarTravelRepairPlan(args: {
-	message: Memory;
-	availableContexts: readonly ContextDefinition[];
-}): {
-	contexts: AgentContext[];
-	candidateActions: string[];
-	parentActionHints: string[];
-} | null {
-	const text = (getUserMessageText(args.message) ?? "").trim();
-	if (!text || !looksLikeCalendarTravelFeasibilityRequest(text)) {
-		return null;
-	}
-	const contexts = (["calendar", "tasks"] as AgentContext[]).filter((context) =>
-		contextAvailableForRepair(context, args.availableContexts),
-	);
-	return {
-		contexts: contexts.length > 0 ? contexts : ["calendar"],
-		candidateActions: [
-			"check_flight_conflict",
-			"flight_conflict_rebooking",
-			"calendar_search_events",
-			"calendar_read",
-		],
-		parentActionHints: ["CALENDAR"],
-	};
-}
-
-function looksLikeCalendarSignatureDeadlineRequest(text: string): boolean {
-	const lower = text.toLowerCase();
-	const hasSignatureSignal =
-		/\b(?:nda|docusign|signature|signed|signing|sign\s+(?:the|a)?\s*(?:document|doc|nda)|document\s+sign(?:ing|ature)?)\b/u.test(
-			lower,
-		);
-	const hasCalendarDeadlineSignal =
-		/\b(?:meeting|appointment|kick-?off|deadline|before|due|in\s+\d+\s+days?|partnership)\b/u.test(
-			lower,
-		);
-	const hasInitiationSignal =
-		/\b(?:initiate|start|begin|draft|queue|prepare|send|get\s+(?:it|the\s+nda)\s+signed|signing\s+flow)\b/u.test(
-			lower,
-		);
-	return hasSignatureSignal && hasCalendarDeadlineSignal && hasInitiationSignal;
-}
-
-function getStage1CalendarSignatureDeadlineRepairPlan(args: {
-	message: Memory;
-	availableContexts: readonly ContextDefinition[];
-}): {
-	contexts: AgentContext[];
-	candidateActions: string[];
-	parentActionHints: string[];
-} | null {
-	const text = (getUserMessageText(args.message) ?? "").trim();
-	if (!text || !looksLikeCalendarSignatureDeadlineRequest(text)) {
-		return null;
-	}
-	const contexts = (["calendar"] as AgentContext[]).filter((context) =>
-		contextAvailableForRepair(context, args.availableContexts),
-	);
-	return {
-		contexts: contexts.length > 0 ? contexts : ["calendar"],
-		candidateActions: [
-			"personal_assistant_sign_document",
-			"sign_document",
-			"calendar_search_events",
-			"calendar_read",
-		],
-		parentActionHints: ["PERSONAL_ASSISTANT", "CALENDAR"],
-	};
-}
-
-function getStage1KnownToolRepairPlan(args: {
-	message: Memory;
-	availableContexts: readonly ContextDefinition[];
-	availableActionNames?: readonly string[];
-}): {
-	contexts: AgentContext[];
-	candidateActions: string[];
-	parentActionHints: string[];
-} | null {
-	return (
-		getStage1ApprovalResolutionRepairPlan(args) ??
-		getStage1PasswordManagerRepairPlan(args) ??
-		getStage1CheckinRepairPlan(args) ??
-		getStage1CalendarSignatureDeadlineRepairPlan(args) ??
-		getStage1CalendarTravelRepairPlan(args) ??
-		getStage1CalendlyRepairPlan(args) ??
-		getStage1OwnerPreferenceRepairPlan(args)
-	);
-}
-
-function buildFallbackStage1PlanForKnownToolRequest(args: {
-	message: Memory;
-	availableContexts: readonly ContextDefinition[];
-	availableActionNames?: readonly string[];
-}): MessageHandlerResult | null {
-	const repair = getStage1KnownToolRepairPlan(args);
-	if (!repair) {
-		return null;
-	}
-	return {
-		processMessage: "RESPOND",
-		thought:
-			"Deterministic fallback: explicit owner tool request requires a known owning action.",
-		plan: {
-			contexts: repair.contexts,
-			requiresTool: true,
-			simple: false,
-			candidateActions: repair.candidateActions,
-			parentActionHints: repair.parentActionHints,
-		},
-	};
-}
-
-function buildKnownToolRequestResponseHandlerPatch(args: {
-	message: Memory;
-	availableContexts: readonly ContextDefinition[];
-	availableActionNames?: readonly string[];
-}): ResponseHandlerPatch | null {
-	const text = (getUserMessageText(args.message) ?? "").trim();
-	if (!text) {
-		return null;
-	}
-
-	const lower = text.toLowerCase();
-	const patch = {
-		setContexts: undefined as AgentContext[] | undefined,
-		addContexts: [] as AgentContext[],
-		addCandidateActions: [] as string[],
-		addParentActionHints: [] as string[],
-	};
-
-	const replaceRepairs = [
-		getStage1ApprovalResolutionRepairPlan(args),
-		getStage1PasswordManagerRepairPlan(args),
-		getStage1CheckinRepairPlan(args),
-		getStage1CalendarSignatureDeadlineRepairPlan(args),
-		getStage1CalendarTravelRepairPlan(args),
-		getStage1CalendlyRepairPlan(args),
-	].filter(
-		(
-			repair,
-		): repair is {
-			contexts: AgentContext[];
-			candidateActions: string[];
-			parentActionHints: string[];
-		} => repair !== null,
-	);
-	for (const repair of replaceRepairs) {
-		addRepairPlanToPatch(patch, repair, "replace-contexts");
-	}
-
-	const targetLookupReplyIntent =
-		/\b(draft|prepare|write|compose)\b[\s\S]{0,80}\brepl(?:y|ies|ied|ying)\b/.test(
-			lower,
-		) ||
-		/\brepl(?:y|ies|ied|ying|respond)\b[\s\S]{0,80}\b(to|from|latest|last|recent|email|message|dm|text)\b/.test(
-			lower,
-		);
-	const mentionsMailOrMessageTarget =
-		/\b(e-?mail|inbox|message|dm|direct message|text|sms|slack|discord|telegram|signal|whatsapp|imessage|from\s+[a-z][\w'-]*)\b/.test(
-			lower,
-		);
-	if (targetLookupReplyIntent && mentionsMailOrMessageTarget) {
-		const contexts = (
-			["email", "messaging", "connectors"] as AgentContext[]
-		).filter((context) =>
-			contextAvailableForRepair(context, args.availableContexts),
-		);
-		addRepairPlanToPatch(
-			patch,
-			{
-				contexts,
-				candidateActions: ["draft_reply", "message_draft_reply", "send_email"],
-				parentActionHints: ["MESSAGE"],
-			},
-			"add-contexts",
-		);
-	}
-
-	const ownerPreferenceRepair = getStage1OwnerPreferenceRepairPlan(args);
-	if (ownerPreferenceRepair) {
-		addRepairPlanToPatch(patch, ownerPreferenceRepair, "replace-contexts");
-	}
-
-	const desktopScreenshotIntent =
-		/\b(screen\s*shot|screenshot|capture\s+(?:my\s+|the\s+|current\s+)?screen|see\s+(?:my\s+|the\s+)?screen)\b/.test(
-			lower,
-		) &&
-		!/\b(generate|create|draw|make)\b[\s\S]{0,40}\b(image|picture|art|graphic)\b/.test(
-			lower,
-		);
-	if (desktopScreenshotIntent) {
-		const contexts = (["browser", "automation"] as AgentContext[]).filter(
-			(context) => contextAvailableForRepair(context, args.availableContexts),
-		);
-		addRepairPlanToPatch(
-			patch,
-			{
-				contexts,
-				candidateActions: ["take_screenshot", "capture_screen"],
-				parentActionHints: ["COMPUTER_USE"],
-			},
-			"add-contexts",
-		);
-	}
-
-	if (
-		!patch.setContexts &&
-		patch.addContexts.length === 0 &&
-		patch.addCandidateActions.length === 0 &&
-		patch.addParentActionHints.length === 0
-	) {
-		return null;
-	}
-
-	return {
-		requiresTool: true,
-		simple: false,
-		clearReply: true,
-		...(patch.setContexts ? { setContexts: patch.setContexts } : {}),
-		...(patch.addContexts.length > 0 ? { addContexts: patch.addContexts } : {}),
-		...(patch.addCandidateActions.length > 0
-			? { addCandidateActions: patch.addCandidateActions }
-			: {}),
-		...(patch.addParentActionHints.length > 0
-			? { addParentActionHints: patch.addParentActionHints }
-			: {}),
-		debug: ["known tool request repair"],
-	};
-}
-
 const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvaluator[] =
 	[
 		{
@@ -2866,29 +2225,12 @@ const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvaluator[] =
 				return {
 					processMessage: "IGNORE",
 					requiresTool: false,
-					simple: true,
 					clearReply: true,
 					debug: [
 						`voice turn signal suppressed reply (${signal?.source ?? "unknown"}; p=${typeof signal?.endOfTurnProbability === "number" ? signal.endOfTurnProbability.toFixed(3) : "n/a"}; next=${signal?.nextSpeaker ?? "unknown"})`,
 					],
 				};
 			},
-		},
-		{
-			name: "core.known_tool_request_repair",
-			description:
-				"Deterministically repairs Stage 1 routing for explicit known tool requests.",
-			priority: 20,
-			shouldRun: ({ message }) =>
-				Boolean((getUserMessageText(message) ?? "").trim()),
-			evaluate: ({ runtime, message, availableContexts }) =>
-				buildKnownToolRequestResponseHandlerPatch({
-					message,
-					availableContexts,
-					availableActionNames: (runtime.actions ?? []).map(
-						(action) => action.name,
-					),
-				}) ?? undefined,
 		},
 	];
 
@@ -2901,14 +2243,6 @@ const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvaluator[] =
  * baseline by exporting `RESPONSE_TASK_BASELINE_INSTRUCTIONS` from this
  * module if needed.
  */
-// This prompt runs ONLY when the structured response-handler stage failed
-// to produce a parseable plan and the runtime fell back to a plain
-// direct reply (`generateDirectReplyOnce`). It is the LAST line of defence
-// against the model fabricating tool-execution outcomes — at this point
-// no tool / sub-agent / action has run this turn, so the model must not
-// claim otherwise. The "you have not executed" rule is factual, not
-// regex-on-output: it describes the actual state of the turn the model
-// is replying to.
 const RESPONSE_TASK_BASELINE_INSTRUCTIONS = [
 	"task: Write one direct reply to the user.",
 	"",
@@ -2916,28 +2250,7 @@ const RESPONSE_TASK_BASELINE_INSTRUCTIONS = [
 	"- answer directly in the agent's voice",
 	"- do not select actions or tools",
 	"- do not include internal reasoning",
-	"- this reply is JUST TEXT. you have NOT run any tool, action, sub-agent,",
-	"  file write, file edit, shell command, search, or any other operation",
-	"  on this turn. you are only composing a text reply.",
-	"- DO NOT claim — directly OR by implication — that you wrote a file,",
-	"  ran a command, spawned a sub-agent, executed a tool, completed the",
-	"  user's task, or performed any side effect. words like 'wrote',",
-	"  'created', 'ran', 'executed', 'spawned', 'sent', 'updated',",
-	"  'finished', 'done' applied to the user's request in this reply",
-	"  are false.",
-	"- do not split the user's request into 'i couldn't spawn the X but",
-	"  i did Y' — Y is also an action you did not perform.",
-	"- if the user's request needs a tool you cannot run as plain text,",
-	"  say so plainly and ask them to retry. otherwise just answer.",
-	"- never emit JSON, tool-call args, or function-call shapes in the reply.",
 ].join("\n");
-
-// Generic fallback reply used when TEXT_SMALL leaks structured content
-// into what should be a plain-prose direct reply. Keeps the user-facing
-// channel friendly and honest instead of shipping the model's raw
-// reasoning + tool-arg JSON.
-const DIRECT_REPLY_STRUCTURED_LEAK_FALLBACK =
-	"i hit a snag generating a reply this turn — give me another shot in a sec.";
 
 async function generateDirectReplyOnce(args: {
 	runtime: IAgentRuntime;
@@ -2961,32 +2274,7 @@ async function generateDirectReplyOnce(args: {
 		`routing_thought: ${args.messageHandler.thought}`,
 	].join("\n");
 	const raw = await args.runtime.useModel(ModelType.TEXT_SMALL, { prompt });
-	const text = getV5ModelText(raw).trim();
-	// Same structural guard as `synthesizeSimpleReplyFromPlainText` /
-	// `messageHandlerFromFieldResult`, applied at the LAST mile. Weak
-	// planners on Cerebras periodically emit a tool-call JSON object —
-	// either bare `{"action":...}` or raw tool args like
-	// `{"path":"...","contents":"..."}` — into the direct-reply text
-	// despite the anti-hallucination rules in the prompt. The model
-	// followed the rule against "claiming to have done the work" but
-	// disclosed the work it would have done as structured content. Don't
-	// ship that as the reply; emit a clean retry message instead.
-	if (
-		text.startsWith("{") ||
-		text.startsWith("[") ||
-		containsEmbeddedJsonObject(text)
-	) {
-		args.runtime.logger.info(
-			{
-				src: "service:message",
-				origin: "generate-direct-reply",
-				rawLen: text.length,
-			},
-			"Suppressed direct-reply leak (structured content in prose field); shipping generic retry",
-		);
-		return DIRECT_REPLY_STRUCTURED_LEAK_FALLBACK;
-	}
-	return text;
+	return getV5ModelText(raw).trim();
 }
 
 /**
@@ -3287,37 +2575,25 @@ function looksLikeMessageHandlerToolArguments(
 function extractMessageHandlerRawParsed(
 	raw: string | GenerateTextResult,
 ): Record<string, unknown> | null {
-	if (typeof raw !== "string") {
-		return (
-			extractHandleResponseToolArguments(raw) ??
-			parseJsonObject<Record<string, unknown>>(getV5ModelText(raw))
-		);
-	}
-	return parseJsonObject<Record<string, unknown>>(raw);
+	if (typeof raw === "string") return null;
+	return extractHandleResponseToolArguments(raw);
 }
 
 function normalizeRawParsedForFieldRegistry(
 	raw: Record<string, unknown>,
 ): Record<string, unknown> {
 	const normalized = { ...raw };
-	const plan =
-		raw.plan && typeof raw.plan === "object" && !Array.isArray(raw.plan)
-			? (raw.plan as Record<string, unknown>)
-			: undefined;
-	const fields = plan ?? raw;
 	if (normalized.shouldRespond === undefined) {
-		normalized.shouldRespond = raw.processMessage ?? raw.action ?? "RESPOND";
+		normalized.shouldRespond = "RESPOND";
 	}
 	if (normalized.replyText === undefined) {
-		normalized.replyText =
-			raw.replyText ?? raw.reply ?? fields.replyText ?? fields.reply ?? "";
+		normalized.replyText = "";
 	}
 	if (normalized.contexts === undefined) {
-		normalized.contexts = fields.contexts ?? [];
+		normalized.contexts = [];
 	}
 	if (normalized.candidateActionNames === undefined) {
-		normalized.candidateActionNames =
-			raw.candidateActionNames ?? fields.candidateActions ?? [];
+		normalized.candidateActionNames = [];
 	}
 	const extract =
 		raw.extract &&
@@ -3326,320 +2602,15 @@ function normalizeRawParsedForFieldRegistry(
 			? (raw.extract as Record<string, unknown>)
 			: undefined;
 	if (normalized.facts === undefined) {
-		normalized.facts = extract?.facts ?? raw.facts ?? [];
+		normalized.facts = extract?.facts ?? [];
 	}
 	if (normalized.relationships === undefined) {
-		normalized.relationships =
-			extract?.relationships ?? raw.relationships ?? [];
+		normalized.relationships = extract?.relationships ?? [];
 	}
 	if (normalized.addressedTo === undefined) {
-		normalized.addressedTo = extract?.addressedTo ?? raw.addressedTo ?? [];
+		normalized.addressedTo = extract?.addressedTo ?? [];
 	}
 	return normalized;
-}
-
-/**
- * Detect a bare `{action: "...", params: {...}}` call shape on an
- * already-parsed object (the response handler's structured tool args or
- * parsed content JSON). Returns the action + params if the shape matches
- * AND none of the standard HANDLE_RESPONSE envelope fields are present
- * (the presence of `shouldRespond` / `contexts` / `replyText` / `thought`
- * means the model DID populate the envelope and we should not short-
- * circuit). Used by the response-handler short-circuit path; same
- * fail-closed contract as `extractPlanActionsCallFromText`.
- */
-export function extractPrefiredCallFromRawParsed(
-	raw: Record<string, unknown>,
-): { name: string; params: Record<string, unknown> } | null {
-	const action = typeof raw.action === "string" ? raw.action.trim() : "";
-	if (!action) return null;
-	// If the envelope ALSO populated standard handler fields, the model
-	// produced a normal plan — let the field registry handle it. The call-
-	// shape short-circuit only fires when the object IS the call shape and
-	// not a hybrid envelope.
-	const hasEnvelopeField =
-		typeof raw.shouldRespond === "string" ||
-		typeof raw.replyText === "string" ||
-		Array.isArray(raw.contexts) ||
-		Array.isArray(raw.candidateActionNames) ||
-		Array.isArray(raw.candidateActions) ||
-		typeof raw.thought === "string" ||
-		typeof raw.requiresTool === "boolean" ||
-		(typeof raw.plan === "object" && raw.plan !== null);
-	if (hasEnvelopeField) return null;
-	// Action name must be UPPER_SNAKE_CASE-shaped (the canonical action /
-	// virtual-subaction naming) — reject things like normalizeMessageHandlerAction's
-	// fallback values ("RESPOND" / "IGNORE" / "STOP") which would otherwise
-	// be valid `action` strings but aren't tool-call action names.
-	if (action === "RESPOND" || action === "IGNORE" || action === "STOP") {
-		return null;
-	}
-	const params =
-		raw.params && typeof raw.params === "object" && !Array.isArray(raw.params)
-			? (raw.params as Record<string, unknown>)
-			: null;
-	if (!params) return null;
-	return { name: action, params };
-}
-
-/**
- * Detect a single, well-formed `PLAN_ACTIONS(<JSON>)` block in a string of
- * model content text. Returns the parsed action name + params, or `null` if
- * the text isn't an unambiguous call-shape emission.
- *
- * Strictly conservative — fails closed on:
- * - empty / missing text
- * - any prose before or after the call block
- * - more than one PLAN_ACTIONS block
- * - malformed JSON inside the parens
- * - missing or empty `action` field
- *
- * Why we tolerate this in the first place: weaker / Cerebras-aligned
- * planner LLMs (gpt-oss-120b, qwen-3-235b-instruct) emit the literal call
- * shape as message content when they "know what to do" but can't reliably
- * invoke the function-call API. Without this layer, those models look
- * broken from the user side even though their structured intent is
- * already correct.
- */
-export function extractPlanActionsCallFromText(text: unknown): {
-	name: string;
-	params: Record<string, unknown>;
-} | null {
-	if (typeof text !== "string") return null;
-	if (text.length === 0) return null;
-	// Strip <think>...</think> reasoning blocks first.
-	const withoutThink = text.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
-	if (!withoutThink) return null;
-	// Strip a single outer code fence if present (```json ... ``` or ``` ... ```).
-	const fenceMatch = withoutThink.match(
-		/^```(?:json|js|ts|javascript|typescript)?\s*\n([\s\S]*?)\n?```\s*$/,
-	);
-	const inner = fenceMatch ? fenceMatch[1].trim() : withoutThink;
-	// Two acceptable shapes (Cerebras-served gpt-oss / qwen-instruct emit
-	// either depending on whether the planner runs in wrapper-tool mode or
-	// native-tools mode):
-	//
-	//   1. `PLAN_ACTIONS({...})` — the wrapper-mode call shape, sometimes
-	//      with trailing `}))` over-correction.
-	//   2. `{"action":"NAME","params":{...}}` — the bare object shape the
-	//      model emits when it's been shown native function tools but
-	//      Cerebras's serverless inference didn't carry the call through
-	//      the function-call API.
-	//
-	// Both have to be a single whole-string match — any surrounding prose,
-	// multiple blocks, or invalid JSON falls through.
-	const wrapperPasses =
-		(inner.match(/PLAN_ACTIONS\s*\(/g) ?? []).length === 1;
-	const wrapperMatch = wrapperPasses
-		? inner.match(/^PLAN_ACTIONS\s*\(\s*(\{[\s\S]*\})\s*[);\s]*$/)
-		: null;
-	const bareMatch = wrapperMatch
-		? null
-		: inner.match(/^(\{[\s\S]*\})\s*[);\s]*$/);
-	const jsonBody = wrapperMatch?.[1] ?? bareMatch?.[1] ?? null;
-	if (!jsonBody) return null;
-	// JSON body must parse strictly — no tolerance for malformed payload.
-	let parsed: unknown;
-	try {
-		parsed = JSON.parse(jsonBody);
-	} catch {
-		return null;
-	}
-	if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-		return null;
-	}
-	const obj = parsed as Record<string, unknown>;
-	const action = typeof obj.action === "string" ? obj.action.trim() : "";
-	if (action) {
-		const params =
-			obj.params &&
-			typeof obj.params === "object" &&
-			!Array.isArray(obj.params)
-				? (obj.params as Record<string, unknown>)
-				: {};
-		return { name: action, params: dropNullParams(params) };
-	}
-	// OpenAI-style function-call shape recovery: when Cerebras-served
-	// instruct models (qwen-3-235b, llama, etc.) emit a tool call as
-	// JSON content (because the function-call API roundtrip didn't
-	// happen), they typically use the literal `{name, arguments}` shape
-	// from the OpenAI tools schema. The parent action name + sub-action
-	// pattern combines to e.g. `TASKS_SPAWN_AGENT`.
-	const callName = typeof obj.name === "string" ? obj.name.trim() : "";
-	const callArguments =
-		obj.arguments && typeof obj.arguments === "object" && !Array.isArray(obj.arguments)
-			? (obj.arguments as Record<string, unknown>)
-			: null;
-	if (callName && callArguments) {
-		const subAction =
-			typeof callArguments.action === "string"
-				? callArguments.action.trim()
-				: "";
-		if (subAction) {
-			// Compose the canonical parent_subaction name. e.g. parent=TASKS,
-			// subaction=spawn_agent → TASKS_SPAWN_AGENT.
-			const composed = `${callName.toUpperCase()}_${subAction.toUpperCase()}`;
-			const { action: _, ...paramsRest } = callArguments;
-			return { name: composed, params: dropNullParams(paramsRest) };
-		}
-		return { name: callName.toUpperCase(), params: dropNullParams(callArguments) };
-	}
-	// Bare-params recovery: in native-tools mode, the response handler
-	// often emits ONLY the params object (no outer `action`/`params`
-	// wrapper) when it intends to call a specific action — the model
-	// thinks it IS calling the function but Cerebras's API ships the
-	// args as content instead of routing through the function-call API.
-	// Recognize the canonical `TASKS_SPAWN_AGENT` shape: a JSON object
-	// with a `task` string AND an `agentType` field whose value is one
-	// of the registered coding-agent adapters. The `agentType` field is
-	// the discriminator that uniquely identifies this as a delegation
-	// call shape — no other action's parameters have that combination.
-	const task = typeof obj.task === "string" ? obj.task.trim() : "";
-	const rawAgentType =
-		typeof obj.agentType === "string" ? obj.agentType.trim() : "";
-	const KNOWN_ADAPTER_TYPES = new Set([
-		"claude",
-		"codex",
-		"opencode",
-		"gemini",
-		"aider",
-		"hermes",
-	]);
-	if (
-		task &&
-		rawAgentType &&
-		KNOWN_ADAPTER_TYPES.has(rawAgentType.toLowerCase())
-	) {
-		return { name: "TASKS_SPAWN_AGENT", params: dropNullParams(obj) };
-	}
-	return null;
-}
-
-// Strip `null` and `undefined` values from a params object. The model
-// sometimes fills required-with-default fields with literal `null`
-// (e.g. `approvalPreset: null` when it can't pick a value), and the
-// downstream enum validator then rejects the call with
-// `Argument 'approvalPreset' value null is not one of [...]`. Letting
-// the registered default apply is safer than shipping the rejection
-// to the user.
-function dropNullParams(
-	params: Record<string, unknown>,
-): Record<string, unknown> {
-	const out: Record<string, unknown> = {};
-	for (const [key, value] of Object.entries(params)) {
-		if (value === null || value === undefined) continue;
-		out[key] = value;
-	}
-	return out;
-}
-
-/**
- * Scan a free-form text blob for the LAST well-formed `{action, params}` or
- * canonical `{task, agentType, ...}` JSON call shape and return it.
- *
- * Background: Cerebras-served reasoning models (gpt-oss-120b, qwen-3-235b)
- * often emit a self-correction sequence in plain text content when running
- * in native-tools mode — they "try" a call, notice an enum/schema mismatch,
- * comment on it, and then emit the corrected call shape. The corrected
- * shape is the model's actual structured intent (trajectory ground truth);
- * the surrounding prose is alignment artifact. `extractPlanActionsCallFromText`
- * fails closed on whole-string match, so any prose at all defeats it.
- *
- * This is structural extraction, not regex-on-prose-for-routing: we are
- * retrieving a JSON call shape (the model's actual decision) that should
- * have arrived via the function-call API. Shaw's rule against regex-on-LLM-
- * text targets fixes that read prose to override structured fields — this
- * is the opposite (reading prose to recover the structured field the API
- * dropped).
- *
- * Strategy: balance braces across the text, accumulate candidate JSON
- * objects, try to parse each, pick the last one that validates as a call
- * shape under the same contract as `extractPlanActionsCallFromText`.
- */
-/**
- * Detect whether a free-form text blob contains an embedded parseable
- * JSON object. The motivating case: gpt-oss-120b on Cerebras (and other
- * native-tools-mode reasoning models) sometimes emit tool-call argument
- * objects into the response handler's `replyText` field — which is meant
- * to be user-facing prose. The leaked object looks like
- * `{"path":"/tmp/foo","contents":"..."}` embedded in chain-of-thought
- * prose, and the surrounding text is the model's reasoning rather than a
- * direct reply to the user.
- *
- * Detection is structural: balance braces, attempt JSON.parse on each
- * candidate, return true on the first parse success. Skips small primitive
- * objects ({"foo":1}) only insofar as they still parse — the cost of a
- * false positive (suppressing a legitimate code-block reply that contains
- * inline JSON prose) is much lower than the cost of a false negative
- * (shipping the model's reasoning + tool args to a user channel).
- *
- * The strict whole-string-JSON-only case is already handled upstream by
- * `synthesizeSimpleReplyFromPlainText`'s malformed-output guard; this
- * function catches the embedded-in-prose variant the upstream guard
- * misses.
- */
-function containsEmbeddedJsonObject(text: unknown): boolean {
-	if (typeof text !== "string" || text.length === 0) return false;
-	const withoutThink = text.replace(/<think>[\s\S]*?<\/think>/g, "");
-	let depth = 0;
-	let start = -1;
-	for (let i = 0; i < withoutThink.length; i++) {
-		const ch = withoutThink[i];
-		if (ch === "{") {
-			if (depth === 0) start = i;
-			depth++;
-		} else if (ch === "}") {
-			depth--;
-			if (depth === 0 && start !== -1) {
-				const candidate = withoutThink.slice(start, i + 1);
-				try {
-					const parsed = JSON.parse(candidate);
-					if (parsed && typeof parsed === "object") return true;
-				} catch {
-					// keep scanning
-				}
-				start = -1;
-			}
-			if (depth < 0) {
-				depth = 0;
-				start = -1;
-			}
-		}
-	}
-	return false;
-}
-
-function extractEmbeddedCallShapeFromText(text: unknown): {
-	name: string;
-	params: Record<string, unknown>;
-} | null {
-	if (typeof text !== "string" || text.length === 0) return null;
-	const withoutThink = text.replace(/<think>[\s\S]*?<\/think>/g, "");
-	const candidates: string[] = [];
-	let depth = 0;
-	let start = -1;
-	for (let i = 0; i < withoutThink.length; i++) {
-		const ch = withoutThink[i];
-		if (ch === "{") {
-			if (depth === 0) start = i;
-			depth++;
-		} else if (ch === "}") {
-			depth--;
-			if (depth === 0 && start !== -1) {
-				candidates.push(withoutThink.slice(start, i + 1));
-				start = -1;
-			}
-			if (depth < 0) {
-				depth = 0;
-				start = -1;
-			}
-		}
-	}
-	for (let i = candidates.length - 1; i >= 0; i--) {
-		const extracted = extractPlanActionsCallFromText(candidates[i]);
-		if (extracted) return extracted;
-	}
-	return null;
 }
 
 function messageHandlerFromFieldResult(
@@ -3697,53 +2668,8 @@ function messageHandlerFromFieldResult(
 					: "RESPOND";
 	const preemptDirect =
 		preempt?.mode === "ack-and-stop" || preempt?.mode === "direct-reply";
-	const rawReplyText =
-		typeof result.replyText === "string" ? result.replyText : "";
-
-	// Weaker / Cerebras-aligned planner LLMs occasionally emit the entire
-	// `PLAN_ACTIONS({...})` call shape inside the response-handler's
-	// `replyText` as plain content text — instead of invoking it as a tool
-	// call. When that happens AND the parsed JSON resolves to a valid action,
-	// the V5 dispatch is bypassed entirely and the bot just ships the JSON
-	// as a Discord message. The user sees code that didn't run.
-	//
-	// `extractPlanActionsCallFromText` is a strictly-conservative parser:
-	// it requires the ENTIRE post-cleanup text to be a single
-	// `PLAN_ACTIONS(<JSON>)` block (optionally code-fence-wrapped) with
-	// strict JSON. Any surrounding prose, additional text, multiple blocks,
-	// or invalid JSON falls through to the existing soft-hint path.
-	//
-	// When extraction succeeds, the replyText is suppressed (we don't want
-	// to leak `PLAN_ACTIONS(...)` JSON to the user channel) and a
-	// `prefiredToolCall` is staged on the plan. The planner-loop call site
-	// detects that field and dispatches the action directly, skipping the
-	// planner LLM call that the model just told us was unreachable.
-	const prefiredToolCall =
-		extractPlanActionsCallFromText(rawReplyText) ??
-		extractEmbeddedCallShapeFromText(rawReplyText);
-	// Structured-content leak guard: when the response handler's replyText
-	// is supposed to be user-facing prose but actually contains an embedded
-	// parseable JSON object — typically the model emitting tool-call args
-	// (e.g. `{"path":"/tmp/foo","contents":"..."}`) into the prose field
-	// instead of invoking the function-call API — suppress the reply. This
-	// is structural detection (does an internal `{...}` parse as JSON?)
-	// rather than regex-on-content-for-routing: we are not deciding what
-	// the user wanted based on the prose, we are detecting that the model
-	// shoved structured output into a field meant for plain text and
-	// declining to ship the leak.
-	//
-	// Skip when `prefiredToolCall` already fired — that path suppresses
-	// the reply anyway, and `extractPlanActionsCallFromText` accepts
-	// whole-string JSON which would trip this guard.
-	const replyTextLeaksStructuredContent =
-		!prefiredToolCall && containsEmbeddedJsonObject(rawReplyText);
 	const replyText =
-		prefiredToolCall || replyTextLeaksStructuredContent ? "" : rawReplyText;
-	const augmentedCandidateActions =
-		prefiredToolCall && !candidateActions.includes(prefiredToolCall.name)
-			? [prefiredToolCall.name, ...candidateActions]
-			: candidateActions;
-
+		typeof result.replyText === "string" ? result.replyText : "";
 	const routedContexts = preemptDirect
 		? Array.from(new Set([...contexts, SIMPLE_CONTEXT_ID]))
 		: contexts;
@@ -3752,9 +2678,7 @@ function messageHandlerFromFieldResult(
 	);
 	const shouldPlan =
 		!preemptDirect &&
-		(initialPlanningContexts.length > 0 ||
-			augmentedCandidateActions.length > 0 ||
-			prefiredToolCall !== null);
+		(initialPlanningContexts.length > 0 || candidateActions.length > 0);
 	const finalContexts =
 		shouldPlan && initialPlanningContexts.length === 0
 			? Array.from(
@@ -3769,17 +2693,11 @@ function messageHandlerFromFieldResult(
 	const plan: MessageHandlerResult["plan"] = {
 		contexts: finalContexts,
 		reply: replyText,
-		simple: prefiredToolCall ? false : preemptDirect ? true : !shouldPlan,
+		simple: preemptDirect ? true : !shouldPlan,
 		requiresTool: shouldPlan,
 	};
-	if (augmentedCandidateActions.length > 0) {
-		plan.candidateActions = augmentedCandidateActions;
-	}
-	if (prefiredToolCall) {
-		plan.prefiredToolCall = {
-			name: prefiredToolCall.name,
-			params: prefiredToolCall.params as Record<string, JsonValue>,
-		};
+	if (candidateActions.length > 0) {
+		plan.candidateActions = candidateActions;
 	}
 	const extract =
 		facts.length > 0 || relationships.length > 0 || addressedTo.length > 0
@@ -3796,186 +2714,8 @@ function messageHandlerFromFieldResult(
 function parseMessageHandlerModelOutput(
 	raw: string | GenerateTextResult,
 ): MessageHandlerResult | null {
-	// Recovery chain priorities, fail-closed at each layer:
-	//   1. native tool-call    — only valid for the GenerateTextResult shape
-	//   2. synthesize prefired — Cerebras `{name, arguments}` function-call
-	//                            shape leaked into text (HEAD).
-	//   3. parse handler       — canonical structured envelope.
-	//   4. recover plan-actions — `{"action": "...", "params": {...}}` shape
-	//                            embedded in content (origin/develop).
-	//   5. simple reply        — degenerate plain text.
-	if (typeof raw !== "string") {
-		const text = getV5ModelText(raw);
-		return (
-			parseMessageHandlerNativeToolCall(raw) ??
-			synthesizePrefiredToolCallFromText(text) ??
-			parseMessageHandlerOutput(text) ??
-			recoverPlanActionsFromContentText(text) ??
-			synthesizeSimpleReplyFromPlainText(text)
-		);
-	}
-	return (
-		synthesizePrefiredToolCallFromText(raw) ??
-		parseMessageHandlerOutput(raw) ??
-		recoverPlanActionsFromContentText(raw) ??
-		synthesizeSimpleReplyFromPlainText(raw)
-	);
-}
-
-/**
- * Wraps `extractPlanActionsCallFromText` as a `MessageHandlerResult` builder
- * so it can sit alongside `parseMessageHandlerOutput` /
- * `parseMessageHandlerNativeToolCall` in the parse priority chain. When the
- * extractor finds a clean call shape, this synthesizes a plan with the
- * `prefiredToolCall` field staged so the planner-loop call site short-
- * circuits and dispatches directly through the existing executor path.
- */
-function synthesizePrefiredToolCallFromText(
-	raw: string | undefined | null,
-): MessageHandlerResult | null {
-	const extracted =
-		extractPlanActionsCallFromText(raw) ??
-		extractEmbeddedCallShapeFromText(raw);
-	if (!extracted) return null;
-	return {
-		processMessage: "RESPOND",
-		thought:
-			"Recovered planner action from response-handler content (PLAN_ACTIONS-in-text or bare-object call shape); dispatching directly via prefired tool call.",
-		plan: {
-			contexts: ["general"],
-			candidateActions: [extracted.name],
-			requiresTool: true,
-			simple: false,
-			prefiredToolCall: {
-				name: extracted.name,
-				params: extracted.params as Record<string, JsonValue>,
-			},
-		},
-	};
-}
-
-/**
- * Tolerant fallback: when the model returns plain text instead of the
- * expected JSON / native tool-call format, wrap the text as a simple
- * reply. This keeps the conversation alive on cold-start turns where
- * weaker / smaller models occasionally skip the structured-output
- * scaffold. Without this, the runtime threw `v5 messageHandler returned
- * invalid MessageHandlerResult` and the user saw the failure-template.
- *
- * Returns null only when the text is genuinely empty — that's a real
- * failure that should still propagate.
- */
-function synthesizeSimpleReplyFromPlainText(
-	raw: string | undefined | null,
-): MessageHandlerResult | null {
-	if (typeof raw !== "string") return null;
-	const trimmed = raw.trim();
-	if (!trimmed) return null;
-	const replyText = stripReasoningBlocks(trimmed);
-	if (!replyText) return null;
-
-	// Malformed structured-output guard: when the response handler was
-	// instructed to emit JSON via `HANDLE_RESPONSE` / `responseSkeleton`
-	// (the default) but the model returned a JSON-shaped fragment that
-	// neither `parseMessageHandlerOutput` nor `recoverPlanActionsFromContentText`
-	// could parse, the model produced broken structured output — NOT
-	// user-facing prose. Shipping that fragment to Discord surfaces a stray
-	// `{` or half a JSON object as the bot's reply.
-	//
-	// Structural test (not regex-on-content-for-routing): try to JSON.parse
-	// the entire reply. If parse FAILS and the trimmed text starts with `{`
-	// or `[`, the model intended structured output and failed mid-stream.
-	// Fall through to null so callers route to a structured-failure path
-	// instead of shipping the fragment.
-	const looksLikeIncompleteStructuredOutput =
-		(replyText.startsWith("{") || replyText.startsWith("[")) &&
-		(() => {
-			try {
-				JSON.parse(replyText);
-				return false;
-			} catch {
-				return true;
-			}
-		})();
-	if (looksLikeIncompleteStructuredOutput) {
-		return null;
-	}
-
-	// Embedded structured-content guard: the recovery chain only matches
-	// recognized PLAN_ACTIONS wrappers — it intentionally fails closed on
-	// arbitrary tool-arg shapes like `{"path":"...","contents":"..."}`.
-	// But the model is just as likely to leak those into prose. Return null
-	// so the caller routes to a structured-failure reply path; the leaked
-	// reasoning + args never reach the user channel.
-	if (containsEmbeddedJsonObject(replyText)) {
-		return null;
-	}
-
-	return {
-		processMessage: "RESPOND",
-		thought:
-			"Tolerant fallback: model returned plain text instead of the structured plan; treating as simple reply.",
-		plan: {
-			contexts: [SIMPLE_CONTEXT_ID],
-			reply: replyText,
-			simple: true,
-		},
-	};
-}
-
-/**
- * Stage 1 tolerant recovery: when the model emitted a single well-formed
- * PLAN_ACTIONS({...}) block as message-content text instead of invoking the
- * HANDLE_RESPONSE tool (symptom: Cerebras / weak-planner LLMs), synthesize a
- * planning envelope that will let Stage 2 dispatch the intended action.
- *
- * Only fires when the raw text is exclusively the PLAN_ACTIONS call (strict
- * mode) so explanatory text like "here's how you'd call it: PLAN_ACTIONS({...})"
- * falls through to the existing simple-reply path.
- *
- * The envelope sets requiresTool=true and candidateActions=[extracted.action]
- * so the Stage 2 planner narrows to the right action. Role-gate checks and
- * action resolution still run normally in Stage 2 — this is a parse-layer
- * recovery only.
- */
-function recoverPlanActionsFromContentText(
-	text: string,
-): MessageHandlerResult | null {
-	const extracted = extractPlanActionsFromContent(text);
-	if (!extracted) return null;
-
-	logger.info(
-		{
-			src: "service:message",
-			action: extracted.action,
-			recoverySource: extracted.recoverySource,
-		},
-		"Recovered planner action from content (Stage 1 RESPONSE_HANDLER)",
-	);
-
-	return {
-		processMessage: "RESPOND",
-		thought: `Tolerant recovery: model emitted PLAN_ACTIONS as content text rather than tool call; routing to Stage 2 with candidateActions=[${extracted.action}].`,
-		plan: {
-			contexts: ["general"],
-			reply: "",
-			simple: false,
-			requiresTool: true,
-			candidateActions: [extracted.action],
-		},
-	};
-}
-
-function buildFallbackStage1DirectReplyPlan(): MessageHandlerResult {
-	return {
-		processMessage: "RESPOND",
-		thought:
-			"Tolerant fallback: response handler returned no parseable plan; routing as a simple direct reply.",
-		plan: {
-			contexts: [SIMPLE_CONTEXT_ID],
-			simple: true,
-		},
-	};
+	if (typeof raw === "string") return null;
+	return parseMessageHandlerNativeToolCall(raw);
 }
 
 /**
@@ -4040,283 +2780,6 @@ interface ExecuteV5PlannedToolCallParams {
 	recorder?: TrajectoryRecorder;
 	trajectoryId?: string;
 	plannerLoopConfig?: PlannerLoopParams["config"];
-}
-
-/**
- * Unwrap a `PLAN_ACTIONS` tool call into its target action.
- *
- * The LLM sees the stable Stage 2 wrapper surface, so every invocation
- * arrives wrapped: `{ name: "PLAN_ACTIONS",
- * params: { action, parameters, thought } }`. Returns a
- * normalized tool call where `name` is the actual action name and `params`
- * are the action-shaped parameters, ready for the rest of the dispatch
- * pipeline.
- *
- * Legacy planner payloads may still include `subaction`; when present, it is
- * mirrored into canonical `params.action` for parent-action dispatch.
- *
- * Pass-through for other tool calls (REPLY/IGNORE/STOP terminal sentinels,
- * already-unwrapped action calls) so they keep their existing semantics.
- */
-function unwrapPlanActionsToolCall(toolCall: PlannerToolCall): PlannerToolCall {
-	if (toolCall.name !== PLAN_ACTIONS_TOOL_NAME) {
-		return toolCall;
-	}
-	const params = toolCall.params ?? {};
-	const rawAction = params.action;
-	const rawActionName = typeof rawAction === "string" ? rawAction.trim() : "";
-	const compoundAction = splitPlannerCompoundActionName(rawActionName);
-	const actionName = compoundAction?.actionName ?? rawActionName;
-	const rawSubaction = params.subaction ?? compoundAction?.subaction;
-	const subaction =
-		typeof rawSubaction === "string" && rawSubaction.trim().length > 0
-			? rawSubaction.trim()
-			: undefined;
-	const rawActionParameters = params.parameters;
-	const baseParameters =
-		rawActionParameters &&
-		typeof rawActionParameters === "object" &&
-		!Array.isArray(rawActionParameters)
-			? (rawActionParameters as Record<string, unknown>)
-			: {};
-	const mergedParameters: Record<string, unknown> = subaction
-		? {
-				...baseParameters,
-				action: baseParameters.action ?? subaction,
-				subaction,
-			}
-		: baseParameters;
-	return {
-		id: toolCall.id,
-		name: actionName,
-		params: mergedParameters,
-	};
-}
-
-function normalizeCompoundPlannerToolCall(
-	toolCall: PlannerToolCall,
-): PlannerToolCall {
-	const compoundAction = splitPlannerCompoundActionName(toolCall.name);
-	if (!compoundAction) {
-		return toolCall;
-	}
-	const params =
-		toolCall.params && typeof toolCall.params === "object"
-			? { ...toolCall.params }
-			: {};
-	if (params.subaction === undefined) {
-		params.subaction = compoundAction.subaction;
-	}
-	if (params.action === undefined) {
-		params.action = compoundAction.subaction;
-	}
-	return {
-		...toolCall,
-		name: compoundAction.actionName,
-		params,
-	};
-}
-
-function stringParam(value: unknown): string | undefined {
-	return typeof value === "string" && value.trim().length > 0
-		? value.trim()
-		: undefined;
-}
-
-type PlannerLifeAliasDefaults = {
-	action?: string;
-	subaction?: string;
-	kind?: "definition" | "goal";
-	definitionKind?: "task" | "habit" | "routine";
-};
-
-function normalizedPlannerAliasDefaults(
-	actionName: string,
-): PlannerLifeAliasDefaults | undefined {
-	return PLANNER_ACTION_ALIAS_DEFAULTS.get(
-		normalizeActionIdentifier(actionName),
-	);
-}
-
-function normalizedLifeSubactionDefaults(
-	subaction: unknown,
-): PlannerLifeAliasDefaults | undefined {
-	if (typeof subaction !== "string") {
-		return undefined;
-	}
-	return PLANNER_LIFE_SUBACTION_DEFAULTS.get(
-		normalizeActionIdentifier(subaction),
-	);
-}
-
-const LIFE_SUBACTIONS = new Set([
-	"create",
-	"update",
-	"delete",
-	"complete",
-	"skip",
-	"snooze",
-	"review",
-]);
-
-const LIFE_DEFINITION_KINDS = new Set(["task", "habit", "routine"]);
-
-function normalizedLifeSubaction(value: unknown): string | undefined {
-	if (typeof value !== "string") {
-		return undefined;
-	}
-	const normalized = value.trim().toLowerCase();
-	return LIFE_SUBACTIONS.has(normalized) ? normalized : undefined;
-}
-
-function normalizedLifeDefinitionKind(
-	value: unknown,
-): "task" | "habit" | "routine" | undefined {
-	if (typeof value !== "string") {
-		return undefined;
-	}
-	const normalized = value.trim().toLowerCase();
-	return LIFE_DEFINITION_KINDS.has(normalized)
-		? (normalized as "task" | "habit" | "routine")
-		: undefined;
-}
-
-function normalizedLifeTopLevelKind(
-	value: unknown,
-): "definition" | "goal" | undefined {
-	if (typeof value !== "string") {
-		return undefined;
-	}
-	const normalized = value.trim().toLowerCase();
-	return normalized === "definition" || normalized === "goal"
-		? normalized
-		: undefined;
-}
-
-function firstStringParam(
-	params: Record<string, unknown>,
-	keys: readonly string[],
-): string | undefined {
-	for (const key of keys) {
-		const value = stringParam(params[key]);
-		if (value) {
-			return value;
-		}
-	}
-	return undefined;
-}
-
-function buildNormalizedLifePlannerParams(args: {
-	toolCall: PlannerToolCall;
-	defaults?: PlannerLifeAliasDefaults;
-	message: Memory;
-}): Record<string, unknown> {
-	const params =
-		args.toolCall.params && typeof args.toolCall.params === "object"
-			? { ...args.toolCall.params }
-			: {};
-	const existingDetails =
-		params.details &&
-		typeof params.details === "object" &&
-		!Array.isArray(params.details)
-			? (params.details as Record<string, unknown>)
-			: {};
-	const rawSubaction = params.action ?? params.subaction;
-	const rawKind = params.kind;
-	const definitionKind =
-		normalizedLifeDefinitionKind(rawKind) ??
-		normalizedLifeDefinitionKind(params.entity) ??
-		normalizedLifeDefinitionKind(params.type) ??
-		args.defaults?.definitionKind;
-	const topLevelKind =
-		normalizedLifeTopLevelKind(rawKind) ??
-		args.defaults?.kind ??
-		(definitionKind ? "definition" : undefined);
-	const subaction =
-		args.defaults?.action ??
-		args.defaults?.subaction ??
-		normalizedLifeSubaction(rawSubaction);
-	const title = firstStringParam(params, [
-		"title",
-		"name",
-		"task",
-		"todo",
-		"todo_title",
-		"task_name",
-		"habit",
-		"habit_name",
-		"habit_title",
-		"goal",
-		"goal_name",
-		"goal_title",
-	]);
-	const intent =
-		stringParam(params.intent) ?? getUserMessageText(args.message) ?? title;
-
-	const details: Record<string, unknown> = {
-		...existingDetails,
-		originalPlannerAction: args.toolCall.name,
-	};
-	if (
-		typeof rawSubaction === "string" &&
-		rawSubaction.trim().length > 0 &&
-		rawSubaction.trim().toLowerCase() !== subaction
-	) {
-		details.originalPlannerSubaction = rawSubaction.trim();
-	}
-	if (definitionKind && typeof existingDetails.kind !== "string") {
-		details.kind = definitionKind;
-	}
-
-	for (const [key, value] of Object.entries(params)) {
-		if (
-			key !== "action" &&
-			key !== "subaction" &&
-			key !== "kind" &&
-			key !== "intent" &&
-			key !== "title" &&
-			key !== "target" &&
-			key !== "minutes" &&
-			key !== "details" &&
-			value !== undefined
-		) {
-			details[key] = value;
-		}
-	}
-
-	return {
-		...(subaction ? { action: subaction, subaction } : {}),
-		...(topLevelKind ? { kind: topLevelKind } : {}),
-		...(intent ? { intent } : {}),
-		...(title ? { title } : {}),
-		...(stringParam(params.target)
-			? { target: stringParam(params.target) }
-			: {}),
-		...(typeof params.minutes === "number" ? { minutes: params.minutes } : {}),
-		...(Object.keys(details).length > 0 ? { details } : {}),
-	};
-}
-
-function shouldTreatPlannerContactAliasAsLifeReminder(
-	toolCall: PlannerToolCall,
-	message: Memory,
-): boolean {
-	const normalizedName = normalizeActionIdentifier(toolCall.name);
-	if (normalizedName !== normalizeActionIdentifier("ADD_CONTACT")) {
-		return false;
-	}
-	const text = (getUserMessageText(message) ?? "").toLowerCase();
-	if (!text || /\bfollow\s+up\b/.test(text)) {
-		return false;
-	}
-	return (
-		/\b(?:remember|remind|reminder)\b/.test(text) &&
-		/\b(?:call|phone|text|message|email)\b/.test(text)
-	);
-}
-
-function messageTextMatches(message: Memory, pattern: RegExp): boolean {
-	return pattern.test((getUserMessageText(message) ?? "").toLowerCase());
 }
 
 function plannerErrorLooksTransient(error: unknown): boolean {
@@ -4537,372 +3000,6 @@ async function runDeterministicPlannerFallback(args: {
 	};
 }
 
-function shouldTreatPlannerWebAsCalendlyCalendar(
-	resolvedName: string,
-	message: Memory,
-): boolean {
-	const normalized = normalizeActionIdentifier(resolvedName);
-	if (
-		normalized !== normalizeActionIdentifier("BROWSER") &&
-		normalized !== normalizeActionIdentifier("WEB_GET") &&
-		normalized !== normalizeActionIdentifier("WEB_SEARCH")
-	) {
-		return false;
-	}
-	return messageTextMatches(message, /\bcalendly\b|api\.calendly\.com/);
-}
-
-function shouldTreatPlannerWebAsBookTravel(
-	resolvedName: string,
-	message: Memory,
-): boolean {
-	const normalized = normalizeActionIdentifier(resolvedName);
-	if (
-		normalized !== normalizeActionIdentifier("BROWSER") &&
-		normalized !== normalizeActionIdentifier("WEB_GET") &&
-		normalized !== normalizeActionIdentifier("WEB_SEARCH")
-	) {
-		return false;
-	}
-	return messageTextMatches(
-		message,
-		/\b(?:book|reserve)\s+(?:travel|flight|hotel|trip)\b|\bbook\s+travel\b/,
-	);
-}
-
-function shouldTreatPlannerBrowserAsAutofill(
-	resolvedName: string,
-	message: Memory,
-): boolean {
-	const normalized = normalizeActionIdentifier(resolvedName);
-	if (
-		normalized !== normalizeActionIdentifier("BROWSER") &&
-		normalized !== normalizeActionIdentifier("WEB_GET") &&
-		normalized !== normalizeActionIdentifier("WEB_SEARCH")
-	) {
-		return false;
-	}
-	return (
-		messageTextMatches(message, /\bfill\b/) &&
-		messageTextMatches(message, /\b(?:password|login|form|field)\b/)
-	);
-}
-
-function shouldTreatPlannerConnectorAsPost(
-	resolvedName: string,
-	message: Memory,
-): boolean {
-	if (
-		normalizeActionIdentifier(resolvedName) !==
-		normalizeActionIdentifier("CONNECTOR")
-	) {
-		return false;
-	}
-	return (
-		messageTextMatches(message, /\b(?:x|twitter)\b/) &&
-		messageTextMatches(message, /\b(?:search|posts?|timeline|feed|mentions?)\b/)
-	);
-}
-
-function shouldTreatPlannerConnectorAsMessage(
-	resolvedName: string,
-	message: Memory,
-): boolean {
-	if (
-		normalizeActionIdentifier(resolvedName) !==
-		normalizeActionIdentifier("CONNECTOR")
-	) {
-		return false;
-	}
-	const text = getUserMessageText(message) ?? "";
-	return (
-		/\b(?:email|gmail|mail|inbox|unread|draft reply|reply to|unsubscribe)\b/i.test(
-			text,
-		) ||
-		(/\b(?:x|twitter)\b/i.test(text) &&
-			/\b(?:dm|dms|direct messages?|messages?)\b/i.test(text)) ||
-		(/\b(?:discord|slack|telegram|signal|whatsapp)\b/i.test(text) &&
-			/\b(?:post|send|message|dm|channel)\b/i.test(text))
-	);
-}
-
-function inferPostSearchQuery(message: Memory): string | undefined {
-	const text = getUserMessageText(message) ?? "";
-	return (
-		/\bposts?\s+about\s+(.+)$/i.exec(text)?.[1]?.trim() ??
-		/\bsearch\s+(?:x|twitter)\s+for\s+(.+)$/i.exec(text)?.[1]?.trim() ??
-		/\babout\s+(.+)$/i.exec(text)?.[1]?.trim()
-	);
-}
-
-function normalizeBlockPlannerParams(
-	toolCall: PlannerToolCall,
-	message: Memory,
-	target: "website" | "app",
-): Record<string, unknown> {
-	const params =
-		toolCall.params && typeof toolCall.params === "object"
-			? (toolCall.params as Record<string, unknown>)
-			: {};
-	return {
-		action:
-			stringParam(params.action) ?? stringParam(params.subaction) ?? "block",
-		subaction:
-			stringParam(params.action) ?? stringParam(params.subaction) ?? "block",
-		target,
-		intent: stringParam(params.intent) ?? getUserMessageText(message),
-		...(Array.isArray(params.hostnames) || typeof params.hostnames === "string"
-			? { hostnames: params.hostnames }
-			: {}),
-		...(Array.isArray(params.sites) || typeof params.sites === "string"
-			? { hostnames: params.sites }
-			: {}),
-		...(typeof params.durationMinutes === "number" ||
-		typeof params.durationMinutes === "string"
-			? { durationMinutes: params.durationMinutes }
-			: {}),
-		...(typeof params.confirmed === "boolean" ||
-		typeof params.confirmed === "string"
-			? { confirmed: params.confirmed }
-			: {}),
-	};
-}
-
-function normalizePostPlannerParams(
-	toolCall: PlannerToolCall,
-	message: Memory,
-): Record<string, unknown> {
-	const params =
-		toolCall.params && typeof toolCall.params === "object"
-			? (toolCall.params as Record<string, unknown>)
-			: {};
-	const rawAction = stringParam(params.action);
-	const source = stringParam(params.source);
-	const op = /^(?:timeline|feed|read|read_feed|get_timeline|get_feed)$/i.test(
-		rawAction ?? "",
-	)
-		? "read"
-		: /^(?:search|search_twitter|x_search)$/i.test(rawAction ?? "")
-			? "search"
-			: rawAction;
-	return {
-		...(op ? { action: op } : {}),
-		...(source
-			? { source: source === "twitter" ? "x" : source }
-			: messageTextMatches(message, /\b(?:x|twitter)\b/)
-				? { source: "x" }
-				: {}),
-		...(stringParam(params.query)
-			? { query: params.query }
-			: stringParam(params.searchTerm)
-				? { query: params.searchTerm }
-				: op === "search" || messageTextMatches(message, /\bsearch\b/)
-					? {
-							query:
-								inferPostSearchQuery(message) ?? getUserMessageText(message),
-						}
-					: {}),
-		...(stringParam(params.feed) ? { feed: params.feed } : {}),
-		...(stringParam(params.target) ? { target: params.target } : {}),
-	};
-}
-
-function normalizeMessagePlannerParams(
-	toolCall: PlannerToolCall,
-	message: Memory,
-): Record<string, unknown> {
-	const params =
-		toolCall.params && typeof toolCall.params === "object"
-			? (toolCall.params as Record<string, unknown>)
-			: {};
-	const rawOperation = stringParam(params.action);
-	const manageIntent =
-		stringParam(params.manageOperation) ?? stringParam(params.command);
-	const rawSource =
-		stringParam(params.source) ??
-		stringParam(params.platform) ??
-		stringParam(params.connector);
-	const source =
-		rawSource === "twitter"
-			? "x"
-			: /^(?:google|email|mail)$/i.test(rawSource ?? "")
-				? "gmail"
-				: rawSource;
-	const sender = stringParam(params.sender) ?? stringParam(params.from);
-	const target =
-		stringParam(params.target) ??
-		stringParam(params.recipient) ??
-		stringParam(params.channel) ??
-		stringParam(params.channelName) ??
-		stringParam(params.room) ??
-		stringParam(params.email) ??
-		stringParam(params.emailAddress) ??
-		stringParam(params.address);
-	const id = stringParam(params.id);
-	const messageId =
-		stringParam(params.messageId) ??
-		stringParam(params.inReplyToId) ??
-		(rawOperation !== "send_draft" ? id : undefined);
-	const inReplyToId = stringParam(params.inReplyToId);
-	const draftId =
-		stringParam(params.draftId) ??
-		(rawOperation === "send_draft" ? id : undefined);
-	const messageBody =
-		stringParam(params.message) ??
-		stringParam(params.text) ??
-		stringParam(params.content) ??
-		stringParam(params.body);
-	const text = getUserMessageText(message) ?? "";
-	const directChatSend =
-		/\b(?:post|send|message|dm)\b/i.test(text) &&
-		/\b(?:discord|slack|telegram|signal|whatsapp)\b/i.test(text);
-	const operation =
-		rawOperation === "send_draft" &&
-		!stringParam(params.draftId) &&
-		(directChatSend || source || target || messageBody)
-			? "send"
-			: rawOperation;
-	const inferredOperation = operation
-		? undefined
-		: directChatSend
-			? "send"
-			: /\bdraft\b.*\breply\b/i.test(text)
-				? "draft_reply"
-				: /\b(?:unread|inbox|digest|summarize).*?\b(?:email|gmail|mail|inbox)\b/i.test(
-							text,
-						) ||
-						/\b(?:email|gmail|mail|inbox)\b.*?\b(?:unread|digest|summarize)\b/i.test(
-							text,
-						)
-					? "list_inbox"
-					: /\b(?:x|twitter)\b/i.test(text) &&
-							/\b(?:dm|dms|direct messages?|messages?)\b/i.test(text)
-						? "read_channel"
-						: undefined;
-	return {
-		...((inferredOperation ?? operation)
-			? {
-					action: inferredOperation ?? operation,
-				}
-			: {}),
-		...(source
-			? { source: source === "twitter" ? "x" : source }
-			: /\b(?:x|twitter)\b/i.test(text)
-				? { source: "x" }
-				: {}),
-		...(target ? { target } : {}),
-		...(sender || target ? { sender: sender ?? target } : {}),
-		...(messageId ? { messageId } : {}),
-		...(inReplyToId ? { inReplyToId } : {}),
-		...(draftId ? { draftId } : {}),
-		...(messageBody ? { message: messageBody, body: messageBody } : {}),
-		...(target && stringParam(params.channel) ? { targetKind: "channel" } : {}),
-		...(manageIntent
-			? {
-					manageOperation: /\bunsubscribe\b/i.test(manageIntent)
-						? "unsubscribe"
-						: manageIntent,
-				}
-			: {}),
-		...(stringParam(params.query) ? { query: params.query } : {}),
-		...(stringParam(params.channel) ? { channel: params.channel } : {}),
-		...(params.sources !== undefined ? { sources: params.sources } : {}),
-		...(params.worldIds !== undefined ? { worldIds: params.worldIds } : {}),
-		...(params.channelIds !== undefined
-			? { channelIds: params.channelIds }
-			: {}),
-		...(params.limit !== undefined ? { limit: params.limit } : {}),
-		...(params.since !== undefined ? { since: params.since } : {}),
-		...(params.until !== undefined ? { until: params.until } : {}),
-	};
-}
-
-function normalizeResolveRequestPlannerParams(
-	toolCall: PlannerToolCall,
-	message: Memory,
-): Record<string, unknown> {
-	const params =
-		toolCall.params && typeof toolCall.params === "object"
-			? (toolCall.params as Record<string, unknown>)
-			: {};
-	const text = `${toolCall.name} ${getUserMessageText(message) ?? ""}`;
-	const subaction = /\b(?:reject|deny|decline|no)\b/i.test(text)
-		? "reject"
-		: "approve";
-	return {
-		action: subaction,
-		subaction,
-		...(stringParam(params.requestId) ? { requestId: params.requestId } : {}),
-		...(stringParam(params.reason) ? { reason: params.reason } : {}),
-	};
-}
-
-function normalizePasswordManagerPlannerParams(
-	toolCall: PlannerToolCall,
-	message: Memory,
-): Record<string, unknown> {
-	const params =
-		toolCall.params && typeof toolCall.params === "object"
-			? (toolCall.params as Record<string, unknown>)
-			: {};
-	const rawSubaction = stringParam(params.subaction);
-	const wantsCopy = messageTextMatches(
-		message,
-		/\b(?:copy|clipboard|inject|fill)\b/,
-	);
-	const subaction =
-		rawSubaction &&
-		/^(?:list|search|inject_username|inject_password)$/i.test(rawSubaction)
-			? rawSubaction
-			: wantsCopy
-				? "inject_password"
-				: "search";
-	const query =
-		stringParam(params.query) ??
-		stringParam(params.service) ??
-		stringParam(params.target) ??
-		stringParam(params.domain) ??
-		getUserMessageText(message);
-	return {
-		action: subaction,
-		subaction,
-		...(query ? { query, intent: query } : {}),
-		...(stringParam(params.itemId) ? { itemId: params.itemId } : {}),
-		...(typeof params.confirmed === "boolean"
-			? { confirmed: params.confirmed }
-			: {}),
-	};
-}
-
-function normalizeAutofillPlannerParams(
-	toolCall: PlannerToolCall,
-	message: Memory,
-): Record<string, unknown> {
-	const params =
-		toolCall.params && typeof toolCall.params === "object"
-			? (toolCall.params as Record<string, unknown>)
-			: {};
-	const text = getUserMessageText(message) ?? "";
-	const domain =
-		stringParam(params.domain) ??
-		stringParam(params.site) ??
-		stringParam(params.website) ??
-		/\b([a-z0-9-]+(?:\.[a-z0-9-]+)+)\b/i.exec(text)?.[1];
-	return {
-		action:
-			stringParam(params.action) ?? stringParam(params.subaction) ?? "fill",
-		subaction:
-			stringParam(params.action) ?? stringParam(params.subaction) ?? "fill",
-		field: stringParam(params.field) ?? "password",
-		...(domain
-			? {
-					domain,
-					url: /^https?:\/\//i.test(domain) ? domain : `https://${domain}`,
-				}
-			: {}),
-	};
-}
-
 const OWNER_SURFACE_ACTIONS = new Set(
 	[
 		"OWNER_TODOS",
@@ -4913,248 +3010,29 @@ const OWNER_SURFACE_ACTIONS = new Set(
 	].map(normalizeActionIdentifier),
 );
 
-function normalizePersonalAssistantPlannerParams(
-	toolCall: PlannerToolCall,
-): Record<string, unknown> {
-	const params =
-		toolCall.params && typeof toolCall.params === "object"
-			? (toolCall.params as Record<string, unknown>)
-			: {};
-	const raw =
-		`${toolCall.name} ${stringParam(params.action) ?? ""}`.toLowerCase();
-	const action = /\bschedul/.test(raw) ? "scheduling" : "book_travel";
-	return { ...params, action };
-}
-
-function normalizeAliasedPlannerToolCall(
-	toolCall: PlannerToolCall,
-	resolvedName: string,
-	message: Memory,
-): PlannerToolCall {
-	const normalizedResolvedName = normalizeActionIdentifier(resolvedName);
-	const isOwnerSurface = OWNER_SURFACE_ACTIONS.has(normalizedResolvedName);
-	if (!isOwnerSurface) {
-		if (normalizedResolvedName === normalizeActionIdentifier("BLOCK")) {
-			const originalName = normalizeActionIdentifier(toolCall.name);
-			const target =
-				originalName.includes("APP") || originalName.includes("PHONE")
-					? "app"
-					: "website";
-			return {
-				...toolCall,
-				name: resolvedName,
-				params: normalizeBlockPlannerParams(toolCall, message, target),
-			};
-		}
-		if (normalizedResolvedName === normalizeActionIdentifier("POST")) {
-			return {
-				...toolCall,
-				name: resolvedName,
-				params: normalizePostPlannerParams(toolCall, message),
-			};
-		}
-		if (normalizedResolvedName === normalizeActionIdentifier("MESSAGE")) {
-			return {
-				...toolCall,
-				name: resolvedName,
-				params: normalizeMessagePlannerParams(toolCall, message),
-			};
-		}
-		if (
-			normalizedResolvedName === normalizeActionIdentifier("RESOLVE_REQUEST")
-		) {
-			return {
-				...toolCall,
-				name: resolvedName,
-				params: normalizeResolveRequestPlannerParams(toolCall, message),
-			};
-		}
-		if (normalizedResolvedName === normalizeActionIdentifier("CREDENTIALS")) {
-			const originalName = normalizeActionIdentifier(toolCall.name);
-			const rawAction =
-				toolCall.params && typeof toolCall.params === "object"
-					? (stringParam((toolCall.params as Record<string, unknown>).action) ??
-						stringParam((toolCall.params as Record<string, unknown>).subaction))
-					: undefined;
-			const params =
-				originalName.includes("AUTOFILL") ||
-				originalName.includes("LOGIN") ||
-				originalName.includes("FILL") ||
-				rawAction === "fill"
-					? normalizeAutofillPlannerParams(toolCall, message)
-					: normalizePasswordManagerPlannerParams(toolCall, message);
-			return {
-				...toolCall,
-				name: resolvedName,
-				params,
-			};
-		}
-		if (
-			normalizedResolvedName === normalizeActionIdentifier("PERSONAL_ASSISTANT")
-		) {
-			return {
-				...toolCall,
-				name: resolvedName,
-				params: normalizePersonalAssistantPlannerParams(toolCall),
-			};
-		}
-		if (
-			normalizeActionIdentifier(toolCall.name) ===
-				normalizeActionIdentifier("BROWSER_AUTOFILL_LOGIN") &&
-			normalizedResolvedName === normalizeActionIdentifier("BROWSER")
-		) {
-			const base =
-				toolCall.params && typeof toolCall.params === "object"
-					? { ...(toolCall.params as Record<string, unknown>) }
-					: ({} as Record<string, unknown>);
-			return {
-				...toolCall,
-				name: resolvedName,
-				params: { ...base, subaction: "autofill-login" },
-			};
-		}
-		return { ...toolCall, name: resolvedName };
-	}
-
-	const defaults =
-		normalizedPlannerAliasDefaults(toolCall.name) ??
-		normalizedLifeSubactionDefaults(
-			toolCall.params?.action ?? toolCall.params?.subaction,
-		);
-
-	return {
-		...toolCall,
-		name: resolvedName,
-		params: buildNormalizedLifePlannerParams({ toolCall, defaults, message }),
-	};
-}
-
 async function executeV5PlannedToolCall(
 	args: ExecuteV5PlannedToolCallParams,
 ): Promise<PlannerToolResult> {
-	const unwrappedToolCall = normalizeCompoundPlannerToolCall(
-		unwrapPlanActionsToolCall(args.toolCall),
-	);
-	if (!unwrappedToolCall.name) {
+	if (!args.toolCall.name) {
 		return {
 			success: false,
-			error: `${PLAN_ACTIONS_TOOL_NAME} requires a non-empty action`,
+			error: "Planner tool call requires a non-empty action name",
 		};
 	}
 
 	const actions = args.executorOptions?.actions ?? args.runtime.actions;
 	const actionLookup = buildRuntimeActionLookup({ actions });
-	// When the caller passed a narrowed `actions` slice (different reference
-	// than the full registry), `candidateActions` decisively trimmed the
-	// surface. Resolve strictly against that slice so LLM hallucinations
-	// (e.g. emitting `WRITE` when only `TASKS` was exposed) can't escape via
-	// the global runtime fallback.
+	// Different reference means the caller narrowed the surface; resolve
+	// strictly so LLM aliases can't escape through the global fallback.
 	const strictResolve = actions !== args.runtime.actions;
 	const resolvedNames = resolvePlannerActionName(
 		args.runtime,
 		actionLookup,
-		unwrappedToolCall.name,
+		args.toolCall.name,
 		{ strict: strictResolve },
 	);
-	const resolvedName = resolvedNames[0] ?? unwrappedToolCall.name;
-	const forceContactReminderToLife =
-		shouldTreatPlannerContactAliasAsLifeReminder(
-			unwrappedToolCall,
-			args.executorCtx.message,
-		);
-	const forceWebToCalendlyCalendar =
-		!forceContactReminderToLife &&
-		shouldTreatPlannerWebAsCalendlyCalendar(
-			resolvedName,
-			args.executorCtx.message,
-		);
-	const forceWebToBookTravel =
-		!forceContactReminderToLife &&
-		!forceWebToCalendlyCalendar &&
-		shouldTreatPlannerWebAsBookTravel(resolvedName, args.executorCtx.message);
-	const forceBrowserToAutofill =
-		!forceContactReminderToLife &&
-		!forceWebToCalendlyCalendar &&
-		!forceWebToBookTravel &&
-		shouldTreatPlannerBrowserAsAutofill(resolvedName, args.executorCtx.message);
-	const forceConnectorToPost =
-		!forceContactReminderToLife &&
-		!forceWebToCalendlyCalendar &&
-		!forceWebToBookTravel &&
-		!forceBrowserToAutofill &&
-		!shouldTreatPlannerConnectorAsMessage(
-			resolvedName,
-			args.executorCtx.message,
-		) &&
-		shouldTreatPlannerConnectorAsPost(resolvedName, args.executorCtx.message);
-	const forceConnectorToMessage =
-		!forceContactReminderToLife &&
-		!forceWebToCalendlyCalendar &&
-		!forceWebToBookTravel &&
-		!forceBrowserToAutofill &&
-		shouldTreatPlannerConnectorAsMessage(
-			resolvedName,
-			args.executorCtx.message,
-		);
-	const effectiveResolvedName = forceContactReminderToLife
-		? "OWNER_REMINDERS"
-		: forceWebToCalendlyCalendar
-			? "CALENDAR"
-			: forceWebToBookTravel
-				? "PERSONAL_ASSISTANT"
-				: forceBrowserToAutofill
-					? "CREDENTIALS"
-					: forceConnectorToPost
-						? "POST"
-						: forceConnectorToMessage
-							? "MESSAGE"
-							: resolvedName;
-	const toolCallForNormalization = forceContactReminderToLife
-		? {
-				...unwrappedToolCall,
-				params: {
-					action: "create",
-					subaction: "create",
-					intent: getUserMessageText(args.executorCtx.message),
-					details: {
-						contactName: stringParam(unwrappedToolCall.params?.name),
-						relationship: stringParam(unwrappedToolCall.params?.relationship),
-						originalPlannerAction: unwrappedToolCall.name,
-					},
-				},
-			}
-		: forceWebToBookTravel
-			? {
-					...unwrappedToolCall,
-					name: "PERSONAL_ASSISTANT",
-					params: {
-						...(unwrappedToolCall.params &&
-						typeof unwrappedToolCall.params === "object"
-							? unwrappedToolCall.params
-							: {}),
-						action: "book_travel",
-						intent: getUserMessageText(args.executorCtx.message),
-					},
-				}
-			: forceBrowserToAutofill
-				? {
-						...unwrappedToolCall,
-						name: "CREDENTIALS",
-						params: {
-							...(unwrappedToolCall.params &&
-							typeof unwrappedToolCall.params === "object"
-								? unwrappedToolCall.params
-								: {}),
-							action: "fill",
-							subaction: "fill",
-						},
-					}
-				: unwrappedToolCall;
-	const toolCall = normalizeAliasedPlannerToolCall(
-		toolCallForNormalization,
-		effectiveResolvedName,
-		args.executorCtx.message,
-	);
+	const resolvedName = resolvedNames[0] ?? args.toolCall.name;
+	const toolCall: PlannerToolCall = { ...args.toolCall, name: resolvedName };
 
 	const executionActions = actions.some(
 		(candidate) => candidate.name === toolCall.name,
@@ -5214,132 +3092,90 @@ function subPlannerResultToPlannerToolResult(
 }
 
 /**
- * Planner-loop tool surface. We always expose the same fixed Stage 2 wrapper
- * list so the prompt-cache key stays stable across requests no matter which
- * actions are gated this turn. Action names + parameter schemas live in the
- * conversation's available-actions block; the LLM picks one and passes it
- * through PLAN_ACTIONS({ action, ... }).
+ * Planner-loop tool surface. Each narrowed Action is exposed as its own native
+ * tool whose name is the action name and whose `parameters` is the action's
+ * JSONSchema. We also always include the universal terminal-sentinel tools
+ * (REPLY / IGNORE / STOP) so the planner has a stable way to end the turn.
  *
  * When no actions are gated for the current turn we fall back to an empty
  * tool array so the planner can short-circuit (the pipeline's stage-1
  * shortcut still emits HANDLE_RESPONSE through its own dedicated call).
  */
-function collectPlannerTools(context: ContextObject): ToolDefinition[] {
-	type ToolEventShape = {
-		type: string;
-		tool?: {
-			name?: string;
-			description?: string;
-			parameters?: unknown;
-			// The per-action tool event carries the source `Action` so
-			// downstream consumers can read `subActions` / promoted-marker
-			// metadata. We use it in native mode to skip umbrella parents
-			// whose virtual sub-actions are already exposed individually
-			// (otherwise the LLM sees both `TASKS` and `TASKS_SPAWN_AGENT`
-			// and picks the umbrella without a discriminator).
-			action?: {
-				subActions?: ReadonlyArray<unknown>;
-			};
-		};
-	};
-	const toolEvents = context.events.filter(
-		(event): event is ContextEvent & ToolEventShape =>
+function collectPlannerTools(
+	context: ContextObject,
+	narrowedActions?: ReadonlyArray<Action>,
+): ToolDefinition[] {
+	const hasAnyAction = context.events.some(
+		(event) =>
 			event.type === "tool" &&
 			"tool" in event &&
 			Boolean(
-				(event as ToolEventShape).tool?.name?.trim().length,
+				(event as { tool?: { name?: string } }).tool?.name?.trim().length,
 			),
 	);
-	if (toolEvents.length === 0) {
-		return [];
-	}
+	if (!hasAnyAction) return [];
+	const actions = narrowedActions ?? collectActionsFromContext(context);
+	const tierAParents = readTierAParentsFromContext(context);
+	return [
+		...buildPlannerToolsFromTieredActions(actions, {
+			tierAParents,
+			actionLookup: new Map(
+				actions.map((action) => [action.name, action] as const),
+			),
+		}),
+		...CORE_PLANNER_TERMINALS,
+	];
+}
 
-	// Default: expose ONE stable wrapper tool (`PLAN_ACTIONS`). Tool block
-	// is byte-identical across turns, which is the dominant cache-hit
-	// signal for Cerebras-style prompt caches. The planner LLM picks an
-	// action by string name inside the wrapper and the dispatcher unwraps
-	// it at the parse boundary.
-	//
-	// Opt-in alternative: `ELIZA_PLANNER_NATIVE_TOOLS=1` exposes each
-	// gated action as its OWN top-level function tool. Trades prompt-cache
-	// stability for native-function-call reliability — for planner LLMs
-	// with weaker function-calling discipline (Cerebras-hosted instruct
-	// variants like gpt-oss-120b and qwen-3-235b-instruct) the wrapper's
-	// string-name-then-nested-params indirection is the dominant failure
-	// surface: the model either picks the wrong action string, hallucinates
-	// an unregistered name, or emits the entire PLAN_ACTIONS call shape as
-	// content text instead of invoking the tool. Native mode eliminates
-	// that indirection — the model sees `TASKS_SPAWN_AGENT(task, agentType)`
-	// directly and uses its native function-call API to invoke it.
-	//
-	// The executor (`executeV5PlannedToolCall` -> `unwrapPlanActionsToolCall`)
-	// already handles direct action-name tool calls as a no-op-unwrap, so
-	// no downstream changes are needed.
-	const useNativeTools = process.env.ELIZA_PLANNER_NATIVE_TOOLS === "1";
-	if (!useNativeTools) {
-		return [...STABLE_PLANNER_TOOLS];
+/**
+ * Read the tier-A parent names from the action surface metadata attached to the
+ * context object by `buildV5PlannerActionSurface`. Returns an empty set when no
+ * surface metadata is present (full-surface mode, or contexts built outside the
+ * tiered pipeline), in which case the tiered builder degrades to plain
+ * one-tool-per-action behavior.
+ */
+function readTierAParentsFromContext(context: ContextObject): Set<string> {
+	const surface = (context.metadata as { actionSurface?: unknown } | undefined)
+		?.actionSurface;
+	if (!surface || typeof surface !== "object") {
+		return new Set<string>();
 	}
-
-	// First pass: collect names of umbrella parents that have virtual
-	// sub-actions exposed in THIS tool list. We need to skip the parent
-	// in native mode — exposing both `TASKS` and `TASKS_SPAWN_AGENT` makes
-	// the LLM pick the umbrella (more general name) without setting its
-	// discriminator, then the runtime dispatch fails with "Action TASKS
-	// has no sub-actions available in the current context". The virtuals
-	// carry the same parameter schema with the discriminator pinned, so
-	// dropping the umbrella loses nothing — every parameter shape is
-	// still reachable through one of the virtuals.
-	const exposedNames = new Set<string>();
-	for (const event of toolEvents) {
-		const name = event.tool?.name?.trim();
-		if (name) exposedNames.add(name);
+	const tierAParents = (
+		surface as { tierAParents?: unknown }
+	).tierAParents;
+	if (!Array.isArray(tierAParents)) {
+		return new Set<string>();
 	}
-	const umbrellasToSkip = new Set<string>();
-	for (const event of toolEvents) {
-		const subActions = event.tool?.action?.subActions;
-		if (!Array.isArray(subActions) || subActions.length === 0) continue;
-		const parentName = event.tool?.name?.trim();
-		if (!parentName) continue;
-		const anyVirtualExposed = subActions.some((entry) => {
-			const virtualName =
-				typeof entry === "string"
-					? entry
-					: entry &&
-						typeof entry === "object" &&
-						typeof (entry as { name?: unknown }).name === "string"
-						? ((entry as { name: string }).name)
-						: null;
-			return virtualName ? exposedNames.has(virtualName) : false;
-		});
-		if (anyVirtualExposed) {
-			umbrellasToSkip.add(parentName);
+	const set = new Set<string>();
+	for (const value of tierAParents) {
+		if (typeof value === "string" && value.trim().length > 0) {
+			set.add(value);
 		}
 	}
+	return set;
+}
 
+/**
+ * Pull each action surfaced as a `tool` event in the context. Mirrors the
+ * filtering used by the planner-loop's tools rendering — sub-planner scoping
+ * and dedup by normalised name happen there, while here we just keep the
+ * action references in the order they appear so per-turn tool ordering is
+ * deterministic.
+ */
+function collectActionsFromContext(context: ContextObject): Action[] {
 	const seen = new Set<string>();
-	const native: ToolDefinition[] = [];
-	for (const event of toolEvents) {
-		const tool = event.tool;
-		if (!tool) continue;
-		const name = typeof tool.name === "string" ? tool.name.trim() : "";
-		if (!name || seen.has(name)) continue;
-		if (umbrellasToSkip.has(name)) continue;
-		seen.add(name);
-		const parameters =
-			tool.parameters && typeof tool.parameters === "object"
-				? (tool.parameters as JSONSchema)
-				: undefined;
-		native.push({
-			name,
-			...(typeof tool.description === "string" && tool.description.trim()
-				? { description: tool.description }
-				: {}),
-			...(parameters ? { parameters } : {}),
-			type: "function",
-			strict: true,
-		});
+	const actions: Action[] = [];
+	for (const event of context.events ?? []) {
+		if (event.type !== "tool" || !("tool" in event)) continue;
+		const tool = event.tool as { action?: Action; name?: string } | undefined;
+		const action = tool?.action;
+		if (!action || typeof action.name !== "string") continue;
+		const normalized = action.name.trim();
+		if (!normalized || seen.has(normalized)) continue;
+		seen.add(normalized);
+		actions.push(action);
 	}
-	return native;
+	return actions;
 }
 
 function collectPreviousActionResults(
@@ -5474,7 +3310,7 @@ export async function runV5MessageRuntimeStage1(args: {
 				directMessage: directMessageChannel,
 				parameters: responseHandlerSchema,
 				description:
-					"Stage 1 — populate the registered response-handler fields exactly once before any PLAN_ACTIONS calls. Use empty values for non-applicable fields.",
+					"Stage 1 — populate the registered response-handler fields exactly once before any action tool calls. Use empty values for non-applicable fields.",
 			}),
 		];
 		const messageHandlerProviderOptions =
@@ -5549,29 +3385,8 @@ export async function runV5MessageRuntimeStage1(args: {
 				messages: messageHandlerInput.messages,
 				promptSegments: messageHandlerInput.promptSegments,
 				tools: messageHandlerTools,
-				// "auto" instead of "required" because Cerebras-served
-				// gpt-oss-120b returns an empty response when toolChoice is
-				// "required" and the model declines to use the tool. Pairing
-				// "auto" with `responseFormat: { type: "json_object" }` below
-				// gives the model two valid paths: emit a tool call, OR emit
-				// the HANDLE_RESPONSE envelope as JSON content. Either way
-				// downstream parsers recover the plan. Models that honour
-				// "required" (OpenAI, etc.) still prefer the tool path under
-				// "auto" when the prompt asks for one.
-				toolChoice: "auto",
-				// Was 1024. Reasoning models (gpt-oss-120b on Cerebras,
-				// gpt-5 on OpenAI) burn ~800–1500 tokens of internal
-				// chain-of-thought BEFORE emitting any visible output —
-				// completionTokens=1024 trajectories were showing 25-char
-				// truncated JSON because the rest of the budget had gone
-				// to reasoning tokens we never see. 4096 leaves the
-				// reasoning model ~3k tokens of actual envelope output
-				// after a typical 1k of reasoning, which is more than
-				// enough for the HANDLE_RESPONSE schema (~300 tokens
-				// fully populated). Non-reasoning models still finish
-				// well under 4096 so the ceiling doesn't change their
-				// cost.
-				maxTokens: 4096,
+				toolChoice: "required",
+				maxTokens: 1024,
 				// Streamed structured generation: the local engine (W4) streams the
 				// HANDLE_RESPONSE envelope and parses it incrementally so `shouldRespond`
 				// / `contexts` route the moment they are known and `replyText` flows to
@@ -5580,18 +3395,6 @@ export async function runV5MessageRuntimeStage1(args: {
 				streamStructured: true,
 				responseSkeleton: responseGrammar.responseSkeleton,
 				grammar: responseGrammar.grammar,
-				// Force JSON-object output mode in addition to the tools+toolChoice
-				// hint. gpt-oss-120b on Cerebras's serverless inference ignores
-				// `toolChoice: "required"` (returns empty `toolCalls` every turn,
-				// emits the envelope as content text — or nothing). Cerebras
-				// honours `response_format: { type: "json_object" }` strictly,
-				// which forces the model to emit a parseable JSON object every
-				// call. Combined with the skeleton + grammar already embedded in
-				// the prompt body, this gives us a structured response even when
-				// the model declines to use the function-call API. Models that
-				// DO honour `toolChoice` still prefer the tool path; the JSON
-				// fallback only kicks in when they don't.
-				responseFormat: { type: "json_object" },
 				// Guided structured decode on by default for Stage 1 (the call always
 				// carries a forced skeleton): the local engine derives the
 				// deterministic-token prefill plan and the fork fast-forwards the
@@ -5606,35 +3409,7 @@ export async function runV5MessageRuntimeStage1(args: {
 		const rawFieldParsed = extractMessageHandlerRawParsed(rawMessageHandler);
 		let fieldRunResult: ResponseHandlerFieldRunResult | null = null;
 		let messageHandler: MessageHandlerResult | null = null;
-		// Prefired-call short-circuit: when the response handler emitted a
-		// bare `{"action":"...","params":{...}}` call shape as its tool args
-		// or content (Cerebras native-tools mode does this — the model
-		// "calls" the action by emitting its parameter object instead of
-		// invoking the function-call API), the field registry would
-		// otherwise consume it as a malformed HANDLE_RESPONSE envelope.
-		// Detect the call shape on the rawParsed object and skip the
-		// registry — synthesize a prefired-call messageHandler directly.
-		const prefiredFromRawParsed = rawFieldParsed
-			? extractPrefiredCallFromRawParsed(rawFieldParsed)
-			: null;
-		if (prefiredFromRawParsed) {
-			messageHandler = {
-				processMessage: "RESPOND",
-				thought:
-					"Recovered planner action from response-handler structured output (bare-object call shape); dispatching directly via prefired tool call.",
-				plan: {
-					contexts: ["general"],
-					candidateActions: [prefiredFromRawParsed.name],
-					requiresTool: true,
-					simple: false,
-					prefiredToolCall: {
-						name: prefiredFromRawParsed.name,
-						params: prefiredFromRawParsed.params as Record<string, JsonValue>,
-					},
-				},
-			};
-		}
-		if (!messageHandler && rawFieldParsed) {
+		if (rawFieldParsed) {
 			fieldRunResult = await args.runtime.responseHandlerFieldRegistry.dispatch(
 				{
 					rawParsed: normalizeRawParsedForFieldRegistry(rawFieldParsed),
@@ -5652,27 +3427,6 @@ export async function runV5MessageRuntimeStage1(args: {
 		}
 		if (!messageHandler) {
 			messageHandler = parseMessageHandlerModelOutput(rawMessageHandler);
-		}
-		if (!messageHandler) {
-			messageHandler =
-				buildFallbackStage1PlanForKnownToolRequest({
-					message: args.message,
-					availableContexts,
-					availableActionNames: (args.runtime.actions ?? []).map(
-						(action) => action.name,
-					),
-				}) ?? buildFallbackStage1DirectReplyPlan();
-		}
-		if (!messageHandler && process.env.ELIZA_DEBUG_STAGE1 === "1") {
-			args.runtime.logger?.warn?.(
-				{
-					raw:
-						typeof rawMessageHandler === "string"
-							? rawMessageHandler
-							: JSON.stringify(rawMessageHandler),
-				},
-				"[message] parseMessageHandlerModelOutput returned null",
-			);
 		}
 
 		// RESPONSE_HANDLER_AFTER (blocking): hooks fire after Stage 1 returns and the
@@ -5817,27 +3571,9 @@ export async function runV5MessageRuntimeStage1(args: {
 		const earlyReplyText =
 			routedResponseHandlerReply || parsedResponseHandlerReply;
 		const onResponseHandlerEarlyReply = args.onResponseHandlerEarlyReply;
-		// Delegation actions (e.g. TASKS_SPAWN_AGENT) opt out of the early reply:
-		// the model's draft is a speculative guess at the answer, but the canonical
-		// answer arrives asynchronously from the sub-agent and the action's own
-		// `callback` emits the in-turn ack. Shipping the draft alongside the ack
-		// duplicates the bot's voice and confuses the user.
-		const candidateActionNames = new Set(
-			getMessageHandlerCandidateActions(messageHandler).map(
-				normalizeActionIdentifier,
-			),
-		);
-		const earlyReplySuppressedByAction =
-			candidateActionNames.size > 0 &&
-			args.runtime.actions.some(
-				(action) =>
-					action.suppressEarlyReply === true &&
-					candidateActionNames.has(normalizeActionIdentifier(action.name)),
-			);
 		const earlyReplySent =
 			messageHandler.processMessage === "RESPOND" &&
 			earlyReplyText.length > 0 &&
-			!earlyReplySuppressedByAction &&
 			typeof onResponseHandlerEarlyReply === "function";
 		if (earlyReplySent && typeof onResponseHandlerEarlyReply === "function") {
 			await onResponseHandlerEarlyReply({
@@ -6020,165 +3756,7 @@ export async function runV5MessageRuntimeStage1(args: {
 			})
 			.catch(() => {});
 
-		// Stage-1 prefired tool-call short-circuit. When the response handler
-		// staged a `prefiredToolCall` (because it parsed a clean
-		// `PLAN_ACTIONS(<JSON>)` block out of the model's content text),
-		// skip the planner LLM call entirely and dispatch the prefired
-		// action directly through the same executor the loop would use.
-		// This is the practical bridge for weaker planner LLMs that emit
-		// the correct call shape but can't reliably invoke it via the
-		// function-call API. The dispatch goes through every gate the
-		// real planner path does (strict resolver, role gate, action
-		// validate) — this is a routing fix, not a privilege bypass.
-		const prefiredPlanCall = (() => {
-			const raw = (messageHandler.plan as { prefiredToolCall?: unknown })
-				.prefiredToolCall;
-			if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
-			const entry = raw as { name?: unknown; params?: unknown };
-			if (typeof entry.name !== "string" || !entry.name.trim()) return null;
-			const rawParams =
-				entry.params && typeof entry.params === "object" && !Array.isArray(entry.params)
-					? (entry.params as Record<string, unknown>)
-					: {};
-			// Sanitize: drop params whose value would fail the registered
-			// action's parameter validator. The most common case is the
-			// model emitting an enum value like `approvalPreset: "default"`
-			// that's not in the schema's enum (the actual values are
-			// readonly/standard/permissive/autonomous). Dropping the field
-			// lets the action's handler use its registered default, which
-			// is what the model meant anyway.
-			//
-			// We resolve the action by name through the strict resolver
-			// (the same path the executor uses) and walk its parameter
-			// definitions. If a param has an enum constraint and the
-			// model's value isn't in it, the field is omitted.
-			let params: Record<string, unknown> = { ...rawParams };
-			try {
-				const lookup = buildRuntimeActionLookup({
-					actions: exposedPlannerActions,
-				});
-				const resolved = resolveRuntimeAction(lookup, entry.name.trim());
-				if (resolved?.parameters) {
-					for (const param of resolved.parameters) {
-						const value = params[param.name];
-						if (typeof value !== "string") continue;
-						const schema = param.schema as
-							| { enum?: readonly string[] }
-							| undefined;
-						const enumValues = Array.isArray(schema?.enum)
-							? schema.enum
-							: undefined;
-						if (enumValues && !enumValues.includes(value)) {
-							args.runtime.logger.info(
-								{
-									src: "service:message",
-									actionName: entry.name.trim(),
-									param: param.name,
-									invalidValue: value,
-									validEnum: enumValues,
-								},
-								"[prefired-call] dropping param with invalid enum value; action defaults will apply",
-							);
-							delete params[param.name];
-						}
-					}
-				}
-			} catch (err) {
-				args.runtime.logger?.debug?.(
-					{
-						src: "service:message",
-						err: (err as Error).message,
-					},
-					"[prefired-call] sanitization probe failed; passing params through",
-				);
-			}
-			return { name: entry.name.trim(), params };
-		})();
-
 		let plannerResult: PlannerLoopResult;
-		if (prefiredPlanCall) {
-			args.runtime.logger.info(
-				{
-					src: "service:message",
-					actionName: prefiredPlanCall.name,
-					origin: "response-handler-content-extract",
-				},
-				"Dispatching prefired tool call from response-handler content",
-			);
-			const syntheticToolCall: PlannerToolCall = {
-				id: `prefired-${Date.now()}`,
-				name: prefiredPlanCall.name,
-				params: prefiredPlanCall.params,
-			};
-			const toolResult = await executeV5PlannedToolCall({
-				runtime: args.runtime,
-				toolCall: syntheticToolCall,
-				plannerContext: plannerContextAfterEarlyReply,
-				executorCtx: {
-					message: args.message,
-					state: plannerState,
-					activeContexts: selectedContexts,
-					userRoles: [senderRole],
-					previousResults: [],
-				},
-				plannerRuntime,
-				executorOptions: { actions: exposedPlannerActions },
-				evaluatorEffects,
-				recorder,
-				trajectoryId,
-				plannerLoopConfig: args.plannerLoopConfig,
-			});
-			// On success, `toolResult.text` is the action's user-facing
-			// output (often empty for spawn — the response handler's
-			// pre-spawn reply text speaks for the turn). On failure,
-			// `toolResult.error` is an INTERNAL diagnostic string like
-			// "Action TASKS_SPAWN_AGENT is not allowed in the current
-			// context" or "Argument 'approvalPreset' value 'default' is
-			// not one of [...]" — never user-facing prose. Don't pipe
-			// internal errors into `finalMessage` (which Discord ships
-			// verbatim). Failures get logged at info level and the bot
-			// falls through to whatever the response handler emitted as
-			// `replyText` (or the runtime's structured failure reply if
-			// nothing else).
-			if (!toolResult.success) {
-				args.runtime.logger.info(
-					{
-						src: "service:message",
-						actionName: prefiredPlanCall.name,
-						origin: "response-handler-content-extract",
-						error:
-							typeof toolResult.error === "string"
-								? toolResult.error
-								: toolResult.error instanceof Error
-									? toolResult.error.message
-									: String(toolResult.error),
-					},
-					"Prefired tool call failed; not shipping internal error to user channel",
-				);
-			}
-			plannerResult = {
-				status: "finished",
-				trajectory: {
-					context: plannerContextAfterEarlyReply,
-					steps: [
-						{
-							iteration: 0,
-							thought:
-								"Prefired action recovered from response-handler content",
-							toolCall: syntheticToolCall,
-							result: toolResult,
-						},
-					],
-					archivedSteps: [],
-					plannedQueue: [],
-					evaluatorOutputs: [],
-				},
-				finalMessage:
-					toolResult.success && typeof toolResult.text === "string"
-						? toolResult.text
-						: undefined,
-			};
-		} else {
 		try {
 			plannerResult = await runPlannerLoop({
 				runtime: plannerRuntime,
@@ -6238,7 +3816,6 @@ export async function runV5MessageRuntimeStage1(args: {
 				throw error;
 			}
 			plannerResult = fallbackResult;
-		}
 		}
 
 		// CONTEXT_AFTER (blocking): hooks fire after the planner loop, before
@@ -6618,29 +4195,6 @@ export function isSimpleReplyResponse(
 	);
 }
 
-export function resolveStrategyMode(
-	responseContent:
-		| Pick<Content, "actions" | "text" | "simple">
-		| null
-		| undefined,
-): StrategyMode {
-	if (isStopResponse(responseContent)) {
-		return "none";
-	}
-
-	if (!isSimpleReplyResponse(responseContent)) {
-		return "actions";
-	}
-
-	const hasPlannerText =
-		typeof responseContent?.text === "string" &&
-		responseContent.text.trim().length > 0;
-
-	return responseContent?.simple === true && hasPlannerText
-		? "simple"
-		: "actions";
-}
-
 function isStopResponse(
 	responseContent: Pick<Content, "actions"> | null | undefined,
 ): boolean {
@@ -6667,351 +4221,6 @@ function unwrapPlannerIdentifier(value: string): string {
 	}
 	return trimmed;
 }
-
-const PLANNER_ACTION_ALIASES = new Map(
-	[
-		["BULK_RESCHEDULE", "CALENDAR"],
-		["BULK_RESCHEDULE_MEETINGS", "CALENDAR"],
-		["SCHEDULE_MEETING", "CALENDAR"],
-		["RESCHEDULE_MEETINGS", "CALENDAR"],
-		["GET_AVAILABILITY", "CALENDAR"],
-		["CREATE_EVENT", "CALENDAR"],
-		["CREATE_RECURRING_EVENT", "CALENDAR"],
-		["CALENDAR_CREATE_RECURRING_EVENT", "CALENDAR"],
-		["SCHEDULE_RECURRING_EVENT", "CALENDAR"],
-		["SCHEDULE_RECURRING_MEETING", "CALENDAR"],
-		["SCHEDULE_RECURRING", "CALENDAR"],
-		["CAPTURE_TRAVEL_PREFERENCES", "REPLY"],
-		["CAPTURE_BOOKING_PREFERENCES", "REPLY"],
-		["CREATE_TRAVEL_PREFERENCES", "REPLY"],
-		["SET_PREFERENCES", "REPLY"],
-		["SET_TRAVEL_PREFERENCES", "REPLY"],
-		["CREATE_FOLLOWUP", "SCHEDULED_TASKS"],
-		["GET_PENDING_ASSETS", "MESSAGE"],
-		["GET_PENDING_ITEMS", "MESSAGE"],
-		["EVENT_ASSET_CHECKLIST", "MESSAGE"],
-		["OUTSTANDING_EVENT_ASSETS", "MESSAGE"],
-		["PORTAL_ASSET_CHECKLIST", "MESSAGE"],
-		["PROPOSE_GROUP_CHAT_HANDOFF", "MESSAGE"],
-		["GROUP_CHAT_HANDOFF_POLICY", "MESSAGE"],
-		["SET_GROUP_CHAT_HANDOFF_POLICY", "MESSAGE"],
-		["CREATE_GROUP_CHAT", "MESSAGE"],
-		["BUMP_WITH_CONTEXT", "MESSAGE"],
-		["CONTEXTUAL_BUMP", "MESSAGE"],
-		["BUMP_UNANSWERED_DECISION", "MESSAGE"],
-		["GET_PENDING_DRAFTS", "MESSAGE"],
-		["SOCIAL_POSTING", "POST"],
-		["GET_TIMELINE", "POST"],
-		["READ_TIMELINE", "POST"],
-		["SEARCH_TWITTER", "POST"],
-		["TWITTER_SEARCH", "POST"],
-		["X_SEARCH", "POST"],
-		["SEARCH_TWITTER_POSTS", "POST"],
-		["TWITTER_POST_SEARCH", "POST"],
-		["FETCH_X_TIMELINE", "POST"],
-		["VIEW_X_FEED", "POST"],
-		["FETCH_TWITTER_FEED", "POST"],
-		["FETCH_TWITTER_TIMELINE", "POST"],
-		["FETCH_TWITTER_DMS", "MESSAGE"],
-		["READ_TWITTER_DMS", "MESSAGE"],
-		["READ_TWITTER_DM", "MESSAGE"],
-		["FETCH_X_DMS", "MESSAGE"],
-		["READ_X_DMS", "MESSAGE"],
-		["READ_X_DM", "MESSAGE"],
-		["DISCORD_POST_MESSAGE", "MESSAGE"],
-		["DISCORD_SEND_MESSAGE", "MESSAGE"],
-		["SEND_DISCORD_MESSAGE", "MESSAGE"],
-		["SLACK_POST_MESSAGE", "MESSAGE"],
-		["TELEGRAM_SEND_MESSAGE", "MESSAGE"],
-		["EMAIL_FETCH_LATEST", "MESSAGE"],
-		["EMAIL_DRAFT_REPLY", "MESSAGE"],
-		["EMAIL_FETCH_UNREAD", "MESSAGE"],
-		["FETCH_UNREAD_EMAIL", "MESSAGE"],
-		["FETCH_UNREAD_EMAILS", "MESSAGE"],
-		["LIST_UNREAD_EMAILS", "MESSAGE"],
-		["SUMMARIZE_UNREAD_EMAILS", "MESSAGE"],
-		["SUMMARISE_UNREAD_EMAILS", "MESSAGE"],
-		["UNREAD_EMAIL_SUMMARY", "MESSAGE"],
-		["READ_UNREAD_EMAILS", "MESSAGE"],
-		["ADD_TODO", "OWNER_TODOS"],
-		["CREATE_TODO", "OWNER_TODOS"],
-		["TODO_ADD", "OWNER_TODOS"],
-		["TODO_CREATE", "OWNER_TODOS"],
-		["TODOS_ADD", "OWNER_TODOS"],
-		["TODOS_CREATE", "OWNER_TODOS"],
-		["TASK_ADD", "OWNER_TODOS"],
-		["TASK_CREATE", "OWNER_TODOS"],
-		["ADD_TASK", "OWNER_TODOS"],
-		["CREATE_TASK", "OWNER_TODOS"],
-		["TASKS_ADD_TODO", "OWNER_TODOS"],
-		["TASKS_CREATE_TODO", "OWNER_TODOS"],
-		["TASKS_CREATE_REMINDER", "OWNER_REMINDERS"],
-		["LIST_TODOS", "OWNER_TODOS"],
-		["GET_TODOS", "OWNER_TODOS"],
-		["TODO_LIST", "OWNER_TODOS"],
-		["TODO_LIST_TODAY", "OWNER_TODOS"],
-		["TODOS_LIST", "OWNER_TODOS"],
-		["TODO_GET", "OWNER_TODOS"],
-		["TODOS_GET", "OWNER_TODOS"],
-		["TODOS_REVIEW", "OWNER_TODOS"],
-		["TASK_LIST", "OWNER_TODOS"],
-		["TASK_LIST_TODAY", "OWNER_TODOS"],
-		["TASKS_REVIEW", "OWNER_TODOS"],
-		["TASKS_LIST_TODAY", "OWNER_TODOS"],
-		["TASKS_LIST_TODOS", "OWNER_TODOS"],
-		["LIST_TASKS", "OWNER_TODOS"],
-		["LIFE_GET_TODOS", "OWNER_TODOS"],
-		["LIFE_TODO", "OWNER_TODOS"],
-		["ADD_HABIT", "OWNER_ROUTINES"],
-		["CREATE_HABIT", "OWNER_ROUTINES"],
-		["LIST_HABITS", "OWNER_ROUTINES"],
-		["ADD_GOAL", "OWNER_GOALS"],
-		["CREATE_GOAL", "OWNER_GOALS"],
-		["TASKS_SET_GOAL", "OWNER_GOALS"],
-		["SET_GOAL", "OWNER_GOALS"],
-		["CREATE_REMINDER", "OWNER_REMINDERS"],
-		["SET_REMINDER_RULE", "OWNER_REMINDERS"],
-		["CHECK_IN", "SCHEDULED_TASKS"],
-		["LIFE_CHECK_IN", "SCHEDULED_TASKS"],
-		["MORNING_CHECKIN", "SCHEDULED_TASKS"],
-		["MORNING_CHECK_IN", "SCHEDULED_TASKS"],
-		["NIGHT_CHECKIN", "SCHEDULED_TASKS"],
-		["NIGHT_CHECK_IN", "SCHEDULED_TASKS"],
-		["RUN_CHECKIN", "SCHEDULED_TASKS"],
-		["RUN_MORNING_CHECKIN", "SCHEDULED_TASKS"],
-		["RUN_NIGHT_CHECKIN", "SCHEDULED_TASKS"],
-		["AUTOMATION_RUN", "REPLY"],
-		["DAILY_BRIEF", "REPLY"],
-		["MEMORY_SET", "REPLY"],
-		["MEMORY_WRITE", "REPLY"],
-		["REMEMBER_PREFERENCES", "REPLY"],
-		["CREATE_PREFERENCE_PROFILE", "REPLY"],
-		["FLAG_CONFLICT", "CALENDAR"],
-		["CHECK_FLIGHT_CONFLICT", "CALENDAR"],
-		["FLIGHT_CONFLICT_REBOOKING", "CALENDAR"],
-		["REBOOK_CONFLICTING_EVENT", "CALENDAR"],
-		["CALENDAR_READ", "CALENDAR"],
-		["CALENDAR_CREATE_EVENT", "CALENDAR"],
-		["CALENDAR_FEED", "CALENDAR"],
-		["CALENDLY_CHECK_AVAILABILITY", "CALENDAR"],
-		["CALENDLY_AVAILABILITY", "CALENDAR"],
-		["CALENDLY_SINGLE_USE_LINK", "CALENDAR"],
-		["CALENDAR_CHECK_AVAILABILITY", "CALENDAR"],
-		["BLOCK_WEBSITE", "BLOCK"],
-		["WEBSITE_BLOCKER", "BLOCK"],
-		["AUTOMATION_FOCUS_BLOCK", "BLOCK"],
-		["FOCUS_BLOCK", "BLOCK"],
-		["SET_APP_BLOCK", "BLOCK"],
-		["PHONE_SET_APP_BLOCK", "BLOCK"],
-		["PHONE_BLOCK_APPS", "BLOCK"],
-		["BLOCK_APPS", "BLOCK"],
-		["ADMIN_REJECT_APPROVAL", "RESOLVE_REQUEST"],
-		["REJECT_APPROVAL", "RESOLVE_REQUEST"],
-		["DENY_APPROVAL", "RESOLVE_REQUEST"],
-		["DECLINE_APPROVAL", "RESOLVE_REQUEST"],
-		["REQUEST_UPLOAD", "COMPUTER_USE"],
-		["UPLOAD_PORTAL", "COMPUTER_USE"],
-		["DESKTOP", "COMPUTER_USE"],
-	].map(([from, to]) => [
-		normalizeActionIdentifier(from),
-		normalizeActionIdentifier(to),
-	]),
-);
-
-const PLANNER_ACTION_ALIAS_DEFAULTS = new Map(
-	[
-		[
-			"ADD_TODO",
-			{ action: "create", kind: "definition", definitionKind: "task" },
-		],
-		[
-			"CREATE_TODO",
-			{ action: "create", kind: "definition", definitionKind: "task" },
-		],
-		[
-			"TODO_ADD",
-			{ action: "create", kind: "definition", definitionKind: "task" },
-		],
-		[
-			"TODO_CREATE",
-			{ action: "create", kind: "definition", definitionKind: "task" },
-		],
-		[
-			"TODOS_ADD",
-			{ action: "create", kind: "definition", definitionKind: "task" },
-		],
-		[
-			"TODOS_CREATE",
-			{ action: "create", kind: "definition", definitionKind: "task" },
-		],
-		[
-			"TASK_ADD",
-			{ action: "create", kind: "definition", definitionKind: "task" },
-		],
-		[
-			"TASK_CREATE",
-			{ action: "create", kind: "definition", definitionKind: "task" },
-		],
-		[
-			"ADD_TASK",
-			{ action: "create", kind: "definition", definitionKind: "task" },
-		],
-		[
-			"CREATE_TASK",
-			{ action: "create", kind: "definition", definitionKind: "task" },
-		],
-		[
-			"TASKS_ADD_TODO",
-			{ action: "create", kind: "definition", definitionKind: "task" },
-		],
-		[
-			"TASKS_CREATE_TODO",
-			{ action: "create", kind: "definition", definitionKind: "task" },
-		],
-		[
-			"ADD_HABIT",
-			{ action: "create", kind: "definition", definitionKind: "habit" },
-		],
-		[
-			"CREATE_HABIT",
-			{ action: "create", kind: "definition", definitionKind: "habit" },
-		],
-		["ADD_GOAL", { action: "create", kind: "goal" }],
-		["CREATE_GOAL", { action: "create", kind: "goal" }],
-		["TASKS_SET_GOAL", { action: "create", kind: "goal" }],
-		["SET_GOAL", { action: "create", kind: "goal" }],
-		[
-			"CREATE_REMINDER",
-			{ action: "create", kind: "definition", definitionKind: "task" },
-		],
-		[
-			"TASKS_CREATE_REMINDER",
-			{ action: "create", kind: "definition", definitionKind: "task" },
-		],
-		[
-			"SET_REMINDER_RULE",
-			{ action: "create", kind: "definition", definitionKind: "task" },
-		],
-		["LIST_TODOS", { action: "review" }],
-		["GET_TODOS", { action: "review" }],
-		["TODO_LIST", { action: "review" }],
-		["TODO_LIST_TODAY", { action: "review" }],
-		["TODOS_LIST", { action: "review" }],
-		["TODO_GET", { action: "review" }],
-		["TODOS_GET", { action: "review" }],
-		["TODOS_REVIEW", { action: "review" }],
-		["TASK_LIST", { action: "review" }],
-		["TASK_LIST_TODAY", { action: "review" }],
-		["TASKS_REVIEW", { action: "review" }],
-		["TASKS_LIST_TODAY", { action: "review" }],
-		["TASKS_LIST_TODOS", { action: "review" }],
-		["LIST_TASKS", { action: "review" }],
-		["LIFE_GET_TODOS", { action: "review" }],
-		["LIFE_TODO", {}],
-		["LIST_HABITS", { action: "review" }],
-	].map(([from, defaults]) => [
-		normalizeActionIdentifier(from as string),
-		defaults as PlannerLifeAliasDefaults,
-	]),
-);
-
-const PLANNER_LIFE_SUBACTION_DEFAULTS = new Map(
-	[
-		[
-			"ADD_TODO",
-			{ action: "create", kind: "definition", definitionKind: "task" },
-		],
-		[
-			"CREATE_TODO",
-			{ action: "create", kind: "definition", definitionKind: "task" },
-		],
-		[
-			"TODO_ADD",
-			{ action: "create", kind: "definition", definitionKind: "task" },
-		],
-		[
-			"TODO_CREATE",
-			{ action: "create", kind: "definition", definitionKind: "task" },
-		],
-		[
-			"TODOS_ADD",
-			{ action: "create", kind: "definition", definitionKind: "task" },
-		],
-		[
-			"TODOS_CREATE",
-			{ action: "create", kind: "definition", definitionKind: "task" },
-		],
-		[
-			"TASK_ADD",
-			{ action: "create", kind: "definition", definitionKind: "task" },
-		],
-		[
-			"TASK_CREATE",
-			{ action: "create", kind: "definition", definitionKind: "task" },
-		],
-		[
-			"TASKS_ADD_TODO",
-			{ action: "create", kind: "definition", definitionKind: "task" },
-		],
-		[
-			"TASKS_CREATE_TODO",
-			{ action: "create", kind: "definition", definitionKind: "task" },
-		],
-		[
-			"ADD_TASK",
-			{ action: "create", kind: "definition", definitionKind: "task" },
-		],
-		[
-			"CREATE_TASK",
-			{ action: "create", kind: "definition", definitionKind: "task" },
-		],
-		[
-			"ADD_REMINDER",
-			{ action: "create", kind: "definition", definitionKind: "task" },
-		],
-		[
-			"CREATE_REMINDER",
-			{ action: "create", kind: "definition", definitionKind: "task" },
-		],
-		[
-			"TASKS_CREATE_REMINDER",
-			{ action: "create", kind: "definition", definitionKind: "task" },
-		],
-		[
-			"ADD_HABIT",
-			{ action: "create", kind: "definition", definitionKind: "habit" },
-		],
-		[
-			"CREATE_HABIT",
-			{ action: "create", kind: "definition", definitionKind: "habit" },
-		],
-		["ADD_GOAL", { action: "create", kind: "goal" }],
-		["CREATE_GOAL", { action: "create", kind: "goal" }],
-		["TASKS_SET_GOAL", { action: "create", kind: "goal" }],
-		["SET_GOAL", { action: "create", kind: "goal" }],
-		["LIST_TODOS", { action: "review" }],
-		["GET_TODOS", { action: "review" }],
-		["TODO_LIST", { action: "review" }],
-		["TODO_LIST_TODAY", { action: "review" }],
-		["TODOS_LIST", { action: "review" }],
-		["TODO_GET", { action: "review" }],
-		["TODOS_GET", { action: "review" }],
-		["TODOS_REVIEW", { action: "review" }],
-		["TASK_LIST", { action: "review" }],
-		["TASK_LIST_TODAY", { action: "review" }],
-		["TASKS_REVIEW", { action: "review" }],
-		["TASKS_LIST_TODAY", { action: "review" }],
-		["TASKS_LIST_TODOS", { action: "review" }],
-		["LIST_TASKS", { action: "review" }],
-		["LIFE_GET_TODOS", { action: "review" }],
-		["LIFE_TODO", {}],
-		["LIST_TASKS", { action: "review" }],
-		["LIST_HABITS", { action: "review" }],
-	].map(([from, defaults]) => [
-		normalizeActionIdentifier(from as string),
-		defaults as PlannerLifeAliasDefaults,
-	]),
-);
 
 const PLANNER_PROVIDER_ALIASES = new Map(
 	[
@@ -9236,7 +6445,8 @@ export class DefaultMessageService implements IMessageService {
 				//
 				// The `streamTextFallback` path exists for action handlers or other
 				// call sites that don't provide `accumulated` (raw token streams).
-				let firstSentenceSent = false;
+					let firstSentenceSent = false;
+					let firstSentenceText = "";
 				let streamTextFallback = "";
 				const userOnStreamChunk = options?.onStreamChunk;
 				const wrappedOnStreamChunk: StreamChunkCallback | undefined =
@@ -9285,11 +6495,12 @@ export class DefaultMessageService implements IMessageService {
 									accumulated !== undefined &&
 									hasFirstSentence(streamText)
 								) {
-									const { first } = extractFirstSentence(streamText);
-									if (first.length > 5) {
-										firstSentenceSent = true;
+										const { first } = extractFirstSentence(streamText);
+										if (first.length > 5) {
+											firstSentenceSent = true;
+											firstSentenceText = first;
 
-										(async () => {
+											(async () => {
 											try {
 												const voiceSettings = runtime.character.settings
 													?.voice as
@@ -9314,6 +6525,9 @@ export class DefaultMessageService implements IMessageService {
 													text: first,
 													voice: voiceId,
 													model: model,
+													...(opts.abortSignal
+														? { signal: opts.abortSignal }
+														: {}),
 												};
 												const result = runtime.getModel(
 													ModelType.TEXT_TO_SPEECH,
@@ -9527,11 +6741,7 @@ export class DefaultMessageService implements IMessageService {
 										abortSignal: opts.abortSignal,
 									}
 								: undefined;
-					// Voice handling state
-					const firstSentenceSent = false;
-					const firstSentenceText = "";
-
-					const processingPromise = runtime.turnControllers.runWith(
+						const processingPromise = runtime.turnControllers.runWith(
 						message.roomId,
 						(turnSignal) => {
 							const abortSignal = mergeAbortSignals([
@@ -9597,10 +6807,13 @@ export class DefaultMessageService implements IMessageService {
 									const params: TextToSpeechParams & {
 										model?: string;
 									} = {
-										text: rest,
-										voice: voiceId,
-										model: model,
-									};
+											text: rest,
+											voice: voiceId,
+											model: model,
+											...(opts.abortSignal
+												? { signal: opts.abortSignal }
+												: {}),
+										};
 									const result = runtime.getModel(ModelType.TEXT_TO_SPEECH)
 										? await runtime.useModel(ModelType.TEXT_TO_SPEECH, params)
 										: undefined;
@@ -9918,7 +7131,6 @@ export class DefaultMessageService implements IMessageService {
 						actions: ["REPLY"],
 						providers: [],
 						text,
-						simple: true,
 						responseId: earlyResponseId,
 						inReplyTo: createUniqueUuid(runtime, message.id),
 					};
@@ -10411,7 +7623,6 @@ export class DefaultMessageService implements IMessageService {
 						? "Agent decided to stop and end the run."
 						: "Agent decided not to respond to this message.",
 				actions: [terminalAction],
-				simple: true,
 				inReplyTo: createUniqueUuid(runtime, message.id),
 			};
 
@@ -10526,7 +7737,6 @@ export class DefaultMessageService implements IMessageService {
 			userEntityId: message.entityId,
 			input: message.content.text,
 			thought: responseContent?.thought,
-			simple: responseContent?.simple,
 			availableActions,
 			actions: responseContent?.actions,
 			providers: responseContent?.providers,
@@ -11111,7 +8321,6 @@ export class DefaultMessageService implements IMessageService {
 			actions: ["REPLY"],
 			providers: [],
 			text: replyText,
-			simple: true,
 			responseId,
 		};
 
@@ -11162,7 +8371,6 @@ export class DefaultMessageService implements IMessageService {
 			actions: ["REPLY"],
 			providers: [],
 			text: replyText,
-			simple: true,
 			responseId,
 		};
 

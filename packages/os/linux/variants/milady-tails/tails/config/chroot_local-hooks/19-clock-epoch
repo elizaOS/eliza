@@ -1,0 +1,22 @@
+#! /bin/sh
+
+set -e
+set -u
+
+echo "Setting minimum time that "
+
+# From systemd(1):
+#
+# > The epoch is set to the highest of: the build time of systemd, the
+# > modification time ("mtime") of /usr/lib/clock-epoch, and the
+# > modification time of /var/lib/systemd/timesync/clock.
+#
+# Therefore, if the hardware clock is before $SOURCE_DATE_EPOCH:
+#
+#  - In the (rare) cases when the build time of systemd is more recent
+#    than $SOURCE_DATE_EPOCH, PID 1 will set the system clock to the
+#    build time of systemd.
+#
+#  - Else, PID 1 will set the system clock to $SOURCE_DATE_EPOCH.
+
+touch --date="@${SOURCE_DATE_EPOCH}" /usr/lib/clock-epoch

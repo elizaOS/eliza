@@ -1,0 +1,87 @@
+{
+  "note": "Per-action fixtures. The runner streams context through a single-action grammar/schema; the model emits the action's parameter object only. Free-text fields like REPLY.text use the sentinel '<<any>>' so the matcher only checks the field exists with non-empty string content — the LLM never produces byte-identical prose. Structured fields (recipients, op enums, etc.) require exact match.",
+  "cases": [
+    {
+      "id": "reply-greeting",
+      "actionName": "REPLY",
+      "parameters": [
+        {
+          "name": "text",
+          "type": "string",
+          "description": "User-facing reply text.",
+          "required": true
+        }
+      ],
+      "context": "User just said 'hi'. Produce a brief friendly greeting back.",
+      "expected_params": { "text": "<<any>>" }
+    },
+    {
+      "id": "reply-thanks",
+      "actionName": "REPLY",
+      "parameters": [
+        {
+          "name": "text",
+          "type": "string",
+          "description": "User-facing reply text.",
+          "required": true
+        }
+      ],
+      "context": "User said 'thanks for the help'. Produce a brief acknowledgement.",
+      "expected_params": { "text": "<<any>>" }
+    },
+    {
+      "id": "reply-status-update",
+      "actionName": "REPLY",
+      "parameters": [
+        {
+          "name": "text",
+          "type": "string",
+          "description": "User-facing reply text.",
+          "required": true
+        }
+      ],
+      "context": "User asked 'are you still working on that?'. The task is complete. Produce a short confirmation.",
+      "expected_params": { "text": "<<any>>" }
+    },
+    {
+      "id": "message-recipient-text",
+      "actionName": "MESSAGE",
+      "parameters": [
+        {
+          "name": "recipient",
+          "type": "string",
+          "description": "Recipient name or handle.",
+          "required": true
+        },
+        {
+          "name": "text",
+          "type": "string",
+          "description": "Message body.",
+          "required": true
+        }
+      ],
+      "context": "User said: 'message alice and tell her the report is ready'. Emit parameters for the MESSAGE action.",
+      "expected_params": { "recipient": "alice", "text": "<<any>>" }
+    },
+    {
+      "id": "message-recipient-followup",
+      "actionName": "MESSAGE",
+      "parameters": [
+        {
+          "name": "recipient",
+          "type": "string",
+          "description": "Recipient name or handle.",
+          "required": true
+        },
+        {
+          "name": "text",
+          "type": "string",
+          "description": "Message body.",
+          "required": true
+        }
+      ],
+      "context": "User said: 'send bob a quick note saying the meeting moved to 3pm'. Emit MESSAGE parameters.",
+      "expected_params": { "recipient": "bob" }
+    }
+  ]
+}

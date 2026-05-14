@@ -42,8 +42,7 @@ describe("trajectory task datasets", () => {
           JSON.stringify({
             messageHandler: {
               action: "RESPOND",
-              simple: true,
-              contexts: [],
+              contexts: ["simple"],
               thought: "Direct mention.",
               reply: "Sure.",
             },
@@ -66,8 +65,7 @@ describe("trajectory task datasets", () => {
     expect(JSON.parse(example.response.text)).toEqual({
       messageHandler: {
         action: "RESPOND",
-        simple: true,
-        contexts: [],
+        contexts: ["simple"],
         thought: "Direct mention.",
         reply: "Sure.",
       },
@@ -125,8 +123,7 @@ describe("trajectory task datasets", () => {
         JSON.stringify({
           messageHandler: {
             action: "RESPOND",
-            simple: true,
-            contexts: [],
+            contexts: ["simple"],
             thought: "Direct mention.",
             reply: "Sure.",
           },
@@ -146,8 +143,7 @@ describe("trajectory task datasets", () => {
     const response = JSON.stringify({
       messageHandler: {
         action: "RESPOND",
-        simple: true,
-        contexts: [],
+        contexts: ["simple"],
         thought: "Direct mention.",
         reply: "Sure.",
       },

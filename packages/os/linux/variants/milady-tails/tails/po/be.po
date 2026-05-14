@@ -1,0 +1,4321 @@
+# SOME DESCRIPTIVE TITLE.
+# Copyright (C) YEAR THE PACKAGE'S COPYRIGHT HOLDER
+# This file is distributed under the same license as the PACKAGE package.
+#
+# Translators:
+# emma peel <emma.peel@riseup.net>, 2025, 2026.
+# Veranika Mazurkevich <v.mazurkievic@gmail.com>, 2025.
+# VM <v.mazurkievic@gmail.com>, 2025.
+# Weblate <noreply-mt-weblate@weblate.org>, 2025, 2026.
+# CarManBelarus <car_man@tut.by>, 2026.
+msgid ""
+msgstr ""
+"Project-Id-Version: Tor Project\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-04-22 08:04+0200\n"
+"PO-Revision-Date: 2026-04-03 09:12+0000\n"
+"Last-Translator: Anonymous <noreply@weblate.org>\n"
+"Language-Team: Belarusian <https://hosted.weblate.org/projects/tor/tails-gui/"
+"be/>\n"
+"Language: be\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=4; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && "
+"n%10<=4 && (n%100<12 || n%100>14) ? 1 : n%10==0 || (n%10>=5 && n%10<=9) || "
+"(n%100>=11 && n%100<=14)? 2 : 3);\n"
+"X-Generator: Weblate 5.17-dev\n"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/additional_software.py:242
+#, python-brace-format
+msgid ""
+"{details} Please check your list of additional software or read the system "
+"log to understand the problem."
+msgstr ""
+"{details} Праверце спіс дадатковага праграмнага забеспячэння або прачытайце "
+"сістэмны журнал, каб зразумець праблему."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/additional_software.py:249
+msgid ""
+"Please check your list of additional software or read the system log to "
+"understand the problem."
+msgstr ""
+"Калі ласка, праглядзіце спіс дадатковага праграмнага забеспячэння або "
+"прачытайце сістэмны журнал, каб зразумець праблему."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/additional_software.py:255
+msgid "Show Log"
+msgstr "Паказаць журнал"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/additional_software.py:255
+msgid "Configure"
+msgstr "Наладзіць"
+
+#: config/chroot_local-includes/usr/local/lib/change-apps-menu-name:25
+#, fuzzy
+msgid "Password Manager"
+msgstr "Пароль"
+
+#: config/chroot_local-includes/usr/local/lib/change-apps-menu-name:26
+#, fuzzy
+msgid "password"
+msgstr "Пароль"
+
+#: config/chroot_local-includes/usr/local/lib/change-apps-menu-name:26
+msgid "password-manager"
+msgstr ""
+
+#: config/chroot_local-includes/usr/local/lib/additional-software/asp-handle-package-changes:57
+#: config/chroot_local-includes/usr/local/lib/additional-software/asp-handle-package-changes:95
+#, python-brace-format
+msgid "Add {packages} to your additional software?"
+msgstr "Дадаць {packages} да вашых дадатковых праграмаў?"
+
+#: config/chroot_local-includes/usr/local/lib/additional-software/asp-handle-package-changes:61
+msgid ""
+"To install it automatically from your persistent storage when starting Tails."
+msgstr ""
+"Каб усталяваць гэта аўтаматычна з вашага сталага сховішча пры запуску Tails."
+
+#: config/chroot_local-includes/usr/local/lib/additional-software/asp-handle-package-changes:64
+msgid "Install Every Time"
+msgstr "Усталёўваць кожны раз"
+
+#: config/chroot_local-includes/usr/local/lib/additional-software/asp-handle-package-changes:65
+#: config/chroot_local-includes/usr/local/lib/additional-software/asp-handle-package-changes:104
+msgid "Install Only Once"
+msgstr "Усталяваць толькі адзін раз"
+
+#: config/chroot_local-includes/usr/local/lib/additional-software/asp-handle-package-changes:74
+#: config/chroot_local-includes/usr/local/lib/additional-software/asp-handle-package-changes:112
+#: config/chroot_local-includes/usr/local/lib/additional-software/asp-handle-package-changes:206
+msgid "The configuration of your additional software failed."
+msgstr "Не атрымалася наладзіць вашы дадатковыя праграмы."
+
+#: config/chroot_local-includes/usr/local/lib/additional-software/asp-handle-package-changes:99
+msgid ""
+"To install it automatically when starting Tails, you can create a Persistent "
+"Storage and activate the <b>Additional Software</b> feature."
+msgstr ""
+"Каб усталяваць яе аўтаматычна пры запуску Tails, вы можаце стварыць "
+"Пастаяннае сховішча і актываваць функцыю <b>Дадатковыя праграмы</b>."
+
+#: config/chroot_local-includes/usr/local/lib/additional-software/asp-handle-package-changes:103
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:312
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:331
+msgid "Create Persistent Storage"
+msgstr "Стварыць сталае сховішча"
+
+#: config/chroot_local-includes/usr/local/lib/additional-software/asp-handle-package-changes:113
+msgid "Creating your Persistent Storage failed."
+msgstr "Не ўдалося стварыць Пастаяннае сховішча."
+
+#: config/chroot_local-includes/usr/local/lib/additional-software/asp-handle-package-changes:124
+#, python-brace-format
+msgid "You could install {packages} automatically when starting Tails"
+msgstr "Вы можаце ўсталяваць {packages} аўтаматычна пры запуску Tails"
+
+#: config/chroot_local-includes/usr/local/lib/additional-software/asp-handle-package-changes:126
+msgid "To do so, you need to run Tails from a USB stick."
+msgstr "Каб зрабіць гэта, вам трэба запусціць Tails з USB-назапашвальніка."
+
+#: config/chroot_local-includes/usr/local/lib/additional-software/asp-handle-package-changes:190
+#, python-brace-format
+msgid "Remove {packages} from your additional software?"
+msgstr "Выдаліць {packages} з спісу вашых дадатковых праграм?"
+
+#. Translators: Don't translate {packages}, it's a placeholder
+#. and will be replaced.
+#: config/chroot_local-includes/usr/local/lib/additional-software/asp-handle-package-changes:195
+#, python-brace-format
+msgid "This will stop installing {packages} automatically."
+msgstr "Гэта спыніць усталяванне {packages} аўтаматычна."
+
+#: config/chroot_local-includes/usr/local/lib/additional-software/asp-handle-package-changes:198
+#: config/chroot_local-includes/usr/local/bin/tails-additional-software-config:188
+msgid "Remove"
+msgstr "Выдаліць"
+
+#: config/chroot_local-includes/usr/local/lib/additional-software/asp-handle-package-changes:199
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/add_settings_dialog.py:40
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:185
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:199
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:525
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:945
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:744
+#: config/chroot_local-includes/usr/local/bin/tails-screen-locker:128
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/feature.py:376
+msgid "Cancel"
+msgstr "Адмяніць"
+
+#. Translators: Don't translate {beginning} or {last}, they are
+#. placeholders and will be replaced.
+#: config/chroot_local-includes/usr/local/lib/additional-software/asp-handle-package-changes:219
+#, python-brace-format
+msgid "{beginning} and {last}"
+msgstr "{beginning} і {last}"
+
+#: config/chroot_local-includes/usr/local/lib/additional-software/asp-handle-package-changes:220
+msgid ", "
+msgstr ", "
+
+#: config/chroot_local-includes/usr/local/lib/additional-software/asp-install:46
+msgid "The check for upgrades of your additional software failed"
+msgstr "Не атрымалася праверка абнаўленняў вашых даступных праграм"
+
+#: config/chroot_local-includes/usr/local/lib/additional-software/asp-install:48
+#: config/chroot_local-includes/usr/local/lib/additional-software/asp-install:60
+msgid ""
+"Please check your network connection, restart Tails, or read the system log "
+"to understand the problem."
+msgstr ""
+"Калі ласка, праверце падключэнне да сеткі, перазапусціце Tails або "
+"прачытайце сістэмный часопіс, каб зразумець праблему."
+
+#: config/chroot_local-includes/usr/local/lib/additional-software/asp-install:58
+msgid "The upgrade of your additional software failed"
+msgstr "Не атрымалася абнавіць вашы дадатковыя праграмы"
+
+#: config/chroot_local-includes/usr/local/lib/additional-software/asp-install:128
+msgid "Installing your additional software from persistent storage..."
+msgstr "Усталёўваем вашы дадатковыя праграмы з пастаяннага захоўвання..."
+
+#: config/chroot_local-includes/usr/local/lib/additional-software/asp-install:129
+msgid "This can take several minutes."
+msgstr "Гэта можа заняць некалькі хвілін."
+
+#: config/chroot_local-includes/usr/local/lib/additional-software/asp-install:147
+msgid "The installation of your additional software failed"
+msgstr "Не атрымалася усталяваць вашы дадатковыя праграмы"
+
+#: config/chroot_local-includes/usr/local/lib/additional-software/asp-install:162
+msgid "Additional software installed successfully"
+msgstr "Дадатковыя праграмы паспяхова ўсталяваны"
+
+#: config/chroot_local-includes/usr/share/tails/additional-software/configuration-window.ui:8
+#: ../config/chroot_local-includes/usr/share/applications/org.boum.tails.AdditionalSoftware.desktop.in.h:1
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:648
+msgid "Additional Software"
+msgstr "Дадатковыя Праграмы"
+
+#: config/chroot_local-includes/usr/share/tails/additional-software/configuration-window.ui:51
+msgid ""
+"You can install additional software automatically from your persistent "
+"storage when starting Tails."
+msgstr ""
+"Вы можаце ўсталяваць дадатковыя праграмы аўтаматычна з вашага пастаяннага "
+"захоўвання пры запуску Tails."
+
+#: config/chroot_local-includes/usr/share/tails/additional-software/configuration-window.ui:77
+msgid ""
+"The following software is installed automatically from your persistent "
+"storage when starting Tails."
+msgstr ""
+"Наступныя праграмы ўсталёўваюцца аўтаматычна з вашага пастаяннага захоўвання "
+"пры запуску Tails."
+
+#: config/chroot_local-includes/usr/share/tails/additional-software/configuration-window.ui:135
+#: config/chroot_local-includes/usr/local/bin/tails-additional-software-config:205
+msgid ""
+"To add more, install some software using <a "
+"href=\"synaptic.desktop\">Synaptic Package Manager</a> or <a "
+"href=\"org.gnome.Terminal.desktop\">APT on the command line</a>."
+msgstr ""
+"Каб дадаць больш, усталюйце некаторыя праграмы выкарыстоўваючы <a "
+"href=\"synaptic.desktop\">Synaptic Package Manager</a> або <a "
+"href=\"org.gnome.Terminal.desktop\">apt ў камандным радку</a>."
+
+#: config/chroot_local-includes/usr/share/tails/additional-software/configuration-window.ui:154
+msgid "_Create persistent storage"
+msgstr "_Зрабіць пастаяннае захоўванне"
+
+#: config/chroot_local-includes/usr/local/bin/electrum:62
+msgid ""
+"Tails needs donations to keep everybody free and safe online.\n"
+"\n"
+"Every bit helps in our fight against surveillance and censorship!\n"
+"\n"
+msgstr ""
+"Tails мае патрэбу ў ахвяраваннях, каб інтэрнэт заставаўся свабодным і "
+"бяспечным для ўсіх!\n"
+"\n"
+"Кожны ўнёсак дапамагае ў нашай барацьбе супраць сачэння і цэнзуры!\n"
+"\n"
+
+#: config/chroot_local-includes/usr/local/bin/electrum:72
+msgid ""
+"Tails protects your wallet.\n"
+"\n"
+"Help us keep your bitcoins safe!\n"
+"\n"
+msgstr ""
+"Tails абараняе ваш гаманец.\n"
+"\n"
+"Дапамажыце нам захаваць вашы біткоіны ў бяспецы!\n"
+"\n"
+
+#: config/chroot_local-includes/usr/local/bin/electrum:140
+msgid "Donate Now"
+msgstr "Зрабіць ахвяраванне зараз"
+
+#: config/chroot_local-includes/usr/local/bin/electrum:142
+msgid "Later"
+msgstr "Потым"
+
+#: config/chroot_local-includes/usr/local/bin/electrum:156
+msgid "Opening Electrum with our donation address..."
+msgstr "Адкрыццё Electrum з нашым адрасам для ахвяраванняў..."
+
+#: config/chroot_local-includes/usr/local/bin/electrum:157
+msgid "Thank you for making the Internet a safer place!"
+msgstr "Дзякуй за тое, што робіце інтэрнэт больш бяспечным месцам!"
+
+#: config/chroot_local-includes/usr/local/bin/electrum:191
+msgid "Persistence is disabled for Electrum"
+msgstr "Пастаяннае сховішча адключана для Electrum"
+
+#: config/chroot_local-includes/usr/local/bin/electrum:193
+msgid ""
+"When you reboot Tails, all of Electrum's data will be lost, including your "
+"Bitcoin wallet.\n"
+"It is strongly recommended to only run Electrum when its persistence feature "
+"is activated."
+msgstr ""
+"Пры перазапуску Tails усе даныя Electrum будуць страчаны, у тым ліку ваш "
+"Bitcoin-гаманец.\n"
+"Настойліва рэкамендуецца запускаць Electrum толькі тады, калі актывавана яго "
+"функцыя пастаяннага сховішча."
+
+#: config/chroot_local-includes/usr/local/bin/electrum:195
+msgid "Do you want to start Electrum anyway?"
+msgstr "Усё адно хочаце запусціць Electrum?"
+
+#: config/chroot_local-includes/usr/local/bin/electrum:201
+msgid "_Launch"
+msgstr "_Запусціць"
+
+#: config/chroot_local-includes/usr/local/bin/electrum:202
+msgid "_Exit"
+msgstr "_Выхад"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/DownloadProgress.pm:59
+msgid "Unknown time"
+msgstr "Невядомы час"
+
+#. Translators: Don't translate {count}, it's a place holder and
+#. will be replaced.
+#. y is the short form for years.
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/DownloadProgress.pm:78
+#, perl-brace-format
+msgid "1y"
+msgid_plural "{count}y"
+msgstr[0] "{count} год"
+msgstr[1] "{count} гады"
+msgstr[2] "{count} гадоў"
+msgstr[3] "{count} года"
+
+#. Translators: Don't translate {count}, it's a place holder and
+#. will be replaced.
+#. d is the short form for days.
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/DownloadProgress.pm:82
+#, perl-brace-format
+msgid "1d"
+msgid_plural "{count}d"
+msgstr[0] "{count} дзень"
+msgstr[1] "{count} дні"
+msgstr[2] "{count} дзён"
+msgstr[3] "{count} дня"
+
+#. Translators: Don't translate {count}, it's a place holder and
+#. will be replaced.
+#. h is the short form for hours;
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/DownloadProgress.pm:86
+#, perl-brace-format
+msgid "1h"
+msgid_plural "{count}h"
+msgstr[0] "{count} гадзіна"
+msgstr[1] "{count} гадзіны"
+msgstr[2] "{count} гадзін"
+msgstr[3] "{count} гадзіны"
+
+#. Translators: Don't translate {count}, it's a place holder and
+#. will be replaced.
+#. m is the short form for minutes;
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/DownloadProgress.pm:90
+#, perl-brace-format
+msgid "1m"
+msgid_plural "{count}m"
+msgstr[0] "{count} хвіліна"
+msgstr[1] "{count} хвіліны"
+msgstr[2] "{count} хвілін"
+msgstr[3] "{count} хвіліны"
+
+#. Translators: Don't translate {count}, it's a place holder and
+#. will be replaced.
+#. s is the short form for seconds;
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/DownloadProgress.pm:94
+#, perl-brace-format
+msgid "1s"
+msgid_plural "{count}s"
+msgstr[0] "{count} секунда"
+msgstr[1] "{count} секунды"
+msgstr[2] "{count} секунд"
+msgstr[3] "{count} секунды"
+
+#. Translators: don't translate {time}, {downloaded}, {size}
+#. and {speed}, they are placeholders and will be replaced.
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/DownloadProgress.pm:139
+#, perl-brace-format
+msgid "#{time} left — {downloaded} of {size} ({speed}/sec)\n"
+msgstr "Засталося #{time} — {downloaded} з {size} ({speed}/сек)\n"
+
+#. Translators: KB is the short form for kilobyte
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Role/FormatByte.pm:32
+msgid "KB"
+msgstr "КБ"
+
+#. Translators: MB is the short form for megabyte
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Role/FormatByte.pm:34
+msgid "MB"
+msgstr "МБ"
+
+#. Translators: GB is the short form for gigabyte
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Role/FormatByte.pm:36
+msgid "GB"
+msgstr "Гб"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Role/FormatByte.pm:42
+msgid "bytes"
+msgstr "байт"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:295
+msgid ""
+"<b>An error occurred while updating the signing key.</b>\\n\\n<b>This "
+"prevents determining whether an upgrade is available from our website.</"
+"b>\\n\\nCheck your network connection and restart Tails.\\n\\nIf the problem "
+"persists, try doing a manual upgrade."
+msgstr ""
+"<b>Адбылася памылка падчас абнаўлення ключа подпісу.</b>\\n\\n<b>Гэта не "
+"дазваляе вызначыць, ці даступна абнаўленне на нашым сайце.</b>\\n\\nПраверце "
+"ваша сеткавае злучэнне і перазапусціце Tails.\\n\\nКалі праблема захаваецца, "
+"паспрабуйце выканаць абнаўленне ўручную."
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:309
+msgid "Error while downloading the signing key"
+msgstr "Памылка падчас спампоўвання ключа подпісу"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:342
+msgid "Error while checking for upgrades"
+msgstr "Памылка падчас праверкі абнаўленняў"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:344
+msgid ""
+"<b>Could not determine whether an upgrade is available from our website.</"
+"b>\n"
+"\n"
+"Check your network connection and restart Tails.\n"
+"\n"
+"If the problem persists, try doing a manual upgrade."
+msgstr ""
+"<b>Не ўдалося вызначыць, ці даступна абнаўленне на нашым сайце.</b>\n"
+"\n"
+"Праверце ваша сеткавае злучэнне і перазапусціце Tails.\n"
+"\n"
+"Калі праблема захаваецца, паспрабуйце выканаць абнаўленне ўручную."
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:359
+msgid "no automatic upgrade is available from our website for this version"
+msgstr "аўтаматычнае абнаўленне з нашага сайта для гэтай версіі недаступна"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:365
+msgid "your device was not created using a USB image or Tails Cloner"
+msgstr "ваша прылада не была створана з дапамогай USB-вобраза або Tails Cloner"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:370
+msgid "Tails was started from a DVD or a read-only device"
+msgstr "сістэма Tails была запушчана з DVD або прылады толькі для чытання"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:375
+msgid "there is not enough free space on the Tails system partition"
+msgstr "на сістэмным раздзеле Tails недастаткова вольнага месца"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:380
+msgid "not enough memory is available on this system"
+msgstr "у гэтай сістэме недастаткова памяці"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:385
+#, perl-brace-format
+msgid "No explanation available for reason '{reason}'."
+msgstr "Няма тлумачэння для прычыны '{reason}'."
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:408
+msgid "The system is up-to-date"
+msgstr "Сістема абнолена"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:411
+msgid ""
+"You are currently running the latest version. There is no upgrade "
+"available.\n"
+msgstr "Цяпер вы выкарыстоўваеце апошнюю версію. Абнаўленняў няма.\n"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:414
+msgid "Tails is up to date"
+msgstr "Tails у актуальным стане"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:420
+msgid "This version of Tails is outdated, and may have security issues."
+msgstr "Гэтая версія Tails састарэла і можа мець уразлівасць."
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:450
+#, perl-brace-format
+msgid ""
+"The available incremental upgrade requires {space_needed} of free space on "
+"Tails system partition,  but only {free_space} is available."
+msgstr ""
+"Даступнае інкрэментнае абнаўленне патрабуе {space_needed} вольнага месца на "
+"сістэмным раздзеле Tails, але даступна толькі {free_space}."
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:462
+#, perl-brace-format
+msgid ""
+"The available incremental upgrade requires {memory_needed} of free memory, "
+"but only {free_memory} is available."
+msgstr ""
+"Даступнае інкрэментнае абнаўленне патрабуе {memory_needed} вольнай памяці, "
+"але даступна толькі {free_memory}."
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:473
+msgid ""
+"An error occurred while detecting available upgrades.\n"
+"This should not happen. Please report a bug."
+msgstr ""
+"Адбылася памылка падчас пошуку даступных абнаўленняў.\n"
+"Гэтага не павінна адбывацца. Калі ласка, паведаміце пра памылку."
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:476
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:495
+msgid "Error while detecting available upgrades"
+msgstr "Памылка падчас пошуку абнаўленняў"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:491
+msgid ""
+"An incremental upgrade is available, but no full upgrade is.\n"
+"This should not happen. Please report a bug."
+msgstr ""
+"Даступна інкрэментнае абнаўленне, але поўнага абнаўлення няма.\n"
+"Гэтага не павінна адбывацца. Калі ласка, паведаміце пра памылку."
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:504
+#, perl-brace-format
+msgid ""
+"<b>You should upgrade to {name} {version}.</b>\n"
+"\n"
+"For more information about this new version, go to {details_url}\n"
+"\n"
+"We recommend you close all other applications during the upgrade.\n"
+"Downloading the upgrade might take a long time, from several minutes to a "
+"few hours.\n"
+"\n"
+"Download size: {size}\n"
+"\n"
+"Do you want to upgrade now?"
+msgstr ""
+"<b>Вам варта абнавіцца да {name} {version}.</b>\n"
+"\n"
+"Каб атрымаць больш інфармацыі пра гэтую новую версію, перайдзіце на "
+"{details_url}\n"
+"\n"
+"Мы рэкамендуем вам закрыць усе іншыя праграмы падчас абнаўлення.\n"
+"Спампоўванне абнаўлення можа заняць шмат часу, ад некалькіх хвілін да "
+"некалькіх гадзін.\n"
+"\n"
+"Памер спампоўвання: {size}\n"
+"\n"
+"Хочаце абнавіцца зараз?"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:517
+msgid "Upgrade available"
+msgstr "Абнаўленне даступна"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:518
+msgid "Upgrade now"
+msgstr "Абнавіць зараз"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:519
+msgid "Upgrade later"
+msgstr "Абнавіць пазней"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:527
+#, perl-brace-format
+msgid ""
+"<b>You should do a manual upgrade to the latest version of {name}.</b>\n"
+"\n"
+"For more information about this new version, go to {details_url}\n"
+"\n"
+"It is impossible to do an automatic upgrade of your Tails to this new "
+"version: {explanation}.\n"
+"\n"
+"To learn how to do a manual upgrade, go to {manual_upgrade_url}"
+msgstr ""
+"<b>Вам варта выканаць абнаўленне да апошняй версіі {name} уручную.</b>\n"
+"\n"
+"Каб атрымаць больш інфармацыі пра гэтую новую версію, перайдзіце на "
+"{details_url}\n"
+"\n"
+"Аўтаматычнае абнаўленне вашай сістэмы Tails да гэтай новай версіі немагчыма: "
+"{explanation}\n"
+"\n"
+"Каб даведацца, як выканаць абнаўленне ўручную, перайдзіце на "
+"{manual_upgrade_url}"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:537
+msgid "New version available"
+msgstr "Даступна новая версія"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:618
+msgid "Downloading upgrade"
+msgstr "Спампоўванне абнаўлення"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:620
+#, perl-brace-format
+msgid "Downloading the upgrade to {name} {version}..."
+msgstr "Спампоўванне абнаўлення да {name} {version}..."
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:711
+msgid ""
+"<b>The upgrade could not be downloaded.</b>\\n\\nCheck your network "
+"connection, and restart Tails to try upgrading again."
+msgstr ""
+"<b>Не ўдалося спампаваць абнаўленне.</b>\\n\\nПраверце ваша сеткавае "
+"злучэнне і перазапусціце Tails, каб паспрабаваць абнавіцца зноў."
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:714
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:729
+msgid "Error while downloading the upgrade"
+msgstr "Памылка падчас спампоўвання абнаўлення"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:724
+#, perl-brace-format
+msgid ""
+"Output file '{output_file}' does not exist, but tails-iuk-get-target-file "
+"did not complain. Please report a bug."
+msgstr ""
+"Выхадны файл '{output_file}' не існуе, але tails-iuk-get-target-file не "
+"паведаміў пра памылку. Калі ласка, паведаміце пра памылку."
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:740
+msgid "Error while creating temporary downloading directory"
+msgstr "Памылка падчас стварэння часовай папкі для спампоўвання"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:743
+msgid "Failed to create temporary download directory"
+msgstr "Не ўдалося стварыць часовую папку для спампоўвання"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:755
+msgid ""
+"The upgrade was successfully downloaded.\n"
+"\n"
+"The network connection will be disabled when applying the upgrade.\n"
+"\n"
+"Please save your work and close all other applications."
+msgstr ""
+"Абнаўленне было паспяхова спампавана.\n"
+"\n"
+"Сеткавае злучэнне будзе адключана падчас усталявання абнаўлення.\n"
+"\n"
+"Калі ласка, захавайце сваю працу і закрыйце ўсе іншыя праграмы."
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:760
+msgid "Upgrade successfully downloaded"
+msgstr "Абнаўленне паспяхова спампавана"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:761
+msgid "Apply upgrade"
+msgstr "Ужыць абнаўленне"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:768
+msgid ""
+"<b>Your Tails device was successfully upgraded.</b>\n"
+"\n"
+"Some security features were temporarily disabled.\n"
+"You should restart Tails on the new version as soon as possible.\n"
+"\n"
+"Do you want to restart now?"
+msgstr ""
+"<b>Ваша прылада Tails паспяхова абноўлена.</b>\n"
+"\n"
+"Некаторыя функцыі бяспекі былі часова адключаны.\n"
+"Вам варта як мага хутчэй перазапусціць Tails на новай версіі.\n"
+"\n"
+"Хочаце перазапусціць зараз?"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:773
+msgid "Restart Tails"
+msgstr "Перазапусціць Tails"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:774
+msgid "Restart now"
+msgstr "Перазапусціць зараз"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:775
+msgid "Restart later"
+msgstr "Перазапусціць пазней"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:786
+msgid "Error while restarting the system"
+msgstr "Памылка падчас перазапуску сістэмы"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:787
+msgid "Failed to restart the system"
+msgstr "Не ўдалося перазапусціць сістэму"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:800
+msgid "Error while shutting down the network"
+msgstr "Памылка падчас адключэння сеткі"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:801
+msgid "Failed to shutdown network"
+msgstr "Не ўдалося адключыць сетку"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:811
+msgid "Error while cancelling the upgrade download"
+msgstr "Памылка падчас адмены спампоўвання абнаўлення"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:812
+msgid "Failed to cancel the upgrade download"
+msgstr "Не ўдалося адмяніць спампоўванне абнаўлення"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:818
+msgid "Upgrading the system"
+msgstr "Абнаўленне сістэмы"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:820
+msgid ""
+"<b>Your Tails device is being upgraded...</b>\n"
+"\n"
+"For security reasons, the network connection is now disabled."
+msgstr ""
+"<b>Ваша прылада Tails абнаўляецца...</b>\n"
+"\n"
+"З меркаванняў бяспекі сеткавае злучэнне цяпер адключана."
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:855
+msgid ""
+"<b>An error occurred while installing the upgrade.</b>\\n\\nYour Tails "
+"device needs to be repaired and might be unable to restart.\\n\\nPlease "
+"follow the instructions at file:///usr/share/doc/tails/website/doc/upgrade/"
+"error/install.en.html"
+msgstr ""
+"<b>Адбылася памылка падчас усталявання абнаўлення.</b>\\n\\nВаша прылада "
+"Tails патрабуе аднаўлення і, магчыма, не зможа перазапусціцца.\\n\\nКалі "
+"ласка, выконвайце інструкцыі ў file:///usr/share/doc/tails/website/doc/"
+"upgrade/error/install.en.html"
+
+#: config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm:860
+msgid "Error while installing the upgrade"
+msgstr "Памылка падчас усталявання абнаўлення"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/add_settings_dialog.py:32
+msgid "Additional Settings"
+msgstr "Дадатковыя налады"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/add_settings_dialog.py:44
+msgid "Add"
+msgstr "Дадаць"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/add_settings_dialog.py:52
+msgid "Back"
+msgstr "Назад"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/additional_settings.py:65
+msgid "_Administration Password"
+msgstr "_Пароль адміністратара"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/additional_settings.py:196
+msgid "_MAC Address Anonymization"
+msgstr "_Ананімізацыя MAC-адраса"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/additional_settings.py:267
+msgid "_Offline Mode"
+msgstr "_Афлайн-рэжым"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/additional_settings.py:276
+#: ../config/chroot_local-includes/usr/share/tails/greeter/additional_settings.ui.in:399
+msgid "Enable networking (default)"
+msgstr "Уключыць сетку (па змаўчанні)"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/additional_settings.py:278
+#: ../config/chroot_local-includes/usr/share/tails/greeter/additional_settings.ui.in:445
+msgid "Disable all networking"
+msgstr "Адключыць усе сеткі"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/additional_settings.py:339
+msgid "_Unsafe Browser"
+msgstr "_Небяспечны браўзер"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/additional_settings.py:348
+msgid "Enabled (default)"
+msgstr "Уключана (па змаўчанні)"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/additional_settings.py:350
+msgid "Disabled"
+msgstr "Адлучаны"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/additional_settings.py:419
+msgid "On (default)"
+msgstr "Улучаны (па змаўчанні)"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/additional_settings.py:421
+msgid "On"
+msgstr "Укл"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/additional_settings.py:423
+msgid "Off"
+msgstr "Выкл."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/additional_settings.py:425
+msgid "Off (default)"
+msgstr "Выкл (па змаўчанні)"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:181
+msgid "Persistent Storage Still Locked"
+msgstr "Пастаяннае сховішча ўсё яшчэ заблакавана"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:183
+msgid ""
+"Do you really want to start Tails without unlocking your Persistent Storage?"
+msgstr ""
+"Вы сапраўды хочаце запусціць Tails без разблакавання Пастаяннага сховішча?"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:186
+msgid "Start Without Persistent Storage"
+msgstr "Запусціць без Пастаяннага сховішча"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:193
+msgid "Language and Keyboard layout"
+msgstr "Мова і раскладка клавіятуры"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:195
+msgid ""
+"Your language and keyboard layout will be saved unencrypted on your Tails "
+"USB stick and applied automatically in the future.\n"
+"\n"
+"Someone who finds your Tails USB stick can see your language and keyboard "
+"layout."
+msgstr ""
+"Вашы мова і раскладка клавіятуры будуць захаваны ў незашыфраваным выглядзе "
+"на вашым USB-назапашвальніку Tails і будуць прымяняцца аўтаматычна ў "
+"будучыні.\n"
+"\n"
+"Той, хто знойдзе ваш USB-назапашвальнік Tails, зможа ўбачыць вашы мову і "
+"раскладку клавіятуры."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:200
+msgid "Save Unencrypted"
+msgstr "Захаваць у незашыфраваным выглядзе"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:288
+msgid ""
+"Impossible to unlock the Persistent Storage because the USB stick is read-"
+"only."
+msgstr ""
+"Немагчыма разблакаваць Пастаяннае сховішча, таму што USB-назапашвальнік "
+"даступны толькі для чытання."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:449
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:482
+msgid "Unlocking…"
+msgstr "Разблакаванне…"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:490
+msgid "Checking the file system…"
+msgstr "Праверка файлавай сістэмы…"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:523
+msgid "Repairing the File System"
+msgstr "Аднаўленне файлавай сістэмы"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:524
+msgid "This might take a long time..."
+msgstr "Гэта можа заняць шмат часу..."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:542
+msgid "Failed to repair the file system of your Persistent Storage."
+msgstr "Не ўдалося аднавіць файлавую сістэму вашага Пастаяннага сховішча."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:544
+msgid "Start Tails to send an error report and learn how to recover your data."
+msgstr ""
+"Запусціце Tails, каб адправіць справаздачу пра памылку і даведацца, як "
+"аднавіць свае даныя."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:559
+msgid "File System Repaired Successfully"
+msgstr "Файлавая сістэма паспяхова адноўлена"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:561
+msgid ""
+"It's possible that some data was lost during the repair. Please check the "
+"contents of your Persistent Storage and restore any lost data from a backup."
+msgstr ""
+"Магчыма, некаторыя даныя былі страчаны падчас аднаўлення. Калі ласка, "
+"праверце змесціва вашага Пастаяннага сховішча і аднавіце любыя страчаныя "
+"даныя з рэзервовай копіі."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:565
+#: config/chroot_local-includes/usr/local/lib/tails-report-disk-partitioning-errors:32
+msgid "Close"
+msgstr "Блізка"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:580
+msgid ""
+"You aborted the repair of the file system. You can either start Tails "
+"without Persistent Storage or restart the computer to try repairing the file "
+"system again."
+msgstr ""
+"Вы перапынілі аднаўленне файлавай сістэмы. Вы можаце альбо запусціць Tails "
+"без Пастаяннага сховішча, альбо перазапусціць камп'ютар, каб паспрабаваць "
+"аднавіць файлавую сістэму зноў."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:866
+msgid "Start Tails and open the Persistent Storage settings to find out more."
+msgstr ""
+"Запусціце Tails і адкрыйце налады Пастаяннага сховішча, каб даведацца больш."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:896
+msgid ""
+"Your Persistent Storage is unlocked. Its content will be available until you "
+"shut down Tails."
+msgstr ""
+"Ваша Пастаяннае сховішча разблакавана. Яго змесціва будзе даступна да таго "
+"часу, пакуль вы не выключыце Tails."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:911
+msgid "Incorrect passphrase. Please try again."
+msgstr "Няправільная парольная фраза. Калі ласка, паспрабуйце яшчэ раз."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:922
+msgid ""
+"Error reading data from your Persistent Storage. The hardware of your USB "
+"stick is probably failing."
+msgstr ""
+"Памылка чытання даных з вашага Пастаяннага сховішча. Верагодна, апаратнае "
+"забеспячэнне вашага USB-назапашвальніка выходзіць з ладу."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:924
+msgid "Start Tails to learn how to recover your data."
+msgstr "Запусціце Tails, каб даведацца, як аднавіць свае даныя."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:935
+msgid "File System Errors"
+msgstr "Памылкі файлавай сістэмы"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:937
+msgid ""
+"Errors were detected in the file system of your Persistent Storage.\n"
+"\n"
+"Tails can try to fix these errors, but this might erase some of your data "
+"and take a long time.\n"
+"\n"
+"If you already have an up-to-date backup of your Persistent Storage, we "
+"recommend that you try to repair.\n"
+"\n"
+"If you don't have a backup, we recommend that you create a partition image "
+"of your Persistent Storage first."
+msgstr ""
+"Былі выяўлены памылкі ў файлавай сістэме вашага Пастаяннага сховішча.\n"
+"\n"
+"Tails можа паспрабаваць выправіць гэтыя памылкі, але гэта можа сцерці частку "
+"вашых даных і заняць шмат часу.\n"
+"\n"
+"Калі ў вас ужо ёсць актуальная рэзервовая копія Пастаяннага сховішча, мы "
+"рэкамендуем паспрабаваць выканаць аднаўленне.\n"
+"\n"
+"Калі ў вас няма рэзервовай копіі, мы рэкамендуем спачатку стварыць вобраз "
+"раздзела вашага Пастаяннага сховішча."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:946
+msgid "Repair File System"
+msgstr "Аднавіць файлавую сістэму"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:947
+msgid "Create Partition Image"
+msgstr "Стварыць вобраз раздзела"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:958
+msgid ""
+"Start Tails to learn how to create a partition image of your Persistent "
+"Storage."
+msgstr ""
+"Запусціце Tails, каб даведацца, як стварыць вобраз раздзела вашага "
+"Пастаяннага сховішча."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:967
+msgid "Failed to unlock the Persistent Storage due to file system errors."
+msgstr ""
+"Не ўдалося разблакаваць Пастаяннае сховішча з-за памылак файлавай сістэмы."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:976
+msgid ""
+"Failed to upgrade the Persistent Storage. Please start Tails and send an "
+"error report."
+msgstr ""
+"Не ўдалося абнавіць Пастаяннае сховішча. Калі ласка, запусціце Tails і "
+"адпраўце справаздачу пра памылку."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:983
+msgid ""
+"Failed to unlock the Persistent Storage. Please start Tails and send an "
+"error report."
+msgstr ""
+"Не ўдалося разблакаваць Пастаяннае сховішча. Калі ласка, запусціце Tails і "
+"адпраўце справаздачу пра памылку."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:991
+msgid ""
+"Failed to activate the Persistent Storage. Please start Tails and send an "
+"error report."
+msgstr ""
+"Не ўдалося актываваць Пастаяннае сховішча. Калі ласка, запусціце Tails і "
+"адпраўце справаздачу пра памылку."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:1002
+msgid "Upgrading the Persistent Storage. This might take a while…"
+msgstr "Абнаўленне Пастаяннага сховішча. Гэта можа заняць некаторы час…"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/settings/persistence.py:125
+msgid "Error unlocking Persistent Storage: {}"
+msgstr "Памылка разблакавання Пастаяннага сховішча: {}"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/settings/persistence.py:150
+msgid "Error upgrading Persistent Storage: {}"
+msgstr "Памылка абнаўлення Пастаяннага сховішча: {}"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/settings/persistence.py:176
+#, python-brace-format
+msgid "Failed to activate some features of the Persistent Storage: {features}."
+msgstr ""
+"Не ўдалося актываваць некаторыя функцыі Пастаяннага сховішча: {features}."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/settings/persistence.py:181
+msgid "Error activating Persistent Storage: {}"
+msgstr "Памылка актывацыі Пастаяннага сховішча: {}"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/settings/persistence.py:202
+msgid "Failed to abort when repairing Persistent Storage filesystem: {}"
+msgstr ""
+"Не ўдалося перапыніць аднаўленне файлавай сістэмы Пастаяннага сховішча: {}"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/region_settings.py:191
+msgid "_Language"
+msgstr "_Мова"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/region_settings.py:234
+msgid "_Formats"
+msgstr "_Фарматы"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/region_settings.py:271
+msgid "_Keyboard Layout"
+msgstr "_Раскладка клавіятуры"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:322
+#, python-format
+msgid "Unable to write on %(device)s, skipping."
+msgstr "Немагчыма запісаць на %(device)s, прапускаецца."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:371
+#, python-format
+msgid "Wrote to device at %(speed)d MB/s"
+msgstr "Запісана на прыладу з хуткасцю %(speed)d МБ/с"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:383
+msgid "Extracting live image to the target device..."
+msgstr "Распакаванне live-вобраза на мэтавую прыладу..."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:478
+#, python-format
+msgid ""
+"There was a problem executing the following command: `%(command)s`.\n"
+"A more detailed error log has been written to \"%(filename)s\"."
+msgstr ""
+"Узнікла праблема падчас выканання наступнай каманды: %(command)s\n"
+"Больш падрабязны журнал памылак запісаны ў \"%(filename)s\"."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:497
+#, python-format
+msgid ""
+"Not enough free space on device.\n"
+"%(iso_size)dMB ISO + %(overlay_size)dMB overlay > %(free_space)dMB free space"
+msgstr ""
+"Недастаткова вольнага месца на прыладзе.\n"
+"%(iso_size)d МБ ISO + %(overlay_size)d МБ накладання > %(free_space)d МБ "
+"вольнага месца"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:510
+#, python-format
+msgid "Creating %sMB persistent overlay"
+msgstr "Стварэнне пастаяннага накладання памерам %sМБ"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:576
+#, python-format
+msgid "Unable to copy %(infile)s to %(outfile)s: %(message)s"
+msgstr ""
+"Не атрымалася скапіраваць %(infile)sу %(outfile)s па прычыне %(message)s"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:589
+msgid "Removing existing Tails system"
+msgstr "Выдаленне існуючай сістэмы Tails"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:600
+#, python-format
+msgid "Unable to remove file from previous Tails system: %(message)s"
+msgstr "Немагчыма выдаліць файл з папярэдняй сістэмы Tails: %(message)s"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:610
+#, python-format
+msgid "Unable to chmod %(file)s: %(message)s"
+msgstr "Немагчыма выканаць chmod для %(file)s: %(message)s"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:618
+#, python-format
+msgid "Unable to remove directory from previous Tails system: %(message)s"
+msgstr "Немагчыма выдаліць папку з папярэдняй сістэмы Tails: %(message)s"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:669
+#, python-format
+msgid "Cannot find device %s"
+msgstr "Немагчыма знайсці прыладу %s"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:705
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:1025
+msgid "Unknown filesystem.  Your device may need to be reformatted."
+msgstr ""
+"Невядомая файлавая сістэма. Магчыма, вашу прыладу неабходна перафарматаваць."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:708
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:1028
+#, python-format
+msgid "Unsupported filesystem: %s"
+msgstr "Непадтрымоўваная файлавая сістэма: %s"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:724
+#, python-format
+msgid "Unknown GLib exception while trying to mount device: %(message)s"
+msgstr ""
+"Невядомае выключэнне GLib пры спробе прыманціраваць прыладу: %(message)s"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:731
+#, python-format
+msgid "Unable to mount device: %(message)s"
+msgstr "Немагчыма прыманціраваць прыладу: %(message)s"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:736
+msgid "No mount points found"
+msgstr "Кропкі манціравання не знойдзены"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:806
+msgid "Target device has opened files"
+msgstr "На мэтавай прыладзе ёсць адкрытыя файлы"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:834
+#, python-format
+msgid "Mount %s exists after unmounting"
+msgstr "Кропка манціравання %s існуе пасля адманціравання"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:865
+#, python-format
+msgid "Partitioning device %(device)s"
+msgstr "Разбіццё прылады %(device)s на раздзелы"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:1009
+#, python-format
+msgid "Unsupported device '%(device)s', please report a bug."
+msgstr ""
+"Непадтрымоўваная прылада '%(device)s', калі ласка, паведаміце пра памылку."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:1012
+msgid "Trying to continue anyway."
+msgstr "Спроба працягнуць, нягледзячы на гэта."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:1021
+msgid "Verifying filesystem..."
+msgstr "Праверка файлавай сістэмы..."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:1044
+#, python-format
+msgid "Unable to change volume label: %s"
+msgstr "Немагчыма змяніць метку тома: %s"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:1050
+msgid "Installing bootloader..."
+msgstr "Усталяванне загрузчыка..."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:1058
+#, python-format
+msgid "Removing %(file)s"
+msgstr "Выдаленне %(file)s"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:1087
+msgid "Cloning Persistent Storage..."
+msgstr "Кланіраванне Пастаяннага сховішча..."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:1170
+#, python-format
+msgid "%s already bootable"
+msgstr "%s ужо з'яўляецца загрузачным"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:1191
+msgid "Unable to find partition"
+msgstr "Немагчыма знайсці раздзел"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:1213
+#, python-format
+msgid "Formatting %(device)s as FAT32"
+msgstr "Фарматаванне %(device)s у FAT32"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:1290
+#, python-format
+msgid "Reading extracted MBR from %s"
+msgstr "Чытанне вынятага MBR з %s"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:1295
+#, python-format
+msgid "Could not read the extracted MBR from %(path)s"
+msgstr "Не ўдалося прачытаць выняты MBR з %(path)s"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:1309
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:1310
+#, python-format
+msgid "Resetting Master Boot Record of %s"
+msgstr "Скід галоўнага загрузнага запісу (MBR) на %s"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:1314
+#, python-format
+msgid "Writing random seed to LBA 34 of %s"
+msgstr "Запіс выпадковага seed-значэння ў LBA 34 на %s"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:1321
+msgid "Drive is a loopback, skipping MBR reset"
+msgstr "Прылада з'яўляецца loopback, скід MBR прапускаецца"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:1325
+msgid "Synchronizing data on disk..."
+msgstr "Сінхранізацыя даных на дыску..."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:157
+msgid ""
+"Unable to clone because the target USB stick is being used. Close all open "
+"files on the target USB stick, restart Tails Cloner, and try to clone again."
+msgstr ""
+"Немагчыма кланіраваць, таму што мэтавы USB-назапашвальнік выкарыстоўваецца. "
+"Закрыйце ўсе адкрытыя файлы на мэтавым USB-назапашвальніку, перазапусціце "
+"Tails Cloner і паспрабуйце кланіраваць зноў."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:189
+msgid ""
+"Error: Cannot set the label or obtain the UUID of your device.  Unable to "
+"continue."
+msgstr ""
+"Памылка: Немагчыма ўсталяваць метку або атрымаць UUID вашай прылады. "
+"Немагчыма працягнуць."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:234
+#, python-format
+msgid "Cloning complete! (%s)"
+msgstr "Кланіраванне завершана! (%s)"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:239
+msgid "Tails installation failed!"
+msgstr "Не ўдалося ўсталяваць Tails!"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:341
+#: ../config/chroot_local-includes/usr/share/applications/tails-installer.desktop.in.h:1
+msgid "Tails Cloner"
+msgstr "Tails Cloner"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:393
+#: ../config/chroot_local-includes/usr/share/tails-installer/tails-installer.ui.in:164
+msgid "Clone the current Tails"
+msgstr "Кланіраваць бягучую сістэму Tails"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:401
+#: ../config/chroot_local-includes/usr/share/tails-installer/tails-installer.ui.in:200
+msgid "Use a downloaded Tails ISO image"
+msgstr "Выкарыстоўваць спампаваны ISO-вобраз Tails"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:453
+msgid "Upgrade"
+msgstr "Абнавіць"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:454
+msgid "Manual Upgrade Instructions"
+msgstr "Інструкцыі па абнаўленні ўручную"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:465
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:730
+#: ../config/chroot_local-includes/usr/share/tails-installer/tails-installer.ui.in:374
+msgid "Install"
+msgstr "Усталяваць"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:468
+#: ../config/chroot_local-includes/usr/share/tails-installer/tails-installer.ui.in:131
+msgid "Installation Instructions"
+msgstr "Інструкцыі па ўсталяванні"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:471
+msgid "Backup Instructions"
+msgstr "Інструкцыі па рэзервовым капіраванні"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:482
+#, python-format
+msgid "%(size)s %(vendor)s %(model)s device (%(device)s)"
+msgstr "Прылада %(size)s%(vendor)s%(model)s (%(device)s)"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:495
+msgid "No ISO image selected"
+msgstr "ISO-вобраз не выбраны"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:495
+msgid "Please select a Tails ISO image."
+msgstr "Калі ласка, выберыце ISO-вобраз Tails."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:546
+msgid ""
+"Clone the current Persistent Storage\n"
+"Impossible to clone the Persistent Storage because it is locked."
+msgstr ""
+"Кланіраваць бягучае Пастаяннае сховішча\n"
+"Немагчыма кланіраваць Пастаяннае сховішча, таму што яно заблакавана."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:550
+#: ../config/chroot_local-includes/usr/share/tails-installer/tails-installer.ui.in:180
+msgid "Clone the current Persistent Storage"
+msgstr "Кланіраваць бягучае Пастаяннае сховішча"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:553
+msgid ""
+"Clone the current Persistent Storage\n"
+"You can only choose to reinstall when cloning the Persistent Storage."
+msgstr ""
+"Кланіраваць бягучае Пастаяннае сховішча\n"
+"Вы можаце выбраць толькі пераўсталяванне пры кланіраванні Пастаяннага "
+"сховішча."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:591
+#, python-format
+msgid ""
+"The USB stick \"%(pretty_name)s\" is configured as non-removable by its "
+"manufacturer and Tails will fail to start from it. Please try installing on "
+"a different model."
+msgstr ""
+"USB-назапашвальнік \"%(pretty_name)s\" сканфігураваны вытворцам як няздымны, "
+"і Tails не зможа запусціцца з яго. Калі ласка, паспрабуйце ўсталяваць на "
+"іншую мадэль."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:600
+#, python-format
+msgid "The device \"%(pretty_name)s\" is read-only."
+msgstr "Прылада \"%(pretty_name)s\" даступная толькі для чытання."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:608
+#, python-format
+msgid ""
+"The device \"%(pretty_name)s\" is too small to install Tails (at least "
+"%(size)s GB is required)."
+msgstr ""
+"Прылада \"%(pretty_name)s\" занадта малая для ўсталявання Tails (патрабуецца "
+"мінімум %(size)s ГБ)."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:623
+#, python-format
+msgid ""
+"To upgrade device \"%(pretty_name)s\" from this Tails, you need to use a "
+"downloaded Tails ISO image:\n"
+"%(dl_url)s"
+msgstr ""
+"Каб абнавіць прыладу \"%(pretty_name)s\" з гэтай сістэмы Tails, вам "
+"неабходна выкарыстоўваць спампаваны ISO-вобраз Tails:\n"
+"%(dl_url)s"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:644
+msgid "No device suitable to install Tails could be found"
+msgstr "Не знойдзена прылады, прыдатнай для ўсталявання Tails"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:647
+#, python-format
+msgid "Plug in a USB stick of at least %0.1f GB."
+msgstr "Падключыце USB-назапашвальнік аб'ёмам не менш за %0.1f ГБ."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:660
+msgid "An error happened while installing Tails"
+msgstr "Падчас ўсталявання Tails адбылася памылка"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:717
+msgid "Installation complete!"
+msgstr "Усталяванне завершана!"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:773
+#, python-format
+msgid "%(parent_size)s %(vendor)s %(model)s device (%(device)s)"
+msgstr "Прылада %(parent_size)s%(vendor)s%(model)s (%(device)s)"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:786
+msgid ""
+"\n"
+"\n"
+"The Persistent Storage on this USB stick will be lost."
+msgstr ""
+"\n"
+"\n"
+"Пастаяннае сховішча на гэтым USB-назапашвальніку будзе страчана."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:788
+msgid "Delete Persistent Storage and Reinstall"
+msgstr "Выдаліць Пастаяннае сховішча і пераўсталяваць"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:790
+msgid ""
+"\n"
+"\n"
+"All data on this USB stick will be lost."
+msgstr ""
+"\n"
+"\n"
+"Усе даныя на гэтым USB-назапашвальніку будуць страчаны."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:791
+msgid "Delete All Data and Install"
+msgstr "Выдаліць усе даныя і ўсталяваць"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:792
+#, python-format
+msgid "%(description)s%(delete_message)s"
+msgstr "%(description)s%(delete_message)s"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:797
+msgid "Confirm the target USB stick"
+msgstr "Пацвердзіце мэтавы USB-назапашвальнік"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:827
+msgid "Unable to mount device"
+msgstr "Немагчыма прыманціраваць прыладу"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:856
+msgid ""
+"The selected file is unreadable. Please fix its permissions or select "
+"another file."
+msgstr ""
+"Выбраны файл нечытабельны. Калі ласка, выпраўце правы доступу да яго або "
+"выберыце іншы файл."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:866
+msgid ""
+"Unable to use the selected file.  You may have better luck if you move your "
+"ISO to the root of your drive (ie: C:\\)"
+msgstr ""
+"Немагчыма выкарыстоўваць выбраны файл. Магчыма, усё атрымаецца, калі вы "
+"перамесціце ваш ISO-вобраз у корань дыска (напрыклад: C:)"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:875
+#, python-format
+msgid "%(filename)s selected"
+msgstr "%(filename)s выбраны"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/source.py:37
+msgid "Unable to find Tails on ISO"
+msgstr "Не ўдалося знайсці Tails у ISO-файле"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/source.py:44
+#, python-format
+msgid "Could not guess underlying block device: %s"
+msgstr "Не ўдалося вызначыць базавую блочную прыладу: %s"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/source.py:61
+#, python-format
+msgid ""
+"There was a problem executing `%(cmd)s`.\n"
+"%(out)s\n"
+"%(err)s"
+msgstr ""
+"Узнікла праблема падчас выканання %(cmd)s\n"
+"%(out)s\n"
+"%(err)s"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/source.py:70
+#, python-format
+msgid "\"%s\" does not exist"
+msgstr "\"%s\" не існуе"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/source.py:72
+#, python-format
+msgid "\"%s\" is not a directory"
+msgstr "\"%s\" не з'яўляецца папкай"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/source.py:84
+#, python-format
+msgid "Skipping \"%(filename)s\""
+msgstr "Прапускаецца \"%(filename)s\""
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/utils.py:63
+#, python-format
+msgid ""
+"There was a problem executing `%(cmd)s`.%(out)s\n"
+"%(err)s"
+msgstr ""
+"Узнікла праблема падчас выканання %(cmd)s %(out)s\n"
+"%(err)s"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/utils.py:144
+msgid "Could not open device for writing."
+msgstr "Не ўдалося адкрыць прыладу для запісу."
+
+#: config/chroot_local-includes/usr/local/bin/secrets:19
+#, fuzzy, sh-format
+msgid ""
+"You have a <i>KeePassXC</i> or <i>Secrets</i> database in your "
+"<i>Persistent</i> folder:\n"
+"\n"
+"<i>${filename}</i>\n"
+"\n"
+"Renaming your database to <i>${default_filename}</i> allows <i>Secrets</i> "
+"to open it automatically in the future."
+msgstr ""
+"<b><big>Хочаце перайменаваць вашу базу даных <i>KeePassXC</i>?</big></b>\n"
+"\n"
+"У вашай <i>Пастаяннай</i> папцы ёсць база даных <i>KeePassXC</i>:\n"
+"\n"
+"<i>${filename}</i>\n"
+"\n"
+"Перайменаванне вашай базы даных у <i>${default_filename}</i> дазволіла б "
+"<i>KeePassXC</i> адкрываць яе аўтаматычна ў будучыні."
+
+#: config/chroot_local-includes/usr/local/bin/secrets:25
+msgid "Rename"
+msgstr "Перайменаваць"
+
+#: config/chroot_local-includes/usr/local/bin/secrets:27
+msgid "Keep current name"
+msgstr "Пакінуць бягучую назву"
+
+#: config/chroot_local-includes/usr/local/bin/secrets:29
+msgid "Rename Password Database?"
+msgstr ""
+
+#: config/chroot_local-includes/usr/local/bin/replace-su-with-sudo:19
+msgid "su is disabled. Please use sudo instead."
+msgstr ""
+"Выкарыстанне su адключана. Калі ласка, выкарыстоўвайце замест гэтага sudo."
+
+#: config/chroot_local-includes/usr/local/lib/tails-report-disk-ioerrors:3
+msgid "Error Reading Data from Tails USB Stick"
+msgstr "Памылка чытання даных з USB-назапашвальніка Tails"
+
+#: config/chroot_local-includes/usr/local/lib/tails-report-disk-ioerrors:4
+msgid "The hardware of your USB stick is probably failing."
+msgstr ""
+"Верагодна, апаратнае забеспячэнне вашага USB-назапашвальніка выходзіць з "
+"ладу."
+
+#: config/chroot_local-includes/usr/local/lib/tails-report-disk-ioerrors:5
+msgid "We recommend that you reinstall Tails on a different USB stick."
+msgstr "Мы рэкамендуем вам пераўсталяваць Tails на іншы USB-назапашвальнік."
+
+#: config/chroot_local-includes/usr/local/lib/tails-report-disk-ioerrors:7
+msgid ""
+"We recommend that you reinstall Tails on a different USB stick\n"
+"and recover the data from your Persistent Storage as soon as possible."
+msgstr ""
+"Мы рэкамендуем вам пераўсталяваць Tails на іншы USB-назапашвальнік\n"
+"і як мага хутчэй аднавіць даныя з вашага Пастаяннага сховішча."
+
+#: config/chroot_local-includes/usr/local/lib/tails-report-disk-ioerrors:10
+msgid "Dismiss"
+msgstr "Адхіліць"
+
+#: config/chroot_local-includes/usr/local/lib/tails-report-disk-ioerrors:11
+#: config/chroot_local-includes/usr/local/lib/tails-additional-software-notify:63
+#: config/chroot_local-includes/usr/local/lib/tails-low-ram-notify-user:44
+#: config/chroot_local-includes/usr/local/lib/tails-uefi-ca-notify-user:52
+#: config/chroot_local-includes/usr/local/lib/tails-virt-notify-user:45
+msgid "Learn More"
+msgstr "Даведацца больш"
+
+#: config/chroot_local-includes/usr/local/lib/tails-report-disk-partitioning-errors:18
+msgid "Partitioning Error"
+msgstr "Памылка разбіцця на раздзелы"
+
+#: config/chroot_local-includes/usr/local/lib/tails-report-disk-partitioning-errors:19
+msgid "Errors were detected in the partitioning of your Tails USB stick."
+msgstr ""
+"Былі выяўлены памылкі пры разбіцці на раздзелы вашага USB-назапашвальніка "
+"Tails."
+
+#: config/chroot_local-includes/usr/local/lib/tails-report-disk-partitioning-errors:26
+msgid ""
+"We recommend that you create a backup of your Tails using <i>Tails Cloner</"
+"i> to migrate to a new USB stick."
+msgstr ""
+"Мы рэкамендуем вам стварыць рэзервовую копію вашай сістэмы Tails з дапамогай "
+"<i>Tails Cloner</i> для пераносу на новы USB-назапашвальнік."
+
+#: config/chroot_local-includes/usr/local/lib/tails-report-disk-partitioning-errors:33
+msgid "Open Tails Cloner"
+msgstr "Адкрыць Tails Cloner"
+
+#: config/chroot_local-includes/usr/local/lib/tails-report-disk-partitioning-errors:42
+msgid "Creation of Persistent Storage has been disabled."
+msgstr "Стварэнне Пастаяннага сховішча было адключана."
+
+#: config/chroot_local-includes/usr/local/lib/tails-report-disk-partitioning-errors:44
+msgid ""
+"We recommend that you reinstall Tails from scratch. If the error persists, "
+"reinstall on a new USB stick."
+msgstr ""
+"Мы рэкамендуем вам пераўсталяваць Tails з нуля. Калі памылка захаваецца, "
+"пераўсталюйце на новы USB-назапашвальнік."
+
+#: config/chroot_local-includes/usr/src/perl5lib/lib/Tails/RunningSystem.pm:207
+#: config/chroot_local-includes/usr/local/bin/tails-upgrade-frontend-wrapper:79
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/application.py:79
+#: config/chroot_local-includes/usr/local/sbin/unsafe-browser:37
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:375
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:521
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:654
+msgid "Error"
+msgstr "Памылка"
+
+#: config/chroot_local-includes/usr/src/perl5lib/lib/Tails/RunningSystem.pm:209
+msgid ""
+"The device Tails is running from cannot be found. Maybe you used the 'toram' "
+"option?"
+msgstr ""
+"Прылада, з якой запушчана сістэма Tails, не знойдзена. Магчыма, вы "
+"выкарысталі опцыю 'toram'?"
+
+#: config/chroot_local-includes/usr/src/perl5lib/lib/Tails/RunningSystem.pm:237
+msgid ""
+"The drive Tails is running from cannot be found. Maybe you used the 'toram' "
+"option?"
+msgstr ""
+"Назапашвальнік, з якога запушчана сістэма Tails, не знойдзены. Магчыма, вы "
+"выкарысталі опцыю 'toram'?"
+
+#: config/chroot_local-includes/usr/share/gnome-shell/extensions/status-menu-helper@tails.boum.org/extension.js:103
+#: config/chroot_local-includes/usr/local/bin/tails-screen-locker:120
+msgid "Lock Screen"
+msgstr "Блакаванне экрана"
+
+#: config/chroot_local-includes/usr/share/gnome-shell/extensions/status-menu-helper@tails.boum.org/extension.js:107
+msgid "Suspend"
+msgstr "Прыпыніць"
+
+#: config/chroot_local-includes/usr/share/gnome-shell/extensions/status-menu-helper@tails.boum.org/extension.js:111
+msgid "Restart"
+msgstr "Перазапусціць"
+
+#: config/chroot_local-includes/usr/share/gnome-shell/extensions/status-menu-helper@tails.boum.org/extension.js:115
+msgid "Power Off"
+msgstr "Выключыць"
+
+#: config/chroot_local-includes/usr/local/bin/tails-about:27
+#: ../config/chroot_local-includes/usr/share/desktop-directories/Tails.directory.in.h:1
+msgid "Tails"
+msgstr "Tails"
+
+#: config/chroot_local-includes/usr/local/bin/tails-about:30
+#: ../config/chroot_local-includes/usr/share/applications/tails-about.desktop.in.h:1
+msgid "About Tails"
+msgstr "Пра Tails"
+
+#: config/chroot_local-includes/usr/local/bin/tails-about:34
+msgid "Check for Upgrades"
+msgstr "Праверыць наяўнасць абнаўленняў"
+
+#: config/chroot_local-includes/usr/local/bin/tails-about:57
+msgid "UNRELEASED"
+msgstr "НЕВЫПУШЧАНАЕ"
+
+#: config/chroot_local-includes/usr/local/bin/tails-about:64
+#, python-format
+msgid "Built from %s"
+msgstr "Сабрана з %s"
+
+#: config/chroot_local-includes/usr/local/bin/tails-additional-software-config:114
+#, python-brace-format
+msgid ""
+"Remove {package} from your additional software? This will stop installing "
+"the package automatically."
+msgstr ""
+"Выдаліць {package} з вашага дадатковага праграмнага забеспячэння? Гэта "
+"спыніць аўтаматычнае ўсталяванне пакета."
+
+#. Translators: Don't translate {pkg}, it's a placeholder and will be replaced.
+#: config/chroot_local-includes/usr/local/bin/tails-additional-software-config:127
+#, python-brace-format
+msgid "Failed to remove {pkg}"
+msgstr "Не ўдалося выдаліць {pkg}"
+
+#: config/chroot_local-includes/usr/local/bin/tails-additional-software-config:155
+msgid "Failed to read additional software configuration"
+msgstr "Не ўдалося прачытаць канфігурацыю дадатковага праграмнага забеспячэння"
+
+#. Translators: Don't translate {package}, it's a placeholder and will be replaced.
+#: config/chroot_local-includes/usr/local/bin/tails-additional-software-config:184
+#, python-brace-format
+msgid "Stop installing {package} automatically"
+msgstr "Спыніць аўтаматычнае ўсталяванне {package}"
+
+#: config/chroot_local-includes/usr/local/bin/tails-additional-software-config:215
+msgid ""
+"To do so, install some software using <a href=\"synaptic.desktop\">Synaptic "
+"Package Manager</a> or <a href=\"org.gnome.Terminal.desktop\">APT on the "
+"command line</a>."
+msgstr ""
+"Каб зрабіць гэта, усталюйце якое-небудзь праграмнае забеспячэнне з дапамогай "
+"<a href=\"synaptic.desktop\">Менеджара пакетаў Synaptic</a> або <a "
+"href=\"org.gnome.Terminal.desktop\">APT у камандным радку</a>."
+
+#: config/chroot_local-includes/usr/local/bin/tails-additional-software-config:227
+msgid ""
+"To do so, unlock your Persistent Storage when starting Tails and install "
+"some software using <a href=\"synaptic.desktop\">Synaptic Package Manager</"
+"a> or <a href=\"org.gnome.Terminal.desktop\">APT on the command line</a>."
+msgstr ""
+"Каб зрабіць гэта, разблакуйце ваша Пастаяннае сховішча пры запуску Tails і "
+"ўсталюйце якое-небудзь праграмнае забеспячэнне з дапамогай <a "
+"href=\"synaptic.desktop\">Менеджара пакетаў Synaptic</a> або <a "
+"href=\"org.gnome.Terminal.desktop\">APT у камандным радку</a>."
+
+#: config/chroot_local-includes/usr/local/bin/tails-additional-software-config:240
+msgid ""
+"To do so, create a Persistent Storage and install some software using <a "
+"href=\"synaptic.desktop\">Synaptic Package Manager</a> or <a "
+"href=\"org.gnome.Terminal.desktop\">APT on the command line</a>."
+msgstr ""
+"Каб зрабіць гэта, стварыце Пастаяннае сховішча і ўсталюйце якое-небудзь "
+"праграмнае забеспячэнне з дапамогай <a href=\"synaptic.desktop\">Менеджара "
+"пакетаў Synaptic</a> або <a href=\"org.gnome.Terminal.desktop\">APT у "
+"камандным радку</a>."
+
+#: config/chroot_local-includes/usr/local/bin/tails-additional-software-config:258
+msgid "To do so, install Tails on a USB stick and create a Persistent Storage."
+msgstr ""
+"Каб зрабіць гэта, усталюйце Tails на USB-назапашвальнік і стварыце "
+"Пастаяннае сховішча."
+
+#: config/chroot_local-includes/usr/local/bin/tails-additional-software-config:304
+msgid "[package not available]"
+msgstr "[пакет недаступны]"
+
+#: config/chroot_local-includes/usr/local/bin/tails-additional-software-config:311
+msgid "[description not available]"
+msgstr "[апісанне недаступнае]"
+
+#: config/chroot_local-includes/usr/local/lib/tails-htp-notify-user:68
+msgid "Failed to synchronize the clock!"
+msgstr "Не ўдалося сінхранізаваць гадзіннік!"
+
+#: config/chroot_local-includes/usr/local/lib/tails-low-ram-notify-user:26
+msgid "Insufficient Memory Detected"
+msgstr "Выяўлена недастаткова памяці"
+
+#: config/chroot_local-includes/usr/local/lib/tails-low-ram-notify-user:28
+#, python-brace-format
+msgid ""
+"Tails requires {required_ram_gb} GB of RAM, but this computer only has "
+"{installed_ram_gb} GB. You might experience reduced performance, "
+"instability, or crashes."
+msgstr ""
+"Для Tails патрабуецца {required_ram_gb} ГБ аператыўнай памяці, але гэты "
+"камп'ютар мае толькі {installed_ram_gb} ГБ. Вы можаце сутыкнуцца са "
+"зніжэннем прадукцыйнасці, нестабільнасцю або збоямі."
+
+#: config/chroot_local-includes/usr/local/lib/tails-low-ram-notify-user:41
+#: config/chroot_local-includes/usr/local/lib/tails-uefi-ca-notify-user:47
+#: config/chroot_local-includes/usr/local/lib/tails-virt-notify-user:42
+msgid "Don't Show Again"
+msgstr "Больш не паказваць"
+
+#: config/chroot_local-includes/usr/local/bin/tails-screen-locker:132
+msgid "Screen Locker"
+msgstr "Блакіроўшчык экрана"
+
+#: config/chroot_local-includes/usr/local/bin/tails-screen-locker:138
+msgid "Set up a password to unlock the screen."
+msgstr "Наладзьце пароль для разблакавання экрана."
+
+#: config/chroot_local-includes/usr/local/bin/tails-screen-locker:147
+msgid "Show Password"
+msgstr "Паказаць пароль"
+
+#: config/chroot_local-includes/usr/local/bin/tails-screen-locker:151
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:2580
+msgid "Password"
+msgstr "Пароль"
+
+#: config/chroot_local-includes/usr/local/bin/tails-screen-locker:152
+#: ../config/chroot_local-includes/usr/share/tails/greeter/additional_settings.ui.in:109
+msgid "Confirm"
+msgstr "Пацвердзіць"
+
+#: config/chroot_local-includes/usr/local/bin/tails-security-check:121
+msgid "This version of Tails has known security issues:"
+msgstr "Гэтая версія Tails мае вядомыя праблемы з бяспекай:"
+
+#: config/chroot_local-includes/usr/local/bin/tails-security-check:131
+msgid "Known security issues"
+msgstr "Вядомыя праблемы з бяспекай"
+
+#: config/chroot_local-includes/usr/local/lib/tails-spoof-mac:60
+#, sh-format
+msgid "Wi-Fi Interface Disabled"
+msgstr "Інтэрфейс Wi-Fi адключаны"
+
+#: config/chroot_local-includes/usr/local/lib/tails-spoof-mac:61
+#, sh-format
+msgid ""
+"MAC address anonymization failed for one of your Wi-Fi interfaces, so it is "
+"temporarily disabled."
+msgstr ""
+"Ананімізацыя MAC-адраса для аднаго з вашых інтэрфейсаў Wi-Fi не ўдалася, "
+"таму ён часова адключаны."
+
+#: config/chroot_local-includes/usr/local/lib/tails-spoof-mac:64
+#, sh-format
+msgid "Wi-Fi Disabled"
+msgstr "Wi-Fi адключаны"
+
+#: config/chroot_local-includes/usr/local/lib/tails-spoof-mac:65
+#, sh-format
+msgid ""
+"MAC address anonymization failed for your Wi-Fi interface, so it is "
+"temporarily disabled."
+msgstr ""
+"Ананімізацыя MAC-адраса для вашага інтэрфейсу Wi-Fi не ўдалася, таму ён "
+"часова адключаны."
+
+#: config/chroot_local-includes/usr/local/lib/tails-spoof-mac:67
+#, sh-format
+msgid "Wired Interface Disabled"
+msgstr "Правадны інтэрфейс адключаны"
+
+#: config/chroot_local-includes/usr/local/lib/tails-spoof-mac:68
+#, sh-format
+msgid ""
+"MAC address anonymization failed for one of your wired interfaces, so it is "
+"temporarily disabled."
+msgstr ""
+"Ананімізацыя MAC-адраса для аднаго з вашых правадных інтэрфейсаў не ўдалася, "
+"таму ён часова адключаны."
+
+#: config/chroot_local-includes/usr/local/lib/tails-spoof-mac:71
+#, sh-format
+msgid "Wired Network Disabled"
+msgstr "Правадная сетка адключана"
+
+#: config/chroot_local-includes/usr/local/lib/tails-spoof-mac:72
+#, sh-format
+msgid ""
+"MAC address anonymization failed for your wired interface, so it is "
+"temporarily disabled."
+msgstr ""
+"Ананімізацыя MAC-адраса для вашага праваднога інтэрфейсу не ўдалася, таму ён "
+"часова адключаны."
+
+#: config/chroot_local-includes/usr/local/lib/tails-spoof-mac:74
+#, sh-format
+msgid "Network Interface Disabled"
+msgstr "Сеткавы інтэрфейс адключаны"
+
+#: config/chroot_local-includes/usr/local/lib/tails-spoof-mac:75
+#, sh-format
+msgid ""
+"MAC address anonymization failed for one of your network interfaces, so it "
+"is temporarily disabled."
+msgstr ""
+"Ананімізацыя MAC-адраса для аднаго з вашых сеткавых інтэрфейсаў не ўдалася, "
+"таму ён часова адключаны."
+
+#: config/chroot_local-includes/usr/local/lib/tails-spoof-mac:87
+msgid "All Networking Disabled"
+msgstr "Усе сеткавыя злучэнні адключаны"
+
+#: config/chroot_local-includes/usr/local/lib/tails-spoof-mac:89
+#, sh-format
+msgid ""
+"MAC address anonymization failed for one of your network interfaces. The "
+"error recovery also failed, so all networking is disabled."
+msgstr ""
+"Ананімізацыя MAC-адраса для аднаго з вашых сеткавых інтэрфейсаў не ўдалася. "
+"Аднаўленне пасля памылкі таксама не ўдалося, таму ўсе сеткавыя злучэнні "
+"адключаны."
+
+#: config/chroot_local-includes/usr/local/lib/tails-spoof-mac:92
+#, sh-format
+msgid ""
+"MAC address anonymization failed for your network interface. The error "
+"recovery also failed, so all networking is disabled."
+msgstr ""
+"Ананімізацыя MAC-адраса для вашага сеткавага інтэрфейсу не ўдалася. "
+"Аднаўленне пасля памылкі таксама не ўдалося, таму ўсе сеткавыя злучэнні "
+"адключаны."
+
+#: config/chroot_local-includes/usr/local/lib/tails-uefi-ca-notify-user:28
+msgid "Secure Boot Update Needed"
+msgstr ""
+
+#: config/chroot_local-includes/usr/local/lib/tails-uefi-ca-notify-user:30
+msgid ""
+"Tails will no longer start on this computer at some point in the future. "
+"Apply all available updates from your regular operating system to update to "
+"the latest Secure Boot certificates of Microsoft."
+msgstr ""
+
+#: config/chroot_local-includes/usr/local/bin/tails-upgrade-frontend-wrapper:37
+#, python-brace-format
+msgid ""
+"<b>Not enough memory available to check for upgrades.</b>\n"
+"\n"
+"Make sure this system satisfies the requirements for running Tails.\n"
+"See file:///usr/share/doc/tails/website/doc/about/requirements.en.html\n"
+"\n"
+"Try to restart Tails to check for upgrades again.\n"
+"\n"
+"Or do a manual upgrade.\n"
+"See {manual_upgrade_url}"
+msgstr ""
+"<b>Недастаткова памяці для праверкі абнаўленняў.</b>\n"
+"\n"
+"Пераканайцеся, што гэтая сістэма адпавядае патрабаванням для запуску Tails.\n"
+"Глядзіце file:///usr/share/doc/tails/website/doc/about/requirements.en.html\n"
+"\n"
+"Спаспрабуйце перазапусціць Tails, каб зноў праверыць наяўнасць абнаўленняў.\n"
+"\n"
+"Або выканайце абнаўленне ўручную.\n"
+"Глядзіце {manual_upgrade_url}"
+
+#: config/chroot_local-includes/usr/local/bin/tails-upgrade-frontend-wrapper:78
+#: config/chroot_local-includes/usr/local/sbin/unsafe-browser:36
+msgid "error:"
+msgstr "памылка:"
+
+#: config/chroot_local-includes/usr/local/lib/tails-virt-notify-user:24
+msgid "Warning: virtual machine detected!"
+msgstr "Увага: выяўлена віртуальная машына!"
+
+#: config/chroot_local-includes/usr/local/lib/tails-virt-notify-user:26
+msgid "Warning: non-free virtual machine detected!"
+msgstr "Увага: выяўлена несвабодная віртуальная машына!"
+
+#: config/chroot_local-includes/usr/local/lib/tails-virt-notify-user:28
+msgid ""
+"Both the host operating system and the virtualization software are able to "
+"monitor what you are doing in Tails. Only free software can be considered "
+"trustworthy, for both the host operating system and the virtualization "
+"software."
+msgstr ""
+"Як хост-сістэма, так і праграмнае забеспячэнне для віртуалізацыі могуць "
+"адсочваць, што вы робіце ў Tails. Толькі свабоднае праграмнае забеспячэнне "
+"можа лічыцца надзейным, як для хост-сістэмы, так і для праграмнага "
+"забеспячэння для віртуалізацыі."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/config.py:9
+#: config/chroot_local-includes/usr/local/bin/tca:10
+#: ../config/chroot_local-includes/usr/share/applications/tca.desktop.in.h:1
+msgid "Tor Connection"
+msgstr "Злучэнне Tor"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py:283
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py:331
+msgid "Automatic"
+msgstr "Аўтаматычна"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py:284
+msgid "Frequently selected regions"
+msgstr ""
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py:291
+msgid "Other regions"
+msgstr ""
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py:369
+msgid "_Use a bridge that you already know"
+msgstr "_Выкарыстоўваць мост, які вы ўжо ведаеце"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py:411
+msgid ""
+"To save your bridge, <a href=\"doc/persistent_storage\">unlock your "
+"Persistent Storage</a>."
+msgstr ""
+"Каб захаваць ваш мост, <a href=\"doc/persistent_storage\">разблакуйце сваё "
+"Пастаяннае сховішча</a>."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py:418
+msgid ""
+"To save your bridge, <a href=\"doc/persistent_storage\">create a Persistent "
+"Storage</a> on your Tails USB stick."
+msgstr ""
+"Каб захаваць ваш мост, <a href=\"doc/persistent_storage\">стварыце "
+"Пастаяннае сховішча</a> на вашым USB-назапашвальніку Tails."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py:438
+#, python-brace-format
+msgid "Invalid: {exception}"
+msgstr "Няправільна: {exception}"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py:450
+msgid ""
+"You need to configure a WebTunnel or an obfs4 bridge to hide that you are "
+"using Tor"
+msgstr ""
+"Вам неабходна наладзіць мост WebTunnel або obfs4, каб схаваць, што вы "
+"выкарыстоўваеце Tor"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py:514
+msgid "Failed to configure your Persistent Storage"
+msgstr "Не ўдалося наладзіць ваша Пастаяннае сховішча"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py:566
+msgid "Failed to detect a webcam. Maybe your webcam is too old."
+msgstr ""
+"Не ўдалося выявіць вэб-камеру. Магчыма, ваша вэб-камера занадта старая."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py:577
+msgid "Failed to scan QR code. Try with more light or closer to the camera."
+msgstr ""
+"Не ўдалося адсканіраваць QR-код. Паспрабуйце пры лепшым асвятленні або "
+"бліжэй да камеры."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py:588
+msgid "Invalid QR code. Try sending another email and scanning again."
+msgstr ""
+"Няправільны QR-код. Паспрабуйце адправіць яшчэ адзін ліст і адсканіраваць "
+"зноў."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py:649
+msgid "Synchronizing the system's clock…"
+msgstr "Сінхранізацыя сістэмнага часу…"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py:726
+#, fuzzy
+msgid "Asking for a Tor bridge based on your region…"
+msgstr "_Запытаць мост Tor па электроннай пошце"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py:774
+msgid "Connecting to Tor without bridges…"
+msgstr "Падключэнне да Tor без мастоў…"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py:781
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py:813
+msgid "Connecting to Tor with default bridges…"
+msgstr "Падключэнне да Tor праз масты па змаўчанні…"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py:789
+#, fuzzy
+msgid "Connecting to Tor with a bridge based on your region…"
+msgstr "Падключэнне да Tor праз масты па змаўчанні…"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py:796
+msgid "Connecting to Tor with a custom bridge…"
+msgstr "Падключэнне да Tor праз карыстальніцкі мост…"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py:914
+msgid "Connected to Tor successfully with bridges"
+msgstr "Паспяховае падключэнне да Tor праз масты"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py:916
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:2340
+msgid "Connected to Tor successfully"
+msgstr "Паспяховае падключэнне да Tor"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py:920
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:2365
+msgid "You can now browse the Internet anonymously and uncensored."
+msgstr "Цяпер вы можаце праглядаць інтэрнэт ананімна і без цэнзуры."
+
+#. Translators: only translate "Bridge:" and adjust
+#. text-direction
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py:985
+#, python-brace-format
+msgid "Bridge: <b>{bridge}</b>"
+msgstr ""
+
+#. Translators: only translate "Error code:" and adjust
+#. text-direction
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py:997
+#, python-brace-format
+msgid "Error code: {code}"
+msgstr ""
+
+#. Translators: only translate "Proxy:" and adjust
+#. text-direction
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py:1024
+#, python-brace-format
+msgid "Proxy: <b>{proxy}</b>"
+msgstr ""
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py:1323
+#, python-brace-format
+msgid "Scanned {bridge_type} bridge: <b>{bridge_info}</b>."
+msgstr "Адсканіраваны мост {bridge_type}: <b>{bridge_info}</b>."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py:1408
+msgid "Are you sure you want to lose progress?"
+msgstr "Вы ўпэўнены, што хочаце страціць прагрэс?"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py:1412
+msgid ""
+"Tails will continue connecting to Tor after you close the Tor Connection "
+"assistant.\n"
+"\n"
+"If connecting to Tor fails, you will have to wait again until the end of the "
+"progress bar to be able to troubleshoot your connection."
+msgstr ""
+"Tails працягне падключэнне да Tor пасля таго, як вы закрыеце Асістэнт "
+"падключэння да Tor.\n"
+"\n"
+"Калі падключэнне да Tor не ўдасца, вам давядзецца зноў пачакаць да канца "
+"індыкатара выканання, каб мець магчымасць ліквідаваць непаладкі са злучэннем."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py:1418
+msgid "Close and Lose Progress"
+msgstr "Закрыць і страціць прагрэс"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py:1420
+msgid "Wait"
+msgstr "Пачакаць"
+
+#: config/chroot_local-includes/usr/local/lib/launch-tor-browser:38
+msgid "Tor is not ready"
+msgstr "Tor не гатовы"
+
+#: config/chroot_local-includes/usr/local/lib/launch-tor-browser:39
+msgid "Tor is not ready. Start Tor Browser anyway?"
+msgstr "Tor не гатовы. Усё адно запусціць Tor Browser?"
+
+#: config/chroot_local-includes/usr/local/lib/launch-tor-browser:40
+msgid "Start Tor Browser Offline"
+msgstr "Запусціць Tor Browser у аўтаномным рэжыме"
+
+#: config/chroot_local-includes/usr/local/lib/launch-tor-browser:41
+msgid "Open Tor Connection"
+msgstr "Адкрыць злучэнне Tor"
+
+#: config/chroot_local-includes/usr/share/gnome-shell/extensions/torstatus@tails.boum.org/extension.js:38
+msgid "Tor Status"
+msgstr "Статус Tor"
+
+#: config/chroot_local-includes/usr/share/gnome-shell/extensions/torstatus@tails.boum.org/extension.js:47
+msgid "Open Tor Connection Assistant"
+msgstr "Адкрыць Асістэнт падключэння да Tor"
+
+#: config/chroot_local-includes/usr/share/gnome-shell/extensions/torstatus@tails.boum.org/extension.js:51
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:2406
+msgid "View Tor Circuits"
+msgstr "Паглядзець ланцугі Tor"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps/device.py:353
+#, python-brace-format
+msgid ""
+"Only {available_memory} KiB of memory is available, need at least "
+"{required_memory} KiB.\n"
+"\n"
+"Try again after closing some applications or rebooting."
+msgstr ""
+"Даступна толькі {available_memory} КіБ памяці, неабходна прынамсі "
+"{required_memory} КіБ.\n"
+"\n"
+"Паспрабуйце яшчэ раз пасля закрыцця некаторых праграм або перазагрузкі."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps/device.py:367
+msgid "Creating a partition for the Persistent Storage..."
+msgstr "Стварэнне раздзела для Пастаяннага сховішча..."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps/device.py:389
+msgid ""
+"Initializing the LUKS encryption... The computer might stop responding for a "
+"few seconds."
+msgstr ""
+"Ініцыялізацыя шыфравання LUKS... Камп'ютар можа перастаць адказваць на "
+"некалькі секунд."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps/device.py:420
+msgid "Unlocking the encryption..."
+msgstr "Разблакаванне шыфравання..."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps/device.py:428
+msgid "Formatting the file system..."
+msgstr "Фарматаванне файлавай сістэмы..."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps/device.py:446
+msgid "Activating the Persistent Storage..."
+msgstr "Актывацыя Пастаяннага сховішча..."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps/device.py:451
+msgid "Finishing setting up the Persistent Storage..."
+msgstr "Завяршэнне налады Пастаяннага сховішча..."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps/device.py:704
+msgid ""
+"Can't unmount Persistent Storage, some process is still using it. Please "
+"close all applications that could be accessing it and try again. If that "
+"doesn't work, restart Tails and try deleting the Persistent Storage without "
+"unlocking it."
+msgstr ""
+"Немагчыма адманціраваць Пастаяннае сховішча, нейкі працэс усё яшчэ "
+"выкарыстоўвае яго. Калі ласка, закрыйце ўсе праграмы, якія могуць звяртацца "
+"да яго, і паспрабуйце зноў. Калі гэта не спрацуе, перазапусціце Tails і "
+"паспрабуйце выдаліць Пастаяннае сховішча без яго разблакавання."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps/device.py:737
+msgid ""
+"Not enough memory to change the passphrase of the Persistent Storage. Try "
+"again after closing some applications or rebooting."
+msgstr ""
+"Недастаткова памяці для змянення парольнай фразы Пастаяннага сховішча. "
+"Паспрабуйце яшчэ раз пасля закрыцця некаторых праграм або перазагрузкі."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps/configuration/binding.py:411
+#, python-brace-format
+msgid ""
+"Can't unmount target {target}, some process is still using it. Please close "
+"all applications that could be accessing the target and try again."
+msgstr ""
+"Немагчыма адманціраваць цэль {target}, нейкі працэс усё яшчэ выкарыстоўвае "
+"яе. Калі ласка, закрыйце ўсе праграмы, якія могуць звяртацца да цэлі, і "
+"паспрабуйце зноў."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/application.py:30
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/window.py:49
+#: ../config/chroot_local-includes/usr/share/applications/org.boum.tails.PersistentStorage.desktop.in.h:1
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/window.ui.in:24
+msgid "Persistent Storage"
+msgstr "Пастаяннае сховішча"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/application.py:56
+msgid "Failed to start the Persistent Storage service"
+msgstr "Не ўдалося запусціць сэрвіс Пастаяннага сховішча"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/application.py:80
+msgid "Could not find the WhisperBack application"
+msgstr "Не ўдалося знайсці праграму WhisperBack"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/feature.py:94
+msgid "Delete Data…"
+msgstr "Выдаліць даныя…"
+
+#. Translators: Don't translate {feature}, it's a placeholder
+#. and will be replaced.
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/feature.py:100
+#, python-brace-format
+msgid "Delete {feature} data"
+msgstr "Выдаліць даныя {feature}"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/feature.py:122
+msgid "Activation failed"
+msgstr "Актывацыя не ўдалася"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/feature.py:178
+msgid "Activation failed. Try again or delete data."
+msgstr "Актывацыя не ўдалася. Паспрабуйце зноў або выдаліце даныя."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/feature.py:180
+msgid "Activation failed. Try again."
+msgstr "Актывацыя не ўдалася. Паспрабуйце зноў."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/feature.py:182
+msgid "The data of this feature is still saved."
+msgstr "Даныя гэтай функцыі ўсё яшчэ захаваныя."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/feature.py:289
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/feature.py:296
+msgid "Error activating feature {}"
+msgstr "Памылка актывацыі функцыі {}"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/feature.py:297
+msgid "An error occurred while activating the feature."
+msgstr "Адбылася памылка падчас актывацыі функцыі."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/feature.py:298
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/feature.py:347
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/feature.py:411
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/change_passphrase_dialog.py:115
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/window.py:270
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/window.py:298
+msgid "Details"
+msgstr "Дэталі"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/feature.py:338
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/feature.py:345
+msgid "Error deactivating feature {}"
+msgstr "Памылка дэактывацыі функцыі {}"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/feature.py:346
+msgid "An error occurred while deactivating the feature."
+msgstr "Адбылася памылка падчас дэактывацыі функцыі."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/feature.py:366
+msgid ""
+"Delete all the data of the {} feature that is saved in the Persistent "
+"Storage?\n"
+"\n"
+"If you cancel, the data will be restored when you turn this feature on again."
+msgstr ""
+"Выдаліць усе даныя функцыі {}, якія захаваны ў Пастаянным сховішчы?\n"
+"\n"
+"Калі вы адменіце, даныя будуць адноўлены пры паўторным уключэнні гэтай "
+"функцыі."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/feature.py:377
+msgid "_Delete Data"
+msgstr "_Выдаліць даныя"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/feature.py:407
+msgid "Error deleting data of feature {}"
+msgstr "Памылка выдалення даных функцыі {}"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/feature.py:408
+msgid "An error occurred while deleting the data of feature {}."
+msgstr "Адбылася памылка падчас выдалення даных функцыі {}."
+
+#. Translators: Don't translate {applications}, it's a placeholder
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/feature.py:515
+#, python-brace-format
+msgid "Close {applications} to continue"
+msgstr "Закрыйце {applications} для працягу"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/feature.py:516
+msgid " and "
+msgstr " і "
+
+#. Translators: Don't translate {app} and {pid}, they
+#. are placeholders.
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/feature.py:527
+#, python-brace-format
+msgid "{app} (PID: {pid})"
+msgstr "{app} (PID: {pid})"
+
+#. Translators: Don't translate {app} and {pids}, they
+#. are placeholders.
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/feature.py:532
+#, python-brace-format
+msgid "{app} (PIDs: {pids})"
+msgstr "{app} (PID: {pids})"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/change_passphrase_dialog.py:37
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/change_passphrase_dialog.ui.in:15
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/window.ui.in:55
+msgid "Change Passphrase"
+msgstr "Змяніць парольную фразу"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/change_passphrase_dialog.py:92
+msgid "The current passphrase is incorrect"
+msgstr "Бягучая парольная фраза няправільная"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/change_passphrase_dialog.py:103
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/change_passphrase_dialog.py:113
+msgid "Changing the passphrase failed"
+msgstr "Не ўдалося змяніць парольную фразу"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/change_passphrase_dialog.py:114
+msgid "An error occurred while changing the passphrase."
+msgstr "Адбылася памылка падчас змянення парольнай фразы."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/passphrase_strength_hint.py:44
+msgid "Weak"
+msgstr "Слабая"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/passphrase_strength_hint.py:47
+msgid "Fair"
+msgstr "Нармальная"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/passphrase_strength_hint.py:50
+msgid "Good"
+msgstr "Добрая"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/passphrase_strength_hint.py:53
+msgid "Strong"
+msgstr "Моцная"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/error_dialog.py:54
+msgid "You can send an error report to help solve the issue."
+msgstr ""
+"Вы можаце адправіць справаздачу пра памылку, каб дапамагчы вырашыць праблему."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/error_dialog.py:61
+msgid "_Send Error Report"
+msgstr "_Адправіць справаздачу пра памылку"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/window.py:153
+msgid ""
+"Impossible to delete the Persistent Storage while it is unlocked.\n"
+"\n"
+"To delete the Persistent Storage, restart Tails without unlocking the "
+"Persistent Storage and open the Persistent Storage settings again."
+msgstr ""
+"Немагчыма выдаліць Пастаяннае сховішча, пакуль яно разблакавана.\n"
+"\n"
+"Каб выдаліць Пастаяннае сховішча, перазапусціце Tails без разблакавання "
+"Пастаяннага сховішча і зноў адкрыйце налады Пастаяннага сховішча."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/window.py:167
+msgid ""
+"Impossible to delete the Persistent Storage because the USB stick is read-"
+"only.\n"
+"\n"
+"To delete the Persistent Storage, turn off the read-only protection of the "
+"USB stick, restart Tails without unlocking the Persistent Storage and open "
+"the Persistent Storage settings again."
+msgstr ""
+"Немагчыма выдаліць Пастаяннае сховішча, таму што USB-назапашвальнік даступны "
+"толькі для чытання.\n"
+"\n"
+"Каб выдаліць Пастаяннае сховішча, адключыце абарону ад запісу на USB-"
+"назапашвальніку, перазапусціце Tails без разблакавання Пастаяннага сховішча "
+"і зноў адкрыйце налады Пастаяннага сховішча."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/window.py:175
+msgid "Impossible to delete the Persistent Storage"
+msgstr "Немагчыма выдаліць Пастаяннае сховішча"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/window.py:183
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/window.py:218
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/window.ui.in:35
+msgid "Delete Persistent Storage"
+msgstr "Выдаліць Пастаяннае сховішча"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/window.py:187
+msgid ""
+"Are you sure that you want to delete your Persistent Storage? This action "
+"cannot be undone."
+msgstr ""
+"Вы ўпэўнены, што хочаце выдаліць сваё Пастаяннае сховішча? Гэтае дзеянне "
+"немагчыма адмяніць."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/window.py:191
+#: config/chroot_local-includes/usr/local/sbin/unsafe-browser:56
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/change_passphrase_dialog.ui.in:301
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/welcome_view.ui.in:124
+#: ../config/chroot_local-includes/usr/share/tails-installer/passphrase_dialog.ui.in:219
+msgid "_Cancel"
+msgstr "_Скасаваць"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/window.py:192
+msgid "_Delete Persistent Storage"
+msgstr "_Выдаліць Пастаяннае сховішча"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/window.py:202
+msgid "Deleting your Persistent Storage..."
+msgstr "Выдаленне вашага Пастаяннага сховішча..."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/window.py:221
+msgid "_OK"
+msgstr "_ОК"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/window.py:230
+msgid ""
+"Sorry, you can't close this app until the ongoing operation has completed."
+msgstr ""
+"Выбачайце, вы не можаце закрыць гэтую праграму да завяршэння бягучай "
+"аперацыі."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/window.py:233
+msgid "Please wait"
+msgstr "Калі ласка, пачакайце"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/window.py:261
+msgid "Not enough memory to create Persistent Storage"
+msgstr "Недастаткова памяці для стварэння Пастаяннага сховішча"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/window.py:268
+msgid "Failed to create Persistent Storage"
+msgstr "Не ўдалося стварыць Пастаяннае сховішча"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/window.py:269
+msgid "An error occurred while creating the Persistent Storage."
+msgstr "Адбылася памылка падчас стварэння Пастаяннага сховішча."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/window.py:289
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/window.py:296
+msgid "Error deleting Persistent Storage"
+msgstr "Памылка выдалення Пастаяннага сховішча"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/window.py:297
+msgid "An error occurred while deleting the Persistent Storage."
+msgstr "Адбылася памылка падчас выдалення Пастаяннага сховішча."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/window.py:334
+msgid "Details (command output)"
+msgstr "Дэталі (вывад каманды)"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/window.py:349
+msgid "Failed to open the documentation"
+msgstr "Не ўдалося адкрыць дакументацыю"
+
+#. Translators: Don't translate {volume_label} or {volume_size},
+#. they are placeholders and will be replaced. They need
+#. to be present in the translated string.
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/unlock_veracrypt_volumes/volume.py:79
+#, python-brace-format
+msgid "{volume_label} ({volume_size})"
+msgstr "{volume_label} ({volume_size})"
+
+#. Translators: Don't translate {partition_name} or {partition_size},
+#. they are placeholders and will be replaced. They need
+#. to be present in the translated string.
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/unlock_veracrypt_volumes/volume.py:86
+#, python-brace-format
+msgid "{partition_name} ({partition_size})"
+msgstr "{partition_name} ({partition_size})"
+
+#. Translators: Don't translate {volume_size}, it's a placeholder
+#. and will be replaced. It needs to be present in the translated
+#. string.
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/unlock_veracrypt_volumes/volume.py:94
+#, python-brace-format
+msgid "{volume_size} Volume"
+msgstr "Том {volume_size}"
+
+#. Translators: Don't translate {volume_name}, it's a placeholder and
+#. will be replaced. It needs to be present in the translated string.
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/unlock_veracrypt_volumes/volume.py:140
+#, python-brace-format
+msgid "{volume_name} (Read-Only)"
+msgstr "{volume_name} (Толькі для чытання)"
+
+#. Translators: Don't translate {partition_name} and {container_path}, they
+#. are placeholders and will be replaced. They need to be present
+#. in the translated string.
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/unlock_veracrypt_volumes/volume.py:149
+#, python-brace-format
+msgid "{partition_name} in {container_path}"
+msgstr "{partition_name} у {container_path}"
+
+#. Translators: Don't translate {volume_name} and {path_to_file_container},
+#. they are placeholders and will be replaced. You should only have to translate
+#. this string if it makes sense to reverse the order of the placeholders.
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/unlock_veracrypt_volumes/volume.py:157
+#, python-brace-format
+msgid "{volume_name} – {path_to_file_container}"
+msgstr "{volume_name} – {path_to_file_container}"
+
+#. Translators: Don't translate {partition_name} and {drive_name}, they
+#. are placeholders and will be replaced. They need to be present
+#. in the translated string.
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/unlock_veracrypt_volumes/volume.py:165
+#, python-brace-format
+msgid "{partition_name} on {drive_name}"
+msgstr "{partition_name} на {drive_name}"
+
+#. Translators: Don't translate {volume_name} and {drive_name},
+#. they are placeholders and will be replaced. You should only have to translate
+#. this string if it makes sense to reverse the order of the placeholders.
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/unlock_veracrypt_volumes/volume.py:173
+#, python-brace-format
+msgid "{volume_name} – {drive_name}"
+msgstr "{volume_name} – {drive_name}"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/unlock_veracrypt_volumes/volume.py:278
+msgid "Wrong passphrase or parameters"
+msgstr "Няправільная парольная фраза або параметры"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/unlock_veracrypt_volumes/volume.py:280
+msgid "Error unlocking volume"
+msgstr "Памылка разблакавання тома"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/unlock_veracrypt_volumes/volume.py:286
+#, python-brace-format
+msgid ""
+"Couldn't unlock volume {volume_name}:\n"
+"{error_message}"
+msgstr ""
+"Не ўдалося разблакаваць том {volume_name}:\n"
+"{error_message}"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/unlock_veracrypt_volumes/volume.py:403
+msgid "One or more applications are keeping the volume busy."
+msgstr "Адна ці некалькі праграм займаюць том."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/unlock_veracrypt_volumes/volume.py:411
+#, python-brace-format
+msgid ""
+"Couldn't lock volume {volume_name}:\n"
+"{error_message}"
+msgstr ""
+"Не ўдалося заблакаваць том {volume_name}:\n"
+"{error_message}"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/unlock_veracrypt_volumes/volume.py:413
+msgid "Locking the volume failed"
+msgstr "Не ўдалося заблакаваць том"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/unlock_veracrypt_volumes/volume_list.py:83
+msgid "No file containers added"
+msgstr "Файлавыя кантэйнеры не дададзеныя"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/unlock_veracrypt_volumes/volume_list.py:99
+msgid "No VeraCrypt devices detected"
+msgstr "Прылады VeraCrypt не выяўленыя"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/unlock_veracrypt_volumes/volume_manager.py:43
+#: ../config/chroot_local-includes/usr/share/applications/unlock-veracrypt-volumes.desktop.in.h:1
+msgid "Unlock VeraCrypt Volumes"
+msgstr "Разблакіроўшчык тамоў VeraCrypt"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/unlock_veracrypt_volumes/volume_manager.py:120
+msgid "Container already added"
+msgstr "Кантэйнер ужо дададзены"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/unlock_veracrypt_volumes/volume_manager.py:121
+#, python-format
+msgid "The file container %s should already be listed."
+msgstr "Файлавы кантэйнер %s ужо павінен быць у спісе."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/unlock_veracrypt_volumes/volume_manager.py:142
+msgid "Container opened read-only"
+msgstr "Кантэйнер адкрыты толькі для чытання"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/unlock_veracrypt_volumes/volume_manager.py:145
+#, python-brace-format
+msgid ""
+"The file container {path} could not be opened with write access. It was "
+"opened read-only instead. You will not be able to modify the content of the "
+"container.\n"
+"{error_message}"
+msgstr ""
+"Не ўдалося адкрыць файлавы кантэйнер {path} з правамі на запіс. Замест "
+"гэтага ён быў адкрыты толькі для чытання. Вы не зможаце змяняць змесціва "
+"кантэйнера.\n"
+"{error_message}"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/unlock_veracrypt_volumes/volume_manager.py:151
+msgid "Error opening file"
+msgstr "Памылка адкрыцця файла"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/unlock_veracrypt_volumes/volume_manager.py:178
+msgid "Not a VeraCrypt container"
+msgstr "Не з'яўляецца кантэйнерам VeraCrypt"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/unlock_veracrypt_volumes/volume_manager.py:179
+#, python-format
+msgid "The file %s does not seem to be a VeraCrypt container."
+msgstr "Файл %s не падобны на кантэйнер VeraCrypt."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/unlock_veracrypt_volumes/volume_manager.py:183
+msgid "Failed to add container"
+msgstr "Не ўдалося дадаць кантэйнер"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/unlock_veracrypt_volumes/volume_manager.py:185
+#, python-format
+msgid ""
+"Could not add file container %s: Timeout while waiting for loop setup.\n"
+"Please try using the <i>Disks</i> application instead."
+msgstr ""
+"Не ўдалося дадаць файлавы кантэйнер %s: Перавышаны час чакання наладкі "
+"loop.\n"
+"Калі ласка, паспрабуйце замест гэтага выкарыстоўваць праграму <i>Дыскі</i>."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/unlock_veracrypt_volumes/volume_manager.py:241
+msgid "Choose File Container"
+msgstr "Выбраць файлавы кантэйнер"
+
+#: config/chroot_local-includes/usr/local/sbin/unsafe-browser:47
+msgid "The Unsafe Browser was disabled in the Welcome Screen.\\n\\n"
+msgstr "Небяспечны браўзер быў адключаны на экране прывітання.\\n\\n"
+
+#: config/chroot_local-includes/usr/local/sbin/unsafe-browser:50
+msgid ""
+"To use the Unsafe Browser, restart Tails and make sure that the Unsafe "
+"Browser is enabled in the additional settings of the Welcome Screen."
+msgstr ""
+"Каб карыстацца Небяспечным браўзерам, перазапусціце Tails і пераканайцеся, "
+"што Небяспечны браўзер уключаны ў дадатковых наладах экрана прывітання."
+
+#: config/chroot_local-includes/usr/local/sbin/unsafe-browser:52
+msgid "To use the Unsafe Browser, restart Tails."
+msgstr "Каб карыстацца Небяспечным браўзерам, перазапусціце Tails."
+
+#: config/chroot_local-includes/usr/local/sbin/unsafe-browser:55
+msgid "_Restart"
+msgstr "_Перазапусціць"
+
+#: config/chroot_local-includes/usr/local/sbin/unsafe-browser:57
+msgid ""
+"Do you really want to restart Tails now?\\n\\nAll your current work will be "
+"lost."
+msgstr ""
+"Вы сапраўды хочаце перазапусціць Tails зараз?\\n\\nУся ваша бягучая праца "
+"будзе страчана."
+
+#: config/chroot_local-includes/usr/local/sbin/unsafe-browser:58
+msgid "Restart Now"
+msgstr "Перазагрузіць зараз"
+
+#: config/chroot_local-includes/usr/local/sbin/unsafe-browser:63
+msgid "Failed to restart the system."
+msgstr "Не ўдалося перазапусціць сістэму."
+
+#: config/chroot_local-includes/usr/local/sbin/unsafe-browser:71
+msgid "Shutting down the Unsafe Browser..."
+msgstr "Адключэнне Небяспечнага браўзера..."
+
+#: config/chroot_local-includes/usr/local/sbin/unsafe-browser:72
+msgid ""
+"This may take a while, and you may not restart the Unsafe Browser until it "
+"is properly shut down."
+msgstr ""
+"Гэта можа заняць некаторы час, і вы не зможаце перазапусціць Небяспечны "
+"браўзер, пакуль ён не будзе належным чынам адключаны."
+
+#: config/chroot_local-includes/usr/local/sbin/unsafe-browser:85
+#: ../config/chroot_local-includes/usr/share/applications/unsafe-browser.desktop.in.h:1
+#: ../config/chroot_local-includes/usr/share/tails/greeter/additional_settings.ui.in:498
+msgid "Unsafe Browser"
+msgstr "Небяспечны браўзер"
+
+#: config/chroot_local-includes/usr/local/sbin/unsafe-browser:100
+msgid ""
+"Another Unsafe Browser is currently running, or being cleaned up. Please "
+"retry in a while."
+msgstr ""
+"У дадзены момант працуе або ачышчаецца іншы Небяспечны браўзер. Калі ласка, "
+"паўтарыце спробу пазней."
+
+#: config/chroot_local-includes/usr/local/sbin/unsafe-browser:116
+msgid ""
+"You are not connected to a local network yet.\\n\\nTo be able to start the "
+"Unsafe Browser, you first need to connect to a Wi-Fi, wired, or mobile "
+"network."
+msgstr ""
+"Вы яшчэ не падключаны да лакальнай сеткі.\\n\\nКаб запусціць Небяспечны "
+"браўзер, вам спачатку трэба падключыцца да Wi-Fi, правадной або мабільнай "
+"сеткі."
+
+#: config/chroot_local-includes/usr/local/sbin/unsafe-browser:146
+msgid "Failed to run browser."
+msgstr "Не ўдалося запусціць браўзер."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/whisperBack/exceptions.py:45
+#, python-format
+msgid ""
+"The %s variable was not found in the configuration file: /etc/whisperback/"
+"config.py"
+msgstr ""
+"Зменная %s не знойдзена ў файле канфігурацыі: /etc/whisperback/config.py"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/whisperBack/gui.py:136
+msgid "Unable to load a valid configuration."
+msgstr "Немагчыма загрузіць правільную канфігурацыю."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/whisperBack/gui.py:162
+msgid "Sending mail..."
+msgstr "Адпраўка ліста..."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/whisperBack/gui.py:163
+msgid "Sending mail"
+msgstr "Адпраўка ліста"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/whisperBack/gui.py:165
+msgid "This could take a while..."
+msgstr "Гэта можа заняць некаторы час..."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/whisperBack/gui.py:199
+msgid "The contact email address doesn't seem valid."
+msgstr "Кантактны адрас электроннай пошты здаецца няправільным."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/whisperBack/gui.py:220
+msgid "Unable to send the mail: SMTP error."
+msgstr "Немагчыма адправіць ліст: памылка SMTP."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/whisperBack/gui.py:222
+msgid "Unable to connect to the server."
+msgstr "Немагчыма падключыцца да сервера."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/whisperBack/gui.py:224
+msgid "Tor is not ready yet"
+msgstr "Tor яшчэ не гатовы"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/whisperBack/gui.py:226
+msgid "Unable to create or to send the mail."
+msgstr "Немагчыма стварыць або адправіць ліст."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/whisperBack/gui.py:231
+msgid ""
+"\n"
+"\n"
+"Make sure that you are connected to Tor and click send again."
+msgstr ""
+"\n"
+"\n"
+"Пераканайцеся, што вы падключаны да Tor, і націсніце кнопку адпраўкі яшчэ "
+"раз."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/whisperBack/gui.py:241
+msgid "Your message has been sent."
+msgstr "Ваша паведамленне адпраўлена."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/whisperBack/gui.py:250
+msgid "An error occurred during encryption."
+msgstr "Адбылася памылка падчас шыфравання."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/whisperBack/gui.py:319
+msgid "This doesn't seem to be a valid URL or OpenPGP key."
+msgstr "Гэта не падобна на правільны URL-адрас або ключ OpenPGP."
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/whisperBack/whisperback.py:57
+#, python-format
+msgid "Invalid contact email: %s"
+msgstr "Няправільны кантактны адрас электроннай пошты: %s"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/whisperBack/whisperback.py:76
+#, python-format
+msgid "Invalid contact OpenPGP key: %s"
+msgstr "Няправільны кантактны ключ OpenPGP: %s"
+
+#: config/chroot_local-includes/usr/lib/python3/dist-packages/whisperBack/whisperback.py:78
+msgid "Invalid contact OpenPGP public key block"
+msgstr "Няправільны блок адкрытага ключа OpenPGP"
+
+#: config/chroot_local-includes/usr/local/bin/tca:11
+msgid ""
+"You turned on Offline Mode in the Welcome Screen.\n"
+"It is impossible to connect to Tor in Offline Mode.\n"
+"To connect to Tor and the Internet, restart Tails without Offline Mode."
+msgstr ""
+"Вы ўключылі Афлайн-рэжым на экране прывітання.\n"
+"У Афлайн-рэжыме немагчыма падключыцца да Tor.\n"
+"Каб падключыцца да Tor і інтэрнэту, перазапусціце Tails без Афлайн-рэжыму."
+
+#: config/chroot_local-includes/usr/local/lib/polkit-policy-change-message:65
+msgid ""
+"Authentication is required to run the Synaptic Package Manager. Enter the "
+"administration password that you set up in the Welcome Screen."
+msgstr ""
+"Для запуску Менеджара пакетаў Synaptic патрабуецца аўтэнтыфікацыя. Увядзіце "
+"пароль адміністратара, які вы ўсталявалі на экране прывітання."
+
+#: config/chroot_local-includes/usr/local/lib/polkit-policy-change-message:71
+msgid ""
+"For better security, no administration password is set up in Tails by "
+"default. To run the Synaptic Package Manager, restart Tails and set up an "
+"administration password in the Welcome Screen."
+msgstr ""
+"Дзеля лепшай бяспекі пароль адміністратара ў Tails не ўсталяваны па "
+"змаўчанні. Каб запусціць Менеджар пакетаў Synaptic, перазапусціце Tails і "
+"ўсталюйце пароль адміністратара на экране прывітання."
+
+#: ../config/chroot_local-includes/usr/share/applications/org.boum.tails.PersistentStorage.desktop.in.h:2
+msgid ""
+"Configure which files and application configuration are saved between "
+"working sessions"
+msgstr ""
+"Наладзьце, якія файлы і канфігурацыі праграм захоўваюцца паміж працоўнымі "
+"сесіямі"
+
+#: ../config/chroot_local-includes/usr/share/applications/org.boum.tails.PersistentStorage.desktop.in.h:3
+msgid "configuration;saved"
+msgstr "канфігурацыя;захавана"
+
+#: ../config/chroot_local-includes/usr/share/applications/tails-documentation.desktop.in.h:1
+msgid "Tails Documentation"
+msgstr "Дакументацыя Tails"
+
+#: ../config/chroot_local-includes/usr/share/applications/tails-documentation.desktop.in.h:2
+msgid "Learn how to use Tails"
+msgstr "Навучыцеся карыстацца Tails"
+
+#: ../config/chroot_local-includes/usr/share/applications/tails-documentation.desktop.in.h:3
+msgid "learn"
+msgstr "навучыцца"
+
+#: ../config/chroot_local-includes/usr/share/applications/tails-about.desktop.in.h:2
+msgid "Learn more about Tails"
+msgstr "Даведацца больш пра Tails"
+
+#: ../config/chroot_local-includes/usr/share/applications/tails-backup.desktop.in.h:1
+msgid "Back Up Persistent Storage"
+msgstr "Зрабіць рэзервовую копію Пастаяннага сховішча"
+
+#: ../config/chroot_local-includes/usr/share/applications/tails-backup.desktop.in.h:2
+msgid ""
+"Make a backup of the Tails Persistent Storage to another Tails USB stick"
+msgstr ""
+"Зрабіць рэзервовую копію Пастаяннага сховішча Tails на іншы USB-"
+"назапашвальнік Tails"
+
+#: ../config/chroot_local-includes/usr/share/applications/tails-backup.desktop.in.h:3
+msgid "backup"
+msgstr "рэзервовая копія"
+
+#: ../config/chroot_local-includes/usr/share/applications/tails-installer.desktop.in.h:2
+msgid "Install, clone, upgrade Tails"
+msgstr "Усталяваць, кланіраваць, абнавіць Tails"
+
+#: ../config/chroot_local-includes/usr/share/applications/tails-installer.desktop.in.h:3
+msgid "install;clone;upgrade;manual"
+msgstr "усталяваць;кланіраваць;абнавіць;уручную"
+
+#: ../config/chroot_local-includes/usr/share/applications/tca.desktop.in.h:2
+msgid "Connect Tails to the Tor network"
+msgstr "Падключыць Tails да сеткі Tor"
+
+#: ../config/chroot_local-includes/usr/share/applications/tca.desktop.in.h:3
+msgid "connect;tor;network"
+msgstr "падключыцца;tor;сетка"
+
+#: ../config/chroot_local-includes/usr/share/applications/org.boum.tails.TorBrowser.desktop.in.h:1
+msgid "Tor Browser"
+msgstr "Браўзер Tor"
+
+#: ../config/chroot_local-includes/usr/share/applications/org.boum.tails.TorBrowser.desktop.in.h:2
+msgid "Anonymous Web Browser"
+msgstr "Ананімны вэб-браўзер"
+
+#: ../config/chroot_local-includes/usr/share/applications/org.boum.tails.TorBrowser.desktop.in.h:3
+msgid "web;tor;browser"
+msgstr "вэб;tor;браўзер"
+
+#: ../config/chroot_local-includes/usr/share/applications/unsafe-browser.desktop.in.h:2
+msgid "Browse the World Wide Web without anonymity"
+msgstr "Праглядаць Сусветнае павуцінне без ананімнасці"
+
+#: ../config/chroot_local-includes/usr/share/applications/unsafe-browser.desktop.in.h:3
+msgid "Unsafe Web Browser"
+msgstr "Небяспечны вэб-браўзер"
+
+#: ../config/chroot_local-includes/usr/share/applications/unsafe-browser.desktop.in.h:4
+msgid "web;captive;portal"
+msgstr "вэб;captive;партал"
+
+#: ../config/chroot_local-includes/usr/share/applications/unlock-veracrypt-volumes.desktop.in.h:2
+msgid "Mount VeraCrypt encrypted file containers and devices"
+msgstr "Манціраваць зашыфраваныя файлавыя кантэйнеры і прылады VeraCrypt"
+
+#: ../config/chroot_local-includes/usr/share/applications/unlock-veracrypt-volumes.desktop.in.h:3
+msgid "mount;encrypted;container;truecrypt"
+msgstr "манціраваць;зашыфраваны;кантэйнер;truecrypt"
+
+#: ../config/chroot_local-includes/usr/share/applications/org.boum.tails.AdditionalSoftware.desktop.in.h:2
+msgid ""
+"Configure the additional software installed from your Persistent Storage "
+"when starting Tails"
+msgstr ""
+"Наладзіць дадатковае праграмнае забеспячэнне, якое ўсталёўваецца з вашага "
+"Пастаяннага сховішча пры запуску Tails"
+
+#: ../config/chroot_local-includes/usr/share/applications/org.boum.tails.AdditionalSoftware.desktop.in.h:3
+msgid "persistent;storage;package;install"
+msgstr "пастаяннае;сховішча;пакет;усталяваць"
+
+#: ../config/chroot_local-includes/usr/share/applications/whisperback.desktop.in.h:1
+msgid "WhisperBack Error Reporting"
+msgstr "Справаздачы аб памылках WhisperBack"
+
+#: ../config/chroot_local-includes/usr/share/applications/whisperback.desktop.in.h:2
+msgid "Send feedback via encrypted e-mail"
+msgstr "Адправіць водгук праз зашыфраваную электронную пошту"
+
+#: ../config/chroot_local-includes/usr/share/applications/whisperback.desktop.in.h:3
+msgid "feedback;bug;report;tails;error;"
+msgstr "водгук;памылка;справаздача;tails;"
+
+#: ../config/chroot_local-includes/usr/share/desktop-directories/Tails.directory.in.h:2
+msgid "Tails specific tools"
+msgstr "Спецыфічныя інструменты Tails"
+
+#: ../config/chroot_local-includes/usr/share/polkit-1/actions/org.boum.tails.AdditionalSoftware.policy.in.h:1
+msgid "Remove an additional software package"
+msgstr "Выдаліць дадатковы пакет праграмнага забеспячэння"
+
+#: ../config/chroot_local-includes/usr/share/polkit-1/actions/org.boum.tails.AdditionalSoftware.policy.in.h:2
+msgid ""
+"Authentication is required to remove a package from your additional software "
+"($(command_line))"
+msgstr ""
+"Для выдалення пакета з вашага дадатковага праграмнага забеспячэння ($"
+"(command_line)) патрабуецца аўтэнтыфікацыя"
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/additional_settings.ui.in:18
+#: ../config/chroot_local-includes/usr/share/tails/greeter/additional_settings.ui.in:56
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:869
+msgid "Administration Password"
+msgstr "Пароль адміністратара"
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/additional_settings.ui.in:34
+msgid ""
+"Set up an administration password if you need to perform administrative "
+"tasks. Otherwise, the administration password is disabled for better "
+"security."
+msgstr ""
+"Усталюйце пароль адміністратара, калі вам трэба выконваць адміністрацыйныя "
+"задачы. У адваротным выпадку пароль адміністратара адключаны дзеля лепшай "
+"бяспекі."
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/additional_settings.ui.in:77
+msgid "Enter an administration password"
+msgstr "Увядзіце пароль адміністратара"
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/additional_settings.ui.in:131
+msgid "Confirm your administration password"
+msgstr "Пацвердзіце ваш пароль адміністратара"
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/additional_settings.ui.in:156
+msgid "Disable"
+msgstr "Адключыць"
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/additional_settings.ui.in:186
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:873
+msgid "MAC Address Anonymization"
+msgstr "Ананімізацыя MAC-адраса"
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/additional_settings.ui.in:202
+msgid ""
+"MAC address anonymization hides the serial number of your network interface "
+"(Wi-Fi or wired) from the local network. Anonymizing MAC addresses is "
+"generally safer as it helps you hide your geographical location. But it "
+"might also create connectivity problems or look suspicious."
+msgstr ""
+"Ананімізацыя MAC-адраса хавае серыйны нумар вашага сеткавага інтэрфейсу (Wi-"
+"Fi або праваднога) ад лакальнай сеткі. Ананімізацыя MAC-адрасоў звычайна "
+"больш бяспечная, бо яна дапамагае схаваць ваша геаграфічнае "
+"месцазнаходжанне. Але яна таксама можа выклікаць праблемы з падключэннем або "
+"выглядаць падазрона."
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/additional_settings.ui.in:244
+msgid "Anonymize all MAC addresses (default)"
+msgstr "Ананімізаваць усе MAC-адрасы (па змаўчанні)"
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/additional_settings.ui.in:290
+msgid "Don't anonymize MAC addresses"
+msgstr "Не ананімізаваць MAC-адрасы"
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/additional_settings.ui.in:343
+msgid "Offline Mode"
+msgstr "Пазасеткавы рэжым"
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/additional_settings.ui.in:359
+msgid ""
+"If you want to work completely offline, you can disable all networking for "
+"increased security."
+msgstr ""
+"Калі вы хочаце працаваць цалкам у аўтаномным рэжыме, вы можаце адключыць усе "
+"сеткавыя злучэнні для павышэння бяспекі."
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/additional_settings.ui.in:514
+msgid ""
+"The Unsafe Browser allows you to sign in to a network using a captive "
+"portal.\n"
+"\n"
+"A captive portal is a web page that is displayed before you can access the "
+"Internet. Captive portals usually require you to log in to the network or "
+"enter information such as an email address.\n"
+"\n"
+"The Unsafe Browser is not anonymous and can deanonymize you. Use it only to "
+"sign in to networks."
+msgstr ""
+"Небяспечны браўзер дазваляе ўвайсці ў сетку з дапамогай інтэрактыўнага "
+"партала.\n"
+"\n"
+"Інтэрактыўны партал (captive portal) — гэта вэб-старонка, якая "
+"адлюстроўваецца перад тым, як вы атрымаеце доступ да інтэрнэту. "
+"Інтэрактыўныя парталы звычайна патрабуюць ад вас аўтарызавацца ў сетцы або "
+"ўвесці такую інфармацыю, як адрас электроннай пошты.\n"
+"\n"
+"Небяспечны браўзер не з'яўляецца ананімным і можа дэананімізаваць вас. "
+"Выкарыстоўвайце яго толькі для аўтарызацыі ў сетках."
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/additional_settings.ui.in:560
+msgid "Enable the Unsafe Browser (default)"
+msgstr "Уключыць Небяспечны браўзер (па змаўчанні)"
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/additional_settings.ui.in:606
+msgid "Disable the Unsafe Browser"
+msgstr "Адключыць Небяспечны браўзер"
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:46
+msgid "Settings were loaded from the Persistent Storage."
+msgstr "Налады былі загружаны з Пастаяннага сховішча."
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:98
+msgid "Welcome to Tails!"
+msgstr "Сардэчна запрашаем у Tails!"
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:131
+msgid "Language and Formats"
+msgstr "Мова і фарматы"
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:167
+msgid "Default Settings"
+msgstr "Налады па змаўчанні"
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:217
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:238
+msgid "Save"
+msgstr "Захаваць"
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:267
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:379
+msgid "_Persistent Storage"
+msgstr "_Пастаяннае сховішча"
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:287
+msgid ""
+"You can save some of your files and configuration in an encrypted Persistent "
+"Storage on your Tails USB stick: your documents, browser bookmarks, Wi-Fi "
+"passwords, and so on."
+msgstr ""
+"Вы можаце захаваць некаторыя свае файлы і канфігурацыі ў зашыфраваным "
+"Пастаянным сховішчы на вашым USB-назапашвальніку Tails: вашы дакументы, "
+"закладкі браўзера, паролі ад Wi-Fi і гэтак далей."
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:314
+msgid "Create and configure a Persistent Storage after starting Tails"
+msgstr "Стварыць і наладзіць Пастаяннае сховішча пасля запуску Tails"
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:406
+msgid "Show Passphrase"
+msgstr "Паказаць парольную фразу"
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:463
+msgid "Enter your passphrase"
+msgstr "Увядзіце вашу парольную фразу"
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:478
+msgid "Unlock Encryption"
+msgstr "Разблакаваць шыфраванне"
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:545
+msgid "Impossible to unlock the Persistent Storage."
+msgstr "Немагчыма разблакаваць Пастаяннае сховішча."
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:605
+msgid "Partitioning Errors"
+msgstr "Памылкі разбіцця на раздзелы"
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:641
+msgid ""
+"Errors were detected in the partitioning of your Tails USB stick.\n"
+"\n"
+"Try reinstalling Tails. If the error persists, reinstall on a new USB stick."
+msgstr ""
+"Былі выяўлены памылкі пры разбіцці на раздзелы вашага USB-назапашвальніка "
+"Tails.\n"
+"\n"
+"Паспрабуйце пераўсталяваць Tails. Калі памылка захаваецца, пераўсталюйце на "
+"новы USB-назапашвальнік."
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:673
+msgid "_Additional Settings"
+msgstr "_Дадатковыя налады"
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:756
+msgid "Add an additional setting"
+msgstr "Дадаць дадатковую наладу"
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:803
+msgid "Shutdown"
+msgstr "Выключэнне"
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:812
+msgid "_Start Tails"
+msgstr "_Запусціць Tails"
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:841
+msgid ""
+"The default settings are safe in most situations. To add a custom setting, "
+"press the \"+\" button below."
+msgstr ""
+"Налады па змаўчанні бяспечныя ў большасці сітуацый. Каб дадаць "
+"карыстальніцкую наладу, націсніце кнопку \"+\" ніжэй."
+
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:877
+msgid "Network Configuration"
+msgstr "Налада сеткі"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/change_passphrase_dialog.ui.in:94
+msgid "Current _Passphrase"
+msgstr "Бягучая _парольная фраза"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/change_passphrase_dialog.ui.in:131
+msgid "_New Passphrase"
+msgstr "_Новая парольная фраза"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/change_passphrase_dialog.ui.in:179
+msgid "_Confirm New Passphrase"
+msgstr "_Пацвердзіце новую парольную фразу"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/change_passphrase_dialog.ui.in:219
+msgid "_Show Passphrases"
+msgstr "_Паказаць парольныя фразы"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/change_passphrase_dialog.ui.in:253
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/passphrase_view.ui.in:289
+#: ../config/chroot_local-includes/usr/share/tails-installer/passphrase_dialog.ui.in:161
+msgid "The passphrases do not match"
+msgstr "Парольныя фразы не супадаюць"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/change_passphrase_dialog.ui.in:315
+msgid "Ch_ange"
+msgstr "Зм_яніць"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/deleted_view.ui.in:20
+msgid "The Persistent Storage was successfully deleted."
+msgstr "Пастаяннае сховішча было паспяхова выдалена."
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/deleted_view.ui.in:36
+msgid "_Close"
+msgstr "_Закрыць"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/fail_view.ui.in:31
+msgid "Oh no! Something has gone wrong."
+msgstr "О не! Нешта пайшло не так."
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/fail_view.ui.in:45
+msgid ""
+"The Persistent Storage service exited unexpectedly.\n"
+"\n"
+"You can send an error report or check the output of the following commands "
+"to investigate:"
+msgstr ""
+"Сэрвіс Пастаяннага сховішча нечакана завяршыў працу.\n"
+"\n"
+"Вы можаце адправіць справаздачу пра памылку або праверыць вывад наступных "
+"каманд для даследавання:"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/fail_view.ui.in:78
+msgid "Send Error Report"
+msgstr "Адправіць справаздачу пра памылку"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:63
+msgid ""
+"Your Persistent Storage is unlocked.\n"
+"\n"
+"Its content is available until you shut down Tails.\n"
+"\n"
+"<a href=\"doc/persistent_storage/backup\">Learn how to make a backup of your "
+"Persistent Storage.</a>"
+msgstr ""
+"Ваша Пастаяннае сховішча разблакавана.\n"
+"\n"
+"Яго змесціва даступна да таго часу, пакуль вы не выключыце Tails.\n"
+"\n"
+"<a href=\"doc/persistent_storage/backup\">Даведайцеся, як стварыць "
+"рэзервовую копію вашага Пастаяннага сховішча.</a>"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:91
+msgid ""
+"Turn on the features of the Persistent Storage for the data that you want to "
+"save to your Tails USB stick."
+msgstr ""
+"Уключыце функцыі Пастаяннага сховішча для даных, якія вы хочаце захаваць на "
+"вашым USB-назапашвальніку Tails."
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:108
+msgid "Personal Documents"
+msgstr "Асабістыя дакументы"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:136
+msgid "Persistent Folder"
+msgstr "Пастаянная папка"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:137
+msgid "A folder where you can save your documents."
+msgstr "Папка, дзе вы можаце захоўваць свае дакументы."
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:162
+msgid "Open Persistent Folder"
+msgstr "Адкрыць Пастаянную папку"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:175
+msgid "Activate Persistent Folder"
+msgstr "Актываваць Пастаянную папку"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:202
+msgid "System Settings"
+msgstr "Сістэмныя налады"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:230
+msgid "Welcome Screen"
+msgstr "Экран прывітання"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:246
+msgid "Activate Welcome Screen"
+msgstr "Актываваць Экран прывітання"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:259
+msgid "Printers"
+msgstr "Прынтары"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:275
+msgid "Activate Printers"
+msgstr "Актываваць прынтары"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:302
+msgid "Network"
+msgstr "Сетка"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:330
+msgid "Network Connections"
+msgstr "Сеткавыя злучэнні"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:331
+msgid "Save Wi-Fi passwords and mobile broadband configuration."
+msgstr "Захоўваць паролі ад Wi-Fi і канфігурацыю мабільнай сеткі."
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:347
+msgid "Activate Network Connections"
+msgstr "Актываваць сеткавыя злучэнні"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:360
+msgid "Tor Bridge"
+msgstr "Мост Tor"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:376
+msgid "Activate Tor Bridge"
+msgstr "Актываваць мост Tor"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:403
+msgid "Applications"
+msgstr "Праграмы"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:431
+msgid "Tor Browser Bookmarks"
+msgstr "Закладкі Tor Browser"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:447
+msgid "Activate Tor Browser Bookmarks"
+msgstr "Актываваць закладкі Tor Browser"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:460
+msgid "Electrum Bitcoin Wallet"
+msgstr "Bitcoin-гаманец Electrum"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:476
+msgid "Activate Electrum Bitcoin Wallet"
+msgstr "Актываваць Bitcoin-гаманец Electrum"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:489
+msgid "Thunderbird Email Client"
+msgstr "Паштовы кліент Thunderbird"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:505
+msgid "Activate Thunderbird Email Client"
+msgstr "Актываваць паштовы кліент Thunderbird"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:518
+msgid "GnuPG"
+msgstr "GnuPG"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:519
+msgid "OpenPGP keys outside of Thunderbird, including in Kleopatra."
+msgstr "Ключы OpenPGP па-за Thunderbird, у тым ліку ў Kleopatra."
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:535
+msgid "Activate GnuPG"
+msgstr "Актываваць GnuPG"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:548
+msgid "Pidgin Internet Messenger"
+msgstr "Інтэрнэт-месенджар Pidgin"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:564
+msgid "Activate Pidgin Internet Messenger"
+msgstr "Актываваць інтэрнэт-месенджар Pidgin"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:577
+msgid "SSH Client"
+msgstr "Кліент SSH"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:593
+msgid "Activate SSH Client"
+msgstr "Актываваць кліент SSH"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:620
+msgid "Advanced Settings"
+msgstr "Пашыраныя налады"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:649
+msgid "Install additional software automatically when starting Tails."
+msgstr ""
+"Усталёўваць дадатковае праграмнае забеспячэнне аўтаматычна пры запуску Tails."
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:674
+msgid "Configure Additional Software"
+msgstr "Наладзіць дадатковае праграмнае забеспячэнне"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:687
+msgid "Activate Additional Software"
+msgstr "Актываваць дадатковае праграмнае забеспячэнне"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:700
+msgid "Dotfiles"
+msgstr "Dotfiles"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:701
+msgid "Symlink every file in the Dotfiles folder into the Home folder."
+msgstr ""
+"Ствараць сімвалічныя спасылкі для кожнага файла з папкі Dotfiles у папку "
+"Home."
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:734
+msgid "Activate Dotfiles"
+msgstr "Актываваць Dotfiles"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:766
+msgid "Custom"
+msgstr "Карыстальніцкі"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:785
+msgid ""
+"To add or remove custom features, modify /live/persistence/"
+"TailsData_unlocked/persistence.conf."
+msgstr ""
+"Каб дадаць або выдаліць карыстальніцкія функцыі, змяніце /live/persistence/"
+"TailsData_unlocked/persistence.conf."
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:827
+msgid ""
+"<a href=\"doc/persistent_storage\">Learn more about the Persistent Storage.</"
+"a>"
+msgstr ""
+"<a href=\"doc/persistent_storage\">Даведайцеся больш пра Пастаяннае сховішча."
+"</a>"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/locked_view.ui.in:53
+msgid ""
+"<b>Your Persistent Storage is locked.</b>\n"
+"\n"
+"To use or configure your Persistent Storage, unlock it in the Welcome Screen "
+"when starting Tails.\n"
+"\n"
+"To delete your Persistent Storage, click <b>Delete</b> on the right of the "
+"title bar."
+msgstr ""
+"<b>Ваша Пастаяннае сховішча заблакавана.</b>\n"
+"\n"
+"Каб выкарыстоўваць або наладзіць сваё Пастаяннае сховішча, разблакуйце яго "
+"на экране прывітання пры запуску Tails.\n"
+"\n"
+"Каб выдаліць Пастаяннае сховішча, націсніце <b>Выдаліць</b> у правай частцы "
+"радка загалоўка."
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/passphrase_view.ui.in:60
+msgid ""
+"Choose the passphrase that you will use to unlock the encryption of your "
+"Persistent Storage and all its data."
+msgstr ""
+"Выберыце парольную фразу, якую вы будзеце выкарыстоўваць для разблакавання "
+"шыфравання вашага Пастаяннага сховішча і ўсіх яго даных."
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/passphrase_view.ui.in:80
+msgid "We recommend a long passphrase of 5 to 7 random words."
+msgstr "Мы рэкамендуем доўгую парольную фразу з 5–7 выпадковых слоў."
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/passphrase_view.ui.in:92
+msgid " For example:"
+msgstr " Напрыклад:"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/passphrase_view.ui.in:175
+#: ../config/chroot_local-includes/usr/share/tails-installer/passphrase_dialog.ui.in:46
+msgid "Passphrase:"
+msgstr "Пароль:"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/passphrase_view.ui.in:194
+#: ../config/chroot_local-includes/usr/share/tails-installer/passphrase_dialog.ui.in:65
+msgid "Confirm:"
+msgstr "Пацвердзіць:"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/passphrase_view.ui.in:317
+#: ../config/chroot_local-includes/usr/share/tails-installer/passphrase_dialog.ui.in:185
+msgid "_Show Passphrase"
+msgstr "_Паказаць парольную фразу"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/passphrase_view.ui.in:361
+msgid "_Back"
+msgstr "_Назад"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/passphrase_view.ui.in:378
+msgid "_Create Persistent Storage"
+msgstr "_Стварыць Пастаяннае сховішча"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/welcome_view.ui.in:56
+msgid ""
+"Everything you do disappears automatically when you shut down Tails.\n"
+"\n"
+"But you can save some of your files and configuration in an encrypted "
+"Persistent Storage on your Tails USB stick, for example:\n"
+"\n"
+"• Your documents\n"
+"• Your Wi-Fi passwords\n"
+"• Your browser bookmarks\n"
+"• ...\n"
+"\n"
+"<a href=\"doc/persistent_storage\">Learn more about the Persistent Storage.</"
+"a>"
+msgstr ""
+"Усё, што вы робіце, аўтаматычна знікае пасля выключэння Tails.\n"
+"\n"
+"Але вы можаце захаваць некаторыя са сваіх файлаў і канфігурацый у "
+"зашыфраваным Пастаянным сховішчы на вашым USB-назапашвальніку Tails, "
+"напрыклад:\n"
+"\n"
+"• Вашы дакументы\n"
+"• Вашы паролі ад Wi-Fi\n"
+"• Закладкі браўзера\n"
+"• ...\n"
+"\n"
+"<a href=\"doc/persistent_storage\">Даведайцеся больш пра Пастаяннае сховішча."
+"</a>"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/welcome_view.ui.in:93
+msgid ""
+"Sorry, it is impossible to create a Persistent Storage on this device.\n"
+"\n"
+"To be able to use Tails with a Persistent Storage, please follow our "
+"instructions on <a href=\"install\">installing Tails on a USB stick</a>."
+msgstr ""
+"Выбачайце, немагчыма стварыць Пастаяннае сховішча на гэтай прыладзе.\n"
+"\n"
+"Каб мець магчымасць выкарыстоўваць Tails з Пастаянным сховішчам, калі ласка, "
+"выконвайце нашы інструкцыі па <a href=\"install\">ўсталяванні Tails на USB-"
+"назапашвальнік</a>."
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/welcome_view.ui.in:141
+#: ../config/chroot_local-includes/usr/share/tails-installer/passphrase_dialog.ui.in:232
+msgid "Co_ntinue"
+msgstr "Пра_цягнуць"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/window.ui.in:29
+msgid "_Delete…"
+msgstr "_Выдаліць…"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/window.ui.in:49
+msgid "_Change Passphrase…"
+msgstr "_Змяніць парольную фразу…"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/window.ui.in:66
+msgid "_Restart Tails"
+msgstr "_Перазапусціць Tails"
+
+#: ../config/chroot_local-includes/usr/share/tails/unlock-veracrypt-volumes/main.ui.in:61
+msgid "File Containers"
+msgstr "Файлавыя кантэйнеры"
+
+#: ../config/chroot_local-includes/usr/share/tails/unlock-veracrypt-volumes/main.ui.in:80
+msgid "_Add"
+msgstr "_Дадаць"
+
+#: ../config/chroot_local-includes/usr/share/tails/unlock-veracrypt-volumes/main.ui.in:86
+msgid "Add a file container"
+msgstr "Дадаць файлавы кантэйнер"
+
+#: ../config/chroot_local-includes/usr/share/tails/unlock-veracrypt-volumes/main.ui.in:103
+msgid "Partitions and Drives"
+msgstr "Раздзелы і дыскі"
+
+#: ../config/chroot_local-includes/usr/share/tails/unlock-veracrypt-volumes/main.ui.in:121
+msgid ""
+"This application is not affiliated with or endorsed by the VeraCrypt project "
+"or IDRIX."
+msgstr ""
+"Гэтая праграма не звязана з праектам VeraCrypt або IDRIX і не ўхвалена імі."
+
+#: ../config/chroot_local-includes/usr/share/tails/unlock-veracrypt-volumes/volume.ui.in:29
+msgid "_Open"
+msgstr "_Адкрыць"
+
+#: ../config/chroot_local-includes/usr/share/tails/unlock-veracrypt-volumes/volume.ui.in:38
+msgid "Lock this volume"
+msgstr "Заблакаваць гэты том"
+
+#: ../config/chroot_local-includes/usr/share/tails/unlock-veracrypt-volumes/volume.ui.in:52
+msgid "_Unlock"
+msgstr "_Разблакаваць"
+
+#: ../config/chroot_local-includes/usr/share/tails/unlock-veracrypt-volumes/volume.ui.in:61
+msgid "Detach this volume"
+msgstr "Адвязаць гэты том"
+
+#: ../config/chroot_local-includes/usr/share/tails-installer/passphrase_dialog.ui.in:8
+msgid "Choose Passphrase"
+msgstr "Выберыце парольную фразу"
+
+#: ../config/chroot_local-includes/usr/share/tails-installer/passphrase_dialog.ui.in:30
+msgid "Choose the passphrase for the cloned Persistent Storage."
+msgstr "Выберыце парольную фразу для кланіраванага Пастаяннага сховішча."
+
+#: ../config/chroot_local-includes/usr/share/tails-installer/tails-installer.ui.in:281
+msgid "Target USB stick:"
+msgstr "Мэтавы USB-назапашвальнік:"
+
+#: ../config/chroot_local-includes/usr/share/tails-installer/tails-installer.ui.in:357
+msgid "Reinstall (delete all data)"
+msgstr "Пераўсталяваць (выдаліць усе даныя)"
+
+#: ../config/chroot_local-includes/usr/share/whisperback/whisperback.ui.in:68
+msgid ""
+"If you want us to encrypt messages when we respond to you, add your key ID, "
+"a link to your key, or the key as a public key block:"
+msgstr ""
+"Калі вы хочаце, каб мы шыфравалі паведамленні пры адказе вам, дадайце "
+"ідэнтыфікатар вашага ключа, спасылку на яго або сам ключ у выглядзе блока "
+"адкрытага ключа:"
+
+#: ../config/chroot_local-includes/usr/share/whisperback/whisperback.ui.in:226
+msgid "WhisperBack"
+msgstr "WhisperBack"
+
+#: ../config/chroot_local-includes/usr/share/whisperback/whisperback.ui.in:255
+msgid "Summary"
+msgstr "Кароткае апісанне"
+
+#: ../config/chroot_local-includes/usr/share/whisperback/whisperback.ui.in:294
+msgid "What were you trying to achieve?"
+msgstr "Чаго вы спрабавалі дасягнуць?"
+
+#: ../config/chroot_local-includes/usr/share/whisperback/whisperback.ui.in:340
+msgid ""
+"<b>What happened instead?</b>\n"
+"Describe the error with as many details as possible."
+msgstr ""
+"<b>Што адбылося насамрэч?</b>\n"
+"Апішыце памылку як мага больш падрабязна."
+
+#: ../config/chroot_local-includes/usr/share/whisperback/whisperback.ui.in:385
+msgid ""
+"<b>What did you do that triggered this error?</b>\n"
+"Describe the exact steps that caused the error, so we can try to make it "
+"happen again.\n"
+"Otherwise, we won't be able to troubleshoot and solve it."
+msgstr ""
+"<b>Што вы зрабілі, што выклікала гэтую памылку?</b>\n"
+"Апішыце дакладныя крокі, якія прывялі да памылкі, каб мы маглі паспрабаваць "
+"прайграць яе зноў.\n"
+"Інакш мы не зможам выявіць прычыну і вырашыць яе."
+
+#: ../config/chroot_local-includes/usr/share/whisperback/whisperback.ui.in:427
+msgid "Error reporting guidelines"
+msgstr "Рэкамендацыі па паведамленні пра памылкі"
+
+#: ../config/chroot_local-includes/usr/share/whisperback/whisperback.ui.in:445
+msgid ""
+"<b>Email address</b>\n"
+"So we can answer you or ask for more details."
+msgstr ""
+"<b>Адрас электроннай пошты</b>\n"
+"Каб мы маглі адказаць вам або запытаць дадатковыя звесткі."
+
+#: ../config/chroot_local-includes/usr/share/whisperback/whisperback.ui.in:480
+msgid "Optional PGP Key…"
+msgstr "Неабавязковы PGP-ключ…"
+
+#: ../config/chroot_local-includes/usr/share/whisperback/whisperback.ui.in:505
+msgid ""
+"Even if we are not able to reply to every report, we analyze all reports to "
+"improve Tails."
+msgstr ""
+"Нават калі мы не можам адказаць на кожную справаздачу, мы аналізуем усе "
+"справаздачы, каб палепшыць Tails."
+
+#: ../config/chroot_local-includes/usr/share/whisperback/whisperback.ui.in:520
+msgid "Description"
+msgstr "Апісанне"
+
+#: ../config/chroot_local-includes/usr/share/whisperback/whisperback.ui.in:537
+#: ../config/chroot_local-includes/usr/share/whisperback/whisperback.ui.in:694
+msgid "Technical Details"
+msgstr "Тэхнічныя падрабязнасці"
+
+#: ../config/chroot_local-includes/usr/share/whisperback/whisperback.ui.in:576
+msgid "Headers"
+msgstr "Загалоўкі"
+
+#: ../config/chroot_local-includes/usr/share/whisperback/whisperback.ui.in:621
+msgid "information about the error being reported"
+msgstr "інфармацыя пра памылку, пра якую паведамляецца"
+
+#: ../config/chroot_local-includes/usr/share/whisperback/whisperback.ui.in:669
+msgid "Debugging Information"
+msgstr "Інфармацыя для адладкі"
+
+#: ../config/chroot_local-includes/usr/share/whisperback/whisperback.ui.in:730
+msgid "_Send"
+msgstr "_Адправіць"
+
+#: ../config/chroot_local-includes/usr/local/share/mime/packages/unlock-veracrypt-volumes.xml.in.h:1
+msgid "TrueCrypt/VeraCrypt container"
+msgstr "Кантэйнер TrueCrypt/VeraCrypt"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:82
+#, fuzzy
+msgid "Configure a Tor bridge"
+msgstr "Наладзіць _мост Tor"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:106
+msgid ""
+"Bridges are secret Tor relays. Use a bridge as your first Tor relay if "
+"accessing Tor is blocked from where you are.\n"
+"\n"
+"You can use <i>obfs4</i> and <i>WebTunnel</i> bridges in Tails.\n"
+msgstr ""
+"Масты — гэта сакрэтныя рэтранслятары Tor. Выкарыстоўвайце мост у якасці "
+"вашага першага рэтранслятара Tor, калі доступ да Tor заблакаваны там, дзе вы "
+"знаходзіцеся.\n"
+"\n"
+"Вы можаце выкарыстоўваць масты <i>obfs4</i> і <i>WebTunnel</i> у Tails.\n"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:126
+msgid "<a href=\"doc/anonymous_internet/tor\">Learn more about Tor bridges</a>"
+msgstr ""
+"<a href=\"doc/anonymous_internet/tor\">Даведайцеся больш пра масты Tor</a>"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:161
+msgid "Use a _default bridge"
+msgstr "Выкарыстоўваць мост па _змаўчанні"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:184
+msgid "obfs4 (recommended)"
+msgstr "obfs4 (рэкамендуецца)"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:185
+msgid "WebTunnel"
+msgstr "WebTunnel"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:208
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1821
+msgid "None"
+msgstr "Не"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:242
+#, fuzzy
+msgid "Ask for a bridge based on your _region"
+msgstr "_Запытаць мост Tor па электроннай пошце"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:301
+#, fuzzy
+msgid "_Ask for a bridge by email"
+msgstr "_Запытаць мост Tor па электроннай пошце"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:320
+msgid ""
+"Send an empty email to <tt>bridges@torproject.org</tt> from a Gmail or "
+"Riseup email address with your phone and scan the QR code that is attached "
+"to the automatic reply."
+msgstr ""
+"Адпраўце пусты ліст на адрас <tt>bridges@torproject.org</tt> з электроннай "
+"пошты Gmail або Riseup на вашым тэлефоне і адсканіруйце QR-код, які будзе "
+"прымацаваны да аўтаматычнага адказу."
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:333
+msgid "Scan _QR code"
+msgstr "Ад_сканіраваць QR-код"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:434
+msgid "_Enter a bridge that you already know"
+msgstr "_Увесці мост, які вы ўжо ведаеце"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:460
+msgid "Bridge"
+msgstr "Мост"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:473
+msgid "obfs4 or webtunnel…"
+msgstr "obfs4 або webtunnel…"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:546
+msgid "Save bridge to _Persistent Storage"
+msgstr "Захаваць мост у _Пастаяннае сховішча"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:571
+msgid "Save bridge to Persistent Storage"
+msgstr "Захаваць мост у Пастаяннае сховішча"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:711
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1462
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1859
+msgid "_Connect to Tor"
+msgstr "_Падключыцца да Tor"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:763
+msgid "Error connecting to Tor"
+msgstr "Памылка падключэння да Tor"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:783
+msgid "This local network seems to be blocking access to Tor."
+msgstr "Здаецца, гэтая лакальная сетка блакуе доступ да Tor."
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:811
+#, fuzzy
+msgid "Error connecting to Tor with this bridge"
+msgstr "Падключэнне да Tor без мастоў…"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:827
+msgid ""
+"Either this Tor bridge is not working or your network is blocking access to "
+"it."
+msgstr ""
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:856
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:930
+#, fuzzy
+msgid "Try configuring another bridge."
+msgstr "Наладзіць мост Tor"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:884
+#, fuzzy
+msgid "Error connecting to Tor with default bridges"
+msgstr "Падключэнне да Tor праз масты па змаўчанні…"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:900
+#, fuzzy
+msgid "Your network is blocking access to Tor and the default bridges."
+msgstr "Гэтая лакальная сетка блакуе доступ да Tor."
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:916
+#, fuzzy
+msgid "Bridge: <b>default bridges</b>"
+msgstr "Выкарыстоўваць мост па _змаўчанні"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:958
+#, fuzzy
+msgid "Error connecting to Tor with bridges"
+msgstr "Падключэнне да Tor без мастоў…"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:974
+msgid "None of the bridges recommended for this region worked."
+msgstr ""
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:990
+msgid "Try another region or getting a bridge by mail."
+msgstr ""
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1018
+#, fuzzy
+msgid "Error asking for a bridge"
+msgstr "Памылка падчас праверкі абнаўленняў"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1034
+msgid "Tails failed to ask for a bridge based on your region."
+msgstr ""
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1050
+msgid ""
+"Please, <a href=\"support/talk\">report this error</a> and try asking for a "
+"bridge by email."
+msgstr ""
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1087
+#, fuzzy
+msgid "Open _details"
+msgstr "Адкрыць Tails Cloner"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1142
+msgid "• Wrong clock"
+msgstr "• Няправільны час"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1162
+msgid "Your clock and time zone need to be correct to connect to Tor."
+msgstr ""
+"Для падключэння да Tor вашы гадзіннік і часавы пояс павінны быць правільнымі."
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1175
+msgid "Fix _Clock"
+msgstr "Выправіць _час"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1213
+msgid "• Public network"
+msgstr "• Публічная сетка"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1233
+msgid ""
+"If you are in a shop, hotel, or airport, you might need to sign in to the "
+"local network using the Unsafe Browser."
+msgstr ""
+"Калі вы знаходзіцеся ў краме, гатэлі або аэрапорце, магчыма, вам спатрэбіцца "
+"ўвайсці ў лакальную сетку з дапамогай Небяспечнага браўзера."
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1246
+msgid "Try _Signing in to the Network"
+msgstr "Паспрабаваць _ўвайсці ў сетку"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1285
+msgid "• Local proxy"
+msgstr "• Лакальны проксі"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1305
+msgid ""
+"If you are on a corporate or university network, you might need to configure "
+"a local proxy."
+msgstr ""
+"Калі вы карыстаецеся карпаратыўнай або ўніверсітэцкай сеткай, магчыма, вам "
+"спатрэбіцца наладзіць лакальны проксі."
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1335
+msgid "Configure a Local _Proxy"
+msgstr "Наладзіць лакальны _проксі"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1374
+#, fuzzy
+msgid "• Tor bridge"
+msgstr "• Мост Tor па электроннай пошце"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1394
+msgid ""
+"Tor bridges are secret Tor relays. Use a bridge as your first Tor relay if "
+"connections to Tor are blocked, for example in some countries, by some "
+"public networks, or by some parental controls."
+msgstr ""
+"Масты Tor — гэта сакрэтныя рэтранслятары Tor. Выкарыстоўвайце мост у якасці "
+"вашага першага рэтранслятара Tor, калі злучэнні з Tor заблакаваныя, "
+"напрыклад, у некаторых краінах, некаторымі публічнымі сеткамі або сродкамі "
+"бацькоўскага кантролю."
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1410
+#, fuzzy
+msgid "Configure a Tor _Bridge"
+msgstr "Наладзіць мост Tor"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1449
+msgid ""
+"<a href=\"doc/anonymous_internet/tor/troubleshoot\">Troubleshooting "
+"connecting to Tor</a>"
+msgstr ""
+"<a href=\"doc/anonymous_internet/tor/troubleshoot\">Вырашэнне праблем з "
+"падключэннем да Tor</a>"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1494
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1902
+msgid ""
+"Everything you do on the Internet from Tails goes through the Tor network."
+msgstr "Усё, што вы робіце ў інтэрнэце з Tails, праходзіць праз сетку Tor."
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1508
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1917
+msgid ""
+"Tor encrypts and anonymizes your connection by passing it through 3 relays.\n"
+"Tor relays are servers operated by different organizations and volunteers "
+"around the world."
+msgstr ""
+"Tor шыфруе і ананімізуе ваша злучэнне, прапускаючы яго праз 3 "
+"рэтранслятары.\n"
+"Рэтранслятары — гэта серверы, якімі кіруюць розныя арганізацыі і валанцёры "
+"па ўсім свеце."
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1544
+msgid "<b>Connect to Tor _automatically</b>"
+msgstr "<b>_Аўтаматычна падключацца да Tor</b>"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1594
+msgid ""
+"We recommend connecting to Tor automatically if you are on a public Wi-Fi "
+"network or if many people in your country use Tor to circumvent censorship."
+msgstr ""
+"Мы рэкамендуем аўтаматычна падключацца да Tor, калі вы знаходзіцеся ў "
+"публічнай сетцы Wi-Fi або калі шмат людзей у вашай краіне выкарыстоўваюць "
+"Tor для абыходу цэнзуры."
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1612
+msgid ""
+"Tails will try different ways of connecting to Tor until it succeeds.\n"
+"\n"
+"Someone monitoring your Internet connection could identify these attempts as "
+"coming from a Tails user."
+msgstr ""
+"Tails будзе спрабаваць розныя спосабы падключэння да Tor, пакуль не дасягне "
+"поспеху.\n"
+"\n"
+"Той, хто сочыць за вашым інтэрнэт-злучэннем, можа вызначыць, што гэтыя "
+"спробы ідуць ад карыстальніка Tails."
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1646
+msgid "Configure a Tor _bridge"
+msgstr "Наладзіць _мост Tor"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1692
+msgid ""
+"Tor bridges are secret Tor relays. Use a bridge as your first Tor relay if "
+"connections to Tor are blocked, for example in some countries, by some "
+"public networks, or by some parental controls.\n"
+"\n"
+"Choose this option if you already know that you need a bridge. Otherwise, "
+"Tails will autodetect whether you need a bridge to connect to Tor from your "
+"local network."
+msgstr ""
+"Масты Tor — гэта сакрэтныя рэтранслятары Tor. Выкарыстоўвайце мост у якасці "
+"вашага першага рэтранслятара Tor, калі злучэнні з Tor заблакаваныя, "
+"напрыклад, у некаторых краінах, некаторымі публічнымі сеткамі або сродкамі "
+"бацькоўскага кантролю.\n"
+"\n"
+"Выберыце гэтую опцыю, калі вы ўжо ведаеце, што вам патрэбен мост. У "
+"адваротным выпадку Tails аўтаматычна вызначыць, ці патрэбен вам мост для "
+"падключэння да Tor з вашай лакальнай сеткі."
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1734
+msgid "<b>_Hide to my local network that I'm connecting to Tor</b>"
+msgstr "<b>_Схаваць ад маёй лакальнай сеткі, што я падключаюся да Tor</b>"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1784
+msgid ""
+"You might need to go unnoticed if using Tor could look suspicious to someone "
+"who monitors your Internet connection."
+msgstr ""
+"Вам можа спатрэбіцца застацца незаўважаным, калі выкарыстанне Tor можа "
+"здацца падазроным таму, хто сочыць за вашым інтэрнэт-злучэннем."
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1802
+msgid ""
+"Tails will only connect to Tor after you configured a Tor bridge. Bridges "
+"are secret Tor relays that hide that you are connecting to Tor.\n"
+"\n"
+"Our team is doing its best to help you connect to Tor using the most "
+"discreet types of Tor bridges.\n"
+"\n"
+"You will have to do extra configuration if you don't know any Tor bridges "
+"yet, if you connect from a public Wi-Fi network, or if you are in the "
+"Eastern Hemisphere."
+msgstr ""
+"Tails падключыцца да Tor толькі пасля таго, як вы наладзіце мост Tor. Масты "
+"— гэта сакрэтныя рэтранслятары Tor, якія хаваюць, што вы падключаецеся да "
+"Tor.\n"
+"\n"
+"Наша каманда робіць усё магчымае, каб дапамагчы вам падключыцца да Tor з "
+"выкарыстаннем найбольш непрыкметных відаў мастоў Tor.\n"
+"\n"
+"Вам спатрэбіцца зрабіць дадатковую наладу, калі вы яшчэ не ведаеце ніводнага "
+"моста Tor, калі вы падключаецеся з публічнай сеткі Wi-Fi або калі вы "
+"знаходзіцеся ва Усходнім паўшар'і."
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1847
+msgid ""
+"<a href=\"doc/anonymous_internet/tor\">Learn more about how Tails connects "
+"to Tor</a>"
+msgstr ""
+"<a href=\"doc/anonymous_internet/tor\">Даведацца больш пра тое, як Tails "
+"падключаецца да Tor</a>"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1937
+msgid "No Wi-Fi hardware detected"
+msgstr "Абсталяванне Wi-Fi не выяўлена"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1955
+msgid ""
+"Tails couldn't find any Wi-Fi interface on your computer. If your computer "
+"has a Wi-Fi interface, it might not work on Tails.\n"
+"\n"
+"To connect to the Internet you can try to:\n"
+"\n"
+" • Use an Ethernet cable instead of Wi-Fi. Wired interfaces work much more "
+"reliably than Wi-Fi in Tails.\n"
+" • Use USB tethering to share the Wi-Fi or mobile data connection of your "
+"phone using a cable.\n"
+" • Buy a USB Wi-Fi adapter that works in Tails.\n"
+"                "
+msgstr ""
+"Tails не ўдалося знайсці ніводнага інтэрфейсу Wi-Fi на вашым камп'ютары. "
+"Калі ў вашым камп'ютары ёсць інтэрфейс Wi-Fi, магчыма, ён не працуе ў "
+"Tails.\n"
+"\n"
+"Каб падключыцца да інтэрнэту, вы можаце паспрабаваць:\n"
+"\n"
+"• Выкарыстоўваць кабель Ethernet замест Wi-Fi. Правадныя інтэрфейсы працуюць "
+"значна больш надзейна, чым Wi-Fi у Tails.\n"
+"• Выкарыстоўваць USB-мадэм (USB tethering), каб падзяліцца злучэннем Wi-Fi "
+"або мабільнымі данымі вашага тэлефона праз кабель.\n"
+"• Купіць USB-адаптар Wi-Fi, які працуе ў Tails.\n"
+"                "
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:1979
+msgid ""
+"\n"
+"<a href=\"doc/anonymous_internet/no-wifi\">\n"
+"Learn more about troubleshooting Wi-Fi not working.\n"
+"</a>\n"
+"                "
+msgstr ""
+"\n"
+"<a href=\"doc/anonymous_internet/no-wifi\">\n"
+"Даведайцеся больш пра вырашэнне праблем з непрацуючым Wi-Fi\n"
+"</a>\n"
+"                "
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:2007
+msgid "Connect to a local network"
+msgstr "Падключэнне да лакальнай сеткі"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:2024
+msgid ""
+"You are not connected to a local network yet. To be able to connect to the "
+"Tor network, you first need to connect to a Wi-Fi, wired, or mobile network."
+msgstr ""
+"Вы яшчэ не падключаны да лакальнай сеткі. Каб мець магчымасць падключыцца да "
+"сеткі Tor, вам спачатку трэба падключыцца да Wi-Fi, правадной або мабільнай "
+"сеткі."
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:2038
+msgid "Open Wi-Fi Settings"
+msgstr "Адкрыць налады Wi-Fi"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:2087
+msgid "Testing Internet access…"
+msgstr "Праверка доступу да інтэрнэту…"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:2127
+msgid "You have access to the Internet"
+msgstr "У вас ёсць доступ да інтэрнэту"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:2161
+msgid "Testing access to Tor…"
+msgstr "Праверка доступу да Tor…"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:2204
+msgid "You can connect to Tor"
+msgstr "Вы можаце падключыцца да Tor"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:2234
+msgid "Failed to connect to Tor without bridges."
+msgstr "Не ўдалося падключыцца да Tor без мастоў."
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:2250
+msgid "This local network is blocking access to Tor."
+msgstr "Гэтая лакальная сетка блакуе доступ да Tor."
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:2282
+msgid "Connecting to Tor…"
+msgstr "Падключэнне да Tor…"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:2387
+msgid "Start Tor Browser"
+msgstr "Запусціць Tor Browser"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:2446
+msgid "Configure a Local Proxy"
+msgstr "Наладзіць лакальны проксі"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:2472
+msgid "Proxy Type"
+msgstr "Тып проксі"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:2489
+msgid "No proxy"
+msgstr "Няма проксі-сервера"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:2490
+msgid "SOCKS 4"
+msgstr "SOCKS 4"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:2491
+msgid "SOCKS 5"
+msgstr "SOCKS 5"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:2492
+msgid "HTTP / HTTPS"
+msgstr "HTTP / HTTPS"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:2511
+msgid "Address"
+msgstr "Адрас"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:2528
+msgid "Username"
+msgstr "Логін"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:2545
+msgid "IP address or hostname"
+msgstr "IP-адрас або імя хосту"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:2563
+msgid "Port"
+msgstr "Порт"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/main.ui.in:2687
+msgid "_Save Proxy Settings"
+msgstr "_Захаваць налады проксі"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/time-dialog.ui.in:7
+msgid "Tor Connection - Fix Clock"
+msgstr "Злучэнне Tor - Выправіць час"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/time-dialog.ui.in:76
+msgid ""
+"Your time zone cannot be used to identify or locate you. Your time zone will "
+"never be sent over the network and will only be used to fix your clock and "
+"connect to Tor."
+msgstr ""
+"Ваш часавы пояс не можа быць выкарыстаны для вашай ідэнтыфікацыі або "
+"вызначэння месцазнаходжання. Ваш часавы пояс ніколі не будзе перадавацца па "
+"сетцы і будзе выкарыстоўвацца толькі для выпраўлення вашага часу і "
+"падключэння да Tor."
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/time-dialog.ui.in:142
+msgid "Time zone"
+msgstr "Часавы пояс"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/time-dialog.ui.in:186
+msgid "Time"
+msgstr "Час"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/time-dialog.ui.in:223
+msgid ":"
+msgstr ":"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/time-dialog.ui.in:277
+msgid "Date"
+msgstr "Дата"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/time-dialog.ui.in:311
+msgid "January"
+msgstr "Студзень"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/time-dialog.ui.in:312
+msgid "February"
+msgstr "Люты"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/time-dialog.ui.in:313
+msgid "March"
+msgstr "Сакавік"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/time-dialog.ui.in:314
+msgid "April"
+msgstr "Красавік"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/time-dialog.ui.in:315
+msgid "May"
+msgstr "Maй"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/time-dialog.ui.in:316
+msgid "June"
+msgstr "Чэрвень"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/time-dialog.ui.in:317
+msgid "July"
+msgstr "Ліпень"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/time-dialog.ui.in:318
+msgid "August"
+msgstr "Жнівень"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/time-dialog.ui.in:319
+msgid "September"
+msgstr "Верасень"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/time-dialog.ui.in:320
+msgid "October"
+msgstr "Кастрычнік"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/time-dialog.ui.in:321
+msgid "November"
+msgstr "Лістапад"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/time-dialog.ui.in:322
+msgid "December"
+msgstr "Снежань"
+
+#: ../config/chroot_local-includes/usr/share/tails/tca/time-dialog.ui.in:368
+msgid "Clock"
+msgstr "Гадзіннік"
+
+#~ msgid "Bridge address malformed"
+#~ msgstr "Няправільны фармат адраса моста"
+
+#~ msgid ""
+#~ "Setting a bridge is needed if you want to hide that you are using Tor"
+#~ msgstr ""
+#~ "Налада моста неабходная, калі вы хочаце схаваць, што карыстаецеся Tor"
+
+#~ msgid ""
+#~ "To get a bridge, send an empty email to <tt>bridges@torproject.org</tt> "
+#~ "from a Gmail or Riseup email address with your phone and scan the QR code "
+#~ "that is attached to the automatic reply."
+#~ msgstr ""
+#~ "Каб атрымаць мост, адпраўце пусты ліст на адрас "
+#~ "<tt>bridges@torproject.org</tt> з электроннай пошты Gmail або Riseup на "
+#~ "вашым тэлефоне і адсканіруйце QR-код, які будзе прымацаваны да "
+#~ "аўтаматычнага адказу."
+
+#~ msgid "Scan QR Code"
+#~ msgstr "Сканаваць QR-код"
+
+#~ msgid "Documentation"
+#~ msgstr "Дакументацыя"
+
+#~ msgid "Obsolete"
+#~ msgstr "Састарэла"
+
+#~ msgid "meek"
+#~ msgstr "meek"
+
+#~ msgid ""
+#~ "Tails protects your wallet.\n"
+#~ "\n"
+#~ "Help us keep your bitcoins safe!\n"
+#~ "\n"
+#~ "<a href=\"file:///usr/share/doc/tails/website/"
+#~ "donate.en.html#expenses\">How we spend our money.</a>"
+#~ msgstr ""
+#~ "Tails бароніць ваш гаманец.\n"
+#~ "\n"
+#~ "Дапамагае трымаць вашы біткоіны ў забяспячэнні!\n"
+#~ "\n"
+#~ "<a href=\"file:///usr/share/doc/tails/website/"
+#~ "donate.en.html#expenses\">Як мы трацім нашы грошы.</a>"
+
+#, fuzzy
+#~| msgid "Create"
+#~ msgid "Create Backup"
+#~ msgstr "Стварыць"
+
+#, fuzzy
+#~ msgid "_Passphrase"
+#~ msgstr "Пароль:"
+
+#~ msgid "Lock screen"
+#~ msgstr "Заблакаваць экран"
+
+#, fuzzy
+#~ msgid ""
+#~ "Our annual fundraiser is live!\n"
+#~ "\n"
+#~ "Keep everybody free and safe online with a gift to Tails.\n"
+#~ "\n"
+#~ "<a href=\"file:///usr/share/doc/tails/website/donate.en.html\">Why donate "
+#~ "to Tails?</a>"
+#~ msgstr ""
+#~ "Tails мае патрэбу ў ахвяраваннях каб захоўваць вольнасць і бяспеку "
+#~ "кожнага.\n"
+#~ "\n"
+#~ "Кожная кропля дапамагае ў нашай барацьбе супраць назірання і цэнзуры\n"
+#~ "\n"
+#~ "<a href=\"file:///usr/share/doc/tails/website/"
+#~ "donate.en.html#expenses\">Як мы трацім нашы грошы.</a>"
+
+#, fuzzy
+#~ msgid "_Change Passphrase..."
+#~ msgstr "Пароль:"
+
+#, fuzzy
+#~ msgid ""
+#~ "The Unsafe Browser is not anonymous and the websites that you visit can "
+#~ "see your real IP address.\\n\\nOnly use the Unsafe Browser to sign in to "
+#~ "a network, then close it."
+#~ msgstr ""
+#~ "The Unsafe Browser is not anonymous and the websites that you visit can "
+#~ "see your real IP address.\\n\\nOnly use the Unsafe Browser to sign in to "
+#~ "a network, then close it."
+
+#~ msgid "Enabled"
+#~ msgstr "Уключана"
+
+#~ msgid ""
+#~ "Only use the Unsafe Browser to sign in to a network, then close it."
+#~ "\\n\\nThe Unsafe Browser is disabled by default for security.\\n\\nTo <a "
+#~ "href='file:///usr/share/doc/tails/website/doc/anonymous_internet/"
+#~ "unsafe_browser.en.html#use'>use the Unsafe Browser</a>, restart Tails and "
+#~ "enable the Unsafe Browser in the additional settings of the Welcome "
+#~ "Screen."
+#~ msgstr ""
+#~ "Only use the Unsafe Browser to sign in to a network, then close it."
+#~ "\\n\\nThe Unsafe Browser is disabled by default for security.\\n\\nTo <a "
+#~ "href='file:///usr/share/doc/tails/website/doc/anonymous_internet/"
+#~ "unsafe_browser.en.html#use'>use the Unsafe Browser</a>, restart Tails and "
+#~ "enable the Unsafe Browser in the additional settings of the Welcome "
+#~ "Screen."

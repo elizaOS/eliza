@@ -48,6 +48,7 @@ if str(_TRAINING_ROOT) not in sys.path:
 try:
     from .eliza1_manifest import (
         ELIZA_1_BACKENDS,
+        ELIZA_1_HF_REPO,
         ELIZA_1_VOICE_MANIFEST_VERSION,
         REQUIRED_KERNELS_BY_TIER,
         SUPPORTED_BACKENDS_BY_TIER,
@@ -65,6 +66,7 @@ try:
 except ImportError:  # pragma: no cover - direct script execution path
     from eliza1_manifest import (
         ELIZA_1_BACKENDS,
+        ELIZA_1_HF_REPO,
         ELIZA_1_VOICE_MANIFEST_VERSION,
         REQUIRED_KERNELS_BY_TIER,
         SUPPORTED_BACKENDS_BY_TIER,
@@ -80,7 +82,7 @@ except ImportError:  # pragma: no cover - direct script execution path
     from eliza1_platform_plan import CONTEXTS_BY_TIER, TEXT_QUANT_BY_TIER, text_artifact_name
     import stage_eliza1_bundle_assets as assets_mod
 
-from benchmarks.eliza1_gates import apply_gates
+from benchmarks.eliza1_gates import apply_gates  # noqa: E402
 
 VISION_TIERS: Final[set[str]] = {"4b"}
 EMBEDDING_TIERS: Final[set[str]] = {"4b"}
@@ -576,7 +578,7 @@ def _write_release_evidence(*, bundle_dir: Path, tier: str, generated_at: str,
         license_files.append("licenses/LICENSE.embedding")
     _json_write(bundle_dir / "evidence" / "release.json", {
         "schemaVersion": 1, "generatedAt": generated_at, "tier": tier,
-        "repoId": "elizaos/eliza-1", "repoPath": f"bundles/{tier}", "releaseState": "weights-staged",
+        "repoId": ELIZA_1_HF_REPO, "repoPath": f"bundles/{tier}", "releaseState": "weights-staged",
         "publishEligible": False, "defaultEligible": False,
         "final": {
             "weights": True,             # the real release weights are in the bundle
@@ -598,7 +600,7 @@ def _write_release_evidence(*, bundle_dir: Path, tier: str, generated_at: str,
         "licenseFiles": license_files,
         "kernelDispatchReports": {b: f"evals/{b}_dispatch.json" for b in SUPPORTED_BACKENDS_BY_TIER[tier]},
         "platformEvidence": {"linux-x64-cpu": "evidence/platform/linux-x64-cpu.json"},
-        "hf": {"repoId": "elizaos/eliza-1", "pathPrefix": f"bundles/{tier}", "status": "blocked-weights-staged"},
+        "hf": {"repoId": ELIZA_1_HF_REPO, "pathPrefix": f"bundles/{tier}", "status": "blocked-weights-staged"},
         "publishBlockingReasons": list(reasons),
     })
 

@@ -1,4 +1,4 @@
-[submodule "packages/inference/llama.cpp"]
+[submodule "plugins/plugin-local-inference/native/llama.cpp"]
 	# The single canonical llama.cpp checkout for the whole repo. This is the
 	# elizaOS/llama.cpp fork (@ v1.0.0-eliza, commit 08032d57): the unified
 	# fork with the eliza kernels (Q4_POLAR / QJL1_256 / TBQ4_0 / TBQ3_0
@@ -11,6 +11,16 @@
 	# GGUF path uses the fork's tooling (there is no separate "stock upstream"
 	# submodule). build/ is gitignored by llama.cpp's own .gitignore so only
 	# the gitlink (commit SHA) is tracked.
-	path = packages/inference/llama.cpp
+	path = plugins/plugin-local-inference/native/llama.cpp
 	url = https://github.com/elizaOS/llama.cpp.git
-	branch = eliza/omnivoice-build-flag
+	branch = main
+
+[submodule "plugins/plugin-local-inference/native/omnivoice.cpp"]
+	# omnivoice.cpp — the voice inference engine (TTS + streaming audio).
+	# Forked from ServeurpersoCom/omnivoice.cpp; elizaOS fork lives at
+	# elizaOS/omnivoice.cpp. Initialized by postinstall via
+	# scripts/ensure-omnivoice-submodule.mjs. CMakeLists.txt probed by
+	# build-omnivoice.mjs. build/ is gitignored so only the gitlink is tracked.
+	path = plugins/plugin-local-inference/native/omnivoice.cpp
+	url = https://github.com/elizaOS/omnivoice.cpp.git
+	branch = develop

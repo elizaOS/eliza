@@ -63,7 +63,6 @@ import {
   useBugReportState,
   useContextMenu,
   useRenderGuard,
-  useStreamPopoutNavigation,
 } from "./hooks";
 import { useActivityEvents } from "./hooks/useActivityEvents";
 import { useAuthStatus } from "./hooks/useAuthStatus";
@@ -684,7 +683,6 @@ export function App() {
       : undefined;
   const contextMenu = useContextMenu();
 
-  useStreamPopoutNavigation(setTab);
   useSecretsManagerShortcut();
 
   useEffect(() => {

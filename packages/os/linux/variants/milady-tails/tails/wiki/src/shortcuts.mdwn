@@ -1,0 +1,146 @@
+Some examples of using shortcuts include:
+
+	\[[!google foo]]
+	\[[!wikipedia War_of_1812]]
+	\[[!debbug 12345]]
+	Check the \[[!cia ikiwiki desc="CIA page for %s"]].
+
+This page controls what shortcut links the wiki supports.
+
+* [[!shortcut name=google url="https://encrypted.google.com/search?q=%s"]]
+* [[!shortcut name=archive url="http://web.archive.org/*/%S"]]
+* [[!shortcut name=gmap url="https://maps.google.com/maps?q=%s"]]
+* [[!shortcut name=gmsg url="https://groups.google.com/groups?selm=%s"]]
+* [[!shortcut name=wikipedia url="https://en.wikipedia.org/wiki/%W"]]
+* [[!shortcut name=wikitravel url="https://wikitravel.org/en/%s"]]
+* [[!shortcut name=wiktionary url="https://en.wiktionary.org/wiki/%s"]]
+* [[!shortcut name=debbug url="https://bugs.debian.org/%S" desc="Debian bug #%s"]]
+* [[!shortcut name=deblist url="https://lists.debian.org/debian-%s" desc="debian-%s@lists.debian.org"]]
+* [[!shortcut name=debpkg url="http://packages.debian.org/%s"]]
+* [[!shortcut name=debpkgsid url="http://packages.debian.org/sid/%s"]]
+* [[!shortcut name=debpts url="https://tracker.debian.org/pkg/%s"]]
+* [[!shortcut name=debmsg url="https://lists.debian.org/msgid-search/%s"]]
+* [[!shortcut name=debrt url="https://rt.debian.org/Ticket/Display.html?id=%s"]]
+* [[!shortcut name=debss url="http://snapshot.debian.org/package/%s/"]]
+  * Usage: `\[[!debss package]]` or `\[[!debss package/version]]`.  See <http://snapshot.debian.org/> for details.
+* [[!shortcut name=debwiki url="https://wiki.debian.org/%S"]]
+* [[!shortcut name=fdobug url="https://bugs.freedesktop.org/show_bug.cgi?id=%s" desc="freedesktop.org bug #%s"]]
+* [[!shortcut name=fdolist url="http://lists.freedesktop.org/mailman/listinfo/%s" desc="%s@lists.freedesktop.org"]]
+* [[!shortcut name=gnomebug url="https://bugzilla.gnome.org/show_bug.cgi?id=%s" desc="GNOME bug #%s"]]
+*
+  [[!shortcut name=gnome_gitlab url="https://gitlab.gnome.org/GNOME/%S" desc="%s on GNOME GitLab"]]
+* [[!shortcut name=linuxbug url="https://bugzilla.kernel.org/show_bug.cgi?id=%s" desc="Linux bug #%s"]]
+* [[!shortcut name=mozbug url="https://bugzilla.mozilla.org/show_bug.cgi?id=%s" desc="Mozilla bug #%s"]]
+* [[!shortcut name=gnulist url="https://lists.gnu.org/mailman/listinfo/%s" desc="%s@gnu.org"]]
+* [[!shortcut name=marcmsg url="http://marc.info/?i=%s"]]
+* [[!shortcut name=marclist url="http://marc.info/?l=%s"]]
+* [[!shortcut name=gmane url="http://dir.gmane.org/gmane.%s" desc="gmane.%s"]]
+* [[!shortcut name=gmanemsg url="http://mid.gmane.org/%s"]]
+* [[!shortcut name=cpan url="http://metacpan.org/search?q=%s"]]
+* [[!shortcut name=ctan url="http://tug.ctan.org/cgi-bin/ctanPackageInformation.py?id=%s"]]
+* [[!shortcut name=hoogle url="http://haskell.org/hoogle/?q=%s"]]
+* [[!shortcut name=iki url="http://ikiwiki.info/%S/"]]
+* [[!shortcut name=ljuser url="http://%s.livejournal.com/"]]
+* [[!shortcut name=rfc url="https://www.ietf.org/rfc/rfc%s.txt" desc="RFC %s"]]
+* [[!shortcut name=c2 url="http://c2.com/cgi/wiki?%s"]]
+* [[!shortcut name=meatballwiki url="http://www.usemod.com/cgi-bin/mb.pl?%s"]]
+* [[!shortcut name=emacswiki url="http://www.emacswiki.org/cgi-bin/wiki/%s"]]
+* [[!shortcut name=haskellwiki url="http://haskell.org/haskellwiki/%s"]]
+* [[!shortcut name=dict url="http://www.dict.org/bin/Dict?Form=Dict1&Strategy=*&Database=*&Query=%s"]]
+* [[!shortcut name=imdb url="http://imdb.com/find?q=%s"]]
+* [[!shortcut name=gpg url="http://pgpkeys.mit.edu:11371/pks/lookup?op=vindex&exact=on&search=0x%s"]]
+* [[!shortcut name=perldoc url="http://perldoc.perl.org/search.html?q=%s"]]
+* [[!shortcut name=whois url="http://reports.internic.net/cgi/whois?whois_nic=%s&type=domain"]]
+* [[!shortcut name=cve url="https://cve.mitre.org/cgi-bin/cvename.cgi?name=%s"]]
+* [[!shortcut name=cia url="http://cia.vc/stats/project/%s"]]
+* [[!shortcut name=ciauser url="http://cia.vc/stats/user/%s"]]
+* [[!shortcut name=flickr url="https://secure.flickr.com/photos/%s"]]
+* [[!shortcut name=man url="http://linux.die.net/man/%s"]]
+* [[!shortcut name=ohloh url="https://www.ohloh.net/p/%s"]]
+* [[!shortcut name=cpanrt url="https://rt.cpan.org/Ticket/Display.html?id=%s" desc="CPAN RT#%s"]]
+* [[!shortcut name=novellbug url="https://bugzilla.novell.com/show_bug.cgi?id=%s" desc="bug %s"]]
+* [[!shortcut name=ubupkg url="http://packages.ubuntu.com/%s"]]
+* [[!shortcut name=mozillazinekb url="http://kb.mozillazine.org/%s"]]
+* [[!shortcut name=freebsdwiki url="http://wiki.freebsd.org/%s"]]
+* [[!shortcut name=hackage url="http://hackage.haskell.org/package/%s"]]
+
+To add a new shortcut, use the `shortcut`
+[[ikiwiki/directive]]. In the url, "%s" is replaced with the
+text passed to the named shortcut, after [[!wikipedia url_encoding]]
+it, and '%S' is replaced with the raw, non-encoded text. 
+Additionally, `%W` is replaced with the text encoded just right for
+Wikipedia. The optional `desc` parameter controls the description of
+the link.
+
+Remember that the `name` you give the shortcut will become a new
+[[ikiwiki/directive]].  Avoid using a `name` that conflicts
+with an existing directive.  These directives also accept a `desc`
+parameter that will override the one provided at definition time.
+
+If you come up with a shortcut that you think others might find useful,
+consider contributing it to the [shortcuts page on the ikiwiki
+wiki](http://ikiwiki.info/shortcuts/), so that future versions of
+ikiwiki will include your shortcut in the standard underlay.
+
+# Local shortcuts
+
+* [[!shortcut name=tails_website url="https://tails.net/%S"]]
+* [[!shortcut name=tails_blueprint url="https://gitlab.tails.boum.org/tails/blueprints/-/wikis/%S"]]
+* [[!shortcut name=tails_gitlab url="https://gitlab.tails.boum.org/%S"]]
+* [[!shortcut name=tails_gitlab_starter
+  url="https://gitlab.tails.boum.org/groups/tails/-/issues?scope=all&utf8=✓&state=opened&label_name[]=Starter"
+  desc="list of *Starter* tasks"]]
+* [[!shortcut name=tails_ticket url="https://gitlab.tails.boum.org/tails/tails/-/issues/%S" desc="#%s"]]
+* [[!shortcut name=tails_mr url="https://gitlab.tails.boum.org/tails/tails/-/merge_requests/%S" desc="!%s"]]
+* [[!shortcut name=tails_gitweb url="https://gitlab.tails.boum.org/tails/tails/-/blob/master/%S"]]
+* [[!shortcut name=tails_gitweb_dir url="https://gitlab.tails.boum.org/tails/tails/-/tree/master/%S"]]
+* [[!shortcut name=tails_gitweb_branch url="https://gitlab.tails.boum.org/tails/tails/-/commits/%S/"]]
+* [[!shortcut name=tails_gitweb_commit url="https://gitlab.tails.boum.org/tails/tails/-/commit/%s"]]
+* [[!shortcut name=tails_gitweb_repo url="https://gitlab.tails.boum.org/tails/%S"]]
+* [[!shortcut name=tails_gitweb_puppet_weblate url="https://gitlab.torproject.org/tpo/tpa/puppet-weblate/-/blob/master/%S"]]
+* [[!shortcut name=tails_gitweb_puppet_code url="https://gitlab.tails.boum.org/tails/puppet-code/-/blob/production/%S"]]
+* [[!shortcut name=tor_gitweb_puppet_control url="https://gitlab.torproject.org/tpo/tpa/puppet-control/-/blob/production/%S"]]
+* [[!shortcut name=launchpad_bug url="https://bugs.launchpad.net/onboard/+bug/%s" desc="Launchpad bug #%s"]]
+* [[!shortcut name=tor_bug
+  url="https://bugs.torproject.org/%s" desc="bug #%s on Tor Project's Trac"]]
+* [[!shortcut name=debusertag
+  url="https://bugs.debian.org/cgi-bin/pkgreport.cgi?users=tails-dev@boum.org;tag=%s"]]
+* [[!shortcut name=wikipedia_ca url="https://ca.wikipedia.org/wiki/%W"]]
+* [[!shortcut name=wikipedia_de url="https://de.wikipedia.org/wiki/%W"]]
+* [[!shortcut name=wikipedia_es url="https://es.wikipedia.org/wiki/%W"]]
+* [[!shortcut name=wikipedia_fa url="https://fa.wikipedia.org/wiki/%W"]]
+* [[!shortcut name=wikipedia_fr url="https://fr.wikipedia.org/wiki/%W"]]
+* [[!shortcut name=wikipedia_it url="https://it.wikipedia.org/wiki/%W"]]
+* [[!shortcut name=wikipedia_pt url="https://pt.wikipedia.org/wiki/%W"]]
+* [[!shortcut name=wikipedia_ru url="https://ru.wikipedia.org/wiki/%W"]]
+* [[!shortcut name=wikipedia_tr url="https://tr.wikipedia.org/wiki/%W"]]
+* [[!shortcut name=debsa2012
+  url="https://www.debian.org/security/2012/dsa-%s"
+  desc="Debian Security Advisory %s"]]
+* [[!shortcut name=debsa2013
+  url="https://www.debian.org/security/2013/dsa-%s"
+  desc="Debian Security Advisory %s"]]
+* [[!shortcut name=debsa2014
+  url="https://www.debian.org/security/2014/dsa-%s"
+  desc="Debian Security Advisory %s"]]
+* [[!shortcut name=debsa2015
+  url="https://www.debian.org/security/2015/dsa-%s"
+  desc="Debian Security Advisory %s"]]
+* [[!shortcut name=debsa2016
+  url="https://www.debian.org/security/2016/dsa-%s"
+  desc="Debian Security Advisory %s"]]
+* [[!shortcut name=debsa2017
+  url="https://www.debian.org/security/2017/dsa-%s"
+  desc="Debian Security Advisory %s"]]
+* [[!shortcut name=debsa2018
+  url="https://www.debian.org/security/2018/dsa-%s"
+  desc="Debian Security Advisory %s"]]
+* [[!shortcut name=debsa2019
+  url="https://www.debian.org/security/2019/dsa-%s"
+  desc="Debian Security Advisory %s"]]
+* [[!shortcut name=debsa2020
+  url="https://www.debian.org/security/2020/dsa-%s"
+  desc="Debian Security Advisory %s"]]
+* [[!shortcut name=mfsa
+  url="https://www.mozilla.org/en-US/security/advisories/mfsa%s/"
+  desc="Mozilla Foundation Security Advisory %s"]]

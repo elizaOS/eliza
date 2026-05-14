@@ -37,7 +37,7 @@ const skipLocalUpstreams =
 const OPTIONAL_PLUGIN_FALLBACK_VERSIONS = new Map([
   ["@elizaos/plugin-sql", "beta"],
   ["@elizaos/plugin-ollama", "beta"],
-  ["@elizaos/plugin-local-ai", "beta"],
+  ["@elizaos/plugin-local-inference", "beta"],
 ]);
 
 const publishManifest = {
