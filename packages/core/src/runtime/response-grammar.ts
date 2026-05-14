@@ -447,6 +447,7 @@ function parseSimpleRegexClass(
 
 		if (
 			literal.single &&
+			literal.value !== "-" &&
 			state.source[state.index] === "-" &&
 			state.source[state.index + 1] !== "]"
 		) {
