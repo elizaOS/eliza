@@ -142,15 +142,13 @@ function getProcessEnv(): ProcessEnvLike {
 }
 
 const env = getProcessEnv();
-const TEXT_NANO_MODEL_TYPE = (ModelType.TEXT_NANO ?? "TEXT_NANO") as string;
-const TEXT_MEDIUM_MODEL_TYPE = (ModelType.TEXT_MEDIUM ?? "TEXT_MEDIUM") as string;
-const TEXT_MEGA_MODEL_TYPE = (ModelType.TEXT_MEGA ?? "TEXT_MEGA") as string;
-const RESPONSE_HANDLER_MODEL_TYPE = (ModelType.RESPONSE_HANDLER ?? "RESPONSE_HANDLER") as string;
-const ACTION_PLANNER_MODEL_TYPE = (ModelType.ACTION_PLANNER ?? "ACTION_PLANNER") as string;
-const TEXT_REASONING_SMALL_MODEL_TYPE = (ModelType.TEXT_REASONING_SMALL ??
-  "REASONING_SMALL") as string;
-const TEXT_REASONING_LARGE_MODEL_TYPE = (ModelType.TEXT_REASONING_LARGE ??
-  "REASONING_LARGE") as string;
+const TEXT_NANO_MODEL_TYPE = ModelType.TEXT_NANO as string;
+const TEXT_MEDIUM_MODEL_TYPE = ModelType.TEXT_MEDIUM as string;
+const TEXT_MEGA_MODEL_TYPE = ModelType.TEXT_MEGA as string;
+const RESPONSE_HANDLER_MODEL_TYPE = ModelType.RESPONSE_HANDLER as string;
+const ACTION_PLANNER_MODEL_TYPE = ModelType.ACTION_PLANNER as string;
+const TEXT_REASONING_SMALL_MODEL_TYPE = ModelType.TEXT_REASONING_SMALL as string;
+const TEXT_REASONING_LARGE_MODEL_TYPE = ModelType.TEXT_REASONING_LARGE as string;
 
 export const anthropicPlugin: Plugin = {
   name: "anthropic",

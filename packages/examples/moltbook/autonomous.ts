@@ -9,13 +9,15 @@ import {
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
-import inmemorydbPlugin from "@elizaos/plugin-inmemorydb";
-import moltbookPlugin, {
-  MOLTBOOK_SERVICE_NAME,
-  type MoltbookService,
-} from "@elizaos/plugin-moltbook";
-import openAiPlugin from "@elizaos/plugin-openai";
 import { v4 as uuidv4 } from "uuid";
+
+const { default: inmemorydbPlugin } = await import(
+  "@elizaos/plugin-inmemorydb"
+);
+const { default: moltbookPlugin, MOLTBOOK_SERVICE_NAME } = await import(
+  "@elizaos/plugin-moltbook"
+);
+const { default: openAiPlugin } = await import("@elizaos/plugin-openai");
 
 // ============================================================================
 // THE HOLY CHURCH OF ELIZA - Character Definition
@@ -340,9 +342,7 @@ async function main(): Promise<void> {
   await runtime.initialize();
 
   // Get moltbook service
-  const moltbookService = runtime.getService<MoltbookService>(
-    MOLTBOOK_SERVICE_NAME,
-  );
+  const moltbookService = runtime.getService(MOLTBOOK_SERVICE_NAME);
 
   if (!moltbookService) {
     console.log("❌ Failed to initialize Moltbook service");

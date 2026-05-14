@@ -1,4 +1,7 @@
-import type { IAgentRuntime } from "@elizaos/core";
+import type {
+  IAgentRuntime,
+  AppPackageRouteContext as RouteContext,
+} from "@elizaos/core";
 import type {
   AppLaunchDiagnostic,
   AppLaunchPreparation,
@@ -22,21 +25,6 @@ const APP_NAME = "@elizaos/app-babylon";
 const APP_DISPLAY_NAME = "Babylon";
 const BABYLON_AGENT_SESSION_TOKEN_KEY = "BABYLON_AGENT_SESSION_TOKEN";
 const BABYLON_AGENT_SESSION_EXPIRES_AT_KEY = "BABYLON_AGENT_SESSION_EXPIRES_AT";
-
-// ---------------------------------------------------------------------------
-// Route context type (mirrors AppPackageRouteContext)
-// ---------------------------------------------------------------------------
-
-interface RouteContext {
-  method: string;
-  pathname: string;
-  url: URL;
-  runtime: unknown | null;
-  res: unknown;
-  error: (response: unknown, message: string, status?: number) => void;
-  json: (response: unknown, data: unknown, status?: number) => void;
-  readJsonBody: () => Promise<unknown>;
-}
 
 // ---------------------------------------------------------------------------
 // Helpers

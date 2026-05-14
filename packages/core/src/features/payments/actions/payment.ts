@@ -670,7 +670,7 @@ export const paymentAction: Action = {
 	description:
 		"Payment ops. action=create_request, deliver_link, verify_payload, settle, await_callback, cancel_request.",
 	descriptionCompressed:
-		"Payment ops: create_request, deliver_link, verify_payload, settle, await_callback, cancel_request.",
+		"Payment create_request|deliver_link|verify_payload|settle|await_callback|cancel_request",
 	parameters: [
 		{
 			name: "action",

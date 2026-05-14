@@ -10,11 +10,8 @@ const DEFAULT_CDN_BASE = "https://blob.elizacloud.ai";
 
 function cdnUrl(path: string): string {
   const base =
-    (
-      typeof process !== "undefined"
-        ? process.env.NEXT_PUBLIC_ASSETS_CDN_URL
-        : undefined
-    )?.trim() || DEFAULT_CDN_BASE;
+    (typeof process !== "undefined" ? process.env.NEXT_PUBLIC_ASSETS_CDN_URL : undefined)?.trim() ||
+    DEFAULT_CDN_BASE;
   return `${base.replace(/\/+$/, "")}/${path.replace(/^\/+/, "")}`;
 }
 
@@ -144,11 +141,9 @@ export function getFallbackAvatarUrl(): string {
  */
 export function isBuiltInAvatar(url: string | null | undefined): boolean {
   if (!url) return false;
-  const cdnBase = (
-    typeof process !== "undefined"
-      ? process.env.NEXT_PUBLIC_ASSETS_CDN_URL
-      : undefined
-  )?.trim() || DEFAULT_CDN_BASE;
+  const cdnBase =
+    (typeof process !== "undefined" ? process.env.NEXT_PUBLIC_ASSETS_CDN_URL : undefined)?.trim() ||
+    DEFAULT_CDN_BASE;
   return (
     url.startsWith("/avatars/") ||
     url.startsWith(cdnBase) ||

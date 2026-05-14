@@ -167,7 +167,7 @@ export const searchIssuesAction: Action = {
 
             const assignees = getStringArrayValue(parsed.assignees);
             if (assignees && assignees.length > 0) {
-              const processedAssignees = [];
+              const processedAssignees: string[] = [];
               for (const assignee of assignees) {
                 if (assignee.toLowerCase() === "me") {
                   try {

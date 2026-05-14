@@ -17,18 +17,12 @@ import {
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
-import { elizaClassicPlugin } from "@elizaos/plugin-eliza-classic";
-import { openaiPlugin } from "@elizaos/plugin-openai";
-import sqlPlugin from "@elizaos/plugin-sql";
 import express, {
   type NextFunction,
   type Request,
   type Response,
 } from "express";
 import { v4 as uuidv4 } from "uuid";
-
-// Type assertion for plugin
-const typedSqlPlugin = sqlPlugin as Plugin;
 
 // ============================================================================
 // Configuration
@@ -70,13 +64,19 @@ async function getRuntime(): Promise<IAgentRuntime | null> {
     try {
       console.log("🚀 Initializing elizaOS runtime...");
 
+      const { default: sqlPlugin } = await import("@elizaos/plugin-sql");
+
       // Choose plugins based on whether OpenAI key is available
-      const plugins: Plugin[] = [typedSqlPlugin];
+      const plugins: Plugin[] = [sqlPlugin as Plugin];
       if (process.env.OPENAI_API_KEY) {
+        const { openaiPlugin } = await import("@elizaos/plugin-openai");
         plugins.push(openaiPlugin);
       } else {
         console.log(
           "💡 No OPENAI_API_KEY found, using elizaClassicPlugin for responses",
+        );
+        const { elizaClassicPlugin } = await import(
+          "@elizaos/plugin-eliza-classic"
         );
         plugins.push(elizaClassicPlugin);
       }

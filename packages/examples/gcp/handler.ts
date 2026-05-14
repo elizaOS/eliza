@@ -19,8 +19,6 @@ import {
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
-import { openaiPlugin } from "@elizaos/plugin-openai";
-import sqlPlugin from "@elizaos/plugin-sql";
 import { v4 as uuidv4 } from "uuid";
 
 // Types for request/response
@@ -85,6 +83,10 @@ async function initializeRuntime(): Promise<AgentRuntime> {
     console.log("Initializing elizaOS runtime...");
 
     const character = getCharacter();
+    const [{ default: sqlPlugin }, { openaiPlugin }] = await Promise.all([
+      import("@elizaos/plugin-sql"),
+      import("@elizaos/plugin-openai"),
+    ]);
     runtime = new AgentRuntime({
       character,
       plugins: [sqlPlugin, openaiPlugin],

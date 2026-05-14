@@ -26,11 +26,11 @@ import type { AppEnv } from "@/types/cloud-worker-env";
  * The legacy `/api/elevenlabs/tts` endpoint remains active for existing integrations.
  */
 
-import { z } from "zod";
 import {
-  firstSentenceSnip,
   FIRST_SENTENCE_SNIP_VERSION,
+  firstSentenceSnip,
 } from "@elizaos/shared/voice/first-sentence-snip";
+import { z } from "zod";
 import { userVoicesRepository } from "@/db/repositories/user-voices";
 import { ApiError } from "@/lib/api/cloud-worker-errors";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
@@ -326,10 +326,7 @@ async function __hono_POST(request: Request) {
             algoVersion: FIRST_SENTENCE_SNIP_VERSION,
             provider: "elevenlabs",
             voiceId: resolvedVoiceId,
-            voiceRevision: resolveElevenLabsVoiceRevision(
-              resolvedVoiceId,
-              resolvedModelId,
-            ),
+            voiceRevision: resolveElevenLabsVoiceRevision(resolvedVoiceId, resolvedModelId),
             sampleRate: 44100,
             codec: "mp3" as const,
             voiceSettingsFingerprint,

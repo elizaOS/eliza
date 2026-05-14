@@ -574,7 +574,7 @@ export function ensureLlamaCppCheckout({
  * `polarquant` series under the same directory exists but conflicts with
  * `qjl` over the GGML_TYPE_COUNT tag (PolarQuant claims id 45, QJL
  * claims 46) and is owned by a separate landing. When that series is
- * unified with QJL, append it here.
+ * merged with QJL, append it here.
  *
  * Order is:
  *   1. checkout -> 2. patchLlamaCppSourceForMusl -> 3. applyVendoredPatches.

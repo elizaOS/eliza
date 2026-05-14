@@ -498,7 +498,7 @@ export const roomOpAction: Action = {
 	description:
 		"Room mute/unmute/follow/unfollow. Default current room. Use roomId or platform+chatName for connector chat. mute+durationMinutes returns auto-unmute hint.",
 	descriptionCompressed:
-		"room state: action=mute|unmute|follow|unfollow + roomId|platform+chatName + durationMinutes auto-unmute hint",
+		"room mute|unmute|follow|unfollow; roomId or platform+chatName; durationMinutes",
 	parameters: [
 		{
 			name: "action",
@@ -834,7 +834,7 @@ export const muteRoomAction = makeRoomOpChildAction({
 	op: "mute",
 	description: "Mute room/chat if agent not already muted.",
 	descriptionCompressed:
-		"mute room/chat if current participant state is not MUTED; optional roomId|platform+chatName|durationMinutes",
+		"mute room/chat when not MUTED; optional roomId|platform+chatName|durationMinutes",
 	similes: ["MUTE_CHAT", "SILENCE_GROUP_CHAT", "MUTE_CHANNEL"],
 });
 

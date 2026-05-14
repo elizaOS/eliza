@@ -68,7 +68,7 @@ export function createAgentOrchestratorPlugin(): Plugin {
   // action so reaches for SPAWN_AGENT / CREATE_TASK / etc. surface a clean error
   // instead of attempting (and failing) to spawn.
   const orchestratorServices: ServiceClass[] = codeExecutionAllowed
-      ? [
+    ? [
         serviceClass(AcpService),
         serviceClass(SubAgentRouter),
         serviceClass(CodingWorkspaceService),
@@ -95,14 +95,14 @@ export function createAgentOrchestratorPlugin(): Plugin {
           overrides: {
             spawn_agent: {
               description:
-                "Delegate a coding task to a dedicated coding sub-agent (claude / codex / opencode / gemini / aider — selected from configured providers). USE THIS when the user explicitly asks to delegate coding work, use a coding adapter by name, or run substantial multi-step coding work that benefits from a dedicated workspace and its own tool loop. The coding sub-agent runs in its own workspace, can read / write / edit files and run tests, and reports back when done. Prefer this over inline FILE / BASH tools whenever delegation is the user's intent — even for single-file tasks if delegation is explicitly requested.",
+                "Delegate a coding task to a dedicated ACP coding sub-agent (claude / codex / opencode — selected from configured providers). USE THIS when the user explicitly asks to delegate coding work, use a coding adapter by name, or run substantial multi-step coding work that benefits from a dedicated workspace and its own tool loop. The coding sub-agent runs in its own workspace, can read / write / edit files and run tests, and reports back when done. Prefer this over inline FILE / BASH tools whenever delegation is the user's intent — even for single-file tasks if delegation is explicitly requested.",
               // Compressed blurb is what the planner sees in tier-A
               // summaries; if we don't override it, it inherits the
               // generic parent enum dump and the planner can't tell
               // `TASKS_SPAWN_AGENT` apart from inline `FILE.write` for
               // delegation requests. See the parent comment above.
               descriptionCompressed:
-                "delegate coding work to a coding sub-agent (claude/codex/opencode/gemini/aider) — use when the user asks to delegate coding work / use an adapter by name / for any multi-step dev work; prefer over inline FILE/BASH when delegation is the user's intent",
+                "delegate ACP coding sub-agent claude|codex|opencode; adapter/multi-step",
             },
           },
         }),

@@ -1,4 +1,5 @@
 import type http from "node:http";
+import type { AppPackageRouteContext as RouteContext } from "@elizaos/core";
 import {
   captureDesktopScreenshot,
   type DesktopInputButton,
@@ -32,23 +33,6 @@ import {
   stopScreenshareSession,
   toPublicSession,
 } from "./session-store.js";
-
-type RouteJson = (response: unknown, data: unknown, status?: number) => void;
-type RouteError = (response: unknown, message: string, status?: number) => void;
-
-interface RouteContext {
-  method: string;
-  pathname: string;
-  url: URL;
-  req?: http.IncomingMessage;
-  res: unknown;
-  runtime: unknown | null;
-  json: RouteJson;
-  error: RouteError;
-  readJsonBody: <
-    T extends object = Record<string, unknown>,
-  >() => Promise<T | null>;
-}
 
 interface StartSessionBody {
   label?: unknown;

@@ -15,10 +15,29 @@ import {
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
-import inmemorydbPlugin from "@elizaos/plugin-inmemorydb";
-import localInferencePlugin from "@elizaos/plugin-local-inference";
-import { type ShellService, shellPlugin } from "@elizaos/plugin-shell";
 import { v4 as uuidv4 } from "uuid";
+
+const { default: inmemorydbPlugin } = await import(
+  "@elizaos/plugin-inmemorydb"
+);
+const { default: localInferencePlugin } = await import(
+  "@elizaos/plugin-local-inference"
+);
+const { shellPlugin } = await import("@elizaos/plugin-shell");
+
+type ShellService = {
+  executeCommand(
+    command: string,
+    roomId: UUID,
+  ): Promise<{
+    success: boolean;
+    exitCode: number | null;
+    stdout?: string;
+    stderr?: string;
+    executedIn?: string;
+    error?: string;
+  }>;
+};
 
 type AgentDecision =
   | { action: "RUN"; command: string; note: string }

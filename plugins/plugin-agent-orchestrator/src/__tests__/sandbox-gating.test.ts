@@ -2,7 +2,7 @@
  * Asserts the orchestrator's store-build gating: when ELIZA_BUILD_VARIANT=store,
  * the plugin must register zero spawn-bearing services and a single TASKS stub
  * action whose handler returns a structured "blocked" result without ever
- * touching PTY / ACP / workspace state.
+ * touching ACP / workspace state.
  */
 
 import {

@@ -1,6 +1,8 @@
 import { randomBytes } from "node:crypto";
-import type http from "node:http";
-import type { IAgentRuntime } from "@elizaos/core";
+import type {
+  IAgentRuntime,
+  AppPackageRouteContext as ScapeRouteContext,
+} from "@elizaos/core";
 import type {
   AppLaunchDiagnostic,
   AppLaunchResult,
@@ -841,18 +843,6 @@ export async function collectLaunchDiagnostics(_ctx: {
 // ---------------------------------------------------------------------------
 // Route dispatcher
 // ---------------------------------------------------------------------------
-
-interface ScapeRouteContext {
-  method: string;
-  pathname: string;
-  url?: URL;
-  runtime: unknown | null;
-  error: (response: unknown, message: string, status?: number) => void;
-  json: (response: unknown, data: unknown, status?: number) => void;
-  readJsonBody: () => Promise<unknown>;
-  req: http.IncomingMessage;
-  res: unknown;
-}
 
 /**
  * Main HTTP entry point for `/api/apps/scape/*`. Returns true when the

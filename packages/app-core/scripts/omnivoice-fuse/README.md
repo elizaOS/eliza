@@ -234,7 +234,7 @@ streaming TTS entry when the chunk callback (or `cancel_tts`) requested
 a stop. The JS binding surfaces it as `{ cancelled: true }`, not a throw.
 ABI v3 adds the `vad` mmap region and the native VAD entry points above.
 
-### Unified one-process HTTP server (status: active speech route)
+### Single-process HTTP server (status: active speech route)
 
 §4 of `packages/inference/AGENTS.md` calls for ONE process serving
 `/v1/chat/completions` (+ DFlash), `/v1/audio/speech`, and an ASR route.

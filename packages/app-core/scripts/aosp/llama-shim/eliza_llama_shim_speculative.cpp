@@ -48,7 +48,7 @@
  *   builds libllama from). On a host without that checkout the file is still
  *   syntactically complete; the build hook resolves the headers.
  *
- * llama.cpp pin: elizaOS/llama.cpp @ eliza/main (the unified fork with DFlash
+ * llama.cpp pin: elizaOS/llama.cpp @ eliza/main (the combined fork with DFlash
  *   spec-decode + the eliza kernels). `common_params_speculative` field set
  *   tracked there; the setters below cover the subset the AOSP adapter
  *   overrides (n_draft / n_min / p_min / type / cache types / ctx size).

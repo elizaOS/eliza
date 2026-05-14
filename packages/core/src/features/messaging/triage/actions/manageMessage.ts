@@ -41,7 +41,7 @@ export const manageMessageAction: Action = {
 	description:
 		"Mutate a single message or sender: archive, trash, mark spam, mark read/unread, add or remove a label or tag, mute thread, unsubscribe, or block a sender. Use this for unsubscribe/block/archive/delete/label requests, including natural-language targets like newsletters@medium.com; pass messageId when known, otherwise pass sender/content hints.",
 	descriptionCompressed:
-		"mutate msg/sender: archive trash spam mark-read label tag mute unsubscribe block; target by messageId or sender/content",
+		"mutate msg/sender archive|trash|spam|read|label|tag|mute|unsubscribe|block",
 	similes: [
 		"ARCHIVE_MESSAGE",
 		"TAG_MESSAGE",

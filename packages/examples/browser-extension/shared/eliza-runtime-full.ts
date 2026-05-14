@@ -11,20 +11,31 @@ import {
   createCharacter,
   createMessageMemory,
   LLMMode,
+  type Plugin,
   type Provider,
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
-import anthropicPlugin from "@elizaos/plugin-anthropic";
-import {
-  elizaClassicPlugin,
-  getElizaGreeting,
-} from "@elizaos/plugin-eliza-classic";
-import googleGenAIPlugin from "@elizaos/plugin-google-genai";
-import groqPlugin from "@elizaos/plugin-groq";
-import localdbPlugin from "@elizaos/plugin-localdb";
-import openaiPlugin from "@elizaos/plugin-openai";
 import type { ExtensionConfig, PageContent, ProviderMode } from "./types";
+
+const { default: anthropicPlugin } = (await import(
+  "@elizaos/plugin-anthropic"
+)) as { default: Plugin };
+const { elizaClassicPlugin, getElizaGreeting } = (await import(
+  "@elizaos/plugin-eliza-classic"
+)) as { elizaClassicPlugin: Plugin; getElizaGreeting: () => string };
+const { default: googleGenAIPlugin } = (await import(
+  "@elizaos/plugin-google-genai"
+)) as { default: Plugin };
+const { default: groqPlugin } = (await import("@elizaos/plugin-groq")) as {
+  default: Plugin;
+};
+const { default: localdbPlugin } = (await import("@elizaos/plugin-localdb")) as {
+  default: Plugin;
+};
+const { default: openaiPlugin } = (await import("@elizaos/plugin-openai")) as {
+  default: Plugin;
+};
 
 function uuidv4(): string {
   return globalThis.crypto.randomUUID();
@@ -314,7 +325,7 @@ function applySettings(
   }
 }
 
-function buildPlugins(effectiveMode: ProviderMode) {
+function buildPlugins(effectiveMode: ProviderMode): Plugin[] {
   const base = [localdbPlugin];
   if (effectiveMode === "elizaClassic") return [...base, elizaClassicPlugin];
   if (effectiveMode === "openai") return [...base, openaiPlugin];

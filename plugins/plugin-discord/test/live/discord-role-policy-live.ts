@@ -16,7 +16,7 @@ import {
 	type World,
 } from "@elizaos/core";
 import {
-	PTYService,
+	AcpService,
 	sendToAgentAction,
 	startCodingTaskAction,
 } from "@elizaos/plugin-agent-orchestrator";
@@ -146,7 +146,7 @@ function buildDiscordMessage(
 
 let runtime: AgentRuntime | undefined;
 let cleanupRuntime: (() => Promise<void>) | undefined;
-let service: PTYService | undefined;
+let service: AcpService | undefined;
 const sessionsToStop = new Set<string>();
 let workdir: string | undefined;
 
@@ -154,7 +154,7 @@ async function cleanup(): Promise<void> {
 	if (service) {
 		for (const sessionId of sessionsToStop) {
 			try {
-				await service.stopSession(sessionId, true);
+				await service.stopSession(sessionId);
 			} catch {}
 		}
 	}
@@ -223,7 +223,7 @@ async function main(): Promise<void> {
 	);
 
 	({ runtime, cleanup: cleanupRuntime } = await createTestRuntime());
-	service = await PTYService.start(runtime as IAgentRuntime);
+	service = await AcpService.start(runtime as IAgentRuntime);
 	(runtime.services as Map<string, unknown[]>).set("PTY_SERVICE", [
 		service as unknown,
 	]);
@@ -272,6 +272,8 @@ async function main(): Promise<void> {
 			},
 		},
 	};
+	assert.ok(allowedEntity.id, "Expected allowed entity to have an id");
+	assert.ok(deniedEntity.id, "Expected denied entity to have an id");
 	await runtime.createEntity(allowedEntity);
 	await runtime.createEntity(deniedEntity);
 
@@ -281,9 +283,9 @@ async function main(): Promise<void> {
 		name: "Cozy Devs live role world",
 		messageServerId: cozyGuild.id,
 		metadata: {
-			ownership: {
-				ownerId: allowedEntity.id,
-			},
+				ownership: {
+					ownerId: allowedEntity.id,
+				},
 		},
 	};
 	await runtime.ensureWorldExists(world);
@@ -424,9 +426,7 @@ async function main(): Promise<void> {
 		"Expected authorized Discord interact flow to run the follow-up shell task",
 	);
 
-	const coordinator = service.coordinator;
-	assert.ok(coordinator, "Expected PTY service to expose a coordinator");
-	const threads = await coordinator.listTaskThreads({ includeArchived: true });
+	const threads = await service.listSessions();
 	assert.equal(
 		threads.length,
 		1,

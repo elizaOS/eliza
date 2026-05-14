@@ -43,7 +43,7 @@ class RobloxAgentManager {
       },
       sender: {
         agentId: this.runtime.agentId,
-        agentName: this.runtime.character.name,
+        agentName: this.runtime.character.name ?? this.runtime.agentId,
       },
     });
   }
@@ -64,7 +64,7 @@ class RobloxAgentManager {
       },
       sender: {
         agentId: this.runtime.agentId,
-        agentName: this.runtime.character.name,
+        agentName: this.runtime.character.name ?? this.runtime.agentId,
       },
     });
   }

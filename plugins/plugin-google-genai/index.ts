@@ -62,7 +62,7 @@ const pluginTests = [
           }
           const genAI = new GoogleGenAI({ apiKey });
           const modelList = await genAI.models.list();
-          const models = [];
+          const models: unknown[] = [];
           for await (const model of modelList) {
             models.push(model);
           }

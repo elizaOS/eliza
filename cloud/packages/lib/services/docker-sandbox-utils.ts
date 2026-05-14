@@ -63,10 +63,8 @@ export function normalizeDockerArchitecture(
 ): DockerNodeArchitecture | null {
   const normalized = value?.trim().toLowerCase();
   if (!normalized) return null;
-  if (["amd64", "x86", "x86_64", "x86-64", "x64"].includes(normalized))
-    return "amd64";
-  if (["arm", "arm64", "aarch64", "arm64/v8"].includes(normalized))
-    return "arm64";
+  if (["amd64", "x86", "x86_64", "x86-64", "x64"].includes(normalized)) return "amd64";
+  if (["arm", "arm64", "aarch64", "arm64/v8"].includes(normalized)) return "arm64";
   return null;
 }
 
@@ -75,10 +73,8 @@ export function requiredArchitectureForPlatform(
 ): DockerNodeArchitecture | null {
   const normalized = platform?.trim().toLowerCase();
   if (!normalized) return null;
-  if (normalized.includes("amd64") || normalized.includes("x86_64"))
-    return "amd64";
-  if (normalized.includes("arm64") || normalized.includes("aarch64"))
-    return "arm64";
+  if (normalized.includes("amd64") || normalized.includes("x86_64")) return "amd64";
+  if (normalized.includes("arm64") || normalized.includes("aarch64")) return "arm64";
   return null;
 }
 
@@ -88,11 +84,7 @@ export function inferArchitectureFromHetznerServerType(
   const normalized = serverType?.trim().toLowerCase();
   if (!normalized) return null;
   if (normalized.startsWith("cax")) return "arm64";
-  if (
-    normalized.startsWith("cx") ||
-    normalized.startsWith("cpx") ||
-    normalized.startsWith("ccx")
-  ) {
+  if (normalized.startsWith("cx") || normalized.startsWith("cpx") || normalized.startsWith("ccx")) {
     return "amd64";
   }
   return null;
@@ -121,9 +113,7 @@ export function isArchitectureCompatibleWithPlatform(
   return !required || !architecture || architecture === required;
 }
 
-export function dockerPlatformFlag(
-  platform: string | undefined | null,
-): string[] {
+export function dockerPlatformFlag(platform: string | undefined | null): string[] {
   const trimmed = platform?.trim();
   if (!trimmed) return [];
   validateDockerPlatform(trimmed);
@@ -163,9 +153,7 @@ export function validateAgentName(name: string): void {
   }
   // Block characters that could break shell commands even inside quotes
   if (hasControlChars(name)) {
-    throw new Error(
-      `Invalid agent name "${name}": contains control characters.`,
-    );
+    throw new Error(`Invalid agent name "${name}": contains control characters.`);
   }
 }
 
@@ -193,10 +181,7 @@ export function validateEnvValue(key: string, value: string): void {
 
 /** Docker container names must be simple shell-safe identifiers. */
 export function validateContainerName(containerName: string): void {
-  if (
-    hasControlChars(containerName) ||
-    !/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$/.test(containerName)
-  ) {
+  if (hasControlChars(containerName) || !/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$/.test(containerName)) {
     throw new Error(
       `Invalid container name "${containerName}": must match ^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$.`,
     );
@@ -223,9 +208,7 @@ export function validateVolumePath(volumePath: string): void {
     volumePath.endsWith("/..") ||
     (volumePath.length > 1 && volumePath.endsWith("/"))
   ) {
-    throw new Error(
-      `Invalid volume path "${volumePath}": path must be normalized.`,
-    );
+    throw new Error(`Invalid volume path "${volumePath}": path must be normalized.`);
   }
 }
 
@@ -242,8 +225,7 @@ export function validateVolumePath(volumePath: string): void {
  * - Non-loopback host URLs pass through unchanged.
  */
 export function resolveStewardContainerUrl(
-  stewardHostUrl: string = process.env.STEWARD_API_URL ||
-    "http://localhost:8787/steward",
+  stewardHostUrl: string = process.env.STEWARD_API_URL || "http://localhost:8787/steward",
   stewardContainerUrl?: string,
 ): string {
   const override = stewardContainerUrl?.trim();
@@ -255,9 +237,7 @@ export function resolveStewardContainerUrl(
   try {
     url = new URL(stewardHostUrl);
   } catch {
-    throw new Error(
-      `[docker-sandbox] Invalid STEWARD_API_URL: ${JSON.stringify(stewardHostUrl)}`,
-    );
+    throw new Error(`[docker-sandbox] Invalid STEWARD_API_URL: ${JSON.stringify(stewardHostUrl)}`);
   }
   if (["localhost", "127.0.0.1", "::1"].includes(url.hostname)) {
     url.hostname = "host.docker.internal";
@@ -313,11 +293,7 @@ export function extractDockerCreateContainerId(output: string): string {
  * for active sandboxes, so a duplicate insert will fail and the caller
  * should retry the entire provisioning flow.
  */
-export function allocatePort(
-  min: number,
-  max: number,
-  excluded: Set<number>,
-): number {
+export function allocatePort(min: number, max: number, excluded: Set<number>): number {
   const range = max - min;
   if (excluded.size >= range) {
     throw new Error(
@@ -338,9 +314,7 @@ export function allocatePort(
   return port;
 }
 
-export function readDockerHostPortFromMetadata(
-  metadata: unknown,
-): number | null {
+export function readDockerHostPortFromMetadata(metadata: unknown): number | null {
   if (!metadata || typeof metadata !== "object") return null;
   const hostPort = (metadata as Record<string, unknown>).hostPort;
   if (typeof hostPort !== "number") return null;
@@ -407,9 +381,7 @@ export function parseDockerNodes(): DockerNodeEnv[] {
 
     const parts = trimmed.split(":");
     if (parts.length < 3) {
-      logger.warn(
-        `[docker-sandbox] Skipping malformed node entry: "${trimmed}"`,
-      );
+      logger.warn(`[docker-sandbox] Skipping malformed node entry: "${trimmed}"`);
       continue;
     }
 
@@ -424,9 +396,7 @@ export function parseDockerNodes(): DockerNodeEnv[] {
   }
 
   if (nodes.length === 0) {
-    throw new Error(
-      "[docker-sandbox] No valid nodes parsed from AGENT_DOCKER_NODES",
-    );
+    throw new Error("[docker-sandbox] No valid nodes parsed from AGENT_DOCKER_NODES");
   }
 
   _cachedDockerNodes = nodes;

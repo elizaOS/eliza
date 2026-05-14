@@ -5,6 +5,7 @@
     "jsx": "react-jsx",
     "moduleResolution": "bundler",
     "strict": false,
+    "strictNullChecks": true,
     "skipLibCheck": true,
     "types": ["node", "bun"],
     "allowImportingTsExtensions": true,

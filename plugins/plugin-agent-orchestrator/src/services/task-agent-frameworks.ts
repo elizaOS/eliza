@@ -18,10 +18,7 @@ import {
   resolveStateDir,
   resolveUserPath,
 } from "@elizaos/core";
-import {
-  readConfigCloudKey,
-  readConfigEnvKey,
-} from "./config-env.js";
+import { readConfigCloudKey, readConfigEnvKey } from "./config-env.js";
 
 type AgentMetricsSummary = {
   spawned: number;
@@ -78,10 +75,7 @@ export interface TaskAgentFrameworkProbe {
   checkAvailableAgents?: (
     types?: string[],
   ) => Promise<TaskAgentPreflightResult[]>;
-  getAgentMetrics?: () => Record<
-    string,
-    AgentMetricsSummary
-  >;
+  getAgentMetrics?: () => Record<string, AgentMetricsSummary>;
 }
 
 export type TaskAgentTaskKind =
@@ -668,13 +662,13 @@ async function computeTaskAgentFrameworkState(
             ? "ready to use the user's OpenAI subscription"
             : id === "opencode" && installed && opencodeLocalMode
               ? "ready to use a local model provider (ELIZA_OPENCODE_LOCAL)"
-            : id === "opencode" && installed && authReady
-              ? "ready to use the configured OpenCode provider"
-              : installed
-                ? authReady
-                  ? "installed with credentials available"
-                  : "installed but credentials were not detected"
-                : "CLI not detected";
+              : id === "opencode" && installed && authReady
+                ? "ready to use the configured OpenCode provider"
+                : installed
+                  ? authReady
+                    ? "installed with credentials available"
+                    : "installed but credentials were not detected"
+                  : "CLI not detected";
       return {
         id,
         label: FRAMEWORK_LABELS[id],

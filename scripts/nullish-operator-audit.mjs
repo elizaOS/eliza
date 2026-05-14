@@ -218,6 +218,24 @@ function containsUncheckedElementAccess(node) {
   return found;
 }
 
+function containsTypeAssertion(node) {
+  let found = false;
+  function visit(current) {
+    if (found) return;
+    if (
+      ts.isAsExpression(current) ||
+      ts.isTypeAssertionExpression(current) ||
+      ts.isSatisfiesExpression(current)
+    ) {
+      found = true;
+      return;
+    }
+    ts.forEachChild(current, visit);
+  }
+  visit(node);
+  return found;
+}
+
 function lineAndColumn(sf, nodeOrPos) {
   const pos =
     typeof nodeOrPos === "number" ? nodeOrPos : nodeOrPos.getStart(sf);
@@ -391,7 +409,10 @@ function collectCandidates(sourceFiles, files, checker) {
 
         if (node.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken) {
           const uncheckedIndex = containsUncheckedElementAccess(node.left);
-          const removable = checker ? !uncheckedIndex && !includesNullish(leftType) : false;
+          const assertedType = containsTypeAssertion(node.left);
+          const removable = checker
+            ? !uncheckedIndex && !assertedType && !includesNullish(leftType)
+            : false;
           classification = checker
             ? removable
               ? "type-obvious-removable"
@@ -400,6 +421,8 @@ function collectCandidates(sourceFiles, files, checker) {
           reason = checker
             ? uncheckedIndex
               ? "left-hand side includes indexed access; noUncheckedIndexedAccess is not required here"
+              : assertedType
+                ? "left-hand side includes a type assertion that may mask nullish runtime values"
               : removable
               ? "left-hand type excludes null and undefined"
               : "left-hand type includes null/undefined/any/unknown"

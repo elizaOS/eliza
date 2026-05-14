@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import type { Plugin } from "@elizaos/core";
+import type { AppPackageRouteContext, Plugin } from "@elizaos/core";
 import { logger, resolveStateDir } from "@elizaos/core";
 import {
   type AppLaunchDiagnostic,
@@ -39,7 +39,7 @@ export type AppRunSessionRefresher = (
 ) => Promise<AppSessionState | null>;
 
 export type AppRouteModule = {
-  handleAppRoutes?: (ctx: unknown) => Promise<boolean>;
+  handleAppRoutes?: (ctx: AppPackageRouteContext) => Promise<boolean>;
   prepareLaunch?: AppLaunchPreparationResolver;
   resolveViewerAuthMessage?: AppViewerAuthMessageResolver;
   ensureRuntimeReady?: (ctx: AppLaunchSessionContext) => Promise<void>;

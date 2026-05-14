@@ -9,6 +9,7 @@ import {
   InMemorySessionStore,
   type SessionStoreBackend,
 } from "./session-store.js";
+import { buildOpencodeAcpEnv } from "./opencode-config.js";
 import type {
   AcpEventCallback,
   AcpJsonRpcMessage,
@@ -118,7 +119,7 @@ export class AcpService {
       boolSetting(this.setting("ACPX_APPROVE_ALL")) === true
         ? "approve-all"
         : (this.setting("ELIZA_ACP_DEFAULT_APPROVAL") ??
-          this.setting("ELIZA_DEFAULT_APPROVAL_PRESET")),
+            this.setting("ELIZA_DEFAULT_APPROVAL_PRESET")),
     );
     this.agentSelectionStrategy =
       this.setting("ELIZA_ACP_AGENT_SELECTION_STRATEGY") ??
@@ -844,6 +845,18 @@ export class AcpService {
       if (agentType === "claude") env.ANTHROPIC_MODEL = model;
       if (agentType === "opencode") env.OPENCODE_MODEL = model;
     }
+    if (agentType === "opencode") {
+      const opencode = buildOpencodeAcpEnv(this.runtime, env, model);
+      Object.assign(env, opencode.env);
+      if (opencode.config) {
+        this.log("info", "OpenCode ACP provider configured", {
+          provider: opencode.config.providerLabel,
+          model: opencode.config.model,
+          smallModel: opencode.config.smallModel,
+          vendored: Boolean(opencode.vendoredShimDir),
+        });
+      }
+    }
     return env;
   }
 
@@ -944,9 +957,15 @@ function shouldForwardEnv(key: string): boolean {
     [
       "OPENAI_API_KEY",
       "ANTHROPIC_API_KEY",
+      "CEREBRAS_API_KEY",
+      "CEREBRAS_BASE_URL",
+      "CEREBRAS_MODEL",
       "OPENAI_MODEL",
       "ANTHROPIC_MODEL",
       "OPENCODE_MODEL",
+      "OPENCODE_CONFIG_CONTENT",
+      "OPENCODE_DISABLE_AUTOUPDATE",
+      "OPENCODE_DISABLE_TERMINAL_TITLE",
       "CODEX_HOME",
     ].includes(key)
   );
