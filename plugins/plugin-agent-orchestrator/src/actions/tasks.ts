@@ -72,6 +72,10 @@ import {
   setCurrentSessions,
   shortId,
 } from "./common.js";
+import {
+  resolvePinnedAdapter,
+  resolveWorkdirRoute,
+} from "./coding-task-helpers.js";
 import { resolveTaskThreadTarget } from "./task-thread-target.js";
 
 const MAX_CONCURRENT_AGENTS = 8;
@@ -237,7 +241,12 @@ async function runCreate(
     return errorResult("TOO_MANY_AGENTS", msg);
   }
 
+  // Operator pin wins over planner-supplied agentType — see runSpawnAgent.
+  // Per-task `framework:` prefixes set by the user (e.g. "claude: do X")
+  // still override the pin inside the parseAgentPrefix step below.
+  const pinnedAgentType = resolvePinnedAdapter(runtime);
   const baseAgentType =
+    pinnedAgentType ??
     pickString(params, content, "agentType") ??
     String(
       (await service.resolveAgentType?.({
@@ -245,7 +254,8 @@ async function runCreate(
         subtaskCount: tasks.length,
       })) ?? "codex",
     );
-  const workdir = pickString(params, content, "workdir") ?? process.cwd();
+  const explicitWorkdir = pickString(params, content, "workdir");
+  const fallbackWorkdir = explicitWorkdir ?? process.cwd();
   const model = pickString(params, content, "model");
   const memoryContent = pickString(params, content, "memoryContent");
   const approvalPreset = parseApproval(
@@ -259,9 +269,19 @@ async function runCreate(
       const task = parsed.task;
       const agentType = parsed.agentType as AgentType;
       const label = baseLabel ?? labelFrom(task, index);
+      // Routes are a fallback only — see runSpawnAgent. If an explicit
+      // workdir was supplied by the caller, skip route resolution entirely
+      // so scaffold-aware actions (APP_CREATE etc.) keep their dir.
+      const route = explicitWorkdir
+        ? undefined
+        : resolveWorkdirRoute(runtime, task, text);
+      const sessionWorkdir = route?.workdir ?? fallbackWorkdir;
+      const taskWithRouteHints = route?.instructions
+        ? `${task}\n\n--- Workspace Routing Note ---\n${route.instructions}\n--- End Workspace Routing Note ---`
+        : task;
       const session = await service.spawnSession({
         agentType,
-        workdir,
+        workdir: sessionWorkdir,
         memoryContent,
         approvalPreset,
         model,
@@ -274,9 +294,16 @@ async function runCreate(
           userId: message.entityId,
           label,
           source: content.source,
+          workdirRouteId: route?.id,
         },
       });
-      await runPromptAndClose(service, session, task, timeoutMs, model);
+      await runPromptAndClose(
+        service,
+        session,
+        taskWithRouteHints,
+        timeoutMs,
+        model,
+      );
       return { session, label, agentType };
     }),
   );
@@ -307,14 +334,14 @@ async function runCreate(
       `TASKS:create launch failed: ${JSON.stringify({
         error: msg,
         agentType,
-        workdir,
+        workdir: fallbackWorkdir,
       })}`,
     );
     results.push({
       sessionId: "",
       id: "",
       agentType,
-      workdir,
+      workdir: fallbackWorkdir,
       label,
       status: "failed",
       error: msg,
@@ -360,14 +387,36 @@ async function runSpawnAgent(
   try {
     const text = messageText(message);
     const task = pickString(params, content, "task") ?? text;
+    // Operator-pinned adapter (PARALLAX_DEFAULT_AGENT_TYPE +
+    // PARALLAX_AGENT_SELECTION_STRATEGY=fixed) is a deployment policy and
+    // wins over the planner's `agentType` choice. The planner only sees
+    // descriptions of available adapters and routinely guesses one based on
+    // context tokens; the operator's explicit pin is authoritative. When no
+    // pin is configured, fall back to the planner's choice and finally to
+    // the service's dynamic resolver.
+    const pinnedAgentType = resolvePinnedAdapter(runtime);
     const explicitAgentType = pickString(params, content, "agentType");
-    const agentType = (explicitAgentType ??
+    const agentType = (pinnedAgentType ??
+      explicitAgentType ??
       (await service.resolveAgentType?.({
         task,
         workdir: pickString(params, content, "workdir"),
       })) ??
       "codex") as AgentType;
-    const workdir = pickString(params, content, "workdir") ?? process.cwd();
+    // Workdir routes are a FALLBACK only: when no upstream caller supplied
+    // a workdir param, consult `TASK_AGENT_WORKDIR_ROUTES` to pick one based
+    // on the task text. Actions that compose this one (e.g. APP_CREATE
+    // dispatching into a scaffolded `eliza/apps/<name>` directory) pass an
+    // explicit `workdir` and keep it — operator-declared routes never
+    // override deliberate scaffold paths.
+    const explicitWorkdir = pickString(params, content, "workdir");
+    const route = explicitWorkdir
+      ? undefined
+      : resolveWorkdirRoute(runtime, task, text);
+    const workdir = explicitWorkdir ?? route?.workdir ?? process.cwd();
+    const taskWithRouteHints = route?.instructions
+      ? `${task}\n\n--- Workspace Routing Note ---\n${route.instructions}\n--- End Workspace Routing Note ---`
+      : task;
     const memoryContent = pickString(params, content, "memoryContent");
     const approvalPreset = parseApproval(
       pickString(params, content, "approvalPreset"),
@@ -404,7 +453,7 @@ async function runSpawnAgent(
     const session = await service.spawnSession({
       agentType,
       workdir,
-      initialTask: task,
+      initialTask: taskWithRouteHints,
       memoryContent,
       approvalPreset,
       metadata: {
@@ -416,6 +465,7 @@ async function runSpawnAgent(
         label,
         source: resolvedSpawnSource,
         keepAliveAfterComplete,
+        workdirRouteId: route?.id,
       },
     });
 
@@ -2544,6 +2594,16 @@ export const tasksAction: Action & {
   validate: async (runtime, message) => {
     // Always allow when ACP service is available — action switch handles dispatch.
     if (!getAcpService(runtime) && !getCoordinator(runtime)) return false;
+    // Sub-agent task_complete events are routed back through the runtime as
+    // synthetic inbound messages so the parent agent can compose the
+    // user-facing reply. The parent should NOT re-spawn from those echoes;
+    // it should just summarise the result. Gating TASKS out of the candidate
+    // surface for sub-agent-sourced inbounds is the structural fix for the
+    // duplicate-spawn / "On it × N" loop observed when a single user
+    // request kicks off an asynchronous spawn whose completion event the
+    // planner would otherwise interpret as a fresh delegation request.
+    const source = (message.content as { source?: unknown })?.source;
+    if (source === "sub_agent") return false;
     if (
       hasExplicitPayload(message, [
         "action",
