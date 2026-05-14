@@ -203,7 +203,14 @@ export async function handleConversationRouteGroup({
     });
   }
 
-  if (!pathname.startsWith("/v1/")) {
+  // Per-agent message endpoint mirrors the cloud agent-server contract
+  // (`POST /agents/:id/message`) and shares chat-routes' generateChatResponse
+  // path — same model routing as `/v1/chat/completions`, including
+  // local-inference TEXT_LARGE handlers. Issue #7680.
+  const isAgentMessageRoute =
+    method === "POST" && /^\/api\/agents\/[^/]+\/message$/.test(pathname);
+
+  if (!pathname.startsWith("/v1/") && !isAgentMessageRoute) {
     return false;
   }
 
