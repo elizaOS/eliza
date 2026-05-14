@@ -81,7 +81,7 @@ if [ -z "$RESOLVED_IP" ]; then
   echo "[watcher $(date -u +%FT%TZ)] WARN: could not resolve VM IP via nebius CLI; set VM_IP env explicitly before launching watcher" | tee -a "$LOG"
   exit 2
 fi
-echo "[watcher $(date -u +%FT%TZ)] armed: RUN_NAME=$RUN_NAME VM=$NEBIUS_VM_NAME IP=$RESOLVED_IP FULL_PID=$FULL_PID deadline=$(date -u -d @$DEADLINE +%FT%TZ) ${DEADLINE_HOURS}h" >> "$LOG"
+echo "[watcher $(date -u +%FT%TZ)] armed: RUN_NAME=${RUN_NAME:-<multi-tier:${WATCHER_MULTI_TIER_TAG:-}>} VM=$NEBIUS_VM_NAME IP=$RESOLVED_IP FULL_PID=$FULL_PID deadline=$(date -u -d @$DEADLINE +%FT%TZ) ${DEADLINE_HOURS}h" >> "$LOG"
 
 ssh_alive() {
   # AUTHORITATIVE VM liveness: SSH-auth survives nebius CLI expiry.
@@ -115,7 +115,7 @@ stop_remote_training() {
 }
 fetch_and_teardown() {
   bash scripts/train_nebius.sh fetch >> "$LOG" 2>&1 || echo "[watcher] fetch failed (network/ssh)" >> "$LOG"
-  if [ -f "checkpoints/$RUN_NAME/gate_report.json" ]; then
+  if [ -n "${RUN_NAME:-}" ] && [ -f "checkpoints/$RUN_NAME/gate_report.json" ]; then
     echo "[watcher] gate_report.json contents:" >> "$LOG"
     cat "checkpoints/$RUN_NAME/gate_report.json" >> "$LOG"
   fi
