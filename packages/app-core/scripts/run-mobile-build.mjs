@@ -33,8 +33,11 @@
  *   6. Native build         — gradlew / xcodebuild
  *
  * iOS targets:
- *   - ios         Cloud/client-oriented iOS build. Local inference is omitted
- *                 unless ELIZA_IOS_INCLUDE_LLAMA / ELIZA_IOS_INCLUDE_LLAMA is set.
+ *   - ios         App Store iOS build. Bakes runtimeMode=local in App Store
+ *                 compliance mode: signed/bundled agent code only, no
+ *                 arbitrary process spawning, no downloaded executable code,
+ *                 and no llama/full-Bun native payloads unless those payloads
+ *                 are explicitly marked App-Store-compliant.
  *   - ios-local   Dev/sideload iOS build. Bakes runtimeMode=local, builds and
  *                 stages the Bun-targeted agent payload, includes the native
  *                 llama bridge, and defaults to simulator validation.
@@ -128,6 +131,13 @@ const androidAgentSpikeDir = path.join(
 );
 const IOS_BUN_ENGINE_FRAMEWORK_NAME = "ElizaBunEngine";
 const IOS_BUN_ENGINE_ABI_VERSION = "3";
+const IOS_APP_STORE_LOCAL_RUNTIME_ENV = "ELIZA_IOS_APP_STORE_LOCAL_RUNTIME";
+const IOS_APP_STORE_COMPLIANT_LOCAL_RUNTIME_ENV =
+  "ELIZA_IOS_APP_STORE_COMPLIANT_LOCAL_RUNTIME";
+const IOS_FULL_BUN_APP_STORE_COMPLIANT_ENV =
+  "ELIZA_IOS_FULL_BUN_ENGINE_APP_STORE_COMPLIANT";
+const IOS_LLAMA_APP_STORE_COMPLIANT_ENV =
+  "ELIZA_IOS_LLAMA_APP_STORE_COMPLIANT";
 const iosBunRuntimePackageRoot = path.join(packagesRoot, "bun-ios-runtime");
 const defaultIosBunEngineXcframework = path.join(
   iosBunRuntimePackageRoot,
@@ -143,6 +153,31 @@ const IOS_BUN_ENGINE_REQUIRED_SYMBOLS = [
   "_eliza_bun_engine_is_running",
   "_eliza_bun_engine_call",
   "_eliza_bun_engine_free",
+];
+const IOS_BUN_ENGINE_APP_STORE_FORBIDDEN_SYMBOLS = [
+  "_execl",
+  "_execle",
+  "_execlp",
+  "_execv",
+  "_execve",
+  "_execvp",
+  "_fork",
+  "_posix_spawn",
+  "_posix_spawnp",
+  "_pthread_jit_write_protect_np",
+  "_system",
+];
+const IOS_APP_STORE_FORBIDDEN_AGENT_ASSET_PATTERNS = [
+  /(^|[._-])bun([._-]|$)/i,
+  /llama/i,
+  /llamafile/i,
+  /\.gguf$/i,
+  /\.ggml$/i,
+  /\.dylib$/i,
+  /\.framework$/i,
+  /\.xcframework$/i,
+  /\.a$/i,
+  /toolchain/i,
 ];
 // ── Phase 1: Resolve app identity from app.config.ts ────────────────────
 
@@ -624,12 +659,7 @@ export function resolveMobileBuildPolicy(platform) {
       : platform === "android" || platform === "android-system"
         ? "local"
         : null;
-  const iosRuntimeMode =
-    platform === "ios-local"
-      ? "local"
-      : platform === "ios" || platform === "ios-overlay"
-        ? "cloud"
-        : null;
+  const iosRuntimeMode = resolveIosRuntimeMode(platform);
   const buildVariant =
     platform === "android-cloud" || platform === "ios" ? "store" : "direct";
   const releaseAuthority =
@@ -653,7 +683,70 @@ export function resolveMobileBuildPolicy(platform) {
     iosRuntimeMode,
     releaseAuthority,
     appControlledOta: false,
+    iosAppStoreLocalRuntime: platform === "ios" && iosRuntimeMode === "local",
   };
+}
+
+function normalizeRuntimeMode(value, fallback) {
+  const mode = String(value ?? "").trim().toLowerCase();
+  return mode === "cloud" || mode === "local" ? mode : fallback;
+}
+
+export function resolveIosRuntimeMode(platform, env = process.env) {
+  if (platform === "ios-local") return "local";
+  if (platform === "ios" || platform === "ios-overlay") {
+    return normalizeRuntimeMode(env.ELIZA_IOS_RUNTIME_MODE, "local");
+  }
+  return null;
+}
+
+export function resolveIosAppStoreLocalRuntimePolicy({
+  platform = "ios",
+  env = process.env,
+} = {}) {
+  const iosRuntimeMode = resolveIosRuntimeMode(platform, env);
+  const enabled = platform === "ios" && iosRuntimeMode === "local";
+  const includeLlama = isIosLlamaRequested(env);
+  const includeFullBunEngine = isFullIosBunEngineRequested(env);
+  const errors = [];
+  if (enabled) {
+    if (
+      includeLlama &&
+      !isTruthyEnv(env[IOS_LLAMA_APP_STORE_COMPLIANT_ENV])
+    ) {
+      errors.push(
+        `${IOS_LLAMA_APP_STORE_COMPLIANT_ENV}=1 is required before an App Store local build may bundle llama.cpp`,
+      );
+    }
+    if (
+      includeFullBunEngine &&
+      !isTruthyEnv(env[IOS_FULL_BUN_APP_STORE_COMPLIANT_ENV])
+    ) {
+      errors.push(
+        `${IOS_FULL_BUN_APP_STORE_COMPLIANT_ENV}=1 is required before an App Store local build may bundle ElizaBunEngine`,
+      );
+    }
+  }
+  return {
+    enabled,
+    iosRuntimeMode,
+    includeLlama,
+    includeFullBunEngine,
+    errors,
+  };
+}
+
+function assertIosAppStoreLocalRuntimePolicy({ platform = "ios" } = {}) {
+  const policy = resolveIosAppStoreLocalRuntimePolicy({
+    platform,
+    env: process.env,
+  });
+  if (policy.errors.length > 0) {
+    throw new Error(
+      `[mobile-build] iOS App Store local runtime policy failed:\n- ${policy.errors.join("\n- ")}`,
+    );
+  }
+  return policy;
 }
 
 async function buildWeb(platform) {
@@ -2103,6 +2196,13 @@ function overlayIos() {
 
 function isTruthyEnv(value) {
   return /^(1|true|yes|on)$/i.test(String(value ?? "").trim());
+}
+
+function isIosLlamaRequested(env = process.env) {
+  return (
+    isTruthyEnv(env.ELIZA_IOS_INCLUDE_LLAMA) ||
+    isTruthyEnv(env.ELIZA_IOS_INCLUDE_LOCAL_LLAMA)
+  );
 }
 
 function isFullIosBunEngineRequested(env = process.env) {

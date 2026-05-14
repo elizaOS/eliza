@@ -51,7 +51,7 @@ function buildEvaluatorGrammar(): string {
 		'jsonstringarray ::= "[" ws ( jsonstring ( ws "," ws jsonstring )* )? ws "]"',
 		'jsonbool ::= "true" | "false"',
 		'jsonstring ::= "\\"" ( [^"\\\\\\n\\r\\t] | "\\\\" ( ["\\\\/bfnrt] | "u" [0-9a-fA-F] [0-9a-fA-F] [0-9a-fA-F] [0-9a-fA-F] ) )* "\\""',
-		'ws ::= [ \\t\\n\\r]*',
+		"ws ::= [ \\t\\n\\r]*",
 	].join("\n");
 }
 

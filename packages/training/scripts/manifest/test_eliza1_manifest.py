@@ -113,10 +113,10 @@ def test_eliza1_tier_ids_are_canonical():
         "dflash",
         "turbo3_tcq",
     )
-    assert VOICE_BACKENDS_BY_TIER["0_8b"] == ("kokoro",)
-    assert VOICE_BACKENDS_BY_TIER["2b"] == ("kokoro",)
-    assert VOICE_BACKENDS_BY_TIER["4b"] == ("kokoro",)
-    assert VOICE_BACKENDS_BY_TIER["9b"] == ("kokoro", "omnivoice")
+    assert VOICE_BACKENDS_BY_TIER["0_8b"] == ("omnivoice", "kokoro")
+    assert VOICE_BACKENDS_BY_TIER["2b"] == ("omnivoice", "kokoro")
+    assert VOICE_BACKENDS_BY_TIER["4b"] == ("omnivoice", "kokoro")
+    assert VOICE_BACKENDS_BY_TIER["9b"] == ("omnivoice", "kokoro")
     assert VOICE_BACKENDS_BY_TIER["27b-1m"] == ("omnivoice",)
 
 
@@ -571,7 +571,7 @@ def _base_v1_provenance() -> dict:
             "asr": {"repo": "ggml-org/Qwen3-ASR-0.6B-GGUF"},
             "vad": {"repo": "ggml-org/whisper-vad"},
             "vision": {"repo": "unsloth/Qwen3.5-4B-GGUF", "file": "mmproj-F16.gguf"},
-            "drafter": {"repo": "elizaos/eliza-1", "file": "bundles/4b/dflash/drafter-4b.gguf"},
+            "drafter": {"repo": "elizalabs/eliza-1", "file": "bundles/4b/dflash/drafter-4b.gguf"},
         },
     }
 

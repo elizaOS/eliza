@@ -36,6 +36,8 @@ const SAFE_COMMANDS = new Set<string>([
   "file_download",
   "terminal_read",
   "terminal_connect",
+  "terminal_create",
+  "terminal_resize",
   "list_windows",
 ]);
 
