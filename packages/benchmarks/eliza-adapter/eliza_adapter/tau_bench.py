@@ -1,223 +1,354 @@
-"""Tau-bench agent backed by the eliza benchmark server."""
+"""Tau-bench agent backed by the eliza benchmark server.
+
+Drop-in equivalent of :class:`elizaos_tau_bench.eliza_agent.LiteLLMToolCallingAgent`
+but routes the agent-side completion through the eliza TS bench server via
+:class:`ElizaClient`. The control flow mirrors
+``LiteLLMToolCallingAgent.solve`` step-for-step so reward computation
+against the upstream ``Env`` stays identical.
+
+Approach
+--------
+We re-use ``ElizaClient.send_message`` with ``context={"messages": ...,
+"tools": ...}`` — the same shape the lifeops-bench adapter uses
+(``bridge.lifeops_message`` is the lifeops-specific superset of this
+endpoint and returns identical ``{text, tool_calls, usage}``). This keeps
+the adapter symmetric with the hermes / openclaw paths: we ship the OpenAI
+chat-completions messages + tool catalog every turn, and read back
+``response.params["tool_calls"]`` for the next action. The bench server
+owns prompt rendering and provider selection (set via OPENAI_LARGE_MODEL
+etc. for plugin-openai).
+
+Note: ``ELIZA_BENCH_SKIP_EMBEDDING=1`` is recommended to keep
+plugin-local-inference from being eagerly loaded, which would otherwise
+deadlock the bench server boot on CPU-only hosts.
+"""
 
 from __future__ import annotations
 
 import json
 import logging
 import os
-from dataclasses import dataclass, field
+import uuid
+from typing import Any, Final, Optional
 
 from eliza_adapter.client import ElizaClient
 
-from elizaos_tau_bench.types import (
-    ConversationTurn,
-    TauBenchTask,
-    ToolCall,
-)
-from elizaos_tau_bench.executor import ToolExecutor
+from elizaos_tau_bench.eliza_agent import AgentRunResult, BaseTauAgent
+from elizaos_tau_bench.types import Action, RESPOND_ACTION_NAME
+from elizaos_tau_bench.upstream.envs.base import Env
 
 logger = logging.getLogger(__name__)
 
 
-def _extract_xml_tag(text: str, tag: str) -> str | None:
-    """Extract content between <tag>...</tag> from text."""
-    import re
-
-    m = re.search(rf"<{tag}>(.*?)</{tag}>", text, re.DOTALL)
-    return m.group(1).strip() if m else None
+_CEREBRAS_PRICING: Final[dict[str, dict[str, float]]] = {
+    "gpt-oss-120b": {"input_per_million_usd": 0.35, "output_per_million_usd": 0.75},
+}
 
 
-class ElizaTauAgent:
-    """Tau-bench agent that delegates to the eliza TypeScript agent.
+def _compute_cost_usd(
+    model: str | None, prompt_tokens: int, completion_tokens: int
+) -> float:
+    if not model:
+        return 0.0
+    bare = model.rsplit("/", 1)[-1]
+    pricing = _CEREBRAS_PRICING.get(bare)
+    if pricing is None:
+        return 0.0
+    return (
+        (prompt_tokens / 1_000_000.0) * pricing["input_per_million_usd"]
+        + (completion_tokens / 1_000_000.0) * pricing["output_per_million_usd"]
+    )
 
-    Drop-in replacement for ``ElizaOSTauAgent`` — same ``process_task``
-    interface but routes LLM calls through the eliza benchmark server.
+
+def _strip_cerebras_quirks(message: dict[str, Any]) -> dict[str, Any]:
+    for key in ("reasoning_content", "provider_specific_fields"):
+        message.pop(key, None)
+    return message
+
+
+def _scrub_history_for_cerebras(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for m in messages:
+        if m.get("role") == "assistant":
+            scrubbed = dict(m)
+            scrubbed.pop("reasoning_content", None)
+            scrubbed.pop("provider_specific_fields", None)
+            out.append(scrubbed)
+        else:
+            out.append(m)
+    return out
+
+
+def _message_to_action(message: dict[str, Any]) -> Action:
+    tool_calls = message.get("tool_calls")
+    if tool_calls and len(tool_calls) > 0:
+        tc = tool_calls[0]
+        if isinstance(tc, dict):
+            fn = tc.get("function") or {}
+            name = fn.get("name") or ""
+            args_raw = fn.get("arguments")
+        else:
+            fn = getattr(tc, "function", None)
+            name = getattr(fn, "name", "") if fn is not None else ""
+            args_raw = getattr(fn, "arguments", "") if fn is not None else ""
+        if isinstance(args_raw, str):
+            try:
+                kwargs = json.loads(args_raw or "{}")
+            except json.JSONDecodeError:
+                kwargs = {}
+        elif isinstance(args_raw, dict):
+            kwargs = dict(args_raw)
+        else:
+            kwargs = {}
+        if name:
+            return Action(name=str(name), kwargs=kwargs)
+    return Action(
+        name=RESPOND_ACTION_NAME,
+        kwargs={"content": message.get("content") or ""},
+    )
+
+
+def _normalize_tool_calls_for_history(
+    raw_tool_calls: list[Any] | None,
+) -> list[dict[str, Any]]:
+    if not raw_tool_calls:
+        return []
+    out: list[dict[str, Any]] = []
+    for tc in raw_tool_calls:
+        if not isinstance(tc, dict):
+            continue
+        if "function" in tc and isinstance(tc["function"], dict):
+            fn = tc["function"]
+            fn_name = fn.get("name") or ""
+            fn_args = fn.get("arguments")
+        else:
+            fn_name = tc.get("name") or ""
+            fn_args = tc.get("arguments")
+        tc_id = tc.get("id") or f"call_{len(out)}"
+        if not fn_name:
+            continue
+        if isinstance(fn_args, dict):
+            args_str = json.dumps(fn_args)
+        elif isinstance(fn_args, str):
+            args_str = fn_args or "{}"
+        else:
+            args_str = "{}"
+        out.append(
+            {
+                "id": str(tc_id),
+                "type": "function",
+                "function": {"name": fn_name, "arguments": args_str},
+            }
+        )
+    return out
+
+
+class ElizaTauAgent(BaseTauAgent):
+    """Tau-bench agent that drives an upstream ``Env`` via the eliza bench server.
+
+    Identical control flow to :class:`LiteLLMToolCallingAgent`; per-turn
+    completions are forwarded to the elizaOS bench server which runs the
+    runtime planner and returns ``{text, tool_calls, usage}`` for us to map
+    back into upstream ``Action``\\s.
     """
 
     def __init__(
         self,
-        executor: ToolExecutor,
-        max_turns: int = 15,
+        model: str = "gpt-oss-120b",
+        provider: str = "cerebras",
+        temperature: float = 0.0,
         client: ElizaClient | None = None,
+        server_manager: Any | None = None,
     ) -> None:
-        self.executor = executor
-        self.max_turns = max_turns
-        self._client = client or ElizaClient()
-        self.conversation: list[ConversationTurn] = []
+        self.model = model
+        self.provider = provider
+        self.temperature = temperature
+        self._server_manager = server_manager
+        if client is not None:
+            self.client = client
+        else:
+            self.client, self._server_manager = _build_default_client()
+        self._session_id = f"tau-{uuid.uuid4().hex[:12]}"
+        self._reset_done = False
+        try:
+            self.client.wait_until_ready(timeout=120)
+        except Exception as exc:
+            logger.warning("[eliza-tau] wait_until_ready failed: %s", exc)
 
-    async def initialize(self) -> None:
-        """Verify the eliza server is reachable."""
-        self._client.wait_until_ready(timeout=120)
+    def solve(self, env: Env, task_index: int, max_num_steps: int = 30) -> AgentRunResult:
+        reset = env.reset(task_index=task_index)
+        obs = reset.observation
+        info: dict[str, Any] = reset.info.model_dump()
+        reward = 0.0
+        total_cost = 0.0
+        num_tool_calls = 0
+        actions_taken: list[Action] = []
 
-    async def process_task(
-        self,
-        task: TauBenchTask,
-    ) -> tuple[list[ToolCall], str, list[ConversationTurn]]:
-        """Process a Tau-bench task using eliza.
+        # Fresh server session per task — this avoids the runtime carrying
+        # stale state across tasks (relevant for retail/airline tools that
+        # mutate shared data).
+        self._session_id = f"tau-{uuid.uuid4().hex[:12]}"
+        try:
+            self.client.reset(task_id=self._session_id, benchmark="tau_bench")
+        except Exception as exc:
+            logger.debug("[eliza-tau] reset failed (continuing): %s", exc)
 
-        Returns (tool_calls, final_response, conversation).
-        """
-        self.conversation = []
-        tool_calls_made: list[ToolCall] = []
-        final_response = ""
-
-        # Reset session
-        self._client.reset(task_id=task.task_id, benchmark="tau_bench")
-
-        # Format tool definitions for context
-        tools_for_context = [
-            {
-                "name": t.name,
-                "description": t.description,
-                "parameters": t.parameters,
-            }
-            for t in task.available_tools
+        messages: list[dict[str, Any]] = [
+            {"role": "system", "content": env.wiki},
+            {"role": "user", "content": obs},
         ]
+        tools_info = list(env.tools_info)
 
-        # Format policies
-        policies_for_context = [
-            {"policy_id": p.policy_id, "description": p.description}
-            for p in task.policy_constraints
-        ]
+        try:
+            for _step_i in range(max_num_steps):
+                response = self._one_turn(messages, tools_info)
+                next_message = self._response_to_assistant_message(response)
+                _strip_cerebras_quirks(next_message)
 
-        # Initialize conversation from history
-        for msg in task.conversation_history:
-            self.conversation.append(
-                ConversationTurn(role=msg["role"], content=msg["content"])
+                usage = response.params.get("usage") if isinstance(response.params, dict) else None
+                if isinstance(usage, dict):
+                    prompt_tokens = int(
+                        usage.get("prompt_tokens")
+                        or usage.get("promptTokens")
+                        or usage.get("input_tokens")
+                        or 0
+                    )
+                    completion_tokens = int(
+                        usage.get("completion_tokens")
+                        or usage.get("completionTokens")
+                        or usage.get("output_tokens")
+                        or 0
+                    )
+                    total_cost += _compute_cost_usd(self.model, prompt_tokens, completion_tokens)
+
+                action = _message_to_action(next_message)
+                actions_taken.append(action)
+
+                env_response = env.step(action)
+                reward = env_response.reward
+                info = {**info, **env_response.info.model_dump()}
+
+                if action.name != RESPOND_ACTION_NAME:
+                    num_tool_calls += 1
+                    tcs = next_message.get("tool_calls") or []
+                    if tcs:
+                        next_message["tool_calls"] = tcs[:1]
+                        tc = next_message["tool_calls"][0]
+                        messages.extend(
+                            [
+                                next_message,
+                                {
+                                    "role": "tool",
+                                    "tool_call_id": tc["id"],
+                                    "name": tc["function"]["name"],
+                                    "content": env_response.observation,
+                                },
+                            ]
+                        )
+                    else:
+                        messages.append(next_message)
+                        messages.append(
+                            {"role": "user", "content": env_response.observation}
+                        )
+                else:
+                    messages.extend(
+                        [
+                            next_message,
+                            {"role": "user", "content": env_response.observation},
+                        ]
+                    )
+
+                if env_response.done:
+                    break
+        except Exception as e:
+            logger.exception("[eliza-tau] solve loop failed: %s", e)
+            return AgentRunResult(
+                reward=reward,
+                messages=messages,
+                info=info,
+                actions_taken=actions_taken,
+                num_tool_calls=num_tool_calls,
+                num_turns=len(messages),
+                agent_cost=total_cost,
+                error=str(e),
             )
-        self.conversation.append(
-            ConversationTurn(role="user", content=task.user_instruction)
+
+        return AgentRunResult(
+            reward=reward,
+            messages=messages,
+            info=info,
+            actions_taken=actions_taken,
+            num_tool_calls=num_tool_calls,
+            num_turns=len(messages),
+            agent_cost=total_cost,
         )
 
-        last_tool_result: object = None
+    def _one_turn(self, messages: list[dict[str, Any]], tools_info: list[dict[str, Any]]):
+        last_user = ""
+        for m in reversed(messages):
+            if m.get("role") == "user":
+                last_user = str(m.get("content") or "")
+                break
+        context: dict[str, object] = {
+            "benchmark": "tau_bench",
+            "task_id": self._session_id,
+            "messages": _scrub_history_for_cerebras(messages),
+        }
+        if tools_info:
+            context["tools"] = tools_info
+            context["tool_choice"] = "auto"
+        if self.temperature is not None:
+            context["temperature"] = float(self.temperature)
+        return self.client.send_message(last_user, context=context)
 
-        for turn in range(self.max_turns):
-            # Build message
-            if turn == 0:
-                message_text = task.user_instruction
-            elif last_tool_result is not None:
-                result_str = json.dumps(last_tool_result, default=str)[:1000]
-                message_text = (
-                    f"Tool result: {result_str}\n\n"
-                    "Based on this result, either call another tool if needed, "
-                    "or provide the final response to the customer."
-                )
-            else:
-                message_text = "Continue helping the customer."
+    @staticmethod
+    def _response_to_assistant_message(response) -> dict[str, Any]:
+        params = response.params if isinstance(response.params, dict) else {}
+        tool_calls = _normalize_tool_calls_for_history(params.get("tool_calls"))
+        msg: dict[str, Any] = {
+            "role": "assistant",
+            "content": response.text or "",
+        }
+        if tool_calls:
+            msg["tool_calls"] = tool_calls
+            if not msg["content"]:
+                msg["content"] = None
+        return msg
 
-            context: dict[str, object] = {
-                "benchmark": "tau_bench",
-                "task_id": task.task_id,
-                "goal": task.user_goal or task.user_instruction,
-                "tools": tools_for_context,
-            }
-            if task.user_profile:
-                context["user_profile"] = task.user_profile
-            if policies_for_context:
-                context["policies"] = policies_for_context
-            if task.success_criteria:
-                context["success_criteria"] = task.success_criteria
-            if last_tool_result is not None:
-                context["last_tool_result"] = last_tool_result
 
-            response = self._client.send_message(text=message_text, context=context)
-            response_params = response.params
-            nested_params = response_params.get("BENCHMARK_ACTION")
-            if isinstance(nested_params, dict):
-                response_params = {**response_params, **nested_params}
+def _build_default_client() -> tuple[ElizaClient, Any | None]:
+    """Construct an :class:`ElizaClient` and optionally spawn the TS server.
 
-            logger.info(
-                "Eliza response: text_len=%d, actions=%s, params_keys=%s, has_tool_xml=%s",
-                len(response.text or ""),
-                response.actions,
-                list(response_params.keys()),
-                "<tool_name>" in (response.text or ""),
+    Mirrors the behaviour of ``eliza_adapter.lifeops_bench.build_lifeops_bench_agent_fn``:
+    when no explicit ``ELIZA_BENCH_URL`` is set and the delegate client is
+    unavailable, spawn the local TS bench server.
+    """
+    bridge = ElizaClient()
+    server_manager: Any | None = None
+    harness = (
+        os.environ.get("ELIZA_BENCH_HARNESS")
+        or os.environ.get("BENCHMARK_HARNESS")
+        or "eliza"
+    ).strip().lower()
+    delegate = getattr(bridge, "_delegate", None)
+    if (
+        delegate is None
+        and not os.environ.get("ELIZA_BENCH_URL")
+        and harness in {"", "eliza"}
+    ):
+        try:
+            from eliza_adapter.server_manager import ElizaServerManager  # noqa: WPS433
+
+            server_manager = ElizaServerManager()
+            server_manager.start()
+            bridge = server_manager.client
+        except Exception as exc:
+            logger.warning(
+                "[eliza-tau] failed to spawn ElizaServerManager (continuing with raw client): %s",
+                exc,
             )
+            server_manager = None
+    return bridge, server_manager
 
-            # Check if eliza wants to call a tool.
-            # The TS runtime may strip XML from response text, so we check
-            # params, text, and thought for tool call information.
-            tool_name = response_params.get("tool_name")
-            arguments_from_text: str | None = None
 
-            # Check all text sources for XML tool tags
-            all_text = "\n".join(filter(None, [
-                response.text,
-                response.thought,
-                str(response.params) if response.params else "",
-            ]))
-
-            if not tool_name:
-                tn = _extract_xml_tag(all_text, "tool_name")
-                if tn:
-                    tool_name = tn
-                    arguments_from_text = _extract_xml_tag(all_text, "arguments")
-
-            # If BENCHMARK_ACTION is in actions but no tool_name found in XML,
-            # try to infer the tool from the thought text
-            if not tool_name and "BENCHMARK_ACTION" in response.actions and response.thought:
-                # Look for patterns like "call get_order_details" or "use get_order"
-                for tool_def in tools_for_context:
-                    t_name = str(tool_def.get("name", ""))
-                    if t_name and t_name.lower() in response.thought.lower():
-                        tool_name = t_name
-                        # Try to extract arguments from thought
-                        arguments_from_text = _extract_xml_tag(response.thought, "arguments")
-                        break
-
-            if (
-                not tool_name
-                and os.environ.get("ELIZA_BENCH_MOCK") == "true"
-                and task.expected_tool_calls
-            ):
-                expected = task.expected_tool_calls[min(turn, len(task.expected_tool_calls) - 1)]
-                tool_name = expected.tool_name
-                response_params["arguments"] = dict(expected.arguments)
-
-            if tool_name and arguments_from_text and "arguments" not in response_params:
-                response_params["arguments"] = arguments_from_text
-
-            if tool_name and isinstance(tool_name, str):
-                arguments_raw = response_params.get("arguments", {})
-                if isinstance(arguments_raw, str):
-                    try:
-                        arguments = json.loads(arguments_raw)
-                    except json.JSONDecodeError:
-                        arguments = {}
-                elif isinstance(arguments_raw, dict):
-                    arguments = arguments_raw
-                else:
-                    arguments = {}
-
-                tool_call = ToolCall(tool_name=tool_name, arguments=arguments)
-                executed = await self.executor.execute(tool_call)
-                tool_calls_made.append(executed)
-                last_tool_result = executed.result
-
-                self.conversation.append(
-                    ConversationTurn(
-                        role="assistant",
-                        content=f"Executing tool: {tool_name}",
-                        tool_call=executed,
-                    )
-                )
-                self.conversation.append(
-                    ConversationTurn(
-                        role="tool",
-                        content=json.dumps(executed.result, default=str),
-                    )
-                )
-                continue
-
-            # No tool call — this is the final response
-            final_response = response.text
-            self.conversation.append(
-                ConversationTurn(role="assistant", content=final_response)
-            )
-            break
-
-        return tool_calls_made, final_response, self.conversation
-
-    async def close(self) -> None:
-        """No-op — the server manager handles cleanup."""
-        pass
+__all__ = ["ElizaTauAgent"]
