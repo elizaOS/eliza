@@ -770,7 +770,7 @@ function inferMetric(text: string, value?: string): HistoryMetric {
   return "detail";
 }
 
-function inferStatuses(
+function _inferStatuses(
   text: string,
   rawStatuses?: string[],
 ): string[] | undefined {
@@ -796,7 +796,7 @@ function inferStatuses(
   return statuses.size > 0 ? Array.from(statuses) : undefined;
 }
 
-function inferWindow(text: string, raw?: string): HistoryWindow | undefined {
+function _inferWindow(text: string, raw?: string): HistoryWindow | undefined {
   const normalized = raw?.trim().toLowerCase();
   if (
     normalized === "active" ||
@@ -817,7 +817,7 @@ function inferWindow(text: string, raw?: string): HistoryWindow | undefined {
   return undefined;
 }
 
-function inferSearch(text: string, raw?: string): string | undefined {
+function _inferSearch(text: string, raw?: string): string | undefined {
   if (raw?.trim()) return raw.trim();
   const quoted =
     text.match(/"([^"]{3,120})"/)?.[1] ?? text.match(/'([^']{3,120})'/)?.[1];
@@ -830,7 +830,7 @@ function inferSearch(text: string, raw?: string): string | undefined {
   return topical?.trim();
 }
 
-function buildWindowFilters(window: HistoryWindow | undefined): {
+function _buildWindowFilters(window: HistoryWindow | undefined): {
   latestActivityAfter?: number;
   latestActivityBefore?: number;
   label?: string;
@@ -878,7 +878,7 @@ function buildWindowFilters(window: HistoryWindow | undefined): {
   return {};
 }
 
-function renderThreadLine(entry: {
+function _renderThreadLine(entry: {
   title: string;
   status: string;
   latestActivityAt?: number | null;
@@ -1797,7 +1797,7 @@ async function runManageIssues(
 // ── action: archive / reopen (ARCHIVE_CODING_TASK / REOPEN_CODING_TASK) ────
 
 async function runArchive(
-  runtime: IAgentRuntime,
+  _runtime: IAgentRuntime,
   _message: Memory,
   _state: State | undefined,
   params: Record<string, unknown>,
@@ -1831,7 +1831,7 @@ async function runArchive(
 }
 
 async function runReopen(
-  runtime: IAgentRuntime,
+  _runtime: IAgentRuntime,
   _message: Memory,
   _state: State | undefined,
   params: Record<string, unknown>,

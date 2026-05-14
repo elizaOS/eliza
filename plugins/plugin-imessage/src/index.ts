@@ -8,6 +8,7 @@
 import { platform } from "node:os";
 import { getConnectorAccountManager, type IAgentRuntime, logger, type Plugin } from "@elizaos/core";
 import { createIMessageConnectorAccountProvider } from "./connector-account-provider.js";
+import { imessageDataRoutes } from "./data-routes.js";
 // The former iMessage-specific send action duplicated the MessageConnector
 // path. The connector registered by IMessageService.registerSendHandlers is
 // now the canonical delivery path through MESSAGE operation=send. This plugin
@@ -18,7 +19,6 @@ import {
   parseChatsFromAppleScript,
   parseMessagesFromAppleScript,
 } from "./service.js";
-import { imessageDataRoutes } from "./data-routes.js";
 import { imessageSetupRoutes } from "./setup-routes.js";
 
 // Account management exports

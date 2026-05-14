@@ -20,6 +20,7 @@ import {
 	type ResponseSkeleton,
 	ResponseSkeletonStreamExtractor,
 } from "@elizaos/core";
+import { resolveKokoroEngineConfig } from "@elizaos/shared/local-inference";
 import type { LocalInferenceLoadArgs } from "./active-model";
 import type {
 	GenerateArgs as BackendGenerateArgs,
@@ -27,7 +28,6 @@ import type {
 	LocalInferenceBackend,
 } from "./backend";
 import { BackendDispatcher, gpuLayersForKvOffload } from "./backend";
-import { resolveKokoroEngineConfig } from "@elizaos/shared/local-inference";
 import {
 	ELIZA_1_PLACEHOLDER_IDS,
 	type Eliza1TierId,

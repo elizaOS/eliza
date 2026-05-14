@@ -15,34 +15,34 @@
 
 import type { KokoroVoiceId, KokoroVoicePack } from "./types.js";
 import {
-	findKokoroVoice,
-	KOKORO_DEFAULT_VOICE_ID,
-	KOKORO_VOICE_PACKS,
+  findKokoroVoice,
+  KOKORO_DEFAULT_VOICE_ID,
+  KOKORO_VOICE_PACKS,
 } from "./voice-presets.js";
 
 export {
-	findKokoroVoice,
-	KOKORO_DEFAULT_VOICE_ID,
-	KOKORO_VOICE_PACKS,
+  findKokoroVoice,
+  KOKORO_DEFAULT_VOICE_ID,
+  KOKORO_VOICE_PACKS,
 } from "./voice-presets.js";
 
 /** All voice ids that ship with the upstream Kokoro v1.0 release. */
 export function listKokoroVoiceIds(): ReadonlyArray<KokoroVoiceId> {
-	return KOKORO_VOICE_PACKS.map((v) => v.id);
+  return KOKORO_VOICE_PACKS.map((v) => v.id);
 }
 
 /** Filter voice packs by language tag (`a` US, `b` UK, etc.). */
 export function listKokoroVoicesByLang(
-	lang: string,
+  lang: string,
 ): ReadonlyArray<KokoroVoicePack> {
-	return KOKORO_VOICE_PACKS.filter((v) => v.lang === lang);
+  return KOKORO_VOICE_PACKS.filter((v) => v.lang === lang);
 }
 
 /** Filter by an exact tag (`female`, `male`, `british`, `breathy`, ...). */
 export function listKokoroVoicesByTag(
-	tag: string,
+  tag: string,
 ): ReadonlyArray<KokoroVoicePack> {
-	return KOKORO_VOICE_PACKS.filter((v) => v.tags?.includes(tag) === true);
+  return KOKORO_VOICE_PACKS.filter((v) => v.tags?.includes(tag) === true);
 }
 
 /**
@@ -52,13 +52,13 @@ export function listKokoroVoicesByTag(
  * caller's `SpeakerPreset.voiceId` may have been authored for OmniVoice.
  */
 export function resolveKokoroVoiceOrDefault(id: string): KokoroVoicePack {
-	const match = findKokoroVoice(id);
-	if (match) return match;
-	const fallback = findKokoroVoice(KOKORO_DEFAULT_VOICE_ID);
-	if (!fallback) {
-		throw new Error(
-			`[kokoro] default voice id ${KOKORO_DEFAULT_VOICE_ID} is missing from KOKORO_VOICE_PACKS — registry is corrupted`,
-		);
-	}
-	return fallback;
+  const match = findKokoroVoice(id);
+  if (match) return match;
+  const fallback = findKokoroVoice(KOKORO_DEFAULT_VOICE_ID);
+  if (!fallback) {
+    throw new Error(
+      `[kokoro] default voice id ${KOKORO_DEFAULT_VOICE_ID} is missing from KOKORO_VOICE_PACKS — registry is corrupted`,
+    );
+  }
+  return fallback;
 }

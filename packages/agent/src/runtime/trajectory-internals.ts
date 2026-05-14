@@ -1093,9 +1093,7 @@ async function forwardMigrateStepsJsonToRows(
         const endedAt = startedAt;
         const kindRaw = toText(step.kind, "");
         const stepType =
-          kindRaw === "llm" ||
-          kindRaw === "action" ||
-          kindRaw === "evaluator"
+          kindRaw === "llm" || kindRaw === "action" || kindRaw === "evaluator"
             ? kindRaw
             : "llm";
         const script =
@@ -1932,9 +1930,7 @@ async function replaceStepsForTrajectoryInternal(
   );
   for (const step of steps) {
     const stepType =
-      step.kind === "llm" ||
-      step.kind === "action" ||
-      step.kind === "evaluator"
+      step.kind === "llm" || step.kind === "action" || step.kind === "evaluator"
         ? step.kind
         : "llm";
     const script =

@@ -44,39 +44,39 @@ export type VoiceBackendChoice = "omnivoice" | "kokoro";
 export type VoiceBackendMode = VoiceBackendChoice | "auto";
 
 export interface VoiceBackendInputs {
-	/** Caller-set mode. Defaults to `auto`. */
-	mode?: VoiceBackendMode;
-	/** Time-to-first-audio target (ms). Lower → prefer Kokoro. */
-	targetTtfaMs?: number;
-	/** Whether the caller needs per-user voice cloning. */
-	requireVoiceCloning?: boolean;
-	/** Latest measured RTF for Kokoro on this device (audio_seconds / wall_seconds). */
-	kokoroRtf?: number | null;
-	/** Latest measured RTF for OmniVoice on this device. */
-	omnivoiceRtf?: number | null;
-	/** Whether Kokoro model artifacts are present on disk. The selector
-	 *  never returns Kokoro when this is `false` — no silent downgrade. */
-	kokoroAvailable: boolean;
-	/** Whether the OmniVoice FFI library is present on disk. */
-	omnivoiceAvailable: boolean;
-	/**
-	 * The active bundle's per-tier voice backend policy, as declared in
-	 * `ELIZA_1_VOICE_BACKENDS`. First entry is the catalog default for
-	 * the tier; later entries are also bundled. The selector reads this
-	 * to make the `auto` default tier-aware rather than hard-coding a
-	 * single backend.
-	 *
-	 * Omit when called outside the Eliza-1 catalog context (e.g. ad-hoc
-	 * smoke benches) — the selector falls back to OmniVoice as the
-	 * historical default in that case.
-	 */
-	tierVoiceBackends?: ReadonlyArray<VoiceBackendChoice>;
+  /** Caller-set mode. Defaults to `auto`. */
+  mode?: VoiceBackendMode;
+  /** Time-to-first-audio target (ms). Lower → prefer Kokoro. */
+  targetTtfaMs?: number;
+  /** Whether the caller needs per-user voice cloning. */
+  requireVoiceCloning?: boolean;
+  /** Latest measured RTF for Kokoro on this device (audio_seconds / wall_seconds). */
+  kokoroRtf?: number | null;
+  /** Latest measured RTF for OmniVoice on this device. */
+  omnivoiceRtf?: number | null;
+  /** Whether Kokoro model artifacts are present on disk. The selector
+   *  never returns Kokoro when this is `false` — no silent downgrade. */
+  kokoroAvailable: boolean;
+  /** Whether the OmniVoice FFI library is present on disk. */
+  omnivoiceAvailable: boolean;
+  /**
+   * The active bundle's per-tier voice backend policy, as declared in
+   * `ELIZA_1_VOICE_BACKENDS`. First entry is the catalog default for
+   * the tier; later entries are also bundled. The selector reads this
+   * to make the `auto` default tier-aware rather than hard-coding a
+   * single backend.
+   *
+   * Omit when called outside the Eliza-1 catalog context (e.g. ad-hoc
+   * smoke benches) — the selector falls back to OmniVoice as the
+   * historical default in that case.
+   */
+  tierVoiceBackends?: ReadonlyArray<VoiceBackendChoice>;
 }
 
 export interface VoiceBackendDecision {
-	backend: VoiceBackendChoice;
-	/** One-line reason — surfaced to telemetry. */
-	reason: string;
+  backend: VoiceBackendChoice;
+  /** One-line reason — surfaced to telemetry. */
+  reason: string;
 }
 
 const TTFA_CUTOFF_MS = 200;
@@ -84,126 +84,126 @@ const RTF_MARGIN = 1.1; // Kokoro must beat OmniVoice by 10% to win on RTF.
 
 /** Resolve the env override (`ELIZA_TTS_BACKEND=kokoro|omnivoice|auto`). */
 export function readVoiceBackendModeFromEnv(
-	env: NodeJS.ProcessEnv = process.env,
+  env: NodeJS.ProcessEnv = process.env,
 ): VoiceBackendMode | undefined {
-	const raw = env.ELIZA_TTS_BACKEND?.trim().toLowerCase();
-	if (!raw) return undefined;
-	if (raw === "kokoro" || raw === "omnivoice" || raw === "auto") return raw;
-	throw new Error(
-		`[voice] ELIZA_TTS_BACKEND must be one of 'kokoro', 'omnivoice', 'auto' (got '${raw}')`,
-	);
+  const raw = env.ELIZA_TTS_BACKEND?.trim().toLowerCase();
+  if (!raw) return undefined;
+  if (raw === "kokoro" || raw === "omnivoice" || raw === "auto") return raw;
+  throw new Error(
+    `[voice] ELIZA_TTS_BACKEND must be one of 'kokoro', 'omnivoice', 'auto' (got '${raw}')`,
+  );
 }
 
 export function selectVoiceBackend(
-	inputs: VoiceBackendInputs,
+  inputs: VoiceBackendInputs,
 ): VoiceBackendDecision {
-	const mode = inputs.mode ?? "auto";
+  const mode = inputs.mode ?? "auto";
 
-	if (mode === "kokoro") {
-		if (!inputs.kokoroAvailable) {
-			throw new Error(
-				"[voice] ELIZA_TTS_BACKEND=kokoro but Kokoro model artifacts are not present on disk",
-			);
-		}
-		return { backend: "kokoro", reason: "forced via mode=kokoro" };
-	}
+  if (mode === "kokoro") {
+    if (!inputs.kokoroAvailable) {
+      throw new Error(
+        "[voice] ELIZA_TTS_BACKEND=kokoro but Kokoro model artifacts are not present on disk",
+      );
+    }
+    return { backend: "kokoro", reason: "forced via mode=kokoro" };
+  }
 
-	if (mode === "omnivoice") {
-		if (!inputs.omnivoiceAvailable) {
-			throw new Error(
-				"[voice] ELIZA_TTS_BACKEND=omnivoice but the OmniVoice FFI library is not present",
-			);
-		}
-		return { backend: "omnivoice", reason: "forced via mode=omnivoice" };
-	}
+  if (mode === "omnivoice") {
+    if (!inputs.omnivoiceAvailable) {
+      throw new Error(
+        "[voice] ELIZA_TTS_BACKEND=omnivoice but the OmniVoice FFI library is not present",
+      );
+    }
+    return { backend: "omnivoice", reason: "forced via mode=omnivoice" };
+  }
 
-	// `auto` — apply heuristics.
-	if (inputs.requireVoiceCloning) {
-		if (!inputs.omnivoiceAvailable) {
-			throw new Error(
-				"[voice] voice cloning required but OmniVoice FFI library is not available; Kokoro v1.0 has no per-user cloning",
-			);
-		}
-		return {
-			backend: "omnivoice",
-			reason: "voice cloning required (Kokoro v1.0 cannot clone)",
-		};
-	}
+  // `auto` — apply heuristics.
+  if (inputs.requireVoiceCloning) {
+    if (!inputs.omnivoiceAvailable) {
+      throw new Error(
+        "[voice] voice cloning required but OmniVoice FFI library is not available; Kokoro v1.0 has no per-user cloning",
+      );
+    }
+    return {
+      backend: "omnivoice",
+      reason: "voice cloning required (Kokoro v1.0 cannot clone)",
+    };
+  }
 
-	if (
-		inputs.targetTtfaMs !== undefined &&
-		inputs.targetTtfaMs < TTFA_CUTOFF_MS
-	) {
-		if (inputs.kokoroAvailable) {
-			return {
-				backend: "kokoro",
-				reason: `targetTtfaMs=${inputs.targetTtfaMs} < ${TTFA_CUTOFF_MS} → Kokoro (~97ms CPU TTFB)`,
-			};
-		}
-		if (!inputs.omnivoiceAvailable) {
-			throw new Error(
-				"[voice] no TTS backend available (neither Kokoro model nor OmniVoice FFI library on disk)",
-			);
-		}
-		return {
-			backend: "omnivoice",
-			reason: "targetTtfaMs requested but Kokoro artifacts missing",
-		};
-	}
+  if (
+    inputs.targetTtfaMs !== undefined &&
+    inputs.targetTtfaMs < TTFA_CUTOFF_MS
+  ) {
+    if (inputs.kokoroAvailable) {
+      return {
+        backend: "kokoro",
+        reason: `targetTtfaMs=${inputs.targetTtfaMs} < ${TTFA_CUTOFF_MS} → Kokoro (~97ms CPU TTFB)`,
+      };
+    }
+    if (!inputs.omnivoiceAvailable) {
+      throw new Error(
+        "[voice] no TTS backend available (neither Kokoro model nor OmniVoice FFI library on disk)",
+      );
+    }
+    return {
+      backend: "omnivoice",
+      reason: "targetTtfaMs requested but Kokoro artifacts missing",
+    };
+  }
 
-	if (
-		inputs.kokoroAvailable &&
-		inputs.kokoroRtf !== null &&
-		inputs.kokoroRtf !== undefined &&
-		inputs.kokoroRtf > 0
-	) {
-		if (
-			inputs.omnivoiceRtf === null ||
-			inputs.omnivoiceRtf === undefined ||
-			inputs.omnivoiceRtf <= 0
-		) {
-			return {
-				backend: "kokoro",
-				reason: `Kokoro RTF=${inputs.kokoroRtf.toFixed(2)} measured; OmniVoice RTF unknown`,
-			};
-		}
-		if (inputs.kokoroRtf >= inputs.omnivoiceRtf * RTF_MARGIN) {
-			return {
-				backend: "kokoro",
-				reason: `Kokoro RTF=${inputs.kokoroRtf.toFixed(2)} beats OmniVoice RTF=${inputs.omnivoiceRtf.toFixed(2)} by ≥10%`,
-			};
-		}
-	}
+  if (
+    inputs.kokoroAvailable &&
+    inputs.kokoroRtf !== null &&
+    inputs.kokoroRtf !== undefined &&
+    inputs.kokoroRtf > 0
+  ) {
+    if (
+      inputs.omnivoiceRtf === null ||
+      inputs.omnivoiceRtf === undefined ||
+      inputs.omnivoiceRtf <= 0
+    ) {
+      return {
+        backend: "kokoro",
+        reason: `Kokoro RTF=${inputs.kokoroRtf.toFixed(2)} measured; OmniVoice RTF unknown`,
+      };
+    }
+    if (inputs.kokoroRtf >= inputs.omnivoiceRtf * RTF_MARGIN) {
+      return {
+        backend: "kokoro",
+        reason: `Kokoro RTF=${inputs.kokoroRtf.toFixed(2)} beats OmniVoice RTF=${inputs.omnivoiceRtf.toFixed(2)} by ≥10%`,
+      };
+    }
+  }
 
-	if (!inputs.omnivoiceAvailable && inputs.kokoroAvailable) {
-		return {
-			backend: "kokoro",
-			reason: "OmniVoice FFI library not available; Kokoro is the only option",
-		};
-	}
-	if (!inputs.omnivoiceAvailable && !inputs.kokoroAvailable) {
-		throw new Error(
-			"[voice] no TTS backend available (neither Kokoro model nor OmniVoice FFI library on disk)",
-		);
-	}
-	// Both backends available, no override. Honor the tier's declared
-	// default if the caller supplied one (catalog-driven), else fall back
-	// to OmniVoice to preserve historical behavior for non-Eliza-1 contexts.
-	const tierDefault = inputs.tierVoiceBackends?.[0];
-	if (tierDefault === "kokoro") {
-		return {
-			backend: "kokoro",
-			reason: "tier default — kokoro per ELIZA_1_VOICE_BACKENDS",
-		};
-	}
-	if (tierDefault === "omnivoice") {
-		return {
-			backend: "omnivoice",
-			reason: "tier default — omnivoice per ELIZA_1_VOICE_BACKENDS",
-		};
-	}
-	return {
-		backend: "omnivoice",
-		reason: "default — OmniVoice on the fused build (no tier policy supplied)",
-	};
+  if (!inputs.omnivoiceAvailable && inputs.kokoroAvailable) {
+    return {
+      backend: "kokoro",
+      reason: "OmniVoice FFI library not available; Kokoro is the only option",
+    };
+  }
+  if (!inputs.omnivoiceAvailable && !inputs.kokoroAvailable) {
+    throw new Error(
+      "[voice] no TTS backend available (neither Kokoro model nor OmniVoice FFI library on disk)",
+    );
+  }
+  // Both backends available, no override. Honor the tier's declared
+  // default if the caller supplied one (catalog-driven), else fall back
+  // to OmniVoice to preserve historical behavior for non-Eliza-1 contexts.
+  const tierDefault = inputs.tierVoiceBackends?.[0];
+  if (tierDefault === "kokoro") {
+    return {
+      backend: "kokoro",
+      reason: "tier default — kokoro per ELIZA_1_VOICE_BACKENDS",
+    };
+  }
+  if (tierDefault === "omnivoice") {
+    return {
+      backend: "omnivoice",
+      reason: "tier default — omnivoice per ELIZA_1_VOICE_BACKENDS",
+    };
+  }
+  return {
+    backend: "omnivoice",
+    reason: "default — OmniVoice on the fused build (no tier policy supplied)",
+  };
 }

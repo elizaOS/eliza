@@ -1,7 +1,7 @@
 import { CString, dlopen, FFIType, type Pointer, ptr } from "bun:ffi";
 import { join } from "node:path";
-import { assertDlopenPathAllowed } from "@elizaos/core";
 import { resolveNativeLibraryCandidate } from "@elizaos/app-core/platform/native-library-policy";
+import { assertDlopenPathAllowed } from "@elizaos/core";
 
 /**
  * Typed interface for the symbols loaded from libMacWindowEffects.dylib.

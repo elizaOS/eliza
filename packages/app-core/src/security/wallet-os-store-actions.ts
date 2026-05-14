@@ -139,4 +139,3 @@ export async function migrateWalletPrivateKeysToOsStore(): Promise<MigrateWallet
 
   return { migrated, failed };
 }
-

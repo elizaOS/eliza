@@ -4,12 +4,12 @@ import { mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
+import { buildOpencodeAcpEnv } from "./opencode-config.js";
 import {
   AcpSessionStore,
   InMemorySessionStore,
   type SessionStoreBackend,
 } from "./session-store.js";
-import { buildOpencodeAcpEnv } from "./opencode-config.js";
 import type {
   AcpEventCallback,
   AcpJsonRpcMessage,

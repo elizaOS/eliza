@@ -470,7 +470,7 @@ function parseSimpleRegexClass(
 			const savedIndex = state.index;
 			state.index += 1;
 			const rangeEnd = parseSimpleRegexClassUnit(state);
-			if (rangeEnd !== null && rangeEnd.single) {
+			if (rangeEnd?.single) {
 				content += `${escapeGbnfClassChar(literal.value)}-${escapeGbnfClassChar(
 					rangeEnd.value,
 				)}`;

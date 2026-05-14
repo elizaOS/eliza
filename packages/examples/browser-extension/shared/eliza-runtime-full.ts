@@ -30,7 +30,9 @@ const { default: googleGenAIPlugin } = (await import(
 const { default: groqPlugin } = (await import("@elizaos/plugin-groq")) as {
   default: Plugin;
 };
-const { default: localdbPlugin } = (await import("@elizaos/plugin-localdb")) as {
+const { default: localdbPlugin } = (await import(
+  "@elizaos/plugin-localdb"
+)) as {
   default: Plugin;
 };
 const { default: openaiPlugin } = (await import("@elizaos/plugin-openai")) as {

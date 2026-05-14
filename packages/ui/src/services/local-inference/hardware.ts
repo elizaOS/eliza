@@ -10,8 +10,8 @@
  * without the trusted-dependency flag).
  */
 
-import os from "node:os";
 import fs from "node:fs";
+import os from "node:os";
 import type {
   HardwareProbe,
   ModelBucket,

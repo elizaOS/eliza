@@ -6,11 +6,11 @@ import {
 } from "@elizaos/core";
 import { printBanner } from "./banner";
 import { createDiscordConnectorAccountProvider } from "./connector-account-provider";
+import { discordDataRoutes } from "./data-routes";
 import { DiscordOwnerPairingServiceImpl } from "./owner-pairing-service";
 import { getPermissionValues } from "./permissions";
 import { registerDiscordDmSensitiveRequestAdapter } from "./sensitive-request-adapter";
 import { DiscordService } from "./service";
-import { discordDataRoutes } from "./data-routes";
 import { discordSetupRoutes } from "./setup-routes";
 import { DiscordTestSuite } from "./tests";
 import { DiscordUserAccountScraperImpl } from "./user-account-scraper/service";
@@ -193,6 +193,7 @@ export type {
 	DiscordReactionNotificationMode,
 } from "./config";
 export { DISCORD_SERVICE_NAME } from "./constants";
+export { discordDataRoutes } from "./data-routes";
 export {
 	buildDiscordAvatarCacheFileName,
 	cacheDiscordAvatarUrl,
@@ -289,7 +290,6 @@ export {
 } from "./permissions";
 export type { DiscordService as IDiscordService } from "./service";
 export { DiscordService } from "./service";
-export { discordDataRoutes } from "./data-routes";
 export { discordSetupRoutes } from "./setup-routes";
 export type {
 	AuditInfo,

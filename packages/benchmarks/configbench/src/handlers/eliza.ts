@@ -118,9 +118,7 @@ function isInMemoryDatabaseAdapterConstructor(
 
 export function normalizeConfigBenchProviderName(provider: string): string {
   const normalized = provider.trim().toLowerCase();
-  return OPENAI_COMPAT_PROVIDER_ALIASES.has(normalized)
-    ? "openai"
-    : normalized;
+  return OPENAI_COMPAT_PROVIDER_ALIASES.has(normalized) ? "openai" : normalized;
 }
 
 function rawConfiguredProvider(): string {
