@@ -54,6 +54,22 @@ const patchedElectrobunCliHelperPathCandidates = [
   "packages/app-core/scripts/build-patched-electrobun-cli.mjs",
   "eliza/packages/app-core/scripts/build-patched-electrobun-cli.mjs",
 ] as const;
+const cloudAgentTemplatePackageJsonPathCandidates = [
+  "packages/app-core/deploy/cloud-agent-template/package.json",
+  "eliza/packages/app-core/deploy/cloud-agent-template/package.json",
+] as const;
+const agentPackageJsonPathCandidates = [
+  "packages/agent/package.json",
+  "eliza/packages/agent/package.json",
+] as const;
+const innoBuildScriptPathCandidates = [
+  "packages/app-core/packaging/inno/build-inno.ps1",
+  "eliza/packages/app-core/packaging/inno/build-inno.ps1",
+] as const;
+const innoTemplatePathCandidates = [
+  "packages/app-core/packaging/inno/ElizaOSApp.iss",
+  "eliza/packages/app-core/packaging/inno/ElizaOSApp.iss",
+] as const;
 
 function resolveExistingPath(candidates: readonly string[]) {
   return candidates.find((candidate) => existsSync(candidate)) ?? null;
@@ -292,8 +308,8 @@ const requiredElectrobunConfigSnippets = [
   'postBuild: "scripts/postwrap-sign-runtime-macos.ts"',
   'postWrap: "scripts/postwrap-diagnostics.ts"',
   "process.env.ELIZA_ELECTROBUN_NOTARIZE !==",
-  "[repoPluginsJsonPath]: `${runtimeDistDir}/plugins.json`",
-  "[repoPackageJsonPath]: `${runtimeDistDir}/package.json`",
+  'copy[repoPluginsJsonPath] = `${runtimeDistDir}/plugins.json`',
+  'copy[repoPackageJsonPath] = `${runtimeDistDir}/package.json`',
 ];
 const electrobunDirCandidates = [
   resolve("packages", "app-core", "platforms", "electrobun"),

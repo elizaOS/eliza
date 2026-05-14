@@ -134,13 +134,13 @@ test("Android manifest cleartext policy is inserted when absent", () => {
   );
 });
 
-test("resolveMobileBuildPolicy clamps iOS execution to cloud or local-safe", () => {
+test("resolveMobileBuildPolicy keeps App Store iOS local-runtime capable", () => {
   assert.deepEqual(resolveMobileBuildPolicy("ios"), {
     capacitorTarget: "ios",
     buildVariant: "store",
     androidRuntimeMode: null,
-    iosRuntimeMode: "cloud",
-    runtimeExecutionMode: "cloud",
+    iosRuntimeMode: "cloud-hybrid",
+    runtimeExecutionMode: "local-safe",
     releaseAuthority: "apple-app-store",
     appControlledOta: false,
   });

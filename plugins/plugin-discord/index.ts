@@ -10,6 +10,7 @@ import { DiscordOwnerPairingServiceImpl } from "./owner-pairing-service";
 import { getPermissionValues } from "./permissions";
 import { registerDiscordDmSensitiveRequestAdapter } from "./sensitive-request-adapter";
 import { DiscordService } from "./service";
+import { discordDataRoutes } from "./data-routes";
 import { discordSetupRoutes } from "./setup-routes";
 import { DiscordTestSuite } from "./tests";
 import { DiscordUserAccountScraperImpl } from "./user-account-scraper/service";
@@ -23,7 +24,7 @@ const discordPlugin: Plugin = {
 		DiscordOwnerPairingServiceImpl,
 		DiscordUserAccountScraperImpl,
 	],
-	routes: discordSetupRoutes,
+	routes: [...discordSetupRoutes, ...discordDataRoutes],
 	actions: [],
 	providers: [],
 	tests: [new DiscordTestSuite()],
@@ -288,6 +289,7 @@ export {
 } from "./permissions";
 export type { DiscordService as IDiscordService } from "./service";
 export { DiscordService } from "./service";
+export { discordDataRoutes } from "./data-routes";
 export { discordSetupRoutes } from "./setup-routes";
 export type {
 	AuditInfo,

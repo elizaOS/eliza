@@ -18,6 +18,7 @@ import {
   parseChatsFromAppleScript,
   parseMessagesFromAppleScript,
 } from "./service.js";
+import { imessageDataRoutes } from "./data-routes.js";
 import { imessageSetupRoutes } from "./setup-routes.js";
 
 // Account management exports
@@ -105,7 +106,7 @@ const imessagePlugin: Plugin = {
   services: [IMessageService],
   actions: [],
   providers: [],
-  routes: imessageSetupRoutes,
+  routes: [...imessageSetupRoutes, ...imessageDataRoutes],
   tests: [],
 
   // Self-declared auto-enable: activate when the "imessage" connector is
