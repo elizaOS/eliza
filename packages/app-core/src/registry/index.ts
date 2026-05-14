@@ -5,6 +5,7 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { logger } from "@elizaos/core";
 import { type LoadedRegistry, loadRegistryFromRawEntries } from "./loader";
 
 export * from "./app-registry";
@@ -84,7 +85,7 @@ export function loadRegistry(): LoadedRegistry {
     } catch {
       // In packaged desktop builds the registry entries may not be bundled.
       // Log and continue rather than crashing the agent subprocess.
-      console.warn(`[registry] ${kind} directory missing: ${kindDir}`);
+      logger.warn(`[registry] ${kind} directory missing: ${kindDir}`);
       continue;
     }
     for (const filename of entries) {

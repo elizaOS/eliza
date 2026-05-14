@@ -1295,7 +1295,7 @@ export function createBenchmarkPlugin(): Plugin {
         validate: async () => isVendingBenchmarkContext(),
         handler: async (_runtime, _message, _state, options) => {
           const params = extractActionParameters(options);
-          console.log(`[${name}] params:`, JSON.stringify(params));
+          logger.debug(`[${name}] params: ${JSON.stringify(params)}`);
           const capturedAction = recordCapturedAction({
             toolName: name,
             arguments: params,
@@ -1349,7 +1349,7 @@ export function createBenchmarkPlugin(): Plugin {
           const params = stripRuntimeActionContext(
             extractActionParameters(options),
           );
-          console.log(`[${name}] params:`, JSON.stringify(params));
+          logger.debug(`[${name}] params: ${JSON.stringify(params)}`);
           const capturedAction = recordCapturedAction(
             captureNamedBenchmarkToolAction(name, params),
           );

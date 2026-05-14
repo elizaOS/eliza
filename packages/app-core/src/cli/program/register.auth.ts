@@ -49,7 +49,6 @@ function resolveElizaStateDir(): string {
 interface RuntimeAdapter {
   db?: unknown;
   initialize?: () => Promise<void>;
-  init?: () => Promise<void>;
   close?: () => Promise<void>;
 }
 
@@ -87,11 +86,7 @@ async function openAuthStoreFromCli(): Promise<{
     { dataDir },
     "00000000-0000-0000-0000-000000000001" as `${string}-${string}-${string}-${string}-${string}`,
   ) as RuntimeAdapter;
-  if (typeof adapter.initialize === "function") {
-    await adapter.initialize();
-  } else if (typeof adapter.init === "function") {
-    await adapter.init();
-  }
+  await adapter.initialize?.();
   if (!adapter.db) {
     throw new Error("CLI auth: adapter has no .db handle");
   }
