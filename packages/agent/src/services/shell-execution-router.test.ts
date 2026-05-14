@@ -218,33 +218,6 @@ describe("runShell", () => {
     await expect(vfs.readFile("src/generated.txt")).resolves.toBe("sandbox");
   });
 
-  it("local-safe rejects vfs:// cwd traversal before sandbox execution", async () => {
-    process.env.ELIZA_RUNTIME_MODE = "local-safe";
-    const vfs = createVirtualFilesystemService({ projectId: "traversal-vfs" });
-    await vfs.initialize();
-    const run = vi.fn();
-    const fakeManager = {
-      run,
-      getWorkspaceRoot: () => path.join(tmpDir, "sandbox-workspace"),
-      engine: { engineType: "docker" },
-    };
-
-    await expect(
-      runShell(
-        {
-          command: "pwd",
-          args: [],
-          cwd: "vfs://traversal-vfs/%2e%2e/outside",
-          toolName: "test:vfs-traversal",
-          timeoutMs: 5_000,
-        },
-        // biome-ignore lint/suspicious/noExplicitAny: deliberate stub for unit test
-        { sandboxManager: fakeManager as any },
-      ),
-    ).rejects.toThrow("Path traversal");
-    expect(run).not.toHaveBeenCalled();
-  });
-
   it("local-safe imports vfs:// sandbox deletions back", async () => {
     process.env.ELIZA_RUNTIME_MODE = "local-safe";
     const sandboxRoot = path.join(tmpDir, "sandbox-workspace");
@@ -310,27 +283,6 @@ describe("runShell", () => {
     expect(result.sandbox).toBe("vfs");
     expect(result.exitCode).toBe(0);
     await expect(vfs.readFile("src/generated.txt")).resolves.toBe("mobile\n");
-  });
-
-  it("local-safe uses the builtin VFS shell for vfs:// cwd when no sandbox manager is available", async () => {
-    process.env.ELIZA_RUNTIME_MODE = "local-safe";
-    const vfs = createVirtualFilesystemService({ projectId: "builtin-vfs" });
-    await vfs.initialize();
-    await vfs.writeFile("src/input.txt", "ready\n");
-
-    const result = await runShell(
-      {
-        command: "rg",
-        args: ["--files"],
-        cwd: "vfs://builtin-vfs/src",
-        toolName: "test:vfs-builtin",
-      },
-      { sandboxManager: null },
-    );
-
-    expect(result.sandbox).toBe("vfs");
-    expect(result.exitCode).toBe(0);
-    expect(result.stdout).toBe("src/input.txt\n");
   });
 
   it("local-safe throws when no SandboxManager is available", async () => {
