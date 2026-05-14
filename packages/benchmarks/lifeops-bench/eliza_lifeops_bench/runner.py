@@ -2530,6 +2530,71 @@ def _parse_calendar_datetime_hint(value: Any, now_iso: str) -> datetime | None:
     return datetime(parsed_date.year, parsed_date.month, parsed_date.day, tzinfo=timezone.utc)
 
 
+_TIME_RANGE_HINT_RE = re.compile(
+    r"\b(?P<start_hour>2[0-3]|1[0-9]|0?[1-9])"
+    r"(?::(?P<start_minute>[0-5]\d))?"
+    r"\s*(?P<start_ampm>am|pm)?"
+    r"\s*(?:-|–|—|to)\s*"
+    r"(?P<end_hour>2[0-3]|1[0-9]|0?[1-9])"
+    r"(?::(?P<end_minute>[0-5]\d))?"
+    r"\s*(?P<end_ampm>am|pm)?\b",
+    re.IGNORECASE,
+)
+
+
+def _parse_calendar_time_range_hint(
+    value: Any,
+    now_iso: str,
+) -> tuple[str, str] | None:
+    """Infer a UTC ISO range from compact hints like "Thursday 9-10am UTC"."""
+    if not isinstance(value, str) or not value.strip():
+        return None
+    parsed_date = _parse_calendar_date_hint(value, now_iso)
+    if parsed_date is None:
+        return None
+    match = _TIME_RANGE_HINT_RE.search(value)
+    if match is None:
+        return None
+
+    end_ampm = (match.group("end_ampm") or "").lower() or None
+    start_ampm = (match.group("start_ampm") or "").lower() or end_ampm
+
+    def hour_24(raw: str, ampm: str | None) -> int:
+        hour = int(raw)
+        if ampm == "am":
+            return 0 if hour == 12 else hour
+        if ampm == "pm":
+            return hour if hour == 12 else hour + 12
+        return hour
+
+    start_hour = hour_24(match.group("start_hour"), start_ampm)
+    end_hour = hour_24(match.group("end_hour"), end_ampm)
+    start_minute = int(match.group("start_minute") or 0)
+    end_minute = int(match.group("end_minute") or 0)
+    start_dt = datetime(
+        parsed_date.year,
+        parsed_date.month,
+        parsed_date.day,
+        start_hour,
+        start_minute,
+        tzinfo=timezone.utc,
+    )
+    end_dt = datetime(
+        parsed_date.year,
+        parsed_date.month,
+        parsed_date.day,
+        end_hour,
+        end_minute,
+        tzinfo=timezone.utc,
+    )
+    if end_dt <= start_dt:
+        return None
+    return (
+        start_dt.isoformat().replace("+00:00", "Z"),
+        end_dt.isoformat().replace("+00:00", "Z"),
+    )
+
+
 def _parse_calendar_date_hint(value: Any, now_iso: str) -> date | None:
     if not isinstance(value, str) or not value.strip():
         return None

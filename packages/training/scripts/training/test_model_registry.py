@@ -66,7 +66,7 @@ def test_every_entry_has_publish_metadata() -> None:
     for key, public in zip(active_public_keys, VERIFIED_PUBLIC_NAMES):
         e = get(key)
         assert e.eliza_short_name == public
-        assert e.eliza_repo_id == "elizaos/eliza-1"
+        assert e.eliza_repo_id == "elizalabs/eliza-1"
         assert e.abliteration_repo_id == ""
     assert get("qwen3.5-27b").eliza_short_name == ""
     assert get("qwen3.5-27b").eliza_repo_id == ""
@@ -190,7 +190,7 @@ def test_summary_table_includes_every_entry() -> None:
     table = summary_table()
     for public_name in VERIFIED_PUBLIC_NAMES:
         assert public_name in table
-    assert "qwen3.5-27b" in table
+    assert "qwen3.5-27b" not in table
     assert "eliza-1-27b" in table
 
 
