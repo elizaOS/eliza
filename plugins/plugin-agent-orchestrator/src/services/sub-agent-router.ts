@@ -1007,13 +1007,16 @@ async function detectCachedMiss(
   res: Response,
   signal: AbortSignal,
 ): Promise<{ status: number } | null> {
-  if (res.status !== 404 || !looksCached(res.headers)) return null;
+  if (res.status !== 404) return null;
   let busted: URL;
   try {
     busted = new URL(url);
   } catch {
     return null;
   }
+  // Some static hosts/CDNs serve a stale cached 404 without useful cache
+  // headers. A same-URL cache-bust probe distinguishes that case from a real
+  // missing file without treating arbitrary non-404 failures as cache issues.
   busted.searchParams.set("__eliza_verify", Date.now().toString(36));
   const bustedRes = await fetch(busted, {
     method: "GET",
@@ -1024,20 +1027,6 @@ async function detectCachedMiss(
   return bustedRes.status >= 200 && bustedRes.status < 300
     ? { status: bustedRes.status }
     : null;
-}
-
-function looksCached(headers: Headers): boolean {
-  const age = headers.get("age");
-  if (age && Number.parseInt(age, 10) > 0) return true;
-  const cacheStatus = [
-    headers.get("cf-cache-status"),
-    headers.get("x-cache"),
-    headers.get("cdn-cache-status"),
-  ]
-    .filter((v): v is string => typeof v === "string")
-    .join(" ")
-    .toLowerCase();
-  return /\b(hit|stale|cached)\b/.test(cacheStatus);
 }
 
 /**
