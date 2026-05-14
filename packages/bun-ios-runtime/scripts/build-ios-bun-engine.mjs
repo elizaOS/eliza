@@ -233,6 +233,7 @@ function validateEngineBinary(binary) {
         .join(", ")}${unexpected.length > 24 ? ", ..." : ""}`,
     );
   }
+  validateAppStoreRuntimeBinary(binary);
 }
 
 function validateEngineFrameworkMetadata(frameworkDir) {
@@ -246,6 +247,14 @@ function validateEngineFrameworkMetadata(frameworkDir) {
       `${infoPlist} has ElizaBunEngineABIVersion=${String(
         plist.ElizaBunEngineABIVersion,
       )}; expected ${expectedEngineAbiVersion}`,
+    );
+  }
+  if (plist.ElizaBunEngineNoJIT !== true) {
+    fail(`${infoPlist} must declare ElizaBunEngineNoJIT=true`);
+  }
+  if (plist.ElizaBunEngineExecutionProfile !== appStoreExecutionProfile) {
+    fail(
+      `${infoPlist} must declare ElizaBunEngineExecutionProfile=${appStoreExecutionProfile}`,
     );
   }
 }
@@ -265,6 +274,74 @@ function parsePlistJson(plistPath) {
       `failed to parse ${plistPath} as JSON plist: ${
         err instanceof Error ? err.message : String(err)
       }`,
+    );
+  }
+}
+
+function validateAppStoreRuntimeBinary(binary) {
+  const imports = runMaybeCapture("nm", ["-u", binary]);
+  const importOutput = `${imports.stdout}\n${imports.stderr}`;
+  if (imports.status !== 0) {
+    fail(`failed to inspect imported symbols for ${binary}: ${importOutput.trim()}`);
+  }
+  const forbiddenImports = forbiddenRuntimeImports.filter((symbol) =>
+    new RegExp(`(^|\\s)${symbol.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`).test(
+      importOutput,
+    ),
+  );
+  if (forbiddenImports.length > 0) {
+    fail(
+      `${binary} imports App Store-sensitive runtime/code-loading symbols: ${forbiddenImports.join(", ")}`,
+    );
+  }
+
+  const strings = runMaybeCapture("strings", [binary]);
+  const stringOutput = `${strings.stdout}\n${strings.stderr}`;
+  if (strings.status !== 0) {
+    fail(`failed to inspect strings for ${binary}: ${stringOutput.trim()}`);
+  }
+  const forbiddenStrings = forbiddenRuntimeStringPatterns
+    .filter((pattern) => pattern.test(stringOutput))
+    .map((pattern) => pattern.source);
+  if (forbiddenStrings.length > 0) {
+    fail(
+      `${binary} contains App Store-sensitive executable-memory markers: ${forbiddenStrings.join(", ")}`,
+    );
+  }
+}
+
+function isExecutableFile(file) {
+  try {
+    return (fs.statSync(file).mode & 0o111) !== 0;
+  } catch {
+    return false;
+  }
+}
+
+function validateNoNestedExecutablePayloads(frameworkDir, expectedBinary) {
+  const expected = path.resolve(expectedBinary);
+  const stack = [frameworkDir];
+  const unexpected = [];
+  while (stack.length > 0) {
+    const current = stack.pop();
+    for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
+      const candidate = path.join(current, entry.name);
+      if (entry.isDirectory()) {
+        if (entry.name === "_CodeSignature") continue;
+        stack.push(candidate);
+        continue;
+      }
+      if (
+        path.resolve(candidate) !== expected &&
+        (/\.(dylib|so|bundle)$/i.test(entry.name) || isExecutableFile(candidate))
+      ) {
+        unexpected.push(candidate);
+      }
+    }
+  }
+  if (unexpected.length > 0) {
+    fail(
+      `${frameworkDir} contains nested executable payloads not allowed in the iOS App Store runtime: ${unexpected.join(", ")}`,
     );
   }
 }
@@ -353,6 +430,7 @@ function validateXcframework(root) {
   for (const binary of binaries) {
     validateEngineFrameworkMetadata(path.dirname(binary));
     validateEngineBinary(binary);
+    validateNoNestedExecutablePayloads(path.dirname(binary), binary);
   }
   console.log(
     `[bun-ios-runtime] Validated ${selected.libraryIdentifier} ABI symbols`,
@@ -796,6 +874,8 @@ function writeFrameworkMetadata(frameworkDir) {
       "  <key>CFBundleShortVersionString</key><string>0.0.0</string>",
       "  <key>CFBundleVersion</key><string>0</string>",
       `  <key>ElizaBunEngineABIVersion</key><string>${expectedEngineAbiVersion}</string>`,
+      "  <key>ElizaBunEngineNoJIT</key><true/>",
+      `  <key>ElizaBunEngineExecutionProfile</key><string>${appStoreExecutionProfile}</string>`,
       "  <key>MinimumOSVersion</key><string>16.0</string>",
       "</dict>",
       "</plist>",

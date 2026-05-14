@@ -1406,3 +1406,177 @@ describe("buildBoundedNumberRule — integer and float range constraints", () =>
 		expect(result.grammar).toContain("jsonnumber");
 	});
 });
+
+describe("buildBoundedNumberRule — boundary, single-value, and degenerate ranges", () => {
+	it("emits a literal-alternation rule for a 200-difference integer range [1, 200] (at the threshold)", () => {
+		clearResponseGrammarCache();
+		const action = makeAction("BOUNDARY200", {
+			parameters: [
+				{
+					name: "count",
+					description: "exactly 200 values",
+					required: true,
+					schema: { type: "integer", minimum: 1, maximum: 200 },
+				},
+			],
+		});
+		const result = buildPlannerActionGrammarStrict([action]);
+		expect(result).not.toBeNull();
+		if (!result) return;
+		// max - min = 199 (just under the 200 threshold) → bounded rule emitted.
+		const boundedRule = result.grammar
+			.split("\n")
+			.find((l) => l.includes("_count_bounded ::="));
+		expect(boundedRule).toBeDefined();
+		// 200 alternatives separated by " | "
+		const alternatives = (boundedRule ?? "").split(" | ");
+		expect(alternatives.length).toBe(200);
+		// First and last and a spot-check middle value all present.
+		expect(result.grammar).toContain('"\\"1\\""');
+		expect(result.grammar).toContain('"\\"100\\""');
+		expect(result.grammar).toContain('"\\"200\\""');
+		// The parameter rule references the bounded rule, not the unbounded jsonnumber.
+		const paramRule = result.grammar
+			.split("\n")
+			.find((l) => l.includes("_count_p ::="));
+		expect(paramRule).toContain("_count_bounded");
+		expect(paramRule).not.toContain("jsonnumber");
+	});
+
+	it("falls back to bare jsonnumber for a very large integer range [0, 10000]", () => {
+		clearResponseGrammarCache();
+		const action = makeAction("HUGECOUNT", {
+			parameters: [
+				{
+					name: "count",
+					description: "huge count",
+					required: true,
+					schema: { type: "integer", minimum: 0, maximum: 10000 },
+				},
+			],
+		});
+		const result = buildPlannerActionGrammarStrict([action]);
+		expect(result).not.toBeNull();
+		if (!result) return;
+		// No bounded rule should be emitted at all — the parameter resolves
+		// straight to the shared unbounded jsonnumber.
+		expect(result.grammar).not.toContain("_count_bounded");
+		const paramRule = result.grammar
+			.split("\n")
+			.find((l) => l.includes("_count_p ::="));
+		expect(paramRule).toBeDefined();
+		// The parameter line is exactly `"\"count\":" jsonnumber` — i.e. the
+		// value part is just the shared rule, with no extra references.
+		expect(paramRule).toMatch(/::= "\\"count\\":" jsonnumber$/);
+	});
+
+	it("falls back to jsonnumber for a unit-interval float schema with no bounded rule emitted", () => {
+		clearResponseGrammarCache();
+		const action = makeAction("UNITRATIO", {
+			parameters: [
+				{
+					name: "ratio",
+					description: "unit ratio",
+					required: true,
+					schema: { type: "number", minimum: 0, maximum: 1 },
+				},
+			],
+		});
+		const result = buildPlannerActionGrammarStrict([action]);
+		expect(result).not.toBeNull();
+		if (!result) return;
+		// Float ranges never emit a bounded rule — the value part references
+		// jsonnumber directly. Server-side validates the actual numeric bounds.
+		expect(result.grammar).not.toContain("_ratio_bounded");
+		expect(result.grammar).toContain("jsonnumber");
+		const paramRule = result.grammar
+			.split("\n")
+			.find((l) => l.includes("_ratio_p ::="));
+		expect(paramRule).toMatch(/::= "\\"ratio\\":" jsonnumber$/);
+	});
+
+	it("emits every signed alternative for a small negative-to-positive integer range [-5, 5]", () => {
+		clearResponseGrammarCache();
+		const action = makeAction("SIGNED5", {
+			parameters: [
+				{
+					name: "delta",
+					description: "signed delta",
+					required: true,
+					schema: { type: "integer", minimum: -5, maximum: 5 },
+				},
+			],
+		});
+		const result = buildPlannerActionGrammarStrict([action]);
+		expect(result).not.toBeNull();
+		if (!result) return;
+		const boundedRule = result.grammar
+			.split("\n")
+			.find((l) => l.includes("_delta_bounded ::="));
+		expect(boundedRule).toBeDefined();
+		const alternatives = (boundedRule ?? "").split(" | ");
+		// 11 values: -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5
+		expect(alternatives.length).toBe(11);
+		for (const value of [-5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5]) {
+			expect(result.grammar).toContain(`"\\"${value}\\""`);
+		}
+	});
+
+	it("collapses a single-value integer range [7, 7] to one literal alternative", () => {
+		clearResponseGrammarCache();
+		const action = makeAction("FIXED7", {
+			parameters: [
+				{
+					name: "pin",
+					description: "pinned value",
+					required: true,
+					schema: { type: "integer", minimum: 7, maximum: 7 },
+				},
+			],
+		});
+		const result = buildPlannerActionGrammarStrict([action]);
+		expect(result).not.toBeNull();
+		if (!result) return;
+		const boundedRule = result.grammar
+			.split("\n")
+			.find((l) => l.includes("_pin_bounded ::="));
+		expect(boundedRule).toBeDefined();
+		// Exactly one alternative, the literal `"7"`.
+		expect(boundedRule).toBe(
+			'paramsofaction_FIXED7_pin_bounded ::= "\\"7\\""',
+		);
+	});
+
+	it("emits an empty-body bounded rule for an inverted integer range [10, 5] (observed impl behavior)", () => {
+		clearResponseGrammarCache();
+		const action = makeAction("INVERTED", {
+			parameters: [
+				{
+					name: "bad",
+					description: "min > max",
+					required: true,
+					schema: { type: "integer", minimum: 10, maximum: 5 },
+				},
+			],
+		});
+		const result = buildPlannerActionGrammarStrict([action]);
+		expect(result).not.toBeNull();
+		if (!result) return;
+		// The impl's loop body never executes when min > max, so it emits a
+		// bounded rule with an empty alternation body rather than falling back
+		// to jsonnumber. We assert the observed behavior — this is a latent
+		// impl gap (the grammar is unparseable) but documenting it locks the
+		// current behavior so any future fix is a visible test change.
+		const boundedRule = result.grammar
+			.split("\n")
+			.find((l) => l.includes("_bad_bounded ::="));
+		expect(boundedRule).toBeDefined();
+		expect(boundedRule).toMatch(/_bad_bounded ::=\s*$/);
+		// No fallback to jsonnumber for this parameter's value position.
+		const paramRule = result.grammar
+			.split("\n")
+			.find((l) => l.includes("_bad_p ::="));
+		expect(paramRule).toContain("_bad_bounded");
+		expect(paramRule).not.toContain("jsonnumber");
+	});
+});

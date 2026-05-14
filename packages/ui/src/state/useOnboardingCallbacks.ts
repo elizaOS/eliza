@@ -70,6 +70,7 @@ import {
   shouldSkipFeaturesStep,
   shouldUseCloudOnboardingFastTrack,
 } from "../onboarding/flow";
+import { ensureStoreBuildWorkspaceFolder } from "../onboarding/ensure-store-build-workspace-folder";
 import { persistMobileRuntimeModeForServerTarget } from "../onboarding/mobile-runtime-mode";
 import { isElizaCloudOnboardingTarget } from "../onboarding/server-target";
 import { buildOnboardingRuntimeConfig } from "../onboarding-config";
@@ -893,6 +894,20 @@ export function useOnboardingCallbacks(deps: OnboardingCallbacksDeps) {
 
       if (onboardingStep === "providers" && options?.allowPermissionBypass) {
         if (options.skipTask) addDeferredOnboardingTask(options.skipTask);
+      }
+
+      // Under store-distributed builds (MAS / MSIX AppContainer / Flathub),
+      // exit from the deployment step is the natural prompt moment for a
+      // workspace folder. The OS sandbox scopes FS reach to the app
+      // container plus user-granted folders; we persist the picker result
+      // so every subsequent launch reuses it. Idempotent — if a folder is
+      // already stored the helper short-circuits and just re-resolves the
+      // bookmark. Non-store builds and non-Electrobun renderers no-op.
+      // Progression is not gated on the user's choice — canceling proceeds
+      // with the container default and the user can re-pick from Runtime
+      // Settings later.
+      if (onboardingStep === "deployment") {
+        await ensureStoreBuildWorkspaceFolder();
       }
 
       const nextStep = resolveOnboardingNextStep(onboardingStep);

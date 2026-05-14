@@ -1,6 +1,8 @@
 /// <reference types="bun-types" />
-import { existsSync } from "node:fs";
-import path from "node:path";
+import {
+  type NativeLibraryCandidate,
+  resolveNativeLibraryCandidate,
+} from "@elizaos/app-core/platform/native-library-policy";
 import type { IAgentRuntime } from "@elizaos/core";
 import type { FeatureResult, IPermissionsRegistry } from "@elizaos/shared";
 import type {
@@ -112,10 +114,15 @@ const NATIVE_DYLIB_ENV =
     ? (process.env.ELIZA_NATIVE_PERMISSIONS_DYLIB ?? "")
     : "";
 
-const NATIVE_DYLIB_CANDIDATES = [
-  NATIVE_DYLIB_ENV,
-  "../../../../packages/app-core/platforms/electrobun/src/libMacWindowEffects.dylib",
-].filter(Boolean);
+const NATIVE_DYLIB_BASENAME = "libMacWindowEffects.dylib";
+
+const NATIVE_DYLIB_CANDIDATES: NativeLibraryCandidate[] = [
+  { label: "ELIZA_NATIVE_PERMISSIONS_DYLIB", path: NATIVE_DYLIB_ENV },
+  {
+    label: "bundled Apple permissions bridge",
+    path: `../../../../packages/app-core/platforms/electrobun/src/${NATIVE_DYLIB_BASENAME}`,
+  },
+].filter((candidate) => candidate.path.trim().length > 0);
 
 function hasNodeDarwinProcess(): boolean {
   return typeof process !== "undefined" && process.platform === "darwin";
@@ -148,10 +155,13 @@ async function loadMacCalendarBridge(): Promise<MacCalendarBridge | null> {
   if (!hasNodeDarwinProcess()) return null;
 
   for (const candidate of NATIVE_DYLIB_CANDIDATES) {
-    const dylibPath = path.isAbsolute(candidate)
-      ? candidate
-      : path.resolve(import.meta.dir, candidate);
-    if (!existsSync(dylibPath)) continue;
+    const dylibPath = resolveNativeLibraryCandidate(candidate, {
+      expectedBasename: NATIVE_DYLIB_BASENAME,
+      moduleDir: import.meta.dir,
+      warn: (message) => console.warn(`[AppleCalendar] ${message}`),
+    });
+    if (!dylibPath) continue;
+
     try {
       const { CString, FFIType, dlopen, ptr } = await import("bun:ffi");
       const lib = dlopen(dylibPath, {
@@ -219,8 +229,8 @@ async function loadMacCalendarBridge(): Promise<MacCalendarBridge | null> {
         },
       };
       return macCalendarBridge;
-    } catch {
-      // Try the next dylib candidate.
+    } catch (err) {
+      console.warn("[AppleCalendar] Failed to load native bridge:", err);
     }
   }
   return null;

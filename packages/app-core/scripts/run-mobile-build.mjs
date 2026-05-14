@@ -2334,38 +2334,11 @@ function generatePodfile() {
   const appStoreBuild = isIosAppStoreBuild();
   const includeFullBunEngine =
     !appStoreBuild && isFullIosBunEngineRequested();
-  const includeLocalExecutionBridgePods = !appStoreBuild && includeFullBunEngine;
-  const customPods = [
-    ["ElizaosCapacitorAgent", "@elizaos/capacitor-agent"],
-    ["ElizaosCapacitorAppblocker", "@elizaos/capacitor-appblocker"],
-    ["ElizaosCapacitorCamera", "@elizaos/capacitor-camera"],
-    ["ElizaosCapacitorCalendar", "@elizaos/capacitor-calendar"],
-    ["ElizaosCapacitorCanvas", "@elizaos/capacitor-canvas"],
-    ["ElizaosCapacitorElizaTasks", "@elizaos/capacitor-eliza-tasks"],
-    ["ElizaosCapacitorGateway", "@elizaos/capacitor-gateway"],
-    ["ElizaosCapacitorLocation", "@elizaos/capacitor-location"],
-    ["ElizaosCapacitorMobileSignals", "@elizaos/capacitor-mobile-signals"],
-    ["ElizaosCapacitorScreencapture", "@elizaos/capacitor-screencapture"],
-    ["ElizaosCapacitorSwabble", "@elizaos/capacitor-swabble"],
-    ["ElizaosCapacitorTalkmode", "@elizaos/capacitor-talkmode"],
-    ["ElizaosCapacitorWebsiteblocker", "@elizaos/capacitor-websiteblocker"],
-    ...(includeLocalExecutionBridgePods
-      ? [
-          ["ElizaosCapacitorBunRuntime", "@elizaos/capacitor-bun-runtime"],
-          [
-            "ElizaosCapacitorMobileAgentBridge",
-            "@elizaos/capacitor-mobile-agent-bridge",
-          ],
-        ]
-      : []),
-    // Full iOS local mode needs the native Bun-runtime host pod. The engine is
-    // independent of llama.cpp and must still be embedded for smoke/production
-    // full-Bun builds that intentionally omit llama.
-    ...(includeLlama ? [["LlamaCppCapacitor", "llama-cpp-capacitor"]] : []),
-    ...(includeFullBunEngine
-      ? [["ElizaBunEngine", "@elizaos/bun-ios-runtime"]]
-      : []),
-  ];
+  const customPods = resolveIosCustomPods({
+    includeLlama,
+    includeFullBunEngine,
+    appStoreBuild,
+  });
   if (!includeLlama) {
     console.log(
       "[mobile-build] iOS Podfile: omitting llama.cpp pod (ELIZA_IOS_INCLUDE_LLAMA / ELIZA_IOS_INCLUDE_LLAMA not set)",
@@ -3966,9 +3939,62 @@ function auditAndroidCloudSource(phase) {
         failures.push(`AndroidManifest.xml still requests ${full}`);
       }
     }
+    for (const forbidden of [
+      "android.intent.action.ASSIST",
+      "android.intent.action.VOICE_COMMAND",
+      "android.app.role.ASSISTANT",
+      "android.permission.BIND_VOICE_INTERACTION",
+    ]) {
+      if (xml.includes(forbidden)) {
+        failures.push(`AndroidManifest.xml still contains ${forbidden}`);
+      }
+    }
     if (/usesCleartextTraffic="true"/.test(xml)) {
       failures.push(
         "AndroidManifest.xml still allows global cleartext traffic",
+      );
+    }
+    if (!xml.includes('android:name="android.app.shortcuts"')) {
+      failures.push("AndroidManifest.xml does not register @xml/shortcuts");
+    }
+  }
+
+  const shortcutsPath = path.join(
+    androidDir,
+    "app",
+    "src",
+    "main",
+    "res",
+    "xml",
+    "shortcuts.xml",
+  );
+  if (!fs.existsSync(shortcutsPath)) {
+    failures.push("app/src/main/res/xml/shortcuts.xml is missing");
+  } else {
+    const shortcuts = fs.readFileSync(shortcutsPath, "utf8");
+    for (const capability of [
+      "actions.intent.OPEN_APP_FEATURE",
+      "actions.intent.CREATE_MESSAGE",
+      "actions.intent.CREATE_THING",
+      "actions.intent.GET_THING",
+    ]) {
+      if (!shortcuts.includes(`android:name="${capability}"`)) {
+        failures.push(`shortcuts.xml is missing ${capability}`);
+      }
+    }
+    if (!shortcuts.includes(`android:targetPackage="${APP.appId}"`)) {
+      failures.push(
+        `shortcuts.xml targetPackage was not rewritten to ${APP.appId}`,
+      );
+    }
+    if (!shortcuts.includes(`android:targetClass="${APP.appId}.MainActivity"`)) {
+      failures.push(
+        `shortcuts.xml targetClass was not rewritten to ${APP.appId}.MainActivity`,
+      );
+    }
+    if (!shortcuts.includes(`${APP.urlScheme}://`)) {
+      failures.push(
+        `shortcuts.xml URL templates were not rewritten to ${APP.urlScheme}://`,
       );
     }
   }
