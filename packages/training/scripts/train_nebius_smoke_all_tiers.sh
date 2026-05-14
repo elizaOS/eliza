@@ -337,6 +337,19 @@ print(get('$rk').public_name)
   rsync -avhz --info=progress2 "$target:/opt/training/checkpoints/$run_name/" "$ROOT/checkpoints/$run_name/" || true
   rsync -avhz --info=progress2 "$target:/opt/training/benchmarks/$run_name/" "$ROOT/benchmarks/$run_name/" || true
   rsync -avhz --info=progress2 "$target:/opt/training/reports/" "$ROOT/reports/" || true
+  # Per-run corpus validation reports — these tell us exactly which records
+  # validate_corpus.py rejected and why. Without them, post-mortem diagnosis
+  # of a "corpus_validation: invalid" pipeline-summary is impossible (the
+  # remote dir dies with the VM). Path matches run_pipeline.py:499.
+  mkdir -p "$ROOT/data/synthesized/review"
+  rsync -avhz --info=progress2 \
+    --include "format_validation_${run_name}_*.json" --exclude "*" \
+    "$target:/opt/training/data/synthesized/review/" \
+    "$ROOT/data/synthesized/review/" || true
+  # Per-run remote log too — survives auto-teardown.
+  rsync -avhz --partial \
+    "$target:/opt/training/run_${run_name}.log" \
+    "$ROOT/benchmarks/$run_name/" 2>/dev/null || true
 }
 
 # --- EXIT trap: fetch-then-teardown (unless VM is user-owned) ---------------
