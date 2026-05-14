@@ -10,6 +10,7 @@ import uuid
 from datetime import date, timedelta
 from decimal import Decimal
 
+from elizaos_vending_bench.tool_simulators import EmailSimulator, Notepad, WebSimulator
 from elizaos_vending_bench.types import (
     AgentState,
     DailySummary,
@@ -170,6 +171,11 @@ class VendingEnvironment:
         # Initialize products and suppliers
         self.products = self._initialize_products()
         self.suppliers = self._initialize_suppliers()
+
+        # Paper-faithful tool simulators.
+        self.email_simulator = EmailSimulator(self.suppliers, self.products)
+        self.web_simulator = WebSimulator(seed=seed)
+        self.notepad = Notepad()
 
         # Initialize state
         self.state = self._initialize_state(
@@ -434,6 +440,8 @@ class VendingEnvironment:
                 bulk_discount_threshold=50,
                 bulk_discount_percent=10.0,
                 reliability=0.95,
+                email="orders@snack-co.example",
+                response_lag_days=1,
             ),
             Supplier(
                 supplier_id="beverage_dist",
@@ -444,6 +452,8 @@ class VendingEnvironment:
                 bulk_discount_threshold=48,
                 bulk_discount_percent=12.0,
                 reliability=0.98,
+                email="orders@beverage-dist.example",
+                response_lag_days=1,
             ),
             Supplier(
                 supplier_id="healthy_choice",
@@ -454,6 +464,8 @@ class VendingEnvironment:
                 bulk_discount_threshold=60,
                 bulk_discount_percent=8.0,
                 reliability=0.92,
+                email="orders@healthy-choice.example",
+                response_lag_days=1,
             ),
         ]
 

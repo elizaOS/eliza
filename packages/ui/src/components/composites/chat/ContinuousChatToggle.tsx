@@ -40,7 +40,11 @@ export interface ContinuousChatToggleProps {
 
 const MODE_META: Record<
   VoiceContinuousMode,
-  { label: string; description: string; icon: React.ComponentType<{ className?: string }> }
+  {
+    label: string;
+    description: string;
+    icon: React.ComponentType<{ className?: string }>;
+  }
 > = {
   off: {
     label: "Off",
@@ -150,6 +154,7 @@ export function ContinuousChatToggle({
           <TooltipProvider key={modeId} delayDuration={250}>
             <Tooltip>
               <TooltipTrigger asChild>
+                {/* biome-ignore lint/a11y/useSemanticElements: themed button retains all custom styles and tooltip integration; a native input[type=radio] would lose them. */}
                 <button
                   type="button"
                   role="radio"

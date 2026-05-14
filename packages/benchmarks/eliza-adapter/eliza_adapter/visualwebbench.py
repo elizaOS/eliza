@@ -57,6 +57,25 @@ class ElizaVisualWebBenchAgent:
         started = time.time()
         self._client.reset(task_id=task.id, benchmark="visualwebbench")
 
+        # Attach the screenshot. The eliza bridge supports both an on-disk path
+        # (resolved server-side) and inline base64 bytes for vision-capable
+        # models. We pass both so whichever the model expects is available.
+        attachments: list[dict[str, object]] = []
+        if task.image_path:
+            attachments.append({
+                "kind": "image",
+                "path": task.image_path,
+                "media_type": "image/png",
+            })
+        if task.image_bytes:
+            import base64
+
+            attachments.append({
+                "kind": "image",
+                "media_type": "image/png",
+                "data_base64": base64.b64encode(task.image_bytes).decode("ascii"),
+            })
+
         context: dict[str, object] = {
             "benchmark": "visualwebbench",
             "task_id": task.id,
@@ -65,9 +84,12 @@ class ElizaVisualWebBenchAgent:
             "prompt": task.prompt,
             "image_path": task.image_path or "",
             "image_size": list(task.image_size) if task.image_size else [],
+            "attachments": attachments,
             "options": _jsonable_options(task.options),
             "bbox": list(task.bbox) if task.bbox else [],
             "elem_desc": task.elem_desc,
+            "question": task.question,
+            "instruction": task.instruction,
             "response_schema": {
                 "answer_text": "string",
                 "choice_index": "integer|null",
@@ -76,11 +98,11 @@ class ElizaVisualWebBenchAgent:
         }
 
         message = (
-            "Answer this VisualWebBench task. Return either BENCHMARK_ACTION params "
-            "or a compact JSON object with answer_text, choice_index, and bbox.\n\n"
-            f"Task type: {task.task_type.value}\n"
-            f"Website: {task.website}\n"
-            f"Question: {task.prompt}"
+            "Answer this VisualWebBench task. The screenshot is provided as an "
+            "image attachment — look at it before answering. Return either a "
+            "BENCHMARK_ACTION params object or a compact JSON object with "
+            "answer_text, choice_index, and bbox.\n\n"
+            f"{task.prompt}"
         )
         response = self._client.send_message(text=message, context=context)
         parsed = _parse_response(response.params, response.text)
@@ -266,9 +288,16 @@ def _build_app_harness_prompt(task: "VisualWebBenchTask") -> str:
         "question": task.prompt,
         "image_path": task.image_path or "",
         "image_size": list(task.image_size) if task.image_size else [],
+        "attachments": (
+            [{"kind": "image", "path": task.image_path, "media_type": "image/png"}]
+            if task.image_path
+            else []
+        ),
         "options": _jsonable_options(task.options),
         "bbox": list(task.bbox) if task.bbox else [],
         "elem_desc": task.elem_desc,
+        "elem_desc_text": task.elem_desc,
+        "instruction": task.instruction,
     }
     return (
         "Answer this VisualWebBench task through the Eliza app runtime. "
