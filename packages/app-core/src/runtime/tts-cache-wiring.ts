@@ -1,7 +1,7 @@
 /**
  * TTS-handler ↔ first-line-cache wiring for the app-core runtime.
  *
- * The first-line cache lives in `@elizaos/plugin-local-inference`
+ * The first-line cache lives in `@elizaos/plugin-local-inference/services`
  * because it needs `node:sqlite` + the local state-dir. We do a dynamic
  * import here so this module stays browser-safe and so cores that don't
  * ship the local-inference plugin still load.
@@ -58,14 +58,14 @@ function readEdgeTtsSetting(
 export async function wrapEdgeTtsHandlerWithFirstLineCache(
   inner: EdgeTtsHandler,
 ): Promise<EdgeTtsHandler | null> {
-  let wrapModule: typeof import("@elizaos/plugin-local-inference");
+  let wrapModule: typeof import("@elizaos/plugin-local-inference/services");
   try {
     wrapModule = (await import(
-      "@elizaos/plugin-local-inference"
-    )) as typeof import("@elizaos/plugin-local-inference");
+      "@elizaos/plugin-local-inference/services"
+    )) as typeof import("@elizaos/plugin-local-inference/services");
   } catch (err) {
     logger.debug?.(
-      `[tts-cache-wiring] @elizaos/plugin-local-inference unavailable; cache disabled: ${err instanceof Error ? err.message : String(err)}`,
+      `[tts-cache-wiring] @elizaos/plugin-local-inference/services unavailable; cache disabled: ${err instanceof Error ? err.message : String(err)}`,
     );
     return null;
   }

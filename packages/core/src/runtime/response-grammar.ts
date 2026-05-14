@@ -206,8 +206,7 @@ function gbnfJsonStringLiteral(value: string): string {
 
 /** Shared GBNF rule bodies, inlined so the grammar is self-contained. */
 const GBNF_RULE_BODIES: Record<string, string> = {
-	jsonstring:
-		'"\\"" ( [^"\\\\\\x00-\\x1F] | "\\\\" ( ["\\\\/bfnrt] | "u" [0-9a-fA-F] [0-9a-fA-F] [0-9a-fA-F] [0-9a-fA-F] ) )* "\\""',
+	jsonstring: '"\\"" ( [^"\\\\] | "\\\\" . )* "\\""',
 	jsonvalue:
 		'jsonobject | jsonarray | jsonstring | jsonnumber | "true" | "false" | "null"',
 	jsonobject:
@@ -907,11 +906,11 @@ export function buildPlannerActionGrammar(
  * coercion/reroll round in `validate-tool-args.ts`). Matches the intent of
  * P2-4 in `packages/training/benchmarks/INFERENCE_OPTIMIZATION_PLAN.md`.
  *
- * The returned `responseSkeleton` mirrors the broad planner-call envelope so
- * per-span samplers can still force argmax on the action-name enum. The strict
- * grammar remains authoritative for the conditional action→parameters shape.
- * Cloud adapters still ignore the skeleton + grammar per the W3 contract;
- * `tools` carries the equivalent unforced contract for them.
+ * The returned `responseSkeleton` is intentionally minimal — the grammar
+ * carries the entire structural contract, so the engine's prefill plan has
+ * nothing useful to inject statically. Cloud adapters still ignore the
+ * skeleton + grammar per the W3 contract; `tools` carries the equivalent
+ * unforced contract for them.
  *
  * Returns `null` when no actions are exposed.
  */
@@ -979,10 +978,14 @@ export function buildPlannerActionGrammarStrict(
 
 	builder.root([branchRuleNames.join(" | ")]);
 
-	const responseSkeleton: ResponseSkeleton = buildPlannerActionSamplerSkeleton(
-		names,
-		cacheKey,
-	);
+	// Minimal skeleton — the grammar carries the entire structural contract.
+	// The engine's prefill plan has nothing useful to inject statically because
+	// every branch starts with the same literal `{"action":"` but diverges on
+	// the first character of the chosen action name.
+	const responseSkeleton: ResponseSkeleton = {
+		spans: [{ kind: "free-json", key: "envelope" }],
+		id: cacheKey,
+	};
 
 	const result: PlannerActionGrammarResult = {
 		responseSkeleton,
@@ -1026,11 +1029,10 @@ function emitActionParamsRule(
 /**
  * Emit a GBNF rule for an object schema. Walks `properties`, translates each
  * value into a constrained GBNF expression, and assembles a body that
- * sequences required keys in declaration order then permits each optional key
- * at most once, also in declaration order. This intentionally gives up
- * arbitrary JSON property ordering for optional fields because a deterministic
- * action schema order is much cheaper, more guidable, and prevents duplicate
- * optional keys at the grammar level.
+ * sequences required keys in declaration order then permits each optional
+ * key zero-or-more times. (GBNF can't express true unordered sets without
+ * combinatorial blowup; the single-occurrence invariant of optionals is
+ * enforced by the downstream JSON parser rejecting duplicate keys.)
  *
  * Recursion: object-typed properties whose schema declares its own
  * `properties` emit a nested rule via this function, capped at
@@ -1084,53 +1086,15 @@ function emitObjectRule(
 		}
 	}
 	if (optionalKeys.length > 0) {
-		if (requiredKeys.length > 0) {
-			for (const key of optionalKeys) {
-				parts.push(`( ${gbnfLiteral(",")} ${propertyTokens[key]} )?`);
-			}
-		} else {
-			const alternatives = optionalKeys.map((key, index) =>
-				[
-					propertyTokens[key],
-					...optionalKeys
-						.slice(index + 1)
-						.map(
-							(nextKey) =>
-								`( ${gbnfLiteral(",")} ${propertyTokens[nextKey]} )?`,
-						),
-				].join(" "),
-			);
-			parts.push(`( ${alternatives.join(" | ")} )?`);
-		}
+		const optionalAlt = optionalKeys.map((k) => propertyTokens[k]).join(" | ");
+		const leadingComma = requiredKeys.length > 0;
+		const optionalGroup = leadingComma
+			? `( ${gbnfLiteral(",")} ( ${optionalAlt} ) )*`
+			: `( ( ${optionalAlt} ) ( ${gbnfLiteral(",")} ( ${optionalAlt} ) )* )?`;
+		parts.push(optionalGroup);
 	}
 	parts.push(gbnfLiteral("}"));
 	builder.rule(ruleName, parts.join(" "));
-}
-
-function buildPlannerActionSamplerSkeleton(
-	names: string[],
-	cacheKey: string,
-): ResponseSkeleton {
-	const spans: ResponseSkeletonSpan[] = [
-		{ kind: "literal", value: '{"action":' },
-	];
-	if (names.length === 1) {
-		spans.push({
-			kind: "literal",
-			key: "action",
-			value: JSON.stringify(names[0]),
-		});
-	} else {
-		spans.push({ kind: "enum", key: "action", enumValues: names });
-	}
-	spans.push(
-		{ kind: "literal", value: ',"parameters":' },
-		{ kind: "free-json", key: "parameters" },
-		{ kind: "literal", value: ',"thought":' },
-		{ kind: "free-string", key: "thought" },
-		{ kind: "literal", value: "}" },
-	);
-	return { spans, id: cacheKey };
 }
 
 /**
@@ -1184,7 +1148,7 @@ function buildBoundedNumberRule(
 		if (Number.isFinite(min) && Number.isFinite(max) && max - min <= 200) {
 			const literals: string[] = [];
 			for (let i = min; i <= max; i++) {
-				literals.push(gbnfLiteral(String(i)));
+				literals.push(gbnfJsonStringLiteral(String(i)));
 			}
 			builder.rule(ruleName, literals.join(" | "));
 			return ruleName;
@@ -1215,33 +1179,7 @@ function propertyValueGbnf(
 	contextRuleName: string,
 	depth: number,
 ): string {
-	const unionBranches = readUnionBranchesForGrammar(propSchema);
-	if (unionBranches.length > 0) {
-		const branchExpressions = unionBranches.map((branch, index) =>
-			propertyValueGbnf(builder, branch, `${contextRuleName}_alt${index}`, depth),
-		);
-		return `( ${branchExpressions.join(" | ")} )`;
-	}
-
 	const type = (propSchema as { type?: unknown }).type;
-	if (Array.isArray(type)) {
-		const branchExpressions = type
-			.filter((entry): entry is string => typeof entry === "string")
-			.map((entry, index) =>
-				entry === "null"
-					? '"null"'
-					: propertyValueGbnf(
-							builder,
-							{ ...propSchema, type: entry } as JSONSchema,
-							`${contextRuleName}_type${index}`,
-							depth,
-						),
-			);
-		if (branchExpressions.length > 0) {
-			return `( ${branchExpressions.join(" | ")} )`;
-		}
-	}
-
 	if (type === "string") {
 		const enumValues = readStringEnumForGrammar(propSchema);
 		if (enumValues !== null) {
@@ -1296,66 +1234,18 @@ function propertyValueGbnf(
 		builder.useShared("jsonarray");
 		return "jsonarray";
 	}
-	if (type === "object") {
-		const hasDeclaredProperties = schemaHasDeclaredProperties(propSchema);
-		if (
-			depth < MAX_NESTED_OBJECT_DEPTH &&
-			hasDeclaredProperties
-		) {
-			const objRuleName = `${contextRuleName}_obj`;
-			emitObjectRule(builder, objRuleName, propSchema, depth + 1);
-			return objRuleName;
-		}
-		if (hasDeclaredProperties && depth >= MAX_NESTED_OBJECT_DEPTH) {
-			builder.useShared("jsonobject");
-			return "jsonobject";
-		}
-		const additionalProperties = (
-			propSchema as { additionalProperties?: boolean | JSONSchema }
-		).additionalProperties;
-		if (additionalProperties === false) {
-			return gbnfLiteral("{}");
-		}
-		if (
-			additionalProperties &&
-			typeof additionalProperties === "object" &&
-			depth < MAX_NESTED_OBJECT_DEPTH
-		) {
-			const valueExpr = propertyValueGbnf(
-				builder,
-				additionalProperties,
-				`${contextRuleName}_additional`,
-				depth + 1,
-			);
-			builder.useShared("jsonstring");
-			builder.useShared("ws");
-			return `"{" ws ( jsonstring ws ":" ws ${valueExpr} ( ws "," ws jsonstring ws ":" ws ${valueExpr} )* )? ws "}"`;
-		}
-		builder.useShared("jsonobject");
-		return "jsonobject";
-	}
-	if (type === "null") {
-		return '"null"';
+	if (
+		type === "object" &&
+		depth < MAX_NESTED_OBJECT_DEPTH &&
+		schemaHasDeclaredProperties(propSchema)
+	) {
+		const objRuleName = `${contextRuleName}_obj`;
+		emitObjectRule(builder, objRuleName, propSchema, depth + 1);
+		return objRuleName;
 	}
 	// object without declared properties, null, or unspecified → permit any JSON.
 	builder.useShared("jsonvalue");
 	return "jsonvalue";
-}
-
-function readUnionBranchesForGrammar(schema: JSONSchema): JSONSchema[] {
-	const anyOf = (schema as { anyOf?: unknown }).anyOf;
-	if (Array.isArray(anyOf) && anyOf.length > 0) {
-		return anyOf.filter(isJsonSchemaObject);
-	}
-	const oneOf = (schema as { oneOf?: unknown }).oneOf;
-	if (Array.isArray(oneOf) && oneOf.length > 0) {
-		return oneOf.filter(isJsonSchemaObject);
-	}
-	return [];
-}
-
-function isJsonSchemaObject(value: unknown): value is JSONSchema {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function schemaHasDeclaredProperties(schema: JSONSchema): boolean {

@@ -40,9 +40,9 @@
 #                                    2b        → qwen3.5-2b
 #                                    4b        → qwen3.5-4b
 #                                    9b        → qwen3.5-9b
-#                                    27b       → qwen3.6-27b
-#                                    27b-256k  → qwen3.6-27b   --max-seq-len 262144
-#                                    27b-1m    → qwen3.6-27b   --max-seq-len 1048576
+#                                    27b       → qwen3.5-27b
+#                                    27b-256k  → qwen3.5-27b   --max-seq-len 262144
+#                                    27b-1m    → qwen3.5-27b   --max-seq-len 1048576
 #                                  Use a smaller list to test a subset:
 #                                    TIERS="0_8b 2b" bash ... smoke-all
 #   SMOKE_MAX_STEPS              hard step cap per tier. Default 50 (smoke).
@@ -113,20 +113,22 @@ export REUSE_EXISTING_VM
 # string + nonzero rc if unknown). Keep this list and the env-var doc above in
 # sync with packages/training/scripts/training/model_registry.py.
 _tier_args() {
-  # Per the 2026-05-14 tier policy, eliza-1 uses Qwen3.5 for
-  # 0.8B/2B/4B/9B and Qwen3.6 for the 27B-class tiers. The legacy
-  # qwen3.5-27b registry key remains addressable for experiments only.
-  # 27B SFT smoke is memory-tight on a single H200, so SKIP_FINETUNE_TIERS
-  # below carves out the 27B variants to skip-finetune by default; the smoke
-  # still exercises base-bench, quant, bundle, and publish for those tiers.
+  # Per the 2026-05-12 Qwen3.5-only mandate (project memory + registry §4-9):
+  # every eliza-1 tier MUST use a Qwen3.5 base. The qwen3.5-27b entry is
+  # marked cloud-tier gpu-h200x2 (8× H200) — does NOT fit a single H200 SFT —
+  # so the smoke maps 27b → qwen3.5-27b (single-H200 apollo_mini, see
+  # model_registry.py:386-407). The 27b SFT smoke is still memory-tight on a
+  # single H200 (190 GB train budget vs 141 GB H200 RAM) so SKIP_FINETUNE_TIERS
+  # below carve-outs the 27B variants to skip-finetune by default — the smoke
+  # still exercises base-bench + quant + bundle + publish for those tiers.
   case "$1" in
     0_8b)     echo "qwen3.5-0.8b" ;;
     2b)       echo "qwen3.5-2b" ;;
     4b)       echo "qwen3.5-4b" ;;
     9b)       echo "qwen3.5-9b" ;;
-    27b)      echo "qwen3.6-27b" ;;
-    27b-256k) echo "qwen3.6-27b --max-seq-len 262144" ;;
-    27b-1m)   echo "qwen3.6-27b --max-seq-len 1048576" ;;
+    27b)      echo "qwen3.5-27b" ;;
+    27b-256k) echo "qwen3.5-27b --max-seq-len 262144" ;;
+    27b-1m)   echo "qwen3.5-27b --max-seq-len 1048576" ;;
     *) return 1 ;;
   esac
 }
@@ -167,7 +169,7 @@ _remote() {
 
 _tier_run_name() {
   # Tier-stable, tag-scoped run name. Eliza public name comes from the registry
-  # lookup so 27b/27b-256k/27b-1m don't collide (all map to qwen3.6-27b).
+  # lookup so 27b/27b-256k/27b-1m don't collide (all map to qwen3.5-27b).
   local tier="$1" pub="$2"
   echo "${pub}-${ELIZA_SMOKE_RUN_TAG}-${tier}"
 }
@@ -271,9 +273,7 @@ uv run --extra train python scripts/run_pipeline.py \\
   --val-file ${SMOKE_DATA_DIR}/val.jsonl \\
   --test-file ${SMOKE_DATA_DIR}/test.jsonl \\
   --eval-mode smoke --bench-per-bucket 50 --skip-throughput-bench \\
-  --quantizers polarquant,fused_turboquant,qjl \\
-  --eliza1-bundle \\
-  --skip-base-bench --skip-publish --allow-unvalidated-corpus
+  --quantizers polarquant --skip-base-bench --skip-publish --allow-unvalidated-corpus
 echo RUN_PIPELINE_DONE_OK
 EOF
 

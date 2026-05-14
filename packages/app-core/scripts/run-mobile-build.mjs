@@ -33,11 +33,8 @@
  *   6. Native build         — gradlew / xcodebuild
  *
  * iOS targets:
- *   - ios         App Store iOS build. Bakes runtimeMode=local in App Store
- *                 compliance mode: signed/bundled agent code only, no
- *                 arbitrary process spawning, no downloaded executable code,
- *                 and no llama/full-Bun native payloads unless those payloads
- *                 are explicitly marked App-Store-compliant.
+ *   - ios         Cloud/client-oriented iOS build. Local inference is omitted
+ *                 unless ELIZA_IOS_INCLUDE_LLAMA / ELIZA_IOS_INCLUDE_LLAMA is set.
  *   - ios-local   Dev/sideload iOS build. Bakes runtimeMode=local, builds and
  *                 stages the Bun-targeted agent payload, includes the native
  *                 llama bridge, and defaults to simulator validation.
@@ -59,10 +56,6 @@ import {
   syncPlatformTemplateFiles as syncPlatformTemplateFilesImpl,
 } from "./lib/capacitor-platform-templates.mjs";
 import { resolveRepoRootFromImportMeta } from "./lib/repo-root.mjs";
-import {
-  assertReviewedEntitlementsFile,
-  loadEntitlementReviewManifest,
-} from "./lib/apple-entitlement-audit.mjs";
 import { stageAndroidAgentRuntime } from "./lib/stage-android-agent.mjs";
 
 // ── Paths ───────────────────────────────────────────────────────────────
@@ -135,13 +128,6 @@ const androidAgentSpikeDir = path.join(
 );
 const IOS_BUN_ENGINE_FRAMEWORK_NAME = "ElizaBunEngine";
 const IOS_BUN_ENGINE_ABI_VERSION = "3";
-const IOS_APP_STORE_LOCAL_RUNTIME_ENV = "ELIZA_IOS_APP_STORE_LOCAL_RUNTIME";
-const IOS_APP_STORE_COMPLIANT_LOCAL_RUNTIME_ENV =
-  "ELIZA_IOS_APP_STORE_COMPLIANT_LOCAL_RUNTIME";
-const IOS_FULL_BUN_APP_STORE_COMPLIANT_ENV =
-  "ELIZA_IOS_FULL_BUN_ENGINE_APP_STORE_COMPLIANT";
-const IOS_LLAMA_APP_STORE_COMPLIANT_ENV =
-  "ELIZA_IOS_LLAMA_APP_STORE_COMPLIANT";
 const iosBunRuntimePackageRoot = path.join(packagesRoot, "bun-ios-runtime");
 const defaultIosBunEngineXcframework = path.join(
   iosBunRuntimePackageRoot,
@@ -157,31 +143,6 @@ const IOS_BUN_ENGINE_REQUIRED_SYMBOLS = [
   "_eliza_bun_engine_is_running",
   "_eliza_bun_engine_call",
   "_eliza_bun_engine_free",
-];
-const IOS_BUN_ENGINE_APP_STORE_FORBIDDEN_SYMBOLS = [
-  "_execl",
-  "_execle",
-  "_execlp",
-  "_execv",
-  "_execve",
-  "_execvp",
-  "_fork",
-  "_posix_spawn",
-  "_posix_spawnp",
-  "_pthread_jit_write_protect_np",
-  "_system",
-];
-const IOS_APP_STORE_FORBIDDEN_AGENT_ASSET_PATTERNS = [
-  /(^|[._-])bun([._-]|$)/i,
-  /llama/i,
-  /llamafile/i,
-  /\.gguf$/i,
-  /\.ggml$/i,
-  /\.dylib$/i,
-  /\.framework$/i,
-  /\.xcframework$/i,
-  /\.a$/i,
-  /toolchain/i,
 ];
 // ── Phase 1: Resolve app identity from app.config.ts ────────────────────
 
@@ -238,10 +199,6 @@ function run(command, args, { cwd, env = process.env } = {}) {
 }
 
 function runCapacitor(args) {
-  const targetPlatform = args.find((arg) => arg === "ios" || arg === "android");
-  const env = targetPlatform
-    ? { ...process.env, ELIZA_CAPACITOR_BUILD_TARGET: targetPlatform }
-    : process.env;
   return run(
     process.execPath,
     [
@@ -255,7 +212,7 @@ function runCapacitor(args) {
       ),
       ...args,
     ],
-    { cwd: appDir, env },
+    { cwd: appDir },
   );
 }
 
@@ -643,7 +600,7 @@ export function applyIosAppIdentity({
 
 // ── Phase 2: Build web bundle ───────────────────────────────────────────
 
-export function resolveMobileBuildPolicy(platform, { env = process.env } = {}) {
+export function resolveMobileBuildPolicy(platform) {
   const capacitorTarget =
     platform === "android-system" ||
     platform === "android-cloud" ||
@@ -663,7 +620,12 @@ export function resolveMobileBuildPolicy(platform, { env = process.env } = {}) {
       : platform === "android" || platform === "android-system"
         ? "local"
         : null;
-  const iosRuntimeMode = resolveIosRuntimeMode(platform, env);
+  const iosRuntimeMode =
+    platform === "ios-local"
+      ? "local"
+      : platform === "ios" || platform === "ios-overlay"
+        ? "cloud"
+        : null;
   const buildVariant =
     platform === "android-cloud" || platform === "ios" ? "store" : "direct";
   const releaseAuthority =
@@ -687,70 +649,7 @@ export function resolveMobileBuildPolicy(platform, { env = process.env } = {}) {
     iosRuntimeMode,
     releaseAuthority,
     appControlledOta: false,
-    iosAppStoreLocalRuntime: platform === "ios" && iosRuntimeMode === "local",
   };
-}
-
-function normalizeRuntimeMode(value, fallback) {
-  const mode = String(value ?? "").trim().toLowerCase();
-  return mode === "cloud" || mode === "local" ? mode : fallback;
-}
-
-export function resolveIosRuntimeMode(platform, env = process.env) {
-  if (platform === "ios-local") return "local";
-  if (platform === "ios" || platform === "ios-overlay") {
-    return normalizeRuntimeMode(env.ELIZA_IOS_RUNTIME_MODE, "local");
-  }
-  return null;
-}
-
-export function resolveIosAppStoreLocalRuntimePolicy({
-  platform = "ios",
-  env = process.env,
-} = {}) {
-  const iosRuntimeMode = resolveIosRuntimeMode(platform, env);
-  const enabled = platform === "ios" && iosRuntimeMode === "local";
-  const includeLlama = isIosLlamaRequested(env);
-  const includeFullBunEngine = isFullIosBunEngineRequested(env);
-  const errors = [];
-  if (enabled) {
-    if (
-      includeLlama &&
-      !isTruthyEnv(env[IOS_LLAMA_APP_STORE_COMPLIANT_ENV])
-    ) {
-      errors.push(
-        `${IOS_LLAMA_APP_STORE_COMPLIANT_ENV}=1 is required before an App Store local build may bundle llama.cpp`,
-      );
-    }
-    if (
-      includeFullBunEngine &&
-      !isTruthyEnv(env[IOS_FULL_BUN_APP_STORE_COMPLIANT_ENV])
-    ) {
-      errors.push(
-        `${IOS_FULL_BUN_APP_STORE_COMPLIANT_ENV}=1 is required before an App Store local build may bundle ElizaBunEngine`,
-      );
-    }
-  }
-  return {
-    enabled,
-    iosRuntimeMode,
-    includeLlama,
-    includeFullBunEngine,
-    errors,
-  };
-}
-
-function assertIosAppStoreLocalRuntimePolicy({ platform = "ios" } = {}) {
-  const policy = resolveIosAppStoreLocalRuntimePolicy({
-    platform,
-    env: process.env,
-  });
-  if (policy.errors.length > 0) {
-    throw new Error(
-      `[mobile-build] iOS App Store local runtime policy failed:\n- ${policy.errors.join("\n- ")}`,
-    );
-  }
-  return policy;
 }
 
 async function buildWeb(platform) {
@@ -760,7 +659,6 @@ async function buildWeb(platform) {
     androidRuntimeMode,
     iosRuntimeMode,
     releaseAuthority,
-    iosAppStoreLocalRuntime,
   } = resolveMobileBuildPolicy(platform);
   const env = {
     ...process.env,
@@ -777,13 +675,6 @@ async function buildWeb(platform) {
       ? {
           ELIZA_IOS_RUNTIME_MODE: iosRuntimeMode,
           VITE_ELIZA_IOS_RUNTIME_MODE: iosRuntimeMode,
-        }
-      : {}),
-    ...(iosAppStoreLocalRuntime
-      ? {
-          [IOS_APP_STORE_LOCAL_RUNTIME_ENV]: "1",
-          [IOS_APP_STORE_COMPLIANT_LOCAL_RUNTIME_ENV]: "1",
-          VITE_ELIZA_IOS_APP_STORE_LOCAL_RUNTIME: "1",
         }
       : {}),
     ...(platform === "ios-local" && isFullIosBunEngineRequested(process.env)
@@ -855,79 +746,6 @@ function stageIosAgentRuntime() {
   }
   console.log(
     `[mobile-build] Staged iOS Bun agent payload: ${path.relative(repoRoot, targetDir)}`,
-  );
-}
-
-function looksLikeMachO(filePath) {
-  let fd = null;
-  try {
-    fd = fs.openSync(filePath, "r");
-    const header = Buffer.alloc(4);
-    if (fs.readSync(fd, header, 0, 4, 0) !== 4) return false;
-    const magic = header.readUInt32BE(0);
-    return (
-      magic === 0xfeedface ||
-      magic === 0xfeedfacf ||
-      magic === 0xcafebabe ||
-      magic === 0xcafed00d
-    );
-  } catch {
-    return false;
-  } finally {
-    if (fd !== null) fs.closeSync(fd);
-  }
-}
-
-export function findIosAppStoreForbiddenLocalAssets(
-  root,
-  { allowLlama = false, allowFullBunEngine = false } = {},
-) {
-  const findings = [];
-  if (!fs.existsSync(root)) return findings;
-  walkFiles(root, (filePath) => {
-    const relative = path.relative(root, filePath);
-    const basename = path.basename(filePath);
-    const matchesForbiddenName = IOS_APP_STORE_FORBIDDEN_AGENT_ASSET_PATTERNS.some(
-      (pattern) => {
-        if (allowLlama && /llama/i.test(pattern.source)) return false;
-        if (allowFullBunEngine && /bun/i.test(pattern.source)) return false;
-        return pattern.test(relative) || pattern.test(basename);
-      },
-    );
-    if (matchesForbiddenName) {
-      findings.push({
-        path: relative,
-        reason: "local-only native/toolchain asset name",
-      });
-      return;
-    }
-    if (looksLikeMachO(filePath)) {
-      findings.push({
-        path: relative,
-        reason: "Mach-O/native binary in agent resources",
-      });
-    }
-  });
-  return findings.sort((a, b) => a.path.localeCompare(b.path));
-}
-
-function validateIosAppStoreLocalRuntimeAssets() {
-  const policy = assertIosAppStoreLocalRuntimePolicy({ platform: "ios" });
-  if (!policy.enabled) return;
-  const agentRoot = path.join(iosDir, "App", "public", "agent");
-  const findings = findIosAppStoreForbiddenLocalAssets(agentRoot, {
-    allowLlama: policy.includeLlama,
-    allowFullBunEngine: policy.includeFullBunEngine,
-  });
-  if (findings.length > 0) {
-    throw new Error(
-      `[mobile-build] iOS App Store local runtime resources contain non-compliant payloads:\n${findings
-        .map((finding) => `- ${finding.path}: ${finding.reason}`)
-        .join("\n")}`,
-    );
-  }
-  console.log(
-    "[mobile-build] iOS App Store local runtime assets passed compliance scan.",
   );
 }
 
@@ -1518,109 +1336,6 @@ function ensureAndroidMainActivityUrlSchemeFilter(xml) {
   return xml.replace(mainActivityRe, `$1${authFilter}$2`);
 }
 
-export function ensureAndroidMainActivityShortcutsMetadata(xml) {
-  const mainActivityRe =
-    /(<activity\b(?=[\s\S]*?android:name="\.?MainActivity")[\s\S]*?)(\n\s*<\/activity>)/m;
-  const match = xml.match(mainActivityRe);
-  if (!match) return xml;
-
-  const mainActivity = `${match[1]}${match[2]}`;
-  if (
-    mainActivity.includes('android:name="android.app.shortcuts"') &&
-    mainActivity.includes('android:resource="@xml/shortcuts"')
-  ) {
-    return xml;
-  }
-
-  const shortcutsMetadata = `
-            <meta-data
-                android:name="android.app.shortcuts"
-                android:resource="@xml/shortcuts" />
-`;
-  return xml.replace(mainActivityRe, `$1${shortcutsMetadata}$2`);
-}
-
-export function patchAndroidAppActionsXmlResource(
-  xml,
-  { appId = APP.appId, urlScheme = APP.urlScheme } = {},
-) {
-  const androidPackage = escapeXmlText(appId);
-  const scheme = escapeXmlText(urlScheme);
-  return xml
-    .replaceAll("ai.elizaos.app://", `${scheme}://`)
-    .replaceAll(
-      'android:targetPackage="ai.elizaos.app"',
-      `android:targetPackage="${androidPackage}"`,
-    )
-    .replaceAll(
-      'android:targetClass="ai.elizaos.app.MainActivity"',
-      `android:targetClass="${androidPackage}.MainActivity"`,
-    );
-}
-
-export function mergeAndroidAppActionsStringsResource(current, template) {
-  if (!current.includes("</resources>")) return current;
-  const missingEntries = [];
-  const resourceEntryRe =
-    /<(string|string-array)\b[^>]*\bname="(android_app_action_[^"]+)"[\s\S]*?<\/\1>/g;
-  for (const match of template.matchAll(resourceEntryRe)) {
-    const [, , name] = match;
-    if (!name) continue;
-    if (current.includes(`name="${name}"`)) continue;
-    missingEntries.push(match[0]);
-  }
-  if (missingEntries.length === 0) return current;
-  return current.replace(
-    /\s*<\/resources>/,
-    `\n    ${missingEntries.join("\n    ")}\n</resources>`,
-  );
-}
-
-function ensureAndroidAppActionsResources() {
-  const templateResRoot = path.join(
-    platformsDir,
-    "android",
-    "app",
-    "src",
-    "main",
-    "res",
-  );
-  const appResRoot = path.join(androidDir, "app", "src", "main", "res");
-  const copyIfMissing = (relPath) => {
-    const dst = path.join(appResRoot, relPath);
-    const src = path.join(templateResRoot, relPath);
-    if (fs.existsSync(dst) || !fs.existsSync(src)) return;
-    fs.mkdirSync(path.dirname(dst), { recursive: true });
-    fs.copyFileSync(src, dst);
-    console.log(`[mobile-build] Copied Android App Actions ${relPath}.`);
-  };
-
-  copyIfMissing(path.join("xml", "shortcuts.xml"));
-  copyIfMissing(path.join("values", "strings.xml"));
-
-  const stringsPath = path.join(appResRoot, "values", "strings.xml");
-  const templateStringsPath = path.join(templateResRoot, "values", "strings.xml");
-  if (fs.existsSync(stringsPath) && fs.existsSync(templateStringsPath)) {
-    const current = fs.readFileSync(stringsPath, "utf8");
-    const template = fs.readFileSync(templateStringsPath, "utf8");
-    const patched = mergeAndroidAppActionsStringsResource(current, template);
-    if (patched !== current) {
-      fs.writeFileSync(stringsPath, patched, "utf8");
-      console.log("[mobile-build] Merged Android App Actions strings.");
-    }
-  }
-
-  const shortcutsPath = path.join(appResRoot, "xml", "shortcuts.xml");
-  if (fs.existsSync(shortcutsPath)) {
-    const current = fs.readFileSync(shortcutsPath, "utf8");
-    const patched = patchAndroidAppActionsXmlResource(current);
-    if (patched !== current) {
-      fs.writeFileSync(shortcutsPath, patched, "utf8");
-      console.log("[mobile-build] Applied Android App Actions resource identity.");
-    }
-  }
-}
-
 function overlayAndroid() {
   const srcJava = path.join(
     platformsDir,
@@ -1773,11 +1488,6 @@ function overlayAndroid() {
     const withUrlSchemeFilter = ensureAndroidMainActivityUrlSchemeFilter(xml);
     if (withUrlSchemeFilter !== xml) {
       xml = withUrlSchemeFilter;
-      dirty = true;
-    }
-    const withShortcutsMetadata = ensureAndroidMainActivityShortcutsMetadata(xml);
-    if (withShortcutsMetadata !== xml) {
-      xml = withShortcutsMetadata;
       dirty = true;
     }
     const gatewayServiceName = `${androidPackage}.GatewayConnectionService`;
@@ -2224,8 +1934,6 @@ function overlayAndroid() {
       console.log("[mobile-build] Enabled release minification.");
     }
   }
-
-  ensureAndroidAppActionsResources();
 }
 
 // ── Phase 4: iOS native overlay ─────────────────────────────────────────
@@ -2302,7 +2010,6 @@ const IOS_BONJOUR_SERVICES = [
 
 function overlayIos() {
   const targetAppDir = path.join(appDir, "ios", "App", "App");
-  const entitlementManifest = loadEntitlementReviewManifest();
 
   // Merge Info.plist permission strings
   const plistPath = path.join(targetAppDir, "Info.plist");
@@ -2388,33 +2095,10 @@ function overlayIos() {
   // Generate Podfile
   generatePodfile();
   applyIosAppIdentity();
-  assertReviewedEntitlementsFile({
-    filePath: path.join(targetAppDir, "App.entitlements"),
-    targetId: "ios-app",
-    manifest: entitlementManifest,
-    label: "generated iOS app entitlements",
-  });
-  assertReviewedEntitlementsFile({
-    filePath: path.join(
-      targetAppDir,
-      "WebsiteBlockerContentExtension",
-      "WebsiteBlockerContentExtension.entitlements",
-    ),
-    targetId: "ios-website-blocker-extension",
-    manifest: entitlementManifest,
-    label: "generated iOS WebsiteBlocker extension entitlements",
-  });
 }
 
 function isTruthyEnv(value) {
   return /^(1|true|yes|on)$/i.test(String(value ?? "").trim());
-}
-
-function isIosLlamaRequested(env = process.env) {
-  return (
-    isTruthyEnv(env.ELIZA_IOS_INCLUDE_LLAMA) ||
-    isTruthyEnv(env.ELIZA_IOS_INCLUDE_LOCAL_LLAMA)
-  );
 }
 
 function isFullIosBunEngineRequested(env = process.env) {
@@ -2438,7 +2122,9 @@ export function prepareIosOverlay({ buildTarget = null } = {}) {
   const syncedFiles = syncPlatformTemplateFiles("ios");
   overlayIos();
   stripSpmIncompatiblePlugins();
-  const includeLlama = isIosLlamaRequested();
+  const includeLlama =
+    isTruthyEnv(process.env.ELIZA_IOS_INCLUDE_LLAMA) ||
+    isTruthyEnv(process.env.ELIZA_IOS_INCLUDE_LLAMA);
   if (isIosSimulatorBuildTarget(buildTarget) || !includeLlama) {
     // Strip the SPM LlamaCppCapacitor entry whenever we're not bundling the
     // pod — either because the simulator build replaces it with a CocoaPod
@@ -2462,13 +2148,15 @@ function generatePodfile() {
   }
 
   // LlamaCppCapacitor ships an on-device llama.cpp xcframework. It is only
-  // needed when a local runtime build explicitly enables native llama.
-  // App Store local builds fail closed unless
-  // ELIZA_IOS_LLAMA_APP_STORE_COMPLIANT=1 is also present. Gate the pod on
-  // ELIZA_IOS_INCLUDE_LLAMA / ELIZA_IOS_INCLUDE_LOCAL_LLAMA — kept in sync with
+  // needed when the iOS build includes on-device inference. The default
+  // App Store target is the `cloud` runtime mode, which is a thin HTTP
+  // client and must NOT bundle the llama.cpp binary. Gate the pod on
+  // ELIZA_IOS_INCLUDE_LLAMA / ELIZA_IOS_INCLUDE_LLAMA — kept in sync with
   // `resolveIosBuildTarget()` so the pod, the xcframework path, and the
   // build destination all agree on a single inclusion decision.
-  const includeLlama = isIosLlamaRequested();
+  const includeLlama =
+    isTruthyEnv(process.env.ELIZA_IOS_INCLUDE_LLAMA) ||
+    isTruthyEnv(process.env.ELIZA_IOS_INCLUDE_LLAMA);
   const includeFullBunEngine = isFullIosBunEngineRequested();
   const customPods = [
     ["ElizaosCapacitorAgent", "@elizaos/capacitor-agent"],
@@ -2499,7 +2187,7 @@ function generatePodfile() {
   ];
   if (!includeLlama) {
     console.log(
-      "[mobile-build] iOS Podfile: omitting llama.cpp pod (ELIZA_IOS_INCLUDE_LLAMA / ELIZA_IOS_INCLUDE_LOCAL_LLAMA not set)",
+      "[mobile-build] iOS Podfile: omitting llama.cpp pod (ELIZA_IOS_INCLUDE_LLAMA / ELIZA_IOS_INCLUDE_LLAMA not set)",
     );
   }
   if (includeFullBunEngine) {
@@ -2805,8 +2493,6 @@ function patchAndroidGradle() {
       );
     }
   }
-
-  ensureAndroidAppActionsResources();
 }
 
 function sanitizeAndroidManifestWhenPlatformTemplatesMissing() {
@@ -3267,13 +2953,15 @@ async function ensureIosLlamaCppVendoredFramework({
   // client), the pod is not generated and the vendored framework is not
   // referenced. Skipping here avoids spinning up xcodebuild for an
   // xcframework that nothing consumes.
-  const includeLlama = isIosLlamaRequested();
+  const includeLlama =
+    isTruthyEnv(process.env.ELIZA_IOS_INCLUDE_LLAMA) ||
+    isTruthyEnv(process.env.ELIZA_IOS_INCLUDE_LLAMA);
   if (!includeLlama) return;
 
   if (process.platform !== "darwin") {
     throw new Error(
       "[mobile-build] iOS llama.cpp xcframework build requires a macOS host with Xcode. " +
-        "Either run on macOS or unset ELIZA_IOS_INCLUDE_LLAMA / ELIZA_IOS_INCLUDE_LOCAL_LLAMA.",
+        "Either run on macOS or unset ELIZA_IOS_INCLUDE_LLAMA / ELIZA_IOS_INCLUDE_LLAMA.",
     );
   }
 
@@ -3281,7 +2969,7 @@ async function ensureIosLlamaCppVendoredFramework({
   if (!packageDir) {
     throw new Error(
       "[mobile-build] llama-cpp-capacitor package not found in node_modules; " +
-        "either install it or unset ELIZA_IOS_INCLUDE_LLAMA / ELIZA_IOS_INCLUDE_LOCAL_LLAMA.",
+        "either install it or unset ELIZA_IOS_INCLUDE_LLAMA / ELIZA_IOS_INCLUDE_LLAMA.",
     );
   }
 
@@ -3365,7 +3053,9 @@ export function resolveIosBuildTarget({
     };
   }
 
-  const includeDeviceOnlyLlama = isIosLlamaRequested(env);
+  const includeDeviceOnlyLlama =
+    isTruthyEnv(env.ELIZA_IOS_INCLUDE_LLAMA) ||
+    isTruthyEnv(env.ELIZA_IOS_INCLUDE_LLAMA);
   const llamaCppFramework = firstExisting([
     path.join(
       appDirValue,
@@ -3516,33 +3206,9 @@ function validateIosBunEngineSymbols(binary) {
   }
 }
 
-function validateIosBunEngineAppStoreCompliance(binary) {
-  const result = runCaptureSync("nm", ["-u", binary], {
-    maxBuffer: 256 * 1024 * 1024,
-  });
-  if (result.status !== 0) {
-    const reason =
-      result.stderr?.trim() ||
-      result.error?.message ||
-      `exit status ${String(result.status)}`;
-    throw new Error(
-      `[mobile-build] failed to inspect ${binary} for App Store policy with nm: ${reason}`,
-    );
-  }
-  const output = `${result.stdout}\n${result.stderr}`;
-  const forbidden = IOS_BUN_ENGINE_APP_STORE_FORBIDDEN_SYMBOLS.filter(
-    (symbol) => output.includes(symbol),
-  );
-  if (forbidden.length > 0) {
-    throw new Error(
-      `[mobile-build] ${binary} imports App-Store-incompatible runtime symbols: ${forbidden.join(", ")}`,
-    );
-  }
-}
-
 function validateIosFullBunEngineXcframework(
   xcframework,
-  { buildTarget = null, appStoreLocal = false } = {},
+  { buildTarget = null } = {},
 ) {
   const { binary, frameworkDir, libraryIdentifier } =
     resolveIosBunEngineLibrary(xcframework, { buildTarget });
@@ -3564,9 +3230,6 @@ function validateIosFullBunEngineXcframework(
     );
   }
   validateIosBunEngineSymbols(binary);
-  if (appStoreLocal) {
-    validateIosBunEngineAppStoreCompliance(binary);
-  }
   console.log(
     `[mobile-build] iOS full Bun engine validated ${libraryIdentifier}: ${binary}`,
   );
@@ -3601,10 +3264,7 @@ function stageIosFullBunEngineForPodspec(framework) {
   return defaultIosBunEngineXcframework;
 }
 
-function ensureIosFullBunEngineArtifact({
-  buildTarget = null,
-  appStoreLocal = false,
-} = {}) {
+function ensureIosFullBunEngineArtifact({ buildTarget = null } = {}) {
   if (!isFullIosBunEngineRequested()) return null;
   const framework = resolveIosFullBunEngineXcframework({ buildTarget });
   if (!framework) {
@@ -3621,16 +3281,10 @@ function ensureIosFullBunEngineArtifact({
       ].join("\n"),
     );
   }
-  validateIosFullBunEngineXcframework(framework, {
-    buildTarget,
-    appStoreLocal,
-  });
+  validateIosFullBunEngineXcframework(framework, { buildTarget });
   const stagedFramework = stageIosFullBunEngineForPodspec(framework);
   if (stagedFramework !== framework) {
-    validateIosFullBunEngineXcframework(stagedFramework, {
-      buildTarget,
-      appStoreLocal,
-    });
+    validateIosFullBunEngineXcframework(stagedFramework, { buildTarget });
   }
   process.env.ELIZA_IOS_BUN_ENGINE_XCFRAMEWORK = stagedFramework;
   console.log(`[mobile-build] iOS full Bun engine: ${stagedFramework}`);
@@ -4156,32 +3810,6 @@ function auditAndroidCloudSource(phase) {
     }
   });
 
-  const shortcutsPath = path.join(
-    androidDir,
-    "app",
-    "src",
-    "main",
-    "res",
-    "xml",
-    "shortcuts.xml",
-  );
-  if (fs.existsSync(shortcutsPath)) {
-    const shortcuts = fs.readFileSync(shortcutsPath, "utf8");
-    for (const component of ANDROID_CLOUD_STRIPPED_COMPONENTS) {
-      if (shortcuts.includes(component)) {
-        failures.push(`shortcuts.xml still references ${component}`);
-      }
-    }
-    if (!shortcuts.includes("actions.intent.OPEN_APP_FEATURE")) {
-      failures.push("shortcuts.xml is missing OPEN_APP_FEATURE");
-    }
-    if (!shortcuts.includes("actions.intent.CREATE_THING")) {
-      failures.push("shortcuts.xml is missing CREATE_THING");
-    }
-  } else {
-    failures.push("app/src/main/res/xml/shortcuts.xml is missing");
-  }
-
   const jniRoot = path.join(androidDir, "app", "src", "main", "jniLibs");
   walkFiles(jniRoot, (filePath) => {
     if (isCloudBannedNativeLibrary(path.basename(filePath))) {
@@ -4697,36 +4325,17 @@ function configureIosLocalBuildDefaults() {
   setDefaultProcessEnv("ELIZA_IOS_BUILD_SDK", "iphonesimulator");
 }
 
-function configureIosAppStoreLocalBuildDefaults() {
-  setDefaultProcessEnv("ELIZA_IOS_RUNTIME_MODE", "local");
-  setDefaultProcessEnv("VITE_ELIZA_IOS_RUNTIME_MODE", "local");
-  setDefaultProcessEnv(IOS_APP_STORE_LOCAL_RUNTIME_ENV, "1");
-  setDefaultProcessEnv(IOS_APP_STORE_COMPLIANT_LOCAL_RUNTIME_ENV, "1");
-  setDefaultProcessEnv("VITE_ELIZA_IOS_APP_STORE_LOCAL_RUNTIME", "1");
-}
-
 async function buildIos({ local = false } = {}) {
   if (process.platform !== "darwin")
     throw new Error("iOS builds require macOS and Xcode.");
 
   if (local) {
     configureIosLocalBuildDefaults();
-  } else if (resolveIosRuntimeMode("ios") === "local") {
-    configureIosAppStoreLocalBuildDefaults();
   }
 
-  const buildPlatform = local ? "ios-local" : "ios";
-  const appStoreLocalPolicy = assertIosAppStoreLocalRuntimePolicy({
-    platform: buildPlatform,
-  });
-  const shouldStageLocalRuntime = local || appStoreLocalPolicy.enabled;
   const buildTarget = resolveIosBuildTarget();
   if (local) {
     ensureIosFullBunEngineArtifact({ buildTarget });
-  } else if (appStoreLocalPolicy.includeFullBunEngine) {
-    ensureIosFullBunEngineArtifact({ buildTarget, appStoreLocal: true });
-  }
-  if (shouldStageLocalRuntime) {
     await buildMobileAgentBundle({ target: "ios" });
   }
 
@@ -4736,27 +4345,21 @@ async function buildIos({ local = false } = {}) {
     "prepare-ios-cocoapods.sh",
   );
 
-  await buildWeb(buildPlatform);
+  await buildWeb(local ? "ios-local" : "ios");
   await ensurePlatform("ios");
-  if (shouldStageLocalRuntime) {
+  if (local) {
     // Stage once before CocoaPods/Capacitor native dependency work so a
     // missing local toolchain still leaves the iOS app bundle resources in an
     // inspectable state. Capacitor sync may rewrite app resources, so we stage
     // again immediately after sync.
     stageIosAgentRuntime();
-    if (appStoreLocalPolicy.enabled) {
-      validateIosAppStoreLocalRuntimeAssets();
-    }
   }
   if (fs.existsSync(cocoapodsScript)) {
     await run("bash", [cocoapodsScript], { cwd: repoRoot });
   }
   await runCapacitor(["sync", "ios"]);
-  if (shouldStageLocalRuntime) {
+  if (local) {
     stageIosAgentRuntime();
-    if (appStoreLocalPolicy.enabled) {
-      validateIosAppStoreLocalRuntimeAssets();
-    }
   }
 
   console.log(

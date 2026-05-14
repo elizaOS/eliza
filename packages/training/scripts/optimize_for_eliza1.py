@@ -86,7 +86,7 @@ log = logging.getLogger("optimize_for_eliza1")
 # and don't mutate weights, so they can run in any order after PolarQuant
 # but must run before GGUF conversion (the sidecars feed the GGUF metadata
 # block describing K and V cache projection geometry).
-APPLY_ORDER = ("polarquant", "qjl", "turboquant", "fused_turboquant")
+APPLY_ORDER = ("polarquant", "qjl", "turboquant")
 
 
 @dataclass(frozen=True)
@@ -189,25 +189,18 @@ def _run_apply_stage(
     prior: list[StageResult],
 ) -> StageResult:
     out_dir = _stage_output_dir(plan.output_dir, stage)
-    actual_stage = stage
-    if (
-        stage == "turboquant"
-        and plan.has_cuda
-        and os.environ.get("ELIZA_FORCE_PURE_TURBOQUANT", "").strip() != "1"
-    ):
-        actual_stage = "fused_turboquant"
     sidecar_filename = {
         "polarquant": "polarquant_artifacts.safetensors",
         "qjl": "qjl_config.json",
         "turboquant": "turboquant.json",
         "fused_turboquant": "turboquant.json",
-    }.get(actual_stage)
+    }.get(stage)
 
     # Skip TurboQuant on CPU-only — Triton + the pure-PyTorch path both
     # need CUDA when calibrating and importing turbokv. We document the
     # skip in the manifest so the consumer knows the V-cache config is
     # the framework default rather than a calibrated profile.
-    if actual_stage in ("turboquant", "fused_turboquant") and not plan.has_cuda:
+    if stage in ("turboquant", "fused_turboquant") and not plan.has_cuda:
         log.warning(
             "stage %s requires CUDA; running in skip mode (manifest will "
             "fall back to default tbq3_0 V-cache config)",
@@ -223,10 +216,7 @@ def _run_apply_stage(
             skip_reason="CUDA unavailable; using upstream defaults",
         )
 
-    if actual_stage != stage:
-        log.info("stage %s: CUDA detected, using %s", stage, actual_stage)
-
-    apply_script = _resolve_apply_script(actual_stage)
+    apply_script = _resolve_apply_script(stage)
     input_model = _select_input_for_stage(plan, stage, prior)
 
     cmd: list[str] = [
@@ -246,12 +236,10 @@ def _run_apply_stage(
     # raise on a CPU box. Force ``--device cpu`` when CUDA isn't
     # available so the dry-run path here mirrors the production CPU-only
     # smoke target.
-    if actual_stage in ("qjl", "turboquant", "fused_turboquant") and not plan.has_cuda:
+    if stage in ("qjl", "turboquant", "fused_turboquant") and not plan.has_cuda:
         cmd += ["--device", "cpu"]
 
     cmd += plan.extra_apply_args.get(stage, [])
-    if actual_stage != stage:
-        cmd += plan.extra_apply_args.get(actual_stage, [])
 
     if plan.dry_run:
         cmd += ["--dry-run"]
@@ -473,9 +461,7 @@ def _convert_to_gguf(
     out_path.parent.mkdir(parents=True, exist_ok=True)
     polar_dir = _stage_dir(stages, "polarquant")
     qjl_dir = _stage_dir(stages, "qjl")
-    tbq_dir = _stage_dir(stages, "turboquant") or _stage_dir(
-        stages, "fused_turboquant"
-    )
+    tbq_dir = _stage_dir(stages, "turboquant")
     apply_script = Path(__file__).resolve().parent / "quantization" / "gguf_eliza1_apply.py"
     cmd = [
         sys.executable, str(apply_script),

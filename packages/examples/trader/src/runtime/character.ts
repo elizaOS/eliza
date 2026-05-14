@@ -1,5 +1,8 @@
 import { createCharacter } from "@elizaos/core";
 
+/**
+ * Trading bot character configuration
+ */
 export const traderCharacter = createCharacter({
   name: "AutoTrader",
   bio: [
@@ -92,3 +95,5 @@ Be transparent about risks and market conditions.`,
 
   plugins: [],
 });
+
+export default traderCharacter;

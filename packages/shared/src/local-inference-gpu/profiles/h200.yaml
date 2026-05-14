@@ -76,7 +76,7 @@ bundle_recommendations:
     flash_attention: true
     estimated_decode_tps: 160
     estimated_prefill_tps: 9200
-    notes: "High-quality Qwen3.6 27B tier for Hopper."
+    notes: "High-quality Qwen3.5 27B tier for Hopper."
   eliza-1-27b-256k:
     n_gpu_layers: -1
     ctx_size: 262144
@@ -88,7 +88,7 @@ bundle_recommendations:
     flash_attention: true
     estimated_decode_tps: 130
     estimated_prefill_tps: 7200
-    notes: "Long-context Qwen3.6 27B tier for single H200."
+    notes: "Long-context Qwen3.5 27B tier for single H200."
   eliza-1-27b-1m:
     n_gpu_layers: -1
     ctx_size: 1048576
@@ -100,7 +100,7 @@ bundle_recommendations:
     flash_attention: true
     estimated_decode_tps: 120
     estimated_prefill_tps: 5400
-    notes: "Maximum single-GPU Qwen3.6 27B context tier."
+    notes: "Maximum single-GPU Qwen3.5 27B context tier."
 
 dflash:
   enabled: true

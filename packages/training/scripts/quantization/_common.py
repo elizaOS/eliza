@@ -13,7 +13,6 @@ import argparse
 import json
 import logging
 from pathlib import Path
-from types import SimpleNamespace
 from typing import TYPE_CHECKING, Mapping
 
 import torch
@@ -121,11 +120,6 @@ def get_text_config(model_config: "PretrainedConfig") -> "PretrainedConfig":
     getter = getattr(model_config, "get_text_config", None)
     if callable(getter):
         return getter(decoder=True)
-    nested = getattr(model_config, "text_config", None)
-    if isinstance(nested, Mapping):
-        return SimpleNamespace(**nested)  # type: ignore[return-value]
-    if nested is not None:
-        return nested
     return model_config
 
 

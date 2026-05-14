@@ -233,12 +233,12 @@ export function detectTerminalSupport(): TerminalSupport {
   }
 
   if (isMobileRuntime()) {
-    if (isIosRuntime()) {
+    if (!isAospTerminalRuntime()) {
       return {
         supported: false,
         reason: "vanilla_mobile",
         message:
-          "Local terminal execution is unavailable on iOS; iOS runs inside the app sandbox and should use VFS/cloud-backed execution.",
+          "Local terminal execution is only available on branded AOSP builds. Vanilla mobile and store builds do not expose shell, coding, or orchestrator subprocess capabilities.",
       };
     }
     if (runtimeMode() !== "local-yolo") {
@@ -246,7 +246,7 @@ export function detectTerminalSupport(): TerminalSupport {
         supported: false,
         reason: "not_local_yolo",
         message:
-          "Android direct/AOSP terminal execution requires ELIZA_RUNTIME_MODE=local-yolo so commands run in the local agent environment.",
+          "AOSP terminal execution requires ELIZA_RUNTIME_MODE=local-yolo so commands run in the local agent environment.",
       };
     }
     const shell = resolveTerminalShell();
@@ -256,7 +256,7 @@ export function detectTerminalSupport(): TerminalSupport {
         reason: "missing_shell",
         message:
           shell.warning ??
-          "Android direct/AOSP terminal execution requires an executable shell. Set CODING_TOOLS_SHELL or SHELL to a staged shell binary.",
+          "AOSP terminal execution requires an executable shell. Set CODING_TOOLS_SHELL or SHELL to a staged shell binary.",
       };
     }
   }

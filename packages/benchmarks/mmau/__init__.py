@@ -1,23 +1,51 @@
-"""Compatibility shim for the renamed ``elizaos_mmau_audio`` package."""
+"""MMAU benchmark scaffold."""
 
-from __future__ import annotations
+from benchmarks.mmau.agent import (
+    AgentFn,
+    CascadedSTTAgent,
+    MMAUAgentProtocol,
+    OracleMMAUAgent,
+    SttFn,
+    format_mcq_prompt,
+)
+from benchmarks.mmau.dataset import MMAUDataset
+from benchmarks.mmau.evaluator import (
+    MMAUEvaluator,
+    choice_letters,
+    extract_answer_letter,
+    extract_letter_from_option,
+)
+from benchmarks.mmau.runner import MMAURunner
+from benchmarks.mmau.types import (
+    MMAU_CATEGORIES,
+    MMAUCategory,
+    MMAUConfig,
+    MMAUPrediction,
+    MMAUReport,
+    MMAUResult,
+    MMAUSample,
+    MMAUSplit,
+)
 
-import sys
-from pathlib import Path
-
-_AUDIO_ROOT = Path(__file__).resolve().parents[1] / "mmau-audio"
-if str(_AUDIO_ROOT) not in sys.path:
-    sys.path.insert(0, str(_AUDIO_ROOT))
-
-from elizaos_mmau_audio import *  # noqa: F401, F403
-from elizaos_mmau_audio import __all__ as _AUDIO_ALL
-from elizaos_mmau_audio import agent, cli, dataset, evaluator, runner, types
-
-sys.modules[__name__ + ".agent"] = agent
-sys.modules[__name__ + ".cli"] = cli
-sys.modules[__name__ + ".dataset"] = dataset
-sys.modules[__name__ + ".evaluator"] = evaluator
-sys.modules[__name__ + ".runner"] = runner
-sys.modules[__name__ + ".types"] = types
-
-__all__ = list(_AUDIO_ALL)
+__all__ = [
+    "MMAU_CATEGORIES",
+    "AgentFn",
+    "CascadedSTTAgent",
+    "MMAUAgentProtocol",
+    "MMAUCategory",
+    "MMAUConfig",
+    "MMAUDataset",
+    "MMAUEvaluator",
+    "MMAUPrediction",
+    "MMAUReport",
+    "MMAUResult",
+    "MMAURunner",
+    "MMAUSample",
+    "MMAUSplit",
+    "OracleMMAUAgent",
+    "SttFn",
+    "choice_letters",
+    "extract_answer_letter",
+    "extract_letter_from_option",
+    "format_mcq_prompt",
+]

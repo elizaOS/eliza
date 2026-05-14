@@ -25,7 +25,6 @@ import {
   readConfigCodexSubscriptionRestrictedToCodexFramework,
   readConfigEnvKey,
 } from "./config-env.js";
-import { resolveOpencodeBinary } from "./opencode-binary.js";
 
 export type SupportedTaskAgentAdapter = "claude" | "codex" | "gemini" | "aider";
 export type TaskAgentFrameworkId =
@@ -571,7 +570,7 @@ function hasPiBinary(): boolean {
 }
 
 function hasOpencodeBinary(): boolean {
-  return Boolean(resolveOpencodeBinary()) || hasBinaryOnPath("opencode");
+  return hasBinaryOnPath("opencode");
 }
 
 function isOpencodeLocalMode(): boolean {

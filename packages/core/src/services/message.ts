@@ -861,52 +861,23 @@ function hasInboundBenchmarkContext(message: Memory): boolean {
 	);
 }
 
-const ACTION_SCORED_BENCHMARKS = new Set([
-	"action-calling",
-	"action_calling",
-	"agentbench",
-	"app-eval",
-	"app_eval",
-	"bfcl",
-	"clawbench",
-	"lifeops-bench",
-	"lifeops_bench",
-	"loca-bench",
-	"loca_bench",
-	"mind2web",
-	"osworld",
-	"tau-bench",
-	"tau_bench",
-	"webshop",
-]);
-
-function getInboundBenchmarkName(message: Memory): string {
-	const contentMetadata = message.content?.metadata as
-		| Record<string, unknown>
-		| undefined;
-	const direct = contentMetadata?.benchmark;
-	if (typeof direct === "string" && direct.trim().length > 0) {
-		return direct.trim().toLowerCase();
-	}
-	const messageMetadata = message.metadata as
-		| Record<string, unknown>
-		| undefined;
-	const context = messageMetadata?.benchmarkContext;
-	if (typeof context === "string" && context.trim().length > 0) {
-		try {
-			const parsed = JSON.parse(context) as Record<string, unknown>;
-			const benchmark = parsed.benchmark;
-			if (typeof benchmark === "string" && benchmark.trim().length > 0) {
-				return benchmark.trim().toLowerCase();
-			}
-		} catch {
-			return "";
-		}
-	}
-	return "";
-}
-
-function hasInboundBenchmarkSignal(message: Memory): boolean {
+/**
+ * Returns true when the current turn was issued by a benchmark harness AND the
+ * `ELIZA_BENCH_FORCE_TOOL_CALL` env opt-in is set. Used to bias the planner
+ * toward emitting structured tool calls instead of routing every turn through
+ * `REPLY`, which is what LifeOpsBench and similar harnesses score against.
+ *
+ * Detection is intentionally narrow: we require BOTH
+ *   1. an env-var opt-in (so default behavior is unchanged for normal chat), AND
+ *   2. an inbound benchmark signal on the message itself
+ *      (`content.metadata.benchmark` is set, or `content.source === "benchmark"`).
+ *
+ * This means flipping the env var on a process that also serves real chat
+ * traffic still leaves normal turns alone — only requests that arrive with the
+ * bench-server metadata get the tool-call boost.
+ */
+function isBenchmarkForcingToolCall(message: Memory): boolean {
+	if (process.env.ELIZA_BENCH_FORCE_TOOL_CALL !== "1") return false;
 	const content = message.content;
 	if (!content) return false;
 	if (content.source === "benchmark") return true;
@@ -921,76 +892,6 @@ function hasInboundBenchmarkSignal(message: Memory): boolean {
 		return true;
 	}
 	return false;
-}
-
-/**
- * Returns true when the current turn was issued by a benchmark harness AND the
- * `ELIZA_BENCH_FORCE_TOOL_CALL` env opt-in is set for a benchmark that is
- * scored on structured actions. Used to bias the planner toward emitting tool
- * calls instead of routing action benchmarks through `REPLY`.
- *
- * Detection is intentionally narrow: we require BOTH
- *   1. an env-var opt-in (so default behavior is unchanged for normal chat), AND
- *   2. an inbound benchmark signal on the message itself
- *      (`content.metadata.benchmark` is set, or `content.source === "benchmark"`),
- *      with a benchmark name whose verifier expects actions/tool calls.
- *
- * This means flipping the env var on a process that also serves real chat
- * traffic still leaves normal turns alone — only requests that arrive with the
- * bench-server metadata get the tool-call boost.
- */
-function isBenchmarkForcingToolCall(message: Memory): boolean {
-	if (process.env.ELIZA_BENCH_FORCE_TOOL_CALL !== "1") return false;
-	if (!hasInboundBenchmarkSignal(message)) return false;
-	const contentMetadata = message.content?.metadata as
-		| Record<string, unknown>
-		| undefined;
-	if (contentMetadata?.forceBenchmarkToolCall === false) return false;
-	const benchmark = getInboundBenchmarkName(message);
-	return benchmark.length > 0 && ACTION_SCORED_BENCHMARKS.has(benchmark);
-}
-
-function applyBenchmarkStructuredActionRoute(
-	messageHandler: MessageHandlerResult,
-	message: Memory,
-): boolean {
-	if (!isBenchmarkForcingToolCall(message)) return false;
-	const contentMetadata = message.content?.metadata as
-		| Record<string, unknown>
-		| undefined;
-	const metadataCandidateActions = Array.isArray(
-		contentMetadata?.benchmarkCandidateActions,
-	)
-		? contentMetadata.benchmarkCandidateActions
-				.map((entry) => String(entry).trim())
-				.filter(Boolean)
-		: [];
-	messageHandler.processMessage = "RESPOND";
-	const contexts = new Set(
-		(messageHandler.plan.contexts ?? [])
-			.map((context) => String(context).trim())
-			.filter((context) => context && context !== SIMPLE_CONTEXT_ID),
-	);
-	contexts.add("general");
-	messageHandler.plan.contexts = [...contexts];
-	messageHandler.plan.requiresTool = true;
-	messageHandler.plan.simple = false;
-	messageHandler.plan.reply = "";
-	messageHandler.plan.candidateActions = Array.from(
-		new Set([
-			...stringArrayProperty(messageHandler.plan.candidateActions),
-			...metadataCandidateActions,
-			"BENCHMARK_ACTION",
-		]),
-	);
-	messageHandler.plan.parentActionHints = Array.from(
-		new Set([
-			...stringArrayProperty(messageHandler.plan.parentActionHints),
-			...metadataCandidateActions,
-			"BENCHMARK_ACTION",
-		]),
-	);
-	return true;
 }
 
 function hasPageScopedRoutingMetadata(message: Memory): boolean {
@@ -2711,23 +2612,31 @@ function normalizeRawParsedForFieldRegistry(
 export function messageHandlerFromFieldResult(
 	result: ResponseHandlerResult,
 	fieldRun?: ResponseHandlerFieldRunResult,
-	runtimeContext?: {
-		actions: ReadonlyArray<Pick<Action, "name" | "similes">>;
-	},
+	runtimeContext?: { actions: ReadonlyArray<Pick<Action, "name">> },
 ): MessageHandlerResult {
 	const contexts = Array.isArray(result.contexts)
 		? result.contexts.map((context) => String(context).trim()).filter(Boolean)
 		: [];
-	const rawCandidateActions = Array.isArray(result.candidateActionNames)
+	const candidateActions = Array.isArray(result.candidateActionNames)
 		? result.candidateActionNames
 				.map((action) => String(action).trim())
 				.filter(Boolean)
 		: [];
-	const candidateActions = canonicalizeFieldCandidateActionNames(
-		rawCandidateActions,
-		runtimeContext,
-	);
-	const validCandidateCount = candidateActions.length;
+	// When the caller passes the runtime's `actions`, narrow the candidate set
+	// to those that are (a) registered actions OR (b) canonical control names
+	// (REPLY / IGNORE / STOP). All-bogus candidate lists collapse to length 0,
+	// which lets the routing logic below fall back to simple-reply when the
+	// only context is "simple". When no `runtimeContext` is provided, behaviour
+	// is unchanged (back-compat).
+	const validCandidateCount = runtimeContext
+		? candidateActions.filter((name) => {
+				const normalized = normalizeActionIdentifier(name);
+				if (canonicalPlannerControlActionName(normalized) !== null) return true;
+				return runtimeContext.actions.some(
+					(action) => normalizeActionIdentifier(action.name) === normalized,
+				);
+			}).length
+		: candidateActions.length;
 	const facts = Array.isArray(result.facts)
 		? result.facts.map((fact) => String(fact).trim()).filter(Boolean)
 		: [];
@@ -2818,43 +2727,6 @@ export function messageHandlerFromFieldResult(
 		plan,
 		...(extract ? { extract } : {}),
 	};
-}
-
-function canonicalizeFieldCandidateActionNames(
-	candidateActions: readonly string[],
-	runtimeContext:
-		| {
-				actions: ReadonlyArray<Pick<Action, "name" | "similes">>;
-		  }
-		| undefined,
-): string[] {
-	if (!runtimeContext) {
-		return [...candidateActions];
-	}
-
-	const actionLookup = new Map<string, string>();
-	for (const action of runtimeContext.actions) {
-		const identifiers = [action.name, ...(action.similes ?? [])];
-		for (const identifier of identifiers) {
-			const normalized = normalizeActionIdentifier(identifier);
-			if (!normalized || actionLookup.has(normalized)) continue;
-			actionLookup.set(normalized, action.name);
-		}
-	}
-
-	const seen = new Set<string>();
-	const canonical: string[] = [];
-	for (const candidate of candidateActions) {
-		const controlActionName = canonicalPlannerControlActionName(candidate);
-		const resolved =
-			controlActionName ??
-			actionLookup.get(normalizeActionIdentifier(candidate)) ??
-			null;
-		if (!resolved || seen.has(resolved)) continue;
-		seen.add(resolved);
-		canonical.push(resolved);
-	}
-	return canonical;
 }
 
 function parseMessageHandlerModelOutput(
@@ -3679,9 +3551,6 @@ export async function runV5MessageRuntimeStage1(args: {
 					availableContexts,
 					evaluators: BUILTIN_RESPONSE_HANDLER_EVALUATORS,
 				});
-		if (!fieldRunResult?.preempt) {
-			applyBenchmarkStructuredActionRoute(messageHandler, args.message);
-		}
 		messageHandler.plan.contexts = filterSelectedContextsForRole(
 			messageHandler.plan.contexts,
 			availableContexts,
@@ -3875,8 +3744,7 @@ export async function runV5MessageRuntimeStage1(args: {
 					content: benchmarkForcingToolCall
 						? "Benchmark harness mode: every turn must invoke a structured tool from the exposed action surface. " +
 							"Do not answer with REPLY/RESPOND prose — the harness scores tool calls, not conversation. " +
-							"When BENCHMARK_ACTION is exposed, call it with the benchmark tool name and arguments requested by the benchmark context. " +
-							"Pick the single best non-terminal action that can attempt the request and call it now."
+							"Pick the single best non-terminal action (e.g. MESSAGE, CALENDAR, TODO) that can attempt the request and call it now."
 						: "The Stage 1 router marked this current turn as requiring a tool. " +
 							"Do not answer directly from memory, chat history, prior attachments, or prior tool output. " +
 							"Call at least one exposed non-terminal tool that can attempt the current request.",

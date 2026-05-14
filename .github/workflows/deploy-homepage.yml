@@ -1,33 +1,25 @@
-# Deploy packages/homepage to the public homepage surfaces.
+# Deploy packages/homepage to elizaOS/elizaos.github.io (org GitHub Pages site).
 #
 # What this does:
 #   1. Builds packages/homepage (Vite static site) — the `prebuild` script in
 #      packages/homepage/package.json regenerates
 #      src/generated/release-data.ts from the GitHub Releases API before vite
 #      runs, so download buttons always reflect the latest published assets.
-#   2. Adds `.nojekyll` so GitHub Pages serves files/dirs that begin with `_`.
-#   3. Pushes the built site to the `gh-pages` branch of
+#   2. Writes a CNAME file (`eliza.app`) into dist/ so GitHub Pages serves the
+#      static output at https://eliza.app/. The org-pages URL
+#      https://elizaos.github.io/ also serves the same content (it redirects to
+#      eliza.app once the CNAME is in place).
+#   3. Adds `.nojekyll` so GitHub Pages serves files/dirs that begin with `_`.
+#   4. Pushes the built site to the `gh-pages` branch of
 #      elizaOS/elizaos.github.io using a deploy key. We deliberately push to
 #      `gh-pages` (not `main`) so the leaderboard source code on `main` stays
-#      untouched in git history. This serves https://elizaos.github.io/.
-#   4. Deploys the same dist/ output to Cloudflare Pages for
-#      https://app.elizacloud.ai/.
+#      untouched in git history.
 #
 # Required secret on this repo (elizaOS/eliza):
 #   HOMEPAGE_DEPLOY_KEY
 #     - SSH private key (PEM, e.g. `ssh-keygen -t ed25519 -C "homepage-deploy" -f homepage-deploy -N ""`).
 #     - The corresponding PUBLIC key must be registered as a Deploy Key with
 #       write access on the target repo elizaOS/elizaos.github.io.
-#   CLOUDFLARE_API_TOKEN
-#     - Account-scoped token with Cloudflare Pages edit permissions.
-#   CLOUDFLARE_ACCOUNT_ID
-#     - Cloudflare account that owns the app.elizacloud.ai Pages project.
-#
-# Optional repo variables:
-#   HOMEPAGE_CLOUDFLARE_PAGES_PROJECT
-#     - Defaults to `eliza-app-homepage`.
-#   HOMEPAGE_CLOUDFLARE_PAGES_BRANCH
-#     - Defaults to `main`, so app.elizacloud.ai receives a production Pages deploy.
 #
 # One-time setup on elizaOS/elizaos.github.io (the leaderboard repo):
 #   - In Settings → Pages, set source to:
@@ -38,11 +30,12 @@
 #     become no-ops once Pages source is changed, but disabling it removes the
 #     spurious failed-run noise).
 #
-# Domain setup:
-#   - elizaOS/elizaos.github.io Settings → Pages should not set a custom
-#     domain; the org-pages URL must remain directly accessible.
-#   - Cloudflare Pages project `eliza-app-homepage` should attach the custom
-#     domain app.elizacloud.ai.
+# DNS for eliza.app:
+#   - Add A records for the apex (eliza.app) pointing at GitHub Pages IPs:
+#       185.199.108.153, 185.199.109.153, 185.199.110.153, 185.199.111.153
+#   - Or a CNAME record for www.eliza.app → elizaos.github.io.
+#   - In elizaos.github.io repo Settings → Pages, set Custom domain = eliza.app
+#     and enable "Enforce HTTPS" once the cert is provisioned.
 
 name: Deploy Homepage
 
@@ -102,12 +95,11 @@ jobs:
 
       - name: Build homepage
         working-directory: packages/homepage
-        env:
-          VITE_ELIZACLOUD_API_URL: https://api.elizacloud.ai
         run: bun run build
 
-      - name: Write .nojekyll
+      - name: Write CNAME and .nojekyll
         run: |
+          echo "eliza.app" > packages/homepage/dist/CNAME
           touch packages/homepage/dist/.nojekyll
 
       - name: Check deploy key availability
@@ -135,30 +127,3 @@ jobs:
           user_name: "github-actions[bot]"
           user_email: "github-actions[bot]@users.noreply.github.com"
           commit_message: "deploy: homepage from elizaOS/eliza@${{ github.sha }}"
-
-      - name: Check Cloudflare Pages credentials
-        id: cloudflare_check
-        shell: bash
-        env:
-          HAS_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
-          HAS_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID != '' }}
-        run: |
-          if [ "$HAS_TOKEN" = "true" ] && [ "$HAS_ACCOUNT" = "true" ]; then
-            echo "available=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "available=false" >> "$GITHUB_OUTPUT"
-            echo "::error::CLOUDFLARE_API_TOKEN/CLOUDFLARE_ACCOUNT_ID are required to deploy packages/homepage to app.elizacloud.ai."
-            exit 1
-          fi
-
-      - name: Deploy to Cloudflare Pages (app.elizacloud.ai)
-        if: steps.cloudflare_check.outputs.available == 'true'
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          HOMEPAGE_CF_PROJECT: ${{ vars.HOMEPAGE_CLOUDFLARE_PAGES_PROJECT || 'eliza-app-homepage' }}
-          HOMEPAGE_CF_BRANCH: ${{ vars.HOMEPAGE_CLOUDFLARE_PAGES_BRANCH || 'main' }}
-        run: |
-          bunx wrangler pages deploy packages/homepage/dist \
-            --project-name="$HOMEPAGE_CF_PROJECT" \
-            --branch="$HOMEPAGE_CF_BRANCH"

@@ -599,41 +599,6 @@ describe("buildPlannerActionGrammarStrict — single-call per-action union gramm
 		expect(r.grammar).toMatch(/^jsonstring ::= /m);
 	});
 
-	it("uses a JSON-safe string rule for LF, CR, CRLF, tab, and backslash escapes", () => {
-		const r = buildPlannerActionGrammarStrict([
-			makeAction("REPLY", {
-				parameters: [
-					{
-						name: "text",
-						description: "the text",
-						required: true,
-						schema: { type: "string" },
-					},
-				],
-			}),
-		]);
-		if (r === null) throw new Error("expected grammar");
-		const jsonStringLine = r.grammar
-			.split("\n")
-			.find((line) => line.startsWith("jsonstring ::="));
-		expect(jsonStringLine).toBeDefined();
-		if (!jsonStringLine) return;
-
-		// Raw control characters, including LF/CR/CRLF/tab, are not legal string
-		// body characters; the model must emit JSON escapes instead.
-		expect(jsonStringLine).toContain(String.raw`[^"\\\x00-\x1F]`);
-		expect(jsonStringLine).not.toContain("\n");
-		expect(jsonStringLine).not.toContain("\r");
-		expect(jsonStringLine).not.toContain("\t");
-
-		// A backslash must begin a valid JSON escape, not an arbitrary `\x`.
-		expect(jsonStringLine).toContain(String.raw`"\\" ( ["\\/bfnrt] | "u"`);
-		expect(jsonStringLine).toContain(
-			String.raw`[0-9a-fA-F] [0-9a-fA-F] [0-9a-fA-F] [0-9a-fA-F]`,
-		);
-		expect(jsonStringLine).not.toContain(String.raw`"\\" .`);
-	});
-
 	it("recurses into object-typed properties with declared sub-properties", () => {
 		// Mirrors paymentContext in real actions: object with enum-typed
 		// sub-properties. The strict grammar should pin the sub-property
@@ -677,7 +642,7 @@ describe("buildPlannerActionGrammarStrict — single-call per-action union gramm
 		expect(r.grammar).toContain('"\\"owner\\""');
 	});
 
-	it("uses object-only fallback for objects without declared sub-properties", () => {
+	it("falls back to jsonvalue for objects without declared sub-properties", () => {
 		const r = buildPlannerActionGrammarStrict([
 			makeAction("BAG", {
 				parameters: [
@@ -685,91 +650,14 @@ describe("buildPlannerActionGrammarStrict — single-call per-action union gramm
 						name: "extras",
 						description: "freeform bag",
 						required: false,
-						schema: { type: "object", additionalProperties: true },
+						schema: { type: "object" },
 					},
 				],
 			}),
 		]);
 		if (r === null) throw new Error("expected grammar");
 		expect(r.grammar).toMatch(
-			/paramsofaction_BAG_p_extras ::= "\\"extras\\":" jsonobject/,
-		);
-	});
-
-	it("emits empty object literal for closed objects without properties", () => {
-		const r = buildPlannerActionGrammarStrict([
-			makeAction("EMPTY_OBJECT", {
-				parameters: [
-					{
-						name: "metadata",
-						description: "closed empty object",
-						required: true,
-						schema: {
-							type: "object",
-							properties: {},
-							additionalProperties: false,
-						},
-					},
-				],
-			}),
-		]);
-		if (r === null) throw new Error("expected grammar");
-		expect(r.grammar).toMatch(
-			/paramsofaction_EMPTY_OBJECT_p_metadata ::= "\\"metadata\\":" "\{\}"/,
-		);
-	});
-
-	it("constrains typed additional-property maps to object values", () => {
-		const r = buildPlannerActionGrammarStrict([
-			makeAction("TAGS", {
-				parameters: [
-					{
-						name: "labels",
-						description: "map of label values",
-						required: true,
-						schema: {
-							type: "object",
-							additionalProperties: {
-								type: "string",
-								enum: ["red", "green"],
-							},
-						},
-					},
-				],
-			}),
-		]);
-		if (r === null) throw new Error("expected grammar");
-		expect(r.grammar).toContain(
-			'paramsofaction_TAGS_p_labels ::= "\\"labels\\":" "{" ws ( jsonstring ws ":" ws ( "\\"red\\""',
-		);
-		expect(r.grammar).toContain('"\\"green\\""');
-	});
-
-	it("translates oneOf branches into a constrained alternation", () => {
-		const r = buildPlannerActionGrammarStrict([
-			makeAction("UNION", {
-				parameters: [
-					{
-						name: "value",
-						description: "string enum or small integer",
-						required: true,
-						schema: {
-							oneOf: [
-								{ type: "string", enum: ["auto", "manual"] },
-								{ type: "integer", minimum: 0, maximum: 2 },
-							],
-						},
-					},
-				],
-			}),
-		]);
-		if (r === null) throw new Error("expected grammar");
-		expect(r.grammar).toContain(
-			'paramsofaction_UNION_p_value ::= "\\"value\\":" ( ( "\\"auto\\""',
-		);
-		expect(r.grammar).toContain('"\\"manual\\""');
-		expect(r.grammar).toMatch(
-			/paramsofaction_UNION_value_alt1_bounded ::= "0" \| "1" \| "2"/,
+			/paramsofaction_BAG_p_extras ::= "\\"extras\\":" jsonvalue/,
 		);
 	});
 
@@ -831,16 +719,16 @@ describe("buildPlannerActionGrammarStrict — single-call per-action union gramm
 		]);
 		if (r === null) throw new Error("expected grammar");
 		// Depths 0..3 each emit their own nested _obj rule; depth 4 stops the
-			// recursion and the deepest object falls back to an object-only rule.
+		// recursion and the deepest object falls back to jsonvalue.
 		const objRules = (
 			r.grammar.match(/paramsofaction_DEEP_(?:[A-Za-z0-9_]+_)*next_obj ::=/g) ??
 			[]
 		).length;
 		expect(objRules).toBeLessThanOrEqual(4);
-		expect(r.grammar).toContain("jsonobject");
+		expect(r.grammar).toContain("jsonvalue");
 	});
 
-	it("emits required-then-optional structure without duplicate optional keys", () => {
+	it("emits required-then-optional structure in the params rule", () => {
 		const r = buildPlannerActionGrammarStrict([
 			makeAction("MIXED", {
 				parameters: [
@@ -860,70 +748,18 @@ describe("buildPlannerActionGrammarStrict — single-call per-action union gramm
 			}),
 		]);
 		if (r === null) throw new Error("expected grammar");
-		// Required `a` precedes optional `b`; `b` is a single optional suffix,
-		// not a zero-or-more group that could emit duplicate `b` keys.
+		// Required `a` precedes the optional-group; optional `b` is wrapped in
+		// `( "," ( ... ) )*` (zero-or-more, leading comma).
 		expect(r.grammar).toMatch(
-			/paramsofaction_MIXED ::= "\{" paramsofaction_MIXED_p_a \( "," paramsofaction_MIXED_p_b \)\? "\}"/,
-		);
-		expect(r.grammar).not.toMatch(
-			/paramsofaction_MIXED ::= .*paramsofaction_MIXED_p_b.*\)\*/,
+			/paramsofaction_MIXED ::= "\{" paramsofaction_MIXED_p_a \( "," \( paramsofaction_MIXED_p_b \) \)\* "\}"/,
 		);
 	});
 
-	it("allows optional-only objects while keeping each optional key single-use", () => {
-		const r = buildPlannerActionGrammarStrict([
-			makeAction("OPTIONALS", {
-				parameters: [
-					{
-						name: "a",
-						description: "first optional",
-						required: false,
-						schema: { type: "string" },
-					},
-					{
-						name: "b",
-						description: "second optional",
-						required: false,
-						schema: { type: "string" },
-					},
-					{
-						name: "c",
-						description: "third optional",
-						required: false,
-						schema: { type: "string" },
-					},
-				],
-			}),
-		]);
-		if (r === null) throw new Error("expected grammar");
-		const paramsLine = r.grammar
-			.split("\n")
-			.find((line) => line.startsWith("paramsofaction_OPTIONALS ::="));
-		expect(paramsLine).toBeDefined();
-		if (!paramsLine) return;
-		expect(paramsLine).toContain("paramsofaction_OPTIONALS_p_a");
-		expect(paramsLine).toContain("paramsofaction_OPTIONALS_p_b");
-		expect(paramsLine).toContain("paramsofaction_OPTIONALS_p_c");
-		expect(paramsLine).not.toContain(")*");
-	});
-
-	it("returns a sampler skeleton exposing the planner action choice", () => {
-		const r = buildPlannerActionGrammarStrict([
-			makeAction("ONE"),
-			makeAction("TWO"),
-		]);
+	it("returns a minimal skeleton (the grammar carries the structure)", () => {
+		const r = buildPlannerActionGrammarStrict([makeAction("ONE")]);
 		if (r === null) throw new Error("expected grammar");
 		expect(r.responseSkeleton.spans).toEqual([
-			{ kind: "literal", value: '{"action":' },
-			{ kind: "enum", key: "action", enumValues: ["ONE", "TWO"] },
-			{ kind: "literal", value: ',"parameters":' },
-			{ kind: "free-json", key: "parameters" },
-			{ kind: "literal", value: ',"thought":' },
-			{ kind: "free-string", key: "thought" },
-			{ kind: "literal", value: "}" },
-		]);
-		expect(buildSpanSamplerPlan(r.responseSkeleton).overrides).toEqual([
-			{ spanIndex: 1, temperature: 0, topK: 1 },
+			{ kind: "free-json", key: "envelope" },
 		]);
 		expect(typeof r.responseSkeleton.id).toBe("string");
 	});
@@ -1459,10 +1295,8 @@ describe("buildBoundedNumberRule — integer and float range constraints", () =>
 		// The grammar should contain alternation with the bounded values.
 		// Check that the bounded rule is present and references both 0 and 5.
 		expect(result.grammar).toContain("_count_bounded");
-		expect(result.grammar).toContain('"0"');
-		expect(result.grammar).toContain('"5"');
-		expect(result.grammar).not.toContain('"\\"0\\""');
-		expect(result.grammar).not.toContain('"\\"5\\""');
+		expect(result.grammar).toContain('"\\"0\\""');
+		expect(result.grammar).toContain('"\\"5\\""');
 	});
 
 	it("emits a rule with alternation for closed integer range [0, 100]", () => {
@@ -1482,12 +1316,11 @@ describe("buildBoundedNumberRule — integer and float range constraints", () =>
 		if (!result) return;
 		// For 0-100 (101 values), still under the 200 threshold, so expect direct alternation.
 		expect(result.grammar).toContain("_count_bounded");
-		// Should have the edge values as numeric JSON tokens, not quoted strings.
-		expect(result.grammar).toContain('"0"');
-		expect(result.grammar).toContain('"100"');
+		// Should have the edge values in JSON-encoded GBNF format.
+		expect(result.grammar).toContain('"\\"0\\""');
+		expect(result.grammar).toContain('"\\"100\\""');
 		// Spot-check a middle value exists.
-		expect(result.grammar).toContain('"50"');
-		expect(result.grammar).not.toContain('"\\"50\\""');
+		expect(result.grammar).toContain('"\\"50\\""');
 	});
 
 	it("handles negative and positive integers in [−10, 10]", () => {
@@ -1506,11 +1339,10 @@ describe("buildBoundedNumberRule — integer and float range constraints", () =>
 		expect(result).not.toBeNull();
 		if (!result) return;
 		// Should contain negative and positive edge values.
-		expect(result.grammar).toContain('"-10"');
-		expect(result.grammar).toContain('"10"');
-		expect(result.grammar).toContain('"0"');
-		expect(result.grammar).toContain('"-1"');
-		expect(result.grammar).not.toContain('"\\"-10\\""');
+		expect(result.grammar).toContain('"\\"-10\\""');
+		expect(result.grammar).toContain('"\\"10\\""');
+		expect(result.grammar).toContain('"\\"0\\""');
+		expect(result.grammar).toContain('"\\"-1\\""');
 	});
 
 	it("falls back to jsonnumber for unbounded number (no min/max)", () => {

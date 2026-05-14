@@ -402,7 +402,7 @@ def validate_bundle_layout(ctx: PublishContext) -> dict[str, list[Path]]:
         )
     if not out["tts"]:
         raise OrchestratorError(
-            "bundle layout: tts/ must contain at least one tier-required voice artifact",
+            "bundle layout: tts/ must contain at least one .gguf",
             EXIT_BUNDLE_LAYOUT_FAIL,
         )
     required_tts = set(required_voice_artifacts_for_tier(ctx.tier))

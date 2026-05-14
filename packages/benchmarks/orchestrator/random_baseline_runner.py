@@ -517,22 +517,6 @@ def _voicebench_quality_payload(score: float) -> dict[str, Any]:
     }
 
 
-def _voice_emotion_payload(score: float) -> dict[str, Any]:
-    return {
-        "schemaVersion": 1,
-        "suite": "synthetic-calibration",
-        "model": "synthetic-calibration",
-        "macroF1": score,
-        "perClassF1": {},
-        "confusion": [],
-        "meanLatencyMs": 0.0,
-        "n": 2,
-        "runStartedAt": "1970-01-01T00:00:00Z",
-        "elapsedSeconds": 0.0,
-        "abstentionRate": 0.0,
-    }
-
-
 def _webshop_payload(score: float) -> dict[str, Any]:
     return {
         "success_rate": score,
@@ -692,7 +676,6 @@ _RESULT_TEMPLATES: dict[str, tuple[str, Any]] = {
     "voiceagentbench": ("voiceagentbench_random_v1.json", _voiceagentbench_payload),
     "voicebench": ("voicebench-results.json", _voicebench_payload),
     "voicebench_quality": ("voicebench-quality-results.json", _voicebench_quality_payload),
-    "voice_emotion": ("voice-emotion-results.json", _voice_emotion_payload),
     "webshop": ("webshop-results.json", _webshop_payload),
     "woobench": ("woobench_random_v1.json", _woobench_payload),
 }

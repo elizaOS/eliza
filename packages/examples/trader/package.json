@@ -12,6 +12,9 @@
   "dependencies": {
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-wallet": "workspace:*",
+    "@elizaos/plugin-anthropic": "workspace:*",
+    "@elizaos/plugin-openai": "workspace:*",
+    "@elizaos/plugin-sql": "workspace:*",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },

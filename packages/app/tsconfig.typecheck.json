@@ -63,6 +63,15 @@
       "@elizaos/plugin-local-inference": [
         "../../plugins/plugin-local-inference/src/index.ts"
       ],
+      "@elizaos/plugin-local-inference/runtime": [
+        "../../plugins/plugin-local-inference/src/runtime/index.ts"
+      ],
+      "@elizaos/plugin-local-inference/routes": [
+        "../../plugins/plugin-local-inference/src/routes/index.ts"
+      ],
+      "@elizaos/plugin-local-inference/services": [
+        "../../plugins/plugin-local-inference/src/services/index.ts"
+      ],
       "@elizaos/core": ["../core/dist/index.d.ts"],
       "@elizaos/shared": ["../shared/dist/index.d.ts"],
       "@elizaos/capacitor-agent": ["../native-plugins/agent/src/index.ts"],

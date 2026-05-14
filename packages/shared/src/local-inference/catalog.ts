@@ -1,10 +1,10 @@
 /**
  * Eliza-curated local model catalog.
  *
- * Default local inference is restricted to the active Eliza-1 line: Qwen3.5
- * bases for 0.8B, 2B, 4B, and 9B, plus Qwen3.6 for the 27B variants
- * (including long-context 27B variants at 256k and 1M). The 2026-05-12
- * mandate retired the legacy Qwen3 bases; see
+ * Default local inference is restricted to the active Eliza-1 line, all on
+ * Qwen3.5 bases: 0.8B, 2B, 4B, 9B, and 27B (including long-context 27B
+ * variants at 256k and 1M). The 2026-05-12 mandate retired the legacy
+ * Qwen3 bases and any Qwen3.6 references; see
  * packages/training/scripts/training/model_registry.py for the active
  * registry. External Hub search remains custom/opt-in and never enters
  * first-run or default eligibility.
@@ -113,10 +113,15 @@ export type VoiceBackendId = "kokoro" | "omnivoice";
  * Entries beyond the first are also bundled; tiers that ship only one
  * backend have a single-element array.
  *
- * Policy:
- *   - Small tiers (0_8b / 2b / 4b) → Kokoro only. These tiers are
- *     phone-first and must keep TTFA/RSS predictable.
- *   - 9b → Kokoro first with OmniVoice bundled for expressive desktop voice.
+ * Policy (Wave-2):
+ *   - Small tiers (0_8b / 2b / 4b) → Kokoro only. Kokoro is ~310 MB
+ *     fp32 / ~80 MB int8 and hits ~97ms CPU TTFB, which dominates the
+ *     time budget on small/mobile devices. OmniVoice is not shipped in
+ *     these bundles — callers that need voice cloning must use a larger
+ *     tier or the standalone (legacy) plugin-omnivoice.
+ *   - 9b → both supported, Kokoro first. 9b is the boundary tier where
+ *     either makes sense depending on the workload (Kokoro for low TTFB,
+ *     OmniVoice for higher quality / cloning).
  *   - Large tiers (27b / 27b-256k / 27b-1m) → OmniVoice only. The RAM
  *     and compute budget is large enough that the OmniVoice quality win
  *     dominates; Kokoro is not shipped in these bundles.
@@ -392,17 +397,18 @@ function voiceQuantForTier(id: Eliza1TierId): OmniVoiceQuantLevel {
  * full Q3..Q8 ladder so a `--memory-budget okay` host can step down to
  * Q3_K_M and a `--memory-budget good` host can take Q6_K.
  *
- * Small tiers keep the mobile ladder metadata for compatibility with
- * quantization/release tooling, but Kokoro is the only required voice backend
- * for 0_8b/2b/4b. 9B+ publishes the full OmniVoice ladder where OmniVoice is
- * an active backend.
+ * Tiers whose default voice backend is Kokoro (0_8b/2b/4b currently) do
+ * not publish an OmniVoice ladder — the empty list signals "no voice
+ * ladder for this tier". The publish wiring (stage_eliza1_bundle_assets.py)
+ * skips OmniVoice staging entirely for these tiers; the runtime serves
+ * Kokoro at `tts/kokoro/model_q4.onnx`.
  */
 const OMNIVOICE_QUANT_LADDER_BY_TIER: Readonly<
   Record<Eliza1TierId, ReadonlyArray<OmniVoiceQuantLevel>>
 > = {
-  "eliza-1-0_8b": ["Q3_K_M", "Q4_K_M", "Q5_K_M"],
-  "eliza-1-2b": ["Q3_K_M", "Q4_K_M", "Q5_K_M"],
-  "eliza-1-4b": ["Q3_K_M", "Q4_K_M", "Q5_K_M"],
+  "eliza-1-0_8b": [],
+  "eliza-1-2b": [],
+  "eliza-1-4b": [],
   "eliza-1-9b": ["Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"],
   "eliza-1-27b": ["Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"],
   "eliza-1-27b-256k": ["Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"],

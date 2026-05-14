@@ -26,22 +26,6 @@ function formatWindowResultText(
     return `Open windows:\n${windowText}`;
   }
 
-  if (result.windowId) {
-    return `Current window id: ${result.windowId}`;
-  }
-
-  if (result.name) {
-    return result.name;
-  }
-
-  if (typeof result.width === "number" && typeof result.height === "number") {
-    return `Window size: ${result.width}x${result.height}`;
-  }
-
-  if (typeof result.x === "number" && typeof result.y === "number") {
-    return `Window position: (${result.x}, ${result.y})`;
-  }
-
   return result.success
     ? (result.message ?? `Window ${params.action} completed.`)
     : result.approvalRequired

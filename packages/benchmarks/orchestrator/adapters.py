@@ -43,16 +43,12 @@ IGNORED_BENCHMARK_DIRS = {
     ".pytest_cache",
     "benchmark_results",
     "claw-eval",
-    "gate-output",
     # Distribution-name shim for benchmarks.mmau, not a separate benchmark.
     "elizaos_mmau",
     "eliza-adapter",
     "hermes-adapter",
     "openclaw-adapter",
     "lib",
-    # Stale scaffold shim; the actual registry-backed MMAU benchmark lives in
-    # mmau-audio and is exposed as the `mmau` benchmark id.
-    "mmau",
     "nl2repo",
     "orchestrator",
     "qwen-claw-bench",
@@ -99,9 +95,6 @@ AGENT_COMPATIBILITY_OVERRIDES: dict[str, tuple[str, ...]] = {
     # VoiceBench currently instantiates the local TypeScript runtime directly;
     # Hermes/OpenClaw labels run the same mock voice path with zero LLM calls.
     "voicebench": ("eliza",),
-    # Voice-emotion is an Eliza voice/emotion classifier benchmark, not a
-    # general LLM-agent harness comparison.
-    "voice_emotion": ("eliza",),
     # eliza-1 bench compares local eliza-1 decode modes / Cerebras reference
     # mode, not Hermes/OpenClaw agent harnesses.
     "eliza_1": ("eliza",),
@@ -1858,7 +1851,7 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             "strict_capabilities": True,
         },
         "orchestrator_lifecycle": {
-            "max_scenarios": 3,
+            "max_scenarios": 12,
             "strict": True,
         },
         "hermes_tblite": {
@@ -1906,8 +1899,6 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
         "openclaw_bench": "openclaw-benchmark",
         "lifeops_bench": "lifeops-bench",
         "voicebench_quality": "voicebench-quality",
-        "voice_emotion": "voice-emotion",
-        "mmau": "mmau-audio",
         "mmlu": "standard",
         "humaneval": "standard",
         "gsm8k": "standard",

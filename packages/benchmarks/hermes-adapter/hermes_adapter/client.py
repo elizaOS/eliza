@@ -279,55 +279,25 @@ def _resolve_telemetry_path() -> str | None:
 
 
 def _extract_usage_tokens(usage: Mapping[str, object]) -> dict[str, int | None]:
-    def pick(source: Mapping[str, object], *keys: str) -> int | None:
+    def pick(*keys: str) -> int | None:
         for key in keys:
-            value = source.get(key)
-            if isinstance(value, bool):
-                continue
-            if isinstance(value, (int, float)):
+            value = usage.get(key)
+            if isinstance(value, (int, float)) and value:
                 return int(value)
         return None
 
-    details_raw = usage.get("prompt_tokens_details")
-    details = details_raw if isinstance(details_raw, Mapping) else {}
-    prompt_tokens = pick(usage, "prompt_tokens", "promptTokens", "input_tokens")
-    completion_tokens = pick(
-        usage, "completion_tokens", "completionTokens", "output_tokens"
-    )
-    total_tokens = pick(usage, "total_tokens", "totalTokens")
-    if total_tokens is None and prompt_tokens is not None and completion_tokens is not None:
-        total_tokens = prompt_tokens + completion_tokens
-    cache_read_input_tokens = pick(
-        usage,
-        "cache_read_input_tokens",
-        "cacheReadInputTokens",
-        "cachedTokens",
-        "cached_tokens",
-    )
-    if cache_read_input_tokens is None:
-        cache_read_input_tokens = pick(
-            details, "cached_tokens", "cache_read_input_tokens", "cacheReadInputTokens"
-        )
-    cache_creation_input_tokens = pick(
-        usage,
-        "cache_creation_input_tokens",
-        "cacheCreationInputTokens",
-        "cache_write_tokens",
-    )
-    if cache_creation_input_tokens is None:
-        cache_creation_input_tokens = pick(
-            details,
-            "cache_creation_input_tokens",
-            "cacheCreationInputTokens",
-            "cache_write_tokens",
-        )
-
     return {
-        "prompt_tokens": prompt_tokens,
-        "completion_tokens": completion_tokens,
-        "total_tokens": total_tokens,
-        "cache_read_input_tokens": cache_read_input_tokens,
-        "cache_creation_input_tokens": cache_creation_input_tokens,
+        "prompt_tokens": pick("prompt_tokens", "promptTokens", "input_tokens"),
+        "completion_tokens": pick(
+            "completion_tokens", "completionTokens", "output_tokens"
+        ),
+        "total_tokens": pick("total_tokens", "totalTokens"),
+        "cache_read_input_tokens": pick(
+            "cache_read_input_tokens", "cachedTokens", "cached_tokens"
+        ),
+        "cache_creation_input_tokens": pick(
+            "cache_creation_input_tokens", "cacheCreationInputTokens"
+        ),
     }
 
 
@@ -478,16 +448,9 @@ class HermesClient:
         if not self.venv_python.exists():
             return {"status": "error", "error": f"venv python not found at {self.venv_python}"}
         try:
-            probe_timeout = float(os.environ.get("HERMES_HEALTH_PROBE_TIMEOUT_S", "120"))
-        except ValueError:
-            probe_timeout = 120.0
-        try:
             result = self._run_python_subprocess(
-                [
-                    "-c",
-                    "import importlib.util; print('ok' if importlib.util.find_spec('openai') else 'missing')",
-                ],
-                timeout_s=probe_timeout,
+                ["-c", "import openai; print('ok')"],
+                timeout_s=30.0,
                 cwd=str(self.repo_path),
             )
         except subprocess.TimeoutExpired as exc:
@@ -498,14 +461,7 @@ class HermesClient:
                 "error": f"health probe exited {result.returncode}",
                 "stderr": (result.stderr or "")[-2000:],
             }
-        stdout = (result.stdout or "").strip()
-        if stdout != "ok":
-            return {
-                "status": "error",
-                "error": "openai not importable in hermes-agent venv",
-                "stdout": stdout,
-            }
-        return {"status": "ready", "stdout": stdout}
+        return {"status": "ready", "stdout": (result.stdout or "").strip()}
 
     def is_ready(self) -> bool:
         """Cheap synchronous readiness check."""
@@ -513,12 +469,7 @@ class HermesClient:
 
     def wait_until_ready(self, timeout: float = 60.0, poll: float = 1.0) -> None:
         """Block until ``health()`` reports ready or ``timeout`` elapses."""
-        try:
-            configured_timeout = float(os.environ.get("HERMES_READY_TIMEOUT_S", "0"))
-        except ValueError:
-            configured_timeout = 0.0
-        effective_timeout = max(float(timeout), configured_timeout)
-        deadline = time.monotonic() + effective_timeout
+        deadline = time.monotonic() + float(timeout)
         last_err: object = "no probe attempted"
         while time.monotonic() < deadline:
             probe = self.health()
@@ -531,7 +482,7 @@ class HermesClient:
             last_err = probe.get("error") or probe
             time.sleep(poll)
         raise TimeoutError(
-            f"hermes-agent venv not ready after {effective_timeout}s: {last_err}"
+            f"hermes-agent venv not ready after {timeout}s: {last_err}"
         )
 
     def reset(

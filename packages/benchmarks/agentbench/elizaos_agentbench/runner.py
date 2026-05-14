@@ -57,128 +57,6 @@ def _is_full_elizaos_runtime(runtime: AgentRuntimeProtocol | None) -> bool:
     return hasattr(runtime, "message_service") and runtime.message_service is not None
 
 
-def _fallback_tasks(env: AgentBenchEnvironment, limit: int | None) -> list[AgentBenchTask]:
-    """Return local smoke tasks when vendored upstream data is unavailable."""
-    tasks: list[AgentBenchTask] = []
-    if env == AgentBenchEnvironment.OS:
-        tasks.append(
-            AgentBenchTask(
-                id="os-001",
-                environment=AgentBenchEnvironment.OS,
-                description=(
-                    "Create test_dir/hello.txt containing exactly Hello, World! "
-                    "and print TASK_COMPLETE when done."
-                ),
-                initial_state={"working_dir": "/workspace", "files": {}},
-                goal="Create test_dir/hello.txt with Hello, World! and finish with TASK_COMPLETE.",
-                max_steps=3,
-                timeout_ms=60_000,
-                ground_truth="Hello, World!",
-                difficulty=TaskDifficulty.EASY,
-                metadata={
-                    "source": "local-smoke-fallback",
-                    "verify_command": "cat test_dir/hello.txt",
-                },
-            )
-        )
-    elif env == AgentBenchEnvironment.DATABASE:
-        tasks.append(
-            AgentBenchTask(
-                id="db-001",
-                environment=AgentBenchEnvironment.DATABASE,
-                description="Write a SQL query that returns the constant value 1.",
-                initial_state={"schema": {}, "data": {}},
-                goal="Return the constant value 1.",
-                max_steps=3,
-                timeout_ms=60_000,
-                ground_truth="SELECT 1",
-                difficulty=TaskDifficulty.EASY,
-                metadata={"source": "local-smoke-fallback", "label": ["1"]},
-            )
-        )
-    elif env == AgentBenchEnvironment.KNOWLEDGE_GRAPH:
-        tasks.append(
-            AgentBenchTask(
-                id="kg-001",
-                environment=AgentBenchEnvironment.KNOWLEDGE_GRAPH,
-                description="Answer where Albert Einstein was born.",
-                initial_state={"entities": {}, "relations": []},
-                goal="Where was Albert Einstein born?",
-                max_steps=3,
-                timeout_ms=60_000,
-                ground_truth="Germany",
-                difficulty=TaskDifficulty.EASY,
-                metadata={"source": "local-smoke-fallback"},
-            )
-        )
-    elif env == AgentBenchEnvironment.LATERAL_THINKING:
-        tasks.append(
-            AgentBenchTask(
-                id="lt-001",
-                environment=AgentBenchEnvironment.LATERAL_THINKING,
-                description=(
-                    "A man asks for a glass of water. The bartender points a gun "
-                    "at him. The man says thank you and leaves."
-                ),
-                initial_state={"puzzle_id": "hiccups"},
-                goal="Explain why the man thanked the bartender.",
-                max_steps=5,
-                timeout_ms=60_000,
-                ground_truth="hiccups",
-                difficulty=TaskDifficulty.EASY,
-                metadata={"source": "local-smoke-fallback"},
-            )
-        )
-    elif env == AgentBenchEnvironment.WEB_SHOPPING:
-        tasks.append(
-            AgentBenchTask(
-                id="webshop-001",
-                environment=AgentBenchEnvironment.WEB_SHOPPING,
-                description="Buy black wireless headphones within the budget.",
-                initial_state={
-                    "budget": 100.0,
-                    "products": [
-                        {
-                            "id": "P001",
-                            "name": "Wireless Headphones",
-                            "price": 79.0,
-                            "category": "electronics",
-                            "rating": 4.7,
-                            "options": {"color": ["black", "white"]},
-                        }
-                    ],
-                },
-                goal="Purchase black wireless headphones.",
-                max_steps=6,
-                timeout_ms=60_000,
-                ground_truth="P001",
-                difficulty=TaskDifficulty.EASY,
-                metadata={"source": "local-smoke-fallback"},
-            )
-        )
-    elif env == AgentBenchEnvironment.WEB_BROWSING:
-        tasks.append(
-            AgentBenchTask(
-                id="web-001",
-                environment=AgentBenchEnvironment.WEB_BROWSING,
-                description=(
-                    "Mind2Web smoke prompt: Which option clicks the checkout button?\n"
-                    "A. Checkout button\nB. Search field\nC. Product image"
-                ),
-                initial_state={},
-                goal="Select the checkout button option.",
-                max_steps=1,
-                timeout_ms=60_000,
-                ground_truth="A",
-                difficulty=TaskDifficulty.EASY,
-                metadata={"source": "local-smoke-fallback"},
-            )
-        )
-    if limit is not None:
-        return tasks[:limit]
-    return tasks
-
-
 class MemoryTracker:
     """Track memory usage during benchmark execution."""
 
@@ -376,17 +254,10 @@ class AgentBenchRunner:
             return upstream_loader.load_tasks(env, split=split, limit=limit)
         except upstream_loader.UpstreamDataMissingError as e:
             logger.warning(f"[AgentBenchRunner] {env.value}: upstream data missing ({e})")
-            fallback = _fallback_tasks(env, limit)
-            if fallback:
-                logger.info(
-                    "[AgentBenchRunner] %s: using %d local smoke fallback task(s)",
-                    env.value,
-                    len(fallback),
-                )
-            return fallback
+            return []
         except NotImplementedError as e:
             logger.warning(f"[AgentBenchRunner] {env.value}: {e}")
-            return _fallback_tasks(env, limit)
+            return []
         except Exception as e:
             logger.error(f"[AgentBenchRunner] {env.value}: failed to load tasks: {e}")
             return []

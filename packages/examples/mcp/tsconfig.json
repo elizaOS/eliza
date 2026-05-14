@@ -8,11 +8,11 @@
     "skipLibCheck": true,
     "resolveJsonModule": true,
     "declaration": false,
-    "noEmit": true,
+    "outDir": "./dist",
     "paths": {
       "@elizaos/core": ["./../../core/dist/index.d.ts"]
     },
-    "types": ["node"]
+    "types": ["bun-types", "node"]
   },
   "include": ["*.ts"],
   "exclude": ["node_modules", "dist"]

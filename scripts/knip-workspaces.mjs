@@ -15,7 +15,6 @@ const DIRECTORY_SCOPED_WORKSPACES = new Set([
   "packages/app-core/platforms/electrobun",
   "packages/core",
   "packages/examples/farcaster-miniapp",
-  "packages/examples/html",
 ]);
 
 function normalizePathForCli(path) {

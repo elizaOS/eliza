@@ -209,12 +209,6 @@ public class ElizaBunRuntimePlugin: CAPPlugin, CAPBridgedPlugin {
         let webSmokeRequested = defaults.string(forKey: Self.webFullBunSmokeRequestKey) == "1"
         let localRuntimeRequested = defaults.string(forKey: Self.mobileRuntimeModeKey) == "local"
         guard webSmokeRequested || localRuntimeRequested else { return }
-        if localRuntimeRequested &&
-            !webSmokeRequested &&
-            RuntimePolicy(paths: SandboxPaths()).appStoreCompliantLocalRuntime &&
-            !FullBunEngineHost.shared.isAvailable {
-            return
-        }
 
         fullBunPrewarmStarted = true
         let runtime = ensureRuntime()

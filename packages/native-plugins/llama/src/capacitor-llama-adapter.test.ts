@@ -7,7 +7,6 @@ interface InitContextCall {
 
 interface CompletionCall {
   contextId: number;
-  params: Record<string, unknown>;
 }
 
 interface EmbeddingCall {
@@ -52,23 +51,15 @@ function installMockPlugin(): MockPluginState {
       releaseAllContexts: vi.fn(async () => {
         state.releaseAllCalls += 1;
       }),
-      completion: vi.fn(
-        async (options: {
-          contextId: number;
-          params: Record<string, unknown>;
-        }) => {
-          state.completionCalls.push({
-            contextId: options.contextId,
-            params: options.params,
-          });
-          return {
-            text: "ok",
-            tokens_evaluated: 10,
-            tokens_predicted: 20,
-            timings: { predicted_ms: 100 },
-          };
-        },
-      ),
+      completion: vi.fn(async (options: { contextId: number }) => {
+        state.completionCalls.push({ contextId: options.contextId });
+        return {
+          text: "ok",
+          tokens_evaluated: 10,
+          tokens_predicted: 20,
+          timings: { predicted_ms: 100 },
+        };
+      }),
       stopCompletion: vi.fn(async () => undefined),
       embedding: vi.fn(async (options: { contextId: number }) => {
         state.embeddingCalls.push({ contextId: options.contextId });
@@ -183,57 +174,5 @@ describe("CapacitorLlamaAdapter context-id allocation (issue #7681)", () => {
     expect(
       state.releaseCalls.find((r) => r.contextId === firstId),
     ).toBeDefined();
-  });
-
-  it("forwards structured guidance extensions to native completion params", async () => {
-    vi.resetModules();
-    const state = installMockPlugin();
-    const { CapacitorLlamaAdapter } = await import("./capacitor-llama-adapter");
-
-    const adapter = new CapacitorLlamaAdapter();
-    const responseSkeleton = {
-      id: "test-skeleton",
-      spans: [
-        { kind: "literal", text: '{"choice":' },
-        { kind: "enum", key: "choice", values: ["A", "B"] },
-      ],
-    };
-    const prefillPlan = {
-      prefix: '{"choice":',
-      runs: [],
-      freeCount: 1,
-      id: "test-skeleton",
-    };
-
-    await adapter.load({ modelPath: "/tmp/llama.gguf" });
-    await adapter.generate({
-      prompt: "pick one",
-      grammar: 'root ::= "\\"A\\"" | "\\"B\\""',
-      responseSkeleton,
-      prefill: '{"choice":',
-      spanSamplerPlan: {
-        overrides: [{ spanIndex: 1, temperature: 0, topK: 1 }],
-        strict: true,
-      },
-      elizaSchema: {
-        skeleton: responseSkeleton,
-        grammar: 'root ::= "\\"A\\"" | "\\"B\\""',
-        prefillPlan,
-        longNames: {},
-        id: "test-skeleton",
-      },
-    });
-
-    expect(state.completionCalls).toHaveLength(1);
-    const params = state.completionCalls[0].params;
-    expect(params.grammar).toBe('root ::= "\\"A\\"" | "\\"B\\""');
-    expect(params.response_skeleton).toEqual(responseSkeleton);
-    expect(params.eliza_response_skeleton).toEqual(responseSkeleton);
-    expect(params.prefill).toBe('{"choice":');
-    expect(params.eliza_prefill_plan).toEqual(prefillPlan);
-    expect(params.eliza_span_samplers).toEqual({
-      overrides: [{ span_index: 1, temperature: 0, top_k: 1 }],
-      strict: true,
-    });
   });
 });

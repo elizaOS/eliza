@@ -26,10 +26,6 @@ their gate.
 - **click-grounding** — natural-language target → coordinate using
   vision + AX/OCR fusion.
 - **app-enum** — list visible applications with windows + frontmost.
-- **assistant-routing** — Siri/App Shortcuts, Android App Actions,
-  assistant-role, and desktop shortcut entry surfaces route into the
-  app/runtime; LifeOps reminders/check-ins/follow-ups become
-  `ScheduledTask` records.
 - **camera-capture** — single-frame capture from the system camera.
 
 ## Platforms (columns)
@@ -67,7 +63,6 @@ The on-device manual rows all share the same checklist surface in
 [`IOS_CONSTRAINTS.md`](../../plugins/plugin-computeruse/docs/IOS_CONSTRAINTS.md),
 [`ANDROID_CONSTRAINTS.md`](../../plugins/plugin-computeruse/docs/ANDROID_CONSTRAINTS.md),
 [`AOSP_SYSTEM_APP.md`](../../plugins/plugin-computeruse/docs/AOSP_SYSTEM_APP.md),
-[`MOBILE_ASSISTANT_ROUTING.md`](../../plugins/plugin-computeruse/docs/MOBILE_ASSISTANT_ROUTING.md),
 [`MULTI_MONITOR.md`](../../plugins/plugin-computeruse/docs/MULTI_MONITOR.md),
 [`SCENE_BUILDER.md`](../../plugins/plugin-computeruse/docs/SCENE_BUILDER.md).
 Manual cells link the relevant doc as the on-device-checklist owner.
@@ -185,20 +180,6 @@ Manual cells link the relevant doc as the on-device-checklist owner.
 | andSys  | privileged builds use `IActivityManager.getRunningTasks` directly | manual | rooted AOSP | unknown | manual: `AOSP_SYSTEM_APP.md` |
 | ios17   | N/A (sandbox prevents cross-app enumeration); the substitute is `appIntentList` (returns registered intents per bundle id) | CI (intent list contract) + manual | donated intents | green (CI) / unknown (device) | `plugins/plugin-computeruse/src/__tests__/ios-bridge.test.ts` |
 | ios26   | same | CI (intent list) + manual | device | green (CI) / unknown (device) | `plugins/plugin-computeruse/src/__tests__/ios-bridge.test.ts` |
-
-### assistant-routing
-
-| Platform | assertion | how | gate | status | test_ref |
-|---|---|---|---|---|---|
-| mac14   | Mac shortcut/voice entry opens the app/runtime; LifeOps reminder/check-in/follow-up requests persist as `ScheduledTask` records | manual | macOS Shortcuts/deep link configured | unknown | manual: `MOBILE_ASSISTANT_ROUTING.md` |
-| linX    | N/A (no OS assistant entry surface in scope) | N/A | N/A | N/A | - |
-| linW    | N/A | N/A | N/A | N/A | - |
-| win10   | N/A | N/A | N/A | N/A | - |
-| win11   | N/A | N/A | N/A | N/A | - |
-| and14   | `shortcuts.xml` is registered, App Actions deep-link to app/runtime, and LifeOps scheduling is not native-notification-only | CI (static source) + manual | none for static; live: assistant/App Actions configured | green (CI) / unknown (device) | `plugins/plugin-computeruse/src/__tests__/android-bridge.test.ts`; manual: `ANDROID_CONSTRAINTS.md`, `MOBILE_ASSISTANT_ROUTING.md` |
-| andSys  | `ROLE_ASSISTANT` resolves to Eliza; `ACTION_ASSIST`/`VOICE_COMMAND` reach app/runtime; LifeOps persists `ScheduledTask` | manual | rooted AOSP build with assistant role | unknown | manual: `AOSP_SYSTEM_APP.md`, `MOBILE_ASSISTANT_ROUTING.md` |
-| ios17   | iOS AppIntent registry matches native x-callback implementation; Siri/App Shortcuts hand off LifeOps requests to runtime-created `ScheduledTask` records | CI (static source) + manual | none for static; live: iOS device + shortcut phrase | green (CI) / unknown (device) | `plugins/plugin-computeruse/src/__tests__/ios-bridge.test.ts`; manual: `IOS_CONSTRAINTS.md`, `MOBILE_ASSISTANT_ROUTING.md` |
-| ios26   | same; Foundation Models may classify the utterance but does not create native-only reminders | CI (static source) + manual | iOS 26 + Apple Intelligence for live classifier path | green (CI) / unknown (device) | `plugins/plugin-computeruse/src/__tests__/ios-bridge.test.ts`; manual: `IOS_CONSTRAINTS.md`, `MOBILE_ASSISTANT_ROUTING.md` |
 
 ### camera-capture
 

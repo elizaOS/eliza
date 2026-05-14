@@ -176,9 +176,16 @@ VOICE_QUANT_BY_TIER: Final[Mapping[str, str]] = {
     "27b-1m": "Q8_0",
 }
 
-# Full K-quant ladder published per tier for the OmniVoice TTS GGUF. The
-# small active voice tiers are Kokoro-only; 9B carries Kokoro plus OmniVoice;
-# 27B-class tiers carry OmniVoice only.
+# Full K-quant ladder published per tier for the OmniVoice TTS GGUF. Mirror
+# of ``OMNIVOICE_QUANT_LADDER_BY_TIER`` in
+# ``packages/shared/src/local-inference/catalog.ts``. The downloader picks
+# the appropriate level from this ladder at install time based on the
+# host's RAM/SoC class (no silent fallback — AGENTS.md §3). Tiers whose
+# default voice backend is Kokoro (0_8b/2b/4b currently) publish no
+# OmniVoice ladder; the empty tuple signals "no voice ladder, runtime
+# uses Kokoro instead". OmniVoice's ``tools/quantize.cpp`` already supports
+# Q2_K..Q8_0; this curated subset matches the device-class budgets in the
+# voice-quant matrix doc (``docs/inference/voice-quant-matrix.md``).
 VOICE_QUANT_LADDER_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
     "0_8b": (),
     "2b": (),
@@ -209,9 +216,10 @@ KOKORO_REQUIRED_ARTIFACTS: Final[tuple[str, ...]] = (
 def required_voice_artifacts_for_tier(tier: str) -> tuple[str, ...]:
     """Return the frozen TTS artifacts required for ``tier``.
 
-    Paths are relative to the bundle's ``tts/`` directory. Small active tiers
-    use Kokoro only, 9B carries Kokoro plus OmniVoice, and 27B-class tiers use
-    OmniVoice only.
+    Paths are relative to the bundle's ``tts/`` directory. The active Eliza-1
+    release line uses Kokoro as the required/default backend for 0.8B, 2B,
+    and 4B. The 9B tier ships Kokoro first plus OmniVoice. The 27B
+    long-context tiers ship OmniVoice only.
     """
 
     out: list[str] = []

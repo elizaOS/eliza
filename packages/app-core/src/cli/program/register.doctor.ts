@@ -105,7 +105,7 @@ export function registerDoctorCommand(program: Command) {
     .action(async (opts: { json: boolean }) => {
       await runCommandWithRuntime(defaultRuntime, async () => {
         const { runDflashDoctor } = await import(
-          "@elizaos/plugin-local-inference"
+          "@elizaos/plugin-local-inference/services"
         );
         const report = await runDflashDoctor();
         if (opts.json) {

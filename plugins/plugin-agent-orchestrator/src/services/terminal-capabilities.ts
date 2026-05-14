@@ -219,12 +219,12 @@ export function detectOrchestratorTerminalSupport(): OrchestratorTerminalSupport
   }
 
   if (isMobileRuntime()) {
-    if (isIosRuntime()) {
+    if (!isAospTerminalRuntime()) {
       return {
         supported: false,
         reason: "vanilla_mobile",
         message:
-          "Coding agents are unavailable on iOS; iOS runs inside the app sandbox and should use VFS/cloud-backed execution.",
+          "Coding agents are only available on branded AOSP builds. Vanilla mobile and store builds do not expose shell, coding, or orchestrator subprocess capabilities.",
       };
     }
     if (runtimeMode() !== "local-yolo") {
@@ -232,7 +232,7 @@ export function detectOrchestratorTerminalSupport(): OrchestratorTerminalSupport
         supported: false,
         reason: "not_local_yolo",
         message:
-          "Android direct/AOSP coding agents require ELIZA_RUNTIME_MODE=local-yolo so subprocesses run in the local agent environment.",
+          "AOSP coding agents require ELIZA_RUNTIME_MODE=local-yolo so subprocesses run in the local agent environment.",
       };
     }
     const shell = resolveOrchestratorShell();
@@ -242,7 +242,7 @@ export function detectOrchestratorTerminalSupport(): OrchestratorTerminalSupport
         reason: "missing_shell",
         message:
           shell.warning ??
-          "Android direct/AOSP coding agents require an executable shell. Set CODING_TOOLS_SHELL or SHELL to a staged shell binary.",
+          "AOSP coding agents require an executable shell. Set CODING_TOOLS_SHELL or SHELL to a staged shell binary.",
       };
     }
   }

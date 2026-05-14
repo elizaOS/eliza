@@ -1,7 +1,6 @@
 /**
  * WINDOW parent action — manages local desktop windows (list / focus /
- * switch / arrange / move / minimize / maximize / restore / close) and
- * Cua-compatible window aliases.
+ * switch / arrange / move / minimize / maximize / restore / close).
  *
  * Pointer and keyboard primitives live on COMPUTER_USE. File and shell
  * operations live on the FILE and SHELL actions in their own plugins —
@@ -24,16 +23,6 @@ import { handleWindowOp } from "./window-handlers.js";
 
 const WINDOW_ACTIONS = [
   "list",
-  "open",
-  "launch",
-  "get_current_window_id",
-  "get_application_windows",
-  "get_window_name",
-  "get_window_size",
-  "get_window_position",
-  "set_window_size",
-  "set_window_position",
-  "activate_window",
   "focus",
   "switch",
   "arrange",
@@ -94,10 +83,10 @@ export const windowAction: Action = {
   ],
   description:
     "Single WINDOW action — manages local desktop windows through the computer-use service. " +
-    "Supported actions: list, open, launch, get_current_window_id, get_application_windows, get_window_name, get_window_size, get_window_position, set_window_size, set_window_position, activate_window, focus, switch, arrange, move, minimize, maximize, restore, close. " +
+    "Supported actions: list, focus, switch, arrange, move, minimize, maximize, restore, close. " +
     "Pointer and keyboard primitives belong on COMPUTER_USE; file and shell operations belong on FILE and SHELL.",
   descriptionCompressed:
-    "Single WINDOW action; action=list|open|launch|get_current_window_id|get_application_windows|get_window_name|get_window_size|get_window_position|set_window_size|set_window_position|activate_window|focus|switch|arrange|move|minimize|maximize|restore|close manages local desktop windows.",
+    "Single WINDOW action; action=list|focus|switch|arrange|move|minimize|maximize|restore|close manages local desktop windows.",
   parameters: [
     {
       name: "action",
@@ -107,12 +96,6 @@ export const windowAction: Action = {
         type: "string",
         enum: [...WINDOW_ACTIONS],
       },
-    },
-    {
-      name: "appName",
-      description: "Application name for open, launch, or app-window listing.",
-      required: false,
-      schema: { type: "string" },
     },
     {
       name: "windowId",
@@ -142,18 +125,6 @@ export const windowAction: Action = {
     {
       name: "y",
       description: "Target Y coordinate for window move.",
-      required: false,
-      schema: { type: "number" },
-    },
-    {
-      name: "width",
-      description: "Target width for set_window_size.",
-      required: false,
-      schema: { type: "number" },
-    },
-    {
-      name: "height",
-      description: "Target height for set_window_size.",
       required: false,
       schema: { type: "number" },
     },

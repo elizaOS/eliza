@@ -10,7 +10,7 @@
     "declaration": false,
     "noEmit": true,
     "lib": ["ES2022"],
-    "types": ["node"],
+    "types": ["node", "bun-types"],
     "paths": {
       "@elizaos/core": ["./../../core/dist/index.d.ts"]
     }

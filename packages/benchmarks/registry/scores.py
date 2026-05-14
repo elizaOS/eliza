@@ -582,27 +582,6 @@ def _score_from_voicebench_quality_json(data: JSONValue) -> ScoreExtraction:
     )
 
 
-def _score_from_voice_emotion_json(data: JSONValue) -> ScoreExtraction:
-    root = expect_dict(data, ctx="voice_emotion:root")
-    macro_f1 = expect_float(
-        get_required(root, "macroF1", ctx="voice_emotion:root"),
-        ctx="voice_emotion:macroF1",
-    )
-    return ScoreExtraction(
-        score=macro_f1,
-        unit="macro_f1",
-        higher_is_better=True,
-        metrics={
-            "macroF1": macro_f1,
-            "suite": root.get("suite") or "",
-            "model": root.get("model") or "",
-            "n": root.get("n") or 0,
-            "meanLatencyMs": root.get("meanLatencyMs") or 0,
-            "abstentionRate": root.get("abstentionRate") or 0,
-        },
-    )
-
-
 def _score_from_mmau_json(data: JSONValue) -> ScoreExtraction:
     """Extract scores from MMAU results.
 

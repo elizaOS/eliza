@@ -322,22 +322,19 @@ def _build_agent_fn(name: str, *, model_override: str | None = None, base_url_ov
             or os.environ.get("MODEL_NAME")
             or "gpt-oss-120b"
         )
-        use_cli = os.environ.get("OPENCLAW_USE_CLI", "").strip() == "1"
         client = OpenClawClient(
             provider=provider,
             model=model,
             base_url=base_url_override,
-            direct_openai_compatible=not use_cli,
         )
-        if use_cli:
-            client.wait_until_ready(timeout=120)
+        client.wait_until_ready(timeout=120)
         return build_lifeops_bench_agent_fn(
             client=client,
             world_snapshot_path=_resolve_default_snapshot_path(),
             now_iso=DEFAULT_NOW_ISO,
             model_name=model,
             system_prompt=(
-                "You are running LifeOpsBench through the OpenClaw "
+                "You are running LifeOpsBench through the OpenClaw source "
                 "harness. Use the supplied tools exactly and emit structured "
                 "tool calls whenever an operation is needed."
             ),

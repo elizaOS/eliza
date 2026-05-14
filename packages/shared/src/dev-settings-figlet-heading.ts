@@ -5,6 +5,8 @@
  * in sequence — humans/agents spot which child is speaking without reading prefixes.
  */
 
+import { createRequire } from "node:module";
+
 type FigletModule = {
   textSync: (
     text: string,
@@ -16,8 +18,14 @@ type FigletModule = {
   ) => string;
 };
 
+const require = createRequire(import.meta.url);
+
 function loadFiglet(): FigletModule | null {
-  return null;
+  try {
+    return require("figlet") as FigletModule;
+  } catch {
+    return null;
+  }
 }
 
 function renderFallbackHeading(text: string): string {

@@ -38,7 +38,7 @@ train = [
   # resolves to (torch 2.11+cu130 in practice) when --extra serve is
   # also selected (smoke), and 2.10+cu126 when train is alone (Vast
   # SFT path). Both wheels run on Vast Blackwell driver 570.x.
-  "torch>=2.5.0,<2.13",
+  "torch>=2.5.0,<2.12",
   "transformers>=4.46.0",
   "accelerate>=1.1.0",
   "peft>=0.14.0",

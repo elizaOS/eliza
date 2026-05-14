@@ -71,16 +71,27 @@ describe("coding-tools terminal capability detection", () => {
     expect(missingToolForCommand("codex exec test")).toBe("codex");
   });
 
-  it("rejects vanilla Android terminal support", () => {
+  it("accepts direct Android local-yolo when a shell is executable", () => {
+    const shell = executable("sh");
     process.env.ELIZA_PLATFORM = "android";
     process.env.ELIZA_RUNTIME_MODE = "local-yolo";
+    process.env.CODING_TOOLS_SHELL = shell;
     process.env.PATH = tempDir;
+
+    const support = detectTerminalSupport();
+
+    expect(support.supported).toBe(true);
+  });
+
+  it("rejects iOS terminal support", () => {
+    process.env.ELIZA_PLATFORM = "ios";
+    process.env.ELIZA_RUNTIME_MODE = "local-yolo";
 
     const support = detectTerminalSupport();
 
     expect(support.supported).toBe(false);
     expect(support.reason).toBe("vanilla_mobile");
-    expect(support.message).toContain("branded AOSP");
+    expect(support.message).toContain("iOS");
   });
 
   it("accepts branded AOSP local-yolo when a shell is executable", () => {
@@ -96,10 +107,9 @@ describe("coding-tools terminal capability detection", () => {
     expect(support.supported).toBe(true);
   });
 
-  it("rejects branded AOSP outside local-yolo mode", () => {
+  it("rejects Android outside local-yolo mode", () => {
     const shell = executable("sh");
     process.env.ELIZA_PLATFORM = "android";
-    process.env.ELIZA_AOSP_BUILD = "1";
     process.env.ELIZA_RUNTIME_MODE = "local-safe";
     process.env.CODING_TOOLS_SHELL = shell;
     process.env.PATH = tempDir;

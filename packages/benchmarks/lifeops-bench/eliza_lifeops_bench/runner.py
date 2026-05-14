@@ -242,24 +242,12 @@ def _normalize_umbrella_discriminator(action: Action) -> Action:
             allowed=set(_DISCRIMINATORS["CALENDAR"][1]),
         )
     if action.name == "MESSAGE":
-        normalized = _with_discriminator_alias(
+        return _with_discriminator_alias(
             action,
             target_field="operation",
             aliases=_MESSAGE_ACTION_ALIASES,
             allowed=set(_DISCRIMINATORS["MESSAGE"][1]),
         )
-        kwargs = dict(normalized.kwargs)
-        if "operation" not in kwargs:
-            raw_manage_op = (
-                kwargs.get("manageOperation")
-                or kwargs.get("manage_operation")
-                or kwargs.get("mailOperation")
-                or kwargs.get("mail_operation")
-            )
-            if isinstance(raw_manage_op, str) and raw_manage_op:
-                kwargs["operation"] = "manage"
-                return Action(name=normalized.name, kwargs=kwargs)
-        return normalized
     if action.name == "ENTITY":
         return _with_discriminator_alias(
             action,
@@ -301,17 +289,6 @@ _TOOL_DESCRIPTIONS: dict[str, str] = {
         "Send, draft, search, triage, or manage messages and email. Use operation=send, "
         "draft_reply, manage, triage, search_inbox, list_channels, read_channel, or "
         "read_with_contact. Use source=gmail for email."
-    ),
-    "ARCHIVE_EMAIL_THREAD": (
-        "Archive one Gmail email thread. Required: threadId as a TOP-LEVEL flat "
-        "field, copied exactly from the user's request when an explicit thread_* id "
-        "is present. Example: {\"threadId\":\"thread_01464\"}."
-    ),
-    "MESSAGE_MANAGE": (
-        "Manage Gmail/email message state. For archive requests use source='gmail', "
-        "manageOperation='archive', and either threadId or messageId as TOP-LEVEL "
-        "flat fields. Example: {\"source\":\"gmail\",\"manageOperation\":\"archive\","
-        "\"threadId\":\"thread_01464\"}."
     ),
     "ENTITY": (
         "Manage people and identity records. Use subaction=add, set_identity, "
@@ -670,45 +647,6 @@ def _tool_parameters_for_action(action_name: str) -> dict[str, Any]:
                 "required": ["name", "seat_class"],
             },
         }
-    elif action_name == "ARCHIVE_EMAIL_THREAD":
-        schema["properties"]["threadId"] = {
-            "type": "string",
-            "pattern": "^thread_[A-Za-z0-9_:-]+$",
-            "description": (
-                "TOP-LEVEL flat field — Gmail thread id to archive. If the user "
-                "provided a thread_* id, copy it exactly here."
-            ),
-        }
-        schema["required"] = sorted({*schema.get("required", []), "threadId"})
-    elif action_name == "MESSAGE_MANAGE":
-        schema["properties"].update(
-            {
-                "source": {
-                    "type": "string",
-                    "enum": ["gmail"],
-                    "description": "Use gmail for email archive/manage operations.",
-                },
-                "manageOperation": {
-                    "type": "string",
-                    "enum": ["archive", "trash", "star", "mark_read"],
-                    "description": "Management operation to apply.",
-                },
-                "threadId": {
-                    "type": "string",
-                    "description": (
-                        "TOP-LEVEL flat field — Gmail thread id. Prefer this for "
-                        "thread-level archive requests."
-                    ),
-                },
-                "messageId": {
-                    "type": "string",
-                    "description": "TOP-LEVEL flat field — Gmail message id.",
-                },
-            }
-        )
-        schema["required"] = sorted(
-            {*schema.get("required", []), "manageOperation"}
-        )
 
     return schema
 
@@ -1018,30 +956,8 @@ def _h_mail_send(world: LifeWorld, kw: dict[str, Any], _name: str) -> dict[str, 
 
 
 def _h_mail_archive(world: LifeWorld, kw: dict[str, Any], _name: str) -> dict[str, Any]:
-    msg_id = kw.get("message_id") or kw.get("messageId") or kw.get("id")
-    thread_id = kw.get("thread_id") or kw.get("threadId")
-    if msg_id is not None:
-        msg = world.archive_email(str(msg_id))
-        return {"id": msg.id, "folder": msg.folder}
-    if thread_id is not None:
-        return _archive_email_thread(world, str(thread_id))
-    raise KeyError("MAIL.archive needs message_id or thread_id")
-
-
-def _h_mail_archive_thread(world: LifeWorld, kw: dict[str, Any], _name: str) -> dict[str, Any]:
-    thread_id = kw.get("threadId") or kw.get("thread_id") or kw.get("id") or kw.get("target")
-    if thread_id is None:
-        raise KeyError("ARCHIVE_EMAIL_THREAD needs threadId or thread_id")
-    return _archive_email_thread(world, str(thread_id))
-
-
-def _archive_email_thread(world: LifeWorld, thread_id: str) -> dict[str, Any]:
-    archived: list[str] = []
-    for eid, em in list(world.emails.items()):
-        if em.thread_id == thread_id and em.folder != "archive":
-            world.archive_email(eid)
-            archived.append(eid)
-    return {"thread_id": thread_id, "archived_ids": archived}
+    msg = world.archive_email(kw["message_id"])
+    return {"id": msg.id, "folder": msg.folder}
 
 
 def _h_mail_mark_read(world: LifeWorld, kw: dict[str, Any], _name: str) -> dict[str, Any]:
@@ -1406,19 +1322,6 @@ def _u_calendar(world: LifeWorld, kw: dict[str, Any], name: str) -> dict[str, An
             or details.get("timeMax")
         )
         if not isinstance(start, str) or not isinstance(end, str):
-            inferred = _parse_calendar_time_range_hint(
-                kw.get("intent")
-                or details.get("intent")
-                or kw.get("query")
-                or details.get("query")
-                or kw.get("when")
-                or details.get("when"),
-                world.now_iso,
-            )
-            if inferred is not None:
-                start, end = inferred
-                kw = {**kw, "start": start, "end": end}
-        if not isinstance(start, str) or not isinstance(end, str):
             raise KeyError(
                 f"{name}/{sub} requires startAt/endAt or start/end in kwargs={sorted(kw)}"
             )
@@ -1654,7 +1557,12 @@ def _manage_email_via_message(world: LifeWorld, kw: dict[str, Any]) -> dict[str,
             msg = world.archive_email(msg_id)
             return {"id": msg.id, "folder": msg.folder}
         if thread_id is not None:
-            return _archive_email_thread(world, str(thread_id))
+            archived: list[str] = []
+            for eid, em in list(world.emails.items()):
+                if em.thread_id == thread_id and em.folder != "archive":
+                    world.archive_email(eid)
+                    archived.append(eid)
+            return {"thread_id": thread_id, "archived_ids": archived}
         raise KeyError("MESSAGE/manage(archive) needs messageId or threadId")
     if op == "mark_read":
         if msg_id is None:
@@ -2605,71 +2513,6 @@ def _parse_calendar_datetime_hint(value: Any, now_iso: str) -> datetime | None:
     return datetime(parsed_date.year, parsed_date.month, parsed_date.day, tzinfo=timezone.utc)
 
 
-_TIME_RANGE_HINT_RE = re.compile(
-    r"\b(?P<start_hour>2[0-3]|1[0-9]|0?[1-9])"
-    r"(?::(?P<start_minute>[0-5]\d))?"
-    r"\s*(?P<start_ampm>am|pm)?"
-    r"\s*(?:-|–|—|to)\s*"
-    r"(?P<end_hour>2[0-3]|1[0-9]|0?[1-9])"
-    r"(?::(?P<end_minute>[0-5]\d))?"
-    r"\s*(?P<end_ampm>am|pm)?\b",
-    re.IGNORECASE,
-)
-
-
-def _parse_calendar_time_range_hint(
-    value: Any,
-    now_iso: str,
-) -> tuple[str, str] | None:
-    """Infer a UTC ISO range from compact hints like "Thursday 9-10am UTC"."""
-    if not isinstance(value, str) or not value.strip():
-        return None
-    parsed_date = _parse_calendar_date_hint(value, now_iso)
-    if parsed_date is None:
-        return None
-    match = _TIME_RANGE_HINT_RE.search(value)
-    if match is None:
-        return None
-
-    end_ampm = (match.group("end_ampm") or "").lower() or None
-    start_ampm = (match.group("start_ampm") or "").lower() or end_ampm
-
-    def hour_24(raw: str, ampm: str | None) -> int:
-        hour = int(raw)
-        if ampm == "am":
-            return 0 if hour == 12 else hour
-        if ampm == "pm":
-            return hour if hour == 12 else hour + 12
-        return hour
-
-    start_hour = hour_24(match.group("start_hour"), start_ampm)
-    end_hour = hour_24(match.group("end_hour"), end_ampm)
-    start_minute = int(match.group("start_minute") or 0)
-    end_minute = int(match.group("end_minute") or 0)
-    start_dt = datetime(
-        parsed_date.year,
-        parsed_date.month,
-        parsed_date.day,
-        start_hour,
-        start_minute,
-        tzinfo=timezone.utc,
-    )
-    end_dt = datetime(
-        parsed_date.year,
-        parsed_date.month,
-        parsed_date.day,
-        end_hour,
-        end_minute,
-        tzinfo=timezone.utc,
-    )
-    if end_dt <= start_dt:
-        return None
-    return (
-        start_dt.isoformat().replace("+00:00", "Z"),
-        end_dt.isoformat().replace("+00:00", "Z"),
-    )
-
-
 def _parse_calendar_date_hint(value: Any, now_iso: str) -> date | None:
     if not isinstance(value, str) or not value.strip():
         return None
@@ -2821,7 +2664,6 @@ _ACTION_HANDLERS: dict[
     "CALENDAR.cancel": _h_calendar_cancel,
     "MAIL.send": _h_mail_send,
     "MAIL.archive": _h_mail_archive,
-    "ARCHIVE_EMAIL_THREAD": _h_mail_archive_thread,
     "MAIL.mark_read": _h_mail_mark_read,
     "MAIL.star": _h_mail_star,
     "MAIL.trash": _h_mail_trash,

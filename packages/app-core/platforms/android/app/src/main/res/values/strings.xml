@@ -4,37 +4,4 @@
     <string name="title_activity_main">Eliza</string>
     <string name="package_name">com.elizaai.eliza</string>
     <string name="custom_url_scheme">eliza</string>
-    <string name="android_app_action_chat_short_label">Ask Eliza</string>
-    <string name="android_app_action_chat_long_label">Ask Eliza</string>
-    <string name="android_app_action_chat_disabled">Eliza chat is unavailable.</string>
-    <string name="android_app_action_voice_short_label">Voice mode</string>
-    <string name="android_app_action_voice_long_label">Start voice mode</string>
-    <string name="android_app_action_voice_disabled">Eliza voice mode is unavailable.</string>
-    <string name="android_app_action_lifeops_task_short_label">Task</string>
-    <string name="android_app_action_lifeops_task_long_label">Create LifeOps task</string>
-    <string name="android_app_action_lifeops_task_disabled">LifeOps tasks are unavailable.</string>
-    <string name="android_app_action_daily_brief_short_label">Brief</string>
-    <string name="android_app_action_daily_brief_long_label">Open daily brief</string>
-    <string name="android_app_action_daily_brief_disabled">The daily brief is unavailable.</string>
-
-    <string-array name="android_app_action_chat_synonyms">
-        <item>chat</item>
-        <item>ask Eliza</item>
-        <item>ask assistant</item>
-    </string-array>
-    <string-array name="android_app_action_voice_synonyms">
-        <item>voice mode</item>
-        <item>talk to Eliza</item>
-        <item>start voice</item>
-    </string-array>
-    <string-array name="android_app_action_lifeops_task_synonyms">
-        <item>LifeOps task</item>
-        <item>reminder</item>
-        <item>task</item>
-    </string-array>
-    <string-array name="android_app_action_daily_brief_synonyms">
-        <item>daily brief</item>
-        <item>brief</item>
-        <item>today</item>
-    </string-array>
 </resources>

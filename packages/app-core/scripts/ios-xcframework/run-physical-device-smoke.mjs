@@ -989,12 +989,6 @@ function classifyXcodebuildFailure(result) {
 
 function blockerNextAction(category, deviceName = "the iPhone/iPad") {
   switch (category) {
-    case "no-connected-physical-device":
-      return `Connect ${deviceName}, unlock it, trust this Mac, enable Developer Mode if needed, then rerun the physical-device smoke.`;
-    case "missing-xcframework":
-      return "Build the iOS LlamaCpp.xcframework with --build-if-missing or pass --xcframework to an existing device-capable bundle, then rerun.";
-    case "local-preflight":
-      return "Fix the local smoke preflight diagnostic above, then rerun before connecting device-level debugging.";
     case "device-locked":
       return `Unlock ${deviceName}, keep it awake on the Home screen, then rerun the smoke.`;
     case "device-not-trusted":
@@ -1757,7 +1751,6 @@ async function main() {
         timeout: 30_000,
       }),
     };
-    report.toolchain = toolchain;
 
     const { device, devices } = resolveDevice(args.deviceId);
     const deviceDiagnostics = captureDeviceDiagnostics(device.id);

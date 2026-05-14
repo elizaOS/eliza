@@ -8,8 +8,9 @@
     "skipLibCheck": true,
     "resolveJsonModule": true,
     "declaration": false,
+    "outDir": "./dist",
     "noEmit": true,
-    "types": ["node"]
+    "types": ["bun-types", "node"]
   },
   "include": ["*.ts"],
   "exclude": ["node_modules", "dist"],

@@ -25,12 +25,12 @@ GPU targets, mirroring the launcher's ``VAST_GPU_TARGET`` env var:
     budget vs 192 GB capacity). Long-context experiments
     (``--max-seq-len`` > 65k) still need ``b200-2x``.
   * ``b200-2x`` — 2 × NVIDIA B200 (≈183 GB each, ≈366 GB total).
-    Preferred cloud target for qwen3.6-27b at the default 64k seq_len
+    Preferred cloud target for qwen3.5-27b at the default 64k seq_len
     (190 GB budget on 366 GB capacity = 48% util with comfortable
     headroom for activation spikes). Required for ``--max-seq-len`` >
     65k or 122B-A10B work.
   * ``h100-2x`` — 2 × H100 SXM (80 GB each = 160 GB). Insufficient for
-    qwen3.6-27b at the registry's 190 GB budget; usable for 9B if
+    qwen3.5-27b at the registry's 190 GB budget; usable for 9B if
     blackwell6000-1x and h200-1x are unavailable.
 
   GRPO multi-GPU targets (verl splits actor train + rollout across the
@@ -40,7 +40,7 @@ GPU targets, mirroring the launcher's ``VAST_GPU_TARGET`` env var:
   * ``h200-4x`` — 4 × H200 SXM (564 GB total). GRPO default for
     qwen3.5-9b (1 train + 3 rollout shards). ~24-48h wall.
   * ``h200-8x`` — 8 × H200 SXM (1128 GB total). GRPO default for
-    qwen3.6-27b (4 train + 4 rollout). ~48h wall.
+    qwen3.5-27b (4 train + 4 rollout). ~48h wall.
   * ``b200-4x`` / ``b200-8x`` — B200 fallbacks when the H200 pool is
     empty. ~1.5-2× the $/hr but ~2× the throughput.
 
@@ -120,7 +120,7 @@ TARGETS: dict[str, dict[str, Any]] = {
         "num_gpus": 1,
         # B200 = 180 GB HBM3e per GPU; gpu_ram>=170 robust to ECC reserve.
         "min_per_gpu_ram_gb": 170,
-        "description": "1× NVIDIA B200 (≈183 GB) — qwen3.6-27b low-context SFT only (default 64k needs 2 GPUs)",
+        "description": "1× NVIDIA B200 (≈183 GB) — qwen3.5-27b SFT default (130 GB budget @ seq=32k fits with headroom)",
     },
     # ─── multi-GPU targets (27B+) ───
     "blackwell6000-2x": {
@@ -156,7 +156,7 @@ TARGETS: dict[str, dict[str, Any]] = {
     # RL_STRATEGY.md hardware budgets:
     #   qwen3.5-2b  → 2× H200 (1 train + 1 rollout)
     #   qwen3.5-9b  → 4× H200 (1 train + 3 rollout shards)
-    #   qwen3.6-27b → 8× H200 (4 train + 4 rollout)
+    #   qwen3.5-27b → 8× H200 (4 train + 4 rollout)
     # The B200 variants are 1.5-2× pricier but ~2× faster and serve as the
     # fallback when the H200 pool is empty.
     "h200-2x": {

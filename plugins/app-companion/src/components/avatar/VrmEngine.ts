@@ -259,16 +259,10 @@ function callMeshoptFunction(name: string, ...args: unknown[]): unknown {
 const compatibleMeshoptDecoder: NonNullable<CompatibleMeshoptDecoder> = {
   supported: MeshoptDecoder.supported,
   ready: MeshoptDecoder.ready,
-  useWorkers(count: number) {
+  useWorkers(count) {
     callMeshoptFunction("useWorkers", count);
   },
-  decodeVertexBuffer(
-    target: Uint8Array,
-    count: number,
-    size: number,
-    source: Uint8Array,
-    filter?: string,
-  ) {
+  decodeVertexBuffer(target, count, size, source, filter) {
     callMeshoptFunction(
       "decodeVertexBuffer",
       target,
@@ -278,30 +272,13 @@ const compatibleMeshoptDecoder: NonNullable<CompatibleMeshoptDecoder> = {
       filter,
     );
   },
-  decodeIndexBuffer(
-    target: Uint8Array,
-    count: number,
-    size: number,
-    source: Uint8Array,
-  ) {
+  decodeIndexBuffer(target, count, size, source) {
     callMeshoptFunction("decodeIndexBuffer", target, count, size, source);
   },
-  decodeIndexSequence(
-    target: Uint8Array,
-    count: number,
-    size: number,
-    source: Uint8Array,
-  ) {
+  decodeIndexSequence(target, count, size, source) {
     callMeshoptFunction("decodeIndexSequence", target, count, size, source);
   },
-  decodeGltfBuffer(
-    target: Uint8Array,
-    count: number,
-    size: number,
-    source: Uint8Array,
-    mode: string,
-    filter?: string,
-  ) {
+  decodeGltfBuffer(target, count, size, source, mode, filter) {
     callMeshoptFunction(
       "decodeGltfBuffer",
       target,
@@ -312,13 +289,7 @@ const compatibleMeshoptDecoder: NonNullable<CompatibleMeshoptDecoder> = {
       filter,
     );
   },
-  async decodeGltfBufferAsync(
-    count: number,
-    size: number,
-    source: Uint8Array,
-    mode: string,
-    filter?: string,
-  ) {
+  async decodeGltfBufferAsync(count, size, source, mode, filter) {
     const decoded = await callMeshoptFunction(
       "decodeGltfBufferAsync",
       count,
@@ -1334,12 +1305,9 @@ export class VrmEngine {
         scene.add(cameraRig);
         const camera = new THREE.PerspectiveCamera(30, 1, 0.1, 20);
         camera.position.set(0, 1.2, 5.0);
-        cameraRig.add(camera as unknown as THREE.Object3D);
+        cameraRig.add(camera);
         this.camera = camera;
-        const controls = new OrbitControls(
-          camera as unknown as ConstructorParameters<typeof OrbitControls>[0],
-          renderer.domElement,
-        );
+        const controls = new OrbitControls(camera, renderer.domElement);
         controls.enableDamping = false;
         controls.target.copy(this.lookAtTarget);
         controls.addEventListener("start", this.handleControlStart);

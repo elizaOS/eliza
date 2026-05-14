@@ -26,6 +26,7 @@
 import http from "node:http";
 import {
   type AgentRuntime,
+  ChannelType,
   ModelType,
   stringToUuid,
   type UUID,
@@ -408,3 +409,5 @@ describe("AgentRuntime model dispatch (layer-2 verification from #7680)", () => 
     expect(handler).toHaveBeenCalledTimes(1);
   });
 });
+
+void ChannelType;

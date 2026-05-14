@@ -97,10 +97,7 @@ export const PostWorkbenchVfsCompilePluginRequestSchema = z
     entry: z.string().regex(/\S/, "entry is required"),
     outFile: z.string().regex(/\S/).optional(),
     format: z.enum(["esm", "cjs"]).optional(),
-    platform: z.enum(["browser", "neutral", "node"]).optional(),
     target: z.string().regex(/\S/).optional(),
-    bundle: z.boolean().optional(),
-    allowedImports: z.array(z.string().regex(/\S/)).max(50).optional(),
   })
   .strict()
   .transform((value) => ({
@@ -108,9 +105,6 @@ export const PostWorkbenchVfsCompilePluginRequestSchema = z
     entry: value.entry.trim(),
     ...(value.outFile ? { outFile: value.outFile.trim() } : {}),
     ...(value.target ? { target: value.target.trim() } : {}),
-    ...(value.allowedImports
-      ? { allowedImports: value.allowedImports.map((item) => item.trim()) }
-      : {}),
   }));
 
 export const PostWorkbenchVfsLoadPluginRequestSchema = z

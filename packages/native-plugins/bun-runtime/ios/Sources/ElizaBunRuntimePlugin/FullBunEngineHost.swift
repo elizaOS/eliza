@@ -41,10 +41,10 @@ private let fullBunHostCallCallback: @convention(c) (
 /// - `http_request` IPC (both paths): the path must begin with `/` and must not
 ///   contain `://`. Validated in `MobileAgentBridgePlugin.proxyHttpRequest` and
 ///   enforced by the Bun bridge contract at the agent layer.
-/// - Filesystem (JSContext compat path): App Store local builds compile in
-///   `RuntimePolicy`, which rejects bridge file access outside the app
-///   container and rejects JavaScript bundle overrides outside signed app
-///   resources.
+/// - Filesystem (JSContext compat path): `FSBridge` does not restrict paths
+///   beyond what the iOS app sandbox enforces. The agent bundle is signed and
+///   staged inside the app bundle; paths visible to the JSContext are limited to
+///   the app container by the OS.
 /// - ABI version check: `load()` verifies the framework reports ABI version "3"
 ///   before accepting any other symbols. A version mismatch is a hard error.
 final class FullBunEngineHost {
@@ -322,13 +322,6 @@ final class FullBunEngineHost {
         guard let path = stringValue(payload, "path") ?? stringValue(payload, "modelPath"),
               !path.isEmpty else {
             return encodeHostEnvelope(ok: false, error: "llama_load_model requires path")
-        }
-        let policy = RuntimePolicy(paths: SandboxPaths())
-        guard policy.allowsFilesystemPath(path, operation: .read) else {
-            return encodeHostEnvelope(
-                ok: false,
-                error: "llama_load_model path is outside the iOS app container policy"
-            )
         }
         let contextSize = uint32Value(payload, "context_size")
             ?? uint32Value(payload, "contextSize")

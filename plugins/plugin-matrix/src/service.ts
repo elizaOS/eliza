@@ -17,6 +17,7 @@ import {
   type UUID,
 } from "@elizaos/core";
 import * as sdk from "matrix-js-sdk";
+import type { RoomMessageEventContent } from "matrix-js-sdk/lib/@types/events";
 import {
   DEFAULT_MATRIX_ACCOUNT_ID,
   listMatrixAccountIds,
@@ -41,8 +42,6 @@ import {
   type MatrixSettings,
   type MatrixUserInfo,
 } from "./types.js";
-
-type MatrixRoomMessageContent = ReturnType<typeof sdk.ContentHelpers.makeTextMessage>;
 
 function normalizeSearchQuery(query: string): string {
   return query.trim().toLowerCase();
@@ -769,7 +768,7 @@ export class MatrixService extends Service implements IMatrixService {
 
     const response = await state.client.sendMessage(
       resolvedRoomId,
-      content as MatrixRoomMessageContent
+      content as RoomMessageEventContent
     );
     const eventId = response.event_id;
 

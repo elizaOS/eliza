@@ -62,14 +62,13 @@ const LOCAL_PROVIDER: ProviderDefinition = {
 	label: "Eliza-1 local runtime",
 	kind: "local",
 	description:
-		"On-device Eliza-1 inference with the optimized local runtime when the managed binary and companion files are installed. The bundle serves text, embeddings, TTS, transcription, and image description from one local provider.",
+		"On-device Eliza-1 inference with the optimized local runtime when the managed binary and companion files are installed. The bundle serves text, embeddings, TTS, and transcription from one local provider.",
 	supportedSlots: [
 		"TEXT_SMALL",
 		"TEXT_LARGE",
 		"TEXT_EMBEDDING",
 		"TEXT_TO_SPEECH",
 		"TRANSCRIPTION",
-		"IMAGE_DESCRIPTION",
 	],
 	async getEnableState(): Promise<ProviderEnableState> {
 		// Enabled when at least one model file lives under our root and the

@@ -21,11 +21,11 @@ brotli=PLACEHOLDER-FILL-IN-AT-M02
 # llama-server on macOS arm64 (the iOS toolchain shares Metal kernels
 # with macOS arm64).
 #
-# Current pin 6f3b5042594ea63b78bf7e594a958d2f4a43bc4a (2026-05-14) — main HEAD after the
+# Current pin ce85787c8 (2026-05-13) — main HEAD after the
 # omnivoice-build-flag + openvino-backend-import consolidation. CPU
 # build verified on macOS arm64; iOS Metal build inherits from the
 # same source tree.
-llama.cpp=6f3b5042594ea63b78bf7e594a958d2f4a43bc4a
+llama.cpp=ce85787c8
 
 # sqlite-vec pin — vector storage + KNN extension that replaces pgvector
 # for the on-device SQLite backend (PGlite cannot run in JSContext on

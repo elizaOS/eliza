@@ -8,14 +8,9 @@
     "skipLibCheck": true,
     "resolveJsonModule": true,
     "declaration": false,
+    "outDir": "./dist",
     "noEmit": true,
-    "rootDir": "../../..",
-    "types": ["node"],
-    "paths": {
-      "@elizaos/plugin-inmemorydb": [
-        "../../../plugins/plugin-inmemorydb/index.ts"
-      ]
-    }
+    "types": ["bun-types", "node"]
   },
   "include": ["*.ts"],
   "exclude": ["node_modules", "dist"],

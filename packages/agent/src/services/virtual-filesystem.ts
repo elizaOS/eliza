@@ -611,32 +611,7 @@ function normalizeVirtualPath(input: string): string {
       "PATH_TRAVERSAL",
     );
   }
-  const unsafePortableSegment = segments.find(isPortableUnsafePathSegment);
-  if (unsafePortableSegment) {
-    throw new VirtualFilesystemError(
-      `Virtual path segment is not portable: ${unsafePortableSegment}`,
-      "INVALID_PATH",
-    );
-  }
   return segments.join(path.sep);
-}
-
-function isPortableUnsafePathSegment(segment: string): boolean {
-  if (
-    /[<>:"|?*]/.test(segment) ||
-    hasControlCharacter(segment) ||
-    segment.endsWith(" ") ||
-    segment.endsWith(".")
-  ) {
-    return true;
-  }
-
-  const stem = segment.split(".")[0]?.toUpperCase();
-  return /^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])$/.test(stem ?? "");
-}
-
-function hasControlCharacter(value: string): boolean {
-  return [...value].some((char) => (char.codePointAt(0) ?? 0) < 32);
 }
 
 function normalizeSnapshotId(id: string): string {

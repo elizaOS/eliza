@@ -145,24 +145,17 @@ describe("workbench VFS routes", () => {
     }
   });
 
-  it("allows VFS compilation but blocks plugin loading in store builds", async () => {
+  it("blocks host plugin compilation and loading in store builds", async () => {
     process.env.ELIZA_BUILD_VARIANT = "store";
     _resetBuildVariantForTests();
 
-    await callRoute("PUT", "/api/workbench/vfs/projects/agentic-ide/file", {
-      path: "src/plugin.ts",
-      content: "export default { name: 'store-compiled-vfs-demo' };",
-    });
-
-    const compile = await callRoute(
+    const compile = await callRoute<ErrorResponse>(
       "POST",
       "/api/workbench/vfs/projects/agentic-ide/compile-plugin",
       { entry: "src/plugin.ts" },
     );
-    expect(compile.status).toBe(200);
-    expect(compile.body).toMatchObject({
-      compile: { outFile: "/dist/plugin.js" },
-    });
+    expect(compile.status).toBe(403);
+    expect(compile.body.error).toContain("direct download build");
 
     const load = await callRoute<ErrorResponse>(
       "POST",

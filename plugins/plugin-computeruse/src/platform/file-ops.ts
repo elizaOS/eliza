@@ -52,73 +52,6 @@ export async function writeFile(
   }
 }
 
-export async function readBytes(
-  targetPath: string,
-  offset = 0,
-  length?: number,
-): Promise<FileActionResult> {
-  const check = validateFilePath(targetPath, "read");
-  if (!check.allowed) {
-    return { success: false, error: check.reason };
-  }
-
-  if (!Number.isInteger(offset) || offset < 0) {
-    return { success: false, error: "offset must be a non-negative integer." };
-  }
-  if (
-    length !== undefined &&
-    (!Number.isInteger(length) || length < 0)
-  ) {
-    return { success: false, error: "length must be a non-negative integer." };
-  }
-
-  try {
-    const content = await fs.readFile(targetPath);
-    const end = length === undefined ? undefined : offset + length;
-    return {
-      success: true,
-      path: targetPath,
-      content_b64: content.subarray(offset, end).toString("base64"),
-    };
-  } catch (error) {
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : String(error),
-    };
-  }
-}
-
-export async function writeBytes(
-  targetPath: string,
-  contentB64: string,
-  append = false,
-): Promise<FileActionResult> {
-  const check = validateFilePath(targetPath, "write");
-  if (!check.allowed) {
-    return { success: false, error: check.reason };
-  }
-
-  try {
-    const content = Buffer.from(contentB64, "base64");
-    await fs.mkdir(path.dirname(targetPath), { recursive: true });
-    if (append) {
-      await fs.appendFile(targetPath, content);
-    } else {
-      await fs.writeFile(targetPath, content);
-    }
-    return {
-      success: true,
-      path: targetPath,
-      message: "File written.",
-    };
-  } catch (error) {
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : String(error),
-    };
-  }
-}
-
 export async function editFile(
   targetPath: string,
   oldText: string,
@@ -229,39 +162,6 @@ export async function fileExists(
   }
 }
 
-export async function directoryExists(
-  targetPath: string,
-): Promise<FileActionResult> {
-  const result = await fileExists(targetPath);
-  return {
-    ...result,
-    exists: Boolean(result.exists && result.isDirectory),
-  };
-}
-
-export async function getFileSize(
-  targetPath: string,
-): Promise<FileActionResult> {
-  const check = validateFilePath(targetPath, "read");
-  if (!check.allowed) {
-    return { success: false, error: check.reason };
-  }
-
-  try {
-    const stat = await fs.stat(targetPath);
-    return {
-      success: true,
-      path: targetPath,
-      size: stat.size,
-    };
-  } catch (error) {
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : String(error),
-    };
-  }
-}
-
 export async function listDirectory(
   targetPath: string,
 ): Promise<FileActionResult> {
@@ -282,29 +182,6 @@ export async function listDirectory(
       path: targetPath,
       items,
       count: items.length,
-    };
-  } catch (error) {
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : String(error),
-    };
-  }
-}
-
-export async function createDirectory(
-  targetPath: string,
-): Promise<FileActionResult> {
-  const check = validateFilePath(targetPath, "write");
-  if (!check.allowed) {
-    return { success: false, error: check.reason };
-  }
-
-  try {
-    await fs.mkdir(targetPath, { recursive: true });
-    return {
-      success: true,
-      path: targetPath,
-      message: "Directory created.",
     };
   } catch (error) {
     return {

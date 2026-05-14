@@ -2,14 +2,10 @@ require 'json'
 
 package = JSON.parse(File.read(File.join(__dir__, 'package.json')))
 include_llama = %w[1 true yes on].include?(ENV.fetch('ELIZA_IOS_INCLUDE_LLAMA', '').downcase)
-app_store_local_runtime =
-  %w[1 true yes on].include?(ENV.fetch('ELIZA_IOS_APP_STORE_LOCAL_RUNTIME', '').downcase) ||
-  %w[1 true yes on].include?(ENV.fetch('ELIZA_IOS_APP_STORE_COMPLIANT_LOCAL_RUNTIME', '').downcase)
 frameworks = ['JavaScriptCore', 'Network', 'Accelerate', 'Metal', 'MetalKit', 'MetalPerformanceShaders', 'Foundation']
 frameworks << 'LlamaCpp' if include_llama
 swift_flags = '$(inherited)'
 swift_flags += ' -D ELIZA_IOS_INCLUDE_LLAMA' if include_llama
-swift_flags += ' -D ELIZA_IOS_APP_STORE_COMPLIANT_LOCAL_RUNTIME' if app_store_local_runtime
 
 Pod::Spec.new do |s|
   s.name = 'ElizaosCapacitorBunRuntime'

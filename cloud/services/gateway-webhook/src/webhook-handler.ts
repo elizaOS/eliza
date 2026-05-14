@@ -82,7 +82,7 @@ export async function handleWebhook(
 
   // ── Async phase: identity → forward → reply (runs in background) ──
 
-  processMessage(adapter, config, event, deps, project, agentId).catch((err) => {
+  processMessage(adapter, config, event, deps, project).catch((err) => {
     logger.error("Background message processing failed", {
       error: err instanceof Error ? err.message : String(err),
       project,
@@ -100,7 +100,6 @@ async function processMessage(
   event: ChatEvent,
   deps: HandlerDeps,
   project: string,
-  explicitAgentId?: string,
 ): Promise<void> {
   const { redis, cloudBaseUrl, getAuthHeader } = deps;
   const authHeader = getAuthHeader();
@@ -115,16 +114,15 @@ async function processMessage(
   );
 
   if (!identity) {
-    logger.info("Identity not linked; routing message to onboarding chat", {
+    logger.error("Identity resolution returned null", {
       project,
       platform: adapter.platform,
       senderId: event.senderId,
     });
-    await sendOnboardingReply(adapter, config, event, deps);
     return;
   }
 
-  const agentId = explicitAgentId || identity.agentId || config.agentId;
+  const agentId = config.agentId || identity.agentId;
 
   const server = await resolveAgentServer(redis, agentId);
   if (!server) {
@@ -175,53 +173,6 @@ async function processMessage(
     logger.error("Failed to send reply", {
       error: err instanceof Error ? err.message : String(err),
       platform: adapter.platform,
-    });
-  }
-}
-
-async function sendOnboardingReply(
-  adapter: PlatformAdapter,
-  config: WebhookConfig,
-  event: ChatEvent,
-  deps: HandlerDeps,
-): Promise<void> {
-  const { cloudBaseUrl, getAuthHeader } = deps;
-
-  try {
-    const response = await fetch(`${cloudBaseUrl}/api/eliza-app/onboarding/chat`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...getAuthHeader(),
-      },
-      body: JSON.stringify({
-        sessionId: `platform:${adapter.platform}:${event.senderId}`,
-        message: event.text,
-        platform: adapter.platform,
-        platformUserId: event.senderId,
-        platformDisplayName: event.senderName,
-      }),
-      signal: AbortSignal.timeout(30_000),
-    });
-
-    if (!response.ok) {
-      const body = await response.text().catch(() => "");
-      throw new Error(`onboarding chat failed (${response.status}) ${body.slice(0, 200)}`);
-    }
-
-    const body = (await response.json()) as {
-      data?: {
-        reply?: string;
-      };
-    };
-    const reply =
-      body.data?.reply ??
-      "I can get your Eliza Cloud agent set up. Open https://app.elizacloud.ai/get-started to continue.";
-    await adapter.sendReply(config, event, reply);
-  } catch (err) {
-    logger.error("Failed to send onboarding reply", {
-      platform: adapter.platform,
-      error: err instanceof Error ? err.message : String(err),
     });
   }
 }

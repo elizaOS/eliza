@@ -141,59 +141,6 @@ function deriveCacheSlotId(key: string): number {
   }
   return Math.abs(hash | 0) % MOBILE_PARALLEL;
 }
-
-function buildSpanSamplerPayload(
-  plan: GenerateOptions["spanSamplerPlan"],
-): Record<string, unknown> | undefined {
-  if (!plan || plan.overrides.length === 0) return undefined;
-  const overrides = plan.overrides.map((override) => {
-    const wire: Record<string, unknown> = {
-      span_index: override.spanIndex,
-      temperature: override.temperature,
-    };
-    if (typeof override.topK === "number") wire.top_k = override.topK;
-    if (typeof override.topP === "number") wire.top_p = override.topP;
-    return wire;
-  });
-  const payload: Record<string, unknown> = { overrides };
-  if (plan.strict === true) payload.strict = true;
-  return payload;
-}
-
-function buildGuidanceParams(options: GenerateOptions): Record<string, unknown> {
-  const guided: Record<string, unknown> = {};
-  const grammar =
-    typeof options.grammar === "string" && options.grammar.trim().length > 0
-      ? options.grammar
-      : typeof options.elizaSchema?.grammar === "string" &&
-          options.elizaSchema.grammar.trim().length > 0
-        ? options.elizaSchema.grammar
-        : undefined;
-  const skeleton = options.responseSkeleton ?? options.elizaSchema?.skeleton;
-  const spanSamplers = buildSpanSamplerPayload(options.spanSamplerPlan);
-
-  if (grammar) {
-    guided.grammar = grammar;
-  }
-  if (skeleton) {
-    guided.response_skeleton = skeleton;
-    guided.eliza_response_skeleton = skeleton;
-  }
-  if (typeof options.prefill === "string" && options.prefill.length > 0) {
-    guided.prefill = options.prefill;
-  }
-  if (options.elizaSchema) {
-    guided.eliza_schema = options.elizaSchema;
-    if (options.elizaSchema.prefillPlan) {
-      guided.eliza_prefill_plan = options.elizaSchema.prefillPlan;
-    }
-  }
-  if (spanSamplers) {
-    guided.eliza_span_samplers = spanSamplers;
-  }
-
-  return guided;
-}
 const MOBILE_MAX_TOKENS_CAP = 256;
 
 function isObject(value: unknown): value is Record<string, unknown> {
@@ -700,7 +647,6 @@ export class CapacitorLlamaAdapter implements LlamaAdapter {
         }
       ).slot_id = slotId;
     }
-    Object.assign(params, buildGuidanceParams(options));
 
     const contextId = this.requireContextId();
     const started = Date.now();
@@ -851,19 +797,6 @@ function looksLikeEmbeddingModelPath(modelPath: string): boolean {
   );
 }
 
-function looksLikeEmbeddingModelId(modelId: string | undefined): boolean {
-  if (!modelId) return false;
-  const lowered = modelId.toLowerCase();
-  return (
-    lowered.includes("nomic-embed") ||
-    lowered.includes("bge") ||
-    lowered.includes("all-minilm") ||
-    lowered.includes("gte") ||
-    lowered.includes("e5-") ||
-    lowered.includes("embedding")
-  );
-}
-
 export function registerCapacitorLlamaLoader(runtime: {
   registerService?: (name: string, impl: unknown) => unknown;
 }): void {
@@ -879,16 +812,15 @@ export function registerCapacitorLlamaLoader(runtime: {
   const chatAdapter = new CapacitorLlamaAdapter();
   const embeddingAdapter = new CapacitorLlamaAdapter();
 
-  function adapterFor(args: LoadOptions): CapacitorLlamaAdapter {
-    return looksLikeEmbeddingModelId(args.modelId) ||
-      looksLikeEmbeddingModelPath(args.modelPath)
+  function adapterFor(modelPath: string): CapacitorLlamaAdapter {
+    return looksLikeEmbeddingModelPath(modelPath)
       ? embeddingAdapter
       : chatAdapter;
   }
 
   runtime.registerService("localInferenceLoader", {
     async loadModel(args: LoadOptions): Promise<void> {
-      await adapterFor(args).load(args);
+      await adapterFor(args.modelPath).load(args);
     },
     async unloadModel(): Promise<void> {
       // No-op: each adapter manages its own context lifecycle inside
@@ -905,11 +837,6 @@ export function registerCapacitorLlamaLoader(runtime: {
       return (
         chatAdapter.currentModelPath() ?? embeddingAdapter.currentModelPath()
       );
-    },
-    currentModelPathForSlot(slot: string): string | null {
-      return slot === "TEXT_EMBEDDING"
-        ? embeddingAdapter.currentModelPath()
-        : chatAdapter.currentModelPath();
     },
     async generate(args: {
       prompt: string;

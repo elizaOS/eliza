@@ -37,7 +37,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
         with:
-          submodules: recursive
+          submodules: false
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
@@ -51,7 +51,6 @@ jobs:
           bun-version: "1.3.13"
           install-command: bun install --ignore-scripts --no-frozen-lockfile
           install-native-deps: "false"
-          init-submodules: "true"
 
       - name: Run ${{ matrix.lane }} lane
         env:

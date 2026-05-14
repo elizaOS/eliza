@@ -294,60 +294,6 @@ _WEIGHT_PAYLOAD_DIRS: Final[frozenset[str]] = frozenset(
 )
 
 
-def _manifest_voice_policy_blockers(root: Path, tier: str) -> list[str]:
-    manifest_path = root / "eliza-1.manifest.json"
-    if not manifest_path.is_file():
-        return []
-    try:
-        manifest = json.loads(manifest_path.read_text())
-    except json.JSONDecodeError as exc:
-        return [f"`eliza-1.manifest.json`: invalid JSON: {exc}"]
-
-    files = manifest.get("files")
-    voice_entries = files.get("voice") if isinstance(files, dict) else None
-    if not isinstance(voice_entries, list):
-        return []
-
-    voice_paths = {
-        entry.get("path")
-        for entry in voice_entries
-        if isinstance(entry, dict) and isinstance(entry.get("path"), str)
-    }
-    backends = VOICE_BACKENDS_BY_TIER[tier]
-    expected_paths = {
-        f"tts/{rel}" for rel in required_voice_artifacts_for_tier(tier)
-    }
-    blockers: list[str] = []
-
-    missing_expected = sorted(expected_paths - voice_paths)
-    if missing_expected:
-        blockers.append(
-            "`eliza-1.manifest.json`: files.voice missing required "
-            f"voice artifact path(s): {missing_expected}"
-        )
-
-    unexpected_paths = sorted(
-        path
-        for path in voice_paths
-        if (
-            ("kokoro" not in backends and path.startswith("tts/kokoro/"))
-            or (
-                "omnivoice" not in backends
-                and path.startswith("tts/omnivoice")
-            )
-        )
-    )
-    if unexpected_paths:
-        blockers.append(
-            "`eliza-1.manifest.json`: files.voice contains non-policy "
-            f"artifact path(s) for tier {tier}: {unexpected_paths}; "
-            "voice policy is 0.8B/2B/4B Kokoro-only, 9B Kokoro+OmniVoice, "
-            "27B-class OmniVoice-only"
-        )
-
-    return blockers
-
-
 def release_status_blockers(
     bundle_root: Path, plan: Mapping[str, TierGgufPlan]
 ) -> dict[str, list[str]]:
@@ -365,8 +311,6 @@ def release_status_blockers(
                 "final payloads, checksums, license evidence, and HF upload "
                 "evidence cannot be verified"
             )
-        else:
-            tier_blockers.extend(_manifest_voice_policy_blockers(root, tier))
         if not evidence_path.is_file():
             tier_blockers.append(
                 "`evidence/release.json`: missing; release state, final flags, "
@@ -530,7 +474,7 @@ def render_readiness(
         "readiness path.",
         "- Canonical active text tiers are Qwen3.5 0.8B (`0_8b`), "
         "Qwen3.5 2B (`2b`), Qwen3.5 4B (`4b`), Qwen3.5 9B (`9b`), "
-        "and Qwen3.6 27B-class (`27b`, "
+        "and Qwen3.5 27B (`27b`, "
         "`27b-256k`, `27b-1m`). ASR and embedding are real Qwen3 upstream "
         "exceptions: use the published Qwen3-ASR "
         "0.6B / 1.7B GGUF repos and Qwen3-Embedding 0.6B / 4B / 8B GGUF "
@@ -570,11 +514,7 @@ def render_readiness(
                 + ", ".join(f"`{quant}`" for quant in tier_plan.text_quantizations),
                 "- Voice backends: "
                 + ", ".join(f"`{backend}`" for backend in tier_plan.voice_backends),
-                (
-                    f"- OmniVoice quant: `{tier_plan.voice_quant}`"
-                    if "omnivoice" in tier_plan.voice_backends
-                    else "- OmniVoice quant: not required"
-                ),
+                f"- OmniVoice quant: `{tier_plan.voice_quant}`",
                 "- Contexts: "
                 + ", ".join(f"`{ctx}`" for ctx in tier_plan.contexts),
                 "- Required platform evidence: "

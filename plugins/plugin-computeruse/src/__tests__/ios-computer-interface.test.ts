@@ -197,17 +197,13 @@ describe("IosComputerInterface — invokeAppIntent", () => {
     });
     const iface = new IosComputerInterface({ getBridge: () => bridge });
     const result = await iface.invokeAppIntent({
-      intentId: "com.apple.mobilemail.send-email",
-      parameters: { to: "test@example.com", subject: "test", body: "hello" },
+      intentId: "com.apple.mobilenotes.create-note",
+      parameters: { body: "hello", title: "test" },
     });
     expect(result.success).toBe(true);
-    expect(result.intentId).toBe("com.apple.mobilemail.send-email");
+    expect(result.intentId).toBe("com.apple.mobilenotes.create-note");
     expect(received).not.toBeNull();
-    expect(received!.parameters).toEqual({
-      to: "test@example.com",
-      subject: "test",
-      body: "hello",
-    });
+    expect(received!.parameters).toEqual({ body: "hello", title: "test" });
   });
 
   it("throws with structured code + message on bridge failure", async () => {
@@ -226,24 +222,6 @@ describe("IosComputerInterface — invokeAppIntent", () => {
         parameters: {},
       }),
     ).rejects.toThrow(/intent_not_found.*no such intent/);
-  });
-
-  it("surfaces shortcut-required intents as non-native bridge failures", async () => {
-    const bridge = stubBridge({
-      appIntentInvoke: (req) =>
-        Promise.resolve({
-          ok: false,
-          code: "intent_not_found",
-          message: `No native invocation path for ${req.intentId}`,
-        }),
-    });
-    const iface = new IosComputerInterface({ getBridge: () => bridge });
-    await expect(
-      iface.invokeAppIntent({
-        intentId: "com.apple.mobilenotes.create-note",
-        parameters: { body: "hello" },
-      }),
-    ).rejects.toThrow(/intent_not_found.*No native invocation path/);
   });
 
   it("throws when the bridge is not registered", async () => {

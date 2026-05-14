@@ -14,7 +14,7 @@ async function ensureLocalInferenceHandler(
   runtime: AgentRuntime,
 ): Promise<void> {
   const { ensureLocalInferenceHandler: _fn } = await import(
-    "@elizaos/plugin-local-inference"
+    "@elizaos/plugin-local-inference/runtime"
   );
   return _fn(runtime);
 }

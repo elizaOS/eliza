@@ -8,9 +8,7 @@ already externally available and writes evidence/provenance sidecars so the
 publish orchestrator can hash and validate the final bundle.
 
 Default sources:
-  - TTS: Serveurperso/OmniVoice-GGUF for OmniVoice tiers only
-    (9B and 27B-class). Kokoro-only small tiers are staged by
-    stage_kokoro_assets.py.
+  - TTS: Serveurperso/OmniVoice-GGUF, Apache-2.0 GGUF artifacts.
   - ASR: ggml-org/Qwen3-ASR-0.6B-GGUF / Qwen3-ASR-1.7B-GGUF, GGUF artifacts.
   - VAD: ggml-org/whisper-vad, native GGML Silero VAD v5.1.2 model.
     The legacy onnx-community/silero-vad int8 ONNX model can be staged as
@@ -45,7 +43,6 @@ except ModuleNotFoundError:  # pragma: no cover - env-only path
 try:
     from .eliza1_manifest import (
         ELIZA_1_HF_REPO,
-        VOICE_BACKENDS_BY_TIER,
         VOICE_QUANT_BY_TIER,
         VOICE_QUANT_LADDER_BY_TIER,
         validate_manifest,
@@ -53,7 +50,6 @@ try:
 except ImportError:  # pragma: no cover - script execution path
     from eliza1_manifest import (
         ELIZA_1_HF_REPO,
-        VOICE_BACKENDS_BY_TIER,
         VOICE_QUANT_BY_TIER,
         VOICE_QUANT_LADDER_BY_TIER,
         validate_manifest,
@@ -774,15 +770,12 @@ def resolve_revisions(api: Any, repos: tuple[str, ...]) -> dict[str, str]:
 
 def stage_assets(args: argparse.Namespace) -> dict[str, Any]:
     tier = args.tier
-    voice_backends = VOICE_BACKENDS_BY_TIER[tier]
-    quant = VOICE_QUANT_BY_TIER[tier] if "omnivoice" in voice_backends else None
+    quant = VOICE_QUANT_BY_TIER[tier]
     bundle_dir = args.bundle_dir.resolve()
     asr_repo = args.asr_repo or ASR_REPO_BY_TIER[tier]
     HfApi, _ = require_hf_hub()
     api = HfApi()
-    revision_repos = [asr_repo, VAD_NATIVE_REPO]
-    if "omnivoice" in voice_backends:
-        revision_repos.insert(0, VOICE_REPO)
+    revision_repos = [VOICE_REPO, asr_repo, VAD_NATIVE_REPO]
     if args.include_vad_onnx_fallback:
         revision_repos.append(VAD_ONNX_REPO)
     revisions = resolve_revisions(api, tuple(revision_repos))
@@ -794,22 +787,19 @@ def stage_assets(args: argparse.Namespace) -> dict[str, Any]:
     )
 
     staged: list[dict[str, Any]] = []
-    # Default: stage the runtime's preferred OmniVoice quant for tiers that
-    # carry OmniVoice. Kokoro-only tiers stage no OmniVoice GGUFs here.
-    # Opt-in: --include-voice-ladder stages the full K-quant ladder declared
-    # for OmniVoice tiers so a downloader can pick a smaller level at install
-    # time based on the host's RAM/SoC class. The ladder is the publishable
-    # subset of omnivoice.cpp's full Q2_K..Q8_0 support; see
+    # Default: stage the runtime's preferred quant (VOICE_QUANT_BY_TIER).
+    # Opt-in: --include-voice-ladder stages the full K-quant ladder
+    # (VOICE_QUANT_LADDER_BY_TIER) so a downloader can pick a smaller level
+    # at install time based on the host's RAM/SoC class. The ladder is the
+    # publishable subset of omnivoice.cpp's full Q2_K..Q8_0 support; see
     # packages/shared/src/local-inference/catalog.ts:voiceQuantLadderForTier
     # and docs/inference/voice-quant-matrix.md.
     voice_quants: tuple[str, ...]
-    if "omnivoice" not in voice_backends:
-        voice_quants = ()
-    elif getattr(args, "include_voice_ladder", False):
+    if getattr(args, "include_voice_ladder", False):
         ladder = VOICE_QUANT_LADDER_BY_TIER.get(tier, ())
         voice_quants = tuple(ladder) if ladder else ()
     else:
-        voice_quants = (quant,) if quant else ()
+        voice_quants = (quant,)
     voice_pairs: tuple[tuple[str, str], ...] = tuple(
         pair
         for q in voice_quants
@@ -982,7 +972,6 @@ def stage_assets(args: argparse.Namespace) -> dict[str, Any]:
         "generatedAt": datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "tier": tier,
         "bundleDir": str(bundle_dir),
-        "voiceBackends": list(voice_backends),
         "voiceQuant": quant,
         "asrRepo": asr_repo,
         "asrRemotePath": asr_remote_path,
@@ -1161,8 +1150,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             "for 9b+ tiers; nothing for Kokoro-only tiers) under "
             "tts/omnivoice-base-<level>.gguf and tts/omnivoice-tokenizer-"
             "<level>.gguf. Without this flag only the runtime's preferred "
-            "OmniVoice quant (VOICE_QUANT_BY_TIER) is staged for OmniVoice "
-            "tiers. The downloader picks "
+            "quant (VOICE_QUANT_BY_TIER) is staged. The downloader picks "
             "the appropriate level at install time based on host RAM/SoC "
             "class; AGENTS.md §3 forbids silent fallback so the ladder must "
             "be a published-as-shipped subset, not a runtime guess."

@@ -60,9 +60,9 @@ TEXT_BASE_BY_TIER = {
     "2b": "Qwen/Qwen3.5-2B",
     "4b": "Qwen/Qwen3.5-4B",
     "9b": "Qwen/Qwen3.5-9B",
-    "27b": "Qwen/Qwen3.6-27B",
-    "27b-256k": "Qwen/Qwen3.6-27B",
-    "27b-1m": "Qwen/Qwen3.6-27B",
+    "27b": "Qwen/Qwen3.5-27B",
+    "27b-256k": "Qwen/Qwen3.5-27B",
+    "27b-1m": "Qwen/Qwen3.5-27B",
 }
 TEXT_CONTEXT_BY_TIER = {
     tier: PP.CONTEXTS_BY_TIER[tier][0]
@@ -235,8 +235,8 @@ def main(argv: list[str] | None = None) -> int:
     }, indent=2) + "\n")
 
     # --- voice / asr / vad / cache ---
-    # Voice follows eliza1_manifest: Kokoro is required for 0_8b/2b/4b,
-    # 9b ships Kokoro plus OmniVoice, and 27B-class tiers ship OmniVoice only.
+    # Voice follows eliza1_manifest: OmniVoice is the default backend on every
+    # tier; small/workstation tiers also ship Kokoro as a frozen fallback.
     # Native VAD is the release artifact; the ONNX file is a legacy fallback and
     # is intentionally not listed in the manifest.
     asset_map = [

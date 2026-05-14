@@ -1,3 +1,10 @@
+/**
+ * Telegram bot using elizaOS with full message pipeline.
+ *
+ * Required env vars: TELEGRAM_BOT_TOKEN, OPENAI_API_KEY
+ * Optional: POSTGRES_URL (defaults to PGLite)
+ */
+
 import { AgentRuntime, createCharacter } from "@elizaos/core";
 import { openaiPlugin } from "@elizaos/plugin-openai";
 import sqlPlugin from "@elizaos/plugin-sql";
@@ -19,9 +26,12 @@ async function main() {
 Be friendly, concise, and genuinely helpful.
 Keep responses short - suitable for mobile chat.`,
     settings: {
+      // Match how the chat example configures model selection via runtime settings
+      // (read by @elizaos/plugin-openai).
       OPENAI_SMALL_MODEL: "gpt-5-mini",
       OPENAI_LARGE_MODEL: "gpt-5-mini",
     },
+    // Optional: pass through secrets so plugins can read via runtime.getSetting()
     secrets: {
       TELEGRAM_BOT_TOKEN: telegramBotToken,
       OPENAI_API_KEY: openaiApiKey,

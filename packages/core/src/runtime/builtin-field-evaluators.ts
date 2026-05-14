@@ -62,16 +62,6 @@ function isExpressiveEmotionEnumValue(
 	return (EXPRESSIVE_EMOTION_ENUM_VALUES as readonly string[]).includes(value);
 }
 
-function normalizeCandidateActionName(value: unknown): string {
-	return String(value ?? "")
-		.trim()
-		.replace(/[\s:-]+/g, "_")
-		.replace(/[^A-Za-z0-9_]/g, "")
-		.replace(/_+/g, "_")
-		.replace(/^_+|_+$/g, "")
-		.toUpperCase();
-}
-
 // ---------------------------------------------------------------------------
 // shouldRespond — priority 5 (always first)
 // ---------------------------------------------------------------------------
@@ -180,7 +170,7 @@ export const candidateActionNamesFieldEvaluator: ResponseHandlerFieldEvaluator<
 > = {
 	name: "candidateActionNames",
 	description:
-		"Known action names you would likely use this turn. Prefer exact values from the available_actions list earlier in this prompt and use UPPER_SNAKE_CASE canonical names. Do not invent refusal, safety, or capability-denial action names. Empty array when no actions are likely needed (e.g. simple chitchat).",
+		"Action names you would likely use this turn. Match values to the available_actions list earlier in this prompt — but it is fine to emit a name you are confident about even if it is not listed (the planner will resolve via similes). Use UPPER_SNAKE_CASE for canonical action names. Empty array when no actions are likely needed (e.g. simple chitchat).",
 	priority: 50,
 	schema: {
 		type: "array",
@@ -193,13 +183,14 @@ export const candidateActionNamesFieldEvaluator: ResponseHandlerFieldEvaluator<
 		const seen = new Set<string>();
 		const result: string[] = [];
 		for (const item of value) {
-			const normalized = normalizeCandidateActionName(item);
+			const normalized = String(item ?? "").trim();
 			if (!normalized) continue;
-			if (seen.has(normalized)) continue;
-			seen.add(normalized);
+			const key = normalized.toUpperCase();
+			if (seen.has(key)) continue;
+			seen.add(key);
 			result.push(normalized);
 		}
-		return result.slice(0, 12);
+		return result;
 	},
 };
 
