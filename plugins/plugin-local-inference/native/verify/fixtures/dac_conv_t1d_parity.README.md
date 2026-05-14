@@ -59,9 +59,10 @@ every collapsed-op site at once.
 }
 ```
 
-The inline prefix lets CI smoke the first 256 samples without needing
-the full baseline `.wav` on disk. Full-sample comparison runs when the
-test can resolve `baseline_wav_path`.
+The inline prefix is documentation-only — full-sample comparison is
+the only mode the companion test runs. Partial-prefix comparison would
+hide regressions outside the first ~10ms of audio, so when the
+baseline WAV is missing the test skips cleanly instead.
 
 ## Capture (bootstrap against the pre-merge build)
 
