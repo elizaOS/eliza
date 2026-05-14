@@ -38,8 +38,8 @@
 		"src"
 	],
 	"scripts": {
-		"build": "tsup src/index.ts src/runtime/index.ts src/routes/index.ts src/services/index.ts --format esm --clean --external node-llama-cpp --external @node-llama-cpp/* --external @reflink/reflink --external onnxruntime-node --external @huggingface/transformers --external whisper-node",
-		"dev": "tsup src/index.ts src/runtime/index.ts src/routes/index.ts src/services/index.ts --format esm --watch --external node-llama-cpp --external @node-llama-cpp/* --external @reflink/reflink --external onnxruntime-node --external @huggingface/transformers --external whisper-node",
+		"build": "tsup src/index.ts src/runtime/index.ts src/routes/index.ts src/services/index.ts --format esm --clean --external node-llama-cpp --external @node-llama-cpp/* --external @reflink/reflink --external onnxruntime-node --external @huggingface/transformers",
+		"dev": "tsup src/index.ts src/runtime/index.ts src/routes/index.ts src/services/index.ts --format esm --watch --external node-llama-cpp --external @node-llama-cpp/* --external @reflink/reflink --external onnxruntime-node --external @huggingface/transformers",
 		"test": "vitest run",
 		"clean": "rm -rf dist .turbo node_modules",
 		"lint": "bunx @biomejs/biome check --write --unsafe .",
@@ -56,8 +56,7 @@
 	"optionalDependencies": {
 		"node-llama-cpp": "3.18.1",
 		"onnxruntime-node": "1.24.3",
-		"@huggingface/transformers": "^4.0.0",
-		"whisper-node": "^1.1.1"
+		"@huggingface/transformers": "^4.0.0"
 	},
 	"peerDependencies": {
 		"@elizaos/app-core": "workspace:*",
@@ -76,9 +75,6 @@
 			"optional": true
 		},
 		"@huggingface/transformers": {
-			"optional": true
-		},
-		"whisper-node": {
 			"optional": true
 		}
 	},
