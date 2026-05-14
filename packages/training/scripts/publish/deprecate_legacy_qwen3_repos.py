@@ -74,9 +74,9 @@ TurboQuant paths.
 
 Superseded by the active Eliza-1 line:
 
-- [`elizaos/eliza-1`](https://huggingface.co/elizaos/eliza-1) `bundles/0_8b/` (Qwen3.5-0.8B-Base — new smallest tier)
-- [`elizaos/eliza-1`](https://huggingface.co/elizaos/eliza-1) `bundles/2b/` (Qwen3.5-2B-Base — new mid local tier)
-- [`elizaos/eliza-1`](https://huggingface.co/elizaos/eliza-1) `bundles/4b/` (Qwen3.5-4B-Base — local/workstation tier; same tier id, new backbone)
+- [`elizalabs/eliza-1`](https://huggingface.co/elizalabs/eliza-1) `bundles/0_8b/` (Qwen3.5-0.8B-Base — new smallest tier)
+- [`elizalabs/eliza-1`](https://huggingface.co/elizalabs/eliza-1) `bundles/2b/` (Qwen3.5-2B-Base — new mid local tier)
+- [`elizalabs/eliza-1`](https://huggingface.co/elizalabs/eliza-1) `bundles/4b/` (Qwen3.5-4B-Base — local/workstation tier; same tier id, new backbone)
 
 Existing downloads still work; no new releases will land here.
 
@@ -103,7 +103,7 @@ Qwen3 base model (`Qwen/Qwen3-{legacy_size}`) that does not work with
 the eliza-1 dflash spec-decode path.
 
 Superseded by the active Eliza-1 line — see the current bundle companions under
-[`elizaos/eliza-1`](https://huggingface.co/elizaos/eliza-1)
+[`elizalabs/eliza-1`](https://huggingface.co/elizalabs/eliza-1)
 (`bundles/0_8b/`, `bundles/2b/`, and `bundles/4b/`).
 
 Existing downloads still work; no new releases will land here.
@@ -134,7 +134,7 @@ Going forward, the canonical SFT-corpus repo for the Eliza-1 line is
 [`elizaos/eliza-1-training`](https://huggingface.co/datasets/elizaos/eliza-1-training)
 (the broader privacy-filtered SFT corpus that the H200 0_8b / 2b runs train
 against). The new Qwen3.5 tier SFTs land in
-[`elizaos/eliza-1`](https://huggingface.co/elizaos/eliza-1)
+[`elizalabs/eliza-1`](https://huggingface.co/elizalabs/eliza-1)
 under the matching `bundles/<tier>/` path.
 
 Existing downloads still work.

@@ -174,7 +174,7 @@ export type MessagesConfig = {
   tts?: TtsConfig;
 };
 
-/** Audio configuration (placeholder for future audio-specific settings). */
+/** Audio configuration. Currently open-ended; typed fields will be added as the audio subsystem stabilises. */
 export type AudioConfig = {
   [key: string]: unknown;
 };

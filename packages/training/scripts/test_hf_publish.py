@@ -666,7 +666,7 @@ def test_sync_catalog_selects_single_repo_bundle_paths(sync_catalog):
     selected = sync_catalog._primary_text_file_from_manifest(
         manifest,
         file_index,
-        "elizaos/eliza-1",
+        "elizalabs/eliza-1",
         "bundles/9b",
     )
     bundle_size = sync_catalog._bundle_size_from_manifest(
