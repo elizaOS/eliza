@@ -838,7 +838,7 @@ vulkan-dispatch-smoke: vulkan_dispatch_smoke
 	DYLD_LIBRARY_PATH=$(ELIZA_DFLASH_VULKAN_BIN_DIR):$$DYLD_LIBRARY_PATH \
 	  ./vulkan_dispatch_smoke
 
-vulkan_dispatch_smoke: vulkan_dispatch_smoke.cpp $(REF_OBJ) $(QJL_POLAR_OBJ)
+vulkan_dispatch_smoke: vulkan_dispatch_smoke.cpp $(REF_OBJ) $(QJL_POLAR_OBJ) $(DISPATCH_SMOKE_GGML_HEADERS) $(DISPATCH_SMOKE_REF_HEADERS)
 	@if [ "$$(uname -s)" != "Linux" ] && [ "$${ELIZA_ALLOW_MOLTENVK_VULKAN_DISPATCH_SMOKE:-0}" != "1" ]; then \
 	    echo "[vulkan-dispatch-smoke] native Linux required for recordable Vulkan graph dispatch evidence."; \
 	    echo "[vulkan-dispatch-smoke] macOS/MoltenVK can validate standalone SPIR-V only; it cannot flip runtime-ready Vulkan capability bits."; \
