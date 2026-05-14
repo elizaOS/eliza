@@ -3936,6 +3936,26 @@ function stripAndroidForCloud() {
 }
 
 async function buildAndroid() {
+  // Hard refusal: the default `android` target is sideload-only and will be
+  // rejected by Play. If CI or a contributor signals Play-Store intent via
+  // env vars, fail loudly and point them at the right target.
+  const playStoreFlagged =
+    process.env.ELIZA_PLAY_STORE_BUILD === "1" ||
+    process.env.MILADY_PLAY_STORE_BUILD === "1" ||
+    process.env.ELIZA_BUILD_VARIANT?.toLowerCase() === "store" ||
+    process.env.MILADY_BUILD_VARIANT?.toLowerCase() === "store";
+  if (playStoreFlagged) {
+    console.error(
+      "[mobile-build] Refusing target `android` under ELIZA_PLAY_STORE_BUILD / " +
+        "ELIZA_BUILD_VARIANT=store. The default `android` APK embeds the " +
+        "on-device agent runtime and requests Play-rejected permissions " +
+        "(MANAGE_APP_OPS_MODES, PACKAGE_USAGE_STATS). Use " +
+        "`build:android:cloud` (Play-Store-compliant thin client) or " +
+        "`build:android:system` (AOSP privileged platform-signed APK).",
+    );
+    process.exit(2);
+  }
+
   const sdk = resolveAndroidSdkRoot();
   const jdk = resolveJavaHome();
   if (!sdk)
