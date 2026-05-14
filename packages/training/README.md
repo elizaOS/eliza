@@ -11,8 +11,9 @@ model, including native tool calls.
 > | what                              | repo                                      | script                          |
 > |-----------------------------------|-------------------------------------------|---------------------------------|
 > | Dataset (native trajectory SFT)   | runtime `eliza_native_v1` exports          | `scripts/trajectories_to_sft.py`|
-> | Trained models                    | `elizaos/eliza-1` (model; `bundles/<tier>/`) | `scripts/push_model_to_hf.py`   |
-> | Pipeline source (this directory)  | `elizaos/eliza-1-pipeline` (model) | `scripts/push_pipeline_to_hf.py`|
+> | Trained models                    | `elizaos/eliza-1` (model; `bundles/<tier>/`) | `scripts/publish/publish_model.py` |
+> | Training dataset (SFT splits)     | `elizaos/eliza-1-training` (dataset)         | `scripts/publish/publish_dataset.py` |
+> | Pipeline source (this directory)  | `elizaos/eliza-1-pipeline` (model)           | `scripts/publish/publish_pipeline.py` |
 >
 > Quants land under the same `elizaos/eliza-1` model repo alongside each
 > bundle manifest; do not create per-quant public defaults.
@@ -156,10 +157,14 @@ VAST_API_KEY=... HUGGING_FACE_HUB_TOKEN=... \
     bash scripts/train_vast.sh provision-and-train \
     --registry-key qwen3.5-4b --epochs 1 --bootstrap hf
 
-# Push the trained checkpoint to elizaos/eliza-1
-HF_TOKEN=hf_xxx uv run python scripts/push_model_to_hf.py \
-    --registry-key qwen3.5-4b \
-    --checkpoint checkpoints/qwen3-5-4b-apollo/final
+# Push the trained checkpoint to elizaos/eliza-1 (gated bundle path).
+# publish_model.py --mode bundle runs the full publish orchestrator:
+# layout → kernel verify → eval gates (incl. prior-bundle regression check) →
+# manifest → README → HF push.
+HF_TOKEN=hf_xxx uv run python -m scripts.publish.publish_model \
+    --mode bundle \
+    --tier 4b \
+    --bundle-dir checkpoints/qwen3-5-4b-apollo/final
 ```
 
 See `RL_STRATEGY.md` for the post-SFT plan (DPO + GRPO via verl).
