@@ -26,7 +26,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-def main(n_steps: int = 5, split: str = "test_task") -> None:
+def main(n_steps: int = 5, split: str = "train") -> None:
     from datasets import load_dataset  # type: ignore[import-not-found]
 
     from benchmarks.mind2web.dataset import Mind2WebDataset

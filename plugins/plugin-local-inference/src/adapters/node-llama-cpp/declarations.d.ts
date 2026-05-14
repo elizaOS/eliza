@@ -19,12 +19,30 @@ declare module "stream-browserify" {
 // import. The tsup build marks it `--external`, so the compiler never sees the
 // real types. Declare a loose surface so callers can type-check.
 declare module "ws" {
-  const ws: unknown;
-  export = ws;
+  // biome-ignore lint/suspicious/noExplicitAny: loose ambient stub for an optional dep
+  export const WebSocket: any;
+  // biome-ignore lint/suspicious/noExplicitAny: loose ambient stub for an optional dep
+  export const WebSocketServer: any;
+  // biome-ignore lint/suspicious/noExplicitAny: loose ambient stub for an optional dep
+  export type WebSocket = any;
+  // biome-ignore lint/suspicious/noExplicitAny: loose ambient stub for an optional dep
+  export type WebSocketServer = any;
+  // biome-ignore lint/suspicious/noExplicitAny: loose ambient stub for an optional dep
+  const ws: any;
+  export default ws;
 }
 
 // `@huggingface/transformers` is an optional dependency. Same story.
 declare module "@huggingface/transformers" {
-  const transformers: unknown;
-  export = transformers;
+  // biome-ignore lint/suspicious/noExplicitAny: loose ambient stub for an optional dep
+  export const AutoTokenizer: any;
+  // biome-ignore lint/suspicious/noExplicitAny: loose ambient stub for an optional dep
+  export const AutoModelForSequenceClassification: any;
+  // biome-ignore lint/suspicious/noExplicitAny: loose ambient stub for an optional dep
+  export const pipeline: any;
+  // biome-ignore lint/suspicious/noExplicitAny: loose ambient stub for an optional dep
+  export type TextToAudioPipeline = any;
+  // biome-ignore lint/suspicious/noExplicitAny: loose ambient stub for an optional dep
+  const transformers: any;
+  export default transformers;
 }

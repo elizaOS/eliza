@@ -410,18 +410,27 @@ class AgentBenchRunner:
             for env in weak_envs:
                 recommendations.append(f"Enhance {env} environment handling capabilities")
 
-        # Compare with GPT-4 baseline
+        # Compare with the published AgentBench leaderboard scores
+        # (GPT-4, GPT-3.5, Claude-2). Comparison is meaningful only
+        # when running the same upstream split this runner loads.
         gpt4_comparison = comparison.get("gpt4_comparison", {})
+        split_label = (
+            self.config.split.value if isinstance(self.config.split, BenchmarkSplit) else "test"
+        )
         beats_gpt4 = [
             env for env, data in gpt4_comparison.items() if data.get("difference", 0.0) > 0.0
         ]
         if beats_gpt4:
             key_findings.append(
-                f"Higher success rate than published GPT-4 baseline (reference) in: {', '.join(beats_gpt4)}"
+                f"Higher success rate than the published GPT-4 leaderboard score in: "
+                f"{', '.join(beats_gpt4)} (run on upstream split={split_label!r})."
             )
         if gpt4_comparison:
             key_findings.append(
-                "Note: baseline scores are published AgentBench results; comparisons are reference-only unless you run the official AgentBench task set."
+                "Baseline scores are the published AgentBench leaderboard numbers "
+                f"(https://llmbench.ai/agent/data). Local results are run on upstream's "
+                f"official {split_label} split; ensure max_tasks matches the leaderboard "
+                "split size before treating differences as final."
             )
 
         # Efficiency analysis

@@ -27,10 +27,12 @@ from elizaos_agentbench.types import (
     AgentBenchResult,
     AgentBenchReport,
     AgentBenchConfig,
+    BenchmarkSplit,
     EnvironmentConfig,
 )
 from elizaos_agentbench.runner import AgentBenchRunner
 from elizaos_agentbench.adapters.base import EnvironmentAdapter
+from elizaos_agentbench import upstream_loader
 from elizaos_agentbench.eliza_harness import (
     ElizaAgentHarness,
     create_benchmark_runtime,
@@ -49,10 +51,12 @@ __all__ = [
     "AgentBenchResult",
     "AgentBenchReport",
     "AgentBenchConfig",
+    "BenchmarkSplit",
     "EnvironmentConfig",
     # Runner
     "AgentBenchRunner",
     "EnvironmentAdapter",
+    "upstream_loader",
     # Bridge compatibility helpers
     "ElizaAgentHarness",
     "create_benchmark_runtime",
