@@ -284,7 +284,7 @@ export const terminalAction: Action = {
     "Do NOT use for building projects, creating websites, or multi-step work — use START_CODING_TASK instead. " +
     "The command output is captured as a document attachment for native planner follow-up. After the run, decide whether to reply, stay silent, continue with another action, or save the attachment via the clipboard plugin.",
   descriptionCompressed:
-    "run single explicit shell command user provide directly use user give specific command like run ls - la execute npm install use build project, create website, multi-step work use START_CODING_TASK instead command output captur document attachment native planner follow-up after run, decide whether reply, stay silent, continue w/ another action, save attachment via clipboard plugin",
+    "run one explicit shell command; not build/create/multi-step -> START_CODING_TASK",
 
   validate: async () => isLocalCodeExecutionAllowed(),
 

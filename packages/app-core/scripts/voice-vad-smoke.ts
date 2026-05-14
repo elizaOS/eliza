@@ -21,19 +21,6 @@
  */
 
 import process from "node:process";
-import { makeSpeechWithSilenceFixture } from "../../../plugins/plugin-local-inference/src/services/voice/__test-helpers__/synthetic-speech";
-import type { VadEvent } from "../../../plugins/plugin-local-inference/src/services/voice/types";
-import {
-  createSileroVadDetector,
-  resolveSileroVadPath,
-  SileroVad,
-  VadUnavailableError,
-} from "../../../plugins/plugin-local-inference/src/services/voice/vad";
-import {
-  loadBundledWakeWordModel,
-  resolveWakeWordModel,
-  WakeWordUnavailableError,
-} from "../../../plugins/plugin-local-inference/src/services/voice/wake-word";
 
 const SR = 16_000;
 const WINDOW = 512;
@@ -49,6 +36,24 @@ function fail(msg: string): never {
 }
 
 async function main(): Promise<void> {
+  const { makeSpeechWithSilenceFixture } = await import(
+    "../../../plugins/plugin-local-inference/src/services/voice/__test-helpers__/synthetic-speech"
+  );
+  const {
+    createSileroVadDetector,
+    resolveSileroVadPath,
+    SileroVad,
+    VadUnavailableError,
+  } = await import(
+    "../../../plugins/plugin-local-inference/src/services/voice/vad"
+  );
+  const {
+    loadBundledWakeWordModel,
+    resolveWakeWordModel,
+    WakeWordUnavailableError,
+  } = await import(
+    "../../../plugins/plugin-local-inference/src/services/voice/wake-word"
+  );
   const bundleRoot = arg("--bundle");
   const modelPath = process.env.ELIZA_VAD_MODEL_PATH;
   const resolved = resolveSileroVadPath({ modelPath, bundleRoot });
@@ -59,7 +64,7 @@ async function main(): Promise<void> {
   }
   console.log(`[voice-vad-smoke] Silero VAD model: ${resolved}`);
 
-  let vad: SileroVad;
+  let vad: InstanceType<typeof SileroVad>;
   try {
     vad = await SileroVad.load({ modelPath: resolved });
   } catch (err) {
@@ -95,7 +100,8 @@ async function main(): Promise<void> {
       minSpeechMs: 150,
     },
   });
-  const events: VadEvent[] = [];
+  const events: import("../../../plugins/plugin-local-inference/src/services/voice/types").VadEvent[] =
+    [];
   det.onVadEvent((e) => events.push(e));
   for (let i = 0; (i + 1) * WINDOW <= fx.pcm.length; i++) {
     await det.pushFrame({

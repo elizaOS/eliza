@@ -191,7 +191,7 @@ const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
 // commit 08032d57 — re-tagged on the elizaOS rename). Composes TBQ (apothic) +
 // QJL (W1-A) + Q4_POLAR (W1-B) + Metal sources (W1-D) + DFlash spec-decode
 // (W2) + W3-B fused CPU kernels + W4-B CUDA QJL/Polar/TBQ3_TCQ kernels onto
-// upstream b8198. See docs/porting/unified-fork-strategy.md for the full
+// upstream b8198. See the fork consolidation strategy doc for the full
 // migration story.
 //
 // The fork ships in-tree as the git submodule at packages/inference/llama.cpp
@@ -570,7 +570,7 @@ export function ensureLlamaCppCheckout({
  * `polarquant` series under the same directory exists but conflicts with
  * `qjl` over the GGML_TYPE_COUNT tag (PolarQuant claims id 45, QJL
  * claims 46) and is owned by a separate landing. When that series is
- * unified with QJL, append it here.
+ * merged with QJL, append it here.
  *
  * Order is:
  *   1. checkout -> 2. patchLlamaCppSourceForMusl -> 3. applyVendoredPatches.

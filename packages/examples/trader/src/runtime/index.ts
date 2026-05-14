@@ -1,5 +1,4 @@
 import { AgentRuntime, type Plugin } from "@elizaos/core";
-import walletPlugin from "@elizaos/plugin-wallet";
 import { traderCharacter } from "./character";
 
 let runtimeInstance: AgentRuntime | null = null;
@@ -22,6 +21,8 @@ export interface RuntimeConfig {
  * Initialize the agent runtime with the provided configuration
  */
 async function initializeRuntime(config: RuntimeConfig): Promise<AgentRuntime> {
+  const { default: walletPlugin } = await import("@elizaos/plugin-wallet");
+
   // Merge config into character settings
   const character = {
     ...traderCharacter,

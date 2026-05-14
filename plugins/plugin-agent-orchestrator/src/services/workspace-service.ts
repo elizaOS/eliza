@@ -249,11 +249,17 @@ export class CodingWorkspaceService {
       logger: this.serviceConfig.debug
         ? {
             info: (data: unknown, msg?: string) =>
-              logger.info(`[WorkspaceService] ${msg ?? ""} ${String(data ?? "")}`),
+              logger.info(
+                `[WorkspaceService] ${msg ?? ""} ${String(data ?? "")}`,
+              ),
             warn: (data: unknown, msg?: string) =>
-              logger.warn(`[WorkspaceService] ${msg ?? ""} ${String(data ?? "")}`),
+              logger.warn(
+                `[WorkspaceService] ${msg ?? ""} ${String(data ?? "")}`,
+              ),
             error: (data: unknown, msg?: string) =>
-              logger.error(`[WorkspaceService] ${msg ?? ""} ${String(data ?? "")}`),
+              logger.error(
+                `[WorkspaceService] ${msg ?? ""} ${String(data ?? "")}`,
+              ),
             debug: (_data: unknown, msg?: string) => this.log(`${msg ?? ""}`),
           }
         : undefined,
@@ -666,7 +672,9 @@ export class CodingWorkspaceService {
       if (this.scratchDecisionCallback) {
         this.log(`Firing scratch decision prompt for "${label}" at ${dirPath}`);
         this.scratchDecisionCallback(record).catch((err) => {
-          logger.warn(`[CodingWorkspaceService] Failed to send scratch decision prompt: ${err}`);
+          logger.warn(
+            `[CodingWorkspaceService] Failed to send scratch decision prompt: ${err}`,
+          );
         });
       } else {
         this.log(
@@ -810,7 +818,9 @@ export class CodingWorkspaceService {
         if (!record || record.status !== "pending_decision") return;
         await this.removeScratchDir(record.path);
       } catch (error) {
-        logger.warn(`[CodingWorkspaceService] scratch cleanup failed for ${sessionId}: ${String(error)}`);
+        logger.warn(
+          `[CodingWorkspaceService] scratch cleanup failed for ${sessionId}: ${String(error)}`,
+        );
       } finally {
         this.scratchBySession.delete(sessionId);
         this.scratchCleanupTimers.delete(sessionId);

@@ -132,7 +132,7 @@
       },
       "ACPX_NO_TERMINAL": {
         "type": "boolean",
-        "description": "When true, passes --no-terminal so coding agents communicate through ACP events rather than PTY terminal UI.",
+        "description": "When true, passes --no-terminal so coding agents communicate through ACP events rather than terminal UI.",
         "required": false,
         "default": true,
         "sensitive": false

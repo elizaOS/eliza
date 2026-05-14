@@ -40,8 +40,7 @@ export const searchIssuesAction: Action = {
   parameters: [
     {
       name: "filters",
-      description:
-        "Linear issue filters: query, state, assignee, priority, team, label, limit.",
+      description: "Linear issue filters: query, state, assignee, priority, team, label, limit.",
       required: false,
       schema: { type: "object" as const },
     },
@@ -168,7 +167,7 @@ export const searchIssuesAction: Action = {
 
             const assignees = getStringArrayValue(parsed.assignees);
             if (assignees && assignees.length > 0) {
-              const processedAssignees = [];
+              const processedAssignees: string[] = [];
               for (const assignee of assignees) {
                 if (assignee.toLowerCase() === "me") {
                   try {

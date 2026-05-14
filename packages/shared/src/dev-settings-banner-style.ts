@@ -16,7 +16,7 @@ function shouldSkipBannerColor(): boolean {
   const fc = process.env.FORCE_COLOR;
   if (fc === "0" || fc === "false") return true;
   if (fc === "1" || fc === "true") return false;
-  if (typeof process.stdout?.isTTY === "boolean" && !process.stdout.isTTY)
+  if (typeof process.stdout.isTTY === "boolean" && !process.stdout.isTTY)
     return true;
   return false;
 }

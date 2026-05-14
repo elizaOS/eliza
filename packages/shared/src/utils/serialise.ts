@@ -16,6 +16,6 @@ export function createSerialise(): <T>(fn: () => Promise<T>) => Promise<T> {
     lock = new Promise<void>((r) => {
       resolve = r;
     });
-    return prev.then(fn).finally(() => resolve?.());
+    return prev.then(fn).finally(() => resolve());
   };
 }

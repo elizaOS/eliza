@@ -580,7 +580,7 @@ export const generateMediaAction: Action = {
 	description:
 		"Generate an image, audio (TTS), or video from a natural-language prompt. Routes to the appropriate local model via the runtime model registry. Video is not yet supported and is refused cleanly.",
 	descriptionCompressed:
-		"GENERATE_MEDIA: produce an image/audio/(future)video from a prompt. Routes to ModelType.IMAGE or TEXT_TO_SPEECH.",
+		"GENERATE_MEDIA image|audio|future-video prompt; routes IMAGE|TEXT_TO_SPEECH",
 	routingHint:
 		"explicit ask to draw/picture/photo/say/speak/read-aloud/animate -> GENERATE_MEDIA; not for general text replies",
 	suppressPostActionContinuation: true,

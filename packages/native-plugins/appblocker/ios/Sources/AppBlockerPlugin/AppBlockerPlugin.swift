@@ -136,11 +136,12 @@ public class ElizaAppBlockerPlugin: CAPPlugin, CAPBridgedPlugin {
         let permissionStatus = permission["status"] as? String ?? "not-determined"
         let reason = permission["reason"] as? String
         let blockedCount = state?.tokenDataArray.count ?? 0
+        let active = permissionStatus == "granted" && blockedCount > 0
 
         call.resolve([
-            "status": "active",
+            "status": active ? "active" : "inactive",
             "available": true,
-            "active": permissionStatus == "granted" && blockedCount > 0,
+            "active": active,
             "platform": "ios",
             "engine": "family-controls",
             "capabilities": appBlockerCapabilities(),

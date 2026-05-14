@@ -2,19 +2,19 @@
 /**
  * Build the DFlash-capable llama-server fork used by local inference.
  *
- * As of v0.2.0-eliza, DFlash speculative decoding lives in the unified
+ * As of v0.2.0-eliza, DFlash speculative decoding lives in the combined
  * elizaOS/llama.cpp fork (the same repo as the AOSP cross-compile).
  * Pre-2026-05-09 this script consumed spiritbuun/buun-llama-cpp directly
  * (which itself was 8,988 commits ahead of upstream b8198 with quant
  * type IDs that conflicted with apothic's TBQ slots). Wave-3 agent A
  * surgically ported the DFlash CLI surface (--spec-type dflash,
  * --draft-min-prob, n_drafted_total/n_drafted_accepted_total Prometheus
- * counters) onto the unified fork and retired the dual-fork situation.
- * See docs/porting/unified-fork-strategy.md §H step 8 for the migration
+ * counters) onto the combined fork and retired the dual-fork situation.
+ * See the fork consolidation strategy doc §H step 8 for the migration
  * story. Override via ELIZA_DFLASH_LLAMA_CPP_REMOTE / _REF if you need
  * to point at the legacy spiritbuun pin during a rollback.
  *
- * The script builds the unified fork into:
+ * The script builds the combined fork into:
  *   $ELIZA_STATE_DIR/local-inference/bin/dflash/<platform>-<arch>-<backend>/
  *
  * Multi-target build matrix (see SUPPORTED_TARGETS below):
@@ -82,7 +82,7 @@ import {
 } from "./omnivoice-fuse/prepare.mjs";
 import { verifyFusedSymbols } from "./omnivoice-fuse/verify-symbols.mjs";
 
-// elizaOS/llama.cpp @ bfab6689 — the unified fork that
+// elizaOS/llama.cpp @ bfab6689 — the combined fork that
 // composes TBQ (turbo3/turbo4/turbo3_tcq) + QJL (block_qjl1_256,
 // GGML_OP_ATTN_SCORE_QJL, GGML_OP_FUSED_ATTN_QJL_TBQ) + Q4_POLAR (Q4_POLAR=47)
 // + the eliza Metal/Vulkan/CUDA kernels + DFlash spec-decode (--spec-type
@@ -1696,7 +1696,7 @@ function submoduleCheckoutPresent() {
 }
 
 // The standalone (non-submodule) source-checkout cache for the elizaOS/llama.cpp
-// fork. Renamed across the unified-fork migration; the new directory busts any
+// fork. Renamed across the single-fork migration; the new directory busts any
 // stale prior-name cache so a fresh ref pull is forced. Only used when the
 // operator forces a standalone clone via ELIZA_DFLASH_LLAMA_CPP_REMOTE / _REF
 // (or an explicit --cache-dir), or when the submodule isn't initialized.

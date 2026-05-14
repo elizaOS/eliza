@@ -716,7 +716,7 @@ export const databaseAction: Action = {
   description:
     "Inspect or query the agent's database. Ops: list_tables, get_table, query (read-only by default), search_vectors (semantic memory search).",
   descriptionCompressed:
-    "inspect or query agent database; ops list_tables, get_table, query (read-only default), search_vectors",
+    "database list_tables|get_table|query(read-only default)|search_vectors",
   validate: async (runtime) => {
     registerVectorSearchCategory(runtime);
     return true;

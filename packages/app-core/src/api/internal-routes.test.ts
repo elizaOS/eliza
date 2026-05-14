@@ -1,14 +1,14 @@
-import * as http from "node:http";
 import fs from "node:fs";
+import * as http from "node:http";
+import { Socket } from "node:net";
 import os from "node:os";
 import path from "node:path";
-import { Socket } from "node:net";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { CompatRuntimeState } from "./compat-route-shared";
 import {
   __resetWakeTelemetryForTests,
-  __setDeviceSecretPathForTests,
   __setDeviceSecretForTests,
+  __setDeviceSecretPathForTests,
   getDeviceSecret,
   getWakeTelemetry,
   handleInternalWakeRoute,

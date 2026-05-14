@@ -93,6 +93,15 @@ export interface PluginManifestCandidate {
   packageRoot: string;
 }
 
+function assertPackageJsonObject(
+  value: unknown,
+  packageRoot: string,
+): asserts value is PluginPackageManifest {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`invalid package.json object at ${packageRoot}`);
+  }
+}
+
 /** Verdict for a single candidate after evaluating its manifest. */
 export interface PluginManifestVerdict {
   packageName: string;
@@ -134,8 +143,9 @@ export async function readPluginPackageManifest(
     if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
     throw err;
   }
-  const parsed = JSON.parse(raw) as PluginPackageManifest;
-  if (!parsed?.elizaos?.plugin) return null;
+  const parsed = JSON.parse(raw) as unknown;
+  assertPackageJsonObject(parsed, packageRoot);
+  if (!parsed.elizaos?.plugin) return null;
   return parsed;
 }
 

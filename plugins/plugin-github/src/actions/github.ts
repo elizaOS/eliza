@@ -103,7 +103,7 @@ export const githubAction: Action = {
   description:
     "GitHub umbrella for pull requests, issues, and notification triage. Use action=pr_list/pr_review/issue_create/issue_assign/issue_close/issue_reopen/issue_comment/issue_label/notification_triage.",
   descriptionCompressed:
-    "GitHub: pr_list|pr_review|issue_create|issue_assign|issue_close|issue_reopen|issue_comment|issue_label|notification_triage",
+    "GitHub pr_list|pr_review|issue_create|assign|close|reopen|comment|label|triage",
   parameters: [
     {
       name: "action",

@@ -148,7 +148,7 @@ export const kaminoProvider: Provider = {
   description:
     "Provides information about Kamino lending protocol positions, market data, and available lending/borrowing opportunities",
   descriptionCompressed:
-    "provide information Kamino lend protocol position, market data, available lending/borrow opportunity",
+    "Kamino lending positions, markets, lend/borrow opportunities",
   dynamic: true,
   contexts: ["finance", "crypto", "wallet"],
   contextGate: { anyOf: ["finance", "crypto", "wallet"] },

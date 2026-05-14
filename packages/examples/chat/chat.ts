@@ -10,44 +10,39 @@ import {
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
-import anthropicPlugin from "@elizaos/plugin-anthropic";
-import googleGenAIPlugin from "@elizaos/plugin-google-genai";
-import groqPlugin from "@elizaos/plugin-groq";
-import openaiPlugin from "@elizaos/plugin-openai";
-import sqlPlugin from "@elizaos/plugin-sql";
-import xaiPlugin from "@elizaos/plugin-xai";
 
 type LLMProvider = {
   name: string;
   envKey: string;
-  plugin: Plugin;
+  loadPlugin: () => Promise<Plugin>;
 };
 
 const LLM_PROVIDERS: LLMProvider[] = [
   {
     name: "OpenAI",
     envKey: "OPENAI_API_KEY",
-    plugin: openaiPlugin,
+    loadPlugin: async () => (await import("@elizaos/plugin-openai")).default,
   },
   {
     name: "Anthropic (Claude)",
     envKey: "ANTHROPIC_API_KEY",
-    plugin: anthropicPlugin,
+    loadPlugin: async () => (await import("@elizaos/plugin-anthropic")).default,
   },
   {
     name: "xAI (Grok)",
     envKey: "XAI_API_KEY",
-    plugin: xaiPlugin,
+    loadPlugin: async () => (await import("@elizaos/plugin-xai")).default,
   },
   {
     name: "Google GenAI (Gemini)",
     envKey: "GOOGLE_GENERATIVE_AI_API_KEY",
-    plugin: googleGenAIPlugin,
+    loadPlugin: async () =>
+      (await import("@elizaos/plugin-google-genai")).default,
   },
   {
     name: "Groq",
     envKey: "GROQ_API_KEY",
-    plugin: groqPlugin,
+    loadPlugin: async () => (await import("@elizaos/plugin-groq")).default,
   },
 ];
 
@@ -56,13 +51,16 @@ function hasValidApiKey(envKey: string): boolean {
   return typeof value === "string" && value.trim().length > 0;
 }
 
-function detectLLMPlugin(): {
+async function detectLLMPlugin(): Promise<{
   plugin: Plugin;
   providerName: string;
-} | null {
+} | null> {
   for (const provider of LLM_PROVIDERS) {
     if (hasValidApiKey(provider.envKey)) {
-      return { plugin: provider.plugin, providerName: provider.name };
+      return {
+        plugin: await provider.loadPlugin(),
+        providerName: provider.name,
+      };
     }
   }
   return null;
@@ -82,7 +80,7 @@ function printAvailableProviders(): void {
 async function main() {
   console.log("Starting Eliza Chat...\n");
 
-  const llmResult = detectLLMPlugin();
+  const llmResult = await detectLLMPlugin();
 
   if (!llmResult) {
     console.error("No valid LLM API key found.\n");
@@ -91,6 +89,8 @@ async function main() {
   }
 
   console.log(`Using ${llmResult.providerName} for language model\n`);
+
+  const { default: sqlPlugin } = await import("@elizaos/plugin-sql");
 
   const character: Character = createCharacter({
     name: "Eliza",

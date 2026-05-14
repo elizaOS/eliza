@@ -19,3 +19,18 @@ export interface RouteHelpers {
 }
 
 export interface RouteRequestContext extends RouteRequestMeta, RouteHelpers {}
+
+export interface AppPackageRouteContext
+	extends RouteRequestMeta,
+		Pick<RouteHelpers, "error" | "json"> {
+	url: URL;
+	runtime: unknown | null;
+	readJsonBody: <T extends object = Record<string, unknown>>(
+		options?: ReadJsonBodyOptions,
+	) => Promise<T | null>;
+}
+
+export interface AppPackageRouteDispatchContext extends RouteRequestContext {
+	url: URL;
+	runtime: unknown | null;
+}

@@ -1,7 +1,4 @@
 import { AgentRuntime, createCharacter } from "@elizaos/core";
-import { openaiPlugin } from "@elizaos/plugin-openai";
-import { robloxPlugin } from "@elizaos/plugin-roblox";
-import sqlPlugin from "@elizaos/plugin-sql";
 import { createRobloxBridgeApp } from "./app";
 import { elizaClassicJsonPlugin } from "./elizaClassicJsonPlugin";
 
@@ -16,7 +13,14 @@ function envSettings(): Record<string, string> {
   return out;
 }
 
-function createRuntime(): AgentRuntime {
+async function createRuntime(): Promise<AgentRuntime> {
+  const [{ openaiPlugin }, { robloxPlugin }, { default: sqlPlugin }] =
+    await Promise.all([
+      import("@elizaos/plugin-openai"),
+      import("@elizaos/plugin-roblox"),
+      import("@elizaos/plugin-sql"),
+    ]);
+
   const character = createCharacter({
     name: "Eliza",
     bio: "A helpful Roblox guide NPC.",
@@ -50,7 +54,7 @@ console.log("🚀 Starting Roblox agent bridge...\n");
 console.log(
   `[roblox-bridge] DEBUG_ROBLOX_BRIDGE=${process.env.DEBUG_ROBLOX_BRIDGE ?? ""}`,
 );
-const runtime = createRuntime();
+const runtime = await createRuntime();
 await runtime.initialize();
 
 const app = createRobloxBridgeApp(runtime, SHARED_SECRET);

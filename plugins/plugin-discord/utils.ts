@@ -590,7 +590,14 @@ export async function sendMessageInChunks(
 												}
 												return null;
 											})
-											.filter(Boolean);
+											.filter(
+												(
+													component,
+												): component is
+													| ButtonBuilder
+													| StringSelectMenuBuilder =>
+													component !== null,
+											);
 
 										if (validComponents.length > 0) {
 											actionRow.addComponents(validComponents);
@@ -599,7 +606,12 @@ export async function sendMessageInChunks(
 									}
 									return null;
 								})
-								.filter(Boolean);
+								.filter(
+									(
+										row,
+									): row is ActionRowBuilder<MessageActionRowComponentBuilder> =>
+										row !== null,
+								);
 
 							if (discordComponents.length > 0) {
 								options.components = discordComponents;

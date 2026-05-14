@@ -62,7 +62,7 @@ export const osworldAction: Action = {
   description:
     "OSWorld desktop-control router. Bridges OSWorld pyautogui semantics (click, type, key, scroll, drag, screenshot, wait, done, fail) into a structured eliza action.",
   descriptionCompressed:
-    "OSWorld ops: click, double_click, right_click, type, key, scroll, drag, screenshot, wait, done, fail.",
+    "OSWorld click|double|right|type|key|scroll|drag|screenshot|wait|done|fail",
 
   parameters: [
     {
