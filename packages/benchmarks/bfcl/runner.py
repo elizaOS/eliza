@@ -702,3 +702,190 @@ class BFCLRunner:
                             if isinstance(content, str):
                                 messages.append(content)
         return messages
+
+    # ------------------------------------------------------------------
+    # Summary
+    # ------------------------------------------------------------------
+    def _generate_summary(
+        self,
+        metrics: BFCLMetrics,
+        baseline_comparison: dict[str, float],
+    ) -> dict[str, str | list[str]]:
+        """Generate human-readable summary."""
+        summary: dict[str, str | list[str]] = {}
+
+        if metrics.overall_score >= 0.8:
+            summary["status"] = "excellent"
+        elif metrics.overall_score >= 0.6:
+            summary["status"] = "good"
+        elif metrics.overall_score >= 0.4:
+            summary["status"] = "fair"
+        else:
+            summary["status"] = "needs_improvement"
+
+        findings: list[str] = []
+        findings.append(
+            f"Overall score: {metrics.overall_score:.2%} "
+            f"(AST: {metrics.ast_accuracy:.2%}, Exec: {metrics.exec_accuracy:.2%})"
+        )
+
+        if metrics.skipped_tests:
+            skipped = ", ".join(
+                f"{reason}={count}"
+                for reason, count in metrics.skipped_by_reason.items()
+            )
+            findings.append(f"Skipped: {metrics.skipped_tests} tests ({skipped})")
+
+        if metrics.category_metrics:
+            sorted_cats = sorted(
+                metrics.category_metrics.items(),
+                key=lambda x: x[1].ast_accuracy,
+                reverse=True,
+            )
+            best = sorted_cats[0] if sorted_cats else None
+            worst = sorted_cats[-1] if len(sorted_cats) > 1 else None
+
+            if best:
+                findings.append(
+                    f"Best category: {best[0].value} ({best[1].ast_accuracy:.2%})"
+                )
+            if worst and worst != best:
+                findings.append(
+                    f"Needs work: {worst[0].value} ({worst[1].ast_accuracy:.2%})"
+                )
+
+        if baseline_comparison:
+            closest = min(
+                baseline_comparison.items(),
+                key=lambda x: abs(x[1]),
+            )
+            if closest[1] > 0:
+                findings.append(f"Outperforms {closest[0]} by {closest[1]:.2%}")
+            else:
+                findings.append(f"Behind {closest[0]} by {abs(closest[1]):.2%}")
+
+        summary["key_findings"] = findings
+
+        recommendations: list[str] = []
+        if metrics.ast_accuracy < 0.7:
+            recommendations.append("Focus on improving function name and argument matching")
+        if metrics.exec_accuracy < 0.7:
+            recommendations.append("Improve argument type handling and validation")
+        if metrics.relevance_accuracy < 0.8:
+            recommendations.append("Better detection of irrelevant queries")
+        if metrics.skipped_tests and not self.config.enable_network:
+            recommendations.append(
+                "Pass --enable-network to score network-gated categories "
+                "(REST, web_search)"
+            )
+
+        summary["recommendations"] = recommendations
+        return summary
+
+    async def run_category(
+        self,
+        category: BFCLCategory,
+    ) -> list[BFCLResult]:
+        """Run tests for a specific category only."""
+        await self._initialize()
+        await self.dataset.load()
+
+        try:
+            results: list[BFCLResult] = []
+            for test_case in self.dataset.get_by_category(category):
+                result = await self._run_single_test(test_case)
+                results.append(result)
+            self._results = results
+            return results
+        finally:
+            await self._cleanup()
+
+    async def run_sample(
+        self,
+        n: int = 50,
+        categories: Optional[list[BFCLCategory]] = None,
+        seed: Optional[int] = None,
+    ) -> BFCLBenchmarkResults:
+        """Run a deterministic sample of tests for rapid evaluation."""
+        await self._initialize()
+        await self.dataset.load()
+
+        try:
+            effective_seed = self.config.sample_seed if seed is None else seed
+            sample = self.dataset.get_sample(
+                n,
+                categories,
+                require_ground_truth=True,
+                seed=effective_seed,
+            )
+            logger.info(
+                "Running sample of %s tests (seed=%s): %s",
+                len(sample),
+                effective_seed,
+                [tc.id for tc in sample],
+            )
+
+            results: list[BFCLResult] = []
+            for test_case in sample:
+                result = await self._run_single_test(test_case)
+                results.append(result)
+            self._results = results
+
+            metrics = self.metrics_calculator.calculate(results)
+            baseline_comparison = self.metrics_calculator.compare_to_baselines(metrics)
+
+            if hasattr(self.agent, "model_name") and self.agent.model_name:
+                self._model_name = self.agent.model_name
+
+            benchmark_results = BFCLBenchmarkResults(
+                metadata={
+                    "benchmark": "BFCL",
+                    "version": self.config.version,
+                    "mode": "sample",
+                    "sample_size": len(sample),
+                    "sample_seed": effective_seed,
+                    "sample_ids": [tc.id for tc in sample],
+                    "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                    "model": self._model_name or "unknown",
+                    "enable_network": self.config.enable_network,
+                },
+                config=self.config,
+                metrics=metrics,
+                results=results,
+                baseline_comparison=baseline_comparison,
+                summary=self._generate_summary(metrics, baseline_comparison),
+                model_name=self._model_name,
+                provider=self._provider,
+            )
+
+            if self.config.generate_report:
+                await self.reporter.generate_report(benchmark_results)
+
+            return benchmark_results
+        finally:
+            await self._cleanup()
+
+    def get_results(self) -> list[BFCLResult]:
+        """Get results from the last run."""
+        return self._results.copy()
+
+
+async def run_bfcl_benchmark(
+    config: Optional[BFCLConfig] = None,
+    use_mock: bool = False,
+    *,
+    use_mock_agent: Optional[bool] = None,
+    provider: Optional[str] = None,
+    model: Optional[str] = None,
+) -> BFCLBenchmarkResults:
+    """Convenience function to run BFCL benchmark."""
+    if config is None:
+        config = BFCLConfig()
+
+    runner = BFCLRunner(
+        config,
+        use_mock_agent=use_mock if use_mock_agent is None else use_mock_agent,
+        provider=provider,
+        model=model,
+    )
+    return await runner.run()

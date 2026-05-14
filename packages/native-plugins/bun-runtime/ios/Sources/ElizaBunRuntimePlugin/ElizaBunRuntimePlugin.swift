@@ -51,7 +51,7 @@ public class ElizaBunRuntimePlugin: CAPPlugin, CAPBridgedPlugin {
     @objc func start(_ call: CAPPluginCall) {
         let bundlePath = call.getString("bundlePath")
         let polyfillPath = call.getString("polyfillPath")
-        let engine = call.getString("engine") ?? "auto"
+        let engine = call.getString("engine") ?? IosRuntimePolicy.defaultEngine
         let argv = call.getArray("argv", String.self) ?? ["bun", "public/agent/agent-bundle.js"]
         let env: [String: String]
         if let raw = call.getObject("env") {
@@ -207,8 +207,7 @@ public class ElizaBunRuntimePlugin: CAPPlugin, CAPBridgedPlugin {
 
         let defaults = UserDefaults.standard
         let webSmokeRequested = defaults.string(forKey: Self.webFullBunSmokeRequestKey) == "1"
-        let localRuntimeRequested = defaults.string(forKey: Self.mobileRuntimeModeKey) == "local"
-        guard webSmokeRequested || localRuntimeRequested else { return }
+        guard webSmokeRequested else { return }
 
         fullBunPrewarmStarted = true
         let runtime = ensureRuntime()

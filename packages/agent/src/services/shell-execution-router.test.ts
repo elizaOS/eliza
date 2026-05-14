@@ -144,6 +144,25 @@ describe("runShell", () => {
     ).rejects.toThrow("local-yolo uses the normal host filesystem");
   });
 
+  it("local-safe rejects vfs:// cwd when no real SandboxManager is available on desktop", async () => {
+    process.env.ELIZA_RUNTIME_MODE = "local-safe";
+    const vfs = createVirtualFilesystemService({ projectId: "safe-no-manager" });
+    await vfs.initialize();
+
+    await expect(
+      runShell(
+        {
+          command: "/bin/sh",
+          args: ["-c", "printf nope"],
+          cwd: "vfs://safe-no-manager/src",
+          toolName: "test:vfs-safe-missing",
+          timeoutMs: 5_000,
+        },
+        { sandboxManager: null },
+      ),
+    ).rejects.toThrow("local-safe mode requires SandboxManager");
+  });
+
   it("local-safe materializes vfs:// cwd into the sandbox filesystem and imports changes back", async () => {
     process.env.ELIZA_RUNTIME_MODE = "local-safe";
     const sandboxRoot = path.join(tmpDir, "sandbox-workspace");
@@ -197,6 +216,79 @@ describe("runShell", () => {
       timeoutMs: 5_000,
     });
     await expect(vfs.readFile("src/generated.txt")).resolves.toBe("sandbox");
+  });
+
+  it("local-safe rejects vfs:// cwd traversal before sandbox execution", async () => {
+    process.env.ELIZA_RUNTIME_MODE = "local-safe";
+    const vfs = createVirtualFilesystemService({ projectId: "traversal-vfs" });
+    await vfs.initialize();
+    const run = vi.fn();
+    const fakeManager = {
+      run,
+      getWorkspaceRoot: () => path.join(tmpDir, "sandbox-workspace"),
+      engine: { engineType: "docker" },
+    };
+
+    await expect(
+      runShell(
+        {
+          command: "pwd",
+          args: [],
+          cwd: "vfs://traversal-vfs/%2e%2e/outside",
+          toolName: "test:vfs-traversal",
+          timeoutMs: 5_000,
+        },
+        // biome-ignore lint/suspicious/noExplicitAny: deliberate stub for unit test
+        { sandboxManager: fakeManager as any },
+      ),
+    ).rejects.toThrow("Path traversal");
+    expect(run).not.toHaveBeenCalled();
+  });
+
+  it("local-safe imports vfs:// sandbox deletions back", async () => {
+    process.env.ELIZA_RUNTIME_MODE = "local-safe";
+    const sandboxRoot = path.join(tmpDir, "sandbox-workspace");
+    const vfs = createVirtualFilesystemService({ projectId: "delete-vfs" });
+    await vfs.initialize();
+    await vfs.writeFile("src/remove.txt", "remove");
+    await vfs.writeFile("src/keep.txt", "keep");
+
+    const run = vi.fn().mockImplementation(async (request) => {
+      const hostCwd = path.join(
+        sandboxRoot,
+        request.workdir.replace(/^\/workspace\/?/, ""),
+      );
+      await fsp.rm(path.join(hostCwd, "remove.txt"));
+      return {
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+        durationMs: 7,
+        executedInSandbox: true,
+      };
+    });
+    const fakeManager = {
+      run,
+      getWorkspaceRoot: () => sandboxRoot,
+      getContainerWorkspacePath: (hostPath: string) =>
+        `/workspace/${path.relative(sandboxRoot, hostPath).replace(/\\/g, "/")}`,
+      engine: { engineType: "docker" },
+    };
+
+    await runShell(
+      {
+        command: "rm",
+        args: ["remove.txt"],
+        cwd: "vfs://delete-vfs/src",
+        toolName: "test:vfs-delete",
+        timeoutMs: 5_000,
+      },
+      // biome-ignore lint/suspicious/noExplicitAny: deliberate stub for unit test
+      { sandboxManager: fakeManager as any },
+    );
+
+    await expect(vfs.readFile("src/keep.txt")).resolves.toBe("keep");
+    await expect(vfs.readFile("src/remove.txt")).rejects.toThrow("not found");
   });
 
   it("uses the constrained builtin VFS shell on iOS sandbox mode when no native sandbox manager is available", async () => {

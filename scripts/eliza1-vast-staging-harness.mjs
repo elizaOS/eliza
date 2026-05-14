@@ -7,7 +7,7 @@
  * It never treats missing measurements as pass evidence.
  */
 
-import { execSync } from "node:child_process";
+import { execFileSync, execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -50,6 +50,8 @@ function parseArgs(argv) {
     ),
     metricsUrl: process.env.ELIZA1_METRICS_URL?.trim() || "",
     rssCommand: process.env.ELIZA1_RSS_COMMAND?.trim() || "",
+    rssSshTarget: process.env.ELIZA1_RSS_SSH_TARGET?.trim() || "",
+    rssSshPort: process.env.ELIZA1_RSS_SSH_PORT?.trim() || "22",
     failoverFallbackUrl: process.env.ELIZA1_FAILOVER_FALLBACK_URL?.trim() || "",
     failoverKillCommand: process.env.ELIZA1_FAILOVER_KILL_COMMAND?.trim() || "",
     failoverKilledNode: process.env.ELIZA1_FAILOVER_KILLED_NODE?.trim() || "",
@@ -87,6 +89,8 @@ function parseArgs(argv) {
       args.soakIntervalMs = Number.parseInt(next(), 10);
     else if (arg === "--metrics-url") args.metricsUrl = next();
     else if (arg === "--rss-command") args.rssCommand = next();
+    else if (arg === "--rss-ssh-target") args.rssSshTarget = next();
+    else if (arg === "--rss-ssh-port") args.rssSshPort = next();
     else if (arg === "--failover-fallback-url")
       args.failoverFallbackUrl = next();
     else if (arg === "--failover-kill-command")
@@ -580,6 +584,30 @@ async function runBurst(args) {
 }
 
 async function scrapeResidentMemoryBytes(args) {
+  if (args.rssSshTarget) {
+    const output = execFileSync(
+      "ssh",
+      [
+        "-o",
+        "StrictHostKeyChecking=no",
+        "-p",
+        args.rssSshPort,
+        args.rssSshTarget,
+        [
+          "p=$(pgrep -o llama-server)",
+          'test -n "$p"',
+          'while read key value rest; do if [ "$key" = "VmRSS:" ]; then echo $((value * 1024)); exit 0; fi; done < "/proc/$p/status"',
+          "exit 1",
+        ].join("; "),
+      ],
+      {
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "pipe"],
+      },
+    ).trim();
+    const parsed = Number(output.split(/\s+/)[0]);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
   if (args.rssCommand) {
     const output = execSync(args.rssCommand, {
       encoding: "utf8",

@@ -42,13 +42,37 @@ describe("runVfsBuiltinShell", () => {
     });
     expect(cat.stdout).toContain("View");
 
+    const mkdir = await runVfsBuiltinShell({
+      cwdUri: "vfs://portable/src",
+      command: "mkdir",
+      args: ["-p", "generated/nested"],
+    });
+    expect(mkdir.exitCode).toBe(0);
+
     const echo = await runVfsBuiltinShell({
       cwdUri: "vfs://portable/src",
       command: "/bin/sh",
-      args: ["-c", "echo hello > generated.txt"],
+      args: ["-c", "echo hello > generated/nested/message.txt"],
     });
     expect(echo.exitCode).toBe(0);
-    await expect(vfs.readFile("src/generated.txt")).resolves.toBe("hello\n");
+    await expect(vfs.readFile("src/generated/nested/message.txt")).resolves
+      .toBe("hello\n");
+
+    const ls = await runVfsBuiltinShell({
+      cwdUri: "vfs://portable/src",
+      command: "ls",
+      args: ["generated/nested"],
+    });
+    expect(ls.stdout).toBe("message.txt\n");
+
+    const rm = await runVfsBuiltinShell({
+      cwdUri: "vfs://portable/src",
+      command: "rm",
+      args: ["-r", "generated"],
+    });
+    expect(rm.exitCode).toBe(0);
+    await expect(vfs.readFile("src/generated/nested/message.txt")).rejects
+      .toThrow("File not found");
   });
 
   it("runs grep and rg over VFS files without host ripgrep", async () => {
@@ -67,6 +91,15 @@ describe("runVfsBuiltinShell", () => {
     expect(rg.stdout).toContain("src/a.ts:2:needle one");
     expect(rg.stdout).toContain("src/nested/b.ts:1:Needle two");
     expect(rg.stdout).not.toContain("README.md");
+
+    const grep = await runVfsBuiltinShell({
+      cwdUri: "vfs://searchable/src",
+      command: "grep",
+      args: ["-in", "needle", "."],
+    });
+    expect(grep).toMatchObject({ exitCode: 0 });
+    expect(grep.stdout).toContain("src/a.ts:2:needle one");
+    expect(grep.stdout).toContain("src/nested/b.ts:1:Needle two");
 
     const files = await runVfsBuiltinShell({
       cwdUri: "vfs://searchable/src",

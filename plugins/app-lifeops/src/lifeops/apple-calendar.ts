@@ -109,20 +109,31 @@ let macCalendarBridge: MacCalendarBridge | null | undefined;
 let macCalendarBridgeOverride: MacCalendarBridge | null | undefined;
 let nativeBridgeOverride: NativeCalendarBridge | null | undefined;
 
-const NATIVE_DYLIB_ENV =
-  typeof process !== "undefined"
-    ? (process.env.ELIZA_NATIVE_PERMISSIONS_DYLIB ?? "")
-    : "";
-
 const NATIVE_DYLIB_BASENAME = "libMacWindowEffects.dylib";
 
-const NATIVE_DYLIB_CANDIDATES: NativeLibraryCandidate[] = [
-  { label: "ELIZA_NATIVE_PERMISSIONS_DYLIB", path: NATIVE_DYLIB_ENV },
-  {
-    label: "bundled Apple permissions bridge",
-    path: `../../../../packages/app-core/platforms/electrobun/src/${NATIVE_DYLIB_BASENAME}`,
-  },
-].filter((candidate) => candidate.path.trim().length > 0);
+function nativeDylibCandidates(): NativeLibraryCandidate[] {
+  return [
+    {
+      label: "ELIZA_NATIVE_PERMISSIONS_DYLIB",
+      path:
+        typeof process !== "undefined"
+          ? (process.env.ELIZA_NATIVE_PERMISSIONS_DYLIB ?? "")
+          : "",
+    },
+    {
+      label: "packaged Apple permissions bridge",
+      path: `../../../../../../../${NATIVE_DYLIB_BASENAME}`,
+    },
+    {
+      label: "packaged Apple permissions bridge",
+      path: `../../../../../../${NATIVE_DYLIB_BASENAME}`,
+    },
+    {
+      label: "local Apple permissions bridge",
+      path: `../../../../packages/app-core/platforms/electrobun/src/${NATIVE_DYLIB_BASENAME}`,
+    },
+  ].filter((candidate) => candidate.path.trim().length > 0);
+}
 
 function hasNodeDarwinProcess(): boolean {
   return typeof process !== "undefined" && process.platform === "darwin";
@@ -154,7 +165,7 @@ async function loadMacCalendarBridge(): Promise<MacCalendarBridge | null> {
   macCalendarBridge = null;
   if (!hasNodeDarwinProcess()) return null;
 
-  for (const candidate of NATIVE_DYLIB_CANDIDATES) {
+  for (const candidate of nativeDylibCandidates()) {
     const dylibPath = resolveNativeLibraryCandidate(candidate, {
       expectedBasename: NATIVE_DYLIB_BASENAME,
       moduleDir: import.meta.dir,
@@ -653,4 +664,5 @@ export const __testing = {
   setMacCalendarBridgeForTest(bridge: MacCalendarBridge | null): void {
     macCalendarBridgeOverride = bridge;
   },
+  nativeDylibCandidates,
 };

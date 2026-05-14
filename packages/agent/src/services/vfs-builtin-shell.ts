@@ -202,7 +202,8 @@ async function mkdir(
   cwd: string,
   args: string[],
 ): Promise<VfsBuiltinCommandResult> {
-  const parents = args.some((arg) => arg === "-p" || arg.includes("p"));
+  const optionArgs = args.filter((arg) => arg.startsWith("-"));
+  const parents = optionArgs.some((arg) => arg === "-p" || arg.includes("p"));
   const targets = args.filter((arg) => !arg.startsWith("-"));
   if (targets.length === 0) {
     return {
@@ -223,9 +224,11 @@ async function rm(
   cwd: string,
   args: string[],
 ): Promise<VfsBuiltinCommandResult> {
-  const recursive = args.some((arg) => arg === "-r" || arg === "-R" || arg
-    === "-rf" || arg === "-fr");
-  const force = args.some((arg) => arg.includes("f"));
+  const optionArgs = args.filter((arg) => arg.startsWith("-"));
+  const recursive = optionArgs.some(
+    (arg) => arg === "-r" || arg === "-R" || arg === "-rf" || arg === "-fr",
+  );
+  const force = optionArgs.some((arg) => arg.includes("f"));
   const targets = args.filter((arg) => !arg.startsWith("-"));
   if (targets.length === 0) {
     return {
