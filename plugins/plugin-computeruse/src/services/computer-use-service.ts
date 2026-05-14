@@ -28,6 +28,9 @@ import {
   waitBrowser,
 } from "../platform/browser.js";
 import { detectPlatformCapabilities } from "../platform/capabilities.js";
+import { capturePrimaryDisplay, captureDisplay } from "../platform/capture.js";
+import { localToGlobalDefault } from "../platform/coords.js";
+import { getPrimaryDisplay, listDisplays } from "../platform/displays.js";
 import {
   driverCaptureScreenshot,
   driverClick,
@@ -85,6 +88,7 @@ import type {
   ComputerUseConfig,
   ComputerUseResult,
   DesktopActionParams,
+  DisplayDescriptor,
   FileActionParams,
   FileActionResult,
   PlatformCapabilities,
