@@ -47,6 +47,7 @@ export interface ElizaGuidedModeOptions {
 export class ElizaGuidedMode implements ModeAdapter {
   readonly id = "guided" as const;
   private engine: EngineLike | null = null;
+  private modelPath: string | null = null;
   private skipReason: string | null = null;
   private resolved = false;
   private readonly tier: Eliza1TierId | undefined;
@@ -64,6 +65,7 @@ export class ElizaGuidedMode implements ModeAdapter {
       return this.skipReason;
     }
     this.engine = result.engine.engine;
+    this.modelPath = result.engine.modelPath;
     return null;
   }
 
@@ -76,33 +78,51 @@ export class ElizaGuidedMode implements ModeAdapter {
     const startedAt = Date.now();
     let firstTokenAt: number | null = null;
     let accumulated = "";
-    try {
-      const text = await this.engine.generate({
-        prompt,
-        maxTokens: req.maxTokens,
-        temperature: 0,
-        responseSkeleton: skeleton,
-        onTextChunk: (chunk: string) => {
-          if (firstTokenAt === null) firstTokenAt = Date.now();
-          accumulated += chunk;
-        },
-      });
-      const finishedAt = Date.now();
-      const rawOutput = text || accumulated;
-      return {
-        rawOutput,
-        firstTokenLatencyMs: firstTokenAt ? firstTokenAt - startedAt : null,
-        totalLatencyMs: finishedAt - startedAt,
-        tokensGenerated: approxTokens(rawOutput),
-      };
-    } catch (err) {
-      return {
-        rawOutput: accumulated,
-        firstTokenLatencyMs: firstTokenAt ? firstTokenAt - startedAt : null,
-        totalLatencyMs: Date.now() - startedAt,
-        tokensGenerated: approxTokens(accumulated),
-        error: err instanceof Error ? err.message : String(err),
-      };
+    let reloadedOnce = false;
+    while (true) {
+      try {
+        const text = await this.engine.generate({
+          prompt,
+          maxTokens: req.maxTokens,
+          temperature: 0,
+          responseSkeleton: skeleton,
+          onTextChunk: (chunk: string) => {
+            if (firstTokenAt === null) firstTokenAt = Date.now();
+            accumulated += chunk;
+          },
+        });
+        const finishedAt = Date.now();
+        const rawOutput = text || accumulated;
+        return {
+          rawOutput,
+          firstTokenLatencyMs: firstTokenAt ? firstTokenAt - startedAt : null,
+          totalLatencyMs: finishedAt - startedAt,
+          tokensGenerated: approxTokens(rawOutput),
+        };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        // The SharedResourceRegistry can evict the model under RAM pressure
+        // between bench tasks. Reload once and retry; if it still fails, give
+        // up and report the error.
+        if (!reloadedOnce && /no backend loaded/i.test(message) && this.modelPath) {
+          reloadedOnce = true;
+          try {
+            await this.engine.load(this.modelPath);
+            accumulated = "";
+            firstTokenAt = null;
+            continue;
+          } catch {
+            // fall through to error return
+          }
+        }
+        return {
+          rawOutput: accumulated,
+          firstTokenLatencyMs: firstTokenAt ? firstTokenAt - startedAt : null,
+          totalLatencyMs: Date.now() - startedAt,
+          tokensGenerated: approxTokens(accumulated),
+          error: message,
+        };
+      }
     }
   }
 }
