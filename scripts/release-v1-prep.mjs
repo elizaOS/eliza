@@ -25,8 +25,8 @@
  *   - The DFlash real distillation run (GPU)
  *   - The base-v1 evals: text perplexity vs upstream GGUF, voice RTF, ASR WER, VAD latency, dflash acceptance, e2e loop, 30-turn, mobile RSS/thermal (GPU + reference devices)
  *   - Acquiring the base weights + staging a full bundle (network host; stage_eliza1_bundle_assets.py / stage_eliza1_source_weights.py)
- *   - publish_all_eliza1.sh real upload (HF_TOKEN with write to elizaos/*)
- *   - scripts/hf-transfer-eliza1.sh --execute (HF_TOKEN with write to milady-ai + elizaos)
+ *   - publish_all_eliza1.sh real upload (HF_TOKEN with write to elizalabs/*)
+ *   - scripts/hf-transfer-eliza1.sh --execute (HF_TOKEN with write to milady-ai + elizalabs)
  *
  * Usage:
  *   bun run release:v1:prep            # run the no-HW steps, print the checklist
@@ -138,6 +138,33 @@ function hostBuildTarget() {
   return null;
 }
 
+function resolvePython() {
+  const candidates = [
+    process.env.PYTHON,
+    process.env.PYTHON3,
+    "/opt/miniconda3/bin/python3",
+    "python3.13",
+    "python3.12",
+    "python3.11",
+    "python3.10",
+    "python3",
+  ].filter(Boolean);
+  for (const candidate of candidates) {
+    const probe = spawnSync(
+      candidate,
+      [
+        "-c",
+        "import sys; import torch; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)",
+      ],
+      { stdio: "ignore" },
+    );
+    if (probe.status === 0) return candidate;
+  }
+  return "python3";
+}
+
+const PYTHON = resolvePython();
+
 if (!JSON_OUT) {
   console.log("=== Eliza-1 v1 release prep — no-hardware steps ===\n");
   console.log("Runbook: docs/eliza-1-pipeline/06-test-matrix.md");
@@ -163,7 +190,7 @@ if (buildTarget) {
 }
 
 // --- 2. Manifest / bundle / platform-plan / source-staging / evidence tests ----
-step("pytest packages/training/scripts/manifest/", "python3", [
+step("pytest packages/training/scripts/manifest/", PYTHON, [
   "-m",
   "pytest",
   "packages/training/scripts/manifest/",
@@ -172,7 +199,7 @@ step("pytest packages/training/scripts/manifest/", "python3", [
 
 // --- 3. Quant recipe parity + codebook-hash pins (slower) ----------------------
 if (!QUICK) {
-  step("quantization/test_recipes_smoke.py", "python3", [
+  step("quantization/test_recipes_smoke.py", PYTHON, [
     "packages/training/scripts/quantization/test_recipes_smoke.py",
   ]);
 }
@@ -199,7 +226,7 @@ const PY_SCRIPTS = [
   "packages/training/scripts/manifest/eliza1_platform_plan.py",
   "packages/training/scripts/manifest/finalize_eliza1_evidence.py",
 ];
-step("py_compile release-pipeline scripts", "python3", [
+step("py_compile release-pipeline scripts", PYTHON, [
   "-m",
   "py_compile",
   ...PY_SCRIPTS,
@@ -211,7 +238,7 @@ for (const [label, script, extra] of [
   ["fused_turboquant_apply --dry-run", "fused_turboquant_apply.py", []],
   ["qjl_apply --dry-run", "qjl_apply.py", []],
 ]) {
-  step(label, "python3", [
+  step(label, PYTHON, [
     `packages/training/scripts/quantization/${script}`,
     "--model",
     "Qwen/Qwen3.5-0.8B",
@@ -223,7 +250,7 @@ for (const [label, script, extra] of [
     ...extra,
   ]);
 }
-step("polarquant_apply --dry-run", "python3", [
+step("polarquant_apply --dry-run", PYTHON, [
   "packages/training/scripts/quantization/polarquant_apply.py",
   "--model",
   "Qwen/Qwen3.5-0.8B",
@@ -235,7 +262,7 @@ step("polarquant_apply --dry-run", "python3", [
 ]);
 
 // --- 6. DFlash distill synthetic smoke (no torch / GPU) ------------------------
-step("distill_dflash_drafter.py --tier 2b --synthetic-smoke", "python3", [
+step("distill_dflash_drafter.py --tier 2b --synthetic-smoke", PYTHON, [
   "packages/training/scripts/distill_dflash_drafter.py",
   "--tier",
   "2b",
@@ -253,8 +280,8 @@ step("distill_dflash_drafter.py --tier 2b --synthetic-smoke", "python3", [
   );
   const before = fs.existsSync(planPath) ? fs.readFileSync(planPath, "utf8") : "";
   step(
-    "eliza1_platform_plan.py regenerates docs/ELIZA_1_GGUF_PLATFORM_PLAN.json",
-    "python3",
+    "eliza1_platform_plan.py regenerates docs/ELIZA_1_GGUF_PLATFORM_PLAN.json and readiness markdown",
+    PYTHON,
     [
       "packages/training/scripts/manifest/eliza1_platform_plan.py",
       "--out",
@@ -349,13 +376,13 @@ const REMAINING_HW = [
     "node plugins/plugin-local-inference/native/verify/dflash_drafter_runtime_smoke.mjs --bench; bun run voice:interactive; node plugins/plugin-local-inference/native/verify/{thirty_turn_endurance,mobile_peak_rss,bargein_latency}_harness.mjs; uv run python -m packages.training.benchmarks.eliza1_gates <aggregate.json>",
   ],
   [
-    "Publish to HuggingFace under elizaos/eliza-1 bundles/<tier>/",
-    "HF_TOKEN with write access to elizaos/*",
+    "Publish to HuggingFace under elizalabs/eliza-1 bundles/<tier>/",
+    "HF_TOKEN with write access to elizalabs/*",
     "bash packages/training/scripts/publish_all_eliza1.sh --bundles-root <dir> --dry-run  (then drop --dry-run)",
   ],
   [
-    "Move legacy HF repos out of milady-ai into elizaos + create the per-tier bundle repos",
-    "HF_TOKEN with write access to BOTH milady-ai and elizaos",
+    "Move legacy HF repos out of milady-ai into elizalabs + create the per-tier bundle repos",
+    "HF_TOKEN with write access to BOTH milady-ai and elizalabs",
     "bash scripts/hf-transfer-eliza1.sh           (dry-run; then --execute)",
   ],
 ];

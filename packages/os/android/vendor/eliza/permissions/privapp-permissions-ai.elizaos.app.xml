@@ -29,5 +29,9 @@
         <permission name="android.permission.MANAGE_APP_OPS_MODES" />
         <!-- Required for AOSP/system builds that expose AVF/Microdroid. -->
         <permission name="android.permission.MANAGE_VIRTUAL_MACHINE" />
+        <!-- Privileged computer-control path for AOSP/system images only. -->
+        <permission name="android.permission.READ_FRAME_BUFFER" />
+        <permission name="android.permission.INJECT_EVENTS" />
+        <permission name="android.permission.REAL_GET_TASKS" />
     </privapp-permissions>
 </permissions>

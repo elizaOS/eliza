@@ -1,0 +1,97 @@
+{
+  "schemaVersion": 1,
+  "packageName": "ai.elizaos.app",
+  "buildTarget": "aosp-system-privileged",
+  "roleDefaults": {
+    "android.app.role.ASSISTANT": "ai.elizaos.app",
+    "android.app.role.DIALER": "ai.elizaos.app",
+    "android.app.role.SMS": "ai.elizaos.app",
+    "android.app.role.BROWSER": "ai.elizaos.app"
+  },
+  "assistantEntryPoints": [
+    "android.intent.action.ASSIST",
+    "android.intent.action.VOICE_COMMAND"
+  ],
+  "directBoot": {
+    "receiver": "ElizaBootReceiver",
+    "actions": [
+      "android.intent.action.LOCKED_BOOT_COMPLETED",
+      "android.intent.action.BOOT_COMPLETED"
+    ]
+  },
+  "foregroundServices": [
+    {
+      "component": "ElizaAgentService",
+      "type": "specialUse",
+      "subtype": "local-agent-runtime"
+    },
+    {
+      "component": "GatewayConnectionService",
+      "type": "dataSync"
+    },
+    {
+      "component": "ElizaVoiceCaptureService",
+      "type": "microphone"
+    },
+    {
+      "component": "ScreenCapture",
+      "type": "mediaProjection",
+      "source": "@elizaos/capacitor-screencapture"
+    }
+  ],
+  "privilegedPermissions": [
+    "android.permission.PACKAGE_USAGE_STATS",
+    "android.permission.MANAGE_APP_OPS_MODES",
+    "android.permission.MANAGE_VIRTUAL_MACHINE",
+    "android.permission.READ_FRAME_BUFFER",
+    "android.permission.INJECT_EVENTS",
+    "android.permission.REAL_GET_TASKS"
+  ],
+  "runtimeAndNormalPermissions": [
+    "android.permission.RECORD_AUDIO",
+    "android.permission.CAMERA",
+    "android.permission.POST_NOTIFICATIONS",
+    "android.permission.FOREGROUND_SERVICE",
+    "android.permission.FOREGROUND_SERVICE_DATA_SYNC",
+    "android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION",
+    "android.permission.FOREGROUND_SERVICE_MICROPHONE",
+    "android.permission.FOREGROUND_SERVICE_SPECIAL_USE",
+    "android.permission.RECEIVE_BOOT_COMPLETED",
+    "android.permission.WAKE_LOCK"
+  ],
+  "appOps": [
+    {
+      "op": "android:get_usage_stats",
+      "grantPath": "ElizaBootReceiver via MANAGE_APP_OPS_MODES"
+    }
+  ],
+  "capabilityDeclarations": {
+    "accessibility": {
+      "status": "external-bridge-required",
+      "permission": "android.permission.BIND_ACCESSIBILITY_SERVICE",
+      "notes": "Validated as part of the computer-use Android bridge contract; no Play/cloud component is declared by this AOSP manifest."
+    },
+    "notificationListener": {
+      "status": "not-declared-in-system-apk",
+      "permission": "android.permission.BIND_NOTIFICATION_LISTENER_SERVICE",
+      "notes": "Add only with a concrete listener component and keep it on the AOSP/system build path."
+    },
+    "screenCapture": {
+      "consumerPath": "MediaProjection with foreground-service notification and user consent",
+      "systemPath": "SurfaceControl.captureDisplay with READ_FRAME_BUFFER"
+    },
+    "inputControl": {
+      "consumerPath": "Accessibility gesture dispatch when the user enables the service",
+      "systemPath": "InputManager.injectInputEvent with INJECT_EVENTS"
+    },
+    "appInventory": {
+      "consumerPath": "UsageStatsManager when Usage Access is granted",
+      "systemPath": "REAL_GET_TASKS and GET_USAGE_STATS appop granted at boot"
+    }
+  },
+  "playStorePolicy": {
+    "allowed": false,
+    "stripTarget": "android-cloud",
+    "reason": "ROLE_ASSISTANT/default-role components, privileged permissions, screen capture, boot receivers, and local agent services are AOSP/system-image only."
+  }
+}

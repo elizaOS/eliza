@@ -1,32 +1,46 @@
 /**
  * iMessage connector HTTP routes.
  *
- * Exposes the @elizaos/plugin-imessage service state through the Plugin
- * routes API so the dashboard (and future CLIs / third-party integrations)
- * can read and write against macOS Messages.app without each client going
- * straight to chat.db or native macOS bridges.
+ * Implements the shared setup contract defined in
+ * `@elizaos/app-core/api/setup-contract.ts`:
  *
- * Routes served (all under `/api/imessage`):
+ *   GET  /api/setup/imessage/status   service health + connection state
+ *   POST /api/setup/imessage/start    mark iMessage as enabled in connector config
+ *   POST /api/setup/imessage/cancel   clear stored iMessage connector config
  *
- *   GET    /api/imessage/status         service health + connection state
- *   GET    /api/imessage/messages       newest messages from chat.db
- *   POST   /api/imessage/messages       send a message via Messages.app
- *   GET    /api/imessage/chats          list of chats (DMs + groups)
- *   GET    /api/imessage/contacts       every contact with full detail
- *   POST   /api/imessage/contacts       create a new contact
- *   PATCH  /api/imessage/contacts/:id   update an existing contact
- *   DELETE /api/imessage/contacts/:id   delete a contact
+ * iMessage on macOS does not have a credential/pairing flow — it reads chat.db
+ * directly and sends through Messages.app via osascript. "Setup" is just the
+ * permission gate (Full Disk Access) plus marking the connector enabled in
+ * config so the service spins up. The status endpoint exposes the permission
+ * state so the UI can guide the user.
  *
- * Each handler pulls the IMessageService instance off the runtime via
- * `runtime.getService("imessage")` and calls public methods. If the
- * service isn't registered we return 503 with a structured reason so
- * the UI can render an informative empty state.
+ * Post-setup data routes (messages, chats, contacts) remain under
+ * `/api/imessage/` since they are CRUD against a working service, not part
+ * of the pairing/setup state machine.
  *
  * These routes are registered with `rawPath: true` so they mount at their
- * legacy paths without the plugin-name prefix.
+ * canonical paths without the plugin-name prefix.
  */
 
 import type { IAgentRuntime, Route, RouteRequest, RouteResponse } from "@elizaos/core";
+
+// ── Setup contract types (mirror @elizaos/app-core/api/setup-contract) ──
+
+type SetupState = "idle" | "configuring" | "paired" | "error";
+
+interface SetupStatusResponse<TDetail = unknown> {
+  connector: string;
+  state: SetupState;
+  detail?: TDetail;
+}
+
+interface SetupErrorResponse {
+  error: { code: string; message: string };
+}
+
+function setupError(code: string, message: string): SetupErrorResponse {
+  return { error: { code, message } };
+}
 
 const IMESSAGE_SERVICE_NAME = "imessage";
 
@@ -126,9 +140,75 @@ interface IMessageServiceLike {
   deleteContact(personId: string): Promise<boolean>;
 }
 
+interface ConnectorSetupService {
+  getConfig(): Record<string, unknown>;
+  updateConfig(updater: (config: Record<string, unknown>) => void): void;
+}
+
+function isConnectorSetupService(service: unknown): service is ConnectorSetupService {
+  if (!service || typeof service !== "object") return false;
+  const candidate = service as Partial<ConnectorSetupService>;
+  return typeof candidate.getConfig === "function" && typeof candidate.updateConfig === "function";
+}
+
+function getSetupService(runtime: IAgentRuntime): ConnectorSetupService | null {
+  const service = runtime.getService("connector-setup");
+  return isConnectorSetupService(service) ? service : null;
+}
+
 function resolveService(runtime: IAgentRuntime): IMessageServiceLike | null {
   const raw = runtime.getService(IMESSAGE_SERVICE_NAME);
   return (raw as unknown as IMessageServiceLike | null | undefined) ?? null;
+}
+
+interface IMessageSetupDetail {
+  available: boolean;
+  connected: boolean;
+  chatDbAvailable?: boolean;
+  sendOnly?: boolean;
+  chatDbPath?: string;
+  reason?: string | null;
+  permissionAction?: {
+    type: "full_disk_access";
+    label: string;
+    url: string;
+    instructions: string[];
+  } | null;
+}
+
+function buildStatusResponse(runtime: IAgentRuntime): SetupStatusResponse<IMessageSetupDetail> {
+  const service = resolveService(runtime);
+  if (!service) {
+    return {
+      connector: "imessage",
+      state: "idle",
+      detail: {
+        available: false,
+        connected: false,
+        reason: "imessage service not registered",
+      },
+    };
+  }
+  const connected = service.isConnected();
+  const status = service.getStatus?.();
+  const state: SetupState = connected ? "paired" : status?.available ? "configuring" : "idle";
+  return {
+    connector: "imessage",
+    state,
+    detail: {
+      available: status?.available ?? true,
+      connected,
+      ...(status
+        ? {
+            chatDbAvailable: status.chatDbAvailable,
+            sendOnly: status.sendOnly,
+            chatDbPath: status.chatDbPath,
+            reason: status.reason,
+            permissionAction: status.permissionAction,
+          }
+        : {}),
+    },
+  };
 }
 
 /**
@@ -144,25 +224,65 @@ function parseContactId(pathname: string): string | null {
   return decodeURIComponent(rest);
 }
 
-// ── GET /api/imessage/status ────────────────────────────────────────
-async function handleStatus(
+// ── GET /api/setup/imessage/status ──────────────────────────────────
+async function handleSetupStatus(
   _req: RouteRequest,
   res: RouteResponse,
   runtime: IAgentRuntime
 ): Promise<void> {
-  const service = resolveService(runtime);
-  if (!service) {
-    res.status(200).json({
-      available: false,
-      reason: "imessage service not registered",
-    });
+  res.status(200).json(buildStatusResponse(runtime));
+}
+
+// ── POST /api/setup/imessage/start ──────────────────────────────────
+async function handleSetupStart(
+  _req: RouteRequest,
+  res: RouteResponse,
+  runtime: IAgentRuntime
+): Promise<void> {
+  const setupService = getSetupService(runtime);
+  if (!setupService) {
+    res
+      .status(503)
+      .json(setupError("service_unavailable", "connector-setup service not registered"));
     return;
   }
-  res.status(200).json({
-    available: true,
-    connected: service.isConnected(),
-    ...(service.getStatus?.() ?? {}),
+
+  setupService.updateConfig((cfg) => {
+    if (!cfg.connectors) cfg.connectors = {};
+    const connectors = cfg.connectors as Record<string, unknown>;
+    const previous = (connectors.imessage as Record<string, unknown> | undefined) ?? {};
+    connectors.imessage = {
+      ...previous,
+      enabled: true,
+    };
   });
+
+  res.status(200).json(buildStatusResponse(runtime));
+}
+
+// ── POST /api/setup/imessage/cancel ─────────────────────────────────
+async function handleSetupCancel(
+  _req: RouteRequest,
+  res: RouteResponse,
+  runtime: IAgentRuntime
+): Promise<void> {
+  const setupService = getSetupService(runtime);
+  if (!setupService) {
+    res
+      .status(503)
+      .json(setupError("service_unavailable", "connector-setup service not registered"));
+    return;
+  }
+
+  setupService.updateConfig((cfg) => {
+    const connectors = (cfg.connectors ?? {}) as Record<string, unknown>;
+    delete connectors.imessage;
+  });
+
+  res.status(200).json({
+    connector: "imessage",
+    state: "idle",
+  } satisfies SetupStatusResponse<undefined>);
 }
 
 // ── GET /api/imessage/messages?limit=N ──────────────────────────────
@@ -173,7 +293,7 @@ async function handleMessages(
 ): Promise<void> {
   const service = resolveService(runtime);
   if (!service) {
-    res.status(503).json({ error: "imessage service not registered" });
+    res.status(503).json(setupError("service_unavailable", "imessage service not registered"));
     return;
   }
   const url = new URL(req.url ?? "/api/imessage/messages", "http://localhost");
@@ -186,10 +306,15 @@ async function handleMessages(
         ? await service.getMessages({ chatId, limit })
         : await service.getRecentMessages(limit);
     res.status(200).json({ messages, count: messages.length });
-  } catch (error) {
-    res.status(500).json({
-      error: `failed to read messages: ${error instanceof Error ? error.message : String(error)}`,
-    });
+  } catch (err) {
+    res
+      .status(500)
+      .json(
+        setupError(
+          "internal_error",
+          `failed to read messages: ${err instanceof Error ? err.message : String(err)}`
+        )
+      );
   }
 }
 
@@ -201,7 +326,7 @@ async function handleSendMessage(
 ): Promise<void> {
   const service = resolveService(runtime);
   if (!service) {
-    res.status(503).json({ error: "imessage service not registered" });
+    res.status(503).json(setupError("service_unavailable", "imessage service not registered"));
     return;
   }
 
@@ -220,16 +345,12 @@ async function handleSendMessage(
   const mediaUrl = body.mediaUrl?.trim() || undefined;
 
   if (!to && !chatId) {
-    res.status(400).json({
-      error: "either to or chatId is required",
-    });
+    res.status(400).json(setupError("bad_request", "either to or chatId is required"));
     return;
   }
 
   if (!text && !mediaUrl) {
-    res.status(400).json({
-      error: "either text or mediaUrl is required",
-    });
+    res.status(400).json(setupError("bad_request", "either text or mediaUrl is required"));
     return;
   }
 
@@ -239,16 +360,19 @@ async function handleSendMessage(
       ...(typeof body.maxBytes === "number" ? { maxBytes: body.maxBytes } : {}),
     });
     if (!result.success) {
-      res.status(500).json({
-        error: result.error ?? "failed to send iMessage",
-      });
+      res.status(500).json(setupError("internal_error", result.error ?? "failed to send iMessage"));
       return;
     }
     res.status(200).json(result);
-  } catch (error) {
-    res.status(500).json({
-      error: `sendMessage threw: ${error instanceof Error ? error.message : String(error)}`,
-    });
+  } catch (err) {
+    res
+      .status(500)
+      .json(
+        setupError(
+          "internal_error",
+          `sendMessage threw: ${err instanceof Error ? err.message : String(err)}`
+        )
+      );
   }
 }
 
@@ -260,16 +384,21 @@ async function handleChats(
 ): Promise<void> {
   const service = resolveService(runtime);
   if (!service) {
-    res.status(503).json({ error: "imessage service not registered" });
+    res.status(503).json(setupError("service_unavailable", "imessage service not registered"));
     return;
   }
   try {
     const chats = await service.getChats();
     res.status(200).json({ chats, count: chats.length });
-  } catch (error) {
-    res.status(500).json({
-      error: `failed to read chats: ${error instanceof Error ? error.message : String(error)}`,
-    });
+  } catch (err) {
+    res
+      .status(500)
+      .json(
+        setupError(
+          "internal_error",
+          `failed to read chats: ${err instanceof Error ? err.message : String(err)}`
+        )
+      );
   }
 }
 
@@ -281,16 +410,21 @@ async function handleListContacts(
 ): Promise<void> {
   const service = resolveService(runtime);
   if (!service) {
-    res.status(503).json({ error: "imessage service not registered" });
+    res.status(503).json(setupError("service_unavailable", "imessage service not registered"));
     return;
   }
   try {
     const contacts = await service.listAllContacts();
     res.status(200).json({ contacts, count: contacts.length });
-  } catch (error) {
-    res.status(500).json({
-      error: `failed to read contacts: ${error instanceof Error ? error.message : String(error)}`,
-    });
+  } catch (err) {
+    res
+      .status(500)
+      .json(
+        setupError(
+          "internal_error",
+          `failed to read contacts: ${err instanceof Error ? err.message : String(err)}`
+        )
+      );
   }
 }
 
@@ -302,7 +436,7 @@ async function handleCreateContact(
 ): Promise<void> {
   const service = resolveService(runtime);
   if (!service) {
-    res.status(503).json({ error: "imessage service not registered" });
+    res.status(503).json(setupError("service_unavailable", "imessage service not registered"));
     return;
   }
   const body =
@@ -314,9 +448,14 @@ async function handleCreateContact(
     }) ?? {};
 
   if (!body.firstName && !body.lastName && !body.phones?.length && !body.emails?.length) {
-    res.status(400).json({
-      error: "at least one of firstName, lastName, phones, or emails is required",
-    });
+    res
+      .status(400)
+      .json(
+        setupError(
+          "bad_request",
+          "at least one of firstName, lastName, phones, or emails is required"
+        )
+      );
     return;
   }
 
@@ -328,17 +467,26 @@ async function handleCreateContact(
       emails: body.emails,
     });
     if (!id) {
-      res.status(500).json({
-        error:
-          "contact creation failed — see server logs. Common cause: Contacts write permission not granted yet.",
-      });
+      res
+        .status(500)
+        .json(
+          setupError(
+            "internal_error",
+            "contact creation failed — see server logs. Common cause: Contacts write permission not granted yet."
+          )
+        );
       return;
     }
     res.status(201).json({ id, created: true });
-  } catch (error) {
-    res.status(500).json({
-      error: `addContact threw: ${error instanceof Error ? error.message : String(error)}`,
-    });
+  } catch (err) {
+    res
+      .status(500)
+      .json(
+        setupError(
+          "internal_error",
+          `addContact threw: ${err instanceof Error ? err.message : String(err)}`
+        )
+      );
   }
 }
 
@@ -351,12 +499,12 @@ async function handleUpdateContact(
   const pathname = req.url ?? "";
   const id = parseContactId(pathname.split("?")[0]);
   if (!id) {
-    res.status(400).json({ error: "contact id is required in the path" });
+    res.status(400).json(setupError("bad_request", "contact id is required in the path"));
     return;
   }
   const service = resolveService(runtime);
   if (!service) {
-    res.status(503).json({ error: "imessage service not registered" });
+    res.status(503).json(setupError("service_unavailable", "imessage service not registered"));
     return;
   }
   const body =
@@ -379,17 +527,26 @@ async function handleUpdateContact(
       removeEmails: body.removeEmails,
     });
     if (!ok) {
-      res.status(500).json({
-        error:
-          "contact update failed — see server logs. Contact may not exist, or write permission may be denied.",
-      });
+      res
+        .status(500)
+        .json(
+          setupError(
+            "internal_error",
+            "contact update failed — see server logs. Contact may not exist, or write permission may be denied."
+          )
+        );
       return;
     }
     res.status(200).json({ id, updated: true });
-  } catch (error) {
-    res.status(500).json({
-      error: `updateContact threw: ${error instanceof Error ? error.message : String(error)}`,
-    });
+  } catch (err) {
+    res
+      .status(500)
+      .json(
+        setupError(
+          "internal_error",
+          `updateContact threw: ${err instanceof Error ? err.message : String(err)}`
+        )
+      );
   }
 }
 
@@ -402,44 +559,64 @@ async function handleDeleteContact(
   const pathname = req.url ?? "";
   const id = parseContactId(pathname.split("?")[0]);
   if (!id) {
-    res.status(400).json({ error: "contact id is required in the path" });
+    res.status(400).json(setupError("bad_request", "contact id is required in the path"));
     return;
   }
   const service = resolveService(runtime);
   if (!service) {
-    res.status(503).json({ error: "imessage service not registered" });
+    res.status(503).json(setupError("service_unavailable", "imessage service not registered"));
     return;
   }
   try {
     const ok = await service.deleteContact(id);
     if (!ok) {
-      res.status(500).json({
-        error:
-          "contact delete failed — see server logs. Contact may not exist, or write permission may be denied.",
-      });
+      res
+        .status(500)
+        .json(
+          setupError(
+            "internal_error",
+            "contact delete failed — see server logs. Contact may not exist, or write permission may be denied."
+          )
+        );
       return;
     }
     res.status(200).json({ id, deleted: true });
-  } catch (error) {
-    res.status(500).json({
-      error: `deleteContact threw: ${error instanceof Error ? error.message : String(error)}`,
-    });
+  } catch (err) {
+    res
+      .status(500)
+      .json(
+        setupError(
+          "internal_error",
+          `deleteContact threw: ${err instanceof Error ? err.message : String(err)}`
+        )
+      );
   }
 }
 
 /**
- * Plugin routes for iMessage service.
- * Registered with `rawPath: true` to preserve legacy `/api/imessage/*` paths.
+ * Plugin routes for iMessage.
+ * Registered with `rawPath: true` to mount at canonical paths.
  *
- * Note: The PATCH and DELETE routes for `/api/imessage/contacts/:id` use
- * the base `/api/imessage/contacts/` path with `rawPath: true`. The
- * handler extracts the `:id` from req.url internally.
+ * The setup-shaped routes live under `/api/setup/imessage/`. Post-setup
+ * data routes (messages, chats, contacts CRUD) remain under `/api/imessage/`.
  */
 export const imessageSetupRoutes: Route[] = [
   {
     type: "GET",
-    path: "/api/imessage/status",
-    handler: handleStatus,
+    path: "/api/setup/imessage/status",
+    handler: handleSetupStatus,
+    rawPath: true,
+  },
+  {
+    type: "POST",
+    path: "/api/setup/imessage/start",
+    handler: handleSetupStart,
+    rawPath: true,
+  },
+  {
+    type: "POST",
+    path: "/api/setup/imessage/cancel",
+    handler: handleSetupCancel,
     rawPath: true,
   },
   {

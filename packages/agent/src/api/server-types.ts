@@ -228,7 +228,7 @@ export interface ServerState {
   /** Agent automation permission mode for self-directed config changes. */
   agentAutomationMode?: AgentAutomationMode;
   /** Wallet trade execution permission mode (user-sign/manual/agent-auto). */
-  tradePermissionMode?: TradePermissionMode;
+  tradePermissionMode?: import("@elizaos/shared").TradePermissionMode;
   /** Reasons a restart is pending. Empty array = no restart needed. */
   pendingRestartReasons: string[];
   /** Route handlers registered by connector plugins (loaded dynamically). */

@@ -80,12 +80,15 @@ describe("agent-orchestrator sandbox gating", () => {
     expect(actions[0]?.name).toBe("TASKS");
   });
 
-  it("registers only a TASKS unsupported stub on vanilla Android", {
+  it("registers only a TASKS unsupported stub on Android without a staged shell", {
     timeout: SLOW,
   }, async () => {
     process.env.ELIZA_BUILD_VARIANT = "direct";
     process.env.ELIZA_PLATFORM = "android";
     process.env.ELIZA_RUNTIME_MODE = "local-yolo";
+    process.env.CODING_TOOLS_SHELL = "/definitely/missing";
+    process.env.SHELL = "/definitely/missing";
+    process.env.PATH = "";
     _resetBuildVariantForTests();
 
     const agentOrchestratorPlugin = createAgentOrchestratorPlugin();
@@ -103,8 +106,8 @@ describe("agent-orchestrator sandbox gating", () => {
       undefined,
     );
     const data = result?.data as { reason?: string } | undefined;
-    expect(data?.reason).toBe("MOBILE_TERMINAL_UNSUPPORTED");
-    expect(result?.text).toContain("branded AOSP");
+    expect(data?.reason).toBe("AOSP_TERMINAL_MISSING_SHELL");
+    expect(result?.text).toContain("executable shell");
   });
 
   it("returns a structured STORE_BUILD_BLOCKED result from the stub handler", {

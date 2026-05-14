@@ -6,7 +6,7 @@
  * the loaded apps catalog and picks the unique declarer; if none claim
  * the seam, the shell falls back to a built-in placeholder. Multiple
  * declarers are resolved deterministically by alphabetic package name
- * with a warning, so a misconfigured second app never crashes the shell.
+ * so a misconfigured second app never crashes the shell.
  *
  * Phase 1 of the agent + app-core extraction.
  */
@@ -46,9 +46,7 @@ function declaresMainTab(app: RegistryAppInfo): boolean {
  * fall back to a built-in placeholder.
  *
  * If multiple apps declare `mainTab: true`, returns the first one ordered
- * alphabetically by package name and emits a warning. Crashing the shell
- * because of a metadata collision would make the system unusable, so we
- * pick deterministically and let the user resolve it via Settings later.
+ * alphabetically by package name.
  */
 export function getMainTabApp(apps: RegistryAppInfo[]): MainTabApp | null {
   const declarers = apps.filter(declaresMainTab);
@@ -56,10 +54,8 @@ export function getMainTabApp(apps: RegistryAppInfo[]): MainTabApp | null {
 
   declarers.sort((a, b) => a.name.localeCompare(b.name));
 
-  // Multiple apps declaring mainTab=true is a misconfiguration; use the first
-  // alphabetically and continue.
-
   const winner = declarers[0];
+  if (!winner) return null;
   const tabId = packageNameToAppRouteSlug(winner.name);
   if (!tabId) return null;
 

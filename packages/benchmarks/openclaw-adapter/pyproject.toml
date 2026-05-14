@@ -14,3 +14,6 @@ dependencies = [
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["openclaw_adapter*"]
+
+[tool.pytest.ini_options]
+addopts = "--import-mode=importlib"

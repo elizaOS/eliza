@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
 import test from "node:test";
 
 import {
+  applyAndroidCleartextPolicy,
   IOS_OFFICIAL_PODS,
   resolveIosBuildTarget,
   resolveMobileBuildPolicy,
@@ -38,6 +41,34 @@ test("resolveMobileBuildPolicy marks AOSP Android as an OTA-owned system image",
     releaseAuthority: "aosp-ota",
     appControlledOta: false,
   });
+});
+
+test("Android manifest cleartext policy can be stamped per target", () => {
+  const manifest = `<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application android:label="@string/app_name" android:usesCleartextTraffic="true">
+    </application>
+</manifest>`;
+
+  assert.match(
+    applyAndroidCleartextPolicy(manifest, { allowCleartext: false }),
+    /android:usesCleartextTraffic="false"/,
+  );
+  assert.match(
+    applyAndroidCleartextPolicy(manifest, { allowCleartext: true }),
+    /android:usesCleartextTraffic="true"/,
+  );
+});
+
+test("Android manifest cleartext policy is inserted when absent", () => {
+  const manifest = `<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application android:label="@string/app_name">
+    </application>
+</manifest>`;
+
+  assert.match(
+    applyAndroidCleartextPolicy(manifest, { allowCleartext: false }),
+    /<application\s+android:usesCleartextTraffic="false"\s+android:label/,
+  );
 });
 
 test("resolveMobileBuildPolicy separates App Store iOS from local iOS builds", () => {
@@ -82,5 +113,27 @@ test("iOS background runner pod resolves through the official package", () => {
       ([name]) => name === "CapacitorBackgroundRunner",
     )?.[1],
     "@capacitor/background-runner",
+  );
+});
+
+test("iOS app entitlements do not request JIT or dynamic code signing", () => {
+  const entitlementsPath = path.join(
+    import.meta.dirname,
+    "..",
+    "platforms",
+    "ios",
+    "App",
+    "App",
+    "App.entitlements",
+  );
+  const entitlements = fs.readFileSync(entitlementsPath, "utf8");
+  assert.equal(entitlements.includes("com.apple.security.cs.allow-jit"), false);
+  assert.equal(
+    entitlements.includes("com.apple.security.cs.allow-dyld-environment-variables"),
+    false,
+  );
+  assert.equal(
+    entitlements.includes("com.apple.security.cs.disable-library-validation"),
+    false,
   );
 });

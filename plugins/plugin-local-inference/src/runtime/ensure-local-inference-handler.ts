@@ -38,6 +38,7 @@ import {
 } from "../services/active-model";
 import {
 	autoAssignAtBoot,
+	isEmbeddingModelId,
 	readEffectiveAssignments,
 } from "../services/assignments";
 import {
@@ -193,7 +194,10 @@ function getLoader(runtime: IAgentRuntime): LocalInferenceLoader | null {
  * when a different slot's assignment fires with a different model.
  *
  * If no assignment is set for the slot, falls back to whatever is
- * currently loaded (keeps the old "one active model" behaviour).
+ * currently loaded — UNLESS the loaded model is an embedding model and
+ * this is a chat/generative slot. That combination produces `[unused{N}]`
+ * garbage (a BERT model forced to autoregress), so we fail loudly with an
+ * actionable message instead. See elizaOS/eliza#7687.
  */
 async function ensureAssignedModelLoaded(
 	loader: LocalInferenceLoader | null,
@@ -201,7 +205,25 @@ async function ensureAssignedModelLoaded(
 ): Promise<void> {
 	const assignments = await readEffectiveAssignments();
 	const assignedId = assignments[slot];
-	if (!assignedId) return;
+	if (!assignedId) {
+		// Loud-failure guard: an unassigned chat slot must not silently
+		// dispatch to whatever model happens to be loaded — if that's an
+		// embedding model, completion emits reserved-token garbage.
+		if (slot === "TEXT_SMALL" || slot === "TEXT_LARGE") {
+			const installed = await listInstalledModels();
+			const currentPath =
+				loader?.currentModelPath() ?? localInferenceEngine.currentModelPath();
+			const current = currentPath
+				? installed.find((m) => m.path === currentPath)
+				: undefined;
+			if (current && isEmbeddingModelId(current.id)) {
+				throw new Error(
+					`[local-inference] No chat model assigned for slot ${slot} — open Settings → Local models. The currently-loaded model (${current.id}) is an embedding model and cannot serve text generation.`,
+				);
+			}
+		}
+		return;
+	}
 
 	// Desktop fast path: check the engine state directly.
 	if (!loader && localInferenceEngine.currentModelPath()) {

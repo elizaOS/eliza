@@ -66,6 +66,13 @@ import {
 } from "./server-helpers.ts";
 import type { ConversationMeta } from "./server-types.ts";
 
+interface DiscordProfileLike {
+  avatarUrl?: string;
+  displayName?: string;
+  rawUserId?: string;
+  username?: string;
+}
+
 const {
   cacheDiscordAvatarForRuntime,
   isCanonicalDiscordSource,
@@ -83,15 +90,15 @@ const {
     runtime: AgentRuntime,
     channelId: string,
     messageId: string,
-  ) => Promise<any>;
+  ) => Promise<DiscordProfileLike | null>;
   resolveDiscordUserProfile: (
     runtime: AgentRuntime,
     userId: string,
-  ) => Promise<any>;
+  ) => Promise<DiscordProfileLike | null>;
   resolveStoredDiscordEntityProfile: (
     runtime: AgentRuntime,
     entityId: string | undefined,
-  ) => Promise<any>;
+  ) => Promise<DiscordProfileLike | null>;
 };
 
 // ---------------------------------------------------------------------------

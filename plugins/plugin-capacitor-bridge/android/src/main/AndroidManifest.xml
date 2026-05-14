@@ -6,7 +6,8 @@
     WS8: AOSP + Android computer-use bridge.
     See eliza/plugins/plugin-computeruse/docs/ANDROID_CONSTRAINTS.md for full scope.
 -->
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <!--
         ScreenCaptureService — MediaProjection foreground service.

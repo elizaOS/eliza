@@ -22,7 +22,14 @@ import { findOwnPackageRoot } from "./server-helpers.ts";
 
 const require = createRequire(import.meta.url);
 const { applySignalQrOverride } = await import("@elizaos/plugin-signal");
-const { applyWhatsAppQrOverride } = await import("@elizaos/plugin-whatsapp");
+const { applyWhatsAppQrOverride } = (await import(
+  "@elizaos/plugin-whatsapp"
+)) as {
+  applyWhatsAppQrOverride: (
+    entries: PluginEntry[],
+    workspaceDir: string,
+  ) => void;
+};
 
 function findPluginsManifestRoot(startDir: string): string {
   // Mobile bundles are single-file — no workspace tree to walk.

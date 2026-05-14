@@ -12,6 +12,7 @@
  */
 
 export {
+  CapacitorLlamaAdapter,
   capacitorLlama,
   registerCapacitorLlamaLoader,
 } from "./capacitor-llama-adapter";

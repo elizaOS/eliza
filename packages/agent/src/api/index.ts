@@ -1,8 +1,8 @@
 const computerUseModule = await import("@elizaos/plugin-computeruse");
 const signalModule = await import("@elizaos/plugin-signal");
 const whatsAppModule = (await import("@elizaos/plugin-whatsapp")) as {
-  applyWhatsAppQrOverride: (...args: never[]) => unknown;
-  handleWhatsAppRoute: (...args: never[]) => unknown;
+  applyWhatsAppQrOverride: (...args: unknown[]) => unknown;
+  handleWhatsAppRoute: (...args: unknown[]) => unknown;
 };
 const workflowModule = await import("@elizaos/plugin-workflow");
 

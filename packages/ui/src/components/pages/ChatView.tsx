@@ -21,6 +21,11 @@ import { useConnectorSendAsAccount } from "../../hooks/useConnectorSendAsAccount
 import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
 import { readPersistedMobileRuntimeMode } from "../../onboarding/mobile-runtime-mode";
 import {
+  buildAssistantLaunchMetadata,
+  clearAssistantLaunchPayloadFromHash,
+  readAssistantLaunchPayloadFromHash,
+} from "../../platform/assistant-launch-payload";
+import {
   CodingAgentControlChip,
   PtyConsoleBase,
 } from "../../slots/task-coordinator-slots.js";
@@ -153,6 +158,7 @@ export function ChatView({
     chatInput: rawChatInput,
     chatSending,
     chatPendingImages: rawChatPendingImages,
+    setChatInput,
     setChatPendingImages,
   } = useChatComposer();
   const droppedFiles = Array.isArray(rawDroppedFiles) ? rawDroppedFiles : [];
@@ -188,8 +194,32 @@ export function ChatView({
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const composerRef = useRef<HTMLDivElement>(null);
+  const assistantLaunchHandledRef = useRef<string | null>(null);
   const [composerHeight, setComposerHeight] = useState(0);
   const [imageDragOver, setImageDragOver] = useState(false);
+
+  useEffect(() => {
+    if (isGameModal || typeof window === "undefined") return;
+
+    const consumeLaunchPayload = () => {
+      const payload = readAssistantLaunchPayloadFromHash(window.location.hash);
+      if (!payload) return;
+      if (assistantLaunchHandledRef.current === payload.launchId) return;
+      assistantLaunchHandledRef.current = payload.launchId;
+      clearAssistantLaunchPayloadFromHash();
+      void sendChatText(payload.text, {
+        metadata: buildAssistantLaunchMetadata(payload),
+      }).catch(() => {
+        setChatInput(payload.text);
+      });
+    };
+
+    consumeLaunchPayload();
+    window.addEventListener("hashchange", consumeLaunchPayload);
+    return () => {
+      window.removeEventListener("hashchange", consumeLaunchPayload);
+    };
+  }, [isGameModal, sendChatText, setChatInput]);
 
   const focusTerminalSession = useCallback(
     (sessionId: string) => {

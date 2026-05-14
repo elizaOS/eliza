@@ -82,19 +82,9 @@ public class MainActivity extends BridgeActivity {
         // every video / voice-calling app (Snapchat, YouTube, Zoom, Meet).
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
-        // The Capacitor WebView serves the renderer at https://localhost
-        // (its default secure-context origin); the on-device Eliza agent
-        // listens at http://127.0.0.1:31337. Without this knob the WebView
-        // blocks every fetch to the loopback agent as a mixed-content
-        // upgrade, surfacing in the UI as "Backend Timeout: /api/auth/status
-        // - Failed to fetch" even though the agent is up. Granting
-        // MIXED_CONTENT_ALWAYS_ALLOW only matters for loopback in this app
-        // — the network_security_config still pins the WebView's allowed
-        // cleartext hosts, and the Capacitor server.hostname locks the
-        // page origin.
         if (getBridge() != null && getBridge().getWebView() != null) {
             WebSettings settings = getBridge().getWebView().getSettings();
-            settings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
+            settings.setMixedContentMode(resolveMixedContentMode());
             applyBrandUserAgentMarkers(settings);
             // Synchronous fast path for the on-device agent bearer that
             // bypasses Capacitor's plugin executor. See ElizaNativeBridge
@@ -116,6 +106,18 @@ public class MainActivity extends BridgeActivity {
 
         requestPostNotificationsIfNeeded();
         ElizaWorkScheduler.enqueuePeriodic(getApplicationContext());
+    }
+
+    private static int resolveMixedContentMode() {
+        // The local/AOSP app serves the renderer from Capacitor's
+        // https://localhost origin while the on-device agent listens on
+        // http://127.0.0.1:31337. Debug sideload builds and privileged AOSP
+        // builds need that loopback bridge; cloud/Play rewrites this
+        // activity and keeps mixed content blocked.
+        if (BuildConfig.DEBUG || BuildConfig.AOSP_BUILD) {
+            return WebSettings.MIXED_CONTENT_ALWAYS_ALLOW;
+        }
+        return WebSettings.MIXED_CONTENT_NEVER_ALLOW;
     }
 
     /**

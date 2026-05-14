@@ -138,14 +138,19 @@ public class ElizaAppBlockerPlugin: CAPPlugin, CAPBridgedPlugin {
         let blockedCount = state?.tokenDataArray.count ?? 0
 
         call.resolve([
+            "status": "active",
             "available": true,
             "active": permissionStatus == "granted" && blockedCount > 0,
             "platform": "ios",
             "engine": "family-controls",
+            "capabilities": appBlockerCapabilities(),
             "blockedCount": blockedCount,
             "blockedPackageNames": [],
             "endsAt": nullable(AppBlockerShared.endsAtString(for: state)),
             "permissionStatus": permissionStatus,
+            "canRequest": permission["canRequest"] as? Bool ?? false,
+            "canOpenSettings": permission["canOpenSettings"] as? Bool ?? true,
+            "settingsTarget": nullable(permission["settingsTarget"]),
             "reason": nullable(reason),
         ])
     }
@@ -154,22 +159,30 @@ public class ElizaAppBlockerPlugin: CAPPlugin, CAPBridgedPlugin {
         let status = AuthorizationCenter.shared.authorizationStatus
         let mappedStatus: String
         let canRequest: Bool
+        let settingsTarget: Any
 
         switch status {
         case .approved:
             mappedStatus = "granted"
             canRequest = false
+            settingsTarget = NSNull()
         case .notDetermined:
             mappedStatus = "not-determined"
             canRequest = true
+            settingsTarget = "screenTime"
         default:
             mappedStatus = "denied"
             canRequest = true
+            settingsTarget = "screenTime"
         }
 
         var result: [String: Any] = [
             "status": mappedStatus,
             "canRequest": canRequest,
+            "canOpenSettings": mappedStatus != "granted",
+            "settingsTarget": settingsTarget,
+            "engine": "family-controls",
+            "capabilities": appBlockerCapabilities(),
         ]
 
         if let reason = reasonOverride ?? permissionReason(for: status) {
@@ -177,6 +190,18 @@ public class ElizaAppBlockerPlugin: CAPPlugin, CAPBridgedPlugin {
         }
 
         return result
+    }
+
+    private func appBlockerCapabilities() -> [String: Any] {
+        [
+            "canSelectApps": true,
+            "canBlockApps": true,
+            "canScheduleTimedBlocks": false,
+            "canUnblockEarly": true,
+            "requiresFamilyControls": true,
+            "requiresUsageAccess": false,
+            "requiresOverlay": false,
+        ]
     }
 
     private func permissionReason(for status: AuthorizationStatus) -> String? {

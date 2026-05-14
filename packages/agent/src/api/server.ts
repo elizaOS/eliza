@@ -85,7 +85,11 @@ const { applySignalQrOverride } = await import("@elizaos/plugin-signal");
 const { handleTtsRoutes, streamManager } = await import(
   "@elizaos/plugin-streaming"
 );
-const { applyWhatsAppQrOverride } = await import("@elizaos/plugin-whatsapp");
+const { applyWhatsAppQrOverride } = (await import(
+  "@elizaos/plugin-whatsapp"
+)) as {
+  applyWhatsAppQrOverride: (...args: unknown[]) => void;
+};
 const { handleTriggerRoutes } = await import("@elizaos/plugin-workflow");
 const { validateX402Startup } = await import("@elizaos/plugin-x402");
 

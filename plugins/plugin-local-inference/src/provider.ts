@@ -13,6 +13,8 @@ import {
 	type TranscriptionParams,
 } from "@elizaos/core";
 
+import { generateMediaAction } from "./actions/generate-media.js";
+
 export const LOCAL_INFERENCE_PROVIDER_ID = "eliza-local-inference";
 export const LOCAL_INFERENCE_PRIORITY = 0;
 
@@ -915,6 +917,7 @@ export const localInferencePlugin: Plugin = {
 	description:
 		"Eliza-1 local provider for text, embeddings, text-to-speech, and transcription.",
 	priority: LOCAL_INFERENCE_PRIORITY,
+	actions: [generateMediaAction],
 	models: createLocalInferenceModelHandlers(),
 	async init(_config: unknown, runtime: IAgentRuntime) {
 		const service = serviceFromRuntime(runtime);
