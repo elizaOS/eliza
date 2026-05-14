@@ -166,8 +166,21 @@ class ElizaServerManager:
             "ELIZA_BENCH_PORT": str(self.port),
             "ELIZA_BENCH_TOKEN": self._token,
         }
-        # Do not default ELIZA_BENCH_ALLOW_STUB_EMBEDDING here. Stub embeddings
-        # are diagnostic-only and must be explicitly set by the caller.
+        # Nested benchmark launchers sometimes spawn their own server manager
+        # after the orchestrator has selected a harness. Keep the diagnostic
+        # embedding stand-in opt-out, but make benchmark harness processes boot
+        # consistently when local Eliza-1 inference is not installed.
+        disabled_stub = env.get("ELIZA_BENCH_ALLOW_STUB_EMBEDDING", "").strip().lower()
+        selected_harness = (
+            env.get("ELIZA_BENCH_HARNESS")
+            or env.get("BENCHMARK_HARNESS")
+            or ""
+        ).strip().lower()
+        if (
+            selected_harness in {"eliza", "hermes", "openclaw"}
+            and disabled_stub not in {"0", "false", "no"}
+        ):
+            env.setdefault("ELIZA_BENCH_ALLOW_STUB_EMBEDDING", "1")
         if env.get("ELIZA_BENCH_MOCK") == "true":
             for key in (
                 "GROQ_API_KEY",
