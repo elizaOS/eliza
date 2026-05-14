@@ -110,8 +110,7 @@ def test_lookup_by_hf_id_short_name_or_eliza_name() -> None:
 
 def test_dflash_drafter_base_is_qwen3_5_for_qwen3_5_targets() -> None:
     # The Qwen3.5 target tiers must draft from the Qwen3.5-0.8B-Base
-    # checkpoint — it shares their 248320-token tokenizer (a Qwen3-0.6B
-    # drafter has the wrong vocab). The shipped drafter GGUF is that base
+    # checkpoint — it shares their 248320-token tokenizer (a legacy Qwen3 drafter has the wrong vocab). The shipped drafter GGUF is that base
     # distilled to ~0.6B. Mirrors DEFAULT_STUDENT_BASE in
     # scripts/distill_dflash_drafter.py. Per the 2026-05-12 operator
     # directive (Qwen3.5 fused-model line), the legacy Qwen3 tier

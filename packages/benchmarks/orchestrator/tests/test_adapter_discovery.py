@@ -1152,6 +1152,26 @@ def test_action_calling_registry_command_forwards_tool_choice(tmp_path: Path) ->
     assert command[command.index("--tool-choice") + 1] == "required"
 
 
+def test_action_calling_registry_command_uses_requested_harness_provider(tmp_path: Path) -> None:
+    entry = {item.id: item for item in get_benchmark_registry(_workspace_root())}[
+        "action-calling"
+    ]
+
+    hermes_command = entry.build_command(
+        tmp_path,
+        ModelSpec(provider="cerebras", model="gpt-oss-120b"),
+        {"agent": "hermes", "max_examples": 1},
+    )
+    openclaw_command = entry.build_command(
+        tmp_path,
+        ModelSpec(provider="cerebras", model="gpt-oss-120b"),
+        {"agent": "openclaw", "max_examples": 1},
+    )
+
+    assert hermes_command[hermes_command.index("--provider") + 1] == "hermes"
+    assert openclaw_command[openclaw_command.index("--provider") + 1] == "openclaw"
+
+
 def test_vending_registry_clamps_smoke_to_revenue_observable_days(tmp_path: Path) -> None:
     entry = {item.id: item for item in get_benchmark_registry(_workspace_root())}[
         "vending_bench"
