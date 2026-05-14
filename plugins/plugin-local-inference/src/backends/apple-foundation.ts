@@ -28,20 +28,20 @@
  */
 
 import type {
-  FoundationModelOptions,
-  FoundationModelResult,
-  IosComputerUseBridge,
+	FoundationModelOptions,
+	FoundationModelResult,
+	IosComputerUseBridge,
 } from "@elizaos/plugin-computeruse";
 
 export interface AppleFoundationGenerateArgs {
-  readonly prompt: string;
-  readonly options?: FoundationModelOptions;
+	readonly prompt: string;
+	readonly options?: FoundationModelOptions;
 }
 
 export interface AppleFoundationAdapter {
-  readonly name: "apple-foundation";
-  available(): boolean;
-  generate(args: AppleFoundationGenerateArgs): Promise<FoundationModelResult>;
+	readonly name: "apple-foundation";
+	available(): boolean;
+	generate(args: AppleFoundationGenerateArgs): Promise<FoundationModelResult>;
 }
 
 /**
@@ -50,54 +50,54 @@ export interface AppleFoundationAdapter {
  * `Capacitor.Plugins.ComputerUse` and passes it in.
  */
 export function createAppleFoundationAdapter(
-  getBridge: () => IosComputerUseBridge | null,
+	getBridge: () => IosComputerUseBridge | null,
 ): AppleFoundationAdapter {
-  let probedAvailable: boolean | null = null;
-  let probing: Promise<boolean> | null = null;
+	let probedAvailable: boolean | null = null;
+	let probing: Promise<boolean> | null = null;
 
-  async function probe(): Promise<boolean> {
-    const bridge = getBridge();
-    if (!bridge) return false;
-    const result = await bridge.probe();
-    if (!result.ok) return false;
-    return result.data.capabilities.foundationModel === true;
-  }
+	async function probe(): Promise<boolean> {
+		const bridge = getBridge();
+		if (!bridge) return false;
+		const result = await bridge.probe();
+		if (!result.ok) return false;
+		return result.data.capabilities.foundationModel === true;
+	}
 
-  return {
-    name: "apple-foundation",
-    available(): boolean {
-      if (probedAvailable !== null) return probedAvailable;
-      if (!probing) {
-        probing = probe().then((v) => {
-          probedAvailable = v;
-          return v;
-        });
-      }
-      // Synchronous semantics: return false until the probe resolves; this
-      // matches the rest of the local-inference availability pattern, which
-      // is allowed to return a slightly stale "not yet available" until the
-      // first async probe completes.
-      return probedAvailable === true;
-    },
-    async generate(args): Promise<FoundationModelResult> {
-      const bridge = getBridge();
-      if (!bridge) {
-        throw new Error(
-          "apple-foundation adapter invoked but Capacitor ComputerUse plugin is not registered.",
-        );
-      }
-      const result = await bridge.foundationModelGenerate({
-        prompt: args.prompt,
-        ...(args.options ? { options: args.options } : {}),
-      });
-      if (!result.ok) {
-        throw new Error(
-          `apple-foundation generate failed: ${result.code} — ${result.message}`,
-        );
-      }
-      return result.data;
-    },
-  };
+	return {
+		name: "apple-foundation",
+		available(): boolean {
+			if (probedAvailable !== null) return probedAvailable;
+			if (!probing) {
+				probing = probe().then((v) => {
+					probedAvailable = v;
+					return v;
+				});
+			}
+			// Synchronous semantics: return false until the probe resolves; this
+			// matches the rest of the local-inference availability pattern, which
+			// is allowed to return a slightly stale "not yet available" until the
+			// first async probe completes.
+			return probedAvailable === true;
+		},
+		async generate(args): Promise<FoundationModelResult> {
+			const bridge = getBridge();
+			if (!bridge) {
+				throw new Error(
+					"apple-foundation adapter invoked but Capacitor ComputerUse plugin is not registered.",
+				);
+			}
+			const result = await bridge.foundationModelGenerate({
+				prompt: args.prompt,
+				...(args.options ? { options: args.options } : {}),
+			});
+			if (!result.ok) {
+				throw new Error(
+					`apple-foundation generate failed: ${result.code} — ${result.message}`,
+				);
+			}
+			return result.data;
+		},
+	};
 }
 
 // ── Registry ─────────────────────────────────────────────────────────────────
@@ -110,18 +110,18 @@ let registered: AppleFoundationAdapter | null = null;
  * registration so a hot reload of the bridge swaps cleanly.
  */
 export function registerAppleFoundationAdapter(
-  adapter: AppleFoundationAdapter,
+	adapter: AppleFoundationAdapter,
 ): void {
-  registered = adapter;
+	registered = adapter;
 }
 
 export function getAppleFoundationAdapter(): AppleFoundationAdapter | null {
-  return registered;
+	return registered;
 }
 
 /**
  * Tests use this to ensure each spec starts from a known state.
  */
 export function _resetAppleFoundationAdapterForTests(): void {
-  registered = null;
+	registered = null;
 }
