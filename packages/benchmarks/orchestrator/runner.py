@@ -280,13 +280,9 @@ def _default_env(workspace_root: Path, request: RunRequest) -> dict[str, str]:
     env.setdefault("ELIZA_CONVERSATION_COMPACTOR", "structured-state")
     env.setdefault("MAX_CONVERSATION_TOKENS", "120000")
     env.setdefault("BENCHMARK_CAPTURE_TRAJECTORIES", "1")
-    if harness == "eliza":
-        # The low-level server manager keeps stub embeddings opt-in. The
-        # orchestrator is that explicit caller for smoke/benchmark harness runs,
-        # where several adapters do not exercise embedding quality but still
-        # need the local TypeScript runtime to boot without a downloaded
-        # plugin-local-inference model.
-        env.setdefault("ELIZA_BENCH_ALLOW_STUB_EMBEDDING", "1")
+    # Stub embeddings remain available for smoke diagnostics, but they are not
+    # release evidence. Callers must opt in explicitly via env or benchmark
+    # extra_config; the orchestrator never enables them by default.
     if provider in PROVIDER_DUMMY_KEY:
         provider_key = PROVIDER_KEY_ENV.get(provider)
         if provider_key and not env.get(provider_key):

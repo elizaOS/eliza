@@ -40,7 +40,7 @@
  */
 
 import { readFileSync, writeFileSync } from "node:fs";
-import { resolve, dirname, relative } from "node:path";
+import { dirname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const SELF = fileURLToPath(import.meta.url);
@@ -85,7 +85,9 @@ function parseToolUseAssistant(row) {
   const asst = row.messages.find((m) => m.role === "assistant");
   if (!asst || typeof asst.content !== "string") return null;
   const text = asst.content.trim();
-  const match = text.match(/^ACTION:\s*([A-Z_][A-Z0-9_]*)\s*(\{[\s\S]*?\})?\s*([\s\S]*)$/);
+  const match = text.match(
+    /^ACTION:\s*([A-Z_][A-Z0-9_]*)\s*(\{[\s\S]*?\})?\s*([\s\S]*)$/,
+  );
   if (!match) return null;
   const [, actionName, jsonChunk, suffix] = match;
   /** @type {Record<string, unknown>} */
@@ -118,11 +120,12 @@ function getUserContent(row) {
  * @param {string} hint
  */
 function deriveId(prefix, index, hint) {
-  const slug = hint
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 40) || "case";
+  const slug =
+    hint
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 40) || "case";
   return `${prefix}-${String(index).padStart(3, "0")}-${slug}`;
 }
 
@@ -236,11 +239,13 @@ function deriveAction(rows) {
     bucket.cases.push({
       id: caseId,
       actionName: parsed.actionName,
-      parameters: Array.from(bucket.parameters.entries()).map(([name, type]) => ({
-        name,
-        type,
-        description: `Auto-derived parameter for ${parsed.actionName}.`,
-      })),
+      parameters: Array.from(bucket.parameters.entries()).map(
+        ([name, type]) => ({
+          name,
+          type,
+          description: `Auto-derived parameter for ${parsed.actionName}.`,
+        }),
+      ),
       context: userContent,
       expected_params: parsed.params,
     });
@@ -266,19 +271,29 @@ function writeFixture(name, blob, dryRun) {
   const path = resolve(FIXTURE_DIR, name);
   const body = `${JSON.stringify(blob, null, 2)}\n`;
   if (dryRun) {
-    console.log(`[dry-run] would write ${relative(REPO_ROOT, path)} (${blob.cases.length} cases, ${body.length} bytes)`);
+    console.log(
+      `[dry-run] would write ${relative(REPO_ROOT, path)} (${blob.cases.length} cases, ${body.length} bytes)`,
+    );
     return;
   }
   writeFileSync(path, body, "utf8");
-  console.log(`wrote ${relative(REPO_ROOT, path)} (${blob.cases.length} cases)`);
+  console.log(
+    `wrote ${relative(REPO_ROOT, path)} (${blob.cases.length} cases)`,
+  );
 }
 
 function main() {
   const args = process.argv.slice(2);
   const dryRun = args.includes("--dry-run") || args.includes("-n");
   const rows = readDatasetRows(DATASET_TEST);
-  console.log(`read ${rows.length} rows from ${relative(REPO_ROOT, DATASET_TEST)}`);
-  writeFixture("should-respond.derived.json", deriveShouldRespond(rows), dryRun);
+  console.log(
+    `read ${rows.length} rows from ${relative(REPO_ROOT, DATASET_TEST)}`,
+  );
+  writeFixture(
+    "should-respond.derived.json",
+    deriveShouldRespond(rows),
+    dryRun,
+  );
   writeFixture("planner.derived.json", derivePlanner(rows), dryRun);
   writeFixture("action.derived.json", deriveAction(rows), dryRun);
 }
