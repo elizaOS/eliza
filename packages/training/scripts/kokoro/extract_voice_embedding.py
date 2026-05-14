@@ -250,16 +250,25 @@ def _fit_ref_s_via_mel(
     for p in model.parameters():
         p.requires_grad_(False)
 
-    # Initial ref_s.
+    # Initial ref_s + anchor (the init point we regularize toward).
     if args.init_from_voice:
-        ref_s = _init_ref_s_from_voice(args.init_from_voice, args.base_model, device).detach().clone()
+        anchor = _init_ref_s_from_voice(args.init_from_voice, args.base_model, device).detach()
+        ref_s = anchor.clone()
         log.info("initialized ref_s from voice %s", args.init_from_voice)
     else:
-        ref_s = torch.zeros((VOICE_DIM,), device=device)
+        anchor = torch.zeros((VOICE_DIM,), device=device)
+        ref_s = anchor.clone()
         log.info("initialized ref_s as zero vector")
     ref_s.requires_grad_(True)
 
     optimizer = torch.optim.Adam([ref_s], lr=args.lr)
+    # L2 anchor regularization keeps the prosody half (ref_s[128:], which feeds
+    # the duration/F0 predictor) close to the init point. Without this, the
+    # mel-fit optimization happily destabilizes duration prediction (e.g. 5s
+    # of audio for the init voice → 30s for an over-fit voice on the same
+    # prompt). Apply only on the prosody half; the timbre half (ref_s[:128])
+    # feeds the decoder and is fine to move freely.
+    anchor_prosody = anchor[128:]
 
     # Pre-compute target mels + phonemized input_ids for each clip-with-transcript.
     pairs: list[tuple[Any, Any]] = []  # (input_ids, target_mel)
@@ -357,6 +366,11 @@ def _fit_ref_s_via_mel(
             ref_s_full = ref_s.unsqueeze(0)  # (1, 256)
             try:
                 synth_audio = _forward_with_grad(input_ids, ref_s_full)
+            except torch.cuda.OutOfMemoryError as exc:
+                log.warning("OOM at step %d, dropping batch: %s", step, str(exc).split("\n")[0])
+                torch.cuda.empty_cache()
+                step += 1
+                continue
             except Exception as exc:  # noqa: BLE001
                 log.warning("forward failed at step %d: %s", step, exc)
                 step += 1
@@ -364,7 +378,12 @@ def _fit_ref_s_via_mel(
             synth_mel = _audio_to_logmel(synth_audio)
             # Crop to min length to allow comparison even if synth duration mismatched.
             t_min = min(synth_mel.shape[-1], target_mel.shape[-1])
-            loss = (synth_mel[..., :t_min] - target_mel[..., :t_min]).abs().mean()
+            recon_loss = (synth_mel[..., :t_min] - target_mel[..., :t_min]).abs().mean()
+            # Anchor regularization on the prosody half of ref_s. weight=0.5
+            # is enough to keep duration prediction stable while still letting
+            # the timbre half (ref_s[:128]) move freely.
+            anchor_loss = (ref_s[128:] - anchor_prosody).pow(2).mean()
+            loss = recon_loss + args.anchor_weight * anchor_loss
             loss.backward()
             optimizer.step()
             losses.append(float(loss.detach().cpu()))
@@ -510,8 +529,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--lr",
         type=float,
-        default=0.05,
-        help="Learning rate for ref_s optimization. Default 0.05 (high; ref_s is a 256-dim scalar tensor with strong gradient signal).",
+        default=0.01,
+        help="Learning rate for ref_s optimization. Default 0.01. Higher rates "
+        "(0.05+) destabilize duration prediction even with anchor regularization.",
     )
     p.add_argument(
         "--log-every",
@@ -524,6 +544,14 @@ def build_parser() -> argparse.ArgumentParser:
         type=str,
         default=None,
         help="Initialize ref_s from a stock voice (e.g. af_bella) before fitting. Default: zero.",
+    )
+    p.add_argument(
+        "--anchor-weight",
+        type=float,
+        default=0.5,
+        help="L2 regularization weight pulling the prosody half of ref_s "
+        "(ref_s[128:], feeds duration/F0 predictor) toward the init point. "
+        "0.0 disables; 0.5 keeps duration stable. Default 0.5.",
     )
     p.add_argument(
         "--style-encoder-checkpoint",
