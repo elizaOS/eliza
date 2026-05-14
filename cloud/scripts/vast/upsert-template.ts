@@ -252,9 +252,18 @@ async function main(): Promise<void> {
     ]);
   }
 
-  const hfToken = process.env.HF_TOKEN_SECRET ?? process.env.HUGGING_FACE_HUB_TOKEN;
+  // Canonical caller env: HF_TOKEN. HF_TOKEN_SECRET is the Vast-side
+  // secret slot, HUGGINGFACE_HUB_TOKEN matches the Python convention,
+  // HUGGING_FACE_HUB_TOKEN is the legacy TS variant. Whichever the
+  // operator sets, we forward as HUGGINGFACE_HUB_TOKEN inside the worker
+  // (the name huggingface_hub recognizes natively).
+  const hfToken =
+    process.env.HF_TOKEN ??
+    process.env.HF_TOKEN_SECRET ??
+    process.env.HUGGINGFACE_HUB_TOKEN ??
+    process.env.HUGGING_FACE_HUB_TOKEN;
   if (hfToken && hfToken.trim().length > 0) {
-    env.HUGGING_FACE_HUB_TOKEN = hfToken.trim();
+    env.HUGGINGFACE_HUB_TOKEN = hfToken.trim();
   }
 
   const config: TemplateConfig = {
