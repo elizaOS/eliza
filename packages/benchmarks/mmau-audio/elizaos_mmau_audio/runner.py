@@ -11,10 +11,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from benchmarks.mmau.agent import MMAUAgentProtocol, OracleMMAUAgent
-from benchmarks.mmau.dataset import MMAUDataset
-from benchmarks.mmau.evaluator import MMAUEvaluator
-from benchmarks.mmau.types import (
+from elizaos_mmau_audio.agent import MMAUAgentProtocol, OracleMMAUAgent
+from elizaos_mmau_audio.dataset import MMAUDataset
+from elizaos_mmau_audio.evaluator import MMAUEvaluator
+from elizaos_mmau_audio.types import (
     MMAUConfig,
     MMAUPrediction,
     MMAUReport,
@@ -95,18 +95,15 @@ class MMAURunner:
 
             return OpenClawMMAUAgent(self.config)
         raise ValueError(
-            f"MMAU: unknown agent {agent_name!r}; expected one of "
-            "mock/eliza/hermes/openclaw"
+            f"MMAU: unknown agent {agent_name!r}; expected one of mock/eliza/hermes/openclaw"
         )
 
-    async def _run_sample(
-        self, agent: MMAUAgentProtocol, sample: MMAUSample
-    ) -> MMAUResult:
+    async def _run_sample(self, agent: MMAUAgentProtocol, sample: MMAUSample) -> MMAUResult:
         started = time.time()
         timeout_s = max(1.0, self.config.timeout_ms / 1000)
         try:
             prediction = await asyncio.wait_for(agent.predict(sample), timeout=timeout_s)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             prediction = MMAUPrediction(
                 sample_id=sample.id,
                 error="timeout",
@@ -229,15 +226,17 @@ def _markdown_summary(report: MMAUReport) -> str:
         acc = report.accuracy_by_skill[skill]
         count = report.counts_by_skill.get(skill, 0)
         lines.append(f"| {skill} | {count} | {acc * 100:.1f}% |")
-    lines.extend([
-        "",
-        "## Notes",
-        "",
-        "- Pure MCQ: scoring is exact match on the parsed answer letter.",
-        "- Cascaded STT discards music / non-speech semantics; expect lower "
-        "scores on sound and music categories than on speech.",
-        "",
-    ])
+    lines.extend(
+        [
+            "",
+            "## Notes",
+            "",
+            "- Pure MCQ: scoring is exact match on the parsed answer letter.",
+            "- Cascaded STT discards music / non-speech semantics; expect lower "
+            "scores on sound and music categories than on speech.",
+            "",
+        ]
+    )
     return "\n".join(lines)
 
 

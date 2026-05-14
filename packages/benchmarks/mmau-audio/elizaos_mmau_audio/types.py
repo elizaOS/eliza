@@ -12,12 +12,12 @@ Paper:  https://arxiv.org/abs/2410.19168
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
 
-class MMAUCategory(str, Enum):
+class MMAUCategory(StrEnum):
     """Top-level MMAU audio domain (the ``other_attributes.task`` field)."""
 
     SPEECH = "speech"
@@ -28,7 +28,7 @@ class MMAUCategory(str, Enum):
 MMAU_CATEGORIES: tuple[MMAUCategory, ...] = tuple(MMAUCategory)
 
 
-class MMAUSplit(str, Enum):
+class MMAUSplit(StrEnum):
     """Available MMAU splits on Hugging Face.
 
     - TEST_MINI: 1,000 samples (``gamma-lab-umd/MMAU-test-mini``).
