@@ -45,8 +45,11 @@ echo "==> bun installed: $(/usr/local/bin/bun --version)"
 # --- Local LLM via Shaw's node-llama-cpp stack ---
 # We dropped Ollama (separate daemon, separate HTTP API, separate model
 # manager) in favor of in-process libllama.so via `node-llama-cpp@3.x` —
-# the same stack `@elizaos/plugin-local-ai` uses. The agent process loads
-# the GGUF directly via `agent/src/runtime/local-llama-plugin.ts`.
+# the same stack `@elizaos/plugin-local-inference` uses on desktop/iOS. The
+# agent process loads the GGUF directly via
+# `agent/src/runtime/local-llama-plugin.ts` (a lightweight node-llama-cpp
+# wrapper that bypasses the full plugin-local-inference voice / catalog /
+# DFlash stack — see that file's docstring for the rationale).
 #
 # Why this is simpler:
 #   - One subprocess (the agent), not two (agent + ollama).
