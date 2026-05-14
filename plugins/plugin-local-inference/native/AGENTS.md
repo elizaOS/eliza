@@ -50,12 +50,11 @@ or "pick the TTS" — that is a runtime concern, not a user concern.
 
 Backbones (do not change without explicit human approval):
 
-- **Text/vision:** Qwen3.5 family only for the current release line:
-  0.6B, 1.7B, and 4B. Larger historical 9B/27B hardware tiers are hidden
-  placeholders until final Eliza-1 weights and evidence exist. We
-  do not name these as "Qwen" in any user-facing string. Internally,
-  manifests record the upstream lineage and license; the UI shows
-  "Eliza-1 <tier>".
+- **Text/vision:** the active Eliza-1 line uses Qwen3.5 for
+  `0_8b` / `2b` / `4b` / `9b` and Qwen3.6 for
+  `27b` / `27b-256k` / `27b-1m`. We do not name these as "Qwen" in any
+  user-facing string. Internally, manifests record the upstream lineage
+  and license; the UI shows "Eliza-1 <tier>".
 - **Voice (TTS):** Tier-aware. The active backend per tier is declared
   in `ELIZA_1_VOICE_BACKENDS`
   (`packages/shared/src/local-inference/catalog.ts`) and is read by the
@@ -129,7 +128,7 @@ Backbones (do not change without explicit human approval):
   bundle. Drives barge-in cancellation; gates ASR to skip silent frames.
 - **Wake word:** openWakeWord (Apache-2.0, ~3 MB). Opt-in, local-mode
   only. Hidden in cloud mode per three-mode hide-not-disable.
-- **Embedding:** `0_6b` and `1_7b` reuse the active text backbone with
+- **Embedding:** `0_8b` and `2b` reuse the active text backbone with
   `--pooling last` — no duplicate weights in the mobile/default tiers.
   Larger tiers may ship a dedicated `embedding/` artifact (1024-dim
   Matryoshka, 32k ctx) when the manifest records a real source artifact and

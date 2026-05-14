@@ -7,14 +7,14 @@ import json
 import time
 from pathlib import Path
 
-from benchmarks.mmau.agent import (
+from elizaos_mmau_audio.agent import (
     CascadedSTTAgent,
     OracleMMAUAgent,
     format_mcq_prompt,
 )
-from benchmarks.mmau.cli import main as cli_main
-from benchmarks.mmau.runner import MMAURunner
-from benchmarks.mmau.types import MMAUConfig, MMAUSample, MMAUCategory
+from elizaos_mmau_audio.cli import main as cli_main
+from elizaos_mmau_audio.runner import MMAURunner
+from elizaos_mmau_audio.types import MMAUConfig, MMAUSample, MMAUCategory
 
 
 def test_oracle_run_writes_artifacts(tmp_path: Path) -> None:

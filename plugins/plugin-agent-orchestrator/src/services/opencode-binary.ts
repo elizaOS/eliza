@@ -36,7 +36,8 @@ export function opencodeCommandName(): string {
 
 function localOpencodeCandidates(): string[] {
   const roots = candidateRoots();
-  const platformName = process.platform === "win32" ? "windows" : process.platform;
+  const platformName =
+    process.platform === "win32" ? "windows" : process.platform;
   const arch = process.arch === "arm64" ? "arm64" : "x64";
   const distName = `opencode-${platformName}-${arch}`;
 

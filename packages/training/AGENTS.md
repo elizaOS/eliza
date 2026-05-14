@@ -15,8 +15,8 @@ contract.
 
 ## 1. What this package owns
 
-- Text fine-tuning of the Qwen3.5 0.8B / 2B / 4B / 9B / 27B
-  backbones used by the current Eliza-1 release line.
+- Text fine-tuning of the Qwen3.5 0.8B / 2B / 4B / 9B backbones plus
+  Qwen3.6 27B for the current Eliza-1 release line.
 - Drafter training for DFlash speculative decoding.
 - Voice handling (freeze, cache, evaluate — see §4; we do not retrain
   voice weights right now).
@@ -44,7 +44,7 @@ unchanged for now):
 
 | Component       | Status                                        | Why                                  |
 | --------------- | --------------------------------------------- | ------------------------------------ |
-| Text backbone   | **Fine-tune** (Qwen3.5 0.8B / 2B / 4B)        | This is the primary product loop.    |
+| Text backbone   | **Fine-tune** (Qwen3.5 0.8B / 2B / 4B / 9B + Qwen3.6 27B) | This is the primary product loop.    |
 | DFlash drafter  | **Fine-tune to match the text checkpoint**    | Acceptance rate depends on alignment.|
 | OmniVoice TTS   | **Frozen**                                    | No license to retrain; no eval lift. |
 | ASR             | **Frozen**                                    | Same.                                |
