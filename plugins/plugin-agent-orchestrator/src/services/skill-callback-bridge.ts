@@ -10,9 +10,6 @@
  * dispatches to the parent's USE_SKILL action and pipes the result back into
  * the same session via `ptyService.sendToSession`.
  *
- * Default-on per the Hermes-style project direction. Disable by setting
- * `ELIZA_ENABLE_CHILD_SKILL_CALLBACK=0`.
- *
  * @module services/skill-callback-bridge
  */
 
@@ -55,16 +52,6 @@ interface SkillCallbackResult {
 function getLogger(runtime: IAgentRuntime): Logger | Console {
   const candidate = (runtime as { logger?: Logger }).logger;
   return candidate ?? console;
-}
-
-function isCallbackEnabled(runtime: IAgentRuntime): boolean {
-  const raw =
-    (runtime.getSetting("ELIZA_ENABLE_CHILD_SKILL_CALLBACK") as
-      | string
-      | undefined) ?? process.env.ELIZA_ENABLE_CHILD_SKILL_CALLBACK;
-  if (raw === undefined || raw === null || raw === "") return true;
-  const normalized = String(raw).trim().toLowerCase();
-  return normalized !== "0" && normalized !== "false" && normalized !== "no";
 }
 
 /**
@@ -203,13 +190,6 @@ export function ensureSkillCallbackBridge(deps: BridgeDeps): void {
 export function installSkillCallbackBridge(deps: BridgeDeps): () => void {
   const { runtime, ptyService, sessionAllowList } = deps;
   const log = getLogger(runtime);
-
-  if (!isCallbackEnabled(runtime)) {
-    log.debug?.(
-      `${LOG_PREFIX} disabled via ELIZA_ENABLE_CHILD_SKILL_CALLBACK=0`,
-    );
-    return () => undefined;
-  }
 
   const useSkillAction = resolveUseSkillAction(runtime);
 

@@ -51,17 +51,16 @@ import {
   listAppRoutePluginLoaders,
 } from "./app-route-plugin-registry.js";
 import type { EmbeddingProgressCallback } from "@elizaos/plugin-local-inference/runtime";
-import {
-  DEFAULT_MODELS_DIR,
-  detectEmbeddingPreset,
-  embeddingGgufFilePresent,
-  ensureLocalInferenceHandler,
-  ensureModel,
-  findExistingEmbeddingModelForWarmupReuse,
-  isEmbeddingWarmupReuseDisabled,
-  shouldEnableMobileLocalInference,
-  shouldWarmupLocalEmbeddingModel,
-} from "@elizaos/plugin-local-inference/runtime";
+// plugin-local-inference loaded lazily to avoid static plugin boundary violations.
+let _localInferenceRuntime:
+  | typeof import("@elizaos/plugin-local-inference/runtime")
+  | undefined;
+async function _localInference() {
+  if (!_localInferenceRuntime) {
+    _localInferenceRuntime = await import("@elizaos/plugin-local-inference/runtime");
+  }
+  return _localInferenceRuntime;
+}
 import {
   ensureTextToSpeechHandler,
   isEdgeTtsDisabled as isTextToSpeechEdgeTtsDisabled,

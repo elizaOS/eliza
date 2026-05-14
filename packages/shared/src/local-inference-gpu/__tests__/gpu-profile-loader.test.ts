@@ -27,12 +27,7 @@ import {
 
 const ALL_IDS: GpuYamlId[] = ["rtx-3090", "rtx-4090", "rtx-5090", "h200"];
 const EXPECTED_PROFILE_BUNDLES: Record<GpuYamlId, string[]> = {
-  "rtx-3090": [
-    "eliza-1-0_8b",
-    "eliza-1-2b",
-    "eliza-1-4b",
-    "eliza-1-9b",
-  ],
+  "rtx-3090": ["eliza-1-0_8b", "eliza-1-2b", "eliza-1-4b", "eliza-1-9b"],
   "rtx-4090": [
     "eliza-1-0_8b",
     "eliza-1-2b",
