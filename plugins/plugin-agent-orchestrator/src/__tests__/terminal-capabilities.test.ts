@@ -68,16 +68,27 @@ describe("orchestrator terminal capability detection", () => {
     expect(resolveExecutable("acpx")).toBe(acpx);
   });
 
-  it("rejects vanilla Android terminal support", () => {
+  it("accepts direct Android local-yolo when a shell is executable", () => {
+    const shell = executable("sh");
     process.env.ELIZA_PLATFORM = "android";
     process.env.ELIZA_RUNTIME_MODE = "local-yolo";
+    process.env.CODING_TOOLS_SHELL = shell;
     process.env.PATH = tempDir;
+
+    const support = detectOrchestratorTerminalSupport();
+
+    expect(support.supported).toBe(true);
+  });
+
+  it("rejects iOS terminal support", () => {
+    process.env.ELIZA_PLATFORM = "ios";
+    process.env.ELIZA_RUNTIME_MODE = "local-yolo";
 
     const support = detectOrchestratorTerminalSupport();
 
     expect(support.supported).toBe(false);
     expect(support.reason).toBe("vanilla_mobile");
-    expect(support.message).toContain("branded AOSP");
+    expect(support.message).toContain("iOS");
   });
 
   it("accepts branded AOSP local-yolo when a shell is executable", () => {
