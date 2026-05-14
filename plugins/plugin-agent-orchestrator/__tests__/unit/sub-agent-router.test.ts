@@ -2,6 +2,7 @@ import type { Memory } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   extractSubResources,
+  normalizeUrlsInText,
   SubAgentRouter,
 } from "../../src/services/sub-agent-router.js";
 import type { SessionInfo } from "../../src/services/types.js";
@@ -358,5 +359,46 @@ describe("extractSubResources", () => {
       (_, i) => `<script src="s${i}.js"></script>`,
     ).join("");
     expect(extractSubResources(many, PAGE).length).toBe(10);
+  });
+});
+
+describe("normalizeUrlsInText", () => {
+  it("replaces a Unicode non-breaking hyphen inside a URL with ASCII hyphen", () => {
+    // gpt-oss-class models emit U+2011 where they meant "-", so the link
+    // 404s even though the directory exists under the ASCII-hyphen name.
+    const text =
+      "app is live at https://nubilio.org/apps/bmi‑calc‑1/";
+    expect(normalizeUrlsInText(text)).toBe(
+      "app is live at https://nubilio.org/apps/bmi-calc-1/",
+    );
+  });
+
+  it("normalizes en dash and em dash inside URLs", () => {
+    const text =
+      "see http://localhost:6900/apps/my–app—1/index.html";
+    expect(normalizeUrlsInText(text)).toBe(
+      "see http://localhost:6900/apps/my-app-1/index.html",
+    );
+  });
+
+  it("leaves dashes in surrounding prose untouched — only URLs are normalized", () => {
+    const text = "the build finished — see https://x.org/a‑b/";
+    expect(normalizeUrlsInText(text)).toBe(
+      "the build finished — see https://x.org/a-b/",
+    );
+  });
+
+  it("normalizes every URL when several are present", () => {
+    const text =
+      "http://127.0.0.1/a‑b/ and https://nubilio.org/c‑d/";
+    expect(normalizeUrlsInText(text)).toBe(
+      "http://127.0.0.1/a-b/ and https://nubilio.org/c-d/",
+    );
+  });
+
+  it("returns text unchanged when it contains no URLs", () => {
+    expect(normalizeUrlsInText("just some prose — no links")).toBe(
+      "just some prose — no links",
+    );
   });
 });
