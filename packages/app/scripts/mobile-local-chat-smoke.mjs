@@ -1167,7 +1167,9 @@ async function verifyIosBackgroundApi(udid, opts = {}) {
     fieldImplemented = baselineWakeMs !== null;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    throw new Error(`[local-chat-smoke] iOS /api/health is not reachable: ${message}`);
+    throw new Error(
+      `[local-chat-smoke] iOS /api/health is not reachable: ${message}`,
+    );
   }
 
   // Resolve the simulator's running app PID via launchctl.
@@ -1254,16 +1256,6 @@ async function verifyIosBackgroundApi(udid, opts = {}) {
       `iOS wake did not advance after BGTaskScheduler simulate for ${taskIdentifier}. ` +
         `baseline=${baselineWakeMs}`,
     );
-  }
-    );
-    return {
-      ok: true,
-      reason: "wake-field-not-implemented",
-      taskIdentifier,
-      beforeAt: baselineWakeMs,
-      afterAt: null,
-      durationMs: null,
-    };
   }
 
   console.log(
@@ -1453,7 +1445,7 @@ async function main() {
       } else {
         const result = await verifyIosBackgroundApi(iosContext.udid, {
           taskIdentifier: iosBackgroundTaskId,
-          baseUrl: apiBase ?? "http://127.0.0.1:31337",
+          baseUrl: apiBase,
           authToken: authTokenArg,
         });
         console.log(
