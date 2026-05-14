@@ -210,7 +210,6 @@ const TIER_SPECS: Readonly<Record<Eliza1TierId, TierSpec>> = {
     drafterParams: "0.8B",
     drafterSizeGb: 0.5,
     drafterMinRamGb: 4,
-    hasEmbedding: true,
     // WS2: vision enabled — the 2B tier is the standard "small-phone"
     // default for first-run users, so camera-to-reaction and screen
     // analysis must work here. The mmproj is ~320 MB Q8_0; the arbiter

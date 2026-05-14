@@ -68,13 +68,27 @@ export class DownloadManager {
 				}
 			}
 
+			// Gated HuggingFace repos (and some ungated repos whose LFS
+			// redirects hit a metered endpoint) require a bearer token to
+			// avoid 401. Pick it up from any of the standard env vars and
+			// pass it through redirects (the recursive downloadFile call
+			// inherits this same code path).
+			const hfToken =
+				process.env.HF_TOKEN?.trim() ||
+				process.env.HUGGINGFACE_TOKEN?.trim() ||
+				process.env.HF_HUB_TOKEN?.trim() ||
+				"";
+			const requestHeaders: Record<string, string> = {
+				"User-Agent":
+					"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+			};
+			if (hfToken) {
+				requestHeaders.Authorization = `Bearer ${hfToken}`;
+			}
 			const request = https.get(
 				url,
 				{
-					headers: {
-						"User-Agent":
-							"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
-					},
+					headers: requestHeaders,
 					timeout: 300000,
 				},
 				(response) => {
