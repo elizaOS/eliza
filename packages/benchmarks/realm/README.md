@@ -42,15 +42,23 @@ removed. Each task is now scored extrinsically:
 - **Planning Quality** — fraction of expected entities served / visited
   (locations, passengers, errands, cooking tasks, …).
 - **Planning Optimality** — `oracle_cost / agent_cost` from an
-  **independent** solver. Solvers:
-  - **JSSP (P11)**: OR-Tools CP-SAT (optimal) when available, else a
-    lower-bound (`max(max job duration, max machine load)`).
-  - **TSP-TW (P1)**: brute-force optimal for ≤ 8 visit nodes,
-    nearest-neighbour fallback otherwise.
-  - **DARP (P3/P4)**: greedy nearest-pickup heuristic (upper bound).
-  - **Disaster (P7)**: severity-weighted greedy coverage.
-  - **JSSP (P11)** also accepts the upstream `upper_bound` header when
-    present (Taillard / DMU); we report optimality against UB.
+  **independent** OR-Tools solver. Per-problem solver / expected
+  optimality:
+  - **TSP-TW (P1)**: OR-Tools `RoutingModel` with a `Time` dimension.
+    Provably optimal for paper-sized instances within the solver
+    budget (default 30s); GLS-improved feasible otherwise.
+  - **VRP-TW (P2)**: coverage-based score (no oracle solve).
+  - **DARP / CVRP-TW (P3/P4)**: OR-Tools `RoutingModel` with pickup-
+    delivery pairs, capacity dimension, time-window cumul, and
+    disjunction penalties for unservable requests. Near-optimal for
+    paper-sized instances; greedy fallback (logged) on
+    infeasibility or timeout.
+  - **Disaster (P7)**: closed-form severity-weighted coverage. Exact.
+  - **JSSP (P11)**: OR-Tools CP-SAT `NoOverlap` + interval makespan
+    minimisation. Provably optimal within `--solver-timeout` for
+    small instances; FEASIBLE within budget on the largest DMU/TA.
+    Oracle is the *tighter* of CP-SAT and the upstream
+    `upper_bound` header (Taillard / DMU).
 - **Constraint Satisfaction Rate** — fraction of declared constraints
   satisfied (time windows, deadlines, capacity, budget, …).
 - **Coordination** — for multi-agent tasks: fraction of expected agents
@@ -101,19 +109,25 @@ python -m benchmarks.realm.cli --provider mock --max-tasks 1
 python -m benchmarks.realm.cli --provider mock --use-sample-tasks
 ```
 
-## Solvers as optional dependencies
+## OR-Tools is required
 
-OR-Tools tightens the P11 oracle from a lower bound to the true optimum.
-Install it via the `solvers` extra:
+OR-Tools (`ortools >= 9.5, < 10.0`) is a **hard dependency** declared
+in `pyproject.toml`. Importing `benchmarks.realm.solvers` without it
+raises `ImportError`. Rationale: without CP-SAT the JSSP "oracle"
+collapses to a loose `max(job, machine)` lower bound, and without
+`RoutingModel` the DARP "oracle" is a greedy upper bound — both make
+`optimality_ratio` essentially meaningless.
 
 ```bash
-pip install "elizaos-benchmarks-realm[solvers]"
-# or just:
-pip install ortools
+pip install elizaos-benchmarks-realm   # pulls in ortools automatically
 ```
 
-Without OR-Tools the runner still scores every problem; only the JSSP
-optimality ratio is conservative.
+### Solver budget
+
+CP-SAT and `RoutingModel` run with a configurable wall-clock budget per
+instance via `--solver-timeout` (default 30s) or
+`REALMConfig(solver_timeout_s=...)`. Tests use 2–5s; full DMU/TA JSSP
+runs may want `--solver-timeout 120` for OPTIMAL on the largest.
 
 ## Tests
 
@@ -160,9 +174,6 @@ realm/
 
 ## Limitations / stubs
 
-- **DARP oracle is heuristic.** For P3/P4 we use greedy nearest-pickup,
-  which is an upper bound on the true optimum. With OR-Tools available
-  we could solve the full CVRP with time windows; that's TODO.
 - **Event coordination (P5/6/8/9)** has no closed-form oracle. We
   score on coverage of the upstream-declared `guests`, `errands`,
   `cooking_tasks` plus deadline respect. The paper itself does not

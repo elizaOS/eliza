@@ -263,6 +263,15 @@ class TerminalBenchConfig:
     # ``mock``: never grade — always returns success. CI/unit only.
     execution_backend: str = "tmux"
 
+    # Agent harness selection.
+    # ``eliza``: route per-turn decision-making through the elizaOS TS
+    #   benchmark bridge (default; what existed before this flag).
+    # ``hermes``: route through the hermes-agent OpenAI-compatible loop
+    #   (``hermes_adapter.terminal_bench.HermesTerminalAgent``).
+    # ``openclaw``: route through the OpenClaw CLI
+    #   (``openclaw_adapter.terminal_bench.OpenClawTerminalAgent``).
+    agent_harness: str = "eliza"
+
 
 # The Terminal-Bench leaderboard moves frequently; rather than ship stale or
 # fabricated entries, we keep this dict empty and point callers at the live

@@ -99,10 +99,10 @@ export const recentConversationsProvider: Provider = {
       // Resolve room details for display
       const roomCache = new Map<string, Room | null>();
       for (const mem of sorted) {
-        const rid = mem.roomId as string;
+        const rid = mem.roomId;
         if (rid && !roomCache.has(rid)) {
           try {
-            roomCache.set(rid, await runtime.getRoom(rid as UUID));
+            roomCache.set(rid, await runtime.getRoom(rid));
           } catch {
             roomCache.set(rid, null);
           }
@@ -111,7 +111,7 @@ export const recentConversationsProvider: Provider = {
 
       const lines: string[] = ["Recent conversations:"];
       for (const mem of sorted) {
-        const room = roomCache.get(mem.roomId as string) ?? null;
+        const room = roomCache.get(mem.roomId) ?? null;
         const tag = roomSourceTag(room);
         const ts = formatRelativeTimestamp(mem.createdAt);
         const speaker = formatSpeakerLabel(runtime, mem);

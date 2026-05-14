@@ -14,8 +14,12 @@ import {
 } from "@elizaos/plugin-elizacloud";
 import type {
   RouteHelpers,
+  WalletChainKind,
+  WalletEntry,
   WalletExportRejection as WalletExportRejectionLike,
   WalletExportRequestBody,
+  WalletPrimaryMap,
+  WalletSource,
 } from "@elizaos/shared";
 import {
   normalizeWalletRpcSelections,
@@ -146,24 +150,9 @@ export const DEFAULT_WALLET_ROUTE_DEPENDENCIES: WalletRouteDependencies = {
   generateWalletForChain,
 };
 
-// ── Dual-wallet response shape (Phase 6, gated by ENABLE_CLOUD_WALLET) ────
-
-export type WalletSource = "local" | "cloud";
-export type WalletChainKind = "evm" | "solana";
-export type WalletProviderKind = "local" | "privy" | "steward";
-
-export interface WalletEntry {
-  source: WalletSource;
-  chain: WalletChainKind;
-  address: string;
-  provider: WalletProviderKind;
-  primary: boolean;
-}
-
-export interface WalletPrimaryMap {
-  evm: WalletSource;
-  solana: WalletSource;
-}
+// ── Dual-wallet response shape ────
+// Types imported from @elizaos/shared: WalletSource, WalletChainKind, WalletProviderKind,
+// WalletEntry, WalletPrimaryMap
 
 interface CachedCloudWalletDescriptor {
   agentWalletId?: string | null;

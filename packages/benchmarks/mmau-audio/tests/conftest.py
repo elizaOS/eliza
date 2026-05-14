@@ -1,4 +1,4 @@
-"""Pytest bootstrap for the MMAU-audio test suite."""
+"""Pytest bootstrap for the MMAU test suite."""
 
 from __future__ import annotations
 

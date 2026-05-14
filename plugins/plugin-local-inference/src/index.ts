@@ -5,6 +5,12 @@ import type { IAgentRuntime } from "@elizaos/core";
 // wiring, selected service helpers, error types, and plugin definition.
 
 export {
+	buildGenerateMediaHandler,
+	detectMediaIntent,
+	generateMediaAction,
+	type MediaKind,
+} from "./actions/generate-media.js";
+export {
 	getLocalInferenceActiveModelId,
 	getLocalInferenceActiveSnapshot,
 	getLocalInferenceChatStatus,

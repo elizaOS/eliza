@@ -73,13 +73,14 @@ function primitiveTrajectoryMetadata(
 	}
 	const out: Record<string, string | number | boolean | null> = {};
 	for (const [key, item] of Object.entries(record)) {
-		if (
+		if (item === null) {
+			out[key] = null;
+		} else if (
 			typeof item === "string" ||
 			typeof item === "number" ||
-			typeof item === "boolean" ||
-			item === null
+			typeof item === "boolean"
 		) {
-			out[key] = item as string | number | boolean | null;
+			out[key] = item;
 		}
 	}
 	return out;

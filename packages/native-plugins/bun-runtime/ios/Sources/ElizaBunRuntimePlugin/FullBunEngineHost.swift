@@ -22,6 +22,31 @@ private let fullBunHostCallCallback: @convention(c) (
 /// compile time. Compatibility builds can keep using the JSContext bridge, while
 /// full-engine builds add `ElizaBunEngine.xcframework` and automatically switch
 /// to this host.
+///
+/// IPC security model (full-Bun path):
+/// - Transport: NDJSON over anonymous stdio pipes. No TCP port is opened by the
+///   native side. `bun_start(...)` receives the read end of the parent's stdin
+///   pipe and the write end of its stdout pipe; no other network socket is
+///   created by the shim.
+/// - Input validation: the C shim (`eliza_bun_engine_shim.c`) validates all
+///   NDJSON frames before dispatch: `id` must be numeric, `method` must be a
+///   JSON string, `payload` is extracted as a bounded value field. The
+///   `ELIZA_MAX_PROTOCOL_LINE_BYTES` (16 MiB) cap prevents unbounded reads.
+/// - Host-call allowlist: only `llama_hardware_info`, `llama_load_model`,
+///   `llama_generate`, `llama_free`, and `llama_cancel` are dispatched by
+///   `handleHostCall`. All other method names return `{"ok":false,"error":"..."}`.
+/// - `http_fetch` (JSContext compat path): loopback/local-agent URLs are
+///   rejected at `HTTPBridge.isLocalLoopback` before a URLRequest is created.
+///   External fetches go through URLSession with the standard iOS ATS policy.
+/// - `http_request` IPC (both paths): the path must begin with `/` and must not
+///   contain `://`. Validated in `MobileAgentBridgePlugin.proxyHttpRequest` and
+///   enforced by the Bun bridge contract at the agent layer.
+/// - Filesystem (JSContext compat path): `FSBridge` does not restrict paths
+///   beyond what the iOS app sandbox enforces. The agent bundle is signed and
+///   staged inside the app bundle; paths visible to the JSContext are limited to
+///   the app container by the OS.
+/// - ABI version check: `load()` verifies the framework reports ABI version "3"
+///   before accepting any other symbols. A version mismatch is a hard error.
 final class FullBunEngineHost {
     static let shared = FullBunEngineHost()
     private static let expectedAbiVersion = "3"

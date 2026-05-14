@@ -14,7 +14,7 @@ from elizaos_mmau_audio.agent import (
 )
 from elizaos_mmau_audio.cli import main as cli_main
 from elizaos_mmau_audio.runner import MMAURunner
-from elizaos_mmau_audio.types import MMAUConfig, MMAUSample, MMAUCategory
+from elizaos_mmau_audio.types import MMAUCategory, MMAUConfig, MMAUSample
 
 
 def test_oracle_run_writes_artifacts(tmp_path: Path) -> None:
@@ -77,9 +77,7 @@ def test_cli_mock_smoke(tmp_path: Path, capsys) -> None:
 
 def test_cli_json_mode(tmp_path: Path, capsys) -> None:
     output = tmp_path / "out"
-    code = cli_main(
-        ["--mock", "--limit", "2", "--output", str(output), "--json", "--no-traces"]
-    )
+    code = cli_main(["--mock", "--limit", "2", "--output", str(output), "--json", "--no-traces"])
     assert code == 0
     captured = capsys.readouterr()
     payload = json.loads(captured.out)

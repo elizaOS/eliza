@@ -2555,7 +2555,7 @@ function dedupeMemoriesById(memories: Memory[]): Memory[] {
 	const seen = new Set<string>();
 	const unique: Memory[] = [];
 	for (const memory of memories) {
-		const id = memory.id as string | undefined;
+		const id = memory.id;
 		if (!id) {
 			unique.push(memory);
 			continue;

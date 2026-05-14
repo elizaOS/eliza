@@ -32,7 +32,7 @@ from elizaos_mmau_audio.types import (
 
 logger = logging.getLogger(__name__)
 
-FIXTURE_PATH = Path(__file__).resolve().parents[1] / "fixtures" / "smoke.jsonl"
+FIXTURE_PATH = Path(__file__).resolve().parent.parent / "fixtures" / "smoke.jsonl"
 
 
 class MMAUDataset:
@@ -143,9 +143,7 @@ class MMAUDataset:
             return None
 
         sample_id = str(
-            attrs.get("id")
-            or data.get("id")
-            or f"{category.value}_{len(self.samples)}"
+            attrs.get("id") or data.get("id") or f"{category.value}_{len(self.samples)}"
         )
 
         question = str(data.get("instruction") or data.get("question") or "").strip()
@@ -153,13 +151,6 @@ class MMAUDataset:
             return None
 
         context = str(data.get("context") or "").strip()
-        transcript = str(
-            data.get("transcript")
-            or data.get("audio_transcript")
-            or attrs.get("transcript")
-            or attrs.get("audio_transcript")
-            or ""
-        ).strip()
 
         audio_bytes: bytes | None = None
         audio_path: Path | None = None
@@ -187,7 +178,6 @@ class MMAUDataset:
             dataset=str(attrs.get("dataset") or "unknown"),
             audio_path=audio_path,
             audio_bytes=audio_bytes,
-            transcript=transcript,
             context=context,
             metadata={k: v for k, v in attrs.items() if _json_safe(v)},
         )

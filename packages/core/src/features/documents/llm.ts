@@ -252,7 +252,7 @@ async function generateOpenAIEmbedding(
 		createOpenAI: CreateOpenAI;
 	}>("@ai-sdk/openai");
 	const openai = createOpenAI({
-		apiKey: config.OPENAI_API_KEY as string,
+		apiKey: config.OPENAI_API_KEY ?? "",
 		baseURL: config.OPENAI_BASE_URL,
 	});
 
@@ -405,7 +405,7 @@ async function generateAnthropicText(
 		createAnthropic: CreateAnthropic;
 	}>("@ai-sdk/anthropic");
 	const anthropic = createAnthropic({
-		apiKey: config.ANTHROPIC_API_KEY as string,
+		apiKey: config.ANTHROPIC_API_KEY ?? "",
 		baseURL: config.ANTHROPIC_BASE_URL,
 	});
 
@@ -463,7 +463,7 @@ async function generateOpenAIText(
 		createOpenAI: CreateOpenAI;
 	}>("@ai-sdk/openai");
 	const openai = createOpenAI({
-		apiKey: config.OPENAI_API_KEY as string,
+		apiKey: config.OPENAI_API_KEY ?? "",
 		baseURL: config.OPENAI_BASE_URL,
 	});
 
@@ -545,7 +545,7 @@ async function generateOpenRouterText(
 		createOpenRouter: CreateOpenRouter;
 	}>("@openrouter/ai-sdk-provider");
 	const openrouter = createOpenRouter({
-		apiKey: config.OPENROUTER_API_KEY as string,
+		apiKey: config.OPENROUTER_API_KEY ?? "",
 		baseURL: config.OPENROUTER_BASE_URL,
 	});
 

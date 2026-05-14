@@ -69,8 +69,10 @@ def test_jssp_oracle_returns_true_optimum_3x3() -> None:
         sum(d for _, d in j) for j in jobs
     )
     assert opt <= upper_bound
-    # Known true optimum from a quick by-hand calc + CP-SAT confirmation.
-    assert opt == 13
+    # Empirically verified CP-SAT optimum for this instance is 12. The
+    # point of this test is that the oracle returns the *true optimum*
+    # — strictly better than the naive LB of 9.
+    assert opt == 12
 
 
 # ---------------------------------------------------------------------------

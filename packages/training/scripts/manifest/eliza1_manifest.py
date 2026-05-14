@@ -176,15 +176,14 @@ VOICE_QUANT_BY_TIER: Final[Mapping[str, str]] = {
     "27b-1m": "Q8_0",
 }
 
-# Full K-quant ladder published per tier for the OmniVoice TTS GGUF. Tiers
-# whose required voice backend is Kokoro (0_8b/2b/4b) publish no OmniVoice
-# ladder; the empty tuple signals "no OmniVoice ladder, runtime uses Kokoro
-# instead". 9B publishes Kokoro plus the full OmniVoice ladder. 27B-class
-# tiers publish OmniVoice only.
+# Full K-quant ladder published per tier for the OmniVoice TTS GGUF. Every
+# active tier carries OmniVoice so the fused voice-profile / expressive TTS
+# path is always available; small tiers keep a narrow ladder and also ship
+# Kokoro as a fallback.
 VOICE_QUANT_LADDER_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
-    "0_8b": (),
-    "2b": (),
-    "4b": (),
+    "0_8b": ("Q3_K_M", "Q4_K_M", "Q5_K_M"),
+    "2b": ("Q3_K_M", "Q4_K_M", "Q5_K_M"),
+    "4b": ("Q3_K_M", "Q4_K_M", "Q5_K_M"),
     "9b": ("Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"),
     "27b": ("Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"),
     "27b-256k": ("Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"),
@@ -192,10 +191,10 @@ VOICE_QUANT_LADDER_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
 }
 
 VOICE_BACKENDS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
-    "0_8b": ("kokoro",),
-    "2b": ("kokoro",),
-    "4b": ("kokoro",),
-    "9b": ("kokoro", "omnivoice"),
+    "0_8b": ("omnivoice", "kokoro"),
+    "2b": ("omnivoice", "kokoro"),
+    "4b": ("omnivoice", "kokoro"),
+    "9b": ("omnivoice", "kokoro"),
     "27b": ("omnivoice",),
     "27b-256k": ("omnivoice",),
     "27b-1m": ("omnivoice",),
@@ -212,9 +211,8 @@ def required_voice_artifacts_for_tier(tier: str) -> tuple[str, ...]:
     """Return the frozen TTS artifacts required for ``tier``.
 
     Paths are relative to the bundle's ``tts/`` directory. The active Eliza-1
-    release line uses Kokoro as the required/default backend for 0.8B, 2B,
-    and 4B. 9B ships Kokoro plus OmniVoice. 27B-class tiers ship OmniVoice
-    only.
+    release line uses OmniVoice as the required/default backend for every
+    active tier. Small tiers and 9B also require Kokoro fallback artifacts.
     """
 
     out: list[str] = []

@@ -85,8 +85,7 @@ export type ConnectorRouteHandler = (
   method: string,
 ) => Promise<boolean>;
 
-export type TradePermissionMode =
-  import("./trade-safety.ts").TradePermissionMode;
+export type { TradePermissionMode } from "@elizaos/shared";
 
 // ---------------------------------------------------------------------------
 // Plugin entry types (canonical definitions — re-exported by plugin-discovery-helpers)
@@ -217,7 +216,7 @@ export interface ServerState {
   /** Agent automation permission mode for self-directed config changes. */
   agentAutomationMode?: AgentAutomationMode;
   /** Wallet trade execution permission mode (user-sign/manual/agent-auto). */
-  tradePermissionMode?: TradePermissionMode;
+  tradePermissionMode?: import("@elizaos/shared").TradePermissionMode;
   /** Reasons a restart is pending. Empty array = no restart needed. */
   pendingRestartReasons: string[];
   /** Route handlers registered by connector plugins (loaded dynamically). */
