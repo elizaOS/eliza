@@ -779,3 +779,169 @@ def test_kernel_reference_files_exist_and_compile_clean():
 
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "-v"]))
+
+
+# ---------------------------------------------------------------------------
+# I8-quant — K-quant ladder siblings + ASR + turn-detector smoke tests
+# ---------------------------------------------------------------------------
+
+
+_KQUANT_SIBLINGS = (
+    ("gguf-q3_k_m_apply", "Q3_K_M"),
+    ("gguf-q4_k_m_apply", "Q4_K_M"),
+    ("gguf-q5_k_m_apply", "Q5_K_M"),
+    ("gguf-q6_k_apply",   "Q6_K"),
+)
+
+
+@pytest.mark.parametrize("module_basename,expected_level", _KQUANT_SIBLINGS)
+def test_kquant_sibling_exports_constant(module_basename: str, expected_level: str):
+    """Every K-quant ladder sibling exports a `QUANT_LEVEL` constant matching
+    its filename. The publish path keys on this constant to pick the
+    llama-quantize target type."""
+    import importlib
+
+    # Module names use hyphens on disk; importlib needs the underscore form.
+    importable = module_basename.replace("-", "_")
+    # Add the quantization dir to sys.path so the modules import on their
+    # own (they do `from _common import ...`).
+    quant_dir = Path(__file__).resolve().parent
+    spec_path = quant_dir / f"{module_basename}.py"
+    assert spec_path.exists(), f"missing K-quant sibling: {spec_path}"
+
+    spec = importlib.util.spec_from_file_location(importable, spec_path)
+    assert spec is not None and spec.loader is not None
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    assert getattr(mod, "QUANT_LEVEL") == expected_level
+
+
+@pytest.mark.parametrize("module_basename,_expected_level", _KQUANT_SIBLINGS)
+def test_kquant_sibling_dry_run_prints_quant_level(
+    module_basename: str, _expected_level: str, capsys, tmp_path
+):
+    """Every K-quant sibling supports the same --dry-run surface as the
+    Q4_K_M baseline. Output is JSON and contains the recipe-level
+    metadata."""
+    import importlib
+
+    importable = module_basename.replace("-", "_")
+    quant_dir = Path(__file__).resolve().parent
+    spec_path = quant_dir / f"{module_basename}.py"
+
+    spec = importlib.util.spec_from_file_location(importable, spec_path)
+    assert spec is not None and spec.loader is not None
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    rc = mod.main([
+        "--model", "Qwen/Qwen3.5-0.8B",
+        "--output", str(tmp_path),
+        "--dry-run",
+    ])
+    assert rc == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["quant_level"] == _expected_level
+    assert payload["dry_run"] is True
+
+
+def test_gguf_asr_apply_dry_run_single_quant(capsys, tmp_path):
+    """The ASR wrapper accepts a single --quant and emits a one-element
+    quant list in dry-run output."""
+    import importlib.util
+
+    quant_dir = Path(__file__).resolve().parent
+    spec = importlib.util.spec_from_file_location(
+        "gguf_asr_apply", quant_dir / "gguf_asr_apply.py"
+    )
+    assert spec is not None and spec.loader is not None
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    rc = mod.main([
+        "--model", "Qwen/Qwen3-ASR-0.6B",
+        "--output", str(tmp_path),
+        "--quant", "Q5_K_M",
+        "--dry-run",
+    ])
+    assert rc == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["quants"] == ["Q5_K_M"]
+    assert payload["mmproj_quant"] == "Q8_0"
+
+
+def test_gguf_asr_apply_dry_run_full_ladder(capsys, tmp_path):
+    """`--quant-ladder` overrides `--quant` and emits the canonical
+    Q3..Q8 set; matches `voiceQuantLadderForTier()` (TS) and
+    `VOICE_QUANT_LADDER_BY_TIER` (Python)."""
+    import importlib.util
+
+    quant_dir = Path(__file__).resolve().parent
+    spec = importlib.util.spec_from_file_location(
+        "gguf_asr_apply", quant_dir / "gguf_asr_apply.py"
+    )
+    assert spec is not None and spec.loader is not None
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    rc = mod.main([
+        "--model", "Qwen/Qwen3-ASR-1.7B",
+        "--output", str(tmp_path),
+        "--quant-ladder",
+        "--dry-run",
+    ])
+    assert rc == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["quants"] == ["Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"]
+
+
+def test_gguf_asr_apply_dry_run_skip_mmproj_omits_mmproj_quant(capsys, tmp_path):
+    """`--skip-mmproj` is forwarded — when set, the dry-run plan reports
+    `skip_mmproj: True` and the sidecar produces no mmproj entry."""
+    import importlib.util
+
+    quant_dir = Path(__file__).resolve().parent
+    spec = importlib.util.spec_from_file_location(
+        "gguf_asr_apply", quant_dir / "gguf_asr_apply.py"
+    )
+    assert spec is not None and spec.loader is not None
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    rc = mod.main([
+        "--model", "Qwen/Qwen3-ASR-0.6B",
+        "--output", str(tmp_path),
+        "--skip-mmproj",
+        "--dry-run",
+    ])
+    assert rc == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["skip_mmproj"] is True
+
+
+def test_turn_detector_convert_to_gguf_dry_run(capsys, tmp_path):
+    """The turn-detector GGUF converter mirrors the ASR wrapper's dry-run
+    surface (--quant / --quant-ladder / --revision)."""
+    import importlib.util
+
+    td_dir = Path(__file__).resolve().parents[1] / "turn_detector"
+    spec_path = td_dir / "convert_to_gguf.py"
+    if not spec_path.exists():
+        pytest.skip(f"turn_detector/convert_to_gguf.py not found at {spec_path}")
+    spec = importlib.util.spec_from_file_location(
+        "turn_detector_convert_to_gguf", spec_path
+    )
+    assert spec is not None and spec.loader is not None
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    rc = mod.main([
+        "--model", "livekit/turn-detector",
+        "--revision", "v1.2.2-en",
+        "--output", str(tmp_path),
+        "--quant-ladder",
+        "--dry-run",
+    ])
+    assert rc == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["quants"] == ["Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"]
+    assert payload["basename"] == "turn-detector"
