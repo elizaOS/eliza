@@ -6,6 +6,12 @@
 // `@elizaos/plugin-local-inference/services`.
 
 export {
+	buildGenerateMediaHandler,
+	detectMediaIntent,
+	generateMediaAction,
+	type MediaKind,
+} from "./actions/generate-media.js";
+export {
 	getLocalInferenceActiveModelId,
 	getLocalInferenceActiveSnapshot,
 	getLocalInferenceChatStatus,
