@@ -192,7 +192,7 @@ class REALMRunner:
             await self._save_results(report)
 
         logger.info(
-            "[REALMRunner] Done in %.1fs. Success: %.1%%",
+            "[REALMRunner] Done in %.1fs. Success: %.1f%%",
             duration,
             metrics.overall_success_rate * 100,
         )

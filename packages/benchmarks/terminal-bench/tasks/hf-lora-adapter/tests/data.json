@@ -1,0 +1,51 @@
+[
+  {"text": "Bonjour, comment allez-vous aujourd'hui?", "label": 6, "language": "fr"},
+  {"text": "Je suis très heureux de vous rencontrer", "label": 6, "language": "fr"},
+  {"text": "La vie est belle et pleine de surprises", "label": 6, "language": "fr"},
+  {"text": "Merci beaucoup pour votre aide", "label": 6, "language": "fr"},
+  
+  {"text": "Hola, ¿cómo estás hoy?", "label": 5, "language": "es"},
+  {"text": "Me gusta mucho la comida española", "label": 5, "language": "es"},
+  {"text": "El clima está perfecto para caminar", "label": 5, "language": "es"},
+  {"text": "Necesito ayuda con mi tarea", "label": 5, "language": "es"},
+  
+  {"text": "Guten Tag, wie geht es Ihnen?", "label": 2, "language": "de"},
+  {"text": "Ich arbeite in einem großen Unternehmen", "label": 2, "language": "de"},
+  {"text": "Das Wetter ist heute sehr schön", "label": 2, "language": "de"},
+  {"text": "Können Sie mir bitte helfen?", "label": 2, "language": "de"},
+  
+  {"text": "Ciao, come stai oggi?", "label": 8, "language": "it"},
+  {"text": "Mi piace molto la pizza italiana", "label": 8, "language": "it"},
+  {"text": "Sto imparando l'italiano da due anni", "label": 8, "language": "it"},
+  {"text": "Grazie mille per il tuo aiuto", "label": 8, "language": "it"},
+  
+  {"text": "Olá, como você está?", "label": 12, "language": "pt"},
+  {"text": "Eu gosto de praia e sol", "label": 12, "language": "pt"},
+  {"text": "O Brasil é um país maravilhoso", "label": 12, "language": "pt"},
+  {"text": "Obrigado pela sua atenção", "label": 12, "language": "pt"},
+  
+  {"text": "Привет, как дела?", "label": 13, "language": "ru"},
+  {"text": "Я изучаю русский язык", "label": 13, "language": "ru"},
+  {"text": "Москва - красивый город", "label": 13, "language": "ru"},
+  {"text": "Спасибо за помощь", "label": 13, "language": "ru"},
+  
+  {"text": "こんにちは、お元気ですか？", "label": 9, "language": "ja"},
+  {"text": "日本の文化が大好きです", "label": 9, "language": "ja"},
+  {"text": "東京は素晴らしい都市です", "label": 9, "language": "ja"},
+  {"text": "ありがとうございます", "label": 9, "language": "ja"},
+  
+  {"text": "你好，你好吗？", "label": 19, "language": "zh"},
+  {"text": "我喜欢中国美食", "label": 19, "language": "zh"},
+  {"text": "学习中文很有趣", "label": 19, "language": "zh"},
+  {"text": "谢谢你的帮助", "label": 19, "language": "zh"},
+  
+  {"text": "مرحبا، كيف حالك؟", "label": 0, "language": "ar"},
+  {"text": "أحب الطعام العربي", "label": 0, "language": "ar"},
+  {"text": "الطقس جميل اليوم", "label": 0, "language": "ar"},
+  {"text": "شكرا لك على المساعدة", "label": 0, "language": "ar"},
+  
+  {"text": "Hello, how are you?", "label": 4, "language": "en"},
+  {"text": "I love learning new languages", "label": 4, "language": "en"},
+  {"text": "The weather is beautiful today", "label": 4, "language": "en"},
+  {"text": "Thank you for your assistance", "label": 4, "language": "en"}
+]

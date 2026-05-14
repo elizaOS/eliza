@@ -95,7 +95,15 @@ def _load_ranker(
             resolved_device,
         )
 
-        tokenizer = AutoTokenizer.from_pretrained(model_name)
+        # The osunlp DeBERTa-v3 checkpoint ships only the SentencePiece model
+        # (``spm.model``) without a ``tokenizer.json``. Newer ``transformers``
+        # versions try to auto-convert to a fast tokenizer via tiktoken and
+        # fail with "Error parsing line ... in spm.model". Force the slow
+        # SentencePiece backend, which is what upstream MindAct used anyway.
+        try:
+            tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=False)
+        except Exception:  # noqa: BLE001
+            tokenizer = AutoTokenizer.from_pretrained(model_name)
         model = AutoModelForSequenceClassification.from_pretrained(model_name)
         model.to(resolved_device)
         model.eval()

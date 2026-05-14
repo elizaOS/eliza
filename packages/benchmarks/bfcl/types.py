@@ -132,6 +132,8 @@ class TestStatus(str, Enum):
     Anything starting with ``skipped_`` is excluded from the accuracy denominator
     (with a logged warning) and surfaced in a dedicated bucket in the run summary.
     """
+    # Tell pytest not to try to collect this enum as a test class.
+    __test__ = False
 
     PASSED = "passed"
     FAILED = "failed"

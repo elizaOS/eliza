@@ -17,8 +17,17 @@ Reference:
 
 from elizaos_vending_bench.agent import (
     LLMProvider,
-    MockLLMProvider,
     VendingAgent,
+)
+from elizaos_vending_bench.sub_agents import (
+    EmailSubAgent,
+    ResearchSubAgent,
+    SubAgentReport,
+)
+from elizaos_vending_bench.tool_simulators import (
+    EmailSimulator,
+    Notepad,
+    WebSimulator,
 )
 from elizaos_vending_bench.environment import (
     EconomicModel,
@@ -36,6 +45,7 @@ from elizaos_vending_bench.types import (
     CoherenceErrorType,
     DailySummary,
     DeliveredInventory,
+    EmailMessage,
     InventorySlot,
     # Enums
     ItemSize,
@@ -54,6 +64,7 @@ from elizaos_vending_bench.types import (
     VendingBenchResult,
     VendingMachine,
     WeatherCondition,
+    WebSearchResult,
 )
 
 
@@ -81,6 +92,8 @@ __all__ = [
     "AgentState",
     "CoherenceError",
     "AgentAction",
+    "EmailMessage",
+    "WebSearchResult",
     "VendingBenchResult",
     "VendingBenchMetrics",
     "LeaderboardEntry",
@@ -94,7 +107,14 @@ __all__ = [
     # Agent
     "LLMProvider",
     "VendingAgent",
-    "MockLLMProvider",
+    # Sub-agents
+    "EmailSubAgent",
+    "ResearchSubAgent",
+    "SubAgentReport",
+    # Tool simulators
+    "EmailSimulator",
+    "WebSimulator",
+    "Notepad",
     # Evaluation
     "CoherenceEvaluator",
     # Runner

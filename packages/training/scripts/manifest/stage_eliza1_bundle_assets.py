@@ -57,6 +57,33 @@ ASR_REPO_BY_TIER: Final[dict[str, str]] = {
     "27b-256k": "ggml-org/Qwen3-ASR-1.7B-GGUF",
     "27b-1m": "ggml-org/Qwen3-ASR-1.7B-GGUF",
 }
+
+# Voice Wave 2 (2026-05-14): semantic end-of-turn detector — `livekit/turn-detector`
+# is the default ship target; `latishab/turnsense` is the Apache-2.0 fallback
+# routed via `--turn-license=apache`. Per-tier revision matches the runtime
+# resolver in `plugins/plugin-local-inference/src/services/voice/eot-classifier.ts`
+# (`turnDetectorRevisionForTier`): EN-only SmolLM2 distill on `0_8b` / `2b`,
+# multilingual pruned Qwen2.5 elsewhere.
+TURN_DETECTOR_LIVEKIT_REPO: Final[str] = "livekit/turn-detector"
+TURN_DETECTOR_LIVEKIT_REVISION_BY_TIER: Final[dict[str, str]] = {
+    "0_8b": "v1.2.2-en",
+    "2b": "v1.2.2-en",
+    "4b": "v0.4.1-intl",
+    "9b": "v0.4.1-intl",
+    "27b": "v0.4.1-intl",
+    "27b-256k": "v0.4.1-intl",
+    "27b-1m": "v0.4.1-intl",
+}
+TURN_DETECTOR_TURNSENSE_REPO: Final[str] = "latishab/turnsense"
+TURN_DETECTOR_LIVEKIT_ONNX_REMOTE: Final[str] = "onnx/model_q8.onnx"
+TURN_DETECTOR_LIVEKIT_ONNX_BUNDLE: Final[str] = "turn/model_q8.onnx"
+TURN_DETECTOR_TURNSENSE_ONNX_REMOTE: Final[str] = "model_quantized.onnx"
+TURN_DETECTOR_TURNSENSE_ONNX_BUNDLE: Final[str] = "turn/model_q8.onnx"
+TURN_DETECTOR_TOKENIZER_REMOTE: Final[str] = "tokenizer.json"
+TURN_DETECTOR_TOKENIZER_BUNDLE: Final[str] = "turn/tokenizer.json"
+TURN_DETECTOR_LANGUAGES_REMOTE: Final[str] = "languages.json"
+TURN_DETECTOR_LANGUAGES_BUNDLE: Final[str] = "turn/languages.json"
+TURN_LICENSE_CHOICES: Final[tuple[str, ...]] = ("livekit", "apache")
 GGUF_QUANT_PREFERENCE: Final[tuple[str, ...]] = (
     "Q4_K_M",
     "Q4_K_S",
@@ -185,6 +212,13 @@ def _slot_for_bundle_path(rel: str) -> str | None:
         return "vad"
     if rel.startswith("wake/"):
         return "wakeword"
+    if rel.startswith("turn/"):
+        # Voice Wave 2: only the ONNX gates the manifest `files.turn` slot;
+        # tokenizer.json + languages.json are co-located on disk but are
+        # tokenizer/threshold sidecars, not a manifest-file entry.
+        if rel.endswith(".onnx"):
+            return "turn"
+        return None
     if rel == "cache/voice-preset-default.bin":
         return "cache"
     return None
@@ -294,7 +328,7 @@ def merge_release_evidence_assets(
         hf.setdefault("pathPrefix", f"bundles/{evidence.get('tier', '')}")
 
     shipped: set[str] = set()
-    for subdir in ("text", "tts", "asr", "vad", "vision", "dflash"):
+    for subdir in ("text", "tts", "asr", "vad", "vision", "dflash", "turn"):
         root = bundle_dir / subdir
         if root.is_dir():
             shipped.update(
@@ -308,7 +342,7 @@ def merge_release_evidence_assets(
             path = Path(path_value)
             if path.is_file():
                 rel = bundle_relpath(bundle_dir, path)
-                if rel.split("/", 1)[0] in {"tts", "asr", "vad"}:
+                if rel.split("/", 1)[0] in {"tts", "asr", "vad", "turn"}:
                     shipped.add(rel)
 
     evidence["weights"] = sorted(shipped)
@@ -453,6 +487,105 @@ def choose_mmproj_file(
     return sorted(files)[0]
 
 
+def stage_turn_detector(
+    *,
+    tier: str,
+    license: str,
+    bundle_dir: Path,
+    link_mode: str,
+    dry_run: bool,
+) -> dict[str, Any]:
+    """Stage the semantic end-of-turn detector ONNX into ``bundle_dir/turn/``.
+
+    Mirrors :func:`stage_kokoro_assets.stage_kokoro_assets` shape — pulls the
+    matching upstream artifact, materializes ``turn/model_q8.onnx`` +
+    ``turn/tokenizer.json`` (+ optional ``languages.json`` for the multilingual
+    variant), and returns a structured report the publish orchestrator can
+    fold into manifest/lineage/release-evidence.
+
+    ``license="livekit"`` ships ``livekit/turn-detector`` at the tier-matched
+    revision (``v1.2.2-en`` for 0_8b/2b, ``v0.4.1-intl`` elsewhere).
+    ``license="apache"`` ships the Apache-2.0 ``latishab/turnsense`` fallback
+    (English-only binary classifier; same bundle path so the runtime resolver
+    is license-agnostic).
+    """
+    if license not in TURN_LICENSE_CHOICES:
+        raise ValueError(
+            f"--turn-license must be one of {TURN_LICENSE_CHOICES}, got {license!r}"
+        )
+    files: list[dict[str, Any]] = []
+    if license == "livekit":
+        revision = TURN_DETECTOR_LIVEKIT_REVISION_BY_TIER[tier]
+        repo = TURN_DETECTOR_LIVEKIT_REPO
+        files.append(
+            copy_hf_file(
+                repo_id=repo,
+                revision=revision,
+                remote_path=TURN_DETECTOR_LIVEKIT_ONNX_REMOTE,
+                destination=bundle_dir / TURN_DETECTOR_LIVEKIT_ONNX_BUNDLE,
+                link_mode=link_mode,
+                dry_run=dry_run,
+            )
+        )
+        files.append(
+            copy_hf_file(
+                repo_id=repo,
+                revision=revision,
+                remote_path=TURN_DETECTOR_TOKENIZER_REMOTE,
+                destination=bundle_dir / TURN_DETECTOR_TOKENIZER_BUNDLE,
+                link_mode=link_mode,
+                dry_run=dry_run,
+            )
+        )
+        # languages.json is mandatory on the multilingual variant and
+        # advisory on the EN-only one; the upstream always ships it.
+        files.append(
+            copy_hf_file(
+                repo_id=repo,
+                revision=revision,
+                remote_path=TURN_DETECTOR_LANGUAGES_REMOTE,
+                destination=bundle_dir / TURN_DETECTOR_LANGUAGES_BUNDLE,
+                link_mode=link_mode,
+                dry_run=dry_run,
+            )
+        )
+        license_id = (
+            "livekit-model-license; see "
+            "https://huggingface.co/livekit/turn-detector/blob/main/LICENSE"
+        )
+    else:
+        revision = None
+        repo = TURN_DETECTOR_TURNSENSE_REPO
+        files.append(
+            copy_hf_file(
+                repo_id=repo,
+                revision=revision,
+                remote_path=TURN_DETECTOR_TURNSENSE_ONNX_REMOTE,
+                destination=bundle_dir / TURN_DETECTOR_TURNSENSE_ONNX_BUNDLE,
+                link_mode=link_mode,
+                dry_run=dry_run,
+            )
+        )
+        files.append(
+            copy_hf_file(
+                repo_id=repo,
+                revision=revision,
+                remote_path=TURN_DETECTOR_TOKENIZER_REMOTE,
+                destination=bundle_dir / TURN_DETECTOR_TOKENIZER_BUNDLE,
+                link_mode=link_mode,
+                dry_run=dry_run,
+            )
+        )
+        license_id = "apache-2.0"
+    return {
+        "license": license,
+        "licenseId": license_id,
+        "repo": repo,
+        "revision": revision,
+        "files": files,
+    }
+
+
 def write_voice_preset(path: Path, *, dry_run: bool) -> dict[str, Any]:
     """Write a deterministic neutral v1 voice preset cache.
 
@@ -495,6 +628,7 @@ def merge_lineage(
     revisions: dict[str, str],
     *,
     asr_repo: str,
+    turn_detector: dict[str, Any] | None = None,
     dry_run: bool,
 ) -> None:
     path = bundle_dir / "lineage.json"
@@ -533,11 +667,24 @@ def merge_lineage(
             },
         }
     )
+    if turn_detector is not None:
+        repo = turn_detector["repo"]
+        revision = turn_detector.get("revision")
+        data["turn"] = {
+            "base": f"{repo}@{revision}" if revision else repo,
+            "license": turn_detector["licenseId"],
+            "artifact": TURN_DETECTOR_LIVEKIT_ONNX_BUNDLE,
+        }
     if not dry_run:
         path.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n")
 
 
-def write_license_notes(bundle_dir: Path, *, dry_run: bool) -> None:
+def write_license_notes(
+    bundle_dir: Path,
+    *,
+    turn_license: str | None = None,
+    dry_run: bool,
+) -> None:
     licenses = {
         "LICENSE.voice": (
             "OmniVoice GGUF assets staged from Serveurperso/OmniVoice-GGUF.\n"
@@ -566,6 +713,22 @@ def write_license_notes(bundle_dir: Path, *, dry_run: bool) -> None:
             "commercially-licensed corpus for any commercial pivot).\n"
         ),
     }
+    if turn_license == "livekit":
+        licenses["LICENSE.turn"] = (
+            "Turn-detector ONNX staged from livekit/turn-detector (HF revision "
+            "v1.2.2-en for 0_8b/2b tiers, v0.4.1-intl elsewhere).\n"
+            "Declared upstream license: LiveKit Model License "
+            "(https://huggingface.co/livekit/turn-detector/blob/main/LICENSE).\n"
+            "Use --turn-license=apache to ship latishab/turnsense (Apache-2.0).\n"
+        )
+    elif turn_license == "apache":
+        licenses["LICENSE.turn"] = (
+            "Turn-detector ONNX staged from latishab/turnsense.\n"
+            "Declared upstream license: Apache-2.0.\n"
+            "English-only binary classifier head over SmolLM2-135M; lower "
+            "accuracy on backchannels than the LiveKit detectors but free of "
+            "the LiveKit Model License redistribution restrictions.\n"
+        )
     if dry_run:
         return
     license_dir = bundle_dir / "licenses"
@@ -674,13 +837,39 @@ def stage_assets(args: argparse.Namespace) -> dict[str, Any]:
                     dry_run=args.dry_run,
                 )
             )
+    # Voice Wave 2 (2026-05-14): semantic turn detector staging. Per-tier
+    # revision routing matches the runtime resolver in
+    # plugins/plugin-local-inference/src/services/voice/eot-classifier.ts
+    # (`turnDetectorRevisionForTier`). Apache-2.0 fallback via
+    # `--turn-license=apache` ships `latishab/turnsense` at the same on-disk
+    # path so downstream resolution stays license-agnostic.
+    turn_detector_report: dict[str, Any] | None = None
+    if not args.skip_turn_detector:
+        turn_detector_report = stage_turn_detector(
+            tier=tier,
+            license=args.turn_license,
+            bundle_dir=bundle_dir,
+            link_mode=args.link_mode,
+            dry_run=args.dry_run,
+        )
+        staged.extend(turn_detector_report["files"])
 
     preset = write_voice_preset(
         bundle_dir / "cache" / "voice-preset-default.bin",
         dry_run=args.dry_run,
     )
-    merge_lineage(bundle_dir, revisions, asr_repo=asr_repo, dry_run=args.dry_run)
-    write_license_notes(bundle_dir, dry_run=args.dry_run)
+    merge_lineage(
+        bundle_dir,
+        revisions,
+        asr_repo=asr_repo,
+        turn_detector=turn_detector_report,
+        dry_run=args.dry_run,
+    )
+    write_license_notes(
+        bundle_dir,
+        turn_license=None if args.skip_turn_detector else args.turn_license,
+        dry_run=args.dry_run,
+    )
     manifest_update = merge_manifest_asset_entries(
         bundle_dir,
         staged,
@@ -703,6 +892,21 @@ def stage_assets(args: argparse.Namespace) -> dict[str, Any]:
         "asrRepo": asr_repo,
         "asrRemotePath": asr_remote_path,
         "asrMmprojRemotePath": asr_mmproj_remote_path,
+        "turnDetector": (
+            None
+            if turn_detector_report is None
+            else {
+                "license": turn_detector_report["license"],
+                "licenseId": turn_detector_report["licenseId"],
+                "repo": turn_detector_report["repo"],
+                "revision": turn_detector_report["revision"],
+                "bundlePath": (
+                    TURN_DETECTOR_LIVEKIT_ONNX_BUNDLE
+                    if turn_detector_report["license"] == "livekit"
+                    else TURN_DETECTOR_TURNSENSE_ONNX_BUNDLE
+                ),
+            }
+        ),
         "vad": {
             "nativeRepo": VAD_NATIVE_REPO,
             "nativeRemotePath": VAD_NATIVE_FILES[0][0],
@@ -758,6 +962,7 @@ def upload_assets(args: argparse.Namespace) -> None:
             "asr/**",
             "vad/**",
             "wake/**",
+            "turn/**",
             "cache/voice-preset-default.bin",
             "evidence/bundle-assets.json",
             "lineage.json",
@@ -765,6 +970,7 @@ def upload_assets(args: argparse.Namespace) -> None:
             "licenses/LICENSE.asr",
             "licenses/LICENSE.vad",
             "licenses/LICENSE.wakeword",
+            "licenses/LICENSE.turn",
         ],
     )
 
@@ -809,6 +1015,26 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             "Skip staging the optional openWakeWord graphs. Wake word is "
             "opt-in (hide-not-disable); a bundle without it still has a "
             "working voice pipeline (push-to-talk / VAD-gated)."
+        ),
+    )
+    ap.add_argument(
+        "--skip-turn-detector",
+        action="store_true",
+        help=(
+            "Skip staging the semantic end-of-turn detector. Without it the "
+            "runtime falls back to HeuristicEotClassifier (deterministic "
+            "punctuation/conjunction baseline)."
+        ),
+    )
+    ap.add_argument(
+        "--turn-license",
+        choices=TURN_LICENSE_CHOICES,
+        default="livekit",
+        help=(
+            "Which turn-detector to bundle. `livekit` (default) ships "
+            "livekit/turn-detector at the tier-matched revision (LiveKit "
+            "Model License). `apache` ships latishab/turnsense (Apache-2.0, "
+            "English-only binary classifier)."
         ),
     )
     ap.add_argument(

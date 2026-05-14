@@ -22,6 +22,7 @@ from elizaos_agentbench import (
     AgentBenchRunner,
     AgentBenchConfig,
     AgentBenchEnvironment,
+    BenchmarkSplit,
 )
 from elizaos_agentbench.types import EnvironmentConfig
 from elizaos_agentbench.mock_runtime import SmartMockRuntime
@@ -83,9 +84,15 @@ async def main() -> int:
     parser.add_argument(
         "--env",
         nargs="+",
-        choices=["os", "db", "kg", "ws", "lt", "all"],
+        choices=["os", "db", "kg", "ws", "lt", "cg", "hh", "m2w", "all"],
         default=["all"],
         help="Environments to run",
+    )
+    parser.add_argument(
+        "--split",
+        choices=["dev", "test"],
+        default="test",
+        help="Upstream AgentBench data split (dev = small validation, test = leaderboard)",
     )
     parser.add_argument(
         "--output",
@@ -126,6 +133,7 @@ async def main() -> int:
         enable_metrics=True,
         enable_memory_tracking=True,
         use_docker=False,  # Use local execution for safety
+        split=BenchmarkSplit(args.split),
     )
 
     # Map environment names
@@ -135,15 +143,20 @@ async def main() -> int:
         "kg": AgentBenchEnvironment.KNOWLEDGE_GRAPH,
         "ws": AgentBenchEnvironment.WEB_SHOPPING,
         "lt": AgentBenchEnvironment.LATERAL_THINKING,
+        "cg": AgentBenchEnvironment.CARD_GAME,
+        "hh": AgentBenchEnvironment.HOUSEHOLDING,
+        "m2w": AgentBenchEnvironment.WEB_BROWSING,
     }
 
-    # Configure environments
+    # Envs that run end-to-end without external dependencies. The
+    # remaining three (Card Game, Householding, Web Shopping) are
+    # wired but need external SDKs/corpora; they're opt-in via --env.
     implemented_envs = [
         AgentBenchEnvironment.OS,
         AgentBenchEnvironment.DATABASE,
         AgentBenchEnvironment.KNOWLEDGE_GRAPH,
-        AgentBenchEnvironment.WEB_SHOPPING,
         AgentBenchEnvironment.LATERAL_THINKING,
+        AgentBenchEnvironment.WEB_BROWSING,
     ]
 
     for env in AgentBenchEnvironment:

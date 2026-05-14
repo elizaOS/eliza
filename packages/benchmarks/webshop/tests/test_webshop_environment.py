@@ -32,8 +32,6 @@ def _check_upstream_importable() -> tuple[bool, str | None]:
     sys.path.insert(0, str(benchmark_dir / "upstream"))
     try:
         import spacy  # noqa: F401
-        # spaCy requires the en_core_web_sm model. It's auto-downloaded by
-        # upstream's setup.sh but not by our pyproject. Probe for it.
         try:
             spacy.load("en_core_web_sm")
         except Exception as exc:
@@ -41,6 +39,16 @@ def _check_upstream_importable() -> tuple[bool, str | None]:
         import torch  # noqa: F401
         import thefuzz  # noqa: F401
         import bs4  # noqa: F401
+        # Trigger the environment module to install BM25 / pyserini-stub
+        # shims; that is the entry point real callers use.
+        from elizaos_webshop.environment import (  # noqa: F401
+            _ensure_upstream_on_path,
+            _install_bm25_after_load_products,
+            _patch_search_engine_for_bm25_fallback,
+        )
+        _ensure_upstream_on_path()
+        _patch_search_engine_for_bm25_fallback()
+        _install_bm25_after_load_products()
         from web_agent_site.engine.goal import get_reward  # noqa: F401
         from web_agent_site.envs.web_agent_text_env import WebAgentTextEnv  # noqa: F401
     except Exception as exc:

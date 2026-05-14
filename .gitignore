@@ -66,6 +66,11 @@ characters/**/private/
 
 cache/*
 models/*
+# Track the voice sub-model changelog (R5-versioning §2.1) alongside the
+# weights staging dir — the file is the human-readable twin of
+# packages/shared/src/local-inference/voice-models.ts.
+!models/voice/
+!models/voice/CHANGELOG.md
 
 tsup.config.bundled_*.mjs
 
@@ -226,6 +231,8 @@ tasks/
 !packages/benchmarks/claw-eval/tasks/**
 !packages/benchmarks/skillsbench/tasks/
 !packages/benchmarks/skillsbench/tasks/**
+!packages/benchmarks/terminal-bench/tasks/
+!packages/benchmarks/terminal-bench/tasks/**
 !packages/benchmarks/swe-bench-pro/run_scripts/**
 !packages/benchmarks/nl2repo/test_files/
 !packages/benchmarks/nl2repo/test_files/**

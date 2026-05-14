@@ -1,0 +1,135 @@
+{
+  "instance_id": "p4_instance_096",
+  "city_map": {
+    "locations": [
+      "suburb",
+      "airport",
+      "mall",
+      "hospital",
+      "downtown"
+    ],
+    "distances": {
+      "suburb-airport": 41,
+      "airport-suburb": 41,
+      "suburb-mall": 12,
+      "mall-suburb": 12,
+      "suburb-hospital": 26,
+      "hospital-suburb": 26,
+      "suburb-downtown": 20,
+      "downtown-suburb": 20,
+      "airport-mall": 13,
+      "mall-airport": 13,
+      "airport-hospital": 34,
+      "hospital-airport": 34,
+      "airport-downtown": 12,
+      "downtown-airport": 12,
+      "mall-hospital": 45,
+      "hospital-mall": 45,
+      "mall-downtown": 25,
+      "downtown-mall": 25,
+      "hospital-downtown": 26,
+      "downtown-hospital": 26
+    }
+  },
+  "ride_requests": [
+    {
+      "passenger_id": "p001",
+      "pickup": "suburb",
+      "dropoff": "hospital",
+      "time_window": [
+        12.5,
+        12.933333333333334
+      ],
+      "deadline": 29
+    },
+    {
+      "passenger_id": "p002",
+      "pickup": "hospital",
+      "dropoff": "downtown",
+      "time_window": [
+        16.5,
+        16.933333333333334
+      ],
+      "deadline": 23
+    },
+    {
+      "passenger_id": "p003",
+      "pickup": "hospital",
+      "dropoff": "suburb",
+      "time_window": [
+        9.75,
+        9.183333333333334
+      ],
+      "deadline": 46
+    },
+    {
+      "passenger_id": "p004",
+      "pickup": "downtown",
+      "dropoff": "hospital",
+      "time_window": [
+        12.75,
+        12.3
+      ],
+      "deadline": 36
+    }
+  ],
+  "vehicles": [
+    {
+      "vehicle_id": "v001",
+      "location": "downtown",
+      "capacity": 4,
+      "fuel": 64
+    },
+    {
+      "vehicle_id": "v002",
+      "location": "hospital",
+      "capacity": 5,
+      "fuel": 57
+    },
+    {
+      "vehicle_id": "v003",
+      "location": "suburb",
+      "capacity": 6,
+      "fuel": 80
+    },
+    {
+      "vehicle_id": "v004",
+      "location": "downtown",
+      "capacity": 5,
+      "fuel": 69
+    },
+    {
+      "vehicle_id": "v005",
+      "location": "mall",
+      "capacity": 5,
+      "fuel": 75
+    }
+  ],
+  "description": "Urban ride-sharing with disruptions instance",
+  "disruptions": [
+    {
+      "type": "traffic_delay",
+      "route": "mall-downtown",
+      "delay": 20,
+      "start_time": 15,
+      "duration": 41,
+      "impact": "increased_travel_time"
+    },
+    {
+      "type": "traffic_delay",
+      "route": "airport-mall",
+      "delay": 13,
+      "start_time": 8,
+      "duration": 40,
+      "impact": "increased_travel_time"
+    },
+    {
+      "type": "traffic_delay",
+      "route": "suburb-downtown",
+      "delay": 37,
+      "start_time": 10,
+      "duration": 69,
+      "impact": "increased_travel_time"
+    }
+  ]
+}
