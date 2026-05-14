@@ -1237,6 +1237,7 @@ export default function GetStartedPage() {
               <div className="w-full flex flex-col gap-3">
                 {/* Telegram */}
                 <button
+                  type="button"
                   onClick={() => handleMethodSelect("telegram")}
                   className="w-full h-[72px] bg-white/40 hover:bg-white/60 backdrop-blur-sm rounded-xl border border-white/60 hover:border-white/80 transition-all flex items-center gap-4 px-5 cursor-pointer"
                   style={getCardStyle(0)}
@@ -1254,6 +1255,7 @@ export default function GetStartedPage() {
 
                 {/* iMessage */}
                 <button
+                  type="button"
                   onClick={() => handleMethodSelect("imessage")}
                   className="w-full h-[72px] bg-white/40 hover:bg-white/60 backdrop-blur-sm rounded-xl border border-white/60 hover:border-white/80 transition-all flex items-center gap-4 px-5 cursor-pointer"
                   style={getCardStyle(1)}
@@ -1271,6 +1273,7 @@ export default function GetStartedPage() {
 
                 {/* WhatsApp */}
                 <button
+                  type="button"
                   onClick={() => handleMethodSelect("whatsapp")}
                   className="w-full h-[72px] bg-white/40 hover:bg-white/60 backdrop-blur-sm rounded-xl border border-white/60 hover:border-white/80 transition-all flex items-center gap-4 px-5 cursor-pointer"
                   style={getCardStyle(2)}
@@ -1288,6 +1291,7 @@ export default function GetStartedPage() {
 
                 {/* Discord */}
                 <button
+                  type="button"
                   onClick={() => handleMethodSelect("discord")}
                   className="w-full h-[72px] bg-white/40 hover:bg-white/60 backdrop-blur-sm rounded-xl border border-white/60 hover:border-white/80 transition-all flex items-center gap-4 px-5 cursor-pointer"
                   style={getCardStyle(3)}

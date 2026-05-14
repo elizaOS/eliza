@@ -134,4 +134,48 @@ export default {
     expect(runtimeCompiled).not.toMatch(/class\s+AgentRuntime\b/);
     void compiled;
   });
+
+  it("compiles a React TSX view while leaving bundled host peers external", async () => {
+    const filesystem = vfs("compiler-react-view");
+    await filesystem.initialize();
+    await filesystem.writeFile(
+      "src/View.tsx",
+      `
+export function View() {
+  return <main>Hello VFS</main>;
+}
+`,
+    );
+
+    const compiler = new PluginCompiler();
+    const result = await compiler.compile({
+      vfs: filesystem,
+      entry: "src/View.tsx",
+      outFile: "dist/View.js",
+      platform: "browser",
+      target: "es2022",
+      bundle: false,
+    });
+
+    const compiled = await filesystem.readFile(result.outFile);
+    expect(compiled).toContain("react/jsx-runtime");
+    expect(compiled).toContain("Hello VFS");
+  });
+
+  it("rejects bare imports that are not part of the VFS compile allowlist", async () => {
+    const filesystem = vfs("compiler-import-policy");
+    await filesystem.initialize();
+    await filesystem.writeFile(
+      "src/plugin.ts",
+      `
+import leftPad from "left-pad";
+export default { name: "bad-import", leftPad };
+`,
+    );
+
+    const compiler = new PluginCompiler();
+    await expect(
+      compiler.compile({ vfs: filesystem, entry: "src/plugin.ts" }),
+    ).rejects.toThrow(/left-pad/);
+  });
 });

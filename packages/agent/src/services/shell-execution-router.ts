@@ -23,6 +23,7 @@ import {
 } from "@elizaos/shared";
 import { CapabilityBroker } from "./capability-broker.ts";
 import type { SandboxManager } from "./sandbox-manager.ts";
+import { isVfsUri, runVfsBuiltinShell } from "./vfs-builtin-shell.ts";
 
 export type ShellExecutionMode = RuntimeExecutionMode;
 
@@ -32,6 +33,7 @@ export type ShellSandboxBackend =
   | "apple-container"
   | "wsl2"
   | "appcontainer"
+  | "vfs"
   | "none";
 
 export interface ShellRequest {
@@ -259,6 +261,18 @@ export async function runShell(
   }
 
   const mode = resolveShellExecutionMode(ctx);
+
+  if (isVfsUri(req.cwd)) {
+    const result = await runVfsBuiltinShell({
+      cwdUri: req.cwd,
+      command: req.command,
+      args: req.args,
+      ...(req.timeoutMs ? { timeoutMs: req.timeoutMs } : {}),
+    });
+    if (result.stdout) req.onStdout?.(result.stdout);
+    if (result.stderr) req.onStderr?.(result.stderr);
+    return result;
+  }
 
   if (mode === "cloud") {
     throw new Error("Local shell execution disabled in cloud mode.");

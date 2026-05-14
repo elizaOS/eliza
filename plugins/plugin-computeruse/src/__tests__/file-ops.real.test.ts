@@ -9,11 +9,16 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   appendFile,
+  createDirectory,
   deleteFile,
+  directoryExists,
   editFile,
   fileExists,
+  getFileSize,
   listDirectory,
+  readBytes,
   readFile,
+  writeBytes,
   writeFile,
 } from "../platform/file-ops.js";
 
@@ -68,6 +73,26 @@ describe("file operations (real)", () => {
 
       const read = await readFile(filePath);
       expect(read.content).toBe("new");
+    });
+  });
+
+  describe("bytes", () => {
+    it("writes and reads base64 binary content with offsets", async () => {
+      const filePath = join(tempDir, "bytes.bin");
+      const first = Buffer.from([0, 1, 2, 3]);
+      const second = Buffer.from([254, 255]);
+
+      const write = await writeBytes(filePath, first.toString("base64"));
+      expect(write.success).toBe(true);
+
+      const append = await writeBytes(filePath, second.toString("base64"), true);
+      expect(append.success).toBe(true);
+
+      const read = await readBytes(filePath, 2, 3);
+      expect(read.success).toBe(true);
+      expect(Buffer.from(read.content_b64!, "base64")).toEqual(
+        Buffer.from([2, 3, 254]),
+      );
     });
   });
 
@@ -144,6 +169,34 @@ describe("file operations (real)", () => {
     });
   });
 
+  describe("directoryExists", () => {
+    it("returns true only for directories", async () => {
+      const dirPath = join(tempDir, "dir");
+      const filePath = join(tempDir, "file.txt");
+      mkdirSync(dirPath);
+      writeFileSync(filePath, "hi");
+
+      expect(await directoryExists(dirPath)).toMatchObject({
+        success: true,
+        exists: true,
+      });
+      expect(await directoryExists(filePath)).toMatchObject({
+        success: true,
+        exists: false,
+      });
+    });
+  });
+
+  describe("getFileSize", () => {
+    it("returns file size in bytes", async () => {
+      const filePath = join(tempDir, "size.bin");
+      writeFileSync(filePath, Buffer.from([1, 2, 3, 4, 5]));
+
+      const result = await getFileSize(filePath);
+      expect(result).toMatchObject({ success: true, size: 5 });
+    });
+  });
+
   describe("listDirectory", () => {
     it("lists directory contents", async () => {
       writeFileSync(join(tempDir, "a.txt"), "a");
@@ -162,6 +215,19 @@ describe("file operations (real)", () => {
 
       const subdir = result.items!.find((e) => e.name === "subdir");
       expect(subdir?.type).toBe("directory");
+    });
+  });
+
+  describe("createDirectory", () => {
+    it("creates nested directories", async () => {
+      const dirPath = join(tempDir, "created", "nested");
+
+      const result = await createDirectory(dirPath);
+      expect(result.success).toBe(true);
+      expect(await directoryExists(dirPath)).toMatchObject({
+        exists: true,
+        isDirectory: true,
+      });
     });
   });
 });

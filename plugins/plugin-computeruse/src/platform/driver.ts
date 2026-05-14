@@ -17,9 +17,14 @@ import {
   desktopClickWithModifiers,
   desktopDoubleClick,
   desktopDrag,
+  desktopKeyDown,
   desktopKeyCombo,
   desktopKeyPress,
+  desktopKeyUp,
+  desktopMiddleClick,
+  desktopMouseDown,
   desktopMouseMove,
+  desktopMouseUp,
   desktopRightClick,
   desktopScroll,
   desktopType,
@@ -32,9 +37,14 @@ import {
   nutClickWithModifiers,
   nutDoubleClick,
   nutDrag,
+  nutKeyDown,
   nutKeyCombo,
   nutKeyPress,
+  nutKeyUp,
+  nutMiddleClick,
+  nutMouseDown,
   nutMouseMove,
+  nutMouseUp,
   nutRightClick,
   nutScroll,
   nutType,
@@ -100,6 +110,29 @@ export async function driverRightClick(x: number, y: number): Promise<void> {
   desktopRightClick(x, y);
 }
 
+export async function driverMiddleClick(x: number, y: number): Promise<void> {
+  if (selectedDriver() === "nutjs") return nutMiddleClick(x, y);
+  desktopMiddleClick(x, y);
+}
+
+export async function driverMouseDown(
+  x: number,
+  y: number,
+  button: "left" | "middle" | "right" = "left",
+): Promise<void> {
+  if (selectedDriver() === "nutjs") return nutMouseDown(x, y, button);
+  desktopMouseDown(x, y, button);
+}
+
+export async function driverMouseUp(
+  x: number,
+  y: number,
+  button: "left" | "middle" | "right" = "left",
+): Promise<void> {
+  if (selectedDriver() === "nutjs") return nutMouseUp(x, y, button);
+  desktopMouseUp(x, y, button);
+}
+
 export async function driverMouseMove(x: number, y: number): Promise<void> {
   if (selectedDriver() === "nutjs") return nutMouseMove(x, y);
   desktopMouseMove(x, y);
@@ -135,6 +168,16 @@ export async function driverType(text: string): Promise<void> {
 export async function driverKeyPress(key: string): Promise<void> {
   if (selectedDriver() === "nutjs") return nutKeyPress(key);
   desktopKeyPress(key);
+}
+
+export async function driverKeyDown(key: string): Promise<void> {
+  if (selectedDriver() === "nutjs") return nutKeyDown(key);
+  desktopKeyDown(key);
+}
+
+export async function driverKeyUp(key: string): Promise<void> {
+  if (selectedDriver() === "nutjs") return nutKeyUp(key);
+  desktopKeyUp(key);
 }
 
 export async function driverKeyCombo(combo: string): Promise<void> {

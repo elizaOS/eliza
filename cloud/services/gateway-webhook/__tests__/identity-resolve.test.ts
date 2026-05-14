@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { resolveIdentity, type RoutingRedis } from "../src/server-router";
+import { type RoutingRedis, resolveIdentity } from "../src/server-router";
 
 type RedisSet = {
   key: string;

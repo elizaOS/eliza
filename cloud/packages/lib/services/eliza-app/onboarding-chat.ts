@@ -3,9 +3,9 @@ import { generateText } from "ai";
 import { cache } from "@/lib/cache/client";
 import { getCloudAwareEnv } from "@/lib/runtime/cloud-bindings";
 import {
+  type ElizaAppProvisioningStatus,
   ensureElizaAppProvisioning,
   getElizaAppProvisioningStatus,
-  type ElizaAppProvisioningStatus,
 } from "@/lib/services/eliza-app/provisioning";
 import { elizaAppUserService } from "@/lib/services/eliza-app/user-service";
 import { launchManagedElizaAgent } from "@/lib/services/eliza-managed-launch";

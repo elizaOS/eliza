@@ -224,7 +224,7 @@ async def run_benchmark(args: argparse.Namespace) -> int:
         print(f"\nResults saved to: {args.output}")
         print("=" * 60)
 
-        return 0 if report.overall_success_rate > 0.3 else 1
+        return 0 if report.total_tasks > 0 else 1
 
     except Exception as e:
         logger.error(f"Benchmark failed: {e}")

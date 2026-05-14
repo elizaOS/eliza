@@ -183,6 +183,22 @@ function _toWindowsVirtualKeyCode(key: string): number {
   throw new Error(`Unsupported key for key_down/key_up on Windows: "${key}"`);
 }
 
+function _toXdotoolKeyDownName(key: string): string {
+  const modifierMap: Record<string, string> = {
+    cmd: "super",
+    command: "super",
+    meta: "super",
+    super: "super",
+    ctrl: "ctrl",
+    control: "ctrl",
+    alt: "alt",
+    option: "alt",
+    shift: "shift",
+  };
+  const normalized = key.trim().toLowerCase();
+  return safeXdotoolKey(modifierMap[normalized] ?? toXdotoolKeyName(key));
+}
+
 function runDarwinJxa(script: string, timeoutMs = 5000): void {
   runCommand("osascript", ["-l", "JavaScript", "-e", script], timeoutMs);
 }
@@ -595,6 +611,109 @@ CGEvent(mouseEventSource: nil, mouseType: .rightMouseUp, mouseCursorPosition: po
   );
 }
 
+export function desktopMiddleClick(x: number, y: number): void {
+  runWithAccessibilityPermission(
+    "desktop_middle_click",
+    () => {
+      const sx = validateInt(x);
+      const sy = validateInt(y);
+      const os = currentPlatform();
+
+      if (os === "darwin") {
+        _clickDarwinWithCoreGraphics(sx, sy, "middle");
+      } else if (os === "linux") {
+        requireXdotool();
+        runCommand(
+          "xdotool",
+          ["mousemove", String(sx), String(sy), "click", "2"],
+          5000,
+        );
+      } else if (os === "win32") {
+        const ps = [
+          "Add-Type -AssemblyName System.Windows.Forms",
+          `[System.Windows.Forms.Cursor]::Position = New-Object System.Drawing.Point(${sx},${sy})`,
+          `Add-Type -MemberDefinition '[DllImport("user32.dll")] public static extern void mouse_event(int dwFlags, int dx, int dy, int dwData, int dwExtraInfo);' -Name Win32Mouse -Namespace Win32`,
+          "[Win32.Win32Mouse]::mouse_event(0x0020, 0, 0, 0, 0); [Win32.Win32Mouse]::mouse_event(0x0040, 0, 0, 0, 0)",
+        ].join("; ");
+        runCommand("powershell", ["-Command", ps], 5000);
+      }
+    },
+    "desktop_middle_click",
+  );
+}
+
+export function desktopMouseDown(
+  x: number,
+  y: number,
+  button: "left" | "middle" | "right" = "left",
+): void {
+  runWithAccessibilityPermission(
+    "desktop_mouse_down",
+    () => {
+      const sx = validateInt(x);
+      const sy = validateInt(y);
+      const os = currentPlatform();
+      const args = _mouseButtonArgs(button);
+
+      if (os === "darwin") {
+        _mouseButtonEventDarwin(sx, sy, button, "down");
+      } else if (os === "linux") {
+        requireXdotool();
+        runCommand(
+          "xdotool",
+          ["mousemove", String(sx), String(sy), "mousedown", args.xdotoolButton],
+          5000,
+        );
+      } else if (os === "win32") {
+        const ps = [
+          "Add-Type -AssemblyName System.Windows.Forms",
+          `[System.Windows.Forms.Cursor]::Position = New-Object System.Drawing.Point(${sx},${sy})`,
+          `Add-Type -MemberDefinition '[DllImport("user32.dll")] public static extern void mouse_event(int dwFlags, int dx, int dy, int dwData, int dwExtraInfo);' -Name Win32Mouse -Namespace Win32`,
+          `[Win32.Win32Mouse]::mouse_event(${args.winDownFlag}, 0, 0, 0, 0)`,
+        ].join("; ");
+        runCommand("powershell", ["-Command", ps], 5000);
+      }
+    },
+    "desktop_mouse_down",
+  );
+}
+
+export function desktopMouseUp(
+  x: number,
+  y: number,
+  button: "left" | "middle" | "right" = "left",
+): void {
+  runWithAccessibilityPermission(
+    "desktop_mouse_up",
+    () => {
+      const sx = validateInt(x);
+      const sy = validateInt(y);
+      const os = currentPlatform();
+      const args = _mouseButtonArgs(button);
+
+      if (os === "darwin") {
+        _mouseButtonEventDarwin(sx, sy, button, "up");
+      } else if (os === "linux") {
+        requireXdotool();
+        runCommand(
+          "xdotool",
+          ["mousemove", String(sx), String(sy), "mouseup", args.xdotoolButton],
+          5000,
+        );
+      } else if (os === "win32") {
+        const ps = [
+          "Add-Type -AssemblyName System.Windows.Forms",
+          `[System.Windows.Forms.Cursor]::Position = New-Object System.Drawing.Point(${sx},${sy})`,
+          `Add-Type -MemberDefinition '[DllImport("user32.dll")] public static extern void mouse_event(int dwFlags, int dx, int dy, int dwData, int dwExtraInfo);' -Name Win32Mouse -Namespace Win32`,
+          `[Win32.Win32Mouse]::mouse_event(${args.winUpFlag}, 0, 0, 0, 0)`,
+        ].join("; ");
+        runCommand("powershell", ["-Command", ps], 5000);
+      }
+    },
+    "desktop_mouse_up",
+  );
+}
+
 // ── Mouse Move ──────────────────────────────────────────────────────────────
 
 export function desktopMouseMove(x: number, y: number): void {
@@ -891,6 +1010,72 @@ export function desktopKeyPress(key: string): void {
       }
     },
     "desktop_key_press",
+  );
+}
+
+export function desktopKeyDown(key: string): void {
+  runWithAccessibilityPermission(
+    "desktop_key_down",
+    () => {
+      const safeKey = validateKeypress(key);
+      const os = currentPlatform();
+
+      if (os === "darwin") {
+        const code = _toDarwinKeyboardKeyCode(safeKey);
+        runDarwinJxa(
+          `
+ObjC.import("ApplicationServices");
+const event = $.CGEventCreateKeyboardEvent(null, ${code}, true);
+$.CGEventPost($.kCGHIDEventTap, event);
+`,
+          5000,
+        );
+      } else if (os === "linux") {
+        requireXdotool();
+        runCommand("xdotool", ["keydown", _toXdotoolKeyDownName(safeKey)], 5000);
+      } else if (os === "win32") {
+        const code = _toWindowsVirtualKeyCode(safeKey);
+        const ps = [
+          `Add-Type -MemberDefinition '[DllImport("user32.dll")] public static extern void keybd_event(byte bVk, byte bScan, int dwFlags, int dwExtraInfo);' -Name Win32Keyboard -Namespace Win32`,
+          `[Win32.Win32Keyboard]::keybd_event(${code}, 0, 0, 0)`,
+        ].join("; ");
+        runCommand("powershell", ["-Command", ps], 5000);
+      }
+    },
+    "desktop_key_down",
+  );
+}
+
+export function desktopKeyUp(key: string): void {
+  runWithAccessibilityPermission(
+    "desktop_key_up",
+    () => {
+      const safeKey = validateKeypress(key);
+      const os = currentPlatform();
+
+      if (os === "darwin") {
+        const code = _toDarwinKeyboardKeyCode(safeKey);
+        runDarwinJxa(
+          `
+ObjC.import("ApplicationServices");
+const event = $.CGEventCreateKeyboardEvent(null, ${code}, false);
+$.CGEventPost($.kCGHIDEventTap, event);
+`,
+          5000,
+        );
+      } else if (os === "linux") {
+        requireXdotool();
+        runCommand("xdotool", ["keyup", _toXdotoolKeyDownName(safeKey)], 5000);
+      } else if (os === "win32") {
+        const code = _toWindowsVirtualKeyCode(safeKey);
+        const ps = [
+          `Add-Type -MemberDefinition '[DllImport("user32.dll")] public static extern void keybd_event(byte bVk, byte bScan, int dwFlags, int dwExtraInfo);' -Name Win32Keyboard -Namespace Win32`,
+          `[Win32.Win32Keyboard]::keybd_event(${code}, 0, 2, 0)`,
+        ].join("; ");
+        runCommand("powershell", ["-Command", ps], 5000);
+      }
+    },
+    "desktop_key_up",
   );
 }
 

@@ -579,9 +579,9 @@ describe("buildPlannerActionGrammarStrict — single-call per-action union gramm
 		);
 	});
 
-	it("falls back to shared jsonstring for free-text string params", () => {
-		const r = buildPlannerActionGrammarStrict([
-			makeAction("REPLY", {
+		it("falls back to shared jsonstring for free-text string params", () => {
+			const r = buildPlannerActionGrammarStrict([
+				makeAction("REPLY", {
 				parameters: [
 					{
 						name: "text",
@@ -593,11 +593,46 @@ describe("buildPlannerActionGrammarStrict — single-call per-action union gramm
 			}),
 		]);
 		if (r === null) throw new Error("expected grammar");
-		expect(r.grammar).toMatch(
-			/paramsofaction_REPLY_p_text ::= "\\"text\\":" jsonstring/,
-		);
-		expect(r.grammar).toMatch(/^jsonstring ::= /m);
-	});
+			expect(r.grammar).toMatch(
+				/paramsofaction_REPLY_p_text ::= "\\"text\\":" jsonstring/,
+			);
+			expect(r.grammar).toMatch(/^jsonstring ::= /m);
+		});
+
+		it("uses a JSON-safe string rule for LF, CR, CRLF, tab, and backslash escapes", () => {
+			const r = buildPlannerActionGrammarStrict([
+				makeAction("REPLY", {
+					parameters: [
+						{
+							name: "text",
+							description: "the text",
+							required: true,
+							schema: { type: "string" },
+						},
+					],
+				}),
+			]);
+			if (r === null) throw new Error("expected grammar");
+			const jsonStringLine = r.grammar
+				.split("\n")
+				.find((line) => line.startsWith("jsonstring ::="));
+			expect(jsonStringLine).toBeDefined();
+			if (!jsonStringLine) return;
+
+			// Raw control characters, including LF/CR/CRLF/tab, are not legal string
+			// body characters; the model must emit JSON escapes instead.
+			expect(jsonStringLine).toContain(String.raw`[^"\\\x00-\x1F]`);
+			expect(jsonStringLine).not.toContain("\n");
+			expect(jsonStringLine).not.toContain("\r");
+			expect(jsonStringLine).not.toContain("\t");
+
+			// A backslash must begin a valid JSON escape, not an arbitrary `\x`.
+			expect(jsonStringLine).toContain(String.raw`"\\" ( ["\\/bfnrt] | "u"`);
+			expect(jsonStringLine).toContain(
+				String.raw`[0-9a-fA-F] [0-9a-fA-F] [0-9a-fA-F] [0-9a-fA-F]`,
+			);
+			expect(jsonStringLine).not.toContain(String.raw`"\\" .`);
+		});
 
 	it("recurses into object-typed properties with declared sub-properties", () => {
 		// Mirrors paymentContext in real actions: object with enum-typed
@@ -728,10 +763,10 @@ describe("buildPlannerActionGrammarStrict — single-call per-action union gramm
 		expect(r.grammar).toContain("jsonvalue");
 	});
 
-	it("emits required-then-optional structure in the params rule", () => {
-		const r = buildPlannerActionGrammarStrict([
-			makeAction("MIXED", {
-				parameters: [
+		it("emits required-then-optional structure without duplicate optional keys", () => {
+			const r = buildPlannerActionGrammarStrict([
+				makeAction("MIXED", {
+					parameters: [
 					{
 						name: "a",
 						description: "required",
@@ -746,23 +781,75 @@ describe("buildPlannerActionGrammarStrict — single-call per-action union gramm
 					},
 				],
 			}),
-		]);
-		if (r === null) throw new Error("expected grammar");
-		// Required `a` precedes the optional-group; optional `b` is wrapped in
-		// `( "," ( ... ) )*` (zero-or-more, leading comma).
-		expect(r.grammar).toMatch(
-			/paramsofaction_MIXED ::= "\{" paramsofaction_MIXED_p_a \( "," \( paramsofaction_MIXED_p_b \) \)\* "\}"/,
-		);
-	});
+			]);
+			if (r === null) throw new Error("expected grammar");
+			// Required `a` precedes optional `b`; `b` is a single optional suffix,
+			// not a zero-or-more group that could emit duplicate `b` keys.
+			expect(r.grammar).toMatch(
+				/paramsofaction_MIXED ::= "\{" paramsofaction_MIXED_p_a \( "," paramsofaction_MIXED_p_b \)\? "\}"/,
+			);
+			expect(r.grammar).not.toMatch(
+				/paramsofaction_MIXED ::= .*paramsofaction_MIXED_p_b.*\)\*/,
+			);
+		});
 
-	it("returns a minimal skeleton (the grammar carries the structure)", () => {
-		const r = buildPlannerActionGrammarStrict([makeAction("ONE")]);
-		if (r === null) throw new Error("expected grammar");
-		expect(r.responseSkeleton.spans).toEqual([
-			{ kind: "free-json", key: "envelope" },
-		]);
-		expect(typeof r.responseSkeleton.id).toBe("string");
-	});
+		it("allows optional-only objects while keeping each optional key single-use", () => {
+			const r = buildPlannerActionGrammarStrict([
+				makeAction("OPTIONALS", {
+					parameters: [
+						{
+							name: "a",
+							description: "first optional",
+							required: false,
+							schema: { type: "string" },
+						},
+						{
+							name: "b",
+							description: "second optional",
+							required: false,
+							schema: { type: "string" },
+						},
+						{
+							name: "c",
+							description: "third optional",
+							required: false,
+							schema: { type: "string" },
+						},
+					],
+				}),
+			]);
+			if (r === null) throw new Error("expected grammar");
+			const paramsLine = r.grammar
+				.split("\n")
+				.find((line) => line.startsWith("paramsofaction_OPTIONALS ::="));
+			expect(paramsLine).toBeDefined();
+			if (!paramsLine) return;
+			expect(paramsLine).toContain("paramsofaction_OPTIONALS_p_a");
+			expect(paramsLine).toContain("paramsofaction_OPTIONALS_p_b");
+			expect(paramsLine).toContain("paramsofaction_OPTIONALS_p_c");
+			expect(paramsLine).not.toContain(")*");
+		});
+
+		it("returns a sampler skeleton exposing the planner action choice", () => {
+			const r = buildPlannerActionGrammarStrict([
+				makeAction("ONE"),
+				makeAction("TWO"),
+			]);
+			if (r === null) throw new Error("expected grammar");
+			expect(r.responseSkeleton.spans).toEqual([
+				{ kind: "literal", value: '{"action":' },
+				{ kind: "enum", key: "action", enumValues: ["ONE", "TWO"] },
+				{ kind: "literal", value: ',"parameters":' },
+				{ kind: "free-json", key: "parameters" },
+				{ kind: "literal", value: ',"thought":' },
+				{ kind: "free-string", key: "thought" },
+				{ kind: "literal", value: "}" },
+			]);
+			expect(buildSpanSamplerPlan(r.responseSkeleton).overrides).toEqual([
+				{ spanIndex: 1, temperature: 0, topK: 1 },
+			]);
+			expect(typeof r.responseSkeleton.id).toBe("string");
+		});
 
 	it("exposes the same normalized parameter schemas as the loose grammar", () => {
 		const r = buildPlannerActionGrammarStrict([
@@ -1294,10 +1381,12 @@ describe("buildBoundedNumberRule — integer and float range constraints", () =>
 		if (!result) return;
 		// The grammar should contain alternation with the bounded values.
 		// Check that the bounded rule is present and references both 0 and 5.
-		expect(result.grammar).toContain("_count_bounded");
-		expect(result.grammar).toContain('"\\"0\\""');
-		expect(result.grammar).toContain('"\\"5\\""');
-	});
+			expect(result.grammar).toContain("_count_bounded");
+			expect(result.grammar).toContain('"0"');
+			expect(result.grammar).toContain('"5"');
+			expect(result.grammar).not.toContain('"\\"0\\""');
+			expect(result.grammar).not.toContain('"\\"5\\""');
+		});
 
 	it("emits a rule with alternation for closed integer range [0, 100]", () => {
 		clearResponseGrammarCache();
@@ -1316,12 +1405,13 @@ describe("buildBoundedNumberRule — integer and float range constraints", () =>
 		if (!result) return;
 		// For 0-100 (101 values), still under the 200 threshold, so expect direct alternation.
 		expect(result.grammar).toContain("_count_bounded");
-		// Should have the edge values in JSON-encoded GBNF format.
-		expect(result.grammar).toContain('"\\"0\\""');
-		expect(result.grammar).toContain('"\\"100\\""');
-		// Spot-check a middle value exists.
-		expect(result.grammar).toContain('"\\"50\\""');
-	});
+			// Should have the edge values as numeric JSON tokens, not quoted strings.
+			expect(result.grammar).toContain('"0"');
+			expect(result.grammar).toContain('"100"');
+			// Spot-check a middle value exists.
+			expect(result.grammar).toContain('"50"');
+			expect(result.grammar).not.toContain('"\\"50\\""');
+		});
 
 	it("handles negative and positive integers in [−10, 10]", () => {
 		clearResponseGrammarCache();
@@ -1337,13 +1427,14 @@ describe("buildBoundedNumberRule — integer and float range constraints", () =>
 		});
 		const result = buildPlannerActionGrammarStrict([action]);
 		expect(result).not.toBeNull();
-		if (!result) return;
-		// Should contain negative and positive edge values.
-		expect(result.grammar).toContain('"\\"-10\\""');
-		expect(result.grammar).toContain('"\\"10\\""');
-		expect(result.grammar).toContain('"\\"0\\""');
-		expect(result.grammar).toContain('"\\"-1\\""');
-	});
+			if (!result) return;
+			// Should contain negative and positive edge values.
+			expect(result.grammar).toContain('"-10"');
+			expect(result.grammar).toContain('"10"');
+			expect(result.grammar).toContain('"0"');
+			expect(result.grammar).toContain('"-1"');
+			expect(result.grammar).not.toContain('"\\"-10\\""');
+		});
 
 	it("falls back to jsonnumber for unbounded number (no min/max)", () => {
 		clearResponseGrammarCache();

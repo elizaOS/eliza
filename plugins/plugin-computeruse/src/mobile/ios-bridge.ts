@@ -198,10 +198,19 @@ export interface IntentSpec {
   readonly parameters: readonly IntentParameterSpec[];
   /**
    * `donated` means the app has run at least once and donated this intent to
-   * Shortcuts on this device. `system` is a known-stable Apple intent that
-   * ships with the OS.
+   * Shortcuts on this device. `system` is a known-stable Apple intent or
+   * Shortcuts action that ships with the OS.
    */
   readonly source: "donated" | "system";
+  /**
+   * Runtime invocation guarantee. Only `native-x-callback` entries are
+   * expected to be accepted by `appIntentInvoke` without a user-created
+   * Shortcut or first-party AppIntent implementation.
+   */
+  readonly invocationMode:
+    | "native-x-callback"
+    | "shortcut-required"
+    | "catalog-only";
 }
 
 export interface IntentInvocationRequest {
