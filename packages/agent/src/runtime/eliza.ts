@@ -3076,7 +3076,19 @@ export async function startEliza(
   // policy is incompatible with running an embedded local AgentRuntime, so
   // store builds must route to Eliza Cloud. If the cloud config is missing,
   // fail loudly and route the user to onboarding.
-  const { isStoreBuild } = await importAppCoreRuntime();
+  const { isStoreBuild, getBuildVariant } = await importAppCoreRuntime();
+
+  // Boot-time observability: print the resolved (buildVariant, deploymentTarget,
+  // stateDir, workspaceDir) tuple so support has it for sandbox issues.
+  logger.info(
+    `[eliza] boot tuple: buildVariant=${getBuildVariant()} ` +
+      `deploymentRuntime=${deploymentTarget.runtime} ` +
+      `provider=${deploymentTarget.provider ?? "n/a"} ` +
+      `stateDir=${resolveStateDir()} ` +
+      `workspaceDir=${process.env.ELIZA_WORKSPACE_DIR ?? "(default)"} ` +
+      `platform=${process.platform}`,
+  );
+
   if (isStoreBuild()) {
     if (deploymentTarget.runtime === "local") {
       throw new Error(
