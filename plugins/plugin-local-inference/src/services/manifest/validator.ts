@@ -26,6 +26,8 @@ import {
 	Eliza1ManifestSchema,
 	REQUIRED_KERNELS_BY_TIER,
 	SUPPORTED_BACKENDS_BY_TIER,
+	TURN_DETECTOR_F1_THRESHOLD,
+	TURN_DETECTOR_MEAN_LATENCY_MS_LIMIT,
 	VOICE_PRESET_CACHE_PATH,
 } from "./schema";
 import type {
@@ -279,6 +281,7 @@ function collectContractErrors(m: Eliza1Manifest): string[] {
 		"vision",
 		"vad",
 		"wakeword",
+		"turn",
 	] as const) {
 		const files = m.files[slot] ?? [];
 		const lineage = m.lineage[slot];
@@ -311,6 +314,29 @@ function collectContractErrors(m: Eliza1Manifest): string[] {
 			errors.push("evals.vadLatencyMs: required when files.vad is non-empty");
 		} else if (strictRelease && !m.evals.vadLatencyMs.passed) {
 			errors.push("evals.vadLatencyMs.passed: false");
+		}
+	}
+	// Voice Wave 2 (2026-05-14): turn-detector eval gate. When the bundle
+	// ships `files.turn` (the LiveKit/Turnsense ONNX) the manifest MUST
+	// declare a `turnDetector` eval block; a strict release additionally
+	// requires `passed=true` AND the precomputed `passed` field to be
+	// internally consistent with the threshold constants.
+	if ((m.files.turn ?? []).length > 0) {
+		const td = m.evals.turnDetector;
+		if (!td) {
+			errors.push("evals.turnDetector: required when files.turn is non-empty");
+		} else {
+			const gateMet =
+				td.f1 >= TURN_DETECTOR_F1_THRESHOLD &&
+				td.meanLatencyMs <= TURN_DETECTOR_MEAN_LATENCY_MS_LIMIT;
+			if (td.passed !== gateMet) {
+				errors.push(
+					`evals.turnDetector.passed: ${td.passed} disagrees with measured gate (f1=${td.f1} ≥ ${TURN_DETECTOR_F1_THRESHOLD} && meanLatencyMs=${td.meanLatencyMs} ≤ ${TURN_DETECTOR_MEAN_LATENCY_MS_LIMIT} → ${gateMet})`,
+				);
+			}
+			if (strictRelease && !td.passed) {
+				errors.push("evals.turnDetector.passed: false");
+			}
 		}
 	}
 	const expressiveVoice =
