@@ -4,6 +4,7 @@ import path from "node:path";
 import test from "node:test";
 
 import {
+  applyAndroidCleartextPolicy,
   ANDROID_CLOUD_STRIPPED_COMPONENTS,
   ANDROID_CLOUD_STRIPPED_NATIVE_PLUGINS,
   ANDROID_CLOUD_STRIPPED_PERMISSIONS,
@@ -98,6 +99,34 @@ test("Google Play Android strips AOSP assistant/full-control components and perm
       ([pkg]) => pkg === "@elizaos/capacitor-screencapture",
     ),
     "android-cloud should strip the MediaProjection screen-capture plugin",
+  );
+});
+
+test("Android manifest cleartext policy can be stamped per target", () => {
+  const manifest = `<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application android:label="@string/app_name" android:usesCleartextTraffic="true">
+    </application>
+</manifest>`;
+
+  assert.match(
+    applyAndroidCleartextPolicy(manifest, { allowCleartext: false }),
+    /android:usesCleartextTraffic="false"/,
+  );
+  assert.match(
+    applyAndroidCleartextPolicy(manifest, { allowCleartext: true }),
+    /android:usesCleartextTraffic="true"/,
+  );
+});
+
+test("Android manifest cleartext policy is inserted when absent", () => {
+  const manifest = `<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application android:label="@string/app_name">
+    </application>
+</manifest>`;
+
+  assert.match(
+    applyAndroidCleartextPolicy(manifest, { allowCleartext: false }),
+    /<application\s+android:usesCleartextTraffic="false"\s+android:label/,
   );
 });
 

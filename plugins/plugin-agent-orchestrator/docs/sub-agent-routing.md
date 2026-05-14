@@ -169,16 +169,13 @@ the most recent turn stays warm.
 - Dedup prevents accidental double-injection from event re-emission.
 - The round-trip cap (above) is the hard ceiling for ping-pong loops.
 
-## Coordinator Boundary
+## ACP Boundary
 
-`plugin-agent-orchestrator`'s `swarm-coordinator.ts` and
-`swarm-decision-loop.ts` are bound to `PTYService` only. Sessions spawned
-through `AcpService` bypass them entirely.
+`plugin-agent-orchestrator` has a single task-agent transport: `AcpService`.
+There is no PTY/coordinator fallback path.
 
-The swarm coordinator's autonomous decision logic
-(`makeCoordinationDecision`, `buildTurnCompletePrompt`,
-`buildBlockedEventMessage`) is replaced by the main agent's normal action
-selection over the synthetic Memory.
+Autonomous follow-up decisions are handled by the main agent's normal action
+selection over the synthetic Memory emitted by `SubAgentRouter`.
 
 ## Testing
 

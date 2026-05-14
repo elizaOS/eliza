@@ -609,12 +609,11 @@ export const roleAction: Action = {
 	roleGate: { minRole: "OWNER" },
 	suppressPostActionContinuation: true,
 	description:
-		"Manage roles (OWNER/ADMIN/USER/GUEST) in a world. Operations: assign, revoke, list. " +
-		"Accepts structured assignments[] or single target name with recent-room disambiguation.",
+		"Manage world roles OWNER/ADMIN/USER/GUEST. Ops assign, revoke, list. Use assignments[] or target name.",
 	parameters: [
 		{
 			name: "action",
-			description: "Operation to perform: assign, revoke, or list.",
+			description: "Operation: assign, revoke, list.",
 			required: false,
 			schema: {
 				type: "string" as const,
@@ -634,13 +633,13 @@ export const roleAction: Action = {
 		{
 			name: "target",
 			description:
-				"Single target by name when assignments[] is not supplied. Resolved against the current room.",
+				"Single target name when assignments[] absent. Current-room resolved.",
 			required: false,
 			schema: { type: "string" as const },
 		},
 		{
 			name: "role",
-			description: "Role to assign when using single-target form.",
+			description: "Role for single-target assign.",
 			required: false,
 			schema: {
 				type: "string" as const,
@@ -649,14 +648,13 @@ export const roleAction: Action = {
 		},
 		{
 			name: "label",
-			description:
-				"Optional natural-language label (boss, coworker, etc.) used to derive role.",
+			description: "Natural label (boss, coworker, etc.) to derive role.",
 			required: false,
 			schema: { type: "string" as const },
 		},
 		{
 			name: "assignments",
-			description: "Batch assignments by entityId. Used by assign/revoke.",
+			description: "Batch assignments by entityId for assign/revoke.",
 			required: false,
 			schema: {
 				type: "array" as const,

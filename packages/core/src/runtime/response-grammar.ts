@@ -663,16 +663,12 @@ export function clearResponseGrammarCache(): void {
  * deterministic-token prefill-plan fast-forward layered on top of the GBNF
  * constrained decode) is **on by default** for the Stage-1 response handler and
  * the Stage-2 planner — those are the calls that always carry a forced skeleton.
- * Set `MILADY_LOCAL_GUIDED_DECODE=0` (or `ELIZA_LOCAL_GUIDED_DECODE=0` /
- * `false` / `off` / `no`) to disable. Cloud adapters ignore
+ * Set `ELIZA_LOCAL_GUIDED_DECODE=0` (`false` / `off` / `no`) to disable.
+ * Cloud adapters ignore
  * `providerOptions.eliza.guidedDecode` entirely, so this is a no-op for them.
  */
 function guidedDecodeEnabledByDefault(): boolean {
-	const raw = (
-		process.env.MILADY_LOCAL_GUIDED_DECODE ??
-		process.env.ELIZA_LOCAL_GUIDED_DECODE ??
-		""
-	)
+	const raw = (process.env.ELIZA_LOCAL_GUIDED_DECODE ?? "")
 		.trim()
 		.toLowerCase();
 	return raw !== "0" && raw !== "false" && raw !== "off" && raw !== "no";
@@ -686,7 +682,7 @@ function guidedDecodeEnabledByDefault(): boolean {
  * fewer `decode()` calls (the fork-side fast-forward consumes the plan; without
  * it the runtime degrades to grammar-only / byte-identical output). Idempotent;
  * returns the same object reference with `eliza.guidedDecode` set. When the
- * operator opted out via `MILADY_LOCAL_GUIDED_DECODE=0` this is a no-op so an
+ * operator opted out via `ELIZA_LOCAL_GUIDED_DECODE=0` this is a no-op so an
  * existing `providerOptions.eliza.guidedDecode` (likely absent) is left alone.
  */
 export function withGuidedDecodeProviderOptions<

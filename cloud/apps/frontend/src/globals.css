@@ -1,5 +1,5 @@
 /* Font imports — vendored via @fontsource so fonts load from the local bundle.
- * No network request to fonts.googleapis.com; works offline and in Electrobun.
+ * No remote font CSS request; works offline and in Electrobun.
  * CSS custom properties (--font-dm-mono, --font-inter, --font-open-sans)
  * match what we apply on the `<body>` via RootLayout className.
  */

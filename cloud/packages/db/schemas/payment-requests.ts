@@ -6,7 +6,7 @@ import { organizations } from "./organizations";
 import { users } from "./users";
 
 /**
- * Unified payment requests (Wave B).
+ * Payment requests (Wave B).
  *
  * Single canonical surface that supersedes app_charges, crypto_payments, and
  * x402_payment_requests. The legacy tables continue to exist alongside this one

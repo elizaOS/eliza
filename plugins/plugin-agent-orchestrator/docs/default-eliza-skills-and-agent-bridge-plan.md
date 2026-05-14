@@ -39,10 +39,9 @@ The task agent infrastructure is in `plugins/plugin-agent-orchestrator`.
 
 Important surfaces:
 
-- `src/services/pty-service.ts` spawns agents, writes adapter memory files, injects parent runtime loopback context, and manages session lifecycle.
-- `src/actions/coding-task-handlers.ts` prepares `SKILLS.md`, recommends skills, spawns task sessions, and registers per-session skill allow-lists.
+- `src/services/acp-service.ts` spawns ACP agents, records session metadata, and manages session lifecycle.
+- `src/actions/tasks.ts` prepares ACP spawn/send/list/control requests through the single task-agent action surface.
 - `src/services/skill-manifest.ts` renders the task-local manifest and virtual broker skills.
-- `src/services/skill-callback-bridge.ts` listens for child output lines matching `USE_SKILL <slug> <json_args>` and routes them back to the parent runtime.
 - `src/services/skill-lifeops-context-broker.ts` already exposes task-scoped LifeOps context.
 
 ### Cloud and monetization
@@ -213,7 +212,7 @@ Status: local unit/type/skills tests are implemented and passing. Live OpenCode/
 ## Remaining Gaps
 
 - OpenCode is currently treated through shell-compatible spawn paths in parts of the orchestrator. It should become a first-class memory/config adapter if the project wants equivalent behavior to Claude/Codex/Gemini.
-- `PARALLAX_DEFAULT_AGENT_TYPE` fixed-default parsing still only accepts `claude`, `gemini`, `codex`, and `aider`. Routing can rank OpenCode, but fixed default should be extended after type/API review.
+- `ELIZA_DEFAULT_AGENT_TYPE` fixed-default parsing still only accepts `claude`, `gemini`, `codex`, and `aider`. Routing can rank OpenCode, but fixed default should be extended after type/API review.
 - Writing adapter memory files named `AGENTS.md` can collide with repos that already track `AGENTS.md`. A safer strategy is needed for Codex memory injection in tracked-repo workspaces.
 - Live agent benchmarking against OpenCode + Eliza Cloud + Cerebras requires credentials and running infrastructure.
 - The parent-agent broker currently asks through the normal parent message pipeline. Direct action invocation APIs could be added later, but the message path is more flexible and preserves confirmation behavior.

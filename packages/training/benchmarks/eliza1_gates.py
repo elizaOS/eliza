@@ -50,7 +50,10 @@ reason.
 
 from __future__ import annotations
 
+import argparse
+import json
 import operator
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterable, Mapping
@@ -588,3 +591,41 @@ def apply_gates(
 
     doc = gates if gates is not None else load_gates()
     return _full_report(tier_id, results, doc)
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Apply Eliza-1 gates to an aggregate eval JSON file.")
+    parser.add_argument("aggregate", type=Path, help="Path to aggregate.json")
+    parser.add_argument("--tier", help="Override the tier in aggregate.json")
+    parser.add_argument("--mode", choices=("smoke", "full"), help="Override the eval mode")
+    parser.add_argument("--gates", type=Path, help="Override eliza1_gates.yaml path")
+    parser.add_argument("--json", action="store_true", help="Print the full gate report as JSON")
+    args = parser.parse_args(argv)
+
+    try:
+        aggregate = json.loads(args.aggregate.read_text(encoding="utf-8"))
+        gates_doc = load_gates(args.gates) if args.gates else None
+        report = apply_gates(
+            aggregate,
+            gates_doc,
+            tier=args.tier,
+            mode=args.mode,
+        )
+    except Exception as exc:  # noqa: BLE001 - CLI boundary
+        print(f"eliza1_gates: {exc}", file=sys.stderr)
+        return 2
+
+    if args.json:
+        print(json.dumps(report.to_dict(), indent=2, sort_keys=True))
+    elif report.passed:
+        print(f"Eliza-1 gates passed for tier {report.tier} ({report.mode})")
+    else:
+        print(f"Eliza-1 gates failed for tier {report.tier} ({report.mode})", file=sys.stderr)
+        for failure in report.failures:
+            print(f"- {failure}", file=sys.stderr)
+
+    return 0 if report.passed else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

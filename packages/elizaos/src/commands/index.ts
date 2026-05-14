@@ -1,7 +1,3 @@
-/**
- * CLI Commands
- */
-
 export { create } from "./create.js";
 export { info } from "./info.js";
 export { registerPluginsCommand, submitPluginToRegistry } from "./plugins.js";

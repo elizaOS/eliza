@@ -22,7 +22,7 @@ Providers marked **bundled** are pre-installed with every Eliza release and load
 | [OpenAI](https://openai.com) | `@elizaos/plugin-openai` | `OPENAI_API_KEY` | Bundled | GPT-4o, o1, o3, GPT-4.1. |
 | [Google Gemini](https://ai.google.dev) | `@elizaos/plugin-google-genai` | `GOOGLE_API_KEY` or `GOOGLE_GENERATIVE_AI_API_KEY` | Bundled | Gemini Pro, Flash, Ultra. |
 | [Google Antigravity](https://cloud.google.com/vertex-ai) | `@elizaos/plugin-google-antigravity` | `GOOGLE_CLOUD_API_KEY` | On demand | Google Cloud / Vertex AI models. |
-| [Vercel AI Gateway](https://sdk.vercel.ai) | `@elizaos/plugin-vercel-ai-gateway` | `AI_GATEWAY_API_KEY` or `AIGATEWAY_API_KEY` | On demand | Unified gateway to multiple providers. |
+| [Vercel AI Gateway](https://sdk.vercel.ai) | `@elizaos/plugin-vercel-ai-gateway` | `AI_GATEWAY_API_KEY` or `AIGATEWAY_API_KEY` | On demand | Canonical gateway to multiple providers. |
 | [OpenRouter](https://openrouter.ai) | `@elizaos/plugin-openrouter` | `OPENROUTER_API_KEY` | Bundled | 100+ models behind one API key. |
 | [Groq](https://groq.com) | `@elizaos/plugin-groq` | `GROQ_API_KEY` | On demand | Ultra-fast inference (LPU). |
 | [xAI](https://x.ai) | `@elizaos/plugin-xai` | `XAI_API_KEY` or `GROK_API_KEY` | On demand | Grok models. |
@@ -38,7 +38,7 @@ Providers marked **bundled** are pre-installed with every Eliza release and load
 | [Eliza Cloud](https://elizacloud.ai) | `@elizaos/plugin-elizacloud` | `ELIZAOS_CLOUD_API_KEY` | Bundled | Cloud-managed inference route. Can be selected independently from where Eliza itself is running. |
 
 <Info>
-For providers without dedicated plugins (DeepSeek, Mistral, Cohere, Together AI, Perplexity, MiniMax), use the **OpenRouter** plugin. OpenRouter provides unified access to 200+ models from these providers and more through a single API key. See the [OpenRouter plugin reference](/plugin-registry/llm/openrouter) for model ID format.
+For providers without dedicated plugins (DeepSeek, Mistral, Cohere, Together AI, Perplexity, MiniMax), use the **OpenRouter** plugin. OpenRouter provides canonical access to 200+ models from these providers and more through a single API key. See the [OpenRouter plugin reference](/plugin-registry/llm/openrouter) for model ID format.
 </Info>
 
 ---
@@ -253,7 +253,7 @@ With this setup, all four providers are available. You can set different models 
 
 ## Local Models with Ollama
 
-Ollama lets you run models locally with no API key and full privacy. It does not require an API key — just a running Ollama server. For fully embedded local inference without any server, see [Local AI](/plugin-registry/llm/local-ai).
+Ollama lets you run models locally with no API key and full privacy. It does not require an API key — just a running Ollama server. For fully embedded local inference without any server, see the [local models guide](/guides/local-models).
 
 ### Setup
 
@@ -339,5 +339,5 @@ Some providers accept multiple env variable names for convenience (e.g., both `A
 </Tip>
 
 <Info>
-**Local AI** does not auto-enable via an environment variable. Enable it explicitly with `eliza plugins install local-ai` or by adding `"local-ai"` to `plugins.allow` in `eliza.json`. See the [Local AI plugin page](/plugin-registry/llm/local-ai) for configuration.
+**Local AI** does not auto-enable via an environment variable. Enable it explicitly with `eliza plugins install local-ai` or by adding `"local-ai"` to `plugins.allow` in `eliza.json`. See the [local models guide](/guides/local-models) and [embedding configuration schema](/config-schema#embedding) for configuration.
 </Info>

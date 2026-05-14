@@ -3,6 +3,7 @@ import { TLSSocket } from "node:tls";
 import { handleConnectorAccountRoutes } from "@elizaos/agent";
 import type {
   AgentRuntime,
+  LegacyRouteHandler,
   Plugin,
   RoleName,
   RolesWorldMetadata,
@@ -524,8 +525,6 @@ const GOOGLE_CONNECTOR_ACCOUNT_ROUTES: RouteSpec[] = [
 // Build Plugin Route arrays
 // ---------------------------------------------------------------------------
 
-type PluginRouteHandler = NonNullable<Route["handler"]>;
-
 interface CloudProxyConfigLike {
   cloud?: {
     apiKey?: string;
@@ -534,7 +533,7 @@ interface CloudProxyConfigLike {
   };
 }
 
-function withOwnerAdminGate(handler: PluginRouteHandler): PluginRouteHandler {
+function withOwnerAdminGate(handler: LegacyRouteHandler): LegacyRouteHandler {
   return async (
     req: unknown,
     res: unknown,
@@ -557,7 +556,7 @@ function withOwnerAdminGate(handler: PluginRouteHandler): PluginRouteHandler {
 
 function buildRawRoutes(
   specs: readonly RouteSpec[],
-  handler: PluginRouteHandler,
+  handler: LegacyRouteHandler,
 ): Route[] {
   return specs.map((spec): Route => {
     if (spec.public) {
@@ -579,7 +578,7 @@ function buildRawRoutes(
   });
 }
 
-function lifeOpsRouteHandler(): PluginRouteHandler {
+function lifeOpsRouteHandler(): LegacyRouteHandler {
   return async (
     req: unknown,
     res: unknown,
@@ -598,7 +597,7 @@ function lifeOpsRouteHandler(): PluginRouteHandler {
   };
 }
 
-function scheduledTasksRouteHandler(): PluginRouteHandler {
+function scheduledTasksRouteHandler(): LegacyRouteHandler {
   // The runner is created per-request because it depends on the
   // runtime which is only available inside the route call. The runtime
   // wiring registers the built-in gates / completion-checks / ladders
@@ -630,7 +629,7 @@ function scheduledTasksRouteHandler(): PluginRouteHandler {
   };
 }
 
-function sleepRouteHandler(): PluginRouteHandler {
+function sleepRouteHandler(): LegacyRouteHandler {
   return async (
     req: unknown,
     res: unknown,
@@ -647,7 +646,7 @@ function sleepRouteHandler(): PluginRouteHandler {
   };
 }
 
-function websiteBlockerRouteHandler(): PluginRouteHandler {
+function websiteBlockerRouteHandler(): LegacyRouteHandler {
   return async (
     req: unknown,
     res: unknown,
@@ -664,7 +663,7 @@ function websiteBlockerRouteHandler(): PluginRouteHandler {
   };
 }
 
-function cloudFeaturesRouteHandler(): PluginRouteHandler {
+function cloudFeaturesRouteHandler(): LegacyRouteHandler {
   return async (
     req: unknown,
     res: unknown,
@@ -685,7 +684,7 @@ function cloudFeaturesRouteHandler(): PluginRouteHandler {
   };
 }
 
-function travelProviderRelayRouteHandler(): PluginRouteHandler {
+function travelProviderRelayRouteHandler(): LegacyRouteHandler {
   return async (
     req: unknown,
     res: unknown,
@@ -712,7 +711,7 @@ function travelProviderRelayRouteHandler(): PluginRouteHandler {
   };
 }
 
-function googleConnectorAccountRouteHandler(): PluginRouteHandler {
+function googleConnectorAccountRouteHandler(): LegacyRouteHandler {
   return async (
     req: unknown,
     res: unknown,

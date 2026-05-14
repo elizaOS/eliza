@@ -3080,7 +3080,7 @@ export const calendarAction: Action & {
     "DO NOT use this action to propose or suggest candidate meeting times to send to someone — use PROPOSE_MEETING_TIMES for requests like 'propose three times for a 30 min sync with X', 'suggest meeting slots', or 'find times that work next week'. The create_event subaction is only for booking a single known time on your own calendar. " +
     "This action provides the final grounded reply; do not pair it with a speculative REPLY action.",
   descriptionCompressed:
-    "Calendar via LifeOps: view schedule, search events, create events, query travel. Not for email or habits.",
+    "LifeOps calendar: view/search/create/query travel; not email/habits",
   contexts: ["calendar", "contacts", "tasks"],
   roleGate: { minRole: "OWNER" },
   suppressPostActionContinuation: true,

@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-streaming",
-  "description": "Unified RTMP streaming for elizaOS (Twitch, YouTube, X, pump.fun, custom and named ingest URLs)",
+  "description": "RTMP streaming for elizaOS (Twitch, YouTube, X, pump.fun, custom and named ingest URLs)",
   "version": "2.0.0-beta.2",
   "type": "module",
   "main": "dist/index.js",

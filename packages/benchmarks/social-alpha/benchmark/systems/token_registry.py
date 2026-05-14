@@ -16,7 +16,6 @@ even without the CA or $TICKER in that specific message.
 from __future__ import annotations
 
 import re
-from collections import defaultdict
 from dataclasses import dataclass, field
 
 

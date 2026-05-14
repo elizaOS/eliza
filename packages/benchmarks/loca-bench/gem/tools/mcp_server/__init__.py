@@ -18,7 +18,7 @@ def create_canvas_memory_config(
 ) -> Dict[str, Any]:
     """Create a multi-server configuration for Canvas and Memory.
     
-    This creates a unified configuration that connects to both Canvas (HTTP)
+    This creates a configuration that connects to both Canvas (HTTP)
     and Memory (stdio) servers in a single MCPTool instance.
     
     Args:

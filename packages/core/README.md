@@ -56,17 +56,9 @@ The dual build system uses conditional exports in package.json to automatically 
 The following environment variables are used by `@elizaos/core`. Configure them in a `.env` file at your project root.
 
 - `LOG_LEVEL`: Logging verbosity (e.g., 'debug', 'info', 'error').
-- `LOG_DIAGNOSTIC`: Enable/disable diagnostic logging (`true`/`false`).
 - `LOG_JSON_FORMAT`: Output logs in JSON format (`true`/`false`).
-- `DEFAULT_LOG_LEVEL`: Default log level if not in debug mode.
 - `SECRET_SALT`: Secret salt for encryption purposes.
 - `ALLOW_NO_DATABASE`: Allow running without a persistent database adapter. When `true`, `AgentRuntime.initialize()` will fall back to an in-memory adapter (useful for benchmarks/tests).
-- `USE_MULTI_STEP`: Enable the iterative multi-step workflow (`true`/`false`). When enabled, the runtime may run multiple provider/action steps before producing a final response.
-- `MAX_MULTISTEP_ITERATIONS`: Maximum number of iterations for multi-step mode (default: `6`).
-- `SENTRY_DSN`: Sentry DSN for error reporting.
-- `SENTRY_ENVIRONMENT`: Sentry deployment environment (e.g., 'production', 'staging').
-- `SENTRY_TRACES_SAMPLE_RATE`: Sentry performance tracing sample rate (0.0 - 1.0).
-- `SENTRY_SEND_DEFAULT_PII`: Send Personally Identifiable Information to Sentry (`true`/`false`).
 - `LOG_FILE`: When set to `true`/`1` or a path, enables file logging: `output.log`, `prompts.log`, and `chat.log` (in cwd or at the given path). **Why:** Lets you inspect full prompts and chat flow without scraping console; ANSI is stripped so files stay grep-friendly.
 - `BASIC_CAPABILITIES_KEEP_RESP`: When `true`, the message service does not discard a response when a newer message is being processed (avoids "stale reply" race). **Why:** Some deployments want to keep or display every response; this is the config equivalent of passing `keepExistingResponses: true` in options.
 - `SHOULD_RESPOND_MODEL`: Which model size to use for the "should I respond?" decision (`small` or `large`). Defaults from runtime settings if not set in options.
@@ -76,17 +68,10 @@ The following environment variables are used by `@elizaos/core`. Configure them 
 
 ```plaintext
 LOG_LEVEL=debug
-LOG_DIAGNOSTIC=true
 LOG_JSON_FORMAT=false
-DEFAULT_LOG_LEVEL=info
 SECRET_SALT=yourSecretSaltHere
 ALLOW_NO_DATABASE=true
-USE_MULTI_STEP=false
-MAX_MULTISTEP_ITERATIONS=6
-SENTRY_DSN=yourSentryDsnHere
-SENTRY_ENVIRONMENT=development
-SENTRY_TRACES_SAMPLE_RATE=1.0
-SENTRY_SEND_DEFAULT_PII=true
+LOG_FILE=true
 ```
 
 **Note:** Add your `.env` file to `.gitignore` to protect sensitive information.

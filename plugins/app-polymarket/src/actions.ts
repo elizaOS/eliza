@@ -1,6 +1,7 @@
 import type {
   Action,
   ActionResult,
+  Content,
   HandlerCallback,
   HandlerOptions,
   IAgentRuntime,
@@ -30,6 +31,10 @@ const POLYMARKET_ACTION_CONTEXTS = [
 const POLYMARKET_ACTION_NAME = "PREDICTION_MARKET";
 const POLYMARKET_READ_COMPAT_NAME = "POLYMARKET_READ";
 const POLYMARKET_PLACE_ORDER_COMPAT_NAME = "POLYMARKET_PLACE_ORDER";
+
+function toCallbackData(data: ProviderDataRecord): Content["data"] {
+  return data as unknown as Content["data"];
+}
 const POLYMARKET_READ_KEYWORDS = [
   "polymarket",
   "prediction market",
@@ -299,10 +304,14 @@ async function fetchPolymarketJson<T>(
 async function emit(
   callback: HandlerCallback | undefined,
   text: string,
-  data: Record<string, any>,
+  data: ProviderDataRecord,
 ): Promise<ActionResult> {
   if (callback) {
-    await callback({ text, actions: [POLYMARKET_ACTION_NAME], data });
+    await callback({
+      text,
+      actions: [POLYMARKET_ACTION_NAME],
+      data: toCallbackData(data),
+    });
   }
   return {
     success: true,
@@ -315,13 +324,13 @@ async function emitFailure(
   callback: HandlerCallback | undefined,
   text: string,
   error: string,
-  data: Record<string, any>,
+  data: ProviderDataRecord,
 ): Promise<ActionResult> {
   if (callback) {
     await callback({
       text,
       actions: [POLYMARKET_ACTION_NAME],
-      data,
+      data: toCallbackData(data),
     });
   }
   return { success: false, text, error, data };
@@ -672,23 +681,21 @@ export class PredictionMarketService extends Service {
     const provider = key ? this.providers.get(key) : undefined;
     if (!provider) {
       const text = `Unsupported prediction market provider "${target}".`;
+      const data: ProviderDataRecord = {
+        actionName: POLYMARKET_ACTION_NAME,
+        error: "UNSUPPORTED_PROVIDER",
+        providers: this.listProviders(),
+      };
       await args.callback?.({
         text,
         actions: [POLYMARKET_ACTION_NAME],
-        data: {
-          actionName: POLYMARKET_ACTION_NAME,
-          error: "UNSUPPORTED_PROVIDER",
-          providers: this.listProviders(),
-        } as any,
+        data: toCallbackData(data),
       });
       return {
         success: false,
         text,
         error: "UNSUPPORTED_PROVIDER",
-        data: {
-          actionName: POLYMARKET_ACTION_NAME,
-          providers: this.listProviders(),
-        } as ProviderDataRecord,
+        data,
       };
     }
     if (!provider.supportedSubactions.includes(args.op)) {

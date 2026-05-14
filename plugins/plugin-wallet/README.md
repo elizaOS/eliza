@@ -1,6 +1,6 @@
 # @elizaos/plugin-wallet
 
-Unified non-custodial wallet for elizaOS agents. Replaces the legacy fan-out across `plugin-evm`, `plugin-solana`, `plugin-raydium`, `plugin-orca`, `plugin-meteora`, `plugin-jupiter`, `plugin-lp-manager`, `plugin-clanker`, and the former `elizaos-plugin-agentwallet` stub with one canonical action+provider surface governed by [`docs/architecture/wallet-and-trading.md`](../../../docs/architecture/wallet-and-trading.md).
+Non-custodial wallet for elizaOS agents. Replaces the legacy fan-out across `plugin-evm`, `plugin-solana`, `plugin-raydium`, `plugin-orca`, `plugin-meteora`, `plugin-jupiter`, `plugin-lp-manager`, `plugin-clanker`, and the former `elizaos-plugin-agentwallet` stub with one canonical action+provider surface governed by [`docs/architecture/wallet-and-trading.md`](../../../docs/architecture/wallet-and-trading.md).
 
 ## Surface
 

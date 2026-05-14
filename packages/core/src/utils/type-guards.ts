@@ -1,11 +1,3 @@
-/**
- * Type guard utilities for runtime type checking
- * These functions help TypeScript narrow types safely
- */
-
-/**
- * Set of built-in object constructors that should not be considered plain objects
- */
 const NON_PLAIN_CONSTRUCTORS = new Set([
 	Array,
 	Date,
@@ -31,25 +23,6 @@ const NON_PLAIN_CONSTRUCTORS = new Set([
 	BigUint64Array,
 ]);
 
-/**
- * Check if a value is a plain object (not a special object type)
- * Type guard that narrows the type to Record<string, unknown>
- *
- * A plain object is one created via {} or new Object(), not a built-in
- * or custom class instance.
- *
- * @param value - The value to check
- * @returns True if the value is a plain object
- *
- * @example
- * ```typescript
- * const data: unknown = { name: 'test' };
- * if (isPlainObject(data)) {
- *   // TypeScript knows data is Record<string, unknown>
- *   console.log(data.name);
- * }
- * ```
- */
 export function isPlainObject(
 	value: unknown,
 ): value is Record<string, unknown> {
@@ -79,6 +52,12 @@ export function isPlainObject(
 
 	// If it's a custom class instance, it's not a plain object
 	return false;
+}
+
+export function isObjectRecord(
+	value: unknown,
+): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 export function asRecord(value: unknown): Record<string, unknown> | null {

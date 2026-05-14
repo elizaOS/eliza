@@ -1,6 +1,6 @@
 /**
  * @module evaluators/extractor
- * @description Form post-turn evaluator that runs in the unified
+ * @description Form post-turn evaluator that runs in the
  * EvaluatorService pass. Detects form intents (submit, stash, cancel, undo,
  * skip, autofill, info) and extracts field values from the user message,
  * then mutates session state accordingly.

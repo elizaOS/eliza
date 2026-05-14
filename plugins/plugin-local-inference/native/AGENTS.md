@@ -17,7 +17,7 @@ manifest, kernel ABI, GGML pin).
 `git -C plugins/plugin-local-inference/native/llama.cpp describe --always`; the
 `v1.0.0-eliza` / `08032d57` pin documented previously is **stale** — do not copy
 that pin into new tooling or scripts). `git submodule update --init --recursive`
-(which `bun install` runs) is the canonical checkout. This is the unified fork:
+(which `bun install` runs) is the canonical checkout. This is the canonical fork:
 TurboQuant (turbo3/turbo4/turbo3_tcq) + QJL
 (`block_qjl1_256`, `GGML_OP_ATTN_SCORE_QJL`, `GGML_OP_FUSED_ATTN_QJL_TBQ`) +
 PolarQuant (`block_q4_polar`, `Q4_POLAR=47`) + the eliza Metal/Vulkan/CUDA

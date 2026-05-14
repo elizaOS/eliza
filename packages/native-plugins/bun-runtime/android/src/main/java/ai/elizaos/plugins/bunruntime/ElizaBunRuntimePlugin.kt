@@ -316,7 +316,7 @@ class ElizaBunRuntimePlugin : Plugin() {
      * instead of baking in one Java package name.
      *
      * The host app registers `AgentPlugin` and keeps `ElizaAgentService` as
-     * the canonical process owner. This plugin simply asks it to (re)start.
+     * the process owner. This plugin simply asks it to (re)start.
      */
     private fun startServiceReflective() {
         val ctx = context ?: return

@@ -5467,16 +5467,6 @@
       "category": "non_skill_focused"
     },
     {
-      "repo": "parallax-ai-llc/claude-orchestrator",
-      "stars": 25,
-      "skill_count": 4,
-      "source": "skillsmp",
-      "agents": [
-        "claude"
-      ],
-      "category": "skill_focused"
-    },
-    {
       "repo": "joelreymont/banjo",
       "stars": 24,
       "skill_count": 1,

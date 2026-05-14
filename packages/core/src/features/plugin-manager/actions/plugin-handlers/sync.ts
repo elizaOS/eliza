@@ -1,7 +1,7 @@
 /**
  * @module features/plugin-manager/actions/plugin-handlers/sync
  *
- * `sync` sub-mode of the unified PLUGIN action. Pulls upstream changes
+ * `sync` sub-mode of the PLUGIN action. Pulls upstream changes
  * for an ejected plugin.
  */
 

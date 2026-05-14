@@ -1,11 +1,28 @@
 import type http from "node:http";
 import { readRequestBody, sendJson, sendJsonError } from "@elizaos/core";
-import {
-  readStreamSettings,
-  validateStreamSettings,
-  writeStreamSettings,
-} from "@elizaos/plugin-streaming";
 import { isMobilePlatform } from "@elizaos/shared";
+
+let streamingSettingsModulePromise: Promise<{
+  readStreamSettings: () => unknown;
+  validateStreamSettings: (value: unknown) => unknown;
+  writeStreamSettings: (value: unknown) => unknown;
+}> | null = null;
+
+function getStreamingSettingsModule() {
+  if (!streamingSettingsModulePromise) {
+    streamingSettingsModulePromise = import(
+      "@elizaos/plugin-streaming"
+    ) as Promise<{
+      readStreamSettings: () => unknown;
+      validateStreamSettings: (value: unknown) => {
+        error?: string;
+        settings?: Record<string, unknown>;
+      };
+      writeStreamSettings: (value: Record<string, unknown>) => void;
+    }>;
+  }
+  return streamingSettingsModulePromise;
+}
 
 function mobileLocalCompatibilityEnabled(): boolean {
   return (
@@ -32,12 +49,18 @@ export async function handleMobileOptionalRoutes(
   }
 
   if (method === "GET" && pathname === "/api/stream/settings") {
+    const { readStreamSettings } = await getStreamingSettingsModule();
     sendJson(res, { ok: true, settings: readStreamSettings() });
     return true;
   }
 
   if (method === "POST" && pathname === "/api/stream/settings") {
     try {
+      const {
+        readStreamSettings,
+        validateStreamSettings,
+        writeStreamSettings,
+      } = await getStreamingSettingsModule();
       const body = parseJsonPayload(await readRequestBody(req)) as
         | { settings?: unknown }
         | undefined;

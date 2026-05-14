@@ -201,7 +201,7 @@ export const musicLibraryAction: Action = {
   description:
     "Consolidated music library action. Use subaction=playlist with playlistOp=save, load, delete, or add for playlist management; subaction=play_query to research and queue complex music requests; subaction=search_youtube to return YouTube links; subaction=download to fetch music into the local library. Queue changes, downloads, and playlist mutations require confirmed:true.",
   descriptionCompressed:
-    "Music library subactions: playlist(playlistOp save/load/delete/add), play_query, search_youtube, download. Mutations require confirmed:true.",
+    "Music library playlist save|load|delete|add; play_query|search_youtube|download; confirmed",
   parameters: [
     {
       name: "subaction",

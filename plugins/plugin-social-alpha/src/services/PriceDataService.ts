@@ -21,7 +21,7 @@ import { HistoricalPriceService } from "./historicalPriceService";
 import { PriceEnrichmentService } from "./priceEnrichmentService";
 
 /**
- * Consolidated Price Data Service that combines historical and enrichment functionality
+ * Price Data Service that combines historical and enrichment functionality
  */
 export class PriceDataService {
 	private historicalService: HistoricalPriceService;

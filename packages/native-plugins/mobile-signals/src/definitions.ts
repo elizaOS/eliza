@@ -13,6 +13,18 @@ export type MobileSignalsState =
 
 export type MobileSignalsHealthSource = "healthkit" | "health_connect";
 
+export type MobileSignalsEngine =
+  | "healthkit-screen-time"
+  | "health-connect-usage-stats"
+  | "web-fallback";
+
+export interface MobileSignalsCapabilities {
+  health: boolean;
+  screenTime: boolean;
+  notifications: boolean;
+  settings: boolean;
+}
+
 export type MobileSignalsSettingsTarget =
   | "app"
   | "health"
@@ -76,6 +88,8 @@ export interface MobileSignalsScreenTimeStatus {
     frameworks: string[];
     deviceActivityReportExtension: boolean;
     deviceActivityMonitorExtension: boolean;
+    deviceActivityReportExtensionPoint?: string;
+    deviceActivityMonitorExtensionPoint?: string;
     android?: {
       usageStatsPermission: string;
       usageAccessSettingsAction: string;
@@ -92,6 +106,16 @@ export interface MobileSignalsScreenTimeStatus {
   authorization: {
     status: "approved" | "denied" | "not-determined" | "unavailable";
     canRequest: boolean;
+  };
+  extensions?: {
+    deviceActivityReportExtension: boolean;
+    deviceActivityMonitorExtension: boolean;
+    inspected: "bundle-plug-ins";
+    bundles: Array<{
+      bundleIdentifier: string;
+      extensionPoint: string | null;
+      path: string;
+    }>;
   };
   reportAvailable: boolean;
   coarseSummaryAvailable: boolean;
@@ -219,6 +243,10 @@ export interface MobileSignalsPlugin {
 export interface MobileSignalsPermissionStatus {
   status: "granted" | "denied" | "not-determined" | "not-applicable";
   canRequest: boolean;
+  canOpenSettings: boolean;
+  settingsTarget: MobileSignalsSettingsTarget | null;
+  engine: MobileSignalsEngine;
+  capabilities: MobileSignalsCapabilities;
   reason?: string;
   screenTime: MobileSignalsScreenTimeStatus;
   setupActions: MobileSignalsSetupAction[];

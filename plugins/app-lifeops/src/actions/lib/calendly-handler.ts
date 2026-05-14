@@ -258,7 +258,7 @@ export const calendlyAction: Action = {
     "Subactions: list_event_types, availability (against a Calendly event-type URI), upcoming_events, single_use_link (generate a one-shot booking link). " +
     "Use this — not CALENDAR — whenever the user mentions Calendly by name or passes a calendly.com / api.calendly.com URL.",
   descriptionCompressed:
-    "calendly: list_event_types|availability|upcoming_events|single_use_link; route here for calendly.com URLs",
+    "calendly list_event_types|availability|upcoming_events|single_use_link; calendly.com URLs",
   tags: [
     "domain:calendar",
     "capability:read",

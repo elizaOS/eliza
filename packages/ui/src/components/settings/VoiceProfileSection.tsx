@@ -9,7 +9,6 @@
  */
 
 import { Crown, Download, Mic, Pencil, Trash2, Users } from "lucide-react";
-// biome-ignore lint/correctness/noUnusedImports: Required for JSX transform.
 import * as React from "react";
 import type {
   VoiceProfile,

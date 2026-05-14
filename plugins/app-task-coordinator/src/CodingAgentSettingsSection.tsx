@@ -15,9 +15,6 @@ import {
   AGENT_TABS,
   type AgentSelectionStrategy,
   type AgentTab,
-  AIDER_MODELS,
-  AIDER_PROVIDER_MAP,
-  type AiderProvider,
   type ApprovalPreset,
   type AuthResult,
   ENV_PREFIX,
@@ -68,11 +65,10 @@ export function CodingAgentSettingsSection() {
     void (async () => {
       setLoading(true);
       try {
-        const [cfg, anthropicRes, googleRes, openaiRes, preflightRes] =
+        const [cfg, anthropicRes, openaiRes, preflightRes] =
           await Promise.all([
             client.getConfig(),
             client.fetchModels("anthropic", false).catch(() => null),
-            client.fetchModels("google-genai", false).catch(() => null),
             client.fetchModels("openai", false).catch(() => null),
             fetch("/api/coding-agents/preflight", {
               signal: controller.signal,
@@ -90,8 +86,8 @@ export function CodingAgentSettingsSection() {
         if (cloud.apiKey) {
           loaded._CLOUD_API_KEY = cloud.apiKey;
         }
-        for (const agent of ["CLAUDE", "GEMINI", "CODEX", "AIDER"] as const) {
-          const prefix = `PARALLAX_${agent}`;
+        for (const agent of ["CLAUDE", "CODEX", "OPENCODE"] as const) {
+          const prefix = `ELIZA_${agent}`;
           if (env[`${prefix}_MODEL_POWERFUL`]) {
             loaded[`${prefix}_MODEL_POWERFUL`] =
               env[`${prefix}_MODEL_POWERFUL`];
@@ -101,13 +97,12 @@ export function CodingAgentSettingsSection() {
           }
         }
         for (const k of [
-          "PARALLAX_AIDER_PROVIDER",
-          "PARALLAX_DEFAULT_APPROVAL_PRESET",
-          "PARALLAX_AGENT_SELECTION_STRATEGY",
-          "PARALLAX_DEFAULT_AGENT_TYPE",
-          "PARALLAX_SCRATCH_RETENTION",
-          "PARALLAX_CODING_DIRECTORY",
-          "PARALLAX_LLM_PROVIDER",
+          "ELIZA_DEFAULT_APPROVAL_PRESET",
+          "ELIZA_AGENT_SELECTION_STRATEGY",
+          "ELIZA_DEFAULT_AGENT_TYPE",
+          "ELIZA_SCRATCH_RETENTION",
+          "ELIZA_CODING_DIRECTORY",
+          "ELIZA_LLM_PROVIDER",
         ] as const) {
           if (env[k]) loaded[k] = env[k];
         }
@@ -115,9 +110,11 @@ export function CodingAgentSettingsSection() {
         for (const key of [
           "ANTHROPIC_API_KEY",
           "OPENAI_API_KEY",
-          "GOOGLE_GENERATIVE_AI_API_KEY",
           "ANTHROPIC_BASE_URL",
           "OPENAI_BASE_URL",
+          "ELIZA_OPENCODE_API_KEY",
+          "ELIZA_OPENCODE_BASE_URL",
+          "ELIZA_OPENCODE_LOCAL",
         ] as const) {
           if (env[key]) loaded[key] = env[key];
         }
@@ -126,7 +123,6 @@ export function CodingAgentSettingsSection() {
         const models: Record<string, ModelOption[]> = {};
         for (const [providerId, response] of [
           ["anthropic", anthropicRes],
-          ["google-genai", googleRes],
           ["openai", openaiRes],
         ] as const) {
           if (
@@ -176,7 +172,7 @@ export function CodingAgentSettingsSection() {
   // If the user previously chose "cloud" but Eliza Cloud has since been
   // disconnected, fall back to "subscription" rather than leaving the
   // selector pointed at an unusable provider.
-  const rawLlmProvider = (prefs.PARALLAX_LLM_PROVIDER ||
+  const rawLlmProvider = (prefs.ELIZA_LLM_PROVIDER ||
     "subscription") as LlmProvider;
   const llmProvider: LlmProvider =
     rawLlmProvider === "cloud" && !elizaCloudConnected
@@ -187,10 +183,7 @@ export function CodingAgentSettingsSection() {
   const installedAgents = AGENT_TABS.filter(
     (agent) => preflightByAgent[agent]?.installed === true,
   );
-  // Gemini CLI can't route through cloud (no Google-native proxy)
-  const providerFilteredAgents = isCloud
-    ? AGENT_TABS.filter((agent) => agent !== "gemini")
-    : AGENT_TABS;
+  const providerFilteredAgents = AGENT_TABS;
   const availableAgents =
     preflightLoaded && installedAgents.length > 0
       ? installedAgents.filter((a) => providerFilteredAgents.includes(a))
@@ -208,14 +201,14 @@ export function CodingAgentSettingsSection() {
   useEffect(() => {
     if (loading || availableAgents.length === 0) return;
     if (activeTab === null) {
-      const saved = prefs.PARALLAX_DEFAULT_AGENT_TYPE as AgentTab | undefined;
+      const saved = prefs.ELIZA_DEFAULT_AGENT_TYPE as AgentTab | undefined;
       setActiveTab(
         saved && availableAgents.includes(saved) ? saved : availableAgents[0],
       );
     } else if (!availableAgents.includes(activeTab)) {
       setActiveTab(availableAgents[0]);
     }
-  }, [loading, activeTab, availableAgents, prefs.PARALLAX_DEFAULT_AGENT_TYPE]);
+  }, [loading, activeTab, availableAgents, prefs.ELIZA_DEFAULT_AGENT_TYPE]);
 
   // `setPref` is a pure state updater. It must NOT perform network I/O
   // inside `setPrefs((prev) => ...)` — React may invoke state updaters
@@ -270,13 +263,6 @@ export function CodingAgentSettingsSection() {
     }, 400);
     return () => clearTimeout(timer);
   }, [prefs, loading]);
-
-  // Reset Aider provider to anthropic if cloud is selected and google was chosen
-  useEffect(() => {
-    if (isCloud && prefs.PARALLAX_AIDER_PROVIDER === "google") {
-      setPref("PARALLAX_AIDER_PROVIDER", "anthropic");
-    }
-  }, [isCloud, prefs.PARALLAX_AIDER_PROVIDER, setPref]);
 
   const refreshPreflight = useCallback(async () => {
     try {
@@ -364,19 +350,9 @@ export function CodingAgentSettingsSection() {
     [refreshPreflight],
   );
 
-  const getProviderId = (
-    tab: AgentTab,
-    aiderProvider: AiderProvider,
-  ): string =>
-    tab === "aider"
-      ? AIDER_PROVIDER_MAP[aiderProvider]
-      : AGENT_PROVIDER_MAP[tab];
+  const getProviderId = (tab: AgentTab): string => AGENT_PROVIDER_MAP[tab];
 
   const getModelOptions = (providerId: string): ModelOption[] => {
-    // Aider uses short aliases, not full model IDs
-    if (activeTab === "aider") {
-      return AIDER_MODELS[providerId] ?? [];
-    }
     return providerModels[providerId] ?? FALLBACK_MODELS[providerId] ?? [];
   };
 
@@ -389,16 +365,14 @@ export function CodingAgentSettingsSection() {
   }
 
   const prefix = ENV_PREFIX[activeTab];
-  const aiderProvider = (prefs.PARALLAX_AIDER_PROVIDER ||
-    "anthropic") as AiderProvider;
-  const providerId = getProviderId(activeTab, aiderProvider);
+  const providerId = getProviderId(activeTab);
   const modelOptions = getModelOptions(providerId);
   const powerfulValue = prefs[`${prefix}_MODEL_POWERFUL`] ?? "";
   const fastValue = prefs[`${prefix}_MODEL_FAST`] ?? "";
   const isDynamic = Boolean(providerModels[providerId]);
-  const selectionStrategy = (prefs.PARALLAX_AGENT_SELECTION_STRATEGY ||
+  const selectionStrategy = (prefs.ELIZA_AGENT_SELECTION_STRATEGY ||
     "fixed") as AgentSelectionStrategy;
-  const approvalPreset = (prefs.PARALLAX_DEFAULT_APPROVAL_PRESET ||
+  const approvalPreset = (prefs.ELIZA_DEFAULT_APPROVAL_PRESET ||
     "permissive") as ApprovalPreset;
 
   if (preflightLoaded && installedAgents.length === 0) {
@@ -470,7 +444,7 @@ export function CodingAgentSettingsSection() {
         getInstallState={getInstallState}
         onSelectAgent={(agent) => {
           setActiveTab(agent);
-          setPref("PARALLAX_DEFAULT_AGENT_TYPE", agent);
+          setPref("ELIZA_DEFAULT_AGENT_TYPE", agent);
         }}
         onAuth={handleAuth}
       />
@@ -486,7 +460,6 @@ export function CodingAgentSettingsSection() {
         activeTab={activeTab}
         llmProvider={llmProvider}
         isCloud={isCloud}
-        aiderProvider={aiderProvider}
         prefix={prefix}
         powerfulValue={powerfulValue}
         fastValue={fastValue}

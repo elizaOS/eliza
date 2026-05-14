@@ -4,7 +4,6 @@ Base MCP server implementation
 Provides common functionality for all MCP server implementations.
 """
 
-import asyncio
 import logging
 import os
 from typing import Any, Dict, List

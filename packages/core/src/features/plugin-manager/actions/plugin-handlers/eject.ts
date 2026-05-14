@@ -1,7 +1,7 @@
 /**
  * @module features/plugin-manager/actions/plugin-handlers/eject
  *
- * `eject` sub-mode of the unified PLUGIN action. Clones a registry plugin
+ * `eject` sub-mode of the PLUGIN action. Clones a registry plugin
  * into the local ejected directory so the user can edit + sync against
  * upstream.
  */

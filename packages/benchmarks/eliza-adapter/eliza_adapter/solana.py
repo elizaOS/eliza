@@ -21,7 +21,7 @@ import re
 import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 from eliza_adapter.client import ElizaClient
 

@@ -329,9 +329,9 @@ export const workThreadAction: Action & {
     "MESSAGE_CREATE_GROUP_HANDOFF",
   ],
   description:
-    "Create, steer, stop, wait, complete, merge, attach source refs to, or schedule follow-up work for owner work threads. Use only for thread lifecycle/routing; domain work stays on existing task/messaging/workflow actions.",
+    "Owner work-thread lifecycle: create, steer, stop, wait, complete, merge, attach source refs, schedule follow-up. Use only thread lifecycle/routing; domain work -> task/messaging/workflow actions.",
   descriptionCompressed:
-    "work-thread lifecycle: create|steer|stop|mark_waiting|mark_completed|merge|attach_source|schedule_followup",
+    "work-thread lifecycle: create|steer|stop|waiting|completed|merge|attach_source|followup",
   contexts: ["tasks", "messaging", "automation"],
   roleGate: { minRole: "OWNER" },
   suppressPostActionContinuation: true,
@@ -340,7 +340,7 @@ export const workThreadAction: Action & {
     {
       name: "operations",
       description:
-        "Array of thread lifecycle operations. Each item has type, optional workThreadId, sourceWorkThreadIds, instruction, reason, title, summary, sourceRef, and trigger for schedule_followup.",
+        "Thread lifecycle ops array. Item: type, optional workThreadId, sourceWorkThreadIds, instruction, reason, title, summary, sourceRef, trigger for schedule_followup.",
       required: true,
       schema: {
         type: "array" as const,

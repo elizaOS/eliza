@@ -2165,7 +2165,7 @@ def _u_money_readonly(world: LifeWorld, kw: dict[str, Any], _name: str) -> dict[
 
     # Resolve window_days into a start_date when no explicit start_date given.
     if window_days is not None and start_date is None:
-        from datetime import datetime, timedelta, timezone as _tz
+        from datetime import datetime, timedelta
         now_dt = datetime.fromisoformat(world.now_iso.replace("Z", "+00:00"))
         start_dt = now_dt - timedelta(days=window_days)
         start_date = start_dt.isoformat()

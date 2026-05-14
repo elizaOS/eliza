@@ -12,8 +12,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
 import { activeWorkspaceContextProvider } from "../providers/active-workspace-context.js";
-import type { SessionInfo } from "../services/pty-types.js";
-import type { TaskContext } from "../services/swarm-coordinator.js";
+import type { SessionInfo } from "../services/types.js";
 import type { RouteContext } from "./route-utils.js";
 import { sendJson } from "./route-utils.js";
 
@@ -41,7 +40,6 @@ const BRIDGE_TIMEOUT_MS = 5_000;
 const DEFAULT_MEMORY_LIMIT = 10;
 const MAX_MEMORY_LIMIT = 50;
 const MEMORY_TABLES = ["facts", "messages", "documents"] as const;
-const TERMINAL_TASK_STATUSES = new Set(["completed", "error", "stopped"]);
 const TERMINAL_SESSION_STATUSES = new Set(["stopped", "error", "exited"]);
 
 class BridgeRouteError extends Error {
@@ -120,34 +118,26 @@ function withBridgeTimeout<T>(promise: Promise<T>): Promise<T> {
   });
 }
 
-function getSession(ctx: RouteContext, sessionId: string): SessionInfo | null {
-  return ctx.ptyService?.getSession(sessionId) ?? null;
+async function getSession(
+  ctx: RouteContext,
+  sessionId: string,
+): Promise<SessionInfo | null> {
+  return (await ctx.acpService?.getSession(sessionId)) ?? null;
 }
 
-function getTask(ctx: RouteContext, sessionId: string): TaskContext | null {
-  return ctx.coordinator?.getTaskContext(sessionId) ?? null;
-}
-
-function isActiveSession(
-  task: TaskContext | null,
-  session: SessionInfo | null,
-): boolean {
-  if (task && !TERMINAL_TASK_STATUSES.has(task.status)) return true;
+function isActiveSession(session: SessionInfo | null): boolean {
   if (session && !TERMINAL_SESSION_STATUSES.has(String(session.status))) {
     return true;
   }
   return false;
 }
 
-function readSessionMetadata(
-  task: TaskContext | null,
-  session: SessionInfo | null,
-): Record<string, unknown> {
+function readSessionMetadata(session: SessionInfo | null): Record<string, unknown> {
   const raw = session?.metadata;
   if (raw && typeof raw === "object" && !Array.isArray(raw)) {
     return raw;
   }
-  return task?.originMetadata ?? {};
+  return {};
 }
 
 function readString(value: unknown): string | null {
@@ -160,12 +150,8 @@ function toJsonValue(value: unknown): JsonValue {
   return JSON.parse(JSON.stringify(value ?? null));
 }
 
-function readOriginRoomId(
-  task: TaskContext | null,
-  metadata: Record<string, unknown>,
-): string | null {
+function readOriginRoomId(metadata: Record<string, unknown>): string | null {
   return (
-    readString(task?.originRoomId) ??
     readString(metadata.originRoomId) ??
     readString(metadata.roomId)
   );
@@ -208,7 +194,6 @@ function normalizeDocumentSources(value: unknown): JsonValue[] {
 }
 
 function normalizeModel(
-  task: TaskContext | null,
   session: SessionInfo | null,
   metadata: Record<string, unknown>,
 ): JsonValue {
@@ -218,7 +203,7 @@ function normalizeModel(
       ? (rawPrefs as Record<string, unknown>)
       : {};
   return {
-    agentType: session?.agentType ?? task?.agentType ?? null,
+    agentType: session?.agentType ?? null,
     powerful: readString(modelPrefs.powerful),
     fast: readString(modelPrefs.fast),
   };
@@ -272,11 +257,10 @@ function normalizeMemoryHit(
 async function buildParentContext(
   ctx: RouteContext,
   sessionId: string,
-  task: TaskContext | null,
   session: SessionInfo | null,
 ): Promise<JsonValue> {
-  const metadata = readSessionMetadata(task, session);
-  const roomId = readOriginRoomId(task, metadata);
+  const metadata = readSessionMetadata(session);
+  const roomId = readOriginRoomId(metadata);
   const character = ctx.runtime.character;
   return {
     sessionId,
@@ -293,8 +277,8 @@ async function buildParentContext(
       ]),
     },
     currentRoom: await loadRoom(ctx.runtime, roomId),
-    workdir: session?.workdir ?? task?.workdir ?? null,
-    model: normalizeModel(task, session, metadata),
+    workdir: session?.workdir ?? null,
+    model: normalizeModel(session, metadata),
   };
 }
 
@@ -391,9 +375,8 @@ export async function handleParentContextRoutes(
     return true;
   }
 
-  const task = getTask(ctx, sessionId);
-  const session = getSession(ctx, sessionId);
-  if (!isActiveSession(task, session)) {
+  const session = await getSession(ctx, sessionId);
+  if (!isActiveSession(session)) {
     sendBridgeError(
       res,
       "task_no_longer_active",
@@ -408,9 +391,7 @@ export async function handleParentContextRoutes(
     if (endpoint === "parent-context") {
       sendJson(
         res,
-        await withBridgeTimeout(
-          buildParentContext(ctx, sessionId, task, session),
-        ),
+        await withBridgeTimeout(buildParentContext(ctx, sessionId, session)),
       );
       return true;
     }

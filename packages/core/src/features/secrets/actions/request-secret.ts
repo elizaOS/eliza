@@ -54,7 +54,7 @@ export async function requestSecretHandler(
 				{
 					field: "key",
 					description:
-						"Name of the missing secret, usually UPPERCASE_WITH_UNDERSCORES",
+						"Missing secret name, usually UPPERCASE_WITH_UNDERSCORES",
 					required: false,
 					validateField: false,
 					streamField: false,

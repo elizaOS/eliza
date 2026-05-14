@@ -38,6 +38,7 @@ import {
   parseAppIsolation,
   parseAppPermissions,
 } from "@elizaos/shared";
+import { isLegacyAppsWorkspaceDiscoveryEnabled } from "../config/feature-flags.ts";
 import {
   importAppRouteModule,
   resolveWorkspacePackageDir,
@@ -186,12 +187,7 @@ async function resolveWorkspaceAppDirBySlug(
     ]),
   );
   const candidateDirs: string[] = [];
-  const legacyAppsDiscovery = (() => {
-    const raw = process.env.ELIZA_ENABLE_LEGACY_APPS_WORKSPACE_DISCOVERY;
-    if (!raw) return false;
-    const normalized = raw.trim().toLowerCase();
-    return normalized === "1" || normalized === "true" || normalized === "yes";
-  })();
+  const legacyAppsDiscovery = isLegacyAppsWorkspaceDiscoveryEnabled();
 
   for (const root of roots) {
     candidateDirs.push(
@@ -218,7 +214,7 @@ async function resolveWorkspaceAppDirBySlug(
         path.join(root, entry.name, "packages", `app-${slug}`),
       );
       if (legacyAppsDiscovery) {
-        // Temporary opt-in for older external workspaces. Current Eliza app
+        // Opt-in for older external workspaces. Current Eliza app
         // plugin packages live under plugins/app-*.
         candidateDirs.push(path.join(root, entry.name, "apps", `app-${slug}`));
       }

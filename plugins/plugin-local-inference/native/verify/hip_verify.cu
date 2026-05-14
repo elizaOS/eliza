@@ -27,7 +27,7 @@
 // STATUS (honest): the fork's *production* .cu kernels
 // (turboquant.cuh / qjl.cu / polarquant.cu / turbo-tcq.cu) are not yet
 // `__HIP_PLATFORM_AMD__`-clean — making them HIP-compilable is a stretch goal
-// recorded in reports/porting/2026-05-11/needs-hardware-ledger.md. Until that
+// tracked in docs/eliza-1-pipeline/06-test-matrix.md. Until that
 // lands, the ROCm runtime story is: (a) this numeric gate
 // (`make -C packages/inference/verify hip-verify` on an AMD `gfx*` box), plus
 // (b) the documented reduced-optimization local mode

@@ -10,60 +10,43 @@ import {
 describe("readRuntimeModeEnvOverride", () => {
 	it("returns null for unset / empty / unknown", () => {
 		expect(readRuntimeModeEnvOverride({})).toBeNull();
+		expect(readRuntimeModeEnvOverride({ ELIZA_INFERENCE_MODE: "" })).toBeNull();
 		expect(
-			readRuntimeModeEnvOverride({ MILADY_INFERENCE_MODE: "" }),
-		).toBeNull();
-		expect(
-			readRuntimeModeEnvOverride({ MILADY_INFERENCE_MODE: "garbage" }),
+			readRuntimeModeEnvOverride({ ELIZA_INFERENCE_MODE: "garbage" }),
 		).toBeNull();
 	});
 
 	it("recognises spawn aliases", () => {
-		expect(readRuntimeModeEnvOverride({ MILADY_INFERENCE_MODE: "spawn" })).toBe(
+		expect(readRuntimeModeEnvOverride({ ELIZA_INFERENCE_MODE: "spawn" })).toBe(
 			"spawn",
 		);
-		expect(readRuntimeModeEnvOverride({ MILADY_INFERENCE_MODE: "HTTP" })).toBe(
+		expect(readRuntimeModeEnvOverride({ ELIZA_INFERENCE_MODE: "HTTP" })).toBe(
 			"spawn",
 		);
 		expect(
-			readRuntimeModeEnvOverride({ MILADY_INFERENCE_MODE: "http-server" }),
+			readRuntimeModeEnvOverride({ ELIZA_INFERENCE_MODE: "http-server" }),
 		).toBe("spawn");
 	});
 
 	it("recognises ffi aliases", () => {
-		expect(readRuntimeModeEnvOverride({ MILADY_INFERENCE_MODE: "ffi" })).toBe(
+		expect(readRuntimeModeEnvOverride({ ELIZA_INFERENCE_MODE: "ffi" })).toBe(
 			"ffi",
 		);
 		expect(
-			readRuntimeModeEnvOverride({ MILADY_INFERENCE_MODE: "ffi-streaming" }),
+			readRuntimeModeEnvOverride({ ELIZA_INFERENCE_MODE: "ffi-streaming" }),
 		).toBe("ffi");
 	});
 
 	it("recognises native-bridge aliases", () => {
 		expect(
-			readRuntimeModeEnvOverride({ MILADY_INFERENCE_MODE: "native-bridge" }),
+			readRuntimeModeEnvOverride({ ELIZA_INFERENCE_MODE: "native-bridge" }),
 		).toBe("native-bridge");
-		expect(
-			readRuntimeModeEnvOverride({ MILADY_INFERENCE_MODE: "native" }),
-		).toBe("native-bridge");
-		expect(
-			readRuntimeModeEnvOverride({ MILADY_INFERENCE_MODE: "capacitor" }),
-		).toBe("native-bridge");
-	});
-
-	it("accepts ELIZA_INFERENCE_MODE as a legacy alias", () => {
-		expect(readRuntimeModeEnvOverride({ ELIZA_INFERENCE_MODE: "ffi" })).toBe(
-			"ffi",
+		expect(readRuntimeModeEnvOverride({ ELIZA_INFERENCE_MODE: "native" })).toBe(
+			"native-bridge",
 		);
-	});
-
-	it("prefers MILADY_INFERENCE_MODE over ELIZA_INFERENCE_MODE", () => {
 		expect(
-			readRuntimeModeEnvOverride({
-				MILADY_INFERENCE_MODE: "ffi",
-				ELIZA_INFERENCE_MODE: "spawn",
-			}),
-		).toBe("ffi");
+			readRuntimeModeEnvOverride({ ELIZA_INFERENCE_MODE: "capacitor" }),
+		).toBe("native-bridge");
 	});
 });
 
@@ -71,7 +54,7 @@ describe("inferenceRuntimeMode", () => {
 	it("env override wins over every heuristic", () => {
 		expect(
 			inferenceRuntimeMode({
-				env: { MILADY_INFERENCE_MODE: "ffi" },
+				env: { ELIZA_INFERENCE_MODE: "ffi" },
 				platform: "darwin",
 				isCapacitorNative: false,
 			}),
@@ -79,7 +62,7 @@ describe("inferenceRuntimeMode", () => {
 
 		expect(
 			inferenceRuntimeMode({
-				env: { MILADY_INFERENCE_MODE: "spawn" },
+				env: { ELIZA_INFERENCE_MODE: "spawn" },
 				platform: "ios",
 				isCapacitorNative: true,
 			}),
@@ -145,7 +128,7 @@ describe("inferenceRuntimeMode", () => {
 	it("unknown override values are ignored (fall back to platform)", () => {
 		expect(
 			inferenceRuntimeMode({
-				env: { MILADY_INFERENCE_MODE: "bogus" },
+				env: { ELIZA_INFERENCE_MODE: "bogus" },
 				platform: "linux",
 				isCapacitorNative: false,
 			}),

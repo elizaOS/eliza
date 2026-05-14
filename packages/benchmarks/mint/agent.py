@@ -7,11 +7,10 @@ mock is disabled by default and must be explicitly opted into.
 
 from __future__ import annotations
 
-import ast
 import operator
 import re
 import time
-from typing import Optional, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 from benchmarks.mint.executor import PythonExecutor
 from benchmarks.mint.feedback import FeedbackGenerator

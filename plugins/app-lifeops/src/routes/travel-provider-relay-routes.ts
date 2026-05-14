@@ -3,6 +3,8 @@ import type { CloudProxyConfigLike } from "@elizaos/agent";
 import type { IAgentRuntime, Service } from "@elizaos/core";
 import { sendJson, sendJsonError } from "@elizaos/core";
 import {
+  type CloudAuthApiKeyService,
+  normalizeCloudApiKey,
   normalizeCloudSiteUrl,
   resolveCloudApiKey,
   validateCloudBaseUrl,
@@ -17,18 +19,6 @@ const PROXY_TIMEOUT_MS = 30_000;
 const MAX_BODY_BYTES = 1_048_576;
 const TRAVEL_PROVIDER_PATH_RE =
   /^\/api\/cloud\/travel-providers\/([a-z0-9][a-z0-9-]*)(\/.*)$/;
-
-interface CloudAuthApiKeyService {
-  isAuthenticated: () => boolean;
-  getApiKey?: () => string | undefined;
-}
-
-function normalizeCloudApiKey(value: string | null | undefined): string | null {
-  if (typeof value !== "string") return null;
-  const trimmed = value.trim();
-  if (!trimmed || trimmed.toUpperCase() === "[REDACTED]") return null;
-  return trimmed;
-}
 
 function resolveProxyApiKey(
   state: TravelProviderRelayRouteState,

@@ -41,7 +41,7 @@ from dotenv import load_dotenv
 # Import all potential tools and wrappers
 from gem.tools.mcp_tool import MCPTool
 from gem.tools.mcp_server.programmatic_tool_calling.helper import ProgrammaticToolCallingTool
-from gem.tools.tool_env_wrapper import ToolEnvWrapperClaimDone, ToolEnvWrapperOpenAI
+from gem.tools.tool_env_wrapper import ToolEnvWrapperOpenAI
 from gem.tools.mcp_server.config_loader import build_server_config
 from gem.tools.mcp_server.canvas.helper import get_canvas_stdio_config
 from gem.tools.mcp_server.claim_done.helper import get_claim_done_stdio_config
@@ -117,14 +117,13 @@ def calculate_cost(usage, model: str = "claude-sonnet-4-5") -> float:
     cache_read_tokens = getattr(usage, 'cache_read_input_tokens', 0) or 0
 
     # Calculate cost (pricing is per 1M tokens)
-    cost = (
+    return (
         (input_tokens * pricing["input"] / 1_000_000) +
         (output_tokens * pricing["output"] / 1_000_000) +
         (cache_creation_tokens * pricing["cache_write"] / 1_000_000) +
         (cache_read_tokens * pricing["cache_read"] / 1_000_000)
     )
 
-    return cost
 
 
 def dynamic_import_class(class_path: str):
@@ -312,7 +311,7 @@ def convert_tools_to_claude_format(
 def convert_memory_tool_call_to_mcp(tool_input: Dict[str, Any], server_name: str = "memory_tool") -> Dict[str, Any]:
     """Convert Claude's memory tool call to MCP tool call format.
 
-    Claude's memory_20250818 tool uses a unified interface with a 'command' parameter,
+    Claude's memory_20250818 tool uses a interface with a 'command' parameter,
     while MCP server exposes individual tools with server_name prefix (e.g., memory_tool_view).
 
     Args:
@@ -408,15 +407,8 @@ def extract_tool_calls_for_env(claude_message: anthropic.types.Message) -> Dict[
 
     # Server tool types that are executed internally by Claude
     # These do not require external tool execution
-    server_tool_types = {
-        "server_tool_use",  # Generic server tool use marker
-    }
 
     # Server tool result types (these appear in the same response)
-    server_tool_result_types = {
-        "bash_code_execution_tool_result",
-        "text_editor_code_execution_tool_result",
-    }
 
     # Helper function to extract tool calls from content blocks
     def extract_tool_calls_from_content(content_blocks):
@@ -641,7 +633,6 @@ def trim_claude_messages(
     Returns:
         Dictionary with trim info if trimming occurred, or empty dict if no trimming needed
     """
-    import copy
     
     # Try to use tiktoken for token estimation
     try:
@@ -790,7 +781,7 @@ def trim_claude_messages(
         print(f"[{task_label}] ⚠️  Warning: Still exceeds context after trimming ({final_total_tokens:,} > {available_context:,})")
     
     # Return trim info
-    trim_info = {
+    return {
         'original_message_count': original_message_count,
         'trimmed_message_count': len(claude_messages),
         'removed_count': removed_count,
@@ -807,7 +798,6 @@ def trim_claude_messages(
         'new_programmatic_indices': list(programmatic_message_indices),
     }
     
-    return trim_info
 
 
 def run_single_task(
@@ -840,7 +830,7 @@ def run_single_task(
     enable_programmatic_tool_calling: bool = False,
     # Context trimming parameters
     max_context_size: Optional[int] = None,
-    # Unified output naming
+    # Output naming
     config_name: str = "",
 ):
     """Run a single task with Claude API.
@@ -1446,7 +1436,7 @@ def run_single_task(
                     # Generate tool_results using the actual next_obs content
                     for tool_call in env_response['data']:
                         tool_id = tool_call.get('id')
-                        tool_name = tool_call.get('function', {}).get('name', 'unknown')
+                        tool_call.get('function', {}).get('name', 'unknown')
                         tool_result_blocks.append({
                             "type": "tool_result",
                             "tool_use_id": tool_id,
@@ -1738,7 +1728,7 @@ def normalize_config_for_grouping(config: Dict[str, Any]) -> tuple:
     Configs are considered the same if they differ only in the 'seed' parameter.
     """
     env_params = config.get("env_params", {}).copy()
-    seed = env_params.pop("seed", None)
+    env_params.pop("seed", None)
 
     normalized = {
         "env_class": config.get("env_class"),

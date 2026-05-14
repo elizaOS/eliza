@@ -148,10 +148,7 @@ interface ConnectorSetupService {
 function isConnectorSetupService(service: unknown): service is ConnectorSetupService {
   if (!service || typeof service !== "object") return false;
   const candidate = service as Partial<ConnectorSetupService>;
-  return (
-    typeof candidate.getConfig === "function" &&
-    typeof candidate.updateConfig === "function"
-  );
+  return typeof candidate.getConfig === "function" && typeof candidate.updateConfig === "function";
 }
 
 function getSetupService(runtime: IAgentRuntime): ConnectorSetupService | null {
@@ -194,11 +191,7 @@ function buildStatusResponse(runtime: IAgentRuntime): SetupStatusResponse<IMessa
   }
   const connected = service.isConnected();
   const status = service.getStatus?.();
-  const state: SetupState = connected
-    ? "paired"
-    : status?.available
-      ? "configuring"
-      : "idle";
+  const state: SetupState = connected ? "paired" : status?.available ? "configuring" : "idle";
   return {
     connector: "imessage",
     state,
@@ -250,17 +243,14 @@ async function handleSetupStart(
   if (!setupService) {
     res
       .status(503)
-      .json(
-        setupError("service_unavailable", "connector-setup service not registered")
-      );
+      .json(setupError("service_unavailable", "connector-setup service not registered"));
     return;
   }
 
   setupService.updateConfig((cfg) => {
     if (!cfg.connectors) cfg.connectors = {};
     const connectors = cfg.connectors as Record<string, unknown>;
-    const previous =
-      (connectors.imessage as Record<string, unknown> | undefined) ?? {};
+    const previous = (connectors.imessage as Record<string, unknown> | undefined) ?? {};
     connectors.imessage = {
       ...previous,
       enabled: true,
@@ -280,9 +270,7 @@ async function handleSetupCancel(
   if (!setupService) {
     res
       .status(503)
-      .json(
-        setupError("service_unavailable", "connector-setup service not registered")
-      );
+      .json(setupError("service_unavailable", "connector-setup service not registered"));
     return;
   }
 
@@ -305,11 +293,7 @@ async function handleMessages(
 ): Promise<void> {
   const service = resolveService(runtime);
   if (!service) {
-    res
-      .status(503)
-      .json(
-        setupError("service_unavailable", "imessage service not registered")
-      );
+    res.status(503).json(setupError("service_unavailable", "imessage service not registered"));
     return;
   }
   const url = new URL(req.url ?? "/api/imessage/messages", "http://localhost");
@@ -342,11 +326,7 @@ async function handleSendMessage(
 ): Promise<void> {
   const service = resolveService(runtime);
   if (!service) {
-    res
-      .status(503)
-      .json(
-        setupError("service_unavailable", "imessage service not registered")
-      );
+    res.status(503).json(setupError("service_unavailable", "imessage service not registered"));
     return;
   }
 
@@ -365,16 +345,12 @@ async function handleSendMessage(
   const mediaUrl = body.mediaUrl?.trim() || undefined;
 
   if (!to && !chatId) {
-    res
-      .status(400)
-      .json(setupError("bad_request", "either to or chatId is required"));
+    res.status(400).json(setupError("bad_request", "either to or chatId is required"));
     return;
   }
 
   if (!text && !mediaUrl) {
-    res
-      .status(400)
-      .json(setupError("bad_request", "either text or mediaUrl is required"));
+    res.status(400).json(setupError("bad_request", "either text or mediaUrl is required"));
     return;
   }
 
@@ -384,14 +360,7 @@ async function handleSendMessage(
       ...(typeof body.maxBytes === "number" ? { maxBytes: body.maxBytes } : {}),
     });
     if (!result.success) {
-      res
-        .status(500)
-        .json(
-          setupError(
-            "internal_error",
-            result.error ?? "failed to send iMessage"
-          )
-        );
+      res.status(500).json(setupError("internal_error", result.error ?? "failed to send iMessage"));
       return;
     }
     res.status(200).json(result);
@@ -415,11 +384,7 @@ async function handleChats(
 ): Promise<void> {
   const service = resolveService(runtime);
   if (!service) {
-    res
-      .status(503)
-      .json(
-        setupError("service_unavailable", "imessage service not registered")
-      );
+    res.status(503).json(setupError("service_unavailable", "imessage service not registered"));
     return;
   }
   try {
@@ -445,11 +410,7 @@ async function handleListContacts(
 ): Promise<void> {
   const service = resolveService(runtime);
   if (!service) {
-    res
-      .status(503)
-      .json(
-        setupError("service_unavailable", "imessage service not registered")
-      );
+    res.status(503).json(setupError("service_unavailable", "imessage service not registered"));
     return;
   }
   try {
@@ -475,11 +436,7 @@ async function handleCreateContact(
 ): Promise<void> {
   const service = resolveService(runtime);
   if (!service) {
-    res
-      .status(503)
-      .json(
-        setupError("service_unavailable", "imessage service not registered")
-      );
+    res.status(503).json(setupError("service_unavailable", "imessage service not registered"));
     return;
   }
   const body =
@@ -542,18 +499,12 @@ async function handleUpdateContact(
   const pathname = req.url ?? "";
   const id = parseContactId(pathname.split("?")[0]);
   if (!id) {
-    res
-      .status(400)
-      .json(setupError("bad_request", "contact id is required in the path"));
+    res.status(400).json(setupError("bad_request", "contact id is required in the path"));
     return;
   }
   const service = resolveService(runtime);
   if (!service) {
-    res
-      .status(503)
-      .json(
-        setupError("service_unavailable", "imessage service not registered")
-      );
+    res.status(503).json(setupError("service_unavailable", "imessage service not registered"));
     return;
   }
   const body =
@@ -608,18 +559,12 @@ async function handleDeleteContact(
   const pathname = req.url ?? "";
   const id = parseContactId(pathname.split("?")[0]);
   if (!id) {
-    res
-      .status(400)
-      .json(setupError("bad_request", "contact id is required in the path"));
+    res.status(400).json(setupError("bad_request", "contact id is required in the path"));
     return;
   }
   const service = resolveService(runtime);
   if (!service) {
-    res
-      .status(503)
-      .json(
-        setupError("service_unavailable", "imessage service not registered")
-      );
+    res.status(503).json(setupError("service_unavailable", "imessage service not registered"));
     return;
   }
   try {

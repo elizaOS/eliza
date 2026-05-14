@@ -12,6 +12,7 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { ensureDirectory, readJson } from "./file-utils.js";
 import { compressPromptDescription } from "./prompt-compression.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -239,15 +240,6 @@ function assertProviderDoc(provider, name) {
 }
 
 /**
- * @param {string} filePath
- * @returns {unknown}
- */
-function readJson(filePath) {
-  const raw = fs.readFileSync(filePath, "utf-8");
-  return JSON.parse(raw);
-}
-
-/**
  * Recursively list .json files in a directory.
  * @param {string} rootDir
  * @returns {string[]}
@@ -389,18 +381,6 @@ function loadSpecs(dir, corePath, kind) {
 }
 
 /**
- * Ensures a directory exists, creating it and parent directories if necessary.
- * @param {string} dir - The directory path to ensure exists
- * @throws {Error} If the directory path is empty or whitespace-only
- */
-function ensureDir(dir) {
-  if (!dir || dir.trim() === "") {
-    throw new Error("Directory path cannot be empty");
-  }
-  fs.mkdirSync(dir, { recursive: true });
-}
-
-/**
  * @param {Record<string, unknown>} doc
  * @returns {string | undefined}
  */
@@ -475,7 +455,7 @@ function normalizeSpecsInPlace(actionsSpec, providersSpec) {
 
 function generateTypeScript(actionsSpec, providersSpec) {
   const outDir = path.join(REPO_ROOT, "packages", "core", "src", "generated");
-  ensureDir(outDir);
+  ensureDirectory(outDir);
 
   const actionsJson = JSON.stringify(
     { version: actionsSpec.core.version, actions: actionsSpec.core.items },

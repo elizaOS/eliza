@@ -1,20 +1,20 @@
 import { Hono } from "hono";
 import { z } from "zod";
+import type { RouteContext } from "@/lib/api/hono-next-style-params";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 import { twitterAppAutomationService } from "@/lib/services/twitter-automation/app-automation";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
-
-interface RouteParams {
-  params: Promise<{ id: string }>;
-}
 
 const PostTweetSchema = z.object({
   text: z.string().max(280).optional(),
   type: z.enum(["promotional", "engagement", "educational", "announcement"]).optional(),
 });
 
-async function __hono_POST(request: Request, { params }: RouteParams): Promise<Response> {
+async function __hono_POST(
+  request: Request,
+  { params }: RouteContext<{ id: string }>,
+): Promise<Response> {
   const { user } = await requireAuthOrApiKeyWithOrg(request);
   const { id } = await params;
 

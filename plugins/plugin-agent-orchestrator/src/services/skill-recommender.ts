@@ -496,7 +496,7 @@ export async function recommendSkillsForTask(
 
   const rawResponse = await withTrajectoryContext(
     runtime,
-    { source: "orchestrator", decisionType: "swarm-context-generation" },
+    { source: "orchestrator", decisionType: "skill-context-generation" },
     () =>
       runtime.useModel(ModelType.TEXT_SMALL, {
         prompt,

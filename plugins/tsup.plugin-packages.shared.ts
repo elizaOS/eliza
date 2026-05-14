@@ -1,6 +1,22 @@
 import { existsSync, readdirSync, promises as fsp } from "node:fs";
 import path from "node:path";
 
+type EsbuildOnLoadArgs = {
+  path: string;
+};
+
+type EsbuildOnLoadResult = {
+  contents: string;
+  loader: "ts" | "tsx";
+};
+
+type EsbuildPluginBuild = {
+  onLoad(
+    options: { filter: RegExp },
+    callback: (args: EsbuildOnLoadArgs) => Promise<EsbuildOnLoadResult>,
+  ): void;
+};
+
 function resolvePackageRoot(): string {
   // CWD wins when it points at a real package directory. A parent
   // process's `npm_package_json` env leaks into spawned children
@@ -61,9 +77,8 @@ function collectSrcEntries(srcRoot: string): string[] {
  */
 const rewriteRelativeTsExtensions = {
   name: "rewrite-relative-ts-extensions",
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  setup(build: any) {
-    build.onLoad({ filter: /\.(ts|tsx)$/ }, async (args: { path: string }) => {
+  setup(build: EsbuildPluginBuild) {
+    build.onLoad({ filter: /\.(ts|tsx)$/ }, async (args) => {
       const source = await fsp.readFile(args.path, "utf8");
       const transformed = source.replace(
         /((?:\bfrom\s+|\bimport\s*\(\s*|\bimport\s+|\bexport\s+(?:\*|\{[^}]*\})\s+from\s+)["'])(\.\.?\/[^"']+?)\.(tsx?)(["'])/g,

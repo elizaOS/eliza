@@ -378,7 +378,7 @@ export async function queryPastExperience(
 
 /**
  * Format past experience entries as a markdown section suitable for
- * injection into agent memory (CLAUDE.md / GEMINI.md).
+ * injection into ACP agent context.
  *
  * Returns empty string if no relevant experience is found.
  */

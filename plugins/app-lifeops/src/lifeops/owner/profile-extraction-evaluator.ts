@@ -226,7 +226,7 @@ function hasExtraction(extraction: ProfileExtraction): boolean {
 export const ownerProfileExtractionEvaluator: ResponseHandlerEvaluator = {
   name: "owner.profile_extraction",
   description:
-    "Extracts stable owner facts, nicknames, handles, and relationship aliases before action planning.",
+    "Extract stable owner facts, nicknames, handles, relationship aliases before planning.",
   priority: 30,
   async shouldRun({ runtime, message }) {
     if (!(await hasOwnerAccess(runtime, message))) {

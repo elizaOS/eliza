@@ -93,7 +93,7 @@ const SUBACTIONS: SubactionsMap<WebsiteBlockSubaction> = {
     description:
       "Report the current website blocker state by combining the live OS-level hosts/SelfControl status with LifeOps-managed block rules (id, gateType, websites, gate target). Toggle either source via includeLiveStatus and includeManagedRules.",
     descriptionCompressed:
-      "list-active-blocks: live hosts/SelfControl status + managed rules (gateType, target, websites)",
+      "list-active-blocks live hosts/SelfControl + managed rules",
     required: [],
     optional: ["includeLiveStatus", "includeManagedRules"],
   },

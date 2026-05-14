@@ -7,26 +7,14 @@ import Darwin.Mach
 // MARK: - LlamaBridgeImpl
 //
 // Real llama.cpp-backed implementation. Pure Swift API surface — does NOT
-// install JS bridge functions. `LlamaBridge.swift` (the Capacitor plugin's
-// stub) delegates to this class when M09 wires the real backend in.
+// install JS bridge functions. `LlamaBridge.swift` owns that JS-facing layer
+// and delegates llama.cpp work to this class.
 //
 // The split keeps responsibilities clean:
 //   * `LlamaBridge.swift` owns the JS-facing contract (parses JSValue args,
 //     builds promises, schedules ManagedCallback streaming).
 //   * `LlamaBridgeImpl.swift` (this file) owns the C-API plumbing
 //     (@_silgen_name bindings, batch/sampler setup, decode loop).
-//
-// Wiring: in `LlamaBridge.swift`, replace the canned-reply blocks in
-// `loadModel(...)` and `generate(...)` with:
-//
-//     let impl = LlamaBridgeImpl.shared
-//     let result = impl.loadModel(path: path, contextSize: contextSize, ...)
-//     // → either { context_id } or { error: string }
-//
-//     let onToken: (String, Bool) -> Void = { tok, last in
-//         RuntimeQueue.dispatchOnJS { streamCallback?.callSync(args: [tok, last]) }
-//     }
-//     let genResult = impl.generate(contextId: ..., prompt: ..., onToken: onToken)
 //
 // The impl is thread-safe: it does its own queueing via a per-session
 // serial queue and a session registry guarded by a sync lock.
@@ -592,9 +580,9 @@ public final class LlamaBridgeImpl {
         }
     }
 
-    /// Returns the work queue for a context_id, or nil. The bridge stub uses
-    /// this to schedule `generate(...)` on the per-session serial queue,
-    /// keeping multiple JS calls into the same context naturally serialized.
+    /// Returns the work queue for a context_id, or nil. The bridge uses this
+    /// to schedule `generate(...)` on the per-session serial queue, keeping
+    /// multiple JS calls into the same context naturally serialized.
     public func workQueue(for contextId: Int64) -> DispatchQueue? {
         return SessionRegistry.shared.get(contextId)?.workQueue
     }

@@ -9,14 +9,8 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import {
-  createDatabaseAdapter,
-  DatabaseMigrationService,
-  type DrizzleDatabase,
-  plugin as sqlPlugin,
-} from "@elizaos/plugin-sql";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { AuthStore } from "./auth-store";
+import { AuthStore, type DrizzleDatabase } from "./auth-store";
 
 interface Harness {
   db: DrizzleDatabase;
@@ -31,7 +25,25 @@ interface AdapterWithDb {
   close?: () => Promise<void>;
 }
 
+interface SqlPluginModule {
+  createDatabaseAdapter: (
+    cfg: { dataDir: string },
+    id: `${string}-${string}-${string}-${string}-${string}`,
+  ) => unknown;
+  DatabaseMigrationService: new () => {
+    initializeWithDatabase: (db: unknown) => Promise<void>;
+    discoverAndRegisterPluginSchemas: (plugins: unknown[]) => void;
+    runAllPluginMigrations: () => Promise<void>;
+  };
+  plugin: unknown;
+}
+
 async function open(): Promise<Harness> {
+  const {
+    createDatabaseAdapter,
+    DatabaseMigrationService,
+    plugin: sqlPlugin,
+  } = (await import("@elizaos/plugin-sql")) as SqlPluginModule;
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-auth-store-"));
   const adapter = createDatabaseAdapter(
     { dataDir },

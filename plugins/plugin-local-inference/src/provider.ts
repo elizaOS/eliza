@@ -910,7 +910,7 @@ function resolveImageGenModelKeyFromRuntime(runtime: IAgentRuntime): string {
  * Inlined tier → default image-gen model id map. Duplicates the
  * `TIER_TO_DEFAULT_IMAGE_MODEL` entries in `backend-selector.ts` —
  * provider.ts intentionally avoids importing the imagegen subpackage
- * so the unified provider stays loadable on runtimes that don't ship
+ * so the provider stays loadable on runtimes that don't ship
  * the WS3 capability. The two maps are kept in sync by the WS3
  * routing test (`imagegen-routing.test.ts`).
  */
@@ -941,7 +941,7 @@ export function createLocalInferenceModelHandlers(): NonNullable<
 export const localInferencePlugin: Plugin = {
 	name: LOCAL_INFERENCE_PROVIDER_ID,
 	description:
-		"Unified Eliza-1 local provider for text, embeddings, text-to-speech, and transcription.",
+		"Eliza-1 local provider for text, embeddings, text-to-speech, and transcription.",
 	priority: LOCAL_INFERENCE_PRIORITY,
 	actions: [generateMediaAction],
 	models: createLocalInferenceModelHandlers(),
@@ -949,7 +949,7 @@ export const localInferencePlugin: Plugin = {
 		const service = serviceFromRuntime(runtime);
 		if (!service) {
 			logger.info(
-				"[local-inference] Unified provider registered; no active backend service is exposed yet. Model calls will return LOCAL_INFERENCE_UNAVAILABLE until an Eliza-1 backend is activated.",
+				"[local-inference] Provider registered; no active backend service is exposed yet. Model calls will return LOCAL_INFERENCE_UNAVAILABLE until an Eliza-1 backend is activated.",
 			);
 			return;
 		}
@@ -967,7 +967,7 @@ export const localInferencePlugin: Plugin = {
 					typeof service.transcribe === "function" ||
 					typeof service.transcribePcm === "function",
 			},
-			"[local-inference] Unified provider connected to runtime backend service",
+			"[local-inference] Provider connected to runtime backend service",
 		);
 	},
 };

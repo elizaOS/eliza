@@ -15,6 +15,7 @@ import type {
   DatabaseProviderType as SharedDatabaseProviderType,
   ReleaseChannel as SharedReleaseChannel,
   StreamEventType as SharedStreamEventType,
+  TradePermissionMode as SharedTradePermissionMode,
   TriggerHealthSnapshot as SharedTriggerHealthSnapshot,
   TriggerSummary as SharedTriggerSummary,
   TriggerTaskMetadata as SharedTriggerTaskMetadata,
@@ -35,11 +36,7 @@ export type TriggerHealthSnapshot = SharedTriggerHealthSnapshot;
 export type CreateTriggerRequest = SharedCreateTriggerRequest;
 export type UpdateTriggerRequest = SharedUpdateTriggerRequest;
 
-export type TradePermissionMode =
-  | "user-sign-only"
-  | "agent-auto"
-  | "manual-local-key"
-  | "disabled";
+export type TradePermissionMode = SharedTradePermissionMode;
 
 export type SignalPairingStatus =
   | "idle"

@@ -1,11 +1,8 @@
 import { Hono } from "hono";
 import { z } from "zod";
+import type { RouteContext } from "@/lib/api/hono-next-style-params";
 import { agentGoogleRouteDeps } from "@/lib/services/agent-google-route-deps";
 import type { AppEnv } from "@/types/cloud-worker-env";
-
-interface RouteParams {
-  params: Promise<{ eventId: string }>;
-}
 
 const attendeeSchema = z.object({
   email: z.string().email(),
@@ -26,7 +23,7 @@ const patchRequestSchema = z.object({
   attendees: z.array(attendeeSchema).optional(),
 });
 
-async function __hono_PATCH(request: Request, { params }: RouteParams) {
+async function __hono_PATCH(request: Request, { params }: RouteContext<{ eventId: string }>) {
   try {
     const { user } = await agentGoogleRouteDeps.requireAuthOrApiKeyWithOrg(request);
     const { eventId } = await params;
@@ -71,7 +68,7 @@ async function __hono_PATCH(request: Request, { params }: RouteParams) {
   }
 }
 
-async function __hono_DELETE(request: Request, { params }: RouteParams) {
+async function __hono_DELETE(request: Request, { params }: RouteContext<{ eventId: string }>) {
   try {
     const { user } = await agentGoogleRouteDeps.requireAuthOrApiKeyWithOrg(request);
     const { eventId } = await params;

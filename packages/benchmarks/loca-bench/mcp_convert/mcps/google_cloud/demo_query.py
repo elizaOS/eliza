@@ -14,7 +14,6 @@ import json
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, current_dir)
 
-from database_utils import GoogleCloudDatabase
 from server import GoogleCloudMCPServer
 
 
@@ -106,7 +105,7 @@ async def demo_queries():
         if i == 4:
             # Run the same query again to demonstrate caching
             print(f"\n  Running same query again to demonstrate caching...")
-            result2 = await server.bigquery_run_query({"query": query_info['sql']})
+            await server.bigquery_run_query({"query": query_info['sql']})
             print(f"  ✓ Second execution should be cached and faster!")
     
     print("\n" + "=" * 70)

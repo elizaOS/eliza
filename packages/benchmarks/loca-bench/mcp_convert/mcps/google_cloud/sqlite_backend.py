@@ -8,7 +8,6 @@ import sqlite3
 import json
 import os
 from typing import Dict, List, Any, Optional, Tuple
-from datetime import datetime, timezone
 
 
 class SQLiteBackend:
@@ -727,8 +726,7 @@ WHERE NOT EXISTS (SELECT 1 FROM {target_table} WHERE {on_cond_fixed})"""
         # Convert BigQuery MERGE to SQLite INSERT OR REPLACE / UPDATE
         # This is handled separately in _convert_merge_to_sqlite method
         if re.match(r'^\s*MERGE\b', query, re.IGNORECASE):
-            query = self._convert_merge_to_sqlite(query)
-            return query
+            return self._convert_merge_to_sqlite(query)
 
         # ==================== Table References ====================
 
@@ -772,9 +770,8 @@ WHERE NOT EXISTS (SELECT 1 FROM {target_table} WHERE {on_cond_fixed})"""
                 return f'"local-project_{parts[0]}_{parts[1]}"'
             return match.group(0)
         
-        query = re.sub(r'`([^`]+)`', replace_table_ref, query)
+        return re.sub(r'`([^`]+)`', replace_table_ref, query)
         
-        return query
     
     def execute_query(self, query: str, params: Optional[Tuple] = None) -> Tuple[List[Dict[str, Any]], str]:
         """

@@ -1,6 +1,6 @@
 name: NPM Release
 
-# Consolidated workflow for all NPM releases:
+# Workflow for all NPM releases:
 # - Beta: On v*-beta.* tag pushes
 # - Production: On stable GitHub release creation
 #

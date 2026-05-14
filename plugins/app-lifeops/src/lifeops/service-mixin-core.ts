@@ -55,8 +55,7 @@ import type { LifeOpsServiceOptions } from "./service-types.js";
 // ---------------------------------------------------------------------------
 
 /** Constructor type for the mixin pattern. */
-// biome-ignore lint/suspicious/noExplicitAny: mixin pattern requires open-ended constructor signature
-export type Constructor<T = object> = new (...args: any[]) => T;
+export type Constructor<T = object> = new (...args: unknown[]) => T;
 
 export type MixinClass<
   TBase extends Constructor,

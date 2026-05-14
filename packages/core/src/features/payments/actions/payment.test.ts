@@ -41,7 +41,7 @@ function message() {
 }
 
 describe("PAYMENT", () => {
-	test("declares the consolidated payment discriminator", () => {
+	test("declares the payment discriminator", () => {
 		expect(paymentAction.name).toBe("PAYMENT");
 		const discriminator = paymentAction.parameters?.find(
 			(parameter) => parameter.name === "action",

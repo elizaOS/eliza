@@ -1,5 +1,5 @@
 /**
- * Payments — consolidated action slice.
+ * Payments — action slice.
  *
  * Re-exports the PAYMENT action, the plugin scaffold, and the runtime contract
  * types (`PaymentRequestsClient`, `PaymentBusClient`, `PaymentSettler`,

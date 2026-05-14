@@ -7,7 +7,6 @@ These agents are used to verify that:
 3. Metrics and scoring work as expected
 """
 
-from gauntlet.sdk.interface import GauntletAgent
 from gauntlet.sdk.types import AgentResponse, ScenarioContext, Task
 
 

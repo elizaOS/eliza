@@ -169,17 +169,11 @@ function getBugReportMode(): "remote" | "github" | "fallback" {
 }
 
 function getRemoteBugReportUrl(): string | undefined {
-  return (
-    process.env.ELIZA_BUG_REPORT_API_URL ??
-    process.env.ELIZA_CLOUD_BUG_REPORT_URL
-  );
+  return process.env.ELIZA_BUG_REPORT_API_URL;
 }
 
 function getRemoteBugReportToken(): string | undefined {
-  return (
-    process.env.ELIZA_BUG_REPORT_API_TOKEN ??
-    process.env.ELIZA_CLOUD_BUG_REPORT_TOKEN
-  );
+  return process.env.ELIZA_BUG_REPORT_API_TOKEN;
 }
 
 async function submitToRemoteBugIntake(body: BugReportBody) {

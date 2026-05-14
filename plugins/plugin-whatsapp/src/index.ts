@@ -213,5 +213,8 @@ const __bundle_safety_PLUGINS_PLUGIN_WHATSAPP_SRC_INDEX__ = [
   _bs_38_stopAllPairingSessions,
   _bs_39_whatsappSetupRoutes,
 ];
-(globalThis as any).__bundle_safety_PLUGINS_PLUGIN_WHATSAPP_SRC_INDEX__ =
+const bundleSafetyGlobal = globalThis as typeof globalThis & {
+  __bundle_safety_PLUGINS_PLUGIN_WHATSAPP_SRC_INDEX__?: typeof __bundle_safety_PLUGINS_PLUGIN_WHATSAPP_SRC_INDEX__;
+};
+bundleSafetyGlobal.__bundle_safety_PLUGINS_PLUGIN_WHATSAPP_SRC_INDEX__ =
   __bundle_safety_PLUGINS_PLUGIN_WHATSAPP_SRC_INDEX__;

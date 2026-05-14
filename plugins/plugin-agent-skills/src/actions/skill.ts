@@ -129,7 +129,7 @@ function selectRoute(
 export const skillAction: Action = {
 	name: "SKILL",
 	description:
-		"Manage skill catalog. Operations: search (browse available skills), details (info about a specific skill), sync (refresh catalog from registry), toggle (enable/disable installed skill), install (install from registry), uninstall (remove non-bundled skill). For invoking an enabled skill, use USE_SKILL instead.",
+		"Manage skill catalog. Ops: search, details, sync, toggle, install, uninstall. Use USE_SKILL to invoke enabled skill.",
 	descriptionCompressed:
 		"Skill catalog: search, details, sync, toggle, install, uninstall.",
 	contexts: ["automation", "knowledge", "settings", "connectors"],
@@ -152,7 +152,7 @@ export const skillAction: Action = {
 		{
 			name: "action",
 			description:
-				"Operation to perform. One of: search, details, sync, toggle, install, uninstall. Inferred from message text when omitted.",
+				"Operation: search, details, sync, toggle, install, uninstall. Infer if omitted.",
 			required: false,
 			schema: { type: "string", enum: [...ALL_OPS] },
 		},

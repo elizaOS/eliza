@@ -7,7 +7,6 @@
  */
 
 import crypto from "node:crypto";
-// dns/promises moved to server-helpers-mcp.ts
 import fs from "node:fs";
 import http from "node:http";
 import { createRequire } from "node:module";
@@ -25,11 +24,6 @@ const MAX_BODY_BYTES = 1024 * 1024; // 1 MB
 
 import os from "node:os";
 import path from "node:path";
-// `plugin-auto-enable.ts` was removed during a workspace refactor; the helper
-// `isStreamingDestinationConfigured` landed in `@elizaos/core`
-// (`connectors/connector-config.ts`, re-exported via index.node.ts). Importing
-// from the canonical path keeps the bench server bootable without
-// resurrecting the deleted file.
 import {
   type AgentRuntime,
   type IAgentRuntime,
@@ -45,12 +39,20 @@ import {
   type UUID,
 } from "@elizaos/core";
 import {
+  getStylePresets,
+  isMobilePlatform,
+  normalizeCharacterLanguage,
+  parseClampedInteger,
+  resolveApiBindHost,
+  resolveDesktopApiPort,
+  resolveServerOnlyPort,
+  resolveStylePresetByAvatarIndex,
+} from "@elizaos/shared";
+import { type WebSocket, WebSocketServer } from "ws";
+
+const {
   BROWSER_BRIDGE_KINDS,
   BROWSER_BRIDGE_PACKAGE_PATH_TARGETS,
-  type BrowserBridgeKind,
-  type BrowserBridgePackagePathTarget,
-  type BrowserWorkspaceCommand,
-  type BrowserWorkspaceTabKind,
   buildBrowserBridgeCompanionPackage,
   closeBrowserWorkspaceTab,
   evaluateBrowserWorkspaceTab,
@@ -65,53 +67,42 @@ import {
   openBrowserWorkspaceTab,
   showBrowserWorkspaceTab,
   snapshotBrowserWorkspaceTab,
-} from "@elizaos/plugin-browser";
-import { attachMobileDeviceBridgeToServer } from "@elizaos/plugin-capacitor-bridge";
-import { handleComputerUseRoutes } from "@elizaos/plugin-computeruse";
-// `cloud-provisioning.ts` was deleted from agent/src/api during a workspace
-// refactor; the function moved to plugin-elizacloud. Pull from there to
-// keep the bench server bootable.
-// `cloud-status-routes.ts` and `computer-use-routes.ts` were deleted from
-// agent/src/api during a workspace refactor; the route handlers now live in
-// the corresponding plugins. Pull from there to keep the bench server
-// bootable.
-import {
-  handleCloudStatusRoutes,
-  isCloudProvisionedContainer,
-} from "@elizaos/plugin-elizacloud";
-// BlueBubbles routes extracted to @elizaos/plugin-bluebubbles setup-routes.ts (Plugin.routes).
-// resolveBlueBubblesWebhookPath stays here so the auth gate can compute the webhook path
-// before the runtime plugin route dispatcher runs.
-import { resolveBlueBubblesWebhookPath } from "@elizaos/plugin-imessage";
-// iMessage routes extracted to @elizaos/plugin-imessage setup-routes.ts (Plugin.routes)
-// import { handleIMessageRoute } from "@elizaos/plugin-imessage";
-import {
-  getLocalInferenceActiveModelId,
-  handleLocalInferenceRoutes,
-} from "@elizaos/plugin-local-inference";
-import { handleMcpRoutes } from "@elizaos/plugin-mcp";
-// signal-pairing: SignalPairingSession, sanitizeAccountId, signalLogout extracted to @elizaos/plugin-signal
-import { applySignalQrOverride } from "@elizaos/plugin-signal";
-import { handleTtsRoutes, streamManager } from "@elizaos/plugin-streaming";
-// WhatsApp route dispatch extracted to @elizaos/plugin-whatsapp setup-routes.ts (Plugin.routes).
-// applyWhatsAppQrOverride remains for plugin-discovery's QR override flow.
-// `whatsapp-routes.ts` was moved into the plugin; pull from there.
-import { applyWhatsAppQrOverride } from "@elizaos/plugin-whatsapp";
-// Telegram account routes extracted to @elizaos/plugin-telegram account-setup-routes.ts (Plugin.routes).
-import { handleTriggerRoutes } from "@elizaos/plugin-workflow";
-// ONBOARDING_CLOUD_PROVIDER_OPTIONS, ONBOARDING_PROVIDER_CATALOG moved to server-helpers-config.ts
-import { validateX402Startup } from "@elizaos/plugin-x402";
-import {
-  getStylePresets,
-  isMobilePlatform,
-  normalizeCharacterLanguage,
-  parseClampedInteger,
-  resolveApiBindHost,
-  resolveDesktopApiPort,
-  resolveServerOnlyPort,
-  resolveStylePresetByAvatarIndex,
-} from "@elizaos/shared";
-import { type WebSocket, WebSocketServer } from "ws";
+} = await import("@elizaos/plugin-browser");
+const { attachMobileDeviceBridgeToServer } = await import(
+  "@elizaos/plugin-capacitor-bridge"
+);
+const { handleComputerUseRoutes } = await import("@elizaos/plugin-computeruse");
+const { handleCloudStatusRoutes, isCloudProvisionedContainer } = await import(
+  "@elizaos/plugin-elizacloud"
+);
+const { resolveBlueBubblesWebhookPath } = await import(
+  "@elizaos/plugin-imessage"
+);
+const { getLocalInferenceActiveModelId, handleLocalInferenceRoutes } =
+  await import("@elizaos/plugin-local-inference");
+const { handleMcpRoutes } = await import("@elizaos/plugin-mcp");
+const { applySignalQrOverride } = await import("@elizaos/plugin-signal");
+const { handleTtsRoutes, streamManager } = await import(
+  "@elizaos/plugin-streaming"
+);
+const { applyWhatsAppQrOverride } = (await import(
+  "@elizaos/plugin-whatsapp"
+)) as {
+  applyWhatsAppQrOverride: (...args: unknown[]) => void;
+};
+const { handleTriggerRoutes } = await import("@elizaos/plugin-workflow");
+const { validateX402Startup } = await import("@elizaos/plugin-x402");
+
+type BrowserBridgeKind = (typeof BROWSER_BRIDGE_KINDS)[number];
+type BrowserBridgePackagePathTarget =
+  (typeof BROWSER_BRIDGE_PACKAGE_PATH_TARGETS)[number];
+type BrowserWorkspaceCommand = Parameters<
+  typeof executeBrowserWorkspaceCommand
+>[0];
+type BrowserWorkspaceTabKind = NonNullable<
+  Parameters<typeof openBrowserWorkspaceTab>[0]["kind"]
+>;
+
 import { getGlobalAwarenessRegistry } from "../awareness/registry.ts";
 import {
   type ElizaConfig,
@@ -161,10 +152,6 @@ import {
   isPluginManagerLike,
   type PluginManagerLike,
 } from "../services/plugin-manager-types.ts";
-// telegram-account-auth helpers moved to @elizaos/plugin-telegram (account-setup-routes.ts).
-// WhatsApp pairing service helpers (sanitizeAccountId, WhatsAppPairingSession,
-// whatsappAuthExists, whatsappLogout) are owned by @elizaos/plugin-whatsapp now;
-// the route dispatch lives there too.
 import {
   executeTriggerTask,
   getTriggerHealthSnapshot,
@@ -206,7 +193,6 @@ import { handleConfigRoutes } from "./config-routes.ts";
 import { ConnectorHealthMonitor } from "./connector-health.ts";
 import { handleConnectorRoutes } from "./connector-routes.ts";
 import { extractConversationMetadataFromRoom } from "./conversation-metadata.ts";
-// Discord local routes extracted to @elizaos/plugin-discord (setup-routes.ts)
 import { wireCoordinatorBridgesWhenReady } from "./coordinator-wiring.ts";
 import { handleCuratedSkillsRoutes } from "./curated-skills-routes.ts";
 import { handleDiagnosticsRoutes } from "./diagnostics-routes.ts";
@@ -246,19 +232,11 @@ import {
   handleLifeOpsRuntimePluginRoute,
   handleSandboxRouteGroup,
 } from "./server-route-dispatch.ts";
-// signal-routes: handleSignalRoute dispatch extracted to @elizaos/plugin-signal (setup-routes.ts)
 import { discoverSkills } from "./skill-discovery-helpers.ts";
 import { handleSkillsRoutes } from "./skills-routes.ts";
 import { handleSubscriptionRoutes } from "./subscription-routes.ts";
 import { handleUpdateRoutes } from "./update-routes.ts";
-import {
-  // Balance/import/generate helpers moved to @elizaos/app-steward plugin routes.
-  // generateWalletKeys, setSolanaWalletEnv moved to server-helpers-config.ts
-  getWalletAddresses,
-  initStewardWalletCache,
-} from "./wallet.ts";
-// Wallet BSC trade dispatch extracted to @elizaos/app-steward
-// (plugins/app-steward/src/api/wallet-bsc-routes.ts via Plugin.routes).
+import { getWalletAddresses, initStewardWalletCache } from "./wallet.ts";
 import {
   EVM_PLUGIN_PACKAGE,
   resolveWalletAutomationMode as resolveAgentAutomationModeFromConfig,
@@ -481,15 +459,6 @@ function _persistDeletedConversationIdsToState(ids: Set<string>): void {
   fs.renameSync(tmpFilePath, filePath);
 }
 
-// initializeOGCodeInState moved into elizaMakerPlugin.init() via
-// initializeRegistryAndDropServices in @elizaos/app-elizamaker.
-
-// resolveAppUserName, patchTouchesProviderSelection, resolveConversationGreetingText
-// moved to server-helpers.ts; imported in the consolidated import at the top
-
-// AgentStartupDiagnostics, ConversationMeta, ServerState, ShareIngestItem,
-// SkillEntry, LogEntry, StreamEventType, StreamEventEnvelope re-exported from
-// server-types.ts
 export type {
   AgentStartupDiagnostics,
   ConversationMeta,
@@ -501,25 +470,17 @@ export type {
   StreamEventType,
 } from "./server-types.ts";
 
-import type {
-  AgentStartupDiagnostics,
-  ServerState,
-  StreamEventEnvelope,
-} from "./server-types.ts";
-
-// ---------------------------------------------------------------------------
-// Package root resolution (for reading bundled plugins.json)
-// ---------------------------------------------------------------------------
-
-// findOwnPackageRoot moved to server-helpers.ts; re-exported in the batch above
-
-// Fetch/streaming helpers extracted to server-helpers-fetch.ts
 import {
   fetchWithTimeoutGuard as _fetchWithTimeoutGuard,
   streamResponseBodyWithByteLimit as _streamResponseBodyWithByteLimit,
   isAbortError,
   responseContentLength,
 } from "./server-helpers-fetch.ts";
+import type {
+  AgentStartupDiagnostics,
+  ServerState,
+  StreamEventEnvelope,
+} from "./server-types.ts";
 
 export {
   fetchWithTimeoutGuard,
@@ -529,8 +490,10 @@ export {
 const fetchWithTimeoutGuard = _fetchWithTimeoutGuard;
 const streamResponseBodyWithByteLimit = _streamResponseBodyWithByteLimit;
 
-type StreamRouteDestination =
-  import("@elizaos/plugin-streaming").StreamingDestination;
+interface StreamRouteDestination {
+  name?: string;
+  [key: string]: unknown;
+}
 
 interface StreamingPluginDestinationFactories {
   createCustomRtmpDestination(config?: {
@@ -987,8 +950,6 @@ type StewardWalletCoreRoutesHandler = (
 const STEWARD_WALLET_CORE_ROUTES_MODULE: string = "@elizaos/app-steward";
 
 // ---------------------------------------------------------------------------
-// Static UI serving — extracted to static-file-server.ts
-// ---------------------------------------------------------------------------
 import {
   injectApiBaseIntoHtml,
   isAuthProtectedRoute,
@@ -997,27 +958,11 @@ import {
 
 export { injectApiBaseIntoHtml };
 
-// Preserved for backward-compat — unused locally after extraction.
-const _STATIC_MIME: Record<string, string> = {};
-
-// (static file serving functions moved to static-file-server.ts)
-
 function coerce<T>(value: unknown): T {
   return value as T;
 }
 
-// maybeAugmentChatMessageWithLanguage and getErrorMessage moved to server-helpers.ts;
-// imported in the consolidated import at the top
-
-// Knowledge + wallet context augmentation moved to server-helpers.ts;
-// imported in the consolidated import at the top
-
-// ChatImageAttachment, image validation, chat attachments, normalizeIncomingChatPrompt,
-// and buildUserMessages moved to server-helpers.ts; re-exported in the top-level block
-// ChatAttachmentWithData re-exported from server-types.ts
 export type { ChatAttachmentWithData } from "./server-types.ts";
-
-// buildChatAttachments, buildUserMessages, etc. imported in the consolidated import at the top
 
 function parseBoundedLimit(rawLimit: string | null, fallback = 15): number {
   return parseClampedInteger(rawLimit, {
@@ -1448,15 +1393,6 @@ function getOrCreateRuntimeOperationManager(
   });
   return cachedRuntimeOperationManager;
 }
-
-// PluginConfigMutationRejection, resolvePluginConfigMutationRejections,
-// WalletExportRejection, resolveWalletExportRejection
-// extracted to server-helpers-plugin.ts and server-helpers-wallet.ts respectively.
-// Re-exported above.
-
-// Terminal/WS/state-dir helpers extracted to server-helpers-auth.ts; re-exported above.
-
-// decodePathComponent imported in the consolidated import at the top
 
 import {
   isLifeOpsCloudPluginRoute,
@@ -2544,15 +2480,6 @@ async function handleRequest(
 
   // Agent self-status, Privy, and ERC-8004 registry routes are now handled
   // by handleAgentStatusRoutes above.
-
-  // ═══════════════════════════════════════════════════════════════════════
-  // Subscription status route
-  // ═══════════════════════════════════════════════════════════════════════
-
-  // ── GET /api/subscription/status (direct handler fallback) ─────────────
-  // Note: subscription-routes.ts handles /api/subscription/* but this is
-  // kept here in case the prefix routing is not active.
-  // (handleSubscriptionRoutes already covers this, so no duplicate needed.)
 
   // ═══════════════════════════════════════════════════════════════════════
   // BSC trade routes and wallet trade execute — now handled by
@@ -3746,7 +3673,7 @@ export async function startApiServer(opts?: {
         // the import returned a stub.
         if (typeof handleStreamRoute === "function") {
           state.connectorRouteHandlers.push((req, res, pathname, method) =>
-            handleStreamRoute(req, res, pathname, method, streamState),
+            handleStreamRoute(req, res, pathname, method, streamState as never),
           );
         }
 

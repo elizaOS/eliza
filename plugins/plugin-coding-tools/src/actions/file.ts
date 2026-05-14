@@ -255,7 +255,7 @@ export const fileAction: Action = {
   roleGate: { minRole: "ADMIN" },
   similes: ["FILE_OPERATION", "FILE_IO"],
   description:
-    "Read, write, edit, search, find, or list files through one FILE action. Choose action=read/write/edit/grep/glob/ls. Use target=device for device-filesystem reads, writes, and directory lists; workspace paths must be absolute unless an operation explicitly defaults to the session cwd.",
+    "FILE action: read/write/edit/grep/glob/ls. Use target=device for device filesystem reads/writes/ls. Workspace paths absolute unless op defaults to session cwd.",
   descriptionCompressed:
     "File operations umbrella: action=read/write/edit/grep/glob/ls, optional target=device.",
   parameters: [
@@ -268,7 +268,7 @@ export const fileAction: Action = {
     {
       name: "target",
       description:
-        "Optional target filesystem. Use device for relative paths under the device filesystem bridge; omit for workspace files.",
+        "Target filesystem. device = relative paths via device bridge; omit for workspace.",
       required: false,
       schema: { type: "string", enum: ["workspace", "device"] },
     },
@@ -281,7 +281,7 @@ export const fileAction: Action = {
     {
       name: "path",
       description:
-        "Absolute file or directory path for grep/glob/ls. Defaults to the session cwd where supported.",
+        "File/dir path for grep/glob/ls. Default session cwd where supported.",
       required: false,
       schema: { type: "string" },
     },
@@ -306,7 +306,7 @@ export const fileAction: Action = {
     {
       name: "replace_all",
       description:
-        "For action=edit, replace every occurrence instead of requiring one match.",
+        "For action=edit: replace all matches, not exactly one.",
       required: false,
       schema: { type: "boolean" },
     },
@@ -376,7 +376,7 @@ export const fileAction: Action = {
     {
       name: "show_line_numbers",
       description:
-        "For action=grep, include 1-based line numbers in content output.",
+        "For action=grep: include 1-based line numbers.",
       required: false,
       schema: { type: "boolean" },
     },
@@ -401,7 +401,7 @@ export const fileAction: Action = {
     {
       name: "encoding",
       description:
-        "For target=device read/write: utf8 or base64. Defaults to utf8.",
+        "For target=device read/write: utf8 or base64. Default utf8.",
       required: false,
       schema: { type: "string", enum: ["utf8", "base64"] },
     },

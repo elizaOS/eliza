@@ -5,7 +5,7 @@ Handles JSON file operations with error handling and validation.
 """
 
 import json
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 from .base import BaseDatabase
 
 

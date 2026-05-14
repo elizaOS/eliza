@@ -200,6 +200,7 @@ import {
 	extractFirstSentence,
 	hasFirstSentence,
 } from "../utils/text-splitting";
+import { isObjectRecord as isRecord } from "../utils/type-guards";
 import { maybeHandleAnalysisActivation } from "./analysis-mode-handler";
 import { runPostTurnEvaluators } from "./evaluator";
 import type { OptimizedPromptTask } from "./optimized-prompt";
@@ -288,10 +289,6 @@ function textContainsUserTag(text: string | undefined): boolean {
 
 	const safeText = text.length > 10_000 ? text.slice(0, 10_000) : text;
 	return /<@!?[^>]+>|@\w+/u.test(safeText);
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function getPlannerActionObjectName(action: Record<string, unknown>): string {
@@ -1911,10 +1908,7 @@ function buildV5PlannerActionSurface(params: {
 		params.messageHandler,
 	);
 
-	if (
-		params.actions.length === 0 ||
-		process.env.ELIZA_TIERED_ACTION_SURFACE === "0"
-	) {
+	if (params.actions.length === 0) {
 		return buildFullV5PlannerActionSurface({
 			actions: params.actions,
 			candidateActions,
@@ -2383,7 +2377,7 @@ function renderMessageHandlerInstructions(
 		rendered,
 		"",
 		"## Response Handler Fields",
-		"Populate every registered response-handler field exactly according to the sections below. Use the field's empty value when it is not applicable.",
+		"Populate every registered field. Use empty value when not applicable.",
 		options.responseHandlerFields.trim(),
 	].join("\n");
 }
@@ -3324,7 +3318,7 @@ export async function runV5MessageRuntimeStage1(args: {
 				directMessage: directMessageChannel,
 				parameters: responseHandlerSchema,
 				description:
-					"Stage 1 — populate the registered response-handler fields exactly once before any action tool calls. Use empty values for non-applicable fields.",
+					"Stage 1: populate registered response-handler fields once before action tools. Empty values for non-applicable fields.",
 			}),
 		];
 		const messageHandlerProviderOptions =
@@ -3423,7 +3417,7 @@ export async function runV5MessageRuntimeStage1(args: {
 				// Guided structured decode on by default for Stage 1 (the call always
 				// carries a forced skeleton): the local engine derives the
 				// deterministic-token prefill plan and the fork fast-forwards the
-				// forced scaffold spans. Opt out with `MILADY_LOCAL_GUIDED_DECODE=0`.
+				// forced scaffold spans. Opt out with `ELIZA_LOCAL_GUIDED_DECODE=0`.
 				// Cloud adapters ignore `providerOptions.eliza.guidedDecode`.
 				providerOptions: withGuidedDecodeProviderOptions(
 					messageHandlerProviderOptions,

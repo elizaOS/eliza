@@ -1,4 +1,4 @@
--- Wave B: unified payment requests table.
+-- Wave B: payment requests table.
 -- Lands alongside app_charges, crypto_payments, x402_payment_requests.
 -- Wave H will migrate existing rows and decommission the legacy tables.
 

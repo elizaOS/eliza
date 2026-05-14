@@ -1,9 +1,9 @@
 /**
  * `CONFLICT_DETECT` umbrella action — unit tests (W2-5).
  *
- * Wave-1 scaffold. Asserts that the proactive calendar-conflict surface
- * exists, detects overlaps from the injected loader, and evaluates a
- * proposed event window against the feed.
+ * Asserts that the proactive calendar-conflict surface exists, detects
+ * overlaps from the injected loader, and evaluates a proposed event window
+ * against owner feed plus attendee free/busy windows.
  */
 
 import type {
@@ -232,6 +232,40 @@ describe("CONFLICT_DETECT umbrella action — proactive calendar scans", () => {
       expect(data.conflicts.every((c) => c.eventA.id === "proposal")).toBe(
         true,
       );
+    });
+
+    it("includes attendee free/busy windows in proposal scans", async () => {
+      setConflictDetectLoader({
+        loadFeed: async () => [],
+        loadFreeBusy: async () => [
+          {
+            id: "freebusy-alice-1",
+            title: "Alice busy",
+            startISO: "2026-05-11T09:15:00.000Z",
+            endISO: "2026-05-11T09:45:00.000Z",
+            attendees: ["alice@example.com"],
+          },
+        ],
+      });
+      const result = await callConflict(makeRuntime(), makeMessage(), {
+        subaction: "scan_event_proposal",
+        proposal: {
+          startISO: "2026-05-11T09:00:00.000Z",
+          endISO: "2026-05-11T10:00:00.000Z",
+          attendees: ["alice@example.com"],
+        },
+      });
+      expect(result.success).toBe(true);
+      const data = result.data as {
+        checkedEvents: number;
+        conflicts: { eventB: { id: string }; severity: string }[];
+      };
+      expect(data.checkedEvents).toBe(1);
+      expect(data.conflicts).toHaveLength(1);
+      expect(data.conflicts[0]).toMatchObject({
+        eventB: { id: "freebusy-alice-1" },
+        severity: "hard",
+      });
     });
 
     it("errors when proposal is missing", async () => {

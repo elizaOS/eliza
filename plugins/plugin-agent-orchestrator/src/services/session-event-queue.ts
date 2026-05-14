@@ -1,7 +1,4 @@
-/**
- * Per-session async serialization queue.
- * Ensures only one event is processed at a time per session.
- */
+import { logger } from "@elizaos/core";
 
 export interface QueuedEvent {
   sessionId: string;
@@ -14,14 +11,9 @@ export class SessionEventQueue {
   private queues: Map<string, QueuedEvent[]> = new Map();
   private processing: Set<string> = new Set();
   private handler: (event: QueuedEvent) => Promise<void>;
-  private logger: { warn: (msg: string) => void };
 
-  constructor(
-    handler: (event: QueuedEvent) => Promise<void>,
-    logger?: { warn: (msg: string) => void },
-  ) {
+  constructor(handler: (event: QueuedEvent) => Promise<void>) {
     this.handler = handler;
-    this.logger = logger ?? { warn: (msg: string) => console.warn(msg) };
   }
 
   enqueue(event: QueuedEvent): void {
@@ -69,14 +61,13 @@ export class SessionEventQueue {
         try {
           await this.handler(event);
         } catch (err) {
-          this.logger.warn(
-            `SessionEventQueue: handler error for session ${sessionId}: ${err instanceof Error ? err.message : String(err)}`,
+          logger.warn(
+            `[SessionEventQueue] handler error for session ${sessionId}: ${err instanceof Error ? err.message : String(err)}`,
           );
         }
       }
     } finally {
       this.processing.delete(sessionId);
-      // Clean up empty queues
       const queue = this.queues.get(sessionId);
       if (queue && queue.length === 0) {
         this.queues.delete(sessionId);

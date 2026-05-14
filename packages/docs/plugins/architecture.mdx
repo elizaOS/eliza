@@ -34,7 +34,7 @@ The elizaOS plugin system is a modular extension mechanism that allows developer
 - **Data Sources**: Connect to databases, APIs, or external services
 - **Custom Actions**: Define new agent behaviors and capabilities
 
-<Tip>**Guide**: [Create a Plugin](/guides/create-a-plugin)</Tip>
+<Tip>**Guide**: [Create a Plugin](/plugins/create-a-plugin)</Tip>
 
 ## Plugin Interface
 
@@ -48,7 +48,7 @@ Every plugin must implement the core `Plugin` interface, which defines the struc
 - **Dependencies**: Other plugins this plugin requires
 - **Priority**: Loading order when multiple plugins are present
 
-For the complete TypeScript interface definition, see [Plugin Reference](/plugins/reference#plugin-interface).
+For the complete TypeScript interface definition, see [Plugin Reference](/plugins/schemas#plugin-interface).
 
 ## Plugin Initialization Lifecycle
 
@@ -66,7 +66,7 @@ When a plugin is registered with the runtime:
 
 ### 2. Component Registration Order
 
-Components are registered in this specific sequence. For component details, see [Plugin Components](/plugins/components).
+Components are registered in this specific sequence. For component details, see [Plugin Components](/plugins/architecture).
 
 ```typescript
 // 1. Database adapter (if provided)
@@ -339,7 +339,7 @@ Database integration and management for elizaOS. Features:
 ## See Also
 
 <CardGroup cols={2}>
-  <Card title="Plugin Components" icon="cube" href="/plugins/components">
+  <Card title="Plugin Components" icon="cube" href="/plugins/architecture">
     Learn about Actions, Providers, Evaluators, and Services
   </Card>
 
@@ -351,7 +351,7 @@ Database integration and management for elizaOS. Features:
   Learn proven plugin development patterns
 </Card>
 
-  <Card title="Plugin Reference" icon="book" href="/plugins/reference">
+  <Card title="Plugin Reference" icon="book" href="/plugins/schemas">
     Complete API reference for all interfaces
   </Card>
 </CardGroup>

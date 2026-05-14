@@ -12,7 +12,7 @@
 # a `repo move`, so moving (not re-uploading) is the right operation. The new
 # canonical per-tier bundle repos are created empty here; the real bytes land
 # via `packages/training/scripts/publish_all_eliza1.sh` once the base-v1 evals +
-# hardware evidence are green (see RELEASE_V1.md §10).
+# hardware evidence are green (see docs/eliza-1-pipeline/06-test-matrix.md).
 #
 # Auth: requires an `HF_TOKEN` with WRITE access to BOTH the `milady-ai` org
 # (source — to move out of it) and the `elizaos` org (destination + create).

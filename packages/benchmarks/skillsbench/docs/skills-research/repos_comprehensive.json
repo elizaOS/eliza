@@ -141,7 +141,7 @@
     {
       "repo": "zenml-io/zenml",
       "stars": 5131,
-      "description": "ZenML \ud83d\ude4f: One AI Platform from Pipelines to Agents. https://zenml.io.",
+      "description": "ZenML 🙏: One AI Platform from Pipelines to Agents. https://zenml.io.",
       "language": "Python",
       "skill_count": 1,
       "skill_paths": [
@@ -1019,7 +1019,7 @@
     {
       "repo": "TencentCloudBase/awesome-cloudbase-examples",
       "stars": 324,
-      "description": "Awesome Tencent CloudBase Examples \u817e\u8baf\u4e91\u5f00\u53d1\u6848\u4f8b",
+      "description": "Awesome Tencent CloudBase Examples 腾讯云开发案例",
       "language": "JavaScript",
       "skill_count": 4,
       "skill_paths": [
@@ -1275,7 +1275,7 @@
     {
       "repo": "matyushkin/ds",
       "stars": 216,
-      "description": "\ud83d\udc68\u200d\ud83d\udd2c In Russian: \u041e\u0431\u043d\u043e\u0432\u043b\u044f\u0435\u043c\u0430\u044f \u0441\u0442\u0440\u0443\u043a\u0442\u0443\u0440\u0438\u0440\u043e\u0432\u0430\u043d\u043d\u0430\u044f \u043f\u043e\u0434\u0431\u043e\u0440\u043a\u0430 \u0431\u0435\u0441\u043f\u043b\u0430\u0442\u043d\u044b\u0445 \u0440\u0435\u0441\u0443\u0440\u0441\u043e\u0432 \u043f\u043e \u0442\u0435\u043c\u0430\u0442\u0438\u043a\u0430\u043c Data Science: \u043a\u0443\u0440\u0441\u044b, \u043a\u043d\u0438\u0433\u0438, \u043e\u0442\u043a\u0440\u044b\u0442\u044b\u0435 \u0434\u0430\u043d\u043d\u044b\u0435, \u0431\u043b\u043e\u0433\u0438 \u0438 \u0433\u043e\u0442\u043e\u0432\u044b\u0435 \u0440\u0435\u0448\u0435\u043d\u0438\u044f.",
+      "description": "👨‍🔬 In Russian: Обновляемая структурированная подборка бесплатных ресурсов по тематикам Data Science: курсы, книги, открытые данные, блоги и готовые решения.",
       "language": "Jupyter Notebook",
       "skill_count": 1,
       "skill_paths": [
@@ -3093,7 +3093,7 @@
     {
       "repo": "lingfengQAQ/webnovel-writer",
       "stars": 24,
-      "description": "AI\u9a71\u52a8\u7684\u957f\u7bc7\u7f51\u6587\u8f85\u52a9\u521b\u4f5c\u5de5\u5177 - \u57fa\u4e8eClaude Code\uff0c\u652f\u6301200\u4e07\u5b57\u8fde\u8f7d\u7ba1\u7406\uff0c\u5185\u7f6e\u9632\u5e7b\u89c9\u673a\u5236\u548c5\u7ef4\u8d28\u91cf\u5ba1\u67e5",
+      "description": "AI驱动的长篇网文辅助创作工具 - 基于Claude Code，支持200万字连载管理，内置防幻觉机制和5维质量审查",
       "language": "Python",
       "skill_count": 1,
       "skill_paths": [
@@ -5195,7 +5195,7 @@
     {
       "repo": "kojeomstudio/HELLO_MY_WORLD",
       "stars": 8,
-      "description": "\ub9c8\uc778\ud06c\ub798\ud504\ud2b8 \ubaa8\uc791 \uc624\ud508\uc18c\uc2a4 \ud504\ub85c\uc81d\ud2b8 \uc785\ub2c8\ub2e4.",
+      "description": "마인크래프트 모작 오픈소스 프로젝트 입니다.",
       "language": "C#",
       "skill_count": 1,
       "skill_paths": [
@@ -8511,7 +8511,7 @@
     {
       "repo": "browniesss/MapleWorlds",
       "stars": 3,
-      "description": "\uba54\uc774\ud50c\uc2a4\ud1a0\ub9ac \uc6d4\ub4dc\ub85c \uc81c\uc791\ud558\ub294 2D \ub514\ud39c\uc2a4 \uac8c\uc784",
+      "description": "메이플스토리 월드로 제작하는 2D 디펜스 게임",
       "language": null,
       "skill_count": 1,
       "skill_paths": [
@@ -14621,7 +14621,7 @@
     {
       "repo": "maree217/self-learning-browser-automation",
       "stars": 1,
-      "description": "Browser automation that learns from every interaction. Uses AI memory and reinforcement learning to get 27-122% better over time automatically. \ud83e\udde0",
+      "description": "Browser automation that learns from every interaction. Uses AI memory and reinforcement learning to get 27-122% better over time automatically. 🧠",
       "language": "TypeScript",
       "skill_count": 1,
       "skill_paths": [
@@ -14932,7 +14932,7 @@
     {
       "repo": "alvaretto/proyecto-r-exams-icfes-matematicas-optimizado",
       "stars": 1,
-      "description": "Proyecto r-exams para Saber ICFES en Matem\u00e1ticas, con un nuevo enfoque",
+      "description": "Proyecto r-exams para Saber ICFES en Matemáticas, con un nuevo enfoque",
       "language": "HTML",
       "skill_count": 1,
       "skill_paths": [
@@ -35890,7 +35890,7 @@
     {
       "repo": "doppleddiggong/YiSan",
       "stars": 0,
-      "description": "\uc5b8\ub9ac\uc5bc \uc5d4\uc9c4 5.6\uc5d0\uc11c \uad6c\ub3d9\ub418\ub294 \uc5ed\uc0ac \uccb4\ud5d8\ud615 \uac8c\uc784 \ud504\ub85c\uc81d\ud2b8 YiSan. \ucee4\uc2a4\ud140 Coffee/Latte \ub77c\uc774\ube0c\ub7ec\ub9ac\ub85c \uce90\ub9ad\ud130\u00b7\ub124\ud2b8\uc6cc\ud06c\u00b7\ud234\ub9c1\uc744 \ud655\uc7a5\ud558\uba70, \uc790\ub3d9 DevLog\u00b7PowerShell \ud14c\uc2a4\ud2b8\ub85c \ube4c\ub4dc \uc548\uc815\uc131\uc744 \uac15\ud654\ud569\ub2c8\ub2e4. ",
+      "description": "언리얼 엔진 5.6에서 구동되는 역사 체험형 게임 프로젝트 YiSan. 커스텀 Coffee/Latte 라이브러리로 캐릭터·네트워크·툴링을 확장하며, 자동 DevLog·PowerShell 테스트로 빌드 안정성을 강화합니다. ",
       "language": "C++",
       "skill_count": 1,
       "skill_paths": [
@@ -35916,7 +35916,7 @@
     {
       "repo": "andrecamatta/pq_heritor",
       "stars": 0,
-      "description": "Modelo atuarial para c\u00e1lculo de pens\u00e3o por morte de servidores p\u00fablicos (PNADC 2023 + AT-2012 IAM)",
+      "description": "Modelo atuarial para cálculo de pensão por morte de servidores públicos (PNADC 2023 + AT-2012 IAM)",
       "language": "Julia",
       "skill_count": 1,
       "skill_paths": [
@@ -35942,7 +35942,7 @@
     {
       "repo": "schmacka/printernizer",
       "stars": 0,
-      "description": "A tool to organize, manage, and streamline 3D printing workflows\u2014track print jobs, queue tasks, and monitor printers with ease.",
+      "description": "A tool to organize, manage, and streamline 3D printing workflows—track print jobs, queue tasks, and monitor printers with ease.",
       "language": "Python",
       "skill_count": 1,
       "skill_paths": [
@@ -36915,7 +36915,7 @@
     {
       "repo": "Parlay-Kei/stratanoble-site",
       "stars": 0,
-      "description": "Public marketing site & assets for Strata Noble Consulting \u2014 strategic growth, data-driven solutions.",
+      "description": "Public marketing site & assets for Strata Noble Consulting — strategic growth, data-driven solutions.",
       "language": "TypeScript",
       "skill_count": 1,
       "skill_paths": [
@@ -38309,7 +38309,7 @@
     {
       "repo": "jazzyalex/agent-sessions",
       "stars": 192,
-      "description": "Session browser + Agents Analytics + Limits tracker for Codex CLI,  Claude Code, OpenCode, Gemini CLI, Factory Droid  & GitHub Copilot CLI. Search ALL past sessions, filter by folder\u00b7repo, resume instantly, see rate limits in real-time. Native macOS app.",
+      "description": "Session browser + Agents Analytics + Limits tracker for Codex CLI,  Claude Code, OpenCode, Gemini CLI, Factory Droid  & GitHub Copilot CLI. Search ALL past sessions, filter by folder·repo, resume instantly, see rate limits in real-time. Native macOS app.",
       "language": "Swift",
       "skill_count": 1,
       "skill_paths": [
@@ -38655,7 +38655,7 @@
     {
       "repo": "panaversity/agentfactory",
       "stars": 98,
-      "description": "Build Digital FTEs that work 24/7. Your domain expertise\u2014whether in sales, legal, finance, or healthcare\u2014becomes an autonomous AI agent that never sleeps.",
+      "description": "Build Digital FTEs that work 24/7. Your domain expertise—whether in sales, legal, finance, or healthcare—becomes an autonomous AI agent that never sleeps.",
       "language": "Python",
       "skill_count": 2,
       "skill_paths": [
@@ -38839,7 +38839,7 @@
     {
       "repo": "aircrushin/promptMinder",
       "stars": 83,
-      "description": "\u4e00\u4e2a\u5f00\u6e90\u7684\uff0c\u4e13\u6ce8\u4e8e\u63d0\u793a\u8bcd\u7ba1\u7406\u7684\u5e73\u53f0 / An open-source platform focused on prompt management",
+      "description": "一个开源的，专注于提示词管理的平台 / An open-source platform focused on prompt management",
       "language": "JavaScript",
       "skill_count": 1,
       "skill_paths": [
@@ -39776,16 +39776,6 @@
       "category": "skill_focused"
     },
     {
-      "repo": "parallax-ai-llc/claude-orchestrator",
-      "owner": "parallax-ai-llc",
-      "name": "claude-orchestrator",
-      "stars": 25,
-      "skill_count": 4,
-      "url": "https://github.com/parallax-ai-llc/claude-orchestrator",
-      "source": "skillsmp",
-      "category": "skill_focused"
-    },
-    {
       "repo": "StackOneHQ/stackone-ai-node",
       "owner": "StackOneHQ",
       "name": "stackone-ai-node",
@@ -40488,7 +40478,7 @@
     {
       "repo": "mjunaidca/mjs-agent-skills",
       "stars": 14,
-      "description": "A curated collection of Agent Skills \u2014 reusable units of intelligence that teach AI General Agents how to perform specific tasks autonomously.",
+      "description": "A curated collection of Agent Skills — reusable units of intelligence that teach AI General Agents how to perform specific tasks autonomously.",
       "language": "Python",
       "skill_count": 1,
       "skill_paths": [
@@ -40708,7 +40698,7 @@
     {
       "repo": "oowanghuan/ai-coding-template",
       "stars": 12,
-      "description": "AI \u534f\u4f5c\u5f00\u53d1\u6846\u67b6\u6a21\u677f - Claude Code \u5de5\u5177\u5e93 + 8 \u9636\u6bb5\u5de5\u4f5c\u6d41 + \u6807\u51c6\u5316\u6587\u6863\u6a21\u677f",
+      "description": "AI 协作开发框架模板 - Claude Code 工具库 + 8 阶段工作流 + 标准化文档模板",
       "language": "Vue",
       "skill_count": 1,
       "skill_paths": [
@@ -41602,7 +41592,7 @@
     {
       "repo": "owenliang/deepagent",
       "stars": 7,
-      "description": "langgraph\u7684deepagent\u6e90\u7801\u5206\u6790",
+      "description": "langgraph的deepagent源码分析",
       "language": "Python",
       "skill_count": 1,
       "skill_paths": [
@@ -42351,7 +42341,7 @@
     {
       "repo": "Justdvp/claude-code-templates",
       "stars": 5,
-      "description": "\ud83d\udee0\ufe0f Simplify your coding with ready-to-use configurations for Anthropic's Claude Code, designed to enhance productivity and streamline your workflow.",
+      "description": "🛠️ Simplify your coding with ready-to-use configurations for Anthropic's Claude Code, designed to enhance productivity and streamline your workflow.",
       "language": "JavaScript",
       "skill_count": 1,
       "skill_paths": [
@@ -43443,7 +43433,7 @@
     {
       "repo": "jeongsk/claude-skills",
       "stars": 3,
-      "description": "Claude Code \ud50c\ub7ec\uadf8\uc778 \ubc0f \uc2a4\ud0ac \ubaa8\uc74c",
+      "description": "Claude Code 플러그인 및 스킬 모음",
       "language": "Python",
       "skill_count": 1,
       "skill_paths": [

@@ -11,7 +11,6 @@
  */
 
 import { Crown } from "lucide-react";
-// biome-ignore lint/correctness/noUnusedImports: Required for JSX transform in tests.
 import type * as React from "react";
 import type { ContinuousChatLatency } from "../../../hooks/useContinuousChat";
 import { cn } from "../../../lib/utils";

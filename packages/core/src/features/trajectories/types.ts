@@ -1,12 +1,7 @@
-import type { UUID } from "../../types";
+import type { JsonObject, JsonPrimitive, JsonValue, UUID } from "../../types";
 import type { ContextEvent } from "../../types/context-object";
 
-export type JsonPrimitive = string | number | boolean | null;
-export type JsonValue =
-	| JsonPrimitive
-	| JsonValue[]
-	| { [key: string]: JsonValue };
-export type JsonObject = { [key: string]: JsonValue };
+export type { JsonObject, JsonPrimitive, JsonValue };
 
 export const CONTEXT_OBJECT_TRAJECTORY_VERSION = 5 as const;
 export type ContextObjectTrajectoryVersion =

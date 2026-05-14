@@ -2401,7 +2401,10 @@ export class DiscordService extends Service implements IDiscordService {
 	 * Handles tasks to be performed once the Discord client is fully ready. Delegates to extracted module.
 	 * @private
 	 */
-	private async onReadyForAccount(accountId: string, readyClient: any) {
+	private async onReadyForAccount(
+		accountId: string,
+		readyClient: DiscordJsClient<true>,
+	) {
 		const state = this.requireAccountState(accountId);
 		return onReadyExtracted(
 			this.createAccountServiceFacade(state),

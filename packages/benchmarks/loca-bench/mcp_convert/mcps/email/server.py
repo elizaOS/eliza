@@ -13,7 +13,6 @@ import logging
 import sys
 import os
 import argparse
-from typing import Any, Dict
 
 # Suppress logging unless verbose mode is enabled
 if os.environ.get('LOCA_QUIET', '').lower() in ('1', 'true', 'yes'):
@@ -562,7 +561,7 @@ class EmailMCPServer(BaseMCPServer):
     async def check_connection(self, args: dict):
         """Check connection"""
         try:
-            data = self.db.check_connection()
+            self.db.check_connection()
             return self.create_text_response("Connection Status:\nIMAP: ✓ Connected\nSMTP: ✓ Connected\n\nAll connections are working properly")
         except Exception as e:
             return self.create_text_response(f"Connection check failed: {str(e)}")

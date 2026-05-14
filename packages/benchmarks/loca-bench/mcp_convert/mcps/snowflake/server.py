@@ -14,7 +14,6 @@ import asyncio
 import sys
 import os
 import uuid
-import json
 
 # Add project root to path
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))

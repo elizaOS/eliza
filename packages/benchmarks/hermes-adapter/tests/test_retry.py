@@ -8,11 +8,9 @@ raises ``RateLimitError`` twice then returns a real completion shape.
 from __future__ import annotations
 
 import sys
-import time
 import types
 from dataclasses import dataclass
 from typing import Any
-from unittest.mock import patch
 
 import pytest
 

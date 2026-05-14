@@ -178,14 +178,19 @@ class AppBlockerPlugin : Plugin() {
 
         call.resolve(
             JSObject().apply {
+                put("status", if (saved != null) "active" else "inactive")
                 put("available", true)
                 put("active", saved != null)
                 put("platform", "android")
                 put("engine", "usage-stats-overlay")
+                put("capabilities", appBlockerCapabilities())
                 put("blockedCount", saved?.packageNames?.size ?: 0)
                 put("blockedPackageNames", JSArray(saved?.packageNames ?: emptyList<String>()))
                 put("endsAt", saved?.endsAtEpochMs?.let { Instant.ofEpochMilli(it).toString() })
                 put("permissionStatus", permission.getString("status"))
+                put("canRequest", permission.getBool("canRequest"))
+                put("canOpenSettings", permission.getBool("canOpenSettings"))
+                put("settingsTarget", permission.opt("settingsTarget"))
                 if (!reason.isNullOrBlank()) {
                     put("reason", reason)
                 }
@@ -209,7 +214,32 @@ class AppBlockerPlugin : Plugin() {
         return JSObject().apply {
             put("status", if (usageAccess && overlayAccess) "granted" else "not-determined")
             put("canRequest", !usageAccess || !overlayAccess)
+            put("canOpenSettings", !usageAccess || !overlayAccess)
+            put("settingsTarget", settingsTarget(usageAccess, overlayAccess))
+            put("engine", "usage-stats-overlay")
+            put("capabilities", appBlockerCapabilities())
             missingPermissionReason()?.let { put("reason", it) }
+        }
+    }
+
+    private fun appBlockerCapabilities(): JSObject {
+        return JSObject().apply {
+            put("canSelectApps", true)
+            put("canBlockApps", true)
+            put("canScheduleTimedBlocks", true)
+            put("canUnblockEarly", true)
+            put("requiresFamilyControls", false)
+            put("requiresUsageAccess", true)
+            put("requiresOverlay", true)
+        }
+    }
+
+    private fun settingsTarget(usageAccess: Boolean, overlayAccess: Boolean): String? {
+        return when {
+            !usageAccess && !overlayAccess -> "deviceSettings"
+            !usageAccess -> "usageAccess"
+            !overlayAccess -> "overlay"
+            else -> null
         }
     }
 

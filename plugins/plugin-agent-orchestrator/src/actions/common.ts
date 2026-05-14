@@ -29,6 +29,7 @@ export interface AcpActionService {
   sendKeysToSession(sessionId: string, keys?: string): Promise<void>;
   stopSession(sessionId: string, force?: boolean): Promise<void>;
   cancelSession?(sessionId: string): Promise<void>;
+  getSessionOutput?(sessionId: string, lines?: number): Promise<string>;
   listSessions(): SessionInfo[] | Promise<SessionInfo[]>;
   getSession(
     sessionId: string,
@@ -64,7 +65,6 @@ export function getAcpService(
 ): AcpActionService | undefined {
   return (runtime.getService?.("ACP_SERVICE") ??
     runtime.getService?.("ACP_SUBPROCESS_SERVICE") ??
-    runtime.getService?.("PTY_SERVICE") ??
     undefined) as unknown as AcpActionService | undefined;
 }
 

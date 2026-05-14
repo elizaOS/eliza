@@ -130,7 +130,14 @@ public class ElizaWebsiteBlockerPlugin: CAPPlugin, CAPBridgedPlugin {
 
     @objc func openSettings(_ call: CAPPluginCall) {
         Task {
-            call.resolve(["opened": await openSettingsInternal()])
+            let opened = await openSettingsInternal()
+            let reason: Any = opened ? NSNull() : "iOS declined to open Settings."
+            call.resolve([
+                "opened": opened,
+                "target": "contentBlocker",
+                "actualTarget": "contentBlocker",
+                "reason": reason,
+            ])
         }
     }
 
@@ -141,12 +148,18 @@ public class ElizaWebsiteBlockerPlugin: CAPPlugin, CAPBridgedPlugin {
                 return [
                     "status": "granted",
                     "canRequest": false,
+                    "canOpenSettings": true,
+                    "settingsTarget": "contentBlocker",
+                    "engine": "content-blocker",
                 ]
             }
 
             return [
                 "status": "not-determined",
                 "canRequest": true,
+                "canOpenSettings": true,
+                "settingsTarget": "contentBlocker",
+                "engine": "content-blocker",
                 "reason": disabledReason(
                     configuredWebsites: WebsiteBlockerShared.loadState()?.websites ?? []
                 ),
@@ -155,6 +168,9 @@ public class ElizaWebsiteBlockerPlugin: CAPPlugin, CAPBridgedPlugin {
             return [
                 "status": "not-determined",
                 "canRequest": true,
+                "canOpenSettings": true,
+                "settingsTarget": "contentBlocker",
+                "engine": "content-blocker",
                 "reason": error.localizedDescription,
             ]
         }
@@ -167,17 +183,22 @@ public class ElizaWebsiteBlockerPlugin: CAPPlugin, CAPBridgedPlugin {
         let permissionStatus = permission["status"] as? String ?? "not-determined"
         let enabled = permissionStatus == "granted"
         let reason = permission["reason"] as? String
+        let active = enabled && !websites.isEmpty
         var status = statusPayload(
             storedState: storedState,
-            active: enabled && !websites.isEmpty,
+            active: active,
             requiresElevation: !enabled
         )
+        status["status"] = active ? "active" : "inactive"
         status["hostsFilePath"] = NSNull()
         status["engine"] = "content-blocker"
         status["platform"] = "ios"
         status["supportsElevationPrompt"] = false
-        status["elevationPromptMethod"] = enabled ? NSNull() : "system-settings"
+        status["elevationPromptMethod"] = enabled ? NSNull() as Any : "system-settings"
         status["permissionStatus"] = permissionStatus
+        status["canRequest"] = permission["canRequest"] as? Bool ?? false
+        status["canOpenSettings"] = permission["canOpenSettings"] as? Bool ?? true
+        status["settingsTarget"] = permission["settingsTarget"] ?? "contentBlocker"
         status["canRequestPermission"] = permission["canRequest"] as? Bool ?? false
         status["canOpenSystemSettings"] = true
         status["reason"] = nullable(reason)
@@ -197,6 +218,7 @@ public class ElizaWebsiteBlockerPlugin: CAPPlugin, CAPBridgedPlugin {
         let matchMode = storedState?.matchMode ?? WebsiteBlockerShared.exactMatchMode
 
         return [
+            "status": active ? "active" : "inactive",
             "available": true,
             "active": active,
             "endsAt": nullable(WebsiteBlockerShared.endsAtString(for: storedState)),

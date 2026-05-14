@@ -9,6 +9,7 @@ import type {
 	UUID,
 } from "../../../types/index.ts";
 import { isSyntheticConversationArtifactMemory } from "../../../utils/synthetic-conversation-artifact.ts";
+import { isObjectRecord as isRecord } from "../../../utils/type-guards.ts";
 import type { MemoryService } from "../services/memory-service.ts";
 import { logAdvancedMemoryTrajectory } from "../trajectory.ts";
 import { LongTermMemoryCategory, type MemoryExtraction } from "../types.ts";
@@ -77,10 +78,6 @@ export interface LongTermMemoryPrepared {
 }
 
 const SUMMARY_PLACEHOLDER = "Summary not available";
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 function toStringArray(value: unknown): string[] {
 	if (!Array.isArray(value)) return [];
@@ -297,7 +294,7 @@ export const summaryEvaluator: Evaluator<SummaryOutput, SummaryPrepared> = {
 		const recentMessages = prepared.existingSummary
 			? prepared.summarizationMessages
 			: prepared.allDialogueMessages;
-		return `Update the rolling conversation summary.
+		return `Update rolling summary. Merge recent messages into existing summary/topics. Keep key info, decisions, open questions, main topics. If nothing useful: text="", topics=[], keyPoints=[].
 
 Existing summary:
 ${prepared.existingSummary?.summary ?? "None"}
@@ -306,13 +303,7 @@ Existing topics:
 ${prepared.existingSummary?.topics?.join(", ") || "None"}
 
 Recent messages to merge:
-${formatMessages(runtime, recentMessages)}
-
-Rules:
-- Capture main topics, key information, decisions, and questions.
-- Merge new messages into the existing summary when present.
-- Keep the text concise enough to remain useful as future context.
-- If there is nothing useful, return text as an empty string with empty arrays.`;
+${formatMessages(runtime, recentMessages)}`;
 	},
 	parse: parseSummaryOutput,
 	processors: [
@@ -426,21 +417,7 @@ export const longTermMemoryEvaluator: Evaluator<
 		return prepareLongTermMemory(runtime, message);
 	},
 	prompt({ runtime, prepared }) {
-		return `Extract only high-confidence persistent memories about the user.
-
-Memory categories:
-- episodic: personal experiences and specific events with temporal or spatial context.
-- semantic: stable facts, roles, expertise, primary tools, or identity.
-- procedural: repeatable workflows, methods, or skills the user uses.
-
-Quality gates:
-- Will matter in three or more months.
-- Specific, concrete, and unique to this user.
-- Confidence must be at least 0.85.
-- Adds new information not already present.
-- Maximum three memories.
-
-Do not extract one-time tasks, current bugs, exploratory questions, temporary context, pleasantries, generic patterns, rolling summaries, compacted ledgers, or synthetic compaction artifacts.
+		return `Extract up to 3 high-confidence persistent user memories. Categories: episodic, semantic, procedural. Keep only specific, concrete, user-unique info likely useful in 3+ months, confidence >=0.85, not already present. Skip one-time tasks, current bugs, exploratory questions, temporary context, pleasantries, generic patterns, rolling summaries, compacted ledgers, synthetic compaction artifacts.
 
 Existing long-term memories:
 ${prepared.existingMemories}

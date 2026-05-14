@@ -34,15 +34,13 @@ type ResolveSubaction = "approve" | "reject";
 
 const SUBACTIONS: SubactionsMap<ResolveSubaction> = {
   approve: {
-    description:
-      "Approve a queued action; reason optional in the user's language.",
+    description: "Approve queued action; optional reason, user language.",
     descriptionCompressed: "approve queued action reason-optional multilingual",
     required: [],
     optional: ["requestId", "reason"],
   },
   reject: {
-    description:
-      "Reject a queued action; reason optional in the user's language.",
+    description: "Reject queued action; optional reason, user language.",
     descriptionCompressed: "reject queued action reason-optional multilingual",
     required: [],
     optional: ["requestId", "reason"],
@@ -421,9 +419,10 @@ export const resolveRequestAction: Action & {
     "risk:irreversible",
   ],
   description:
-    "Approve or reject a pending action queued for owner confirmation (send_email, send_message, book_travel, voice_call, etc.). Subactions: approve, reject. requestId is optional — the handler inspects the pending queue and infers the target from owner intent, or asks a follow-up.",
+    "Approve/reject pending owner-confirmation action: send_email, send_message, book_travel, voice_call, etc. " +
+    "Subactions approve|reject. requestId optional; handler inspects pending queue, infers owner intent, or asks follow-up.",
   descriptionCompressed:
-    "approve|reject queued action; requestId optional; covers send_email|send_message|book_travel|voice_call",
+    "approve|reject queue; requestId optional; send_email|send_message|book_travel|voice_call",
   contexts: [
     "email",
     "messaging",
@@ -440,21 +439,20 @@ export const resolveRequestAction: Action & {
   parameters: [
     {
       name: "action",
-      description: "One of: approve, reject.",
+      description: "approve | reject.",
       required: false,
       schema: { type: "string" as const, enum: ["approve", "reject"] },
     },
     {
       name: "requestId",
       description:
-        "Approval request id to approve or reject. Optional: omit it when the user references the pending request in natural language.",
+        "Approval request id. Optional when user references pending request.",
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "reason",
-      description:
-        "Optional short reason for the approval or rejection, in the user's language.",
+      description: "Optional approve/reject reason, user language.",
       required: false,
       schema: { type: "string" as const },
     },

@@ -1,10 +1,10 @@
 ---
 title: "LP Manager Plugin"
 sidebarTitle: "LP Manager"
-description: "A unified plugin for managing liquidity positions on Solana DEXs (Raydium, Orca, etc.)"
+description: "A canonical plugin for managing liquidity positions on Solana DEXs (Raydium, Orca, etc.)"
 ---
 
-Unified liquidity position management across Solana DEXs.
+Canonical liquidity position management across Solana DEXs.
 
 **Package:** `@elizaos/plugin-lp-manager`
 

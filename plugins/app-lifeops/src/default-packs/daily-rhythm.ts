@@ -150,6 +150,7 @@ export const dailyRhythmPack: DefaultPack = {
   description:
     "A gentle morning hello, an evening goodnight, and one start-of-day check-in. Three records — the agent's heartbeat.",
   defaultEnabled: true,
+  requiredCapabilities: [],
   records: [gmRecord, gnRecord, checkinRecord],
   uiHints: {
     summaryOnDayOne:

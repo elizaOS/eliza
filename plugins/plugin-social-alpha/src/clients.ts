@@ -30,6 +30,28 @@ type QueryParams =
 	| Record<string, string | number | boolean | null | undefined>
 	| URLSearchParams;
 
+type JupiterSwapQuote = Record<string, unknown>;
+type JupiterSwapResponse = {
+	swapTransaction?: string;
+	error?: unknown;
+};
+type HeliusTokenAccountsParams = {
+	limit: number;
+	displayOptions: Record<string, never>;
+	mint: string;
+	cursor?: string;
+};
+type HeliusTokenAccount = {
+	owner?: string;
+	amount?: string | number;
+};
+type HeliusTokenAccountsResponse = {
+	result?: {
+		token_accounts?: HeliusTokenAccount[];
+		cursor?: string;
+	};
+};
+
 /**
  * Interface representing retry options for a retry mechanism.
  * @typedef {Object} RetryOptions
@@ -99,9 +121,9 @@ const calculateDelay = (
 	return Math.min(delay, options.maxDelay);
 };
 
-const isRetryableError = (error: any): boolean =>
-	error.name === "TypeError" ||
-	error.name === "AbortError" ||
+const isRetryableError = (error: unknown): boolean =>
+	(error instanceof Error &&
+		(error.name === "TypeError" || error.name === "AbortError")) ||
 	error instanceof RequestError;
 
 /**
@@ -158,11 +180,13 @@ export const http = {
 				}
 
 				return res;
-			} catch (error: any) {
+			} catch (error: unknown) {
 				if (isRetryableError(error) && attempt < retryOptions.maxRetries) {
 					const delay = calculateDelay(attempt, retryOptions);
+					const errorMessage =
+						error instanceof Error ? error.message : String(error);
 					console.warn(
-						`Request failed with error: ${error.message}. ` +
+						`Request failed with error: ${errorMessage}. ` +
 							`Retrying in ${delay}ms (attempt ${attempt}/${retryOptions.maxRetries})`,
 					);
 					await sleep(delay);
@@ -176,7 +200,7 @@ export const http = {
 		}
 	},
 
-	async json<T = any>(url: string, options?: RequestOptions) {
+	async json<T = unknown>(url: string, options?: RequestOptions) {
 		const res = await this.request(url, {
 			...options,
 			headers: {
@@ -195,7 +219,7 @@ export const http = {
 				params,
 			});
 		},
-		async json<T = any>(
+		async json<T = unknown>(
 			url: string,
 			params?: QueryParams,
 			options?: RequestInit,
@@ -217,7 +241,7 @@ export const http = {
 			});
 		},
 
-		async json<ReturnType = any, Body extends object = object>(
+		async json<ReturnType = unknown, Body extends object = object>(
 			url: string,
 			body: Body,
 			options?: RequestOptions,
@@ -230,13 +254,13 @@ export const http = {
 		},
 	},
 
-	async jsonrpc<_ReturnType = any, Params extends object = object>(
+	async jsonrpc<_ReturnType = unknown, Params extends object = object>(
 		url: string,
 		method: string,
 		params: Params,
 		headers?: HeadersInit,
 	) {
-		return this.post.json(
+		return this.post.json<_ReturnType>(
 			url,
 			{
 				jsonrpc: "2.0",
@@ -248,13 +272,13 @@ export const http = {
 		);
 	},
 
-	async graphql<_ReturnType = any, Variables extends object = object>(
+	async graphql<_ReturnType = unknown, Variables extends object = object>(
 		url: string,
 		query: string,
 		variables: Variables,
 		headers?: HeadersInit,
 	) {
-		return this.post.json(
+		return this.post.json<_ReturnType>(
 			url,
 			{
 				query,
@@ -324,11 +348,14 @@ export class JupiterClient {
 
 	/**
 	 * Perform a swap operation using the provided quote data and user's wallet public key.
-	 * @param {any} quoteData - The data required for the swap operation.
+	 * @param quoteData - The data required for the swap operation.
 	 * @param {string} walletPublicKey - The public key of the user's wallet.
-	 * @returns {Promise<any>} The result of the swap operation.
+	 * @returns The swap transaction response.
 	 */
-	static async swap(quoteData: any, walletPublicKey: string) {
+	static async swap(
+		quoteData: JupiterSwapQuote,
+		walletPublicKey: string,
+	): Promise<JupiterSwapResponse> {
 		const headers: Record<string, string> = {};
 		if (JupiterClient.xApiKey) {
 			headers["x-api-key"] = JupiterClient.xApiKey;
@@ -342,7 +369,7 @@ export class JupiterClient {
 			dynamicComputeUnitLimit: true,
 		};
 
-		const swapData = await http.post.json(
+		const swapData = await http.post.json<JupiterSwapResponse>(
 			`${JupiterClient.baseUrl}/swap`,
 			swapRequestBody,
 			{
@@ -400,7 +427,7 @@ export class DexscreenerClient {
 	 * @param {DexscreenerOptions} [options] - Optional options for the request
 	 * @returns {Promise<T>} - A promise that resolves with the data returned from the API
 	 */
-	async request<T = any>(
+	async request<T = unknown>(
 		path: string,
 		params?: QueryParams,
 		options?: DexscreenerOptions,
@@ -528,7 +555,7 @@ export class HeliusClient {
 			throw new Error("missing HELIUS_API_KEY");
 		}
 
-		return new HeliusClient(apiKey, runtime);
+		return new HeliusClient(String(apiKey), runtime);
 	}
 
 	/**
@@ -561,7 +588,7 @@ export class HeliusClient {
 
 		try {
 			while (true) {
-				const params: any = {
+				const params: HeliusTokenAccountsParams = {
 					limit: limit,
 					displayOptions: {},
 					mint: address,
@@ -571,14 +598,19 @@ export class HeliusClient {
 				}
 				if (page > 2) break;
 
-				const data = await http.jsonrpc(url, "getTokenAccounts", params);
+				const data = await http.jsonrpc<
+					HeliusTokenAccountsResponse,
+					HeliusTokenAccountsParams
+				>(url, "getTokenAccounts", params);
 
 				if (!data?.result?.token_accounts?.length) break;
 
-				data.result.token_accounts.forEach((account: any) => {
+				data.result.token_accounts.forEach((account) => {
 					const owner = account.owner;
-					const balance = Number.parseFloat(account.amount);
-					allHoldersMap.set(owner, (allHoldersMap.get(owner) || 0) + balance);
+					const balance = Number.parseFloat(String(account.amount ?? 0));
+					if (owner && Number.isFinite(balance)) {
+						allHoldersMap.set(owner, (allHoldersMap.get(owner) || 0) + balance);
+					}
 				});
 				cursor = data.result.cursor;
 				page++;
@@ -643,7 +675,7 @@ export class CoingeckoClient {
 			throw new Error("missing COINGECKO_API_KEY");
 		}
 
-		return new CoingeckoClient(apiKey, runtime);
+		return new CoingeckoClient(String(apiKey), runtime);
 	}
 
 	/**
@@ -654,7 +686,7 @@ export class CoingeckoClient {
 	 * @param {CoingeckoOptions} [options] - Additional options for the request.
 	 * @returns {Promise<T>} The response data from the API.
 	 */
-	async request<T = any>(
+	async request<T = unknown>(
 		path: string,
 		params?: QueryParams,
 		options?: CoingeckoOptions,
@@ -814,7 +846,7 @@ export class BirdeyeClient {
 	 * @param {BirdeyeClientHeaders} [headers] - Optional additional headers to include in the request.
 	 * @returns {Promise<T>} A Promise that resolves with the data received from the API request.
 	 */
-	static async request<T = any>(
+	static async request<T = unknown>(
 		apiKey: string,
 		path: string,
 		params?: QueryParams,
@@ -866,7 +898,7 @@ export class BirdeyeClient {
 			throw new Error("missing BIRDEYE_API_KEY");
 		}
 
-		return new BirdeyeClient(apiKey, runtime);
+		return new BirdeyeClient(String(apiKey), runtime);
 	}
 
 	/**
@@ -878,7 +910,7 @@ export class BirdeyeClient {
 	 * @param {boolean} [forceRefresh] - Flag to force refresh the cache.
 	 * @returns {Promise<T>} The response data from the request.
 	 */
-	async request<T = any>(
+	async request<T = unknown>(
 		path: string,
 		params: QueryParams,
 		options?: BirdeyeRequestOptions,

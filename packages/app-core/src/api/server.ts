@@ -655,13 +655,10 @@ async function handleCompatRoute(
   // Dev observability routes — extracted to dev-compat-routes.ts
   if (await handleDevCompatRoutes(req, res, state)) return true;
 
-  // Bootstrap-token exchange (P0 cloud-provisioned auth) — must precede the
-  // legacy auth-pairing handler so the dedicated rate-limited route owns
-  // `/api/auth/bootstrap/exchange`.
+  // Must precede the auth-pairing handler so the rate-limited route owns /api/auth/bootstrap/exchange.
   if (await handleAuthBootstrapRoutes(req, res, state)) return true;
 
-  // P1 session routes: setup, login/password, logout, me, sessions list/revoke.
-  // These own cookie + CSRF lifecycle for the dashboard.
+  // Cookie + CSRF session lifecycle (setup, login, logout, me, sessions).
   if (await handleAuthSessionRoutes(req, res, state)) return true;
 
   // Auth / pairing / onboarding status — extracted to auth-pairing-routes.ts

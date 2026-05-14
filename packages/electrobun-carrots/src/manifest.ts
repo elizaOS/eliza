@@ -32,12 +32,6 @@ export interface CarrotConsentRequestInput {
   previousGrant?: CarrotPermissionGrant | null;
 }
 
-function sourceKind(
-  source: CarrotInstallSource,
-): CarrotPermissionConsentRequest["sourceKind"] {
-  return source.kind;
-}
-
 function enabledHostPermissions(
   permissions: CarrotPermissionGrant,
 ): HostPermission[] {
@@ -92,7 +86,7 @@ export function buildCarrotPermissionConsentRequest(
     carrotId: input.manifest.id,
     carrotName: input.manifest.name,
     version: input.manifest.version,
-    sourceKind: sourceKind(input.source),
+    sourceKind: input.source.kind,
     sourceLabel: input.sourceLabel,
     message: input.message,
     confirmLabel: input.confirmLabel,

@@ -33,7 +33,6 @@ import { activeSubAgentsProvider } from "./providers/active-sub-agents.js";
 import { activeWorkspaceContextProvider } from "./providers/active-workspace-context.js";
 import { availableAgentsProvider } from "./providers/available-agents.js";
 import { AcpService } from "./services/acp-service.js";
-import { PTYService } from "./services/pty-service.js";
 import { SubAgentRouter } from "./services/sub-agent-router.js";
 import { detectOrchestratorTerminalSupport } from "./services/terminal-capabilities.js";
 import { CodingWorkspaceService } from "./services/workspace-service.js";
@@ -69,10 +68,9 @@ export function createAgentOrchestratorPlugin(): Plugin {
   // action so reaches for SPAWN_AGENT / CREATE_TASK / etc. surface a clean error
   // instead of attempting (and failing) to spawn.
   const orchestratorServices: ServiceClass[] = codeExecutionAllowed
-    ? [
+      ? [
         serviceClass(AcpService),
         serviceClass(SubAgentRouter),
-        serviceClass(PTYService),
         serviceClass(CodingWorkspaceService),
       ]
     : [];
@@ -130,7 +128,7 @@ export function createAgentOrchestratorPlugin(): Plugin {
       ? "Orchestrate coding sub-agents via the Agent Client Protocol (acpx) with workspace operations, GitHub integration, task history, sub-agent routing, and skill-recommender support. Single TASKS parent action covers create / spawn_agent / send / stop_agent / list_agents / cancel / history / control / share / provision_workspace / submit_workspace / manage_issues / archive / reopen."
       : (terminalSupport.message ??
         "Coding-agent orchestrator is unavailable in this runtime. Exposes a single TASKS stub that explains the limitation when the planner reaches for a coding-agent action."),
-    // Services manage ACPX subprocesses, PTY sessions, workspaces, and sub-agent routing.
+    // Services manage ACPX subprocesses, workspaces, and sub-agent routing.
     services: orchestratorServices,
     actions: orchestratorActions,
     providers: orchestratorProviders,
@@ -193,16 +191,6 @@ export {
 
 // ACP service surface.
 export { AcpService } from "./services/acp-service.js";
-// PTY service surface.
-export { cleanForChat } from "./services/ansi-utils.js";
-export type {
-  CodingAgentType,
-  PTYServiceConfig,
-  SessionEventName as PTYSessionEventName,
-  SessionInfo as PTYSessionInfo,
-  SpawnSessionOptions as PTYSpawnSessionOptions,
-} from "./services/pty-service.js";
-export { getCoordinator, PTYService } from "./services/pty-service.js";
 export {
   AcpSessionStore,
   FileSessionStore,
@@ -210,27 +198,6 @@ export {
   RuntimeDbSessionStore,
 } from "./services/session-store.js";
 export { SubAgentRouter } from "./services/sub-agent-router.js";
-export type {
-  AgentDecisionCallback,
-  ChatMessageCallback,
-  CoordinationDecision,
-  PendingDecision,
-  SupervisionLevel,
-  SwarmCompleteCallback,
-  SwarmEvent,
-  TaskCompletionSummary,
-  TaskContext,
-  WsBroadcastCallback,
-} from "./services/swarm-coordinator.js";
-export { SwarmCoordinator } from "./services/swarm-coordinator.js";
-export type {
-  CoordinationLLMResponse,
-  SharedDecision,
-} from "./services/swarm-coordinator-prompts.js";
-export {
-  buildBlockedEventMessage,
-  buildTurnCompleteEventMessage,
-} from "./services/swarm-coordinator-prompts.js";
 // ACP types
 export type {
   AcpEventCallback,
