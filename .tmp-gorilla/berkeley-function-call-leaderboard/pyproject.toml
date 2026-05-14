@@ -46,7 +46,7 @@ dependencies = [
     "sentence-transformers>=2.7.0",
     "faiss-cpu==1.11.0",
     "networkx==3.3",
-    "filelock==3.20.0"
+    "filelock==3.20.3"
 ]
 
 [project.scripts]
@@ -71,7 +71,7 @@ include = ["bfcl_eval*"]
 Repository = "https://github.com/ShishirPatil/gorilla/tree/main/berkeley-function-call-leaderboard"
 
 [project.optional-dependencies]
-oss_eval_vllm = ["vllm==0.8.5"]
+oss_eval_vllm = ["vllm==0.20.0"]
 oss_eval_sglang = ["sglang[all]"]
 wandb = ["wandb==0.18.5"]
 
