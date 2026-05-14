@@ -428,6 +428,7 @@ def test_remaining_smoke_defaults_bound_expensive_adapters(tmp_path: Path) -> No
         "lifeops_bench": ("--limit", "2"),
         "mint": ("--max-tasks", "1"),
         "realm": ("--max-tasks", "1"),
+        "bfcl": ("--sample", "2"),
         "hyperliquid_bench": ("--max-steps", "1"),
         "hyperliquidbench": ("--max-steps", "1"),
         "experience": ("--queries", "2"),
