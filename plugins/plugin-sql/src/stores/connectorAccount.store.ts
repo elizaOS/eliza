@@ -579,7 +579,7 @@ export class ConnectorAccountStore implements Store {
     params: ListConnectorAccountAuditEventsParams = {}
   ): Promise<ConnectorAccountAuditEventRecord[]> {
     return this.ctx.withRetry(async () => {
-      const conditions = [];
+      const conditions: SQL<unknown>[] = [];
       const agentId = (params.agentId ?? this.ctx.agentId) as UUID;
       conditions.push(eq(connectorAccountAuditEventsTable.agentId, agentId));
       if (params.provider) {
