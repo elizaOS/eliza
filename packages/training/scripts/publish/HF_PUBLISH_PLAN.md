@@ -12,7 +12,7 @@ Do not publish current release bundles to per-tier model repos such as
 
 Status as of 2026-05-13:
 
-- Active text tiers are Qwen3.5 for `0_8b`, `2b`, `4b`, and `9b`, and Qwen3.6 for `27b`, `27b-256k`, and `27b-1m`.
+- Active text tiers are Qwen3.5 for `0_8b`, `2b`, `4b`, `9b`, `27b`, `27b-256k`, and `27b-1m`.
 - Retired Qwen3 text tiers `0_6b` and `1_7b` are legacy/deprecation targets, not
   current release targets.
 - Local staged bundles exist for the active tiers, but they are still blocked
@@ -45,9 +45,9 @@ commands except as explicit deprecation work.
 | `2b` | `Qwen/Qwen3.5-2B` | `bundles/2b/` | Mid local tier. |
 | `4b` | `Qwen/Qwen3.5-4B` | `bundles/4b/` | Workstation / flagship tier. |
 | `9b` | `Qwen/Qwen3.5-9B` | `bundles/9b/` | Workstation tier; stays on Qwen3.5 until Qwen3.6 9B exists. |
-| `27b` | `Qwen/Qwen3.6-27B` | `bundles/27b/` | Dense 27B local/cloud tier. |
-| `27b-256k` | `Qwen/Qwen3.6-27B` | `bundles/27b-256k/` | Long-context dense 27B tier. |
-| `27b-1m` | `Qwen/Qwen3.6-27B` | `bundles/27b-1m/` | Datacenter long-context dense 27B tier. |
+| `27b` | `Qwen/Qwen3.5-27B` | `bundles/27b/` | Dense 27B local/cloud tier. |
+| `27b-256k` | `Qwen/Qwen3.5-27B` | `bundles/27b-256k/` | Long-context dense 27B tier. |
+| `27b-1m` | `Qwen/Qwen3.5-27B` | `bundles/27b-1m/` | Datacenter long-context dense 27B tier. |
 
 ASR and embedding repos are Qwen3 upstream exceptions where applicable; do not
 rename those upstream assets to imaginary Qwen3.5 ASR or embedding repos.

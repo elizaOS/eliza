@@ -60,9 +60,9 @@ TEXT_BASE_BY_TIER = {
     "2b": "Qwen/Qwen3.5-2B",
     "4b": "Qwen/Qwen3.5-4B",
     "9b": "Qwen/Qwen3.5-9B",
-    "27b": "Qwen/Qwen3.6-27B",
-    "27b-256k": "Qwen/Qwen3.6-27B",
-    "27b-1m": "Qwen/Qwen3.6-27B",
+    "27b": "Qwen/Qwen3.5-27B",
+    "27b-256k": "Qwen/Qwen3.5-27B",
+    "27b-1m": "Qwen/Qwen3.5-27B",
 }
 TEXT_CONTEXT_BY_TIER = {
     tier: PP.CONTEXTS_BY_TIER[tier][0]
