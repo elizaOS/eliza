@@ -77,8 +77,9 @@ public class MainActivity extends BridgeActivity {
         // Voice turns (ASR → LLM → TTS) on local-runtime builds regularly
         // take 1-5 seconds; screen-off mid-turn breaks the "is the agent
         // still working?" feedback and confuses the user. The flag is
-        // window-scoped — Android lifts it automatically on `onPause`, so
-        // background instances don't drain battery. Same flag set by
+        // window-scoped — Android releases it automatically when the window
+        // is no longer visible (app moved to background or fully covered),
+        // so background instances don't drain battery. Same flag set by
         // every video / voice-calling app (Snapchat, YouTube, Zoom, Meet).
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
