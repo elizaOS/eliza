@@ -12,18 +12,6 @@
  */
 
 import {
-  appLifeOpsPlugin,
-  detectHealthBackend,
-  detectPasswordManagerBackend,
-  detectRemoteDesktopBackend,
-  getAppBlockerStatus,
-  getSelfControlStatus,
-  LifeOpsRepository,
-  LifeOpsService,
-  readCalendlyCredentialsFromEnv,
-  readTwilioCredentialsFromEnv,
-} from "@elizaos/app-lifeops";
-import {
   type AgentRuntime,
   logger,
   type Memory,
@@ -51,6 +39,8 @@ const canRunLiveTests = liveModelTestsEnabled && selectedLiveProvider !== null;
 
 const DEFAULT_TEST_TIMEOUT_MS = 90_000;
 
+type LifeOpsModule = typeof import("@elizaos/app-lifeops");
+
 // ---------------------------------------------------------------------------
 // Shared helpers
 // ---------------------------------------------------------------------------
@@ -67,6 +57,7 @@ describe("Action Invocation E2E", () => {
   let runtime: AgentRuntime;
   let cleanup: () => Promise<void>;
   let initialized = false;
+  let lifeOps: LifeOpsModule;
   let registeredActions: Set<string>;
   let appBlockingAvailable = false;
   let calendlyConfigured = false;
@@ -236,19 +227,20 @@ describe("Action Invocation E2E", () => {
     previousDisableLifeOpsScheduler =
       process.env.ELIZA_DISABLE_LIFEOPS_SCHEDULER;
     process.env.ELIZA_DISABLE_LIFEOPS_SCHEDULER = "1";
+    lifeOps = await import("@elizaos/app-lifeops");
 
     const result = await createRealTestRuntime({
       withLLM: true,
       preferredProvider: selectedLiveProvider?.name,
       characterName: "ActionTestAgent",
       advancedCapabilities: true,
-      plugins: [appLifeOpsPlugin],
+      plugins: [lifeOps.appLifeOpsPlugin],
     });
 
     runtime = result.runtime;
     cleanup = result.cleanup;
     initialized = true;
-    await LifeOpsRepository.bootstrapSchema(runtime);
+    await lifeOps.LifeOpsRepository.bootstrapSchema(runtime);
 
     const removedEvaluators = runtime.evaluators.map((e) => e.name);
     runtime.evaluators.splice(0, runtime.evaluators.length);
@@ -257,19 +249,23 @@ describe("Action Invocation E2E", () => {
       runtime.actions.map((a) => normalizeActionName(a.name)),
     );
 
-    const service = new LifeOpsService(runtime);
-    twilioConfigured = Boolean(readTwilioCredentialsFromEnv());
-    calendlyConfigured = Boolean(readCalendlyCredentialsFromEnv());
+    const service = new lifeOps.LifeOpsService(runtime);
+    twilioConfigured = Boolean(lifeOps.readTwilioCredentialsFromEnv());
+    calendlyConfigured = Boolean(lifeOps.readCalendlyCredentialsFromEnv());
     healthBackendAvailable =
-      (await detectHealthBackend().catch(() => "none")) !== "none";
+      (await lifeOps.detectHealthBackend().catch(() => "none")) !== "none";
     passwordManagerAvailable =
-      (await detectPasswordManagerBackend().catch(() => "none")) !== "none";
+      (await lifeOps.detectPasswordManagerBackend().catch(() => "none")) !==
+      "none";
     remoteDesktopAvailable =
-      (await detectRemoteDesktopBackend().catch(() => "none")) !== "none";
+      (await lifeOps.detectRemoteDesktopBackend().catch(() => "none")) !==
+      "none";
     appBlockingAvailable = Boolean(
-      (await getAppBlockerStatus().catch(() => null))?.available,
+      (await lifeOps.getAppBlockerStatus().catch(() => null))?.available,
     );
-    const websiteBlockStatus = await getSelfControlStatus().catch(() => null);
+    const websiteBlockStatus = await lifeOps
+      .getSelfControlStatus()
+      .catch(() => null);
     websiteBlockingAvailable = Boolean(
       websiteBlockStatus?.available && !websiteBlockStatus.requiresElevation,
     );

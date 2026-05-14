@@ -8,9 +8,12 @@
 
 import type {
   ConnectorRegistryStub,
-  ScheduledTaskSeed,
 } from "./contract-stubs.js";
 import type { DefaultPack } from "./registry-types.js";
+import {
+  compileTaskDefinition,
+  type RecapTaskDefinition,
+} from "./task-definitions.js";
 
 export const INBOX_TRIAGE_STARTER_PACK_KEY = "inbox-triage-starter";
 
@@ -18,8 +21,8 @@ export const INBOX_TRIAGE_RECORD_IDS = {
   daily: "default-pack:inbox-triage-starter:daily-9am",
 } as const;
 
-const dailyTriageRecord: ScheduledTaskSeed = {
-  kind: "recap",
+const dailyTriageDefinition: RecapTaskDefinition = {
+  definitionKind: "recap",
   promptInstructions:
     "Run a Gmail triage: scan unread mail, group by sender, surface anything important or likely-needs-reply, and send the owner a short triage list. Use the LifeOps Gmail triage feed; do not invent senders or summaries.",
   contextRequest: {
@@ -43,6 +46,8 @@ const dailyTriageRecord: ScheduledTaskSeed = {
     requiredCapability: "google.gmail.read",
   },
 };
+
+const dailyTriageRecord = compileTaskDefinition(dailyTriageDefinition);
 
 export const INBOX_TRIAGE_REQUIRED_CAPABILITIES = ["google.gmail.read"];
 

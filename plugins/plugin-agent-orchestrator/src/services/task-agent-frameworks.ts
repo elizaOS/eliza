@@ -19,7 +19,6 @@ import {
   resolveUserPath,
 } from "@elizaos/core";
 import { readConfigCloudKey, readConfigEnvKey } from "./config-env.js";
-import { resolveVendoredOpencodeShim } from "./opencode-config.js";
 
 type AgentMetricsSummary = {
   spawned: number;
@@ -507,7 +506,7 @@ function hasElizaCloudApiKey(): boolean {
 }
 
 function hasOpencodeBinary(): boolean {
-  return hasBinaryOnPath("opencode") || Boolean(resolveVendoredOpencodeShim());
+  return hasBinaryOnPath("opencode");
 }
 
 function isOpencodeLocalMode(): boolean {

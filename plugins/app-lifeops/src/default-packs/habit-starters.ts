@@ -15,8 +15,11 @@
  * `defaultEnabled: false` — first-run customize asks; defaults path skips.
  */
 
-import type { ScheduledTaskSeed } from "./contract-stubs.js";
 import type { DefaultPack } from "./registry-types.js";
+import {
+  compileTaskDefinitions,
+  type ReminderTaskDefinition,
+} from "./task-definitions.js";
 
 export const HABIT_STARTERS_PACK_KEY = "habit-starters";
 
@@ -34,8 +37,8 @@ export const HABIT_STARTER_KEYS = {
 const recordIdFor = (key: string) => `default-pack:habit-starters:${key}`;
 
 /** Brush teeth — twice daily, morning + night windows. */
-const brushTeethRecord: ScheduledTaskSeed = {
-  kind: "reminder",
+const brushTeethDefinition: ReminderTaskDefinition = {
+  definitionKind: "reminder",
   promptInstructions:
     "Send a short brush-teeth reminder. Acknowledge the time-of-day (morning vs night) without restating it as a fact.",
   contextRequest: { includeOwnerFacts: ["preferredName"] },
@@ -56,8 +59,8 @@ const brushTeethRecord: ScheduledTaskSeed = {
 };
 
 /** Shower — 3×/week (Mon/Wed/Fri morning). */
-const showerRecord: ScheduledTaskSeed = {
-  kind: "reminder",
+const showerDefinition: ReminderTaskDefinition = {
+  definitionKind: "reminder",
   promptInstructions:
     "Send a short shower reminder for the user's scheduled shower day. No medical framing; matter-of-fact.",
   contextRequest: { includeOwnerFacts: ["preferredName"] },
@@ -80,8 +83,8 @@ const showerRecord: ScheduledTaskSeed = {
 };
 
 /** Invisalign — weekday after lunch. */
-const invisalignRecord: ScheduledTaskSeed = {
-  kind: "reminder",
+const invisalignDefinition: ReminderTaskDefinition = {
+  definitionKind: "reminder",
   promptInstructions:
     "Send a short Invisalign tray-check reminder after lunch on a weekday. Tone: routine, not nagging.",
   contextRequest: { includeOwnerFacts: ["preferredName"] },
@@ -104,8 +107,8 @@ const invisalignRecord: ScheduledTaskSeed = {
 };
 
 /** Drink water — interval, morning/afternoon/evening windows, max 4/day. */
-const drinkWaterRecord: ScheduledTaskSeed = {
-  kind: "reminder",
+const drinkWaterDefinition: ReminderTaskDefinition = {
+  definitionKind: "reminder",
   promptInstructions:
     "Send a short hydration reminder. Vary phrasing across the day. No alarm; light touch.",
   contextRequest: { includeOwnerFacts: ["preferredName"] },
@@ -140,8 +143,8 @@ const drinkWaterRecord: ScheduledTaskSeed = {
  * `first_deny` short-circuits on the first denying gate. The `stretch.walk_out_reset`
  * gate is registered by the scheduled-task runner's gate-registry.
  */
-const stretchRecord: ScheduledTaskSeed = {
-  kind: "reminder",
+const stretchDefinition: ReminderTaskDefinition = {
+  definitionKind: "reminder",
   promptInstructions:
     "Send a soft stretch nudge for the user. One sentence; no sets, no counts. Pure invitation.",
   contextRequest: { includeOwnerFacts: ["preferredName"] },
@@ -171,8 +174,8 @@ const stretchRecord: ScheduledTaskSeed = {
 };
 
 /** Vitamins — with-meal trigger (morning + evening windows). */
-const vitaminsRecord: ScheduledTaskSeed = {
-  kind: "reminder",
+const vitaminsDefinition: ReminderTaskDefinition = {
+  definitionKind: "reminder",
   promptInstructions:
     "Send a short vitamins reminder near a meal window. No medical framing.",
   contextRequest: { includeOwnerFacts: ["preferredName"] },
@@ -193,8 +196,8 @@ const vitaminsRecord: ScheduledTaskSeed = {
 };
 
 /** Workout — afternoon. Pipeline child for blocker-release can be added via BlockerRegistry. */
-const workoutRecord: ScheduledTaskSeed = {
-  kind: "reminder",
+const workoutDefinition: ReminderTaskDefinition = {
+  definitionKind: "reminder",
   promptInstructions:
     "Send a workout reminder for the afternoon. Direct, not pleading; one short sentence. Recent reminder outcomes are in context — let them shape tone (e.g. softer after a skip streak) without restating the streak as a fact.",
   contextRequest: {
@@ -227,8 +230,8 @@ const workoutRecord: ScheduledTaskSeed = {
 };
 
 /** Shave — weekly (Tue/Fri morning). */
-const shaveRecord: ScheduledTaskSeed = {
-  kind: "reminder",
+const shaveDefinition: ReminderTaskDefinition = {
+  definitionKind: "reminder",
   promptInstructions:
     "Send a short shave reminder on a scheduled morning. Tone: routine.",
   contextRequest: { includeOwnerFacts: ["preferredName"] },
@@ -250,16 +253,16 @@ const shaveRecord: ScheduledTaskSeed = {
   },
 };
 
-export const HABIT_STARTER_RECORDS: ReadonlyArray<ScheduledTaskSeed> = [
-  brushTeethRecord,
-  showerRecord,
-  invisalignRecord,
-  drinkWaterRecord,
-  stretchRecord,
-  vitaminsRecord,
-  workoutRecord,
-  shaveRecord,
-];
+export const HABIT_STARTER_RECORDS = compileTaskDefinitions([
+  brushTeethDefinition,
+  showerDefinition,
+  invisalignDefinition,
+  drinkWaterDefinition,
+  stretchDefinition,
+  vitaminsDefinition,
+  workoutDefinition,
+  shaveDefinition,
+]);
 
 export const habitStartersPack: DefaultPack = {
   key: HABIT_STARTERS_PACK_KEY,

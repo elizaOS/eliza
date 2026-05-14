@@ -26,6 +26,10 @@
  * files directly (instead of importing the registered packs) keeps the
  * linter independent of the W1-A spine and avoids needing a TS runtime in
  * `bun run verify`.
+ *
+ * It also rejects direct `ScheduledTaskSeed`/`ScheduledTask` construction from
+ * pack files. Pack authors define typed task definitions and compile them
+ * through `task-definitions.ts`.
  */
 
 import fs from "node:fs";
@@ -66,6 +70,36 @@ const URL_REGEX = /\bhttps?:\/\/[^\s'"`)<>]+/g;
 const WAVE_NARRATIVE_REGEX = /\b(?:Wave[\s-]?\d+|W[1-9]\d*-[A-Z])\b/g;
 
 const SLOP_REGEX = /\b(TODO|FIXME|XXX|HACK)\b/g;
+
+const RAW_SCHEDULED_TASK_IMPORT_REGEX =
+  /import\s+type\s+\{[^}]*\bScheduledTask(?:Seed)?\b[^}]*\}\s+from\s+["']\.\/contract-stubs\.js["']/g;
+const RAW_SCHEDULED_TASK_ANNOTATION_REGEX =
+  /:\s*(?:ReadonlyArray<\s*)?ScheduledTask(?:Seed)?\b/g;
+
+function lintTaskDefinitionAuthorship(packKey, source) {
+  const findings = [];
+  for (const m of source.matchAll(RAW_SCHEDULED_TASK_IMPORT_REGEX)) {
+    findings.push({
+      rule: "raw_scheduled_task",
+      packKey,
+      recordIndex: "source",
+      message:
+        "Default packs must import typed task definitions and compiler helpers instead of authoring ScheduledTask/ScheduledTaskSeed directly.",
+      match: m[0],
+    });
+  }
+  for (const m of source.matchAll(RAW_SCHEDULED_TASK_ANNOTATION_REGEX)) {
+    findings.push({
+      rule: "raw_scheduled_task",
+      packKey,
+      recordIndex: "source",
+      message:
+        "Default packs must not type raw ScheduledTask records; compile a TaskDefinition instead.",
+      match: m[0],
+    });
+  }
+  return findings;
+}
 
 /**
  * Extract every `promptInstructions: "..."` string from a TS source file.
@@ -211,6 +245,7 @@ function packKeyFromFilename(filename) {
     "consolidation-policies",
     "escalation-ladders",
     "lint",
+    "task-definitions",
   ]);
   return skip.has(stem) ? null : stem;
 }
@@ -234,6 +269,7 @@ function main() {
     if (!packKey) continue;
     const fullPath = path.join(packsDir, file);
     const source = fs.readFileSync(fullPath, "utf8");
+    allFindings.push(...lintTaskDefinitionAuthorship(packKey, source));
     const prompts = extractPrompts(source);
     prompts.forEach((prompt, recordIndex) => {
       const findings = lintPromptText(packKey, recordIndex, prompt);

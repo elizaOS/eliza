@@ -9,7 +9,6 @@
 
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger, ModelType } from "@elizaos/core";
-import { isCerebrasEvalEnabled } from "../../../plugins/app-lifeops/test/helpers/lifeops-eval-model.ts";
 import {
   CerebrasJudge,
   extractBalancedJsonObject,
@@ -31,6 +30,20 @@ Respond with ONLY a compact JSON object on one line, no markdown, no prose, no c
 
 const MAX_JUDGE_TOKENS = 512;
 const MAX_RETRIES = 2;
+
+type LifeOpsEvalModelModule = {
+  isCerebrasEvalEnabled: () => boolean;
+};
+
+let lifeOpsEvalModelModule: Promise<LifeOpsEvalModelModule> | null = null;
+
+async function isCerebrasJudgeEnabled(): Promise<boolean> {
+  lifeOpsEvalModelModule ??= import(
+    "../../../plugins/app-lifeops/test/helpers/lifeops-eval-model.ts"
+  ) as Promise<LifeOpsEvalModelModule>;
+  const { isCerebrasEvalEnabled } = await lifeOpsEvalModelModule;
+  return isCerebrasEvalEnabled();
+}
 
 export interface JudgeResult {
   score: number;
@@ -110,7 +123,9 @@ export async function judgeTextWithLlm(
   // the agent under test is never used to grade itself. Falls back to the
   // runtime's TEXT_LARGE provider when Cerebras isn't configured (unit
   // tests pass a stub runtime; CI without the key keeps working).
-  const cerebrasJudge = isCerebrasEvalEnabled() ? new CerebrasJudge() : null;
+  const cerebrasJudge = (await isCerebrasJudgeEnabled())
+    ? new CerebrasJudge()
+    : null;
 
   let lastRaw = "";
   for (let attempt = 1; attempt <= MAX_RETRIES + 1; attempt += 1) {

@@ -32,6 +32,18 @@ export type {
   TerminalState,
 } from "./contract-stubs.js";
 export type { DefaultPack, DefaultPackRegistry } from "./registry-types.js";
+export type {
+  ApprovalTaskDefinition,
+  CheckInTaskDefinition,
+  FollowUpTaskDefinition,
+  OutputTaskDefinition,
+  RecapTaskDefinition,
+  ReminderTaskDefinition,
+  TaskCompiler,
+  TaskDefinition,
+  ValidationResult,
+  WatcherTaskDefinition,
+} from "./task-definitions.js";
 
 import { DEFAULT_CONSOLIDATION_POLICIES } from "./consolidation-policies.js";
 import type { ConnectorRegistryStub } from "./contract-stubs.js";
@@ -88,6 +100,12 @@ import {
   runQuietUserWatcher,
 } from "./quiet-user-watcher.js";
 import type { DefaultPack } from "./registry-types.js";
+import {
+  compileTaskDefinition,
+  compileTaskDefinitions,
+  defaultTaskCompiler,
+  validateTaskDefinition,
+} from "./task-definitions.js";
 
 /**
  * The canonical list of default packs in the order they are offered.
@@ -188,4 +206,8 @@ export {
   QUIET_USER_WATCHER_RECORD_IDS,
   quietUserWatcherPack,
   runQuietUserWatcher,
+  compileTaskDefinition,
+  compileTaskDefinitions,
+  defaultTaskCompiler,
+  validateTaskDefinition,
 };

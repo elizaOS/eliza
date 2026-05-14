@@ -5,10 +5,10 @@ import {
   createMessageMemory,
   EventType,
   type Memory,
+  type Plugin,
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
-import { plugin as localdbPlugin } from "@elizaos/plugin-localdb";
 import {
   ELIZAGOTCHI_STATE_UPDATED_EVENT,
   type ElizagotchiStateUpdatedPayload,
@@ -26,6 +26,20 @@ let initializationPromise: Promise<AgentRuntime> | null = null;
 const userId = stringToUuid("elizagotchi-user");
 const roomId = stringToUuid("elizagotchi-room");
 const worldId = stringToUuid("elizagotchi-world");
+
+type LocalDbModule = {
+  plugin?: Plugin;
+  default?: Plugin;
+};
+
+async function loadLocalDbPlugin(): Promise<Plugin> {
+  const module = (await import("@elizaos/plugin-localdb")) as LocalDbModule;
+  const plugin = module.plugin ?? module.default;
+  if (!plugin) {
+    throw new Error("@elizaos/plugin-localdb did not export a plugin");
+  }
+  return plugin;
+}
 
 // ============================================================================
 // Agent log subscriptions (enable/disable in UI)
@@ -52,6 +66,7 @@ function pushAgentLog(entry: ElizagotchiAgentLogEntry): void {
 }
 
 async function initializeRuntime(): Promise<AgentRuntime> {
+  const localdbPlugin = await loadLocalDbPlugin();
   const runtime = new AgentRuntime({
     character: {
       name: "Elizagotchi Agent",

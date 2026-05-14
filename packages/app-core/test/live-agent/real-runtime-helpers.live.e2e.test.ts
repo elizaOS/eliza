@@ -1,4 +1,3 @@
-import { appLifeOpsPlugin } from "@elizaos/app-lifeops";
 import { ModelType, stringToUuid } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { itIf } from "../../../../test/helpers/conditional-tests.ts";
@@ -16,6 +15,7 @@ describe("Real Runtime Helper Regressions", () => {
   let runtimeResult: Awaited<ReturnType<typeof createRealTestRuntime>>;
 
   beforeAll(async () => {
+    const { appLifeOpsPlugin } = await import("@elizaos/app-lifeops");
     runtimeResult = await createRealTestRuntime({
       withLLM: canRunLiveTests,
       preferredProvider: selectedLiveProvider?.name,
