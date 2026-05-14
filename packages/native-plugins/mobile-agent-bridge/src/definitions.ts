@@ -18,10 +18,9 @@ import type { PluginListenerHandle } from "@capacitor/core";
  *     surface (`http://127.0.0.1:31337` on Android, in-process ITTP on
  *     iOS) and ships responses back over the same WebSocket.
  *
- * The native side is currently a scaffold — the JS API shape is locked
- * here so the runtime can call `startInboundTunnel` today even while
- * the iOS/Android transports are being built out. See
- * `docs/reverse-direction-tunneling.md` for the phased plan.
+ * Native iOS and Android implementations open the outbound WebSocket and
+ * proxy `http_request` frames to the local agent without exposing an
+ * inbound listening port.
  */
 export interface MobileAgentBridgeStartOptions {
   /**
@@ -76,10 +75,10 @@ export interface MobileAgentTunnelStateEvent {
  *
  * Implementations:
  *   - Web stub: returns `{ available: false }` plus a no-op tunnel.
- *   - iOS: native Network.framework WebSocket task + URLSession proxy
- *     to the in-process agent (planned).
- *   - Android: OkHttp WebSocket + loopback HTTP proxy to
- *     `127.0.0.1:31337` (planned).
+ *   - iOS: URLSessionWebSocketTask + WebView IPC dispatch into the
+ *     in-process local-agent bridge.
+ *   - Android: OkHttp WebSocket + tokenized loopback HTTP proxy to
+ *     the foreground local-agent service.
  */
 export interface MobileAgentBridgePlugin {
   /**

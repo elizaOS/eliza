@@ -6,7 +6,7 @@
  *
  * Flags:
  *   --task <should_respond|planner|action:<name>|action:all|all>   (default: all)
- *   --mode <unguided|guided|cerebras|all>                           (default: all)
+ *   --mode <unguided|guided|strict-guided|cerebras|all>              (default: all)
  *   --n <count>                                                     (default: 10)
  *   --out <path.json>                                               (default: ./bench-results-<ISO>.json)
  *   --cerebras-model <name>                                         (default: llama3.1-8b; use gpt-oss-120b for the 27B tier)
@@ -17,6 +17,7 @@ import { resolve } from "node:path";
 import type { Eliza1TierId } from "./engine-resolver.ts";
 import { CerebrasMode } from "./modes/cerebras.ts";
 import { ElizaGuidedMode } from "./modes/eliza-guided.ts";
+import { ElizaStrictGuidedMode } from "./modes/eliza-strict-guided.ts";
 import { ElizaUnguidedMode } from "./modes/eliza-unguided.ts";
 import { renderReport, writeReportJson } from "./report.ts";
 import { runBench, type TaskSelection } from "./runner.ts";
@@ -47,7 +48,7 @@ const HELP = `eliza-1 bench
 Flags:
   --task <should_respond|planner|action:<name>|action:all|all>
       Task to run; may be passed multiple times. Default: all.
-  --mode <unguided|guided|cerebras|all>
+  --mode <unguided|guided|strict-guided|cerebras|all>
       Mode to run; may be passed multiple times. Default: all.
   --n <count>
       Generations per (mode, case). Default: 10.
@@ -62,7 +63,7 @@ Flags:
       eliza-1-27b, eliza-1-27b-256k, eliza-1-27b-1m.
       The GGUF must be on disk (downloaded via the eliza-1 manifest flow).
   --allow-skip-local
-      Allow selected local modes (guided/unguided) to skip without a nonzero
+      Allow selected local modes (guided/unguided/strict-guided) to skip without a nonzero
       exit. Release-evidence runs should not use this flag.
   --help, -h
       Show this help.
@@ -144,6 +145,7 @@ function selectModes(args: Args): ModeAdapter[] {
   const all: ModeAdapter[] = [
     new ElizaUnguidedMode({ tier: args.tier }),
     new ElizaGuidedMode({ tier: args.tier }),
+    new ElizaStrictGuidedMode({ tier: args.tier }),
     new CerebrasMode({ model: args.cerebrasModel }),
   ];
   if (args.modes === "all") return all;
@@ -184,7 +186,12 @@ async function main(): Promise<void> {
   writeReportJson(report, outPath);
   process.stdout.write(`wrote ${outPath}\n`);
   const skippedLocalModes = report.skipped
-    .filter((skip) => skip.modeId === "guided" || skip.modeId === "unguided")
+    .filter(
+      (skip) =>
+        skip.modeId === "guided" ||
+        skip.modeId === "unguided" ||
+        skip.modeId === "strict-guided",
+    )
     .filter((skip) => modes.some((mode) => mode.id === skip.modeId));
   if (skippedLocalModes.length > 0 && !args.allowSkipLocal) {
     process.stderr.write(

@@ -1648,16 +1648,13 @@ function normalizeBarePlannerAction(
 }
 
 /**
- * The LLM sees the stable Stage 2 wrapper surface, so every action invocation
- * arrives wrapped:
- * `{ name: "PLAN_ACTIONS", args: { action, parameters, thought } }`.
- * Holding the tool list fixed keeps prompt-cache hashes stable across requests
- * no matter which actions are gated this turn.
- *
- * We unwrap at the parse boundary so all downstream logic — context-event
- * lookup, trajectory recording, terminal sentinels (REPLY/IGNORE/STOP),
- * failure attribution — sees the actual action name, not the wrapper.
- *
+ * Normalize a single raw planner tool call to a `PlannerToolCall`. With actions
+ * exposed directly as native tools (post-PLAN_ACTIONS-wrapper refactor) the
+ * tool name IS the action name; the universal terminal sentinels REPLY /
+ * IGNORE / STOP arrive under their own names. We accept several legacy
+ * adjacent fields (`toolName`, `tool`, `action`, `actionName`, `function`) so
+ * provider quirks don't surface as parse failures, but no envelope unwrap or
+ * compound-name decoding happens here anymore.
  */
 
 function normalizeToolCall(entry: unknown): PlannerToolCall | null {

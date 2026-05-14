@@ -3034,6 +3034,14 @@ async function executeV5PlannedToolCall(
 	const resolvedName = resolvedNames[0] ?? args.toolCall.name;
 	const toolCall: PlannerToolCall = { ...args.toolCall, name: resolvedName };
 
+	// Per-turn `actions` is the narrowed action surface — the executable subset
+	// the model was given as tools. It does NOT include the CORE_PLANNER_TERMINALS
+	// (REPLY / IGNORE / STOP) which are surfaced as tools but live in the global
+	// runtime registry. When the model calls a terminal (or, under
+	// strictResolve, an action not in the narrow), pull it from the global
+	// registry by exact name. With `toolChoice: "required"` + tools-array
+	// enforcement the model can only call names that are in our exposed set, so
+	// this can't be an off-surface escape — it's the terminal/registry bridge.
 	const executionActions = actions.some(
 		(candidate) => candidate.name === toolCall.name,
 	)

@@ -63,10 +63,10 @@
  *     for debugging / telemetry only. Set on every terminal node.
  */
 export interface TokenTrieNode {
-	tokenId: number;
-	children: Map<number, TokenTrieNode>;
-	isTerminal: boolean;
-	leafName?: string;
+  tokenId: number;
+  children: Map<number, TokenTrieNode>;
+  isTerminal: boolean;
+  leafName?: string;
 }
 
 /** Sentinel tokenId for the synthetic root node. */
@@ -79,8 +79,8 @@ export const TRIE_ROOT_TOKEN_ID = -1;
  * anything).
  */
 export interface TokenSequence {
-	name: string;
-	tokens: number[];
+  name: string;
+  tokens: number[];
 }
 
 /**
@@ -99,39 +99,39 @@ export interface TokenSequence {
  * either skip the trie path entirely in that case or fall back to grammar.
  */
 export function buildTokenTrie(
-	sequences: ReadonlyArray<TokenSequence>,
+  sequences: ReadonlyArray<TokenSequence>,
 ): TokenTrieNode {
-	const root: TokenTrieNode = {
-		tokenId: TRIE_ROOT_TOKEN_ID,
-		children: new Map(),
-		isTerminal: false,
-	};
-	for (const seq of sequences) {
-		if (seq.tokens.length === 0) continue;
-		let node = root;
-		for (const tok of seq.tokens) {
-			let next = node.children.get(tok);
-			if (!next) {
-				next = {
-					tokenId: tok,
-					children: new Map(),
-					isTerminal: false,
-				};
-				node.children.set(tok, next);
-			}
-			node = next;
-		}
-		// Multiple inputs colliding on the same path: keep the smallest name as
-		// the stable identifier so two callers building the same trie from the
-		// same (out-of-order) input both produce the same telemetry tag.
-		if (!node.isTerminal) {
-			node.isTerminal = true;
-			node.leafName = seq.name;
-		} else if (seq.name < (node.leafName ?? "")) {
-			node.leafName = seq.name;
-		}
-	}
-	return root;
+  const root: TokenTrieNode = {
+    tokenId: TRIE_ROOT_TOKEN_ID,
+    children: new Map(),
+    isTerminal: false,
+  };
+  for (const seq of sequences) {
+    if (seq.tokens.length === 0) continue;
+    let node = root;
+    for (const tok of seq.tokens) {
+      let next = node.children.get(tok);
+      if (!next) {
+        next = {
+          tokenId: tok,
+          children: new Map(),
+          isTerminal: false,
+        };
+        node.children.set(tok, next);
+      }
+      node = next;
+    }
+    // Multiple inputs colliding on the same path: keep the smallest name as
+    // the stable identifier so two callers building the same trie from the
+    // same (out-of-order) input both produce the same telemetry tag.
+    if (!node.isTerminal) {
+      node.isTerminal = true;
+      node.leafName = seq.name;
+    } else if (seq.name < (node.leafName ?? "")) {
+      node.leafName = seq.name;
+    }
+  }
+  return root;
 }
 
 /**
@@ -152,21 +152,21 @@ export function buildTokenTrie(
  * entries, no per-node overhead.
  */
 export interface TokenTreeDescriptor {
-	/**
-	 * Dotted path of the constrained span, relative to the response envelope
-	 * root. For the planner the canonical value is `"action"`; for an enum
-	 * parameter field it is `"parameters.<fieldName>"`. For the Stage-1
-	 * `contexts` array's *element* enum it would be `"contexts[]"` — the
-	 * empty bracket suffix indicates "applies to each element".
-	 */
-	path: string;
-	/**
-	 * The tokenized leaves the sampler may complete inside this span. Order
-	 * is irrelevant for correctness (the trie is order-insensitive), but the
-	 * builder normalises to `(name asc)` so the wire format is byte-stable
-	 * across turns when the constrained value set is unchanged.
-	 */
-	leaves: TokenSequence[];
+  /**
+   * Dotted path of the constrained span, relative to the response envelope
+   * root. For the planner the canonical value is `"action"`; for an enum
+   * parameter field it is `"parameters.<fieldName>"`. For the Stage-1
+   * `contexts` array's *element* enum it would be `"contexts[]"` — the
+   * empty bracket suffix indicates "applies to each element".
+   */
+  path: string;
+  /**
+   * The tokenized leaves the sampler may complete inside this span. Order
+   * is irrelevant for correctness (the trie is order-insensitive), but the
+   * builder normalises to `(name asc)` so the wire format is byte-stable
+   * across turns when the constrained value set is unchanged.
+   */
+  leaves: TokenSequence[];
 }
 
 /**
@@ -181,18 +181,16 @@ export interface TokenTreeDescriptor {
  * this descriptor's `modelId` before honouring the trie.
  */
 export interface TokenTreePayload {
-	modelId: string;
-	descriptors: TokenTreeDescriptor[];
+  modelId: string;
+  descriptors: TokenTreeDescriptor[];
 }
 
 /**
  * Sort a descriptor's leaves to the canonical `(name asc)` order. Pure —
  * returns a new array; caller's reference is untouched.
  */
-function sortLeaves(
-	leaves: ReadonlyArray<TokenSequence>,
-): TokenSequence[] {
-	return [...leaves].sort((a, b) => a.name.localeCompare(b.name));
+function sortLeaves(leaves: ReadonlyArray<TokenSequence>): TokenSequence[] {
+  return [...leaves].sort((a, b) => a.name.localeCompare(b.name));
 }
 
 /**
@@ -204,21 +202,21 @@ function sortLeaves(
  * fork doesn't try to constrain an empty set).
  */
 export function buildTokenTreeDescriptor(
-	path: string,
-	names: ReadonlyArray<string>,
-	tokenMap: ReadonlyMap<string, number[]>,
+  path: string,
+  names: ReadonlyArray<string>,
+  tokenMap: ReadonlyMap<string, number[]>,
 ): TokenTreeDescriptor | null {
-	const seen = new Set<string>();
-	const leaves: TokenSequence[] = [];
-	for (const name of names) {
-		if (seen.has(name)) continue;
-		const tokens = tokenMap.get(name);
-		if (!tokens || tokens.length === 0) continue;
-		seen.add(name);
-		leaves.push({ name, tokens: [...tokens] });
-	}
-	if (leaves.length === 0) return null;
-	return { path, leaves: sortLeaves(leaves) };
+  const seen = new Set<string>();
+  const leaves: TokenSequence[] = [];
+  for (const name of names) {
+    if (seen.has(name)) continue;
+    const tokens = tokenMap.get(name);
+    if (!tokens || tokens.length === 0) continue;
+    seen.add(name);
+    leaves.push({ name, tokens: [...tokens] });
+  }
+  if (leaves.length === 0) return null;
+  return { path, leaves: sortLeaves(leaves) };
 }
 
 /**
@@ -230,10 +228,10 @@ export function buildTokenTreeDescriptor(
  *   3. `node = step(node, picked)` — non-null by construction.
  */
 export function step(
-	node: TokenTrieNode,
-	tokenId: number,
+  node: TokenTrieNode,
+  tokenId: number,
 ): TokenTrieNode | null {
-	return node.children.get(tokenId) ?? null;
+  return node.children.get(tokenId) ?? null;
 }
 
 /**
@@ -244,7 +242,7 @@ export function step(
  * next byte.)
  */
 export function isUniqueContinuation(node: TokenTrieNode): boolean {
-	return node.children.size === 0 && node.isTerminal;
+  return node.children.size === 0 && node.isTerminal;
 }
 
 /**
@@ -256,16 +254,16 @@ export function isUniqueContinuation(node: TokenTrieNode): boolean {
  * page, fine to materialise eagerly.
  */
 export function estimateTrieBytes(node: TokenTrieNode): number {
-	let bytes = 0;
-	const visit = (n: TokenTrieNode): void => {
-		bytes += 80;
-		for (const child of n.children.values()) {
-			bytes += 16;
-			visit(child);
-		}
-	};
-	visit(node);
-	return bytes;
+  let bytes = 0;
+  const visit = (n: TokenTrieNode): void => {
+    bytes += 80;
+    for (const child of n.children.values()) {
+      bytes += 16;
+      visit(child);
+    }
+  };
+  visit(node);
+  return bytes;
 }
 
 /**
@@ -274,11 +272,11 @@ export function estimateTrieBytes(node: TokenTrieNode): number {
  * `buildTokenTrie`.
  */
 export function countTerminals(node: TokenTrieNode): number {
-	let n = 0;
-	const visit = (cur: TokenTrieNode): void => {
-		if (cur.isTerminal) n += 1;
-		for (const child of cur.children.values()) visit(child);
-	};
-	visit(node);
-	return n;
+  let n = 0;
+  const visit = (cur: TokenTrieNode): void => {
+    if (cur.isTerminal) n += 1;
+    for (const child of cur.children.values()) visit(child);
+  };
+  visit(node);
+  return n;
 }

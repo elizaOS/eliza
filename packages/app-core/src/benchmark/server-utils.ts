@@ -419,6 +419,7 @@ export function composeBenchmarkPrompt(params: {
       [
         "This is LOCA-bench. If work remains, emit exactly one benchmark tool call; progress text is invalid.",
         "Use actions: [\"BENCHMARK_ACTION\"] with params.BENCHMARK_ACTION.tool_name set to one of the available LOCA tool names and params.BENCHMARK_ACTION.arguments set to that tool's JSON arguments.",
+        "source_data is read-only input data; write/edit requested output CSV files such as assignment_info.csv and quiz_info.csv at the workspace root.",
         "For example: {\"actions\":[\"BENCHMARK_ACTION\"],\"text\":\"\",\"params\":{\"BENCHMARK_ACTION\":{\"tool_name\":\"filesystem_list_directory\",\"arguments\":{\"path\":\"source_data\"}}}}",
         "Only use REPLY after the requested output files have been written.",
       ].join(" "),

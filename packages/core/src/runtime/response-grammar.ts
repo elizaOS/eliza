@@ -855,6 +855,53 @@ export function buildPlannerActionGrammar(
  *
  * Returns `null` when no actions are exposed.
  */
+/**
+ * Group action names by longest common prefix (≥3 chars, ≥2 names sharing it).
+ * Returns a map of prefix → suffixes, plus a list of ungrouped names.
+ */
+function groupActionNamesByPrefix(names: string[]): {
+	groups: Map<string, string[]>;
+	ungrouped: string[];
+} {
+	const groups = new Map<string, string[]>();
+	const used = new Set<string>();
+
+	// Find prefixes ending with "_" first (natural word boundaries in SNAKE_CASE).
+	const candidates = new Set<string>();
+	for (const name of names) {
+		// Extract potential prefixes ending with "_"
+		let idx = 0;
+		while ((idx = name.indexOf("_", idx)) !== -1) {
+			const prefix = name.substring(0, idx + 1); // Include the "_"
+			if (prefix.length >= 3) candidates.add(prefix);
+			idx++;
+		}
+	}
+
+	// If no candidates with "_", fall back to all 3+ char prefixes.
+	if (candidates.size === 0) {
+		for (const name of names) {
+			for (let len = 3; len < name.length; len++) {
+				candidates.add(name.substring(0, len));
+			}
+		}
+	}
+
+	// Sort by length (longest first) to prefer longer prefixes.
+	const candidateList = Array.from(candidates).sort((a, b) => b.length - a.length);
+	for (const prefix of candidateList) {
+		const matching = names.filter((n) => n.startsWith(prefix) && !used.has(n));
+		if (matching.length >= 2) {
+			const suffixes = matching.map((n) => n.substring(prefix.length));
+			groups.set(prefix, suffixes);
+			matching.forEach((n) => used.add(n));
+		}
+	}
+
+	const ungrouped = names.filter((n) => !used.has(n));
+	return { groups, ungrouped };
+}
+
 export function buildPlannerActionGrammarStrict(
 	actions: ReadonlyArray<
 		Pick<Action, "name" | "parameters" | "allowAdditionalParameters">
@@ -885,13 +932,55 @@ export function buildPlannerActionGrammarStrict(
 	const sortedDescriptors = descriptors
 		.slice()
 		.sort((a, b) => a.name.localeCompare(b.name));
-	for (const descriptor of sortedDescriptors) {
-		const sanitized = sanitizeGbnfRuleName(descriptor.name);
+	// Group action names by common prefix for factoring.
+	const { groups, ungrouped } = groupActionNamesByPrefix(
+		sortedDescriptors.map((d) => d.name)
+	);
+
+	// Emit grouped actions with shared prefix literals.
+	for (const [prefix, suffixes] of groups) {
+		const prefixSanitized = sanitizeGbnfRuleName(prefix);
+		const suffixRuleName = `suffix_${prefixSanitized}`;
+
+		// Emit a rule for the suffix alternation.
+		const suffixAlts = suffixes
+			.map((suffix) => gbnfJsonStringLiteral(suffix))
+			.join(" | ");
+		builder.rule(suffixRuleName, suffixAlts);
+
+		// For each action in the group, emit a branch that factors the prefix.
+		for (const fullName of sortedDescriptors
+			.filter((d) => d.name.startsWith(prefix))
+			.map((d) => d.name)) {
+			const sanitized = sanitizeGbnfRuleName(fullName);
+			const paramsRuleName = `paramsofaction_${sanitized}`;
+			const descriptor = sortedDescriptors.find((d) => d.name === fullName)!;
+			emitActionParamsRule(builder, paramsRuleName, descriptor.parametersSchema);
+			const branchRuleName = `callofaction_${sanitized}`;
+			const suffix = fullName.substring(prefix.length);
+			const branchBody = [
+				gbnfLiteral(`{"action":"${prefix}`),
+				suffixRuleName,
+				gbnfLiteral('","parameters":'),
+				paramsRuleName,
+				gbnfLiteral(',"thought":'),
+				"jsonstring",
+				gbnfLiteral("}"),
+			].join(" ");
+			builder.rule(branchRuleName, branchBody);
+			branchRuleNames.push(branchRuleName);
+		}
+	}
+
+	// Emit ungrouped actions (no shared prefix).
+	for (const fullName of ungrouped) {
+		const descriptor = sortedDescriptors.find((d) => d.name === fullName)!;
+		const sanitized = sanitizeGbnfRuleName(fullName);
 		const paramsRuleName = `paramsofaction_${sanitized}`;
 		emitActionParamsRule(builder, paramsRuleName, descriptor.parametersSchema);
 		const branchRuleName = `callofaction_${sanitized}`;
 		const branchBody = [
-			gbnfLiteral(`{"action":${JSON.stringify(descriptor.name)}`),
+			gbnfLiteral(`{"action":${JSON.stringify(fullName)}`),
 			gbnfLiteral(',"parameters":'),
 			paramsRuleName,
 			gbnfLiteral(',"thought":'),
@@ -901,6 +990,7 @@ export function buildPlannerActionGrammarStrict(
 		builder.rule(branchRuleName, branchBody);
 		branchRuleNames.push(branchRuleName);
 	}
+
 	builder.root([branchRuleNames.join(" | ")]);
 
 	// Minimal skeleton — the grammar carries the entire structural contract.
@@ -1030,6 +1120,71 @@ function emitObjectRule(
  * `contextRuleName` is the parent-scoped namespace prefix used to mint stable
  * unique rule names for nested constructs (e.g. `..._obj`, `..._item`).
  */
+/**
+ * Build a GBNF rule that matches only numbers within a [min, max] range.
+ * For integers: emits a union of literal ranges and digit-length cases.
+ * For numbers: allows integer part + optional fractional digits, bounded by min/max.
+ * Returns a rule name to reference in the GBNF.
+ */
+function buildBoundedNumberRule(
+	builder: GbnfBuilder,
+	ruleName: string,
+	schema: JSONSchema,
+): string {
+	const type = (schema as { type?: unknown }).type;
+	const minimum = (schema as { minimum?: number }).minimum;
+	const maximum = (schema as { maximum?: number }).maximum;
+
+	// No bounds specified: use the shared unbounded rule.
+	if (
+		typeof minimum !== "number" &&
+		typeof maximum !== "number"
+	) {
+		builder.useShared("jsonnumber");
+		return "jsonnumber";
+	}
+
+	// For integers, emit a rule that matches only in-range values.
+	if (type === "integer") {
+		const min = typeof minimum === "number" ? Math.ceil(minimum) : Number.NEGATIVE_INFINITY;
+		const max = typeof maximum === "number" ? Math.floor(maximum) : Number.POSITIVE_INFINITY;
+
+		// Handle edge cases: if bounds are missing, fall back to unbounded.
+		if (!Number.isFinite(min) && !Number.isFinite(max)) {
+			builder.useShared("jsonnumber");
+			return "jsonnumber";
+		}
+
+		// For manageable integer ranges, enumerate directly.
+		// This is pragmatic for small ranges like [0, 100].
+		if (Number.isFinite(min) && Number.isFinite(max) && max - min <= 200) {
+			const literals: string[] = [];
+			for (let i = min; i <= max; i++) {
+				literals.push(gbnfJsonStringLiteral(String(i)));
+			}
+			builder.rule(ruleName, literals.join(" | "));
+			return ruleName;
+		}
+
+		// For larger ranges, fall back to unbounded (the grammar won't tightly constrain).
+		builder.useShared("jsonnumber");
+		return "jsonnumber";
+	}
+
+	// For floats, emit a pattern: optional minus, digits, optional fractional part.
+	// Validation of bounds happens server-side (we can't easily express arbitrary float ranges in GBNF).
+	if (type === "number") {
+		// Pragmatic: emit a rule that allows signed integers and decimals.
+		// The server-side validation will reject out-of-range values.
+		builder.useShared("jsonnumber");
+		return "jsonnumber";
+	}
+
+	// Unknown type: use unbounded.
+	builder.useShared("jsonnumber");
+	return "jsonnumber";
+}
+
 function propertyValueGbnf(
 	builder: GbnfBuilder,
 	propSchema: JSONSchema,
@@ -1051,6 +1206,13 @@ function propertyValueGbnf(
 		return "jsonstring";
 	}
 	if (type === "number" || type === "integer") {
+		const minimum = (propSchema as { minimum?: number }).minimum;
+		const maximum = (propSchema as { maximum?: number }).maximum;
+		// If bounds are specified, emit a bounded rule; otherwise use the shared rule.
+		if (typeof minimum === "number" || typeof maximum === "number") {
+			const boundedRuleName = `${contextRuleName}_bounded`;
+			return buildBoundedNumberRule(builder, boundedRuleName, propSchema);
+		}
 		builder.useShared("jsonnumber");
 		return "jsonnumber";
 	}

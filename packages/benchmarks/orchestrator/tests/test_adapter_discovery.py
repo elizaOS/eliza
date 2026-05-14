@@ -394,7 +394,7 @@ def test_remaining_smoke_defaults_bound_expensive_adapters(tmp_path: Path) -> No
         "hyperliquid_bench": ("--max-steps", "1"),
         "hyperliquidbench": ("--max-steps", "1"),
         "experience": ("--queries", "2"),
-        "loca_bench": ("--max-tool-uses", "25"),
+        "loca_bench": ("--max-tool-uses", "40"),
     }
     for benchmark_id, (flag, value) in expected_flags.items():
         adapter = adapters[benchmark_id]

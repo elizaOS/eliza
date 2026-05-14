@@ -471,34 +471,20 @@ async function fetchIosFullBunSmokeJson<T>(
   });
   await Promise.race([
     (async () => {
-      if (typeof nativeRequest === "function") {
-        const nativeResponse = await nativeRequest({
-          method,
-          path,
-          headers: Object.fromEntries(headers.entries()),
-          body,
-          timeoutMs,
-        });
-        status = nativeResponse.status;
-        text = nativeResponse.body;
-      } else {
-        const controller = new AbortController();
-        const timer = window.setTimeout(() => controller.abort(), timeoutMs);
-        try {
-          const response = await fetch(
-            `${MOBILE_LOCAL_AGENT_API_BASE}${path}`,
-            {
-              ...init,
-              headers,
-              signal: init?.signal ?? controller.signal,
-            },
-          );
-          status = response.status;
-          text = await response.text();
-        } finally {
-          window.clearTimeout(timer);
-        }
+      if (typeof nativeRequest !== "function") {
+        throw new Error(
+          `${label} requires the iOS native IPC bridge; no loopback fetch fallback is allowed in full-Bun mode`,
+        );
       }
+      const nativeResponse = await nativeRequest({
+        method,
+        path,
+        headers: Object.fromEntries(headers.entries()),
+        body,
+        timeoutMs,
+      });
+      status = nativeResponse.status;
+      text = nativeResponse.body;
     })(),
     timeout,
   ]);
@@ -545,34 +531,20 @@ async function fetchIosFullBunSmokeText(
   });
   await Promise.race([
     (async () => {
-      if (typeof nativeRequest === "function") {
-        const nativeResponse = await nativeRequest({
-          method,
-          path,
-          headers: Object.fromEntries(headers.entries()),
-          body,
-          timeoutMs,
-        });
-        status = nativeResponse.status;
-        text = nativeResponse.body;
-      } else {
-        const controller = new AbortController();
-        const timer = window.setTimeout(() => controller.abort(), timeoutMs);
-        try {
-          const response = await fetch(
-            `${MOBILE_LOCAL_AGENT_API_BASE}${path}`,
-            {
-              ...init,
-              headers,
-              signal: init?.signal ?? controller.signal,
-            },
-          );
-          status = response.status;
-          text = await response.text();
-        } finally {
-          window.clearTimeout(timer);
-        }
+      if (typeof nativeRequest !== "function") {
+        throw new Error(
+          `${label} requires the iOS native IPC bridge; no loopback fetch fallback is allowed in full-Bun mode`,
+        );
       }
+      const nativeResponse = await nativeRequest({
+        method,
+        path,
+        headers: Object.fromEntries(headers.entries()),
+        body,
+        timeoutMs,
+      });
+      status = nativeResponse.status;
+      text = nativeResponse.body;
     })(),
     timeout,
   ]);

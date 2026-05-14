@@ -129,6 +129,8 @@ describe("composeBenchmarkPrompt", () => {
     expect(prompt).toContain("filesystem_list_directory");
     expect(prompt).toContain("LOCA-bench");
     expect(prompt).toContain("BENCHMARK_ACTION");
+    expect(prompt).toContain("source_data is read-only");
+    expect(prompt).toContain("assignment_info.csv");
     expect(prompt).not.toContain("prior assistant text");
     expect(prompt).not.toContain('"messages"');
   });
