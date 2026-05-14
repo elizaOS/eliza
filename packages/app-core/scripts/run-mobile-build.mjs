@@ -2168,7 +2168,10 @@ function generatePodfile() {
     ["ElizaosCapacitorElizaTasks", "@elizaos/capacitor-eliza-tasks"],
     ["ElizaosCapacitorGateway", "@elizaos/capacitor-gateway"],
     ["ElizaosCapacitorLocation", "@elizaos/capacitor-location"],
-    ["ElizaosCapacitorMobileAgentBridge", "@elizaos/capacitor-mobile-agent-bridge"],
+    [
+      "ElizaosCapacitorMobileAgentBridge",
+      "@elizaos/capacitor-mobile-agent-bridge",
+    ],
     ["ElizaosCapacitorMobileSignals", "@elizaos/capacitor-mobile-signals"],
     ["ElizaosCapacitorScreencapture", "@elizaos/capacitor-screencapture"],
     ["ElizaosCapacitorSwabble", "@elizaos/capacitor-swabble"],
@@ -3374,7 +3377,10 @@ const ANDROID_CLOUD_STRIPPED_NATIVE_PLUGINS = [
   ["@elizaos/capacitor-appblocker", "elizaos-capacitor-appblocker"],
   ["@elizaos/capacitor-contacts", "elizaos-capacitor-contacts"],
   ["@elizaos/capacitor-messages", "elizaos-capacitor-messages"],
-  ["@elizaos/capacitor-mobile-agent-bridge", "elizaos-capacitor-mobile-agent-bridge"],
+  [
+    "@elizaos/capacitor-mobile-agent-bridge",
+    "elizaos-capacitor-mobile-agent-bridge",
+  ],
   ["@elizaos/capacitor-mobile-signals", "elizaos-capacitor-mobile-signals"],
   ["@elizaos/capacitor-phone", "elizaos-capacitor-phone"],
   ["@elizaos/capacitor-system", "elizaos-capacitor-system"],
@@ -4291,6 +4297,7 @@ function configureIosLocalBuildDefaults() {
   setDefaultProcessEnv("ELIZA_IOS_RUNTIME_MODE", "local");
   setDefaultProcessEnv("VITE_ELIZA_IOS_RUNTIME_MODE", "local");
   setDefaultProcessEnv("ELIZA_IOS_INCLUDE_LLAMA", "1");
+  setDefaultProcessEnv("ELIZA_IOS_FULL_BUN_ENGINE", "1");
   setDefaultProcessEnv(
     "ELIZA_IOS_BUILD_DESTINATION",
     "generic/platform=iOS Simulator",
