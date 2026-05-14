@@ -922,8 +922,9 @@ async function runHistory(
 ): Promise<ActionResult> {
   const access = await requireTaskAgentAccess(runtime, message, "interact");
   if (!access.allowed) {
-    if (callback) await callback({ text: access.reason });
-    return failureResult("TASKS:history", "FORBIDDEN", access.reason, {
+    const reason = (access as { reason: string }).reason;
+    if (callback) await callback({ text: reason });
+    return failureResult("TASKS:history", "FORBIDDEN", reason, {
       reason: "access_denied",
     });
   }
@@ -1087,8 +1088,9 @@ async function runControl(
 ): Promise<ActionResult> {
   const access = await requireTaskAgentAccess(runtime, message, "interact");
   if (!access.allowed) {
-    if (callback) await callback({ text: access.reason });
-    return failureResult("TASKS:control", "FORBIDDEN", access.reason, {
+    const reason = (access as { reason: string }).reason;
+    if (callback) await callback({ text: reason });
+    return failureResult("TASKS:control", "FORBIDDEN", reason, {
       reason: "access_denied",
     });
   }
@@ -1227,8 +1229,9 @@ async function runShare(
 ): Promise<ActionResult> {
   const access = await requireTaskAgentAccess(runtime, message, "interact");
   if (!access.allowed) {
-    if (callback) await callback({ text: access.reason });
-    return { success: false, error: "FORBIDDEN", text: access.reason };
+    const reason = (access as { reason: string }).reason;
+    if (callback) await callback({ text: reason });
+    return { success: false, error: "FORBIDDEN", text: reason };
   }
 
   const coordinator = getCoordinator(runtime);
@@ -1335,8 +1338,9 @@ async function runProvisionWorkspace(
 ): Promise<ActionResult> {
   const access = await requireTaskAgentAccess(runtime, message, "create");
   if (!access.allowed) {
-    if (callback) await callback({ text: access.reason });
-    return { success: false, error: "FORBIDDEN", text: access.reason };
+    const reason = (access as { reason: string }).reason;
+    if (callback) await callback({ text: reason });
+    return { success: false, error: "FORBIDDEN", text: reason };
   }
 
   const workspaceService = getCodingWorkspaceService(runtime);
@@ -1462,8 +1466,9 @@ async function runSubmitWorkspace(
 ): Promise<ActionResult> {
   const access = await requireTaskAgentAccess(runtime, message, "interact");
   if (!access.allowed) {
-    if (callback) await callback({ text: access.reason });
-    return { success: false, error: "FORBIDDEN", text: access.reason };
+    const reason = (access as { reason: string }).reason;
+    if (callback) await callback({ text: reason });
+    return { success: false, error: "FORBIDDEN", text: reason };
   }
 
   const workspaceService = getCodingWorkspaceService(runtime);
@@ -1870,8 +1875,9 @@ async function runManageIssues(
 ): Promise<ActionResult> {
   const access = await requireTaskAgentAccess(runtime, message, "interact");
   if (!access.allowed) {
-    if (callback) await callback({ text: access.reason });
-    return { success: false, error: "FORBIDDEN", text: access.reason };
+    const reason = (access as { reason: string }).reason;
+    if (callback) await callback({ text: reason });
+    return { success: false, error: "FORBIDDEN", text: reason };
   }
 
   const workspaceService = getCodingWorkspaceService(runtime);

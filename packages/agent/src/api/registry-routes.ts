@@ -3,7 +3,7 @@ import type {
   RegistryPluginInfo,
   RegistrySearchResult,
 } from "../services/plugin-manager-types.ts";
-import { parseClampedInteger } from "../utils/number-parsing.ts";
+import { parseClampedInteger } from "@elizaos/shared";
 
 interface InstalledRegistryPluginLike {
   name: string;

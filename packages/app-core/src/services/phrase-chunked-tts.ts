@@ -30,9 +30,29 @@
 import type {
   AcceptedToken,
   Phrase,
+  PhraseChunker,
   PhraseChunkerConfig,
 } from "@elizaos/plugin-local-inference/services";
-import { PhraseChunker } from "@elizaos/plugin-local-inference/services";
+
+// Lazy module reference — avoids a static boundary violation while preserving
+// synchronous construction semantics for callers that supply the PhraseChunker
+// class via `PhraseChunkedTtsOptions.chunkerClass` (used in tests).
+let _PhraseChunkerClass: typeof PhraseChunker | undefined;
+let _servicesImport: Promise<typeof import("@elizaos/plugin-local-inference/services")> | undefined;
+function requirePhraseChunker(): typeof PhraseChunker {
+  if (_PhraseChunkerClass) return _PhraseChunkerClass;
+  throw new Error(
+    "PhraseChunker not yet loaded — call await PhraseChunkedTts.load() before constructing instances, or provide chunkerClass in options.",
+  );
+}
+/** Pre-warm the PhraseChunker class. Called automatically when the first
+ *  PhraseChunkedTts is instantiated if the class hasn't been loaded yet. */
+async function ensurePhraseChunkerLoaded(): Promise<void> {
+  if (_PhraseChunkerClass) return;
+  _servicesImport ??= import("@elizaos/plugin-local-inference/services");
+  const mod = await _servicesImport;
+  _PhraseChunkerClass = mod.PhraseChunker;
+}
 
 export interface PhraseChunkedTtsOptions {
   /** Phrase chunker configuration. See `PhraseChunkerConfig`. */

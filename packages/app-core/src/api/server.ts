@@ -108,11 +108,18 @@ export {
   validateMcpServerConfig,
 };
 
-import {
-  handleLocalInferenceCompatRoutes,
-  handleLocalInferenceTtsRoute,
-} from "@elizaos/plugin-local-inference/routes";
-import { deviceBridge } from "@elizaos/plugin-local-inference/services";
+// Lazy reference to @elizaos/plugin-local-inference/routes — avoids a static
+// boundary violation. The module is memoized by the JS engine after the first
+// await so per-request cost is a single Map lookup after warm-up.
+let _localInferenceRoutes:
+  | typeof import("@elizaos/plugin-local-inference/routes")
+  | undefined;
+async function getLocalInferenceRoutes() {
+  return (_localInferenceRoutes ??= await import(
+    "@elizaos/plugin-local-inference/routes"
+  ));
+}
+
 import {
   ensureRuntimeSqlCompatibility,
   executeRawSql,
@@ -172,7 +179,10 @@ import { deleteWalletSecretsFromOsStore } from "../security/wallet-os-store-acti
 // Import from extracted modules for use within this file
 // ---------------------------------------------------------------------------
 
-import { ensureCloudTtsApiKeyAlias, mirrorCompatHeaders } from "@elizaos/shared";
+import {
+  ensureCloudTtsApiKeyAlias,
+  mirrorCompatHeaders,
+} from "@elizaos/shared";
 import { filterConfigEnvForResponse as _filterConfigEnvForResponse } from "./server-config-filter";
 
 // ---------------------------------------------------------------------------
@@ -658,9 +668,16 @@ async function handleCompatRoute(
   // iOS/Android. Bearer-authed via the device secret; not part of the
   // cookie session pipeline.
   if (await handleInternalWakeRoute(req, res, state)) return true;
-  // Computer-use compat routes — extracted to plugin-computeruse via Plugin.routes (rawPath).
-  if (await handleLocalInferenceCompatRoutes(req, res, state)) return true;
-  if (await handleLocalInferenceTtsRoute(req, res, state)) return true;
+  // Local-inference compat routes — loaded via lazy getter to avoid a static
+  // boundary violation (app-core must not statically import plugin packages).
+  {
+    const {
+      handleLocalInferenceCompatRoutes,
+      handleLocalInferenceTtsRoute,
+    } = await getLocalInferenceRoutes();
+    if (await handleLocalInferenceCompatRoutes(req, res, state)) return true;
+    if (await handleLocalInferenceTtsRoute(req, res, state)) return true;
+  }
   if (await handleAutomationsCompatRoutes(req, res, state)) return true;
 
   // workflow routes — extracted to plugins/plugin-workflow/src/plugin-routes.ts.
@@ -672,7 +689,9 @@ async function handleCompatRoute(
 
   if (method === "POST" && url.pathname === "/api/tts/cloud") {
     if (!(await ensureRouteAuthorized(req, res, state))) return true;
-    const { handleCloudTtsPreviewRoute } = await import("@elizaos/plugin-elizacloud");
+    const { handleCloudTtsPreviewRoute } = await import(
+      "@elizaos/plugin-elizacloud"
+    );
     return handleCloudTtsPreviewRoute(req, res);
   }
 

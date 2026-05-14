@@ -5,7 +5,7 @@ import type {
   RouteRequestMeta,
 } from "@elizaos/core";
 import { PostLogExportRequestSchema } from "@elizaos/shared";
-import { parseClampedInteger } from "../utils/number-parsing.ts";
+import { parseClampedInteger } from "@elizaos/shared";
 
 interface LogEntryLike {
   timestamp: number;

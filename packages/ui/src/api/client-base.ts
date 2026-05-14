@@ -11,7 +11,7 @@ import {
   type NetworkStatusChangeDetail,
 } from "../events";
 import { hydrateAndroidLocalAgentTokenForUrl } from "../onboarding/local-agent-token";
-import { stripAssistantStageDirections } from "../utils/assistant-text";
+import { stripAssistantStageDirections } from "@elizaos/shared";
 import {
   clearElizaApiBase,
   clearElizaApiToken,

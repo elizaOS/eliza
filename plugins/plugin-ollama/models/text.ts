@@ -646,7 +646,7 @@ async function handleTextWithModelType(
       }
     }
 
-    const result = await generateText(baseGenerateArgs);
+    const result = await generateText(baseGenerateArgs as Parameters<typeof generateText>[0]);
 
     const usage =
       normalizeTokenUsage(result.usage) ?? estimateUsage(promptForUsageEstimate, result.text);

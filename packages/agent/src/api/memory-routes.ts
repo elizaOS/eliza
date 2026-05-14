@@ -15,7 +15,7 @@ import {
   PatchMemoryRequestSchema,
   PostMemoryRememberRequestSchema,
 } from "@elizaos/shared";
-import { parsePositiveInteger } from "../utils/number-parsing.ts";
+import { parsePositiveInteger } from "@elizaos/shared";
 import {
   type DocumentsServiceResult,
   getDocumentsService,
@@ -260,9 +260,9 @@ function memoryToBrowseItem(memory: TaggedMemory): MemoryBrowseItem {
     id: memory.id ?? "",
     type: memory._table,
     text: (content?.text as string) ?? "",
-    entityId: (memory.entityId as string) ?? null,
-    roomId: (memory.roomId as string) ?? null,
-    agentId: (memory.agentId as string) ?? null,
+    entityId: memory.entityId ?? null,
+    roomId: memory.roomId ?? null,
+    agentId: memory.agentId ?? null,
     createdAt: memory.createdAt ?? 0,
     metadata: (memory.metadata as Record<string, unknown>) ?? null,
     source: (content?.source as string) ?? null,

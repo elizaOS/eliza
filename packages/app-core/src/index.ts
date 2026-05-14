@@ -44,7 +44,6 @@ export * from "./services/account-pool";
 export * from "./services/auth-store";
 export * from "./services/github-credentials";
 export * from "./services/inference-abort";
-export * from "./services/task-host-capabilities";
 export * from "./services/plugin-installer";
 export * from "./services/steward-credentials";
 export * from "./services/steward-sidecar/helpers";
@@ -55,6 +54,7 @@ export * from "./services/steward-sidecar/helpers";
 // dist/services/steward-sidecar/index.json fallback (the Docker production
 // smoke regression observed on PR #7528 / #7530).
 export * from "./services/steward-sidecar.ts";
+export * from "./services/task-host-capabilities";
 export * from "./services/vault-bootstrap";
 export * from "./services/vault-mirror";
 // UI-side compat surface (`selectLatestRunForApp`, `toneFor*`,

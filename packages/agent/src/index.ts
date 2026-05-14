@@ -239,5 +239,5 @@ export * from "./triggers/text-to-workflow.ts";
 export * from "./triggers/types.ts";
 // `types/index.js` aggregates `agent-skills`, `config-like`, and `trajectory`.
 export * from "./types/index.ts";
-export * from "./utils/number-parsing.ts";
+export { parseClampedInteger, parsePositiveInteger, parsePositiveFloat, parseClampedFloat, type ParseClampedIntegerOptions, type ParseClampedNumberOptions, type ParsePositiveNumberOptions } from "@elizaos/shared";
 export * from "./version-resolver.ts";

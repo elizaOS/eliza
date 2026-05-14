@@ -663,7 +663,7 @@ export async function handlePluginRoutes(
     config: ElizaConfig,
   ): Promise<ResolvedPlugin[]> => {
     const { resolvePlugins } = await import("../runtime/plugin-resolver.ts");
-    return await resolvePlugins(config, { quiet: true });
+    return resolvePlugins(config, { quiet: true });
   };
 
   const resolvePluginsSnapshotSafe = async (
