@@ -14,4 +14,10 @@ describe("candidateActionNamesFieldEvaluator", () => {
 			]),
 		).toEqual(["PLAY_MUSIC", "TASKS_SPAWN_AGENT"]);
 	});
+
+	it("caps candidate action hints before they reach planner retrieval", () => {
+		const values = Array.from({ length: 20 }, (_, index) => `action ${index}`);
+
+		expect(candidateActionNamesFieldEvaluator.parse(values)).toHaveLength(12);
+	});
 });

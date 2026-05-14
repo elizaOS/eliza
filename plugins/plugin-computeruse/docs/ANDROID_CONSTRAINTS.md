@@ -72,7 +72,7 @@ smoke-testing, but the x86_64 JNI patch must be present (see WS4 llama-cpp-capac
 - [ ] Long-press the launcher icon and verify the Ask Eliza static shortcut is
   present.
 - [ ] If validating App Actions, confirm the assistant routes the action into
-  `eliza://chat?source=android-app-action`.
+  the app custom scheme with `source=android-app-actions`.
 
 ### 2. AccessibilityService — view tree
 
@@ -165,7 +165,7 @@ Verify via `GET /api/training/auto/config` that arbiter pressure state transitio
 
 ```
 adb shell am start -a android.intent.action.VIEW \
-  -d 'eliza://chat?source=android-shortcut'
+  -d 'elizaos://chat?source=android-app-actions'
 adb shell am start -a android.intent.action.ASSIST \
   -n com.elizaai.eliza/ai.elizaos.app.ElizaAssistActivity
 ```

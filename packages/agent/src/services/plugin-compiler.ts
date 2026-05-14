@@ -113,8 +113,12 @@ export class PluginCompiler {
         format,
         target,
         platform,
-        external: [...external],
-        plugins: [vfsImportPolicyPlugin(vfs, allowedBareImports)],
+        ...(bundle
+          ? {
+              external: [...external],
+              plugins: [vfsImportPolicyPlugin(vfs, allowedBareImports)],
+            }
+          : {}),
         jsx: "automatic",
         sourcemap: sourcemap ? "inline" : false,
         minify,

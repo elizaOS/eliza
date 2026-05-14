@@ -18,8 +18,8 @@
  *
  * Coordinate contract (matches WS5):
  *   - Every method that takes `(displayId, x, y)` uses LOCAL pixel coords for
- *     that display. The interface routes those through `localToGlobalDefault`
- *     before any input fires.
+ *     that display. The interface routes those through the configured display
+ *     layout before any input fires.
  *   - VLMs producing coords in image-space (i.e. against the downscaled max-
  *     pixels frame) MUST first call `toScreenCoordinates(...)` to get the
  *     real OS-pixel coord. The inverse `toScreenshotCoordinates(...)` is for
@@ -29,10 +29,8 @@
  */
 
 import { logger } from "@elizaos/core";
-import { localToGlobal } from "../platform/coords.js";
 import { captureDisplay, type DisplayCapture } from "../platform/capture.js";
 import {
-  findDisplay,
   getPrimaryDisplay,
   listDisplays,
 } from "../platform/displays.js";
@@ -190,7 +188,20 @@ export class DefaultComputerInterface implements ComputerInterface {
   };
 
   constructor(deps: ComputerInterfaceDeps = {}) {
+    const listDisplaysFn =
+      deps.listDisplays ??
+      (() =>
+        listDisplays().map((d) => ({
+          id: d.id,
+          bounds: d.bounds,
+          scaleFactor: d.scaleFactor,
+          primary: d.primary,
+          name: d.name,
+        })));
     const primary = (() => {
+      const displays = listDisplaysFn();
+      const configuredPrimary = displays.find((d) => d.primary) ?? displays[0];
+      if (configuredPrimary) return configuredPrimary;
       try {
         return getPrimaryDisplay();
       } catch {
@@ -200,16 +211,7 @@ export class DefaultComputerInterface implements ComputerInterface {
     this.deps = {
       getScene: deps.getScene,
       capture: deps.capture ?? captureDisplay,
-      listDisplays:
-        deps.listDisplays ??
-        (() =>
-          listDisplays().map((d) => ({
-            id: d.id,
-            bounds: d.bounds,
-            scaleFactor: d.scaleFactor,
-            primary: d.primary,
-            name: d.name,
-          }))),
+      listDisplays: listDisplaysFn,
       cursorState:
         deps.cursorState ?? { current: { displayId: primary.id, x: 0, y: 0 } },
       driver: deps.driver,
@@ -434,15 +436,16 @@ export class DefaultComputerInterface implements ComputerInterface {
   }
 
   private toGlobalChecked(point: DisplayPoint): { x: number; y: number } {
-    this.requireDisplay(point.displayId);
+    const d = this.requireDisplay(point.displayId);
     if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) {
       throw new Error(
         `[computeruse/actor] non-finite coords (${point.x}, ${point.y})`,
       );
     }
-    // Resolve via the central coords module so the same translation rules
-    // (DPI/backing-store, retina divide-by-scale) apply everywhere.
-    return localToGlobal({ displayId: point.displayId, x: point.x, y: point.y });
+    return {
+      x: Math.round(d.bounds[0] + point.x),
+      y: Math.round(d.bounds[1] + point.y),
+    };
   }
 }
 

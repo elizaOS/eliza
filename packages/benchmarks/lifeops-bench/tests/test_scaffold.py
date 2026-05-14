@@ -787,6 +787,45 @@ def test_archive_email_thread_alias_matches_message_manage_archive() -> None:
     assert state_hash(alias_world) == state_hash(canonical_world)
 
 
+def test_message_manage_operation_inferred_from_manage_operation() -> None:
+    from eliza_lifeops_bench.__main__ import _build_world_factory
+    from eliza_lifeops_bench.runner import _execute_action
+    from eliza_lifeops_bench.scorer import state_hash
+    from eliza_lifeops_bench.types import Action
+
+    thread_id = "thread_01464"
+    factory = _build_world_factory()
+    canonical_world = factory(2026, "2026-05-10T12:00:00Z")
+    inferred_world = factory(2026, "2026-05-10T12:00:00Z")
+
+    canonical = _execute_action(
+        Action(
+            name="MESSAGE",
+            kwargs={
+                "operation": "manage",
+                "source": "gmail",
+                "manageOperation": "archive",
+                "threadId": thread_id,
+            },
+        ),
+        canonical_world,
+    )
+    inferred = _execute_action(
+        Action(
+            name="MESSAGE",
+            kwargs={
+                "source": "gmail",
+                "manageOperation": "archive",
+                "threadId": thread_id,
+            },
+        ),
+        inferred_world,
+    )
+
+    assert inferred == canonical
+    assert state_hash(inferred_world) == state_hash(canonical_world)
+
+
 def test_pass_at_k_formula() -> None:
     from eliza_lifeops_bench.scorer import pass_at_k
 

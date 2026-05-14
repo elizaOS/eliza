@@ -6,6 +6,8 @@
   and action loops.
 - `fromCuaBenchAction`: a pure adapter for CuaBench action dataclasses,
   dictionaries, repr strings, and snake-case strings.
+- `CuaBenchSession`: a thin service wrapper with CuaBench-shaped helpers for
+  screenshots, actions, shell commands, files, and app launch.
 
 ## Current Status
 
@@ -14,6 +16,7 @@
 | OSWorld `computer_13` | Supported | Exports `OSWorldAdapter`, `fromOSWorldAction`, and `toOSWorldAction`. Raw `MOUSE_DOWN`, `MOUSE_UP`, `KEY_DOWN`, and `KEY_UP` now map to public desktop actions. |
 | OSWorld `pyautogui` | Partial | Covers common click/type/key/hotkey/move/scroll/drag strings. It is intentionally not a Python interpreter. |
 | CuaBench action objects | Supported as pure conversion | `ClickAction`, `RightClickAction`, `DoubleClickAction`, `MiddleClickAction`, `DragAction`, `MoveToAction`, `ScrollAction`, `TypeAction`, `KeyAction`, `HotkeyAction`, `WaitAction`, and `DoneAction` map to plugin actions or control records. |
+| CuaBench session wrapper | Supported | `CuaBenchSession` wraps `ComputerUseService` for screenshot, action, command, file, and launch helpers. |
 | CuaBench task runner | Not integrated yet | Upstream task setup/evaluate hooks and Docker/QEMU runners are Python-side lifecycle concepts. This plugin now has the action/session building block, not a full CuaBench runner. |
 
 ## CuaBench Action Coverage
@@ -37,6 +40,7 @@
 
 ```bash
 bun run --cwd plugins/plugin-computeruse test -- src/__tests__/benchmark/cuabench-action-converter.test.ts
+bun run --cwd plugins/plugin-computeruse test -- src/__tests__/benchmark/cuabench-session.test.ts
 ```
 
 Live host-desktop benchmark smoke tests remain gated by the existing real-test

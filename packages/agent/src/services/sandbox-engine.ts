@@ -682,7 +682,8 @@ export class AppleContainerEngine implements ISandboxEngine {
     // process with stdin piped so it doesn't block.
     const args = ["run", "--name", opts.name];
 
-    // Apple Container: --mount for readonly, -v for read-write
+    // Only unconstrained read-write mounts reach this path; constrained mount
+    // requests are rejected above until this adapter can enforce them.
     appendMountArgs(args, opts.mounts);
     appendEnvArgs(args, opts.env);
 

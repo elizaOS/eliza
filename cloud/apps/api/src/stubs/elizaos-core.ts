@@ -333,6 +333,41 @@ export const documentsPluginCore = {
 
 export const addHeader = (header: string, body: string) => (body ? `${header}\n${body}` : "");
 
+export const isConnectorConfigured = () => false;
+export const isStreamingDestinationConfigured = () => false;
+export const isWechatConfigured = () => false;
+export const DEFAULT_ELIZA_CLOUD_TEXT_MODEL = "openai/gpt-oss-120b:nitro";
+
+export const isCloudConnected = () => false;
+export const isCloudInferenceSelectedInConfig = () => false;
+export const isElizaCloudServiceSelectedInConfig = () => false;
+export const isElizaSettingsDebugEnabled = () => false;
+export const toRuntimeSettings = (value: unknown = {}) => value;
+export const migrateLegacyRuntimeConfig = (value: unknown = {}) => value;
+export const settingsDebugCloudSummary = () => ({});
+export const sanitizeSpeechText = (text: string) => text;
+export const getRuntimeRouteHostContext = () => null;
+export const registerAppRoutePluginLoader = () => {};
+export const resolveApiSecurityConfig = () => ({
+  bindHost: "127.0.0.1",
+  token: undefined,
+  allowedOrigins: [],
+  allowedHosts: [],
+  allowNullOrigin: false,
+  disableAutoApiToken: true,
+});
+export const resolveDesktopApiPort = () => 31337;
+
+export const normalizeConnectorSource = (source: string) => source.trim().toLowerCase();
+export const expandConnectorSourceFilter = (source: string | string[]) =>
+  Array.isArray(source) ? source.map(normalizeConnectorSource) : [normalizeConnectorSource(source)];
+export const getConnectorSourceAliases = (source: string) => [normalizeConnectorSource(source)];
+export const registerConnectorSourceAliases = () => {};
+
+export const getElizaNamespace = () => "eliza";
+export const resolveStateDir = (...parts: string[]) => ["/tmp/eliza", ...parts].join("/");
+export const resolveUserPath = (...parts: string[]) => parts.join("/");
+
 export const UUID = (value?: string): string => asUUID(value ?? "");
 export const composeActionExamples = throwingExport("composeActionExamples");
 export const formatActions = throwingExport("formatActions");
@@ -541,6 +576,29 @@ export default {
   MemoryType,
   documentsPluginCore,
   addHeader,
+  isConnectorConfigured,
+  isStreamingDestinationConfigured,
+  isWechatConfigured,
+  DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
+  isCloudConnected,
+  isCloudInferenceSelectedInConfig,
+  isElizaCloudServiceSelectedInConfig,
+  isElizaSettingsDebugEnabled,
+  toRuntimeSettings,
+  migrateLegacyRuntimeConfig,
+  settingsDebugCloudSummary,
+  sanitizeSpeechText,
+  getRuntimeRouteHostContext,
+  registerAppRoutePluginLoader,
+  resolveApiSecurityConfig,
+  resolveDesktopApiPort,
+  normalizeConnectorSource,
+  expandConnectorSourceFilter,
+  getConnectorSourceAliases,
+  registerConnectorSourceAliases,
+  getElizaNamespace,
+  resolveStateDir,
+  resolveUserPath,
   UUID,
   composeActionExamples,
   formatActions,

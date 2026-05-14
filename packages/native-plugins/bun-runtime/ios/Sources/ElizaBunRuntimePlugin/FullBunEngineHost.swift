@@ -41,10 +41,10 @@ private let fullBunHostCallCallback: @convention(c) (
 /// - `http_request` IPC (both paths): the path must begin with `/` and must not
 ///   contain `://`. Validated in `MobileAgentBridgePlugin.proxyHttpRequest` and
 ///   enforced by the Bun bridge contract at the agent layer.
-/// - Filesystem (JSContext compat path): `FSBridge` does not restrict paths
-///   beyond what the iOS app sandbox enforces. The agent bundle is signed and
-///   staged inside the app bundle; paths visible to the JSContext are limited to
-///   the app container by the OS.
+/// - Filesystem (JSContext compat path): App Store local builds compile in
+///   `RuntimePolicy`, which rejects bridge file access outside the app
+///   container and rejects JavaScript bundle overrides outside signed app
+///   resources.
 /// - ABI version check: `load()` verifies the framework reports ABI version "3"
 ///   before accepting any other symbols. A version mismatch is a hard error.
 final class FullBunEngineHost {

@@ -1,0 +1,13 @@
+{
+  "gate": "billing_records",
+  "status": "pass",
+  "completedAt": "2026-05-14T11:32:14.757Z",
+  "usageRecordId": "deed67f5-fc40-44d9-9389-85b7caea81b9",
+  "creditTransactionId": "99ff5aa4-0ab0-482e-8d95-7996a440f1f5",
+  "idempotencyKey": "eliza1-billing-1778758021193",
+  "billingRecordId": "7dd48a2b-ef72-4fa0-b9b8-ce86ba9af6df",
+  "settlementTransactionIds": [
+    "3b1c819b-18e4-4f98-b396-4e26abbe0eb3"
+  ],
+  "summary": "AI billing record 7dd48a2b-ef72-4fa0-b9b8-ce86ba9af6df joins usage deed67f5-fc40-44d9-9389-85b7caea81b9 to credit transaction 99ff5aa4-0ab0-482e-8d95-7996a440f1f5"
+}

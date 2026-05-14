@@ -2,7 +2,7 @@
 
 import { mkdirSync } from "node:fs";
 import os from "node:os";
-import { join } from "node:path";
+import { isAbsolute, join, relative, resolve } from "node:path";
 import {
   createEngine,
   detectBestEngine,
@@ -128,6 +128,13 @@ function getRequiredPolicyConstraints(
   return [];
 }
 
+function joinRelative(root: string, target: string): string | null {
+  const rel = relative(resolve(root), resolve(target));
+  if (rel === "") return "";
+  if (rel.startsWith("..") || isAbsolute(rel)) return null;
+  return rel.replace(/\\/g, "/");
+}
+
 export interface SandboxEvent {
   timestamp: number;
   type:
@@ -213,6 +220,18 @@ export class SandboxManager {
       );
     mkdirSync(wsRoot, { recursive: true });
     return { image, containerPrefix, workdir, network, user, wsRoot };
+  }
+
+  getWorkspaceRoot(): string {
+    return this.getMainContainerConfig().wsRoot;
+  }
+
+  getContainerWorkspacePath(hostPath: string): string | null {
+    const config = this.getMainContainerConfig();
+    const relative = joinRelative(config.wsRoot, hostPath);
+    return relative === null
+      ? null
+      : `${config.workdir.replace(/\/+$/, "")}${relative ? `/${relative}` : ""}`;
   }
 
   private async createMainContainer(): Promise<string> {

@@ -1,25 +1,25 @@
 import type { DesktopActionParams } from "../types.js";
 
-export type CuaBenchActionInput =
-  | string
-  | {
-      type?: string;
-      action_type?: string;
-      name?: string;
-      x?: number;
-      y?: number;
-      from_x?: number;
-      from_y?: number;
-      to_x?: number;
-      to_y?: number;
-      duration?: number;
-      direction?: string;
-      amount?: number;
-      text?: string;
-      key?: string;
-      keys?: string[];
-      seconds?: number;
-    };
+export type CuaBenchActionInput = string | CuaBenchActionObject;
+
+export type CuaBenchActionObject = {
+  type?: string;
+  action_type?: string;
+  name?: string;
+  x?: number;
+  y?: number;
+  from_x?: number;
+  from_y?: number;
+  to_x?: number;
+  to_y?: number;
+  duration?: number;
+  direction?: string;
+  amount?: number;
+  text?: string;
+  key?: string;
+  keys?: string[];
+  seconds?: number;
+};
 
 export type CuaBenchControlAction =
   | { kind: "wait"; seconds: number }
@@ -31,7 +31,7 @@ export type CuaBenchConvertedAction =
 
 const REPR_PATTERNS: Array<{
   regex: RegExp;
-  toAction: (match: RegExpMatchArray) => CuaBenchActionInput;
+  toAction: (match: RegExpMatchArray) => CuaBenchActionObject;
 }> = [
   {
     regex: /^ClickAction\(x=(\d+),\s*y=(\d+)\)$/,
@@ -123,7 +123,7 @@ const REPR_PATTERNS: Array<{
 
 const SNAKE_PATTERNS: Array<{
   regex: RegExp;
-  toAction: (match: RegExpMatchArray) => CuaBenchActionInput;
+  toAction: (match: RegExpMatchArray) => CuaBenchActionObject;
 }> = [
   {
     regex: /^click\s*\(\s*([\d.]+)\s*,\s*([\d.]+)\s*\)$/,
@@ -270,7 +270,7 @@ export function fromCuaBenchAction(
   }
 }
 
-export function parseCuaBenchActionString(input: string): CuaBenchActionInput {
+export function parseCuaBenchActionString(input: string): CuaBenchActionObject {
   const value = input.trim();
   for (const pattern of [...REPR_PATTERNS, ...SNAKE_PATTERNS]) {
     const match = value.match(pattern.regex);

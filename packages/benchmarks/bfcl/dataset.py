@@ -828,19 +828,27 @@ class BFCLDataset:
         n: int,
         categories: Optional[list[BFCLCategory]] = None,
         require_ground_truth: bool = True,
+        seed: int | None = 0,
     ) -> list[BFCLTestCase]:
         """Get a stratified sample of test cases."""
         import random
 
+        rng = random.Random(seed)
         if categories is None:
-            categories = self.get_categories()
+            categories = sorted(self.get_categories(), key=lambda c: c.value)
+        else:
+            categories = sorted(categories, key=lambda c: c.value)
         if not categories:
             return []
 
-        samples_per_category = max(1, n // len(categories))
+        selected_categories = categories
+        if n < len(categories):
+            selected_categories = rng.sample(categories, n)
+
+        samples_per_category = max(1, n // len(selected_categories))
         samples: list[BFCLTestCase] = []
 
-        for category in categories:
+        for category in selected_categories:
             category_cases = [
                 tc
                 for tc in self.get_by_category(category)
@@ -848,7 +856,7 @@ class BFCLDataset:
             ]
             if category_cases:
                 sample_size = min(samples_per_category, len(category_cases))
-                samples.extend(random.sample(category_cases, sample_size))
+                samples.extend(rng.sample(category_cases, sample_size))
 
         # If we need more samples, add randomly
         remaining = n - len(samples)
@@ -860,7 +868,7 @@ class BFCLDataset:
             ]
             if remaining_cases:
                 samples.extend(
-                    random.sample(remaining_cases, min(remaining, len(remaining_cases)))
+                    rng.sample(remaining_cases, min(remaining, len(remaining_cases)))
                 )
 
         return samples[:n]

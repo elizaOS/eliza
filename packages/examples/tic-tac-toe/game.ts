@@ -442,6 +442,20 @@ function parseMoveFromAgentText(text: string): number | null {
   return digitMatch ? parseInt(digitMatch[1], 10) : null;
 }
 
+function requirePlayableMove(
+  state: GameState,
+  move: number | null,
+  source: string,
+): number {
+  const availableMoves = getAvailableMoves(state.board);
+  if (move !== null && availableMoves.includes(move)) {
+    return move;
+  }
+  throw new Error(
+    `${source} returned ${move === null ? "no move" : `invalid move ${move}`}; available moves: ${availableMoves.join(",")}`,
+  );
+}
+
 async function getAIMove(session: GameSession): Promise<number> {
   const { runtime, game, roomId, gameMasterId } = session;
   const state = game.getState();
@@ -462,9 +476,7 @@ async function getAIMove(session: GameSession): Promise<number> {
 
   let agentText = "";
   if (!runtime.messageService) {
-    // Should never happen after runtime.initialize(), but keep safe fallback.
-    const fallback = getAvailableMoves(state.board);
-    return fallback[0];
+    throw new Error("Runtime message service is not initialized.");
   }
 
   const result = await runtime.messageService.handleMessage(
@@ -482,13 +494,11 @@ async function getAIMove(session: GameSession): Promise<number> {
       ? result.responseContent.text
       : agentText;
 
-  const move = textToParse ? parseMoveFromAgentText(textToParse) : null;
-  if (move === null) {
-    const fallback = getAvailableMoves(state.board);
-    return fallback[0];
-  }
-
-  return move;
+  return requirePlayableMove(
+    state,
+    textToParse ? parseMoveFromAgentText(textToParse) : null,
+    "AI move pipeline",
+  );
 }
 
 function createMovePrompt(state: GameState): string {
@@ -510,12 +520,7 @@ async function getBenchmarkAIMove(session: GameSession): Promise<number> {
     prompt: createMovePrompt(state),
   });
   const text = typeof raw === "string" ? raw : "";
-  const move = parseMoveFromAgentText(text);
-  if (move === null) {
-    const fallback = getAvailableMoves(state.board);
-    return fallback[0];
-  }
-  return move;
+  return requirePlayableMove(state, parseMoveFromAgentText(text), "benchmark model");
 }
 
 // ============================================================================

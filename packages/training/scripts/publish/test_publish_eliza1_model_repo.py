@@ -87,7 +87,7 @@ def _write_bundle(
             "sizeFirstRepoIds": True,
         },
         "hf": {
-            "repoId": "elizalabs/eliza-1",
+            "repoId": "elizaos/eliza-1",
             "pathPrefix": f"bundles/{tier}",
             "status": "upload-ready",
         },
@@ -169,7 +169,7 @@ def test_voice_policy_can_warn_or_block(tmp_path: Path):
     warning_plan = P.plan_bundle(tmp_path, "2b")
     strict_plan = P.plan_bundle(tmp_path, "2b", strict_voice_policy=True)
 
-    assert warning_plan.uploadable is False
+    assert warning_plan.uploadable is True
     assert not any("omnivoice" in w for w in warning_plan.warnings)
     assert any("kokoro/tokenizer.json" in w for w in warning_plan.warnings)
     assert any("kokoro/voices/af_bella.bin" in w for w in warning_plan.warnings)
@@ -177,6 +177,33 @@ def test_voice_policy_can_warn_or_block(tmp_path: Path):
     assert not any("omnivoice" in e for e in strict_plan.errors)
     assert any("kokoro/tokenizer.json" in e for e in strict_plan.errors)
     assert any("kokoro/voices/af_bella.bin" in e for e in strict_plan.errors)
+
+
+def test_voice_policy_rejects_omnivoice_on_kokoro_only_tier(tmp_path: Path):
+    _write_bundle(
+        tmp_path,
+        "2b",
+        voice_paths=(
+            "tts/kokoro/model_q4.onnx",
+            "tts/kokoro/tokenizer.json",
+            "tts/kokoro/voices/af_bella.bin",
+            "tts/omnivoice-base-Q4_K_M.gguf",
+        ),
+    )
+
+    warning_plan = P.plan_bundle(tmp_path, "2b")
+    strict_plan = P.plan_bundle(tmp_path, "2b", strict_voice_policy=True)
+
+    assert warning_plan.uploadable is True
+    assert any(
+        "non-policy voice artifact tts/omnivoice-base-q4_k_m.gguf" in warning
+        for warning in warning_plan.warnings
+    )
+    assert strict_plan.uploadable is False
+    assert any(
+        "non-policy voice artifact tts/omnivoice-base-q4_k_m.gguf" in error
+        for error in strict_plan.errors
+    )
 
 
 def test_tier_choices_cover_full_eliza1_matrix() -> None:

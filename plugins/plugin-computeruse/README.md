@@ -8,7 +8,7 @@ The canonical local desktop action is `COMPUTER_USE`. It supports:
 - `click`, `click_with_modifiers`, `double_click`, `right_click`, `middle_click`
 - `mouse_move`, `mouse_down`, `mouse_up`, `drag`, `drag_to`, `left_click_drag`, `scroll`
 - `type`, `key`, `key_down`, `key_up`, `key_combo`
-- `ocr`, `detect_elements`, `accessibility_tree`
+- `ocr`, `detect_elements`, `find_element`, `accessibility_tree`
 
 The plugin also registers:
 
@@ -37,6 +37,9 @@ The current parity audit against `trycua/cua` is documented in
 [`docs/CUA_PARITY.md`](docs/CUA_PARITY.md). That file lists every Cua action
 surface found in the upstream computer and sandbox APIs, the matching
 `plugin-computeruse` action/provider/interface, and known gaps.
+
+Benchmark-facing adapters are documented in
+[`docs/BENCHMARK_INTEGRATION.md`](docs/BENCHMARK_INTEGRATION.md).
 
 ## Platform notes
 

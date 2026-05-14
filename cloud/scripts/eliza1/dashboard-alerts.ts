@@ -6,6 +6,10 @@ import {
   generateProjectionAlerts,
   generateProjections,
 } from "../../packages/lib/analytics/projections";
+import {
+  createPlaywrightTestSessionToken,
+  PLAYWRIGHT_TEST_SESSION_COOKIE_NAME,
+} from "../../packages/lib/auth/playwright-test-session";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, "../../..");
@@ -237,7 +241,64 @@ async function verifyDashboardRender(dashboardUrl?: string) {
   const { chromium } = await import("playwright");
   const browser = await chromium.launch({ headless: true });
   try {
+    const targetUrl = new URL(dashboardUrl);
     const page = await browser.newPage();
+    const cookies = [];
+    if (process.env.ELIZA1_DASHBOARD_TEST_AUTH === "true") {
+      cookies.push(
+        {
+          name: "eliza-test-auth",
+          value: "1",
+          domain: targetUrl.hostname,
+          path: "/",
+          httpOnly: false,
+          sameSite: "Lax" as const,
+          secure: targetUrl.protocol === "https:",
+        },
+        {
+          name: "steward-authed",
+          value: "1",
+          domain: targetUrl.hostname,
+          path: "/",
+          httpOnly: false,
+          sameSite: "Lax" as const,
+          secure: targetUrl.protocol === "https:",
+        },
+      );
+    }
+    const sessionCookieName = process.env.ELIZA1_DASHBOARD_SESSION_COOKIE_NAME;
+    let sessionCookieValue = process.env.ELIZA1_DASHBOARD_SESSION_COOKIE_VALUE;
+    if (!sessionCookieValue && process.env.ELIZA1_DASHBOARD_TEST_AUTH === "true") {
+      const testUserId = process.env.ELIZA1_DASHBOARD_TEST_USER_ID;
+      const testOrganizationId = process.env.ELIZA1_DASHBOARD_TEST_ORGANIZATION_ID;
+      if (testUserId && testOrganizationId) {
+        sessionCookieValue = createPlaywrightTestSessionToken(testUserId, testOrganizationId);
+      }
+    }
+    if (sessionCookieName && sessionCookieValue) {
+      cookies.push({
+        name: sessionCookieName,
+        value: sessionCookieValue,
+        domain: targetUrl.hostname,
+        path: "/",
+        httpOnly: true,
+        sameSite: "Lax" as const,
+        secure: targetUrl.protocol === "https:",
+      });
+    } else if (sessionCookieValue) {
+      cookies.push({
+        name: PLAYWRIGHT_TEST_SESSION_COOKIE_NAME,
+        value: sessionCookieValue,
+        domain: targetUrl.hostname,
+        path: "/",
+        httpOnly: true,
+        sameSite: "Lax" as const,
+        secure: targetUrl.protocol === "https:",
+      });
+    }
+    if (cookies.length > 0) {
+      await page.context().addCookies(cookies);
+    }
     await page.goto(dashboardUrl, { waitUntil: "networkidle", timeout: 60_000 });
     const redStateRendered = (await page.locator('[data-alert-severity="critical"]').count()) > 0;
     const yellowStateRendered = (await page.locator('[data-alert-severity="warning"]').count()) > 0;

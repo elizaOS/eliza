@@ -42,9 +42,14 @@ const requiredSymbols = [
 const allowedExportedSymbols = new Set(requiredSymbols);
 
 function argValue(name, fallback = null) {
+  const argv = process.argv.slice(2);
   const prefix = `${name}=`;
-  for (const arg of process.argv.slice(2)) {
-    if (arg === name) return "1";
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
+    if (arg === name) {
+      const next = argv[i + 1];
+      return next && !next.startsWith("--") ? next : "1";
+    }
     if (arg.startsWith(prefix)) return arg.slice(prefix.length);
   }
   return fallback;

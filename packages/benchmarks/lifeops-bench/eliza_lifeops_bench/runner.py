@@ -242,12 +242,24 @@ def _normalize_umbrella_discriminator(action: Action) -> Action:
             allowed=set(_DISCRIMINATORS["CALENDAR"][1]),
         )
     if action.name == "MESSAGE":
-        return _with_discriminator_alias(
+        normalized = _with_discriminator_alias(
             action,
             target_field="operation",
             aliases=_MESSAGE_ACTION_ALIASES,
             allowed=set(_DISCRIMINATORS["MESSAGE"][1]),
         )
+        kwargs = dict(normalized.kwargs)
+        if "operation" not in kwargs:
+            raw_manage_op = (
+                kwargs.get("manageOperation")
+                or kwargs.get("manage_operation")
+                or kwargs.get("mailOperation")
+                or kwargs.get("mail_operation")
+            )
+            if isinstance(raw_manage_op, str) and raw_manage_op:
+                kwargs["operation"] = "manage"
+                return Action(name=normalized.name, kwargs=kwargs)
+        return normalized
     if action.name == "ENTITY":
         return _with_discriminator_alias(
             action,

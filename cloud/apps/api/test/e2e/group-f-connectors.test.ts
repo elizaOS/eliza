@@ -10,6 +10,7 @@
  *   /api/eliza-app/webhook/blooio        (forwards to webhook gateway)
  *   /api/eliza-app/webhook/discord       (forwards to Discord webhook handler)
  *   /api/eliza-app/webhook/telegram      (forwards to webhook gateway)
+ *   /api/eliza-app/webhook/twilio        (forwards to webhook gateway)
  *   /api/eliza-app/webhook/whatsapp      (forwards to webhook gateway)
  *   /api/eliza/rooms/:roomId             (stubbed — 501)
  *   /api/eliza/rooms/:roomId/messages    (stubbed — 501)
@@ -323,6 +324,20 @@ describe("POST /api/eliza-app/webhook/discord", () => {
 describe("POST /api/eliza-app/webhook/telegram", () => {
   test("without gateway URL → 503 WEBHOOK_GATEWAY_NOT_CONFIGURED", async () => {
     const res = await api.post("/api/eliza-app/webhook/telegram", { update_id: 1 });
+    expect(res.status).toBe(503);
+    const body = (await res.json()) as { code?: string };
+    expect(body.code).toBe("WEBHOOK_GATEWAY_NOT_CONFIGURED");
+  });
+});
+
+describe("POST /api/eliza-app/webhook/twilio", () => {
+  test("without gateway URL → 503 WEBHOOK_GATEWAY_NOT_CONFIGURED", async () => {
+    const res = await api.post("/api/eliza-app/webhook/twilio", {
+      MessageSid: "SM_test",
+      From: "+15551234567",
+      To: "+15550000000",
+      Body: "hello",
+    });
     expect(res.status).toBe(503);
     const body = (await res.json()) as { code?: string };
     expect(body.code).toBe("WEBHOOK_GATEWAY_NOT_CONFIGURED");

@@ -217,28 +217,28 @@
         </div>
         <div class="metric">
           <strong>Planner</strong>
-          <span>Partially guided</span>
-          <p class="meta">Strict action grammar and validation are wired; strict span argmax and cloud grammar parity are gaps.</p>
+          <span>Guided</span>
+          <p class="meta">Strict action grammar, action-choice span sampler, numeric fixes, and validation are wired.</p>
         </div>
         <div class="metric">
           <strong>Evaluator</strong>
-          <span>Under-guided</span>
-          <p class="meta">Uses schema/text prompts, but no skeleton, grammar, span sampler, or guided decode options.</p>
+          <span>Guided</span>
+          <p class="meta">Uses schema, skeleton, GBNF, span sampler, guided decode, and remote reroll.</p>
         </div>
         <div class="metric">
           <strong>JSON repair</strong>
-          <span>Not done</span>
-          <p class="meta">No robust escaping/repair path for raw control characters in JSON strings.</p>
+          <span>Done</span>
+          <p class="meta">Strict grammar and parser repair cover raw control characters and invalid backslashes.</p>
         </div>
       </div>
     </header>
 
     <section>
       <h2>Executive Assessment</h2>
-      <p>The repository has a real guidance layer, but it is unevenly applied. Stage 1 response handling is the most mature: it builds a field-registry schema, response skeleton, GBNF grammar, and span sampler plan, then dispatches through typed field evaluators. Stage 2 planning has a strong strict grammar for action selection and parameters, plus post-hoc validation before action execution. Evaluators are the weak spot: they rely on prompt text and a JSON schema only.</p>
-      <p>The specific guidance goals are only partially satisfied. Legal-token filtering is implemented through GBNF for response-handler enums and strict planner action/parameter schemas. Argmax sampling is implemented for skeleton enum/number/boolean spans, but the strict planner path currently exposes only a single free-json skeleton span, so action selection is grammar-filtered but not span-sampler argmaxed. Required parameters are structurally emitted by strict planner grammar to a bounded nested depth, then validated before execution. Raw newline/tab/backslash repair inside JSON strings is not implemented; in fact, the shared JSON string GBNF is permissive enough to be risky for raw control characters.</p>
+      <p>The repository now has a more consistent guidance layer across the response handler, planner, evaluator, action schemas, and eliza-1 adapters. Stage 1 response handling remains the most mature path: it builds a field-registry schema, response skeleton, GBNF grammar, and span sampler plan, then dispatches through typed field evaluators. Stage 2 planning now exposes the strict action choice to span-sampler argmax while preserving per-action grammar coupling and post-hoc validation. Evaluator output now uses the same guided-decode contract instead of relying on schema and prompt text alone.</p>
+      <p>The specific guidance goals are now implemented for the main paths. Legal-token filtering is implemented through GBNF for response-handler enums, evaluator decisions, and strict planner action/parameter schemas. Argmax sampling is applied to skeleton enum/number/boolean spans, including planner action choice and evaluator success/decision. Required parameters are structurally emitted by strict planner grammar to a bounded nested depth, then validated before execution. Raw newline/tab/backslash safety is covered by a stricter JSON string grammar and parser repair for invalid provider JSON strings.</p>
       <div class="callout">
-        <strong>Bottom line:</strong> keep the current grammar/skeleton architecture, but close the JSON string escaping gap, bring evaluator onto the same guidance layer, make strict planner span guidance observable, and add end-to-end adapter tests that prove eliza-1 receives the guidance payloads it is expected to honor.
+        <strong>Bottom line:</strong> the high-priority gaps from the review have been closed in the codebase. Remaining risk is mostly native/provider support: fork-aware eliza-1 backends can honor the guidance payloads, while stock providers may ignore fork extension fields and fall back to schema validation, parser normalization, and reroll behavior.
       </div>
     </section>
 
@@ -250,39 +250,39 @@
             <th>Requirement</th>
             <th>Status</th>
             <th>Current implementation</th>
-            <th>Gap</th>
+            <th>Residual</th>
           </tr>
         </thead>
         <tbody>
           <tr>
             <td>When sampling enum parameter values, argmax the most likely token and filter illegal tokens.</td>
-            <td><span class="badge partial">Partial</span></td>
-            <td>GBNF filters legal enum values in response-handler fields and planner action params. <code>buildSpanSamplerPlan</code> assigns <code>temperature: 0</code> and <code>topK: 1</code> to enum, number, and boolean spans.</td>
-            <td>The strict planner grammar uses one free-json skeleton span, so strict action choice does not receive a span-sampler override. Evaluator has no span sampler. Cloud only forwards span samplers for eliza-1-prefixed models.</td>
+            <td><span class="badge done">Done</span></td>
+            <td>GBNF filters legal enum values in response-handler fields, evaluator decisions, planner action choice, and planner action params. <code>buildSpanSamplerPlan</code> assigns <code>temperature: 0</code> and <code>topK: 1</code> to enum, number, and boolean spans.</td>
+            <td>Non-eliza-1 providers may ignore span sampler extensions, but local/fork-aware eliza-1 paths receive the guidance where supported.</td>
           </tr>
           <tr>
             <td>When JSON is closed or a parameter is about to close, infer and fill tool-calling structure tokens.</td>
-            <td><span class="badge partial">Partial</span></td>
-            <td>Response skeleton literals and strict planner GBNF supply braces, commas, keys, quotes, and per-action parameter shape. Guided decode provider options are set on Stage 1 and planner calls.</td>
-            <td>No explicit TypeScript implementation was found that detects mid-generation JSON close events and injects the next structural tokens. The behavior is mostly represented as static skeleton/grammar, not a runtime close-event repair mechanism.</td>
+            <td><span class="badge done">Done</span></td>
+            <td>Response skeleton literals and strict planner GBNF supply braces, commas, keys, quotes, and per-action parameter shape. Guided decode provider options are set on Stage 1, planner, and evaluator calls.</td>
+            <td>Runtime close-event inference remains backend-owned, but the TypeScript producers now send the structure needed by fork-aware engines.</td>
           </tr>
           <tr>
             <td>Escape model-returned newlines, tabs, backslashes, and line breaks inside JSON strings when more response content logically follows.</td>
-            <td><span class="badge gap">Not done</span></td>
-            <td>Fixed grammar literals are escaped for GBNF. Stream extraction understands escaped sequences while reading strings.</td>
-            <td>The free-string JSON grammar does not require escaping raw control characters, and parsers do not repair invalid JSON strings. No tests cover multiple newlines, CRLF/CR, tab, or dangling backslash breakage in guided JSON strings.</td>
+            <td><span class="badge done">Done</span></td>
+            <td>The shared JSON string grammar rejects raw control characters and only allows valid JSON escapes. <code>parseJsonObject</code> repairs raw LF, CRLF, CR, tabs, controls, and invalid backslashes inside strings before parsing.</td>
+            <td>Covered by focused parser and grammar tests. Full backend token-stream repair still depends on the provider honoring the grammar/skeleton contract.</td>
           </tr>
           <tr>
             <td>Always add required parameters and subparameters; make it tight schema-driven, not just CFG.</td>
-            <td><span class="badge partial">Partial</span></td>
-            <td>Action schemas are normalized to JSON Schema. Strict planner grammar emits required object properties first, optional properties after, nested objects and arrays of objects to a depth cap, then <code>validateToolArgs</code> rejects invalid/missing arguments before execution.</td>
-            <td>Nested schema guidance stops at depth 4. <code>oneOf</code>/<code>anyOf</code>, patterns, richer numeric constraints, and free-form objects fall back to broad JSON. Optional keys can repeat in grammar. Bounded integer grammar appears to quote numeric literals.</td>
+            <td><span class="badge done">Done</span></td>
+            <td>Action schemas are normalized to JSON Schema. Strict planner grammar emits required object properties first, optional properties once, nested objects and arrays of objects to a depth cap, then <code>validateToolArgs</code> rejects invalid/missing arguments before execution.</td>
+            <td>Deep, union, pattern, and broad free-form schemas still fall back to validation when they exceed the grammar subset.</td>
           </tr>
           <tr>
             <td>Other quick wins to reduce likelihood of failure.</td>
-            <td><span class="badge available">Identified</span></td>
-            <td>There are already utilities for validation/reroll, enum short-form expansion, strict native tools, and deterministic terminal actions.</td>
-            <td>Some quick wins are not enabled or not wired into the main paths, especially schema validation/reroll and evaluator guidance.</td>
+            <td><span class="badge done">Done</span></td>
+            <td>Evaluator guidance and remote reroll are wired; action enum values are deduped before schema exposure; candidate action hints are tightened and capped; eliza-1 cloud/mobile guidance payloads are forwarded where supported.</td>
+            <td>Enum short-form remains opt-in to avoid hiding upstream generation regressions.</td>
           </tr>
         </tbody>
       </table>
@@ -304,37 +304,37 @@
             <td>Response handler</td>
             <td>One native <code>HANDLE_RESPONSE</code> call with registered fields: <code>shouldRespond</code>, <code>contexts</code>, <code>intents</code>, <code>candidateActionNames</code>, <code>replyText</code>, <code>facts</code>, <code>relationships</code>, <code>addressedTo</code>, <code>emotion</code>.</td>
             <td><code>ResponseHandlerFieldRegistry.composeSchema</code> makes all registered fields required with <code>additionalProperties: false</code>. <code>buildResponseGrammar</code> builds a JSON envelope and GBNF. <code>buildSpanSamplerPlan</code> pins enum/number/boolean spans. <code>dispatch</code> fills missing fields defensively and invokes field handlers in priority order.</td>
-            <td><span class="badge done">Mostly done</span> Strong schema and dispatch path. Remaining risks are free-string JSON escaping, broad array/object fields, cloud grammar parity, and legacy schema duplication.</td>
+            <td><span class="badge done">Done</span> Strong schema and dispatch path. Candidate action hints are tightened/capped before planner retrieval.</td>
           </tr>
           <tr>
             <td>Planner</td>
             <td>Native action tools, terminal tools, per-action parameter objects, routing hints, and JSON fallback when no tools are available.</td>
             <td><code>buildPlannerToolsFromActions</code> exposes strict tools. <code>buildPlannerActionGrammarStrict</code> creates a union of branches where each branch fixes the action name and binds the correct parameter grammar. <code>parsePlannerOutput</code> normalizes native tool calls. <code>executePlannedToolCall</code> validates before handler execution.</td>
-            <td><span class="badge partial">Partial</span> Good local structure filter and post-parse safety. Missing strict span argmax, remote grammar forwarding, duplicate optional key prevention, and fuller JSON Schema coverage.</td>
+            <td><span class="badge done">Done</span> Strict action choice is exposed to span argmax, bounded integers are emitted as numeric JSON, and optional keys are single-use in grammar.</td>
           </tr>
           <tr>
             <td>Evaluator</td>
             <td>Post-tool route decision: <code>FINISH</code>, <code>NEXT_RECOMMENDED</code>, or <code>CONTINUE</code>, plus success and optional user message.</td>
-            <td><code>runEvaluator</code> sends <code>evaluationPrompt</code> with <code>responseSchema: evaluatorSchema</code>. Parser normalizes invalid decisions to <code>CONTINUE</code>, repairs missing success on successful terminal tool outcomes, and sanitizes user-facing text.</td>
-            <td><span class="badge gap">Under-guided</span> This path lacks grammar, skeleton, span sampler, guided decode provider options, and native tool structure. It is schema-plus-parser, not the same guided decode system.</td>
+            <td><code>runEvaluator</code> sends <code>responseSchema</code>, evaluator skeleton, evaluator GBNF, span sampler plan, guided decode provider options, and remote reroll. Parser normalization and sanitization remain as safety nets.</td>
+            <td><span class="badge done">Done</span> Evaluator now uses the same guidance stack as the main structured-output paths.</td>
           </tr>
           <tr>
             <td>Actions</td>
             <td>Action names, descriptions, examples, parameter types, required fields, enum values, object properties, arrays, defaults, and additional property policy.</td>
             <td><code>actionParametersToJsonSchema</code> and <code>normalizeActionJsonSchema</code> translate action metadata into strict JSON Schema. <code>propertyValueGbnf</code> translates supported schema subsets into grammar. <code>validateToolArgs</code> enforces required properties, enum, type, pattern, bounds, arrays, and nested objects.</td>
-            <td><span class="badge partial">Partial</span> Strong conversion and validation. Grammar coverage is narrower than validation coverage, and missing required params are rejected rather than repaired when generation misses them.</td>
+            <td><span class="badge done">Done</span> Enum values are deduped before tool/grammar exposure; validation remains the hard gate for unsupported schema shapes.</td>
           </tr>
           <tr>
             <td>eliza-1 cloud adapter</td>
             <td>Native tools and span-sampler override headers for eliza-1 model prefixes.</td>
-            <td><code>plugin-elizacloud</code> forwards <code>tools</code>, <code>tool_choice</code>, and <code>response_format</code>. For <code>vast/eliza-1-*</code>, <code>elizaos/eliza-1-*</code>, and <code>eliza-1-*</code>, it emits <code>x-eliza-span-samplers</code>.</td>
-            <td><span class="badge partial">Partial</span> Span sampler support exists, but grammar and response skeleton are not forwarded through this Chat Completions request body.</td>
+            <td><code>plugin-elizacloud</code> forwards <code>tools</code>, <code>tool_choice</code>, <code>response_format</code>, <code>grammar</code>, <code>response_skeleton</code>, <code>prefill</code>, <code>eliza_guidance</code>, and <code>x-eliza-span-samplers</code> for known eliza-1 prefixes.</td>
+            <td><span class="badge done">Done</span> Generic providers do not receive fork-only fields; eliza-1 deployments do.</td>
           </tr>
           <tr>
             <td>Local/mobile llama adapter</td>
-            <td>Basic generation options only.</td>
-            <td><code>packages/native-plugins/llama</code> accepts prompt, token count, temperature, top-p, stop, stream, and cache key.</td>
-            <td><span class="badge gap">Gap</span> The inspected mobile adapter does not carry <code>grammar</code>, <code>responseSkeleton</code>, or <code>spanSamplerPlan</code>. The TypeScript types document these fields, but this adapter does not consume them.</td>
+            <td>Prompt options plus structured-output guidance fields.</td>
+            <td><code>packages/native-plugins/llama</code> accepts and forwards <code>prefill</code>, <code>responseSkeleton</code>, <code>grammar</code>, <code>spanSamplerPlan</code>, and opaque <code>elizaSchema</code> payloads to fork-aware native completion params.</td>
+            <td><span class="badge done">Done</span> Stock native builds may ignore fork extensions, but the adapter no longer drops the guidance.</td>
           </tr>
         </tbody>
       </table>
@@ -376,6 +376,82 @@
     </section>
 
     <section>
+      <h2>Implementation Update</h2>
+      <p>This report was updated after the remediation pass. Four parallel workstreams handled the gaps: core grammar, evaluator guidance, adapter parity, and lower-priority action-surface cleanup.</p>
+      <table>
+        <thead>
+          <tr>
+            <th>Workstream</th>
+            <th>Implemented</th>
+            <th>Verification</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Core grammar</td>
+            <td>Strict JSON string rule, JSON repair in <code>parseJsonObject</code>, strict planner action-choice sampler skeleton, duplicate-safe optional object keys, and unquoted bounded integer literals.</td>
+            <td><code>response-grammar.test.ts</code> and <code>json-output.test.ts</code> passed in the focused suite.</td>
+          </tr>
+          <tr>
+            <td>Evaluator</td>
+            <td>Evaluator-specific skeleton, GBNF grammar, deterministic spans for <code>success</code>/<code>decision</code>, guided decode provider options, and remote schema reroll before parser fallback.</td>
+            <td><code>planner-loop.test.ts</code>, <code>planner-loop-user-facing-text.test.ts</code>, <code>planner-happy-path.test.ts</code>, and package typecheck passed.</td>
+          </tr>
+          <tr>
+            <td>Adapters</td>
+            <td>Eliza Cloud forwards grammar, response skeleton, prefill, eliza guidance, and span sampler headers to known eliza-1 deployments. Mobile llama forwards structured guidance to native completion params.</td>
+            <td><code>text-native-plumbing.test.ts</code>, <code>capacitor-llama-adapter.test.ts</code>, and plugin/mobile typechecks passed.</td>
+          </tr>
+          <tr>
+            <td>Action surface</td>
+            <td>Candidate action guidance now prefers known actions, caps hints at 12, canonicalizes through runtime actions/similes, and dedupes enum values before exposing schemas.</td>
+            <td><code>builtin-field-evaluators.test.ts</code>, <code>to-tool.test.ts</code>, <code>enum-short-form.test.ts</code>, and candidate-action routing tests passed.</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>Verification Update</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Scope</th>
+            <th>Command</th>
+            <th>Result</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Implementation-plan core suite</td>
+            <td><code>node ../../scripts/run-vitest.mjs run ...</code> over evaluator, response grammar, JSON repair, planner loop, Stage 1, action schema, enum short-form, and happy-path tests.</td>
+            <td><span class="badge done">Passed</span> 12 files, 181 tests.</td>
+          </tr>
+          <tr>
+            <td>Core typecheck</td>
+            <td><code>./node_modules/.bin/tsc --noEmit -p ./tsconfig.json</code> in <code>packages/core</code>.</td>
+            <td><span class="badge done">Passed</span></td>
+          </tr>
+          <tr>
+            <td>Eliza Cloud plugin</td>
+            <td><code>./node_modules/.bin/vitest run</code> and <code>./node_modules/.bin/tsc --noEmit -p tsconfig.json</code> in <code>plugins/plugin-elizacloud</code>.</td>
+            <td><span class="badge done">Passed</span> 11 files, 83 tests passed, 1 skipped.</td>
+          </tr>
+          <tr>
+            <td>Native llama adapter</td>
+            <td><code>../../../node_modules/.bin/vitest run</code> and <code>../../../node_modules/.bin/tsc --noEmit -p tsconfig.json</code> in <code>packages/native-plugins/llama</code>.</td>
+            <td><span class="badge done">Passed</span> 2 files, 16 tests.</td>
+          </tr>
+          <tr>
+            <td>Full core package test pass</td>
+            <td><code>node ../../scripts/run-vitest.mjs run</code> in <code>packages/core</code>.</td>
+            <td><span class="badge partial">Attempted</span> The process exited with code <code>-1</code> before emitting a completion summary, so this is not counted as a verified pass.</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
       <h2>How Each Path Works</h2>
       <h3>Response Handler Flow</h3>
       <ol>
@@ -407,12 +483,12 @@
     </section>
 
     <section>
-      <h2>Gap Report</h2>
+      <h2>Residual Risk</h2>
       <table>
         <thead>
           <tr>
             <th>Priority</th>
-            <th>Gap</th>
+            <th>Original gap</th>
             <th>Why it matters</th>
             <th>Recommended fix</th>
           </tr>
@@ -420,69 +496,69 @@
         <tbody>
           <tr>
             <td class="priority p0">P0</td>
-            <td>Free-string JSON escaping is not enforced or repaired.</td>
+            <td>Free-string JSON escaping was not enforced or repaired.</td>
             <td>Raw LF, CR, CRLF, tab, and dangling backslash inside a generated string can make the entire JSON object invalid.</td>
-            <td>Tighten the JSON string grammar to reject raw control characters and add a streaming/local repair layer that converts logical in-string line breaks and tabs to escaped sequences. Add tests for LF, CRLF, CR, multiple blank lines, tab, backslash before quote, and dangling backslash.</td>
+            <td><span class="badge done">Closed</span> Shared grammar now rejects raw controls and invalid escapes; parser repair covers raw line breaks, tabs, controls, and invalid backslashes.</td>
           </tr>
           <tr>
             <td class="priority p0">P0</td>
-            <td>Evaluator is not on guided decode.</td>
+            <td>Evaluator was not on guided decode.</td>
             <td>The evaluator decides whether the loop finishes, continues, or asks for another tool. A malformed decision can cause unnecessary loops or premature finish behavior.</td>
-            <td>Add an evaluator skeleton/GBNF builder with deterministic enum/boolean spans for <code>decision</code> and <code>success</code>, then attach <code>withGuidedDecodeProviderOptions</code> in <code>runEvaluator</code>.</td>
+            <td><span class="badge done">Closed</span> Evaluator guidance is now built and attached, with deterministic spans and remote reroll.</td>
           </tr>
           <tr>
             <td class="priority p0">P0</td>
-            <td>Strict planner action selection is grammar-filtered but not span-sampler argmaxed.</td>
+            <td>Strict planner action selection was grammar-filtered but not span-sampler argmaxed.</td>
             <td>The code comments expect action enum spans to be pinned, but strict planner returns a single free-json skeleton span, so no action-choice override is emitted.</td>
-            <td>Derive sampler override points from strict grammar branches, add a planner-specific sampler plan, or switch to a skeleton that exposes action and enum parameter spans while preserving strict branch coupling.</td>
+            <td><span class="badge done">Closed</span> Strict planner now returns a sampler skeleton exposing action choice while preserving strict branch grammar.</td>
           </tr>
           <tr>
             <td class="priority p1">P1</td>
-            <td>Bounded integer grammar appears to emit quoted numeric literals.</td>
+            <td>Bounded integer grammar appeared to emit quoted numeric literals.</td>
             <td>A schema integer range like <code>0..5</code> should generate <code>0</code>, not <code>"0"</code>. If quoted, local decode can create values that fail validation.</td>
-            <td>Change bounded integer literal emission to unquoted numeric GBNF literals and add a planner execution test for bounded integer params.</td>
+            <td><span class="badge done">Closed</span> Bounded integer literals are emitted as numeric JSON tokens and covered by grammar tests.</td>
           </tr>
           <tr>
             <td class="priority p1">P1</td>
-            <td>Validation/reroll utility is implemented but not wired into production source paths.</td>
+            <td>Validation/reroll utility was implemented but not wired into production evaluator source paths.</td>
             <td>Remote/cloud paths do not receive grammar and can still produce schema-invalid output. The utility is the existing mechanism to retry on remote schema failure.</td>
-            <td>Integrate <code>callModelWithValidation</code> or equivalent schema retry into remote evaluator/planner fallback paths, with local grammar paths explicitly opting out.</td>
+            <td><span class="badge done">Closed for evaluator</span> Evaluator has equivalent remote reroll before parser fallback. Planner native tools remain the primary route; broader remote reroll can still be expanded if text fallback use grows.</td>
           </tr>
           <tr>
             <td class="priority p1">P1</td>
-            <td>Adapter parity is incomplete.</td>
+            <td>Adapter parity was incomplete.</td>
             <td>Types document <code>grammar</code>, <code>responseSkeleton</code>, and <code>spanSamplerPlan</code>, but inspected cloud and mobile adapters do not forward all of them.</td>
-            <td>Add adapter-level integration tests that assert eliza-1/local requests carry grammar, skeleton metadata, and span sampler controls where supported. Extend adapter request types where needed.</td>
+            <td><span class="badge done">Closed</span> Cloud and mobile adapters forward guidance payloads where supported and have focused tests/typechecks.</td>
           </tr>
           <tr>
             <td class="priority p1">P1</td>
-            <td>Optional object keys can repeat in grammar.</td>
+            <td>Optional object keys could repeat in grammar.</td>
             <td>JSON parsers collapse duplicate keys, so validation may not detect that the model generated duplicate optional fields.</td>
-            <td>Emit bounded permutations or a duplicate-safe optional property grammar for small object schemas. For larger schemas, consider post-parse duplicate detection before <code>JSON.parse</code>.</td>
+            <td><span class="badge done">Closed</span> Optional keys are emitted at most once in declaration order.</td>
           </tr>
           <tr>
             <td class="priority p1">P1</td>
             <td>Grammar supports less schema than validation.</td>
             <td><code>oneOf</code>, <code>anyOf</code>, patterns, richer numeric bounds, and deep nested objects can fall back to broad JSON, increasing failure probability.</td>
-            <td>Expand grammar support for common schema constructs used by real actions, then add an action-schema fixture suite that compares schema intent to grammar constraints.</td>
+            <td><span class="badge partial">Residual</span> Required/nested/enum/numeric common cases are tighter; <code>oneOf</code>, <code>anyOf</code>, patterns, and broad free-form objects remain validation-backed.</td>
           </tr>
           <tr>
             <td class="priority p2">P2</td>
             <td>Legacy <code>HANDLE_RESPONSE_SCHEMA</code> remains beside field-registry schema.</td>
             <td>Duplicate schema definitions drift and make audits harder.</td>
-            <td>Consolidate the legacy schema around <code>ResponseHandlerFieldRegistry.composeSchema</code> or remove it once no compatibility path needs it.</td>
+            <td><span class="badge partial">Residual</span> Left intentionally for legacy compatibility; production field-registry schema remains canonical.</td>
           </tr>
           <tr>
             <td class="priority p2">P2</td>
-            <td><code>candidateActionNames</code> is prompt-guided, not enum-guided.</td>
+            <td><code>candidateActionNames</code> was prompt-guided, not enum-guided.</td>
             <td>Misspelled action candidates can reduce planner routing quality before the native tool planner stage.</td>
-            <td>Either keep it intentionally fuzzy but canonicalize to known action names, or encode available action names as a legal enum array when the list is small enough.</td>
+            <td><span class="badge done">Closed</span> Guidance now prefers known actions, parsed hints are capped, and runtime canonicalization filters to known names/similes.</td>
           </tr>
           <tr>
             <td class="priority p2">P2</td>
             <td>Enum short-form expansion is off by default.</td>
             <td>It can recover simple single-enum action args, but changing defaults may hide upstream generation issues.</td>
-            <td>Measure failure recovery from <code>ELIZA_SHORT_FORM_ENUMS=1</code>. If it is beneficial, enable for selected actions or log recoveries before defaulting it on.</td>
+            <td><span class="badge partial">Residual</span> Kept opt-in to avoid masking bad generation; enum schema exposure is improved through deduplication.</td>
           </tr>
         </tbody>
       </table>
@@ -522,7 +598,7 @@
           <tr>
             <td>Evaluator</td>
             <td><code>packages/core/src/runtime/evaluator.ts</code><br><code>packages/core/src/prompts/evaluator.ts</code></td>
-            <td>Uses schema and parser normalization, but no grammar/skeleton/span sampler guided decode layer.</td>
+            <td>Uses schema, parser normalization, evaluator GBNF, skeleton, span sampler plan, guided decode provider options, and remote reroll.</td>
           </tr>
           <tr>
             <td>Action schema and validation</td>
@@ -532,22 +608,22 @@
           <tr>
             <td>Cloud adapter</td>
             <td><code>plugins/plugin-elizacloud/src/models/text.ts</code></td>
-            <td>Forwards native tools and eliza-1 span sampler headers; does not forward full grammar/skeleton in request body.</td>
+            <td>Forwards native tools, grammar, response skeleton, prefill, eliza guidance, and eliza-1 span sampler headers for known eliza-1 deployments.</td>
           </tr>
           <tr>
             <td>Mobile llama adapter</td>
             <td><code>packages/native-plugins/llama/src/definitions.ts</code><br><code>packages/native-plugins/llama/src/capacitor-llama-adapter.ts</code></td>
-            <td>Generation options do not include grammar, response skeleton, or span sampler plan.</td>
+            <td>Generation options include grammar, response skeleton, span sampler plan, prefill, and opaque eliza schema forwarding for fork-aware native builds.</td>
           </tr>
           <tr>
             <td>Structured streaming</td>
             <td><code>packages/core/src/utils/streaming.ts</code><br><code>packages/core/src/runtime.ts</code></td>
-            <td>Extracts configured free-string fields from a response skeleton for streaming user-visible text, but does not repair invalid JSON.</td>
+            <td>Extracts configured free-string fields from a response skeleton for streaming user-visible text. Whole-object parser repair handles invalid JSON strings on parse fallback.</td>
           </tr>
           <tr>
             <td>Schema reroll utility</td>
             <td><code>packages/core/src/runtime/validated-model-call.ts</code><br><code>packages/core/src/runtime/__tests__/schema-validation-reroll.test.ts</code></td>
-            <td>Implements parse/schema validation and remote retry behavior, but source search found usage only in tests and the utility itself.</td>
+            <td>Implements parse/schema validation and remote retry behavior. Evaluator now has equivalent schema reroll logic in its live path.</td>
           </tr>
           <tr>
             <td>Tests</td>
@@ -559,14 +635,14 @@
     </section>
 
     <section>
-      <h2>Recommended Implementation Order</h2>
+      <h2>Implemented Work</h2>
       <ol>
-        <li>Fix JSON string safety first: grammar restriction, escape/repair logic where generation is streamed or assembled, and exhaustive newline/tab/backslash tests.</li>
-        <li>Add evaluator guided decode: schema-to-skeleton/GBNF for <code>decision</code>, <code>success</code>, and optional message fields, plus span sampler pinning.</li>
-        <li>Repair strict planner span sampler behavior so action and enum params are both legal-token-filtered and argmaxed where eliza-1 supports span overrides.</li>
-        <li>Fix bounded numeric grammar and add execution-level tests that prove generated params pass <code>validateToolArgs</code>.</li>
-        <li>Wire remote schema validation/reroll for unguided cloud paths and add adapter parity tests for eliza-1 guidance payloads.</li>
-        <li>Expand schema coverage in planner grammar based on real action inventory: prioritize enum arrays, nested required objects, numeric bounds, and common <code>oneOf</code>/<code>anyOf</code> shapes.</li>
+        <li>Fixed JSON string safety with grammar restriction, parser repair, and newline/tab/backslash tests.</li>
+        <li>Added evaluator guided decode with schema-to-skeleton/GBNF, deterministic <code>decision</code>/<code>success</code> spans, provider options, and remote reroll.</li>
+        <li>Repaired strict planner span sampler behavior so action choice is both legal-token-filtered and argmaxed where eliza-1 supports span overrides.</li>
+        <li>Fixed bounded integer grammar to emit numeric JSON literals and added coverage.</li>
+        <li>Forwarded eliza-1 guidance payloads through cloud and mobile/native adapters and added adapter tests.</li>
+        <li>Tightened quick-win surfaces: enum value dedupe, candidate action hint cap/guidance, and continued schema validation for unsupported shapes.</li>
       </ol>
     </section>
   </main>

@@ -1219,7 +1219,7 @@ function handleDeepLink(url: string): void {
       break;
     }
     case "chat":
-      window.location.hash = "#chat";
+      setHashRoute("chat", parsed.searchParams);
       break;
     case "voice":
     case "chat/voice": {

@@ -149,11 +149,17 @@ export {
   fromCuaBenchAction,
   parseCuaBenchActionString,
 } from "./benchmarks/cuabench-action-converter.js";
+export { CuaBenchSession } from "./benchmarks/cuabench-session.js";
 export type {
   CuaBenchActionInput,
+  CuaBenchActionObject,
   CuaBenchControlAction,
   CuaBenchConvertedAction,
 } from "./benchmarks/cuabench-action-converter.js";
+export type {
+  CuaBenchServiceLike,
+  CuaBenchSessionResult,
+} from "./benchmarks/cuabench-session.js";
 export {
   type BlockGrid,
   blockGrid,

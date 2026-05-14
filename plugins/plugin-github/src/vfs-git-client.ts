@@ -1,10 +1,10 @@
 import crypto from "node:crypto";
 import type { IAgentRuntime } from "@elizaos/core";
 import {
+  type GitHubAccountSelection,
   readGitHubAccounts,
   readGitHubAccountsWithConnectorCredentials,
   resolveGitHubAccount,
-  type GitHubAccountSelection,
 } from "./accounts.js";
 
 const VIRTUAL_GIT_ROOT = ".vfs-git";
@@ -24,6 +24,7 @@ export interface VfsGitFilesystem {
   exportFiles: () => Promise<VfsGitFilesystemFile[]>;
   readFile: (path: string) => Promise<string>;
   writeFile: (path: string, contents: string | Uint8Array) => Promise<unknown>;
+  delete?: (path: string) => Promise<unknown>;
 }
 
 export interface VfsGitStatusEntry {
@@ -60,7 +61,89 @@ export interface VfsGitAuth {
   role?: string;
 }
 
+export interface VfsGitRemoteOptions {
+  owner: string;
+  repo: string;
+  branch?: string;
+  auth: Pick<VfsGitAuth, "token">;
+  baseUrl?: string;
+  fetch?: FetchLike;
+}
+
+export interface VfsGitPushOptions extends VfsGitRemoteOptions {
+  message: string;
+  author?: {
+    name?: string;
+    email?: string;
+  };
+}
+
+export interface VfsGitPullOptions extends VfsGitRemoteOptions {
+  reset?: boolean;
+  commitMessage?: string;
+}
+
+export interface VfsGitPushResult {
+  branch: string;
+  commitSha: string;
+  localCommit: VfsGitCommit;
+  changedFiles: number;
+}
+
+export interface VfsGitPullResult {
+  branch: string;
+  commitSha: string;
+  filesWritten: number;
+  filesDeleted: number;
+  localCommit: VfsGitCommit;
+}
+
 type VfsGitIndex = Record<string, string>;
+type FetchLike = (
+  input: string,
+  init?: {
+    method?: string;
+    headers?: Record<string, string>;
+    body?: string;
+  },
+) => Promise<{
+  ok: boolean;
+  status: number;
+  statusText: string;
+  json: () => Promise<unknown>;
+  text: () => Promise<string>;
+}>;
+
+interface GitHubRefResponse {
+  object: {
+    sha: string;
+  };
+}
+
+interface GitHubCommitResponse {
+  sha: string;
+  tree: {
+    sha: string;
+  };
+}
+
+interface GitHubTreeEntry {
+  path?: string;
+  mode?: string;
+  type?: string;
+  sha?: string | null;
+}
+
+interface GitHubTreeResponse {
+  sha: string;
+  tree: GitHubTreeEntry[];
+}
+
+interface GitHubBlobResponse {
+  sha: string;
+  content: string;
+  encoding: string;
+}
 
 export class VirtualGitClient {
   constructor(private readonly fs: VfsGitFilesystem) {}
@@ -122,15 +205,120 @@ export class VirtualGitClient {
     return commits;
   }
 
+  async pushToGitHub(options: VfsGitPushOptions): Promise<VfsGitPushResult> {
+    await this.fs.initialize?.();
+    const branch = options.branch ?? "main";
+    const gitHub = new GitHubGitDatabaseClient(options);
+    const ref = await gitHub.getRef(branch);
+    const baseCommit = await gitHub.getCommit(ref.object.sha);
+    const baseTree = await gitHub.getTree(baseCommit.tree.sha);
+    const currentFiles = await this.currentFiles();
+    const currentPaths = new Set(currentFiles.map((file) => file.path));
+    const treeEntries: GitHubTreeEntry[] = [];
+
+    for (const file of currentFiles) {
+      const blob = await gitHub.createBlob(file.bytes);
+      treeEntries.push({
+        path: file.path,
+        mode: "100644",
+        type: "blob",
+        sha: blob.sha,
+      });
+    }
+
+    for (const remoteFile of baseTree.tree) {
+      if (
+        remoteFile.type === "blob" &&
+        remoteFile.path &&
+        !currentPaths.has(remoteFile.path)
+      ) {
+        treeEntries.push({
+          path: remoteFile.path,
+          mode: "100644",
+          type: "blob",
+          sha: null,
+        });
+      }
+    }
+
+    const tree = await gitHub.createTree(baseCommit.tree.sha, treeEntries);
+    const commit = await gitHub.createCommit({
+      message: options.message,
+      tree: tree.sha,
+      parents: [baseCommit.sha],
+      author: options.author,
+    });
+    await gitHub.updateRef(branch, commit.sha);
+    const localCommit = await this.commit({
+      message: options.message,
+      author: options.author,
+    });
+    return {
+      branch,
+      commitSha: commit.sha,
+      localCommit,
+      changedFiles: treeEntries.length,
+    };
+  }
+
+  async pullFromGitHub(options: VfsGitPullOptions): Promise<VfsGitPullResult> {
+    await this.fs.initialize?.();
+    const branch = options.branch ?? "main";
+    const gitHub = new GitHubGitDatabaseClient(options);
+    const ref = await gitHub.getRef(branch);
+    const commit = await gitHub.getCommit(ref.object.sha);
+    const tree = await gitHub.getTree(commit.tree.sha);
+    const remoteFiles = tree.tree.filter(
+      (entry) => entry.type === "blob" && entry.path && entry.sha,
+    );
+    const remotePaths = new Set(remoteFiles.map((entry) => entry.path ?? ""));
+    let filesDeleted = 0;
+
+    if (options.reset !== false && this.fs.delete) {
+      for (const file of await this.currentFiles()) {
+        if (!remotePaths.has(file.path)) {
+          await this.fs.delete(file.path);
+          filesDeleted += 1;
+        }
+      }
+    }
+
+    for (const entry of remoteFiles) {
+      const blob = await gitHub.getBlob(requiredString(entry.sha));
+      await this.fs.writeFile(requiredString(entry.path), decodeBlob(blob));
+    }
+
+    const localCommit = await this.commit({
+      message: options.commitMessage ?? `pull ${options.owner}/${options.repo}`,
+    });
+    return {
+      branch,
+      commitSha: commit.sha,
+      filesWritten: remoteFiles.length,
+      filesDeleted,
+      localCommit,
+    };
+  }
+
   private async currentTree(): Promise<VfsGitIndex> {
-    const files = await this.fs.exportFiles();
+    const files = await this.currentFiles();
     const tree: VfsGitIndex = {};
     for (const file of files) {
-      const path = normalizeVfsPath(file.path);
-      if (path.startsWith(`${VIRTUAL_GIT_ROOT}/`)) continue;
-      tree[path] = sha256(file.bytes);
+      tree[file.path] = sha256(file.bytes);
     }
     return tree;
+  }
+
+  private async currentFiles(): Promise<
+    Array<{ path: string; bytes: Uint8Array }>
+  > {
+    const files = await this.fs.exportFiles();
+    return files
+      .map((file) => ({
+        path: normalizeVfsPath(file.path),
+        bytes: file.bytes,
+      }))
+      .filter((file) => !file.path.startsWith(`${VIRTUAL_GIT_ROOT}/`));
   }
 
   private async readIndex(): Promise<VfsGitIndex> {
@@ -158,6 +346,136 @@ export class VirtualGitClient {
     } catch {
       return null;
     }
+  }
+}
+
+class GitHubGitDatabaseClient {
+  private readonly baseUrl: string;
+  private readonly fetchImpl: FetchLike;
+
+  constructor(private readonly options: VfsGitRemoteOptions) {
+    if (!options.auth.token) {
+      throw new Error("VFS git remote sync requires GitHub auth");
+    }
+    this.baseUrl = (options.baseUrl ?? "https://api.github.com").replace(
+      /\/+$/,
+      "",
+    );
+    this.fetchImpl = options.fetch ?? fetch;
+  }
+
+  async getRef(branch: string): Promise<GitHubRefResponse> {
+    return await this.request<GitHubRefResponse>(
+      `/repos/${this.repoPath()}/git/ref/heads/${encodeURIComponent(branch)}`,
+    );
+  }
+
+  async getCommit(sha: string): Promise<GitHubCommitResponse> {
+    return await this.request<GitHubCommitResponse>(
+      `/repos/${this.repoPath()}/git/commits/${sha}`,
+    );
+  }
+
+  async getTree(sha: string): Promise<GitHubTreeResponse> {
+    return await this.request<GitHubTreeResponse>(
+      `/repos/${this.repoPath()}/git/trees/${sha}?recursive=1`,
+    );
+  }
+
+  async getBlob(sha: string): Promise<GitHubBlobResponse> {
+    return await this.request<GitHubBlobResponse>(
+      `/repos/${this.repoPath()}/git/blobs/${sha}`,
+    );
+  }
+
+  async createBlob(bytes: Uint8Array): Promise<{ sha: string }> {
+    return await this.request<{ sha: string }>(
+      `/repos/${this.repoPath()}/git/blobs`,
+      {
+        method: "POST",
+        body: {
+          content: Buffer.from(bytes).toString("base64"),
+          encoding: "base64",
+        },
+      },
+    );
+  }
+
+  async createTree(
+    baseTree: string,
+    tree: GitHubTreeEntry[],
+  ): Promise<{ sha: string }> {
+    return await this.request<{ sha: string }>(
+      `/repos/${this.repoPath()}/git/trees`,
+      {
+        method: "POST",
+        body: {
+          base_tree: baseTree,
+          tree,
+        },
+      },
+    );
+  }
+
+  async createCommit(input: {
+    message: string;
+    tree: string;
+    parents: string[];
+    author?: { name?: string; email?: string };
+  }): Promise<{ sha: string }> {
+    return await this.request<{ sha: string }>(
+      `/repos/${this.repoPath()}/git/commits`,
+      {
+        method: "POST",
+        body: {
+          message: input.message,
+          tree: input.tree,
+          parents: input.parents,
+          author: input.author,
+        },
+      },
+    );
+  }
+
+  async updateRef(branch: string, sha: string): Promise<{ ref: string }> {
+    return await this.request<{ ref: string }>(
+      `/repos/${this.repoPath()}/git/refs/heads/${encodeURIComponent(branch)}`,
+      {
+        method: "PATCH",
+        body: {
+          sha,
+          force: false,
+        },
+      },
+    );
+  }
+
+  private async request<T>(
+    path: string,
+    init: { method?: string; body?: unknown } = {},
+  ): Promise<T> {
+    const response = await this.fetchImpl(`${this.baseUrl}${path}`, {
+      method: init.method ?? "GET",
+      headers: {
+        accept: "application/vnd.github+json",
+        authorization: `Bearer ${this.options.auth.token}`,
+        "content-type": "application/json",
+        "x-github-api-version": "2022-11-28",
+      },
+      ...(init.body === undefined ? {} : { body: JSON.stringify(init.body) }),
+    });
+    if (!response.ok) {
+      throw new Error(
+        `GitHub VFS git request failed: ${response.status} ${response.statusText} ${await response.text()}`,
+      );
+    }
+    return (await response.json()) as T;
+  }
+
+  private repoPath(): string {
+    return `${encodeURIComponent(this.options.owner)}/${encodeURIComponent(
+      this.options.repo,
+    )}`;
   }
 }
 
@@ -194,6 +512,18 @@ function statusFor(
 
 function normalizeVfsPath(path: string): string {
   return path.replace(/^\/+/, "");
+}
+
+function decodeBlob(blob: GitHubBlobResponse): Uint8Array {
+  if (blob.encoding !== "base64") {
+    throw new Error(`Unsupported GitHub blob encoding: ${blob.encoding}`);
+  }
+  return Buffer.from(blob.content.replace(/\s/g, ""), "base64");
+}
+
+function requiredString(value: string | null | undefined): string {
+  if (!value) throw new Error("Expected GitHub response string");
+  return value;
 }
 
 function sha256(bytes: Uint8Array): string {

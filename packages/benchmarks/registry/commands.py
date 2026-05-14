@@ -145,6 +145,9 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         sample = extra.get("sample", extra.get("max_tasks"))
         if isinstance(sample, int) and sample > 0:
             args.extend(["--sample", str(sample)])
+        seed = extra.get("seed")
+        if isinstance(seed, int):
+            args.extend(["--seed", str(seed)])
         max_per_category = extra.get("max_per_category")
         if isinstance(max_per_category, int) and max_per_category > 0:
             args.extend(["--max-per-category", str(max_per_category)])

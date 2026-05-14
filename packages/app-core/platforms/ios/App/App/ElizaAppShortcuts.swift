@@ -4,7 +4,9 @@ import UIKit
 
 private enum ElizaShortcutRoute {
     private static let fallbackScheme = "elizaos"
-    private static let host = "app.eliza"
+    private static var host: String {
+        Bundle.main.bundleIdentifier ?? "app.eliza"
+    }
 
     static func url(path: String, queryItems: [URLQueryItem] = []) -> URL {
         var components = URLComponents()

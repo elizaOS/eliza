@@ -82,7 +82,7 @@ export async function handleWebhook(
 
   // ── Async phase: identity → forward → reply (runs in background) ──
 
-  processMessage(adapter, config, event, deps, project).catch((err) => {
+  processMessage(adapter, config, event, deps, project, agentId).catch((err) => {
     logger.error("Background message processing failed", {
       error: err instanceof Error ? err.message : String(err),
       project,
@@ -100,6 +100,7 @@ async function processMessage(
   event: ChatEvent,
   deps: HandlerDeps,
   project: string,
+  explicitAgentId?: string,
 ): Promise<void> {
   const { redis, cloudBaseUrl, getAuthHeader } = deps;
   const authHeader = getAuthHeader();
@@ -123,7 +124,7 @@ async function processMessage(
     return;
   }
 
-  const agentId = config.agentId || identity.agentId;
+  const agentId = explicitAgentId || identity.agentId || config.agentId;
 
   const server = await resolveAgentServer(redis, agentId);
   if (!server) {

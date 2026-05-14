@@ -152,6 +152,32 @@ def test_release_status_blockers_detect_local_standin_evidence(tmp_path: Path) -
     assert "Publish-blocking status:" in text
 
 
+def test_release_status_blockers_detect_non_policy_voice_artifacts(
+    tmp_path: Path,
+) -> None:
+    plan = build_plan()
+    bundle = tmp_path / "bundles" / "eliza-1-2b.bundle"
+    bundle.mkdir(parents=True)
+    (bundle / "eliza-1.manifest.json").write_text(
+        json.dumps(
+            {
+                "files": {
+                    "voice": [
+                        {"path": "tts/kokoro/model_q4.onnx"},
+                        {"path": "tts/kokoro/tokenizer.json"},
+                        {"path": "tts/kokoro/voices/af_bella.bin"},
+                        {"path": "tts/omnivoice-base-Q4_K_M.gguf"},
+                    ]
+                }
+            }
+        )
+    )
+
+    blockers = release_status_blockers(tmp_path / "bundles", plan)
+
+    assert any("non-policy artifact" in item for item in blockers["2b"])
+
+
 def test_release_status_blockers_accept_base_v1_uploaded_evidence(
     tmp_path: Path,
 ) -> None:
@@ -181,7 +207,7 @@ def test_release_status_blockers_accept_base_v1_uploaded_evidence(
                     "asr": {"repo": "ggml-org/Qwen3-ASR-0.6B-GGUF"},
                     "vad": {"repo": "ggml-org/whisper-vad"},
                     "embedding": {"repo": "Qwen/Qwen3-Embedding-0.6B-GGUF"},
-                    "drafter": {"repo": "elizalabs/eliza-1", "file": "bundles/2b/dflash/drafter-2b.gguf"},
+                    "drafter": {"repo": "elizaos/eliza-1", "file": "bundles/2b/dflash/drafter-2b.gguf"},
                 },
                 "final": {
                     # weights are the upstream base GGUFs by design — not a
@@ -197,15 +223,15 @@ def test_release_status_blockers_accept_base_v1_uploaded_evidence(
                 "weights": required_weights,
                 "checksumManifest": "checksums/SHA256SUMS",
                 "hf": {
-                    "repoId": "elizalabs/eliza-1",
+                    "repoId": "elizaos/eliza-1",
                     "repoPath": "bundles/2b",
                     "status": "uploaded",
                     "uploadEvidence": {
-                        "repoId": "elizalabs/eliza-1",
+                        "repoId": "elizaos/eliza-1",
                         "pathPrefix": "bundles/2b",
                         "status": "uploaded",
                         "commit": "abc123",
-                        "url": "https://huggingface.co/elizalabs/eliza-1/commit/abc123",
+                        "url": "https://huggingface.co/elizaos/eliza-1/commit/abc123",
                         "uploadedPaths": required_weights,
                     },
                 },
@@ -247,7 +273,7 @@ def test_release_status_blockers_base_v1_blocks_pending_upload(
                 "weights": required_weights,
                 "checksumManifest": "checksums/SHA256SUMS",
                 "hf": {
-                    "repoId": "elizalabs/eliza-1",
+                    "repoId": "elizaos/eliza-1",
                     "repoPath": "bundles/2b",
                     "status": "pending-upload",
                 },
@@ -288,7 +314,7 @@ def test_release_status_blockers_base_v1_rejects_fake_qwen_component_repos(
                 "weights": [],
                 "checksumManifest": "checksums/SHA256SUMS",
                 "hf": {
-                    "repoId": "elizalabs/eliza-1",
+                    "repoId": "elizaos/eliza-1",
                     "status": "pending-upload",
                 },
             }

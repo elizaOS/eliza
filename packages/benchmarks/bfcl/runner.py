@@ -19,6 +19,7 @@ Routes each test case to the appropriate evaluation path:
 from __future__ import annotations
 
 import logging
+import json
 import os
 import time
 from typing import Optional
@@ -687,4 +688,212 @@ class BFCLRunner:
         its user-content strings into a single list. Returns an empty list
         if the fixture isn't present."""
         if not scenario:
-   
+            return []
+        path = MEMORY_PREREQ_CONVERSATION_PATH / f"memory_{scenario}.json"
+        if not path.exists():
+            return []
+
+        messages: list[str] = []
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            question = row.get("question") if isinstance(row, dict) else None
+            if not isinstance(question, list):
+                continue
+            for turn in question:
+                if not isinstance(turn, list):
+                    continue
+                for message in turn:
+                    if not isinstance(message, dict):
+                        continue
+                    if message.get("role") != "user":
+                        continue
+                    content = message.get("content")
+                    if isinstance(content, str) and content:
+                        messages.append(content)
+        return messages
+
+    def _generate_summary(
+        self,
+        metrics: BFCLMetrics,
+        baseline_comparison: dict[str, float],
+    ) -> dict[str, object]:
+        """Generate a compact human-readable result summary."""
+        if metrics.overall_score >= 0.85:
+            status = "excellent"
+        elif metrics.overall_score >= 0.60:
+            status = "good"
+        else:
+            status = "needs_improvement"
+
+        key_findings: list[str] = [
+            (
+                f"Overall score: {metrics.overall_score:.2%} "
+                f"(AST: {metrics.ast_accuracy:.2%}, Exec: {metrics.exec_accuracy:.2%})"
+            )
+        ]
+        if metrics.skipped_tests:
+            key_findings.append(
+                f"Skipped {metrics.skipped_tests} tests: {metrics.skipped_by_reason}"
+            )
+
+        if metrics.category_metrics:
+            best_category, best_metrics = max(
+                metrics.category_metrics.items(),
+                key=lambda item: item[1].ast_accuracy,
+            )
+            worst_category, worst_metrics = min(
+                metrics.category_metrics.items(),
+                key=lambda item: item[1].ast_accuracy,
+            )
+            key_findings.append(
+                f"Best category: {best_category.value} ({best_metrics.ast_accuracy:.2%})"
+            )
+            if worst_metrics.ast_accuracy < 1.0:
+                key_findings.append(
+                    f"Needs work: {worst_category.value} ({worst_metrics.ast_accuracy:.2%})"
+                )
+
+        if baseline_comparison:
+            closest_name, closest_delta = min(
+                baseline_comparison.items(),
+                key=lambda item: abs(item[1]),
+            )
+            direction = "ahead of" if closest_delta >= 0 else "behind"
+            key_findings.append(
+                f"{direction.capitalize()} {closest_name} by {abs(closest_delta):.2%}"
+            )
+
+        recommendations: list[str] = []
+        if metrics.ast_accuracy < 0.95:
+            recommendations.append("Improve function name and argument matching")
+        if metrics.exec_accuracy < 0.95:
+            recommendations.append("Improve executable argument validity")
+        if metrics.relevance_accuracy < 0.95:
+            recommendations.append("Improve no-tool relevance decisions")
+        if not recommendations:
+            recommendations.append("No major BFCL regressions detected")
+
+        return {
+            "status": status,
+            "key_findings": key_findings,
+            "recommendations": recommendations,
+        }
+
+    async def run_sample(
+        self,
+        n: int = 10,
+        categories: Optional[list[BFCLCategory]] = None,
+        seed: Optional[int] = None,
+    ) -> BFCLBenchmarkResults:
+        """Run a deterministic sample of BFCL test cases.
+
+        The orchestrator compares Eliza/Hermes/OpenClaw rows, so sample mode
+        must select the same test ids for every harness. `BFCLDataset.get_sample`
+        owns the deterministic sampling; this method mirrors `run()` over that
+        selected subset.
+        """
+        start_time = time.time()
+        logger.info("Running sample of %s tests", n)
+
+        try:
+            await self._initialize()
+            await self.dataset.load()
+            sample_seed = self.config.sample_seed if seed is None else seed
+            test_cases = self.dataset.get_sample(
+                n,
+                categories=categories,
+                seed=sample_seed,
+            )
+            logger.info(
+                "BFCL sample ids (seed=%s): %s",
+                sample_seed,
+                ", ".join(tc.id for tc in test_cases),
+            )
+
+            results: list[BFCLResult] = []
+            total = len(test_cases)
+            for i, test_case in enumerate(test_cases):
+                logger.debug("Running sample test %s/%s: %s", i + 1, total, test_case.id)
+                try:
+                    results.append(await self._run_single_test(test_case))
+                except Exception as e:
+                    logger.error("Sample test %s failed with error: %s", test_case.id, e)
+                    results.append(
+                        BFCLResult(
+                            test_case_id=test_case.id,
+                            category=test_case.category,
+                            predicted_calls=[],
+                            expected_calls=test_case.expected_calls,
+                            ast_match=False,
+                            exec_success=False,
+                            relevance_correct=False,
+                            latency_ms=0,
+                            error=str(e),
+                            status=TestStatus.ERROR,
+                        )
+                    )
+
+            self._results = results
+            metrics = self.metrics_calculator.calculate(self._results)
+            baseline_comparison = self.metrics_calculator.compare_to_baselines(metrics)
+            summary = self._generate_summary(metrics, baseline_comparison)
+
+            if hasattr(self.agent, "model_name"):
+                self._model_name = self.agent.model_name
+
+            duration_ms = (time.time() - start_time) * 1000
+            benchmark_results = BFCLBenchmarkResults(
+                metadata={
+                    "benchmark": "BFCL",
+                    "version": self.config.version,
+                    "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                    "duration_ms": duration_ms,
+                    "total_tests": len(self._results),
+                    "model": self._model_name or "unknown",
+                    "enable_network": self.config.enable_network,
+                    "sample_seed": sample_seed,
+                    "sample_size": n,
+                    "sample_ids": [tc.id for tc in test_cases],
+                },
+                config=self.config,
+                metrics=metrics,
+                results=self._results,
+                baseline_comparison=baseline_comparison,
+                summary=summary,
+                model_name=self._model_name,
+                provider=self._provider,
+            )
+
+            if self.config.generate_report:
+                await self.reporter.generate_report(benchmark_results)
+
+            logger.info(
+                "BFCL sample completed in %.2fms. Overall score: %.2f%%",
+                duration_ms,
+                metrics.overall_score * 100,
+            )
+            return benchmark_results
+        finally:
+            await self._cleanup()
+
+
+async def run_bfcl_benchmark(
+    config: Optional[BFCLConfig] = None,
+    *,
+    use_mock_agent: bool = False,
+    provider: Optional[str] = None,
+    model: Optional[str] = None,
+) -> BFCLBenchmarkResults:
+    """Convenience wrapper for library callers."""
+    runner = BFCLRunner(
+        config or BFCLConfig(),
+        use_mock_agent=use_mock_agent,
+        provider=provider,
+        model=model,
+    )
+    return await runner.run()
