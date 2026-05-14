@@ -514,7 +514,7 @@ async function startScenarioApiServer(
           res.end(JSON.stringify({ error: "Internal Server Error" }));
         }
         // Log full error server-side for diagnostics; do not expose to client.
-        console.error("[scenario-runner] route handler error", error);
+        logger.error("[scenario-runner] route handler error", { error });
       }
       return;
     }
