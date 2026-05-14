@@ -61,7 +61,7 @@
         }
       ],
       "expected_action_name": "REPLY",
-      "expected_params": { "text": "hi" },
+      "expected_params": { "text": "<<any>>" },
       "notes": "Trivial reply — REPLY action."
     },
     {
@@ -112,7 +112,7 @@
         }
       ],
       "expected_action_name": "CREATE_REMINDER",
-      "expected_params": { "text": "call mom" }
+      "expected_params": { "text": "<<any>>" }
     },
     {
       "id": "send-email-to-named-recipient",

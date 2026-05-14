@@ -101,6 +101,14 @@ export function checkPlannerSchema(value: JsonValue): boolean {
   return true;
 }
 
+/**
+ * Sentinel for "any non-empty string of the same type" in fixture
+ * `expected_params`. Use it for free-text reply bodies where the LLM
+ * never produces a byte-identical string but the call shape is what
+ * we're actually testing.
+ */
+export const ANY_VALUE_SENTINEL = "<<any>>";
+
 /** Check that all keys in `expected` exist on `parameters` and match by deep-equal. */
 export function checkParamsMatch(
   parameters: JsonValue,
@@ -109,6 +117,13 @@ export function checkParamsMatch(
   if (!isPlainObject(parameters)) return false;
   for (const [key, want] of Object.entries(expected)) {
     const have = parameters[key];
+    // Free-text wildcard: only require the field to be a non-empty string.
+    // Lets fixtures focus on call-shape match for actions whose payload is
+    // LLM-authored prose (REPLY.text, CREATE_REMINDER.text, …).
+    if (want === ANY_VALUE_SENTINEL) {
+      if (typeof have !== "string" || have.length === 0) return false;
+      continue;
+    }
     if (!deepEqual(have, want)) return false;
   }
   return true;

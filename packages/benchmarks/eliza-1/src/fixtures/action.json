@@ -1,5 +1,5 @@
 {
-  "note": "Per-action fixtures. The runner streams context through a single-action grammar/schema; the model emits the action's parameter object only. Starts with REPLY and MESSAGE — add more actions by appending to `cases` with a new `actionName`.",
+  "note": "Per-action fixtures. The runner streams context through a single-action grammar/schema; the model emits the action's parameter object only. Free-text fields like REPLY.text use the sentinel '<<any>>' so the matcher only checks the field exists with non-empty string content — the LLM never produces byte-identical prose. Structured fields (recipients, op enums, etc.) require exact match.",
   "cases": [
     {
       "id": "reply-greeting",
@@ -13,7 +13,7 @@
         }
       ],
       "context": "User just said 'hi'. Produce a brief friendly greeting back.",
-      "expected_params": { "text": "hi" }
+      "expected_params": { "text": "<<any>>" }
     },
     {
       "id": "reply-thanks",
@@ -27,7 +27,7 @@
         }
       ],
       "context": "User said 'thanks for the help'. Produce a brief acknowledgement.",
-      "expected_params": { "text": "you're welcome" }
+      "expected_params": { "text": "<<any>>" }
     },
     {
       "id": "reply-status-update",
@@ -41,7 +41,7 @@
         }
       ],
       "context": "User asked 'are you still working on that?'. The task is complete. Produce a short confirmation.",
-      "expected_params": { "text": "done" }
+      "expected_params": { "text": "<<any>>" }
     },
     {
       "id": "message-recipient-text",
@@ -61,7 +61,7 @@
         }
       ],
       "context": "User said: 'message alice and tell her the report is ready'. Emit parameters for the MESSAGE action.",
-      "expected_params": { "recipient": "alice", "text": "the report is ready" }
+      "expected_params": { "recipient": "alice", "text": "<<any>>" }
     },
     {
       "id": "message-recipient-followup",
