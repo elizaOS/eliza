@@ -771,6 +771,7 @@ export interface ImageGenerationResult {
 export interface TranscriptionParams {
 	audioUrl: string;
 	prompt?: string;
+	signal?: AbortSignal;
 }
 
 /**
