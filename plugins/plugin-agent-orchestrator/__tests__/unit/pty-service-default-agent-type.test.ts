@@ -77,4 +77,12 @@ describe("PTYService.defaultAgentType + explicitDefaultAgentType", () => {
     );
     expect(svc.defaultAgentType).toBe("opencode");
   });
+
+  it("does not pass opencode through coding-agent-adapters preflight", async () => {
+    const svc = instantiate({});
+    const opencodeOnly = ["opencode"] as unknown as Parameters<
+      PTYService["checkAvailableAgents"]
+    >[0];
+    await expect(svc.checkAvailableAgents(opencodeOnly)).resolves.toEqual([]);
+  });
 });

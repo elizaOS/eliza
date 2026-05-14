@@ -161,6 +161,26 @@ describe("buildOpencodeSpawnConfig auto-detect from provider env", () => {
     );
   });
 
+  it("does not pass unresolved vault pointers as custom-base api keys", () => {
+    (readConfigEnvKey as ReturnType<typeof vi.fn>).mockImplementation(
+      (key: string) =>
+        ({
+          ELIZA_OPENCODE_BASE_URL: "https://api.cerebras.ai/v1",
+          ELIZA_OPENCODE_API_KEY: "vault://PARALLAX_OPENCODE_API_KEY",
+          ELIZA_OPENCODE_MODEL_POWERFUL: "gpt-oss-120b",
+        })[key],
+    );
+    const runtime = buildRuntime({ CEREBRAS_API_KEY: "csk-resolved" });
+    const result = buildOpencodeSpawnConfig(runtime);
+    expect(result?.providerId).toBe("eliza-local");
+    expect(result?.model).toBe("eliza-local/gpt-oss-120b");
+    const config = JSON.parse(result?.configContent ?? "{}");
+    expect(config.provider["eliza-local"].options.baseURL).toBe(
+      "https://api.cerebras.ai/v1",
+    );
+    expect(config.provider["eliza-local"].options.apiKey).toBe("csk-resolved");
+  });
+
   it("ELIZA_OPENCODE_MODEL_POWERFUL overrides the provider's default model", () => {
     const runtime = buildRuntime({
       CEREBRAS_API_KEY: "csk-test",

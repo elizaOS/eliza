@@ -91,6 +91,7 @@ import type {
 import {
   isOpencodeAgentType,
   isPiAgentType,
+  toOpencodeCommand,
   toPiCommand,
 } from "./pty-types.js";
 import {
@@ -100,6 +101,7 @@ import {
 } from "./session-log-merger.js";
 import { readClaudeCodeSession } from "./session-log-reader.js";
 import { CLAUDE_SKILL_ESSENTIALS } from "./skill-essentials.js";
+import { OPENCODE_SKILL_ESSENTIALS } from "./opencode-essentials.js";
 import {
   TRAJECTORY_CHILD_STEP_ENV_KEY,
   TRAJECTORY_CHILD_STEP_METADATA_KEY,
@@ -892,15 +894,15 @@ export class PTYService {
 
     const piRequested = isPiAgentType(options.agentType);
     const opencodeRequested = isOpencodeAgentType(options.agentType);
-    // Pi still routes through the generic shell adapter (no first-class
-    // PiAdapter upstream). Opencode is now a real adapter in
-    // `coding-agent-adapters` 0.17+ — route to "opencode" directly so
-    // PTYService picks up `OpencodeAdapter` from `getAdapter("opencode")`
-    // (native ready/loading/auth detection, AGENTS.md path, env injection).
+    // Pi and OpenCode route through the generic shell adapter in the
+    // currently locked coding-agent-adapters release. Keep "opencode" as
+    // the logical requested type in metadata/results, but do not pass it to
+    // createAdapter()/checkAdapters() until the dependency exposes a real
+    // OpenCode adapter.
     const resolvedAgentType: CodingAgentType = piRequested
       ? "shell"
       : opencodeRequested
-        ? "opencode"
+        ? "shell"
         : options.agentType;
     const effectiveApprovalPreset =
       options.approvalPreset ??
@@ -965,7 +967,12 @@ export class PTYService {
         }
       : options.env;
     const workdir = options.workdir ?? process.cwd();
-    const workspaceLock = buildWorkspaceLockMemory(workdir, resolvedAgentType);
+    const logicalAgentType: CodingAgentType = opencodeRequested
+      ? "opencode"
+      : piRequested
+        ? "pi"
+        : resolvedAgentType;
+    const workspaceLock = buildWorkspaceLockMemory(workdir, logicalAgentType);
     const workspaceTaskPrefix = buildInlineWorkspaceTaskPrefix(workdir);
     const serverPort = resolveServerPort(this.runtime);
     const parentRuntimeBridge = buildParentRuntimeBridgeMemory(
@@ -986,22 +993,13 @@ export class PTYService {
       hasCallerMemoryContent || resolvedAgentType === "shell"
         ? options.initialTask
         : prependWorkspaceLockToTask(options.initialTask, workspaceTaskPrefix);
-    // Pi still routes through the shell bridge (PTY types the bare
-    // shell command into bash), so its task needs `toPiCommand` to wrap
-    // it as a runnable command line.
-    //
-    // OpenCode used to go the same way (`toOpencodeCommand` returned
-    // `opencode run --dangerously-skip-permissions '<task>'`). It's now
-    // a canonical adapter (eliza#7609, parallax 0.17+) — `OpencodeAdapter`
-    // owns the `opencode run --dangerously-skip-permissions` wrapping
-    // and reads the raw task off `adapterConfig.initialPrompt`. Applying
-    // `toOpencodeCommand` here would double-wrap, producing
-    // `opencode run --dangerously-skip-permissions opencode run --dangerously-skip-permissions '<task>'`
-    // when the adapter then appends the wrapped string as its prompt arg.
-    // Pass opencode the RAW task; the adapter handles the rest.
+    // Pi and OpenCode both run through the shell bridge here, so their
+    // tasks must be wrapped as runnable command lines before PTY delivery.
     const resolvedInitialTask = piRequested
       ? toPiCommand(effectiveInitialTask)
-      : effectiveInitialTask;
+      : opencodeRequested
+        ? toOpencodeCommand(effectiveInitialTask)
+        : effectiveInitialTask;
 
     // Store workdir for later retrieval
     this.sessionWorkdirs.set(sessionId, workdir);
@@ -1022,6 +1020,29 @@ export class PTYService {
     // Write memory content before spawning so the agent reads it on startup.
     // Always include the workspace lock and parent bridge so spawned agents
     // stay in-bounds and can read narrowly-scoped parent context.
+    if (opencodeRequested) {
+      const agentsPath = join(workdir, "AGENTS.md");
+      const opencodeBrief = [
+        workspaceLock,
+        parentRuntimeBridge,
+        OPENCODE_SKILL_ESSENTIALS,
+        options.memoryContent,
+      ]
+        .filter((section) => section?.trim())
+        .join("\n\n---\n\n");
+      try {
+        await mkdir(workdir, { recursive: true });
+        const existing = await readFile(agentsPath, "utf8").catch(() => "");
+        await writeFile(
+          agentsPath,
+          mergeOpencodeAgentsMd(existing, opencodeBrief),
+        );
+        this.log(`Wrote OpenCode AGENTS.md brief: ${agentsPath}`);
+      } catch (err) {
+        this.log(`Failed to write OpenCode AGENTS.md brief: ${err}`);
+      }
+    }
+
     if (shouldWriteMemoryFile) {
       const fullMemory = [
         workspaceLock,
@@ -1196,8 +1217,7 @@ export class PTYService {
     // opencode just exits 0 and the bot never sees the answer the
     // sub-agent produced — Discord shows only the "On it" ack and the
     // user gets silence after.
-    const opencodeRunMode =
-      resolvedAgentType === "opencode" && !!options.initialTask?.trim();
+    const opencodeRunMode = opencodeRequested && !!options.initialTask?.trim();
     const resolvedMetadata = {
       ...metadataWithoutModelPrefs,
       requestedType: linkedMetadata?.requestedType ?? options.agentType,
@@ -2118,9 +2138,11 @@ export class PTYService {
   async checkAvailableAgents(
     types?: AdapterType[],
   ): Promise<PreflightResult[]> {
+    const adapterBackedTypes = ["claude", "gemini", "codex", "aider"] as const;
     const agentTypes =
-      types ??
-      (["claude", "gemini", "codex", "aider", "opencode"] as AdapterType[]);
+      types?.filter((type) =>
+        (adapterBackedTypes as readonly string[]).includes(type),
+      ) ?? ([...adapterBackedTypes] as AdapterType[]);
     const cacheKey = agentTypes.join(",");
     const now = Date.now();
     const cached = this.preflightCache.get(cacheKey);
@@ -2881,21 +2903,16 @@ export class PTYService {
   }
 
   private isAdapterBackedAgentType(value: unknown): value is AdapterType {
-    // opencode joined the canonical adapter list in eliza#7609 (parallax
-    // 0.17+). `OpencodeAdapter.getArgs` passes the task as a positional
-    // arg to `opencode run --dangerously-skip-permissions <task>` — its
-    // run mode does NOT accept stdin prompts the way claude/codex do.
-    // Without `opencode` in this allowlist, PTYService falls through to
-    // the legacy shell-bridge that pipes the task into PTY stdin, which
-    // opencode silently ignores, leading to "task may not have been
-    // accepted (only 0 new lines after 5000ms)" retry loops.
+    // Keep this list to adapters supported by the locked
+    // coding-agent-adapters package. OpenCode remains a logical
+    // CodingAgentType but currently runs through the shell bridge as
+    // `opencode run --dangerously-skip-permissions <task>`.
     return (
       value === "claude" ||
       value === "gemini" ||
       value === "codex" ||
       value === "aider" ||
-      value === "hermes" ||
-      value === "opencode"
+      value === "hermes"
     );
   }
 

@@ -653,8 +653,7 @@ export async function initializePTYManager(
       const meta = ctx.sessionMetadata.get(session.id);
       const codexExec =
         session.type === "codex" && meta?.codexExecMode === true;
-      const opencodeRun =
-        session.type === "opencode" && meta?.opencodeRunMode === true;
+      const opencodeRun = meta?.opencodeRunMode === true;
       if (stoppedCleanly && (codexExec || opencodeRun)) {
         const response = await captureFastPathTaskResponse(ctx, session.id);
         const durationMs = session.startedAt
