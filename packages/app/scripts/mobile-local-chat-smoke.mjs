@@ -1111,14 +1111,14 @@ async function verifyAndroidBackgroundApi(context, baseUrl, authToken) {
  * iOS BGTaskScheduler harness for an already-booted simulator.
  *
  * Drives Apple's private LLDB-only `_simulateLaunchForTaskWithIdentifier:`
- * against the running app process, then polls `/api/health` until
- * `lastWakeFiredAt` advances past the pre-fire baseline. Returns a result
- * object so callers can assert duration / advancement.
+ * against the running app process, then polls an explicitly supplied agent
+ * route surface until `lastWakeFiredAt` advances past the pre-fire baseline.
+ * iOS full-Bun/local mode must use the in-app IPC bridge; this harness no
+ * longer fabricates a loopback default.
  *
  * Notes:
- *   - The wake field lands in Wave 3D. Until then, this returns
- *     `{ ok: true, reason: "wake-field-not-implemented" }` rather than
- *     failing — so the harness ships now and lights up the moment 3D merges.
+ *   - The wake field is required for this check. Missing or unreachable route
+ *     data fails the run instead of silently passing.
  *   - The LLDB invocation is the documented Apple test path for BG task
  *     simulation. See "Simulating Background Fetch and Refresh Behavior"
  *     in Apple's docs and `BGTaskSchedulerPermittedIdentifiers` in Info.plist.
@@ -1128,7 +1128,13 @@ async function verifyIosBackgroundApi(udid, opts = {}) {
     return { ok: false, reason: "no-simulator" };
   }
   const taskIdentifier = opts.taskIdentifier ?? "ai.eliza.tasks.refresh";
-  const baseUrl = opts.baseUrl ?? "http://127.0.0.1:31337";
+  const baseUrl = opts.baseUrl;
+  if (!baseUrl) {
+    throw new Error(
+      "iOS background verification requires an explicit agent route surface. " +
+        "The loopback default is disabled for iOS local/full-Bun builds; use the WebView IPC smoke instead.",
+    );
+  }
   const authToken = opts.authToken;
 
   const id = appId();
@@ -1146,9 +1152,7 @@ async function verifyIosBackgroundApi(udid, opts = {}) {
   tryExec("xcrun", ["simctl", "openurl", udid, "elizaos://chat"]);
   await sleep(1000);
 
-  // Capture the pre-fire wake baseline. If /api/health is unreachable (no
-  // forwarded port on iOS sim) the harness short-circuits — Wave 3D wires
-  // the agent loopback. Treat unreachable as "wake-field-not-implemented".
+  // Capture the pre-fire wake baseline from the caller-supplied route surface.
   let baselineWakeMs = null;
   let fieldImplemented = false;
   try {
@@ -1163,9 +1167,7 @@ async function verifyIosBackgroundApi(udid, opts = {}) {
     fieldImplemented = baselineWakeMs !== null;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    console.warn(
-      `[local-chat-smoke] iOS /api/health not reachable yet: ${message}`,
-    );
+    throw new Error(`[local-chat-smoke] iOS /api/health is not reachable: ${message}`);
   }
 
   // Resolve the simulator's running app PID via launchctl.
@@ -1243,15 +1245,16 @@ async function verifyIosBackgroundApi(udid, opts = {}) {
   }
 
   if (!advanced) {
-    if (fieldImplemented) {
+    if (!fieldImplemented) {
       throw new Error(
-        `iOS wake did not advance after BGTaskScheduler simulate for ${taskIdentifier}. ` +
-          `baseline=${baselineWakeMs}`,
+        "iOS /api/health.lastWakeFiredAt is missing; background wake verification cannot pass without it.",
       );
     }
-    console.warn(
-      "[local-chat-smoke] /api/health.lastWakeFiredAt not present yet (Wave 3D pending); " +
-        "skipping iOS wake-advance assertion.",
+    throw new Error(
+      `iOS wake did not advance after BGTaskScheduler simulate for ${taskIdentifier}. ` +
+        `baseline=${baselineWakeMs}`,
+    );
+  }
     );
     return {
       ok: true,
