@@ -3,7 +3,10 @@
 import pytest
 from pathlib import Path
 
-from elizaos_terminal_bench.dataset import TerminalBenchDataset
+from elizaos_terminal_bench.dataset import (
+    TerminalBenchDataset,
+    TerminalBenchDatasetMissingError,
+)
 from elizaos_terminal_bench.types import (
     TaskCategory,
     TaskDifficulty,
@@ -141,27 +144,24 @@ class TestDatasetEdgeCases:
     """Test edge cases for dataset loading."""
 
     @pytest.mark.asyncio
-    async def test_empty_dataset(self) -> None:
-        """Test behavior with empty dataset."""
+    async def test_loads_real_corpus_by_default(self) -> None:
+        """Without args, the loader pulls the vendored upstream corpus."""
         dataset = TerminalBenchDataset(use_sample_tasks=False)
-        # Without a data path and not using sample tasks,
-        # should fall back to sample tasks
         await dataset.load()
-
-        # Should have loaded something (fallback to samples)
-        assert len(dataset) >= 0
+        # The vendored corpus has hundreds of tasks; verify we got a
+        # plausible number and that none look like sample IDs.
+        assert len(dataset) > 100
+        assert all(not t.task_id.startswith("sample_") for t in dataset.tasks)
 
     @pytest.mark.asyncio
-    async def test_nonexistent_path(self) -> None:
-        """Test with non-existent data path."""
+    async def test_nonexistent_path_raises(self) -> None:
+        """A bad explicit data_path must fail loudly, not silently fall back."""
         dataset = TerminalBenchDataset(
-            data_path=Path("/nonexistent/path"),
+            data_path=Path("/this/path/does/not/exist"),
             use_sample_tasks=False,
         )
-        await dataset.load()
-
-        # Should have fallen back to sample tasks
-        assert len(dataset) >= 0
+        with pytest.raises(TerminalBenchDatasetMissingError):
+            await dataset.load()
 
     def test_len_before_load(self) -> None:
         """Test length before loading."""

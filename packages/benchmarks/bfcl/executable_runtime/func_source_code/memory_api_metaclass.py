@@ -4,11 +4,28 @@ from pathlib import Path
 from typing import Optional
 from overrides import final
 
-from bfcl_eval.utils import (
-    get_directory_structure_by_id,
-    is_first_memory_prereq_entry,
-    is_memory_prereq,
-)
+# Upstream imports replaced with local shims. Memory categories require
+# additional upstream scaffolding (snapshot dirs, memory_prereq_conversation
+# files) that we don't vendor — they are marked SKIPPED_UNSUPPORTED by the
+# runner. These shims keep the module importable for non-memory tests.
+try:
+    from bfcl_eval.utils import (  # type: ignore[import-not-found]
+        get_directory_structure_by_id,
+        is_first_memory_prereq_entry,
+        is_memory_prereq,
+    )
+except ImportError:
+    def get_directory_structure_by_id(test_id):  # type: ignore[no-redef]
+        raise NotImplementedError(
+            "Memory categories require upstream bfcl_eval.utils helpers. "
+            "Install `bfcl-eval` to enable."
+        )
+
+    def is_first_memory_prereq_entry(test_id):  # type: ignore[no-redef]
+        return False
+
+    def is_memory_prereq(test_id):  # type: ignore[no-redef]
+        return False
 
 
 class MemoryAPI(ABC):

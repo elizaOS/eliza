@@ -24,6 +24,7 @@ from elizaos_agentbench.types import (
     AgentBenchTask,
     AgentRuntimeProtocol,
     BaselineComparisonType,
+    BenchmarkSplit,
     EnvironmentConfig,
     EnvironmentReport,
     GPT4_BASELINE_SCORES,
@@ -35,11 +36,15 @@ from elizaos_agentbench.types import (
     TaskDifficulty,
 )
 from elizaos_agentbench.adapters.base import EnvironmentAdapter
-from elizaos_agentbench.adapters.os_adapter import OSEnvironmentAdapter
+from elizaos_agentbench.adapters.card_game_adapter import CardGameAdapter
 from elizaos_agentbench.adapters.db_adapter import DatabaseEnvironmentAdapter
-from elizaos_agentbench.adapters.webshop_adapter import WebShopEnvironmentAdapter
+from elizaos_agentbench.adapters.householding_adapter import HouseholdingEnvironmentAdapter
 from elizaos_agentbench.adapters.kg_adapter import KnowledgeGraphAdapter
 from elizaos_agentbench.adapters.lateral_thinking_adapter import LateralThinkingAdapter
+from elizaos_agentbench.adapters.os_adapter import OSEnvironmentAdapter
+from elizaos_agentbench.adapters.web_browsing_adapter import WebBrowsingAdapter
+from elizaos_agentbench.adapters.webshop_adapter import WebShopEnvironmentAdapter
+from elizaos_agentbench import upstream_loader
 
 logger = logging.getLogger(__name__)
 
@@ -143,13 +148,22 @@ class AgentBenchRunner:
         env: AgentBenchEnvironment,
         config: EnvironmentConfig,
     ) -> EnvironmentAdapter:
-        """Create adapter for a specific environment."""
+        """Create adapter for a specific environment.
+
+        All 8 AgentBench environments are wired. Some (Card Game,
+        ALFWorld, full WebShop) require external binaries / corpora; in
+        those cases the adapter returns a "skipped" result with a clear
+        reason rather than fabricating data.
+        """
         adapter_map: dict[AgentBenchEnvironment, type[EnvironmentAdapter]] = {
             AgentBenchEnvironment.OS: OSEnvironmentAdapter,
             AgentBenchEnvironment.DATABASE: DatabaseEnvironmentAdapter,
             AgentBenchEnvironment.WEB_SHOPPING: WebShopEnvironmentAdapter,
             AgentBenchEnvironment.KNOWLEDGE_GRAPH: KnowledgeGraphAdapter,
             AgentBenchEnvironment.LATERAL_THINKING: LateralThinkingAdapter,
+            AgentBenchEnvironment.CARD_GAME: CardGameAdapter,
+            AgentBenchEnvironment.HOUSEHOLDING: HouseholdingEnvironmentAdapter,
+            AgentBenchEnvironment.WEB_BROWSING: WebBrowsingAdapter,
         }
 
         adapter_class = adapter_map.get(env)
@@ -228,24 +242,27 @@ class AgentBenchRunner:
             await self._cleanup()
 
     def _load_tasks(self, env: AgentBenchEnvironment) -> list[AgentBenchTask]:
-        """Load tasks for a specific environment."""
-        # Generate sample tasks for testing
-        # In production, these would be loaded from AgentBench dataset files
+        """Load tasks for an environment from the vendored upstream data.
 
-        if env == AgentBenchEnvironment.OS:
-            return self._generate_os_tasks()
-        elif env == AgentBenchEnvironment.DATABASE:
-            return self._generate_db_tasks()
-        elif env == AgentBenchEnvironment.WEB_SHOPPING:
-            return self._generate_webshop_tasks()
-        elif env == AgentBenchEnvironment.KNOWLEDGE_GRAPH:
-            return self._generate_kg_tasks()
-        elif env == AgentBenchEnvironment.LATERAL_THINKING:
-            return self._generate_lateral_thinking_tasks()
-        else:
+        Uses ``upstream_loader.load_tasks`` under the hood. The split
+        (dev / test) is taken from ``self.config.split``.
+        """
+        split = self.config.split.value if isinstance(self.config.split, BenchmarkSplit) else "test"
+        env_cfg = self.config.get_env_config(env)
+        limit = env_cfg.max_tasks
+        try:
+            return upstream_loader.load_tasks(env, split=split, limit=limit)
+        except upstream_loader.UpstreamDataMissingError as e:
+            logger.warning(f"[AgentBenchRunner] {env.value}: upstream data missing ({e})")
+            return []
+        except NotImplementedError as e:
+            logger.warning(f"[AgentBenchRunner] {env.value}: {e}")
+            return []
+        except Exception as e:
+            logger.error(f"[AgentBenchRunner] {env.value}: failed to load tasks: {e}")
             return []
 
-    def _generate_os_tasks(self) -> list[AgentBenchTask]:
+    def _UNUSED_generate_os_tasks(self) -> list[AgentBenchTask]:
         """Generate sample OS tasks."""
         return [
             AgentBenchTask(

@@ -3,7 +3,7 @@ from copy import deepcopy
 from datetime import datetime, time, timedelta
 from typing import Dict, List, Optional, Union
 
-from bfcl_eval.eval_checker.multi_turn_eval.func_source_code.long_context import (
+from benchmarks.bfcl.executable_runtime.func_source_code.long_context import (
     AUTOMOBILE_EXTENSION,
     MA_5_EXTENSION,
     MA_20_EXTENSION,

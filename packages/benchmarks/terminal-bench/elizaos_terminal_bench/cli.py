@@ -300,9 +300,21 @@ async def run_cli(args: argparse.Namespace) -> int:
         os.environ["ELIZA_BENCH_TOKEN"] = server_mgr.token
         os.environ["ELIZA_BENCH_URL"] = f"http://localhost:{server_mgr.port}"
 
-    # Build configuration
+    # Resolve execution backend from flags.
+    if args.mock:
+        os.environ["TERMINAL_BENCH_ALLOW_MOCK"] = "1"
+        backend = "mock"
+    elif args.local_sandbox:
+        backend = "local"
+    elif args.one_shot:
+        backend = "one_shot"
+    else:
+        backend = "tmux"
+
+    # ``data_path=None`` makes the loader use the vendored task corpus.
+    data_path = args.data_path
     config = TerminalBenchConfig(
-        data_path=args.data_path or "./terminal-bench-data",
+        data_path=data_path if data_path else "",
         output_dir=args.output_dir,
         version=args.version,
         categories=parse_categories(args.categories),
@@ -320,15 +332,16 @@ async def run_cli(args: argparse.Namespace) -> int:
         dry_run=args.dry_run,
         oracle=args.oracle,
         local_sandbox=args.local_sandbox,
+        execution_backend=backend,
     )
 
     # Create runner
     runner = TerminalBenchRunner(config=config)
 
     try:
-        # Setup with sample tasks or full dataset
-        use_sample = args.sample or not args.data_path
-        await runner.setup(use_sample_tasks=use_sample)
+        # Setup. Fail loud if neither --use-sample-tasks nor a corpus is
+        # available — never silently fall back to SAMPLE_TASKS.
+        await runner.setup(use_sample_tasks=bool(args.use_sample_tasks))
 
         # Run single task or full benchmark
         if args.single:

@@ -191,25 +191,21 @@ class TestTerminalBenchEvaluator:
         assert errors["Timeout"] == 1
         assert errors["Test failed"] == 1
 
-    def test_compare_to_leaderboard_low_score(self) -> None:
-        """Test leaderboard comparison with low score."""
+    def test_compare_to_leaderboard_with_custom_table(self) -> None:
+        """The package-level LEADERBOARD_SCORES is intentionally empty; pass
+        an explicit table to exercise comparison logic."""
         evaluator = TerminalBenchEvaluator()
-
-        comparison = evaluator.compare_to_leaderboard(0.25)  # 25%
-
-        assert comparison.our_score == 25.0
-        assert comparison.rank > 5  # Should be near the bottom
-        assert comparison.percentile < 50
-
-    def test_compare_to_leaderboard_high_score(self) -> None:
-        """Test leaderboard comparison with high score."""
-        evaluator = TerminalBenchEvaluator()
-
-        comparison = evaluator.compare_to_leaderboard(0.70)  # 70%
-
-        assert comparison.our_score == 70.0
-        assert comparison.rank <= 3  # Should be near the top
-        assert comparison.percentile > 50
+        table = {
+            "Top": {"overall": 70.0},
+            "Mid": {"overall": 50.0},
+            "Low": {"overall": 30.0},
+        }
+        low = evaluator.compare_to_leaderboard(0.25, leaderboard=table)
+        assert low.our_score == 25.0
+        assert low.rank >= 3
+        high = evaluator.compare_to_leaderboard(0.80, leaderboard=table)
+        assert high.our_score == 80.0
+        assert high.rank == 1
 
     def test_create_report(self) -> None:
         """Test creating a full report."""
@@ -239,7 +235,8 @@ class TestTerminalBenchEvaluator:
         assert report.accuracy == 1.0
         assert report.evaluation_time_seconds == 10.0
         assert report.metadata["model"] == "gpt-4"
-        assert report.leaderboard_comparison is not None
+        # LEADERBOARD_SCORES is intentionally empty by default — no comparison.
+        assert report.leaderboard_comparison is None
 
 
 class TestFormatReportMarkdown:

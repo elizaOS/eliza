@@ -1,23 +1,22 @@
 """
-MINT Benchmark - Multi-turn Interaction with Tools and Language Feedback
+MINT Benchmark — ElizaOS port of the UIUC MINT benchmark.
 
-This benchmark evaluates LLMs' capabilities in handling complex tasks through
-multi-turn interactions with tool use and natural language feedback.
+Faithfully implements the multi-turn evaluation protocol from
+Wang et al., ICLR 2024 (arXiv:2309.10691):
 
-Based on the ICLR 2024 paper: "MINT: Evaluating LLMs in Multi-turn Interaction
-with Tools and Language Feedback" by Wang et al.
+    - 8 subtasks (humaneval, mbpp, math, gsm8k, hotpotqa, mmlu, theoremqa,
+      alfworld) loaded from upstream's sampled JSON files.
+    - Multi-turn interaction (assistant -> tool -> feedback -> retry).
+    - Turn-k success rate as the headline metric.
+    - Optional GPT-4 language feedback using the upstream prompt template.
 
-Categories:
-- Reasoning: Mathematical and logical problems
-- Coding: Programming challenges
-- Decision Making: Sequential decision tasks
-- Information Seeking: Knowledge retrieval tasks
+See ``upstream/README.md`` for vendoring + attribution.
 """
 
-# Lazy imports to avoid circular dependencies
 __all__ = [
-    # Types
-    "MINTCategory",
+    # Types (canonical names).
+    "MINTSubtask",
+    "MINTTaskType",
     "MINTConfig",
     "MINTMetrics",
     "MINTResult",
@@ -25,9 +24,16 @@ __all__ = [
     "MINTTrajectory",
     "Turn",
     "TurnType",
-    # Components
+    "EvaluationMetric",
+    "LEADERBOARD_SCORES",
+    "PAPER_RESULTS_URL",
+    "SUBTASK_TO_TASK_TYPE",
+    # Back-compat alias.
+    "MINTCategory",
+    # Components.
     "MINTDataset",
     "PythonExecutor",
+    "MockExecutor",
     "FeedbackGenerator",
     "MINTAgent",
     "MINTEvaluator",
@@ -38,35 +44,38 @@ __all__ = [
 
 
 def __getattr__(name: str):
-    """Lazy import of benchmark components."""
-    if name in (
-        "MINTCategory", "MINTConfig", "MINTMetrics", "MINTResult",
-        "MINTTask", "MINTTrajectory", "Turn", "TurnType",
-    ):
+    types_attrs = {
+        "MINTSubtask",
+        "MINTTaskType",
+        "MINTConfig",
+        "MINTMetrics",
+        "MINTResult",
+        "MINTTask",
+        "MINTTrajectory",
+        "Turn",
+        "TurnType",
+        "EvaluationMetric",
+        "LEADERBOARD_SCORES",
+        "PAPER_RESULTS_URL",
+        "SUBTASK_TO_TASK_TYPE",
+        "MINTCategory",
+    }
+    if name in types_attrs:
         from benchmarks.mint import types
         return getattr(types, name)
-    elif name == "MINTDataset":
-        from benchmarks.mint.dataset import MINTDataset
-        return MINTDataset
-    elif name == "PythonExecutor":
-        from benchmarks.mint.executor import PythonExecutor
-        return PythonExecutor
-    elif name == "FeedbackGenerator":
-        from benchmarks.mint.feedback import FeedbackGenerator
-        return FeedbackGenerator
-    elif name == "MINTAgent":
-        from benchmarks.mint.agent import MINTAgent
-        return MINTAgent
-    elif name == "MINTEvaluator":
-        from benchmarks.mint.evaluator import MINTEvaluator
-        return MINTEvaluator
-    elif name == "MINTRunner":
-        from benchmarks.mint.runner import MINTRunner
-        return MINTRunner
-    elif name == "MetricsCalculator":
-        from benchmarks.mint.metrics import MetricsCalculator
-        return MetricsCalculator
-    elif name == "MINTReporter":
-        from benchmarks.mint.reporting import MINTReporter
-        return MINTReporter
-    raise AttributeError(f"module 'benchmarks.mint' has no attribute '{name}'")
+    component_map = {
+        "MINTDataset": ("benchmarks.mint.dataset", "MINTDataset"),
+        "PythonExecutor": ("benchmarks.mint.executor", "PythonExecutor"),
+        "MockExecutor": ("benchmarks.mint.executor", "MockExecutor"),
+        "FeedbackGenerator": ("benchmarks.mint.feedback", "FeedbackGenerator"),
+        "MINTAgent": ("benchmarks.mint.agent", "MINTAgent"),
+        "MINTEvaluator": ("benchmarks.mint.evaluator", "MINTEvaluator"),
+        "MINTRunner": ("benchmarks.mint.runner", "MINTRunner"),
+        "MetricsCalculator": ("benchmarks.mint.metrics", "MetricsCalculator"),
+        "MINTReporter": ("benchmarks.mint.reporting", "MINTReporter"),
+    }
+    if name in component_map:
+        module_name, attr = component_map[name]
+        import importlib
+        return getattr(importlib.import_module(module_name), attr)
+    raise AttributeError(f"module 'benchmarks.mint' has no attribute {name!r}")

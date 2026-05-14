@@ -12,14 +12,15 @@ benchmarks_path = Path(__file__).parent.parent.parent
 if str(benchmarks_path) not in sys.path:
     sys.path.insert(0, str(benchmarks_path))
 
+
 @pytest.fixture
 def sample_task():
     """Create a sample MINT task for testing."""
-    from benchmarks.mint.types import MINTTask, MINTCategory
-    
+    from benchmarks.mint.types import MINTSubtask, MINTTask
+
     return MINTTask(
-        id="test-001",
-        category=MINTCategory.REASONING,
+        id="gsm8k-test-001",
+        subtask=MINTSubtask.GSM8K,
         description="Simple arithmetic test",
         initial_prompt="What is 2 + 2?",
         ground_truth="4",
@@ -34,35 +35,36 @@ def sample_task():
 def sample_trajectory():
     """Create a sample trajectory for testing."""
     from benchmarks.mint.types import MINTTrajectory, Turn, TurnType
-    
-    trajectory = MINTTrajectory(
-        task_id="test-001",
-        start_time_ms=1000.0,
+
+    traj = MINTTrajectory(task_id="gsm8k-test-001", start_time_ms=1000.0)
+    traj.turns.append(
+        Turn(
+            turn_type=TurnType.ASSISTANT,
+            content="The answer is 4",
+            turn_number=1,
+        )
     )
-    trajectory.turns.append(Turn(
-        turn_type=TurnType.ASSISTANT,
-        content="The answer is 4",
-        turn_number=1,
-    ))
-    trajectory.final_answer = "4"
-    trajectory.success = True
-    trajectory.end_time_ms = 2000.0
-    
-    return trajectory
+    traj.final_answer = "4"
+    traj.success = True
+    traj.per_turn_answers = ["4"]
+    traj.per_turn_success = [True]
+    traj.end_time_ms = 2000.0
+    return traj
 
 
 @pytest.fixture
 def sample_config():
     """Create a sample configuration for testing."""
     from benchmarks.mint.types import MINTConfig
-    
+
     return MINTConfig(
-        data_path="./data/mint",
         output_dir="./test_results",
-        max_tasks_per_category=2,
+        max_tasks_per_subtask=2,
         max_turns=3,
         use_docker=False,
         enable_tools=True,
         enable_feedback=True,
         run_ablation=False,
+        use_sample_tasks=True,
+        feedback_mode="templated",
     )

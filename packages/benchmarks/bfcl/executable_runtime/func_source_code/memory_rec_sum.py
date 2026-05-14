@@ -2,7 +2,7 @@ import json
 from copy import deepcopy
 from typing import Dict
 
-from bfcl_eval.eval_checker.multi_turn_eval.func_source_code.memory_api_metaclass import (
+from benchmarks.bfcl.executable_runtime.func_source_code.memory_api_metaclass import (
     MemoryAPI,
 )
 

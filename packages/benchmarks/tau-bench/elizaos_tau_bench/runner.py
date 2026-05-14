@@ -34,6 +34,7 @@ from elizaos_tau_bench.types import (
     TaskRunResult,
     TauBenchConfig,
 )
+from elizaos_tau_bench.noop_user import NoopUserSimulationEnv
 from elizaos_tau_bench.upstream.envs import get_env
 from elizaos_tau_bench.upstream.envs.base import Env
 
@@ -49,6 +50,25 @@ class TauBenchRunner:
     # --- Env construction -------------------------------------------------
 
     def _make_env(self, domain: DomainName, task_index: int) -> Env:
+        if self.config.use_mock:
+            # Monkey-patch the user loader so the Env constructor doesn't hit an LLM.
+            from elizaos_tau_bench.upstream.envs import base as _base_envs
+
+            original_loader = _base_envs.load_user
+            _base_envs.load_user = lambda *a, **kw: NoopUserSimulationEnv()
+            try:
+                env = get_env(
+                    env_name=domain,
+                    user_strategy="llm",  # ignored — overridden by patch
+                    user_model="mock",
+                    user_provider="mock",
+                    task_split=self.config.task_split,
+                    task_index=task_index,
+                )
+            finally:
+                _base_envs.load_user = original_loader
+            return env
+
         return get_env(
             env_name=domain,
             user_strategy=self.config.user_strategy,
