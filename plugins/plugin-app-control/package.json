@@ -33,11 +33,11 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@elizaos/core": "2.0.0-alpha.537",
+    "@elizaos/core": "workspace:*",
     "@elizaos/shared": "workspace:*"
   },
   "peerDependencies": {
-    "@elizaos/core": "2.0.0-alpha.537",
+    "@elizaos/core": "workspace:*",
     "puppeteer-core": "^24.39.1"
   },
   "peerDependenciesMeta": {

@@ -1267,7 +1267,7 @@
       "name": "@elizaos/native-activity-tracker",
       "version": "2.0.0-beta.2",
       "dependencies": {
-        "@elizaos/core": "2.0.0-alpha.537",
+        "@elizaos/core": "workspace:*",
       },
     },
     "packages/native-plugins/agent": {
@@ -1378,7 +1378,7 @@
       "name": "@elizaos/capacitor-desktop",
       "version": "2.0.0-beta.2",
       "dependencies": {
-        "@elizaos/app-core": "2.0.0-beta.2",
+        "@elizaos/app-core": "workspace:*",
       },
       "devDependencies": {
         "@capacitor/core": "^8.3.1",
@@ -1464,7 +1464,7 @@
       "name": "@elizaos/macosalarm",
       "version": "2.0.0-beta.2",
       "dependencies": {
-        "@elizaos/core": "2.0.0-alpha.537",
+        "@elizaos/core": "workspace:*",
       },
       "devDependencies": {
         "@types/node": "^24.0.0",
@@ -1666,7 +1666,7 @@
       "name": "@elizaos/shared",
       "version": "2.0.0-beta.2",
       "dependencies": {
-        "@elizaos/core": "2.0.0-alpha.537",
+        "@elizaos/core": "workspace:*",
         "chalk": "^5.3.0",
         "drizzle-orm": "0.45.2",
         "react": "^19.0.0",
@@ -1688,7 +1688,7 @@
       "name": "@elizaos/skills",
       "version": "2.0.0-beta.2",
       "dependencies": {
-        "@elizaos/core": "2.0.0-alpha.537",
+        "@elizaos/core": "workspace:*",
         "yaml": "^2.8.2",
       },
       "devDependencies": {
@@ -2321,7 +2321,7 @@
       "name": "@elizaos/plugin-app-control",
       "version": "2.0.0-beta.2",
       "dependencies": {
-        "@elizaos/core": "2.0.0-alpha.537",
+        "@elizaos/core": "workspace:*",
         "@elizaos/shared": "workspace:*",
       },
       "devDependencies": {
@@ -2332,7 +2332,7 @@
         "vitest": "4.1.6",
       },
       "peerDependencies": {
-        "@elizaos/core": "2.0.0-alpha.537",
+        "@elizaos/core": "workspace:*",
         "puppeteer-core": "^24.39.1",
       },
       "optionalPeers": [
@@ -3254,7 +3254,7 @@
       "name": "@elizaos/plugin-signal",
       "version": "2.0.0-beta.2",
       "dependencies": {
-        "@elizaos/core": "2.0.0-alpha.537",
+        "@elizaos/core": "workspace:*",
         "qrcode": "^1.5.4",
         "zod": "^4.4.3",
       },
@@ -3265,7 +3265,7 @@
         "typescript": "^6.0.3",
       },
       "peerDependencies": {
-        "@elizaos/core": "2.0.0-alpha.537",
+        "@elizaos/core": "workspace:*",
         "@elizaos/signal-native": "latest",
       },
       "optionalPeers": [
@@ -3603,13 +3603,13 @@
       "name": "@elizaos/plugin-wechat",
       "version": "2.0.0-beta.2",
       "devDependencies": {
-        "@elizaos/core": "2.0.0-alpha.537",
+        "@elizaos/core": "workspace:*",
         "tsup": "^8.5.1",
         "typescript": "^6.0.3",
         "vitest": "^4.0.18",
       },
       "peerDependencies": {
-        "@elizaos/core": "2.0.0-alpha.537",
+        "@elizaos/core": "workspace:*",
       },
     },
     "plugins/plugin-whatsapp": {

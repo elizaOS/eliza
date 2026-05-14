@@ -11,9 +11,9 @@
  * plugin is the canonical desktop/mobile local provider — engine + voice
  * (Kokoro TTS, Whisper ASR via ONNX, VAD, wake-word), full DFlash spec-
  * decode, model catalog, downloader, GPU profiles, ~210 service files.
- * On the live USB ISO we boot from squashfs into tmpfs, run a hard-coded
- * Llama-3.2-1B-Q4_K_M, and never need voice or download paths — so this
- * 150-line wrapper keeps the ISO ~150MB smaller and skips lazy-init for
+ * On the live USB ISO we boot from squashfs into tmpfs, run the smallest
+ * Eliza-1 GGUF, and never need voice or download paths — so this
+ * 150-line wrapper keeps the ISO smaller and skips lazy-init for
  * subsystems we'd never trigger. Same Plugin shape (`models: { TEXT_*:
  * handler }`); runtime.useModel() doesn't care which Plugin owns the
  * handler. See docs/eliza-integration.md for the rationale and the path
@@ -76,11 +76,11 @@ function modelPath(runtime: IAgentRuntime): string {
         runtime.getSetting("LOCAL_LARGE_MODEL") ?? runtime.getSetting("USBELIZA_GGUF");
     if (typeof explicitSetting === "string" && explicitSetting.length > 0) return explicitSetting;
 
-    const iso = "/usr/share/usbeliza/models/llama-3.2-1b-instruct-q4_k_m.gguf";
+    const iso = "/usr/share/usbeliza/models/eliza-1-0_8b-32k.gguf";
     if (existsSync(iso)) return iso;
 
     const home = Bun.env.HOME ?? "/home/eliza";
-    return `${home}/.cache/usbeliza-models/llama-3.2-1b-instruct-q4_k_m.gguf`;
+    return `${home}/.cache/usbeliza-models/eliza-1-0_8b-32k.gguf`;
 }
 
 async function resolveModel(runtime: IAgentRuntime): Promise<ResolvedModel> {

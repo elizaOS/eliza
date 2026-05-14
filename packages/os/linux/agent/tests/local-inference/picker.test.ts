@@ -9,45 +9,43 @@ import {
 } from "../../src/local-inference/picker.ts";
 
 describe("recommendModelTierFor", () => {
-    test("32 GB Lunar Lake gets the Qwen3.5-9B DFlash recommendation", () => {
+    test("32 GB host gets the eliza-1-9b recommendation", () => {
         const result = recommendModelTierFor(32);
-        expect(result.recommended.id).toBe("dflash-9b");
+        expect(result.recommended.id).toBe("eliza-1-9b");
         expect(result.drafter).toBeDefined();
-        expect(result.drafter?.id).toBe("drafter-0_6b");
+        expect(result.drafter?.id).toBe("eliza-1-9b-drafter");
         expect(result.hostRamGb).toBe(32);
     });
 
-    test("16 GB host also gets dflash-9b (exactly fits at minRam+headroom)", () => {
+    test("16 GB host also gets eliza-1-9b (exactly fits at minRam+headroom)", () => {
         const result = recommendModelTierFor(16);
-        expect(result.recommended.id).toBe("dflash-9b");
+        expect(result.recommended.id).toBe("eliza-1-9b");
     });
 
-    test("12 GB host falls to mid-7b (dflash-9b minRam+headroom=16 too high)", () => {
+    test("12 GB host falls to eliza-1-2b", () => {
         const result = recommendModelTierFor(12);
-        expect(result.recommended.id).toBe("mid-7b");
-        // mid-7b is not a DFlash tier → no drafter
-        expect(result.drafter).toBeUndefined();
+        expect(result.recommended.id).toBe("eliza-1-2b");
+        expect(result.drafter?.id).toBe("eliza-1-2b-drafter");
     });
 
-    test("8 GB host falls to tiny-1b baseline", () => {
+    test("8 GB host gets eliza-1-2b", () => {
         const result = recommendModelTierFor(8);
-        expect(result.recommended.id).toBe("tiny-1b");
+        expect(result.recommended.id).toBe("eliza-1-2b");
     });
 
-    test("4 GB low-end laptop still gets the baseline (drafter alone needs 2)", () => {
+    test("4 GB low-end laptop still gets the baseline", () => {
         const result = recommendModelTierFor(4);
-        expect(result.recommended.id).toBe("tiny-1b");
+        expect(result.recommended.id).toBe("eliza-1-0_8b");
         expect(result.alternatives).toEqual([]);
     });
 
-    test("64 GB workstation gets heavy-32b as top pick", () => {
+    test("64 GB workstation gets eliza-1-27b as top pick", () => {
         const result = recommendModelTierFor(64);
-        expect(result.recommended.id).toBe("heavy-32b");
-        // alternatives include dflash-9b, mid-7b, tiny-1b
+        expect(result.recommended.id).toBe("eliza-1-27b");
         const altIds = result.alternatives.map((a) => a.id);
-        expect(altIds).toContain("dflash-9b");
-        expect(altIds).toContain("mid-7b");
-        expect(altIds).toContain("tiny-1b");
+        expect(altIds).toContain("eliza-1-9b");
+        expect(altIds).toContain("eliza-1-4b");
+        expect(altIds).toContain("eliza-1-0_8b");
     });
 });
 
@@ -56,8 +54,8 @@ describe("formatPickResultForChat", () => {
         const result = recommendModelTierFor(32);
         const text = formatPickResultForChat(result);
         expect(text).toContain("32 GB of RAM");
-        expect(text).toContain("Qwen3.5 9B DFlash");
-        expect(text).toContain("Qwen3 0.6B");
+        expect(text).toContain("eliza-1-9b");
+        expect(text).toContain("eliza-1-9b drafter");
         expect(text).toContain("speculative-decoding drafter");
         expect(text).toContain("Alternatives:");
     });
@@ -66,7 +64,7 @@ describe("formatPickResultForChat", () => {
         const result = recommendModelTierFor(4);
         const text = formatPickResultForChat(result);
         expect(text).toContain("4 GB of RAM");
-        expect(text).toContain("Llama-3.2 1B");
+        expect(text).toContain("eliza-1-0_8b");
         expect(text).not.toContain("speculative-decoding drafter");
         expect(text).not.toContain("Alternatives:");
     });

@@ -164,17 +164,19 @@ def test_large_folder_mirror_uses_publishable_files_only(tmp_path: Path):
 
 
 def test_voice_policy_can_warn_or_block(tmp_path: Path):
-    _write_bundle(tmp_path, "2b", voice_paths=("tts/omnivoice-base-Q4_K_M.gguf",))
+    _write_bundle(tmp_path, "2b", voice_paths=("tts/kokoro/model_q4.onnx",))
 
     warning_plan = P.plan_bundle(tmp_path, "2b")
     strict_plan = P.plan_bundle(tmp_path, "2b", strict_voice_policy=True)
 
     assert warning_plan.uploadable is True
-    assert any("omnivoice-tokenizer-Q4_K_M.gguf" in w for w in warning_plan.warnings)
-    assert any("kokoro/model_q4.onnx" in w for w in warning_plan.warnings)
+    assert not any("omnivoice" in w for w in warning_plan.warnings)
+    assert any("kokoro/tokenizer.json" in w for w in warning_plan.warnings)
+    assert any("kokoro/voices/af_bella.bin" in w for w in warning_plan.warnings)
     assert strict_plan.uploadable is False
-    assert any("omnivoice-tokenizer-Q4_K_M.gguf" in e for e in strict_plan.errors)
-    assert any("kokoro/model_q4.onnx" in e for e in strict_plan.errors)
+    assert not any("omnivoice" in e for e in strict_plan.errors)
+    assert any("kokoro/tokenizer.json" in e for e in strict_plan.errors)
+    assert any("kokoro/voices/af_bella.bin" in e for e in strict_plan.errors)
 
 
 def test_tier_choices_cover_full_eliza1_matrix() -> None:

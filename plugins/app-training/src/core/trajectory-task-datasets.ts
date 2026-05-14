@@ -222,7 +222,6 @@ function getMessageHandlerCandidate(
   }
   if (
     typeof parsed.action === "string" &&
-    typeof parsed.simple === "boolean" &&
     Array.isArray(parsed.contexts) &&
     typeof parsed.thought === "string"
   ) {
@@ -250,10 +249,6 @@ function normalizeMessageHandlerJson(response: string): string | null {
   const normalized = {
     messageHandler: {
       action,
-      simple:
-        typeof candidate.simple === "boolean"
-          ? candidate.simple
-          : action === "RESPOND" && contexts.length === 0,
       contexts,
       thought: typeof candidate.thought === "string" ? candidate.thought : "",
       reply: typeof candidate.reply === "string" ? candidate.reply : "",

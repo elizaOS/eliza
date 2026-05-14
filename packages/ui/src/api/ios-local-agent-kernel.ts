@@ -1891,11 +1891,11 @@ const fetchWithOptionalPreconnect = fetch as FetchWithOptionalPreconnect;
 
 const fetchIosKernelRoute = Object.assign(
   async function fetchIosKernelRoute(
-  input: RequestInfo | URL,
-  init?: RequestInit,
-): Promise<Response> {
-  const request = input instanceof Request ? input : new Request(input, init);
-  return handleIosLocalAgentRequest(request);
+    input: RequestInfo | URL,
+    init?: RequestInit,
+  ): Promise<Response> {
+    const request = input instanceof Request ? input : new Request(input, init);
+    return handleIosLocalAgentRequest(request);
   },
   {
     preconnect: (...args: unknown[]) =>

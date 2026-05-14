@@ -50,7 +50,7 @@
     "clean": "rm -rf dist bin"
   },
   "dependencies": {
-    "@elizaos/core": "2.0.0-alpha.537"
+    "@elizaos/core": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

@@ -4,41 +4,42 @@
 	"description": "Unified Eliza-1 local provider plus HTTP routes for local model catalog, downloads, hardware detection, and chat commands.",
 	"type": "module",
 	"main": "dist/index.js",
-	"types": "dist/index.d.ts",
+	"types": "src/index.ts",
 	"exports": {
 		".": {
-			"types": "./dist/index.d.ts",
+			"types": "./src/index.ts",
 			"import": "./dist/index.js",
 			"default": "./dist/index.js"
 		},
 		"./runtime": {
-			"types": "./dist/runtime/index.d.ts",
+			"types": "./src/runtime/index.ts",
 			"import": "./dist/runtime/index.js",
 			"default": "./dist/runtime/index.js"
 		},
 		"./routes": {
-			"types": "./dist/routes/index.d.ts",
+			"types": "./src/routes/index.ts",
 			"import": "./dist/routes/index.js",
 			"default": "./dist/routes/index.js"
 		},
 		"./services": {
-			"types": "./dist/services/index.d.ts",
+			"types": "./src/services/index.ts",
 			"import": "./dist/services/index.js",
 			"default": "./dist/services/index.js"
 		},
 		"./*.css": "./dist/*.css",
 		"./*": {
+			"types": "./src/*.ts",
 			"import": "./dist/*.js",
-			"default": "./dist/*.js",
-			"types": "./dist/*.d.ts"
+			"default": "./dist/*.js"
 		}
 	},
 	"files": [
-		"dist"
+		"dist",
+		"src"
 	],
 	"scripts": {
-		"build": "tsup src/index.ts src/runtime/index.ts src/routes/index.ts src/services/index.ts --format esm --dts --clean --external node-llama-cpp --external @node-llama-cpp/* --external @reflink/reflink --external onnxruntime-node --external @huggingface/transformers --external whisper-node",
-		"dev": "tsup src/index.ts src/runtime/index.ts src/routes/index.ts src/services/index.ts --format esm --dts --watch --external node-llama-cpp --external @node-llama-cpp/* --external @reflink/reflink --external onnxruntime-node --external @huggingface/transformers --external whisper-node",
+		"build": "tsup src/index.ts src/runtime/index.ts src/routes/index.ts src/services/index.ts --format esm --clean --external node-llama-cpp --external @node-llama-cpp/* --external @reflink/reflink --external onnxruntime-node --external @huggingface/transformers --external whisper-node",
+		"dev": "tsup src/index.ts src/runtime/index.ts src/routes/index.ts src/services/index.ts --format esm --watch --external node-llama-cpp --external @node-llama-cpp/* --external @reflink/reflink --external onnxruntime-node --external @huggingface/transformers --external whisper-node",
 		"test": "vitest run",
 		"clean": "rm -rf dist .turbo node_modules",
 		"lint": "bunx @biomejs/biome check --write --unsafe .",

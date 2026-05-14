@@ -3,7 +3,7 @@ import z from "zod";
 import { formatActionNames, formatActions } from "../actions";
 import {
 	actionToTool,
-	buildPlannerToolsFromActions,
+	buildPlannerToolsFromTieredActions,
 	CORE_PLANNER_TERMINALS,
 	createHandleResponseTool,
 	HANDLE_RESPONSE_TOOL_NAME,
@@ -2225,7 +2225,6 @@ const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvaluator[] =
 				return {
 					processMessage: "IGNORE",
 					requiresTool: false,
-					simple: true,
 					clearReply: true,
 					debug: [
 						`voice turn signal suppressed reply (${signal?.source ?? "unknown"}; p=${typeof signal?.endOfTurnProbability === "number" ? signal.endOfTurnProbability.toFixed(3) : "n/a"}; next=${signal?.nextSpeaker ?? "unknown"})`,
@@ -3116,7 +3115,44 @@ function collectPlannerTools(
 	);
 	if (!hasAnyAction) return [];
 	const actions = narrowedActions ?? collectActionsFromContext(context);
-	return [...buildPlannerToolsFromActions(actions), ...CORE_PLANNER_TERMINALS];
+	const tierAParents = readTierAParentsFromContext(context);
+	return [
+		...buildPlannerToolsFromTieredActions(actions, {
+			tierAParents,
+			actionLookup: new Map(
+				actions.map((action) => [action.name, action] as const),
+			),
+		}),
+		...CORE_PLANNER_TERMINALS,
+	];
+}
+
+/**
+ * Read the tier-A parent names from the action surface metadata attached to the
+ * context object by `buildV5PlannerActionSurface`. Returns an empty set when no
+ * surface metadata is present (full-surface mode, or contexts built outside the
+ * tiered pipeline), in which case the tiered builder degrades to plain
+ * one-tool-per-action behavior.
+ */
+function readTierAParentsFromContext(context: ContextObject): Set<string> {
+	const surface = (context.metadata as { actionSurface?: unknown } | undefined)
+		?.actionSurface;
+	if (!surface || typeof surface !== "object") {
+		return new Set<string>();
+	}
+	const tierAParents = (
+		surface as { tierAParents?: unknown }
+	).tierAParents;
+	if (!Array.isArray(tierAParents)) {
+		return new Set<string>();
+	}
+	const set = new Set<string>();
+	for (const value of tierAParents) {
+		if (typeof value === "string" && value.trim().length > 0) {
+			set.add(value);
+		}
+	}
+	return set;
 }
 
 /**
@@ -4157,29 +4193,6 @@ export function isSimpleReplyResponse(
 		typeof responseContent.actions[0] === "string" &&
 		isReplyActionIdentifier(responseContent.actions[0])
 	);
-}
-
-export function resolveStrategyMode(
-	responseContent:
-		| Pick<Content, "actions" | "text" | "simple">
-		| null
-		| undefined,
-): StrategyMode {
-	if (isStopResponse(responseContent)) {
-		return "none";
-	}
-
-	if (!isSimpleReplyResponse(responseContent)) {
-		return "actions";
-	}
-
-	const hasPlannerText =
-		typeof responseContent?.text === "string" &&
-		responseContent.text.trim().length > 0;
-
-	return responseContent?.simple === true && hasPlannerText
-		? "simple"
-		: "actions";
 }
 
 function isStopResponse(
@@ -7118,7 +7131,6 @@ export class DefaultMessageService implements IMessageService {
 						actions: ["REPLY"],
 						providers: [],
 						text,
-						simple: true,
 						responseId: earlyResponseId,
 						inReplyTo: createUniqueUuid(runtime, message.id),
 					};
@@ -7611,7 +7623,6 @@ export class DefaultMessageService implements IMessageService {
 						? "Agent decided to stop and end the run."
 						: "Agent decided not to respond to this message.",
 				actions: [terminalAction],
-				simple: true,
 				inReplyTo: createUniqueUuid(runtime, message.id),
 			};
 
@@ -7726,7 +7737,6 @@ export class DefaultMessageService implements IMessageService {
 			userEntityId: message.entityId,
 			input: message.content.text,
 			thought: responseContent?.thought,
-			simple: responseContent?.simple,
 			availableActions,
 			actions: responseContent?.actions,
 			providers: responseContent?.providers,
@@ -8311,7 +8321,6 @@ export class DefaultMessageService implements IMessageService {
 			actions: ["REPLY"],
 			providers: [],
 			text: replyText,
-			simple: true,
 			responseId,
 		};
 
@@ -8362,7 +8371,6 @@ export class DefaultMessageService implements IMessageService {
 			actions: ["REPLY"],
 			providers: [],
 			text: replyText,
-			simple: true,
 			responseId,
 		};
 

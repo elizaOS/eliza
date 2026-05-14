@@ -60,7 +60,7 @@ echo "==> bun installed: $(/usr/local/bin/bun --version)"
 #     via `just iso-cache-llama-bins` into the agent's node_modules path.
 #
 # The chroot layout this hook materializes:
-#   /usr/share/usbeliza/models/llama-3.2-1b-instruct-q4_k_m.gguf  (~800 MB)
+#   /usr/share/usbeliza/models/eliza-1-0_8b-32k.gguf  (~500 MB)
 #   /opt/usbeliza/agent/node_modules/@node-llama-cpp/linux-x64/  (~50 MB)
 #
 # Both are staged via `just iso-cache-*` recipes into the includes.chroot
@@ -68,7 +68,7 @@ echo "==> bun installed: $(/usr/local/bin/bun --version)"
 
 echo "==> local-llm: verifying GGUF + node-llama-cpp bins"
 
-gguf_path="/usr/share/usbeliza/models/llama-3.2-1b-instruct-q4_k_m.gguf"
+gguf_path="/usr/share/usbeliza/models/eliza-1-0_8b-32k.gguf"
 if [ -s "$gguf_path" ]; then
     gguf_bytes="$(stat -c%s "$gguf_path")"
     echo "==> GGUF present at $gguf_path ($gguf_bytes bytes)"

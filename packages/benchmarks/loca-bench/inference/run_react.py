@@ -15,6 +15,7 @@
 """Flexible parallel inference runner with configurable environments and tools."""
 
 import contextlib
+import csv
 import io
 import json
 import os
@@ -290,17 +291,72 @@ def _unchanged_loca_output_files(
     return unchanged
 
 
+def _parse_csv_rows(raw: bytes) -> List[List[str]]:
+    try:
+        text = raw.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        return []
+    try:
+        return [row for row in csv.reader(io.StringIO(text))]
+    except csv.Error:
+        return []
+
+
+def _retained_loca_placeholder_rows(
+    agent_workspace: Path,
+    snapshots: Dict[str, bytes],
+) -> List[str]:
+    """Return CSV output files that still contain initial example data rows."""
+
+    retained: List[str] = []
+    for rel, initial_content in sorted(snapshots.items()):
+        if not rel.lower().endswith(".csv"):
+            continue
+        initial_rows = _parse_csv_rows(initial_content)
+        if len(initial_rows) <= 1:
+            continue
+        initial_data_rows = {tuple(row) for row in initial_rows[1:] if row}
+        if not initial_data_rows:
+            continue
+        try:
+            current_content = (agent_workspace / rel).read_bytes()
+        except OSError:
+            continue
+        current_rows = _parse_csv_rows(current_content)
+        current_data_rows = {tuple(row) for row in current_rows[1:] if row}
+        if initial_data_rows & current_data_rows:
+            retained.append(rel)
+    return retained
+
+
+def _format_loca_file_list(files: List[str]) -> str:
+    listed = ", ".join(files[:8])
+    if len(files) > 8:
+        listed += f", and {len(files) - 8} more"
+    return listed
+
+
 def _loca_output_completion_rejection(unchanged_files: List[str]) -> str:
-    listed = ", ".join(unchanged_files[:8])
-    if len(unchanged_files) > 8:
-        listed += f", and {len(unchanged_files) - 8} more"
+    listed = _format_loca_file_list(unchanged_files)
     return (
         "Your previous response was not accepted because the requested output "
         f"file(s) are still unchanged: {listed}. Existing rows may be examples "
         "or placeholders. Use the available tools to derive the final state and "
         "read source_data/local_db and source_data/files when Canvas tools are "
         "not available. Then call filesystem_write_file or filesystem_edit_file to update every "
-        "requested file before replying or calling claim_done."
+        "requested root output file, for example assignment_info.csv and quiz_info.csv, "
+        "before replying or calling claim_done."
+    )
+
+
+def _loca_placeholder_row_rejection(retained_files: List[str]) -> str:
+    listed = _format_loca_file_list(retained_files)
+    return (
+        "Your previous response was not accepted because the requested CSV "
+        f"file(s) still contain initial example or placeholder data rows: {listed}. "
+        "Do not append final rows to the examples. Overwrite each requested CSV "
+        "at the workspace root with only the derived final rows plus the required header, then reply "
+        "or call claim_done only after the files no longer contain placeholder rows."
     )
 
 
@@ -384,8 +440,18 @@ class LocalLocaTool(BaseTool):
             tool("filesystem_read_file", "Read a text file.", {"path": path_param}, ["path"]),
             tool("filesystem_read_text_file", "Read a text file.", {"path": path_param}, ["path"]),
             tool("filesystem_read_multiple_files", "Read multiple text files.", {"paths": paths_param}, ["paths"]),
-            tool("filesystem_write_file", "Write a text file.", {"path": path_param, "content": content_param}, ["path", "content"]),
-            tool("filesystem_edit_file", "Edit a text file by replacing text.", {"path": path_param, "edits": {"type": "array", "items": {"type": "object"}}}, ["path", "edits"]),
+            tool(
+                "filesystem_write_file",
+                "Write a text file. Do not write under source_data; update output files such as assignment_info.csv and quiz_info.csv at the workspace root.",
+                {"path": path_param, "content": content_param},
+                ["path", "content"],
+            ),
+            tool(
+                "filesystem_edit_file",
+                "Edit a text file by replacing text. Do not edit under source_data; update output files such as assignment_info.csv and quiz_info.csv at the workspace root.",
+                {"path": path_param, "edits": {"type": "array", "items": {"type": "object"}}},
+                ["path", "edits"],
+            ),
             tool("filesystem_get_file_info", "Return file metadata.", {"path": path_param}, ["path"]),
             tool("memory_read_graph", "Read benchmark memory graph.", {}),
             tool("memory_search_nodes", "Search benchmark memory graph.", {"query": {"type": "string"}}, ["query"]),
@@ -394,6 +460,9 @@ class LocalLocaTool(BaseTool):
 
     def execute_action(self, _action: str):
         return False, False, "", ""
+
+    def close(self):
+        return None
 
     def execute_tool(
         self,
@@ -436,6 +505,14 @@ class LocalLocaTool(BaseTool):
 
     def _relative(self, path: Path) -> str:
         return str(path.resolve().relative_to(self.agent_workspace))
+
+    def _ensure_editable_output_path(self, path: Path) -> None:
+        rel = path.resolve().relative_to(self.agent_workspace)
+        if rel.parts and rel.parts[0] == "source_data":
+            raise ValueError(
+                "source_data is read-only benchmark input. Write the requested output CSVs "
+                "at the workspace root, for example assignment_info.csv and quiz_info.csv."
+            )
 
     def _list_allowed_directories(self, _args: Dict[str, Any]) -> str:
         return f"Allowed directories:\n{self.agent_workspace}"
@@ -480,12 +557,14 @@ class LocalLocaTool(BaseTool):
 
     def _write_file(self, args: Dict[str, Any]) -> str:
         path = self._resolve(args.get("path"))
+        self._ensure_editable_output_path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(str(args.get("content") or ""), encoding="utf-8")
         return f"Wrote {self._relative(path)}"
 
     def _edit_file(self, args: Dict[str, Any]) -> str:
         path = self._resolve(args.get("path"))
+        self._ensure_editable_output_path(path)
         text = path.read_text(encoding="utf-8", errors="replace")
         edits = args.get("edits") or []
         if not isinstance(edits, list):
@@ -1879,6 +1958,7 @@ def run_single_task(
             "- Do not treat existing rows as proof that the task is complete.\n"
             "- Derive the final requested state from the provided tools, local_db files, workspace files, and memory records.\n"
             "- If Canvas-specific tools are unavailable, inspect the copied read-only task inputs under source_data/local_db and source_data/files with filesystem tools.\n"
+            "- source_data is read-only input data. Write/edit the actual requested output CSV files at the workspace root; for the debug task those files are assignment_info.csv and quiz_info.csv.\n"
             "- For CSV-output tasks, overwrite or edit every requested CSV file with the derived final rows before replying or calling claim_done."
         )
         if exposed_source_paths:
@@ -2200,6 +2280,10 @@ def run_single_task(
                     agent_workspace,
                     initial_output_snapshots,
                 )
+                retained_placeholder_files = _retained_loca_placeholder_rows(
+                    agent_workspace,
+                    initial_output_snapshots,
+                )
                 if unchanged_output_files and (
                     max_steps is None or step_count < max_steps
                 ):
@@ -2226,6 +2310,34 @@ def run_single_task(
                             f"[Task {task_id} | {task_label}] Rejected final "
                             f"response because output files are unchanged: "
                             f"{unchanged_output_files}"
+                        )
+                    continue
+                if retained_placeholder_files and (
+                    max_steps is None or step_count < max_steps
+                ):
+                    rejection = {
+                        "role": "user",
+                        "content": _loca_placeholder_row_rejection(
+                            retained_placeholder_files
+                        ),
+                    }
+                    messages.append(rejection)
+                    full_messages_history.append(rejection.copy())
+                    episode.append({
+                        "observation": obs,
+                        "action": response,
+                        "reward": 0.0,
+                        "info": {
+                            "completion_rejected": "retained_placeholder_rows",
+                            "retained_placeholder_files": retained_placeholder_files,
+                        },
+                    })
+                    stop_reason = None
+                    if verbose:
+                        print(
+                            f"[Task {task_id} | {task_label}] Rejected final "
+                            "response because output files retained "
+                            f"placeholder rows: {retained_placeholder_files}"
                         )
                     continue
 

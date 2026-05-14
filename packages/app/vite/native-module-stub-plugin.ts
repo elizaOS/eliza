@@ -572,6 +572,66 @@ export function nativeModuleStubPlugin(
         ].join("\n");
       }
 
+      // @elizaos/plugin-local-inference sub-paths used by app-core sources.
+      // The plugin is server-only (Node llama.cpp bindings, fs paths, etc.) but
+      // app-core's `api/server.ts` and `runtime/eliza.ts` import named symbols
+      // from `/routes`, `/runtime`, and `/services` at module top level. The
+      // dist barrel pulls those imports into the renderer graph where Rollup
+      // needs a static export shape to satisfy the named-import scan.
+      if (
+        strippedId === "@elizaos/plugin-local-inference" ||
+        strippedId === "@elizaos/plugin-local-inference/routes" ||
+        strippedId === "@elizaos/plugin-local-inference/runtime" ||
+        strippedId === "@elizaos/plugin-local-inference/services"
+      ) {
+        return [
+          "const noop = () => undefined;",
+          "const asyncNoop = async () => undefined;",
+          "const proxy = new Proxy(noop, { get: () => proxy, apply: () => proxy });",
+          // Server-only constants
+          "export const DEFAULT_MODELS_DIR = '/.eliza/models';",
+          // Server-only functions used by app-core/runtime/eliza.ts
+          "export const detectEmbeddingPreset = noop;",
+          "export const embeddingGgufFilePresent = () => false;",
+          "export const ensureLocalInferenceHandler = asyncNoop;",
+          "export const ensureModel = asyncNoop;",
+          "export const findExistingEmbeddingModelForWarmupReuse = () => null;",
+          "export const isEmbeddingWarmupReuseDisabled = () => true;",
+          "export const shouldEnableMobileLocalInference = () => false;",
+          "export const shouldWarmupLocalEmbeddingModel = () => false;",
+          // Server-only routes used by app-core/api/server.ts
+          "export const handleLocalInferenceCompatRoutes = async () => false;",
+          // Server-only services used by app-core/api/dev-compat-routes.ts +
+          // phrase-chunked-tts.ts (a phrase chunker that runs in node but is
+          // imported as a type/class). Provide minimal class stubs.
+          "export const buildVoiceLatencyDevPayload = () => ({});",
+          "export const deviceBridge = proxy;",
+          "export const voiceLatencyTracer = proxy;",
+          "export class PhraseChunker {",
+          "  constructor() {}",
+          "  push() { return null; }",
+          "  flushPending() { return null; }",
+          "  flushIfTimeBudgetExceeded() { return null; }",
+          "  msUntilTimeBudget() { return Infinity; }",
+          "  reset() {}",
+          "}",
+          "export default proxy;",
+        ].join("\n");
+      }
+
+      // @elizaos/plugin-anthropic — server-only model provider. The dist barrel
+      // re-exports it; the renderer never instantiates the provider directly.
+      if (
+        strippedId === "@elizaos/plugin-anthropic" ||
+        strippedId.startsWith("@elizaos/plugin-anthropic/")
+      ) {
+        return [
+          "const noop = () => undefined;",
+          "const proxy = new Proxy(noop, { get: () => proxy, apply: () => proxy });",
+          "export default proxy;",
+        ].join("\n");
+      }
+
       if (strippedId === "@elizaos/plugin-elizacloud") {
         // Mirrors packages/app-core/src/platform/elizaos-plugin-elizacloud-browser-stub.ts.
         // Every server-only export resolves to a noop in the renderer; the

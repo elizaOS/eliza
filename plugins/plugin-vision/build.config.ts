@@ -31,7 +31,6 @@ export const buildConfig: BuildConfig = {
     "@elizaos/plugin-message-handling",
     "@tensorflow-models/coco-ssd",
     "@tensorflow-models/pose-detection",
-    "@tensorflow-models/posenet",
     "@tensorflow/tfjs-node",
     "@tensorflow-models/mobilenet",
     "canvas",
