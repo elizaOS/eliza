@@ -106,7 +106,7 @@ const HANDLE_RESPONSE_PLANNING_HINT_PROPERTIES = {
 		description:
 			"True when this turn needs an action/tool/provider/subagent, filesystem/runtime inspection, browser or network lookup, live/current/external data, side effects, long-running work, or verification before the user can be answered. The router upgrades empty or simple-only contexts to planning against `general` and the planner loop will retry if it returns terminal output before any non-terminal tool has run.",
 	} as JSONSchema,
-	} as const;
+} as const;
 
 export const HANDLE_RESPONSE_LEGACY_REQUIRED_FIELDS = [
 	"shouldRespond",
