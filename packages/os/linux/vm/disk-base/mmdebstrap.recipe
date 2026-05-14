@@ -99,16 +99,13 @@ VM_PACKAGES=(
     fonts-dejavu-core
 )
 
-# --- Ollama (locked decision #21) ---
-# Ollama hosts the bundled Eliza-1 0.8B via @elizaos/plugin-ollama. Not in
-# Debian repos; installed via the upstream script during qcow2 build.
-# We disable auto-pulling models in the install (we pull explicitly below)
-# and bind to 127.0.0.1 only (no LAN exposure).
+# --- Ollama compatibility ---
+# The active local runtime uses the Eliza-1 bundle through local-inference /
+# node-llama-cpp. Ollama stays installable for compatibility, but the base
+# image must not pull third-party fallback models.
 OLLAMA_INSTALL_URL="https://ollama.com/install.sh"
 
-# Models pulled into the qcow2 at build time so first-boot is instant.
-# The 1B model is enough for calibration + warm pre-internet chat; the 3B
-# is downloaded to the encrypted partition on first network connect.
+# No default Ollama pulls. If an operator creates an Ollama alias, it must
+# point at the same bundled Eliza-1 GGUF staged under /usr/share/usbeliza/models.
 OLLAMA_MODELS=(
-    "eliza-1-0_8b"
 )

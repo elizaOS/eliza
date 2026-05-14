@@ -157,7 +157,7 @@ def _bundle_dry_run(tier: str, bundle_dir: Path) -> Outcome:
                        f"{remote}: no staged bundle at {bundle_dir} — assemble it "
                        "(RELEASE_V1.md), then the orchestrator dry-run reports the gate")
     cmd = [sys.executable, "-m", "scripts.publish.orchestrator",
-           "--tier", tier, "--bundle-dir", str(bundle_dir), "--base-v1", "--dry-run"]
+           "--tier", tier, "--bundle-dir", str(bundle_dir), "--dry-run"]
     proc = subprocess.run(cmd, cwd=str(TRAINING_ROOT), capture_output=True, text=True)
     if proc.returncode == 0:
         return Outcome(repo, "model-bundle", "pending",
