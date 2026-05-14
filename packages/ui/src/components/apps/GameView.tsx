@@ -243,8 +243,8 @@ export function DesktopGameWindowControls({
           (item) => item.id === gameWindowId,
         );
         setAlwaysOnTop(currentWindow?.alwaysOnTop ?? false);
-      } catch (err) {
-        console.warn("[GameView] Failed to refresh game window pin state", err);
+      } catch {
+        // non-fatal: pin state defaults to false on poll failure
       }
     }
 
@@ -849,8 +849,7 @@ export function GameView() {
             );
             return nextRun.session ?? null;
           }
-        } catch (err) {
-          console.warn("[GameView] Failed to refresh app run state:", err);
+        } catch {
           if (!isCurrentRefresh()) return sessionStateRef.current;
           if (!activeGameApp || !currentSession?.sessionId) {
             setConnectionStatus("disconnected");
@@ -869,8 +868,7 @@ export function GameView() {
         applySessionState(nextSession);
         setConnectionStatus("connected");
         return nextSession;
-      } catch (err) {
-        console.warn("[GameView] Failed to refresh app session state:", err);
+      } catch {
         if (!isCurrentRefresh()) return sessionStateRef.current;
         if (activeGameRunId) {
           setConnectionStatus("disconnected");
@@ -1223,9 +1221,8 @@ export function GameView() {
           setConnectionStatus("connected");
         }
       })
-      .catch((err) => {
-        console.warn("[GameView] game:openWindow failed:", err);
-        // Fall through — iframe fallback is still rendered
+      .catch(() => {
+        // fall through — iframe fallback is still rendered
       });
 
     return () => {

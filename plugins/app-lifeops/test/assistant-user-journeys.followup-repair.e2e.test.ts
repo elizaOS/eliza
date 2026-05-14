@@ -219,13 +219,11 @@ describeIf(LIVE_SUITE_ENABLED)(
         ...LIVE_PROVIDER_ENV_KEYS,
         "PGLITE_DATA_DIR",
         "ELIZA_STATE_DIR",
-        "ENABLE_TRAJECTORIES",
-        "ELIZA_TRAJECTORY_LOGGING",
+        "ELIZA_DISABLE_TRAJECTORY_LOGGING",
       );
       process.env.PGLITE_DATA_DIR = pgliteDir;
       process.env.ELIZA_STATE_DIR = stateDir;
-      process.env.ENABLE_TRAJECTORIES = "false";
-      process.env.ELIZA_TRAJECTORY_LOGGING = "false";
+      process.env.ELIZA_DISABLE_TRAJECTORY_LOGGING = "1";
       process.env.LOG_LEVEL = process.env.ELIZA_E2E_LOG_LEVEL ?? "error";
 
       for (const key of LIVE_PROVIDER_ENV_KEYS) {

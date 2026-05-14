@@ -17,8 +17,8 @@ const baseUrl =
  *  - sonner Toaster
  *  - nprogress-driven navigation bar
  *
- * The layout sets the SF Pro / DM Mono / Inter CSS variables on the body via
- * the className. The actual @font-face + Google Fonts imports live in
+ * The layout sets the Open Sans / DM Mono / Inter CSS variables on the body via
+ * the className. The Google Fonts imports live in
  * `globals.css` (CSS variables applied on `<body>`).
  */
 export default function RootLayout() {
@@ -53,6 +53,8 @@ export default function RootLayout() {
           content="Managed hosting, provisioning, billing, and deployment for AI agents"
         />
         <meta name="twitter:image" content="/cloudlogo.png" />
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
         <link rel="icon" href="/favicon.ico" />
         <link rel="shortcut icon" href="/favicon.ico" />
         <link rel="apple-touch-icon" href="/favicon.ico" />
@@ -91,7 +93,7 @@ export default function RootLayout() {
                   backdropFilter: "blur(12px)",
                   borderRadius: "0px",
                 },
-                className: "font-sf-pro",
+                className: "font-open-sans",
               }}
             />
           </ThemeProvider>

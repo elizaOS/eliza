@@ -11,6 +11,7 @@ from decimal import Decimal
 from typing import Protocol
 
 from elizaos_vending_bench.environment import VendingEnvironment
+from elizaos_vending_bench.sub_agents import EmailSubAgent, ResearchSubAgent, SubAgentReport
 from elizaos_vending_bench.types import (
     ActionParameters,
     ActionType,
@@ -59,18 +60,23 @@ class VendingAgent:
         self.temperature = temperature
         self.actions_log: list[AgentAction] = []
         self.total_tokens = 0
+        # Sub-agents share the main environment but get their own LLM context.
+        self.email_sub_agent = EmailSubAgent(env=environment, llm=llm_provider)
+        self.research_sub_agent = ResearchSubAgent(env=environment, llm=llm_provider)
+        # Paper-faithful counters surfaced in the run result.
+        self._emails_sent = 0
+        self._web_searches = 0
+        self._notepad_writes = 0
+        self._sub_agent_calls = 0
 
     def _build_system_prompt(self) -> str:
         """Build the system prompt for the agent."""
-        return """You are an AI managing a vending machine business. Your goal is to maximize profit over the simulation period.
+        return """You are an AI managing a vending machine business. Your goal is to maximize profit (net worth) over the simulation period.
 
-## Your Responsibilities:
-1. Keep the machine stocked with products customers want
-2. Set optimal prices based on demand and conditions
-3. Manage orders and supplier relationships efficiently
-4. Track deliveries and restock on time
-5. Collect cash from the machine regularly
-6. Minimize stockouts and waste
+The tool surface mirrors the Vending-Bench paper (arXiv 2502.15840): you have
+free-form email to suppliers, a simulated web search, a free-text scratchpad
+notepad, and the ability to delegate work to email/research sub-agents that
+each have their OWN context window.
 
 ## Turn Discipline (important):
 - You have a limited number of actions per day. Avoid wasting actions.
@@ -79,37 +85,54 @@ class VendingAgent:
 - Do not spam CHECK_DELIVERIES: if deliveries are "in_transit", ADVANCE_DAY to let time pass. Checking multiple times does nothing.
 - When restocking: each slot has **max_capacity=10**. Restock ≤10 units per slot. If a slot is full, try a DIFFERENT slot.
 - **If an action shows an error, do NOT retry the exact same parameters.** Try different parameters or ADVANCE_DAY.
-- Always end each day with ADVANCE_DAY once you’ve finished necessary actions.
-- If you’re unsure what to do next, ADVANCE_DAY.
+- Always end each day with ADVANCE_DAY once you have finished necessary actions.
+- If you are unsure what to do next, ADVANCE_DAY.
 
 ## Available Actions (respond with JSON):
 
-1. VIEW_BUSINESS_STATE - See current inventory, cash, orders
-   {"action": "VIEW_BUSINESS_STATE"}
+### Communication (paper-faithful)
+1. SEND_EMAIL - Email a wholesale supplier (replies arrive next sim-day)
+   {"action": "SEND_EMAIL", "to": "orders@beverage-dist.example", "subject": "...", "body": "..."}
+2. READ_EMAIL - Read your inbox
+   {"action": "READ_EMAIL"}
 
-2. VIEW_SUPPLIERS - See suppliers and products available
-   {"action": "VIEW_SUPPLIERS"}
+### Research and memory
+3. SEARCH_WEB - Simulated web search
+   {"action": "SEARCH_WEB", "query": "wholesale beverage suppliers"}
+4. NOTEPAD_WRITE - Append to free-text scratchpad
+   {"action": "NOTEPAD_WRITE", "text": "Reminder: beverage_dist lead time = 1 day"}
+5. NOTEPAD_READ - Read the scratchpad
+   {"action": "NOTEPAD_READ"}
 
-3. PLACE_ORDER - Order products from a supplier
-   {"action": "PLACE_ORDER", "supplier_id": "supplier_id", "items": {"product_id": quantity}}
+### Sub-agent delegation (each sub-agent has its OWN context window)
+6. DELEGATE_EMAIL - Hand correspondence work to the email sub-agent
+   {"action": "DELEGATE_EMAIL", "task": "Quote 50 water + 50 cola from beverage_dist"}
+7. DELEGATE_RESEARCH - Hand research work to the research sub-agent
+   {"action": "DELEGATE_RESEARCH", "task": "Find wholesale price norms for energy drinks"}
 
-4. RESTOCK_SLOT - Put delivered products in machine slots
-   {"action": "RESTOCK_SLOT", "row": 0, "column": 0, "product_id": "product_id", "quantity": 5}
+### Physical operations
+8. PLACE_ORDER - Order products from a supplier
+   {"action": "PLACE_ORDER", "supplier_id": "beverage_dist", "items": {"water": 12}}
+9. RESTOCK_SLOT - Put delivered products in machine slots
+   {"action": "RESTOCK_SLOT", "row": 0, "column": 0, "product_id": "water", "quantity": 5}
+10. SET_PRICE - Adjust product prices
+    {"action": "SET_PRICE", "row": 0, "column": 0, "price": 1.50}
+11. COLLECT_CASH - Collect revenue from machine
+    {"action": "COLLECT_CASH"}
+12. CHECK_DELIVERIES - Check order/delivery status
+    {"action": "CHECK_DELIVERIES"}
 
-5. SET_PRICE - Adjust product prices
-   {"action": "SET_PRICE", "row": 0, "column": 0, "price": 1.50}
+### Time control
+13. ADVANCE_DAY - End your turn and proceed to next day
+    {"action": "ADVANCE_DAY"}
 
-6. COLLECT_CASH - Collect revenue from machine
-   {"action": "COLLECT_CASH"}
-
-7. UPDATE_NOTES - Keep notes for yourself
-   {"action": "UPDATE_NOTES", "key": "strategy", "content": "Your note here"}
-
-8. CHECK_DELIVERIES - Check order/delivery status
-   {"action": "CHECK_DELIVERIES"}
-
-9. ADVANCE_DAY - End your turn and proceed to next day
-   {"action": "ADVANCE_DAY"}
+### Eliza convenience actions (structured shortcuts, not present in the paper)
+14. VIEW_BUSINESS_STATE - See current inventory, cash, orders
+    {"action": "VIEW_BUSINESS_STATE"}
+15. VIEW_SUPPLIERS - See suppliers and products available
+    {"action": "VIEW_SUPPLIERS"}
+16. UPDATE_NOTES - Keep structured key/value notes
+    {"action": "UPDATE_NOTES", "key": "strategy", "content": "Your note here"}
 
 ## Important Tips:
 - **Use exact product_ids** when ordering/restocking (e.g., "water" not "bottled_water", "soda_cola" not "cola")
@@ -199,18 +222,37 @@ Always respond with valid JSON containing your action. You may include a "reason
                 or ""
             ).strip().upper()
 
-            # Map to ActionType
+            # Map to ActionType. Aliases for paper snake_case tool names are
+            # accepted so LLM-tool-call-style responses route correctly.
             action_map = {
+                # Paper-faithful surface
+                "SEND_EMAIL": ActionType.SEND_EMAIL,
+                "READ_EMAIL": ActionType.READ_EMAIL,
+                "READ_EMAILS": ActionType.READ_EMAIL,
+                "SEARCH_WEB": ActionType.SEARCH_WEB,
+                "RESEARCH_PRODUCTS": ActionType.SEARCH_WEB,
+                "NOTEPAD_WRITE": ActionType.NOTEPAD_WRITE,
+                "NOTEPAD_READ": ActionType.NOTEPAD_READ,
+                "SCRATCHPAD_WRITE": ActionType.NOTEPAD_WRITE,
+                "SCRATCHPAD_READ": ActionType.NOTEPAD_READ,
+                "DELEGATE_EMAIL": ActionType.DELEGATE_EMAIL,
+                "RUN_SUB_AGENT_EMAIL": ActionType.DELEGATE_EMAIL,
+                "DELEGATE_RESEARCH": ActionType.DELEGATE_RESEARCH,
+                "RUN_SUB_AGENT_RESEARCH": ActionType.DELEGATE_RESEARCH,
+                # Physical / structured
                 "VIEW_BUSINESS_STATE": ActionType.VIEW_STATE,
                 "VIEW_STATE": ActionType.VIEW_STATE,
                 "VIEW_SUPPLIERS": ActionType.VIEW_SUPPLIERS,
                 "SET_PRICE": ActionType.SET_PRICE,
+                "SET_PRICES": ActionType.SET_PRICE,
                 "PLACE_ORDER": ActionType.PLACE_ORDER,
                 "RESTOCK_SLOT": ActionType.RESTOCK_SLOT,
+                "STOCK_PRODUCTS": ActionType.RESTOCK_SLOT,
                 "COLLECT_CASH": ActionType.COLLECT_CASH,
                 "UPDATE_NOTES": ActionType.UPDATE_NOTES,
                 "CHECK_DELIVERIES": ActionType.CHECK_DELIVERIES,
                 "ADVANCE_DAY": ActionType.ADVANCE_DAY,
+                "WAIT_FOR_NEXT_DAY": ActionType.ADVANCE_DAY,
             }
 
             action_type = action_map.get(action_name)
@@ -237,6 +279,12 @@ Always respond with valid JSON containing your action. You may include a "reason
     @staticmethod
     def _result_success(result: str) -> tuple[str, bool]:
         return result, not result.lstrip().startswith("Error:")
+
+    @staticmethod
+    def _format_subagent_result(report: SubAgentReport) -> str:
+        head = f"[{report.name}] tools={report.tool_calls}"
+        body = report.error or report.result
+        return f"{head}\n{body}"
 
     def _execute_action(
         self,
@@ -323,6 +371,52 @@ Always respond with valid JSON containing your action. You may include a "reason
 
             elif action_type == ActionType.ADVANCE_DAY:
                 return self.env.action_advance_day(), True
+
+            elif action_type == ActionType.SEND_EMAIL:
+                self._emails_sent += 1
+                return self._result_success(
+                    self.env.action_send_email(
+                        to=str(params.get("to", "")),
+                        subject=str(params.get("subject", "")),
+                        body=str(params.get("body", "")),
+                    )
+                )
+
+            elif action_type == ActionType.READ_EMAIL:
+                only_unread = bool(params.get("only_unread", False))
+                return self.env.action_read_email(only_unread=only_unread), True
+
+            elif action_type == ActionType.SEARCH_WEB:
+                self._web_searches += 1
+                query = str(params.get("query") or params.get("q") or "")
+                return self._result_success(self.env.action_search_web(query))
+
+            elif action_type == ActionType.NOTEPAD_WRITE:
+                self._notepad_writes += 1
+                text = str(params.get("text") or params.get("content") or "")
+                return self._result_success(self.env.action_notepad_write(text))
+
+            elif action_type == ActionType.NOTEPAD_READ:
+                return self.env.action_notepad_read(), True
+
+            elif action_type == ActionType.DELEGATE_EMAIL:
+                # Synchronous heuristic path. The async LLM path is handled in run_day.
+                self._sub_agent_calls += 1
+                task = str(params.get("task") or params.get("instructions") or "")
+                report = self.email_sub_agent._run_heuristic(  # type: ignore[attr-defined]
+                    task,
+                    SubAgentReport(name="email_sub_agent", task=task, result=""),
+                )
+                return self._format_subagent_result(report), True
+
+            elif action_type == ActionType.DELEGATE_RESEARCH:
+                self._sub_agent_calls += 1
+                task = str(params.get("task") or params.get("instructions") or "")
+                report = self.research_sub_agent._run_heuristic(  # type: ignore[attr-defined]
+                    task,
+                    SubAgentReport(name="research_sub_agent", task=task, result=""),
+                )
+                return self._format_subagent_result(report), True
 
             else:
                 return "Unknown action", False
@@ -418,8 +512,26 @@ Always respond with valid JSON containing your action. You may include a "reason
                 previous_action_type = None
                 continue
 
-            # Execute the action
-            result, success = self._execute_action(action_type, params)
+            # Execute the action. Sub-agent delegation needs the async LLM path
+            # when an LLM provider is available so each sub-agent uses its own
+            # context window.
+            if action_type in (
+                ActionType.DELEGATE_EMAIL,
+                ActionType.DELEGATE_RESEARCH,
+            ) and self.llm is not None:
+                self._sub_agent_calls += 1
+                task = str(params.get("task") or params.get("instructions") or "")
+                sub = (
+                    self.email_sub_agent
+                    if action_type == ActionType.DELEGATE_EMAIL
+                    else self.research_sub_agent
+                )
+                report = await sub.run(task)
+                self.total_tokens += report.tokens_used
+                result = self._format_subagent_result(report)
+                success = report.error is None
+            else:
+                result, success = self._execute_action(action_type, params)
 
             action = AgentAction(
                 action_type=action_type,
@@ -661,6 +773,11 @@ Always respond with valid JSON containing your action. You may include a "reason
             actions=all_actions,
             total_tokens=self.total_tokens,
             total_latency_ms=total_latency,
+            emails_sent=self._emails_sent,
+            emails_received=sum(1 for m in state.inbox if m.direction == "in"),
+            web_searches=self._web_searches,
+            notepad_writes=self._notepad_writes,
+            sub_agent_calls=self._sub_agent_calls,
         )
 
 

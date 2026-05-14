@@ -34,7 +34,7 @@ from datetime import datetime
 from pathlib import Path
 
 from benchmarks.mind2web.runner import Mind2WebRunner
-from benchmarks.mind2web.types import Mind2WebConfig, Mind2WebSplit
+from benchmarks.mind2web.types import Mind2WebConfig, Mind2WebRankerMode, Mind2WebSplit
 
 logging.basicConfig(
     level=logging.INFO,
@@ -188,6 +188,43 @@ def parse_args() -> argparse.Namespace:
         help="Groq large model name (default: openai/gpt-oss-120b)",
     )
 
+    # Candidate ranker (MindAct stage 1)
+    parser.add_argument(
+        "--ranker",
+        type=str,
+        choices=["real", "oracle", "none"],
+        default="real",
+        help=(
+            "Stage-1 candidate ranker mode (default: real). "
+            "'real' = DeBERTa-v3 cross-encoder (leaderboard-comparable, "
+            "downloads ~750MB on first run). "
+            "'oracle' = pass GT positives + negatives straight to the LLM "
+            "(upper bound; NOT leaderboard-comparable). "
+            "'none' = no filtering, full DOM candidate pool."
+        ),
+    )
+    parser.add_argument(
+        "--ranker-top-k",
+        type=int,
+        default=50,
+        help="Top-K candidates kept by the ranker (default: 50, matches MindAct).",
+    )
+    parser.add_argument(
+        "--ranker-model",
+        type=str,
+        default=None,
+        help=(
+            "Override HF model id / local path of the DeBERTa cross-encoder "
+            "(default: osunlp/MindAct_CandidateGeneration_deberta-v3-base)."
+        ),
+    )
+    parser.add_argument(
+        "--ranker-device",
+        type=str,
+        default=None,
+        help="Force ranker device: 'cpu', 'cuda', 'cuda:0', ... (default: auto).",
+    )
+
     # Runtime behavior
     parser.add_argument(
         "--check-should-respond",
@@ -234,6 +271,13 @@ def create_config(args: argparse.Namespace) -> Mind2WebConfig:
     if args.real_llm and provider is None and not args.mock:
         provider = "eliza"
 
+    ranker_mode_map = {
+        "real": Mind2WebRankerMode.REAL,
+        "oracle": Mind2WebRankerMode.ORACLE,
+        "none": Mind2WebRankerMode.NONE,
+    }
+    ranker_mode = ranker_mode_map[args.ranker]
+
     return Mind2WebConfig(
         output_dir=output_dir,
         split=split,
@@ -251,6 +295,10 @@ def create_config(args: argparse.Namespace) -> Mind2WebConfig:
         save_detailed_logs=not args.no_details,
         check_should_respond=args.check_should_respond,
         advanced_planning=args.advanced_planning,
+        ranker_mode=ranker_mode,
+        ranker_top_k=max(1, args.ranker_top_k),
+        ranker_model=args.ranker_model,
+        ranker_device=args.ranker_device,
     )
 
 

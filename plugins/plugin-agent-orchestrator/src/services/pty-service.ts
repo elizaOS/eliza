@@ -892,9 +892,9 @@ export class PTYService {
       if (!spawnConfig) {
         throw new Error(
           "OpenCode is requested but no model provider is configured. " +
-            "Set PARALLAX_LLM_PROVIDER=cloud and pair an Eliza Cloud key, " +
-            "set PARALLAX_OPENCODE_LOCAL=1 to use a local provider, " +
-            "or set PARALLAX_OPENCODE_MODEL_POWERFUL to defer to your global opencode.json.",
+            "Set ELIZA_LLM_PROVIDER=cloud and pair an Eliza Cloud key, " +
+            "set ELIZA_OPENCODE_LOCAL=1 to use a local provider, " +
+            "or set ELIZA_OPENCODE_MODEL_POWERFUL to defer to your global opencode.json.",
         );
       }
       opencodeConfigEnv = {
@@ -1123,7 +1123,7 @@ export class PTYService {
     }
 
     // Centralize model-pref resolution across spawn paths. Reads runtime
-    // settings (PARALLAX_*_MODEL_POWERFUL/FAST) and merges in any caller-
+    // settings (ELIZA_*_MODEL_POWERFUL/FAST) and merges in any caller-
     // supplied options.metadata.modelPrefs. Restored after a merge that
     // accidentally took feat's narrower path.
     const resolvedModelPrefs = getTaskAgentModelPrefs(
@@ -1664,9 +1664,9 @@ export class PTYService {
 
   /** Default approval preset. Runtime env var takes precedence over config. */
   get defaultApprovalPreset(): ApprovalPreset {
-    const fromEnv = this.runtime.getSetting(
-      "PARALLAX_DEFAULT_APPROVAL_PRESET",
-    ) as string | undefined;
+    const fromEnv = this.runtime.getSetting("ELIZA_DEFAULT_APPROVAL_PRESET") as
+      | string
+      | undefined;
     if (
       fromEnv &&
       ["readonly", "standard", "permissive", "autonomous"].includes(fromEnv)
@@ -1678,9 +1678,9 @@ export class PTYService {
 
   /** Agent selection strategy. Env var takes precedence. */
   get agentSelectionStrategy(): AgentSelectionStrategy {
-    const fromEnv = this.runtime.getSetting(
-      "PARALLAX_AGENT_SELECTION_STRATEGY",
-    ) as string | undefined;
+    const fromEnv = this.runtime.getSetting("ELIZA_AGENT_SELECTION_STRATEGY") as
+      | string
+      | undefined;
     if (fromEnv && (fromEnv === "fixed" || fromEnv === "ranked")) {
       return fromEnv;
     }
@@ -1697,10 +1697,10 @@ export class PTYService {
   }
 
   private get explicitDefaultAgentType(): AdapterType | null {
-    const fromConfig = readConfigEnvKey("PARALLAX_DEFAULT_AGENT_TYPE");
+    const fromConfig = readConfigEnvKey("ELIZA_DEFAULT_AGENT_TYPE");
     const fromRuntimeOrEnv =
       fromConfig ||
-      (this.runtime.getSetting("PARALLAX_DEFAULT_AGENT_TYPE") as
+      (this.runtime.getSetting("ELIZA_DEFAULT_AGENT_TYPE") as
         | string
         | undefined);
     if (

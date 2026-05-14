@@ -61,8 +61,7 @@
   "dependencies": {
     "@elizaos/core": "workspace:*",
     "@slack/bolt": "^4.1.0",
-    "@slack/web-api": "^7.15.2",
-    "zod": "^4.4.3"
+    "@slack/web-api": "^7.15.2"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.14",

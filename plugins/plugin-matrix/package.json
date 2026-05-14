@@ -39,8 +39,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "matrix-js-sdk": "^41.4.0",
-    "zod": "^4.4.3"
+    "matrix-js-sdk": "^41.4.0"
   },
   "peerDependencies": {
     "@elizaos/core": "workspace:*"

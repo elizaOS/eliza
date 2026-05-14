@@ -83,8 +83,7 @@ export function sanitizeCustomCredentials(
 export function buildAgentCredentials(
   runtime: IAgentRuntime,
 ): AgentCredentials {
-  const llmProvider =
-    readConfigEnvKey("PARALLAX_LLM_PROVIDER") || "subscription";
+  const llmProvider = readConfigEnvKey("ELIZA_LLM_PROVIDER") || "subscription";
 
   if (llmProvider === "cloud") {
     const cloudKey = readConfigCloudKey("apiKey");
@@ -143,29 +142,27 @@ export interface OpencodeSpawnConfig {
 /**
  * Build the per-spawn OpenCode config (fed via OPENCODE_CONFIG_CONTENT).
  * Three modes — verified live against an OpenAI-compatible Eliza-1 endpoint:
- *   1. Cloud: PARALLAX_LLM_PROVIDER=cloud + paired Eliza Cloud key.
- *   2. Local: PARALLAX_OPENCODE_LOCAL=1 (and/or PARALLAX_OPENCODE_BASE_URL).
- *   3. User-config: PARALLAX_OPENCODE_MODEL_POWERFUL alone — defers to
+ *   1. Cloud: ELIZA_LLM_PROVIDER=cloud + paired Eliza Cloud key.
+ *   2. Local: ELIZA_OPENCODE_LOCAL=1 (and/or ELIZA_OPENCODE_BASE_URL).
+ *   3. User-config: ELIZA_OPENCODE_MODEL_POWERFUL alone — defers to
  *      whatever providers the user has in ~/.config/opencode/opencode.json.
  * Returns null when no mode can produce a usable config.
  */
 export function buildOpencodeSpawnConfig(
   runtime: IAgentRuntime,
 ): OpencodeSpawnConfig | null {
-  const llmProvider =
-    readConfigEnvKey("PARALLAX_LLM_PROVIDER") || "subscription";
-  const customBaseUrl = readConfigEnvKey("PARALLAX_OPENCODE_BASE_URL");
+  const llmProvider = readConfigEnvKey("ELIZA_LLM_PROVIDER") || "subscription";
+  const customBaseUrl = readConfigEnvKey("ELIZA_OPENCODE_BASE_URL");
   const localOptIn =
-    readConfigEnvKey("PARALLAX_OPENCODE_LOCAL") === "1" ||
-    readConfigEnvKey("PARALLAX_OPENCODE_LOCAL")?.toLowerCase() === "true";
+    readConfigEnvKey("ELIZA_OPENCODE_LOCAL") === "1" ||
+    readConfigEnvKey("ELIZA_OPENCODE_LOCAL")?.toLowerCase() === "true";
   const userPowerful =
-    (runtime.getSetting("PARALLAX_OPENCODE_MODEL_POWERFUL") as
+    (runtime.getSetting("ELIZA_OPENCODE_MODEL_POWERFUL") as
       | string
-      | undefined) || readConfigEnvKey("PARALLAX_OPENCODE_MODEL_POWERFUL");
+      | undefined) || readConfigEnvKey("ELIZA_OPENCODE_MODEL_POWERFUL");
   const userFast =
-    (runtime.getSetting("PARALLAX_OPENCODE_MODEL_FAST") as
-      | string
-      | undefined) || readConfigEnvKey("PARALLAX_OPENCODE_MODEL_FAST");
+    (runtime.getSetting("ELIZA_OPENCODE_MODEL_FAST") as string | undefined) ||
+    readConfigEnvKey("ELIZA_OPENCODE_MODEL_FAST");
 
   if (llmProvider === "cloud") {
     const cloudKey = readConfigCloudKey("apiKey");
@@ -203,7 +200,7 @@ export function buildOpencodeSpawnConfig(
 
   if (localOptIn || customBaseUrl?.trim()) {
     const baseURL = customBaseUrl?.trim() || OPENCODE_LOCAL_DEFAULT_BASE_URL;
-    const apiKey = readConfigEnvKey("PARALLAX_OPENCODE_API_KEY");
+    const apiKey = readConfigEnvKey("ELIZA_OPENCODE_API_KEY");
     const providerId = "eliza-local";
     const powerful = userPowerful?.trim() || "eliza-1-4b";
     const fast = userFast?.trim();

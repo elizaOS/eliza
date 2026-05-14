@@ -246,11 +246,19 @@ class ElizaREALMAgent:
                     "task_id": task.id,
                     "task_name": task.name,
                     "task_description": task.description,
-                    "task_category": task.category.value,
+                    # The new taxonomy uses ``problem`` (P1..P11).
+                    # ``task_category`` is kept for back-compat with the
+                    # TS bridge prompt templates.
+                    "task_problem": getattr(task, "problem", task.category).value,
+                    "task_category": getattr(task, "problem", task.category).value,
                     "task_goal": message_text,
                     "available_tools": task.available_tools,
                     "constraints": task.constraints,
                     "requirements": task.requirements,
+                    # New: raw upstream instance so the LLM can reason
+                    # over distances / time windows / job matrices etc.
+                    "instance": getattr(task, "instance", {}),
+                    "num_agents": getattr(task, "num_agents", 1),
                     "max_steps": task.max_steps,
                     "current_plan": plan,
                     "executed_steps": executed_steps,
@@ -378,6 +386,23 @@ class ElizaREALMAgent:
                         last_action_text = "Adaptation disabled; ignoring ADAPT_PLAN."
 
                 elif selected_action == "COMPLETE_TASK":
+                    # Capture an optional solution payload from the bridge
+                    # response, so the new extrinsic evaluator can score
+                    # the agent against the oracle.
+                    bench_params = _benchmark_action_params(response.params)
+                    raw_sol = (
+                        response.params.get("solution")
+                        or bench_params.get("solution")
+                    )
+                    if isinstance(raw_sol, dict):
+                        trajectory.solution = raw_sol
+                    elif isinstance(response.text, str) and response.text.strip().startswith("{"):
+                        try:
+                            maybe = json.loads(response.text)
+                            if isinstance(maybe, dict):
+                                trajectory.solution = maybe
+                        except json.JSONDecodeError:
+                            pass
                     logger.info("[eliza-realm] Task completed via COMPLETE_TASK action")
                     break
 

@@ -61,9 +61,6 @@ export async function runAutonomousCli(
   if (command === "serve" || command === "start") {
     const { startEliza } = await import("../runtime/index.ts");
     const runtime = await startEliza({ serverOnly: true });
-    console.log(
-      `[cli] startEliza returned: runtime=${runtime ? "present" : "null"}, ELIZA_LOCAL_LLAMA=${process.env.ELIZA_LOCAL_LLAMA ?? "(unset)"}`,
-    );
     // AOSP-only post-boot wiring. The upstream `startEliza` does not
     // register local-inference handlers — that lives in the
     // `@elizaos/app-core` runtime wrapper, which the mobile agent
@@ -73,28 +70,18 @@ export async function runAutonomousCli(
     // agent package and out of the bundler's cycle path. No-op when
     // `ELIZA_LOCAL_LLAMA !== "1"`.
     if (runtime && process.env.ELIZA_LOCAL_LLAMA?.trim() === "1") {
-      console.log("[cli] importing aosp-local-inference-bootstrap…");
       const { ensureAospLocalInferenceHandlers } = await import(
         "@elizaos/plugin-aosp-local-inference"
       );
-      console.log("[cli] calling ensureAospLocalInferenceHandlers(runtime)…");
-      const ok = await ensureAospLocalInferenceHandlers(runtime);
-      console.log(`[cli] ensureAospLocalInferenceHandlers returned ${ok}`);
+      await ensureAospLocalInferenceHandlers(runtime);
     } else if (
       runtime &&
       process.env.ELIZA_DEVICE_BRIDGE_ENABLED?.trim() === "1"
     ) {
-      console.log("[cli] importing mobile-device-bridge-bootstrap…");
       const { ensureMobileDeviceBridgeInferenceHandlers } = await import(
         "@elizaos/plugin-capacitor-bridge"
       );
-      console.log(
-        "[cli] calling ensureMobileDeviceBridgeInferenceHandlers(runtime)…",
-      );
-      const ok = await ensureMobileDeviceBridgeInferenceHandlers(runtime);
-      console.log(
-        `[cli] ensureMobileDeviceBridgeInferenceHandlers returned ${ok}`,
-      );
+      await ensureMobileDeviceBridgeInferenceHandlers(runtime);
     }
     return;
   }

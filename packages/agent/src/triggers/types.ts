@@ -1,12 +1,4 @@
-import type {
-  TriggerConfig,
-  TriggerKind,
-  TriggerLastStatus,
-  TriggerRunRecord,
-  TriggerType,
-  TriggerWakeMode,
-  UUID,
-} from "@elizaos/core";
+import type { TriggerConfig, TriggerRunRecord } from "@elizaos/core";
 
 export {
   TRIGGER_SCHEMA_VERSION,
@@ -17,7 +9,22 @@ export {
   type TriggerType,
   type TriggerWakeMode,
 } from "@elizaos/core";
+// TriggerSummary, TriggerHealthSnapshot, CreateTriggerRequest, UpdateTriggerRequest
+// are canonical in @elizaos/shared. Re-export them here for backwards compat.
+// TriggerTaskMetadata from shared is the base shape. The agent-internal version
+// adds `idempotencyKey` for dedup of scheduled workflow fires.
+export type {
+  CreateTriggerRequest,
+  TriggerHealthSnapshot,
+  TriggerSummary,
+  TriggerTaskMetadata as TriggerTaskMetadataBase,
+  UpdateTriggerRequest,
+} from "@elizaos/shared";
 
+/**
+ * Agent-internal TriggerTaskMetadata: extends the shared base with the
+ * `idempotencyKey` field used for dedup of scheduled workflow fires.
+ */
 export interface TriggerTaskMetadata {
   updatedAt?: number;
   updateInterval?: number;
@@ -43,83 +50,11 @@ export interface TriggerTaskMetadata {
     | TriggerRunRecord[];
 }
 
-export interface TriggerSummary {
-  id: UUID;
-  taskId: UUID;
-  displayName: string;
-  instructions: string;
-  triggerType: TriggerType;
-  enabled: boolean;
-  wakeMode: TriggerWakeMode;
-  createdBy: string;
-  timezone?: string;
-  intervalMs?: number;
-  scheduledAtIso?: string;
-  cronExpression?: string;
-  eventKind?: string;
-  maxRuns?: number;
-  runCount: number;
-  nextRunAtMs?: number;
-  lastRunAtIso?: string;
-  lastStatus?: TriggerLastStatus;
-  lastError?: string;
-  updatedAt?: number;
-  updateInterval?: number;
-  kind?: TriggerKind;
-  workflowId?: string;
-  workflowName?: string;
-}
-
-export interface TriggerHealthSnapshot {
-  triggersEnabled: boolean;
-  activeTriggers: number;
-  disabledTriggers: number;
-  totalExecutions: number;
-  totalFailures: number;
-  totalSkipped: number;
-  lastExecutionAt?: number;
-}
-
-export interface CreateTriggerRequest {
-  displayName?: string;
-  instructions?: string;
-  triggerType?: TriggerType;
-  wakeMode?: TriggerWakeMode;
-  enabled?: boolean;
-  createdBy?: string;
-  timezone?: string;
-  intervalMs?: number;
-  scheduledAtIso?: string;
-  cronExpression?: string;
-  eventKind?: string;
-  maxRuns?: number;
-  kind?: TriggerKind;
-  workflowId?: string;
-  workflowName?: string;
-}
-
-export interface UpdateTriggerRequest {
-  displayName?: string;
-  instructions?: string;
-  triggerType?: TriggerType;
-  wakeMode?: TriggerWakeMode;
-  enabled?: boolean;
-  timezone?: string;
-  intervalMs?: number;
-  scheduledAtIso?: string;
-  cronExpression?: string;
-  eventKind?: string;
-  maxRuns?: number;
-  kind?: TriggerKind;
-  workflowId?: string;
-  workflowName?: string;
-}
-
 export interface NormalizedTriggerDraft {
   displayName: string;
   instructions: string;
-  triggerType: TriggerType;
-  wakeMode: TriggerWakeMode;
+  triggerType: import("@elizaos/core").TriggerType;
+  wakeMode: import("@elizaos/core").TriggerWakeMode;
   enabled: boolean;
   createdBy: string;
   timezone?: string;
@@ -128,7 +63,7 @@ export interface NormalizedTriggerDraft {
   cronExpression?: string;
   eventKind?: string;
   maxRuns?: number;
-  kind?: TriggerKind;
+  kind?: import("@elizaos/core").TriggerKind;
   workflowId?: string;
   workflowName?: string;
 }

@@ -396,8 +396,7 @@ describe("Agent Runtime E2E", () => {
   beforeAll(async () => {
     if (!hasModelProvider) return;
     process.env.LOG_LEVEL = process.env.ELIZA_E2E_LOG_LEVEL ?? "error";
-    process.env.ENABLE_TRAJECTORIES = "false";
-    process.env.ELIZA_TRAJECTORY_LOGGING = "false";
+    process.env.ELIZA_DISABLE_TRAJECTORY_LOGGING = "1";
 
     const provider = selectedLiveProvider;
     if (!provider) {

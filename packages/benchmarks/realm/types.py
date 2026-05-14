@@ -183,6 +183,9 @@ class PlanningTrajectory:
     solution: dict[str, Any] = field(default_factory=dict)
     # Replanning attempts (for disruption scenarios)
     replanning_attempts: list[dict[str, Any]] = field(default_factory=list)
+    # Deprecated. Kept as a write-only attribute for adapter back-compat.
+    # The new evaluator ignores this field — see ``benchmarks.realm.evaluator``.
+    plan_quality_score: float = 0.0
 
 
 # ---------------------------------------------------------------------------

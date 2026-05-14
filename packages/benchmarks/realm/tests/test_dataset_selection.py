@@ -1,49 +1,58 @@
+"""Dataset selection tests for the new P1..P11 taxonomy."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
 import pytest
 
 from benchmarks.realm.dataset import REALMDataset
-from benchmarks.realm.types import REALMCategory
+from benchmarks.realm.types import RealmProblem
+
+
+UPSTREAM = Path(__file__).resolve().parents[1] / "upstream" / "datasets"
 
 
 @pytest.mark.asyncio
-async def test_get_test_cases_limit_is_per_category() -> None:
-    dataset = REALMDataset(data_path="./does-not-exist")
-    await dataset.load()
-
-    # One per category (6 categories)
-    test_cases = dataset.get_test_cases(limit=1)
-    assert len(test_cases) == len(list(REALMCategory))
-    assert {tc.task.category for tc in test_cases} == set(REALMCategory)
-
-    # Two per category (but some categories only have 2 tasks in built-ins)
-    test_cases_2 = dataset.get_test_cases(limit=2)
-    # Built-in set has >=2 tasks for each category
-    assert len(test_cases_2) == 12
+async def test_sample_loader_returns_exactly_one_per_sample_problem() -> None:
+    ds = REALMDataset(use_sample_tasks=True)
+    await ds.load()
+    by_problem: dict[RealmProblem, int] = {}
+    for t in ds.tasks:
+        by_problem[t.problem] = by_problem.get(t.problem, 0) + 1
+    assert by_problem == {RealmProblem.P1: 1, RealmProblem.P11: 1}
 
 
 @pytest.mark.asyncio
-async def test_get_test_cases_category_filtering_respects_limit() -> None:
-    dataset = REALMDataset(data_path="./does-not-exist")
-    await dataset.load()
-
-    test_cases = dataset.get_test_cases(categories=[REALMCategory.SEQUENTIAL], limit=2)
-    assert len(test_cases) == 2
-    assert all(tc.task.category == REALMCategory.SEQUENTIAL for tc in test_cases)
+async def test_problem_filter_applies() -> None:
+    ds = REALMDataset(use_sample_tasks=True)
+    await ds.load()
+    cases = ds.get_test_cases(problems=[RealmProblem.P11])
+    assert cases
+    assert all(c.task.problem == RealmProblem.P11 for c in cases)
 
 
 @pytest.mark.asyncio
-async def test_required_actions_default_to_expected_actions() -> None:
-    dataset = REALMDataset(data_path="./does-not-exist")
-    await dataset.load()
+async def test_limit_is_per_problem() -> None:
+    if not UPSTREAM.exists():
+        pytest.skip("upstream datasets not vendored")
+    ds = REALMDataset(data_path=UPSTREAM, max_instances_per_problem=3)
+    await ds.load()
+    cases = ds.get_test_cases(limit=2)
+    # 11 problems x 2 = at most 22 cases (some may have fewer instances).
+    assert 0 < len(cases) <= 11 * 2
+    # No problem exceeds limit.
+    counts: dict[RealmProblem, int] = {}
+    for c in cases:
+        counts[c.task.problem] = counts.get(c.task.problem, 0) + 1
+    for p, n in counts.items():
+        assert n <= 2, f"{p} has {n} > 2"
 
-    # Pick a task where available_tools has more items than expected actions
-    tc = next(tc for tc in dataset.test_cases if tc.task.id == "react-001")
-    expected_actions = tc.expected.get("actions")
-    assert isinstance(expected_actions, list)
 
-    metrics = tc.expected.get("metrics")
-    assert isinstance(metrics, dict)
-    required_actions = metrics.get("required_actions")
-    assert isinstance(required_actions, list)
-
-    assert required_actions == expected_actions
-
+@pytest.mark.asyncio
+async def test_back_compat_category_attr_exists() -> None:
+    """``REALMTask.category`` is preserved as an alias for ``problem``."""
+    ds = REALMDataset(use_sample_tasks=True)
+    await ds.load()
+    t = ds.tasks[0]
+    assert t.category == t.problem

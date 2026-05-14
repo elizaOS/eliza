@@ -265,9 +265,9 @@ function logWarn(message: string): void {
     typeof coreWorkspaceHelpers.logger.warn === "function"
   ) {
     coreWorkspaceHelpers.logger.warn(message);
-    return;
+  } else {
+    elizaCore.logger.warn(message);
   }
-  console.warn(message);
 }
 
 async function writeFileIfMissing(filePath: string, content: string) {

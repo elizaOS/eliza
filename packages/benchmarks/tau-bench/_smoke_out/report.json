@@ -1,7 +1,8 @@
 {
   "config": {
     "domains": [
-      "retail"
+      "retail",
+      "airline"
     ],
     "task_split": "test",
     "num_trials": 1,
@@ -29,14 +30,14 @@
     "max_concurrency": 1,
     "verbose": false
   },
-  "num_tasks": 2,
+  "num_tasks": 4,
   "num_trials_per_task": 1,
-  "avg_reward": 0.0,
+  "avg_reward": 1.0,
   "pass_k": {
     "1": {
       "k": 1,
-      "num_tasks": 2,
-      "pass_hat_k": 0.0
+      "num_tasks": 4,
+      "pass_hat_k": 1.0
     }
   },
   "domain_results": {
@@ -44,32 +45,64 @@
       {
         "task_id": 0,
         "trial": 0,
-        "reward": 0.0,
-        "success": false,
+        "reward": 1.0,
+        "success": true,
         "judge_passed": null,
         "judge_explanation": "",
-        "r_actions": null,
+        "r_actions": 1.0,
         "r_outputs": null,
-        "num_turns": 0,
-        "num_tool_calls": 0,
+        "num_turns": 14,
+        "num_tool_calls": 5,
         "user_cost": 0.0,
         "agent_cost": 0.0,
-        "error": "env_init: litellm.NotFoundError: NotFoundError: OpenAIException - Model gpt-4o does not exist or you do not have access to it."
+        "error": null
       },
       {
         "task_id": 1,
         "trial": 0,
-        "reward": 0.0,
-        "success": false,
+        "reward": 1.0,
+        "success": true,
         "judge_passed": null,
         "judge_explanation": "",
-        "r_actions": null,
+        "r_actions": 1.0,
         "r_outputs": null,
-        "num_turns": 0,
-        "num_tool_calls": 0,
+        "num_turns": 14,
+        "num_tool_calls": 5,
         "user_cost": 0.0,
         "agent_cost": 0.0,
-        "error": "env_init: litellm.NotFoundError: NotFoundError: OpenAIException - Model gpt-4o does not exist or you do not have access to it."
+        "error": null
+      }
+    ],
+    "airline": [
+      {
+        "task_id": 0,
+        "trial": 0,
+        "reward": 1.0,
+        "success": true,
+        "judge_passed": null,
+        "judge_explanation": "",
+        "r_actions": 1.0,
+        "r_outputs": null,
+        "num_turns": 6,
+        "num_tool_calls": 1,
+        "user_cost": 0.0,
+        "agent_cost": 0.0,
+        "error": null
+      },
+      {
+        "task_id": 1,
+        "trial": 0,
+        "reward": 1.0,
+        "success": true,
+        "judge_passed": null,
+        "judge_explanation": "",
+        "r_actions": 1.0,
+        "r_outputs": null,
+        "num_turns": 6,
+        "num_tool_calls": 1,
+        "user_cost": 0.0,
+        "agent_cost": 0.0,
+        "error": null
       }
     ]
   }

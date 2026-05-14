@@ -686,9 +686,6 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         const nativeSpeechSupported =
           permissions?.speechRecognition !== "not_supported";
         if (!nativeSpeechSupported && !browserSpeechSupported) {
-          console.warn(
-            "[useVoiceChat] No desktop or browser speech backend is available.",
-          );
           setSupported(false);
           return false;
         }
@@ -716,10 +713,6 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
           },
         });
         if (!result.started) {
-          console.warn("[useVoiceChat] TalkMode start returned not started.", {
-            browserSpeechSupported,
-            error: result.error,
-          });
           if (!browserSpeechSupported) {
             setSupported(false);
           }
@@ -733,8 +726,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         setCaptureMode(mode);
         setIsListening(true);
         return true;
-      } catch (error) {
-        console.warn("[useVoiceChat] TalkMode start failed.", error);
+      } catch {
         return false;
       }
     },
@@ -786,12 +778,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         }
       }
 
-      const startedInBrowser = startBrowserRecognition(mode);
-      if (!startedInBrowser) {
-        console.warn(
-          "[useVoiceChat] Voice capture failed to start in both desktop and browser backends.",
-        );
-      }
+      startBrowserRecognition(mode);
     },
     [startBrowserRecognition, startTalkModeRecognition],
   );
@@ -902,9 +889,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
           await ctx.resume();
         } catch {
           // Force a fresh context if resume fails
-          ctx.close().catch((err: unknown) => {
-            console.warn("[useVoiceChat] AudioContext.close() failed", err);
-          });
+          ctx.close().catch(() => {});
           ctx = new AudioContext();
           sharedAudioCtx = ctx;
         }
@@ -1179,9 +1164,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         try {
           await ctx.resume();
         } catch {
-          ctx.close().catch((err: unknown) => {
-            console.warn("[useVoiceChat] AudioContext.close() failed", err);
-          });
+          ctx.close().catch(() => {});
           ctx = new AudioContext();
           sharedAudioCtx = ctx;
         }
@@ -1380,7 +1363,6 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
                   ? `${err.name}: ${err.message.slice(0, 200)}`
                   : String(err).slice(0, 200),
             });
-            console.warn("[useVoiceChat] Desktop speech bridge failed:", err);
           });
           emitPlaybackStart({
             text,
@@ -1569,12 +1551,6 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
               ) {
                 break;
               }
-              console.warn(
-                "[useVoiceChat] Local inference TTS failed:",
-                error instanceof Error
-                  ? `${error.name}: ${error.message}`
-                  : error,
-              );
               usingAudioAnalysisRef.current = false;
               setUsingAudioAnalysis(false);
               throw error;
@@ -1599,12 +1575,6 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
               ) {
                 break;
               }
-              console.warn(
-                "[useVoiceChat] ElevenLabs TTS failed:",
-                error instanceof Error
-                  ? `${error.name}: ${error.message}`
-                  : error,
-              );
               ttsDebug("useVoiceChat:elevenlabs-failed", {
                 err:
                   error instanceof Error

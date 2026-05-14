@@ -129,7 +129,7 @@ export interface IMessageBusService extends Service {
 export abstract class ITokenDataService extends Service {
 	static override readonly serviceType = ServiceType.TOKEN_DATA;
 	public readonly capabilityDescription =
-		"Provides standardized access to token market data." as string;
+		"Provides standardized access to token market data.";
 
 	abstract getTokenDetails(
 		address: string,
@@ -337,7 +337,7 @@ export abstract class IMediaGenerationService extends Service {
 	static override readonly serviceType = ServiceType.MEDIA_GENERATION;
 
 	public readonly capabilityDescription =
-		"Generates image, video, and audio media from prompts." as string;
+		"Generates image, video, and audio media from prompts.";
 
 	canGenerateMedia(
 		_request: Pick<MediaGenerationRequest, "mediaType" | "audioKind">,

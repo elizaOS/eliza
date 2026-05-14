@@ -568,11 +568,8 @@ export function useOnboardingCallbacks(deps: OnboardingCallbacksDeps) {
                 runtimeConfig.serviceRouting?.tts?.backend === "elizacloud",
               clientRef: client,
             });
-          } catch (err) {
-            console.warn(
-              "[onboarding] Failed to persist cloud voice preset",
-              err,
-            );
+          } catch {
+            // voice preset persistence is best-effort
           }
 
           applySelectedLocalCapabilities();
@@ -630,9 +627,7 @@ export function useOnboardingCallbacks(deps: OnboardingCallbacksDeps) {
             authToken,
             name: onboardingName,
             bio: style?.bio ?? ["An autonomous AI agent."],
-            onProgress: (status, detail) => {
-              console.log(`[Sandbox] ${status}: ${detail ?? ""}`);
-            },
+            onProgress: () => {},
           });
 
           client.setBaseUrl(provisionedAgent.bridgeUrl);
@@ -731,11 +726,8 @@ export function useOnboardingCallbacks(deps: OnboardingCallbacksDeps) {
               runtimeConfig.serviceRouting?.tts?.backend === "elizacloud",
             clientRef: client,
           });
-        } catch (err) {
-          console.warn(
-            "[onboarding] Failed to persist selected voice preset",
-            err,
-          );
+        } catch {
+          // voice preset persistence is best-effort
         }
 
         applySelectedLocalCapabilities();
@@ -752,7 +744,6 @@ export function useOnboardingCallbacks(deps: OnboardingCallbacksDeps) {
 
         completeOnboarding("chat", { launchCompanionOverlay: true });
       } catch (err) {
-        console.error("[onboarding] Failed to complete onboarding", err);
         const message =
           err instanceof Error && err.message.trim()
             ? `Failed to complete onboarding: ${err.message}`

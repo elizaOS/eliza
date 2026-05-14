@@ -1,13 +1,9 @@
 import type http from "node:http";
 import { logger } from "@elizaos/core";
-import type { ReadJsonBodyOptions } from "@elizaos/shared";
+import type { AgentAutomationMode, ReadJsonBodyOptions } from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.ts";
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-type AgentAutomationMode = "connectors-only" | "full";
+// AgentAutomationMode is canonical in @elizaos/shared (imported above).
 
 export interface PermissionsExtraRouteContext {
   req: http.IncomingMessage;

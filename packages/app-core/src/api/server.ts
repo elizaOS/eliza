@@ -56,7 +56,7 @@ export {
   ensureCloudTtsApiKeyAlias,
   resolveCloudTtsBaseUrl,
   resolveElevenLabsApiKeyForCloudMode,
-} from "@elizaos/plugin-elizacloud";
+} from "@elizaos/shared";
 export {
   type CompatRuntimeState,
   DATABASE_UNAVAILABLE_MESSAGE,
@@ -155,7 +155,14 @@ const lazyEnsureTTS = () =>
     (m) => m.ensureTextToSpeechHandler,
   );
 
-import { clearCloudSecrets, getCloudSecret } from "@elizaos/plugin-elizacloud";
+const LOCAL_TTS_PROVIDER_IDS = [
+  "eliza-local-inference",
+  "capacitor-llama",
+  "eliza-device-bridge",
+  "eliza-aosp-llama",
+] as const;
+
+import { clearCloudSecrets, getCloudSecret } from "@elizaos/shared";
 import { getStartupEmbeddingAugmentation } from "../runtime/startup-overlay.js";
 import { hydrateWalletKeysFromNodePlatformSecureStore } from "../security/hydrate-wallet-keys-from-platform-store";
 import { isNodePlatformSecureStoreDefaultAvailable } from "../security/platform-secure-store-node";
@@ -165,11 +172,7 @@ import { deleteWalletSecretsFromOsStore } from "../security/wallet-os-store-acti
 // Import from extracted modules for use within this file
 // ---------------------------------------------------------------------------
 
-import {
-  handleCloudTtsPreviewRoute as _handleCloudTtsPreviewRoute,
-  ensureCloudTtsApiKeyAlias,
-  mirrorCompatHeaders,
-} from "@elizaos/plugin-elizacloud";
+import { ensureCloudTtsApiKeyAlias, mirrorCompatHeaders } from "@elizaos/shared";
 import { filterConfigEnvForResponse as _filterConfigEnvForResponse } from "./server-config-filter";
 
 // ---------------------------------------------------------------------------
@@ -669,7 +672,8 @@ async function handleCompatRoute(
 
   if (method === "POST" && url.pathname === "/api/tts/cloud") {
     if (!(await ensureRouteAuthorized(req, res, state))) return true;
-    return await _handleCloudTtsPreviewRoute(req, res);
+    const { handleCloudTtsPreviewRoute } = await import("@elizaos/plugin-elizacloud");
+    return handleCloudTtsPreviewRoute(req, res);
   }
 
   if (method === "POST" && url.pathname === "/api/tts/elevenlabs") {
@@ -862,7 +866,7 @@ export async function handleElizaCompatRoute(
   res: http.ServerResponse,
   state: CompatRuntimeState,
 ): Promise<boolean> {
-  return await handleCompatRoute(req, res, state);
+  return handleCompatRoute(req, res, state);
 }
 
 /**
@@ -1022,13 +1026,15 @@ export function patchHttpCreateServerForCompat(): () => void {
     // Attach the local-inference device-bridge WS upgrade handler to every
     // HTTP server created through this patched factory. Safe to call on
     // every server — `attachToHttpServer` is idempotent and only installs
-    // the upgrade listener once.
-    void deviceBridge.attachToHttpServer(created).catch((err) => {
-      logger.warn(
-        "[compat] Failed to attach device-bridge WS handler:",
-        err instanceof Error ? err.message : String(err),
-      );
-    });
+    // the upgrade listener once. Imported dynamically to avoid static boundary violation.
+    void import("@elizaos/plugin-local-inference/services")
+      .then(({ deviceBridge }) => deviceBridge.attachToHttpServer(created))
+      .catch((err: unknown) => {
+        logger.warn(
+          "[compat] Failed to attach device-bridge WS handler:",
+          err instanceof Error ? err.message : String(err),
+        );
+      });
 
     return created;
   }) as typeof http.createServer;

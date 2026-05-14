@@ -1,18 +1,25 @@
 """LifeOpsBench agent_fn backed by the OpenClaw CLI.
 
-Mirrors :func:`eliza_adapter.lifeops_bench.build_lifeops_bench_agent_fn`,
-but routes each user turn through :class:`OpenClawClient` instead of the
-elizaOS HTTP bench server. OpenClaw runs as a separate process and cannot
-drive the in-memory fake backend the eliza path uses, so the world snapshot
-is embedded into the prompt context as JSON and the conversation is
-otherwise treated stateless.
+Mirrors :func:`hermes_adapter.lifeops_bench.build_lifeops_bench_agent_fn`:
+the runner owns the in-memory ``LifeWorld`` and the executor. The adapter
+just threads ``(history, tools) -> tool_calls`` through OpenClaw. World
+state is discovered by the agent via tool calls — never inlined into the
+prompt — which keeps prompts within model context limits and matches
+how the eliza/hermes paths work.
+
+Earlier revisions inlined the entire world snapshot (~2 MB JSON / ~900k
+tokens for medium_seed_2026) into the system message every turn. That
+exceeded gpt-oss-120b's 131k context and hit Windows' command-line
+length cap on the CLI path; it also bypassed the tool-call discovery
+the benchmark is designed to measure. The snapshot path is still
+accepted for backward compatibility with ``__main__.py`` and the tests,
+but it is no longer loaded or embedded.
 """
 
 from __future__ import annotations
 
-import json
 import logging
-from pathlib import Path
+import time
 from typing import Any, Awaitable, Callable
 
 from openclaw_adapter.client import OpenClawClient
@@ -20,13 +27,23 @@ from openclaw_adapter.client import OpenClawClient
 logger = logging.getLogger(__name__)
 
 
+DEFAULT_LIFEOPS_PREAMBLE = (
+    "You are operating in LifeOpsBench. Use the exact action names and "
+    "parameter schemas shown in your tool list — do not invent synonyms. "
+    "Discover world state by calling the provided tools (e.g. "
+    "CALENDAR.list_events, EMAIL.search) before assuming entity ids. "
+    "Always search for existing records before creating new ones."
+)
+
+
 def build_lifeops_bench_agent_fn(
     *,
     client: OpenClawClient | None = None,
-    world_snapshot_path: str,
+    world_snapshot_path: str | None = None,
     now_iso: str = "2026-05-10T12:00:00Z",
     model_name: str | None = None,
     system_prompt: str | None = None,
+    inject_preamble: bool = True,
 ) -> Callable[[list[Any], list[dict[str, Any]]], Awaitable[Any]]:
     """Create a LifeOpsBench-compatible ``agent_fn`` backed by OpenClaw.
 
@@ -34,46 +51,71 @@ def build_lifeops_bench_agent_fn(
     ``agent_fn(history: list[MessageTurn], tools: list[dict]) -> MessageTurn``
     so it plugs straight into ``LifeOpsBenchRunner``.
 
-    OpenClaw is driven via a separate CLI process, so we cannot mutate the
-    LifeWorld in-place the way the elizaOS adapter does. Instead, the
-    snapshot at ``world_snapshot_path`` is loaded once, embedded into the
-    user message as ``WORLD_SNAPSHOT`` JSON, and OpenClaw is expected to
-    reason about it via the provided tools.
+    ``world_snapshot_path`` is accepted but ignored — the LifeOpsBench
+    runner owns the world and exposes it through the tool catalog. The
+    parameter is preserved for backward compatibility with
+    ``eliza_lifeops_bench.__main__`` and existing tests.
     """
     from eliza_lifeops_bench.types import (  # noqa: WPS433 — lazy
         MessageTurn,
         attach_usage_cache_fields,
     )
 
+    if world_snapshot_path is not None:
+        logger.debug(
+            "[openclaw-lifeops] world_snapshot_path=%s accepted but ignored "
+            "(runner owns the LifeWorld; agent discovers state via tools)",
+            world_snapshot_path,
+        )
+
     bridge = client or OpenClawClient()
-    snapshot = _load_snapshot(world_snapshot_path)
 
     async def _agent_fn(
         conversation_history: list[Any],
         tools: list[dict[str, Any]],
     ) -> Any:
-        last_user_text = _last_user_text(conversation_history)
-        if not last_user_text:
+        messages = _history_to_openai_messages(conversation_history)
+        if not any(m.get("role") == "user" for m in messages):
             return MessageTurn(role="assistant", content="", tool_calls=None)
 
-        messages = _conversation_messages(
-            conversation_history,
-            system_prompt=system_prompt,
-            now_iso=now_iso,
-            snapshot=snapshot,
-        )
-        message = last_user_text.strip()
+        # Most recent user text as a fallback for callers that ignore
+        # context["messages"]; the threaded conversation in context is the
+        # authoritative input.
+        last_user_text = ""
+        for m in reversed(messages):
+            if m.get("role") == "user":
+                last_user_text = str(m.get("content") or "")
+                break
+
+        # Inject preamble + (optional) custom system prompt on the first
+        # turn only — we detect "first turn" by the absence of any prior
+        # assistant role in the threaded history.
+        first_turn = not any(m.get("role") == "assistant" for m in messages)
+        if first_turn:
+            system_chunks: list[str] = []
+            if inject_preamble:
+                system_chunks.append(DEFAULT_LIFEOPS_PREAMBLE)
+            system_chunks.append(f"NOW: {now_iso}")
+            if isinstance(system_prompt, str) and system_prompt.strip():
+                system_chunks.append(system_prompt.strip())
+            if system_chunks and not any(m.get("role") == "system" for m in messages):
+                messages.insert(
+                    0,
+                    {"role": "system", "content": "\n\n".join(system_chunks)},
+                )
 
         context: dict[str, object] = {"messages": messages}
         if tools:
             context["tools"] = tools
             context["tool_choice"] = "auto"
 
+        start_ns = time.monotonic_ns()
         try:
-            resp = bridge.send_message(message, context=context)
+            resp = bridge.send_message(last_user_text, context=context)
         except Exception as exc:
             logger.exception("[openclaw-lifeops] send_message failed")
             raise RuntimeError("OpenClaw LifeOps send_message failed") from exc
+        latency_ms = (time.monotonic_ns() - start_ns) // 1_000_000
 
         raw_tool_calls = resp.params.get("tool_calls") if isinstance(resp.params, dict) else None
         tool_calls: list[dict[str, Any]] = []
@@ -103,6 +145,7 @@ def build_lifeops_bench_agent_fn(
         )
         if model_name:
             setattr(turn, "model_name", model_name)
+        setattr(turn, "latency_ms", int(latency_ms))
         # OpenClaw exposes usage either at params['usage'] (OpenAI-compat mode)
         # or under params['_meta']['usage'] (CLI mode). Prefer the direct slot
         # and fall back to the meta blob so both transports surface cache.
@@ -117,99 +160,58 @@ def build_lifeops_bench_agent_fn(
     return _agent_fn
 
 
-def _last_user_text(conversation_history: list[Any]) -> str:
-    for turn in reversed(conversation_history):
-        role = (
-            getattr(turn, "role", None)
-            or (turn.get("role") if isinstance(turn, dict) else None)
-        )
-        content = (
-            getattr(turn, "content", None)
-            or (turn.get("content") if isinstance(turn, dict) else "")
-        )
-        if role == "user":
-            return str(content or "")
-    return ""
+def _history_to_openai_messages(conversation_history: list[Any]) -> list[dict[str, Any]]:
+    """Convert LifeOpsBench ``MessageTurn`` history into OpenAI chat shape.
 
-
-def _conversation_messages(
-    conversation_history: list[Any],
-    *,
-    system_prompt: str | None,
-    now_iso: str,
-    snapshot: dict[str, Any],
-) -> list[dict[str, Any]]:
-    messages: list[dict[str, Any]] = [
-        {
-            "role": "system",
-            "content": "\n\n".join(
-                chunk
-                for chunk in (
-                    system_prompt,
-                    f"NOW: {now_iso}",
-                    "WORLD_SNAPSHOT:\n"
-                    + json.dumps(snapshot, ensure_ascii=True, indent=2),
-                )
-                if isinstance(chunk, str) and chunk.strip()
-            ),
-        }
-    ]
+    Preserves assistant ``tool_calls`` and tool-result ``tool_call_id`` /
+    ``name`` so the model sees its own prior tool calls plus the
+    corresponding tool results. Without this the model never observes
+    execution feedback and re-emits the same call until ``max_turns``.
+    """
+    out: list[dict[str, Any]] = []
     for turn in conversation_history:
         role = (
             getattr(turn, "role", None)
             or (turn.get("role") if isinstance(turn, dict) else None)
         )
-        if role not in {"user", "assistant", "system", "tool"}:
+        if role not in {"system", "user", "assistant", "tool"}:
             continue
         content = (
             getattr(turn, "content", None)
             if not isinstance(turn, dict)
             else turn.get("content")
         )
-        msg: dict[str, Any] = {
+        item: dict[str, Any] = {
             "role": role,
-            "content": str(content or ""),
+            "content": "" if content is None else str(content),
         }
-        name = (
-            getattr(turn, "name", None)
-            if not isinstance(turn, dict)
-            else turn.get("name")
-        )
-        if isinstance(name, str) and name:
-            msg["name"] = name
-        tool_call_id = (
-            getattr(turn, "tool_call_id", None)
-            if not isinstance(turn, dict)
-            else turn.get("tool_call_id") or turn.get("toolCallId")
-        )
-        if isinstance(tool_call_id, str) and tool_call_id:
-            msg["tool_call_id"] = tool_call_id
-        tool_calls = (
-            getattr(turn, "tool_calls", None)
-            if not isinstance(turn, dict)
-            else turn.get("tool_calls") or turn.get("toolCalls")
-        )
-        if isinstance(tool_calls, list) and tool_calls:
-            msg["tool_calls"] = tool_calls
-            if role == "assistant" and not msg["content"]:
-                msg["content"] = None
-        messages.append(msg)
-    return messages
-
-
-def _load_snapshot(world_snapshot_path: str) -> dict[str, Any]:
-    path = Path(world_snapshot_path).expanduser()
-    if not path.exists():
-        raise FileNotFoundError(
-            f"LifeOps world snapshot not found at {path}"
-        )
-    with path.open("r", encoding="utf-8") as fh:
-        data = json.load(fh)
-    if not isinstance(data, dict):
-        raise ValueError(
-            f"LifeOps world snapshot at {path} must be a JSON object, got {type(data).__name__}"
-        )
-    return data
+        if role == "assistant":
+            tcs = (
+                getattr(turn, "tool_calls", None)
+                if not isinstance(turn, dict)
+                else turn.get("tool_calls")
+            )
+            if isinstance(tcs, list) and tcs:
+                item["tool_calls"] = tcs
+                if not item["content"]:
+                    item["content"] = None
+        elif role == "tool":
+            tcid = (
+                getattr(turn, "tool_call_id", None)
+                if not isinstance(turn, dict)
+                else turn.get("tool_call_id") or turn.get("toolCallId")
+            )
+            if isinstance(tcid, str) and tcid:
+                item["tool_call_id"] = tcid
+            tname = (
+                getattr(turn, "name", None)
+                if not isinstance(turn, dict)
+                else turn.get("name")
+            )
+            if isinstance(tname, str) and tname:
+                item["name"] = tname
+        out.append(item)
+    return out
 
 
 __all__ = ["build_lifeops_bench_agent_fn"]

@@ -1,36 +1,56 @@
 """
-REALM-Bench: Real-World Planning Benchmark.
+REALM-Bench: Real-World Planning Benchmark for LLMs and Multi-Agent Systems.
 
-The agent loop runs against the eliza TypeScript benchmark HTTP server via
-``eliza_adapter.realm.ElizaREALMAgent``.
+Faithful implementation of the 11 canonical scenarios (P1..P11) from:
 
-Reference: https://arxiv.org/abs/2412.13102
-GitHub: https://github.com/genglongling/REALM-Bench
+    Geng et al., arXiv:2502.18836
+    https://github.com/genglongling/REALM-Bench
+
+Upstream task definitions, instance datasets, and JSSP benchmarks are
+vendored under ``packages/benchmarks/realm/upstream/`` (see
+``upstream/ATTRIBUTION.md``).
+
+The agent loop targets the eliza TS bridge via
+``eliza_adapter.realm.ElizaREALMAgent``. A deterministic
+``_MockREALMAgent`` is exposed for smoke tests and CI.
 """
 
+from benchmarks.realm.dataset import REALMDataset
+from benchmarks.realm.evaluator import MetricsCalculator, REALMEvaluator
+from benchmarks.realm.runner import REALMRunner
 from benchmarks.realm.types import (
-    REALMCategory,
-    REALMConfig,
-    REALMMetrics,
-    REALMReport,
-    REALMResult,
-    REALMResultMetrics,
-    REALMResultDetails,
-    REALMTask,
-    REALMTestCase,
+    LEADERBOARD_NOTE,
+    LEADERBOARD_SCORES,
+    MULTI_AGENT_PROBLEMS,
+    PROBLEM_DESCRIPTIONS,
+    PROBLEM_TO_FAMILY,
+    PROBLEMS_WITH_DISRUPTIONS,
+    ExecutionModel,
+    OracleFamily,
     PlanningAction,
     PlanningStep,
     PlanningTrajectory,
     PlanStatus,
-    ExecutionModel,
-    LEADERBOARD_SCORES,
+    REALMCategory,  # back-compat alias for RealmProblem
+    REALMConfig,
+    REALMMetrics,
+    REALMReport,
+    REALMResult,
+    REALMResultDetails,
+    REALMResultMetrics,
+    REALMTask,
+    REALMTestCase,
+    RealmProblem,
 )
-from benchmarks.realm.dataset import REALMDataset
-from benchmarks.realm.evaluator import REALMEvaluator, MetricsCalculator
-from benchmarks.realm.runner import REALMRunner
 
 __all__ = [
+    "RealmProblem",
     "REALMCategory",
+    "OracleFamily",
+    "PROBLEM_TO_FAMILY",
+    "PROBLEMS_WITH_DISRUPTIONS",
+    "MULTI_AGENT_PROBLEMS",
+    "PROBLEM_DESCRIPTIONS",
     "REALMConfig",
     "REALMMetrics",
     "REALMReport",
@@ -45,6 +65,7 @@ __all__ = [
     "PlanStatus",
     "ExecutionModel",
     "LEADERBOARD_SCORES",
+    "LEADERBOARD_NOTE",
     "REALMDataset",
     "REALMEvaluator",
     "MetricsCalculator",

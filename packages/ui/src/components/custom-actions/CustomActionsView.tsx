@@ -41,8 +41,8 @@ export function CustomActionsView() {
       setLoading(true);
       const result = await client.listCustomActions();
       setActions(result);
-    } catch (error) {
-      console.error("Failed to load custom actions:", error);
+    } catch {
+      // load failure: list stays empty
     } finally {
       setLoading(false);
     }
@@ -82,8 +82,8 @@ export function CustomActionsView() {
             action.id === id ? { ...action, enabled } : action,
           ),
         );
-      } catch (error) {
-        console.error("Failed to toggle action:", error);
+      } catch {
+        // toggle failure: optimistic update will be stale until next load
       }
     },
     [],
@@ -105,8 +105,8 @@ export function CustomActionsView() {
       try {
         await client.deleteCustomAction(id);
         setActions((prev) => prev.filter((action) => action.id !== id));
-      } catch (error) {
-        console.error("Failed to delete action:", error);
+      } catch {
+        // deletion failure: item remains in list
       }
     },
     [t],
@@ -128,8 +128,7 @@ export function CustomActionsView() {
 
         await loadActions();
         event.target.value = "";
-      } catch (error) {
-        console.error("Failed to import actions:", error);
+      } catch {
         await alertDesktopMessage({
           title: t("customactionsview.ImportFailedTitle"),
           message: t("customactionsview.ImportFailedMessage"),

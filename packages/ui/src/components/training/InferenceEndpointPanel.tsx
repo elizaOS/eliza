@@ -96,8 +96,8 @@ export function InferenceEndpointPanel() {
       try {
         await deleteEndpoint(endpointId);
         await refetch();
-      } catch (err) {
-        console.error("Failed to delete endpoint:", err);
+      } catch {
+        // deletion failure is surfaced implicitly: item remains in list
       }
     },
     [deleteEndpoint, refetch],

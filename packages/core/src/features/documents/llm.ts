@@ -131,11 +131,11 @@ export async function generateTextEmbedding(
 
 	try {
 		if (config.EMBEDDING_PROVIDER === "local") {
-			return await generateLocalEmbedding(runtime, text);
+			return generateLocalEmbedding(runtime, text);
 		} else if (config.EMBEDDING_PROVIDER === "openai") {
-			return await generateOpenAIEmbedding(text, config, dimensions);
+			return generateOpenAIEmbedding(text, config, dimensions);
 		} else if (config.EMBEDDING_PROVIDER === "google") {
-			return await generateGoogleEmbedding(text, config);
+			return generateGoogleEmbedding(text, config);
 		}
 
 		throw new Error(
@@ -344,7 +344,7 @@ export async function generateText(
 			async () => {
 				switch (provider) {
 					case "anthropic":
-						return await generateAnthropicText(
+						return generateAnthropicText(
 							runtime,
 							config,
 							prompt,
@@ -353,7 +353,7 @@ export async function generateText(
 							maxTokens,
 						);
 					case "openai":
-						return await generateOpenAIText(
+						return generateOpenAIText(
 							runtime,
 							config,
 							prompt,
@@ -362,7 +362,7 @@ export async function generateText(
 							maxTokens,
 						);
 					case "openrouter":
-						return await generateOpenRouterText(
+						return generateOpenRouterText(
 							runtime,
 							config,
 							prompt,
@@ -374,7 +374,7 @@ export async function generateText(
 							autoCacheContextualRetrieval,
 						);
 					case "google":
-						return await generateGoogleText(
+						return generateGoogleText(
 							runtime,
 							prompt,
 							system,
@@ -574,7 +574,7 @@ async function generateOpenRouterText(
 		}
 
 		if (isClaudeModel) {
-			return await generateClaudeWithCaching(
+			return generateClaudeWithCaching(
 				runtime,
 				promptText,
 				system,
@@ -584,7 +584,7 @@ async function generateOpenRouterText(
 				documentForCaching,
 			);
 		} else if (isGeminiModel) {
-			return await generateGeminiWithCaching(
+			return generateGeminiWithCaching(
 				runtime,
 				promptText,
 				system,
@@ -597,7 +597,7 @@ async function generateOpenRouterText(
 		}
 	}
 
-	return await generateStandardOpenRouterText(
+	return generateStandardOpenRouterText(
 		runtime,
 		prompt,
 		system,

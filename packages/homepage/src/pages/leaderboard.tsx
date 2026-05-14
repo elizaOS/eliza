@@ -472,9 +472,6 @@ export default function Leaderboard() {
       const b = Math.round(0.48 * h - 240);
       const svgH = Math.round(0.3303 * h - 0.27);
       const pb = Math.round(0.09155 * h - 25.12);
-      console.log(
-        `[debug] screenHeight=${h} maxWidth=${w} bottom=${b} svgH=${svgH} pb=${pb}`,
-      );
       setLoginMaxW(w);
       setLoginBottom(b);
       setIntroSvgH(svgH);

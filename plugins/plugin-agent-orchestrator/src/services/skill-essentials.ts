@@ -36,7 +36,7 @@ ALWAYS-on, no shell tool required — just print the line.
 # Bridge endpoints (parent state, read-only)
 
 When HTTP hooks are wired (variants \`swarm\` and \`repo\`), GET these to query parent state:
-- \`http://localhost:\${ELIZA_HOOK_PORT:-2138}/api/coding-agents/$PARALLAX_SESSION_ID/parent-context\` — agent character, originating room, original task
+- \`http://localhost:\${ELIZA_HOOK_PORT:-2138}/api/coding-agents/$ELIZA_AGENT_SESSION_ID/parent-context\` — agent character, originating room, original task
 - \`.../memory?q=<query>&limit=<N>\` — recent messages from the originating room
 - \`.../active-workspaces\` — sibling sub-agents (swarm only)
 
@@ -44,7 +44,7 @@ Auth is the path-embedded session id. Loopback-only, GET-only, read-only.
 
 # Constraints
 
-- Sealed env: only an allowlist of vars is forwarded (PATH, HOME, USER, SHELL, ANTHROPIC_MODEL, GITHUB_TOKEN, PARALLAX_SESSION_ID, ELIZA_HOOK_PORT, etc.).
+- Sealed env: only an allowlist of vars is forwarded (PATH, HOME, USER, SHELL, ANTHROPIC_MODEL, GITHUB_TOKEN, ELIZA_AGENT_SESSION_ID, ELIZA_HOOK_PORT, etc.).
 - Workspace-only writes: write only inside your workdir.
 - Don't push to git remotes — Eliza handles git push, PR creation, cross-repo coordination.
 - Don't print secrets — PTY output is captured. Reference secrets by env-var name.

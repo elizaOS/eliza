@@ -205,12 +205,16 @@ class Mind2WebRunner:
 
             latency_ms = (time.time() - start_time) * 1000
 
+            # Pull per-step ranker recalls from the agent if it tracked them.
+            ranker_recalls = getattr(agent, "ranker_recalls", None)
+
             # Evaluate predictions
             result = self.evaluator.evaluate_task(
                 task,
                 predictions,
                 trial_number=trial_number,
                 latency_ms=latency_ms,
+                ranker_recalls=ranker_recalls,
             )
 
             return result
@@ -308,6 +312,16 @@ class Mind2WebRunner:
             "split": self.config.split.value,
             "model_provider": self.config.model_provider or "auto",
         }
+
+        # Surface the ranker mode + Recall@K in the run summary so the report
+        # is self-describing (oracle/none modes are NOT leaderboard-comparable).
+        ranker_recall = metrics.get("overall_ranker_recall_at_k", float("nan"))
+        summary["ranker_mode"] = self.config.ranker_mode.value
+        summary["ranker_top_k"] = self.config.ranker_top_k
+        if isinstance(ranker_recall, (int, float)) and not (
+            isinstance(ranker_recall, float) and ranker_recall != ranker_recall  # NaN check
+        ):
+            summary["ranker_recall_at_k"] = float(ranker_recall)
 
         return Mind2WebReport(
             total_tasks=total_tasks,
@@ -408,6 +422,14 @@ class Mind2WebRunner:
             f"| Element Accuracy | {report.overall_element_accuracy * 100:.1f}% |",
             f"| Operation Accuracy | {report.overall_operation_accuracy * 100:.1f}% |",
             f"| Avg Latency (ms) | {report.average_latency_ms:.0f} |",
+            f"| Ranker Mode | {report.summary.get('ranker_mode', 'n/a')} |",
+            f"| Ranker Top-K | {report.summary.get('ranker_top_k', 'n/a')} |",
+            (
+                f"| Ranker Recall@K | "
+                f"{float(report.summary['ranker_recall_at_k']) * 100:.1f}% |"
+                if "ranker_recall_at_k" in report.summary
+                else "| Ranker Recall@K | n/a (oracle / mock mode) |"
+            ),
             "",
         ]
 

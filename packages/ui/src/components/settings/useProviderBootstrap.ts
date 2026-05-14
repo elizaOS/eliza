@@ -39,8 +39,8 @@ export function useProviderBootstrap(
     try {
       const res = await client.getSubscriptionStatus();
       setSubscriptionStatus(res.providers ?? []);
-    } catch (err) {
-      console.warn("[eliza] Failed to load subscription status", err);
+    } catch {
+      // subscription status is best-effort; component renders with empty list
     }
   }, []);
 
@@ -60,8 +60,8 @@ export function useProviderBootstrap(
           large: opts.models?.large ?? [],
           mega: opts.models?.mega ?? [],
         });
-      } catch (err) {
-        console.warn("[eliza] Failed to load onboarding options", err);
+      } catch {
+        // onboarding options are best-effort
       }
       try {
         const cfg = await client.getConfig();
@@ -71,8 +71,8 @@ export function useProviderBootstrap(
           llmText?.transport === "cloud-proxy" && providerId === "elizacloud";
         cloudModel.initializeFromConfig(cfg, elizaCloudEnabledCfg);
         selection.initializeFromConfig(cfg);
-      } catch (err) {
-        console.warn("[eliza] Failed to load config", err);
+      } catch {
+        // config load is best-effort; defaults apply
       }
     })();
   }, [loadSubscriptionStatus]);
