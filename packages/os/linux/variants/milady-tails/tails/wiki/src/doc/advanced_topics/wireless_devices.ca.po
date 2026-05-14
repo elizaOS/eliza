@@ -1,0 +1,285 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-11-12 12:16+0100\n"
+"PO-Revision-Date: 2026-01-23 15:29+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: ca\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Enabling a wireless device\"]]\n"
+msgstr "[[!meta title=\"Activació d'un dispositiu sense fil\"]]\n"
+
+#. type: Plain text
+msgid "When Tails starts, Wi-Fi, WWAN, and WiMAX devices are enabled."
+msgstr ""
+"Quan s'inicia Tails, els dispositius Wi-Fi, WWAN i WiMAX estan activats."
+
+#. type: Plain text
+msgid ""
+"But all other kinds of wireless devices such as Bluetooth, GPS and FM "
+"devices are disabled by default. If you want to use such a device, you need "
+"to enable it first."
+msgstr ""
+"Però tots els altres tipus de dispositius sense fil, com ara dispositius "
+"Bluetooth, GPS i FM, estan desactivats per defecte. Si voleu utilitzar un "
+"dispositiu d'aquest tipus, primer heu d'activar-lo."
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"next\">\n"
+msgstr "<div class=\"next\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>If Wi-Fi is not working, see\n"
+"[[troubleshooting Wi-Fi that is not working|doc/anonymous_internet/no-wifi]].</p>\n"
+msgstr ""
+"<p>Si la Wi-Fi no funciona, consulteu la\n"
+"[[resolució de problemes de Wi-Fi quan no aquesta no funciona|doc/anonymous_internet/no-wifi]].</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+#. type: Title -
+#, no-wrap
+msgid "Enable a wireless device"
+msgstr "Activar un dispositiu sense fil"
+
+#. type: Plain text
+msgid "This technique uses the command line."
+msgstr "Aquesta tècnica utilitza la línia d'ordres."
+
+#. type: Bullet: '1. '
+msgid ""
+"When starting Tails, [[set up an administration password|doc/first_steps/"
+"welcome_screen/administration_password]]."
+msgstr ""
+"En iniciar Tails, [[configureu una contrasenya d'administració|doc/"
+"first_steps/welcome_screen/administration_password]]."
+
+#. type: Bullet: '1. '
+msgid "Choose **Apps&nbsp;▸ System Tools&nbsp;▸ Console**."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Execute the following command to open a root console."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   <p class=\"command\">sudo -i</p>\n"
+msgstr "   <p class=\"command\">sudo -i</p>\n"
+
+#. type: Bullet: '1. '
+#, fuzzy
+#| msgid ""
+#| "To find out the index of the wireless device that you want to enable, "
+#| "open a [[root terminal|doc/first_steps/welcome_screen/"
+#| "administration_password#open_root_terminal]], and execute the following "
+#| "command:"
+msgid ""
+"To find out the index of the wireless device that you want to enable, "
+"execute the following command:"
+msgstr ""
+"Per esbrinar l'índex del dispositiu sense fil que voleu habilitar, obriu un "
+"[[terminal d'administrador|doc/first_steps/welcome_screen/"
+"administration_password#open_root_terminal]] i executeu l'ordre següent:"
+
+#. type: Plain text
+#, no-wrap
+msgid "   <p class=\"command-root\">rfkill list</p>\n"
+msgstr "   <p class=\"command-root\">rfkill list</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "   For example, the command could return the following:\n"
+msgstr "   Per exemple, l'ordre podria retornar el següent:\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"       0: phy0: Wireless LAN\n"
+"               Soft blocked: no\n"
+"               Hard blocked: no\n"
+"       1: hci0: Bluetooth\n"
+"               Soft blocked: yes\n"
+"               Hard blocked: no\n"
+"       2: gps0: GPS\n"
+"               Soft blocked: yes\n"
+"               Hard blocked: no\n"
+msgstr ""
+"       0: phy0: Wireless LAN\n"
+"               Soft blocked: no\n"
+"               Hard blocked: no\n"
+"       1: hci0: Bluetooth\n"
+"               Soft blocked: yes\n"
+"               Hard blocked: no\n"
+"       2: gps0: GPS\n"
+"               Soft blocked: yes\n"
+"               Hard blocked: no\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   The device index is the number that appears at the beginning of the\n"
+"   three lines describing each device. In this example, the index of the Bluetooth\n"
+"   device is 1, while the index of the GPS device is 2. Yours are\n"
+"   probably different.\n"
+msgstr ""
+"   L'índex del dispositiu és el número que apareix al principi de les\n"
+"   tres línies que descriuen cada dispositiu. En aquest exemple, l'índex del dispositiu\n"
+"   Bluetooth és 1, mentre que l'índex del dispositiu GPS és 2. El vostre és\n"
+"   probablement diferent.\n"
+
+#. type: Bullet: '1. '
+#, fuzzy
+#| msgid ""
+#| "To enable the wireless device, `execute` the following command in the "
+#| "root terminal, replacing <span class=\"command-placeholder\">index</span> "
+#| "with the index found at step 2:"
+msgid ""
+"To enable the wireless device, execute the following command. Replace <span "
+"class=\"command-placeholder\">index</span> with the index found at step 2:"
+msgstr ""
+"Per habilitar el dispositiu sense fil, `executeu` l'ordre següent al "
+"terminal d'adminsitrador, substituint <span class=\"command-"
+"placeholder\">index</span> per l'índex que es troba al pas 2:"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "   <p class=\"command-template\">rfkill unblock <span class=\"command-placeholder\">index</span></p>\n"
+msgid "   <p class=\"command-root-template\">rfkill unblock <span class=\"command-placeholder\">index</span></p>\n"
+msgstr "   <p class=\"command-template\">rfkill unblock <span class=\"command-placeholder\">index</span></p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   Here is an example of the command to execute. Yours is probably\n"
+"   different:\n"
+msgstr ""
+"   Aquí teniu un exemple de l'ordre a executar. La vostra és probablement\n"
+"   diferent:\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "   <p class=\"command-root-template\">rfkill unblock 2</p>\n"
+msgstr "   <p class=\"command-root-template\">rfkill unblock 2</p>\n"
+
+#. type: Bullet: '1. '
+#, fuzzy
+#| msgid ""
+#| "To verify that the wireless device is enabled, execute the following "
+#| "command in the root terminal again:"
+msgid ""
+"To verify that the wireless device is enabled, execute the following command "
+"again:"
+msgstr ""
+"Per verificar que el dispositiu sense fil està habilitat, torneu a executar "
+"l'ordre següent al terminal d'administrador:"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   This output should be very similar to the one of step 2, but\n"
+"   the device enabled at step 3 should not be soft\n"
+"   blocked anymore.\n"
+msgstr ""
+"   Aquesta sortida hauria de ser molt semblant a la del pas 2, però\n"
+"   el dispositiu habilitat al pas 3 ja no hauria d'aparèixer\n"
+"   bloquejat per software.\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"       0: phy0: Wireless LAN\n"
+"               Soft blocked: no\n"
+"               Hard blocked: no\n"
+"       1: hci0: Bluetooth\n"
+"               Soft blocked: yes\n"
+"               Hard blocked: no\n"
+"       2: gps0: GPS\n"
+"               Soft blocked: no\n"
+"               Hard blocked: no\n"
+msgstr ""
+"       0: phy0: Wireless LAN\n"
+"               Soft blocked: no\n"
+"               Hard blocked: no\n"
+"       1: hci0: Bluetooth\n"
+"               Soft blocked: yes\n"
+"               Hard blocked: no\n"
+"       2: gps0: GPS\n"
+"               Soft blocked: no\n"
+"               Hard blocked: no\n"
+
+#, no-wrap
+#~ msgid "<!--\n"
+#~ msgstr "<!--\n"
+
+#, no-wrap
+#~ msgid "Enable Bluetooth"
+#~ msgstr "Activar el Bluetooth"
+
+#~ msgid ""
+#~ "Bluetooth is not enabled by default in Tails because it is insecure when "
+#~ "trying to protect from a local adversary."
+#~ msgstr ""
+#~ "El Bluetooth no està habilitat per defecte a Tails perquè no és segur "
+#~ "quan s'intenta protegir d'un adversari local."
+
+#~ msgid ""
+#~ "XXX: one also needs to remove `sudo rm /etc/modprobe.d/no-bluetooth.conf "
+#~ "&& sudo udevadm trigger && sudo rfkill unblock bluetooth`."
+#~ msgstr ""
+#~ "XXX: també cal eliminar `sudo rm /etc/modprobe.d/no-bluetooth.conf && "
+#~ "sudo udevadm trigger && sudo rfkill unblock bluetooth`."
+
+#~ msgid ""
+#~ "To use Bluetooth in Tails nonetheless, you have to [[set up an "
+#~ "administration password at boot time|doc/first_steps/welcome_screen/"
+#~ "administration_password]] and install the `gnome-bluetooth` package."
+#~ msgstr ""
+#~ "Tanmateix, per utilitzar Bluetooth a Tails, heu de [[configurar una "
+#~ "contrasenya d'administració en el moment de l'arrencada|doc/first_steps/"
+#~ "welcome_screen/administration_password]] i instal·lar el paquet `gnome-"
+#~ "bluetooth`."
+
+#, no-wrap
+#~ msgid "-->\n"
+#~ msgstr "-->\n"
+
+#, no-wrap
+#~ msgid "       rfkill list\n"
+#~ msgstr "       rfkill list\n"
+
+#, no-wrap
+#~ msgid "       rfkill unblock [index]\n"
+#~ msgstr "       rfkill unblock [index]\n"
+
+#, no-wrap
+#~ msgid "       rfkill unblock 2\n"
+#~ msgstr "       rfkill unblock 2\n"
+
+#~ msgid ""
+#~ "<p>BlueTooth is enabled by default but Tails lacks the GNOME utilities\n"
+#~ "to actually use it.</p>\n"
+#~ msgstr ""
+#~ "<p>BlueTooth ist standardmäßig aktiviert, aber Tails enthält die "
+#~ "Werkzeuge von\n"
+#~ "GNOME nicht, um es tatsächlich zu benutzen.</p>\n"

@@ -1,0 +1,77 @@
+[[!meta title="Tails 4.5 is out"]]
+[[!meta date="Tue, 07 Apr 2020 12:34:56 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+
+This release fixes [[many security
+vulnerabilities|security/Numerous_security_holes_in_4.4.1]]. You should upgrade as soon as possible.
+
+[[!toc levels=2]]
+
+# New features
+
+## Secure Boot
+
+Tails now starts on computers with Secure Boot enabled.
+
+If your Mac displays the following error:
+
+<pre>Security settings do not allow this Mac to use an external startup disk.</pre>
+
+<p>Then you have to change the settings of the <em>Startup Security
+Utility</em> of your Mac to authorize
+starting from Tails.</p>
+
+# Changes and updates
+
+- Update *Tor Browser* to [9.0.9](https://blog.torproject.org/new-release-tor-browser-909).
+
+  This update fixes several [[!mfsa 2020-13 desc="vulnerabilities"]] in
+  *Firefox*, including [[!mfsa 2020-11 desc="some critical ones"]].
+
+  Mozilla is aware of targeted attacks in the wild abusing these
+  vulnerabilities.
+
+<a id="known-issues"></a>
+
+# Known issues
+
+None specific to this release.
+
+See the list of [[long-standing issues|support/known_issues]].
+
+# Get Tails 4.5
+
+## To upgrade your Tails USB stick and keep your Persistent Storage
+
+- Automatic upgrades are available from Tails 4.2 or later to 4.5.
+
+- If you cannot do an automatic upgrade or if Tails fails to start after an
+  automatic upgrade, please try to do a [[manual upgrade|doc/upgrade/#manual]].
+
+## To install Tails on a new USB stick
+
+Follow our installation instructions:
+
+  - [[Install from Windows|install/windows]]
+  - [[Install from macOS|install/mac]]
+  - [[Install from Linux|install/linux]]
+
+<div class="caution"><p>All the data on this USB stick will be lost.</p></div>
+
+## To download only
+
+If you don't need installation or upgrade instructions, you can download
+Tails 4.5 directly:
+
+  - [[For USB sticks (USB image)|install/download]]
+  - [[For DVDs and virtual machines (ISO image)|install/download-iso]]
+
+# What's coming up?
+
+Tails 4.6 is [[scheduled|contribute/calendar]] for May 5.
+
+
+We need your help and there are many ways to [[contribute to
+Tails|contribute]] (<a href="https://tails.net/donate/?r=4.5">donating</a> is only one of
+them). Come [[talk to us|doc/about/contact#tails-dev]]!

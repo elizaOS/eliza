@@ -1,0 +1,23 @@
+[[!meta date="Sun, 16 Apr 2017 01:02:03 +0000"]]
+[[!meta title="Numerous security holes in Tails 2.11"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+Several security holes that affect Tails 2.11 are now fixed in Tails 2.12.
+
+We **strongly** encourage you to
+[[upgrade to Tails 2.12|news/version_2.12]] as soon as possible.
+
+- Tor Browser: [[!mfsa 2017-11]]
+- Linux: [[!cve 2017-2636]]
+- jasper: [[!debsa2017 3827]]
+- gstreamer: [[!debsa2017 3818]], [[!debsa2017 3819]],
+             [[!debsa2017 3820]], [[!debsa2017 3821]],
+             [[!debsa2017 3822]]
+- eject: [[!debsa2017 3823]]
+- imagemagick: [[!debsa2017 3808]]
+- pidgin: [[!debsa2017 3806]]
+- samba: [[!debsa2017 3816]]
+- Fix hardlink permissions on `/var/tmp`: [[!tails_ticket 12125]]
+- Ensure /etc/resolv.conf is owned by `root:root`.

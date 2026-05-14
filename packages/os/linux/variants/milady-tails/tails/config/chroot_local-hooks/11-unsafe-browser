@@ -1,0 +1,33 @@
+#!/bin/sh
+
+set -e
+set -u
+
+echo "Prepare the Unsafe Browser"
+
+# Import ensure_hook_dependency_is_installed()
+. /usr/local/lib/tails-shell-library/build.sh
+
+# Import the TBB_INSTALL variable
+. /usr/local/lib/tails-shell-library/tor-browser.sh
+
+# Install python3-lz4 (required by jsonlz4)
+ensure_hook_dependency_is_installed python3-lz4
+
+# Compress the addonStartup.json with Mozilla's jsonlz4
+INPUT="/usr/share/tails/chroot-browsers/unsafe-browser/addonStartup.json"
+OUTPUT="${INPUT}.lz4"
+/usr/local/bin/jsonlz4 -c < "${INPUT}" > "${OUTPUT}"
+
+# Create an AppArmor profile for the Unsafe Browser
+cp -a "${TBB_INSTALL}/firefox.real" "${TBB_INSTALL}/firefox.unsafe-browser"
+sed \
+  --regexp-extended \
+  -e 's@torbrowser_firefox@unsafebrowser_firefox@g' \
+  -e 's@[.]tor-browser/@.unsafe-browser/@' \
+  -e "s@${TBB_INSTALL}/firefox[.]real@${TBB_INSTALL}/firefox.unsafe-browser@" \
+  -e 's@deny /etc/resolv.conf r,@include <abstractions/nameservice>@' \
+  -e 's@deny /etc/hosts r,@/etc/hosts r,@' \
+  -e 's@deny /etc/nsswitch.conf r,@/etc/nsswitch.conf r,@' \
+  -e 's@^}$@\n  /usr/share/tails/chroot-browsers/unsafe-browser/extensions/* r,\n}@' \
+  /etc/apparmor.d/torbrowser.Browser.firefox > /etc/apparmor.d/unsafe-browser

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mime-info xmlns='http://www.freedesktop.org/standards/shared-mime-info'>
+	<mime-type type="application/x-tcrypt-container">
+		<_comment>TrueCrypt/VeraCrypt container</_comment>
+		<glob pattern="*.tc"/>
+		<glob pattern="*.hc"/>
+		<icon name="unlock-veracrypt-volumes"/>
+	</mime-type>
+</mime-info>

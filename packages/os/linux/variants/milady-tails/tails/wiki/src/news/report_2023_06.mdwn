@@ -1,0 +1,46 @@
+[[!meta title="Tails report for June 2023"]]
+[[!meta date="Thu, 13 Jul 2023 10:26:18 -0300"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!toc]]
+
+Highlights
+==========
+
+- 2 more sponsors renewed their support for Tails! [Look to the
+  Right](https://www.looktotheright.com/) and [Nym
+  Technologies](https://nymtech.net/). We are all so grateful for their
+  generosity.
+
+- Tails now uses LUKS2 with Argon2id by default for all new Persistent Storage
+  and LUKS encrypted volumes. Until Tails 5.12, Tails created LUKS devices
+  version 1 (LUKS1) with PBKDF2 to derive cryptographic keys. But, PBKDF2 no
+  longer offers adequate protection against brute force attacks. We published an
+  extensive [security advisory](https://tails.net/security/argon2id/) for this
+  migration.
+
+- We also published the [entire Puppet
+  codebase](https://gitlab.tails.boum.org/tails/puppet-code) that manages the
+  Tails infrastructure. Have a look under the hood!
+
+Releases
+========
+
+[[Tails 5.14 was released on 16 June 2023|news/version_5.14]]:
+
+- Tails 5.14 automatically converts your Persistent Storage to use LUKS2
+  encryption with Argon2id. 
+
+- Persistent Storage is not only more secure, but also more usable now. We've
+  brought back descriptions of some of the Persistent Storage features, and the
+  button on the welcome page that creates Persistent Storage is now a switch
+  instead of a button.
+
+- Many people use Tails to secure their Bitcoin wallet. All Electrum users on
+  Tails can now donate to Tails through Electrum itself. Tails runs on your
+  donations!
+
+Metrics
+=======
+
+Tails was started more than 750,346 times this month. That's a daily average of over 25,012 boots.

@@ -1,0 +1,12 @@
+[Desktop Entry]
+Version=1.8.4
+_Name=WhisperBack Error Reporting
+_Comment=Send feedback via encrypted e-mail
+_Keywords=feedback;bug;report;tails;error;
+Type=Application
+Exec=whisperback
+Icon=whisperback
+Categories=Application;System;
+Terminal=false
+StartupNotify=true
+StartupWMClass=whisperback

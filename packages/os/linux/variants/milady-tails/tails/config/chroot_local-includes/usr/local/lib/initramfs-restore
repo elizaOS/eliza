@@ -1,0 +1,25 @@
+#!/bin/sh
+
+set -e
+set -u
+
+WORKDIR=$(/bin/mktemp -d)
+
+/usr/bin/unmkinitramfs \
+    "$(/usr/local/bin/tails-get-bootinfo initrd)" \
+    "$WORKDIR"
+
+# We should not need any kernel modules in there at shutdown time,
+# and they take 66% of the entire uncompressed initramfs size, so
+# let's save some RAM.
+/bin/rm -rf "$WORKDIR"/main/lib/modules
+
+/bin/mv "$WORKDIR"/main/* /run/initramfs/
+
+# When migrating to overlayfs we had issues with the overlay rw branch
+# not being wiped (#15146) but switching mount/umount from BusyBox' to
+# util-linux' seems to bring the error rate from 10% to 0.5%.
+rm /run/initramfs/usr/bin/mount /run/initramfs/usr/bin/umount
+cp /bin/mount /bin/umount /run/initramfs/usr/bin/
+
+/bin/rm -rf "$WORKDIR"

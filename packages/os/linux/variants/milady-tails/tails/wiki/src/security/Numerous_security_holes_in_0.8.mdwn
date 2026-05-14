@@ -1,0 +1,21 @@
+[[!meta date="Fri, 14 Oct 2011 11:12:13 +0000"]]
+[[!meta title="Numerous security holes in Tails 0.8"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+The following security holes affect Tails 0.8.
+
+We **strongly** urge you to [[upgrade to Tails 0.8.1|news/version_0.8.1]]
+as soon as possible in case you are still using an older version.
+
+Details
+=======
+
+These are Debian security announces; details can be found on the
+[Debian security page](http://security.debian.org/):
+
+  - iceweasel (DSA-2313-1)
+  - linux-2.6 (DSA-2310-1)
+  - openoffice.org (DSA-2315)
+  - policykit (DSA-2319)

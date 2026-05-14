@@ -1,0 +1,8 @@
+# /!\ This fine is deprecated! /!\
+
+# The rewrite rules used by our website now live there:
+#
+#   https://gitlab.tails.boum.org/tails/puppet-code/-/blob/production/site/profile/templates/tails/website/nginx/rewrite_rules.conf.epp
+#
+# That file documents how to use our rewrite rules locally and how to
+# contribute changes.

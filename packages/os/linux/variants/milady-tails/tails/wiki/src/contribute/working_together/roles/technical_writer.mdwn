@@ -1,0 +1,71 @@
+[[!meta title="Technical writer"]]
+[[!meta robots="noindex"]]
+
+Technical writers are responsible for the creation and maintenance of
+our end-user documentation, including our support pages:
+
+  - Fixing regressions or important bugs on our
+    documentation. This includes tasks identified through:
+
+    - User support on WhisperBack, XMPP, etc.
+
+    - The work of technical writers themselves.
+
+    - The Tails community in general.
+
+  - Redacting [[release notes|contribute/how/documentation/release_notes]] based on the
+    Changelog excerpts provided by RM.
+
+  - Redacting exceptional publications on our
+    blog (security advisory, etc.) or reviewing
+    them.
+
+  - Reviewing contributions to our documentation by paid workers or volunteer contributors
+    For example, the [[Tails Team|foundations team]]
+    sometimes writes known issues.
+
+  - Maintaining a [[style guide|contribute/how/documentation/style_guide]] of Tails-related terms and usage to
+    summarizes the terminology decision taken elsewhere.
+
+  - Documenting new features, including the [[doc/about/features]] page.
+
+  - Documenting known issues and their workarounds, for example, in the
+    [[FAQ|support/faq]] and the
+    [[known issues|support/known_issues]].
+
+  - Keeping our documentation relevant and easy to navigate for the people
+    reading them.
+
+  - Maintaining our documentation on tools that are not part of Tails but
+    that we instruct people to use, for example:
+
+    * Testing, updating, and debugging *Rufus* and *balenaEtcher*
+
+    * Testing the verification JavaScript on the download page at least once a
+      year with Firefox Beta and Chrome Beta, unless it was already tested as
+      part of the release process of a new version. ([[!tails_ticket 18224]])
+
+On top of end-user documentation, technical writers can help with:
+
+  - Improving the most important parts of the contributors
+    documentation, for example, the pages that apply to all contributors,
+    such as GitLab instructions.
+
+  - Discussing UX copy with UX designers.
+
+As technical writers have a limited amount of time to dedicate to these
+tasks, Tails as a project should redefine priorities on a regular basis.
+As general guidelines we should give priority to:
+
+  - Tasks that have to be completed for a given version because
+    documentation is a blocker for releasing.
+
+  - Tasks that impact users the most or that impact the largest number of users.
+
+  - Tasks that have the highest impact on sustainability.
+
+These tasks are tracked using the
+[[!tails_gitlab
+tails/tails/-/boards/5?&label_name%5B%5D=Core+Work%3ATechnical+writing
+desc="Core work: Technical writing"]]
+label on GitLab.

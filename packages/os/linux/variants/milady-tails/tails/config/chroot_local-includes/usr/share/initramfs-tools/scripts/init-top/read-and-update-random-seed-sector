@@ -1,0 +1,99 @@
+#!/bin/sh
+
+# We depend on plymouth to have the splash screen shown while this
+# scripts runs.
+PREREQS="plymouth"
+
+prereqs() { echo "$PREREQS"; }
+
+case "$1" in
+prereqs)
+  prereqs
+  exit 0
+  ;;
+esac
+
+set -u
+set -e
+
+# The plymouth script was run as a dependency and we don't want it to
+# fail the next time it's run as a dependency in the init-premount stage,
+# so we set SPLASH=false which makes it a no-op.
+export SPLASH=false
+
+# Print commands if the "debug=random-seed" boot parameter is set.
+if grep -qw "debug=random-seed" /proc/cmdline; then
+  debug_random_seed=y
+  export PS4='$(date "+%H:%M:%S.%3N") '
+  set -x
+fi
+
+. /scripts/functions
+# shellcheck source=../lib/lib.sh
+. /scripts/lib/lib.sh
+
+if [ -z "${FSUUID:-}" ]; then
+  log "\$FSUUID is unset, probably because the boot medium is an ISO." \
+    "Not restoring random seed from LBA 34."
+  exit 0
+fi
+
+# Wait for system partition
+log "Waiting for system partition to become available"
+i=0
+while true; do
+  if [ -b "/dev/disk/by-uuid/${FSUUID}" ]; then
+    SYSTEM_PARTITION="$(readlink -f "/dev/disk/by-uuid/${FSUUID}")"
+    PARENT_PATH="$(udevadm info --query=property --name="${SYSTEM_PARTITION}" |
+      sed -n '/^ID_PATH=/ s/^ID_PATH=// p')"
+    PARENT_DEVICE="$(readlink -f "/dev/disk/by-path/${PARENT_PATH}")"
+    if [ -b "${PARENT_DEVICE}" ]; then
+      break
+    fi
+  fi
+
+  if [ "$i" -ge 300 ]; then
+    log "Failure: Reached timeout waiting for system partition." \
+        "Not restoring random seed from LBA 34."
+    exit 0
+  fi
+
+  sleep 0.2
+  i="$((i + 1))"
+done
+log "System partition is available at ${SYSTEM_PARTITION}"
+
+# Check if this is first boot
+GUID=$(sgdisk --print "${PARENT_DEVICE}" | \
+       sed -n '/^Disk identifier (GUID)/ s/^Disk identifier (GUID): // p')
+if [ "${GUID}" = "17B81DA0-8B1E-4269-9C39-FE5C7B9B58A3" ]; then
+  FIRST_BOOT=true
+fi
+
+log "Restoring random seed from LBA 34"
+dd bs=512 skip=34 count=1 status=none if="${PARENT_DEVICE}" of=/dev/urandom
+log "Random seed restored from LBA 34"
+
+# We try to obfuscate the number of times Tails has been booted by
+# writing a random number of times (1-500) to the seed during the first
+# boot.
+if [ -n "${FIRST_BOOT:-}" ]; then
+  ITERATIONS=$((1 + $(od -An -N2 -t uI /dev/urandom) % 500))
+  log "First boot, writing random seed $ITERATIONS times..."
+  PLYMOUTH_INIT_MSG="Preparing Tails for first use..."
+  plymouth display-message --text="${PLYMOUTH_INIT_MSG}"
+
+  # Debug output for the following loop would be too verbose
+  set +x
+
+  for i in $(seq 1 "${ITERATIONS}"); do
+    dd bs=512 seek=34 count=1 status=none if=/dev/urandom of="${PARENT_DEVICE}"
+  done
+
+  # Restore debug output
+  [ "${debug_random_seed:-}" = "y" ] && set -x
+
+  log "Wrote random seed $ITERATIONS times"
+  # `plymouth hide-message` doesn't work (#20401)
+  plymouth display-message --text=""
+fi

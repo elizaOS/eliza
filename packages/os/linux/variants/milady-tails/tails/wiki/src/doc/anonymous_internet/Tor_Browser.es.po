@@ -1,0 +1,1077 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+msgid ""
+msgstr ""
+"Project-Id-Version: Tails\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-11-12 12:16+0100\n"
+"PO-Revision-Date: 2026-03-26 15:22+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: Spanish <http://translate.tails.net/projects/tails/"
+"tor_browser/es/>\n"
+"Language: es\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Browsing the web with Tor Browser\"]]\n"
+msgstr "[[!meta title=\"Navegar por la web con el Navegador Tor\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!toc levels=1]]\n"
+msgstr "[[!toc levels=1]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"*[Tor Browser](https://www.torproject.org)* is a web\n"
+"browser based on [Mozilla Firefox](https://www.firefox.com/) but configured\n"
+"to protect your privacy.\n"
+msgstr ""
+"El <span class=\"application\">[Navegador Tor](https://www.torproject.org/es/)</span> es un\n"
+"navegador web basado en [Mozilla Firefox](https://www.firefox.com/es-ES/), configurado para\n"
+"proteger tu privacidad.\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!img lib/apps/tor-browser.png link=\"no\" alt=\"\"]]\n"
+msgstr "[[!img lib/apps/tor-browser.png link=\"no\" alt=\"\"]]\n"
+
+#. type: Plain text
+msgid ""
+"Sending your connections to websites through the Tor network is not enough "
+"to totally protect you while browsing the web:"
+msgstr ""
+"Enviar tus conexiones a sitios web a través de la red Tor no es suficiente "
+"para protegerte totalmente mientras navegas la web:"
+
+#. type: Bullet: '- '
+msgid ""
+"Cookies can be used to track and identify you across different websites."
+msgstr ""
+"Se pueden usar cookies para seguirte e identificarte a través de distintos "
+"sitios web."
+
+#. type: Bullet: '- '
+msgid ""
+"Security vulnerabilities in JavaScript have been used to [deanonymize Tor "
+"Browser in the past](https://arstechnica.com/information-technology/2013/08/"
+"attackers-wield-firefox-exploit-to-uncloak-anonymous-tor-users/)."
+msgstr ""
+"Se han utilizado vulnerabilidades de seguridad en Javascript para "
+"[desanonimizar el Navegador Tor anteriormente](https://arstechnica.com/"
+"information-technology/2013/08/attackers-wield-firefox-exploit-to-uncloak-"
+"anonymous-tor-users/)."
+
+#. type: Plain text
+msgid ""
+"This is why *Tor Browser* integrates all kinds of security protections "
+"inside the browser as well."
+msgstr ""
+"Es por eso que el *Navegador Tor* integra todo tipo de protecciones de "
+"seguridad dentro del navegador."
+
+#. type: Plain text
+msgid ""
+"Some frequently asked questions about *Tor Browser* can be found in [[the "
+"FAQ|support/faq#browser]]."
+msgstr ""
+"Puedes encontrar algunas preguntas frecuentes sobre el <span "
+"class=\"application\">Navegador Tor</span>en [[el FAQ|support/faq#browser]]."
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"proxy\">The proxy server is refusing connections</h1>\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"The following error message in *Tor Browser* means that Tails is not yet "
+"connected to the Tor network:"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "    The proxy server is refusing connections\n"
+msgstr ""
+
+#. type: Plain text
+msgid "Make sure that you are:"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "[[Connected to a local network|anonymous_internet/networkmanager]]"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "[[Connected to the Tor network|anonymous_internet/tor]]"
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "<h1 id=\"security-level\">Security level</h1>\n"
+msgid "<h1 id=\"confinement\">Security confinement</h1>\n"
+msgstr "<h1 id=\"security-level\">Nivel de seguridad</h1>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"*Tor Browser* is only allowed to save the downloads and read the files that you\n"
+"specify in the file chooser of GNOME.\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"For example, thanks to this confinement, even if an attacker manages to "
+"exploit a security vulnerability in *Tor Browser*, they wouldn't be able to "
+"access all the content of your Persistent Storage."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"tip\">\n"
+msgstr "<div class=\"tip\">\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid ""
+#| "<p>To prevent Tails from running out of memory and crashing, download\n"
+#| "very big files to the <em>Persistent/Tor Browser</em> folder.\n"
+#| "All the files that you download outside of the Persistent Storage are\n"
+#| "stored in memory (RAM), which is more limited.</p>\n"
+msgid ""
+"<p>To prevent Tails from running out of memory and crashing, download\n"
+"very big files to the <i>Persistent</i> folder.\n"
+"The files that you download outside of the Persistent Storage are\n"
+"stored in memory (RAM), which is more limited.</p>\n"
+msgstr ""
+"<p>Para evitar que Tails se quede sin memoria y se bloquee, descarga\n"
+"los archivos grandes en la carpeta <em>Persistent/Tor Browser</em>.\n"
+"Todos los archivos que descargues fuera del Almacenamiento Persistente\n"
+"se descargan en la memoria (RAM), que está más limitada.</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"note\">\n"
+msgstr "<div class=\"note\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>In [[Tails 6.14.1|news/version_6.14.1]] (April 2025), we improved the\n"
+"previous confinement and you can now safely download to and read from any\n"
+"folder in your <i>Home</i> folder or Persistent Storage.</p>\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"This confinement relies on 2 security technologies: *[[!debwiki AppArmor]]* "
+"and the [XDG Desktop Portals](https://flatpak.github.io/xdg-desktop-portal/) "
+"of *Flatpak*."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"bug\">\n"
+msgstr "<div class=\"bug\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>When opening files from the <i>/usr</i> or <i>/etc</i> folders in Tor\n"
+"Browser, Tor Browser displays the following error:</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<pre>Access to the file was denied</pre>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"fingerprint\">Hiding that you are using <i>Tor Browser</i></h1>\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"It is impossible to hide to the websites that you visit that you are using "
+"Tor, because the [list of exit nodes of the Tor network is public](https://"
+"metrics.torproject.org/exonerator.html)."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"That is why many more websites ask you to solve a CAPTCHA when using *Tor "
+"Browser*."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"The anonymity provided by *Tor Browser* works by making all users look the "
+"same to make it impossible to know who is who among the millions of users of "
+"*Tor Browser*."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Tails tries to make it as difficult as possible for websites to distinguish "
+"Tails users from other users of *Tor Browser*. If it was possible for a "
+"website to determine whether you are a user of *Tor Browser* inside or "
+"outside of Tails, this would provide a little bit more information about you "
+"and reduce your anonymity."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"The websites that you visit can retrieve a lot of information about your "
+"browser, whether it's *Tor Browser* or a regular browser. This information "
+"is called the *fingerprint* of the browser and includes the name and version "
+"of the browser, the size of the window, the time zone, the available fonts, "
+"etc."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"To make it difficult to distinguish Tails users from other users of *Tor "
+"Browser*, *Tor Browser* in Tails tries to provide the same information as "
+"*Tor Browser* on other operating systems."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<!--\n"
+msgstr "<!--\n"
+
+#. type: Plain text
+msgid ""
+"Refer to the [[fingerprint section of our list of known issues |support/"
+"known_issues#fingerprint]] to know if there are differences between the "
+"fingerprints of *Tor Browser* inside and outside of Tails."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "-->\n"
+msgstr "-->\n"
+
+#. type: Plain text
+msgid ""
+"A difference is that Tails includes the *uBlock Origin* extension, which "
+"removes advertisements. If an attacker can determine that you are not "
+"downloading the advertisements that are included in a webpage, that could "
+"reveal that you are a Tails user."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"next\">\n"
+msgstr "<div class=\"next\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>To hide to someone monitoring your Internet connection that you are\n"
+"connecting to Tor, see our documentation about [[connecting to the Tor\n"
+"network|tor]].</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "<h1 id=\"https-everywhere\">HTTPS encryption with HTTPS Everywhere</h1>\n"
+msgid "<h1 id=\"https-everywhere\">Secure connections with HTTPS</h1>\n"
+msgstr "<h1 id=\"https-everywhere\">Cifrado HTTPS con HTTPS Everywhere</h1>\n"
+
+#. type: Plain text
+#, fuzzy
+#| msgid ""
+#| "All the data exchanged between your browser and the server you are "
+#| "visiting is encrypted. HTTPS prevents the [[Tor exit node from "
+#| "eavesdropping on your communications|doc/about/warning#exit_node]]."
+msgid ""
+"Using HTTPS instead of HTTP encrypts your communications with the website "
+"and prevents the [[Tor exit node from intercepting your communications|about/"
+"warnings/tor#exit]]."
+msgstr ""
+"Todos los datos que se intercambian entre tu navegador y el servidor que "
+"visitas están cifrados. HTTPS impide que el [[nodo Tor de salida espíe tus "
+"comunicaciones|doc/about/warning#exit_node]]."
+
+#. type: Plain text
+msgid ""
+"For example, here is how the browser looks when we try to log in to an email "
+"account at [riseup.net](https://riseup.net/), using their [webmail interface]"
+"(https://mail.riseup.net/):"
+msgstr ""
+"Por ejemplo, así aparece el navegador cuando intentamos entrar en una cuenta "
+"de correo electrónico de  [riseup.net](https://riseup.net/), usando su "
+"[servicio de web](https://mail.riseup.net/):"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!img doc/anonymous_internet/Tor_Browser/riseup.png class=\"screenshot\" alt=\"\"]]\n"
+msgstr "[[!img doc/anonymous_internet/Tor_Browser/riseup.png class=\"screenshot\" alt=\"\"]]\n"
+
+#. type: Plain text
+msgid ""
+"Notice the padlock icon on the left of the address bar saying "
+"\"mail.riseup.net\".  Notice also the address beginning with \"https://\" "
+"(instead of \"http://\"). These are the indicators that an encrypted "
+"connection using [[!wikipedia HTTPS]] is being used."
+msgstr ""
+"Fíjate en el icono del candado a la izquierda de la barra de direcciones que "
+"dice \"mail.riseup.net\" y la dirección que comienza por \"https://\" (en "
+"lugar de \"http://\"). Esto indica que se está usando una conexión cifrada "
+"con [[!wikipedia_es HTTPS]]."
+
+#. type: Plain text
+msgid ""
+"When you are sending or retrieving sensitive information (like passwords), "
+"you should try to only use services providing HTTPS. Otherwise, it is very "
+"easy for an eavesdropper to steal whatever information you are sending, or "
+"to modify the content of a page on its way to your browser."
+msgstr ""
+"Cuando envíes u obtengas información confidencial (como contraseñas) "
+"deberías intentar sólo usar servicios que provean HTTPS. De lo contrario, es "
+"muy fácil para un espía robar cualquier información que estés enviando o "
+"modificar el contenido de una página de camino a tu navegador."
+
+#. type: Plain text
+#, fuzzy
+#| msgid "To learn more about HTTPS Everywhere, you can see:"
+msgid "To learn more about HTTPS and how *Tor Browser* protects you, see:"
+msgstr "Para aprender más sobre HTTPS Everywhere puedes leer:"
+
+#. type: Bullet: '* '
+msgid ""
+"[Tor Support: How HTTPS encryption and Tor works in Tor Browser to enhance "
+"your privacy and anonymity](https://support.torproject.org/about-tor/"
+"security/https-encryption-and-tor/)"
+msgstr ""
+
+#. type: Bullet: '* '
+msgid ""
+"[Tor Browser User Manual: Secure Connections](https://tb-"
+"manual.torproject.org/secure-connections/)"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"javascript\">Protection against dangerous JavaScript</h1>\n"
+msgstr "<h1 id=\"javascript\">Protección contra los peligros de JavaScript</h1>\n"
+
+#. type: Plain text
+msgid ""
+"Having all JavaScript disabled by default would disable a lot of harmless "
+"and possibly useful JavaScript, and might render many websites unusable."
+msgstr ""
+"Teniendo todo el JavaScript desactivado por defecto desactivaría mucho "
+"JavaScript inofensivo y posiblemente útil, y podría inutilizar muchos sitios "
+"web."
+
+#. type: Plain text
+msgid ""
+"That is why JavaScript is enabled by default but *Tor Browser* disables all "
+"potentially dangerous JavaScript. We consider this as a necessary compromise "
+"between security and usability."
+msgstr ""
+"Por eso es que el JavaScript está habilitado por defecto pero el <span "
+"class=\"application\">Navegador Tor</span> deshabilita todo el JavaScript "
+"potencialmente peligroso. Consideramos que este es un compromiso necesario "
+"entre la seguridad y la usabilidad."
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>To understand better the behavior of <i>Tor Browser</i>,\n"
+"for example, regarding JavaScript and cookies, you can\n"
+"refer to the <a href=\"https://2019.www.torproject.org/projects/torbrowser/design/\">\n"
+"<i>Tor Browser</i> design document</a>.</p>\n"
+msgstr ""
+"<p>Para entender mejor el comportamiento del <i>Navegador Tor</i>,\n"
+"por ejemplo en lo que respecta al JavaScript y a las cookies, puedes\n"
+"consultar el <a href="
+"\"https://2019.www.torproject.org/projects/torbrowser/design/\">\n"
+"documento de diseño del <i>Navegador Tor</i></a>.</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"security-level\">Security level</h1>\n"
+msgstr "<h1 id=\"security-level\">Nivel de seguridad</h1>\n"
+
+#. type: Plain text
+msgid ""
+"You can change the security level of *Tor Browser* to disable browser "
+"features as a trade-off between security and usability.  For example, you "
+"can set the security level to *Safest* to disable JavaScript completely."
+msgstr ""
+"Puedes cambiar el nivel de seguridad del <span "
+"class=\"application\">Navegador Tor</span> para desactivar las "
+"funcionalidades del navegador como equilibrio entre seguridad y usabilidad. "
+"Por ejemplo, puedes fijar el nivel de seguridad en *El más seguro de todos* "
+"para desactivar el JavaScript por completo."
+
+#. type: Plain text
+msgid ""
+"The security level is set to *Standard* by default which gives the most "
+"usable experience."
+msgstr ""
+"El nivel de seguridad está fijado en *Estándar* por defecto, que da la mejor "
+"experiencia de uso."
+
+#. type: Plain text
+#, fuzzy
+#| msgid "Security level"
+msgid "To change the security level:"
+msgstr "Niveles de seguridad"
+
+#. type: Bullet: '1. '
+#, fuzzy
+#| msgid ""
+#| "To change the security level, click on the [[!img security-level.png\n"
+#| "class=\"symbolic\" link=\"no\"]] icon on the right of the address bar\n"
+#| "and choose\n"
+#| "<span class=\"guilabel\">Advanced Security Settings&hellip;</span>.\n"
+msgid ""
+"Select the [[!img security-level.png link=\"no\" class=\"symbolic\"]] icon "
+"on the right of the address bar."
+msgstr ""
+"Para cambiar el nivel de seguridad, haz click en el icono [[!img security-"
+"level.png\n"
+"class=\"symbolic\" link=\"no\"]] a la derecha de la barra de direcciones\n"
+"y selecciona\n"
+"<span class=\"guilabel\">Configuración seguridad avanzada&hellip;</span>.\n"
+
+#. type: Bullet: '1. '
+msgid "Select **Settings** in the **Security level** menu."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "In the **Security Level** settings, select **Change**."
+msgstr ""
+
+#. type: Bullet: '1. '
+#, fuzzy
+#| msgid "Security level"
+msgid "Select a new security level."
+msgstr "Niveles de seguridad"
+
+#. type: Bullet: '1. '
+msgid "**Save and restart** to apply the change."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   All windows and tabs will be closed when restarting.\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!img security-levels.png class=\"screenshot\" alt=\"\"]]\n"
+msgstr "[[!img security-levels.png class=\"screenshot\" alt=\"\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>You can safely disregard the message, \"Your browser is being managed by\n"
+"your organization,\" which appears in the\n"
+"<i>Tor Browser</i> preferences.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>All this message means is that the automatic updates feature of\n"
+"<i>Tor Browser</i> has been disabled. This is done\n"
+"intentionally in Tails to make sure that no security feature or configuration\n"
+"gets broken by automatic updates of\n"
+"<i>Tor Browser</i>.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"circuit-view\">Tor circuit</h1>\n"
+msgstr "<h1 id=\"circuit-view\">Circuito Tor</h1>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!img circuit-view.png class=\"screenshot\" alt=\"\"]]\n"
+msgstr "[[!img circuit-view.png class=\"screenshot\" alt=\"\"]]\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "Click on the padlock in the address bar to show the Tor circuit that is used to connect to the website in the current tab, its 3 relays, their countries, and IP addresses."
+msgid ""
+"Select the [[!img tor-circuit.png alt=\"Tor Circuit\" class=\"symbolic\"\n"
+"link=\"no\"]] button in the address bar to show the relays in the Tor circuit\n"
+"that is used to connect to the website in the current tab.\n"
+msgstr "Haz click en el candado en la barra de direcciones para ver el circuito Tor que está siendo utilizado para conectarse al sitio web en la pestaña actual, son 3 repetidores, sus respectivos países y direcciones IP."
+
+#. type: Plain text
+msgid ""
+"The last relay in the circuit, the one immediately above the destination "
+"website, is the *exit relay*. Its country might influence how the website "
+"behaves."
+msgstr ""
+"El último repetidor del circuito, que está justo antes del sitio web de "
+"destino, es el *repetidor de salida*. El país en el que está puede influir "
+"en cómo se comporta el sitio web."
+
+#. type: Plain text
+msgid ""
+"Click on the **[[New Tor circuit for this site|Tor_Browser#circuit-view]]** "
+"button to use a different circuit."
+msgstr ""
+"Haz click en el botón <span class=\"guilabel\">[[Nuevo circuito Tor para "
+"este sitio|Tor_Browser#circuit-view]]</span> para usar un circuito distinto."
+
+#. type: Plain text
+#, fuzzy
+#| msgid ""
+#| "You can use\n"
+#| "<span class=\"application\">[[Onion Circuits|doc/anonymous_internet/"
+#| "tor_status]]</span>\n"
+#| "to get more detailed information about the circuits being used.\n"
+msgid ""
+"You can use *[[Onion Circuits|doc/anonymous_internet/tor/circuits]]* to get "
+"more detailed information about the circuits being used."
+msgstr ""
+"Puedes usar\n"
+"<span class=\"application\">[[Onion Circuits|doc/anonymous_internet/"
+"tor_status]]</span>\n"
+"para obtener información más detallada de los circuitos que se están "
+"usando.\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"new-identity\"><b>New Identity</b> feature</h1>\n"
+msgstr "<h1 id=\"new-identity\">Funcionalidad de <b>Nueva identidad</b></h1>\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid ""
+#| "To switch to a new identity, choose\n"
+#| "<span class=\"menuchoice\">\n"
+#| "  <span class=\"guimenu\">[[!img lib/open-menu.png alt=\"\" class=symbolic link=no]]</span>&nbsp;▸\n"
+#| "  <span class=\"guimenuitem\">New Identity</span></span>.\n"
+msgid ""
+"To switch to a new identity, choose [[!img lib/open-menu.png alt=\"Open Application Menu\"\n"
+"class=\"symbolic\" link=\"no\"]]&nbsp;▸ **New identity**.\n"
+msgstr ""
+"Para cambiar a una nueva idenetidad, elige\n"
+"<span class=\"menuchoice\">\n"
+"  <span class=\"guimenu\">[[!img lib/open-menu.png alt=\"\" class=symbolic link=no]]</span>&nbsp;\n"
+"  <span class=\"guimenuitem\">Nueva identidad</span></span>.\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid ""
+#| "The <span class=\"guilabel\">New Identity</span> feature of\n"
+#| "<span class=\"application\">Tor Browser</span>:\n"
+msgid ""
+"The New Identity feature of\n"
+"<i>Tor Browser</i>:\n"
+msgstr ""
+"La funcionalidad <span class=\"guilabel\">Nueva identidad</span> del\n"
+"<span class=\"application\">Navegador Tor</span>:\n"
+
+#. type: Bullet: '- '
+msgid "Closes all open tabs."
+msgstr "Cierra todas las pestañas abiertas."
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid "- Clears the session state including cache, history, and cookies."
+msgid "Clears the session state including cache, history, and cookies."
+msgstr "- Limpia el estado de la sesión incluyendo cache, historial y cookies."
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid "- Closes all existing web connections and creates new Tor circuits."
+msgid "Closes all existing web connections and creates new Tor circuits."
+msgstr ""
+"- Cierra todas las conexiones web existentes y crea nuevos circuitos de Tor."
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"caution\">\n"
+msgstr "<div class=\"caution\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>This feature is not enough to strongly [[separate contextual identities|about/warnings/identity#contextual]]\n"
+"as the Tor circuits used outside of\n"
+"<i>Tor Browser</i> are not changed.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<p>Restart Tails instead.</p>\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"For more details, see the [design and implementation of the Tor Browser]"
+"(https://2019.www.torproject.org/projects/torbrowser/design/#new-identity)."
+msgstr ""
+"Para mas detalles, consulta el [diseño e implementación del Navegador Tor]"
+"(https://2019.www.torproject.org/projects/torbrowser/design/#new-identity)."
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"noscript\">NoScript to have even more control over JavaScript</h1>\n"
+msgstr "<h1 id=\"noscript\">NoScript para tener aún más control sobre el JavaScript</h1>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"*Tor Browser* includes the\n"
+"*NoScript* extension to:\n"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"Protect from more JavaScript attacks. For example, cross-site scripting "
+"(XSS) attacks."
+msgstr ""
+"Protege de más ataques de JavaScript. Por ejemplo, ataques de cross-site "
+"scripting (XSS)."
+
+#. type: Bullet: '- '
+msgid "Allow you to disable JavaScript completely on some websites only."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"For more information, you can refer to the NoScript [website](http://"
+"noscript.net/) and [features](http://noscript.net/features)."
+msgstr ""
+"Para más información puedes revisar el [sitio web](http://noscript.net/) de "
+"NoScript y sus [funcionalidades](http://noscript.net/features)."
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "<h1 id=\"letterboxing\">Letterboxing</h1>\n"
+msgstr "<a id=\"torbutton\"></a>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!img letter-boxing.png class=\"screenshot\" alt=\"\"]]\n"
+msgstr "[[!img letter-boxing.png class=\"screenshot\" alt=\"\"]]\n"
+
+#. type: Plain text
+msgid ""
+"The letterboxing feature of *Tor Browser* helps to prevent websites from "
+"identifying your browser based on the size of its window.  Without "
+"letterboxing, websites could use the size of the browser window to track "
+"visitors or weaken your anonymity."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"The letterboxing feature of *Tor Browser* works by adding gray margins to "
+"the browser window when the window is resized. The webpage remains as close "
+"as possible to the desired size without revealing the actual size of the "
+"window."
+msgstr ""
+
+#, fuzzy, no-wrap
+#~ msgid ""
+#~ "<span class=\"application\">Tor Browser</span> includes the\n"
+#~ "<span class=\"application\">NoScript</span> extension to:\n"
+#~ msgstr "Por eso **JavaScript está habilitado por defecto** en <span class=\"application\">Tor Browser</span>.\n"
+
+#, no-wrap
+#~ msgid "<h1 id=\"confinement\">AppArmor confinement, downloading, and uploading files</h1>\n"
+#~ msgstr "<h1 id=\"confinement\">Confinamiento de AppArmor, descargar y subir archivos</h1>\n"
+
+#~ msgid "- *Documents*"
+#~ msgstr "- *Documents*"
+
+#~ msgid "- *Downloads*"
+#~ msgstr "- *Downloads*"
+
+#~ msgid "- *Music*"
+#~ msgstr "- *Music*"
+
+#~ msgid "- *Pictures*"
+#~ msgstr "- *Pictures*"
+
+#~ msgid "- *Videos*"
+#~ msgstr "- *Videos*"
+
+#~ msgid "- *Tor Browser*"
+#~ msgstr "- *Tor Browser*"
+
+#, fuzzy, no-wrap
+#~| msgid ""
+#~| "<p>This is why, for example, you might face <em>Permission\n"
+#~| "denied</em> errors if you try to download files to the\n"
+#~| "<em>Home</em> folder.</p>\n"
+#~ msgid ""
+#~ "<p>This is why you get the following error if you try to download files to\n"
+#~ "another folder:</p>\n"
+#~ msgstr ""
+#~ "<p>Es por esto que podrías enfrentar errores de <em>Denegación\n"
+#~ "de permisos</em>, por ejemplo si intentas descargar archivos a la\n"
+#~ "carpeta <em>Home</em></p>.\n"
+
+#, fuzzy
+#~| msgid ""
+#~| "- If you want to upload files with <span class=\"application\">Tor\n"
+#~| "Browser</span>, copy them to that folder first.\n"
+#~ msgid ""
+#~ "If you want to upload a file from *Tor Browser*, copy it first to one of "
+#~ "these folders."
+#~ msgstr ""
+#~ "- Si quieres subir archivos con <span class=\"application\">Tor\n"
+#~ "Browser</span>, cópialos a esa carpeta primero.\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "[HTTPS Everywhere](https://www.eff.org/https-everywhere) is a Firefox extension\n"
+#~ "included in <span class=\"application\">Tor Browser</span>. It is produced as a collaboration between [The Tor\n"
+#~ "Project](https://torproject.org/) and the [Electronic Frontier\n"
+#~ "Foundation](https://eff.org/). It encrypts your communications with a number of\n"
+#~ "major websites. Many sites on the web offer some limited support for encryption\n"
+#~ "over HTTPS, but make it difficult to use. For example, they might default to\n"
+#~ "unencrypted HTTP, or fill encrypted pages with links that go back to the\n"
+#~ "unencrypted site. The HTTPS Everywhere extension fixes these problems by\n"
+#~ "rewriting all requests to these sites to HTTPS.\n"
+#~ msgstr ""
+#~ "[HTTPS Everywhere](https://www.eff.org/https-everywhere) es una extensión de Firefox\n"
+#~ "incluida en el <span class=\"application\">Navegador Tor</span>. Es realizada como una colaboración entre [The Tor\n"
+#~ "Project](https://torproject.org/) y la [Electronic Frontier\n"
+#~ "Fundation](https://eff.org/). Cifra tus comunicaciones con un gran\n"
+#~ "número de sitios web. Muchos sitios en la web ofrecen un soporte limitado para el cifrado\n"
+#~ "sobre HTTPS, pero lo hacen difícil de usar. Por ejemplo, pueden pasar a\n"
+#~ "HTTP no cifrado, o poner enlaces que regresan al\n"
+#~ "sitio no cifrado en sus páginas cifradas. La extensión HTTPS Everywhere corrige estos problemas al\n"
+#~ "reescribir todas las solicitudes a estos sitios sobre HTTPS.\n"
+
+#~ msgid ""
+#~ "- The [HTTPS Everywhere homepage](https://www.eff.org/https-everywhere)"
+#~ msgstr ""
+#~ "- La [página de HTTPS Everywhere](https://www.eff.org/https-everywhere)"
+
+#~ msgid ""
+#~ "- The [HTTPS Everywhere FAQ](https://www.eff.org/https-everywhere/faq/)"
+#~ msgstr ""
+#~ "- Las [Preguntas Frecuentes de HTTPS Everywhere](https://www.eff.org/"
+#~ "https-everywhere/faq/)"
+
+#, no-wrap
+#~ msgid "[[!img noscript.png link=no alt=\"\"]]\n"
+#~ msgstr "[[!img noscript.png link=no alt=\"\"]]\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<span class=\"application\">Tor Browser</span> in Tails is confined with\n"
+#~ "[[!debwiki AppArmor]] to protect the system and your data from some\n"
+#~ "types of attacks against <span class=\"application\">Tor Browser</span>.\n"
+#~ "As a consequence, <span class=\"application\">Tor Browser</span> in Tails can\n"
+#~ "only read and write to a limited number of folders.\n"
+#~ msgstr ""
+#~ "En Tails, <span class=\"application\">Tor Browser</span> está confinado con\n"
+#~ "[[!debwiki AppArmor]] para proteger al sistema y a tu información de algunos\n"
+#~ "tipos de ataque contra <span class=\"application\">Tor Browser</span>.\n"
+#~ "Como consecuencia, <span class=\"application\">TorBrowser</span> en Tails sólo puede leer y escribir un número limitado de carpetas.\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "- You can save files from <span class=\"application\">Tor\n"
+#~ "Browser</span> to the <span class=\"filename\">Tor Browser</span> folder\n"
+#~ "that is located in the <span class=\"filename\">Home</span> folder.\n"
+#~ "The content of this folder will disappear once you shut down Tails.\n"
+#~ msgstr ""
+#~ "- Puedes guardar lo archivos desde <span class=\"application\">Tor\n"
+#~ "Browser</span> a la carpeta <span class=\"filename\">Tor Browser</span>\n"
+#~ "que se encuentra en la carpeta <span class=\"filename\">Home</span>.\n"
+#~ "El contenido de esta carpeta desaparecerá cuando apagues Tails.\n"
+
+#, fuzzy
+#~| msgid ""
+#~| "- If you turned on the [[Personal Data|doc/first_steps/persistence/"
+#~| "configure#personal_data]] feature of the Persistent Storage, you can "
+#~| "also use the *Persistent/Tor Browser* folder to download and upload "
+#~| "files from *Tor Browser*. The content of the *Persistent/Tor Browser* "
+#~| "folder is saved across different working sessions."
+#~ msgid ""
+#~ "- If you turned on the [[Persistent Folder|persistent_storage/"
+#~ "configure#persistent_folder]] feature of the Persistent Storage, you can "
+#~ "also use the *Persistent/Tor Browser* folder to download and upload files "
+#~ "from *Tor Browser*. The content of the *Persistent/Tor Browser* folder is "
+#~ "saved across different working sessions."
+#~ msgstr ""
+#~ "- Si has activado la funcionalidad persistente [[Personal Data|doc/"
+#~ "first_steps/persistence/configure#personal_data]] también puedes usar el "
+#~ "directorio *Persistent/Tor Browser* para descargar y subir archivos desde "
+#~ "el *Navegador Tor*. El contenido de este directorio se guardarán y "
+#~ "quedarán disponibles para sesiones posteriores."
+
+#~ msgid "Erases the content of the clipboard."
+#~ msgstr "Borra el contenido del portapapeles."
+
+#, fuzzy
+#~| msgid "[[!img security-levels.png link=\"no\" alt=\"\"]]\n"
+#~ msgid "[[!img doc/about/warning/htw2-tails.png link=\"no\"]]\n"
+#~ msgstr "[[!img security-levels.png link=\"no\" alt=\"\"]]\n"
+
+#~ msgid ""
+#~ "Using HTTPS instead of HTTP encrypts your communications while browsing "
+#~ "the web."
+#~ msgstr ""
+#~ "Usar HTTPS en lugar de HTTP cifra tus comunicaciones cuando navegas la "
+#~ "red."
+
+#~ msgid ""
+#~ "HTTPS also includes mechanisms to authenticate the server you are "
+#~ "communicating with. But, those mechanisms can be flawed, [[as explained "
+#~ "on our warning page|about/warning#man-in-the-middle]]."
+#~ msgstr ""
+#~ "HTTPS también incluye mecanismos para verificar el servidor con el que te "
+#~ "estás conectando. Pero esos mecanismos pueden fallar, [[como se explica "
+#~ "en nuestra página de advertencia|about/warning#man-in-the-middle]]."
+
+#~ msgid ""
+#~ "Tor alone is not enough to protect your anonymity and privacy while "
+#~ "browsing the\n"
+#~ "web. All modern web browsers, such as Firefox, support [[!wikipedia\n"
+#~ "JavaScript]], [[!wikipedia Adobe_Flash]], [[!wikipedia HTTP_cookie\n"
+#~ "desc=\"cookies\"]], and other services which have been shown to be able "
+#~ "to defeat\n"
+#~ "the anonymity provided by the Tor network.\n"
+#~ msgstr ""
+#~ "Por sí solo, Tor no basta para proteger tu anonimato y privacidad "
+#~ "mientras navegas por la\n"
+#~ "web. Todos los navegadores web modernos, como Firefox, soportan [[!"
+#~ "wikipedia_es\n"
+#~ "JavaScript]], [[!wikipedia_es Adobe_Flash]], [[!wikipedia_es "
+#~ "Cookie_(informática)\n"
+#~ "desc=\"cookies\"]], y otros servicios que han demostrado ser capaces de "
+#~ "derrotar a\n"
+#~ "el anonimato proporcionado por la red Tor.\n"
+
+#~ msgid ""
+#~ "<span class=\"application\">Tor Browser</span> integrates all sorts\n"
+#~ "of security measures to prevent such attacks. But since\n"
+#~ "<span class=\"application\">Tor Browser</span> disables some dangerous "
+#~ "functionalities, some sites might not work as\n"
+#~ "usual.\n"
+#~ msgstr ""
+#~ "El <span class=\"application\">Navegador Tor</span> integra todo tipo\n"
+#~ "de medidas de seguridad para prevenir estos ataques. Pero ya que el\n"
+#~ "<span class=\"application\">Navegador Tor</span> deshabilita algunas "
+#~ "funcionalidades peligrosas, algunos sitios web\n"
+#~ "pueden no funcionar del modo habitual.\n"
+
+#~ msgid ""
+#~ "<p>To browse web pages on your local network, see how to\n"
+#~ "[[access resources on the local\n"
+#~ "network|advanced_topics/lan]].</p>\n"
+#~ msgstr ""
+#~ "<p>Para navegar páginas en tu red local, lee cómo\n"
+#~ "[[acceder recursos en tu red\n"
+#~ "local|advanced_topics/lan]].</p>\n"
+
+#~ msgid "<a id=\"confinement\"></a>\n"
+#~ msgstr "<a id=\"confinement\"></a>\n"
+
+#~ msgid ""
+#~ "<a id=\"https\"></a>\n"
+#~ "<a id=\"https-everywhere\"></a>\n"
+#~ msgstr ""
+#~ "<a id=\"https\"></a>\n"
+#~ "<a id=\"https-everywhere\"></a>\n"
+
+#~ msgid "<a id=\"javascript\"></a>\n"
+#~ msgstr "<a id=\"javascript\"></a>\n"
+
+#~ msgid "<a id=\"new_identity\"></a>\n"
+#~ msgstr "<a id=\"new_identity\"></a>\n"
+
+#~ msgid "<a id=\"noscript\"></a>\n"
+#~ msgstr "<a id=\"noscript\"></a>\n"
+
+#~ msgid "<a id=\"torbutton\"></a>\n"
+#~ msgstr "<a id=\"torbutton\"></a>\n"
+
+#~ msgid "AppArmor confinement\n"
+#~ msgstr "Confinamiento de AppArmor\n"
+
+#~ msgid ""
+#~ "<p>To be able to download files larger than the available RAM, you need\n"
+#~ "to activate the <span class=\"guilabel\">[[Personal\n"
+#~ "Data|doc/first_steps/persistence/configure#personal_data]]</span>\n"
+#~ "persistence feature.</p>\n"
+#~ msgstr ""
+#~ "<p>Para poder descargar archivos más grandes que la memoria RAM "
+#~ "disponible, necesitas\n"
+#~ "activar la funcionalidad persistente <span class=\"guilabel\">[[Personal\n"
+#~ "Data|doc/first_steps/persistence/configure#personal_data]]</span>.</p>\n"
+
+#, fuzzy
+#~ msgid ""
+#~ "To switch to a new identity, click on the\n"
+#~ "[[!img torbutton.png link=\"no\" class=\"symbolic\" alt=\"\"]] button\n"
+#~ "on the right of the address bar\n"
+#~ "and choose <span class=\"guilabel\">New Identity</span>.\n"
+#~ msgstr ""
+#~ "Para cambiar el valor del control deslizante de seguridad, clic en el "
+#~ "botón [[!img torbutton.png link=no class=symbolic alt=\"green onion\"]] y "
+#~ "selecciona **Configuración de privacidad y seguridad**."
+
+#~ msgid "[[!img https-everywhere.jpg link=no alt=\"\"]]\n"
+#~ msgstr "[[!img https-everywhere.jpg link=no alt=\"\"]]\n"
+
+#~ msgid "<a id=\"security_slider\"></a>\n"
+#~ msgstr "<a id=\"security_slider\"></a>\n"
+
+#~ msgid ""
+#~ "[[!img security_slider.png link=\"no\" alt=\"Security slider in its "
+#~ "default value (low)\"]]\n"
+#~ msgstr ""
+#~ "[[!img security_slider.png link=\"no\" alt=\"Deslizador de seguridad en "
+#~ "su valor predeterminado (bajo)\"]]\n"
+
+#, fuzzy
+#~ msgid ""
+#~ "That is why **JavaScript is enabled by default** in <span "
+#~ "class=\"application\">Tor Browser</span>.\n"
+#~ msgstr ""
+#~ "Por eso **JavaScript está habilitado por defecto** en <span "
+#~ "class=\"application\">Tor Browser</span>.\n"
+
+#, fuzzy
+#~ msgid ""
+#~ "But, we rely on Torbutton to **disable all potentially dangerous "
+#~ "JavaScript**."
+#~ msgstr ""
+#~ "Pero usamos el Torbutton para **deshabilitar todo el JavaScript "
+#~ "potencialmente peligrosos**."
+
+#, fuzzy
+#~ msgid ""
+#~ "We consider this as a necessary compromise between security and "
+#~ "usability. As of today we are not aware of any JavaScript that would "
+#~ "compromise the anonymity provided by Tails."
+#~ msgstr ""
+#~ "Creemos que esto es un equilibrio necesario entre seguridad y usabilidad "
+#~ "y a día de hoy no conocemos ningún JavaScript que pueda comprometer el "
+#~ "anonimato de Tails."
+
+#~ msgid "Here are a few things worth mentioning in the context of Tails."
+#~ msgstr ""
+#~ "He aquí hay algunas cosas que vale la pena mencionar en el contexto de "
+#~ "Tails."
+
+#~ msgid "<a id=\"https\"></a>\n"
+#~ msgstr "<a id=\"https\"></a>\n"
+
+#~ msgid "Torbutton\n"
+#~ msgstr "Torbutton\n"
+
+#~ msgid ""
+#~ "In <span class=\"application\">Tor Browser</span> all such features are "
+#~ "handled from inside the browser by an extension\n"
+#~ "called [Torbutton](https://www.torproject.org/docs/torbutton/) which does "
+#~ "all sorts\n"
+#~ "of things to prevent the above type of attacks. But that comes at a "
+#~ "price: since\n"
+#~ "this will disable some functionalities and some sites might not work as\n"
+#~ "intended.\n"
+#~ msgstr ""
+#~ "En <span class=\"application\">Tor Browser</span> todas estas "
+#~ "características se manejan desde el interior del navegador mediante una "
+#~ "extensión llamada [Torbutton](https://www.torproject.org/docs/torbutton/) "
+#~ "que hace todo tipo \n"
+#~ "de cosas para prevenir el tipo de ataques mencionados anteriormente. Pero "
+#~ "eso tiene un precio: ya que\n"
+#~ "esto deshabilitará algunas funcionalidades y es posible que algunos "
+#~ "sitios no funcionen \n"
+#~ "de la forma prevista.\n"
+
+#~ msgid ""
+#~ "The security slider is set to *low* by default. This value provides the\n"
+#~ "default level of protection of <span class=\"application\">Torbutton</"
+#~ "span>\n"
+#~ "and the most usable experience.\n"
+#~ msgstr ""
+#~ "El control deslizante de seguridad está configurado *bajo* por defecto. "
+#~ "Este valor proporciona el\n"
+#~ "nivel de protección por defecto de <span class=\"application\">Torbutton</"
+#~ "span>\n"
+#~ "y la experiencia más útil.\n"
+
+#~ msgid ""
+#~ "The <span class=\"guilabel\">Circuit view</span> feature of\n"
+#~ "<span class=\"application\">Torbutton</span>\n"
+#~ "shows you the three Tor relays used for the website in the current tab,\n"
+#~ "including the corresponding IP addresses and the countries they're "
+#~ "located\n"
+#~ "in. The node immediately above the\n"
+#~ "<span class=\"guilabel\">Internet</span> node is the *Exit relay*; the\n"
+#~ "country it is located in might determine how the website is presented\n"
+#~ "to you. You can use\n"
+#~ "<span class=\"guilabel\">[[New Tor Circuit for this Site|"
+#~ "Tor_Browser#circuit-view]]</span>\n"
+#~ "to change to another country.\n"
+#~ msgstr ""
+#~ "La funcionalidad <span class=\"guilabel\">Vista de circuito</span> de\n"
+#~ "span class=\"application\">Torbutton</span>\n"
+#~ "muestra los tres relay de Tor usados para el sitio web en la pestaña "
+#~ "actual,\n"
+#~ "incluyendo las direcciones IP correspondientes y los países en los que se "
+#~ "encuentran.\n"
+#~ "El nodo inmediatamente encima del nodo\n"
+#~ "<span class=\"guilabel\">Internet</span> es el *Relay de Salida*; el \n"
+#~ "país en el que se encuentra puede determinar cómo se te presenta el "
+#~ "sitio \n"
+#~ "web. Puedes utilizar\n"
+#~ "<span class=\"guilabel\">[[Nuevo circuito Tor para este sitio|"
+#~ "Tor_Browser#circuit-view]]</span>\n"
+#~ "para cambiar a otro país.\n"
+
+#~ msgid "<a id=\"new_circuit\"></a>\n"
+#~ msgstr "<a id=\"new_circuit\"></a>\n"
+
+#~ msgid ""
+#~ "<span class=\"application\">[Tor Browser](https://www.torproject.org/"
+#~ "projects/torbrowser.html.en)</span> is a web\n"
+#~ "browser based on [Mozilla Firefox](https://www.mozilla.org/firefox/) but "
+#~ "configured\n"
+#~ "to protect your privacy.\n"
+#~ msgstr ""
+#~ "<span class=\"application\">[Tor Browser](https://www.torproject.org/"
+#~ "projects/torbrowser.html.en)</span> es un\n"
+#~ "navegador web basado en [Mozilla Firefox](https://www.mozilla.org/"
+#~ "firefox/) y configurado para\n"
+#~ "proteger tu privacidad.\n"
+
+#~ msgid ""
+#~ "<p>To understand better the behavior of <span class=\"application\">Tor\n"
+#~ "Browser</span>, for example, regarding JavaScript and cookies, you can\n"
+#~ "refer to the <a href=\"https://www.torproject.org/projects/torbrowser/"
+#~ "design/\">\n"
+#~ "<span class=\"application\">Tor Browser</span> design document</a>.</p>\n"
+#~ msgstr ""
+#~ "<p>Para entender mejor el comportamiento de <span "
+#~ "class=\"application\">Tor\n"
+#~ "Browser</span>, por ejemplo en lo que respecta a JavaScript y las "
+#~ "cookies, puedes\n"
+#~ "consultar el <a href=\"https://www.torproject.org/projects/torbrowser/"
+#~ "design/\">\n"
+#~ "documento de diseño de <span class=\"application\">Tor Browser</span></a>."
+#~ "</p>\n"

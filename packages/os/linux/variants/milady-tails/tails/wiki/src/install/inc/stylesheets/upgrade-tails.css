@@ -1,0 +1,17 @@
+@import url("upgrade.css");
+
+span.upgrade-tails, a.upgrade-tails {
+  display: inline;
+}
+
+div.upgrade-tails, img.upgrade-tails, p.upgrade-tails, h1.upgrade-tails, h2.upgrade-tails {
+  display: block;
+}
+
+li.upgrade-tails {
+  display: list-item;
+}
+
+h1.step:before, span.next-counter:before {
+  content: counter(step)'/6';
+}

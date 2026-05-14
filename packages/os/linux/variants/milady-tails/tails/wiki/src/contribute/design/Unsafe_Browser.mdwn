@@ -1,0 +1,148 @@
+[[!toc levels=2]]
+
+Rationale
+=========
+
+Internet connections restricted by captive portals pose a problem in
+environments like Tails, where all Internet traffic is routed through
+Tor. There's a catch 22 since the portal cannot be reached before Tor
+is working (and it most likely isn't reachable through Tor any way)
+and Tor cannot work before logging in to the portal. Since most (if
+not all) of these portals are web based, a web browser with direct
+Internet access seem required for avoiding this problem.
+
+Requirements
+============
+
+* It must run a completely separate browser profile from the
+  Torified browser.
+
+* It must be hard to start by mistake.
+
+* It must be hard to mistake for the Torified browser.
+
+* It must be configured to use the DNS provided by DHCP (which is required
+  by some captive portals).
+
+* It must be able to reach captive portals
+
+* We want to apply the Principle of Least Privilege: we consider this
+  application very sensitive because it can easily deanonymize users
+
+* It must be difficult for an attacker to leverage the Unsafe Browser as a way
+  to gain unrestricted access to the network (and, thus, deanonymize users).
+
+Implementation
+==============
+
+The aptly named *Unsafe Browser* implements all the above, although at
+this time only a reasonable effort has been made to sandbox it to
+fulfill the last point (restrict access to information).
+
+User interface
+--------------
+
+The Unsafe Browser can be found in the **Apps&nbsp;▸ Internet**
+section (with a "warning triangle" as icon) and does the following
+when started:
+
+0. Show a dialog asking the user for verification, while also briefly
+   explaining that the Unsafe Browser won't be anonymous.
+
+0. "No" is the default answer, but if "Yes", we start a separate
+   browser instance.
+
+0. The browser is configured to use a theme with scary colors (red).
+
+0. Its start page (locally stored) makes it clear that this is the Unsafe
+   Browser and explains the issues involved with the Unsafe Browser
+   and how to proceed from now on.
+
+Security
+--------
+
+The Unsafe Browser is run in a restricted environment:
+
+ - it runs in its own mount namespace, where (through the use of tmpfs and overlayfs):
+
+   - no modifications can be made to the system
+
+   - the system is shown as it was before booting. No modification to the state that happened after boot is
+     visible
+
+   - however, `/home` is fully readable and writable, and is just a
+     bind-mount of the "normal" `/home` (although see below how this
+     is restricted with AppArmor)
+
+ - it runs in its own network namespace
+
+   - it can establish arbitrary TCP/UDP connections
+
+   - it cannot contact local services, like Tor
+
+ - AppArmor rules prevent it from accessing sensitive files, only
+   allowing:
+
+   - its own configuration, `~/.unsafe-browser`, and various other
+     configurations, like `~/.config/gtk-2.0`
+
+   - the amnesic XDG user directories, like `~/Downloads`,
+     `~/Documents`, etc.
+
+It can also only go through the clearnet, but not interact with any other Tails service which could ever lead
+to deanonymization.
+
+### Attack scenarios and known issues
+
+#### XWayland
+
+The *Unsafe Browser* used (pre-5.8) to be run as an X.Org application. This was
+knowingly insecure. The switch to Wayland gave us better security properties.
+
+However, can an amnesia-level attacker force the *Unsafe Browser* to run as an XWayland
+application?
+
+It cannot. In fact, the Unsafe Browser is not allowed to access XWayland, because it runs in a different
+network namespace (see [[!tails_gitweb config/chroot_local-includes/usr/local/lib/unsafe-browser]]), and we
+don't setup any way (like bind mounts) to make it possible to access it.
+
+#### Opening the Unsafe Browser
+
+Opening the Unsafe Browser requires arbitrary code execution as `amnesia`: all
+of the most-sensitive applications we ship should have an AppArmor profile which
+disables spawning the Unsafe Browser. This is tracked in [[!tails_ticket 19421]].
+
+This means that disabling the Unsafe Browser in the Welcome Screen
+doesn't actually improve security as of now: if the user doesn't want to use
+Unsafe Browser, they just will avoid to, and no practical attacker can easily
+run it.
+
+
+#### Accessibility bus
+
+An attacker with access to the accessibility bus can trivially exploit an
+_already-open_ Unsafe Browser to phone home and deanonymize users.
+
+This is a serious attack surface, however:
+
+ - this only applies to an already-open Unsafe Browser. This is strictly harder then the previous "enable
+   Unsafe Browser" that Tails had on X.Org. In fact, the mere fact of having it *enabled* was enough to
+   deanonymize you. Therefore, users who would have not enabled the Unsafe Browser before Tails 5.8, can now
+   just avoid opening it.
+
+ - For this attack to be possible at all, it's necessary that the user manually enabled accessibility
+   features. Most applications cannot enable accessibility on their own. So for all users that don't have
+   accessibility features enabled, this attack is unfeasible. We acknowledge that a11y is a feature which many
+   users just can't disable.
+
+XXX:  The end-user doc should clearly says that it's better to close the Unsafe Browser as soon as you're done
+with what you needed to do. [[!tails_ticket 19229]]
+
+
+----
+
+* [[!tails_gitweb config/chroot_local-includes/usr/local/sbin/unsafe-browser]]
+* [[!tails_gitweb config/chroot_local-includes/usr/local/lib/tails-shell-library/chroot-browser.sh]]
+* [[!tails_gitweb config/chroot_local-includes/usr/share/applications/unsafe-browser.desktop.in]]
+* [[!tails_gitweb config/chroot_local-includes/etc/sudoers.d/zzz_unsafe-browser]]
+* [[!tails_gitweb_dir config/chroot_local-includes/usr/share/tails/chroot-browsers/]]

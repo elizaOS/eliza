@@ -1,0 +1,51 @@
+#!/bin/bash
+
+set -eu
+set -o pipefail
+
+export TEXTDOMAIN='tails'
+
+# If we're here, it means
+# config/chroot_local-includes/usr/share/initramfs-tools/scripts/lib/verify_partition_table failed. Let's
+# inform the user and tell them to give us some information
+
+REPARTITIONING_ERROR_FLAG_FILE=/var/lib/live/config/tails.disk-partitioning-errors
+
+if [ ! -e "${REPARTITIONING_ERROR_FLAG_FILE}" ]; then
+    exit 1
+fi
+
+title=$(gettext 'Partitioning Error')
+details=$(gettext 'Errors were detected in the partitioning of your Tails USB stick.')
+
+if /usr/local/lib/tpscli is-created; then
+    text="$(
+        cat <<EOTEXT
+${details}
+
+$(gettext 'We recommend that you create a backup of your Tails using <i>Tails Cloner</i> to migrate to a new USB stick.')
+EOTEXT
+    )"
+    if zenity \
+        --question \
+        --icon-name=error \
+        --cancel-label="$(gettext 'Close')" \
+        --ok-label="$(gettext 'Open Tails Cloner')" \
+        --title="$title" --text="$text"; then
+        exec tails-installer --backup
+    fi
+else
+    text="$(
+        cat <<EOTEXT
+${details}
+
+$(gettext 'Creation of Persistent Storage has been disabled.')
+
+$(gettext 'We recommend that you reinstall Tails from scratch. If the error persists, reinstall on a new USB stick.')
+EOTEXT
+    )"
+    exec zenity \
+        --info \
+        --icon-name=error \
+        --title="$title" --text="$text"
+fi

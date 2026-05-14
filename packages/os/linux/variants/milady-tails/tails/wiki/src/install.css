@@ -1,0 +1,66 @@
+#scenarios, #scenarios .scenarios-group {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 35px;
+}
+
+#scenarios .scenarios-group div {
+  width: 205px;
+  text-align: center;
+  padding: 0 !important;
+  margin-bottom: 0;
+}
+
+#scenarios div a {
+  width: 100%;
+  height: 100%;
+  color: black;
+  text-decoration: none;
+  display: scenarios-group;
+}
+
+#scenarios div a:visited {
+  color: black;
+}
+
+#scenarios div a img {
+  margin-top: 30px;
+  width: 80px;
+  height: auto;
+}
+
+#scenarios div a p.big {
+  font-size: var(--font-size-h3);
+  margin: 0;
+}
+
+#scenarios div a p.small {
+  font-size: var(--font-size-smaller);
+  line-height: 1.25em;
+  margin: 1em 0;
+}
+
+#scenarios div.expert > a {
+  margin-bottom: 0px;
+}
+
+#download {
+  margin: 2em 0;
+}
+
+#clone, #mobile {
+  margin: 2em 0;
+  border: 1px solid var(--light-gray);
+  border-radius: 5px;
+  background-size: 80px !important;
+  padding: 1em 2em 1em 80px;
+}
+
+#clone {
+  background: url('install/inc/icons/tails.png') var(--background-gray) no-repeat left 50%;
+}
+
+#mobile {
+  background: url('install/inc/icons/phone.png') var(--background-gray) no-repeat left 50%;
+}

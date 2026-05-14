@@ -1,0 +1,37 @@
+[Unit]
+Description=Setting time using HTP
+Documentation=https://tails.net/contribute/design/Time_syncing/
+Before=time-sync.target
+Wants=time-sync.target
+
+[Service]
+Type=oneshot
+Environment=DONE_FILE=/run/htpdate/done
+Environment=SUCCESS_FILE=/run/htpdate/success
+Environment=LOG=/var/log/htpdate.log
+EnvironmentFile=/etc/default/htpdate.*
+ExecStartPre=/bin/sh -c \
+    '[ -n "${HTP_POOL_1}"      ] && \
+     [ -n "${HTP_POOL_2}"      ] && \
+     [ -n "${HTP_POOL_3}"      ]'
+ExecStartPre=/bin/rm -f "${DONE_FILE}"
+ExecStartPre=/bin/rm -f "${SUCCESS_FILE}"
+ExecStartPre=/usr/bin/install -o htp -g nogroup -m 0644 /dev/null "${LOG}"
+ExecStartPre=/bin/sh -c 'until test -e /run/tor-has-bootstrapped/done; do /bin/sleep 1; done'
+ExecStart=/usr/local/sbin/htpdate                   \
+              --debug                               \
+              --log_file "${LOG}"                   \
+              --allowed_per_pool_failure_ratio 0.34 \
+              --user htp                            \
+              --done_file    "${DONE_FILE}"         \
+              --success_file "${SUCCESS_FILE}"      \
+              --pool1        "${HTP_POOL_1}"        \
+              --pool2        "${HTP_POOL_2}"        \
+              --pool3        "${HTP_POOL_3}"        \
+              --proxy        127.0.0.1:9062
+RemainAfterExit=yes
+CapabilityBoundingSet=CAP_CHOWN CAP_FOWNER CAP_SETUID CAP_SYS_TIME
+PrivateDevices=yes
+PrivateTmp=yes
+ProtectHome=yes
+ProtectSystem=full

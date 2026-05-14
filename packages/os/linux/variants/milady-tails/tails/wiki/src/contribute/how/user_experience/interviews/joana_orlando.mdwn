@@ -1,0 +1,123 @@
+[[!meta title="Joana and Orlando, January 2018"]]
+
+Joana and Orlando are investigative journalists and human-rights
+defenders in Latin America. They work in an organization that
+investigates and reports on private companies in Latin America, fighting
+for transparency and accountability and denouncing human-right
+violations of these companies, especially towards local communities.
+
+They use Tails for online investigation: to gather data and visit the
+websites of companies and governments. They don't redact or publish
+their reports from Tails and only use it to gather intelligence.
+
+As a policy of their organization, everybody uses Ubuntu; except Orlando
+who prefers Debian. Some staff run Windows from virtual machines for
+some applications. Another policy of their organization is to encrypt
+all emails using OpenPGP.
+
+Few organizations in Latin America are conscious and concerned about
+digital security and it's still something very new. People started being
+more cautious after learning about the [malware infections of
+journalists in
+Mexico](https://citizenlab.ca/2017/06/reckless-exploit-mexico-nso/); at
+least some journalists but not really the human-rights organizations.
+
+### Working between Tails and Ubuntu
+
+They use Tails on the laptops provided by their organization. They
+reboot into Tails to do their online work and switching is not a problem
+from them. They use an additional USB stick to save the documents that
+they want to share between Tails and their regular operating system.
+They use MAT to clean the metadata on these documents but the USB sticks
+are not encrypted. Since their Ubuntu is encrypted, they can't access it
+from Tails.
+
+### Working with local communities
+
+They often collaborate with local communities affected by the companies
+that they investigate. Joana and Orlando teach them about digital
+security, how to communicate with them, and do research online by
+themselves. Tails (and Tor) is what they recommend.
+
+But for people in the communities, Tails seems very sophisticated, too
+technical, only for spies, or too much paranoia. Joana and Orlando work
+on these stereotypes and fears but it's challenging because they don't
+have a technical background themselves. So Tails remains hard to adopt
+for most people. The communities also have little money and this doesn't
+help. Tails works better in the communities where they find a champion
+who's more interested in digital security and more into computers.
+
+### Applications they use to do their work
+
+For their investigation and reporting, they use mostly LibreOffice,
+[PSPP](https://savannah.gnu.org/projects/pspp) (statistical analysis
+tool), [QGIS](https://qgis.org/) (geographic information system),
+[Zotero](https://www.zotero.org/) (research sources organizer), GIMP,
+and Inkscape.
+
+They already have everything they need in Tails because they only use
+Tails for online investigation and data gathering and analyse the data
+on Ubuntu or Debian.
+
+For their communication they use Jitsi and Mumble (hosted by a trusted
+provider). They have Signal on their personal phones but people in the
+communities all have WhatsApp.
+
+They also have a Nextcloud hosted by a trusted provider.
+
+### Data loss and backups
+
+They don't have much in their persistence, mostly a copy of their
+OpenPGP keys (that they also have on their laptops) and some
+configuration. So it's not a big problem if they loose their persistence
+and they don't back it up.
+
+They used to have an internal backup server in their office but its
+hardware broke some months ago and it hasn't been replaced yet. For the
+time being, people usually back up their files from Ubuntu to external
+hard disks.
+
+### What they like
+
+- Cloning is very useful when working with communities.
+
+- Tails became easier to setup and configure. For example, now you can
+  install Tails from Ubuntu and Debian.
+
+- They really like MAT and use it a lot. Metadata and MAT are also a
+  good example to explain why you need to protect your data, your files,
+  and communications. A big limitation is that MAT cannot clean PDF
+  files which is a format that they use a lot.
+
+- They like that Tails connects automatically to Tor.
+
+- Orlando likes that Tails is based on Debian because he's been using
+  Debian himself for a while.
+
+- They really like having Thunderbird and a copy of their OpenPGP keys
+  in persistence. Before that they suffered a lot from not having access
+  to their encrypted emails when they didn't carry their work computers
+  with them. Now they can start Tails and access it anywhere, even on
+  holidays!
+
+- They like the manuals on the website, what is Tails, how it works,
+  etc. It's good to empower people who are new to Tails.
+
+### What they dislike
+
+- The verification to check that the ISO is genuine is still quite
+  complicated. Orlando managed to do it from the command line but without
+  really understanding. He also did it from the website and there it was
+  more automatic. He likes the command line instructions as it makes him
+  feel safer even if he only copies from the tutorial.
+
+- Tails is complicated to start on newer computer which are much more
+  locked down by companies. One time, after trying Tails on the computer
+  of a colleague, it couldn't boot Windows anymore.
+
+- Joana once had problems with upgrade on a USB stick. She could do the
+  first two upgrade but then it was not possible to do the third one.
+
+- Some governmental websites cannot be accessed from Tor. Orlando
+  thought that the other browser (*Unsafe Browser*?) was added to Tails
+  to make this possible.

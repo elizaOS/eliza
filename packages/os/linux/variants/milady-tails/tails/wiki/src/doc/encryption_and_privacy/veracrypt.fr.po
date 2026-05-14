@@ -1,0 +1,746 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: \n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-10-02 10:14+0000\n"
+"PO-Revision-Date: 2025-12-07 18:29+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: \n"
+"Language: fr\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n > 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Using VeraCrypt encrypted volumes\"]]\n"
+msgstr "[[!meta title=\"Utiliser des volumes chiffrés avec VeraCrypt\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!toc levels=2]]\n"
+msgstr "[[!toc levels=2]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"Introduction to *VeraCrypt*\n"
+"==========================================================\n"
+msgstr ""
+"Introduction à *VeraCrypt*\n"
+"==========================================================\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"*[VeraCrypt](https://www.veracrypt.fr/)* is a\n"
+"disk encryption tool that works on Windows, macOS, and Linux.\n"
+msgstr ""
+"*[VeraCrypt](https://www.veracrypt.fr/)* est un\n"
+"outil de chiffrement de disque qui fonctionne sous Windows, macOS et Linux.\n"
+
+#. type: Plain text
+msgid "Comparison between *LUKS* and *VeraCrypt*"
+msgstr "Comparaison entre *LUKS* et *VeraCrypt*"
+
+#. type: Plain text
+msgid ""
+"You can also create and open *LUKS* encrypted volumes in Tails. *LUKS* is "
+"the standard for disk encryption in Linux. [[See our documentation about "
+"*LUKS*.|encrypted_volumes]]"
+msgstr ""
+"Vous pouvez également créer et ouvrir des volumes chiffrés *LUKS* dans "
+"Tails. *LUKS* est le standard pour le chiffrement de disque sous Linux. "
+"[[Voir notre documentation sur *LUKS*.|encrypted_volumes]]"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"doc/encryption_and_privacy/luks_vs_veracrypt.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"doc/encryption_and_privacy/luks_vs_veracrypt.inline.fr\" raw=\"yes\" sort=\"age\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"next\">\n"
+msgstr "<div class=\"next\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>To create new <i>VeraCrypt</i> volumes, do so outside of Tails. See\n"
+"[[VeraCrypt: Beginner's Tutorial|https://veracrypt.io/en/Beginner%27s%20Tutorial.html]].</p>\n"
+msgstr ""
+"<p>La création de nouveaux volumes <i>VeraCrypt</i> se fait en dehors de "
+"Tails. Voir\n"
+"[[VeraCrypt: Beginner's Tutorial|https://veracrypt.io/en/"
+"Beginner%27s%20Tutorial.html]] (en anglais).</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<a id=\"container-vs-partition\"></a>\n"
+msgstr "<a id=\"container-vs-partition\"></a>\n"
+
+#. type: Title -
+#, no-wrap
+msgid "Difference between file containers and partitions"
+msgstr "Différence entre les fichiers conteneurs et les partitions"
+
+#. type: Plain text
+msgid ""
+"With *VeraCrypt* you can store your files encrypted in two different kinds "
+"of *volumes*:"
+msgstr ""
+"Avec *VeraCrypt* vous pouvez stocker vos fichiers dans deux types de "
+"*volumes* différents :"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h3>File containers</h3>\n"
+msgstr "<h3>Fichiers conteneurs</h3>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"icon\">\n"
+msgstr "<div class=\"icon\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!img container-icon.png link=\"no\" alt=\"\"]]\n"
+msgstr "[[!img container-icon.png link=\"no\" alt=\"\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<div class=\"text\">\n"
+"<p>A file container is a single big file inside which you can store\n"
+"several files encrypted, a bit like a ZIP file.</p>\n"
+"</div>\n"
+"</div>\n"
+msgstr ""
+"<div class=\"text\">\n"
+"<p>Un fichier conteneur est un seul gros fichier à l'intérieur duquel vous pouvez stocker\n"
+"plusieurs fichiers chiffrés, un peu comme un fichier ZIP.</p>\n"
+"</div>\n"
+"</div>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h3>Partitions or drives</h3>\n"
+msgstr "<h3>Partitions ou périphériques</h3>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!img partition-icon.png link=\"no\" alt=\"\"]]\n"
+msgstr "[[!img partition-icon.png link=\"no\" alt=\"\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<div class=\"text\">\n"
+"<p>Usually, drives (USB sticks and hard disks) have a single partition of their\n"
+"entire size. This way, you can encrypt a whole USB stick, for example.\n"
+"But, drives can also be split into several partitions.\n"
+"</div>\n"
+"</div>\n"
+msgstr ""
+"<div class=\"text\">\n"
+"<p>Généralement, les périphériques (clés USB et disques durs) ont une seule partition qui fait\n"
+"leur taille entière. De cette façon, vous pouvez par exemple chiffrer la totalité d'une clé USB.\n"
+"Mais les périphériques peuvent également êtres découpés en plusieurs partitions.\n"
+"</div>\n"
+"</div>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<a id=\"parameters\"></a>\n"
+msgstr "<a id=\"parameters\"></a>\n"
+
+#. type: Title -
+#, no-wrap
+msgid "Unlocking parameters"
+msgstr "Paramètres de déverrouillage"
+
+#. type: Plain text
+msgid ""
+"To unlock a *VeraCrypt* volume, you might need the following parameters, "
+"depending on the options that were selected when the volume was created:"
+msgstr ""
+"Pour déverrouiller un volume *VeraCrypt*, vous pourriez avoir besoin des "
+"paramètres suivants, en fonction des options qui ont été sélectionnées lors "
+"de la création du volume :"
+
+#. type: Bullet: '- '
+msgid "**Passphrase**"
+msgstr "**Phrase de passe**"
+
+#. type: Bullet: '- '
+msgid ""
+"**Keyfiles**: instead of or in addition to the passphrase, a *VeraCrypt* "
+"volume can be unlocked using a particular file or set of files."
+msgstr ""
+"**Fichiers clés** : à la place ou en plus de la phrase de passe, un volume "
+"*VeraCrypt* peut être déverrouillé en utilisant un fichier ou un ensemble de "
+"fichiers particulier."
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"  [See the *VeraCrypt* documentation on\n"
+"  keyfiles.](https://www.veracrypt.fr/en/Keyfiles.html)\n"
+msgstr ""
+"  [Voir la documentation de *VeraCrypt* sur\n"
+"  les fichiers clés](https://www.veracrypt.fr/en/Keyfiles.html) (en anglais).\n"
+
+#. type: Bullet: '- '
+msgid ""
+"**PIM**: a number that is needed if it was specified when creating the "
+"*VeraCrypt* volume."
+msgstr ""
+"**PIM** : un nombre qui est nécessaire si il a été spécifié lors de la "
+"création du volume *VeraCrypt*."
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"  [See the *VeraCrypt* documentation on\n"
+"  PIM.](https://www.veracrypt.fr/en/Personal%20Iterations%20Multiplier%20\\(PIM\\).html)\n"
+msgstr ""
+"  [Voir la documentation de *VeraCrypt* sur\n"
+"  PIM](https://www.veracrypt.fr/en/Personal%20Iterations%20Multiplier%20\\(PIM\\).html) (en anglais).\n"
+
+#. type: Bullet: '- '
+msgid ""
+"**Hidden volume**: if you want to unlock the hidden volume inside the "
+"*VeraCrypt* volume."
+msgstr ""
+"**Volume caché** : si vous voulez déverrouiller le volume caché à "
+"l'intérieur du volume *VeraCrypt*."
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"  [See the *VeraCrypt* documentation on hidden\n"
+"  volumes.](https://www.veracrypt.fr/en/Hidden%20Volume.html)\n"
+msgstr ""
+"  [Voir la documentation de *VeraCrypt* sur les volumes\n"
+"  cachés](https://www.veracrypt.fr/en/Hidden%20Volume.html) (en anglais).\n"
+
+#. type: Bullet: '- '
+msgid ""
+"**System volume**: if you want to unlock an encrypted Windows system "
+"partition."
+msgstr ""
+"**Volume système** : si vous voulez déverrouiller une partition système "
+"Windows chiffrée."
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"  [See the *VeraCrypt* documentation on\n"
+"  encrypting a Windows system partition.](https://www.veracrypt.fr/en/System%20Encryption.html)\n"
+msgstr ""
+"  [Voir la documentation de *VeraCrypt* sur le\n"
+"  chiffrement d'une partition système Windows](https://www.veracrypt.fr/en/System%20Encryption.html) (en anglais).\n"
+
+#. type: Title =
+#, no-wrap
+msgid "Using a file container"
+msgstr "Utiliser un fichier conteneur"
+
+#. type: Plain text
+#, no-wrap
+msgid "<a id=\"container-files\"></a>\n"
+msgstr "<a id=\"container-files\"></a>\n"
+
+#. type: Title -
+#, no-wrap
+msgid "Unlocking a file container without keyfiles"
+msgstr "Déverrouiller un fichier conteneur sans fichiers clés"
+
+#. type: Bullet: '1. '
+msgid "Choose **Apps&nbsp;▸ Utilities&nbsp;▸ Unlock VeraCrypt Volumes**."
+msgstr ""
+"Choisissez **Applications&nbsp;▸ Utilitaires&nbsp;▸ Déverrouiller les "
+"volumes VeraCrypt**."
+
+#. type: Bullet: '1. '
+msgid "Click **Add** and choose the file container that you want to unlock."
+msgstr ""
+"Cliquez sur **Ajouter** et choisissez le fichier conteneur que vous voulez "
+"déverrouiller."
+
+#. type: Bullet: '1. '
+msgid ""
+"Enter the parameters to unlock the volume. For more information, see the "
+"[[Unlocking parameters|veracrypt#parameters]] section above."
+msgstr ""
+"Entrez les paramètres pour déverrouiller le volume. Pour plus d'information, "
+"voir plus haut la section [[Paramètres de déverrouillage|"
+"veracrypt#parameters]]."
+
+#. type: Bullet: '1. '
+msgid "Click **Unlock**."
+msgstr "Cliquez sur **Déverrouiller**."
+
+#. type: Plain text
+#, no-wrap
+msgid "   *Unlock VeraCrypt Volumes* unlocks your volume.\n"
+msgstr "   *Déverrouiller les volumes VeraCrypt* déverrouille votre volume.\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   If unlocking the volume fails (for example, if you mistyped the\n"
+"   password), click on **Unlock** to try\n"
+"   unlocking again.\n"
+msgstr ""
+"   Si le déverrouillage du volume échoue (par exemple, si vous avez mal tapé le\n"
+"   mot de passe), cliquez sur **Déverrouiller** pour essayer\n"
+"   le déverrouillage à nouveau.\n"
+
+#. type: Bullet: '1. '
+msgid "Click **Open** to open the volume in the *Files* browser."
+msgstr ""
+"Cliquez sur **Ouvrir** pour ouvrir le volume dans le navigateur de "
+"*Fichiers*."
+
+#. type: Plain text
+#, no-wrap
+msgid "<a id=\"container-disks\"></a>\n"
+msgstr "<a id=\"container-disks\"></a>\n"
+
+#. type: Title -
+#, no-wrap
+msgid "Unlocking a file container with keyfiles"
+msgstr "Déverrouiller un fichier conteneur avec fichiers clés"
+
+#. type: Bullet: '1. '
+msgid ""
+"Choose **Apps&nbsp;▸ Utilities&nbsp;▸ Disks** to open the *Disks* utility."
+msgstr ""
+"Choisissez **Applications&nbsp;▸ Utilitaires&nbsp;▸ Disques** pour ouvrir "
+"l'utilitaire *Disques*."
+
+#. type: Bullet: '1. '
+msgid ""
+"Choose **[[!img lib/open-menu.png link=\"no\" class=\"symbolic\" "
+"alt=\"\"]]&nbsp;▸ Attach Disk Image** from the top navigation bar."
+msgstr ""
+"Choisissez **"
+"[[!img lib/open-menu.png link=\"no\" class=\"symbolic\" alt=\"\"]]&nbsp;▸ "
+"Attacher l’image disque** dans la barre de navigation en haut."
+
+#. type: Bullet: '1. '
+msgid "In the **Select Disk Image to Attach** dialog:"
+msgstr "Dans la fenêtre **Sélectionner l’image disque à attacher** :"
+
+#. type: Bullet: '   - '
+msgid ""
+"Unselect the **Set up read-only loop device** check box in the bottom-left "
+"corner if you want to modify the content of the file container."
+msgstr ""
+"Désélectionnez la case **Définir le périphérique boucle en lecture seule** "
+"dans le coin en bas à gauche si vous voulez modifier le contenu du fichier "
+"conteneur."
+
+#. type: Plain text
+#, no-wrap
+msgid "     [[!img read-only.png class=\"screenshot\" alt=\"\"]]\n"
+msgstr "     [[!img read-only.png class=\"screenshot\" alt=\"\"]]\n"
+
+#. type: Bullet: '   - '
+msgid "Choose **All Files** in the file filter in the bottom-right corner."
+msgstr ""
+"Choisissez **Tous les fichiers** dans le filtre de fichier dans le coin en "
+"bas à droite."
+
+#. type: Plain text
+#, no-wrap
+msgid "     [[!img all-files.png class=\"screenshot\" alt=\"\"]]\n"
+msgstr "     [[!img all-files.png class=\"screenshot\" alt=\"\"]]\n"
+
+#. type: Bullet: '   - '
+msgid ""
+"Navigate to the folder containing the file container that you want to open."
+msgstr ""
+"Naviguez jusqu'au dossier contenant le fichier conteneur que vous voulez "
+"ouvrir."
+
+#. type: Bullet: '   - '
+msgid "Select the file container and click **Attach**."
+msgstr "Sélectionnez le fichier conteneur et cliquez sur **Attacher**."
+
+#. type: Bullet: '1. '
+msgid "A first dialog appears to unlock the container."
+msgstr "Une première fenêtre apparaît pour déverrouiller le conteneur."
+
+#. type: Plain text
+#, no-wrap
+msgid "   [[!img authentication.png class=\"screenshot\" alt=\"Authentication required\"]]\n"
+msgstr "   [[!img authentication.png class=\"screenshot\" alt=\"Authentification requise\"]]\n"
+
+#. type: Bullet: '1. '
+msgid "Select **Cancel**."
+msgstr "Sélectionnez **Annuler**."
+
+#. type: Plain text
+#, no-wrap
+msgid "   It is impossible to use keyfiles with this first dialog.\n"
+msgstr ""
+"   Il est impossible d'utiliser des fichiers clés avec cette première "
+"fenêtre.\n"
+
+#. type: Bullet: '1. '
+msgid ""
+"A second dialog called **Set options to unlock** appears to unlock the "
+"container."
+msgstr ""
+"Une seconde fenêtre appelée **Définir les options de déverrouillage** "
+"apparaît pour déverrouiller le conteneur."
+
+#. type: Plain text
+#, no-wrap
+msgid "   [[!img options.png class=\"screenshot\" alt=\"\"]]\n"
+msgstr "   [[!img options.png class=\"screenshot\" alt=\"\"]]\n"
+
+#. type: Bullet: '1. '
+msgid "Open your *VeraCrypt* volume from the sidebar of the *Files* menu."
+msgstr ""
+"Ouvrez votre volume *VeraCrypt* depuis la barre latérale du menu *Fichiers*."
+
+#. type: Title =
+#, no-wrap
+msgid "Using a partition or drive"
+msgstr "Utiliser une partition ou un périphérique"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"partition-external\">Unlocking a partition on an external storage device</h2>\n"
+msgstr "<h2 id=\"partition-external\">Déverrouiller une partition sur un périphérique de stockage externe</h2>\n"
+
+#. type: Bullet: '1. '
+msgid "Plug in the USB stick or hard disk that you want to unlock."
+msgstr "Branchez la clé USB ou le disque dur que vous voulez déverrouiller."
+
+#. type: Plain text
+#, no-wrap
+msgid "   An authentication dialog appears.\n"
+msgstr "   Une fenêtre d'authentification apparaît.\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"partition-internal\">Unlocking a partition on an internal hard disk</h2>\n"
+msgstr "<h2 id=\"partition-internal\">Déverrouiller une partition sur un disque dur interne</h2>\n"
+
+#. type: Bullet: '1. '
+msgid ""
+"When starting Tails, [[set up an administration password|doc/first_steps/"
+"welcome_screen/administration_password]]."
+msgstr ""
+"Lors du démarrage de Tails, [[définissez un mot de passe d'administration|"
+"doc/first_steps/welcome_screen/administration_password]]."
+
+#. type: Bullet: '1. '
+msgid "In the left pane, select the drive that corresponds to your hard disk."
+msgstr ""
+"Dans le panneau de gauche, sélectionnez le lecteur qui correspond à votre "
+"disque dur."
+
+#. type: Bullet: '1. '
+msgid ""
+"In the right pane, select the partition that corresponds to your *VeraCrypt* "
+"volume."
+msgstr ""
+"Dans le panneau de droite, sélectionnez la partition qui correspond à votre "
+"volume *VeraCrypt*."
+
+#. type: Plain text
+#, no-wrap
+msgid "   It should have an **Encrypted?** label.\n"
+msgstr "   Elle devrait avoir une étiquette **Encrypted?**.\n"
+
+#. type: Bullet: '1. '
+msgid ""
+"Click the [[!img lib/unlock.png alt=\"Unlock selected encrypted partition\" "
+"class=\"symbolic\" link=\"no\"]] button in the right pane."
+msgstr ""
+"Cliquez sur le bouton [[!img lib/unlock.png alt="
+"\"Déverrouiller la partition chiffrée sélectionnée\" class=\"symbolic\" link="
+"\"no\"]] dans le panneau de droite."
+
+#. type: Bullet: '1. '
+msgid "Select the file system that appears below the unlocked volume."
+msgstr ""
+"Sélectionnez le système de fichiers qui apparaît en-dessous du volume "
+"déverrouillé."
+
+#. type: Bullet: '1. '
+msgid ""
+"Click the [[!img lib/media-playback-start.png alt=\"Mount selected "
+"partition\" class=\"symbolic\" link=\"no\"]] button to mount the volume."
+msgstr ""
+"Cliquez sur le bouton [[!img lib/media-playback-start.png alt="
+"\"Monter la partition sélectionnée\" class=\"symbolic\" link=\"no\"]] pour "
+"monter le volume."
+
+#. type: Bullet: '1. '
+msgid ""
+"Click on the */media/amnesia/* link in the right pane to open the volume in "
+"the *Files* browser."
+msgstr ""
+"Cliquez sur le lien */media/amnesia/* dans le panneau de droite pour ouvrir "
+"le volume dans le navigateur de *Fichiers*."
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"eject\">Ejecting a <i>VeraCrypt</i> volume</h2>\n"
+msgstr "<h2 id=\"eject\">Éjecter un volume <i>VeraCrypt</i></h2>\n"
+
+#. type: Bullet: '1. '
+msgid ""
+"Choose **Apps&nbsp;▸ Accessories&nbsp;▸ Files** to open the *Files* browser."
+msgstr ""
+"Choisissez **Applications&nbsp;▸ Accessoires&nbsp;▸ Fichiers** pour ouvrir "
+"le navigateur de *Fichiers*."
+
+#. type: Bullet: '1. '
+msgid ""
+"In the sidebar of the *Files* browser, click on the [[!img lib/media-"
+"eject.png alt=\"Eject\" class=\"symbolic\" link=\"no\"]] button on the label "
+"of your *VeraCrypt* volume."
+msgstr ""
+"Dans la barre latérale du navigateur de *Fichiers*, cliquez sur le bouton [[!"
+"img lib/media-eject.png alt=\"Éjecter\" class=\"symbolic\" link=\"no\"]] "
+"dans l'étiquette de votre volume *VeraCrypt*."
+
+#~ msgid ""
+#~ "To create new *VeraCrypt* volumes, do so outside of Tails. See the step-"
+#~ "by-step guides by Security-in-a-Box on [VeraCrypt for Windows](https://"
+#~ "securityinabox.org/en/tools/veracrypt/)."
+#~ msgstr ""
+#~ "Pour créer de nouveaux volumes *VeraCrypt*, vous devez le faire en dehors "
+#~ "de Tails. Voir les guides pas à pas de Security-in-a-Box sur [VeraCrypt "
+#~ "pour Windows](https://securityinabox.org/en/tools/veracrypt/) (en "
+#~ "anglais)."
+
+#, no-wrap
+#~ msgid "[[!img container-icon.png link=\"no\"]]\n"
+#~ msgstr "[[!img container-icon.png link=\"no\"]]\n"
+
+#, no-wrap
+#~ msgid "[[!img partition-icon.png link=\"no\"]]\n"
+#~ msgstr "[[!img partition-icon.png link=\"no\"]]\n"
+
+#~ msgid ""
+#~ "Choose **Applications**&nbsp;▸ **Utilities**&nbsp;▸ **Disks** to start "
+#~ "the *Disks* utility."
+#~ msgstr ""
+#~ "Choisissez **Applications**&nbsp;▸ **Utilitaires**&nbsp;▸ **Disques** "
+#~ "pour lancer l'utilitaire *Disques*."
+
+#, no-wrap
+#~ msgid "Introduction to *VeraCrypt*"
+#~ msgstr "Introduction à *VeraCrypt*"
+
+#, fuzzy
+#~| msgid ""
+#~| "1. Choose\n"
+#~| "   <span class=\"menuchoice\">\n"
+#~| "     **Applications**&nbsp;▸\n"
+#~| "     **Utilities**&nbsp;▸\n"
+#~| "     <span class=\"guisubmenuitem\">Disks</span></span>\n"
+#~| "   to start the *Disks* utility.\n"
+#~ msgid ""
+#~ "Choose <span class=\"menuchoice\">Applications&nbsp;▸ Utilities&nbsp;▸ "
+#~ "Disks</span> to start the *Disks* utility."
+#~ msgstr ""
+#~ "1. Choisir\n"
+#~ "   <span class=\"menuchoice\">\n"
+#~ "     **Applications**&nbsp;▸\n"
+#~ "     **Utilitaires**&nbsp;▸\n"
+#~ "     <span class=\"guisubmenuitem\">Disques</span></span>\n"
+#~ "   pour démarrer l'utilitaire *Disques*.\n"
+
+#, no-wrap
+#~ msgid "   [[!img unlock-veracrypt-volumes.png link=\"no\" alt=\"\"]]\n"
+#~ msgstr "   [[!img unlock-veracrypt-volumes.png link=\"no\" alt=\"\"]]\n"
+
+#, no-wrap
+#~ msgid "   Click **Unlock**.\n"
+#~ msgstr "   Cliquez sur  **Déverrouiller**.\n"
+
+#~ msgid ""
+#~ "In the left pane, select the new <span class=\"guilabel\">Loop Device</"
+#~ "span> that corresponds to your file container."
+#~ msgstr ""
+#~ "Dans le panneau de gauche, sélectionner le nouveau <span "
+#~ "class=\"guilabel\">Loop Device</span> qui correspond à votre fichier "
+#~ "conteneur."
+
+#, no-wrap
+#~ msgid ""
+#~ "   In the right pane, it should have an\n"
+#~ "   **Encrypted?** label.\n"
+#~ msgstr ""
+#~ "   Dans le panneau droit, il devrait avoir une\n"
+#~ "   étiquette **Encrypted?**.\n"
+
+#, no-wrap
+#~ msgid "   [[!img container-locked.png link=\"no\" alt=\"\"]]\n"
+#~ msgstr "   [[!img container-locked.png link=\"no\" alt=\"\"]]\n"
+
+#~ msgid ""
+#~ "Select the file system that appears below the unlocked volume. It "
+#~ "probably has a **FAT** or <span class=\"guilabel\">NTFS</span> content."
+#~ msgstr ""
+#~ "Sélectionner le système de fichiers qui apparaît en dessous du volume "
+#~ "déverrouillé. Il a probablement un contenu <span class=\"guilabel\">FAT</"
+#~ "span> ou **NTFS**."
+
+#, no-wrap
+#~ msgid "Closing a file container"
+#~ msgstr "Fermer un fichier conteneur"
+
+#~ msgid "You can either:"
+#~ msgstr "Vous pouvez au choix :"
+
+#~ msgid ""
+#~ "In the sidebar of the *Files* browser, click on the <span "
+#~ "class=\"bold\">[[!img lib/media-eject.png alt=\"Eject\" "
+#~ "class=\"symbolic\" link=\"no\"]]</span> button on the label of the volume "
+#~ "corresponding to your file container."
+#~ msgstr ""
+#~ "Dans la barre latérale du navigateur de <span "
+#~ "class=\"application\">fichiers</span>, cliquez sur le bouton <span "
+#~ "class=\"bold\">[[!img lib/media-eject.png alt=\"Éjecter\" "
+#~ "class=\"symbolic\" link=\"no\"]]</span> dans l'étiquette du volume "
+#~ "correspondant à votre fichier conteneur."
+
+#, fuzzy, no-wrap
+#~| msgid "  [[!img eject-container.png link=\"no\" alt=\"\"]]\n"
+#~ msgid "  [[!img eject.png link=\"no\" alt=\"\"]]\n"
+#~ msgstr "  [[!img eject-container.png link=\"no\" alt=\"\"]]\n"
+
+#~ msgid ""
+#~ "In *Unlock VeraCrypt Volumes*, click on the <span class=\"bold\">[[!img "
+#~ "lib/window-close.png class=\"symbolic\" link=\"no\" alt=\"\"]]</span> "
+#~ "button in the line that corresponds to your file container."
+#~ msgstr ""
+#~ "Dans <span class=\"application\">Déverrouiller des volumes VeraCrypt</"
+#~ "span>, cliquez sur le bouton <span class=\"bold\">[[!img lib/window-"
+#~ "close.png class=\"symbolic\" link=\"no\" alt=\"\"]]</span> sur la ligne "
+#~ "correspondant à votre fichier conteneur."
+
+#, no-wrap
+#~ msgid "<a id=\"partition-files\"></a>\n"
+#~ msgstr "<a id=\"partition-files\"></a>\n"
+
+#, no-wrap
+#~ msgid "Unlocking a partition or drive without keyfiles"
+#~ msgstr "Déverrouiller une partition ou un périphérique sans fichiers clés"
+
+#~ msgid ""
+#~ "In the list of partitions, click **Unlock** in the line that corresponds "
+#~ "to your USB stick or hard disk."
+#~ msgstr ""
+#~ "Dans la liste des partitions, cliquez sur <span "
+#~ "class=\"bold\">Déverouiller</span> sur la ligne qui correspond à votre "
+#~ "clé USB ou disque dur."
+
+#, no-wrap
+#~ msgid "   [[!img unlock-veracrypt-volumes-with-partition.png link=\"no\" alt=\"\"]]\n"
+#~ msgstr "   [[!img unlock-veracrypt-volumes-with-partition.png link=\"no\" alt=\"\"]]\n"
+
+#, no-wrap
+#~ msgid "<a id=\"partition-disks\"></a>\n"
+#~ msgstr "<a id=\"partition-disks\"></a>\n"
+
+#, no-wrap
+#~ msgid "Unlocking a partition or drive with keyfiles"
+#~ msgstr "Déverrouiller une partition ou un périphérique avec fichiers clés"
+
+#, no-wrap
+#~ msgid "   [[!img partition-locked.png link=\"no\" alt=\"\"]]\n"
+#~ msgstr "   [[!img partition-locked.png link=\"no\" alt=\"\"]]\n"
+
+#, no-wrap
+#~ msgid "Closing a partition or drive"
+#~ msgstr "Fermer une partition ou un périphérique"
+
+#~ msgid ""
+#~ "In *Unlock VeraCrypt Volumes*, click on the <span class=\"bold\">[[!img "
+#~ "lib/window-close.png class=\"symbolic\" link=\"no\" alt=\"\"]]</span> "
+#~ "button in the line that corresponds to your USB stick or hard disk."
+#~ msgstr ""
+#~ "Dans <span class=\"application\">Déverrouiller des volumes VeraCrypt</"
+#~ "span>, cliquez sur le bouton <span class=\"bold\">[[!img lib/window-"
+#~ "close.png class=\"symbolic\" link=\"no\" alt=\"\"]]</span> sur la ligne "
+#~ "correspondant à votre clé USB ou disque dur."
+
+#, no-wrap
+#~ msgid "  [[!img eject-partition.png link=\"no\" alt=\"\"]]\n"
+#~ msgstr "  [[!img eject-partition.png link=\"no\" alt=\"\"]]\n"
+
+#, fuzzy, no-wrap
+#~ msgid ""
+#~ "1. Choose <span class=menuchoice\">\n"
+#~ "     **Disks**&nbsp;▸\n"
+#~ "     **Attach Disk Image&hellip;**</span> from the\n"
+#~ "     top navigation bar.\n"
+#~ msgstr ""
+#~ "1. Choisir <span class=menuchoice\">\n"
+#~ "     **Disques**&nbsp;▸\n"
+#~ "     **Attacher l'image disque&hellip;**</span> dans la\n"
+#~ "     barre de navigation supérieure.\n"
+
+#, no-wrap
+#~ msgid "     [[!img disks-menu.png link=\"no\" alt=\"\"]]\n"
+#~ msgstr "     [[!img disks-menu.png link=\"no\" alt=\"\"]]\n"
+
+#~ msgid ""
+#~ "- [VeraCrypt for Windows](https://securityinabox.org/en/guide/veracrypt/"
+#~ "windows/)  - [VeraCrypt for macOS](https://securityinabox.org/en/guide/"
+#~ "veracrypt/mac/)  - [VeraCrypt for Linux](https://securityinabox.org/en/"
+#~ "guide/veracrypt/linux/)"
+#~ msgstr ""
+#~ "- [VeraCrypt pour Windows](https://securityinabox.org/fr/guide/veracrypt/"
+#~ "windows/)\n"
+#~ "- [VeraCrypt pour macOS](https://securityinabox.org/en/guide/veracrypt/"
+#~ "mac/) (en anglais)\n"
+#~ "- [VeraCrypt pour Linux](https://securityinabox.org/fr/guide/veracrypt/"
+#~ "linux/)"
+
+#, no-wrap
+#~ msgid "  <div class=\"bug\">\n"
+#~ msgstr "  <div class=\"bug\">\n"
+
+#, fuzzy, no-wrap
+#~ msgid ""
+#~ "  <p>Due to <a href=\"https://gitlab.com/cryptsetup/cryptsetup/issues/532\">an\n"
+#~ "  issue in <em>cryptsetup</em></a>, it is currently impossible to open\n"
+#~ "  <em>VeraCrypt</em> volumes with a passphrase of more than 64 characters.\n"
+#~ "  This will be fixed in Tails 5.0 (May 2022).</p>\n"
+#~ msgstr ""
+#~ "  <p>En raison d'<a href=\"https://gitlab.com/cryptsetup/cryptsetup/issues/532\">un\n"
+#~ "  problème dans <em>cryptsetup</em></a>, il est actuellement impossible d'ouvrir\n"
+#~ "  les volumes <em>VeraCrypt</em> avec une phrase de passe de plus de 64 caractères.\n"
+#~ "  ([[!tails_ticket 17474]])</p>\n"
+
+#~ msgid ""
+#~ "<p>Due to current limitations in Debian, using a PIM fails in Tails. It\n"
+#~ "will become possible in Tails 4.0 (late 2019).</p>\n"
+#~ msgstr ""
+#~ "<p>À cause de limitations actuelles dans Debian, l'utilisation d'un PIM "
+#~ "échoue dans Tails. Cela\n"
+#~ "devrait devenir possible dans Tails 4.0 (fin 2019).</p>\n"

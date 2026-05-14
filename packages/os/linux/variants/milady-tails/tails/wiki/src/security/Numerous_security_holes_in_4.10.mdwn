@@ -1,0 +1,19 @@
+[[!meta date="Sat, 19 Sep 2020 12:03:51 -0000"]]
+[[!meta title="Numerous security holes in Tails 4.10"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+[[Tails 4.11|news/version_4.11]] fixes many security issues that affect
+Tails 4.10. You should [[upgrade to Tails 4.11|news/version_4.11]] as
+soon as possible.
+
+ - Tor Browser: [[!mfsa 2020-43]]
+ - Thunderbird: [[!mfsa 2020-40]]
+ - Linux: [[!cve CVE-2020-16166]], [[!cve CVE-2020-14331]],
+          [[!cve CVE-2019-19770]]
+ - ghostscript: [[!debsa2020 4748]]
+ - bind9: [[!debsa2020 4752]]
+ - openexr: [[!debsa2020 4755]]
+ - xorg-server: [[!debsa2020 4758]]
+ - libzmq5: [[!debsa2020 4761]]

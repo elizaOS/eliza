@@ -1,0 +1,17 @@
+@import url("usb.css");
+
+span.linux, a.linux {
+  display: inline;
+}
+
+div.linux, img.linux, p.linux, h1.linux, h2.linux {
+  display: block;
+}
+
+li.linux {
+  display: list-item;
+}
+
+h1.step:before {
+  content: counter(step)'/7';
+}

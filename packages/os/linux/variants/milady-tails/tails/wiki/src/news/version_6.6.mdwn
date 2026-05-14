@@ -1,0 +1,87 @@
+[[!meta title="Tails 6.6"]]
+[[!meta date="Tue, 13 Aug 2024 12:34:56 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+
+<h1 id="changes">Changes and updates</h1>
+
+- Update *Tor Browser* to [13.5.2](https://blog.torproject.org/new-release-tor-browser-1352).
+
+- Update *Thunderbird* to [115.14.0](https://www.thunderbird.net/en-US/thunderbird/115.14.0/releasenotes/).
+
+- Update [many](https://salsa.debian.org/kernel-team/firmware-nonfree/-/blob/master/debian/changelog?ref_type=heads) firmware packages. This improves the support for newer hardware:
+  graphics, Wi-Fi, and so on.
+
+- Detect new types of errors when resizing the system partition
+  fails (the first time Tails is started) and report the following error message.
+
+  <p class="code">
+  Something went wrong when starting your Tails USB stick for the first time:<br>
+  resizing the system partition failed
+  <br><br>
+  It will be impossible to create a Persistent Storage or apply automatic upgrades.
+  </p>
+
+  Affected users can try to install Tails again or use a different USB stick.
+
+<h1 id="fixes">Fixed problems</h1>
+
+### Persistent Storage
+
+- Increase the maximum waiting time to 4 minutes when unlocking the Persistent
+  Storage before returning an error. ([[!tails_ticket 20475]])
+
+- Made the creation of the Persistent Storage more robust after starting a
+  Tails USB stick for the first time. ([[!tails_ticket 20451]])
+
+- Prevent the Persistent Storage settings from freezing after opening a link to
+  the documentation. ([[!tails_ticket 20438]])
+
+- Prevent Additional Software from crashing when installing virtual packages.
+  ([[!tails_ticket 20477]])
+
+### Networking
+
+- Fix connecting to the Tor network using default bridges. ([[!tails_ticket 20467]])
+
+- Allow enabling multiple network interfaces again. ([[!tails_ticket 20128]])
+
+### Tails Cloner
+
+- Remove 30 seconds of waiting time when installing by cloning.
+  ([[!tails_ticket 20131]])
+
+For more details, read our [[!tails_gitweb debian/changelog desc="changelog"]].
+
+<h1 id="get">Get Tails 6.6</h1>
+
+## To upgrade your Tails USB stick and keep your Persistent Storage
+
+- Automatic upgrades are available from Tails 6.0 or later to 6.6.
+
+- If you cannot do an automatic upgrade or if Tails fails to start after an
+  automatic upgrade, please try to do a [[manual upgrade|doc/upgrade/#manual]].
+
+## To install Tails 6.6 on a new USB stick
+
+Follow our installation instructions:
+
+- [[Install from Windows|install/windows]]
+
+- [[Install from macOS|install/mac]]
+
+- [[Install from Linux|install/linux]]
+
+- [[Install from Debian or Ubuntu using the command line and GnuPG|install/expert]]
+
+<div class="caution"><p>The Persistent Storage on the USB stick will be lost if
+you install instead of upgrading.</p></div>
+
+## To download only
+
+If you don't need installation or upgrade instructions, you can download
+Tails 6.6 directly:
+
+- [[For USB sticks (USB image)|install/download]]
+
+- [[For DVDs and virtual machines (ISO image)|install/download-iso]]

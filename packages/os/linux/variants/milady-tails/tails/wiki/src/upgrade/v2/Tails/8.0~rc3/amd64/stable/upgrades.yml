@@ -1,0 +1,5 @@
+---
+build-target: amd64
+channel: stable
+initial-install-version: 8.0~rc3
+product-name: Tails

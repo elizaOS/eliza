@@ -1,0 +1,7 @@
+{
+    "uuid": "automated-testing@tails.net",
+    "name": "Tails Automated Testing Support",
+    "description": "Used by Tails' automated test suite",
+    "session-modes": ["gdm-tails", "user", "unlock-dialog"],
+    "shell-version": ["48"]
+}

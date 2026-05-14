@@ -1,0 +1,234 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"POT-Creation-Date: 2025-10-02 09:33+0000\n"
+"PO-Revision-Date: 2026-04-06 12:18+0000\n"
+"Last-Translator: victor dargallo <victordargallo@disroot.org>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: ca\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta robots=\"noindex\"]]\n"
+msgstr "[[!meta robots=\"noindex\"]]\n"
+
+#. type: Bullet: '1. '
+msgid "Open *GNOME Disks* (also called *Disks*)."
+msgstr "Obriu el *Discs de GNOME* (també anomenat *Discs*)."
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid ""
+#| "   <div class=\"linux\">\n"
+#| "     For example, you can press the <b>Super</b> ([[!img lib/start.png class=\"symbolic\" link=\"no\" alt=\"\"]]) key,\n"
+#| "     then type <code>disks</code> and choose <b>Disks</b>.\n"
+#| "   </div>\n"
+#| "   <div class=\"upgrade\">\n"
+#| "   Choose\n"
+#| "   <b>Applications&nbsp;▸ Utilities&nbsp;▸ Disks</b>.\n"
+#| "   </div>\n"
+msgid ""
+"   <div class=\"linux\">\n"
+"     For example, you can press the <b>Super</b> ([[!img lib/start.png class=\"symbolic\" link=\"no\" alt=\"\"]]) key,\n"
+"     then enter <code>disks</code> and select <b>Disks</b>.\n"
+"   </div>\n"
+"   <div class=\"upgrade\">\n"
+"     Choose\n"
+"     <b>Apps&nbsp;▸ Utilities&nbsp;▸ Disks</b>.\n"
+"   </div>\n"
+msgstr ""
+"   <div class=\"linux\">\n"
+"      Per exemple, podeu prémer la tecla <b>Super</b> ([[!img lib/start.png class=\"symbolic\" link=\"no\" alt=\"\"]]),\n"
+"      després escriviu <code>discs</code> i trieu el <b>Discs</b>.\n"
+"    </div>\n"
+"    <div class=\"upgrade\">\n"
+"    Trieu <span class=\"menuchoice\">\n"
+"      <span class=\"guimenu\">Aplicacions</span>&nbsp;▸\n"
+"      <span class=\"guisubmenu\">Utilitats</span>&nbsp;▸\n"
+"      <span class=\"guimenuitem\">Discs</span></span>.\n"
+"    </div>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "   The storage devices in the computer are listed in the left pane.\n"
+msgstr ""
+"   Les unitats d'emmagatzematge de l'ordinador es llisten al panell esquerre."
+"\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "   [[!img install/inc/icons/gnome-disks.png link=\"no\" alt=\"\"]]\n"
+msgstr "   [[!img install/inc/icons/gnome-disks.png link=\"no\" alt=\"\"]]\n"
+
+#. type: Bullet: '1. '
+msgid ""
+"Plug in the <span class=\"upgrade\">intermediary</span> USB stick <span "
+"class=\"linux\">on which you want to install Tails</span>."
+msgstr ""
+"Connecteu el llapis USB <span class=\"upgrade\">intermediari</span> <span "
+"class=\"linux\">en la qual voleu instal·lar Tails</span>."
+
+#. type: Plain text
+#, no-wrap
+msgid "   <div class=\"caution\">\n"
+msgstr "   <div class=\"caution\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "   <p>All the data on this USB stick will be lost.</p>\n"
+msgstr "   <p>Totes les dades d'aquest llapis USB es perdran.</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "   <p>Some data might still be recovered using advanced forensics tools.</p>\n"
+msgstr ""
+"   <p>Algunes dades encara es podrien recuperar mitjançant eines forenses "
+"avançades.</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "   </div>\n"
+msgstr "   </div>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   <div class=\"note upgrade\"><p>The Persistent Storage of your Tails USB stick will not be\n"
+"   copied to the temporary Tails.</p></div>\n"
+msgstr ""
+"   <div class=\"note upgrade\"><p>L'Emmagatzematge Persistent del vostre llapis USB de Tails no serà\n"
+"   copiat al Tails temporal.</p></div>\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "   A new drive appears in the left pane. Click on it.\n"
+msgid "   A new drive appears in the list of storage devices. Select it.\n"
+msgstr "   Apareix una unitat nova al panell esquerre. Feu-hi clic.\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "   [[!img install/inc/screenshots/gnome_disks_drive.png class=\"screenshot\" alt=\"\"]]\n"
+msgstr "   [[!img install/inc/screenshots/gnome_disks_drive.png class=\"screenshot\" alt=\"\"]]\n"
+
+#. type: Bullet: '1. '
+#, fuzzy
+#| msgid ""
+#| "Click on the [[!img lib/view-more.png alt=\"Drive Options\" "
+#| "class=\"symbolic\" link=\"no\"]] button in the title bar and choose "
+#| "**Restore Disk Image**."
+msgid ""
+"Click on the [[!img lib/view-more.png alt=\"Drive Options\" "
+"class=\"symbolic\" link=\"no\"]] button in the title bar and choose "
+"**Restore Disk Image**."
+msgstr ""
+"Feu clic al botó [[!img lib/view-more.png alt=\"Paràmetres de la unitat\" "
+"class=\"symbolic\" link=\"no\"]] de la barra de títol i trieu **Restaura una "
+"imatge de disc**."
+
+#. type: Plain text
+#, no-wrap
+msgid "   [[!img install/inc/screenshots/gnome_disks_menu.png class=\"screenshot\" alt=\"\"]]\n"
+msgstr "   [[!img install/inc/screenshots/gnome_disks_menu.png class=\"screenshot\" alt=\"\"]]\n"
+
+#. type: Bullet: '1. '
+msgid ""
+"In the **Restore Disk Image** dialog, click on the file selector button."
+msgstr ""
+"A la finestra <span class=\"guilabel\">Restaura una imatge de disc</span>, "
+"feu clic al botó de selecció de fitxers."
+
+#. type: Plain text
+#, no-wrap
+msgid "   Choose the USB image that you downloaded earlier.\n"
+msgstr "   Trieu la imatge USB que heu baixat anteriorment.\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   <div class=\"note\">\n"
+"   <p>Make sure that the USB image is called <i>[[!inline pages=\"inc/stable_amd64_img_filename\" raw=\"yes\" sort=\"age\"]]</i> and has an\n"
+"   <i>.img</i> file extension.</p>\n"
+msgstr ""
+"   <div class=\"note\">\n"
+"   <p>Assegureu-vos que la imatge USB es digui <i>[[!inline pages=\"inc/stable_amd64_img_filename\" raw=\"yes\" sort=\"age\"]]</i> i tingui una\n"
+"   extensió de fitxer <i>.img</i>.</p>\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid ""
+#| "   <p>If the image has an <i>.iso</i> file\n"
+#| "   extension, it is the wrong image. Please go back to the\n"
+#| "   <span class=\"linux\">[[download step|linux#download]].</span>\n"
+#| "   <span class=\"upgrade-tails\">[[download step|upgrade/tails#download]].</span>\n"
+#| "   <span class=\"upgrade-linux\">[[download step|upgrade/linux#download]].</span></p>\n"
+#| "   </div>\n"
+msgid ""
+"   <p>If the image has an <i>.iso</i> file\n"
+"   extension, it is the wrong image. Please go back to the\n"
+"   <span class=\"linux\">[[download step|linux#download]].</span>\n"
+"   <span class=\"upgrade-tails\">[[download step|doc/upgrade/tails#download]].</span>\n"
+"   <span class=\"upgrade-linux\">[[download step|doc/upgrade/linux#download]].</span></p>\n"
+"   </div>\n"
+msgstr ""
+"   <p>Si la imatge té un fitxer amb extensió <i>.iso</i>,\n"
+"   no és la imatge correcta. Si us plau, torneu al\n"
+"   <span class=\"linux\">[[pas de baixada|linux#download]].</span>\n"
+"   <span class=\"upgrade-tails\">[[pas de baixada|upgrade/tails#download]].</span>\n"
+"   <span class=\"upgrade-linux\">[[pas de baixada|upgrade/linux#download]].</span></p>\n"
+"   </div>\n"
+
+#. type: Bullet: '1. '
+msgid "Click the **Start Restoring** button."
+msgstr "Feu clic al botó **Inicia la restauració…**."
+
+#. type: Bullet: '1. '
+#, fuzzy
+#| msgid ""
+#| "In the confirmation dialog click <span class=\"bold\">Restore</span>."
+msgid "In the confirmation dialog click **Restore**."
+msgstr ""
+"Al diàleg de confirmació, feu clic a <span class=\"bold\">Restaura</span>."
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   Depending on your Linux distribution, you might be asked for your\n"
+"   administration password.\n"
+msgstr ""
+"   Depenent de la vostra distribució de Linux, és possible que se us demani la\n"
+"   vostra contrasenya d'administració.\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "   The installation takes a few minutes.\n"
+msgstr "   La instal·lació triga uns minuts.\n"
+
+#. type: Bullet: '1. '
+#, fuzzy
+#| msgid ""
+#| "After the installation is finished, click on the [[!img lib/media-"
+#| "eject.png alt=\"Eject\" class=\"symbolic\" link=\"no\"]] button."
+msgid ""
+"After the installation is finished, select the [[!img lib/system-"
+"shutdown.png alt=\"Power Off this Disk\" class=\"symbolic\" link=\"no\"]] "
+"button."
+msgstr ""
+"Un cop finalitzada la instal·lació, feu clic al botó [[!img lib/media-"
+"eject.png alt=\"Expulsa\" class=\"symbolic\" link=\"no\"]]."
+
+#~ msgid ""
+#~ "Start <span class=\"application\">GNOME Disks</span> (also called <span "
+#~ "class=\"application\">Disks</span>)."
+#~ msgstr ""
+#~ "Inicieu el <span class=\"application\">Discs de GNOME</span> (també "
+#~ "anomenat <span class=\"application\">Discs</span>)."

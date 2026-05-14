@@ -1,0 +1,187 @@
+[[!meta title="Tails report for March, 2017"]]
+[[!meta date="Mon, 10 Apr 2017 11:34:56 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!toc ]]
+
+Releases
+========
+
+[[Tails 2.11 was released on March 7|news/version_2.11]] (minor release).
+
+Tails 2.12 is [[scheduled for April 18|contribute/calendar]].
+
+The following changes were introduced in Tails 2.11:
+
+  - If running on a 32-bit processor, notify the user that it won't
+    be able to start Tails 3.0 anymore. ([[!tails_ticket 12193]])
+
+  - Notify I2P users that I2P will be removed in Tails
+    2.12. ([[!tails_ticket 12271]])
+
+  - Fix CVE-2017-6074 (local root privilege escalation) by disabling
+    the `dccp` module. ([[!tails_ticket 12280]]) Also disable kernel
+    modules for some other uncommon network protocols. (Part of
+    [[!tails_ticket 6457]])
+
+  - Tor Browser: Don't show offline warning when opening the local
+    documentation of Tails. ([[!tails_ticket 12269]])
+
+  - Fix rare issue causing automatic upgrades to not apply properly
+   ([[!tails_ticket 8449]] and [[!tails_ticket 11839]])
+
+  - Install Linux 4.8.15 to prevent GNOME from freezing with Intel
+    GM965/GL960 Integrated Graphics. ([[!tails_ticket 12217]])
+
+Code
+====
+
+## I2P to be removed
+
+We are very sad to announce that Tails 2.11 will be the last version
+to include [I2P](https://geti2p.net/), an alternative anonymizing
+network. But we will be happy to reintroduce I2P if we find
+a volunteer to take care of maintaining it in Tails. If you are
+a developer and care about I2P in Tails, that person could be you!
+Come [[talk to us|doc/about/contact#tails-dev]]!
+
+## Reproducible builds
+
+We had a very productive 3-days sprint. After many iterations we have
+finally seen an ISO image build reproducibly on several machines!
+This implied fixing a number of things, and submitting a number of
+patches upstream.
+
+The build environment variations we've tested include: build system
+clock (last month, next month; could not test next year yet), number
+of CPU cores, CPU brand and model, building in Vagrant or not.
+
+For details, see the
+full report
+that was written after the sprint.
+
+## Porting Tails to Debian 9 (Stretch)
+
+A bunch of Tails developers and technical writers had a very
+productive sprint. The remaining work now feels tractable: aside of
+the documentation update, only a few major regressions and adjustments
+remain to be dealt with.
+
+So, we are increasingly confident that we can make Tails 3.0 a solid
+release, published according to schedule on June 13… but possibly
+a little bit earlier or later, if it allows us to release at the same
+time as Debian 9 (Stretch).
+
+Two beta releases for Tails 3.0 were published
+([[3.0~beta2|news/test_3.0-beta2]] on March 8,
+[[3.0~beta3|news/test_3.0-beta3]] on March 19). They introduce the
+following changes:
+
+ * Upgrade Linux to 4.9.0-2 (version 4.9.13-1).
+
+ * Make it possible to start graphical applications in the *Root Terminal*.
+
+ * Improve styling of the *GNOME Shell* window list.
+
+ * Tails Greeter:
+   - Make the "Formats" settings in Tails Greeter take effect (it was
+     introduced in Tails 3.0~alpha1 but has been broken since then).
+   - Add keyboard shortcuts:
+     * Alt key for accelerators in the main window
+     * Ctrl+Shift+A for setting an administrator password
+     * Ctrl+Shift+M for MAC spoofing settings
+     * Ctrl+Shift+N for Tor network settings
+
+ * Remove I2P.
+
+ * Reintroduce the X11 guest utilities for VirtualBox (clipboard
+   sharing and shared folders should work again).
+
+ * Upgrade X.Org server and the modesetting driver in hope it will fix
+   crashes when using some Intel graphics cards.
+
+ * Automate the migration from KeePassX databases generated on
+   Tails 2.x to the format required by KeePassX 2.0.x.
+
+Infrastructure
+==============
+
+We upgraded some of our systems to Debian 9 (Stretch), in order to
+help identify remaining issues before it becomes the new Debian
+stable release.
+
+All major browsers will now refuse to connect to our website, and to
+any web service we host in the `tails.boum.org` namespace, unless
+HTTPS is used with a valid certificate: they are now on the Google
+Chrome 57 *HSTS preload* list, and all other major browsers build
+their own list from this one.
+
+We started researching our options for upgrading our server hardware.
+
+We made some progress on deploying a web platform for translations
+and an internal XMPP server.
+
+We started a process to hire a new system administrator.
+
+Funding
+=======
+
+We've sent a proposal to OTF, that covers:
+
+ * adding TrueCrypt support in GNOME;
+ * adding a graphical interface for the Additional Packages
+   persistent feature;
+ * a small fraction of our day-to-day operations budget.
+
+Our budget until the end of March, 2018 was approved by the Tails
+core contributors.
+
+Outreach
+========
+
+Past events
+-----------
+
+* On March 1st, Austin English presented [Tails at the Austin (Texas) Linux Meetup](https://www.meetup.com/linuxaustin/events/233035224/).
+* Four of us attended the Tor developers meeting in Amsterdam. It was great!
+  See the first report
+  about it.
+* Two of us gave a training about Tails and digital security at
+  [Mediapart](https://www.mediapart.fr/). Apparently, everything went
+  fine: attendees where mostly interested and happy with it, and asked
+  a lot of questions, ranging from "How can I manage my passwords" to
+  "How much does it cost to compromise my laptop?".
+
+Upcoming events
+---------------
+
+* intrigeri will be giving a keynote at
+  [CryptoRave](https://cryptorave.org/) (São Paulo, May 5-6).
+
+On-going discussions
+====================
+
+We had a contributors meeting on March 3.
+
+Translation
+===========
+
+## All the website
+
+  - de: 56% (3189) strings translated, 5% strings fuzzy, 50% words translated
+  - fa: 40% (2265) strings translated, 8% strings fuzzy, 44% words translated
+  - fr: 82% (4670) strings translated, 1% strings fuzzy, 81% words translated
+  - it: 28% (1598) strings translated, 3% strings fuzzy, 25% words translated
+  - pt: 27% (1549) strings translated, 8% strings fuzzy, 25% words translated
+
+Total original words: 58396
+
+## [[Core pages of the website|contribute/l10n_tricks/core_po_files.txt]]
+
+  - de: 82% (1538) strings translated, 10% strings fuzzy, 83% words translated
+  - fa: 38% (708) strings translated, 10% strings fuzzy, 39% words translated
+  - fr: 99% (1845) strings translated, 0% strings fuzzy, 99% words translated
+  - it: 79% (1486) strings translated, 10% strings fuzzy, 79% words translated
+  - pt: 49% (922) strings translated, 13% strings fuzzy, 50% words translated
+
+Total original words: 17057

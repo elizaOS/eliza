@@ -1,0 +1,957 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2026-01-22 08:55+0000\n"
+"PO-Revision-Date: 2026-03-26 15:22+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: de\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Contributing to Tails\"]]\n"
+msgstr "[[!meta title=\"Bei Tails mitwirken\"]]\n"
+
+#. type: Plain text
+msgid ""
+"There are many ways you can contribute to Tails. No effort is too small and "
+"whatever you bring to this community will be appreciated.  So read on to "
+"find out how you can make a difference in Tails."
+msgstr ""
+"Es gibt viele Möglichkeiten, bei Tails mitzuwirken. Keine Bemühung ist zu "
+"gering und was auch immer Sie zur Allgemeinheit beitragen, wird gewürdigt. "
+"Bitte lesen Sie weiter, um herauszufinden, wie Sie Tails helfen können."
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!toc levels=1]]\n"
+msgstr "[[!toc levels=1]]\n"
+
+#. type: Title =
+#, no-wrap
+msgid "Ways to contribute"
+msgstr "Möglichkeiten mitzumachen"
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"blocks\">\n"
+msgstr "<div class=\"blocks\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<div class=\"block block-half\">\n"
+"  <h2>Share your experience</h2>\n"
+msgstr ""
+"<div class=\"block block-half\">\n"
+"  <h2>Teilen Sie Ihre Erfahrungen</h2>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "  [[!img user.png link=no]]\n"
+msgstr "  [[!img user.png link=no]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"  <p>Every user can help others or provide developers with useful information.</p>\n"
+"  <ul>\n"
+"    <li>[[Report errors|doc/first_steps/whisperback]]</li>\n"
+"    <li>[[Test experimental Tails images|contribute/how/testing]]</li>\n"
+"    <li>[[Provide input to developers|contribute/how/input]]</li>\n"
+"    <li>[[Help other Tails users|contribute/how/help]]</li>\n"
+"  </ul>\n"
+"</div>\n"
+msgstr ""
+"  <p>Jeder Nutzer kann anderen Nutzern helfen oder den Entwicklern nützliche Informationen zukommen lassen.</p>\n"
+"  <ul>\n"
+"    <li>[[Fehler melden|doc/first_steps/whisperback]]</li>\n"
+"    <li>[[Experimentelle Tails Images testen|contribute/how/testing]]</li>\n"
+"    <li>[[Entwicklern Informationen zutragen|contribute/how/input]]</li>\n"
+"    <li>[[Anderen Tails-Nutzern helfen|contribute/how/help]]</li>\n"
+"  </ul>\n"
+"</div>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<div class=\"block block-half\">\n"
+"  <h2>Donate</h2>\n"
+msgstr ""
+"<div class=\"block block-half\">\n"
+"  <h2>Spenden</h2>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "  [[!img donate.png link=no]]\n"
+msgstr "  [[!img donate.png link=no]]\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid ""
+#| "  <p>Donating speeds up the development of Tails.</p>\n"
+#| "  <div class=\"button\">[[Donate]]</div>\n"
+#| "</div>\n"
+msgid ""
+"  <p>Donating speeds up the development of Tails.</p>\n"
+"  <div class=\"button\">[[Donate|donate]]</div>\n"
+"</div>\n"
+msgstr ""
+"  <p>Spenden beschleunigen die Entwicklung von Tails.</p>\n"
+"<div class=\"button\">[[Spenden|donate]]</div>\n"
+"</div>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2>Contribute your language skills</h2>\n"
+msgstr "<h2>Bringen Sie Ihre Sprachkenntnisse ein</h2>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<div class=\"block block-third\">\n"
+"  <h2>Writer</h2>\n"
+msgstr ""
+"<div class=\"block block-third\">\n"
+"  <h2>Autor</h2>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "  [[!img writer.png link=no]]\n"
+msgstr "  [[!img writer.png link=no]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"  <p>Good writers can make Tails accessible to more people.</p>\n"
+"  <ul>\n"
+"    <li>[[Improve our documentation|contribute/how/documentation]]</li>\n"
+"  </ul>\n"
+"</div>\n"
+msgstr ""
+"  <p>Gute Autoren können Tails für mehr Menschen zugänglich machen.</p>\n"
+"  <ul>\n"
+"    <li>[[Unsere Dokumentation verbessern|contribute/how/documentation]]</li>\n"
+"  </ul>\n"
+"</div>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<div class=\"block block-third\">\n"
+"  <h2>Translator</h2>\n"
+msgstr ""
+"<div class=\"block block-third\">\n"
+"  <h2>Übersetzer</h2>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "  [[!img translator.png link=no]]\n"
+msgstr "  [[!img translator.png link=no]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"  <p>Translators can allow more people around the world to use Tails.</p>\n"
+"  <ul>\n"
+"    <li>[[Improve Tails in your own language|contribute/how/translate]]</li>\n"
+"  </ul>\n"
+"</div>\n"
+msgstr ""
+"  <p>Durch Übersetzungen können mehr Menschen auf der Welt Tails benutzen.</p>\n"
+"  <ul>\n"
+"    <li>[[Tails in Ihrer eigenen Sprache verbessern|contribute/how/translate]]</li>\n"
+"  </ul>\n"
+"</div>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<div class=\"block block-third\">\n"
+"  <h2>Speaker</h2>\n"
+msgstr ""
+"<div class=\"block block-third\">\n"
+"  <h2>Sprecher</h2>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "  [[!img speaker.png link=no]]\n"
+msgstr "  [[!img speaker.png link=no]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"  <p>Speakers can advocate Tails to all kinds of public.</p>\n"
+"  <ul>\n"
+"    <li>[[Outreach material: logo, leaflets, stickers, etc.|contribute/how/promote]]</li>\n"
+"  </ul>\n"
+"</div>\n"
+msgstr ""
+"  <p>Referenten können Tails verschiedenen Öffentlichkeit präsentieren.</p>\n"
+"  <ul>\n"
+"    <li>[[Werbematerial: Logo, Broschüren, Aufkleber usw.|contribute/how/promote]]</li>\n"
+"  </ul>\n"
+"</div>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2>Contribute your computer skills</h2>\n"
+msgstr "<h2>Bringen Sie Ihre Computerfähigkeiten ein</h2>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<div class=\"block block-third\">\n"
+"  <h2>Developer or maintainer</h2>\n"
+msgstr ""
+"<div class=\"block block-third\">\n"
+"  <h2>Entwickler oder Wartungspersonal</h2>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "  [[!img software_developer.png link=no]]\n"
+msgstr "  [[!img software_developer.png link=no]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"  <p>Software people with very diverse skills can improve Tails.</p>\n"
+"  <ul>\n"
+"    <li>[[Work on the source code|contribute/how/code]]</li>\n"
+"    <li>[[Improve Tails by working on Debian|contribute/how/debian]]</li>\n"
+"  </ul>\n"
+"</div>\n"
+msgstr ""
+"  <p>Softwareentwickler mit unterschiedlichsten Fähigkeiten können Tails verbessern.</p>\n"
+"  <ul>\n"
+"    <li>[[Am Quellcode arbeiten|contribute/how/code]]</li>\n"
+"    <li>[[Tails verbessern, indem Sie an Debian arbeiten|contribute/how/debian]]</li>\n"
+"  </ul>\n"
+"</div>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<div class=\"block block-third\">\n"
+"  <h2>System administrator</h2>\n"
+msgstr ""
+"<div class=\"block block-third\">\n"
+"  <h2>Systemadministrator</h2>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "  [[!img system_administrator.png link=no]]\n"
+msgstr "  [[!img system_administrator.png link=no]]\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid ""
+#| "  <p>System administrators can contribute to the infrastructure behind Tails.</p>\n"
+#| "  <ul>\n"
+#| "    <li>[[Run a HTTP mirror|contribute/how/mirror]]</li>\n"
+#| "    <li>[[Improve Tails infrastructure|contribute/how/sysadmin]]</li>\n"
+#| "  </ul>\n"
+#| "</div>\n"
+msgid ""
+"  <p>System administrators can contribute to the infrastructure behind Tails.</p>\n"
+"  <ul>\n"
+"    <li>[[Run an HTTP mirror|contribute/how/mirror]]</li>\n"
+"    <li>[[Improve Tails infrastructure|https://gitlab.torproject.org/tpo/tpa/team/-/wikis/tails/processes/contribute]]</li>\n"
+"  </ul>\n"
+"</div>\n"
+msgstr ""
+"  <p>Systemadministratoren können zur Infrastruktur hinter Tails beitragen.</p>\n"
+"  <ul>\n"
+"    <li>[[Einen HTTP-Spiegelserver bereitstellen|contribute/how/mirror]]</li>\n"
+"    <li>[[Zur Infrastruktur von Tails beitragen|contribute/how/sysadmin]]</li>\n"
+"  </ul>\n"
+"</div>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<div class=\"block block-third\">\n"
+"  <h2>Designer</h2>\n"
+msgstr ""
+"<div class=\"block block-third\">\n"
+"  <h2>Designer</h2>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "  [[!img designer.png link=no]]\n"
+msgstr "  [[!img designer.png link=no]]\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid ""
+#| "  <p>Designers can make Tails easier to use and more appealing.</p>\n"
+#| "  <ul>\n"
+#| "    <li>[[Improve the website|contribute/how/website]]</li>\n"
+#| "    <li>[[Design graphics|contribute/how/graphics]]</li>\n"
+#| "    <li>[[Improve the Tails user interface|contribute/how/user_interface]]</li>\n"
+#| "  </ul>\n"
+#| "</div>\n"
+#| "</div>\n"
+msgid ""
+"  <p>Designers can make Tails easier to use and more appealing.</p>\n"
+"  <ul>\n"
+"    <li>[[Improve the website|contribute/how/website]]</li>\n"
+"    <li>[[Design graphics|contribute/how/graphics]]</li>\n"
+"    <li>[[Improve the Tails user experience|contribute/how/user_experience]]</li>\n"
+"  </ul>\n"
+"</div>\n"
+msgstr ""
+"  <p>Designer können Tails benutzerfreundlicher und verständlicher machen.</p>\n"
+"  <ul>\n"
+"    <li>[[Die Webseite verbessern|contribute/how/website]]</li>\n"
+"    <li>[[Grafiken entwerfen|contribute/how/graphics]]</li>\n"
+"    <li>[[Die Benutzeroberfläche von Tails verbessern|contribute/how/user_interface]]</li>\n"
+"  </ul>\n"
+"</div>\n"
+"</div>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"note\">\n"
+msgstr "<div class=\"note\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>This section is only in English, because there is currently no way to\n"
+"contribute to Tails if you do not understand English.</p>\n"
+msgstr "<p>Diesen Abschnitt gibt es nur in englischer Sprache, da es derzeit keine Möglichkeit gibt, ohne Englischkenntnisse bei Tails mitzuwirken.</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<a id=\"reference-documents\"></a>\n"
+msgstr "<a id=\"reference-documents\"></a>\n"
+
+#. type: Title =
+#, no-wrap
+msgid "Reference documents"
+msgstr "Reference documents"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid "- [[Mission and values|contribute/mission]]"
+msgid "[[Mission and values|contribute/mission]]"
+msgstr "- [[Mission and values|contribute/mission]]"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid "- [[Design documents|contribute/design]]"
+msgid "[[Design documents|contribute/design]]"
+msgstr "- [[Design documents|contribute/design]]"
+
+#. type: Bullet: '- '
+msgid ""
+"[Blueprints](https://gitlab.tails.boum.org/tails/blueprints/-/wikis/) to "
+"help structuring ideas for future improvements"
+msgstr ""
+"[Blueprints](https://gitlab.tails.boum.org/tails/blueprints/-/wikis/) to "
+"help structuring ideas for future improvements"
+
+#. type: Bullet: '- '
+msgid "[[Merge policy|contribute/merge_policy]]"
+msgstr "[[Merge policy|contribute/merge_policy]]"
+
+#. type: Bullet: '- '
+msgid "[[!tails_website contribute/how/promote/logo desc=\"Logo\"]]"
+msgstr "[[!tails_website contribute/how/promote/logo desc=\"Logo\"]]"
+
+#. type: Bullet: '- '
+msgid "[[Personas|contribute/personas]]"
+msgstr "[[Personas|contribute/personas]]"
+
+#. type: Bullet: '- '
+msgid "[[Security issue response policy|contribute/security_policy]]"
+msgstr "[[Security issue response policy|contribute/security_policy]]"
+
+#. type: Plain text
+#, no-wrap
+msgid "<a id=\"tools\"></a>\n"
+msgstr "<a id=\"tools\"></a>\n"
+
+#. type: Title =
+#, no-wrap
+msgid "Tools for contributors"
+msgstr "Tools for contributors"
+
+#. type: Bullet: '- '
+msgid "Source code: [[Git repositories|contribute/git]]"
+msgstr "Source code: [[Git repositories|contribute/git]]"
+
+#. type: Bullet: '- '
+msgid ""
+"[[GitLab source code and bug tracker|contribute/working_together/GitLab]]"
+msgstr ""
+"[[GitLab source code and bug tracker|contribute/working_together/GitLab]]"
+
+#. type: Bullet: '- '
+msgid "[[Starter tasks|starter_tasks]] for new contributors"
+msgstr "[[Starter tasks|starter_tasks]] for new contributors"
+
+#. type: Bullet: '- '
+msgid "[[Building a Tails image|contribute/build]]"
+msgstr "[[Building a Tails image|contribute/build]]"
+
+#. type: Bullet: '  * '
+msgid "[[Build a local copy of the website|contribute/build/website]]"
+msgstr "[[Build a local copy of the website|contribute/build/website]]"
+
+#. type: Bullet: '  * '
+msgid "[[Customize Tails|contribute/customize]]"
+msgstr "[[Customize Tails|contribute/customize]]"
+
+#. type: Bullet: '  * '
+msgid "[Nightly Tails image builds](https://nightly.tails.boum.org)"
+msgstr "[Nightly Tails image builds](https://nightly.tails.boum.org)"
+
+#. type: Bullet: '  * '
+msgid ""
+"[[Jenkins CI|https://gitlab.torproject.org/tpo/tpa/team/-/wikis/tails/"
+"services/jenkins]]"
+msgstr ""
+"[[Jenkins CI|https://gitlab.torproject.org/tpo/tpa/team/-/wikis/tails/"
+"services/jenkins]]"
+
+#. type: Bullet: '- '
+msgid "Debian packages"
+msgstr "Debian packages"
+
+#. type: Bullet: '  * '
+msgid ""
+"[[APT repository|contribute/APT_repository]], to store our custom Debian "
+"packages"
+msgstr ""
+"[[APT repository|contribute/APT_repository]], to store our custom Debian "
+"packages"
+
+#. type: Bullet: '  * '
+msgid "How we manage and upgrade the [[Linux kernel|contribute/Linux_kernel]]."
+msgstr ""
+"How we manage and upgrade the [[Linux kernel|contribute/Linux_kernel]]."
+
+#. type: Bullet: '  * '
+msgid "How we manage and upgrade [[contribute/tor]]."
+msgstr "How we manage and upgrade [[contribute/tor]]."
+
+#. type: Bullet: '- '
+msgid "Tips to develop and debug [[contribute/Tor_Connection]]"
+msgstr "Tips to develop and debug [[contribute/Tor_Connection]]"
+
+#. type: Bullet: '- '
+msgid "Tips to develop and debug [[contribute/GNOME_Extensions]]"
+msgstr "Tips to develop and debug [[contribute/GNOME_Extensions]]"
+
+#. type: Bullet: '- '
+msgid "Tips to develop [[contribute/Persistent_Storage]]"
+msgstr "Tips to develop [[contribute/Persistent_Storage]]"
+
+#. type: Bullet: '- '
+msgid "[[Glossary for contributors|contribute/glossary]]"
+msgstr "[[Glossary for contributors|contribute/glossary]]"
+
+#. type: Plain text
+#, no-wrap
+msgid "<a id=\"release-cycle\"></a>\n"
+msgstr "<a id=\"release-cycle\"></a>\n"
+
+#. type: Title =
+#, no-wrap
+msgid "Release cycle"
+msgstr "Release cycle"
+
+#. type: Bullet: '- '
+msgid "[[Release schedule|contribute/release_schedule]]"
+msgstr "[[Release schedule|contribute/release_schedule]]"
+
+#. type: Bullet: '- '
+msgid "[[Release process|contribute/release_process]]"
+msgstr "[[Release process|contribute/release_process]]"
+
+#. type: Bullet: '  * '
+msgid "[[Manual test suite|contribute/release_process/test]]"
+msgstr "[[Manual test suite|contribute/release_process/test]]"
+
+#. type: Bullet: '  * '
+msgid ""
+"[[Automated test suite|contribute/release_process/test/automated_tests]]"
+msgstr ""
+"[[Automated test suite|contribute/release_process/test/automated_tests]]"
+
+#. type: Bullet: '  * '
+msgid ""
+"[[Verification JavaScript|contribute/release_process/"
+"verification_javascript]]"
+msgstr ""
+"[[Verification JavaScript|contribute/release_process/"
+"verification_javascript]]"
+
+#. type: Plain text
+#, no-wrap
+msgid "<a id=\"upstream\"></a>\n"
+msgstr "<a id=\"upstream\"></a>\n"
+
+#. type: Title =
+#, no-wrap
+msgid "Relationship with upstream and derivatives"
+msgstr "Relationship with upstream and derivatives"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid ""
+#| "- [[Relationship with upstream|contribute/relationship_with_upstream]]"
+msgid "[[Relationship with upstream|contribute/relationship_with_upstream]]"
+msgstr "- [[Relationship with upstream|contribute/relationship_with_upstream]]"
+
+#. type: Bullet: '- '
+msgid "[[Improve Tails by working on Debian|contribute/how/debian]]"
+msgstr "[[Improve Tails by working on Debian|contribute/how/debian]]"
+
+#. type: Bullet: '- '
+msgid "[[About creating Tails derivatives|contribute/derivatives]]"
+msgstr "[[About creating Tails derivatives|contribute/derivatives]]"
+
+#. type: Plain text
+#, no-wrap
+msgid "<a id=\"collective-process\"></a>\n"
+msgstr "<a id=\"collective-process\"></a>\n"
+
+#. type: Title =
+#, no-wrap
+msgid "Collective process"
+msgstr "Collective process"
+
+#. type: Bullet: '- '
+msgid "[[Calendar|contribute/calendar]] of releases"
+msgstr "[[Calendar|contribute/calendar]] of releases"
+
+#. type: Bullet: '- '
+msgid ""
+"[Code of conduct](https://community.torproject.org/policies/code_of_conduct/)"
+msgstr ""
+"[Code of conduct](https://community.torproject.org/policies/code_of_conduct/)"
+
+#. type: Bullet: '- '
+msgid ""
+"[Social contract](https://community.torproject.org/policies/social_contract/)"
+msgstr ""
+"[Social contract](https://community.torproject.org/policies/social_contract/)"
+
+#. type: Bullet: '- '
+msgid "[[People|contribute/working_together/people]]"
+msgstr "[[People|contribute/working_together/people]]"
+
+#. type: Bullet: '- '
+msgid ""
+"[[Marking a task as Starter|contribute/working_together/"
+"criteria_for_starter_tasks]]"
+msgstr ""
+"[[Marking a task as Starter|contribute/working_together/"
+"criteria_for_starter_tasks]]"
+
+#. type: Bullet: '- '
+msgid ""
+"[[Document progress|contribute/working_together/GitLab#document-progress]]"
+msgstr ""
+"[[Document progress|contribute/working_together/GitLab#document-progress]]"
+
+#. type: Bullet: '- '
+msgid "Teams and roles"
+msgstr "Teams and roles"
+
+#. type: Bullet: '  * '
+msgid ""
+"[Tails Team](https://gitlab.tails.boum.org/tails/team/-/wikis/home) "
+"(formerly known as: Foundations Team)"
+msgstr ""
+"[Tails Team](https://gitlab.tails.boum.org/tails/team/-/wikis/home) "
+"(formerly known as: Foundations Team)"
+
+#. type: Bullet: '  * '
+msgid "[[Release manager|contribute/working_together/roles/release_manager]]"
+msgstr "[[Release manager|contribute/working_together/roles/release_manager]]"
+
+#. type: Bullet: '  * '
+msgid ""
+"[[Technical writers|contribute/working_together/roles/technical_writer]]"
+msgstr ""
+"[[Technical writers|contribute/working_together/roles/technical_writer]]"
+
+#. type: Bullet: '  * '
+msgid ""
+"[[Translation platform maintainers|contribute/working_together/roles/"
+"translation_platform]]"
+msgstr ""
+"[[Translation platform maintainers|contribute/working_together/roles/"
+"translation_platform]]"
+
+#. type: Bullet: '  * '
+msgid "[[UX designers|contribute/working_together/roles/ux]]"
+msgstr "[[UX designers|contribute/working_together/roles/ux]]"
+
+#. type: Bullet: '- '
+msgid "Interfaces between roles and teams"
+msgstr "Interfaces between roles and teams"
+
+#. type: Bullet: '  * '
+msgid ""
+"[[Developers and Release Managers|contribute/working_together/interfaces/"
+"developers_and_release_managers]]"
+msgstr ""
+"[[Developers and Release Managers|contribute/working_together/interfaces/"
+"developers_and_release_managers]]"
+
+#. type: Title =
+#, no-wrap
+msgid "Getting credits"
+msgstr "Getting credits"
+
+#. type: Plain text
+msgid ""
+"We're ok with people getting credits for whatever contribution they did to "
+"Tails. Sometimes this is publicly available (for example: in issues, git "
+"history, etc.), in which case this is enough for us."
+msgstr ""
+"We're ok with people getting credits for whatever contribution they did to "
+"Tails. Sometimes this is publicly available (for example: in issues, git "
+"history, etc.), in which case this is enough for us."
+
+#. type: Plain text
+msgid ""
+"In some cases such info might not be publicly visible (for example: "
+"facilitation work done for meetings or data that was deleted for some "
+"reason).  In this case, if the contributor so wish, we're ok with adding "
+"explicit public credit somewhere they can link to. If that's your case, "
+"please [[contact us|doc/about/contact]]."
+msgstr ""
+"In some cases such info might not be publicly visible (for example: "
+"facilitation work done for meetings or data that was deleted for some "
+"reason).  In this case, if the contributor so wish, we're ok with adding "
+"explicit public credit somewhere they can link to. If that's your case, "
+"please [[contact us|doc/about/contact]]."
+
+#. type: Title =
+#, no-wrap
+msgid "Contact us"
+msgstr "Contact us"
+
+#. type: Plain text
+msgid ""
+"To talk to other Tails contributors, subscribe to [[the relevant mailing "
+"lists|doc/about/contact]]."
+msgstr ""
+"To talk to other Tails contributors, subscribe to [[the relevant mailing "
+"lists|doc/about/contact]]."
+
+#~ msgid ""
+#~ "[[Tails Team (formerly known as: Foundations Team)|contribute/"
+#~ "working_together/roles/foundations_team]]"
+#~ msgstr ""
+#~ "[[Tails Team (formerly known as: Foundations Team)|contribute/"
+#~ "working_together/roles/foundations_team]]"
+
+#~ msgid ""
+#~ "[[Ticket gardeners|contribute/working_together/roles/ticket_gardener]]"
+#~ msgstr ""
+#~ "[[Ticket gardeners|contribute/working_together/roles/ticket_gardener]]"
+
+#~ msgid "- Teams"
+#~ msgstr "- Teams"
+
+#~ msgid ""
+#~ "[[Test suite maintainers|contribute/working_together/roles/test_suite]]"
+#~ msgstr ""
+#~ "[[Test suite maintainers|contribute/working_together/roles/test_suite]]"
+
+#~ msgid "- Reimbursements"
+#~ msgstr "- Reimbursements"
+
+#~ msgid "[[Organizing a sprint|contribute/sprint]]"
+#~ msgstr "[[Organizing a sprint|contribute/sprint]]"
+
+#~ msgid ""
+#~ "[[Sponsorship to attend events on behalf of Tails|contribute/"
+#~ "sponsorship_to_attend_events]]"
+#~ msgstr ""
+#~ "[[Sponsorship to attend events on behalf of Tails|contribute/"
+#~ "sponsorship_to_attend_events]]"
+
+#~ msgid "[[Hardware and other reimbursements|contribute/reimbursements]]"
+#~ msgstr "[[Hardware and other reimbursements|contribute/reimbursements]]"
+
+#~ msgid "[[Accounting team|contribute/working_together/roles/accounting]]"
+#~ msgstr "[[Accounting team|contribute/working_together/roles/accounting]]"
+
+#~ msgid "[[Fundraising team|contribute/working_together/roles/fundraising]]"
+#~ msgstr "[[Fundraising team|contribute/working_together/roles/fundraising]]"
+
+#~ msgid "[[Help desk|contribute/working_together/roles/help_desk]]"
+#~ msgstr "[[Help desk|contribute/working_together/roles/help_desk]]"
+
+#~ msgid "[[Management team|contribute/working_together/roles/management]]"
+#~ msgstr "[[Management team|contribute/working_together/roles/management]]"
+
+#~ msgid "- Roles for sponsor deliverables (internal documentation):"
+#~ msgstr "- Roles for sponsor deliverables (internal documentation):"
+
+#~ msgid ""
+#~ "[[!tails_gitlab tails/summit/-/wikis/Handbook/Grant_contract_management]]"
+#~ msgstr ""
+#~ "[[!tails_gitlab tails/summit/-/wikis/Handbook/Grant_contract_management]]"
+
+#~ msgid "[[Jenkins CI|contribute/working_together/roles/sysadmins/Jenkins]]"
+#~ msgstr "[[Jenkins CI|contribute/working_together/roles/sysadmins/Jenkins]]"
+
+#~ msgid "[[Sysadmins|contribute/working_together/roles/sysadmins]]"
+#~ msgstr "[[Sysadmins|contribute/working_together/roles/sysadmins]]"
+
+#~ msgid ""
+#~ "[[Community Health team|contribute/working_together/roles/"
+#~ "community_health]]"
+#~ msgstr ""
+#~ "[[Community Health team|contribute/working_together/roles/"
+#~ "community_health]]"
+
+#, no-wrap
+#~ msgid ""
+#~ "<div class=\"contribute-roles-1\">\n"
+#~ "<h2>Share your experience</h2>\n"
+#~ "<div class=\"contribute-role\" id=\"user\">\n"
+#~ msgstr ""
+#~ "<div class=\"contribute-roles-1\">\n"
+#~ "<h2>Erfahrungen mitteilen</h2>\n"
+#~ "<div class=\"contribute-role\" id=\"user\">\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<div class=\"contribute-roles-1\">\n"
+#~ "<h2>Donate</h2>\n"
+#~ "<div class=\"contribute-role\" id=\"donate\">\n"
+#~ msgstr ""
+#~ "<div class=\"contribute-roles-1\">\n"
+#~ "<h2>Spenden</h2>\n"
+#~ "<div class=\"contribute-role\" id=\"donate\">\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<div class=\"contribute-roles-3\">\n"
+#~ "<h2>Contribute your language skills</h2>\n"
+#~ "<div class=\"contribute-role\" id=\"content-writer\">\n"
+#~ "  <h3>Writer</h3>\n"
+#~ msgstr ""
+#~ "<div class=\"contribute-roles-3\">\n"
+#~ "<h2>Mit Ihren Sprachkenntnissen aushelfen</h2>\n"
+#~ "<div class=\"contribute-role\" id=\"content-writer\">\n"
+#~ "  <h3>Autor</h3>\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<div class=\"contribute-roles-3\">\n"
+#~ "<h2>Contribute your computer skills</h2>\n"
+#~ "<div class=\"contribute-role\" id=\"developer\">\n"
+#~ "  <h3>Developer or maintainer</h3>\n"
+#~ msgstr ""
+#~ "<div class=\"contribute-roles-3\">\n"
+#~ "<h2>Mit Informatikkenntnissen zu Tails beitragen</h2>\n"
+#~ "<div class=\"contribute-role\" id=\"developer\">\n"
+#~ "  <h3>Entwickler oder Maintainer</h3>\n"
+
+#, no-wrap
+#~ msgid "\t<h1>Table of contents</h1>\n"
+#~ msgstr "\t<h1>Inhalt</h1>\n"
+
+#, fuzzy, no-wrap
+#~| msgid ""
+#~| "\t<ol>\n"
+#~| "\t\t<li class=\"L2\"><a href=\"#reference-documents\">Reference documents</a></li>\n"
+#~| "\t\t<li class=\"L2\"><a href=\"#tools\">Tools for contributors</a></li>\n"
+#~| "\t\t<li class=\"L2\"><a href=\"#release-cycle\">Release cycle</a></li>\n"
+#~| "\t\t<li class=\"L2\"><a href=\"#upstream\">Relationship with upstream</a></li>\n"
+#~| "\t\t<li class=\"L2\"><a href=\"#collective-process\">Collective process</a></li>\n"
+#~| "\t\t<li class=\"L2\"><a href=\"#talk\">Talk with us</a></li>\n"
+#~| "\t</ol>\n"
+#~ msgid ""
+#~ "\t<ol>\n"
+#~ "\t\t<li class=\"L2\"><a href=\"#reference-documents\">Reference documents</a></li>\n"
+#~ "\t\t<li class=\"L2\"><a href=\"#tools\">Tools for contributors</a></li>\n"
+#~ "\t\t<li class=\"L2\"><a href=\"#release-cycle\">Release cycle</a></li>\n"
+#~ "\t\t<li class=\"L2\"><a href=\"#upstream\">Relationship with upstream</a></li>\n"
+#~ "\t\t<li class=\"L2\"><a href=\"#collective-process\">Collective process</a></li>\n"
+#~ "\t\t<li class=\"L2\"><a href=\"#talk\">Talk with us</a></li>\n"
+#~ "\t</ol>\n"
+#~ msgstr ""
+#~ "\t<ol>\n"
+#~ "\t\t<li class=\"L2\"><a href=\"#reference-documents\">Referenzdokumente</a></li>\n"
+#~ "\t\t<li class=\"L2\"><a href=\"#tools\">Werkzeuge für Beitragende</a></li>\n"
+#~ "\t\t<li class=\"L2\"><a href=\"#release-cycle\">Veröffentlichungszyklus</a></li>\n"
+#~ "\t\t<li class=\"L2\"><a href=\"#upstream\">Beziehung zum Upstream</a></li>\n"
+#~ "\t\t<li class=\"L2\"><a href=\"#collective-process\">Kollektive Prozesse</a></li>\n"
+#~ "\t\t<li class=\"L2\"><a href=\"#talk\">Mit uns reden</a></li>\n"
+#~ "\t</ol>\n"
+
+#, no-wrap
+#~ msgid "</div> <!-- .toc -->\n"
+#~ msgstr "</div> <!-- .toc -->\n"
+
+#, no-wrap
+#~ msgid "<a id=\"talk\"></a>\n"
+#~ msgstr "<a id=\"talk\"></a>\n"
+
+#, no-wrap
+#~ msgid "[[!meta stylesheet=\"hide-breadcrumbs\" rel=\"stylesheet\" title=\"\"]]\n"
+#~ msgstr "[[!meta stylesheet=\"hide-breadcrumbs\" rel=\"stylesheet\" title=\"\"]]\n"
+
+#, fuzzy
+#~| msgid "[[Document progress|contribute/working_together/document_progress]]"
+#~ msgid ""
+#~ "[[Team manager|contribute/working_together/roles/sponsor_deliverables/"
+#~ "team_manager]]"
+#~ msgstr ""
+#~ "[[Fortschritte dokumentieren|contribute/working_together/"
+#~ "document_progress]]"
+
+#, fuzzy
+#~| msgid "[[Document progress|contribute/working_together/document_progress]]"
+#~ msgid ""
+#~ "[[Worker|contribute/working_together/roles/sponsor_deliverables/worker]]"
+#~ msgstr ""
+#~ "[[Fortschritte dokumentieren|contribute/working_together/"
+#~ "document_progress]]"
+
+#, fuzzy, no-wrap
+#~| msgid ""
+#~| "  - [[Redmine bug tracker|contribute/working_together/Redmine]]\n"
+#~| "    - [Roadmap](https://redmine.tails.boum.org/code/projects/tails/roadmap)\n"
+#~| "    - [[Easy tasks|easy_tasks]] for new contributors\n"
+#~| "    - [Tasks](https://redmine.tails.boum.org/code/projects/tails/issues)\n"
+#~| "      can be filtered by type of work (see links in the sidebar)\n"
+#~| "  - [[Building a Tails image|contribute/build]]\n"
+#~| "    - [[Build the website|contribute/build/website]]\n"
+#~| "    - [[Customize Tails|contribute/customize]]\n"
+#~| "  - [[Debian package builder|contribute/Debian_package_builder]], to automatically build our custom packages\n"
+#~| "  - [[APT repository|contribute/APT_repository]], to store our custom Debian packages\n"
+#~| "  - [[Glossary for contributors|contribute/glossary]]\n"
+#~ msgid ""
+#~ "  - [[Building a Tails image|contribute/build]]\n"
+#~ "    - [[Build a local copy of the website|contribute/build/website]]\n"
+#~ "    - [[Customize Tails|contribute/customize]]\n"
+#~ "    - [Nightly Tails image builds](https://nightly.tails.boum.org)\n"
+#~ "    - [[Jenkins CI|contribute/working_together/roles/sysadmins/Jenkins]]\n"
+#~ "  - Debian packages\n"
+#~ "    - [[APT repository|contribute/APT_repository]], to store our custom Debian packages\n"
+#~ "    - How we manage and upgrade the [[Linux kernel|contribute/Linux_kernel]].\n"
+#~ "    - How we manage and upgrade [[contribute/tor]].\n"
+#~ "  - Tips to develop and debug [[contribute/Tor_Connection]]\n"
+#~ "  - [[Glossary for contributors|contribute/glossary]]\n"
+#~ msgstr ""
+#~ "  - [[Redmine bug tracker|contribute/working_together/Redmine]]\n"
+#~ "    - [Roadmap](https://redmine.tails.boum.org/code/projects/tails/roadmap)\n"
+#~ "    - [[Einfache Aufgaben|easy_tasks]] für neue Beitragende\n"
+#~ "    - [Aufgaben](https://redmine.tails.boum.org/code/projects/tails/issues)\n"
+#~ "      können je nach Aufgabenbereich gefiltert werden (siehe Links in der seitlichen Spalte)\n"
+#~ "  - [[Ein Tails-Image erstellen|contribute/build]]\n"
+#~ "    - [[Die Webseite generieren|contribute/build/website]]\n"
+#~ "    - [[Tails anpassen|contribute/customize]]\n"
+#~ "  - [[Debian package builder|contribute/Debian_package_builder]], um unsere angepassten Pakete automatisch zu erstellen\n"
+#~ "  - [[APT repository|contribute/APT_repository]], um unsere angepassten Debian Pakete zu verwalten\n"
+#~ "  - [[Glossar für Beitragende|contribute/glossary]]\n"
+
+#, fuzzy, no-wrap
+#~| msgid ""
+#~| "  - [[Release process|contribute/release_process]]\n"
+#~| "    - [[Manual test suite|contribute/release_process/test]]\n"
+#~ msgid ""
+#~ "  - [[Release process|contribute/release_process]]\n"
+#~ "    - [[Manual test suite|contribute/release_process/test]]\n"
+#~ "    - [[Automated test suite|contribute/release_process/test/automated_tests]]\n"
+#~ "    - [[Verification JavaScript|contribute/release_process/verification_javascript]]\n"
+#~ msgstr ""
+#~ "  - [[Veröffentlichungsprozess|contribute/release_process]]\n"
+#~ "    - [[Manuelle Tests|contribute/release_process/test]]\n"
+
+#, fuzzy, no-wrap
+#~| msgid ""
+#~| "  - Roles\n"
+#~| "    - [[Front desk|contribute/working_together/roles/front_desk]]\n"
+#~| "    - [[Release manager|contribute/working_together/roles/release_manager]]\n"
+#~| "    - [[Ticket gardener|contribute/working_together/roles/ticket_gardener]]\n"
+#~ msgid ""
+#~ "  - Reimbursements\n"
+#~ "    - [[Organizing a sprint|contribute/sprint]]\n"
+#~ "    - [[Sponsorship to attend events on behalf of Tails|contribute/sponsorship_to_attend_events]]\n"
+#~ "    - [[Hardware and other reimbursements|contribute/reimbursements]]\n"
+#~ "  - Teams\n"
+#~ "    - [[Accounting team|contribute/working_together/roles/accounting]]\n"
+#~ "    - [[Foundations team|contribute/working_together/roles/foundations_team]]\n"
+#~ "    - [[Fundraising team|contribute/working_together/roles/fundraising]]\n"
+#~ "    - [[Help desk|contribute/working_together/roles/help_desk]]\n"
+#~ "    - [[Management team|contribute/working_together/roles/management]]\n"
+#~ "    - [[Release managers|contribute/working_together/roles/release_manager]]\n"
+#~ "    - [[Ticket gardeners|contribute/working_together/roles/ticket_gardener]]\n"
+#~ "    - [[Sysadmins|contribute/working_together/roles/sysadmins]]\n"
+#~ "    - [[Technical writers|contribute/working_together/roles/technical_writer]]\n"
+#~ "    - [[Test suite maintainers|contribute/working_together/roles/test_suite]]\n"
+#~ "    - [[Translation platform maintainers|contribute/working_together/roles/translation_platform]]\n"
+#~ "    - [[UX designers|contribute/working_together/roles/ux]]\n"
+#~ "  - Interfaces between roles and teams\n"
+#~ "    - [[Developers and Release Managers|contribute/working_together/interfaces/developers_and_release_managers]]\n"
+#~ "  - Roles for sponsor deliverables:\n"
+#~ "      - [[Team manager|contribute/working_together/roles/sponsor_deliverables/team_manager]]\n"
+#~ "      - [[Worker|contribute/working_together/roles/sponsor_deliverables/worker]]\n"
+#~ msgstr ""
+#~ "  - Rollen\n"
+#~ "    - [[Empfang|contribute/working_together/roles/front_desk]]\n"
+#~ "    - [[Release manager|contribute/working_together/roles/release_manager]]\n"
+#~ "    - [[Ticket gardener|contribute/working_together/roles/ticket_gardener]]\n"
+
+#, fuzzy
+#~| msgid "<a id=\"tools\"></a>\n"
+#~ msgid "<a id=\"mentors\"></a>\n"
+#~ msgstr "<a id=\"tools\"></a>\n"
+
+#, fuzzy
+#~| msgid "Tools for contributors\n"
+#~ msgid "Mentors & guidance for new contributors"
+#~ msgstr "Werkzeuge für Beitragende\n"
+
+#~ msgid ""
+#~ "Once you have found a first [[Starter task|starter_tasks]] to work on, "
+#~ "you might need some guidance."
+#~ msgstr ""
+#~ "Sobald Sie eine erste [[Einstiegsaufgabe|starter_tasks]] gefunden haben, "
+#~ "an der Sie mitarbeiten möchten, benötigen Sie vielleicht ein wenig "
+#~ "Anleitung"
+
+#, fuzzy
+#~| msgid "Talk with us\n"
+#~ msgid "Talk with us"
+#~ msgstr "Mit uns reden\n"
+
+#, fuzzy
+#~| msgid "[[Meetings|contribute/meetings]], and minutes from past meetings"
+#~ msgid ""
+#~ "[[Contributors meetings|contribute/meetings]], and minutes from past "
+#~ "meetings"
+#~ msgstr "[[Treffen|contribute/meetings]] und Protokolle vergangener Treffen"
+
+#~ msgid "[[Blueprints|blueprint]]"
+#~ msgstr "[[Entwürfe|blueprint]]"

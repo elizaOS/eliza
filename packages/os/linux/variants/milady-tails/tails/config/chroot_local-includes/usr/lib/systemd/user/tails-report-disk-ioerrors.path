@@ -1,0 +1,9 @@
+[Unit]
+Description=Report errors about disk being corrupted
+ConditionUser=1000
+
+[Path]
+PathModified=/var/lib/live/tails.disk.ioerrors
+
+[Install]
+WantedBy=desktop.target

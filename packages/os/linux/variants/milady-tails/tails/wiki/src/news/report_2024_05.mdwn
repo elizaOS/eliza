@@ -1,0 +1,64 @@
+[[!meta title="Tails report for May 2024"]]
+[[!meta date="Thu, 13 Jun 2024 12:29:04 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!toc]]
+
+Highlights
+==========
+
+- We met IRL! It has been close to 1.5 years since we devised our [[3-year
+  strategy goals|news/report_2023_01]]. We reflected on our progress, concluded
+  that we had a mixed bag of results, and emerged with a good sense of what's
+  needed to be done. And all this while discovering the wonders of vegan
+  Francesinha and wine 🌞
+
+- Thanks to our volunteer translations teams, Tails' language diversity
+  continued improving alongside the language support we added in [[Tails
+  6.2|news/version_6.2]].
+
+  Our French, Spanish, and Catalan teams reported more than 50 small issues on
+  the content of our website, typos, inconsistency with the tools, and
+  accessibility issues. We fixed all of them. In the process of this lovely
+  synergy, we also identified opportunities to make this collaboration through
+  [[Weblate|contribute/how/translate/with_translation_platform]] smoother in the
+  future.
+
+- And, we also completed a bunch of home improvement projects:
+
+    - We added an animation when expanding the collapsible sections in our
+      warnings page. Changes should be more noticeable now. ([Gitlab
+      issue](https://gitlab.tails.boum.org/tails/tails/-/issues/19202))
+
+    - We also added a "Security/Fixed" pill on security advisories that are
+      fixed. As an example, see our advisory on "[[Possible remote attack on
+      onion services|security/TROVE-2023-006]]".
+
+    - We also fixed the display of SVG images when JavaScript is disabled. Now,
+      we are using PNG by default and adding some JavaScript to enhance images
+      back to SVG when useful. ([Gitlab
+      issue](https://gitlab.tails.boum.org/tails/tails/-/issues/17805))
+
+    - We replaced the CSS framework Bootstrap on our website with custom and
+      modern CSS code. The most challenging page to convert was our donation
+      page, and the resulting code is 20% smaller.
+
+Releases
+========
+
+📢 [[6.3 is out|news/version_6.3]]!
+
+In Tails 6.3, you will find:
+
+- improvements for configuring new printers
+- **Restart later** as the default button at the end of an automatic upgrade; earlier it was **Restart now**
+- and as usual, an updated _Tor Browser_
+
+To know more, check out the Tails 6.3 [[release notes|news/version_6.3]] and
+the
+[changelog](https://gitlab.tails.boum.org/tails/tails/-/blob/master/debian/changelog).
+
+Metrics
+=======
+
+Tails was started more than 824,834 times this month. That's a daily average of over 27,495 boots.

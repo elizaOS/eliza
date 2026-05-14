@@ -1,0 +1,19 @@
+#!/bin/sh
+
+# Note: must run after /lib/live/config/0020-hostname since it
+# otherwise will overwrite any hosts file generated at build time with
+# a bloated one that also include the IPv6 host `::1 localhost`, which
+# can lead to IPv6 traffic, which we block, which may lead to stuff
+# breaking (for instance APT's tor+http transport).
+#
+# localhost.localdomain added to prevent loopback leaks to Tor circuits
+# for applications that use the FQDN (fully qualified domain name) model
+#
+
+echo "- setting up hosts file"
+
+. /etc/live/config.d/hostname.conf
+
+cat > /etc/hosts << EOF
+127.0.0.1       localhost localhost.localdomain ${LIVE_HOSTNAME}
+EOF

@@ -1,0 +1,23 @@
+#!/bin/sh
+set -e
+
+echo 'Configuring wget'
+
+# We don't want the real binary to be in $PATH:
+# Also note that wget uses the executable name in some help/error messages,
+# so wget-real/etc. should be avoided.
+mkdir -p /usr/lib/wget
+dpkg-divert --add --rename --divert /usr/lib/wget/wget /usr/bin/wget
+
+# We don't want users or other applications using wget directly:
+cat > /usr/bin/wget << 'EOF'
+#!/bin/sh
+unset http_proxy
+unset HTTP_PROXY
+unset https_proxy
+unset HTTPS_PROXY
+
+exec torsocks --isolate /usr/lib/wget/wget --passive-ftp "$@"
+EOF
+
+chmod 755 /usr/bin/wget

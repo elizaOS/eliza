@@ -1,0 +1,1049 @@
+[[!meta title="Automated test suite"]]
+
+[[!toc levels=3]]
+
+# Introduction
+
+The automated test suite is essentially a glue between:
+
+* [OpenCV](http://opencv.org/) and
+  [dogtail](https://fedorahosted.org/dogtail/), used for simulating
+  user interaction,
+
+* [libvirt](http://libvirt.org/), used for running a specific build of
+  Tails in a virtual machine, and
+
+* [cucumber](https://cucumber.io/), for defining features and scenarios
+  testing them using the above two components.
+
+* [chutney](https://gitlab.torproject.org/tpo/core/chutney),
+  for orchestrating a local Tor network.
+
+Its goal is to automate the development and release testing processes
+with a Continuous Integration server.
+
+## Setup and usage
+
+See [[contribute/release_process/test/setup]] and [[contribute/release_process/test/usage]].
+
+## Jenkins
+
+This section documents test suite usage in the context of Jenkins.
+
+For details about how automated tests run on our Jenkins
+infrastructure, see
+[[automated tests in Jenkins|https://gitlab.torproject.org/tpo/tpa/team/-/wikis/tails/services/jenkins/automated-tests-in-jenkins]].
+
+### Full test suite vs. scenarios tagged `@fragile`
+
+Jenkins generally only runs scenarios that are _not_ tagged `@fragile`
+in Gherkin. But it runs the full test suite, including scenarios that
+are tagged `@fragile`, if the images under test were built:
+
+ - from a branch whose configuration (`config/ci/per_branch/`) has `force_all_tests = true` in the `[test]`
+   section
+ - from a tag
+ - from the `devel` branch
+ - from the `testing` branch
+
+Therefore, to ask Jenkins to run the full test suite on your topic
+branch, create `config/ci/per_branch/$branch.toml` and set it to
+
+```
+[test]
+force_all_tests = true
+```
+
+### Configure CI per-branch
+
+It's sometimes desirable to configure CI for a specific branch. Typical usecases are:
+ - disabling CI (e.g. to avoid wasting Jenkins' CPU cycles)
+ - forcing all tests to be run, including `@fragile` ones
+
+To do so, you can create `config/ci/per_branch/${branch}.toml`.
+
+Example: disable all CI
+
+```toml
+[test]
+skip = true
+[build]
+skip = true
+```
+
+Example: force all tests
+
+```toml
+[test]
+force_all_tests = true
+```
+
+Have a look at [[!tails_gitweb bin/ci-configuration]] (specifically the classes inheriting from
+`BaseModel`) to have a list of possible options you can use.
+
+### Run without Chutney
+
+Chutney, which creates a "virtual" Tor network, is used by default.
+
+You can disable this by setting `real_Tor = true` in the `[test]` section of `config/ci/per_branch/$branch.toml`. This will only run scenarios which are tagged
+`@supports_real_tor` (not many!)
+
+### Trigger a test suite run without rebuilding images
+
+Every `build_Tails_ISO_*` job run triggers a test suite run
+(`test_Tails_ISO_*`), so most of the time, we don't need
+to manually trigger test suite runs.
+
+However, in some cases, all we want is to run the test suite multiple
+times on a given set of Tails images, that were already built. In such
+cases, it is useless and problematic to trigger a build job, merely to
+get the test suite running eventually:
+
+ - It's a waste of resources: it will keep isobuilders uselessly busy,
+   which makes the feedback loop longer for our other team-mates.
+
+ - It forces us to wait at least one extra hour before we get the
+   test suite feedback we want.
+
+Thankfully, there is a way to trigger a test suite run without having
+to rebuild images first. To do so:
+
+1. On the corresponding `test_Tail_ISO_*` job page, click _Build with
+   Parameters_.
+
+2. Optionally, you may also pass arbitrary arguments to:
+
+   - `run_test_suite`, via the `EXTRA_SUITE_ARGS` job parameter.
+
+     For example, you can pass `--disable-chutney` so that all tests use the
+     real Tor network.
+
+   - Cucumber, via the `EXTRA_CUCUMBER_ARGS` job parameter.
+
+     For example:
+
+     - If you set this parameter to `features/mac_spoofing.feature`, then Cucumber
+       will run only the scenarios from the `mac_spoofing.feature` feature.
+
+     - If you set this parameter to `--tags @automatic_upgrade`, then Cucumber
+       will run only the scenarios that are tagged `@automatic_upgrade`.
+
+### Developer access to the Jenkins infrastructure
+
+Tails Team members can:
+
+ - SSH into Jenkins worker VMs as their own user and use password-less sudo there
+
+ - SSH into the Jenkins orchestrator as the `jenkins` user: `ssh jenkins@jenkins.dragon`
+
+### Known usability issues
+
+We collect a list of other known CI usability issues on a dedicated
+blueprint: [[!tails_blueprint CI_usability]].
+
+If something feels odd, misleading, or confusing, please check that page:
+perhaps it explains the problem you're experiencing; else, please add it.
+
+## Features
+
+With this tool, it is possible to:
+
+  * Create, modify and destroy virtual machines that can run Tails from
+    a variety of media (primarily DVD and USB drives).
+
+  * Create different kinds of virtual storage (IDE, USB, DVD...),
+    and either cold or hot plug/unplug them into/from the
+    virtual machine.
+
+  * Modify the virtual machine's hardware, e.g. its amount of RAM,
+    its processor features (PAE), etc.
+
+  * Simulate user interaction with the system under testing and check
+    its state.
+
+  * Run arbitrary shell commands inside the virtual machine.
+
+  * Take screenshots from the display of the virtual machine, at
+    particular events, like when a scenario fails. Complete test
+    sessions can also be captured into a video.
+
+  * Capture and analyze the network traffic of the system under testing.
+
+## source vs. product cucumber features
+
+Fundamentally speaking there are two types of tests:
+
+* Tests that make sure that the Tails *sources* behave correctly *at
+  build time* (example: `features/build.feature`); these ones are
+  aptly tagged `@source`; and,
+
+* Tests that make sure that the product built from Tails sources, i.e.
+  a Tails ISO image, behaves correctly *at run time*; these ones are
+  tagged `@product`.
+
+The requirement of these are quite different; for instance, a
+`@product` test must have access to a Tails ISO image to test, whereas a
+`@source` test doesn't. Therefore their environments are setup
+separately using our custom `BeforeFeature` hook, with the respective
+tag.
+
+# Implementation
+
+## Running cucumber in the right environment
+
+The `run_test_suite` script is a wrapper on top of `cucumber`, that
+sets the correct environment up:
+
+* It uses `Xvfb` so that the `DISPLAY` environment variable points to
+  an unused X display (tip: use `Xvfb`) with screen size and color
+  depth matching what the images used for matching are optimized for
+  (that is, 1024x768 / 24-bit).
+
+* It runs `unclutter` on `$DISPLAY` to prevent the mouse
+  pointer from masking GUI elements looked for through image matching.
+
+* It passes `--format ExtraHooks::Pretty` to `cucumber` calls, to get
+  access to our custom `{After,Before}Feature` hooks.
+
+## Remote shell
+
+This started out as a hack, and while it has evolved it largely
+remains so. A proper, reliable, established replacement would be
+welcome, but seems unlikely given the requirements.
+
+Requirements on the host (the remote shell client):
+
+* can execute a command with blocking until command completion on the
+  server, and get back return code, stdout and stderr separately.
+
+* can spawn a command without blocking (except an ACK that the server
+  has run the command, perhaps).
+
+* usable by an unprivileged user
+
+Requirements on the guest (the remote shell server):
+
+* has to work without a network connection.
+
+* should interfere minimally with the surrounding system (e.g. no
+  firewall exceptions; actually we don't want any network traffic at
+  all from it, but this kind of follows from the previous requirement
+  any way)
+
+* must start before the Welcome Screen. Since that's the first point of
+  user interaction in a Tails system (if we ignore the boot menu), it
+  seems like a good place to be able to assume that the remote shell
+  is running.
+
+Scripts:
+
+* [[!tails_gitweb config/chroot_local-includes/usr/local/lib/tails-autotest-remote-shell]]
+* [[!tails_gitweb config/chroot_local-includes/lib/systemd/system/tails-autotest-remote-shell.service]]
+
+### Using the remote shell with non-test suite Tails VMs
+
+The remote shell could potentially be useful for debugging a Tails VM
+that was not started as part of the automated test suite. To do that,
+add a virtio channel device to the libvirt config of the VM:
+
+```xml
+<channel type='unix'>
+  <source mode="bind" path='/path/to/remote-shell.socket'/>
+  <target type='virtio' name='org.tails.remote_shell.0'/>
+</channel>
+```
+
+When the VM has started you can connect to the socket and execute
+commands via the remote shell. Here is an example how to do that in
+Python:
+
+```py
+import json
+import socket
+
+
+client = socket.socket( socket.AF_UNIX, socket.SOCK_STREAM )
+client.connect("/path/to/remote-shell.socket")
+
+id = 1
+_type = "sh_call"
+env = {}
+user = "root"
+cmd = "echo 'huhu?"
+data = [id, _type, user, env, cmd]
+client.send(json.dumps(data).encode()+b"\n")
+
+answer = json.loads(client.recv(1024).decode())
+print(answer)
+>>> '[1, "success", 1, "huhu?", ""]\n'
+```
+
+## Chutney
+
+Chutney is an orchestration tool for quickly setting up a complete Tor
+network: directory authorities, entry/middle/exit nodes, bridges,
+etc. In Tails' test suite we use it to locally set up a Tor network
+that is under our control to be used by the system under testing,
+offering us greatly improved performance and robustness compared to if
+we used the real Tor network.
+
+- [[!tails_gitweb_repo chutney]]
+- [[!tails_gitweb features/chutney/test-network]]
+
+# Expected, reference images
+
+Expected images, aka. reference images, live in [[!tails_gitweb_dir
+features/images]].
+
+When adding or updating one such image, run the
+[[`compress-image.sh`|contribute/how/documentation/compress-image.sh]]
+script on it before committing your changes.
+
+# The art of writing new product test cases
+
+Writing new `@source` features, scenarios or steps should be pretty
+straightforward for anyone with experience with `cucumber`, but the
+same can't be said about `@product` tests, so below we give some
+pointers for the latter.
+
+## Resources
+
+In addition to the libvirt and Cucumber documentation linked
+to in the introduction:
+
+ * [ruby-libvirt API](http://libvirt.org/ruby/api/index.html)
+
+ * The `sniff` application, which is installed in Tails, is quite
+   useful to navigate the GUI element hierarchy. However, `accerciser`
+   (not installed) is even better, due to its ability to highlight
+   elements. Another useful tool is `ipython` (not installed) with its
+   TAB-completion.
+
+## Writing new features and scenarios
+
+First, one should have a good look at especially
+`features/step_definitions/common_steps.rb` and the other features to
+get a general idea of what already is possible. There is a good chance
+there's already implementations for many steps necessary for reaching
+the desired state right before when the stuff special to the intended
+feature begins.
+
+### Common steps example
+
+In order to learn some basic step dependencies, and concepts and
+features of the automated test suite used in features and scenarios,
+let's walk through a few typical steps, in order:
+
+    Given a computer
+
+This is how each scenario (or background) should start. This step
+destroys any residual VM from a previous scenario, and sets up a
+completely fresh one, with all defaults. The defaults are defined in
+`features/domains/default.xml`, but some highlights are:
+
+* One virtual `x86_64` CPU with one core
+* A reasonable amount of RAM
+* ACPI, APIC and PAE enabled
+* UTC hardware clock
+* A DVD drive loaded with the Tails from the ISO
+* No other storage plugged
+* USB 2.0 controller
+* Ethernet interface, plugged into a network bridged with the host
+
+However, most of the time we do not set up a computer from scratch
+using this step, but restore from a snapshot (also called checkpoint)
+using the one of the `Given Tails has booted ...` steps generated in
+`features/step_definitions/snapshots.rb`. An example of such a step,
+and indeed one of the most common ones, is:
+
+    Given Tails has booted from DVD and logged in and the network is connected
+
+These steps will actually run multiple steps, saving one or more
+snapshots along the way. See the next section for details about this.
+
+Returning back to what we'd do after the `Given a computer` step,
+there's a number of steps that reconfigures the computer...
+
+    And I create a 10 GiB disk named "some_disk"
+
+The identifier (`some_disk`) is later used if we want to plug it or
+otherwise act on it. Note that all media created this way are backed
+by [[!wikipedia qcow2]] images, which grow only as they consume
+capacity. All such media can be destroyed after the feature ends
+by using "I create a temporary…" instead.
+
+This step does not necessarily have to be run this early, but it does
+if we want to plug it as a non-removable drive...
+
+    And I plug ide drive "some_disk"
+
+Note that we can decide which type of drive `some_disk` is here. If we
+pick a non-removable media, like in this case, it has to be done
+before we start the virtual machine. Removable media, such as USB
+drives, can be plugged into a live system at any later point.
+
+    And the network is plugged
+
+This plugs the network interface to the host-bridged network (which is
+the default). There's also the "unplugged" version, which generally is
+preferred for features that don't rely on the network (mostly so we
+won't hammer the Tor network unnecessarily). These steps can also be
+performed on a already running system under test.
+
+    And I start the computer
+
+This is where we actually boot the virtual machine.
+
+    And the computer boots Tails
+
+This step:
+
+* verifies that we see the boot menu
+* adds any boot options added via `I set Tails to boot with options ...`
+* makes sure that the Welcome Screen starts
+* makes sure that the remote shell is up and running
+
+Note that the "I set sudo password ..." step has to be run before the
+other option steps of the Welcome Screen as it relies on keyboard navigation.
+
+    And I set sudo password "asdf"
+
+Beyond the obvious, after this step all steps requiring the
+administrative password have access to it.
+
+    And I log in to a new session
+    And the Tails desktop is ready
+    And I have a network connection
+    And Tor is ready
+
+All these should be pretty obvious. It could be mentioned that the
+last two steps, like many others, depend on the remote shell to
+be working.
+
+    And all notifications have disappeared
+
+The notifications can block GUI elements that we're looking for later
+with OpenCV's image matching, so it's important that they are gone in
+essentially all tests of GUI applications. If we have a network
+connection, so the time syncing starts and shows its notifications,
+then this step should be run after the previous step. Otherwise it
+always depends on the `GNOME has started` step.
+
+    And available upgrades have been checked
+
+Since Tor is working, the check for upgrades will be run. We have to
+wait for it to complete because that generally will break later if we
+use snapshots.
+
+### Snapshots
+
+To speed up the test suite and get consistent results when setting up
+state, we make heavy use of virtual machine snapshots. We encourage
+contributors to read the snapshot definitions in
+`features/step_definitions/snapshots.rb` carefully. We generate steps
+from these descriptions, and they are created lazily on first use (and
+then reused in subsequent instances, across features). Some things to
+make note of:
+
+* Snapshots may have parents, which means that they start by running
+  the parent's step, generating its snapshot, recursively to a "root"
+  snapshot without parent.
+
+* Snapshots can be made "temporary". If the snapshot description's
+  `:temporary` field is set to `true`, then the snapshot
+  will be cleared after the feature it was created in finishes. This
+  is a way to reduce the disk space needed for running the test suite,
+  and is encouraged to use for features where a very particular state
+  is set up, that isn't reused in any other feature.
+
+* Debugging snapshot creation is made a lot easier by enabling the
+  `debug` formatter, which will print the steps as they are run.
+
+### Scenarios involving the Internet
+
+Each such new scenario should sniff network traffic, and check that
+all Internet traffic has only flowed through Tor. See the `apt`
+feature for a simple example of how to do it.
+
+### The interactive debugging REPL
+
+Running the test suite with the `--interactive-debugging` option can
+be really useful when investigating problems in the test suite (or
+developing new steps/scenarios, which usually means encountering a lot
+of problems) since it allows invoking a debugging REPL in the context
+a failure occurred at, where you can rapidly iterate on code and find
+solutions.
+
+The debugging REPL is not only accessible when failures occur, you can
+also manually put a "breakpoint" either directly in the code using
+`pause()`, or by adding the step "I pause" at a suitable place in a
+scenario.
+
+While it is quite nice to copy-paste code between your editor and the
+debugging REPL, we can do better: you can edit the code in the usual
+files in your editor, and then hot-reload them in the debugging REPL
+with `reload_step_definitions()`. That reloads all `.rb` files in
+`features/step_definitions/` (so it actually doesn't only affect step
+definitions but function definitions, constants etc. too) so any
+changes outside of these are _not_ reloaded. You can modify any `.rb`
+file and load it with `reload_code('path/to/file.rb')` or even reload
+all code with `reload_all_code()`, but this requires knowing what you
+are doing (see the "Limitations of code reloading" section
+below). Avoid using the built-in `load()` since it does not support
+redefining steps, which our `reload_code()` does.
+
+#### Example: interactive debugging
+
+Let's say we have a scenario:
+
+```gherkin
+Scenario: test
+  Given some context
+  When I do foo
+  Then foo was successful
+  And maybe more stuff
+```
+
+Let's say there is a bug in the `I do foo` step that makes it raise
+some exception. So we insert a breakpoint before `I do foo`:
+
+```gherkin
+Scenario: test
+  Given some context
+  And I pause
+  When I do foo
+  Then foo was successful
+  And maybe more stuff
+```
+
+(Instead of injecting a breakpoint we could also rely on
+`--interactive-debugging`, but this way we can fix the bug and let the
+full scenario run with the fix when we quit the REPL.)
+
+We start the test suite for the problematic scenario, and it stops at
+the breakpoint we injected:
+
+```
+Paused
+
+Return/q: Continue; d: Debugging REPL
+```
+
+We press `d` to enter the debugging REPL, which is a normal `pry`
+session (very similar to `irb` if you are familiar with it):
+
+```
+[1] pry(#<Object>)>
+```
+
+We test the `I do foo` step and observe the failure:
+
+```
+[1] pry(#<Object>)> step 'I do foo'
+RuntimeError: something went wrong
+from features/step_definitions/test.rb:36:in `/^I do foo$/'
+```
+
+Then I start fixing `I do foo` where it was originally defined, in
+`features/step_definitions/test.rb`, using my editor, and if I want to
+try my modification I can reload the code by calling
+`reload_step_definitions()`.
+
+So we reload the code and test it:
+
+```
+[2] pry(#<Object>)> reload_step_definitions
+[... warnings about modifying constants ...]
+=> nil
+[3] pry(#<Object>)> step 'I do foo'
+RuntimeError: something else went wrong this time
+from features/step_definitions/test.rb:36:in `/^I do foo$/'
+```
+
+We're not quite there yet! Also, something to keep in mind is that if
+`I do foo` changes some state, that state might have to be manually
+reverted in the REPL before calling the modified `I do foo` again (so the
+easiest situation is if `I do foo` is idempotent).
+
+So we hack, hack, hack and eventually:
+
+```
+[...]
+[9] pry(#<Object>)> reload_step_definitions
+[... warnings about modifying constants ...]
+=> nil
+[10] pry(#<Object>)> step 'I do foo'
+We at least didn't raise an exception!
+=> nil
+```
+
+Wohoo! We are done!? Not necessarily, let's say that while the
+modifications we did indeed made `I do foo` not raise an exception there
+still is an issue that won't be detected until we run the `foo was
+successful` step. So we might want to incorporate that into our test
+loop (and again, if `foo was successful` changes state it might have
+to be manually reverted afterwards):
+
+```
+[11] pry(#<Object>)> step 'foo was successful'
+RuntimeError: Step "I do foo" did something wrong earlier
+from features/step_definitions/test.rb:40:in `/^foo was successful$/'
+```
+
+Again we hack, hack, hack and eventually:
+
+```
+[...]
+[21] pry(#<Object>)> reload_step_definitions
+[... warnings about modifying constants ...]
+=> nil
+[22] pry(#<Object>)> step 'I do foo'
+We did the correct thing!
+=> nil
+[23] pry(#<Object>)> step 'foo was successful'
+Step "I do foo" did the correct thing earlier!
+=> nil
+```
+
+Now we can just quit the REPL (`exit` or Ctrl+D) and cucumber will
+continue the run, invoking the redefined version of `I do foo` which
+also makes `foo was successful` happy, and the scenario should pass
+(unless there is an issue in the `maybe more stuff` step, then we
+rinse and repeat)!
+
+#### Example: stack navigation
+
+When an error is caught with `--interactive-debugging` and you start
+the debugging REPL you will not necessarily start in the context where
+the error was raised. For convenience reasons it's preferred to put
+you in our code's context instead of deep in some module or cucumber,
+because generally the error lies in our step definitions. But even in
+our code we skip the contexts of some our helpers, for instance, if
+the error occurred in a code block passed to `try_for()` you generally
+are not interested in the context inside `try_for()` where it raises
+its own exception, you want the context where `try_for()` was called
+from. Let's look at an example of just that:
+
+```
+From: features/step_definitions/test.rb:3 :
+
+    1: When /^I fail through try_for$/ do
+    2:   foo = 42
+ => 3:   try_for(1, delay: 0.1) do
+    4:     bar = "this variable will not be in scope"
+    5:     assert_equal(0, foo)
+    6:   end
+    7: end
+
+[1] pry(#<Object>)> foo
+=> 42
+[2] pry(#<Object>)>
+```
+
+So here we could investigate what `foo` actually was set to (which was
+obvious in this silly example, but in general `foo` would probably get
+its value as a return value from a function or be similarly
+opaque). But what if we suspect `try_for()` has a bug?
+
+You can investigate the call stack with the `stack` command, which
+will show you something like this:
+
+```
+Stack: <method> (<instance>) at <source location>
+     try_for() (#<Object>) at features/support/helpers/misc_helpers.rb:145
+     try_for() (#<Object>) at features/support/helpers/misc_helpers.rb:51
+  => <top-level> (#<Object>) at features/step_definitions/test.rb:3
+     cucumber_instance_exec() (#<Object>) at /usr/lib/ruby/vendor_ruby/cucumber/core_ext/instance_exec.rb:25
+     cucumber_run_with_backtrace_filtering() (#<Object>) at /usr/lib/ruby/vendor_ruby/cucumber/core_ext/instance_exec.rb:42
+[...]
+```
+
+You can move up in the stack with the `up` command (and down with the
+`down` command):
+
+```
+[3] pry(#<Object>)> up
+
+From: features/support/helpers/misc_helpers.rb:51 Object#try_for:
+
+    46: # XXX: giving up on a few worst offenders for now
+    47: # rubocop:disable Metrics/AbcSize
+    48: # rubocop:disable Metrics/CyclomaticComplexity
+    49: # rubocop:disable Metrics/MethodLength
+    50: # rubocop:disable Metrics/PerceivedComplexity
+ => 51: def try_for(timeout, **options)
+    52:   return yield if block_given? && timeout.nil?
+    53: 
+    54:   options[:delay] ||= 1
+    55:   options[:log] = true if options[:log].nil?
+    56:   last_exception = nil
+
+Stack: <method> (<instance>) at <source location>
+     try_for() (#<Object>) at features/support/helpers/misc_helpers.rb:145
+  => try_for() (#<Object>) at features/support/helpers/misc_helpers.rb:51
+     <top-level> (#<Object>) at features/step_definitions/test.rb:3
+     cucumber_instance_exec() (#<Object>) at /usr/lib/ruby/vendor_ruby/cucumber/core_ext/instance_exec.rb:25
+     cucumber_run_with_backtrace_filtering() (#<Object>) at /usr/lib/ruby/vendor_ruby/cucumber/core_ext/instance_exec.rb:42
+     [...]
+[4] pry(#<Object>)>
+```
+
+Ruby has these "extra" contexts for various constructs, e.g. loops
+tend to create a new one. So to get to the actual point the exception
+was raised we call `up` once more:
+
+```
+[4] pry(#<Object>)> up
+
+From: features/support/helpers/misc_helpers.rb:145 Object#try_for:
+
+    140:   if last_exception
+    141:     msg += "\nLast ignored exception was: " \
+    142:            "#{last_exception.class}: #{last_exception}"
+    143:     msg += "\n#{last_exception.backtrace.join("\n")}"
+    144:   end
+ => 145:   raise exc_class, msg
+    146: end
+    147: # rubocop:enable Metrics/AbcSize
+    148: # rubocop:enable Metrics/MethodLength
+    149: # rubocop:enable Metrics/PerceivedComplexity
+    150: # rubocop:enable Metrics/CyclomaticComplexity
+
+Stack: <method> (<instance>) at <source location>
+  => try_for() (#<Object>) at features/support/helpers/misc_helpers.rb:145
+     try_for() (#<Object>) at features/support/helpers/misc_helpers.rb:51
+     <top-level> (#<Object>) at features/step_definitions/test.rb:3
+     cucumber_instance_exec() (#<Object>) at /usr/lib/ruby/vendor_ruby/cucumber/core_ext/instance_exec.rb:25
+     cucumber_run_with_backtrace_filtering() (#<Object>) at /usr/lib/ruby/vendor_ruby/cucumber/core_ext/instance_exec.rb:42
+     [...]
+```
+
+and then we can access the variables in this context, e.g.:
+
+```
+[5] pry(#<Object>)> last_exception
+=> #<Test::Unit::AssertionFailedError: <0> expected but was
+<42>.>
+```
+
+#### Example: writing a new scenario
+
+Let's say we want to implement the silly scenario from the previous
+example, so we first create `features/test.feature`:
+
+```gherkin
+@source
+Feature: test
+
+Scenario: test
+  Given some context
+  When I do foo
+  Then foo was successful
+  And maybe more stuff
+```
+
+We run this feature, and cucumber will actually output the step
+definition stubs we need:
+
+```
+[...]
+1 scenario (1 undefined)
+4 steps (4 undefined)
+0m0.004s
+
+You can implement step definitions for undefined steps with these snippets:
+
+Given(/^some context$/) do
+  pending # Write code here that turns the phrase above into concrete actions
+end
+
+When(/^I do foo$/) do
+  pending # Write code here that turns the phrase above into concrete actions
+end
+
+Then(/^foo was successful$/) do
+  pending # Write code here that turns the phrase above into concrete actions
+end
+
+Then(/^maybe more stuff$/) do
+  pending # Write code here that turns the phrase above into concrete actions
+end
+```
+
+which we put into `features/step_definitions/test.rb`, but we replace
+`pending` with `pause` to get a breakpoint in each of these step
+definition stubs:
+
+```rb
+Given(/^some context$/) do
+  pause
+end
+
+When(/^I do foo$/) do
+  pause
+end
+
+Then(/^foo was successful$/) do
+  pause
+end
+
+Then(/^maybe more stuff$/) do
+  pause
+end
+```
+
+Then we run the feature again. and we work similarly to how we did in
+the previous example, now implementing the new steps by doing the
+following as we encounter each of their breakpoints:
+
+1. we interactively test code snippets in the debugging REPL and
+   explore solutions,
+2. we take the good bits and write them into the step definition in
+   `features/step_definitions/test.rb`,
+3. we run `reload_step_definitions` + `step ...` to test it,
+4. we iterate until the step passes and does what we want it to,
+5. and then we finally escape the breakpoint and see cucumber run the
+   step successfully.
+
+After the last step we have implemented the whole scenario and all its
+steps in a single run, avoiding the costs of having to re-run the
+scenario multiple times just to test some change we did to some step.
+
+Like we mentioned in the previous example, some steps alter state and
+have to be manually reverted so you have the required state to test
+the step with again. If the revert is awkward or time consuming, and
+this is mostly about the Tails VM's state, do not hesitate to manually
+save a snapshot in the debugging REPL with `$vm.save_snapshot('foo')`,
+and then restore it with `$vm.restore_snapshot('foo')` before `step
+...` each time you want to test it. Note that this will not revert any
+Ruby state, like `@class_variables` and `@global_variables` used by
+some steps.
+
+#### Limitations of code reloading
+
+Reloading some support code in `features/support` can have weird
+consequences, and this area has not been explored much. For instance,
+after calling `reload_all_code()` odd errors have occurred _after_ the
+run completes:
+
+```
+1 scenario (1 passed)
+12 steps (12 passed)
+0m2.799s
+features/support/helpers/vm_helper.rb:817:in `lookup_domain_by_name': Connect has been freed (ArgumentError)
+        from features/support/helpers/vm_helper.rb:817:in `remove_all_snapshots'
+        from features/support/hooks.rb:89:in `block in <top (required)>'
+```
+
+Who knows what else is broken? So use `reload_code()` and
+`reload_all_code()` at your own risk!
+
+## Writing new steps
+
+### The tools and some guidelines for their usage
+
+In essence, the tools we have for interacting with the Tails instance
+are:
+
+* the VM helper class,
+* the Screen helper class,
+* dogtail, and
+* the remote shell.
+
+It should be fairly obvious when to use the VM helper class (stuff
+relating to the virtual hardware), but there is some overlap between
+image matching, dogtail and the remote shell.
+
+The Screen class and dogtail:
+
+* They should be used in all instances where we want to simulate user
+  interaction with the Tails system. For instance, when we start an
+  application we usually want to click our way through the GNOME
+  applications menu to stay true to what an actual user would do.
+
+* They come in handy when we want to verify some state pertaining
+  to the GUI.
+
+* In general we prefer dogtail, since it is more precise given its
+  direct access to GUI elements and their state, and images carry a
+  quite heavy maintenance burden. However, Dogtail is not possible to
+  use before GNOME has started, so we rely on image matching for
+  anything before or after that. Also, for some applications it's
+  simply hard to "navigate" to the right element in the hierarchy of
+  elements of some GUI, due to ambiguity and/or lack of labels.
+
+* When dogtail is not available or not convenient, there are two more
+  tools: images and OCR.
+
+  * Images can be matched, with the most common method being
+    `@screen.wait` (there are actually more). This is very practical
+    to have, with the main disadvantage being that images needs to be
+    bumped over time:
+      1. language changes (and sometimes also localization changes)
+      2. rendering changes (typically when migrating to a new Debian suite)
+
+  * OCR can be matched using `@screen.wait_text`. This is more "greppable",
+    but it still has limitations: don't expect the OCR engine to be able
+    to follow text which is wrapped in a dialog, for example.
+
+The remote shell:
+
+* Useful for testing non-GUI state.
+
+* Useful for reaching some state required before we test stuff
+  depending on user interaction (which should use the Screen class
+  or dogtail!).
+
+* It is acceptable (but not encouraged) to use the remote shell for
+  simulating user terminal interaction when we need to analyze the
+  commands output.
+
+# Limitations and issues
+
+These things are good to know when developing new features, scenarios
+or steps.
+
+## The remote shell
+
+### Different behaviour compared to "real" shell
+
+The remote shells have a few surprises in store:
+
+* `pgrep -f` detects itself, which can have potentially serious
+  consequences if not dealt with.
+
+* Minor groups are not set, so e.g. the `groups` command may not do
+  what you expect, but `groups $USER` does.
+
+These are the currently known oddities of the remote shell, but there
+may be more, so beware, and make sure to verify that any commands sent
+through it do what you want them to do.
+
+### Remote shell instability
+
+Although very rare, the remote shell can get into a state where it
+stops responding, resulting in the test suite waiting for a response
+forever.
+
+### Remote shell interaction during early boot
+
+When it is needed to interact with the system before a certain service
+has started during the boot process, you must do the following:
+
+* Make sure that `tails-autotest-remote-shell.service` is started
+  before the other service. It might be enough to add
+  `Before=other.service`, as is currently done for `gdm.service`,
+  but that will for instance not suffice for services with an earlier
+  `WantedBy=` target.
+* You then hook your code to be run before the service by passing it
+  as a code block to the `add_early_boot_hook` method. This code will
+  execute during the `the computer boots Tails` step, so your scenario
+  must use that step.
+
+As an example, you can look how the `<device> is damaged in a way that
+some read operations fail` step hooks into the system before
+`gdm.service` is started.
+
+All this is achieved by defining the remote shell systemd service as
+notify type, so any services that depends on it are blocked until
+systemd is told the remote shell is ready to proceed. That is done by
+executing `RemoteShell::SignalReady.new($vm)`, which is done in the
+`the computer boots Tails`, right after executing the early boot
+hooks.
+
+* [[!tails_gitweb features/hardware_failure.feature]]
+* [[!tails_gitweb features/step_definitions/hardware.rb]]
+
+## Plugging SATA drives
+
+When creating a disk (at least when backed by a `raw` image) via the
+storage helper, and then plugging it to a Tails instance as SATA
+drive, GNOME will report that the drive is failing when inside Tails,
+and indeed several SMART tests fail. For now, plug hard disks as IDE
+only (or USB, of course).
+
+## Passing state between steps in snapshots
+
+When creating snapshots, anything stored in a variable in any of those
+steps will only be available in subsequent steps in that scenario, not
+in other scenarios restoring from that snapshot. The exception is when
+global variables are used, which is an acceptable workaround, but it
+is very hard to get right, and to follow. Please
+try to avoid this until [[!tails_ticket 5847]] is solved.
+
+## Disabling scenarios that are known to fail
+
+When a scenario is broken for an extended period of time (e.g. when
+rebasing Tails on a new Debian version, which usually breaks tons of
+stuff) the current method of temporarily disabling affected tests is
+simply to remove them in Tails' Git, making sure that we won't forget
+about them.
+
+Note that such removals should be isolated per commit so that they are
+easy to revert when whatever was broken is fixed. Hence, such a commit
+could either:
+
+* remove a single scenario if something unique to that scenario is
+  broken;
+
+* remove multiple scenarios possibly spanning multiple features, if
+  they're broken for the same reason, e.g. a step they all use is
+  broken;
+
+* remove a complete feature, if the complete feature is broken for the
+  same reason.
+
+Each such commit *must* have an issue created, referencing the commit
+to revert.
+
+## Cucumber tags
+
+We use the following Cucumber tags on scenarios and features:
+
+- `@fragile`: this test lacks robustness and sometimes yields false
+  positive failures.
+
+- `@doc`: the copy of our website included in the system-under-test affects the
+  outcome of this test.
+
+- `@check_tor_leaks`: this instructs the test suite machinery to check
+  that all outgoing connections initiated during this test go through Tor.
+
+- `@slow`: this test takes a long time to run (rule of thumb: more than 10
+  minutes on lizard).
+
+- `@not_release_blocker`: we don't abort the release process if this test fails;
+  instead, we create a GitLab issue to fix it in the next release.
+
+Our Jenkins setup uses these tags to decide which tests to run:
+[[automated tests in Jenkins|https://gitlab.torproject.org/tpo/tpa/team/-/wikis/tails/services/jenkins/automated-tests-in-jenkins]].
+
+# Tips and tricks
+
+## Iterate quickly with `--late-patch`
+
+Let's say that our test suite is reporting you an error. You want to make a fix and see if it makes the test
+suite happy again. Usually, you would be required to build the image again, which is slow.
+
+You can do better than this using `--late-patch`:
+
+ - create a file called, for example `late-patch-fix-foobar.txt`
+
+ - every line contains two filenames, a source one and a destination one.
+
+ - run the test suite using `--late-patch late-patch-fix-foobar.txt`
+
+Here is an example of a late-patch file that is well suited to iterate over _Tor Connection_:
+
+```
+# python files
+config/chroot_local-includes/usr/lib/python3/dist-packages/tca/application.py	/usr/lib/python3/dist-packages/tca/application.py
+config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py	/usr/lib/python3/dist-packages/tca/ui/main_window.py
+# UI
+config/chroot_local-includes/usr/share/tails/tca/main.ui.in	/usr/share/tails/tca/main.ui
+config/chroot_local-includes/usr/share/tails/tca/time-dialog.ui.in	/usr/share/tails/tca/time-dialog.ui
+config/chroot_local-includes/usr/share/tails/tca/tca.css	/usr/share/tails/tca/tca.css
+# helpers
+config/chroot_local-includes/usr/local/lib/tca-portal	/usr/local/lib/tca-portal
+config/chroot_local-includes/usr/local/lib/tails-get-network-time	/usr/local/lib/tails-get-network-time
+```

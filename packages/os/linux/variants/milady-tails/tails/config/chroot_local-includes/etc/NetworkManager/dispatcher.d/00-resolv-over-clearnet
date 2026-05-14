@@ -1,0 +1,23 @@
+#!/bin/sh
+
+# This file is needed by the Unsafe Browser, and Tor while in bridge
+# mode.
+
+# Run only when the interface is not "lo":
+if [ -z "$1" ] || [ "$1" = "lo" ]; then
+   exit 0
+fi
+
+RESOLV_CLEARNET_CONF=/etc/resolv-over-clearnet.conf
+# We are truncating the file as opposed to deleting + recreating it
+# for a reason: we mount-bind this file over /etc/resolv.conf for
+# processes (via mount namespaces) that we want to give clearnet DNS
+# resolving, and deleting + recreating it would mean that the
+# bind-mount would remain outdated.
+echo -n > "${RESOLV_CLEARNET_CONF}"
+IP4_REGEX='[0-9]{1,3}(\.[0-9]{1,3}){3}'
+for ns in ${IP4_NAMESERVERS}; do
+    if echo "${ns}" | grep --extended-regexp -q "^${IP4_REGEX}$"; then
+        echo "nameserver ${ns}" >> "${RESOLV_CLEARNET_CONF}"
+    fi
+done

@@ -1,0 +1,28 @@
+[[!meta title="Manually upgrade from Linux"]]
+
+[[!meta stylesheet="install/inc/stylesheets/overview" rel="stylesheet" title=""]]
+[[!meta stylesheet="install/inc/stylesheets/download" rel="stylesheet" title=""]]
+[[!meta stylesheet="install/inc/stylesheets/steps" rel="stylesheet" title=""]]
+[[!meta stylesheet="install/inc/stylesheets/upgrade-linux" rel="stylesheet" title=""]]
+
+[[!meta script="install/inc/js/download"]]
+[[!meta script="install/inc/js/forge.min"]]
+
+[[!inline pages="install/inc/overview" raw="yes" sort="age"]]
+
+[[!inline pages="install/inc/steps/download.inline" raw="yes" sort="age"]]
+
+[[!inline pages="install/inc/steps/verify.inline" raw="yes" sort="age"]]
+
+<h1 id="install" class="step">Install an intermediary Tails using <em>GNOME Disks</em></h1>
+
+<div class="step-image">[[!img install/inc/infography/install-upgrade-usb-only.png link="no" alt=""]]</div>
+
+In this step, you will install an intermediary Tails using the Tails USB
+image that you downloaded earlier.
+
+[[!inline pages="install/inc/steps/install_with_gnome_disks.inline" raw="yes" sort="age"]]
+
+[[!inline pages="install/inc/steps/restart_first_time.inline" raw="yes" sort="age"]]
+
+[[!inline pages="install/inc/steps/clone.inline" raw="yes" sort="age"]]

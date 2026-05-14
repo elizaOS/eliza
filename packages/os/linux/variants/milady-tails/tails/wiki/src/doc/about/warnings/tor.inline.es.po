@@ -1,0 +1,39 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"POT-Creation-Date: 2021-06-11 14:19-0500\n"
+"PO-Revision-Date: 2023-12-31 12:22+0000\n"
+"Last-Translator: victor dargallo <victordargallo@disroot.org>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: es\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.3\n"
+
+#. type: Content of: <p>
+msgid ""
+"Tails uses the Tor network because it is the strongest and most popular "
+"network to protect from surveillance and censorship."
+msgstr ""
+"Tails usa la red Tor porque es la red más fuerte y popular para protegerse "
+"de la vigilancia y la censura."
+
+#. type: Content of: <p>
+msgid "But Tor has limitations if you are concerned about:"
+msgstr "Pero Tor tiene limitaciones si estás interesado en:"
+
+#. type: Content of: <ul><li>
+msgid "Hiding that you are using Tor and Tails"
+msgstr "Esconder que estás usando Tor y Tails"
+
+#. type: Content of: <ul><li>
+msgid "Protecting your online communications from determined, skilled attackers"
+msgstr ""
+"Proteger tus comunicaciones en línea de determinados atacantes especializados"

@@ -1,0 +1,53 @@
+[Context]
+
+# Explanations:
+# * !host:reset;!host: Disallow access to any files on the host,
+#   ignoring all filesystem permissions inherited from the app's
+#   metadata file
+# * xdg-run/speech-dispatcher: speech synthesizer support (speechd)
+# * Remainder: Allow access to directories which should be accessible to
+#   Tor Browser.
+filesystems=!host:reset;!host;xdg-run/speech-dispatcher:ro;xdg-documents;xdg-download;xdg-music;xdg-pictures;xdg-videos;/run/tor-has-bootstrapped;~/.mozilla:create;~/.tor-browser:create;
+
+# Explanations:
+# * !x11;!fallback-x11: Disallow access to the X11 server, overriding
+#   the permissions inherited from the app's metadata file.
+# * cups: printing support.
+sockets=!x11;!fallback-x11;cups;
+
+# Explanations:
+# * Drop useless access added by upstream
+# * Allow accessibility support (a11y)
+[Session Bus Policy]
+com.canonical.AppMenu.Registrar=none
+org.kde.kconfig.notify=none
+org.kde.KGlobalSettings=none
+org.mozilla.firefox.*=own
+
+# Here we explain why we are skipping some settings used in the
+# org.mozilla.firefox flatpak:
+#
+#   [Session Bus Policy]
+#
+#   org.gtk.vfs.*=talk
+#
+# Doesn't seem to be used any more from grepping the Tor Browser
+# source.
+#
+#   org.mpris.MediaPlayer2.firefox.*=own
+#
+# Used for Desktop integration (e.g. status indicator that controls
+# playback) but it is not used by GNOME.
+#
+#   org.freedesktop.FileManager1=talk
+#
+# This seems to be some DBus alternative to the Desktop Portal
+# FileChooser, which is unused if Portals are enabled, which they are
+# both in Tails and the org.torproject.TorBrowser flatpak.
+#
+#   [System Bus Policy]
+#
+#   org.freedesktop.NetworkManager=talk
+#
+# Apparently Firefox has support for Wifi scanning, which we don't
+# care about.

@@ -1,0 +1,120 @@
+/* Headings */
+
+h1 {
+  color: var(--medium-purple);
+}
+
+/* Step counter */
+
+body {
+  counter-reset: step;
+}
+
+h1.step, span.next-counter {
+  counter-increment: step;
+}
+
+h1.step:before {
+  position: relative;
+  font-size: var(--font-size-h3);
+  display: inline-block;
+  width: 60px;
+}
+
+/* Step image */
+
+.step-image {
+  margin-left: 60px;
+}
+
+.step-image img {
+  border: 1px solid var(--medium-light-gray);
+  margin-bottom: 2em;
+  width: 150px;
+  border-radius: 5px;
+}
+
+/* Success notes */
+
+div.success {
+  display: flex;
+  justify-content: flex-start;
+  gap: 10px 30px;
+  border: 8px solid var(--light-purple);
+  border-radius: 20px;
+  padding: 10px 30px 0px 30px;
+  margin: 30px 0;
+}
+
+div.success video {
+  padding-bottom: 10px;
+}
+
+div.success p.big {
+  font-size: var(--font-size-h1);
+  color: var(--medium-purple);
+  font-weight: var(--font-weight-bold);
+  line-height: 42px;
+  margin-top: 10px;
+  margin-bottom: 30px;
+}
+
+div.success p {
+  max-width: 600px;
+}
+
+@media (max-width: 700px) {
+  div.success {
+    flex-wrap: wrap;
+    justify-content: space-evenly;
+  }
+}
+
+/* Toggleable */
+
+div.toggleable .hide {
+  display: block !important;
+}
+
+/* Small Devices, Tablets */
+@media print {
+  /* from http://www.alsacreations.com/astuce/lire/1160-une-feuille-de-styles-de-base-pour-le-media-print.html */
+
+  body {
+    width: auto !important;
+    margin: auto !important;
+    font-size: var(--font-size-small);
+    background-color: white !important;
+    color: black !important;
+  }
+
+  p, h1, h2, h3, h4, h5, h6, blockquote, ul, ol {
+    color: black !important;
+  }
+
+  .print {
+    display: block;
+  }
+
+  a {
+    color: black !important;
+  }
+
+  /* Tails specifics */
+
+  #content {
+    padding-left: 0px;
+  }
+
+  h1 {
+    font-size: var(--font-size-h2);
+    margin-left: 50px !important;
+  }
+
+  img {
+    page-break-before: auto; /* 'always,' 'avoid,' 'left,' 'inherit,' or 'right' */
+    page-break-after: auto; /* 'always,' 'avoid,' 'left,' 'inherit,' or 'right' */
+    page-break-inside: avoid; /* or 'auto' */
+  }
+
+}

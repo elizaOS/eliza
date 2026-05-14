@@ -1,0 +1,75 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-06-10 12:51+0200\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: tr\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+#. type: Bullet: '- '
+msgid "[[Running Tails in a virtual machine|advanced_topics/virtualization]]"
+msgstr ""
+
+#. type: Bullet: '  * '
+msgid "[[*GNOME Boxes*|advanced_topics/virtualization/boxes]]"
+msgstr ""
+
+#. type: Bullet: '  * '
+msgid "[[*virt-manager*|advanced_topics/virtualization/virt-manager]]"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"[[Modifying the boot options using the Boot Loader|advanced_topics/"
+"boot_options]]"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"[[Starting Tails from an external hard disk or problematic USB stick|"
+"advanced_topics/external_hard_disk]]"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "[[Accessing the internal hard disk|advanced_topics/internal_hard_disk]]"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"[[Protection against cold boot attacks|advanced_topics/cold_boot_attacks]]"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "[[Accessing resources on the local network|advanced_topics/lan]]"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "[[Enabling a wireless device|advanced_topics/wireless_devices]]"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "[[Chatting with *Dino* and OMEMO|advanced_topics/dino]]"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "[[Exchanging Monero with *Feather*|advanced_topics/feather]]"
+msgstr ""
+
+#, fuzzy
+#~ msgid ""
+#~ "[[!traillink Installing_additional_software|first_steps/"
+#~ "additional_software]]"
+#~ msgstr ""
+#~ "[[!traillink Zusätzliche_Software_installieren|first_steps/"
+#~ "additional_software]]"
