@@ -1,8 +1,10 @@
 import type { SensitiveRequestActorPolicy, SensitiveRequestPolicy } from "@elizaos/core";
 import { and, eq } from "drizzle-orm";
 import { dbRead } from "@/db/client";
+import { identityLinksRepository } from "@/db/repositories/identity-links";
 import { usersRepository } from "@/db/repositories/users";
 import { platformCredentials } from "@/db/schemas/platform-credentials";
+import { createIdentityLinkStore, type IdentityLinkStore } from "@/lib/services/identity-link-store";
 
 export type SensitiveRequestActor =
   | {
@@ -324,7 +326,16 @@ export async function authorizeSensitiveRequestActor(params: {
   };
 }
 
-export function createCloudSensitiveRequestAuthorizationAdapter(): SensitiveRequestIdentityAuthorizationAdapter {
+export interface CreateCloudSensitiveRequestAuthorizationAdapterDeps {
+  identityLinkStore?: IdentityLinkStore;
+}
+
+export function createCloudSensitiveRequestAuthorizationAdapter(
+  deps: CreateCloudSensitiveRequestAuthorizationAdapterDeps = {},
+): SensitiveRequestIdentityAuthorizationAdapter {
+  const linkStore =
+    deps.identityLinkStore ?? createIdentityLinkStore({ repository: identityLinksRepository });
+
   return {
     async resolveCloudSession(actor) {
       const user = await usersRepository.findWithOrganization(actor.userId);
@@ -421,6 +432,10 @@ export function createCloudSensitiveRequestAuthorizationAdapter(): SensitiveRequ
         ]),
         connector: { platform: normalizedPlatform, externalId },
       };
+    },
+
+    async areEntitiesLinked(leftEntityId, rightEntityId) {
+      return linkStore.areEntitiesLinked(leftEntityId, rightEntityId);
     },
   };
 }
