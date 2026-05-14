@@ -17,7 +17,7 @@
 
 set -u
 
-session_id="${PARALLAX_SESSION_ID:-}"
+session_id="${ELIZA_AGENT_SESSION_ID:-}"
 hook_port="${ELIZA_HOOK_PORT:-2138}"
 workdir="$PWD"
 agent_user="$USER"
@@ -87,7 +87,7 @@ github_token_set=$github_token_set
 KV
 
 if [ -z "$session_id" ]; then
-    echo "advice=PARALLAX_SESSION_ID is unset — eliza-runtime skill does not apply to this session." >&2
+    echo "advice=ELIZA_AGENT_SESSION_ID is unset — eliza-runtime skill does not apply to this session." >&2
     exit 1
 fi
 

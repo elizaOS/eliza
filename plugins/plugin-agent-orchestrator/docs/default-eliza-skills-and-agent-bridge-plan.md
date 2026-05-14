@@ -213,7 +213,7 @@ Status: local unit/type/skills tests are implemented and passing. Live OpenCode/
 ## Remaining Gaps
 
 - OpenCode is currently treated through shell-compatible spawn paths in parts of the orchestrator. It should become a first-class memory/config adapter if the project wants equivalent behavior to Claude/Codex/Gemini.
-- `PARALLAX_DEFAULT_AGENT_TYPE` fixed-default parsing still only accepts `claude`, `gemini`, `codex`, and `aider`. Routing can rank OpenCode, but fixed default should be extended after type/API review.
+- `ELIZA_DEFAULT_AGENT_TYPE` fixed-default parsing still only accepts `claude`, `gemini`, `codex`, and `aider`. Routing can rank OpenCode, but fixed default should be extended after type/API review.
 - Writing adapter memory files named `AGENTS.md` can collide with repos that already track `AGENTS.md`. A safer strategy is needed for Codex memory injection in tracked-repo workspaces.
 - Live agent benchmarking against OpenCode + Eliza Cloud + Cerebras requires credentials and running infrastructure.
 - The parent-agent broker currently asks through the normal parent message pipeline. Direct action invocation APIs could be added later, but the message path is more flexible and preserves confirmation behavior.

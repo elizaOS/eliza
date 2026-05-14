@@ -11,7 +11,7 @@
 #
 # Endpoints come from the @elizaos/plugin-agent-orchestrator bridge routes
 # (see references/hooks.md for the API contract). They require:
-#   - PARALLAX_SESSION_ID set (this script's session is registered with the parent)
+#   - ELIZA_AGENT_SESSION_ID set (this script's session is registered with the parent)
 #   - The parent's API server reachable at localhost:$ELIZA_HOOK_PORT (default 2138)
 #   - The session in non-terminal state (active or tool_running) — terminated
 #     sessions return 410.
@@ -25,14 +25,14 @@ set -u
 CMD="${1:-help}"
 ARG="${2:-}"
 
-session_id="${PARALLAX_SESSION_ID:-}"
+session_id="${ELIZA_AGENT_SESSION_ID:-}"
 hook_port="${ELIZA_HOOK_PORT:-2138}"
 base="http://localhost:$hook_port/api/coding-agents/$session_id"
 
 # Help is always free; everything else needs an active session + curl.
 if [ "$CMD" != "help" ] && [ "$CMD" != "--help" ] && [ "$CMD" != "-h" ]; then
     if [ -z "$session_id" ]; then
-        echo "eliza-parent: PARALLAX_SESSION_ID is not set — not a Eliza session." >&2
+        echo "eliza-parent: ELIZA_AGENT_SESSION_ID is not set — not a Eliza session." >&2
         exit 1
     fi
     if ! command -v curl >/dev/null 2>&1; then
