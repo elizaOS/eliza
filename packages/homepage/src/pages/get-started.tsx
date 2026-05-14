@@ -435,6 +435,64 @@ function ProvisioningChatStep({ onContinue }: { onContinue: () => void }) {
         </button>
       </div>
 
+      {actions.length > 0 && (
+        <div className="mt-3 flex flex-col gap-2">
+          {actions.map((action) => (
+            <a
+              key={`${action.type}-${action.href}`}
+              href={action.href}
+              target={action.type === "launch" ? "_blank" : undefined}
+              rel={action.type === "launch" ? "noreferrer" : undefined}
+              className="w-full h-[44px] rounded-xl bg-neutral-900 hover:bg-neutral-800 text-white text-sm font-medium flex items-center justify-center gap-2 transition-colors"
+            >
+              {action.label}
+              {action.type === "launch" && <ExternalLink className="size-4" />}
+            </a>
+          ))}
+        </div>
+      )}
+
+      {showPlatformShortcuts && onSelectMethod && (
+        <div className="mt-5 grid grid-cols-2 gap-2">
+          <Button
+            type="button"
+            variant="ghost"
+            onClick={() => onSelectMethod("telegram")}
+            className="h-11 rounded-xl bg-white/45 hover:bg-white/65 text-neutral-800 gap-2"
+          >
+            <TelegramIcon className="size-4 text-[#229ED9]" />
+            Telegram
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            onClick={() => onSelectMethod("discord")}
+            className="h-11 rounded-xl bg-white/45 hover:bg-white/65 text-neutral-800 gap-2"
+          >
+            <DiscordIcon className="size-4 text-[#5865F2]" />
+            Discord
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            onClick={() => onSelectMethod("imessage")}
+            className="h-11 rounded-xl bg-white/45 hover:bg-white/65 text-neutral-800 gap-2"
+          >
+            <AppleMessagesIcon className="size-4" />
+            iMessage
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            onClick={() => onSelectMethod("whatsapp")}
+            className="h-11 rounded-xl bg-white/45 hover:bg-white/65 text-neutral-800 gap-2"
+          >
+            <WhatsAppIcon className="size-4 text-[#25D366]" />
+            WhatsApp
+          </Button>
+        </div>
+      )}
+
       {/* Continue button when ready */}
       {isReady && (
         <Button
@@ -481,7 +539,7 @@ export default function GetStartedPage() {
     (isAuthenticated && !!discordCode);
 
   // Flow state
-  const [step, setStep] = useState<OnboardingStep>("SELECT_METHOD");
+  const [step, setStep] = useState<OnboardingStep>("CHAT_ONBOARDING");
   const [, setSelectedMethod] = useState<OnboardingMethod | null>(null);
   const [initialMethodHandled, setInitialMethodHandled] = useState(false);
 
@@ -605,7 +663,8 @@ export default function GetStartedPage() {
       !guideParam &&
       !isLinkMode &&
       !discordCode &&
-      step !== "PROVISIONING_CHAT"
+      step !== "PROVISIONING_CHAT" &&
+      step !== "CHAT_ONBOARDING"
     ) {
       navigate("/connected", { replace: true });
     }
@@ -1046,7 +1105,8 @@ export default function GetStartedPage() {
     !isLinkMode &&
     !guideParam &&
     !discordCode &&
-    step !== "PROVISIONING_CHAT"
+    step !== "PROVISIONING_CHAT" &&
+    step !== "CHAT_ONBOARDING"
   ) {
     return (
       <main className="min-h-screen bg-[#0d0d0f] flex flex-col items-center justify-center px-4">
@@ -1084,7 +1144,8 @@ export default function GetStartedPage() {
         style={headerSpring}
       >
         <div className="w-16">
-          {step === "DISCORD_SETUP_GUIDE" ? null : step !== "SELECT_METHOD" ? (
+          {step === "DISCORD_SETUP_GUIDE" ? null : step !== "SELECT_METHOD" &&
+            step !== "CHAT_ONBOARDING" ? (
             <button
               type="button"
               onClick={handleBack}

@@ -4,8 +4,8 @@
  * Desktop automation plugin for elizaOS agents — screenshots, mouse/keyboard
  * control, browser CDP automation, and window management.
  *
- * File operations belong on the FILE action; shell/terminal access belongs on
- * the SHELL action. They are not exposed by this plugin.
+ * File operations and guarded command execution are exposed through the
+ * ComputerUseService compatibility surface for Cua/open-computer-use callers.
  *
  * Deeply ported from coasty-ai/open-computer-use (Apache 2.0).
  *
