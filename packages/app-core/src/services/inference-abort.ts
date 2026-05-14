@@ -54,9 +54,9 @@ export function trackInflight(
  * Idempotent — calling on a runtime with no in-flight work returns
  * `{aborted: 0}` and does nothing.
  */
-export function abortInflightInference(
-  runtime: IAgentRuntime,
-): { aborted: number } {
+export function abortInflightInference(runtime: IAgentRuntime): {
+  aborted: number;
+} {
   const set = trackers.get(runtime);
   if (!set || set.size === 0) {
     return { aborted: 0 };
@@ -83,8 +83,6 @@ export function getInflightInferenceCount(runtime: IAgentRuntime): number {
  *
  * @internal
  */
-export function __resetInflightInferenceForTests(
-  runtime: IAgentRuntime,
-): void {
+export function __resetInflightInferenceForTests(runtime: IAgentRuntime): void {
   trackers.delete(runtime);
 }
