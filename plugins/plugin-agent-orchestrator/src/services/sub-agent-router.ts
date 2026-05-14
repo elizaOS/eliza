@@ -7,7 +7,12 @@ import type {
   UUID,
 } from "@elizaos/core";
 import type { AcpService } from "./acp-service.js";
-import type { SessionEventName, SessionInfo } from "./types.js";
+import type {
+  SessionEventName,
+  SessionInfo,
+  SpawnOptions,
+  SpawnResult,
+} from "./types.js";
 
 const ACPX_ROUTER_SOURCE = "sub_agent";
 const SUB_AGENT_ENTITY_NAMESPACE = "acpx:sub-agent";
@@ -311,12 +316,24 @@ export class SubAgentRouter {
     // claimed URL — and following an HTML page's own sub-resources —
     // turns the parent's reply from a hallucinated success into an
     // accurate status report.
-    const text =
-      event === "task_complete"
-        ? await annotateUnverifiedUrls(baseText, (m) =>
-            this.log("debug", m),
-          )
-        : baseText;
+    let text = baseText;
+    let deadUrls: DeadUrl[] = [];
+    if (event === "task_complete") {
+      const verified = await annotateUnverifiedUrls(baseText, (m) =>
+        this.log("debug", m),
+      );
+      text = verified.text;
+      deadUrls = verified.dead;
+    }
+    // Verify-retry: the sub-agent reported done but referenced URLs that
+    // are unreachable — the build is incomplete (missing or empty files).
+    // Re-dispatch a fresh sub-agent with the verification failures fed
+    // back in, before surfacing the failure to the user. When a retry is
+    // spawned, suppress this post — the retry's own task_complete reports.
+    if (event === "task_complete" && deadUrls.length > 0) {
+      const retried = await this.retryIncompleteBuild(session, deadUrls);
+      if (retried) return;
+    }
     const memory: Memory = {
       id: randomUUID() as UUID,
       entityId: subAgentEntityId,
@@ -440,6 +457,105 @@ export class SubAgentRouter {
     };
   }
 
+  /**
+   * Re-dispatch a sub-agent when its claimed URLs verify as unreachable —
+   * an incomplete build (missing or empty files). Returns true if a retry
+   * was spawned (the caller suppresses the parent post and lets the
+   * retry's own task_complete report the outcome). Returns false when
+   * retries are disabled, the budget is exhausted, the original task is
+   * unavailable, or no spawn service is registered — in which case the
+   * caller posts the honest "build incomplete" report instead.
+   *
+   * Bounded by PARALLAX_BUILD_VERIFY_MAX_RETRIES (default 2; 0 disables).
+   * The retry count rides on the spawned session's metadata so a whole
+   * lineage of retries shares one budget. Mirrors the APP-create
+   * verification-retry pattern.
+   */
+  private async retryIncompleteBuild(
+    session: SessionInfo,
+    dead: DeadUrl[],
+  ): Promise<boolean> {
+    const maxRetriesRaw =
+      readSetting(this.runtime, "PARALLAX_BUILD_VERIFY_MAX_RETRIES") ?? "2";
+    const maxRetries = Number.parseInt(maxRetriesRaw, 10);
+    if (!Number.isFinite(maxRetries) || maxRetries <= 0) return false;
+
+    const meta = (session.metadata ?? {}) as Record<string, unknown>;
+    const priorRetries =
+      typeof meta.buildVerifyRetryCount === "number"
+        ? meta.buildVerifyRetryCount
+        : 0;
+    if (priorRetries >= maxRetries) {
+      this.log(
+        "info",
+        "build still incomplete after verify-retry budget exhausted",
+        { sessionId: session.id, retries: priorRetries, maxRetries },
+      );
+      return false;
+    }
+
+    // The original task is stashed on metadata by TASKS op=spawn_agent —
+    // SessionInfo itself doesn't carry it.
+    const originalTask =
+      typeof meta.initialTask === "string" ? meta.initialTask.trim() : "";
+    if (!originalTask) return false;
+
+    const service = this.runtime.getService("PTY_SERVICE") as {
+      spawnSession?: (opts: SpawnOptions) => Promise<SpawnResult>;
+    } | null;
+    if (!service?.spawnSession) return false;
+
+    const nextRetry = priorRetries + 1;
+    const deadLines = dead
+      .map((d) =>
+        d.via
+          ? `  - ${d.url} (referenced by ${d.via}) → ${d.status}`
+          : `  - ${d.url} → ${d.status}`,
+      )
+      .join("\n");
+    const retryTask = `${originalTask}
+
+--- VERIFICATION FEEDBACK (retry ${nextRetry}/${maxRetries}) ---
+A previous attempt reported the task complete, but these URL(s) are NOT reachable, which means the corresponding files are missing or empty:
+${deadLines}
+Create or fix every one of those files in the location your task specifies, then verify each file exists and is non-empty. Do not report done until every referenced URL would resolve.`;
+
+    try {
+      const result = await service.spawnSession({
+        agentType: session.agentType,
+        workdir: session.workdir,
+        initialTask: retryTask,
+        approvalPreset: session.approvalPreset,
+        // Carry the original metadata forward — origin routing keys
+        // (roomId/source/...) plus the unchanged `initialTask` — and bump
+        // the shared retry counter so the lineage stays bounded.
+        metadata: {
+          ...meta,
+          buildVerifyRetryCount: nextRetry,
+          retryOfSessionId: session.id,
+        },
+      });
+      this.log("info", "re-dispatched sub-agent after failed verification", {
+        sessionId: session.id,
+        retrySessionId: result.sessionId,
+        retry: nextRetry,
+        maxRetries,
+        deadCount: dead.length,
+      });
+      return true;
+    } catch (err) {
+      this.log(
+        "warn",
+        "verify-retry spawn failed; surfacing the failure instead",
+        {
+          sessionId: session.id,
+          error: err instanceof Error ? err.message : String(err),
+        },
+      );
+      return false;
+    }
+  }
+
   private log(
     level: "debug" | "info" | "warn" | "error",
     msg: string,
@@ -560,12 +676,25 @@ function composeNarration(
  * {@link normalizeUrlsInText} so Unicode-dash-corrupted URLs are probed in
  * their intended form.
  */
+interface DeadUrl {
+  url: string;
+  status: string;
+  via?: string;
+}
+
+interface UrlVerification {
+  /** The narration text, with a verification block appended if any URL is dead. */
+  text: string;
+  /** URLs (mentioned or sub-resources) that did not return 2xx. */
+  dead: DeadUrl[];
+}
+
 async function annotateUnverifiedUrls(
   text: string,
   log?: (message: string) => void,
-): Promise<string> {
+): Promise<UrlVerification> {
   const urlMatches = text.match(URL_IN_TEXT_RE);
-  if (!urlMatches || urlMatches.length === 0) return text;
+  if (!urlMatches || urlMatches.length === 0) return { text, dead: [] };
   const seen = new Set<string>();
   const urls: string[] = [];
   for (const raw of urlMatches) {
@@ -620,18 +749,23 @@ async function annotateUnverifiedUrls(
   // file writes have landed (verified against real timelines), and the
   // static host serves from disk with no cache lag — so a single retry is
   // only there to ride out a transient network blip on the checker side,
-  // not a write→serve race.
+  // not a write→serve race. Tunable via PARALLAX_URL_VERIFY_SETTLE_MS
+  // (default 2500ms); 0 disables the retry (single probe).
+  const settleRaw = process.env.PARALLAX_URL_VERIFY_SETTLE_MS;
+  const settleParsed = settleRaw ? Number.parseInt(settleRaw, 10) : 2500;
+  const settleMs =
+    Number.isFinite(settleParsed) && settleParsed >= 0 ? settleParsed : 2500;
   const probe = async (
     url: string,
   ): Promise<{ status: string | null; html?: string }> => {
     let result = await probeOnce(url);
-    if (result.status !== null) {
-      await new Promise((resolve) => setTimeout(resolve, 2500));
+    if (result.status !== null && settleMs > 0) {
+      await new Promise((resolve) => setTimeout(resolve, settleMs));
       result = await probeOnce(url);
     }
     return result;
   };
-  const dead: Array<{ url: string; status: string; via?: string }> = [];
+  const dead: DeadUrl[] = [];
   await Promise.all(
     urls.map(async (url) => {
       const result = await probe(url);
@@ -657,7 +791,7 @@ async function annotateUnverifiedUrls(
   log?.(
     `[verify] done @ ${new Date().toISOString()} — ${dead.length} dead of ${urls.length} mentioned`,
   );
-  if (dead.length === 0) return text;
+  if (dead.length === 0) return { text, dead };
   const lines = dead
     .map((d) =>
       d.via
@@ -665,7 +799,10 @@ async function annotateUnverifiedUrls(
         : `  - ${d.url} → ${d.status}`,
     )
     .join("\n");
-  return `${text}\n\n[verification: the following URL(s) the sub-agent referenced are NOT reachable — do NOT tell the user the app is live; report the real status and that the build likely did not complete]\n${lines}`;
+  return {
+    text: `${text}\n\n[verification: the following URL(s) the sub-agent referenced are NOT reachable — do NOT tell the user the app is live; report the real status and that the build likely did not complete]\n${lines}`,
+    dead,
+  };
 }
 
 /**
