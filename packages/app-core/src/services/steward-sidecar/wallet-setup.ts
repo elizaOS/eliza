@@ -65,7 +65,7 @@ async function verifyExistingWallet(
 
     logger.warn("[StewardSidecar] Wallet verification returned unexpected result, continuing");
   } catch (err) {
-    logger.warn("[StewardSidecar] Wallet verification failed", { err });
+    logger.warn("[StewardSidecar] Wallet verification failed", err instanceof Error ? err.message : String(err));
   }
 }
 

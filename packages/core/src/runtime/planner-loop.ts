@@ -1030,7 +1030,7 @@ async function maybeCompactBeforeNextModelCall(args: {
 	if (!budget.shouldCompact) {
 		return false;
 	}
-	return await maybeCompactPlannerTrajectory({
+	return maybeCompactPlannerTrajectory({
 		trajectory: args.trajectory,
 		budget,
 		config: args.config,
@@ -1318,14 +1318,14 @@ async function evaluateTrajectory(
 	iteration: number,
 ): Promise<EvaluatorOutput> {
 	if (params.evaluate) {
-		return await params.evaluate({
+		return params.evaluate({
 			runtime: params.runtime,
 			context: trajectory.context,
 			trajectory,
 		});
 	}
 
-	return await runEvaluator({
+	return runEvaluator({
 		runtime: params.runtime,
 		context: trajectory.context,
 		trajectory,

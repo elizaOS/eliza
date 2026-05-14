@@ -907,9 +907,9 @@ export function installRuntimePluginLifecycle(runtime: IAgentRuntime): void {
 				serviceClassOwners.get(serviceClass) ??
 				pluginRegistrationContext.getStore()?.ownership.pluginName;
 			if (!pluginName) {
-				return await originalRunServiceStart(key, serviceType, serviceClass);
+				return originalRunServiceStart(key, serviceType, serviceClass);
 			}
-			return await pluginServiceStartContext.run(
+			return pluginServiceStartContext.run(
 				{ pluginName },
 				async () =>
 					await originalRunServiceStart(key, serviceType, serviceClass),

@@ -12,7 +12,7 @@
  *                                   bundle and wait for `/v1/models`.
  * - `resolveLocalBaseUrl(...)`    — choose between the dflash spawn URL and
  *                                   the Ollama fallback exposed via
- *                                   `PARALLAX_OPENCODE_BASE_URL`.
+ *                                   `ELIZA_OPENCODE_BASE_URL`.
  *
  * Higher-level callers should treat the dflash fork as the primary local
  * provider for `MODEL_TIER=small|mid` and fall back to Ollama only when the
@@ -97,7 +97,7 @@ export async function startLocalServer(
     throw new Error(
       `dflash llama-server binary not found at ${DFLASH_BINARY_PATH}. ` +
         "Build the fork at ~/.cache/eliza-dflash/eliza-llama-cpp or set " +
-        "PARALLAX_OPENCODE_BASE_URL to point at a local OpenAI-compatible endpoint.",
+        "ELIZA_OPENCODE_BASE_URL to point at a local OpenAI-compatible endpoint.",
     );
   }
 
@@ -202,7 +202,7 @@ export interface ResolvedLocalBaseUrl {
  * Decide which OpenAI-compatible base URL to use for local-tier
  * inference. Preference order:
  *
- * 1. `PARALLAX_OPENCODE_BASE_URL` (explicit operator override; matches the
+ * 1. `ELIZA_OPENCODE_BASE_URL` (explicit operator override; matches the
  *    same env Eliza's OpenCode fallback reads).
  * 2. Ollama default `http://localhost:11434/v1`.
  *
@@ -215,7 +215,7 @@ export function resolveLocalBaseUrl(
   options: ResolveLocalBaseUrlOptions = {},
 ): ResolvedLocalBaseUrl {
   const env = options.env ?? process.env;
-  const override = env.PARALLAX_OPENCODE_BASE_URL?.trim();
+  const override = env.ELIZA_OPENCODE_BASE_URL?.trim();
   if (override) {
     return { baseUrl: override, source: "ollama-env" };
   }

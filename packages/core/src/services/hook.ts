@@ -167,7 +167,7 @@ export class HookService extends Service implements IHookService {
 			// eslint-disable-next-line @typescript-eslint/no-require-imports
 			require("../types/events").EventType,
 		).filter(
-			(e) => typeof e === "string" && (e as string).startsWith("HOOK_"),
+			(e) => typeof e === "string" && e.startsWith("HOOK_"),
 		) as EventType[];
 
 		for (const eventType of hookEventTypes) {

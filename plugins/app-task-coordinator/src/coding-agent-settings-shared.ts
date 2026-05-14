@@ -113,10 +113,10 @@ export const ADAPTER_NAME_TO_TAB: Record<string, AgentTab> = {
 };
 
 export const ENV_PREFIX: Record<AgentTab, string> = {
-  claude: "PARALLAX_CLAUDE",
-  gemini: "PARALLAX_GEMINI",
-  codex: "PARALLAX_CODEX",
-  aider: "PARALLAX_AIDER",
+  claude: "ELIZA_CLAUDE",
+  gemini: "ELIZA_GEMINI",
+  codex: "ELIZA_CODEX",
+  aider: "ELIZA_AIDER",
 };
 
 export interface AuthResult {

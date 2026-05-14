@@ -105,7 +105,7 @@ export async function pushDefaultRules(
   // alongside a subscription login, or in CLAUDE_CODE_SIMPLE mode)
   if (agentType === "claude") {
     const llmProvider =
-      readConfigEnvKey("PARALLAX_LLM_PROVIDER") || "subscription";
+      readConfigEnvKey("ELIZA_LLM_PROVIDER") || "subscription";
     if (llmProvider === "api_keys" || llmProvider === "cloud") {
       rules.push({
         pattern:

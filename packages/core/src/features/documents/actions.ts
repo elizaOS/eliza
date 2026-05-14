@@ -1217,39 +1217,21 @@ export const documentAction: Action = {
 		try {
 			switch (subaction) {
 				case "search":
-					return await handleSearch(service, message, params, callback);
+					return handleSearch(service, message, params, callback);
 				case "read":
-					return await handleRead(service, message, params, callback);
+					return handleRead(service, message, params, callback);
 				case "write":
-					return await handleWrite(runtime, service, message, params, callback);
+					return handleWrite(runtime, service, message, params, callback);
 				case "edit":
-					return await handleEdit(runtime, service, message, params, callback);
+					return handleEdit(runtime, service, message, params, callback);
 				case "delete":
-					return await handleDelete(
-						runtime,
-						service,
-						message,
-						params,
-						callback,
-					);
+					return handleDelete(runtime, service, message, params, callback);
 				case "list":
-					return await handleList(service, message, params, callback);
+					return handleList(service, message, params, callback);
 				case "import_file":
-					return await handleImportFile(
-						runtime,
-						service,
-						message,
-						params,
-						callback,
-					);
+					return handleImportFile(runtime, service, message, params, callback);
 				case "import_url":
-					return await handleImportUrl(
-						runtime,
-						service,
-						message,
-						params,
-						callback,
-					);
+					return handleImportUrl(runtime, service, message, params, callback);
 			}
 		} catch (error) {
 			logger.error({ error }, `Error in DOCUMENT ${subaction} action`);

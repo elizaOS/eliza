@@ -39,7 +39,7 @@ const PREFLIGHT_DONE = new Set<string>();
 const PREFLIGHT_INFLIGHT = new Map<string, Promise<void>>();
 
 function shouldAutoPreflight(): boolean {
-  if (process.env.PARALLAX_BENCHMARK_PREFLIGHT_AUTO === "1") return true;
+  if (process.env.ELIZA_BENCHMARK_PREFLIGHT_AUTO === "1") return true;
   return false;
 }
 
@@ -53,11 +53,11 @@ async function resolveSafeVenvPath(
 ): Promise<string> {
   const venvDir = venvDirRaw.trim();
   if (!venvDir) {
-    throw new Error("PARALLAX_BENCHMARK_PREFLIGHT_VENV must be non-empty");
+    throw new Error("ELIZA_BENCHMARK_PREFLIGHT_VENV must be non-empty");
   }
   if (path.isAbsolute(venvDir)) {
     throw new Error(
-      "PARALLAX_BENCHMARK_PREFLIGHT_VENV must be relative to workdir",
+      "ELIZA_BENCHMARK_PREFLIGHT_VENV must be relative to workdir",
     );
   }
 
@@ -68,7 +68,7 @@ async function resolveSafeVenvPath(
     normalized.startsWith(`..${path.sep}`)
   ) {
     throw new Error(
-      "PARALLAX_BENCHMARK_PREFLIGHT_VENV must stay within workdir",
+      "ELIZA_BENCHMARK_PREFLIGHT_VENV must stay within workdir",
     );
   }
 
@@ -77,12 +77,12 @@ async function resolveSafeVenvPath(
   const resolved = path.resolve(workdirReal, normalized);
   if (!isPathInside(workdirReal, resolved)) {
     throw new Error(
-      "PARALLAX_BENCHMARK_PREFLIGHT_VENV resolves outside workdir",
+      "ELIZA_BENCHMARK_PREFLIGHT_VENV resolves outside workdir",
     );
   }
   if (resolved === workdirReal) {
     throw new Error(
-      "PARALLAX_BENCHMARK_PREFLIGHT_VENV must not resolve to workdir root",
+      "ELIZA_BENCHMARK_PREFLIGHT_VENV must not resolve to workdir root",
     );
   }
 
@@ -94,7 +94,7 @@ async function resolveSafeVenvPath(
       resolvedReal === workdirReal
     ) {
       throw new Error(
-        "PARALLAX_BENCHMARK_PREFLIGHT_VENV resolves outside workdir",
+        "ELIZA_BENCHMARK_PREFLIGHT_VENV resolves outside workdir",
       );
     }
   } catch (err) {
@@ -103,7 +103,7 @@ async function resolveSafeVenvPath(
     const parentReal = await realpath(path.dirname(resolved));
     if (!isPathInside(workdirReal, parentReal)) {
       throw new Error(
-        "PARALLAX_BENCHMARK_PREFLIGHT_VENV parent resolves outside workdir",
+        "ELIZA_BENCHMARK_PREFLIGHT_VENV parent resolves outside workdir",
       );
     }
   }
@@ -156,11 +156,11 @@ async function runBenchmarkPreflight(workdir: string): Promise<void> {
     await fingerprintRequirementsFile(requirementsPath);
 
   const mode =
-    process.env.PARALLAX_BENCHMARK_PREFLIGHT_MODE?.toLowerCase() === "warm"
+    process.env.ELIZA_BENCHMARK_PREFLIGHT_MODE?.toLowerCase() === "warm"
       ? "warm"
       : "cold";
   const venvDir =
-    process.env.PARALLAX_BENCHMARK_PREFLIGHT_VENV || ".benchmark-venv";
+    process.env.ELIZA_BENCHMARK_PREFLIGHT_VENV || ".benchmark-venv";
   const venvPath = await resolveSafeVenvPath(workdir, venvDir);
   const pythonInVenv = path.join(
     venvPath,
@@ -624,7 +624,7 @@ export async function handleAgentRoutes(
           : normalizeAgentType(agentStr);
       const aiderProvider =
         agentStr === "aider"
-          ? (ctx.runtime.getSetting("PARALLAX_AIDER_PROVIDER") as string | null)
+          ? (ctx.runtime.getSetting("ELIZA_AIDER_PROVIDER") as string | null)
           : null;
 
       // Check if coordinator is active — route blocking prompts through it

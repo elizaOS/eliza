@@ -155,7 +155,9 @@ export async function runHydrating(
 ): Promise<void> {
   const warn = (scope: string, err: unknown) => {
     if (isTransientOptionalFetchFailure(err)) return;
-    logger.warn(`[eliza][startup:init] ${scope}: ${err instanceof Error ? err.message : String(err)}`);
+    logger.warn(
+      `[eliza][startup:init] ${scope}: ${err instanceof Error ? err.message : String(err)}`,
+    );
   };
 
   deps.setStartupError(null);

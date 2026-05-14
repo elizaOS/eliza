@@ -1043,7 +1043,7 @@ export async function ensureTrajectoriesTable(
   } catch (err) {
     coreLogger.error(
       "[trajectory-persistence] ensureTrajectoriesTable error:",
-      err,
+      err instanceof Error ? err.message : String(err),
     );
     return false;
   }

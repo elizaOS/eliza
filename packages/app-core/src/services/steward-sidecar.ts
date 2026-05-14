@@ -366,7 +366,7 @@ export class StewardSidecar {
     env.STEWARD_PGLITE_PATH = env.STEWARD_DATA_DIR;
     env.STEWARD_REDIS_DISABLED = "true";
 
-    logger.info(`[StewardSidecar] Spawning steward on port ${this.config.port}`, { entryPoint, dataDir: this.config.dataDir });
+    logger.info(`[StewardSidecar] Spawning steward on port ${this.config.port} (entryPoint=${entryPoint}, dataDir=${this.config.dataDir})`);
 
     const bun = getBunRuntime();
     if (bun) {

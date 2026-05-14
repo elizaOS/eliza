@@ -2,7 +2,7 @@ import type { ComponentType } from "react";
 import type { ChatSidebarWidgetDefinition } from "../components/chat/widgets/types";
 import type { WidgetProps } from "./types";
 
-var COMPONENT_REGISTRY: Map<string, ComponentType<WidgetProps>> | undefined;
+let COMPONENT_REGISTRY: Map<string, ComponentType<WidgetProps>> | undefined;
 
 function getComponentRegistry(): Map<string, ComponentType<WidgetProps>> {
   COMPONENT_REGISTRY ??= new Map<string, ComponentType<WidgetProps>>();

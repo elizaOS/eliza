@@ -673,7 +673,7 @@ async function handleCompatRoute(
   if (method === "POST" && url.pathname === "/api/tts/cloud") {
     if (!(await ensureRouteAuthorized(req, res, state))) return true;
     const { handleCloudTtsPreviewRoute } = await import("@elizaos/plugin-elizacloud");
-    return await handleCloudTtsPreviewRoute(req, res);
+    return handleCloudTtsPreviewRoute(req, res);
   }
 
   if (method === "POST" && url.pathname === "/api/tts/elevenlabs") {
@@ -866,7 +866,7 @@ export async function handleElizaCompatRoute(
   res: http.ServerResponse,
   state: CompatRuntimeState,
 ): Promise<boolean> {
-  return await handleCompatRoute(req, res, state);
+  return handleCompatRoute(req, res, state);
 }
 
 /**

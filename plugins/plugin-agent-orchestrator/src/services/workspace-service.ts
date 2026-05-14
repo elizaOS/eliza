@@ -592,9 +592,9 @@ export class CodingWorkspaceService {
   /** Remove a scratch directory — allowed under base dir or user coding directory. */
   async removeScratchDir(dirPath: string): Promise<void> {
     const rawCodingDir =
-      (this.runtime.getSetting("PARALLAX_CODING_DIRECTORY") as string) ??
-      this.readConfigEnvKey("PARALLAX_CODING_DIRECTORY") ??
-      process.env.PARALLAX_CODING_DIRECTORY;
+      (this.runtime.getSetting("ELIZA_CODING_DIRECTORY") as string) ??
+      this.readConfigEnvKey("ELIZA_CODING_DIRECTORY") ??
+      process.env.ELIZA_CODING_DIRECTORY;
     const codingDir = rawCodingDir?.trim()
       ? rawCodingDir.trim().startsWith("~")
         ? path.join(os.homedir(), rawCodingDir.trim().slice(1))
@@ -752,9 +752,9 @@ export class CodingWorkspaceService {
   }
 
   private getScratchRetentionPolicy(): ScratchRetentionPolicy {
-    const setting = (this.runtime.getSetting("PARALLAX_SCRATCH_RETENTION") ??
-      this.readConfigEnvKey("PARALLAX_SCRATCH_RETENTION") ??
-      process.env.PARALLAX_SCRATCH_RETENTION) as string | undefined;
+    const setting = (this.runtime.getSetting("ELIZA_SCRATCH_RETENTION") ??
+      this.readConfigEnvKey("ELIZA_SCRATCH_RETENTION") ??
+      process.env.ELIZA_SCRATCH_RETENTION) as string | undefined;
     const normalized = setting?.trim().toLowerCase();
     if (normalized === "ephemeral") return "ephemeral";
     if (normalized === "persistent" || normalized === "keep") {
@@ -765,9 +765,9 @@ export class CodingWorkspaceService {
     // to auto-delete. If the user explicitly chose pending_decision, respect it.
     if (!normalized) {
       const codingDir =
-        (this.runtime.getSetting("PARALLAX_CODING_DIRECTORY") as string) ??
-        this.readConfigEnvKey("PARALLAX_CODING_DIRECTORY") ??
-        process.env.PARALLAX_CODING_DIRECTORY;
+        (this.runtime.getSetting("ELIZA_CODING_DIRECTORY") as string) ??
+        this.readConfigEnvKey("ELIZA_CODING_DIRECTORY") ??
+        process.env.ELIZA_CODING_DIRECTORY;
       if (codingDir?.trim()) return "persistent";
     }
     return "pending_decision";
@@ -775,10 +775,10 @@ export class CodingWorkspaceService {
 
   private getScratchDecisionTtlMs(): number {
     const setting = this.runtime.getSetting(
-      "PARALLAX_SCRATCH_DECISION_TTL_MS",
+      "ELIZA_SCRATCH_DECISION_TTL_MS",
     ) as string | number | undefined;
     const parsed = Number(
-      setting ?? process.env.PARALLAX_SCRATCH_DECISION_TTL_MS,
+      setting ?? process.env.ELIZA_SCRATCH_DECISION_TTL_MS,
     );
     if (Number.isFinite(parsed) && parsed > 0) return parsed;
     return 24 * 60 * 60 * 1000;

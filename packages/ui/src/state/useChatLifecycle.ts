@@ -57,7 +57,9 @@ function logResetInfo(message: string, detail?: Record<string, unknown>): void {
 
 function logResetWarn(message: string, detail?: unknown): void {
   logger.warn(
-    detail != null && typeof detail === "object" ? (detail as Record<string, unknown>) : {},
+    detail != null && typeof detail === "object"
+      ? (detail as Record<string, unknown>)
+      : {},
     `${RESET_LOG_PREFIX} ${message}`,
   );
 }
