@@ -2,24 +2,23 @@ import type http from "node:http";
 import { readRequestBody, sendJson, sendJsonError } from "@elizaos/core";
 import { isMobilePlatform } from "@elizaos/shared";
 
-let streamingSettingsModulePromise: Promise<{
-  readStreamSettings: () => unknown;
-  validateStreamSettings: (value: unknown) => unknown;
-  writeStreamSettings: (value: unknown) => unknown;
-}> | null = null;
+type StreamingSettingsModule = {
+  readStreamSettings: () => Record<string, unknown>;
+  validateStreamSettings: (value: unknown) => {
+    error?: string;
+    settings?: Record<string, unknown>;
+  };
+  writeStreamSettings: (value: Record<string, unknown>) => void;
+};
 
-function getStreamingSettingsModule() {
+let streamingSettingsModulePromise: Promise<StreamingSettingsModule> | null =
+  null;
+
+function getStreamingSettingsModule(): Promise<StreamingSettingsModule> {
   if (!streamingSettingsModulePromise) {
     streamingSettingsModulePromise = import(
       "@elizaos/plugin-streaming"
-    ) as Promise<{
-      readStreamSettings: () => unknown;
-      validateStreamSettings: (value: unknown) => {
-        error?: string;
-        settings?: Record<string, unknown>;
-      };
-      writeStreamSettings: (value: Record<string, unknown>) => void;
-    }>;
+    ) as unknown as Promise<StreamingSettingsModule>;
   }
   return streamingSettingsModulePromise;
 }
