@@ -181,12 +181,8 @@ jobs:
       - name: Build
         shell: bash
         run: |
-          if [ "${{ runner.os }}" = "macOS" ]; then
-            bun run build
-          else
-            bunx turbo run build --concurrency=1 --filter='!@elizaos/ios-native-deps'
-            node scripts/run-examples-benchmarks.mjs build
-          fi
+          bunx turbo run build --concurrency=1 --filter='!@elizaos/ios-native-deps'
+          node scripts/run-examples-benchmarks.mjs build
 
       - name: Build desktop bundle
         working-directory: packages/app

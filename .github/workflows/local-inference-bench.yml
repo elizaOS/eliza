@@ -171,13 +171,25 @@ jobs:
           echo $! > /tmp/dev.pid
           # Health probe — dev preparation is separated above, but first
           # boot can still spend several minutes initializing caches.
+          ready=0
           for _ in $(seq 1 150); do
             if curl --silent --fail "http://127.0.0.1:31337/api/health" >/dev/null 2>&1; then
               echo "agent ready"
+              ready=1
               break
             fi
             sleep 2
           done
+          if [ "$ready" -ne 1 ]; then
+            echo "::error ::dev agent did not become ready on 127.0.0.1:31337 within 300s"
+            echo "=== .ci-logs/dev.log tail ==="
+            tail -n 200 .ci-logs/dev.log || true
+            if [ -f .eliza/desktop-dev-console.log ]; then
+              echo "=== .eliza/desktop-dev-console.log tail ==="
+              tail -n 200 .eliza/desktop-dev-console.log || true
+            fi
+            exit 1
+          fi
           curl --silent --fail "http://127.0.0.1:31337/api/health"
 
       - name: Run profile harness (host-cpu config)

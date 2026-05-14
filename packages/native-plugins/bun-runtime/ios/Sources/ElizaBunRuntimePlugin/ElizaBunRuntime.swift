@@ -223,7 +223,15 @@ public final class ElizaBunRuntime {
         env: [String: String]
     ) throws {
         let requestedEngine = engine.lowercased()
-        if requestedEngine == "bun" || requestedEngine == "auto" || requestedEngine.isEmpty {
+        let policy = RuntimePolicy(paths: SandboxPaths())
+        if !policy.allowsFullBunEngine(env: env) {
+            if requestedEngine == "bun" {
+                throw makeError("Full Bun engine is disabled in iOS App Store local runtime; use engine=compat")
+            }
+            NSLog("[ElizaBunRuntime] Full Bun engine disabled by iOS runtime policy; using JSContext compatibility mode")
+        }
+        if policy.allowsFullBunEngine(env: env) &&
+            (requestedEngine == "bun" || requestedEngine == "auto" || requestedEngine.isEmpty) {
             let host = FullBunEngineHost.shared
             do {
                 let paths = SandboxPaths()
@@ -253,7 +261,6 @@ public final class ElizaBunRuntime {
                 fullBunEnv["ELIZA_IOS_AGENT_ASSET_DIR"] = assetDir
                 fullBunEnv["ELIZA_IOS_AGENT_PUBLIC_DIR"] = publicDir
                 fullBunEnv["ELIZA_IOS_BRIDGE_TRANSPORT"] = "bun-host-ipc"
-                let policy = RuntimePolicy(paths: paths)
                 if policy.appStoreCompliantLocalRuntime {
                     fullBunEnv["ELIZA_IOS_APP_STORE_LOCAL_RUNTIME"] = "1"
                     fullBunEnv["ELIZA_NO_DOWNLOADED_EXECUTABLE_CODE"] = "1"

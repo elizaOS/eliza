@@ -256,20 +256,6 @@ async function runInSandbox(
   };
 }
 
-async function runVfsOnHost(
-  req: ShellRequest,
-  cwd: ParsedVfsShellCwd,
-): Promise<ShellResult> {
-  const vfs = createVirtualFilesystemService({ projectId: cwd.projectId });
-  await vfs.initialize();
-  const hostCwd = vfs.resolveDiskPath(cwd.virtualPath || ".");
-  await fsp.mkdir(hostCwd, { recursive: true, mode: 0o700 });
-  return await runOnHost({
-    ...req,
-    cwd: hostCwd,
-  });
-}
-
 async function runVfsInSandbox(
   req: ShellRequest,
   cwd: ParsedVfsShellCwd,
@@ -431,8 +417,9 @@ export async function runShell(
   if (isVfsUri(req.cwd)) {
     const vfsCwd = parseVfsShellCwd(req.cwd);
     if (mode === "local-yolo") {
-      assertShellCapability(req, mode, req.toolName);
-      return await runVfsOnHost(req, vfsCwd);
+      throw new Error(
+        "[shell-router] local-yolo uses the normal host filesystem; pass a real cwd path instead of vfs://",
+      );
     }
     if (mode === "local-safe") {
       const manager = await resolveSandboxManager(ctx);

@@ -677,7 +677,7 @@ describe("buildPlannerActionGrammarStrict — single-call per-action union gramm
 		expect(r.grammar).toContain('"\\"owner\\""');
 	});
 
-	it("falls back to jsonvalue for objects without declared sub-properties", () => {
+	it("uses object-only fallback for objects without declared sub-properties", () => {
 		const r = buildPlannerActionGrammarStrict([
 			makeAction("BAG", {
 				parameters: [
@@ -685,14 +685,91 @@ describe("buildPlannerActionGrammarStrict — single-call per-action union gramm
 						name: "extras",
 						description: "freeform bag",
 						required: false,
-						schema: { type: "object" },
+						schema: { type: "object", additionalProperties: true },
 					},
 				],
 			}),
 		]);
 		if (r === null) throw new Error("expected grammar");
 		expect(r.grammar).toMatch(
-			/paramsofaction_BAG_p_extras ::= "\\"extras\\":" jsonvalue/,
+			/paramsofaction_BAG_p_extras ::= "\\"extras\\":" jsonobject/,
+		);
+	});
+
+	it("emits empty object literal for closed objects without properties", () => {
+		const r = buildPlannerActionGrammarStrict([
+			makeAction("EMPTY_OBJECT", {
+				parameters: [
+					{
+						name: "metadata",
+						description: "closed empty object",
+						required: true,
+						schema: {
+							type: "object",
+							properties: {},
+							additionalProperties: false,
+						},
+					},
+				],
+			}),
+		]);
+		if (r === null) throw new Error("expected grammar");
+		expect(r.grammar).toMatch(
+			/paramsofaction_EMPTY_OBJECT_p_metadata ::= "\\"metadata\\":" "\{\}"/,
+		);
+	});
+
+	it("constrains typed additional-property maps to object values", () => {
+		const r = buildPlannerActionGrammarStrict([
+			makeAction("TAGS", {
+				parameters: [
+					{
+						name: "labels",
+						description: "map of label values",
+						required: true,
+						schema: {
+							type: "object",
+							additionalProperties: {
+								type: "string",
+								enum: ["red", "green"],
+							},
+						},
+					},
+				],
+			}),
+		]);
+		if (r === null) throw new Error("expected grammar");
+		expect(r.grammar).toContain(
+			'paramsofaction_TAGS_p_labels ::= "\\"labels\\":" "{" ws ( jsonstring ws ":" ws ( "\\"red\\""',
+		);
+		expect(r.grammar).toContain('"\\"green\\""');
+	});
+
+	it("translates oneOf branches into a constrained alternation", () => {
+		const r = buildPlannerActionGrammarStrict([
+			makeAction("UNION", {
+				parameters: [
+					{
+						name: "value",
+						description: "string enum or small integer",
+						required: true,
+						schema: {
+							oneOf: [
+								{ type: "string", enum: ["auto", "manual"] },
+								{ type: "integer", minimum: 0, maximum: 2 },
+							],
+						},
+					},
+				],
+			}),
+		]);
+		if (r === null) throw new Error("expected grammar");
+		expect(r.grammar).toContain(
+			'paramsofaction_UNION_p_value ::= "\\"value\\":" ( ( "\\"auto\\""',
+		);
+		expect(r.grammar).toContain('"\\"manual\\""');
+		expect(r.grammar).toMatch(
+			/paramsofaction_UNION_value_alt1_bounded ::= "0" \| "1" \| "2"/,
 		);
 	});
 
@@ -754,13 +831,13 @@ describe("buildPlannerActionGrammarStrict — single-call per-action union gramm
 		]);
 		if (r === null) throw new Error("expected grammar");
 		// Depths 0..3 each emit their own nested _obj rule; depth 4 stops the
-		// recursion and the deepest object falls back to jsonvalue.
+			// recursion and the deepest object falls back to an object-only rule.
 		const objRules = (
 			r.grammar.match(/paramsofaction_DEEP_(?:[A-Za-z0-9_]+_)*next_obj ::=/g) ??
 			[]
 		).length;
 		expect(objRules).toBeLessThanOrEqual(4);
-		expect(r.grammar).toContain("jsonvalue");
+		expect(r.grammar).toContain("jsonobject");
 	});
 
 	it("emits required-then-optional structure without duplicate optional keys", () => {

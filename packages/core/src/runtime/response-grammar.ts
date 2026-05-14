@@ -1215,7 +1215,33 @@ function propertyValueGbnf(
 	contextRuleName: string,
 	depth: number,
 ): string {
+	const unionBranches = readUnionBranchesForGrammar(propSchema);
+	if (unionBranches.length > 0) {
+		const branchExpressions = unionBranches.map((branch, index) =>
+			propertyValueGbnf(builder, branch, `${contextRuleName}_alt${index}`, depth),
+		);
+		return `( ${branchExpressions.join(" | ")} )`;
+	}
+
 	const type = (propSchema as { type?: unknown }).type;
+	if (Array.isArray(type)) {
+		const branchExpressions = type
+			.filter((entry): entry is string => typeof entry === "string")
+			.map((entry, index) =>
+				entry === "null"
+					? '"null"'
+					: propertyValueGbnf(
+							builder,
+							{ ...propSchema, type: entry } as JSONSchema,
+							`${contextRuleName}_type${index}`,
+							depth,
+						),
+			);
+		if (branchExpressions.length > 0) {
+			return `( ${branchExpressions.join(" | ")} )`;
+		}
+	}
+
 	if (type === "string") {
 		const enumValues = readStringEnumForGrammar(propSchema);
 		if (enumValues !== null) {
@@ -1270,18 +1296,66 @@ function propertyValueGbnf(
 		builder.useShared("jsonarray");
 		return "jsonarray";
 	}
-	if (
-		type === "object" &&
-		depth < MAX_NESTED_OBJECT_DEPTH &&
-		schemaHasDeclaredProperties(propSchema)
-	) {
-		const objRuleName = `${contextRuleName}_obj`;
-		emitObjectRule(builder, objRuleName, propSchema, depth + 1);
-		return objRuleName;
+	if (type === "object") {
+		const hasDeclaredProperties = schemaHasDeclaredProperties(propSchema);
+		if (
+			depth < MAX_NESTED_OBJECT_DEPTH &&
+			hasDeclaredProperties
+		) {
+			const objRuleName = `${contextRuleName}_obj`;
+			emitObjectRule(builder, objRuleName, propSchema, depth + 1);
+			return objRuleName;
+		}
+		if (hasDeclaredProperties && depth >= MAX_NESTED_OBJECT_DEPTH) {
+			builder.useShared("jsonobject");
+			return "jsonobject";
+		}
+		const additionalProperties = (
+			propSchema as { additionalProperties?: boolean | JSONSchema }
+		).additionalProperties;
+		if (additionalProperties === false) {
+			return gbnfLiteral("{}");
+		}
+		if (
+			additionalProperties &&
+			typeof additionalProperties === "object" &&
+			depth < MAX_NESTED_OBJECT_DEPTH
+		) {
+			const valueExpr = propertyValueGbnf(
+				builder,
+				additionalProperties,
+				`${contextRuleName}_additional`,
+				depth + 1,
+			);
+			builder.useShared("jsonstring");
+			builder.useShared("ws");
+			return `"{" ws ( jsonstring ws ":" ws ${valueExpr} ( ws "," ws jsonstring ws ":" ws ${valueExpr} )* )? ws "}"`;
+		}
+		builder.useShared("jsonobject");
+		return "jsonobject";
+	}
+	if (type === "null") {
+		return '"null"';
 	}
 	// object without declared properties, null, or unspecified → permit any JSON.
 	builder.useShared("jsonvalue");
 	return "jsonvalue";
+}
+
+function readUnionBranchesForGrammar(schema: JSONSchema): JSONSchema[] {
+	const anyOf = (schema as { anyOf?: unknown }).anyOf;
+	if (Array.isArray(anyOf) && anyOf.length > 0) {
+		return anyOf.filter(isJsonSchemaObject);
+	}
+	const oneOf = (schema as { oneOf?: unknown }).oneOf;
+	if (Array.isArray(oneOf) && oneOf.length > 0) {
+		return oneOf.filter(isJsonSchemaObject);
+	}
+	return [];
+}
+
+function isJsonSchemaObject(value: unknown): value is JSONSchema {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function schemaHasDeclaredProperties(schema: JSONSchema): boolean {

@@ -190,22 +190,20 @@ describe("runShell", () => {
     expect(result.stdout).toBe("ok");
   });
 
-  it("local-yolo maps vfs:// cwd to the VFS backing directory and runs a real host shell", async () => {
+  it("local-yolo rejects vfs:// cwd because it uses the normal host filesystem", async () => {
     const vfs = createVirtualFilesystemService({ projectId: "host-vfs" });
     await vfs.initialize();
     await vfs.writeFile("src/input.txt", "ready");
 
-    const result = await runShell({
-      command: "/bin/sh",
-      args: ["-c", "test -f input.txt && printf host > generated.txt"],
-      cwd: "vfs://host-vfs/src",
-      toolName: "test:vfs-host",
-      timeoutMs: 5_000,
-    });
-
-    expect(result.sandbox).toBe("host");
-    expect(result.exitCode).toBe(0);
-    await expect(vfs.readFile("src/generated.txt")).resolves.toBe("host");
+    await expect(
+      runShell({
+        command: "/bin/sh",
+        args: ["-c", "printf host > generated.txt"],
+        cwd: "vfs://host-vfs/src",
+        toolName: "test:vfs-host",
+        timeoutMs: 5_000,
+      }),
+    ).rejects.toThrow("local-yolo uses the normal host filesystem");
   });
 
   it("local-safe materializes vfs:// cwd into the sandbox filesystem and imports changes back", async () => {

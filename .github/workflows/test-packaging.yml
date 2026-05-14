@@ -22,7 +22,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  NODE_VERSION: "22.20.0"
+  NODE_VERSION: "24"
 
 jobs:
   validate:
