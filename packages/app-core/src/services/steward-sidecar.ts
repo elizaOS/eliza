@@ -28,6 +28,7 @@
 import * as childProcess from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { logger } from "@elizaos/core";
 import { waitForHealthy } from "./steward-sidecar/health-check";
 import {
   allocateFirstFreeLoopbackPort,
@@ -286,9 +287,7 @@ export class StewardSidecar {
       fs.existsSync(legacyDataDir) &&
       !targetHasData
     ) {
-      console.log(
-        `[StewardSidecar] Migrating legacy steward data from ${legacyDataDir} to ${targetDataDir}`,
-      );
+      logger.info(`[StewardSidecar] Migrating legacy steward data from ${legacyDataDir} to ${targetDataDir}`);
       fs.cpSync(legacyDataDir, targetDataDir, {
         recursive: true,
         force: false,
@@ -315,9 +314,7 @@ export class StewardSidecar {
         });
         return;
       } catch {
-        console.warn(
-          "[StewardSidecar] Failed to parse credentials, will recreate",
-        );
+        logger.warn("[StewardSidecar] Failed to parse credentials, will recreate");
       }
     }
 
@@ -339,9 +336,7 @@ export class StewardSidecar {
     const preferredPort = this.config.port;
     const allocatedPort = await allocateFirstFreeLoopbackPort(preferredPort);
     if (allocatedPort !== preferredPort) {
-      console.warn(
-        `[StewardSidecar] Port ${preferredPort} is busy; using ${allocatedPort} instead`,
-      );
+      logger.warn(`[StewardSidecar] Port ${preferredPort} is busy; using ${allocatedPort} instead`);
       this.config.port = allocatedPort;
     }
 
@@ -371,10 +366,7 @@ export class StewardSidecar {
     env.STEWARD_PGLITE_PATH = env.STEWARD_DATA_DIR;
     env.STEWARD_REDIS_DISABLED = "true";
 
-    console.log(
-      `[StewardSidecar] Spawning steward on port ${this.config.port}`,
-      { entryPoint, dataDir: this.config.dataDir },
-    );
+    logger.info(`[StewardSidecar] Spawning steward on port ${this.config.port}`, { entryPoint, dataDir: this.config.dataDir });
 
     const bun = getBunRuntime();
     if (bun) {
@@ -393,9 +385,7 @@ export class StewardSidecar {
 
       proc.exited.then((code: number) => {
         if (!this.stopping) {
-          console.warn(
-            `[StewardSidecar] Process exited unexpectedly (code ${code})`,
-          );
+          logger.warn(`[StewardSidecar] Process exited unexpectedly (code ${code})`);
           void this.handleCrash(code);
         }
       });
@@ -423,7 +413,7 @@ export class StewardSidecar {
         child.stdout.on("data", (chunk: Buffer) => {
           const line = chunk.toString().trimEnd();
           if (line) {
-            console.log(`[Steward] ${line}`);
+            logger.info(`[Steward] ${line}`);
             this.config.onLog?.(line, "stdout");
           }
         });
@@ -433,7 +423,7 @@ export class StewardSidecar {
         child.stderr.on("data", (chunk: Buffer) => {
           const line = chunk.toString().trimEnd();
           if (line) {
-            console.error(`[Steward:err] ${line}`);
+            logger.warn(`[Steward:err] ${line}`);
             this.config.onLog?.(line, "stderr");
           }
         });
@@ -441,9 +431,7 @@ export class StewardSidecar {
 
       exitPromise.then((code) => {
         if (!this.stopping) {
-          console.warn(
-            `[StewardSidecar] Process exited unexpectedly (code ${code})`,
-          );
+          logger.warn(`[StewardSidecar] Process exited unexpectedly (code ${code})`);
           void this.handleCrash(code);
         }
       });
@@ -469,9 +457,7 @@ export class StewardSidecar {
       MAX_BACKOFF_MS,
     );
 
-    console.log(
-      `[StewardSidecar] Restarting in ${backoff}ms (attempt ${this.status.restartCount}/${this.config.maxRestarts})`,
-    );
+    logger.info(`[StewardSidecar] Restarting in ${backoff}ms (attempt ${this.status.restartCount}/${this.config.maxRestarts})`);
 
     this.updateStatus({ state: "restarting", pid: null });
 
