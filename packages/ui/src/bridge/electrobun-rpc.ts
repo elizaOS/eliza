@@ -115,13 +115,16 @@ export interface DesktopRuntimeModeInfo {
 }
 
 export type DesktopCarrotPermissionTag =
-  | `host:${"windows" | "tray" | "notifications" | "storage"}`
+  | `host:${"windows" | "tray" | "notifications" | "storage" | "manage-carrots"}`
   | `bun:${"read" | "write" | "env" | "run" | "ffi" | "addons" | "worker"}`
   | `isolation:${"shared-worker" | "isolated-process"}`;
 
 export interface DesktopCarrotPermissionGrant {
   host?: Partial<
-    Record<"windows" | "tray" | "notifications" | "storage", boolean>
+    Record<
+      "windows" | "tray" | "notifications" | "storage" | "manage-carrots",
+      boolean
+    >
   >;
   bun?: Partial<
     Record<
