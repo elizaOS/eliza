@@ -14,6 +14,7 @@ const DIRECTORY_SCOPED_WORKSPACES = new Set([
   "packages/app-core/deploy/cloud-agent-template",
   "packages/app-core/platforms/electrobun",
   "packages/core",
+  "packages/examples/farcaster-miniapp",
 ]);
 
 function normalizePathForCli(path) {

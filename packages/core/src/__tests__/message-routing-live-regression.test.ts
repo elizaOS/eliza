@@ -1,13 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 import { parseActionParams } from "../actions";
-import type { Action, ActionResult, IAgentRuntime } from "../index";
+import type { ActionResult, IAgentRuntime } from "../index";
 import {
 	actionResultsSuppressPostActionContinuation,
 	extractPlannerActionNames,
 	inferLocalShellCommandFromMessageText,
 	inferWebSearchQueryFromMessageText,
 	looksLikeSelfPolicyExplanationRequest,
-	resolvePlannerActionName,
 	shouldPromoteExplicitReplyToOwnedAction,
 	shouldSkipDocumentProviderRescue,
 	stripReplyWhenActionOwnsTurn,
