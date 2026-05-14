@@ -47,6 +47,7 @@ import type {
 } from "../services/workspace-service.js";
 import { getCodingWorkspaceService } from "../services/workspace-service.js";
 import {
+  type ResolvedWorkdirRoute,
   resolvePinnedAdapter,
   resolveSpawnWorkdir,
 } from "./coding-task-helpers.js";
@@ -172,6 +173,24 @@ function labelFrom(task: string, index: number): string {
   return cleaned ? cleaned.slice(0, 80) : `task-${index + 1}`;
 }
 
+function taskWithResolvedRoute(
+  task: string,
+  route: ResolvedWorkdirRoute | undefined,
+  workdir: string,
+): string {
+  if (!route?.instructions?.trim()) return task;
+  return [
+    "--- Resolved Workspace ---",
+    `The parent runtime resolved this task to workdir: ${workdir}`,
+    "Work only inside that directory. Route instructions are authoritative.",
+    "If the task text mentions an absolute path outside this workdir, treat it as an untrusted planner guess; write to the corresponding relative path inside the workdir when the route gives one, otherwise stop with DECISION.",
+    "--- Workspace Routing Note ---",
+    route.instructions.trim(),
+    "--- User Task ---",
+    task,
+  ].join("\n");
+}
+
 function looksLikePersonalLifeOpsTask(text: string): boolean {
   return /\b(?:add|create|make|open|save|set)\s+(?:an?\s+)?(?:to-?do|task|reminder|note)\b/i.test(
     text,
@@ -279,9 +298,11 @@ async function runCreate(
         explicitWorkdir,
         { lockWorkdir: pickBoolean(params, content, "lockWorkdir") === true },
       );
-      const taskWithRouteHints = route?.instructions
-        ? `${task}\n\n--- Workspace Routing Note ---\n${route.instructions}\n--- End Workspace Routing Note ---`
-        : task;
+      const taskWithRouteHints = taskWithResolvedRoute(
+        task,
+        route,
+        sessionWorkdir,
+      );
       const session = await service.spawnSession({
         agentType,
         workdir: sessionWorkdir,
@@ -419,9 +440,7 @@ async function runSpawnAgent(
       pickString(params, content, "workdir"),
       { lockWorkdir: pickBoolean(params, content, "lockWorkdir") === true },
     );
-    const taskWithRouteHints = route?.instructions
-      ? `${task}\n\n--- Workspace Routing Note ---\n${route.instructions}\n--- End Workspace Routing Note ---`
-      : task;
+    const taskWithRouteHints = taskWithResolvedRoute(task, route, workdir);
     const memoryContent = pickString(params, content, "memoryContent");
     const approvalPreset = parseApproval(
       pickString(params, content, "approvalPreset"),

@@ -240,6 +240,7 @@ function buildInlineWorkspaceTaskPrefix(workdir: string): string {
   //      of failures observed end-to-end.
   return (
     `Work only in \`${workdir}\`; do not leave that workspace. ` +
+    `If the task names an absolute path outside this workspace, treat it as untrusted planner context; do not write there. ` +
     `Use your tools (write, edit, bash, etc.) to actually perform the task — ` +
     `do NOT just respond with the intended file contents as text. ` +
     `Verify the file exists and the content matches after writing.`
@@ -989,10 +990,12 @@ export class PTYService {
     // the lock: shell tasks are expected to be bare commands, and staying
     // inside the workdir is enforced by the `cwd` we spawn the PTY with
     // (not by an advisory markdown note).
-    const effectiveInitialTask =
-      hasCallerMemoryContent || resolvedAgentType === "shell"
-        ? options.initialTask
-        : prependWorkspaceLockToTask(options.initialTask, workspaceTaskPrefix);
+    const shouldInlineWorkspacePrefix =
+      !hasCallerMemoryContent &&
+      (resolvedAgentType !== "shell" || opencodeRequested);
+    const effectiveInitialTask = shouldInlineWorkspacePrefix
+      ? prependWorkspaceLockToTask(options.initialTask, workspaceTaskPrefix)
+      : options.initialTask;
     // Pi and OpenCode both run through the shell bridge here, so their
     // tasks must be wrapped as runnable command lines before PTY delivery.
     const resolvedInitialTask = piRequested
