@@ -63,7 +63,6 @@ test("AOSP Android keeps assistant/full-control permissions in the system manife
     "FOREGROUND_SERVICE_MEDIA_PROJECTION",
     "FOREGROUND_SERVICE_SPECIAL_USE",
     "RECEIVE_BOOT_COMPLETED",
-    "REQUEST_IGNORE_BATTERY_OPTIMIZATIONS",
   ]) {
     assert.ok(
       ANDROID_PERMISSIONS.includes(permission),
@@ -92,6 +91,7 @@ test("Google Play Android strips AOSP assistant/full-control components and perm
     "FOREGROUND_SERVICE_MEDIA_PROJECTION",
     "FOREGROUND_SERVICE_SPECIAL_USE",
     "RECEIVE_BOOT_COMPLETED",
+    "REQUEST_IGNORE_BATTERY_OPTIMIZATIONS",
   ]) {
     assert.ok(
       ANDROID_CLOUD_STRIPPED_PERMISSIONS.includes(permission),

@@ -1142,12 +1142,26 @@ def _main() -> int:
             messages.append(msg)
             had_raw_messages = True
     if isinstance(system_prompt, str) and system_prompt:
-        already_present = any(
-            msg.get("role") == "system" and msg.get("content") == system_prompt
-            for msg in messages
-        )
+        already_present = False
+        replaced_existing = False
+        for idx, msg in enumerate(messages):
+            if msg.get("role") != "system":
+                continue
+            content = msg.get("content")
+            if content == system_prompt:
+                already_present = True
+                break
+            if (
+                isinstance(content, str)
+                and content
+                and system_prompt.startswith("{}\n\nBenchmark context:".format(content))
+            ):
+                messages[idx] = {"role": "system", "content": system_prompt}
+                replaced_existing = True
+                break
         if had_raw_messages and not already_present:
-            messages.insert(0, {"role": "system", "content": system_prompt})
+            if not replaced_existing:
+                messages.insert(0, {"role": "system", "content": system_prompt})
         elif not had_raw_messages:
             messages.append({"role": "system", "content": system_prompt})
     if not had_raw_messages:

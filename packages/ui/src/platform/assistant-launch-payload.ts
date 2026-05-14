@@ -95,10 +95,7 @@ export function claimAssistantLaunchPayloadFromHash(
   const payload = readAssistantLaunchPayloadFromHash(hash);
   if (!payload) return null;
 
-  if (
-    options.allowedRoutes &&
-    !options.allowedRoutes.includes(payload.route)
-  ) {
+  if (options.allowedRoutes && !options.allowedRoutes.includes(payload.route)) {
     return null;
   }
 
