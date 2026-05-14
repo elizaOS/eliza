@@ -453,7 +453,8 @@ function runDesktopPreflight() {
  */
 function preflightStoreVariantSigning() {
   if (buildVariant !== "store") return;
-  if (process.env.CI === "true" || process.env.ELECTROBUN_SKIP_CODESIGN === "1") return;
+  if (process.env.CI === "true" || process.env.ELECTROBUN_SKIP_CODESIGN === "1")
+    return;
 
   const missing = [];
   if (process.platform === "darwin") {
@@ -590,7 +591,6 @@ function stageDesktopBuild() {
       label: "Building native macOS effects dylib",
     });
   }
-
 }
 
 function embedWindowsIcons() {
@@ -836,6 +836,26 @@ function packageDesktopBuild() {
       env: packageEnv,
       label: `MAS post-package codesign (${path.basename(appBundlePath)})`,
     });
+
+    // Opt-in post-sign verification. Walks every Mach-O and asserts the
+    // tightened entitlement set is what actually shipped — protects against
+    // future regressions in the signer or in the entitlement plists. Skipped
+    // by default because most builds don't want the extra walk; CI store
+    // builds and developers debugging MAS signing should enable it.
+    if (
+      getBooleanArg(args, "verify-mas") ||
+      process.env.ELIZA_VERIFY_MAS === "1"
+    ) {
+      run(
+        "node",
+        [path.join(SCRIPT_DIR, "mas-smoke.mjs"), `--app=${appBundlePath}`],
+        {
+          cwd: ROOT,
+          env: packageEnv,
+          label: `MAS entitlements verification (${path.basename(appBundlePath)})`,
+        },
+      );
+    }
   }
 
   if (stageMacosReleaseApp && process.platform === "darwin") {
@@ -884,9 +904,13 @@ Options:
   --env <channel>                  Electrobun build env (e.g. canary, stable)
   --stage-macos-release-app        Stage a direct macOS .app + DMG from the Electrobun build output
   --exclude-optional-pack <name>   Exclude a manifest-classified optional capability pack during staging
+  --verify-mas                     After MAS codesign, walk the bundle and verify the tightened
+                                   entitlements via mas-smoke.mjs. Off by default; ELIZA_VERIFY_MAS=1
+                                   also enables it.
 
 Environment:
   ELIZA_DESKTOP_COMMAND_PREFIX    Prefix every spawned command, e.g. "arch -x86_64"
+  ELIZA_VERIFY_MAS=1              Enable mas-smoke entitlement verification on store builds.
 `);
 }
 
