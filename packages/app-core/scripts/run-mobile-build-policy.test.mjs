@@ -9,6 +9,7 @@ import {
   ANDROID_CLOUD_STRIPPED_PERMISSIONS,
   ANDROID_PERMISSIONS,
   applyAndroidCleartextPolicy,
+  IOS_AGENT_ROOT_EXTENSION_ASSETS,
   IOS_AGENT_RUNTIME_ASSETS,
   IOS_OFFICIAL_PODS,
   isIosAppStoreBuild,
@@ -136,13 +137,13 @@ test("Android manifest cleartext policy is inserted when absent", () => {
   );
 });
 
-test("resolveMobileBuildPolicy clamps iOS execution to cloud or local-safe", () => {
+test("resolveMobileBuildPolicy keeps App Store iOS local-runtime capable", () => {
   assert.deepEqual(resolveMobileBuildPolicy("ios"), {
     capacitorTarget: "ios",
     buildVariant: "store",
     androidRuntimeMode: null,
-    iosRuntimeMode: "cloud",
-    runtimeExecutionMode: "cloud",
+    iosRuntimeMode: "cloud-hybrid",
+    runtimeExecutionMode: "local-safe",
     releaseAuthority: "apple-app-store",
     appControlledOta: false,
   });
@@ -206,16 +207,16 @@ test("iOS App Store pod selection keeps no-JIT Bun runtime and gates tunnel brid
   }).map(([name]) => name);
 
   assert.equal(isIosAppStoreBuild({ ELIZA_BUILD_VARIANT: "store" }), true);
-  assert.equal(pods.includes("LlamaCppCapacitor"), true);
+  assert.equal(pods.includes("LlamaCppCapacitor"), false);
   assert.equal(pods.includes("ElizaosCapacitorBunRuntime"), true);
   assert.equal(pods.includes("ElizaosCapacitorMobileAgentBridge"), false);
   assert.equal(pods.includes("ElizaBunEngine"), true);
 });
 
-test("iOS App Store agent payload is omitted from the cloud client", () => {
+test("iOS App Store agent payload is copied by explicit runtime asset allowlist", () => {
   assert.deepEqual(resolveIosAgentRuntimeAssetPlan({ appStoreBuild: true }), {
-    agentAssets: null,
-    rootAssets: [],
+    agentAssets: IOS_AGENT_RUNTIME_ASSETS,
+    rootAssets: IOS_AGENT_ROOT_EXTENSION_ASSETS,
   });
   assert.deepEqual(
     resolveIosAgentRuntimeAssetPlan({ appStoreBuild: false }).agentAssets,
