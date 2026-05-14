@@ -3,6 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { logger } from "@elizaos/core";
 import { packageNameToAppDisplayName } from "@elizaos/shared";
+import { isLegacyAppsWorkspaceDiscoveryEnabled } from "../config/feature-flags.ts";
 import { resolveStateDir } from "../config/paths.ts";
 import { readJsonFile } from "../utils/atomic-json.ts";
 import {
@@ -131,13 +132,6 @@ function resolveWorkspaceRoots(): string[] {
   }
 
   return uniquePaths(roots);
-}
-
-function legacyAppsWorkspaceDiscoveryEnabled(): boolean {
-  const raw = process.env.ELIZA_ENABLE_LEGACY_APPS_WORKSPACE_DISCOVERY;
-  if (!raw) return false;
-  const normalized = raw.trim().toLowerCase();
-  return normalized === "1" || normalized === "true" || normalized === "yes";
 }
 
 function isMissingPathError(err: unknown): err is NodeJS.ErrnoException {
@@ -413,10 +407,9 @@ async function discoverLocalWorkspaceApps(): Promise<
     addDiscoveredRoot(path.join(workspaceRoot, "packages"), false);
     addDiscoveredRoot(path.join(workspaceRoot, "eliza", "packages"), false);
     addDiscoveredRoot(path.join(workspaceRoot, "eliza", "plugins"), true);
-    if (legacyAppsWorkspaceDiscoveryEnabled()) {
-      // Temporary opt-in for older external workspaces that still keep app
-      // plugins under apps/app-*. The current repo discovers plugins/app-* by
-      // default and must not depend on top-level apps/*.
+    if (isLegacyAppsWorkspaceDiscoveryEnabled()) {
+      // Opt-in for older external workspaces that still keep app plugins
+      // under apps/app-*. The current repo discovers plugins/app-* by default.
       addDiscoveredRoot(path.join(workspaceRoot, "apps"), false);
       addDiscoveredRoot(path.join(workspaceRoot, "eliza", "apps"), false);
     }
@@ -435,7 +428,7 @@ async function discoverLocalWorkspaceApps(): Promise<
       addDiscoveredRoot(path.join(repoRoot, "packages"), false);
       addDiscoveredRoot(path.join(repoRoot, "eliza", "packages"), false);
       addDiscoveredRoot(path.join(repoRoot, "eliza", "plugins"), true);
-      if (legacyAppsWorkspaceDiscoveryEnabled()) {
+      if (isLegacyAppsWorkspaceDiscoveryEnabled()) {
         addDiscoveredRoot(path.join(repoRoot, "apps"), false);
         addDiscoveredRoot(path.join(repoRoot, "eliza", "apps"), false);
       }

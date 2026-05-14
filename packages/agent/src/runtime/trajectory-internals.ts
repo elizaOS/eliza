@@ -983,17 +983,7 @@ export async function ensureTrajectoriesTable(
       // ignore when column already exists
     }
 
-    // Dedicated trajectory_steps table — replaces the JSONB steps_json blob.
-    //
-    // Migration direction: forward only. Existing trajectories with steps
-    // in `trajectories.steps_json` are migrated into `trajectory_steps`
-    // rows by `forwardMigrateStepsJsonToRows` (called below when both
-    // tables are present). `trajectories.steps_json` is kept as a
-    // best-effort fallback for read paths that have not yet been
-    // migrated, but writes go through the new table.
-    //
-    // Script column has no length cap (legacy 4096-char cap applied only
-    // to JSON storage; the dedicated TEXT column has none).
+    // Per-step rows; script column is unbounded TEXT (no legacy 4096-char cap).
     await executeRawSql(
       runtime,
       `CREATE TABLE IF NOT EXISTS trajectory_steps (
@@ -1152,10 +1142,7 @@ async function forwardMigrateStepsJsonToRows(
       );
     }
   } catch (err) {
-    // Migration is best-effort. Failures here do not prevent the
-    // dedicated table from being used for new writes; the
-    // legacy JSONB fallback remains for existing rows until
-    // migration succeeds on a subsequent boot.
+    // Best-effort: failure here doesn't block new writes; legacy steps_json remains readable.
     warnRuntime(
       runtime,
       "forwardMigrateStepsJsonToRows: migration query failed; legacy steps_json still readable",
