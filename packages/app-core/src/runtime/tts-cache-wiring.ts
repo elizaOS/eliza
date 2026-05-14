@@ -12,9 +12,9 @@
  * time.
  */
 
+import process from "node:process";
 import type { AgentRuntime, IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import process from "node:process";
 import { FIRST_SENTENCE_SNIP_VERSION } from "@elizaos/shared";
 
 /**
@@ -23,25 +23,32 @@ import { FIRST_SENTENCE_SNIP_VERSION } from "@elizaos/shared";
  * the input through unchanged, so structural compatibility is what matters.
  */
 export type EdgeTtsHandler = (
-	runtime: AgentRuntime,
-	input: unknown,
+  runtime: AgentRuntime,
+  input: unknown,
 ) => Promise<unknown>;
 
 const EDGE_TTS_DEFAULT_VOICE = "en-US-MichelleNeural";
 
 function readEdgeTtsSetting(
-	runtime: IAgentRuntime,
-	key: string,
-	fallback?: string,
+  runtime: IAgentRuntime,
+  key: string,
+  fallback?: string,
 ): string | undefined {
-	const envValue =
-		typeof process !== "undefined" && process?.env ? process.env[key] : undefined;
-	const getSetting =
-		typeof (runtime as { getSetting?: (k: string) => unknown }).getSetting === "function"
-			? (runtime as { getSetting: (k: string) => unknown }).getSetting.bind(runtime)
-			: undefined;
-	const settingValue = getSetting ? (getSetting(key) as string | undefined) : undefined;
-	return settingValue ?? envValue ?? fallback;
+  const envValue =
+    typeof process !== "undefined" && process?.env
+      ? process.env[key]
+      : undefined;
+  const getSetting =
+    typeof (runtime as { getSetting?: (k: string) => unknown }).getSetting ===
+    "function"
+      ? (runtime as { getSetting: (k: string) => unknown }).getSetting.bind(
+          runtime,
+        )
+      : undefined;
+  const settingValue = getSetting
+    ? (getSetting(key) as string | undefined)
+    : undefined;
+  return settingValue ?? envValue ?? fallback;
 }
 
 /**
@@ -52,112 +59,113 @@ function readEdgeTtsSetting(
  * missing node:sqlite); callers should fall back to the unwrapped handler.
  */
 export async function wrapEdgeTtsHandlerWithFirstLineCache(
-	inner: EdgeTtsHandler,
+  inner: EdgeTtsHandler,
 ): Promise<EdgeTtsHandler | null> {
-	let wrapModule: typeof import("@elizaos/plugin-local-inference/services");
-	try {
-		wrapModule = (await import(
-			"@elizaos/plugin-local-inference/services"
-		)) as typeof import("@elizaos/plugin-local-inference/services");
-	} catch (err) {
-		logger.debug?.(
-			`[tts-cache-wiring] @elizaos/plugin-local-inference/services unavailable; cache disabled: ${err instanceof Error ? err.message : String(err)}`,
-		);
-		return null;
-	}
+  let wrapModule: typeof import("@elizaos/plugin-local-inference/services");
+  try {
+    wrapModule = (await import(
+      "@elizaos/plugin-local-inference/services"
+    )) as typeof import("@elizaos/plugin-local-inference/services");
+  } catch (err) {
+    logger.debug?.(
+      `[tts-cache-wiring] @elizaos/plugin-local-inference/services unavailable; cache disabled: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return null;
+  }
 
-	if (
-		typeof wrapModule.wrapWithFirstLineCache !== "function" ||
-		typeof wrapModule.fingerprintVoiceSettings !== "function"
-	) {
-		return null;
-	}
+  if (
+    typeof wrapModule.wrapWithFirstLineCache !== "function" ||
+    typeof wrapModule.fingerprintVoiceSettings !== "function"
+  ) {
+    return null;
+  }
 
-	const { wrapWithFirstLineCache, fingerprintVoiceSettings } = wrapModule;
+  const { wrapWithFirstLineCache, fingerprintVoiceSettings } = wrapModule;
 
-	const wrapped = wrapWithFirstLineCache(
-		inner as unknown as Parameters<typeof wrapWithFirstLineCache>[0],
-		{
-			resolveContext: (runtime: IAgentRuntime, input: unknown) => {
-				const requestedVoice =
-					typeof input === "object" && input
-						? (input as { voice?: string }).voice
-						: undefined;
-				const settingVoice = readEdgeTtsSetting(
-					runtime,
-					"EDGE_TTS_VOICE",
-					EDGE_TTS_DEFAULT_VOICE,
-				);
-				const voiceId = requestedVoice || settingVoice || EDGE_TTS_DEFAULT_VOICE;
-				const outputFormat =
-					readEdgeTtsSetting(
-						runtime,
-						"EDGE_TTS_OUTPUT_FORMAT",
-						"audio-24khz-48kbitrate-mono-mp3",
-					) ?? "audio-24khz-48kbitrate-mono-mp3";
+  const wrapped = wrapWithFirstLineCache(
+    inner as unknown as Parameters<typeof wrapWithFirstLineCache>[0],
+    {
+      resolveContext: (runtime: IAgentRuntime, input: unknown) => {
+        const requestedVoice =
+          typeof input === "object" && input
+            ? (input as { voice?: string }).voice
+            : undefined;
+        const settingVoice = readEdgeTtsSetting(
+          runtime,
+          "EDGE_TTS_VOICE",
+          EDGE_TTS_DEFAULT_VOICE,
+        );
+        const voiceId =
+          requestedVoice || settingVoice || EDGE_TTS_DEFAULT_VOICE;
+        const outputFormat =
+          readEdgeTtsSetting(
+            runtime,
+            "EDGE_TTS_OUTPUT_FORMAT",
+            "audio-24khz-48kbitrate-mono-mp3",
+          ) ?? "audio-24khz-48kbitrate-mono-mp3";
 
-				// Edge TTS doesn't expose a stable voice revision token. Synthesize
-				// one bound to the SDK package id + selected output format so that
-				// a future Edge backend swap (sample rate change, codec change)
-				// invalidates cached bytes. The `node-edge-tts` package version
-				// isn't easily resolvable at runtime; we conservatively pin
-				// `edge-tts:v1`.
-				const voiceRevision = `edge-tts:v1:${outputFormat}`;
+        // Edge TTS doesn't expose a stable voice revision token. Synthesize
+        // one bound to the SDK package id + selected output format so that
+        // a future Edge backend swap (sample rate change, codec change)
+        // invalidates cached bytes. The `node-edge-tts` package version
+        // isn't easily resolvable at runtime; we conservatively pin
+        // `edge-tts:v1`.
+        const voiceRevision = `edge-tts:v1:${outputFormat}`;
 
-				const rate = readEdgeTtsSetting(runtime, "EDGE_TTS_RATE");
-				const pitch = readEdgeTtsSetting(runtime, "EDGE_TTS_PITCH");
-				const volume = readEdgeTtsSetting(runtime, "EDGE_TTS_VOLUME");
-				const lang = readEdgeTtsSetting(runtime, "EDGE_TTS_LANG", "en-US");
+        const rate = readEdgeTtsSetting(runtime, "EDGE_TTS_RATE");
+        const pitch = readEdgeTtsSetting(runtime, "EDGE_TTS_PITCH");
+        const volume = readEdgeTtsSetting(runtime, "EDGE_TTS_VOLUME");
+        const lang = readEdgeTtsSetting(runtime, "EDGE_TTS_LANG", "en-US");
 
-				const voiceSettingsFingerprint = fingerprintVoiceSettings({
-					rate: rate ?? null,
-					pitch: pitch ?? null,
-					volume: volume ?? null,
-					lang: lang ?? null,
-					outputFormat,
-				});
+        const voiceSettingsFingerprint = fingerprintVoiceSettings({
+          rate: rate ?? null,
+          pitch: pitch ?? null,
+          volume: volume ?? null,
+          lang: lang ?? null,
+          outputFormat,
+        });
 
-				const codec = /(opus)/i.test(outputFormat)
-					? ("opus" as const)
-					: /(ogg|webm)/i.test(outputFormat)
-						? ("ogg" as const)
-						: /(wav|riff|pcm)/i.test(outputFormat)
-							? ("wav" as const)
-							: ("mp3" as const);
+        const codec = /(opus)/i.test(outputFormat)
+          ? ("opus" as const)
+          : /(ogg|webm)/i.test(outputFormat)
+            ? ("ogg" as const)
+            : /(wav|riff|pcm)/i.test(outputFormat)
+              ? ("wav" as const)
+              : ("mp3" as const);
 
-				const contentType =
-					codec === "mp3"
-						? "audio/mpeg"
-						: codec === "opus"
-							? "audio/opus"
-							: codec === "ogg"
-								? "audio/ogg"
-								: "audio/wav";
+        const contentType =
+          codec === "mp3"
+            ? "audio/mpeg"
+            : codec === "opus"
+              ? "audio/opus"
+              : codec === "ogg"
+                ? "audio/ogg"
+                : "audio/wav";
 
-				// Sample rate inferred from the Edge output format. Most defaults
-				// expose 24 kHz; the `audio-48khz-*` variants exist but are rare.
-				const sampleRate = /(48khz)/i.test(outputFormat)
-					? 48000
-					: /(16khz)/i.test(outputFormat)
-						? 16000
-						: 24000;
+        // Sample rate inferred from the Edge output format. Most defaults
+        // expose 24 kHz; the `audio-48khz-*` variants exist but are rare.
+        const sampleRate = /(48khz)/i.test(outputFormat)
+          ? 48000
+          : /(16khz)/i.test(outputFormat)
+            ? 16000
+            : 24000;
 
-				return {
-					provider: "edge-tts",
-					voiceId,
-					voiceRevision,
-					codec,
-					contentType,
-					sampleRate,
-					voiceSettingsFingerprint,
-				};
-			},
-		},
-	);
+        return {
+          provider: "edge-tts",
+          voiceId,
+          voiceRevision,
+          codec,
+          contentType,
+          sampleRate,
+          voiceSettingsFingerprint,
+        };
+      },
+    },
+  );
 
-	logger.debug?.(
-		`[tts-cache-wiring] edge-tts wrapped with first-line cache (algo ${FIRST_SENTENCE_SNIP_VERSION})`,
-	);
+  logger.debug?.(
+    `[tts-cache-wiring] edge-tts wrapped with first-line cache (algo ${FIRST_SENTENCE_SNIP_VERSION})`,
+  );
 
-	return wrapped as unknown as EdgeTtsHandler;
+  return wrapped as unknown as EdgeTtsHandler;
 }
