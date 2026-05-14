@@ -251,7 +251,14 @@ export function resolveStewardContainerUrl(
     return override.replace(/\/$/, "");
   }
 
-  const url = new URL(stewardHostUrl);
+  let url: URL;
+  try {
+    url = new URL(stewardHostUrl);
+  } catch {
+    throw new Error(
+      `[docker-sandbox] Invalid STEWARD_API_URL: ${JSON.stringify(stewardHostUrl)}`,
+    );
+  }
   if (["localhost", "127.0.0.1", "::1"].includes(url.hostname)) {
     url.hostname = "host.docker.internal";
   }
