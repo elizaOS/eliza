@@ -1048,3 +1048,281 @@ describe("withGuidedDecodeProviderOptions", () => {
 		});
 	});
 });
+
+describe("buildBoundedNumberRule — numeric range constraints", () => {
+	it("generates bounded rule for integers with min/max bounds", () => {
+		const r = buildPlannerActionGrammarStrict([
+			makeAction("TEST", {
+				parameters: {
+					type: "object",
+					properties: {
+						score: { type: "integer", minimum: 0, maximum: 100 },
+					},
+					required: ["score"],
+				},
+			}),
+		]);
+		if (r === null) throw new Error("expected grammar");
+		// The grammar should contain bounded integer alternatives for small range.
+		expect(r.grammar).toContain('"0"');
+		expect(r.grammar).toContain('"50"');
+		expect(r.grammar).toContain('"100"');
+	});
+
+	it("unbounded integers fall back to jsonnumber", () => {
+		const r = buildPlannerActionGrammarStrict([
+			makeAction("UNBOUNDED", {
+				parameters: {
+					type: "object",
+					properties: {
+						any: { type: "integer" },
+					},
+					required: ["any"],
+				},
+			}),
+		]);
+		if (r === null) throw new Error("expected grammar");
+		// No min/max → uses shared jsonnumber rule.
+		expect(r.grammar).toContain("jsonnumber ::=");
+	});
+
+	it("handles floats with bounds (uses jsonnumber, validates server-side)", () => {
+		const r = buildPlannerActionGrammarStrict([
+			makeAction("FLOAT_TEST", {
+				parameters: {
+					type: "object",
+					properties: {
+						value: { type: "number", minimum: 0.0, maximum: 1.0 },
+					},
+					required: ["value"],
+				},
+			}),
+		]);
+		if (r === null) throw new Error("expected grammar");
+		// Floats pragmatically use jsonnumber (server validates bounds).
+		expect(r.grammar).toContain("jsonnumber ::=");
+	});
+});
+
+describe("buildPlannerActionGrammarStrict — unique-prefix collapse", () => {
+	it("factors common prefixes in action names (MESSAGE_SEND, MESSAGE_READ, MESSAGE_SEARCH)", () => {
+		const r = buildPlannerActionGrammarStrict([
+			makeAction("MESSAGE_SEND", {
+				parameters: { type: "object", properties: {} },
+			}),
+			makeAction("MESSAGE_READ", {
+				parameters: { type: "object", properties: {} },
+			}),
+			makeAction("MESSAGE_SEARCH", {
+				parameters: { type: "object", properties: {} },
+			}),
+			makeAction("REPLY", { parameters: { type: "object", properties: {} } }),
+		]);
+		if (r === null) throw new Error("expected grammar");
+		// The grammar should emit MESSAGE_ as a shared prefix literal.
+		expect(r.grammar).toContain('"MESSAGE_"');
+		// And a suffix rule for SEND | READ | SEARCH.
+		expect(r.grammar).toMatch(/suffix_MESSAGE_\s*::=/);
+		// Ungrouped action (REPLY) should still be a full literal.
+		expect(r.grammar).toContain('"{\\"action\\":\\"REPLY\\""');
+	});
+
+	it("preserves ungrouped action names as full literals", () => {
+		const r = buildPlannerActionGrammarStrict([
+			makeAction("GITHUB_OPEN_ISSUE", {
+				parameters: { type: "object", properties: {} },
+			}),
+			makeAction("GITHUB_CLOSE_ISSUE", {
+				parameters: { type: "object", properties: {} },
+			}),
+			makeAction("TWITTER_POST", { parameters: { type: "object", properties: {} } }),
+		]);
+		if (r === null) throw new Error("expected grammar");
+		// GITHUB actions should be grouped under GITHUB_ prefix.
+		expect(r.grammar).toContain('"GITHUB_"');
+		// TWITTER_POST has no sibling; emitted as a full action name.
+		expect(r.grammar).toContain('"{\\"action\\":\\"TWITTER_POST\\""');
+	});
+
+	it("only groups prefixes shared by 2+ actions (≥3 chars)", () => {
+		const r = buildPlannerActionGrammarStrict([
+			makeAction("SEND", { parameters: { type: "object", properties: {} } }),
+			makeAction("SHOW", { parameters: { type: "object", properties: {} } }),
+			makeAction("UPLOAD", { parameters: { type: "object", properties: {} } }),
+		]);
+		if (r === null) throw new Error("expected grammar");
+		// SE/SH prefixes are <3 chars; no grouping.
+		// All should appear as full action names.
+		expect(r.grammar).toContain('"{\\"action\\":\\"SEND\\""');
+		expect(r.grammar).toContain('"{\\"action\\":\\"SHOW\\""');
+		expect(r.grammar).toContain('"{\\"action\\":\\"UPLOAD\\""');
+	});
+
+	it("co-determines action name and params in grouped branches", () => {
+		const r = buildPlannerActionGrammarStrict([
+			makeAction("MSG_SEND", {
+				parameters: {
+					type: "object",
+					properties: { mode: { type: "string", enum: ["direct"] } },
+				},
+			}),
+			makeAction("MSG_REPLY", {
+				parameters: {
+					type: "object",
+					properties: { thread: { type: "string" } },
+				},
+			}),
+		]);
+		if (r === null) throw new Error("expected grammar");
+		// Each call rule should reference its own paramsofaction rule.
+		expect(r.grammar).toContain("callofaction_MSG_SEND");
+		expect(r.grammar).toContain("callofaction_MSG_REPLY");
+		expect(r.grammar).toContain("paramsofaction_MSG_SEND");
+		expect(r.grammar).toContain("paramsofaction_MSG_REPLY");
+	});
+});
+
+describe("buildBoundedNumberRule — numeric range constraints", () => {
+	it("generates bounded rule for integers with min/max bounds", () => {
+		const r = buildPlannerActionGrammarStrict([
+			makeAction("TEST", {
+				parameters: [
+					{
+						name: "score",
+						description: "score 0-100",
+						required: true,
+						schema: { type: "integer", minimum: 0, maximum: 100 },
+					},
+				],
+			}),
+		]);
+		if (r === null) throw new Error("expected grammar");
+		// The grammar should contain bounded integer alternatives for small range.
+		// The values are JSON-quoted in the GBNF output.
+		expect(r.grammar).toContain('\"0\"');
+		expect(r.grammar).toContain('\"100\"');
+		expect(r.grammar).toMatch(/_bounded ::=/);
+	});
+
+	it("unbounded integers fall back to jsonnumber", () => {
+		const r = buildPlannerActionGrammarStrict([
+			makeAction("UNBOUNDED", {
+				parameters: [
+					{
+						name: "any",
+						description: "any integer",
+						required: true,
+						schema: { type: "integer" },
+					},
+				],
+			}),
+		]);
+		if (r === null) throw new Error("expected grammar");
+		// No min/max → uses shared jsonnumber rule.
+		expect(r.grammar).toContain("jsonnumber ::=");
+	});
+
+	it("handles floats with bounds (uses jsonnumber, validates server-side)", () => {
+		const r = buildPlannerActionGrammarStrict([
+			makeAction("FLOAT_TEST", {
+				parameters: [
+					{
+						name: "value",
+						description: "value 0-1",
+						required: true,
+						schema: { type: "number", minimum: 0.0, maximum: 1.0 },
+					},
+				],
+			}),
+		]);
+		if (r === null) throw new Error("expected grammar");
+		// Floats pragmatically use jsonnumber (server validates bounds).
+		expect(r.grammar).toContain("jsonnumber ::=");
+	});
+});
+
+describe("buildPlannerActionGrammarStrict — unique-prefix collapse", () => {
+	it("factors common prefixes in action names", () => {
+		const r = buildPlannerActionGrammarStrict([
+			makeAction("MESSAGE_SEND", {
+				parameters: [],
+			}),
+			makeAction("MESSAGE_READ", {
+				parameters: [],
+			}),
+			makeAction("MESSAGE_SEARCH", {
+				parameters: [],
+			}),
+			makeAction("REPLY", { parameters: [] }),
+		]);
+		if (r === null) throw new Error("expected grammar");
+		// The grammar should emit MESSAGE_ as a shared prefix literal.
+		expect(r.grammar).toContain('"MESSAGE_"');
+		// And a suffix rule for SEND | READ | SEARCH.
+		expect(r.grammar).toMatch(/suffix_MESSAGE_\s*::=/);
+		// Ungrouped action (REPLY) should still be a full literal.
+		expect(r.grammar).toContain('"{\\"action\\":\\"REPLY\\""');
+	});
+
+	it("preserves ungrouped action names as full literals", () => {
+		const r = buildPlannerActionGrammarStrict([
+			makeAction("GITHUB_OPEN_ISSUE", {
+				parameters: [],
+			}),
+			makeAction("GITHUB_CLOSE_ISSUE", {
+				parameters: [],
+			}),
+			makeAction("TWITTER_POST", { parameters: [] }),
+		]);
+		if (r === null) throw new Error("expected grammar");
+		// GITHUB actions should be grouped under GITHUB_ prefix.
+		expect(r.grammar).toContain('"GITHUB_"');
+		// TWITTER_POST has no sibling; emitted as a full action name.
+		expect(r.grammar).toContain('"{\\"action\\":\\"TWITTER_POST\\""');
+	});
+
+	it("only groups prefixes shared by 2+ actions (≥3 chars)", () => {
+		const r = buildPlannerActionGrammarStrict([
+			makeAction("SEND", { parameters: [] }),
+			makeAction("SHOW", { parameters: [] }),
+			makeAction("UPLOAD", { parameters: [] }),
+		]);
+		if (r === null) throw new Error("expected grammar");
+		// SE/SH prefixes are <3 chars; no grouping.
+		// All should appear as full action names.
+		expect(r.grammar).toContain('"{\\"action\\":\\"SEND\\""');
+		expect(r.grammar).toContain('"{\\"action\\":\\"SHOW\\""');
+		expect(r.grammar).toContain('"{\\"action\\":\\"UPLOAD\\""');
+	});
+
+	it("co-determines action name and params in grouped branches", () => {
+		const r = buildPlannerActionGrammarStrict([
+			makeAction("MSG_SEND", {
+				parameters: [
+					{
+						name: "mode",
+						description: "delivery mode",
+						required: true,
+						schema: { type: "string", enum: ["direct"] },
+					},
+				],
+			}),
+			makeAction("MSG_REPLY", {
+				parameters: [
+					{
+						name: "thread",
+						description: "thread id",
+						required: true,
+						schema: { type: "string" },
+					},
+				],
+			}),
+		]);
+		if (r === null) throw new Error("expected grammar");
+		// Each call rule should reference its own paramsofaction rule.
+		expect(r.grammar).toContain("callofaction_MSG_SEND");
+		expect(r.grammar).toContain("callofaction_MSG_REPLY");
+		expect(r.grammar).toContain("paramsofaction_MSG_SEND");
+		expect(r.grammar).toContain("paramsofaction_MSG_REPLY");
+	});
+});

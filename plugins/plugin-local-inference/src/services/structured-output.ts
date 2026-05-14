@@ -345,6 +345,12 @@ export interface PrefillRun {
 	afterFreeSpan: number;
 	/** The deterministically-forced bytes. */
 	text: string;
+	/**
+	 * Optional pre-tokenized token IDs for this run. When provided at compile time
+	 * via a tokenizer callback, the dflash-server can use these directly without
+	 * re-tokenizing, improving latency.
+	 */
+	tokenIds?: number[];
 }
 
 /**
@@ -392,6 +398,7 @@ export interface ElizaPrefillPlan {
  */
 export function compilePrefillPlan(
 	skeletonInput: ResponseSkeleton,
+	tokenize?: (text: string) => number[],
 ): ElizaPrefillPlan | null {
 	const skeleton = collapseSkeleton(skeletonInput);
 	const runs: PrefillRun[] = [];
@@ -400,7 +407,11 @@ export function compilePrefillPlan(
 
 	const flushPending = (afterFreeSpan: number) => {
 		if (pending.length === 0) return;
-		runs.push({ afterFreeSpan, text: pending });
+		const run: PrefillRun = { afterFreeSpan, text: pending };
+		if (tokenize) {
+			run.tokenIds = tokenize(pending);
+		}
+		runs.push(run);
 		pending = "";
 	};
 
@@ -444,10 +455,16 @@ export function prefillPlanRequestFields(
 	return {
 		eliza_prefill_plan: {
 			prefix: plan.prefix,
-			runs: plan.runs.map((r) => ({
-				after_free_span: r.afterFreeSpan,
-				text: r.text,
-			})),
+			runs: plan.runs.map((r) => {
+				const run: Record<string, unknown> = {
+					after_free_span: r.afterFreeSpan,
+					text: r.text,
+				};
+				if (r.tokenIds !== undefined) {
+					run.token_ids = r.tokenIds;
+				}
+				return run;
+			}),
 			free_count: plan.freeCount,
 			id: plan.id,
 		},
@@ -498,11 +515,12 @@ export function elizaHarnessSchemaFromSkeleton(input: {
 	skeleton: ResponseSkeleton;
 	grammar?: string;
 	longNames?: Record<string, string>;
+	tokenize?: (text: string) => number[];
 }): ElizaHarnessSchema {
 	return {
 		skeleton: input.skeleton,
 		grammar: input.grammar,
-		prefillPlan: compilePrefillPlan(input.skeleton),
+		prefillPlan: compilePrefillPlan(input.skeleton, input.tokenize),
 		longNames: input.longNames ?? {},
 		id: input.skeleton.id,
 	};

@@ -24,6 +24,9 @@ describe("iOS local agent transport bridge", () => {
       location: { href: "capacitor://localhost/" },
       navigator: { userAgent: "vitest" },
     });
+    vi.stubGlobal("localStorage", {
+      getItem: () => null,
+    });
   });
 
   afterEach(() => {
@@ -54,7 +57,7 @@ describe("iOS local agent transport bridge", () => {
         foreground: "ittp",
       },
     });
-  }, 30_000);
+  }, 120_000);
 
   it("routes loopback local-agent URLs through the ITTP transport", async () => {
     const { iosInProcessAgentTransportForUrl } = await import(

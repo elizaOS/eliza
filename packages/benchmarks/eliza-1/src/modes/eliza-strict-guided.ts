@@ -1,13 +1,14 @@
 /**
- * Eliza-1 guided mode.
+ * Eliza-1 strict-guided mode.
  *
- * Calls `LocalInferenceEngine.generate` with a `responseSkeleton` (or an
- * explicit `grammar`) derived from the task's `SkeletonHint`. The skeleton is
- * compiled to a lazy GBNF by `compileSkeletonToGbnf` inside app-core — the bench
- * just hands the engine the literal/free spans.
+ * Like the guided mode, but for the planner task it receives a pre-built
+ * GBNF grammar string (from `buildPlannerActionGrammarStrict`) in the
+ * ModeRequest and passes it to the engine. For should_respond and action:*
+ * tasks, it falls back to the simple skeleton.
  *
- * When the engine isn't available the mode reports a skip reason; the runner
- * surfaces it in the report.
+ * The strict grammar precisely pins the `action` enum + lets `parameters`
+ * be free JSON, achieving single-pass tight control over the action choice
+ * while the engine's second pass refines the parameters.
  */
 import {
   type Eliza1TierId,
@@ -40,19 +41,19 @@ interface BenchSkeleton {
   spans: BenchSkeletonSpan[];
 }
 
-export interface ElizaGuidedModeOptions {
+export interface ElizaStrictGuidedModeOptions {
   tier?: Eliza1TierId;
 }
 
-export class ElizaGuidedMode implements ModeAdapter {
-  readonly id = "guided" as const;
+export class ElizaStrictGuidedMode implements ModeAdapter {
+  readonly id = "strict-guided" as const;
   private engine: EngineLike | null = null;
   private modelPath: string | null = null;
   private skipReason: string | null = null;
   private resolved = false;
   private readonly tier: Eliza1TierId | undefined;
 
-  constructor(options: ElizaGuidedModeOptions = {}) {
+  constructor(options: ElizaStrictGuidedModeOptions = {}) {
     this.tier = options.tier;
   }
 
@@ -74,7 +75,21 @@ export class ElizaGuidedMode implements ModeAdapter {
       return emptyResult(this.skipReason ?? "engine unavailable");
     }
     const prompt = renderPrompt(req);
-    const skeleton = skeletonFromHint(req.skeletonHint);
+
+    // For planner tasks with a pre-built grammar, use the grammar.
+    // Otherwise, build a skeleton from the hint.
+    let skeleton: BenchSkeleton;
+    let grammar: string | undefined;
+
+    if (req.grammar) {
+      // Planner task with strict grammar — use minimal skeleton + grammar
+      grammar = req.grammar;
+      skeleton = { spans: [{ kind: "free-json", key: "envelope" }] };
+    } else {
+      // should_respond or action:* — use simple skeleton
+      skeleton = skeletonFromHint(req.skeletonHint);
+    }
+
     const startedAt = Date.now();
     let firstTokenAt: number | null = null;
     let accumulated = "";
@@ -86,6 +101,7 @@ export class ElizaGuidedMode implements ModeAdapter {
           maxTokens: req.maxTokens,
           temperature: 0,
           responseSkeleton: skeleton,
+          grammar,
           onTextChunk: (chunk: string) => {
             if (firstTokenAt === null) firstTokenAt = Date.now();
             accumulated += chunk;
@@ -98,13 +114,15 @@ export class ElizaGuidedMode implements ModeAdapter {
           firstTokenLatencyMs: firstTokenAt ? firstTokenAt - startedAt : null,
           totalLatencyMs: finishedAt - startedAt,
           tokensGenerated: approxTokens(rawOutput),
+          _skeleton: skeleton,
         };
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        // The SharedResourceRegistry can evict the model under RAM pressure
-        // between bench tasks. Reload once and retry; if it still fails, give
-        // up and report the error.
-        if (!reloadedOnce && /no backend loaded/i.test(message) && this.modelPath) {
+        if (
+          !reloadedOnce &&
+          /no backend loaded/i.test(message) &&
+          this.modelPath
+        ) {
           reloadedOnce = true;
           try {
             await this.engine.load(this.modelPath);
