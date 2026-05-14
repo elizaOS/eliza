@@ -113,16 +113,37 @@ export REUSE_EXISTING_VM
 # string + nonzero rc if unknown). Keep this list and the env-var doc above in
 # sync with packages/training/scripts/training/model_registry.py.
 _tier_args() {
+  # Per the 2026-05-12 Qwen3.5-only mandate (project memory + registry §4-9):
+  # every eliza-1 tier MUST use a Qwen3.5 base. qwen3.6-27b in the registry is
+  # marked cloud-tier gpu-h200x2 (8× H200) — does NOT fit a single H200 SFT —
+  # so the smoke maps 27b → qwen3.5-27b (single-H200 apollo_mini, see
+  # model_registry.py:386-407). The 27b SFT smoke is still memory-tight on a
+  # single H200 (190 GB train budget vs 141 GB H200 RAM) so SKIP_FINETUNE_TIERS
+  # below carve-outs the 27B variants to skip-finetune by default — the smoke
+  # still exercises base-bench + quant + bundle + publish for those tiers.
   case "$1" in
     0_8b)     echo "qwen3.5-0.8b" ;;
     2b)       echo "qwen3.5-2b" ;;
     4b)       echo "qwen3.5-4b" ;;
     9b)       echo "qwen3.5-9b" ;;
-    27b)      echo "qwen3.6-27b" ;;
-    27b-256k) echo "qwen3.6-27b --max-seq-len 262144" ;;
-    27b-1m)   echo "qwen3.6-27b --max-seq-len 1048576" ;;
+    27b)      echo "qwen3.5-27b" ;;
+    27b-256k) echo "qwen3.5-27b --max-seq-len 262144" ;;
+    27b-1m)   echo "qwen3.5-27b --max-seq-len 1048576" ;;
     *) return 1 ;;
   esac
+}
+
+# Tiers that skip --finetune by default (pipeline-only smoke). 27B variants
+# exceed the 141 GB H200 SXM single-GPU RAM budget for an apollo_mini SFT load
+# (190 GB needed per registry). Override with SKIP_FINETUNE_TIERS="" to attempt
+# real SFT on all tiers (will OOM on the 27B variants).
+: "${SKIP_FINETUNE_TIERS:=27b 27b-256k 27b-1m}"
+_tier_skip_finetune() {
+  local tier="$1" t
+  for t in $SKIP_FINETUNE_TIERS; do
+    [ "$t" = "$tier" ] && return 0
+  done
+  return 1
 }
 
 # --- VM helpers (delegates to train_nebius.sh for SSH plumbing) -------------
@@ -187,7 +208,18 @@ print(e.public_name)
   local max_steps_flag=""
   [ "${SMOKE_MAX_STEPS:-0}" -gt 0 ] 2>/dev/null && max_steps_flag="--max-steps ${SMOKE_MAX_STEPS}"
 
-  echo "[smoke-all][$tier] launch: registry=$rk run=$run_name max_steps=${SMOKE_MAX_STEPS:-0} extra='$extra'"
+  # Per-tier --skip-finetune carve-out (default: the three 27B variants — see
+  # _tier_args header). When skip-finetune is on the smoke still exercises
+  # base-bench (off; we --skip-base-bench too) → quant → bundle → publish
+  # for that tier, so the pipeline is end-to-end validated without the SFT
+  # load that would OOM a single H200.
+  local skip_finetune_flag=""
+  if _tier_skip_finetune "$tier"; then
+    skip_finetune_flag="--skip-finetune"
+    echo "[smoke-all][$tier] SKIP_FINETUNE_TIERS hit — pipeline-only smoke (no SFT)"
+  fi
+
+  echo "[smoke-all][$tier] launch: registry=$rk run=$run_name max_steps=${SMOKE_MAX_STEPS:-0} extra='$extra' skip_finetune=${skip_finetune_flag:-no}"
 
   ssh -o StrictHostKeyChecking=no "$target" "cat > $script_path" <<EOF
 #!/usr/bin/env bash
@@ -221,7 +253,7 @@ export UV_NO_SYNC=1 UV_FROZEN=1
 uv run --extra train python scripts/run_pipeline.py \\
   --registry-key $rk --run-name $run_name \\
   --epochs 1 --lr 1e-5 --use-liger on \\
-  $max_steps_flag $extra \\
+  $max_steps_flag $extra $skip_finetune_flag \\
   --train-file ${SMOKE_DATA_DIR}/train.jsonl \\
   --val-file ${SMOKE_DATA_DIR}/val.jsonl \\
   --test-file ${SMOKE_DATA_DIR}/test.jsonl \\
@@ -297,15 +329,41 @@ _smoke_all_exit_trap() {
   if [ "${REUSE_EXISTING_VM:-0}" = "1" ]; then
     echo "[smoke-all] REUSE_EXISTING_VM=1 — leaving $NEBIUS_VM_NAME up (user-owned)"
   else
-    echo "[smoke-all] tearing down $NEBIUS_VM_NAME"
-    NEBIUS_VM_NAME="$NEBIUS_VM_NAME" bash "$NEBIUS_SCRIPT" teardown || \
-      echo "[smoke-all] WARN: teardown failed — check 'nebius compute v1 instance list --parent-id $NEBIUS_PROJECT_ID'"
+    # Wrap teardown in `timeout 180s` — the v4 incident (2026-05-13) hung the
+    # EXIT trap indefinitely when nebius CLI OAuth federation token had expired
+    # mid-run. Trace: SMOKE-PIPELINE-AUDIT 2026-05-14 §risk 2 + .swarm/STATUS.md.
+    # 180 s covers two sequential `nebius compute v1 ... delete` waits (instance
+    # ~30 s + boot disk ~10 s + headroom). On timeout we print a loud reminder.
+    echo "[smoke-all] tearing down $NEBIUS_VM_NAME (timeout 180s)"
+    if timeout 180s bash -c "NEBIUS_VM_NAME='$NEBIUS_VM_NAME' bash '$NEBIUS_SCRIPT' teardown"; then
+      echo "[smoke-all] teardown OK"
+    else
+      local td_rc=$?
+      echo "[smoke-all] WARN: teardown rc=$td_rc (timeout hit means likely nebius CLI auth expired)"
+      echo "[smoke-all] MANUAL ACTION: re-auth nebius CLI, then:"
+      echo "  NEBIUS_VM_NAME=$NEBIUS_VM_NAME bash packages/training/scripts/train_nebius.sh teardown"
+      echo "  (verify with: nebius compute v1 instance list --parent-id $NEBIUS_PROJECT_ID)"
+    fi
   fi
 }
 
 # --- top-level subcommands --------------------------------------------------
 
 smoke_all() {
+  # Pre-flight: confirm nebius CLI auth is live BEFORE we burn time on
+  # provisioning + sync. The v4 incident (2026-05-13) ran for 6 hours then hung
+  # at teardown on a silently-expired federation token — fail-fast here makes
+  # that mode impossible. Skip when REUSE_EXISTING_VM=1 since the smoke loop
+  # uses SSH-based liveness for the reused VM and never calls nebius for it.
+  if [ "${REUSE_EXISTING_VM:-0}" != "1" ]; then
+    echo "[smoke-all] pre-flight: nebius iam whoami"
+    if ! timeout 30s nebius iam whoami >/dev/null 2>&1; then
+      echo "[smoke-all] FATAL: nebius CLI auth check failed (token expired or missing)" >&2
+      echo "  Run: ~/.nebius/bin/nebius iam get-access-token  (then re-run smoke-all)" >&2
+      return 2
+    fi
+  fi
+
   # Arm the trap BEFORE provisioning so a failure during provision still tries
   # to tear down (matches train_nebius.sh's `full` invariant).
   trap _smoke_all_exit_trap EXIT
