@@ -201,7 +201,7 @@ export async function runAndroidBridgeCli(): Promise<void> {
     `[android-bridge] startEliza returned: ${runtime ? "present" : "null"}`,
   );
 
-  console.log(
+  _logToFile(
     `[android-bridge] startEliza returned: runtime=${runtime ? "present" : "null"}, ` +
       `ELIZA_ANDROID_LOCAL_BACKEND=${process.env.ELIZA_ANDROID_LOCAL_BACKEND ?? "(unset)"}`,
   );
@@ -211,14 +211,11 @@ export async function runAndroidBridgeCli(): Promise<void> {
   // `/api/local-inference/device-bridge` WebSocket endpoint.  Without
   // this bootstrap, the bridge handler is never registered.
   if (runtime && process.env.ELIZA_DEVICE_BRIDGE_ENABLED?.trim() === "1") {
-    console.log("[android-bridge] importing mobile-device-bridge-bootstrap…");
+    _logToFile("[android-bridge] importing mobile-device-bridge-bootstrap…");
     const { ensureMobileDeviceBridgeInferenceHandlers } = await import(
       "@elizaos/plugin-capacitor-bridge"
     );
-    const ok = await ensureMobileDeviceBridgeInferenceHandlers(runtime);
-    console.log(
-      `[android-bridge] ensureMobileDeviceBridgeInferenceHandlers returned ${ok}`,
-    );
+    await ensureMobileDeviceBridgeInferenceHandlers(runtime);
   }
 
   // Keep the process alive indefinitely — ElizaAgentService will SIGTERM
@@ -228,5 +225,5 @@ export async function runAndroidBridgeCli(): Promise<void> {
     process.once("SIGTERM", resolve);
   });
 
-  console.log("[android-bridge] shutdown signal received, exiting.");
+  _logToFile("[android-bridge] shutdown signal received, exiting.");
 }
