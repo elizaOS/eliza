@@ -2,10 +2,15 @@ import { describe, expect, it } from "vitest";
 import { classifyDeviceTier } from "../device-tier";
 import type { HardwareProbe } from "../types";
 import {
+	assessVoiceBundleFits,
 	BudgetExhaustedError,
 	createVoiceBudget,
 	createVoiceBudgetForTest,
+	pickVoiceTierSlot,
 	priorityClassForRole,
+	VOICE_ENSEMBLE_BUDGETS,
+	voiceEnsemblePeakMb,
+	voiceEnsembleSteadyStateMb,
 } from "./voice-budget";
 
 const MB = 1024 * 1024;
@@ -35,7 +40,7 @@ const okayProbe: HardwareProbe = {
 	source: "node-llama-cpp",
 };
 
-const poorProbe: HardwareProbe = {
+const _poorProbe: HardwareProbe = {
 	totalRamGb: 8,
 	freeRamGb: 3,
 	gpu: null,
@@ -270,5 +275,146 @@ describe("Mobile fixture (iOS jetsam ceiling)", () => {
 		// iOS jetsam ~3-4 GB ceiling — our default budget for a mobile
 		// OKAY/POOR device should be at most a few GB.
 		expect(budget.totalBytes()).toBeLessThanOrEqual(6 * GB);
+	});
+});
+
+describe("VOICE_ENSEMBLE_BUDGETS — R9 §2.3 co-resident roll-up", () => {
+	it("exposes every tier slot with non-negative MB rows", () => {
+		const slots = Object.keys(VOICE_ENSEMBLE_BUDGETS);
+		expect(slots).toEqual([
+			"mobile-0_8b",
+			"desktop-0_8b",
+			"desktop-2b",
+			"desktop-4b",
+			"workstation-9b",
+			"workstation-27b",
+		]);
+		for (const slot of slots) {
+			const row =
+				VOICE_ENSEMBLE_BUDGETS[slot as keyof typeof VOICE_ENSEMBLE_BUDGETS];
+			expect(row.lmMb).toBeGreaterThanOrEqual(0);
+			expect(row.ttsMb).toBeGreaterThanOrEqual(0);
+			expect(row.asrMb).toBeGreaterThanOrEqual(0);
+			expect(row.vadMb).toBeGreaterThan(0);
+			expect(row.steadyStateMb).toBeGreaterThan(0);
+			expect(row.peakMb).toBeGreaterThanOrEqual(row.steadyStateMb);
+		}
+	});
+
+	it("scales monotonically — bigger LM tier has bigger steady-state", () => {
+		const mobile = VOICE_ENSEMBLE_BUDGETS["mobile-0_8b"].steadyStateMb;
+		const desktop = VOICE_ENSEMBLE_BUDGETS["desktop-0_8b"].steadyStateMb;
+		const two = VOICE_ENSEMBLE_BUDGETS["desktop-2b"].steadyStateMb;
+		const four = VOICE_ENSEMBLE_BUDGETS["desktop-4b"].steadyStateMb;
+		const nine = VOICE_ENSEMBLE_BUDGETS["workstation-9b"].steadyStateMb;
+		const twentyseven = VOICE_ENSEMBLE_BUDGETS["workstation-27b"].steadyStateMb;
+		// desktop adds OmniVoice on top of mobile's kokoro
+		expect(desktop).toBeGreaterThan(mobile);
+		expect(two).toBeGreaterThan(desktop);
+		expect(four).toBeGreaterThan(two);
+		expect(nine).toBeGreaterThan(four);
+		expect(twentyseven).toBeGreaterThan(nine);
+	});
+
+	it("desktop-0_8b includes the ~1.17 GB OmniVoice transient peak", () => {
+		const row = VOICE_ENSEMBLE_BUDGETS["desktop-0_8b"];
+		expect(row.transientTtsBufferMb).toBeGreaterThan(1000);
+		expect(row.peakMb).toBeGreaterThan(row.steadyStateMb + 1000);
+	});
+
+	it("mobile-0_8b skips the OmniVoice transient (defaults to cloud TTS)", () => {
+		const row = VOICE_ENSEMBLE_BUDGETS["mobile-0_8b"];
+		expect(row.transientTtsBufferMb).toBe(0);
+		expect(row.peakMb).toBe(row.steadyStateMb);
+	});
+
+	it("voiceEnsemblePeakMb / voiceEnsembleSteadyStateMb match the table", () => {
+		const row = VOICE_ENSEMBLE_BUDGETS["desktop-2b"];
+		expect(voiceEnsemblePeakMb("desktop-2b")).toBe(row.peakMb);
+		expect(voiceEnsembleSteadyStateMb("desktop-2b")).toBe(row.steadyStateMb);
+	});
+});
+
+describe("pickVoiceTierSlot", () => {
+	it("picks mobile-0_8b on mobile regardless of text model", () => {
+		expect(
+			pickVoiceTierSlot({
+				textModelId: "eliza-1-9b",
+				deviceTier: "GOOD",
+				mobile: true,
+			}),
+		).toBe("mobile-0_8b");
+	});
+
+	it("picks workstation-27b for 27B id", () => {
+		expect(
+			pickVoiceTierSlot({
+				textModelId: "eliza-1-27b-256k",
+				deviceTier: "MAX",
+			}),
+		).toBe("workstation-27b");
+	});
+
+	it("picks workstation-9b for 9B id", () => {
+		expect(
+			pickVoiceTierSlot({ textModelId: "eliza-1-9b", deviceTier: "MAX" }),
+		).toBe("workstation-9b");
+	});
+
+	it("picks desktop-4b / desktop-2b for matching ids", () => {
+		expect(
+			pickVoiceTierSlot({ textModelId: "eliza-1-4b", deviceTier: "GOOD" }),
+		).toBe("desktop-4b");
+		expect(
+			pickVoiceTierSlot({ textModelId: "eliza-1-2b", deviceTier: "GOOD" }),
+		).toBe("desktop-2b");
+		expect(
+			pickVoiceTierSlot({ textModelId: "eliza-1-1_7b", deviceTier: "GOOD" }),
+		).toBe("desktop-2b");
+	});
+
+	it("falls through to desktop-0_8b for small / unknown ids", () => {
+		expect(
+			pickVoiceTierSlot({ textModelId: "eliza-1-0_8b", deviceTier: "OKAY" }),
+		).toBe("desktop-0_8b");
+		expect(
+			pickVoiceTierSlot({ textModelId: "unknown", deviceTier: "MAX" }),
+		).toBe("desktop-0_8b");
+	});
+});
+
+describe("assessVoiceBundleFits", () => {
+	it("fits when host RAM >> peakMb", () => {
+		const decision = assessVoiceBundleFits({
+			tierSlot: "desktop-0_8b",
+			deviceTier: "GOOD",
+			hostRamMb: 32 * 1024,
+		});
+		expect(decision.level).toBe("fits");
+		expect(decision.fits).toBe(true);
+	});
+
+	it("tight when host fits steady-state but not peak", () => {
+		const ensemble = VOICE_ENSEMBLE_BUDGETS["desktop-0_8b"];
+		// reserveMb=0 makes the math trivial: usableMb === hostRamMb
+		const tightHostMb = Math.ceil(ensemble.steadyStateMb + 50);
+		const decision = assessVoiceBundleFits({
+			tierSlot: "desktop-0_8b",
+			deviceTier: "GOOD",
+			hostRamMb: tightHostMb,
+			reserveMb: 0,
+		});
+		expect(decision.level).toBe("tight");
+		expect(decision.fits).toBe(true);
+	});
+
+	it("wontfit for the 27B bundle on an 8 GB box (R9 §3.2)", () => {
+		const decision = assessVoiceBundleFits({
+			tierSlot: "workstation-27b",
+			deviceTier: "POOR",
+			hostRamMb: 8 * 1024,
+		});
+		expect(decision.level).toBe("wontfit");
+		expect(decision.fits).toBe(false);
 	});
 });

@@ -291,6 +291,34 @@ export {
 	type VoiceStateMachineOptions,
 } from "./voice-state-machine";
 export {
+	type AllocationPriority,
+	assessVoiceBundleFits,
+	BudgetExhaustedError,
+	type BudgetReservation,
+	createVoiceBudget,
+	createVoiceBudgetForTest,
+	DEFAULT_VOICE_BUNDLE_RESERVE_MB,
+	pickVoiceTierSlot,
+	priorityClassForRole,
+	type ReservationSnapshot,
+	VOICE_ENSEMBLE_BUDGETS,
+	type VoiceBudget,
+	type VoiceBundleFitDecision,
+	type VoiceEnsembleBudget,
+	voiceEnsemblePeakMb,
+	voiceEnsembleSteadyStateMb,
+	type VoiceTierSlot,
+} from "./voice-budget";
+export {
+	DEFAULT_VOICE_SETTINGS,
+	effectiveBackendMode,
+	qualityPresetQuantizationRanking,
+	resolveVoiceSettings,
+	type VoiceBackendMode,
+	type VoiceModelQualityPreset,
+	type VoiceSettings,
+} from "./voice-settings";
+export {
 	isPlaceholderWakeWordHead,
 	loadBundledWakeWordModel,
 	OPENWAKEWORD_DEFAULT_HEAD,
