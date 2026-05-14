@@ -55,8 +55,9 @@ describe("runVfsBuiltinShell", () => {
       args: ["-c", "echo hello > generated/nested/message.txt"],
     });
     expect(echo.exitCode).toBe(0);
-    await expect(vfs.readFile("src/generated/nested/message.txt")).resolves
-      .toBe("hello\n");
+    await expect(
+      vfs.readFile("src/generated/nested/message.txt"),
+    ).resolves.toBe("hello\n");
 
     const ls = await runVfsBuiltinShell({
       cwdUri: "vfs://portable/src",
@@ -71,8 +72,9 @@ describe("runVfsBuiltinShell", () => {
       args: ["-r", "generated"],
     });
     expect(rm.exitCode).toBe(0);
-    await expect(vfs.readFile("src/generated/nested/message.txt")).rejects
-      .toThrow("File not found");
+    await expect(
+      vfs.readFile("src/generated/nested/message.txt"),
+    ).rejects.toThrow("File not found");
   });
 
   it("runs grep and rg over VFS files without host ripgrep", async () => {

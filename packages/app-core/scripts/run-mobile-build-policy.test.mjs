@@ -22,6 +22,7 @@ test("resolveMobileBuildPolicy marks Google Play Android as a store-managed clou
     buildVariant: "store",
     androidRuntimeMode: "cloud",
     iosRuntimeMode: null,
+    runtimeExecutionMode: "cloud",
     releaseAuthority: "google-play",
     appControlledOta: false,
   });
@@ -33,6 +34,7 @@ test("resolveMobileBuildPolicy marks sideload Android as direct but installer-co
     buildVariant: "direct",
     androidRuntimeMode: "local",
     iosRuntimeMode: null,
+    runtimeExecutionMode: "local-yolo",
     releaseAuthority: "github-release-android-package-installer",
     appControlledOta: false,
   });
@@ -44,6 +46,7 @@ test("resolveMobileBuildPolicy marks AOSP Android as an OTA-owned system image",
     buildVariant: "direct",
     androidRuntimeMode: "local",
     iosRuntimeMode: null,
+    runtimeExecutionMode: "local-yolo",
     releaseAuthority: "aosp-ota",
     appControlledOta: false,
   });
@@ -131,12 +134,13 @@ test("Android manifest cleartext policy is inserted when absent", () => {
   );
 });
 
-test("resolveMobileBuildPolicy keeps App Store iOS local-runtime capable", () => {
+test("resolveMobileBuildPolicy clamps iOS execution to cloud or local-safe", () => {
   assert.deepEqual(resolveMobileBuildPolicy("ios"), {
     capacitorTarget: "ios",
     buildVariant: "store",
     androidRuntimeMode: null,
-    iosRuntimeMode: "cloud-hybrid",
+    iosRuntimeMode: "cloud",
+    runtimeExecutionMode: "cloud",
     releaseAuthority: "apple-app-store",
     appControlledOta: false,
   });
@@ -145,6 +149,7 @@ test("resolveMobileBuildPolicy keeps App Store iOS local-runtime capable", () =>
     buildVariant: "direct",
     androidRuntimeMode: null,
     iosRuntimeMode: "local",
+    runtimeExecutionMode: "local-safe",
     releaseAuthority: "developer-toolchain",
     appControlledOta: false,
   });
@@ -216,7 +221,9 @@ test("iOS app entitlements do not request JIT or dynamic code signing", () => {
   const entitlements = fs.readFileSync(entitlementsPath, "utf8");
   assert.equal(entitlements.includes("com.apple.security.cs.allow-jit"), false);
   assert.equal(
-    entitlements.includes("com.apple.security.cs.allow-dyld-environment-variables"),
+    entitlements.includes(
+      "com.apple.security.cs.allow-dyld-environment-variables",
+    ),
     false,
   );
   assert.equal(
@@ -248,7 +255,9 @@ test("Mac App Store entitlements scope JIT to Bun and reject broad executable-me
 
   for (const content of [parent, child, bun]) {
     assert.equal(
-      content.includes("com.apple.security.cs.allow-unsigned-executable-memory"),
+      content.includes(
+        "com.apple.security.cs.allow-unsigned-executable-memory",
+      ),
       false,
     );
     assert.equal(
