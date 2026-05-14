@@ -1,11 +1,13 @@
 import { afterEach, describe, expect, it } from "vitest";
 import {
 	assertModelFitsHost,
+	assertVoiceBundleFitsHost,
 	isForkOnlyKvCacheType,
 	isStockKvCacheType,
 	ModelDoesNotFitError,
 	resolveLocalInferenceLoadArgs,
 	validateLocalInferenceLoadArgs,
+	VoiceBundleDoesNotFitError,
 } from "./active-model";
 import { resolveIdleUnloadMs } from "./engine";
 import type { InstalledModel } from "./types";
@@ -271,6 +273,59 @@ describe("assertModelFitsHost (RAM-budget admission control)", () => {
 		expect(() =>
 			assertModelFitsHost(m, 16 * 1024, { manifestLoader: bigManifestLoader }),
 		).toThrow(ModelDoesNotFitError);
+	});
+});
+
+describe("assertVoiceBundleFitsHost (R9 §1.4 cross-model admission)", () => {
+	it("fits when host RAM comfortably exceeds the bundle peak", () => {
+		const r = assertVoiceBundleFitsHost({
+			tierSlot: "desktop-0_8b",
+			deviceTier: "GOOD",
+			hostRamMb: 32 * 1024,
+		});
+		expect(r.level).toBe("fits");
+		expect(r.fits).toBe(true);
+		expect(r.peakMb).toBeGreaterThan(r.steadyStateMb);
+	});
+
+	it("throws VoiceBundleDoesNotFitError when wontfit and strict (default)", () => {
+		let caught: unknown;
+		try {
+			assertVoiceBundleFitsHost({
+				tierSlot: "workstation-27b",
+				deviceTier: "POOR",
+				hostRamMb: 8 * 1024,
+			});
+		} catch (err) {
+			caught = err;
+		}
+		expect(caught).toBeInstanceOf(VoiceBundleDoesNotFitError);
+		const e = caught as VoiceBundleDoesNotFitError;
+		expect(e.tierSlot).toBe("workstation-27b");
+		expect(e.deviceTier).toBe("POOR");
+		expect(e.requiredSteadyStateMb).toBeGreaterThan(e.usableMb);
+		expect(e.message).toContain("voice bundle");
+	});
+
+	it("returns wontfit without throwing when strict=false", () => {
+		const r = assertVoiceBundleFitsHost({
+			tierSlot: "workstation-27b",
+			deviceTier: "POOR",
+			hostRamMb: 8 * 1024,
+			strict: false,
+		});
+		expect(r.level).toBe("wontfit");
+		expect(r.fits).toBe(false);
+	});
+
+	it("is permissive for unknown tier slots (delegates to per-tier check)", () => {
+		const r = assertVoiceBundleFitsHost({
+			tierSlot: "ad-hoc-experimental",
+			deviceTier: "GOOD",
+			hostRamMb: 8 * 1024,
+		});
+		expect(r.fits).toBe(true);
+		expect(r.steadyStateMb).toBe(0);
 	});
 });
 
