@@ -559,8 +559,6 @@ export function logResponse(
 	},
 ): string {
 	if (!ensureFileLog()) return "";
-	const _agentName = metadata?.agentName ?? "unknown";
-	void _agentName;
 	// Use the same slug that was stored in the prompt's metadata for correlation
 	const slug = metadata?.promptSlug;
 	if (!slug) {
@@ -1162,8 +1160,7 @@ function createLogger(bindings: LoggerBindings | boolean = false): Logger {
 				logMethod.call(loggerWithMethods, ...adzeArgs);
 			}
 		} catch {
-			// Fallback to console if Adze fails
-			console.log(`[${method.toUpperCase()}]`, ...args);
+			// Adze internals failed — drop the log entry rather than breaking the runtime
 		}
 	};
 
