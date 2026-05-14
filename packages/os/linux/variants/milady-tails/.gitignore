@@ -1,7 +1,11 @@
 # Build outputs and scratch — never committed.
-out/                       # finished ISOs land here
-tails-live-build/          # staged by build.sh from tails/submodules/live-build/
-tails/.git/                # throwaway repo build-iso.sh inits when tails/ has no .git
+
+# finished ISOs land here
+out/
+# staged by build.sh from tails/submodules/live-build/
+tails-live-build/
+# throwaway repo build-iso.sh inits when tails/ has no .git
+tails/.git/
 
 # live-build artifacts written into the vendored tails/ tree during a build
 tails/chroot/
