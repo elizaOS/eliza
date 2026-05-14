@@ -1,11 +1,9 @@
 import { describe, expect, it } from "vitest";
-import type { UUID } from "../../../types/primitives.ts";
 import type { IAgentRuntime, Memory, State } from "../../../types/index.ts";
+import type { UUID } from "../../../types/primitives.ts";
 import { userEmotionSignalProvider } from "./userEmotionSignal.ts";
 
-function makeRuntime(
-	setting?: string | undefined,
-): IAgentRuntime {
+function makeRuntime(setting?: string | undefined): IAgentRuntime {
 	return {
 		getSetting: (key: string) =>
 			key === "ELIZA_VOICE_EMOTION_INTO_PLANNER" ? setting : undefined,
