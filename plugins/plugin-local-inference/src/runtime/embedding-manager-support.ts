@@ -365,10 +365,26 @@ function downloadFile(
 				resolve();
 			};
 
+			// Gated HuggingFace repos (and ungated ones whose LFS redirects hit
+			// a metered endpoint) accept a bearer token via the HF_TOKEN /
+			// HUGGINGFACE_TOKEN / HF_HUB_TOKEN env vars. Without it the
+			// download returns 401. We pass the token on every redirect hop
+			// (same request() closure handles redirects).
+			const hfToken =
+				process.env.HF_TOKEN?.trim() ||
+				process.env.HUGGINGFACE_TOKEN?.trim() ||
+				process.env.HF_HUB_TOKEN?.trim() ||
+				"";
+			const downloadHeaders: Record<string, string> = {
+				"User-Agent": "eliza",
+			};
+			if (hfToken) {
+				downloadHeaders.Authorization = `Bearer ${hfToken}`;
+			}
 			https
 				.get(
 					validatedUrl.toString(),
-					{ headers: { "User-Agent": "eliza" } },
+					{ headers: downloadHeaders },
 					(res) => {
 						expectedBytes = parseContentLength(res.headers["content-length"]);
 						if (
