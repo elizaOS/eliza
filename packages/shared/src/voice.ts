@@ -281,7 +281,7 @@ export const PREMADE_VOICES: VoicePreset[] = [
 ];
 
 export const VOICE_PROVIDERS: Array<{
-  id: "elevenlabs" | "edge";
+  id: "elevenlabs" | "edge" | "local-inference";
   label: string;
   labelKey: string;
   hint: string;
@@ -297,12 +297,61 @@ export const VOICE_PROVIDERS: Array<{
     needsKey: true,
   },
   {
+    id: "local-inference",
+    label: "Local inference",
+    labelKey: "voice.provider.localInference",
+    hint: "On-device OmniVoice",
+    hintKey: "voice.provider.localInference.hint",
+    needsKey: false,
+  },
+  {
     id: "edge",
     label: "Microsoft Edge",
     labelKey: "voice.provider.edge",
     hint: "Free, Microsoft voices",
     hintKey: "voice.provider.edge.hint",
     needsKey: false,
+  },
+];
+
+/**
+ * ASR (automatic speech recognition) provider catalogue. Mirrors
+ * `VOICE_PROVIDERS` so the settings UI can render a provider picker for
+ * speech-to-text. The legacy whisper.cpp pipeline has been retired —
+ * on-device transcription now runs through the local-inference Qwen3-ASR
+ * bundle instead.
+ */
+export const ASR_PROVIDERS: Array<{
+  id: "local-inference" | "eliza-cloud" | "openai";
+  label: string;
+  labelKey: string;
+  hint: string;
+  hintKey: string;
+  needsKey: boolean;
+}> = [
+  {
+    id: "local-inference",
+    label: "Local inference",
+    labelKey: "asr.provider.localInference",
+    hint: "On-device Qwen3-ASR",
+    hintKey: "asr.provider.localInference.hint",
+    needsKey: false,
+  },
+  {
+    id: "eliza-cloud",
+    label: "Eliza Cloud",
+    labelKey: "asr.provider.elizaCloud",
+    hint: "Routed through your Eliza Cloud login",
+    hintKey: "asr.provider.elizaCloud.hint",
+    needsKey: false,
+  },
+  {
+    id: "openai",
+    label: "OpenAI",
+    labelKey: "asr.provider.openai",
+    hint: "Whisper hosted by OpenAI",
+    hintKey: "asr.provider.openai.hint",
+    needsKey: true,
   },
 ];
 

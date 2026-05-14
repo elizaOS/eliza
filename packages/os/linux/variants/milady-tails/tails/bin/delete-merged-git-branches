@@ -1,0 +1,73 @@
+#!/usr/bin/python3
+
+import argparse
+import pprint
+import sys
+
+from tailslib.git import Git
+
+# Functions
+
+
+def strtobool(val):
+    """Convert a string representation of truth to true (1) or false (0).
+    True values are 'y', 'yes', 't', 'true', 'on', and '1'; false values
+    are 'n', 'no', 'f', 'false', 'off', and '0'.  Raises ValueError if
+    'val' is anything else.
+    """
+    val = val.lower()
+    if val in ('y', 'yes', 't', 'true', 'on', '1'):
+        return 1
+    elif val in ('n', 'no', 'f', 'false', 'off', '0'):
+        return 0
+    else:
+        raise ValueError("invalid truth value %r" % (val,))
+
+
+def yes_no_input(prompt, default=True):
+    if default:
+        options = 'Y/n'
+    else:
+        options = 'N/y'
+    sys.stdout.write('%s [%s] ' % (prompt, options))
+    while True:
+        answer = input().lower()
+        if len(answer) == 0:
+            return default
+        else:
+            try:
+                return strtobool(answer)
+            except ValueError:
+                print("Please respond with 'y' or 'n'.")
+
+
+# Parse command-line arguments
+
+parser = argparse.ArgumentParser(description='Delete merged Git branches.')
+parser.add_argument('--repo', type=str, dest='repo',
+                    help='Path to an up-to-date (bare) Tails Git repository.')
+parser.add_argument('--remote', type=str, dest='remote', default='origin',
+                    help='Push to the specified remote instead of "origin".')
+parser.add_argument('--batch', type=bool, dest='batch',
+                    nargs='?', const=True, default=False,
+                    help='Assume "yes" as answer to all prompts.')
+args = parser.parse_args()
+
+
+# Main
+
+pp = pprint.PrettyPrinter()
+tailsgit = Git(args.repo)
+branches_to_delete = tailsgit.branches_to_delete()
+
+if not branches_to_delete:
+    print("No branch to delete was found.")
+    sys.exit(0)
+
+print("The following branches will be deleted:")
+pp.pprint(sorted(branches_to_delete))
+if not args.batch \
+   and not yes_no_input("Remove these branches?", default=False):
+    sys.exit(0)
+
+tailsgit.push(args.remote, [':%s' % branch for branch in branches_to_delete])

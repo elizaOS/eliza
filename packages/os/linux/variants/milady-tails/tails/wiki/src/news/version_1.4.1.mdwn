@@ -1,0 +1,55 @@
+[[!meta date="Fri, 03 Jul 2015 12:34:56 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!meta title="Tails 1.4.1 is out"]]
+[[!tag announce]]
+
+Tails, The Amnesic Incognito Live System, version 1.4.1, is out.
+
+This release fixes [[numerous security
+issues|security/Numerous_security_holes_in_1.4]] and all users must
+[[upgrade|doc/upgrade]] as soon as possible.
+
+[[!toc levels=1]]
+
+# Changes
+
+## Upgrades and changes
+
+  - Upgrade *Tor Browser* to 4.5.3,
+    based on Firefox 31.8.0 ESR.
+
+  - Upgrade *Tor* to
+    0.2.6.9-1~d70.wheezy+1+tails2.
+
+  - Upgrade *Linux* to 3.16.7-ckt11-1.
+
+There are numerous other changes that might not be apparent in the
+daily operation of a typical user. Technical details of all the
+changes are listed in the
+Changelog.
+
+## Fixed problems
+
+  - Have AppArmor deny *Tor Browser*
+    access to the list of recently used files.
+
+  - Fix automatic upgrades in Windows Camouflage mode.
+
+# Known issues
+
+See the current list of [[known issues|support/known_issues]].
+
+# Download or upgrade
+
+Go to the [[install]] page.
+
+# What's coming up?
+
+The next Tails release is [[scheduled|contribute/calendar]] for
+August 11.
+
+
+Do you want to help? There are many ways [[**you** can
+contribute to Tails|contribute]], for
+example by donating. If you want to help, come talk
+to us!

@@ -1,20 +1,18 @@
-import {
-  Button,
-  Input,
-  MetaPill,
-  PageLayout,
-  PagePanel,
-  SidebarContent,
-  SidebarPanel,
-  SidebarScrollRegion,
-} from "@elizaos/ui";
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { client, type QueryResult } from "../../api";
+import { PageLayout } from "../../layouts/page-layout/page-layout";
 import { useApp } from "../../state";
 import type { TranslateFn } from "../../types";
 import { resolveAppAssetUrl } from "../../utils";
+import { PagePanel } from "../composites/page-panel";
+import { MetaPill } from "../composites/page-panel/page-panel-header";
+import { SidebarContent } from "../composites/sidebar/sidebar-content";
+import { SidebarPanel } from "../composites/sidebar/sidebar-panel";
+import { SidebarScrollRegion } from "../composites/sidebar/sidebar-scroll-region";
 import { AppPageSidebar } from "../shared/AppPageSidebar";
+import { Button } from "../ui/button";
+import { Input } from "../ui/input";
 
 type MediaType = "all" | "image" | "video" | "audio";
 

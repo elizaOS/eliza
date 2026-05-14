@@ -15,7 +15,7 @@
  * dispatch loop.
  */
 
-export interface ScheduledFn {
+interface ScheduledFn {
   at: number;
   fn: () => Promise<void> | void;
   id: number;

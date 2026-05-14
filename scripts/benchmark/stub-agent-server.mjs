@@ -2,7 +2,9 @@
 /**
  * stub-agent-server.mjs — minimal in-process HTTP stub that mimics the
  * agent surface profile-inference.mjs talks to. Exists ONLY to validate
- * the harness end-to-end without standing up a real elizaOS instance.
+ * route shape without standing up a real elizaOS instance. The profiler
+ * rejects this target so synthetic replies cannot be written as benchmark
+ * artifacts.
  *
  * Implemented endpoints:
  *   GET    /api/health
@@ -75,7 +77,11 @@ const server = http.createServer(async (req, res) => {
     const pathname = url.pathname;
 
     if (method === "GET" && pathname === "/api/health") {
-      return sendJson(res, 200, { status: "ok" });
+      return sendJson(res, 200, {
+        status: "ok",
+        synthetic: true,
+        server: "stub-agent-server",
+      });
     }
 
     if (method === "POST" && pathname === "/api/local-inference/active") {

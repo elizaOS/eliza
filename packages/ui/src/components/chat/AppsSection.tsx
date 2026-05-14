@@ -5,12 +5,6 @@
  * that are not currently running. Clicking an app launches / focuses it.
  */
 
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@elizaos/ui";
 import { LayoutGrid, MoreHorizontal } from "lucide-react";
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -22,6 +16,12 @@ import { loadMergedCatalogApps } from "../apps/catalog-loader";
 import { getAppShortName } from "../apps/helpers";
 import { getInternalToolAppTargetTab } from "../apps/internal-tool-apps";
 import { isOverlayApp } from "../apps/overlay-app-registry";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "../ui/dropdown-menu";
 import { WidgetSection } from "./widgets/shared";
 
 // ---------------------------------------------------------------------------

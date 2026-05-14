@@ -1,15 +1,10 @@
 /**
- * Default-pack registration entry point (W1-D).
+ * Default-pack registration entry point.
  *
- * The W1-A spine consumes `getAllDefaultPacks()` to seed records on first-run.
- * First-run customize consumes `getOfferedDefaultPacks()` to render the
- * pick-list. The lint script (`scripts/lint-default-packs.mjs`) consumes
- * `getAllDefaultPacks()` and runs `lintPacks()` against the result.
- *
- * Stub status: see `contract-stubs.ts` — all imported types are local Wave-1
- * stubs that match the frozen wave1-interfaces.md signatures. Once W1-A,
- * W1-C, W1-E, W1-F land, the stubs flip to re-exports from the owner
- * modules; consumers of this index do not change.
+ * `getAllDefaultPacks()` is consumed by the runner spine to seed records on
+ * first-run. `getOfferedDefaultPacks()` renders the first-run pick-list. The
+ * lint script (`scripts/lint-default-packs.mjs`) consumes `getAllDefaultPacks()`
+ * and runs `lintPacks()` against the result.
  */
 
 export type {
@@ -95,10 +90,10 @@ import {
 import type { DefaultPack } from "./registry-types.js";
 
 /**
- * The canonical list of W1-D default packs in the order they are offered.
+ * The canonical list of default packs in the order they are offered.
  *
- * `plugin-health` (W1-B) registers its own packs (`bedtime`, `wake-up`,
- * `sleep-recap`) through the same registry — they do not appear here.
+ * `plugin-health` registers its own packs (`bedtime`, `wake-up`, `sleep-recap`)
+ * through the same registry — they do not appear here.
  */
 export const DEFAULT_PACKS: ReadonlyArray<DefaultPack> = [
   dailyRhythmPack,

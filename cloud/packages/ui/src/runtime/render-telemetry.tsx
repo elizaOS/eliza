@@ -45,7 +45,12 @@ function readEnvValue(key: string): boolean | string | undefined {
 
 function isRenderTelemetryEnabled(): boolean {
   const explicit = readEnvValue("VITE_ELIZA_RENDER_TELEMETRY");
-  if (explicit === "0" || explicit === "false") return false;
+  if (explicit === false || explicit === "0" || explicit === "false") {
+    return false;
+  }
+  if (explicit === true || explicit === "1" || explicit === "true") {
+    return true;
+  }
 
   const nodeEnv = typeof process !== "undefined" ? process.env.NODE_ENV : undefined;
   const meta = import.meta as ImportMetaWithEnv;
@@ -96,43 +101,45 @@ export function setRenderTelemetrySink(sink: RenderTelemetrySink | null): void {
 
 export function useRenderGuard(name: string): void {
   const timestamps = useRef<number[]>([]);
+  const currentName = useRef(name);
   const lastSeverity = useRef<RenderTelemetrySeverity | null>(null);
-  const pendingTelemetry = useRef<RenderTelemetryEvent | null>(null);
+
   useEffect(() => {
-    const event = pendingTelemetry.current;
-    if (!event) return;
-    pendingTelemetry.current = null;
-    emitRenderTelemetry(event);
+    if (!isRenderTelemetryEnabled()) return;
+
+    if (currentName.current !== name) {
+      currentName.current = name;
+      timestamps.current = [];
+      lastSeverity.current = null;
+    }
+
+    const now = Date.now();
+    const ts = timestamps.current;
+    ts.push(now);
+
+    while (ts.length > 0 && ts[0] < now - WINDOW_MS) {
+      ts.shift();
+    }
+
+    if (ts.length < INFO_THRESHOLD) {
+      lastSeverity.current = null;
+      return;
+    }
+
+    const severity: RenderTelemetrySeverity = ts.length >= ERROR_THRESHOLD ? "error" : "info";
+    if (lastSeverity.current === severity) return;
+    if (lastSeverity.current === "error") return;
+
+    lastSeverity.current = severity;
+    emitRenderTelemetry({
+      source: "useRenderGuard",
+      name,
+      severity,
+      renderCount: ts.length,
+      threshold: severity === "error" ? ERROR_THRESHOLD : INFO_THRESHOLD,
+      windowMs: WINDOW_MS,
+      timestamps: ts.slice(),
+      at: now,
+    });
   });
-
-  if (!isRenderTelemetryEnabled()) return;
-
-  const now = Date.now();
-  const ts = timestamps.current;
-  ts.push(now);
-
-  while (ts.length > 0 && ts[0] < now - WINDOW_MS) {
-    ts.shift();
-  }
-
-  if (ts.length < INFO_THRESHOLD) {
-    lastSeverity.current = null;
-    return;
-  }
-
-  const severity: RenderTelemetrySeverity = ts.length >= ERROR_THRESHOLD ? "error" : "info";
-  if (lastSeverity.current === severity) return;
-  if (lastSeverity.current === "error") return;
-
-  lastSeverity.current = severity;
-  pendingTelemetry.current = {
-    source: "useRenderGuard",
-    name,
-    severity,
-    renderCount: ts.length,
-    threshold: severity === "error" ? ERROR_THRESHOLD : INFO_THRESHOLD,
-    windowMs: WINDOW_MS,
-    timestamps: ts.slice(),
-    at: now,
-  };
 }

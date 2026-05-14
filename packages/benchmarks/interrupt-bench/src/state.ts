@@ -22,23 +22,23 @@ import type {
   ScenarioSetup,
 } from "./types.ts";
 
-export interface ReplyRecord {
+interface ReplyRecord {
   channel: string;
   text: string;
   /** Virtual ms when the agent emitted it. */
   emittedAt: number;
 }
 
-export interface ThreadState extends ScenarioOpenThread {}
+interface ThreadState extends ScenarioOpenThread {}
 
-export interface PendingPromptState extends ScenarioPendingPrompt {
+interface PendingPromptState extends ScenarioPendingPrompt {
   resolved: boolean;
   resolvedAt?: number;
 }
 
-export interface ScheduledTaskState extends ScenarioScheduledTask {}
+interface ScheduledTaskState extends ScenarioScheduledTask {}
 
-export interface ExternalSideEffects {
+interface ExternalSideEffects {
   emailsSent: number;
 }
 

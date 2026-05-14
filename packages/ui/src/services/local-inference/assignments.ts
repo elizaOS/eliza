@@ -80,6 +80,8 @@ export function buildRecommendedAssignments(
   return {
     TEXT_SMALL: best.id,
     TEXT_LARGE: best.id,
+    TEXT_TO_SPEECH: best.id,
+    TRANSCRIPTION: best.id,
   };
 }
 
@@ -174,13 +176,17 @@ export async function ensureDefaultAssignment(
   } else {
     if (!next.TEXT_SMALL) next.TEXT_SMALL = modelId;
     if (!next.TEXT_LARGE) next.TEXT_LARGE = modelId;
+    if (!next.TEXT_TO_SPEECH) next.TEXT_TO_SPEECH = modelId;
+    if (!next.TRANSCRIPTION) next.TRANSCRIPTION = modelId;
   }
 
   // Cheap shortcut: skip the rewrite when nothing changed.
   if (
     next.TEXT_SMALL === current.TEXT_SMALL &&
     next.TEXT_LARGE === current.TEXT_LARGE &&
-    next.TEXT_EMBEDDING === current.TEXT_EMBEDDING
+    next.TEXT_EMBEDDING === current.TEXT_EMBEDDING &&
+    next.TEXT_TO_SPEECH === current.TEXT_TO_SPEECH &&
+    next.TRANSCRIPTION === current.TRANSCRIPTION
   ) {
     return current;
   }

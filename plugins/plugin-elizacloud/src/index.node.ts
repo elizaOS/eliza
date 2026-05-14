@@ -51,3 +51,14 @@ export {
   resolveCloudTtsBaseUrl,
   resolveElevenLabsApiKeyForCloudMode,
 } from "./lib/server-cloud-tts";
+export {
+  fetchCloudVoiceCatalog,
+  resetCloudVoiceCatalogCacheForTesting,
+  setCloudVoiceClientFactoryForTesting,
+  type CloudVoiceCatalogEntry,
+  type CloudVoiceClient,
+} from "./cloud-voice-catalog";
+export {
+  CloudTtsUnavailableError,
+  type CloudTextToSpeechParams,
+} from "./models/speech";

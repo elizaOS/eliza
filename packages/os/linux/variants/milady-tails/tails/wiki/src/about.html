@@ -1,0 +1,393 @@
+<div>[[!meta title="How Tails works"]]</div>
+
+[[!meta stylesheet="about" rel="stylesheet" title=""]]
+
+<h1>Leave no trace on the computer</h1>
+
+<section id="secure-computer">
+
+  <div class="image order-1">
+
+  [[!img anywhere.png link="no" class="svg" alt=""]]
+
+  <p><i class="metaphor">Like a tent, you can carry Tails with you and use it anywhere.</i></p>
+
+  </div>
+
+  <div class="text order-2">
+
+  <h2>Your secure computer anywhere</h2>
+
+  <p class="big">To use Tails, shut down the computer and start on your Tails USB stick
+  instead of starting on Windows, macOS, or Linux.</p>
+
+  <p class="big">You can temporarily <strong>turn your own
+  computer into a secure machine</strong>. You can also <strong>stay
+  safe while using the computer of somebody else</strong>.</p>
+
+  <p class="medium">Tails is a
+  [[!inline pages="inc/stable_amd64_iso_size" raw="yes" sort="age"]]
+  download and takes ½ hour to install. Tails can be installed on any USB stick of 8 GB minimum.
+  Tails works on most computers less than 10 years old.
+  You can start again on the other operating system after you shut down
+  Tails.</p>
+
+  <p class="medium">You don't have to worry about the computer having viruses
+  because Tails runs independently from the other operating system and never uses the hard disk.
+  But, Tails cannot always protect you if you
+  install it from a computer with viruses or if you use it on a computer
+  with malicious hardware, like keyloggers.</p>
+
+  <div class="links">
+    <p>See also:</p>
+    <ul>
+      <li>[[Warnings: Tails is safe but not magic!|doc/about/warnings]]</li>
+      <li>[[Download and install Tails|install]]</li>
+      <li>[[System requirements and recommended hardware|doc/about/requirements]]</li>
+    </ul>
+  </div>
+
+  </div>
+
+</section>
+
+<section id="amnesia">
+
+  <div class="image order-2">
+
+  [[!img amnesia.png link="no" class="svg" alt=""]]
+
+  <i class="metaphor">Like a tent, Tails is amnesic: it always starts empty and leaves no trace when you leave.</i>
+
+  </div>
+
+  <div class="text order-1">
+
+  <h2>Amnesia</h2>
+
+  <p class="big">Tails always starts from the same clean state and <strong>everything you
+  do disappears</strong> automatically when you shut down Tails.</p>
+
+  <p class="medium">Without Tails, almost everything you do can leave traces on the
+  computer:</p>
+
+  <ul class="medium">
+    <li>Websites that you visited, even in private mode</li>
+    <li>Files that you opened, even if you deleted them</li>
+    <li>Passwords, even if you use a password manager</li>
+    <li>All the devices and Wi-Fi networks that you used</li>
+  </ul>
+
+  <p class="medium">On the contrary, Tails never writes anything to the hard
+  disk and only runs from the memory of the computer. The memory is entirely
+  deleted when you shutdown Tails, erasing all possible traces.</p>
+
+  </div>
+
+</section>
+
+<section id="persistent-storage">
+
+  <div class="image order-1">
+
+  [[!img persistent-storage.png link="no" class="svg" alt=""]]
+
+  <i class="metaphor">Like a backpack, you can store your personal things in your Persistent Storage
+  and use them in your tent.</i>
+
+  </div>
+
+  <div class="text order-2">
+
+  <h2>Persistent Storage</h2>
+
+  <p class="big">You can <strong>save some of your files and configuration</strong>
+  in an encrypted Persistent Storage on the USB stick:
+  your documents, your browser bookmarks, your emails, and
+  even some additional software.</p>
+
+  <p class="medium">The Persistent Storage is optional and you always decide what is
+  <i>persistent</i>. Everything else is <i>amnesic</i>.</p>
+
+  <div class="links">
+    <p>See also:</p>
+    <ul>
+      <li>[[Persistent Storage|doc/persistent_storage]]</li>
+      <li>[[Installing additional software|doc/persistent_storage/additional_software]]</li>
+    </ul>
+  </div>
+
+  </div>
+
+</section>
+
+<section id="toolbox">
+
+  <div class="image order-2">
+
+  [[!img toolbox.png link="no" class="svg" alt=""]]
+
+  </div>
+
+  <div class="text order-1">
+
+  <h2>Digital security toolbox</h2>
+
+  <p class="big">Tails includes a selection of applications to <strong>work on sensitive documents</strong>
+  and <strong>communicate securely</strong>.</p>
+
+  <p class="big">All the applications
+  are ready-to-use and are configured with safe defaults to <strong>prevent
+  mistakes</strong>.</p>
+
+  <p class="medium">Tails includes:</p>
+
+  <ul class="medium">
+    <li><i>Tor Browser</i> with <i>uBlock</i>, a secure browser and an ad-blocker</li>
+    <li><i>Thunderbird</i>, for encrypted emails</li>
+    <li><i>GNOME Secrets</i>, to create and store strong passwords</li>
+    <li><i>LibreOffice</i>, an office suite</li>
+    <li><i>OnionShare</i>, to share files, websites, and chat rooms over Tor</li>
+    <li><i>Metadata Cleaner</i>, to remove metadata from files</li>
+    <li>and many more!</li>
+  </ul>
+
+  <p class="medium">To prevent mistakes:</p>
+
+  <ul class="medium">
+    <li>Applications are blocked automatically if they try to connect to the Internet without Tor.</li>
+    <li>Everything in the Persistent Storage is encrypted automatically.</li>
+    <li>Tails does not write anything to the hard disk. All the memory is deleted when shutting down.</li>
+  </ul>
+
+  <div class="links">
+    <p>See also:</p>
+    <ul>
+      <li>[[Features and included software|doc/about/features]]</li>
+      <li>[[Documentation|doc]]</li>
+    </ul>
+  </div>
+
+  </div>
+
+</section>
+
+<h1 class="follow">Leave no trace on the Internet</h1>
+
+<section id="tor">
+
+  <div class="image order-1">
+
+  [[!img relays.png link="no" class="svg" alt=""]]
+
+  </div>
+
+  <div class="text order-2">
+
+  <h2>Tor for everything</h2>
+
+  <p class="big">Everything you do on the Internet from Tails goes through the Tor
+  network. Tor encrypts and anonymizes your connection by
+  <strong>passing it through 3 relays</strong>. <i>Relays</i> are servers
+  operated by different people and organizations around the world.</p>
+
+  <p class="medium">A single relay never knows both where the encrypted
+  connection is coming from and where it is going to:</p>
+
+  <ul class="medium">
+    <li>The 1st relay only knows where you are coming from but not where
+    you are going to.</li>
+    <li>This 3rd relay only knows where you are going to but not where
+    you are coming from.</li>
+    <li>The connection to the final destination is encrypted whenever
+    possible to prevent the 3rd relay from reading its content.</li>
+  </ul>
+
+  <p class="medium">This way, Tor is <strong>secure by design</strong> even if a few
+  relays are malicious.</p>
+
+  <p class="medium">The Tor network has more than 6&#8239;000 relays. Organizations running Tor relays
+  include universities like the MIT, activist groups like Riseup,
+  nonprofits like Derechos Digitales, Internet hosting companies like
+  Private Internet Access, and so on. The huge diversity of people and
+  organizations running Tor relays makes it more secure and more
+  sustainable.</p>
+
+  <div class="links">
+    <p>See also:</p>
+    <ul>
+      <li>[[Connecting to the Tor network|doc/anonymous_internet/tor]]</li>
+      <li>[[Why does Tails use Tor?|doc/anonymous_internet/tor/why]]</li>
+    </ul>
+  </div>
+
+  </div>
+
+</section>
+
+<section id="surveillance">
+
+  <div class="image order-2">
+
+  [[!img walkie-talkie.png link="no" class="svg" alt=""]]
+
+  </div>
+
+  <div class="text order-1">
+
+  <h2>Avoid online surveillance and censorship</h2>
+
+  <p class="big">Tor prevents someone watching your Internet connection from learning
+  <strong><i>what</i> you are doing on the Internet</strong>.</p>
+
+  <p class="big">You can avoid
+  censorship because it is <strong>impossible for a censor to know</strong> which
+  websites you are visiting.</p>
+
+  <p class="medium">If connecting to Tor is blocked or dangerous to use from where you
+  are, for example in some countries with heavy censorship, you can use <i>bridges</i> to hide that you are
+  connected to the Tor network.</p>
+
+  </div>
+
+</section>
+
+<section id="identity">
+
+  <div class="image order-1">
+
+  [[!img footprints.png link="no" class="svg" alt=""]]
+
+  </div>
+
+  <div class="text order-2">
+
+  <h2>Avoid tracking and change identity</h2>
+
+  <p class="big">Tor also prevents the websites that you are visiting from learning
+  <strong><i>where</i> and <i>who</i> you are</strong>, unless you tell them. You
+  can visit websites <strong>anonymously or change your identity</strong>.</p>
+
+  <p class="big">Online
+  trackers and advertisers won't be able to follow you around from one website to another
+  anymore.</p>
+
+  <p class="medium">You can publish a blog or manage an email
+  account entirely from Tails. If you only access it from
+  Tails, it cannot be related to you. You can store documents
+  and images related to this different identity in your Persistent Storage,
+  keep your passwords in the <i>Secrets</i> password manager, have a dedicated
+  email account in <i>Thunderbird</i>, etc.</p>
+
+  </div>
+
+</section>
+
+<h1 class="follow">Software for freedom</h1>
+
+<section id="transparency">
+
+  <div class="image order-2">
+
+  [[!img blueprint.png link="no" class="svg" alt=""]]
+
+  </div>
+
+  <div class="text order-1">
+
+  <h2>Transparency to build trust</h2>
+
+  <p class="big">All the code of our software is public to allow
+  independent security researchers to verify that Tails really works the way it
+  should.</p>
+
+  <div class="links">
+    <p>See also:</p>
+    <ul>
+      <li>[[Trusting Tails|doc/about/trust]]</li>
+      <li>[[License and source code distribution|doc/about/license]]</li>
+      <li>[[Design documents|contribute/design]]</li>
+    </ul>
+  </div>
+
+  </div>
+
+</section>
+
+<section id="free">
+
+  <div class="image order-1">
+
+  [[!img fire.png link="no" class="svg" alt=""]]
+
+  </div>
+
+  <div class="text order-2">
+
+  <h2>Top security for free</h2>
+
+  <p class="big">Nobody should have to pay to be safe while using a computer.
+  That is why we are giving out Tails for free and want to make it easy to use by
+  anybody.</p>
+
+  <p class="big">Tails is made by the <a href="https://torproject.org/">Tor
+  Project</a>, a global nonprofit developing tools for online privacy
+  and anonymity.</p>
+
+  <p class="medium">Our work is funded
+  by donations from people like you and organizations that support
+  Internet freedom: Mozilla, DuckDuckGo, Open Tech Fund, Craig Newmark
+  Philanthropies, etc.</p>
+
+  <div class="links">
+    <p>See also:</p>
+    <ul>
+      <li>[[Donate|donate]]</li>
+      <li>[[Supporters|https://www.torproject.org/about/supporters/]]</li>
+      <li>[[Social contract|https://community.torproject.org/policies/social_contract/]]</li>
+    </ul>
+  </div>
+
+  </div>
+
+</section>
+
+<section id="sharing">
+
+  <div class="image order-2">
+
+  [[!img roots.png link="no" class="svg" alt=""]]
+
+  </div>
+
+  <div class="text order-1">
+
+  <h2>Sharing to be stronger</h2>
+
+  <p class="big">Tails is built on solid foundations: the Tor
+  network, the Debian operating system, the GNOME desktop environment,
+  and all the tools included in Tails.</p>
+
+  <p class="big">We share back our improvements
+  so that many more people can benefit from our work.</p>
+
+  <div class="links">
+    <p>See also:</p>
+    <ul>
+      <li>[[Relationship with upstream|contribute/relationship_with_upstream]]</li>
+      <li><a href="https://www.torproject.org/">The Tor Project</a></li>
+      <li><a href="https://debian.org/">Debian GNU/Linux</a></li>
+      <li><a href="https://www.gnome.org/">GNOME</a></li>
+      <li>[[Contact|doc/about/contact]]</li>
+    </ul>
+  </div>
+
+  </div>
+
+</section>
+
+<div class="cta">
+
+[[Install Tails|install]]
+
+</div>

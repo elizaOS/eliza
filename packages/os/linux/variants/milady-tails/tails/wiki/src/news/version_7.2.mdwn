@@ -1,0 +1,69 @@
+[[!meta title="Tails 7.2"]]
+[[!meta date="Thu, 13 Nov 2025 00:00:00 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+
+<h1 id="changes">Changes and updates</h1>
+
+- Update *Tor Browser* to [15.0.1](https://blog.torproject.org/new-release-tor-browser-1501).
+
+  *Tor Browser* 15.0 is based on *Firefox* 140 and inherits from it several new
+  features that are particularly useful if you use many tabs:
+
+  - [Vertical tabs](https://support.mozilla.org/en-US/kb/use-sidebar-access-tools-and-vertical-tabs)
+  - [Tab groups](https://support.mozilla.org/en-US/kb/tab-groups)
+  - [New address bar](https://blog.mozilla.org/en/firefox/address-bar/) with improved search
+
+- Update *Thunderbird* to [140.4.0](https://www.thunderbird.net/en-US/thunderbird/140.4.0esr/releasenotes/).
+
+- Update the *Linux* kernel to 6.12.57.
+
+- Remove *Root Console*.
+
+  To open a root console, you can
+  execute the following command in a *Console*.
+
+  <p class="command">sudo -i</p>
+
+- Show *Don't ask again* notifications only after the clock has been
+  synchronized.
+
+<h1 id="fixes">Fixed problems</h1>
+
+- Disable connections that *Thunderbird* was making to telemetry services run
+  by Mozilla. ([[!tails_ticket 21275]])
+
+For more details, read our [[!tails_gitweb debian/changelog desc="changelog"]].
+
+<h1 id="get">Get Tails 7.2</h1>
+
+## To upgrade your Tails USB stick and keep your Persistent Storage
+
+- Automatic upgrades are available from Tails 7.0 or later to 7.2.
+
+- If you cannot do an automatic upgrade or if Tails fails to start after an
+  automatic upgrade, please try to do a [[manual upgrade|doc/upgrade/#manual]].
+
+## To install Tails 7.2 on a new USB stick
+
+Follow our installation instructions:
+
+- [[Install from Windows|install/windows]]
+
+- [[Install from macOS|install/mac]]
+
+- [[Install from Linux|install/linux]]
+
+- [[Install from Debian or Ubuntu using the command line and GnuPG|install/expert]]
+
+<div class="caution"><p>The Persistent Storage on the USB stick will be lost if
+you install instead of upgrading.</p></div>
+
+## To download only
+
+If you don't need installation or upgrade instructions, you can download
+Tails 7.2 directly:
+
+- [[For USB sticks (USB image)|install/download]]
+
+- [[For DVDs and virtual machines (ISO image)|install/download-iso]]

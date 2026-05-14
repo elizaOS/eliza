@@ -44,7 +44,6 @@ vi.mock("../chat-routes.ts", async () => {
       prompt: "hello",
       channelType: ChannelType.DM,
       images: undefined,
-      conversationMode: undefined,
       preferredLanguage: undefined,
       source: "api",
       metadata: undefined,
@@ -52,7 +51,7 @@ vi.mock("../chat-routes.ts", async () => {
     persistConversationMemory: vi.fn(async () => undefined),
     persistAssistantConversationMemory: vi.fn(async () => {
       persistCalledAt = Date.now();
-      return new Promise((resolve, reject) => {
+      return new Promise<void>((resolve, reject) => {
         persistResolve = (_value) => {
           persistResolvedAt = Date.now();
           resolve();

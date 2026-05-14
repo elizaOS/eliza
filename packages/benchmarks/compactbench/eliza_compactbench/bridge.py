@@ -175,32 +175,27 @@ def _parse_last_json_object(stdout: str) -> Any | None:
 
     Bun, npm postinstall scripts, or stray ``console.log`` calls in the TS
     bridge can prepend lines to stdout. Try a strict whole-string parse
-    first; on failure, scan from the end for the last balanced ``{...}``
-    block and parse that.
+    first; on failure, ask JSONDecoder to parse from each object boundary and
+    keep the last object that consumes the trailing stdout. This preserves
+    braces inside JSON strings, which a manual brace counter cannot.
     """
     try:
         return json.loads(stdout)
     except json.JSONDecodeError:
         pass
 
-    # Walk backwards looking for the last '}' and the matching '{'. JSON
-    # strings can contain braces, so use json.loads on candidate slices to
-    # validate. This is O(n) for well-formed output, O(n^2) worst-case for
-    # pathological input, but stdout is bounded.
-    last_close = stdout.rfind("}")
-    while last_close != -1:
-        depth = 0
-        for i in range(last_close, -1, -1):
-            ch = stdout[i]
-            if ch == "}":
-                depth += 1
-            elif ch == "{":
-                depth -= 1
-                if depth == 0:
-                    candidate = stdout[i : last_close + 1]
-                    try:
-                        return json.loads(candidate)
-                    except json.JSONDecodeError:
-                        break
-        last_close = stdout.rfind("}", 0, last_close)
+    decoder = json.JSONDecoder()
+    parsed_candidates: list[Any] = []
+    for index, ch in enumerate(stdout):
+        if ch != "{":
+            continue
+        try:
+            parsed, end = decoder.raw_decode(stdout, index)
+        except json.JSONDecodeError:
+            continue
+        if stdout[end:].strip():
+            continue
+        parsed_candidates.append(parsed)
+    if parsed_candidates:
+        return parsed_candidates[-1]
     return None

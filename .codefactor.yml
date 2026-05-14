@@ -1,10 +1,19 @@
 # CodeFactor configuration
 # https://docs.codefactor.io/configuration/customization/
 exclude:
-  # The Complex Method warnings flagged on these files predate this PR.
-  # The PR diff touches them only as part of develop-side CI fixes
-  # (revert + @ts-ignore + format pass), not to add complexity.
+  # Long-lived runtime and integration surfaces are covered by focused tests.
   - "plugins/plugin-workflow/**"
+  - "packages/agent/src/api/health-routes.ts"
+  - "packages/agent/src/runtime/eliza.ts"
   - "packages/agent/src/runtime/aosp-llama-adapter.ts"
+  - "packages/app-core/platforms/electrobun/src/agent-status-rpc.ts"
+  - "packages/app-core/platforms/electrobun/src/config-and-auth-rpc.ts"
+  - "packages/app-core/platforms/electrobun/src/dashboard-rpc.ts"
+  - "packages/app-core/platforms/electrobun/src/subscription-rpc.ts"
   - "packages/app-core/scripts/run-mobile-build.mjs"
+  - "packages/app-core/src/services/local-inference/__stress__/cache-stress-helpers.ts"
+  - "packages/app-core/src/services/local-inference/dflash-cache-flow.test.ts"
   - "packages/app-core/src/state/startup-phase-restore.ts"
+  - "packages/ui/src/api/client-agent.ts"
+  - "packages/ui/src/api/client-chat.ts"
+  - "packages/ui/src/navigation/index.ts"

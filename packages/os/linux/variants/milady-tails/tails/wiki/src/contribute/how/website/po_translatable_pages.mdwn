@@ -1,0 +1,30 @@
+[[!meta title="Checklist for updating po_translatable_pages"]]
+
+ikiwiki.setup contains a list of translatable page paths, separated by "or".
+This is useful for two cases:
+
+- Adding .html pages for which we want to generate a PO file
+  explicitly,
+
+- Listing pages which should *never* be translated. In the list, these
+  pages should be preceded by "!".
+
+Make sure that you:
+
+- Update `po_translatable_pages` in *ikiwiki.setup*.
+
+- Make sure that PO files for the pages that are changed in
+  `po_translatable_pages` are either removed or added accordingly.
+
+- Adjust the inline directives that might reference the pages that are
+  changed in `po_translatable_pages`. To identify them, execute:
+  - `git grep '!inline.*currentlang' -- '*.*m*'`
+
+- Update PO files by
+  [[building the website again|contribute/build/website]]
+  (you might need to pass `--rebuild`) and unfuzz machine-readable strings.
+
+- To update the configuration of our production website, send a patch
+  against
+  [[!tails_gitweb_puppet_code site/profile/templates/tails/website/ikiwiki.setup.epp]]
+  to <sysadmins@tails.net>.

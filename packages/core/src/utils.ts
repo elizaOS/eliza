@@ -633,8 +633,6 @@ export function parseKeyValueXml<T = Record<string, unknown>>(
 				: value
 					? value.split(",").map((entry) => entry.trim())
 					: [];
-		} else if (key === "simple") {
-			result[key] = value.toLowerCase() === "true";
 		} else {
 			result[key] = value;
 		}

@@ -169,18 +169,22 @@ class PassKMetrics:
             return cls(k=k, pass_rate=0.0, trials_passed=0, total_trials=0)
         
         # Group by task_id
-        task_results: dict[str, list[bool]] = {}
+        task_results: dict[str, list[tuple[int, bool]]] = {}
         for r in results:
             if r.task_id not in task_results:
                 task_results[r.task_id] = []
-            task_results[r.task_id].append(r.success)
+            task_results[r.task_id].append((r.trial_number, r.success))
         
         # Calculate pass^k (task passes if ALL k trials succeed)
         tasks_passed = 0
         total_tasks = len(task_results)
         
-        for task_id, successes in task_results.items():
+        for trial_results in task_results.values():
             # Take first k trials
+            successes = [
+                success
+                for _, success in sorted(trial_results, key=lambda item: item[0])
+            ]
             k_trials = successes[:k]
             if len(k_trials) == k and all(k_trials):
                 tasks_passed += 1

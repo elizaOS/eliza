@@ -1,0 +1,74 @@
+[[!meta date="Tue, 9 Jul 2019 12:34:56 +0000"]]
+[[!meta title="Tails 3.15 is out"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+
+This release fixes [[many security
+vulnerabilities|security/Numerous_security_holes_in_3.14.2]]. You should upgrade as soon as possible.
+
+[[!toc levels=1]]
+
+# Changes and upgrades
+
+- Update *Tor Browser* to 8.5.4.
+
+- Update *Thunderbird* to 60.7.2.
+
+# Fixed problems
+
+- Fix Tails failing to start a second time on some computers. ([[!tails_ticket 16389]])
+
+- Display an error message in the *Unlock VeraCrypt Volumes*
+  utility when closing a volume fails because
+  the volume is being used. ([[!tails_ticket 15794]])
+
+- Fix starting Tails through the
+  <a href="http://osresearch.net/">*Heads*</a>
+  boot firmware. (Heads #581)
+
+For more details, read our [[!tails_gitweb debian/changelog desc="changelog"]].
+
+<a id="known-issues"></a>
+
+# Known issues
+
+None specific to this release.
+
+See the list of [[long-standing issues|support/known_issues]].
+
+# Get Tails 3.15
+
+## To upgrade your Tails USB stick and keep your Persistent Storage
+
+- Automatic upgrades are available from 3.13, 3.13.1, 3.13.2, 3.14,
+  3.14.1, and 3.14.2 to 3.15.
+
+- If you cannot do an automatic upgrade or if Tails fails to start after an
+  automatic upgrade, please try to do a [[manual upgrade|doc/upgrade#manual]].
+
+## To install Tails on a new USB stick
+
+Follow our installation instructions:
+
+  - [[Install from Windows|install/windows]]
+  - [[Install from macOS|install/mac]]
+  - [[Install from Linux|install/linux]]
+
+<div class="caution"><p>All the data on this USB stick will be lost.</p></div>
+
+## To download only
+
+If you don't need installation or upgrade instructions, you can directly download
+Tails 3.15:
+
+  - [[For USB sticks (USB image)|install/download]]
+  - [[For DVDs and virtual machines (ISO image)|install/download-iso]]
+
+# What's coming up?
+
+Tails 3.16 is [[scheduled|contribute/calendar]] for September 3.
+
+
+We need your help and there are many ways to [[contribute to
+Tails|contribute]] (<a href="https://tails.net/donate/?r=3.15">donating</a> is only one of
+them). Come [[talk to us|doc/about/contact#tails-dev]]!

@@ -1,0 +1,28 @@
+#!/bin/sh
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 NubsCarson and contributors
+#
+# Live-build build script. Run via `just iso-build` (which is `sudo
+# auto/build` under the hood).
+#
+# CRITICAL: invoke `lb build noauto` — without the `noauto` flag,
+# `lb build` re-executes `auto/build` which calls `lb build` again,
+# producing an unkillable fork bomb. Reference: Tails' own `auto/build`
+# ends with `time lb build noauto "${@}"` for exactly this reason.
+
+set -e
+set -u
+
+if [ "$(id -u)" -ne 0 ]; then
+    echo "error: lb build needs root. Run via 'sudo just iso-build'." >&2
+    exit 1
+fi
+
+# Be a polite background citizen — the build hammers disk during
+# debootstrap and the squashfs compress, which can push interactive
+# desktops to 1fps on machines with slow SSDs. nice 19 + ionice idle
+# means we only run when nobody else wants the cycles.
+renice -n 19 -p $$ >/dev/null 2>&1 || true
+ionice -c 3 -p $$ 2>/dev/null || true
+
+lb build noauto "${@}"

@@ -1,4 +1,3 @@
-import { Button } from "@elizaos/ui";
 import { CheckCircle2 } from "lucide-react";
 import { useMemo } from "react";
 import type {
@@ -9,6 +8,8 @@ import type {
   InstalledModel,
   ModelBucket,
 } from "../../api/client-local-inference";
+import { useRenderGuard } from "../../hooks/useRenderGuard";
+import { Button } from "../ui/button";
 import { DownloadProgress } from "./DownloadProgress";
 import {
   bucketLabel,
@@ -59,6 +60,7 @@ export function ModelHubView({
   onRedownload,
   busy,
 }: ModelHubViewProps) {
+  useRenderGuard("ModelHubView");
   const grouped = useMemo(() => groupByBucket(catalog), [catalog]);
 
   return (

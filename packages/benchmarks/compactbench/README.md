@@ -110,6 +110,11 @@ artifact internals, template id, or case id. It can also lower a
 `forbidden_absent` item when the lexical scorer misses a morphological forbidden
 paraphrase such as "committing directly to the main branch".
 
+Each `case_analysis` event also includes `manual_review_items`: capped records
+with model input, model output, expected answer, scoring reason, artifact
+context, compression ratio, and latency. Failures are sorted first for quick
+manual review.
+
 Before scoring, generated cases are repaired when the same normalized phrase is
 both required in `locked_decisions` and forbidden in `forbidden_behaviors`.
 Locked decisions win: conflicting forbidden values and their impossible
@@ -139,6 +144,15 @@ python run_cerebras.py \
   --score \
   --analyze-valid-hits
 ```
+
+## OpenClaw status
+
+`run_openclaw.py` is an explicit fail-closed runner entry for OpenClaw. It
+writes an `adapter_unsupported` JSONL event and exits non-zero because the
+current public OpenClaw CLI exposes a one-shot `agent --message` turn, not a
+CompactBench-compatible transcript-in/artifact-out native compaction API. This
+prevents an Eliza compactor or generic summarizer from being mislabeled as an
+OpenClaw CompactBench row.
 
 ## Tests
 

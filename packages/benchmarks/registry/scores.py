@@ -31,6 +31,7 @@ def _score_from_bfcl_json(data: JSONValue) -> ScoreExtraction:
     total_tests = get_optional(metrics, "total_tests") or 0
     error_analysis = get_optional(metrics, "error_analysis")
     if total_tests == 0:
+        raise ValueError("bfcl: zero-task score is not publishable")
         no_ground_truth = 0
         if isinstance(error_analysis, dict):
             raw_no_gt = error_analysis.get("no_ground_truth")
@@ -64,13 +65,16 @@ def _score_from_realm_json(data: JSONValue) -> ScoreExtraction:
         get_required(metrics, "overall_success_rate", ctx="realm:metrics"),
         ctx="realm:overall_success_rate",
     )
+    total_tasks = get_optional(metrics, "total_tasks") or 0
+    if total_tasks == 0:
+        raise ValueError("realm: zero-task score is not publishable")
     return ScoreExtraction(
         score=overall,
         unit="ratio",
         higher_is_better=True,
         metrics={
             "overall_success_rate": overall,
-            "total_tasks": get_optional(metrics, "total_tasks") or 0,
+            "total_tasks": total_tasks,
             "passed_tasks": get_optional(metrics, "passed_tasks") or 0,
             "avg_plan_quality": get_optional(metrics, "avg_plan_quality") or 0,
             "avg_efficiency": get_optional(metrics, "avg_efficiency") or 0,
@@ -81,23 +85,37 @@ def _score_from_realm_json(data: JSONValue) -> ScoreExtraction:
 def _score_from_mint_json(data: JSONValue) -> ScoreExtraction:
     root = expect_dict(data, ctx="mint:root")
 
-    def get_rate(config_key: str) -> float | None:
+    def get_config(config_key: str) -> tuple[float, int, int] | None:
         cr_raw = get_optional(root, config_key)
         if cr_raw is None:
             return None
         cr = expect_dict(cr_raw, ctx=f"mint:{config_key}")
         metrics = expect_dict(get_required(cr, "metrics", ctx=f"mint:{config_key}"), ctx=f"mint:{config_key}.metrics")
-        return expect_float(
+        rate = expect_float(
             get_required(metrics, "overall_success_rate", ctx=f"mint:{config_key}.metrics"),
             ctx=f"mint:{config_key}.overall_success_rate",
         )
+        total_tasks = int(get_optional(metrics, "total_tasks") or 0)
+        passed_tasks = int(get_optional(metrics, "passed_tasks") or 0)
+        return rate, total_tasks, passed_tasks
 
-    full_rate = get_rate("full_results")
-    baseline_rate = get_rate("baseline_results")
+    candidates: list[tuple[str, float, int, int]] = []
+    for config_key, label in (
+        ("baseline_results", "baseline"),
+        ("feedback_only_results", "feedback"),
+        ("full_results", "full"),
+    ):
+        config = get_config(config_key)
+        if config is not None:
+            rate, total_tasks, passed_tasks = config
+            if total_tasks > 0:
+                candidates.append((label, rate, total_tasks, passed_tasks))
 
-    chosen = full_rate if full_rate is not None else baseline_rate
-    if chosen is None:
-        raise ValueError("mint: could not determine overall_success_rate (missing full_results and baseline_results)")
+    if not candidates:
+        raise ValueError("mint: zero-task score is not publishable")
+    best_configuration, chosen, total_tasks, passed_tasks = max(
+        candidates, key=lambda item: item[1]
+    )
 
     return ScoreExtraction(
         score=chosen,
@@ -105,8 +123,9 @@ def _score_from_mint_json(data: JSONValue) -> ScoreExtraction:
         higher_is_better=True,
         metrics={
             "overall_success_rate": chosen,
-            "full_results_present": full_rate is not None,
-            "baseline_success_rate": baseline_rate if baseline_rate is not None else 0,
+            "best_configuration": best_configuration,
+            "total_tasks": total_tasks,
+            "passed_tasks": passed_tasks,
         },
     )
 
@@ -413,6 +432,10 @@ def _score_from_rlmbench_json(data: JSONValue) -> ScoreExtraction:
         get_required(metrics, "overall_accuracy", ctx="rlm_bench:metrics"),
         ctx="rlm_bench:overall_accuracy",
     )
+    results_raw = root.get("results")
+    if isinstance(results_raw, list) and results_raw:
+        if all(isinstance(item, dict) and item.get("error") for item in results_raw):
+            raise ValueError("rlm_bench: all tasks failed with runtime errors")
 
     # s_niah_by_length is a dict {length_str: accuracy}, compute average if present
     s_niah_by_length = get_optional(metrics, "s_niah_by_length")
@@ -569,6 +592,9 @@ def _score_from_mmau_json(data: JSONValue) -> ScoreExtraction:
     music splits; that is a property of the adapter, not the metric.
     """
     root = expect_dict(data, ctx="mmau:root")
+    metrics_raw = root.get("metrics")
+    if isinstance(metrics_raw, dict):
+        root = {**root, **metrics_raw}
     overall = expect_float(
         get_required(root, "overall_accuracy", ctx="mmau:root"),
         ctx="mmau:overall_accuracy",

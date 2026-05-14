@@ -71,16 +71,23 @@ export function useConnectorSendAsAccount(
     },
   );
 
-  const selectedAccount = connectorAccounts.selectedAccount;
+  const {
+    accounts,
+    data,
+    error,
+    loading,
+    refresh,
+    saving,
+    selectedAccount,
+    setSelectedAccountId,
+    startOAuth,
+  } = connectorAccounts;
   const selectedAccountId = selectedAccount?.id ?? null;
-  const showPicker = shouldShowConnectorAccountPicker(
-    context,
-    connectorAccounts.accounts,
-  );
+  const showPicker = shouldShowConnectorAccountPicker(context, accounts);
   const accountRequired =
     Boolean(context?.requiresAccount) &&
-    !connectorAccounts.loading &&
-    connectorAccounts.data !== null &&
+    !loading &&
+    data !== null &&
     !isConnectorAccountUsable(selectedAccount);
   const accountRequiredReason = accountRequired
     ? selectedAccount
@@ -93,7 +100,7 @@ export function useConnectorSendAsAccount(
   );
 
   const connectAccount = useCallback(async () => {
-    const result = await connectorAccounts.startOAuth({
+    const result = await startOAuth({
       metadata: {
         requestedRole: "OWNER",
         privacy: "owner_only",
@@ -101,32 +108,32 @@ export function useConnectorSendAsAccount(
     });
     openAuthUrl(result.authUrl);
     return result;
-  }, [connectorAccounts]);
+  }, [startOAuth]);
 
   const reconnectAccount = useCallback(
     async (accountId: string) => {
-      const result = await connectorAccounts.startOAuth({ accountId });
+      const result = await startOAuth({ accountId });
       openAuthUrl(result.authUrl);
       return result;
     },
-    [connectorAccounts],
+    [startOAuth],
   );
 
   return {
     context,
-    accounts: connectorAccounts.accounts,
-    loading: connectorAccounts.loading,
-    error: connectorAccounts.error,
-    saving: connectorAccounts.saving,
+    accounts,
+    loading,
+    error,
+    saving,
     selectedAccount,
     selectedAccountId,
     sendAsMetadata,
     showPicker,
     accountRequired,
     accountRequiredReason,
-    selectAccount: connectorAccounts.setSelectedAccountId,
+    selectAccount: setSelectedAccountId,
     connectAccount,
     reconnectAccount,
-    refresh: connectorAccounts.refresh,
+    refresh,
   };
 }

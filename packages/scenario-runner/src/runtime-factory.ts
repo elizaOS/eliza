@@ -222,9 +222,9 @@ export async function createScenarioRuntime(
     createBasicCapabilitiesPlugin({ advancedCapabilities: true }),
   );
 
-  // Skip @elizaos/plugin-local-embedding by default and register a
+  // Skip @elizaos/plugin-local-inference by default and register a
   // deterministic zero-vector TEXT_EMBEDDING stub instead. The bundled
-  // `eliza-1-lite-0_6b-32k.gguf` is fetched from a gated HuggingFace repo on
+  // `eliza-1-0_8b-32k.gguf` is fetched from a gated HuggingFace repo on
   // first generation; without HF credentials each turn produces a fresh
   // 401-spam burst (LFS URL + Standard URL × ±GGUF suffix × every retry). The
   // scenario runner doesn't score on semantic retrieval, so a zero vector is
@@ -240,7 +240,7 @@ export async function createScenarioRuntime(
       name: "scenario-runner-stub-embedding",
       description:
         "Scenario-runner zero-vector TEXT_EMBEDDING handler. Replaces " +
-        "@elizaos/plugin-local-embedding so we never download the gated " +
+        "@elizaos/plugin-local-inference so we never download the gated " +
         "HuggingFace GGUF on every turn during scenario runs.",
       // Higher than local-embedding's priority: 10 so we win unconditionally.
       priority: 100,
@@ -252,12 +252,12 @@ export async function createScenarioRuntime(
     await runtime.registerPlugin(stubEmbeddingPlugin);
     logger.info(
       `[scenario-runner] Registered zero-vector TEXT_EMBEDDING stub (dim=${EMBEDDING_DIMENSIONS}); ` +
-        "set ELIZA_BENCH_SKIP_EMBEDDING=0 to use @elizaos/plugin-local-embedding instead.",
+        "set ELIZA_BENCH_SKIP_EMBEDDING=0 to use @elizaos/plugin-local-inference instead.",
     );
   } else {
     try {
       const localEmbedding = (await import(
-        "@elizaos/plugin-local-embedding"
+        "@elizaos/plugin-local-inference"
       )) as { default: Plugin };
       await runtime.registerPlugin(localEmbedding.default);
     } catch (err) {

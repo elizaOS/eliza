@@ -34,7 +34,6 @@ import {
   getSessionProviders,
   resolveDefaultSessionStorePath,
 } from "../providers/session-utils.ts";
-import { createChannelProfileProvider } from "../providers/simple-mode.ts";
 import { createDynamicSkillProvider } from "../providers/skill-provider.ts";
 import { createOngoingTasksProvider } from "../providers/tasks.ts";
 import { uiCatalogProvider } from "../providers/ui-catalog.ts";
@@ -80,7 +79,6 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
     config?.sessionStorePath ?? resolveDefaultSessionStorePath(agentId);
 
   const baseProviders = [
-    createChannelProfileProvider(),
     createWorkspaceProvider({
       workspaceDir,
       maxCharsPerFile: config?.initMaxChars,

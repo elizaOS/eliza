@@ -8,12 +8,13 @@
  */
 
 import type { LinkedAccountProviderId } from "@elizaos/shared";
-import { Button, Spinner } from "@elizaos/ui";
 import { Plus } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import type { AccountWithCredentialFlag } from "../../api/client-agent";
 import { useAccounts } from "../../hooks/useAccounts";
 import { useApp } from "../../state";
+import { Button } from "../ui/button";
+import { Spinner } from "../ui/spinner";
 import { AccountCard } from "./AccountCard";
 import { AddAccountDialog } from "./AddAccountDialog";
 import { RotationStrategyPicker } from "./RotationStrategyPicker";

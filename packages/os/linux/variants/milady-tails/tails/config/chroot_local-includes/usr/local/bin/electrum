@@ -1,0 +1,229 @@
+#!/usr/bin/python3 -I
+"""
+Tails electrum wrapper
+
+Test with "python3 electrum.py doctest".
+The tests will start the tor-browser so you probably
+want to use a tester that handles user interaction or
+run the tests from the command line and answer prompts as needed.
+
+goodcrypto.com converted from bash to python and added basic tests.
+
+>>> # run script
+>>> sh.Command(sys.argv[0])()
+<BLANKLINE>
+"""
+
+import gettext
+import os
+import random
+import subprocess
+import sys
+from dataclasses import dataclass
+
+translation = gettext.translation("tails", "/usr/share/locale", fallback=True)
+_ = translation.gettext
+
+HOME_DIR = os.environ["HOME"]
+
+
+@dataclass
+class CampaignOption:
+    text: str  # "donate today to keep Tails thriving"
+    address: str  # bc1asdfoobar
+    label: str  # sth like "Donation to Tails"
+    probability: int  # expressed in percent (ie to set it to 20%, just use 20)
+
+    @property
+    def full_address(self):
+        return f"{self.address}?label={self.label}"
+
+
+class CampaignOptions:
+    def __init__(self, *options: CampaignOption):
+        self.options = [opt for opt in options if opt.probability > 0]
+        if sum(opt.probability for opt in self.options) != 100:  # noqa: PLR2004
+            raise ValueError("probabilities must sum to 100")
+
+    def choose(self) -> CampaignOption:
+        num = random.randint(1, 100)  # noqa: S311
+        for opt in self.options:
+            num -= opt.probability
+            if num <= 0:
+                return opt
+        assert False, "We should never be there"  # noqa: PT015,B011
+
+
+# We use different addresses to track which version of the incentive leads to
+# more donations
+CAMPAIGN = CampaignOptions(
+    CampaignOption(  # benevolent
+        _(
+            "Tails needs donations to keep everybody free and safe "
+            "online.\n\nEvery bit helps in our fight against surveillance "
+            "and censorship!\n\n",
+        ),
+        "bitcoin:bc1qtt04zfgjxg7lpqhk9vk8hnmnwf88ucwww5arsd",
+        "Donation to Tor",
+        50,
+    ),
+    CampaignOption(  # selfish
+        _(
+            "Tails protects your wallet.\n\nHelp us keep your bitcoins safe!\n\n",
+        ),
+        "bitcoin:bc1qtt04zfgjxg7lpqhk9vk8hnmnwf88ucwww5arsd",
+        "Donation to Tor",
+        50,
+    ),
+    CampaignOption(
+        "Not used yet",
+        "bitcoin:bc1qtt04zfgjxg7lpqhk9vk8hnmnwf88ucwww5arsd",
+        "",
+        0,
+    ),
+    CampaignOption(
+        "Not used yet",
+        "bitcoin:bc1qtt04zfgjxg7lpqhk9vk8hnmnwf88ucwww5arsd",
+        "",
+        0,
+    ),
+).choose()
+
+TPS_FEATURE_NAME = "Electrum"
+
+
+def main(*args):
+    # If we're called with arguments, don't show any messages or adjust
+    # any config and just start Electrum, to avoid breaking scripts /
+    # command-line usage.
+    if len(args) > 0:
+        exec_electrum(*args)
+
+    if not electrum_config_is_persistent() and not verify_start():
+        return
+
+    if should_show_donation_message():
+        show_donation_message()
+    else:
+        exec_electrum(*args)
+
+
+def exec_electrum(*args):
+    os.execv("/usr/bin/electrum", ["/usr/bin/electrum", *list(args)])
+
+
+def should_show_donation_message() -> bool:
+    # Check the environment variable
+    if os.environ.get("ELECTRUM_DONATION_MESSAGE") == "0":
+        return False
+    elif os.environ.get("ELECTRUM_DONATION_MESSAGE") == "1":
+        return True
+
+    # If the other conditions are met, show the message in 1/20 of the
+    # cases.
+    return random.randint(0, 19) == 0  # noqa: S311
+
+
+def show_donation_message():
+    # To test the donation message, execute `ELECTRUM_DONATION_MESSAGE=1 electrum` with a Persistent Storage and a wallet
+
+    # results 0 == True; 1 == False; 5 == Timeout
+    p = subprocess.run(
+        [
+            "/usr/bin/zenity",
+            "--question",
+            "--title",
+            "",
+            "--text",
+            CAMPAIGN.text,
+            "--ok-label",
+            _("Donate Now"),
+            "--cancel-label",
+            _("Later"),
+            "--icon-name",
+            "tails-logo-drawing",
+            "--modal",
+        ],
+        check=False,
+    )
+    if p.returncode == 0:
+        # Show a GNOME notification to let the user know that we're
+        # opening Electrum with our donation address.
+        subprocess.check_call(
+            [
+                "/usr/bin/notify-send",
+                "--",
+                _("Opening Electrum with our donation address..."),
+                _("Thank you for making the Internet a safer place!"),
+            ],
+        )
+        exec_electrum(CAMPAIGN.full_address)
+    else:
+        exec_electrum()
+
+
+def electrum_config_is_persistent():
+    """Return True iff electrum config is persistent.
+
+    >>> electrum_config_is_persistent()
+    False
+    """
+
+    try:
+        subprocess.run(
+            ["/usr/local/lib/tpscli", "is-active", TPS_FEATURE_NAME],
+            check=True,
+        )
+        return True
+    except subprocess.CalledProcessError as e:
+        if e.returncode != 1:
+            raise
+        return False
+
+
+def verify_start():
+    """Ask user whether to start Electrum.
+
+    >>> verify_start() in (True, False)
+    True
+    """
+
+    disabled_text = _("Persistence is disabled for Electrum")
+    warning_text = _(
+        "When you reboot Tails, all of Electrum's data will be lost, including your Bitcoin wallet.\nIt is strongly recommended to only run Electrum when its persistence feature is activated.",
+    )
+    question_text = _("Do you want to start Electrum anyway?")
+    dialog_msg = "<b><big>{}</big></b>\n\n{}\n\n{}\n".format(
+        disabled_text,
+        warning_text,
+        question_text,
+    )
+    launch_text = _("_Launch")
+    exit_text = _("_Exit")
+
+    p = subprocess.run(
+        [
+            "/usr/bin/zenity",
+            "--question",
+            "--title",
+            "",
+            "--default-cancel",
+            "--ok-label",
+            launch_text,
+            "--cancel-label",
+            exit_text,
+            "--text",
+            dialog_msg,
+        ],
+        check=False,
+    )
+    return p.returncode == 0
+
+
+if __name__ == "__main__":
+    if len(sys.argv) > 1 and sys.argv[1] == "doctest":
+        import doctest
+
+        doctest.testmod()
+    else:
+        main(*sys.argv[1:])

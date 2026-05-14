@@ -4,7 +4,7 @@ sidebarTitle: "Memory"
 description: "Memory persistence, embedding generation, vector search, memory types, and the retrieval API."
 ---
 
-Eliza's memory system is backed by `@elizaos/plugin-sql` for persistence and `@elizaos/plugin-local-embedding` for vector embeddings. This page covers the memory infrastructure from the runtime perspective.
+Eliza's memory system is backed by `@elizaos/plugin-sql` for persistence and `@elizaos/plugin-local-inference` for vector embeddings. This page covers the memory infrastructure from the runtime perspective.
 
 ## Memory Architecture
 
@@ -56,7 +56,7 @@ For production or shared deployments, set `database.provider = "postgres"`. The 
 
 ## Embedding Model
 
-`@elizaos/plugin-local-embedding` is pre-registered before `runtime.initialize()` to ensure its `TEXT_EMBEDDING` handler (priority 10) wins over any cloud provider's handler (priority 0).
+`@elizaos/plugin-local-inference` is pre-registered before `runtime.initialize()` to ensure its `TEXT_EMBEDDING` handler (priority 10) wins over any cloud provider's handler (priority 0).
 
 ### Default Model
 

@@ -1,0 +1,29 @@
+[[!meta title="Graphics"]]
+
+Tails includes several applications for image manipulation, graphic design, and
+page layout:
+
+  - [*GIMP*](https://www.gimp.org/), an image editor.
+
+    You can use *GIMP* to edit, enhance, and retouch photos and scans, create
+    drawings, and make your own images.
+
+    *GIMP* has [user manuals](https://docs.gimp.org/) in several
+    languages.
+
+  - [*Inkscape*](https://inkscape.org/), a vector-based drawing application.
+
+    You can use *Inkscape* to create a wide variety of graphics such as
+    illustrations, icons, logos, diagrams, maps, and web graphics.
+
+    The *Inkscape* website has
+    [tutorials](https://inkscape.org/en/learn/tutorials/) in several languages.
+
+These applications are available in the **Apps&nbsp;▸ Graphics** submenu.
+
+You can also install using the [[Additional Software|persistent_storage/additional_software]] feature:
+
+- [*Scribus*](https://www.scribus.net/), a page layout application.
+
+[[!inline pages="doc/sensitive_documents/persistence" raw="yes" sort="age"]]
+[[!inline pages="doc/sensitive_documents/metadata.inline" raw="yes" sort="age"]]

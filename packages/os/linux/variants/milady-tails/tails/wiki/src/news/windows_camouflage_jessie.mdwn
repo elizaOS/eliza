@@ -1,0 +1,52 @@
+[[!meta title="Help porting Windows camouflage to GNOME 3.14"]]
+[[!tag announce]]
+
+[[!meta date="Mon, 05 Jan 2015 12:00:00 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+**Call for participation!**
+
+Are you into GNOME development and want to participate to Tails?  Do you
+want to improve your GTK or GNOME Shell theming skills while
+supporting users needing privacy and stealth? Consider porting the
+"Windows camouflage" of Tails to GNOME 3.14.
+
+# What is the Windows camouflage?
+
+Tails documentation reads "if you are using a computer in public you may
+want to avoid attracting unwanted attention by changing the way Tails
+looks into something that resembles Microsoft Windows 8." This is what
+we call the "Windows camouflage".
+
+# Why is it useful?
+
+We got reports that users have been arrested while using a
+privacy-enhancing distribution because their screen looked very
+different from others, which raised suspicion. It's why a Windows
+camouflage has been added to Tails.
+
+# What should be done?
+
+Current Tails is based on GNOME 3.8 in "Fallback" mode. We are currently
+upgrading Tails on top of the upcoming version on Debian ("Jessie")
+which is based on GNOME 3.14. The Windows camouflage should be upgraded to
+the last version of GTK and ported from GNOME Panel to GNOME shell. That
+includes GTK and GNOME Shell theming through CSS as well as writing a
+custom GNOME Shell extension.
+
+# Why do we need you?
+
+The team currently working on Tails is very busy and decided to focus on
+the core or the upgrade rather than on the Windows camouflage. We currently
+plan to go ahead with the initial Tails Jessie release even if the
+Windows camouflage is missing. However, we would love to ship a proper Windows
+camouflage and think it's a good occasion for you to give a hand. We'll
+provide support to anybody volunteering and work together on integrating
+the new theme to upcoming Tails Jessie snapshots.
+
+# Where should you start?
+
+Please read
+update camouflage for jessie, then
+write to <tails-dev@boum.org>. This is a public mailing list.
+Please subscribe!

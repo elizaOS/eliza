@@ -1,0 +1,143 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-12-08 13:08+0100\n"
+"PO-Revision-Date: 2023-07-30 10:22+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: sr_Latn\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=3; plural=n%10==1 && n%100!=11 ? 0 : n%10>=2 && "
+"n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2;\n"
+"X-Generator: Weblate 4.9.1\n"
+
+#. type: Content of: outside any tag (error?)
+msgid "[[!meta robots=\"noindex\"]]"
+msgstr ""
+
+#. type: Content of: <h1>
+msgid "Download Tails"
+msgstr ""
+
+#. type: Content of: <div>
+msgid "[[!img inc/infography/download.png link=\"no\" alt=\"\"]]"
+msgstr "[[!img inc/infography/download.png link=\"no\" alt=\"\"]]"
+
+#. type: Content of: <div>
+#, fuzzy
+msgid ""
+"[[!img inc/infography/download-with-intermediary.png link=\"no\" alt=\"\"]]"
+msgstr "[[!img inc/infography/download.png link=\"no\" alt=\"\"]]"
+
+#. type: Content of: <div>
+msgid "[[!img inc/infography/download-from-tails.png link=\"no\" alt=\"\"]]"
+msgstr ""
+
+#. type: Content of: <div>
+msgid ""
+"<span id=\"download-img\" class=\"button display-as-inline-block\"> <a "
+"href=\"[[!inline pages=\"inc/stable_amd64_img_url\" raw=\"yes\" "
+"sort=\"age\"]]\">Download Tails [[!inline pages=\"inc/stable_amd64_version\" "
+"raw=\"yes\" sort=\"age\"]] USB image (<span class=\"remove-extra-space\">[[!"
+"inline pages=\"inc/stable_amd64_img_size\" raw=\"yes\" sort=\"age\"]]</"
+"span>)</a> </span> <span class=\"no-js button\"> <a href=\"[[!inline "
+"pages=\"inc/stable_amd64_img_url_https\" raw=\"yes\" sort=\"age\"]]"
+"\">Download Tails [[!inline pages=\"inc/stable_amd64_version\" raw=\"yes\" "
+"sort=\"age\"]] USB image (<span class=\"remove-extra-space\">[[!inline "
+"pages=\"inc/stable_amd64_img_size\" raw=\"yes\" sort=\"age\"]]</span>)</a> </"
+"span>"
+msgstr ""
+
+#. type: Content of: <div>
+msgid ""
+"<span id=\"download-iso\" class=\"button display-as-inline-block\"> <a "
+"href=\"[[!inline pages=\"inc/stable_amd64_iso_url\" raw=\"yes\" "
+"sort=\"age\"]]\">Download Tails [[!inline pages=\"inc/stable_amd64_version\" "
+"raw=\"yes\" sort=\"age\"]] ISO image (<span class=\"remove-extra-space\">[[!"
+"inline pages=\"inc/stable_amd64_iso_size\" raw=\"yes\" sort=\"age\"]]</"
+"span>)</a> </span> <span class=\"no-js button\"> <a href=\"[[!inline "
+"pages=\"inc/stable_amd64_iso_url_https\" raw=\"yes\" sort=\"age\"]]"
+"\">Download Tails [[!inline pages=\"inc/stable_amd64_version\" raw=\"yes\" "
+"sort=\"age\"]] ISO image (<span class=\"remove-extra-space\">[[!inline "
+"pages=\"inc/stable_amd64_iso_size\" raw=\"yes\" sort=\"age\"]]</span>)</a> </"
+"span>"
+msgstr ""
+
+#. type: Content of: <p>
+msgid ""
+"Save your download to your usual <i>Downloads</i> folder and not to the USB "
+"stick."
+msgstr ""
+
+#. type: Content of: <p>
+msgid ""
+"We recommend that you save your download to your Persistent Storage. "
+"Otherwise, Tails might stop responding if the RAM memory of the computer "
+"gets full."
+msgstr ""
+
+#. type: Content of: <div><p>
+msgid ""
+"While you are downloading, we recommend you read the [[release notes|"
+"latest]] for Tails [[!inline pages=\"inc/stable_amd64_version\" raw=\"yes\" "
+"sort=\"age\"]]<span class=\"remove-extra-space\">.</span>&nbsp; They "
+"document all the changes in this new version: new features, problems that "
+"were solved, and known issues that have already been identified."
+msgstr ""
+
+#, fuzzy
+#~ msgid ""
+#~ "or download using <a href=\"[[!inline pages=\"inc/"
+#~ "stable_amd64_img_torrent_url\" raw=\"yes\" sort=\"age\"]]\" id=\"download-"
+#~ "img-torrent\" class=\"usb upgrade download-only-img\">BitTorrent</a> <a "
+#~ "href=\"[[!inline pages=\"inc/stable_amd64_iso_torrent_url\" raw=\"yes\" "
+#~ "sort=\"age\"]]\" id=\"download-iso-torrent\" class=\"dvd download-only-"
+#~ "iso\">BitTorrent</a>"
+#~ msgstr ""
+#~ "Laden Sie die <a href='[[!inline pages=\"inc/stable_amd64_iso_sig_url\" "
+#~ "raw=\"yes\"]]'> Tails [[!inline pages=\"inc/stable_amd64_version\" "
+#~ "raw=\"yes\" sort=\"age\"]] OpenPGP-Signatur</a> des aktuellsten ISO-"
+#~ "Images von Tails herunter und speichern Sie sie in dem gleichen Ordner, "
+#~ "in dem Sie das ISO-Image gespeichert haben."
+
+#, fuzzy
+#~ msgid ""
+#~ "<a class=\"usb upgrade download-only-img\" href=\"[[!inline pages=\"inc/"
+#~ "stable_amd64_img_sig_url\" raw=\"yes\" sort=\"age\"]]\">OpenPGP signature "
+#~ "</a> <a class=\"dvd vm download-only-iso\" href=\"[[!inline pages=\"inc/"
+#~ "stable_amd64_iso_sig_url\" raw=\"yes\" sort=\"age\"]]\">OpenPGP "
+#~ "signature</a>"
+#~ msgstr ""
+#~ "Laden Sie die <a href='[[!inline pages=\"inc/stable_amd64_iso_sig_url\" "
+#~ "raw=\"yes\"]]'> Tails [[!inline pages=\"inc/stable_amd64_version\" "
+#~ "raw=\"yes\" sort=\"age\"]] OpenPGP-Signatur</a> des aktuellsten ISO-"
+#~ "Images von Tails herunter und speichern Sie sie in dem gleichen Ordner, "
+#~ "in dem Sie das ISO-Image gespeichert haben."
+
+#, fuzzy
+#~ msgid ""
+#~ "<label class=\"button\"> Verify Tails <span class=\"remove-extra-"
+#~ "space\">&#8288;[[!inline pages=\"inc/stable_amd64_version\" raw=\"yes\" "
+#~ "sort=\"age\"]]</span>&hellip; <input id=\"verify-file\" type=\"file\"/> </"
+#~ "label>"
+#~ msgstr ""
+#~ "[[!inline pages=\"inc/stable_amd64_gpg_verify\" raw=\"yes\" sort=\"age\"]]"
+
+#~ msgid ""
+#~ "For example, you can start by contacting a local [[!wikipedia "
+#~ "Linux_User_Group]], [[an organization offering Tails training|support/"
+#~ "learn]], or other Tails enthusiasts near you and exchange about their "
+#~ "OpenPGP practices."
+#~ msgstr ""
+#~ "Sie könnten damit beginnen, indem Sie mit einer lokalen [[!wikipedia_de "
+#~ "Linux_User_Group desc=\"%s\"]] oder anderen Enthusiasten von Tails in "
+#~ "Ihrer Umgebung in Kontakt treten und sich über deren Methoden bezüglich "
+#~ "OpenPGP austauschen."

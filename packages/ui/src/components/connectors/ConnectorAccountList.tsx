@@ -1,4 +1,3 @@
-import { Button, cn, Spinner } from "@elizaos/ui";
 import { Plus } from "lucide-react";
 import { useEffect, useMemo } from "react";
 import type {
@@ -6,6 +5,9 @@ import type {
   ConnectorAccountRecord,
 } from "../../api/client-agent";
 import { useConnectorAccounts } from "../../hooks/useConnectorAccounts";
+import { cn } from "../../lib/utils";
+import { Button } from "../ui/button";
+import { Spinner } from "../ui/spinner";
 import { ConnectorAccountCard } from "./ConnectorAccountCard";
 
 export interface ConnectorAccountListProps {

@@ -23,9 +23,9 @@ ROOT = Path(__file__).resolve().parent.parent
 # exists wins. Any of these is sufficient for a smoke run — the test only
 # verifies that the trainer wires up and writes a final dir.
 CANDIDATE_CKPTS = [
-    ROOT / "checkpoints" / "qwen3-06b-eliza-payload-v3" / "final",
-    ROOT / "checkpoints" / "qwen3-06b-eliza-payload-v1" / "final",
-    ROOT / "checkpoints" / "qwen3-06b-smoke-v3" / "final",
+    ROOT / "checkpoints" / "qwen3.5-0.8b-eliza-payload-v3" / "final",
+    ROOT / "checkpoints" / "qwen3.5-0.8b-eliza-payload-v1" / "final",
+    ROOT / "checkpoints" / "qwen3.5-0.8b-smoke-v3" / "final",
 ]
 
 

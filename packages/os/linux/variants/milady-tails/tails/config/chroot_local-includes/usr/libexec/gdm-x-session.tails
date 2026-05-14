@@ -1,0 +1,11 @@
+#!/bin/sh
+
+# If this file is ever run, it means the Wayland session failed,
+# and GDM is trying the X.Org fallback.
+# However, X.Org isn't even installed in Tails, so this can't work.
+# Despite this, gdm.service never reaches its failed state.
+# We want, therefore, to explicitly make it fail, so that
+# tails-gdm-failed-to-start.service will start
+sudo -n /bin/systemctl kill --signal=9 gdm
+
+exit 5

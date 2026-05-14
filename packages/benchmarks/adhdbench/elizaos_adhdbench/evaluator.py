@@ -100,12 +100,16 @@ def compute_scenario_score(
     """
     scored_turns: list[float] = []
     for tr in turn_results:
-        if tr.outcome_results:
+        scoreable = [
+            r for r in tr.outcome_results
+            if is_scoreable_outcome(
+                r.outcome,
+                has_runtime_signal=has_runtime_signal,
+            )
+        ]
+        if scoreable:
             scored_turns.append(
-                compute_turn_score(
-                    tr.outcome_results,
-                    has_runtime_signal=has_runtime_signal,
-                )
+                compute_turn_score(scoreable, has_runtime_signal=has_runtime_signal)
             )
     if not scored_turns:
         return 1.0

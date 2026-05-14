@@ -1,0 +1,139 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: Tails\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2026-03-18 09:16+0000\n"
+"PO-Revision-Date: 2026-03-26 01:22+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: Tails translators <tails@boum.org>\n"
+"Language: fr\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n > 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Download and verify (for USB sticks)\"]]\n"
+msgstr "[[!meta title=\"Télécharger et vérifier (pour clés USB)\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta robots=\"noindex\"]]\n"
+msgstr "[[!meta robots=\"noindex\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta stylesheet=\"install/inc/stylesheets/download\" rel=\"stylesheet\" title=\"\"]]\n"
+msgstr "[[!meta stylesheet=\"install/inc/stylesheets/download\" rel=\"stylesheet\" title=\"\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta stylesheet=\"doc/about/warnings\" rel=\"stylesheet\" title=\"\"]]\n"
+msgstr "[[!meta stylesheet=\"doc/about/warnings\" rel=\"stylesheet\" title=\"\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta stylesheet=\"install/inc/stylesheets/steps\" rel=\"stylesheet\" title=\"\"]]\n"
+msgstr "[[!meta stylesheet=\"install/inc/stylesheets/steps\" rel=\"stylesheet\" title=\"\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta stylesheet=\"install/inc/stylesheets/download-only-img\" rel=\"stylesheet\" title=\"\"]]\n"
+msgstr "[[!meta stylesheet=\"install/inc/stylesheets/download-only-img\" rel=\"stylesheet\" title=\"\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta script=\"install/inc/js/download\"]]\n"
+msgstr "[[!meta script=\"install/inc/js/download\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta script=\"install/inc/js/forge.min\"]]\n"
+msgstr "[[!meta script=\"install/inc/js/forge.min\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"install/inc/steps/download.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"install/inc/steps/download.inline.fr\" raw=\"yes\" sort=\"age\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"install/inc/steps/verify.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"install/inc/steps/verify.inline.fr\" raw=\"yes\" sort=\"age\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 class=\"step\">Continue installing or upgrading Tails</h1>\n"
+msgstr "<h1 class=\"step\">Continuer l'installation ou mettre à jour Tails</h1>\n"
+
+#. type: Plain text
+msgid "With this USB image, you can either:"
+msgstr "Avec cette image USB, vous pouvez au choix :"
+
+#. type: Bullet: '- '
+msgid "Upgrade your Tails USB stick and keep your Persistent Storage."
+msgstr ""
+"Mettre à jour votre clé USB Tails et conserver votre stockage persistant."
+
+#. type: Bullet: '  * '
+msgid "[[Upgrade from your Tails|doc/upgrade/tails]]"
+msgstr "[[Mettre à jour depuis votre Tails|doc/upgrade/tails]]"
+
+#. type: Bullet: '  * '
+msgid "[[Upgrade from Windows|doc/upgrade/windows]]"
+msgstr "[[Mettre à jour depuis Windows|doc/upgrade/windows]]"
+
+#. type: Bullet: '  * '
+msgid "[[Upgrade from macOS|doc/upgrade/mac]]"
+msgstr "[[Mettre à jour depuis macOS|doc/upgrade/mac]]"
+
+#. type: Bullet: '  * '
+msgid "[[Upgrade from Linux|doc/upgrade/linux]]"
+msgstr "[[Mettre à jour depuis Linux|doc/upgrade/linux]]"
+
+#. type: Bullet: '- '
+msgid "Install a new Tails USB stick."
+msgstr "Installer une nouvelle clé USB Tails."
+
+#. type: Bullet: '  * '
+msgid "<span class=\"button\">[[Install from Windows|install/windows]]</span>"
+msgstr ""
+"<span class=\"button\">[[Installer depuis Windows|install/windows]]</span>"
+
+#. type: Bullet: '  * '
+msgid "<span class=\"button\">[[Install from macOS|install/mac]]</span>"
+msgstr "<span class=\"button\">[[Installer depuis macOS|install/mac]]</span>"
+
+#. type: Bullet: '  * '
+msgid "<span class=\"button\">[[Install from Linux|install/linux]]</span>"
+msgstr "<span class=\"button\">[[Installer depuis Linux|install/linux]]</span>"
+
+#. type: Bullet: '  * '
+msgid ""
+"<span class=\"button\">[[Install from Debian or Ubuntu using the command "
+"line and GnuPG|install/expert]]</span>"
+msgstr ""
+"<span class=\"button\">[[Installer depuis Debian ou Ubuntu en utilisant la "
+"ligne de commande et GnuPG|install/expert]]</span>"
+
+#. type: Plain text
+msgid "To burn a Tails DVD, download our [[ISO image|download-iso]] instead."
+msgstr ""
+"Pour graver un DVD Tails, téléchargez à la place notre [[image ISO|download-"
+"iso]]."
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"install/inc/steps/warnings.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"install/inc/steps/warnings.inline.fr\" raw=\"yes\" sort=\"age\"]]\n"
+
+#, no-wrap
+#~ msgid "[[!meta stylesheet=\"install/inc/stylesheets/assistant\" rel=\"stylesheet\" title=\"\"]]\n"
+#~ msgstr "[[!meta stylesheet=\"install/inc/stylesheets/assistant\" rel=\"stylesheet\" title=\"\"]]\n"

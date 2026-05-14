@@ -1,14 +1,11 @@
 import type { ReactNode } from "react";
-
-import {
-  Button,
-  PagePanel,
-  Sidebar,
-  SidebarContent,
-  SidebarHeader,
-  SidebarPanel,
-  SidebarScrollRegion,
-} from "../index";
+import { PagePanel } from "../components/composites/page-panel";
+import { SidebarContent } from "../components/composites/sidebar/sidebar-content";
+import { SidebarHeader } from "../components/composites/sidebar/sidebar-header";
+import { SidebarPanel } from "../components/composites/sidebar/sidebar-panel";
+import { Sidebar } from "../components/composites/sidebar/sidebar-root";
+import { SidebarScrollRegion } from "../components/composites/sidebar/sidebar-scroll-region";
+import { Button } from "../components/ui/button";
 
 export function LayoutStoryFrame({ children }: { children: ReactNode }) {
   return <div className="flex min-h-screen bg-bg">{children}</div>;

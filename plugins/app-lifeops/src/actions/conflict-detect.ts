@@ -1,11 +1,6 @@
 /**
  * `CONFLICT_DETECT` umbrella action — proactive calendar conflict scanning.
  *
- * PRD: `prd-lifeops-executive-assistant.md` §Calendar And Scheduling. Today
- * the agent only detects conflicts reactively (during create_event); the
- * scenario matrix calls for the agent to proactively scan today's calendar /
- * the week ahead, and to evaluate a proposed event against an attendee set.
- *
  * Subactions:
  *   - `scan_today`            — find overlaps on today's calendar
  *   - `scan_week`             — find overlaps in the next seven days
@@ -13,13 +8,11 @@
  *                               attendees), find direct conflicts against the
  *                               owner's calendar feed
  *
- * Behavior: reads the calendar feed via the injectable loader (Wave-2 wires
- * `CALENDAR.feed`) and compares event windows for overlap. Attendee freebusy
- * is NOT consulted unless the loader injects it — the Wave-1 scaffold falls
- * back to feed-vs-feed comparison when freebusy is unavailable.
+ * Reads the calendar feed via the injectable loader and compares event windows
+ * for overlap. Attendee freebusy is only consulted if the loader injects it.
  *
  * Owner-or-admin gating: `hasLifeOpsAccess` covers OWNER; ADMIN is also valid
- * for read scans of the owner's calendar in the Wave-2 dispatch surface.
+ * for read scans.
  */
 
 import type {
@@ -98,11 +91,10 @@ export interface ConflictDetectResult {
 }
 
 /**
- * Loader hook. Wave-2 wires this to `CALENDAR.feed`. Wave-1 returns an empty
- * feed by default so tests can inject scenario data.
+ * Loader hook. Default returns an empty feed so tests can inject scenario data.
  *
- * TODO Wave-2: also expose a freebusy loader for attendee conflict checks —
- * for now `scan_event_proposal` only considers the owner's own feed.
+ * TODO: expose a freebusy loader for attendee conflict checks — currently
+ * `scan_event_proposal` only considers the owner's own feed.
  */
 export interface ConflictDetectLoader {
   loadFeed: (args: {

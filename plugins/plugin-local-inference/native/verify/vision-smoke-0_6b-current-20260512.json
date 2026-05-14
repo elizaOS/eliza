@@ -1,0 +1,107 @@
+{
+  "schemaVersion": 1,
+  "metric": "vision_smoke",
+  "generatedAt": "2026-05-12T23:30:32.143Z",
+  "bundleDir": "/Users/shawwalters/.eliza/local-inference/models/eliza-1-0_6b.bundle",
+  "tier": "0_6b",
+  "expectedVisionTier": false,
+  "textVoiceOnlyTier": true,
+  "supported": false,
+  "passed": false,
+  "status": "not-applicable",
+  "action": "mark-text-voice-only",
+  "smokeConfig": {
+    "image": "",
+    "ctxSize": 2048,
+    "nPredict": 64,
+    "gpuLayers": "auto",
+    "timeoutMs": 600000
+  },
+  "manifest": {
+    "path": "/Users/shawwalters/.eliza/local-inference/models/eliza-1-0_6b.bundle/eliza-1.manifest.json",
+    "filesText": [
+      {
+        "ctx": 32768,
+        "path": "text/eliza-1-0_6b-32k.gguf",
+        "sha256": "9465e63a22add5354d9bb4b99e90117043c7124007664907259bd16d043bb031",
+        "sizeBytes": 639446688,
+        "sizeGiB": 0.596
+      }
+    ],
+    "filesVision": [],
+    "lineageVisionPresent": false
+  },
+  "mtmdCli": {
+    "selected": "/Users/shawwalters/.eliza/local-inference/bin/dflash/darwin-arm64-metal-fused/llama-mtmd-cli",
+    "candidates": [
+      {
+        "path": "/Users/shawwalters/.eliza/local-inference/bin/dflash/darwin-arm64-metal-fused/llama-mtmd-cli",
+        "exists": true,
+        "executable": true,
+        "helpExitCode": 0,
+        "compatible": true,
+        "helpSignals": {
+          "mmproj": true,
+          "image": true,
+          "mtmd": true,
+          "metal": true
+        },
+        "stderrTail": "ggml_metal_device_init: tensor API disabled for pre-M5 and pre-A19 devices\nggml_metal_library_init: loading '/Users/shawwalters/.eliza/local-inference/bin/dflash/darwin-arm64-metal-fused/default.metallib'\nggml_metal_library_init: loaded in 0.004 sec\nggml_metal_rsets_init: creating a residency set collection (keep_alive = 180 s)\nggml_metal_device_init: GPU name:   MTL0\nggml_metal_device_init: GPU family: MTLGPUFamilyApple9  (1009)\nggml_metal_device_init: GPU family: MTLGPUFamilyCommon3 (3003)\nggml_metal_device_init: GPU family: MTLGPUFamilyMetal4  (5002)\nggml_metal_device_init: simdgroup reduction   = true\nggml_metal_device_init: simdgroup matrix mul. = true\nggml_metal_device_init: has unified memory    = true\nggml_metal_device_init: has bfloat            = true\nggml_metal_device_init: has tensor            = false\nggml_metal_device_init: use residency sets    = true\nggml_metal_device_init: use shared buffers    = true\nggml_metal_device_init: recommendedMaxWorkingSetSize  = 115448.73 MB\n"
+      },
+      {
+        "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/inference/llama.cpp/build/darwin-arm64-metal-fused/bin/llama-mtmd-cli",
+        "exists": true,
+        "executable": true,
+        "helpExitCode": 0,
+        "compatible": true,
+        "helpSignals": {
+          "mmproj": true,
+          "image": true,
+          "mtmd": true,
+          "metal": true
+        },
+        "stderrTail": "ggml_metal_device_init: tensor API disabled for pre-M5 and pre-A19 devices\nggml_metal_library_init: loading '/Users/shawwalters/eliza-workspace/milady/eliza/packages/inference/llama.cpp/build/darwin-arm64-metal-fused/bin/default.metallib'\nggml_metal_library_init: loaded in 0.002 sec\nggml_metal_rsets_init: creating a residency set collection (keep_alive = 180 s)\nggml_metal_device_init: GPU name:   MTL0\nggml_metal_device_init: GPU family: MTLGPUFamilyApple9  (1009)\nggml_metal_device_init: GPU family: MTLGPUFamilyCommon3 (3003)\nggml_metal_device_init: GPU family: MTLGPUFamilyMetal4  (5002)\nggml_metal_device_init: simdgroup reduction   = true\nggml_metal_device_init: simdgroup matrix mul. = true\nggml_metal_device_init: has unified memory    = true\nggml_metal_device_init: has bfloat            = true\nggml_metal_device_init: has tensor            = false\nggml_metal_device_init: use residency sets    = true\nggml_metal_device_init: use shared buffers    = true\nggml_metal_device_init: recommendedMaxWorkingSetSize  = 115448.73 MB\n"
+      }
+    ],
+    "buildCommands": [
+      "cmake -S packages/inference/llama.cpp -B packages/inference/llama.cpp/build/darwin-arm64-metal-fused -DGGML_METAL=ON -DLLAMA_BUILD_TOOLS=ON -DLLAMA_BUILD_EXAMPLES=ON",
+      "cmake --build packages/inference/llama.cpp/build/darwin-arm64-metal-fused --target llama-mtmd-cli -j \"$(sysctl -n hw.logicalcpu)\""
+    ]
+  },
+  "visionAssetCommands": {
+    "stageSource": "python packages/training/scripts/manifest/stage_eliza1_source_weights.py --tier 0_6b --bundle-dir /Users/shawwalters/.eliza/local-inference/models/eliza-1-0_6b.bundle --link-mode hardlink",
+    "consolidateLocalBundle": "python packages/training/scripts/manifest/stage_local_eliza1_bundle.py --tier 0_6b --bundle-dir /Users/shawwalters/.eliza/local-inference/models/eliza-1-0_6b.bundle --force"
+  },
+  "inventory": {
+    "visionFiles": [],
+    "sourceVisionFiles": [],
+    "asrMmprojFiles": [
+      "asr/eliza-1-asr-mmproj.gguf"
+    ],
+    "borrowedVisionArtifactsSeen": [
+      "/Users/shawwalters/.eliza/local-inference/models/eliza-1-9b.bundle/vision/mmproj-9b.gguf",
+      "/Users/shawwalters/.eliza/local-inference/models/eliza-1-27b.bundle/vision/mmproj-27b.gguf",
+      "/Users/shawwalters/.eliza/local-inference/models/eliza-1-27b-256k.bundle/vision/mmproj-27b-256k.gguf"
+    ]
+  },
+  "appCorePath": {
+    "spawnArg": "--mmproj",
+    "envOverride": "ELIZA_LOCAL_MMPROJ",
+    "optimizationField": "runtime.optimizations.mmproj",
+    "note": "packages/app-core/src/services/local-inference/dflash-server.ts only enables image inputs when a tier-compatible mmproj path is provided."
+  },
+  "memoryImplications": {
+    "largestTextBytes": 639446688,
+    "largestVisionBytes": 0,
+    "largestTextGiB": 0.596,
+    "largestVisionGiB": 0,
+    "minimumMappedWeightsGiB": 0.596,
+    "note": "Smoke uses a small --ctx-size, so KV cache allocation is much smaller than the tier's long-context runtime budget. Operational RAM still needs text weights + mmproj + KV cache + Metal/CPU working buffers."
+  },
+  "imageAnalysis": {
+    "attempted": false,
+    "status": "skipped",
+    "reason": "skipped because manifest.files.vision is empty"
+  },
+  "reason": "0_6b is text/voice-only by the Eliza-1 tier contract: packages/inference/AGENTS.md marks Vision=no for 0_6b, packages/shared/src/local-inference/catalog.ts has no sourceModel.components.vision for this tier, packages/training/scripts/manifest/stage_eliza1_source_weights.py has no vision source for this tier, and manifest.files.vision is empty. The ASR mmproj is audio-only and cannot be reused for image analysis; the local 9B/27B mmproj files are tied to different text backbones and are not compatible substitutes."
+}

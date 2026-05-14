@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "declaration": false,
+    "declarationMap": false,
+    "emitDeclarationOnly": false,
+    "noEmit": true,
+    "rootDir": "../..",
+    "sourceMap": false,
+    "paths": {
+      "@elizaos/plugin-suno": ["../plugin-suno/src/index.ts"]
+    }
+  }
+}

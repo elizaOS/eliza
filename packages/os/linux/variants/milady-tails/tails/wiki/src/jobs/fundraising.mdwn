@@ -1,0 +1,159 @@
+[[!meta title="Fundraising Lead"]]
+
+[[!meta stylesheet="jobs" rel="stylesheet" title=""]]
+[[!tag job/staff]]
+[[!meta robots="noindex"]]
+
+**This job opening is closed.**
+
+**Applications received after December 13, 2022, will not be considered.**
+
+[[!toc levels=1]]
+
+Tails is hiring a Fundraising Lead
+==================================
+
+Tails, a portable operating system that protects against surveillance and
+censorship, is looking for a Fundraising Lead to help us develop and grow our
+fundraising initiatives.
+
+We are looking for a gifted communicator who can tell the story of Tails to a
+wide variety of current and future donors. You'll take the
+lead on all fundraising efforts from strategy through to execution, and play a
+key role in ensuring the financial health and sustainability of the project.
+This role will work closely with our core teams to connect our technical and
+product strategy to funding opportunities.
+
+We already have experience raising a yearly budget of
+around $400k from small donors, public grants, and private foundations. But our
+team is growing and we are creating a new role to make this growth
+sustainable. You will have the autonomy to further develop and rethink in depth
+how Tails funds its work.
+
+About Tails
+===========
+
+[[!inline pages="jobs/about_tails" raw="yes" sort="age"]]
+
+About this position
+===================
+
+You will be part of the Fundraising team and work with 3 other Tails
+workers who have covered our fundraising work until now. We want you to
+take over most of their work within 12 months. You will be
+responsible to self-organize your work and time with the project's
+priorities in mind.
+
+You will also be part of the Tails Board. The Board is in charge of
+maintaining not only an operating system but also the good health of the
+project as a whole. Together, we continuously discuss and improve
+organizational and strategic aspects of the project.
+
+Key responsibilities
+--------------------
+
+**Funding strategy and infrastructure:**
+
+- Develop and execute on annual fundraising plans that support Tails' strategic
+  plan and goals.
+
+- Research and pursue funding opportunities that map to our roadmaps and
+  project ideas.
+
+- Track and report on data for fundraising and grants, work with our Accounting
+  team to produce budgets and revenue forecasting.
+
+- Improve our fundraising infrastructure, toolchain, and processes.
+
+  Right now our setup is pretty basic, for example, we don't have a CRM.
+
+**Grants writing and management:**
+
+- Take the lead on writing grant proposals in coordination with relevant
+  internal stakeholders and manage the submission process.
+
+  We applied successfully to grants upto to $200k, but feel the need to target
+  bigger public grants.
+
+- Be the point of contact with funders for ongoing grants, manage the
+  reporting calendar and paperwork, and collaborate with internal teams to
+  prepare reports.
+
+**Donor relationship management:**
+
+- Recruit, cultivate, and steward both small and major donors.
+
+  We already have a list of past donors, but we don't have a good donor
+  recognition and stewardship program or real experience with major donors.
+
+- Act as the lead on all donation campaigns.
+
+  We have been doing end-of-year fundraisers since 2017, but thought about
+  doing other crowfunding campaigns for specific features.
+
+- Own direct communication with donors, be comfortable talking to donors from a
+  variety of backgrounds and contexts, online and in person.
+
+- Attend, and maybe organize, public and private events on behalf of Tails.
+
+- Maintain and administer our donor database.
+
+Qualifications
+--------------
+
+- If you are part of a group that is under-represented in tech, we particularly
+  encourage you to apply. We acknowledge that our community is not as diverse
+  and equitable as we would like it to be. We understand that we are part of the
+  problem. We want the Tails project to become more equitable.
+
+- You can commit 15&ndash;25 hours per week on a long-term basis.
+  The exact scope of your responsibilities will depend on how much
+  you work within this range.
+
+- Experience fundraising and grant writing in a nonprofit
+  setting.
+
+- Experience with setting strategic funding targets and developing plans for
+  execution.
+
+- Proven success in donor relationship management.
+
+- Experience participating in groups that value transparency, autonomy, and
+  horizontal decision-making.
+
+- Solid understanding of basic fundraising principles.
+
+- Good verbal and written communication skills in English.
+
+- Self-organized, systematic, able to set priorities and manage timelines.
+
+- Conceptual understanding of software development work.
+
+- Enthusiastic about our [[mission and values|contribute/mission]], motivated
+  by social impact.
+
+- Some experience working fully remote, primarily with asynchronous
+  communication.
+
+- You can work comfortably at least 3 hours during the peak of Tails
+  activities: between 10:00 and 17:00 CEST/CET.
+
+Compensation and benefits
+-------------------------
+
+Pay scale is 30&ndash;70 k€ per year for 15&ndash;25 hours a week, including medical coverage.
+
+[[!inline pages="jobs/compensation" raw="yes" sort="age"]]
+
+<a id="apply"></a>
+
+How to apply
+============
+
+Send an email to <fundraising@tails.net>.
+
+<style>
+.apply-portfolio, .apply-contributions { display: none; }
+</style>
+
+[[!inline pages="jobs/apply" raw="yes" sort="age"]]

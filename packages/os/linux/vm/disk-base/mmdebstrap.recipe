@@ -1,0 +1,114 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 NubsCarson and contributors
+#
+# Declarative spec for the Phase 0 QEMU base image.
+#
+# This file is the source of truth for "what is in the qcow2 we test against."
+# Bumping anything here triggers a rebuild and a new SHA256 lock.
+#
+# Phase 0 build path (see build-base.sh):
+#   1. Download Debian sid generic-cloud qcow2 (pinned by SHA256).
+#   2. virt-customize installs the packages below + writes /etc/sway/config
+#      to autostart elizad in single-window mode.
+#   3. Output: vm/disk-base.qcow2
+#
+# We deliberately do NOT use mmdebstrap-from-scratch in Phase 0 — the cloud image
+# already has a working bootloader, a working systemd, and a working initramfs.
+# The mmdebstrap-driven from-scratch build comes back in Phase 1 for the live ISO.
+
+# --- Pinned upstream artifact ---
+# Latest Debian sid daily build. Update by pulling SHA256SUMS from:
+#   https://cloud.debian.org/images/cloud/sid/daily/latest/
+# and bumping both fields together.
+DEBIAN_SID_IMAGE_URL="https://cloud.debian.org/images/cloud/sid/daily/latest/debian-sid-genericcloud-amd64-daily.qcow2"
+DEBIAN_SID_IMAGE_SHA256_FILE="https://cloud.debian.org/images/cloud/sid/daily/latest/SHA512SUMS"
+
+# --- Packages installed via virt-customize ---
+# (Apt names. sway includes wayland; bubblewrap is the sandbox.)
+VM_PACKAGES=(
+    # Wayland + display stack
+    sway
+    swaybg
+    foot
+    wl-clipboard
+    xwayland
+
+    # Sandboxing
+    bubblewrap
+
+    # Tauri runtime deps (the elizad binary links against these via webkit2gtk)
+    libwebkit2gtk-4.1-0
+    libgtk-3-0
+    libayatana-appindicator3-1
+    librsvg2-2
+
+    # Ergonomics
+    ca-certificates
+    curl
+    htop
+    less
+    nano
+    openssh-server
+    sudo
+
+    # Diagnostic tools (kept minimal; debug helpers, not production deps)
+    procps
+    psmisc
+    strace
+
+    # JSON-RPC handling and serial console
+    socat
+
+    # Generated-app runtime in the bubblewrap (locked decision #7: chromium-embedded
+    # for generated apps, separate from Tauri's WebView for the shell UI).
+    chromium
+
+    # NetworkManager for the deterministic `connect to wifi` chat-command path
+    # (locked decision #24).
+    network-manager
+    network-manager-gnome
+
+    # In-VM test-harness helpers (milestone 11d).
+    # `wtype` injects keystrokes into the focused Wayland window;
+    # `grim` captures the Wayland output to PNG for assertion screenshots.
+    wtype
+    grim
+
+    # Python 3 for the in-VM input listener at /usr/local/bin/usbeliza-input-listener.
+    python3
+
+    # rsync used by vm/scripts/deploy.sh to push agent/ from the host.
+    rsync
+
+    # unzip is needed by the upstream Bun installer (it ships a zip).
+    unzip
+
+    # Mesa userspace GL stack — sway's headless wlroots backend uses the
+    # mesa drivers (pixman/llvmpipe) to rasterize the compositor surface
+    # into memory. We render headlessly and capture frames via grim; this
+    # works on the cloud kernel without needing /dev/dri/card0.
+    libgl1-mesa-dri
+    libegl-mesa0
+    libglx-mesa0
+    libgbm1
+    libdrm2
+    mesa-utils
+
+    # DejaVu fonts so Plymouth + sway have a usable monospace at boot
+    # without falling back to bitmap fonts.
+    fonts-dejavu-core
+)
+
+# --- Ollama (locked decision #21) ---
+# Ollama hosts the bundled Llama-3.2-1B via @elizaos/plugin-ollama. Not in
+# Debian repos; installed via the upstream script during qcow2 build.
+# We disable auto-pulling models in the install (we pull explicitly below)
+# and bind to 127.0.0.1 only (no LAN exposure).
+OLLAMA_INSTALL_URL="https://ollama.com/install.sh"
+
+# Models pulled into the qcow2 at build time so first-boot is instant.
+# The 1B model is enough for calibration + warm pre-internet chat; the 3B
+# is downloaded to the encrypted partition on first network connect.
+OLLAMA_MODELS=(
+    "llama3.2:1b"
+)

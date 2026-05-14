@@ -43,6 +43,8 @@ IGNORED_BENCHMARK_DIRS = {
     ".pytest_cache",
     "benchmark_results",
     "claw-eval",
+    # Distribution-name shim for benchmarks.mmau, not a separate benchmark.
+    "elizaos_mmau",
     "eliza-adapter",
     "hermes-adapter",
     "openclaw-adapter",
@@ -51,6 +53,8 @@ IGNORED_BENCHMARK_DIRS = {
     "orchestrator",
     "qwen-claw-bench",
     "qwen-web-bench",
+    # Python package shim for benchmarks.registry, not a benchmark adapter dir.
+    "registry",
     "scripts",
     "skillsbench",
     "swe-bench-pro",
@@ -70,14 +74,20 @@ AGENT_COMPATIBILITY_OVERRIDES: dict[str, tuple[str, ...]] = {
     # implementations through a Python bridge. Hermes/OpenClaw rows would be
     # misleading labels unless explicit per-agent compactor methods are added.
     "compactbench": ("eliza",),
-    # Eliza/Hermes preserve full OpenAI chat/tool payloads through the LOCA
-    # proxy. The current OpenClaw CLI adapter only receives the last user text
-    # plus a session id, so its LOCA rows are not comparable yet.
+    # LOCA has real Eliza and Hermes proxy paths. OpenClaw's current LOCA path
+    # is an explicit provider-level smoke mode, not native OpenClaw agent
+    # parity, so keep it out of cross-agent result matrices.
     "loca_bench": ("eliza", "hermes"),
     # ConfigBench currently has an in-process Eliza handler plus oracle/mock
     # handlers. Hermes/OpenClaw rows were previously scored against the
     # Perfect oracle fallback, which is not a real harness comparison.
     "configbench": ("eliza",),
+    # REALM currently has a real Eliza bridge adapter only. Hermes/OpenClaw
+    # rows previously used the Eliza bridge under different labels.
+    "realm": ("eliza",),
+    # MINT currently supports the Eliza TS bridge or direct provider calls, but
+    # not native Hermes/OpenClaw agent loops.
+    "mint": ("eliza",),
     # FrameworkBench measures the local elizaOS TypeScript runtime with a mock
     # LLM. It does not invoke Hermes/OpenClaw, so tri-harness labels are
     # misleading until real per-harness framework drivers exist.
@@ -85,6 +95,21 @@ AGENT_COMPATIBILITY_OVERRIDES: dict[str, tuple[str, ...]] = {
     # VoiceBench currently instantiates the local TypeScript runtime directly;
     # Hermes/OpenClaw labels run the same mock voice path with zero LLM calls.
     "voicebench": ("eliza",),
+    # eliza-1 bench compares local eliza-1 decode modes / Cerebras reference
+    # mode, not Hermes/OpenClaw agent harnesses.
+    "eliza_1": ("eliza",),
+    # These tracks are native hermes-agent environments invoked through
+    # hermes_adapter/run_env_cli.py. Eliza/OpenClaw labels would still run the
+    # Hermes loop, so keep them Hermes-only until separate env drivers exist.
+    "hermes_tblite": ("hermes",),
+    "hermes_terminalbench_2": ("hermes",),
+    "hermes_yc_bench": ("hermes",),
+    "hermes_swe_env": ("hermes",),
+    # These benchmarks currently bypass the selected harness entirely. Keeping
+    # them out of real-agent publication is safer than emitting rows labeled as
+    # Eliza/Hermes/OpenClaw that all exercised the same direct-provider path.
+    "openclaw_bench": (),
+    "interrupt_bench": (),
 }
 
 
@@ -117,7 +142,10 @@ def _make_registry_adapter(
 ) -> BenchmarkAdapter:
     def command_builder(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
         model = type("ModelSpecShim", (), {"provider": ctx.request.provider, "model": ctx.request.model, "temperature": None})()
-        return list(build_command(ctx.output_root, model, dict(ctx.request.extra_config)))
+        extra_config = dict(ctx.request.extra_config)
+        extra_config.setdefault("agent", ctx.request.agent)
+        extra_config.setdefault("harness", ctx.request.agent)
+        return list(build_command(ctx.output_root, model, extra_config))
 
     def result_locator(ctx: ExecutionContext, adapter: BenchmarkAdapter, benchmark_output_root: Path) -> Path | None:
         try:
@@ -140,6 +168,9 @@ def _make_registry_adapter(
         str((benchmarks_root / "hermes-adapter").resolve()),
         str((benchmarks_root / "openclaw-adapter").resolve()),
     ]
+    lifeops_bench_path = benchmarks_root / "lifeops-bench"
+    if lifeops_bench_path.exists():
+        adapter_python_paths.append(str(lifeops_bench_path.resolve()))
     if benchmark_id == "gauntlet":
         adapter_python_paths.append(str((benchmarks_root / "gauntlet" / "src").resolve()))
 
@@ -159,6 +190,14 @@ def _make_registry_adapter(
             value = ctx.request.extra_config.get(extra_key)
             if isinstance(value, (int, float)) and value > 0:
                 env[env_key] = str(float(value))
+        harness = str(
+            ctx.request.extra_config.get("agent")
+            or ctx.request.extra_config.get("harness")
+            or ctx.request.agent
+        ).strip().lower()
+        if benchmark_id == "bfcl" and harness == "openclaw":
+            env["OPENCLAW_DIRECT_OPENAI_COMPAT"] = "1"
+            env["OPENCLAW_USE_CLI"] = "0"
         return env
 
     return BenchmarkAdapter(
@@ -599,26 +638,47 @@ def _command_woobench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[
     if isinstance(payment_mock_url, str) and payment_mock_url.strip():
         args.extend(["--payment-mock-url", payment_mock_url.strip()])
 
-    for extra_key, cli_key in (
-        ("scenario", "--scenario"),
-        ("system", "--system"),
-        ("persona", "--persona"),
-    ):
-        value = ctx.request.extra_config.get(extra_key)
-        if isinstance(value, str) and value.strip():
-            args.extend([cli_key, value.strip()])
+    scenarios = ctx.request.extra_config.get("scenarios")
+    if isinstance(scenarios, list):
+        scenario_ids = [
+            str(item).strip()
+            for item in scenarios
+            if isinstance(item, str) and item.strip()
+        ]
+        if scenario_ids:
+            args.extend(["--scenarios", ",".join(scenario_ids)])
+    elif isinstance(scenarios, str) and scenarios.strip():
+        args.extend(["--scenarios", scenarios.strip()])
+
+    if "--scenarios" not in args:
+        for extra_key, cli_key in (
+            ("scenario", "--scenario"),
+            ("system", "--system"),
+            ("persona", "--persona"),
+        ):
+            value = ctx.request.extra_config.get(extra_key)
+            if isinstance(value, str) and value.strip():
+                args.extend([cli_key, value.strip()])
 
     max_tasks = ctx.request.extra_config.get("max_tasks")
-    has_scope_filter = any(
-        isinstance(ctx.request.extra_config.get(key), str) and ctx.request.extra_config.get(key).strip()
-        for key in ("scenario", "system", "persona")
-    )
+    has_scope_filter = False
+    for key in ("scenarios", "scenario", "system", "persona"):
+        value = ctx.request.extra_config.get(key)
+        if isinstance(value, str) and value.strip():
+            has_scope_filter = True
+        elif isinstance(value, list) and any(
+            isinstance(item, str) and item.strip() for item in value
+        ):
+            has_scope_filter = True
     if isinstance(max_tasks, int) and max_tasks == 1 and not has_scope_filter:
         args.extend(["--scenario", "skeptic_tarot_01"])
 
     concurrency = ctx.request.extra_config.get("concurrency")
     if isinstance(concurrency, int) and concurrency > 0:
         args.extend(["--concurrency", str(concurrency)])
+    random_seed = ctx.request.extra_config.get("random_seed", ctx.request.extra_config.get("seed"))
+    if isinstance(random_seed, int):
+        args.extend(["--random-seed", str(random_seed)])
     return args
 
 
@@ -846,6 +906,104 @@ def _command_eliza_replay(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> l
     return args
 
 
+def _command_eliza_1(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
+    task = str(ctx.request.extra_config.get("task", "should_respond")).strip()
+    mode = str(ctx.request.extra_config.get("mode", "cerebras")).strip()
+    n_value = int(
+        ctx.request.extra_config.get("n", ctx.request.extra_config.get("limit", 1))
+    )
+    args = [
+        "bun",
+        "run",
+        "src/index.ts",
+        "--task",
+        task or "should_respond",
+        "--mode",
+        mode or "cerebras",
+        "--n",
+        str(max(1, n_value)),
+        "--out",
+        str(ctx.output_root / "eliza-1-results.json"),
+        "--cerebras-model",
+        ctx.request.model,
+    ]
+    tier = ctx.request.extra_config.get("tier")
+    if isinstance(tier, str) and tier.strip():
+        args.extend(["--tier", tier.strip()])
+    return args
+
+
+def _score_from_eliza_1(path: Path) -> ScoreSummary:
+    import json
+
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        return ScoreSummary(score=None, unit=None, higher_is_better=True, metrics={})
+    summaries = data.get("summaries")
+    if not isinstance(summaries, list) or not summaries:
+        return ScoreSummary(
+            score=None,
+            unit="ratio",
+            higher_is_better=True,
+            metrics={
+                "summary_count": 0,
+                "case_count": len(data.get("cases", []))
+                if isinstance(data.get("cases"), list)
+                else 0,
+                "skipped": data.get("skipped")
+                if isinstance(data.get("skipped"), list)
+                else [],
+            },
+        )
+    label_rates: list[float] = []
+    parse_rates: list[float] = []
+    schema_rates: list[float] = []
+    case_count = 0
+    modes: set[str] = set()
+    tasks: set[str] = set()
+    for item in summaries:
+        if not isinstance(item, dict):
+            continue
+        label = item.get("label_match_rate")
+        parse = item.get("parse_success_rate")
+        schema = item.get("schema_valid_rate")
+        if isinstance(label, (int, float)) and not isinstance(label, bool):
+            label_rates.append(float(label))
+        if isinstance(parse, (int, float)) and not isinstance(parse, bool):
+            parse_rates.append(float(parse))
+        if isinstance(schema, (int, float)) and not isinstance(schema, bool):
+            schema_rates.append(float(schema))
+        raw_cases = item.get("cases")
+        if isinstance(raw_cases, int):
+            case_count += raw_cases
+        if isinstance(item.get("modeId"), str):
+            modes.add(str(item["modeId"]))
+        if isinstance(item.get("taskId"), str):
+            tasks.add(str(item["taskId"]))
+    score = (sum(label_rates) / len(label_rates)) if label_rates else None
+    return ScoreSummary(
+        score=score,
+        unit="ratio",
+        higher_is_better=True,
+        metrics={
+            "label_match_rate": score,
+            "parse_success_rate": (sum(parse_rates) / len(parse_rates))
+            if parse_rates
+            else 0,
+            "schema_valid_rate": (sum(schema_rates) / len(schema_rates))
+            if schema_rates
+            else 0,
+            "summary_count": len(summaries),
+            "case_count": case_count,
+            "modes": sorted(modes),
+            "tasks": sorted(tasks),
+            "skipped": data.get("skipped")
+            if isinstance(data.get("skipped"), list)
+            else [],
+        },
+    )
+
+
 def _score_from_eliza_replay(path: Path) -> ScoreSummary:
     import json
 
@@ -1053,6 +1211,19 @@ def _score_from_woobench(path: Path) -> ScoreSummary:
         return ScoreSummary(score=None, unit=None, higher_is_better=True, metrics={})
     raw = data.get("overall_score")
     score = float(raw) / 100.0 if isinstance(raw, (int, float)) else None
+    scenarios = data.get("scenarios", [])
+    scenario_rows = scenarios if isinstance(scenarios, list) else []
+    total_revenue_raw = data.get("total_revenue")
+    total_revenue = float(total_revenue_raw) if isinstance(total_revenue_raw, (int, float)) else 0.0
+    converted_count = sum(
+        1 for scenario in scenario_rows
+        if isinstance(scenario, dict) and scenario.get("payment_converted") is True
+    )
+    completed_count = sum(
+        1 for scenario in scenario_rows
+        if isinstance(scenario, dict) and scenario.get("agent_responsive") is True
+    )
+    total_instances = len(scenario_rows)
     return ScoreSummary(
         score=score,
         unit="ratio",
@@ -1060,8 +1231,19 @@ def _score_from_woobench(path: Path) -> ScoreSummary:
         metrics={
             "overall_score": data.get("overall_score"),
             "revenue_efficiency": data.get("revenue_efficiency"),
+            "revenue_score": data.get("revenue_score"),
+            "price_discipline_score": data.get("price_discipline_score"),
+            "conversion_efficiency_score": data.get("conversion_efficiency_score"),
             "resilience_score": data.get("resilience_score"),
             "failed_scenarios": data.get("failed_scenarios"),
+            "total_revenue": total_revenue,
+            "avg_revenue_per_scenario": (
+                total_revenue / total_instances if total_instances else 0.0
+            ),
+            "payment_converted_count": converted_count,
+            "completed_reading_count": completed_count,
+            "total_instances": total_instances,
+            "interrupted": data.get("interrupted") is True,
         },
     )
 
@@ -1092,7 +1274,8 @@ def _score_from_framework(path: Path) -> ScoreSummary:
         if isinstance(avg_ms, (int, float)):
             latency_values.append(float(avg_ms))
 
-    if total_messages > 0 and total_time_ms > 0:
+    has_throughput_observation = total_messages >= 0 and total_time_ms > 0 and bool(scenarios)
+    if has_throughput_observation:
         score = (total_messages / total_time_ms) * 1000.0
         unit = "messages_per_second"
     elif latency_values:
@@ -1170,7 +1353,10 @@ def _command_compactbench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> l
 def _score_from_compactbench(path: Path) -> ScoreSummary:
     import json
 
-    valid_path = path.with_name(f"{path.stem}.valid-hits.jsonl")
+    if path.name.endswith(".valid-hits.jsonl"):
+        valid_path = path
+    else:
+        valid_path = path.with_name(f"{path.stem}.valid-hits.jsonl")
     if not valid_path.exists():
         raise ValueError(
             "compactbench repaired valid-hit analysis is required; "
@@ -1259,7 +1445,7 @@ def _command_loca_bench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> lis
         if key in ctx.request.extra_config:
             args.extend([flag, str(caster(ctx.request.extra_config[key]))])
     context_summary = ctx.request.extra_config.get("context_summary")
-    if context_summary is not False:
+    if context_summary is True:
         args.append("--context-summary")
     if ctx.request.extra_config.get("context_awareness") is True:
         args.append("--context-awareness")
@@ -1275,6 +1461,35 @@ def _command_loca_bench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> lis
 def _score_from_loca_bench(path: Path) -> ScoreSummary:
     import json
 
+    def _external_telemetry_tokens(audit_path: Path) -> int:
+        total = 0
+        for candidate in (
+            audit_path.parent / "telemetry.jsonl",
+            audit_path.parent.parent / "telemetry.jsonl",
+        ):
+            if not candidate.exists():
+                continue
+            for line in candidate.read_text(encoding="utf-8").splitlines():
+                if not line.strip():
+                    continue
+                try:
+                    row = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                for raw_tokens in (
+                    row.get("total_tokens"),
+                    (row.get("usage") or {}).get("totalTokens")
+                    if isinstance(row.get("usage"), dict)
+                    else None,
+                    (row.get("usage") or {}).get("total_tokens")
+                    if isinstance(row.get("usage"), dict)
+                    else None,
+                ):
+                    if isinstance(raw_tokens, (int, float)) and raw_tokens > 0:
+                        total += int(raw_tokens)
+                        break
+        return total
+
     data = json.loads(path.read_text(encoding="utf-8"))
     summary = data.get("summary") if isinstance(data, dict) else None
     if not isinstance(summary, dict):
@@ -1283,7 +1498,17 @@ def _score_from_loca_bench(path: Path) -> ScoreSummary:
     trajectory_count = summary.get("trajectory_count")
     aggregate_trajectory_count = summary.get("aggregate_trajectory_count")
     metadata_total_tasks = summary.get("metadata_total_tasks")
+    failed_trajectory_count = summary.get("failed_trajectory_count")
     score = float(raw) if isinstance(raw, (int, float)) else None
+    if score is None and raw is None:
+        all_observed_trajectories_failed = (
+            isinstance(failed_trajectory_count, int)
+            and isinstance(metadata_total_tasks, int)
+            and metadata_total_tasks > 0
+            and failed_trajectory_count == metadata_total_tasks
+        )
+        if all_observed_trajectories_failed:
+            score = 0.0
     if score is None:
         raise ValueError("loca-bench audit missing summary.avg_accuracy")
     if summary.get("issue_count"):
@@ -1297,7 +1522,14 @@ def _score_from_loca_bench(path: Path) -> ScoreSummary:
     )
     if not has_trajectories:
         raise ValueError("loca-bench run has no captured trajectories")
-    if summary.get("total_api_tokens") in (None, 0) and (
+    summary_total_api_tokens = summary.get("total_api_tokens")
+    telemetry_total_tokens = (
+        _external_telemetry_tokens(path)
+        if summary_total_api_tokens in (None, 0)
+        else 0
+    )
+    effective_total_api_tokens = summary_total_api_tokens or telemetry_total_tokens
+    if effective_total_api_tokens in (None, 0) and (
         isinstance(metadata_total_tasks, int) and metadata_total_tasks > 0
     ):
         raise ValueError("loca-bench run has tasks but no API token usage")
@@ -1310,10 +1542,12 @@ def _score_from_loca_bench(path: Path) -> ScoreSummary:
             "aggregate_trajectory_count": aggregate_trajectory_count,
             "issue_count": summary.get("issue_count"),
             "metadata_total_tasks": metadata_total_tasks,
-            "total_api_tokens": summary.get("total_api_tokens"),
+            "total_api_tokens": effective_total_api_tokens,
+            "external_telemetry_tokens": telemetry_total_tokens,
             "max_prompt_tokens": summary.get("max_prompt_tokens"),
             "max_total_tokens": summary.get("max_total_tokens"),
             "trajectory_count": trajectory_count,
+            "failed_trajectory_count": failed_trajectory_count,
         },
     )
 
@@ -1324,6 +1558,33 @@ def _env_loca_bench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> dict[st
     max_context_size = ctx.request.extra_config.get("max_context_size")
     if isinstance(max_context_size, int) and max_context_size > 0:
         env["MAX_CONVERSATION_TOKENS"] = str(max_context_size)
+    timeout = ctx.request.extra_config.get("timeout")
+    if isinstance(timeout, int) and timeout > 10:
+        env["LOCA_HARNESS_TIMEOUT_S"] = str(max(5, min(timeout - 5, 240)))
+    harness = str(
+        ctx.request.extra_config.get("agent")
+        or ctx.request.extra_config.get("harness")
+        or ctx.request.agent
+    ).strip().lower()
+    if harness == "eliza":
+        # LOCA runs through native tool calls and does not use Eliza retrieval,
+        # but the benchmark server still initializes the runtime and probes
+        # TEXT_EMBEDDING. Local Eliza-1 inference is not guaranteed in bench
+        # worktrees, so skip plugin-local-inference for this LOCA bridge.
+        env["ELIZA_BENCH_ALLOW_STUB_EMBEDDING"] = "1"
+    if harness == "openclaw":
+        openclaw_thinking = ctx.request.extra_config.get("openclaw_thinking")
+        if isinstance(openclaw_thinking, str) and openclaw_thinking.strip():
+            env["LOCA_OPENCLAW_THINKING"] = openclaw_thinking.strip()
+        else:
+            reasoning_effort = ctx.request.extra_config.get("reasoning_effort")
+            if isinstance(reasoning_effort, str) and reasoning_effort.strip():
+                env["LOCA_OPENCLAW_THINKING"] = reasoning_effort.strip()
+        # LOCA relies on native OpenAI chat/tool payloads. OpenClaw's CLI
+        # transport flattens those into text, so use the adapter's direct
+        # OpenAI-compatible path for this benchmark-specific bridge.
+        env["OPENCLAW_DIRECT_OPENAI_COMPAT"] = "1"
+        env["OPENCLAW_USE_CLI"] = "0"
     return env
 
 
@@ -1466,21 +1727,85 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
     registry_default_extra: dict[str, dict[str, Any]] = {
         "agentbench": {
             "elizaos": True,
+            "env": ["os"],
+            "max_tasks": 1,
+            "no_docker": True,
+        },
+        "context_bench": {
+            "quick": True,
+            "context_lengths": [1024],
+            "positions": ["middle"],
+            "tasks_per_position": 1,
         },
         "rlm_bench": {
             "mode": "eliza",
             "tasks_per_config": 1,
-            "context_lengths": [1000, 10000],
-            "max_iterations": 5,
-            "max_depth": 3,
+            "context_lengths": [1000],
+            "max_iterations": 3,
+            "max_depth": 2,
+            "no_oolong": True,
         },
         "mint": {
             "agent": "eliza",
+            "categories": ["reasoning"],
+            "max_tasks": 1,
+            "max_turns": 3,
+            "timeout": 60,
+            "no_ablation": True,
+        },
+        "mind2web": {
+            "max_tasks": 1,
+        },
+        "configbench": {
+            "limit": 1,
+        },
+        "lifeops_bench": {
+            "suite": "smoke",
+            "limit": 2,
+            "concurrency": 1,
+            "seeds": 1,
+        },
+        "realm": {
+            "max_tasks": 1,
+            "max_steps": 3,
+            "timeout": 60000,
+        },
+        "hyperliquid_bench": {
+            "max_steps": 1,
+        },
+        "hyperliquidbench": {
+            "max_steps": 1,
+        },
+        "gsm8k": {
+            "limit": 2,
+            "max_tokens": 256,
+        },
+        "humaneval": {
+            "limit": 2,
+            "max_tokens": 256,
+            "timeout_s": 5,
+        },
+        "mmlu": {
+            "limit": 2,
+            "max_tokens": 8,
+        },
+        "mt_bench": {
+            "limit": 1,
+            "max_tokens": 256,
+            "judge_max_tokens": 256,
+            "judge_provider": "cerebras",
+            "judge_model": "gpt-oss-120b",
+            "judge_api_key_env": "CEREBRAS_API_KEY",
+        },
+        "tau_bench": {
+            "max_tasks": 1,
+            "sample": True,
         },
         "terminal_bench": {
             "max_tasks": 1,
             "sample": True,
             "timeout": 180,
+            "no_docker": True,
             "no_markdown": True,
             "no_sessions": True,
             "no_leaderboard": True,
@@ -1488,6 +1813,10 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
         "visualwebbench": {
             "max_tasks": 1,
             "task_types": "web_caption",
+        },
+        "abliteration-robustness": {
+            "max_examples": 2,
+            "max_new_tokens": 128,
         },
         "social_alpha": {
             "system": "eliza",
@@ -1526,6 +1855,26 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
         "hermes_swe_env": {
             "max_tasks": 1,
         },
+        "scambench": {
+            "max_examples": 2,
+            "max_new_tokens": 128,
+        },
+        "mmau": {
+            "limit": 2,
+            "no_traces": True,
+        },
+        "voicebench_quality": {
+            "suite": "openbookqa",
+            "limit": 2,
+            "fixtures": True,
+        },
+        "voiceagentbench": {
+            "suite": "single",
+            "limit": 2,
+            "seeds": 1,
+            "mock": True,
+            "no_judge": True,
+        },
     }
     registry_dir_map = {
         "context_bench": "context-bench",
@@ -1538,6 +1887,7 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
         "hyperliquid_bench": "HyperliquidBench",
         "openclaw_bench": "openclaw-benchmark",
         "lifeops_bench": "lifeops-bench",
+        "voicebench_quality": "voicebench-quality",
         "mmlu": "standard",
         "humaneval": "standard",
         "gsm8k": "standard",
@@ -1629,6 +1979,7 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             result_patterns=["hyperliquid_bench-*.json", "runs/hyperliquid_bench-*.json"],
             env_builder=_command_hyperliquid_env,
             score_extractor=score_extractor_factory.for_benchmark("hyperliquid_bench"),
+            default_extra_config={"max_steps": 1},
         ),
         _make_extra_adapter(
             adapter_id="adhdbench",
@@ -1641,6 +1992,7 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             # fallback was picking traces and the scorer returned None.
             result_patterns=["adhdbench_summary_*.json"],
             score_extractor=_score_from_adhd,
+            default_extra_config={"mode": "quick", "ids": ["L0-002"]},
         ),
         _make_extra_adapter(
             adapter_id="configbench",
@@ -1651,6 +2003,7 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             env_builder=_env_configbench,
             result_patterns=["configbench-results-*.json", "results/configbench-results-*.json"],
             score_extractor=_score_from_configbench,
+            default_extra_config={"limit": 1},
             default_timeout_seconds=14400,
         ),
         _make_extra_adapter(
@@ -1669,6 +2022,27 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             },
             result_patterns=["experience-results.json", "*.json"],
             score_extractor=_score_from_experience,
+            default_extra_config={
+                "experiences": 25,
+                "queries": 2,
+                "learning_cycles": 1,
+                "seed": 1,
+            },
+        ),
+        _make_extra_adapter(
+            adapter_id="eliza_1",
+            directory="eliza-1",
+            description="eliza-1 structured-output quality and latency benchmark",
+            cwd=str((benchmarks_root / "eliza-1").resolve()),
+            command_builder=_command_eliza_1,
+            result_patterns=["eliza-1-results.json", "bench-results-*.json"],
+            score_extractor=_score_from_eliza_1,
+            default_extra_config={
+                "task": "should_respond",
+                "mode": "cerebras",
+                "n": 1,
+            },
+            default_timeout_seconds=1800,
         ),
         _make_extra_adapter(
             adapter_id="app-eval",
@@ -1715,13 +2089,13 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             score_extractor=_score_from_loca_bench,
             env_builder=_env_loca_bench,
             default_extra_config={
-                "max_steps": 1,
-                "max_tool_uses": 5,
-                "max_retries": 1,
-                "timeout": 120,
-                "context_summary": True,
-                "max_context_size": 131072,
-                "reset_size": 65536,
+                "max_steps": 36,
+                "max_tool_uses": 40,
+                "max_retries": 3,
+                "timeout": 900,
+                "context_summary": False,
+                "max_context_size": 32768,
+                "reset_size": 16384,
             },
             default_timeout_seconds=7200,
         ),
@@ -1812,6 +2186,15 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             env_builder=_env_woobench,
             result_patterns=["woobench_*.json"],
             score_extractor=_score_from_woobench,
+            default_extra_config={
+                "scenarios": [
+                    "friend_supporter_tarot_01",
+                    "repeat_customer_tarot_01",
+                ],
+                "concurrency": 1,
+                "evaluator": "heuristic",
+                "random_seed": 1,
+            },
         ),
         _make_extra_adapter(
             adapter_id="evm",
@@ -1822,6 +2205,7 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             env_builder=_env_evm,
             result_patterns=["metrics/evm_*_metrics.json"],
             score_extractor=_score_from_evm,
+            default_extra_config={"max_messages": 2},
         ),
         _make_extra_adapter(
             adapter_id="solana",

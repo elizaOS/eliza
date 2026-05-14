@@ -37,7 +37,7 @@
 #   NEBIUS_PROJECT_ID          # the project (== parent-id), e.g. project-e00kfz6cpr00q21z892vec
 #   HUGGING_FACE_HUB_TOKEN     # for gated Qwen access + pushing results
 # Optional env:
-#   REGISTRY_KEY               # default: qwen3-0.6b
+#   REGISTRY_KEY               # default: qwen3.5-0.8b
 #   RUN_NAME                   # default: <registry-key>-apollo-<unix-ts>
 #   NEBIUS_VM_PRESET           # gpu-h200x1 (default) | gpu-h200x2 — selects the
 #                              #   platform/preset pair. x2 == 8×H200 (no 2-GPU
@@ -95,7 +95,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 : "${NEBIUS_IMAGE_PARENT:=project-e00public-images}"
 
 REMOTE_TRAIN_DIR="/opt/training"
-REGISTRY_KEY="${REGISTRY_KEY:-qwen3-0.6b}"
+REGISTRY_KEY="${REGISTRY_KEY:-qwen3.5-0.8b}"
 RUN_NAME="${RUN_NAME:-${REGISTRY_KEY//./-}-apollo-$(date +%s)}"
 QUANTIZE_AFTER="${QUANTIZE_AFTER:-polarquant,fused_turboquant,qjl}"
 BENCHMARK_AFTER="${BENCHMARK_AFTER:-1}"
@@ -116,9 +116,9 @@ esac
 FSDP_WORLD_SIZE="${FSDP_WORLD_SIZE:-$DEFAULT_WORLD}"
 
 # The transformer decoder-layer class FSDP wraps. Every entry in the
-# Qwen3.5-only model registry (qwen3.5-0.8b/2b/4b/9b/27b + qwen3.6-27b
-# legacy) uses Qwen3_5DecoderLayer; the legacy Qwen3 dense bases (which
-# would have used Qwen3DecoderLayer) were dropped on 2026-05-12.
+# Qwen3.5-only model registry (qwen3.5-0.8b/2b/4b/9b/27b) uses
+# Qwen3_5DecoderLayer; the legacy Qwen3 dense bases (which would have used
+# Qwen3DecoderLayer) were dropped on 2026-05-12.
 FSDP_WRAP_CLS="Qwen3_5DecoderLayer"
 
 cmd="${1:-help}"
@@ -478,12 +478,12 @@ fetch() {
 
 # --- DFlash drafter distillation (distill_dflash_drafter.py) ----------------
 # Env knobs (defaults frugal — a small KD job, not a full pipeline):
-#   DFLASH_TIER            tier the drafter ships for (default 9b — the 0.6B
+#   DFLASH_TIER            tier the drafter ships for (default 9b — the 0.8B
 #                          Qwen3.5-arch drafter serves the 2b/9b/27b tiers)
 #   DFLASH_TARGET_BASE     HF id of the target text model whose logits we
 #                          distill toward (default Qwen/Qwen3.5-0.8B-Base)
-#   DFLASH_STUDENT_CONFIG  from-scratch ~0.6B student config dir
-#                          (default configs/dflash-drafter-0_6b-qwen3_5)
+#   DFLASH_STUDENT_CONFIG  from-scratch ~0.8B student config dir
+#                          (default configs/dflash-drafter-lite-qwen3_5)
 #   DFLASH_STUDENT_BASE    alternative: a published student HF id (overrides
 #                          DFLASH_STUDENT_CONFIG if set)
 #   DFLASH_DATASET         distillation corpus (default $TRAIN_FILE)
@@ -497,7 +497,7 @@ run_distill_remote() {
   local target; target="$(ssh_target)"
   local tier="${DFLASH_TIER:-9b}"
   local target_base="${DFLASH_TARGET_BASE:-Qwen/Qwen3.5-0.8B-Base}"
-  local student_cfg="${DFLASH_STUDENT_CONFIG:-configs/dflash-drafter-0_6b-qwen3_5}"
+  local student_cfg="${DFLASH_STUDENT_CONFIG:-configs/dflash-drafter-lite-qwen3_5}"
   local student_base="${DFLASH_STUDENT_BASE:-}"
   local ds="${DFLASH_DATASET:-$TRAIN_FILE}"
   local epochs="${DFLASH_EPOCHS:-1}" batch="${DFLASH_BATCH:-8}" ga="${DFLASH_GRAD_ACCUM:-4}"

@@ -75,13 +75,11 @@ describe("steward tenant config", () => {
     process.env.STEWARD_PLATFORM_KEYS = "platform-key-1";
     process.env.STEWARD_API_URL = "https://steward.example/api";
 
-    let updateArgs: { id: string; data: Record<string, unknown> } | null = null;
-    const updateMock = mock(
-      async (id: string, data: Record<string, unknown>) => {
-        updateArgs = { id, data };
-        return undefined;
-      },
-    );
+    let updateArgs: { id: string; data: Record<string, unknown> } = { id: "", data: {} };
+    const updateMock = mock(async (id: string, data: Record<string, unknown>) => {
+      updateArgs = { id, data };
+      return undefined;
+    });
     mock.module("@/db/repositories/organizations", () => ({
       organizationsRepository: {
         findById: async () => ({
@@ -95,10 +93,7 @@ describe("steward tenant config", () => {
     }));
     const fetchMock = mock(
       async () =>
-        new Response(
-          JSON.stringify({ ok: true, apiKey: "fresh-tenant-key" }),
-          { status: 201 },
-        ),
+        new Response(JSON.stringify({ ok: true, apiKey: "fresh-tenant-key" }), { status: 201 }),
     );
     globalThis.fetch = fetchMock as unknown as typeof fetch;
 
@@ -125,7 +120,7 @@ describe("steward tenant config", () => {
     process.env.STEWARD_PLATFORM_KEYS = "platform-key-1";
     process.env.STEWARD_API_URL = "https://steward.example/api";
 
-    let updateArgs: { id: string; data: Record<string, unknown> } | null = null;
+    let updateArgs: { id: string; data: Record<string, unknown> } = { id: "", data: {} };
     mock.module("@/db/repositories/organizations", () => ({
       organizationsRepository: {
         findById: async () => ({

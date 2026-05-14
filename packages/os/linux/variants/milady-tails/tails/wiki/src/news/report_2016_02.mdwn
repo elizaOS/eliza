@@ -1,0 +1,178 @@
+[[!meta title="Tails report for February, 2016"]]
+[[!meta date="Wed, 09 Mar 2016 16:31:33 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!toc]]
+
+Releases
+========
+
+* [[Tails 2.0.1 was released on February 12, 2016|news/version_2.0.1]] (minor release).
+
+* [[A release candidate for 2.2 was released on February 14, 2016|news/test_2.2-rc1]].
+
+* The next release (2.2) is [[scheduled for March 08|contribute/calendar]].
+
+The following changes were introduced in Tails 2.0.1:
+
+- Upgrade Tor Browser to [5.5.2](https://blog.torproject.org/blog/tor-browser-552-released).
+
+- Fix regression breaking boot on 32-bit UEFI platforms. ([[!tails_ticket 11007 desc="#11007"]])
+
+Code
+====
+
+- We will replace Vidalia ([[!tails_ticket 6841]]), which has been unmaintained for years, in 2.2 with:
+   * the Tor Status GNOME Shell extension, which adds a System Status
+   * [Onion Circuits](https://tracker.debian.org/pkg/onioncircuits), a simple Tor circuit monitoring tool.
+
+* Hide "Laptop Mode Tools Configuration" menu entry. We don't support
+  configuring l-m-t in Tails, and it doesn't work out of the box.
+  ([[!tails_ticket 11074]])
+
+Friendlier build system
+-----------------------
+
+For years Tails has offered a
+[[build system based on Vagrant|contribute/build/#index2h1]], which at
+times has been maintained and really easy to use, and so a great
+resource for new contributors that want to test their
+modifications. Sadly that was a while ago, mostly because all but one
+Tails developers have been using their own custom build systems. The
+main reason for that is that Vagrant uses Virtualbox by default, while
+all of us (and our infrastructure, for example our Jenkins automated builds
+and tests setup) greatly prefer the QEMU/KVM stack (and libvirt), and
+it is not possible to mix two hypervisors at the same time.
+
+But this is about to change! Recently there has been quite an effort to
+[[!tails_ticket 6354 desc="migrate to vagrant-libvirt and the QEMU/KVM hypervisor"]]
+which should allow all of us to converge to the same build
+system. Besides saving development time since only one system has to
+be maintained, it also means that this build system will be
+well-maintained in the future, and so remain easy-to-use for
+contributors.
+
+There are a few roadblocks still, though, but you can help, especially
+if you are a Debian developer! Currently we need vagrant-libvirt (and
+ruby-fog-libvirt) packaged and maintained in Debian, and
+[quite a lot of work](https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=753012)
+has already been done on that front. And to have the build system
+working on Debian Jessie we need the following packages backported:
+vagrant, ruby-excon, ruby-fog-core and ruby-fog-xml. If you want to
+help, please get in touch with us on the
+tails-dev@boum.org public mailing list!
+
+Shell scripts are evil
+----------------------
+
+Shell scripts are deceptively easy to quickly prototype
+proof-of-concepts with, but generally result in things with subtle
+bugs, a high maintenance burden, and difficulties to be extended since
+it doesn't scale well with complexity. A lot of people (us included)
+delude themselves with that they know the shell, but it is a
+complicated mess with really strange "features" and conventions that
+few truly understand.
+
+Therefore we have started an effort to
+[[!tails_ticket 11198 desc="port our shell scripts to Python"]], and,
+implicitly, to make it more convenient to start writing new scripts in
+Python instead of shell.
+
+If you are into Python and want to help Tails,
+[[come join us|contribute]]!
+
+Documentation and website
+=========================
+
+* The blueprint for Porting Tails to Debian Stretch has been updated.
+
+* Multiple commits were made to speed up the build process of the website. ([[!tails_ticket 11151]])
+
+* We added more organizations to our list of organizations offering Tails training.
+
+User experience
+===============
+
+* There is now a blueprint for Porting Tails Installer to OS X
+
+* We're now also publishing torrents for betas and RCs (Closes: [[!tails_ticket 11126]])
+
+Infrastructure
+==============
+
+* The ISO build system has been upgraded to Jessie.
+
+* Our test suite covers 208 scenarios.
+
+* In February 603 ISO images were automatically built and 597 were automatically tested by our continuous integration infrastructure.
+
+Funding
+=======
+
+- We sent our final report for the Digital Defenders grant we had over 2015.
+
+Outreach
+========
+
+Past events
+-----------
+
+- DrWhax and sajolida were present at the
+  [Tor Winter Dev Meeting 2016](https://trac.torproject.org/projects/tor/wiki/org/meetings/2016WinterDevMeeting).
+
+Upcoming events
+---------------
+
+- The Freedom of the Press Foundation organizes several workshops on
+  Tails at the Whitney Museum
+  in New-York, USA.
+
+On-going discussions
+====================
+
+* A discussion about [[!tails_ticket 11162 desc="Creating personas to visualize our user base"]] has been started.
+
+* The discussion about persistent Tor state is still ongoing.
+
+* A blueprint about Endless upgrades has been added.
+
+* A blueprint about ARM platforms has been added.
+
+* Research on porting the tails installer to windows has been done. ([[!tails_ticket 8558]])
+
+Press and testimonials
+======================
+
+* 2016-02-25: Tails official mysterious during interview by Bryan Lunduke in Network World.
+
+* 2016-02-11: [Tails Installer is now in Debian](https://bits.debian.org/2016/02/tails-installer-in-debian.html) in bits.debian.org.
+
+Translation
+===========
+
+All website PO files
+--------------------
+
+  - de: 43% (2456) strings translated, 4% strings fuzzy, 39% words translated
+  - fa: 51% (2933) strings translated, 5% strings fuzzy, 58% words translated
+  - fr: 54% (3075) strings translated, 5% strings fuzzy, 57% words translated
+  - pt: 28% (1641) strings translated, 7% strings fuzzy, 28% words translated
+
+Total original words: 57704
+
+[[Core PO files|contribute/l10n_tricks/core_po_files.txt]]
+----------------------------------------------------------
+
+  - de: 88% (1210) strings translated, 7% strings fuzzy, 87% words translated
+  - fa: 80% (1100) strings translated, 11% strings fuzzy, 74% words translated
+  - fr: 81% (1116) strings translated, 9% strings fuzzy, 77% words translated
+  - pt: 71% (974) strings translated, 16% strings fuzzy, 68% words translated
+
+Total original words: 14624
+
+Metrics
+=======
+
+* Tails has been started more than 547670 times this month. This makes 18885 boots a day on average.
+* 21378 downloads of the OpenPGP signature of Tails ISO from our website.
+* 138 bug reports were received through WhisperBack.

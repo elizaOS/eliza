@@ -21,7 +21,6 @@ import {
   type UUID,
 } from "@elizaos/core";
 import { openaiPlugin } from "@elizaos/plugin-openai";
-import { v4 as uuidv4 } from "uuid";
 
 export interface Env {
   OPENAI_API_KEY: string;
@@ -46,6 +45,17 @@ interface ChatResponse {
 // Session info (consistent UUIDs for the worker)
 const roomId = stringToUuid("cloudflare-room");
 const worldId = stringToUuid("cloudflare-world");
+
+function randomUuid(): UUID {
+  return crypto.randomUUID() as UUID;
+}
+
+function requireCharacterName(character: Character): string {
+  if (typeof character.name !== "string" || character.name.length === 0) {
+    throw new Error("Character name not initialized");
+  }
+  return character.name;
+}
 
 function getCharacter(env: Env): Character {
   return createCharacter({
@@ -92,7 +102,7 @@ async function handleChat(request: Request, env: Env): Promise<Response> {
 
   try {
     const runtime = await createRuntime(env);
-    const userId = (clientUserId || uuidv4()) as UUID;
+    const userId = (clientUserId || randomUuid()) as UUID;
     const character = getCharacter(env);
 
     // Ensure connection for this user
@@ -109,7 +119,7 @@ async function handleChat(request: Request, env: Env): Promise<Response> {
 
     // Create message memory
     const messageMemory = createMessageMemory({
-      id: uuidv4() as UUID,
+      id: randomUuid(),
       entityId: userId,
       roomId,
       content: {
@@ -121,7 +131,11 @@ async function handleChat(request: Request, env: Env): Promise<Response> {
 
     // Process message through the runtime's message service
     let responseText = "";
-    await runtime.messageService?.handleMessage(
+    const messageService = runtime.messageService;
+    if (!messageService) {
+      throw new Error("Message service not initialized");
+    }
+    await messageService.handleMessage(
       runtime,
       messageMemory,
       async (content) => {
@@ -134,7 +148,7 @@ async function handleChat(request: Request, env: Env): Promise<Response> {
 
     const response: ChatResponse = {
       response: responseText,
-      character: character.name,
+      character: requireCharacterName(character),
       userId,
     };
 
@@ -159,7 +173,7 @@ async function handleStreamChat(request: Request, env: Env): Promise<Response> {
   }
 
   const character = getCharacter(env);
-  const userId = (clientUserId || uuidv4()) as UUID;
+  const userId = (clientUserId || randomUuid()) as UUID;
 
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
@@ -179,7 +193,7 @@ async function handleStreamChat(request: Request, env: Env): Promise<Response> {
         } as Parameters<typeof runtime.ensureConnection>[0]);
 
         const messageMemory = createMessageMemory({
-          id: uuidv4() as UUID,
+          id: randomUuid(),
           entityId: userId,
           roomId,
           content: {
@@ -192,11 +206,15 @@ async function handleStreamChat(request: Request, env: Env): Promise<Response> {
         // Send initial metadata
         controller.enqueue(
           encoder.encode(
-            `data: ${JSON.stringify({ character: character.name, userId })}\n\n`,
+            `data: ${JSON.stringify({ character: requireCharacterName(character), userId })}\n\n`,
           ),
         );
 
-        await runtime.messageService?.handleMessage(
+        const messageService = runtime.messageService;
+        if (!messageService) {
+          throw new Error("Message service not initialized");
+        }
+        await messageService.handleMessage(
           runtime,
           messageMemory,
           async (content) => {
@@ -242,7 +260,7 @@ function handleHealth(env: Env): Response {
   const character = getCharacter(env);
   return Response.json({
     status: "healthy",
-    character: character.name,
+    character: requireCharacterName(character),
     mode: "elizaos",
     timestamp: new Date().toISOString(),
   });
@@ -251,7 +269,7 @@ function handleHealth(env: Env): Response {
 function handleInfo(env: Env): Response {
   const character = getCharacter(env);
   return Response.json({
-    name: character.name,
+    name: requireCharacterName(character),
     bio: character.bio,
     version: "2.0.0",
     powered_by: "elizaOS",

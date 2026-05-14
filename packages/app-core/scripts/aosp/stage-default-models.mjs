@@ -56,10 +56,8 @@ const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
  * eliza/packages/app-core/src/services/local-inference/catalog.ts so the
  * runtime registry treats them as known catalog models, not orphans.
  *
- * The embedding model has no catalog entry yet (catalog only carries
- * chat models); we still register it under the fork's brand source
- * label with a stable id so the auto-assign logic can wire it to
- * TEXT_EMBEDDING.
+ * The Android image bundles the two mobile-friendly chat tiers so first boot
+ * can pick 2B on modern devices and fall back to 0.8B on tight RAM.
  *
  * Sizes are sanity-checked at download time. If HuggingFace serves
  * a smaller file (e.g. partial download, repo deleted, replaced) the
@@ -68,26 +66,28 @@ const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
 const CHAT_MODEL_ELIZA_1_MOBILE = {
   id: "eliza-1-2b",
   displayName: "Eliza-1 2B",
-  hfRepo: "elizaos/eliza-1-2b",
+  hfRepo: "elizaos/eliza-1",
+  hfPath: "bundles/2b/text/eliza-1-2b-32k.gguf",
   ggufFile: "text/eliza-1-2b-32k.gguf",
   expectedMinBytes: 900 * 1024 * 1024,
   expectedMaxBytes: 1700 * 1024 * 1024,
   role: "chat",
 };
 
-const EMBEDDING_MODEL_ELIZA_1_LITE = {
+const CHAT_MODEL_ELIZA_1_LITE = {
   id: "eliza-1-0_8b",
   displayName: "Eliza-1 0.8B",
-  hfRepo: "elizaos/eliza-1-0_8b",
+  hfRepo: "elizaos/eliza-1",
+  hfPath: "bundles/0_8b/text/eliza-1-0_8b-32k.gguf",
   ggufFile: "text/eliza-1-0_8b-32k.gguf",
   expectedMinBytes: 300 * 1024 * 1024,
   expectedMaxBytes: 800 * 1024 * 1024,
-  role: "embedding",
+  role: "chat",
 };
 
 export const DEFAULT_MODELS = [
   CHAT_MODEL_ELIZA_1_MOBILE,
-  EMBEDDING_MODEL_ELIZA_1_LITE,
+  CHAT_MODEL_ELIZA_1_LITE,
 ];
 
 const ASSETS_MODELS_DIR = path.join(
@@ -295,7 +295,7 @@ export async function main(argv = process.argv.slice(2)) {
         `[stage-default-models] ${model.id}: downloading from ${model.hfRepo}...`,
       );
     }
-    const url = hfResolveUrl(model.hfRepo, model.ggufFile);
+    const url = hfResolveUrl(model.hfRepo, model.hfPath ?? model.ggufFile);
     const { sizeBytes, sha256 } = await streamDownload(
       url,
       dest,

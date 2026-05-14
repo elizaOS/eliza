@@ -70,9 +70,20 @@ class ElizaServerManager:
     def __init__(
         self,
         port: int = 3939,
-        timeout: float = 120.0,
+        timeout: float = 240.0,
         repo_root: Path | None = None,
     ) -> None:
+        env_timeout = os.environ.get("ELIZA_BENCH_START_TIMEOUT", "").strip()
+        if env_timeout:
+            try:
+                parsed_timeout = float(env_timeout)
+                if parsed_timeout > 0:
+                    timeout = parsed_timeout
+            except ValueError:
+                logger.warning(
+                    "Ignoring invalid ELIZA_BENCH_START_TIMEOUT=%r",
+                    env_timeout,
+                )
         env_port = os.environ.get("ELIZA_BENCH_PORT", "").strip()
         if env_port:
             try:

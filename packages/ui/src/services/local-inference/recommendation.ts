@@ -1,5 +1,7 @@
 import {
   DEFAULT_ELIGIBLE_MODEL_IDS,
+  type Eliza1TierId,
+  eliza1TierPublishStatus,
   FIRST_RUN_DEFAULT_MODEL_ID,
   MODEL_CATALOG,
 } from "./catalog";
@@ -37,51 +39,49 @@ const BYTES_PER_GB = 1024 ** 3;
  * tier that fits the platform; desktops/servers pick larger tiers
  * first when memory headroom allows.
  */
-// Per the 2026-05-12 operator directive, the Qwen3.5 line is the default —
-// eliza-1-0_8b (Qwen3.5-0.8B) is the small default, eliza-1-2b
-// (Qwen3.5-2B) is the mid default. The legacy Qwen3 tiers (eliza-1-0_6b /
-// eliza-1-1_7b) stay in the ladders as DEPRECATED fallbacks but sit below
-// the Qwen3.5 tiers. Mirrors the app-core SLOT_LADDERS — keep the two in
-// sync.
+const TIER_0_8B: Eliza1TierId = "eliza-1-0_8b";
+const TIER_2B: Eliza1TierId = "eliza-1-2b";
+const TIER_4B: Eliza1TierId = "eliza-1-4b";
+const TIER_9B: Eliza1TierId = "eliza-1-9b";
+const TIER_27B: Eliza1TierId = "eliza-1-27b";
+const TIER_27B_256K: Eliza1TierId = "eliza-1-27b-256k";
+const TIER_27B_1M: Eliza1TierId = "eliza-1-27b-1m";
+
 const SLOT_LADDERS: Record<
   RecommendationPlatformClass,
-  Record<TextGenerationSlot, string[]>
+  Record<TextGenerationSlot, ReadonlyArray<Eliza1TierId>>
 > = {
   mobile: {
-    TEXT_SMALL: ["eliza-1-0_8b", "eliza-1-0_6b", "eliza-1-2b", "eliza-1-1_7b"],
-    TEXT_LARGE: ["eliza-1-2b", "eliza-1-0_8b", "eliza-1-1_7b", "eliza-1-0_6b"],
+    TEXT_SMALL: [TIER_0_8B],
+    TEXT_LARGE: [TIER_4B, TIER_2B, TIER_0_8B],
   },
   "apple-silicon": {
-    TEXT_SMALL: ["eliza-1-0_8b", "eliza-1-2b", "eliza-1-1_7b", "eliza-1-0_6b"],
-    TEXT_LARGE: ["eliza-1-27b", "eliza-1-9b", "eliza-1-2b", "eliza-1-1_7b"],
+    TEXT_SMALL: [TIER_0_8B, TIER_2B, TIER_4B],
+    TEXT_LARGE: [TIER_27B, TIER_9B, TIER_4B, TIER_2B, TIER_0_8B],
   },
   "linux-gpu": {
-    TEXT_SMALL: ["eliza-1-0_8b", "eliza-1-2b", "eliza-1-1_7b", "eliza-1-0_6b"],
+    TEXT_SMALL: [TIER_0_8B, TIER_2B, TIER_4B],
     TEXT_LARGE: [
-      "eliza-1-27b-256k",
-      "eliza-1-27b",
-      "eliza-1-9b",
-      "eliza-1-2b",
-      "eliza-1-1_7b",
+      TIER_27B_1M,
+      TIER_27B_256K,
+      TIER_27B,
+      TIER_9B,
+      TIER_4B,
+      TIER_2B,
+      TIER_0_8B,
     ],
   },
   "linux-cpu": {
-    TEXT_SMALL: ["eliza-1-0_8b", "eliza-1-2b", "eliza-1-1_7b", "eliza-1-0_6b"],
-    TEXT_LARGE: ["eliza-1-9b", "eliza-1-2b", "eliza-1-1_7b"],
+    TEXT_SMALL: [TIER_0_8B, TIER_2B, TIER_4B],
+    TEXT_LARGE: [TIER_9B, TIER_4B, TIER_2B, TIER_0_8B],
   },
   "desktop-gpu": {
-    TEXT_SMALL: ["eliza-1-0_8b", "eliza-1-2b", "eliza-1-1_7b", "eliza-1-0_6b"],
-    TEXT_LARGE: [
-      "eliza-1-27b-256k",
-      "eliza-1-27b",
-      "eliza-1-9b",
-      "eliza-1-2b",
-      "eliza-1-1_7b",
-    ],
+    TEXT_SMALL: [TIER_0_8B, TIER_2B, TIER_4B],
+    TEXT_LARGE: [TIER_27B_256K, TIER_27B, TIER_9B, TIER_4B, TIER_2B, TIER_0_8B],
   },
   "desktop-cpu": {
-    TEXT_SMALL: ["eliza-1-0_8b", "eliza-1-2b", "eliza-1-1_7b", "eliza-1-0_6b"],
-    TEXT_LARGE: ["eliza-1-9b", "eliza-1-2b", "eliza-1-1_7b"],
+    TEXT_SMALL: [TIER_0_8B, TIER_2B, TIER_4B],
+    TEXT_LARGE: [TIER_9B, TIER_4B, TIER_2B, TIER_0_8B],
   },
 };
 
@@ -186,7 +186,7 @@ function kernelRequirementsSatisfied(
 }
 
 function modelsFromLadder(
-  ids: string[],
+  ids: ReadonlyArray<string>,
   catalog: CatalogModel[],
 ): CatalogModel[] {
   const byId = catalogById(catalog);
@@ -346,12 +346,15 @@ export function selectRecommendedModels(
  * preference exists. Always resolves to an Eliza-1 default-eligible
  * tier — never a non-Eliza catalog entry, never a HF-search result.
  *
- * Resolution order:
- *   1. `FIRST_RUN_DEFAULT_MODEL_ID` when present in the catalog and in
- *      the default-eligible set.
- *   2. The first default-eligible chat entry in the catalog as a
- *      defensive fallback if the default id is somehow missing
- *      (catalog lint should prevent this; see catalog.test.ts).
+ * Resolution order (mirrors `app-core` recommendation.ts):
+ *   1. `FIRST_RUN_DEFAULT_MODEL_ID` when present in the catalog, in the
+ *      default-eligible set, and not marked `publishStatus: "pending"`.
+ *   2. The first default-eligible, non-pending chat entry in the catalog
+ *      as a fallback when the preferred id's HF bundle isn't published
+ *      yet (elizaOS/eliza#7629).
+ *   3. If every default-eligible tier is pending, last-resort to ANY
+ *      default-eligible tier so the download path surfaces the 404
+ *      cleanly rather than silently picking a non-Eliza model.
  *
  * Returns null only when no default-eligible entry exists at all —
  * which means the catalog is misconfigured and the caller should
@@ -361,17 +364,24 @@ export function recommendForFirstRun(
   catalog: CatalogModel[] = MODEL_CATALOG,
 ): CatalogModel | null {
   const byId = catalogById(catalog);
+  const isEligibleChat = (model: CatalogModel): boolean =>
+    !model.hiddenFromCatalog &&
+    model.runtimeRole !== "dflash-drafter" &&
+    DEFAULT_ELIGIBLE_MODEL_IDS.has(model.id);
+  const publishStatusFor = (model: CatalogModel): "published" | "pending" =>
+    model.publishStatus ?? eliza1TierPublishStatus(model.id as Eliza1TierId);
+  const isPublishedEligibleChat = (model: CatalogModel): boolean =>
+    isEligibleChat(model) && publishStatusFor(model) === "published";
+
   const preferred = byId.get(FIRST_RUN_DEFAULT_MODEL_ID);
-  if (preferred && DEFAULT_ELIGIBLE_MODEL_IDS.has(preferred.id))
-    return preferred;
-  return (
-    catalog.find(
-      (model) =>
-        !model.hiddenFromCatalog &&
-        model.runtimeRole !== "dflash-drafter" &&
-        DEFAULT_ELIGIBLE_MODEL_IDS.has(model.id),
-    ) ?? null
-  );
+  if (preferred && isPublishedEligibleChat(preferred)) return preferred;
+  const fallbackPublished = catalog.find(isPublishedEligibleChat);
+  if (fallbackPublished) return fallbackPublished;
+  // Last-resort: prefer the configured first-run default even when its
+  // bundle is unpublished, so the downloader's 404 surfaces with the
+  // tier the user expected to land on.
+  if (preferred && isEligibleChat(preferred)) return preferred;
+  return catalog.find(isEligibleChat) ?? null;
 }
 
 export function chooseSmallerFallbackModel(

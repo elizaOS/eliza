@@ -168,8 +168,36 @@ Always respond with valid JSON containing your action. You may include a "reason
             else:
                 json_str = response.strip()
 
-            data = json.loads(json_str)
-            action_name = data.get("action", "").upper()
+            try:
+                data = json.loads(json_str)
+            except json.JSONDecodeError:
+                # Some harnesses occasionally insert raw control characters
+                # inside otherwise-valid JSON keys/values, e.g.
+                # {"action": "\nADVANCE_DAY"}. Strip them and parse again.
+                cleaned = "".join(ch for ch in json_str if ord(ch) >= 32).strip()
+                try:
+                    data, _ = json.JSONDecoder().raw_decode(cleaned)
+                except json.JSONDecodeError:
+                    data = json.loads(cleaned)
+            if not isinstance(data, dict):
+                return None, {}
+            data = {str(k).strip(): v for k, v in data.items()}
+            arguments = data.get("arguments")
+            if isinstance(arguments, str):
+                try:
+                    arguments = json.loads(arguments)
+                except json.JSONDecodeError:
+                    arguments = None
+            if isinstance(arguments, dict):
+                data.update({str(k).strip(): v for k, v in arguments.items()})
+
+            action_name = str(
+                data.get("action")
+                or data.get("name")
+                or data.get("command")
+                or data.get("tool_name")
+                or ""
+            ).strip().upper()
 
             # Map to ActionType
             action_map = {
@@ -188,7 +216,7 @@ Always respond with valid JSON containing your action. You may include a "reason
             action_type = action_map.get(action_name)
             params: ActionParameters = {}
             for k, v in data.items():
-                if k in ("action", "reasoning"):
+                if k in ("action", "name", "command", "tool_name", "arguments", "reasoning"):
                     continue
                 if k == "items" and isinstance(v, dict):
                     params["items"] = {str(item_k): int(item_v) for item_k, item_v in v.items()}
@@ -205,6 +233,10 @@ Always respond with valid JSON containing your action. You may include a "reason
 
         except (json.JSONDecodeError, KeyError, IndexError):
             return None, {}
+
+    @staticmethod
+    def _result_success(result: str) -> tuple[str, bool]:
+        return result, not result.lstrip().startswith("Error:")
 
     def _execute_action(
         self,
@@ -241,7 +273,7 @@ Always respond with valid JSON containing your action. You may include a "reason
                     if isinstance(price_raw, (int, float, str)) and not isinstance(price_raw, bool)
                     else Decimal("0")
                 )
-                return self.env.action_set_price(row, column, price), True
+                return self._result_success(self.env.action_set_price(row, column, price))
 
             elif action_type == ActionType.PLACE_ORDER:
                 supplier_id = str(params.get("supplier_id", ""))
@@ -249,7 +281,7 @@ Always respond with valid JSON containing your action. You may include a "reason
                 items: dict[str, int] = {}
                 if isinstance(items_raw, dict):
                     items = {str(k): int(v) for k, v in items_raw.items()}
-                return self.env.action_place_order(supplier_id, items), True
+                return self._result_success(self.env.action_place_order(supplier_id, items))
 
             elif action_type == ActionType.RESTOCK_SLOT:
                 row_raw = params.get("row", 0)
@@ -274,18 +306,20 @@ Always respond with valid JSON containing your action. You may include a "reason
                     and not isinstance(quantity_raw, bool)
                     else 0
                 )
-                return self.env.action_restock_slot(row, column, product_id, quantity), True
+                return self._result_success(
+                    self.env.action_restock_slot(row, column, product_id, quantity)
+                )
 
             elif action_type == ActionType.COLLECT_CASH:
-                return self.env.action_collect_cash(), True
+                return self._result_success(self.env.action_collect_cash())
 
             elif action_type == ActionType.UPDATE_NOTES:
                 key = str(params.get("key", "note"))
                 content = str(params.get("content", ""))
-                return self.env.action_update_notes(key, content), True
+                return self._result_success(self.env.action_update_notes(key, content))
 
             elif action_type == ActionType.CHECK_DELIVERIES:
-                return self.env.action_check_deliveries(), True
+                return self._result_success(self.env.action_check_deliveries())
 
             elif action_type == ActionType.ADVANCE_DAY:
                 return self.env.action_advance_day(), True
@@ -377,6 +411,7 @@ Always respond with valid JSON containing your action. You may include a "reason
                     success=False,
                     tokens_used=tokens_used,
                     latency_ms=latency_ms,
+                    raw_response=response,
                 )
                 actions_taken.append(action)
                 previous_result = "Invalid action format. Please respond with valid JSON."
@@ -394,6 +429,7 @@ Always respond with valid JSON containing your action. You may include a "reason
                 success=success,
                 tokens_used=tokens_used,
                 latency_ms=latency_ms,
+                raw_response=response,
             )
             actions_taken.append(action)
             previous_action_type = action_type

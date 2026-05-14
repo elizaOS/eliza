@@ -3,6 +3,7 @@ import type { ComponentType } from "react";
 import { useCallback, useEffect, useState } from "react";
 import { client } from "../../api";
 import type { ProviderStatus } from "../../api/client-local-inference";
+import { useRenderGuard } from "../../hooks/useRenderGuard";
 
 const KIND_ICON: Record<
   ProviderStatus["kind"],
@@ -18,6 +19,7 @@ const KIND_ICON: Record<
 };
 
 export function ProvidersList() {
+  useRenderGuard("ProvidersList");
   const [providers, setProviders] = useState<ProviderStatus[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 

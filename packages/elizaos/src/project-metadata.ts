@@ -5,7 +5,7 @@ import type { ProjectTemplateMetadata } from "./types.js";
 const METADATA_DIR = ".elizaos";
 const METADATA_FILE = "template.json";
 
-export function getMetadataPath(projectRoot: string): string {
+function getMetadataPath(projectRoot: string): string {
   return path.join(projectRoot, METADATA_DIR, METADATA_FILE);
 }
 

@@ -223,8 +223,58 @@ overhead.
 - JS FFI binding: `packages/app-core/src/services/local-inference/voice/ffi-bindings.ts`
 - JS adapter: `packages/app-core/src/services/local-inference/voice/transcriber.ts` (`FfiStreamingTranscriber`)
 - JS pipeline integration: `packages/app-core/src/services/local-inference/voice/pipeline.ts` (`transcribeAll`)
+- JS streaming pipeline wrapper: `packages/app-core/src/services/local-inference/voice/streaming-asr/streaming-pipeline-adapter.ts` (`pickStreamingMode` + `StreamingAsrFeeder`)
 - Canonical C++ impl (honest stub): `packages/inference/llama.cpp/omnivoice/src/eliza-inference-ffi.cpp` (lines 770–844)
-- C++ windowed reference impl (opt-in): `packages/inference/llama.cpp/omnivoice/src/ffi-streaming-asr.cpp` (new)
+- C++ windowed reference impl (opt-in): `packages/inference/llama.cpp/omnivoice/src/ffi-streaming-asr.cpp`
 - Tests:
   - `packages/app-core/src/services/local-inference/voice/transcriber.test.ts` (FfiStreamingTranscriber against a fake FFI)
   - `packages/app-core/src/services/local-inference/voice/ffi-bindings.test.ts` (symbol resolution + ABI version check)
+  - `packages/app-core/src/services/local-inference/voice/__tests__/streaming-transcriber.test.ts` (frame-by-frame partials, `pickStreamingMode` table, `StreamingAsrFeeder` events)
+
+## Pipeline wiring — `StreamingAsrFeeder` (hand-off to Phase 0/1)
+
+The base `VoicePipeline` (`pipeline.ts::transcribeAll`) feeds the WHOLE
+VAD-gated utterance buffer in one `feed()` call and awaits `flush()`.
+That works for every adapter but leaves the H2 UX seam (incremental
+partials → planner / barge-in word-confirm / speculative-on-pause)
+untapped when the fused build is in streaming mode.
+
+Rather than rewrite `pipeline.ts` (the Phase 0/1 agent owns it for the
+partial-stabilizer integration), this PR adds a small wrapper module
+the engine bridge can use to deliver PCM chunks as they arrive and fan
+partials out to the turn controller:
+
+```ts
+import {
+  pickStreamingMode,
+  StreamingAsrFeeder,
+} from "packages/app-core/src/services/local-inference/voice/streaming-asr/streaming-pipeline-adapter";
+
+const mode = pickStreamingMode({
+  ffiSupportsStreaming: ffi.asrStreamSupported(),
+  asrBundlePresent: bundle.has("asr"),
+  enableStreaming: settings.usePartialStabilizer, // owned by Phase 0/1
+});
+
+if (mode === "streaming") {
+  const feeder = new StreamingAsrFeeder({
+    transcriber,
+    events: {
+      onPartial:     (u) => turn.onPartial(u),
+      onWords:       (w) => turn.onWords(w),
+      onFinalTokens: (tokens, final) => pipeline.resumeWithTokens(tokens, final),
+    },
+  });
+  // route mic VAD-gated frames into feeder.feedFrame(...)
+  // on speech-end: await feeder.finalize()
+} else {
+  // existing VoicePipeline.transcribeAll path — unchanged.
+}
+```
+
+Selection gate: `pickStreamingMode` returns `"streaming"` ONLY when the
+loaded fused library advertises `asr_stream_supported() === 1`, the
+bundled ASR model is present, AND the `enableStreaming` flag is true
+(default false until Phase 0/1's partial-stabilizer lands). Any other
+combination falls back to the existing batch path with no code change
+on the caller's side.

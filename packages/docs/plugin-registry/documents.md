@@ -101,7 +101,7 @@ Existing character files that still contain `knowledge` are imported into docume
 
 ## Embedding Model
 
-By default, document embeddings use the local embedding model provided by `@elizaos/plugin-local-embedding` (Nomic Embed Text v1.5). Eliza caps the embedding dimension to **384** (set via `EMBEDDING_DIMENSION` at boot). This runs entirely on-device — no API key required.
+By default, document embeddings use the local embedding model provided by `@elizaos/plugin-local-inference` (Nomic Embed Text v1.5). Eliza caps the embedding dimension to **384** (set via `EMBEDDING_DIMENSION` at boot). This runs entirely on-device — no API key required.
 
 To use a different embedding model, configure it in `eliza.json`:
 

@@ -17,11 +17,11 @@ import {
   RECOGNISED_PERMISSION_NAMESPACES,
   type RecognisedPermissionNamespace,
 } from "@elizaos/shared";
-import { Switch } from "@elizaos/ui";
 import { Loader2, RefreshCw, ShieldCheck } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { client } from "../../api/client";
 import { useApp } from "../../state";
+import { Switch } from "../ui/switch";
 
 const NAMESPACE_LABELS: Record<RecognisedPermissionNamespace, string> = {
   fs: "Filesystem",

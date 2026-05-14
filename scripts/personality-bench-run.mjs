@@ -239,18 +239,28 @@ function stratKeyFor(scenario) {
   const bucket = canonicalBucket(scenario.bucket);
   switch (bucket) {
     case "hold_style":
-      return typeof kw.styleKey === "string" && kw.styleKey ? kw.styleKey : "_other";
+      return typeof kw.styleKey === "string" && kw.styleKey
+        ? kw.styleKey
+        : "_other";
     case "note_trait_unrelated":
-      return typeof kw.traitKey === "string" && kw.traitKey ? kw.traitKey : "_other";
+      return typeof kw.traitKey === "string" && kw.traitKey
+        ? kw.traitKey
+        : "_other";
     case "escalation":
-      return typeof kw.ladderKey === "string" && kw.ladderKey ? kw.ladderKey : "_other";
+      return typeof kw.ladderKey === "string" && kw.ladderKey
+        ? kw.ladderKey
+        : "_other";
     case "scope_global_vs_user":
-      return typeof kw.variantKey === "string" && kw.variantKey ? kw.variantKey : "_other";
+      return typeof kw.variantKey === "string" && kw.variantKey
+        ? kw.variantKey
+        : "_other";
     case "shut_up": {
       // Stratify by format tag (format:X), which captures the prose/code/length
       // axis better than length bracket alone.
       const tags = Array.isArray(scenario.tags) ? scenario.tags : [];
-      const fmt = tags.find((t) => typeof t === "string" && t.startsWith("format:"));
+      const fmt = tags.find(
+        (t) => typeof t === "string" && t.startsWith("format:"),
+      );
       return fmt ? fmt.slice("format:".length) : "_other";
     }
     default:
@@ -337,7 +347,7 @@ const totalScenarios = allScenariosRaw.length;
 const sampledByBucket = new Map();
 {
   // Distribute the global limit across buckets by their raw count.
-  let remaining = Math.min(scenarioLimit, totalScenarios);
+  const remaining = Math.min(scenarioLimit, totalScenarios);
   const bucketEntries = BUCKETS_ORDERED.map((b) => ({
     b,
     count: (byBucket.get(b) ?? []).length,
@@ -350,7 +360,7 @@ const sampledByBucket = new Map();
     count: e.count,
     alloc: Math.floor(remaining * (e.count / totalInBuckets)),
   }));
-  let allocSum = allocs.reduce((s, a) => s + a.alloc, 0);
+  const allocSum = allocs.reduce((s, a) => s + a.alloc, 0);
   let allocRemainder = remaining - allocSum;
   // Give remainder to buckets sorted by descending raw count.
   allocs.sort((a, b) => b.count - a.count);
@@ -674,7 +684,9 @@ async function spawnElizaServer({ extraEnv = {} } = {}) {
     // Cerebras path — same provider config the bench server expects when
     // OPENAI_BASE_URL points at api.cerebras.ai.
     CEREBRAS_API_KEY: cerebrasApiKey,
-    OPENAI_BASE_URL: useRuntimeOverride ? runtimeBaseUrlOverride : cerebrasBaseUrl,
+    OPENAI_BASE_URL: useRuntimeOverride
+      ? runtimeBaseUrlOverride
+      : cerebrasBaseUrl,
     OPENAI_API_KEY: useRuntimeOverride ? runtimeApiKeyOverride : cerebrasApiKey,
     ELIZA_PROVIDER: useRuntimeOverride ? "openai" : "cerebras",
     BENCHMARK_MODEL_PROVIDER: useRuntimeOverride ? "openai" : "cerebras",
@@ -837,7 +849,7 @@ async function resetBenchSession({ baseUrl, token, taskId, roles = null }) {
 // Synthesis P0-7: derive a RoleSeedPayload from a scope_global_vs_user
 // scenario so the bench server can pin personality slots + roles before
 // the conversation starts. Returns null for non-scope scenarios.
-function buildScopeRoleSeed(scenario, roomId, roomMeta) {
+function buildScopeRoleSeed(scenario, _roomId, roomMeta) {
   if (scenario.bucket !== "scope_global_vs_user") return null;
   const kw = scenario.personalityExpect?.judgeKwargs ?? {};
   const variantKey = typeof kw.variantKey === "string" ? kw.variantKey : "";

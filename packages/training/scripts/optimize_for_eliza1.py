@@ -2,9 +2,9 @@
 
 Composes the per-technique apply scripts in dependency order, runs the
 ``elizaOS/llama.cpp`` GGUF conversion (fork-aware, understands the new
-GGML types ``Q4_POLAR=47`` and ``QJL1_256=46``), and publishes a
-single ``elizaos/eliza-1-<tier>`` HuggingFace repo whose contents are
-ready for the on-device Eliza-1 downloader to consume.
+GGML types ``Q4_POLAR=47`` and ``QJL1_256=46``), and publishes into the
+single ``elizaos/eliza-1`` HuggingFace repo under ``bundles/<tier>/`` so
+the on-device Eliza-1 downloader can consume the bundle.
 
 The orchestrator is **idempotent**: each step writes its sidecar
 artifact (``polarquant_artifacts.safetensors``,
@@ -20,7 +20,7 @@ Usage::
         --output-dir checkpoints/eliza-1-0_8b \\
         --apply polarquant qjl turboquant \\
         --gguf-target packages/inference \\
-        --hf-repo elizaos/eliza-1-0_8b \\
+        --hf-repo elizaos/eliza-1 \\
         --dry-run
 
     # Real run (needs the elizaOS/llama.cpp v1.0.0-eliza checkout

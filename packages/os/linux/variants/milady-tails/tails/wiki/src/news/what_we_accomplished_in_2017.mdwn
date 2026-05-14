@@ -1,0 +1,85 @@
+[[!meta date="Thu, 2 Nov 2017 12:00:00 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!meta title="What we accomplished in 2017"]]
+[[!tag announce]]
+
+We recently asked you to [[give us a hand to fund our work in
+2018|news/many_hands_make_tails]].
+
+**Today, we want to tell you what we accomplished in 2017.**
+
+- **New features and userfriendly interfaces**
+
+  - We were particularly proud of [[releasing Tails 3.0|news/version_3.0]] almost
+    at the same time as Debian 9.0 (Stretch) which strengthens our commitment to
+    the free software communities without which Tails wouldn't exist.
+
+  - We added new features, like [[OnionShare|doc/anonymous_internet/onionshare]]
+    for sharing files, and redesigned other core features, like *Tails Greeter*
+    and *Tails Installer*, to be much easier to use.
+
+- **Security hardening**
+
+  - We'll soon provide a reproducible build of the ISO image to
+    protect users and developers from a malicious build of our ISO
+    image. This effort was paid for by the Mozilla Open Source Support
+    award which we received in 2016.
+
+  - We promised to work on making all our mirrors use **HTTPS** and
+    we're proud to announce that our mirror pool now contains over 40
+    active and fast mirrors. They all serve our files over an encrypted
+    TLS connection when downloading via the website with JavaScript
+    enabled, when using our Download And Verify Extension and when Tails
+    is updated.
+
+- **Community**
+
+  - We published our **Social
+    contract**, the guiding
+    principles that reflect the commitment to our ideals.
+
+- **Fundraising**
+
+  - **Have more reliable and steady sources of income**: We created a
+    page presenting our past and present sponsors
+    and hopefully inciting more companies and individuals to make
+    substantial donations.
+
+Next to this selection of new features, we also work on recurring tasks:
+
+- In 2017, we published seven Tails **releases**.
+
+- We answered 122 bug reports on average each month through our *help
+  desk* and helped many people being safer online. Each user request
+  costs us 6€ on average to proceed. In 2017 our help desk was paid
+  entirely out of donations.
+
+- We maintain and update our **infrastructure**. You might not see this
+  effort, but it constitutes a crucial part of our work to verify that
+  everything is functioning correctly, build ISO images, test, make it
+  possible to publish emergency releases faster.
+
+- Organizing our own **meetings** and attending conferences in our field
+  is critical to keep our community alive and relevant. But this is
+  usually hard to get funded by grants, so donations help us a lot here.
+
+- In 2017, we attended **conferences** and connected to free software
+  and Internet freedom communities in 8 different countries: OTF Summit
+  (USA), 33C3 & Reproducible Builds world summit (Germany), FOSDEM
+  (Belgium), IFF (Spain), Tor dev (Netherlands), GUADEC (United
+  Kingdom), DebConf (Canada), CryptoRave (Brasil).
+
+- Keeping Tails successful also implies quite a bit of
+  **administration** to raise funds, do accounting, organize work, write
+  reports, etc.
+
+Besides substantial donations, we would be able to better plan our
+future work if we would receive many more monthly donations.
+
+**If you can, we'd love for you to sign up for monthly donations at
+whatever level suits you ($5 = formidable. $10 = wonderful. More money =
+magnificent.)**
+
+If you like our work, please take one minute to keep Tails alive.
+
+[Donate](https://tails.net/donate/)

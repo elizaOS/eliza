@@ -1,0 +1,20 @@
+---
+build-target: amd64
+channel: test
+initial-install-version: '5.11'
+product-name: Tails
+upgrades:
+- details-url: https://tails.boum.org/news/version_5.12/
+  type: major
+  upgrade-paths:
+  - target-files:
+    - sha256: dcb79454a6256c59bd3b60939e624a8713bb2296aa923aef8d200f5d62ba5c81
+      size: 1316044800
+      url: https://download.tails.net/tails/stable/tails-amd64-5.12/tails-amd64-5.12.iso
+    type: full
+  - target-files:
+    - sha256: f4d998539ef69969bff5454acd43a1b76d22a4a18c7f29931bd6889f88d51750
+      size: 349454336
+      url: https://download.tails.net/tails/stable/iuk/v2/Tails_amd64_5.11_to_5.12.iuk
+    type: incremental
+  version: '5.12'

@@ -150,7 +150,7 @@ async function buildPlugins(mode: ProviderMode): Promise<Plugin[]> {
   }
 }
 
-export async function getOrCreateRuntime(
+async function getOrCreateRuntime(
   config: AppConfig,
   dataDir: string,
 ): Promise<RuntimeBundle> {
@@ -313,13 +313,4 @@ export async function sendMessage(
   }
 
   return { responseText, effectiveMode };
-}
-
-export async function __shutdownForTests(): Promise<void> {
-  if (currentBundle) {
-    await currentBundle.runtime.stop();
-  }
-  currentBundle = null;
-  currentMode = null;
-  initializing = null;
 }

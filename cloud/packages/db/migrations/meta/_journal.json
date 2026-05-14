@@ -785,6 +785,13 @@
       "when": 1778143600000,
       "tag": "0115_ensure_agent_pairing_tokens_runtime_repair",
       "breakpoints": true
+    },
+    {
+      "idx": 112,
+      "version": "7",
+      "when": 1778653705000,
+      "tag": "0118_add_ai_billing_and_alert_events",
+      "breakpoints": true
     }
   ]
 }

@@ -9,6 +9,11 @@ contracts to and from JSON the bridge can carry.
 
 from __future__ import annotations
 
+import json
+import os
+from pathlib import Path
+import re
+import time
 from typing import Any, ClassVar
 
 from compactbench.compactors.base import Compactor
@@ -16,6 +21,11 @@ from compactbench.contracts import CompactionArtifact, StructuredState, Transcri
 from compactbench.providers import Provider
 
 from eliza_compactbench.bridge import run_ts_compactor
+
+
+_SECRET_RE = re.compile(
+    r"(?i)\b((?:sk|csk)-[a-z0-9_-]{12,}|password\s*[:=]\s*[^\s,;]+|api[_ -]?key\s*[:=]\s*[^\s,;]+)"
+)
 
 
 def _transcript_to_dict(
@@ -113,6 +123,56 @@ def _artifact_from_dict(payload: dict[str, Any]) -> CompactionArtifact:
     )
 
 
+def _estimate_tokens(text: str) -> int:
+    return max(0, (len(text) + 3) // 4)
+
+
+def _transcript_text(transcript: Transcript) -> str:
+    return "\n".join(f"{turn.role.value}: {turn.content}" for turn in transcript.turns)
+
+
+def _artifact_text(artifact: CompactionArtifact) -> str:
+    return json.dumps(
+        artifact.model_dump(by_alias=True),
+        ensure_ascii=False,
+        sort_keys=True,
+    )
+
+
+def _provider_label(provider: Provider) -> str:
+    raw = getattr(provider, "key", None) or getattr(provider, "name", None)
+    return str(raw) if raw else type(provider).__name__
+
+
+def _redact(value: Any) -> Any:
+    if isinstance(value, str):
+        return _SECRET_RE.sub("[REDACTED]", value)
+    if isinstance(value, list):
+        return [_redact(item) for item in value]
+    if isinstance(value, dict):
+        return {str(key): _redact(item) for key, item in value.items()}
+    return value
+
+
+def _trace_path() -> Path | None:
+    explicit = os.environ.get("ELIZA_COMPACTBENCH_TRAJECTORY_JSONL", "").strip()
+    if explicit:
+        return Path(explicit)
+    run_dir = os.environ.get("BENCHMARK_RUN_DIR", "").strip()
+    if run_dir:
+        return Path(run_dir) / "compactbench-compactions.jsonl"
+    return None
+
+
+def _write_compaction_trace(record: dict[str, Any]) -> None:
+    path = _trace_path()
+    if path is None:
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(_redact(record), ensure_ascii=False, sort_keys=True) + "\n")
+
+
 class _ElizaTSCompactor(Compactor):
     """Common base for all TS-backed elizaOS compactors."""
 
@@ -154,12 +214,55 @@ class _ElizaTSCompactor(Compactor):
             options["previousArtifact"] = previous_artifact.model_dump(by_alias=True)
             metadata = {"priorLedger": _previous_artifact_to_prior_ledger(previous_artifact)}
 
+        bridge_transcript = _transcript_to_dict(transcript, metadata=metadata)
+        started = time.monotonic()
         payload = run_ts_compactor(
             self.strategy,
-            _transcript_to_dict(transcript, metadata=metadata),
+            bridge_transcript,
             options,
         )
-        return _artifact_from_dict(payload)
+        elapsed_ms = round((time.monotonic() - started) * 1000.0, 2)
+        artifact = _artifact_from_dict(payload)
+        input_text = _transcript_text(transcript)
+        output_text = _artifact_text(artifact)
+        harness_metadata = {
+            "agent_label": "eliza",
+            "adapter": "eliza_compactbench",
+            "compaction_strategy": self.strategy,
+            "compactor_name": self.name,
+            "compactor_version": self.version,
+            "provider": _provider_label(self.provider),
+            "model": self.model,
+            "target_tokens": options.get("targetTokens"),
+            "preserve_tail_messages": options.get("preserveTailMessages"),
+            "input_turn_count": len(transcript.turns),
+            "input_chars": len(input_text),
+            "input_token_estimate": _estimate_tokens(input_text),
+            "output_chars": len(output_text),
+            "output_token_estimate": _estimate_tokens(output_text),
+            "selected_source_turn_count": len(artifact.selected_source_turn_ids),
+            "previous_artifact_present": previous_artifact is not None,
+            "prior_ledger_present": bool(metadata and metadata.get("priorLedger")),
+            "bridge_latency_ms": elapsed_ms,
+            "trace_schema_version": "eliza_compactbench_trace_v1",
+        }
+        artifact.method_metadata.update(harness_metadata)
+        _write_compaction_trace(
+            {
+                "schema_version": "eliza_compactbench_trace_v1",
+                "agent_label": "eliza",
+                "strategy": self.strategy,
+                "provider": harness_metadata["provider"],
+                "model": self.model,
+                "started_at_unix_ms": int((time.time() - elapsed_ms / 1000.0) * 1000),
+                "latency_ms": elapsed_ms,
+                "options": options,
+                "metadata": harness_metadata,
+                "transcript": bridge_transcript,
+                "artifact": artifact.model_dump(by_alias=True),
+            }
+        )
+        return artifact
 
 
 class NaiveSummaryCompactor(_ElizaTSCompactor):

@@ -5,6 +5,7 @@ import { getAgentManager } from "./agent";
 import { getBrowserWorkspaceManager } from "./browser-workspace";
 import { getCameraManager } from "./camera";
 import { getCanvasManager } from "./canvas";
+import { getCarrotManager } from "./carrots";
 import { getDesktopManager } from "./desktop";
 import { getGatewayDiscovery } from "./gateway";
 import { getGpuWindowManager } from "./gpu-window";
@@ -47,6 +48,7 @@ export async function disposeNativeModules(): Promise<void> {
 		["browser-workspace", getBrowserWorkspaceManager()],
 		["camera", getCameraManager()],
 		["canvas", getCanvasManager()],
+		["carrots", getCarrotManager()],
 		["desktop", getDesktopManager()],
 		["gateway", getGatewayDiscovery()],
 		["gpu-window", getGpuWindowManager()],

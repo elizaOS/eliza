@@ -34,7 +34,12 @@ import {
 } from "@elizaos/agent";
 // Override the wallet export rejection function with the hardened version
 // that adds rate limiting, audit logging, and a forced confirmation delay.
-import { type AgentRuntime, logger, resolveStateDir } from "@elizaos/core";
+import {
+  type AgentRuntime,
+  logger,
+  ModelType,
+  resolveStateDir,
+} from "@elizaos/core";
 import { resolveLinkedAccountsInConfig } from "@elizaos/shared";
 import { forwardRemoteCloudMutation } from "../runtime/mode/remote-forwarder";
 import { applyRouteModeGuard } from "../runtime/mode/route-mode-guard";
@@ -47,6 +52,7 @@ import {
   type CompatRuntimeState,
   clearCompatRuntimeRestart,
   getConfiguredCompatAgentName,
+  readCompatJsonBody,
 } from "./compat-route-shared";
 import { sendJson as sendJsonResponse } from "./response";
 import { handleRuntimeModeRoute } from "./runtime-mode-routes";
@@ -116,8 +122,9 @@ import {
   settingsDebugCloudSummary,
   sqlLiteral,
 } from "@elizaos/shared";
+import { deviceBridge } from "@elizaos/plugin-local-inference/services";
+import { handleLocalInferenceCompatRoutes } from "@elizaos/plugin-local-inference/routes";
 import { buildCharacterFromConfig } from "../runtime/build-character-from-config";
-import { deviceBridge } from "../services/local-inference/device-bridge";
 import { handleAuthBootstrapRoutes } from "./auth-bootstrap-routes";
 import { handleAuthPairingCompatRoutes } from "./auth-pairing-routes";
 import { handleAuthSessionRoutes } from "./auth-session-routes";
@@ -126,8 +133,6 @@ import { handleCatalogRoutes } from "./catalog-routes";
 import { handleDatabaseRowsCompatRoute } from "./database-rows-compat-routes";
 import { handleDevCompatRoutes } from "./dev-compat-routes";
 import { handleInternalWakeRoute } from "./internal-routes";
-// Local-inference routes intentionally remain in app-core (no plugin-local-inference exists).
-import { handleLocalInferenceCompatRoutes } from "./local-inference-compat-routes";
 import { handleOnboardingCompatRoute } from "./onboarding-routes";
 import { handlePluginsCompatRoutes } from "./plugins-routes";
 import { handleSecretsInventoryRoute } from "./secrets-inventory-routes";
@@ -152,6 +157,13 @@ const lazyEnsureTTS = () =>
   import("../runtime/ensure-text-to-speech-handler.js").then(
     (m) => m.ensureTextToSpeechHandler,
   );
+
+const LOCAL_TTS_PROVIDER_IDS = [
+  "eliza-local-inference",
+  "capacitor-llama",
+  "eliza-device-bridge",
+  "eliza-aosp-llama",
+] as const;
 
 import { clearCloudSecrets, getCloudSecret } from "@elizaos/plugin-elizacloud";
 import { getStartupEmbeddingAugmentation } from "../runtime/startup-overlay.js";
@@ -454,6 +466,159 @@ function patchCompatStatusResponse(
   }) as typeof res.end;
 }
 
+function sanitizeLocalInferenceSpeechText(input: string): string {
+  let text = input.normalize("NFKC");
+  text = text.replace(/<think\b[^>]*>[\s\S]*?(?:<\/think>|$)/gi, " ");
+  text = text.replace(
+    /<(analysis|reasoning|tool_calls?|tools?)\b[^>]*>[\s\S]*?(?:<\/\1>|$)/gi,
+    " ",
+  );
+  text = text.replace(/```[\s\S]*?```/g, " ");
+  text = text.replace(/`([^`]+)`/g, "$1");
+  text = text.replace(/\[([^\]]+)\]\([^)]+\)/g, "$1");
+  text = text.replace(/<[^>\n]+>/g, " ");
+  text = text.replace(/\bhttps?:\/\/\S+/gi, " ");
+  return text.replace(/\s+/g, " ").trim();
+}
+
+function normalizeAudioBytes(value: unknown): Uint8Array {
+  if (value instanceof Uint8Array) {
+    return new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
+  }
+  if (value instanceof ArrayBuffer) {
+    return new Uint8Array(value);
+  }
+  if (ArrayBuffer.isView(value)) {
+    return new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
+  }
+  throw new Error("TEXT_TO_SPEECH returned a non-binary payload");
+}
+
+function sniffAudioContentType(bytes: Uint8Array): string {
+  if (
+    bytes.length >= 12 &&
+    bytes[0] === 0x52 &&
+    bytes[1] === 0x49 &&
+    bytes[2] === 0x46 &&
+    bytes[3] === 0x46 &&
+    bytes[8] === 0x57 &&
+    bytes[9] === 0x41 &&
+    bytes[10] === 0x56 &&
+    bytes[11] === 0x45
+  ) {
+    return "audio/wav";
+  }
+  if (
+    bytes.length >= 3 &&
+    bytes[0] === 0x49 &&
+    bytes[1] === 0x44 &&
+    bytes[2] === 0x33
+  ) {
+    return "audio/mpeg";
+  }
+  if (bytes.length >= 2 && bytes[0] === 0xff && (bytes[1] & 0xe0) === 0xe0) {
+    return "audio/mpeg";
+  }
+  return "application/octet-stream";
+}
+
+function isMissingTtsProviderError(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    /No handler found for delegate type: TEXT_TO_SPEECH/.test(error.message)
+  );
+}
+
+async function useLocalInferenceTts(
+  runtime: AgentRuntime,
+  text: string,
+  signal?: AbortSignal,
+): Promise<Uint8Array> {
+  let lastError: unknown;
+  for (const provider of LOCAL_TTS_PROVIDER_IDS) {
+    try {
+      return normalizeAudioBytes(
+        await runtime.useModel(
+          ModelType.TEXT_TO_SPEECH,
+          { text, ...(signal ? { signal } : {}) },
+          provider,
+        ),
+      );
+    } catch (err) {
+      lastError = err;
+      if (!isMissingTtsProviderError(err)) throw err;
+    }
+  }
+  if (lastError instanceof Error) throw lastError;
+  throw new Error("No local-inference TEXT_TO_SPEECH provider is registered");
+}
+
+async function _handleLocalInferenceTtsRoute(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  state: CompatRuntimeState,
+): Promise<boolean> {
+  const body = await readCompatJsonBody(req, res);
+  if (!body || typeof body !== "object") return true;
+
+  const rawText = (body as Record<string, unknown>).text;
+  const text =
+    typeof rawText === "string"
+      ? sanitizeLocalInferenceSpeechText(rawText)
+      : "";
+  if (!text) {
+    sendJsonResponse(res, 400, { error: "Missing text" });
+    return true;
+  }
+
+  const runtime = state.current;
+  if (!runtime) {
+    sendJsonResponse(res, 503, {
+      error: "Local inference TEXT_TO_SPEECH is not available",
+    });
+    return true;
+  }
+
+  const abortController = new AbortController();
+  let completed = false;
+  const abortOnClose = () => {
+    if (!completed && !abortController.signal.aborted) {
+      abortController.abort();
+    }
+  };
+  req.on("close", abortOnClose);
+  res.on("close", abortOnClose);
+  try {
+    const bytes = await useLocalInferenceTts(
+      runtime,
+      text,
+      abortController.signal,
+    );
+    if (bytes.length === 0) {
+      sendJsonResponse(res, 502, {
+        error: "Local inference TEXT_TO_SPEECH returned empty audio",
+      });
+      return true;
+    }
+    completed = true;
+    res.writeHead(200, {
+      "Content-Type": sniffAudioContentType(bytes),
+      "Cache-Control": "no-store",
+      "Content-Length": String(bytes.byteLength),
+    });
+    res.end(Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength));
+  } catch (err) {
+    sendJsonResponse(res, 502, {
+      error: `Local inference TTS error: ${err instanceof Error ? err.message : String(err)}`,
+    });
+  } finally {
+    completed = true;
+    req.off("close", abortOnClose);
+    res.off("close", abortOnClose);
+  }
+  return true;
+}
+
 async function _getTableColumnNames(
   runtime: AgentRuntime,
   tableName: string,
@@ -669,6 +834,11 @@ async function handleCompatRoute(
     return await _handleCloudTtsPreviewRoute(req, res);
   }
 
+  if (method === "POST" && url.pathname === "/api/tts/local-inference") {
+    if (!(await ensureRouteAuthorized(req, res, state))) return true;
+    return await _handleLocalInferenceTtsRoute(req, res, state);
+  }
+
   if (method === "POST" && url.pathname === "/api/tts/elevenlabs") {
     // Intentional passthrough: ElevenLabs TTS is handled by the upstream
     // Eliza server handler, not by the app API layer. Returning false
@@ -862,9 +1032,32 @@ export async function handleElizaCompatRoute(
   return await handleCompatRoute(req, res, state);
 }
 
+/**
+ * Module-scoped singleton compat-state. Both the early
+ * `patchHttpCreateServerForCompat()` call (from `startEliza` before upstream's
+ * boot binds the listener) AND the later `startApiServer` wrapper need to
+ * share the SAME state object — otherwise the early-bound listener captures
+ * an empty state by closure and never sees the runtime that `startApiServer`
+ * assigns to its own local state. `getSharedCompatRuntimeState()` returns
+ * this singleton so both call sites can read/mutate the same reference.
+ */
+const sharedCompatRuntimeState: CompatRuntimeState = {
+  current: null,
+  pendingAgentName: null,
+  pendingRestartReasons: [],
+};
+
+export function getSharedCompatRuntimeState(): CompatRuntimeState {
+  return sharedCompatRuntimeState;
+}
+
 export function patchHttpCreateServerForCompat(
   state?: CompatRuntimeState,
 ): () => void {
+  // When no state is passed in, fall back to the shared singleton so that
+  // an early-installed patch (before any local state is created) can still
+  // observe the runtime once startApiServer or startEliza assigns it.
+  const effectiveState = state ?? sharedCompatRuntimeState;
   const originalCreateServer = http.createServer.bind(http);
 
   http.createServer = ((...args: Parameters<typeof originalCreateServer>) => {
@@ -887,9 +1080,7 @@ export function patchHttpCreateServerForCompat(
       // is picked up without a restart.
       ensureCloudTtsApiKeyAlias();
       mirrorCompatHeaders(req);
-      if (state) {
-        patchCompatStatusResponse(req, res, state);
-      }
+      patchCompatStatusResponse(req, res, effectiveState);
 
       // CORS: allow local renderer servers (Vite, static loopback, WKWebView).
       // WKWebView sometimes omits `Origin` on cross-port fetches; allow Referer
@@ -947,17 +1138,17 @@ export function patchHttpCreateServerForCompat(
         syncCompatConfigFiles();
       });
 
-      if (state) {
+      {
         const pathname = new URL(req.url ?? "/", "http://localhost").pathname;
         if (
           pathname.startsWith("/api/database") ||
           pathname.startsWith("/api/trajectories")
         ) {
-          await ensureRuntimeSqlCompatibility(state.current);
+          await ensureRuntimeSqlCompatibility(effectiveState.current);
         }
 
         try {
-          if (await handleCompatRoute(req, res, state)) {
+          if (await handleCompatRoute(req, res, effectiveState)) {
             return;
           }
         } catch (err) {
@@ -1032,11 +1223,17 @@ export async function startApiServer(
   // Pre-load steward wallet addresses so getWalletAddresses() has them
   // available synchronously from the start.
   await initStewardWalletCache();
-  const compatState: CompatRuntimeState = {
-    current: (args[0]?.runtime as AgentRuntime | null) ?? null,
-    pendingAgentName: null,
-    pendingRestartReasons: [],
-  };
+  // Use the module-scoped shared state instead of a fresh local object so
+  // any earlier patch installation (e.g. the `startEliza` boot-time install
+  // that ensures upstream's listener engages the compat dispatcher) sees the
+  // runtime once we receive it here. The shared state is created at module
+  // load with `current: null`; we seed it now from the caller's optional
+  // runtime arg, then upstream's `server.updateRuntime` wrapper continues to
+  // mutate the same reference per hot-swap.
+  const compatState = sharedCompatRuntimeState;
+  if (args[0]?.runtime) {
+    compatState.current = args[0].runtime as AgentRuntime;
+  }
   const restoreCreateServer = patchHttpCreateServerForCompat(compatState);
 
   try {

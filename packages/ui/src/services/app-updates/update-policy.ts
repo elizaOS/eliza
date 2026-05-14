@@ -22,6 +22,12 @@ export interface NativeAppInfo {
   build?: string;
 }
 
+type CapacitorAppModule = {
+  App: {
+    getInfo: () => Promise<NativeAppInfo>;
+  };
+};
+
 export interface AppUpdatePolicyInput {
   platform: AppUpdatePlatform;
   native: boolean;
@@ -281,9 +287,10 @@ export function mapAgentUpdateStatusToSnapshot(
 export async function readNativeAppInfo(): Promise<NativeAppInfo | null> {
   if (!Capacitor.isNativePlatform()) return null;
   try {
+    const capacitorAppPackage = "@capacitor/app";
     const mod = (await import(
-      /* @vite-ignore */ "@capacitor/app"
-    )) as typeof import("@capacitor/app");
+      /* @vite-ignore */ capacitorAppPackage
+    )) as CapacitorAppModule;
     return await mod.App.getInfo();
   } catch {
     return null;

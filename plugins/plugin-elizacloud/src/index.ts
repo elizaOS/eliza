@@ -19,6 +19,7 @@ import {
   handleTextMega,
   handleTextNano,
   handleTextSmall,
+  handleTextToSpeech,
 } from "./models";
 // Cloud services
 import { CloudAuthService } from "./services/cloud-auth";
@@ -55,6 +56,13 @@ export const elizaOSCloudPlugin: Plugin = {
   autoEnable: {
     envKeys: ["ELIZAOS_CLOUD_API_KEY", "ELIZAOS_CLOUD_ENABLED"],
   },
+
+  // Higher than the default 0 so cloud TTS is preferred over direct local
+  // TTS providers when Eliza Cloud is connected. The handler throws
+  // `CloudTtsUnavailableError` when cloud is **not** connected so callers
+  // that wrap `runtime.useModel` with provider fallthrough can pick the
+  // next handler (local omnivoice, plugin-elevenlabs, etc.).
+  priority: 50,
 
   config: {
     ELIZAOS_CLOUD_API_KEY: env.ELIZAOS_CLOUD_API_KEY ?? null,
@@ -149,6 +157,7 @@ export const elizaOSCloudPlugin: Plugin = {
     [ModelType.RESEARCH]: handleResearch,
     [ModelType.IMAGE]: handleImageGeneration,
     [ModelType.IMAGE_DESCRIPTION]: handleImageDescription,
+    [ModelType.TEXT_TO_SPEECH]: handleTextToSpeech,
   },
 
   tests: [
@@ -347,6 +356,17 @@ export {
   resolveCloudTtsBaseUrl,
   resolveElevenLabsApiKeyForCloudMode,
 } from "./lib/server-cloud-tts";
+export {
+  fetchCloudVoiceCatalog,
+  resetCloudVoiceCatalogCacheForTesting,
+  setCloudVoiceClientFactoryForTesting,
+  type CloudVoiceCatalogEntry,
+  type CloudVoiceClient,
+} from "./cloud-voice-catalog";
+export {
+  CloudTtsUnavailableError,
+  type CloudTextToSpeechParams,
+} from "./models/speech";
 export {
   normalizeCloudSiteUrl,
   resolveCloudApiBaseUrl,

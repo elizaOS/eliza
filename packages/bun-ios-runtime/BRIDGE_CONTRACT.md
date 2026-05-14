@@ -33,6 +33,18 @@ zero on success unless otherwise stated.
 ```c
 const char *eliza_bun_engine_abi_version(void);
 
+const char *eliza_bun_engine_last_error(void);
+
+typedef char *(*eliza_bun_engine_host_call_callback)(
+  const char *method,
+  const char *payload_json,
+  int32_t timeout_ms
+);
+
+int32_t eliza_bun_engine_set_host_callback(
+  eliza_bun_engine_host_call_callback callback
+);
+
 int32_t eliza_bun_engine_start(
   const char *bundle_path,
   const char *argv_json,
@@ -41,6 +53,8 @@ int32_t eliza_bun_engine_start(
 );
 
 int32_t eliza_bun_engine_stop(void);
+
+int32_t eliza_bun_engine_is_running(void);
 
 char *eliza_bun_engine_call(
   const char *method,
@@ -78,9 +92,26 @@ delimited JSON on stdio:
 { "id": 1, "ok": true, "result": {} }
 ```
 
+Bun can call back into native code over the same stdio protocol while a host
+request is in flight. This is how full-Bun local inference reaches the linked
+llama.cpp bridge without opening a WebSocket or TCP port:
+
+```json
+{ "type": "host_call", "id": "host-1", "method": "llama_generate", "payload": {}, "timeoutMs": 120000 }
+{ "type": "host_result", "id": "host-1", "envelope": { "ok": true, "result": {} } }
+```
+
+Required native host-call methods today:
+
+- `llama_hardware_info`
+- `llama_load_model`
+- `llama_generate`
+- `llama_free`
+- `llama_cancel`
+
 Required methods today:
 
-- `status` -> `{ "ready": true, "apiPort": number }`
+- `status` -> `{ "ready": true, "engine": "bun", "transport": "bun-host-ipc", "bridgeVersion": "bun-ios:3" }`
 - `http_request` / `http_fetch` with `{ method, path, headers, body,
   timeoutMs }` -> `{ status, statusText, headers, body }`
 - `send_message` with `{ message, conversationId? }` -> `{ reply, text,
@@ -93,7 +124,9 @@ the Swift, C, and JS bridge layers.
 
 The full engine must support:
 
-- `Bun.serve` or an equivalent Hono/fetch-compatible route kernel.
+- An in-process Hono/fetch-compatible route kernel reachable through
+  `http_request` IPC. iOS full-Bun mode must not rely on `Bun.serve`,
+  WebSockets, or a WebView-visible TCP listener.
 - `fetch`, `Request`, `Response`, `Headers`, streams, and buffered bodies.
 - `Bun.file`, `node:fs`, `node:path`, `node:crypto`, `node:buffer`, and
   package/module resolution needed by `packages/agent/dist-mobile-ios`.
@@ -101,11 +134,10 @@ The full engine must support:
 - The existing llama bridge surface for local inference.
 - Enough Node stream/stdin/stdout compatibility for `ios-bridge --stdio`.
 
-The current `ios-bridge` implementation starts the existing API server on an
-ephemeral loopback port inside the Bun process and proxies `http_request` to it.
-That internal port is not exposed to the WebView. The next cleanup is to expose
-the same backend as a direct fetch/Hono-style route kernel so the stdio bridge
-can dispatch routes without even internal loopback.
+The current `ios-bridge` dispatches high-traffic foreground routes in process,
+buffers legacy local-inference HTTP handlers when needed, and serves native
+llama status/generation through Bun host-call IPC. It must not start an
+internal HTTP server for iOS full-Bun local mode.
 
 ## Validation gates
 

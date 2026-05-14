@@ -61,9 +61,9 @@ const PLUGIN_SUBMODULES = [
     packageName: "@elizaos/plugin-ollama",
   },
   {
-    submodulePath: "plugins/plugin-local-ai",
-    workspaceEntry: "plugins/plugin-local-ai",
-    packageName: "@elizaos/plugin-local-ai",
+    submodulePath: "plugins/plugin-local-inference",
+    workspaceEntry: "plugins/plugin-local-inference",
+    packageName: "@elizaos/plugin-local-inference",
   },
 ];
 

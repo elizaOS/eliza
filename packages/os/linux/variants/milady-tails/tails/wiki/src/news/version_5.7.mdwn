@@ -1,0 +1,95 @@
+[[!meta title="Tails 5.7 is out"]]
+[[!meta date="Tue, 22 Nov 2022 12:34:56 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+
+<h1 id="features">New features</h1>
+
+## Metadata Cleaner
+
+We added *Metadata Cleaner*, a new tool to clean metadata from your files.
+
+[[!img metadata_cleaner.png link="no" alt=""]]
+
+When we switched to *MAT* 0.8.0 in Tails 4.0, *MAT* lost its graphical
+interface and was only accessible from the contextual menu of the *Files*
+browser. It became especially hard for new users of Tails to learn how to clean
+their files. *Metadata Cleaner* fixes this by providing a simple and easily
+discoverable graphic interface to remove metadata.
+
+*Metadata Cleaner* works on the same file formats and is as secure as *MAT*
+because *Metadata Cleaner* also uses *MAT* in the background to do the actual
+cleaning.
+
+<h1 id="changes">Changes and updates</h1>
+
+- Update *Tor Browser* to [11.5.8](https://blog.torproject.org/new-release-tor-browser-1158).
+
+- Update *tor* to 0.4.7.11.
+
+- Remove `pdf-redact-tools`, which was broken. ([[!tails_ticket 19250]])
+
+<h1 id="fixes">Fixed problems</h1>
+
+We fixed 2 small usability issues in *Tor Connection*:
+
+- Explain better how to use the *Unsafe Browser* to sign in to a local network. ([[!tails_ticket 19168]])
+
+- Remove the *(easier)* and *(safer)* comments in the first screen. ([[!tails_ticket 19166]])
+
+For more details, read our [[!tails_gitweb debian/changelog desc="changelog"]].
+
+<h1 id="issues">Known issues</h1>
+
+## Progress bar of Tor Connection getting stuck around 50%
+
+When using a custom Tor `obfs4` bridge, the progress bar of *Tor Connection*
+sometimes gets stuck halfway through and becomes extremely slow. ([[!tails_ticket 19173]])
+
+To fix this, you can either:
+
+- Close and reopen *Tor Connection* to speed up the initial connection.
+
+- Try a different `obfs4` bridge.
+
+  We believe that this issue should not happen with an up-to-date bridge
+  running `obfs4proxy` version 0.0.12 or later.
+
+See the list of [[long-standing issues|support/known_issues]].
+
+<h1 id="get">Get Tails 5.7</h1>
+
+## To upgrade your Tails USB stick and keep your Persistent Storage
+
+- Automatic upgrades are available from Tails 5.0 or later to 5.7.
+
+  You can [[reduce the size of the download|doc/upgrade#reduce]] of future
+  automatic upgrades by doing a manual upgrade to the latest version.
+
+- If you cannot do an automatic upgrade or if Tails fails to start after an
+  automatic upgrade, please try to do a [[manual upgrade|doc/upgrade/#manual]].
+
+## To install Tails on a new USB stick
+
+Follow our installation instructions:
+
+  - [[Install from Windows|install/windows]]
+  - [[Install from macOS|install/mac]]
+  - [[Install from Linux|install/linux]]
+  - [[Install from Debian or Ubuntu using the command line and GnuPG|install/expert]]
+
+<div class="caution"><p>The Persistent Storage on the USB stick will be lost if
+you install instead of upgrading.</p></div>
+
+## To download only
+
+If you don't need installation or upgrade instructions, you can download
+Tails 5.7 directly:
+
+  - [[For USB sticks (USB image)|install/download]]
+  - [[For DVDs and virtual machines (ISO image)|install/download-iso]]
+
+<h1 id="next">What's coming up?</h1>
+
+Tails 5.8 is [[scheduled|contribute/calendar]] for December 20.
+

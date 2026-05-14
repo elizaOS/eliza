@@ -287,7 +287,27 @@ after MaskGIT and DAC decode complete. For low-latency barge-in, lower the
 native streaming chunk threshold through `ELIZA_TTS_CHUNK_THRESHOLD_SEC` and
 `ELIZA_TTS_CHUNK_DURATION_SEC`, then measure audio quality before changing
 release defaults. The smoke harness exposes the same knobs as
-`--chunk-threshold-sec` and `--chunk-duration-sec`.
+`--chunk-threshold-sec` and `--chunk-duration-sec`, plus
+`--warmup-runs` for measuring a warmed TTS context before the reported
+run. Its JSON report includes `firstAudioMs`, first/largest chunk
+durations, RTF, and `codecBackendPolicy`. On `darwin-arm64-metal-fused`,
+`codecBackendPolicy.status === "intentional-cpu-fallback"` means the
+OmniVoice LM / MaskGIT path stayed on Metal while the codec scheduler was
+intentionally pinned to CPU to bypass the known merged-ggml DAC decode
+stall; gates should classify that as a pass-with-fallback, not as a
+silent downgrade or hang.
+
+Example 9B latency probe:
+
+```bash
+bun packages/app-core/scripts/omnivoice-fuse/tts-stream-ffi-smoke.ts \
+  --bundle ~/.eliza/local-inference/models/eliza-1-9b.bundle \
+  --cancel-mode none \
+  --maskgit-steps 8 \
+  --chunk-threshold-sec 0.25 \
+  --chunk-duration-sec 0.25 \
+  --warmup-runs 1
+```
 
 All errors flow through a `char ** out_error` parameter that the
 library populates with a heap-allocated NUL-terminated message.

@@ -16,7 +16,7 @@ const GRID_SIZE = 60;
 const GRID_DIVISIONS = 60;
 const GRID_Y = -0.75;
 
-/** Screen panel definitions — varied sizes and positions for visual depth. */
+/** Screen panel definitions — distant ambient panels for visual depth. */
 const SCREEN_DEFS: Array<{
   width: number;
   height: number;
@@ -25,24 +25,10 @@ const SCREEN_DEFS: Array<{
   z: number;
   rotY?: number;
 }> = [
-  // Back wall — large screens
-  { width: 1.8, height: 1.2, x: -3.2, y: 1.8, z: -5.5 },
-  { width: 2.0, height: 1.4, x: 0.5, y: 2.2, z: -6.0 },
-  { width: 1.6, height: 1.0, x: 3.8, y: 1.5, z: -5.2 },
-  // Upper floating
-  { width: 1.2, height: 0.8, x: -1.5, y: 3.0, z: -4.5, rotY: 0.15 },
-  { width: 1.0, height: 0.7, x: 2.2, y: 3.2, z: -4.0, rotY: -0.2 },
-  // Side screens — angled inward
-  { width: 1.4, height: 0.9, x: -5.0, y: 1.2, z: -2.5, rotY: 0.7 },
-  { width: 1.2, height: 0.8, x: -4.5, y: 2.4, z: -1.0, rotY: 0.8 },
-  { width: 1.4, height: 0.9, x: 5.0, y: 1.4, z: -2.5, rotY: -0.7 },
-  { width: 1.0, height: 0.7, x: 4.8, y: 2.6, z: -0.8, rotY: -0.85 },
-  // Lower / near screens
-  { width: 0.9, height: 0.6, x: -2.8, y: 0.4, z: -3.8, rotY: 0.3 },
-  { width: 0.8, height: 0.55, x: 3.0, y: 0.5, z: -3.5, rotY: -0.25 },
-  // Far scattered
-  { width: 1.6, height: 1.1, x: -1.0, y: 1.0, z: -7.5 },
-  { width: 1.3, height: 0.9, x: 2.5, y: 1.8, z: -8.0, rotY: -0.1 },
+  { width: 1.2, height: 0.75, x: -3.1, y: 2.2, z: -6.4 },
+  { width: 1.25, height: 0.8, x: 2.9, y: 2.0, z: -6.8 },
+  { width: 0.9, height: 0.55, x: -1.4, y: 3.0, z: -5.8, rotY: 0.12 },
+  { width: 0.85, height: 0.52, x: 1.4, y: 3.1, z: -6.2, rotY: -0.12 },
 ];
 
 const THEME_LIGHT = {
@@ -64,16 +50,16 @@ const THEME_LIGHT = {
 const THEME_DARK = {
   fogColor: 0x08060e,
   fogDensity: 0.035,
-  gridColor: new THREE.Color(0.18, 0.06, 0.3),
-  gridCenterColor: new THREE.Color(0.3, 0.1, 0.55),
-  gridOpacity: 0.45,
-  gridCenterOpacity: 0.55,
-  screenEmissive: new THREE.Color(0.1, 0.95, 0.4),
-  screenBaseColor: new THREE.Color(0.04, 0.06, 0.1),
-  screenBorderColor: new THREE.Color(0.25, 0.8, 0.35),
-  screenOpacity: 0.3,
-  screenEmissiveIntensity: 0.6,
-  scanBaseOpacity: 0.35,
+  gridColor: new THREE.Color(0.11, 0.08, 0.2),
+  gridCenterColor: new THREE.Color(0.28, 0.19, 0.42),
+  gridOpacity: 0.26,
+  gridCenterOpacity: 0.34,
+  screenEmissive: new THREE.Color(0.72, 0.52, 0.22),
+  screenBaseColor: new THREE.Color(0.035, 0.03, 0.05),
+  screenBorderColor: new THREE.Color(0.72, 0.54, 0.24),
+  screenOpacity: 0.08,
+  screenEmissiveIntensity: 0.16,
+  scanBaseOpacity: 0.08,
   bgColor: 0x08060e,
 };
 
@@ -176,7 +162,7 @@ export class MathEnvironment {
       const edgeMat = new THREE.LineBasicMaterial({
         color: config.screenBorderColor,
         transparent: true,
-        opacity: 0.5,
+        opacity: 0.18,
         depthWrite: false,
       });
       this.borderMaterials.push(edgeMat);
@@ -192,7 +178,7 @@ export class MathEnvironment {
       const scanMat = new THREE.MeshBasicMaterial({
         color: config.screenEmissive,
         transparent: true,
-        opacity: 0.2,
+        opacity: 0.08,
         depthWrite: false,
         side: THREE.DoubleSide,
       });
@@ -225,7 +211,7 @@ export class MathEnvironment {
       // Emissive pulse — subtle in light, prominent neon glow in dark
       const mat = this.screenMaterials[i];
       const baseEmissive = config.screenEmissiveIntensity;
-      const pulseRange = this.theme === "dark" ? 0.25 : 0.1;
+      const pulseRange = this.theme === "dark" ? 0.04 : 0.1;
       mat.emissiveIntensity =
         baseEmissive + Math.sin(this.elapsedTime * 0.6 + i * 0.8) * pulseRange;
 

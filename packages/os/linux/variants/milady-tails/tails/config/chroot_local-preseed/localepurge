@@ -1,0 +1,7 @@
+localepurge	localepurge/dontbothernew	boolean	false
+localepurge	localepurge/mandelete		boolean	true
+localepurge	localepurge/showfreedspace	boolean	true
+localepurge	localepurge/verbose		boolean	false
+localepurge	localepurge/quickndirtycalc	boolean	true
+localepurge	localepurge/use-dpkg-feature	boolean false
+localepurge	localepurge/none_selected	boolean false

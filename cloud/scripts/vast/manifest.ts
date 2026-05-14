@@ -19,9 +19,11 @@ export interface VastManifestSearchParams {
 
 export interface VastServeManifest {
   label?: string;
+  runtime?: "llama" | "vllm";
   model_size?: string;
   model?: string;
   model_repo?: string;
+  model_file?: string;
   model_alias?: string;
   served_model_name?: string;
   registry_key?: string;

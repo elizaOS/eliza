@@ -1,0 +1,29 @@
+## Connecting to the Internet and Tor
+
+- [[Connecting to a local network|anonymous_internet/networkmanager]]
+
+  * [[Troubleshooting Wi-Fi not working|anonymous_internet/no-wifi]]
+
+  * [[Signing in to a network using a captive portal|anonymous_internet/unsafe_browser]]
+
+- [[Connecting to the Tor network|anonymous_internet/tor]]
+
+  * [[Troubleshooting connecting to Tor|anonymous_internet/tor/troubleshoot]]
+
+  * [[Why does Tails use Tor?|anonymous_internet/tor/why]]
+
+  * [[Why is Tor slow?|anonymous_internet/tor/slow]]
+
+  * [[Managing the circuits of Tor|anonymous_internet/tor/circuits]]
+
+## Internet applications
+
+- [[Browsing the web with *Tor Browser*|anonymous_internet/tor_browser]]
+
+- [[Sharing files, websites, and chat rooms using *OnionShare*|anonymous_internet/onionshare]]
+
+- [[Emailing and reading news with *Thunderbird*|anonymous_internet/thunderbird]]
+
+- [[Exchanging bitcoins using *Electrum*|anonymous_internet/electrum]]
+
+- [[Chatting with *Pidgin* and OTR|anonymous_internet/pidgin]]

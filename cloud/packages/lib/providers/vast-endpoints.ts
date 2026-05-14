@@ -146,11 +146,13 @@ export function resolveVastFallbackModel(
   const fallback =
     typeof rawMap[model] === "string"
       ? (rawMap[model] as string)
-      : model === "vast/eliza-1-27b"
-        ? "vast/eliza-1-9b"
-        : model === "vast/eliza-1-9b"
-          ? "vast/eliza-1-2b"
-          : null;
+      : model === "vast/eliza-1-27b-256k"
+        ? "vast/eliza-1-27b"
+        : model === "vast/eliza-1-27b"
+          ? "vast/eliza-1-9b"
+          : model === "vast/eliza-1-9b"
+            ? "vast/eliza-1-2b"
+            : null;
 
   if (!fallback || fallback === model || !isVastNativeModel(fallback)) return null;
   return hasDedicatedVastEndpointConfigured(fallback, reader) ? fallback : null;

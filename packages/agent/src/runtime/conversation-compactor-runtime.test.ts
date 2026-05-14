@@ -1,9 +1,12 @@
+import { getMessageHistoryCompactionHook, type Memory } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { CompactorModelCall } from "./conversation-compactor.types.ts";
 import {
   applyConversationCompaction,
   applyConversationMessageCompaction,
+  applyMessageHistoryCompactionToState,
   getConversationCompactionLedger,
+  installMessageHistoryCompactionHook,
   parsePromptToTranscript,
   selectStrategyFromEnv,
   serializeTranscriptToPrompt,
@@ -78,6 +81,54 @@ function fakeNaiveCallModel(label = "summary"): CompactorModelCall {
   return async ({ messages }) => {
     const total = messages.map((m) => m.content).join(" ");
     return `${label}(messages=${messages.length},chars=${total.length})`;
+  };
+}
+
+const ROOM_ID = "11111111-1111-4111-8111-111111111111";
+const USER_ID = "22222222-2222-4222-8222-222222222222";
+const AGENT_ID = "33333333-3333-4333-8333-333333333333";
+
+function makeMemory(index: number, text?: string, entityId = USER_ID): Memory {
+  return {
+    id: `44444444-4444-4444-8444-${String(index).padStart(12, "0")}`,
+    entityId,
+    agentId: AGENT_ID,
+    roomId: ROOM_ID,
+    createdAt: 1_700_000_000_000 + index * 1000,
+    content: {
+      text: text ?? `message ${index} ${"x".repeat(120)}`,
+    },
+    metadata: {
+      entityName: entityId === AGENT_ID ? "Eliza" : "User",
+    },
+  } as Memory;
+}
+
+function makeRecentState(memories: Memory[], text = "old provider text") {
+  return {
+    values: {
+      recentMessages: text,
+      recentPosts: text,
+    },
+    data: {
+      providers: {
+        RECENT_MESSAGES: {
+          providerName: "RECENT_MESSAGES",
+          text,
+          values: {
+            recentMessages: text,
+            recentPosts: text,
+          },
+          data: {
+            recentMessages: memories,
+            recentInteractions: [],
+            actionResults: [],
+          },
+        },
+      },
+      providerOrder: ["RECENT_MESSAGES"],
+    },
+    text,
   };
 }
 
@@ -458,6 +509,313 @@ describe("applyConversationMessageCompaction", () => {
     expect(result.didCompact).toBe(false);
     expect(result.messages).toBe(messages);
     expect(result.skipReason).toBe("noncompactable-over-budget");
+  });
+
+  it("preserves leading developer messages and tool-call/tool-result pairs across the tail boundary", async () => {
+    const messages = [
+      { role: "system" as const, content: "system prompt" },
+      { role: "developer" as const, content: "developer instruction" },
+      ...Array.from({ length: 8 }, (_, i) => ({
+        role: (i % 2 === 0 ? "user" : "assistant") as "user" | "assistant",
+        content: `old turn ${i} ${"x".repeat(80)}`,
+      })),
+      {
+        role: "assistant" as const,
+        content: "I will look that up.",
+        toolCalls: [
+          {
+            id: "call-1",
+            name: "lookup_order",
+            arguments: { orderId: "ORDER-77" },
+          },
+        ],
+      },
+      {
+        role: "tool" as const,
+        toolCallId: "call-1",
+        toolName: "lookup_order",
+        content: '{"status":"shipped"}',
+      },
+    ];
+
+    const result = await applyConversationMessageCompaction({
+      messages,
+      strategy: "naive-summary",
+      currentTokens: 5000,
+      targetTokens: 700,
+      preserveTailMessages: 1,
+      callModel: async () => "summary with old facts",
+    });
+
+    expect(result.didCompact).toBe(true);
+    expect(result.messages[0]).toBe(messages[0]);
+    expect(result.messages[1]).toBe(messages[1]);
+    expect(result.messages.at(-2)).toBe(messages.at(-2));
+    expect(result.messages.at(-1)).toBe(messages.at(-1));
+  });
+
+  it("preserves the recent tail verbatim after replacing older turns", async () => {
+    const tail = [
+      { role: "user" as const, content: "tail user fact BLUE-77" },
+      { role: "assistant" as const, content: "tail assistant ack" },
+    ];
+    const messages = [
+      { role: "system" as const, content: "system prompt" },
+      ...Array.from({ length: 12 }, (_, i) => ({
+        role: (i % 2 === 0 ? "user" : "assistant") as "user" | "assistant",
+        content: `old turn ${i} ${"x".repeat(80)}`,
+      })),
+      ...tail,
+    ];
+
+    const result = await applyConversationMessageCompaction({
+      messages,
+      strategy: "naive-summary",
+      currentTokens: 5000,
+      targetTokens: 700,
+      preserveTailMessages: 2,
+      callModel: async () => "summary of older turns",
+    });
+
+    expect(result.didCompact).toBe(true);
+    expect(result.messages.slice(-2)).toEqual(tail);
+    expect(
+      result.messages.some((message) => message.content.includes("old turn 0")),
+    ).toBe(false);
+  });
+});
+
+describe("message-history compaction hook", () => {
+  const originalCompactor = process.env.ELIZA_CONVERSATION_COMPACTOR;
+  const originalThreshold =
+    process.env.ELIZA_CONVERSATION_MESSAGE_COMPACTION_THRESHOLD_TOKENS;
+  const originalTarget =
+    process.env.ELIZA_CONVERSATION_MESSAGE_COMPACTION_TARGET_TOKENS;
+  const originalTail =
+    process.env.ELIZA_CONVERSATION_MESSAGE_COMPACTION_TAIL_MESSAGES;
+
+  beforeEach(() => {
+    process.env.ELIZA_CONVERSATION_COMPACTOR = "naive-summary";
+    process.env.ELIZA_CONVERSATION_MESSAGE_COMPACTION_THRESHOLD_TOKENS = "120";
+    process.env.ELIZA_CONVERSATION_MESSAGE_COMPACTION_TARGET_TOKENS = "900";
+    process.env.ELIZA_CONVERSATION_MESSAGE_COMPACTION_TAIL_MESSAGES = "4";
+  });
+
+  afterEach(() => {
+    if (originalCompactor === undefined) {
+      delete process.env.ELIZA_CONVERSATION_COMPACTOR;
+    } else {
+      process.env.ELIZA_CONVERSATION_COMPACTOR = originalCompactor;
+    }
+    if (originalThreshold === undefined) {
+      delete process.env.ELIZA_CONVERSATION_MESSAGE_COMPACTION_THRESHOLD_TOKENS;
+    } else {
+      process.env.ELIZA_CONVERSATION_MESSAGE_COMPACTION_THRESHOLD_TOKENS =
+        originalThreshold;
+    }
+    if (originalTarget === undefined) {
+      delete process.env.ELIZA_CONVERSATION_MESSAGE_COMPACTION_TARGET_TOKENS;
+    } else {
+      process.env.ELIZA_CONVERSATION_MESSAGE_COMPACTION_TARGET_TOKENS =
+        originalTarget;
+    }
+    if (originalTail === undefined) {
+      delete process.env.ELIZA_CONVERSATION_MESSAGE_COMPACTION_TAIL_MESSAGES;
+    } else {
+      process.env.ELIZA_CONVERSATION_MESSAGE_COMPACTION_TAIL_MESSAGES =
+        originalTail;
+    }
+  });
+
+  it("no-ops below the configured threshold without calling the summarizer", async () => {
+    process.env.ELIZA_CONVERSATION_MESSAGE_COMPACTION_THRESHOLD_TOKENS =
+      "50000";
+    let calls = 0;
+    const memories = Array.from({ length: 8 }, (_, i) =>
+      makeMemory(i, "short"),
+    );
+    const state = makeRecentState(memories);
+    const runtime = {
+      agentId: AGENT_ID,
+      character: { name: "Eliza" },
+      logger: { info: () => {}, warn: () => {} },
+    };
+
+    const result = await applyMessageHistoryCompactionToState({
+      runtime: runtime as never,
+      message: memories.at(-1) as Memory,
+      state: state as never,
+      callModel: async () => {
+        calls++;
+        return "should not run";
+      },
+    });
+
+    expect(calls).toBe(0);
+    expect(result.state).toBe(state);
+    expect(result.telemetry).toMatchObject({
+      didCompact: false,
+      skipReason: "below-threshold",
+      thresholdTokens: 50000,
+      originalMessageCount: memories.length,
+    });
+  });
+
+  it("rewrites RECENT_MESSAGES state before context rendering would see it", async () => {
+    const memories = Array.from({ length: 18 }, (_, i) =>
+      makeMemory(
+        i,
+        i === 0
+          ? `old secret parcel code LIME-4421 ${"x".repeat(200)}`
+          : `history turn ${i} ${"x".repeat(200)}`,
+        i % 2 === 0 ? USER_ID : AGENT_ID,
+      ),
+    );
+    const originalProviderText =
+      "# Conversation Messages\nold secret parcel code LIME-4421";
+    const state = makeRecentState(memories, originalProviderText);
+    const runtime = {
+      agentId: AGENT_ID,
+      character: { name: "Eliza" },
+      logger: { info: () => {}, warn: () => {} },
+      getRoom: async () => null,
+      updateRoom: async () => {},
+    };
+
+    const result = await applyMessageHistoryCompactionToState({
+      runtime: runtime as never,
+      message: memories.at(-1) as Memory,
+      state: state as never,
+      callModel: async () => "summary preserved parcel code LIME-4421",
+    });
+
+    const provider = (result.state.data.providers as Record<string, unknown>)
+      .RECENT_MESSAGES as { text: string; data: { recentMessages: Memory[] } };
+    expect(result.telemetry?.didCompact).toBe(true);
+    expect(provider.text).toContain("summary preserved parcel code LIME-4421");
+    expect(provider.text).not.toContain("old secret parcel code");
+    expect(provider.data.recentMessages.length).toBeLessThan(memories.length);
+    expect(result.state.text).toContain("summary preserved parcel code");
+  });
+
+  it("exposes message-count and token telemetry on successful compaction", async () => {
+    const memories = Array.from({ length: 16 }, (_, i) =>
+      makeMemory(
+        i,
+        `history ${i} ${"x".repeat(220)}`,
+        i % 2 ? AGENT_ID : USER_ID,
+      ),
+    );
+    const runtime = {
+      agentId: AGENT_ID,
+      character: { name: "Eliza" },
+      logger: { info: () => {}, warn: () => {} },
+      getRoom: async () => null,
+      updateRoom: async () => {},
+    };
+    const result = await applyMessageHistoryCompactionToState({
+      runtime: runtime as never,
+      message: memories.at(-1) as Memory,
+      state: makeRecentState(memories) as never,
+      callModel: async () => "concise summary",
+    });
+
+    expect(result.telemetry).toMatchObject({
+      source: "message-history",
+      didCompact: true,
+      strategy: "naive-summary",
+      thresholdTokens: 120,
+      targetTokens: 900,
+      originalMessageCount: memories.length,
+      preserveTailMessages: 4,
+      conversationKey: ROOM_ID,
+    });
+    expect(result.telemetry?.originalTokens).toBeGreaterThan(
+      result.telemetry?.compactedTokens ?? 0,
+    );
+    expect(result.telemetry?.compactedMessageCount).toBeLessThan(
+      result.telemetry?.originalMessageCount ?? 0,
+    );
+  });
+
+  it("persists the compaction point through the summarized region without pruning the preserved tail", async () => {
+    const memories = Array.from({ length: 16 }, (_, i) =>
+      makeMemory(
+        i,
+        `history ${i} ${"x".repeat(220)}`,
+        i % 2 ? AGENT_ID : USER_ID,
+      ),
+    );
+    let updatedRoom: { metadata?: Record<string, unknown> } | null = null;
+    const runtime = {
+      agentId: AGENT_ID,
+      character: { name: "Eliza" },
+      logger: { info: () => {}, warn: () => {} },
+      getRoom: async () => ({
+        id: ROOM_ID,
+        source: "test",
+        type: "DM",
+        metadata: {},
+      }),
+      updateRoom: async (room: { metadata?: Record<string, unknown> }) => {
+        updatedRoom = room;
+      },
+    };
+
+    const result = await applyMessageHistoryCompactionToState({
+      runtime: runtime as never,
+      message: memories.at(-1) as Memory,
+      state: makeRecentState(memories) as never,
+      callModel: async () => "summary of older turns",
+    });
+
+    expect(result.telemetry?.didCompact).toBe(true);
+    expect(updatedRoom?.metadata?.lastCompactionAt).toBe(
+      (memories[11]?.createdAt ?? 0) + 1,
+    );
+    expect(updatedRoom?.metadata?.lastCompactionAt).toBeLessThan(
+      memories[12]?.createdAt ?? 0,
+    );
+  });
+
+  it("installs a runtime hook that uses the original useModel and does not recurse through the wrapped one", async () => {
+    const memories = Array.from({ length: 16 }, (_, i) =>
+      makeMemory(
+        i,
+        `history ${i} ${"x".repeat(220)}`,
+        i % 2 ? AGENT_ID : USER_ID,
+      ),
+    );
+    let originalCalls = 0;
+    const originalUseModel = async () => {
+      originalCalls++;
+      return "summary from original model";
+    };
+    const runtime = {
+      agentId: AGENT_ID,
+      character: { name: "Eliza" },
+      logger: { info: () => {}, warn: () => {} },
+      getRoom: async () => null,
+      updateRoom: async () => {},
+      useModel: async () => {
+        throw new Error("recursive wrapped useModel should not run");
+      },
+    };
+    installMessageHistoryCompactionHook(runtime as never, {
+      originalUseModel: originalUseModel as never,
+    });
+    const hook = getMessageHistoryCompactionHook(runtime as never);
+    if (!hook) throw new Error("hook was not installed");
+
+    const result = await hook({
+      runtime: runtime as never,
+      message: memories.at(-1) as Memory,
+      state: makeRecentState(memories) as never,
+      source: "compose-response-state",
+    });
+
+    expect(originalCalls).toBeGreaterThan(0);
+    expect(result?.telemetry?.didCompact).toBe(true);
   });
 });
 

@@ -9,7 +9,15 @@
     "types": ["node", "bun-types"],
     "noEmit": true,
     "paths": {
-      "@/*": ["../../packages/*"]
+      "@/lib/*": ["../../packages/lib/*"],
+      "@/db/*": ["../../packages/db/*"],
+      "@/types/*": ["../../packages/types/*"],
+      "@elizaos/billing": ["../../packages/billing/src/index.ts"],
+      "@elizaos/core": ["../../../packages/core/src/index.node.ts"],
+      "@elizaos/core/*": ["../../../packages/core/src/*"],
+      "drizzle-orm": ["../../node_modules/drizzle-orm"],
+      "drizzle-orm/*": ["../../node_modules/drizzle-orm/*"],
+      "@/*": ["../../*"]
     }
   },
   "include": ["src/**/*", "../../packages/types/**/*.d.ts"],

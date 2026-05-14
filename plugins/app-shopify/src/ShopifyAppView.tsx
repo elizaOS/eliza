@@ -11,8 +11,11 @@ import {
 import {
   BarChart3,
   ChevronLeft,
+  Globe2,
+  KeyRound,
   Package,
   RefreshCw,
+  ShieldCheck,
   ShoppingCart,
   Store,
   Users,
@@ -28,44 +31,45 @@ import { StoreOverviewCard } from "./StoreOverviewCard";
 import { useShopifyDashboard } from "./useShopifyDashboard";
 
 function ShopifySetupCard() {
+  const setupItems = [
+    { label: "Domain", value: "STORE_DOMAIN", icon: Globe2, tone: "text-info" },
+    { label: "Token", value: "ACCESS_TOKEN", icon: KeyRound, tone: "text-warning" },
+    { label: "Scopes", value: "read_*", icon: ShieldCheck, tone: "text-ok" },
+  ] as const;
+
   return (
-    <div className="mx-auto w-full max-w-lg">
-      <div className="rounded-2xl border border-border/30 bg-card/40 px-6 py-8">
+    <div className="mx-auto w-full max-w-2xl">
+      <div className="rounded-2xl border border-border/30 bg-card/40 px-5 py-6">
         <div className="flex flex-col items-center gap-4 text-center">
-          <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-border/30 bg-bg-accent">
-            <Store className="h-7 w-7 text-muted-strong" />
+          <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-ok/25 bg-ok/12">
+            <Store className="h-7 w-7 text-ok" />
           </div>
-          <div>
-            <div className="text-xl font-semibold text-txt">
-              Connect your Shopify store
-            </div>
+          <div className="text-lg font-semibold text-txt">
+            Connect Shopify
           </div>
 
-          <div className="w-full rounded-xl border border-border/24 bg-bg px-4 py-4 text-left">
-            <div className="space-y-3">
-              <div>
-                <div className="text-2xs font-semibold uppercase tracking-[0.12em] text-muted/70">
-                  Store domain
+          <div className="grid w-full gap-2 sm:grid-cols-3">
+            {setupItems.map((item) => {
+              const Icon = item.icon;
+              return (
+                <div
+                  key={item.label}
+                  className="rounded-xl border border-border/24 bg-bg/50 px-3 py-3"
+                >
+                  <Icon className={`mx-auto h-4 w-4 ${item.tone}`} />
+                  <div className="mt-2 text-xs font-semibold text-txt">
+                    {item.label}
+                  </div>
+                  <div className="mt-1 font-mono text-2xs text-muted">
+                    {item.value}
+                  </div>
                 </div>
-                <div className="mt-1 break-all font-mono text-xs text-txt">
-                  SHOPIFY_STORE_DOMAIN=your-store.myshopify.com
-                </div>
-              </div>
-              <div className="border-t border-border/20" />
-              <div>
-                <div className="text-2xs font-semibold uppercase tracking-[0.12em] text-muted/70">
-                  Access token
-                </div>
-                <div className="mt-1 break-all font-mono text-xs text-txt">
-                  SHOPIFY_ACCESS_TOKEN=shpat_xxxxxxxxxxxxxxxx
-                </div>
-              </div>
-            </div>
+              );
+            })}
           </div>
 
           <div className="text-center text-xs text-muted">
-            <p>Restart after setting these env vars.</p>
-            <div className="mt-2 flex flex-wrap justify-center gap-1">
+            <div className="flex flex-wrap justify-center gap-1">
               {[
                 "read_products",
                 "read_orders",

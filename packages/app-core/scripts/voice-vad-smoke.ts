@@ -21,19 +21,19 @@
  */
 
 import process from "node:process";
-import { makeSpeechWithSilenceFixture } from "../src/services/local-inference/voice/__test-helpers__/synthetic-speech";
-import type { VadEvent } from "../src/services/local-inference/voice/types";
+import { makeSpeechWithSilenceFixture } from "../../../plugins/plugin-local-inference/src/services/voice/__test-helpers__/synthetic-speech";
+import type { VadEvent } from "../../../plugins/plugin-local-inference/src/services/voice/types";
 import {
   createSileroVadDetector,
   resolveSileroVadPath,
   SileroVad,
   VadUnavailableError,
-} from "../src/services/local-inference/voice/vad";
+} from "../../../plugins/plugin-local-inference/src/services/voice/vad";
 import {
   loadBundledWakeWordModel,
   resolveWakeWordModel,
   WakeWordUnavailableError,
-} from "../src/services/local-inference/voice/wake-word";
+} from "../../../plugins/plugin-local-inference/src/services/voice/wake-word";
 
 const SR = 16_000;
 const WINDOW = 512;

@@ -1,8 +1,9 @@
-import { Button, PagePanel } from "@elizaos/ui";
 import { useCallback, useEffect, useState } from "react";
 import { client, type IMessageApiStatus } from "../../api";
 import { useApp } from "../../state";
 import { openExternalUrl } from "../../utils";
+import { PagePanel } from "../composites/page-panel";
+import { Button } from "../ui/button";
 
 export function IMessageStatusPanel() {
   const { t } = useApp();

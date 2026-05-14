@@ -52,9 +52,7 @@ export function resolveCloudPublicUrl(): string {
 export function resolveCloudApiBaseUrl(): string {
   const env = getCloudAwareEnv();
   const explicit =
-    env.ELIZAOS_CLOUD_BASE_URL ||
-    env.ELIZA_CLOUD_API_BASE_URL ||
-    env.NEXT_PUBLIC_API_URL;
+    env.ELIZAOS_CLOUD_BASE_URL || env.ELIZA_CLOUD_API_BASE_URL || env.NEXT_PUBLIC_API_URL;
   if (explicit) {
     return normalizeBaseUrl(explicit);
   }
@@ -124,8 +122,7 @@ export async function prepareManagedElizaBaseEnvironment(
     agentSandboxId: params.agentSandboxId,
   });
   const apiToken =
-    existingEnv.ELIZA_API_TOKEN?.trim() ||
-    `agent_${crypto.randomUUID().replace(/-/g, "")}`;
+    existingEnv.ELIZA_API_TOKEN?.trim() || `agent_${crypto.randomUUID().replace(/-/g, "")}`;
 
   return {
     apiToken,
@@ -134,9 +131,7 @@ export async function prepareManagedElizaBaseEnvironment(
       ...existingEnv,
       ELIZA_API_TOKEN: apiToken,
       ELIZA_ALLOW_WS_QUERY_TOKEN: "1",
-      ELIZA_ALLOWED_ORIGINS: mergeManagedAllowedOrigins(
-        existingEnv.ELIZA_ALLOWED_ORIGINS,
-      ),
+      ELIZA_ALLOWED_ORIGINS: mergeManagedAllowedOrigins(existingEnv.ELIZA_ALLOWED_ORIGINS),
       // Public web UI off by default. Operators can re-enable per-agent with
       // ELIZA_UI_ENABLE=true via existingEnv when needed for ops/debug.
       ELIZA_UI_ENABLE: existingEnv.ELIZA_UI_ENABLE ?? "false",

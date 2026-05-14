@@ -48,7 +48,7 @@ bun install        # or npm install
 ### 2. Start Convex Dev Server
 
 ```bash
-npx convex dev
+convex dev
 ```
 
 On first run this will:
@@ -62,16 +62,16 @@ On first run this will:
 Set your LLM API key as a Convex environment variable:
 
 ```bash
-npx convex env set OPENAI_API_KEY sk-your-key-here
+convex env set OPENAI_API_KEY sk-your-key-here
 ```
 
 Or for other providers:
 
 ```bash
-npx convex env set ANTHROPIC_API_KEY your-key
-npx convex env set XAI_API_KEY your-key
-npx convex env set GOOGLE_GENERATIVE_AI_API_KEY your-key
-npx convex env set GROQ_API_KEY your-key
+convex env set ANTHROPIC_API_KEY your-key
+convex env set XAI_API_KEY your-key
+convex env set GOOGLE_GENERATIVE_AI_API_KEY your-key
+convex env set GROQ_API_KEY your-key
 ```
 
 ### 4. Test with curl
@@ -176,18 +176,18 @@ Retrieve all messages in a conversation (ordered by creation time).
 | `GOOGLE_GENERATIVE_AI_API_KEY` | One of   | Google GenAI (Gemini) API key   |
 | `GROQ_API_KEY`                 | One of   | Groq API key                    |
 
-Set via `npx convex env set KEY value`.
+Set via `convex env set KEY value`.
 
 ## Deploying to Production
 
 ```bash
-npx convex deploy
+convex deploy
 ```
 
 This pushes your functions to Convex's production environment. Set environment variables on the production deployment:
 
 ```bash
-npx convex env set OPENAI_API_KEY sk-your-prod-key --prod
+convex env set OPENAI_API_KEY sk-your-prod-key --prod
 ```
 
 ## Key Concepts

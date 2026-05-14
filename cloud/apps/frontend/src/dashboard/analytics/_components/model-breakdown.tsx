@@ -19,8 +19,8 @@ interface ModelBreakdownProps {
 
 const numberFormatter = new Intl.NumberFormat();
 
-const formatCurrency = (credits: number) => {
-  return `${(credits / 100).toFixed(2)}`;
+const formatCurrency = (amount: number) => {
+  return `${amount.toFixed(2)}`;
 };
 
 const formatTokens = (tokens: number) => {

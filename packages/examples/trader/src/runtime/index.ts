@@ -1,5 +1,5 @@
 import { AgentRuntime, type Plugin } from "@elizaos/core";
-import autoTraderPlugin from "@elizaos/plugin-auto-trader";
+import walletPlugin from "@elizaos/plugin-wallet";
 import { traderCharacter } from "./character";
 
 let runtimeInstance: AgentRuntime | null = null;
@@ -44,7 +44,7 @@ async function initializeRuntime(config: RuntimeConfig): Promise<AgentRuntime> {
     },
   };
 
-  const plugins: Plugin[] = [autoTraderPlugin];
+  const plugins: Plugin[] = [walletPlugin];
 
   const runtime = new AgentRuntime({
     character,

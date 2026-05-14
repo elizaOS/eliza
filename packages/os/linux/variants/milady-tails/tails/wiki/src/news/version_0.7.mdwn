@@ -1,0 +1,83 @@
+[[!meta date="Thu, 07 Apr 2011 01:23:45 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+
+The Amnesic Incognito Live System, version 0.7, is out. It is built on
+top of [Debian Squeeze](https://www.debian.org/).
+
+[[!toc levels=1]]
+
+# Changes
+
+Notable changes include:
+
+* Tor 0.2.1.30
+
+* Protecting against memory recovery: new, safer way to wipe memory on
+  shutdown which is now also used when the boot media is physically
+  removed.
+
+* Hardware support
+ - printers: install more printer drivers, allow the default user to
+   manage more kinds of printers
+ - 3G: support mobile broadband devices such as 3G USB dongles
+ - wireless: install Atheros and Broadcom firmwares
+ - scanner and multi-function peripherals: better support
+
+* Iceweasel
+ - install the HTTPS Everywhere extension
+ - many Anonymity Set preservation enhancements, mostly inspired by
+   the Tor Browser Bundle configuration
+ - support FTP, thanks to FoxyProxy
+
+* Other software
+ - user-friendly encryption support: install gnome-disk-utility
+   (Palimpsest) and Seahorse plugins
+ - add opt-in i2p support with Iceweasel integration through FoxyProxy
+ - optionally install TrueCrypt at boot time to allow users of the
+   (old and now unsupported) *Incognito* live system to access the
+   data on previously created media; this is *not* meant to be used to
+   create new TrueCrypt media
+ - make better use of battery-powered hardware
+ - replace xsane with simple-scan which is part of GNOME and way
+   easier to use
+ - install scribus-ng instead of scribus: more features, less bugs
+
+* Firewall
+ - drop incoming packets by default
+ - [[!tails_ticket 5852 desc="forbid queries to DNS resolvers on the LAN"]]
+ - set output policy to drop (defense-in-depth)
+
+* Miscellaneous
+ - fromiso= bugfixes
+ - configure keyboard layout accordingly to the chosen language for
+   Italian and Portuguese
+ - more robust HTP time synchronization wrt. network failures;
+   display the logs when the clock synchronization fails
+ - disable automatic media mounting and opening to protect against
+   a class of attacks that was recently put under the spotlights
+ - GnuPG: default to stronger digest algorithms
+
+Plus the usual bunch of minor bug reports and improvements.
+
+See the online
+Changelog
+for technical details.
+
+# I want to try it!
+
+[[Download it, seed it!|install]]
+
+# Can I use it on a pre-Intel Mac computer?
+
+Tails images with *i386* in their name work on the Intel x86
+architecture only. However, we've been working towards releasing a
+Tails image suitable for the pre-Intel Macs hardware (PowerPC
+architecture). Stay tuned, it will be prepared and made available
+soonish.
+
+# A glimpse towards the future
+
+Would you want to help? As explained in our brand new [["how to
+contribute" documentation|contribute]], here are many ways **you** can
+contribute to Tails: no need to be a hardcore developer.

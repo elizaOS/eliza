@@ -1,0 +1,22 @@
+[[!meta date="Sun, 26 Jul 2020 21:00:00 +0200"]]
+[[!meta title="Numerous security holes in Tails 4.8"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+[[Tails_4.9|news/version_4.9]] fixes many security issues that affect
+Tails 4.8. You should [[upgrade to Tails 4.9|news/version_4.9]] as
+soon as possible.
+
+ - Tor Browser: [[!mfsa 2020-31]]
+ - Thunderbird: [[!mfsa 2020-29]]
+ - Linux: [[!cve CVE-2020-10768]], [[!cve CVE-2020-10767]],
+   [[!cve CVE-2020-10766]], [[!cve CVE-2020-13974]],
+   [[!cve CVE-2020-15852]], [[!cve CVE-2020-10781]],
+   [[!cve CVE-2020-10781]], [[!cve CVE-2020-15780]]
+ - Evolution Data Server: [[!debsa2020 4725]]
+ - FFmpeg: [[!debsa2020 4722]]
+ - ImageMagick: [[!debsa2020 4712]]
+ - NSS: [[!debsa2020 4726]]
+ - OpenMPT: [[!debsa2020 4729]]
+ - WebKitGTK: [[!debsa2020 4724]]

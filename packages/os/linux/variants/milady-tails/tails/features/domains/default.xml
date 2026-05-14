@@ -1,0 +1,47 @@
+<domain type='kvm' xmlns:qemu='http://libvirt.org/schemas/domain/qemu/1.0'>
+  <memory unit='KiB'>3145728</memory>
+  <currentMemory unit='KiB'>3145728</currentMemory>
+  <vcpu>2</vcpu>
+  <os>
+    <type arch='x86_64' machine='pc-q35-10.0'>hvm</type>
+    <boot dev='cdrom'/>
+  </os>
+  <features>
+    <acpi/>
+    <apic/>
+    <pae/>
+  </features>
+  <cpu mode='host-model'/>
+  <clock offset='utc'/>
+  <on_poweroff>destroy</on_poweroff>
+  <on_reboot>restart</on_reboot>
+  <on_crash>restart</on_crash>
+  <devices>
+    <emulator>/usr/bin/qemu-system-x86_64</emulator>
+    <controller type='usb' index='0' model='qemu-xhci'/>
+    <controller type='sata' index='0'/>
+    <controller type='virtio-serial' index='0'/>
+    <interface type='network'>
+      <alias name='net0'/>
+      <mac address='52:54:00:ac:dd:ee'/>
+      <source network='TailsToasterNet'/>
+      <model type='virtio'/>
+      <link state='down'/>
+    </interface>
+    <input type='tablet' bus='usb'/>
+    <channel type='spicevmc'>
+      <target type='virtio' name='com.redhat.spice.0'/>
+    </channel>
+    <graphics type='spice' port='-1' tlsPort='-1' autoport='yes'>
+      <clipboard copypaste='yes'/>
+      <mouse mode='client'/>
+    </graphics>
+    <sound model='ich6'/>
+    <video>
+      <model type='virtio' vram='262144' heads='1'/>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x02' function='0x0'/>
+    </video>
+    <memballoon model='virtio'/>
+  </devices>
+</domain>
+

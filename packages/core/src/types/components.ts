@@ -127,8 +127,6 @@ export interface MessageHandlerPlan {
 	 * non-terminal tool has executed.
 	 */
 	requiresTool?: boolean;
-	/** Legacy flag (pre-`contexts: ["simple"]`); honored as a back-compat hint. */
-	simple?: boolean;
 	contextSlices?: string[];
 	candidateActions?: string[];
 	parentActionHints?: string[];

@@ -209,16 +209,14 @@ describe("CerebrasJudge", () => {
   });
 
   it("sets response_format when jsonObjectMode is true", async () => {
-    const fetchSpy = vi
-      .spyOn(globalThis, "fetch")
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            choices: [{ message: { content: '{"score":0.5,"reason":"x"}' } }],
-          }),
-          { status: 200 },
-        ),
-      );
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          choices: [{ message: { content: '{"score":0.5,"reason":"x"}' } }],
+        }),
+        { status: 200 },
+      ),
+    );
     const judge = new CerebrasJudge();
     await judge.judge("test prompt", { jsonObjectMode: true });
     const callArgs = fetchSpy.mock.calls[0];
@@ -231,16 +229,14 @@ describe("CerebrasJudge", () => {
   });
 
   it("omits response_format by default", async () => {
-    const fetchSpy = vi
-      .spyOn(globalThis, "fetch")
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            choices: [{ message: { content: '{"score":0.5}' } }],
-          }),
-          { status: 200 },
-        ),
-      );
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          choices: [{ message: { content: '{"score":0.5}' } }],
+        }),
+        { status: 200 },
+      ),
+    );
     const judge = new CerebrasJudge();
     await judge.judge("test prompt");
     const initArg = fetchSpy.mock.calls[0]?.[1];
@@ -251,16 +247,14 @@ describe("CerebrasJudge", () => {
   });
 
   it("includes systemPrompt when provided", async () => {
-    const fetchSpy = vi
-      .spyOn(globalThis, "fetch")
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            choices: [{ message: { content: '{"score":1}' } }],
-          }),
-          { status: 200 },
-        ),
-      );
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          choices: [{ message: { content: '{"score":1}' } }],
+        }),
+        { status: 200 },
+      ),
+    );
     const judge = new CerebrasJudge();
     await judge.judge("user prompt", { systemPrompt: "be strict" });
     const initArg = fetchSpy.mock.calls[0]?.[1];

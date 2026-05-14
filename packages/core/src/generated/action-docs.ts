@@ -6155,6 +6155,17 @@ export const allActionsSpec = {
 						"Perpetual market operation: read or place_order.",
 				},
 				{
+					name: "subaction",
+					description: "Alias for action (read | place_order | place-order).",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["read", "place_order", "place-order"],
+					},
+					descriptionCompressed:
+						"Alias for action (read | place_order | place-order).",
+				},
+				{
 					name: "kind",
 					description:
 						"read only: status | markets | market | positions | funding.",
@@ -6216,6 +6227,7 @@ export const allActionsSpec = {
 						PERPETUAL_MARKET: {
 							target: "hyperliquid",
 							action: "read",
+							subaction: "read",
 							kind: "status",
 							coin: "example",
 							side: "buy",

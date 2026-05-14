@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-rlm",
-  "version": "2.0.0-beta.1",
+  "version": "2.0.0-beta.2",
   "description": "RLM (Recursive Language Model) plugin for elizaOS - enables processing of arbitrarily long contexts",
   "type": "module",
   "main": "dist/index.js",
@@ -50,7 +50,7 @@
     "directory": "plugins/plugin-rlm"
   },
   "dependencies": {
-    "@elizaos/core": "2.0.0-beta.1"
+    "@elizaos/core": "workspace:*"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.14",
@@ -60,7 +60,7 @@
     "vitest": "^4.0.0"
   },
   "peerDependencies": {
-    "@elizaos/core": "2.0.0-beta.1"
+    "@elizaos/core": "workspace:*"
   },
   "engines": {
     "node": ">=24.0.0"

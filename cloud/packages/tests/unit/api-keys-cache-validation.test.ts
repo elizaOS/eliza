@@ -70,4 +70,19 @@ describe("ApiKeysService cache validation", () => {
     expect(typeof queriedHash).toBe("string");
     expect(cachedKey).toStartWith("apikey:validation:");
   });
+
+  test("returns null for negative cached API key lookups without hitting the database", async () => {
+    let queried = false;
+
+    cache.get = (async <T>() => ({ __none: true }) as T) as unknown as typeof cache.get;
+    apiKeysRepository.findActiveByHash = (async () => {
+      queried = true;
+      return null;
+    }) as unknown as typeof apiKeysRepository.findActiveByHash;
+
+    const result = await apiKeysService.validateApiKey("eliza_missing");
+
+    expect(result).toBeNull();
+    expect(queried).toBe(false);
+  });
 });

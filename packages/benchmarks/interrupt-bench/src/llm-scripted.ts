@@ -16,7 +16,7 @@ import type { ResponseHandlerResult } from "@elizaos/core";
 import type { SimulatorState } from "./state.ts";
 import type { Scenario, ScenarioScriptStep } from "./types.ts";
 
-export interface ScriptedLlmInput {
+interface ScriptedLlmInput {
   scenario: Scenario;
   callIndex: number;
   /** Conversation history seen so far (oldest first). */
@@ -27,7 +27,7 @@ export interface ScriptedLlmInput {
   state: SimulatorState;
 }
 
-export interface ScriptedLlmOutput {
+interface ScriptedLlmOutput {
   parsed: ResponseHandlerResult;
   /** Latency to simulate (virtual ms). */
   latencyMs: number;
@@ -67,11 +67,6 @@ function looksLikeAbort(text: string): boolean {
     /\bwait\s+actually\b/.test(t) ||
     /\bactually\s+(nvm|stop|cancel|scratch)\b/.test(t)
   );
-}
-
-function looksLikeRetraction(text: string): boolean {
-  const t = text.toLowerCase();
-  return /\b(scratch that|actually|instead|nvm|wait)\b/.test(t);
 }
 
 // ---------------------------------------------------------------------------
@@ -377,6 +372,3 @@ export function createDefaultScriptedProvider(): ScriptedLlmProvider {
     }
   };
 }
-
-// Reference the helper so eslint --strict doesn't flag it; used in fallback paths.
-export const _internal = { looksLikeRetraction };

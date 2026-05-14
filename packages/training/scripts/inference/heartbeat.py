@@ -26,7 +26,7 @@ Run from `training/`:
         --vllm-metrics-url http://127.0.0.1:8000/metrics \\
         --out ~/.eliza/inference-stats.jsonl \\
         --interval-seconds 60 \\
-        --label adhoc-h200-eliza-1-9b
+        --label adhoc-h200-eliza-1-4b
 """
 
 from __future__ import annotations

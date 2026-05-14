@@ -1,0 +1,322 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2026-01-22 08:55+0000\n"
+"PO-Revision-Date: 2026-01-23 15:29+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: de\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Content of: <div>
+msgid "[[!meta title=\"Home\"]]"
+msgstr "[[!meta title=\"Startseite\"]]"
+
+#. type: Content of: outside any tag (error?)
+msgid ""
+"[[!meta stylesheet=\"index\" rel=\"stylesheet\" title=\"\"]] [[!meta "
+"stylesheet=\"doc/about/trust/testimonials.inline\" rel=\"stylesheet\" "
+"title=\"\"]]"
+msgstr ""
+"[[!meta stylesheet=\"index\" rel=\"stylesheet\" title=\"\"]] [[!meta "
+"stylesheet=\"doc/about/trust/testimonials.inline\" rel=\"stylesheet\" title="
+"\"\"]]"
+
+#. type: Content of: <script>
+msgid ""
+"document.addEventListener('DOMContentLoaded', function() { document.title = "
+"\"Tails\"; });"
+msgstr ""
+"document.addEventListener('DOMContentLoaded', function() { document.title = "
+"\"Tails\"; });"
+
+#. type: Content of: <div>
+msgid "[[!img laptop.png link=\"no\" class=\"laptop svg\" alt=\"\"]]"
+msgstr "[[!img laptop.png link=\"no\" class=\"laptop svg\" alt=\"\"]]"
+
+#. type: Content of: <div><h1>
+msgid "<span class=\"hero-tails\">Tails</span>"
+msgstr "<span class=\"hero-tails\">Tails</span>"
+
+#. type: Content of: <div><h1>
+msgid "is a portable operating system"
+msgstr "ist ein tragbares Betriebssystem"
+
+#. type: Content of: <div><h1>
+msgid "that protects against"
+msgstr "das Sie schützt gegen"
+
+#. type: Content of: <div><h1>
+msgid "surveillance and censorship."
+msgstr "Überwachung und Zensur."
+
+#. type: Content of: <section><div><section>
+msgid "[[!img city.png link=\"no\" class=\"svg\" alt=\"\"]]"
+msgstr "[[!img city.png link=\"no\" class=\"svg\" alt=\"\"]]"
+
+#. type: Content of: <section><div><section><h2>
+msgid "Avoid surveillance, censorship, advertising, and viruses"
+msgstr "Überwachung, Zensur, Werbung und Viren meiden"
+
+#. type: Content of: <section><div><section><p>
+msgid ""
+"Tails uses the Tor network to protect your privacy online and help you avoid "
+"censorship. Enjoy the Internet like it should be."
+msgstr ""
+"Tails nutzt das Tor-Netzwerk, um Ihre Online-Privatsphäre zu schützen und um "
+"Ihnen zu helfen, Zensur zu umgehen. Nutzen Sie das Internet, wie es sein "
+"sollte."
+
+#. type: Content of: <section><div><section>
+msgid "[[!img camping.png link=\"no\" class=\"svg\" alt=\"\"]]"
+msgstr "[[!img camping.png link=\"no\" class=\"svg\" alt=\"\"]]"
+
+#. type: Content of: <section><div><section><h2>
+msgid "Your secure computer anywhere"
+msgstr "Ihr sicherer Computer, überall"
+
+#. type: Content of: <section><div><section><p>
+msgid ""
+"Shut down the computer and start on your Tails USB stick instead of starting "
+"on Windows, macOS, or Linux. Tails leaves no trace on the computer when shut "
+"down."
+msgstr ""
+"Fahren Sie den Computer herunter und booten Sie mit Ihrem Tails-USB-Stick "
+"anstatt mit Windows, macOS oder Linux. Tails hinterlässt keine Spuren auf "
+"dem Computer, wenn es heruntergefahren wird."
+
+#. type: Content of: <section><div><section>
+msgid "[[!img toolbox.png link=\"no\" class=\"svg\" alt=\"\"]]"
+msgstr "[[!img toolbox.png link=\"no\" class=\"svg\" alt=\"\"]]"
+
+#. type: Content of: <section><div><section><h2>
+msgid "Digital security toolbox"
+msgstr "Werkzeugkasten für digitale Sicherheit"
+
+#. type: Content of: <section><div><section><p>
+msgid ""
+"Tails includes a selection of applications to work on sensitive documents "
+"and communicate securely. Everything in Tails is ready-to-use and has safe "
+"defaults."
+msgstr ""
+"Tails hat eine Auswahl an Programmen an Bord, mit denen Sie an sensiblen "
+"Daten arbeiten und sicher kommunizieren können. Alles in Tails ist startklar "
+"und kommt mit sicheren Voreinstellungen."
+
+#. type: Content of: <section><div><section>
+msgid "[[!img gift.png link=\"no\" class=\"svg\" alt=\"\"]]"
+msgstr "[[!img gift.png link=\"no\" class=\"svg\" alt=\"\"]]"
+
+#. type: Content of: <section><div><section><h2>
+msgid "Free Software"
+msgstr "Freie Software"
+
+#. type: Content of: <section><div><section><p>
+msgid ""
+"You can download Tails for free and independent security researchers can "
+"verify our work. Tails is based on Debian GNU/Linux."
+msgstr ""
+"Sie können Tails gratis herunterladen und es ist offen für Untersuchungen "
+"durch unabhängige Experten für Computersicherheit. Tails basiert auf Debian "
+"GNU/Linux."
+
+#. type: Content of: <div><div>
+msgid "[[How Tails works|about]]"
+msgstr "[[Wie Tails funktioniert|about]]"
+
+#. type: Content of: <div><div>
+msgid "[[Install Tails|install]]"
+msgstr "[[Tails installieren|install]]"
+
+#. type: Content of: <section><h1>
+msgid "Who uses Tails"
+msgstr "Wer Tails benutzt"
+
+#. type: Content of: <section><div><section>
+msgid "[[!img activist.png link=\"no\" class=\"svg\" alt=\"\"]]"
+msgstr "[[!img activist.png link=\"no\" class=\"svg\" alt=\"\"]]"
+
+#. type: Content of: <section><div><section><p>
+msgid ""
+"<span class=\"persona\">Activists</span> use Tails to hide their identities, "
+"avoid censorship, and communicate securely."
+msgstr ""
+"<span class=\"persona\">Aktivisten und Aktivistinnen</span> nutzen Tails, um "
+"ihre Identität zu verbergen, Zensur zu umgehen und sicher kommunizieren zu "
+"können."
+
+#. type: Content of: <section><div><section>
+msgid "[[!img journalist.png link=\"no\" class=\"svg\" alt=\"\"]]"
+msgstr "[[!img journalist.png link=\"no\" class=\"svg\" alt=\"\"]]"
+
+#. type: Content of: <section><div><section><p><span>
+msgid "<span class=\"persona\">Journalists"
+msgstr "<span class=\"persona\">Journalisten und Journalistinnen"
+
+#. type: Content of: <section><div><section><p>
+msgid ""
+"and their sources</span> use Tails to publish sensitive information and "
+"access the Internet from unsafe places."
+msgstr ""
+"und ihre Quellen</span> benutzen Tails, um sensible Informationen zu "
+"publizieren und um von unsicheren Orten aus das Internet zu benutzen."
+
+#. type: Content of: <section><div><section>
+msgid "[[!img survivor.png link=\"no\" class=\"svg\" alt=\"\"]]"
+msgstr "[[!img survivor.png link=\"no\" class=\"svg\" alt=\"\"]]"
+
+#. type: Content of: <section><div><section><p>
+msgid ""
+"<span class=\"persona\">Domestic violence survivors</span> use Tails to "
+"escape surveillance at home."
+msgstr ""
+"<span class=\"persona\">Betroffene von häuslicher Gewalt</span> nutzen "
+"Tails, um ihrer Überwachung zu Hause auszuweichen."
+
+#. type: Content of: <section><div><section>
+msgid "[[!img you.png link=\"no\" class=\"svg\" alt=\"\"]]"
+msgstr "[[!img you.png link=\"no\" class=\"svg\" alt=\"\"]]"
+
+#. type: Content of: <section><div><section><p>
+msgid ""
+"<span class=\"persona\">You</span> whenever you need extra privacy in this "
+"digital world."
+msgstr ""
+"<span class=\"persona\">Sie</span> - wann immer Sie mehr Privatsphäre in der "
+"digitalen Welt brauchen."
+
+#. type: Content of: <section><h1>
+msgid "Recommended by"
+msgstr "Empfohlen von"
+
+#. type: Content of: <section>
+msgid ""
+"[[!inline pages=\"doc/about/trust/testimonials.inline\" raw=\"yes\" "
+"sort=\"age\"]]"
+msgstr ""
+"[[!inline pages=\"doc/about/trust/testimonials.inline.de\" raw=\"yes\" sort="
+"\"age\"]]"
+
+#. type: Content of: <section><h1>
+msgid "Supporters"
+msgstr ""
+
+#. type: Content of: <section><p>
+#, fuzzy
+#| msgid ""
+#| "Our work is funded by donations from people like you and organizations "
+#| "that support Internet freedom. [[Meet our sponsors.|sponsors]]"
+msgid ""
+"The Tor Project is funded by donations from people like you and "
+"organizations that support Internet freedom. [[Meet our supporters.|https://"
+"www.torproject.org/about/supporters/]]"
+msgstr ""
+"Unsere Arbeit wird unterstützt durch Spenden von Menschen wie Ihnen und von "
+"Organisationen, die die Freiheit im Internet unterstützen. [[Lernen Sie "
+"unsere Sponsoren kennen.|sponsors]]"
+
+#~ msgid "Sponsors"
+#~ msgstr "Sponsoren"
+
+#~ msgid "News"
+#~ msgstr "Neuigkeiten"
+
+#, fuzzy
+#~| msgid ""
+#~| "[[!inline pages=\"page(news/*) and !news/*/* and !news/discussion and "
+#~| "(currentlang() or news/report_2* or news/test_*)\" show=\"3\" "
+#~| "feeds=\"no\" archive=\"yes\" sort=\"-meta(date) age -path\"]]"
+#~ msgid ""
+#~ "[[!inline pages=\"page(news/*) and !news/archive and !news/*/* and !news/"
+#~ "discussion and (currentlang() or news/report_2* or news/test_*)\" "
+#~ "show=\"3\" feeds=\"no\" archive=\"yes\" sort=\"-meta(date) age -path\"]]"
+#~ msgstr ""
+#~ "[[!inline pages=\"page(news/*) and !news/*/* and !news/discussion and "
+#~ "(currentlang() or news/report_2* or news/test_*)\" show=\"3\" "
+#~ "feeds=\"no\" archive=\"yes\" sort=\"-meta(date) age -path\"]]"
+
+#~ msgid ""
+#~ "[[Get Tails [[!inline pages=\"inc/stable_amd64_version\" raw=\"yes\" "
+#~ "sort=\"age\"]]|install]]"
+#~ msgstr ""
+#~ "[[Tails herunterladen [[!inline pages=\"inc/stable_amd64_version\" "
+#~ "raw=\"yes\" sort=\"age\"]]|install]]"
+
+#~ msgid ""
+#~ "[[!img snowden.png link=\"https://twitter.com/Snowden/status/"
+#~ "1165395796520554496\" alt=\"Edward Snowden\"]]"
+#~ msgstr ""
+#~ "[[!img snowden.png link=\"https://twitter.com/Snowden/status/"
+#~ "1165395796520554496\" alt=\"Edward Snowden\"]]"
+
+#~ msgid "<a href=\"https://twitter.com/Snowden/status/1165395796520554496\">"
+#~ msgstr "<a href=\"https://twitter.com/Snowden/status/1165395796520554496\">"
+
+#~ msgid ""
+#~ "<em>If you look at the way post-2013 whistleblowers have been caught, it "
+#~ "is clear the absolute most important thing you can do to maintain your "
+#~ "anonymity is reduce the number of places in your operational activity "
+#~ "where you can make mistakes. Tor and Tails still do precisely that.</em>"
+#~ msgstr ""
+#~ "<em>Wenn Sie sich ansehen, wie Whistleblower nach 2013 entdeckt wurden, "
+#~ "wird klar dass das absolut wichtigste was Sie tun können um Ihre "
+#~ "Anonymität zu bewahren ist, die Quellen möglicher Fehler in ihren "
+#~ "operativen Aktivitäten wo Sie Fehler machen können zu reduzieren. Tor und "
+#~ "Tails tun genau das nach wie vor.</em>"
+
+#~ msgid "&mdash; <strong>Edward Snowden</strong>,"
+#~ msgstr "&mdash; <strong>Edward Snowden</strong>,"
+
+#~ msgid ""
+#~ "[[!img tor.png link=\"https://www.torproject.org/\" alt=\"Tor Project\"]]"
+#~ msgstr ""
+#~ "[[!img tor.png link=\"https://torproject.org/\" alt=\"Tor Project\"]]"
+
+#~ msgid "&mdash; <strong>Roger Dingledine</strong>,"
+#~ msgstr "&mdash; <strong>Roger Dingledine</strong>,"
+
+#~ msgid "[[!img eff.png link=\"https://www.eff.org/\" alt=\"EFF\"]]"
+#~ msgstr "[[!img eff.png link=\"https://www.eff.org/\" alt=\"EFF\"]]"
+
+#~ msgid ""
+#~ "<em>One of the most robust ways of using the Tor network is through a "
+#~ "dedicated operating system that enforces strong privacy- and security-"
+#~ "protective defaults. That operating system is Tails.</em>"
+#~ msgstr ""
+#~ "<em>Eine der effektivsten Arten um das Tor Netzwerk zu nutzen ist, durch "
+#~ "ein dezidiertes Betriebssystem, das starke Voreinstellungen für "
+#~ "Privatsphäre und Sicherheit erzwingt. Dieses Betriebssystem ist Tails.</"
+#~ "em>"
+
+#~ msgid "&mdash; <strong>Electronic Frontier Foundation</strong> </a>"
+#~ msgstr "&mdash; <strong>Electronic Frontier Foundation</strong> </a>"
+
+#~ msgid ""
+#~ "[[!img accessnow.png link=\"https://accessnow.org/\" alt=\"Access Now\"]] "
+#~ "[[!img riseup.png link=\"https://riseup.net/\" alt=\"Riseup\"]]"
+#~ msgstr ""
+#~ "[[!img accessnow.png link=\"https://accessnow.org/\" alt=\"Access Now\"]] "
+#~ "[[!img riseup.png link=\"https://riseup.net/\" alt=\"Riseup\"]]"
+
+#, fuzzy
+#~| msgid ""
+#~| "[[!pagetemplate template=\"topbar.tmpl\"]] [[!meta title=\"Home\"]] [[!"
+#~| "meta stylesheet=\"staging/home\" rel=\"stylesheet\" title=\"\"]] [[!meta "
+#~| "robots=\"noindex\"]]"
+#~ msgid ""
+#~ "[[!meta title=\"Home\"]] [[!meta stylesheet=\"staging/home\" "
+#~ "rel=\"stylesheet\" title=\"\"]] [[!meta robots=\"noindex\"]]"
+#~ msgstr ""
+#~ "[[!pagetemplate template=\"topbar.tmpl\"]] [[!meta title=\"Home\"]] [[!"
+#~ "meta stylesheet=\"staging/home\" rel=\"stylesheet\" title=\"\"]] [[!meta "
+#~ "robots=\"noindex\"]]"

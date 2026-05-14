@@ -14,14 +14,7 @@
  *
  */
 
-import {
-  afterAll,
-  beforeAll,
-  beforeEach,
-  describe,
-  expect,
-  test,
-} from "bun:test";
+import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import crypto from "crypto";
 import { v4 as uuidv4 } from "uuid";
 import { API_KEY_PREFIX_LENGTH } from "@/lib/pricing";
@@ -100,10 +93,7 @@ describe("ApiKeysService", () => {
       const generated = apiKeysService.generateApiKey();
 
       // Act - Manually compute hash
-      const manualHash = crypto
-        .createHash("sha256")
-        .update(generated.key)
-        .digest("hex");
+      const manualHash = crypto.createHash("sha256").update(generated.key).digest("hex");
 
       // Assert
       expect(generated.hash).toBe(manualHash);
@@ -342,10 +332,7 @@ describe("ApiKeysService", () => {
       const { apiKey, plainKey } = await apiKeysService.create(keyData);
 
       // Assert - The stored key_hash should be SHA256 of plainKey
-      const expectedHash = crypto
-        .createHash("sha256")
-        .update(plainKey)
-        .digest("hex");
+      const expectedHash = crypto.createHash("sha256").update(plainKey).digest("hex");
       expect(apiKey.key_hash).toBe(expectedHash);
 
       // Cleanup
@@ -661,9 +648,7 @@ describe("ApiKeysService", () => {
 
       expect(second.apiKey.id).not.toBe(first.apiKey.id);
       expect(await apiKeysService.validateApiKey(first.plainKey)).toBeNull();
-      expect((await apiKeysService.validateApiKey(second.plainKey))?.id).toBe(
-        second.apiKey.id,
-      );
+      expect((await apiKeysService.validateApiKey(second.plainKey))?.id).toBe(second.apiKey.id);
     });
 
     test("revokeForAgent removes the key from DB and cache", async () => {
@@ -705,9 +690,7 @@ describe("ApiKeysService", () => {
       await apiKeysService.revokeForAgent(sandboxA);
 
       expect(await apiKeysService.validateApiKey(a.plainKey)).toBeNull();
-      expect((await apiKeysService.validateApiKey(b.plainKey))?.id).toBe(
-        b.apiKey.id,
-      );
+      expect((await apiKeysService.validateApiKey(b.plainKey))?.id).toBe(b.apiKey.id);
     });
   });
 });

@@ -23,7 +23,7 @@ export interface SessionIdentity {
   messageServerId: UUID;
 }
 
-export type PartialSessionIdentity = Partial<SessionIdentity>;
+type PartialSessionIdentity = Partial<SessionIdentity>;
 
 export function ensureSessionIdentity(
   input: PartialSessionIdentity = {},

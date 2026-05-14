@@ -1,11 +1,12 @@
 """Mark the legacy Qwen3 Eliza-1 HuggingFace repos as DEPRECATED.
 
 Per the 2026-05-12 operator directive, the Eliza-1 fused-model line is
-Qwen3.5-only — the Qwen3 dense base models (Qwen/Qwen3-0.6B / Qwen/Qwen3-1.7B
-/ Qwen/Qwen3-4B) do not work with the eliza-1 dflash spec-decode path. The
+Qwen3.5/Qwen3.6-only — the Qwen3 dense base models (Qwen/Qwen3-0.6B /
+Qwen/Qwen3-1.7B / Qwen/Qwen3-4B) do not work with the eliza-1 dflash
+spec-decode path. The
 corresponding HF tier repos under ``elizaos/`` stay public (existing
 downloads keep working) but their model cards are updated to mark them as
-deprecated and point at the Qwen3.5 replacement tiers.
+deprecated and point at the active Eliza-1 replacement bundles.
 
 This script only updates the README.md on each repo; it does NOT delete or
 transform any artifact. Run it once per token-bearing environment::
@@ -71,11 +72,11 @@ architecture and 248320 tokenizer; a Qwen3 base has the wrong vocab
 (151936) and the wrong attention shape for the fused QJL / PolarQuant /
 TurboQuant paths.
 
-Superseded by the Qwen3.5 line:
+Superseded by the active Eliza-1 line:
 
-- [`elizaos/eliza-1-0_8b`](https://huggingface.co/elizaos/eliza-1-0_8b) (Qwen3.5-0.8B-Base — new smallest tier)
-- [`elizaos/eliza-1-2b`](https://huggingface.co/elizaos/eliza-1-2b) (Qwen3.5-2B-Base — new mid local tier)
-- [`elizaos/eliza-1-4b`](https://huggingface.co/elizaos/eliza-1-4b) (Qwen3.5-4B-Base — local/workstation tier; same tier id, new backbone)
+- [`elizaos/eliza-1`](https://huggingface.co/elizaos/eliza-1) `bundles/0_8b/` (Qwen3.5-0.8B-Base — new smallest tier)
+- [`elizaos/eliza-1`](https://huggingface.co/elizaos/eliza-1) `bundles/2b/` (Qwen3.5-2B-Base — new mid local tier)
+- [`elizaos/eliza-1`](https://huggingface.co/elizaos/eliza-1) `bundles/4b/` (Qwen3.5-4B-Base — local/workstation tier; same tier id, new backbone)
 
 Existing downloads still work; no new releases will land here.
 
@@ -101,11 +102,9 @@ tags:
 Qwen3 base model (`Qwen/Qwen3-{legacy_size}`) that does not work with
 the eliza-1 dflash spec-decode path.
 
-Superseded by the Qwen3.5 line — see the Qwen3.5 tier companions under
-[`elizaos/eliza-1-0_8b`](https://huggingface.co/elizaos/eliza-1-0_8b),
-[`elizaos/eliza-1-2b`](https://huggingface.co/elizaos/eliza-1-2b), and
-[`elizaos/eliza-1-4b`](https://huggingface.co/elizaos/eliza-1-4b)
-(`-optimized` / `-drafter` / `-sft` per-tier companions).
+Superseded by the active Eliza-1 line — see the current bundle companions under
+[`elizaos/eliza-1`](https://huggingface.co/elizaos/eliza-1)
+(`bundles/0_8b/`, `bundles/2b/`, and `bundles/4b/`).
 
 Existing downloads still work; no new releases will land here.
 
@@ -135,10 +134,8 @@ Going forward, the canonical SFT-corpus repo for the Eliza-1 line is
 [`elizaos/eliza-1-training`](https://huggingface.co/datasets/elizaos/eliza-1-training)
 (the broader privacy-filtered SFT corpus that the H200 0_8b / 2b runs train
 against). The new Qwen3.5 tier SFTs land in
-[`elizaos/eliza-1-0_8b-sft-weights`](https://huggingface.co/elizaos/eliza-1-0_8b-sft-weights)
-(weights) and the per-tier `-sft` companion repos under
-[`elizaos/eliza-1-0_8b`](https://huggingface.co/elizaos/eliza-1-0_8b) /
-[`elizaos/eliza-1-2b`](https://huggingface.co/elizaos/eliza-1-2b).
+[`elizaos/eliza-1`](https://huggingface.co/elizaos/eliza-1)
+under the matching `bundles/<tier>/` path.
 
 Existing downloads still work.
 """

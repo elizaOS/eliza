@@ -2,7 +2,9 @@
 
 Mirrors `scripts/push_to_hf.py` (which publishes the *dataset*) but for the
 *model* side: takes a finished APOLLO SFT checkpoint and uploads it to the
-canonical `elizaos/eliza-1-*` repo declared in `model_registry.py`.
+canonical `elizaos/eliza-1` repo declared in `model_registry.py`. Runtime GGUF
+bundles should normally go through `scripts/publish/publish_eliza1_model_repo.py`
+so they land under `bundles/<tier>/` instead of repo root.
 
 Usage::
 
@@ -12,24 +14,24 @@ Usage::
         --checkpoint checkpoints/eliza-1-2b-apollo/final \\
         --dry-run
 
-    # Real upload to the default repo (elizaos/eliza-1-2b).
+    # Real upload to the default repo (elizaos/eliza-1).
     HF_TOKEN=hf_xxx uv run python scripts/push_model_to_hf.py \\
         --registry-key eliza-1-2b \\
         --checkpoint checkpoints/eliza-1-2b-apollo/final
 
-    # Upload a quantized sidecar (e.g. polarquant) to a sibling repo
-    # (elizaos/eliza-1-2b-polarquant).
+    # Upload a quantized sidecar to an explicitly named audit repo. The app
+    # runtime consumes GGUF bundles from elizaos/eliza-1/bundles/<tier>/.
     HF_TOKEN=hf_xxx uv run python scripts/push_model_to_hf.py \\
         --registry-key eliza-1-2b \\
         --checkpoint checkpoints/eliza-1-2b-apollo/final-polarquant \\
         --quant polarquant
 
     # Upload a GGUF directory (post llama.cpp convert + quantize). Use a
-    # specific quant level for the sibling repo suffix (one HF repo per
-    # quant level, matching the publish_all_eliza1.sh matrix).
+    # specific quant level for the card metadata; pass --repo-id explicitly for
+    # any non-bundle audit upload.
     HF_TOKEN=hf_xxx uv run python scripts/push_model_to_hf.py \\
-        --registry-key eliza-1-27b \\
-        --checkpoint checkpoints/eliza-1-27b-apollo/final-gguf \\
+        --registry-key eliza-1-4b \\
+        --checkpoint checkpoints/eliza-1-4b-apollo/final-gguf \\
         --quant gguf-q4_k_m
 
     # Attach evaluation results to the rendered model card.
@@ -121,11 +123,9 @@ def resolve_repo_id(
 ) -> str:
     """Resolve the destination HF repo id.
 
-    Override > registry's eliza_repo_id / abliteration_repo_id (+ quant suffix).
-    The abliterated variant ships under a separate org so the safety-tuned
-    line's reputation is not contaminated. Eliza-1-optimized publishes
-    always pass an explicit ``--repo-id``; the registry path is only the
-    historical eliza-1 sibling-repo flow.
+    Override > registry's eliza_repo_id / abliteration_repo_id. Eliza-1 runtime
+    artifacts live in a single model repo (``elizaos/eliza-1``); do not derive
+    per-tier or per-quant sibling repos from the registry defaults.
     """
     if override:
         return override
@@ -152,6 +152,13 @@ def resolve_repo_id(
                 f"registry entry {registry_key!r} has no eliza_repo_id set; "
                 "fill it in scripts/training/model_registry.py or pass --repo-id."
             )
+    if quant and base == "elizaos/eliza-1":
+        raise SystemExit(
+            "registry default repo is elizaos/eliza-1; quantized runtime GGUFs "
+            "must be uploaded with scripts/publish/publish_eliza1_model_repo.py "
+            "under bundles/<tier>/, or pass --repo-id explicitly for an audit-only "
+            "raw checkpoint upload."
+        )
     if quant:
         return f"{base}-{quant}"
     return base
@@ -174,16 +181,15 @@ def read_optional_json(path: Path) -> dict[str, Any]:
 
 # Per-quant metadata. Drives:
 #   - --quant CLI choices (this dict's keys are the allowed values).
-#   - The sibling-repo suffix (e.g. polarquant -> elizaos/eliza-1-2b-polarquant).
+#   - Non-bundle audit uploads when --repo-id is passed explicitly.
 #   - Template placeholders in scripts/templates/model_card_quant.md.
 #
 # QJL is intentionally absent: it is a runtime-time KV-cache projection
 # (scripts/quantization/qjl_apply.py runs at serving time), not a weight
 # quantization that produces a HF checkpoint. There is nothing to ship.
 #
-# GGUF is split per K-quant level (Q4_K_M / Q5_K_M / Q6_K) so each level
-# gets its own sibling repo. The umbrella "gguf" suffix is no longer a valid
-# --quant value; use one of the level-suffixed entries instead.
+# GGUF is split per K-quant level (Q4_K_M / Q5_K_M / Q6_K) for card metadata.
+# Runtime bundles still publish into the single elizaos/eliza-1 model repo.
 QUANT_BLURBS: dict[str, dict[str, str]] = {
     "polarquant": {
         "blurb": (
@@ -289,8 +295,8 @@ TEMPLATES_DIR = ROOT / "scripts" / "templates"
 
 
 def _qwen_family_tag(hf_id: str) -> str:
-    """Return the HF tag string for the Qwen base family (qwen3.5 vs qwen3.6)."""
-    return "qwen3.5" if "3.5" in hf_id else "qwen3.6"
+    """Return the HF tag string for the active Qwen base family."""
+    return "qwen3.5"
 
 
 def _render_training_table(training_args: dict[str, Any], entry: Any) -> str:

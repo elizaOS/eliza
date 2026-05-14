@@ -64,13 +64,13 @@ def test_snapshot_computes_total_so_far_from_dph_and_uptime() -> None:
 
     snap = vast_budget.fetch_snapshot(
         42,
-        pipeline="qwen3.5-9b-apollo",
+        pipeline="qwen3.5-4b-apollo",
         run_name="run-1",
         show_fn=lambda _id: payload,
         now_fn=lambda: now,
     )
 
-    assert snap.pipeline == "qwen3.5-9b-apollo"
+    assert snap.pipeline == "qwen3.5-4b-apollo"
     assert snap.run_name == "run-1"
     assert snap.gpu_sku == "B200x2"
     assert snap.dph_total == pytest.approx(4.00)
@@ -225,7 +225,7 @@ def test_enforce_hard_cap_writes_teardown_sentinel(
 
     snap, rc = vast_budget.enforce(
         42,
-        pipeline="qwen3.5-9b-apollo",
+        pipeline="qwen3.5-4b-apollo",
         run_name="run-1",
         show_fn=lambda _id: payload,
         now_fn=lambda: now,
@@ -324,19 +324,19 @@ def test_cli_snapshot_prints_one_line_summary(
         vast_budget, "fetch_snapshot",
         return_value=vast_budget.fetch_snapshot(
             42,
-            pipeline="qwen3.5-9b-apollo",
+            pipeline="qwen3.5-4b-apollo",
             run_name="run-1",
             show_fn=lambda _id: payload,
             now_fn=lambda: now,
         ),
     ):
         rc = vast_budget.main(
-            ["snapshot", "42", "--pipeline", "qwen3.5-9b-apollo",
+            ["snapshot", "42", "--pipeline", "qwen3.5-4b-apollo",
              "--run-name", "run-1"]
         )
     assert rc == vast_budget.EXIT_OK
     out = capsys.readouterr().out
-    assert "pipeline=qwen3.5-9b-apollo" in out
+    assert "pipeline=qwen3.5-4b-apollo" in out
     assert "gpu=B200x2" in out
     assert "$/hr=$3.51" in out
     assert "total=$7.02" in out  # 3.51 * 2

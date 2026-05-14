@@ -547,7 +547,7 @@ def build_lifeops_entries() -> list[dict[str, Any]]:
         actions = list(entry.get("actions", []))
         # filter out REPLY similar to TS code
         actions = [a for a in actions if a != "REPLY"]
-        expected_action = tool_calls[0] if actions else None
+        expected_action = actions[0] if actions else None
         title = entry.get("title", scen_id)
         domain = entry.get("suite", "executive-assistant")
         base_prompt = (

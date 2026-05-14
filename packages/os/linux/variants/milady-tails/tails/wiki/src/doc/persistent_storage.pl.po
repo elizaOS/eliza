@@ -1,0 +1,590 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-06-10 12:51+0200\n"
+"PO-Revision-Date: 2024-05-20 18:01+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: pl\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=3; plural=n==1 ? 0 : n%10>=2 && n%10<=4 && (n%100<10 "
+"|| n%100>=20) ? 1 : 2;\n"
+"X-Generator: Weblate 5.3\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Persistent Storage\"]]\n"
+msgstr ""
+
+#. type: Plain text
+msgid "Everything you do disappears automatically when you shut down Tails."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"But you can save some of your files and configuration in an encrypted "
+"Persistent Storage on your Tails USB stick, for example:"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "Your documents"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "Your Wi-Fi passwords"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "Your browser bookmarks"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "..."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"The Persistent Storage is an encrypted partition protected by a passphrase "
+"that occupies all the free space left on the USB stick."
+msgstr ""
+
+#. type: Plain text
+msgid "Everything in the Persistent Storage is encrypted automatically."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"You can choose to unlock your Persistent Storage or not each time you start "
+"Tails."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"caution\">\n"
+msgstr "<div class=\"caution\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>The Persistent Storage is not hidden. An attacker in possession of your USB\n"
+"stick can know that there is a Persistent Storage. Take into consideration that\n"
+"you could be forced or tricked to give out its passphrase.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "[[!inline pages=\"doc/persistent_storage.index\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"doc/first_steps/persistence.caution.pl\" raw=\"yes\" sort=\"age\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"luks\">How strong is the encryption of the Persistent Storage?</h2>\n"
+msgstr ""
+
+#. type: Plain text
+msgid "The encryption of the Persistent Storage uses LUKS and DMCrypt."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"[LUKS](https://gitlab.com/cryptsetup/cryptsetup/) and [DMCrypt](https://"
+"gitlab.com/cryptsetup/cryptsetup/-/wikis/DMCrypt) are the standard system "
+"for disk encryption in Linux. Tails uses their default encryption "
+"parameters, which are considered highly secure. This is the same technique "
+"as we recommend for [[creating and using encrypted volumes|doc/"
+"encryption_and_privacy/encrypted_volumes]] in general."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"attack\">\n"
+msgstr "<div class=\"attack\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<!-- Consider removing after #18148. -->\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>The weakest point of such encryption is often the passphrase chosen by\n"
+"the user.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   <p>We recommend choosing a long passphrase made of 5 to 7 random words.\n"
+"   <a href=\"https://theintercept.com/2015/03/26/passphrases-can-memorize-attackers-cant-guess/\">Learn\n"
+"   about the maths behind memorizable and secure passphrases.</a></p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<!-- Spaces added for translators. -->\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"tip\">\n"
+msgstr "<div class=\"tip\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>To learn more about how the Persistent Storage is implemented, see our\n"
+"[[design documentation|contribute/design/persistence]].</p>\n"
+msgstr ""
+
+#, no-wrap
+#~ msgid "[[!toc levels=3]]\n"
+#~ msgstr "[[!toc levels=3]]\n"
+
+#, fuzzy, no-wrap
+#~ msgid "[[!img creation.png link=\"no\" alt=\"\"]]\n"
+#~ msgstr "[[!img welcome_screen/persistence.png link=\"no\" alt=\"\"]]\n"
+
+#, no-wrap
+#~ msgid "<div class=\"note\">\n"
+#~ msgstr "<div class=\"note\">\n"
+
+#, fuzzy, no-wrap
+#~ msgid "<div class=\"bug\">\n"
+#~ msgstr "<div class=\"note\">\n"
+
+#, no-wrap
+#~ msgid "<div class=\"bug\" id=\"deselect\">\n"
+#~ msgstr "<div class=\"bug\" id=\"deselect\">\n"
+
+#, no-wrap
+#~ msgid "<div class=\"icon\">\n"
+#~ msgstr "<div class=\"icon\">\n"
+
+#, fuzzy, no-wrap
+#~ msgid "[[!img stock_folder.png link=no]]\n"
+#~ msgstr "[[!img pidgin.png link=no]]\n"
+
+#, fuzzy, no-wrap
+#~ msgid ""
+#~ "To open the *Persistent* folder, choose\n"
+#~ "<span class=\"menuchoice\">\n"
+#~ "  **Places**&nbsp;▸\n"
+#~ "  **Persistent**</span>.\n"
+#~ msgstr ""
+#~ "Um den Ordner *Persistent* zu öffnen und um auf Ihre\n"
+#~ "persönlichen Dateien und Arbeitsdokumente zuzugreifen, wählen Sie \n"
+#~ "<span class=\"menuchoice\">\n"
+#~ "  **Orte**&nbsp;▸\n"
+#~ "  **Persistent**</span>.\n"
+
+#, fuzzy, no-wrap
+#~ msgid "<a id=\"welcome_screen\"></a>\n"
+#~ msgstr "<a id=\"gnome_keyring\"></a>\n"
+
+#, fuzzy, no-wrap
+#~ msgid "[[!img lib/apps/preferences-system.png link=\"no\"]]\n"
+#~ msgstr "[[!img pidgin.png link=no]]\n"
+
+#, fuzzy, no-wrap
+#~ msgid ""
+#~ "<div class=\"text\"><h2>Welcome Screen</h2></div>\n"
+#~ "</div>\n"
+#~ msgstr ""
+#~ "<div class=\"text\"><h2>APT Pakete</h2></div>\n"
+#~ "</div>\n"
+
+#, fuzzy, no-wrap
+#~ msgid "[[!img onioncircuits.png link=no]]\n"
+#~ msgstr "[[!img pidgin.png link=no]]\n"
+
+#, fuzzy, no-wrap
+#~ msgid ""
+#~ "<div class=\"text\"><h2>Tor Bridge</h2></div>\n"
+#~ "</div>\n"
+#~ msgstr ""
+#~ "<div class=\"text\"><h2>APT Listen</h2></div>\n"
+#~ "</div>\n"
+
+#, fuzzy, no-wrap
+#~ msgid "[[!img user-bookmarks.png link=no]]\n"
+#~ msgstr "[[!img pidgin.png link=no]]\n"
+
+#, fuzzy, no-wrap
+#~ msgid "[[!img network-manager.png link=no]]\n"
+#~ msgstr "[[!img pidgin.png link=no]]\n"
+
+#, no-wrap
+#~ msgid "[[!img additional-software.png link=no]]\n"
+#~ msgstr "[[!img additional-software.png link=no]]\n"
+
+#, fuzzy, no-wrap
+#~ msgid "[[!img printer.png link=no]]\n"
+#~ msgstr "[[!img pidgin.png link=no]]\n"
+
+#, no-wrap
+#~ msgid "[[!img lib/apps/thunderbird.png link=no]]\n"
+#~ msgstr "[[!img lib/apps/thunderbird.png link=no]]\n"
+
+#, fuzzy, no-wrap
+#~ msgid "[[!img seahorse-key.png link=no]]\n"
+#~ msgstr "[[!img pidgin.png link=no]]\n"
+
+#, fuzzy, no-wrap
+#~ msgid "[[!img lib/apps/electrum.png link=no]]\n"
+#~ msgstr "[[!img pidgin.png link=no]]\n"
+
+#, fuzzy, no-wrap
+#~ msgid "[[!img lib/apps/pidgin.png link=no]]\n"
+#~ msgstr "[[!img pidgin.png link=no]]\n"
+
+#, fuzzy, no-wrap
+#~ msgid "[[!img seahorse-key-ssh.png link=no]]\n"
+#~ msgstr "[[!img pidgin.png link=no]]\n"
+
+#, fuzzy, no-wrap
+#~ msgid "[[!img preferences-desktop.png link=no]]\n"
+#~ msgstr "[[!img pidgin.png link=no]]\n"
+
+#, fuzzy
+#~ msgid ""
+#~ "Choose <span class=\"menuchoice\"> <span class=\"guimenu\">Devices</"
+#~ "span>&nbsp;▸ **Displays**</span>."
+#~ msgstr ""
+#~ "Um den Assistenten für den beständigen Speicherbereich zu starten, wählen "
+#~ "Sie\n"
+#~ "<span class=\"menuchoice\">\n"
+#~ "  **Anwendungen**&nbsp;▸\n"
+#~ "  **Tails**&nbsp;▸\n"
+#~ "  **Configure persistent volume**</span>.\n"
+
+#, no-wrap
+#~ msgid "[[!img welcome_screen/persistence.png link=\"no\" alt=\"\"]]\n"
+#~ msgstr "[[!img welcome_screen/persistence.png link=\"no\" alt=\"\"]]\n"
+
+#, no-wrap
+#~ msgid "[[!toc levels=1]]\n"
+#~ msgstr "[[!toc levels=1]]\n"
+
+#, fuzzy
+#~ msgid ""
+#~ "<p>Only the features that are listed below can currently be made\n"
+#~ "persistent. We are often asked to implement new features to the\n"
+#~ "Persistent Storage:\n"
+#~ "[[!tails_ticket 5501 desc=\"language and keyboard layout\"]],\n"
+#~ "[[!tails_ticket 5461 desc=\"Tor configuration\"]],\n"
+#~ "[[!tails_ticket 7148 desc=\"wallpaper\"]],\n"
+#~ "[[!tails_ticket 5979 desc=\"mouse and touchpad settings\"]],\n"
+#~ "etc. See the\n"
+#~ msgstr ""
+#~ "Nur die hier aufgelisteten Funktionen können derzeit beständig "
+#~ "gespeichert werden. Nach einigen weiteren Funktionen wurde gefragt und "
+#~ "sie wurden akzeptiert, warten aber darauf, implementiert zu werden: "
+#~ "Browsererweiterungen, [[!tails_ticket 7148 desc=\"Hintergrundbilder\"]], "
+#~ "[[!tails_ticket 7625 desc=\"RSS Feeds\"]], [[!tails_ticket 7246 "
+#~ "desc=\"standardmäßige Audiokarte\"]], [[!tails_ticket 5979 desc=\"Maus "
+#~ "und Touchpad Einstellungen\"]], etc. Lesen Sie für mehr Details die "
+#~ "[[dazugehörigen Tickets|https://redmine.tails.boum.org/code/projects/"
+#~ "tails/issues?query_id=122]]."
+
+#~ msgid "Persistence features\n"
+#~ msgstr "Funktionen des beständigen Speicherbereichs\n"
+
+#~ msgid ""
+#~ "If you manually edit or overwrite the\n"
+#~ "*~/.gnupg/gpg.conf* configuration file\n"
+#~ "you may lessen your anonymity,\n"
+#~ "weaken the encryption defaults or render GnuPG unusable.\n"
+#~ msgstr ""
+#~ "Falls Sie die Konfigurationsdatei <span class=\"filename\">~/.gnupg/gpg."
+#~ "conf</span>\n"
+#~ "händisch bearbeiten oder überschreiben, könnten Sie möglicherweise Ihre "
+#~ "Anonymität verringern,\n"
+#~ "die Verschlüsselungs-Voreinstellungen schwächen oder GnuPG unbenutzbar "
+#~ "machen.\n"
+
+#~ msgid ""
+#~ "When this feature is activated, all the files in the <span\n"
+#~ "class=\"filename\">/live/persistence/TailsData_unlocked/dotfiles</span> "
+#~ "folder\n"
+#~ "are linked in the *Home* folder. Files in\n"
+#~ "subfolders of *dotfiles* are also linked\n"
+#~ "in the corresponding subfolder of your <span class=\"filename\">Home\n"
+#~ "</span> folder.\n"
+#~ msgstr ""
+#~ "Wenn diese Funktion aktiviert ist, werden alle Dateien in dem Ordner\n"
+#~ "<span class=\"filename\">/live/persistence/TailsData_unlocked/dotfiles</"
+#~ "span>\n"
+#~ "in den *Persönlichen Ordner* verknüpft. "
+#~ "Dateien\n"
+#~ "in Unterordnern von *dotfiles* werden "
+#~ "ebenfalls\n"
+#~ "in die entsprechenden Unterordner Ihres <span "
+#~ "class=\"filename\">Persönlichen Ordners</span>\n"
+#~ "verknüpft.\n"
+
+#~ msgid ""
+#~ "This option is useful if you want to make some specific files\n"
+#~ "persistent, but not the folders they are stored in. A fine example are\n"
+#~ "the so called \"dotfiles\" (and hence the name of this feature), the\n"
+#~ "hidden configuration files in the root of your home directory, like\n"
+#~ "*~/.gitconfig* and <span\n"
+#~ "class=\"filename\">~/.bashrc</span>.\n"
+#~ msgstr ""
+#~ "Diese Option ist nützlich, wenn Sie ein paar spezifische Dateien\n"
+#~ "beständig sichern möchten, jedoch nicht die Ordner, in denen sie "
+#~ "gespeichert sind.\n"
+#~ "Ein gutes Beispiel hierfür sind \"dotfiles\" (daher der Name dieser "
+#~ "Funktion), die \n"
+#~ "versteckten Konfigurationsdateien im Hauptverzeichnis Ihres\n"
+#~ "Persönlichen Ordners, wie *~/.gitconfig* "
+#~ "und <span\n"
+#~ "class=\"filename\">~/.bashrc</span>.\n"
+
+#, fuzzy
+#~ msgid "[[!img seahorse-key-personal.png link=no]]\n"
+#~ msgstr "[[!img pidgin.png link=no]]\n"
+
+#~ msgid ""
+#~ "<div class=\"text\"><h2>GNOME Keyring</h2></div>\n"
+#~ "</div>\n"
+#~ msgstr ""
+#~ "<div class=\"text\"><h2>GNOME Schlüsselbund</h2></div>\n"
+#~ "</div>\n"
+
+#~ msgid ""
+#~ "When this feature is activated, the secrets of\n"
+#~ "*GNOME Keyring* are saved in the "
+#~ "persistent\n"
+#~ "volume.\n"
+#~ msgstr ""
+#~ "Wenn diese Funktion aktiviert ist, werden die geheimen Inhalte des\n"
+#~ "*GNOME Schlüsselbunds* im beständigen "
+#~ "Speicherbereich\n"
+#~ "gesichert.\n"
+
+#~ msgid ""
+#~ "GNOME Keyring is a collection of components in GNOME that store secrets,\n"
+#~ "passwords, keys, certificates and make them available to applications.\n"
+#~ "For more information about <span class=\"application\">GNOME Keyring</"
+#~ "span> see\n"
+#~ "the [official documentation](http://live.gnome.org/GnomeKeyring).\n"
+#~ msgstr ""
+#~ "Der GNOME Schlüsselbund ist eine Zusammenstellung von Komponenten in "
+#~ "GNOME, die\n"
+#~ "Geheimnisse, Passwörter, Schlüssel und Zertifikate speichern und für "
+#~ "Anwendungen verfügbar machen.\n"
+#~ "Für mehr Informationen über den <span class=\"application\">GNOME "
+#~ "Schlüsselbund</span> lesen Sie\n"
+#~ "die [offizielle Dokumentation](http://live.gnome.org/GnomeKeyring).\n"
+
+#~ msgid ""
+#~ "To save passwords, for example the passwords of encrypted wireless "
+#~ "connections,\n"
+#~ "the [[*GNOME Keyring* persistence\n"
+#~ "feature|configure#gnome_keyring]] must also be activated.\n"
+#~ msgstr ""
+#~ "Um Passwörter zu sichern, zum Beispiel die Passwörter von verschlüsselten "
+#~ "Drahtlosverbindungen,\n"
+#~ "muss die [[Funktion <span class=\"application\">GNOME Schlüsselbund</"
+#~ "span>\n"
+#~ "|configure#gnome_keyring]] ebenfalls aktiviert sein.\n"
+
+#~ msgid "<a id=\"apt_packages\"></a>\n"
+#~ msgstr "<a id=\"apt_packages\"></a>\n"
+
+#, fuzzy
+#~ msgid "[[!img synaptic.png link=no]]\n"
+#~ msgstr "[[!img pidgin.png link=no]]\n"
+
+#~ msgid ""
+#~ "<div class=\"text\"><h2>APT Packages</h2></div>\n"
+#~ "</div>\n"
+#~ msgstr ""
+#~ "<div class=\"text\"><h2>APT Pakete</h2></div>\n"
+#~ "</div>\n"
+
+#~ msgid ""
+#~ "When this feature is activated, the packages that you install using the\n"
+#~ "*Synaptic* package manager or the\n"
+#~ "<span class=\"command\">apt</span> command are saved in the persistent "
+#~ "volume.\n"
+#~ msgstr ""
+#~ "Wenn diese Funktion aktiviert ist, werden die Pakete, die Sie mithilfe "
+#~ "des\n"
+#~ "*Synaptic* Paketmanagers oder des "
+#~ "Befehls\n"
+#~ "<span class=\"command\">apt</span> installieren, im beständigen "
+#~ "Speicherbereich gesichert.\n"
+
+#~ msgid ""
+#~ "If you [[install additional programs|doc/advanced_topics/"
+#~ "additional_software]], this feature allows you to download them once and "
+#~ "reinstall them during future working sessions, even offline."
+#~ msgstr ""
+#~ "Wenn Sie [[zusätzliche Programme installieren|doc/advanced_topics/"
+#~ "additional_software]] möchten, erlaubt es Ihnen diese Funktion, jene "
+#~ "einmal herunterzuladen und während zukünftiger Arbeitssitzungen erneut zu "
+#~ "installieren, sogar offline."
+
+#~ msgid ""
+#~ "To reinstall these packages automatically when restarting Tails, use the\n"
+#~ "[[**Additional software packages** "
+#~ "persistence\n"
+#~ "feature|configure#additional_software]].\n"
+#~ msgstr ""
+#~ "Um diese Pakete automatisch bei einem Neustart von Tails erneut zu "
+#~ "installieren, benutzen Sie die\n"
+#~ "[[Funktion **zusätzlicher Softwarepakete** "
+#~ "für den beständigen\n"
+#~ "Speicherbereich|configure#additional_software]].\n"
+
+#~ msgid ""
+#~ "If you activate the **APT Packages** "
+#~ "persistence feature,\n"
+#~ "it is recommended to activate the <span class=\"guilabel\">APT Lists</"
+#~ "span> feature as well.\n"
+#~ msgstr ""
+#~ "Falls Sie die Funktion **APT Pakete** "
+#~ "aktivieren,\n"
+#~ "wird empfohlen, zusätzlich dazu die Funktion <span class=\"guilabel\">APT "
+#~ "Listen</span> zu aktivieren.\n"
+
+#~ msgid "<a id=\"apt_lists\"></a>\n"
+#~ msgstr "<a id=\"apt_lists\"></a>\n"
+
+#~ msgid ""
+#~ "When this feature is activated, the lists of all the software packages "
+#~ "available for installation are saved in the persistent volume."
+#~ msgstr ""
+#~ "Wenn diese Funktion aktiviert ist, werden die Listen aller zur "
+#~ "Installation verfügbaren Pakete im beständigen Speicherbereich gesichert."
+
+#~ msgid ""
+#~ "Those so called *APT lists* correspond to "
+#~ "the files\n"
+#~ "downloaded while doing\n"
+#~ "**Reload** from the\n"
+#~ "*Synaptic* package manager or issuing "
+#~ "the\n"
+#~ "<span class=\"command\">apt update</span> command.\n"
+#~ msgstr ""
+#~ "Diese sogenannten *APT Listen* entsprechen "
+#~ "den Dateien,\n"
+#~ "die beim Durchführen von **Neu Laden** im\n"
+#~ "*Synaptic* Paketmanager oder beim "
+#~ "Ausführen des\n"
+#~ "<span class=\"command\">apt update</span> Befehls heruntergeladen "
+#~ "werden.\n"
+
+#~ msgid ""
+#~ "The *APT lists* are needed to\n"
+#~ "[[install additional programs|doc/advanced_topics/additional_software]]\n"
+#~ "or explore the list of available software packages. This feature\n"
+#~ "allows you to reuse them during future working sessions, even offline.\n"
+#~ msgstr ""
+#~ "Die *APT Listen* werden benötigt, um\n"
+#~ "[[zusätzliche Programme zu installieren|doc/advanced_topics/"
+#~ "additional_software]]\n"
+#~ "oder die Liste der verfügbaren Softwarepakete zu durchsuchen. Diese "
+#~ "Funktion\n"
+#~ "erlaubt es Ihnen, sie bei zukünftigen Arbeitssitzungen wiederzuverwenden, "
+#~ "auch offline.\n"
+
+#~ msgid "Additional software packages\n"
+#~ msgstr "Zusätzliche Softwarepakete\n"
+
+#~ msgid ""
+#~ "This is an experimental feature which does not appear in the assistant."
+#~ msgstr ""
+#~ "Dies ist eine experimentelle Funktion, die nicht im Assistenten erscheint."
+
+#~ msgid ""
+#~ "To use this feature you need to enable both the <span\n"
+#~ "class=\"guilabel\">APT Lists</span> and <span class=\"guilabel\">APT\n"
+#~ "Packages</span> features.\n"
+#~ msgstr ""
+#~ "Um diese Funktion zu nutzen, müssen Sie sowohl die Funktionen für <span\n"
+#~ "class=\"guilabel\">APT Listen</span> als auch für <span "
+#~ "class=\"guilabel\">APT\n"
+#~ "Pakete</span> aktivieren.\n"
+
+#~ msgid ""
+#~ "If you are offline and your additional software packages don't install, "
+#~ "it might be caused by outdated APT Lists. The issue will be fixed next "
+#~ "time you connect Tails to Internet with persistence activated."
+#~ msgstr ""
+#~ "Falls Sie offline sind und Ihre zusätzlichen Softwarepakete sich nicht "
+#~ "installieren lassen, kann dies an veralteten APT Listen liegen. Das "
+#~ "Problem wird behoben, wenn Sie sich das nächste Mal mit Tails bei "
+#~ "aktiviertem beständigen Speicherbereich ins Internet verbinden."
+
+#~ msgid ""
+#~ "To choose the list of additional software, start Tails with an "
+#~ "administrator password and edit (as an administrator) the file called `/"
+#~ "live/persistence/TailsData_unlocked/live-additional-software.conf`.  Each "
+#~ "line of this file must contain the name of a Debian package to be "
+#~ "installed as an additional software package."
+#~ msgstr ""
+#~ "Um die Liste der zusätzlichen Software auszuwählen, starten Sie Tails mit "
+#~ "einem Administrationskennwort und bearbeiten Sie (mit "
+#~ "Administrationsrechten) die Datei mit dem Namen `/live/persistence/"
+#~ "TailsData_unlocked/live-additional-software.conf`. Jede Zeile dieser "
+#~ "Datei muss den Namen eines Debianpakets enthalten, welches als "
+#~ "zusätzliches Softwarepaket installiert werden soll."
+
+#~ msgid ""
+#~ "For example, to automatically install the `dia` software, a diagram "
+#~ "editor, and the `font-manager` software, a font manager, add the "
+#~ "following content to `live-additional-software.conf`:"
+#~ msgstr ""
+#~ "Zum Beispiel, wenn Sie die Software `dia`, einen Diagrammeditor, und die "
+#~ "Software `font-manager`, eine Verwaltung für Schriftarten, automatisch "
+#~ "installieren möchten, fügen Sie folgenden Inhalt zu `live-additional-"
+#~ "software.conf` hinzu:"
+
+#~ msgid ""
+#~ "    dia\n"
+#~ "    font-manager\n"
+#~ msgstr ""
+#~ "    dia\n"
+#~ "    font-manager\n"
+
+#~ msgid ""
+#~ "To learn about the many software packages available in Debian, visit "
+#~ "<http://packages.debian.org/stable/>."
+#~ msgstr ""
+#~ "Um mehr über die in Debian verfügbaren Softwarepakete zu erfahren, "
+#~ "besuchen Sie <http://packages.debian.org/stable/>."
+
+#~ msgid ""
+#~ "<strong>Installing additional software is at your own risk.</strong>\n"
+#~ "Most additional software requires extra configuration to be able to\n"
+#~ "connect to the network through Tor, and will not work otherwise. Some "
+#~ "other software might, for\n"
+#~ "example, modify the firewall and break the security built in Tails.\n"
+#~ "Software not officially included in Tails is not tested for security.\n"
+#~ msgstr ""
+#~ "<strong>Die Installation zusätzlicher Software geschieht auf eigene "
+#~ "Gefahr.</strong>\n"
+#~ "Die meiste zusätzliche Software benötigt extra Konfigurationen, um in der "
+#~ "Lage zu sein,\n"
+#~ "eine Netzwerkverbindung über Tor herzustellen und wird sonst nicht "
+#~ "funktionieren. Manch andere Software könnte\n"
+#~ "beispielsweise die Firewall verändern und die in Tails implementierte "
+#~ "Sicherheit zerstören.\n"
+#~ "Software, die nicht in Tails enthalten ist, wurde nicht im Bezug auf "
+#~ "Sicherheit getestet.\n"

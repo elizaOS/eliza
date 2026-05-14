@@ -323,6 +323,69 @@ interface ShimSymbols {
 
 interface RuntimeWithRegisterService {
   registerService?: (name: string, impl: unknown) => unknown;
+  /**
+   * Optional `getService` accessor used to locate the shared
+   * libelizainference FFI context the voice lifecycle wired at boot.
+   * The DFlash dispatcher reads it through this hook so it never
+   * dlopens the library twice from this plugin.
+   */
+  getService?: (name: string) => unknown;
+}
+
+/**
+ * Shape exported by the voice lifecycle's `eliza-inference-ffi` service
+ * (registered in `voice/lifecycle.ts`). The DFlash dispatcher only reads
+ * the two fields it needs to construct the streaming runner — handle
+ * lifetime is owned by the lifecycle service, not by this plugin.
+ *
+ * Typed structurally so this plugin doesn't take a hard `@elizaos/app-core`
+ * dep; the consumer-side voice service registers the real shape under
+ * the canonical service name.
+ */
+interface SharedFfiContext {
+  ffi: { llmStreamSupported?(): boolean };
+  handle: bigint;
+  /**
+   * Factory the voice lifecycle exposes so this plugin can construct an
+   * `FfiStreamingRunner` without importing `@elizaos/app-core`. The
+   * lifecycle service plugs in `new FfiStreamingRunner(ffi, ctx)` at
+   * registration time.
+   */
+  buildStreamingRunner: (args: {
+    ffi: { llmStreamSupported?(): boolean };
+    ctx: bigint;
+  }) => {
+    generateWithUsage(args: unknown): Promise<{
+      text: string;
+      slotId: number;
+      firstTokenMs: number | null;
+      drafted: number;
+      accepted: number;
+    }>;
+  };
+}
+
+/**
+ * Best-effort lookup of the shared FFI context. The voice lifecycle
+ * registers it under the canonical service name; absent runtimes
+ * (test rigs, builds without voice) just return null and the dispatcher
+ * stays on the single-model FFI decode path.
+ */
+function resolveSharedFfiContext(
+  runtime: RuntimeWithRegisterService,
+): SharedFfiContext | null {
+  if (typeof runtime.getService !== "function") return null;
+  const found = runtime.getService("eliza-inference-ffi");
+  if (
+    found &&
+    typeof found === "object" &&
+    "ffi" in found &&
+    "handle" in found &&
+    "buildStreamingRunner" in found
+  ) {
+    return found as SharedFfiContext;
+  }
+  return null;
 }
 
 /**
@@ -1593,9 +1656,12 @@ export async function registerAospLlamaLoader(
   const adapter = await buildAdapter();
   if (!adapter) return false;
 
-  // Lazy-construct the DFlash adapter on first use so we don't pay the
-  // file-existence + chmod-bit checks on every boot. The dispatcher below
-  // routes load/generate to it when a drafter is paired.
+  // Lazy-construct the DFlash adapter on first use. The AOSP build hosts
+  // both the target and the drafter in-process via the FFI streaming-LLM
+  // runner (no more cross-compiled `llama-server` binary); the adapter
+  // only constructs when libelizainference exports the streaming symbols
+  // AND the voice/text FFI context has been initialized. Otherwise the
+  // dispatcher falls back to the single-model FFI decode path below.
   const { buildDflashAdapter, shouldRouteViaDflash } = await import(
     "./aosp-dflash-adapter.js"
   );
@@ -1603,11 +1669,20 @@ export async function registerAospLlamaLoader(
   let dflashProbed = false;
   const getDflashAdapter = () => {
     if (!dflashProbed) {
-      dflashAdapter = buildDflashAdapter();
       dflashProbed = true;
+      const ffiCtx = resolveSharedFfiContext(runtime);
+      if (!ffiCtx) {
+        logger.warn(
+          "[aosp-llama] DFlash requested but the FFI context is not registered yet; " +
+            "falling back to single-model FFI decode. The voice lifecycle wires the " +
+            "context at boot — confirm bootstrap order.",
+        );
+        return null;
+      }
+      dflashAdapter = buildDflashAdapter();
       if (dflashAdapter) {
         logger.info(
-          "[aosp-llama] DFlash spawn-and-route adapter ready (llama-server present in per-ABI asset dir)",
+          "[aosp-llama] FFI streaming DFlash adapter ready (in-process drafter+target)",
         );
       }
     }

@@ -1,0 +1,10 @@
+gir1.2-gtk-3.0
+python3
+python3-dbus
+python3-gi
+python3-prctl
+python3-pycountry
+python3-stem
+python3-systemd
+python3-tz
+zbar-tools

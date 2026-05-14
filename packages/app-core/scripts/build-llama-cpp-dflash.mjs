@@ -19,6 +19,7 @@
  *
  * Multi-target build matrix (see SUPPORTED_TARGETS below):
  *   linux-x64-cpu, linux-x64-cuda, linux-x64-rocm, linux-x64-vulkan
+ *   linux-x64-sycl, linux-x64-openvino
  *   linux-aarch64-cpu, linux-aarch64-cuda   (GH200 / Ampere Altra / Graviton; arm64 Linux host only)
  *   android-arm64-cpu, android-arm64-vulkan
  *   darwin-arm64-metal    (Apple Silicon only; Intel Macs are not a supported target)
@@ -80,7 +81,7 @@ import {
 } from "./omnivoice-fuse/prepare.mjs";
 import { verifyFusedSymbols } from "./omnivoice-fuse/verify-symbols.mjs";
 
-// elizaOS/llama.cpp @ v1.0.0-eliza (commit 08032d57) — the unified fork that
+// elizaOS/llama.cpp @ bfab6689 — the unified fork that
 // composes TBQ (turbo3/turbo4/turbo3_tcq) + QJL (block_qjl1_256,
 // GGML_OP_ATTN_SCORE_QJL, GGML_OP_FUSED_ATTN_QJL_TBQ) + Q4_POLAR (Q4_POLAR=47)
 // + the eliza Metal/Vulkan/CUDA kernels + DFlash spec-decode (--spec-type
@@ -100,7 +101,8 @@ import { verifyFusedSymbols } from "./omnivoice-fuse/verify-symbols.mjs";
 const REMOTE =
   process.env.ELIZA_DFLASH_LLAMA_CPP_REMOTE ||
   "https://github.com/elizaOS/llama.cpp.git";
-const REF = process.env.ELIZA_DFLASH_LLAMA_CPP_REF || "v1.0.0-eliza";
+const DEFAULT_REF = "bfab6689d7640db682b73f05a6af64b244a69dbd";
+const REF = process.env.ELIZA_DFLASH_LLAMA_CPP_REF || DEFAULT_REF;
 // The in-repo submodule checkout of the fork. When it is initialized this is
 // the default build source (no clone needed); see resolveSourceCheckout().
 const SUBMODULE_DIR = path.resolve(
@@ -150,6 +152,47 @@ const SUPPORTED_TARGETS = [
   "linux-x64-cuda",
   "linux-x64-rocm",
   "linux-x64-vulkan",
+  // Intel oneAPI / SYCL on Linux x64. Targets Intel discrete and
+  // integrated GPUs (Arc, Xe, Lunar Lake / Meteor Lake / Panther Lake
+  // iGPUs) through upstream ggml-sycl. Requires Intel oneAPI Base
+  // Toolkit (icx/icpx + oneMKL) on the build host; `source
+  // /opt/intel/oneapi/setvars.sh` before invoking this script. Optional
+  // `ELIZA_DFLASH_SYCL_TARGET=NVIDIA` / `AMD` overrides the default
+  // `INTEL` cross-architecture target (DPC++ can compile SYCL → PTX or
+  // ROCm via the same toolchain — useful for benchmarking against
+  // CUDA/HIP backends). Custom W4-B kernels (turbo3 / turbo4 /
+  // turbo3_tcq / qjl / polarquant / dflash) do NOT have a SYCL backend
+  // in this fork today (CUDA / Vulkan / Metal / CPU only), so the SYCL
+  // target falls back to upstream-equivalent perf. The kernel-patches
+  // dispatch in this script's `patch*Kernels` hooks correctly no-ops
+  // for `backend === "sycl"` (the per-backend branches around line
+  // 1490 only match cuda/vulkan/metal).
+  "linux-x64-sycl",
+  // Intel OpenVINO backend on Linux x64 (ggml-org/llama.cpp PR #15307,
+  // merged into upstream master on 2026-04-08; this fork cherry-picks
+  // the ggml-openvino/ directory). Builds a single llama-server binary
+  // that can target the Intel CPU, Intel iGPU/dGPU (Arc / Xe / Lunar
+  // Lake / Meteor Lake / Panther Lake), OR the Intel NPU (Lunar Lake AI
+  // Boost ~48 TOPS, Meteor Lake NCE, Arrow Lake) — the device is
+  // selected at RUNTIME via `GGML_OPENVINO_DEVICE={CPU,GPU,NPU,GPU.0,
+  // GPU.1}`. NPU coverage is the unique value here: SYCL/Vulkan/CUDA do
+  // not cover the NPU, OpenVINO does, and NPU inference draws ~2-3 W
+  // vs ~15-25 W for the iGPU on the same model. Requires the OpenVINO
+  // Runtime (`apt install openvino-2026.x.x` from
+  // https://apt.repos.intel.com/openvino, or extract the tarball under
+  // /opt/intel/openvino_2026/); `source
+  // /opt/intel/openvino_2026/setupvars.sh` exports `OpenVINO_DIR` and
+  // `LD_LIBRARY_PATH` so CMake's `find_package(OpenVINO)` succeeds and
+  // the runtime can dlopen `libopenvino.so` at execution time. The
+  // W4-B custom kernels (turbo3 / turbo4 / turbo3_tcq / qjl /
+  // polarquant / dflash) do NOT have an OpenVINO backend — those are
+  // CUDA / Vulkan / Metal / CPU only — so this target runs plain ggml
+  // ops translated to OpenVINO compute graphs. The kernel-patches
+  // dispatch in patchAllKernels() correctly no-ops for `backend ===
+  // "openvino"` (the per-backend branches around line 1490 only match
+  // cuda/vulkan/metal). Supported quantizations: FP16, Q8_0, Q4_0,
+  // Q4_1, Q4_K, Q4_K_M (with runtime conversion for Q5_K / Q6_K).
+  "linux-x64-openvino",
   // Linux aarch64. Required for the `server-h200` tier (GH200 = aarch64
   // host + H100/H200 GPU) and for Ampere Altra / AWS Graviton CPU-only
   // deployments. Both targets require a real arm64 Linux host (or a
@@ -238,7 +281,9 @@ function prependLocalToolDirs() {
   ].filter((dir) => fs.existsSync(dir));
 
   if (candidates.length === 0) return;
-  const current = process.env.PATH ? process.env.PATH.split(path.delimiter) : [];
+  const current = process.env.PATH
+    ? process.env.PATH.split(path.delimiter)
+    : [];
   const merged = [...candidates, ...current].filter(
     (dir, idx, arr) => dir && arr.indexOf(dir) === idx,
   );
@@ -370,7 +415,8 @@ function hipArchListFlag() {
 // Resolve the Android NDK root.
 //
 // Order: $ANDROID_NDK_HOME, $ANDROID_NDK_ROOT, $ANDROID_NDK,
-//        $HOME/Android/Sdk/ndk/<sole-or-newest-subdir>.
+//        $ANDROID_HOME/ndk, $ANDROID_SDK_ROOT/ndk,
+//        $HOME/Library/Android/sdk/ndk, $HOME/Android/Sdk/ndk.
 function resolveAndroidNdk() {
   const envCandidates = [
     process.env.ANDROID_NDK_HOME,
@@ -386,8 +432,21 @@ function resolveAndroidNdk() {
       return candidate;
     }
   }
-  const ndkDir = path.join(os.homedir(), "Android", "Sdk", "ndk");
-  if (fs.existsSync(ndkDir)) {
+  const sdkRoots = [
+    process.env.ANDROID_HOME,
+    process.env.ANDROID_SDK_ROOT,
+    path.join(os.homedir(), "Library", "Android", "sdk"),
+    path.join(os.homedir(), "Android", "Sdk"),
+  ].filter((value, index, values) => {
+    return (
+      typeof value === "string" &&
+      value.trim().length > 0 &&
+      values.indexOf(value) === index
+    );
+  });
+  for (const sdkRoot of sdkRoots) {
+    const ndkDir = path.join(sdkRoot, "ndk");
+    if (!fs.existsSync(ndkDir)) continue;
     const versions = fs
       .readdirSync(ndkDir, { withFileTypes: true })
       .filter((entry) => entry.isDirectory())
@@ -416,7 +475,12 @@ function resolveAndroidNdk() {
 // the path so CAPABILITIES.json / logs can show where it came from.
 function findAndroidVulkanInclude(ndk) {
   if (!ndk) return null;
-  const hostDirs = ["linux-x86_64", "darwin-x86_64", "windows-x86_64"];
+  const hostDirs = [
+    "linux-x86_64",
+    "darwin-arm64",
+    "darwin-x86_64",
+    "windows-x86_64",
+  ];
   for (const host of hostDirs) {
     const candidate = path.join(
       ndk,
@@ -438,13 +502,25 @@ function findAndroidVulkanInclude(ndk) {
 // Locate a glslc usable for the host. The Android NDK ships its own glslc
 // under shader-tools/<host>/glslc.
 function findGlslc(ndk) {
-  if (has("glslc")) return "glslc";
+  const explicit = process.env.GLSLC?.trim();
+  if (explicit && fs.existsSync(explicit)) return explicit;
   if (ndk) {
-    const hostDirs = ["linux-x86_64", "darwin-x86_64", "windows-x86_64"];
+    const hostDirs = [
+      "linux-x86_64",
+      "darwin-arm64",
+      "darwin-x86_64",
+      "windows-x86_64",
+    ];
     for (const host of hostDirs) {
       const candidate = path.join(ndk, "shader-tools", host, "glslc");
       if (fs.existsSync(candidate)) return candidate;
     }
+  }
+  if (has("glslc")) {
+    const out = spawnSync("which", ["glslc"], {
+      encoding: "utf8",
+    }).stdout?.trim();
+    return out || "glslc";
   }
   return null;
 }
@@ -662,6 +738,275 @@ target_include_directories(ggml-base PRIVATE ggml-cpu ggml-cpu/qjl ggml-cpu/qjl/
   );
 }
 
+// The current elizaOS/llama.cpp pin carries a Q1_0 copy/paste drift in
+// ggml-quants.c: the second Q1_0 reference quantizer should be the g32
+// variant declared in ggml-quants.h and used by quantize_q1_0_g32().
+// Keep this as a build-source patch so every clean submodule reset produces a
+// compilable fork without relying on untracked submodule edits.
+function patchGgmlQ1G32Quantizer(cacheDir, { dryRun = false } = {}) {
+  const quantsPath = path.join(cacheDir, "ggml", "src", "ggml-quants.c");
+  if (!fs.existsSync(quantsPath)) {
+    throw new Error(
+      `[dflash-build] patchGgmlQ1G32Quantizer: ${quantsPath} missing — fork layout broken`,
+    );
+  }
+  const original = fs.readFileSync(quantsPath, "utf8");
+  if (original.includes("void quantize_row_q1_0_g32_ref(")) {
+    return;
+  }
+  const marker =
+    "// reference implementation for deterministic creation of model files\nvoid quantize_row_q1_0_ref(";
+  const first = original.indexOf(marker);
+  const second =
+    first >= 0 ? original.indexOf(marker, first + marker.length) : -1;
+  if (first < 0 || second < 0) {
+    return;
+  }
+  const nextMarker = original.indexOf(
+    "// reference implementation for deterministic creation of model files\nvoid quantize_row_q4_0_ref(",
+    second + marker.length,
+  );
+  if (nextMarker < 0) {
+    throw new Error(
+      `[dflash-build] patchGgmlQ1G32Quantizer: q4_0 anchor not found after duplicate q1_0_ref in ${quantsPath}`,
+    );
+  }
+  const before = original.slice(0, second);
+  const duplicate = original.slice(second, nextMarker);
+  const after = original.slice(nextMarker);
+  const g32 = duplicate
+    .replace("void quantize_row_q1_0_ref(", "void quantize_row_q1_0_g32_ref(")
+    .replace("block_q1_0 * GGML_RESTRICT y", "block_q1_0_g32 * GGML_RESTRICT y")
+    .replace(
+      "static const int qk = QK1_0;",
+      "static const int qk = QK1_0_g32;",
+    );
+  if (g32 === duplicate) {
+    throw new Error(
+      `[dflash-build] patchGgmlQ1G32Quantizer: replacement did not modify duplicate q1_0_ref in ${quantsPath}`,
+    );
+  }
+  if (!dryRun) {
+    fs.writeFileSync(quantsPath, before + g32 + after, "utf8");
+  }
+  console.log(
+    "[dflash-build] patched ggml-quants.c duplicate q1_0_ref into q1_0_g32_ref",
+  );
+}
+
+// The current fork pin also carries stale ggml type-trait drift from an older
+// QJL/TBQ slot layout: a duplicate minimal TBQ3_TCQ initializer shadows the
+// real one, and a reserved [45] hole collides with the current TBQ4_0 enum.
+// Normalize it after each clean checkout so every local/fused/mobile build
+// sees the same cache-type table.
+function patchGgmlTypeTraitDrift(cacheDir, { dryRun = false } = {}) {
+  const ggmlPath = path.join(cacheDir, "ggml", "src", "ggml.c");
+  if (!fs.existsSync(ggmlPath)) {
+    throw new Error(
+      `[dflash-build] patchGgmlTypeTraitDrift: ${ggmlPath} missing — fork layout broken`,
+    );
+  }
+  let content = fs.readFileSync(ggmlPath, "utf8");
+  const original = content;
+
+  const duplicateTbq3Tcq = `    [GGML_TYPE_TBQ3_TCQ] = {
+        .type_name                = "tbq3_tcq",
+        .blck_size                = QK_TBQ3_TCQ,
+        .type_size                = sizeof(block_tbq3_tcq),
+        .is_quantized             = true,
+    },
+`;
+  const firstTbq3Tcq = content.indexOf("    [GGML_TYPE_TBQ3_TCQ] = {");
+  const secondTbq3Tcq =
+    firstTbq3Tcq >= 0
+      ? content.indexOf("    [GGML_TYPE_TBQ3_TCQ] = {", firstTbq3Tcq + 1)
+      : -1;
+  if (secondTbq3Tcq >= 0) {
+    const duplicateAtSecond = content.slice(
+      secondTbq3Tcq,
+      secondTbq3Tcq + duplicateTbq3Tcq.length,
+    );
+    if (duplicateAtSecond !== duplicateTbq3Tcq) {
+      throw new Error(
+        `[dflash-build] patchGgmlTypeTraitDrift: unexpected duplicate TBQ3_TCQ initializer shape in ${ggmlPath}`,
+      );
+    }
+    content =
+      content.slice(0, secondTbq3Tcq) +
+      content.slice(secondTbq3Tcq + duplicateTbq3Tcq.length);
+  }
+
+  content = content.replace(
+    / {4}\[45\] = \{ \/\/ RESERVED — was GGML_TYPE_COUNT pre-QJL; left as a hole so a\n[\s\S]*? {8}\.type_name\s*=\s*"TYPE_45 RESERVED \(pre-QJL GGML_TYPE_COUNT\)",\n[\s\S]*? {4}\},\n/,
+    "",
+  );
+
+  if (content !== original) {
+    if (!dryRun) {
+      fs.writeFileSync(ggmlPath, content, "utf8");
+    }
+    console.log(
+      "[dflash-build] patched ggml.c stale TBQ3_TCQ/[45] type-trait drift",
+    );
+  }
+}
+
+function patchSpeculativeReplacementsField(cacheDir, { dryRun = false } = {}) {
+  const argPath = path.join(cacheDir, "common", "arg.cpp");
+  const headerPath = path.join(cacheDir, "common", "common.h");
+  if (!fs.existsSync(argPath) || !fs.existsSync(headerPath)) {
+    throw new Error(
+      `[dflash-build] patchSpeculativeReplacementsField: common arg/header files missing — fork layout broken`,
+    );
+  }
+  const argSource = fs.readFileSync(argPath, "utf8");
+  if (!argSource.includes("params.speculative.replacements.push_back")) {
+    return;
+  }
+  const original = fs.readFileSync(headerPath, "utf8");
+  if (
+    original.includes(
+      "std::vector<std::pair<std::string, std::string>> replacements;",
+    )
+  ) {
+    return;
+  }
+  const anchor = "    common_params_speculative_draft draft;\n";
+  if (!original.includes(anchor)) {
+    throw new Error(
+      `[dflash-build] patchSpeculativeReplacementsField: anchor not found in ${headerPath}`,
+    );
+  }
+  const replacement =
+    anchor +
+    "\n" +
+    "    // Optional target-token-string -> draft-token-string compatibility map used by --spec-replace.\n" +
+    "    std::vector<std::pair<std::string, std::string>> replacements;\n";
+  if (!dryRun) {
+    fs.writeFileSync(headerPath, original.replace(anchor, replacement), "utf8");
+  }
+  console.log(
+    "[dflash-build] patched common_params_speculative with --spec-replace storage",
+  );
+}
+
+function patchMtmdQwen3aDuplicateDispatch(cacheDir, { dryRun = false } = {}) {
+  const clipPath = path.join(cacheDir, "tools", "mtmd", "clip.cpp");
+  if (!fs.existsSync(clipPath)) {
+    return;
+  }
+  const original = fs.readFileSync(clipPath, "utf8");
+  const dispatchRe =
+    / {8}case PROJECTOR_TYPE_QWEN3A:\n {12}\{\n {16}builder = std::make_unique<clip_graph_qwen3a>\(ctx, img\);\n {12}\} break;\n/g;
+  let seen = 0;
+  const patched = original.replace(dispatchRe, (match) => {
+    seen += 1;
+    return seen === 1 ? match : "";
+  });
+  if (seen <= 1 || patched === original) {
+    return;
+  }
+  if (!dryRun) {
+    fs.writeFileSync(clipPath, patched, "utf8");
+  }
+  console.log(
+    `[dflash-build] removed ${seen - 1} duplicate Qwen3A mtmd dispatch block(s)`,
+  );
+}
+
+function patchOmnivoiceMtmdApi(cacheDir, { dryRun = false } = {}) {
+  const ffiPath = path.join(
+    cacheDir,
+    "omnivoice",
+    "src",
+    "eliza-inference-ffi.cpp",
+  );
+  if (!fs.existsSync(ffiPath)) {
+    return;
+  }
+  const original = fs.readFileSync(ffiPath, "utf8");
+  const patched = original.replaceAll(
+    "mtmd_get_audio_bitrate(",
+    "mtmd_get_audio_sample_rate(",
+  );
+  if (patched === original) {
+    return;
+  }
+  if (!dryRun) {
+    fs.writeFileSync(ffiPath, patched, "utf8");
+  }
+  console.log(
+    "[dflash-build] patched omnivoice ASR FFI for current mtmd_get_audio_sample_rate API",
+  );
+}
+
+function patchDflashSpeculativeDispatch(cacheDir, { dryRun = false } = {}) {
+  const specPath = path.join(cacheDir, "common", "speculative.cpp");
+  if (!fs.existsSync(specPath)) {
+    throw new Error(
+      `[dflash-build] patchDflashSpeculativeDispatch: ${specPath} missing — fork layout broken`,
+    );
+  }
+  let content = fs.readFileSync(specPath, "utf8");
+  const original = content;
+  const hasDflashDispatch = (source) =>
+    source.includes(
+      "bool has_dflash = (enabled_configs & (1u << COMMON_SPECULATIVE_TYPE_DFLASH));",
+    ) ||
+    source.includes(
+      "bool has_dflash = (params.type == COMMON_SPECULATIVE_TYPE_DFLASH);",
+    );
+  if (
+    hasDflashDispatch(content) &&
+    content.includes(
+      "has_dflash ? COMMON_SPECULATIVE_TYPE_DFLASH : COMMON_SPECULATIVE_TYPE_DRAFT",
+    ) &&
+    content.includes("case COMMON_SPECULATIVE_TYPE_DFLASH")
+  ) {
+    return;
+  }
+  content = content.replace(
+    "        bool has_draft = (enabled_configs & (1u << COMMON_SPECULATIVE_TYPE_DRAFT));\n",
+    "        bool has_dflash = (enabled_configs & (1u << COMMON_SPECULATIVE_TYPE_DFLASH));\n        bool has_draft = (enabled_configs & (1u << COMMON_SPECULATIVE_TYPE_DRAFT)) || has_dflash;\n",
+  );
+  content = content.replace(
+    "        bool has_draft = !params.mparams_dft.path.empty();\n",
+    "        bool has_dflash = (params.type == COMMON_SPECULATIVE_TYPE_DFLASH);\n        bool has_draft = !params.mparams_dft.path.empty();\n",
+  );
+  content = content.replace(
+    "        static_assert(COMMON_SPECULATIVE_TYPE_COUNT == 8);\n",
+    "        static_assert(COMMON_SPECULATIVE_TYPE_COUNT == 9);\n",
+  );
+  content = content.replace(
+    "            configs.push_back(common_speculative_config(COMMON_SPECULATIVE_TYPE_DRAFT, params));\n",
+    "            configs.push_back(common_speculative_config(has_dflash ? COMMON_SPECULATIVE_TYPE_DFLASH : COMMON_SPECULATIVE_TYPE_DRAFT, params));\n",
+  );
+  content = content.replace(
+    "            case COMMON_SPECULATIVE_TYPE_DRAFT: {\n",
+    "            case COMMON_SPECULATIVE_TYPE_DRAFT:\n            case COMMON_SPECULATIVE_TYPE_DFLASH: {\n",
+  );
+  if (content === original) {
+    return;
+  }
+  if (
+    !hasDflashDispatch(content) ||
+    !content.includes(
+      "has_dflash ? COMMON_SPECULATIVE_TYPE_DFLASH : COMMON_SPECULATIVE_TYPE_DRAFT",
+    ) ||
+    !content.includes("case COMMON_SPECULATIVE_TYPE_DFLASH")
+  ) {
+    throw new Error(
+      `[dflash-build] patchDflashSpeculativeDispatch: patch verification failed for ${specPath}`,
+    );
+  }
+  if (!dryRun) {
+    fs.writeFileSync(specPath, content, "utf8");
+  }
+  console.log(
+    "[dflash-build] patched speculative.cpp to route --spec-type dflash through draft-model speculation",
+  );
+}
+
 // Patch `ggml/src/ggml-cuda/CMakeLists.txt` so the staged fused-attn TU
 // (fused-attn-qjl-tbq.cu, copied in by patchCudaKernels) compiles its body
 // when `-DGGML_CUDA_FUSED_ATTN_QJL=ON` is passed. The fork's ggml-cuda
@@ -875,11 +1220,25 @@ function cmakeFlagsForTarget(target, ctx) {
   //   * CUDA-AGENT TODO: extra flags for `linux-x64-cuda` /
   //     `windows-x64-cuda` / `linux-aarch64-cuda` go in the
   //     `backend === "cuda"` branch (arch list is `cudaArchListFlag`).
+  //   * SYCL-AGENT TODO: extra flags for `linux-x64-sycl` go in the
+  //     `backend === "sycl"` branch below.
+  //   * OPENVINO-AGENT TODO: extra flags for `linux-x64-openvino` go in the
+  //     `backend === "openvino"` branch below.
   //   * CPU-AGENT TODO: SIMD / threading flags for `linux-x64-cpu`,
   //     `linux-aarch64-cpu`, `windows-arm64-cpu` go alongside the
   //     existing `backend === "cpu" && arch === "x64"` / `arm64` blocks
   //     in the `platform === "windows"` section (and a new linux-cpu
   //     block here if a non-native pin is ever needed).
+  //   * SYCL-AGENT TODO: extra flags for `linux-x64-sycl` go in the
+  //     `backend === "sycl"` branch below. Future Eliza-kernel SYCL
+  //     backends (turbo3 / qjl / polarquant) will plug into the same
+  //     branch alongside an entry in patchAllKernels() at the bottom
+  //     of this file.
+  //   * OPENVINO-AGENT TODO: extra flags for `linux-x64-openvino` (and
+  //     future `windows-x64-openvino`) go in the `backend ===
+  //     "openvino"` branch below. Eliza-kernel OpenVINO backends, if
+  //     they're ever written, would plug into the same branch alongside
+  //     an entry in patchAllKernels() at the bottom of this file.
   // ──────────────────────────────────────────────────────────────────
   const { platform, arch, backend, isSimulator } = parseTarget(target);
   const flags = ["-DLLAMA_BUILD_TESTS=OFF", "-DLLAMA_BUILD_EXAMPLES=ON"];
@@ -888,7 +1247,14 @@ function cmakeFlagsForTarget(target, ctx) {
   flags.push(`-DGGML_NATIVE=${isCross ? "OFF" : "ON"}`);
 
   // Disable backends we don't want by default; flip the chosen one back on.
-  const offByDefault = ["GGML_METAL", "GGML_CUDA", "GGML_HIP", "GGML_VULKAN"];
+  const offByDefault = [
+    "GGML_METAL",
+    "GGML_CUDA",
+    "GGML_HIP",
+    "GGML_VULKAN",
+    "GGML_SYCL",
+    "GGML_OPENVINO",
+  ];
   for (const name of offByDefault) flags.push(`-D${name}=OFF`);
 
   if (backend === "metal") {
@@ -935,6 +1301,71 @@ function cmakeFlagsForTarget(target, ctx) {
     // narrow/extend with ELIZA_DFLASH_CMAKE_FLAGS; those flags append
     // after this list and win on a CMake conflict.
     flags.push(hipArchListFlag());
+  } else if (backend === "sycl") {
+    // Intel oneAPI / SYCL backend. Builds plain ggml-sycl from the
+    // upstream tree (no Eliza kernel patches — those branches in
+    // patch*Kernels() only match cuda/vulkan/metal). Operator must
+    // `source /opt/intel/oneapi/setvars.sh` so icx/icpx + MKLROOT are
+    // on PATH before this script runs.
+    flags[flags.indexOf("-DGGML_SYCL=OFF")] = "-DGGML_SYCL=ON";
+    // Use Intel's DPC++ compiler. CMake honors CC/CXX, but setting the
+    // compiler vars explicitly catches the common case where setvars.sh
+    // was not sourced (CMake would silently fall back to gcc, which
+    // can't compile SYCL TUs and emits a confusing pragma error 100+
+    // lines deep into a translation unit). FP16 default-on via XMX
+    // matrix engines on Xe2 / Xe-LPG iGPUs and Arc discrete; operators
+    // hitting SYCL_VALIDATION_ERROR on FP16 ops can set
+    // `ELIZA_DFLASH_SYCL_NO_F16=1` to disable.
+    flags.push(
+      "-DCMAKE_C_COMPILER=icx",
+      "-DCMAKE_CXX_COMPILER=icpx",
+      `-DGGML_SYCL_F16=${envFlag("ELIZA_DFLASH_SYCL_NO_F16") ? "OFF" : "ON"}`,
+    );
+    // SYCL target architecture. DPC++ can compile SYCL → Intel GPU
+    // (default), → NVIDIA PTX (codeplay/oneAPI-for-CUDA plugin), or
+    // → AMD HIP (codeplay/oneAPI-for-HIP plugin). The vast majority
+    // of users hitting this target want INTEL; expose the override
+    // env knob in case someone benchmarks against the same source tree.
+    // Validate against the known set so a typo (`GARBAGE`) fails fast
+    // rather than ~5 minutes deep into CMake with a confusing error.
+    const syclTarget = (
+      process.env.ELIZA_DFLASH_SYCL_TARGET?.trim() || "INTEL"
+    ).toUpperCase();
+    const allowedSyclTargets = new Set(["INTEL", "NVIDIA", "AMD"]);
+    if (!allowedSyclTargets.has(syclTarget)) {
+      throw new Error(
+        `ELIZA_DFLASH_SYCL_TARGET must be one of INTEL, NVIDIA, AMD; got ${syclTarget}`,
+      );
+    }
+    flags.push(`-DGGML_SYCL_TARGET=${syclTarget}`);
+  } else if (backend === "openvino") {
+    // Intel OpenVINO backend. Builds plain ggml-openvino from the
+    // cherry-picked upstream tree (no Eliza kernel patches — those
+    // branches in patch*Kernels() only match cuda/vulkan/metal).
+    // Operator must source the OpenVINO setupvars script (e.g.
+    // `source /opt/intel/openvino_2026/setupvars.sh`) so OpenVINO_DIR
+    // / INTEL_OPENVINO_DIR and LD_LIBRARY_PATH are set before this
+    // script runs. CMake then resolves `find_package(OpenVINO)` from
+    // those env vars.
+    flags[flags.indexOf("-DGGML_OPENVINO=OFF")] = "-DGGML_OPENVINO=ON";
+    // Pass OpenVINO_DIR explicitly when present — find_package() will
+    // honor it. Some OpenVINO tarballs install to non-standard paths
+    // (/opt/intel/openvino_<ver>/runtime/cmake) which CMake's default
+    // search heuristics miss. Normalize the env value first so a trailing
+    // slash (`/runtime/cmake/`) doesn't make the `.endsWith("/cmake")`
+    // check miss and we double-append `runtime/cmake`.
+    const openvinoDir =
+      process.env.OpenVINO_DIR?.trim() ||
+      process.env.INTEL_OPENVINO_DIR?.trim();
+    if (openvinoDir) {
+      const normalizedDir = path.normalize(openvinoDir);
+      const cmakeDir =
+        normalizedDir.endsWith(`${path.sep}cmake`) ||
+        normalizedDir.endsWith("/cmake")
+          ? normalizedDir
+          : path.join(normalizedDir, "runtime", "cmake");
+      flags.push(`-DOpenVINO_DIR=${cmakeDir}`);
+    }
   } else if (backend === "vulkan") {
     flags[flags.indexOf("-DGGML_VULKAN=OFF")] = "-DGGML_VULKAN=ON";
     if (ctx.glslc) flags.push(`-DVulkan_GLSLC_EXECUTABLE=${ctx.glslc}`);
@@ -987,7 +1418,7 @@ function cmakeFlagsForTarget(target, ctx) {
   if (platform === "android") {
     if (!ctx.androidNdk) {
       throw new Error(
-        "Android target requested but ANDROID_NDK_HOME is not set and no NDK was found under ~/Android/Sdk/ndk",
+        "Android target requested but ANDROID_NDK_HOME is not set and no NDK was found under ANDROID_HOME, ANDROID_SDK_ROOT, ~/Library/Android/sdk, or ~/Android/Sdk",
       );
     }
     flags.push(
@@ -1066,7 +1497,7 @@ function cmakeFlagsForTarget(target, ctx) {
     // `ggml_backend_cpu_init` (per-backend symbol name), so the loader
     // fails and inference can't run. -DGGML_BACKEND_DL=OFF embeds the
     // backend's init directly into the binary.
-    flags.push("-DGGML_BACKEND_DL=OFF", "-DBUILD_SHARED_LIBS=OFF");
+    flags.push("-DGGML_BACKEND_DL=OFF");
   } else if (platform === "ios") {
     // iOS cross-compile (host must be macOS with Xcode). The Capacitor
     // plugin's xcframework patch consumes the resulting static archive +
@@ -1187,8 +1618,28 @@ function targetCompatibility(target, ctx) {
   if (backend === "rocm" && !(has("hipcc") || has("rocminfo"))) {
     return { ok: false, reason: "no hipcc / rocminfo" };
   }
+  if (backend === "sycl" && (!has("icpx") || !has("icx"))) {
+    return { ok: false, reason: "no Intel oneAPI icpx/icx compilers" };
+  }
+  if (
+    backend === "openvino" &&
+    !process.env.OpenVINO_DIR &&
+    !process.env.INTEL_OPENVINO_DIR
+  ) {
+    return {
+      ok: false,
+      reason: "OpenVINO_DIR or INTEL_OPENVINO_DIR is required",
+    };
+  }
   if (backend === "vulkan" && !ctx.glslc) {
     return { ok: false, reason: "no glslc (Vulkan shader compiler)" };
+  }
+  if (backend === "sycl" && !(has("icpx") && has("icx"))) {
+    return {
+      ok: false,
+      reason:
+        "no icx/icpx (Intel oneAPI Base Toolkit) — source /opt/intel/oneapi/setvars.sh first",
+    };
   }
   if (backend === "metal" && process.platform !== "darwin") {
     return { ok: false, reason: "metal requires macOS" };
@@ -1206,7 +1657,7 @@ function nodeArchToTripleArch(platform) {
   return process.arch;
 }
 
-function defaultTarget() {
+function _defaultTarget() {
   const backend = detectBackend();
   const platform = process.platform === "win32" ? "windows" : process.platform;
   const arch = nodeArchToTripleArch(platform);
@@ -1257,6 +1708,10 @@ function standaloneCacheDir() {
 function defaultSourceCheckoutDir() {
   if (!USING_FORK_OVERRIDE && submoduleCheckoutPresent()) return SUBMODULE_DIR;
   return standaloneCacheDir();
+}
+
+function isCommitSha(ref) {
+  return /^[0-9a-f]{7,40}$/i.test(ref);
 }
 
 function parseArgs(argv) {
@@ -1381,6 +1836,11 @@ function ensureCheckout(cacheDir, ref) {
     // new artifact.
     run("git", ["reset", "--hard", "FETCH_HEAD"], { cwd: cacheDir });
     run("git", ["clean", "-fd"], { cwd: cacheDir });
+  } else if (isCommitSha(ref)) {
+    fs.mkdirSync(path.dirname(cacheDir), { recursive: true });
+    run("git", ["clone", "--depth=1", "--no-checkout", REMOTE, cacheDir]);
+    run("git", ["fetch", "--depth=1", "origin", ref], { cwd: cacheDir });
+    run("git", ["checkout", "FETCH_HEAD"], { cwd: cacheDir });
   } else {
     fs.mkdirSync(path.dirname(cacheDir), { recursive: true });
     run("git", ["clone", "--depth=1", "--branch", ref, REMOTE, cacheDir]);
@@ -1455,7 +1915,27 @@ function ensureCheckout(cacheDir, ref) {
 //     smoke on native Vulkan hardware before QJL/Polar/Turbo capability bits
 //     can flip true.
 function applyForkPatches(cacheDir, backend, target, { dryRun = false } = {}) {
-  patchDflashDrafterArchImpl(cacheDir, { dryRun });
+  patchGgmlQ1G32Quantizer(cacheDir, { dryRun });
+  patchGgmlTypeTraitDrift(cacheDir, { dryRun });
+  patchSpeculativeReplacementsField(cacheDir, { dryRun });
+  patchMtmdQwen3aDuplicateDispatch(cacheDir, { dryRun });
+  patchOmnivoiceMtmdApi(cacheDir, { dryRun });
+  if (envFlag("ELIZA_DFLASH_SKIP_DRAFTER_ARCH_PATCH")) {
+    console.warn(
+      `[dflash-build] skipping DFlash speculative dispatch patch for target=${target}; ` +
+        "allowed only for graph-dispatch smoke bootstrap builds",
+    );
+  } else {
+    patchDflashSpeculativeDispatch(cacheDir, { dryRun });
+  }
+  if (envFlag("ELIZA_DFLASH_SKIP_DRAFTER_ARCH_PATCH")) {
+    console.warn(
+      `[dflash-build] skipping DFlash drafter architecture patch for target=${target}; ` +
+        "allowed only for graph-dispatch smoke bootstrap builds",
+    );
+  } else {
+    patchDflashDrafterArchImpl(cacheDir, { dryRun });
+  }
   // Wave A1: mirror the verified standalone QJL CPU SIMD TUs (AVX-VNNI int8
   // score path, ARMv8.4 dotprod, runtime-cpuid dispatcher) over the fork's
   // stale ggml-cpu/qjl/ snapshot and wire them into the ggml-cpu build. Runs
@@ -1512,7 +1992,7 @@ function applyForkPatches(cacheDir, backend, target, { dryRun = false } = {}) {
   // binary is not publishable (the merged-route fused server still serves
   // text/DFlash + `/v1/audio/speech` from one process — the structured-output
   // surface is the only thing missing).
-  if (!target || !target.startsWith("ios-")) {
+  if (!target?.startsWith("ios-")) {
     if (envFlag("ELIZA_DFLASH_SKIP_SERVER_STRUCTURED_OUTPUT")) {
       console.warn(
         "[dflash-build] ⚠️  ELIZA_DFLASH_SKIP_SERVER_STRUCTURED_OUTPUT=1 — " +
@@ -1533,7 +2013,7 @@ function applyForkPatches(cacheDir, backend, target, { dryRun = false } = {}) {
   // builds are byte-for-byte unchanged; the cmake-graft separately links
   // `omnivoice-core` into `llama-server` and sets that define for fused
   // targets. Idempotent via the route patch's own sentinel.
-  if (isFusedTarget(target) && (!target || !target.startsWith("ios-"))) {
+  if (isFusedTarget(target) && !target?.startsWith("ios-")) {
     patchServerOmnivoiceRouteImpl(cacheDir, { dryRun });
   }
   // ggml.c (in ggml-base) calls quantize_qjl1_256 /
@@ -1620,7 +2100,7 @@ function makeDarwinInstallSelfContained(outDir, names, buildBinDir) {
   }
 }
 
-function useLegacyDflashDrafterRuntime(target) {
+function shouldUseLegacyDflashDrafterRuntime(target) {
   const { platform, arch, backend, fused } = parseTarget(target);
   const explicit = process.env.ELIZA_DFLASH_LEGACY_DRAFTER_RUNTIME;
   const enabled =
@@ -1694,8 +2174,43 @@ function sourceContainsDflashDraft(root) {
     specSource.includes("COMMON_SPECULATIVE_TYPE_DFLASH") &&
     specSource.includes('"dflash"') &&
     argSource.includes("--spec-type") &&
-    argSource.includes("COMMON_SPECULATIVE_TYPE_DFLASH")
+    (argSource.includes("common_speculative_types_from_names") ||
+      argSource.includes("COMMON_SPECULATIVE_TYPE_DFLASH"))
   );
+}
+
+function sourceContainsCpuTbqKernels(root) {
+  if (!root) return { turbo3: false, turbo4: false, turbo3_tcq: false };
+  const sources = [
+    path.join(root, "ggml", "include", "ggml.h"),
+    path.join(root, "ggml", "src", "ggml.c"),
+    path.join(root, "ggml", "src", "ggml-quants.c"),
+    path.join(root, "ggml", "src", "ggml-cpu", "quants.c"),
+    path.join(root, "ggml", "src", "ggml-cpu", "ggml-cpu.c"),
+  ];
+  if (sources.some((source) => !fs.existsSync(source))) {
+    return { turbo3: false, turbo4: false, turbo3_tcq: false };
+  }
+  const source = sources
+    .map((file) => fs.readFileSync(file, "utf8"))
+    .join("\n");
+  return {
+    turbo3:
+      source.includes("GGML_TYPE_TBQ3_0") &&
+      source.includes("quantize_row_tbq3_0") &&
+      source.includes("dequantize_row_tbq3_0") &&
+      source.includes("ggml_vec_dot_tbq3_0_f32"),
+    turbo4:
+      source.includes("GGML_TYPE_TBQ4_0") &&
+      source.includes("quantize_row_tbq4_0") &&
+      source.includes("dequantize_row_tbq4_0") &&
+      source.includes("ggml_vec_dot_tbq4_0_f32"),
+    turbo3_tcq:
+      source.includes("GGML_TYPE_TBQ3_TCQ") &&
+      source.includes("quantize_row_tbq3_tcq") &&
+      source.includes("dequantize_row_tbq3_tcq") &&
+      source.includes("QK_TBQ3_TCQ"),
+  };
 }
 
 function ensureLegacyDflashDrafterCheckout(sourceDir) {
@@ -1834,6 +2349,7 @@ function writeLegacyDflashDrafterCapabilities({
     lookahead: true,
     ngramDraft: true,
   };
+  const supportedArchitectures = ["dflash-draft"];
   const capabilities = {
     target,
     platform,
@@ -1846,6 +2362,9 @@ function writeLegacyDflashDrafterCapabilities({
     forkRef: LEGACY_DFLASH_DRAFTER_REF,
     forkCommit: runtime.commit || null,
     kernels,
+    dflashDraftArchitecture: true,
+    supportedArchitectures,
+    draftArchitectures: supportedArchitectures,
     publishable: false,
     missingRequiredKernels: requiredKernelsMissing(target, kernels),
     smokeOnlyIncompleteAllowed: true,
@@ -1941,7 +2460,7 @@ function installLegacyDflashDrafterRuntime({ target, outDir, args }) {
 // object files instead (e.g. ggml-cuda/turbo3.cu.o,
 // ggml-metal/turbo3.metal.air, etc.).
 function probeKernels(target, buildDir, outDir, cacheDir = null) {
-  const { platform, backend } = parseTarget(target);
+  const { backend } = parseTarget(target);
   const canRunOnHost = canRunTargetOnHost(target);
   const hasNativeDflash =
     cacheDir !== null && sourceContainsDflashDraft(cacheDir);
@@ -2034,14 +2553,21 @@ function probeKernels(target, buildDir, outDir, cacheDir = null) {
     kernels.turbo3_tcq = /turbo3[-_]?tcq|tcq/.test(names);
     kernels.qjl_full = /qjl/.test(names);
     kernels.polarquant = /polar(?:quant)?|q4[-_]?polar/.test(names);
-    // CPU build inlines the turbo quantization paths inside ggml-cpu and
-    // links a single ggml-turbo-quant.c.o into ggml-base. Treat its presence
-    // as evidence both turbo3 and turbo4 paths are compiled in. DFlash is
-    // not inferred from turbo/flash-attention objects: publishable Eliza-1
-    // builds must carry the native dflash-draft speculative state.
-    if (backend === "cpu" && /ggml-turbo-quant\.c\.o/.test(names)) {
-      kernels.turbo3 = true;
-      kernels.turbo4 = true;
+    if (backend === "cpu") {
+      if (/ggml-turbo-quant\.c\.(?:o|obj)/.test(names)) {
+        kernels.turbo3 = true;
+        kernels.turbo4 = true;
+      }
+      const hasCompiledTbqCore =
+        /ggml-quants\.c\.(?:o|obj)/.test(names) &&
+        /ggml-cpu[/\\]quants\.c\.(?:o|obj)/.test(names) &&
+        /ggml-cpu[/\\]ggml-cpu\.c\.(?:o|obj)/.test(names);
+      if (hasCompiledTbqCore) {
+        const sourceKernels = sourceContainsCpuTbqKernels(cacheDir);
+        kernels.turbo3 = kernels.turbo3 || sourceKernels.turbo3;
+        kernels.turbo4 = kernels.turbo4 || sourceKernels.turbo4;
+        kernels.turbo3_tcq = kernels.turbo3_tcq || sourceKernels.turbo3_tcq;
+      }
     }
   }
 
@@ -2079,22 +2605,35 @@ function probeKernels(target, buildDir, outDir, cacheDir = null) {
       cacheDir,
     ).symbols;
     const evidence = readVulkanRuntimeDispatchEvidence();
-    kernels.turbo3 = vulkanCapabilityRuntimeReady("turbo3", shipped, evidence);
-    kernels.turbo4 = vulkanCapabilityRuntimeReady("turbo4", shipped, evidence);
+    kernels.turbo3 = vulkanCapabilityRuntimeReady(
+      "turbo3",
+      shipped,
+      evidence,
+      target,
+    );
+    kernels.turbo4 = vulkanCapabilityRuntimeReady(
+      "turbo4",
+      shipped,
+      evidence,
+      target,
+    );
     kernels.turbo3_tcq = vulkanCapabilityRuntimeReady(
       "turbo3_tcq",
       shipped,
       evidence,
+      target,
     );
     kernels.qjl_full = vulkanCapabilityRuntimeReady(
       "qjl_full",
       shipped,
       evidence,
+      target,
     );
     kernels.polarquant = vulkanCapabilityRuntimeReady(
       "polarquant",
       shipped,
       evidence,
+      target,
     );
   }
   return kernels;
@@ -2190,7 +2729,7 @@ function buildIosRuntimeSymbolShim({ target, outDir }) {
 //
 // Returns the list of missing-but-required kernels. An empty list means the
 // target satisfies the contract.
-function requiredKernelsMissing(target, kernels) {
+function requiredKernelsMissing(_target, kernels) {
   // Required for every shipped backend.
   const required = [
     "dflash",
@@ -2347,8 +2886,33 @@ function readVulkanRuntimeDispatchEvidence() {
   }
 }
 
-function vulkanEvidenceForCapability(capabilityKey, evidence) {
-  const kernels = evidence?.data?.kernels;
+function vulkanEvidencePayloadForTarget(evidence, target) {
+  const data = evidence?.data;
+  if (!data || typeof data !== "object") return null;
+  if (target && data.targets && typeof data.targets === "object") {
+    const targetPayload = data.targets[target];
+    if (targetPayload && typeof targetPayload === "object") {
+      return targetPayload;
+    }
+  }
+  if (!target || !data.target || data.target === target) return data;
+  return null;
+}
+
+function vulkanEvidenceAvailableTargets(evidence) {
+  const data = evidence?.data;
+  if (!data || typeof data !== "object") return [];
+  const targets = [];
+  if (data.target) targets.push(data.target);
+  if (data.targets && typeof data.targets === "object") {
+    targets.push(...Object.keys(data.targets));
+  }
+  return [...new Set(targets)].sort();
+}
+
+function vulkanEvidenceForCapability(capabilityKey, evidence, target) {
+  const payload = vulkanEvidencePayloadForTarget(evidence, target);
+  const kernels = payload?.kernels;
   if (!kernels || typeof kernels !== "object") return null;
   return (
     Object.values(kernels).find(
@@ -2360,17 +2924,22 @@ function vulkanEvidenceForCapability(capabilityKey, evidence) {
   );
 }
 
-function vulkanEvidenceRuntimeReady(capabilityKey, evidence) {
-  const entry = vulkanEvidenceForCapability(capabilityKey, evidence);
+function vulkanEvidenceRuntimeReady(capabilityKey, evidence, target) {
+  const entry = vulkanEvidenceForCapability(capabilityKey, evidence, target);
   return Boolean(
     entry?.runtimeReady === true && entry?.status === "runtime-ready",
   );
 }
 
-function vulkanCapabilityRuntimeReady(capabilityKey, shipped, evidence) {
+function vulkanCapabilityRuntimeReady(
+  capabilityKey,
+  shipped,
+  evidence,
+  target,
+) {
   return Boolean(
     shipped?.[capabilityKey] &&
-      vulkanEvidenceRuntimeReady(capabilityKey, evidence),
+      vulkanEvidenceRuntimeReady(capabilityKey, evidence, target),
   );
 }
 
@@ -2380,13 +2949,15 @@ function vulkanRuntimeDispatchKernelStatus(
   sourceFiles,
   evidence,
   requiredSmoke,
+  target,
 ) {
-  const entry = vulkanEvidenceForCapability(capabilityKey, evidence);
+  const entry = vulkanEvidenceForCapability(capabilityKey, evidence, target);
   const symbolShipped = Boolean(shipped?.[capabilityKey]);
   const runtimeReady = vulkanCapabilityRuntimeReady(
     capabilityKey,
     shipped,
     evidence,
+    target,
   );
   const status = runtimeReady
     ? "runtime-ready"
@@ -2505,7 +3076,7 @@ function probeVulkanShippedKernelSymbols(buildDir, outDir, cacheDir) {
   };
 }
 
-function vulkanRuntimeDispatchStatus(shippedKernels) {
+function vulkanRuntimeDispatchStatus(shippedKernels, target) {
   const shipped = shippedKernels?.symbols ?? {};
   const sourceFiles = shippedKernels?.sourceFiles ?? {};
   const evidence = readVulkanRuntimeDispatchEvidence();
@@ -2516,12 +3087,17 @@ function vulkanRuntimeDispatchStatus(shippedKernels) {
       sourceFiles,
       evidence,
       `vulkan-dispatch-smoke must route ${shader} through ggml-vulkan graph execution and match the fixture/reference`,
+      target,
     );
+  const selectedEvidence = vulkanEvidencePayloadForTarget(evidence, target);
   return {
     sourceOfTruth:
       "dispatch-ready requires a built-fork GGML Vulkan graph smoke, not SPIR-V files or pipeline slots",
     evidencePath: evidence.path,
     evidenceLoaded: Boolean(evidence.data),
+    evidenceTarget: target,
+    evidenceTargetLoaded: Boolean(selectedEvidence),
+    evidenceAvailableTargets: vulkanEvidenceAvailableTargets(evidence),
     evidenceError: evidence.error ?? null,
     smokeTargets: {
       nativeLinux: "make -C packages/inference/verify vulkan-native-smoke",
@@ -2549,6 +3125,10 @@ function writeCapabilities({
 }) {
   const { platform, arch, backend, fused } = parseTarget(target);
   const kernels = probeKernels(target, buildDir, outDir, cacheDir);
+  const supportsDflashDraftArchitecture = sourceContainsDflashDraft(cacheDir);
+  const supportedArchitectures = supportsDflashDraftArchitecture
+    ? ["dflash-draft"]
+    : [];
   const missing = requiredKernelsMissing(target, kernels);
   const shippedKernels =
     backend === "metal"
@@ -2560,12 +3140,19 @@ function writeCapabilities({
     backend === "metal"
       ? metalRuntimeDispatchStatus(shippedKernels)
       : backend === "vulkan"
-        ? vulkanRuntimeDispatchStatus(shippedKernels)
+        ? vulkanRuntimeDispatchStatus(shippedKernels, target)
         : null;
+  const allowSmokeIncompleteBuild =
+    process.env.ELIZA_DFLASH_ALLOW_INCOMPLETE_KERNELS_FOR_SMOKE === "1";
+  const allowReducedKernelBuild =
+    process.env.ELIZA_DFLASH_ALLOW_REDUCED_KERNELS === "1";
   const allowUnverifiedVulkanBuild =
     backend === "vulkan" &&
-    (process.env.ELIZA_DFLASH_ALLOW_UNVERIFIED_VULKAN_BUILD === "1" ||
-      process.env.ELIZA_DFLASH_ALLOW_INCOMPLETE_KERNELS_FOR_SMOKE === "1");
+    process.env.ELIZA_DFLASH_ALLOW_UNVERIFIED_VULKAN_BUILD === "1";
+  const incompleteKernelAllowance =
+    allowSmokeIncompleteBuild ||
+    allowReducedKernelBuild ||
+    allowUnverifiedVulkanBuild;
   const capabilities = {
     target,
     platform,
@@ -2576,9 +3163,14 @@ function writeCapabilities({
     fork: "elizaOS/llama.cpp",
     forkCommit,
     kernels,
+    dflashDraftArchitecture: supportsDflashDraftArchitecture,
+    supportedArchitectures,
+    draftArchitectures: supportedArchitectures,
     publishable: missing.length === 0,
     missingRequiredKernels: missing,
-    smokeOnlyIncompleteAllowed:
+    smokeOnlyIncompleteAllowed: missing.length > 0 && allowSmokeIncompleteBuild,
+    reducedOptimizationLocalMode: missing.length > 0 && allowReducedKernelBuild,
+    unverifiedVulkanRuntimeAllowed:
       missing.length > 0 && allowUnverifiedVulkanBuild,
     shippedKernels,
     runtimeDispatch,
@@ -2590,10 +3182,15 @@ function writeCapabilities({
     `${JSON.stringify(capabilities, null, 2)}\n`,
   );
   if (missing.length > 0) {
-    if (allowUnverifiedVulkanBuild) {
+    if (incompleteKernelAllowance) {
+      const allowance = allowReducedKernelBuild
+        ? "reduced-optimization local build"
+        : allowSmokeIncompleteBuild
+          ? "smoke-only incomplete kernel build"
+          : "unverified Vulkan runtime build";
       console.warn(
-        `[dflash-build] target=${target} built with unverified Vulkan runtime kernels: ${missing.join(", ")}. ` +
-          `This is allowed only for the graph-dispatch smoke bootstrap; CAPABILITIES.json is diagnostic, publishable=false, and must not be published until vulkan-runtime-dispatch-evidence.json is generated and the target is rebuilt without the unverified-build env override.`,
+        `[dflash-build] target=${target} built as ${allowance}: ${missing.join(", ")}. ` +
+          `CAPABILITIES.json is diagnostic, publishable=false, and this artifact must not be published until the missing kernel dispatch evidence is present and the target is rebuilt without the incomplete-build override.`,
       );
       return capabilities;
     }
@@ -2645,7 +3242,7 @@ function buildTarget({ target, args, ctx }) {
   const { platform, backend, fused } = parseTarget(target);
   const outDir = targetOutDir(target, args.outDirOverride);
   const buildDir = path.join(args.cacheDir, "build", target);
-  if (useLegacyDflashDrafterRuntime(target)) {
+  if (shouldUseLegacyDflashDrafterRuntime(target)) {
     if (args.dryRun) {
       console.log(
         `[dflash-build] (dry-run) target=${target} legacy-dflash-drafter-runtime=true`,
@@ -2924,10 +3521,9 @@ function build(args) {
   // Khronos header repos when needed — cheap, but pointless otherwise.
   const willBuildVulkan =
     args.all ||
-    (args.targets &&
-      args.targets.some(
-        (t) => t.endsWith("-vulkan") || t.endsWith("-vulkan-fused"),
-      )) ||
+    args.targets?.some(
+      (t) => t.endsWith("-vulkan") || t.endsWith("-vulkan-fused"),
+    ) ||
     (!args.targets && (args.backend ?? detectBackend()) === "vulkan");
   // Same idea for the Windows cross path — only probe + write the
   // mingw-w64 toolchain file when at least one windows-x64 target is
@@ -2937,7 +3533,7 @@ function build(args) {
   // MINGW_TOOLCHAIN_FILE pointing at clang/LLVM aarch64-w64-mingw32.
   const willBuildWindows =
     args.all ||
-    (args.targets && args.targets.some((t) => t.startsWith("windows-x64-"))) ||
+    args.targets?.some((t) => t.startsWith("windows-x64-")) ||
     (!args.targets &&
       process.platform !== "win32" &&
       (args.backend ?? detectBackend()) === "cpu" &&
@@ -2979,7 +3575,7 @@ function build(args) {
   }
 
   const legacyDrafterRuntimeOnly = targets.every((target) =>
-    useLegacyDflashDrafterRuntime(target),
+    shouldUseLegacyDflashDrafterRuntime(target),
   );
 
   if (!args.dryRun) {

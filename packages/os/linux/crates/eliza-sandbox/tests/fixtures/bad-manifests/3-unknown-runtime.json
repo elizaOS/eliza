@@ -1,0 +1,12 @@
+{
+    "schema_version": 1,
+    "slug": "x",
+    "title": "X",
+    "intent": "x",
+    "runtime": "vulkan",
+    "entry": "src/index.html",
+    "capabilities": [],
+    "version": 1,
+    "last_built_by": "test",
+    "last_built_at": "2026-05-10T00:00:00Z"
+}

@@ -1,0 +1,104 @@
+[[!meta title="Sharing files, websites, and chat rooms using OnionShare"]]
+
+[*OnionShare*](https://onionshare.org/) allows you to create secure, anonymous,
+and disposable services that other people can connect to.
+
+To open *OnionShare*, choose **Apps&nbsp;▸ Internet&nbsp;▸ OnionShare**.
+
+From the welcome screen of *OnionShare*, you can choose between 4 different
+services:
+
+- Share files
+
+- Receive files
+
+- Host a website
+
+- Chat anonymously
+
+[[!img services.png class="screenshot" alt=""]]
+
+All these services are provided as Tor onion services and are only available
+through the Tor network. You can share the address of these onion services with
+other people to create temporary and anonymous communication channels.
+
+People who know their onion addresses can connect to these services from *Tor
+Browser*, either in Tails or outside of Tails.
+
+<div class="tip">
+
+<p>Unlike most Internet services, people using your <i>OnionShare</i> services
+connect directly to your Tails over the Tor network. Your data is never shared
+with or stored on any third-party server. Your Tails becomes a temporary and
+anonymous server.</p>
+
+</div>
+
+These services become unavailable as soon as you close *OnionShare* or shut
+down Tails.
+
+<div class="bug">
+
+<p><i>OnionShare</i> uses different onion addresses each time.</p>
+
+<p>In the future, want to make it possible to store the onion addresses used by
+<i>OnionShare</i> to the Persistent Storage. ([[!tails_ticket 20136]])</p>
+
+</div>
+
+Sharing files
+=============
+
+With the Share service of *OnionShare*:
+
+- You select in *OnionShare* some files from your Tails that you want to share.
+
+- People with the onion address can download these files from their *Tor
+  Browser*.
+
+[[!img share.png class="screenshot" alt="" size="719x"]]
+
+<div class="note">
+
+<p>Since Tails 6.0 (February 2024), the shortcut to share files via
+<i>OnionShare</i> directly from the <i>Files</i> browser is not available
+anymore.</p>
+
+</div>
+
+Receiving files
+===============
+
+With the Receive service of *OnionShare*:
+
+- You specify in *OnionShare* a folder of your Tails in which you want to
+  receive files.
+
+- People with the onion address can upload files directly to this folder or
+  send you text messages from their *Tor Browser*.
+
+[[!img receive.png class="screenshot" alt="" size="719x"]]
+
+Hosting a website
+=================
+
+With the Website service of *OnionShare*:
+
+- You specify in *OnionShare* a folder that contains HTML pages in your Tails.
+
+- People with the onion address can visit these HTML pages as a website from
+  their *Tor Browser*.
+
+[[!img website.png class="screenshot" alt="" size="719x"]]
+
+Chatting anonymously
+====================
+
+With the Chat service of *OnionShare*:
+
+- You start a chat room from *OnionShare*.
+
+- People with the onion address can enter this chat room from their *Tor
+  Browser* and chat with you or other people.
+
+[[!img chat.png class="screenshot" alt="" size="719x"]]

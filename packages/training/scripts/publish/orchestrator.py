@@ -2,18 +2,18 @@
 
 End-to-end pipeline that takes a directory containing already-quantized
 weights + sidecars and ships an Eliza-1 bundle to
-``elizaos/eliza-1-<tier>``. This is the single entry point referenced
-by ``packages/training/AGENTS.md`` §6.
+``elizalabs/eliza-1`` under ``bundles/<tier>/``. This is the single entry
+point referenced by ``packages/training/AGENTS.md`` §6.
 
 Stages, in order, with hard exits on failure:
 
 1. **Layout validation.** Walk the bundle directory and verify it
-   conforms to ``packages/inference/AGENTS.md`` §2 (text/, tts/, asr/,
+   conforms to the local inference bundle contract (text/, tts/, asr/,
    vision/, dflash/, cache/, evals/, licenses/). Missing required files
    or sidecars are publish-blocking. The frozen voice artifacts and
    ``cache/voice-preset-default.bin`` must be present.
 2. **Kernel verification.** Run the
-   ``packages/inference/verify`` harness for the tier's supported
+   ``plugins/plugin-local-inference/native/verify`` harness for the tier's supported
    backends. CPU + Vulkan are runnable in CI; Metal is hardware-only —
    the orchestrator detects Metal as NEEDS-HARDWARE and either consumes
    a previously-recorded ``metal_verify.json`` from a verified host
@@ -35,7 +35,7 @@ Stages, in order, with hard exits on failure:
    manifest as the data context. Same data, no marketing buzzwords, no
    user-visible upstream model-family strings.
 7. **HF push.** Upload weights, manifest, README, licenses, eval blobs
-   to ``elizaos/eliza-1-<tier>`` via ``huggingface_hub``. Tag the
+   to ``elizalabs/eliza-1/bundles/<tier>/`` via ``huggingface_hub``. Tag the
    local training repo with ``eliza-1-<tier>-v<version>`` + the
    training commit hash.
 
@@ -82,6 +82,7 @@ from scripts.manifest.eliza1_manifest import (  # noqa: E402
     KernelVerification,
     LineageEntry,
     build_manifest,
+    canonical_qwen_source_repo_error,
     parse_text_ctx_from_filename,
     required_voice_artifacts_for_tier,
 )
@@ -106,7 +107,7 @@ EXIT_MANIFEST_INVALID = 14
 EXIT_HF_PUSH_FAIL = 15
 EXIT_RELEASE_EVIDENCE_FAIL = 16
 
-ELIZA_1_HF_ORG = "elizaos"
+ELIZA_1_HF_ORG = "elizalabs"
 
 # ---------------------------------------------------------------------------
 # Constants — bundle layout per inference/AGENTS.md §2
@@ -188,10 +189,6 @@ TIER_TAGLINES: Mapping[str, str] = {
     "0_8b": "low-RAM phones, CPU fallback",
     "2b": "modern phones",
     "4b": "flagship phones, small desktops",
-    "9b": "laptops, 24GB phones, 48GB Mac",
-    "27b": "96GB+ Mac, high-VRAM desktop",
-    "27b-256k": "server / workstation",
-    "27b-1m": "GH200-class long-context server",
 }
 
 DEFAULT_VOICE_CAPABILITIES: tuple[str, ...] = ("tts", "emotion-tags", "singing")
@@ -204,13 +201,9 @@ EXPRESSIVE_GATE_NAMES: tuple[str, ...] = (
 # Default RAM budgets (MB). Tightened pre-publish from real measurements
 # on reference hardware; the bundle's sidecar can override.
 DEFAULT_RAM_BUDGET_MB: Mapping[str, tuple[int, int]] = {
-    "0_8b": (1500, 1800),
-    "2b": (3500, 4500),
+    "0_8b": (2500, 3700),
+    "2b": (4000, 5500),
     "4b": (6000, 8000),
-    "9b": (7000, 9500),
-    "27b": (24000, 32000),
-    "27b-256k": (48000, 64000),
-    "27b-1m": (96000, 128000),
 }
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
@@ -393,7 +386,7 @@ def validate_bundle_layout(ctx: PublishContext) -> dict[str, list[Path]]:
                 f"bundle layout: missing required subdir {sub}/",
                 EXIT_BUNDLE_LAYOUT_FAIL,
             )
-        out[sub] = sorted(p for p in d.iterdir() if p.is_file())
+        out[sub] = sorted(p for p in d.rglob("*") if p.is_file())
 
     if not out["text"]:
         raise OrchestratorError(
@@ -406,8 +399,8 @@ def validate_bundle_layout(ctx: PublishContext) -> dict[str, list[Path]]:
             EXIT_BUNDLE_LAYOUT_FAIL,
         )
     required_tts = set(required_voice_artifacts_for_tier(ctx.tier))
-    tts_names = {p.name for p in out["tts"]}
-    missing_tts = sorted(required_tts - tts_names)
+    tts_paths = {str(p.relative_to(bundle / "tts")) for p in out["tts"]}
+    missing_tts = sorted(required_tts - tts_paths)
     if missing_tts:
         raise OrchestratorError(
             "bundle layout: missing frozen voice artifact(s) in tts/: "
@@ -502,7 +495,7 @@ def validate_bundle_layout(ctx: PublishContext) -> dict[str, list[Path]]:
 
 
 def validate_destination_repo(ctx: PublishContext) -> None:
-    expected = f"{ELIZA_1_HF_ORG}/eliza-1-{ctx.tier}"
+    expected = f"{ELIZA_1_HF_ORG}/eliza-1"
     if ctx.repo_id != expected:
         raise OrchestratorError(
             f"Eliza-1 bundle publishes must target {expected}; got {ctx.repo_id!r}. "
@@ -545,7 +538,6 @@ def _expected_payload_paths(
     ):
         expected.extend(_relative_file_paths(layout.get(kind_src, []), ctx.bundle_dir))
 
-    licenses_dir = ctx.bundle_dir / "licenses"
     expected.extend(f"licenses/{name}" for name in _license_files_for_layout(layout))
 
     evals_dir = ctx.bundle_dir / "evals"
@@ -765,6 +757,10 @@ def _validate_base_v1_provenance(
             continue
         if not isinstance(source.get("repo"), str) or not source.get("repo"):
             errors.append(f"sourceModels.{slot}.repo must be a non-empty string")
+        elif (
+            repo_error := canonical_qwen_source_repo_error(slot, source["repo"])
+        ) is not None:
+            errors.append(f"sourceModels.{slot}.repo {repo_error}")
 
     for slot in _required_provenance_slots(layout):
         if slot not in source_models:
@@ -1067,8 +1063,8 @@ def validate_release_evidence(
                 EXIT_RELEASE_EVIDENCE_FAIL,
             )
         expected_uploaded_paths = {
-            "eliza-1.manifest.json",
-            "README.md",
+            _bundle_repo_path(ctx, "eliza-1.manifest.json"),
+            _bundle_repo_path(ctx, "README.md"),
             *(target for _, target in _build_upload_list(ctx, layout)),
         }
         missing_uploaded_paths = sorted(
@@ -1099,7 +1095,11 @@ def validate_release_evidence(
 
 
 def _verify_dir(ctx: PublishContext) -> Path:
-    """Resolve packages/inference/verify relative to the training repo."""
+    """Resolve the native local-inference verify harness."""
+    repo_root = ctx.training_repo_root.parent.parent
+    native = repo_root / "plugins" / "plugin-local-inference" / "native" / "verify"
+    if (native / "Makefile").is_file():
+        return native
     return ctx.training_repo_root.parent / "inference" / "verify"
 
 
@@ -1220,7 +1220,7 @@ def run_kernel_verification(
         if ctx.metal_verification is None:
             raise OrchestratorError(
                 f"tier {ctx.tier} requires Metal verification "
-                "(NEEDS-HARDWARE). Run packages/inference/verify/metal_verify "
+                "(NEEDS-HARDWARE). Run plugins/plugin-local-inference/native/verify/metal_verify "
                 "on a verified host and pass --metal-verification PATH.",
                 EXIT_KERNEL_VERIFY_FAIL,
             )
@@ -1818,6 +1818,14 @@ def _hf_token() -> str | None:
     return os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACE_HUB_TOKEN")
 
 
+def _bundle_repo_prefix(ctx: PublishContext) -> str:
+    return f"bundles/{ctx.tier}"
+
+
+def _bundle_repo_path(ctx: PublishContext, rel_path: str) -> str:
+    return f"{_bundle_repo_prefix(ctx)}/{rel_path}"
+
+
 def _build_upload_list(
     ctx: PublishContext, layout: Mapping[str, Sequence[Path]]
 ) -> list[tuple[Path, str]]:
@@ -1840,21 +1848,23 @@ def _build_upload_list(
         "wakeword",
     ):
         for p in layout.get(kind_src, []):
-            pairs.append((p, str(p.relative_to(ctx.bundle_dir))))
+            pairs.append(
+                (p, _bundle_repo_path(ctx, str(p.relative_to(ctx.bundle_dir))))
+            )
 
     licenses_dir = ctx.bundle_dir / "licenses"
     for name in _license_files_for_layout(layout):
         p = licenses_dir / name
-        pairs.append((p, f"licenses/{name}"))
+        pairs.append((p, _bundle_repo_path(ctx, f"licenses/{name}")))
 
     evals_dir = ctx.bundle_dir / "evals"
     for p in sorted(evals_dir.iterdir()):
         if p.is_file():
-            pairs.append((p, f"evals/{p.name}"))
+            pairs.append((p, _bundle_repo_path(ctx, f"evals/{p.name}")))
 
     existing_targets = {target for _, target in pairs}
     for p in layout.get("quantization_sidecars", []):
-        target = str(p.relative_to(ctx.bundle_dir))
+        target = _bundle_repo_path(ctx, str(p.relative_to(ctx.bundle_dir)))
         if target not in existing_targets:
             pairs.append((p, target))
             existing_targets.add(target)
@@ -1862,7 +1872,7 @@ def _build_upload_list(
     evidence_dir = ctx.bundle_dir / "evidence"
     for p in sorted(evidence_dir.rglob("*")):
         if p.is_file():
-            target = str(p.relative_to(ctx.bundle_dir))
+            target = _bundle_repo_path(ctx, str(p.relative_to(ctx.bundle_dir)))
             if target not in existing_targets:
                 pairs.append((p, target))
                 existing_targets.add(target)
@@ -1870,7 +1880,7 @@ def _build_upload_list(
     checksums_dir = ctx.bundle_dir / "checksums"
     for p in sorted(checksums_dir.rglob("*")):
         if p.is_file():
-            target = str(p.relative_to(ctx.bundle_dir))
+            target = _bundle_repo_path(ctx, str(p.relative_to(ctx.bundle_dir)))
             if target not in existing_targets:
                 pairs.append((p, target))
                 existing_targets.add(target)
@@ -1923,11 +1933,11 @@ def push_to_hf(
 
     operations = [
         CommitOperationAdd(
-            path_in_repo="eliza-1.manifest.json",
+            path_in_repo=_bundle_repo_path(ctx, "eliza-1.manifest.json"),
             path_or_fileobj=str(manifest_path),
         ),
         CommitOperationAdd(
-            path_in_repo="README.md",
+            path_in_repo=_bundle_repo_path(ctx, "README.md"),
             path_or_fileobj=str(readme_path),
         ),
     ]
@@ -1943,8 +1953,8 @@ def push_to_hf(
         commit_message=f"eliza-1-{ctx.tier}: publish bundle",
     )
     uploaded_paths = [
-        "eliza-1.manifest.json",
-        "README.md",
+        _bundle_repo_path(ctx, "eliza-1.manifest.json"),
+        _bundle_repo_path(ctx, "README.md"),
         *(target for _, target in upload_pairs),
     ]
     return _upload_evidence_from_commit(
@@ -2048,11 +2058,11 @@ def push_final_release_evidence(
         repo_type="model",
         operations=[
             CommitOperationAdd(
-                path_in_repo=str(RELEASE_EVIDENCE_PATH),
+                path_in_repo=_bundle_repo_path(ctx, str(RELEASE_EVIDENCE_PATH)),
                 path_or_fileobj=str(release_path),
             ),
             CommitOperationAdd(
-                path_in_repo=str(CHECKSUMS_PATH),
+                path_in_repo=_bundle_repo_path(ctx, str(CHECKSUMS_PATH)),
                 path_or_fileobj=str(checksum_path),
             ),
         ],
@@ -2215,7 +2225,7 @@ def _parse_args(argv: Sequence[str] | None = None) -> PublishContext:
         "--repo-id",
         default=None,
         help=(
-            "HF repo id. Must equal elizaos/eliza-1-<tier>; accepted only "
+            "HF repo id. Must equal elizalabs/eliza-1; accepted only "
             "so wrappers can pass the resolved destination explicitly."
         ),
     )
@@ -2246,7 +2256,7 @@ def _parse_args(argv: Sequence[str] | None = None) -> PublishContext:
     )
     args = ap.parse_args(argv)
 
-    repo_id = args.repo_id or f"{ELIZA_1_HF_ORG}/eliza-1-{args.tier}"
+    repo_id = args.repo_id or f"{ELIZA_1_HF_ORG}/eliza-1"
     template_path = (
         Path(__file__).resolve().parent / "templates" / "README.md.j2"
     )

@@ -21,6 +21,7 @@ import {
 } from "@elizaos/cloud-ui";
 import { Activity, Cpu, HardDrive, Network, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import { formatBytes } from "../../../lib/format-bytes";
 
 interface ContainerMetrics {
   cpu_utilization: number;
@@ -40,14 +41,6 @@ interface ContainerMetricsProps {
 type UtilizationBadgeVariant = "default" | "secondary" | "destructive";
 
 const METRICS_REFRESH_MS = 10_000;
-
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return "0 B";
-  const k = 1024;
-  const sizes = ["B", "KB", "MB", "GB"];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return `${(bytes / k ** i).toFixed(2)} ${sizes[i]}`;
-}
 
 function getUtilizationColor(utilization: number): string {
   if (utilization >= 80) return "text-red-500";

@@ -22,6 +22,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import type { App } from "../../../lib/data/apps";
+import { storeOneTimeAppApiKey } from "./one-time-app-api-key";
 
 interface AppSettingsProps {
   app: App;
@@ -68,7 +69,6 @@ export function AppSettings({ app }: AppSettingsProps) {
       }
 
       toast.success("App updated successfully");
-      window.location.reload();
     } catch (error) {
       console.error("Error updating app:", error);
       toast.error("Failed to update app", {
@@ -92,13 +92,18 @@ export function AppSettings({ app }: AppSettingsProps) {
       }
 
       const data = await response.json();
+      if (typeof data.apiKey !== "string" || data.apiKey.length === 0) {
+        throw new Error("Regeneration response did not include an API key");
+      }
+      storeOneTimeAppApiKey(app.id, data.apiKey);
 
       toast.success("API key regenerated", {
         description: "Your new API key has been generated. Make sure to save it!",
       });
 
-      navigate(`/dashboard/apps/${app.id}?showApiKey=${data.apiKey}&tab=overview`);
-      window.location.reload();
+      navigate(`/dashboard/apps/${app.id}?tab=overview`, {
+        preventScrollReset: true,
+      });
     } catch (error) {
       console.error("Error regenerating API key:", error);
       toast.error("Failed to regenerate API key", {
@@ -123,7 +128,6 @@ export function AppSettings({ app }: AppSettingsProps) {
 
       toast.success("App deleted successfully");
       navigate("/dashboard/apps");
-      window.location.reload();
     } catch (error) {
       console.error("Error deleting app:", error);
       toast.error("Failed to delete app", {

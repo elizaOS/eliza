@@ -1,5 +1,8 @@
 import { actionToJsonSchema } from "../actions/action-schema";
-import { PLAN_ACTIONS_TOOL, PLAN_ACTIONS_TOOL_NAME } from "../actions/to-tool";
+import {
+	buildPlannerToolsFromActions,
+	CORE_PLANNER_TERMINALS,
+} from "../actions/to-tool";
 import { emitStreamingHook, getStreamingContext } from "../streaming-context";
 import type { Action, ActionResult, IAgentRuntime } from "../types";
 import type { ContextEvent, ContextObject } from "../types/context-object";
@@ -20,34 +23,6 @@ import {
 	runPlannerLoop,
 } from "./planner-loop";
 import type { RecordedStage, TrajectoryRecorder } from "./trajectory-recorder";
-
-/**
- * Unwrap a `PLAN_ACTIONS` tool call into its target action. Mirrors the
- * helper in services/message.ts — duplicated here to keep the sub-planner
- * import surface tight (no cycle through services).
- *
- * Routed child operations belong inside the wrapped action parameters.
- */
-function unwrapSubPlannerToolCall(toolCall: PlannerToolCall): PlannerToolCall {
-	if (toolCall.name !== PLAN_ACTIONS_TOOL_NAME) {
-		return toolCall;
-	}
-	const params = toolCall.params ?? {};
-	const rawAction = params.action;
-	const actionName = typeof rawAction === "string" ? rawAction.trim() : "";
-	const rawActionParameters = params.parameters;
-	const baseParameters =
-		rawActionParameters &&
-		typeof rawActionParameters === "object" &&
-		!Array.isArray(rawActionParameters)
-			? (rawActionParameters as Record<string, unknown>)
-			: {};
-	return {
-		id: toolCall.id,
-		name: actionName,
-		params: baseParameters,
-	};
-}
 
 function normalizeSubPlannerActionIdentifier(actionName: string): string {
 	return actionName
@@ -213,13 +188,14 @@ export async function runSubPlanner(
 
 	const childActionNames = new Set(childActions.map((action) => action.name));
 	const childActionLookup = buildSubPlannerActionLookup(childActions);
-	// Sub-planner only ever needs the Stage 2 PLAN_ACTIONS tool — Stage 1
-	// routing already happened at the top level. Holding the tool list to a
-	// single stable entry keeps the prompt-cache key byte-stable across
-	// descents within the same sub-planner. Child action specs render into
-	// the sub-planner's available-actions block; the LLM picks one by name
-	// and passes it back via PLAN_ACTIONS({ action, … }).
-	const tools: ToolDefinition[] = [PLAN_ACTIONS_TOOL];
+	// Sub-planner exposes each child action directly as its own native tool
+	// (same surface as the top-level planner). The universal terminal-sentinel
+	// tools (REPLY / IGNORE / STOP) are always exposed so the model has a
+	// stable way to end the sub-planner pass.
+	const tools: ToolDefinition[] = [
+		...buildPlannerToolsFromActions(childActions),
+		...CORE_PLANNER_TERMINALS,
+	];
 	const execute = params.execute ?? executePlannedToolCall;
 	const context = buildSubPlannerContext(
 		params.context,
@@ -259,31 +235,28 @@ export async function runSubPlanner(
 		trajectoryId: params.trajectoryId,
 		parentStageId: subPlannerStageId ?? params.parentStageId,
 		executeToolCall: async (toolCall) => {
-			const unwrapped = unwrapSubPlannerToolCall(toolCall);
-			if (!unwrapped.name) {
+			if (!toolCall.name) {
 				return {
 					success: false,
-					error: `${PLAN_ACTIONS_TOOL_NAME} requires a non-empty action in sub-planner ${params.action.name}`,
+					error: `Sub-planner ${params.action.name} requires a non-empty action name`,
 				};
 			}
 			const resolvedChildAction =
 				childActionLookup.get(
-					normalizeSubPlannerActionIdentifier(unwrapped.name),
+					normalizeSubPlannerActionIdentifier(toolCall.name),
 				) ??
-				(childActionNames.has(unwrapped.name)
-					? { name: unwrapped.name }
-					: null);
+				(childActionNames.has(toolCall.name) ? { name: toolCall.name } : null);
 			if (!resolvedChildAction) {
 				return {
 					success: false,
-					error: `Action ${unwrapped.name} is not available to sub-planner ${params.action.name}`,
+					error: `Action ${toolCall.name} is not available to sub-planner ${params.action.name}`,
 				};
 			}
 
 			const result = await execute(
 				params.runtime,
 				subPlannerCtx,
-				{ ...unwrapped, name: resolvedChildAction.name },
+				{ ...toolCall, name: resolvedChildAction.name },
 				{
 					...(params.options ?? {}),
 					actions: childActions,

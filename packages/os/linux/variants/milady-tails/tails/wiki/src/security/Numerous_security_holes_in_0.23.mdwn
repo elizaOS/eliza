@@ -1,0 +1,25 @@
+[[!meta date="Sun, 27 Apr 2014 00:00:00 +0000"]]
+[[!meta title="Numerous security holes in Tails 0.23"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+Several security holes affect Tails 0.23.
+
+We **strongly** encourage you to [[upgrade to Tails
+1.0|news/version_1.0]] as soon as possible.
+
+Details
+=======
+
+ - Iceweasel and its bundled NSS: [[!mfsa 2014-34]],
+   [[!mfsa 2014-35]], [[!mfsa 2014-37]], [[!mfsa 2014-38]],
+   [[!mfsa 2014-42]], [[!mfsa 2014-43]], [[!mfsa 2014-44]],
+   [[!mfsa 2014-46]]
+ - tor: [[!tor_bug 11464]]
+ - openjdk-6: [[!debsa2014 2912]]
+ - openssl: [[!debsa2014 2908]]
+ - curl: [[!debsa2014 2902]]
+ - openssh: [[!debsa2014 2894]]
+ - libyaml: [[!debsa2014 2884]]
+ - libyaml-libyaml-perl: [[!debsa2014 2885]]

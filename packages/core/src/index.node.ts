@@ -9,13 +9,10 @@
 export * from "./actions";
 export * from "./api/http-helpers";
 export * from "./api/route-helpers";
-export * from "./app-core-runtime-hooks";
-export * from "./app-registry";
 // Export all core modules
+export * from "./app-registry";
 export * from "./app-route-plugin-registry";
 export * from "./boot-env";
-export * from "./browser-capture-hooks";
-export * from "./browser-workspace-hooks";
 export * from "./build-variant";
 // Export configuration and plugin modules - will be removed once cli cleanup
 export * from "./character";
@@ -174,6 +171,7 @@ export * from "./runtime/builtin-field-evaluators";
 export * from "./runtime/cleanup-scope";
 export * from "./runtime/context-gates";
 export * from "./runtime/context-registry";
+export * from "./runtime/conversation-compaction-hook";
 export * from "./runtime/cost-table";
 export * from "./runtime/execute-planned-tool-call";
 export {
@@ -189,6 +187,14 @@ export {
 	type LocalizedExamplesProviderInput,
 	registerLocalizedExamplesProvider,
 } from "./runtime/localized-examples-provider";
+export {
+	getMessageHandlerReply,
+	type MessageHandlerRoute,
+	parseMessageHandlerOutput,
+	routeMessageHandlerOutput,
+	SIMPLE_CONTEXT_ID,
+	type V5MessageHandlerOutput,
+} from "./runtime/message-handler";
 export * from "./runtime/response-grammar";
 export * from "./runtime/response-handler-evaluators";
 export * from "./runtime/response-handler-field-evaluator";
@@ -200,6 +206,17 @@ export * from "./runtime/sub-planner";
 export * from "./runtime/system-prompt";
 export * from "./runtime/trajectory-recorder";
 export * from "./runtime/turn-controller";
+export {
+	type CallModelWithValidationOptions,
+	type CallModelWithValidationResult,
+	callModelWithValidation,
+	DEFAULT_REMOTE_REROLL_BUDGET,
+	getProviderForModelType,
+	type ParseAndValidateResult,
+	parseAndValidate,
+	rerollBudgetCeilingFromSetting,
+	SchemaValidationFailedError,
+} from "./runtime/validated-model-call";
 // Runtime composition (loadCharacters, createRuntimes, getBasicCapabilitiesSettings, mergeSettingsInto) - node only
 export * from "./runtime-composition";
 export * from "./runtime-env";

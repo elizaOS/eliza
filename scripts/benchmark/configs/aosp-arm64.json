@@ -1,7 +1,7 @@
 {
   "$schema": "../profile-config.schema.json",
-  "description": "AOSP arm64 profiling matrix. Targets the cuttlefish image (x86_64 emulation of arm64-v8a) and the connected real arm64 device (e.g. ZL8325M37K). Profiles Eliza-1 mobile/desktop tiers across supported KV-cache settings.",
-  "models": ["eliza-1-mobile-1_7b", "eliza-1-desktop-9b"],
+  "description": "AOSP arm64 profiling matrix. Targets the cuttlefish image (x86_64 emulation of arm64-v8a) and the connected real arm64 device (e.g. ZL8325M37K). Profiles Eliza-1 Qwen3.5 0.8B/2B tiers across supported KV-cache settings.",
+  "models": ["eliza-1-0_8b", "eliza-1-2b"],
   "kvCacheConfigs": [
     { "name": "baseline-fp16", "k": "f16", "v": "f16" },
     { "name": "tbq4-tbq3", "k": "tbq4_0", "v": "tbq3_0" },

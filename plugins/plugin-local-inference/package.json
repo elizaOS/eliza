@@ -1,29 +1,46 @@
 {
 	"name": "@elizaos/plugin-local-inference",
-	"version": "2.0.0-beta.1",
-	"description": "Local inference HTTP routes for the Eliza agent: model catalog, downloads, hardware detection, and chat-command surface.",
+	"version": "2.0.0-beta.2",
+	"description": "Unified Eliza-1 local provider plus HTTP routes for local model catalog, downloads, hardware detection, and chat commands.",
 	"type": "module",
 	"main": "dist/index.js",
-	"types": "dist/index.d.ts",
+	"types": "src/index.ts",
 	"exports": {
 		".": {
-			"types": "./dist/index.d.ts",
+			"types": "./src/index.ts",
 			"import": "./dist/index.js",
 			"default": "./dist/index.js"
 		},
+		"./runtime": {
+			"types": "./src/runtime/index.ts",
+			"import": "./dist/runtime/index.js",
+			"default": "./dist/runtime/index.js"
+		},
+		"./routes": {
+			"types": "./src/routes/index.ts",
+			"import": "./dist/routes/index.js",
+			"default": "./dist/routes/index.js"
+		},
+		"./services": {
+			"types": "./src/services/index.ts",
+			"import": "./dist/services/index.js",
+			"default": "./dist/services/index.js"
+		},
 		"./*.css": "./dist/*.css",
 		"./*": {
+			"types": "./src/*.ts",
 			"import": "./dist/*.js",
-			"default": "./dist/*.js",
-			"types": "./dist/*.d.ts"
+			"default": "./dist/*.js"
 		}
 	},
 	"files": [
-		"dist"
+		"dist",
+		"src"
 	],
 	"scripts": {
-		"build": "tsup src/index.ts --format esm --dts --clean",
-		"dev": "tsup src/index.ts --format esm --dts --watch",
+		"build": "tsup src/index.ts src/runtime/index.ts src/routes/index.ts src/services/index.ts --format esm --clean --external node-llama-cpp --external @node-llama-cpp/* --external @reflink/reflink --external onnxruntime-node --external @huggingface/transformers --external whisper-node --external ws",
+		"dev": "tsup src/index.ts src/runtime/index.ts src/routes/index.ts src/services/index.ts --format esm --watch --external node-llama-cpp --external @node-llama-cpp/* --external @reflink/reflink --external onnxruntime-node --external @huggingface/transformers --external whisper-node --external ws",
+		"test": "vitest run",
 		"clean": "rm -rf dist .turbo node_modules",
 		"lint": "bunx @biomejs/biome check --write --unsafe .",
 		"lint:check": "bunx @biomejs/biome check .",
@@ -32,18 +49,49 @@
 		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {
-		"@elizaos/core": "2.0.0-beta.1",
-		"@elizaos/plugin-capacitor-bridge": "2.0.0-beta.1"
+		"@elizaos/core": "workspace:*",
+		"@elizaos/shared": "workspace:*",
+		"@elizaos/plugin-capacitor-bridge": "workspace:*"
+	},
+	"optionalDependencies": {
+		"node-llama-cpp": "3.18.1",
+		"onnxruntime-node": "1.24.3",
+		"@huggingface/transformers": "^4.0.0",
+		"whisper-node": "^1.1.1"
 	},
 	"peerDependencies": {
-		"@elizaos/core": "2.0.0-beta.1",
-		"@elizaos/plugin-capacitor-bridge": "2.0.0-beta.1"
+		"@elizaos/app-core": "workspace:*",
+		"@elizaos/core": "workspace:*",
+		"@elizaos/shared": "workspace:*",
+		"@elizaos/plugin-capacitor-bridge": "workspace:*"
 	},
+	"peerDependenciesMeta": {
+		"@elizaos/app-core": {
+			"optional": true
+		},
+		"node-llama-cpp": {
+			"optional": true
+		},
+		"onnxruntime-node": {
+			"optional": true
+		},
+		"@huggingface/transformers": {
+			"optional": true
+		},
+		"whisper-node": {
+			"optional": true
+		}
+	},
+	"trustedDependencies": [
+		"node-llama-cpp",
+		"onnxruntime-node"
+	],
 	"devDependencies": {
 		"@biomejs/biome": "^2.4.14",
 		"@types/node": "24.12.2",
 		"tsup": "8.5.1",
-		"typescript": "^6.0.3"
+		"typescript": "^6.0.3",
+		"vitest": "^4.1.4"
 	},
 	"publishConfig": {
 		"access": "public"

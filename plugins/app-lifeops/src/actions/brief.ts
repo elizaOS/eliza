@@ -1,22 +1,15 @@
 /**
  * `BRIEF` umbrella action — Daily Operations / morning-evening-weekly synthesis.
  *
- * PRD: `prd-lifeops-executive-assistant.md` §Daily Operations and Wave-2
- * scenario matrix `plan-lifeops-executive-assistant-scenario-matrix.md`. Today
- * the agent composes morning/evening/weekly briefs ad-hoc inside chat;
- * `BRIEF` makes it a first-class callable surface so the planner has a clean
- * target and the Wave-2 scenarios have a stable verb to dispatch.
- *
  * Subactions:
  *   - `compose_morning`  — `period: today` by default
  *   - `compose_evening`  — `period: today` by default
  *   - `compose_weekly`   — `period: this_week` by default
  *
- * Composition rule: pull from each domain (calendar feed, inbox triage,
- * life-domain due items, money recurring charges) per the `include` arg, then
- * run a single LLM compose pass to render a narrative on top of the
- * structured `LifeOpsBriefing` shape. Wave-2 persists briefings; Wave-1 leaves
- * them in-memory.
+ * Pulls from each domain (calendar feed, inbox triage, life-domain due items,
+ * money recurring charges) per the `include` arg, then runs a single LLM
+ * compose pass to render a narrative over the structured `LifeOpsBriefing`
+ * shape. Briefings are kept in-memory.
  *
  * Owner-only — `hasLifeOpsAccess` (which delegates to `hasOwnerAccess`).
  */
@@ -101,17 +94,13 @@ interface BriefActionParameters {
 }
 
 /**
- * Composer hooks — overridable for tests and Wave-2 wiring. Each loader
- * returns the structured items the briefing renders; an unavailable source
- * returns an empty array (the narrative compose pass mentions missing
- * sources explicitly).
+ * Composer hooks — overridable for tests. Each loader returns the structured
+ * items the briefing renders; an unavailable source returns an empty array
+ * (the narrative compose pass mentions missing sources explicitly).
  *
- * TODO Wave-2: replace these with real composition of CALENDAR.feed,
- * MESSAGE.triage, OWNER_TODOS/OWNER_REMINDERS due-today, and
- * OWNER_FINANCES.recurring_charges via the umbrella dispatchers rather than
- * direct loaders. Wave-1 leaves the seams open so the
- * unit tests can mock per-domain inputs without standing up the full
- * connector graph.
+ * TODO: replace these with real composition of CALENDAR.feed, MESSAGE.triage,
+ * OWNER_TODOS/OWNER_REMINDERS due-today, and OWNER_FINANCES.recurring_charges
+ * via the umbrella dispatchers rather than direct loaders.
  */
 export interface BriefComposers {
   loadCalendar: (args: {
@@ -142,7 +131,7 @@ const defaultComposers: BriefComposers = {
 let activeComposers: BriefComposers = defaultComposers;
 
 /**
- * Override the briefing composers. Wave-2 will inject service-backed loaders
+ * Override the briefing composers. Service-backed loaders can be injected
  * here at plugin init. Test-only callers reset between cases with
  * `__resetBriefComposersForTests`.
  */

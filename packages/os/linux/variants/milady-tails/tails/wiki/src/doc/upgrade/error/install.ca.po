@@ -1,0 +1,150 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-11-12 12:16+0100\n"
+"PO-Revision-Date: 2026-01-23 15:29+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: ca\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Error while installing the upgrade\"]]\n"
+msgstr "[[!meta title=\"Error en instal·lar l'actualització\"]]\n"
+
+#. type: Plain text
+msgid "The upgrade could not be installed."
+msgstr "No s'ha pogut instal·lar l'actualització."
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"caution\">\n"
+msgstr "<div class=\"caution\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<p>Your Tails USB stick needs to be repaired and might be unable to restart.</p>\n"
+msgstr "<p>El vostre llapis USB de Tails s'ha de reparar i és possible que no es pugui reiniciar.</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+#. type: Plain text
+msgid "This is probably caused by a software error in Tails Upgrader."
+msgstr ""
+"Això probablement és causat per un error de programari al Tails Upgrader."
+
+#. type: Plain text
+msgid ""
+"If you set up an [[administration password|first_steps/welcome_screen/"
+"administration_password]] when starting Tails and are comfortable with the "
+"command line, please [[report the problem to us|install#report]] before "
+"repairing your Tails USB stick."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"repair\">Repairing your Tails USB stick</h2>\n"
+msgstr "<h2 id=\"repair\">Reparació del vostre llapis USB de Tails</h2>\n"
+
+#. type: Plain text
+msgid ""
+"To repair your Tails USB stick, please try doing a [[manual upgrade|"
+"upgrade#manual]]."
+msgstr ""
+"Per reparar el vostre llapis USB de Tails, proveu de fer una [[actualització "
+"manual|upgrade#manual]]."
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"note\">\n"
+msgstr "<div class=\"note\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<p>The Persistent Storage on the USB stick will be preserved.</p>\n"
+msgstr "<p>Es conservarà l'Emmagatzematge Persistent del llapis USB.</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"report\">Reporting us the problem</h2>\n"
+msgstr "<h2 id=\"report\">Informeu-nos del problema</h2>\n"
+
+#. type: Bullet: '1. '
+#, fuzzy
+#| msgid "Open a *Terminal*."
+msgid "Open a *Console*."
+msgstr "Obriu un *Terminal*."
+
+#. type: Bullet: '1. '
+msgid "Execute the following command."
+msgstr "Executeu l'ordre següent."
+
+#. type: Plain text
+#, no-wrap
+msgid "   <p class=\"command\">sudo tails-debugging-info > /home/amnesia/tails-debugging-info</p>\n"
+msgstr "   <p class=\"command\">sudo tails-debugging-info > /home/amnesia/tails-debugging-info</p>\n"
+
+#. type: Bullet: '1. '
+msgid ""
+"Copy the file *tails-debugging-info* from your *Home* folder to another USB "
+"stick."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Send us the file *tails-debugging-info* by [[email|support/talk]]."
+msgstr ""
+
+#~ msgid ""
+#~ "If you are comfortable with the command line, please [[report us the "
+#~ "problem|support/talk]]."
+#~ msgstr ""
+#~ "Si us sentiu còmode amb la línia d'ordres, si us plau, [[informeu-nos del "
+#~ "problema|support/talk]]."
+
+#~ msgid "Include in your report:"
+#~ msgstr "Incloeu al vostre informe:"
+
+#~ msgid "- The debugging information that appears in the error message"
+#~ msgstr "- La informació de depuració que apareix al missatge d'error"
+
+#~ msgid ""
+#~ "The output of the five following commands, run in a [[*Terminal*|"
+#~ "first_steps/desktop#terminal]]:"
+#~ msgstr ""
+#~ "La sortida de les cinc ordres següents executades en un [[*Terminal*|"
+#~ "first_steps/desktop#terminal]]:"
+
+#, no-wrap
+#~ msgid ""
+#~ "      ls -l /lib/live/mount/medium/live\n"
+#~ "      cat /lib/live/mount/medium/live/Tails.module\n"
+#~ "      mount\n"
+#~ "      df -h\n"
+#~ "      free -m\n"
+#~ msgstr ""
+#~ "      ls -l /lib/live/mount/medium/live\n"
+#~ "      cat /lib/live/mount/medium/live/Tails.module\n"
+#~ "      mount\n"
+#~ "      df -h\n"
+#~ "      free -m\n"
+
+#~ msgid ""
+#~ "If the manual upgrade fails as well, please [[report another error|"
+#~ "first_steps/whisperback]]."
+#~ msgstr ""
+#~ "Si l'actualització manual també falla, si us plau [[informeu d'un altre "
+#~ "error|first_steps/whisperback]]."

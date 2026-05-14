@@ -8,6 +8,7 @@ also stubbed; nothing here hits a real model.
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 import pytest
@@ -109,6 +110,14 @@ async def test_compactor_invokes_bridge_with_correct_strategy(
     assert artifact.summary_text == "Alice is the user"
     assert "user is named Alice" in artifact.structured_state.immutable_facts
     assert artifact.structured_state.entity_map == {"alice": "user"}
+    assert artifact.method_metadata["agent_label"] == "eliza"
+    assert artifact.method_metadata["adapter"] == "eliza_compactbench"
+    assert artifact.method_metadata["compaction_strategy"] == "hybrid-ledger"
+    assert artifact.method_metadata["provider"] == "stub"
+    assert artifact.method_metadata["model"] == "gpt-oss-120b"
+    assert artifact.method_metadata["input_turn_count"] == 3
+    assert artifact.method_metadata["input_token_estimate"] > 0
+    assert artifact.method_metadata["output_token_estimate"] > 0
 
 
 async def test_compactor_rejects_non_transcript() -> None:
@@ -275,3 +284,44 @@ def test_previous_artifact_to_prior_ledger_renders_all_sections() -> None:
         methodMetadata={},
     )
     assert eliza_compactors._previous_artifact_to_prior_ledger(empty_artifact) == ""
+
+
+async def test_compactor_writes_redacted_trace_when_enabled(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    trace_path = tmp_path / "compactions.jsonl"
+    monkeypatch.setenv("ELIZA_COMPACTBENCH_TRAJECTORY_JSONL", str(trace_path))
+
+    def fake_run(strategy: str, transcript: dict[str, Any], options: dict[str, Any]) -> dict[str, Any]:
+        assert strategy == "naive-summary"
+        return {
+            "schemaVersion": "1.0.0",
+            "summaryText": "secret csk-redaction-test-token-000000000000",
+            "structured_state": {
+                "immutable_facts": ["user has a fake key csk-redaction-test-token-000000000000"],
+                "locked_decisions": [],
+                "deferred_items": [],
+                "forbidden_behaviors": [],
+                "entity_map": {},
+                "unresolved_items": [],
+            },
+            "selectedSourceTurnIds": [0, 1],
+            "warnings": [],
+            "methodMetadata": {},
+        }
+
+    monkeypatch.setattr(eliza_compactors, "run_ts_compactor", fake_run)
+    compactor = eliza_compactors.NaiveSummaryCompactor(
+        provider=_StubProvider(), model="gpt-oss-120b"
+    )
+
+    await compactor.compact(_build_transcript())
+
+    record = json.loads(trace_path.read_text(encoding="utf-8").strip())
+    assert record["agent_label"] == "eliza"
+    assert record["strategy"] == "naive-summary"
+    assert record["metadata"]["trace_schema_version"] == "eliza_compactbench_trace_v1"
+    serialized = json.dumps(record, sort_keys=True)
+    assert "csk-redaction-test" not in serialized
+    assert "[REDACTED]" in serialized

@@ -47,7 +47,11 @@ import type { PricingBillingSource } from "@/lib/services/ai-pricing-definitions
 import { appCreditsService } from "@/lib/services/app-credits";
 import { appsService } from "@/lib/services/apps";
 import { contentModerationService } from "@/lib/services/content-moderation";
-import { type CreditReservation, creditsService } from "@/lib/services/credits";
+import {
+  type CreditReconciliationResult,
+  type CreditReservation,
+  creditsService,
+} from "@/lib/services/credits";
 import { createCreditReservationSettler } from "@/lib/utils/credit-reservation";
 import { logger } from "@/lib/utils/logger";
 import { getRouteTimeoutMs } from "@/lib/utils/request-timeout";
@@ -432,7 +436,9 @@ app.use("*", rateLimit(RateLimitPresets.RELAXED));
 app.post("/", async (c) => {
   const startTime = Date.now();
   const routeTimeoutMs = getRouteTimeoutMs(ROUTE_MAX_DURATION);
-  let settleReservation: ((actualCost: number) => Promise<void>) | null = null;
+  let settleReservation:
+    | ((actualCost: number) => Promise<CreditReconciliationResult | null>)
+    | null = null;
 
   let user: { id: string; organization_id: string };
   let apiKey: { id: string } | null = null;
@@ -664,7 +670,7 @@ async function handleNonStream(
   toolChoice: "auto" | "none" | "required" | { type: "tool"; toolName: string } | undefined,
   abortSignal: AbortSignal | undefined,
   timeoutMs: number,
-  settleReservation: (actualCost: number) => Promise<void>,
+  settleReservation: (actualCost: number) => Promise<CreditReconciliationResult | null>,
   billingSource: PricingBillingSource,
 ) {
   const provider = getProviderFromModel(model);
@@ -799,7 +805,7 @@ async function handleStream(
   toolChoice: "auto" | "none" | "required" | { type: "tool"; toolName: string } | undefined,
   abortSignal: AbortSignal | undefined,
   timeoutMs: number,
-  settleReservation: (actualCost: number) => Promise<void>,
+  settleReservation: (actualCost: number) => Promise<CreditReconciliationResult | null>,
   billingSource: PricingBillingSource,
 ) {
   const provider = getProviderFromModel(model);

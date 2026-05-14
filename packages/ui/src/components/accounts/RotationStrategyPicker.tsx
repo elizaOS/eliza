@@ -5,15 +5,15 @@
  */
 
 import type { LinkedAccountProviderId } from "@elizaos/shared";
+import type { AccountStrategy } from "../../api/client-agent";
+import { useApp } from "../../state";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@elizaos/ui";
-import type { AccountStrategy } from "../../api/client-agent";
-import { useApp } from "../../state";
+} from "../ui/select";
 
 interface RotationStrategyPickerProps {
   providerId: LinkedAccountProviderId;

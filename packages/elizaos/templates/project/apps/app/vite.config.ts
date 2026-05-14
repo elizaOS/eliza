@@ -687,7 +687,7 @@ function nativeModuleStubPlugin(): Plugin {
     "pty-state-capture",
     "electron",
     "undici",
-    "@elizaos/plugin-local-embedding",
+    "@elizaos/plugin-local-inference",
   ]);
   const nativeScopeRe = /^@node-llama-cpp\//;
 
@@ -778,7 +778,7 @@ function nativeModuleStubPlugin(): Plugin {
           "const handler = { get: (_, p) => (p === Symbol.toPrimitive ? () => 0 : typeof p === 'string' ? (() => {}) : undefined) };",
           "const stub = new Proxy({}, handler);",
           "export default stub;",
-          // Known named exports used by @elizaos/plugin-local-embedding and
+          // Known named exports used by @elizaos/plugin-local-inference and
           // other consumers — extend as needed:
           "export const getLlama = () => Promise.resolve(stub);",
           "export const LlamaLogLevel = Object.freeze({ error: 0, warn: 1, info: 2, debug: 3 });",
@@ -1341,7 +1341,7 @@ export default defineConfig({
       // Node-only HTTP client — crashes in browser, stub via nativeModuleStubPlugin
       "undici",
       // Native LLM embedding — uses node-llama-cpp, never runs in browser
-      "@elizaos/plugin-local-embedding",
+      "@elizaos/plugin-local-inference",
       "@napi-rs/keyring",
       "@elizaos/vault",
     ],

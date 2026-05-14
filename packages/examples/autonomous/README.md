@@ -19,14 +19,14 @@ These demos are intentionally **sandboxed**:
 
 Download the Eliza-1 mobile GGUF and place it in your models directory.
 
-- Model repo: [`elizaos/eliza-1-mobile-1_7b`](https://huggingface.co/elizaos/eliza-1-mobile-1_7b)
-- GGUF file: `text/eliza-1-mobile-1_7b-32k.gguf`
+- Model repo: [`elizaos/eliza-1-2b`](https://huggingface.co/elizaos/eliza-1-2b)
+- GGUF file: `text/eliza-1-2b-32k.gguf`
 
 Then set:
 
 ```bash
 export MODELS_DIR="$HOME/.eliza/models"
-export LOCAL_SMALL_MODEL="eliza-1-mobile-1_7b-32k.gguf"
+export LOCAL_SMALL_MODEL="eliza-1-2b-32k.gguf"
 ```
 
 Notes:

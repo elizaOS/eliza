@@ -1,7 +1,7 @@
 /* eslint-disable */
 /**
  * Stable local data model types for TypeScript checks before Convex codegen
- * has run. `npx convex dev` regenerates the runtime files in this directory.
+ * has run. `convex dev` regenerates the runtime files in this directory.
  */
 
 import type {

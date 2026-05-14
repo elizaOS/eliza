@@ -1,8 +1,11 @@
-import { Button, cn, Spinner, StatusBadge } from "@elizaos/ui";
 import { RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { client } from "../../api";
 import type { ConnectorAccountAuditEventRecord } from "../../api/client-agent";
+import { cn } from "../../lib/utils";
+import { Button } from "../ui/button";
+import { Spinner } from "../ui/spinner";
+import { StatusBadge } from "../ui/status-badge";
 
 export interface ConnectorAccountAuditListProps {
   provider: string;

@@ -1,0 +1,28 @@
+---
+- hosts:
+    - '10.200.1.6'
+  commands:
+    GETINFO:
+      - 'version'
+      - 'circuit-status'
+      - 'stream-status'
+      - 'ns/id/[a-fA-F0-9]+'
+      - 'ip-to-country/\d+\.\d+\.\d+\.\d+'
+    CLOSECIRCUIT:
+      # stem builds this command with a trailing space
+      - '\d+ '
+  confs:
+    # stem
+    __owningcontrollerprocess:
+  events:
+    # stem
+    SIGNAL:
+      suppress: true
+    # stem
+    CONF_CHANGED:
+      suppress: true
+    # stem
+    STATUS_SERVER:
+      suppress: true
+    STREAM:
+    CIRC:

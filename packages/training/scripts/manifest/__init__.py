@@ -10,12 +10,14 @@ the same contract. The schema lives in
 
 from .eliza1_manifest import (
     ELIZA_1_BACKENDS,
+    ELIZA_1_HF_REPO,
     ELIZA_1_KERNELS,
     ELIZA_1_MANIFEST_SCHEMA_URL,
     ELIZA_1_MANIFEST_SCHEMA_VERSION,
     ELIZA_1_TIERS,
     REQUIRED_KERNELS_BY_TIER,
     SUPPORTED_BACKENDS_BY_TIER,
+    VOICE_BACKENDS_BY_TIER,
     VOICE_QUANT_BY_TIER,
     Eliza1ManifestError,
     build_manifest,
@@ -26,12 +28,14 @@ from .eliza1_manifest import (
 
 __all__ = [
     "ELIZA_1_BACKENDS",
+    "ELIZA_1_HF_REPO",
     "ELIZA_1_KERNELS",
     "ELIZA_1_MANIFEST_SCHEMA_URL",
     "ELIZA_1_MANIFEST_SCHEMA_VERSION",
     "ELIZA_1_TIERS",
     "REQUIRED_KERNELS_BY_TIER",
     "SUPPORTED_BACKENDS_BY_TIER",
+    "VOICE_BACKENDS_BY_TIER",
     "VOICE_QUANT_BY_TIER",
     "Eliza1ManifestError",
     "build_manifest",

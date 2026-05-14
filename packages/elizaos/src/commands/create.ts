@@ -174,7 +174,7 @@ async function promptPluginValues(
     `https://github.com/${githubUsername}/${defaultRepoName}`;
 
   return buildPluginTemplateValues({
-    elizaVersion: "beta",
+    elizaVersion: "latest",
     githubUsername,
     pluginDescription,
     projectName: defaultRepoName,

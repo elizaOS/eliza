@@ -1,9 +1,9 @@
 /**
  * Default-pack registration shapes.
  *
- * The W1-A spine exposes the pack-registration entry point first-run consumes
- * (`IMPLEMENTATION_PLAN.md` §3.4 deliverables). W1-D defines the pack envelope
- * (records + consolidation policies + escalation ladders + default-on flag).
+ * `DefaultPack` is the envelope type for a curated set of `ScheduledTask`
+ * records, consolidation policies, and escalation ladders shipped with the agent.
+ * `DefaultPackRegistry` is the runtime registration surface.
  */
 
 import type {

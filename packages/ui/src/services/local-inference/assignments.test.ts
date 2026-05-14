@@ -31,12 +31,14 @@ describe("local inference assignments", () => {
   it("does not auto-recommend ad-hoc Hugging Face downloads", () => {
     const assignments = buildRecommendedAssignments([
       installed("hf:some-org/some-model::model.Q4_K_M.gguf", 10_000),
-      installed("eliza-1-1_7b", 1_000),
+      installed("eliza-1-2b", 1_000),
     ]);
 
     expect(assignments).toEqual({
-      TEXT_SMALL: "eliza-1-1_7b",
-      TEXT_LARGE: "eliza-1-1_7b",
+      TEXT_SMALL: "eliza-1-2b",
+      TEXT_LARGE: "eliza-1-2b",
+      TEXT_TO_SPEECH: "eliza-1-2b",
+      TRANSCRIPTION: "eliza-1-2b",
     });
   });
 

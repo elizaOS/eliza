@@ -1,0 +1,23 @@
+#!/bin/sh
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 NubsCarson and contributors
+#
+# Live-build clean script. Run by `lb clean` (or `just iso-clean`).
+# Mostly identical to Tails' auto/clean.
+
+set -e
+set -u
+
+for dir in dev/pts proc sys var/lib/dpkg; do
+    if mountpoint -q "chroot/$dir" 2>/dev/null; then
+        umount "chroot/$dir"
+    fi
+done
+
+lb clean noauto "${@}"
+
+# Remove generated files that `lb config` writes back to config/.
+rm -f config/binary config/bootstrap config/chroot config/common config/source
+
+# Remove the partial output if present.
+rm -f *.iso *.iso.zsync *.contents *.files *.packages *.buildlog

@@ -17,8 +17,8 @@
 import { Hono } from "hono";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { ensureStewardTenant } from "@/lib/services/steward-tenant-config";
 import { isStewardPlatformConfigured } from "@/lib/services/steward-platform-users";
+import { ensureStewardTenant } from "@/lib/services/steward-tenant-config";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -48,18 +48,12 @@ app.post("/", async (c) => {
       tenantName: body.tenantName,
     });
 
-    return c.json(
-      { tenantId: result.tenantId, isNew: result.isNew },
-      result.isNew ? 201 : 200,
-    );
+    return c.json({ tenantId: result.tenantId, isNew: result.isNew }, result.isNew ? 201 : 200);
   } catch (error) {
     if (error instanceof Error && /^Organization .+ not found$/.test(error.message)) {
       return c.json({ error: "Organization not found" }, 404);
     }
-    if (
-      error instanceof Error &&
-      error.message.startsWith("Failed to provision Steward tenant")
-    ) {
+    if (error instanceof Error && error.message.startsWith("Failed to provision Steward tenant")) {
       logger.error("[steward-tenants] Failed to create Steward tenant", {
         error: error.message,
       });

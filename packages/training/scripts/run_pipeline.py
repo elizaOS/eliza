@@ -40,8 +40,8 @@ Usage:
         --registry-key eliza-1-2b \
         --trajectory-export ../trajectories/export.jsonl --epochs 1
 
-    # Cloud-tier run on eliza-1-27b — needs 2× H200 SXM;
-    # use scripts/train_vast.sh which wraps run_pipeline.py with FSDP.
+    # Cloud run for eliza-1-4b — use scripts/train_vast.sh, which wraps
+    # run_pipeline.py with the active Qwen3.5 registry defaults.
 """
 
 from __future__ import annotations
@@ -216,8 +216,9 @@ def _format_ok_rate(summary: dict | None) -> float | None:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--registry-key", required=True,
-                    help="One of: qwen3.5-0.8b, eliza-1-2b, eliza-1-9b, "
-                         "eliza-1-27b. Internal upstream keys are aliases.")
+                    help="One of: qwen3.5-0.8b, qwen3.5-2b, qwen3.5-4b, "
+                         "eliza-1-0_8b, eliza-1-2b, eliza-1-4b. "
+                         "Internal upstream keys are aliases.")
     ap.add_argument("--run-name", default=None,
                     help="Default: <registry-key>-apollo-<unix-ts>.")
     ap.add_argument("--epochs", type=float, default=3.0)

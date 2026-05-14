@@ -51,7 +51,9 @@ export * from "./agents/participants";
 // Direct database access to elizaOS tables
 // ============================================
 export * from "./agents/rooms";
+export * from "./ai-billing-records";
 export * from "./ai-pricing";
+export * from "./analytics-alert-events";
 export * from "./anonymous-sessions";
 export * from "./api-keys";
 export * from "./app-credit-balances";

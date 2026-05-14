@@ -1,27 +1,19 @@
-import {
-  Button,
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-  Input,
-  SaveFooter,
-  Switch,
-} from "@elizaos/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  type AsrProvider,
   client,
   type VoiceConfig,
   type VoiceMode,
   type VoiceProvider,
 } from "../../api";
+import { ASR_PROVIDERS } from "@elizaos/shared";
 import { invokeDesktopBridgeRequest, isElectrobunRuntime } from "../../bridge";
 import {
   getSwabblePlugin,
   type SwabbleConfig,
 } from "../../bridge/native-plugins";
 import { dispatchWindowEvent, VOICE_CONFIG_UPDATED_EVENT } from "../../events";
+import { useDefaultProviderPresets } from "../../hooks/useDefaultProviderPresets";
 import { useApp } from "../../state";
 import type { DesktopClickAuditItem } from "../../utils";
 import {
@@ -34,6 +26,21 @@ import {
   CloudConnectionStatus,
   CloudSourceModeToggle,
 } from "../cloud/CloudSourceControls";
+import { Button } from "../ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "../ui/card";
+import { Input } from "../ui/input";
+import { SaveFooter } from "../ui/save-footer";
+import { Switch } from "../ui/switch";
+import {
+  AdvancedToggle,
+  useAdvancedSettingsEnabled,
+} from "./AdvancedToggle";
 import { useSettingsSave } from "./settings-control-primitives";
 
 const DEFAULT_ELEVEN_FAST_MODEL = "eleven_flash_v2_5";
@@ -54,8 +61,7 @@ export const DESKTOP_TALKMODE_CLICK_AUDIT: readonly DesktopClickAuditItem[] = [
     id: "voice-talkmode-refresh",
     entryPoint: "settings:voice",
     label: "Refresh Talk Mode",
-    expectedAction:
-      "Refresh talk mode state, speaking status, and whisper availability.",
+    expectedAction: "Refresh talk mode state and speaking status.",
     runtimeRequirement: "desktop",
     coverage: "automated",
   },
@@ -97,13 +103,10 @@ export function DesktopTalkModePanel() {
     state: string;
     enabled: boolean;
     speaking: boolean;
-    whisperAvailable: boolean;
-    whisperModel?: string;
   }>({
     state: "idle",
     enabled: false,
     speaking: false,
-    whisperAvailable: false,
   });
 
   const refresh = useCallback(async () => {
@@ -115,7 +118,7 @@ export function DesktopTalkModePanel() {
     setLoading(true);
     setError(null);
     try {
-      const [state, enabled, speaking, whisperInfo] = await Promise.all([
+      const [state, enabled, speaking] = await Promise.all([
         invokeDesktopBridgeRequest<{ state: string }>({
           rpcMethod: "talkmodeGetState",
           ipcChannel: "talkmode:getState",
@@ -128,17 +131,11 @@ export function DesktopTalkModePanel() {
           rpcMethod: "talkmodeIsSpeaking",
           ipcChannel: "talkmode:isSpeaking",
         }),
-        invokeDesktopBridgeRequest<{ available: boolean; modelSize?: string }>({
-          rpcMethod: "talkmodeGetWhisperInfo",
-          ipcChannel: "talkmode:getWhisperInfo",
-        }),
       ]);
       setPanelState({
         state: state?.state ?? "idle",
         enabled: enabled?.enabled ?? false,
         speaking: speaking?.speaking ?? false,
-        whisperAvailable: whisperInfo?.available ?? false,
-        whisperModel: whisperInfo?.modelSize,
       });
     } catch (err) {
       setError(
@@ -241,7 +238,7 @@ export function DesktopTalkModePanel() {
           </div>
         )}
 
-        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-2 sm:grid-cols-3">
           <Card className="border-border/50 bg-bg-hover/60 shadow-none">
             <CardContent className="px-2.5 py-2 text-xs-tight">
               <div className="text-2xs text-muted">
@@ -265,18 +262,6 @@ export function DesktopTalkModePanel() {
               </div>
               <div className="font-semibold text-txt">
                 {panelState.speaking ? t("common.yes") : t("common.no")}
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="border-border/50 bg-bg-hover/60 shadow-none">
-            <CardContent className="px-2.5 py-2 text-xs-tight">
-              <div className="text-2xs text-muted">
-                {t("voiceconfigview.Whisper")}
-              </div>
-              <div className="font-semibold text-txt">
-                {panelState.whisperAvailable
-                  ? panelState.whisperModel || t("common.available")
-                  : t("common.unavailable")}
               </div>
             </CardContent>
           </Card>
@@ -647,6 +632,96 @@ function WakeWordSection({
   );
 }
 
+/**
+ * Advanced ASR (speech-to-text) provider picker. Surfaces an opt-in
+ * override of the device+mode default chosen by
+ * `pickDefaultVoiceProvider`. Renders nothing visible until the user
+ * flips the AdvancedToggle on the parent VoiceConfigView.
+ */
+function AsrAdvancedSection({
+  currentAsrProvider,
+  onChange,
+  defaultAsrProvider,
+}: {
+  currentAsrProvider: AsrProvider;
+  onChange: (provider: AsrProvider) => void;
+  defaultAsrProvider: AsrProvider;
+}) {
+  const [localStatusBusy, setLocalStatusBusy] = useState(false);
+
+  // When the user picks "local-inference" we poll once for the active
+  // local-inference downloads. A non-empty downloads list means the
+  // model bundle (Qwen3-ASR) isn't ready yet and we should show a
+  // "downloading..." indicator instead of pretending the pipeline is
+  // online.
+  useEffect(() => {
+    if (currentAsrProvider !== "local-inference") {
+      setLocalStatusBusy(false);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const snapshot = await client.getLocalInferenceHub();
+        if (cancelled) return;
+        const hasActiveDownloads = Array.isArray(snapshot?.downloads)
+          ? snapshot.downloads.length > 0
+          : false;
+        setLocalStatusBusy(hasActiveDownloads);
+      } catch {
+        // If the endpoint isn't reachable (e.g. cloud-only deployment),
+        // we just skip the indicator. The save path still works.
+        if (!cancelled) setLocalStatusBusy(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [currentAsrProvider]);
+
+  return (
+    <div className="rounded-2xl border border-border/60 bg-card/92 p-4 shadow-sm flex flex-col gap-3">
+      <div className="flex flex-col gap-0.5">
+        <span className="text-xs font-semibold text-muted">
+          ASR (speech-to-text) provider
+        </span>
+        <span className="text-2xs text-muted">
+          Default for this device: <code>{defaultAsrProvider}</code>. Override
+          per provider here.
+        </span>
+      </div>
+      <div className="grid gap-2 sm:grid-cols-3">
+        {ASR_PROVIDERS.map((p) => {
+          const active = currentAsrProvider === p.id;
+          return (
+            <Button
+              key={p.id}
+              variant={active ? "default" : "outline"}
+              size="sm"
+              className="h-auto min-h-14 flex-col rounded-xl py-2"
+              onClick={() => onChange(p.id)}
+            >
+              <div className="font-semibold">{p.label}</div>
+              <div className="text-2xs opacity-70 mt-0.5">{p.hint}</div>
+            </Button>
+          );
+        })}
+      </div>
+      {currentAsrProvider === "local-inference" && localStatusBusy && (
+        <div className="rounded-xl border border-warn/35 bg-warn/10 px-3 py-2 text-xs-tight leading-5 text-warn">
+          Downloading Qwen3-ASR bundle... ASR will use the cloud fallback
+          until the local model is ready.
+        </div>
+      )}
+      {currentAsrProvider === "openai" && (
+        <div className="rounded-xl border border-border/40 bg-bg-hover/60 px-3 py-2 text-2xs leading-5 text-muted">
+          Uses your OpenAI API key from the Providers section.
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function VoiceConfigView() {
   const { t, elizaCloudConnected, elizaCloudVoiceProxyAvailable } = useApp();
   const [voiceConfig, setVoiceConfig] = useState<VoiceConfig>({});
@@ -691,7 +766,15 @@ export function VoiceConfigView() {
     };
   }, []);
 
-  const currentProvider = voiceConfig.provider ?? "elevenlabs";
+  const { defaults: providerDefaults } = useDefaultProviderPresets();
+  const advancedEnabled = useAdvancedSettingsEnabled();
+
+  // Apply the device+mode default TTS provider whenever the user hasn't
+  // chosen one yet. The user can override per-provider via the picker
+  // below — the value below `??` only kicks in for fresh installs.
+  const currentProvider = voiceConfig.provider ?? providerDefaults.tts;
+  const currentAsrProvider: AsrProvider =
+    voiceConfig.asr?.provider ?? providerDefaults.asr;
   const cloudVoiceAvailable = elizaCloudVoiceProxyAvailable;
   const hasElevenLabsApiKey = hasConfiguredApiKey(
     voiceConfig.elevenlabs?.apiKey,
@@ -737,6 +820,14 @@ export function VoiceConfigView() {
     setDirty(true);
   }, []);
 
+  const handleAsrProviderChange = useCallback((provider: AsrProvider) => {
+    setVoiceConfig((prev) => ({
+      ...prev,
+      asr: { ...(prev.asr ?? {}), provider },
+    }));
+    setDirty(true);
+  }, []);
+
   const handleTestVoice = useCallback((previewUrl: string) => {
     if (audioRef.current) {
       audioRef.current.pause();
@@ -766,11 +857,23 @@ export function VoiceConfigView() {
       if (sanitizedKey) normalizedElevenLabs.apiKey = sanitizedKey;
       else delete normalizedElevenLabs.apiKey;
     }
+    // Persist the ASR pick verbatim. We only write `asr` to storage when
+    // the user has actually surfaced (or overridden) it in the advanced
+    // section — the device+mode default is recomputed on every load.
+    const normalizedAsr: VoiceConfig["asr"] | undefined = voiceConfig.asr
+      ? {
+          provider: voiceConfig.asr.provider,
+          ...(voiceConfig.asr.modelId
+            ? { modelId: voiceConfig.asr.modelId }
+            : {}),
+        }
+      : undefined;
     const normalizedVoiceConfig: VoiceConfig = {
       ...voiceConfig,
       provider,
       mode: provider === "elevenlabs" ? currentMode : undefined,
       elevenlabs: normalizedElevenLabs,
+      asr: normalizedAsr,
     };
     let swabbleCfg: Partial<SwabbleConfig> | undefined;
     try {
@@ -984,6 +1087,27 @@ export function VoiceConfigView() {
           {t("voiceconfigview.SimpleVoiceUsesYo")}
         </div>
       )}
+
+      <div className="flex items-center justify-between rounded-2xl border border-border/60 bg-card/92 px-4 py-3 shadow-sm">
+        <div className="flex flex-col gap-0.5">
+          <span className="text-xs font-semibold text-txt">
+            Advanced settings
+          </span>
+          <span className="text-2xs text-muted">
+            Show ASR (speech-to-text) provider picker and per-provider overrides.
+          </span>
+        </div>
+        <AdvancedToggle label="Advanced" />
+      </div>
+
+      {advancedEnabled && (
+        <AsrAdvancedSection
+          currentAsrProvider={currentAsrProvider}
+          onChange={handleAsrProviderChange}
+          defaultAsrProvider={providerDefaults.asr}
+        />
+      )}
+
       <WakeWordSection serverConfig={swabbleServerConfig} />
 
       <DesktopTalkModePanel />

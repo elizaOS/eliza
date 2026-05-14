@@ -1,0 +1,60 @@
+/* Tor check */
+
+#tor-check {
+  position: absolute;
+  right: 30px;
+  width: auto;
+  margin: 0;
+}
+
+#tor-check a {
+  background: var(--medium-light-green) url('home/onion.png') no-repeat 20px !important;
+  padding-left: 60px;
+  padding-right: 30px !important;
+}
+
+#tor-check a:hover {
+  background-color: var(--medium-dark-green) !important;
+}
+
+/* Random message box */
+
+.random-message {
+  display: none;
+  overflow: auto;
+  margin-bottom: 2em;
+  padding: 1em 2em 1em 2em !important;
+  background: var(--background-gray) !important;
+  border: 1px solid var(--light-gray) !important;
+  border-radius: 5px;
+  box-sizing: border-box;
+  box-shadow: var(--gray-button-shadow);
+  color: black !important;
+}
+
+.random-message p:last-child {
+  margin-bottom: 0;
+}
+
+.random-message h2:first-child {
+  margin-top: 0;
+}
+
+/* Survey message */
+
+.survey {
+  background: var(--background-purple) url('lib/survey.png') no-repeat top 50% left 2em !important;
+  border: none !important;
+  padding-left: 9em !important;
+}
+
+.survey .answer {
+  background: var(--medium-light-green);
+  color: black !important;
+  font-weight: var(--font-weight-bold);
+  border-radius: 5px;
+  padding: 0.5em 0.25em;
+  text-align: center;
+  box-shadow: var(--green-button-shadow);
+  width: 100%;
+}

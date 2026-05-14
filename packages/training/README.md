@@ -1,7 +1,7 @@
 # eliza-1 — Training Pipeline
 
 Fine-tunes the **eliza-1** model series (`eliza-1-0_8b`, `eliza-1-2b`,
-`eliza-1-4b`, `eliza-1-9b`, `eliza-1-27b`) on Eliza-native Vercel AI SDK trajectory rows: the exact
+`eliza-1-4b`) on Eliza-native Vercel AI SDK trajectory rows: the exact
 request sent to the model plus the exact normalized response returned by the
 model, including native tool calls.
 
@@ -11,12 +11,11 @@ model, including native tool calls.
 > | what                              | repo                                      | script                          |
 > |-----------------------------------|-------------------------------------------|---------------------------------|
 > | Dataset (native trajectory SFT)   | runtime `eliza_native_v1` exports          | `scripts/trajectories_to_sft.py`|
-> | Trained models                    | `elizaos/eliza-1-{2b,9b,27b}` (model)     | `scripts/push_model_to_hf.py`   |
+> | Trained models                    | `elizaos/eliza-1` (model; `bundles/<tier>/`) | `scripts/push_model_to_hf.py`   |
 > | Pipeline source (this directory)  | `elizaos/eliza-1-pipeline` (model) | `scripts/push_pipeline_to_hf.py`|
 >
-> Quants land in sibling repos with suffixes (`elizaos/eliza-1-27b-gguf`,
-> `elizaos/eliza-1-27b-fp8`, …) — `push_model_to_hf.py --quant <name>`
-> resolves the suffix automatically.
+> Quants land under the same `elizaos/eliza-1` model repo alongside each
+> bundle manifest; do not create per-quant public defaults.
 
 The base models are catalogued in `scripts/training/model_registry.py`;
 each entry is tagged `local | workstation | cloud`. Default optimizer is
@@ -28,8 +27,6 @@ arXiv:2412.05270), not LoRA.
 | qwen3.5-0.8b | eliza-1-0_8b  | Qwen/Qwen3.5-0.8B  | local       | 16 GB consumer GPU                  | apollo_mini  |
 | qwen3.5-2b   | eliza-1-2b    | Qwen/Qwen3.5-2B    | local       | 16 GB consumer GPU                  | apollo_mini  |
 | qwen3.5-4b   | eliza-1-4b    | Qwen/Qwen3.5-4B    | local       | 24 GB consumer/workstation GPU      | apollo_mini  |
-| qwen3.5-9b   | eliza-1-9b    | Qwen/Qwen3.5-9B    | workstation | Vast 1× RTX Pro 6000 Blackwell      | apollo       |
-| qwen3.6-27b  | eliza-1-27b   | Qwen/Qwen3.6-27B   | cloud       | Vast 2× B200 with FSDP              | apollo_mini  |
 
 After training, two **post-training quantization** passes run:
 **PolarQuant** (4-bit weights via Hadamard rotation, arXiv:2603.29078) and
@@ -74,7 +71,7 @@ data/raw/* ──▶ normalize.py ──▶ data/normalized/<slug>.jsonl
                        ┌──────────┴──────────┐
                        ▼                     ▼
               train_local.py        train_vast.sh
-              (APOLLO, 2B local)    (APOLLO, 9B / 27B on Vast)
+              (APOLLO, 0.8B/2B)     (APOLLO, 4B remote GPU)
                                   │
                                   ▼
               ┌─────────────┬─────┴─────┬─────────────┐
@@ -146,37 +143,38 @@ uv run --extra train python scripts/run_pipeline.py \
     --trajectory-export ../trajectory-export.jsonl \
     --epochs 1 --skip-base-bench
 
-# Smoke test on 2B (smallest eliza-1 size, trains on 16 GB)
+# Smoke test on 0.8B (smallest active eliza-1 size, trains on 16 GB)
 uv run --extra train python scripts/run_pipeline.py \
-    --registry-key qwen3.5-2b --max-samples 1000 --epochs 1
+    --registry-key qwen3.5-0.8b --max-samples 1000 --epochs 1
 
 # Full pipeline on 2B (eliza-1-2b, real local run)
 uv run --extra train python scripts/run_pipeline.py \
     --registry-key qwen3.5-2b --epochs 3
 
-# Cloud pipeline (Vast active path: 9B on 1× Blackwell, 27B on 2× B200)
+# Remote GPU pipeline for the active 4B APOLLO tier
 VAST_API_KEY=... HUGGING_FACE_HUB_TOKEN=... \
     bash scripts/train_vast.sh provision-and-train \
-    --registry-key qwen3.6-27b --epochs 1 --bootstrap hf
+    --registry-key qwen3.5-4b --epochs 1 --bootstrap hf
 
-# Push the trained checkpoint to elizaos/eliza-1-27b
+# Push the trained checkpoint to elizaos/eliza-1
 HF_TOKEN=hf_xxx uv run python scripts/push_model_to_hf.py \
-    --registry-key qwen3.6-27b \
-    --checkpoint checkpoints/qwen3-6-27b-apollo/final
+    --registry-key qwen3.5-4b \
+    --checkpoint checkpoints/qwen3-5-4b-apollo/final
 ```
 
 See `RL_STRATEGY.md` for the post-SFT plan (DPO + GRPO via verl).
 
 ### Renting GPUs
 
-The cloud-tier sizes (`eliza-1-9b`, `eliza-1-27b`) train on **Vast.ai** via
-`scripts/train_vast.sh` (subcommands: `search`, `provision`, `sync`, `run`,
+The active 0.8B, 2B, and 4B APOLLO tiers can train on **Vast.ai** via `scripts/train_vast.sh`
+(subcommands: `search`, `provision`, `sync`, `run`,
 `quantize`, `bench`, `fetch`, `status`, `pull-checkpoints`,
 `kill-and-teardown`, `teardown`, `provision-and-train`). The script
 auto-picks the GPU target from `REGISTRY_KEY`:
 
-- `qwen3.5-9b` / `eliza-1-9b` → 1× RTX Pro 6000 Blackwell by default.
-- `qwen3.6-27b` / `eliza-1-27b` → 2× B200 with FSDP by default.
+- `qwen3.5-0.8b` / `eliza-1-0_8b` → smallest active smoke/default tier.
+- `qwen3.5-2b` / `eliza-1-2b` → local 16 GB training tier.
+- `qwen3.5-4b` / `eliza-1-4b` → 48 GB-class training tier, optimized for 24 GB inference after quantization.
 
 Lower-level helpers live in `scripts/lib/vast.py` (searchable via
 `python -m scripts.lib.vast pick blackwell6000-2x`). `scripts/day0_smoke.sh`
@@ -311,24 +309,20 @@ docs**; the calculator is the source of truth.
 
 ```bash
 uv run --extra train python scripts/training/memory_calc.py --shape qwen3.5-2b
-uv run --extra train python scripts/training/memory_calc.py --shape qwen3.5-9b
-uv run --extra train python scripts/training/memory_calc.py --shape qwen3.6-27b
+uv run --extra train python scripts/training/memory_calc.py --shape qwen3.5-4b
 ```
 
 The `memory_calc` output covers APOLLO training memory across `seq_len ∈
 {4k…147k}`, inference memory at the same context lengths for every
 (weight-quant, K-quant, V-quant)
-combination, an inference fit table across {RTX 5090, RTX Pro 5000/6000
-Blackwell, H100, H200}, and the maximum context per card with the full
-quant stack. The 27B fits ≥1M tokens on every listed card; the
-architectural cap (1M tokens, native 256k extended via RoPE scaling) is
-the binding constraint.
+combination, an inference fit table across modern local GPUs, and the maximum
+context per card with the full quant stack.
 
-### Reality on Qwen3.5/3.6 V-side
+### Reality on Qwen3.5 V-side
 
 Upstream `fused_turboquant.hf` 0.1.0's `make_fused_attention_forward`
 does not handle the gated `q_proj` layout (`q_proj.out_features =
-2 * num_heads * head_dim`) used by the Qwen3.5 / Qwen3.6 attention block.
+2 * num_heads * head_dim`) used by the Qwen3.5 attention block.
 The vendored `quantization.fused_turboquant_vendored` package adds the
 gated branch; until that lands and is smoke-tested end-to-end the V-side
 path stays on bf16. K-side QJL is independent of the gated patch and is

@@ -1,0 +1,14 @@
+#!/bin/sh
+
+set -eu
+
+if ! [ -L /dev/bilibop ]; then
+    echo "/dev/bilibop is not a symlink"
+    exit 0
+fi
+
+lsblk \
+    --json \
+    --paths \
+    --output=+ptuuid,partuuid,partlabel,fstype,fsver,label,uuid,tran,hotplug \
+    /dev/bilibop

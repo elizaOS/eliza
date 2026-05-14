@@ -749,13 +749,14 @@ async function startRendererServer(): Promise<string> {
 			// on same-origin /api fetches whether it's loaded via Vite (watch mode)
 			// or this static server (non-watch dev:desktop). Without this, every
 			// /api/* call returned SPA HTML and Settings sat on "Loading…" forever.
+			const apiBase = apiBaseOwner.getCurrent().base ?? initialApiBase;
 			if (
-				initialApiBase &&
+				apiBase &&
 				(pathname.startsWith("/api/") ||
 					pathname === "/ws" ||
 					pathname.startsWith("/music-player"))
 			) {
-				const target = new URL(pathname + url.search, initialApiBase);
+				const target = new URL(pathname + url.search, apiBase);
 				const headers = new Headers(req.headers);
 				headers.set("host", target.host);
 				try {

@@ -12,10 +12,17 @@ import { ActiveModelCoordinator } from "./active-model";
 import { readEffectiveAssignments, setAssignment } from "./assignments";
 import { registerBundledModels } from "./bundled-models";
 import { MODEL_CATALOG } from "./catalog";
+import { filterSettingsDefaultLocalModels } from "./catalog-policy";
+import {
+  type LocalModelSearchProviderId,
+  type LocalModelSearchResponse,
+  listLocalModelSearchProviders,
+  searchLocalModelProvider,
+} from "./custom-search";
 import { getDflashRuntimeStatus } from "./dflash-server";
 import { Downloader } from "./downloader";
 import { probeHardware } from "./hardware";
-import { searchHuggingFaceGguf } from "./hf-search";
+import { searchHuggingFaceGguf, searchModelHubGguf } from "./hf-search";
 import { buildTextGenerationReadiness } from "./readiness";
 import {
   chooseSmallerFallbackModel,
@@ -48,7 +55,7 @@ export class LocalInferenceService {
   private bundledBootstrap: Promise<void> | null = null;
 
   getCatalog() {
-    return MODEL_CATALOG.filter((model) => !model.hiddenFromCatalog);
+    return filterSettingsDefaultLocalModels(MODEL_CATALOG);
   }
 
   /**
@@ -196,6 +203,26 @@ export class LocalInferenceService {
     limit?: number,
   ): Promise<CatalogModel[]> {
     return searchHuggingFaceGguf(query, limit);
+  }
+
+  async searchModelHub(
+    query: string,
+    hub: "huggingface" | "modelscope",
+    limit?: number,
+  ): Promise<CatalogModel[]> {
+    return searchModelHubGguf(query, hub, limit);
+  }
+
+  getSearchProviders() {
+    return listLocalModelSearchProviders();
+  }
+
+  async searchCustomModels(
+    providerId: LocalModelSearchProviderId,
+    query: string,
+    limit?: number,
+  ): Promise<LocalModelSearchResponse> {
+    return searchLocalModelProvider(providerId, query, limit);
   }
 
   /**

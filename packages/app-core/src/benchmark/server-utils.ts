@@ -152,6 +152,34 @@ export interface BenchmarkTrajectoryStep {
   personality_audit_log?: BenchmarkPersonalityAuditEntry[];
 }
 
+export interface BenchmarkToolCall {
+  id: string;
+  type: "function";
+  function: {
+    name: string;
+    arguments: string;
+  };
+}
+
+export interface BenchmarkTurnMetadata {
+  agent_label: "eliza";
+  benchmark: string;
+  task_id: string;
+  room_id: UUID;
+  relay_room_id: UUID;
+  trajectory_step: number;
+  trajectory_endpoint: string;
+  diagnostics_endpoint: string;
+  native_trajectory_step_id: string | null;
+  model_provider: string;
+  model_name: string;
+  compaction_strategy: string;
+  compaction_threshold_tokens: number | null;
+  auto_compact: string | null;
+  tool_schema_count: number;
+  tool_names: string[];
+}
+
 export interface CuaServiceLike {
   runTask(roomId: string, goal: string): Promise<unknown>;
   approveLatest(roomId: string): Promise<unknown>;
@@ -357,12 +385,21 @@ export function composeBenchmarkPrompt(params: {
   image?: unknown;
 }): string {
   const segments: string[] = [params.text.trim()];
+  const benchmark =
+    typeof params.context?.benchmark === "string"
+      ? params.context.benchmark
+      : undefined;
+  const isLocaBenchmark =
+    benchmark === "loca_bench" || benchmark === "loca-bench";
 
   if (params.context && Object.keys(params.context).length > 0) {
+    const contextForPrompt = isLocaBenchmark
+      ? compactLocaContextForPrompt(params.context)
+      : params.context;
     segments.push(
       [
         "BENCHMARK CONTEXT (authoritative):",
-        JSON.stringify(params.context, null, 2),
+        JSON.stringify(contextForPrompt, null, 2),
       ].join("\n"),
     );
   }
@@ -373,13 +410,18 @@ export function composeBenchmarkPrompt(params: {
     );
   }
 
-  const benchmark =
-    typeof params.context?.benchmark === "string"
-      ? params.context.benchmark
-      : undefined;
   if (benchmark === "action-calling") {
     segments.push(
       "This is an action-calling benchmark. Use the available benchmark tool through Eliza's normal native action/function-calling path. Do not serialize tool calls in prose, XML, markdown, or JSON text.",
+    );
+  } else if (isLocaBenchmark) {
+    segments.push(
+      [
+        "This is LOCA-bench. If work remains, emit exactly one benchmark tool call; progress text is invalid.",
+        "Use actions: [\"BENCHMARK_ACTION\"] with params.BENCHMARK_ACTION.tool_name set to one of the available LOCA tool names and params.BENCHMARK_ACTION.arguments set to that tool's JSON arguments.",
+        "For example: {\"actions\":[\"BENCHMARK_ACTION\"],\"text\":\"\",\"params\":{\"BENCHMARK_ACTION\":{\"tool_name\":\"filesystem_list_directory\",\"arguments\":{\"path\":\"source_data\"}}}}",
+        "Only use REPLY after the requested output files have been written.",
+      ].join(" "),
     );
   } else {
     segments.push(
@@ -388,6 +430,38 @@ export function composeBenchmarkPrompt(params: {
   }
 
   return segments.join("\n\n");
+}
+
+function compactLocaContextForPrompt(
+  context: Record<string, unknown>,
+): Record<string, unknown> {
+  const toolNames = Array.isArray(context.tools)
+    ? context.tools
+        .map((tool) => {
+          if (!tool || typeof tool !== "object") return "";
+          const record = tool as Record<string, unknown>;
+          const fn =
+            record.function && typeof record.function === "object"
+              ? (record.function as Record<string, unknown>)
+              : undefined;
+          const name = fn?.name ?? record.name;
+          return typeof name === "string" ? name : "";
+        })
+        .filter(Boolean)
+    : [];
+
+  return {
+    benchmark: context.benchmark,
+    task_id: context.task_id ?? context.taskId,
+    taskId: context.taskId ?? context.task_id,
+    session_id: context.session_id,
+    tool_names: toolNames,
+    tool_schema_count: toolNames.length,
+    system_prompt: context.system_prompt,
+    temperature: context.temperature,
+    top_p: context.top_p,
+    max_tokens: context.max_tokens ?? context.max_completion_tokens,
+  };
 }
 
 export function coerceActions(value: unknown): string[] {
@@ -450,6 +524,149 @@ export function capturedActionToParams(
   }
 
   return { BENCHMARK_ACTION: benchmarkParams };
+}
+
+function stableJsonStringify(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map((entry) => stableJsonStringify(entry)).join(",")}]`;
+  }
+  if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    return `{${Object.keys(record)
+      .sort()
+      .map(
+        (key) => `${JSON.stringify(key)}:${stableJsonStringify(record[key])}`,
+      )
+      .join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function capturedActionToolName(action: CapturedAction): string {
+  const params =
+    action.params && typeof action.params === "object" ? action.params : {};
+  const name =
+    action.toolName ??
+    action.command ??
+    action.operation ??
+    (typeof params.tool_name === "string" ? params.tool_name : undefined) ??
+    (typeof params.command === "string" ? params.command : undefined) ??
+    (typeof params.operation === "string" ? params.operation : undefined);
+  return typeof name === "string" ? name.trim() : "";
+}
+
+function capturedActionArguments(
+  action: CapturedAction,
+): Record<string, unknown> {
+  if (action.arguments && typeof action.arguments === "object") {
+    return action.arguments;
+  }
+  const params =
+    action.params && typeof action.params === "object" ? action.params : {};
+  const rawArguments = params.arguments;
+  if (typeof rawArguments === "string") {
+    try {
+      const parsed = JSON.parse(rawArguments) as unknown;
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        return parsed as Record<string, unknown>;
+      }
+    } catch {
+      return { _raw: rawArguments };
+    }
+  }
+  if (
+    rawArguments &&
+    typeof rawArguments === "object" &&
+    !Array.isArray(rawArguments)
+  ) {
+    return rawArguments as Record<string, unknown>;
+  }
+  return Object.fromEntries(
+    Object.entries(params).filter(
+      ([key]) =>
+        !["tool_name", "command", "operation", "arguments"].includes(key),
+    ),
+  );
+}
+
+export function capturedActionsToToolCalls(
+  capturedActions: CapturedAction[],
+): BenchmarkToolCall[] {
+  const calls: BenchmarkToolCall[] = [];
+  for (const action of capturedActions) {
+    const name = capturedActionToolName(action);
+    if (!name) continue;
+    calls.push({
+      id: `call_benchmark_${calls.length}`,
+      type: "function",
+      function: {
+        name,
+        arguments: stableJsonStringify(capturedActionArguments(action)),
+      },
+    });
+  }
+  return calls;
+}
+
+function benchmarkToolName(tool: Record<string, unknown>): string {
+  const fn = tool.function;
+  if (fn && typeof fn === "object" && !Array.isArray(fn)) {
+    const name = (fn as Record<string, unknown>).name;
+    if (typeof name === "string") return name;
+  }
+  const name = tool.name;
+  return typeof name === "string" ? name : "";
+}
+
+export function benchmarkTurnMetadata(params: {
+  session: BenchmarkSession;
+  step: number;
+  context?: Record<string, unknown>;
+  nativeTrajectoryStepId?: string | null;
+}): BenchmarkTurnMetadata {
+  const rawTools = params.context?.tools;
+  const tools = Array.isArray(rawTools)
+    ? rawTools.filter(
+        (entry): entry is Record<string, unknown> =>
+          Boolean(entry) && typeof entry === "object" && !Array.isArray(entry),
+      )
+    : [];
+  const compactionThreshold = Number(
+    process.env.ELIZA_BENCH_COMPACTION_THRESHOLD_TOKENS ??
+      process.env.CONTEXT_COMPACTION_THRESHOLD_TOKENS ??
+      "",
+  );
+  return {
+    agent_label: "eliza",
+    benchmark: params.session.benchmark,
+    task_id: params.session.taskId,
+    room_id: params.session.roomId,
+    relay_room_id: params.session.relayRoomId,
+    trajectory_step: params.step,
+    trajectory_endpoint: `/api/benchmark/trajectory?benchmark=${encodeURIComponent(params.session.benchmark)}&task_id=${encodeURIComponent(params.session.taskId)}`,
+    diagnostics_endpoint: `/api/benchmark/diagnostics?benchmark=${encodeURIComponent(params.session.benchmark)}&task_id=${encodeURIComponent(params.session.taskId)}`,
+    native_trajectory_step_id: params.nativeTrajectoryStepId ?? null,
+    model_provider:
+      process.env.BENCHMARK_MODEL_PROVIDER ??
+      process.env.MODEL_PROVIDER ??
+      process.env.CEREBRAS_PROVIDER ??
+      "",
+    model_name:
+      process.env.BENCHMARK_MODEL_NAME ??
+      process.env.MODEL_NAME ??
+      process.env.CEREBRAS_MODEL ??
+      "",
+    compaction_strategy:
+      process.env.ELIZA_BENCH_COMPACTION_STRATEGY ??
+      process.env.COMPACTION_STRATEGY ??
+      "",
+    compaction_threshold_tokens: Number.isFinite(compactionThreshold)
+      ? compactionThreshold
+      : null,
+    auto_compact: process.env.ELIZA_BENCH_AUTO_COMPACT ?? null,
+    tool_schema_count: tools.length,
+    tool_names: tools.map(benchmarkToolName).filter(Boolean),
+  };
 }
 
 export function sessionKey(session: BenchmarkSession): string {
