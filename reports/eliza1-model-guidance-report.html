@@ -94,7 +94,7 @@
         <thead><tr><th>Item</th><th>Status</th><th>Reason</th></tr></thead>
         <tbody>
           <tr><td>Live backend honor test</td><td><span class="badge partial">Needs environment</span></td><td>Requires a running eliza-1 fork backend that actually consumes <code>grammar</code>, <code>response_skeleton</code>, and sampler fields.</td></tr>
-          <tr><td>Regex <code>pattern</code> to GBNF compilation</td><td><span class="badge partial">Subset compiled</span></td><td>Anchored literal / character-class / quantifier patterns compile into GBNF; unsupported regex features fall back to validation-backed enforcement. Validation/reroll coverage now proves patterns reject invalid values before action execution.</td><td>Backrefs, lookarounds, and other unsupported regex forms remain validation-backed.</td></tr>
+          <tr><td>Regex <code>pattern</code> to GBNF compilation</td><td><span class="badge partial">Subset compiled</span></td><td>Anchored literal / character-class / quantifier patterns compile into GBNF; unsupported regex features such as backrefs and lookarounds fall back to validation-backed enforcement. Validation/reroll coverage proves patterns reject invalid values before action execution.</td></tr>
           <tr><td>Legacy <code>HANDLE_RESPONSE_SCHEMA</code></td><td><span class="badge partial">Intentional compatibility</span></td><td>Production uses field-registry schema; the split is pinned by unit tests, and the legacy schema remains for fallback/tests until parser trajectories retire the W3 fields.</td></tr>
           <tr><td>Enum short-form default</td><td><span class="badge partial">Opt-in</span></td><td>Kept behind <code>ELIZA_SHORT_FORM_ENUMS=1</code> to avoid masking generation regressions.</td></tr>
         </tbody>

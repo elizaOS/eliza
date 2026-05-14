@@ -52,7 +52,7 @@ describe("resolveNativeLibraryCandidate", () => {
           moduleDir: path.join(appRoot, "Contents", "Resources", "bun"),
         },
       ),
-    ).toBe(dylib);
+    ).toBe(realpathSync.native(dylib));
   });
 
   it("rejects home, cache, and plugin dylibs outside the app bundle in store builds", () => {

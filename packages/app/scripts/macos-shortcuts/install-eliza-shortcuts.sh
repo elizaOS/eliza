@@ -3,26 +3,41 @@ set -eu
 
 script_dir="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 source_script="$script_dir/eliza-assistant-handoff.sh"
+source_verify_script="$script_dir/verify-eliza-shortcuts.sh"
 target_dir="${ELIZA_SHORTCUT_INSTALL_DIR:-$HOME/Library/Application Support/elizaOS/Shortcuts}"
 target_script="$target_dir/eliza-assistant-handoff.sh"
+target_verify_script="$target_dir/verify-eliza-shortcuts.sh"
 
 if [ ! -f "$source_script" ]; then
   echo "install-eliza-shortcuts: missing handoff script: $source_script" >&2
   exit 1
 fi
+if [ ! -f "$source_verify_script" ]; then
+  echo "install-eliza-shortcuts: missing verifier script: $source_verify_script" >&2
+  exit 1
+fi
 
 mkdir -p "$target_dir"
 cp "$source_script" "$target_script"
+cp "$source_verify_script" "$target_verify_script"
 chmod 755 "$target_script"
+chmod 755 "$target_verify_script"
 
 dry_run_url="$("$target_script" --dry-run "remind me to test Eliza Shortcuts")"
+verify_summary="$("$target_verify_script" --helper "$target_script" --no-shortcuts-warning)"
 
 cat <<EOF
 Installed Eliza macOS Shortcuts handoff helper:
   $target_script
 
+Installed verification helper:
+  $target_verify_script
+
 Dry-run URL:
   $dry_run_url
+
+Verification summary:
+$verify_summary
 
 Create the user-facing Shortcut in the macOS Shortcuts app:
   1. New Shortcut named "Ask Eliza".
@@ -39,6 +54,7 @@ Optional LifeOps-focused shortcut:
 Verification:
   printf 'remind me to stand up in 20 minutes' | "$target_script" --dry-run
   printf 'remind me to stand up in 20 minutes' | "$target_script"
+  "$target_verify_script" --helper "$target_script" --require-shortcut
   shortcuts run "Ask Eliza" --input-path -
 
 The Shortcut creation itself remains a macOS UI step because shortcuts(1) can

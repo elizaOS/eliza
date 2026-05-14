@@ -113,11 +113,10 @@ export type VoiceBackendId = "kokoro" | "omnivoice";
  * Entries beyond the first are also bundled; tiers that ship only one
  * backend have a single-element array.
  *
- * Policy (Wave-2):
- *   - Small tiers (0_8b / 2b / 4b) → Kokoro only. Kokoro is ~310 MB
- *   - Small tiers (0_8b / 2b / 4b / 9b) → OmniVoice first with Kokoro
- *     fallback. The fused expressive TTS path stays default, while Kokoro
- *     remains available for low-latency/thermal fallback on constrained hosts.
+ * Policy:
+ *   - Small tiers (0_8b / 2b / 4b) → Kokoro only. These tiers are
+ *     phone-first and must keep TTFA/RSS predictable.
+ *   - 9b → Kokoro first with OmniVoice bundled for expressive desktop voice.
  *   - Large tiers (27b / 27b-256k / 27b-1m) → OmniVoice only. The RAM
  *     and compute budget is large enough that the OmniVoice quality win
  *     dominates; Kokoro is not shipped in these bundles.
@@ -126,10 +125,10 @@ export const ELIZA_1_VOICE_BACKENDS: Record<
   Eliza1TierId,
   ReadonlyArray<VoiceBackendId>
 > = {
-  "eliza-1-0_8b": ["omnivoice", "kokoro"],
-  "eliza-1-2b": ["omnivoice", "kokoro"],
-  "eliza-1-4b": ["omnivoice", "kokoro"],
-  "eliza-1-9b": ["omnivoice", "kokoro"],
+  "eliza-1-0_8b": ["kokoro"],
+  "eliza-1-2b": ["kokoro"],
+  "eliza-1-4b": ["kokoro"],
+  "eliza-1-9b": ["kokoro", "omnivoice"],
   "eliza-1-27b": ["omnivoice"],
   "eliza-1-27b-256k": ["omnivoice"],
   "eliza-1-27b-1m": ["omnivoice"],
@@ -392,9 +391,10 @@ function voiceQuantForTier(id: Eliza1TierId): OmniVoiceQuantLevel {
  * full Q3..Q8 ladder so a `--memory-budget okay` host can step down to
  * Q3_K_M and a `--memory-budget good` host can take Q6_K.
  *
- * Every active tier publishes an OmniVoice ladder. Small tiers keep the
- * ladder narrow so the installer can stay inside mobile RAM budgets while
- * still defaulting to the fused OmniVoice path.
+ * Small tiers keep the mobile ladder metadata for compatibility with
+ * quantization/release tooling, but Kokoro is the only required voice backend
+ * for 0_8b/2b/4b. 9B+ publishes the full OmniVoice ladder where OmniVoice is
+ * an active backend.
  */
 const OMNIVOICE_QUANT_LADDER_BY_TIER: Readonly<
   Record<Eliza1TierId, ReadonlyArray<OmniVoiceQuantLevel>>

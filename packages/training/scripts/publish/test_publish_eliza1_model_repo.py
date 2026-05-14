@@ -170,13 +170,11 @@ def test_voice_policy_can_warn_or_block(tmp_path: Path):
     strict_plan = P.plan_bundle(tmp_path, "2b", strict_voice_policy=True)
 
     assert warning_plan.uploadable is True
-    assert any("omnivoice-base-q4_k_m.gguf" in w for w in warning_plan.warnings)
-    assert any("omnivoice-tokenizer-q4_k_m.gguf" in w for w in warning_plan.warnings)
+    assert not any("omnivoice" in w for w in warning_plan.warnings)
     assert any("kokoro/tokenizer.json" in w for w in warning_plan.warnings)
     assert any("kokoro/voices/af_bella.bin" in w for w in warning_plan.warnings)
     assert strict_plan.uploadable is False
-    assert any("omnivoice-base-q4_k_m.gguf" in e for e in strict_plan.errors)
-    assert any("omnivoice-tokenizer-q4_k_m.gguf" in e for e in strict_plan.errors)
+    assert not any("omnivoice" in e for e in strict_plan.errors)
     assert any("kokoro/tokenizer.json" in e for e in strict_plan.errors)
     assert any("kokoro/voices/af_bella.bin" in e for e in strict_plan.errors)
 

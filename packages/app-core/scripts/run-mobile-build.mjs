@@ -33,12 +33,12 @@
  *   6. Native build         — gradlew / xcodebuild
  *
  * iOS targets:
- *   - ios         App Store iOS build. Ships the bundled no-JIT iOS Bun
- *                 runtime and local agent payload; llama.cpp remains omitted
- *                 unless ELIZA_IOS_INCLUDE_LLAMA is set.
- *   - ios-local   Dev/sideload iOS build. Bakes runtimeMode=local, builds and
- *                 stages the Bun-targeted agent payload, includes the native
- *                 llama bridge, and defaults to simulator validation.
+ *   - ios         App Store iOS build. Cloud/client-oriented by default;
+ *                 llama.cpp remains omitted unless ELIZA_IOS_INCLUDE_LLAMA is set.
+ *   - ios-local   Dev/sideload iOS build. Bakes runtimeMode=local with
+ *                 ELIZA_RUNTIME_MODE=local-safe, stages the agent payload,
+ *                 includes the JSContext compatibility runtime by default,
+ *                 and defaults to simulator validation. Full Bun is explicit.
  */
 import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
@@ -163,6 +163,15 @@ const IOS_BUN_ENGINE_FORBIDDEN_STRINGS = [
   /\bdynamic-codesigning\b/i,
   /\bunsigned-executable-memory\b/i,
 ];
+export const IOS_AGENT_RUNTIME_ASSETS = [
+  "agent-bundle.js",
+  "pglite.wasm",
+  "pglite.data",
+  "vector.tar.gz",
+  "fuzzystrmatch.tar.gz",
+  "plugins-manifest.json",
+];
+const IOS_AGENT_ROOT_EXTENSION_ASSETS = ["vector.tar.gz", "fuzzystrmatch.tar.gz"];
 // ── Phase 1: Resolve app identity from app.config.ts ────────────────────
 
 function readAppIdentity() {
@@ -643,10 +652,20 @@ export function resolveMobileBuildPolicy(platform) {
     platform === "ios-local"
       ? "local"
       : platform === "ios"
-        ? "cloud-hybrid"
+        ? "cloud"
         : platform === "ios-overlay"
           ? "cloud"
           : null;
+  const runtimeExecutionMode =
+    platform === "android-cloud" || platform === "android-cloud-debug"
+      ? "cloud"
+      : platform === "android" || platform === "android-system"
+        ? "local-yolo"
+        : platform === "ios-local"
+          ? "local-safe"
+          : platform === "ios" || platform === "ios-overlay"
+            ? "cloud"
+            : null;
   const buildVariant =
     platform === "android-cloud" || platform === "ios" ? "store" : "direct";
   const releaseAuthority =
@@ -668,6 +687,7 @@ export function resolveMobileBuildPolicy(platform) {
     buildVariant,
     androidRuntimeMode,
     iosRuntimeMode,
+    runtimeExecutionMode,
     releaseAuthority,
     appControlledOta: false,
   };
@@ -679,6 +699,7 @@ async function buildWeb(platform) {
     buildVariant,
     androidRuntimeMode,
     iosRuntimeMode,
+    runtimeExecutionMode,
     releaseAuthority,
   } = resolveMobileBuildPolicy(platform);
   const env = {
@@ -696,6 +717,14 @@ async function buildWeb(platform) {
       ? {
           ELIZA_IOS_RUNTIME_MODE: iosRuntimeMode,
           VITE_ELIZA_IOS_RUNTIME_MODE: iosRuntimeMode,
+        }
+      : {}),
+    ...(runtimeExecutionMode
+      ? {
+          ELIZA_RUNTIME_MODE: runtimeExecutionMode,
+          RUNTIME_MODE: runtimeExecutionMode,
+          LOCAL_RUNTIME_MODE: runtimeExecutionMode,
+          VITE_ELIZA_RUNTIME_MODE: runtimeExecutionMode,
         }
       : {}),
     ...((platform === "ios" || platform === "ios-local") &&
@@ -729,16 +758,19 @@ async function buildMobileAgentBundle({ target = "android" } = {}) {
   });
 }
 
-function stageIosAgentRuntime() {
+export function resolveIosAgentRuntimeAssetPlan({
+  appStoreBuild = false,
+} = {}) {
+  return {
+    agentAssets: appStoreBuild ? IOS_AGENT_RUNTIME_ASSETS : null,
+    rootAssets: IOS_AGENT_ROOT_EXTENSION_ASSETS,
+  };
+}
+
+function stageIosAgentRuntime({ appStoreBuild = false } = {}) {
   const sourceDir = path.join(packagesRoot, "agent", "dist-mobile-ios");
-  const required = [
-    "agent-bundle.js",
-    "pglite.wasm",
-    "pglite.data",
-    "vector.tar.gz",
-    "fuzzystrmatch.tar.gz",
-    "plugins-manifest.json",
-  ];
+  const assetPlan = resolveIosAgentRuntimeAssetPlan({ appStoreBuild });
+  const required = IOS_AGENT_RUNTIME_ASSETS;
   for (const file of required) {
     const p = path.join(sourceDir, file);
     if (!fs.existsSync(p)) {
@@ -751,7 +783,8 @@ function stageIosAgentRuntime() {
   const targetDir = path.join(iosDir, "App", "public", "agent");
   fs.rmSync(targetDir, { recursive: true, force: true });
   fs.mkdirSync(targetDir, { recursive: true });
-  for (const file of fs.readdirSync(sourceDir)) {
+  const filesToStage = assetPlan.agentAssets ?? fs.readdirSync(sourceDir);
+  for (const file of filesToStage) {
     const src = path.join(sourceDir, file);
     const dst = path.join(targetDir, file);
     if (fs.statSync(src).isFile()) {
@@ -763,11 +796,11 @@ function stageIosAgentRuntime() {
   // these two assets at public/ as well as keeping the manifest copy under
   // public/agent for build diagnostics.
   const publicDir = path.dirname(targetDir);
-  for (const file of ["vector.tar.gz", "fuzzystrmatch.tar.gz"]) {
+  for (const file of assetPlan.rootAssets) {
     fs.copyFileSync(path.join(sourceDir, file), path.join(publicDir, file));
   }
   console.log(
-    `[mobile-build] Staged iOS Bun agent payload: ${path.relative(repoRoot, targetDir)}`,
+    `[mobile-build] Staged iOS Bun agent payload${appStoreBuild ? " (App Store allowlist)" : ""}: ${path.relative(repoRoot, targetDir)}`,
   );
 }
 
@@ -1648,6 +1681,7 @@ function overlayAndroid() {
       "ElizaAgentService.java",
       "ElizaAssistActivity.java",
       "ElizaBootReceiver.java",
+      "ElizaVoiceCaptureService.java",
       "ElizaBrowserActivity.java",
       "ElizaCalendarActivity.java",
       "ElizaCameraActivity.java",
@@ -2406,6 +2440,17 @@ function isTruthyEnv(value) {
 
 function isFullIosBunEngineRequested(env = process.env) {
   return isTruthyEnv(env.ELIZA_IOS_FULL_BUN_ENGINE);
+}
+
+function isIosLlamaRequested(env = process.env) {
+  return (
+    isTruthyEnv(env.ELIZA_IOS_INCLUDE_LLAMA) ||
+    isTruthyEnv(env.MILADY_IOS_INCLUDE_LLAMA)
+  );
+}
+
+function shouldIncludeIosLlama(env = process.env) {
+  return !isIosAppStoreBuild(env) && isIosLlamaRequested(env);
 }
 
 function isIosAppStoreLocalRuntimeEnabled(env = process.env) {
@@ -3513,6 +3558,52 @@ function validateIosBunEngineSymbols(binary) {
       `[mobile-build] ${binary} is missing required full-Bun ABI symbols: ${missing.join(", ")}`,
     );
   }
+
+  const imports = runCaptureSync("nm", ["-u", binary], {
+    maxBuffer: 256 * 1024 * 1024,
+  });
+  if (imports.status !== 0) {
+    const reason =
+      imports.stderr?.trim() ||
+      imports.error?.message ||
+      `exit status ${String(imports.status)}`;
+    throw new Error(
+      `[mobile-build] failed to inspect imported symbols for ${binary}: ${reason}`,
+    );
+  }
+  const importOutput = `${imports.stdout}\n${imports.stderr}`;
+  const badImports = IOS_BUN_ENGINE_FORBIDDEN_IMPORTS.filter((symbol) =>
+    new RegExp(`(^|\\s)${symbol.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`).test(
+      importOutput,
+    ),
+  );
+  if (badImports.length > 0) {
+    throw new Error(
+      `[mobile-build] ${binary} imports App Store-sensitive runtime/code-loading symbols: ${badImports.join(", ")}`,
+    );
+  }
+
+  const strings = runCaptureSync("strings", [binary], {
+    maxBuffer: 256 * 1024 * 1024,
+  });
+  if (strings.status !== 0) {
+    const reason =
+      strings.stderr?.trim() ||
+      strings.error?.message ||
+      `exit status ${String(strings.status)}`;
+    throw new Error(
+      `[mobile-build] failed to inspect strings for ${binary}: ${reason}`,
+    );
+  }
+  const stringOutput = `${strings.stdout}\n${strings.stderr}`;
+  const badStrings = IOS_BUN_ENGINE_FORBIDDEN_STRINGS.filter((pattern) =>
+    pattern.test(stringOutput),
+  ).map((pattern) => pattern.source);
+  if (badStrings.length > 0) {
+    throw new Error(
+      `[mobile-build] ${binary} contains App Store-sensitive executable-memory markers: ${badStrings.join(", ")}`,
+    );
+  }
 }
 
 function validateIosFullBunEngineXcframework(
@@ -3536,6 +3627,19 @@ function validateIosFullBunEngineXcframework(
       `[mobile-build] ${frameworkInfoPlist} has ElizaBunEngineABIVersion=${String(
         frameworkInfo.ElizaBunEngineABIVersion,
       )}; expected ${IOS_BUN_ENGINE_ABI_VERSION}`,
+    );
+  }
+  if (frameworkInfo.ElizaBunEngineNoJIT !== true) {
+    throw new Error(
+      `[mobile-build] ${frameworkInfoPlist} must declare ElizaBunEngineNoJIT=true`,
+    );
+  }
+  if (
+    frameworkInfo.ElizaBunEngineExecutionProfile !==
+    IOS_BUN_ENGINE_EXECUTION_PROFILE
+  ) {
+    throw new Error(
+      `[mobile-build] ${frameworkInfoPlist} must declare ElizaBunEngineExecutionProfile=${IOS_BUN_ENGINE_EXECUTION_PROFILE}`,
     );
   }
   validateIosBunEngineSymbols(binary);
@@ -3615,6 +3719,7 @@ export const ANDROID_CLOUD_STRIPPED_COMPONENTS = [
   "ElizaDialActivity",
   "ElizaAssistActivity",
   "ElizaInCallService",
+  "ElizaVoiceCaptureService",
   "ElizaSmsReceiver",
   "ElizaMmsReceiver",
   "ElizaRespondViaMessageService",
@@ -3652,6 +3757,7 @@ export const ANDROID_CLOUD_STRIPPED_PERMISSIONS = [
   "RECEIVE_WAP_PUSH",
   "ACCESS_BACKGROUND_LOCATION",
   "FOREGROUND_SERVICE_MEDIA_PROJECTION",
+  "FOREGROUND_SERVICE_MICROPHONE",
   "FOREGROUND_SERVICE_SPECIAL_USE",
   "RECEIVE_BOOT_COMPLETED",
   "REQUEST_IGNORE_BATTERY_OPTIMIZATIONS",
@@ -3672,6 +3778,7 @@ export const ANDROID_CLOUD_STRIPPED_JAVA_FILES = [
   "ElizaAgentService.java",
   "ElizaAssistActivity.java",
   "ElizaBootReceiver.java",
+  "ElizaVoiceCaptureService.java",
   "ElizaBrowserActivity.java",
   "ElizaCalendarActivity.java",
   "ElizaCameraActivity.java",

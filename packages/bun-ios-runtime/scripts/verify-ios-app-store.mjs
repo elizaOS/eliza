@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const packageRoot = path.resolve(__dirname, "..");
 const frameworkName = "ElizaBunEngine";
+const runtimePluginFrameworkName = "ElizaosCapacitorBunRuntime";
 const expectedAbiVersion = "3";
 const expectedProfile = "ios-app-store-nojit";
 const defaultXcframework = path.join(
@@ -125,16 +126,8 @@ function validateFrameworkMetadata(frameworkDir) {
   }
 }
 
-function validateBinary(binary) {
+function validateUnsafeRuntimeBinary(binary) {
   if (!fs.existsSync(binary)) fail(`${binary} does not exist`);
-  const defined = run("nm", ["-gU", binary]);
-  if (defined.status !== 0) fail(`nm failed for ${binary}: ${defined.stderr.trim()}`);
-  const definedOutput = `${defined.stdout}\n${defined.stderr}`;
-  const missing = requiredSymbols.filter((symbol) => !definedOutput.includes(symbol));
-  if (missing.length > 0) {
-    fail(`${binary} is missing required ABI symbols: ${missing.join(", ")}`);
-  }
-
   const imports = run("nm", ["-u", binary]);
   if (imports.status !== 0) fail(`nm -u failed for ${binary}: ${imports.stderr.trim()}`);
   const importOutput = `${imports.stdout}\n${imports.stderr}`;
@@ -154,6 +147,18 @@ function validateBinary(binary) {
   if (badStrings.length > 0) {
     fail(`${binary} contains executable-memory markers: ${badStrings.join(", ")}`);
   }
+}
+
+function validateBinary(binary) {
+  if (!fs.existsSync(binary)) fail(`${binary} does not exist`);
+  const defined = run("nm", ["-gU", binary]);
+  if (defined.status !== 0) fail(`nm failed for ${binary}: ${defined.stderr.trim()}`);
+  const definedOutput = `${defined.stdout}\n${defined.stderr}`;
+  const missing = requiredSymbols.filter((symbol) => !definedOutput.includes(symbol));
+  if (missing.length > 0) {
+    fail(`${binary} is missing required ABI symbols: ${missing.join(", ")}`);
+  }
+  validateUnsafeRuntimeBinary(binary);
 }
 
 function isExecutable(file) {
@@ -236,6 +241,14 @@ function validateApp(appPath) {
   const frameworkDir = path.join(appPath, "Frameworks", `${frameworkName}.framework`);
   validateFramework(frameworkDir);
   validateEntitlements(frameworkDir);
+  const runtimePluginDir = path.join(
+    appPath,
+    "Frameworks",
+    `${runtimePluginFrameworkName}.framework`,
+  );
+  const runtimePluginBinary = path.join(runtimePluginDir, runtimePluginFrameworkName);
+  validateUnsafeRuntimeBinary(runtimePluginBinary);
+  validateEntitlements(runtimePluginDir);
   console.log(`[bun-ios-runtime] verified App Store no-JIT profile for ${appPath}`);
 }
 

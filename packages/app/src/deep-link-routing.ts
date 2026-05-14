@@ -1,6 +1,5 @@
-import { ASSISTANT_LAUNCH_TEXT_KEYS } from "@elizaos/ui/platform";
-
 const ASSISTANT_ENTRY_SOURCE = "assistant-entry";
+const ASSISTANT_LAUNCH_TEXT_KEYS = ["text", "q", "query", "body"] as const;
 
 export interface AssistantLaunchHashRouteOptions {
   generateLaunchId?: () => string;

@@ -51,6 +51,27 @@ test("Android App Actions shortcuts are rewritten to the configured package and 
         android:targetClass="ai.elizaos.app.MainActivity"
         android:data="eliza://chat?source=android-static-shortcut" />
     </shortcut>
+    <shortcut android:shortcutId="eliza_app_action_voice">
+      <intent
+        android:action="android.intent.action.VIEW"
+        android:targetPackage="app.eliza"
+        android:targetClass="ai.elizaos.app.MainActivity"
+        android:data="eliza://voice?source=android-static-shortcut" />
+    </shortcut>
+    <shortcut android:shortcutId="eliza_app_action_daily_brief">
+      <intent
+        android:action="android.intent.action.VIEW"
+        android:targetPackage="app.eliza"
+        android:targetClass="ai.elizaos.app.MainActivity"
+        android:data="eliza://lifeops/daily-brief?source=android-static-shortcut" />
+    </shortcut>
+    <shortcut android:shortcutId="eliza_app_action_tasks">
+      <intent
+        android:action="android.intent.action.VIEW"
+        android:targetPackage="app.eliza"
+        android:targetClass="ai.elizaos.app.MainActivity"
+        android:data="eliza://lifeops/tasks?source=android-static-shortcut" />
+    </shortcut>
   </shortcuts>`;
 
   const patched = patchAndroidAppActionsXmlResource(shortcuts, {
