@@ -1,7 +1,7 @@
 """Smoke tests for model_registry. CPU-only.
 
 The registry holds the Eliza-1 size ladder. The canonical bases are published
-Qwen3.5 checkpoints and are all trainable through the APOLLO path;
+Qwen3.5/Qwen3.6 checkpoints and are all trainable through the APOLLO path;
 local tiers run on one consumer GPU, while 9B/27B go through Vast/FSDP.
 """
 
@@ -190,7 +190,7 @@ def test_summary_table_includes_every_entry() -> None:
     table = summary_table()
     for public_name in VERIFIED_PUBLIC_NAMES:
         assert public_name in table
-    assert "qwen3.5-27b" not in table
+    assert "qwen3.5-27b" in table
     assert "eliza-1-27b" in table
 
 

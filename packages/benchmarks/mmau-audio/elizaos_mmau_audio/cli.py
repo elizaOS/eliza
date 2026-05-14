@@ -17,8 +17,8 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-from benchmarks.mmau.runner import MMAURunner
-from benchmarks.mmau.types import (
+from elizaos_mmau_audio.runner import MMAURunner
+from elizaos_mmau_audio.types import (
     MMAU_CATEGORIES,
     MMAUCategory,
     MMAUConfig,

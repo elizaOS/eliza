@@ -86,7 +86,7 @@ log = logging.getLogger("optimize_for_eliza1")
 # and don't mutate weights, so they can run in any order after PolarQuant
 # but must run before GGUF conversion (the sidecars feed the GGUF metadata
 # block describing K and V cache projection geometry).
-APPLY_ORDER = ("polarquant", "qjl", "turboquant")
+APPLY_ORDER = ("polarquant", "qjl", "turboquant", "fused_turboquant")
 
 
 @dataclass(frozen=True)
@@ -473,7 +473,9 @@ def _convert_to_gguf(
     out_path.parent.mkdir(parents=True, exist_ok=True)
     polar_dir = _stage_dir(stages, "polarquant")
     qjl_dir = _stage_dir(stages, "qjl")
-    tbq_dir = _stage_dir(stages, "turboquant")
+    tbq_dir = _stage_dir(stages, "turboquant") or _stage_dir(
+        stages, "fused_turboquant"
+    )
     apply_script = Path(__file__).resolve().parent / "quantization" / "gguf_eliza1_apply.py"
     cmd = [
         sys.executable, str(apply_script),
