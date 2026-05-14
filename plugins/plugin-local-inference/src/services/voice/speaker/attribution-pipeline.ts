@@ -80,7 +80,10 @@ function pickPrimaryLocalSpeaker(
 	const durations = new Map<number, number>();
 	for (const seg of local) {
 		const ms = Math.max(0, seg.endMs - seg.startMs);
-		durations.set(seg.localSpeakerId, (durations.get(seg.localSpeakerId) ?? 0) + ms);
+		durations.set(
+			seg.localSpeakerId,
+			(durations.get(seg.localSpeakerId) ?? 0) + ms,
+		);
 	}
 	let best: { id: number; ms: number } | null = null;
 	for (const [id, ms] of durations.entries()) {
@@ -155,7 +158,9 @@ export class VoiceAttributionPipeline {
 				turnId: req.turnId,
 				source: req.source,
 				segments: this.localToUnknownSegments(local, req.source),
-				...(req.startedAtMs !== undefined ? { startedAtMs: req.startedAtMs } : {}),
+				...(req.startedAtMs !== undefined
+					? { startedAtMs: req.startedAtMs }
+					: {}),
 				...(req.endedAtMs !== undefined ? { endedAtMs: req.endedAtMs } : {}),
 				diarization: this.deps.diarizer
 					? {
@@ -258,7 +263,9 @@ export class VoiceAttributionPipeline {
 			source: req.source,
 			primarySpeaker: speaker,
 			segments,
-			...(req.startedAtMs !== undefined ? { startedAtMs: req.startedAtMs } : {}),
+			...(req.startedAtMs !== undefined
+				? { startedAtMs: req.startedAtMs }
+				: {}),
 			...(req.endedAtMs !== undefined ? { endedAtMs: req.endedAtMs } : {}),
 			diarization: this.deps.diarizer
 				? {
@@ -279,12 +286,16 @@ export class VoiceAttributionPipeline {
 		};
 	}
 
-	private buildEmptyOutput(req: VoiceAttributionRequest): VoiceAttributionOutput {
+	private buildEmptyOutput(
+		req: VoiceAttributionRequest,
+	): VoiceAttributionOutput {
 		const turn: VoiceTurnMetadata = {
 			turnId: req.turnId,
 			source: req.source,
 			segments: [],
-			...(req.startedAtMs !== undefined ? { startedAtMs: req.startedAtMs } : {}),
+			...(req.startedAtMs !== undefined
+				? { startedAtMs: req.startedAtMs }
+				: {}),
 			...(req.endedAtMs !== undefined ? { endedAtMs: req.endedAtMs } : {}),
 		};
 		return { turnId: req.turnId, segments: [], turn, observation: null };

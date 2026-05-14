@@ -249,11 +249,7 @@ describe("VoiceBudget.reserve()", () => {
 		});
 
 		const snap = budget.snapshot();
-		expect(snap.map((s) => s.role)).toEqual([
-			"emotion",
-			"tts",
-			"text-target",
-		]);
+		expect(snap.map((s) => s.role)).toEqual(["emotion", "tts", "text-target"]);
 	});
 });
 

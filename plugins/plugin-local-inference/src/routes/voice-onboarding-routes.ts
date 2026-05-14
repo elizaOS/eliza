@@ -99,8 +99,7 @@ export const ONBOARDING_SCRIPT: ReadonlyArray<OnboardingScriptStep> = [
 	{
 		id: "phonetic-3",
 		role: "phonetic",
-		prompt:
-			'"How razorback-jumping frogs can level six piqued gymnasts."',
+		prompt: '"How razorback-jumping frogs can level six piqued gymnasts."',
 		expectedDurationMs: 10_000,
 		requiresUserSpeech: true,
 	},
@@ -225,7 +224,9 @@ export function setVoiceOnboardingSettingsWriter(
 	settingsWriter = writer;
 }
 
-function startSession(consent: OnboardingSession["consent"]): OnboardingSession {
+function startSession(
+	consent: OnboardingSession["consent"],
+): OnboardingSession {
 	const id = `obs_${crypto.randomUUID()}`;
 	const now = Date.now();
 	const session: OnboardingSession = {
@@ -375,7 +376,11 @@ export async function handleVoiceOnboardingRoutes(
 			});
 		} catch (err) {
 			if (err instanceof SpeakerEncoderUnavailableError) {
-				sendJsonError(res, err.message, err.code === "invalid-input" ? 400 : 503);
+				sendJsonError(
+					res,
+					err.message,
+					err.code === "invalid-input" ? 400 : 503,
+				);
 				return true;
 			}
 			throw err;
@@ -448,7 +453,8 @@ export async function handleVoiceOnboardingRoutes(
 	if (method === "POST" && pathname === "/api/voice/onboarding/complete") {
 		const body = await readJsonBody<Record<string, unknown>>(req, res);
 		if (!body) return true;
-		const entityId = typeof body.entityId === "string" ? body.entityId.trim() : "";
+		const entityId =
+			typeof body.entityId === "string" ? body.entityId.trim() : "";
 		if (!entityId) {
 			sendJsonError(res, "entityId is required", 400);
 			return true;
