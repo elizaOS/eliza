@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { resolveShellExecutionMode, runShell } from "./shell-execution-router.ts";
+import {
+  resolveShellExecutionMode,
+  runShell,
+} from "./shell-execution-router.ts";
 
 const MODE_ENV_KEYS = [
   "ELIZA_RUNTIME_MODE",

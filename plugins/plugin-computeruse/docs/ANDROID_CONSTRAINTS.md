@@ -166,7 +166,8 @@ Verify via `GET /api/training/auto/config` that arbiter pressure state transitio
 ```
 adb shell am start -a android.intent.action.VIEW \
   -d 'eliza://chat?source=android-shortcut'
-adb shell am start -a android.intent.action.ASSIST ai.elizaos.app/.ElizaAssistActivity
+adb shell am start -a android.intent.action.ASSIST \
+  -n com.elizaai.eliza/ai.elizaos.app.ElizaAssistActivity
 ```
 
 Expected: Eliza opens the app/runtime chat surface. Ask for a one-off reminder,
