@@ -652,7 +652,7 @@ export function resolveMobileBuildPolicy(platform) {
     platform === "ios-local"
       ? "local"
       : platform === "ios"
-        ? "cloud"
+        ? "cloud-hybrid"
         : platform === "ios-overlay"
           ? "cloud"
           : null;
@@ -660,11 +660,13 @@ export function resolveMobileBuildPolicy(platform) {
     platform === "android-cloud" || platform === "android-cloud-debug"
       ? "cloud"
         : platform === "android" || platform === "android-system"
-          ? "local-yolo"
+        ? "local-yolo"
         : platform === "ios-local"
           ? "local-safe"
-          : platform === "ios" || platform === "ios-overlay"
-            ? "cloud"
+          : platform === "ios"
+            ? "local-safe"
+            : platform === "ios-overlay"
+              ? "cloud"
             : null;
   const buildVariant =
     platform === "android-cloud" || platform === "ios" ? "store" : "direct";
@@ -765,16 +767,24 @@ async function buildMobileAgentBundle({ target = "android" } = {}) {
 
 export function resolveIosAgentRuntimeAssetPlan({
   appStoreBuild = false,
+  includeFullBunEngine = false,
 } = {}) {
+  const includeAgentPayload = !appStoreBuild || includeFullBunEngine;
   return {
-    agentAssets: appStoreBuild ? null : IOS_AGENT_RUNTIME_ASSETS,
-    rootAssets: appStoreBuild ? [] : IOS_AGENT_ROOT_EXTENSION_ASSETS,
+    agentAssets: includeAgentPayload ? IOS_AGENT_RUNTIME_ASSETS : null,
+    rootAssets: includeAgentPayload ? IOS_AGENT_ROOT_EXTENSION_ASSETS : [],
   };
 }
 
-function stageIosAgentRuntime({ appStoreBuild = false } = {}) {
+function stageIosAgentRuntime({
+  appStoreBuild = false,
+  includeFullBunEngine = false,
+} = {}) {
   const sourceDir = path.join(packagesRoot, "agent", "dist-mobile-ios");
-  const assetPlan = resolveIosAgentRuntimeAssetPlan({ appStoreBuild });
+  const assetPlan = resolveIosAgentRuntimeAssetPlan({
+    appStoreBuild,
+    includeFullBunEngine,
+  });
   const required = IOS_AGENT_RUNTIME_ASSETS;
   for (const file of required) {
     const p = path.join(sourceDir, file);
@@ -2304,8 +2314,7 @@ export function resolveIosCustomPods({
   appStoreBuild = false,
   includeMobileAgentBridge = false,
 } = {}) {
-  const includeBunRuntime =
-    !appStoreBuild && (includeCompatBunRuntime || includeFullBunEngine);
+  const includeBunRuntime = includeCompatBunRuntime || includeFullBunEngine;
   const includeTunnelBridge =
     !appStoreBuild && (includeFullBunEngine || includeMobileAgentBridge);
   return [
@@ -2338,7 +2347,7 @@ export function resolveIosCustomPods({
     ...(includeLlama && !appStoreBuild
       ? [["LlamaCppCapacitor", "llama-cpp-capacitor"]]
       : []),
-    ...(!appStoreBuild && includeFullBunEngine
+    ...(includeFullBunEngine
       ? [["ElizaBunEngine", "@elizaos/bun-ios-runtime"]]
       : []),
   ];
@@ -2453,6 +2462,12 @@ function isFullIosBunEngineRequested(env = process.env) {
   return isTruthyEnv(env.ELIZA_IOS_FULL_BUN_ENGINE);
 }
 
+function isIosAppStoreLocalRuntimeEnabled(env = process.env) {
+  return !/^(0|false|no|off)$/i.test(
+    String(env.ELIZA_IOS_APP_STORE_LOCAL_RUNTIME ?? "1").trim(),
+  );
+}
+
 function isIosLlamaRequested(env = process.env) {
   return (
     isTruthyEnv(env.ELIZA_IOS_INCLUDE_LLAMA) ||
@@ -2465,7 +2480,10 @@ function shouldIncludeIosLlama(env = process.env) {
 }
 
 function shouldIncludeIosFullBunEngine(env = process.env) {
-  return !isIosAppStoreBuild(env) && isFullIosBunEngineRequested(env);
+  return (
+    isFullIosBunEngineRequested(env) ||
+    (isIosAppStoreBuild(env) && isIosAppStoreLocalRuntimeEnabled(env))
+  );
 }
 
 export function isIosAppStoreBuild(env = process.env) {
@@ -4957,7 +4975,10 @@ async function buildIos({ local = false } = {}) {
     // missing local toolchain still leaves the iOS app bundle resources in an
     // inspectable state. Capacitor sync may rewrite app resources, so we stage
     // again immediately after sync.
-    stageIosAgentRuntime({ appStoreBuild: isIosAppStoreBuild() && !local });
+    stageIosAgentRuntime({
+      appStoreBuild: isIosAppStoreBuild() && !local,
+      includeFullBunEngine: includesFullBunRuntime,
+    });
   } else if (isIosAppStoreBuild()) {
     removeIosLocalExecutionAssets();
   }
@@ -4966,7 +4987,10 @@ async function buildIos({ local = false } = {}) {
   }
   await runCapacitor(["sync", "ios"]);
   if (includesLocalAgentPayload) {
-    stageIosAgentRuntime({ appStoreBuild: isIosAppStoreBuild() && !local });
+    stageIosAgentRuntime({
+      appStoreBuild: isIosAppStoreBuild() && !local,
+      includeFullBunEngine: includesFullBunRuntime,
+    });
   } else if (isIosAppStoreBuild()) {
     removeIosLocalExecutionAssets();
   }

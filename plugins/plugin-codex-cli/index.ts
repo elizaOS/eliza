@@ -93,7 +93,7 @@ function buildCodexGenerateParams(runtime: IAgentRuntime, params: GenerateTextPa
         }
       : undefined);
   return {
-    prompt: params.prompt,
+    prompt: params.prompt ?? "",
     system: paramsWithSchema.system,
     messages: params.messages,
     tools: params.tools,

@@ -448,7 +448,7 @@ function binaryTextEvidence(filePath) {
   return (
     runText("nm", ["-u", filePath], { maxBuffer: 32 * 1024 * 1024 }) ??
     runText("strings", ["-a", filePath], { maxBuffer: 32 * 1024 * 1024 }) ??
-    ""
+    readFileSync(filePath).toString("latin1")
   );
 }
 

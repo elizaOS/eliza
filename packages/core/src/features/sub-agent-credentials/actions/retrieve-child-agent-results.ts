@@ -106,7 +106,16 @@ export const retrieveChildAgentResultsAction: Action = {
 			await callback({
 				text,
 				action: "RETRIEVE_CHILD_AGENT_RESULTS",
-				content: { bundle },
+				content: {
+					childSessionId: bundle.childSessionId,
+					retrievedAt: bundle.retrievedAt,
+					transcript: bundle.transcript,
+					artifacts: bundle.artifacts?.map((artifact) => ({
+						path: artifact.path,
+						bytes: artifact.bytes,
+					})),
+					result: bundle.result ? JSON.stringify(bundle.result) : undefined,
+				},
 			});
 		}
 

@@ -137,13 +137,13 @@ test("Android manifest cleartext policy is inserted when absent", () => {
   );
 });
 
-test("resolveMobileBuildPolicy clamps iOS execution to cloud or local-safe", () => {
+test("resolveMobileBuildPolicy keeps App Store iOS local-runtime capable", () => {
   assert.deepEqual(resolveMobileBuildPolicy("ios"), {
     capacitorTarget: "ios",
     buildVariant: "store",
     androidRuntimeMode: null,
-    iosRuntimeMode: "cloud",
-    runtimeExecutionMode: "cloud",
+    iosRuntimeMode: "cloud-hybrid",
+    runtimeExecutionMode: "local-safe",
     releaseAuthority: "apple-app-store",
     appControlledOta: false,
   });
@@ -198,26 +198,29 @@ test("iOS background runner pod resolves through the official package", () => {
   );
 });
 
-test("iOS App Store pod selection strips local execution bridge pods", () => {
+test("iOS App Store pod selection keeps no-JIT Bun local runtime but strips unsafe bridge pods", () => {
   const pods = resolveIosCustomPods({
     appStoreBuild: true,
-    includeLlama: true,
+    includeLlama: false,
     includeFullBunEngine: true,
     includeMobileAgentBridge: true,
   }).map(([name]) => name);
 
   assert.equal(isIosAppStoreBuild({ ELIZA_BUILD_VARIANT: "store" }), true);
   assert.equal(pods.includes("LlamaCppCapacitor"), false);
-  assert.equal(pods.includes("ElizaosCapacitorBunRuntime"), false);
+  assert.equal(pods.includes("ElizaosCapacitorBunRuntime"), true);
   assert.equal(pods.includes("ElizaosCapacitorMobileAgentBridge"), false);
-  assert.equal(pods.includes("ElizaBunEngine"), false);
+  assert.equal(pods.includes("ElizaBunEngine"), true);
 });
 
-test("iOS App Store agent payload is omitted from the cloud client", () => {
-  assert.deepEqual(resolveIosAgentRuntimeAssetPlan({ appStoreBuild: true }), {
-    agentAssets: null,
-    rootAssets: [],
-  });
+test("iOS App Store agent payload is allowed for the bundled no-JIT runtime", () => {
+  assert.deepEqual(
+    resolveIosAgentRuntimeAssetPlan({
+      appStoreBuild: true,
+      includeFullBunEngine: true,
+    }).agentAssets,
+    IOS_AGENT_RUNTIME_ASSETS,
+  );
   assert.deepEqual(
     resolveIosAgentRuntimeAssetPlan({ appStoreBuild: false }).agentAssets,
     IOS_AGENT_RUNTIME_ASSETS,
